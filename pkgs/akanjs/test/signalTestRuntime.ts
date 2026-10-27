@@ -1,7 +1,8 @@
 import type { BackendEnv, BaseEnv } from "akanjs/base";
 import { FetchClient, type FetchProxy } from "akanjs/fetch";
 import type { AkanLib } from "akanjs/server";
-import { type TestEnv, TestServer, type TestServerOptions } from "./testServer";
+import type { ServedMcpCatalogue } from "./ServedMcpCatalogue";
+import { type McpCatalogueOptions, type TestEnv, TestServer, type TestServerOptions } from "./testServer";
 
 export interface SignalTestTarget {
   type: "app" | "lib";
@@ -14,6 +15,7 @@ export interface SignalTestTarget {
 export interface SignalTestContext<Fetch = FetchProxy> {
   fetch: Fetch;
   target: SignalTestTarget;
+  server: TestServer;
   terminate: () => Promise<void>;
 }
 
@@ -39,6 +41,13 @@ export const getSignalTestContext = <Fetch = FetchProxy>() => {
 };
 
 export const getSignalTestFetch = <Fetch = FetchProxy>() => getSignalTestContext<Fetch>().fetch;
+
+/**
+ * What the running test server's `/mcp` answers `tools/list` and `prompts/list` with, every page, for an anonymous
+ * caller or `as` a test agent's account — dispatched through the server's own router, so no token is minted.
+ */
+export const getServedMcpCatalogue = async (options: McpCatalogueOptions = {}): Promise<ServedMcpCatalogue> =>
+  await getSignalTestContext().server.servedMcpCatalogue(options);
 
 export const getOrSetupSignalTestContext = async <Fetch = FetchProxy>() =>
   (await setupSignalTestTarget()) as SignalTestContext<Fetch>;
@@ -120,6 +129,7 @@ export const setupSignalTestTarget = async <Fetch = FetchProxy>(
     currentContext = {
       fetch: target.fetch,
       target,
+      server: testServer,
       terminate: () => testServer.terminate(),
     };
     return currentContext;

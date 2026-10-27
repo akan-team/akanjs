@@ -395,7 +395,7 @@ describe("ConstantRegistry", () => {
   test("records which app or lib registered each entry, first registrant first", () => {
     class OriginLibStatus extends enumOf("originLibStatus", ["on", "off"] as const) {}
     const OriginLibModel = via((field) => ({ name: field(String) }));
-    const OriginAppModel = via(OriginLibModel, (field) => ({ note: field(String) }));
+    const OriginAppModel = via((field) => ({ note: field(String) }), OriginLibModel);
     const OriginScalar = via((field) => ({ lat: field(Int) }));
     const build = (Model: typeof OriginLibModel, origin: string, exports: Record<string, unknown>) =>
       ConstantRegistry.buildModel("constantOriginItem", Model, Model, Model, Model, Model, exports, origin);
@@ -405,15 +405,16 @@ describe("ConstantRegistry", () => {
     ConstantRegistry.buildScalar("constantOriginGeo", OriginScalar, {}, "shared");
     ConstantRegistry.buildScalar(
       "constantOriginGeo",
-      via((field) => ({ lng: field(Int) })),
+      via((field) => ({ lat: field(Int) })),
       {},
       "sceny",
     );
 
     expect(ConstantRegistry.getOrigin("database", "constantOriginItem")).toEqual(["shared", "sceny"]);
     expect(ConstantRegistry.getOrigin("enum", "originLibStatus")).toEqual(["shared"]);
-    expect(ConstantRegistry.getOrigin("scalar", "constantOriginGeo")).toEqual(["shared"]);
+    expect(ConstantRegistry.getOrigin("scalar", "constantOriginGeo")).toEqual(["shared", "sceny"]);
     expect(ConstantRegistry.getOrigin("database", "constantTestUser")).toEqual([]);
+    expect(() => ConstantRegistry.assertConsistentRefNames()).not.toThrow();
   });
 
   test("serializes and deserializes primitive and model values", () => {

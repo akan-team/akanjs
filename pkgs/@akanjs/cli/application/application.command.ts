@@ -161,9 +161,18 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     }),
   test: target({ desc: "Prepare and test an app, library, or package" })
     .with(Exec)
+    .arg("files", String, {
+      desc: "test files or folders to run, relative to the target or the workspace root, comma-separated (default: all)",
+      example: "lib/user/user.signal.test.ts",
+      nullable: true,
+    })
     .option("write", Boolean, writeOption)
-    .exec(async function (exec, write) {
-      await this.applicationScript.test(exec, { write });
+    .exec(async function (exec, files, write) {
+      const testFiles = (files ?? "")
+        .split(",")
+        .map((file) => file.trim())
+        .filter(Boolean);
+      await this.applicationScript.test(exec, { write, files: testFiles });
     }),
   buildIos: target({ short: true, desc: "Build the iOS app on the native runtime" })
     .with(App)

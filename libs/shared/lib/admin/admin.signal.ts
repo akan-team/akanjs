@@ -76,7 +76,7 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
     .with(Account)
     .with(Req)
     .exec(async function (refreshToken, account, req) {
-      const token = refreshToken ?? readRefreshTokenCookie(req.cookies, "admin");
+      const token = refreshToken ?? readRefreshTokenCookie(req, "admin");
       if (!token) throw new Err("admin.error.noRefreshToken");
       try {
         return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account)) as never;

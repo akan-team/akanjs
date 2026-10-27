@@ -1,4 +1,5 @@
 import {
+  CookieJar,
   clientAddressFromHeaders,
   clientPortFromHeaders,
   forwardedHeaders,
@@ -27,17 +28,14 @@ export class AppWsData {
     else {
       data.headers.delete("authorization");
       // Swept by key shape, not this app's key: the copied jar is the host's and may hold the legacy global key.
-      for (const name of [...data.cookies].map(([name]) => name)) {
-        if (isAuthTokenKey(name)) data.cookies.delete(name);
-      }
-      const cookie = [...data.cookies].map(([name, value]) => `${name}=${value}`).join("; ");
-      if (cookie) data.headers.set("cookie", cookie);
-      else data.headers.delete("cookie");
+      data.#setCookieHeader(data.jar.without(isAuthTokenKey).toHeader());
     }
     data.account = undefined;
   }
   createdAt: number;
   headers: Headers;
+  jar: CookieJar;
+  /** @deprecated First-wins on a name sent more than once; read `jar`. */
   cookies: Bun.CookieMap;
   account?: unknown;
   // Per-connection, process-local (a reconnect gets a new one): never a caller identity; survives credential swaps.
@@ -56,7 +54,14 @@ export class AppWsData {
   constructor(headers: Headers) {
     this.createdAt = Date.now();
     this.headers = headers;
+    this.jar = CookieJar.parse(headers.get("cookie"));
     this.cookies = new Bun.CookieMap(headers.get("cookie") ?? "");
     this.socketId = Bun.randomUUIDv7();
+  }
+  #setCookieHeader(cookie: string) {
+    if (cookie) this.headers.set("cookie", cookie);
+    else this.headers.delete("cookie");
+    this.jar = CookieJar.parse(cookie);
+    this.cookies = new Bun.CookieMap(cookie);
   }
 }

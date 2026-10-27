@@ -20,14 +20,21 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
 - A websocket carries its credential in the handshake snapshot on `ws.data` (`AppWsData`); clients that hold the token in memory send it with `fetch.setJwt(...)`, which forwards an auth frame over the socket.
 - **Never read the caller's IP off the socket or the request peer — take `.with(Ip)`.** Whenever a federation
   gateway is in front, `ws.remoteAddress` and the child's own peer are the *gateway* (`127.0.0.1`) for every
-  caller and for the whole life of every socket. `Ip` reads what a proxy recorded (`x-real-ip`, then the first
-  `x-forwarded-for` entry) and falls back to the peer only when nothing proxied the call — which is the answer
-  for a solo process behind an ingress that sets neither; `context.getClientIp()` is the same answer inside a
-  guard or middleware. It arrives unwrapped from
+  caller and for the whole life of every socket. `Ip` reads forwarded headers only from a trusted peer — loopback,
+  a unix socket, and the private ranges until `AKAN_TRUSTED_PROXIES` (CIDRs or addresses, plus `private`, `none`,
+  `*`) replaces them; any other peer is the caller itself. Unset or `*`, it reads `x-real-ip`, else the leftmost
+  `x-forwarded-for` entry. A list walks `x-forwarded-for` from the nearest hop to the first untrusted address and
+  reads `x-real-ip` only without one — so list the load balancer's and ingress controller's own addresses (or a CIDR
+  holding only them), and have the proxy set or append `X-Forwarded-For` rather than pass the client's through.
+  `private` lets any pod in those ranges name any caller: pair it with a NetworkPolicy admitting only the ingress.
+  From any other peer `x-forwarded-host` / `-proto` / `-port` are dropped before a route runs, so a public proxy
+  that rewrites `Host` must be listed, or the browser's mutations fail the cross-site check.
+  The gateway hands its children the one address it resolved; `context.getClientIp()` is the same answer inside a
+  guard or middleware. It arrives in one canonical spelling, unwrapped from
   its `::ffff:` IPv4-mapped form, so it can address a `udp4` socket as well as identify a caller, and it is
   `null` rather than a placeholder when genuinely unknown — a loopback-looking address for an unknown caller
   is the failure this replaced. The gateway also forwards the client port (`x-forwarded-port`, read with
-  `context.getClientPort()`) along with host and protocol.
+  `context.getClientPort()`), host and protocol, each taken from the request only when its peer is trusted.
 - **A device or another server proves itself with a machine token.** `MachineToken.issue({ kind, id, version },
   { expiresAt? })` in `akanjs/server` signs an EdDSA JWT (`typ: akan-machine+jwt`, `aud: <app>/<environment>`) with
   `AKAN_MACHINE_PRIVATE_KEY`; it never expires unless asked. `akan machine-keygen <file>` writes that key to a file

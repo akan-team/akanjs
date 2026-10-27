@@ -298,6 +298,13 @@ export default page()
             }),
           },
           {
+            name: l.trans({ en: "code", ko: "코드" }),
+            desc: l.trans({
+              en: "Prints a code such as `BCDF-GHJK`: type it on the sign-in page, and approve only if it matches your terminal.",
+              ko: "`BCDF-GHJK` 같은 코드를 출력합니다. 로그인 페이지에 입력하고, 터미널의 코드와 같을 때만 승인합니다.",
+            }),
+          },
+          {
             name: l.trans({ en: "time limit", ko: "제한 시간" }),
             desc: l.trans({
               en: "Gives up after 10 minutes without a sign-in, so run it again.",

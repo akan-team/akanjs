@@ -22,6 +22,7 @@ import {
   getRequestFrameState,
   getRequestPolicy,
   getRequestTheme,
+  RenderScope,
   requestStorage,
   setRequestFrameState,
   setRequestTheme,
@@ -1269,7 +1270,8 @@ export class RscRenderer {
   }
 
   #runInRequestScope<T>(request: Request, fn: () => Promise<T>): Promise<T> {
-    return requestStorage ? requestStorage.run(request, fn) : fn();
+    const render = () => RenderScope.run(fn);
+    return requestStorage ? requestStorage.run(request, render) : render();
   }
 
   async #renderFallbackDocument({

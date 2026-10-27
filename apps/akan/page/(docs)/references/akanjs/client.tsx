@@ -1045,8 +1045,8 @@ export default page()
       {
         name: "getCookie(key)",
         desc: l.trans({
-          en: "Reads a cookie, on the server and in the browser.",
-          ko: "cookie를 읽습니다. 서버와 브라우저 모두에서 됩니다.",
+          en: "Reads a cookie, on the server and in the browser. A name sent more than once reads as unset.",
+          ko: "cookie를 읽습니다. 서버와 브라우저 모두에서 되며, 두 번 이상 온 이름은 없는 것으로 읽습니다.",
         }),
       },
       {
@@ -1080,7 +1080,10 @@ export default page()
       },
       {
         name: "authTokenKey()",
-        desc: l.trans({ en: "The cookie name: `jwt:<appName>`.", ko: "cookie 이름인 `jwt:<appName>`입니다." }),
+        desc: l.trans({
+          en: "The session cookie name: `__Host-jwt:<appName>`, or `jwt:<appName>` on a local server.",
+          ko: "세션 cookie 이름인 `__Host-jwt:<appName>`입니다. local 서버에서는 `jwt:<appName>`입니다.",
+        }),
       },
       {
         name: "getAccount<T>()",
@@ -1102,8 +1105,8 @@ export default page()
       {
         name: "initAuth({ jwt? })",
         desc: l.trans({
-          en: "Restores the token from `?jwt=` or the cookie at startup. Ignores another app's token.",
-          ko: "시작할 때 `?jwt=`나 cookie에서 token을 되살립니다. 다른 앱의 token은 무시합니다.",
+          en: "Restores the token from the cookie at startup. Ignores another app's token, and reads a cookie sent twice as signed out.",
+          ko: "시작할 때 cookie에서 token을 되살립니다. 다른 앱의 token은 무시하고, 두 번 온 cookie는 로그아웃 상태로 읽습니다.",
         }),
       },
       {
@@ -1654,6 +1657,28 @@ export default page()
                 {l.trans({
                   en: (
                     <span>
+                      <strong>A route only reads while it renders.</strong> A mutation sent from <code>.render()</code>,{" "}
+                      <code>.guard()</code> or <code>.head()</code> throws <code>base.error.mutationInRender</code>,
+                      since opening a link would perform it. Send it from a user action; pass{" "}
+                      <code>{"{ duringRender: true }"}</code> only for a write that is harmless to repeat and safe for
+                      anyone to trigger.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>route는 렌더링하는 동안 읽기만 합니다.</strong> <code>.render()</code>,{" "}
+                      <code>.guard()</code>, <code>.head()</code>에서 mutation을 보내면 링크를 열기만 해도 쓰기가
+                      일어나므로 <code>base.error.mutationInRender</code>를 던집니다. 쓰기는 사용자 동작에서 보내고,
+                      반복해도 무해하고 누가 일으켜도 안전한 쓰기에만 <code>{"{ duringRender: true }"}</code>를
+                      넘깁니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
                       <strong>Names are string literals.</strong> A <code>[projectId]</code> folder needs{" "}
                       <code>.param("projectId", ID)</code> with that literal name; the same goes for{" "}
                       <code>.prompt("name", …)</code> and <code>.app("name", …)</code>.
@@ -2158,8 +2183,8 @@ export default page()
                     </strong>{" "}
                     A mutation, a file upload, a room subscription or a message sent while <code>load</code> runs throws{" "}
                     <code>base.error.mutationInApp</code> before anything is built or sent: on the server through every{" "}
-                    <code>await</code>, in a browser for <code>load</code>'s synchronous part. Keep writes, such as
-                    buttons and forms, in <code>.render()</code> around the element.
+                    <code>await</code>, in a browser for <code>load</code>'s synchronous part. Put the buttons and forms
+                    that write in <code>.render()</code> around the element.
                   </span>
                 ),
                 ko: (
@@ -2169,8 +2194,8 @@ export default page()
                     </strong>{" "}
                     <code>load</code>가 실행되는 동안 mutation, 파일 업로드, room 구독, message 전송을 하면 무엇을
                     만들거나 보내기 전에 <code>base.error.mutationInApp</code>을 던집니다. 서버에서는 모든{" "}
-                    <code>await</code>에 걸쳐, 브라우저에서는 <code>load</code>의 동기 부분에서 그렇습니다. 버튼이나
-                    form 같은 쓰기는 엘리먼트를 감싸는 <code>.render()</code>에 둡니다.
+                    <code>await</code>에 걸쳐, 브라우저에서는 <code>load</code>의 동기 부분에서 그렇습니다. 쓰기를 하는
+                    버튼이나 form은 엘리먼트를 감싸는 <code>.render()</code>에 둡니다.
                   </span>
                 ),
               })}

@@ -1,11 +1,9 @@
+import { hostOnlyCookieKey } from "@libs/shared/common";
 import { getEnv } from "akanjs/base";
-import { authTokenKey, legacyAuthTokenKey } from "akanjs/common";
-
-import { Err } from "../lib/dict";
+import { authTokenKey, CookieJar, retiredAuthTokenKeys, SessionCookies } from "akanjs/common";
 
 export interface SsoCookie {
   signupToken?: string;
-  ssoState?: string;
   ssoFor: "user" | "admin";
   signinRedirect: string;
   signupRedirect: string;
@@ -26,23 +24,22 @@ const adminRefreshTokenLegacyKey = "adminRefreshToken";
 // A plain-http local server cannot keep a Secure cookie, so only local drops it.
 const cookieAttrs = () => `Path=/; SameSite=Lax${getEnv().operationMode === "local" ? "" : "; Secure"}`;
 
-export const userRefreshTokenKey = () => `${userRefreshTokenLegacyKey}:${getEnv().appName}`;
-export const adminRefreshTokenKey = () => `${adminRefreshTokenLegacyKey}:${getEnv().appName}`;
-
 type RefreshKind = "user" | "admin";
 
-const refreshTokenKeys = (kind: RefreshKind) =>
-  kind === "user"
-    ? { scoped: userRefreshTokenKey(), legacy: userRefreshTokenLegacyKey }
-    : { scoped: adminRefreshTokenKey(), legacy: adminRefreshTokenLegacyKey };
-
-export const readRefreshTokenCookie = (
-  cookies: { get: (key: string) => string | null | undefined },
-  kind: RefreshKind,
-) => {
-  const { scoped, legacy } = refreshTokenKeys(kind);
-  return cookies.get(scoped) ?? cookies.get(legacy) ?? undefined;
+const refreshTokenKeys = (kind: RefreshKind) => {
+  const legacy = kind === "user" ? userRefreshTokenLegacyKey : adminRefreshTokenLegacyKey;
+  const appScoped = `${legacy}:${getEnv().appName}`;
+  const scoped = hostOnlyCookieKey(appScoped);
+  return { scoped, retired: [legacy, appScoped].filter((key) => key !== scoped) };
 };
+
+export const userRefreshTokenKey = () => refreshTokenKeys("user").scoped;
+export const adminRefreshTokenKey = () => refreshTokenKeys("admin").scoped;
+SessionCookies.watch(userRefreshTokenKey);
+SessionCookies.watch(adminRefreshTokenKey);
+
+export const readRefreshTokenCookie = (req: Request, kind: RefreshKind) =>
+  CookieJar.parse(req.headers.get("cookie")).read(refreshTokenKeys(kind).scoped).value || undefined;
 
 export const ssoSessionCookies = (jwt: string, refreshToken: string, kind: RefreshKind): Record<string, string> => ({
   [authTokenKey()]: jwt,
@@ -55,16 +52,17 @@ export const expireCookie = (key: string, httpOnly = false) =>
 export const setHttpOnlyCookie = (key: string, value: string, maxAgeSec?: number) =>
   `${key}=${encodeURIComponent(value)}; ${cookieAttrs()}; HttpOnly${maxAgeSec ? `; Max-Age=${maxAgeSec}` : ""}`;
 
-const isRefreshTokenCookieKey = (key: string) =>
-  key === userRefreshTokenLegacyKey ||
-  key === adminRefreshTokenLegacyKey ||
-  key.startsWith(`${userRefreshTokenLegacyKey}:`) ||
-  key.startsWith(`${adminRefreshTokenLegacyKey}:`);
+const isRefreshTokenCookieKey = (key: string) => {
+  const name = key.startsWith("__Host-") ? key.slice("__Host-".length) : key;
+  return [userRefreshTokenLegacyKey, adminRefreshTokenLegacyKey].some(
+    (legacy) => name === legacy || name.startsWith(`${legacy}:`),
+  );
+};
 
 const appendRefreshTokenCookies = (headers: Headers, kind: RefreshKind, refreshToken?: string) => {
-  const { scoped, legacy } = refreshTokenKeys(kind);
+  const { scoped, retired } = refreshTokenKeys(kind);
   headers.append("Set-Cookie", refreshToken ? setHttpOnlyCookie(scoped, refreshToken) : expireCookie(scoped, true));
-  headers.append("Set-Cookie", expireCookie(legacy, true));
+  for (const key of retired) headers.append("Set-Cookie", expireCookie(key, true));
 };
 
 export const makeSsoRedirectResponse = (
@@ -83,9 +81,9 @@ export const makeSsoRedirectResponse = (
       const httpOnly = isRefreshTokenCookieKey(key) ? "; HttpOnly" : "";
       headers.append("Set-Cookie", `${key}=${encodeURIComponent(value)}; ${cookieAttrs()}${httpOnly}`);
     }
-    headers.append("Set-Cookie", expireCookie(legacyAuthTokenKey));
-    headers.append("Set-Cookie", expireCookie(userRefreshTokenLegacyKey, true));
-    headers.append("Set-Cookie", expireCookie(adminRefreshTokenLegacyKey, true));
+    for (const key of retiredAuthTokenKeys()) headers.append("Set-Cookie", expireCookie(key));
+    for (const kind of ["user", "admin"] as const)
+      for (const key of refreshTokenKeys(kind).retired) headers.append("Set-Cookie", expireCookie(key, true));
   }
   for (const setCookie of extraSetCookies) headers.append("Set-Cookie", setCookie);
 
@@ -114,10 +112,4 @@ export const makeAdminSignoutResponse = (accessToken: AccessTokenResponse) => {
   const headers = new Headers({ "Content-Type": "application/json" });
   appendRefreshTokenCookies(headers, "admin");
   return new Response(JSON.stringify(accessToken), { headers });
-};
-
-export const getSsoOrigin = (request: Bun.BunRequest) => {
-  const origin = request.cookies.get("ssoOrigin");
-  if (!origin) throw new Err("shared.error.invalidSsoCallbackMissingOrigin");
-  return origin;
 };

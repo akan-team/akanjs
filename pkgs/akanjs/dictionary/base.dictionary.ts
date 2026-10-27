@@ -69,6 +69,10 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
       "The {app} app called {endpoint} while it loads, and an app may load with queries only.",
       "{app} 앱이 불러오는 중에 {endpoint}을(를) 호출했습니다. 앱은 쿼리로만 불러올 수 있습니다.",
     ],
+    mutationInRender: [
+      "{endpoint} was called while a page renders, which would run it for anyone who opens a link to the page. Call it from a user action, or pass { duringRender: true } as its option if the render must write.",
+      "페이지를 렌더링하는 중에 {endpoint}을(를) 호출했습니다. 페이지 링크를 연 누구나 이 쓰기를 실행하게 됩니다. 사용자 동작에서 호출하거나, 렌더링 중에 꼭 써야 한다면 옵션으로 { duringRender: true }를 넘겨야 합니다.",
+    ],
     readOnlyDeployment: [
       "This server is read-only, so {endpoint} cannot run here.",
       "읽기 전용 서버라 {endpoint}을(를) 실행할 수 없습니다.",

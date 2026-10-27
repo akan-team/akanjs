@@ -519,12 +519,16 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    Call it on the app port. The second line prints only the replica summary and needs <code>jq</code>:
+                    Call it on the app port with the <code>AKAN_STATUS_TOKEN</code> bearer; outside <code>local</code>,
+                    a caller without it gets only <code>{"{ status }"}</code>. The second line prints only the replica
+                    summary and needs <code>jq</code>:
                   </span>
                 ),
                 ko: (
                   <span>
-                    앱 포트로 호출합니다. 두 번째 줄은 replica 요약만 뽑아 보며, <code>jq</code>가 필요합니다:
+                    앱 포트로 <code>AKAN_STATUS_TOKEN</code> bearer와 함께 호출합니다. <code>local</code>이 아니면 토큰
+                    없는 호출은 <code>{"{ status }"}</code>만 받습니다. 두 번째 줄은 replica 요약만 뽑아 보며,{" "}
+                    <code>jq</code>가 필요합니다:
                   </span>
                 ),
               })}
@@ -534,8 +538,8 @@ export default page()
             className="w-full"
             language="bash"
             title="Terminal"
-            code={`curl -s http://localhost:8282/_akan/app/health
-curl -s localhost:8282/_akan/app/health | jq '.children[] | {role, status, ready}'`}
+            code={`curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" http://localhost:8282/_akan/app/health
+curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/health | jq '.children[] | {role, status, ready}'`}
           />
           <Docs.Description>
             <div>
@@ -612,8 +616,8 @@ curl -s localhost:8282/_akan/app/health | jq '.children[] | {role, status, ready
             </div>
             <div>
               {l.trans({
-                en: "Call it the same way; the second line picks two numbers per replica:",
-                ko: "호출 방법은 같습니다. 두 번째 줄은 replica마다 숫자 두 개만 골라 봅니다:",
+                en: "Call it the same way; outside local it answers 401 without the token, the one to give a scraper. The second line picks two numbers per replica:",
+                ko: "호출 방법은 같으며, local이 아니면 토큰 없이는 401로 답합니다. scraper에는 이 토큰을 줍니다. 두 번째 줄은 replica마다 숫자 두 개만 골라 봅니다:",
               })}
             </div>
           </Docs.Description>
@@ -621,8 +625,8 @@ curl -s localhost:8282/_akan/app/health | jq '.children[] | {role, status, ready
             className="w-full"
             language="bash"
             title="Terminal"
-            code={`curl -s http://localhost:8282/_akan/app/metrics
-curl -s localhost:8282/_akan/app/metrics | jq '.children[].metrics | {activeRequests, rssBytes}'`}
+            code={`curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" http://localhost:8282/_akan/app/metrics
+curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/metrics | jq '.children[].metrics | {activeRequests, rssBytes}'`}
           />
           <Docs.Description>
             <div>

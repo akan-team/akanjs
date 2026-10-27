@@ -1293,7 +1293,9 @@ myapp-local-local-2026-05-25-1-federation-0001.log`}
                         Where <code>{"<runtimeDir>"}</code> is:
                       </strong>{" "}
                       <code>runtime/</code> under <code>NODE_ENV=production</code>, otherwise{" "}
-                      <code>{"local/apps/<app>/runtime"}</code>. <code>AKAN_RUNTIME_DIR</code> overrides both.
+                      <code>{"local/apps/<app>/runtime"}</code> under the workspace root (
+                      <code>{"local/libs/<lib>/runtime"}</code> for a lib's tests). <code>AKAN_RUNTIME_DIR</code>{" "}
+                      overrides both.
                     </>
                   ),
                   ko: (
@@ -1301,8 +1303,9 @@ myapp-local-local-2026-05-25-1-federation-0001.log`}
                       <strong>
                         <code>{"<runtimeDir>"}</code>의 위치:
                       </strong>{" "}
-                      <code>NODE_ENV=production</code>이면 <code>runtime/</code>, 아니면{" "}
-                      <code>{"local/apps/<app>/runtime"}</code>입니다. <code>AKAN_RUNTIME_DIR</code>로 직접 정할 수도
+                      <code>NODE_ENV=production</code>이면 <code>runtime/</code>, 아니면 워크스페이스 루트의{" "}
+                      <code>{"local/apps/<app>/runtime"}</code>입니다(lib 테스트는{" "}
+                      <code>{"local/libs/<lib>/runtime"}</code>). <code>AKAN_RUNTIME_DIR</code>로 직접 정할 수도
                       있습니다.
                     </>
                   ),

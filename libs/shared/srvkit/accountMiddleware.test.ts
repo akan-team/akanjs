@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import * as utilSrvkit from "@libs/util/srvkit";
 import { dayjs, getEnv } from "akanjs/base";
+import { authTokenKey } from "akanjs/common";
 import type { SignalContext } from "akanjs/signal";
 import type { ModulesOptions } from "../lib/option";
 import { AccountMiddleware } from "./accountMiddleware";
+import { Every } from "./guards";
 import { RevokedSessions } from "./revokedSessions";
 
 process.env.AKAN_PUBLIC_APP_NAME ??= "shared";
@@ -29,6 +31,14 @@ const frame = async (socket: { headers: Headers; cookies: Bun.CookieMap; account
   await (await new AccountMiddleware().use(env))(context, async () => undefined);
   return socket.account as { me?: { id: string } };
 };
+
+const httpCall = async (headers: Record<string, string>) => {
+  const req = new Request("https://app.example.com/api/user/me", { headers }) as Request & { account?: unknown };
+  const context = { transport: "http", getHttpContext: () => ({ req }) } as unknown as SignalContext;
+  await (await new AccountMiddleware().use(env))(context, async () => undefined);
+  return req.account as { me?: { id: string } };
+};
+const tokenOf = async (sid: string) => (await accessToken(sid)).slice("Bearer ".length);
 
 afterEach(() => {
   RevokedSessions.use(null);
@@ -57,5 +67,42 @@ describe("AccountMiddleware", () => {
     } finally {
       resolve.mockRestore();
     }
+  });
+
+  test("an HTTP call takes the session cookie only when it arrives once", async () => {
+    const key = authTokenKey();
+    const mine = await tokenOf("mine");
+    const planted = await tokenOf("planted");
+
+    expect((await httpCall({ cookie: `${key}=${mine}` })).me?.id).toBe("mine");
+    expect((await httpCall({ cookie: `${key}=${mine}; ${key}=${planted}` })).me).toBeUndefined();
+    expect((await httpCall({ cookie: `${key}=${planted}; ${key}=${mine}` })).me).toBeUndefined();
+    expect((await httpCall({ cookie: `jwt=${mine}` })).me).toBeUndefined();
+  });
+
+  test("a socket whose handshake sent the session cookie twice is anonymous until a frame carries a token", async () => {
+    const key = authTokenKey();
+    const cookie = `${key}=${await tokenOf("mine")}; ${key}=${await tokenOf("planted")}`;
+    const socket: { headers: Headers; cookies: Bun.CookieMap; account?: unknown } = {
+      headers: new Headers({ cookie }),
+      cookies: new Bun.CookieMap(cookie),
+    };
+    const guarded = () =>
+      new Every().canPass({ key: "guardedCall", get: () => socket.account ?? null } as unknown as SignalContext);
+
+    expect((await frame(socket)).me).toBeUndefined();
+    expect(guarded).toThrow(
+      expect.objectContaining({ statusCode: 401, message: "shared.error.noAuthenticationAccount" }),
+    );
+
+    socket.headers.set("authorization", await accessToken("mine"));
+    expect((await frame(socket)).me?.id).toBe("mine");
+  });
+
+  test("an Authorization header outranks the cookies, duplicated or not", async () => {
+    const key = authTokenKey();
+    const cookie = `${key}=${await tokenOf("planted")}; ${key}=${await tokenOf("other")}`;
+
+    expect((await httpCall({ cookie, authorization: await accessToken("bearer") })).me?.id).toBe("bearer");
   });
 });

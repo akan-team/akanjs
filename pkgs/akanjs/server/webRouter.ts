@@ -3,6 +3,8 @@ import path from "node:path";
 import type { AkanWebConfig } from "akanjs";
 import {
   type AkanI18nConfig,
+  AppHosts,
+  CookieJar,
   DEFAULT_AKAN_I18N,
   getBasePathFromPathname,
   Logger,
@@ -11,7 +13,7 @@ import {
   RequestLocale,
   resolveSubRouteHosts,
 } from "akanjs/common";
-import { type AkanRequestStore, createRequestStore, parseCookieHeader } from "akanjs/fetch";
+import { type AkanRequestStore, createRequestStore } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
 import { PageDefinition } from "../client/route/PageDefinition";
 import { type Dictionary, TranslatorState } from "../client/translatorState";
@@ -345,6 +347,7 @@ export class WebRouter {
       env: process.env.AKAN_SUB_ROUTE_HOSTS,
     });
     this.#subRoutes = subRoutes;
+    AppHosts.declare([...artifact.domains, ...Object.values(subRoutes).flat()]);
     warnIgnoredSubRouteBasePaths(this.#logger, ignoredBasePaths);
     this.#rsc = rsc;
     this.renderState = {
@@ -956,7 +959,7 @@ export class WebRouter {
   }
 
   static #cookieValue(req: Request, name: string): string | undefined {
-    return parseCookieHeader(req.headers.get("cookie") ?? "").get(name)?.value;
+    return CookieJar.parse(req.headers.get("cookie")).read(name).value;
   }
 
   async #ensureRoute(url: URL) {

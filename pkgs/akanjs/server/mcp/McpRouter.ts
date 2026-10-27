@@ -18,8 +18,10 @@ import {
   type McpJsonRpcResponse,
   type McpOutputSchemaMode,
   McpProgress,
+  type McpPrompt,
   type McpProtocolVersion,
   type McpSignalCost,
+  type McpTool,
   type McpToolResult,
 } from "../../signal/mcp";
 import type { PagePromptEntry, PagePromptSource } from "../../signal/mcp/pagePrompt";
@@ -44,6 +46,8 @@ export interface McpRouterProps {
   instructions?: string;
   allowedOrigins?: string[];
   readOnly?: boolean;
+  excludeSignals?: string[];
+  excludeEndpoints?: string[];
   pageSize?: number;
   language?: string;
   legacyTextBlock?: boolean;
@@ -177,6 +181,7 @@ export class McpRouter {
           "MCP is enabled but published nothing. Every candidate was refused; see the reasons below.",
         );
       this.#pages.report();
+      this.#reportUnmatched(document);
       this.#reportUnverifiable(tools.map((tool) => tool.name));
       for (const { key, reason } of refusals) McpRouter.logger.verbose(`MCP did not expose "${key}": ${reason}`);
       for (const { key, reason } of document.appOnly)
@@ -191,6 +196,18 @@ export class McpRouter {
         `MCP catalogue could not be built at boot: ${error instanceof Error ? error.message : error}`,
       );
     }
+  }
+
+  #reportUnmatched(document: McpDocument) {
+    const { signals, endpoints } = document.unmatchedExclusions;
+    if (signals.length)
+      McpRouter.logger.warn(
+        `MCP excludeSignals names ${signals.map((name) => `"${name}"`).join(", ")}, which this server does not serve, so nothing was excluded for them. Check the spelling in option.setMcp.`,
+      );
+    if (endpoints.length)
+      McpRouter.logger.warn(
+        `MCP excludeEndpoints names ${endpoints.map((name) => `"${name}"`).join(", ")}, which no served signal has, so nothing was excluded for them. Check the spelling in option.setMcp.`,
+      );
   }
 
   // Security: without `auth` no client can obtain a token for a guarded tool, and a forged one reads as anonymous.
@@ -226,6 +243,8 @@ export class McpRouter {
     this.#document = new McpDocument(FetchSerializer.serializeRegistry(this.#props.live).signal, {
       resolveDescription: (key) => lookup.text(key),
       readOnly: this.#props.readOnly,
+      excludeSignals: this.#props.excludeSignals,
+      excludeEndpoints: this.#props.excludeEndpoints,
       outputSchema: this.#props.outputSchema,
       apps: !!this.#apps?.rendersUi,
     });
@@ -359,6 +378,41 @@ export class McpRouter {
     if (!page) return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Invalid cursor.");
     const result = { [key]: page.items, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
     return this.#result(call, result, listCache);
+  }
+
+  /** The catalogue as built, before any caller filter: refusals, undescribed entries, `findTool`. */
+  get document(): McpDocument {
+    return this.#getDocument();
+  }
+
+  /**
+   * Every page `tools/list` and `prompts/list` answer `req`'s caller, dispatched in-process past the transport's gate
+   * (origin, token audience, protocol headers); the account still resolves from `req` through the middleware chain.
+   * `ui` lists as for a client that renders MCP Apps views, which only a server drawing them tells apart.
+   */
+  async listFor(
+    req: Request,
+    { ui = false }: { ui?: boolean } = {},
+  ): Promise<{ tools: McpTool[]; prompts: McpPrompt[] }> {
+    const rendersUi = ui && !!this.#apps?.rendersUi;
+    return {
+      tools: (await this.#listAll("tools/list", "tools", req, rendersUi)) as McpTool[],
+      prompts: (await this.#listAll("prompts/list", "prompts", req, rendersUi)) as McpPrompt[],
+    };
+  }
+
+  async #listAll(method: string, key: string, req: Request, ui: boolean) {
+    const items: unknown[] = [];
+    let cursor: string | undefined;
+    do {
+      const call: McpCall = { id: 0, method, params: cursor ? { cursor } : {}, era: "legacy", req, ui };
+      const body = (await (await this.#dispatch(call)).json()) as McpJsonRpcResponse;
+      const result = body.result as Record<string, unknown> | undefined;
+      if (!result) throw new Error(`MCP ${method} failed: ${body.error?.message ?? "no result"}`);
+      items.push(...((result[key] as unknown[] | undefined) ?? []));
+      cursor = typeof result.nextCursor === "string" ? result.nextCursor : undefined;
+    } while (cursor);
+    return items;
   }
 
   // Counted before the tool lookup, so a loop over an unknown name is throttled too.

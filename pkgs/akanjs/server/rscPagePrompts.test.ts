@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ID } from "akanjs/base";
 import type { ReactNode } from "react";
 import { layout, page } from "../client/route/routeBuilders";
 import { AppScope } from "../fetch/appScope";
+import { FetchClient } from "../fetch/client/fetchClient";
 import {
   createRequestStore,
   memoizeRequestQuery,
@@ -14,6 +15,7 @@ import { RouteTreeBuilder } from "./routeTreeBuilder";
 import { RscPagePrompts } from "./rscPagePrompts";
 
 const itemId = "507f1f77bcf86cd799439011";
+const originalFetch = globalThis.fetch;
 
 const record = (key: string, args: Record<string, unknown>, value: Promise<unknown>, modelType?: string) =>
   recordRequestQuery({ key, args, returns: { refName: modelType ? "item" : "String", modelType }, value });
@@ -401,5 +403,100 @@ describe("RscPagePrompts apps", () => {
     await expect(clash("app", "prompt")).rejects.toThrow(
       'prompt "same" is declared by both /:lang/a (as its app) and /:lang/b',
     );
+  });
+});
+
+describe("RscPagePrompts with a page that writes", () => {
+  const sent: string[] = [];
+  const client = new FetchClient(
+    "https://api.example",
+    {},
+    {
+      item: {
+        endpoint: {
+          approveItem: {
+            type: "mutation",
+            args: [{ type: "param", name: "itemId", refName: "ID" }],
+            returns: { refName: "String" },
+          },
+        },
+      },
+    },
+  );
+  const writing = new RouteTreeBuilder({
+    "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
+    "./approve/[itemId].tsx": async () => ({
+      default: page()
+        .param("itemId", ID)
+        .prompt("approveOnOpen", "Approves as it renders.")
+        .render(async ({ itemId }) => {
+          await client.handler.approveItem(itemId);
+          return null;
+        }),
+    }),
+    "./guarded/[itemId].tsx": async () => ({
+      default: page()
+        .param("itemId", ID)
+        .prompt("approveInGuard", "Approves in its guard.")
+        .guard(async ({ itemId }) => {
+          await client.handler.approveItem(itemId);
+        })
+        .render(() => null),
+    }),
+    "./warm/[itemId].tsx": async () => ({
+      default: page()
+        .param("itemId", ID)
+        .prompt("warmOnOpen", "Warms as it renders, on purpose.")
+        .render(async ({ itemId }) => {
+          await client.handler.approveItem(itemId, { duringRender: true });
+          return null;
+        }),
+    }),
+    "./show/[itemId].tsx": async () => ({
+      default: page()
+        .param("itemId", ID)
+        .app("showApproved", "Writes while it loads, even opted in.", async ({ itemId }) => {
+          await client.handler.approveItem(itemId, { duringRender: true });
+          return null;
+        })
+        .render(() => null),
+    }),
+  }).build();
+  const source = new RscPagePrompts({ routes: () => writing, run: (_req, _id, fn) => fn(), defaultLocale: () => "en" });
+
+  beforeEach(() => {
+    sent.length = 0;
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      sent.push(String(url));
+      return Response.json("approved");
+    }) as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("refuses a mutation the page body or a guard sends, before it is sent", async () => {
+    for (const name of ["approveOnOpen", "approveInGuard"])
+      expect(await source.run({ name, arguments: { itemId }, headers: [] })).toEqual({
+        ok: false,
+        reason: "error",
+        message: "base.error.mutationInRender",
+      });
+    expect(sent).toEqual([]);
+  });
+
+  test("runs the mutation a page opts in with duringRender", async () => {
+    expect(await source.run({ name: "warmOnOpen", arguments: { itemId }, headers: [] })).toMatchObject({ ok: true });
+    expect(sent).toEqual([`https://api.example/approveItem/${itemId}`]);
+  });
+
+  test("keeps an app's load query-only, duringRender or not", async () => {
+    expect(await source.run({ name: "showApproved", arguments: { itemId }, headers: [] })).toEqual({
+      ok: false,
+      reason: "error",
+      message: "base.error.mutationInApp",
+    });
+    expect(sent).toEqual([]);
   });
 });

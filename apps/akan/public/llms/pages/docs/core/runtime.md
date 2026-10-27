@@ -86,6 +86,10 @@ Two more narrow who reaches the server, for one only its own computer calls, suc
 
 A server that renders pages calls itself at localhost:<PORT>, so list that in AKAN_ALLOWED_HOSTS too, and keep AKAN_LISTEN_HOST on an address localhost reaches.
 
+One more decides whose forwarded headers name the caller. Unset or *, that is X-Real-IP, else the leftmost X-Forwarded-For entry. Given a list, X-Forwarded-For is walked from the nearest hop past every trusted proxy instead, X-Real-IP counting only without it. List your load balancer's and ingress's own addresses, or a CIDR holding only them:
+
+- AKAN_TRUSTED_PROXIES (CIDR, … | private | none | *, default private ranges): Proxies besides loopback whose headers are believed; a list replaces the private ranges. Any other peer's forwarded host, scheme and port are dropped. private lets any pod in them name any caller, so pair it with a NetworkPolicy admitting only the ingress.
+
 Database Variables
 
 Which database mode a deployment runs and where its data lives are the deployment's to say. These variables win over the same values in `env.server.ts`, so one image can serve several deployments:
@@ -152,7 +156,9 @@ The level ladder is trace, verbose, debug, info, warn, error, and three destinat
 
 - AKAN_LOG_STREAM (0 | 1, default 0): 1 forwards child records to the gateway always, not only while akan logs or .tail listens.
 
-- AKAN_LOG_STREAM_TOKEN (string, default unset — route absent): Mounts GET /_akan/app/logs, the ring buffer as SSE, for this bearer token; one with whitespace inside keeps it off.
+- AKAN_LOG_STREAM_TOKEN (string, default unset — route absent): Mounts GET /_akan/app/logs (SSE) for this bearer, which also unlocks health detail and metrics; whitespace keeps it off.
+
+- AKAN_STATUS_TOKEN (string, default unset — detail in local only): The bearer that unlocks health detail and metrics and nothing else; give this one to a scraper or monitor.
 
 - AKAN_LOG_CANONICAL (0 | 1 | all | slow, default 0): One record per call at its end; 1 or all logs every call, slow only failed or slow ones.
 
@@ -224,11 +230,11 @@ Akan runtime exposes simple ways to check whether the app is alive, how busy it 
 
 Health
 
-Use this to check whether the server processes are running and ready. A solo replica answers it itself, in the same shape the gateway uses, so a probe reads one contract either way.
+Use this to check whether the server processes are running and ready. A solo replica answers it itself, in the same shape the gateway uses, so a probe reads one contract either way. Outside local, a caller without the AKAN_STATUS_TOKEN (or log stream token) bearer gets only { status }.
 
 Metrics
 
-Use this to see runtime counts such as active requests, WebSocket connections, rooms, and process metrics.
+Use this to see runtime counts such as active requests, WebSocket connections, rooms, and process metrics. Outside local it answers 401 without the same bearer.
 
 Logs
 
@@ -392,13 +398,13 @@ void run();
 ### health
 
 ```bash
-curl http://localhost:8282/_akan/app/health
+curl -H "Authorization: Bearer $AKAN_STATUS_TOKEN" http://localhost:8282/_akan/app/health
 ```
 
 ### metrics
 
 ```bash
-curl http://localhost:8282/_akan/app/metrics
+curl -H "Authorization: Bearer $AKAN_STATUS_TOKEN" http://localhost:8282/_akan/app/metrics
 ```
 
 ### logs

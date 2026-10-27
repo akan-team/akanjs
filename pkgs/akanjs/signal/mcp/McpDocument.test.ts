@@ -231,6 +231,42 @@ describe("McpDocument", () => {
     expect(exposed).toContain("draftMcpPost");
   });
 
+  const withNeighbours = (): Record<string, SerializedSignal> => ({
+    ...signal(),
+    base: { endpoint: { ping: { type: "query", args: [], returns: { refName: "String" }, guards: ["Public"] } } },
+    mcpNote: {
+      endpoint: { countMcpNotes: { type: "query", args: [], returns: { refName: "Int" }, guards: ["Public"] } },
+    },
+  });
+
+  test("keeps every entry of an excluded signal off the shelf, and base with it", () => {
+    const doc = new McpDocument(withNeighbours(), { excludeSignals: ["mcpPost"] });
+    expect(names(doc)).toEqual(["countMcpNotes"]);
+    const refusal = doc.refusals.find(({ key }) => key === "createMcpPost")?.reason;
+    expect(refusal).toContain("excludeSignals");
+    expect(refusal).toContain("HTTP still serves it");
+    expect(doc.unmatchedExclusions).toEqual({ signals: [], endpoints: [] });
+  });
+
+  test("keeps each excluded entry off the shelf, generated ones included, and from rendered views too", () => {
+    const excludeEndpoints = ["createMcpPost", "mcpPostListByAuthor", "countMcpPosts", "requestMcpPostCode"];
+    const doc = new McpDocument(withNeighbours(), { excludeEndpoints, apps: true });
+    for (const name of excludeEndpoints) expect(names(doc)).not.toContain(name);
+    expect(names(doc)).toEqual(expect.arrayContaining(["updateMcpPost", "mcpPostList", "mcpPostInsightByAuthor"]));
+    expect(doc.appTools.map((tool) => tool.name)).not.toContain("requestMcpPostCode");
+    expect(doc.refusals.find(({ key }) => key === "mcpPostListByAuthor")?.reason).toContain("excludeEndpoints");
+  });
+
+  test("names each exclusion that matches nothing served, and excludes nothing for it", () => {
+    const doc = new McpDocument(withNeighbours(), {
+      excludeSignals: ["mcpPots", "mcpNote"],
+      excludeEndpoints: ["createMcpPots", "updateMcpPost"],
+    });
+    expect(doc.unmatchedExclusions).toEqual({ signals: ["mcpPots"], endpoints: ["createMcpPots"] });
+    expect(names(doc)).toContain("createMcpPost");
+    expect(names(doc)).not.toContain("countMcpNotes");
+  });
+
   test("says what the listing costs, and which signals it went to", () => {
     const doc = new McpDocument(signal());
     const cost = doc.listingCost;

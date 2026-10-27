@@ -1,5 +1,5 @@
-import { originFromRequest } from "akanjs/common";
-import { type AkanDynamicUsage, type AkanRequestPolicy, parseCookieHeader } from "akanjs/fetch";
+import { CookieJar, originFromRequest } from "akanjs/common";
+import type { AkanDynamicUsage, AkanRequestPolicy } from "akanjs/fetch";
 
 export const DEFAULT_ROUTE_CACHE_TTL_SECONDS = 30;
 
@@ -93,7 +93,9 @@ export function isPublicRouteCacheableRequest(request: Request): boolean {
   if (request.headers.has("authorization")) return false;
   const cookie = request.headers.get("cookie");
   if (!cookie) return true;
-  return [...parseCookieHeader(cookie).keys()].every((name) => name === "theme");
+  return CookieJar.parse(cookie)
+    .names()
+    .every((name) => name === "theme");
 }
 
 const isAtOrUnder = (value: string, prefix: string) =>

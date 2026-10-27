@@ -67,6 +67,8 @@ akanjs/test helper
 
 - sample: Makes one random value at a time, such as an email or a string of a given length. — Example: `sample.email() · sample.string({ length: 10 })`
 
+- getServedMcpCatalogue: What the test server's `/mcp` lists a guest or the `as` account; `ui: true` lists what an MCP Apps host sees. — Example: `(await getServedMcpCatalogue({ as: owner })).tools`
+
 - configureSignalTest: Changes the test server's settings, covered in the Test File section below.
 
 1. Agent types live in one place
@@ -132,6 +134,8 @@ Command
 Run tests from the workspace root with `akan test`. It prepares the target, then runs `bun test --isolate` inside it:
 
 - <target> (app | lib | pkg): The app, library or package to test, such as `myapp` or `shared`.
+
+- [files] (string): Comma-separated files or folders inside the target, from the target or the workspace root. Default: every test.
 
 - --write (boolean, default true): `false` skips writing generated code before an app's tests run.
 
@@ -267,6 +271,7 @@ configureSignalTest({ storage: "tempFile" });
 
 ```bash
 akan test myapp
+akan test myapp lib/user/user.signal.test.ts
 akan test myapp --write false
 akan test shared
 ```

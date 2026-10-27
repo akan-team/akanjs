@@ -5,11 +5,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync } from "node:zlib";
 import { resetEnvCache } from "../base/baseEnv";
+import { TrustedProxy } from "../common/TrustedProxy";
 import { AkanApp } from "./akanApp";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
 import { HostAllowlist } from "./routing/hostAllowlist";
 
 const tempRoots: string[] = [];
+
+// Outside `local` the health detail and metrics answer only to this token, which these tests read throughout.
+const statusToken = "akan-app-test-status-token";
+process.env.AKAN_STATUS_TOKEN = statusToken;
+const statusAuth = { authorization: `Bearer ${statusToken}` };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -59,7 +65,7 @@ interface ChildHealth {
 }
 
 const readHealth = async (port: number) => {
-  const res = await fetch(`http://127.0.0.1:${port}/_akan/app/health`).catch(() => null);
+  const res = await fetch(`http://127.0.0.1:${port}/_akan/app/health`, { headers: statusAuth }).catch(() => null);
   return res?.ok ? ((await res.json()) as { children: ChildHealth[] }) : null;
 };
 
@@ -353,6 +359,8 @@ afterEach(async () => {
 });
 
 describe("makeAkanChildProxyHeaders", () => {
+  afterEach(() => TrustedProxy.reset());
+
   test("preserves public forwarded host and protocol for child requests", () => {
     const req = new Request("http://akan-internal/", {
       headers: {
@@ -370,7 +378,8 @@ describe("makeAkanChildProxyHeaders", () => {
 
     expect(headers.get("connection")).toBeNull();
     expect(headers.get("host")).toBe("akan-child");
-    expect(headers.get("x-forwarded-for")).toBe("203.0.113.10, 10.0.0.5");
+    expect(headers.get("x-real-ip")).toBe("10.0.0.5");
+    expect(headers.get("x-forwarded-for")).toBe("10.0.0.5");
     expect(headers.get("x-forwarded-host")).toBe("akanjs.com");
     expect(headers.get("x-forwarded-proto")).toBe("https");
     expect(headers.get("x-akan-child-idx")).toBe("2");
@@ -428,7 +437,7 @@ describe("makeAkanChildProxyHeaders", () => {
     expect(headers.get("x-real-ip")).toBe("203.0.113.10");
   });
 
-  test("keeps an upstream proxy's x-real-ip over its own peer, which is then that proxy", () => {
+  test("keeps what an upstream proxy recorded over its own peer, which is then that proxy", () => {
     const req = new Request("http://internal.example/", {
       headers: { host: "internal.example", "x-real-ip": "203.0.113.10", "x-forwarded-for": "203.0.113.10" },
     });
@@ -436,7 +445,59 @@ describe("makeAkanChildProxyHeaders", () => {
     const headers = makeAkanChildProxyHeaders(req, 0, { address: "10.0.0.5", port: 443, family: "IPv4" });
 
     expect(headers.get("x-real-ip")).toBe("203.0.113.10");
-    expect(headers.get("x-forwarded-for")).toBe("203.0.113.10, 203.0.113.10");
+    expect(headers.get("x-forwarded-for")).toBe("203.0.113.10");
+  });
+
+  test("forwards one resolved address, so the child's reading never reaches an entry the client wrote", () => {
+    const req = () =>
+      new Request("http://internal.example/", {
+        headers: {
+          host: "internal.example",
+          "x-real-ip": "198.51.100.66",
+          "x-forwarded-for": "198.51.100.7, 203.0.113.9, 10.0.0.9",
+        },
+      });
+    const proxy = { address: "10.0.0.5", port: 443, family: "IPv4" };
+
+    const settled = makeAkanChildProxyHeaders(req(), 0, proxy);
+    expect(settled.get("x-real-ip")).toBe("198.51.100.66");
+    expect(settled.get("x-forwarded-for")).toBe("198.51.100.66");
+
+    TrustedProxy.configure("private");
+    const walked = makeAkanChildProxyHeaders(req(), 0, proxy);
+    expect(walked.get("x-real-ip")).toBe("203.0.113.9");
+    expect(walked.get("x-forwarded-for")).toBe("203.0.113.9");
+    expect(TrustedProxy.clientAddress(walked, null)).toBe("203.0.113.9");
+  });
+
+  test("takes the port from the party the address came from", () => {
+    const forwarded = new Request("http://internal.example/", {
+      headers: { host: "internal.example", "x-forwarded-for": "203.0.113.9", "x-forwarded-port": "51000" },
+    });
+    const unrecorded = new Request("http://internal.example/", {
+      headers: { host: "internal.example", "x-forwarded-for": "203.0.113.9" },
+    });
+    const forged = new Request("http://internal.example/", {
+      headers: { host: "internal.example", "x-forwarded-for": "203.0.113.9", "x-forwarded-port": "1" },
+    });
+    const proxy = { address: "10.0.0.5", port: 443, family: "IPv4" };
+
+    expect(makeAkanChildProxyHeaders(forwarded, 0, proxy).get("x-forwarded-port")).toBe("51000");
+    expect(makeAkanChildProxyHeaders(unrecorded, 0, proxy).get("x-forwarded-port")).toBeNull();
+    const direct = makeAkanChildProxyHeaders(forged, 0, { address: "198.51.100.7", port: 40_000, family: "IPv4" });
+    expect(direct.get("x-forwarded-port")).toBe("40000");
+  });
+
+  test("forwards the private peer itself once AKAN_TRUSTED_PROXIES leaves it out", () => {
+    TrustedProxy.configure("192.0.2.1/32");
+    const req = new Request("http://internal.example/", {
+      headers: { host: "internal.example", "x-real-ip": "203.0.113.9", "x-forwarded-for": "203.0.113.9" },
+    });
+
+    const headers = makeAkanChildProxyHeaders(req, 0, { address: "10.0.0.5", port: 443, family: "IPv4" });
+
+    expect(headers.get("x-real-ip")).toBe("10.0.0.5");
+    expect(headers.get("x-forwarded-for")).toBe("10.0.0.5");
   });
 
   test("sends no client address at all when there is no peer and nothing proxied the call", () => {
@@ -456,7 +517,40 @@ describe("makeAkanChildProxyHeaders", () => {
     const headers = makeAkanChildProxyHeaders(req, 0, { address: "198.51.100.7", port: 40_000, family: "IPv4" });
 
     expect(headers.get("x-real-ip")).toBe("198.51.100.7");
-    expect(headers.get("x-forwarded-for")).toBe("10.0.0.1, 198.51.100.7");
+    expect(headers.get("x-forwarded-for")).toBe("198.51.100.7");
+  });
+
+  test("hands the child its own host and scheme in place of an untrusted caller's claim", () => {
+    const req = () =>
+      new Request("https://app.example/api/x", {
+        headers: { host: "app.example", "x-forwarded-host": "evil.example", "x-forwarded-proto": "http" },
+      });
+
+    const direct = makeAkanChildProxyHeaders(req(), 0, { address: "198.51.100.7", port: 40_000, family: "IPv4" });
+    expect(direct.get("x-forwarded-host")).toBe("app.example");
+    expect(direct.get("x-forwarded-proto")).toBe("https");
+    const unknown = makeAkanChildProxyHeaders(req(), 0);
+    expect(unknown.get("x-forwarded-host")).toBe("app.example");
+
+    TrustedProxy.configure("192.0.2.1/32");
+    const unlisted = makeAkanChildProxyHeaders(req(), 0, { address: "10.0.0.5", port: 443, family: "IPv4" });
+    expect(unlisted.get("x-forwarded-host")).toBe("app.example");
+    expect(unlisted.get("x-forwarded-proto")).toBe("https");
+  });
+
+  test("relays a trusted proxy's host and scheme, even when it recorded no client address", () => {
+    const req = () =>
+      new Request("http://akan-internal/api/x", {
+        headers: { host: "akan-internal", "x-forwarded-host": "app.example", "x-forwarded-proto": "https" },
+      });
+
+    const ingress = { address: "10.0.0.2", port: 443, family: "IPv4" };
+    const tunnelAgent = { address: "127.0.0.1", port: 50_000, family: "IPv4" };
+    for (const peer of [ingress, tunnelAgent, null]) {
+      const headers = makeAkanChildProxyHeaders(req(), 0, peer);
+      expect(headers.get("x-forwarded-host")).toBe("app.example");
+      expect(headers.get("x-forwarded-proto")).toBe("https");
+    }
   });
 });
 
@@ -1016,6 +1110,127 @@ describe("AkanApp", () => {
     });
   }, 20_000);
 
+  test("hands a replica the client address the gateway resolved, over HTTP and websocket alike", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-client-address-");
+    const trustedProxyPath = JSON.stringify(path.join(import.meta.dir, "..", "common", "TrustedProxy.ts"));
+
+    await Bun.write(
+      serverPath,
+      `
+          import { TrustedProxy } from ${trustedProxyPath};
+          export const server = {
+            async start() {
+              const http = Bun.serve({
+                unix: process.env.AKAN_CHILD_SOCKET,
+                fetch(req) {
+                  return Response.json({
+                    address: TrustedProxy.clientAddress(req.headers, null),
+                    forwardedFor: req.headers.get("x-forwarded-for"),
+                  });
+                },
+              });
+              const ws = Bun.serve({
+                port: 0,
+                hostname: "127.0.0.1",
+                fetch(req, server) {
+                  const address = TrustedProxy.clientAddress(req.headers, server.requestIP(req)?.address);
+                  if (server.upgrade(req, { data: { address } })) return undefined;
+                  return new Response("no-upgrade");
+                },
+                websocket: {
+                  open(socket) { socket.send(String(socket.data.address)); },
+                  message() {},
+                },
+              });
+              process.on("message", (message) => {
+                if (!message || typeof message !== "object") return;
+                ${answerHealthPing}
+                if (message.type === "shutdown") {
+                  http.stop(true);
+                  ws.stop(true);
+                  process.exit(0);
+                }
+              });
+              ${sendReady(`{ type: "tcp", host: "127.0.0.1", port: ws.port }`)}
+            },
+          };
+        `,
+    );
+
+    const forged = { "x-real-ip": "198.51.100.66", "x-forwarded-for": "198.51.100.7, 203.0.113.9" };
+    const whoami = async (headers: Record<string, string>) =>
+      await (await fetch(`http://127.0.0.1:${port}/whoami`, { headers })).json();
+    const wsAddress = async (headers: Record<string, string>) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${port}/api/ws`, { headers } as unknown as string[]);
+      try {
+        return await withTimeout(
+          new Promise<string>((resolve) => {
+            socket.addEventListener("message", (event) => resolve(String(event.data)), { once: true });
+          }),
+          "timed out waiting for the replica's ws answer",
+        );
+      } finally {
+        socket.close();
+      }
+    };
+
+    try {
+      await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+        await waitForReady(port);
+        expect(await whoami(forged)).toEqual({ address: "198.51.100.66", forwardedFor: "198.51.100.66" });
+        expect(await wsAddress(forged)).toBe("198.51.100.66");
+
+        TrustedProxy.configure("private");
+        expect(await whoami(forged)).toEqual({ address: "203.0.113.9", forwardedFor: "203.0.113.9" });
+        const behindProxies = { "x-forwarded-for": "198.51.100.7, 10.0.0.9, 192.168.0.4" };
+        expect(await whoami(behindProxies)).toEqual({ address: "198.51.100.7", forwardedFor: "198.51.100.7" });
+        expect(await wsAddress(forged)).toBe("203.0.113.9");
+      });
+    } finally {
+      TrustedProxy.reset();
+    }
+  }, 20_000);
+
+  test("answers health with its status alone and metrics with 401 to a caller without the token", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-status-access-");
+    await writeOkChild(serverPath, "ok");
+    const saved = { env: process.env.AKAN_PUBLIC_ENV, logToken: process.env.AKAN_LOG_STREAM_TOKEN };
+    process.env.AKAN_PUBLIC_ENV = "debug";
+    process.env.AKAN_LOG_STREAM_TOKEN = "akan-app-test-log-token";
+    const statusOf = (pathname: string, headers: Record<string, string> = {}) =>
+      fetch(`http://127.0.0.1:${port}/_akan/app/${pathname}`, { headers });
+
+    try {
+      await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+        await waitForReady(port);
+
+        for (const headers of [{}, { authorization: "Bearer not-the-token" }] as Record<string, string>[]) {
+          const health = await statusOf("health", headers);
+          expect(health.status).toBe(200);
+          expect(health.headers.get("cache-control")).toBe("no-store");
+          expect(await health.json()).toEqual({ status: "running" });
+          const metrics = await statusOf("metrics", headers);
+          expect(metrics.status).toBe(401);
+          expect(metrics.headers.get("www-authenticate")).toBe("Bearer");
+        }
+
+        for (const headers of [statusAuth, { authorization: "Bearer akan-app-test-log-token" }]) {
+          const health = (await (await statusOf("health", headers)).json()) as { children: ChildHealth[] };
+          expect(health.children[0]?.ready).toBe(true);
+          expect(health.children[0]?.pid).toBeNumber();
+          const metrics = await statusOf("metrics", headers);
+          expect(metrics.status).toBe(200);
+          expect(await metrics.json()).toHaveProperty("children");
+        }
+      });
+    } finally {
+      if (saved.env === undefined) delete process.env.AKAN_PUBLIC_ENV;
+      else process.env.AKAN_PUBLIC_ENV = saved.env;
+      if (saved.logToken === undefined) delete process.env.AKAN_LOG_STREAM_TOKEN;
+      else process.env.AKAN_LOG_STREAM_TOKEN = saved.logToken;
+    }
+  }, 20_000);
+
   test("compresses a replica's JSON for the client, and relays one past 4 MiB as it came", async () => {
     const { serverPath, runtimeDir, port } = await makeRoot("akan-app-json-");
 
@@ -1325,7 +1540,7 @@ describe("AkanApp", () => {
       const call = async (socketPath: string, pathname: string) =>
         (await (await fetch(`http://child${pathname}`, { unix: socketPath })).json()) as number[];
       const metrics = async () =>
-        (await (await fetch(`http://127.0.0.1:${port}/_akan/app/metrics`)).json()) as {
+        (await (await fetch(`http://127.0.0.1:${port}/_akan/app/metrics`, { headers: statusAuth })).json()) as {
           rooms: number;
           sockets: number;
           children: { metrics: { pubsubDropCount?: number } }[];
@@ -1372,7 +1587,7 @@ describe("AkanApp", () => {
       const call = async (socketPath: string, pathname: string) =>
         (await (await fetch(`http://child${pathname}`, { unix: socketPath })).json()) as number[];
       const metrics = async () =>
-        (await (await fetch(`http://127.0.0.1:${port}/_akan/app/metrics`)).json()) as {
+        (await (await fetch(`http://127.0.0.1:${port}/_akan/app/metrics`, { headers: statusAuth })).json()) as {
           rooms: number;
           sockets: number;
         };

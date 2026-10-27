@@ -1,4 +1,4 @@
-import type { Cls, EnumInstance, MergeAllDoubleKeyOfObjects, MergeAllKeyOfTypes } from "akanjs/base";
+import type { Cls, EnumInstance, MergeAllDoubleKeyOfObjects } from "akanjs/base";
 import { FILTER_DICT_SHAPE, FILTER_META, getNonArrayModel, isEnum } from "akanjs/base";
 import {
   type BaseObject,
@@ -214,7 +214,7 @@ type LibFilterQuery<LibFilters extends FilterCls[]> = MergeAllDoubleKeyOfObjects
   typeof FILTER_META,
   "query"
 >;
-type LibFilterSort<LibFilters extends FilterCls[]> = MergeAllKeyOfTypes<LibFilters, "sort">;
+type LibFilterSort<LibFilters extends FilterCls[]> = MergeAllDoubleKeyOfObjects<LibFilters, typeof FILTER_META, "sort">;
 type FilterQuery<Full, LibFilters extends FilterCls[], Filter extends FilterInstance> = BaseQuery<Full> &
   LibFilterQuery<LibFilters> &
   Filter["query"];

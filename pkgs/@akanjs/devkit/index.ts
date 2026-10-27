@@ -31,5 +31,4 @@ export type * from "./stripAnsi";
 export type * from "./transforms";
 export type * from "./typeChecker";
 export type * from "./types";
-export type * from "./uploadRelease";
 export type * from "./workflow";

@@ -161,15 +161,22 @@ class ExpiringCache {
 
 const adaptor = new (adapt("endpointIdempotencyTestAdaptor"))();
 
-const makeRequest = (headers: Record<string, string>, body: Record<string, unknown>, cookies: Record<string, string>) =>
-  ({
+const makeRequest = (
+  headers: Record<string, string>,
+  body: Record<string, unknown>,
+  cookies: Record<string, string>,
+) => {
+  const cookie = Object.entries(cookies)
+    .map(([name, value]) => `${name}=${value}`)
+    .join("; ");
+  return {
     url: "http://localhost/api/idempotent",
     params: {},
     body: {},
-    headers: new Headers({ "content-type": "application/json", ...headers }),
-    cookies: { get: (name: string) => cookies[name] ?? null },
+    headers: new Headers({ "content-type": "application/json", ...(cookie ? { cookie } : {}), ...headers }),
     json: async () => body,
-  }) as unknown as Bun.BunRequest;
+  } as unknown as Bun.BunRequest;
+};
 
 const callWith = async (
   endpointInfo: EndpointInfo,
@@ -351,12 +358,28 @@ describe("EndpointIdempotency", () => {
     expect(await (await callWith(info, cache, { headers: { ...headers, authorization: "Bearer tok-x" } })).json()).toBe(
       "run-1",
     );
-    expect(await (await callWith(info, cache, { headers, cookies: { "jwt:idempotencyTest": "tok-x" } })).json()).toBe(
-      "run-1",
-    );
-    expect(await (await callWith(info, cache, { headers, cookies: { "jwt:idempotencyTest": "tok-y" } })).json()).toBe(
-      "run-2",
-    );
+    expect(
+      await (await callWith(info, cache, { headers, cookies: { "__Host-jwt:idempotencyTest": "tok-x" } })).json(),
+    ).toBe("run-1");
+    expect(
+      await (await callWith(info, cache, { headers, cookies: { "__Host-jwt:idempotencyTest": "tok-y" } })).json(),
+    ).toBe("run-2");
+  });
+
+  test("keys no caller on a duplicated auth cookie or a retired one", async () => {
+    let runs = 0;
+    const info = buildEndpoint.mutation(String, { guards: [Public] }).exec(() => `run-${++runs}`);
+    const cache = new ExpiringCache();
+    const callWithCookie = async (cookie: string) =>
+      await (await callWith(info, cache, { headers: { cookie, "idempotency-key": "ack-dup" } })).json();
+
+    const duplicated = "__Host-jwt:idempotencyTest=tok-x; __Host-jwt:idempotencyTest=tok-y";
+    expect(await callWithCookie(duplicated)).toBe("run-1");
+    expect(await callWithCookie(duplicated)).toBe("run-2");
+    expect(await callWithCookie("jwt=tok-x")).toBe("run-3");
+    expect(await callWithCookie("jwt=tok-x")).toBe("run-4");
+    expect(await callWithCookie("jwt:idempotencyTest=tok-x")).toBe("run-5");
+    expect(await callWithCookie("jwt:idempotencyTest=tok-x")).toBe("run-6");
   });
 
   test("reads a credential off the header as the account layer does, so a header it reads no token from is no caller", async () => {
@@ -370,7 +393,7 @@ describe("EndpointIdempotency", () => {
     expect(await callWithHeader("Bearer tok-z")).toBe("run-1");
     expect(await callWithHeader("tok-z")).toBe("run-2");
     expect(await callWithHeader("tok-z")).toBe("run-3");
-    expect(await callWithHeader("Bearer tok-z extra", { "jwt:idempotencyTest": "tok-z" })).toBe("run-4");
+    expect(await callWithHeader("Bearer tok-z extra", { "__Host-jwt:idempotencyTest": "tok-z" })).toBe("run-4");
   });
 
   test("runs a repeat that carries other arguments under the same key, and replays one with the same", async () => {

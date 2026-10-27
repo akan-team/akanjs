@@ -37,8 +37,8 @@ import { getCurrentTrace, runTraced, SignalTrace, type TraceOrigin, traceSpan } 
 
 export type SignalTransportType = "http" | "websocket";
 
-/** What `Bun.Server.requestIP` reports for the socket a request arrived on. */
-export type HttpPeerResolver = (req: Request) => { address: string; port: number } | null;
+/** The socket a request arrived on: `null` for a unix socket (a local hop), `undefined` when no socket is known. */
+export type HttpPeerResolver = (req: Request) => { address: string; port: number } | null | undefined;
 
 const httpEndpointTypes = new Set<EndpointType>(["query", "mutation"]);
 
@@ -693,27 +693,39 @@ export class SignalContext<
     if (!ws.data.headers) return ws.remoteAddress ? normalizeIpAddress(ws.remoteAddress) : null;
     return TrustedProxy.clientAddress(ws.data.headers, ws.remoteAddress);
   }
-  static #carriedIps = new WeakMap<Request, string | null>();
-  /** A request a proxy rebuilt has no socket behind it for `requestIP`, so it keeps the address its original resolved. */
+  static #carried = new WeakMap<Request, { ip: string | null; trustedHop: boolean }>();
+  /** A request a proxy rebuilt has no socket behind it, so it keeps the address and the hop trust its original had. */
   static carryClientIp(target: Request, source: Request) {
-    if (target !== source) SignalContext.#carriedIps.set(target, SignalContext.clientIpOf(source));
+    if (target === source) return;
+    const carried = { ip: SignalContext.clientIpOf(source), trustedHop: SignalContext.isTrustedHop(source) };
+    SignalContext.#carried.set(target, carried);
   }
   /** `getClientIp` for a request no context wraps, as the MCP router and the page renderer hold one. */
   static clientIpOf(req: Request): string | null {
-    const carried = SignalContext.#carriedIps.get(req);
-    if (carried !== undefined) return carried;
+    const carried = SignalContext.#carried.get(req);
+    if (carried) return carried.ip;
     // A resolver answering `null` is an addressless unix socket (a local hop); no resolver is an unknown peer.
     const peer = SignalContext.#httpPeer?.(req);
     return TrustedProxy.clientAddress(req.headers, peer === undefined ? undefined : (peer?.address ?? null));
   }
-  /** The caller's source port as the nearest proxy recorded it, else this socket's own. */
+  /** Whether `req`'s forwarded headers count: it came over a unix socket or from a trusted proxy's address. */
+  static isTrustedHop(req: Request): boolean {
+    const carried = SignalContext.#carried.get(req);
+    if (carried) return carried.trustedHop;
+    const peer = SignalContext.#httpPeer?.(req);
+    if (peer === undefined) return false;
+    return peer === null || TrustedProxy.isTrusted(peer.address);
+  }
+  /** The caller's source port as a trusted proxy recorded it, else this socket's own. */
   getClientPort(): number | null {
     if (this.transport === "http") {
       const { req } = this.getHttpContext();
-      return clientPortFromHeaders(req.headers) ?? SignalContext.#httpPeer?.(req)?.port ?? null;
+      const recorded = SignalContext.isTrustedHop(req) ? clientPortFromHeaders(req.headers) : null;
+      return recorded ?? SignalContext.#httpPeer?.(req)?.port ?? null;
     }
     const { ws } = this.getWebSocketContext<{ headers?: Headers }>();
-    return (ws.data.headers ? clientPortFromHeaders(ws.data.headers) : null) ?? null;
+    if (!ws.data.headers || !TrustedProxy.isTrusted(ws.remoteAddress)) return null;
+    return clientPortFromHeaders(ws.data.headers);
   }
   getRoomId(key: string) {
     if (this.transport !== "websocket") throw new Error("Transport is not websocket");

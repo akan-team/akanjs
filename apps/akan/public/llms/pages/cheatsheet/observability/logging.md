@@ -171,7 +171,7 @@ Meaning
 
 - AKAN_LOG_MAX_FILES (number, default 100): Newest files kept per process key. Older ones are deleted.
 
-**Where `<runtimeDir>` is:** `runtime/` under `NODE_ENV=production`, otherwise `local/apps/<app>/runtime`. `AKAN_RUNTIME_DIR` overrides both.
+**Where `<runtimeDir>` is:** `runtime/` under `NODE_ENV=production`, otherwise `local/apps/<app>/runtime` under the workspace root (`local/libs/<lib>/runtime` for a lib's tests). `AKAN_RUNTIME_DIR` overrides both.
 
 **The Docker image turns files off.** A container's writable layer is ephemeral, so stdout is the collection path there; set `AKAN_LOG_TO_FILE=1` to get the files back.
 

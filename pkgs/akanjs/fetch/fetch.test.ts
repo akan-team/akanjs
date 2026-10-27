@@ -1460,11 +1460,11 @@ describe("FetchClient HTTP generation", () => {
     });
   });
 
-  test("reads the SSR credential from the app-scoped cookie, ignoring a neighbouring app's", async () => {
+  test("reads the SSR credential from one app-scoped cookie, never the bare key or a duplicated one", async () => {
     if (!requestStorage) return;
     const storage = requestStorage;
     setMockFetch();
-    jsonResponses.push("Scoped", "Legacy", "Neighbour");
+    jsonResponses.push("Scoped", "Legacy", "Neighbour", "Duplicate", "Bearer");
     const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
     setAkanPublicEnv();
     // Read back: `getEnv()` caches on first call, and the workspace runner sets an `AKAN_PUBLIC_ENV` this does not.
@@ -1473,20 +1473,26 @@ describe("FetchClient HTTP generation", () => {
       `header.${Buffer.from(JSON.stringify({ appName: tokenApp, environment })).toString("base64url")}.signature`;
     const own = jwtOf(appName);
     const neighbour = jwtOf(`${appName}-neighbour`);
-    const call = async (cookie: string) =>
-      await storage.run(new Request("https://example.test", { headers: { cookie } }), async () => {
-        setAkanPublicEnv();
-        return await client.handler.getThing("abcdefabcdefabcdefabcdef", [], null);
-      });
+    const call = async (cookie: string, authorization?: string) =>
+      await storage.run(
+        new Request("https://example.test", { headers: { cookie, ...(authorization ? { authorization } : {}) } }),
+        async () => {
+          setAkanPublicEnv();
+          return await client.handler.getThing("abcdefabcdefabcdefabcdef", [], null);
+        },
+      );
 
     await call(`jwt:${appName}=${own}; jwt:${appName}-neighbour=${neighbour}`);
     await call(`jwt=${own}`);
     await call(`jwt=${neighbour}`);
+    await call(`jwt:${appName}=${own}; jwt:${appName}=${neighbour}`);
+    await call(`jwt:${appName}=${own}; jwt:${appName}=${neighbour}`, `Bearer ${own}`);
 
     expect(fetchCalls[0]?.init?.headers).toMatchObject({ Authorization: `Bearer ${own}` });
-    // The pre-scoping key still works, but only for a token this app minted.
-    expect(fetchCalls[1]?.init?.headers).toMatchObject({ Authorization: `Bearer ${own}` });
+    expect(fetchCalls[1]?.init?.headers).not.toHaveProperty("Authorization");
     expect(fetchCalls[2]?.init?.headers).not.toHaveProperty("Authorization");
+    expect(fetchCalls[3]?.init?.headers).not.toHaveProperty("Authorization");
+    expect(fetchCalls[4]?.init?.headers).toMatchObject({ Authorization: `Bearer ${own}` });
   });
 
   test("sends requests to the FetchPolicy.origin host instead of the client origin", async () => {

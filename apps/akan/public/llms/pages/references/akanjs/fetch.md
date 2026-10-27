@@ -286,7 +286,9 @@ These read the request a page is being rendered for. `akanjs/fetch` pulls in no 
 
 - headers() (Map<string, string>): The request headers, keys in lower case. A new Map on every call, empty outside a render.
 
-- cookies() (Map<string, { name, value }>): The parsed `Cookie` header, empty outside a render. A `j:` value is decoded as JSON.
+- cookies() (Map<string, { name, value }>): The parsed `Cookie` header, empty outside a render. A name sent more than once is left out.
+
+- cookieJar() (CookieJar): Every cookie in the header, duplicates included. `read(name)` gives a value only for a name sent once.
 
 - getRequestStore() (AkanRequestStore | undefined): The whole per-request store: the request, its theme and its query cache. `undefined` outside a render.
 

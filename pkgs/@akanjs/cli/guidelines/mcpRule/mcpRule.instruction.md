@@ -40,6 +40,9 @@ export class FileSlice extends slice(srv.file, {
   `update`, `remove`), same fallbacks (`create`/`update`/`remove` inherit `cru`), and the same scope: it narrows
   the root slice and the generated CRUD, and never reaches a named slice or a custom endpoint. Those declare
   their own `mcp` beside their own `guards`. The bare `mcp: false` is every key at once, still within that scope.
+- **An app's slice replaces a lib's whole**, on the server and in the client: its own `guards` (a `None` verb is
+  denied everywhere) and its own `mcp` map, or, when it writes none, every verb the lib's slice took off stays off.
+  To keep a mounted lib's tools off without its slice, use `setMcp({ excludeSignals, excludeEndpoints })` (below).
 - **A view keeps reaching it.** To a host that renders MCP Apps views, an endpoint refused for `mcp: false` alone
   is published with `visibility: ["app"]`: an app's view may call it, the model is never shown it (below). Every
   other refusal still holds there.
@@ -56,11 +59,13 @@ export class FileSlice extends slice(srv.file, {
 ## Configuration
 Settings live in the app's `lib/option.ts` — `option.setMcp({ … })`, taking `enabled`, `readOnly`, `path`,
 `version`, `instructions`, `allowedOrigins`, `pageSize`, `language`, `legacyTextBlock`, `outputSchema`, `rateLimit`,
-`promptBudget`, `apps`, `modern`, and `auth` — or `setMcp((env) => …)` for settings derived from the server env.
+`promptBudget`, `apps`, `modern`, `auth`, and `excludeSignals` / `excludeEndpoints` (curation like `mcp: false`,
+added up across libs, an unmatched name warned at boot) — or `setMcp((env) => …)` for settings derived from the
+server env.
 **Not `main.ts`**: the gateway
 there only spawns children, and `option.ts` is the app-authored file `server.ts` already hands to the process that
 mounts `/mcp`. Every lib's option is read in mount order with the app's last, so an app tightens what a library
-declared without restating it. Each field also has an env spelling (`AKAN_MCP`, `AKAN_MCP_READONLY`,
+declared without restating it. Each field but the two lists also has an env spelling (`AKAN_MCP`, `AKAN_MCP_READONLY`,
 `AKAN_MCP_PATH`, `AKAN_MCP_VERSION`, `AKAN_MCP_INSTRUCTIONS`, `AKAN_MCP_ALLOWED_ORIGINS`, `AKAN_MCP_PAGE_SIZE`,
 `AKAN_MCP_LANGUAGE`, `AKAN_MCP_LEGACY_TEXT`, `AKAN_MCP_OUTPUT_SCHEMA`, `AKAN_MCP_RATE_LIMIT`, `AKAN_MCP_CONCURRENT`,
 `AKAN_MCP_PROMPT_BUDGET`, `AKAN_MCP_APPS`, `AKAN_MCP_MODERN`, `AKAN_MCP_AUTH_SERVERS`, `AKAN_MCP_SCOPES`, `AKAN_MCP_RESOURCE`) for a deployment that configures what the source does
@@ -410,8 +415,9 @@ export default page()
   names share one namespace with the prompts, and an endpoint keeps its name over an app's, with a boot warning.
 - **`load` may only query.** A mutation, a file upload, a room subscription or a message sent while it runs throws
   `base.error.mutationInApp` before anything is sent — on the server through every `await`, in a browser for its
-  synchronous part. Writes stay in `.render()` around the element (the `Close` above), and gating stays in
-  `.guard()`: a `getSelf({ unauthorize })` inside `load` would redirect a view.
+  synchronous part, `{ duringRender: true }` or not. The buttons and forms that write stay in `.render()` around the
+  element (the `Close` above), and gating stays in `.guard()`: a `getSelf({ unauthorize })` inside `load` would
+  redirect a view.
 - **A host that declares the extension** (claude.ai, Claude Desktop, ChatGPT, VS Code, Goose) is also given
   `_meta.ui.resourceUri` (`ui://<app>/apps/<name>`) and draws the app's own view in place of the result: one HTML
   document per app, which `akan build` writes to `mcp-apps/<name>.html` beside `csr/` and `akan start` writes to
@@ -444,8 +450,9 @@ export default page()
   reaches the host with `base.error.readOnlyDeployment`, toasted in the person's language. A `.prompt()` page's text
   tool is dropped, since its run renders the whole page; the prompt stays.
 - **`.prompt()` is a briefing, never a view.** Its page is also a text tool of the same name, marked
-  `readOnlyHint: false`, since running the page makes its own `fetch.*` calls, mutations included. To have a host draw
-  part of that screen, declare an `.app()` beside it.
+  `readOnlyHint: false`, since running the page makes its own `fetch.*` calls; like any render it refuses a mutation
+  with `base.error.mutationInRender` unless the call passes `{ duringRender: true }`. To have a host draw part of that
+  screen, declare an `.app()` beside it.
 - **The view has no network.** `connect-src` stays closed; the app's own origin is opened for what a page loads by
   URL — fonts (served with `Access-Control-Allow-Origin: *`) and stored images — and every root-relative URL the
   page writes is pointed at it, since a host may block the document's `<base>` (Claude does).

@@ -252,6 +252,8 @@ A page that reads one path segment and two query keys:
 
 **Render is not a React component.** Call `usePage()`, `getSelf()` and `fetch.*` inside it, and make it `async` only when it awaits.
 
+**A route only reads while it renders.** A mutation sent from `.render()`, `.guard()` or `.head()` throws `base.error.mutationInRender`, since opening a link would perform it. Send it from a user action; pass `{ duringRender: true }` only for a write that is harmless to repeat and safe for anyone to trigger.
+
 **Names are string literals.** A `[projectId]` folder needs `.param("projectId", ID)` with that literal name; the same goes for `.prompt("name", …)` and `.app("name", …)`.
 
 **A route file exports only its chain.** A named export beside the chain, or `page()` in a `_layout.tsx`, breaks the build.
@@ -420,7 +422,7 @@ app
 
 A ticket page that publishes the ticket's view as an app and keeps the close button in `.render()`:
 
-**`load` may only query.** A mutation, a file upload, a room subscription or a message sent while `load` runs throws `base.error.mutationInApp` before anything is built or sent: on the server through every `await`, in a browser for `load`'s synchronous part. Keep writes, such as buttons and forms, in `.render()` around the element.
+**`load` may only query.** A mutation, a file upload, a room subscription or a message sent while `load` runs throws `base.error.mutationInApp` before anything is built or sent: on the server through every `await`, in a browser for `load`'s synchronous part. Put the buttons and forms that write in `.render()` around the element.
 
 What a tool call answers
 
@@ -554,7 +556,7 @@ getCookie / setCookie / getAccount / getAuthToken
 
 Read cookies and the signed-in account from any component, server or browser. The auth token sits in a cookie named per app.
 
-- getCookie(key): Reads a cookie, on the server and in the browser.
+- getCookie(key): Reads a cookie, on the server and in the browser. A name sent more than once reads as unset.
 
 - setCookie(key, value, options?): Writes a cookie in the browser (`path=/`, `SameSite=Lax`, `Secure`; `options` overrides only the keys it names). Does nothing on the server.
 
@@ -566,7 +568,7 @@ Read cookies and the signed-in account from any component, server or browser. Th
 
 - getStoredAuthToken(): The JWT from client storage: localStorage on the web, the native runtime's secure storage (iOS Keychain, Android Keystore) in the app.
 
-- authTokenKey(): The cookie name: `jwt:<appName>`.
+- authTokenKey(): The session cookie name: `__Host-jwt:<appName>`, or `jwt:<appName>` on a local server.
 
 - getAccount<T>(): Decodes the JWT into the account. Another app's or environment's token reads as signed out.
 
@@ -582,7 +584,7 @@ These three keep `fetch`, the cookie and client storage holding the same token. 
 
 - setAuth({ jwt }): Gives `fetch` the token and saves it to the cookie and client storage.
 
-- initAuth({ jwt? }): Restores the token from `?jwt=` or the cookie at startup. Ignores another app's token.
+- initAuth({ jwt? }): Restores the token from the cookie at startup. Ignores another app's token, and reads a cookie sent twice as signed out.
 
 - resetAuth(): Clears the token from `fetch`, the cookie and client storage, for a session you drop entirely.
 

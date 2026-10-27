@@ -1,5 +1,11 @@
 import { dayjs } from "akanjs/base";
-import { type Logger, websocketAuthContract, websocketHeartbeatContract } from "akanjs/common";
+import {
+  CookieJar,
+  type Logger,
+  SessionCookies,
+  websocketAuthContract,
+  websocketHeartbeatContract,
+} from "akanjs/common";
 import type { InjectRegistry, LiveRegistry } from "akanjs/service";
 import { CrossSiteGuard, isExceptionLike, SignalContext, SignalFailure, type WebsocketReqData } from "akanjs/signal";
 import { compressResponse, compressStreamResponse } from "../contentEncoding";
@@ -99,7 +105,11 @@ export class ApiRouter {
       ? ApiRouter.#wrapRoutesWithWebProxy(routeTable, webProxyRunner, prefix, endpointPaths)
       : routeTable;
     const served = ApiRouter.#compressRenderRoutes(proxied, new Set(Object.keys(renderEnvRoutes ?? {})));
-    return hostAllowlist ? ApiRouter.#guardHosts(served, hostAllowlist) : served;
+    const swept = ApiRouter.#sweepSessionCookies(
+      served,
+      new Set([...endpointEntries.map(([path]) => path), ...Object.keys(renderEnvRoutes ?? {})]),
+    );
+    return ApiRouter.#dropForgedForwarding(hostAllowlist ? ApiRouter.#guardHosts(swept, hostAllowlist) : swept);
   }
 
   static buildWebsocketHandlers({
@@ -230,6 +240,25 @@ export class ApiRouter {
     ) as NonNullHttpRoutes;
   }
 
+  static readonly #forwardedOrigin = ["x-forwarded-host", "x-forwarded-proto", "x-forwarded-port"] as const;
+
+  //? Any caller can write these to name another host, scheme or port; dropped here, every reader past this point
+  //? (origin checks, sub-route hosts, OAuth metadata, the page's public URL) takes them as a trusted hop's.
+  static #dropForgedForwarding(routes: NonNullHttpRoutes): NonNullHttpRoutes {
+    return Object.fromEntries(
+      Object.entries(routes).map(([path, route]) => [
+        path,
+        route instanceof Response
+          ? route
+          : ApiRouter.#mapRoute(route, (handler) => (req) => {
+              const names = ApiRouter.#forwardedOrigin.filter((name) => req.headers.has(name));
+              if (names.length && !SignalContext.isTrustedHop(req)) for (const name of names) req.headers.delete(name);
+              return handler(req);
+            }),
+      ]),
+    ) as NonNullHttpRoutes;
+  }
+
   static #guardHosts(routes: NonNullHttpRoutes, allowlist: HostAllowlist): NonNullHttpRoutes {
     return Object.fromEntries(
       Object.entries(routes).map(([path, route]) => [
@@ -237,6 +266,51 @@ export class ApiRouter {
         ApiRouter.#mapRoute(route, (handler) => (req) => (allowlist.allows(req) ? handler(req) : allowlist.refuse())),
       ]),
     ) as NonNullHttpRoutes;
+  }
+
+  //? Builtins (`/mcp`, ops, devtools) and the socket are skipped: their callers are not the browser holding the copies.
+  static #sweepSessionCookies(routes: NonNullHttpRoutes, sweptPaths: Set<string>): NonNullHttpRoutes {
+    return Object.fromEntries(
+      Object.entries(routes).map(([path, route]) => [
+        path,
+        sweptPaths.has(path)
+          ? ApiRouter.#mapRoute(route, (handler) => (req) => {
+              const cookie = req.headers.get("cookie");
+              const duplicates = cookie ? SessionCookies.duplicatesIn(CookieJar.parse(cookie)) : [];
+              if (!duplicates.length) return handler(req);
+              const url = new URL(req.url);
+              const host = ApiRouter.#sweepHost(req, url);
+              SessionCookies.report(duplicates, host);
+              const sweep = SessionCookies.sweepOf(duplicates, host, url.pathname);
+              return (async () => {
+                const response = await handler(req);
+                return response ? ApiRouter.#withSetCookies(response, sweep) : response;
+              })();
+            })
+          : route,
+      ]),
+    ) as NonNullHttpRoutes;
+  }
+
+  //? Any caller can send x-forwarded-host; only a trusted hop's (the gateway's, whose replicas see `akan-child` as
+  //? Host) names the host the browser addressed.
+  static #sweepHost(req: Request, url: URL): string {
+    const forwarded = SignalContext.isTrustedHop(req)
+      ? req.headers.get("x-forwarded-host")?.split(",")[0]?.trim()
+      : undefined;
+    return forwarded || req.headers.get("host")?.trim() || url.host;
+  }
+
+  static #withSetCookies(response: Response, setCookies: string[]): Response {
+    try {
+      for (const cookie of setCookies) response.headers.append("Set-Cookie", cookie);
+      return response;
+    } catch {
+      // A fetched Response's headers are immutable; the copy streams the same body.
+      const copy = new Response(response.body, response);
+      for (const cookie of setCookies) copy.headers.append("Set-Cookie", cookie);
+      return copy;
+    }
   }
 
   static #isApiRoute(path: string, apiPrefix: string): boolean {

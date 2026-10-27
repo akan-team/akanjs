@@ -448,8 +448,15 @@ akan quality ssr --format json`,
       {
         name: "akan.ssr.client-mount-load",
         desc: l.trans({
-          en: "A `useEffect(…, [])` calls `fetch.*` or a loading `st.do.*` action; the route could load it first.",
-          ko: "`useEffect(…, [])`가 `fetch.*`나 데이터를 불러오는 `st.do.*` 액션을 부르는데, 라우트가 먼저 불러올 수 있습니다.",
+          en: "A `useEffect(…, [])` calls `fetch.*` or a loading `st.do.*` action: the route loads a read, a user action sends a write.",
+          ko: "`useEffect(…, [])`가 `fetch.*`나 데이터를 불러오는 `st.do.*` 액션을 부릅니다. 읽기는 라우트가 불러오고, 쓰기는 사용자 동작이 보냅니다.",
+        }),
+      },
+      {
+        name: "akan.ssr.render-mutation",
+        desc: l.trans({
+          en: "A route's stage, or a function in the same file it calls, sends a mutation without `{ duringRender: true }`.",
+          ko: "라우트의 단계나 그 단계가 부르는 같은 파일의 함수가 `{ duringRender: true }` 없이 mutation을 보냅니다.",
         }),
       },
       {

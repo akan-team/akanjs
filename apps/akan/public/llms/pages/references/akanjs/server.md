@@ -140,6 +140,8 @@ On SIGINT or SIGTERM it asks each replica to stop, then kills what is left after
 
 **Solo answers the same routes.** A solo process serves `/_akan/app/health` and `/_akan/app/metrics` in the gateway's shape, so a probe reads one contract either way.
 
+**The detail takes a token.** Outside `local`, health answers only `{ status }` and metrics 401 unless the caller sends `Authorization: Bearer $AKAN_STATUS_TOKEN`, which unlocks nothing else; the log stream token works too.
+
 **Nothing restarts a solo process but your orchestrator.** Keep liveness and readiness probes on the container.
 
 **Import `AkanApp` from `akanjs/server/akanApp`.** The `akanjs/server` barrel also loads `AkanServer` with the SSR renderer and the database driver, which the gateway never runs.
@@ -152,7 +154,7 @@ Every field is optional. With none, `AkanApp` runs one replica on port 8282, and
 
 - serverPath (string, default "./server"): The server module each replica runs, resolved next to `main.ts`.
 
-- runtimeDir (string, default local/apps/<app>/runtime, AKAN_RUNTIME_DIR): Replica sockets and rotating logs. It is `./runtime` when `NODE_ENV=production`.
+- runtimeDir (string, default local/apps/<app>/runtime, AKAN_RUNTIME_DIR): Replica sockets and rotating logs, under the workspace root's `local/` even when started inside the app. It is `./runtime` when `NODE_ENV=production`.
 
 - port (number, default 8282, PORT): The port the app listens on. A replica calling itself uses it too.
 
@@ -280,7 +282,7 @@ When several libs set it
 
 - applyWebProxy: All run: the two built-ins first, then each lib's in order.
 
-- setMcp: Merged field by field; the app's values win.
+- setMcp: Merged field by field; the app's values win, but `excludeSignals` and `excludeEndpoints` add up.
 
 - setLlm: Merged field by field, so a lib may name the host and the app the key.
 

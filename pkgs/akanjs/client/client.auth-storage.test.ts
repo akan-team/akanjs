@@ -1,9 +1,12 @@
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { installMockHost, type MockHost } from "@akanjs/native/core/testing";
+import { legacyAuthTokenKey } from "../common/authCookie";
 import { bearerTokenOf } from "../common/bearerTokenOf";
+import { CookieJar } from "../common/cookieJar";
+import { CookieSweep } from "../common/cookieSweep";
 import { interpolateTranslation } from "../common/interpolateTranslation";
+import { decodeJwtPayload } from "../common/jwtDecode";
 import { pathGetLoose } from "../common/objectPath";
-import { parseCookieHeader } from "../fetch/requestStorage";
 
 type Side = "server" | "client";
 type RenderMode = "ssr" | "csr";
@@ -13,12 +16,14 @@ const envState = {
   renderMode: "ssr" as RenderMode,
   appName: "test-app",
   environment: "debug",
+  operationMode: "cloud" as "local" | "cloud",
 };
 const preferenceStore = new Map<string, string>();
 const localStore = new Map<string, string>();
 const documentCookies = new Map<string, string>();
 const cookieWrites: string[] = [];
 const fetchJwtCalls: Array<string | null> = [];
+const duplicateReports: Array<{ names: string[]; host: string }> = [];
 const fetchState = { jwt: null as string | null };
 const requestState = {
   request: undefined as Request | undefined,
@@ -29,23 +34,12 @@ const makeJwt = (payload: Record<string, unknown>) => {
   return `header.${encoded}.signature`;
 };
 
-// Re-implemented, not imported: the real helpers read `getEnv()`, and a static import binds it before the mock.
-const legacyAuthTokenKey = "jwt";
-const authTokenKey = () => `${legacyAuthTokenKey}:${envState.appName}`;
-const isOwnAuthToken = (jwt: string) => {
-  try {
-    const account = JSON.parse(Buffer.from(jwt.split(".")[1] ?? "", "base64url").toString("utf8")) as {
-      appName?: string;
-      environment?: string;
-    };
-    return account.appName === envState.appName && account.environment === envState.environment;
-  } catch {
-    return false;
-  }
-};
+// Loaded once `akanjs/base` is mocked: the real helpers read `getEnv()`, and a static import binds it first.
+let authToken: typeof import("../common/authToken");
+const authTokenKey = () => authToken.authTokenKey();
 
 // The real parser: `client/cookie.ts` reads through it on both sides, so a copy could pass while the two disagree.
-const requestCookies = () => parseCookieHeader(requestState.request?.headers.get("cookie") ?? "");
+const requestCookieJar = () => CookieJar.parse(requestState.request?.headers.get("cookie"));
 
 const requestHeaders = () => {
   const map = new Map<string, string>();
@@ -55,27 +49,31 @@ const requestHeaders = () => {
   return map;
 };
 
-beforeAll(() => {
+beforeAll(async () => {
   mock.module("akanjs/base", () => ({
     getEnv: () => ({
       side: envState.side,
       renderMode: envState.renderMode,
       appName: envState.appName,
       environment: envState.environment,
+      operationMode: envState.operationMode,
     }),
   }));
+  authToken = await import("../common/authToken");
   mock.module("akanjs/common", () => ({
     Logger: { log: () => undefined, verbose: () => undefined, warn: () => undefined, error: () => undefined },
     bearerTokenOf,
-    decodeJwtPayload: (jwt: string) => JSON.parse(Buffer.from(jwt.split(".")[1] ?? "", "base64url").toString("utf8")),
+    decodeJwtPayload,
     legacyAuthTokenKey,
-    authTokenKey: () => `${legacyAuthTokenKey}:${envState.appName}`,
-    isOwnAuthToken,
-    readAuthToken: (read: (key: string) => string | null | undefined) => {
-      const scoped = read(`${legacyAuthTokenKey}:${envState.appName}`);
-      if (scoped) return scoped;
-      const legacy = read(legacyAuthTokenKey);
-      return legacy && isOwnAuthToken(legacy) ? legacy : undefined;
+    authTokenKey: authToken.authTokenKey,
+    isOwnAuthToken: authToken.isOwnAuthToken,
+    retiredAuthTokenKeys: authToken.retiredAuthTokenKeys,
+    CookieJar,
+    CookieSweep,
+    readSessionToken: authToken.readSessionToken,
+    SessionCookies: {
+      report: (duplicates: Array<{ name: string }>, host: string) =>
+        void duplicateReports.push({ names: duplicates.map(({ name }) => name), host }),
     },
     parseAkanI18nEnv: () => ({ locales: ["en", "ko"], defaultLocale: "en" }),
     parseBasePaths: (value?: string) => (value ? value.split(",").filter(Boolean) : []),
@@ -93,9 +91,8 @@ beforeAll(() => {
     requestStorage: {
       getStore: () => requestState.request,
     },
-    cookies: requestCookies,
+    cookieJar: requestCookieJar,
     headers: requestHeaders,
-    parseCookieHeader,
   }));
   mock.module("./useClient", () => ({
     msg: {
@@ -197,11 +194,13 @@ afterEach(() => {
   envState.renderMode = "ssr";
   envState.appName = "test-app";
   envState.environment = "debug";
+  envState.operationMode = "cloud";
   preferenceStore.clear();
   localStore.clear();
   documentCookies.clear();
   cookieWrites.length = 0;
   fetchJwtCalls.length = 0;
+  duplicateReports.length = 0;
   fetchState.jwt = null;
   requestState.request = undefined;
   host?.uninstall();
@@ -297,10 +296,11 @@ describe("cookies, headers, and auth", () => {
         "x-locale": "ko",
       },
     });
-    const { cookies, getCookie, getHeader, headers, removeCookie } = await import("./cookie");
+    const { cookieJar, cookies, getCookie, getHeader, headers, removeCookie } = await import("./cookie");
 
     expect(cookies().get("jwt")).toEqual({ name: "jwt", value: "abc" });
-    expect(cookies().get("prefs")).toEqual({ name: "prefs", value: "dark" });
+    expect(cookies().get("prefs")).toEqual({ name: "prefs", value: 'j:"dark"' });
+    expect(cookieJar().readJson("prefs")).toBe("dark");
     expect(getCookie("jwt")).toBe("abc");
     expect(headers().get("x-locale")).toBe("ko");
     expect(getHeader("x-locale")).toBe("ko");
@@ -322,7 +322,8 @@ describe("cookies, headers, and auth", () => {
     expect(getAccount<{ userId?: string }>().userId).toBe("u1");
     setAuth({ jwt: nextJwt });
     expect(fetchJwtCalls.at(-1)).toBe(nextJwt);
-    expect(localStore.get(authTokenKey())).toBe(nextJwt);
+    expect(localStore.get("jwt:test-app")).toBe(nextJwt);
+    expect(localStore.has(authTokenKey())).toBe(false);
     expect(localStore.has("jwt")).toBe(false);
 
     initAuth({ jwt });
@@ -330,7 +331,7 @@ describe("cookies, headers, and auth", () => {
 
     resetAuth();
     expect(fetchJwtCalls.at(-1)).toBeNull();
-    expect(localStore.has(authTokenKey())).toBe(false);
+    expect(localStore.has("jwt:test-app")).toBe(false);
   });
 
   test("the cookie key is scoped to the app, so a neighbour on the same host cannot be clobbered", async () => {
@@ -343,22 +344,55 @@ describe("cookies, headers, and auth", () => {
     setAuth({ jwt });
 
     // Cookies carry no port, so `document.cookie` here is the same jar every localhost app writes into.
-    expect(document.cookie).toContain(`jwt:test-app=${jwt}`);
-    expect(document.cookie.startsWith("jwt=")).toBe(false);
+    expect(document.cookie).toBe(`__Host-jwt:test-app=${jwt}`);
   });
 
-  test("a pre-scoping cookie is still read, but only when the token names this app", async () => {
+  test("a local server writes the scoped name without `__Host-`, whose Secure plain http cannot keep", async () => {
+    envState.side = "client";
+    envState.operationMode = "local";
+    const jwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
+    installBrowserGlobals();
+    const { getAuthToken, setAuth } = await import("./cookie");
+
+    setAuth({ jwt });
+
+    expect(document.cookie).toBe(`jwt:test-app=${jwt}`);
+    expect(getAuthToken()).toBe(jwt);
+  });
+
+  test("a cookie under a retired name is never read, and initAuth, setAuth and resetAuth expire it", async () => {
+    envState.side = "client";
+    const own = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
+    installBrowserGlobals(`jwt=${own}; jwt:test-app=${own}; theme=dark`);
+    const { getAuthToken, initAuth, resetAuth, setAuth } = await import("./cookie");
+
+    expect(getAuthToken()).toBeUndefined();
+    initAuth();
+    expect(fetchJwtCalls).toHaveLength(0);
+    expect(document.cookie).toBe("theme=dark");
+
+    for (const act of [() => setAuth({ jwt: own }), resetAuth]) {
+      cookieWrites.length = 0;
+      act();
+      expect(cookieWrites.filter((entry) => entry.includes("expires=Thu, 01 Jan 1970"))).toEqual(
+        expect.arrayContaining([expect.stringMatching(/^jwt=;/), expect.stringMatching(/^jwt:test-app=;/)]),
+      );
+    }
+  });
+
+  test("a pre-scoping cookie is never read, even when its token names this app", async () => {
     envState.side = "client";
     const own = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
     installBrowserGlobals(`jwt=${own}`);
-    const { getAccount, getAuthToken } = await import("./cookie");
+    const { getAccount, getAuthToken, getStoredAuthToken, initAuth } = await import("./cookie");
 
-    expect(getAuthToken()).toBe(own);
-    expect(getAccount<{ userId?: string }>().userId).toBe("u1");
-
-    const neighbour = makeJwt({ appName: "other-app", environment: "debug", userId: "u9" });
-    installBrowserGlobals(`jwt=${neighbour}`);
     expect(getAuthToken()).toBeUndefined();
+    expect(getAccount<Record<string, unknown>>()).toEqual({ appName: "test-app", environment: "debug" });
+    initAuth();
+    expect(fetchJwtCalls).toHaveLength(0);
+
+    localStore.set("jwt", own);
+    expect(await getStoredAuthToken()).toBeUndefined();
   });
 
   test("initAuth ignores a token minted for another app instead of handing it to fetch", async () => {
@@ -375,7 +409,7 @@ describe("cookies, headers, and auth", () => {
   test("initAuth clears a stale scoped cookie left by another environment", async () => {
     envState.side = "client";
     const stale = makeJwt({ appName: "test-app", environment: "main", userId: "u1" });
-    installBrowserGlobals(`jwt:test-app=${stale}`);
+    installBrowserGlobals(`${authTokenKey()}=${stale}`);
     localStore.set("jwt:test-app", stale);
     const { initAuth } = await import("./cookie");
 
@@ -500,5 +534,196 @@ describe("cookies, headers, and auth", () => {
       "theme=dark; path=/; SameSite=lax",
       "theme=dark; path=/; SameSite=none; Secure",
     ]);
+  });
+
+  test("removing a `__Host-` or `__Secure-` cookie writes the Secure its name demands", async () => {
+    envState.side = "client";
+    installBrowserGlobals("__Host-signupToken=t; __Secure-pref=p; theme=dark");
+    const { removeCookie } = await import("./cookie");
+
+    removeCookie("__Host-signupToken");
+    removeCookie("__Secure-pref");
+    removeCookie("theme");
+
+    expect(cookieWrites).toEqual([
+      "__Host-signupToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; Secure;",
+      "__Secure-pref=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; Secure;",
+      "theme=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;",
+    ]);
+    expect(document.cookie).toBe("");
+  });
+});
+
+interface JarCookie {
+  name: string;
+  value: string;
+  domain?: string;
+  path: string;
+  partitioned?: boolean;
+}
+
+// A jar keyed the way a browser keys one — name, domain, path and partition — so a sweep reaches only the copy it
+// names; a host-only copy has no domain, so no `Domain=` deletion reaches it.
+const installCookieJar = (href: string, jar: JarCookie[]) => {
+  installBrowserGlobals();
+  const url = new URL(href);
+  Object.defineProperty(globalThis, "location", {
+    value: {
+      protocol: url.protocol,
+      host: url.host,
+      hostname: url.hostname,
+      pathname: url.pathname,
+      search: url.search,
+    },
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, "document", {
+    value: {
+      get cookie() {
+        return jar.map(({ name, value }) => `${name}=${value}`).join("; ");
+      },
+      set cookie(entry: string) {
+        cookieWrites.push(entry);
+        const [pair = "", ...attrs] = entry.split(";").map((part) => part.trim());
+        const attr = (key: string) =>
+          attrs.find((part) => part.toLowerCase().startsWith(`${key}=`))?.slice(key.length + 1);
+        const name = pair.slice(0, pair.indexOf("="));
+        const domain = attr("domain");
+        const path = attr("path") ?? "/";
+        const partitioned = attrs.some((part) => part.toLowerCase() === "partitioned") || undefined;
+        const idx = jar.findIndex(
+          (cookie) =>
+            cookie.name === name &&
+            cookie.domain === domain &&
+            cookie.path === path &&
+            cookie.partitioned === partitioned,
+        );
+        if (idx !== -1) jar.splice(idx, 1);
+        if (attr("max-age") !== "0")
+          jar.push({ name, value: pair.slice(pair.indexOf("=") + 1), domain, path, partitioned });
+      },
+    },
+    configurable: true,
+  });
+  return jar;
+};
+
+describe("duplicated session cookies", () => {
+  const own = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
+  const planted = makeJwt({ appName: "test-app", environment: "debug", userId: "intruder" });
+  // Only a name without `__Host-` can be planted from a parent domain or under a deeper path, as a local server's is.
+  beforeEach(() => {
+    envState.operationMode = "local";
+  });
+
+  test("the jar, server cookies() and client cookies() read a duplicated name as absent alike", async () => {
+    const header = `jwt:test-app=${own}; theme=dark; jwt:test-app=${planted}`;
+    const { cookies, getAuthToken, getCookie } = await import("./cookie");
+    const reads = () => ({
+      cookie: cookies().get("jwt:test-app"),
+      getCookie: getCookie("jwt:test-app"),
+      theme: getCookie("theme"),
+      token: getAuthToken(),
+    });
+    const expected = { cookie: undefined, getCookie: undefined, theme: "dark", token: undefined };
+
+    expect(CookieJar.parse(header).read("jwt:test-app")).toEqual({ count: 2 });
+    envState.side = "server";
+    requestState.request = new Request("https://app.example.com", { headers: { cookie: header } });
+    expect(reads()).toEqual(expected);
+    envState.side = "client";
+    installBrowserGlobals();
+    Object.defineProperty(globalThis, "document", { value: { cookie: header }, configurable: true });
+    expect(reads()).toEqual(expected);
+  });
+
+  test("initAuth sweeps the parent-domain copy and adopts the survivor without writing it back", async () => {
+    envState.side = "client";
+    const jar = installCookieJar("https://app.example.com/en/orders", [
+      { name: "jwt:test-app", value: planted, domain: "example.com", path: "/" },
+      { name: "jwt:test-app", value: own, path: "/" },
+    ]);
+    const { initAuth } = await import("./cookie");
+
+    initAuth();
+
+    expect(duplicateReports).toEqual([{ names: ["jwt:test-app"], host: "app.example.com" }]);
+    expect(jar).toEqual([{ name: "jwt:test-app", value: own, path: "/" }]);
+    expect(
+      cookieWrites.every((entry) => /; Domain=(app\.)?example\.com;/.test(entry) && entry.includes("Max-Age=0")),
+    ).toBe(true);
+    expect(cookieWrites.some((entry) => entry.includes(own))).toBe(false);
+    expect(fetchJwtCalls).toEqual([own]);
+    expect(localStore.has("jwt:test-app")).toBe(false);
+  });
+
+  test("initAuth sweeps a copy under the page's own host as a Domain, and a partitioned copy", async () => {
+    envState.side = "client";
+    const jar = installCookieJar("https://app.example.com/en/orders", [
+      { name: "jwt:test-app", value: planted, domain: "app.example.com", path: "/en" },
+      { name: "jwt:test-app", value: planted, domain: "example.com", path: "/", partitioned: true },
+      { name: "jwt:test-app", value: own, path: "/" },
+    ]);
+    const { initAuth } = await import("./cookie");
+
+    initAuth();
+
+    expect(jar).toEqual([{ name: "jwt:test-app", value: own, path: "/" }]);
+    expect(fetchJwtCalls).toEqual([own]);
+  });
+
+  test("initAuth signs the page out while copies outlive the sweep", async () => {
+    envState.side = "client";
+    const jar = installCookieJar("https://app.example.com/en/orders", [
+      { name: "jwt:test-app", value: own, path: "/" },
+      { name: "jwt:test-app", value: planted, path: "/en" },
+    ]);
+    const { getAuthToken, initAuth } = await import("./cookie");
+
+    initAuth();
+
+    expect(fetchJwtCalls).toEqual([null]);
+    expect(jar).toHaveLength(2);
+    expect(getAuthToken()).toBeUndefined();
+  });
+
+  test("initAuth adopts a lone session cookie without writing it back", async () => {
+    envState.side = "client";
+    installCookieJar("https://app.example.com/en", [{ name: "jwt:test-app", value: own, path: "/" }]);
+    const { initAuth } = await import("./cookie");
+
+    initAuth();
+
+    expect(fetchJwtCalls).toEqual([own]);
+    expect(cookieWrites).toEqual([]);
+    expect(localStore.has("jwt:test-app")).toBe(false);
+    expect(duplicateReports).toEqual([]);
+  });
+
+  test("initAuth sends no sweep for a duplicated `__Host-` cookie and signs the page out", async () => {
+    envState.side = "client";
+    envState.operationMode = "cloud";
+    const jar = installCookieJar("https://app.example.com/en", [
+      { name: "__Host-jwt:test-app", value: own, path: "/" },
+      { name: "__Host-jwt:test-app", value: planted, path: "/", partitioned: true },
+    ]);
+    const { initAuth } = await import("./cookie");
+
+    initAuth();
+
+    expect(cookieWrites).toEqual([]);
+    expect(jar).toHaveLength(2);
+    expect(fetchJwtCalls).toEqual([null]);
+  });
+
+  test("initAuth takes no token from the address bar", async () => {
+    envState.side = "client";
+    installCookieJar(`https://app.example.com/en?jwt=${own}`, []);
+    const { initAuth } = await import("./cookie");
+
+    initAuth();
+
+    expect(fetchJwtCalls).toEqual([]);
+    expect(cookieWrites).toEqual([]);
   });
 });

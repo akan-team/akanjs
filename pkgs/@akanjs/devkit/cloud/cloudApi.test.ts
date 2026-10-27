@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
+import type { Workspace } from "../commandDecorators";
 import { tempDirs, writeJson, writeText } from "../testHelpers";
+import { CloudApi } from "./cloudApi";
 
 // The cloud rotates a refresh token on every use and treats a second use as theft, revoking every session.
 class FakeCloud {
@@ -10,6 +12,8 @@ class FakeCloud {
   reused = false;
   delayMs = 0;
   hang: boolean = false;
+  readonly remoteAuthPolls: string[] = [];
+  remoteAuthAnswers: (Response | { jwt: string; refreshToken?: string } | null)[] = [];
   readonly #refreshTokens = new Set(["refresh-0"]);
   readonly #spent = new Set<string>();
   readonly #jwts = new Set(["jwt-0"]);
@@ -28,6 +32,14 @@ class FakeCloud {
     if (url.pathname === "/api/getRemoteSelf") {
       const jwt = request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
       return Response.json(this.#jwts.has(jwt) ? { id: "u1", nickname: "akan" } : null);
+    }
+    const remoteAuthPrefix = "/api/getRemoteAuthToken/";
+    if (url.pathname.startsWith(remoteAuthPrefix)) {
+      this.remoteAuthPolls.push(decodeURIComponent(url.pathname.slice(remoteAuthPrefix.length)));
+      const answer = this.remoteAuthAnswers.shift() ?? null;
+      if (answer instanceof Response) return answer;
+      if (answer) this.#jwts.add(answer.jwt);
+      return Response.json(answer);
     }
     if (url.pathname !== "/api/refreshAuthToken") return new Response("not found", { status: 404 });
     const { refreshToken } = (await request.json()) as { refreshToken: string };
@@ -199,4 +211,38 @@ describe("CloudApi.fromHost token refresh", () => {
     expect(cloud.refreshes).toEqual([]);
     expect(await storedToken(home)).toMatchObject({ jwt: "jwt-0", refreshToken: "refresh-0" });
   }, 30_000);
+});
+
+describe("CloudApi remote sign-in", () => {
+  const remoteId = "0f6a1d2e-8c43-4b7a-9e11-5d2c3b4a6f70";
+  const apiOf = () => new CloudApi({ workspaceRoot: "/unused" } as unknown as Workspace, { host: cloud.host });
+
+  test("reads the server's null as pending, then takes the session it hands out and calls with it", async () => {
+    cloud = new FakeCloud();
+    cloud.remoteAuthAnswers = [null, { jwt: "jwt-remote", refreshToken: "refresh-remote" }];
+    const api = apiOf();
+
+    expect(await api.getRemoteAuthToken(remoteId)).toBeNull();
+    expect(await api.getRemoteSelf()).toBeNull();
+    expect(await api.getRemoteAuthToken(remoteId)).toMatchObject({ jwt: "jwt-remote", refreshToken: "refresh-remote" });
+    expect(await api.getRemoteSelf()).toEqual({ id: "u1", nickname: "akan" });
+    expect(cloud.remoteAuthPolls).toEqual([remoteId, remoteId]);
+  });
+
+  test("throws a refusal, a server error, an answer that is no session, and an unreachable server", async () => {
+    cloud = new FakeCloud();
+    cloud.remoteAuthAnswers = [
+      new Response("<html>Not Found</html>", { status: 404 }),
+      Response.json({ error: "base.error.serverUnavailable" }, { status: 503 }),
+      Response.json({ token: "not-a-session" }),
+    ];
+    const api = apiOf();
+
+    await expect(api.getRemoteAuthToken(remoteId)).rejects.toMatchObject({ name: "CloudHttpError", status: 404 });
+    await expect(api.getRemoteAuthToken(remoteId)).rejects.toMatchObject({ name: "CloudHttpError", status: 503 });
+    await expect(api.getRemoteAuthToken(remoteId)).rejects.toThrow("something other than a session");
+    cloud.server.stop(true);
+    await expect(api.getRemoteAuthToken(remoteId)).rejects.toThrow();
+    await expect(api.getRemoteSelf()).rejects.toThrow();
+  });
 });

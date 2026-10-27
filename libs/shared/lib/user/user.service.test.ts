@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { type NativeSsoResult, refreshRotationGraceMs } from "@libs/shared/srvkit";
 import { createOpaqueToken } from "@libs/util/srvkit";
+import * as base from "akanjs/base";
 import { dayjs } from "akanjs/base";
 import { CacheDatabase } from "akanjs/document";
 import { OAuthPkce } from "akanjs/server";
@@ -10,6 +11,10 @@ import * as cnst from "../cnst";
 import type * as db from "../db";
 import { UserModel } from "./user.document";
 import { UserService } from "./user.service";
+
+process.env.AKAN_PUBLIC_APP_NAME ??= "shared";
+process.env.AKAN_PUBLIC_REPO_NAME ??= "soft-s2";
+process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "localhost";
 
 const cloudRotation = { graceMs: refreshRotationGraceMs, reuseRevokes: "lineage" } as const;
 const user = {
@@ -285,6 +290,30 @@ describe("UserService native SSO handoff", () => {
     expect(signin.signupToken).toBeTruthy();
     expect(signin.jwt).toBeFalsy();
     expect(prepared).toEqual({ accountId: "ann@example.com", nickname: "Ann" });
+  });
+
+  test("a web sign-up hands its token over under the `__Host-` name outside local", async () => {
+    const { service } = nativeServiceOn();
+    const ssoCookie = { ssoFor: "user", signinRedirect: "/", signupRedirect: "/signup" } as const;
+    const env = base.getEnv();
+    const getEnv = spyOn(base, "getEnv").mockReturnValue({ ...env, operationMode: "cloud" });
+    try {
+      const cloud = await service.handleSsoCallback(
+        { accountId: "new@example.com", nickname: "New" },
+        "google",
+        ssoCookie,
+      );
+      getEnv.mockReturnValue({ ...env, operationMode: "local" });
+      const local = await service.handleSsoCallback(
+        { accountId: "new@example.com", nickname: "New" },
+        "google",
+        ssoCookie,
+      );
+      expect(cloud.cookie).toEqual({ "__Host-signupToken": "signup-token" });
+      expect(local.cookie).toEqual({ signupToken: "signup-token" });
+    } finally {
+      getEnv.mockRestore();
+    }
   });
 
   test("a provider failure returns to the app as an error, not a code", async () => {

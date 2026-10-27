@@ -21,6 +21,7 @@ import { RotatingLogWriter } from "./logging/rotatingLogWriter";
 import { AppInfo } from "./ops/appInfo";
 import type { OpsHost } from "./ops/opsCommand";
 import type { OpsRoute } from "./ops/opsRoute";
+import { StatusAccess } from "./ops/statusAccess";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { HostAllowlist } from "./routing/hostAllowlist";
 import { SelfExec } from "./selfExec";
@@ -146,6 +147,7 @@ export class AkanApp {
   #logStream: LogStreamRoute | null = null;
   #ops: OpsRoute | null = null;
   #hostAllowlist = HostAllowlist.fromEnv();
+  readonly #statusAccess = StatusAccess.fromEnv();
   static readonly #ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
   #gatewayMetrics: AkanMetricsReport = {};
   #proxyHopCount = 0;
@@ -628,8 +630,8 @@ export class AkanApp {
   async #handleFetch(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response | undefined> {
     if (this.#hostAllowlist && !this.#hostAllowlist.allows(req)) return this.#hostAllowlist.refuse();
     const url = new URL(req.url);
-    if (url.pathname === "/_akan/app/health") return Response.json(this.#getHealthStatus());
-    if (url.pathname === "/_akan/app/metrics") return Response.json(this.#getMetricsStatus());
+    if (url.pathname === "/_akan/app/health") return this.#statusAccess.health(req, () => this.#getHealthStatus());
+    if (url.pathname === "/_akan/app/metrics") return this.#statusAccess.metrics(req, () => this.#getMetricsStatus());
     if (url.pathname === LogStreamRoute.path && this.#logStream) return this.#logStream.handle(req);
     if (url.pathname === "/_akan/bench/ping") return new Response("ok");
     if (url.pathname === AppInfo.publicPath) return AppInfo.handlePublic();

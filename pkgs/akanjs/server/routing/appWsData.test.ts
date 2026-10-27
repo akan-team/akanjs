@@ -16,6 +16,7 @@ describe("AppWsData", () => {
     expect(data.headers.get("authorization")).toBe("Bearer handshake-token");
     expect(data.headers.get("user-agent")).toBe("akan-test");
     expect(data.headers.get("x-secret")).toBeNull();
+    expect(data.jar.read("jwt").value).toBe("cookie-token");
     expect(data.cookies.get("jwt")).toBe("cookie-token");
     expect(data.createdAt).toBeGreaterThan(0);
   });
@@ -72,19 +73,35 @@ describe("AppWsData", () => {
     AppWsData.applyCredential(data, null);
 
     expect(data.headers.get("authorization")).toBeNull();
+    expect(data.jar.has("jwt")).toBe(false);
     expect(data.cookies.has("jwt")).toBe(false);
     expect(data.headers.get("cookie")).toBe("theme=dark");
     expect(data.account).toBeUndefined();
   });
 
   test("signing out clears the app-scoped cookie too, whichever app on the host wrote it", () => {
-    const data = handshake({ cookie: "jwt:alpha=alpha-token; jwt:beta=beta-token; theme=dark" });
+    const data = handshake({
+      cookie: "__Host-jwt:alpha=alpha-token; jwt:alpha=retired-token; jwt:beta=beta-token; theme=dark",
+    });
 
     AppWsData.applyCredential(data, null);
 
-    expect(data.cookies.has("jwt:alpha")).toBe(false);
-    expect(data.cookies.has("jwt:beta")).toBe(false);
+    expect(data.jar.has("__Host-jwt:alpha")).toBe(false);
+    expect(data.jar.has("jwt:alpha")).toBe(false);
+    expect(data.jar.has("jwt:beta")).toBe(false);
     expect(data.headers.get("cookie")).toBe("theme=dark");
+  });
+
+  test("keeps every copy of a duplicated cookie until sign-out drops them all, leaving other values as sent", () => {
+    const data = handshake({ cookie: 'jwt:alpha=planted; theme=a%3Bb; jwt:alpha=own; prefs="q"' });
+
+    expect(data.jar.read("jwt:alpha")).toEqual({ count: 2 });
+
+    AppWsData.applyCredential(data, null);
+
+    expect(data.headers.get("cookie")).toBe('theme=a%3Bb; prefs="q"');
+    expect(data.jar.read("theme").value).toBe("a;b");
+    expect(data.cookies.get("theme")).toBe("a;b");
   });
 
   test("removes the cookie header entirely when the jwt was its only entry", () => {

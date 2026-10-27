@@ -51,8 +51,9 @@ export class DatabaseRegistry {
   static isScalar(modelRef: DatabaseCls) {
     return DatabaseRegistry.#modelSets.scalar.has(modelRef);
   }
+  //? The latest wins here as in ConstantRegistry and DiLifecycle: an app re-declares a lib's model after the lib does.
   static setDatabase(refName: string, dbModel: DatabaseModel) {
-    if (!DatabaseRegistry.#database.has(refName)) DatabaseRegistry.#database.set(refName, dbModel);
+    DatabaseRegistry.#database.set(refName, dbModel);
     return dbModel;
   }
   static getDatabase<AllowEmpty extends boolean = false>(
@@ -64,7 +65,6 @@ export class DatabaseRegistry {
     return info as AllowEmpty extends true ? DatabaseModel | undefined : DatabaseModel;
   }
   static setScalar(refName: string, Model: DatabaseCls) {
-    if (DatabaseRegistry.#scalar.has(refName)) return;
     DatabaseRegistry.#scalar.set(refName, Model);
   }
   static getScalar<AllowEmpty extends boolean = false>(

@@ -29,6 +29,7 @@ import { serverSignal } from "../../signal/serverSignal";
 import type { SignalContext } from "../../signal/signalContext";
 import { SignalRegistry } from "../../signal/signalRegistry";
 import { slice } from "../../signal/slice";
+import { ServedMcpCatalogue } from "../../test/ServedMcpCatalogue";
 import { AkanLib } from "../akanLib";
 import { AkanOption } from "../akanOption";
 import { DiLifecycle } from "../di/diLifecycle";
@@ -1744,5 +1745,91 @@ describe("MCP Apps", () => {
       stop();
     }
     expect(lines.some((line) => line.includes('did not publish page "echoTitle" as a tool'))).toBe(true);
+  });
+});
+
+describe("MCP exclusions and the served catalogue", () => {
+  const toolNames = (json: { result: { tools: { name: string }[] } }) => json.result.tools.map((tool) => tool.name);
+  const listRequest = (headers: Record<string, string> = {}) =>
+    new Request("http://127.0.0.1:8080/mcp", { method: "POST", headers });
+
+  test("keeps an excluded signal's every tool off the list and refuses its calls, while HTTP still answers", async () => {
+    const excluded = { excludeSignals: ["serverResolverTestItem"] };
+    expect(toolNames((await postWith(rpc("tools/list"), excluded)).json)).toEqual([]);
+    const called = await postWith(rpc("tools/call", { name: "visualItem", arguments: {} }), excluded);
+    expect(called.json.error.message).toBe("Unknown tool: visualItem.");
+    const routes = httpRoutes as Record<string, { GET: (req: Request) => Promise<Response> }>;
+    const response = await routes["/serverResolverTestItem/visualItem"].GET(
+      new Request("http://127.0.0.1:8080/api/serverResolverTestItem/visualItem"),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  test("keeps each excluded entry off the list, generated ones included, and refuses its calls", async () => {
+    const excluded = { excludeEndpoints: ["echoTitle", "serverResolverTestItemListInCategory"] };
+    const listed = toolNames((await postWith(rpc("tools/list"), excluded)).json);
+    expect(listed).not.toContain("echoTitle");
+    expect(listed).not.toContain("serverResolverTestItemListInCategory");
+    expect(listed).toContain("serverResolverTestItemInsightInCategory");
+    const called = await postWith(rpc("tools/call", { name: "echoTitle", arguments: { id: itemId } }), excluded);
+    expect(called.json.error.message).toBe("Unknown tool: echoTitle.");
+  });
+
+  test("reports each exclusion at boot, and warns about a name that matches nothing", () => {
+    const lines: string[] = [];
+    const stop = Logger.addSink(({ message }) => void lines.push(message));
+    try {
+      mcpRouter({ excludeSignals: ["serverResolverTestItme"], excludeEndpoints: ["echoTitle", "echoTitel"] }).report();
+    } finally {
+      stop();
+    }
+    expect(lines.find((line) => line.includes('did not expose "echoTitle"'))).toContain("excludeEndpoints");
+    expect(lines.find((line) => line.includes("excludeSignals names"))).toContain('"serverResolverTestItme"');
+    const unmatched = lines.find((line) => line.includes("excludeEndpoints names"));
+    expect(unmatched).toContain('"echoTitel"');
+    expect(unmatched).not.toContain('"echoTitle"');
+  });
+
+  test("lists in-process, every page, what tools/list and prompts/list answer the same caller", async () => {
+    const router = mcpRouter({ pageSize: 5, pagePrompts: pagePromptsOf(okRun()) });
+    const anonymous = await router.listFor(listRequest());
+    const signed = await router.listFor(listRequest({ authorization: "Bearer u1" }));
+    expect(anonymous.tools.map((tool) => tool.name)).toEqual(toolNames((await post(rpc("tools/list"))).json));
+    expect(anonymous.tools.map((tool) => tool.name)).not.toContain("ownedTitle");
+    expect(signed.tools.map((tool) => tool.name)).toContain("ownedTitle");
+    expect(anonymous.prompts.map((prompt) => prompt.name)).toEqual(["briefItem"]);
+  });
+
+  test("costs the served listing less without output schemas", async () => {
+    const served = async (props: Partial<McpRouterProps>) => {
+      const router = mcpRouter(props);
+      return new ServedMcpCatalogue(router.document, await router.listFor(listRequest()));
+    };
+    const shallow = await served({});
+    const bare = await served({ outputSchema: "none" });
+    expect(bare.tools.map((tool) => tool.name)).toEqual(shallow.tools.map((tool) => tool.name));
+    expect(bare.listingCost.bytes).toBeLessThan(shallow.listingCost.bytes);
+    expect(shallow.findTool("echoTitle")?.refName).toBe("serverResolverTestItem");
+    expect(shallow.findTool("ownedTitle")).toBeUndefined();
+    expect(shallow.undescribed.map(({ key }) => key)).toContain("echoTitle");
+    expect(shallow.undescribed.map(({ key }) => key)).not.toContain("ownedTitle");
+  });
+
+  test("lists the app-only tools only with `ui`, and only on a server that draws views", async () => {
+    const shellHtml = '<!DOCTYPE html><html lang="en"><head><title>shell</title></head><body></body></html>';
+    const apps = {
+      apps: true,
+      appShell: { read: async (app: string) => (app === "showItem" ? shellHtml : null) },
+      pagePrompts: pagePromptsOf(okRun(), [briefEntry, showEntry]),
+    } satisfies Partial<McpRouterProps>;
+    const names = (listed: { tools: { name: string }[] }) => listed.tools.map((tool) => tool.name);
+    const router = mcpRouter(apps);
+    const text = names(await router.listFor(listRequest()));
+    const view = await router.listFor(listRequest(), { ui: true });
+    expect(text).toEqual(toolNames((await postWith(rpc("tools/list"), apps)).json));
+    expect(text).not.toContain("quietTitle");
+    expect(view.tools.find((tool) => tool.name === "quietTitle")?._meta).toEqual({ ui: { visibility: ["app"] } });
+    const textOnly = mcpRouter({ ...apps, appShell: undefined });
+    expect(names(await textOnly.listFor(listRequest(), { ui: true }))).not.toContain("quietTitle");
   });
 });

@@ -135,7 +135,7 @@ Client — "use client"
 
   - .param · .search: Route values arrive typed in the render callback before the first byte is sent.
 
-  - fetch.*: Called in a route, it finishes before the first byte. From a mounted client it costs two extra round-trips.
+  - fetch.*: A query called in a route finishes before the first byte. From a mounted client it costs two extra round-trips.
 
   - .guard(() => signedIn()): Check sign-in on `_layout.tsx`: it runs before anything renders, so a guest gets a real 307.
 
@@ -225,7 +225,9 @@ Meaning → fix
 
 - client-static-markup: Ten or more elements wrap only one or two client features.→ Keep only the interactive leaf client and pass the rest in as children.
 
-- client-mount-load: A useEffect(…, []) loads server data after the page mounts.→ Fetch it in the route and pass it down as an init prop.
+- client-mount-load: A useEffect(…, []) loads server data after the page mounts.→ Fetch a read in the route and pass it down as an init prop; send a write from a user action.
+
+- render-mutation: A route's render, guard or head sends a mutation, so opening a link would perform it.→ Send it from a user action; pass { duringRender: true } only for a write harmless to repeat.
 
 - module-missing-server-view: A module draws only from Template, Zone and Util, with no Unit or View.→ Add a Unit or View and let the Zone hand its rows to it.
 

@@ -17,11 +17,10 @@ import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
 import { confirm, input, select } from "@inquirer/prompts";
-import { Logger, sleep } from "akanjs/common";
+import { Logger } from "akanjs/common";
 import chalk from "chalk";
-import * as QRcode from "qrcode";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
-import { openBrowser } from "../openBrowser";
+import { RemoteLogin } from "./remoteLogin";
 
 interface SettlePlatformTestsOptions {
   interactive: boolean;
@@ -172,53 +171,26 @@ export class CloudRunner extends runner("cloud") {
 
   async login(host: string, workspace: Workspace) {
     const cloudApi = await CloudApi.fromHost(workspace, host);
-    const self = await cloudApi.getRemoteSelf();
-    if (self) {
-      Logger.rawLog(chalk.green(`\n✓ Already logged in akan cloud as ${self.nickname}\n`));
+    const signedIn = await cloudApi.getRemoteSelf().catch(() => null);
+    if (signedIn) {
+      Logger.rawLog(chalk.green(`\n✓ Already logged in akan cloud as ${signedIn.nickname}\n`));
       return true;
     }
-    const remoteId = crypto.randomUUID();
-    const signinUrl = `${cloudApi.host}/remoteAuth?remoteId=${encodeURIComponent(remoteId)}`;
-
-    Logger.rawLog(chalk.bold(`\n${chalk.green("➤")} Authentication Required`));
-    Logger.rawLog(chalk.dim("Please visit or click the following URL:"));
-    Logger.rawLog(`${chalk.cyan.underline(signinUrl)}\n`);
-
-    try {
-      const qrcode = await new Promise<string>((resolve, reject) => {
-        QRcode.toString(signinUrl, { type: "terminal", small: true }, (err, data) => {
-          if (err) reject(err);
-          resolve(data);
-        });
-      });
-      Logger.rawLog(qrcode);
-      await openBrowser(signinUrl);
-      Logger.rawLog(chalk.dim("Opening browser..."));
-    } catch {
-      Logger.rawLog(chalk.yellow("Could not open browser. Please visit the URL manually."));
+    const self = await new RemoteLogin(cloudApi).signIn();
+    Logger.rawLog(chalk.green(`\r✓ Authentication successful!`));
+    if (!self) {
+      Logger.rawLog(chalk.yellow("The session is saved; run akan login again to check which account it signed in.\n"));
+      return true;
     }
-
-    Logger.rawLog(chalk.dim("Waiting for authentication..."));
-    const MAX_RETRY = 300;
-    for (let i = 0; i < MAX_RETRY; i++) {
-      const accessToken = await cloudApi.getRemoteAuthToken(remoteId);
-      const self = await cloudApi.getRemoteSelf();
-      if (accessToken && self) {
-        await GlobalConfig.setHostConfig({ host: cloudApi.host, auth: { accessToken, self } });
-        Logger.rawLog(chalk.green(`\r✓ Authentication successful!`));
-        Logger.rawLog(chalk.green.bold(`\n✨ Welcome aboard, ${self.nickname ?? "anonymous"}!`));
-        Logger.rawLog(chalk.dim("You're now ready to use Akan CLI!\n"));
-        return true;
-      }
-      await sleep(2000);
-    }
-    throw new Error(chalk.red("✖ Authentication timed out after 10 minutes. Please try again."));
+    Logger.rawLog(chalk.green.bold(`\n✨ Welcome aboard, ${self.nickname ?? "anonymous"}!`));
+    Logger.rawLog(chalk.dim("You're now ready to use Akan CLI!\n"));
+    return true;
   }
   async logout(host: string) {
     const config = await GlobalConfig.getHostConfig(host);
-    if (config.auth?.self) {
+    if (config.auth?.self || config.auth?.accessToken) {
       await GlobalConfig.setHostConfig(getDefaultHostConfig(config.host));
-      Logger.rawLog(chalk.magenta.bold(`\n👋 Goodbye, ${config.auth.self.nickname ?? "anonymous"}!`));
+      Logger.rawLog(chalk.magenta.bold(`\n👋 Goodbye, ${config.auth.self?.nickname ?? "anonymous"}!`));
       Logger.rawLog(chalk.dim("───────────────────────────────────────────────\n"));
       Logger.rawLog(chalk.cyan("You have been successfully logged out."));
       Logger.rawLog(chalk.dim("Thank you for using Akan CLI. Come back soon! 🌟\n"));

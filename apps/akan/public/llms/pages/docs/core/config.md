@@ -118,7 +118,7 @@ Stage
 
 - setAgentAccess: Guards (ANDed) for spending the LLM key via runAgentTurn; with none, every call is refused.
 
-- setMcp: MCP server settings such as instructions, readOnly, and auth.
+- setMcp: MCP server settings: instructions, readOnly, auth, and the signals or entries kept off /mcp.
 
 - use, applyMiddleware, applyAdaptor, applyWebProxy: Register env-derived use<T>() singletons, signal middleware, adaptor overrides, web proxies.
 

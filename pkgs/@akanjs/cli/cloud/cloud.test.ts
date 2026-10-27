@@ -16,9 +16,11 @@ import {
   writeJson,
   writeText,
 } from "@akanjs/devkit/testHelpers";
+import { Logger } from "akanjs/common";
 import { CloudCommand } from "./cloud.command";
 import { CloudRunner } from "./cloud.runner";
 import { CloudScript } from "./cloud.script";
+import { RemoteLogin } from "./remoteLogin";
 
 const stubAppConfigs = (secretsByApp: Record<string, string[]>) =>
   spyOn(AppExecutor, "from").mockImplementation(
@@ -202,6 +204,39 @@ describe("CloudRunner", () => {
 
     expect(await new CloudRunner().login(host, workspace as never)).toBe(true);
     expect(fromHost).toHaveBeenCalledWith(workspace, host);
+  });
+
+  test("login signs in through the browser when the saved session cannot be checked, and ends signed in without the account", async () => {
+    const host = "https://cloud.test";
+    spyOn(CloudApi, "fromHost").mockResolvedValue({
+      host,
+      getRemoteSelf: async () => {
+        throw new TypeError("Unable to connect");
+      },
+    } as never);
+    const signIn = spyOn(RemoteLogin.prototype, "signIn").mockResolvedValue(null);
+    const logs: string[] = [];
+    spyOn(Logger, "rawLog").mockImplementation((msg = "") => {
+      logs.push(msg);
+    });
+
+    expect(await new CloudRunner().login(host, createFakeExecutor("workspace") as never)).toBe(true);
+    expect(signIn).toHaveBeenCalledTimes(1);
+    expect(logs.join("\n")).toContain("The session is saved");
+  });
+
+  test("logout clears a saved session that never read its account", async () => {
+    const host = "https://cloud.test";
+    spyOn(GlobalConfig, "getHostConfig").mockResolvedValue({
+      host,
+      auth: { accessToken: { jwt: "jwt-1", refreshToken: "refresh-1", expiresAt: null } },
+    });
+    const setHostConfig = spyOn(GlobalConfig, "setHostConfig").mockResolvedValue();
+    spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await new CloudRunner().logout(host);
+
+    expect(setHostConfig).toHaveBeenCalledWith({ host });
   });
 
   test("filters Akan packages from workspace package list", async () => {

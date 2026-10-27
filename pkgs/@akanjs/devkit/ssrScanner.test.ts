@@ -176,6 +176,37 @@ describe("akan.ssr.client-mount-load", () => {
   test("a store action that is not a load is not a finding", () => {
     expect(scanOne(UI, mount("void st.do.openModal();"))).not.toContain("akan.ssr.client-mount-load");
   });
+
+  test("never sends a mutation to the route", () => {
+    const signal = fileOf(
+      "apps/demo/lib/task/task.signal.ts",
+      `export class TaskEndpoint extends endpoint(srv.task, ({ mutation }) => ({ markTaskSeen: mutation(Boolean, {}).exec(() => true) })) {}`,
+    );
+    const [load, write] = new SsrScanner().scan([
+      signal,
+      fileOf(UI, mount("void fetch.viewTask(id); void fetch.markTaskSeen(id);")),
+    ]).warnings;
+    expect(load?.message).toContain("The route can fetch this");
+    expect(load?.fix).toBeUndefined();
+    expect(write?.rule).toBe("akan.ssr.client-mount-load");
+    expect(write?.message).toContain("sends the mutation fetch.markTaskSeen()");
+    expect(write?.fix).toContain("explicit user action");
+    expect(write?.fix).not.toContain("init/view");
+  });
+});
+
+describe("akan.ssr.render-mutation", () => {
+  test("is reported for a route file beside the component rules", () => {
+    const signal = fileOf(
+      "apps/demo/lib/task/task.signal.ts",
+      `export class TaskEndpoint extends endpoint(srv.task, ({ mutation }) => ({ approveTask: mutation(Boolean, {}).exec(() => true) })) {}`,
+    );
+    const route = fileOf(
+      "apps/demo/page/task/_index.tsx",
+      `import { fetch } from "@apps/demo/client";\nexport default page().render(async () => { await fetch.approveTask("x"); return null; });\n`,
+    );
+    expect(rulesOf(signal, route)).toEqual(["akan.ssr.render-mutation"]);
+  });
 });
 
 describe("akan.ssr.template-client-state", () => {

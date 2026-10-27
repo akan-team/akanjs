@@ -45,7 +45,7 @@ What you do
 
 What happens when the user clicks
 
-`st.do.ssoSigninUser` saves the three destinations and the page origin in cookies, then opens `/api/user/<provider>`.
+`st.do.ssoSigninUser` saves the three destinations in cookies, then opens `/api/user/<provider>`.
 
 The start route sends the browser to the provider's consent screen.
 
@@ -81,9 +81,9 @@ Credential fields
 
 Redirect URI for the console
 
-A provider only sends users back to a URI you registered. Akan builds it from the origin of the page where the user clicked:
+A provider only sends users back to a URI you registered. Akan builds it from the origin the sign-in request arrived on:
 
-**Register every origin.** Local, staging and production each need their own entry, because the origin comes from the browser.
+**Register every origin.** Local, staging and production each need their own entry. Outside local the host must be the app's own: a `routes` domain, `AKAN_SUB_ROUTE_HOSTS`, `<app>-<environment>.<serveDomain>`, `HOST_NAME` or `AKAN_ALLOWED_HOSTS`. A forwarded host counts only from a trusted hop: the gateway, or a proxy `AKAN_TRUSTED_PROXIES` admits.
 
 **Allow the scopes below.** Consent items the console has not enabled come back empty, such as Kakao's email.
 
@@ -123,11 +123,9 @@ Helper
 
 - SSO.Google, SSO.Github, SSO.Kakao, …: Guards that refuse the call with `ssoNotConfigured` when that provider has no keys.
 
-- makeOAuthRedirectResponse: Builds the 302 to the provider's consent screen from the `ssoOrigin` cookie.
+- SsoFlow.start: The 302 to the consent screen: `redirect_uri` on the request's own origin, `state` in an HttpOnly cookie.
 
-- getSsoCode, getSsoOrigin: Read the `code` query and the `ssoOrigin` cookie, and throw when either is missing.
-
-- extractGoogleProfile, extractGithubProfile, …: One per provider. Trades the code for a token and fetches the profile.
+- SsoFlow.callback: Checks `state` against the cookie, trades the `code` for the provider's identity, then calls `handleSsoCallback`.
 
 - handleSsoCallback: The user service's decision: sign in, continue signup or error. Returns `{ cookie, redirect }`.
 
@@ -199,7 +197,7 @@ SSOButtons props
 
 **Write paths as the app sees them.** The action adds the basePath prefix when the app has one.
 
-**Start SSO only through `st.do.ssoSigninUser`.** A bare link to `/api/user/google` carries no `ssoOrigin` cookie, so the start route fails with `invalidSsoCallbackMissingOrigin` and no destination is known.
+**Start SSO through `st.do.ssoSigninUser`.** A bare link to `/api/user/google` signs in too, but saves no destination, so every outcome lands on `/`.
 
 Tips
 
@@ -235,21 +233,13 @@ export const env: ModulesOptions = {
 ```ts
 google: query(Any, { guards: [SSO.Google] })
   .with(Req)
-  .exec((request) => makeOAuthRedirectResponse("google", request as Bun.BunRequest)),
+  .exec(async function (req) {
+    return await SsoFlow.start("google", req as Bun.BunRequest, this.userService);
+  }),
 googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
   .with(Req)
-  .exec(async function (request) {
-    const req = request as Bun.BunRequest & { account?: SerAccount };
-    const googleUser = await extractGoogleProfile(getSsoCode(req), getSsoOrigin(req));
-    const accountId = googleUser.emails[0].value;
-    const { cookie, redirect } = await this.userService.handleSsoCallback(
-      accountId,
-      "google",
-      req.cookies.toJSON() as unknown as SsoCookie,
-      req.account,
-      googleUser.displayName,
-    );
-    return makeSsoRedirectResponse(redirect, cookie);
+  .exec(async function (req) {
+    return await SsoFlow.callback("google", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
   }),
 ```
 

@@ -41,6 +41,13 @@ body shape — this is the full contract behind them. Before changing route beha
   hydration, so an effect that needs the query on its first run takes the page's `.search()` value as a prop.
 - There is no `loader=` / `render=` page prop and no `PageProps` interface: the chain declares the arguments and
   `.render()` receives them flat, typed, with `lang` on every route and `children` added for a layout.
+- **A route only reads while it renders.** A `fetch.<mutation>()` (or socket message) sent from `.render()`, `.guard()`,
+  `.head()`, `.loading()` or a layout's `.notFound()` / `.error()` (a `.prompt()` run included) throws
+  `base.error.mutationInRender` synchronously, before it is sent — a `.catch()` on its promise never sees it: opening a
+  link to the page would perform it. Send a write from a user action — a button through a store action. Only a write
+  that is harmless to repeat and safe for anyone to trigger (a warm-up) passes `{ duringRender: true }` as the option
+  after the endpoint's own arguments (`fetch.updateX(id, data, { duringRender: true })`). `akan quality` flags the call,
+  same-file helpers included, as `akan.ssr.render-mutation`.
 
 ## Route Guards — `.guard()`
 
@@ -82,11 +89,12 @@ body shape — this is the full contract behind them. Before changing route beha
   source), shares one namespace with every page's prompts and apps, and needs an English description. A name
   `.render()` already receives (`lang`, a `.param()` / `.search()` name, another app) fails to compile and throws when
   the module loads, as does an app named like the page's `.prompt()`.
-- **`load` may only query** (`base.error.mutationInApp` otherwise): keep writes in `.render()` around the element, and
-  gating in `.guard()`. The view runs `load` with no layout body and no `.render()`: it gets the root layout's theme,
-  fonts and framework providers through the generated `McpAppRoot` and the `_overrides.tsx` over the page (one the web
-  draws outside the root layout wraps `McpAppRoot`, its toasts included), and nothing a layout body provides. The
-  chain is the `export default` expression itself: one bound to a name fails the build. Full contract: `mcpRule`.
+- **`load` may only query** (`base.error.mutationInApp` otherwise, `duringRender` or not): keep the buttons and forms
+  that write in `.render()` around the element, and gating in `.guard()`. The view runs `load` with no layout body
+  and no `.render()`: it gets the root layout's theme, fonts and framework providers through the generated
+  `McpAppRoot` and the `_overrides.tsx` over the page (one the web draws outside the root layout wraps `McpAppRoot`,
+  its toasts included), and nothing a layout body provides. The chain is the `export default` expression itself: one
+  bound to a name fails the build. Full contract: `mcpRule`.
 
 ## Heads
 

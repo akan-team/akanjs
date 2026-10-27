@@ -165,8 +165,9 @@ export class FetchSerializer {
     };
   }
 
+  // A `None`-only list is sent as `["None"]`: dropped, a denied verb reads as undeclared and a client merge refills it.
   static #guardNames<Key extends string>(key: Key, guards: GuardCls[], emit = true) {
-    if (!emit || !guards.some((guard) => guard.name !== "None")) return {};
+    if (!emit || !guards.length) return {};
     return { [key]: guards.map((guard) => guard.name) } as { [K in Key]: string[] };
   }
 

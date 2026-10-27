@@ -42,7 +42,6 @@ export class AdminStore extends store(sig.admin, () => ({
     setCookie("ssoFor", "admin");
     setCookie("adminRedirect", adminRedirect);
     setCookie("errorRedirect", adminRedirect);
-    setCookie("ssoOrigin", location.origin);
     location.assign(`${getApiPrefix()}/user/${ssoType}`);
   }
   async signoutAdmin() {

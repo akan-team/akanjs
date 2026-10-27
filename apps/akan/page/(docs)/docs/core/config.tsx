@@ -1153,8 +1153,8 @@ export const option = new AkanOption<ModulesOptions>()
               {
                 name: "setMcp",
                 desc: l.trans({
-                  en: "MCP server settings such as instructions, readOnly, and auth.",
-                  ko: "instructions·readOnly·auth 같은 MCP 서버 설정입니다.",
+                  en: "MCP server settings: instructions, readOnly, auth, and the signals or entries kept off /mcp.",
+                  ko: "instructions·readOnly·auth, 그리고 /mcp에서 뺄 signal·엔트리 같은 MCP 서버 설정입니다.",
                 }),
               },
               {

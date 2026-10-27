@@ -28,8 +28,12 @@
 - CSR 클라이언트(네이티브 셸)는 API와 오리진이 달라 HttpOnly refresh 쿠키를 받지도 보내지도 못한다. 로그인·refresh 응답
   본문의 refresh token을 user·admin 범위별로 OS 자격 증명 저장소(`secretStorage`)에 두고 refresh 본문으로 보낸다. 재설치한
   앱은 첫 실행에서 그 저장소를 비우므로 이전 설치의 로그인을 이어받지 않는다.
-- 웹 SSO는 HttpOnly `ssoState` 쿠키로 state를 브라우저에 묶는다. GitHub는 바뀌지 않는 숫자 id(`github:<id>`)로, Apple은
-  JWKS로 검증한 `sub`(`apple:<sub>`)로 식별하고, 이메일 공급자는 검증된 주소만 받는다. 종착지는 같은 사이트 경로만 허용한다.
+- 세션·refresh 쿠키는 local 밖에서 `__Host-` 이름(`__Host-jwt:<appName>`, `__Host-userRefreshToken:<appName>`)이라
+  형제 서브도메인이나 상위 도메인이 사본을 심을 수 없다. 이전 이름은 읽지 않고 로그인·로그아웃이 지운다.
+- 웹 SSO는 HttpOnly `__Host-ssoState` 쿠키(local은 `ssoState`)로 state를 브라우저에 묶고, provider의 `redirect_uri`
+  origin은 쿠키가 아니라 요청에서 서버가 정하며 앱이 선언한 호스트가 아니면 거절한다. 두 번 온 세션·refresh 쿠키는 없는
+  것으로 읽는다. GitHub는 바뀌지 않는 숫자 id(`github:<id>`)로, Apple은 JWKS로 검증한 `sub`(`apple:<sub>`)로 식별하고,
+  이메일 공급자는 검증된 주소만 받는다. 종착지는 같은 사이트 경로만 허용한다.
 
 ## Workflow
 - prepare user 생성(signup token 발급) → 인증·프로필 단계 → activate.

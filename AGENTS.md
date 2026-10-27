@@ -7,7 +7,7 @@ there is nothing to mirror a rule change into. The section between the `akan:age
 by `akan agent install`; edit anything outside the markers freely.
 
 <!-- akan:agent:start -->
-<!-- akan:agent:version 3.1.0-rc.4 -->
+<!-- akan:agent:version 3.1.0 -->
 
 ## Workspace
 
@@ -178,9 +178,10 @@ not "fix" it back.
 - Bun's runner (`describe`, `expect`, `test` from `bun:test`); colocated `*.test.ts` / `*.spec.ts`; focused behavior
   tests of public contracts and edge cases. A placeholder `it` with a descriptive title is the floor; a
   security-relevant behaviour gets a real suite.
-- Run `bun run akan test <pkg>` from the root, or `cd <pkg> && bun test --isolate`. Plain `bun test` shares one
-  global object across files and fails dozens of tests from that pollution (`bunfig.toml` `[test] isolate` is not
-  honored as of Bun 1.4.4); from the repo root it breaks subprocess stdio pipes.
+- Run `bun run akan test <pkg> [files]` from the root (`files`: comma-separated paths from the target or the root;
+  the only way a signal test runs), or `cd <pkg> && bun test --isolate ./<file>`. Plain `bun test` shares one global
+  object across files and fails dozens of tests from that pollution (`bunfig.toml` `[test] isolate` is not honored as
+  of Bun 1.4.4); from the repo root it breaks subprocess stdio pipes.
 - Signal tests split in two: `<model>.signal.spec.ts` holds fixtures on `sampleOf(cnst.XInput)` with explicit
   `Promise<cnst.X>` returns and **no assertions**; `<model>.signal.test.ts` holds `describe("<Model> Signal")`,
   describe-scope `let` fixtures, one `beforeAll`, story-ordered `it`s, negatives via
@@ -523,6 +524,9 @@ export default page()
 - `.render()` gets the declared args flat and typed (no `PageProps`, no `loader=` prop). Order: `usePage()`, fetch,
   return; auth is the chain's `.guard()`, which runs before anything renders. Hand `fetch.init*` / `view*` / `edit*` fields to sections unawaited; await only what the shell reads
   (title, redirect, link id) in one `Promise.all`.
+- **A route never writes while it renders**: a `fetch.<mutation>()` in a stage or a component it renders throws
+  `base.error.mutationInRender`, since opening a link would perform it. Send it from a user action;
+  `{ duringRender: true }` only for a write harmless to repeat and safe for anyone to trigger (`ssrRule`).
 - Gate auth with `.guard(() => signedIn())` (`@libs/shared/webkit`; a new workspace has that lib only with
   `create-workspace --libs true`) at `_layout.tsx`, and repeat it on a page that needs more; it is a courtesy, the
   endpoint guards are the gate. `getSelf({ unauthorize })` in a body still works. `async` only when the body awaits;

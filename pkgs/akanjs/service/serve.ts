@@ -106,9 +106,7 @@ export function serve(
     ...(typeof optionOrInjectBuilder === "function" && injectBuilderOrExtendSrv ? [injectBuilderOrExtendSrv] : []),
     ...extendSrvs,
   ] as ServiceCls[];
-  const enabledOption =
-    option.enabled ??
-    (!option.serverMode || process.env.SERVER_MODE === option.serverMode || process.env.SERVER_MODE === "all");
+  const { enabled: enabledOption, serverMode } = option;
   let enabledCache: boolean | undefined;
   const serviceType = typeof refNameOrDb === "string" ? "plain" : "database";
   const injectInfoMap = injectBuilder(injectionBuilder(refName));
@@ -122,6 +120,11 @@ export function serve(
     static readonly refName = refName;
     static readonly operationMode: readonly string[] | undefined = option.operationMode;
     static get enabled() {
+      if (enabledOption === undefined) {
+        // Never cached: one process may boot several servers, each under its own SERVER_MODE (`TestServer` sets it).
+        const mode = process.env.SERVER_MODE;
+        return !serverMode || mode === serverMode || mode === "all";
+      }
       // A thunk resolves on first read instead of at module load, so it may consult config the boot fills in later.
       if (enabledCache === undefined)
         enabledCache = typeof enabledOption === "function" ? enabledOption() : enabledOption;

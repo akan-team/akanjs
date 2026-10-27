@@ -8,6 +8,7 @@ import {
 } from "akanjs/base";
 import { parseAkanI18nEnv } from "akanjs/common";
 import { deserialize } from "akanjs/constant";
+import { RenderScope } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import type { Head, LayoutModule, PageConfig, PageModule, RouteGuardProps } from "../csrTypes";
 import { AkanNotFoundError } from "../router";
@@ -146,12 +147,15 @@ export abstract class RouteDefinition<
       ...(head === undefined
         ? {}
         : typeof head === "function"
-          ? { generateHead: async (props: RouteRenderProps) => await head(this.#argsOf(props) as never) }
+          ? {
+              generateHead: async (props: RouteRenderProps) =>
+                await RenderScope.run(() => head(this.#argsOf(props) as never)),
+            }
           : { head }),
       ...(loading
         ? {
             Loading: ((props: RouteRenderProps) =>
-              loading(this.#argsOf({ ...props, searchParams: {} }) as never)) as never,
+              RenderScope.run(() => loading(this.#argsOf({ ...props, searchParams: {} }) as never))) as never,
           }
         : {}),
     };
@@ -169,7 +173,8 @@ export abstract class RouteDefinition<
 
   //? Marked with the args it reads, as the render is, so CSR asks the guards again only when one of those moves.
   #guardRouteOf(guard: (args: never) => void | Promise<void>) {
-    const route = async (props: RouteGuardProps) => await guard(this.#guardArgsOf(props) as never);
+    const route = async (props: RouteGuardProps) =>
+      await RenderScope.run(() => guard(this.#guardArgsOf(props) as never));
     Object.defineProperty(route, routeArgsMarker, { value: this.args.map(({ kind, name }) => ({ kind, name })) });
     return route;
   }
@@ -183,10 +188,10 @@ export abstract class RouteDefinition<
     //? renders before any await, and one with apps renders at the path it was called at.
     const route = async (props: RouteRenderProps) => {
       const args = this.renderArgsOf(this.#argsOf(props));
-      if (!(args instanceof Promise)) return await render(args as never);
+      if (!(args instanceof Promise)) return await RenderScope.run(() => render(args as never));
       const path = Translator.getRenderPath();
       const resolved = await args;
-      return await Translator.renderAt(path, () => render(resolved as never));
+      return await Translator.renderAt(path, () => RenderScope.run(() => render(resolved as never)));
     };
     Object.defineProperty(route, routeArgsMarker, { value: this.args.map(({ kind, name }) => ({ kind, name })) });
     this.#renderRoute = { render, argCount: this.args.length, route };

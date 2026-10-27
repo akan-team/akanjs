@@ -195,7 +195,9 @@ The Six ssr Rules
 
 - akan.ssr.client-static-markup: 10+ elements wrap only one or two interactive touches; the static part belongs on the server.
 
-- akan.ssr.client-mount-load: A `useEffect(…, [])` calls `fetch.*` or a loading `st.do.*` action; the route could load it first.
+- akan.ssr.client-mount-load: A `useEffect(…, [])` calls `fetch.*` or a loading `st.do.*` action: the route loads a read, a user action sends a write.
+
+- akan.ssr.render-mutation: A route's stage, or a function in the same file it calls, sends a mutation without `{ duringRender: true }`.
 
 - akan.ssr.module-missing-server-view: A module's client files render 12+ elements and it has no server `Unit` or `View`.
 

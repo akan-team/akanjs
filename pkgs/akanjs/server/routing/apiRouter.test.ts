@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { brotliDecompressSync } from "node:zlib";
+import { Logger, type LogRecord, SessionCookies } from "akanjs/common";
 import { getDefaultInjectRegistry } from "akanjs/service";
+import { SignalContext } from "akanjs/signal";
 import { AkanResponse, WebProxyRunner } from "../proxy";
 import type { HttpRoutes, WebsocketRoutes } from "../types";
 import type { ApiRouter as ApiRouterType } from "./apiRouter";
@@ -12,6 +14,8 @@ const get = (path: string, acceptEncoding = "") =>
 
 const loadApiRouter = async () => {
   process.env.AKAN_PUBLIC_APP_NAME = "test";
+  process.env.AKAN_PUBLIC_REPO_NAME ??= "akanjs";
+  process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "example.com";
   return (await import("./apiRouter")).ApiRouter;
 };
 
@@ -187,6 +191,8 @@ describe("ApiRouter.buildRoutes", () => {
         expect(await open(origin)).toBeUndefined();
       }
       expect(await open()).toBeUndefined();
+      expect((await open("https://app.example.com", { "x-forwarded-host": "app.example.com" }))?.status).toBe(403);
+      SignalContext.setHttpPeerResolver(() => null);
       expect(await open("https://app.example.com", { "x-forwarded-host": "app.example.com" })).toBeUndefined();
       expect(upgraded).toEqual([
         "http://127.0.0.1:52345",
@@ -196,6 +202,7 @@ describe("ApiRouter.buildRoutes", () => {
       ]);
     } finally {
       CrossSiteGuard.logger.warn = warn;
+      SignalContext.setHttpPeerResolver(null);
     }
   });
 });
@@ -303,7 +310,7 @@ describe("ApiRouter websocket authentication", () => {
     expect(response).toBeUndefined();
     expect(upgraded).toHaveLength(1);
     expect(upgraded[0]?.headers.get("authorization")).toBe("Bearer handshake-token");
-    expect(upgraded[0]?.cookies.get("jwt")).toBe("cookie-token");
+    expect(upgraded[0]?.jar.read("jwt").value).toBe("cookie-token");
   });
 
   test("applies an auth frame before the frames queued behind it and acks the revoked rooms", async () => {
@@ -354,8 +361,199 @@ describe("ApiRouter websocket authentication", () => {
 
     await handlers.message?.(ws, JSON.stringify(websocketAuthContract.makeRequest(null)));
 
-    expect(AppWsData.of(ws).cookies.has("jwt")).toBe(false);
+    expect(AppWsData.of(ws).jar.has("jwt")).toBe(false);
     expect(AppWsData.of(ws).account).toBeUndefined();
+  });
+});
+
+describe("ApiRouter session cookie sweep", () => {
+  type MethodRoutes = Partial<Record<string, RouteFn>>;
+  // The session cookie itself is `__Host-` here, which no deletion can reach, so a library's watched name stands in.
+  const watched = "refresh:test";
+  SessionCookies.watch(watched);
+  const duplicated = `${watched}=planted-copy; theme=dark; ${watched}=own-copy`;
+  const sweepAt = (...paths: string[]) =>
+    ["app.example.com", "example.com"].flatMap((domain) =>
+      paths.flatMap((path) => {
+        const deletion = `${watched}=; Domain=${domain}; Path=${path}; Max-Age=0; Secure; SameSite=Lax`;
+        return [deletion, `${deletion}; Partitioned`];
+      }),
+    );
+  const warnings: LogRecord[] = [];
+  const removeSink = Logger.addSink(
+    ({ record }) => {
+      if (record.name === "SessionCookies") warnings.push(record);
+    },
+    { minLevel: "warn" },
+  );
+  afterEach(() => {
+    warnings.length = 0;
+    SignalContext.setHttpPeerResolver(null);
+  });
+  afterAll(() => removeSink());
+
+  test("answers a duplicated session cookie with parent-domain deletions and one warning that names no value", async () => {
+    const seen: (string | null)[] = [];
+    const routes = await buildRoutes({
+      routes: {
+        "/user/me": {
+          GET: (req: Request) => {
+            seen.push(req.headers.get("cookie"));
+            return Response.json({ id: null });
+          },
+        },
+      } as unknown as HttpRoutes,
+    });
+
+    const answer = await (routes["/api/user/me"] as unknown as MethodRoutes).GET?.(
+      new Request("http://app.example.com/api/user/me", { headers: { cookie: duplicated } }),
+    );
+
+    expect(seen).toEqual([duplicated]);
+    expect(answer?.headers.getSetCookie()).toEqual(
+      sweepAt("/", "/api", "/api/", "/api/user", "/api/user/", "/api/user/me"),
+    );
+    expect(answer?.headers.getSetCookie().every((cookie) => cookie.includes("; Domain="))).toBe(true);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.attrs).toEqual({ name: watched, count: 2, host: "app.example.com" });
+    expect(JSON.stringify(warnings)).not.toContain("copy");
+  });
+
+  test("reports a duplicated `__Host-` session cookie but sends no deletion, which the browser would refuse", async () => {
+    const routes = await buildRoutes({ renderEnvRoutes: { "/*": () => new Response("page") } as HttpRoutes });
+
+    const answer = await (routes["/*"] as RouteFn)(
+      new Request("http://app.example.com/", { headers: { cookie: "__Host-jwt:test=a; __Host-jwt:test=b" } }),
+    );
+
+    expect(answer.headers.getSetCookie()).toEqual([]);
+    expect(warnings.map((record) => record.attrs?.name)).toEqual(["__Host-jwt:test"]);
+  });
+
+  test("sweeps under the Host header, and under a forwarded host only from a trusted hop", async () => {
+    const routes = await buildRoutes({ renderEnvRoutes: { "/*": () => new Response("page") } as HttpRoutes });
+    const render = (headers: Record<string, string>) =>
+      (routes["/*"] as RouteFn)(new Request("http://10.0.0.5/", { headers: { cookie: duplicated, ...headers } }));
+
+    const byHost = await render({ host: "app.example.com", "x-forwarded-host": "evil.example.net" });
+    const byAddress = await render({ "x-forwarded-host": "app.example.com" });
+    SignalContext.setHttpPeerResolver(() => ({ address: "203.0.113.9", port: 50_000 }));
+    const fromStranger = await render({ host: "10.0.0.5", "x-forwarded-host": "app.example.com" });
+    SignalContext.setHttpPeerResolver(() => null);
+    const fromGateway = await render({ host: "akan-child", "x-forwarded-host": "app.example.com" });
+
+    expect(byHost.headers.getSetCookie()).toEqual(sweepAt("/"));
+    expect(byAddress.headers.getSetCookie()).toEqual([]);
+    expect(fromStranger.headers.getSetCookie()).toEqual([]);
+    expect(fromGateway.headers.getSetCookie()).toEqual(sweepAt("/"));
+    expect(warnings.map((record) => record.attrs?.host)).toEqual([
+      "app.example.com",
+      "10.0.0.5",
+      "10.0.0.5",
+      "app.example.com",
+    ]);
+  });
+
+  test("drops a forwarded host, scheme and port only a trusted hop may send, before any route reads them", async () => {
+    const names = ["x-forwarded-host", "x-forwarded-proto", "x-forwarded-port"];
+    const seen: (string | null)[][] = [];
+    const routes = await buildRoutes({
+      renderEnvRoutes: {
+        "/*": (req: Request) => {
+          seen.push(names.map((name) => req.headers.get(name)));
+          return new Response("page");
+        },
+      } as unknown as HttpRoutes,
+    });
+    const forwarded = {
+      "x-forwarded-host": "app.example.com",
+      "x-forwarded-proto": "https",
+      "x-forwarded-port": "443",
+    };
+    const render = () => (routes["/*"] as RouteFn)(new Request("http://10.0.0.5/", { headers: forwarded }));
+
+    await render();
+    SignalContext.setHttpPeerResolver(() => ({ address: "203.0.113.9", port: 50_000 }));
+    await render();
+    SignalContext.setHttpPeerResolver(() => ({ address: "10.0.0.2", port: 50_000 }));
+    await render();
+    SignalContext.setHttpPeerResolver(() => null);
+    await render();
+
+    const dropped = [null, null, null];
+    const kept = ["app.example.com", "https", "443"];
+    expect(seen).toEqual([dropped, dropped, kept, kept]);
+  });
+
+  test("answers a host no browser could address with no sweep and a cut-down warning", async () => {
+    const routes = await buildRoutes({ renderEnvRoutes: { "/*": () => new Response("page") } as HttpRoutes });
+    const host = `${"a.".repeat(1000)}example.com`;
+    SignalContext.setHttpPeerResolver(() => null);
+
+    const answer = await (routes["/*"] as RouteFn)(
+      new Request("http://app.example.com/a/b/c/d/e/f/g/h/i/j/k", {
+        headers: { cookie: duplicated, "x-forwarded-host": host },
+      }),
+    );
+
+    expect(answer.headers.getSetCookie()).toEqual([]);
+    expect(warnings.map((record) => record.attrs?.host)).toEqual([host.slice(0, 100)]);
+  });
+
+  test("copies a response whose headers refuse a write, and keeps its body streaming", async () => {
+    class LockedHeaders extends Headers {
+      override append(): void {
+        throw new TypeError("immutable");
+      }
+    }
+    const routes = await buildRoutes({
+      renderEnvRoutes: {
+        "/*": () => {
+          const stream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("streamed"));
+              controller.close();
+            },
+          });
+          const response = new Response(stream, { status: 202, headers: { "x-page": "1" } });
+          Object.defineProperty(response, "headers", { value: new LockedHeaders(response.headers) });
+          return response;
+        },
+      } as HttpRoutes,
+    });
+
+    const answer = await (routes["/*"] as RouteFn)(
+      new Request("http://app.example.com/", { headers: { cookie: duplicated } }),
+    );
+
+    expect(answer.status).toBe(202);
+    expect(answer.headers.get("x-page")).toBe("1");
+    expect(answer.headers.getSetCookie()).toEqual(sweepAt("/"));
+    expect(answer.body).toBeInstanceOf(ReadableStream);
+    expect(await answer.text()).toBe("streamed");
+  });
+
+  test("leaves builtins, the socket upgrade and a jar without duplicates alone", async () => {
+    const routes = await buildRoutes({
+      routes: { "/ping": () => new Response("api") } as HttpRoutes,
+      builtinRoutes: { "/mcp": { POST: () => new Response("mcp") } } as unknown as HttpRoutes,
+      upgradeAppWs: () => true,
+    });
+
+    const mcp = await (routes["/mcp"] as unknown as MethodRoutes).POST?.(
+      new Request("http://app.example.com/mcp", { method: "POST", headers: { cookie: duplicated } }),
+    );
+    const upgrade = (routes["/api/ws"] as (req: Request) => Response | undefined)(
+      new Request("http://app.example.com/api/ws", { headers: { cookie: duplicated } }),
+    );
+    const single = await (routes["/api/ping"] as RouteFn)(
+      new Request("http://app.example.com/api/ping", { headers: { cookie: "jwt:test=own; jwt:other=x; theme=a" } }),
+    );
+
+    expect(mcp?.headers.getSetCookie()).toEqual([]);
+    expect(upgrade).toBeUndefined();
+    expect(single.headers.getSetCookie()).toEqual([]);
+    expect(warnings).toEqual([]);
   });
 });
 

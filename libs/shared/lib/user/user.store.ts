@@ -410,7 +410,6 @@ export class UserStore extends store(sig.user, () => ({
     setCookie("signinRedirect", encodeURIComponent(router.getPrefixedPath(signinRedirect)));
     setCookie("signupRedirect", encodeURIComponent(router.getPrefixedPath(signupRedirect)));
     setCookie("errorRedirect", encodeURIComponent(router.getPrefixedPath(errorRedirect)));
-    setCookie("ssoOrigin", location.origin);
     const url = `${getApiPrefix()}/user/${ssoType}`;
     if (replace) location.replace(url);
     else location.assign(url);

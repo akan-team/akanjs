@@ -301,6 +301,24 @@ export default page()
         }),
       },
       {
+        key: "excludeSignals",
+        type: "string[]",
+        default: "[]",
+        desc: l.trans({
+          en: "Signals (`refName`) whose every tool stays off `/mcp`; HTTP still serves them. Lists from libs and app add up.",
+          ko: "모든 툴을 `/mcp`에서 뺄 signal(`refName`)입니다. HTTP는 그대로 응답하며, lib과 앱의 목록은 합쳐집니다.",
+        }),
+      },
+      {
+        key: "excludeEndpoints",
+        type: "string[]",
+        default: "[]",
+        desc: l.trans({
+          en: "Tool names kept off the same way, generated ones (`createUser`) included; an unmatched name warns at boot.",
+          ko: "같은 방식으로 뺄 툴 이름이며 `createUser` 같은 생성 툴도 됩니다. 맞는 것이 없는 이름은 부팅 때 경고합니다.",
+        }),
+      },
+      {
         key: "path",
         type: "string",
         default: "/mcp",
@@ -777,8 +795,9 @@ export default page()
           <>
             <strong>The same page is a tool too, and it only briefs.</strong> Every client gets the briefing and a link
             to the page, and none draws it. The tool declares <code>readOnlyHint: false</code>, since running the page
-            makes its own <code>fetch.*</code> calls, mutations included. A component that claude.ai, ChatGPT or VS Code
-            should draw in the chat is declared with <code>.app()</code>, as the{" "}
+            makes its own <code>fetch.*</code> calls, a write it sends with <code>{"{ duringRender: true }"}</code>{" "}
+            included. A component that claude.ai, ChatGPT or VS Code should draw in the chat is declared with{" "}
+            <code>.app()</code>, as the{" "}
             <Link href="/references/akanjs/client#app" className="text-primary">
               client reference
             </Link>{" "}
@@ -788,9 +807,9 @@ export default page()
         ko: (
           <>
             <strong>같은 페이지가 툴도 되지만, 브리핑만 합니다.</strong> 어느 클라이언트든 브리핑과 페이지 링크를 받고,
-            페이지를 그리지는 않습니다. 페이지를 실행하면 mutation을 포함한 그 페이지의 <code>fetch.*</code> 호출이
-            일어나므로, 툴은 <code>readOnlyHint: false</code>를 선언합니다. claude.ai·ChatGPT·VS Code가 채팅 안에 그릴
-            컴포넌트는 <code>.app()</code>으로 선언하며, 방법은{" "}
+            페이지를 그리지는 않습니다. 페이지를 실행하면 <code>{"{ duringRender: true }"}</code>로 보내는 쓰기를 포함한
+            그 페이지의 <code>fetch.*</code> 호출이 일어나므로, 툴은 <code>readOnlyHint: false</code>를 선언합니다.
+            claude.ai·ChatGPT·VS Code가 채팅 안에 그릴 컴포넌트는 <code>.app()</code>으로 선언하며, 방법은{" "}
             <Link href="/references/akanjs/client#app" className="text-primary">
               client 레퍼런스
             </Link>

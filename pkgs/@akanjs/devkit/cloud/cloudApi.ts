@@ -1,3 +1,4 @@
+import { isRecord } from "akanjs/common";
 import type { Workspace } from "../commandDecorators";
 import { CloudHttpError } from "./cloudHttpError";
 import type { AccessToken, AccessTokenDto, HostConfig } from "./constants";
@@ -127,6 +128,7 @@ export class CloudApi {
       return new Error(`${unavailable}: ${errKey}.`, { cause: error });
     return error;
   }
+  static readonly #remoteAuthTimeoutMs = 20_000;
   readonly #api: HttpClient;
   #accessToken: AccessToken | null = null;
   #workspace: Workspace;
@@ -212,12 +214,15 @@ export class CloudApi {
     await this.#api.getFile(`/downloadEnv/${devProjectId}`, localPath);
     return localPath;
   }
+  //* The server answers `null` until the login is approved, so a failed request throws rather than read as "not yet".
   async getRemoteAuthToken(remoteId: string): Promise<AccessToken | null> {
-    try {
-      return this.#authorize(await this.#api.get<AccessTokenDto>(`/getRemoteAuthToken/${remoteId}`));
-    } catch (_) {
-      return null;
-    }
+    const answer = await this.#api.get<unknown>(`/getRemoteAuthToken/${encodeURIComponent(remoteId)}`, {
+      signal: AbortSignal.timeout(CloudApi.#remoteAuthTimeoutMs),
+    });
+    if (answer === null) return null;
+    if (!isRecord(answer) || typeof answer.jwt !== "string" || !answer.jwt)
+      throw new Error(`${this.host} answered the sign-in poll with something other than a session.`);
+    return this.#authorize(answer as unknown as AccessTokenDto);
   }
   async refreshAuthToken(refreshToken: string): Promise<AccessToken> {
     return this.#authorize(
@@ -241,11 +246,10 @@ export class CloudApi {
   async revokeTunnel(code: string): Promise<boolean> {
     return await this.#api.post<boolean>(`/tunnel/revokeTunnel`, { code }, { signal: AbortSignal.timeout(5_000) });
   }
+  /** `null` when the server takes no sign-in from this session; a request that fails throws. */
   async getRemoteSelf(): Promise<{ id: string; nickname: string } | null> {
-    try {
-      return await this.#api.get<{ id: string; nickname: string }>(`/getRemoteSelf`);
-    } catch {
-      return null;
-    }
+    return await this.#api.get<{ id: string; nickname: string } | null>(`/getRemoteSelf`, {
+      signal: AbortSignal.timeout(CloudApi.#remoteAuthTimeoutMs),
+    });
   }
 }

@@ -75,6 +75,14 @@ export default page()
         example: "sample.email() · sample.string({ length: 10 })",
       },
       {
+        name: "getServedMcpCatalogue",
+        desc: l.trans({
+          en: "What the test server's `/mcp` lists a guest or the `as` account; `ui: true` lists what an MCP Apps host sees.",
+          ko: "테스트 서버의 `/mcp`가 게스트나 `as` 계정에게 보여 주는 목록입니다. `ui: true`면 MCP Apps 호스트가 보는 목록입니다.",
+        }),
+        example: "(await getServedMcpCatalogue({ as: owner })).tools",
+      },
+      {
         name: "configureSignalTest",
         href: "#test-file",
         desc: l.trans({
@@ -147,6 +155,14 @@ export default page()
         desc: l.trans({
           en: "The app, library or package to test, such as `myapp` or `shared`.",
           ko: "테스트할 app, lib, 패키지의 이름입니다. 예: `myapp`, `shared`.",
+        }),
+      },
+      {
+        key: "[files]",
+        type: "string",
+        desc: l.trans({
+          en: "Comma-separated files or folders inside the target, from the target or the workspace root. Default: every test.",
+          ko: "대상 안의 파일이나 폴더를 쉼표로 구분해 적습니다. 경로는 대상 기준이나 워크스페이스 루트 기준입니다. 기본값은 모든 테스트입니다.",
         }),
       },
       {
@@ -763,6 +779,7 @@ configureSignalTest({ storage: "tempFile" });`}
               title="Terminal"
               language="bash"
               code={`akan test myapp
+akan test myapp lib/user/user.signal.test.ts
 akan test myapp --write false
 akan test shared`}
             />

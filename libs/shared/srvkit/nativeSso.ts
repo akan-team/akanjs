@@ -27,7 +27,7 @@ export class NativeSso {
   static readonly codeSeconds = 60;
   static readonly #langPattern = /^[a-z]{2,3}$/;
 
-  static parseStart(req: Request): NativeSsoStart | null {
+  static parseStart(req: Request, origin: string): NativeSsoStart | null {
     const params = new URL(req.url).searchParams;
     const callbackScheme = params.get("callbackScheme");
     if (!callbackScheme) return null;
@@ -38,17 +38,10 @@ export class NativeSso {
       callbackScheme,
       codeChallenge,
       nonce,
-      origin: NativeSso.publicOrigin(req),
+      origin,
       lang: NativeSso.#langOf(params.get("lang"), req.headers.get("accept-language")),
       returnPage: params.get("returnPage") === "1",
     };
-  }
-
-  //* The akan gateway stamps x-forwarded-host/proto, so behind an edge this is the browser's origin, not the pod's.
-  static publicOrigin(req: Request) {
-    const proto = NativeSso.#first(req.headers.get("x-forwarded-proto"));
-    const host = NativeSso.#first(req.headers.get("x-forwarded-host")) ?? req.headers.get("host");
-    return proto && host ? `${proto}://${host}` : new URL(req.url).origin;
   }
 
   static stateOf(req: Request) {
@@ -118,9 +111,5 @@ small{display:block;margin-top:1.5rem;opacity:.5}
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
-  }
-
-  static #first(value: string | null) {
-    return value?.split(",")[0]?.trim() || undefined;
   }
 }

@@ -1,6 +1,6 @@
 import type { PageDefinition, PathRoute, RoutePromptMeta } from "akanjs/client";
 import { Logger, parseSearchParams } from "akanjs/common";
-import { AppScope, getRequestStore } from "akanjs/fetch";
+import { AppScope, getRequestStore, RenderScope } from "akanjs/fetch";
 import { RouteGuards } from "../client/route/RouteGuards";
 import type {
   PagePromptEntry,
@@ -63,7 +63,7 @@ export class RscPagePrompts {
     const lang = input.language ?? this.#props.defaultLocale();
     const url = RscPagePrompts.#urlOf(entry.pattern, { ...params, lang }, searchParams);
     const request = new Request(url, { headers: input.headers });
-    return await this.#props.run(request, route.path, async () => {
+    return await this.#render(request, route.path, async () => {
       const props = {
         params: { ...params, lang },
         searchParams: parseSearchParams(new URL(url).search),
@@ -97,7 +97,7 @@ export class RscPagePrompts {
         const route = routes.find((candidate) => candidate.path === entry.pattern);
         if (!route) return false;
         const request = new Request(RscPagePrompts.#urlOf(entry.pattern, { lang }, {}), { headers });
-        return await this.#props.run(request, route.path, () =>
+        return await this.#render(request, route.path, () =>
           RscPagePrompts.#scoped(entry, () =>
             RouteGuards.admits(RscPagePrompts.#rendersOf(route), { params: { lang }, searchParams: {} }),
           ),
@@ -107,7 +107,12 @@ export class RscPagePrompts {
     return entries.filter((_, idx) => verdicts[idx]).map((entry) => entry.name);
   }
 
-  //? An app's tool is read-only, so its guards run under the load's query-only rule too; a prompt's run may write.
+  #render<T>(request: Request, routeId: string, fn: () => Promise<T>): Promise<T> {
+    return this.#props.run(request, routeId, () => RenderScope.run(fn));
+  }
+
+  //? An app's tool is read-only, so its guards run under the load's query-only rule too; a prompt's run writes only
+  //? where its page passes `duringRender`.
   static #scoped<T>(entry: PagePromptEntry, run: () => Promise<T>): Promise<T> {
     return entry.kind === "app" ? AppScope.run(entry.name, run) : run();
   }

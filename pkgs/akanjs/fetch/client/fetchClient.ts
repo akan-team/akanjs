@@ -5,7 +5,7 @@ import {
   fileUploadContract,
   Logger,
   type RetryPolicy,
-  readAuthToken,
+  readSessionToken,
   resolveFileUploadCapability,
   trimTrailingSlashes,
 } from "akanjs/common";
@@ -22,10 +22,11 @@ import type {
 import { agentTurnConstant } from "../agentTurn";
 import { AppScope } from "../appScope";
 import type { ClientSignal, FetchClientType, FetchSignalInput, MergeAllFetchTypes, SliceMeta } from "../fetchType";
+import { RenderScope } from "../renderScope";
 import {
   claimRequestQuery,
   recordRequestQuery,
-  cookies as requestCookies,
+  cookieJar as requestCookieJar,
   headers as requestHeaders,
 } from "../requestStorage";
 import type { GetSliceMetaObjFromDatabaseSignals } from "../types";
@@ -184,7 +185,19 @@ export class FetchClient {
     signal: SerializedSignal,
   ) {
     const current = serializedSignal[refName];
-    serializedSignal[refName] = current ? FetchClient.#definedOnly(FetchClient.#merged(current, signal)) : signal;
+    if (!current) serializedSignal[refName] = signal;
+    else if (FetchClient.#folds(current, signal))
+      serializedSignal[refName] = FetchClient.#definedOnly({
+        ...FetchClient.#merged(signal, current),
+        origin: current.origin,
+      });
+    else serializedSignal[refName] = FetchClient.#definedOnly(FetchClient.#merged(current, signal));
+  }
+  //? An app's entry already merged each lib it extends, so that lib's own signal, applied after it, must not win back.
+  static #folds(current: SerializedSignal, signal: SerializedSignal) {
+    const origin = signal.origin ?? [];
+    const folded = new Set(current.origin);
+    return origin.length > 0 && folded.size > origin.length && origin.every((owner) => folded.has(owner));
   }
   //? A macro inlines its return as written, so a merge must not leave keys an unmerged signal does not have.
   static #definedOnly(signal: SerializedSignal): SerializedSignal {
@@ -204,16 +217,25 @@ export class FetchClient {
               sorts: { ...current.filter?.sorts, ...signal.filter?.sorts },
             }
           : undefined,
-      getGuards: signal.getGuards ?? current.getGuards,
-      cruGuards: signal.cruGuards ?? current.cruGuards,
-      createGuards: signal.createGuards ?? current.createGuards,
-      updateGuards: signal.updateGuards ?? current.updateGuards,
-      removeGuards: signal.removeGuards ?? current.removeGuards,
+      ...FetchClient.#sliceFacts(signal.slice ? signal : current),
       origin:
         current.origin || signal.origin
           ? [...new Set([...(current.origin ?? []), ...(signal.origin ?? [])])]
           : undefined,
     };
+  }
+  // The server mounts the last module's slice whole, so a later slice's guards and verb maps never mix with a lib's.
+  static #sliceFacts({
+    getGuards,
+    cruGuards,
+    createGuards,
+    updateGuards,
+    removeGuards,
+    mcp,
+    agents,
+    crud,
+  }: SerializedSignal) {
+    return { getGuards, cruGuards, createGuards, updateGuards, removeGuards, mcp, agents, crud };
   }
   /**
    * What this client was built with and applied itself, never what it synced from another client in the process:
@@ -234,29 +256,32 @@ export class FetchClient {
   }
   applySignal(serializedSignal: { [key: string]: SerializedSignal }, { share = true }: { share?: boolean } = {}) {
     if (share && Object.keys(serializedSignal).length > 0) {
+      //? Only a client already holding every earlier share is current after its own; another still owes a sync.
+      const isSynced = this.#sharedRegistryAppliedVersion === sharedSignalRegistry.version;
       for (const [refName, signal] of Object.entries(serializedSignal)) {
         FetchClient.#mergeSerializedSignalInto(sharedSignalRegistry.signal, refName, signal);
         FetchClient.#mergeSerializedSignalInto(this.#ownSignal, refName, signal);
       }
       sharedSignalRegistry.version++;
-      this.#sharedRegistryAppliedVersion = sharedSignalRegistry.version;
+      if (isSynced) this.#sharedRegistryAppliedVersion = sharedSignalRegistry.version;
     }
     for (const [refName, signal] of Object.entries(serializedSignal))
       FetchClient.#mergeSerializedSignalInto(this.serializedSignal, refName, signal);
-    for (const [refName, signal] of Object.entries(serializedSignal)) {
+    // Registered from the merged entry: a lib's signal applied after the app's must not mount the lib's facts again.
+    for (const refName of Object.keys(serializedSignal)) {
+      const signal = this.serializedSignal[refName];
+      if (!signal) continue;
       for (const [key, endpoint] of Object.entries(signal.endpoint))
         this.#registerEndpoint(key, endpoint, signal.prefix);
       if (signal.slice) {
         this.#registerModelBaseEndpoint(refName, signal);
-        for (const [suffix, slice] of Object.entries(signal.slice ?? {}))
+        for (const [suffix, slice] of Object.entries(signal.slice))
           this.#registerSlice(refName, suffix, slice, signal.prefix);
       }
       if (signal.filter) {
-        // The merged copy: a lib signal applied on its own carries only its own filters.
-        const filter = this.serializedSignal[refName]?.filter ?? signal.filter;
-        this.sortKeyMap.set(refName, filter.sortKeys);
-        if (filter.sorts) this.sortValueMap.set(refName, filter.sorts);
-        this.filterQueryMap.set(refName, filter.filter);
+        this.sortKeyMap.set(refName, signal.filter.sortKeys);
+        if (signal.filter.sorts) this.sortValueMap.set(refName, signal.filter.sorts);
+        this.filterQueryMap.set(refName, signal.filter.filter);
       }
     }
     return this;
@@ -269,7 +294,9 @@ export class FetchClient {
       },
       has: (target, prop) => {
         if (typeof prop !== "string") return prop in target;
-        return prop in target || this.#handlerFactory.has(prop);
+        if (prop in target) return true;
+        if (!this.#handlerFactory.has(prop)) this.#syncSharedRegistry();
+        return this.#handlerFactory.has(prop);
       },
     });
   }
@@ -400,8 +427,9 @@ export class FetchClient {
       if (getEnv().side === "server" && this.#forwardsVisitor(option)) {
         const authorization = requestHeaders().get("authorization");
         if (authorization) return { Authorization: authorization };
-        const token = readAuthToken((key) => requestCookies().get(key)?.value);
-        if (token) return { Authorization: `Bearer ${token}` };
+        const session = readSessionToken(requestCookieJar());
+        if (session.token) return { Authorization: `Bearer ${session.token}` };
+        if (session.duplicate) return {};
       }
     } catch {
       // Tests and standalone clients can run without Akan public env. Fall back to instance JWT.
@@ -470,6 +498,7 @@ export class FetchClient {
         //? Refused as the call is made, not in its promise: a `void fetch.markRead(id)` in a load would drop it unseen.
         return (...argData: unknown[]) => {
           this.#refuseInApp(key);
+          this.#refuseInRender(key, argData[argLength] as FetchPolicy | undefined);
           return send(...argData);
         };
       }
@@ -524,9 +553,10 @@ export class FetchClient {
           const serializerMap = this.#makeArgSerializer(endpoint.args);
           return (...argData: unknown[]) => {
             this.#refuseInApp(key);
+            const fetchPolicy = argData[msgArgLength] as FetchPolicy | undefined;
+            this.#refuseInRender(key, fetchPolicy);
             if (FetchClient.bridged) return;
             const args = argData.slice(0, msgArgLength);
-            const fetchPolicy = argData[msgArgLength] as FetchPolicy | undefined;
             const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
             this.#resolveWs(fetchPolicy?.origin).emit(key, data);
           };
@@ -557,6 +587,10 @@ export class FetchClient {
     const app = AppScope.current();
     if (app)
       throw restoreRemoteError({ error: "base.error.mutationInApp", data: { app, endpoint } }, 400, this.ErrorCls);
+  }
+  #refuseInRender(endpoint: string, option?: FetchPolicy) {
+    if (RenderScope.active() && !option?.duringRender)
+      throw restoreRemoteError({ error: "base.error.mutationInRender", data: { endpoint } }, 400, this.ErrorCls);
   }
   //? The host relays to the server that rendered the view, so a call aimed at any other server stays off the bridge.
   #bridgeOf(origin?: string) {
@@ -682,8 +716,8 @@ export class FetchClient {
   }
   static #mountedGuards(signal: SerializedSignal, verb: "get" | "create" | "update" | "remove") {
     if (signal.crud?.[verb] === false) return undefined;
-    if (verb === "get") return signal.getGuards;
-    return signal[`${verb}Guards`] ?? signal.cruGuards;
+    const guards = verb === "get" ? signal.getGuards : (signal[`${verb}Guards`] ?? signal.cruGuards);
+    return guards?.some((guard) => guard !== "None") ? guards : undefined;
   }
   #registerModelBaseEndpoint(refName: string, signal: SerializedSignal) {
     const capRefName = capitalize(refName);
@@ -697,6 +731,12 @@ export class FetchClient {
       addModelFiles: `add${capRefName}Files`,
       mergeModel: `merge${capRefName}`,
     };
+    // The tab-wide client may have applied a lib's signal first; a later slice denying a verb takes its handler back.
+    const generated = [`create${capRefName}`, `remove${capRefName}`, `light${capRefName}`, ...Object.values(names)];
+    for (const key of generated.filter((key) => key !== names.addModelFiles && !(key in signal.endpoint))) {
+      this.#handlerFactory.delete(key);
+      delete this.#handlerStore[key];
+    }
     const endpoint = FetchClient.getBaseEndpoint(refName, signal);
     Object.entries(endpoint).forEach(([key, value]) => {
       this.#setHandlerFactory(key, () => this.#makeHttpFn(key, value, signal.prefix));
@@ -723,10 +763,9 @@ export class FetchClient {
       this.#setHandlerFactory(
         names.mergeModel,
         () =>
-          (async (modelOrId: string | { id: string }, data: UnknownRecord, option?: FetchPolicy) => {
+          ((modelOrId: string | { id: string }, data: UnknownRecord, option?: FetchPolicy) => {
             const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-            const updateFn = this.#requireHandler(names.updateModel, names.mergeModel);
-            return await updateFn(id, data, option);
+            return this.#requireHandler(names.updateModel, names.mergeModel)(id, data, option);
           }) as FetchHandler,
       );
     }
@@ -756,6 +795,7 @@ export class FetchClient {
       };
       return ((fileList: FileList | File[], parentId?: string, option?: FetchPolicy) => {
         this.#refuseInApp(names.addModelFiles);
+        this.#refuseInRender(names.addModelFiles, option);
         return upload(fileList, parentId, option);
       }) as FetchHandler;
     });

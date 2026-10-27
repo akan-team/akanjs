@@ -4,6 +4,7 @@ import { createFromReadableStream } from "react-server-dom-webpack/client.browse
 import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
 import { isAuthTokenKey } from "../common/authCookie";
+import { CookieJar } from "../common/cookieJar";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   type AkanHeadSnapshotV1,
@@ -307,10 +308,11 @@ async function fetchRsc(
 
 // `/__rsc` is sent with cookies alone, so its auth cookies are the account a cached payload was rendered for.
 const readAuthCookies = () =>
-  document.cookie
-    .split("; ")
-    .filter((entry) => isAuthTokenKey(entry.split("=", 1)[0]))
-    .sort()
+  CookieJar.parse(document.cookie)
+    .entries()
+    .filter(({ name }) => isAuthTokenKey(name))
+    .map(({ name, value }) => `${name}=${value}`)
+    .sort((a, b) => a.localeCompare(b))
     .join("; ");
 const rscCache = new Map<string, RscCacheNode>();
 const rscPatchCache = new Map<string, RscPatchNavigationCacheNode<RscThenable>>();

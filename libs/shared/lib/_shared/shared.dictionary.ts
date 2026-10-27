@@ -16,7 +16,10 @@ export const dictionary = serviceDictionary(["en", "ko"])
     refreshTokenReuseDetected: ["Refresh token reuse detected", "리프레시 토큰 재사용이 감지되었습니다"],
     ssoNotConfigured: ["{type} SSO not configured", "{type} SSO가 설정되지 않았습니다"],
     invalidSsoCallbackMissingCode: ["Invalid SSO callback: missing code", "잘못된 SSO 콜백입니다: 코드 누락"],
-    invalidSsoCallbackMissingOrigin: ["Invalid SSO callback: missing origin", "잘못된 SSO 콜백입니다: origin 누락"],
+    invalidSsoOrigin: [
+      "Invalid SSO request: it did not arrive on one of this app's own origins",
+      "잘못된 SSO 요청입니다: 이 앱의 origin으로 들어온 요청이 아닙니다.",
+    ],
     invalidNativeSsoStart: [
       "Invalid native SSO start: codeChallenge and state are required",
       "잘못된 네이티브 SSO 요청입니다: codeChallenge와 state가 필요합니다",

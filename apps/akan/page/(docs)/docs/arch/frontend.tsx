@@ -185,8 +185,8 @@ export default page()
           {
             name: "fetch.*",
             desc: l.trans({
-              en: "Called in a route, it finishes before the first byte. From a mounted client it costs two extra round-trips.",
-              ko: "route에서 부르면 첫 바이트 전에 끝납니다. 마운트된 클라이언트에서 부르면 왕복이 두 번 더 듭니다.",
+              en: "A query called in a route finishes before the first byte. From a mounted client it costs two extra round-trips.",
+              ko: "query를 route에서 부르면 첫 바이트 전에 끝납니다. 마운트된 클라이언트에서 부르면 왕복이 두 번 더 듭니다.",
             }),
             marks: onServer,
           },
@@ -388,8 +388,28 @@ export default page()
             <div className="font-medium text-foreground">
               →{" "}
               {l.trans({
-                en: "Fetch it in the route and pass it down as an init prop.",
-                ko: "route에서 fetch하고 init prop으로 넘깁니다.",
+                en: "Fetch a read in the route and pass it down as an init prop; send a write from a user action.",
+                ko: "읽기는 route에서 fetch해 init prop으로 넘기고, 쓰기는 사용자 동작에서 보냅니다.",
+              })}
+            </div>
+          </>
+        ),
+      },
+      {
+        name: "render-mutation",
+        desc: (
+          <>
+            <div>
+              {l.trans({
+                en: "A route's render, guard or head sends a mutation, so opening a link would perform it.",
+                ko: "route의 render, guard, head가 mutation을 보내서, 링크를 열기만 해도 쓰기가 일어납니다.",
+              })}
+            </div>
+            <div className="font-medium text-foreground">
+              →{" "}
+              {l.trans({
+                en: "Send it from a user action; pass { duringRender: true } only for a write harmless to repeat.",
+                ko: "사용자 동작에서 보내고, 반복해도 무해한 쓰기에만 { duringRender: true }를 넘깁니다.",
               })}
             </div>
           </>

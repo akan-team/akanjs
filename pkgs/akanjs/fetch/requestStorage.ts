@@ -1,3 +1,7 @@
+import { type CookieEntry, CookieJar } from "../common/cookieJar";
+
+export type { CookieEntry };
+
 export type AkanTheme = "css" | "system" | (string & {});
 
 export interface AkanRequestPolicy {
@@ -195,11 +199,7 @@ export function untrackedHeaders(): Map<string, string> {
   return headers({ trackDynamic: false });
 }
 
-export interface CookieEntry {
-  name: string;
-  value: string;
-}
-
+/** @deprecated Last-wins, so a duplicated cookie reads as whichever copy came last; use `CookieJar.parse`. */
 export function parseCookieHeader(cookieHeader: string): Map<string, CookieEntry> {
   const out = new Map<string, CookieEntry>();
   for (const segment of cookieHeader.split(";")) {
@@ -224,12 +224,22 @@ export function parseCookieHeader(cookieHeader: string): Map<string, CookieEntry
   return out;
 }
 
-/** An empty Map outside a request. */
-export function cookies(options: { trackDynamic?: boolean } = {}): Map<string, CookieEntry> {
+/** Every cookie the request sent, duplicates included; an empty jar outside a request. */
+export function cookieJar(options: { trackDynamic?: boolean } = {}): CookieJar {
   const store = getRequestStore();
-  if (!store) return new Map();
+  if (!store) return CookieJar.parse(null);
   if (options.trackDynamic !== false) store.dynamicUsage.cookies = true;
-  return parseCookieHeader(store.request.headers.get("cookie") ?? "");
+  return CookieJar.parse(store.request.headers.get("cookie"));
+}
+
+/** Reads the cookie jar for framework internals without marking the user route dynamic. */
+export function untrackedCookieJar(): CookieJar {
+  return cookieJar({ trackDynamic: false });
+}
+
+/** Names sent exactly once; a duplicated name is left out. An empty Map outside a request. */
+export function cookies(options: { trackDynamic?: boolean } = {}): Map<string, CookieEntry> {
+  return cookieJar(options).toMap();
 }
 
 /** Reads cookies for framework internals without marking the user route dynamic. */

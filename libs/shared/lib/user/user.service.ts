@@ -1,5 +1,5 @@
 import type { Me, Self } from "@libs/shared/common";
-import { safeRedirectPath, withRedirectQuery } from "@libs/shared/common";
+import { hostOnlyCookieKey, safeRedirectPath, withRedirectQuery } from "@libs/shared/common";
 import {
   type AuthTokenMeta,
   NativeSso,
@@ -434,7 +434,7 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
     const signin = await this._resolveSsoUser(identity, ssoType, { account, signupToken: ssoCookie.signupToken });
     if (signin.prepareUserId)
       return {
-        cookie: { signupToken: signin.signupToken ?? "" },
+        cookie: { [hostOnlyCookieKey("signupToken")]: signin.signupToken ?? "" },
         redirect: withRedirectQuery(safeRedirectPath(ssoCookie.signupRedirect, "/"), { userId: signin.prepareUserId }),
       };
     return {

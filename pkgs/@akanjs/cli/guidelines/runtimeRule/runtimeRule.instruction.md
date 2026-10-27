@@ -101,6 +101,10 @@ worker per web-serving replica.
 - **A solo process answers `/_akan/app/health`, `/_akan/app/metrics` and `/_akan/bench/ping` itself**, in the
   gateway's own shape — a `children` array with one entry — so a probe reads one contract either way. It owns the
   rotating log file the gateway would otherwise write, in the same `runtime/logs` directory.
+- **Health detail and metrics answer only `Authorization: Bearer $AKAN_STATUS_TOKEN`** (or the log stream token)
+  outside `local`: without it `/_akan/app/health` is `{ status }` alone (still 200) and `/_akan/app/metrics` is 401.
+  A probe that reads only the status code needs nothing; give a scraper or monitor `AKAN_STATUS_TOKEN`, which reads
+  nothing else.
 - **Nothing supervises a solo process but the orchestrator**, since the gateway's crash-restart-with-backoff went
   with it. `infra/app/templates/app.yaml` carries the liveness, readiness and startup probes that replace it.
 - **`PORT` is the whole tree's port, and a server-side self-call follows it.** `AkanApp` resolves it once
@@ -209,7 +213,7 @@ normalized to `info` with one warning.
   `AKAN_LOG_STDOUT_LEVEL` (default: the console level); a child's or the RSC worker's crash stack is wrapped as a
   `raw=true` record instead of breaking the stream. Text stays the default; turn it on in the deployment.
 - **`AKAN_LOG_STREAM_TOKEN` mounts `/_akan/app/logs`** (SSE, `Last-Event-ID` resume, explicit `gap` events);
-  unset, the route does not exist.
+  unset, the route does not exist. The same bearer also unlocks the health detail and metrics.
 - **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call; **`AKAN_LOG_FLIGHT=1`**
   keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past
   `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — in `local`, or with the
@@ -532,7 +536,9 @@ bypasses the store akanjs picks per platform (the shell's Preferences in an app)
 code never touches `document.cookie`, `localStorage` or `sessionStorage` (`no-document-cookie`, `no-web-storage`): it
 uses `getCookie` / `setCookie` / `removeCookie`, `storage`, and `secretStorage` for tokens and credentials, all from
 `akanjs/client`. `setCookie` writes `path=/; SameSite=Lax; Secure`, and an options object overrides only the keys it
-names — pass `sameSite: "none"` only for a cookie a cross-site POST must carry back. Browser APIs an app WebView lacks
+names — pass `sameSite: "none"` only for a cookie a cross-site POST must carry back. `getCookie` reads a name sent
+twice as unset, since a sibling subdomain can plant a second copy; server code reads `cookieJar()` from
+`akanjs/fetch`, or `CookieJar.parse(req.headers.get("cookie"))`, never `req.cookies`. Browser APIs an app WebView lacks
 stay in a `webkit/` hook that branches on `isNativeApp()` from `akanjs/client/native`, which is where the app side goes
 too (`no-web-only-api-outside-webkit`, a warning): `navigator.share` / `canShare` (Android's WebView has none),
 `navigator.serviceWorker` and `Notification.requestPermission` / `.permission` (no app page has them),

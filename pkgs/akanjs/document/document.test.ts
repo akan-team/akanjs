@@ -635,6 +635,28 @@ describe("by, from, into, and DatabaseRegistry", () => {
     expect(DatabaseRegistry.getScalar("missingScalar", { allowEmpty: true })).toBeUndefined();
     expect(() => DatabaseRegistry.getScalar("missingScalar")).toThrow("No scalar model");
   });
+
+  test("serves the latest registration of a refName, as an app re-declaring its lib's model", () => {
+    const register = () =>
+      DatabaseRegistry.buildModel(
+        "documentOverrideItem",
+        DocumentTestItemInputRef,
+        DocumentTestDoc,
+        DocumentTestModel,
+        DocumentTestItemObject,
+        DocumentTestItemInsightDoc,
+        DocumentTestFilter,
+      );
+    register();
+    const appModel = register();
+    class LibScalar extends by(DocumentTestItemInput) {}
+    class AppScalar extends by(DocumentTestItemInput) {}
+    DatabaseRegistry.buildScalar("documentOverrideScalar", LibScalar);
+    DatabaseRegistry.buildScalar("documentOverrideScalar", AppScalar);
+
+    expect(DatabaseRegistry.getDatabase("documentOverrideItem")).toBe(appModel);
+    expect(DatabaseRegistry.getScalar("documentOverrideScalar")).toBe(AppScalar);
+  });
 });
 
 describe("document query helpers and schemas", () => {

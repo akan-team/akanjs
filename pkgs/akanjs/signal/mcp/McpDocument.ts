@@ -8,7 +8,10 @@ import type { McpResource, McpResourceTemplate, McpTool, McpToolAnnotations } fr
 
 export interface McpDocumentOptions {
   resolveDescription?: (key: string) => string | undefined;
+  /** Signals kept off the catalogue beside `base`, view-only tools included; each entry is reported as a refusal. */
   excludeSignals?: string[];
+  /** Entry names kept off the same way, generated CRUD and slice entries included. */
+  excludeEndpoints?: string[];
   /** Drops every mutation from the catalogue whatever its guards allow. Off by default. */
   readOnly?: boolean;
   /**
@@ -62,6 +65,8 @@ export class McpDocument {
   readonly resources: McpResource[] = [];
   readonly refusals: McpRefusal[];
   readonly undescribed: McpUndescribed[];
+  /** Names in `excludeSignals` / `excludeEndpoints` that match nothing served, which a typo would otherwise publish. */
+  readonly unmatchedExclusions: { signals: string[]; endpoints: string[] };
   readonly #schema = new JsonSchemaBuilder({ refPrefix: "#/$defs/", nullable: "type", face: "agent" });
   readonly #modelSchemas = new Map<McpSchemaSide, Record<string, JsonSchema>>();
   readonly #options: McpDocumentOptions;
@@ -74,7 +79,13 @@ export class McpDocument {
   constructor(serializedSignal: Record<string, SerializedSignal>, options: McpDocumentOptions = {}) {
     this.#options = options;
     this.#catalogue = new AgentCatalogue(options);
-    const tools = this.#collect(serializedSignal);
+    const candidates = AgentCatalogue.candidates(serializedSignal);
+    const keys = new Set(candidates.map((candidate) => candidate.key));
+    this.unmatchedExclusions = {
+      signals: (options.excludeSignals ?? []).filter((name) => !(name in serializedSignal)),
+      endpoints: (options.excludeEndpoints ?? []).filter((name) => !keys.has(name)),
+    };
+    const tools = this.#collect(candidates);
     this.refusals = this.#catalogue.refusals;
     this.tools = tools.map((item) => this.#tool(item));
     this.resourceTemplates = tools.flatMap((item) => {
@@ -126,14 +137,23 @@ export class McpDocument {
     return value === null || value === undefined ? undefined : value;
   }
 
-  #collect(serializedSignal: Record<string, SerializedSignal>): McpExposedEndpoint[] {
+  #collect(candidates: AgentCandidate[]): McpExposedEndpoint[] {
     const tools: McpExposedEndpoint[] = [];
     const appOnly: (McpExposedEndpoint & { reason: string })[] = [];
-    for (const candidate of AgentCatalogue.candidates(serializedSignal, {
-      excludeSignals: this.#options.excludeSignals,
-    })) {
+    const excludedSignals = new Set(this.#options.excludeSignals);
+    const excludedEndpoints = new Set(this.#options.excludeEndpoints);
+    for (const candidate of candidates) {
       const { refName, key, endpoint } = candidate;
       const item: McpExposedEndpoint = { refName, key, endpoint };
+      const excluded = excludedSignals.has(refName)
+        ? `its signal \`${refName}\` is in \`option.setMcp({ excludeSignals })\`, so this app keeps it off the agent shelf. HTTP still serves it.`
+        : excludedEndpoints.has(key)
+          ? "it is in `option.setMcp({ excludeEndpoints })`, so this app keeps it off the agent shelf. HTTP still serves it."
+          : null;
+      if (excluded) {
+        this.#catalogue.refuse(key, excluded);
+        continue;
+      }
       const reason = mcpRefusalOf(endpoint, { refName, key, readOnly: this.#options.readOnly });
       if (reason && this.#isAppOnly(item)) {
         appOnly.push({ ...item, reason });

@@ -1147,11 +1147,22 @@ akan typecheck myapp --clean true --incremental false`,
       },
       {
         name: "test",
-        signature: "akan test <app|lib|pkg> [--write <boolean>]",
+        signature: "akan test <app|lib|pkg> [files] [--write <boolean>]",
         desc: l.trans({
           en: "Prepare an app, library or package, then run its tests with `bun test --isolate` in that folder.",
           ko: "앱, 라이브러리, 패키지를 준비한 뒤 그 폴더에서 `bun test --isolate`로 테스트를 실행합니다.",
         }),
+        args: [
+          {
+            name: "files",
+            type: "String",
+            required: "no",
+            desc: l.trans({
+              en: "Comma-separated test files or folders inside the target, written from the target or the workspace root. Leave it out to run every test.",
+              ko: "대상 안의 테스트 파일이나 폴더를 쉼표로 구분해 적습니다. 경로는 대상 기준이나 워크스페이스 루트 기준으로 씁니다. 빼면 모든 테스트를 실행합니다.",
+            }),
+          },
+        ],
         options: [
           {
             ...writeOption,
@@ -1162,6 +1173,7 @@ akan typecheck myapp --clean true --incremental false`,
           },
         ],
         examples: `akan test myapp
+akan test myapp lib/user/user.signal.test.ts
 akan test myapp --write false
 akan test util`,
       },

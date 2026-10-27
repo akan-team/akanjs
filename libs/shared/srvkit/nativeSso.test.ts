@@ -10,42 +10,47 @@ process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "localhost";
 const challenge = OAuthPkce.challengeOf("v".repeat(64));
 const startRequest = (query: string, headers: Record<string, string> = {}) =>
   new Request(`http://10.0.0.7:8080/api/user/google?${query}`, { headers });
+const origin = "https://office.akanjs.com";
 const desktop = { callbackScheme: "angelo", nonce: "n1", lang: "ko", returnPage: true };
 
 describe("NativeSso", () => {
   test("a start without a callback scheme is a web start", () => {
-    expect(NativeSso.parseStart(startRequest("state=abc"))).toBeNull();
+    expect(NativeSso.parseStart(startRequest("state=abc"), origin)).toBeNull();
   });
 
   test("a native start needs a well-formed PKCE challenge and the app's state", () => {
-    expect(() => NativeSso.parseStart(startRequest("callbackScheme=angelo&state=abc"))).toThrow();
-    expect(() => NativeSso.parseStart(startRequest("callbackScheme=angelo&codeChallenge=short&state=abc"))).toThrow();
-    expect(() => NativeSso.parseStart(startRequest(`callbackScheme=angelo&codeChallenge=${challenge}`))).toThrow();
+    expect(() => NativeSso.parseStart(startRequest("callbackScheme=angelo&state=abc"), origin)).toThrow();
+    expect(() =>
+      NativeSso.parseStart(startRequest("callbackScheme=angelo&codeChallenge=short&state=abc"), origin),
+    ).toThrow();
+    expect(() =>
+      NativeSso.parseStart(startRequest(`callbackScheme=angelo&codeChallenge=${challenge}`), origin),
+    ).toThrow();
   });
 
-  test("the redirect origin is the one the browser opened, not the pod's own address", () => {
+  test("a native start keeps the origin the flow resolved, never one from its own headers", () => {
     const start = NativeSso.parseStart(
       startRequest(`callbackScheme=angelo&codeChallenge=${challenge}&state=abc&lang=ko&returnPage=1`, {
-        "x-forwarded-proto": "https, http",
-        "x-forwarded-host": "office.akanjs.com, internal",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "evil.example",
       }),
+      origin,
     );
     expect(start).toEqual({
       callbackScheme: "angelo",
       codeChallenge: challenge,
       nonce: "abc",
-      origin: "https://office.akanjs.com",
+      origin,
       lang: "ko",
       returnPage: true,
     });
-    expect(NativeSso.publicOrigin(new Request("http://localhost:8282/api/user/google"))).toBe("http://localhost:8282");
   });
 
   test("the page language falls back to the browser's, then to English", () => {
     const query = `callbackScheme=angelo&codeChallenge=${challenge}&state=abc`;
-    expect(NativeSso.parseStart(startRequest(query, { "accept-language": "ko-KR,ko;q=0.9" }))?.lang).toBe("ko");
-    expect(NativeSso.parseStart(startRequest(`${query}&lang=<script>`))?.lang).toBe("en");
-    expect(NativeSso.parseStart(startRequest(query))?.returnPage).toBe(false);
+    expect(NativeSso.parseStart(startRequest(query, { "accept-language": "ko-KR,ko;q=0.9" }), origin)?.lang).toBe("ko");
+    expect(NativeSso.parseStart(startRequest(`${query}&lang=<script>`), origin)?.lang).toBe("en");
+    expect(NativeSso.parseStart(startRequest(query), origin)?.returnPage).toBe(false);
   });
 
   test("the callback deep link echoes the nonce beside the code or the error", () => {

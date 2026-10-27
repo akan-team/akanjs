@@ -162,6 +162,27 @@ describe("ApplicationCommand", () => {
     ]);
   });
 
+  test("test takes the target, then an optional comma-separated file list, then its options", async () => {
+    expect(getArgMetas(ApplicationCommand, "test")[0].map((arg) => [arg.idx, arg.type])).toEqual([
+      [0, "Exec"],
+      [1, "Argument"],
+      [2, "Option"],
+    ]);
+
+    const command = CommandContainer.get(ApplicationCommand);
+    const calls: unknown[] = [];
+    command.applicationScript.test = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "test")?.handler;
+    await handler?.call(command, { name: "demo" }, "lib/a/a.test.ts, lib/b/b.test.ts,", false);
+    await handler?.call(command, { name: "demo" }, null, true);
+    expect(calls).toEqual([
+      [{ name: "demo" }, { write: false, files: ["lib/a/a.test.ts", "lib/b/b.test.ts"] }],
+      [{ name: "demo" }, { write: true, files: [] }],
+    ]);
+  });
+
   test("typecheck picks an app or a library as sync does, and never offers a package", () => {
     const targetsOf = (key: string) => getArgMetas(ApplicationCommand, key)[2].map((meta) => meta.type);
     expect(targetsOf("typecheck")).toEqual(["Sys"]);
@@ -213,6 +234,17 @@ describe("ApplicationCommand", () => {
 });
 
 describe("ApplicationScript", () => {
+  test("test refuses a file outside its target before preparing anything", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { root, app } = track(await createTempApp("demo"));
+    await writeText(path.join(root, "libs", "shared", "lib", "x.test.ts"), "");
+    const scanSync = mock(async () => undefined);
+    app.scanSync = scanSync as never;
+
+    await expect(script.test(app, { files: ["libs/shared/lib/x.test.ts"] })).rejects.toThrow("is outside apps/demo");
+    expect(scanSync).not.toHaveBeenCalled();
+  });
+
   test("startOne skips dependency install for single database mode", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const { app, getMissingDatabaseModeDependencySpecs, recorder } = createStartApp();
@@ -1174,6 +1206,42 @@ describe("ApplicationRunner", () => {
 
   test("runs bun test through the resolved executor", runsPackageTests);
   test("runs signal target tests with preload resolved from installed akanjs", runsSignalTargetTests);
+
+  test("names test files to bun as paths inside the target, from the target or the workspace root", async () => {
+    const { root, app } = track(await createTempApp("demo"));
+    await writeText(path.join(app.cwdPath, "lib", "user", "user.signal.test.ts"), "");
+    await writeText(path.join(root, "libs", "shared", "lib", "x.test.ts"), "");
+    await writeText(path.join(root, "apps", "other", "x.test.ts"), "");
+    const runner = new ApplicationRunner();
+
+    expect(
+      runner.resolveTestPaths(app, [
+        "lib/user/user.signal.test.ts",
+        "apps/demo/lib/user/user.signal.test.ts",
+        path.join(app.cwdPath, "lib", "user"),
+        "./lib",
+      ]),
+    ).toEqual(["./lib/user/user.signal.test.ts", "./lib/user/user.signal.test.ts", "./lib/user", "./lib"]);
+    expect(() => runner.resolveTestPaths(app, ["libs/shared/lib/x.test.ts"])).toThrow(
+      "libs/shared/lib/x.test.ts is outside apps/demo",
+    );
+    expect(() => runner.resolveTestPaths(app, ["../other/x.test.ts"])).toThrow("is outside apps/demo");
+    expect(() => runner.resolveTestPaths(app, [path.join(root, "package.json")])).toThrow("is outside apps/demo");
+    expect(() => runner.resolveTestPaths(app, ["lib/user/missing.test.ts"])).toThrow(
+      "lib/user/missing.test.ts names no file or folder in apps/demo",
+    );
+  });
+
+  test("passes the resolved test paths to bun after its own flags", async () => {
+    const { pkg } = track(await createTempPackage());
+    await writeText(path.join(pkg.cwdPath, "src", "a.test.ts"), "");
+    const runner = new ApplicationRunner();
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+
+    await runner.test(pkg, runner.resolveTestPaths(pkg, ["pkgs/@sample/tool/src/a.test.ts"]));
+    expect(spawn).toHaveBeenCalledWith("bun", ["test", "--isolate", "./src/a.test.ts"], { stdio: "inherit" });
+  });
 });
 
 describe("runner prompts on a stdin that is not a terminal", () => {

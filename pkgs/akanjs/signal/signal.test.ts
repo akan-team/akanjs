@@ -665,6 +665,61 @@ describe("signal serialization and registry", () => {
     expect(QuietSlice.mcp).toEqual({ get: false, create: false, update: false, remove: false });
   });
 
+  describe("a slice extending a lib's", () => {
+    class Admin implements Guard {
+      static name = "Admin";
+      static scope: GuardScope = "account";
+      canPass() {
+        return true;
+      }
+    }
+    class LibSlice extends slice(
+      signalTestServiceModel,
+      { guards: { root: Public, get: Public, cru: Admin, create: [Admin, Public] }, mcp: { cru: false, root: false } },
+      () => ({}),
+    ) {}
+
+    test("takes its own guards whole, and ships a None-only list as `['None']`", () => {
+      class AppSlice extends slice(
+        signalTestServiceModel,
+        { guards: { root: Public, get: Public, cru: None } },
+        () => ({}),
+        LibSlice,
+      ) {}
+      expect(AppSlice.createGuards.map((guard) => guard.name)).toEqual(["None"]);
+      const serialized = FetchSerializer.serializeDatabaseSignal(AppSlice, RegistryEndpoint);
+      expect(serialized.cruGuards).toEqual(["None"]);
+      expect(serialized.createGuards).toBeUndefined();
+      expect(serialized.getGuards).toEqual(["Public"]);
+    });
+
+    test("keeps the lib's off mcp verbs and root when it declares no map of its own", () => {
+      class AppSlice extends slice(
+        signalTestServiceModel,
+        { guards: { root: Public, get: Public, cru: Admin } },
+        () => ({}),
+        LibSlice,
+      ) {}
+      expect(AppSlice.mcp).toEqual({ get: true, create: false, update: false, remove: false });
+      const serialized = FetchSerializer.serializeDatabaseSignal(AppSlice, RegistryEndpoint);
+      expect(serialized.mcp).toEqual({ create: false, update: false, remove: false });
+      expect(serialized.slice?.[""]?.mcp).toBe(false);
+    });
+
+    test("takes its own mcp map over the lib's when it declares one", () => {
+      class AppSlice extends slice(
+        signalTestServiceModel,
+        { guards: { root: Public, get: Public, cru: Admin }, mcp: { remove: false } },
+        () => ({}),
+        LibSlice,
+      ) {}
+      expect(AppSlice.mcp).toEqual({ get: true, create: true, update: true, remove: false });
+      const serialized = FetchSerializer.serializeDatabaseSignal(AppSlice, RegistryEndpoint);
+      expect(serialized.mcp).toEqual({ remove: false });
+      expect(serialized.slice?.[""]?.mcp).toBeUndefined();
+    });
+  });
+
   test("ships an endpoint's errors declaration with it, and nothing for one that declares none", () => {
     const declaring = endpoint(signalTestServiceModel, (builder) => ({
       lock: builder
@@ -715,8 +770,8 @@ describe("signal serialization and registry", () => {
       nullable: true,
       oneOf: ["any", "byOwner"],
     });
-    expect(databaseSignal.getGuards).toBeUndefined();
-    expect(databaseSignal.cruGuards).toBeUndefined();
+    expect(databaseSignal.getGuards).toEqual(["None"]);
+    expect(databaseSignal.cruGuards).toEqual(["None"]);
     expect(serviceSignal).toEqual({
       endpoint: {
         ping: { type: "query", args: [], returns: { refName: "String" } },

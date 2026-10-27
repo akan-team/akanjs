@@ -513,7 +513,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .with(Account)
     .with(Req)
     .exec(async function (refreshToken, account, request) {
-      const token = refreshToken ?? readRefreshTokenCookie(request.cookies, "user");
+      const token = refreshToken ?? readRefreshTokenCookie(request, "user");
       if (!token) throw new Err("user.error.noRefreshToken");
       return makeAccessTokenResponse(
         await this.userService.refreshUserToken(token, account, { graceMs: browserRefreshGraceMs }),

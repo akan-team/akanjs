@@ -1,5 +1,7 @@
 import ts from "typescript";
 import type { QualityWarning, SourceFileInfo } from "./qualityScanner";
+import { RenderMutationScanner } from "./renderMutationScanner";
+import { SignalMutationIndex } from "./signalMutationIndex";
 
 /** Server/client render split for one app or lib, measured in JSX elements rather than files. */
 export interface SsrBalanceEntry {
@@ -50,19 +52,23 @@ export class SsrScanner {
   );
   // Runtime singletons that only exist in the client bundle; importing either is what forces the directive.
   static #clientRuntimeImports = new Set(["st", "fetch"]);
+  static #mountWriteFix =
+    "Send the write from an explicit user action, such as a button that calls a store action. Do not move it into the route: a write there runs for anyone who opens a link to the page.";
 
   scan(sourceFiles: SourceFileInfo[]): SsrScanResult {
+    const mutations = new SignalMutationIndex(sourceFiles);
     const componentFiles = sourceFiles.filter((sourceFile) => this.#isBalancedFile(sourceFile.file));
     return {
       warnings: [
-        ...componentFiles.flatMap((sourceFile) => this.#scanFile(sourceFile)),
+        ...componentFiles.flatMap((sourceFile) => this.#scanFile(sourceFile, mutations)),
         ...this.#scanModules(componentFiles),
+        ...new RenderMutationScanner(mutations).scan(sourceFiles),
       ],
       balance: this.#measureBalance(componentFiles),
     };
   }
 
-  #scanFile(sourceFile: SourceFileInfo): QualityWarning[] {
+  #scanFile(sourceFile: SourceFileInfo, mutations: SignalMutationIndex): QualityWarning[] {
     if (!this.#hasUseClient(sourceFile.sourceFile)) return [];
     const vendorNames = this.#getVendorNames(sourceFile.sourceFile);
     const hasVendorImport = this.#hasVendorImport(sourceFile.sourceFile);
@@ -118,7 +124,7 @@ export class SsrScanner {
       }
     }
 
-    warnings.push(...this.#getMountLoadWarnings(sourceFile));
+    warnings.push(...this.#getMountLoadWarnings(sourceFile, mutations));
     warnings.push(...this.#getTemplateStateWarnings(sourceFile));
     return warnings;
   }
@@ -147,20 +153,33 @@ export class SsrScanner {
   }
 
   // Only an empty-dependency effect is a finding: a reactive effect answers client state and has no server equivalent.
-  #getMountLoadWarnings(sourceFile: SourceFileInfo): QualityWarning[] {
+  #getMountLoadWarnings(sourceFile: SourceFileInfo, mutations: SignalMutationIndex): QualityWarning[] {
     const warnings: QualityWarning[] = [];
     SsrScanner.#walk(sourceFile.sourceFile, (node) => {
       if (!this.#isMountEffect(sourceFile.sourceFile, node)) return;
-      for (const load of this.#getLoadCalls(sourceFile.sourceFile, node))
+      for (const load of this.#getLoadCalls(sourceFile.sourceFile, node)) {
+        const line = this.#getLine(sourceFile.sourceFile, load.node);
         warnings.push(
-          fileWarning(
-            "akan.ssr.client-mount-load",
-            "ssr",
-            sourceFile.file,
-            `Mount-only effect loads server data with ${load.callee}(). The route can fetch this before the first byte instead.`,
-            this.#getLine(sourceFile.sourceFile, load.node),
-          ),
+          load.callee.startsWith("fetch.") && mutations.isMutation(sourceFile.file, load.callee.slice("fetch.".length))
+            ? {
+                ...fileWarning(
+                  "akan.ssr.client-mount-load",
+                  "ssr",
+                  sourceFile.file,
+                  `Mount-only effect sends the mutation ${load.callee}() each time the component mounts. A write is not data the route can load.`,
+                  line,
+                ),
+                fix: SsrScanner.#mountWriteFix,
+              }
+            : fileWarning(
+                "akan.ssr.client-mount-load",
+                "ssr",
+                sourceFile.file,
+                `Mount-only effect loads server data with ${load.callee}(). The route can fetch this before the first byte instead.`,
+                line,
+              ),
         );
+      }
     });
     return warnings;
   }

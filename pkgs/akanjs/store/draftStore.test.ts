@@ -50,7 +50,7 @@ const jwtOf = (payload: Record<string, unknown>) => `x.${Buffer.from(JSON.string
 let storage: MemoryStorage;
 
 const setCookie = (jwt: string | null) => {
-  (globalThis as { document?: { cookie: string } }).document = { cookie: jwt ? `jwt:drafttest=${jwt}` : "" };
+  (globalThis as { document?: { cookie: string } }).document = { cookie: jwt ? `__Host-jwt:drafttest=${jwt}` : "" };
 };
 
 beforeEach(() => {

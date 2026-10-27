@@ -120,6 +120,8 @@ Sign in to Akan Cloud from this machine. The CLI opens a sign-in page in the bro
 
 - browser: Prints the sign-in URL and a QR code and opens it; visit the URL yourself if no browser opens.
 
+- code: Prints a code such as `BCDF-GHJK`: type it on the sign-in page, and approve only if it matches your terminal.
+
 - time limit: Gives up after 10 minutes without a sign-in, so run it again.
 
 - already signed in: Prints the account's nickname and exits without opening the browser.

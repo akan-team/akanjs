@@ -16,6 +16,7 @@ import {
   type PurifiedModel,
   serialize,
 } from ".";
+import { RefNameClaims, type RefNameOwner } from "./refNameClaims";
 import type { ConstantType, DefaultOf, DocumentModel, QueryOf } from "./types";
 
 export class ConstantRegistry {
@@ -26,6 +27,9 @@ export class ConstantRegistry {
   static modelRefNameMap = new Map<Cls, string>();
   //? The app or lib that registered each entry, first registrant first: an app extending a lib model reads `["shared", "sceny"]`.
   static origin = new Map<`${ConstantOriginKind}:${string}`, string[]>();
+  static readonly #claims = new RefNameClaims((ref) =>
+    PrimitiveRegistry.has(ref) || ConstantRegistry.has(ref) ? ConstantRegistry.getModelName(ref) : undefined,
+  );
   static getOrigin(kind: ConstantOriginKind, key: string): string[] {
     return ConstantRegistry.origin.get(`${kind}:${key}`) ?? [];
   }
@@ -33,6 +37,21 @@ export class ConstantRegistry {
     if (!origin) return;
     const chain = ConstantRegistry.getOrigin(kind, key);
     if (chain.at(-1) !== origin) ConstantRegistry.origin.set(`${kind}:${key}`, [...chain, origin]);
+  }
+  //? Generated `cnst.ts` passes its app or lib; any other registrant is named by the file that called.
+  static #ownerOf(origin: string | undefined, modulePath: string): RefNameOwner {
+    if (origin) return { key: origin, label: `"${origin}" (${modulePath})` };
+    const frames = (new Error().stack ?? "").split("\n").flatMap((line) => {
+      const [, file, row] = /([^\s(]+):(\d+):\d+\)?$/.exec(line) ?? [];
+      return file && row ? [{ file, row }] : [];
+    });
+    const caller = frames.find((frame) => frame.file !== frames[0]?.file);
+    return caller
+      ? { key: caller.file, label: `${caller.file}:${caller.row}` }
+      : { key: "", label: "a registrant naming no origin" };
+  }
+  static assertConsistentRefNames() {
+    ConstantRegistry.#claims.assertConsistent();
   }
   static has(modelRef: Cls): boolean {
     return ConstantRegistry.modelRefNameMap.has(modelRef);
@@ -94,7 +113,6 @@ export class ConstantRegistry {
     return info as AllowEmpty extends true ? ConstantModel | undefined : ConstantModel;
   }
   static setScalar(refName: string, cnst: ScalarConstantModel) {
-    if (ConstantRegistry.scalar.has(refName)) return;
     ConstantRegistry.scalar.set(refName, cnst);
   }
   static getScalar<AllowEmpty extends boolean = false>(
@@ -189,7 +207,9 @@ export class ConstantRegistry {
     };
     ConstantRegistry.setDatabase(refName, cnst as unknown as ConstantModel);
     ConstantRegistry.#addOrigin("database", refName, origin);
-    ConstantRegistry.#registerExports(constExports, modelRefSet, origin);
+    const owner = ConstantRegistry.#ownerOf(origin, `lib/${refName}`);
+    ConstantRegistry.#claims.claim("database", refName, [fullRef, lightRef, inputRef, objectRef, insightRef], owner);
+    ConstantRegistry.#registerExports(constExports, modelRefSet, origin, owner);
     return cnst;
   }
   static buildScalar<T extends string, Model>(
@@ -206,13 +226,19 @@ export class ConstantRegistry {
       _Doc: null as unknown as DocumentModel<Model>,
       _PurifiedInput: null as unknown as PurifiedModel<Model>,
     };
-    //? A second scalar under a taken refName is ignored, so only the registrant that won is recorded.
-    if (!ConstantRegistry.scalar.has(refName)) ConstantRegistry.#addOrigin("scalar", refName, origin);
+    ConstantRegistry.#addOrigin("scalar", refName, origin);
     ConstantRegistry.setScalar(refName, cnst as unknown as ScalarConstantModel);
-    ConstantRegistry.#registerExports(constExports, new Set([Model]), origin);
+    const owner = ConstantRegistry.#ownerOf(origin, `lib/__scalar/${refName}`);
+    ConstantRegistry.#claims.claim("scalar", refName, [Model], owner);
+    ConstantRegistry.#registerExports(constExports, new Set([Model]), origin, owner);
     return cnst;
   }
-  static #registerExports(constExports: Record<string, unknown>, modelRefs: Set<unknown>, origin?: string) {
+  static #registerExports(
+    constExports: Record<string, unknown>,
+    modelRefs: Set<unknown>,
+    origin: string | undefined,
+    owner: RefNameOwner,
+  ) {
     for (const [key, value] of Object.entries(constExports)) {
       if (modelRefs.has(value)) continue;
       if (typeof value === "function" && isEnum(value as Cls)) {
@@ -220,6 +246,7 @@ export class ConstantRegistry {
         //? A module re-exporting another's enum hands over the same class, which is not a new registrant.
         if (ConstantRegistry.enum.get(enumKey) !== value) ConstantRegistry.#addOrigin("enum", enumKey, origin);
         ConstantRegistry.enum.set(enumKey, value as EnumInstance);
+        ConstantRegistry.#claims.claim("enum", enumKey, [value as Cls], owner);
       } else ConstantRegistry.value.set(key, value);
     }
   }

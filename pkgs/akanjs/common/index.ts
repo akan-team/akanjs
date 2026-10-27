@@ -1,6 +1,14 @@
+export { AppHosts } from "./appHosts";
 export { applyMixins, getAllPropertyDescriptors } from "./applyMixins";
 export { cookieHeaderHasAuthToken, isAuthTokenKey, legacyAuthTokenKey } from "./authCookie";
-export { authTokenKey, isOwnAuthToken, readAuthToken } from "./authToken";
+export {
+  authTokenKey,
+  isOwnAuthToken,
+  readAuthToken,
+  readSessionToken,
+  retiredAuthTokenKeys,
+  type SessionRead,
+} from "./authToken";
 export { Backoff, type BackoffPolicy } from "./backoff";
 export { bearerTokenOf } from "./bearerTokenOf";
 export { CodeAgentClient, type CodeAgentTransport } from "./CodeAgentClient";
@@ -64,6 +72,8 @@ export {
   codeAgentWireVersion,
   isCodeAgentReply,
 } from "./codeAgentWire";
+export { type CookieEntry, CookieJar, type CookieRead } from "./cookieJar";
+export { CookieSweep, type CookieSweepTarget } from "./cookieSweep";
 export { EventStream, type EventStreamOptions } from "./eventStream";
 export {
   type FileUploadCapability,
@@ -163,6 +173,7 @@ export {
 } from "./pipelinePlan";
 export { type RouteLayer, RouteLayering } from "./RouteLayering";
 export { randomPick, randomPicks } from "./randomPick";
+export { RemoteAuthCode } from "./remoteAuthCode";
 export { RequestLocale, type RequestLocaleInput } from "./requestLocale";
 export { hostFromRequest, isJsonContentType, originFromRequest } from "./requestOrigin";
 export { RestClient, type RestClientOptions, type RestRequestOptions } from "./restClient";
@@ -190,6 +201,7 @@ export {
   validatePageSourceFile,
   validateSubRoutePageKey,
 } from "./routeConvention";
+export { type SessionCookieDuplicate, SessionCookies } from "./sessionCookies";
 export { sleep } from "./sleep";
 export { getBasePathFromPathname, parseBasePaths, parseSubRouteHosts, resolveSubRouteHosts } from "./subRoute";
 export { TrustedProxy } from "./TrustedProxy";

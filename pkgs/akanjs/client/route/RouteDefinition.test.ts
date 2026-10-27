@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { enumOf, ID, Int } from "akanjs/base";
 import { parseAkanI18nEnv } from "akanjs/common";
+import { RenderScope } from "akanjs/fetch";
 import type { LayoutModule, PageModule, PageProps } from "../csrTypes";
 import { AkanNotFoundError } from "../router";
 import { Translator } from "../translator";
@@ -215,7 +216,7 @@ describe("layout() and rootLayout() chains", () => {
       "ko",
       "inner",
     ]);
-    expect(mod.NotFound).toBe(notFound);
+    expect(await mod.NotFound?.({ params: { lang: "ko" }, searchParams: {}, pathname: "/ko/x" })).toBe("nf");
     expect(mod.Error).toBeUndefined();
   });
 
@@ -349,6 +350,35 @@ describe("the render path a chain's render reads", () => {
     expect(await renderAt(withApp.toRouteModule().default, props({ lang: "en" }))).toBe("app");
     expect(seen).toEqual({ page: "/en/pushed", layout: "/en/pushed", withApp: "/en/pushed" });
     expect(Translator.getRenderPath()).toBeUndefined();
+  });
+});
+
+describe("the render scope a chain's stages run in", () => {
+  test("marks the head, the loading, the guard and the render, and nothing beside them", async () => {
+    const seen: Record<string, boolean> = {};
+    const mod = page()
+      .head(() => {
+        seen.head = RenderScope.active();
+        return null;
+      })
+      .loading(() => {
+        seen.loading = RenderScope.active();
+        return null;
+      })
+      .guard(() => {
+        seen.guard = RenderScope.active();
+      })
+      .render(() => {
+        seen.render = RenderScope.active();
+        return null;
+      })
+      .toRouteModule();
+    await mod.generateHead?.(props({ lang: "en" }));
+    (mod.Loading as unknown as (props: PageProps) => unknown)(props({ lang: "en" }));
+    await mod.guard?.(props({ lang: "en" }));
+    await (mod.default as unknown as (props: PageProps) => Promise<unknown>)(props({ lang: "en" }));
+    expect(seen).toEqual({ head: true, loading: true, guard: true, render: true });
+    expect(RenderScope.active()).toBe(false);
   });
 });
 

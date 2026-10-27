@@ -3,7 +3,7 @@
 import { Readable } from "node:stream";
 import { getApiPrefix, getWsPrefix } from "akanjs/base";
 import { Logger } from "akanjs/common";
-import { type AkanRequestStore, type AkanTheme, createRequestStore, requestStorage } from "akanjs/fetch";
+import { type AkanRequestStore, type AkanTheme, createRequestStore, RenderScope, requestStorage } from "akanjs/fetch";
 import type { ReactNode } from "react";
 //? Not server.browser: it resumes a boundary from a MessageChannel task, which runs with an empty AsyncLocalStorage.
 import { renderToReadableStream } from "react-dom/server.edge";
@@ -486,7 +486,7 @@ export function interleaveRscScriptsWithHtml(
 
       const requestContext = options.requestStore ?? options.request;
       const runPump = () =>
-        pump()
+        RenderScope.run(pump)
           .catch(fail)
           .finally(() => options.onComplete?.());
       if (requestContext && requestStorage) void requestStorage.run(requestContext, runPump);
@@ -591,7 +591,9 @@ export class SsrFromRscRenderer {
     const [rscForSsr, rscForClient] = input.rscStream.tee();
     const requestStore = input.requestStore ?? (input.request ? createRequestStore(input.request) : undefined);
     const inRequestScope = <T,>(fn: () => T): T =>
-      requestStore && requestStorage ? requestStorage.run(requestStore, fn) : fn();
+      requestStore && requestStorage
+        ? requestStorage.run(requestStore, () => RenderScope.run(fn))
+        : RenderScope.run(fn);
 
     const ssrNodeStream = Readable.fromWeb(sanitizeFlightForSsrStream(rscForSsr) as never);
     const stderrSuppressor = ExpectedLateRedirectStderrSuppressor.start(input.lateControl);

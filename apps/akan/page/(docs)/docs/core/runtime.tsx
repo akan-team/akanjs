@@ -304,6 +304,25 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
                 ko: "페이지를 렌더링하는 서버는 localhost:<PORT>로 자기 자신을 부르므로, 그 주소도 AKAN_ALLOWED_HOSTS에 넣고 AKAN_LISTEN_HOST는 localhost가 닿는 주소로 둡니다.",
               })}
             </Docs.Alert>
+            <div>
+              {l.trans({
+                en: "One more decides whose forwarded headers name the caller. Unset or *, that is X-Real-IP, else the leftmost X-Forwarded-For entry. Given a list, X-Forwarded-For is walked from the nearest hop past every trusted proxy instead, X-Real-IP counting only without it. List your load balancer's and ingress's own addresses, or a CIDR holding only them:",
+                ko: "하나는 누구의 전달 헤더를 호출자 주소로 믿을지 정합니다. 설정하지 않거나 *이면 X-Real-IP를, 없으면 X-Forwarded-For의 맨 왼쪽 값을 읽습니다. 목록을 주면 X-Forwarded-For를 가장 가까운 hop부터 신뢰하는 프록시를 건너뛰며 읽고, X-Real-IP는 X-Forwarded-For가 없을 때만 씁니다. 로드 밸런서와 ingress 자신의 주소나, 그것만 담은 CIDR을 넣습니다:",
+              })}
+            </div>
+            <Docs.OptionTable
+              items={[
+                {
+                  key: "AKAN_TRUSTED_PROXIES",
+                  type: "CIDR, … | private | none | *",
+                  default: l.trans({ en: "private ranges", ko: "사설 대역" }),
+                  desc: l.trans({
+                    en: "Proxies besides loopback whose headers are believed; a list replaces the private ranges. Any other peer's forwarded host, scheme and port are dropped. private lets any pod in them name any caller, so pair it with a NetworkPolicy admitting only the ingress.",
+                    ko: "loopback 외에 전달 헤더를 믿을 프록시입니다. 목록을 주면 사설 대역을 대신합니다. 그 밖의 peer가 보낸 전달 host·scheme·port는 버립니다. private을 넣으면 그 대역의 어느 pod든 아무 호출자 주소나 댈 수 있으니, ingress만 들이는 NetworkPolicy와 함께 씁니다.",
+                  }),
+                },
+              ]}
+            />
           </Docs.Description>
         </Scroll.Slide>
         <Divider />
@@ -648,8 +667,17 @@ REDIS_URI=redis://redis.internal:6379`}
                   type: "string",
                   default: l.trans({ en: "unset — route absent", ko: "미설정 — 라우트 없음" }),
                   desc: l.trans({
-                    en: "Mounts GET /_akan/app/logs, the ring buffer as SSE, for this bearer token; one with whitespace inside keeps it off.",
-                    ko: "이 bearer 토큰에게 링 버퍼를 SSE로 흘려 주는 GET /_akan/app/logs를 엽니다. 안에 공백이 있으면 열지 않습니다.",
+                    en: "Mounts GET /_akan/app/logs (SSE) for this bearer, which also unlocks health detail and metrics; whitespace keeps it off.",
+                    ko: "이 bearer 토큰에게 GET /_akan/app/logs(SSE)를 열고 health 상세와 metrics도 엽니다. 안에 공백이 있으면 열지 않습니다.",
+                  }),
+                },
+                {
+                  key: "AKAN_STATUS_TOKEN",
+                  type: "string",
+                  default: l.trans({ en: "unset — detail in local only", ko: "미설정 — local에서만 상세" }),
+                  desc: l.trans({
+                    en: "The bearer that unlocks health detail and metrics and nothing else; give this one to a scraper or monitor.",
+                    ko: "health 상세와 metrics만 여는 bearer 토큰입니다. scraper나 모니터에는 이 토큰을 줍니다.",
                   }),
                 },
                 {
@@ -974,30 +1002,30 @@ void run();`}
                 <div className="font-bold">{l.trans({ en: "Health", ko: "상태 확인" })}</div>
                 <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                   {l.trans({
-                    en: "Use this to check whether the server processes are running and ready. A solo replica answers it itself, in the same shape the gateway uses, so a probe reads one contract either way.",
-                    ko: "서버 프로세스가 실행 중이고 준비되었는지 확인할 때 사용합니다. solo replica는 gateway와 같은 형태로 직접 응답하므로, probe는 두 경우 모두 같은 형식을 읽습니다.",
+                    en: "Use this to check whether the server processes are running and ready. A solo replica answers it itself, in the same shape the gateway uses, so a probe reads one contract either way. Outside local, a caller without the AKAN_STATUS_TOKEN (or log stream token) bearer gets only { status }.",
+                    ko: "서버 프로세스가 실행 중이고 준비되었는지 확인할 때 사용합니다. solo replica는 gateway와 같은 형태로 직접 응답하므로, probe는 두 경우 모두 같은 형식을 읽습니다. local이 아니면 AKAN_STATUS_TOKEN(또는 로그 스트림 토큰) bearer가 없는 호출은 { status }만 받습니다.",
                   })}
                 </div>
                 <Code.Snippet
                   className="w-full"
                   title="health"
                   language="bash"
-                  code={`curl http://localhost:8282/_akan/app/health`}
+                  code={`curl -H "Authorization: Bearer $AKAN_STATUS_TOKEN" http://localhost:8282/_akan/app/health`}
                 />
               </div>
               <div className={panelRecipe({ padding: "row" })}>
                 <div className="font-bold">{l.trans({ en: "Metrics", ko: "메트릭" })}</div>
                 <div className="mt-2 text-foreground/70 text-sm leading-relaxed">
                   {l.trans({
-                    en: "Use this to see runtime counts such as active requests, WebSocket connections, rooms, and process metrics.",
-                    ko: "활성 요청, 웹소켓 연결, room, 프로세스 지표 같은 런타임 수치를 확인할 때 사용합니다.",
+                    en: "Use this to see runtime counts such as active requests, WebSocket connections, rooms, and process metrics. Outside local it answers 401 without the same bearer.",
+                    ko: "활성 요청, 웹소켓 연결, room, 프로세스 지표 같은 런타임 수치를 확인할 때 사용합니다. local이 아니면 같은 bearer 없이는 401로 답합니다.",
                   })}
                 </div>
                 <Code.Snippet
                   className="w-full"
                   title="metrics"
                   language="bash"
-                  code={`curl http://localhost:8282/_akan/app/metrics`}
+                  code={`curl -H "Authorization: Bearer $AKAN_STATUS_TOKEN" http://localhost:8282/_akan/app/metrics`}
                 />
               </div>
               <div className={panelRecipe({ padding: "row" })}>

@@ -25,6 +25,11 @@ export interface FetchPolicy<_Returns = unknown> {
   retry?: RetryPolicy | false;
   /** Sent as `Idempotency-Key` on a mutation: a server that already ran it with this key answers that run's result. */
   idempotencyKey?: string;
+  /**
+   * Lets this mutation run while a page renders, where it is otherwise refused: opening a link to the page performs
+   * it, so only a write that is harmless to repeat and safe for anyone to trigger may pass it.
+   */
+  duringRender?: boolean;
 }
 
 export type SnakeCase<S extends string> = S extends `${infer T}_${infer U}` ? `${Lowercase<T>}_${SnakeCase<U>}` : S;

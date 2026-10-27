@@ -1,3 +1,4 @@
+import { RenderScope } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import type { LayoutErrorRender, LayoutModule, LayoutNotFoundRender, PageModule } from "../csrTypes";
 import { type RouteArgsShape, RouteDefinition, type RouteKind } from "./RouteDefinition";
@@ -27,12 +28,12 @@ export class LayoutDefinition<Args extends RouteArgsShape = Record<never, never>
   }
 
   notFound(render: LayoutNotFoundRender) {
-    this.#notFound = render;
+    this.#notFound = (props) => RenderScope.run(() => render(props));
     return this;
   }
 
   error(render: LayoutErrorRender) {
-    this.#error = render;
+    this.#error = (props) => RenderScope.run(() => render(props));
     return this;
   }
 

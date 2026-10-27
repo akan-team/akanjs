@@ -57,7 +57,7 @@ Check Health
 
 Open health first when the app does not load. It tells you whether the server answers and whether each replica is ready.
 
-Call it on the app port. The second line prints only the replica summary and needs `jq`:
+Call it on the app port with the `AKAN_STATUS_TOKEN` bearer; outside `local`, a caller without it gets only `{ status }`. The second line prints only the replica summary and needs `jq`:
 
 Under `akan start`, a gateway runs one replica, and the response looks like this (trimmed):
 
@@ -103,7 +103,7 @@ Check Metrics
 
 Open metrics when the app answers but feels busy. It shows traffic, WebSocket load, memory and the render queue for every process.
 
-Call it the same way; the second line picks two numbers per replica:
+Call it the same way; outside local it answers 401 without the token, the one to give a scraper. The second line picks two numbers per replica:
 
 A trimmed response with a gateway in front:
 
@@ -226,8 +226,8 @@ Read next
 ### Terminal
 
 ```bash
-curl -s http://localhost:8282/_akan/app/health
-curl -s localhost:8282/_akan/app/health | jq '.children[] | {role, status, ready}'
+curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" http://localhost:8282/_akan/app/health
+curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/health | jq '.children[] | {role, status, ready}'
 ```
 
 ### Code
@@ -253,8 +253,8 @@ curl -s localhost:8282/_akan/app/health | jq '.children[] | {role, status, ready
 ### Terminal
 
 ```bash
-curl -s http://localhost:8282/_akan/app/metrics
-curl -s localhost:8282/_akan/app/metrics | jq '.children[].metrics | {activeRequests, rssBytes}'
+curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" http://localhost:8282/_akan/app/metrics
+curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/metrics | jq '.children[].metrics | {activeRequests, rssBytes}'
 ```
 
 ### Code

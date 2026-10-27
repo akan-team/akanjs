@@ -32,7 +32,7 @@ import {
 import { Logger, parseSearchParams } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
-import { DraftStore, getBaseSearchParam, st } from "akanjs/store";
+import { DraftStore, st } from "akanjs/store";
 import { useVisualViewportFrame } from "akanjs/webkit";
 import {
   Children,
@@ -248,14 +248,13 @@ export const ClientBridge = ({ env, lang, theme, viewport, prefix, wsConnect }: 
   const documentTheme = st.use.theme({ agent: false });
   const pathname = st.use.pathname({ agent: false });
   const params = st.use.params({ agent: false });
-  const searchParams = st.use.searchParams({ agent: false });
   const language = (params.lang as string | undefined) ?? lang;
   const path = `/${pathname.split("/").slice(2).join("/")}`;
   useEffect(() => {
     if (uiOperation !== "sleep") return;
     setCookie("siteurl", window.location.origin);
     dayjs.locale(language);
-    initAuth({ jwt: getBaseSearchParam(searchParams, "jwt") });
+    initAuth();
     st.set({ uiOperation: "loading" });
     setTimeout(() => {
       st.set({ uiOperation: "idle" });

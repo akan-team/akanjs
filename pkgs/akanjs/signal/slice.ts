@@ -73,7 +73,8 @@ interface RootSliceOption {
   };
   /**
    * Keyed like `guards`, for the root slice and generated CRUD only; `create`/`update`/`remove` fall back to `cru`
-   * and a bare boolean sets every key. Curation, not authorization: HTTP is unchanged.
+   * and a bare boolean sets every key. Curation, not authorization: HTTP is unchanged. Omitted, every key a lib slice
+   * passed here sets `false` stays off, while `guards` are always this slice's own.
    */
   mcp?:
     | boolean
@@ -180,12 +181,22 @@ export function slice<
   const mcpOption =
     typeof option.mcp === "boolean" ? { root: option.mcp, get: option.mcp, cru: option.mcp } : option.mcp;
   const cruMcp = mcpOption?.cru !== false;
-  const mcp: ResolvedSliceMcp = {
-    get: mcpOption?.get !== false,
-    create: mcpOption?.create ?? cruMcp,
-    update: mcpOption?.update ?? cruMcp,
-    remove: mcpOption?.remove ?? cruMcp,
-  };
+  const mcp: ResolvedSliceMcp = mcpOption
+    ? {
+        get: mcpOption.get !== false,
+        create: mcpOption.create ?? cruMcp,
+        update: mcpOption.update ?? cruMcp,
+        remove: mcpOption.remove ?? cruMcp,
+      }
+    : {
+        get: libSlices.every((libSlice) => libSlice.mcp.get),
+        create: libSlices.every((libSlice) => libSlice.mcp.create),
+        update: libSlices.every((libSlice) => libSlice.mcp.update),
+        remove: libSlices.every((libSlice) => libSlice.mcp.remove),
+      };
+  const rootMcp = mcpOption
+    ? mcpOption.root !== false
+    : libSlices.every((libSlice) => libSlice[SLICE_META][""]?.signalOption.mcp !== false);
   const srvKeys = [
     ...new Set([...Object.keys(srv.srvMap), ...libSlices.flatMap((libSlice) => Object.keys(libSlice.srv.srvMap))]),
   ];
@@ -207,7 +218,7 @@ export function slice<
       ...libSlices.map((libSlice) => libSlice[SLICE_META]),
       {
         // Names one of the model's filters rather than taking a raw query, which would let a caller compose any query.
-        "": init({ guards: rootGuards, ...(mcpOption?.root === false ? { mcp: false } : {}) })
+        "": init({ guards: rootGuards, ...(rootMcp ? {} : { mcp: false }) })
           .search<"queryKey", string>("queryKey", String)
           .search<"args", unknown[]>("args", Any)
           .exec((queryKey, args) => {

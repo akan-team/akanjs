@@ -440,6 +440,48 @@ describe("adapt and serve factories", () => {
     expect(DisabledService.enabled).toBe(false);
   });
 
+  test("reads SERVER_MODE when enabled is read, not when serve() runs", () => {
+    delete process.env.SERVER_MODE;
+    class LateBatchService extends serve("serviceTestLateBatch" as const, { serverMode: "batch" }, () => ({})) {}
+    class UnsetBatchService extends serve("serviceTestUnsetBatch" as const, { serverMode: "batch" }, () => ({})) {}
+
+    process.env.SERVER_MODE = "batch";
+    expect(LateBatchService.enabled).toBe(true);
+
+    delete process.env.SERVER_MODE;
+    expect(UnsetBatchService.enabled).toBe(false);
+  });
+
+  test("answers each read with the SERVER_MODE in effect then", () => {
+    class FederationService extends serve(
+      "serviceTestFederationOnly" as const,
+      { serverMode: "federation" },
+      () => ({}),
+    ) {}
+    class AnyModeService extends serve("serviceTestAnyMode" as const, {}, () => ({})) {}
+
+    delete process.env.SERVER_MODE;
+    expect(FederationService.enabled).toBe(false);
+    process.env.SERVER_MODE = "federation";
+    expect(FederationService.enabled).toBe(true);
+    process.env.SERVER_MODE = "all";
+    expect(FederationService.enabled).toBe(true);
+    process.env.SERVER_MODE = "batch";
+    expect(FederationService.enabled).toBe(false);
+    expect(AnyModeService.enabled).toBe(true);
+  });
+
+  test("lets an explicit enabled win over serverMode", () => {
+    process.env.SERVER_MODE = "federation";
+    class ForcedService extends serve(
+      "serviceTestForcedBatch" as const,
+      { enabled: true, serverMode: "batch" },
+      () => ({}),
+    ) {}
+
+    expect(ForcedService.enabled).toBe(true);
+  });
+
   test("creates database services with database injection metadata", () => {
     class DbService extends serve(testItemDatabase, () => ({})) {}
     const injectMeta = DbService[INJECT_META] as Record<string, InjectInfo>;

@@ -2,14 +2,19 @@ import { getEnv } from "akanjs/base";
 import {
   authTokenKey,
   bearerTokenOf,
+  type CookieEntry,
+  CookieJar,
+  CookieSweep,
   decodeJwtPayload,
   isOwnAuthToken,
   Logger,
   legacyAuthTokenKey,
-  readAuthToken,
+  readSessionToken,
+  retiredAuthTokenKeys,
+  SessionCookies,
 } from "akanjs/common";
 import type { Account } from "akanjs/fetch";
-import { parseCookieHeader, cookies as serverCookies, headers as serverHeaders } from "akanjs/fetch";
+import { cookieJar as serverCookieJar, headers as serverHeaders } from "akanjs/fetch";
 import { secretStorage } from "./storage";
 import { fetch } from "./useClient";
 
@@ -25,25 +30,34 @@ const isCsrClient = () => {
 };
 
 // WKWebView keeps no cookies for the native shell's custom-scheme page (`app://localhost`), so it keeps a jar in storage.
-const cookieJarKey = "akan:cookies";
-const pageKeepsCookies = () => (globalThis as { location?: Location }).location?.protocol !== "app:";
-const readCookieJar = (): Record<string, string> => {
+const storedCookiesKey = "akan:cookies";
+const pageLocation = () => (globalThis as { location?: Location }).location;
+const pageKeepsCookies = () => pageLocation()?.protocol !== "app:";
+const readStoredCookies = (): Record<string, string> => {
   try {
-    return JSON.parse(localStorage.getItem(cookieJarKey) ?? "{}") as Record<string, string>;
+    return JSON.parse(localStorage.getItem(storedCookiesKey) ?? "{}") as Record<string, string>;
   } catch {
     return {};
   }
 };
-const writeCookieJar = (jar: Record<string, string>) => {
-  localStorage.setItem(cookieJarKey, JSON.stringify(jar));
+const writeStoredCookies = (stored: Record<string, string>) => {
+  localStorage.setItem(storedCookiesKey, JSON.stringify(stored));
 };
 
-export const cookies = (): Map<string, { name: string; value: string }> => {
-  if (getEnv().side === "server") return serverCookies();
+/** Every cookie this page or request holds, a name sent more than once included. */
+export const cookieJar = (): CookieJar => {
+  if (getEnv().side === "server") return serverCookieJar();
   if (!pageKeepsCookies())
-    return new Map(Object.entries(readCookieJar()).map(([name, value]) => [name, { name, value }]));
-  return parseCookieHeader(document.cookie);
+    return CookieJar.parse(
+      Object.entries(readStoredCookies())
+        .map(([name, value]) => `${name}=${value}`)
+        .join("; "),
+    );
+  return CookieJar.parse(document.cookie);
 };
+
+/** Names held exactly once; a duplicated name is left out. */
+export const cookies = (): Map<string, CookieEntry> => cookieJar().toMap();
 
 export const setCookie = (
   key: string,
@@ -52,7 +66,7 @@ export const setCookie = (
 ) => {
   if (getEnv().side === "server") return;
   if (!pageKeepsCookies()) {
-    writeCookieJar({ ...readCookieJar(), [key]: value });
+    writeStoredCookies({ ...readStoredCookies(), [key]: value });
     return;
   }
   const pathAttr = path ? `; path=${path}` : "";
@@ -61,19 +75,21 @@ export const setCookie = (
   document.cookie = `${key}=${value}${pathAttr}; SameSite=${sameSite}${secureAttr}`;
 };
 
-/** Reads through `cookies()` on both sides: a hand-rolled `split("=")` cuts base64 padding and skips the `j:` form. */
-export const getCookie = (key: string): string | undefined => cookies().get(key)?.value;
+/** `undefined` for a name held more than once, as for one never set. */
+export const getCookie = (key: string): string | undefined => cookieJar().read(key).value;
 
 export const removeCookie = (key: string, options: { path: string } = { path: "/" }) => {
   // Nothing to do on the server: the response is what carries a Set-Cookie, and this helper has no hold on it.
   if (getEnv().side === "server") return;
   if (!pageKeepsCookies()) {
-    const { [key]: _removed, ...rest } = readCookieJar();
-    writeCookieJar(rest);
+    const { [key]: _removed, ...rest } = readStoredCookies();
+    writeStoredCookies(rest);
     return;
   }
+  //? A browser drops a `__Host-` / `__Secure-` write without Secure, the deletion included.
+  const secureAttr = /^__(Host|Secure)-/.test(key) ? " Secure;" : "";
   // biome-ignore lint/suspicious/noDocumentCookie: Akan auth helpers intentionally manage browser cookies.
-  document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${options.path};`;
+  document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=${options.path};${secureAttr}`;
 };
 export const headers = (): Map<string, string> => {
   if (getEnv().side !== "server") return new Map();
@@ -96,17 +112,16 @@ const sentAuthToken = (): string | undefined => {
 };
 
 /** The auth token this app holds: on a CSR client the one `fetch` sends first, since a native shell's page keeps no
- * session cookie; then the cookie jar, under the app-scoped key or a legacy global one. */
+ * session cookie; then the app-scoped cookie, unless it is held more than once. */
 export const getAuthToken = (): string | undefined =>
-  (isCsrClient() ? sentAuthToken() : undefined) ?? readAuthToken(getCookie);
+  (isCsrClient() ? sentAuthToken() : undefined) ?? readSessionToken(cookieJar()).token;
 
 /** The auth token this app holds in client storage — the OS credential store in a native app, localStorage elsewhere. */
-export const getStoredAuthToken = async (): Promise<string | undefined> => {
-  const scoped = await secretStorage.getItem(authTokenKey());
-  if (scoped) return scoped;
-  const legacy = await secretStorage.getItem(legacyAuthTokenKey);
-  return legacy && isOwnAuthToken(legacy) ? legacy : undefined;
-};
+export const getStoredAuthToken = async (): Promise<string | undefined> =>
+  (await secretStorage.getItem(storedAuthTokenKey())) ?? undefined;
+
+//? Storage is no cookie jar, so it keeps the app-scoped name: `__Host-` means nothing there.
+const storedAuthTokenKey = () => `${legacyAuthTokenKey}:${getEnv().appName}`;
 
 /** The current JWT's account when minted for this app and environment. Reads only the two credentials the server
  * honours — the app-scoped auth cookie (a CSR client's bearer token) and `Authorization: Bearer` — so the two never
@@ -137,9 +152,9 @@ export const setAuth = ({ jwt }: SetAuthOption) => {
   fetch.setJwt(jwt);
   // A CSR client authenticates with the bearer header alone; a cookie copy would only leave the token in a jar.
   if (!isCsrClient()) setCookie(authTokenKey(), jwt);
-  void secretStorage.setItem(authTokenKey(), jwt);
-  // The global key is shared by every app on this host; ours would keep feeding the migration fallback a stale token.
-  removeCookie(legacyAuthTokenKey);
+  void secretStorage.setItem(storedAuthTokenKey(), jwt);
+  // Jars written before the key was scoped or prefixed still hold it under an older name.
+  for (const key of retiredAuthTokenKeys()) removeCookie(key);
   void secretStorage.removeItem(legacyAuthTokenKey);
   announceAuth();
 };
@@ -147,25 +162,57 @@ export const setAuth = ({ jwt }: SetAuthOption) => {
 interface InitAuthOption {
   jwt?: string;
 }
+
+const sweepDocumentCookies = (names: string[]) => {
+  const { hostname = "", pathname = "/" } = pageLocation() ?? {};
+  // biome-ignore lint/suspicious/noDocumentCookie: only a Set-Cookie naming the parent Domain deletes its copy.
+  for (const entry of CookieSweep.setCookies({ names, host: hostname, path: pathname })) document.cookie = entry;
+};
+
+// `null` when copies of the session cookie outlive the sweep: a host-only copy cannot be told from a planted one.
+const readCookieSession = (): string | null | undefined => {
+  const first = readSessionToken(cookieJar());
+  if (!first.duplicate) return first.token;
+  SessionCookies.report([first.duplicate], pageLocation()?.host ?? "");
+  sweepDocumentCookies([first.duplicate.name]);
+  const second = readSessionToken(cookieJar());
+  return second.duplicate ? null : second.token;
+};
+
+const expireRetiredCookies = () => {
+  const jar = cookieJar();
+  for (const key of retiredAuthTokenKeys()) if (jar.has(key)) removeCookie(key);
+};
+
 export const initAuth = ({ jwt }: InitAuthOption = {}) => {
-  const stored = getAuthToken();
-  const token = jwt ?? stored;
+  expireRetiredCookies();
+  const sent = jwt ?? (isCsrClient() ? sentAuthToken() : undefined);
+  const token = sent ?? readCookieSession();
+  if (token === null) {
+    fetch.setJwt(null);
+    return;
+  }
   if (token && !isOwnAuthToken(token)) {
     // A neighbouring app's token decodes fine and fails every guard: adopting it would trade our credential for a 401.
     Logger.warn("JWT ignored: it was minted for another app or environment");
-    if (token === stored) resetAuth();
+    if (!jwt) resetAuth();
     return;
   }
-  if (token) setAuth({ jwt: token });
+  if (token && sent) setAuth({ jwt: token });
+  else if (token) {
+    //? Not written back: rewriting a parent-domain copy as host-only would keep it after its writer clears it.
+    fetch.setJwt(token);
+    announceAuth();
+  }
   // Whether, never which: a record at this level reaches the rotating log file and every live subscriber.
-  Logger.verbose(`JWT ${token ? "restored from cookie" : "not found in cookie"}`);
+  Logger.verbose(`JWT ${token ? "restored" : "not found"}`);
 };
 
 export const resetAuth = () => {
   fetch.setJwt(null);
   removeCookie(authTokenKey());
-  removeCookie(legacyAuthTokenKey);
-  void secretStorage.removeItem(authTokenKey());
+  for (const key of retiredAuthTokenKeys()) removeCookie(key);
+  void secretStorage.removeItem(storedAuthTokenKey());
   void secretStorage.removeItem(legacyAuthTokenKey);
   announceAuth();
 };

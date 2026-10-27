@@ -1,5 +1,6 @@
 import { type BackendEnv, DatabaseModes, getEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
+import { ConstantRegistry } from "akanjs/constant";
 import {
   type Adaptor,
   type AdaptorCls,
@@ -120,6 +121,7 @@ export class DiLifecycle {
   }
 
   constructor({ env, modules = [], disableModules = [], disableLibs = [] }: DiLifecycleProps, ...libs: AkanLib[]) {
+    ConstantRegistry.assertConsistentRefNames();
     this.#env = env;
     const databaseMode = DiLifecycle.#databaseMode();
     this.logger.debug(`Database mode: ${DatabaseModes.describe(databaseMode)}`);

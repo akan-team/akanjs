@@ -28,7 +28,12 @@ on the client side**.
 - `akan.ssr.client-static-markup` — a large subtree wraps one or two interactive touches. Keep the interactive
   element in the client component and hoist the static subtree into a server component received as `children`.
 - `akan.ssr.client-mount-load` — a `useEffect(…, [])` loads server data. Fetch it in the route and pass the
-  init/view object down.
+  init/view object down. A mutation is not a load: send it from a user action (a button through a store action),
+  never from the route.
+- `akan.ssr.render-mutation` — a route's stages (a layout's `.notFound()` / `.error()` included), or a same-file
+  function they call, send a mutation, which throws `base.error.mutationInRender`: opening a link would perform it.
+  Move it to a user action; pass `{ duringRender: true }`, as the option after the endpoint's own arguments, only for
+  a write that is harmless to repeat and safe for anyone to trigger.
 - `akan.ssr.module-missing-server-view` — a module renders only from `Template`/`Zone`/`Util` and declares no
   `Unit`/`View`. Add them and have the `Zone` delegate.
 - `akan.ssr.template-client-state` — a `Template` holds form state in `useState`. Bind to the store instead:

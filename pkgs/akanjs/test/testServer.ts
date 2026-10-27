@@ -5,6 +5,7 @@ import { type BackendEnv, type BaseEnv, type DatabaseMode, DatabaseModes, resetE
 import { Logger, sleep } from "akanjs/common";
 import { type AkanLib, AkanServer } from "akanjs/server";
 import { ConformanceEnv } from "./conformance";
+import { ServedMcpCatalogue } from "./ServedMcpCatalogue";
 
 const MAX_RETRY = 5;
 const TEST_LISTEN_PORT_BASE = 38080;
@@ -23,6 +24,15 @@ export interface TestServerOptions {
   serverMode?: "federation" | "batch" | "all";
   listen?: boolean;
   web?: boolean;
+}
+
+/** A test agent (`{ fetch }`) or a fetch client: whatever carries the account's access token. */
+export type McpCatalogueCaller = { fetch: { jwt: string | null } } | { jwt: string | null };
+
+export interface McpCatalogueOptions {
+  as?: McpCatalogueCaller;
+  /** List as for a client that renders MCP Apps views; the default is the text-only listing most clients see. */
+  ui?: boolean;
 }
 
 const TEST_ENV_KEYS = [
@@ -152,6 +162,17 @@ export class TestServer {
   }
   async cleanup() {
     this.#logger.info("SQLite test database cleanup is handled by server termination.");
+  }
+  async servedMcpCatalogue({ as, ui = false }: McpCatalogueOptions = {}): Promise<ServedMcpCatalogue> {
+    const router = this.#server?.mcpRouter;
+    if (!router)
+      throw new Error("The test server serves no /mcp: it is not started, not listening, or MCP is off for this app.");
+    const jwt = as ? ("fetch" in as ? as.fetch.jwt : as.jwt) : null;
+    const req = new Request(`http://127.0.0.1:${this.#port}/mcp`, {
+      method: "POST",
+      headers: jwt ? { authorization: `Bearer ${jwt}` } : {},
+    });
+    return new ServedMcpCatalogue(router.document, await router.listFor(req, { ui }));
   }
   async terminate() {
     const now = Date.now();

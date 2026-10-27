@@ -116,6 +116,10 @@ Options
 
 - readOnly (boolean, default false, AKAN_MCP_READONLY, AKAN_PUBLIC_MCP_READONLY): Publishes queries only, whatever the guards allow: app tools and their views stay, and a prompt stays a prompt with no text tool. The env turns it on only on `true` or `1`.
 
+- excludeSignals (string[], default []): Signals (`refName`) whose every tool stays off `/mcp`; HTTP still serves them. Lists from libs and app add up.
+
+- excludeEndpoints (string[], default []): Tool names kept off the same way, generated ones (`createUser`) included; an unmatched name warns at boot.
+
 - path (string, default /mcp, AKAN_MCP_PATH): Mount path; the OAuth resource identifier, and so the `aud` a token needs, follows it.
 
 - version (string, default 0.0.0, AKAN_MCP_VERSION): Reported as `serverInfo.version`, the same placeholder the OpenAPI document uses.
@@ -220,7 +224,7 @@ A prompt is a screen, not an endpoint. Declare it on the page with `.prompt(name
 
 **Only pages declare prompts.** A signal has no `prompt()` builder, and `Msg` is not a public API.
 
-**The same page is a tool too, and it only briefs.** Every client gets the briefing and a link to the page, and none draws it. The tool declares `readOnlyHint: false`, since running the page makes its own `fetch.*` calls, mutations included. A component that claude.ai, ChatGPT or VS Code should draw in the chat is declared with `.app()`, as the client reference shows; a tap there acts with the agent's token, so a `Person` act stays on the web.
+**The same page is a tool too, and it only briefs.** Every client gets the briefing and a link to the page, and none draws it. The tool declares `readOnlyHint: false`, since running the page makes its own `fetch.*` calls, a write it sends with `{ duringRender: true }` included. A component that claude.ai, ChatGPT or VS Code should draw in the chat is declared with `.app()`, as the client reference shows; a tap there acts with the agent's token, so a `Person` act stays on the web.
 
 **A client that renders views is known by a signed session.** A legacy client that declares the MCP Apps extension at `initialize` is issued `Mcp-Session-Id: ui.<nonce>.<signature>`, signed by the app; an id it did not sign is served as a client without views.
 

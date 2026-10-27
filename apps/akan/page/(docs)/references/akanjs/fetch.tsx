@@ -485,8 +485,16 @@ export default page()
         key: "cookies()",
         type: "Map<string, { name, value }>",
         desc: l.trans({
-          en: "The parsed `Cookie` header, empty outside a render. A `j:` value is decoded as JSON.",
-          ko: "`Cookie` 헤더를 파싱한 값이며, 렌더링 밖에서는 비어 있습니다. `j:`로 시작하는 값은 JSON으로 풀어 줍니다.",
+          en: "The parsed `Cookie` header, empty outside a render. A name sent more than once is left out.",
+          ko: "`Cookie` 헤더를 파싱한 값이며, 렌더링 밖에서는 비어 있습니다. 두 번 이상 온 이름은 빠집니다.",
+        }),
+      },
+      {
+        key: "cookieJar()",
+        type: "CookieJar",
+        desc: l.trans({
+          en: "Every cookie in the header, duplicates included. `read(name)` gives a value only for a name sent once.",
+          ko: "헤더의 cookie를 중복까지 모두 담습니다. `read(name)`은 한 번만 온 이름에만 값을 줍니다.",
         }),
       },
       {

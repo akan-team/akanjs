@@ -121,13 +121,13 @@ export default page()
       l.trans({
         en: (
           <>
-            <code>st.do.ssoSigninUser</code> saves the three destinations and the page origin in cookies, then opens{" "}
+            <code>st.do.ssoSigninUser</code> saves the three destinations in cookies, then opens{" "}
             <code>{"/api/user/<provider>"}</code>.
           </>
         ),
         ko: (
           <>
-            <code>st.do.ssoSigninUser</code>가 이동할 곳 세 군데와 현재 origin을 cookie에 저장하고{" "}
+            <code>st.do.ssoSigninUser</code>가 이동할 곳 세 군데를 cookie에 저장하고{" "}
             <code>{"/api/user/<provider>"}</code>를 엽니다.
           </>
         ),
@@ -268,24 +268,17 @@ export default page()
         }),
       },
       {
-        name: "makeOAuthRedirectResponse",
+        name: "SsoFlow.start",
         desc: l.trans({
-          en: "Builds the 302 to the provider's consent screen from the `ssoOrigin` cookie.",
-          ko: "`ssoOrigin` cookie로 provider 동의 화면행 302 응답을 만듭니다.",
+          en: "The 302 to the consent screen: `redirect_uri` on the request's own origin, `state` in an HttpOnly cookie.",
+          ko: "동의 화면행 302 응답입니다. `redirect_uri`는 요청이 들어온 origin으로, `state`는 HttpOnly cookie로 둡니다.",
         }),
       },
       {
-        name: ["getSsoCode", "getSsoOrigin"],
+        name: "SsoFlow.callback",
         desc: l.trans({
-          en: "Read the `code` query and the `ssoOrigin` cookie, and throw when either is missing.",
-          ko: "`code` query와 `ssoOrigin` cookie를 읽고, 둘 중 하나라도 없으면 오류를 던집니다.",
-        }),
-      },
-      {
-        name: ["extractGoogleProfile", "extractGithubProfile", "…"],
-        desc: l.trans({
-          en: "One per provider. Trades the code for a token and fetches the profile.",
-          ko: "provider마다 하나씩 있습니다. code를 토큰으로 바꾸고 profile을 가져옵니다.",
+          en: "Checks `state` against the cookie, trades the `code` for the provider's identity, then calls `handleSsoCallback`.",
+          ko: "`state`를 cookie와 맞춰 보고, `code`를 provider의 신원으로 바꾼 뒤 `handleSsoCallback`을 부릅니다.",
         }),
       },
       {
@@ -551,8 +544,8 @@ export const env: ModulesOptions = {
             </Docs.SubSubTitle>
             <div>
               {l.trans({
-                en: "A provider only sends users back to a URI you registered. Akan builds it from the origin of the page where the user clicked:",
-                ko: "provider는 등록해 둔 URI로만 사용자를 돌려보냅니다. Akan은 사용자가 버튼을 누른 화면의 origin으로 이 URI를 만듭니다:",
+                en: "A provider only sends users back to a URI you registered. Akan builds it from the origin the sign-in request arrived on:",
+                ko: "provider는 등록해 둔 URI로만 사용자를 돌려보냅니다. Akan은 로그인 요청이 들어온 origin으로 이 URI를 만듭니다:",
               })}
             </div>
             <code className={chip}>{"https://<your-domain>/api/user/<provider>/callback"}</code>
@@ -561,14 +554,20 @@ export const env: ModulesOptions = {
                 {l.trans({
                   en: (
                     <>
-                      <strong>Register every origin.</strong> Local, staging and production each need their own entry,
-                      because the origin comes from the browser.
+                      <strong>Register every origin.</strong> Local, staging and production each need their own entry.
+                      Outside local the host must be the app's own: a <code>routes</code> domain,{" "}
+                      <code>AKAN_SUB_ROUTE_HOSTS</code>, <code>{"<app>-<environment>.<serveDomain>"}</code>,{" "}
+                      <code>HOST_NAME</code> or <code>AKAN_ALLOWED_HOSTS</code>. A forwarded host counts only from a
+                      trusted hop: the gateway, or a proxy <code>AKAN_TRUSTED_PROXIES</code> admits.
                     </>
                   ),
                   ko: (
                     <>
-                      <strong>origin마다 등록합니다.</strong> origin을 브라우저에서 가져오므로 로컬, 스테이징, 운영에
-                      각각 항목이 필요합니다.
+                      <strong>origin마다 등록합니다.</strong> 로컬, 스테이징, 운영에 각각 항목이 필요합니다. 로컬
+                      밖에서는 호스트가 앱의 것이어야 합니다. <code>routes</code>의 domain,{" "}
+                      <code>AKAN_SUB_ROUTE_HOSTS</code>, <code>{"<app>-<environment>.<serveDomain>"}</code>,{" "}
+                      <code>HOST_NAME</code>, <code>AKAN_ALLOWED_HOSTS</code> 중 하나입니다. 전달된 호스트는 믿을 수
+                      있는 hop, 곧 gateway나 <code>AKAN_TRUSTED_PROXIES</code>가 허용한 proxy에서 왔을 때만 씁니다.
                     </>
                   ),
                 })}
@@ -629,21 +628,13 @@ export const env: ModulesOptions = {
             title="libs/shared/lib/user/user.signal.ts"
             code={`google: query(Any, { guards: [SSO.Google] })
   .with(Req)
-  .exec((request) => makeOAuthRedirectResponse("google", request as Bun.BunRequest)),
+  .exec(async function (req) {
+    return await SsoFlow.start("google", req as Bun.BunRequest, this.userService);
+  }),
 googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
   .with(Req)
-  .exec(async function (request) {
-    const req = request as Bun.BunRequest & { account?: SerAccount };
-    const googleUser = await extractGoogleProfile(getSsoCode(req), getSsoOrigin(req));
-    const accountId = googleUser.emails[0].value;
-    const { cookie, redirect } = await this.userService.handleSsoCallback(
-      accountId,
-      "google",
-      req.cookies.toJSON() as unknown as SsoCookie,
-      req.account,
-      googleUser.displayName,
-    );
-    return makeSsoRedirectResponse(redirect, cookie);
+  .exec(async function (req) {
+    return await SsoFlow.callback("google", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
   }),`}
           />
           <Docs.Description>
@@ -872,19 +863,19 @@ export default page().render(() => (
                 en: (
                   <span>
                     <strong>
-                      Start SSO only through <code>st.do.ssoSigninUser</code>.
+                      Start SSO through <code>st.do.ssoSigninUser</code>.
                     </strong>{" "}
-                    A bare link to <code>/api/user/google</code> carries no <code>ssoOrigin</code> cookie, so the start
-                    route fails with <code>invalidSsoCallbackMissingOrigin</code> and no destination is known.
+                    A bare link to <code>/api/user/google</code> signs in too, but saves no destination, so every
+                    outcome lands on <code>/</code>.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>
-                      SSO는 반드시 <code>st.do.ssoSigninUser</code>로 시작합니다.
+                      SSO는 <code>st.do.ssoSigninUser</code>로 시작합니다.
                     </strong>{" "}
-                    <code>/api/user/google</code>로 바로 가는 링크에는 <code>ssoOrigin</code> cookie가 없어서 시작
-                    route가 <code>invalidSsoCallbackMissingOrigin</code>으로 실패하고, 이동할 곳도 알 수 없습니다.
+                    <code>/api/user/google</code>로 바로 가는 링크도 로그인은 되지만 이동할 곳을 저장하지 않아서, 결과가
+                    무엇이든 <code>/</code>로 갑니다.
                   </span>
                 ),
               })}

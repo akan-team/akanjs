@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type BaseEnv, DatabaseModes, resetEnvCache } from "akanjs/base";
-import { type ConstantModel, ConstantRegistry, via } from "akanjs/constant";
+import { type ConstantCls, type ConstantModel, ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, into } from "akanjs/document";
 import { adapt, type LlmAdaptor, LlmAdaptorRole, ServiceModel, SolidPubSub, serve } from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
@@ -37,7 +37,7 @@ const loadDiLifecycle = async (appName: string) => {
 const libOf = (
   name: string,
   option = new AkanOption(),
-  parts: Partial<Pick<AkanLibProps, "databases" | "services">> = {},
+  parts: Partial<Pick<AkanLibProps, "databases" | "services" | "scalars">> = {},
 ) => new AkanLib(name, { databases: [], services: [], scalars: [], option, ...parts });
 
 const serviceModule = (Service: Parameters<typeof ServiceModel.from>[0]): ServiceModule => {
@@ -331,6 +331,87 @@ describe("DiLifecycle duplicate registrations", () => {
     expect(() => new DiLifecycle({ env: {} }, lib)).toThrow(
       '"duplicateRival" is registered by service "duplicateAlpha" and by service "duplicateBeta"',
     );
+  });
+
+  const scalarLibOf = (name: string, Model: ConstantCls) => {
+    const constant = ConstantRegistry.buildScalar("diDuplicateInvite", Model, {}, name);
+    class InviteDoc extends by(Model) {}
+    const database = DatabaseRegistry.buildScalar("diDuplicateInvite", InviteDoc);
+    return libOf(name, new AkanOption(), { scalars: [{ constant, database }] });
+  };
+
+  test("refuses two libs declaring one scalar refName with different fields, naming both", async () => {
+    const DiLifecycle = await loadDiLifecycle("duplicateScalar");
+
+    const social = scalarLibOf(
+      "social",
+      via((f) => ({ orgId: f(String), orgName: f(String) })),
+    );
+    const akanci = scalarLibOf(
+      "akanci",
+      via((f) => ({ devProjectId: f(String) })),
+    );
+
+    try {
+      expect(() => new DiLifecycle({ env: {} }, social, akanci)).toThrow(
+        'scalar "diDuplicateInvite": "social" (lib/__scalar/diDuplicateInvite) has orgId: String, orgName: String; "akanci" (lib/__scalar/diDuplicateInvite) has devProjectId: String',
+      );
+    } finally {
+      scalarLibOf(
+        "akanci",
+        via((f) => ({ orgId: f(String), orgName: f(String) })),
+      );
+    }
+  });
+
+  test("serves the app's class in every registry when it extends a lib model of its refName", async () => {
+    const DiLifecycle = await loadDiLifecycle("overrideModel");
+
+    const LibInput = via((f) => ({ name: f(String) }));
+    const LibObject = via(LibInput, () => ({}));
+    const LibLight = via(LibObject, ["name"] as const, () => ({}));
+    class LibFull extends via(LibObject, LibLight, () => ({})) {}
+    const LibInsight = via(LibFull, () => ({}));
+    const libModule = databaseModuleOf(
+      ConstantRegistry.buildModel("diOverrideMember", LibInput, LibObject, LibFull, LibLight, LibInsight, {}, "lib"),
+    );
+    const AppInput = via((f) => ({ nick: f(String) }), LibInput);
+    const AppObject = via(AppInput, () => ({}), LibObject);
+    const AppLight = via(AppObject, ["nick"] as const, () => ({}), LibLight);
+    class AppFull extends via(AppObject, AppLight, () => ({}), LibFull) {}
+    const AppInsight = via(AppFull, () => ({}), LibInsight);
+    const appModule = databaseModuleOf(
+      ConstantRegistry.buildModel("diOverrideMember", AppInput, AppObject, AppFull, AppLight, AppInsight, {}, "app"),
+    );
+    const lib = libOf("lib", new AkanOption(), { databases: [libModule] });
+    const app = libOf("app", new AkanOption(), { databases: [appModule] });
+
+    const lifecycle = new DiLifecycle({ env: {} }, lib, app);
+
+    expect(lifecycle.modules.database.get("diOverrideMember")).toBe(appModule);
+    expect(ConstantRegistry.getDatabase("diOverrideMember")).toBe(appModule.constant);
+    expect(ConstantRegistry.getDatabase("diOverrideMember").full).toBe(AppFull as never);
+    expect(DatabaseRegistry.getDatabase("diOverrideMember")).toBe(appModule.database);
+  });
+
+  test("serves the latest of two same-field scalar declarations in every registry", async () => {
+    const DiLifecycle = await loadDiLifecycle("sameScalar");
+
+    const lib = scalarLibOf(
+      "lib",
+      via((f) => ({ orgId: f(String), orgName: f(String) })),
+    );
+    const app = scalarLibOf(
+      "app",
+      via((f) => ({ orgId: f(String), orgName: f(String) })),
+    );
+    const [appScalar] = app.scalar;
+
+    const lifecycle = new DiLifecycle({ env: {} }, lib, app);
+
+    expect(lifecycle.modules.scalar.get("diDuplicateInvite")).toBe(appScalar);
+    expect(ConstantRegistry.getScalar("diDuplicateInvite").model).toBe(appScalar?.constant.model as never);
+    expect(DatabaseRegistry.getScalar("diDuplicateInvite")).toBe(appScalar?.database as never);
   });
 });
 

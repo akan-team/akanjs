@@ -47,6 +47,7 @@ import { type ApiRouteInputs, ApiRouter } from "./routing/apiRouter";
 import type { AppWsData } from "./routing/appWsData";
 import { HostAllowlist } from "./routing/hostAllowlist";
 import { RoomReplay } from "./routing/roomReplay";
+import { RouteHosts } from "./routing/routeHosts";
 import { createSoloAppRoutes } from "./routing/soloAppRoutes";
 import {
   getWebConfigFromEnv,
@@ -83,6 +84,13 @@ export interface McpServerOption {
   enabled?: boolean;
   /** Drops every mutation from the catalogue whatever its guards allow; off by default, reported per endpoint. */
   readOnly?: boolean;
+  /**
+   * Signals (`refName`) whose every entry stays off `/mcp`, such as a mounted lib's; HTTP still serves them. Each
+   * `setMcp` adds to the list rather than replacing it, so an app cannot drop a lib's exclusion by naming another.
+   */
+  excludeSignals?: string[];
+  /** Entry names kept off `/mcp` the same way, generated ones (`createUser`, `userListInOrg`) included. */
+  excludeEndpoints?: string[];
   /** Mount path, `/mcp` by default; the OAuth resource id (the `aud` a token must carry) follows it. */
   path?: string;
   /** Reported as `serverInfo.version`; `0.0.0` by default. */
@@ -174,6 +182,7 @@ export class AkanServer {
 
   #di: DiLifecycle;
   #openApiDocument: ReturnType<typeof createOpenApiDocument> | null = null;
+  #mcpRouter: McpRouter | null = null;
   readonly #initTimings = new Map<string, number>();
   #localPublish: LocalPublish | null = null;
   readonly #binaryPubsub = new BinaryPubsub();
@@ -263,11 +272,22 @@ export class AkanServer {
     const requested = typeof mcp === "boolean" ? mcp : (mcp.enabled ?? this.mcp);
     this.mcp = requested && !AkanServer.#isEnvOff("AKAN_MCP", "AKAN_PUBLIC_MCP");
     if (typeof mcp === "boolean") return this;
-    const { enabled: _enabled, readOnly, auth, ...rest } = mcp;
+    const { enabled: _enabled, readOnly, auth, excludeSignals, excludeEndpoints, ...rest } = mcp;
     if (readOnly !== undefined) this.mcpReadOnly = readOnly;
     if (auth) this.mcpAuth = { ...this.mcpAuth, ...AkanServer.#defined(auth) };
-    this.mcpOption = { ...this.mcpOption, ...AkanServer.#defined(rest) };
+    const added = (current: string[] | undefined, names: string[] | undefined) =>
+      names ? [...new Set([...(current ?? []), ...names])] : current;
+    this.mcpOption = AkanServer.#defined({
+      ...this.mcpOption,
+      ...AkanServer.#defined(rest),
+      excludeSignals: added(this.mcpOption.excludeSignals, excludeSignals),
+      excludeEndpoints: added(this.mcpOption.excludeEndpoints, excludeEndpoints),
+    });
     return this;
+  }
+  /** The router `/mcp` is served by once routes are built; `null` before, or when MCP is off. */
+  get mcpRouter(): McpRouter | null {
+    return this.#mcpRouter;
   }
   setDatabaseConfig(database: DatabaseConfig) {
     if (this.status !== "stopped") throw new Error("Database config must be set before app initialization.");
@@ -350,6 +370,7 @@ export class AkanServer {
       this.status = "initialized";
       return this;
     }
+    RouteHosts.declare();
     const requestedWeb = AkanServer.#narrowWeb(this.web, web);
     const noWeb = () => {
       this.#prepared = {
@@ -482,8 +503,9 @@ export class AkanServer {
 
     const server = this.#server;
     const wsServer = this.#wsServer;
-    // Only the listening server answers `requestIP`; behind the gateway `x-real-ip` wins, so this serves solo mode.
-    SignalContext.setHttpPeerResolver((req) => server?.requestIP(req as Bun.BunRequest) ?? null);
+    //? `requestIP` answers `null` for a unix socket and for a request this server never received alike; only the
+    //? first is a local hop, and on TCP a request with no socket behind it must not read as one.
+    SignalContext.setHttpPeerResolver((req) => server?.requestIP(req as Bun.BunRequest) ?? (unix ? null : undefined));
     hmrHub?.setPublisher((topic, payload) => {
       server?.publish(topic, payload);
       wsServer?.publish(topic, payload);
@@ -720,6 +742,7 @@ export class AkanServer {
             appShell: this.mcpOption.apps === false ? undefined : webRouter?.mcpAppShell(),
           })
         : null;
+    this.#mcpRouter = mcpRouter;
     const mcpRoutes: HttpRoutes = mcpRouter?.createRoutes() ?? {};
     this.#logStream ??= this.#solo ? LogStreamRoute.fromEnv(() => this.#logHub) : null;
     const soloRoutes: HttpRoutes = this.#solo

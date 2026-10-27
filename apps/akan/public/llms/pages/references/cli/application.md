@@ -274,9 +274,11 @@ Typecheck an app or a library with TypeScript, its own `*.test.ts` and `*.spec.t
 
 - alias: `akan t` runs this command.
 
-`akan test <app|lib|pkg> [--write <boolean>]`
+`akan test <app|lib|pkg> [files] [--write <boolean>]`
 
 Prepare an app, library or package, then run its tests with `bun test --isolate` in that folder.
+
+- files (String): Comma-separated test files or folders inside the target, written from the target or the workspace root. Leave it out to run every test.
 
 - --write (Boolean, default true): Sync an app target first. Libraries and packages are always prepared.
 
@@ -770,6 +772,7 @@ akan typecheck myapp --clean true --incremental false
 
 ```bash
 akan test myapp
+akan test myapp lib/user/user.signal.test.ts
 akan test myapp --write false
 akan test util
 ```

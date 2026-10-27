@@ -289,8 +289,8 @@ export default page()
         default: "local/apps/<app>/runtime",
         tags: ["AKAN_RUNTIME_DIR"],
         desc: l.trans({
-          en: "Replica sockets and rotating logs. It is `./runtime` when `NODE_ENV=production`.",
-          ko: "replica 소켓과 순환 로그 파일을 두는 곳입니다. `NODE_ENV=production`이면 `./runtime`입니다.",
+          en: "Replica sockets and rotating logs, under the workspace root's `local/` even when started inside the app. It is `./runtime` when `NODE_ENV=production`.",
+          ko: "replica 소켓과 순환 로그 파일을 두는 곳으로, 앱 폴더 안에서 띄워도 워크스페이스 루트의 `local/` 아래입니다. `NODE_ENV=production`이면 `./runtime`입니다.",
         }),
       },
       {
@@ -548,8 +548,8 @@ export default page()
       {
         name: "setMcp",
         desc: l.trans({
-          en: "Merged field by field; the app's values win.",
-          ko: "필드 단위로 합쳐지고, 앱의 값이 이깁니다.",
+          en: "Merged field by field; the app's values win, but `excludeSignals` and `excludeEndpoints` add up.",
+          ko: "필드 단위로 합쳐지고 앱의 값이 이깁니다. 단 `excludeSignals`·`excludeEndpoints`는 누적됩니다.",
         }),
       },
       {
@@ -895,6 +895,26 @@ void run();`}
                       <strong>solo도 같은 경로에 답합니다.</strong> solo 프로세스도 <code>/_akan/app/health</code>와{" "}
                       <code>/_akan/app/metrics</code>를 gateway와 같은 모양으로 제공하므로, probe는 어느 쪽이든 똑같이
                       읽습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>The detail takes a token.</strong> Outside <code>local</code>, health answers only{" "}
+                      <code>{"{ status }"}</code> and metrics 401 unless the caller sends{" "}
+                      <code>Authorization: Bearer $AKAN_STATUS_TOKEN</code>, which unlocks nothing else; the log stream
+                      token works too.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>상세 정보는 토큰이 필요합니다.</strong> <code>local</code>이 아니면{" "}
+                      <code>Authorization: Bearer $AKAN_STATUS_TOKEN</code>을 보내지 않는 호출에 health는{" "}
+                      <code>{"{ status }"}</code>만, metrics는 401로 답합니다. 이 토큰은 다른 것을 열지 않으며, 로그
+                      스트림 토큰도 통합니다.
                     </span>
                   ),
                 })}
