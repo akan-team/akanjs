@@ -7,7 +7,7 @@ import { biomeBaseConfig } from "./biomeBase";
 import { Linter, parseBiomeReport } from "./linter";
 
 const devkitDir = import.meta.dir;
-const biomeBin = path.resolve(devkitDir, "../../../node_modules/.bin", Linter.biomeBinName);
+const [biome, ...biomeArgs] = Linter.biomeCommand(path.resolve(devkitDir, "../../.."));
 
 const hookProbe = `export const Early = ({ id }: { id?: string }) => {
   if (!id) return null;
@@ -28,7 +28,7 @@ afterAll(async () => {
 
 const runBiome = (args: string[], cwd: string) =>
   new Promise<string>((resolve, reject) => {
-    const proc = spawn(biomeBin, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const proc = spawn(biome, [...biomeArgs, ...args], { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     proc.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));

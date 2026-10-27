@@ -185,7 +185,9 @@ export class WorkspaceRunner extends runner("workspace") {
     { fix = true, maxDiagnostics = defaultMaxDiagnostics }: { fix?: boolean; maxDiagnostics?: number } = {},
   ) {
     const configPath = await WorkspaceRunner.resolveBiomeConfigPath(workspace);
-    await workspace.spawn(`./node_modules/.bin/${Linter.biomeBinName}`, [
+    const [biome, ...biomeArgs] = Linter.biomeCommand(workspace.workspaceRoot);
+    await workspace.spawn(biome, [
+      ...biomeArgs,
       "check",
       ...(fix ? ["--write"] : []),
       "--no-errors-on-unmatched",

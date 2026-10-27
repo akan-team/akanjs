@@ -2,7 +2,6 @@ import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import path from "node:path";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
-import { Linter } from "@akanjs/devkit/linter";
 import {
   createCallRecorder,
   createFakeExecutor,
@@ -439,7 +438,7 @@ describe("WorkspaceRunner", () => {
     workspace.spawn = spawn;
 
     await runner.lint(exec as never, workspace as never, { fix: true });
-    expect(spawn).toHaveBeenCalledWith(`./node_modules/.bin/${Linter.biomeBinName}`, [
+    expect(spawn).toHaveBeenCalledWith("biome", [
       "check",
       "--write",
       "--no-errors-on-unmatched",
@@ -448,7 +447,7 @@ describe("WorkspaceRunner", () => {
     ]);
 
     await runner.lint(exec as never, workspace as never, { fix: false, maxDiagnostics: 0 });
-    expect(spawn).toHaveBeenLastCalledWith(`./node_modules/.bin/${Linter.biomeBinName}`, [
+    expect(spawn).toHaveBeenLastCalledWith("biome", [
       "check",
       "--no-errors-on-unmatched",
       "--max-diagnostics=none",
@@ -464,10 +463,13 @@ describe("WorkspaceRunner", () => {
     const spawn = mock(async () => "");
     workspace.spawn = spawn;
     await Bun.write(`${root}/biome.jsonc`, "{}\n");
+    const biomeWrapper = path.join(root, "node_modules/@biomejs/biome/bin/biome");
+    await Bun.write(biomeWrapper, "#!/usr/bin/env node\n");
 
     await runner.lint({ cwdPath: `${root}/apps/demo` } as never, workspace as never, { fix: false });
 
-    expect(spawn).toHaveBeenCalledWith(`./node_modules/.bin/${Linter.biomeBinName}`, [
+    expect(spawn).toHaveBeenCalledWith(process.execPath, [
+      biomeWrapper,
       "check",
       "--no-errors-on-unmatched",
       `--max-diagnostics=${defaultMaxDiagnostics}`,
