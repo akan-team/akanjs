@@ -121,6 +121,12 @@ describe("OpenaiLlm vision claim", () => {
     expect(acceptsOf({ apiKey: "k", model: "deepseek-v4-flash", host: "https://api.deepseek.com" })).toBeUndefined();
   });
 
+  test("OpenAI's own endpoint named outright is still the default host", () => {
+    expect(acceptsOf({ apiKey: "k", model: "gpt-vision", host: "https://api.openai.com/v1" })).toEqual({ image: true });
+    expect(OpenaiLlm.acceptsOf({ host: "https://api.openai.com/v1/" })).toEqual({ image: true });
+    expect(OpenaiLlm.acceptsOf({ host: "https://openai.example.com/v1" })).toBeUndefined();
+  });
+
   test("a declared accepts wins over both", () => {
     expect(acceptsOf({ apiKey: "k", model: "gpt-text", accepts: { image: false } })).toEqual({ image: false });
     expect(acceptsOf({ apiKey: "k", model: "m", host: "https://gw", accepts: { image: true } })).toEqual({

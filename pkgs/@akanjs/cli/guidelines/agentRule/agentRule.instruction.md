@@ -104,7 +104,10 @@ pages declaring one name never clash, and a registry kept outside the surface re
   parts, so that is what it answers with no `host` set. A `host` the app named is a gateway the class knows
   nothing about, and it stays text-only until `option.setLlm({ accepts })` says otherwise — handing bytes to a
   model that cannot decode them kills the whole turn on a 400, where text-only degrades them to a note the model
-  can repeat back.
+  can repeat back. A `host` naming OpenAI's own endpoint is the default host by hostname, not a gateway, and an
+  app's own chat-completions adaptor claims through `OpenaiLlm.acceptsOf(llmOption)` instead of copying the rule —
+  a copy that read "any host is a gateway" kept a vision model text-only for an app that spelled out
+  `https://api.openai.com/v1`.
 - **A refusal is `agent.error.llmRequestFailed`, and it names the host** — unless the prompt did not fit. The
   provider's own sentence rides in `reason` and the hostname in `provider`. `LlmOverflow.refusal(host, status,
   reason)` builds it, and reads the one refusal a chat can undo — a prompt past the window, recognized from each
@@ -648,7 +651,18 @@ pages declaring one name never clash, and a registry kept outside the surface re
   page the user left. The reading built-ins (`readScreen`, `readState`, `highlight`, `viewImage`) declare it,
   because a wait costs 120ms of quiet at the very least and they change nothing a resource holds.
   New tools and state from a fresh route are still only listed from the next turn: the catalogue is snapshotted
-  when the turn starts.
+  when the turn starts. **So a navigation ends the model's turn, and a name nobody listed is answered with the names
+  that exist.** A call is looked up when it runs, so one batched behind `navigate` already reaches the new screen —
+  but the model wrote it against the old catalogue, and a screen-scoped name it never saw is one it composed
+  (`addBacklogTicketInProject` for `addBacklogTicket`), and refused with a bare `Unknown tool` it composes the next.
+  `AgentService.preamble` therefore says that a navigation ends the turn and that names are never guessed, and the
+  session answers an unknown name with the tools listed now — saying, when the catalogue moved since the turn's
+  list was written, that the call was written against the screen it left and the new one's tools arrive with their
+  arguments next turn. `navigate`'s own answer says the same, reports the path the page actually landed on when a
+  redirect or the not-found page moved it elsewhere, and a path with no route is refused with the internal links on
+  screen (`ScreenTarget.linkedRoutes`) rather than an invitation to compose another. Layout-level tools — a channel
+  post, a new wiki page — stay listed across routes, which is why the cross-screen requests that use only them never
+  hit this.
 - **A tool that waits for its own work costs no model turns; one that returns early costs one round trip per
   look.** The session awaits `run`, so a `.exec` that awaits the store action finishing the job simply makes the
   turn take that long — and the change report that follows carries whatever landed, so the model needs no second

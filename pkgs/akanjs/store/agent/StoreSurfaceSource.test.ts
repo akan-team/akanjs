@@ -129,6 +129,40 @@ describe("StoreSurfaceSource", () => {
     Object.defineProperty(globalThis, "window", { value: priorWindow, configurable: true });
   });
 
+  test("navigate says where the page landed when the app sent it somewhere else", async () => {
+    const { router } = await import("akanjs/client");
+    const priorWindow = globalThis.window;
+    const location = { pathname: "/en/docs/intro", search: "", hash: "", href: "http://app.test/en/docs/intro" };
+    Object.defineProperty(globalThis, "window", {
+      value: { parent: { postMessage: () => undefined }, location },
+      configurable: true,
+    });
+    router.init({
+      type: "ssr",
+      side: "client",
+      lang: "en",
+      router: {
+        push: (href: string) => {
+          location.pathname = href.endsWith("/ticket/new") ? "/en/404" : (href.split("?")[0] ?? href);
+        },
+        replace: () => undefined,
+        back: () => undefined,
+        refresh: () => undefined,
+      },
+    } as never);
+    const surface = new AgenticSurface();
+    surface.addSource(source);
+
+    const moved = await surface.call("navigate", { path: "/project/p1/ticket/new" });
+    expect(moved).toStartWith("Asked for /project/p1/ticket/new, but the app sent the page to /404 instead.");
+    const arrived = await surface.call("navigate", { path: "/project/p1/ticket/?tab=open" });
+    expect(arrived).toStartWith("Now on /project/p1/ticket/?tab=open.");
+    expect(arrived).toContain("listed on your next turn");
+
+    router.init({ side: "server", routeManifest: [] } as never);
+    Object.defineProperty(globalThis, "window", { value: priorWindow, configurable: true });
+  });
+
   test("goBack is global, and refuses when there is nothing behind this page", async () => {
     const surface = new AgenticSurface();
     surface.addSource(source);

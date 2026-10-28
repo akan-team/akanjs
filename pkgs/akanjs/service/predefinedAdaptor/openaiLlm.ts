@@ -1,5 +1,13 @@
 import { adapt } from "../adapt";
-import type { LlmAccepts, LlmAdaptor, LlmLimits, LlmOption, LlmTurnAnswer, LlmTurnRequest } from "./llm.adaptor";
+import {
+  type LlmAccepts,
+  type LlmAdaptor,
+  type LlmLimits,
+  type LlmOption,
+  type LlmTurnAnswer,
+  type LlmTurnRequest,
+  llmProviderOf,
+} from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
 import { type OpenaiAnswer, OpenaiDialect } from "./openaiDialect";
 
@@ -24,10 +32,18 @@ export class OpenaiLlm
     return this.llmOption.contextWindow ? { window: this.llmOption.contextWindow } : {};
   }
 
-  /** A named host is text-only until `setLlm({ accepts })` says otherwise: undecodable bytes fail the whole turn. */
   get accepts(): LlmAccepts | undefined {
-    if (this.llmOption.accepts) return this.llmOption.accepts;
-    return this.llmOption.host ? undefined : { image: true };
+    return OpenaiLlm.acceptsOf(this.llmOption);
+  }
+
+  /**
+   * A named host is text-only until `setLlm({ accepts })` says otherwise: undecodable bytes fail the whole turn.
+   * OpenAI's own endpoint named outright is still OpenAI rather than a gateway. Static, so an app's own
+   * chat-completions adaptor claims what this one does instead of forking the rule.
+   */
+  static acceptsOf({ accepts, host }: LlmOption): LlmAccepts | undefined {
+    if (accepts) return accepts;
+    return !host || llmProviderOf(host) === llmProviderOf(OpenaiLlm.defaultHost) ? { image: true } : undefined;
   }
 
   async chat(request: LlmTurnRequest, onDelta?: (delta: string) => void): Promise<LlmTurnAnswer | null> {

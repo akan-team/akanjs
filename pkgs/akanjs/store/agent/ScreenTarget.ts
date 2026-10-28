@@ -1,3 +1,4 @@
+import { router } from "akanjs/client";
 import { ScreenReader } from "./ScreenReader";
 
 const containerAttrs = ["data-agent-zone", "data-agent-scope", "data-agent-skip"] as const;
@@ -73,6 +74,30 @@ export class ScreenTarget {
       0,
       nameCap,
     );
+  }
+
+  static linkedRoutes(root?: HTMLElement | null): string[] {
+    const scope = root ?? ScreenTarget.#body();
+    if (!scope) return [];
+    const routes = new Set<string>();
+    for (const link of scope.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+      const route = ScreenTarget.visible(link) ? ScreenTarget.routeOf(link.getAttribute("href") ?? "") : "";
+      if (route) routes.add(route);
+      if (routes.size >= nameCap) break;
+    }
+    return [...routes];
+  }
+
+  /** Through `router.routeOf`: an href carries locale and base-path segments a tool argument lacks. */
+  static routeOf(href: string) {
+    if (!href || href.startsWith("#")) return "";
+    try {
+      const url = new URL(href, window.location.href);
+      if (url.origin !== window.location.origin) return "";
+      return router.routeOf(url.pathname);
+    } catch {
+      return "";
+    }
   }
 
   static #names(attrs: readonly string[], root?: HTMLElement | null): string[] {

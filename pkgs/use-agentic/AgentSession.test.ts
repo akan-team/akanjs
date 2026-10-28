@@ -195,8 +195,45 @@ describe("AgentSession", () => {
     await session.send("try");
     const results = session.messages.find((message) => message.role === "tool")?.toolResults;
     expect(results?.[0].error).toBe("stale index");
-    expect(results?.[1].error).toBe("Unknown tool: missing");
+    expect(results?.[1].error).toStartWith("Unknown tool: missing. Call only a tool listed to you");
+    expect(results?.[1].error).toContain("Listed now: gated, askUser.");
     expect(session.messages[session.messages.length - 1].text).toBe("Understood");
+  });
+
+  test("a call batched behind a screen change is told the screen moved, and the next turn lists its tools", async () => {
+    const surface = new AgenticSurface();
+    let leave: (() => void) | null = surface.registerTool([], { name: "postMessage", run: () => "posted" });
+    surface.registerTool([], {
+      name: "navigate",
+      run: () => {
+        leave?.();
+        leave = null;
+        surface.registerTool([], { name: "addBacklogTicket", run: () => "added" });
+        return "Now on /board.";
+      },
+    });
+    const { runner, requests } = scripted(
+      [
+        { type: "toolCall", id: "c1", name: "navigate", args: {} },
+        { type: "toolCall", id: "c2", name: "addBacklogTicketInProject", args: {} },
+        { type: "done", stop: "toolUse" },
+      ],
+      [
+        { type: "toolCall", id: "c3", name: "addBacklogTicket", args: {} },
+        { type: "done", stop: "toolUse" },
+      ],
+      [
+        { type: "text", delta: "Added" },
+        { type: "done", stop: "end" },
+      ],
+    );
+    const session = new AgentSession(surface, runner);
+    await session.send("go to the board and add a ticket");
+    const results = session.messages.filter((message) => message.role === "tool").map((one) => one.toolResults);
+    expect(results[0]?.[1].error).toStartWith("Unknown tool: addBacklogTicketInProject. The screen changed");
+    expect(results[0]?.[1].error).toContain("addBacklogTicket, navigate, askUser.");
+    expect(requests[1].tools.map((tool) => tool.name)).toContain("addBacklogTicket");
+    expect(results[1]?.[0].result).toBe("added");
   });
 
   test("a confirm tool pauses on pendingApproval and runs on approve", async () => {

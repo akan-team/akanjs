@@ -1,4 +1,3 @@
-import { router } from "akanjs/client";
 import type { ToolActivity } from "use-agentic";
 import { AgentCursor } from "./AgentCursor";
 import { ScreenFlash } from "./ScreenFlash";
@@ -108,28 +107,16 @@ export class AgentVisual {
     return pressed;
   }
 
-  // Compared through `router.routeOf`: an href carries locale and base-path segments a tool argument lacks.
   static #linkTo(path: unknown): HTMLElement[] {
-    const wanted = AgentVisual.#routeOf(typeof path === "string" ? path : "");
+    const wanted = ScreenTarget.routeOf(typeof path === "string" ? path : "");
     if (!wanted || !document.body) return [];
     const links = [...document.body.querySelectorAll<HTMLAnchorElement>("a[href]")].filter(
       (link) =>
-        AgentVisual.#routeOf(link.getAttribute("href") ?? "") === wanted &&
+        ScreenTarget.routeOf(link.getAttribute("href") ?? "") === wanted &&
         ScreenTarget.visible(link) &&
         ScreenFlash.inView(link),
     );
     return AgentVisual.#only(links);
-  }
-
-  static #routeOf(href: string) {
-    if (!href || href.startsWith("#")) return "";
-    try {
-      const url = new URL(href, window.location.href);
-      if (url.origin !== window.location.origin) return "";
-      return router.routeOf(url.pathname);
-    } catch {
-      return "";
-    }
   }
 
   static #navigating(name: string) {
