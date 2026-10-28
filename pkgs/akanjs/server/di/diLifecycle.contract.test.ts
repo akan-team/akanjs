@@ -333,6 +333,34 @@ describe("DiLifecycle duplicate registrations", () => {
     );
   });
 
+  test("refuses two modules declaring one internal job name, naming both", async () => {
+    const DiLifecycle = await loadDiLifecycle("duplicateInternal");
+
+    const jobModule = (refName: string, sync: "cron" | "interval"): ServiceModule => {
+      class JobService extends serve(refName, () => ({})) {}
+      const service = ServiceModel.from(JobService);
+      class Endpoint extends endpoint(service, () => ({})) {}
+      class Internal extends internal(service, ({ initialize, cron, interval, resolveField }) => ({
+        subscribe: initialize().exec(() => undefined),
+        sync: sync === "cron" ? cron("* * * * *").exec(() => undefined) : interval(1000).exec(() => undefined),
+        label: resolveField(String).exec(() => ""),
+      })) {}
+      class Signal extends serverSignal(Endpoint, Internal) {}
+      return { service, signal: new ServiceSignal(Internal, Endpoint, Signal) };
+    };
+    const lib = libOf("duplicateInternalTest", new AkanOption(), {
+      services: [jobModule("duplicateJobAlpha", "cron"), jobModule("duplicateJobBeta", "interval")],
+    });
+
+    expect(() => new DiLifecycle({ env: {} }, lib)).toThrow(
+      [
+        "[DI:internal] 2 duplicate registration(s):",
+        '  • "subscribe" is registered by the init of "duplicateJobAlphaInternal" and by the init of "duplicateJobBetaInternal"',
+        '  • "sync" is registered by the cron of "duplicateJobAlphaInternal" and by the interval of "duplicateJobBetaInternal"',
+      ].join("\n"),
+    );
+  });
+
   const scalarLibOf = (name: string, Model: ConstantCls) => {
     const constant = ConstantRegistry.buildScalar("diDuplicateInvite", Model, {}, name);
     class InviteDoc extends by(Model) {}
