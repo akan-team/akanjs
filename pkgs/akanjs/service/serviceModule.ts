@@ -207,11 +207,11 @@ export class ServiceModel<
       },
       [`update${key}`]: function (this: DatabaseService, ...args: any): UpdateChain {
         const query = queryOf(args);
-        return { set: (update) => this.__updateMany(query, update) };
+        return { set: (...set) => this.__updateMany(query, ...set) };
       },
       [`updateOne${key}`]: function (this: DatabaseService, ...args: any): UpdateChain {
         const query = queryOf(args);
-        return { set: (update) => this.__updateOne(query, update) };
+        return { set: (...set) => this.__updateOne(query, ...set) };
       },
     };
   }

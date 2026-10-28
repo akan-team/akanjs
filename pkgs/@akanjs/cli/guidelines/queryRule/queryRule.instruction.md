@@ -72,6 +72,9 @@ this is the full contract behind them.
   "there is at most one of these", not for claiming the next item off a queue. Pass a query that matches one row.
   The query is a compare-and-set in every mode: of two concurrent `updateOne({ id, balance: { $gte: n } }, …)` that
   both read the row as matching, only one applies, so `modifiedCount` is the verdict.
+- **`{ touch: false }` leaves `updatedAt` as stored** on a query-level write: in the options of `updateOne` /
+  `updateMany` / `updateById`, or `.set(update, { touch: false })` on a filter chain. Bookkeeping that is no edit — a
+  lease heartbeat, a mirrored snapshot — otherwise moves the row in every `updatedAt` period and sort.
 - **A filter may not be keyed after its own model.** Filter methods are assigned after CRUD, so a filter `chat` on
   model `chat` would silently swap the single-document `removeChat`/`updateChat` for a hookless query-level one. It
   throws at boot instead (`assertFilterFitsCrud`).

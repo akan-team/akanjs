@@ -4,7 +4,13 @@ import type { DocumentModel, QueryOf } from "akanjs/constant";
 import type { FilterCls, FilterQueryOf, FilterSortOf, SchemaOf } from ".";
 import type { CacheDatabase, QueryMethodPart } from "./database";
 import type { DataLoader } from "./dataLoader";
-import type { DocumentQuery, DocumentScopeOptions, DocumentUpdateInput, DocumentUpdateOptions } from "./documentQuery";
+import type {
+  DocumentQuery,
+  DocumentScopeOptions,
+  DocumentTouchOptions,
+  DocumentUpdateInput,
+  DocumentUpdateOptions,
+} from "./documentQuery";
 import { type LoaderBuilder, type ModelCls, makeLoaderBuilder } from "./loaderInfo";
 import type { DocumentProjection } from "./types";
 
@@ -80,7 +86,7 @@ export type Mdl<
   updateMany(
     query: _RawQuery,
     update: DocumentUpdateInput<_RawDoc>,
-    options?: DocumentScopeOptions,
+    options?: DocumentScopeOptions & DocumentTouchOptions,
   ): Promise<UpdateResult>;
   removeOne(query: _RawQuery): Promise<UpdateResult>;
   removeMany(query: _RawQuery): Promise<UpdateResult>;

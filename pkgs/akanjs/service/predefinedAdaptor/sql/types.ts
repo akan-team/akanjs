@@ -6,6 +6,7 @@ import type {
   DocumentQueryNode,
   DocumentSchema,
   DocumentScopeOptions,
+  DocumentTouchOptions,
   DocumentUpdateInput,
   DocumentUpdateOperator,
   DocumentUpdateOptions,
@@ -66,7 +67,7 @@ export interface DocumentStore {
   updateManyByQuery(
     query: DocumentQuery,
     update: DocumentUpdateInput,
-    options?: DocumentScopeOptions,
+    options?: DocumentScopeOptions & DocumentTouchOptions,
   ): Promise<{ acknowledged: boolean; matchedCount: number; modifiedCount: number }>;
   removeManyByQuery(
     query: DocumentQuery,

@@ -4,6 +4,7 @@ import type { QueryOf } from "akanjs/constant";
 import type {
   DatabaseModel,
   DataInputOf,
+  DocumentTouchOptions,
   DocumentUpdateInput,
   FilterInstance,
   FindQueryOption,
@@ -106,8 +107,16 @@ export type DatabaseService<
   __removeMany: (query: _QueryOfDoc) => Promise<UpdateResult>;
   __removeOne: (query: _QueryOfDoc) => Promise<UpdateResult>;
   __purgeMany: (query: _QueryOfDoc) => Promise<number>;
-  __updateMany: (query: _QueryOfDoc, update: DocumentUpdateInput<Doc>) => Promise<UpdateResult>;
-  __updateOne: (query: _QueryOfDoc, update: DocumentUpdateInput<Doc>) => Promise<UpdateResult>;
+  __updateMany: (
+    query: _QueryOfDoc,
+    update: DocumentUpdateInput<Doc>,
+    options?: DocumentTouchOptions,
+  ) => Promise<UpdateResult>;
+  __updateOne: (
+    query: _QueryOfDoc,
+    update: DocumentUpdateInput<Doc>,
+    options?: DocumentTouchOptions,
+  ) => Promise<UpdateResult>;
   __list(query?: _QueryOfDoc, queryOption?: _ListQueryOption): Promise<Doc[]>;
   __listIds(query?: _QueryOfDoc, queryOption?: _ListQueryOption): Promise<string[]>;
   __find(query?: _QueryOfDoc, queryOption?: _FindQueryOption): Promise<Doc | null>;
