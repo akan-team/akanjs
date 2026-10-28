@@ -463,6 +463,47 @@ describe("router", () => {
     await expect(router.navigation()).rejects.toThrow("no route at /nope");
   });
 
+  test("a push, replace or deep link made before init runs, in order, once the router is initialized", async () => {
+    envState.side = "client";
+    installClientWindow("/en/org/o1/ticket/t1");
+    installHistory();
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+
+    router.replace("/org/o1");
+    router.push("/org/o1/ticket/t1", { scrollToTop: true });
+    const settled = router.navigation();
+    expect(router.enterDeepLink("/org/o1/ticket/t2")).toBe(true);
+    expect(router.navigationCount()).toBe(0);
+
+    router.init({ type: "ssr", side: "client", lang: "en", router: recordingRouter(calls), routeManifest: ["/"] });
+
+    expect(calls).toEqual([
+      ["replace", "/en/org/o1", undefined],
+      ["push", "/en/org/o1/ticket/t1", { scrollToTop: true }],
+      ["push", "/en/org/o1/ticket/t2", {}],
+    ]);
+    expect(router.navigationCount()).toBe(3);
+    await expect(settled).resolves.toBeUndefined();
+    await expect(router.navigation()).resolves.toBeUndefined();
+    router.push("/org/o2");
+    expect(calls.at(-1)).toEqual(["push", "/en/org/o2", undefined]);
+  });
+
+  test("a deep link made before init that the manifest then refuses moves nothing, and navigation() still settles", async () => {
+    envState.side = "client";
+    installClientWindow("/en");
+    installHistory();
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+
+    expect(router.enterDeepLink("/missing", { resetStack: true })).toBe(true);
+    router.init({ type: "ssr", side: "client", lang: "en", router: recordingRouter(calls), routeManifest: ["/"] });
+
+    expect(calls).toEqual([]);
+    await expect(router.navigation()).resolves.toBeUndefined();
+  });
+
   test("refuses a push or replace that leaves the origin unless it is external, and keeps //host a path", async () => {
     envState.side = "client";
     installClientWindow("/en/org");

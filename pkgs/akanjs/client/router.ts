@@ -181,7 +181,7 @@ export const getPathInfo = (requestUrl: string, lang: string, prefix: string) =>
   return { path, pathname, hash, search, href };
 };
 class Router {
-  isInitialized = false;
+  isInitialized: boolean = false;
   #prefix = "";
   #lang = parseAkanI18nEnv().defaultLocale;
   #routePaths = new Set<string>();
@@ -194,6 +194,8 @@ class Router {
   #backsAwaitingPopstate = 0;
   #redirects = 0;
   #navigations = 0;
+  //? A page's mount effects run before the root layout's, and the root layout is what initializes the client router.
+  #beforeInit: (() => void)[] = [];
   #instance: RouterInstance = {
     push: (href: string) => {
       const { href: fullHref } = this.#getPathInfo(href);
@@ -228,6 +230,7 @@ class Router {
     else if (options.side === "client") this.#initSsrClientRouter(options);
     this.isInitialized = true;
     Logger.verbose("Router initialized");
+    for (const call of this.#beforeInit.splice(0)) call();
   }
   #initSsrClientRouter(options: SsrClientRouterOption) {
     this.#historyWrittenByNavigation = true;
@@ -282,6 +285,27 @@ class Router {
   }
   #checkInitialized() {
     if (!this.isInitialized) throw new Error("Router is not initialized");
+  }
+  #deferredUntilInit(call: () => void) {
+    if (this.isInitialized || getEnv().side === "server") return false;
+    this.#track(
+      new Promise<void>((resolve, reject) => {
+        this.#beforeInit.push(() => {
+          const pending = this.#navigation;
+          try {
+            call();
+          } catch (error) {
+            Logger.error(`A navigation made before the router was initialized failed: ${String(error)}`);
+            reject(error);
+            return;
+          }
+          //? A call that moved nothing left `#navigation` as it found it, which can be this very promise.
+          if (this.#navigation === pending) resolve();
+          else this.#navigation.then(resolve, reject);
+        });
+      }),
+    );
+    return true;
   }
 
   #ensureHistoryState() {
@@ -390,7 +414,9 @@ class Router {
     const target = `${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
     return dedupedStack.map((candidate, index) => (index === dedupedStack.length - 1 ? target : candidate));
   }
+  /** Before init the link waits for it, and the answer is `true`: the manifest that could refuse it is not loaded yet. */
   enterDeepLink(href: string, options: DeepLinkOptions = {}) {
+    if (this.#deferredUntilInit(() => this.enterDeepLink(href, options))) return true;
     this.#checkInitialized();
     if (!options.resetStack) {
       this.push(normalizeDeepLinkHref(href), options);
@@ -406,6 +432,7 @@ class Router {
     return true;
   }
   push(href: string, routeOptions?: RouteOptions) {
+    if (this.#deferredUntilInit(() => this.push(href, routeOptions))) return undefined as never;
     this.#checkInitialized();
     if (this.#refusesOffsite("push", href, routeOptions)) return undefined as never;
     this.#navigations += 1;
@@ -415,6 +442,7 @@ class Router {
     return undefined as never;
   }
   replace(href: string, routeOptions?: RouteOptions) {
+    if (this.#deferredUntilInit(() => this.replace(href, routeOptions))) return undefined as never;
     this.#checkInitialized();
     if (this.#refusesOffsite("replace", href, routeOptions)) return undefined as never;
     this.#navigations += 1;
