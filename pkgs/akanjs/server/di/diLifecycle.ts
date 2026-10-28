@@ -1,4 +1,4 @@
-import { type BackendEnv, DatabaseModes, getEnv } from "akanjs/base";
+import { type BackendEnv, DatabaseModes, getEnv, INTERNAL_META } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import {
@@ -196,6 +196,7 @@ export class DiLifecycle {
       this.logger.info("agent relay is provided by a lib module — the framework's is skipped");
     if (!this.#scalar.has("agentTurn"))
       this.#scalar.set("agentTurn", { constant: agentTurnConstant, database: agentTurnDocument });
+    this.#assertUniqueInternalJobs();
     const adaptorClaims = new Map<string, AdaptorCls>();
     const adaptorRegistrations: Registration[] = [];
     const claimAdaptor = (adaptorCls: AdaptorCls, owner: string) => {
@@ -464,6 +465,16 @@ export class DiLifecycle {
     this.logger.verbose(startMessage);
     await run();
     this.logger.verbose(`${doneLabel} in ${Date.now() - now}ms`);
+  }
+
+  //? The scheduler, its locks and the queue know a job by its method name alone, so two modules' `sync` run as one.
+  #assertUniqueInternalJobs() {
+    const jobs = this.#allModules().flatMap(({ signal: { internal } }) =>
+      Object.entries(internal[INTERNAL_META])
+        .filter(([, { type }]) => type !== "resolveField")
+        .map(([key, { type }]) => ({ key, owner: `the ${type} of "${internal.refName}"` })),
+    );
+    assertUniqueRegistrations("internal", jobs);
   }
 
   registerSchedule(serverMode: "federation" | "batch" | "all") {
