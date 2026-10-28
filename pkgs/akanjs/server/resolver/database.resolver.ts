@@ -11,6 +11,7 @@ import {
   DataLoader,
   DocumentSchema,
   type DocumentScopeOptions,
+  type DocumentTouchOptions,
   type DocumentUpdateInput,
   type DocumentUpdateOptions,
   documentQueryHelper,
@@ -45,6 +46,9 @@ const timedQuery = async <T>(fn: () => Promise<T>): Promise<T> => {
     trace.countDbQuery(performance.now() - start);
   }
 };
+const touchOf = (options?: DocumentTouchOptions) => (options?.touch === false ? { touch: false } : {});
+const touchArgs = (options?: DocumentTouchOptions): [] | [DocumentTouchOptions] =>
+  options?.touch === false ? [{ touch: false }] : [];
 
 export class DatabaseResolver {
   // The model adaptor and its database service expose the same filter methods over the same `__` primitives.
@@ -207,6 +211,12 @@ export class DatabaseResolver {
         const scopeOf = (options?: DocumentScopeOptions) => (options?.withRemoved ? { withRemoved: true } : {});
         const scopeArgs = (options?: DocumentScopeOptions): [] | [DocumentScopeOptions] =>
           options?.withRemoved ? [{ withRemoved: true }] : [];
+        const updateManyArgs = (
+          options?: DocumentScopeOptions & DocumentTouchOptions,
+        ): [] | [DocumentScopeOptions & DocumentTouchOptions] => {
+          const narrowed = { ...scopeOf(options), ...touchOf(options) };
+          return Object.keys(narrowed).length ? [narrowed] : [];
+        };
         const createFindManyChain = (
           query: QueryOf<any>,
           options: { sort?: any; skip?: number; limit?: number; select?: any; withRemoved?: boolean } = {},
@@ -289,8 +299,11 @@ export class DatabaseResolver {
             timedQuery(() => store.count(query, ...scopeArgs(options))),
           updateOne: (query: QueryOf<any>, update: DocumentUpdateInput, options?: DocumentUpdateOptions) =>
             timedQuery(() => store.updateOneByQuery(query, update, options)),
-          updateMany: (query: QueryOf<any>, update: DocumentUpdateInput, options?: DocumentScopeOptions) =>
-            timedQuery(() => store.updateManyByQuery(query, update, ...scopeArgs(options))),
+          updateMany: (
+            query: QueryOf<any>,
+            update: DocumentUpdateInput,
+            options?: DocumentScopeOptions & DocumentTouchOptions,
+          ) => timedQuery(() => store.updateManyByQuery(query, update, ...updateManyArgs(options))),
           removeOne: (query: QueryOf<any>) => timedQuery(() => store.removeOneByQuery(query)),
           removeMany: (query: QueryOf<any>) => timedQuery(() => store.removeManyByQuery(query)),
           purgeMany: (query: QueryOf<any>) => timedQuery(() => store.purgeManyByQuery(query)),
@@ -403,11 +416,11 @@ export class DatabaseResolver {
       async __purgeMany(query: QueryOf<any>) {
         return await timedQuery(() => this.__store.purgeManyByQuery(query));
       }
-      async __updateMany(query: QueryOf<any>, update: DocumentUpdateInput) {
-        return await timedQuery(() => this.__store.updateManyByQuery(query, update));
+      async __updateMany(query: QueryOf<any>, update: DocumentUpdateInput, options?: DocumentTouchOptions) {
+        return await timedQuery(() => this.__store.updateManyByQuery(query, update, ...touchArgs(options)));
       }
-      async __updateOne(query: QueryOf<any>, update: DocumentUpdateInput) {
-        return await timedQuery(() => this.__store.updateOneByQuery(query, update));
+      async __updateOne(query: QueryOf<any>, update: DocumentUpdateInput, options?: DocumentTouchOptions) {
+        return await timedQuery(() => this.__store.updateOneByQuery(query, update, ...touchArgs(options)));
       }
       async [`remove${className}`](id: string) {
         return this.__remove(id);

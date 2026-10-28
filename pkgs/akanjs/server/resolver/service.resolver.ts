@@ -1,6 +1,6 @@
 import { capitalize } from "akanjs/common";
 import type { QueryOf } from "akanjs/constant";
-import type { DatabaseModel, DataInputOf, Doc, DocumentUpdateInput } from "akanjs/document";
+import type { DatabaseModel, DataInputOf, Doc, DocumentTouchOptions, DocumentUpdateInput } from "akanjs/document";
 import { type DatabaseService, type ServiceCls, ServiceModel } from "akanjs/service";
 import type { CascadeRunner } from "./CascadeRunner";
 import { DatabaseResolver } from "./database.resolver";
@@ -38,11 +38,19 @@ export class ServiceResolver {
       async __purgeMany(this: DatabaseService, query: QueryOf<any>) {
         return await this.__databaseModel.__purgeMany(query);
       },
-      async __updateMany(this: DatabaseService, query: QueryOf<any>, update: DocumentUpdateInput) {
-        return await this.__databaseModel.__updateMany(query, update);
+      async __updateMany(
+        this: DatabaseService,
+        query: QueryOf<any>,
+        ...set: [DocumentUpdateInput, DocumentTouchOptions?]
+      ) {
+        return await this.__databaseModel.__updateMany(query, ...set);
       },
-      async __updateOne(this: DatabaseService, query: QueryOf<any>, update: DocumentUpdateInput) {
-        return await this.__databaseModel.__updateOne(query, update);
+      async __updateOne(
+        this: DatabaseService,
+        query: QueryOf<any>,
+        ...set: [DocumentUpdateInput, DocumentTouchOptions?]
+      ) {
+        return await this.__databaseModel.__updateOne(query, ...set);
       },
     };
   }

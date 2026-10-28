@@ -110,7 +110,12 @@ export interface DocumentScopeOptions {
   withRemoved?: boolean;
 }
 
-export interface DocumentUpdateOptions extends DocumentScopeOptions {
+export interface DocumentTouchOptions {
+  /** `false` leaves `updatedAt` as stored, for bookkeeping that is no edit: a lease heartbeat, a mirrored snapshot. */
+  touch?: boolean;
+}
+
+export interface DocumentUpdateOptions extends DocumentScopeOptions, DocumentTouchOptions {
   upsert?: boolean;
 }
 

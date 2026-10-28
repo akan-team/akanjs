@@ -9,6 +9,7 @@ import {
   type DocumentQuery,
   type DocumentSchema,
   type DocumentScopeOptions,
+  type DocumentTouchOptions,
   type DocumentUpdate,
   type DocumentUpdateInput,
   type DocumentUpdateNode,
@@ -482,7 +483,7 @@ export class SqlDocumentStore {
     operation: string,
   ) {
     const resolved = resolveDocumentUpdate(update);
-    const { assignments, params } = this.compiledUpdate(resolved);
+    const { assignments, params } = this.compiledUpdate(resolved, options);
     const { where, params: whereParams } = this.writeQuery(query, operation, options);
     const subquery = `SELECT ${quoteIdent("id")} FROM ${quoteIdent(this.table)} WHERE ${where} ORDER BY ${this.compiler.orderBy()} LIMIT 1`;
     //? Postgres re-checks a row another write changed meanwhile against the outer WHERE only, never the subquery's,
@@ -502,17 +503,21 @@ export class SqlDocumentStore {
     return { acknowledged: true, matchedCount: 0, modifiedCount: 1, upsertedId: inserted.id };
   }
 
-  async updateManyByQuery(query: DocumentQuery, update: DocumentUpdateInput, options: DocumentScopeOptions = {}) {
+  async updateManyByQuery(
+    query: DocumentQuery,
+    update: DocumentUpdateInput,
+    options: DocumentScopeOptions & DocumentTouchOptions = {},
+  ) {
     return await this.#updateMany(query, update, options, "updateManyByQuery");
   }
 
   async #updateMany(
     query: DocumentQuery,
     update: DocumentUpdateInput,
-    options: DocumentScopeOptions,
+    options: DocumentScopeOptions & DocumentTouchOptions,
     operation: string,
   ) {
-    const { assignments, params } = this.compiledUpdate(resolveDocumentUpdate(update));
+    const { assignments, params } = this.compiledUpdate(resolveDocumentUpdate(update), options);
     const { where, params: whereParams } = this.writeQuery(query, operation, options);
     const sql = `UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE ${where}`;
     const changes = this.dialect.affectedRows(
@@ -574,14 +579,14 @@ export class SqlDocumentStore {
     return false;
   }
 
-  private compiledUpdate(update: DocumentUpdate) {
+  private compiledUpdate(update: DocumentUpdate, { touch = true }: DocumentTouchOptions = {}) {
     for (const raw of Object.values(update))
       assertStorableJson(jsonStr(isDocumentUpdateNode(raw) ? raw.value : raw), this.table);
-    const compiled = this.updateCompiler.compile(update);
-    return {
-      assignments: [`${quoteIdent("updatedAt")} = ?`, ...compiled.assignments],
-      params: [Date.now(), ...compiled.params],
-    };
+    const { assignments, params } = this.updateCompiler.compile(update);
+    const updatedAt = quoteIdent("updatedAt");
+    if (touch) return { assignments: [`${updatedAt} = ?`, ...assignments], params: [Date.now(), ...params] };
+    //? A SET needs one assignment: a write left with none still matches and counts, and changes nothing.
+    return { assignments: assignments.length ? assignments : [`${updatedAt} = ${updatedAt}`], params };
   }
 
   async bulkWrite(

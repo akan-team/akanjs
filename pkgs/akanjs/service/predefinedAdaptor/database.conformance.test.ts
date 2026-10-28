@@ -295,6 +295,27 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(synced.createdAt.valueOf()).toBe(createdAt.valueOf());
     });
 
+    test("a query-level write with `touch: false` leaves updatedAt as stored; without it updatedAt moves", async () => {
+      const updatedAt = dayjs("2026-07-02T09:00:00Z");
+      const { id } = await store.create({ title: "lease", score: 0, updatedAt });
+      const other = await store.create({ title: "lease", score: 0, updatedAt });
+      const stamped = async (docId: string) => (await store.pickById(docId)).updatedAt.valueOf();
+
+      expect(await store.updateOneByQuery({ id }, { score: 1 }, { touch: false })).toMatchObject({ modifiedCount: 1 });
+      expect(await store.updateManyByQuery({ title: "lease" }, { note: "held" }, { touch: false })).toMatchObject({
+        modifiedCount: 2,
+      });
+      expect(await store.updateOneByQuery({ id }, {}, { touch: false })).toMatchObject({ matchedCount: 1 });
+      expect(await store.pickById(id)).toMatchObject({ score: 1, note: "held" });
+      expect([await stamped(id), await stamped(other.id)]).toEqual([updatedAt.valueOf(), updatedAt.valueOf()]);
+
+      const before = Date.now();
+      await store.updateOneByQuery({ id }, { score: 2 });
+      await store.updateManyByQuery({ id: other.id }, { score: 2 }, { touch: true });
+      expect(await stamped(id)).toBeGreaterThanOrEqual(before - 1);
+      expect(await stamped(other.id)).toBeGreaterThanOrEqual(before - 1);
+    });
+
     test("[DI-1] a nested set creates the parents it needs", async () => {
       const { id } = await store.create({ title: "nested" });
       await store.updateOneByQuery({ id }, { "meta.a.b": 1 });

@@ -525,6 +525,42 @@ describe("DatabaseResolver declaration contracts", () => {
     expect(last()?.args[1]).not.toHaveProperty("withRemoved");
   });
 
+  test("threads { touch: false } from the facade and the filter primitives to the store, and leaves it out when on", async () => {
+    const { instance } = await bootModel<{
+      __store: ReturnType<typeof makeFakeStore>;
+      __updateMany: (query: unknown, update: unknown, options?: unknown) => Promise<unknown>;
+      __updateOne: (query: unknown, update: unknown, options?: unknown) => Promise<unknown>;
+      ServerResolverTestItem: {
+        updateMany: (query: unknown, update: unknown, options?: unknown) => Promise<unknown>;
+        updateById: (id: string, update: unknown, options?: unknown) => Promise<unknown>;
+      };
+    }>();
+    const model = instance.ServerResolverTestItem;
+    const last = () => instance.__store.calls.at(-1);
+    const news = { category: "news" };
+    const untouched = { touch: false };
+
+    await model.updateMany(news, { title: "Beta" }, untouched);
+    expect(last()).toEqual({ method: "updateManyByQuery", args: [news, { title: "Beta" }, untouched] });
+    await model.updateMany(news, { title: "Beta" }, { withRemoved: true, touch: false });
+    expect(last()?.args[2]).toStrictEqual({ withRemoved: true, touch: false });
+    await model.updateById("doc-1", { title: "Beta" }, untouched);
+    expect(last()).toEqual({ method: "updateOneByQuery", args: [{ id: "doc-1" }, { title: "Beta" }, untouched] });
+    await instance.__updateMany(news, { title: "Beta" }, untouched);
+    expect(last()).toEqual({ method: "updateManyByQuery", args: [news, { title: "Beta" }, untouched] });
+    await instance.__updateOne(news, { title: "Beta" }, untouched);
+    expect(last()).toEqual({ method: "updateOneByQuery", args: [news, { title: "Beta" }, untouched] });
+
+    for (const on of [undefined, { touch: true }]) {
+      await model.updateMany(news, { title: "Beta" }, on);
+      expect(last()?.args).toStrictEqual([news, { title: "Beta" }]);
+      await instance.__updateMany(news, { title: "Beta" }, on);
+      expect(last()?.args).toStrictEqual([news, { title: "Beta" }]);
+      await instance.__updateOne(news, { title: "Beta" }, on);
+      expect(last()?.args[2]).toBeUndefined();
+    }
+  });
+
   test("narrows the by-id facade writes to a single id query", async () => {
     const { instance } = await bootModel<{
       __store: ReturnType<typeof makeFakeStore>;
@@ -1123,8 +1159,8 @@ describe("ServiceResolver declaration contracts", () => {
       removeInCategory: (...args: unknown[]) => Promise<unknown>;
       removeOneInCategory: (...args: unknown[]) => Promise<unknown>;
       purgeInCategory: (...args: unknown[]) => Promise<unknown>;
-      updateInCategory: (...args: unknown[]) => { set: (update: unknown) => Promise<unknown> };
-      updateOneInCategory: (...args: unknown[]) => { set: (update: unknown) => Promise<unknown> };
+      updateInCategory: (...args: unknown[]) => { set: (update: unknown, options?: unknown) => Promise<unknown> };
+      updateOneInCategory: (...args: unknown[]) => { set: (update: unknown, options?: unknown) => Promise<unknown> };
     };
     const calls: { method: string; args: unknown[] }[] = [];
     service.__databaseModel = new Proxy(
@@ -1148,6 +1184,8 @@ describe("ServiceResolver declaration contracts", () => {
     expect(calls.at(-1)).toEqual({ method: "__purgeMany", args: [query] });
     await service.updateInCategory("news").set({ title: "Beta" });
     expect(calls.at(-1)).toEqual({ method: "__updateMany", args: [query, { title: "Beta" }] });
+    await service.updateInCategory("news").set({ title: "Beta" }, { touch: false });
+    expect(calls.at(-1)).toEqual({ method: "__updateMany", args: [query, { title: "Beta" }, { touch: false }] });
     await service.updateOneInCategory("news").set({ title: "Beta" });
     expect(calls.at(-1)).toEqual({ method: "__updateOne", args: [query, { title: "Beta" }] });
     const pending = service.updateInCategory("news");

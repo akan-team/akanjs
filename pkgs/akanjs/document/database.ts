@@ -3,7 +3,7 @@ import type { Logger } from "akanjs/common";
 import type { DocumentModel, QueryOf } from "akanjs/constant";
 import type { CacheAdaptor, CacheSetOptions, CacheValue } from "akanjs/service";
 import type { DataLoader } from "./dataLoader";
-import type { DocumentUpdateInput } from "./documentQuery";
+import type { DocumentTouchOptions, DocumentUpdateInput } from "./documentQuery";
 import type { ExtractQuery, ExtractSort, FilterInstance } from "./filterMeta";
 import type { Mdl, SaveEventListener, SaveEventType, UpdateResult } from "./into";
 import type { DataInputOf, FindQueryOption, ListQueryOption } from "./types";
@@ -61,7 +61,7 @@ export class CacheDatabase<_T = unknown> {
 }
 /** What `update<Filter>` returns: the patch cannot trail a filter's optional args, so it lands on `.set()`. */
 export interface UpdateChain<Doc = any> {
-  set(update: DocumentUpdateInput<Doc>): Promise<UpdateResult>;
+  set(update: DocumentUpdateInput<Doc>, options?: DocumentTouchOptions): Promise<UpdateResult>;
 }
 
 type QueryMethodOfKey<
@@ -158,8 +158,16 @@ export type DatabaseInstanceWithQuerySort<
   __removeMany: (query: _QueryOfDoc) => Promise<UpdateResult>;
   __removeOne: (query: _QueryOfDoc) => Promise<UpdateResult>;
   __purgeMany: (query: _QueryOfDoc) => Promise<number>;
-  __updateMany: (query: _QueryOfDoc, update: DocumentUpdateInput<Doc>) => Promise<UpdateResult>;
-  __updateOne: (query: _QueryOfDoc, update: DocumentUpdateInput<Doc>) => Promise<UpdateResult>;
+  __updateMany: (
+    query: _QueryOfDoc,
+    update: DocumentUpdateInput<Doc>,
+    options?: DocumentTouchOptions,
+  ) => Promise<UpdateResult>;
+  __updateOne: (
+    query: _QueryOfDoc,
+    update: DocumentUpdateInput<Doc>,
+    options?: DocumentTouchOptions,
+  ) => Promise<UpdateResult>;
   __list(query: _QueryOfDoc, queryOption?: _ListQueryOption): Promise<Doc[]>;
   __listIds(query: _QueryOfDoc, queryOption?: _ListQueryOption): Promise<string[]>;
   __find(query: _QueryOfDoc, queryOption?: _FindQueryOption): Promise<Doc | null>;
