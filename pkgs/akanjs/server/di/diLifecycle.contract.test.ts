@@ -7,6 +7,7 @@ import { type ConstantCls, type ConstantModel, ConstantRegistry, via } from "aka
 import { by, type DatabaseCls, DatabaseRegistry, from, into } from "akanjs/document";
 import { adapt, type LlmAdaptor, LlmAdaptorRole, ServiceModel, SolidPubSub, serve } from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
+import type { EndpointBuilder } from "../../signal/endpointInfo";
 import { Public } from "../../signal/guards";
 import { internal } from "../../signal/internal";
 import { serverSignal } from "../../signal/serverSignal";
@@ -80,7 +81,7 @@ const relationHolderConstant = ConstantRegistry.buildModel(
 
 const databaseModuleOf = (
   constant: ConstantModel,
-  option: { operationMode?: BaseEnv["operationMode"][] } = {},
+  option: { operationMode?: BaseEnv["operationMode"][]; remove?: false } = {},
 ): DatabaseModule => {
   const { refName, input, full, insight } = constant;
   class Filter extends from(full, () => ({ query: {}, sort: {} })) {}
@@ -99,10 +100,29 @@ const databaseModuleOf = (
   const service = ServiceModel.fromModel(Service, constant, database);
   class Internal extends internal(service, () => ({})) {}
   class Endpoint extends endpoint(service, () => ({})) {}
-  class Slice extends slice(service, { guards: { root: Public, get: Public, cru: Public } }, () => ({})) {}
+  class Slice extends slice(
+    service,
+    { guards: { root: Public, get: Public, cru: Public, ...(option.remove === false ? { remove: false } : {}) } },
+    () => ({}),
+  ) {}
   class Signal extends serverSignal(Endpoint, Internal) {}
   return { constant, database, service, signal: new DatabaseSignal(Internal, Endpoint, Slice, Signal) };
 };
+
+const NameHolderInput = via((f) => ({ label: f(String) }));
+const NameHolderObject = via(NameHolderInput, () => ({}));
+const NameHolderLight = via(NameHolderObject, ["label"] as const, () => ({}));
+const NameHolderFull = via(NameHolderObject, NameHolderLight, () => ({}));
+const NameHolderInsight = via(NameHolderFull, () => ({}));
+const nameHolderConstant = ConstantRegistry.buildModel(
+  "diNameHolder",
+  NameHolderInput,
+  NameHolderObject,
+  NameHolderFull,
+  NameHolderLight,
+  NameHolderInsight,
+  { NameHolderInput, NameHolderObject, NameHolderFull, NameHolderLight, NameHolderInsight },
+);
 
 describe("DiLifecycle declaration-to-runtime contract", () => {
   test("prepends default web proxies before library proxies", async () => {
@@ -357,6 +377,75 @@ describe("DiLifecycle duplicate registrations", () => {
         "[DI:internal] 2 duplicate registration(s):",
         '  • "subscribe" is registered by the init of "duplicateJobAlphaInternal" and by the init of "duplicateJobBetaInternal"',
         '  • "sync" is registered by the cron of "duplicateJobAlphaInternal" and by the interval of "duplicateJobBetaInternal"',
+      ].join("\n"),
+    );
+  });
+
+  const keeperOf = (refName: string, build: EndpointBuilder): ServiceModule => {
+    class KeeperService extends serve(refName, () => ({})) {}
+    const service = ServiceModel.from(KeeperService);
+    class Endpoint extends endpoint(service, build) {}
+    class Internal extends internal(service, () => ({})) {}
+    class Signal extends serverSignal(Endpoint, Internal) {}
+    return { service, signal: new ServiceSignal(Internal, Endpoint, Signal) };
+  };
+  const removeHolder: EndpointBuilder = (builder) => ({
+    removeDiNameHolder: builder.mutation(Boolean, { guards: [Public] }).exec(() => true),
+  });
+
+  test("refuses a custom endpoint named like another model's mounted generated one, naming both", async () => {
+    const DiLifecycle = await loadDiLifecycle("duplicateFetchName");
+
+    const lib = libOf("duplicateFetchNameTest", new AkanOption(), {
+      services: [keeperOf("diNameKeeper", removeHolder)],
+      databases: [databaseModuleOf(nameHolderConstant)],
+    });
+
+    expect(() => new DiLifecycle({ env: {} }, lib)).toThrow(
+      [
+        "[DI:fetch] 1 duplicate registration(s):",
+        '  • "removeDiNameHolder" is registered by the mutation "removeDiNameHolder" of "diNameKeeper" and by the generated CRUD of "diNameHolder"',
+      ].join("\n"),
+    );
+  });
+
+  test("boots when the model mounts no such verb, so the name is the custom endpoint's alone", async () => {
+    const DiLifecycle = await loadDiLifecycle("unmountedFetchName");
+
+    const lib = libOf("unmountedFetchNameTest", new AkanOption(), {
+      services: [keeperOf("diNameKeeper", removeHolder)],
+      databases: [databaseModuleOf(nameHolderConstant, { remove: false })],
+    });
+
+    expect(() => new DiLifecycle({ env: {} }, lib)).not.toThrow();
+  });
+
+  test("refuses two modules' pubsubs of one name, and a pubsub and a message sharing a socket route", async () => {
+    const DiLifecycle = await loadDiLifecycle("duplicateSocketName");
+
+    const pubsubOf: EndpointBuilder = (builder) => ({
+      diTick: builder
+        .pubsub(String, { guards: [Public] })
+        .room("roomId", String)
+        .exec(() => undefined),
+    });
+    const messageOf: EndpointBuilder = (builder) => ({
+      diTick: builder.message(String, { guards: [Public] }).exec(() => "ok"),
+    });
+    const twoPubsubs = libOf("duplicatePubsubTest", new AkanOption(), {
+      services: [keeperOf("diTickAlpha", pubsubOf), keeperOf("diTickBeta", pubsubOf)],
+    });
+    const pubsubAndMessage = libOf("duplicateSocketTest", new AkanOption(), {
+      services: [keeperOf("diTickAlpha", pubsubOf), keeperOf("diTickBeta", messageOf)],
+    });
+
+    expect(() => new DiLifecycle({ env: {} }, twoPubsubs)).toThrow(
+      '"subscribeDiTick" is registered by the pubsub "diTick" of "diTickAlpha" and by the pubsub "diTick" of "diTickBeta"',
+    );
+    expect(() => new DiLifecycle({ env: {} }, pubsubAndMessage)).toThrow(
+      [
+        "[DI:socket] 1 duplicate registration(s):",
+        '  • "diTick" is registered by the pubsub "diTick" of "diTickAlpha" and by the message "diTick" of "diTickBeta"',
       ].join("\n"),
     );
   });
