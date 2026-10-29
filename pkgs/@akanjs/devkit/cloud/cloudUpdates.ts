@@ -9,6 +9,7 @@ import { NativeApp } from "../mobile/nativeApp";
 import { NativePublicEnv } from "../mobile/nativePublicEnv";
 import { type NativeUpdatePack, UpdatePackFolder } from "../mobile/updatePackFolder";
 import { type AppBinaryDistribution, CloudApi } from "./cloudApi";
+import { CloudHttpError } from "./cloudHttpError";
 import { UpdatePackUpload } from "./updatePackUpload";
 
 //* A phone app's over-the-air updates through an Akan Cloud project, which keeps the signing key: a pack uploaded for
@@ -61,7 +62,7 @@ export class CloudUpdates {
       const release = await new UpdatePackUpload(this.cloudApi, this.devProjectId)
         .send(archive, { appName: pack.app, target: pack.target, platform: pack.platform, channel: target, notes })
         .catch((error: unknown) => {
-          throw CloudApi.refusal(error, "a pack is uploaded by a project member signed in with `akan login`");
+          throw CloudUpdates.#refusal(error, "a pack is uploaded by a project member signed in with `akan login`");
         });
       const label = `${pack.app} ${pack.target} ${pack.platform} on channel ${target}: release ${release.id}`;
       if (release.status === "rejected")
@@ -95,7 +96,7 @@ export class CloudUpdates {
       const record = await new UpdatePackUpload(this.cloudApi, this.devProjectId)
         .send(archive, { appName, target, platform, kind: "app", arch, channel, notes })
         .catch((error: unknown) => {
-          throw CloudApi.refusal(error, "a release is uploaded by a project member signed in with `akan login`");
+          throw CloudUpdates.#refusal(error, "a release is uploaded by a project member signed in with `akan login`");
         });
       const label = `${appName} ${target} ${platform}-${arch} on channel ${channel}: release ${record.id}`;
       const problems = (record.problems ?? []).map((problem) => `  - ${problem}`).join("\n");
@@ -111,6 +112,14 @@ export class CloudUpdates {
       if (problems) Logger.rawLog(`The project noted:\n${problems}`);
       return record;
     });
+  }
+
+  //? A 400 naming a release Err key is the project's verdict on the release, as a rejected one is: a retry changes nothing.
+  static #refusal(error: unknown, who: string) {
+    const refusal = CloudApi.refusal(error, who);
+    const verdict =
+      error instanceof CloudHttpError && error.status === 400 && !!error.errKey?.startsWith("release.error.");
+    return verdict && refusal instanceof Error ? new ExitCodeError(refusal.message, 2) : refusal;
   }
 
   //? The store build first, then a pack of the same commit: a server that registers the binary checks the pack runs in it.

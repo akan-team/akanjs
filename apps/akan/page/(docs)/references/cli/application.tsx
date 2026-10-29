@@ -1661,19 +1661,28 @@ akan pack-update myapp --platform ios --env main --against store/bundle.json`,
       {
         name: "push-update",
         signature:
-          "akan push-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>] [--pack <dir>] [--public-env <file>]",
+          "akan push-update <app> [--platform <platform>] [--arch <arch>] [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>] [--pack <dir>] [--public-env <file>]",
         desc: l.trans({
-          en: "Pack an update as `pack-update` does, or take the folder it wrote with `--pack`, and upload it to the Akan Cloud project, which keeps the key, signs and publishes it. The channel defaults to the target's `updates.channel`. It exits 2 when the pack needs a new store build or the project rejects it, and prints why; any other failure exits 1.",
-          ko: "`pack-update`처럼 업데이트를 묶거나 `--pack`으로 그 명령이 만든 폴더를 받아 Akan Cloud 프로젝트에 올립니다. 키 보관과 서명, 게시는 그 프로젝트가 합니다. 채널 기본값은 타깃의 `updates.channel`입니다. 팩에 새 스토어 빌드가 필요하거나 프로젝트가 팩을 거부하면 이유를 출력하고 2로 끝나며, 그 밖의 실패는 1로 끝납니다.",
+          en: "Pack an update as `pack-update` does, or take the folder it wrote with `--pack`, and upload it to the Akan Cloud project, which keeps the key, signs and publishes it. For a desktop app it uploads the release `publish-update` signed for the channel as it is, once its signature checks against `updates.publicKeys[0]`. The channel defaults to the target's `updates.channel`. It exits 2 when the pack needs a new store build or the project rejects the release, and prints why; any other failure exits 1.",
+          ko: "`pack-update`처럼 업데이트를 묶거나 `--pack`으로 그 명령이 만든 폴더를 받아 Akan Cloud 프로젝트에 올립니다. 키 보관과 서명, 게시는 그 프로젝트가 합니다. 데스크톱 앱이면 `publish-update`가 그 채널에 서명한 릴리스를 올리며, 서명이 `updates.publicKeys[0]`로 확인되면 그대로 올립니다. 채널 기본값은 타깃의 `updates.channel`입니다. 팩에 새 스토어 빌드가 필요하거나 프로젝트가 릴리스를 거부하면 이유를 출력하고 2로 끝나며, 그 밖의 실패는 1로 끝납니다.",
         }),
         options: [
           {
             name: "--platform",
             type: "String",
-            enumOrFlag: "ios | android",
+            enumOrFlag: "ios | android | desktop | macos | windows | linux",
             desc: l.trans({
-              en: "The app it updates. Required to pack; with `--pack` it defaults to the pack's.",
-              ko: "업데이트할 앱입니다. 묶을 때는 꼭 적고, `--pack`이면 기본값이 팩의 것입니다.",
+              en: "The app it updates; `desktop` is this computer's OS. Required to pack; with `--pack` it defaults to the pack's.",
+              ko: "업데이트할 앱이며, `desktop`은 이 컴퓨터의 OS입니다. 묶을 때는 꼭 적고, `--pack`이면 기본값이 팩의 것입니다.",
+            }),
+          },
+          {
+            name: "--arch",
+            type: "String",
+            enumOrFlag: "arm64 | x64",
+            desc: l.trans({
+              en: "The CPU of a desktop release. Defaults to this computer's.",
+              ko: "데스크톱 릴리스의 CPU입니다. 기본값은 이 컴퓨터의 것입니다.",
             }),
           },
           {
@@ -1739,6 +1748,7 @@ akan pack-update myapp --platform ios --env main --against store/bundle.json`,
           },
         ],
         examples: `akan push-update myapp --platform android --env main --notes "Fix the login screen"
+akan publish-update myapp --env main && akan push-update myapp --platform desktop --env main
 akan pack-update myapp --platform ios --env main --against store/bundle.json && akan push-update myapp --pack dist/native/myapp/default/updates/ios`,
       },
       {
