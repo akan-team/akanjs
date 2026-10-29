@@ -280,9 +280,10 @@ export class DatabaseResolver {
             timedQuery(() => store.pickOne(query, { select: projection })),
           pickById,
           // `AndWrite` saves through the document so save hooks run; `updateById` is the hookless query-level write.
-          pickAndWrite: async (id: string, rawData: any) => await (await pickById(id)).set(rawData).save(),
-          pickOneAndWrite: async (query: QueryOf<any>, rawData: any) =>
-            await (await timedQuery(() => store.pickOne(query))).set(rawData).save(),
+          pickAndWrite: async (id: string, rawData: any, options?: DocumentTouchOptions) =>
+            await (await pickById(id)).set(rawData).save(...touchArgs(options)),
+          pickOneAndWrite: async (query: QueryOf<any>, rawData: any, options?: DocumentTouchOptions) =>
+            await (await timedQuery(() => store.pickOne(query))).set(rawData).save(...touchArgs(options)),
           exists: async (query: QueryOf<any>, options?: DocumentScopeOptions) =>
             await timedQuery(() => store.exists(query, ...scopeArgs(options))),
           sample: (query: QueryOf<any>, size = 1) => timedQuery(() => store.find(query, { sample: size, limit: size })),

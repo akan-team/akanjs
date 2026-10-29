@@ -421,7 +421,7 @@ export class SqlDocumentStore {
 
   async update(id: string, patch: DocumentRecord, options: WriteHookOptions = {}) {
     const current = await this.pickByIdForWrite(id);
-    return await this.writeUpdatedDocument(id, { ...current, ...patch, id, updatedAt: dayjs() }, current, options);
+    return await this.writeUpdatedDocument(id, { ...current, ...patch, id }, current, options);
   }
 
   async remove(id: string) {
@@ -977,9 +977,9 @@ export class SqlDocumentStore {
     id: string,
     data: DocumentRecord,
     originalData: DocumentRecord,
-    { runSaveHooks = true, crudType = "update" }: WriteHookOptions = {},
+    { runSaveHooks = true, crudType = "update", touch = true }: WriteHookOptions = {},
   ) {
-    const prepared = this.prepareDocument({ ...data, id, updatedAt: dayjs() });
+    const prepared = this.prepareDocument({ ...data, id, updatedAt: touch ? dayjs() : originalData.updatedAt });
     this.#assertImmutableUnchanged(prepared, originalData);
     const doc = this.hydrate(prepared, originalData);
     // `update()` re-read the row rather than trusting the caller's document, so this is the stored pre-state.
@@ -988,7 +988,7 @@ export class SqlDocumentStore {
     await this.runHooks(crudType, crudType, doc, "pre", previous);
     const row = this.toRow(doc);
     const stored = (originalData as Record<symbol, StoredRow | undefined>)[SqlDocumentStore.#storedRow];
-    await this.#writeChanges(id, stored ?? this.toRow(originalData), row);
+    await this.#writeChanges(id, stored ?? this.toRow(originalData), row, touch);
     await this.runHooks(crudType, crudType, doc, "post", previous);
     if (runSaveHooks) await this.runHooks("save", crudType, doc, "post", previous);
     return this.#withStoredRow(doc, row);
@@ -998,11 +998,12 @@ export class SqlDocumentStore {
    * Merges only the fields that changed into the stored `_doc`, so a concurrent write to another field survives. A key
    * the stored row lacks is written out, which is what `q.missing` tells rows from before a field existed apart by.
    */
-  async #writeChanges(id: string, read: StoredRow, written: StoredRow) {
+  async #writeChanges(id: string, read: StoredRow, written: StoredRow, touch: boolean) {
     const before = SqlDocumentStore.#encodedFields(read);
     const after = SqlDocumentStore.#encodedFields(written);
-    const assignments = [`"updatedAt" = ?`];
-    const params: unknown[] = [written.updatedAt];
+    //? Self-assigned untouched, so a write that landed after the read keeps the updatedAt it stamped.
+    const assignments = [touch ? `"updatedAt" = ?` : `"updatedAt" = "updatedAt"`];
+    const params: unknown[] = touch ? [written.updatedAt] : [];
     for (const column of ["createdAt", "removedAt"] as const) {
       if (before.get(column) === after.get(column)) continue;
       assignments.push(`${quoteIdent(column)} = ?`);
@@ -1229,10 +1230,10 @@ export class SqlDocumentStore {
         },
       },
       save: {
-        async value(this: DocumentRecord) {
+        async value(this: DocumentRecord, { touch }: DocumentTouchOptions = {}) {
           if (!this.id) return store.create(this);
           store.#assertLiveRow(this);
-          return store.update(this.id as string, store.#changesOf(this));
+          return store.update(this.id as string, store.#changesOf(this), touch === false ? { touch } : {});
         },
       },
       refresh: {

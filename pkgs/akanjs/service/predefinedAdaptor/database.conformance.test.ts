@@ -316,6 +316,35 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(await stamped(other.id)).toBeGreaterThanOrEqual(before - 1);
     });
 
+    test("a save with `touch: false` runs the update hooks a live room hears and keeps updatedAt; without it updatedAt moves", async () => {
+      type Heard = { score?: number; updatedAt: { valueOf(): number } };
+      const heard: [number | undefined, number, number | undefined][] = [];
+      const schema = new DocumentSchema();
+      schema.post("update", function (this: Heard, _next, _type, previous?: Heard) {
+        heard.push([this.score, this.updatedAt.valueOf(), previous?.updatedAt.valueOf()]);
+      });
+      const hooked = await storeOf(driver, confConstant, confDatabase, schema);
+      const updatedAt = dayjs("2026-07-02T09:00:00Z");
+      const { id } = await hooked.create({ title: "nudge", score: 0, updatedAt });
+      const stamped = async () => (await hooked.pickById(id)).updatedAt.valueOf();
+
+      const nudged = await (await hooked.pickById(id)).save({ touch: false });
+      expect(nudged.updatedAt.valueOf()).toBe(updatedAt.valueOf());
+      await (await hooked.pickById(id)).set({ score: 1 }).save({ touch: false });
+      expect(await hooked.pickById(id)).toMatchObject({ score: 1 });
+      expect(await stamped()).toBe(updatedAt.valueOf());
+      const kept = updatedAt.valueOf();
+      expect(heard).toEqual([
+        [0, kept, kept],
+        [1, kept, kept],
+      ]);
+
+      const before = Date.now();
+      await (await hooked.pickById(id)).save();
+      expect(await stamped()).toBeGreaterThanOrEqual(before - 1);
+      expect(heard).toHaveLength(3);
+    });
+
     test("[DI-1] a nested set creates the parents it needs", async () => {
       const { id } = await store.create({ title: "nested" });
       await store.updateOneByQuery({ id }, { "meta.a.b": 1 });

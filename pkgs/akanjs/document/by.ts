@@ -1,6 +1,7 @@
 import { type Cls, FIELD_META, type GetActionObject } from "akanjs/base";
 import { applyMixins } from "akanjs/common";
 import { ConstantRegistry, type DocumentConstantModelRef, type DocumentModel, type FieldObject } from "akanjs/constant";
+import type { DocumentTouchOptions } from "./documentQuery";
 
 export type DatabaseCls<Schema = unknown> = Cls<Schema, { refName: string; [FIELD_META]: FieldObject }>;
 export type DatabaseInstanceOf<DatabaseRef extends DatabaseCls> = DatabaseRef extends new (
@@ -14,7 +15,7 @@ export interface DefaultDocMtds<TDocument> {
   refresh(): Promise<this>;
   isModified(field?: keyof TDocument & string): boolean;
   set(data: Partial<TDocument>): this;
-  save(): Promise<this>;
+  save(options?: DocumentTouchOptions): Promise<this>;
   toJSON(): DocumentModel<TDocument>;
   toObject(): DocumentModel<TDocument>;
 }
@@ -25,7 +26,7 @@ type HydratedDocumentMethods<TDocument, Self> = Omit<
   refresh(): Promise<Self>;
   isModified(field?: keyof TDocument & string): boolean;
   set(data: Partial<TDocument>): Self;
-  save(): Promise<Self>;
+  save(options?: DocumentTouchOptions): Promise<Self>;
 };
 type HydratedDocumentWithId<TDocument> = TDocument & { id: string } & HydratedDocumentMethods<TDocument, TDocument>;
 interface ChainableHydratedMethods<TDocument>
@@ -33,7 +34,7 @@ interface ChainableHydratedMethods<TDocument>
   refresh(): Promise<this>;
   isModified(field?: keyof TDocument & string): boolean;
   set(data: Partial<TDocument>): this;
-  save(): Promise<this>;
+  save(options?: DocumentTouchOptions): Promise<this>;
 }
 type ChainableHydratedDocument<TDocument> = TDocument & {
   id: string;
