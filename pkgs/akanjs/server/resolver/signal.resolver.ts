@@ -151,7 +151,7 @@ export class SignalResolver {
             return;
           }
           const serializedData = serializeFn(resolvedData) as object | object[] | null;
-          if (!serializedData) {
+          if (serializedData === null || serializedData === undefined) {
             this.logger.warn(`Failed to serialize data for ${key}`);
             return;
           }

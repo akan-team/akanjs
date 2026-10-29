@@ -10,6 +10,7 @@ import {
   HttpExecutionContext,
   isExceptionLike,
   type SerializedArg,
+  type SerializedEndpoint,
   type SerializedSignal,
   type SliceCls,
 } from "akanjs/signal";
@@ -2971,6 +2972,32 @@ describe("FetchClient websocket generation", () => {
     expect(published[0]).toBeInstanceOf(FetchTestLight);
     expect((published[0] as InstanceType<typeof FetchTestLight>).title).toBe("Published");
     expect(JSON.parse(ws.sent[2] ?? "{}")).toEqual({ key: "roomThing", data: ["room-1"], subscribe: false });
+  });
+
+  test("hands a subscriber a falsy value as it was published", async () => {
+    setFakeWebSocket();
+    const feed = (refName: string): SerializedEndpoint => ({
+      type: "pubsub",
+      args: [arg("room", "roomId")],
+      returns: { refName },
+    });
+    const client = new FetchClient(
+      "https://api.example",
+      {},
+      { falsy: { endpoint: { countFeed: feed("Int"), flagFeed: feed("Boolean"), noteFeed: feed("String") } } },
+    );
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const received: unknown[] = [];
+
+    for (const key of ["subscribeCountFeed", "subscribeFlagFeed", "subscribeNoteFeed"])
+      await client.handler[key]("r1", (data: unknown) => received.push(data));
+    ws.receive({ type: "pub", roomId: "countFeed-r1", data: 0 });
+    ws.receive({ type: "pub", roomId: "flagFeed-r1", data: false });
+    ws.receive({ type: "pub", roomId: "noteFeed-r1", data: "" });
+
+    expect(received).toEqual([0, false, ""]);
   });
 
   test("hands a binary frame to its room as bytes, and leaves the JSON rooms on the same socket alone", async () => {
