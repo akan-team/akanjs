@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { Any, dayjs, Int } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { type ConstantModel, ConstantRegistry, via } from "akanjs/constant";
@@ -1000,6 +1000,50 @@ const describeDriver = (kind: SqlDriverKind) => {
         seen.push("now");
       });
       expect(seen).toEqual(["body", "after:1", "now"]);
+    });
+
+    test("a throwing afterCommit is logged, not thrown: the transaction keeps its value and later callbacks run", async () => {
+      const ledger = ledgerOn(driver);
+      const serviceErrors = spyOn(ledger.logger, "error").mockImplementation(() => undefined);
+      const adaptorErrors = spyOn((driver.database as unknown as Adaptor).logger, "error").mockImplementation(
+        () => undefined,
+      );
+      try {
+        const seen: string[] = [];
+        const settled = await ledger.transaction(async () => {
+          await store.create({ title: "committed" });
+          await ledger.afterCommit(() => {
+            throw new Error("service-hook-failed");
+          });
+          await driver.database.afterCommit(async () => {
+            await Promise.resolve();
+            throw new Error("queued-hook-failed");
+          });
+          await ledger.afterCommit(() => {
+            seen.push("later");
+          });
+          return "settled";
+        });
+        await ledger.afterCommit(() => {
+          throw new Error("at-once-failed");
+        });
+        await ledger.afterCommit(() => {
+          seen.push("after-at-once");
+        });
+
+        expect(settled).toBe("settled");
+        expect(titlesOf(await store.find({}))).toEqual(["committed"]);
+        expect(seen).toEqual(["later", "after-at-once"]);
+        const messagesOf = (spy: typeof serviceErrors) => spy.mock.calls.map(([message]) => String(message));
+        expect(messagesOf(serviceErrors)).toEqual([
+          expect.stringContaining("service-hook-failed"),
+          expect.stringContaining("at-once-failed"),
+        ]);
+        expect(messagesOf(adaptorErrors)).toEqual([expect.stringContaining("queued-hook-failed")]);
+      } finally {
+        serviceErrors.mockRestore();
+        adaptorErrors.mockRestore();
+      }
     });
 
     // A transaction holding the row makes both writes read it as matching before either can take it.

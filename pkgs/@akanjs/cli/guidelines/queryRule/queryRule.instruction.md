@@ -124,8 +124,9 @@ this is the full contract behind them.
   when the body resolves, returns its value, and rolls back when it throws, rethrowing that error unchanged. A
   server has one database, so it covers every model, hooks and query-level writes included; a nested call joins the
   outer one, with no savepoint. Cache, `memory` and outside calls are not in it — hand them to
-  `this.afterCommit(fn)`, run once the commit lands, never after a rollback, at once outside one. On SQLite it holds
-  the only write turn: keep it short. `@Transaction()` is deprecated.
+  `this.afterCommit(fn)`, run once the commit lands, never after a rollback, at once outside one; one that throws is
+  logged, never thrown, and the rest still run. On SQLite it holds the only write turn: keep it short.
+  `@Transaction()` is deprecated.
 
 ## Text Search In A Filter — `q.search()`
 

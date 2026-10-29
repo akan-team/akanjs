@@ -333,7 +333,7 @@ A backup moves through several steps, and the slow part runs later as a queued j
 
 Writes that must land together go in one transaction, and the message about them waits for its commit:
 
-**Load, save, then notify.** Load every document the action needs, save, and only then call signals or other services — inside a transaction, through `afterCommit`.
+**Load, save, then notify.** Load every document the action needs, save, and only then call signals or other services — inside a transaction, through `afterCommit`, where a callback that throws is logged, not thrown, since the writes are already in.
 
 **A transaction covers every model**, since a server has one database. A call inside another joins it, and the error that rolls it back reaches you unchanged. Cache, `memory` and outside calls are not in it, and on SQLite it holds the only write turn, so keep it short and never wait on the network inside.
 

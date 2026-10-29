@@ -1698,13 +1698,15 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
                   en: (
                     <span>
                       <strong>Load, save, then notify.</strong> Load every document the action needs, save, and only
-                      then call signals or other services — inside a transaction, through <code>afterCommit</code>.
+                      then call signals or other services — inside a transaction, through <code>afterCommit</code>,
+                      where a callback that throws is logged, not thrown, since the writes are already in.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>불러오고, 저장하고, 그다음 알립니다.</strong> 필요한 document를 모두 불러와 저장한 뒤에야
                       signal이나 다른 service를 부릅니다. transaction 안이라면 <code>afterCommit</code>으로 부릅니다.
+                      쓰기는 이미 반영됐으므로, 거기서 던진 에러는 로그로만 남고 호출자에게 던져지지 않습니다.
                     </span>
                   ),
                 })}

@@ -10,6 +10,7 @@ import {
   injectionBuilder,
 } from "./injectInfo";
 import type { DatabaseAdaptor } from "./predefinedAdaptor";
+import { AfterCommitHooks } from "./predefinedAdaptor/sql/AfterCommitHooks";
 import type { DatabaseService, DatabaseServiceForModel } from "./types";
 
 interface ServiceOptions {
@@ -159,7 +160,7 @@ export function serve(
       return await databaseOf(this, "transaction").transaction(fn);
     }
     async afterCommit(fn: () => PromiseOrObject<void>) {
-      await databaseOf(this, "afterCommit").afterCommit(fn);
+      await databaseOf(this, "afterCommit").afterCommit(() => AfterCommitHooks.run(fn, this.logger));
     }
   };
   applyMixins(srvRef, extSrvs, avoidKeys);
