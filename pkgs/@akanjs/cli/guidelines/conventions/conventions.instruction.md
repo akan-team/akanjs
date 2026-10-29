@@ -395,9 +395,9 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
   wrong JSON type, a value outside its enum or a missing required field answers 400 with `data.name` naming the
   path (`data.items.2.price`); a defaulted field may be left out, an undeclared key is dropped, and a stored model's
   input keeps an absent field absent.
-- **Reserved names**: generated CRUD (`create<Model>`, `update<Model>`, `remove<Model>`, …) exists for every model.
-  The service layer reports a collision as a typecheck error, but a colliding signal name can pass sync, typecheck
-  and build and fail at runtime — treat it as an error.
+- **Reserved names**: generated CRUD (`create<Model>`, `update<Model>`, `remove<Model>`, …) exists for every model
+  whose slice mounts the verb. `fetch.*` is one namespace across modules and a pubsub or message is routed by its bare
+  name, so the server refuses to boot on two claims of one name (`[DI:fetch]`, `[DI:socket]`), naming both.
 - **Queries (`queryRule`)**: the root slice takes `queryKey` + `args`, never a raw query. A slice `exec` returns a
   `query<Filter>(…)` descriptor (never a `list<Filter>` array) and is paged through `initX(…, { sort, page, limit })`.
   A projection is bare on the facade (`pickById(id, { secret: true })`), under `select` on a filter accessor — the

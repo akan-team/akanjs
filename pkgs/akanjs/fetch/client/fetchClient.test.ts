@@ -197,6 +197,55 @@ describe("FetchClient registering an endpoint named like another model's generat
   });
 });
 
+describe("FetchClient.claimsOf", () => {
+  const capped = (key: string) => key.charAt(0).toUpperCase() + key.slice(1);
+  const everyName = (refName: string, suffixes: string[], endpointKeys: string[]) => {
+    const cap = capped(refName);
+    return [
+      ...[refName, `light${cap}`, `create${cap}`, `update${cap}`, `remove${cap}`, `merge${cap}`, `add${cap}Files`],
+      ...[`view${cap}`, `get${cap}View`, `edit${cap}`, `get${cap}Edit`],
+      ...suffixes.flatMap((suffix) =>
+        ["List", "Insight", "Live"]
+          .flatMap((part) => [`${refName}${part}${capped(suffix)}`, `subscribe${cap}${part}${capped(suffix)}`])
+          .concat(`init${cap}${capped(suffix)}`, `get${cap}Init${capped(suffix)}`),
+      ),
+      ...endpointKeys.flatMap((key) => [key, `subscribe${capped(key)}`, `listen${capped(key)}`]),
+    ];
+  };
+  const returns = { refName: "String" };
+  const signals: { [label: string]: SerializedSignal } = {
+    "every verb": appWidget({ cruGuards: ["Admin"] }),
+    "no write verb": appWidget({ cruGuards: ["None"] }),
+    "remove denied": appWidget({ cruGuards: ["Admin"], crud: { remove: false } }),
+    "get denied": appWidget({ cruGuards: ["Admin"], crud: { get: false } }),
+    "live slice and socket endpoints": appWidget({
+      slice: { "": root, inOrg: { args: [], guards: ["User"], live: { sort: [] } } },
+      endpoint: {
+        rename: { type: "mutation", args: [], returns, guards: ["User"] },
+        tick: { type: "pubsub", args: [], returns, guards: ["User"] },
+        ping: { type: "message", args: [], returns, guards: ["User"] },
+      },
+    }),
+  };
+
+  for (const [label, signal] of Object.entries(signals))
+    test(`names exactly the handlers the client registers: ${label}`, () => {
+      const claimed = new Set(FetchClient.claimsOf("widget", signal).handlers.map(({ key }) => key));
+      const client = new FetchClient("", {}, { widget: signal });
+      for (const key of everyName("widget", Object.keys(signal.slice ?? {}), Object.keys(signal.endpoint)))
+        expect([key, key in client.handler]).toEqual([key, claimed.has(key)]);
+    });
+
+  test("names the bare socket route of each pubsub and message, a live slice's included", () => {
+    const { sockets } = FetchClient.claimsOf("widget", signals["live slice and socket endpoints"] as SerializedSignal);
+    expect(sockets.map(({ key, by }) => `${key} ← ${by}`).sort()).toEqual([
+      'ping ← the message "ping"',
+      'tick ← the pubsub "tick"',
+      'widgetLiveInOrg ← the slice "inOrg"',
+    ]);
+  });
+});
+
 describe("FetchClient merging a model's fields", () => {
   const thrownBy = (call: () => unknown) => {
     try {
