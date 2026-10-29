@@ -2,6 +2,7 @@ import type { BackendEnv, PromiseOrObject } from "akanjs/base";
 import type { Adaptor, AdaptorCls, LlmOption } from "akanjs/service";
 import type {
   AgentQuotaHook,
+  AgentRequestPolicy,
   AgentUsageHook,
   CrossSiteOption,
   GuardCls,
@@ -25,6 +26,7 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   readonly #getLlms: ((env: Env) => LlmOption)[] = [];
   #getMcp: ((env: Env) => boolean | McpServerOption) | undefined;
   #agentAccess: GuardCls | GuardCls[] | null | undefined;
+  #agentRequestPolicy: AgentRequestPolicy | null | undefined;
   #agentUsage: AgentUsageHook | null | undefined;
   #agentQuota: AgentQuotaHook | null | undefined;
   #crossSite: CrossSiteOption | undefined;
@@ -56,6 +58,14 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   /** Guards for the `runAgentTurn` relay: with none every call is refused, several are ANDed, `null` clears a lib's. */
   setAgentAccess(guards: GuardCls | GuardCls[] | null) {
     this.#agentAccess = guards;
+    return this;
+  }
+  /**
+   * Sees each relayed turn after the access guard, before the quota and the model, and returns the request to send: a
+   * server-fixed lead to `instructions`, an allowlist of tools, caps. A thrown `Err` refuses it; `null` clears a lib's.
+   */
+  setAgentRequestPolicy(policy: AgentRequestPolicy | null) {
+    this.#agentRequestPolicy = policy;
     return this;
   }
   /** Called once per relayed turn with the provider's token counts, after the answer is sent; `null` clears a lib's. */
@@ -105,6 +115,9 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   }
   getAgentAccess(): GuardCls | GuardCls[] | null | undefined {
     return this.#agentAccess;
+  }
+  getAgentRequestPolicy(): AgentRequestPolicy | null | undefined {
+    return this.#agentRequestPolicy;
   }
   getAgentUsage(): AgentUsageHook | null | undefined {
     return this.#agentUsage;

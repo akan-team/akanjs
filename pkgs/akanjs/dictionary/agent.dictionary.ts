@@ -38,6 +38,7 @@ export const agentDictionary = serviceDictionary(["en", "ko"])
       "The agent's usage limit for this account has been reached",
       "이 계정의 에이전트 사용 한도에 도달했습니다.",
     ],
+    requestRefused: ["This app's agent does not take this request", "이 앱의 에이전트는 이 요청을 받지 않습니다."],
   });
 
 export const agentTurnDictionary = scalarDictionary(["en", "ko"])

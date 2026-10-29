@@ -14,6 +14,7 @@ import type {
 } from "akanjs/service";
 import type { ServerSignal, ServerSignalCls, WebsocketPublishData } from "akanjs/signal";
 import { AgentMeter } from "../signal/agentMeter";
+import { AgentRelayPolicy } from "../signal/agentRelayPolicy";
 import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { EndpointRateLimit } from "../signal/endpointRateLimit";
 import { AgentRelayAccess } from "../signal/guards";
@@ -226,6 +227,8 @@ export class AkanServer {
       if (mcp !== undefined) this.setMcp(mcp);
       const agentAccess = lib.option.getAgentAccess();
       if (agentAccess !== undefined) AgentRelayAccess.use(agentAccess);
+      const agentRequestPolicy = lib.option.getAgentRequestPolicy();
+      if (agentRequestPolicy !== undefined) AgentRelayPolicy.use(agentRequestPolicy);
       const [usage, quota] = [lib.option.getAgentUsage(), lib.option.getAgentQuota()];
       if (usage !== undefined || quota !== undefined) AgentMeter.use({ usage, quota });
       const crossSite = lib.option.getCrossSite();

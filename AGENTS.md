@@ -434,7 +434,8 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
   screen with `page().prompt(name, description)`, and publish one component a host draws with
   `page().app(name, description, load)` — a read-only tool whose `load` may only query.
 - **In-page agent (`agentRule`)**: mount `<Agent.Chat />` once in a layout; it never executes tools and refuses
-  every call until `option.setAgentAccess(<guard>)`; the LLM is `option.setLlm({ apiKey, model, host })`, never env.
+  every call until `option.setAgentAccess(<guard>)`, which decides who — what a turn may ask is
+  `option.setAgentRequestPolicy`; the LLM is `option.setLlm({ apiKey, model, host })`, never env.
   The surface is what components declare — `st.tool(…).exec(fn)` beside its control, `st.use` / `st.sel` /
   `st.ref` keys — never a store class. `st.use.x({ agent: false })` hides a key; its model's `hidden` / `secret` /
   `visual` fields are stripped at read. A tool value is capped at 20,000 characters. Route guidance is
