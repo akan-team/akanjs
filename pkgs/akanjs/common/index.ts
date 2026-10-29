@@ -82,6 +82,7 @@ export {
 } from "./fileUpload";
 export { formatNumber } from "./formatNumber";
 export { type AkanHmrPhase, getAkanHmrPhase, isAkanHmrApplying } from "./hmrPhase";
+export { IpLiteral } from "./IpLiteral";
 export { interpolateTranslation } from "./interpolateTranslation";
 export { isDayjs } from "./isDayjs";
 export { isEmail } from "./isEmail";

@@ -2179,12 +2179,14 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      Copy <code>package.json</code> and run <code>bun install --production</code>.
+                      Copy <code>package.json</code> and <code>bun.lock</code>, then run{" "}
+                      <code>bun install --production --frozen-lockfile</code>.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <code>package.json</code>을 복사하고 <code>bun install --production</code>을 실행합니다.
+                      <code>package.json</code>과 <code>bun.lock</code>을 복사하고{" "}
+                      <code>bun install --production --frozen-lockfile</code>을 실행합니다.
                     </span>
                   ),
                 })}
@@ -2274,8 +2276,8 @@ const config: AppConfig = {
     "ARG TARGETARCH",
     "RUN mkdir -p /workspace",
     "WORKDIR /workspace",
-    "COPY ./package.json ./package.json",
-    "RUN bun install --production",
+    "COPY ./package.json ./bun.lock ./",
+    "RUN bun install --production --frozen-lockfile",
     "COPY . .",
     "ENV PORT=8282",
     "ENV NODE_ENV=production",

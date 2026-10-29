@@ -250,7 +250,8 @@ query-level writes are in `queryRule`; these are the shapes that build green and
   a `list<Filter>(...)` / `listBy...(...)` array. Returning an array type-checks but fails at runtime with
   `Unknown document field path: 0`. (See Recipe 3.)
 - **Custom endpoint names must not collide with generated CRUD.** `create/update/remove/view/edit/merge<Model>`
-  already exist. A collision can build green and fail only at runtime — pick a distinct verb.
+  already exist wherever the slice mounts the verb. A collision builds green and the server refuses to boot
+  (`[DI:fetch]`) — pick a distinct verb.
 - **Numbers are `Int` or `Float`, never `Number`.** `field(Number)` / `.body("x", Number)` fail to typecheck.
 - **Array fields use `field([T])`** — `tags: field([String])`, `images: field([File])`.
 - **Reading a secret field needs an explicit select, and the two call sites spell it differently.**
