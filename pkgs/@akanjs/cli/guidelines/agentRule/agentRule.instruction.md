@@ -630,7 +630,7 @@ pages declaring one name never clash, and a registry kept outside the surface re
 
 ## Built-In Tools
 - The framework publishes six built-ins on every store surface: `navigate` (internal paths only, the same router
-  `Link` rides), `goBack` (this session's history — global, because history is not a control a page owns and a page
+  `Link` rides, so the app's navigation guards are asked and a refusal is reported as a kept page), `goBack` (this session's history — global, because history is not a control a page owns and a page
   that draws no back link is not one you may not leave — a screen that must not be left withholds them with `builtins`,
   not with prose), `readScreen` (the rendered DOM as compact text — headings, links, control values, and `(disabled)`
   on a control or button that has it; the chat's own UI is skipped via `data-agent-ui`, and a password value is never

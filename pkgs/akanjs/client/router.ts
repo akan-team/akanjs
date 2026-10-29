@@ -1,8 +1,9 @@
 import { getEnv } from "akanjs/base";
 import { getBasePathFromPathname, Logger, parseAkanI18nEnv, parseBasePaths, trimSlashes } from "akanjs/common";
-import { csrLocation } from "./csrLocation";
+import { CsrLocation, csrLocation } from "./csrLocation";
 import { Href } from "./href";
 import { isMcpView } from "./mcpView";
+import { type Navigation, type NavigationGuard, NavigationGuards, NavigationRefused } from "./navigationGuards";
 
 export interface RouteOptions {
   scrollToTop?: boolean;
@@ -194,6 +195,9 @@ class Router {
   #backsAwaitingPopstate = 0;
   #redirects = 0;
   #navigations = 0;
+  #guards = new NavigationGuards();
+  //? The popstates this router's own `history.go` and an allowed `back` cause, by the entry index each lands on.
+  #expectedPops: { idx: number; isAllowed: boolean; onLand?: () => void }[] = [];
   //? A page's mount effects run before the root layout's, and the root layout is what initializes the client router.
   #beforeInit: (() => void)[] = [];
   #instance: RouterInstance = {
@@ -318,13 +322,61 @@ class Router {
     csrLocation.replace({ ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } });
     if (this.#listensToPopstate || !globalThis.window.addEventListener) return;
     this.#listensToPopstate = true;
-    globalThis.window.addEventListener("popstate", (event) => {
-      const nextState = ((event.state as Record<string, unknown> | null)?.__akanRouter ?? {}) as { idx?: number };
-      if (Number.isInteger(nextState.idx)) this.#historyIdx = nextState.idx as number;
-      if (this.#backsAwaitingPopstate === 0) return;
-      this.#backsAwaitingPopstate -= 1;
-      this.postPathChange(this.#getPathInfo(csrLocation.href));
+    //? Capturing, so a refused move is undone before a shell's own listener draws the page it landed on.
+    globalThis.window.addEventListener("popstate", (event) => this.#onPopstate(event), true);
+    globalThis.window.addEventListener("hashchange", () => csrLocation.observe());
+  }
+  #onPopstate(event: PopStateEvent) {
+    const left = csrLocation.entry();
+    const landed = CsrLocation.idxOf(event.state);
+    const expected = this.#expectedPops.shift();
+    if (expected && expected.idx === landed) {
+      expected.onLand?.();
+      if (expected.isAllowed) this.#landOn(landed);
+      else {
+        event.stopImmediatePropagation();
+        csrLocation.observe();
+      }
+      return;
+    }
+    if (expected) this.#expectedPops.length = 0;
+    if (left.idx === undefined || landed === undefined || landed === left.idx || !this.#asks(null)) {
+      this.#landOn(landed);
+      return;
+    }
+    const leftIdx = left.idx;
+    const navigation: Navigation = {
+      kind: "pop",
+      from: this.#routeShown(left.href),
+      to: this.#routeShown(csrLocation.href),
+    };
+    const verdict = this.#guards.decide(navigation);
+    if (verdict === true) {
+      this.#landOn(landed);
+      return;
+    }
+    event.stopImmediatePropagation();
+    const reverted = this.#traverse(landed, leftIdx, false);
+    if (verdict === false) return;
+    //? A traversal started before the last one lands may cancel it, so the replay waits for the undo.
+    void Promise.all([verdict, reverted]).then(([isAllowed]) => {
+      if (isAllowed) void this.#traverse(leftIdx, landed, true);
     });
+  }
+  #traverse(from: number, to: number, isAllowed: boolean) {
+    return new Promise<void>((onLand) => {
+      this.#expectedPops.push({ idx: to, isAllowed, onLand });
+      globalThis.window.history.go(to - from);
+    });
+  }
+  #landOn(idx: number | undefined) {
+    if (idx !== undefined) this.#historyIdx = idx;
+    csrLocation.observe();
+    //? The RSC client stamps an entry a fragment link pushed in its own listener, after this one.
+    if (idx === undefined) setTimeout(() => csrLocation.observe(), 0);
+    if (this.#backsAwaitingPopstate === 0) return;
+    this.#backsAwaitingPopstate -= 1;
+    this.postPathChange(this.#getPathInfo(csrLocation.href));
   }
 
   #rememberHistoryState(kind: "push" | "replace") {
@@ -425,9 +477,16 @@ class Router {
     const stack = this.resolveDeepLinkStack(href);
     if (stack.length === 0) return false;
     const { resetStack: _resetStack, ...routeOptions } = options;
-    this.replace(stack[0], routeOptions);
-    stack.slice(1).forEach((target, index) => {
-      setTimeout(() => this.push(target, routeOptions), DEEP_LINK_STACK_STEP_DELAY * (index + 1));
+    //? Asked once: the steps under the page are one move.
+    this.#guarded("replace", normalizeDeepLinkHref(href), () => {
+      const moved = this.#move("replace", stack[0], routeOptions);
+      stack.slice(1).forEach((target, index) => {
+        setTimeout(
+          () => this.#track(this.#move("push", target, routeOptions)),
+          DEEP_LINK_STACK_STEP_DELAY * (index + 1),
+        );
+      });
+      return moved;
     });
     return true;
   }
@@ -435,24 +494,61 @@ class Router {
     if (this.#deferredUntilInit(() => this.push(href, routeOptions))) return undefined as never;
     this.#checkInitialized();
     if (this.#refusesOffsite("push", href, routeOptions)) return undefined as never;
-    this.#navigations += 1;
-    this.#track(this.#instance.push(href, routeOptions));
-    this.#rememberHistoryState("push");
-    this.#postDevSyncNavigation("push", href);
+    this.#guarded("push", href, () => this.#move("push", href, routeOptions));
     return undefined as never;
   }
   replace(href: string, routeOptions?: RouteOptions) {
     if (this.#deferredUntilInit(() => this.replace(href, routeOptions))) return undefined as never;
     this.#checkInitialized();
     if (this.#refusesOffsite("replace", href, routeOptions)) return undefined as never;
-    this.#navigations += 1;
-    this.#track(this.#instance.replace(href, routeOptions));
-    this.#rememberHistoryState("replace");
-    this.#postDevSyncNavigation("replace", href);
+    this.#guarded("replace", href, () => this.#move("replace", href, routeOptions));
     return undefined as never;
   }
-  /** The last `push`/`replace`; rejects when the route refused to move. A method, not a getter: through the `router`
-   * Proxy a getter would run with the Proxy as `this` and fail on the private field. */
+  #move(kind: "push" | "replace", href: string, routeOptions?: RouteOptions) {
+    this.#navigations += 1;
+    const moved = this.#instance[kind](href, routeOptions);
+    this.#rememberHistoryState(kind);
+    this.#postDevSyncNavigation(kind, href);
+    return moved;
+  }
+  /**
+   * Asks `guard` before every in-app move — `push`, `replace`, `back`, a `Link`, the browser's back and forward, the
+   * agent's navigate — and keeps the page when it answers `false`; returns the call that removes it. A redirect, a
+   * not-found, a locale switch and a move off the origin are not asked.
+   */
+  addNavigationGuard(guard: NavigationGuard) {
+    return this.#guards.add(guard);
+  }
+  #guarded(kind: "push" | "replace" | "back", href: string | null, move: () => void | Promise<void>) {
+    if (!this.#asks(href)) return this.#track(move());
+    const navigation: Navigation = {
+      kind,
+      from: this.#routeShown(csrLocation.href),
+      to: href === null ? null : Router.#routeHref(this.#getPathInfo(href)),
+    };
+    const verdict = this.#guards.decide(navigation);
+    if (verdict === true) return this.#track(move());
+    this.#track(
+      Promise.resolve(verdict).then((isAllowed) => {
+        if (!isAllowed) throw new NavigationRefused(navigation);
+        return move();
+      }),
+    );
+  }
+  //? A dev screen replaying a sibling's move was asked over there, and a move off the origin unloads the document,
+  //? which only `beforeunload` can hold.
+  #asks(href: string | null) {
+    if (this.#guards.size === 0 || globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return false;
+    return href === null || !this.#leavesOrigin(href);
+  }
+  #routeShown(href: string) {
+    return Router.#routeHref(this.#getVisiblePathInfo(href));
+  }
+  static #routeHref({ path, search, hash }: { path: string; search: string; hash: string }) {
+    return `${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
+  }
+  /** The last `push`, `replace` or `back`; rejects when a navigation guard or the route refused to move. A method, not
+   * a getter: through the `router` Proxy a getter would run with the Proxy as `this` and fail on the private field. */
   navigation(): Promise<void> {
     return this.#navigation;
   }
@@ -496,8 +592,12 @@ class Router {
   back(routeOptions?: RouteOptions) {
     if (getEnv().side === "server") throw new Error("back is only available in client side");
     this.#checkInitialized();
-    this.#navigations += 1;
-    this.#instance.back(routeOptions);
+    this.#guarded("back", null, () => {
+      this.#navigations += 1;
+      const idx = this.#guards.size ? csrLocation.entry().idx : undefined;
+      if (idx !== undefined) this.#expectedPops.push({ idx: idx - 1, isAllowed: true });
+      this.#instance.back(routeOptions);
+    });
     return undefined as never;
   }
   refresh() {

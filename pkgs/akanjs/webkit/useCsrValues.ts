@@ -470,7 +470,12 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         else void transUnit.start(transUnitRange[1], { config: { duration } });
         unlockPageScroll();
         gestureIntent.current = "pending";
-        if (shouldComplete) clientRouter.back();
+        if (!shouldComplete) return;
+        clientRouter.back();
+        void clientRouter.navigation().catch(() => {
+          stackBackConfigRef.current = null;
+          void transUnit.start(transUnitRange[1], { config: { duration } });
+        });
       }
     },
     { filterTaps: true },
@@ -549,7 +554,9 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
       else if (my > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
       else if (!last) void transUnit.start(my, { immediate: true });
       else if (my < threshold) void transUnit.start(transUnitRange[1]);
-      if (last && my > threshold) clientRouter.back();
+      if (!last || my <= threshold) return;
+      clientRouter.back();
+      void clientRouter.navigation().catch(() => transUnit.start(transUnitRange[1]));
     },
     { axis: "y", filterTaps: true, threshold: 10 },
   );
@@ -1301,7 +1308,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     path: resolvedLocation.pathRoute.path,
     keyboardHeight: keyboardFrame.height,
     keyboardVisible: keyboardFrame.visible,
-    router,
+    router: clientRouter,
   });
 
   useEffect(() => {
@@ -1330,10 +1337,10 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
       path: resolvedLocation.pathRoute.path,
       keyboardHeight: keyboardFrame.height,
       keyboardVisible: keyboardFrame.visible,
-      router,
+      router: clientRouter,
     };
     nativeNavigation.current?.syncBack();
-  }, [keyboardFrame.height, keyboardFrame.visible, resolvedLocation.pathRoute.path, router]);
+  }, [keyboardFrame.height, keyboardFrame.visible, resolvedLocation.pathRoute.path]);
 
   const backFollow = useRef(csrTransition);
   backFollow.current = csrTransition;

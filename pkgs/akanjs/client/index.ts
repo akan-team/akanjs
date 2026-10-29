@@ -12,6 +12,7 @@ export * from "./locale";
 export * from "./makePageProto";
 export * from "./mcpView";
 export * from "./nativeHost";
+export * from "./navigationGuards";
 export * from "./resolveServerUrl";
 export * from "./route";
 export * from "./router";

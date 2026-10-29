@@ -212,8 +212,15 @@ export default page()
       {
         name: "navigation()",
         desc: l.trans({
-          en: "The last push or replace as a promise. It rejects when the route refused to move.",
-          ko: "마지막 push·replace를 promise로 돌려줍니다. route가 이동을 거부하면 reject됩니다.",
+          en: "The last push, replace or back as a promise. It rejects when a navigation guard or the route refused to move.",
+          ko: "마지막 push·replace·back을 promise로 돌려줍니다. navigation guard나 route가 이동을 거부하면 reject됩니다.",
+        }),
+      },
+      {
+        name: "addNavigationGuard(guard)",
+        desc: l.trans({
+          en: "Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover.",
+          ko: "앱 안의 이동마다 먼저 `guard({ kind, from, to })`를 묻고, `false`면 페이지에 머뭅니다. 해제 함수를 돌려줍니다.",
         }),
       },
     ];
@@ -1323,6 +1330,30 @@ export class ProjectStore extends store(sig.project, () => ({
                       바꾸며, 그런 항목 사이의 뒤로·앞으로 가기도 그대로 shallow입니다. 클라이언트 컴포넌트는 바로 보고,
                       서버 컴포넌트의 <code>.search()</code>는 다음 전체 이동 때 봅니다. 경로가 다르거나 CSR 앱이면
                       평소처럼 이동합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A navigation guard keeps an unsaved page.</strong> It is asked for <code>push</code>,{" "}
+                      <code>replace</code>, <code>back</code>, a <code>Link</code>, the browser's back and forward, a
+                      native back or swipe, and the agent's <code>navigate</code>; a refused browser back is undone
+                      before the page changes. A guard that throws or rejects keeps the page too, and a move made while
+                      one is still deciding is refused. Redirects, <code>notFound()</code>, <code>setLang</code> and
+                      moves off the origin are not asked — closing the tab is <code>beforeunload</code>'s.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>navigation guard는 저장하지 않은 페이지를 지킵니다.</strong> <code>push</code>,{" "}
+                      <code>replace</code>, <code>back</code>, <code>Link</code>, 브라우저 뒤로·앞으로 가기, 네이티브
+                      뒤로 버튼과 스와이프, 에이전트의 <code>navigate</code>에서 물으며, 거부한 브라우저 뒤로 가기는
+                      화면이 바뀌기 전에 되돌립니다. throw하거나 reject하는 guard도 페이지에 머물게 하고, guard가 아직
+                      답하는 중에 시작한 이동은 거부합니다. redirect, <code>notFound()</code>, <code>setLang</code>,
+                      다른 origin으로의 이동은 묻지 않습니다. 탭 닫기는 <code>beforeunload</code>가 맡습니다.
                     </span>
                   ),
                 })}

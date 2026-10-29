@@ -163,6 +163,40 @@ describe("StoreSurfaceSource", () => {
     Object.defineProperty(globalThis, "window", { value: priorWindow, configurable: true });
   });
 
+  test("navigate tells the agent the app kept the page when a navigation guard refuses", async () => {
+    const { router } = await import("akanjs/client");
+    const priorWindow = globalThis.window;
+    const location = { pathname: "/en/docs/draft", search: "", hash: "", href: "http://app.test/en/docs/draft" };
+    Object.defineProperty(globalThis, "window", {
+      value: { parent: { postMessage: () => undefined }, location },
+      configurable: true,
+    });
+    const moves: string[] = [];
+    router.init({
+      type: "ssr",
+      side: "client",
+      lang: "en",
+      router: {
+        push: (href: string) => moves.push(href),
+        replace: () => undefined,
+        back: () => undefined,
+        refresh: () => undefined,
+      },
+    } as never);
+    const removeGuard = router.addNavigationGuard(() => false);
+    const surface = new AgenticSurface();
+    surface.addSource(source);
+
+    await expect(surface.call("navigate", { path: "/docs/intro" })).rejects.toThrow(
+      "kept it, so the page did not move",
+    );
+    expect(moves).toEqual([]);
+
+    removeGuard();
+    router.init({ side: "server", routeManifest: [] } as never);
+    Object.defineProperty(globalThis, "window", { value: priorWindow, configurable: true });
+  });
+
   test("goBack is global, and refuses when there is nothing behind this page", async () => {
     const surface = new AgenticSurface();
     surface.addSource(source);

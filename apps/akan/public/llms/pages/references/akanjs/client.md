@@ -96,7 +96,9 @@ Method
 
 - getPrefixedPath(path): Adds the locale and basePath to a path when the app has a basePath.
 
-- navigation(): The last push or replace as a promise. It rejects when the route refused to move.
+- navigation(): The last push, replace or back as a promise. It rejects when a navigation guard or the route refused to move.
+
+- addNavigationGuard(guard): Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover.
 
 A store action that opens the record it just created:
 
@@ -105,6 +107,8 @@ A store action that opens the record it just created:
 **Redirect from a guard.** In a route's `.guard()`, `router.redirect("/signin")` answers the request with a 307 before anything renders, even after an awaited query.
 
 **`shallow` keeps the page.** On an SSR page, a push or replace that keeps the path writes the URL and the store's search params without asking the server, and back or forward between such entries stays shallow. Client components see the change at once; a server component's `.search()` at the next full navigation. A new path, or a CSR app, navigates normally.
+
+**A navigation guard keeps an unsaved page.** It is asked for `push`, `replace`, `back`, a `Link`, the browser's back and forward, a native back or swipe, and the agent's `navigate`; a refused browser back is undone before the page changes. A guard that throws or rejects keeps the page too, and a move made while one is still deciding is refused. Redirects, `notFound()`, `setLang` and moves off the origin are not asked — closing the tab is `beforeunload`'s.
 
 cn
 
