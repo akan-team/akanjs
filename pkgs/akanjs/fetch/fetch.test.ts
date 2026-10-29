@@ -10,6 +10,7 @@ import {
   HttpExecutionContext,
   isExceptionLike,
   type SerializedArg,
+  type SerializedEndpoint,
   type SerializedSignal,
   type SliceCls,
 } from "akanjs/signal";
@@ -2971,6 +2972,50 @@ describe("FetchClient websocket generation", () => {
     expect(published[0]).toBeInstanceOf(FetchTestLight);
     expect((published[0] as InstanceType<typeof FetchTestLight>).title).toBe("Published");
     expect(JSON.parse(ws.sent[2] ?? "{}")).toEqual({ key: "roomThing", data: ["room-1"], subscribe: false });
+  });
+
+  test("hands a subscriber a falsy value or a nullable null as it was published", async () => {
+    setFakeWebSocket();
+    const feed = (returns: SerializedEndpoint["returns"]): SerializedEndpoint => ({
+      type: "pubsub",
+      args: [arg("room", "roomId")],
+      returns,
+    });
+    const client = new FetchClient(
+      "https://api.example",
+      {},
+      {
+        falsy: {
+          endpoint: {
+            countFeed: feed({ refName: "Int" }),
+            flagFeed: feed({ refName: "Boolean" }),
+            noteFeed: feed({ refName: "String" }),
+            maybeFeed: feed({ refName: "Int", nullable: true }),
+            maybeItemFeed: feed({ refName: "fetchTestItem", modelType: "light", nullable: true }),
+          },
+        },
+      },
+    );
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const received: unknown[] = [];
+
+    for (const key of [
+      "subscribeCountFeed",
+      "subscribeFlagFeed",
+      "subscribeNoteFeed",
+      "subscribeMaybeFeed",
+      "subscribeMaybeItemFeed",
+    ])
+      await client.handler[key]("r1", (data: unknown) => received.push(data));
+    ws.receive({ type: "pub", roomId: "countFeed-r1", data: 0 });
+    ws.receive({ type: "pub", roomId: "flagFeed-r1", data: false });
+    ws.receive({ type: "pub", roomId: "noteFeed-r1", data: "" });
+    ws.receive({ type: "pub", roomId: "maybeFeed-r1", data: null });
+    ws.receive({ type: "pub", roomId: "maybeItemFeed-r1", data: null });
+
+    expect(received).toEqual([0, false, "", null, null]);
   });
 
   test("hands a binary frame to its room as bytes, and leaves the JSON rooms on the same socket alone", async () => {

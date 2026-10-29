@@ -94,7 +94,7 @@ export class SignalResolver {
   ) {
     SignalResolver.#localPublish = localPublish;
     SignalResolver.#roomReplay = roomReplay;
-    websocket.setEventHandler((roomId, data) => localPublish(roomId, data as object | object[] | Uint8Array));
+    websocket.setEventHandler((roomId, data) => localPublish(roomId, data as object | object[] | Uint8Array | null));
     // A room that missed events cannot tell which ones, so every live room is invalidated and its subscribers refetch.
     websocket.onRecovered?.(() => {
       for (const roomId of live?.syncHub.roomIds() ?? []) {
@@ -150,8 +150,17 @@ export class SignalResolver {
             SignalResolver.#localPublish(roomId, bytes);
             return;
           }
+          if (resolvedData === null || resolvedData === undefined) {
+            if (!endpointInfo.returns.nullable && endpointInfo.returns.returnRef !== Any)
+              throw new Error(
+                `pubsub ${key} published ${resolvedData}, but its return is not nullable: publish a value, or declare { nullable: true } and publish null`,
+              );
+            websocket.publish(roomId, null);
+            SignalResolver.#localPublish(roomId, null);
+            return;
+          }
           const serializedData = serializeFn(resolvedData) as object | object[] | null;
-          if (!serializedData) {
+          if (serializedData === null || serializedData === undefined) {
             this.logger.warn(`Failed to serialize data for ${key}`);
             return;
           }
