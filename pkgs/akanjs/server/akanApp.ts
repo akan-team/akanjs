@@ -24,6 +24,7 @@ import type { OpsRoute } from "./ops/opsRoute";
 import { StatusAccess } from "./ops/statusAccess";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { HostAllowlist } from "./routing/hostAllowlist";
+import { WsUpgrade } from "./routing/wsUpgrade";
 import { SelfExec } from "./selfExec";
 import { resolveStaticPath } from "./staticPath";
 import { getWebConfigFromEnv } from "./types";
@@ -680,6 +681,7 @@ export class AkanApp {
     } catch {
       return new Response("Forbidden", { status: 403 });
     }
+    if (!WsUpgrade.isRequested(req)) return WsUpgrade.required();
     const upstreamWs = new WebSocket(`ws://${upstream.host}:${upstream.port}${url.pathname}${url.search}`, {
       headers: makeAkanChildProxyHeaders(req, child.idx, server.requestIP(req)),
     } as unknown as string[]);

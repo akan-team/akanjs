@@ -15,6 +15,7 @@ import { SignalResolver } from "../resolver";
 import type { HttpRoutes, SignalRouteOptions, WebsocketRoutes } from "../types";
 import { AppWsData } from "./appWsData";
 import type { HostAllowlist } from "./hostAllowlist";
+import { WsUpgrade } from "./wsUpgrade";
 
 export interface HmrStateSource {
   readonly state: {
@@ -95,6 +96,7 @@ export class ApiRouter {
         }
         const upgraded = upgradeAppWs(req, AppWsData.fromRequest(req));
         if (upgraded) return;
+        if (!WsUpgrade.isRequested(req)) return WsUpgrade.required();
         return new Response("Failed to upgrade to WebSocket", { status: 500 });
       },
       ...Object.fromEntries(endpointEntries),
