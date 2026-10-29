@@ -67,7 +67,7 @@ Create a new workspace and its first app in one go. It runs these steps in order
 
 - --app (String, required): Name of the first app, lowercased with spaces as hyphens. Asked for when omitted.
 
-- --dir (String, default .): Parent folder, relative to where you run it. Defaults to `local` if `USE_AKANJS_PKGS=true`.
+- --dir (String, default .): Parent folder, relative to where you run it unless absolute. Defaults to `local` if `USE_AKANJS_PKGS=true`.
 
 - --libs (Boolean, default false): Also install `shared` and `util`. Leave it off, as recommended, to start from an empty workspace.
 

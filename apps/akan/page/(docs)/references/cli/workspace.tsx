@@ -243,8 +243,8 @@ export default page()
             type: "String",
             defaultValue: ".",
             desc: l.trans({
-              en: "Parent folder, relative to where you run it. Defaults to `local` if `USE_AKANJS_PKGS=true`.",
-              ko: "워크스페이스를 담을 상위 폴더로, 실행 위치 기준입니다. `USE_AKANJS_PKGS=true`면 `local`입니다.",
+              en: "Parent folder, relative to where you run it unless absolute. Defaults to `local` if `USE_AKANJS_PKGS=true`.",
+              ko: "워크스페이스를 담을 상위 폴더로, 절대 경로가 아니면 실행 위치 기준입니다. `USE_AKANJS_PKGS=true`면 `local`입니다.",
             }),
           },
           {

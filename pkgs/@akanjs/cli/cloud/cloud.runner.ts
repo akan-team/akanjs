@@ -362,7 +362,7 @@ export class CloudRunner extends runner("cloud") {
     const latestPublishedVersion = await getLatestPackageVersion("akanjs", tag, registryUrl);
     const rootPackageJson = await workspace.getPackageJson();
     if (!rootPackageJson.dependencies) throw new Error("No dependencies found in package.json");
-    for (const name of ["akanjs", "@akanjs/devkit"]) {
+    for (const name of ["akanjs", "@akanjs/devkit", "@akanjs/cli"]) {
       if (rootPackageJson.dependencies[name]) rootPackageJson.dependencies[name] = latestPublishedVersion;
       if (rootPackageJson.devDependencies?.[name]) rootPackageJson.devDependencies[name] = latestPublishedVersion;
     }

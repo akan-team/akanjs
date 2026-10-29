@@ -132,8 +132,13 @@ describe("WorkspaceScript", () => {
       recorder.record("mcpInstall", ...args);
     };
 
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
     try {
       await script.createWorkspace("repo", "demo", { dirname: "local", installLibs: true, init: false });
+      expect(printed.mock.calls.map(([line]) => String(line)).join("\n")).toContain(
+        "Run `cd /workspace && akan start demo`",
+      );
       expect(recorder.names()).toEqual([
         "version",
         "createWorkspace",
@@ -356,6 +361,37 @@ describe("WorkspaceRunner", () => {
     expect(workspacePackageJson.dependencies).not.toHaveProperty("@playwright/test");
     expect(workspacePackageJson.dependencies).not.toHaveProperty("cordova-plugin-purchase");
     expect(workspacePackageJson.dependencies).not.toHaveProperty("capacitor-plugin-safe-area");
+  });
+
+  test("pins @akanjs/cli at the akan version, so `akan` in the new workspace runs its own bin", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    process.chdir(root);
+    await runner.createWorkspace("repo", "demo", { dirname: "generated", init: false, akanVersion: "2.0.0-beta.0" });
+
+    const { devDependencies } = (await Bun.file(`${root}/generated/repo/package.json`).json()) as PackageJson;
+    expect(devDependencies?.["@akanjs/cli"]).toBe("2.0.0-beta.0");
+    expect(devDependencies?.["@akanjs/devkit"]).toBe("2.0.0-beta.0");
+  });
+
+  test("creates the workspace under an absolute --dir, not under the current directory", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    const cwd = path.join(root, "cwd");
+    await writeText(path.join(cwd, ".keep"), "");
+    process.chdir(cwd);
+    const target = path.join(root, "target");
+    const workspace = await runner.createWorkspace("repo", "demo", {
+      dirname: target,
+      init: false,
+      akanVersion: "2.0.0-beta.0",
+    });
+
+    expect(workspace.workspaceRoot).toBe(path.join(target, "repo"));
+    expect(await Bun.file(path.join(target, "repo", "package.json")).exists()).toBe(true);
+    expect(await Bun.file(path.join(cwd, target, "repo", "package.json")).exists()).toBe(false);
   });
 
   test("gives a new workspace React's type packages at the versions the repo root uses", async () => {
