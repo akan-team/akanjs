@@ -695,6 +695,6 @@ describe("a workspace whose akanjs is not the CLI's version", () => {
     ]);
     expect(code).toBe(0);
     expect(stdout).toBe('{"phases":1}');
-    expect(stderr).toContain("0.0.1-older (akanjs)");
+    expect(stderr).toContain("this workspace has akanjs 0.0.1-older");
   }, 30_000);
 });

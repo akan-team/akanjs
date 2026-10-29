@@ -322,6 +322,8 @@ Carry a static LGPL build: one that loads its own shared libraries runs only whe
 
 A file the user picks reaches the server as a grant, never a copy or a path, so a large video is not uploaded. Name `file-picker` in `native.plugins`, pick with `forServer: true`, and resolve the grant with `NativeFile`:
 
+A secret the user gives the server, such as their own API key, goes to the OS credential store with `NativeSecret`, never into a file. The page's `secretStorage` keeps another store, so no page script reads it. Outside the desktop app `NativeSecret.available` is false and every call rejects; keep secrets in the env there.
+
 Displays, windows, volume, global shortcuts, keep-awake and launch at login are native plugins, not server work: name each in native.plugins and import it from akanjs/client/native/<id>.
 
 An app nobody attends
@@ -550,6 +552,15 @@ await fetch.trimVideo(files[0].grant, 0, 30);
 
 // lib/video/video.service.ts (akanjs/server)
 const input = await NativeFile.resolve(grant, "read");
+```
+
+### server
+
+```typescript
+// lib/_llm/llm.service.ts (akanjs/server)
+await NativeSecret.set("llm.apiKey", apiKey);
+const kept = await NativeSecret.get("llm.apiKey"); // null when none is kept
+await NativeSecret.remove("llm.apiKey");
 ```
 
 ### apps/board/akan.config.ts

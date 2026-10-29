@@ -634,10 +634,10 @@ export class AkanAppConfig implements AppConfigResult {
       ...(this.web.csr ? {} : { AKAN_CSR: "false" }),
     };
   }
-  dockerfileFor(environment: string): string {
-    return this.#makeDockerfile(environment);
+  dockerfileFor(environment: string, { lockfile = true }: { lockfile?: boolean } = {}): string {
+    return this.#makeDockerfile(environment, lockfile);
   }
-  #makeDockerfile(environment?: string): string {
+  #makeDockerfile(environment?: string, lockfile = true): string {
     if (typeof this.docker === "string") return this.docker;
     const { image, preRuns, postRuns, command } = this.docker;
     const preRunScripts = this.#getDockerRunScripts(preRuns);
@@ -651,8 +651,8 @@ ARG TARGETARCH
 ${preRunScripts.join("\n")}
 RUN mkdir -p /workspace
 WORKDIR /workspace
-COPY ./package.json ./package.json
-RUN bun install --production
+${lockfile ? "COPY ./package.json ./bun.lock ./" : "COPY ./package.json ./package.json"}
+RUN bun install --production${lockfile ? " --frozen-lockfile" : ""}
 ${postRunScripts.join("\n")}
 COPY . .
 ${envLines.join("\n")}

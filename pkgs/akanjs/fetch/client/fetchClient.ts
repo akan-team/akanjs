@@ -84,6 +84,12 @@ export interface FetchBridge {
   call(request: FetchBridgeCall): Promise<unknown>;
 }
 
+export interface FetchClaim {
+  key: string;
+  /** What in its module claims the key, phrased for a boot error: `the mutation "removeX"`, `the root slice`. */
+  by: string;
+}
+
 const FETCH_BRIDGE_KEY = Symbol.for("akanjs.fetch.bridge");
 const globalWithFetchBridge = globalThis as typeof globalThis & { [FETCH_BRIDGE_KEY]?: FetchBridge | null };
 
@@ -112,6 +118,8 @@ export class FetchClient {
   #wsOptions: WsClientOptions = {};
   readonly #handlerStore: Record<string, FetchHandler> = {};
   readonly #handlerFactory = new Map<string, FetchHandlerFactory>();
+  /** The refName whose slice generated each handler, so its cleanup never takes another module's same-named endpoint. */
+  readonly #generatedBy = new Map<string, string>();
   #sharedRegistryAppliedVersion = 0;
   #clientIp: string | null = null;
   /** Cloned toward another server: the request being served is this server's visitor, not that server's caller. */
@@ -320,9 +328,11 @@ export class FetchClient {
     if (!handler) throw new Error(`${owner} requires fetch handler "${key}", but it is not registered`);
     return handler as T;
   }
-  #setHandlerFactory(key: string, factory: FetchHandlerFactory) {
+  #setHandlerFactory(key: string, factory: FetchHandlerFactory, generatedBy?: string) {
     this.#handlerFactory.set(key, factory);
     delete this.#handlerStore[key];
+    if (generatedBy) this.#generatedBy.set(key, generatedBy);
+    else this.#generatedBy.delete(key);
   }
   //? A bridged tab has no network: the socket would fail, or under a lenient host reach whatever origin hosts the view.
   connect() {
@@ -719,11 +729,14 @@ export class FetchClient {
     const guards = verb === "get" ? signal.getGuards : (signal[`${verb}Guards`] ?? signal.cruGuards);
     return guards?.some((guard) => guard !== "None") ? guards : undefined;
   }
-  #registerModelBaseEndpoint(refName: string, signal: SerializedSignal) {
+  static #modelNames(refName: string) {
     const capRefName = capitalize(refName);
-    const names = {
+    return {
+      createModel: `create${capRefName}`,
       updateModel: `update${capRefName}`,
+      removeModel: `remove${capRefName}`,
       model: refName,
+      lightModel: `light${capRefName}`,
       viewModel: `view${capRefName}`,
       getModelView: `get${capRefName}View`,
       editModel: `edit${capRefName}`,
@@ -731,35 +744,90 @@ export class FetchClient {
       addModelFiles: `add${capRefName}Files`,
       mergeModel: `merge${capRefName}`,
     };
+  }
+  // view/edit exist exactly when the get handler does; edit also needs a write endpoint; merge wraps updateModel.
+  static #helpersOf(signal: SerializedSignal) {
+    const get = !!FetchClient.#mountedGuards(signal, "get");
+    const update = !!FetchClient.#mountedGuards(signal, "update");
+    const write =
+      update || !!FetchClient.#mountedGuards(signal, "create") || !!FetchClient.#mountedGuards(signal, "remove");
+    return { view: get, edit: get && write, merge: update };
+  }
+  static #sliceNames(refName: string, suffix: string) {
+    const capSuffix = capitalize(suffix);
+    const capRefName = capitalize(refName);
+    return {
+      list: `${refName}List${capSuffix}`,
+      insight: `${refName}Insight${capSuffix}`,
+      live: `${refName}Live${capSuffix}`,
+      init: `init${capRefName}${capSuffix}`,
+      getInit: `get${capRefName}Init${capSuffix}`,
+    };
+  }
+  /** The `fetch.*` names a module's signal registers, and the bare socket route of each pubsub and message. */
+  static claimsOf(refName: string, signal: SerializedSignal) {
+    const handlers: FetchClaim[] = [];
+    const sockets: FetchClaim[] = [];
+    const claim = (key: string, endpoint: SerializedEndpoint, by: string) => {
+      handlers.push({ key: endpoint.type === "pubsub" ? `subscribe${capitalize(key)}` : key, by });
+      if (endpoint.type === "message") handlers.push({ key: `listen${capitalize(key)}`, by });
+      if (endpoint.type === "pubsub" || endpoint.type === "message") sockets.push({ key, by });
+    };
+    for (const [key, endpoint] of Object.entries(signal.endpoint))
+      claim(key, endpoint, `the ${endpoint.type} "${key}"`);
+    if (!signal.slice) return { handlers, sockets };
+    const generated = "the generated CRUD";
+    for (const [key, endpoint] of Object.entries(FetchClient.getBaseEndpoint(refName, signal)))
+      claim(key, endpoint, generated);
+    const names = FetchClient.#modelNames(refName);
+    const helpers = FetchClient.#helpersOf(signal);
+    const helperKeys = [
+      ...(helpers.view ? [names.viewModel, names.getModelView] : []),
+      ...(helpers.edit ? [names.editModel, names.getModelEdit] : []),
+      ...(helpers.merge ? [names.mergeModel] : []),
+      names.addModelFiles,
+    ];
+    for (const key of helperKeys) handlers.push({ key, by: generated });
+    for (const [suffix, slice] of Object.entries(signal.slice)) {
+      const by = suffix ? `the slice "${suffix}"` : "the root slice";
+      for (const [key, endpoint] of Object.entries(FetchClient.getEndpointFromSlice(refName, suffix, slice)))
+        claim(key, endpoint, by);
+      const { init, getInit } = FetchClient.#sliceNames(refName, suffix);
+      handlers.push({ key: init, by }, { key: getInit, by });
+    }
+    return { handlers, sockets };
+  }
+  #registerModelBaseEndpoint(refName: string, signal: SerializedSignal) {
+    const names = FetchClient.#modelNames(refName);
     // The tab-wide client may have applied a lib's signal first; a later slice denying a verb takes its handler back.
-    const generated = [`create${capRefName}`, `remove${capRefName}`, `light${capRefName}`, ...Object.values(names)];
-    for (const key of generated.filter((key) => key !== names.addModelFiles && !(key in signal.endpoint))) {
+    for (const key of Object.values(names).filter((key) => this.#generatedBy.get(key) === refName)) {
       this.#handlerFactory.delete(key);
+      this.#generatedBy.delete(key);
       delete this.#handlerStore[key];
     }
     const endpoint = FetchClient.getBaseEndpoint(refName, signal);
     Object.entries(endpoint).forEach(([key, value]) => {
-      this.#setHandlerFactory(key, () => this.#makeHttpFn(key, value, signal.prefix));
+      this.#setHandlerFactory(key, () => this.#makeHttpFn(key, value, signal.prefix), refName);
     });
 
-    // view/edit exist exactly when the get handler does; edit also needs a write endpoint; merge wraps updateModel.
-    const getGuards = FetchClient.#mountedGuards(signal, "get");
-    const updateGuards = FetchClient.#mountedGuards(signal, "update");
-    const anyCruGuards =
-      FetchClient.#mountedGuards(signal, "create") ?? updateGuards ?? FetchClient.#mountedGuards(signal, "remove");
-    if (getGuards) {
-      this.#setHandlerFactory(names.viewModel, () =>
-        this.#makeModelHandleFn(refName, names.model, names.viewModel, `${refName}View`),
+    const helpers = FetchClient.#helpersOf(signal);
+    if (helpers.view) {
+      this.#setHandlerFactory(
+        names.viewModel,
+        () => this.#makeModelHandleFn(refName, names.model, names.viewModel, `${refName}View`),
+        refName,
       );
-      this.#setHandlerFactory(names.getModelView, () => this.#makeModelObjFn(refName, names.getModelView));
+      this.#setHandlerFactory(names.getModelView, () => this.#makeModelObjFn(refName, names.getModelView), refName);
     }
-    if (getGuards && anyCruGuards) {
-      this.#setHandlerFactory(names.editModel, () =>
-        this.#makeModelHandleFn(refName, names.model, names.editModel, `${refName}Edit`),
+    if (helpers.edit) {
+      this.#setHandlerFactory(
+        names.editModel,
+        () => this.#makeModelHandleFn(refName, names.model, names.editModel, `${refName}Edit`),
+        refName,
       );
-      this.#setHandlerFactory(names.getModelEdit, () => this.#makeModelObjFn(refName, names.getModelEdit));
+      this.#setHandlerFactory(names.getModelEdit, () => this.#makeModelObjFn(refName, names.getModelEdit), refName);
     }
-    if (updateGuards) {
+    if (helpers.merge) {
       this.#setHandlerFactory(
         names.mergeModel,
         () =>
@@ -767,6 +835,7 @@ export class FetchClient {
             const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
             return this.#requireHandler(names.updateModel, names.mergeModel)(id, data, option);
           }) as FetchHandler,
+        refName,
       );
     }
 
@@ -838,12 +907,7 @@ export class FetchClient {
     suffix: string,
     slice: SerializedSlice,
   ): { [key: string]: SerializedEndpoint } {
-    const capSuffix = capitalize(suffix);
-    const names = {
-      list: `${refName}List${capSuffix}`,
-      insight: `${refName}Insight${capSuffix}`,
-      live: `${refName}Live${capSuffix}`,
-    };
+    const names = FetchClient.#sliceNames(refName, suffix);
     // One `mcp: false` on `init()` covers both the list and the aggregate.
     const mcp = {
       ...(slice.mcp === false ? { mcp: false as const } : {}),
@@ -881,12 +945,7 @@ export class FetchClient {
     const capSuffix = capitalize(suffix);
     const sliceName = `${refName}${capSuffix}`;
     const capRefName = capitalize(refName);
-    const names = {
-      list: `${refName}List${capSuffix}`,
-      insight: `${refName}Insight${capSuffix}`,
-      init: `init${capRefName}${capSuffix}`,
-      getInit: `get${capRefName}Init${capSuffix}`,
-    };
+    const names = FetchClient.#sliceNames(refName, suffix);
 
     const endpoint = FetchClient.getEndpointFromSlice(refName, suffix, slice);
     // Through `#registerEndpoint`: a slice may also generate a pubsub entry, which is no request.

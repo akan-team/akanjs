@@ -22,6 +22,8 @@
 //   in a row are a hang, and it is killed and restarted as if it had crashed.
 // - A `file.resolve` request names a grant the file picker gave the page (forServer); the answer is
 //   the path the user picked, or an error for a grant this app never gave (grants.ts).
+// - A `secret.request` gets, sets or removes one of the server's secrets (secretStore.ts, akanjs NativeSecret).
+//   They are kept apart from the page's secure-storage plugin, so no page script reads them.
 // - Quit: an IPC shutdown, then SIGKILL after STOP_GRACE. If the shell dies first, the child sees its
 //   IPC channel close and stops itself (akanjs AkanServer); on Windows the job object ends it at once.
 // - macOS and Linux: the server leads its own process group, and whatever it started that is still
@@ -44,6 +46,7 @@ import { connect, createServer } from "node:net";
 import { join } from "node:path";
 import { resolveGrant } from "./grants.ts";
 import type { DesktopServerState, DesktopServerStatus } from "./plugin.ts";
+import type { SecretStore } from "./secretStore.ts";
 
 /** How the launcher keeps the server running: server.json's, and desktop.server's in a config (cli desktop-server.ts). */
 export interface ServerPolicy {
@@ -200,6 +203,8 @@ export interface DesktopServerOptions {
   now?(): number;
   /** Whether the server at `url` answers its health route; the watchdog's question. */
   probe?(url: string, timeoutMs: number): Promise<boolean>;
+  /** The store a `secret.request` reaches; without one each is answered with an error. */
+  secrets?: Pick<SecretStore, "get" | "set" | "remove">;
 }
 
 export interface DesktopServer {
@@ -482,6 +487,43 @@ function answerGrant(child: ServerProcess, { id, grant }: { id?: unknown; grant?
   }
 }
 
+interface SecretRequest {
+  id?: unknown;
+  op?: unknown;
+  key?: unknown;
+  value?: unknown;
+}
+
+async function secretAnswer(
+  secrets: DesktopServerOptions["secrets"],
+  { op, key, value }: SecretRequest,
+): Promise<{ value?: string | null; error?: string }> {
+  if (!secrets) return { error: "this app keeps no secrets for its server" };
+  if (typeof key !== "string" || !key) return { error: "a secret's key must be a non-empty string" };
+  try {
+    if (op === "get") return { value: await secrets.get(key) };
+    if (op === "remove") {
+      await secrets.remove(key);
+      return {};
+    }
+    if (op !== "set") return { error: `no secret operation ${JSON.stringify(op)}` };
+    if (typeof value !== "string") return { error: "a secret's value must be a string" };
+    await secrets.set(key, value);
+    return {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function answerSecret(child: ServerProcess, secrets: DesktopServerOptions["secrets"], request: SecretRequest) {
+  const answer = await secretAnswer(secrets, request);
+  try {
+    child.send({ type: "secret.answer", id: request.id, ...answer });
+  } catch {
+    // The server exited after it asked: nobody waits for the answer, and the plugin host must not end with it.
+  }
+}
+
 export function createDesktopServer(options: DesktopServerOptions): DesktopServer {
   const { dataDir } = options;
   const spawn = options.spawn ?? spawnServer;
@@ -609,6 +651,7 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
       onMessage(message) {
         const type = (message as { type?: unknown } | null)?.type;
         if (type === "file.resolve") return answerGrant(child, message as { id?: unknown; grant?: unknown });
+        if (type === "secret.request") return void answerSecret(child, options.secrets, message as SecretRequest);
         if (type !== "ready" || readyAt !== null) return;
         readyAt = now();
         setState("up");

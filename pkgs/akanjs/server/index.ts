@@ -10,6 +10,7 @@ export type { ChangeBatch, ChangeKind } from "./hmr/wsHub";
 export * from "./machine";
 export * from "./migration";
 export * from "./nativeFile";
+export * from "./nativeSecret";
 export * from "./oauth";
 export * from "./processMetricsCollector";
 export * from "./proxy";
