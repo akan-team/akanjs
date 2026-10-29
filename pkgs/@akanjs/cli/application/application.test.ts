@@ -951,6 +951,55 @@ describe("ApplicationRunner mobile", () => {
     expect(recorder.names()).toEqual([]);
   });
 
+  test("update-keygen says where a desktop app's url comes from, and prints a phone's key as before", async () => {
+    const home = track({ root: await mkdtemp(path.join(os.tmpdir(), "akan-native-home-")) }).root;
+    const pem = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    await writeText(path.join(home, "keys", "com.demo.app.update.key"), pem);
+    const { x } = createPublicKey(createPrivateKey(pem)).export({ format: "jwk" });
+    const publicKey = Buffer.from(x ?? "", "base64url").toString("base64");
+    const logged: string[] = [];
+    const keygen = {
+      name: "demo",
+      cwdPath: path.join(repoRoot, "apps/minimal"),
+      workspace: { workspaceRoot: repoRoot },
+      getScanInfo: () => ({ getLibs: () => [] }),
+      collectPlugins: async () => [],
+      getConfig: async () => ({
+        basePaths: new Set<string>(),
+        i18n: { defaultLocale: "en", locales: ["en"] },
+        native: { targets: { store: target("store") } },
+      }),
+      log: (message: string) => logged.push(message),
+      logger: { warn: () => undefined },
+    } as unknown as AppExecutor;
+    const saved = {
+      AKAN_NATIVE_HOME: process.env.AKAN_NATIVE_HOME,
+      AKAN_NATIVE_UPDATE_KEY: process.env.AKAN_NATIVE_UPDATE_KEY,
+    };
+    process.env.AKAN_NATIVE_HOME = home;
+    delete process.env.AKAN_NATIVE_UPDATE_KEY;
+    try {
+      await new ApplicationRunner().updateKeygen(keygen, "android");
+      const phone = logged.splice(0);
+      await new ApplicationRunner().updateKeygen(keygen, "desktop");
+
+      const placeholder = `  native: { updates: { url: "https://…/demo", publicKeys: [${JSON.stringify(publicKey)}] } }`;
+      expect(phone).toHaveLength(3);
+      expect(phone[1]).toBe(placeholder);
+      expect(phone[2]).toStartWith("  keyId ");
+      expect(logged).toEqual([
+        phone[0],
+        placeholder,
+        "  url: hosted on Akan Cloud, register this public key as an external key on the release screen and use the URL it gives; self-hosted, the public address you upload the release to",
+        phone[2],
+      ]);
+    } finally {
+      for (const [key, value] of Object.entries(saved))
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+  });
+
   test("only a desktop build of a target that declares desktop.server carries the server", () => {
     const carrying = { name: "kiosk", config: { ...target("kiosk"), desktop: { server: true } } };
     expect(ApplicationRunner.carriesServer(carrying, "windows")).toBe(true);

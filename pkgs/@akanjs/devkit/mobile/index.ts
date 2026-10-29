@@ -1,4 +1,5 @@
 export * from "./desktopBin";
+export * from "./desktopRelease";
 export * from "./desktopServerStage";
 export * from "./mobileTarget";
 export * from "./nativeApi";
@@ -8,6 +9,7 @@ export * from "./nativePluginFolders";
 export * from "./nativePublicEnv";
 export * from "./nativeWebDir";
 export * from "./placeholderAppId";
+export * from "./tarWriter";
 export * from "./updatePackFolder";
 export * from "./updateUploader";
 export * from "./usageDescriptions";

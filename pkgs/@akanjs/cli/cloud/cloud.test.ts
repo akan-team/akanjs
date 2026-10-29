@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
@@ -6,7 +7,7 @@ import path from "node:path";
 import { CloudApi, CloudHttpError, GlobalConfig, PipelineSecrets } from "@akanjs/devkit/cloud";
 import { CommandContainer, ExitCodeError, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
-import { NativeApp, type NativeUpdatePack } from "@akanjs/devkit/mobile";
+import { DesktopRelease, NativeApp, type NativeUpdatePack } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import {
   createCallRecorder,
@@ -1121,6 +1122,242 @@ describe("push-update", () => {
       "push-update needs --platform ios or android to pack, or --pack <dir>",
     );
     expect(recorder.names()).toEqual(["projectOf"]);
+  });
+});
+
+const desktopFixture = async (updatesDir: string) => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const dir = path.join(updatesDir, "macos-arm64");
+  const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+  const tarSha = sha256("tar");
+  await writeText(path.join(dir, "app", `${tarSha}.tar.gz`), "gzip tar");
+  await writeText(path.join(dir, "app", `${sha256("old tar")}.tar.gz`), "an earlier release");
+  const manifest = {
+    schema: 1,
+    kind: "app",
+    app: "com.lu",
+    platform: "macos",
+    channel: "main",
+    sequence: 1_761_700_000,
+    bundle: "1.0.0-1761700000",
+    runtimeVersion: "0.12.0",
+    version: "1.0.0",
+    build: 1_761_699_000,
+    arch: "arm64",
+    files: [{ path: "Lu.app", sha256: tarSha, size: 3 }],
+    archive: { sha256: tarSha, url: `app/${tarSha}.tar.gz`, size: 8, gzSha256: sha256("gzip tar") },
+    patches: [],
+    server: false,
+  };
+  const bytes = `${JSON.stringify(manifest, null, 2)}\n`;
+  await writeText(path.join(dir, "main.json"), bytes);
+  await writeText(
+    path.join(dir, "main.json.sig"),
+    `${sign(null, Buffer.from(bytes), privateKey).toString("base64")}\n`,
+  );
+  return await DesktopRelease.read(updatesDir, {
+    platform: "macos",
+    arch: "arm64",
+    channel: "main",
+    appId: "com.lu",
+    publicKey: publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64"),
+  });
+};
+
+describe("push-update of a desktop release", () => {
+  const options = {
+    platform: "desktop" as const,
+    target: null,
+    env: null,
+    channel: null,
+    notes: null,
+    subspace: null,
+    write: false,
+    allowLocalRelease: false,
+    pack: null,
+  };
+  const stubRelease = () => {
+    const script = CommandContainer.get(CloudScript);
+    const recorder = createCallRecorder();
+    script.cloudRunner.projectOf = async (...args) => {
+      recorder.record("projectOf", ...args);
+      return "project-1";
+    };
+    script.cloudRunner.readRelease = async (...args) => {
+      recorder.record("readRelease", ...args);
+      return { release: {} as DesktopRelease, url: "https://updates.test/lu", signer: null, target: "default" };
+    };
+    script.cloudRunner.login = async () => true;
+    script.cloudRunner.pushRelease = async (...args) => {
+      recorder.record("pushRelease", ...args);
+      return { id: "release-1" };
+    };
+    spyOn(GlobalConfig, "hostFor").mockResolvedValue("https://cloud.test");
+    spyOn(CloudApi, "fromHost").mockResolvedValue({} as never);
+    return { script, recorder };
+  };
+
+  test("--platform desktop reads this computer's OS and CPU release, then uploads it with the notes", async () => {
+    const root = await makeTempRoot();
+    const { script, recorder } = stubRelease();
+
+    await script.pushUpdate(createFakeExecutor("workspace") as never, appOf(root), { ...options, notes: "fix" });
+
+    expect(recorder.names()).toEqual(["projectOf", "readRelease", "pushRelease"]);
+    expect(recorder.calls[1]?.args.slice(1)).toEqual([
+      { platform: NativeApp.desktopPlatform(), arch: process.arch, target: null, env: "main", channel: null },
+    ]);
+    expect(recorder.calls[2]?.args.slice(1, 2)).toEqual(["project-1"]);
+    expect(recorder.calls[2]?.args[3]).toMatchObject({
+      url: "https://updates.test/lu",
+      target: "default",
+      notes: "fix",
+    });
+  });
+
+  test("a named OS, CPU, target, env and channel go to the release lookup as given", async () => {
+    const root = await makeTempRoot();
+    const { script, recorder } = stubRelease();
+
+    await script.pushUpdate(createFakeExecutor("workspace") as never, appOf(root), {
+      ...options,
+      platform: "windows",
+      arch: "x64",
+      target: "kiosk",
+      env: "develop",
+      channel: "pilot",
+    });
+
+    expect(recorder.calls[1]?.args.slice(1)).toEqual([
+      { platform: "windows", arch: "x64", target: "kiosk", env: "develop", channel: "pilot" },
+    ]);
+  });
+
+  test("refuses --pack or --public-env beside a desktop platform, --arch beside a phone, and --env local", async () => {
+    const root = await makeTempRoot();
+    const { script, recorder } = stubRelease();
+    const push = (given: Partial<Parameters<CloudScript["pushUpdate"]>[2]>) =>
+      script.pushUpdate(createFakeExecutor("workspace") as never, appOf(root), { ...options, ...given });
+
+    await expect(push({ pack: "pack" })).rejects.toThrow("--pack and --public-env take a phone's web bundle");
+    await expect(push({ platform: "macos", publicEnv: "{}" })).rejects.toThrow("--pack and --public-env");
+    await expect(push({ platform: "android", arch: "arm64" })).rejects.toThrow(
+      "--arch picks a desktop release's CPU; a phone's update is its web bundle.",
+    );
+    await expect(push({ env: "local" })).rejects.toThrow("A release with --env local is blocked.");
+    expect(recorder.names()).toEqual([]);
+  });
+
+  test("the runner reads the one target's release and warns when its signer cannot be read", async () => {
+    const root = await makeTempRoot();
+    const warned: string[] = [];
+    const app = { ...(appOf(root) as object), logger: { warn: (message: string) => warned.push(message) } } as never;
+    const release = {
+      signer: async () => ({ signer: null, unread: "codesign reads a macOS app's signer on macOS only" }),
+    };
+    const lookup = spyOn(NativeApp.prototype, "publishedRelease").mockResolvedValue({
+      release: release as unknown as DesktopRelease,
+      url: "https://updates.test/lu",
+      exeName: "lu",
+    });
+    const given = { platform: "macos" as const, arch: "arm64" as const, env: "main" as const, channel: null };
+
+    expect(await new CloudRunner().readRelease(app, { ...given, target: null })).toEqual({
+      release: release as unknown as DesktopRelease,
+      url: "https://updates.test/lu",
+      signer: null,
+      target: "default",
+    });
+    expect(lookup.mock.calls[0]).toEqual(["macos", { arch: "arm64", channel: null }]);
+    expect(warned).toEqual(["release.json names no signer: codesign reads a macOS app's signer on macOS only."]);
+    const several = { ...(appOf(root, { targets: { default: {}, kiosk: {} } }) as object), logger: { warn: () => 0 } };
+    await expect(new CloudRunner().readRelease(several as never, { ...given, target: "all" })).rejects.toThrow(
+      "push-update uploads one native target's release at a time; pass --target <name>.",
+    );
+  });
+
+  test("uploads the release as one tar of the files its manifest names, and prints where installed apps read it", async () => {
+    const root = await makeTempRoot();
+    const release = await desktopFixture(path.join(root, "updates"));
+    const stored: Uint8Array[] = [];
+    const types: (string | null)[] = [];
+    const storage = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: async (request) => {
+        types.push(request.headers.get("content-type"));
+        stored.push(new Uint8Array(await request.arrayBuffer()));
+        return new Response(null);
+      },
+    });
+    const announced: Record<string, unknown>[] = [];
+    const apiAnswering = (answer: Record<string, unknown>) =>
+      ({
+        requestUpdateUpload: async (_devProjectId: string, upload: Record<string, unknown>) => {
+          announced.push(upload);
+          return {
+            uploadId: "upload-1",
+            uploadUrl: `http://127.0.0.1:${storage.port}/upload-1`,
+            expiresAt: new Date(Date.now() + 900_000).toISOString(),
+            contentType: "application/x-tar",
+          };
+        },
+        commitUpdateUpload: async () => answer,
+      }) as unknown as CloudApi;
+    const printed: string[] = [];
+    spyOn(Logger, "rawLog").mockImplementation((message?: unknown) => {
+      printed.push(String(message));
+    });
+    const push = (answer: Record<string, unknown>) =>
+      new CloudRunner().pushRelease(apiAnswering(answer), "project-1", appOf(root), {
+        release,
+        url: "https://updates.test/lu",
+        signer: { teamId: "ABCDE12345" },
+        target: "default",
+        notes: "fix",
+      });
+
+    try {
+      const manifestUrl = "https://cdn.akanjs.com/p/lu/macos-arm64/main.json";
+      await push({ id: "release-1", status: "published", problems: [], manifestUrl });
+      await push({ id: "release-2", status: "staged", problems: ["unsigned build"] });
+      const refusal = await push({ id: "release-3", status: "rejected", problems: ["another team's key"] }).catch(
+        (error: unknown) => error,
+      );
+
+      expect(announced[0]).toMatchObject({
+        appName: "lu",
+        target: "default",
+        platform: "macos",
+        kind: "app",
+        arch: "arm64",
+        channel: "main",
+        notes: "fix",
+        size: stored[0]?.byteLength,
+      });
+      expect(types[0]).toBe("application/x-tar");
+      const copy = path.join(root, "sent.tar");
+      await Bun.write(copy, stored[0] ?? new Uint8Array());
+      expect(Bun.spawnSync(["tar", "-tf", copy]).stdout.toString().split(/\r?\n/).filter(Boolean)).toEqual([
+        "./release.json",
+        "./main.json",
+        "./main.json.sig",
+        `./${release.manifest.archive.url}`,
+      ]);
+      const label = "lu default macos-arm64 on channel main";
+      expect(printed).toEqual([
+        `Published ${label}: release release-1 (1.0.0-1761700000, 4 files). Installed apps read ${manifestUrl}.`,
+        `Staged ${label}: release release-2 (1.0.0-1761700000, 4 files). Publish it from the project's release screen; installed apps read https://updates.test/lu/macos-arm64/main.json.`,
+        "The project noted:\n  - unsigned build",
+      ]);
+      expect(refusal).toBeInstanceOf(ExitCodeError);
+      expect(refusal).toMatchObject({
+        exitCode: 2,
+        message: `The project rejected ${label}: release release-3:\n  - another team's key`,
+      });
+    } finally {
+      storage.stop(true);
+    }
   });
 });
 

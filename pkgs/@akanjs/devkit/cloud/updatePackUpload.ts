@@ -16,6 +16,7 @@ interface UpdatePackUploadOptions {
 //* embedded pack; either re-hashes it, and an upload is used once, one way.
 export class UpdatePackUpload {
   static readonly maxBytes = 200 * 1024 * 1024;
+  static readonly maxAppBytes = 1024 * 1024 * 1024;
   static readonly #transientPut = new Set([0, 408, 429, 500, 502, 503, 504]);
   //? A stalled PUT never fails on its own, so each try ends once the pack would be through even at this crawl.
   static readonly #putFloorBytesPerSecond = 64 * 1024;
@@ -57,7 +58,10 @@ export class UpdatePackUpload {
   /** Puts the pack in the project's staging storage and answers the upload id a commit or a registration names. */
   async stage(archive: string, fields: Omit<UpdateUploadRequest, "size" | "sha256">): Promise<string> {
     const file = Bun.file(archive);
-    if (file.size < 1 || file.size > UpdatePackUpload.maxBytes)
+    if (fields.kind === "app") {
+      if (file.size < 1 || file.size > UpdatePackUpload.maxAppBytes)
+        throw new Error(`The release archive is ${file.size} bytes; a project takes 1 byte to 1 GiB.`);
+    } else if (file.size < 1 || file.size > UpdatePackUpload.maxBytes)
       throw new Error(`The pack archive is ${file.size} bytes; a project takes 1 byte to 200 MiB.`);
     const hasher = new Bun.CryptoHasher("sha256");
     for await (const chunk of file.stream()) hasher.update(chunk);

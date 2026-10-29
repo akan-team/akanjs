@@ -5,6 +5,7 @@ import type { AkanNativeConfig } from "akanjs/native/config";
 import type { App } from "../commandDecorators";
 import { Executor } from "../executors";
 import { type DesktopArch, DesktopBin } from "./desktopBin";
+import { DesktopRelease } from "./desktopRelease";
 import type { DesktopServerBundle } from "./desktopServerStage";
 import {
   type DesktopPlatform,
@@ -309,6 +310,22 @@ export class NativeApp {
   /** Where publishUpdate writes: upload this folder as the target's updates.url. */
   get updatesDir() {
     return path.join(this.targetRoot, "updates");
+  }
+
+  //? The channel falls back as publishUpdate's does, so a push with the flags of the publish finds what it wrote.
+  async publishedRelease(platform: DesktopPlatform, { arch, channel }: { arch: DesktopArch; channel?: string | null }) {
+    this.#assertUpdates();
+    const { config } = await this.config({ platform, stageBin: false });
+    const publicKey = config.updates?.publicKeys?.[0] ?? config.updates?.publicKey;
+    if (!config.updates || !publicKey) throw new Error(`Native target '${this.target.name}' has no updates key.`);
+    const release = await DesktopRelease.read(this.updatesDir, {
+      platform,
+      arch,
+      channel: channel ?? config.updates.channel ?? "production",
+      appId: config.app.id,
+      publicKey,
+    });
+    return { release, url: config.updates.url, exeName: config.app.fileName ?? "" };
   }
 
   /** A signed release installed apps take through the updates plugin, from a release build of this bundle. */

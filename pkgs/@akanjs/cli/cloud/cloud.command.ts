@@ -93,12 +93,17 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       await this.cloudScript.update(workspace, tag, { registryUrl: resolveRegistryUrl(registry) });
     }),
   pushUpdate: target({
-    desc: "Pack an over-the-air update of a phone's web bundle, or take the folder `akan pack-update` wrote, and upload it to the Akan Cloud project, which signs and publishes it. Exits 2 when the pack needs a new store build or the project rejects it, 1 on any other failure",
+    desc: "Pack an over-the-air update of a phone's web bundle, or take the folder `akan pack-update` wrote, and upload it to the Akan Cloud project, which signs and publishes it; or upload the desktop release `akan publish-update` signed, as it is. Exits 2 when the pack needs a new store build or the project rejects it, 1 on any other failure",
   })
     .with(App)
     .option("platform", String, {
-      enum: ["ios", "android"],
-      desc: "the app it updates (with --pack, default: the pack's)",
+      enum: ["ios", "android", "desktop", "macos", "windows", "linux"],
+      desc: "the app it updates; desktop is this computer's OS (with --pack, default: the pack's)",
+      nullable: true,
+    })
+    .option("arch", String, {
+      desc: "desktop: the CPU of the release, arm64 or x64 (default this computer's)",
+      enum: ["arm64", "x64"] as const,
       nullable: true,
     })
     .option("target", String, {
@@ -131,6 +136,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       async function (
         app,
         platform,
+        arch,
         target,
         env,
         channel,
@@ -145,6 +151,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       ) {
         await this.cloudScript.pushUpdate(workspace, app, {
           platform,
+          arch,
           target,
           env,
           channel,

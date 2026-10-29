@@ -86,7 +86,10 @@ export interface CloudRecord {
 export interface UpdateUploadRequest {
   appName: string;
   target: string;
-  platform: "ios" | "android";
+  platform: "ios" | "android" | "macos" | "windows" | "linux";
+  //? Absent is a phone's web bundle, so a phone request reads as it did before desktop releases.
+  kind?: "app";
+  arch?: "arm64" | "x64";
   channel: string;
   notes: string | null;
   size: number;
