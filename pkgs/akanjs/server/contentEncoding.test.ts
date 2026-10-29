@@ -21,6 +21,39 @@ const json = (payload = body) => Response.json(JSON.parse(payload) as unknown);
 const req = (acceptEncoding?: string) =>
   new Request("http://localhost/api/x", acceptEncoding ? { headers: { "accept-encoding": acceptEncoding } } : {});
 
+const jsonHead = `[${Array.from({ length: 100 }, (_, i) => JSON.stringify({ id: i, title: "first rows" })).join(",")}`;
+const jsonTail = `,${Array.from({ length: 100 }, (_, i) => JSON.stringify({ id: i, title: "last rows" })).join(",")}]`;
+const jsonStream = () => {
+  let finish: () => void = () => undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start: async (controller) => {
+      controller.enqueue(new TextEncoder().encode(jsonHead));
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      controller.enqueue(new TextEncoder().encode(jsonTail));
+      controller.close();
+    },
+  });
+  const response = new Response(stream, { headers: { "Content-Type": "application/json" } });
+  return { response, finish: () => finish() };
+};
+
+// Waits on the producer's open stream: a compressor that held the body back would time the test out here.
+const readUntil = async (
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  decode: (bytes: Buffer) => string,
+  expected: string,
+) => {
+  const chunks: Uint8Array[] = [];
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) throw new Error("stream ended before the head decoded");
+    chunks.push(value);
+    if (decode(Buffer.concat(chunks)) === expected) return chunks;
+  }
+};
+
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "asset-encoding-"));
 const assetPath = path.join(dir, "root.css");
 fs.writeFileSync(assetPath, "body{color:red}");
@@ -29,6 +62,10 @@ fs.writeFileSync(`${assetPath}.br`, "brotli-bytes");
 
 const bareAssetPath = path.join(dir, "bare.css");
 fs.writeFileSync(bareAssetPath, "body{color:blue}");
+
+const wasmPath = path.join(dir, "kernel.wasm");
+fs.writeFileSync(wasmPath, "wasm-bytes");
+fs.writeFileSync(`${wasmPath}.br`, "brotli-bytes");
 
 const gzipOnlyPath = path.join(dir, "gzipOnly.css");
 fs.writeFileSync(gzipOnlyPath, "body{color:green}");
@@ -171,6 +208,66 @@ describe("compressResponse", () => {
     expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(4 * 1024 * 1024);
   });
 
+  test("sends a body still being written as it streams, without waiting for its end", async () => {
+    const stream = jsonStream();
+    const response = await compressResponse(req("br"), stream.response);
+
+    expect(response.headers.get("Content-Encoding")).toBe("br");
+    expect(response.headers.get("Content-Length")).toBeNull();
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+    const decode = (bytes: Buffer) =>
+      brotliDecompressSync(bytes, { finishFlush: constants.BROTLI_OPERATION_FLUSH }).toString();
+    const chunks = await readUntil(reader, decode, jsonHead);
+    stream.finish();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    expect(brotliDecompressSync(Buffer.concat(chunks)).toString()).toBe(jsonHead + jsonTail);
+  });
+
+  test("compresses a stream written at once whole, with its length", async () => {
+    const written = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        controller.enqueue(new TextEncoder().encode(body.slice(0, 100)));
+        controller.enqueue(new TextEncoder().encode(body.slice(100)));
+        controller.close();
+      },
+    });
+    const response = await compressResponse(
+      req("br"),
+      new Response(written, { headers: { "Content-Type": "application/json" } }),
+    );
+
+    const compressed = Buffer.from(await response.arrayBuffer());
+    expect(response.headers.get("Content-Encoding")).toBe("br");
+    expect(response.headers.get("Content-Length")).toBe(String(compressed.byteLength));
+    expect(brotliDecompressSync(compressed).toString()).toBe(body);
+  });
+
+  test("holds no more than 4 MiB of a stream that never waits, and sends it as it is", async () => {
+    const mib = new Uint8Array(1024 * 1024).fill(32);
+    let finish: () => void = () => undefined;
+    const endless = new ReadableStream<Uint8Array>({
+      start: async (controller) => {
+        for (let i = 0; i < 5; i++) controller.enqueue(mib);
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        controller.close();
+      },
+    });
+    const response = await compressResponse(
+      req("br"),
+      new Response(endless, { headers: { "Content-Type": "application/json" } }),
+    );
+
+    expect(response.headers.get("Content-Encoding")).toBeNull();
+    finish();
+    expect((await response.arrayBuffer()).byteLength).toBe(5 * mib.byteLength);
+  });
+
   test("carries the status and the headers the handler set", async () => {
     const created = new Response(body, {
       status: 201,
@@ -222,6 +319,30 @@ describe("compressResponse behind Bun.serve", () => {
         expect(ranged.headers.get("content-range")).toBe(`bytes 10-19/${blob.length}`);
         expect(await ranged.text()).toBe(blob.slice(10, 20));
       }
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("a streamed API answer reaches the client compressed before it ends", async () => {
+    const stream = jsonStream();
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: (request) => compressResponse(request, stream.response),
+    });
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/`, { headers: { "accept-encoding": "gzip" } });
+      expect(res.headers.get("content-encoding")).toBe("gzip");
+      const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+      const chunks = await readUntil(reader, (bytes) => bytes.toString(), jsonHead);
+      stream.finish();
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+      expect(Buffer.concat(chunks).toString()).toBe(jsonHead + jsonTail);
     } finally {
       server.stop(true);
     }
@@ -477,6 +598,10 @@ describe("resolveEncodedSidecar", () => {
     expect(await resolve("brotli")).toBeNull();
   });
 
+  test("serves a WebAssembly module's sidecar", async () => {
+    expect((await resolve("gzip, br", wasmPath, "application/wasm"))?.encoding).toBe("br");
+  });
+
   test("skips sidecars for content types that are not compressible", async () => {
     expect(await resolve("gzip, br", assetPath, "font/woff2")).toBeNull();
   });
@@ -494,6 +619,7 @@ describe("isCompressibleContentType", () => {
     expect(isCompressibleContentType("text/css; charset=utf-8")).toBe(true);
     expect(isCompressibleContentType("application/javascript")).toBe(true);
     expect(isCompressibleContentType("image/svg+xml")).toBe(true);
+    expect(isCompressibleContentType("application/wasm")).toBe(true);
   });
 
   test("rejects already-compressed binary types", () => {
