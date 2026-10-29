@@ -1,4 +1,4 @@
-import { type BaseEnv, type Cls, INJECT_META, LIBS_REMOVE_HOOK } from "akanjs/base";
+import { type BaseEnv, type Cls, INJECT_META, LIBS_REMOVE_HOOK, type PromiseOrObject } from "akanjs/base";
 import { applyMixins, capitalize, Logger, lowerlize } from "akanjs/common";
 import type { DatabaseModel } from "akanjs/document";
 
@@ -9,6 +9,7 @@ import {
   type InjectType,
   injectionBuilder,
 } from "./injectInfo";
+import type { DatabaseAdaptor } from "./predefinedAdaptor";
 import type { DatabaseService, DatabaseServiceForModel } from "./types";
 
 interface ServiceOptions {
@@ -26,6 +27,8 @@ type DatabaseServicePatch = Partial<DatabaseServiceDoc>;
 const avoidKeys = new Set([
   "onInit",
   "onDestroy",
+  "transaction",
+  "afterCommit",
   "_libsOnInit",
   "_libsOnDestroy",
   "_preCreate",
@@ -42,12 +45,22 @@ const avoidKeys = new Set([
   "_libsPostRemove",
 ]);
 
+const databaseOf = (service: { __database?: DatabaseAdaptor }, method: string) => {
+  if (!service.__database)
+    throw new Error(
+      `${service.constructor.name}.${method}() has no database: only a service the server booted has one`,
+    );
+  return service.__database;
+};
+
 export interface Service {
   readonly logger: Logger;
   onInit(): Promise<void> | void;
   _libsOnInit(): Promise<void>;
   onDestroy(): Promise<void> | void;
   _libsOnDestroy(): Promise<void>;
+  transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
+  afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
 }
 
 export type ServiceCls<
@@ -135,11 +148,18 @@ export function serve(
     }
     static [INJECT_META] = {};
     readonly logger = new Logger(this.constructor.name);
+    declare readonly __database?: DatabaseAdaptor;
     onInit(): Promise<void> | void {
       //
     }
     onDestroy(): Promise<void> | void {
       //
+    }
+    async transaction<T>(fn: () => PromiseOrObject<T>): Promise<T> {
+      return await databaseOf(this, "transaction").transaction(fn);
+    }
+    async afterCommit(fn: () => PromiseOrObject<void>) {
+      await databaseOf(this, "afterCommit").afterCommit(fn);
     }
   };
   applyMixins(srvRef, extSrvs, avoidKeys);

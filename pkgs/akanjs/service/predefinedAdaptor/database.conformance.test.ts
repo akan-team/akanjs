@@ -14,7 +14,11 @@ import {
   into,
 } from "akanjs/document";
 import { ConformanceEnv, type SqlDriver, type SqlDriverKind } from "../../test/conformance";
+import type { Adaptor, AdaptorCls } from "../adapt";
+import { getDefaultInjectRegistry, InjectInfo } from "../injectInfo";
+import { serve } from "../serve";
 import { SqlDocumentStore } from "./database.adaptor";
+import { DatabaseAdaptorRole } from "./role.adaptor";
 import { descriptorHash } from "./sql/values";
 
 // Every case states the SQLite answer, the contract live sync's in-memory evaluator is pinned to. A known divergence is
@@ -168,6 +172,17 @@ const indexNamesOf = async (driver: SqlDriver, table: string) => {
 };
 
 const titlesOf = (docs: { title?: unknown }[]) => docs.map(({ title }) => String(title));
+
+class LedgerService extends serve("ledgerConf" as const, () => ({})) {}
+const ledgerOn = (driver: SqlDriver) => {
+  const registry = getDefaultInjectRegistry();
+  const adaptorCls = driver.database.constructor as AdaptorCls;
+  registry.adaptorRole.set(DatabaseAdaptorRole, adaptorCls);
+  registry.adaptor.set(adaptorCls, driver.database as unknown as Adaptor);
+  const ledger = new LedgerService();
+  InjectInfo.bindDatabase(ledger, registry);
+  return ledger;
+};
 
 // Postgres keeps an index whose concurrent build failed, marked invalid; it exists but serves nothing.
 const validIndexNamesOf = async (driver: SqlDriver, table: string) => {
@@ -929,6 +944,62 @@ const describeDriver = (kind: SqlDriverKind) => {
       await expect(transaction).rejects.toThrow("rollback-probe");
       await outside;
       expect(titlesOf(await store.find({}))).toEqual(["outside-write"]);
+    });
+
+    test("a service's transaction commits its writes to two models together, or neither, rethrowing the error", async () => {
+      const ledger = ledgerOn(driver);
+      const other = await storeOf(driver, uniqueConstant, uniqueDatabase);
+      const settled = await ledger.transaction(async () => {
+        await store.create({ title: "debit" });
+        await other.create({ label: "credit" });
+        return "settled";
+      });
+      expect(settled).toBe("settled");
+      const failure = new Error("rollback-probe");
+      const rolledBack = ledger.transaction(async () => {
+        await store.create({ title: "debit-2" });
+        await other.create({ label: "credit-2" });
+        throw failure;
+      });
+      await expect(rolledBack).rejects.toBe(failure);
+      expect(titlesOf(await store.find({}))).toEqual(["debit"]);
+      expect((await other.find({})).map(({ label }) => String(label))).toEqual(["credit"]);
+    });
+
+    test("a service transaction opened inside another joins it and rolls back with it", async () => {
+      const ledger = ledgerOn(driver);
+      const outer = ledger.transaction(async () => {
+        await ledger.transaction(async () => {
+          await store.create({ title: "inner" });
+        });
+        await store.create({ title: "outer" });
+        throw new Error("rollback-probe");
+      });
+      await expect(outer).rejects.toThrow("rollback-probe");
+      expect(await store.find({})).toHaveLength(0);
+    });
+
+    test("afterCommit runs once the transaction commits, never after a rollback, and at once outside one", async () => {
+      const ledger = ledgerOn(driver);
+      const seen: string[] = [];
+      await ledger.transaction(async () => {
+        await store.create({ title: "committed" });
+        await ledger.afterCommit(async () => {
+          seen.push(`after:${await store.count({})}`);
+        });
+        seen.push("body");
+      });
+      const rolledBack = ledger.transaction(async () => {
+        await ledger.afterCommit(() => {
+          seen.push("dropped");
+        });
+        throw new Error("rollback-probe");
+      });
+      await expect(rolledBack).rejects.toThrow("rollback-probe");
+      await ledger.afterCommit(() => {
+        seen.push("now");
+      });
+      expect(seen).toEqual(["body", "after:1", "now"]);
     });
 
     // A transaction holding the row makes both writes read it as matching before either can take it.

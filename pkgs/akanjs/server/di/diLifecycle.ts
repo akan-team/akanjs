@@ -696,6 +696,7 @@ export class DiLifecycle {
             }
             const service = new serviceCls();
             await InjectInfo.resolveInjection(service, serviceCls, this.registry, this.#env);
+            InjectInfo.bindDatabase(service, this.registry);
             await service._libsOnInit();
             this.live.service.set(refName, service);
             this.registry.serviceCls.set(refName, serviceCls);

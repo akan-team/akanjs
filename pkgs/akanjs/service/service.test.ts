@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { Any, dayjs, INJECT_META, Int } from "akanjs/base";
+import { Any, dayjs, INJECT_META, Int, type PromiseOrObject } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, getFilterInfoByKey, into } from "akanjs/document";
 import type { ServerSignal, ServerSignalCls } from "akanjs/signal";
 import { type Adaptor, type AdaptorCls, adapt, dangerouslyAdapt } from "./adapt";
 import { getDefaultInjectRegistry, InjectInfo, injectionBuilder } from "./injectInfo";
-import type { CacheAdaptor, CacheSetOptions } from "./predefinedAdaptor";
+import { type CacheAdaptor, type CacheSetOptions, DatabaseAdaptorRole } from "./predefinedAdaptor";
 import { type Service, serve } from "./serve";
 import { ServiceModel } from "./serviceModule";
 import type { DatabaseService } from "./types";
@@ -955,6 +955,50 @@ describe("dependency injection resolution", () => {
     await expect(
       InjectInfo.resolveInjection(new MissingMemory(), MissingMemory, registry, {} as never),
     ).rejects.toThrow("Cache adaptor role is not registered");
+  });
+
+  test("binds the server's database adaptor, which a service's transaction and afterCommit go through", async () => {
+    const calls: string[] = [];
+    const database = {
+      transaction: async <T>(fn: () => PromiseOrObject<T>) => {
+        calls.push("begin");
+        const value = await fn();
+        calls.push("commit");
+        return value;
+      },
+      afterCommit: async (fn: () => PromiseOrObject<void>) => {
+        calls.push("afterCommit");
+        await fn();
+      },
+    };
+    class DatabaseRef extends adapt("sqliteDatabase") {}
+    const registry = getDefaultInjectRegistry();
+    registry.adaptorRole.set(DatabaseAdaptorRole, DatabaseRef);
+    registry.adaptor.set(DatabaseRef, database as unknown as Adaptor);
+    class LedgerService extends serve("serviceTestLedger" as const, () => ({})) {}
+    const ledger = new LedgerService();
+    InjectInfo.bindDatabase(ledger, registry);
+
+    const total = await ledger.transaction(async () => 3);
+    type _TransactionAnswersItsValue = Expect<Equal<typeof total, number>>;
+    class LibLedgerService extends serve(testItemDatabase, () => ({})) {}
+    class AppLedgerService extends serve(testItemDatabase, () => ({}), LibLedgerService) {}
+    const settle = (service: AppLedgerService) => service.transaction(async () => 3);
+    type _ExtendedServiceAnswersItsValue = Expect<Equal<Awaited<ReturnType<typeof settle>>, number>>;
+    expect(total).toBe(3);
+    await ledger.afterCommit(() => {
+      calls.push("hook");
+    });
+    expect(calls).toEqual(["begin", "commit", "afterCommit", "hook"]);
+    expect(Object.keys(ledger)).not.toContain("__database");
+  });
+
+  test("refuses a transaction on a service no server booted", async () => {
+    class LoneService extends serve("serviceTestLone" as const, () => ({})) {}
+    const lone = new LoneService();
+    InjectInfo.bindDatabase(lone, getDefaultInjectRegistry());
+    await expect(lone.transaction(async () => 1)).rejects.toThrow("LoneService.transaction() has no database");
+    await expect(lone.afterCommit(() => undefined)).rejects.toThrow("LoneService.afterCommit() has no database");
   });
 });
 

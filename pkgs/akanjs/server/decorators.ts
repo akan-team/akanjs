@@ -22,7 +22,7 @@ export const Try = () => {
   };
 };
 
-/** Method decorator that runs the method inside the detected database transaction. */
+/** @deprecated Wrap the body in `this.transaction(async () => …)`, which every service has. */
 export const Transaction = (): MethodDecorator => {
   return ((_target: unknown, key: string, descriptor: PropertyDescriptor) => {
     const originMethod = descriptor.value as (this: unknown, ...args: unknown[]) => unknown;

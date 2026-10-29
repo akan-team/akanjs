@@ -170,6 +170,14 @@ export class InjectInfo<
       }),
     );
   }
+  // Every model writes through the server's one database adaptor, so a service's transaction is that adaptor's.
+  static bindDatabase(service: Service, registry: InjectRegistry) {
+    const adaptorCls = [...registry.adaptorRole.entries()].find(
+      ([role]) => role.refName === "databaseAdaptorRole",
+    )?.[1];
+    const database = adaptorCls && registry.adaptor.get(adaptorCls);
+    if (database) Object.defineProperty(service, "__database", { value: database });
+  }
   static async #injectDatabase(
     instance: Adaptor | Service,
     propKey: string,

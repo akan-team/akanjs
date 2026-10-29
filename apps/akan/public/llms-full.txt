@@ -1732,7 +1732,7 @@ Exports
 
 - Try: Legacy decorator: logs a warning and returns `undefined` instead of throwing.
 
-- Transaction: Legacy decorator: runs a method in a database transaction.
+- Transaction: Deprecated decorator: runs a method in a database transaction; write `this.transaction(fn)`.
 
 - Everything else: Build-artifact types and console, OAuth, sitemap and metrics helpers the framework and CLI use.
 

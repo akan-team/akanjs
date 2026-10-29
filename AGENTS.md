@@ -352,8 +352,9 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
   `remove<Model>(id)`, and `pickAndWrite` writes through the save hooks (`queryRule`).
 - **`<model>.service.ts`** — a few lines: load → chain → `return await ….save()` (keep the `return await`). Side
   effects go in `override async _preUpdate` / `_postCreate`; fire-and-forget is `void`-ed. Load every referenced
-  document, then save, then notify. Return `null` / `false` for not allowed or not found; the signal decides
-  whether that is an error.
+  document, then save, then notify; writes that must land together go in `this.transaction(async () => …)` and
+  their notification in `this.afterCommit(…)` (`queryRule`). Return `null` / `false` for not allowed or not found;
+  the signal decides whether that is an error.
 - **`<model>.signal.ts`** — `XInternal` → `XSlice` → `XEndpoint`, all three even when empty; `exec` is a one-liner
   calling the service.
 - **`<model>.store.ts`** — custom actions only for a toast, an optimistic update, or a multi-field write:
