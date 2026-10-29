@@ -18,6 +18,7 @@ const requestState = {
 };
 const messages: unknown[] = [];
 const warnings: string[] = [];
+const errors: string[] = [];
 const windowListeners = new Map<string, Array<(event: { state: unknown }) => void>>();
 const timeoutCallbacks: Array<() => void> = [];
 
@@ -47,7 +48,9 @@ beforeAll(() => {
         warn: (message: string) => {
           warnings.push(message);
         },
-        error: () => undefined,
+        error: (message: string) => {
+          errors.push(message);
+        },
       },
     ),
     parseAkanI18nEnv: () => ({ locales: ["en", "ko"], defaultLocale: "en" }),
@@ -122,6 +125,47 @@ const popTo = (pathname: string, state: unknown = null) => {
   for (const listener of windowListeners.get("popstate") ?? []) listener({ state });
 };
 
+//? A session history whose traversals land a tick later, as a browser's do; `shown` is what a shell's own popstate
+//? listener, registered after the router's, gets to draw.
+const installSessionHistory = (pathname: string) => {
+  installClientWindow(pathname);
+  const entries: { state: unknown; pathname: string }[] = [{ state: null, pathname }];
+  const shown: string[] = [];
+  let idx = 0;
+  const show = (path: string) =>
+    Object.assign(window.location, { pathname: path, href: `https://example.test${path}` });
+  const traverse = (delta: number) => {
+    idx += delta;
+    const entry = entries[idx];
+    show(entry.pathname);
+    let isStopped = false;
+    const event = { state: entry.state, stopImmediatePropagation: () => (isStopped = true) };
+    for (const listener of windowListeners.get("popstate") ?? []) {
+      listener(event);
+      if (isStopped) return;
+    }
+    shown.push(entry.pathname);
+  };
+  const history = {
+    get state() {
+      return entries[idx].state;
+    },
+    pushState: (state: unknown, _title: string, href: string) => {
+      entries.splice(idx + 1, entries.length, { state, pathname: href });
+      idx += 1;
+      show(href);
+    },
+    replaceState: (state: unknown, _title: string, href?: string) => {
+      entries[idx] = { state, pathname: href ?? entries[idx].pathname };
+      if (href) show(href);
+    },
+    go: (delta: number) => setTimeout(() => traverse(delta), 0),
+  };
+  Object.assign(window, { history });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+  return { shown, settle, at: () => entries[idx].pathname, browserBack: () => traverse(-1) };
+};
+
 const recordingRouter = (calls: unknown[]): RouterInstance => ({
   push: (href, options) => {
     calls.push(["push", href, options]);
@@ -159,6 +203,7 @@ afterEach(() => {
   requestState.headers = new Map();
   messages.length = 0;
   warnings.length = 0;
+  errors.length = 0;
   windowListeners.clear();
   timeoutCallbacks.length = 0;
   globalThis.__AKAN_ROUTER__ = undefined;
@@ -730,5 +775,244 @@ describe("router", () => {
     expect(warnings[0]).toContain("/en/users?tab=a");
     expect(warnings[1]).toContain("router.replace");
     for (const warning of warnings) expect(warning).toContain("router.redirect()");
+  });
+});
+
+describe("router navigation guards", () => {
+  const ssrRouter = async (calls: unknown[]) => {
+    const { router } = await import("./router");
+    const { csrLocation } = await import("./csrLocation");
+    router.init({
+      type: "ssr",
+      side: "client",
+      lang: "en",
+      prefix: "admin",
+      router: {
+        ...recordingRouter(calls),
+        push: (href) => {
+          calls.push(["push", href]);
+          csrLocation.push(null, href);
+        },
+        back: () => window.history.go(-1),
+      },
+    });
+    return router;
+  };
+
+  test("a guard answering false keeps the page for push, replace and back, and navigation() says so", async () => {
+    envState.side = "client";
+    installSessionHistory("/en/admin/doc/1");
+    const calls: unknown[] = [];
+    const router = await ssrRouter(calls);
+    const asked: unknown[] = [];
+    const remove = router.addNavigationGuard((navigation) => {
+      asked.push(navigation);
+      return false;
+    });
+
+    router.push("/en/admin/list?tab=a");
+    await expect(router.navigation()).rejects.toThrow(
+      "A navigation guard kept /doc/1 instead of moving to /list?tab=a",
+    );
+    router.replace("/list");
+    await expect(router.navigation()).rejects.toMatchObject({ name: "NavigationRefused" });
+    router.back();
+    await expect(router.navigation()).rejects.toMatchObject({ name: "NavigationRefused" });
+
+    expect(calls).toEqual([]);
+    expect(router.navigationCount()).toBe(0);
+    expect(asked).toEqual([
+      { kind: "push", from: "/doc/1", to: "/list?tab=a" },
+      { kind: "replace", from: "/doc/1", to: "/list" },
+      { kind: "back", from: "/doc/1", to: null },
+    ]);
+
+    remove();
+    router.push("/list");
+    expect(calls).toEqual([["push", "/en/admin/list"]]);
+  });
+
+  test("an async guard holds the move until it answers, and refuses every other move meanwhile", async () => {
+    envState.side = "client";
+    installSessionHistory("/en/admin/doc/1");
+    const calls: unknown[] = [];
+    const router = await ssrRouter(calls);
+    let answer: (value: boolean) => void = () => undefined;
+    let asks = 0;
+    router.addNavigationGuard(() => {
+      asks += 1;
+      return new Promise<boolean>((resolve) => {
+        answer = resolve;
+      });
+    });
+
+    router.push("/list");
+    const first = router.navigation();
+    router.push("/other");
+    await expect(router.navigation()).rejects.toMatchObject({ name: "NavigationRefused" });
+    expect(calls).toEqual([]);
+
+    answer(true);
+    await expect(first).resolves.toBeUndefined();
+    expect(calls).toEqual([["push", "/en/admin/list"]]);
+    expect(asks).toBe(1);
+  });
+
+  test("guards are asked in turn, and one that throws or rejects keeps the page", async () => {
+    envState.side = "client";
+    installSessionHistory("/en/admin/doc/1");
+    const calls: unknown[] = [];
+    const router = await ssrRouter(calls);
+    const order: string[] = [];
+    const removeFirst = router.addNavigationGuard(async () => {
+      order.push("first");
+      throw new Error("save failed");
+    });
+    router.addNavigationGuard(() => {
+      order.push("second");
+      return true;
+    });
+
+    router.push("/list");
+    await expect(router.navigation()).rejects.toMatchObject({ name: "NavigationRefused" });
+    expect(order).toEqual(["first"]);
+    expect(errors[0]).toContain("save failed");
+
+    removeFirst();
+    const removeThrowing = router.addNavigationGuard(() => {
+      throw new Error("broken");
+    });
+    router.push("/list");
+    await expect(router.navigation()).rejects.toMatchObject({ name: "NavigationRefused" });
+    expect(order).toEqual(["first", "second"]);
+    removeThrowing();
+    router.push("/list");
+    expect(calls).toEqual([["push", "/en/admin/list"]]);
+  });
+
+  test("a redirect, a not-found, a locale switch and a move off the origin are not asked", async () => {
+    envState.side = "client";
+    installSessionHistory("/en/admin/doc/1");
+    const restoreTimeout = queueTimeouts();
+    const calls: unknown[] = [];
+    const router = await ssrRouter(calls);
+    let asks = 0;
+    router.addNavigationGuard(() => {
+      asks += 1;
+      return false;
+    });
+
+    router.redirect("/signin");
+    router.notFound();
+    router.setLang("ko");
+    router.push("https://sso.example/authorize", { external: true });
+    flushTimeouts();
+
+    expect(asks).toBe(0);
+    expect(calls).toEqual([
+      ["replace", "/en/admin/signin", undefined],
+      ["replace", "/en/admin/404", undefined],
+      ["replace", "/ko/admin/doc/1", undefined],
+      ["push", "https://sso.example/authorize"],
+    ]);
+    restoreTimeout();
+  });
+
+  test("a browser back a guard refuses is undone before the shell sees it, and one it allows later is replayed", async () => {
+    envState.side = "client";
+    const session = installSessionHistory("/en/admin/list");
+    const router = await ssrRouter([]);
+    router.push("/doc/1");
+    const answers: ((value: boolean) => void)[] = [];
+    const asked: unknown[] = [];
+    router.addNavigationGuard((navigation) => {
+      asked.push(navigation);
+      return answers.length ? new Promise<boolean>((resolve) => answers.push(resolve)) : false;
+    });
+
+    session.browserBack();
+    await session.settle();
+    expect(session.at()).toBe("/en/admin/doc/1");
+    expect(session.shown).toEqual([]);
+    expect(asked).toEqual([{ kind: "pop", from: "/doc/1", to: "/list" }]);
+
+    answers.push(() => undefined);
+    session.browserBack();
+    await session.settle();
+    expect(session.at()).toBe("/en/admin/doc/1");
+    answers[1]?.(true);
+    await session.settle();
+    expect(session.at()).toBe("/en/admin/list");
+    expect(session.shown).toEqual(["/en/admin/list"]);
+    expect(asked).toHaveLength(2);
+  });
+
+  test("router.back() is asked once, not again when its popstate arrives", async () => {
+    envState.side = "client";
+    const session = installSessionHistory("/en/admin/list");
+    const router = await ssrRouter([]);
+    router.push("/doc/1");
+    const asked: unknown[] = [];
+    router.addNavigationGuard((navigation) => {
+      asked.push(navigation);
+      return true;
+    });
+
+    router.back();
+    await session.settle();
+
+    expect(session.at()).toBe("/en/admin/list");
+    expect(session.shown).toEqual(["/en/admin/list"]);
+    expect(asked).toEqual([{ kind: "back", from: "/doc/1", to: null }]);
+  });
+
+  test("a deep link that resets the stack is asked once for the whole stack", async () => {
+    envState.side = "client";
+    installSessionHistory("/en/org");
+    const restoreTimeout = queueTimeouts();
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+    router.init({
+      type: "csr",
+      lang: "en",
+      router: recordingRouter(calls),
+      routeManifest: ["/", "/:lang/org", "/:lang/org/o1"],
+    });
+    const asked: unknown[] = [];
+    router.addNavigationGuard((navigation) => {
+      asked.push(navigation);
+      return true;
+    });
+
+    router.enterDeepLink("/org/o1", { resetStack: true });
+    flushTimeouts();
+
+    expect(asked).toEqual([{ kind: "replace", from: "/org", to: "/org/o1" }]);
+    expect(calls).toEqual([
+      ["replace", "/en/org", {}],
+      ["push", "/en/org/o1", {}],
+    ]);
+    restoreTimeout();
+  });
+
+  test("a push made before init is asked when it runs", async () => {
+    envState.side = "client";
+    installSessionHistory("/en/doc/1");
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+    const asked: unknown[] = [];
+    router.addNavigationGuard((navigation) => {
+      asked.push(navigation);
+      return false;
+    });
+
+    router.push("/list");
+    const pending = router.navigation();
+    expect(asked).toEqual([]);
+    router.init({ type: "ssr", side: "client", lang: "en", router: recordingRouter(calls) });
+
+    await expect(pending).rejects.toMatchObject({ name: "NavigationRefused" });
+    expect(asked).toEqual([{ kind: "push", from: "/doc/1", to: "/list" }]);
+    expect(calls).toEqual([]);
   });
 });

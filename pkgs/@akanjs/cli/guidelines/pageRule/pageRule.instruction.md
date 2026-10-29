@@ -78,6 +78,14 @@ body shape — this is the full contract behind them. Before changing route beha
 - **A route guard is not authorization for data.** It keeps a person off a screen and redirects early; every query
   the screen makes is still judged by that endpoint's own `guards`. Write both: the signal guard is the gate, the
   route guard is the courtesy that answers before the screen draws.
+- **Keeping a person on a page is `router.addNavigationGuard(guard)`, not `.guard()`.** `guard({ kind, from, to })`
+  is asked before every in-app move — `push`, `replace`, `back`, a `Link`, the browser's back and forward (`pop`), a
+  native back or swipe, the agent's `navigate` and `goBack` — with routes free of locale and basePath and `to: null`
+  for a `back`. `false`, a throw or a rejection keeps the page, `router.navigation()` rejects with
+  `NavigationRefused`, and a refused browser back is undone before the page redraws. Guards answer one at a time; a
+  move started while one decides is refused. Register it from an effect and return the remover
+  (`useEffect(() => router.addNavigationGuard(…), [isDirty])`). Redirects, `notFound()`, `setLang` and moves off the
+  origin are not asked; a closing tab is `beforeunload`'s.
 
 ## MCP Apps — `.app()`
 

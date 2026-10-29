@@ -57,7 +57,8 @@ export class StoreSurfaceSource implements SurfaceSource {
         try {
           router.push(path);
           await router.navigation();
-        } catch {
+        } catch (error) {
+          if (StoreSurfaceSource.#isKept(error)) throw new Error(StoreSurfaceSource.#kept);
           throw new Error(`There is no route at ${path}, so the page did not move. ${StoreSurfaceSource.#linked()}`);
         }
         // `push` returns before the new route's payload lands; without this the next readScreen reads the old page.
@@ -70,6 +71,14 @@ export class StoreSurfaceSource implements SurfaceSource {
 
   static readonly #arrived =
     "This screen's own tools and state replace the previous screen's and are listed on your next turn — call them then, by the names listed. Call readScreen to see the page.";
+
+  static readonly #kept =
+    "The app asked before leaving this page and kept it, so the page did not move. Tell the user why you could not move, and do not try again unless they ask.";
+
+  //? By name, not `instanceof`: the router is inlined into more than one browser bundle.
+  static #isKept(error: unknown) {
+    return error instanceof Error && error.name === "NavigationRefused";
+  }
 
   static #linked() {
     const routes = ScreenTarget.linkedRoutes();
@@ -99,6 +108,9 @@ export class StoreSurfaceSource implements SurfaceSource {
       guard: () => (router.canGoBack() ? true : "There is no previous page in this session's history."),
       run: async () => {
         router.back();
+        await router.navigation().catch((error: unknown) => {
+          if (StoreSurfaceSource.#isKept(error)) throw new Error(StoreSurfaceSource.#kept);
+        });
         await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
         return `Back on ${router.getPath()}. ${StoreSurfaceSource.#arrived}`;
       },

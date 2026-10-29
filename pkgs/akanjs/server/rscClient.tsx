@@ -1,6 +1,7 @@
 import { createElement, type ReactNode, startTransition, type Usable, use, useLayoutEffect, useState } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { createFromReadableStream } from "react-server-dom-webpack/client.browser";
+import { csrLocation } from "../client/csrLocation";
 import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
 import { isAuthTokenKey } from "../common/authCookie";
@@ -212,16 +213,16 @@ const pathnameOf = (href: string) => new URL(href).pathname;
 const withoutHash = (href: string | undefined) => href?.split("#", 1)[0];
 
 function commitHistory(target: string, replace: boolean | undefined) {
-  if (replace) window.history.replaceState(akanHistoryState(true), "", target);
-  else window.history.pushState(akanHistoryState(false), "", target);
+  if (replace) csrLocation.replace(akanHistoryState(true), target);
+  else csrLocation.push(akanHistoryState(false), target);
   renderedHref = target;
 }
 
 /** Writes the entry without asking the server for the page; only a change that keeps the rendered path qualifies. */
 function navigateShallow(target: string, replace: boolean | undefined): boolean {
   if (pathnameOf(target) !== pathnameOf(renderedHref)) return false;
-  if (replace) window.history.replaceState(akanHistoryState(true, true), "", target);
-  else window.history.pushState(akanHistoryState(false, true), "", target);
+  if (replace) csrLocation.replace(akanHistoryState(true, true), target);
+  else csrLocation.push(akanHistoryState(false, true), target);
   return true;
 }
 
