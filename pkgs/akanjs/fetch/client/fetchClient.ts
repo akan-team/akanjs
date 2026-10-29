@@ -112,6 +112,8 @@ export class FetchClient {
   #wsOptions: WsClientOptions = {};
   readonly #handlerStore: Record<string, FetchHandler> = {};
   readonly #handlerFactory = new Map<string, FetchHandlerFactory>();
+  /** The refName whose slice generated each handler, so its cleanup never takes another module's same-named endpoint. */
+  readonly #generatedBy = new Map<string, string>();
   #sharedRegistryAppliedVersion = 0;
   #clientIp: string | null = null;
   /** Cloned toward another server: the request being served is this server's visitor, not that server's caller. */
@@ -320,9 +322,11 @@ export class FetchClient {
     if (!handler) throw new Error(`${owner} requires fetch handler "${key}", but it is not registered`);
     return handler as T;
   }
-  #setHandlerFactory(key: string, factory: FetchHandlerFactory) {
+  #setHandlerFactory(key: string, factory: FetchHandlerFactory, generatedBy?: string) {
     this.#handlerFactory.set(key, factory);
     delete this.#handlerStore[key];
+    if (generatedBy) this.#generatedBy.set(key, generatedBy);
+    else this.#generatedBy.delete(key);
   }
   //? A bridged tab has no network: the socket would fail, or under a lenient host reach whatever origin hosts the view.
   connect() {
@@ -733,13 +737,14 @@ export class FetchClient {
     };
     // The tab-wide client may have applied a lib's signal first; a later slice denying a verb takes its handler back.
     const generated = [`create${capRefName}`, `remove${capRefName}`, `light${capRefName}`, ...Object.values(names)];
-    for (const key of generated.filter((key) => key !== names.addModelFiles && !(key in signal.endpoint))) {
+    for (const key of generated.filter((key) => this.#generatedBy.get(key) === refName)) {
       this.#handlerFactory.delete(key);
+      this.#generatedBy.delete(key);
       delete this.#handlerStore[key];
     }
     const endpoint = FetchClient.getBaseEndpoint(refName, signal);
     Object.entries(endpoint).forEach(([key, value]) => {
-      this.#setHandlerFactory(key, () => this.#makeHttpFn(key, value, signal.prefix));
+      this.#setHandlerFactory(key, () => this.#makeHttpFn(key, value, signal.prefix), refName);
     });
 
     // view/edit exist exactly when the get handler does; edit also needs a write endpoint; merge wraps updateModel.
@@ -748,16 +753,20 @@ export class FetchClient {
     const anyCruGuards =
       FetchClient.#mountedGuards(signal, "create") ?? updateGuards ?? FetchClient.#mountedGuards(signal, "remove");
     if (getGuards) {
-      this.#setHandlerFactory(names.viewModel, () =>
-        this.#makeModelHandleFn(refName, names.model, names.viewModel, `${refName}View`),
+      this.#setHandlerFactory(
+        names.viewModel,
+        () => this.#makeModelHandleFn(refName, names.model, names.viewModel, `${refName}View`),
+        refName,
       );
-      this.#setHandlerFactory(names.getModelView, () => this.#makeModelObjFn(refName, names.getModelView));
+      this.#setHandlerFactory(names.getModelView, () => this.#makeModelObjFn(refName, names.getModelView), refName);
     }
     if (getGuards && anyCruGuards) {
-      this.#setHandlerFactory(names.editModel, () =>
-        this.#makeModelHandleFn(refName, names.model, names.editModel, `${refName}Edit`),
+      this.#setHandlerFactory(
+        names.editModel,
+        () => this.#makeModelHandleFn(refName, names.model, names.editModel, `${refName}Edit`),
+        refName,
       );
-      this.#setHandlerFactory(names.getModelEdit, () => this.#makeModelObjFn(refName, names.getModelEdit));
+      this.#setHandlerFactory(names.getModelEdit, () => this.#makeModelObjFn(refName, names.getModelEdit), refName);
     }
     if (updateGuards) {
       this.#setHandlerFactory(
@@ -767,6 +776,7 @@ export class FetchClient {
             const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
             return this.#requireHandler(names.updateModel, names.mergeModel)(id, data, option);
           }) as FetchHandler,
+        refName,
       );
     }
 

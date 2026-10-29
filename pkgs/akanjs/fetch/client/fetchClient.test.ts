@@ -159,6 +159,44 @@ describe("FetchClient syncing the process registry", () => {
   });
 });
 
+describe("FetchClient registering an endpoint named like another model's generated one", () => {
+  const content = (): SerializedSignal => ({
+    prefix: "content",
+    endpoint: { removeVersion: { type: "mutation", args: [], returns: { refName: "Boolean" }, guards: ["User"] } },
+  });
+  const versionOf = (facts: Partial<SerializedSignal> = {}): SerializedSignal => ({
+    prefix: "version",
+    slice: { "": { args: [], guards: ["None"] } },
+    crud: { get: false, create: false, update: false, remove: false },
+    endpoint: {},
+    ...facts,
+  });
+
+  test("keeps it when that model's slice mounts no such verb, whichever module applies first", () => {
+    const contentFirst = new FetchClient("", {}, { content: content(), version: versionOf() });
+    expect(typeof contentFirst.handler.removeVersion).toBe("function");
+    FetchClient.resetSharedRegistry();
+    const versionFirst = new FetchClient("", {}, { version: versionOf(), content: content() });
+    expect(typeof versionFirst.handler.removeVersion).toBe("function");
+  });
+
+  test("keeps it when that model's signal is applied again, as a later module or a registry sync does", () => {
+    const client = new FetchClient("", {}, { content: content(), version: versionOf() });
+    client.applySignal({ version: versionOf() });
+    expect(typeof client.handler.removeVersion).toBe("function");
+    new FetchClient("", {}, { version: versionOf() });
+    void client.handler.aKeyNoClientHas;
+    expect(typeof client.handler.removeVersion).toBe("function");
+  });
+
+  test("still takes back the model's own generated handler once a later signal denies the verb", () => {
+    const client = new FetchClient("", {}, { version: versionOf({ crud: undefined, cruGuards: ["Admin"] }) });
+    expect("removeVersion" in client.handler).toBe(true);
+    client.applySignal({ version: versionOf() });
+    expect("removeVersion" in client.handler).toBe(false);
+  });
+});
+
 describe("FetchClient merging a model's fields", () => {
   const thrownBy = (call: () => unknown) => {
     try {
