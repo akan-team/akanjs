@@ -517,6 +517,14 @@ The carried server asks the shell that showed the dialog over its IPC channel, s
 and nothing else, and no page ever holds a path. Behind a dev build `akan start` checks the grant's signature
 against a key in `~/.akan/native` instead, in `operationMode` local only; every other server refuses a grant.
 
+**A secret the user gives the server is kept by the OS, never in a file.** `NativeSecret.set(key, value)`,
+`get(key)` (null when none is kept) and `remove(key)` from `akanjs/server` reach the OS credential store through the
+shell that carries the server — the macOS Keychain, the Windows Credential Manager, the Secret Service on Linux — in a
+store of the server's own, apart from the page's `secretStorage`, so no page script reads it. Anywhere but a carried
+server `NativeSecret.available` is false and every call rejects: keep secrets in the env there. On macOS without a
+Team ID signature, any program of the same user can read the store's key through `security`, as with
+`secretStorage`.
+
 **Devices belong to the shell, not the server.** Displays and their changes (`screen`), windows placed on them
 (`window`), the system volume and mute (`volume`), global shortcuts (`global-shortcut`), keep-awake (`keep-awake`)
 and launch at login (`autostart`) are native runtime plugins, each added to `native.plugins`. Every builtin plugin's

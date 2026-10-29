@@ -22,6 +22,7 @@ import { createLifecycle } from "./lifecycle.ts";
 import { appDataDir, appLocalDataDir, reservedDirs, serverDataDir } from "./paths.ts";
 import { type DesktopPlugin, useShellOpenLimit } from "./plugin.ts";
 import { nextRelaunchDelay, relaunchAfterExit } from "./relaunch.ts";
+import { createSecretStore } from "./secretStore.ts";
 import {
   createDesktopServer,
   createServerStatus,
@@ -481,7 +482,8 @@ export function startHost(plugins: DesktopPlugin[]): void {
   //? would call the backend its bundle was built for, and a desktop app would read and write another copy's data.
   const startServer = async (): Promise<Record<string, string> | undefined> => {
     if (!serverStatus) return undefined;
-    const dataDir = serverDataDir(boot.app.id, boot.dev === true);
+    const dev = boot.dev === true;
+    const dataDir = serverDataDir(boot.app.id, dev);
     try {
       if (!manifest) throw manifestProblem;
       const server = createDesktopServer({
@@ -489,6 +491,13 @@ export function startHost(plugins: DesktopPlugin[]): void {
         dataDir,
         manifest,
         binDir,
+        //? A store of its own, never the page's secure-storage one; a debug build's never touches the release app's.
+        secrets: createSecretStore({
+          service: `${boot.app.id}.akan-native.${dev ? "server-debug" : "server"}-secrets`,
+          file: join(dataDir, "secure-storage.json"),
+          label: `${boot.app.name} ${dev ? "debug server" : "server"} secrets`,
+          shell,
+        }),
         onGiveUp: serverAlert,
         onState: serverStatus.setState,
       });
