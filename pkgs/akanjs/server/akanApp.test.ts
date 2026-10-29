@@ -1050,7 +1050,7 @@ describe("AkanApp", () => {
     }
   }, 20_000);
 
-  test("routes websocket upgrades via the child-reported ws upstream", async () => {
+  test("routes websocket upgrades via the child-reported ws upstream, and answers a plain GET there 426", async () => {
     const { serverPath, runtimeDir, port } = await makeRoot("akan-app-ws-upstream-");
 
     await Bun.write(
@@ -1107,6 +1107,10 @@ describe("AkanApp", () => {
       });
       socket.close();
       expect(reply).toBe("echo:hello");
+
+      const plain = await fetch(`http://127.0.0.1:${port}/api/ws`);
+      expect(plain.status).toBe(426);
+      expect(plain.headers.get("upgrade")).toBe("websocket");
     });
   }, 20_000);
 

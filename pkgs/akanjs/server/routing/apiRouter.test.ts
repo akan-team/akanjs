@@ -205,6 +205,19 @@ describe("ApiRouter.buildRoutes", () => {
       SignalContext.setHttpPeerResolver(null);
     }
   });
+
+  test("the socket path answers a request that never asked to upgrade 426, and keeps 500 for a refused handshake", async () => {
+    const routes = await buildRoutes({ upgradeAppWs: () => false });
+    const open = (headers: Record<string, string> = {}) =>
+      (routes["/api/ws"] as RouteFn)(new Request("http://localhost/api/ws", { headers }));
+
+    const plain = await open();
+    expect(plain?.status).toBe(426);
+    expect(plain?.headers.get("upgrade")).toBe("websocket");
+    expect(plain?.headers.get("connection")).toBe("Upgrade");
+    expect((await open({ upgrade: "h2c" }))?.status).toBe(426);
+    expect((await open({ upgrade: "WebSocket", connection: "Upgrade" }))?.status).toBe(500);
+  });
 });
 
 describe("ApiRouter.buildWebsocketHandlers", () => {
@@ -558,6 +571,27 @@ describe("ApiRouter session cookie sweep", () => {
 });
 
 describe("ApiRouter endpoint responses over a real socket", () => {
+  test("opens a socket for a handshake and answers a plain GET on the same path 426", async () => {
+    let server: Bun.Server<unknown> | undefined;
+    const routes = await buildRoutes({ upgradeAppWs: (req, data) => server?.upgrade(req, { data }) ?? false });
+    server = Bun.serve({ port: 0, routes: routes as never, websocket: { message: () => undefined } });
+    try {
+      const plain = await fetch(`http://localhost:${server.port}/api/ws`);
+      expect(plain.status).toBe(426);
+      expect(plain.headers.get("upgrade")).toBe("websocket");
+
+      const socket = new WebSocket(`ws://localhost:${server.port}/api/ws`);
+      const opened = await new Promise<boolean>((resolve) => {
+        socket.addEventListener("open", () => resolve(true));
+        socket.addEventListener("error", () => resolve(false));
+      });
+      socket.close();
+      expect(opened).toBe(true);
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("compresses a signal endpoint's JSON, and leaves the decoded body identical", async () => {
     const payload = { rows: Array.from({ length: 200 }, (_, i) => ({ id: i, title: "repeated title" })) };
     const server = Bun.serve({
