@@ -239,6 +239,10 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   `RUN if [ "$TARGETARCH" = "<arch>" ]` guard, so a multi-arch build runs it on one leg only. `preRuns` land
   before `bun install --production` (where a native dependency's build tools have to be), `postRuns` after it
   and before the app files are copied.
+- **The image installs the versions the workspace locked.** `akan build` writes a `bun.lock` beside the image's
+  `package.json`, cut down from the workspace's to what the server needs, and the image installs it
+  `--frozen-lockfile`. A workspace without a root `bun.lock` gets a warning and an unlocked install; a Dockerfile
+  written whole copies `bun.lock` itself.
 - **A lib declares the steps its own runtime needs**, and every app that mounts it inherits them:
   `libs/<lib>/akan.config.ts` takes `docker: { preRuns, postRuns }` and nothing else — the base image and the
   command belong to the app. Lib steps are emitted before the app's own, and an identical step declared twice
@@ -512,6 +516,14 @@ const clip = await NativeFile.resolveIn(folderGrant, "day1/a.mp4"); // refused i
 The carried server asks the shell that showed the dialog over its IPC channel, so it reaches what the user picked
 and nothing else, and no page ever holds a path. Behind a dev build `akan start` checks the grant's signature
 against a key in `~/.akan/native` instead, in `operationMode` local only; every other server refuses a grant.
+
+**A secret the user gives the server is kept by the OS, never in a file.** `NativeSecret.set(key, value)`,
+`get(key)` (null when none is kept) and `remove(key)` from `akanjs/server` reach the OS credential store through the
+shell that carries the server — the macOS Keychain, the Windows Credential Manager, the Secret Service on Linux — in a
+store of the server's own, apart from the page's `secretStorage`, so no page script reads it. Anywhere but a carried
+server `NativeSecret.available` is false and every call rejects: keep secrets in the env there. On macOS without a
+Team ID signature, any program of the same user can read the store's key through `security`, as with
+`secretStorage`.
 
 **Devices belong to the shell, not the server.** Displays and their changes (`screen`), windows placed on them
 (`window`), the system volume and mute (`volume`), global shortcuts (`global-shortcut`), keep-awake (`keep-awake`)

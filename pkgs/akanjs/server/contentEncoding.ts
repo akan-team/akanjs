@@ -5,6 +5,7 @@ const COMPRESSIBLE_TYPES = new Set([
   "application/javascript",
   "application/json",
   "application/manifest+json",
+  "application/wasm",
   "image/svg+xml",
 ]);
 
@@ -90,11 +91,54 @@ const negotiateEncoding = (req: Request, response: Pick<Response, "status" | "he
   return acceptedEncodings(req.headers.get("accept-encoding") ?? "")[0] ?? null;
 };
 
-// Buffers the body: never pass a streamed response (SSR HTML, RSC flight, SSE) — it would hold the whole render.
+type HeldBody = { bytes: Uint8Array<ArrayBuffer> } | { stream: ReadableStream<Uint8Array>; byteLength: number };
+
+const nextTurn = () => new Promise<null>((resolve) => setImmediate(() => resolve(null)));
+
+//? Bun gives a handler-built body no length, so only a read that has to wait tells a stream from bytes in hand.
+const holdAvailable = async (body: ReadableStream<Uint8Array>): Promise<HeldBody> => {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  let pending: ReturnType<typeof reader.read> | null = null;
+  for (;;) {
+    const read = reader.read();
+    const result = await Promise.race([read, nextTurn()]);
+    if (!result) pending = read;
+    else if (result.done) return { bytes: Buffer.concat(chunks) };
+    else {
+      chunks.push(result.value);
+      byteLength += result.value.byteLength;
+    }
+    if (pending || byteLength > MAX_COMPRESS_BYTES) break;
+  }
+  const stream = new ReadableStream<Uint8Array>({
+    start: (controller) => {
+      for (const chunk of chunks) controller.enqueue(chunk);
+    },
+    pull: async (controller) => {
+      const { value, done } = await (pending ?? reader.read());
+      pending = null;
+      if (done) controller.close();
+      else controller.enqueue(value);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+  return { stream, byteLength };
+};
+
+// Compresses a body in hand whole, so it keeps a length; one still being written streams on from its first wait.
 export const compressResponse = async (req: Request, response: Response): Promise<Response> => {
   const encoding = negotiateEncoding(req, response);
   if (!encoding || !response.body) return response;
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const held = response.headers.has("content-length")
+    ? { bytes: new Uint8Array(await response.arrayBuffer()) }
+    : await holdAvailable(response.body);
+  if ("stream" in held) {
+    const resumed = new Response(held.stream, response);
+    return held.byteLength > MAX_COMPRESS_BYTES ? resumed : compressStreamResponse(req, resumed);
+  }
+  const { bytes } = held;
   //? A handler-built body carries no Content-Length, so the cap above only sees a proxied one.
   if (bytes.byteLength < MIN_COMPRESS_BYTES || bytes.byteLength > MAX_COMPRESS_BYTES)
     return new Response(bytes, response);

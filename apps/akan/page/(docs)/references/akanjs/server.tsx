@@ -504,6 +504,13 @@ export default page()
         }),
       },
       {
+        name: "setAgentRequestPolicy(fn)",
+        desc: l.trans({
+          en: "Sees each agent turn before the model and returns what is sent, or throws an `Err` to refuse it.",
+          ko: "모델에 가기 전의 agent 턴을 받아 보낼 요청을 돌려줍니다. `Err`를 던지면 거절합니다.",
+        }),
+      },
+      {
         name: "setLlm(option | fn)",
         desc: l.trans({
           en: "The model the agent relay talks to: `apiKey`, `model`, `host` and more.",
@@ -560,7 +567,7 @@ export default page()
         }),
       },
       {
-        name: "setAgentAccess",
+        name: "setAgentAccess, setAgentRequestPolicy",
         desc: l.trans({
           en: "The last call wins; `null` clears what a lib set.",
           ko: "마지막 호출이 이깁니다. `null`은 lib이 정한 값을 지웁니다.",

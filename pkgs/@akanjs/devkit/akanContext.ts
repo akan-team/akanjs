@@ -632,6 +632,28 @@ export class AkanContextAnalyzer {
     };
   }
 
+  //? Older templates wrote these for Next.js: nothing installs or reads them, and editors warn about the plugin.
+  static async #configLeftovers(workspace: WorkspaceExecutor, sysPaths: string[]) {
+    const leftovers: { path: string; message: string }[] = [];
+    for (const sysPath of sysPaths) {
+      const tsconfigPath = `${sysPath}/tsconfig.json`;
+      const tsconfig = await safeReadText(path.join(workspace.workspaceRoot, tsconfigPath));
+      if (tsconfig && (/"name"\s*:\s*"next"/.test(tsconfig) || tsconfig.includes(".next/types")))
+        leftovers.push({
+          path: tsconfigPath,
+          message: `${tsconfigPath} still names the Next.js TS plugin or .next/types, which Akan never uses — delete the "next" plugin entry and the ".next/types/**/*.ts" include.`,
+        });
+    }
+    const bunfig = await safeReadText(path.join(workspace.workspaceRoot, "bunfig.toml"));
+    if (bunfig?.includes("bun-plugin-tailwind"))
+      leftovers.push({
+        path: "bunfig.toml",
+        message:
+          "bunfig.toml still loads bun-plugin-tailwind, which is not installed and which Akan never uses (it compiles Tailwind itself) — delete the [serve.static] section, which Akan never reads.",
+      });
+    return leftovers;
+  }
+
   static async doctor(
     workspace: WorkspaceExecutor,
     {
@@ -701,6 +723,9 @@ export class AkanContextAnalyzer {
         { severity: "warning", code: agentDrift.code, path: "AGENTS.md", message: agentDrift.message },
         repairAction("generated", "akan agent install agents-md", agentDrift.hint, true),
       );
+    const sysPaths = [...context.apps, ...context.libs].map((sys) => sys.path);
+    for (const leftover of await AkanContextAnalyzer.#configLeftovers(workspace, sysPaths))
+      diagnostics.push({ severity: "warning", code: "config-leftover", ...leftover });
 
     for (const sys of [...context.apps, ...context.libs]) {
       for (const module of sys.modules) {

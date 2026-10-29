@@ -168,6 +168,9 @@ export type AkanIpcMessage =
   /** Desktop server → the shell that started it: the path behind a file picker grant (forServer). */
   | { type: "file.resolve"; id: string; grant: string }
   | { type: "file.resolved"; id: string; path?: string; mode?: "read" | "write" | "folder"; error?: string }
+  /** Desktop server → the shell that started it: one of its secrets in the OS credential store (NativeSecret). */
+  | { type: "secret.request"; id: string; op: "get" | "set" | "remove"; key: string; value?: string }
+  | { type: "secret.answer"; id: string; value?: string | null; error?: string }
   | { type: "error"; message: string; stack?: string; pid?: number };
 
 export const sendAkanIpc = (message: AkanIpcMessage) => {

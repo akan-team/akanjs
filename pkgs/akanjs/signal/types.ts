@@ -253,6 +253,6 @@ export type WebsocketSubscribeAck = {
   replayed?: boolean;
 };
 /** `seq` numbers the frames one server process delivers for a room, one apart. */
-export type WebsocketPublishData = { type: "pub"; roomId: string; data: object | object[]; seq?: number };
+export type WebsocketPublishData = { type: "pub"; roomId: string; data: object | object[] | null; seq?: number };
 export type WebsocketAuthAck = { type: "auth"; revokedRooms: string[] };
 export type WebsocketResData = WebsocketMessageData | WebsocketSubscribeAck | WebsocketPublishData | WebsocketAuthAck;

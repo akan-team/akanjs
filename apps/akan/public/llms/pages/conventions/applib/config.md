@@ -367,7 +367,7 @@ Order of the generated Dockerfile
 
 `preRuns`: the libraries' steps first, then the app's.
 
-Copy `package.json` and run `bun install --production`.
+Copy `package.json` and `bun.lock`, then run `bun install --production --frozen-lockfile`.
 
 `postRuns`, in the same order.
 
@@ -665,8 +665,8 @@ const config: AppConfig = {
     "ARG TARGETARCH",
     "RUN mkdir -p /workspace",
     "WORKDIR /workspace",
-    "COPY ./package.json ./package.json",
-    "RUN bun install --production",
+    "COPY ./package.json ./bun.lock ./",
+    "RUN bun install --production --frozen-lockfile",
     "COPY . .",
     "ENV PORT=8282",
     "ENV NODE_ENV=production",

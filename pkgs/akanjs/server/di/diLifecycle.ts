@@ -1,6 +1,7 @@
 import { type BackendEnv, DatabaseModes, getEnv, INTERNAL_META } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
+import { FetchClient } from "akanjs/fetch";
 import {
   type Adaptor,
   type AdaptorCls,
@@ -19,6 +20,7 @@ import { Base, BaseEndpoint, BaseInternal } from "../../signal/base.signal";
 import type { Endpoint, EndpointCls } from "../../signal/endpoint";
 import type { Internal } from "../../signal/internal";
 import { Logging, type MiddlewareCls, Timeout } from "../../signal/middleware";
+import { FetchSerializer } from "../../signal/serializer";
 import type { ServerSignal, ServerSignalCls } from "../../signal/serverSignal";
 import { SignalRegistry } from "../../signal/signalRegistry";
 import type { AkanLib, DatabaseModule, ScalarModule, ServiceModule } from "../akanLib";
@@ -197,6 +199,7 @@ export class DiLifecycle {
     if (!this.#scalar.has("agentTurn"))
       this.#scalar.set("agentTurn", { constant: agentTurnConstant, database: agentTurnDocument });
     this.#assertUniqueInternalJobs();
+    this.#assertUniqueSignalNames();
     const adaptorClaims = new Map<string, AdaptorCls>();
     const adaptorRegistrations: Registration[] = [];
     const claimAdaptor = (adaptorCls: AdaptorCls, owner: string) => {
@@ -475,6 +478,27 @@ export class DiLifecycle {
         .map(([key, { type }]) => ({ key, owner: `the ${type} of "${internal.refName}"` })),
     );
     assertUniqueRegistrations("internal", jobs);
+  }
+
+  //? `fetch.*` is one table across modules and a socket frame names only its route: the last module mounted would win.
+  #assertUniqueSignalNames() {
+    const signals = [
+      ...[...this.#service.values()].map(({ signal: { endpoint } }) => ({
+        refName: endpoint.baseName,
+        signal: FetchSerializer.serializeServiceSignal(endpoint),
+      })),
+      ...[...this.#database.values()].map(({ signal: { endpoint, slice } }) => ({
+        refName: endpoint.baseName,
+        signal: FetchSerializer.serializeDatabaseSignal(slice, endpoint),
+      })),
+    ];
+    const claims = signals.map(({ refName, signal }) => ({ refName, ...FetchClient.claimsOf(refName, signal) }));
+    const owned = (table: "handlers" | "sockets") =>
+      claims.flatMap(({ refName, ...claimed }) =>
+        claimed[table].map(({ key, by }) => ({ key, owner: `${by} of "${refName}"` })),
+      );
+    assertUniqueRegistrations("fetch", owned("handlers"));
+    assertUniqueRegistrations("socket", owned("sockets"));
   }
 
   registerSchedule(serverMode: "federation" | "batch" | "all") {

@@ -150,6 +150,62 @@ describe("the server a desktop app carries", () => {
     ]);
   });
 
+  test("keeps the server's secrets in its store, and refuses a malformed request or one it has no store for", async () => {
+    const kept = new Map<string, string>();
+    const { server, children } = setup({
+      secrets: {
+        get: async (key) => kept.get(key) ?? null,
+        set: async (key, value) => {
+          if (key === "locked") throw new Error("the keyring stayed locked");
+          kept.set(key, value);
+        },
+        remove: (key) => void kept.delete(key),
+      },
+    });
+    const started = server.start();
+    await until(() => children.length === 1);
+    children[0]?.ready();
+    await started;
+    const ask = (message: Record<string, unknown>) =>
+      children[0]?.options.onMessage({ type: "secret.request", ...message });
+    ask({ id: "a", op: "set", key: "token", value: "s3cr3t" });
+    await until(() => children[0]?.sent.length === 1);
+    ask({ id: "b", op: "get", key: "token" });
+    ask({ id: "c", op: "get", key: "missing" });
+    ask({ id: "d", op: "set", key: "token" });
+    ask({ id: "e", op: "list", key: "token" });
+    ask({ id: "f", op: "get", key: "" });
+    ask({ id: "g", op: "set", key: "locked", value: "v" });
+    await until(() => children[0]?.sent.length === 7);
+    ask({ id: "h", op: "remove", key: "token" });
+    await until(() => children[0]?.sent.length === 8);
+    expect(kept.size).toBe(0);
+    //? Each request is answered when its store call settles, so a refused one can overtake an earlier read.
+    const byId = (sent: unknown[] = []): unknown[] =>
+      [...(sent as { id: string }[])].sort((a, b) => a.id.localeCompare(b.id));
+    expect(byId(children[0]?.sent)).toEqual([
+      { type: "secret.answer", id: "a" },
+      { type: "secret.answer", id: "b", value: "s3cr3t" },
+      { type: "secret.answer", id: "c", value: null },
+      { type: "secret.answer", id: "d", error: "a secret's value must be a string" },
+      { type: "secret.answer", id: "e", error: 'no secret operation "list"' },
+      { type: "secret.answer", id: "f", error: "a secret's key must be a non-empty string" },
+      { type: "secret.answer", id: "g", error: "the keyring stayed locked" },
+      { type: "secret.answer", id: "h" },
+    ]);
+
+    const bare = setup();
+    const bareStarted = bare.server.start();
+    await until(() => bare.children.length === 1);
+    bare.children[0]?.ready();
+    await bareStarted;
+    bare.children[0]?.options.onMessage({ type: "secret.request", id: "a", op: "get", key: "token" });
+    await until(() => bare.children[0]?.sent.length === 1);
+    expect(bare.children[0]?.sent).toEqual([
+      { type: "secret.answer", id: "a", error: "this app keeps no secrets for its server" },
+    ]);
+  });
+
   test("keeps one owner-only JWT secret per installation, narrowing a kept file that others could read", () => {
     const dir = mkdtempSync(join(tmpdir(), "akan-native-secret-"));
     const secret = jwtSecret(dir);

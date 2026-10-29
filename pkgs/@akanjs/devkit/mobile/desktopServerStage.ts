@@ -24,11 +24,13 @@ export interface DesktopServerRun extends ServerPolicy {
 //* `bun install --production` does. It is staged outside dist: installing there would put host packages into the
 //* image's `COPY . .`.
 export class DesktopServerStage {
-  //? An API-only server starts neither the RSC worker nor the akan console and serves no CSR, public/ or SSR artifact,
-  //? and `install` wrote its own package.json. The rest of dist is the server's: its chunks, a `.node`, a `.wasm`.
+  //? An API-only server starts neither the RSC worker nor the akan console and serves no CSR, public/ or SSR
+  //? artifact, and `install` wrote its own package.json and bun.lock. The rest of dist is the server's: its chunks,
+  //? a `.node`, a `.wasm`.
   static readonly uncarried = new Set([
     "Dockerfile",
     "package.json",
+    "bun.lock",
     "rscWorker.js",
     "console.js",
     "console-runtime.js",

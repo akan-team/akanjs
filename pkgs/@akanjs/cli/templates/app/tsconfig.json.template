@@ -5,12 +5,7 @@
     "noEmit": true,
     "incremental": true,
     "resolveJsonModule": true,
-    "jsx": "preserve",
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
+    "jsx": "preserve"
   },
-  "include": ["./**/*.ts", "./**/*.tsx", ".next/types/**/*.ts"]
+  "include": ["./**/*.ts", "./**/*.tsx"]
 }
