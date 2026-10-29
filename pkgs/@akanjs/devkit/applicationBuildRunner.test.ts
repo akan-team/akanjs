@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { AkanAppConfig } from "./akanConfig";
+import { ProductionLockfile } from "./akanConfig/productionLockfile";
 import { AKAN_BACKEND_MINIFY, AKAN_OPTIONAL_BACKEND_EXTERNALS, ApplicationBuildRunner } from "./applicationBuildRunner";
 import type { App } from "./commandDecorators";
 import { AppExecutor, Executor } from "./executors";
@@ -70,6 +71,7 @@ console.info(new SampleService().name);
       getConfig: async () => config,
       dist: new Executor("dist", root),
       workspace: { workspaceRoot: root },
+      logger: { warn: () => undefined },
     } as unknown as App;
     try {
       await new ApplicationBuildRunner(app, { environment: "debug" }).buildAppMeta();
@@ -77,6 +79,45 @@ console.info(new SampleService().name);
       await new ApplicationBuildRunner(app).buildAppMeta();
       expect(await readFile(path.join(root, "Dockerfile"), "utf8")).toContain("ENV AKAN_PUBLIC_ENV=local\n");
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("writes the pruned lockfile beside package.json, or warns and leaves the image's install unlocked", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akan-build-meta-"));
+    const config = new AkanAppConfig(
+      { name: "portal" } as never,
+      [],
+      { name: "repo", version: "1.0.0", description: "repo" },
+      {},
+      { repoName: "akanjs", serveDomain: "akanjs.com", env: "local", portOffset: 0, workspaceRoot: root },
+    );
+    const warnings: string[] = [];
+    const app = {
+      getConfig: async () => config,
+      dist: new Executor("dist", root),
+      workspace: { workspaceRoot: root },
+      logger: { warn: (message: string) => warnings.push(message) },
+    } as unknown as App;
+    const prune = spyOn(ProductionLockfile, "prune");
+    try {
+      prune.mockResolvedValueOnce('{ "lockfileVersion": 1 }\n');
+      await new ApplicationBuildRunner(app).buildAppMeta();
+      expect(prune.mock.calls[0]?.[1]).toEqual(JSON.parse(await readFile(path.join(root, "package.json"), "utf8")));
+      expect(await readFile(path.join(root, "bun.lock"), "utf8")).toBe('{ "lockfileVersion": 1 }\n');
+      expect(await readFile(path.join(root, "Dockerfile"), "utf8")).toContain("--frozen-lockfile");
+      expect(warnings).toEqual([]);
+
+      await rm(path.join(root, "bun.lock"));
+      prune.mockRejectedValueOnce(new Error("the workspace root has no bun.lock"));
+      await new ApplicationBuildRunner(app).buildAppMeta();
+      expect(await Bun.file(path.join(root, "bun.lock")).exists()).toBe(false);
+      expect(await readFile(path.join(root, "Dockerfile"), "utf8")).toContain("RUN bun install --production\n");
+      expect(warnings).toEqual([
+        "The image installs its dependencies unlocked, at the newest versions package.json allows: the workspace root has no bun.lock",
+      ]);
+    } finally {
+      prune.mockRestore();
       await rm(root, { recursive: true, force: true });
     }
   });

@@ -154,6 +154,17 @@ describe("AkanAppConfig", () => {
     expect(config.dockerfile).toContain('RUN if [ "$TARGETARCH" = "arm64"');
   });
 
+  test("installs from the build's bun.lock frozen, or unlocked when the build wrote none", () => {
+    const config = new AkanAppConfig(app, [], packageJson, { docker: { postRuns: ["echo after"] } }, baseDevEnv);
+    const locked = config.dockerfileFor("main");
+    const unlocked = config.dockerfileFor("main", { lockfile: false });
+
+    expect(locked).toContain("COPY ./package.json ./bun.lock ./\nRUN bun install --production --frozen-lockfile\n");
+    expect(locked.indexOf("--frozen-lockfile")).toBeLessThan(locked.indexOf("echo after"));
+    expect(unlocked).toContain("COPY ./package.json ./package.json\nRUN bun install --production\n");
+    expect(unlocked).not.toContain("bun.lock");
+  });
+
   test("defaults both web surfaces on and keeps the image free of web env overrides", () => {
     const config = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
 
@@ -219,8 +230,8 @@ describe("AkanAppConfig", () => {
       "",
       "RUN mkdir -p /workspace",
       "WORKDIR /workspace",
-      "COPY ./package.json ./package.json",
-      "RUN bun install --production",
+      "COPY ./package.json ./bun.lock ./",
+      "RUN bun install --production --frozen-lockfile",
       "",
       "COPY . .",
       "ENV PORT=8282",
