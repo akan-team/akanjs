@@ -26,9 +26,19 @@ export class CloudHttpError extends Error {
 
   /** The `error` of a JSON refusal: an Err key from the server itself, or whatever a proxy put there. */
   get error(): string | null {
+    const error = this.#payload?.error;
+    return typeof error === "string" ? error : null;
+  }
+
+  get data(): Record<string, unknown> | null {
+    const data = this.#payload?.data;
+    return isRecord(data) ? data : null;
+  }
+
+  get #payload(): Record<string, unknown> | null {
     try {
       const parsed: unknown = JSON.parse(this.body);
-      return isRecord(parsed) && typeof parsed.error === "string" ? parsed.error : null;
+      return isRecord(parsed) ? parsed : null;
     } catch {
       return null;
     }

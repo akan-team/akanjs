@@ -1361,6 +1361,87 @@ describe("push-update of a desktop release", () => {
   });
 });
 
+describe("push-update refused by the project", () => {
+  const badRequest = (error: string, data?: Record<string, unknown>) =>
+    new CloudHttpError(400, "Bad Request", "/commitUpdateUpload/project-1", JSON.stringify({ error, data }));
+  const storage = () => Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response(null) });
+  const apiRefusing = (port: number | undefined, step: "request" | "commit", error: CloudHttpError) =>
+    ({
+      requestUpdateUpload: async () => {
+        if (step === "request") throw error;
+        return {
+          uploadId: "upload-1",
+          uploadUrl: `http://127.0.0.1:${port}/upload-1`,
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          contentType: "application/x-tar",
+        };
+      },
+      commitUpdateUpload: async () => {
+        throw error;
+      },
+    }) as unknown as CloudApi;
+
+  test("a 400 naming a release Err key exits 2 and prints the data it carried, on either step", async () => {
+    const root = await makeTempRoot();
+    const release = await desktopFixture(path.join(root, "updates"));
+    const server = storage();
+    const push = (step: "request" | "commit", error: CloudHttpError) =>
+      new CloudRunner()
+        .pushRelease(apiRefusing(server.port, step, error), "project-1", appOf(root), {
+          release,
+          url: "https://updates.test/lu",
+          signer: null,
+          target: "default",
+          notes: null,
+        })
+        .catch((refusal: unknown) => refusal);
+
+    try {
+      const malformed = await push(
+        "commit",
+        badRequest("release.error.desktopMalformed", { reason: "a directory entry", path: "./app" }),
+      );
+      expect(malformed).toBeInstanceOf(ExitCodeError);
+      expect(malformed).toMatchObject({
+        exitCode: 2,
+        message:
+          'The project refused the request: release.error.desktopMalformed {"reason":"a directory entry","path":"./app"}.',
+      });
+      expect(await push("request", badRequest("release.error.uploadKindInvalid"))).toMatchObject({
+        exitCode: 2,
+        message: "The project refused the request: release.error.uploadKindInvalid.",
+      });
+      const other = await push("commit", badRequest("base.error.invalidArgument", { name: "notes" }));
+      expect(other).not.toBeInstanceOf(ExitCodeError);
+      expect(other).toMatchObject({
+        message: 'The project refused the request: base.error.invalidArgument {"name":"notes"}.',
+      });
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("a phone pack a release Err key refuses exits 2 too", async () => {
+    const root = await makeTempRoot();
+    const pack = await packFixture(path.join(root, "pack"));
+    const server = storage();
+
+    try {
+      const refusal = await new CloudRunner()
+        .pushUpdate(apiRefusing(server.port, "commit", badRequest("release.error.uploadEmbedded")), "project-1", pack, {
+          channel: null,
+          notes: null,
+        })
+        .catch((error: unknown) => error);
+
+      expect(refusal).toBeInstanceOf(ExitCodeError);
+      expect(refusal).toMatchObject({ exitCode: 2 });
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
 describe("register-binary", () => {
   const storeBuild = async (root: string, bundle: Record<string, unknown> = {}) => {
     const bundlePath = path.join(root, "dist", "native", "lu", "default", "build", "android", "bundle.json");
