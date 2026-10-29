@@ -271,7 +271,8 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
   `ca-certificates` and `tzdata`.
 - **Native apps are the `native` section** (iOS, Android, desktop). A desktop app's carried server listens on a
   loopback port any local program can call — guard it as a network server — and ships `private/` and its env
-  readable on the user's computer; read runtime files from `AKAN_APP_DIR`.
+  readable on the user's computer; read runtime files from `AKAN_APP_DIR`, and keep a secret the user gives it with
+  `NativeSecret` (the OS credential store), never in a file.
 - **`database: { modes: [...] }`** (`single`, `multiple`, `cluster`), chosen by `AKAN_DATABASE_MODE`; an app running
   in two modes avoids `q.raw`.
 

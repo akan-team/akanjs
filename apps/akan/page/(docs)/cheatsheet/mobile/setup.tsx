@@ -1870,6 +1870,35 @@ await fetch.trimVideo(files[0].grant, 0, 30);
 // lib/video/video.service.ts (akanjs/server)
 const input = await NativeFile.resolve(grant, "read");`}
             />
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    A secret the user gives the server, such as their own API key, goes to the OS credential store with{" "}
+                    <code>NativeSecret</code>, never into a file. The page's <code>secretStorage</code> keeps another
+                    store, so no page script reads it. Outside the desktop app <code>NativeSecret.available</code> is
+                    false and every call rejects; keep secrets in the env there.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    사용자가 서버에 맡기는 비밀값(사용자 자신의 API 키 등)은 파일이 아니라 <code>NativeSecret</code>으로
+                    OS 자격 증명 저장소에 둡니다. 페이지의 <code>secretStorage</code>와는 저장소가 달라서 페이지
+                    스크립트는 이 값을 읽지 못합니다. 데스크톱 앱 밖에서는 <code>NativeSecret.available</code>이
+                    false이고 모든 호출이 거부되므로, 그곳에서는 비밀값을 env에 둡니다.
+                  </span>
+                ),
+              })}
+            </div>
+            <Code.Snippet
+              className="w-full"
+              title="server"
+              language="typescript"
+              code={`// lib/_llm/llm.service.ts (akanjs/server)
+await NativeSecret.set("llm.apiKey", apiKey);
+const kept = await NativeSecret.get("llm.apiKey"); // null when none is kept
+await NativeSecret.remove("llm.apiKey");`}
+            />
             <Docs.Alert type="info">
               {l.trans({
                 en: "Displays, windows, volume, global shortcuts, keep-awake and launch at login are native plugins, not server work: name each in native.plugins and import it from akanjs/client/native/<id>.",
