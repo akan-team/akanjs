@@ -18,7 +18,6 @@ import {
   RETRY_INTERVAL_MS,
   SearchIndex,
 } from "./searchIndex";
-import { AfterCommitHooks } from "./sql/AfterCommitHooks";
 import { PostgresDialect } from "./sql/dialect/postgres";
 import { SqliteDialect } from "./sql/dialect/sqlite";
 import { BunSqliteClient } from "./sql/driver/bunSqlite";
@@ -227,7 +226,7 @@ export class SqliteDatabase
       this.#open = null;
       release();
     }
-    await AfterCommitHooks.drain(context.afterCommit, this.logger);
+    for (const hook of context.afterCommit) await hook();
     return result;
   }
 
@@ -476,7 +475,7 @@ export class PostgresDatabase
           async () => await fn(),
         ),
     )) as T;
-    await AfterCommitHooks.drain(context.afterCommit, this.logger);
+    for (const hook of context.afterCommit) await hook();
     return result;
   }
 

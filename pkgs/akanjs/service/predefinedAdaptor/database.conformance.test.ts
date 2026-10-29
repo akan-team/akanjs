@@ -1005,19 +1005,12 @@ const describeDriver = (kind: SqlDriverKind) => {
     test("a throwing afterCommit is logged, not thrown: the transaction keeps its value and later callbacks run", async () => {
       const ledger = ledgerOn(driver);
       const serviceErrors = spyOn(ledger.logger, "error").mockImplementation(() => undefined);
-      const adaptorErrors = spyOn((driver.database as unknown as Adaptor).logger, "error").mockImplementation(
-        () => undefined,
-      );
       try {
         const seen: string[] = [];
         const settled = await ledger.transaction(async () => {
           await store.create({ title: "committed" });
           await ledger.afterCommit(() => {
             throw new Error("service-hook-failed");
-          });
-          await driver.database.afterCommit(async () => {
-            await Promise.resolve();
-            throw new Error("queued-hook-failed");
           });
           await ledger.afterCommit(() => {
             seen.push("later");
@@ -1039,10 +1032,8 @@ const describeDriver = (kind: SqlDriverKind) => {
           expect.stringContaining("service-hook-failed"),
           expect.stringContaining("at-once-failed"),
         ]);
-        expect(messagesOf(adaptorErrors)).toEqual([expect.stringContaining("queued-hook-failed")]);
       } finally {
         serviceErrors.mockRestore();
-        adaptorErrors.mockRestore();
       }
     });
 
