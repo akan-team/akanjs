@@ -19,6 +19,8 @@ import type {
 type ServiceMixinOmitKey =
   | "onInit"
   | "onDestroy"
+  | "transaction"
+  | "afterCommit"
   | "_libsOnInit"
   | "_libsOnDestroy"
   | "_preCreate"

@@ -220,6 +220,14 @@ export default page()
             marks: bothShapes,
           },
           {
+            name: "transaction · afterCommit",
+            desc: l.trans({
+              en: "Run writes as one database transaction, and an effect once it commits.",
+              ko: "쓰기를 DB transaction 하나로 묶고, commit된 뒤에 할 일을 실행.",
+            }),
+            marks: bothShapes,
+          },
+          {
             name: <span className="font-sans">{l.trans({ en: "injected properties", ko: "주입된 property" })}</span>,
             desc: l.trans({
               en: "Every key your injection builder returns.",
@@ -1658,19 +1666,67 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
   }
 }`}
             />
+            <div>
+              {l.trans({
+                en: "Writes that must land together go in one transaction, and the message about them waits for its commit:",
+                ko: "함께 반영되어야 하는 쓰기는 transaction 하나에 넣고, 그 쓰기를 알리는 일은 commit을 기다립니다:",
+              })}
+            </div>
+            <Code.Snippet
+              className="w-full"
+              title="apps/myapp/lib/wallet/wallet.service.ts"
+              code={`export class WalletService extends serve(db.wallet, ({ service }) => ({
+  notiService: service<srv.NotiService>(),
+})) {
+  async transferPoint(fromId: string, toId: string, amount: number) {
+    return await this.transaction(async () => {
+      const [from, to] = await Promise.all([
+        this.walletModel.getWallet(fromId),
+        this.walletModel.getWallet(toId),
+      ]);
+      await from.withdraw(amount).save();
+      await to.deposit(amount).save();
+      await this.afterCommit(() => this.notiService.sendTransfer(fromId, toId, amount));
+      return from;
+    });
+  }
+}`}
+            />
             <ul className="my-4 list-disc space-y-2 pl-5">
               <li>
                 {l.trans({
                   en: (
                     <span>
                       <strong>Load, save, then notify.</strong> Load every document the action needs, save, and only
-                      then call signals or other services.
+                      then call signals or other services — inside a transaction, through <code>afterCommit</code>,
+                      where a callback that throws is logged, not thrown, since the writes are already in.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>불러오고, 저장하고, 그다음 알립니다.</strong> 필요한 document를 모두 불러와 저장한 뒤에야
-                      signal이나 다른 service를 부릅니다.
+                      signal이나 다른 service를 부릅니다. transaction 안이라면 <code>afterCommit</code>으로 부릅니다.
+                      쓰기는 이미 반영됐으므로, 거기서 던진 에러는 로그로만 남고 호출자에게 던져지지 않습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A transaction covers every model</strong>, since a server has one database. A call inside
+                      another joins it, and the error that rolls it back reaches you unchanged. Cache,{" "}
+                      <code>memory</code> and outside calls are not in it, and on SQLite it holds the only write turn,
+                      so keep it short and never wait on the network inside.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>transaction은 모든 model을 덮습니다.</strong> 서버의 DB는 하나이기 때문입니다. 안에서 또
+                      부르면 바깥 transaction에 합류하고, rollback을 일으킨 에러는 그대로 전달됩니다. cache,{" "}
+                      <code>memory</code>, 외부 호출은 들어가지 않습니다. SQLite에서는 하나뿐인 쓰기 차례를 잡고 있으니
+                      짧게 끝내고, 안에서 네트워크를 기다리지 마세요.
                     </span>
                   ),
                 })}
