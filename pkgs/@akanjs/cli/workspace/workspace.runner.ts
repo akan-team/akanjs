@@ -82,11 +82,11 @@ export class WorkspaceRunner extends runner("workspace") {
     }: { dirname?: string; init?: boolean; akanVersion: string; registryUrl?: string; owner?: string },
   ) {
     const cwdPath = process.cwd();
-    const workspaceRoot = path.join(cwdPath, dirname, repoName);
+    const workspaceRoot = path.resolve(cwdPath, dirname, repoName);
     const normalizedRegistryUrl = registryUrl ? getNpmRegistryUrl(registryUrl) : undefined;
 
     const workspace = WorkspaceExecutor.fromRoot({ workspaceRoot, repoName });
-    const templateSpinner = workspace.spinning(`Creating workspace template files in ${dirname}/${repoName}...`);
+    const templateSpinner = workspace.spinning(`Creating workspace template files in ${workspaceRoot}...`);
     const latestTypesBunVersion = await getLatestPackageVersion("@types/bun", "latest", normalizedRegistryUrl);
     await workspace.applyTemplate({
       basePath: ".",
@@ -94,7 +94,7 @@ export class WorkspaceRunner extends runner("workspace") {
       dict: { repoName, appName, serveDomain: "localhost", owner },
     });
     if (normalizedRegistryUrl) await workspace.writeFile(".npmrc", `registry=${normalizedRegistryUrl}/\n`);
-    templateSpinner.succeed(`Workspace files created in ${dirname}/${repoName}`);
+    templateSpinner.succeed(`Workspace files created in ${workspaceRoot}`);
     const [rootPackageJson, peerDependencies] = await Promise.all([
       workspace.getPackageJson(),
       this.#getAkanPeerDependencies(),
@@ -113,6 +113,8 @@ export class WorkspaceRunner extends runner("workspace") {
         "@types/bun": latestTypesBunVersion,
         ...defaultWorkspaceTypeDependencies,
         "@akanjs/devkit": akanVersion,
+        //? Without a local bin, `bunx akan` in the workspace fetches and runs the unrelated npm package named `akan`.
+        "@akanjs/cli": akanVersion,
         ...(typescript ? { typescript } : {}),
       },
     };

@@ -1,4 +1,3 @@
-import path from "node:path";
 import { type Exec, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import { Logger } from "akanjs/common";
@@ -77,9 +76,8 @@ export class WorkspaceScript extends script("workspace", [
     } catch (_) {
       gitSpinner.fail("Git repository initialization failed. It's not fatal, you can commit manually");
     }
-    const workspacePath = path.join(dirname, repoName);
-    Logger.rawLog(`\n🎉 Welcome aboard! Workspace created in ${dirname}/${repoName}`);
-    Logger.rawLog(`🚀 Run \`cd ${workspacePath} && akan start ${appName}\` to start the development server.`);
+    Logger.rawLog(`\n🎉 Welcome aboard! Workspace created in ${workspace.workspaceRoot}`);
+    Logger.rawLog(`🚀 Run \`cd ${workspace.workspaceRoot} && akan start ${appName}\` to start the development server.`);
     Logger.rawLog(`\n👋 Happy coding!`);
   }
   async generateAgentRules(

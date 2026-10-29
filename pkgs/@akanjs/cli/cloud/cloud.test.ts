@@ -16,6 +16,7 @@ import {
   writeJson,
   writeText,
 } from "@akanjs/devkit/testHelpers";
+import type { PackageJson } from "@akanjs/devkit/types";
 import { Logger } from "akanjs/common";
 import { CloudCommand } from "./cloud.command";
 import { CloudRunner } from "./cloud.runner";
@@ -194,6 +195,38 @@ describe("CloudScript platform tests", () => {
 });
 
 describe("CloudRunner", () => {
+  test("update moves a workspace's @akanjs/cli with akanjs and @akanjs/devkit, and leaves other pins alone", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({ "dist-tags": { rc: "9.9.9-rc.0" } }))) as never;
+    const written: PackageJson[] = [];
+    const workspace = createFakeExecutor("workspace", {
+      exists: async () => true,
+      getPackageJson: async () => ({
+        name: "repo",
+        version: "0.0.1",
+        description: "repo",
+        dependencies: { akanjs: "1.0.0", react: "19.0.0" },
+        devDependencies: { "@akanjs/devkit": "1.0.0", "@akanjs/cli": "1.0.0", typescript: "5.9.0" },
+      }),
+      setPackageJson: async (packageJson: PackageJson) => {
+        written.push(packageJson);
+      },
+    });
+    try {
+      await new CloudRunner().update(workspace as never, "rc");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(written).toHaveLength(1);
+    expect(written[0]?.dependencies).toEqual({ akanjs: "9.9.9-rc.0", react: "19.0.0" });
+    expect(written[0]?.devDependencies).toEqual({
+      "@akanjs/devkit": "9.9.9-rc.0",
+      "@akanjs/cli": "9.9.9-rc.0",
+      typescript: "5.9.0",
+    });
+  });
+
   test("login opens its session through CloudApi.fromHost, so one in its last hour is refreshed, not signed in again", async () => {
     const host = "https://cloud.test";
     const self = { id: "u1", nickname: "akan" };
