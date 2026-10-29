@@ -129,8 +129,9 @@ Set-Content -LiteralPath $env:AKAN_SIGNER_OUT -Value $subject -Encoding UTF8`;
     return { schema: 1, cli: AkanAppConfig.akanVersion, platform, arch, channel, signer, builtAt };
   }
 
-  //* Uncompressed, regular files only under `./` names, no directory entries; what the manifest names is checked
-  //* against it while it is copied, so the archive holds the bytes the manifest signs for.
+  //* Akan Cloud refuses every push in any other shape: uncompressed, regular files under `./` names, no directory
+  //* entry, no ustar prefix, no GNU L/K, a pax 'x' holding `path` alone, and release.json and the manifest pair before
+  //* any `app/` entry. What the manifest names is checked against it as it is copied.
   async withArchive<T>(record: DesktopReleaseRecord, use: (archive: string) => Promise<T>): Promise<T> {
     const tmp = await mkdtemp(path.join(os.tmpdir(), "akan-release-"));
     try {

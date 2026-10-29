@@ -558,11 +558,13 @@ Pack an Android or iOS web bundle update unsigned, for a signer that keeps the k
 
 - --public-env (String, default --against, -u): Inline exactly these `AKAN_PUBLIC_*` values: a JSON map or a `bundle.json`. Left out, the `--against` build's.
 
-`akan push-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>] [--pack <dir>] [--public-env <file>]`
+`akan push-update <app> [--platform <platform>] [--arch <arch>] [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>] [--pack <dir>] [--public-env <file>]`
 
-Pack an update as `pack-update` does, or take the folder it wrote with `--pack`, and upload it to the Akan Cloud project, which keeps the key, signs and publishes it. The channel defaults to the target's `updates.channel`. It exits 2 when the pack needs a new store build or the project rejects it, and prints why; any other failure exits 1.
+Pack an update as `pack-update` does, or take the folder it wrote with `--pack`, and upload it to the Akan Cloud project, which keeps the key, signs and publishes it. For a desktop app it uploads the release `publish-update` signed for the channel as it is, once its signature checks against `updates.publicKeys[0]`. The channel defaults to the target's `updates.channel`. It exits 2 when the pack needs a new store build or the project rejects the release, and prints why; any other failure exits 1.
 
-- --platform (String, ios | android): The app it updates. Required to pack; with `--pack` it defaults to the pack's.
+- --platform (String, ios | android | desktop | macos | windows | linux): The app it updates; `desktop` is this computer's OS. Required to pack; with `--pack` it defaults to the pack's.
+
+- --arch (String, arm64 | x64): The CPU of a desktop release. Defaults to this computer's.
 
 - --target (String): A key of `native.targets`. Left out, the only target, so an app with several needs it to pack; with `--pack`, the pack's.
 
@@ -872,6 +874,7 @@ akan pack-update myapp --platform ios --env main --against store/bundle.json
 
 ```bash
 akan push-update myapp --platform android --env main --notes "Fix the login screen"
+akan publish-update myapp --env main && akan push-update myapp --platform desktop --env main
 akan pack-update myapp --platform ios --env main --against store/bundle.json && akan push-update myapp --pack dist/native/myapp/default/updates/ios
 ```
 

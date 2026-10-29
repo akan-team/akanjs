@@ -1,4 +1,4 @@
-import { isRecord } from "akanjs/common";
+import { isRecord, Logger } from "akanjs/common";
 import type { Workspace } from "../commandDecorators";
 import { CloudHttpError } from "./cloudHttpError";
 import type { AccessToken, AccessTokenDto, HostConfig } from "./constants";
@@ -123,8 +123,11 @@ export class CloudApi {
     if (error.status === 401)
       return new Error("The server did not accept your sign-in: run `akan login`, then try again.", { cause: error });
     if (error.status === 403) return new Error(`The project refused: ${who}.`, { cause: error });
-    if (error.status === 400)
-      return new Error(`The project refused the request${error.error ? `: ${error.error}` : ""}.`, { cause: error });
+    if (error.status === 400) {
+      const { data } = error;
+      const why = `${error.error ? `: ${error.error}` : ""}${data ? ` ${Logger.inlineData(data)}` : ""}`;
+      return new Error(`The project refused the request${why}.`, { cause: error });
+    }
     //? A proxy, or the gateway with no replica ready, answers 503 too; only the server's own names a domain Err key.
     const { errKey } = error;
     if (error.status === 503 && unavailable && errKey && errKey !== "base.error.serverUnavailable")

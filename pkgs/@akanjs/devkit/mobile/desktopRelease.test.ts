@@ -88,6 +88,29 @@ const read = (
 const entriesOf = (archive: string) =>
   Bun.spawnSync(["tar", "-tf", archive]).stdout.toString().split(/\r?\n/).filter(Boolean);
 
+//? Every header, a pax one too: a file's name is the `path` of the pax header before it, else its own name field.
+const headersOf = (bytes: Uint8Array) => {
+  const headers: { type: string; name: string; prefix: string; paxKeys: string[] }[] = [];
+  let paxPath: string | null = null;
+  for (let at = 0; at + 512 <= bytes.length; ) {
+    const block = Buffer.from(bytes.subarray(at, at + 512));
+    if (block.every((byte) => byte === 0)) break;
+    const field = (from: number, width: number) => block.toString("latin1", from, from + width).replace(/\0.*$/s, "");
+    const type = field(156, 1);
+    const size = Number.parseInt(field(124, 12), 8);
+    const records = Buffer.from(bytes.subarray(at + 512, at + 512 + size))
+      .toString("utf8")
+      .split("\n")
+      .filter(Boolean);
+    at += 512 + Math.ceil(size / 512) * 512;
+    const pax = type === "x" ? records.map((record) => record.slice(record.indexOf(" ") + 1)) : [];
+    const paxKeys = pax.map((record) => record.slice(0, record.indexOf("=")));
+    headers.push({ type, name: (type === "x" ? null : paxPath) ?? field(0, 100), prefix: field(345, 155), paxKeys });
+    paxPath = type === "x" ? (pax.find((record) => record.startsWith("path="))?.slice(5) ?? null) : null;
+  }
+  return headers;
+};
+
 const extract = async (archive: string) => {
   const out = await makeDir();
   expect(Bun.spawnSync(["tar", "-xf", archive, "-C", out]).exitCode).toBe(0);
@@ -115,6 +138,24 @@ describe("DesktopRelease", () => {
       `./app/${tarSha}.tar.gz`,
       `./app/${delta}`,
     ]);
+  });
+
+  test("keeps the one tar shape Akan Cloud accepts, a pax name of a long patch included", async () => {
+    const published = await publish();
+    const release = await read(published);
+
+    const headers = await release.withArchive(release.record(null), async (archive) =>
+      headersOf(await readFile(archive)),
+    );
+
+    expect(new Set(headers.map(({ type }) => type))).toEqual(new Set(["0", "x"]));
+    expect(headers.filter(({ prefix }) => prefix)).toEqual([]);
+    expect(headers.filter(({ type }) => type === "x").map(({ paxKeys }) => paxKeys)).toEqual([["path"]]);
+    const files = headers.filter(({ type }) => type === "0").map(({ name }) => name);
+    expect(files.slice(0, 3)).toEqual(["./release.json", "./main.json", "./main.json.sig"]);
+    expect(files.slice(3).every((name) => name.startsWith("./app/"))).toBe(true);
+    expect(files.slice(3)).toEqual([`./app/${published.tarSha}.tar.gz`, `./app/${published.delta}`]);
+    expect(Buffer.byteLength(`./app/${published.delta}`)).toBeGreaterThan(100);
   });
 
   test("the manifest and its signature go in byte for byte, beside a release.json of the CLI and the build time", async () => {
