@@ -99,6 +99,29 @@ describe("ContextRunner", () => {
     expect(shadows[0]?.message).toContain("apps/demo/ui/index.tsx shadows the generated ui/index.ts");
   });
 
+  test("warns about the Next.js and Tailwind-plugin leftovers older templates wrote", async () => {
+    const { workspace, app } = track(await createTempApp("demo"));
+    await writeJson(`${app.cwdPath}/tsconfig.json`, {
+      compilerOptions: { jsx: "preserve", plugins: [{ name: "next" }] },
+      include: ["./**/*.ts", ".next/types/**/*.ts"],
+    });
+    await writeText(`${workspace.workspaceRoot}/bunfig.toml`, '[serve.static]\nplugins = ["bun-plugin-tailwind"]\n');
+
+    const result = await AkanContextAnalyzer.doctor(workspace);
+    const leftovers = result.diagnostics.filter((diagnostic) => diagnostic.code === "config-leftover");
+
+    expect(result.status).toBe("passed");
+    expect(leftovers.map(({ path, severity }) => ({ path, severity }))).toEqual([
+      { path: "apps/demo/tsconfig.json", severity: "warning" },
+      { path: "bunfig.toml", severity: "warning" },
+    ]);
+
+    await writeJson(`${app.cwdPath}/tsconfig.json`, { compilerOptions: { jsx: "preserve" }, include: ["./**/*.ts"] });
+    await writeText(`${workspace.workspaceRoot}/bunfig.toml`, "");
+    const cleaned = await AkanContextAnalyzer.doctor(workspace);
+    expect(cleaned.diagnostics.filter((diagnostic) => diagnostic.code === "config-leftover")).toEqual([]);
+  });
+
   test("explains core agent-facing commands", () => {
     const runner = new ContextRunner();
 

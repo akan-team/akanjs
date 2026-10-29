@@ -1,4 +1,0 @@
-
-[serve.static]
-plugins = ["bun-plugin-tailwind"]
-env = "AKAN_PUBLIC_*"
