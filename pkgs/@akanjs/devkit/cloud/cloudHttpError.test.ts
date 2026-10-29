@@ -20,6 +20,14 @@ describe("CloudHttpError", () => {
     expect(plain.errKey).toBeNull();
   });
 
+  test("reads the data a server Err carried, and none from a body without it", () => {
+    const body = JSON.stringify({ error: "release.error.desktopMalformed", data: { reason: "a directory entry" } });
+
+    expect(new CloudHttpError(400, "Bad Request", "/x", body).data).toEqual({ reason: "a directory entry" });
+    expect(new CloudHttpError(400, "Bad Request", "/x", '{"error":"Bad Request","data":"x"}').data).toBeNull();
+    expect(new CloudHttpError(502, "Bad Gateway", "/x", "<html>502</html>").data).toBeNull();
+  });
+
   test("takes Retry-After as seconds or as a date, and nothing else", () => {
     expect(CloudHttpError.retryAfterMs("7")).toBe(7000);
     expect(CloudHttpError.retryAfterMs(new Date(Date.now() + 60_000).toUTCString())).toBeGreaterThan(55_000);
