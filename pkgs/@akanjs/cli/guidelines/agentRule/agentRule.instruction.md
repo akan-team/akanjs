@@ -31,7 +31,10 @@ pages declaring one name never clash, and a registry kept outside the surface re
   **refuses every call until the app names a guard of its own** — the same answer `None` gives, with no boot
   warning. A product with accounts names it in its `option.ts`, `option.setAgentAccess(SignedIn)`, taking the same
   guard classes every endpoint takes (an array is ANDed, `null` clears what a library set); without one the chat
-  cannot spend the LLM key.
+  cannot spend the LLM key. **The guard decides who, not what** — the browser writes the instructions, tools and
+  transcript — so `option.setAgentRequestPolicy((request, { account, ip }) => request)` sees each turn after the
+  guard, before the quota and the model (tool names as the page published them), and returns what is sent, or
+  throws an `Err` (`agent.error.requestRefused`) to refuse it.
   `persist` keeps the transcript across reloads (sessionStorage; `{ storage: "local" }` to outlive the tab),
   default off, and `shortcut={false}` gives the browser back the Cmd/Ctrl+L the launcher otherwise captures.
   **`persist` also takes a `SessionHistory` of the app's own** — `{ load, save, clear }` — which is how a

@@ -258,6 +258,8 @@ Method
 
 - setAgentAccess(guards): Guards a caller must pass to spend the LLM key through the agent chat. Several are ANDed.
 
+- setAgentRequestPolicy(fn): Sees each agent turn before the model and returns what is sent, or throws an `Err` to refuse it.
+
 - setLlm(option | fn): The model the agent relay talks to: `apiKey`, `model`, `host` and more.
 
 - setCrossSite(option): Extra origins a browser may send mutations and open the websocket from. `{ enabled: false }` turns the check off.
@@ -286,7 +288,7 @@ When several libs set it
 
 - setLlm: Merged field by field, so a lib may name the host and the app the key.
 
-- setAgentAccess: The last call wins; `null` clears what a lib set.
+- setAgentAccess, setAgentRequestPolicy: The last call wins; `null` clears what a lib set.
 
 - setCrossSite: The last call wins.
 
