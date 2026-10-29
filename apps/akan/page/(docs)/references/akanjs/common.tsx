@@ -158,6 +158,14 @@ export default page()
         example: 'bearerTokenOf("bearer abc"); // "abc"',
       },
       {
+        name: "IpLiteral.parse",
+        desc: l.trans({
+          en: "An address spelled the one way `Ip` reports it, port and IPv6 zone dropped, else `null`. Compare addresses through it.",
+          ko: "주소를 `Ip`가 주는 것과 같은 표기로 바꾸고 포트와 IPv6 zone은 버리며, 주소가 아니면 `null`입니다. 주소는 이 값으로 비교하세요.",
+        }),
+        example: 'IpLiteral.parse("[2001:DB8:0::1]:443"); // "2001:db8::1"',
+      },
+      {
         name: "parseSearchParams",
         desc: l.trans({
           en: "A query string as a record: a key given once is a string, a key given again an array of every value, empty ones included.",

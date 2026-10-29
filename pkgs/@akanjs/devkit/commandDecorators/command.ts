@@ -26,6 +26,7 @@ import { CommandContainer } from "./dependencyBuilder";
 import { ExitCodeError } from "./exitCodeError";
 import { formatCommandHelp, formatHelp } from "./helpFormatter";
 import { type CommandCls, getTargetCommandNames, getTargetMetas, type TargetFailure } from "./targetMeta";
+import { WorkspaceVersionCheck } from "./workspaceVersionCheck";
 
 const loggedCliErrorObjects = new WeakSet<object>();
 const loggedCliErrorMessages = new Set<string>();
@@ -374,20 +375,8 @@ export const runCommands = async (...commands: CommandCls[]) => {
   program.version(process.env.AKAN_VERSION).description("Akan CLI").configureHelp({
     helpWidth: 100,
   });
-  const installedAkanPackageJson = (await FileSys.fileExists("./node_modules/akanjs/package.json"))
-    ? await FileSys.readJson<PackageJson>("./node_modules/akanjs/package.json")
-    : null;
-  if (installedAkanPackageJson && installedAkanPackageJson.version !== process.env.AKAN_VERSION) {
-    Logger.rawLog(
-      chalk.yellow(
-        `
-Akan CLI version is mismatch with installed package. ${process.env.AKAN_VERSION} (global) vs ${installedAkanPackageJson.version} (akanjs)
-It may cause unexpected behavior. Run \`akan update\` to update latest akanjs.`,
-      ),
-      undefined,
-      "error",
-    );
-  }
+  const versionWarning = WorkspaceVersionCheck.warning(cliPackageJson?.version, process.argv, process.cwd());
+  if (versionWarning) Logger.rawLog(chalk.yellow(`\n${versionWarning}`), undefined, "error");
 
   for (const command of commands) {
     const targetMetas = getTargetMetas(command);

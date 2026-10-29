@@ -120,6 +120,13 @@ this is the full contract behind them.
   still run — a nudge that re-sends a row its rooms must re-read, with no edit to stamp.
 - `upsertById(data, { preserveTimestamps })` writes a record whole under its own id, new or in place, with no
   hook: the write a sync or a backfill repeats safely, keeping the record's `createdAt`/`updatedAt` when asked.
+- **Writes that must land together go in `this.transaction(async () => …)`**, which every service has: it commits
+  when the body resolves, returns its value, and rolls back when it throws, rethrowing that error unchanged. A
+  server has one database, so it covers every model, hooks and query-level writes included; a nested call joins the
+  outer one, with no savepoint. Cache, `memory` and outside calls are not in it — hand them to
+  `this.afterCommit(fn)`, run once the commit lands, never after a rollback, at once outside one; one that throws is
+  logged, never thrown, and the rest still run. On SQLite it holds the only write turn: keep it short.
+  `@Transaction()` is deprecated.
 
 ## Text Search In A Filter — `q.search()`
 

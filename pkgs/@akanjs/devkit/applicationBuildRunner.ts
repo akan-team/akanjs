@@ -1,5 +1,7 @@
 import path from "node:path";
+import { toError } from "akanjs/common";
 import type { BunPlugin } from "bun";
+import { ProductionLockfile } from "./akanConfig/productionLockfile";
 import type {
   ApplicationBuildPhaseResult,
   ApplicationBuildProgressReporter,
@@ -18,7 +20,7 @@ import { Spinner } from "./spinner";
 import { createServerEnvPlugin } from "./transforms/serverEnvPlugin";
 import { ServerEnvProfile } from "./transforms/serverEnvProfile";
 import { ProjectTypecheck } from "./typecheck/projectTypecheck";
-import type { BaseDevEnv } from "./types";
+import type { BaseDevEnv, PackageJson } from "./types";
 
 export interface TypecheckOptions {
   clean?: boolean;
@@ -236,9 +238,16 @@ export class ApplicationBuildRunner {
 
   async buildAppMeta() {
     const akanConfig = await this.#app.getConfig();
-    const dockerfile = akanConfig.dockerfileFor(this.#environment ?? akanConfig.baseDevEnv.env);
+    const packageJson = akanConfig.getProductionPackageJson();
+    const lockfile = await this.#pruneLockfile(packageJson);
+    const dockerfile = akanConfig.dockerfileFor(this.#environment ?? akanConfig.baseDevEnv.env, {
+      lockfile: lockfile !== null,
+    });
     await Promise.all([
-      this.#app.dist.writeJson("package.json", akanConfig.getProductionPackageJson()),
+      this.#app.dist.writeJson("package.json", packageJson),
+      ...(lockfile !== null
+        ? [this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/${ProductionLockfile.fileName}`, lockfile)]
+        : []),
       this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/Dockerfile`, dockerfile),
       this.#app.dist.writeJson("akan.build.json", {
         buildId: await this.#resolveBuildId(),
@@ -246,6 +255,17 @@ export class ApplicationBuildRunner {
         builtAt: new Date().toISOString(),
       }),
     ]);
+  }
+
+  async #pruneLockfile(packageJson: PackageJson): Promise<string | null> {
+    try {
+      return await ProductionLockfile.prune(this.#app.workspace.workspaceRoot, packageJson);
+    } catch (error) {
+      this.#app.logger.warn(
+        `The image installs its dependencies unlocked, at the newest versions package.json allows: ${toError(error).message}`,
+      );
+      return null;
+    }
   }
 
   //* Read back at runtime as `buildId` on the ops channel; a deployment's own AKAN_BUILD_ID still wins over it there.

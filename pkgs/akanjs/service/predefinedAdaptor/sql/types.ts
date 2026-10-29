@@ -123,6 +123,7 @@ export interface DatabaseAdaptor {
   /** Every model table this process has opened a store for. */
   stores?(): SqlDocumentStore[];
   transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
+  afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
   // `null` without text search; declared so a service can `suspend`/`resume` around a bulk import without casting.
   getSearchIndex(): SearchIndex | null;
   openInsight?(): Promise<InsightSession>;

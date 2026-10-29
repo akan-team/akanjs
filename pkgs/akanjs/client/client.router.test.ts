@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { interpolateTranslation } from "../common/interpolateTranslation";
 import { pathGetLoose } from "../common/objectPath";
+import { originFromRequest } from "../common/requestOrigin";
 import { trimSlashes } from "../common/trimSlashes";
 import type { RouterInstance } from "./router";
 
@@ -60,6 +61,7 @@ beforeAll(() => {
         return (acc as Record<string, unknown>)[key] ?? fallback;
       }, obj),
     interpolateTranslation,
+    originFromRequest,
     pathGetLoose,
     trimSlashes,
     getBasePathFromPathname: (
@@ -743,12 +745,11 @@ describe("router", () => {
       }
       throw new Error("no redirect");
     };
-    requestState.request = new Request("http://10.0.0.7:4200/en/signin");
-    requestState.headers = new Map([
-      ["x-locale", "en"],
-      ["x-forwarded-host", "site.test"],
-      ["x-forwarded-proto", "https"],
-    ]);
+    const request = new Request("http://10.0.0.7:4200/en/signin", {
+      headers: { "x-locale": "en", "x-forwarded-host": "site.test", "x-forwarded-proto": "https" },
+    });
+    requestState.request = request;
+    requestState.headers = new Map(request.headers);
 
     expect(locationOf(() => router.redirect("https://evil.example/x"))).toBe("/en");
     expect(locationOf(() => router.redirect("https://site.test/en/x"))).toBe("https://site.test/en/x");

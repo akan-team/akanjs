@@ -526,6 +526,21 @@ describe("AkanServer agent relay access", () => {
       await rm(tmp, { recursive: true, force: true });
     }
   });
+
+  test("installs the request policy an app declares in its option.ts", async () => {
+    const { AgentRelayPolicy } = await import("../signal/agentRelayPolicy");
+    const { AkanOption, AkanServer, createLib } = await loadRuntime();
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-relay-policy-"));
+    const sent = { messages: [], tools: [], context: [] };
+    try {
+      const option = new AkanOption().setAgentRequestPolicy((request) => ({ ...request, instructions: "Scoped." }));
+      new AkanServer("serverGet", createEnv(tmp), "all", createLib(option));
+      expect((await AgentRelayPolicy.apply(sent, { account: null, ip: null })).instructions).toBe("Scoped.");
+    } finally {
+      AgentRelayPolicy.use(null);
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("AkanServer rate limit", () => {

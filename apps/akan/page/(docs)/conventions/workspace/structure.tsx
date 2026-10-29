@@ -150,8 +150,8 @@ export default page()
       {
         name: "bunfig.toml",
         desc: l.trans({
-          en: "Bun's own config, which adds the Tailwind plugin and the `AKAN_PUBLIC_*` browser env prefix.",
-          ko: "Tailwind 플러그인과 브라우저용 환경 변수 접두사 `AKAN_PUBLIC_*`를 지정하는 Bun 설정입니다.",
+          en: "Bun's own config, empty in a new workspace. Akan compiles Tailwind and inlines `AKAN_PUBLIC_*` itself.",
+          ko: "Bun 설정 파일로, 새 워크스페이스에서는 비어 있습니다. Tailwind 컴파일과 `AKAN_PUBLIC_*` 인라인은 Akan이 직접 합니다.",
         }),
       },
       {

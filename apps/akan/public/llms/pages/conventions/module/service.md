@@ -127,6 +127,8 @@ Plain — serve("x", …)
 
   - onInit · onDestroy: Run once at boot and once at shutdown.
 
+  - transaction · afterCommit: Run writes as one database transaction, and an effect once it commits.
+
   - injected properties: Every key your injection builder returns.
 
   - ...extendServices: Service classes passed after the builder, mixed in.
@@ -329,7 +331,11 @@ A like is recorded through another service, then counted by the model:
 
 A backup moves through several steps, and the slow part runs later as a queued job:
 
-**Load, save, then notify.** Load every document the action needs, save, and only then call signals or other services.
+Writes that must land together go in one transaction, and the message about them waits for its commit:
+
+**Load, save, then notify.** Load every document the action needs, save, and only then call signals or other services — inside a transaction, through `afterCommit`, where a callback that throws is logged, not thrown, since the writes are already in.
+
+**A transaction covers every model**, since a server has one database. A call inside another joins it, and the error that rolls it back reaches you unchanged. Cache, `memory` and outside calls are not in it, and on SQLite it holds the only write turn, so keep it short and never wait on the network inside.
 
 **Write `return await` at the end.** Keep the `await` even where a bare `return` would work.
 
@@ -605,6 +611,27 @@ export class DbBackupService extends serve(db.dbBackup, ({ service, signal }) =>
     const cluster = await this.clusterService.getCluster(dbBackup.devApp);
     // archive, upload, clean up, then mark the backup active
     return await dbBackup.set({ status: "active" }).save();
+  }
+}
+```
+
+### apps/myapp/lib/wallet/wallet.service.ts
+
+```ts
+export class WalletService extends serve(db.wallet, ({ service }) => ({
+  notiService: service<srv.NotiService>(),
+})) {
+  async transferPoint(fromId: string, toId: string, amount: number) {
+    return await this.transaction(async () => {
+      const [from, to] = await Promise.all([
+        this.walletModel.getWallet(fromId),
+        this.walletModel.getWallet(toId),
+      ]);
+      await from.withdraw(amount).save();
+      await to.deposit(amount).save();
+      await this.afterCommit(() => this.notiService.sendTransfer(fromId, toId, amount));
+      return from;
+    });
   }
 }
 ```

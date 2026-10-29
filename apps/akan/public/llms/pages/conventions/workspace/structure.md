@@ -71,7 +71,7 @@ File
 
 - biome.json: One set of format, import and lint rules for every app, lib and package.
 
-- bunfig.toml: Bun's own config, which adds the Tailwind plugin and the `AKAN_PUBLIC_*` browser env prefix.
+- bunfig.toml: Bun's own config, empty in a new workspace. Akan compiles Tailwind and inlines `AKAN_PUBLIC_*` itself.
 
 - akan.config.ts: Optional settings that belong to no app: `subspace` mirrors, the `pipeline` around every app, the `cloud` host.
 

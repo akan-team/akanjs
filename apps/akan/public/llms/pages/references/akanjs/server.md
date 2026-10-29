@@ -62,7 +62,7 @@ Exports
 
 - Try: Legacy decorator: logs a warning and returns `undefined` instead of throwing.
 
-- Transaction: Legacy decorator: runs a method in a database transaction.
+- Transaction: Deprecated decorator: runs a method in a database transaction; write `this.transaction(fn)`.
 
 - Everything else: Build-artifact types and console, OAuth, sitemap and metrics helpers the framework and CLI use.
 
@@ -258,6 +258,8 @@ Method
 
 - setAgentAccess(guards): Guards a caller must pass to spend the LLM key through the agent chat. Several are ANDed.
 
+- setAgentRequestPolicy(fn): Sees each agent turn before the model and returns what is sent, or throws an `Err` to refuse it.
+
 - setLlm(option | fn): The model the agent relay talks to: `apiKey`, `model`, `host` and more.
 
 - setCrossSite(option): Extra origins a browser may send mutations and open the websocket from. `{ enabled: false }` turns the check off.
@@ -286,7 +288,7 @@ When several libs set it
 
 - setLlm: Merged field by field, so a lib may name the host and the app the key.
 
-- setAgentAccess: The last call wins; `null` clears what a lib set.
+- setAgentAccess, setAgentRequestPolicy: The last call wins; `null` clears what a lib set.
 
 - setCrossSite: The last call wins.
 
@@ -400,13 +402,7 @@ New code catches the error itself in an `adapt()` adaptor, as `catch` → `logge
 
 Transaction
 
-`@Transaction()` is one more legacy method decorator from the same file, for server-side services. It is all or nothing: it commits when the method returns and rolls back when it throws.
-
-On a database service, two writes that must land together:
-
-**Nested calls join.** A transactional method called from inside another runs in the outer transaction.
-
-**It needs a database.** It finds one on a model or a database service; on any other class it throws.
+`@Transaction()` is a deprecated method decorator from the same file. Every service now has `this.transaction(fn)`, which commits what `fn` wrote when it returns and rolls it back when it throws; see the service page for the rules.
 
 **Caching is not a decorator.** For a remembered answer, declare `{ cache: <ms> }` on a query endpoint, or keep the value in a `memory(...)` field.
 
@@ -585,20 +581,16 @@ export class PartnerApi extends adapt("partnerApi" as const) {
 ### apps/myapp/lib/wallet/wallet.service.ts
 
 ```ts
-import { Transaction } from "akanjs/server";
-import { serve } from "akanjs/service";
-
-import * as db from "../db";
-
 export class WalletService extends serve(db.wallet, () => ({})) {
-  @Transaction()
   async transferPoint(fromId: string, toId: string, amount: number) {
-    const [from, to] = await Promise.all([
-      this.walletModel.getWallet(fromId),
-      this.walletModel.getWallet(toId),
-    ]);
-    await from.withdraw(amount).save();
-    return await to.deposit(amount).save();
+    return await this.transaction(async () => {
+      const [from, to] = await Promise.all([
+        this.walletModel.getWallet(fromId),
+        this.walletModel.getWallet(toId),
+      ]);
+      await from.withdraw(amount).save();
+      return await to.deposit(amount).save();
+    });
   }
 }
 ```

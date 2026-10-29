@@ -1502,6 +1502,8 @@ More in akanjs/common
 
 - bearerTokenOf: The token of an `Authorization` value: `Bearer` in any case, then one token and nothing after it. Else `null`. — Example: `bearerTokenOf("bearer abc"); // "abc"`
 
+- IpLiteral.parse: An address spelled the one way `Ip` reports it, port and IPv6 zone dropped, else `null`. Compare addresses through it. — Example: `IpLiteral.parse("[2001:DB8:0::1]:443"); // "2001:db8::1"`
+
 - parseSearchParams: A query string as a record: a key given once is a string, a key given again an array of every value, empty ones included. — Example: `parseSearchParams("?tag=&tag=b&q=x"); // { tag: ["", "b"], q: "x" }`
 
 - isThenable: Tells whether a value can be awaited.
@@ -1515,8 +1517,6 @@ Logger
 Akan's leveled logger. A service already has one as `this.logger`, named after its class, and an `adapt()` adapter has one named after its key. Anywhere else, create `new Logger("Name")` or call the static methods.
 
 A script that logs through an instance, a static call, a structured record and a sink:
-
-**Six levels, lowest first:** `trace`, `verbose`, `debug`, `info`, `warn`, `error`. A line prints at or above the console level, and `error` lines go to stderr.
 
 ## akanjs/constant
 
@@ -1732,7 +1732,7 @@ Exports
 
 - Try: Legacy decorator: logs a warning and returns `undefined` instead of throwing.
 
-- Transaction: Legacy decorator: runs a method in a database transaction.
+- Transaction: Deprecated decorator: runs a method in a database transaction; write `this.transaction(fn)`.
 
 - Everything else: Build-artifact types and console, OAuth, sitemap and metrics helpers the framework and CLI use.
 

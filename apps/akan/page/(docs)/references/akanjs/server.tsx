@@ -149,8 +149,8 @@ export default page()
         name: "Transaction",
         href: "#Transaction",
         desc: l.trans({
-          en: "Legacy decorator: runs a method in a database transaction.",
-          ko: "legacy decorator입니다. 메서드를 DB transaction 안에서 실행합니다.",
+          en: "Deprecated decorator: runs a method in a database transaction; write `this.transaction(fn)`.",
+          ko: "deprecated decorator입니다. 메서드를 DB transaction 안에서 실행합니다. `this.transaction(fn)`을 쓰세요.",
         }),
       },
       {
@@ -504,6 +504,13 @@ export default page()
         }),
       },
       {
+        name: "setAgentRequestPolicy(fn)",
+        desc: l.trans({
+          en: "Sees each agent turn before the model and returns what is sent, or throws an `Err` to refuse it.",
+          ko: "모델에 가기 전의 agent 턴을 받아 보낼 요청을 돌려줍니다. `Err`를 던지면 거절합니다.",
+        }),
+      },
+      {
         name: "setLlm(option | fn)",
         desc: l.trans({
           en: "The model the agent relay talks to: `apiKey`, `model`, `host` and more.",
@@ -560,7 +567,7 @@ export default page()
         }),
       },
       {
-        name: "setAgentAccess",
+        name: "setAgentAccess, setAgentRequestPolicy",
         desc: l.trans({
           en: "The last call wins; `null` clears what a lib set.",
           ko: "마지막 호출이 이깁니다. `null`은 lib이 정한 값을 지웁니다.",
@@ -1746,71 +1753,29 @@ export class PartnerApi extends adapt("partnerApi" as const) {
           <Docs.Description>
             <div>
               {l.trans({
-                en: "`@Transaction()` is one more legacy method decorator from the same file, for server-side services. It is all or nothing: it commits when the method returns and rolls back when it throws.",
-                ko: "`@Transaction()`은 같은 파일에 있는 legacy method decorator로, 서버 쪽 service에 붙입니다. 전부 되거나 전부 안 됩니다. 메서드가 끝나면 commit하고, 에러를 던지면 rollback합니다.",
-              })}
-            </div>
-            <div>
-              {l.trans({
-                en: "On a database service, two writes that must land together:",
-                ko: "DB service에서, 함께 반영되어야 하는 쓰기 두 번을 묶는 예시입니다:",
+                en: "`@Transaction()` is a deprecated method decorator from the same file. Every service now has `this.transaction(fn)`, which commits what `fn` wrote when it returns and rolls it back when it throws; see the service page for the rules.",
+                ko: "`@Transaction()`은 같은 파일에 있는 deprecated method decorator입니다. 이제 모든 service에 `this.transaction(fn)`이 있습니다. `fn`이 끝나면 쓴 내용을 commit하고, 에러를 던지면 rollback합니다. 규칙은 service 페이지에 있습니다.",
               })}
             </div>
           </Docs.Description>
           <Code.Snippet
             className="w-full"
             title="apps/myapp/lib/wallet/wallet.service.ts"
-            code={`import { Transaction } from "akanjs/server";
-import { serve } from "akanjs/service";
-
-import * as db from "../db";
-
-export class WalletService extends serve(db.wallet, () => ({})) {
-  @Transaction()
+            code={`export class WalletService extends serve(db.wallet, () => ({})) {
   async transferPoint(fromId: string, toId: string, amount: number) {
-    const [from, to] = await Promise.all([
-      this.walletModel.getWallet(fromId),
-      this.walletModel.getWallet(toId),
-    ]);
-    await from.withdraw(amount).save();
-    return await to.deposit(amount).save();
+    return await this.transaction(async () => {
+      const [from, to] = await Promise.all([
+        this.walletModel.getWallet(fromId),
+        this.walletModel.getWallet(toId),
+      ]);
+      await from.withdraw(amount).save();
+      return await to.deposit(amount).save();
+    });
   }
 }`}
           />
           <Docs.Description>
             <ul className={bulletList}>
-              <li>
-                {l.trans({
-                  en: (
-                    <span>
-                      <strong>Nested calls join.</strong> A transactional method called from inside another runs in the
-                      outer transaction.
-                    </span>
-                  ),
-                  ko: (
-                    <span>
-                      <strong>안쪽 호출은 바깥 transaction에 합류합니다.</strong> transaction 안에서 다른 transaction
-                      메서드를 부르면 바깥 transaction에서 함께 실행됩니다.
-                    </span>
-                  ),
-                })}
-              </li>
-              <li>
-                {l.trans({
-                  en: (
-                    <span>
-                      <strong>It needs a database.</strong> It finds one on a model or a database service; on any other
-                      class it throws.
-                    </span>
-                  ),
-                  ko: (
-                    <span>
-                      <strong>DB가 있어야 합니다.</strong> model이나 DB service에서 DB를 찾으며, 그 밖의 class에서는
-                      에러를 던집니다.
-                    </span>
-                  ),
-                })}
-              </li>
               <li>
                 {l.trans({
                   en: (

@@ -64,6 +64,8 @@ More in akanjs/common
 
 - bearerTokenOf: The token of an `Authorization` value: `Bearer` in any case, then one token and nothing after it. Else `null`. — Example: `bearerTokenOf("bearer abc"); // "abc"`
 
+- IpLiteral.parse: An address spelled the one way `Ip` reports it, port and IPv6 zone dropped, else `null`. Compare addresses through it. — Example: `IpLiteral.parse("[2001:DB8:0::1]:443"); // "2001:db8::1"`
+
 - parseSearchParams: A query string as a record: a key given once is a string, a key given again an array of every value, empty ones included. — Example: `parseSearchParams("?tag=&tag=b&q=x"); // { tag: ["", "b"], q: "x" }`
 
 - isThenable: Tells whether a value can be awaited.

@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type Dayjs, dayjs, ENDPOINT_META, ID, resetEnvCache } from "akanjs/base";
+import { Any, type Dayjs, dayjs, ENDPOINT_META, ID, Int, resetEnvCache } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { assertFilterFitsCrud, DocumentSchema, documentQueryHelper, type SchemaOf } from "akanjs/document";
 import { FetchClient } from "akanjs/fetch";
@@ -22,6 +22,7 @@ import { Public } from "../../signal/guards";
 import { type Internal, internal } from "../../signal/internal";
 import { CallerAccount, type MachineIdentity, Ws } from "../../signal/internalArg";
 import { FetchSerializer } from "../../signal/serializer";
+import { serverSignal } from "../../signal/serverSignal";
 import type { SignalContext } from "../../signal/signalContext";
 import { type SliceCls, slice } from "../../signal/slice";
 import type { WebsocketSubscribeAck } from "../../signal/types";
@@ -2473,6 +2474,84 @@ describe("SignalResolver declaration contracts", () => {
 
     await serverSignal.processItem(validId, { delay: 10 });
     expect(queueCalls).toEqual([{ key: "processItem", args: [validId], options: { delay: 10 } }]);
+  });
+
+  test("publishes a falsy value and a nullable null, and refuses null on a non-nullable return", async () => {
+    const { registry, websocket } = withFakeWebsocket();
+    const localPublishes: { roomId: string; data: unknown }[] = [];
+    SignalResolver.setLocalPublish((roomId, data) => localPublishes.push({ roomId, data }), websocket.instance);
+    class FalsyEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
+      countFeed: builder
+        .pubsub(Int)
+        .room("roomId", ID)
+        .exec(() => undefined),
+      flagFeed: builder
+        .pubsub(Boolean)
+        .room("roomId", ID)
+        .exec(() => undefined),
+      noteFeed: builder
+        .pubsub(String)
+        .room("roomId", ID)
+        .exec(() => undefined),
+      maybeFeed: builder
+        .pubsub(Int, { nullable: true })
+        .room("roomId", ID)
+        .exec(() => undefined),
+      maybeItemFeed: builder
+        .pubsub(ServerResolverTestLight, { nullable: true })
+        .room("roomId", ID)
+        .exec(() => undefined),
+      anyFeed: builder
+        .pubsub(Any)
+        .room("roomId", ID)
+        .exec(() => undefined),
+    })) {}
+    class FalsyServerSignal extends serverSignal(
+      FalsyEndpoint,
+      internal(serverResolverTestServiceModel, () => ({})),
+    ) {}
+    const ServerSignalRef = SignalResolver.resolveServerSignal(FalsyServerSignal, {
+      registry,
+      live: getDefaultLiveRegistry(),
+    });
+    const publisher = new ServerSignalRef() as InstanceType<typeof ServerSignalRef> &
+      Record<
+        "countFeed" | "flagFeed" | "noteFeed" | "maybeFeed" | "maybeItemFeed" | "anyFeed",
+        (roomId: string, data: unknown) => Promise<void>
+      >;
+    const warn = spyOn(publisher.logger, "warn").mockImplementation(() => undefined);
+    try {
+      await publisher.countFeed(validId, 0);
+      await publisher.flagFeed(validId, false);
+      await publisher.noteFeed(validId, "");
+      await publisher.maybeFeed(validId, null);
+      await publisher.maybeFeed(validId, undefined);
+      await publisher.maybeItemFeed(validId, null);
+      await publisher.anyFeed(validId, null);
+      await expect(publisher.countFeed(validId, null)).rejects.toThrow(
+        "pubsub countFeed published null, but its return is not nullable",
+      );
+      await expect(publisher.flagFeed(validId, undefined)).rejects.toThrow(
+        "pubsub flagFeed published undefined, but its return is not nullable",
+      );
+
+      const published = [
+        { roomId: `countFeed-${validId}`, data: 0 },
+        { roomId: `flagFeed-${validId}`, data: false },
+        { roomId: `noteFeed-${validId}`, data: "" },
+        { roomId: `maybeFeed-${validId}`, data: null },
+        { roomId: `maybeFeed-${validId}`, data: null },
+        { roomId: `maybeItemFeed-${validId}`, data: null },
+        { roomId: `anyFeed-${validId}`, data: null },
+      ];
+      expect(websocket.instance.calls.filter((call: { method: string }) => call.method === "publish")).toEqual(
+        published.map(({ roomId, data }) => ({ method: "publish", args: [roomId, data] })),
+      );
+      expect(localPublishes).toEqual(published);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("registers schedule declarations with operation and server mode filtering", () => {

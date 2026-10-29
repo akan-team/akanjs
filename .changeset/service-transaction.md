@@ -1,0 +1,5 @@
+---
+"akanjs": patch
+---
+
+Every service now has `this.transaction(fn)` and `this.afterCommit(fn)`. `transaction` runs `fn` as one database transaction and returns its value, typed: it commits when `fn` resolves, and when `fn` throws it rolls back and rethrows that same error. A server has one database, so a transaction covers every model's writes, hooks and query-level writes included. A transaction started inside another joins the outer one with no savepoint, so it commits or rolls back with it. Cache, `memory` and outside calls are not part of it: `afterCommit(fn)` runs `fn` once the commit lands, never after a rollback, and at once when no transaction is open. A callback that throws is logged, never thrown, and the ones after it still run: the writes are in by then. A service the server did not boot has no database, and both methods throw on it. `@Transaction()` from `akanjs/server` is deprecated in favour of `this.transaction`; it now finds the database on every service, not only on a database service.
