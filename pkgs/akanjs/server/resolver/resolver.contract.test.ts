@@ -108,8 +108,8 @@ const makeFakeDoc = (calls: { method: string; args: unknown[] }[], id: string) =
     Object.assign(this, patch);
     return this;
   },
-  async save() {
-    calls.push({ method: "save", args: [{ id: this.id, title: this.title }] });
+  async save(...options: unknown[]) {
+    calls.push({ method: "save", args: [{ id: this.id, title: this.title }, ...options] });
     return this;
   },
 });
@@ -340,12 +340,12 @@ describe("DatabaseResolver declaration contracts", () => {
     expect(missing).toBeNull();
   });
 
-  test("writes through the document on pickAndWrite", async () => {
+  test("writes through the document on pickAndWrite, and hands `touch: false` to the save only when it is off", async () => {
     const { instance } = await bootModel<{
       __store: ReturnType<typeof makeFakeStore>;
       ServerResolverTestItem: {
-        pickAndWrite: (id: string, rawData: unknown) => Promise<unknown>;
-        pickOneAndWrite: (query: unknown, rawData: unknown) => Promise<unknown>;
+        pickAndWrite: (id: string, rawData: unknown, options?: { touch?: boolean }) => Promise<unknown>;
+        pickOneAndWrite: (query: unknown, rawData: unknown, options?: { touch?: boolean }) => Promise<unknown>;
       };
     }>();
 
@@ -360,6 +360,19 @@ describe("DatabaseResolver declaration contracts", () => {
       { method: "pickOne", args: [{ category: "news" }, undefined] },
       { method: "save", args: [{ id: "doc-1", title: "Gamma" }] },
     ]);
+
+    await instance.ServerResolverTestItem.pickAndWrite("doc-1", { title: "Delta" }, { touch: false });
+    expect(instance.__store.calls.at(-1)).toEqual({
+      method: "save",
+      args: [{ id: "doc-1", title: "Delta" }, { touch: false }],
+    });
+    await instance.ServerResolverTestItem.pickOneAndWrite({ category: "news" }, { title: "Eta" }, { touch: false });
+    expect(instance.__store.calls.at(-1)).toEqual({
+      method: "save",
+      args: [{ id: "doc-1", title: "Eta" }, { touch: false }],
+    });
+    await instance.ServerResolverTestItem.pickAndWrite("doc-1", { title: "Theta" }, { touch: true });
+    expect(instance.__store.calls.at(-1)).toEqual({ method: "save", args: [{ id: "doc-1", title: "Theta" }] });
   });
 
   test("unsubscribes a document listener", async () => {

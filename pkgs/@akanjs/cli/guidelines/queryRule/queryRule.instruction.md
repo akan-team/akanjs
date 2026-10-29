@@ -115,7 +115,9 @@ this is the full contract behind them.
   document path**: they fire no hooks, so a model whose removal cascades or carries a `_postRemove` still goes
   through `remove<Model>(id)`.
 - The write-through pair is `pickAndWrite(id, data)` / `pickOneAndWrite(query, data)` — pick the document, write
-  into it and save it, so the save hooks do run; reach for those when the write has to be seen by them.
+  into it and save it, so the save hooks do run; reach for those when the write has to be seen by them. A third
+  argument `{ touch: false }`, like `doc.save({ touch: false })`, keeps `updatedAt` while the hooks and live sync
+  still run — a nudge that re-sends a row its rooms must re-read, with no edit to stamp.
 - `upsertById(data, { preserveTimestamps })` writes a record whole under its own id, new or in place, with no
   hook: the write a sync or a backfill repeats safely, keeping the record's `createdAt`/`updatedAt` when asked.
 

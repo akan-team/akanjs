@@ -170,7 +170,7 @@ export type FindOneOptions = DocumentScopeOptions & {
   select?: ProjectionOption;
 };
 export type FindIdOptions = DocumentScopeOptions & { sort?: SortOption; skip?: number | null; sample?: boolean };
-export type WriteHookOptions = { runSaveHooks?: boolean; crudType?: "update" | "remove" };
+export type WriteHookOptions = DocumentTouchOptions & { runSaveHooks?: boolean; crudType?: "update" | "remove" };
 export type QueryOperatorName = Extract<DocumentQueryNode, { kind: "op" }>["op"];
 export interface SqliteDocumentRow {
   id: string;

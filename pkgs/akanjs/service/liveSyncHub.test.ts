@@ -48,6 +48,13 @@ describe("LiveSyncHub routing", () => {
     expect(targets).toEqual([{ roomId: "inOrg-o1", op: "update", invalidate: false, payload: "light" }]);
   });
 
+  test("a save that changed nothing, updatedAt included, still reaches its rooms as an update", () => {
+    const hub = hubWith([{ roomId: "inOrg-o1", query: { org: "o1" } }]);
+    expect(hub.route("task", doc(), doc())).toEqual([
+      { roomId: "inOrg-o1", op: "update", invalidate: false, payload: "light" },
+    ]);
+  });
+
   test("an edit that moves a row out of a filter leaves that room and enters the other", () => {
     const hub = hubWith([
       { roomId: "byStatus-draft", query: { status: "draft" } },

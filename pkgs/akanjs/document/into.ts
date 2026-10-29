@@ -25,8 +25,8 @@ interface DefaultMdlStats<
   _FilterQuery extends DocumentQuery<TSchema> = DocumentQuery<TSchema>,
   _Projection = DocumentProjection<TSchema>,
 > {
-  pickOneAndWrite: (query: _FilterQuery, rawData: _Partial) => Promise<TDocument>;
-  pickAndWrite: (docId: string, rawData: _Partial) => Promise<TDocument>;
+  pickOneAndWrite: (query: _FilterQuery, rawData: _Partial, options?: DocumentTouchOptions) => Promise<TDocument>;
+  pickAndWrite: (docId: string, rawData: _Partial, options?: DocumentTouchOptions) => Promise<TDocument>;
   pickOne: (query: _FilterQuery, projection?: _Projection) => Promise<TDocument>;
   pickById: (docId: string | undefined, projection?: _Projection) => Promise<TDocument>;
   sample: (query: _FilterQuery, size?: number) => Promise<TDocument[]>;
