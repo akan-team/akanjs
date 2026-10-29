@@ -607,6 +607,10 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
         `${appId}: ${created ? "made" : "read"} ${keyPath}${created ? " (keep it private and backed up: without it, installed apps take no more updates)" : ""}`,
       );
       app.log(`  native: { updates: { url: "https://…/${app.name}", publicKeys: [${JSON.stringify(publicKey)}] } }`);
+      if (platform === "desktop")
+        app.log(
+          "  url: hosted on Akan Cloud, register this public key as an external key on the release screen and use the URL it gives; self-hosted, the public address you upload the release to",
+        );
       app.log(`  keyId ${keyId}: what publish-update --revoke and updates.revokedKeys name this key by`);
       const { publicKey: one, publicKeys } = mobileTarget.config.updates ?? {};
       const declared = publicKeys ?? (one ? [one] : null);

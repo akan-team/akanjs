@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { truncate, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Workspace } from "../commandDecorators";
 import { tempDirs } from "../testHelpers";
@@ -24,6 +24,7 @@ class FakeCloudHost {
   commitAnswers: (number | [number, string] | Response)[] = [];
   release: Record<string, unknown> = { id: "release-1", status: "published", problems: [] };
   requestRefusal: Response | null = null;
+  contentType = "application/gzip";
 
   constructor() {
     this.server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (request) => this.#route(request) });
@@ -42,6 +43,7 @@ class FakeCloudHost {
     this.stallPuts = false;
     this.commitAnswers = [];
     this.requestRefusal = null;
+    this.contentType = "application/gzip";
   }
 
   async #route(request: Request) {
@@ -54,7 +56,7 @@ class FakeCloudHost {
         uploadId,
         uploadUrl: `${this.host}/storage/${uploadId}?X-Amz-Signature=secret-signature`,
         expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
-        contentType: "application/gzip",
+        contentType: this.contentType,
       });
     }
     if (url.pathname.startsWith("/storage/") && request.method === "PUT") {
@@ -301,5 +303,39 @@ describe("UpdatePackUpload", () => {
     const archive = await archiveOf("");
     await expect(new UpdatePackUpload(api, "project-1", quick).send(archive, fields)).rejects.toThrow("0 bytes");
     expect(cloudHost.requests).toEqual([]);
+  });
+
+  test("announces a desktop release with its kind and CPU, a phone pack with neither, and PUTs the ticket's type", async () => {
+    const desktop = { ...fields, platform: "macos" as const, kind: "app" as const, arch: "arm64" as const };
+    cloudHost.contentType = "application/x-tar";
+
+    await new UpdatePackUpload(api, "project-1", quick).send(await archiveOf("release tar"), desktop);
+    await new UpdatePackUpload(api, "project-1", quick).send(await archiveOf("pack bytes"), fields);
+
+    expect(cloudHost.requests[0]).toMatchObject({ platform: "macos", kind: "app", arch: "arm64", size: 11 });
+    expect(Object.keys(cloudHost.requests[1] ?? {}).filter((key) => key === "kind" || key === "arch")).toEqual([]);
+    expect(cloudHost.puts.map((put) => put.headers["content-type"])).toEqual([
+      "application/x-tar",
+      "application/x-tar",
+    ]);
+  });
+
+  test("takes a desktop release up to 1 GiB and a phone pack up to 200 MiB, refusing more before a ticket", async () => {
+    const desktop = { ...fields, platform: "windows" as const, kind: "app" as const, arch: "x64" as const };
+    const sparse = async (bytes: number) => {
+      const archive = await archiveOf("");
+      await truncate(archive, bytes);
+      return archive;
+    };
+    const upload = new UpdatePackUpload(api, "project-1", quick);
+
+    await expect(upload.send(await sparse(UpdatePackUpload.maxBytes + 1), fields)).rejects.toThrow(
+      `The pack archive is ${UpdatePackUpload.maxBytes + 1} bytes; a project takes 1 byte to 200 MiB.`,
+    );
+    await expect(upload.send(await sparse(UpdatePackUpload.maxAppBytes + 1), desktop)).rejects.toThrow(
+      `The release archive is ${UpdatePackUpload.maxAppBytes + 1} bytes; a project takes 1 byte to 1 GiB.`,
+    );
+    expect(cloudHost.requests).toEqual([]);
+    expect(UpdatePackUpload.maxAppBytes).toBe(1_073_741_824);
   });
 });

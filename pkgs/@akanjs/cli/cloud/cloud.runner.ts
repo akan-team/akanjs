@@ -12,7 +12,15 @@ import {
 } from "@akanjs/devkit/cloud";
 import { type App, assertPromptable, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
-import type { NativeUpdatePack } from "@akanjs/devkit/mobile";
+import {
+  type DesktopArch,
+  type DesktopPlatform,
+  type DesktopRelease,
+  type DesktopSigner,
+  NativeApp,
+  type NativeUpdatePack,
+  resolveMobileTargets,
+} from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
@@ -555,6 +563,50 @@ export class CloudRunner extends runner("cloud") {
     options: { channel: string | null; notes: string | null },
   ) {
     return await new CloudUpdates(cloudApi, devProjectId).push(pack, options);
+  }
+
+  async readRelease(
+    app: App,
+    {
+      platform,
+      arch,
+      target,
+      env,
+      channel,
+    }: { platform: DesktopPlatform; arch: DesktopArch; target: string | null; env: NativeEnv; channel: string | null },
+  ) {
+    const targets = await resolveMobileTargets(app, target ?? undefined);
+    const [mobileTarget] = targets;
+    if (!mobileTarget || targets.length > 1)
+      throw new Error("push-update uploads one native target's release at a time; pass --target <name>.");
+    const { release, url, exeName } = await new NativeApp(app, mobileTarget, env).publishedRelease(platform, {
+      arch,
+      channel,
+    });
+    const { signer, unread } = await release.signer({ exeName });
+    if (unread) app.logger.warn(`release.json names no signer: ${unread}.`);
+    return { release, url, signer, target: mobileTarget.name };
+  }
+
+  async pushRelease(
+    cloudApi: CloudApi,
+    devProjectId: string,
+    app: App,
+    {
+      release,
+      url,
+      signer,
+      target,
+      notes,
+    }: { release: DesktopRelease; url: string; signer: DesktopSigner; target: string; notes: string | null },
+  ) {
+    return await new CloudUpdates(cloudApi, devProjectId).pushRelease(release, {
+      appName: app.name,
+      target,
+      notes,
+      signer,
+      url,
+    });
   }
 
   async registerBinary(

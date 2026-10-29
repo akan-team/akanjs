@@ -8,7 +8,14 @@ import {
 } from "@akanjs/devkit/cloud";
 import { type App, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { PkgExecutor } from "@akanjs/devkit/executors";
-import { type MobilePlatform, NativePublicEnv, UpdatePackFolder } from "@akanjs/devkit/mobile";
+import {
+  type DesktopArch,
+  type DesktopPlatform,
+  type MobilePlatform,
+  NativeApp,
+  NativePublicEnv,
+  UpdatePackFolder,
+} from "@akanjs/devkit/mobile";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
 import { Logger } from "akanjs/common";
 import { ApplicationScript } from "../application/application.script";
@@ -103,6 +110,7 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
     app: App,
     {
       platform,
+      arch = null,
       target,
       env,
       channel,
@@ -114,7 +122,8 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       pack: packDir,
       publicEnv,
     }: {
-      platform: MobilePlatform | null;
+      platform: MobilePlatform | DesktopPlatform | "desktop" | null;
+      arch?: DesktopArch | null;
       target: string | null;
       env: NativeEnv | null;
       channel: string | null;
@@ -127,6 +136,23 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       publicEnv?: string | null;
     },
   ) {
+    if (platform && platform !== "ios" && platform !== "android") {
+      if (packDir || publicEnv)
+        throw new Error(
+          "--pack and --public-env take a phone's web bundle; a desktop release goes up as `akan publish-update` wrote it.",
+        );
+      return await this.#pushRelease(workspace, app, platform, {
+        arch,
+        target,
+        env: env ?? "main",
+        channel,
+        notes,
+        subspace,
+        given,
+        allowLocalRelease,
+      });
+    }
+    if (arch) throw new Error("--arch picks a desktop release's CPU; a phone's update is its web bundle.");
     if (packDir && publicEnv)
       throw new Error("--public-env picks what a pack is built with, and --pack uploads one already built: give one.");
     const devProjectId = await this.cloudRunner.projectOf(workspace, subspace, app.name);
@@ -135,6 +161,50 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
     if (verdict) throw verdict;
     return await this.cloudRunner.pushUpdate(await this.#cloudApi(workspace, given), devProjectId, pack, {
       channel,
+      notes,
+    });
+  }
+  async #pushRelease(
+    workspace: Workspace,
+    app: App,
+    platform: DesktopPlatform | "desktop",
+    {
+      arch,
+      target,
+      env,
+      channel,
+      notes,
+      subspace,
+      given,
+      allowLocalRelease,
+    }: {
+      arch: DesktopArch | null;
+      target: string | null;
+      env: NativeEnv;
+      channel: string | null;
+      notes: string | null;
+      subspace: string | null;
+      given?: string | null;
+      allowLocalRelease: boolean;
+    },
+  ) {
+    const hostArch = process.arch === "arm64" || process.arch === "x64" ? process.arch : null;
+    const cpu = arch ?? hostArch;
+    if (!cpu) throw new Error(`This computer's CPU is ${process.arch}: name the release's with --arch arm64 or x64.`);
+    if (env === "local" && !allowLocalRelease)
+      throw new Error(
+        "A release with --env local is blocked. Pass --allow-local-release only for explicit local release testing.",
+      );
+    const devProjectId = await this.cloudRunner.projectOf(workspace, subspace, app.name);
+    const read = await this.cloudRunner.readRelease(app, {
+      platform: platform === "desktop" ? NativeApp.desktopPlatform() : platform,
+      arch: cpu,
+      target,
+      env,
+      channel,
+    });
+    return await this.cloudRunner.pushRelease(await this.#cloudApi(workspace, given), devProjectId, app, {
+      ...read,
       notes,
     });
   }
@@ -161,7 +231,7 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
     if (packDir) return await this.cloudRunner.readPack(app, packDir, { platform, target, env, allowLocalRelease });
     if (!platform)
       throw new Error(
-        "push-update needs --platform ios or android to pack, or --pack <dir> to upload what `akan pack-update` wrote.",
+        "push-update needs --platform ios or android to pack, or --pack <dir> to upload what `akan pack-update` wrote, or --platform desktop for the release `akan publish-update` wrote.",
       );
     return await this.applicationScript.packUpdate(app, platform, {
       target: target ?? undefined,

@@ -3,6 +3,7 @@ import { Logger } from "akanjs/common";
 import type { NativeEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import { ExitCodeError } from "../commandDecorators/exitCodeError";
+import type { DesktopRelease, DesktopSigner } from "../mobile/desktopRelease";
 import { type MobilePlatform, resolveMobileTargets } from "../mobile/mobileTarget";
 import { NativeApp } from "../mobile/nativeApp";
 import { NativePublicEnv } from "../mobile/nativePublicEnv";
@@ -11,7 +12,8 @@ import { type AppBinaryDistribution, CloudApi } from "./cloudApi";
 import { UpdatePackUpload } from "./updatePackUpload";
 
 //* A phone app's over-the-air updates through an Akan Cloud project, which keeps the signing key: a pack uploaded for
-//* it to sign and publish, and the store build a pack of the same commit is embedded in.
+//* it to sign and publish, and the store build a pack of the same commit is embedded in. A desktop release is signed
+//* where it was published, and goes up as it is.
 export class CloudUpdates {
   constructor(
     readonly cloudApi: CloudApi,
@@ -74,6 +76,40 @@ export class CloudUpdates {
           `Staged ${label} (${pack.files} files, native API ${pack.nativeApi}). Publish it from the project's release screen.`,
         );
       return release;
+    });
+  }
+
+  //? `manifestUrl` is where the project serves the channel once published; before that, the URL the app was built with.
+  async pushRelease(
+    release: DesktopRelease,
+    {
+      appName,
+      target,
+      notes,
+      signer,
+      url,
+    }: { appName: string; target: string; notes: string | null; signer: DesktopSigner; url: string },
+  ) {
+    const { platform, arch, channel } = release;
+    return await release.withArchive(release.record(signer), async (archive) => {
+      const record = await new UpdatePackUpload(this.cloudApi, this.devProjectId)
+        .send(archive, { appName, target, platform, kind: "app", arch, channel, notes })
+        .catch((error: unknown) => {
+          throw CloudApi.refusal(error, "a release is uploaded by a project member signed in with `akan login`");
+        });
+      const label = `${appName} ${target} ${platform}-${arch} on channel ${channel}: release ${record.id}`;
+      const problems = (record.problems ?? []).map((problem) => `  - ${problem}`).join("\n");
+      if (record.status === "rejected") throw new ExitCodeError(`The project rejected ${label}:\n${problems}`, 2);
+      const manifestUrl =
+        typeof record.manifestUrl === "string" ? record.manifestUrl : `${url}/${platform}-${arch}/${channel}.json`;
+      const what = `${label} (${release.manifest.bundle}, ${release.payloads.length + 3} files)`;
+      Logger.rawLog(
+        record.status === "published"
+          ? `Published ${what}. Installed apps read ${manifestUrl}.`
+          : `Staged ${what}. Publish it from the project's release screen; installed apps read ${manifestUrl}.`,
+      );
+      if (problems) Logger.rawLog(`The project noted:\n${problems}`);
+      return record;
     });
   }
 
