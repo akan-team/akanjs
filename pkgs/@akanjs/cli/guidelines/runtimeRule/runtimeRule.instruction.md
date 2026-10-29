@@ -239,6 +239,10 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   `RUN if [ "$TARGETARCH" = "<arch>" ]` guard, so a multi-arch build runs it on one leg only. `preRuns` land
   before `bun install --production` (where a native dependency's build tools have to be), `postRuns` after it
   and before the app files are copied.
+- **The image installs the versions the workspace locked.** `akan build` writes a `bun.lock` beside the image's
+  `package.json`, cut down from the workspace's to what the server needs, and the image installs it
+  `--frozen-lockfile`. A workspace without a root `bun.lock` gets a warning and an unlocked install; a Dockerfile
+  written whole copies `bun.lock` itself.
 - **A lib declares the steps its own runtime needs**, and every app that mounts it inherits them:
   `libs/<lib>/akan.config.ts` takes `docker: { preRuns, postRuns }` and nothing else — the base image and the
   command belong to the app. Lib steps are emitted before the app's own, and an identical step declared twice
