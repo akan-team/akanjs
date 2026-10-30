@@ -83,6 +83,40 @@ describe("UpdateUploader", () => {
     );
   });
 
+  test("uploads a desktop release's envelope, with the v1 pair only when the pair is that release", async () => {
+    const manifest = { kind: "app", bundle: "1.3.0-3000", archive: { url: `app/${sha("c")}.tar.gz` }, patches: [] };
+    await inUpdatesDir(
+      {
+        [`macos-arm64/app/${sha("c")}.tar.gz`]: "tar",
+        "macos-arm64/main/app.json": envelope(manifest),
+        "macos-arm64/main.json": JSON.stringify({ ...manifest, bundle: "1.2.0-2000" }),
+        "macos-arm64/main.json.sig": "sig",
+        "macos-arm64/beta/app.json": envelope({ ...manifest, bundle: "1.4.0-4000" }),
+        "macos-arm64/beta.json": JSON.stringify({ ...manifest, bundle: "1.4.0-4000" }),
+        "macos-arm64/beta.json.sig": "sig",
+      },
+      async (updatesDir) => {
+        const dir = path.join(updatesDir, "macos-arm64");
+        const upload = async (channel: string, bundle: string) => {
+          const { bucket, writes } = fakeBucket();
+          await new UpdateUploader(bucket, "").upload(updatesDir, { dir, channel, bundle });
+          return writes.map(({ key }) => key);
+        };
+
+        expect(await upload("main", "1.3.0-3000")).toEqual([
+          `macos-arm64/app/${sha("c")}.tar.gz`,
+          "macos-arm64/main/app.json",
+        ]);
+        expect(await upload("beta", "1.4.0-4000")).toEqual([
+          `macos-arm64/app/${sha("c")}.tar.gz`,
+          "macos-arm64/beta.json.sig",
+          "macos-arm64/beta.json",
+          "macos-arm64/beta/app.json",
+        ]);
+      },
+    );
+  });
+
   test("uploads a phone release's own files and envelope, never pack records or another manifest beside them", async () => {
     await inUpdatesDir(
       {

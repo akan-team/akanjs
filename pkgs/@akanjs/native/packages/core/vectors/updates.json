@@ -1,5 +1,5 @@
 {
-  "about": "Web bundle updates, protocol v2 (architecture.md \"업데이트\"). keyIds: [raw Ed25519 public key in base64, its keyId: the first 8 bytes of its sha256 in hex]. decisions: [the binary's keyIds in updates.publicKeys order, keyIds state.json has revoked, the envelope's keyId, the manifest's revokeKeys, its resetSequence, its sequence, the binary's embeddedSequence, the running bundle as [sequence, keyId] or null for the app's own, the answer, why] for a manifest whose signature verified; the answer is untrusted | revoked | self-revoke | revoke-later, or take|stale:<the sequence it had to beat>:<keyIds it newly revokes, comma-separated>, revocations applying even to a stale manifest. urls: [updates.url, platform, channel, nativeApi, the envelope's URL]. envelopeKeys: the binary's updates.publicKeys for the envelopes, the public keys of RFC 8032 §7.1 TEST 1 and 2 (TEST 3 signs as a stranger), so the rows can be signed again. envelopes: [the manifest field, or [a base64 group, how many times it repeats, the base64 after them] for a large one, keyId, signature, keyIds state.json has revoked, the verdict, why] for an envelope's three fields; the verdict is open | untrusted | revoked | encoding | too-large | signature, checked in that order. limits: kernel.ts MAX_REVOKE_KEYS, MAX_UPDATE_MANIFEST, UPDATE_REPORT_LIMIT and UPDATE_REPORT_BATCH. reports (what a phone posts to updates.report.url): events and reasons, the vocabulary in order; outcomes: [HTTP status, 0 for no answer, what it does to the batch: sent | dropped | kept]; retryAfter: [the header or null, now in seconds, when the batch may go again or null, why]; waits: [retryAt or null, now, whether a send waits]; keys: [event, bundle, reason or null, the key an event is kept once by]; times: [milliseconds since the epoch, the event's at].",
+  "about": "Web bundle updates, protocol v2 (architecture.md \"업데이트\"). keyIds: [raw Ed25519 public key in base64, its keyId: the first 8 bytes of its sha256 in hex]. decisions: [the binary's keyIds in updates.publicKeys order, keyIds state.json has revoked, the envelope's keyId, the manifest's revokeKeys, its resetSequence, its sequence, the binary's embeddedSequence, the running bundle as [sequence, keyId] or null for the app's own, the answer, why] for a manifest whose signature verified; the answer is untrusted | revoked | self-revoke | revoke-later, or take|stale:<the sequence it had to beat>:<keyIds it newly revokes, comma-separated>, revocations applying even to a stale manifest. urls: [updates.url, platform, channel, nativeApi, the envelope's URL]. appUrls: [updates.url, desktop OS, CPU, channel, a desktop app's envelope URL (protocol v2: the whole app, one envelope per OS and CPU)]. publicKeys: [an updates.publicKeys entry, whether a release may be signed for it, why]: strict base64 of 32 bytes, the canonical encoding of an Ed25519 point (RFC 8032 §5.1.3) that is not of small order. envelopeKeys: the binary's updates.publicKeys for the envelopes, the public keys of RFC 8032 §7.1 TEST 1 and 2 (TEST 3 signs as a stranger), so the rows can be signed again. envelopes: [the manifest field, or [a base64 group, how many times it repeats, the base64 after them] for a large one, keyId, signature, keyIds state.json has revoked, the verdict, why] for an envelope's three fields; the verdict is open | untrusted | revoked | encoding | too-large | signature, checked in that order. limits: kernel.ts MAX_REVOKE_KEYS, MAX_UPDATE_MANIFEST, UPDATE_REPORT_LIMIT and UPDATE_REPORT_BATCH. reports (what a phone posts to updates.report.url): events and reasons, the vocabulary in order; outcomes: [HTTP status, 0 for no answer, what it does to the batch: sent | dropped | kept]; retryAfter: [the header or null, now in seconds, when the batch may go again or null, why]; waits: [retryAt or null, now, whether a send waits]; keys: [event, bundle, reason or null, the key an event is kept once by]; times: [milliseconds since the epoch, the event's at].",
   "keyIds": [
     ["BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=", "4bb06f8e4e3a7715"],
     ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=", "21fe31dfa154a261"],
@@ -27,6 +27,29 @@
   "urls": [
     ["https://updates.example.com/ota/inst1/pathA", "ios", "main", "0123456789abcdef", "https://updates.example.com/ota/inst1/pathA/ios/main/0123456789abcdef.json"],
     ["http://10.0.2.2:8790", "android", "pilot", "fedcba9876543210", "http://10.0.2.2:8790/android/pilot/fedcba9876543210.json"]
+  ],
+  "appUrls": [
+    ["https://updates.example.com/ota/inst1/pathA", "macos", "arm64", "main", "https://updates.example.com/ota/inst1/pathA/macos-arm64/main/app.json"],
+    ["http://localhost:8790", "windows", "x64", "pilot", "http://localhost:8790/windows-x64/pilot/app.json"]
+  ],
+  "publicKeys": [
+    ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=", true, "RFC 8032 TEST 1"],
+    ["PUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=", true, "RFC 8032 TEST 2"],
+    ["JuiVj8KyJ7BFw/SJ8u+Y8NXfrAXTxjM5sTgCiG1T/AU=", false, "order 8"],
+    ["JuiVj8KyJ7BFw/SJ8u+Y8NXfrAXTxjM5sTgCiG1T/IU=", false, "order 8, x negative"],
+    ["xxdqcD1N2E+6PAt2DRBnDyogU/osOczGTsf9d5KsA3o=", false, "order 8"],
+    ["xxdqcD1N2E+6PAt2DRBnDyogU/osOczGTsf9d5KsA/o=", false, "order 8, x negative"],
+    ["AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", false, "the identity, order 1"],
+    ["7P///////////////////////////////////////38=", false, "y = -1, order 2"],
+    ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", false, "y = 0, order 4"],
+    ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA=", false, "y = 0, x negative, order 4"],
+    ["AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA=", false, "the identity with a negative zero x: not canonical"],
+    ["7P////////////////////////////////////////8=", false, "order 2 with a negative zero x: not canonical"],
+    ["7f///////////////////////////////////////38=", false, "y = p: not canonical"],
+    ["7v///////////////////////////////////////38=", false, "y = p + 1, the identity: not canonical"],
+    ["AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", false, "y = 2: no point of the curve"],
+    ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHUQ==", false, "31 bytes"],
+    ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo", false, "not padded"]
   ],
   "envelopeKeys": ["11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=", "PUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw="],
   "envelopes": [

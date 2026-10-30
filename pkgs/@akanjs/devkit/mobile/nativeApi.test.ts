@@ -42,6 +42,9 @@ describe("NativeApi", () => {
   });
 
   test("refuses an API older than the one the build calls into, and another major, before anything builds", async () => {
+    await expect(NativeApi.load(await installVendoredApi("0.12.0"))).rejects.toThrow(
+      "install matching versions of akanjs and @akanjs/cli",
+    );
     await expect(NativeApi.load(await installVendoredApi("0.10.0"))).rejects.toThrow(
       "install matching versions of akanjs and @akanjs/cli",
     );
@@ -51,6 +54,6 @@ describe("NativeApi", () => {
     expect((await NativeApi.load(await installVendoredApi(NativeApi.minimumVersion))).API_VERSION).toBe(
       NativeApi.minimumVersion,
     );
-    expect((await NativeApi.load(await installVendoredApi("0.12.0"))).API_VERSION).toBe("0.12.0");
+    expect((await NativeApi.load(await installVendoredApi("0.13.4"))).API_VERSION).toBe("0.13.4");
   });
 });

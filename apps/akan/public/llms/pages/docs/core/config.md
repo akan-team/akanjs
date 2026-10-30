@@ -196,9 +196,9 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - updates.url (string): A static base URL, such as a storage bucket, holding what akan publish-update writes; https in a release build.
 
-- updates.publicKeys (string[]): 1–3 keys from akan update-keygen, signing key first; a key revokes only those before it, and a desktop app trusts the first. publicKey is the one-key form, never beside it.
+- updates.publicKeys (string[]): 1–3 keys from akan update-keygen, signing key first; a key revokes only those before it. publicKey is the one-key form, never beside it.
 
-- updates.revokedKeys (string[]): Up to 16 keyIds every phone release revokes, kept here so a release from a fresh checkout revokes them too. A phone build trusts none of them.
+- updates.revokedKeys (string[]): Up to 16 keyIds every release revokes, kept here so a release from a fresh checkout revokes them too. A build trusts none of them.
 
 - updates.channel (string, default the --env it is built with): The channel the app follows; unset, only releases of the env it was built with. A pilot target names its own.
 

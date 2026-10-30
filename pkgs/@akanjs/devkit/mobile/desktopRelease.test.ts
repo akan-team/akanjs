@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import * as nativeApi from "akanjs/native/api";
 import { AkanAppConfig } from "../akanConfig";
 import { tempDirs } from "../testHelpers";
 import type { DesktopArch } from "./desktopBin";
@@ -13,12 +14,18 @@ const sha256 = (bytes: string | Uint8Array) => createHash("sha256").update(bytes
 
 const keyOf = () => {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const raw = publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64");
+  const signature = (bytes: string) => sign(null, Buffer.from(bytes), privateKey).toString("base64");
   return {
-    publicKey: publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64"),
-    sign: (bytes: string) => `${sign(null, Buffer.from(bytes), privateKey).toString("base64")}\n`,
+    publicKey: raw,
+    keyId: nativeApi.keyIdOf(raw),
+    sign: (bytes: string) => `${signature(bytes)}\n`,
+    seal: (bytes: string) =>
+      `${JSON.stringify({ manifest: Buffer.from(bytes).toString("base64"), keyId: nativeApi.keyIdOf(raw), signature: signature(bytes) }, null, 2)}\n`,
   };
 };
 const key = keyOf();
+const spare = keyOf();
 const appId = "com.akancad.app";
 
 interface Published {
@@ -35,12 +42,18 @@ const publish = async ({
   channel = "main",
   app = platform === "macos" ? "Akancad.app" : "akancad",
   gz = "the release's gzip tar",
+  target = "default",
+  signer = key,
+  pair = "same",
 }: {
   platform?: DesktopPlatform;
   arch?: DesktopArch;
   channel?: string;
   app?: string;
   gz?: string;
+  target?: string;
+  signer?: ReturnType<typeof keyOf>;
+  pair?: "same" | "earlier" | "none";
 } = {}) => {
   const updatesDir = await makeDir();
   const dir = path.join(updatesDir, `${platform}-${arch}`);
@@ -68,9 +81,17 @@ const publish = async ({
     patches: [{ from, url: `app/${delta}`, sha256: sha256("a delta"), size: 7 }],
     server: true,
   };
-  const bytes = `${JSON.stringify(manifest, null, 2)}\n`;
-  await writeFile(path.join(dir, `${channel}.json`), bytes);
-  await writeFile(path.join(dir, `${channel}.json.sig`), key.sign(bytes));
+  await mkdir(path.join(dir, channel), { recursive: true });
+  await writeFile(
+    path.join(dir, channel, "app.json"),
+    signer.seal(`${JSON.stringify({ ...manifest, schema: 2, target }, null, 2)}\n`),
+  );
+  if (pair !== "none") {
+    const earlier = { ...manifest, sequence: manifest.sequence - 100, bundle: "1.1.0-1761699900" };
+    const bytes = `${JSON.stringify(pair === "same" ? manifest : earlier, null, 2)}\n`;
+    await writeFile(path.join(dir, `${channel}.json`), bytes);
+    await writeFile(path.join(dir, `${channel}.json.sig`), key.sign(bytes));
+  }
   return { updatesDir, dir, tarSha, delta, build } satisfies Published;
 };
 
@@ -80,10 +101,30 @@ const read = (
     platform = "macos",
     arch = "arm64",
     channel = "main",
-    publicKey = key.publicKey,
+    publicKeys = [key.publicKey, spare.publicKey],
+    revokedKeys = [],
+    target = "default",
     id = appId,
-  }: { platform?: DesktopPlatform; arch?: DesktopArch; channel?: string; publicKey?: string; id?: string } = {},
-) => DesktopRelease.read(updatesDir, { platform, arch, channel, appId: id, publicKey });
+  }: {
+    platform?: DesktopPlatform;
+    arch?: DesktopArch;
+    channel?: string;
+    publicKeys?: string[];
+    revokedKeys?: string[];
+    target?: string;
+    id?: string;
+  } = {},
+) =>
+  DesktopRelease.read(updatesDir, {
+    platform,
+    arch,
+    channel,
+    appId: id,
+    target,
+    publicKeys,
+    revokedKeys,
+    api: nativeApi,
+  });
 
 const entriesOf = (archive: string) =>
   Bun.spawnSync(["tar", "-tf", archive]).stdout.toString().split(/\r?\n/).filter(Boolean);
@@ -122,7 +163,8 @@ describe("DesktopRelease", () => {
     const published = await publish();
     const { dir, tarSha, delta } = published;
     await publish({ channel: "develop" }).then(async (other) => {
-      for (const name of ["develop.json", "develop.json.sig"])
+      await mkdir(path.join(dir, "develop"), { recursive: true });
+      for (const name of ["develop.json", "develop.json.sig", "develop/app.json"])
         await writeFile(path.join(dir, name), await readFile(path.join(other.dir, name)));
     });
     await writeFile(path.join(dir, "app", `${sha256("an earlier tar")}.tar.gz`), "an earlier release");
@@ -133,6 +175,7 @@ describe("DesktopRelease", () => {
 
     expect(entries).toEqual([
       "./release.json",
+      "./main/app.json",
       "./main.json",
       "./main.json.sig",
       `./app/${tarSha}.tar.gz`,
@@ -152,24 +195,24 @@ describe("DesktopRelease", () => {
     expect(headers.filter(({ prefix }) => prefix)).toEqual([]);
     expect(headers.filter(({ type }) => type === "x").map(({ paxKeys }) => paxKeys)).toEqual([["path"]]);
     const files = headers.filter(({ type }) => type === "0").map(({ name }) => name);
-    expect(files.slice(0, 3)).toEqual(["./release.json", "./main.json", "./main.json.sig"]);
-    expect(files.slice(3).every((name) => name.startsWith("./app/"))).toBe(true);
-    expect(files.slice(3)).toEqual([`./app/${published.tarSha}.tar.gz`, `./app/${published.delta}`]);
+    expect(files.slice(0, 4)).toEqual(["./release.json", "./main/app.json", "./main.json", "./main.json.sig"]);
+    expect(files.slice(4).every((name) => name.startsWith("./app/"))).toBe(true);
+    expect(files.slice(4)).toEqual([`./app/${published.tarSha}.tar.gz`, `./app/${published.delta}`]);
     expect(Buffer.byteLength(`./app/${published.delta}`)).toBeGreaterThan(100);
   });
 
-  test("the manifest and its signature go in byte for byte, beside a release.json of the CLI and the build time", async () => {
+  test("the envelope and the v1 pair go in byte for byte, beside a release.json of the CLI and the build time", async () => {
     const published = await publish();
     const release = await read(published);
     const record = release.record({ teamId: "ABCDE12345" });
 
     const out = await release.withArchive(record, extract);
 
-    for (const name of ["main.json", "main.json.sig"])
+    for (const name of ["main/app.json", "main.json", "main.json.sig"])
       expect(sha256(await readFile(path.join(out, name)))).toBe(sha256(await readFile(path.join(published.dir, name))));
     expect(await readFile(path.join(out, "release.json"), "utf8")).toBe(`${JSON.stringify(record, null, 2)}\n`);
     expect(record).toEqual({
-      schema: 1,
+      schema: 2,
       cli: AkanAppConfig.akanVersion,
       platform: "macos",
       arch: "arm64",
@@ -192,22 +235,50 @@ describe("DesktopRelease", () => {
     expect(await Bun.file(kept).exists()).toBe(false);
   });
 
-  test("refuses a manifest the target's first key did not sign, before reading anything it names", async () => {
+  test("refuses an envelope no key of the ring signs, or a revoked one, before reading anything it names", async () => {
     const published = await publish();
+    const envelope = path.join(published.dir, "main", "app.json");
+    const untrusted = `${envelope}: the update envelope is signed by key ${key.keyId}, which is not trusted; publish the release again.`;
 
-    await expect(read(published, { publicKey: keyOf().publicKey })).rejects.toThrow(
-      "main.json.sig does not verify with updates.publicKeys[0], the one key installed apps trust",
+    await expect(read(published, { publicKeys: [keyOf().publicKey] })).rejects.toThrow(untrusted);
+    await expect(read(published, { revokedKeys: [key.keyId] })).rejects.toThrow(untrusted);
+  });
+
+  test("takes a release a later key signed, and leaves out a v1 pair that is not that release", async () => {
+    const entriesFor = async (published: Published) => {
+      const release = await read(published);
+      return await release.withArchive(release.record(null), async (archive) => entriesOf(archive).slice(0, 4));
+    };
+    const tail = (published: Published) => `./app/${published.tarSha}.tar.gz`;
+
+    const bySpare = await publish({ signer: spare, pair: "earlier" });
+    expect(await entriesFor(bySpare)).toEqual([
+      "./release.json",
+      "./main/app.json",
+      tail(bySpare),
+      `./app/${bySpare.delta}`,
+    ]);
+    const unpaired = await publish({ pair: "none" });
+    expect((await entriesFor(unpaired)).slice(0, 3)).toEqual(["./release.json", "./main/app.json", tail(unpaired)]);
+    const forged = await publish();
+    await writeFile(
+      path.join(forged.dir, "main.json.sig"),
+      spare.sign(await readFile(path.join(forged.dir, "main.json"), "utf8")),
     );
+    expect((await entriesFor(forged)).slice(0, 3)).toEqual(["./release.json", "./main/app.json", tail(forged)]);
   });
 
   test("refuses a release of another app, and names a channel or CPU it holds none of", async () => {
     const published = await publish();
 
     await expect(read(published, { id: "com.other" })).rejects.toThrow(
-      "is not a release of com.other for macos-arm64 on channel main.",
+      "is not a release of com.other target default for macos-arm64 on channel main.",
+    );
+    await expect(read(published, { target: "pilot" })).rejects.toThrow(
+      `is not a release of ${appId} target pilot for macos-arm64 on channel main.`,
     );
     await expect(read(published, { channel: "develop" })).rejects.toThrow(
-      `${path.join(published.dir, "develop.json")} is missing: run \`akan publish-update\` first.`,
+      `${path.join(published.dir, "develop", "app.json")} is missing: run \`akan publish-update\` first.`,
     );
     await expect(read(published, { arch: "x64" })).rejects.toThrow("macos-x64");
   });
@@ -219,9 +290,9 @@ describe("DesktopRelease", () => {
     const send = () => release.withArchive(release.record(null), async () => "sent");
 
     await writeFile(archive, "the release's gzip tar!");
-    await expect(send()).rejects.toThrow(`${archive} is not the file main.json names: publish the release again.`);
+    await expect(send()).rejects.toThrow(`${archive} is not the file main/app.json names: publish the release again.`);
     await writeFile(archive, "the release's gzip taR");
-    await expect(send()).rejects.toThrow(`${archive} is not the file main.json names (its sha256 differs).`);
+    await expect(send()).rejects.toThrow(`${archive} is not the file main/app.json names (its sha256 differs).`);
   });
 });
 

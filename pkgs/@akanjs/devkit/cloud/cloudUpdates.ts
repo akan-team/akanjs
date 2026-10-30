@@ -102,8 +102,9 @@ export class CloudUpdates {
       const problems = (record.problems ?? []).map((problem) => `  - ${problem}`).join("\n");
       if (record.status === "rejected") throw new ExitCodeError(`The project rejected ${label}:\n${problems}`, 2);
       const manifestUrl =
-        typeof record.manifestUrl === "string" ? record.manifestUrl : `${url}/${platform}-${arch}/${channel}.json`;
-      const what = `${label} (${release.manifest.bundle}, ${release.payloads.length + 3} files)`;
+        typeof record.manifestUrl === "string" ? record.manifestUrl : `${url}/${platform}-${arch}/${channel}/app.json`;
+      const files = 1 + release.manifestFiles.length + release.payloads.length;
+      const what = `${label} (${release.manifest.bundle}, ${files} files)`;
       Logger.rawLog(
         record.status === "published"
           ? `Published ${what}. Installed apps read ${manifestUrl}.`

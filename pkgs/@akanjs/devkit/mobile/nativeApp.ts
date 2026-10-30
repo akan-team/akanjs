@@ -27,7 +27,7 @@ type TaskOptions = Parameters<NativeBuildApiModule["build"]>[0];
 type DeviceSelector = NonNullable<Parameters<NativeBuildApiModule["run"]>[0]["device"]>;
 type ReleaseOptions = Parameters<NativeBuildApiModule["release"]>[0];
 type AndroidSigning = Extract<ReleaseOptions, { platform: "android" }>["signing"];
-type PhoneRevocation = Pick<Parameters<NativeBuildApiModule["checkPublishUpdate"]>[0], "revoke" | "resetSequence">;
+type ReleaseRevocation = Pick<Parameters<NativeBuildApiModule["checkPublishUpdate"]>[0], "revoke" | "resetSequence">;
 
 export interface NativeRunOptions {
   device?: DeviceSelector;
@@ -315,17 +315,24 @@ export class NativeApp {
   //? The channel falls back as publishUpdate's does, so a push with the flags of the publish finds what it wrote.
   async publishedRelease(platform: DesktopPlatform, { arch, channel }: { arch: DesktopArch; channel?: string | null }) {
     this.#assertUpdates();
-    const { config } = await this.config({ platform, stageBin: false });
-    const publicKey = config.updates?.publicKeys?.[0] ?? config.updates?.publicKey;
-    if (!config.updates || !publicKey) throw new Error(`Native target '${this.target.name}' has no updates key.`);
+    const [api, { config }] = await Promise.all([
+      NativeApi.load(this.app.cwdPath),
+      this.config({ platform, stageBin: false }),
+    ]);
+    const { updates } = config;
+    const publicKeys = updates?.publicKeys ?? (updates?.publicKey ? [updates.publicKey] : []);
+    if (!updates || !publicKeys.length) throw new Error(`Native target '${this.target.name}' has no updates key.`);
     const release = await DesktopRelease.read(this.updatesDir, {
       platform,
       arch,
-      channel: channel ?? config.updates.channel ?? "production",
+      channel: channel ?? updates.channel ?? "production",
       appId: config.app.id,
-      publicKey,
+      ...(updates.target ? { target: updates.target } : {}),
+      publicKeys,
+      revokedKeys: updates.revokedKeys ?? [],
+      api,
     });
-    return { release, url: config.updates.url, exeName: config.app.fileName ?? "" };
+    return { release, url: updates.url, exeName: config.app.fileName ?? "" };
   }
 
   /** A signed release installed apps take through the updates plugin, from a release build of this bundle. */
@@ -345,7 +352,7 @@ export class NativeApp {
       arch?: DesktopArch;
       sign?: boolean;
       notarize?: boolean;
-    } & PhoneRevocation = {},
+    } & ReleaseRevocation = {},
   ) {
     NativeApp.#assertServerPlatform(platform, server);
     this.#assertUpdates();
@@ -399,8 +406,8 @@ export class NativeApp {
 
   /**
    * What publishing refuses once the release is built: no updates settings, an invalid config, no signing key or
-   * another app's, a desktop release whose server presence is not its channel's previous release's, and a phone release
-   * whose revocations no phone would take.
+   * another app's, a desktop release whose server presence is not its channel's previous release's, and a release whose
+   * revocations no app would take.
    */
   async assertPublishable(
     platform: NativePlatform,
@@ -410,7 +417,7 @@ export class NativeApp {
       arch,
       revoke,
       resetSequence,
-    }: { channel?: string; server?: boolean; arch?: DesktopArch } & PhoneRevocation = {},
+    }: { channel?: string; server?: boolean; arch?: DesktopArch } & ReleaseRevocation = {},
   ) {
     this.#assertUpdates();
     const [api, { config }] = await Promise.all([

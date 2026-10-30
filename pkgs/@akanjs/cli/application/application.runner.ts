@@ -73,9 +73,9 @@ export interface MobilePublishOptions extends MobileTargetOptions, MobileSignOpt
   upload?: string;
   /** Desktop: the CPU of the apps the release is for, which names its feed folder (`<os>-<arch>`). */
   arch?: "arm64" | "x64";
-  /** A phone release: keyIds of updates.publicKeys it starts revoking, beside updates.revokedKeys and the channel's. */
+  /** keyIds of updates.publicKeys the release starts revoking, beside updates.revokedKeys and the channel's. */
   revoke?: string[];
-  /** A phone release that revokes a key: phones compare it with their own bundle instead of the running one. */
+  /** A release that revokes a key: apps compare it with their own build instead of the running release. */
   resetSequence?: boolean;
 }
 export interface MobileBuildOptions extends MobileTargetOptions, MobileSignOptions {

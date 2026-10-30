@@ -395,12 +395,12 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     })
     .option("notarize", Boolean, { desc: notarizeDesc, default: false })
     .option("revoke", String, {
-      desc: "android, ios: keyIds of updates.publicKeys this release starts revoking, comma-separated (update-keygen prints a key's); it is signed with a key listed after them",
+      desc: "keyIds of updates.publicKeys this release starts revoking, comma-separated (update-keygen prints a key's); it is signed with a key listed after them",
       nullable: true,
     })
     .option("resetSequence", Boolean, {
       flag: "R",
-      desc: "android, ios: with --revoke, phones compare the release with their own bundle instead of the running one",
+      desc: "with --revoke, apps compare the release with their own build instead of the running release",
       default: false,
     })
     .option("write", Boolean, writeOption)

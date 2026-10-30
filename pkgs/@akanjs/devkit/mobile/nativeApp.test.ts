@@ -341,8 +341,8 @@ describe("NativeApp", () => {
       (await new NativeApp(fakeApp(), target({ basePath: undefined, updates }), env).config({ platform: "android" }))
         .config.updates;
 
-    expect(await built("main")).toEqual({ ...updates, channel: "main" });
-    expect(await built("debug")).toEqual({ ...updates, channel: "debug" });
+    expect(await built("main")).toEqual({ ...updates, channel: "main", target: "default" });
+    expect(await built("debug")).toEqual({ ...updates, channel: "debug", target: "default" });
   });
 
   test("a desktop app is this computer's platform", () => {

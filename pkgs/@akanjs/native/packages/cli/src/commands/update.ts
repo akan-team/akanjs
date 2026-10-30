@@ -65,16 +65,11 @@ async function publish(args: ParsedArgs, request: RevocationRequest): Promise<nu
   const requested = stringFlag(args, "channel");
   if (requested !== undefined) assertChannel(requested);
   const project = await loadProject(findAppDir(stringFlag(args, "app") ?? process.cwd()));
-  assertSigningKey(project.config, platform);
+  assertSigningKey(project.config);
   const planned = requested ?? project.config.updates?.channel ?? "production";
-  assertServerOfChannel(
-    project.config,
-    platform,
-    outDir(args, project.appDir),
-    planned,
-    desktopArch(platform, stringFlag(args, "arch") as DesktopArch | undefined),
-  );
-  releaseRevocations(project.config, platform, outDir(args, project.appDir), planned, request);
+  const arch = desktopArch(platform, stringFlag(args, "arch") as DesktopArch | undefined);
+  assertServerOfChannel(project.config, platform, outDir(args, project.appDir), planned, arch);
+  releaseRevocations(project.config, platform, outDir(args, project.appDir), planned, request, arch);
   const { ctx, artifact } = await buildFromArgs(
     { positional: [platform], flags: args.flags },
     { mode: "production", profile: "release" },

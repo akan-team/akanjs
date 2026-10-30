@@ -2,9 +2,11 @@
 // folder); the same API as the web bundle updates of iOS / Android (UP-2), with the same trial /
 // confirm / rollback rules.
 //
-// - The manifest `<url>/<os>-<arch>/<channel>.json` (e.g. macos-arm64) is signed as a whole
-//   (Ed25519, `.sig`); nothing in it is used before the signature checks out, and its `arch` must
-//   be this app's (an app for the other CPU would not even start, so it could not roll back).
+// - The manifest is signed as a whole (Ed25519); nothing in it is used before the signature checks
+//   out, and its `arch` must be this app's (an app for the other CPU would not even start, so it
+//   could not roll back). Protocol v2 reads the envelope `<url>/<os>-<arch>/<channel>/app.json`
+//   (e.g. macos-arm64) as a phone does, with its key ring, revocations and sequence rule, and its
+//   `target` must be this app's; v1 read `<channel>.json` and its `.sig`, by the first key only.
 // - The release is a tar of the app. An app that still has its own release's tar (kept after
 //   every update) gets the small delta from that release (@akanjs/native/desktop/delta); otherwise the full
 //   gzip archive. Either way the tar's sha256 must match the manifest.
@@ -45,7 +47,16 @@ import {
 import { uptime } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { AkanNativeError } from "../../../packages/core/src/index.ts";
-import { isBundleId, isChannelName } from "../../../packages/core/src/kernel.ts";
+import {
+  appManifestUrl,
+  checkUpdateEnvelope,
+  isBundleId,
+  isChannelName,
+  isUpdateKeyId,
+  isUpdatePublicKey,
+  MAX_REVOKE_KEYS,
+  updateDecision,
+} from "../../../packages/core/src/kernel.ts";
 import { applyDelta } from "../../../packages/desktop/src/delta.ts";
 import {
   type DesktopContext,
@@ -63,7 +74,14 @@ export interface UpdatesConfig {
   nativeApi: string | null;
   embeddedSequence: number;
   url: string;
-  publicKey: string;
+  /** 2: envelopes signed by any key of `publicKeys`; absent, the v1 pair signed by `publicKey`. */
+  protocol?: number;
+  /** v2: the keys of updates.publicKeys this build trusts, revoked ones left out. */
+  publicKeys?: string[];
+  /** The first of updates.publicKeys, the one key v1 trusts. */
+  publicKey?: string;
+  /** v2: updates.target, which a release must name; absent, it must name none. */
+  target?: string;
   channel: string;
   readyTimeout: number;
 }
@@ -76,6 +94,8 @@ interface Entry {
   tar: string;
   /** embeddedSequence of that release's app: tells whether the running app is it. */
   build: number;
+  /** v2: the keyId that signed it; absent, the first of updates.publicKeys, which signs the v1 pair. */
+  keyId?: string;
 }
 
 type Trial = Entry & {
@@ -108,6 +128,8 @@ interface State {
   installed?: number;
   /** setChannel(): the manifest read over updates.json's `channel`. */
   channel?: string;
+  /** v2: keyIds a verified manifest revoked, for good: reset() keeps them. */
+  revokedKeys?: string[];
 }
 
 interface Manifest {
@@ -125,6 +147,15 @@ interface Manifest {
   patches?: { from: string; url: string; sha256: string; size: number }[];
   /** Whether the release carries a server (resources/server.json); a manifest published before it says nothing. */
   server?: boolean;
+  target?: string;
+  revokeKeys?: string[];
+  resetSequence?: boolean;
+}
+
+/** A verified manifest and, in protocol v2, the keyId of its envelope's signer. */
+interface Release {
+  m: Manifest;
+  signer: string | null;
 }
 
 /**
@@ -140,7 +171,14 @@ export const MAX_STRIKES = 3;
 
 const MAX_MANIFEST = 1 << 20;
 const MAX_SIGNATURE = 1024;
+// A 1 MiB manifest is 1.4 MiB in base64.
+const MAX_ENVELOPE = 3 << 19;
 const sha256 = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
+const keyIdOf = (publicKey: string) => sha256(Buffer.from(publicKey, "base64")).slice(0, 16);
+const verifies = (bytes: Uint8Array, signature: Uint8Array, publicKey: string) => {
+  const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(publicKey, "base64")]);
+  return verify(null, bytes, createPublicKey({ key: spki, format: "der", type: "spki" }), signature);
+};
 
 /** Whether a process exists (signal 0 only checks; EPERM means it exists but is not ours). */
 function alive(pid: number): boolean {
@@ -294,7 +332,8 @@ function readConfig(app: string | null, mac: boolean): UpdatesConfig | null {
   const path = app ? join(resourcesOf(app, mac), "updates.json") : "";
   if (!app || !existsSync(path)) return null;
   const c = JSON.parse(readFileSync(path, "utf8")) as UpdatesConfig;
-  return typeof c.url === "string" && typeof c.publicKey === "string" ? c : null;
+  if (typeof c.url !== "string") return null;
+  return (c.protocol === 2 ? Array.isArray(c.publicKeys) : typeof c.publicKey === "string") ? c : null;
 }
 
 export interface DesktopUpdatesOptions {
@@ -379,9 +418,30 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
   const ifRunning = <E extends Entry>(entry: E | undefined): E | undefined =>
     entry && config && entry.build === config.embeddedSequence ? entry : undefined;
   const runningIs = (entry: Entry | undefined) => ifRunning(entry) !== undefined;
-  /** The release running now; one on trial is running too, confirmed or not. */
-  const runningSequence = (c: UpdatesConfig, state: State) =>
-    (ifRunning(state.trial) ?? ifRunning(state.current))?.sequence ?? c.embeddedSequence;
+  const signerOf = (c: UpdatesConfig, entry: Entry) => entry.keyId ?? (c.publicKey ? keyIdOf(c.publicKey) : "");
+  /** v2: keyIds of the trusted keys this build holds, each with its key. */
+  const ring = (c: UpdatesConfig) =>
+    new Map((c.publicKeys ?? []).filter(isUpdatePublicKey).map((key) => [keyIdOf(key), key]));
+  /**
+   * The sequence a release must pass: the running one's (on trial or not, confirmed or not), the binary's own when it
+   * runs none or one a revoked key signed, which sets no bar (kernel.ts updateDecision).
+   */
+  const runningSequence = (c: UpdatesConfig, state: State) => {
+    const running = ifRunning(state.trial) ?? ifRunning(state.current);
+    if (!running || state.revokedKeys?.includes(signerOf(c, running))) return c.embeddedSequence;
+    return running.sequence;
+  };
+  /**
+   * Whether a downloaded release may still be applied. v2 as the phones decide it: newer than the binary's own and
+   * signed by a key it still trusts, since updateDecision compared it with what ran when it was downloaded, and with a
+   * revocation's resetSequence it may be older than that.
+   */
+  const applicable = (c: UpdatesConfig, state: State, entry: Entry) =>
+    c.protocol === 2
+      ? entry.sequence > c.embeddedSequence &&
+        ring(c).has(signerOf(c, entry)) &&
+        !state.revokedKeys?.includes(signerOf(c, entry))
+      : entry.sequence > runningSequence(c, state);
 
   const fail = (state: State, bundle: string, why: string) => {
     if (!state.failed.includes(bundle)) state.failed.push(bundle);
@@ -398,12 +458,13 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     fail(state, bundle, limit > 1 ? `${why} (${tries} tries)` : why);
     return true;
   };
-  const entryOf = ({ bundle, sequence, version, tar, build }: Entry): Entry => ({
+  const entryOf = ({ bundle, sequence, version, tar, build, keyId }: Entry): Entry => ({
     bundle,
     sequence,
     version,
     tar,
     build,
+    ...(keyId ? { keyId } : {}),
   });
 
   const recover = (): RelaunchOptions["recover"] =>
@@ -490,28 +551,77 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
   // Releases per OS and CPU (`akan-native update publish`): an x64 app must never install an arm64 one.
   const releases = (c: UpdatesConfig) => `${c.url}/${c.platform}-${process.arch}`;
 
-  const fetchRelease = async (c: UpdatesConfig): Promise<Manifest> => {
+  /** The v1 pair's manifest bytes, verified with the one key a v1 app trusts. */
+  const fetchSigned = async (c: UpdatesConfig): Promise<Uint8Array> => {
     const base = `${releases(c)}/${c.channel}.json`;
     const manifest = await fetchBytes(base, MAX_MANIFEST);
     const signature = Buffer.from(
       new TextDecoder().decode(await fetchBytes(`${base}.sig`, MAX_SIGNATURE)).trim(),
       "base64",
     );
-    const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(c.publicKey, "base64")]);
-    if (!verify(null, manifest, createPublicKey({ key: spki, format: "der", type: "spki" }), signature)) {
+    if (!c.publicKey || !isUpdatePublicKey(c.publicKey) || !verifies(manifest, signature, c.publicKey))
       throw new AkanNativeError("INTERNAL", "the release signature does not match updates.publicKey");
+    return manifest;
+  };
+
+  /** The manifest bytes of the v2 envelope and its signer, opened as a phone opens one (kernel.ts checkUpdateEnvelope). */
+  const fetchEnvelope = async (c: UpdatesConfig, state: State): Promise<{ bytes: Uint8Array; signer: string }> => {
+    const data = await fetchBytes(appManifestUrl(c.url, c.platform, process.arch, c.channel), MAX_ENVELOPE);
+    let envelope: unknown;
+    try {
+      envelope = JSON.parse(new TextDecoder().decode(data));
+    } catch {
+      throw new AkanNativeError("INTERNAL", "the release envelope is not JSON");
     }
-    const m = JSON.parse(new TextDecoder().decode(manifest)) as Manifest;
+    const { manifest, keyId, signature } = (
+      envelope && typeof envelope === "object" && !Array.isArray(envelope) ? envelope : {}
+    ) as Record<string, unknown>;
+    if (typeof manifest !== "string" || typeof keyId !== "string" || typeof signature !== "string")
+      throw new AkanNativeError("INTERNAL", "the release envelope needs manifest, keyId and signature");
+    const keys = ring(c);
+    const opened = checkUpdateEnvelope(
+      { manifest, keyId, signature },
+      [...keys.keys()],
+      state.revokedKeys ?? [],
+      (bytes, sig, id) => {
+        const key = keys.get(id);
+        return key !== undefined && verifies(bytes, sig, key);
+      },
+    );
+    if (opened.verdict === "open") return { bytes: opened.manifest, signer: keyId };
+    const why = {
+      untrusted: `is signed by ${keyId}, not a key of updates.publicKeys`,
+      revoked: `is signed by ${keyId}, a key a release revoked`,
+      encoding: "is not padded standard base64",
+      "too-large": "holds a manifest larger than 1 MiB",
+      signature: "has a signature that does not verify",
+    }[opened.verdict];
+    throw new AkanNativeError("INTERNAL", `the release envelope ${why}`);
+  };
+
+  const fetchRelease = async (c: UpdatesConfig, state: State): Promise<Release> => {
+    const v2 = c.protocol === 2;
+    const { bytes, signer } = v2 ? await fetchEnvelope(c, state) : { bytes: await fetchSigned(c), signer: null };
+    let m: Manifest;
+    try {
+      m = JSON.parse(new TextDecoder().decode(bytes)) as Manifest;
+    } catch {
+      throw new AkanNativeError("INTERNAL", "invalid release manifest: not JSON");
+    }
     const hex = (s: unknown) => typeof s === "string" && /^[0-9a-f]{64}$/.test(s);
     if (
-      m.schema !== 1 ||
+      m.schema !== (v2 ? 2 : 1) ||
       m.kind !== "app" ||
       m.app !== c.app ||
       m.platform !== c.platform ||
       m.arch !== process.arch ||
-      m.channel !== c.channel
+      m.channel !== c.channel ||
+      (v2 && (m.target ?? null) !== (c.target ?? null))
     ) {
-      throw new AkanNativeError("INTERNAL", "invalid release manifest: made for another app, platform, CPU or channel");
+      throw new AkanNativeError(
+        "INTERNAL",
+        "invalid release manifest: made for another app, platform, CPU, channel or target",
+      );
     }
     if (
       typeof m.bundle !== "string" ||
@@ -521,15 +631,59 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       !m.archive ||
       !hex(m.archive.sha256) ||
       !hex(m.archive.gzSha256) ||
-      (m.server !== undefined && typeof m.server !== "boolean")
+      (m.server !== undefined && typeof m.server !== "boolean") ||
+      (m.revokeKeys !== undefined &&
+        !(
+          Array.isArray(m.revokeKeys) &&
+          m.revokeKeys.length <= MAX_REVOKE_KEYS &&
+          m.revokeKeys.every((id) => typeof id === "string" && isUpdateKeyId(id))
+        )) ||
+      (m.resetSequence !== undefined && typeof m.resetSequence !== "boolean")
     ) {
       throw new AkanNativeError("INTERNAL", "invalid release manifest");
     }
-    return m;
+    return { m, signer };
   };
 
-  const isNewer = (c: UpdatesConfig, m: Manifest, state: State) =>
-    m.sequence > runningSequence(c, state) && !state.failed.includes(m.bundle);
+  /**
+   * Whether a verified release is newer than what runs and was not failed before, and in v2 the keys its manifest newly
+   * revokes, which bind whether or not it is newer (kernel.ts updateDecision).
+   */
+  const decide = (c: UpdatesConfig, { m, signer }: Release, state: State) => {
+    if (signer === null)
+      return { newer: m.sequence > runningSequence(c, state) && !state.failed.includes(m.bundle), revoke: [] };
+    const running = ifRunning(state.trial) ?? ifRunning(state.current);
+    const decision = updateDecision({
+      ring: [...ring(c).keys()],
+      revoked: state.revokedKeys ?? [],
+      signer,
+      revokeKeys: m.revokeKeys ?? [],
+      resetSequence: m.resetSequence === true,
+      sequence: m.sequence,
+      embedded: c.embeddedSequence,
+      running: running ? { sequence: running.sequence, keyId: signerOf(c, running) } : null,
+    });
+    //? Never untrusted or revoked: the envelope was opened against the same ring and revocations.
+    if (decision.kind !== "take" && decision.kind !== "stale")
+      throw new AkanNativeError(
+        "INTERNAL",
+        `invalid release manifest: key ${signer} may not revoke ${(m.revokeKeys ?? []).join(", ")}`,
+      );
+    return { newer: decision.kind === "take" && !state.failed.includes(m.bundle), revoke: decision.revoke };
+  };
+  /** Keys a verified manifest revoked, for good; a download one of them signed goes with them. */
+  const revokeKeys = (c: UpdatesConfig, keyIds: string[]) => {
+    const state = readState();
+    const added = keyIds.filter((id) => !state.revokedKeys?.includes(id));
+    if (!added.length) return;
+    state.revokedKeys = [...(state.revokedKeys ?? []), ...added];
+    if (state.pending && added.includes(signerOf(c, state.pending))) {
+      rmSync(dirname(state.pending.staged), { recursive: true, force: true });
+      state.pending = undefined;
+    }
+    writeState(state);
+    console.warn(`[akan-native] updates: revoked keys ${added.join(", ")}`);
+  };
   const patchFor = (m: Manifest, state: State) => {
     const tar = ifRunning(state.current)?.tar;
     return tar && existsSync(join(dir, "app", `${tar}.tar`)) ? m.patches?.find((p) => p.from === tar) : undefined;
@@ -645,9 +799,9 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       state.installed = config.embeddedSequence;
       changed = true;
     }
-    //? A download from before the app was reinstalled at a newer build would take it back.
-    if (state.pending && state.pending.sequence <= runningSequence(config, state)) {
-      console.warn(`[akan-native] updates: ${state.pending.bundle} is not newer than this app; dropping it`);
+    //? A download from before the app was reinstalled at a newer build would take it back; a revoked key may sign one.
+    if (state.pending && !applicable(config, state, state.pending)) {
+      console.warn(`[akan-native] updates: ${state.pending.bundle} is not one this app takes now; dropping it`);
       state.pending = undefined;
       changed = true;
     }
@@ -762,14 +916,18 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
 
       async check() {
         const c = need();
-        const m = await fetchRelease(c);
+        const release = await fetchRelease(c, readState());
+        const { m } = release;
+        const { newer, revoke } = decide(c, release, readState());
+        //? A stale release's revocations bind too: an install whose own build is newer only ever checks.
+        revokeKeys(c, revoke);
         const state = readState();
         const refusal = typeof m.server === "boolean" && installed ? serverRefusal(m.server, installed) : null;
         if (refusal && !refusalsTold.has(m.bundle)) {
           refusalsTold.add(m.bundle);
           console.warn(`[akan-native] updates: ${m.bundle}: ${refusal}`);
         }
-        const available = !refusal && isNewer(c, m, state);
+        const available = !refusal && newer;
         return {
           available,
           bundle: m.bundle,
@@ -785,10 +943,13 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         if (downloading) throw new AkanNativeError("CANCELLED", "a download is already running");
         downloading = true;
         try {
-          const m = await fetchRelease(c);
+          const release = await fetchRelease(c, readState());
+          const { m } = release;
           const archive = m.archive as NonNullable<Manifest["archive"]>;
+          const { newer, revoke } = decide(c, release, readState());
+          revokeKeys(c, revoke);
           const state = readState();
-          if (!isNewer(c, m, state)) throw new AkanNativeError("NOT_FOUND", "no newer release for this app");
+          if (!newer) throw new AkanNativeError("NOT_FOUND", "no newer release for this app");
           const refusal = typeof m.server === "boolean" ? serverRefusal(m.server, app) : null;
           if (refusal) throw new AkanNativeError("NOT_ALLOWED", refusal);
           if (state.pending?.bundle === m.bundle && existsSync(state.pending.staged)) return { bundle: m.bundle };
@@ -912,6 +1073,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
             version: m.version,
             tar: archive.sha256,
             build: m.build as number,
+            ...(release.signer ? { keyId: release.signer } : {}),
             staged,
           };
           writeState(latest);
@@ -932,7 +1094,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
             "the running release is on trial: apply once notifyReady() confirmed it",
           );
         const pending = state.pending;
-        if (!pending || !existsSync(pending.staged) || pending.sequence <= runningSequence(c, state))
+        if (!pending || !existsSync(pending.staged) || !applicable(c, state, pending))
           throw new AkanNativeError("NOT_FOUND", "no downloaded update to apply");
         const refusal = serverRefusal(carries(pending.staged), app);
         if (refusal) {
@@ -1042,6 +1204,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           ...(state.rollback ? { rollback: state.rollback } : {}),
           ...(state.installed !== undefined ? { installed: state.installed } : {}),
           ...(state.channel ? { channel: state.channel } : {}),
+          ...(state.revokedKeys ? { revokedKeys: state.revokedKeys } : {}),
         });
       },
     },

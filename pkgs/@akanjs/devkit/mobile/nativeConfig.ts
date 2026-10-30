@@ -267,7 +267,7 @@ export class NativeConfig {
   static #updates(target: AkanNativeTarget, env?: NativeEnv): NonNullable<AkanNativeConfig["updates"]> | undefined {
     const { url, publicKey, publicKeys, channel = env, ...rest } = target.updates ?? {};
     const keys = publicKeys ? { publicKeys: [...publicKeys] } : publicKey ? { publicKey } : null;
-    return url && keys ? { ...rest, url, ...keys, ...(channel ? { channel } : {}) } : undefined;
+    return url && keys ? { ...rest, url, ...keys, ...(channel ? { channel } : {}), target: target.name } : undefined;
   }
 
   /** Letters, digits, `.`, `_` and `-` only; the folder name of an akan app already is one almost always. */

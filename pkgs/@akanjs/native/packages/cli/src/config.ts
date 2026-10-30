@@ -115,17 +115,17 @@ export interface AkanNativeConfig {
   /**
    * Over-the-air updates (UP-2 web bundles on iOS / Android, UP-1 app updates on macOS), used by
    * @akanjs/native/plugins/updates. `akan-native update keygen` makes the signing key and prints its public key;
-   * `akan-native update publish <platform>` writes signed releases for `url`. `publicKeys` lists the keys a phone
+   * `akan-native update publish <platform>` writes signed releases for `url`. `publicKeys` lists the keys an app
    * trusts, the online signing key first and offline spares after (a key revokes only keys before it); `publicKey` is
-   * the one-key form, and a desktop app trusts the first. `report.url` is where a phone posts what became of each
-   * release, at its next launch or return to the foreground.
+   * the one-key form, and a desktop app built before protocol v2 trusts the first. `report.url` is where a phone posts
+   * what became of each release, at its next launch or return to the foreground.
    */
   updates?: {
     url: string;
     publicKey?: string;
     publicKeys?: string[];
     /**
-     * keyIds every phone release revokes (`update keygen` prints a key's), kept here so a release published from a fresh
+     * keyIds every release revokes (`update keygen` prints a key's), kept here so a release published from a fresh
      * folder still revokes them; `update publish --revoke` starts a revocation. A key may revoke only keys listed
      * before it in publicKeys, so a release is signed with one listed after them.
      */
@@ -133,6 +133,11 @@ export interface AkanNativeConfig {
     channel?: string;
     readyTimeout?: number;
     report?: { url: string };
+    /**
+     * The release target a desktop binary is built for: its manifests name it and the app takes only its own, so a
+     * release signed for one target cannot be served to another's apps. akan sets the native target's name.
+     */
+    target?: string;
   };
   /** Links that open the app, delivered through the app plugin's urlOpen (and getLaunchUrl). */
   deepLinks?: {

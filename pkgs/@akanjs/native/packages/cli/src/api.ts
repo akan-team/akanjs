@@ -78,7 +78,7 @@ export type { UpdateEnvelope, UpdateFile, UpdateManifest } from "./lib/updates.t
  * A phone's update protocol as the apps run it, for a signer or a server that checks what it publishes or registers:
  * the envelope's verification, the keyId of a public key, and what a verified manifest means to a binary.
  */
-export { keyIdOf, openEnvelope } from "./lib/updates.ts";
+export { keyIdOf, openEnvelope, verifyManifest } from "./lib/updates.ts";
 export type {
   AkanNativeConfig,
   AndroidSigning,
@@ -106,7 +106,7 @@ export type {
 export { macosDistributionFromEnv, requestedDistribution, windowsSigningFromEnv };
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
-export const API_VERSION = "0.12.0";
+export const API_VERSION = "0.13.0";
 
 export type AkanNativeErrorCode =
   | "CONFIG_INVALID"
@@ -328,18 +328,18 @@ export interface PublishCheckOptions extends Pick<TaskOptions, "appDir" | "confi
   /** A desktop release's CPU, which names its feed folder: this computer's by default. */
   arch?: DesktopArch;
   /**
-   * A phone release: keyIds of updates.publicKeys it starts revoking, beside updates.revokedKeys and what the channel's
-   * releases revoke. It is signed with a key listed after every key it revokes.
+   * keyIds of updates.publicKeys the release starts revoking, beside updates.revokedKeys and what the channel's releases
+   * revoke. It is signed with a key listed after every key it revokes.
    */
   revoke?: string[];
-  /** A phone release that revokes a key: phones compare it with their own bundle instead of the running one. */
+  /** A release that revokes a key: apps compare it with their own build instead of the running release. */
   resetSequence?: boolean;
 }
 
 /**
  * What publishUpdate() refuses before it builds, without building (CONFIG_INVALID): no updates settings, a channel no
  * app could be configured for, no signing key on this machine or another app's, a desktop release whose server
- * presence is not the channel's previous release's, and a phone release whose revocations no phone would take. For a
+ * presence is not the channel's previous release's, and a release whose revocations no app would take. For a
  * caller with a long build of its own before publishUpdate.
  */
 export function checkPublishUpdate(options: PublishCheckOptions): { channel: string; out: string } {
@@ -354,8 +354,8 @@ export function checkPublishUpdate(options: PublishCheckOptions): { channel: str
   try {
     if (options.channel !== undefined) assertChannel(options.channel);
     const target = { app: options.config.app, updates };
-    assertSigningKey(target, options.platform);
-    releaseRevocations(target, options.platform, out, channel, options);
+    assertSigningKey(target);
+    releaseRevocations(target, options.platform, out, channel, options, options.arch);
     const server = options.server ?? !!options.config.desktop?.server;
     assertServerOfChannel({ desktop: server ? { server } : {} }, options.platform, out, channel, options.arch);
   } catch (error) {
@@ -365,8 +365,8 @@ export function checkPublishUpdate(options: PublishCheckOptions): { channel: str
 }
 
 /**
- * A signed release for the updates plugin (UP-1, UP-2): a release build, then `<channel>.json`, its signature and
- * its files under `out` (default <appDir>/.akan/native/updates), signed with the key updateKeygen() made.
+ * A signed release for the updates plugin (UP-1, UP-2): a release build, then its envelope and its files under `out`
+ * (default <appDir>/.akan/native/updates), signed with the key updateKeygen() made.
  */
 export function publishUpdate(
   options: TaskOptions & {
@@ -379,9 +379,9 @@ export function publishUpdate(
     windows?: Pick<WindowsBuild, "signing">;
     /** A desktop release's CPU, of the same OS: an x64 release from an arm64 machine. Default this computer's. */
     arch?: DesktopArch;
-    /** A phone release: keyIds of updates.publicKeys it starts revoking (PublishCheckOptions.revoke). */
+    /** keyIds of updates.publicKeys the release starts revoking (PublishCheckOptions.revoke). */
     revoke?: string[];
-    /** A phone release that revokes a key: phones compare it with their own bundle instead of the running one. */
+    /** A release that revokes a key: apps compare it with their own build instead of the running release. */
     resetSequence?: boolean;
   },
 ): Promise<PublishResult> {
