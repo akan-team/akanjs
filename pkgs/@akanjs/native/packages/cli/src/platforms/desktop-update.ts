@@ -19,7 +19,7 @@ import { runtimeVersion } from "../lib/boot.ts";
 import { execOrThrow } from "../lib/exec.ts";
 import { CliError, dim, log } from "../lib/log.ts";
 import type { BuildContext } from "../lib/prepare.ts";
-import { hostArch, sha256, type UpdateManifest } from "../lib/updates.ts";
+import { hostArch, sha256, type UpdateEnvelope, type UpdateManifest } from "../lib/updates.ts";
 import { type DesktopOs, resourcesOf } from "./desktop.ts";
 
 const TAR: Record<DesktopOs, string[]> = {
@@ -29,22 +29,34 @@ const TAR: Record<DesktopOs, string[]> = {
 };
 
 /**
+ * The release of `channel` in `dir`: the manifest of its envelope, else the v1 `<channel>.json` of a folder published
+ * before protocol v2. Read unverified, as the publisher's own folder.
+ */
+export function publishedApp(dir: string, channel: string): Partial<UpdateManifest> | null {
+  const envelope = join(dir, channel, "app.json");
+  if (existsSync(envelope)) {
+    const { manifest } = JSON.parse(readFileSync(envelope, "utf8")) as Partial<UpdateEnvelope>;
+    return JSON.parse(Buffer.from(manifest ?? "", "base64").toString("utf8") || "{}") as Partial<UpdateManifest>;
+  }
+  const v1 = join(dir, `${channel}.json`);
+  return existsSync(v1) ? (JSON.parse(readFileSync(v1, "utf8")) as Partial<UpdateManifest>) : null;
+}
+
+/**
  * An installed app refuses a release whose server presence is not its own (plugins/updates): published, this one would
  * be refused by every app the channel reached, and so would every release after it. A manifest from before the field
  * says nothing and is not compared.
  */
 export function assertSameServer(dir: string, channel: string, server: boolean): void {
-  const path = join(dir, `${channel}.json`);
-  if (!existsSync(path)) return;
-  const previous = JSON.parse(readFileSync(path, "utf8")) as Partial<UpdateManifest>;
-  if (typeof previous.server !== "boolean" || previous.server === server) return;
+  const previous = publishedApp(dir, channel);
+  if (typeof previous?.server !== "boolean" || previous.server === server) return;
   throw new CliError(
-    `the ${channel} release in ${dir} (${previous.bundle}) ${previous.server ? "carries a server and this build does not" : "carries no server and this build does"}, and installed apps refuse a release that differs: publish this build on another channel (updates.channel), or remove ${path} to start the channel over`,
+    `the ${channel} release in ${dir} (${previous.bundle}) ${previous.server ? "carries a server and this build does not" : "carries no server and this build does"}, and installed apps refuse a release that differs: publish this build on another channel (updates.channel), or remove ${join(dir, channel)} and ${join(dir, `${channel}.json`)} to start the channel over`,
   );
 }
 
 /** The previous release's tar from its published archive, when it is still here and still what it says. */
-function previousTar(out: string, previous: UpdateManifest): Uint8Array | null {
+function previousTar(out: string, previous: Partial<UpdateManifest>): Uint8Array | null {
   const archive = previous.archive;
   const file = archive ? join(out, archive.url) : "";
   if (!archive || !existsSync(file)) return null;
@@ -63,8 +75,7 @@ export async function publishAppUpdate(
   const { config } = ctx.project;
   const server = existsSync(join(resourcesOf(os, app), "server.json"));
   assertSameServer(out, channel, server);
-  const previousPath = join(out, `${channel}.json`);
-  const previous = existsSync(previousPath) ? (JSON.parse(readFileSync(previousPath, "utf8")) as UpdateManifest) : null;
+  const previous = publishedApp(out, channel);
   const dir = join(out, "app");
   mkdirSync(dir, { recursive: true });
   const tmp = join(dir, `.build-${sequence}.tar`);

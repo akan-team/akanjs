@@ -1475,8 +1475,8 @@ akan update-keygen myapp --platform android`,
         signature:
           "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--upload <s3://bucket/prefix>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--revoke <keyId,...>] [--reset-sequence <boolean>] [--write <boolean>] [--allow-local-release <boolean>]",
         desc: l.trans({
-          en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`. Upload this release's files to `native.updates.url` and its manifest last, or let `--upload` do it; do not upload the folder whole, since a phone's folder is also where `pack-update` writes by default. A phone's manifest is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<channel>.json` and its `.sig`, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.",
-          ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `dist/native/<app>/<target>/updates` 아래에 서명한 매니페스트와 파일을 씁니다. 이 릴리스의 파일을 `native.updates.url`에 올리고 매니페스트는 마지막에 올리거나, `--upload`에 맡깁니다. 폴더를 통째로 올리지는 않습니다. 폰의 폴더는 `pack-update`가 기본으로 쓰는 곳이기도 하기 때문입니다. 폰의 매니페스트는 바이너리 세대마다 봉투 하나(`<platform>/<channel>/<nativeApi>.json`), 데스크톱은 `<channel>.json`과 `.sig`이며 CDN이 이 둘을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
+          en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`. Upload this release's files to `native.updates.url` and its manifest last, or let `--upload` do it; do not upload the folder whole, since a phone's folder is also where `pack-update` writes by default. A phone's manifest is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<os>-<arch>/<channel>/app.json`, plus `<channel>.json` and its `.sig` for apps built before it when the first key signs, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.",
+          ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `dist/native/<app>/<target>/updates` 아래에 서명한 매니페스트와 파일을 씁니다. 이 릴리스의 파일을 `native.updates.url`에 올리고 매니페스트는 마지막에 올리거나, `--upload`에 맡깁니다. 폴더를 통째로 올리지는 않습니다. 폰의 폴더는 `pack-update`가 기본으로 쓰는 곳이기도 하기 때문입니다. 폰의 매니페스트는 바이너리 세대마다 봉투 하나(`<platform>/<channel>/<nativeApi>.json`), 데스크톱은 `<os>-<arch>/<channel>/app.json`입니다. 첫 키로 서명하면 그 이전에 빌드한 앱을 위해 `<channel>.json`과 `.sig`도 쓰며, CDN이 이 둘을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
         }),
         options: [
           {
@@ -1529,8 +1529,8 @@ akan update-keygen myapp --platform android`,
             name: "--revoke",
             type: "String",
             desc: l.trans({
-              en: "Android and iOS: keyIds of `updates.publicKeys` this release starts revoking, comma-separated.",
-              ko: "Android·iOS 전용입니다. 이 릴리스가 폐기를 시작할 `updates.publicKeys`의 keyId를 쉼표로 나열합니다.",
+              en: "keyIds of `updates.publicKeys` this release starts revoking, comma-separated.",
+              ko: "이 릴리스가 폐기를 시작할 `updates.publicKeys`의 keyId를 쉼표로 나열합니다.",
             }),
           },
           {
@@ -1539,8 +1539,8 @@ akan update-keygen myapp --platform android`,
             defaultValue: "false",
             enumOrFlag: "-R",
             desc: l.trans({
-              en: "With `--revoke`, phones compare the release with their binary's own bundle instead of the running one.",
-              ko: "`--revoke`와 함께 쓰면, 폰이 릴리스를 실행 중인 번들 대신 바이너리에 든 번들과 비교합니다.",
+              en: "With `--revoke`, apps compare the release with their binary's own build instead of the running release.",
+              ko: "`--revoke`와 함께 쓰면, 앱이 릴리스를 실행 중인 릴리스 대신 바이너리 자체의 빌드와 비교합니다.",
             }),
           },
           writeOption,
@@ -1565,8 +1565,8 @@ akan update-keygen myapp --platform android`,
           {
             name: l.trans({ en: "server change", ko: "서버 유무 변경" }),
             desc: l.trans({
-              en: "Refused before it builds when the channel's last release differs in carrying a server, as installed apps would refuse it: publish on another channel (`updates.channel`) or remove its `<channel>.json` from the output folder to start over.",
-              ko: "채널의 직전 릴리스와 서버 유무가 다르면, 설치된 앱이 거부할 것이므로 빌드 전에 거부합니다. 다른 채널(`updates.channel`)로 게시하거나 출력 폴더에서 그 `<channel>.json`을 지워 새로 시작합니다.",
+              en: "Refused before it builds when the channel's last release differs in carrying a server, as installed apps would refuse it: publish on another channel (`updates.channel`) or remove its `<channel>` folder and `<channel>.json` from the output folder to start over.",
+              ko: "채널의 직전 릴리스와 서버 유무가 다르면, 설치된 앱이 거부할 것이므로 빌드 전에 거부합니다. 다른 채널(`updates.channel`)로 게시하거나 출력 폴더에서 그 `<channel>` 폴더와 `<channel>.json`을 지워 새로 시작합니다.",
             }),
           },
           {
@@ -1579,29 +1579,29 @@ akan update-keygen myapp --platform android`,
           {
             name: l.trans({ en: "revocation", ko: "폐기" }),
             desc: l.trans({
-              en: "A phone release revokes `updates.revokedKeys`, the channel's published revocations and `--revoke` together, and is signed by a key listed after them all.",
-              ko: "폰 릴리스는 `updates.revokedKeys`, 그 채널에 게시된 폐기, `--revoke`를 합쳐 폐기하며, 그 모두보다 뒤에 나열된 키로 서명합니다.",
+              en: "A release revokes `updates.revokedKeys`, the channel's published revocations and `--revoke` together, and is signed by a key listed after them all.",
+              ko: "릴리스는 `updates.revokedKeys`, 그 채널에 게시된 폐기, `--revoke`를 합쳐 폐기하며, 그 모두보다 뒤에 나열된 키로 서명합니다.",
             }),
           },
           {
             name: l.trans({ en: "refused", ko: "거부" }),
             desc: l.trans({
-              en: "Before the build: a keyId the ring lacks, over 16 revoked keys, `-R` revoking nothing, either flag on a desktop, a signer not listed after them.",
-              ko: "빌드 전에 거부합니다. 키링에 없는 keyId, 16개를 넘는 폐기, 폐기 없는 `-R`, 데스크톱의 두 플래그, 폐기하는 키보다 뒤에 있지 않은 서명 키입니다.",
+              en: "Before the build: a keyId the ring lacks, over 16 revoked keys, `-R` revoking nothing, a signer not listed after them.",
+              ko: "빌드 전에 거부합니다. 키링에 없는 keyId, 16개를 넘는 폐기, 폐기 없는 `-R`, 폐기하는 키보다 뒤에 있지 않은 서명 키입니다.",
             }),
           },
           {
             name: l.trans({ en: "leaked key", ko: "새어 나간 키" }),
             desc: l.trans({
-              en: "Sign with a spare (`AKAN_NATIVE_UPDATE_KEY`), `--revoke` the key on every phone platform and channel, then list it in `updates.revokedKeys`.",
-              ko: "예비 키(`AKAN_NATIVE_UPDATE_KEY`)로 서명해 모든 폰 플랫폼과 채널에서 `--revoke`로 폐기한 뒤, `updates.revokedKeys`에 적습니다.",
+              en: "Sign with a spare (`AKAN_NATIVE_UPDATE_KEY`), `--revoke` the key on every platform and channel, then list it in `updates.revokedKeys`.",
+              ko: "예비 키(`AKAN_NATIVE_UPDATE_KEY`)로 서명해 모든 플랫폼과 채널에서 `--revoke`로 폐기한 뒤, `updates.revokedKeys`에 적습니다.",
             }),
           },
           {
             name: l.trans({ en: "native API", ko: "네이티브 API" }),
             desc: l.trans({
-              en: "The CLI needs the native build API 0.12.0 or later in the app's akanjs: install matching versions of akanjs and @akanjs/cli.",
-              ko: "CLI는 앱의 akanjs에 든 네이티브 빌드 API 0.12.0 이상이 필요합니다. akanjs와 @akanjs/cli를 맞는 버전으로 설치합니다.",
+              en: "The CLI needs the native build API 0.13.0 or later in the app's akanjs: install matching versions of akanjs and @akanjs/cli.",
+              ko: "CLI는 앱의 akanjs에 든 네이티브 빌드 API 0.13.0 이상이 필요합니다. akanjs와 @akanjs/cli를 맞는 버전으로 설치합니다.",
             }),
           },
         ],

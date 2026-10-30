@@ -335,7 +335,10 @@ describe("programmatic API", () => {
   test("packUpdate writes an unsigned manifest template, its files and bundle.json, and a signer completes it", async () => {
     const dir = app("pack", "<!doctype html><html><head></head><body>v2</body></html>");
     writeFileSync(join(dir, "web", "app.js"), "console.info('v2')");
-    const publicKey = Buffer.alloc(32, 7).toString("base64");
+    const publicKey = generateKeyPairSync("ed25519")
+      .publicKey.export({ format: "der", type: "spki" })
+      .subarray(12)
+      .toString("base64");
     const out = join(dir, "pack-out");
     const { manifest } = await packUpdate({
       appDir: dir,
@@ -382,11 +385,15 @@ describe("programmatic API", () => {
     mkdirSync(join(dir, "web", "icons"), { recursive: true });
     writeFileSync(join(dir, "web", "icons", "b.png"), "b");
     writeFileSync(join(dir, "web", "a.js"), "console.info('a')");
+    const publicKey = generateKeyPairSync("ed25519")
+      .publicKey.export({ format: "der", type: "spki" })
+      .subarray(12)
+      .toString("base64");
     const pack = (out: string) =>
       packUpdate({
         appDir: dir,
         config: config({
-          updates: { url: "https://updates.example.com/app", publicKey: Buffer.alloc(32, 7).toString("base64") },
+          updates: { url: "https://updates.example.com/app", publicKey },
         }),
         platform: "ios",
         out: join(dir, out),

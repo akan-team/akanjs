@@ -925,7 +925,10 @@ describe("ApplicationRunner mobile", () => {
       await expect(new ApplicationRunner().publishUpdate(publishing({}), "android", { target: "all" })).rejects.toThrow(
         "Native target 'admin' has no updates: add native.updates: { url, publicKey } to akan.config.ts",
       );
-      const otherKey = Buffer.alloc(32, 7).toString("base64");
+      const otherKey = generateKeyPairSync("ed25519")
+        .publicKey.export({ format: "der", type: "spki" })
+        .subarray(12)
+        .toString("base64");
       await expect(
         new ApplicationRunner().publishUpdate(publishing({ updates: { ...updates, publicKey: otherKey } }), "android", {
           target: "all",

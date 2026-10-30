@@ -1,7 +1,7 @@
 // The desktop updates plugin on an app folder in a temporary "install", with a scripted relaunch and a local
 // release server; the Linux layout on every OS (macOS would check a code signature).
 import { afterEach, describe, expect, test } from "bun:test";
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createHash, createPublicKey, generateKeyPairSync, type KeyObject, sign, verify } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -47,6 +47,9 @@ interface HarnessOptions {
   serverSettle?: number;
   url?: string;
   publicKey?: string;
+  /** Protocol v2 with this ring (updates.json `publicKeys`). */
+  publicKeys?: string[];
+  target?: string;
   /** The installed app carries a server (resources/server.json). */
   carries?: boolean;
   platform?: NodeJS.Platform;
@@ -74,7 +77,9 @@ async function harness(options: HarnessOptions = {}) {
     nativeApi: null,
     embeddedSequence: options.embeddedSequence ?? BUILD,
     url: options.url ?? "http://127.0.0.1:1",
-    publicKey: options.publicKey ?? "",
+    publicKey: options.publicKey ?? options.publicKeys?.[0] ?? "",
+    ...(options.publicKeys ? { protocol: 2, publicKeys: options.publicKeys } : {}),
+    ...(options.target ? { target: options.target } : {}),
     channel: "main",
     readyTimeout: options.readyTimeout ?? 50,
   };
@@ -540,7 +545,20 @@ interface ReleaseOptions {
   archiveGate?: Promise<unknown>;
   /** The release is a macOS app, "Sample.app". */
   mac?: boolean;
+  /** Protocol v2: the envelope `<os>-<arch>/main/app.json` signed by `signer`, and no v1 pair. */
+  signer?: KeyObject;
+  target?: string;
+  revokeKeys?: string[];
+  resetSequence?: boolean;
+  /** An envelope other than the one `signer` seals. */
+  envelope?: (manifest: Uint8Array) => { manifest: string; keyId: string; signature: string };
 }
+
+const rawKey = (key: KeyObject) =>
+  createPublicKey(key).export({ format: "der", type: "spki" }).subarray(12).toString("base64");
+const keyIdOf = (raw: string) =>
+  createHash("sha256").update(Buffer.from(raw, "base64")).digest().subarray(0, 8).toString("hex");
+const newKey = () => generateKeyPairSync("ed25519").privateKey;
 
 /** A macOS app as a release carries it: its executable, and the Info.plist naming the app. */
 const writeMacApp = (dir: string) => {
@@ -555,8 +573,39 @@ const writeMacApp = (dir: string) => {
   );
 };
 
-/** Serves one signed release of the app, built as "Sample" (the tar's top folder is the build's app name). */
-function serveRelease(
+/**
+ * Serves one signed release of the app, built as "Sample" (the tar's top folder is the build's app name); `publish`
+ * replaces it with another.
+ */
+function serveRelease(root: string, options: ReleaseOptions = {}) {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  let files = releaseFiles(root, options, privateKey);
+  let archiveRequests = 0;
+  const host = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: async (request) => {
+      const path = new URL(request.url).pathname;
+      const body = files[path];
+      if (path.endsWith(".tar.gz")) {
+        archiveRequests++;
+        await options.archiveGate;
+      }
+      return body === undefined ? new Response("", { status: 404 }) : new Response(body);
+    },
+  });
+  return {
+    url: `http://127.0.0.1:${host.port}`,
+    publicKey: publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64"),
+    archiveRequests: () => archiveRequests,
+    publish: (next: ReleaseOptions) => {
+      files = releaseFiles(root, next, privateKey);
+    },
+    stop: () => host.stop(true),
+  };
+}
+
+function releaseFiles(
   root: string,
   {
     carries = false,
@@ -564,11 +613,15 @@ function serveRelease(
     sequence = 2000,
     bundle = "2000-abcdef12",
     build = 1999,
-    archiveGate,
     mac = false,
-  }: ReleaseOptions = {},
-) {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    signer,
+    target,
+    revokeKeys,
+    resetSequence,
+    envelope,
+  }: ReleaseOptions,
+  privateKey: KeyObject,
+): Record<string, Blob> {
   const built = join(root, "built");
   const name = mac ? "Sample.app" : "Sample";
   if (mac) writeMacApp(join(built, name));
@@ -579,9 +632,10 @@ function serveRelease(
   const tar = readFileSync(tarPath);
   const gz = Bun.gzipSync(tar);
   const hash = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
+  const v2 = !!(signer || envelope);
   const manifest = new TextEncoder().encode(
     JSON.stringify({
-      schema: 1,
+      schema: v2 ? 2 : 1,
       kind: "app",
       app: APP_ID,
       platform: "linux",
@@ -593,34 +647,28 @@ function serveRelease(
       arch: process.arch,
       archive: { sha256: hash(tar), url: "app/release.tar.gz", size: gz.length, gzSha256: hash(gz) },
       ...(server === undefined ? {} : { server }),
+      ...(target === undefined ? {} : { target }),
+      ...(revokeKeys ? { revokeKeys } : {}),
+      ...(resetSequence === undefined ? {} : { resetSequence }),
     }),
   );
   const base = `/linux-${process.arch}`;
-  const files: Record<string, Blob> = {
-    [`${base}/main.json`]: new Blob([manifest]),
-    [`${base}/main.json.sig`]: new Blob([sign(null, manifest, privateKey).toString("base64")]),
-    [`${base}/app/release.tar.gz`]: new Blob([gz]),
-  };
-  let archiveRequests = 0;
-  const host = Bun.serve({
-    port: 0,
-    hostname: "127.0.0.1",
-    fetch: async (request) => {
-      const path = new URL(request.url).pathname;
-      const body = files[path];
-      if (path.endsWith(".tar.gz")) {
-        archiveRequests++;
-        await archiveGate;
-      }
-      return body === undefined ? new Response("", { status: 404 }) : new Response(body);
-    },
+  const sealed = (key: KeyObject) => ({
+    manifest: Buffer.from(manifest).toString("base64"),
+    keyId: keyIdOf(rawKey(key)),
+    signature: sign(null, manifest, key).toString("base64"),
   });
-  return {
-    url: `http://127.0.0.1:${host.port}`,
-    publicKey: publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64"),
-    archiveRequests: () => archiveRequests,
-    stop: () => host.stop(true),
-  };
+  const signed = v2
+    ? {
+        [`${base}/main/app.json`]: new Blob([
+          JSON.stringify(envelope ? envelope(manifest) : sealed(signer as KeyObject)),
+        ]),
+      }
+    : {
+        [`${base}/main.json`]: new Blob([manifest]),
+        [`${base}/main.json.sig`]: new Blob([sign(null, manifest, privateKey).toString("base64")]),
+      };
+  return { ...signed, [`${base}/app/release.tar.gz`]: new Blob([gz]) };
 }
 
 describe("desktop updates: download and apply", () => {
@@ -899,6 +947,127 @@ describe("desktop updates: the signer of a release", () => {
       const { result, state } = await download(codesign(teams), { mac: true });
       expect(result).toMatchObject({ ok: true, result: { bundle: "2000-abcdef12" } });
       expect(state().pending).toMatchObject({ bundle: "2000-abcdef12" });
+    }
+  });
+});
+
+describe("desktop updates: protocol v2", () => {
+  const feed = (options: ReleaseOptions) => {
+    const root = mkdtempSync(join(tmpdir(), "akan-native-updates-v2-"));
+    roots.push(root);
+    return serveRelease(root, options);
+  };
+  const refused = (message: string) => ({
+    ok: false,
+    error: { code: "INTERNAL", message: expect.stringContaining(message) },
+  });
+
+  test("a release any key of the ring signs is taken with its signer, and the v1 pair is never read", async () => {
+    const [online, spare] = [newKey(), newKey()];
+    const release = feed({ signer: spare });
+    try {
+      const { call, state } = await harness({ url: release.url, publicKeys: [rawKey(online), rawKey(spare)] });
+      expect(await call("check")).toMatchObject({ ok: true, result: { available: true, bundle: "2000-abcdef12" } });
+      expect(await call("download")).toMatchObject({ ok: true, result: { bundle: "2000-abcdef12" } });
+      expect(state().pending).toMatchObject({ bundle: "2000-abcdef12", keyId: keyIdOf(rawKey(spare)) });
+      release.publish({});
+      expect(await call("check")).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+    } finally {
+      release.stop();
+    }
+  });
+
+  test("a release of another target, or of none, is refused", async () => {
+    const key = newKey();
+    const release = feed({ signer: key, target: "pilot" });
+    try {
+      const pilot = await harness({ url: release.url, publicKeys: [rawKey(key)], target: "pilot" });
+      expect(await pilot.call("check")).toMatchObject({ ok: true, result: { available: true } });
+      const store = await harness({ url: release.url, publicKeys: [rawKey(key)], target: "store" });
+      expect(await store.call("check")).toMatchObject(refused("another app, platform, CPU, channel or target"));
+      const untargeted = await harness({ url: release.url, publicKeys: [rawKey(key)] });
+      expect(await untargeted.call("check")).toMatchObject(refused("target"));
+      release.publish({ signer: key });
+      expect(await pilot.call("check")).toMatchObject(refused("target"));
+    } finally {
+      release.stop();
+    }
+  });
+
+  test("a small-order key in the ring trusts nothing, though node:crypto verifies a forgery under it", async () => {
+    const identity = Buffer.alloc(32);
+    identity[0] = 1;
+    const forged = Buffer.concat([identity, Buffer.alloc(32)]);
+    const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), identity]);
+    const anyBytes = new TextEncoder().encode("any manifest");
+    expect(verify(null, anyBytes, createPublicKey({ key: spki, format: "der", type: "spki" }), forged)).toBe(true);
+    const release = feed({
+      envelope: (manifest) => ({
+        manifest: Buffer.from(manifest).toString("base64"),
+        keyId: keyIdOf(identity.toString("base64")),
+        signature: forged.toString("base64"),
+      }),
+    });
+    try {
+      const { call } = await harness({ url: release.url, publicKeys: [identity.toString("base64"), rawKey(newKey())] });
+      expect(await call("check")).toMatchObject(refused("not a key of updates.publicKeys"));
+    } finally {
+      release.stop();
+    }
+  });
+
+  test("a stale release's revocation binds for good, and the revoked key's releases are refused from then on", async () => {
+    const [online, spare] = [newKey(), newKey()];
+    const ring = [rawKey(online), rawKey(spare)];
+    const revoked = keyIdOf(rawKey(online));
+    const release = feed({ signer: spare, sequence: BUILD - 100, bundle: "900-aaaaaaaa", revokeKeys: [revoked] });
+    try {
+      const { call, state } = await harness({ url: release.url, publicKeys: ring });
+      expect(await call("check")).toMatchObject({ ok: true, result: { available: false } });
+      expect(state().revokedKeys).toEqual([revoked]);
+      release.publish({ signer: online, sequence: 3000, bundle: "3000-aaaaaaaa" });
+      expect(await call("check")).toMatchObject(refused(`signed by ${revoked}, a key a release revoked`));
+      expect(await call("reset")).toMatchObject({ ok: true });
+      expect(state().revokedKeys).toEqual([revoked]);
+    } finally {
+      release.stop();
+    }
+  });
+
+  test("a key may revoke only keys listed before it", async () => {
+    const [online, spare] = [newKey(), newKey()];
+    const release = feed({ signer: online, revokeKeys: [keyIdOf(rawKey(spare))] });
+    try {
+      const { call, state } = await harness({ url: release.url, publicKeys: [rawKey(online), rawKey(spare)] });
+      expect(await call("check")).toMatchObject(refused(`key ${keyIdOf(rawKey(online))} may not revoke`));
+      expect(state().revokedKeys).toBeUndefined();
+    } finally {
+      release.stop();
+    }
+  });
+
+  test("a running release a revoked key signed sets no bar, and a download it signed goes with the key", async () => {
+    const [online, spare] = [newKey(), newKey()];
+    const leaked = keyIdOf(rawKey(online));
+    const running = { bundle: "9000-bbbbbbbb", sequence: 9000, version: "9", tar: "0".repeat(64), build: BUILD };
+    const release = feed({ signer: online, sequence: 9500, bundle: "9500-cccccccc" });
+    try {
+      const { call, state, app } = await harness({
+        url: release.url,
+        publicKeys: [rawKey(online), rawKey(spare)],
+        state: () => ({ failed: [], current: { ...running, keyId: leaked } }),
+      });
+      expect(await call("download")).toMatchObject({ ok: true, result: { bundle: "9500-cccccccc" } });
+      expect(state().pending).toMatchObject({ keyId: leaked });
+      release.publish({ signer: spare, revokeKeys: [leaked], resetSequence: true });
+      expect(await call("check")).toMatchObject({ ok: true, result: { available: true, sequence: 2000 } });
+      expect(state().pending).toBeUndefined();
+      expect(existsSync(`${app}.update-9500-cccccccc`)).toBe(false);
+      expect(await call("download")).toMatchObject({ ok: true, result: { bundle: "2000-abcdef12" } });
+      expect(await call("apply")).toMatchObject({ ok: true });
+      expect(state().trial).toMatchObject({ bundle: "2000-abcdef12", keyId: keyIdOf(rawKey(spare)) });
+    } finally {
+      release.stop();
     }
   });
 });

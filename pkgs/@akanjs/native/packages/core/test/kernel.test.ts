@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
+import { createHash, createPublicKey, verify as cryptoVerify, generateKeyPairSync } from "node:crypto";
 import { stale } from "../../../scripts/contract.ts";
 import { aclCheck, loadAcl } from "../src/acl.ts";
 import { ID_BUNDLE, ID_DOCUMENT, ID_FILE_REF, ID_NAME } from "../src/contract.ts";
 import {
   admitDocument,
+  appManifestUrl,
   assetMime,
   checkUpdateEnvelope,
   decideNavigation,
@@ -16,6 +17,7 @@ import {
   isHostPath,
   isStrictBase64,
   isUpdateKeyId,
+  isUpdatePublicKey,
   MAX_REVOKE_KEYS,
   MAX_UPDATE_MANIFEST,
   parseRange,
@@ -179,6 +181,8 @@ const updates = (await load("updates")) as {
   keyIds: [string, string][];
   decisions: [string[], string[], string, string[], boolean, number, number, [number, string] | null, string, string][];
   urls: [string, string, string, string, string][];
+  appUrls: [string, string, string, string, string][];
+  publicKeys: [string, boolean, string][];
   envelopeKeys: string[];
   envelopes: [string | [string, number, string], string, string, string[], string, string][];
   limits: { revokeKeys: number; manifestBytes: number; reportEvents: number; reportBatch: number };
@@ -216,6 +220,12 @@ describe("updates vectors", () => {
   );
   test.each(updates.urls)("%s %s %s %s → %s", (url, platform, channel, nativeApi, expected) => {
     expect(updateManifestUrl(url, platform, channel, nativeApi)).toBe(expected);
+  });
+  test.each(updates.appUrls)("%s %s-%s %s → %s", (url, os, arch, channel, expected) => {
+    expect(appManifestUrl(url, os, arch, channel)).toBe(expected);
+  });
+  test.each(updates.publicKeys)("public key %s → %p (%s)", (key, valid) => {
+    expect(isUpdatePublicKey(key)).toBe(valid);
   });
   const keys = new Map(updates.envelopeKeys.map((key) => [keyIdOf(key), key]));
   const verify = (manifest: Uint8Array, signature: Uint8Array, keyId: string) => {
@@ -300,5 +310,11 @@ describe("update names", () => {
     ["4bb06f8e4e3a771g", false],
   ] as const)("keyId %j: %p", (keyId, valid) => {
     expect(isUpdateKeyId(keyId)).toBe(valid);
+  });
+  test("every key node:crypto generates is a public key a release may be signed for", () => {
+    for (let i = 0; i < 200; i++) {
+      const der = createPublicKey(generateKeyPairSync("ed25519").privateKey).export({ type: "spki", format: "der" });
+      expect(isUpdatePublicKey(der.subarray(der.length - 32).toString("base64"))).toBe(true);
+    }
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { generateKeyPairSync } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeTarget } from "../akanConfig";
@@ -42,7 +43,9 @@ const adminTarget: AkanNativeTarget = {
   },
 };
 
-const updatesKey = Buffer.alloc(32, 7).toString("base64");
+const ed25519Key = () =>
+  generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64");
+const updatesKey = ed25519Key();
 
 describe("NativeConfig.build", () => {
   test("hands the dmg window over with its pictures resolved against the app folder", () => {
@@ -224,19 +227,22 @@ describe("NativeConfig.build", () => {
       url,
       publicKey: updatesKey,
       channel: "develop",
+      target: "admin",
     });
     expect(build({ url, publicKey: updatesKey, channel: "beta", readyTimeout: 15_000 }, "main").updates).toEqual({
       url,
       publicKey: updatesKey,
       channel: "beta",
       readyTimeout: 15_000,
+      target: "admin",
     });
-    expect(build({ url, publicKey: updatesKey }).updates).toEqual({ url, publicKey: updatesKey });
-    const spare = Buffer.alloc(32, 8).toString("base64");
+    expect(build({ url, publicKey: updatesKey }).updates).toEqual({ url, publicKey: updatesKey, target: "admin" });
+    const spare = ed25519Key();
     expect(build({ url, publicKeys: [updatesKey, spare] }, "main").updates).toEqual({
       url,
       publicKeys: [updatesKey, spare],
       channel: "main",
+      target: "admin",
     });
     const report = { url: "https://cloud.example.com/api/ota/report/abcdefghijklmnop" };
     expect(build({ url, publicKey: updatesKey, report }, "main").updates).toEqual({
@@ -244,6 +250,7 @@ describe("NativeConfig.build", () => {
       publicKey: updatesKey,
       channel: "main",
       report,
+      target: "admin",
     });
     expect(build({ url, publicKey: updatesKey }, "main").plugins).toContain("updates");
     expect(build(undefined, "main").plugins).not.toContain("updates");
@@ -457,7 +464,7 @@ describe("NativeConfig.build", () => {
     });
 
     expect(config.plugins).toEqual([...NativeConfig.basePlugins, "updates"]);
-    expect(config.updates).toEqual(updates);
+    expect(config.updates).toEqual({ ...updates, target: minimalTarget.name });
   });
 
   test("an updates channel left unnamed is the backend env the binary is built for", () => {
@@ -479,10 +486,11 @@ describe("NativeConfig.build", () => {
         ...(env ? { env } : {}),
       }).config.updates;
 
-    expect(build("debug")).toEqual({ ...updates, channel: "debug" });
-    expect(build("main")).toEqual({ ...updates, channel: "main" });
-    expect(build("debug", "pilot")).toEqual({ ...updates, channel: "pilot" });
-    expect(build()).toEqual(updates);
+    const target = minimalTarget.name;
+    expect(build("debug")).toEqual({ ...updates, channel: "debug", target });
+    expect(build("main")).toEqual({ ...updates, channel: "main", target });
+    expect(build("debug", "pilot")).toEqual({ ...updates, channel: "pilot", target });
+    expect(build()).toEqual({ ...updates, target });
   });
 
   test("keeps a file name the runtime accepts", () => {

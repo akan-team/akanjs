@@ -127,20 +127,20 @@ export interface AkanNativeDeepLinks {
  */
 export interface AkanNativeUpdatesConfig {
   /**
-   * A static base URL, https in a release build, with no query: `<url>/<os>-<arch>/<channel>.json` (desktop) or
+   * A static base URL, https in a release build, with no query: `<url>/<os>-<arch>/<channel>/app.json` (desktop) or
    * `<url>/<platform>/<channel>/<nativeApi>.json` (a phone's web bundle, one envelope per binary generation).
    */
   url: string;
   /**
-   * The keys a phone binary trusts, raw 32-byte Ed25519 public keys in base64 (`akan update-keygen` prints one), 1 to
-   * 3: the online signing key first, offline spares after it, since a key may revoke only keys listed before it. A
-   * desktop app trusts the first.
+   * The keys a binary trusts, raw 32-byte Ed25519 public keys in base64 (`akan update-keygen` prints one), 1 to 3:
+   * the online signing key first, offline spares after it, since a key may revoke only keys listed before it. A desktop
+   * app built before protocol v2 trusts the first.
    */
   publicKeys?: string[];
   /** The one-key form of `publicKeys`, never beside it: a target overriding native.updates' keys keeps its form. */
   publicKey?: string;
   /**
-   * keyIds every phone release revokes (`akan update-keygen` prints a key's), kept here so a release published from a
+   * keyIds every release revokes (`akan update-keygen` prints a key's), kept here so a release published from a
    * fresh checkout still revokes them; `akan publish-update --revoke` starts a revocation. A key may revoke only keys
    * listed before it in publicKeys, so a release is signed with one listed after them.
    */

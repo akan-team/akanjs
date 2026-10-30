@@ -1,4 +1,3 @@
-import { createPublicKey, verify } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,14 +6,18 @@ import type { UpdateManifest } from "akanjs/native/api";
 import { AkanAppConfig } from "../akanConfig";
 import type { DesktopArch } from "./desktopBin";
 import type { DesktopPlatform } from "./mobileTarget";
+import type { NativeBuildApiModule } from "./nativeApi";
 import { TarWriter } from "./tarWriter";
 import { UpdateUploader } from "./updateUploader";
 
 export type DesktopSigner = { teamId: string } | { subject: string } | null;
 
-/** `release.json`, the one file of a desktop release archive `publish-update` did not write. */
+/**
+ * `release.json`, the one file of a desktop release archive `publish-update` did not write. Schema 2: the archive holds
+ * the release's envelope, and its v1 pair only when that is the same release.
+ */
 export interface DesktopReleaseRecord {
-  schema: 1;
+  schema: 2;
   cli: string;
   platform: DesktopPlatform;
   arch: DesktopArch;
@@ -37,10 +40,15 @@ interface DesktopReleasePayload {
   sha256: string;
 }
 
-//* One desktop channel's release as `publish-update` left it in `<updates>/<os>-<arch>/`: the signed manifest and the
-//* files it names, packed as they are, so the same folder uploaded anywhere else stays valid.
+interface DesktopReleaseManifestFile {
+  name: string;
+  bytes: Uint8Array<ArrayBuffer>;
+}
+
+//* One desktop channel's release as `publish-update` left it in `<updates>/<os>-<arch>/`: the signed envelope, the v1
+//* pair of the same release, and the files the manifest names, packed as they are, so the same folder uploaded anywhere
+//* else stays valid.
 export class DesktopRelease {
-  static readonly #ed25519Spki = Buffer.from("302a300506032b6570032100", "hex");
   //? Constrained Language Mode (WDAC, AppLocker) refuses .NET type literals and method calls, so the script makes none.
   //? Windows PowerShell writes its console in the OEM code page, which mangles a subject outside it; a file keeps UTF-8.
   static readonly #authenticode = `$ErrorActionPreference = 'Stop'
@@ -56,8 +64,7 @@ Set-Content -LiteralPath $env:AKAN_SIGNER_OUT -Value $subject -Encoding UTF8`;
     readonly platform: DesktopPlatform,
     readonly arch: DesktopArch,
     readonly channel: string,
-    readonly manifestBytes: Uint8Array<ArrayBuffer>,
-    readonly signatureBytes: Uint8Array<ArrayBuffer>,
+    readonly manifestFiles: DesktopReleaseManifestFile[],
   ) {}
 
   static async read(
@@ -67,39 +74,48 @@ Set-Content -LiteralPath $env:AKAN_SIGNER_OUT -Value $subject -Encoding UTF8`;
       arch,
       channel,
       appId,
-      publicKey,
-    }: { platform: DesktopPlatform; arch: DesktopArch; channel: string; appId: string; publicKey: string },
+      target,
+      publicKeys,
+      revokedKeys = [],
+      api,
+    }: {
+      platform: DesktopPlatform;
+      arch: DesktopArch;
+      channel: string;
+      appId: string;
+      target?: string;
+      publicKeys: readonly string[];
+      revokedKeys?: readonly string[];
+      api: Pick<NativeBuildApiModule, "openEnvelope" | "verifyManifest">;
+    },
   ) {
     const folder = `${platform}-${arch}`;
     const dir = path.join(updatesDir, folder);
-    const manifestPath = path.join(dir, `${channel}.json`);
-    const [manifestBytes, signatureBytes] = await Promise.all([
-      readFile(manifestPath).catch(() => null),
-      readFile(`${manifestPath}.sig`).catch(() => null),
-    ]);
-    if (!manifestBytes || !signatureBytes)
-      throw new Error(
-        `${manifestBytes ? `${manifestPath}.sig` : manifestPath} is missing: run \`akan publish-update\` first.`,
-      );
-    if (!DesktopRelease.#verifies(manifestBytes, signatureBytes, publicKey))
-      throw new Error(
-        `${manifestPath}.sig does not verify with updates.publicKeys[0], the one key installed apps trust: publish the release again.`,
-      );
-    const manifest = DesktopRelease.#parse(manifestBytes);
+    const envelopeName = `${channel}/app.json`;
+    const envelopePath = path.join(dir, channel, "app.json");
+    const envelope = await readFile(envelopePath).catch(() => null);
+    if (!envelope) throw new Error(`${envelopePath} is missing: run \`akan publish-update\` first.`);
+    const opened = DesktopRelease.#open(api, envelope, publicKeys, revokedKeys);
+    if (typeof opened === "string") throw new Error(`${envelopePath}: ${opened}; publish the release again.`);
+    const manifest = DesktopRelease.#parse(opened);
     if (
-      manifest?.schema !== 1 ||
+      manifest?.schema !== 2 ||
       manifest.kind !== "app" ||
       manifest.app !== appId ||
       manifest.platform !== platform ||
       manifest.arch !== arch ||
       manifest.channel !== channel ||
+      manifest.target !== target ||
       typeof manifest.bundle !== "string" ||
       typeof manifest.sequence !== "number" ||
       typeof manifest.build !== "number" ||
       !manifest.archive
     )
-      throw new Error(`${manifestPath} is not a release of ${appId} for ${folder} on channel ${channel}.`);
+      throw new Error(
+        `${envelopePath} is not a release of ${appId}${target ? ` target ${target}` : ""} for ${folder} on channel ${channel}.`,
+      );
     const { archive, bundle, sequence, build } = manifest;
+    const legacy = await DesktopRelease.#legacyPair(api, dir, channel, publicKeys[0], manifest);
     const keys = await UpdateUploader.releaseFiles(updatesDir, { dir, channel, bundle });
     const expected = new Map(
       [{ url: archive.url, size: archive.size, sha256: archive.gzSha256 }, ...(manifest.patches ?? [])].map(
@@ -118,20 +134,41 @@ Set-Content -LiteralPath $env:AKAN_SIGNER_OUT -Value $subject -Encoding UTF8`;
       platform,
       arch,
       channel,
-      manifestBytes,
-      signatureBytes,
+      [{ name: envelopeName, bytes: envelope }, ...legacy],
     );
+  }
+
+  //? An app built before protocol v2 reads the pair, signed with the first key only; a pair of an earlier release is
+  //? left out, since it would publish that release again to those apps.
+  static async #legacyPair(
+    api: Pick<NativeBuildApiModule, "verifyManifest">,
+    dir: string,
+    channel: string,
+    publicKey: string | undefined,
+    manifest: Partial<UpdateManifest>,
+  ): Promise<DesktopReleaseManifestFile[]> {
+    const [bytes, signature] = await Promise.all(
+      [`${channel}.json`, `${channel}.json.sig`].map((name) => readFile(path.join(dir, name)).catch(() => null)),
+    );
+    if (!bytes || !signature || !publicKey) return [];
+    const v1 = DesktopRelease.#parse(bytes);
+    if (v1?.schema !== 1 || v1.bundle !== manifest.bundle || v1.sequence !== manifest.sequence) return [];
+    if (!api.verifyManifest(bytes, new TextDecoder().decode(signature).trim(), publicKey)) return [];
+    return [
+      { name: `${channel}.json`, bytes },
+      { name: `${channel}.json.sig`, bytes: signature },
+    ];
   }
 
   record(signer: DesktopSigner): DesktopReleaseRecord {
     const { platform, arch, channel } = this;
     const builtAt = new Date(this.manifest.build * 1000).toISOString();
-    return { schema: 1, cli: AkanAppConfig.akanVersion, platform, arch, channel, signer, builtAt };
+    return { schema: 2, cli: AkanAppConfig.akanVersion, platform, arch, channel, signer, builtAt };
   }
 
   //* Akan Cloud refuses every push in any other shape: uncompressed, regular files under `./` names, no directory
-  //* entry, no ustar prefix, no GNU L/K, a pax 'x' holding `path` alone, and release.json and the manifest pair before
-  //* any `app/` entry. What the manifest names is checked against it as it is copied.
+  //* entry, no ustar prefix, no GNU L/K, a pax 'x' holding `path` alone, and release.json, the envelope and the v1 pair
+  //* before any `app/` entry. What the manifest names is checked against it as it is copied.
   async withArchive<T>(record: DesktopReleaseRecord, use: (archive: string) => Promise<T>): Promise<T> {
     const tmp = await mkdtemp(path.join(os.tmpdir(), "akan-release-"));
     try {
@@ -139,11 +176,10 @@ Set-Content -LiteralPath $env:AKAN_SIGNER_OUT -Value $subject -Encoding UTF8`;
       const tar = await TarWriter.create(archive, { mtime: this.manifest.sequence });
       try {
         await tar.add("./release.json", new Blob([`${JSON.stringify(record, null, 2)}\n`]));
-        await tar.add(`./${this.channel}.json`, new Blob([this.manifestBytes]));
-        await tar.add(`./${this.channel}.json.sig`, new Blob([this.signatureBytes]));
+        for (const { name, bytes } of this.manifestFiles) await tar.add(`./${name}`, new Blob([bytes]));
         for (const { name, size, sha256 } of this.payloads) {
           const file = Bun.file(path.join(this.dir, name));
-          const what = `${path.join(this.dir, name)} is not the file ${this.channel}.json names`;
+          const what = `${path.join(this.dir, name)} is not the file ${this.channel}/app.json names`;
           if (!(await file.exists()) || file.size !== size) throw new Error(`${what}: publish the release again.`);
           if ((await tar.add(`./${name}`, file)) !== sha256) throw new Error(`${what} (its sha256 differs).`);
         }
@@ -170,7 +206,7 @@ Set-Content -LiteralPath $env:AKAN_SIGNER_OUT -Value $subject -Encoding UTF8`;
     if (this.platform === "linux") return { signer: null, unread: null };
     const app = this.manifest.files?.[0]?.path;
     if (!app || !/^[^/\\]+$/.test(app) || app === "." || app === "..")
-      return { signer: null, unread: `${this.channel}.json names no app folder` };
+      return { signer: null, unread: `${this.channel}/app.json names no app folder` };
     if (this.platform === "macos" && host !== "darwin")
       return { signer: null, unread: "codesign reads a macOS app's signer on macOS only" };
     if (this.platform === "windows" && host !== "win32")
@@ -228,16 +264,16 @@ Set-Content -LiteralPath $env:AKAN_SIGNER_OUT -Value $subject -Encoding UTF8`;
     return { signer: subject ? { subject } : null, unread: null };
   }
 
-  static #verifies(manifest: Uint8Array, signature: Uint8Array, publicKey: string) {
+  static #open(
+    api: Pick<NativeBuildApiModule, "openEnvelope">,
+    envelope: Uint8Array,
+    publicKeys: readonly string[],
+    revokedKeys: readonly string[],
+  ): Uint8Array | string {
     try {
-      const key = createPublicKey({
-        key: Buffer.concat([DesktopRelease.#ed25519Spki, Buffer.from(publicKey, "base64")]),
-        format: "der",
-        type: "spki",
-      });
-      return verify(null, manifest, key, Buffer.from(new TextDecoder().decode(signature).trim(), "base64"));
-    } catch {
-      return false;
+      return api.openEnvelope(new TextDecoder().decode(envelope), publicKeys, revokedKeys).manifest;
+    } catch (error) {
+      return toError(error).message;
     }
   }
 

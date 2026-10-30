@@ -4,14 +4,17 @@
 //   <platform>/<channel>/<nativeApi>.json   a phone's web bundle (protocol v2): an UpdateEnvelope holding the
 //                                           manifest's bytes, the signer's keyId and the signature, in one file
 //   <platform>/files/<sha256>               web bundle files, content-addressed (unchanged files are shared)
-//   <os>-<arch>/<channel>.json(.sig)        a desktop app (UP-1, protocol v1): the manifest and its base64 signature
+//   <os>-<arch>/<channel>/app.json          a desktop app (UP-1, protocol v2): an UpdateEnvelope, as a phone's
+//   <os>-<arch>/<channel>.json(.sig)        the same desktop release for apps built before protocol v2: the manifest
+//                                           and its base64 signature, written only when signed with the first key
 //   <os>-<arch>/app/<sha256>                desktop app archives
 //
 // The whole manifest is signed, not only the artifact: Tauri signs the artifact and leaves the
 // manifest open, then has to compare a signed version string to stop downgrades
 // (tauri-plugins-workspace/plugins/updater/src/updater.rs:1661-1708). Here `sequence` inside the
 // signed manifest must grow, so an old but validly signed bundle cannot be replayed. A phone binary
-// reads only its own native API's envelope, so each binary generation on a channel takes its own fixes.
+// reads only its own native API's envelope, so each binary generation on a channel takes its own fixes;
+// a desktop manifest names its target, so one target's release cannot be served to another's apps.
 
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -22,6 +25,7 @@ import {
   isChannelName,
   isStrictBase64,
   isUpdateKeyId,
+  isUpdatePublicKey,
   MAX_REVOKE_KEYS,
   RESERVED_CHANNELS,
 } from "../../../core/src/kernel.ts";
@@ -34,17 +38,22 @@ export interface UpdatesConfig {
   /** Base URL of the update files, e.g. "https://example.com/updates". http:// only for localhost / 10.0.2.2 in dev builds. */
   url: string;
   /**
-   * Raw 32-byte Ed25519 public keys, base64 (`akan-native update keygen` prints one): the keys a phone binary trusts, the
+   * Raw 32-byte Ed25519 public keys, base64 (`akan-native update keygen` prints one): the keys a binary trusts, the
    * online signing key first and offline spares after it, since a key may revoke only keys listed before it. A desktop
-   * app trusts the first.
+   * app built before protocol v2 trusts the first.
    */
   publicKeys: string[];
   /**
-   * keyIds every phone release revokes, kept in the config so a release published from another folder (a fresh CI
-   * checkout) still revokes them. `akan-native update publish --revoke` starts a revocation. A phone build trusts none
-   * of them, though publicKeys still lists them.
+   * keyIds every release revokes, kept in the config so a release published from another folder (a fresh CI checkout)
+   * still revokes them. `akan-native update publish --revoke` starts a revocation. A build trusts none of them, though
+   * publicKeys still lists them.
    */
   revokedKeys: string[];
+  /**
+   * The release target a desktop binary is built for (akan's native target): its manifests name it and the app takes
+   * only its own, so a release signed for one target cannot be served to another's apps. null: the manifest names none.
+   */
+  target: string | null;
   /** Manifest name under <platform>/. Default "production". */
   channel: string;
   /** How long a newly applied bundle has to call notifyReady() before it is rolled back, ms. Default 10000. */
@@ -69,7 +78,7 @@ export function hostArch(): DesktopArch {
 }
 
 export interface UpdateManifest {
-  /** 2 for a phone's web bundle, which travels in an UpdateEnvelope; 1 for a desktop app. */
+  /** 2 for a release in an UpdateEnvelope (a phone's web bundle, a desktop app); 1 for a desktop app's v1 pair. */
   schema: 1 | 2;
   kind: "web" | "app";
   app: string;
@@ -95,13 +104,18 @@ export interface UpdateManifest {
   patches?: { from: string; url: string; sha256: string; size: number }[];
   /** App updates: whether the app carries a server; an installed app refuses a release that differs from itself. */
   server?: boolean;
-  /** Web bundles: keyIds the phone stops trusting for good; each listed before the signer's key in its updates.publicKeys. */
+  /** App updates of schema 2: updates.target of the apps the release is for; absent when that is null. */
+  target?: string;
+  /** Schema 2: keyIds the app stops trusting for good; each listed before the signer's key in its updates.publicKeys. */
   revokeKeys?: string[];
-  /** Web bundles: with a new revocation, compare this release with the binary's own bundle instead of the running one. */
+  /** Schema 2: with a new revocation, compare this release with the binary's own bundle instead of the running one. */
   resetSequence?: boolean;
 }
 
-/** A phone's `<platform>/<channel>/<nativeApi>.json`: one object, so a new manifest never meets an old signature. */
+/**
+ * A phone's `<platform>/<channel>/<nativeApi>.json` or a desktop app's `<os>-<arch>/<channel>/app.json`: one object, so
+ * a new manifest never meets an old signature.
+ */
 export interface UpdateEnvelope {
   /** The manifest's exact bytes, base64. */
   manifest: string;
@@ -197,8 +211,10 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
   if (r.readyTimeout !== undefined && (typeof r.readyTimeout !== "number" || r.readyTimeout < 1000))
     problems.push("updates.readyTimeout must be a number of milliseconds >= 1000");
   const reportUrl = updateReportUrl(r.report, problems);
+  if (r.target !== undefined && (typeof r.target !== "string" || !r.target || r.target.length > 100))
+    problems.push("updates.target must be the name of the release target, 1 to 100 characters");
   for (const key of Object.keys(r))
-    if (!["url", "publicKey", "publicKeys", "revokedKeys", "channel", "readyTimeout", "report"].includes(key))
+    if (!["url", "publicKey", "publicKeys", "revokedKeys", "channel", "readyTimeout", "report", "target"].includes(key))
       problems.push(`updates.${key} is not supported`);
   if (publicKeys?.every((key) => revokedKeys.includes(keyIdOf(key))))
     problems.push(
@@ -212,6 +228,7 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
     channel: (r.channel as string | undefined) ?? "production",
     readyTimeout: (r.readyTimeout as number | undefined) ?? 10_000,
     reportUrl,
+    target: typeof r.target === "string" ? r.target : null,
   };
 }
 
@@ -270,6 +287,13 @@ function updatePublicKeys(r: Record<string, unknown>, problems: string[]): strin
     problems.push("updates.publicKeys lists a key twice");
     return null;
   }
+  const unusable = (keys as string[]).filter((key) => !isUpdatePublicKey(key));
+  if (unusable.length) {
+    problems.push(
+      `updates.publicKeys holds ${unusable.join(", ")}: a non-canonical or small-order Ed25519 point, which verifies signatures nobody made; replace it with a key \`akan-native update keygen\` prints`,
+    );
+    return null;
+  }
   return keys as string[];
 }
 
@@ -319,7 +343,7 @@ export function signManifest(bytes: Uint8Array, keyPath: string, publicKeys: rea
   const { key, index } = signingKey(keyPath, publicKeys);
   if (index !== 0)
     throw new CliError(
-      `a desktop app trusts the first of updates.publicKeys only, and the key at ${keyPath} is not it`,
+      `a desktop app built before protocol v2 trusts the first of updates.publicKeys only, and the key at ${keyPath} is not it`,
     );
   return sign(null, bytes, key).toString("base64");
 }
@@ -380,6 +404,7 @@ export function verifyManifest(bytes: Uint8Array, signature: string, publicKey: 
 }
 
 function verifySignature(bytes: Uint8Array, signature: Uint8Array, publicKey: string): boolean {
+  if (!isUpdatePublicKey(publicKey)) return false;
   const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(publicKey, "base64")]);
   return verify(null, bytes, createPublicKey({ key: spki, format: "der", type: "spki" }), signature);
 }
@@ -408,21 +433,22 @@ export function updatesResource(
     embeddedSequence,
     dev,
     url: updates.url,
-    protocol: platform === "ios" || platform === "android" ? 2 : 1,
-    publicKeys: platform === "ios" || platform === "android" ? phoneRing(updates) : updates.publicKeys,
-    //? A desktop app (protocol v1) reads this one key.
+    protocol: 2,
+    publicKeys: updateRing(updates),
+    //? A protocol v1 desktop app trusts only this key; a v2 one it installed names that release's signer by it.
     publicKey: updates.publicKeys[0],
     channel: updates.channel,
     readyTimeout: updates.readyTimeout,
+    ...(updates.target && platform !== "ios" && platform !== "android" ? { target: updates.target } : {}),
     ...(updates.reportUrl && (platform === "ios" || platform === "android") ? { reportUrl: updates.reportUrl } : {}),
   });
 }
 
 /**
- * The keys a phone build trusts: updates.publicKeys without the revoked ones, so a fresh install trusts none of them
- * before its first release tells it. A manifest that revokes a key the binary does not hold is still taken.
+ * The keys a build trusts: updates.publicKeys without the revoked ones, so a fresh install trusts none of them before
+ * its first release tells it. A manifest that revokes a key the binary does not hold is still taken.
  */
-export const phoneRing = (updates: Pick<UpdatesConfig, "publicKeys" | "revokedKeys">) =>
+export const updateRing = (updates: Pick<UpdatesConfig, "publicKeys" | "revokedKeys">) =>
   updates.publicKeys.filter((key) => !updates.revokedKeys.includes(keyIdOf(key)));
 
 /**
@@ -457,7 +483,7 @@ export function writePhoneUpdates({
     protocol: 2,
     url: updates.url,
     channel: updates.channel,
-    keyIds: phoneRing(updates).map(keyIdOf),
+    keyIds: updateRing(updates).map(keyIdOf),
     embeddedSequence,
     ...(updates.reportUrl ? { reportUrl: updates.reportUrl } : {}),
   };

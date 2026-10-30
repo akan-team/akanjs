@@ -898,16 +898,19 @@ export default page()
           <>
             <strong>Upload the manifest last, uncached behind a CDN.</strong> A phone's is one file,{" "}
             <code>&lt;platform&gt;/&lt;channel&gt;/&lt;nativeApi&gt;.json</code>, after <code>files/</code>. A desktop
-            app's <code>&lt;channel&gt;.json</code> goes up after <code>app/</code> and its <code>.sig</code>: paired
-            with another release's signature, it stops every app updating.
+            app's is <code>&lt;os&gt;-&lt;arch&gt;/&lt;channel&gt;/app.json</code>, after <code>app/</code>. An older
+            desktop app reads <code>&lt;channel&gt;.json</code>, which goes up after its <code>.sig</code>: paired with
+            another release's signature, it stops those apps updating.
           </>
         ),
         ko: (
           <>
             <strong>매니페스트는 마지막에, CDN에서 캐시하지 않고 올리세요.</strong> 폰의 매니페스트는{" "}
             <code>files/</code> 다음에 올리는 <code>&lt;platform&gt;/&lt;channel&gt;/&lt;nativeApi&gt;.json</code> 파일
-            하나입니다. 데스크톱 앱의 <code>&lt;channel&gt;.json</code>은 <code>app/</code>과 그 <code>.sig</code>{" "}
-            다음에 올리며, 다른 릴리스의 서명과 짝지어지면 모든 앱의 업데이트가 멈춥니다.
+            하나입니다. 데스크톱 앱의 매니페스트는 <code>app/</code> 다음에 올리는{" "}
+            <code>&lt;os&gt;-&lt;arch&gt;/&lt;channel&gt;/app.json</code>입니다. 이전 데스크톱 앱이 읽는{" "}
+            <code>&lt;channel&gt;.json</code>은 그 <code>.sig</code> 다음에 올리며, 다른 릴리스의 서명과 짝지어지면 그
+            앱들의 업데이트가 멈춥니다.
           </>
         ),
       }),
@@ -932,26 +935,25 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>If a phone update key leaks, revoke it.</strong> A key revokes only those listed before it in{" "}
+            <strong>If an update key leaks, revoke it.</strong> A key revokes only those listed before it in{" "}
             <code>updates.publicKeys</code>, so keep spares after the signing key. Point{" "}
-            <code>AKAN_NATIVE_UPDATE_KEY</code> at a spare's file and publish iOS and Android on every channel with{" "}
+            <code>AKAN_NATIVE_UPDATE_KEY</code> at a spare's file and publish every platform on every channel with{" "}
             <code>--revoke &lt;keyId&gt;</code> (<code>akan update-keygen</code> prints a key's keyId). Then add the
             keyId to <code>updates.revokedKeys</code>, so every later release, signed with the spare, keeps revoking it,
-            and keep it there after a new binary drops the key: older binaries still need it. A phone build already
-            trusts none of the keys it lists. A desktop app trusts only the first key and takes no revocation: a desktop
-            release signed with a revoked first key warns, and only a new binary with another first key ends that trust.
+            and keep it there after a new binary drops the key: older binaries still need it. A build already trusts
+            none of the keys it lists. An older desktop app trusts only the first key and sees no release a spare signs:
+            only a new install ends its trust.
           </>
         ),
         ko: (
           <>
-            <strong>폰 업데이트 키가 새면 폐기합니다.</strong> 키는 <code>updates.publicKeys</code>에서 자기보다 앞에
-            있는 키만 폐기하므로, 예비 키를 서명 키 뒤에 둡니다. <code>AKAN_NATIVE_UPDATE_KEY</code>로 예비 키 파일을
-            고르고 모든 채널에서 iOS와 Android를 <code>--revoke &lt;keyId&gt;</code>로 게시합니다(keyId는{" "}
+            <strong>업데이트 키가 새면 폐기합니다.</strong> 키는 <code>updates.publicKeys</code>에서 자기보다 앞에 있는
+            키만 폐기하므로, 예비 키를 서명 키 뒤에 둡니다. <code>AKAN_NATIVE_UPDATE_KEY</code>로 예비 키 파일을 고르고
+            모든 채널에서 모든 플랫폼을 <code>--revoke &lt;keyId&gt;</code>로 게시합니다(keyId는{" "}
             <code>akan update-keygen</code>이 출력합니다). 그다음 그 keyId를 <code>updates.revokedKeys</code>에 넣어,
             예비 키로 서명하는 이후 릴리스가 모두 폐기를 이어 가게 하고, 새 바이너리에서 그 키를 뺀 뒤에도 남겨 둡니다.
-            옛 바이너리는 계속 폐기를 받아야 합니다. 폰 빌드는 이 목록의 키를 처음부터 믿지 않습니다. 데스크톱 앱은 첫
-            키만 믿으므로 폐기를 받지 않습니다. 폐기된 첫 키로 서명한 데스크톱 릴리스는 경고를 내며, 그 신뢰는 다른 첫
-            키로 만든 새 바이너리로만 끝납니다.
+            옛 바이너리는 계속 폐기를 받아야 합니다. 빌드는 이 목록의 키를 처음부터 믿지 않습니다. 이전 데스크톱 앱은 첫
+            키만 믿으므로 예비 키로 서명한 릴리스를 보지 못하며, 그 신뢰는 새로 설치해야 끝납니다.
           </>
         ),
       }),

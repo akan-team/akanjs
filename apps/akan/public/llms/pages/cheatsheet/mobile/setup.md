@@ -338,11 +338,11 @@ An installed app updates itself from releases you sign. `akan update-keygen` pri
 
 **A new release runs on trial** until its first page mounts, and a carried server is up. A failed trial rolls back, and `check()` and `apply()` refuse meanwhile.
 
-**Upload the manifest last, uncached behind a CDN.** A phone's is one file, `<platform>/<channel>/<nativeApi>.json`, after `files/`. A desktop app's `<channel>.json` goes up after `app/` and its `.sig`: paired with another release's signature, it stops every app updating.
+**Upload the manifest last, uncached behind a CDN.** A phone's is one file, `<platform>/<channel>/<nativeApi>.json`, after `files/`. A desktop app's is `<os>-<arch>/<channel>/app.json`, after `app/`. An older desktop app reads `<channel>.json`, which goes up after its `.sig`: paired with another release's signature, it stops those apps updating.
 
 **`updates.url` is public.** The updater sends no credentials, and a desktop release is the whole app, carried server included.
 
-**If a phone update key leaks, revoke it.** A key revokes only those listed before it in `updates.publicKeys`, so keep spares after the signing key. Point `AKAN_NATIVE_UPDATE_KEY` at a spare's file and publish iOS and Android on every channel with `--revoke <keyId>` (`akan update-keygen` prints a key's keyId). Then add the keyId to `updates.revokedKeys`, so every later release, signed with the spare, keeps revoking it, and keep it there after a new binary drops the key: older binaries still need it. A phone build already trusts none of the keys it lists. A desktop app trusts only the first key and takes no revocation: a desktop release signed with a revoked first key warns, and only a new binary with another first key ends that trust.
+**If an update key leaks, revoke it.** A key revokes only those listed before it in `updates.publicKeys`, so keep spares after the signing key. Point `AKAN_NATIVE_UPDATE_KEY` at a spare's file and publish every platform on every channel with `--revoke <keyId>` (`akan update-keygen` prints a key's keyId). Then add the keyId to `updates.revokedKeys`, so every later release, signed with the spare, keeps revoking it, and keep it there after a new binary drops the key: older binaries still need it. A build already trusts none of the keys it lists. An older desktop app trusts only the first key and sees no release a spare signs: only a new install ends its trust.
 
 Signing, notarization, the dmg, Windows setup and AppImage people download, and a CI recipe are on Desktop Release.
 

@@ -247,14 +247,14 @@ const nativeFields = [
   {
     key: "updates.publicKeys",
     type: "string[]",
-    en: "1–3 keys from akan update-keygen, signing key first; a key revokes only those before it, and a desktop app trusts the first. publicKey is the one-key form, never beside it.",
-    ko: "akan update-keygen이 출력한 키 1~3개로, 서명 키를 맨 앞에 둡니다. 키는 앞의 키만 폐기하고, 데스크톱 앱은 첫 키만 믿습니다. 키가 하나면 publicKey로 쓰며, 둘을 함께 쓰지는 않습니다.",
+    en: "1–3 keys from akan update-keygen, signing key first; a key revokes only those before it. publicKey is the one-key form, never beside it.",
+    ko: "akan update-keygen이 출력한 키 1~3개로, 서명 키를 맨 앞에 둡니다. 키는 앞의 키만 폐기합니다. 키가 하나면 publicKey로 쓰며, 둘을 함께 쓰지는 않습니다.",
   },
   {
     key: "updates.revokedKeys",
     type: "string[]",
-    en: "Up to 16 keyIds every phone release revokes, kept here so a release from a fresh checkout revokes them too. A phone build trusts none of them.",
-    ko: "모든 폰 릴리스가 폐기할 keyId(최대 16개)이며, 여기 두어 새 체크아웃에서 게시한 릴리스도 폐기를 이어 갑니다. 폰 빌드는 이 키들을 믿지 않습니다.",
+    en: "Up to 16 keyIds every release revokes, kept here so a release from a fresh checkout revokes them too. A build trusts none of them.",
+    ko: "모든 릴리스가 폐기할 keyId(최대 16개)이며, 여기 두어 새 체크아웃에서 게시한 릴리스도 폐기를 이어 갑니다. 빌드는 이 키들을 믿지 않습니다.",
   },
   {
     key: "updates.channel",

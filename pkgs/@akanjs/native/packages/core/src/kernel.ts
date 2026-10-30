@@ -350,8 +350,67 @@ export const updateDecisionWire = (decision: UpdateDecision) =>
 export const updateManifestUrl = (url: string, platform: string, channel: string, nativeApi: string) =>
   `${url}/${platform}/${channel}/${nativeApi}.json`;
 
+/**
+ * A desktop app's v2 envelope of a channel: the whole app is one release per OS and CPU, so one file. `app` is a
+ * reserved channel name, since `<os>-<arch>/app/` holds the archives.
+ */
+export const appManifestUrl = (url: string, os: string, arch: string, channel: string) =>
+  `${url}/${os}-${arch}/${channel}/app.json`;
+
 /** An envelope's signer or a revokeKeys entry: the first 8 bytes of the raw public key's SHA-256, in hex. */
 export const isUpdateKeyId = (s: string) => /^[0-9a-f]{16}$/.test(s);
+
+const P = 2n ** 255n - 19n;
+const mod = (a: bigint) => ((a % P) + P) % P;
+const pow = (base: bigint, exp: bigint) => {
+  let result = 1n;
+  let b = mod(base);
+  for (let e = exp; e > 0n; e >>= 1n) {
+    if (e & 1n) result = (result * b) % P;
+    b = (b * b) % P;
+  }
+  return result;
+};
+const D = mod(-121665n * pow(121666n, P - 2n));
+const SQRT_M1 = pow(2n, (P - 1n) / 4n);
+
+/**
+ * Whether a base64 string is an Ed25519 public key a release may be signed for: strict base64 of 32 bytes, the
+ * canonical encoding of a curve point (RFC 8032 §5.1.3, y < p and no negative zero), not of small order. A small-order
+ * key verifies signatures nobody made with a private key, so a config listing one would trust forged releases.
+ */
+export function isUpdatePublicKey(key: string): boolean {
+  if (!isStrictBase64(key) || base64Size(key) !== 32) return false;
+  const bytes = fromBase64(key);
+  const sign = (bytes[31] ?? 0) >> 7;
+  let y = 0n;
+  for (let i = 31; i >= 0; i--) y = (y << 8n) | BigInt(i === 31 ? (bytes[i] ?? 0) & 0x7f : (bytes[i] ?? 0));
+  if (y >= P) return false;
+  const y2 = (y * y) % P;
+  const u = mod(y2 - 1n);
+  const v = mod(D * y2 + 1n);
+  //* x = sqrt(u/v) as RFC 8032 §5.1.3 computes it: u·v³·(u·v⁷)^((p-5)/8), times sqrt(-1) when that squares to -u/v.
+  const v3 = (v * v * v) % P;
+  let x = (u * v3 * pow(u * v3 * v3 * v, (P - 5n) / 8n)) % P;
+  const vx2 = (v * x * x) % P;
+  if (vx2 === mod(-u)) x = (x * SQRT_M1) % P;
+  else if (vx2 !== u) return false;
+  if (x === 0n && sign === 1) return false;
+  if (Number(x & 1n) !== sign) x = P - x;
+  //* [8]P by three doublings in extended coordinates (dbl-2008-hwcd, a = -1); small order means it is the identity.
+  let [X, Y, Z] = [x, y, 1n];
+  for (let i = 0; i < 3; i++) {
+    const A = (X * X) % P;
+    const B = (Y * Y) % P;
+    const C = (2n * Z * Z) % P;
+    const E = mod((X + Y) * (X + Y) - A - B);
+    const G = mod(B - A);
+    const F = mod(G - C);
+    const H = mod(-A - B);
+    [X, Y, Z] = [(E * F) % P, (G * H) % P, (F * G) % P];
+  }
+  return !(X === 0n && Y === Z);
+}
 
 /** The most keys a manifest may revoke: every host refuses a longer revokeKeys. */
 export const MAX_REVOKE_KEYS = 16;

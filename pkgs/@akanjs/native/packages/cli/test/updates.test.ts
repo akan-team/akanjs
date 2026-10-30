@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createPrivateKey, createPublicKey } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +25,16 @@ import {
   writePhoneUpdates,
 } from "../src/lib/updates.ts";
 
+/** A real Ed25519 public key, the same for the same byte: updates.publicKeys refuses bytes that are no curve point. */
+const keyOf = (byte: number) => {
+  const pkcs8 = Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.alloc(32, byte)]);
+  const spki = createPublicKey(createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" })).export({
+    type: "spki",
+    format: "der",
+  });
+  return spki.subarray(spki.length - 32).toString("base64");
+};
+
 /** A phone's release build as publishRelease reads it: the config, bundle.json and the web files. */
 const phoneBuild = (root: string, publicKeys: string[], revokedKeys: string[] = []) => {
   const outDir = join(root, "build");
@@ -47,7 +58,12 @@ const phoneBuild = (root: string, publicKeys: string[], revokedKeys: string[] = 
     readyTimeout: 10_000,
   };
   return {
-    project: { config: { app: { id: "dev.test.revoke", version: "1.0.0" }, updates: { ...updates, reportUrl: null } } },
+    project: {
+      config: {
+        app: { id: "dev.test.revoke", version: "1.0.0" },
+        updates: { ...updates, reportUrl: null, target: null },
+      },
+    },
     outDir,
     webDir,
     html: "<!doctype html>",
@@ -58,7 +74,7 @@ const phoneBuild = (root: string, publicKeys: string[], revokedKeys: string[] = 
 describe("updates config (UP-1, UP-2)", () => {
   test("validates and fills defaults", () => {
     const problems: string[] = [];
-    const key = Buffer.alloc(32, 7).toString("base64");
+    const key = keyOf(7);
     expect(validateUpdates({ url: "https://example.com/u/", publicKey: key }, problems)).toEqual({
       url: "https://example.com/u",
       publicKeys: [key],
@@ -66,7 +82,9 @@ describe("updates config (UP-1, UP-2)", () => {
       channel: "production",
       readyTimeout: 10_000,
       reportUrl: null,
+      target: null,
     });
+    expect(validateUpdates({ url: "https://u", publicKey: key, target: "pilot" }, problems)?.target).toBe("pilot");
     expect(problems).toEqual([]);
     //? Posted to as it is: a receiver whose route ends in "/" may not redirect a POST.
     expect(
@@ -77,7 +95,15 @@ describe("updates config (UP-1, UP-2)", () => {
     ).toBe("https://r.example/p/abc/");
     expect(validateUpdates(undefined, problems)).toBeNull();
     validateUpdates(
-      { url: "ftp://x", publicKey: "short", channel: "Bad Name", readyTimeout: 5, report: "https://r", extra: 1 },
+      {
+        url: "ftp://x",
+        publicKey: "short",
+        channel: "Bad Name",
+        readyTimeout: 5,
+        report: "https://r",
+        target: "",
+        extra: 1,
+      },
       problems,
     );
     expect(problems).toEqual([
@@ -86,12 +112,13 @@ describe("updates config (UP-1, UP-2)", () => {
       'updates.channel must be a short name like "production"',
       "updates.readyTimeout must be a number of milliseconds >= 1000",
       "updates.report must be { url } with an http(s) URL",
+      "updates.target must be the name of the release target, 1 to 100 characters",
       "updates.extra is not supported",
     ]);
   });
 
   test("a ring of up to three keys, and a URL the shells can append a path to", () => {
-    const keys = [7, 8, 9, 10].map((byte) => Buffer.alloc(32, byte).toString("base64"));
+    const keys = [7, 8, 9, 10].map(keyOf);
     const check = (raw: Record<string, unknown>) => {
       const problems: string[] = [];
       return { config: validateUpdates({ url: "https://cdn.example.com/ota/inst1/", ...raw }, problems), problems };
@@ -125,10 +152,27 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(keyIdOf(Buffer.alloc(32, 7).toString("base64"))).toBe("4bb06f8e4e3a7715");
   });
 
+  test("a key that is no canonical curve point, or one of small order, is refused as the shared vectors say", async () => {
+    const { publicKeys } = (await Bun.file(new URL("../../core/vectors/updates.json", import.meta.url)).json()) as {
+      publicKeys: [string, boolean, string][];
+    };
+    for (const [key, valid] of publicKeys) {
+      const problems: string[] = [];
+      validateUpdates({ url: "https://u", publicKeys: [key] }, problems);
+      expect(problems.length === 0).toBe(valid);
+    }
+    const identity = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    const problems: string[] = [];
+    validateUpdates({ url: "https://u", publicKeys: [keyOf(1), identity] }, problems);
+    expect(problems).toEqual([
+      `updates.publicKeys holds ${identity}: a non-canonical or small-order Ed25519 point, which verifies signatures nobody made; replace it with a key \`akan-native update keygen\` prints`,
+    ]);
+  });
+
   test("updates.revokedKeys lists keyIds, each once, no more than a manifest may revoke", () => {
     const check = (revokedKeys: unknown) => {
       const problems: string[] = [];
-      const key = Buffer.alloc(32, 7).toString("base64");
+      const key = keyOf(7);
       return { config: validateUpdates({ url: "https://u", publicKey: key, revokedKeys }, problems), problems };
     };
     expect(check(["4bb06f8e4e3a7715"]).config?.revokedKeys).toEqual(["4bb06f8e4e3a7715"]);
@@ -230,7 +274,7 @@ describe("updates config (UP-1, UP-2)", () => {
   });
 
   test("updates.revokedKeys may not revoke every key of updates.publicKeys", () => {
-    const key = Buffer.alloc(32, 7).toString("base64");
+    const key = keyOf(7);
     const problems: string[] = [];
     validateUpdates({ url: "https://u", publicKey: key, revokedKeys: [keyIdOf(key)] }, problems);
     expect(problems).toEqual([
@@ -238,9 +282,9 @@ describe("updates config (UP-1, UP-2)", () => {
     ]);
   });
 
-  test("a phone build trusts no key updates.revokedKeys revokes, so a fresh install never takes one; a desktop build reads the first", () => {
-    const online = Buffer.alloc(32, 1).toString("base64");
-    const spare = Buffer.alloc(32, 2).toString("base64");
+  test("a build trusts no key updates.revokedKeys revokes, so a fresh install never takes one; a desktop build names its target", () => {
+    const online = keyOf(1);
+    const spare = keyOf(2);
     const updates = {
       url: "https://u",
       publicKeys: [online, spare],
@@ -248,12 +292,21 @@ describe("updates config (UP-1, UP-2)", () => {
       channel: "main",
       readyTimeout: 3000,
       reportUrl: null,
+      target: "pilot",
     };
-    const resource = (platform: "android" | "ios" | "macos") =>
+    const resource = (platform: "android" | "ios" | "macos" | "windows") =>
       JSON.parse(updatesResource(updates, { id: "dev.x", version: "1" }, platform, "abc", false));
     expect(resource("android").publicKeys).toEqual([spare]);
     expect(resource("ios").publicKeys).toEqual([spare]);
-    expect(resource("macos")).toMatchObject({ publicKeys: [online, spare], publicKey: online });
+    expect(resource("android").target).toBeUndefined();
+    //? A protocol v1 app installs the binary that reads envelopes through the v1 pair, signed by the first key.
+    expect(resource("macos")).toMatchObject({ protocol: 2, publicKeys: [spare], publicKey: online, target: "pilot" });
+    expect(resource("windows")).toMatchObject({ protocol: 2, target: "pilot" });
+    expect(
+      JSON.parse(
+        updatesResource({ ...updates, target: null }, { id: "dev.x", version: "1" }, "linux", undefined, false),
+      ).target,
+    ).toBeUndefined();
     const out = mkdtempSync(join(tmpdir(), "akan-phone-ring-"));
     try {
       writeFileSync(
@@ -298,6 +351,7 @@ describe("updates config (UP-1, UP-2)", () => {
           channel: "beta",
           readyTimeout: 3000,
           reportUrl: "https://r/p",
+          target: null,
         },
         { id: "dev.x", version: "1.2.0" },
         "ios",
@@ -332,8 +386,15 @@ describe("updates config (UP-1, UP-2)", () => {
         web: { hash: "w", files: 1 },
       };
       writeFileSync(join(out, "bundle.json"), JSON.stringify(bundle));
-      const key = Buffer.alloc(32, 7).toString("base64");
-      const updates = { url: "https://u", publicKeys: [key], revokedKeys: [], channel: "main", readyTimeout: 20_000 };
+      const key = keyOf(7);
+      const updates = {
+        url: "https://u",
+        publicKeys: [key],
+        revokedKeys: [],
+        channel: "main",
+        readyTimeout: 20_000,
+        target: null,
+      };
       const write = (reportUrl: string | null) =>
         writePhoneUpdates({
           updatesJson: join(out, "updates.json"),
@@ -373,7 +434,7 @@ describe("publishing a release", () => {
     for (const channel of ["bundle", "manifest.template", "compat", "pack", "files", "app"]) {
       expect(() => assertChannel(channel)).toThrow("already uses");
       const problems: string[] = [];
-      validateUpdates({ url: "https://x", publicKey: Buffer.alloc(32).toString("base64"), channel }, problems);
+      validateUpdates({ url: "https://x", publicKey: keyOf(0), channel }, problems);
       expect(problems).toEqual(['updates.channel must be a short name like "production"']);
     }
   });
@@ -386,16 +447,13 @@ describe("publishing a release", () => {
     try {
       const app = { id: "dev.x" };
       expect(() => assertSigningKey({ app })).toThrow("has no updates");
-      const other = Buffer.alloc(32).toString("base64");
+      const other = keyOf(0);
       expect(() => assertSigningKey({ app, updates: { publicKeys: [other] } })).toThrow(
         `no update signing key at ${path}`,
       );
       const { publicKey } = generateUpdateKey(path);
       expect(() => assertSigningKey({ app, updates: { publicKeys: [publicKey] } })).not.toThrow();
-      expect(() => assertSigningKey({ app, updates: { publicKeys: [other, publicKey] } }, "android")).not.toThrow();
-      expect(() => assertSigningKey({ app, updates: { publicKeys: [other, publicKey] } }, "macos")).toThrow(
-        "trusts the first",
-      );
+      expect(() => assertSigningKey({ app, updates: { publicKeys: [other, publicKey] } })).not.toThrow();
       expect(() => assertSigningKey({ app, updates: { publicKeys: [other] } })).toThrow(
         "is not one of updates.publicKeys",
       );
@@ -531,21 +589,6 @@ describe("publishing a release", () => {
     });
   });
 
-  test("a desktop release signed with a revoked first key warns that installed desktop apps still take it", async () => {
-    await keyring(async ({ id, ring, signWith }) => {
-      signWith("online");
-      const check = (revokedKeys: string[], platform: "macos" | "android") =>
-        warningsOf(async () =>
-          assertSigningKey({ app: { id: "dev.test.revoke" }, updates: { publicKeys: ring, revokedKeys } }, platform),
-        );
-      expect(await check([id.online], "macos")).toEqual([
-        `updates.revokedKeys revokes ${id.online}, the first of updates.publicKeys, which a desktop app trusts: installed desktop apps keep taking releases it signs until a binary built with another first key replaces them`,
-      ]);
-      expect(await check([], "macos")).toEqual([]);
-      expect(await check([id.online], "android")).toEqual([]);
-    });
-  });
-
   test("--revoke starts a revocation, signed with a key listed after it, and resets the sequence on request", async () => {
     await keyring(async (keys) => {
       const { id, ring, out, signWith } = keys;
@@ -574,7 +617,7 @@ describe("publishing a release", () => {
     });
   });
 
-  test("refuses a revocation no phone would take, before anything is signed", async () => {
+  test("refuses a revocation no app would take, before anything is signed", async () => {
     await keyring(async (keys) => {
       const { id, ring, out, signWith } = keys;
       const { config } = phoneBuild(keys.home, ring).project;
@@ -597,10 +640,14 @@ describe("publishing a release", () => {
       );
       refuse({ revoke: [id.spare] }).toThrow(`sign with ${id.last}, the key listed after every key it revokes`);
       signWith("last");
-      refuse({ revoke: [id.last] }).toThrow("so the phones need a new binary with another key");
+      refuse({ revoke: [id.last] }).toThrow("so the apps need a new binary with another key");
       refuse({ resetSequence: true }).toThrow("--reset-sequence counts only in a release that revokes a key");
-      refuse({ revoke: [id.online] }, "macos").toThrow("are for a phone's release");
-      refuse({ resetSequence: true }, "macos").toThrow("are for a phone's release");
+      refuse({ revoke: [id.last] }, "macos").toThrow("so the apps need a new binary with another key");
+      refuse({ resetSequence: true }, "macos").toThrow("--reset-sequence counts only in a release that revokes a key");
+      expect(releaseRevocations(config, "macos", out, "main", { revoke: [id.online] }, "x64")).toEqual({
+        revokeKeys: [id.online],
+        resetSequence: false,
+      });
       expect(releaseRevocations(config, "android", out, "main", { revoke: [id.online, id.spare] })).toEqual({
         revokeKeys: [id.online, id.spare].sort(),
         resetSequence: false,
@@ -668,7 +715,7 @@ describe("release builds", () => {
             web: { dir: "web" },
             updates: {
               url: "https://updates.example.com",
-              publicKey: Buffer.alloc(32, 7).toString("base64"),
+              publicKey: keyOf(7),
               report: { url: report },
             },
           } as AkanNativeConfig,

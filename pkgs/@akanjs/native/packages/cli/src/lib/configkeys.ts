@@ -23,7 +23,16 @@ const KNOWN: Shape = {
   usageDescriptions: true,
   privacy: { tracking: true, trackingDomains: true, collectedDataTypes: true, accessedApis: true },
   permissions: { camera: true, microphone: true, location: true },
-  updates: { url: true, publicKey: true, publicKeys: true, channel: true, readyTimeout: true, report: { url: true } },
+  updates: {
+    url: true,
+    publicKey: true,
+    publicKeys: true,
+    revokedKeys: true,
+    channel: true,
+    readyTimeout: true,
+    report: { url: true },
+    target: true,
+  },
   deepLinks: { schemes: true, domains: { "[]": { host: true, pathPrefixes: true } } },
   native: {
     ios: { infoPlist: true, entitlements: true },

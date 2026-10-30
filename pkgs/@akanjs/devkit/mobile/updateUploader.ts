@@ -51,12 +51,8 @@ export class UpdateUploader {
   //* APIs, which a later publish from another machine may have replaced.
   static async releaseFiles(updatesDir: string, { dir, channel, bundle }: PublishedUpdate): Promise<string[]> {
     const keyOf = (file: unknown) => UpdateUploader.#keyOf(updatesDir, dir, file);
-    const desktop = await UpdateUploader.#read<UpdateManifest>(path.join(dir, `${channel}.json`));
-    if (desktop?.bundle === bundle) {
-      const archive = desktop.archive?.url;
-      const patches = UpdateUploader.#field(desktop.patches, "url");
-      return [archive, ...patches, `${channel}.json.sig`, `${channel}.json`].map(keyOf);
-    }
+    const v1 = await UpdateUploader.#read<UpdateManifest>(path.join(dir, `${channel}.json`));
+    const pair = v1?.bundle === bundle ? [`${channel}.json.sig`, `${channel}.json`] : [];
     const names = await readdir(path.join(dir, channel)).catch(() => [] as string[]);
     for (const name of names.filter((name) => name.endsWith(".json"))) {
       const envelope = await UpdateUploader.#read<UpdateEnvelope>(path.join(dir, channel, name));
@@ -65,6 +61,8 @@ export class UpdateUploader {
           ? UpdateUploader.#parse<UpdateManifest>(Buffer.from(envelope.manifest, "base64").toString("utf8"))
           : null;
       if (manifest?.bundle !== bundle) continue;
+      if (manifest.kind === "app")
+        return [...UpdateUploader.#appFiles(manifest), ...pair, `${channel}/${name}`].map(keyOf);
       const hashes = [...new Set(UpdateUploader.#field(manifest.files, "sha256"))];
       if (!hashes.every((hash): hash is string => typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)))
         throw new Error(
@@ -72,7 +70,12 @@ export class UpdateUploader {
         );
       return [...hashes.map((hash) => `${UpdatePackFolder.filesDir}/${hash}`), `${channel}/${name}`].map(keyOf);
     }
+    if (v1 && pair.length) return [...UpdateUploader.#appFiles(v1), ...pair].map(keyOf);
     throw new Error(`${dir} holds no ${channel} manifest of release ${bundle}; nothing was uploaded.`);
+  }
+
+  static #appFiles(manifest: Partial<UpdateManifest>): unknown[] {
+    return [manifest.archive?.url, ...UpdateUploader.#field(manifest.patches, "url")];
   }
 
   static #keyOf(updatesDir: string, dir: string, file: unknown) {

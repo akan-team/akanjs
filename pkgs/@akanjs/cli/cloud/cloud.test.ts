@@ -19,6 +19,7 @@ import {
 } from "@akanjs/devkit/testHelpers";
 import type { PackageJson } from "@akanjs/devkit/types";
 import { Logger } from "akanjs/common";
+import * as nativeApi from "akanjs/native/api";
 import { CloudCommand } from "./cloud.command";
 import { CloudRunner } from "./cloud.runner";
 import { CloudScript } from "./cloud.script";
@@ -1133,7 +1134,7 @@ const desktopFixture = async (updatesDir: string) => {
   await writeText(path.join(dir, "app", `${tarSha}.tar.gz`), "gzip tar");
   await writeText(path.join(dir, "app", `${sha256("old tar")}.tar.gz`), "an earlier release");
   const manifest = {
-    schema: 1,
+    schema: 2,
     kind: "app",
     app: "com.lu",
     platform: "macos",
@@ -1148,19 +1149,26 @@ const desktopFixture = async (updatesDir: string) => {
     archive: { sha256: tarSha, url: `app/${tarSha}.tar.gz`, size: 8, gzSha256: sha256("gzip tar") },
     patches: [],
     server: false,
+    target: "default",
   };
   const bytes = `${JSON.stringify(manifest, null, 2)}\n`;
-  await writeText(path.join(dir, "main.json"), bytes);
+  const raw = publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64");
   await writeText(
-    path.join(dir, "main.json.sig"),
-    `${sign(null, Buffer.from(bytes), privateKey).toString("base64")}\n`,
+    path.join(dir, "main", "app.json"),
+    JSON.stringify({
+      manifest: Buffer.from(bytes).toString("base64"),
+      keyId: nativeApi.keyIdOf(raw),
+      signature: sign(null, Buffer.from(bytes), privateKey).toString("base64"),
+    }),
   );
   return await DesktopRelease.read(updatesDir, {
     platform: "macos",
     arch: "arm64",
     channel: "main",
     appId: "com.lu",
-    publicKey: publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64"),
+    target: "default",
+    publicKeys: [raw],
+    api: nativeApi,
   });
 };
 
@@ -1318,7 +1326,7 @@ describe("push-update of a desktop release", () => {
       });
 
     try {
-      const manifestUrl = "https://cdn.akanjs.com/p/lu/macos-arm64/main.json";
+      const manifestUrl = "https://cdn.akanjs.com/p/lu/macos-arm64/main/app.json";
       await push({ id: "release-1", status: "published", problems: [], manifestUrl });
       await push({ id: "release-2", status: "staged", problems: ["unsigned build"] });
       const refusal = await push({ id: "release-3", status: "rejected", problems: ["another team's key"] }).catch(
@@ -1340,14 +1348,13 @@ describe("push-update of a desktop release", () => {
       await Bun.write(copy, stored[0] ?? new Uint8Array());
       expect(Bun.spawnSync(["tar", "-tf", copy]).stdout.toString().split(/\r?\n/).filter(Boolean)).toEqual([
         "./release.json",
-        "./main.json",
-        "./main.json.sig",
+        "./main/app.json",
         `./${release.manifest.archive.url}`,
       ]);
       const label = "lu default macos-arm64 on channel main";
       expect(printed).toEqual([
-        `Published ${label}: release release-1 (1.0.0-1761700000, 4 files). Installed apps read ${manifestUrl}.`,
-        `Staged ${label}: release release-2 (1.0.0-1761700000, 4 files). Publish it from the project's release screen; installed apps read https://updates.test/lu/macos-arm64/main.json.`,
+        `Published ${label}: release release-1 (1.0.0-1761700000, 3 files). Installed apps read ${manifestUrl}.`,
+        `Staged ${label}: release release-2 (1.0.0-1761700000, 3 files). Publish it from the project's release screen; installed apps read https://updates.test/lu/macos-arm64/main/app.json.`,
         "The project noted:\n  - unsigned build",
       ]);
       expect(refusal).toBeInstanceOf(ExitCodeError);

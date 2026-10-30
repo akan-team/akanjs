@@ -1,10 +1,18 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { type LogEvent, withLogSink } from "../src/lib/log.ts";
 import type { BuildContext } from "../src/lib/prepare.ts";
-import { assertServerOfChannel, releaseDir } from "../src/lib/publish.ts";
-import { hostArch, type UpdateManifest } from "../src/lib/updates.ts";
+import { assertServerOfChannel, type PublishedRelease, publishRelease, releaseDir } from "../src/lib/publish.ts";
+import {
+  generateUpdateKey,
+  hostArch,
+  keyIdOf,
+  openEnvelope,
+  type UpdateManifest,
+  verifyManifest,
+} from "../src/lib/updates.ts";
 import { publishAppUpdate } from "../src/platforms/desktop-update.ts";
 
 const roots: string[] = [];
@@ -109,5 +117,74 @@ describe("publishing a desktop release", () => {
     writeFileSync(kept, "");
     const { leftovers } = await publish(root, out, {}, 1000);
     expect(leftovers).toEqual([kept]);
+  });
+});
+
+describe("publishing a desktop release for protocol v2", () => {
+  test("writes the envelope naming its target, and the v1 pair only while the first key signs", async () => {
+    const root = mkdtempSync(join(tmpdir(), "akan-native-publish-"));
+    roots.push(root);
+    const online = generateUpdateKey(join(root, "online.key")).publicKey;
+    const spare = generateUpdateKey(join(root, "spare.key")).publicKey;
+    const previous = process.env.AKAN_NATIVE_UPDATE_KEY;
+    try {
+      const updates = {
+        url: "https://u",
+        publicKeys: [online, spare],
+        revokedKeys: [],
+        channel: "production",
+        readyTimeout: 10_000,
+        reportUrl: null,
+        target: "pilot",
+      };
+      const app = { id: "dev.test.publish", version: "1.0.0" };
+      const build = { project: { config: { app, updates } } } as unknown as BuildContext;
+      const out = join(root, "out");
+      const dir = join(out, `linux-${hostArch()}`);
+      const manifestOf = (release: PublishedRelease) =>
+        JSON.parse(
+          new TextDecoder().decode(openEnvelope(readFileSync(release.file, "utf8"), [online, spare]).manifest),
+        );
+
+      process.env.AKAN_NATIVE_UPDATE_KEY = join(root, "online.key");
+      const first = await publishRelease(build, "linux", builtApp(root, { marker: "a" }), out, "production");
+      expect(first.file).toBe(join(dir, "production", "app.json"));
+      expect(openEnvelope(readFileSync(first.file, "utf8"), [online, spare]).keyId).toBe(keyIdOf(online));
+      expect(manifestOf(first)).toEqual(first.manifest);
+      expect(first.manifest).toMatchObject({ schema: 2, kind: "app", target: "pilot", server: false });
+      expect(first.manifest.revokeKeys).toBeUndefined();
+      const v1 = readFileSync(join(dir, "production.json"));
+      expect(verifyManifest(v1, readFileSync(join(dir, "production.json.sig"), "utf8").trim(), online)).toBe(true);
+      const { schema, target, ...same } = JSON.parse(v1.toString()) as UpdateManifest;
+      expect([schema, target]).toEqual([1, undefined]);
+      expect(first.manifest).toEqual({ ...same, schema: 2, target: "pilot" });
+
+      process.env.AKAN_NATIVE_UPDATE_KEY = join(root, "spare.key");
+      const events: LogEvent[] = [];
+      const second = await withLogSink(
+        (event) => events.push(event),
+        () =>
+          publishRelease(build, "linux", builtApp(root, { marker: "b" }), out, "production", {
+            revoke: [keyIdOf(online)],
+          }),
+      );
+      expect(second.manifest).toMatchObject({ schema: 2, target: "pilot", revokeKeys: [keyIdOf(online)] });
+      expect(second.manifest.patches?.[0]?.from).toBe(first.manifest.archive?.sha256 as string);
+      expect(second.manifest.sequence).toBeGreaterThan(first.manifest.sequence);
+      expect(openEnvelope(readFileSync(second.file, "utf8"), [online, spare]).keyId).toBe(keyIdOf(spare));
+      //? The pair stays the first release's: an app built before protocol v2 sees nothing newer it could verify.
+      expect(JSON.parse(readFileSync(join(dir, "production.json"), "utf8")).bundle).toBe(first.manifest.bundle);
+      expect(events.filter((event) => event.level === "warn").map((event) => event.message)).toContain(
+        `this release is signed with ${keyIdOf(spare)}, not the first of updates.publicKeys: desktop apps built before protocol v2 trust only that key, so they do not see it`,
+      );
+
+      rmSync(join(dir, "production.json"));
+      expect(() => assertServerOfChannel({ desktop: { server: {} } }, "linux", out, "production")).toThrow(
+        `the production release in ${dir} (${second.manifest.bundle}) carries no server and this build does`,
+      );
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
+      else process.env.AKAN_NATIVE_UPDATE_KEY = previous;
+    }
   });
 });

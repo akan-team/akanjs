@@ -6,9 +6,9 @@ export type NativeBuildApiModule = typeof NativeBuildApi;
 export class NativeApi {
   //* The build API versions itself; a major this devkit was not written against is refused before anything builds.
   static readonly supportedMajor = 0;
-  //? An update release's `revoke` and `resetSequence` arrived in 0.12.0, and an older API would publish without them;
-  //? `requestedDistribution` in 0.11.0; akanjs 3.0.x vendors 0.10.0.
-  static readonly minimumVersion = "0.12.0";
+  //? A desktop release's envelope and `updates.target` arrived in 0.13.0, and an older API refuses the key; an update
+  //? release's `revoke` and `resetSequence` in 0.12.0; `requestedDistribution` in 0.11.0; akanjs 3.0.x vendors 0.10.0.
+  static readonly minimumVersion = "0.13.0";
 
   /** The API of the akanjs the app installed: the workspace package inside this repo, akanjs's vendored copy elsewhere. */
   static entryOf(appDir: string): string {
