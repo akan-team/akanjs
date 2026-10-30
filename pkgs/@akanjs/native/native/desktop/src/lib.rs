@@ -149,6 +149,9 @@ const MAX_PENDING: usize = 10_000;
 /// Files registered by plugins: id → (path, mime). Served at /__akan_native/file/<id>.
 static FILES: LazyLock<Mutex<HashMap<String, (PathBuf, String)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 static PROXY: OnceLock<Mutex<EventLoopProxy<UserEvent>>> = OnceLock::new();
+/// A quit asked for before akan_native_run made the event loop (a plugin quitting in the launch phase, while the
+/// carried server starts), which send() would drop: akan_native_run sends it once the loop exists.
+static EARLY_QUIT: Mutex<Option<i32>> = Mutex::new(None);
 
 // Quit flow (plugins.md D4). AppKit asks applicationShouldTerminate: (Cmd+Q, Dock, AppleScript,
 // logout); the shell cancels, the host runs its sequence (page veto, plugin cleanup) and calls
@@ -504,6 +507,13 @@ pub unsafe extern "C" fn akan_native_unregister_file(id: *const c_char) -> u8 {
 #[no_mangle]
 pub extern "C" fn akan_native_quit(code: i32) {
   QUITTING.store(true, Ordering::Release);
+  {
+    let mut early = EARLY_QUIT.lock().unwrap_or_else(|e| e.into_inner());
+    if PROXY.get().is_none() {
+      early.get_or_insert(code);
+      return;
+    }
+  }
   send(UserEvent::Quit(code));
 }
 
@@ -2002,7 +2012,13 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
     event_loop.set_activation_policy(ActivationPolicy::Prohibited);
     event_loop.set_activate_ignoring_other_apps(false);
   }
-  let _ = PROXY.set(Mutex::new(event_loop.create_proxy()));
+  {
+    let early = EARLY_QUIT.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = PROXY.set(Mutex::new(event_loop.create_proxy()));
+    if let Some(code) = *early {
+      send(UserEvent::Quit(code));
+    }
+  }
   #[cfg(target_os = "macos")]
   macos::install_terminate_handler();
   #[cfg(target_os = "macos")]

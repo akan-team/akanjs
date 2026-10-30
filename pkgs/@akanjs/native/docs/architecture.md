@@ -646,7 +646,7 @@ void     akan_native_respond(uint64_t req_id, uint16_t status,
 void     akan_native_emit(uint32_t webview_id, const char* js);   // main 스레드로 넘겨 evaluate_script
 void     akan_native_register_file(const char* id, const char* path, const char* mime);
 uint8_t  akan_native_unregister_file(const char* id);        // v0.2: FileRef 해제($bridge.release). 1 = 등록돼 있었음
-void     akan_native_quit(int32_t code);                     // 종료. quitRequested에 대한 "예"이기도 하다
+void     akan_native_quit(int32_t code);                     // 종료. quitRequested에 대한 "예"이기도 하다. akan_native_run 전에 부르면 루프가 생기자마자 끝난다
 void     akan_native_quit_cancel(void);                      // reason "session"(로그아웃) quitRequested에 대한 "아니오"
 void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.setTitle",...} → main 스레드에서 실행,
                                                       // 답은 네이티브 이벤트 {"type":"shellReply","id",ok,result|error}

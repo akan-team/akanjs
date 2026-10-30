@@ -19,7 +19,10 @@ export interface UpdateState {
   sequence: number;
   /** Downloaded and verified, runs at the next launch or after apply(). */
   pending: string | null;
-  /** Running for the first time: call notifyReady() once the app works, or it is rolled back. */
+  /**
+   * Running for the first time: call notifyReady() once the app works, or it is rolled back. Desktop: also while it is
+   * being rolled back, until the app restarts into the previous release.
+   */
   trial: boolean;
   /** The last bundle that was rolled back, if any. */
   rolledBack: string | null;
@@ -31,8 +34,8 @@ export interface UpdateState {
 
 export interface UpdateCheck {
   /**
-   * A newer bundle for this binary exists (not rolled back before). Desktop: never the release on trial, nor one whose
-   * server presence differs from this app's.
+   * A newer bundle for this binary exists (not rolled back before). Desktop: never the release on trial or this
+   * binary's own, nothing while a rollback is under way, nor one whose server presence differs from this app's.
    */
   available: boolean;
   bundle: string | null;
@@ -52,12 +55,15 @@ export interface UpdatesApi {
   getState(): Promise<UpdateState>;
   /** Fetches and verifies the signed manifest. Rejects NOT_FOUND when nothing is published, INTERNAL for a bad signature. */
   check(): Promise<UpdateCheck>;
-  /** Downloads and verifies the latest bundle; it runs at the next launch (or apply()). */
+  /**
+   * Downloads and verifies the latest bundle; it runs at the next launch (or apply()). Desktop: rejects NOT_ALLOWED
+   * while a rollback is under way.
+   */
   download(): Promise<{ bundle: string }>;
   /**
    * Phones: reloads the page into the downloaded bundle now (on trial). Desktop: replaces the app with the download and
-   * relaunches it (on trial); rejects NOT_ALLOWED while the running release is still on trial. Rejects NOT_FOUND
-   * without a download.
+   * relaunches it (on trial); rejects NOT_ALLOWED while the running release is on trial or being rolled back. Rejects
+   * NOT_FOUND without a download.
    */
   apply(): Promise<void>;
   /** The running bundle works: keep it. Call it once the app has started; harmless otherwise. */
