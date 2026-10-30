@@ -368,6 +368,8 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
   const carries = (app: string) => existsSync(join(resources(app), "server.json"));
   let dir = "";
   let onTrial = false;
+  //? From the moves of a rollback until this process exits: an apply now would move the failed release back.
+  let rollingBack = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let downloading = false;
   let unwritableTold = false;
@@ -437,11 +439,19 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
    * revocation's resetSequence it may be older than that.
    */
   const applicable = (c: UpdatesConfig, state: State, entry: Entry) =>
-    c.protocol === 2
+    entry.build !== c.embeddedSequence &&
+    (c.protocol === 2
       ? entry.sequence > c.embeddedSequence &&
         ring(c).has(signerOf(c, entry)) &&
         !state.revokedKeys?.includes(signerOf(c, entry))
-      : entry.sequence > runningSequence(c, state);
+      : entry.sequence > runningSequence(c, state));
+  const notRollingBack = () => {
+    if (rollingBack)
+      throw new AkanNativeError(
+        "NOT_ALLOWED",
+        "the release on trial is being rolled back: the app restarts into the previous one",
+      );
+  };
 
   const fail = (state: State, bundle: string, why: string) => {
     if (!state.failed.includes(bundle)) state.failed.push(bundle);
@@ -488,6 +498,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       writeState(state);
       return;
     }
+    rollingBack = true;
     //? A newer download already waiting supersedes the release being tried again.
     const keep = !failed && !(state.pending && state.pending.sequence > trial.sequence);
     const to = keep ? join(`${app}.update-${trial.bundle}`, basename(app)) : `${app}.failed-${trial.bundle}`;
@@ -650,8 +661,9 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
    * revokes, which bind whether or not it is newer (kernel.ts updateDecision).
    */
   const decide = (c: UpdatesConfig, { m, signer }: Release, state: State) => {
-    if (signer === null)
-      return { newer: m.sequence > runningSequence(c, state) && !state.failed.includes(m.bundle), revoke: [] };
+    //? This binary's own release runs even when no entry names it (an installer put it there, a rollback cleared it).
+    const offered = m.build !== c.embeddedSequence && !state.failed.includes(m.bundle);
+    if (signer === null) return { newer: offered && m.sequence > runningSequence(c, state), revoke: [] };
     const running = ifRunning(state.trial) ?? ifRunning(state.current);
     const decision = updateDecision({
       ring: [...ring(c).keys()],
@@ -669,7 +681,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         "INTERNAL",
         `invalid release manifest: key ${signer} may not revoke ${(m.revokeKeys ?? []).join(", ")}`,
       );
-    return { newer: decision.kind === "take" && !state.failed.includes(m.bundle), revoke: decision.revoke };
+    return { newer: offered && decision.kind === "take", revoke: decision.revoke };
   };
   /** Keys a verified manifest revoked, for good; a download one of them signed goes with them. */
   const revokeKeys = (c: UpdatesConfig, keyIds: string[]) => {
@@ -907,7 +919,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           bundle: current?.bundle ?? null,
           sequence: current?.sequence ?? 0,
           pending: state.pending?.bundle ?? null,
-          trial: onTrial,
+          trial: onTrial || rollingBack,
           rolledBack: state.rolledBack ?? null,
           channel: c.channel,
           nativeApi: c.nativeApi,
@@ -927,7 +939,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           refusalsTold.add(m.bundle);
           console.warn(`[akan-native] updates: ${m.bundle}: ${refusal}`);
         }
-        const available = !refusal && newer;
+        const available = !refusal && newer && !rollingBack;
         return {
           available,
           bundle: m.bundle,
@@ -940,6 +952,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       async download(_args, ctx) {
         const c = need();
         const app = installed as string;
+        notRollingBack();
         if (downloading) throw new AkanNativeError("CANCELLED", "a download is already running");
         downloading = true;
         try {
@@ -1086,6 +1099,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       async apply(_args, ctx) {
         const c = need();
         const app = installed as string;
+        notRollingBack();
         const state = readState();
         //? .previous is what a release on trial rolls back to: applying another would replace it with that release.
         if (runningIs(state.trial))

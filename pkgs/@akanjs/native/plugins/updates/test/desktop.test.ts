@@ -347,6 +347,40 @@ describe("desktop updates: the trial of a release that carries a server", () => 
     expect(state().current).toBeUndefined();
   });
 
+  test("the process that rolled a release back takes no release until it exits, least of all that one", async () => {
+    const root = mkdtempSync(join(tmpdir(), "akan-native-updates-release-"));
+    roots.push(root);
+    const release = serveRelease(root, { sequence: 2000, bundle: "2000-aaaaaaaa", build: BUILD });
+    try {
+      const server = fakeServer();
+      const { call, state, relaunches, quits, app } = await harness({
+        url: release.url,
+        publicKey: release.publicKey,
+        server: server.status,
+        readyTimeout: 5000,
+        serverBootAllowance: 5000,
+        state: onTrial,
+      });
+      server.setState("gaveUp");
+      await until(() => quits.length > 0);
+      const kept = join(`${app}.update-2000-aaaaaaaa`, "Renamed App");
+      expect(state()).toMatchObject({ pending: { bundle: "2000-aaaaaaaa", staged: kept } });
+      expect(await call("getState")).toMatchObject({ result: { trial: true } });
+      expect(await call("check")).toMatchObject({ ok: true, result: { available: false } });
+      expect(await call("apply")).toMatchObject({ ok: false, error: { code: "NOT_ALLOWED" } });
+      release.publish({ sequence: 3000, bundle: "3000-bbbbbbbb", build: 2999 });
+      expect(await call("check")).toMatchObject({ ok: true, result: { available: false, bundle: "3000-bbbbbbbb" } });
+      expect(await call("download")).toMatchObject({ ok: false, error: { code: "NOT_ALLOWED" } });
+      expect(release.archiveRequests()).toBe(0);
+      expect(relaunches).toHaveLength(1);
+      expect(markerOf(app)).toBe("previous");
+      expect(markerOf(kept)).toBe("installed");
+      expect(state().trial).toBeUndefined();
+    } finally {
+      release.stop();
+    }
+  });
+
   test("a live process under the trial's PID is not a second instance of an app that carries a server", async () => {
     const server = fakeServer();
     const { state } = await harness({
@@ -380,6 +414,35 @@ describe("desktop updates: while a release is on trial", () => {
       expect(markerOf(`${app}.previous`)).toBe("previous");
     } finally {
       release.stop();
+    }
+  });
+
+  test("the release this binary was built from is not newer, though no entry names it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "akan-native-updates-release-"));
+    roots.push(root);
+    const key = newKey();
+    const v1 = serveRelease(root, { sequence: 2000, bundle: "2000-aaaaaaaa", build: BUILD });
+    const v2 = serveRelease(root, { sequence: 2000, bundle: "2000-aaaaaaaa", build: BUILD, signer: key });
+    try {
+      for (const options of [
+        { url: v1.url, publicKey: v1.publicKey },
+        { url: v2.url, publicKeys: [rawKey(key)] },
+      ]) {
+        const { call, state } = await harness({
+          ...options,
+          state: (app) => {
+            const { pending } = pendingOf(app, 2000);
+            return { pending: { ...pending, bundle: "2000-aaaaaaaa", build: BUILD }, failed: [] };
+          },
+        });
+        expect(state().pending).toBeUndefined();
+        expect(await call("check")).toMatchObject({ ok: true, result: { available: false } });
+        expect(await call("download")).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+      }
+      expect(v1.archiveRequests() + v2.archiveRequests()).toBe(0);
+    } finally {
+      v1.stop();
+      v2.stop();
     }
   });
 
