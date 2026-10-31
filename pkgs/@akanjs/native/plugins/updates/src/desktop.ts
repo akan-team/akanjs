@@ -452,6 +452,18 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         "the release on trial is being rolled back: the app restarts into the previous one",
       );
   };
+  //? macOS naps an app nobody looks at, and on a busy Mac a napped download waits for idle cores: seconds of work
+  //? took minutes (native/desktop/src/activity.rs). Best effort: without the hold it is only slower.
+  const stayAwake = async (ctx: DesktopContext, reason: string): Promise<() => void> => {
+    if (!mac) return () => {};
+    const id = await ctx.shell("activity.begin", { reason }).then(
+      (held) => (held as { id: number }).id,
+      () => null,
+    );
+    return () => {
+      if (id !== null) void ctx.shell("activity.end", { id }).catch(() => {});
+    };
+  };
 
   const fail = (state: State, bundle: string, why: string) => {
     if (!state.failed.includes(bundle)) state.failed.push(bundle);
@@ -955,6 +967,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         notRollingBack();
         if (downloading) throw new AkanNativeError("CANCELLED", "a download is already running");
         downloading = true;
+        const awake = await stayAwake(ctx, "Downloading an update");
         try {
           const release = await fetchRelease(c, readState());
           const { m } = release;
@@ -1093,6 +1106,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           return { bundle: m.bundle };
         } finally {
           downloading = false;
+          awake();
         }
       },
 

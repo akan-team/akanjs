@@ -20,7 +20,7 @@ tao = { version = "=0.37.0", default-features = false, features = ["rwh_06"] }
 # the quit Apple event for D4, status items for the tray plugin, screens and the Dock tile for the
 # screen and dock plugins).
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSObject", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSGeometry", "NSArray", "NSRunLoop", "NSTimer", "NSDate", "NSObjCRuntime", "NSNotification", "NSDictionary", "NSValue"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSObject", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSGeometry", "NSArray", "NSRunLoop", "NSTimer", "NSDate", "NSObjCRuntime", "NSNotification", "NSDictionary", "NSValue", "NSProcessInfo"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSEvent", "NSWorkspace", "NSAppearance", "NSView", "block2", "NSAlert", "NSButton", "NSControl", "NSTextField", "NSWindow", "NSPanel", "NSSavePanel", "NSOpenPanel", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSImage", "NSCell", "NSUserInterfaceItemIdentification", "NSScreen", "NSDockTile"] }
 # Objective-C blocks (sheet completion handlers); also in the tao/wry tree.
 block2 = "0.6"

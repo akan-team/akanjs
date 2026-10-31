@@ -1147,6 +1147,7 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
   - 상태(`state.json`)와 다음 delta의 기준 tar는 `<app local data>/akan-native-updates`에 둔다(`ctx.appLocalDataDir`, Windows `%LOCALAPPDATA%\<id>`). 기준 tar는 앱 전체이고 trial은 이 PC의 설치에 속하므로, 사용자를 따라 옮겨 다니는 Roaming에 두지 않는다(2026-09-30 08 리뷰, 배포한 적 없는 위치라 옮기지 않았다). debug 빌드(`--debug`, dev 빌드 포함. boot.json `dev`)는 배포본과 같은 id라 `akan-native-updates-debug`를 따로 쓴다. 서버 데이터의 `server-debug`와 같은 규칙이다. 예전에는 같은 폴더를 써서, 새로 빌드한 debug 앱이 배포본이 받아 둔 릴리스를 자기보다 오래된 것으로 보고 지웠다(2026-09-30 10 리뷰).
   - `state.json`은 임시 파일에 쓰고 fsync한 뒤, 이전 파일을 `state.json.bak`으로 옮기고 rename한다(macOS·Linux는 폴더도 fsync). 읽지 못하면 `.bak`을 읽는다. 정전 뒤 trial·`failed`를 잃으면 망가진 릴리스가 되돌려지지 않거나 되돌린 릴리스를 다시 받는다(2026-09-30 10 리뷰).
   - 릴리스는 tar다. macOS는 `/usr/bin/tar --no-mac-metadata`, Windows는 Windows 10부터 들어 있는 bsdtar(`tar.exe`)로 만든다. 받은 뒤의 tar sha256이 매니페스트와 맞아야 한다.
+  - macOS: `download()`가 도는 동안 셸 op `activity.begin`·`activity.end`(`native/desktop/src/activity.rs`, NSProcessInfo 활동: 사용자가 시작한 일, 유휴 잠자기는 허용)로 App Nap을 막는다. 숨거나 가려진 앱은 30~50초 뒤 App Nap에 들어가 스레드 우선순위가 4(darwinbg)로 내려가고 I/O가 제한된다. 모든 코어가 바쁜 Mac에서 80 MB 릴리스를 받고 풀고 검사하는 데 106초가 걸렸고, 활동을 잡으면 3.4초였다(2026-11-01 측정). 활동을 잡지 못해도 느릴 뿐 그대로 받는다.
   - 자기 릴리스의 tar를 가진 앱(업데이트로 설치된 앱)은 delta만 받는다(`packages/desktop/src/delta.ts`). 처음 설치된 앱은 전체를 받는다. 직전 릴리스로부터의 패치만 게시하는 방식은 Electrobun과 같다(`electrobun-v1/package/src/cli/index.ts:3788-3927`).
   - delta 방식: bsdiff 대신 rsync식 블록 매칭(8 KiB 블록, 롤링 체크섬 + 강한 해시)을 쓴다.
     - bsdiff는 옛 파일 전체의 접미사 배열(크기의 약 8배 메모리)을 만든다. JS로 62 MB bun 실행 파일을 처리하면 수 분이 걸린다.
