@@ -1059,8 +1059,8 @@ export default page()
       {
         name: "setCookie(key, value, options?)",
         desc: l.trans({
-          en: "Writes a cookie in the browser (`path=/`, `SameSite=Lax`, `Secure`; `options` overrides only the keys it names). Does nothing on the server.",
-          ko: "브라우저에 cookie를 씁니다(`path=/`, `SameSite=Lax`, `Secure`; `options`는 적은 항목만 바꿉니다). 서버에서는 아무 일도 하지 않습니다.",
+          en: "Writes a cookie in the browser (`path=/`, `SameSite=Lax`, `Secure`; `options` overrides only the keys it names), escaping what a cookie cannot hold so `getCookie` reads the value back; a `%XX` you encoded stays as is. Does nothing on the server.",
+          ko: "브라우저에 cookie를 씁니다(`path=/`, `SameSite=Lax`, `Secure`; `options`는 적은 항목만 바꿉니다). cookie에 담을 수 없는 문자는 이스케이프해 `getCookie`가 같은 값을 읽고, 직접 인코딩한 `%XX`는 그대로 둡니다. 서버에서는 아무 일도 하지 않습니다.",
         }),
       },
       {
