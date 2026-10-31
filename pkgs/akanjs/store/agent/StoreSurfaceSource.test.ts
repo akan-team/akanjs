@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { Int } from "akanjs/base";
+import { Int, resetEnvCache } from "akanjs/base";
 import { Translator } from "akanjs/client/translator";
 import { ConstantRegistry, via } from "akanjs/constant";
 import type { SerializedSignal } from "akanjs/signal";
@@ -166,11 +166,19 @@ describe("StoreSurfaceSource", () => {
   test("navigate tells the agent the app kept the page when a navigation guard refuses", async () => {
     const { router } = await import("akanjs/client");
     const priorWindow = globalThis.window;
-    const location = { pathname: "/en/docs/draft", search: "", hash: "", href: "http://app.test/en/docs/draft" };
+    const location = {
+      pathname: "/en/docs/draft",
+      search: "",
+      hash: "",
+      host: "app.test",
+      protocol: "http:",
+      href: "http://app.test/en/docs/draft",
+    };
     Object.defineProperty(globalThis, "window", {
       value: { parent: { postMessage: () => undefined }, location },
       configurable: true,
     });
+    resetEnvCache();
     const moves: string[] = [];
     router.init({
       type: "ssr",
@@ -193,8 +201,9 @@ describe("StoreSurfaceSource", () => {
     expect(moves).toEqual([]);
 
     removeGuard();
-    router.init({ side: "server", routeManifest: [] } as never);
+    globalThis.__AKAN_ROUTER__ = undefined;
     Object.defineProperty(globalThis, "window", { value: priorWindow, configurable: true });
+    resetEnvCache();
   });
 
   test("goBack is global, and refuses when there is nothing behind this page", async () => {

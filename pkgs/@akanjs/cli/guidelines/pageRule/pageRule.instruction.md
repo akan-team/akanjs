@@ -83,9 +83,10 @@ body shape — this is the full contract behind them. Before changing route beha
   native back or swipe, the agent's `navigate` and `goBack` — with routes free of locale and basePath and `to: null`
   for a `back`. `false`, a throw or a rejection keeps the page, `router.navigation()` rejects with
   `NavigationRefused`, and a refused browser back is undone before the page redraws. Guards answer one at a time; a
-  move started while one decides is refused. Register it from an effect and return the remover
-  (`useEffect(() => router.addNavigationGuard(…), [isDirty])`). Redirects, `notFound()`, `setLang` and moves off the
-  origin are not asked; a closing tab is `beforeunload`'s.
+  move started while one decides is refused. In a component, register it with `useNavigationGuard(() => !isDirty)`
+  (`akanjs/webkit`), held only while its page is current: a page kept under the next for a swipe back stays mounted,
+  and a guard it kept would hold that page too. Redirects, `notFound()`, `setLang` and moves off the origin are not
+  asked; a closing tab is `beforeunload`'s.
 
 ## MCP Apps — `.app()`
 

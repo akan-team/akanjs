@@ -4,12 +4,13 @@ import type { NativeBackProgress, NativeBackState } from "./nativeNavigation";
 
 let host: MockHost | null = null;
 const reported: boolean[] = [];
+const routerState = { navigation: Promise.resolve() };
 
 beforeAll(() => {
   mock.module("akanjs/client", () => ({
     debugFrame: () => undefined,
     normalizeDeepLinkHref: (url: string) => url,
-    router: { isInitialized: true, backOrFallback: () => undefined },
+    router: { isInitialized: true, backOrFallback: () => undefined, navigation: () => routerState.navigation },
   }));
 });
 
@@ -17,6 +18,7 @@ afterEach(() => {
   host?.uninstall();
   host = null;
   reported.length = 0;
+  routerState.navigation = Promise.resolve();
   Object.defineProperty(globalThis, "window", { value: undefined, configurable: true });
 });
 
@@ -104,6 +106,36 @@ describe("NativeNavigation on Android", () => {
       { phase: "progressed", progress: 0.4 },
     ]);
     expect(warnings).toBe(1);
+    stop();
+  });
+
+  test("a swiped back the page refuses slides the page back, and an allowed one leaves it to the move", async () => {
+    const shell = installAndroid();
+    const swipes: NativeBackProgress[] = [];
+    const { NativeNavigation } = await import("./nativeNavigation");
+    const stop = new NativeNavigation({
+      historyIdx: () => 1,
+      backState: () => ({
+        path: "/:lang/orders/1",
+        keyboardHeight: 0,
+        keyboardVisible: false,
+        router: { back: () => undefined },
+      }),
+      dismissKeyboard: () => undefined,
+      onBackProgress: (swipe) => swipes.push(swipe),
+    }).listen();
+    await settle();
+
+    shell.emit("app", "backProgress", { phase: "progressed", progress: 0.6, swipeEdge: "left" });
+    shell.emit("app", "backButton", {});
+    await settle();
+    expect(swipes).toEqual([{ phase: "progressed", progress: 0.6 }]);
+
+    routerState.navigation = Promise.reject(new Error("NavigationRefused"));
+    shell.emit("app", "backProgress", { phase: "progressed", progress: 0.6, swipeEdge: "left" });
+    shell.emit("app", "backButton", {});
+    await settle();
+    expect(swipes.at(-1)).toEqual({ phase: "cancelled", progress: 0 });
     stop();
   });
 });

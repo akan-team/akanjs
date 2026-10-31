@@ -12,7 +12,12 @@ export * from "./locale";
 export * from "./makePageProto";
 export * from "./mcpView";
 export * from "./nativeHost";
-export * from "./navigationGuards";
+export {
+  type NavigationAttempt,
+  type NavigationGuard,
+  type NavigationKind,
+  NavigationRefused,
+} from "./navigationGuards";
 export * from "./resolveServerUrl";
 export * from "./route";
 export * from "./router";

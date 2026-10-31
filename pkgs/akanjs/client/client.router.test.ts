@@ -135,6 +135,7 @@ const installSessionHistory = (pathname: string) => {
   const show = (path: string) =>
     Object.assign(window.location, { pathname: path, href: `https://example.test${path}` });
   const traverse = (delta: number) => {
+    if (!entries[idx + delta]) return;
     idx += delta;
     const entry = entries[idx];
     show(entry.pathname);
@@ -160,6 +161,7 @@ const installSessionHistory = (pathname: string) => {
       if (href) show(href);
     },
     go: (delta: number) => setTimeout(() => traverse(delta), 0),
+    back: () => setTimeout(() => traverse(-1), 0),
   };
   Object.assign(window, { history });
   const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -779,7 +781,7 @@ describe("router", () => {
 });
 
 describe("router navigation guards", () => {
-  const ssrRouter = async (calls: unknown[]) => {
+  const ssrRouter = async (calls: unknown[], shell = { backMovesNothing: false }) => {
     const { router } = await import("./router");
     const { csrLocation } = await import("./csrLocation");
     router.init({
@@ -793,7 +795,9 @@ describe("router navigation guards", () => {
           calls.push(["push", href]);
           csrLocation.push(null, href);
         },
-        back: () => window.history.go(-1),
+        back: () => {
+          if (!shell.backMovesNothing) csrLocation.back();
+        },
       },
     });
     return router;
@@ -964,6 +968,67 @@ describe("router navigation guards", () => {
     expect(session.at()).toBe("/en/admin/list");
     expect(session.shown).toEqual(["/en/admin/list"]);
     expect(asked).toEqual([{ kind: "back", from: "/doc/1", to: null }]);
+  });
+
+  test("a router.back() the shell does not carry out leaves the next browser back to be asked", async () => {
+    envState.side = "client";
+    const session = installSessionHistory("/en/admin/list");
+    const shell = { backMovesNothing: true };
+    const router = await ssrRouter([], shell);
+    router.push("/doc/1");
+    let isDirty = false;
+    const asked: unknown[] = [];
+    router.addNavigationGuard((navigation) => {
+      asked.push(navigation);
+      return !isDirty;
+    });
+
+    router.back();
+    await session.settle();
+    expect(session.at()).toBe("/en/admin/doc/1");
+
+    isDirty = true;
+    session.browserBack();
+    await session.settle();
+    expect(session.at()).toBe("/en/admin/doc/1");
+    expect(session.shown).toEqual([]);
+    expect(asked).toEqual([
+      { kind: "back", from: "/doc/1", to: null },
+      { kind: "pop", from: "/doc/1", to: "/list" },
+    ]);
+  });
+
+  test("a second browser back while an async guard decides is refused, and the first still replays once allowed", async () => {
+    envState.side = "client";
+    const session = installSessionHistory("/en/admin/list");
+    const router = await ssrRouter([]);
+    router.push("/doc/1");
+    router.push("/doc/2");
+    const answers: ((value: boolean) => void)[] = [];
+    router.addNavigationGuard(() => new Promise<boolean>((resolve) => answers.push(resolve)));
+
+    session.browserBack();
+    session.browserBack();
+    await session.settle();
+    await session.settle();
+    expect(session.at()).toBe("/en/admin/doc/2");
+    expect(answers).toHaveLength(1);
+
+    answers[0]?.(true);
+    await session.settle();
+    expect(session.at()).toBe("/en/admin/doc/1");
+    expect(session.shown).toEqual(["/en/admin/doc/1"]);
+  });
+
+  test("a guard added on the server is not kept, so a server push still only points at redirect()", async () => {
+    envState.side = "server";
+    const { router } = await import("./router");
+    router.init({ type: "ssr", side: "server", lang: "en" });
+    const remove = router.addNavigationGuard(() => false);
+
+    expect(() => router.push("/list")).not.toThrow();
+    expect(warnings).toEqual(["router.push(/en/list) does not navigate on the server; use router.redirect() there"]);
+    remove();
   });
 
   test("a deep link that resets the stack is asked once for the whole stack", async () => {

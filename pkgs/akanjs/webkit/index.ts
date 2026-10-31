@@ -13,6 +13,7 @@ export { useGeoLocation } from "./useGeoLocation";
 export { useHistory } from "./useHistory";
 export { useInterval } from "./useInterval";
 export { useLocation } from "./useLocation";
+export { useNavigationGuard } from "./useNavigationGuard";
 export { usePageActivity } from "./usePageActivity";
 export { usePageFocusEffect } from "./usePageFocusEffect";
 export { usePageLocation } from "./usePageLocation";

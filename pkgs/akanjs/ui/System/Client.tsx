@@ -3,6 +3,7 @@ import { type ClientEnv, dayjs, getEnv, logo } from "akanjs/base";
 import {
   type CsrPageType,
   cn,
+  csrLocation,
   Device,
   debugFrame,
   defaultPageState,
@@ -422,7 +423,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
           return navigateRscWithFallback(href, { ...routeOptions, replace: true }, () => window.location.replace(href));
         },
         back: () => {
-          window.history.back();
+          csrLocation.back();
         },
         refresh: () => {
           syncHref(window.location.href);

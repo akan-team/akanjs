@@ -98,7 +98,7 @@ Method
 
 - navigation(): The last push, replace or back as a promise. It rejects when a navigation guard or the route refused to move.
 
-- addNavigationGuard(guard): Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover.
+- addNavigationGuard(guard): Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover. A page uses `useNavigationGuard`.
 
 A store action that opens the record it just created:
 

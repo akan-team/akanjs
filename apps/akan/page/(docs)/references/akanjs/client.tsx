@@ -219,8 +219,8 @@ export default page()
       {
         name: "addNavigationGuard(guard)",
         desc: l.trans({
-          en: "Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover.",
-          ko: "앱 안의 이동마다 먼저 `guard({ kind, from, to })`를 묻고, `false`면 페이지에 머뭅니다. 해제 함수를 돌려줍니다.",
+          en: "Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover. A page uses `useNavigationGuard`.",
+          ko: "앱 안의 이동마다 먼저 `guard({ kind, from, to })`를 묻고, `false`면 페이지에 머뭅니다. 해제 함수를 돌려줍니다. 페이지에서는 `useNavigationGuard`를 씁니다.",
         }),
       },
     ];

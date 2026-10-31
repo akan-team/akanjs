@@ -67,6 +67,8 @@ Other Exports
 
 - usePageActivity(): `"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
 
+- useNavigationGuard(guard): Holds `router.addNavigationGuard(guard)` only while this page is current, so a page kept under the next one stops asking.
+
 - useVisualViewportFrame(): `{ keyboardHeight, height, offsetTop }` of the part of the page left visible while the keyboard is up.
 
 - usePageTool, useScreenScope: Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.

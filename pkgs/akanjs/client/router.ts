@@ -10,7 +10,7 @@ import {
 import { CsrLocation, csrLocation } from "./csrLocation";
 import { Href } from "./href";
 import { isMcpView } from "./mcpView";
-import { type Navigation, type NavigationGuard, NavigationGuards, NavigationRefused } from "./navigationGuards";
+import { type NavigationAttempt, type NavigationGuard, NavigationGuards, NavigationRefused } from "./navigationGuards";
 
 export interface RouteOptions {
   scrollToTop?: boolean;
@@ -323,6 +323,10 @@ class Router {
     csrLocation.replace({ ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } });
     if (this.#listensToPopstate || !globalThis.window.addEventListener) return;
     this.#listensToPopstate = true;
+    //? Expected where history moves: a shell's back that moves nothing must leave none for a later browser back.
+    csrLocation.onBack((idx) => {
+      if (this.#guards.size) this.#expectedPops.push({ idx, isAllowed: true });
+    });
     //? Capturing, so a refused move is undone before a shell's own listener draws the page it landed on.
     globalThis.window.addEventListener("popstate", (event) => this.#onPopstate(event), true);
     globalThis.window.addEventListener("hashchange", () => csrLocation.observe());
@@ -340,13 +344,13 @@ class Router {
       }
       return;
     }
-    if (expected) this.#expectedPops.length = 0;
+    if (expected) for (const dropped of [expected, ...this.#expectedPops.splice(0)]) dropped.onLand?.();
     if (left.idx === undefined || landed === undefined || landed === left.idx || !this.#asks(null)) {
       this.#landOn(landed);
       return;
     }
     const leftIdx = left.idx;
-    const navigation: Navigation = {
+    const navigation: NavigationAttempt = {
       kind: "pop",
       from: this.#routeShown(left.href),
       to: this.#routeShown(csrLocation.href),
@@ -361,7 +365,7 @@ class Router {
     if (verdict === false) return;
     //? A traversal started before the last one lands may cancel it, so the replay waits for the undo.
     void Promise.all([verdict, reverted]).then(([isAllowed]) => {
-      if (isAllowed) void this.#traverse(leftIdx, landed, true);
+      if (isAllowed) void this.#traverse(csrLocation.entry().idx ?? leftIdx, landed, true);
     });
   }
   #traverse(from: number, to: number, isAllowed: boolean) {
@@ -515,14 +519,17 @@ class Router {
   /**
    * Asks `guard` before every in-app move — `push`, `replace`, `back`, a `Link`, the browser's back and forward, the
    * agent's navigate — and keeps the page when it answers `false`; returns the call that removes it. A redirect, a
-   * not-found, a locale switch and a move off the origin are not asked.
+   * not-found, a locale switch and a move off the origin are not asked. A page holds one with `useNavigationGuard`
+   * from `akanjs/webkit`, which lets go while the page is not the current one.
    */
   addNavigationGuard(guard: NavigationGuard) {
+    //? The server's router is shared by every request, and nothing navigates there for a guard to keep.
+    if (getEnv().side === "server") return () => undefined;
     return this.#guards.add(guard);
   }
   #guarded(kind: "push" | "replace" | "back", href: string | null, move: () => void | Promise<void>) {
     if (!this.#asks(href)) return this.#track(move());
-    const navigation: Navigation = {
+    const navigation: NavigationAttempt = {
       kind,
       from: this.#routeShown(csrLocation.href),
       to: href === null ? null : Router.#routeHref(this.#getPathInfo(href)),
@@ -595,8 +602,6 @@ class Router {
     this.#checkInitialized();
     this.#guarded("back", null, () => {
       this.#navigations += 1;
-      const idx = this.#guards.size ? csrLocation.entry().idx : undefined;
-      if (idx !== undefined) this.#expectedPops.push({ idx: idx - 1, isAllowed: true });
       this.#instance.back(routeOptions);
     });
     return undefined as never;
