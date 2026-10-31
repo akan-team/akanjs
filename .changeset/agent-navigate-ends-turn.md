@@ -1,6 +1,0 @@
----
-"akanjs": patch
-"use-agentic": patch
----
-
-The in-page agent no longer composes tool names after it changes screens. A tool call is looked up when it runs, but a call batched behind `navigate` was written against the screen being left, so a screen-scoped tool the model had never been shown (`addBacklogTicket`) was called by a guessed name (`addBacklogTicketInProject`) and refused with a bare `Unknown tool`, which sent the model guessing the next one. `AgentService.preamble` now says that `navigate` and `goBack` replace the screen's own tools — listed only on the next turn, so a navigation ends the turn — and that a tool is called only by a listed name. `AgentSession` answers an unknown name with the tools listed now and, when the catalogue changed since the turn's list was written, says the call was written against the screen it left. `navigate` reports the path the page actually landed on when a redirect or the not-found page moved it, and refuses a path with no route with the internal links on screen. `OpenaiLlm` treats a `host` naming OpenAI's own endpoint as its default host, so spelling out `https://api.openai.com/v1` no longer turns vision off; `OpenaiLlm.acceptsOf(llmOption)` lets an app's own chat-completions adaptor claim the same.
