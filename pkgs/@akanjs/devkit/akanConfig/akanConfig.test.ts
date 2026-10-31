@@ -329,6 +329,19 @@ describe("AkanAppConfig", () => {
       overrides: { "js-tokens": "2.0.0" },
       resolutions: { ms: "2.0.0" },
     });
+    const local = new AkanAppConfig(
+      app,
+      [],
+      {
+        ...packageJson,
+        overrides: { "js-tokens": "2.0.0", patched: "file:./patches/patched", shared: "workspace:*" },
+        resolutions: { ms: "link:../ms" },
+      },
+      {},
+      baseDevEnv,
+    ).getProductionPackageJson();
+    expect(local.overrides).toEqual({ "js-tokens": "2.0.0" });
+    expect(local).not.toHaveProperty("resolutions");
     const unpinned = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).getProductionPackageJson();
     expect(unpinned).not.toHaveProperty("overrides");
     expect(unpinned).not.toHaveProperty("resolutions");

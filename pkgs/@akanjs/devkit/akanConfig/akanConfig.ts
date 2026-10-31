@@ -776,8 +776,15 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
   static get akanVersion() {
     return getAkanPackageJson().version;
   }
+  //? The image installs from the registry alone: a pin to a path or a workspace package resolves nowhere there.
+  static #registryPins(pins: Record<string, string> | undefined) {
+    if (!pins) return undefined;
+    const kept = Object.entries(pins).filter(([, spec]) => !/^(?:file:|link:|workspace:|portal:|[./~])/.test(spec));
+    return kept.length ? Object.fromEntries(kept) : undefined;
+  }
   getProductionPackageJson(data: Partial<PackageJson> = {}): PackageJson {
-    const { overrides, resolutions } = this.rootPackageJson;
+    const overrides = AkanAppConfig.#registryPins(this.rootPackageJson.overrides);
+    const resolutions = AkanAppConfig.#registryPins(this.rootPackageJson.resolutions);
     return {
       name: this.app.name,
       description: this.app.name,

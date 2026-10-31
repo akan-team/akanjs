@@ -12,6 +12,7 @@ export interface PackageJson {
   optionalDependencies?: Record<string, string>;
   trustedDependencies?: string[];
   overrides?: Record<string, string>;
+  resolutions?: Record<string, string>;
   engines?: Record<string, string>;
   exports?: Record<string, string | Record<string, string>>;
   bun?: {
