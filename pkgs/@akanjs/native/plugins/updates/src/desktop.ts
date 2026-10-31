@@ -1123,8 +1123,16 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     }
     const state = readState();
     let changed = false;
+    //? Still the failed build of a rollback whose moves did not happen: not a reinstall, and the download kept for
+    //? another try is this release, which the retry below moves into that download's folder.
+    const rollbackToRedo = state.rollback?.build === config.embeddedSequence;
     //? Installed again (the installer, a copy of another build): what the earlier install refused says nothing now.
-    if (!runningIs(state.current) && !runningIs(state.trial) && state.installed !== config.embeddedSequence) {
+    if (
+      !rollbackToRedo &&
+      !runningIs(state.current) &&
+      !runningIs(state.trial) &&
+      state.installed !== config.embeddedSequence
+    ) {
       if (state.installed !== undefined) {
         state.failed = [];
         state.reasons = undefined;
@@ -1134,7 +1142,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       changed = true;
     }
     //? A download from before the app was reinstalled at a newer build would take it back; a revoked key may sign one.
-    if (state.pending && !applicable(config, state, state.pending)) {
+    if (state.pending && !rollbackToRedo && !applicable(config, state, state.pending)) {
       console.warn(`[akan-native] updates: ${state.pending.bundle} is not one this app takes now; dropping it`);
       state.pending = undefined;
       changed = true;

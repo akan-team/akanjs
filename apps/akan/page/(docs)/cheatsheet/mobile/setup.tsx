@@ -1899,7 +1899,8 @@ const input = await NativeFile.resolve(grant, "read");`}
                     A secret the user gives the server, such as their own API key, goes to the OS credential store with{" "}
                     <code>NativeSecret</code>, never into a file. The page's <code>secretStorage</code> keeps another
                     store, so no page script reads it. Outside the desktop app <code>NativeSecret.available</code> is
-                    false and every call rejects; keep secrets in the env there.
+                    false and every call rejects; keep secrets in the env there. Read one when a request needs it, not
+                    while the server boots, when a call can wait up to 8 s for the window.
                   </span>
                 ),
                 ko: (
@@ -1907,7 +1908,8 @@ const input = await NativeFile.resolve(grant, "read");`}
                     사용자가 서버에 맡기는 비밀값(사용자 자신의 API 키 등)은 파일이 아니라 <code>NativeSecret</code>으로
                     OS 자격 증명 저장소에 둡니다. 페이지의 <code>secretStorage</code>와는 저장소가 달라서 페이지
                     스크립트는 이 값을 읽지 못합니다. 데스크톱 앱 밖에서는 <code>NativeSecret.available</code>이
-                    false이고 모든 호출이 거부되므로, 그곳에서는 비밀값을 env에 둡니다.
+                    false이고 모든 호출이 거부되므로, 그곳에서는 비밀값을 env에 둡니다. 비밀값은 서버가 부팅하는 동안이
+                    아니라 요청이 필요로 할 때 읽습니다. 부팅 중의 호출은 창이 열릴 때까지 최대 8초 기다릴 수 있습니다.
                   </span>
                 ),
               })}

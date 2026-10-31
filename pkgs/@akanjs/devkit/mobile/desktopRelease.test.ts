@@ -381,7 +381,7 @@ describe("DesktopRelease signer", () => {
 
   const windowsTool = (powershell: (out: string) => Promise<number>) =>
     recordingTool(async (cmd, env) => {
-      if (cmd[0] === "tar.exe") {
+      if (cmd[0] === path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")) {
         await Bun.write(path.join(extractedTo(cmd), cmd.at(-1) ?? ""), "MZ");
         return { code: 0, output: "" };
       }

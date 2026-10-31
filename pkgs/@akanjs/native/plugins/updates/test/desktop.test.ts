@@ -560,6 +560,50 @@ describe("desktop updates: what a restart finds", () => {
     expect(state()).toMatchObject({ rollback: { attempts: 2 } });
   });
 
+  test("a rollback made again keeps the release it moves back for another try, and what the trial counted", async () => {
+    const first = await harness({
+      embeddedSequence: 2000,
+      state: (app) => {
+        writeApp(`${app}.previous`, "previous");
+        const kept = join(`${app}.update-2000-aaaaaaaa`, "Renamed App");
+        mkdirSync(dirname(kept), { recursive: true });
+        return {
+          pending: {
+            bundle: "2000-aaaaaaaa",
+            sequence: 2000,
+            version: "2.0.0",
+            tar: "0".repeat(64),
+            build: 2000,
+            staged: kept,
+          },
+          failed: [],
+          strikes: { "2000-aaaaaaaa": 1 },
+          rolledBack: "2000-aaaaaaaa",
+          rollback: { build: 2000, previous: `${app}.previous`, to: kept, attempts: 1 },
+          installed: BUILD,
+        };
+      },
+    });
+    const kept = join(`${first.app}.update-2000-aaaaaaaa`, "Renamed App");
+    expect(first.relaunches[0]?.moves).toEqual([
+      [first.app, kept],
+      [`${first.app}.previous`, first.app],
+    ]);
+    expect(markerOf(kept)).toBe("installed");
+    expect(first.state()).toMatchObject({
+      pending: { bundle: "2000-aaaaaaaa", staged: kept },
+      strikes: { "2000-aaaaaaaa": 1 },
+      installed: BUILD,
+    });
+
+    const restarted = await harness({ root: first.root });
+    expect(restarted.state()).toMatchObject({
+      pending: { bundle: "2000-aaaaaaaa", staged: kept },
+      strikes: { "2000-aaaaaaaa": 1 },
+    });
+    expect(readdirSync(restarted.install).sort()).toEqual(["Renamed App", "Renamed App.update-2000-aaaaaaaa"]);
+  });
+
   test("an app installed again forgets the releases the earlier install refused", async () => {
     const { state } = await harness({
       embeddedSequence: BUILD + 5,
