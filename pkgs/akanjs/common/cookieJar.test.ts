@@ -30,6 +30,15 @@ describe("CookieJar.parse", () => {
     expect(jar.read("empty")).toEqual({ value: "", count: 1 });
   });
 
+  test("trims only space and tab, so a name padded with Unicode whitespace never reads as a __Host- cookie", () => {
+    for (const pad of [" ", " ", "　", "﻿"]) {
+      const jar = CookieJar.parse(`${pad}__Host-jwt:shop=planted; \t__Host-jwt:shop${pad}=planted2`);
+      expect(jar.has("__Host-jwt:shop")).toBe(false);
+      expect(jar.read("__Host-jwt:shop")).toEqual({ count: 0 });
+    }
+    expect(CookieJar.parse("\t__Host-jwt:shop=own \t").read("__Host-jwt:shop")).toEqual({ value: "own", count: 1 });
+  });
+
   test("strips one pair of surrounding quotes and percent-decodes once, keeping a malformed escape raw", () => {
     const jar = CookieJar.parse('quoted="a b"; doubled=""x""; encoded=a%20b%253D; broken=100%; lone="x');
 

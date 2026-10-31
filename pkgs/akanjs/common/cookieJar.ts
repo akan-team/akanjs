@@ -25,12 +25,22 @@ export class CookieJar {
   static parse(header: string | null | undefined): CookieJar {
     const segments: CookieSegment[] = [];
     for (const part of header?.split(";") ?? []) {
-      const raw = part.trim();
+      const raw = CookieJar.#trim(part);
       const eq = raw.indexOf("=");
       if (eq === -1) continue;
-      segments.push({ name: raw.slice(0, eq).trim(), value: CookieJar.#decode(raw.slice(eq + 1).trim()), raw });
+      segments.push({
+        name: CookieJar.#trim(raw.slice(0, eq)),
+        value: CookieJar.#decode(CookieJar.#trim(raw.slice(eq + 1))),
+        raw,
+      });
     }
     return new CookieJar(segments);
+  }
+
+  // Security: only space and tab, as RFC 6265 §5.2 strips. `String#trim` also drops U+00A0, U+2000… and U+FEFF, so a
+  // sibling subdomain's `\u2000__Host-jwt` — which the browser stores unprefixed — would read as the `__Host-` cookie.
+  static #trim(text: string) {
+    return text.replace(/^[ \t]+|[ \t]+$/g, "");
   }
 
   static #decode(text: string): string {
