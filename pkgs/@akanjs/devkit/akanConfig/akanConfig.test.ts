@@ -317,6 +317,23 @@ describe("AkanAppConfig", () => {
     expect(() => brokenConfig.getProductionPackageJson()).toThrow("Dependency missing-lib not found");
   });
 
+  test("carries the root's overrides and resolutions, so the image resolves what the workspace locked", () => {
+    const pinned = new AkanAppConfig(
+      app,
+      [],
+      { ...packageJson, overrides: { "js-tokens": "2.0.0" }, resolutions: { ms: "2.0.0" } },
+      {},
+      baseDevEnv,
+    );
+    expect(pinned.getProductionPackageJson()).toMatchObject({
+      overrides: { "js-tokens": "2.0.0" },
+      resolutions: { ms: "2.0.0" },
+    });
+    const unpinned = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).getProductionPackageJson();
+    expect(unpinned).not.toHaveProperty("overrides");
+    expect(unpinned).not.toHaveProperty("resolutions");
+  });
+
   test("falls back to akanjs package versions for built-in runtime dependencies", () => {
     const runtimeDependencies = {
       ...akanPackageJson.dependencies,

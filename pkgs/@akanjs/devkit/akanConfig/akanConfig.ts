@@ -777,6 +777,7 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
     return getAkanPackageJson().version;
   }
   getProductionPackageJson(data: Partial<PackageJson> = {}): PackageJson {
+    const { overrides, resolutions } = this.rootPackageJson;
     return {
       name: this.app.name,
       description: this.app.name,
@@ -789,6 +790,8 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
         ]),
       ),
       ...(this.trustedDependencies.length ? { trustedDependencies: this.trustedDependencies } : {}),
+      ...(overrides ? { overrides } : {}),
+      ...(resolutions ? { resolutions } : {}),
       ...data,
     };
   }
