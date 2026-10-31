@@ -55,6 +55,8 @@ mod screen;
 #[cfg(target_os = "macos")]
 mod volume;
 #[cfg(target_os = "macos")]
+mod activity;
+#[cfg(target_os = "macos")]
 mod autostart;
 #[cfg(target_os = "macos")]
 mod keychain;
@@ -1150,7 +1152,7 @@ fn open_external(url: &str) {
 
 /// Op families of the plugins' native parts (menu.rs, tray.rs, … on macOS; win/, linux/).
 #[cfg(not(target_os = "macos"))]
-const PLATFORM_OPS: [&str; 12] = ["menu.", "tray.", "hotkey.", "dock.", "screen.", "notify.", "camera.", "panel.", "alert.", "autostart.", "keychain.", "clipboard."];
+const PLATFORM_OPS: [&str; 13] = ["menu.", "tray.", "hotkey.", "dock.", "screen.", "notify.", "camera.", "panel.", "alert.", "autostart.", "keychain.", "clipboard.", "activity."];
 #[cfg(target_os = "windows")]
 const OS_NAME: &str = "Windows";
 #[cfg(target_os = "linux")]
@@ -1811,8 +1813,8 @@ impl Windows {
       "debug.stats" if dev_build() => return Ok(stats_json()),
       _ => {}
     }
-    // App-wide ops, not a window's: menu, tray, global shortcut, dock, screen and volume plugins
-    // (menu.rs, tray.rs, hotkey.rs, dock.rs, screen.rs, volume.rs).
+    // App-wide ops, not a window's: menu, tray, global shortcut, dock, screen and volume plugins, and the
+    // updates plugin's App Nap hold (menu.rs, tray.rs, hotkey.rs, dock.rs, screen.rs, volume.rs, activity.rs).
     #[cfg(target_os = "macos")]
     if let Some(result) = menu::shell_op(op, &cmd)
       .or_else(|| tray::shell_op(op, &cmd, &self.shell.app_dir))
@@ -1820,6 +1822,7 @@ impl Windows {
       .or_else(|| dock::shell_op(op, &cmd, target))
       .or_else(|| screen::shell_op(op, target))
       .or_else(|| volume::shell_op(op, &cmd))
+      .or_else(|| activity::shell_op(op, &cmd))
     {
       return result;
     }
