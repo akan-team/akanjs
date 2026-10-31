@@ -61,7 +61,7 @@ export interface Service {
   onDestroy(): Promise<void> | void;
   _libsOnDestroy(): Promise<void>;
   transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
-  afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+  afterCommit(fn: () => unknown): Promise<void>;
 }
 
 export type ServiceCls<
@@ -159,7 +159,7 @@ export function serve(
     async transaction<T>(fn: () => PromiseOrObject<T>): Promise<T> {
       return await databaseOf(this, "transaction").transaction(fn);
     }
-    async afterCommit(fn: () => PromiseOrObject<void>) {
+    async afterCommit(fn: () => unknown) {
       await databaseOf(this, "afterCommit").afterCommit(() => AfterCommitHooks.run(fn, this.logger));
     }
   };

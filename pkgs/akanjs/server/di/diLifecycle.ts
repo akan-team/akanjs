@@ -471,11 +471,25 @@ export class DiLifecycle {
   }
 
   //? The scheduler, its locks and the queue know a job by its method name alone, so two modules' `sync` run as one.
+  //? Each kind keeps its own table (init, destroy, the queue; cron, interval and timeout share the locks), so an
+  //? `initialize sync` beside a `process sync` never collided and stays legal.
+  static readonly #jobScopes: { [type: string]: string } = {
+    init: "init",
+    destroy: "destroy",
+    process: "process",
+    cron: "schedule",
+    interval: "schedule",
+    timeout: "schedule",
+  };
   #assertUniqueInternalJobs() {
     const jobs = this.#allModules().flatMap(({ signal: { internal } }) =>
       Object.entries(internal[INTERNAL_META])
         .filter(([, { type }]) => type !== "resolveField")
-        .map(([key, { type }]) => ({ key, owner: `the ${type} of "${internal.refName}"` })),
+        .map(([key, { type }]) => ({
+          key,
+          owner: `the ${type} of "${internal.refName}"`,
+          scope: DiLifecycle.#jobScopes[type] ?? type,
+        })),
     );
     assertUniqueRegistrations("internal", jobs);
   }

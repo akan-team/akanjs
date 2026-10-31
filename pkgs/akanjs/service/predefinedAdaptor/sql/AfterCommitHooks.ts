@@ -1,9 +1,8 @@
-import type { PromiseOrObject } from "akanjs/base";
 import { type Logger, toError } from "akanjs/common";
 
 //? Logged, never thrown: the writes are in by then, and a rejection reads as a failed write that a retry repeats.
 export class AfterCommitHooks {
-  static async run(hook: () => PromiseOrObject<void>, logger: Logger) {
+  static async run(hook: () => unknown, logger: Logger) {
     try {
       await hook();
     } catch (error) {

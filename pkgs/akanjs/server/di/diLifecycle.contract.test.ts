@@ -381,6 +381,26 @@ describe("DiLifecycle duplicate registrations", () => {
     );
   });
 
+  test("lets two kinds of internal job share a name, since each kind keeps its own table", async () => {
+    const DiLifecycle = await loadDiLifecycle("crossKindInternal");
+
+    const jobModule = (refName: string, kind: "initialize" | "process"): ServiceModule => {
+      class JobService extends serve(refName, () => ({})) {}
+      const service = ServiceModel.from(JobService);
+      class Endpoint extends endpoint(service, () => ({})) {}
+      class Internal extends internal(service, ({ initialize, process }) => ({
+        sync: kind === "initialize" ? initialize().exec(() => undefined) : process(Boolean).exec(() => true),
+      })) {}
+      class Signal extends serverSignal(Endpoint, Internal) {}
+      return { service, signal: new ServiceSignal(Internal, Endpoint, Signal) };
+    };
+    const lib = libOf("crossKindInternalTest", new AkanOption(), {
+      services: [jobModule("crossKindJobAlpha", "initialize"), jobModule("crossKindJobBeta", "process")],
+    });
+
+    expect(() => new DiLifecycle({ env: {} }, lib)).not.toThrow();
+  });
+
   const keeperOf = (refName: string, build: EndpointBuilder): ServiceModule => {
     class KeeperService extends serve(refName, () => ({})) {}
     const service = ServiceModel.from(KeeperService);

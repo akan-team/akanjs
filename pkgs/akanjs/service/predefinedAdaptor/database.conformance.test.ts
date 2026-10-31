@@ -1002,6 +1002,44 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(seen).toEqual(["body", "after:1", "now"]);
     });
 
+    test("a task the transaction left running neither joins it after the commit nor loses its afterCommit", async () => {
+      const seen: string[] = [];
+      let late!: Promise<void>;
+      await driver.database.transaction(async () => {
+        late = (async () => {
+          await Bun.sleep(20);
+          await driver.database.afterCommit(() => {
+            seen.push("late");
+          });
+          await driver.database
+            .transaction(async () => {
+              await store.create({ title: "late-rolled-back" });
+              throw new Error("rollback-probe");
+            })
+            .catch(() => undefined);
+        })();
+      });
+      await late;
+      expect(seen).toEqual(["late"]);
+      expect(await store.find({})).toHaveLength(0);
+    });
+
+    test("a post-commit hook that throws still lets the ones after it run, then reaches the caller", async () => {
+      const seen: string[] = [];
+      const transaction = driver.database.transaction(async () => {
+        await store.create({ title: "committed" });
+        await driver.database.afterCommit(() => {
+          throw new Error("post-hook-failed");
+        });
+        await driver.database.afterCommit(() => {
+          seen.push("later");
+        });
+      });
+      await expect(transaction).rejects.toThrow("post-hook-failed");
+      expect(seen).toEqual(["later"]);
+      expect(titlesOf(await store.find({}))).toEqual(["committed"]);
+    });
+
     test("a throwing afterCommit is logged, not thrown: the transaction keeps its value and later callbacks run", async () => {
       const ledger = ledgerOn(driver);
       const serviceErrors = spyOn(ledger.logger, "error").mockImplementation(() => undefined);
