@@ -85,7 +85,7 @@ const SSRProvider = ({
                 viewport={viewport}
                 prefix={prefix}
                 //? The overlay hears of a restart only through a socket drop, so with it on the socket opens at load.
-                wsConnect={wsConnect ?? (reconnect || undefined)}
+                wsConnect={wsConnect ?? ((reconnect && process.env.AKAN_PUBLIC_ENV === "local") || undefined)}
               />
               <ClientSsrBridge key="ssr-bridge" lang={lang} prefix={prefix} initialPageState={pageState} />
             </Suspense>

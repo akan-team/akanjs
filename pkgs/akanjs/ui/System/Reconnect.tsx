@@ -7,9 +7,10 @@ import { overlayZ } from "../overlayLayer";
 
 const DOTS_LENGTH = 4;
 
-export const Reconnect = () => {
+export const Reconnect = () => (process.env.AKAN_PUBLIC_ENV === "local" ? <ReconnectOverlay /> : null);
+
+const ReconnectOverlay = () => {
   const { l } = usePage();
-  const devMode = process.env.AKAN_PUBLIC_ENV === "local";
   const [dots, setDots] = useState(0);
   const [connectStatus, setConnectStatus] = useState<
     "initial" | "normal" | "connected" | "disconnected" | "connecting"
@@ -74,8 +75,6 @@ export const Reconnect = () => {
   useInterval(() => {
     if (connectStatus === "connecting") setDots((prev) => (prev + 1) % DOTS_LENGTH);
   }, 500);
-  if (!devMode) return null;
-  if (process.env.AKAN_PUBLIC_ENV !== "local") return null;
   if (connectStatus === "initial" || connectStatus === "normal") return null;
   return (
     <div
