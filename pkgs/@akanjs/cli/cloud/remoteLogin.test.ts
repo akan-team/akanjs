@@ -97,7 +97,7 @@ describe("RemoteLogin", () => {
       stripVTControlCharacters(await QRcode.toString(signinUrl, { type: "terminal", small: true })),
     );
     expect(logs).toContain(`\nYour code:  ${code} `);
-    expect(logs.join("\n")).toContain("approve only if it matches what this terminal shows");
+    expect(logs.join("\n")).toContain("Never enter a code that did not come from your own terminal");
     expect(logs.join("\n")).not.toContain(remoteId);
     expect(signinUrl).not.toContain(RemoteAuthCode.normalize(code));
     expect(await RemoteAuthCode.matches(remoteId, await RemoteAuthCode.of(loginId))).toBe(false);
@@ -166,13 +166,13 @@ describe("RemoteLogin", () => {
     expect(logs.join("\n")).toContain("Could not read the signed-in account (HTTP 503)");
   });
 
-  test("does not retry an account read the server answers with nothing", async () => {
+  test("drops the session and fails when the server answers the account read with nothing", async () => {
     cloud.deviceAnswers = [accessToken];
     cloud.selfAnswers = [null, self];
 
-    expect(await login().signIn(remoteId)).toBeNull();
+    await expect(login().signIn(remoteId)).rejects.toThrow("did not take the session it handed out");
     expect(cloud.selfReads).toBe(1);
-    expect(saved).toEqual([{ host, auth: { accessToken } }]);
+    expect(saved).toEqual([{ host, auth: { accessToken } }, { host }]);
   });
 
   test("warns once about a network error or a 5xx, backs off, and keeps polling instead of reading it as pending", async () => {

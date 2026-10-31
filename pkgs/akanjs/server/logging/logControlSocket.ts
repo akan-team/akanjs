@@ -63,6 +63,9 @@ export class LogControlSocket {
 
   async start() {
     await mkdir(path.dirname(this.path), { recursive: true });
+    //? A test or script run from inside an app shares `akan start`'s runtime dir; unlinking a live socket would leave
+    //? that dev server unreachable by `akan logs` until it restarts.
+    if (await LogControlSocket.#answers(this.path)) throw new Error("another server is listening on it");
     await rm(this.path, { force: true });
     this.#server = Bun.listen<ClientState>({
       unix: this.path,
@@ -86,6 +89,16 @@ export class LogControlSocket {
     this.#server?.stop(true);
     this.#server = null;
     await rm(this.path, { force: true });
+  }
+
+  static async #answers(socketPath: string) {
+    try {
+      const socket = await Bun.connect<undefined>({ unix: socketPath, socket: { data: () => undefined } });
+      socket.end();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   #onData(socket: Bun.Socket<ClientState>, chunk: Buffer) {

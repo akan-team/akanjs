@@ -130,6 +130,16 @@ describe("LogControlSocket", () => {
     expect(hub.floor).toBeNull();
   });
 
+  test("a second server in the same runtime dir leaves the live socket alone", async () => {
+    const second = await LogControlSocket.open(hub, dir, new Logger("LogControlSocketTest"));
+    expect(second).toBeNull();
+    const client = new Client();
+    await client.connect(control.path);
+    client.send({ cmd: "coverage" });
+    expect((await client.next()).type).toBe("coverage");
+    client.close();
+  });
+
   test("a bad line is answered, not fatal", async () => {
     const client = new Client();
     await client.connect(control.path);
