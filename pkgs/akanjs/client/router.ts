@@ -323,9 +323,10 @@ class Router {
     csrLocation.replace({ ...state, __akanRouter: { ...akanState, idx: this.#historyIdx } });
     if (this.#listensToPopstate || !globalThis.window.addEventListener) return;
     this.#listensToPopstate = true;
-    //? Expected where history moves: a shell's back that moves nothing must leave none for a later browser back.
+    //? Expected where history moves: a shell's back that moves nothing must leave none for a later browser back. Kept
+    //? with no guard too, since the page it returns to may add one before the pop arrives.
     csrLocation.onBack((idx) => {
-      if (this.#guards.size) this.#expectedPops.push({ idx, isAllowed: true });
+      this.#expectedPops.push({ idx, isAllowed: true });
     });
     //? Capturing, so a refused move is undone before a shell's own listener draws the page it landed on.
     globalThis.window.addEventListener("popstate", (event) => this.#onPopstate(event), true);

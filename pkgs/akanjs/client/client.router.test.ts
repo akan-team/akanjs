@@ -998,6 +998,23 @@ describe("router navigation guards", () => {
     ]);
   });
 
+  test("a router.back() nobody guarded lands, even when the page it returns to adds a guard before the pop", async () => {
+    envState.side = "client";
+    const session = installSessionHistory("/en/admin/list");
+    const router = await ssrRouter([]);
+    router.push("/doc/1");
+    const asked: unknown[] = [];
+
+    router.back();
+    router.addNavigationGuard((navigation) => {
+      asked.push(navigation);
+      return false;
+    });
+    await session.settle();
+    expect(session.at()).toBe("/en/admin/list");
+    expect(asked).toEqual([]);
+  });
+
   test("a second browser back while an async guard decides is refused, and the first still replays once allowed", async () => {
     envState.side = "client";
     const session = installSessionHistory("/en/admin/list");
