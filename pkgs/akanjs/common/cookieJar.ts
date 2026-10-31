@@ -39,8 +39,17 @@ export class CookieJar {
 
   // Security: only space and tab, as RFC 6265 §5.2 strips. `String#trim` also drops U+00A0, U+2000… and U+FEFF, so a
   // sibling subdomain's `\u2000__Host-jwt` — which the browser stores unprefixed — would read as the `__Host-` cookie.
+  //? A loop, not `/[ \t]+$/`: that regex backtracks quadratically over a long run of tabs inside a value.
   static #trim(text: string) {
-    return text.replace(/^[ \t]+|[ \t]+$/g, "");
+    let start = 0;
+    let end = text.length;
+    while (start < end && CookieJar.#isBlank(text[start])) start++;
+    while (end > start && CookieJar.#isBlank(text[end - 1])) end--;
+    return text.slice(start, end);
+  }
+
+  static #isBlank(char: string | undefined) {
+    return char === " " || char === "\t";
   }
 
   static #decode(text: string): string {

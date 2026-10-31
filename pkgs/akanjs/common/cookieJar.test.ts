@@ -39,6 +39,11 @@ describe("CookieJar.parse", () => {
     expect(CookieJar.parse("\t__Host-jwt:shop=own \t").read("__Host-jwt:shop")).toEqual({ value: "own", count: 1 });
   });
 
+  test("keeps a long run of tabs inside a value, trimming in linear time", () => {
+    const value = `a${"\t".repeat(200_000)}b`;
+    expect(CookieJar.parse(`k=${value}`).read("k")).toEqual({ value, count: 1 });
+  });
+
   test("strips one pair of surrounding quotes and percent-decodes once, keeping a malformed escape raw", () => {
     const jar = CookieJar.parse('quoted="a b"; doubled=""x""; encoded=a%20b%253D; broken=100%; lone="x');
 
