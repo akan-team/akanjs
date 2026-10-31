@@ -58,6 +58,8 @@ interface HarnessOptions {
   /** The folder the app is installed in, when it is not a fresh temporary one. */
   root?: string;
   signatureTool?: DesktopUpdatesOptions["signatureTool"];
+  /** The native shell's ops (ctx.shell); none by default, so every op is UNSUPPORTED. */
+  shell?: (op: string, args?: Record<string, unknown>) => Promise<unknown>;
 }
 
 async function harness(options: HarnessOptions = {}) {
@@ -106,6 +108,7 @@ async function harness(options: HarnessOptions = {}) {
     appLocalDataDir: join(root, "local"),
     server: options.server ?? null,
     emit: () => {},
+    ...(options.shell ? { shell: options.shell } : {}),
     registerFile: () => ({ url: "", mime: "", size: 0 }),
     onNativeEvent: (type, listener) => {
       const set = listeners.get(type) ?? new Set();
@@ -1011,6 +1014,53 @@ describe("desktop updates: the signer of a release", () => {
       expect(result).toMatchObject({ ok: true, result: { bundle: "2000-abcdef12" } });
       expect(state().pending).toMatchObject({ bundle: "2000-abcdef12" });
     }
+  });
+
+  test("a macOS download holds off App Nap until it ends, taken or refused, and goes on without the hold", async () => {
+    if (process.platform !== "darwin") return;
+    for (const [teams, taken, holds] of [
+      [{ own: null, release: null }, true, true],
+      [{ own: "ABCDE12345", release: null }, false, true],
+      [{ own: null, release: null }, true, false],
+    ] as const) {
+      const root = mkdtempSync(join(tmpdir(), "akan-native-updates-release-"));
+      roots.push(root);
+      const release = serveRelease(root, { mac: true });
+      stops.push(release.stop);
+      const ops: { op: string; args?: Record<string, unknown>; archives: number }[] = [];
+      const { call } = await harness({
+        url: release.url,
+        publicKey: release.publicKey,
+        platform: "darwin",
+        signatureTool: codesign(teams),
+        shell: async (op, args) => {
+          ops.push({ op, args, archives: release.archiveRequests() });
+          if (!holds) throw new Error(`${op} is not available`);
+          return op === "activity.begin" ? { id: 7 } : null;
+        },
+      });
+      const result = await call("download");
+      expect(result).toMatchObject(taken ? { ok: true } : { ok: false, error: { code: "NOT_ALLOWED" } });
+      expect(ops).toEqual([
+        { op: "activity.begin", args: expect.objectContaining({ reason: "Downloading an update" }), archives: 0 },
+        ...(holds ? [{ op: "activity.end", args: expect.objectContaining({ id: 7 }), archives: 1 }] : []),
+      ]);
+    }
+  });
+
+  test("a Windows or Linux download asks the shell for nothing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "akan-native-updates-release-"));
+    roots.push(root);
+    const release = serveRelease(root);
+    stops.push(release.stop);
+    const ops: string[] = [];
+    const { call } = await harness({
+      url: release.url,
+      publicKey: release.publicKey,
+      shell: async (op) => void ops.push(op),
+    });
+    expect(await call("download")).toMatchObject({ ok: true });
+    expect(ops).toEqual([]);
   });
 });
 
