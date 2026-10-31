@@ -83,8 +83,10 @@ describe("updates config (UP-1, UP-2)", () => {
       readyTimeout: 10_000,
       reportUrl: null,
       target: null,
+      automatic: true,
     });
     expect(validateUpdates({ url: "https://u", publicKey: key, target: "pilot" }, problems)?.target).toBe("pilot");
+    expect(validateUpdates({ url: "https://u", publicKey: key, automatic: false }, problems)?.automatic).toBe(false);
     expect(problems).toEqual([]);
     //? Posted to as it is: a receiver whose route ends in "/" may not redirect a POST.
     expect(
@@ -102,6 +104,7 @@ describe("updates config (UP-1, UP-2)", () => {
         readyTimeout: 5,
         report: "https://r",
         target: "",
+        automatic: "no",
         extra: 1,
       },
       problems,
@@ -113,6 +116,7 @@ describe("updates config (UP-1, UP-2)", () => {
       "updates.readyTimeout must be a number of milliseconds >= 1000",
       "updates.report must be { url } with an http(s) URL",
       "updates.target must be the name of the release target, 1 to 100 characters",
+      "updates.automatic must be a boolean",
       "updates.extra is not supported",
     ]);
   });
@@ -293,6 +297,7 @@ describe("updates config (UP-1, UP-2)", () => {
       readyTimeout: 3000,
       reportUrl: null,
       target: "pilot",
+      automatic: true,
     };
     const resource = (platform: "android" | "ios" | "macos" | "windows") =>
       JSON.parse(updatesResource(updates, { id: "dev.x", version: "1" }, platform, "abc", false));
@@ -302,6 +307,12 @@ describe("updates config (UP-1, UP-2)", () => {
     //? A protocol v1 app installs the binary that reads envelopes through the v1 pair, signed by the first key.
     expect(resource("macos")).toMatchObject({ protocol: 2, publicKeys: [spare], publicKey: online, target: "pilot" });
     expect(resource("windows")).toMatchObject({ protocol: 2, target: "pilot" });
+    expect(resource("macos").automatic).toBeUndefined();
+    const manual = (platform: "android" | "linux") =>
+      JSON.parse(
+        updatesResource({ ...updates, automatic: false }, { id: "dev.x", version: "1" }, platform, "abc", false),
+      ).automatic;
+    expect([manual("linux"), manual("android")]).toEqual([false, undefined]);
     expect(
       JSON.parse(
         updatesResource({ ...updates, target: null }, { id: "dev.x", version: "1" }, "linux", undefined, false),
@@ -352,6 +363,7 @@ describe("updates config (UP-1, UP-2)", () => {
           readyTimeout: 3000,
           reportUrl: "https://r/p",
           target: null,
+          automatic: true,
         },
         { id: "dev.x", version: "1.2.0" },
         "ios",
@@ -394,6 +406,7 @@ describe("updates config (UP-1, UP-2)", () => {
         channel: "main",
         readyTimeout: 20_000,
         target: null,
+        automatic: true,
       };
       const write = (reportUrl: string | null) =>
         writePhoneUpdates({

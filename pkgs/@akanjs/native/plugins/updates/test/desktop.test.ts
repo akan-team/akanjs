@@ -13,9 +13,10 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, uptime } from "node:os";
 import { dirname, join } from "node:path";
 import { createDispatcher } from "../../../packages/desktop/src/dispatcher.ts";
+import { createLifecycle } from "../../../packages/desktop/src/lifecycle.ts";
 import type { DesktopServerStatus, NativeEvent } from "../../../packages/desktop/src/plugin.ts";
 import { createServerStatus } from "../../../packages/desktop/src/server.ts";
 import { createDesktopUpdates, type DesktopUpdatesOptions, MAX_STRIKES, type UpdatesConfig } from "../src/desktop.ts";
@@ -60,6 +61,11 @@ interface HarnessOptions {
   signatureTool?: DesktopUpdatesOptions["signatureTool"];
   /** The native shell's ops (ctx.shell); none by default, so every op is UNSUPPORTED. */
   shell?: (op: string, args?: Record<string, unknown>) => Promise<unknown>;
+  /** updates.automatic, off by default here; named, `quit()` runs the app's quit hooks. */
+  automatic?: boolean;
+  autoCheckDelay?: number;
+  /** The relaunch helper refuses (another relaunch is under way). */
+  relaunchRefuses?: boolean;
 }
 
 async function harness(options: HarnessOptions = {}) {
@@ -84,8 +90,14 @@ async function harness(options: HarnessOptions = {}) {
     ...(options.target ? { target: options.target } : {}),
     channel: "main",
     readyTimeout: options.readyTimeout ?? 50,
+    ...(options.automatic ? {} : { automatic: false }),
   };
-  const relaunches: { exe: string; moves: [string, string][]; recover?: { script: string; name: string } }[] = [];
+  const relaunches: {
+    exe: string;
+    moves: [string, string][];
+    recover?: { script: string; name: string };
+    start?: false;
+  }[] = [];
   const plugin = createDesktopUpdates({
     platform: options.platform ?? "linux",
     app,
@@ -93,14 +105,26 @@ async function harness(options: HarnessOptions = {}) {
     exeName: EXE,
     serverBootAllowance: options.serverBootAllowance ?? 150,
     serverSettle: options.serverSettle ?? 20,
-    relaunch: async (exe, moves, recover) => {
+    autoCheckDelay: options.autoCheckDelay ?? 20,
+    autoCheckInterval: 60_000,
+    relaunch: async (exe, moves, recover, start = true) => {
+      if (options.relaunchRefuses) throw new Error("the app is already being relaunched without these moves");
       if (options.platform !== "win32") for (const [from, to] of moves) renameSync(from, to);
-      relaunches.push({ exe, moves, ...(recover ? { recover } : {}) });
+      relaunches.push({ exe, moves, ...(recover ? { recover } : {}), ...(start ? {} : { start: false as const }) });
     },
     ...(options.signatureTool ? { signatureTool: options.signatureTool } : {}),
   });
   const listeners = new Map<string, Set<(event: NativeEvent) => void>>();
   const quits: number[] = [];
+  const lifecycle =
+    options.automatic !== undefined
+      ? createLifecycle({
+          quitOnLastWindowClosed: true,
+          exit: (code) => void quits.push(code),
+          cancelSessionEnd: () => {},
+          hideWindow: async () => {},
+        })
+      : undefined;
   const dispatcher = createDispatcher([plugin], {
     app: { id: APP_ID, name: "Test", version: "1.0.0" },
     dev: options.dev,
@@ -116,8 +140,10 @@ async function harness(options: HarnessOptions = {}) {
       return () => set.delete(listener);
     },
     quit: (code) => void quits.push(code),
+    ...(lifecycle ? { lifecycle } : {}),
   });
   await dispatcher.launched;
+  const quit = () => lifecycle?.quit(0);
   const call = async (method: string, args?: unknown) =>
     (await dispatcher.handle(
       JSON.stringify({ v: 1, id: 1, plugin: "updates", method, ...(args !== undefined ? { args } : {}) }),
@@ -131,7 +157,7 @@ async function harness(options: HarnessOptions = {}) {
     for (const listener of listeners.get(type) ?? []) listener({ type, ...event });
   };
   const state = () => JSON.parse(readFileSync(join(stateDir, "state.json"), "utf8")) as Record<string, unknown>;
-  return { root, install, app, stateDir, call, fire, state, relaunches, quits };
+  return { root, install, app, stateDir, call, fire, state, relaunches, quits, quit };
 }
 
 /** A carried server the test moves through its states (the plugin host's ctx.server). */
@@ -647,10 +673,12 @@ function serveRelease(root: string, options: ReleaseOptions = {}) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   let files = releaseFiles(root, options, privateKey);
   let archiveRequests = 0;
+  let requests = 0;
   const host = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
     fetch: async (request) => {
+      requests++;
       const path = new URL(request.url).pathname;
       const body = files[path];
       if (path.endsWith(".tar.gz")) {
@@ -664,6 +692,7 @@ function serveRelease(root: string, options: ReleaseOptions = {}) {
     url: `http://127.0.0.1:${host.port}`,
     publicKey: publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64"),
     archiveRequests: () => archiveRequests,
+    requests: () => requests,
     publish: (next: ReleaseOptions) => {
       files = releaseFiles(root, next, privateKey);
     },
@@ -867,6 +896,176 @@ describe("desktop updates: download and apply", () => {
     expect(state()).toMatchObject({
       trial: { from: BUILD, staged: join(`${app}.update-${BUILD + 100}-aaaaaaaa`, "Sample") },
     });
+  });
+});
+
+describe("desktop updates: by itself (updates.automatic)", () => {
+  const releaseRoot = () => {
+    const root = mkdtempSync(join(tmpdir(), "akan-native-updates-release-"));
+    roots.push(root);
+    return root;
+  };
+
+  test("downloads a release soon after the start and moves it into place as the app quits; the next launch tries it", async () => {
+    const release = serveRelease(releaseRoot());
+    try {
+      const { root, state, quit, quits, relaunches, app, install, stateDir } = await harness({
+        url: release.url,
+        publicKey: release.publicKey,
+        automatic: true,
+      });
+      await until(() => existsSync(join(stateDir, "state.json")) && state().pending !== undefined);
+      expect(state().pending).toMatchObject({ bundle: "2000-abcdef12" });
+      expect(markerOf(app)).toBe("installed");
+      await quit();
+      expect(quits).toEqual([0]);
+      expect(relaunches).toEqual([]);
+      expect(markerOf(app)).toBe("new");
+      expect(markerOf(`${app}.previous`)).toBe("installed");
+      expect(readdirSync(install).sort()).toEqual(["Renamed App", "Renamed App.previous"]);
+      expect(state()).toMatchObject({ trial: { bundle: "2000-abcdef12", build: 1999, attempts: 0 } });
+      expect(state().pending).toBeUndefined();
+      expect(existsSync(join(stateDir, "automatic.json"))).toBe(false);
+      const next = await harness({ root, url: release.url, publicKey: release.publicKey, embeddedSequence: 1999 });
+      expect(await next.call("getState")).toMatchObject({ result: { trial: true, bundle: "2000-abcdef12" } });
+      expect(await next.call("notifyReady")).toMatchObject({ ok: true });
+      expect(next.state()).toMatchObject({ current: { bundle: "2000-abcdef12" } });
+      expect(existsSync(`${app}.previous`)).toBe(false);
+    } finally {
+      release.stop();
+    }
+  });
+
+  test("a page's download while the background one runs is answered with it", async () => {
+    let open = () => {};
+    const release = serveRelease(releaseRoot(), { archiveGate: new Promise<void>((resolve) => (open = resolve)) });
+    try {
+      const { call, quit } = await harness({ url: release.url, publicKey: release.publicKey, automatic: true });
+      await until(() => release.archiveRequests() > 0);
+      const page = call("download");
+      open();
+      expect(await page).toMatchObject({ ok: true, result: { bundle: "2000-abcdef12" } });
+      expect(release.archiveRequests()).toBe(1);
+      await quit();
+    } finally {
+      release.stop();
+    }
+  });
+
+  test("looks for nothing while a release is on trial, nor installs over it at quit; once confirmed it does", async () => {
+    const release = serveRelease(releaseRoot(), { sequence: 3000, bundle: "3000-abcdef12", build: 2999 });
+    try {
+      const { call, quit, state, app } = await harness({
+        url: release.url,
+        publicKey: release.publicKey,
+        automatic: true,
+        readyTimeout: 5000,
+        state: onTrial,
+      });
+      await Bun.sleep(100);
+      expect(release.requests()).toBe(0);
+      expect(await call("notifyReady")).toMatchObject({ ok: true });
+      await until(() => state().pending !== undefined);
+      expect(state()).toMatchObject({ current: { bundle: "2000-aaaaaaaa" }, pending: { bundle: "3000-abcdef12" } });
+      await quit();
+      expect(markerOf(app)).toBe("new");
+      expect(markerOf(`${app}.previous`)).toBe("installed");
+    } finally {
+      release.stop();
+    }
+    const { quit, state, app } = await harness({
+      automatic: true,
+      autoCheckDelay: 60_000,
+      readyTimeout: 5000,
+      state: (app) => ({ ...onTrial(app), ...pendingOf(app, 3000), failed: [] }),
+    });
+    await quit();
+    expect(markerOf(app)).toBe("installed");
+    expect(markerOf(`${app}.previous`)).toBe("previous");
+    expect(state()).toMatchObject({ trial: { bundle: "2000-aaaaaaaa" }, pending: { bundle: "3000-aaaaaaaa" } });
+  });
+
+  for (const options of [{ automatic: false }, { automatic: true, dev: true }])
+    test(`${options.dev ? "a debug build" : "updates.automatic false"} looks for nothing and installs nothing at quit`, async () => {
+      const release = serveRelease(releaseRoot());
+      try {
+        const { quit, state, app } = await harness({
+          url: release.url,
+          publicKey: release.publicKey,
+          ...options,
+          state: (app) => pendingOf(app, 3000),
+        });
+        await Bun.sleep(100);
+        await quit();
+        expect(release.requests()).toBe(0);
+        expect(markerOf(app)).toBe("installed");
+        expect(state().pending).toMatchObject({ bundle: "3000-aaaaaaaa" });
+      } finally {
+        release.stop();
+      }
+    });
+
+  test("another running copy of the app does the updating: this one neither downloads nor installs", async () => {
+    const release = serveRelease(releaseRoot());
+    const owner = { pid: process.ppid, boot: Math.round(Date.now() / 1000 - uptime()) };
+    try {
+      const { quit, state, app, stateDir } = await harness({
+        url: release.url,
+        publicKey: release.publicKey,
+        automatic: true,
+        state: (app) => {
+          const dir = join(dirname(dirname(app)), "local", "akan-native-updates");
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(join(dir, "automatic.json"), JSON.stringify(owner));
+          return pendingOf(app, 3000);
+        },
+      });
+      await Bun.sleep(100);
+      await quit();
+      expect(release.requests()).toBe(0);
+      expect(markerOf(app)).toBe("installed");
+      expect(state().pending).toMatchObject({ bundle: "3000-aaaaaaaa" });
+      expect(JSON.parse(readFileSync(join(stateDir, "automatic.json"), "utf8"))).toEqual(owner);
+    } finally {
+      release.stop();
+    }
+  });
+
+  test("Windows hands the helper the moves at quit and has it start nothing", async () => {
+    const { quit, relaunches, state, app } = await harness({
+      platform: "win32",
+      automatic: true,
+      autoCheckDelay: 60_000,
+      state: (app) => pendingOf(app, BUILD + 100),
+    });
+    await quit();
+    const staged = join(`${app}.update-${BUILD + 100}-aaaaaaaa`, "Sample");
+    expect(relaunches).toMatchObject([
+      {
+        moves: [
+          [app, `${app}.previous`],
+          [staged, app],
+        ],
+        recover: { name: `akan-native-update ${APP_ID}` },
+        start: false,
+      },
+    ]);
+    expect(state()).toMatchObject({ trial: { from: BUILD, staged } });
+  });
+
+  test("a Windows helper that cannot take the moves leaves the download as it was, for apply() and quit alike", async () => {
+    const { call, quit, state } = await harness({
+      platform: "win32",
+      automatic: true,
+      autoCheckDelay: 60_000,
+      relaunchRefuses: true,
+      state: (app) => pendingOf(app, BUILD + 100),
+    });
+    expect(await call("apply")).toMatchObject({ ok: false, error: { code: "INTERNAL" } });
+    expect(state().trial).toBeUndefined();
+    await quit();
+    expect(state().trial).toBeUndefined();
+    expect(state().pending).toMatchObject({ bundle: `${BUILD + 100}-aaaaaaaa` });
   });
 });
 

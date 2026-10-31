@@ -86,7 +86,7 @@ describe("NativeUpdates", () => {
     expect(calls.download - before.download).toBe(0);
   });
 
-  test("a desktop app looks for nothing by itself: its release is the whole app, applied when the app says", async () => {
+  test("a desktop page looks for nothing: the desktop shell does, and installs a release as the app quits", async () => {
     const { NativeUpdates } = await import("./nativeUpdates");
     const shell = installShell("macos");
     const before = { ...calls };

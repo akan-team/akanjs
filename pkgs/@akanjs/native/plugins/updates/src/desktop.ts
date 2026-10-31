@@ -28,6 +28,9 @@
 //   Electrobun deletes .previous as soon as the new app launched (main.zig:7811-7818) and Tauri
 //   drops its backup when the final rename fails (updater.rs:1429-1476); here the old app stays
 //   until the new one said it works.
+// - Unless updates.automatic is false, the app looks for a release by itself (AUTO_CHECK_DELAY after it
+//   starts, then every AUTO_CHECK_INTERVAL), downloads it, and swaps it in as the app quits, without a
+//   relaunch: the next launch runs it on trial, as a phone runs a downloaded bundle from its next cold start.
 
 import { createHash, createPublicKey, verify } from "node:crypto";
 import {
@@ -46,7 +49,7 @@ import {
 } from "node:fs";
 import { uptime } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { AkanNativeError } from "../../../packages/core/src/index.ts";
+import { AkanNativeError, isAkanNativeError } from "../../../packages/core/src/index.ts";
 import {
   appManifestUrl,
   checkUpdateEnvelope,
@@ -84,6 +87,8 @@ export interface UpdatesConfig {
   target?: string;
   channel: string;
   readyTimeout: number;
+  /** false (updates.automatic): no check in the background, and nothing installed as the app quits. */
+  automatic?: boolean;
 }
 
 interface Entry {
@@ -168,6 +173,9 @@ export const SERVER_BOOT_ALLOWANCE = 120_000;
 export const SERVER_SETTLE = 5_000;
 /** Tries of a release whose server did not come up, or whose Windows swap did not happen, before it is failed. */
 export const MAX_STRIKES = 3;
+/** The first background check, after a launch's own work: its server's first boot, the trial of a new release. */
+export const AUTO_CHECK_DELAY = 30_000;
+export const AUTO_CHECK_INTERVAL = 60 * 60_000;
 
 const MAX_MANIFEST = 1 << 20;
 const MAX_SIGNATURE = 1024;
@@ -344,9 +352,16 @@ export interface DesktopUpdatesOptions {
   config?: UpdatesConfig | null;
   /** The executable's file name inside an app; the running one's by default. */
   exeName?: string;
-  relaunch?(exe: string, moves: [string, string][], recover?: RelaunchOptions["recover"]): Promise<void>;
+  relaunch?(
+    exe: string,
+    moves: [string, string][],
+    recover?: RelaunchOptions["recover"],
+    start?: boolean,
+  ): Promise<void>;
   serverBootAllowance?: number;
   serverSettle?: number;
+  autoCheckDelay?: number;
+  autoCheckInterval?: number;
   /** Runs codesign (macOS) or PowerShell (Windows) on a signature; runSignatureTool by default. */
   signatureTool?(cmd: string[], env?: Record<string, string>): Promise<{ code: number; output: string }>;
 }
@@ -358,9 +373,12 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
   const exeName = options.exeName ?? basename(process.execPath);
   const installed = options.app !== undefined ? options.app : appPath(mac);
   const config = options.config !== undefined ? options.config : readConfig(installed, mac);
-  const relaunch = options.relaunch ?? ((exe, moves, recover) => relaunchAfterExit(exe, moves, { recover }));
+  const relaunch =
+    options.relaunch ?? ((exe, moves, recover, start = true) => relaunchAfterExit(exe, moves, { recover, start }));
   const allowance = options.serverBootAllowance ?? SERVER_BOOT_ALLOWANCE;
   const settleTime = options.serverSettle ?? SERVER_SETTLE;
+  const autoCheckDelay = options.autoCheckDelay ?? AUTO_CHECK_DELAY;
+  const autoCheckInterval = options.autoCheckInterval ?? AUTO_CHECK_INTERVAL;
   const signatureTool = options.signatureTool ?? runSignatureTool;
   /** The executable inside an app with the running one's name. */
   const executableIn = (app: string) => (mac ? join(app, "Contents", "MacOS", exeName) : join(app, exeName));
@@ -371,8 +389,11 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
   //? From the moves of a rollback until this process exits: an apply now would move the failed release back.
   let rollingBack = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let downloading = false;
+  let autoTimer: ReturnType<typeof setTimeout> | undefined;
+  let downloading: Promise<{ bundle: string }> | null = null;
   let unwritableTold = false;
+  let autoFailureTold = false;
+  let quitting = false;
   const refusalsTold = new Set<string>();
   let serverAnswered: Promise<string | null> = Promise.resolve(null);
 
@@ -491,7 +512,8 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
 
   const recover = (): RelaunchOptions["recover"] =>
     windows && config ? { script: join(dir, "recover.ps1"), name: `akan-native-update ${config.app}` } : undefined;
-  const moveThenRelaunch = (moves: [string, string][], app: string) => relaunch(executableIn(app), moves, recover());
+  const moveThenRelaunch = (moves: [string, string][], app: string, start = true) =>
+    relaunch(executableIn(app), moves, recover(), start);
 
   /**
    * Puts .previous back, then relaunches it. A release that may pass another time (`retry`) stays downloaded as the
@@ -805,12 +827,300 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     });
   };
 
+  const checkRelease = async (): Promise<UpdateCheck> => {
+    const c = need();
+    const release = await fetchRelease(c, readState());
+    const { m } = release;
+    const { newer, revoke } = decide(c, release, readState());
+    //? A stale release's revocations bind too: an install whose own build is newer only ever checks.
+    revokeKeys(c, revoke);
+    const state = readState();
+    const refusal = typeof m.server === "boolean" && installed ? serverRefusal(m.server, installed) : null;
+    if (refusal && !refusalsTold.has(m.bundle)) {
+      refusalsTold.add(m.bundle);
+      console.warn(`[akan-native] updates: ${m.bundle}: ${refusal}`);
+    }
+    const available = !refusal && newer && !rollingBack;
+    return {
+      available,
+      bundle: m.bundle,
+      version: m.version,
+      sequence: m.sequence,
+      downloadSize: available ? (patchFor(m, state)?.size ?? m.archive?.size ?? null) : null,
+    } satisfies UpdateCheck;
+  };
+
+  const downloadRelease = async (ctx: DesktopContext): Promise<{ bundle: string }> => {
+    const c = need();
+    const app = installed as string;
+    const awake = await stayAwake(ctx, "Downloading an update");
+    try {
+      const release = await fetchRelease(c, readState());
+      const { m } = release;
+      const archive = m.archive as NonNullable<Manifest["archive"]>;
+      const { newer, revoke } = decide(c, release, readState());
+      revokeKeys(c, revoke);
+      const state = readState();
+      if (!newer) throw new AkanNativeError("NOT_FOUND", "no newer release for this app");
+      const refusal = typeof m.server === "boolean" ? serverRefusal(m.server, app) : null;
+      if (refusal) throw new AkanNativeError("NOT_ALLOWED", refusal);
+      if (state.pending?.bundle === m.bundle && existsSync(state.pending.staged)) return { bundle: m.bundle };
+      //? Unpacked beside the app, where the swap is a rename. An app installed where this user cannot write is
+      //? updated by its installer, and finding that out must not cost the whole download at every check.
+      const staging = `${app}.update-${m.bundle}`;
+      try {
+        rmSync(staging, { recursive: true, force: true });
+        mkdirSync(staging, { recursive: true });
+      } catch (error) {
+        if (!unwritableTold) {
+          unwritableTold = true;
+          console.warn(
+            `[akan-native] updates: cannot write beside ${app}; install new releases with the installer`,
+            error,
+          );
+        }
+        throw new AkanNativeError(
+          "NOT_ALLOWED",
+          `${dirname(app)} is not writable: install the release with its installer`,
+        );
+      }
+      // The release tar: a delta from ours if we can, else the whole archive.
+      let tar: Uint8Array | null = null;
+      const patch = patchFor(m, state);
+      if (patch) {
+        try {
+          const gz = await fetchBytes(`${releases(c)}/${patch.url}`, patch.size, ctx);
+          if (sha256(gz) !== patch.sha256) throw new Error("delta hash");
+          tar = applyDelta(
+            readFileSync(join(dir, "app", `${patch.from}.tar`)),
+            Bun.gunzipSync(gz as Uint8Array<ArrayBuffer>),
+          );
+        } catch (error) {
+          console.warn("[akan-native] updates: delta failed, downloading the whole release", error);
+          tar = null;
+        }
+      }
+      if (!tar) {
+        const gz = await fetchBytes(`${releases(c)}/${archive.url}`, archive.size, ctx);
+        if (sha256(gz) !== archive.gzSha256)
+          throw new AkanNativeError("INTERNAL", "the release archive does not match its hash");
+        tar = Bun.gunzipSync(gz as Uint8Array<ArrayBuffer>);
+      }
+      if (sha256(tar) !== archive.sha256) throw new AkanNativeError("INTERNAL", "the release does not match its hash");
+
+      // Unpack next to the app and check it before anything points at it.
+      const tarFile = join(staging, "release.tar");
+      writeFileSync(tarFile, tar);
+      const run = async (cmd: string[]) => {
+        const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
+        const [err, code] = await Promise.all([new Response(p.stderr).text(), p.exited]);
+        if (code !== 0) throw new AkanNativeError("INTERNAL", `${basename(cmd[0] ?? "")} failed: ${err.trim()}`);
+      };
+      // bsdtar is in Windows since 10 (System32\tar.exe).
+      await run([tarBinary(), "-xf", tarFile, "-C", staging]);
+      rmSync(tarFile);
+      //? The release's app is named for its build; the installed one may be named otherwise (the installer's /D=,
+      //? a renamed .app), and the swap gives it the installed one's name.
+      const unpacked = readdirSync(staging);
+      const staged = unpacked.length === 1 ? join(staging, unpacked[0] as string) : "";
+      if (!staged || !existsSync(executableIn(staged)))
+        throw new AkanNativeError("INTERNAL", `the release is not one app with ${exeName}`);
+      let id = "";
+      if (mac) {
+        id = Bun.spawnSync([
+          "/usr/bin/plutil",
+          "-extract",
+          "CFBundleIdentifier",
+          "raw",
+          "-o",
+          "-",
+          join(staged, "Contents", "Info.plist"),
+        ])
+          .stdout.toString()
+          .trim();
+      } else {
+        try {
+          id =
+            (
+              JSON.parse(readFileSync(join(resources(staged), "boot.json"), "utf8")) as {
+                app?: { id?: string };
+              }
+            ).app?.id ?? "";
+        } catch {}
+      }
+      if (id !== c.app)
+        throw new AkanNativeError("INTERNAL", `the release is ${id || "not an akan-native app"}, not ${c.app}`);
+      // The manifest signature already vouches for the bytes; macOS also checks the code signature, and an app
+      // signed by a team or with Authenticode takes only its own signer's release (Linux packages: CLI-9).
+      if (mac) {
+        const verified = await signatureTool(["/usr/bin/codesign", "--verify", "--deep", "--strict", staged]);
+        if (verified.code !== 0) throw new AkanNativeError("INTERNAL", `codesign failed: ${verified.output.trim()}`);
+      }
+      const unpackedRefusal = (await signerRefusal(staged, app)) ?? serverRefusal(carries(staged), app);
+      if (unpackedRefusal) {
+        rmSync(staging, { recursive: true, force: true });
+        const latest = readState();
+        fail(latest, m.bundle, unpackedRefusal);
+        writeState(latest);
+        throw new AkanNativeError("NOT_ALLOWED", unpackedRefusal);
+      }
+      //? setChannel() while this downloaded: the release is of the channel the device left.
+      if (need().channel !== c.channel) {
+        rmSync(staging, { recursive: true, force: true });
+        throw new AkanNativeError("CANCELLED", "the channel changed during the download");
+      }
+      flushTree(staged);
+
+      // Keep this release's tar for the next delta, and only that one.
+      mkdirSync(join(dir, "app"), { recursive: true });
+      for (const name of readdirSync(join(dir, "app"))) rmSync(join(dir, "app", name), { force: true });
+      writeFileSync(join(dir, "app", `${archive.sha256}.tar`), tar);
+      //? Read again: a trial confirmed while this downloaded must not be written back as unconfirmed.
+      const latest = readState();
+      latest.pending = {
+        bundle: m.bundle,
+        sequence: m.sequence,
+        version: m.version,
+        tar: archive.sha256,
+        build: m.build as number,
+        ...(release.signer ? { keyId: release.signer } : {}),
+        staged,
+      };
+      writeState(latest);
+      return { bundle: m.bundle };
+    } finally {
+      awake();
+    }
+  };
+  //? One download at a time, the background one included: a call while one runs is answered with it.
+  const download = async (ctx: DesktopContext) => {
+    notRollingBack();
+    downloading ??= downloadRelease(ctx).finally(() => {
+      downloading = null;
+    });
+    return downloading;
+  };
+
+  /**
+   * Moves the download into place, on trial, and starts it once this process has exited, or (`start` false) leaves it
+   * for the next launch.
+   */
+  const install = async (c: UpdatesConfig, state: State, pending: NonNullable<State["pending"]>, start: boolean) => {
+    const app = installed as string;
+    const previous = `${app}.previous`;
+    rmSync(previous, { recursive: true, force: true });
+    const entry = entryOf(pending);
+    if (windows) {
+      // The helper swaps once this app has exited; the staging folder (now empty) goes at the next start.
+      state.trial = { ...entry, previous, attempts: 0, from: c.embeddedSequence, staged: pending.staged };
+      state.pending = undefined;
+      writeState(state);
+      try {
+        await moveThenRelaunch(
+          [
+            [app, previous],
+            [pending.staged, app],
+          ],
+          app,
+          start,
+        );
+      } catch (error) {
+        state.trial = undefined;
+        state.pending = pending;
+        writeState(state);
+        throw new AkanNativeError("INTERNAL", `could not hand the update to the helper that moves it: ${error}`);
+      }
+      return;
+    }
+    // The trial is on record before the swap: a crash in between leaves a trial whose app
+    // does not run (setup drops it), never a new app without a trial to roll back.
+    state.trial = { ...entry, previous, attempts: 0 };
+    state.pending = undefined;
+    writeState(state);
+    let moved = false;
+    try {
+      renameSync(app, previous);
+      moved = true;
+      renameSync(pending.staged, app);
+    } catch (error) {
+      if (moved) renameSync(previous, app); // never leave no app behind
+      state.trial = undefined;
+      state.pending = pending;
+      writeState(state);
+      throw new AkanNativeError("INTERNAL", `could not move the update into place: ${error}`);
+    }
+    rmSync(dirname(pending.staged), { recursive: true, force: true });
+    if (start) await moveThenRelaunch([], app);
+  };
+
+  //? Windows and Linux start another copy of an app without single-instance: only one copy updates by itself, or
+  //? its download could unpack into the folder the other's quit moves into place.
+  const ownerPath = () => join(dir, "automatic.json");
+  const ownsAutomatic = (): boolean => {
+    const boot = bootTime();
+    try {
+      const { pid, boot: since } = JSON.parse(readFileSync(ownerPath(), "utf8")) as { pid?: unknown; boot?: unknown };
+      if (pid === process.pid) return true;
+      if (typeof pid === "number" && typeof since === "number" && Math.abs(since - boot) <= 60 && alive(pid))
+        return false;
+    } catch {} // none yet, or one a power cut cut short
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(ownerPath(), JSON.stringify({ pid: process.pid, boot }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const checkInBackground = async (ctx: DesktopContext) => {
+    try {
+      if ((await checkRelease()).available) await download(ctx);
+    } catch (error) {
+      //? NOT_FOUND: nothing published to the channel yet. An offline PC fails at every check: the first one is told.
+      if (isAkanNativeError(error, "NOT_FOUND") || autoFailureTold) return;
+      autoFailureTold = true;
+      console.warn("[akan-native] updates: the background check failed", error);
+    }
+  };
+  const scheduleChecks = (ctx: DesktopContext, delay: number) => {
+    autoTimer = setTimeout(async () => {
+      if (quitting || rollingBack) return;
+      //? A release on trial is not competed with: its first run decides whether it stays.
+      if (onTrial) return scheduleChecks(ctx, autoCheckDelay);
+      if (ownsAutomatic()) await checkInBackground(ctx);
+      if (!quitting) scheduleChecks(ctx, autoCheckInterval);
+    }, delay);
+  };
+  //? A quit while a release is on trial or being rolled back installs nothing: .previous is what that trial goes back
+  //? to. The owner record goes, since Windows soon gives its PID to another process.
+  const installAtQuit = async () => {
+    quitting = true;
+    clearTimeout(autoTimer);
+    if (!installed || !ownsAutomatic()) return;
+    try {
+      const state = readState();
+      const pending = state.pending;
+      if (rollingBack || runningIs(state.trial) || !pending || !existsSync(pending.staged)) return;
+      const c = need(state);
+      if (!applicable(c, state, pending) || serverRefusal(carries(pending.staged), installed)) return;
+      await install(c, state, pending, false);
+    } catch (error) {
+      console.warn("[akan-native] updates: the download stays for the next quit", error);
+    } finally {
+      rmSync(ownerPath(), { force: true });
+    }
+  };
+
   const setup = async (ctx: DesktopContext) => {
     //? Local, never Roaming: the unpacked releases are the whole app, and a trial belongs to this PC's install. A debug
     //? build has the release app's id: a record of its own keeps it from dropping that app's downloads as older.
     dir = join(ctx.appLocalDataDir, ctx.dev ? "akan-native-updates-debug" : "akan-native-updates");
     const app = installed;
     if (!config || !app) return;
+    if (config.automatic !== false && !ctx.dev) {
+      ctx.onQuit(installAtQuit);
+      scheduleChecks(ctx, autoCheckDelay);
+    }
     const state = readState();
     let changed = false;
     //? Installed again (the installer, a copy of another build): what the earlier install refused says nothing now.
@@ -938,177 +1248,9 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         } satisfies UpdateState;
       },
 
-      async check() {
-        const c = need();
-        const release = await fetchRelease(c, readState());
-        const { m } = release;
-        const { newer, revoke } = decide(c, release, readState());
-        //? A stale release's revocations bind too: an install whose own build is newer only ever checks.
-        revokeKeys(c, revoke);
-        const state = readState();
-        const refusal = typeof m.server === "boolean" && installed ? serverRefusal(m.server, installed) : null;
-        if (refusal && !refusalsTold.has(m.bundle)) {
-          refusalsTold.add(m.bundle);
-          console.warn(`[akan-native] updates: ${m.bundle}: ${refusal}`);
-        }
-        const available = !refusal && newer && !rollingBack;
-        return {
-          available,
-          bundle: m.bundle,
-          version: m.version,
-          sequence: m.sequence,
-          downloadSize: available ? (patchFor(m, state)?.size ?? m.archive?.size ?? null) : null,
-        } satisfies UpdateCheck;
-      },
+      check: () => checkRelease(),
 
-      async download(_args, ctx) {
-        const c = need();
-        const app = installed as string;
-        notRollingBack();
-        if (downloading) throw new AkanNativeError("CANCELLED", "a download is already running");
-        downloading = true;
-        const awake = await stayAwake(ctx, "Downloading an update");
-        try {
-          const release = await fetchRelease(c, readState());
-          const { m } = release;
-          const archive = m.archive as NonNullable<Manifest["archive"]>;
-          const { newer, revoke } = decide(c, release, readState());
-          revokeKeys(c, revoke);
-          const state = readState();
-          if (!newer) throw new AkanNativeError("NOT_FOUND", "no newer release for this app");
-          const refusal = typeof m.server === "boolean" ? serverRefusal(m.server, app) : null;
-          if (refusal) throw new AkanNativeError("NOT_ALLOWED", refusal);
-          if (state.pending?.bundle === m.bundle && existsSync(state.pending.staged)) return { bundle: m.bundle };
-          //? Unpacked beside the app, where the swap is a rename. An app installed where this user cannot write is
-          //? updated by its installer, and finding that out must not cost the whole download at every check.
-          const staging = `${app}.update-${m.bundle}`;
-          try {
-            rmSync(staging, { recursive: true, force: true });
-            mkdirSync(staging, { recursive: true });
-          } catch (error) {
-            if (!unwritableTold) {
-              unwritableTold = true;
-              console.warn(
-                `[akan-native] updates: cannot write beside ${app}; install new releases with the installer`,
-                error,
-              );
-            }
-            throw new AkanNativeError(
-              "NOT_ALLOWED",
-              `${dirname(app)} is not writable: install the release with its installer`,
-            );
-          }
-          // The release tar: a delta from ours if we can, else the whole archive.
-          let tar: Uint8Array | null = null;
-          const patch = patchFor(m, state);
-          if (patch) {
-            try {
-              const gz = await fetchBytes(`${releases(c)}/${patch.url}`, patch.size, ctx);
-              if (sha256(gz) !== patch.sha256) throw new Error("delta hash");
-              tar = applyDelta(
-                readFileSync(join(dir, "app", `${patch.from}.tar`)),
-                Bun.gunzipSync(gz as Uint8Array<ArrayBuffer>),
-              );
-            } catch (error) {
-              console.warn("[akan-native] updates: delta failed, downloading the whole release", error);
-              tar = null;
-            }
-          }
-          if (!tar) {
-            const gz = await fetchBytes(`${releases(c)}/${archive.url}`, archive.size, ctx);
-            if (sha256(gz) !== archive.gzSha256)
-              throw new AkanNativeError("INTERNAL", "the release archive does not match its hash");
-            tar = Bun.gunzipSync(gz as Uint8Array<ArrayBuffer>);
-          }
-          if (sha256(tar) !== archive.sha256)
-            throw new AkanNativeError("INTERNAL", "the release does not match its hash");
-
-          // Unpack next to the app and check it before anything points at it.
-          const tarFile = join(staging, "release.tar");
-          writeFileSync(tarFile, tar);
-          const run = async (cmd: string[]) => {
-            const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
-            const [err, code] = await Promise.all([new Response(p.stderr).text(), p.exited]);
-            if (code !== 0) throw new AkanNativeError("INTERNAL", `${basename(cmd[0] ?? "")} failed: ${err.trim()}`);
-          };
-          // bsdtar is in Windows since 10 (System32\tar.exe).
-          await run([tarBinary(), "-xf", tarFile, "-C", staging]);
-          rmSync(tarFile);
-          //? The release's app is named for its build; the installed one may be named otherwise (the installer's /D=,
-          //? a renamed .app), and the swap gives it the installed one's name.
-          const unpacked = readdirSync(staging);
-          const staged = unpacked.length === 1 ? join(staging, unpacked[0] as string) : "";
-          if (!staged || !existsSync(executableIn(staged)))
-            throw new AkanNativeError("INTERNAL", `the release is not one app with ${exeName}`);
-          let id = "";
-          if (mac) {
-            id = Bun.spawnSync([
-              "/usr/bin/plutil",
-              "-extract",
-              "CFBundleIdentifier",
-              "raw",
-              "-o",
-              "-",
-              join(staged, "Contents", "Info.plist"),
-            ])
-              .stdout.toString()
-              .trim();
-          } else {
-            try {
-              id =
-                (
-                  JSON.parse(readFileSync(join(resources(staged), "boot.json"), "utf8")) as {
-                    app?: { id?: string };
-                  }
-                ).app?.id ?? "";
-            } catch {}
-          }
-          if (id !== c.app)
-            throw new AkanNativeError("INTERNAL", `the release is ${id || "not an akan-native app"}, not ${c.app}`);
-          // The manifest signature already vouches for the bytes; macOS also checks the code signature, and an app
-          // signed by a team or with Authenticode takes only its own signer's release (Linux packages: CLI-9).
-          if (mac) {
-            const verified = await signatureTool(["/usr/bin/codesign", "--verify", "--deep", "--strict", staged]);
-            if (verified.code !== 0)
-              throw new AkanNativeError("INTERNAL", `codesign failed: ${verified.output.trim()}`);
-          }
-          const unpackedRefusal = (await signerRefusal(staged, app)) ?? serverRefusal(carries(staged), app);
-          if (unpackedRefusal) {
-            rmSync(staging, { recursive: true, force: true });
-            const latest = readState();
-            fail(latest, m.bundle, unpackedRefusal);
-            writeState(latest);
-            throw new AkanNativeError("NOT_ALLOWED", unpackedRefusal);
-          }
-          //? setChannel() while this downloaded: the release is of the channel the device left.
-          if (need().channel !== c.channel) {
-            rmSync(staging, { recursive: true, force: true });
-            throw new AkanNativeError("CANCELLED", "the channel changed during the download");
-          }
-          flushTree(staged);
-
-          // Keep this release's tar for the next delta, and only that one.
-          mkdirSync(join(dir, "app"), { recursive: true });
-          for (const name of readdirSync(join(dir, "app"))) rmSync(join(dir, "app", name), { force: true });
-          writeFileSync(join(dir, "app", `${archive.sha256}.tar`), tar);
-          //? Read again: a trial confirmed while this downloaded must not be written back as unconfirmed.
-          const latest = readState();
-          latest.pending = {
-            bundle: m.bundle,
-            sequence: m.sequence,
-            version: m.version,
-            tar: archive.sha256,
-            build: m.build as number,
-            ...(release.signer ? { keyId: release.signer } : {}),
-            staged,
-          };
-          writeState(latest);
-          return { bundle: m.bundle };
-        } finally {
-          downloading = false;
-          awake();
-        }
-      },
+      download: (_args, ctx) => download(ctx),
 
       async apply(_args, ctx) {
         const c = need();
@@ -1132,42 +1274,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           writeState(state);
           throw new AkanNativeError("NOT_ALLOWED", refusal);
         }
-        const previous = `${app}.previous`;
-        rmSync(previous, { recursive: true, force: true });
-        const entry = entryOf(pending);
-        if (windows) {
-          // The helper swaps once this app has exited; the staging folder (now empty) goes at the next start.
-          state.trial = { ...entry, previous, attempts: 0, from: c.embeddedSequence, staged: pending.staged };
-          state.pending = undefined;
-          writeState(state);
-          await moveThenRelaunch(
-            [
-              [app, previous],
-              [pending.staged, app],
-            ],
-            app,
-          );
-        } else {
-          // The trial is on record before the swap: a crash in between leaves a trial whose app
-          // does not run (setup drops it), never a new app without a trial to roll back.
-          state.trial = { ...entry, previous, attempts: 0 };
-          state.pending = undefined;
-          writeState(state);
-          let moved = false;
-          try {
-            renameSync(app, previous);
-            moved = true;
-            renameSync(pending.staged, app);
-          } catch (error) {
-            if (moved) renameSync(previous, app); // never leave no app behind
-            state.trial = undefined;
-            state.pending = pending;
-            writeState(state);
-            throw new AkanNativeError("INTERNAL", `could not move the update into place: ${error}`);
-          }
-          rmSync(dirname(pending.staged), { recursive: true, force: true });
-          await moveThenRelaunch([], app);
-        }
+        await install(c, state, pending, true);
         setTimeout(() => ctx.quit(0), 50); // answer first
       },
 

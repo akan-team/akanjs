@@ -15,6 +15,8 @@ export interface RelaunchOptions {
    * removes the value once the moves are done or undone.
    */
   recover?: { script: string; name: string };
+  /** false: only the moves, and nothing started (an update installed as the app quits). Default true. */
+  start?: boolean;
 }
 
 const RUN_ONCE = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce";
@@ -24,16 +26,17 @@ const quoted = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
 /**
  * The recovery `recover.script` holds: when `exe` is missing, every move whose source is gone and whose target is
- * there goes back, newest first, and the app starts. An app that is there was never half moved: it is left alone.
+ * there goes back, newest first, and the app starts unless `start` is false. An app that is there was never half
+ * moved: it is left alone.
  */
-export function recoveryScript(exe: string, moves: [string, string][]): string {
+export function recoveryScript(exe: string, moves: [string, string][], start = true): string {
   return `$ErrorActionPreference = 'SilentlyContinue'
 $exe = ${quoted(exe)}
 if (Test-Path -LiteralPath $exe) { exit }
 $moves = ${quoted(JSON.stringify(moves))} | ConvertFrom-Json
 [array]::Reverse($moves)
 foreach ($m in $moves) { if (-not (Test-Path -LiteralPath $m[0]) -and (Test-Path -LiteralPath $m[1])) { Move-Item -LiteralPath $m[1] -Destination $m[0] } }
-if (Test-Path -LiteralPath $exe) { Start-Process -WorkingDirectory $env:TEMP -FilePath $exe }
+${start ? "if (Test-Path -LiteralPath $exe) { Start-Process -WorkingDirectory $env:TEMP -FilePath $exe }" : ""}
 `;
 }
 
@@ -54,16 +57,20 @@ let started: Promise<void> | null = null;
  * Once this process has exited: renames `moves` in order and starts `exe` with this environment. macOS and
  * Linux rename a running app's folder right away, so only the start waits; Windows refuses that, so a helper
  * does the renames too (and on a failed rename puts back what it moved, so there is always an app to start).
- * Only the first call of a process starts a helper; later ones answer the same promise.
+ * Only the first call of a process starts a helper; later ones answer the same promise, and one with moves, which
+ * that helper would not make, is refused.
  */
 export function relaunchAfterExit(
   exe: string,
   moves: [string, string][] = [],
-  { delayMs = 0, recover }: RelaunchOptions = {},
+  { delayMs = 0, recover, start = true }: RelaunchOptions = {},
 ): Promise<void> {
-  if (started) return started;
+  if (started)
+    return moves.length > 0
+      ? Promise.reject(new Error("the app is already being relaunched without these moves"))
+      : started;
   try {
-    const helper = startHelper(exe, moves, Math.max(0, Math.round(delayMs)), recover);
+    const helper = startHelper(exe, moves, Math.max(0, Math.round(delayMs)), recover, start);
     started = helper;
     return helper;
   } catch (error) {
@@ -76,6 +83,7 @@ function startHelper(
   moves: [string, string][],
   delayMs: number,
   recover: RelaunchOptions["recover"],
+  start: boolean,
 ): Promise<void> {
   //? The CLI's contract with the app it started (lib.rs stdin_quit): nobody holds the new app's stdin, and
   //? reading it closed would quit it at once.
@@ -98,6 +106,7 @@ function startHelper(
       }
       throw error;
     }
+    if (!start) return Promise.resolve();
     //? A parent its own launcher never reaps stays a zombie that `kill -0` still finds: its state is read too.
     const child = spawn(
       "/bin/sh",
@@ -145,6 +154,7 @@ try {
   foreach ($m in $done) { try { Move-Item -LiteralPath $m[1] -Destination $m[0] } catch {} }
 }
 if ($env:AKAN_NATIVE_RECOVER) { Remove-ItemProperty -Path $runOnce -Name $env:AKAN_NATIVE_RECOVER_NAME -ErrorAction SilentlyContinue }
+if ($env:AKAN_NATIVE_START -ne '1') { exit }
 Start-Sleep -Milliseconds ([int]$env:AKAN_NATIVE_DELAY_MS)
 Start-Process -NoNewWindow -WorkingDirectory $env:AKAN_NATIVE_CWD -FilePath $env:AKAN_NATIVE_EXE
 `;
@@ -153,7 +163,7 @@ Start-Process -NoNewWindow -WorkingDirectory $env:AKAN_NATIVE_CWD -FilePath $env
   if (recover && command) {
     try {
       mkdirSync(dirname(recover.script), { recursive: true });
-      writeFileSync(recover.script, `\uFEFF${recoveryScript(exe, moves)}`);
+      writeFileSync(recover.script, `\uFEFF${recoveryScript(exe, moves, start)}`);
       recovery = { AKAN_NATIVE_RECOVER: command, AKAN_NATIVE_RECOVER_NAME: recover.name };
     } catch (error) {
       console.warn("[akan-native] cannot write the swap's recovery script", error);
@@ -177,6 +187,7 @@ Start-Process -NoNewWindow -WorkingDirectory $env:AKAN_NATIVE_CWD -FilePath $env
     AKAN_NATIVE_EXE: exe,
     AKAN_NATIVE_MOVES: JSON.stringify(moves),
     AKAN_NATIVE_DELAY_MS: String(delayMs),
+    AKAN_NATIVE_START: start ? "1" : "0",
     AKAN_NATIVE_CWD: cwd,
     ...recovery,
   };

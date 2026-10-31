@@ -4,7 +4,8 @@ import { useLiveValue } from "../../../packages/react/src/index.ts";
 /**
  * Over-the-air updates. On iOS and Android they replace the web bundle (UP-2); the native code
  * stays, so a bundle only runs in a binary with the same native API (UP-3, `nativeApi`). On macOS,
- * Windows and Linux they replace the whole app (UP-1). Releases are made with
+ * Windows and Linux they replace the whole app (UP-1): the app looks for a release and downloads it by itself, and
+ * installs it as it quits, unless `updates.automatic` is false. Releases are made with
  * `akan-native update publish <platform>` and signed with the key of `akan-native update keygen`.
  *
  * A new bundle first runs on trial: the app calls notifyReady() once it works. A trial that does
@@ -17,7 +18,10 @@ export interface UpdateState {
   bundle: string | null;
   /** Its sequence (publish time, seconds); 0 for the app's own bundle. */
   sequence: number;
-  /** Downloaded and verified, runs at the next launch or after apply(). */
+  /**
+   * Downloaded and verified, runs at the next launch or after apply(). Desktop: the app installs it as it quits, unless
+   * `updates.automatic` is false.
+   */
   pending: string | null;
   /**
    * Running for the first time: call notifyReady() once the app works, or it is rolled back. Desktop: also while it is
@@ -57,7 +61,7 @@ export interface UpdatesApi {
   check(): Promise<UpdateCheck>;
   /**
    * Downloads and verifies the latest bundle; it runs at the next launch (or apply()). Desktop: rejects NOT_ALLOWED
-   * while a rollback is under way.
+   * while a rollback is under way, and a call while a download runs, the app's own included, is answered with it.
    */
   download(): Promise<{ bundle: string }>;
   /**

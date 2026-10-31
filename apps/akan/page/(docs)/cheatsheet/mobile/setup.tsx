@@ -861,6 +861,26 @@ export default page()
         en: (
           <>
             <strong>
+              <code>updates.automatic: false</code> leaves a desktop app's timing to the app.
+            </strong>{" "}
+            It then neither looks for releases nor installs one at quit: a kiosk that applies at night calls{" "}
+            <code>updates</code> itself.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>
+              <code>updates.automatic: false</code>면 데스크톱 앱의 업데이트 시점을 앱이 정합니다.
+            </strong>{" "}
+            릴리스를 스스로 찾지도, 종료할 때 설치하지도 않으므로, 밤에 적용하는 키오스크라면 <code>updates</code>를
+            직접 부릅니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>
               Pass the same <code>--env</code> to build and publish.
             </strong>{" "}
             An app takes only its channel's releases, <code>updates.channel</code> or else the <code>--env</code> it was
@@ -1955,8 +1975,8 @@ await NativeSecret.remove("llm.apiKey");`}
                     An installed app updates itself from releases you sign. <code>akan update-keygen</code> prints the
                     public key for <code>native.updates</code>, and <code>akan publish-update</code> writes a release to{" "}
                     <code>dist/native/&lt;app&gt;/&lt;target&gt;/updates</code> for you to upload to{" "}
-                    <code>updates.url</code>. A phone takes a new web bundle by itself; a desktop release is the whole
-                    app and a relaunch, so the app decides when:
+                    <code>updates.url</code>. A phone runs a new web bundle from its next start. A desktop app downloads
+                    a release in the background and installs it as it quits; to install one now, the app applies it:
                   </span>
                 ),
                 ko: (
@@ -1964,8 +1984,8 @@ await NativeSecret.remove("llm.apiKey");`}
                     설치된 앱은 직접 서명한 릴리스로 스스로 업데이트합니다. <code>akan update-keygen</code>이{" "}
                     <code>native.updates</code>에 넣을 공개 키를 출력하고, <code>akan publish-update</code>가{" "}
                     <code>updates.url</code>에 올릴 릴리스를 <code>dist/native/&lt;app&gt;/&lt;target&gt;/updates</code>
-                    에 씁니다. 폰은 새 웹 번들을 스스로 받고, 데스크톱 릴리스는 앱 전체이고 재실행이 따르므로 언제
-                    받을지는 앱이 정합니다:
+                    에 씁니다. 폰은 새 웹 번들을 다음 실행부터 씁니다. 데스크톱 앱은 릴리스를 백그라운드에서 받아
+                    두었다가 종료할 때 설치하며, 지금 설치하려면 앱이 적용합니다:
                   </span>
                 ),
               })}
@@ -1976,7 +1996,7 @@ await NativeSecret.remove("llm.apiKey");`}
               language="typescript"
               code={`import { updates } from "akanjs/client/native";
 
-// e.g. every 30 minutes; a kiosk applies at night, an app on its next launch
+// e.g. behind a "Restart to update" button
 export const useAppUpdates = () => {
   const takeUpdate = async () => {
     if ((await updates.getState()).trial) return;

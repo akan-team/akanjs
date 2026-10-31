@@ -32,6 +32,7 @@ const KNOWN: Shape = {
     readyTimeout: true,
     report: { url: true },
     target: true,
+    automatic: true,
   },
   deepLinks: { schemes: true, domains: { "[]": { host: true, pathPrefixes: true } } },
   native: {
