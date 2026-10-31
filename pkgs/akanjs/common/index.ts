@@ -73,7 +73,6 @@ export {
   isCodeAgentReply,
 } from "./codeAgentWire";
 export { type CookieEntry, CookieJar, type CookieRead } from "./cookieJar";
-export { CookieSweep, type CookieSweepTarget } from "./cookieSweep";
 export { EventStream, type EventStreamOptions } from "./eventStream";
 export {
   type FileUploadCapability,

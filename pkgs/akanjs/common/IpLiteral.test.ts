@@ -40,6 +40,5 @@ describe("IpLiteral.parse", () => {
     for (const entry of ["010.0.0.1", "10.0.0.01", "10.00.0.1", "010.0.0.1:80"])
       expect(IpLiteral.parse(entry)).toBeNull();
     expect(IpLiteral.parse("10.0.0.0")).toBe("10.0.0.0");
-    expect(IpLiteral.bytes("010.0.0.1")).toBeNull();
   });
 });

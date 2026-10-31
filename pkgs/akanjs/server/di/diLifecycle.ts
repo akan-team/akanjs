@@ -123,7 +123,8 @@ export class DiLifecycle {
   }
 
   constructor({ env, modules = [], disableModules = [], disableLibs = [] }: DiLifecycleProps, ...libs: AkanLib[]) {
-    ConstantRegistry.assertConsistentRefNames();
+    //? A disabled lib's constants still register on import, and an app disables a lib to step around its clash.
+    ConstantRegistry.assertConsistentRefNames(disableLibs);
     this.#env = env;
     const databaseMode = DiLifecycle.#databaseMode();
     this.logger.debug(`Database mode: ${DatabaseModes.describe(databaseMode)}`);

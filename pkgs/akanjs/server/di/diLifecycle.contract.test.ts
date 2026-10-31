@@ -501,6 +501,29 @@ describe("DiLifecycle duplicate registrations", () => {
     }
   });
 
+  test("leaves a lib the disableLibs option names out of the refName check", async () => {
+    const DiLifecycle = await loadDiLifecycle("disabledScalarLib");
+
+    const social = scalarLibOf(
+      "social",
+      via((f) => ({ orgId: f(String), orgName: f(String) })),
+    );
+    const legacy = scalarLibOf(
+      "legacy",
+      via((f) => ({ devProjectId: f(String) })),
+    );
+
+    try {
+      expect(() => new DiLifecycle({ env: {} }, social, legacy)).toThrow('scalar "diDuplicateInvite"');
+      expect(() => new DiLifecycle({ env: {}, disableLibs: ["legacy"] }, social, legacy)).not.toThrow();
+    } finally {
+      scalarLibOf(
+        "legacy",
+        via((f) => ({ orgId: f(String), orgName: f(String) })),
+      );
+    }
+  });
+
   test("serves the app's class in every registry when it extends a lib model of its refName", async () => {
     const DiLifecycle = await loadDiLifecycle("overrideModel");
 

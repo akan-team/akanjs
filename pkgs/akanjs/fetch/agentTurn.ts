@@ -15,7 +15,9 @@ export class AgentTurn extends via((field) => ({
   }
 }
 
-export const agentTurnConstant = ConstantRegistry.buildScalar("agentTurn" as const, AgentTurn, {
+export const agentTurnConstant = ConstantRegistry.buildScalar(
+  "agentTurn" as const,
   AgentTurn,
-  AgentStop,
-});
+  { AgentTurn, AgentStop },
+  "akanjs",
+);

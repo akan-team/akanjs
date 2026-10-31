@@ -1,4 +1,5 @@
 import { clientAddressFromHeaders, normalizeIpAddress } from "./clientAddress";
+import { IpBytes } from "./IpBytes";
 import { IpLiteral } from "./IpLiteral";
 import { Logger } from "./Logger";
 
@@ -22,8 +23,8 @@ export interface ResolvedClient {
 
 // Forwarded headers are forgeable, so they are believed only from a trusted peer: loopback always (the gateway's own
 // hop to its children), and private or link-local ranges until `AKAN_TRUSTED_PROXIES` names the list that replaces
-// them — CIDRs or addresses, plus `private` (those ranges again), `none` (loopback only) or `*` (every peer). A list
-// without `*` also switches on the strict reading: `x-forwarded-for` walked from the nearest hop past every trusted one.
+// them — CIDRs or addresses, plus `private` (those ranges again), `none` (loopback only) or `*` alone (every peer). Any
+// other list also switches on the strict reading: `x-forwarded-for` walked from the nearest hop past every trusted one.
 export class TrustedProxy {
   static #policy: TrustPolicy | null = null;
   //? Every request asks about its peer, and behind a proxy that is the same few addresses; bounded for a direct server.
@@ -63,10 +64,11 @@ export class TrustedProxy {
           );
         return parsed ? [parsed] : [];
       });
-    const trustAll = keywords.has("*");
-    if (trustAll && entries.length > 1)
+    //? Security: 3.1.0 ignored a `*` beside other entries; honouring it now would widen an existing list to everyone.
+    const trustAll = keywords.size === 1 && keywords.has("*");
+    if (keywords.has("*") && !trustAll)
       new Logger("TrustedProxy").warn(
-        `AKAN_TRUSTED_PROXIES lists "*", which trusts every peer, so its other entries change nothing`,
+        `AKAN_TRUSTED_PROXIES lists "*" beside other entries, so "*" is ignored; list it alone to trust every peer`,
       );
     return {
       trustAll,
@@ -88,7 +90,7 @@ export class TrustedProxy {
   }
 
   static #judge(address: string): boolean {
-    const bytes = IpLiteral.bytes(normalizeIpAddress(address));
+    const bytes = IpBytes.of(normalizeIpAddress(address));
     if (!bytes) return false;
     const policy = TrustedProxy.#load();
     if (TrustedProxy.#isLoopback(bytes)) return true;
@@ -110,14 +112,17 @@ export class TrustedProxy {
       const recorded = clientAddressFromHeaders(headers, judge);
       if (recorded) return { address: recorded, forwarded: true };
     } else if (peerAddress) TrustedProxy.#noteIgnoredPeer(headers, peerAddress);
-    return { address: peerAddress ? normalizeIpAddress(peerAddress) : null, forwarded: false };
+    return {
+      address: peerAddress ? (IpLiteral.parse(peerAddress) ?? normalizeIpAddress(peerAddress)) : null,
+      forwarded: false,
+    };
   }
 
   //* Once per process, without header values: an in-cluster ingress left off a set list loses every caller's address.
   static #noteIgnoredPeer(headers: Headers, peerAddress: string) {
     if (TrustedProxy.#warnedIgnoredPeer || !TrustedProxy.#load().strict) return;
     if (!headers.has("x-forwarded-for") && !headers.has("x-real-ip")) return;
-    const bytes = IpLiteral.bytes(normalizeIpAddress(peerAddress));
+    const bytes = IpBytes.of(normalizeIpAddress(peerAddress));
     if (!bytes || !TrustedProxy.#isPrivateRange(bytes)) return;
     TrustedProxy.#warnedIgnoredPeer = true;
     new Logger("TrustedProxy").warn(
@@ -127,7 +132,7 @@ export class TrustedProxy {
 
   /** For refusing an outbound fetch to a caller-chosen name: judges the address alone, never the proxy list. */
   static isPrivateAddress(address: string): boolean {
-    const bytes = IpLiteral.bytes(normalizeIpAddress(address));
+    const bytes = IpBytes.of(normalizeIpAddress(address));
     if (!bytes) return true;
     if (TrustedProxy.#isLoopback(bytes) || TrustedProxy.#isPrivateRange(bytes)) return true;
     if (bytes.length === 4) {
@@ -159,7 +164,7 @@ export class TrustedProxy {
   static #parseCidr(entry: string): Cidr | null {
     const [address, prefix, ...rest] = entry.split("/");
     if (rest.length || (prefix !== undefined && !/^\d{1,3}$/.test(prefix))) return null;
-    const bytes = IpLiteral.bytes(normalizeIpAddress(address ?? ""));
+    const bytes = IpBytes.of(normalizeIpAddress(address ?? ""));
     if (!bytes) return null;
     const bits = prefix === undefined ? bytes.length * 8 : Number(prefix);
     if (!Number.isInteger(bits) || bits < 0 || bits > bytes.length * 8) return null;

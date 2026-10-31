@@ -72,6 +72,16 @@ describe("TrustedProxy.clientAddress", () => {
     });
   });
 
+  test("spells a peer address the way a forwarded one is spelled", () => {
+    expect(TrustedProxy.resolve(headers({}), "2001:0DB8:0:0:0:0:0:0001")).toEqual({
+      address: "2001:db8::1",
+      forwarded: false,
+    });
+    expect(TrustedProxy.clientAddress(headers({}), "fe80::1%en0")).toBe("fe80::1");
+    expect(TrustedProxy.clientAddress(headers({}), " ::ffff:198.51.100.7 ")).toBe("198.51.100.7");
+    expect(TrustedProxy.clientAddress(headers({}), "not-an-address")).toBe("not-an-address");
+  });
+
   test("judges a peer again once the proxy list changes", () => {
     expect(TrustedProxy.isTrusted("203.0.113.5")).toBe(false);
     TrustedProxy.configure("203.0.113.0/24");
@@ -158,20 +168,24 @@ describe("AKAN_TRUSTED_PROXIES", () => {
     expect(TrustedProxy.clientAddress(chain, "203.0.113.5")).toBe("198.51.100.7");
   });
 
-  test("`*` beside other entries still trusts every peer, and says once that they change nothing", () => {
+  test("`*` beside other entries is ignored, so the list fails closed, and says so once", () => {
     const { lines, stop } = captureWarnings();
     try {
       TrustedProxy.configure("*, 10.0.0.0/8");
+      expect(TrustedProxy.isTrusted("198.51.100.1")).toBe(false);
+      expect(TrustedProxy.isTrusted("10.1.2.3")).toBe(true);
+      const forged = headers({ "x-real-ip": "203.0.113.50", "x-forwarded-for": "203.0.113.50" });
+      expect(TrustedProxy.clientAddress(forged, "198.51.100.1")).toBe("198.51.100.1");
+      const chain = headers({ "x-forwarded-for": "198.51.100.7, 203.0.113.9" });
+      expect(TrustedProxy.clientAddress(chain, "10.0.0.2")).toBe("203.0.113.9");
+      TrustedProxy.clientAddress(forged, "198.51.100.2");
+      TrustedProxy.configure("*, *");
       expect(TrustedProxy.isTrusted("198.51.100.1")).toBe(true);
-      const edge = headers({ "x-real-ip": "203.0.113.50", "x-forwarded-for": "198.51.100.66, 203.0.113.50" });
-      expect(TrustedProxy.clientAddress(edge, "198.51.100.1")).toBe("203.0.113.50");
-      TrustedProxy.clientAddress(edge, "198.51.100.2");
-      TrustedProxy.configure("*");
     } finally {
       stop();
     }
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain('"*"');
+    expect(lines[0]).toContain('"*" is ignored');
   });
 
   test("ignores an entry that is neither an address nor a CIDR, with a warning", () => {

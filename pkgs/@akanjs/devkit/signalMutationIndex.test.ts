@@ -110,6 +110,21 @@ export class ItemEndpoint extends endpoint(srv.item, ({ query, mutation }) => ({
     expect(index.isMutation("apps/third/page/x.tsx", "approveTicket")).toBe(false);
   });
 
+  test("reads a lib page's call by its own lib's endpoint before another lib's of that name", () => {
+    const shared = fileOf(
+      "libs/shared/lib/_shared/shared.signal.ts",
+      `export class SharedEndpoint extends endpoint(srv.shared, ({ mutation }) => ({ syncFeed: mutation(Boolean, {}).exec(() => true) })) {}`,
+    );
+    const social = fileOf(
+      "libs/social/lib/_social/social.signal.ts",
+      `export class SocialEndpoint extends endpoint(srv.social, ({ query }) => ({ syncFeed: query(Boolean, {}).exec(() => true) })) {}`,
+    );
+    const index = new SignalMutationIndex([shared, social]);
+    expect(index.isMutation("libs/social/page/x.tsx", "syncFeed")).toBe(false);
+    expect(index.policyIndexOf("libs/social/page/x.tsx", "syncFeed")).toBeNull();
+    expect(index.isMutation("libs/shared/page/x.tsx", "syncFeed")).toBe(true);
+  });
+
   test("ignores signal tests and specs", () => {
     const spec = fileOf(
       "apps/demo/lib/ticket/ticket.signal.spec.ts",

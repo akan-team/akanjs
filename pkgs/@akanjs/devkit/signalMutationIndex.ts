@@ -34,7 +34,7 @@ export class SignalMutationIndex {
 
   #shapeOf(consumerFile: string, name: string) {
     const [root, owner] = consumerFile.split("/");
-    const own = root === "apps" ? this.#shapesByOwner.get(`apps/${owner}`)?.get(name) : undefined;
+    const own = this.#shapesByOwner.get(`${root}/${owner}`)?.get(name);
     if (own) return own;
     for (const [key, shapes] of this.#shapesByOwner) {
       const shape = shapes.get(name);

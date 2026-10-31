@@ -1,3 +1,4 @@
+import { IpBytes } from "./IpBytes";
 import { IpLiteral } from "./IpLiteral";
 
 export const forwardedHeaders = [
@@ -8,7 +9,7 @@ export const forwardedHeaders = [
   "x-forwarded-proto",
 ] as const;
 
-export const normalizeIpAddress = (address: string): string => IpLiteral.normalize(address);
+export const normalizeIpAddress = (address: string): string => IpBytes.normalize(address);
 
 /**
  * Without `isTrusted`: `x-real-ip`, else the leftmost `x-forwarded-for` entry. With it: `x-forwarded-for` walked from
