@@ -138,6 +138,11 @@ export interface AkanNativeConfig {
      * release signed for one target cannot be served to another's apps. akan sets the native target's name.
      */
     target?: string;
+    /**
+     * Desktop: the app looks for a release in the background (soon after it starts, then hourly), downloads it, and
+     * installs it as it quits. false leaves all three to the app's own `updates` calls. Default true.
+     */
+    automatic?: boolean;
   };
   /** Links that open the app, delivered through the app plugin's urlOpen (and getLaunchUrl). */
   deepLinks?: {

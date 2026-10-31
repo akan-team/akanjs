@@ -83,6 +83,32 @@ process.exit(0);
   }, 30_000);
 });
 
+describe("relaunchAfterExit without a start", () => {
+  test("only makes the moves, and refuses a later call whose moves its helper would not make", async () => {
+    const marker = join(dir, "marker-moves-only");
+    const app = standIn(marker);
+    const [old, moved, other] = ["quit-old", "quit-new", "quit-other"].map((name) => join(dir, name));
+    writeFileSync(old as string, "");
+    const script = join(dir, "moves-only.ts");
+    writeFileSync(
+      script,
+      `import { relaunchAfterExit } from ${JSON.stringify(join(import.meta.dir, "../src/relaunch.ts"))};
+await relaunchAfterExit(${JSON.stringify(app)}, [[${JSON.stringify(old)}, ${JSON.stringify(moved)}]], { start: false });
+await relaunchAfterExit(${JSON.stringify(app)}, [[${JSON.stringify(moved)}, ${JSON.stringify(other)}]]).then(
+  () => process.exit(3),
+  () => process.exit(0),
+);
+`,
+    );
+    const exiting = Bun.spawn([process.execPath, script], { stdout: "inherit", stderr: "ignore" });
+    expect(await exiting.exited).toBe(0);
+    for (let waited = 0; !existsSync(moved as string) && waited < 15_000; waited += 100) await Bun.sleep(100);
+    await Bun.sleep(1500);
+    expect([old, moved, other].map((path) => existsSync(path as string))).toEqual([false, true, false]);
+    expect(existsSync(marker)).toBe(false);
+  }, 30_000);
+});
+
 describe("relaunchAfterExit on macOS and Linux", () => {
   test("puts the first rename back when the second one fails", async () => {
     if (windows) return;

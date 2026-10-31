@@ -332,7 +332,9 @@ A kiosk or a signage screen has nobody to click Reload. `desktop.recovery: "relo
 
 Updates
 
-An installed app updates itself from releases you sign. `akan update-keygen` prints the public key for `native.updates`, and `akan publish-update` writes a release to `dist/native/<app>/<target>/updates` for you to upload to `updates.url`. A phone takes a new web bundle by itself; a desktop release is the whole app and a relaunch, so the app decides when:
+An installed app updates itself from releases you sign. `akan update-keygen` prints the public key for `native.updates`, and `akan publish-update` writes a release to `dist/native/<app>/<target>/updates` for you to upload to `updates.url`. A phone runs a new web bundle from its next start. A desktop app downloads a release in the background and installs it as it quits; to install one now, the app applies it:
+
+**`updates.automatic: false` leaves a desktop app's timing to the app.** It then neither looks for releases nor installs one at quit: a kiosk that applies at night calls `updates` itself.
 
 **Pass the same `--env` to build and publish.** An app takes only its channel's releases, `updates.channel` or else the `--env` it was built with, and `build-desktop` defaults to `debug` while `publish-update` defaults to `main`.
 
@@ -577,7 +579,7 @@ native: {
 ```typescript
 import { updates } from "akanjs/client/native";
 
-// e.g. every 30 minutes; a kiosk applies at night, an app on its next launch
+// e.g. behind a "Restart to update" button
 export const useAppUpdates = () => {
   const takeUpdate = async () => {
     if ((await updates.getState()).trial) return;

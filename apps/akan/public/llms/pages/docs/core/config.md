@@ -192,7 +192,7 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - deepLinks.domains (string[]): App-link and universal-link hosts, normalized to the bare host.
 
-- updates ({ url, publicKeys, revokedKeys?, channel?, readyTimeout?, report? }): Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.
+- updates ({ url, publicKeys, revokedKeys?, channel?, readyTimeout?, report?, automatic? }): Where installed apps find new releases. Each updates itself: a phone from its next start, a desktop app as it quits.
 
 - updates.url (string): A static base URL, such as a storage bucket, holding what akan publish-update writes; https in a release build.
 
@@ -205,6 +205,8 @@ targets builds several native apps from one Akan app, such as a store app and an
 - updates.readyTimeout (number, default 10000): How long, in ms, a release on trial has to mount its first page before it is rolled back.
 
 - updates.report ({ url: string }): Where a phone posts what became of each release, such as a rollback, so rollback rates are visible. Unset sends nothing.
+
+- updates.automatic (boolean, default true): A desktop app checks in the background and installs a release as it quits. false leaves both to its updates calls.
 
 - devtools (boolean, default false): The web inspector in a release build too: internal test targets only.
 

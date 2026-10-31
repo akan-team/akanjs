@@ -234,9 +234,9 @@ const nativeFields = [
   },
   {
     key: "updates",
-    type: "{ url, publicKeys, revokedKeys?, channel?, readyTimeout?, report? }",
-    en: "Where installed apps find new releases: a phone updates itself, a desktop app when it calls updates.",
-    ko: "설치된 앱이 새 릴리스를 찾는 곳이며, 폰은 스스로, 데스크톱 앱은 updates를 부를 때 업데이트합니다.",
+    type: "{ url, publicKeys, revokedKeys?, channel?, readyTimeout?, report?, automatic? }",
+    en: "Where installed apps find new releases. Each updates itself: a phone from its next start, a desktop app as it quits.",
+    ko: "설치된 앱이 새 릴리스를 찾는 곳입니다. 앱은 스스로 업데이트하며, 폰은 다음 실행부터, 데스크톱 앱은 종료할 때 설치합니다.",
   },
   {
     key: "updates.url",
@@ -275,6 +275,13 @@ const nativeFields = [
     type: "{ url: string }",
     en: "Where a phone posts what became of each release, such as a rollback, so rollback rates are visible. Unset sends nothing.",
     ko: "폰이 릴리스마다 어떻게 됐는지(되돌림 등) 보내는 주소이며, 되돌림 비율을 볼 수 있습니다. 적지 않으면 보내지 않습니다.",
+  },
+  {
+    key: "updates.automatic",
+    type: "boolean",
+    default: "true",
+    en: "A desktop app checks in the background and installs a release as it quits. false leaves both to its updates calls.",
+    ko: "데스크톱 앱이 백그라운드에서 확인하고 종료할 때 릴리스를 설치합니다. false면 둘 다 앱이 updates를 불러 합니다.",
   },
   {
     key: "devtools",

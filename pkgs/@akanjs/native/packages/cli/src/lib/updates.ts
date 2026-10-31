@@ -60,6 +60,8 @@ export interface UpdatesConfig {
   readyTimeout: number;
   /** Where a phone posts what became of each release (downloaded, applied, confirmed, rolled back, failed); null: no reports. */
   reportUrl: string | null;
+  /** Desktop: false leaves checking, downloading and applying to the app; a phone always takes a web bundle itself. */
+  automatic: boolean;
 }
 
 export interface UpdateFile {
@@ -213,8 +215,22 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
   const reportUrl = updateReportUrl(r.report, problems);
   if (r.target !== undefined && (typeof r.target !== "string" || !r.target || r.target.length > 100))
     problems.push("updates.target must be the name of the release target, 1 to 100 characters");
+  if (r.automatic !== undefined && typeof r.automatic !== "boolean")
+    problems.push("updates.automatic must be a boolean");
   for (const key of Object.keys(r))
-    if (!["url", "publicKey", "publicKeys", "revokedKeys", "channel", "readyTimeout", "report", "target"].includes(key))
+    if (
+      ![
+        "url",
+        "publicKey",
+        "publicKeys",
+        "revokedKeys",
+        "channel",
+        "readyTimeout",
+        "report",
+        "target",
+        "automatic",
+      ].includes(key)
+    )
       problems.push(`updates.${key} is not supported`);
   if (publicKeys?.every((key) => revokedKeys.includes(keyIdOf(key))))
     problems.push(
@@ -229,6 +245,7 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
     readyTimeout: (r.readyTimeout as number | undefined) ?? 10_000,
     reportUrl,
     target: typeof r.target === "string" ? r.target : null,
+    automatic: r.automatic !== false,
   };
 }
 
@@ -440,6 +457,7 @@ export function updatesResource(
     channel: updates.channel,
     readyTimeout: updates.readyTimeout,
     ...(updates.target && platform !== "ios" && platform !== "android" ? { target: updates.target } : {}),
+    ...(updates.automatic === false && platform !== "ios" && platform !== "android" ? { automatic: false } : {}),
     ...(updates.reportUrl && (platform === "ios" || platform === "android") ? { reportUrl: updates.reportUrl } : {}),
   });
 }

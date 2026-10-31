@@ -157,6 +157,12 @@ export interface AkanNativeUpdatesConfig {
    * launch or return to the foreground, so rollback rates are visible. Left out, nothing is sent.
    */
   report?: { url: string };
+  /**
+   * Desktop: the app looks for a release in the background (soon after it starts, then hourly), downloads it, and
+   * installs it as it quits, so the next launch runs it. false leaves all three to the app's own `updates` calls. A
+   * phone always takes a new web bundle by itself. Default true.
+   */
+  automatic?: boolean;
 }
 
 export interface AkanNativeIosConfig {

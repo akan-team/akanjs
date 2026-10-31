@@ -1173,6 +1173,12 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
       - 설치 프로그램으로 설치한 앱(폴더 옆에 `<폴더>.uninstall.exe`가 있음)은 확정할 때 제거 항목의 `DisplayVersion`을 새 버전으로 고친다. `reg.exe` 출력은 OEM 코드 페이지라 경로를 비교하지 않고 종료 코드만 본다.
       - 도우미는 옮기기 직전에 `HKCU\…\RunOnce`에 복구 명령을 걸고, 옮기기(또는 되돌리기)를 마치면 지운다. 옮기는 도중 정전이나 종료로 도우미가 끊기면 다음 로그온에 복구 스크립트(`akan-native-updates\recover.ps1`)가 돈다. 앱 실행 파일이 없을 때만, 옮긴 것을 거꾸로 되돌리고 앱을 띄운다. 스크립트는 `-File`이 아니라 텍스트로 읽어 실행하므로 .ps1을 막는 실행 정책에 걸리지 않는다. RunOnce 명령은 260자까지라 경로가 더 길면 걸지 않는다(2026-09-30 10 리뷰).
     - 적용 도구: 앱은 tar를 macOS·Linux는 `/usr/bin/tar`(없으면 `/bin/tar`), Windows는 `%SystemRoot%\System32\tar.exe`(bsdtar)로 푼다. PATH의 `tar.exe`는 쓰지 않는다. Git for Windows의 GNU tar가 앞에 있으면 `C:`를 원격 호스트로 읽는다.
+  - 자동 업데이트(기본값, `updates.automatic`): 데스크톱 앱이 시작 30초 뒤, 그 뒤로는 1시간마다 스스로 확인하고 받는다(`AUTO_CHECK_DELAY`, `AUTO_CHECK_INTERVAL`). 받아 둔 릴리스는 앱이 종료할 때(`onQuit`) trial로 기록하고 제자리로 옮기되, 재실행하지 않는다. 다음 실행이 그 릴리스를 시험한다. 폰이 받은 번들을 다음 콜드 스타트부터 쓰는 것과 같고, electron-updater의 기본값(`autoDownload`, `autoInstallOnAppQuit`)과도 같다.
+    - trial 중에는 확인하지 않는다(그 첫 실행이 릴리스의 성패를 정한다). 종료해도 설치하지 않는다(`.previous`가 trial이 돌아갈 앱이다). 롤백 중과 debug 빌드도 하지 않는다.
+    - Windows는 도우미가 옮기기만 하고 실행하지 않는다(`relaunchAfterExit`의 `start: false`, 복구 스크립트도 띄우지 않는다). `app.relaunch()`가 이미 도우미를 띄웠으면 그 도우미는 이 이동을 하지 않으므로, 이동을 거부하고 pending을 되돌린다.
+    - single-instance 없는 앱(Windows·Linux)은 사본이 여럿 뜰 수 있다. `akan-native-updates/automatic.json`(PID, 시스템 시작 시각)의 주인 하나만 자동으로 받고 설치한다. 둘이 같은 `<앱>.update-<id>`에 풀면, 한쪽이 종료하며 다른 쪽이 아직 풀고 있는 폴더를 옮길 수 있다. 주인은 종료할 때 기록을 지운다(Windows는 PID를 곧 다시 쓴다).
+    - `download()`는 한 번에 하나다. 도는 중에 부르면(자동 다운로드 포함) 그 다운로드의 결과로 답한다. 예전에는 `CANCELLED`로 거부했다.
+    - `updates.automatic: false`면 둘 다 하지 않고, 앱이 `check`·`download`·`apply`를 부른다. 폰은 이 설정과 상관없이 스스로 받는다.
 - 시험 실행과 롤백(두 종류 공통):
   - 새 릴리스는 처음에 trial로 실행한다. 페이지가 `updates.readyTimeout`(기본 10초) 안에 `notifyReady()`를 부르면 확정한다.
   - trial 중에는 그 릴리스가 실행 중인 릴리스다. `check()`는 그 릴리스를 새것으로 보지 않고, `apply()`는 `NOT_ALLOWED`로 거부한다. 예전에는 trial을 보지 않고 빌드 시각과 비교해, 앱이 시작할 때 확인·적용하면 trial 중인 자기 릴리스를 다시 받아 `.previous`(마지막으로 확정된 앱)를 지웠다(2026-09-30 10 리뷰 P1).
