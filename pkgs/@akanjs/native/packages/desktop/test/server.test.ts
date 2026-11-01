@@ -43,7 +43,10 @@ function fakeSpawn() {
       killed: [],
       exited,
       send: (message) => void child.sent.push(message),
-      kill: (signal) => void child.killed.push(signal ?? "SIGTERM"),
+      kill: (signal) => {
+        child.killed.push(signal ?? "SIGTERM");
+        if (signal === "SIGKILL") setTimeout(() => exit(137), 0);
+      },
       ready: () => options.onMessage({ type: "ready", pid: 1 }),
       exit,
     };
@@ -278,16 +281,24 @@ describe("the server a desktop app carries", () => {
     expect(gaveUp).toHaveLength(1);
   });
 
-  test("stop asks over IPC, then SIGKILL when the server outlasts the grace; no restart after it", async () => {
+  test("stop asks over IPC, then SIGKILL when the server outlasts the grace, and returns once it exited; no restart after it", async () => {
     const { server, children } = setup();
     const started = server.start();
     await until(() => children.length === 1);
     children[0]?.ready();
     await started;
-    await server.stop();
-    expect(children[0]?.sent).toEqual([{ type: "shutdown", signal: "SIGTERM" }]);
-    expect(children[0]?.killed).toEqual(["SIGKILL"]);
-    children[0]?.exit(0);
+    const child = children[0];
+    if (!child) throw new Error("no child");
+    child.kill = (signal) => void child.killed.push(signal ?? "SIGTERM");
+    let stopped = false;
+    const stopping = server.stop().then(() => (stopped = true));
+    await until(() => child.killed.length > 0);
+    expect(child.sent).toEqual([{ type: "shutdown", signal: "SIGTERM" }]);
+    expect(child.killed).toEqual(["SIGKILL"]);
+    await Bun.sleep(20);
+    expect(stopped).toBe(false);
+    child.exit(137);
+    await stopping;
     await Bun.sleep(20);
     expect(children).toHaveLength(1);
   });
