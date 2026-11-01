@@ -114,6 +114,10 @@ export class CodeAgent {
       profile: options.profile,
       apps: options.apps ?? [],
       canSeeImages: akanCodeModelSupportsImages(model),
+      model: () => {
+        const current = agent.#session?.model;
+        return current ? { provider: current.provider, id: current.id } : undefined;
+      },
       deepseek: await DeepSeekWeb.fromRuntime(modelRuntime, !!proxy),
       depth: options.depth ?? 0,
       ...(options.subagentSpend ? { subagentSpend: options.subagentSpend } : {}),

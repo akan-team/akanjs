@@ -2,11 +2,14 @@ import type { ExtensionAPI, InlineExtension } from "@earendil-works/pi-coding-ag
 import { type CodeAgentProfile, type CodeAgentSubagent, codeAgentReadOnlyBuiltins } from "akanjs/common";
 import { Type } from "typebox";
 import type { Workspace } from "../../commandDecorators";
+import type { CodeAgentModelRef } from "./akanCodeModel";
 
 export interface SubagentPoolOptions {
   workspace: Workspace;
   cwd: string;
   parent: CodeAgentProfile;
+  /** The parent's model, read when a task starts: a child runs on the model the parent runs on now. */
+  model?: () => CodeAgentModelRef | undefined;
   depth: number;
   /** What the tree above this pool has spent and has running; a root pool starts its own. */
   spend?: SubagentSpend;
@@ -164,10 +167,12 @@ export class SubagentPool {
     const { CodeAgent } = await import("./CodeAgent");
     const budget = this.#options.parent.tools.subagent;
     const child = SubagentPool.childOf(this.#options.parent, kind);
+    const model = this.#options.model?.();
     const agent = await CodeAgent.create({
       workspace: this.#options.workspace,
       cwd: this.#options.cwd,
       profile: child,
+      ...(model ? { model } : {}),
       apps: [],
       depth: this.#options.depth + 1,
       subagentSpend: this.#spend,

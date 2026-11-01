@@ -6,7 +6,7 @@ import { type CodeAgentEvent, type CodeAgentProfile, codeAgentPresets } from "ak
 import { WorkspaceExecutor } from "../../executors";
 import { isolateEnv, tempDirs } from "../../testHelpers";
 import { AkanCodePlugins } from "../tools/AkanCodePlugins";
-import { akanCodeDefaultModel } from "./akanCodeModel";
+import { akanCodeDefaultModel, type CodeAgentModelRef } from "./akanCodeModel";
 import { akanCodePaths } from "./akanCodePaths";
 import { CodeAgent, type CodeAgentOptions } from "./CodeAgent";
 import { CodeAgentSuspended } from "./CodeAgentSuspended";
@@ -37,11 +37,14 @@ const usageChunk = (promptTokens: number) =>
 let llm: ReturnType<typeof Bun.serve>;
 let llmCalls = 0;
 let reportedTokens = 0;
+const requestedModels: string[] = [];
 beforeAll(() => {
   llm = Bun.serve({
     port: 0,
-    fetch: () => {
+    fetch: async (request) => {
       llmCalls += 1;
+      const body = (await request.json().catch(() => ({}))) as { model?: string };
+      requestedModels.push(body.model ?? "");
       const usage = reportedTokens ? usageChunk(reportedTokens) : "";
       return new Response(
         `${chunk({ role: "assistant", content: "ok" })}${chunk({}, "stop")}${usage}data: [DONE]\n\n`,
@@ -158,6 +161,42 @@ describe("CodeAgent", () => {
       expect(seen[0]).toBe(subagentSpend);
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  test("a task child sends its requests on the parent's model, and on the one the parent switches to", async () => {
+    const root = await makeTempRoot();
+    const build = AkanCodePlugins.build;
+    let parentModel: (() => CodeAgentModelRef | undefined) | undefined;
+    const spy = spyOn(AkanCodePlugins, "build").mockImplementation(async (options) => {
+      parentModel = options.model;
+      return await build.call(AkanCodePlugins, options);
+    });
+    const agent = await createAgent(root, { model: { provider: "deepseek", id: "deepseek-v4-pro" } });
+    spy.mockRestore();
+    const profile = quietProfile(root);
+    const pool = SubagentPool.extensionFor({
+      workspace: new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }),
+      cwd: root,
+      parent: { ...profile, tools: { ...profile.tools, subagent: { maxDepth: 2, maxConcurrent: 3, budget: 100_000 } } },
+      ...(parentModel ? { model: parentModel } : {}),
+      depth: 0,
+    });
+    let execute: ((id: string, params: never) => Promise<unknown>) | undefined;
+    if (pool && "factory" in pool)
+      pool.factory({
+        registerTool: (tool: { execute: typeof execute }) => {
+          execute = tool.execute;
+        },
+      } as never);
+    try {
+      requestedModels.length = 0;
+      await execute?.("c1", { description: "d", prompt: "p" } as never);
+      await agent.setModel(akanCodeDefaultModel);
+      await execute?.("c2", { description: "d", prompt: "p" } as never);
+      expect(requestedModels).toEqual(["deepseek-v4-pro", akanCodeDefaultModel.id]);
+    } finally {
+      agent.dispose();
     }
   });
 });
