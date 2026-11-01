@@ -381,11 +381,7 @@ export async function buildAndroid(ctx: BuildContext): Promise<string> {
     mkdirSync(join(res, "values"), { recursive: true });
     writeFileSync(
       join(res, "values", "google_services.xml"),
-      googleServicesXml(
-        readFileSync(googleServices, "utf8"),
-        androidAppId(ctx),
-        config.app.id,
-      ),
+      googleServicesXml(readFileSync(googleServices, "utf8"), androidAppId(ctx), config.app.id),
     );
   } else if (plugins.some(({ plugin }) => plugin.manifest.id === "push")) {
     log.warn(
