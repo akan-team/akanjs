@@ -1,6 +1,7 @@
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import type { CodeAgentMcpStatus, CodeAgentProfile, CodeAgentQuestion, CodeAgentSubagent } from "akanjs/common";
 import type { Workspace } from "../../commandDecorators";
+import type { CodeAgentModelRef } from "../agent/akanCodeModel";
 import type { CodeMailbox } from "../agent/CodeMailbox";
 import { SubagentPool, type SubagentSpend } from "../agent/SubagentPool";
 import { DevLogFeedback } from "../feedback/DevLogFeedback";
@@ -23,6 +24,8 @@ export interface AkanCodePluginsOptions {
   /** Apps whose dev server should be watched, and whose page should be probed. */
   apps: string[];
   canSeeImages: boolean;
+  /** The owning agent's model as it is now; a `task` child runs on it. */
+  model?: () => CodeAgentModelRef | undefined;
   deepseek?: DeepSeekWeb | undefined;
   /** How many `task` levels deep the owning agent is. */
   depth: number;
@@ -92,6 +95,7 @@ export class AkanCodePlugins {
       workspace: options.workspace,
       cwd: options.cwd,
       parent: options.profile,
+      ...(options.model ? { model: options.model } : {}),
       depth: options.depth,
       ...(options.subagentSpend ? { spend: options.subagentSpend } : {}),
       ...(options.onNotice ? { onNotice: options.onNotice } : {}),

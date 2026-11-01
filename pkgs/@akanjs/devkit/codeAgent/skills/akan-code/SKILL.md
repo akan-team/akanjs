@@ -85,6 +85,7 @@ Stored under `.akan/code/sessions` — project history, so a second checkout of 
 ## Model, effort, keys
 
 - `/model <provider>/<id>`, e.g. `/model deepseek/deepseek-v4-pro`. `/effort <level>` for how hard it thinks.
+  A `task` sub-agent starts on the model the session is on at that moment.
 - A provider is authorized by **`<PROVIDER>_API_KEY`** — `DEEPSEEK_API_KEY`, `ANTHROPIC_API_KEY`. The
   workspace's own `.env` is read as well as the environment, and a key found there is used for the run and
   never copied anywhere.

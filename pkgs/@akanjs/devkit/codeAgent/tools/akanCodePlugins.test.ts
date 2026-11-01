@@ -519,6 +519,54 @@ describe("SubagentPool", () => {
     }
   });
 
+  test("a child runs on the model its parent runs on when the task starts", async () => {
+    const { opened, spy } = openFakeAgents([]);
+    let current = { provider: "deepseek", id: "deepseek-v4-pro" };
+    try {
+      const root = SubagentPool.extensionFor({
+        workspace,
+        cwd: "/tmp/akan",
+        parent: budgeted(1_000),
+        model: () => current,
+        depth: 0,
+      });
+      await runTask(root, "c1");
+      current = { provider: "openai", id: "gpt-5.5" };
+      await runTask(root, "c2");
+      expect(opened.map((options) => options.model)).toEqual([
+        { provider: "deepseek", id: "deepseek-v4-pro" },
+        { provider: "openai", id: "gpt-5.5" },
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("the plugins hand their pool the owning agent's model", async () => {
+    const { opened, spy } = openFakeAgents([]);
+    try {
+      const plugins = await AkanCodePlugins.build({
+        workspace,
+        cwd: "/tmp/akan",
+        profile: budgeted(1_000),
+        apps: [],
+        canSeeImages: false,
+        model: () => ({ provider: "deepseek", id: "deepseek-v4-pro" }),
+        depth: 0,
+        currentSessionId: () => "",
+        mailbox: () => undefined,
+      });
+      await runTask(
+        plugins.extensions.find((extension) => extension.name === "akan-subagent"),
+        "c1",
+      );
+      expect(opened[0]?.model).toEqual({ provider: "deepseek", id: "deepseek-v4-pro" });
+      plugins.dispose();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("a child keeps no session and cannot ask a human", () => {
     const child = SubagentPool.childOf(codeAgentPresets.local("/tmp/akan"), "explore");
     expect(child.session).toEqual({ store: "memory", crossSession: false });
