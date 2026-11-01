@@ -157,7 +157,8 @@ export class PackageRunner extends runner("package") {
     const specifierPattern = new RegExp(`["'](${alternatives.join("|")})((?:/[^"'\\s]*)?)["']`, "g");
     const glob = new Bun.Glob(PackageRunner.#scannableDistFiles);
     const imports = new Map<string, Set<string>>();
-    for await (const relative of glob.scan({ cwd: distPath })) {
+    for await (const scanned of glob.scan({ cwd: distPath })) {
+      const relative = scanned.split(path.sep).join("/");
       if (relative.includes("node_modules/") || relative.endsWith(".d.ts")) continue;
       if (/\.(test|spec)\.[a-z]+$/.test(relative)) continue;
       const source = await Bun.file(`${distPath}/${relative}`).text();
