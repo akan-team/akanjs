@@ -40,6 +40,9 @@ export class LinuxDockerTarget extends PlatformTestTarget {
       "run",
       "-d",
       "--rm",
+      //? An init as PID 1 reaps orphans as a real host does; under `sleep` a killed orphan stays a zombie that still
+      //? answers kill(pid, 0).
+      "--init",
       "--name",
       container,
       "--cpus",
