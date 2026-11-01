@@ -79,3 +79,4 @@ Akan.js 3.1.1. Read **Upgrade notes** before deploying an app that runs 3.1.0: s
 - When a desktop app quits and its carried server outlasts the grace, the shell waits for the killed server to exit, so on Windows the server's files are no longer still locked after the quit.
 - On Windows, `akan verify-dist-package` names a dist file with `/` and leaves out its `node_modules`, as on macOS and Linux.
 - In `akan start`, a tab's hot-update socket connects through the dev gateway again. Under Bun 1.4.4 the replica refused it, so a save no longer reached an open tab.
+- A desktop or iOS build no longer stops when the file `android.googleServices` names is missing. Only an Android build reads it, and that build still stops without it.
