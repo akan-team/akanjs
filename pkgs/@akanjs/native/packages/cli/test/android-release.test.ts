@@ -44,4 +44,13 @@ describe("Android release options", () => {
       expect.stringContaining("versionCode"),
     ]);
   });
+
+  test("a missing google-services.json leaves the config valid for every other platform's build", () => {
+    expect(
+      validateConfig({ ...base, android: { googleServices: "secrets/google-services.json" } }, { appDir: dir }),
+    ).toEqual([]);
+    expect(validateConfig({ ...base, android: { googleServices: 42 as unknown as string } }, { appDir: dir })).toEqual([
+      expect.stringContaining("android.googleServices must be a path"),
+    ]);
+  });
 });

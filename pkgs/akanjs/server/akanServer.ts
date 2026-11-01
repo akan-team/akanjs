@@ -398,7 +398,11 @@ export class AkanServer {
     const { WebRouter } = await import("./webRouter");
     const webRouter = await WebRouter.create({
       web: requestedWeb,
-      upgradeHmrWs: (req, data) => this.#server?.upgrade(req, { data }) ?? false,
+      //? Bun throws when `upgrade()` runs on a server that did not receive the request, and behind the gateway an HMR
+      //? socket arrives at the TCP ws server, the one of the two that knows its peer.
+      upgradeHmrWs: (req, data) =>
+        (this.#wsServer?.requestIP(req as Bun.BunRequest) ? this.#wsServer : this.#server)?.upgrade(req, { data }) ??
+        false,
     });
     // A build without web artifacts boots the api and warns once rather than restart-looping on the missing file.
     if (!webRouter) {

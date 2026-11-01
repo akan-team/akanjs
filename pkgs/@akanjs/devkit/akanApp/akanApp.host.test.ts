@@ -13,6 +13,18 @@ describe("readProcessRssBytes", () => {
     expect(rssBytes).toBeLessThan(64 * 1024 * 1024 * 1024);
   });
 
+  // The builder's own report triggers a recycle and this reading settles it, so the two must agree.
+  test.skipIf(process.platform !== "darwin")("reads what the process reports once it frees memory", async () => {
+    let held: number[][] | null = Array.from({ length: 64 }, (_, idx) => new Array<number>(500_000).fill(idx + 0.5));
+    expect(held.length).toBe(64);
+    held = null;
+    Bun.gc(true);
+    await Bun.sleep(500);
+    const rssBytes = await AkanAppHost.readProcessRssBytes(process.pid);
+    if (rssBytes === null) throw new Error("expected to read this process's own rss");
+    expect(Math.abs(rssBytes - process.memoryUsage.rss())).toBeLessThan(64 * 1024 * 1024);
+  });
+
   // A 0 would read as "settled below the ceiling" and cancel a recycle that should happen.
   test("returns null for a pid that does not exist", async () => {
     expect(await AkanAppHost.readProcessRssBytes(2_147_483_646)).toBeNull();

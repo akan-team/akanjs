@@ -23,14 +23,24 @@ describe("WorkspaceVersionCheck", () => {
     expect(WorkspaceVersionCheck.warning("3.1.1-rc.5", argv("sync", "demo"), await makeWorkspace({}))).toBeNull();
   });
 
-  test("names both versions and the matching CLI with the same arguments", async () => {
+  test("names both versions and the matching CLI with the same arguments, quoted for the shell it runs in", async () => {
     const root = await makeWorkspace({ akanjs: "3.1.0-rc.6" });
-
-    const warning = WorkspaceVersionCheck.warning("3.1.0", argv("sync", "demo", "--title", "it's"), root);
-
-    expect(warning).toContain("@akanjs/cli 3.1.0, but this workspace has akanjs 3.1.0-rc.6");
-    expect(warning).toContain(`Run the matching CLI: bunx -p @akanjs/cli@3.1.0-rc.6 akan sync demo --title 'it'\\''s'`);
-    expect(warning).toEndWith("together: akan update");
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    const warningOn = (os: NodeJS.Platform) => {
+      Object.defineProperty(process, "platform", { value: os });
+      return WorkspaceVersionCheck.warning("3.1.0", argv("sync", "demo", "--title", "it's"), root);
+    };
+    try {
+      const posix = warningOn("linux");
+      expect(posix).toContain("@akanjs/cli 3.1.0, but this workspace has akanjs 3.1.0-rc.6");
+      expect(posix).toContain(`Run the matching CLI: bunx -p @akanjs/cli@3.1.0-rc.6 akan sync demo --title 'it'\\''s'`);
+      expect(posix).toEndWith("together: akan update");
+      expect(warningOn("win32")).toContain(
+        `Run the matching CLI: bunx -p @akanjs/cli@3.1.0-rc.6 akan sync demo --title "it's"`,
+      );
+    } finally {
+      if (platform) Object.defineProperty(process, "platform", platform);
+    }
   });
 
   test("offers akan update with the CLI's prerelease tag only when the CLI is the newer one", async () => {

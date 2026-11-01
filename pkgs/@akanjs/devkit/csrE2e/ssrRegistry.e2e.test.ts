@@ -61,7 +61,12 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
   let ssr: CsrE2eHarness;
 
   beforeAll(async () => {
-    ssr = await CsrE2eHarness.start({ app: "minimal", port, env: { AKAN_DEV_SSR_ARM_DELAY_MS: "3000" } });
+    ssr = await CsrE2eHarness.start({
+      app: "minimal",
+      port,
+      // The server-log assertions match verbose-level lines, which a workspace `.env` may or may not turn on.
+      env: { AKAN_DEV_SSR_ARM_DELAY_MS: "3000", AKAN_PUBLIC_LOG_LEVEL: "verbose" },
+    });
   }, 240_000);
 
   afterAll(async () => {

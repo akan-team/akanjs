@@ -28,7 +28,7 @@ const config: AppConfig = {
         "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
       ],
     },
-    desktop: { server: true },
+    desktop: { server: { profile: "desktop" } },
   },
 };
 

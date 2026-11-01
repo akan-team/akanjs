@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { AkanAppHost } from "../akanApp";
 import { DevGeneratedIndexSync } from "../frontendBuild";
 import { DevStabilityHarness, type DevStabilityHmrProbe } from "./devStabilityHarness";
 
@@ -467,7 +468,8 @@ export class FixtureService extends serve("fixture" as const, { serverMode: "bat
     const harness = await createHarness();
     const port = await harness.resolvePort();
     // Child 0's deterministic ws port, held the way an orphaned replica from a killed run would hold it.
-    const blocker = Bun.serve({ port: port + 10_000, fetch: () => new Response("occupied") });
+    //? On the child's own 127.0.0.1: macOS lets a loopback bind share a port a wildcard listener holds.
+    const blocker = Bun.serve({ port: port + 10_000, hostname: "127.0.0.1", fetch: () => new Response("occupied") });
     try {
       const host = await harness.startHost();
       await host.waitForLog(/falling back to an ephemeral port/);
@@ -583,9 +585,9 @@ describe("dev resource budgets", () => {
     expect(await DevStabilityHarness.buildWorkerProcess(host.proc.pid)).toBeNull();
   });
 
-  //? Between a fresh builder and one that has built a route, or the host stops enforcing it or never recycles.
-  //? macOS keeps the bundler arenas (~380MiB built); Linux measured 101-115MiB fresh, 157-176MiB built and settled.
-  const CEILING_MB = process.platform === "linux" ? 135 : 200;
+  //? Between a fresh builder and one that has built a route, or the host stops enforcing it or never recycles. Linux
+  //? measured 101-115MiB fresh, 157-176MiB built and settled; macOS's footprint (Bun 1.4.4) 65MiB fresh, 109MiB built.
+  const CEILING_MB = process.platform === "darwin" ? 87 : 135;
 
   budgetTest("recycles the builder at an unmeetable ceiling and keeps developing through it", async () => {
     const harness = await createHarness();
@@ -635,9 +637,11 @@ describe("dev resource budgets", () => {
       await host.waitForLogSince(mark, /pages-rebundle ok/, WAIT_MS).catch(() => undefined);
     }
     const settled = await DevStabilityHarness.builderProcess(host.proc.pid);
+    //? Read as the host reads it: on macOS `ps` also counts the pages the builder freed.
+    const settledRss = settled ? await AkanAppHost.readProcessRssBytes(settled.pid) : null;
     const warned = /ceiling costs about one boot build per interval/.test(host.logs.join("").slice(start));
     //? Past the interval (a slow machine) the next report recycles instead of warning: either answer settles it.
-    if ((settled?.rssBytes ?? 0) >= CEILING_MB * MB && !warned)
+    if ((settledRss ?? 0) >= CEILING_MB * MB && !warned)
       await host.waitForLogSince(
         settledFrom,
         /ceiling costs about one boot build per interval|recycling builder pid=\d+|skipped: the builder fell to/,

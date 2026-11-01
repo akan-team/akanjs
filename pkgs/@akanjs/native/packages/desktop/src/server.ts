@@ -768,6 +768,8 @@ export function createDesktopServer(options: DesktopServerOptions): DesktopServe
       clearTimeout(timer);
       if (!done) child.kill("SIGKILL");
       child.killGroup?.("SIGKILL");
+      //? Windows keeps a process's folder and files locked until it has exited, so stop() waits for that too.
+      if (!done) await child.exited;
     },
   };
 }

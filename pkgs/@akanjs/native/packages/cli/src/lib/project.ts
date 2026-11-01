@@ -185,10 +185,9 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
   if (raw.app?.build !== undefined && raw.app.build > 2_100_000_000)
     problems.push("app.build must be at most 2100000000 (Android versionCode)");
   const googleServices = raw.android?.googleServices;
-  if (googleServices !== undefined) {
-    if (typeof googleServices !== "string" || !existsSync(resolve(appDir, googleServices)))
-      problems.push(`android.googleServices: ${JSON.stringify(googleServices)} is not a file in the app folder`);
-  }
+  // A secret only the Android build reads, so it looks for the file: a desktop or iOS build runs without it.
+  if (googleServices !== undefined && typeof googleServices !== "string")
+    problems.push(`android.googleServices must be a path in the app folder (got ${JSON.stringify(googleServices)})`);
   const minWebView = raw.android?.minWebViewVersion;
   if (minWebView !== undefined && !(Number.isInteger(minWebView) && minWebView >= 94 && minWebView < 1000)) {
     problems.push(

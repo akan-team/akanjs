@@ -373,14 +373,15 @@ export async function buildAndroid(ctx: BuildContext): Promise<string> {
   }
   // O6-2: the Firebase project's values, for the push plugin's FCM module.
   if (config.android?.googleServices) {
+    const googleServices = resolve(project.appDir, config.android.googleServices);
+    if (!existsSync(googleServices))
+      throw new CliError(
+        `android.googleServices: ${JSON.stringify(config.android.googleServices)} is not a file in the app folder`,
+      );
     mkdirSync(join(res, "values"), { recursive: true });
     writeFileSync(
       join(res, "values", "google_services.xml"),
-      googleServicesXml(
-        readFileSync(resolve(project.appDir, config.android.googleServices), "utf8"),
-        androidAppId(ctx),
-        config.app.id,
-      ),
+      googleServicesXml(readFileSync(googleServices, "utf8"), androidAppId(ctx), config.app.id),
     );
   } else if (plugins.some(({ plugin }) => plugin.manifest.id === "push")) {
     log.warn(

@@ -8,6 +8,7 @@ Object.assign(process.env, {
   AKAN_PUBLIC_REPO_NAME: "akanjs",
   AKAN_PUBLIC_SERVE_DOMAIN: "example.com",
   AKAN_PUBLIC_ENV: "debug",
+  AKAN_PUBLIC_OPERATION_MODE: "cloud",
 });
 
 const { authTokenKey, isOwnAuthToken, readAuthToken, readSessionToken, retiredAuthTokenKeys } = await import(
