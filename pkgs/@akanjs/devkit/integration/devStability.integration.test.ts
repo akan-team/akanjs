@@ -467,7 +467,8 @@ export class FixtureService extends serve("fixture" as const, { serverMode: "bat
     const harness = await createHarness();
     const port = await harness.resolvePort();
     // Child 0's deterministic ws port, held the way an orphaned replica from a killed run would hold it.
-    const blocker = Bun.serve({ port: port + 10_000, fetch: () => new Response("occupied") });
+    //? On the child's own 127.0.0.1: macOS lets a loopback bind share a port a wildcard listener holds.
+    const blocker = Bun.serve({ port: port + 10_000, hostname: "127.0.0.1", fetch: () => new Response("occupied") });
     try {
       const host = await harness.startHost();
       await host.waitForLog(/falling back to an ephemeral port/);
@@ -583,11 +584,15 @@ describe("dev resource budgets", () => {
     expect(await DevStabilityHarness.buildWorkerProcess(host.proc.pid)).toBeNull();
   });
 
-  //? Between a fresh builder and one that has built a route, or the host stops enforcing it or never recycles.
-  //? macOS keeps the bundler arenas (~380MiB built); Linux measured 101-115MiB fresh, 157-176MiB built and settled.
-  const CEILING_MB = process.platform === "linux" ? 135 : 200;
+  //? Between a fresh builder and one that has built a route, or the host stops enforcing it or never recycles. Linux
+  //? measured 101-115MiB fresh, 157-176MiB built and settled; on macOS Bun's own rss leaves out what a build freed
+  //? (Bun 1.4.4: ~110MiB after a save, ~108MiB fresh by `ps`), so no ceiling sits between the two there.
+  const CEILING_MB = 135;
+  const ceilingTest = process.platform === "linux" ? budgetTest : test.skip;
+  // Any ceiling a save outgrows does for a test that needs only the recycle.
+  const RECYCLE_CEILING_MB = process.platform === "linux" ? CEILING_MB : 64;
 
-  budgetTest("recycles the builder at an unmeetable ceiling and keeps developing through it", async () => {
+  ceilingTest("recycles the builder at an unmeetable ceiling and keeps developing through it", async () => {
     const harness = await createHarness();
     const host = await harness.startHost({ timeoutMs: BOOT_MS, env: { AKAN_BUILDER_MAX_RSS_MB: String(CEILING_MB) } });
     const start = host.markLog();
@@ -648,7 +653,10 @@ describe("dev resource budgets", () => {
 
   budgetTest("serves a page requested while the builder is being replaced", async () => {
     const harness = await createHarness();
-    const host = await harness.startHost({ timeoutMs: BOOT_MS, env: { AKAN_BUILDER_MAX_RSS_MB: String(CEILING_MB) } });
+    const host = await harness.startHost({
+      timeoutMs: BOOT_MS,
+      env: { AKAN_BUILDER_MAX_RSS_MB: String(RECYCLE_CEILING_MB) },
+    });
     const port = await harness.resolvePort();
     await harness.waitForHttpText("initial-client-marker", WAIT_MS);
 
