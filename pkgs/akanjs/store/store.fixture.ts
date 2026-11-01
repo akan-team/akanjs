@@ -8,6 +8,7 @@ export const setTestEnv = (appName: string) => {
   process.env.AKAN_PUBLIC_REPO_NAME = appName;
   process.env.AKAN_PUBLIC_SERVE_DOMAIN = "localhost";
   process.env.AKAN_PUBLIC_ENV = "testing";
+  process.env.AKAN_PUBLIC_OPERATION_MODE = "cloud";
 };
 
 export class MemoryStorage implements Storage {

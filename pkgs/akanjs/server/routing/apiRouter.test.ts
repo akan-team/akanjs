@@ -14,6 +14,7 @@ const get = (path: string, acceptEncoding = "") =>
 
 const loadApiRouter = async () => {
   process.env.AKAN_PUBLIC_APP_NAME = "test";
+  process.env.AKAN_PUBLIC_OPERATION_MODE = "cloud";
   process.env.AKAN_PUBLIC_REPO_NAME ??= "akanjs";
   process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "example.com";
   return (await import("./apiRouter")).ApiRouter;
