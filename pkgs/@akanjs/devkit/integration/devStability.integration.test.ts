@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { AkanAppHost } from "../akanApp";
 import { DevGeneratedIndexSync } from "../frontendBuild";
 import { DevStabilityHarness, type DevStabilityHmrProbe } from "./devStabilityHarness";
 
@@ -585,14 +586,10 @@ describe("dev resource budgets", () => {
   });
 
   //? Between a fresh builder and one that has built a route, or the host stops enforcing it or never recycles. Linux
-  //? measured 101-115MiB fresh, 157-176MiB built and settled; on macOS Bun's own rss leaves out what a build freed
-  //? (Bun 1.4.4: ~110MiB after a save, ~108MiB fresh by `ps`), so no ceiling sits between the two there.
-  const CEILING_MB = 135;
-  const ceilingTest = process.platform === "linux" ? budgetTest : test.skip;
-  // Any ceiling a save outgrows does for a test that needs only the recycle.
-  const RECYCLE_CEILING_MB = process.platform === "linux" ? CEILING_MB : 64;
+  //? measured 101-115MiB fresh, 157-176MiB built and settled; macOS's footprint (Bun 1.4.4) 65MiB fresh, 109MiB built.
+  const CEILING_MB = process.platform === "darwin" ? 87 : 135;
 
-  ceilingTest("recycles the builder at an unmeetable ceiling and keeps developing through it", async () => {
+  budgetTest("recycles the builder at an unmeetable ceiling and keeps developing through it", async () => {
     const harness = await createHarness();
     const host = await harness.startHost({ timeoutMs: BOOT_MS, env: { AKAN_BUILDER_MAX_RSS_MB: String(CEILING_MB) } });
     const start = host.markLog();
@@ -640,9 +637,11 @@ describe("dev resource budgets", () => {
       await host.waitForLogSince(mark, /pages-rebundle ok/, WAIT_MS).catch(() => undefined);
     }
     const settled = await DevStabilityHarness.builderProcess(host.proc.pid);
+    //? Read as the host reads it: on macOS `ps` also counts the pages the builder freed.
+    const settledRss = settled ? await AkanAppHost.readProcessRssBytes(settled.pid) : null;
     const warned = /ceiling costs about one boot build per interval/.test(host.logs.join("").slice(start));
     //? Past the interval (a slow machine) the next report recycles instead of warning: either answer settles it.
-    if ((settled?.rssBytes ?? 0) >= CEILING_MB * MB && !warned)
+    if ((settledRss ?? 0) >= CEILING_MB * MB && !warned)
       await host.waitForLogSince(
         settledFrom,
         /ceiling costs about one boot build per interval|recycling builder pid=\d+|skipped: the builder fell to/,
@@ -653,10 +652,7 @@ describe("dev resource budgets", () => {
 
   budgetTest("serves a page requested while the builder is being replaced", async () => {
     const harness = await createHarness();
-    const host = await harness.startHost({
-      timeoutMs: BOOT_MS,
-      env: { AKAN_BUILDER_MAX_RSS_MB: String(RECYCLE_CEILING_MB) },
-    });
+    const host = await harness.startHost({ timeoutMs: BOOT_MS, env: { AKAN_BUILDER_MAX_RSS_MB: String(CEILING_MB) } });
     const port = await harness.resolvePort();
     await harness.waitForHttpText("initial-client-marker", WAIT_MS);
 

@@ -651,6 +651,13 @@ export class AkanAppHost {
         ["tasklist", "/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
         AkanAppHost.#tasklistRssKb,
       );
+    if (process.platform === "darwin") {
+      const footprintBytes = await AkanAppHost.#readRssKbVia(
+        ["footprint", "-p", String(pid), "-f", "bytes"],
+        AkanAppHost.#footprintKb,
+      );
+      if (footprintBytes !== null) return footprintBytes;
+    }
     const status = await Bun.file(`/proc/${pid}/status`)
       .text()
       .catch(() => null);
@@ -686,6 +693,11 @@ export class AkanAppHost {
   static #tasklistRssKb(output: string): number {
     const memUsage = /"([^"]*)"\s*$/m.exec(output)?.[1];
     return memUsage ? Number(memUsage.replace(/\D/g, "")) : Number.NaN;
+  }
+  // The footprint is what `process.memoryUsage.rss()` reports on macOS; `ps` also counts pages freed for reuse.
+  static #footprintKb(output: string): number {
+    const bytes = /Footprint: (\d+) B\b/.exec(output)?.[1];
+    return bytes ? Number(bytes) / 1024 : Number.NaN;
   }
   #cancelRssRecycle(): void {
     this.#rssRecycleReason = null;
