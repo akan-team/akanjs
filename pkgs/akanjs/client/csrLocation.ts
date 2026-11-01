@@ -9,6 +9,7 @@ export class CsrLocation {
   //? An MCP App view's document sits at its host's sandbox address, so it reads the screen it draws instead.
   #view: URL | null = null;
   #entry: { idx: number | undefined; href: string } | null = null;
+  #onBack: ((idx: number) => void) | null = null;
 
   /** Reads `href`, a path on the app's origin, as this document's location from now on; a view never moves. */
   view(href: string) {
@@ -79,7 +80,14 @@ export class CsrLocation {
     return { ...record, __akanRouter: { ...record.__akanRouter, idx } };
   }
 
+  /** Hears each `back()` as it moves, with the index of the entry it lands on; one listener, the router's. */
+  onBack(listener: (idx: number) => void) {
+    this.#onBack = listener;
+  }
+
   back() {
+    const idx = this.entry().idx;
+    if (idx !== undefined) this.#onBack?.(idx - 1);
     window.history.back();
   }
 

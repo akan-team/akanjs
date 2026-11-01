@@ -3,7 +3,6 @@ import { installMockHost, type MockHost } from "@akanjs/native/core/testing";
 import { legacyAuthTokenKey } from "../common/authCookie";
 import { bearerTokenOf } from "../common/bearerTokenOf";
 import { CookieJar } from "../common/cookieJar";
-import { CookieSweep } from "../common/cookieSweep";
 import { interpolateTranslation } from "../common/interpolateTranslation";
 import { decodeJwtPayload } from "../common/jwtDecode";
 import { pathGetLoose } from "../common/objectPath";
@@ -36,6 +35,7 @@ const makeJwt = (payload: Record<string, unknown>) => {
 
 // Loaded once `akanjs/base` is mocked: the real helpers read `getEnv()`, and a static import binds it first.
 let authToken: typeof import("../common/authToken");
+let sessionCookies: typeof import("../common/sessionCookies");
 const authTokenKey = () => authToken.authTokenKey();
 
 // The real parser: `client/cookie.ts` reads through it on both sides, so a copy could pass while the two disagree.
@@ -60,6 +60,7 @@ beforeAll(async () => {
     }),
   }));
   authToken = await import("../common/authToken");
+  sessionCookies = await import("../common/sessionCookies");
   mock.module("akanjs/common", () => ({
     Logger: { log: () => undefined, verbose: () => undefined, warn: () => undefined, error: () => undefined },
     bearerTokenOf,
@@ -69,11 +70,11 @@ beforeAll(async () => {
     isOwnAuthToken: authToken.isOwnAuthToken,
     retiredAuthTokenKeys: authToken.retiredAuthTokenKeys,
     CookieJar,
-    CookieSweep,
     readSessionToken: authToken.readSessionToken,
     SessionCookies: {
       report: (duplicates: Array<{ name: string }>, host: string) =>
         void duplicateReports.push({ names: duplicates.map(({ name }) => name), host }),
+      sweepOf: sessionCookies.SessionCookies.sweepOf,
     },
     parseAkanI18nEnv: () => ({ locales: ["en", "ko"], defaultLocale: "en" }),
     parseBasePaths: (value?: string) => (value ? value.split(",").filter(Boolean) : []),
@@ -504,6 +505,39 @@ describe("cookies, headers, and auth", () => {
     expect(document.cookie).toBe("theme=dark");
     expect(getCookie("theme")).toBe("dark");
     expect(localStore.has("akan:cookies")).toBe(false);
+  });
+
+  test("a value reads back as written, in the browser's jar and in a custom-scheme page's", async () => {
+    envState.side = "client";
+    const values = ["a;b", "a,b", " padded ", '"quoted"', "back\\slash", "100%", "tab\tline\nfeed", "\u00a0nbsp"];
+    for (const protocol of ["https:", "app:"]) {
+      installBrowserGlobals();
+      Object.defineProperty(globalThis, "location", { value: { protocol }, configurable: true });
+      const { getCookie, setCookie } = await import("./cookie");
+      for (const [idx, value] of values.entries()) setCookie(`v${idx}`, value);
+      expect(values.map((_, idx) => getCookie(`v${idx}`))).toEqual(values);
+    }
+    expect(cookieWrites[0]).toBe("v0=a%3Bb; path=/; SameSite=lax; Secure");
+  });
+
+  test("a JWT, a plain word and a value its caller percent-encoded are written as given", async () => {
+    envState.side = "client";
+    const jwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
+    const redirect = encodeURIComponent("/en/orders?tab=open");
+    installBrowserGlobals();
+    const { getCookie, setCookie } = await import("./cookie");
+
+    setCookie("token", jwt);
+    setCookie("theme", "dark");
+    setCookie("signinRedirect", redirect);
+
+    expect(cookieWrites.map((entry) => entry.split(";")[0])).toEqual([
+      `token=${jwt}`,
+      "theme=dark",
+      `signinRedirect=${redirect}`,
+    ]);
+    expect(getCookie("signinRedirect")).toBe("/en/orders?tab=open");
+    expect(CookieJar.parse(document.cookie).read("signinRedirect").value).toBe("/en/orders?tab=open");
   });
 
   test("a cookie is written Lax and Secure on the root path, the auth cookie included", async () => {

@@ -2,7 +2,7 @@
 // Not on Windows: a cold start's deep link registers its scheme in the user's registry there.
 
 import { CFunction, type Pointer } from "bun:ffi";
-import { afterAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, jest, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -85,7 +85,13 @@ afterAll(() => {
 describe("shell calls", () => {
   test("an op an engine answers fails with TIMEOUT past its deadline, others wait, and a late answer is dropped", async () => {
     const { createShellCalls, SHELL_DEADLINES } = await import("../src/host.ts");
-    expect(Object.keys(SHELL_DEADLINES).sort()).toEqual(["externalView.cdp", "externalView.evaluate"]);
+    expect(Object.keys(SHELL_DEADLINES).sort()).toEqual([
+      "externalView.cdp",
+      "externalView.evaluate",
+      "keychain.delete",
+      "keychain.get",
+      "keychain.set",
+    ]);
     const sent: { id: number; op: string }[] = [];
     const calls = createShellCalls((id, json) => void sent.push({ id, op: JSON.parse(json).op }), {
       "externalView.evaluate": 20,
@@ -101,6 +107,22 @@ describe("shell calls", () => {
       { id: 1, op: "externalView.evaluate" },
       { id: 2, op: "alert.show" },
     ]);
+  });
+
+  test("a keychain op the shell never runs fails with TIMEOUT once the shell's keyring prompt wait is over", async () => {
+    const { createShellCalls, SHELL_DEADLINES } = await import("../src/host.ts");
+    for (const op of ["keychain.get", "keychain.set", "keychain.delete"])
+      expect(SHELL_DEADLINES[op]).toBeGreaterThan(300_000);
+    jest.useFakeTimers();
+    try {
+      const calls = createShellCalls(() => {});
+      const read = calls.call("keychain.get", { service: "dev.test.server-secrets", account: "data-key" });
+      const code = read.then(null, (error: { code?: string }) => error.code);
+      jest.advanceTimersByTime(SHELL_DEADLINES["keychain.get"] ?? 0);
+      expect(await code).toBe("TIMEOUT");
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("an answer within the deadline settles the call once, a refusal with its own code", async () => {

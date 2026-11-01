@@ -75,6 +75,48 @@ describe("RefNameClaims", () => {
     expect(ConstantRegistry.enum.get("dupStatus")).toBe(SameStatus as never);
   });
 
+  test("claims an enum by its refName, not by the name it is exported under", () => {
+    class LibAPhase extends enumOf("orderPhase", ["open", "closed"] as const) {}
+    class LibBPhase extends enumOf("ticketPhase", ["todo", "done"] as const) {}
+    const Carrier = via((field) => ({ note: field(String) }));
+    ConstantRegistry.buildScalar("phaseCarrierA", Carrier, { Phase: LibAPhase }, "libA");
+    ConstantRegistry.buildScalar("phaseCarrierB", Carrier, { Phase: LibBPhase }, "libB");
+    expect(() => ConstantRegistry.assertConsistentRefNames()).not.toThrow();
+
+    class LibBOrderPhase extends enumOf("orderPhase", ["open", "void"] as const) {}
+    ConstantRegistry.buildScalar("phaseCarrierB", Carrier, { OrderState: LibBOrderPhase }, "libB");
+    expect(() => ConstantRegistry.assertConsistentRefNames()).toThrow(
+      'enum "orderPhase": "libA" (lib/__scalar/phaseCarrierA) has closed; "libB" (lib/__scalar/phaseCarrierB) has void',
+    );
+    ConstantRegistry.buildScalar("phaseCarrierB", Carrier, { OrderState: LibAPhase }, "libB");
+    expect(() => ConstantRegistry.assertConsistentRefNames()).not.toThrow();
+  });
+
+  test("leaves out the claims of every origin it is told to skip", () => {
+    ConstantRegistry.buildScalar(
+      "skipNote",
+      via((field) => ({ title: field(String) })),
+      {},
+      "app",
+    );
+    ConstantRegistry.buildScalar(
+      "skipNote",
+      via((field) => ({ body: field(String) })),
+      {},
+      "legacy",
+    );
+
+    expect(() => ConstantRegistry.assertConsistentRefNames()).toThrow('scalar "skipNote"');
+    expect(() => ConstantRegistry.assertConsistentRefNames(["legacy"])).not.toThrow();
+    expect(() => ConstantRegistry.assertConsistentRefNames(["app"])).not.toThrow();
+    ConstantRegistry.buildScalar(
+      "skipNote",
+      via((field) => ({ title: field(String) })),
+      {},
+      "legacy",
+    );
+  });
+
   test("lets an app model extend a lib model of its refName, the app's class serving", () => {
     const LibInput = via((field) => ({ name: field(String) }));
     const LibObject = via(LibInput, () => ({}));

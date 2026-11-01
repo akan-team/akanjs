@@ -27,9 +27,9 @@ export interface ProviderProps {
   prefix?: string;
   children: ReactNode | ReactNode[];
   layoutStyle?: "mobile" | "web";
-  /** Defaults to local operation mode in CSR. */
+  /** The connection-lost overlay, mounted only in the local env; defaults to local operation mode. */
   reconnect?: boolean;
-  /** Connects the client WebSocket runtime once the browser loads. */
+  /** `true` opens the WebSocket at load, unset at its first emit or subscribe, `false` leaves it to the app. */
   wsConnect?: boolean;
   /** SSR server only: every locale seeds the RSC-worker Translator; the browser loads its locale's built asset. */
   allDictionary?: Record<string, Record<string, Record<string, unknown>>>;

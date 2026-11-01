@@ -149,6 +149,13 @@ export default page()
         }),
       },
       {
+        name: "useNavigationGuard(guard)",
+        desc: l.trans({
+          en: "Holds `router.addNavigationGuard(guard)` only while this page is current, so a page kept under the next one stops asking.",
+          ko: "이 페이지가 현재 페이지인 동안만 `router.addNavigationGuard(guard)`를 걸어 두므로, 다음 페이지 아래 남은 페이지는 묻지 않습니다.",
+        }),
+      },
+      {
         name: "useVisualViewportFrame()",
         desc: l.trans({
           en: "`{ keyboardHeight, height, offsetTop }` of the part of the page left visible while the keyboard is up.",

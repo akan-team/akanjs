@@ -4,13 +4,13 @@ import {
   bearerTokenOf,
   type CookieEntry,
   CookieJar,
-  CookieSweep,
   decodeJwtPayload,
   isOwnAuthToken,
   Logger,
   legacyAuthTokenKey,
   readSessionToken,
   retiredAuthTokenKeys,
+  type SessionCookieDuplicate,
   SessionCookies,
 } from "akanjs/common";
 import type { Account } from "akanjs/fetch";
@@ -43,6 +43,9 @@ const readStoredCookies = (): Record<string, string> => {
 const writeStoredCookies = (stored: Record<string, string>) => {
   localStorage.setItem(storedCookiesKey, JSON.stringify(stored));
 };
+//? Readers percent-decode: escape what a raw write loses, but keep a `%XX` callers pre-encoded (SSO redirect paths).
+const encodeCookieValue = (value: string) =>
+  value.replace(/[\s\p{Cc};,"\\]|%(?![0-9A-Fa-f]{2})/gu, (char) => encodeURIComponent(char));
 
 /** Every cookie this page or request holds, a name sent more than once included. */
 export const cookieJar = (): CookieJar => {
@@ -65,14 +68,15 @@ export const setCookie = (
   { path = "/", sameSite = "lax", secure = true }: CookieOptions = {},
 ) => {
   if (getEnv().side === "server") return;
+  const cookieValue = encodeCookieValue(value);
   if (!pageKeepsCookies()) {
-    writeStoredCookies({ ...readStoredCookies(), [key]: value });
+    writeStoredCookies({ ...readStoredCookies(), [key]: cookieValue });
     return;
   }
   const pathAttr = path ? `; path=${path}` : "";
   const secureAttr = secure ? "; Secure" : "";
   // biome-ignore lint/suspicious/noDocumentCookie: Akan auth helpers intentionally manage browser cookies.
-  document.cookie = `${key}=${value}${pathAttr}; SameSite=${sameSite}${secureAttr}`;
+  document.cookie = `${key}=${cookieValue}${pathAttr}; SameSite=${sameSite}${secureAttr}`;
 };
 
 /** `undefined` for a name held more than once, as for one never set. */
@@ -163,10 +167,10 @@ interface InitAuthOption {
   jwt?: string;
 }
 
-const sweepDocumentCookies = (names: string[]) => {
+const sweepDocumentCookies = (duplicates: SessionCookieDuplicate[]) => {
   const { hostname = "", pathname = "/" } = pageLocation() ?? {};
   // biome-ignore lint/suspicious/noDocumentCookie: only a Set-Cookie naming the parent Domain deletes its copy.
-  for (const entry of CookieSweep.setCookies({ names, host: hostname, path: pathname })) document.cookie = entry;
+  for (const entry of SessionCookies.sweepOf(duplicates, hostname, pathname)) document.cookie = entry;
 };
 
 // `null` when copies of the session cookie outlive the sweep: a host-only copy cannot be told from a planted one.
@@ -174,7 +178,7 @@ const readCookieSession = (): string | null | undefined => {
   const first = readSessionToken(cookieJar());
   if (!first.duplicate) return first.token;
   SessionCookies.report([first.duplicate], pageLocation()?.host ?? "");
-  sweepDocumentCookies([first.duplicate.name]);
+  sweepDocumentCookies([first.duplicate]);
   const second = readSessionToken(cookieJar());
   return second.duplicate ? null : second.token;
 };

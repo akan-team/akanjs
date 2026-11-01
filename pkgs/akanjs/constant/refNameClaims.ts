@@ -36,8 +36,8 @@ export class RefNameClaims {
   }
 
   //? Asked at boot, not at each claim: a model's relation may name a model that registers after it.
-  assertConsistent() {
-    const clashes = [...this.#entries.values()].flatMap((entry) => this.#clashesOf(entry));
+  assertConsistent(skippedOwners: ReadonlySet<string> = new Set()) {
+    const clashes = [...this.#entries.values()].flatMap((entry) => this.#clashesOf(entry, skippedOwners));
     if (!clashes.length) return;
     throw new Error(
       `[ConstantRegistry] ${clashes.length} refName(s) declared with different shapes:\n${clashes.join("\n")}\n` +
@@ -46,8 +46,8 @@ export class RefNameClaims {
     );
   }
 
-  #clashesOf({ kind, key, claims }: RefNameEntry): string[] {
-    const ordered = [...claims.values()];
+  #clashesOf({ kind, key, claims }: RefNameEntry, skippedOwners: ReadonlySet<string>): string[] {
+    const ordered = [...claims.values()].filter(({ owner }) => !skippedOwners.has(owner.key));
     const latest = ordered.at(-1);
     if (!latest) return [];
     return ordered.slice(0, -1).flatMap((earlier) => {

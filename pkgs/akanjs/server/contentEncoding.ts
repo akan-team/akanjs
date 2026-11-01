@@ -53,6 +53,8 @@ export const isCompressibleContentType = (contentType: string): boolean => {
 
 // Not brotli's default 11: q11 spends tens of ms per response to save a few hundred bytes over q4.
 const BROTLI_QUALITY = 4;
+//? Paid once per stored page: on a 400 KB one q9 cuts ~11% off q4 for ~1.5 ms more; q10 cuts ~18% in ~60 ms.
+const STORED_BROTLI_QUALITY = 9;
 const GZIP_LEVEL = 6;
 /** Under a KB the framing bytes and the call cost more than the repetition they remove. */
 const MIN_COMPRESS_BYTES = 1024;
@@ -62,11 +64,11 @@ const MAX_COMPRESS_BYTES = 4 * 1024 * 1024;
 const brotliCompressAsync = promisify(brotliCompress);
 const gzipAsync = promisify(gzip);
 // The async forms run on the zlib thread pool: the sync ones stalled every other request for the whole call.
-const compressBody = (bytes: Uint8Array, encoding: ContentEncoding) =>
+const compressBody = (bytes: Uint8Array, encoding: ContentEncoding, brotliQuality = BROTLI_QUALITY) =>
   encoding === "br"
     ? brotliCompressAsync(bytes, {
         params: {
-          [constants.BROTLI_PARAM_QUALITY]: BROTLI_QUALITY,
+          [constants.BROTLI_PARAM_QUALITY]: brotliQuality,
           [constants.BROTLI_PARAM_SIZE_HINT]: bytes.byteLength,
         },
       })
@@ -88,6 +90,7 @@ const negotiateEncoding = (req: Request, response: Pick<Response, "status" | "he
   if (Number(response.headers.get("content-length")) > MAX_COMPRESS_BYTES) return null;
   if (!isCompressibleContentType(response.headers.get("content-type") ?? "")) return null;
   if (isCompressionOff()) return null;
+  varyOnEncoding(response.headers);
   return acceptedEncodings(req.headers.get("accept-encoding") ?? "")[0] ?? null;
 };
 
@@ -146,7 +149,6 @@ export const compressResponse = async (req: Request, response: Response): Promis
   const headers = new Headers(response.headers);
   headers.set("Content-Encoding", encoding);
   headers.set("Content-Length", String(compressed.byteLength));
-  varyOnEncoding(headers);
   return new Response(compressed, { status: response.status, statusText: response.statusText, headers });
 };
 
@@ -215,7 +217,6 @@ export const compressStreamResponse = (req: Request, response: Response): Respon
   const headers = new Headers(response.headers);
   headers.set("Content-Encoding", encoding);
   headers.delete("Content-Length");
-  varyOnEncoding(headers);
   const etag = headers.get("etag");
   // The encoded bytes differ from the ones a strong validator names.
   if (etag && !etag.startsWith("W/")) headers.set("ETag", `W/${etag}`);
@@ -242,7 +243,7 @@ export const encodeBody = async (body: string | Uint8Array<ArrayBuffer>): Promis
     return { bytes, encodings, byteLength };
   await Promise.all(
     CONTENT_ENCODINGS.map(async ({ encoding }) => {
-      const encoded = await compressBody(bytes, encoding);
+      const encoded = await compressBody(bytes, encoding, STORED_BROTLI_QUALITY);
       encodings[encoding] = encoded;
       byteLength += encoded.byteLength;
     }),
@@ -262,7 +263,6 @@ export const encodedBodyResponse = (
   const headers = new Headers(init.headers);
   headers.set("Content-Encoding", encoding);
   headers.set("Content-Length", String(encoded.byteLength));
-  varyOnEncoding(headers);
   return new Response(encoded, { status, headers });
 };
 
@@ -298,7 +298,12 @@ export const encodedFileResponse = async (
 ): Promise<Response> => {
   if (isCompressibleContentType(contentType)) varyOnEncoding(headers);
   const sidecar = await resolveEncodedSidecar(req, filePath, contentType);
-  if (!sidecar) return new Response(Bun.file(filePath).stream(), { headers });
+  if (!sidecar) {
+    const file = Bun.file(filePath);
+    //? Bun sizes a file body only when it sends it, so without this the compressors never see the 4 MiB cap.
+    headers.set("Content-Length", String(file.size));
+    return new Response(file, { headers });
+  }
   headers.set("Content-Encoding", sidecar.encoding);
   headers.set("Content-Length", String(sidecar.bytes.byteLength));
   return new Response(sidecar.bytes, { headers });

@@ -322,7 +322,7 @@ Carry a static LGPL build: one that loads its own shared libraries runs only whe
 
 A file the user picks reaches the server as a grant, never a copy or a path, so a large video is not uploaded. Name `file-picker` in `native.plugins`, pick with `forServer: true`, and resolve the grant with `NativeFile`:
 
-A secret the user gives the server, such as their own API key, goes to the OS credential store with `NativeSecret`, never into a file. The page's `secretStorage` keeps another store, so no page script reads it. Outside the desktop app `NativeSecret.available` is false and every call rejects; keep secrets in the env there.
+A secret the user gives the server, such as their own API key, goes to the OS credential store with `NativeSecret`, never into a file. The page's `secretStorage` keeps another store, so no page script reads it. Outside the desktop app `NativeSecret.available` is false and every call rejects; keep secrets in the env there. Read one when a request needs it, not while the server boots, when a call can wait up to 8 s for the window.
 
 Displays, windows, volume, global shortcuts, keep-awake and launch at login are native plugins, not server work: name each in native.plugins and import it from akanjs/client/native/<id>.
 

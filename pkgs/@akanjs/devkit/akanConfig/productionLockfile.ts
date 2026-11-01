@@ -13,9 +13,11 @@ export class ProductionLockfile {
     if (!(await workspaceLock.exists())) throw new Error(`the workspace root has no ${ProductionLockfile.fileName}`);
     const dir = await mkdtemp(path.join(os.tmpdir(), "akan-production-lock-"));
     try {
+      const npmrc = Bun.file(path.join(workspaceRoot, ".npmrc"));
       await Promise.all([
         Bun.write(path.join(dir, "package.json"), JSON.stringify(packageJson, null, 2)),
         Bun.write(path.join(dir, ProductionLockfile.fileName), workspaceLock),
+        ...((await npmrc.exists()) ? [Bun.write(path.join(dir, ".npmrc"), npmrc)] : []),
       ]);
       const install = Bun.spawn([process.execPath, "install", "--lockfile-only", "--no-progress"], {
         cwd: dir,

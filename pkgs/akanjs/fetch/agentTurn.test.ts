@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { ConstantRegistry } from "akanjs/constant";
-import { FetchClient } from "akanjs/fetch";
+import { Int } from "akanjs/base";
+import { ConstantRegistry, via } from "akanjs/constant";
+import { AgentTurn, FetchClient } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
 
 // useClient.ts imports only FetchClient, and Bun links `export *` lazily per binding and drops unused imports, so
@@ -36,5 +37,22 @@ describe("agentTurn scalar on the client graph", () => {
     const Model = ConstantRegistry.getScalar("agentTurn").model as new (arg: unknown) => { isToolUse(): boolean };
     expect(new Model({ stop: "toolUse" }).isToolUse()).toBe(true);
     expect(new Model({}).isToolUse()).toBe(false);
+  });
+
+  test("names the framework when a lib declares agentTurn with other fields", () => {
+    ConstantRegistry.buildScalar(
+      "agentTurn",
+      via((field) => ({ usage: field(Int) })),
+      {},
+      "legacyAgent",
+    );
+    try {
+      expect(() => ConstantRegistry.assertConsistentRefNames()).toThrow(
+        'scalar "agentTurn": "akanjs" (lib/__scalar/agentTurn) has text: String?, toolCalls: Any[], stop: enum agentStop(end|toolUse|length); "legacyAgent" (lib/__scalar/agentTurn) has usage: Int',
+      );
+    } finally {
+      ConstantRegistry.buildScalar("agentTurn", AgentTurn, {}, "legacyAgent");
+    }
+    expect(() => ConstantRegistry.assertConsistentRefNames()).not.toThrow();
   });
 });

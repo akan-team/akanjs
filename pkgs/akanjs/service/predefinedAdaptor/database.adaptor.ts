@@ -27,6 +27,7 @@ import { PendingStoreEnsures } from "./sql/PendingStoreEnsures";
 import { PostgresInsightSession } from "./sql/PostgresInsightSession";
 import { SqlDocumentStore } from "./sql/SqlDocumentStore";
 import { SqliteInsightSession } from "./sql/SqliteInsightSession";
+import { TransactionScope } from "./sql/TransactionScope";
 import {
   BASE_COLUMNS,
   type ConcurrentIndexBuild,
@@ -198,8 +199,7 @@ export class SqliteDatabase
   }
 
   async transaction<T>(fn: () => PromiseOrObject<T>): Promise<T> {
-    const active = this.#transaction.getStore();
-    if (active) return await fn();
+    if (TransactionScope.live(this.#transaction)) return await fn();
     const previous = this.#queue;
     let release!: () => void;
     const done = new Promise<void>((resolve) => {
@@ -223,10 +223,11 @@ export class SqliteDatabase
         }
       });
     } finally {
+      context.closed = true;
       this.#open = null;
       release();
     }
-    for (const hook of context.afterCommit) await hook();
+    await TransactionScope.runAfterCommit(context);
     return result;
   }
 
@@ -237,7 +238,7 @@ export class SqliteDatabase
   }
 
   async afterCommit(fn: () => PromiseOrObject<void>) {
-    const active = this.#transaction.getStore();
+    const active = TransactionScope.live(this.#transaction);
     if (!active) return await fn();
     active.afterCommit.push(fn);
   }
@@ -417,7 +418,7 @@ export class PostgresDatabase
   }
 
   getConnection() {
-    return this.#transaction.getStore()?.client ?? this.#client;
+    return TransactionScope.live(this.#transaction)?.client ?? this.#client;
   }
 
   getSearchIndex() {
@@ -465,22 +466,26 @@ export class PostgresDatabase
 
   // `BEGIN` through the pool stays open on whichever connection ran it; `begin()` reserves one for the transaction.
   async transaction<T>(fn: () => PromiseOrObject<T>): Promise<T> {
-    const active = this.#transaction.getStore();
-    if (active) return await fn();
+    if (TransactionScope.live(this.#transaction)) return await fn();
     const context: TransactionContext = { afterCommit: [] };
-    const result = (await this.#sql.begin(
-      async (transaction) =>
-        await this.#transaction.run(
-          { ...context, client: new PostgresAkanClient(transaction) },
-          async () => await fn(),
-        ),
-    )) as T;
-    for (const hook of context.afterCommit) await hook();
+    let result: T;
+    try {
+      result = (await this.#sql.begin(
+        async (transaction) =>
+          await this.#transaction.run(
+            Object.assign(context, { client: new PostgresAkanClient(transaction) }),
+            async () => await fn(),
+          ),
+      )) as T;
+    } finally {
+      context.closed = true;
+    }
+    await TransactionScope.runAfterCommit(context);
     return result;
   }
 
   async afterCommit(fn: () => PromiseOrObject<void>) {
-    const active = this.#transaction.getStore();
+    const active = TransactionScope.live(this.#transaction);
     if (!active) return await fn();
     active.afterCommit.push(fn);
   }

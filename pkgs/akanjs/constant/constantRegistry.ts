@@ -50,8 +50,8 @@ export class ConstantRegistry {
       ? { key: caller.file, label: `${caller.file}:${caller.row}` }
       : { key: "", label: "a registrant naming no origin" };
   }
-  static assertConsistentRefNames() {
-    ConstantRegistry.#claims.assertConsistent();
+  static assertConsistentRefNames(skippedOrigins: readonly string[] = []) {
+    ConstantRegistry.#claims.assertConsistent(new Set(skippedOrigins));
   }
   static has(modelRef: Cls): boolean {
     return ConstantRegistry.modelRefNameMap.has(modelRef);
@@ -246,7 +246,7 @@ export class ConstantRegistry {
         //? A module re-exporting another's enum hands over the same class, which is not a new registrant.
         if (ConstantRegistry.enum.get(enumKey) !== value) ConstantRegistry.#addOrigin("enum", enumKey, origin);
         ConstantRegistry.enum.set(enumKey, value as EnumInstance);
-        ConstantRegistry.#claims.claim("enum", enumKey, [value as Cls], owner);
+        ConstantRegistry.#claims.claim("enum", (value as EnumInstance).refName, [value as Cls], owner);
       } else ConstantRegistry.value.set(key, value);
     }
   }

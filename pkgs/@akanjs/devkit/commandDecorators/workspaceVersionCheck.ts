@@ -45,6 +45,9 @@ export class WorkspaceVersionCheck {
   }
 
   static #quote(arg: string) {
-    return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", `'\\''`)}'`;
+    if (/^[\w@%+=:,./-]+$/.test(arg)) return arg;
+    //? cmd and PowerShell take neither single quotes nor '\'' as POSIX shells do.
+    if (process.platform === "win32") return `"${arg.replaceAll('"', '\\"')}"`;
+    return `'${arg.replaceAll("'", `'\\''`)}'`;
   }
 }

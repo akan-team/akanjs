@@ -66,11 +66,16 @@ export function shellError(message: string): AkanNativeError {
 
 /**
  * Shell ops a webview engine answers from its callback, which a page busy in a loop holds up: past this many ms they
- * fail with TIMEOUT. Other ops answer at once or wait for a person (an alert, a file panel), so they have no deadline.
+ * fail with TIMEOUT. keychain.* outlast the shell's own five-minute wait for a keyring password (linux/keychain.rs
+ * PROMPT_WAIT), so only one the shell never ran fails: a secret read must not hang the store's later reads.
+ * Other ops answer at once or wait for a person (an alert, a file panel), so they have no deadline.
  */
 export const SHELL_DEADLINES: Readonly<Record<string, number>> = {
   "externalView.evaluate": 30_000,
   "externalView.cdp": 30_000,
+  "keychain.get": 360_000,
+  "keychain.set": 360_000,
+  "keychain.delete": 360_000,
 };
 
 export function createShellCalls(send: (id: number, json: string) => void, deadlines = SHELL_DEADLINES) {

@@ -26,6 +26,7 @@ beforeAll(() => {
       backOrFallback: (path: string) => {
         routerState.fallbacks.push(path);
       },
+      navigation: () => Promise.resolve(),
     },
   }));
 });
@@ -118,15 +119,12 @@ describe("NativeNavigation", () => {
     expect(shell.subscriptions("app", "urlOpen")).toBe(0);
   });
 
-  test("a link that arrives before the router is up waits for it", async () => {
+  test("a link that arrives before the router is up is handed to it at once, which holds it until init", async () => {
     installShell();
     routerState.isInitialized = false;
     const navigation = await navigationOf();
 
     navigation.openDeepLink("minimal://en/orders/1");
-    expect(routerState.entered).toEqual([]);
-    routerState.isInitialized = true;
-    await new Promise((resolve) => setTimeout(resolve, 60));
     expect(routerState.entered).toEqual([{ href: "/en/orders/1", resetStack: true }]);
   });
 

@@ -145,6 +145,7 @@ export interface SqliteEnv {
 
 export interface TransactionContext {
   afterCommit: (() => PromiseOrObject<void>)[];
+  closed?: boolean;
 }
 
 export const BASE_COLUMNS = baseDocumentColumns;

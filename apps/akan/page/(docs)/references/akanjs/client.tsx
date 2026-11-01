@@ -219,8 +219,8 @@ export default page()
       {
         name: "addNavigationGuard(guard)",
         desc: l.trans({
-          en: "Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover.",
-          ko: "앱 안의 이동마다 먼저 `guard({ kind, from, to })`를 묻고, `false`면 페이지에 머뭅니다. 해제 함수를 돌려줍니다.",
+          en: "Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover. A page uses `useNavigationGuard`.",
+          ko: "앱 안의 이동마다 먼저 `guard({ kind, from, to })`를 묻고, `false`면 페이지에 머뭅니다. 해제 함수를 돌려줍니다. 페이지에서는 `useNavigationGuard`를 씁니다.",
         }),
       },
     ];
@@ -1059,8 +1059,8 @@ export default page()
       {
         name: "setCookie(key, value, options?)",
         desc: l.trans({
-          en: "Writes a cookie in the browser (`path=/`, `SameSite=Lax`, `Secure`; `options` overrides only the keys it names). Does nothing on the server.",
-          ko: "브라우저에 cookie를 씁니다(`path=/`, `SameSite=Lax`, `Secure`; `options`는 적은 항목만 바꿉니다). 서버에서는 아무 일도 하지 않습니다.",
+          en: "Writes a cookie in the browser (`path=/`, `SameSite=Lax`, `Secure`; `options` overrides only the keys it names), escaping what a cookie cannot hold so `getCookie` reads the value back; a `%XX` you encoded stays as is. Does nothing on the server.",
+          ko: "브라우저에 cookie를 씁니다(`path=/`, `SameSite=Lax`, `Secure`; `options`는 적은 항목만 바꿉니다). cookie에 담을 수 없는 문자는 이스케이프해 `getCookie`가 같은 값을 읽고, 직접 인코딩한 `%XX`는 그대로 둡니다. 서버에서는 아무 일도 하지 않습니다.",
         }),
       },
       {

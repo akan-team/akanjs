@@ -107,16 +107,18 @@ export interface Registration {
   key: string;
   /** What claimed the key, phrased for a boot error: `predefined adaptor "storage"`, `lib "shared"`. */
   owner: string;
+  /** Keys clash only within one scope. */
+  scope?: string;
 }
 
 // Downstream maps are last-write-wins, so a duplicate would silently skip the other's `onInit`.
 export const assertUniqueRegistrations = (kind: string, registrations: Registration[]) => {
   const claimed = new Map<string, string>();
   const clashes: string[] = [];
-  for (const { key, owner } of registrations) {
-    const previous = claimed.get(key);
+  for (const { key, owner, scope = "" } of registrations) {
+    const previous = claimed.get(`${scope}\0${key}`);
     if (previous) clashes.push(`  • "${key}" is registered by ${previous} and by ${owner}`);
-    else claimed.set(key, owner);
+    else claimed.set(`${scope}\0${key}`, owner);
   }
   if (!clashes.length) return;
   throw new Error(`[DI:${kind}] ${clashes.length} duplicate registration(s):\n${clashes.join("\n")}`);

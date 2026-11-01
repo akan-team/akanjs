@@ -300,8 +300,8 @@ export default page()
           {
             name: l.trans({ en: "code", ko: "코드" }),
             desc: l.trans({
-              en: "Prints a code such as `BCDF-GHJK`: type it on the sign-in page, and approve only if it matches your terminal.",
-              ko: "`BCDF-GHJK` 같은 코드를 출력합니다. 로그인 페이지에 입력하고, 터미널의 코드와 같을 때만 승인합니다.",
+              en: "Prints a code such as `BCDF-GHJK` to type on the sign-in page. Never type a code that did not come from your own terminal.",
+              ko: "로그인 페이지에 입력할 `BCDF-GHJK` 같은 코드를 출력합니다. 내 터미널에서 나오지 않은 코드는 입력하지 않습니다.",
             }),
           },
           {

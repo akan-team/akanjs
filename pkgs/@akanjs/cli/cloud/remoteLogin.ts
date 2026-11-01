@@ -1,4 +1,10 @@
-import { type AccessToken, type CloudApi, CloudHttpError, GlobalConfig } from "@akanjs/devkit/cloud";
+import {
+  type AccessToken,
+  type CloudApi,
+  CloudHttpError,
+  GlobalConfig,
+  getDefaultHostConfig,
+} from "@akanjs/devkit/cloud";
 import { Backoff, Logger, RemoteAuthCode, sleep } from "akanjs/common";
 import chalk from "chalk";
 import * as QRcode from "qrcode";
@@ -61,7 +67,7 @@ export class RemoteLogin {
     return self;
   }
 
-  // Security: the URL carries the login id only; the code derives from the device code, which never leaves here.
+  // Security: the URL carries the login id only; the code derives from the device code, which is never in the link.
   async #prompt(remoteId: string, loginId: string) {
     const signinUrl = `${this.#api.host}/remoteAuth?remoteId=${encodeURIComponent(loginId)}`;
     Logger.rawLog(chalk.bold(`\n${chalk.green("➤")} Authentication Required`));
@@ -76,7 +82,7 @@ export class RemoteLogin {
     }
     Logger.rawLog(`\n${chalk.bold("Your code:")} ${chalk.bold.inverse(` ${await RemoteAuthCode.of(remoteId)} `)}`);
     Logger.rawLog(
-      chalk.dim("Enter this code on the sign-in page, and approve only if it matches what this terminal shows.\n"),
+      chalk.dim("Enter this code on the sign-in page. Never enter a code that did not come from your own terminal.\n"),
     );
   }
 
@@ -115,15 +121,18 @@ export class RemoteLogin {
   async #readSelf(): Promise<RemoteSelf | null> {
     let reason = "";
     for (let attempt = 1; attempt <= this.#selfAttempts; attempt++) {
+      let self: RemoteSelf | null;
       try {
-        const self = await this.#api.getRemoteSelf();
-        if (self) return self;
-        reason = "the server did not take the new session";
-        break;
+        self = await this.#api.getRemoteSelf();
       } catch (error) {
         reason = RemoteLogin.#reasonOf(error);
+        if (attempt < this.#selfAttempts) await this.#wait(Backoff.delay(attempt, { min: 1_000, max: 8_000 }));
+        continue;
       }
-      if (attempt < this.#selfAttempts) await this.#wait(Backoff.delay(attempt, { min: 1_000, max: 8_000 }));
+      if (self) return self;
+      const { host } = this.#api;
+      await GlobalConfig.setHostConfig(getDefaultHostConfig(host));
+      throw new Error(chalk.red(`✖ ${host} did not take the session it handed out. Run akan login again.`));
     }
     Logger.rawLog(chalk.yellow(`Could not read the signed-in account (${reason}).`));
     return null;

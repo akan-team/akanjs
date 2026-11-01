@@ -8,8 +8,8 @@ declare global {
 }
 
 /**
- * Marks the render of a route — its guards, head, layouts and page body — where a write runs only when its call passes
- * `{ duringRender: true }`. Security: a server render sends the visitor's credential and no `Origin`, which
+ * @internal Marks the render of a route — its guards, head, layouts and page body — where a write runs only when its
+ * call passes `{ duringRender: true }`. Security: a server render sends the visitor's credential and no `Origin`, which
  * `CrossSiteGuard` reads as a non-browser caller, so a write there would run for whoever opened a link.
  */
 export class RenderScope {

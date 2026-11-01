@@ -70,6 +70,37 @@ describe("ProductionLockfile", () => {
     });
   });
 
+  test("keeps a version an override pinned outside its parent's range", async () => {
+    const overriddenLock = `{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "repo",
+      "dependencies": {
+        "loose-envify": "^1.4.0",
+      },
+    },
+  },
+  "overrides": {
+    "js-tokens": "2.0.0",
+  },
+  "packages": {
+    "js-tokens": ["js-tokens@2.0.0", "", {}, "sha512-kk4RjoztHFeAlCNPdTr/uF04oN5z53L18LJfADBQ7YHkO3iR2rP2ZwOH0n33r2FRw0psRmjTDEkOWPE//zmujg=="],
+
+    "loose-envify": ["loose-envify@1.4.0", "", { "dependencies": { "js-tokens": "^3.0.0 || ^4.0.0" }, "bin": { "loose-envify": "cli.js" } }, "sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q=="],
+  }
+}
+`;
+    await withWorkspace(overriddenLock, async (root) => {
+      const lock = await ProductionLockfile.prune(root, {
+        ...productionPackageJson,
+        overrides: { "js-tokens": "2.0.0" },
+      });
+      expect(lock).toContain('"js-tokens": ["js-tokens@2.0.0"');
+    });
+  });
+
   test("refuses a workspace without a bun.lock, so the build can fall back to an unlocked install", async () => {
     await withWorkspace(null, async (root) => {
       await expect(ProductionLockfile.prune(root, productionPackageJson)).rejects.toThrow(

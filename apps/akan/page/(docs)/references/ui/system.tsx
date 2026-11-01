@@ -329,7 +329,7 @@ export default page()
                 <strong>
                   <code>Reconnect</code> is a local-development aid.
                 </strong>{" "}
-                It stays off until the root layout calls <code>.reconnect()</code>, and it renders only when{" "}
+                It stays off until the root layout calls <code>.reconnect()</code>, and it runs only when{" "}
                 <code>AKAN_PUBLIC_ENV</code> is <code>local</code>.
               </span>
             ),
@@ -339,7 +339,7 @@ export default page()
                   <code>Reconnect</code>는 로컬 개발용입니다.
                 </strong>{" "}
                 root layout에서 <code>.reconnect()</code>를 호출해야 켜지고, <code>AKAN_PUBLIC_ENV</code>가{" "}
-                <code>local</code>일 때만 화면에 나타납니다.
+                <code>local</code>일 때만 동작합니다.
               </span>
             ),
           }),

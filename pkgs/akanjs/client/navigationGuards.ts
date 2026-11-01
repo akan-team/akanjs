@@ -2,7 +2,7 @@ import { Logger } from "akanjs/common";
 
 export type NavigationKind = "push" | "replace" | "back" | "pop";
 
-export interface Navigation {
+export interface NavigationAttempt {
   /** `pop` is the browser's back or forward; `back` is `router.back()`, a native back button or a swipe. */
   kind: NavigationKind;
   /** The route on screen, without its locale and basePath, as `/docs/1?tab=a`. */
@@ -12,10 +12,10 @@ export interface Navigation {
 }
 
 /** Answers `false` to keep the page; a guard that throws or rejects keeps it too. */
-export type NavigationGuard = (navigation: Navigation) => boolean | Promise<boolean>;
+export type NavigationGuard = (navigation: NavigationAttempt) => boolean | Promise<boolean>;
 
 export class NavigationRefused extends Error {
-  constructor(navigation: Navigation) {
+  constructor(navigation: NavigationAttempt) {
     super(`A navigation guard kept ${navigation.from} instead of moving to ${navigation.to ?? "the previous page"}`);
     this.name = "NavigationRefused";
   }
@@ -37,7 +37,7 @@ export class NavigationGuards {
   }
 
   //? One at a time, in the order added: a guard that opens a dialog must not meet a second one, or a second ask.
-  decide(navigation: Navigation): boolean | Promise<boolean> {
+  decide(navigation: NavigationAttempt): boolean | Promise<boolean> {
     if (this.#isDeciding) return false;
     const guards = [...this.#guards];
     for (const [idx, guard] of guards.entries()) {
@@ -52,13 +52,13 @@ export class NavigationGuards {
     return true;
   }
 
-  static async #decideRest(first: Promise<boolean>, rest: NavigationGuard[], navigation: Navigation) {
+  static async #decideRest(first: Promise<boolean>, rest: NavigationGuard[], navigation: NavigationAttempt) {
     if (!(await first)) return false;
     for (const guard of rest) if (!(await NavigationGuards.#ask(guard, navigation))) return false;
     return true;
   }
 
-  static #ask(guard: NavigationGuard, navigation: Navigation): boolean | Promise<boolean> {
+  static #ask(guard: NavigationGuard, navigation: NavigationAttempt): boolean | Promise<boolean> {
     const refuse = (error: unknown) => {
       Logger.error(`A navigation guard failed, so ${navigation.from} was kept: ${String(error)}`);
       return false;

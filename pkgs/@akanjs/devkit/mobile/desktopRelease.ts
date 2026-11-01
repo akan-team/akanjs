@@ -245,7 +245,9 @@ Set-Content -LiteralPath $env:AKAN_SIGNER_OUT -Value $subject -Encoding UTF8`;
   }
 
   static async #subjectOf(run: SignatureTool, archive: string, tmp: string, exe: string) {
-    await run(["tar.exe", "-xzf", archive, "-C", tmp, exe]);
+    //? Windows' own bsdtar: a GNU tar ahead of it on PATH (Git's) takes `C:` for a remote host.
+    const tar = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+    await run([tar, "-xzf", archive, "-C", tmp, exe]);
     const extracted = path.join(tmp, exe);
     if (!(await Bun.file(extracted).exists())) return { signer: null, unread: `the archive holds no ${exe}` };
     const out = path.join(tmp, "signer.txt");

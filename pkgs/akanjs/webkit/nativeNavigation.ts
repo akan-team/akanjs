@@ -118,7 +118,7 @@ export class NativeNavigation {
       routerReady: clientRouter.isInitialized,
     });
     if (resetStack) this.#didResetStack = true;
-    this.#enterWhenReady(href, resetStack);
+    clientRouter.enterDeepLink(href, { resetStack, scrollToTop: true });
   }
 
   //? Only an in-app path is followed: a push names a route, and an absolute URL would be read as one on any host.
@@ -143,6 +143,7 @@ export class NativeNavigation {
     }
     if (this.options.historyIdx() > 0) {
       backState.router.back();
+      void clientRouter.navigation().catch(() => this.options.onBackProgress?.({ phase: "cancelled", progress: 0 }));
       return;
     }
     if (this.#leavesApp(backState.path)) {
@@ -201,14 +202,5 @@ export class NativeNavigation {
     if (segments[0] === ":lang") segments.shift();
     if (basePath && segments[0] === basePath) segments.shift();
     return `/${segments.join("/")}`;
-  }
-
-  #enterWhenReady(href: string, resetStack: boolean, attempt = 0) {
-    if (!clientRouter.isInitialized) {
-      if (attempt < 40) window.setTimeout(() => this.#enterWhenReady(href, resetStack, attempt + 1), 50);
-      else debugFrame("native.deepLink.skipped", { href, reason: "router-not-ready" });
-      return;
-    }
-    clientRouter.enterDeepLink(href, { resetStack, scrollToTop: true });
   }
 }

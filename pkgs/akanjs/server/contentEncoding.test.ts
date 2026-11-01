@@ -71,6 +71,10 @@ const gzipOnlyPath = path.join(dir, "gzipOnly.css");
 fs.writeFileSync(gzipOnlyPath, "body{color:green}");
 fs.writeFileSync(`${gzipOnlyPath}.gz`, "gzip-bytes");
 
+const blobPath = path.join(dir, "rows.json");
+const blob = JSON.stringify(Array.from({ length: 20_000 }, (_, i) => ({ id: i, title: "repeated title" })));
+fs.writeFileSync(blobPath, blob);
+
 const resolve = (acceptEncoding: string, filePath = assetPath, contentType = "text/css; charset=utf-8") =>
   resolveEncodedSidecar(
     new Request("https://x.test/root.css", { headers: { "accept-encoding": acceptEncoding } }),
@@ -117,6 +121,26 @@ describe("encodedFileResponse", () => {
     expect(encoded.headers.get("Vary")).toBe("Accept, Accept-Encoding");
     expect(font.headers.get("Vary")).toBeNull();
   });
+
+  test("gives a file without a sidecar its length, so a large one is not compressed on every request", async () => {
+    const largePath = path.join(dir, "large.json");
+    fs.writeFileSync(largePath, JSON.stringify({ rows: "x".repeat(4 * 1024 * 1024) }));
+    const jsonHeaders = () => new Headers({ "Content-Type": "application/json" });
+
+    const small = await encodedFileResponse(req("br"), bareAssetPath, "text/css", new Headers());
+    expect(small.headers.get("Content-Length")).toBe(String(fs.statSync(bareAssetPath).size));
+
+    const large = await encodedFileResponse(req("br"), largePath, "application/json", jsonHeaders());
+    expect(compressStreamResponse(req("br"), large)).toBe(large);
+    expect(large.headers.get("Content-Length")).toBe(String(fs.statSync(largePath).size));
+
+    const page = await encodedFileResponse(req("br"), blobPath, "application/json", jsonHeaders());
+    const whole = await compressResponse(req("br"), page);
+    const compressed = Buffer.from(await whole.arrayBuffer());
+    expect(whole.headers.get("Content-Encoding")).toBe("br");
+    expect(whole.headers.get("Content-Length")).toBe(String(compressed.byteLength));
+    expect(brotliDecompressSync(compressed).toString()).toBe(blob);
+  });
 });
 
 describe("compressResponse", () => {
@@ -144,6 +168,14 @@ describe("compressResponse", () => {
     expect((await compressResponse(req(), json())).headers.get("Content-Encoding")).toBeNull();
     expect((await compressResponse(req("identity"), json())).headers.get("Content-Encoding")).toBeNull();
     expect((await compressResponse(req("br;q=0, gzip;q=0"), json())).headers.get("Content-Encoding")).toBeNull();
+  });
+
+  test("varies a compressible answer on Accept-Encoding even when it goes out plain", async () => {
+    const png = new Response(body, { headers: { "Content-Type": "image/png" } });
+
+    for (const acceptEncoding of [undefined, "identity", "br;q=0, gzip;q=0"])
+      expect((await compressResponse(req(acceptEncoding), json())).headers.get("Vary")).toBe("Accept-Encoding");
+    expect((await compressResponse(req("br"), png)).headers.get("Vary")).toBeNull();
   });
 
   test("skips a body too small to pay for its own framing", async () => {
@@ -283,10 +315,6 @@ describe("compressResponse", () => {
 });
 
 describe("compressResponse behind Bun.serve", () => {
-  const blobPath = path.join(dir, "rows.json");
-  const blob = JSON.stringify(Array.from({ length: 20_000 }, (_, i) => ({ id: i, title: "repeated title" })));
-  fs.writeFileSync(blobPath, blob);
-
   const serve = () =>
     Bun.serve({
       port: 0,
@@ -465,6 +493,13 @@ describe("compressStreamResponse", () => {
     const off = htmlRender().response;
     expect(compressStreamResponse(req("br"), off)).toBe(off);
   });
+
+  test("varies a page on Accept-Encoding even when it streams out plain", () => {
+    const plain = compressStreamResponse(req(), htmlRender().response);
+
+    expect(plain.headers.get("Content-Encoding")).toBeNull();
+    expect(plain.headers.get("Vary")).toBe("Accept-Encoding");
+  });
 });
 
 describe("compressStreamResponse behind Bun.serve", () => {
@@ -537,6 +572,7 @@ describe("encodedBodyResponse", () => {
 
     const identity = encodedBodyResponse(req(), encoded, { headers: htmlHeaders() });
     expect(identity.headers.get("Content-Encoding")).toBeNull();
+    expect(identity.headers.get("Vary")).toBe("Accept-Encoding");
     await expect(identity.text()).resolves.toBe(page);
   });
 
