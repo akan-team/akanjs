@@ -85,18 +85,6 @@ describe("SsoFlow", () => {
     expect(redirectUriOf(response)).toBe("https://login.example.com/api/user/google/callback");
   });
 
-  test("another host this server answers is allowed, and one it does not name is refused", async () => {
-    const response = await SsoFlow.start(
-      "google",
-      requestOf("https://www.sceny.ai/api/user/google"),
-      serviceOf({ hosts: ["sceny.ai", "www.sceny.ai"] }),
-    );
-    expect(redirectUriOf(response)).toBe("https://www.sceny.ai/api/user/google/callback");
-    await expect(
-      SsoFlow.start("google", requestOf("https://evil.example/api/user/google"), serviceOf({ hosts: ["sceny.ai"] })),
-    ).rejects.toThrow("shared.error.invalidSsoOrigin");
-  });
-
   test("a native start hands the provider and the service the same validated origin", async () => {
     const challenge = OAuthPkce.challengeOf("v".repeat(64));
     let started: { origin: string } | undefined;

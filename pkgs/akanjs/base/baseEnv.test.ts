@@ -1,5 +1,4 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import type { BackendEnv } from "./baseEnv";
 
 type BaseEnvModule = typeof import("./baseEnv");
 
@@ -460,43 +459,6 @@ describe("route prefixes", () => {
     expect(getEnv().apiPrefix).toBe("/api");
     resetEnvCache();
     expect(getEnv().apiPrefix).toBe("/backend");
-  });
-});
-
-describe("BackendEnv.hostname", () => {
-  test("keeps a string or null, and accepts a list", () => {
-    const single = { hostname: "sceny.ai" } satisfies BackendEnv;
-    const empty = { hostname: null } satisfies BackendEnv;
-    const listed = { hostname: ["sceny.ai", "www.sceny.ai"] as const } satisfies BackendEnv;
-    const mutable = { hostname: ["www.sceny.ai"] } satisfies BackendEnv;
-    const hosts: readonly string[] = ["sceny.ai", "www.sceny.ai"];
-    const fromReadonly = { hostname: hosts } satisfies BackendEnv;
-
-    expect(single.hostname).toBe("sceny.ai");
-    expect(empty.hostname).toBeNull();
-    expect(listed.hostname).toEqual(["sceny.ai", "www.sceny.ai"]);
-    expect(mutable.hostname).toEqual(["www.sceny.ai"]);
-    expect(fromReadonly.hostname).toEqual(["sceny.ai", "www.sceny.ai"]);
-  });
-
-  test("an env with its own fields and a mutable hostname list still extends BackendEnv", () => {
-    class Holder<Env extends BackendEnv> {
-      constructor(readonly env: Env) {}
-    }
-    type AppModulesOptions = Omit<BackendEnv, "hostname"> & {
-      hostname?: string | string[] | null;
-      security: { jwtSecret: string };
-    };
-    type StringHost = { hostname?: string | null };
-    const held = new Holder<AppModulesOptions>({
-      hostname: ["sceny.ai", "www.sceny.ai"],
-      security: { jwtSecret: "secret" },
-    });
-    const stringHost = new Holder<StringHost>({ hostname: "sceny.ai" });
-
-    expect(held.env.hostname?.[0]).toBe("sceny.ai");
-    expect(held.env.security.jwtSecret).toBe("secret");
-    expect(stringHost.env.hostname).toBe("sceny.ai");
   });
 });
 

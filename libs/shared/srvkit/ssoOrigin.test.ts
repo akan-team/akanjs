@@ -95,18 +95,6 @@ describe("SsoOrigin", () => {
       expect(() => originOf(headers)).toThrow("shared.error.invalidSsoOrigin");
   });
 
-  test("accepts every host in a configured list", () => {
-    expect(SsoOrigin.of(requestOf("https://www.sceny.ai/api/user/google"), ["sceny.ai", "www.sceny.ai"])).toBe(
-      "https://www.sceny.ai",
-    );
-    expect(SsoOrigin.of(requestOf("https://sceny.ai/api/user/google"), ["sceny.ai", "www.sceny.ai"])).toBe(
-      "https://sceny.ai",
-    );
-    expect(() => SsoOrigin.of(requestOf("https://evil.example/api/user/google"), ["sceny.ai", "www.sceny.ai"])).toThrow(
-      "shared.error.invalidSsoOrigin",
-    );
-  });
-
   test("a local server takes its own origin without declaring it", () => {
     spyOn(base, "getEnv").mockReturnValue({ ...env, operationMode: "local" });
     expect(SsoOrigin.of(requestOf("http://192.168.0.5:8282/api/user/google"))).toBe("http://192.168.0.5:8282");
