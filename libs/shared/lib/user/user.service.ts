@@ -39,6 +39,7 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
   settingService: service<srv.SettingService>(),
   summaryService: service<srv.SummaryService>(),
   host: use<string>(),
+  hosts: use<string[]>(),
   jwtSecret: use<string>(),
   emailApi: plug(EmailApi),
   purpleApi: plug(PurpleApi),

@@ -18,6 +18,7 @@ type NativeHandoff = NativeSsoStart & { ssoType: SsoType };
 /** What the flow needs from the user service; declared here so srvkit does not import the service. */
 export interface SsoFlowService {
   readonly host?: string;
+  readonly hosts?: readonly string[];
   startNativeSso(ssoType: SsoType, start: NativeSsoStart): Promise<string>;
   takeNativeSso(state: string | null): Promise<NativeHandoff | null>;
   handOffNativeSso(start: NativeHandoff, identify: () => Promise<NativeSsoIdentity>): Promise<NativeSsoResult>;
@@ -36,7 +37,7 @@ export class SsoFlow {
   // The web sign-in binds its `state` to this browser through an HttpOnly cookie; without it, a callback URL
   // finished in an attacker's browser could be opened in the victim's and sign them in as the attacker (RFC 6749 §10.12).
   static async start(type: SsoType, req: Bun.BunRequest, service: SsoFlowService): Promise<Response> {
-    const origin = SsoOrigin.of(req, service.host);
+    const origin = SsoOrigin.of(req, SsoFlow.#allowedHosts(service));
     const native = NativeSso.parseStart(req, origin);
     if (native)
       return Response.redirect(SsoProvider.authorizeUrl(type, origin, await service.startNativeSso(type, native)), 302);
@@ -68,7 +69,11 @@ export class SsoFlow {
     if (!state || state !== params.get("state")) return fail("user.error.ssoStateMismatch");
     if (params.get("error")) return fail("user.error.ssoCancelled");
     try {
-      const identity = await SsoProvider.identify(type, SsoFlow.#codeOf(params), SsoOrigin.of(req, service.host));
+      const identity = await SsoProvider.identify(
+        type,
+        SsoFlow.#codeOf(params),
+        SsoOrigin.of(req, SsoFlow.#allowedHosts(service)),
+      );
       const { cookie: sessionCookie, redirect } = await service.handleSsoCallback(identity, type, cookie, req.account);
       return makeSsoRedirectResponse(redirect, sessionCookie, clearState);
     } catch (error) {
@@ -76,6 +81,10 @@ export class SsoFlow {
       const key = error instanceof Error ? error.message : "";
       return fail(SsoFlow.#errorKeyPattern.test(key) ? key : "user.error.ssoProviderFailed");
     }
+  }
+
+  static #allowedHosts(service: SsoFlowService) {
+    return service.hosts ?? service.host;
   }
 
   static #stateCookie() {

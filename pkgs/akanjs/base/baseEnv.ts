@@ -18,7 +18,8 @@ export interface BaseEnv {
   databaseMode?: DatabaseMode;
 }
 export type BackendEnv = {
-  hostname?: string | null;
+  // First entry is the canonical host (links, issuer, mail). Later entries only name other hosts this server answers.
+  hostname?: string | readonly string[] | null;
   port?: number;
   database?: {
     sqlite?: {

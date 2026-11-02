@@ -1,7 +1,15 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { resetEnvCache } from "akanjs/base";
 import { Logger, type LoggerSinkEntry } from "akanjs/common";
 import { jwtSign } from "./jwt";
-import { assertJwtSecretConfigured, generateJwtSecret, resolveJwt, resolveJwtSecret } from "./secret";
+import {
+  assertJwtSecretConfigured,
+  generateHost,
+  generateHosts,
+  generateJwtSecret,
+  resolveJwt,
+  resolveJwtSecret,
+} from "./secret";
 
 describe("assertJwtSecretConfigured", () => {
   const originalJwtSecret = process.env.JWT_SECRET;
@@ -113,5 +121,59 @@ describe("resolveJwt", () => {
       `Bearer ${token}\tx`,
     ])
       expect(await resolveJwt(secret, authorization, anonymous)).toBe(anonymous);
+  });
+});
+
+describe("generateHosts", () => {
+  const originalHostName = process.env.HOST_NAME;
+  const publicKeys = [
+    "AKAN_PUBLIC_APP_NAME",
+    "AKAN_PUBLIC_REPO_NAME",
+    "AKAN_PUBLIC_SERVE_DOMAIN",
+    "AKAN_PUBLIC_ENV",
+    "AKAN_PUBLIC_OPERATION_MODE",
+  ] as const;
+  const saved = Object.fromEntries(publicKeys.map((key) => [key, process.env[key]]));
+
+  beforeEach(() => {
+    process.env.AKAN_PUBLIC_APP_NAME = "sceny";
+    process.env.AKAN_PUBLIC_REPO_NAME = "akan";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "akamir.com";
+    process.env.AKAN_PUBLIC_ENV = "main";
+    process.env.AKAN_PUBLIC_OPERATION_MODE = "cloud";
+    delete process.env.HOST_NAME;
+    resetEnvCache();
+  });
+
+  afterEach(() => {
+    if (originalHostName === undefined) delete process.env.HOST_NAME;
+    else process.env.HOST_NAME = originalHostName;
+    for (const key of publicKeys) {
+      const value = saved[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    resetEnvCache();
+  });
+
+  test("keeps a string as one host and an array in order, with the first name canonical", () => {
+    expect(generateHost({ hostname: "sceny.ai" })).toBe("sceny.ai");
+    expect(generateHosts({ hostname: "sceny.ai" })).toEqual(["sceny.ai"]);
+    expect(generateHosts({ hostname: [" sceny.ai ", "", "www.sceny.ai"] })).toEqual(["sceny.ai", "www.sceny.ai"]);
+    expect(generateHost({ hostname: ["sceny.ai", "www.sceny.ai"] })).toBe("sceny.ai");
+  });
+
+  test("HOST_NAME replaces the declared list", () => {
+    process.env.HOST_NAME = "from-env.example";
+    expect(generateHosts({ hostname: ["sceny.ai", "www.sceny.ai"] })).toEqual(["from-env.example"]);
+    expect(generateHost({ hostname: ["sceny.ai", "www.sceny.ai"] })).toBe("from-env.example");
+  });
+
+  test("an empty declaration falls back to the derived host", () => {
+    expect(generateHosts({})).toEqual(["sceny-main.akamir.com"]);
+    process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
+    resetEnvCache();
+    expect(generateHosts({ hostname: null })).toEqual(["localhost"]);
+    expect(generateHosts({ hostname: [] })).toEqual(["localhost"]);
   });
 });

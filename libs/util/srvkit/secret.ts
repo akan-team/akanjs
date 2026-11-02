@@ -71,10 +71,18 @@ export const assertJwtSecretConfigured = ({
   throw new Err("util.error.jwtSecretRequired");
 };
 
-export const generateHost = (options: BackendEnv) => {
-  const env = getEnv();
-  if (process.env.HOST_NAME) return process.env.HOST_NAME;
-  else if (options.hostname) return options.hostname;
-  else if (env.operationMode === "local") return "localhost";
-  else return `${env.appName}-${env.environment}.${getEnv().serveDomain}`;
+const namesOf = (hostname: BackendEnv["hostname"]) => {
+  if (typeof hostname === "string") return hostname ? [hostname] : [];
+  return (hostname ?? []).map((host) => host.trim()).filter((host) => host.length > 0);
 };
+
+// The first name is what links, the issuer and mail use. The rest only name other hosts this server answers.
+export const generateHosts = (options: BackendEnv) => {
+  const env = getEnv();
+  if (process.env.HOST_NAME) return [process.env.HOST_NAME];
+  const configured = namesOf(options.hostname);
+  if (configured.length) return configured;
+  return [env.operationMode === "local" ? "localhost" : `${env.appName}-${env.environment}.${env.serveDomain}`];
+};
+
+export const generateHost = (options: BackendEnv) => generateHosts(options)[0] ?? "localhost";

@@ -7,7 +7,7 @@ import { Err } from "../lib/dict";
 // The provider sends the authorization code to this origin, so it never comes from a cookie or a parameter: a sibling
 // subdomain or a page script could set either.
 export class SsoOrigin {
-  static of(req: Request, appHost?: string): string {
+  static of(req: Request, appHost?: string | readonly string[]): string {
     const isTrustedHop = SignalContext.isTrustedHop(req);
     const forwarded = (name: string) =>
       isTrustedHop ? req.headers.get(name)?.split(",")[0]?.trim() || undefined : undefined;
@@ -18,7 +18,8 @@ export class SsoOrigin {
     if (!url || (url.protocol !== "https:" && url.protocol !== "http:") || url.href !== `${url.origin}/`)
       throw new Err("shared.error.invalidSsoOrigin");
     //? Local is a developer's machine, reached through loopback, a LAN address or a tunnel that it never declares.
-    if (getEnv().operationMode !== "local" && !AppHosts.allows(url.host, appHost ? [appHost] : []))
+    const extra = typeof appHost === "string" ? [appHost] : (appHost ?? []);
+    if (getEnv().operationMode !== "local" && !AppHosts.allows(url.host, extra))
       throw new Err("shared.error.invalidSsoOrigin");
     return url.origin;
   }
