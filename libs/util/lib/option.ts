@@ -7,7 +7,7 @@ import type {
   PurpleApiOptions,
   PushNotificationServerOptions,
 } from "@libs/util/srvkit";
-import { assertJwtSecretConfigured, generateHost, resolveJwtSecret } from "@libs/util/srvkit";
+import { assertJwtSecretConfigured, generateHost, generateHosts, resolveJwtSecret } from "@libs/util/srvkit";
 import { getEnv, type SshOptions } from "akanjs/base";
 import { AkanOption } from "akanjs/server";
 import type { LibOptions } from "./srv";
@@ -66,7 +66,7 @@ export interface GoogleAccount {
 }
 
 export type ModulesOptions = LibOptions & {
-  hostname?: string | null;
+  hostname?: string | readonly string[] | null;
   security: SecurityOptions;
   objectStorage?: ObjectStorageOptions;
   privateStorage?: ObjectStorageOptions;
@@ -89,5 +89,6 @@ export const option = new AkanOption<ModulesOptions>().use((options) => {
   return {
     jwtSecret: resolveJwtSecret(env.appName, env.environment, options.security?.jwtSecret),
     host: generateHost(options),
+    hosts: generateHosts(options),
   };
 });
