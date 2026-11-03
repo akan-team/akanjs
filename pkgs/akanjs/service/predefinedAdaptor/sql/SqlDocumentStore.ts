@@ -85,6 +85,14 @@ interface StaleIndex {
 
 type StoredRow = Omit<SqliteDocumentRow, "id">;
 
+// A field outside `fields` was never read: a save's comparison sees it only on a document that was given one.
+interface ProjectedRead {
+  row: ProjectedSqliteDocumentRow;
+  fields: string[];
+}
+
+type StoredRead = StoredRow | ProjectedRead;
+
 // A literal default (every array field's `[]`) belongs to the model; uncopied, one document's `push` would reach it.
 const freshDefault = (value: unknown) => (Array.isArray(value) ? [...(value as unknown[])] : value);
 
@@ -98,6 +106,7 @@ export class SqlDocumentStore {
   #docPrototype: object | null = null;
   #immutableKeys: string[] | null = null;
   #ensured: Promise<void> | null = null;
+  #warnedUnread = false;
   static readonly #logger = new Logger("SqlDocumentStore");
   /** The row a document was read or last written as. */
   static readonly #storedRow = Symbol("akan.storedRow");
@@ -614,7 +623,13 @@ export class SqlDocumentStore {
         `SELECT ${this.projectionSql(projection)} ${tail}`,
       ).all<ProjectedSqliteDocumentRow>(...args);
       return rows.map((row) =>
-        this.#readAs(this.hydrate(this.fromProjectedRow(row, projection), undefined, { track: false }), row),
+        this.#readAs(
+          this.#withStoredRow(this.hydrate(this.fromProjectedRow(row, projection), undefined, { track: false }), {
+            row,
+            fields: projection,
+          }),
+          row,
+        ),
       );
     }
     const rows = await this.prepareStmt(`SELECT ${star} ${tail}`).all<SqliteDocumentRow>(...args);
@@ -987,8 +1002,8 @@ export class SqlDocumentStore {
     if (runSaveHooks) await this.runHooks("save", crudType, doc, "pre", previous);
     await this.runHooks(crudType, crudType, doc, "pre", previous);
     const row = this.toRow(doc);
-    const stored = (originalData as Record<symbol, StoredRow | undefined>)[SqlDocumentStore.#storedRow];
-    await this.#writeChanges(id, stored ?? this.toRow(originalData), row, touch);
+    const stored = (originalData as Record<symbol, StoredRead | undefined>)[SqlDocumentStore.#storedRow];
+    await this.#writeChanges(id, stored && !("fields" in stored) ? stored : this.toRow(originalData), row, touch);
     await this.runHooks(crudType, crudType, doc, "post", previous);
     if (runSaveHooks) await this.runHooks("save", crudType, doc, "post", previous);
     return this.#withStoredRow(doc, row);
@@ -1030,10 +1045,19 @@ export class SqlDocumentStore {
 
   // A document with no stored row — built rather than read — changes every field it holds.
   #changesOf(doc: DocumentRecord): DocumentRecord {
-    const row = (doc as Record<symbol, StoredRow | undefined>)[SqlDocumentStore.#storedRow];
-    if (!row) return doc;
+    const stored = (doc as Record<symbol, StoredRead | undefined>)[SqlDocumentStore.#storedRow];
+    if (!stored) {
+      this.#warnUnread();
+      return doc;
+    }
     // Round-tripped so read-filled defaults and nested models rebuilt in declared order compare equal to themselves.
-    const reread = this.hydrate(this.fromRow({ ...row, id: String(doc.id) }), undefined, { track: false });
+    const reread = this.hydrate(
+      "fields" in stored
+        ? this.fromProjectedRow(stored.row, stored.fields)
+        : this.fromRow({ ...stored, id: String(doc.id) }),
+      undefined,
+      { track: false },
+    );
     const read = SqlDocumentStore.#encodedFields(this.toRow(reread));
     const held = SqlDocumentStore.#encodedFields(this.toRow(doc));
     const changes: DocumentRecord = {};
@@ -1052,12 +1076,22 @@ export class SqlDocumentStore {
     return fields;
   }
 
-  #withStoredRow<Doc extends object>(doc: Doc, row: StoredRow): Doc {
+  #warnUnread() {
+    if (process.env.NODE_ENV === "production" || this.#warnedUnread) return;
+    this.#warnedUnread = true;
+    SqlDocumentStore.#logger.warn(
+      `A ${this.table} document that was never read was saved, so every field it holds was written, undoing what ` +
+        `other writes changed since it was built. Read the document before changing it, or write the fields with ` +
+        `updateById().`,
+    );
+  }
+
+  #withStoredRow<Doc extends object>(doc: Doc, row: StoredRead): Doc {
     Object.defineProperty(doc, SqlDocumentStore.#storedRow, { value: row, configurable: true });
     return doc;
   }
 
-  // Marked on both read paths: a model with a `field.secret` reads every document projected, with no stored row.
+  // Marked on both read paths: a model with a `field.secret` reads every document projected.
   #readAs<Doc extends object>(doc: Doc, { removedAt }: { removedAt?: unknown }): Doc {
     if (removedAt != null)
       Object.defineProperty(doc, SqlDocumentStore.#readRemoved, { value: true, configurable: true });
@@ -1238,7 +1272,7 @@ export class SqlDocumentStore {
       },
       refresh: {
         async value(this: DocumentRecord) {
-          const fresh = (await store.pickById(this.id as string)) as DocumentRecord & Record<symbol, StoredRow>;
+          const fresh = (await store.pickById(this.id as string)) as DocumentRecord & Record<symbol, StoredRead>;
           Object.assign(this, fresh);
           Reflect.deleteProperty(this, SqlDocumentStore.#readRemoved);
           return store.#withStoredRow(this, fresh[SqlDocumentStore.#storedRow]);

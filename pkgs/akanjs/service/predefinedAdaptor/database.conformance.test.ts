@@ -6,6 +6,7 @@ import {
   by,
   createDocumentId,
   createDocumentQueryHelper,
+  createDocumentUpdateHelper,
   type DatabaseCls,
   type DatabaseModel,
   DatabaseRegistry,
@@ -149,6 +150,38 @@ const frozenDatabase = DatabaseRegistry.buildModel(
   FrozenObject,
   FrozenInsight as unknown as Parameters<typeof DatabaseRegistry.buildModel>[5],
   FrozenFilter,
+);
+
+class VaultInput extends via((f) => ({
+  label: f(String),
+  status: f(String, { default: "open" }),
+  hits: f(Int, { default: 0 }),
+  token: f.secret(String).optional(),
+})) {}
+class VaultObject extends via(VaultInput, () => ({})) {}
+class VaultLight extends via(VaultObject, ["label"] as const, () => ({})) {}
+class VaultFull extends via(VaultObject, VaultLight, () => ({})) {}
+class VaultInsight extends via(VaultFull, (f) => ({ count: f(Int, { default: 0, accumulate: {} }) })) {}
+const vaultConstant = ConstantRegistry.buildModel(
+  "vaultConf",
+  VaultInput,
+  VaultObject,
+  VaultFull,
+  VaultLight,
+  VaultInsight,
+  { VaultInput, VaultObject, VaultFull, VaultLight, VaultInsight },
+);
+class VaultFilter extends from(VaultFull, () => ({ query: {}, sort: {} })) {}
+class VaultDoc extends by(VaultFull) {}
+class VaultModel extends into(VaultDoc, VaultFilter, vaultConstant, () => ({})) {}
+const vaultDatabase = DatabaseRegistry.buildModel(
+  "vaultConf",
+  VaultInput as unknown as DatabaseCls<InstanceType<typeof VaultInput>>,
+  VaultDoc,
+  VaultModel,
+  VaultObject,
+  VaultInsight as unknown as Parameters<typeof DatabaseRegistry.buildModel>[5],
+  VaultFilter,
 );
 
 const storeOf = async (
@@ -1203,6 +1236,64 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect([stored.kind, stored.label]).toEqual(["channel", "first"]);
       await held.set({ kind: "channel" }).save();
       expect((await frozen.pickById(id)).label).toBe("renamed");
+    });
+
+    test("[D4] a document read without its secret field saves only what changed, from another writer too", async () => {
+      const vault = await storeOf(driver, vaultConstant, vaultDatabase);
+      const { id } = await vault.create({ label: "Draft", token: "s3cret" });
+      const held = await vault.pickById(id);
+      expect(held.token).toBeUndefined();
+      await vault.updateOneByQuery({ id }, { status: "claimed" });
+      await vault.updateOneByQuery({ id }, { hits: createDocumentUpdateHelper().inc(2) });
+      await held.set({ label: "Published" }).save();
+      const [stored] = await vault.find({ id }, { select: { label: true, status: true, hits: true, token: true } });
+      expect([stored.label, stored.status, stored.hits, stored.token]).toEqual(["Published", "claimed", 2, "s3cret"]);
+    });
+
+    test("[D4] a secret field a read left out is written once the document is given one", async () => {
+      const vault = await storeOf(driver, vaultConstant, vaultDatabase);
+      const { id } = await vault.create({ label: "Draft", token: "old" });
+      await (await vault.pickById(id)).set({ token: "new" }).save();
+      const [stored] = await vault.find({ id }, { select: { label: true, token: true } });
+      expect([stored.label, stored.token]).toEqual(["Draft", "new"]);
+    });
+
+    test("[D4] a document read through a select saves only the field it changed", async () => {
+      const { id } = await store.create({ title: "Draft", score: 1 });
+      const [held] = await store.find({ id }, { select: { title: true, score: true } });
+      await (await store.pickById(id)).set({ score: 4 }).save();
+      await held.set({ title: "Published" }).save();
+      const stored = await store.pickById(id);
+      expect([stored.title, stored.score]).toEqual(["Published", 4]);
+    });
+
+    test("[D4] a refreshed document without its secret field saves only what changed after the refresh", async () => {
+      const vault = await storeOf(driver, vaultConstant, vaultDatabase);
+      const { id } = await vault.create({ label: "Draft" });
+      const held = await vault.pickById(id);
+      await held.refresh();
+      await vault.updateOneByQuery({ id }, { status: "claimed" });
+      await held.set({ label: "Published" }).save();
+      const stored = await vault.pickById(id);
+      expect([stored.label, stored.status]).toEqual(["Published", "claimed"]);
+    });
+
+    test("a document saved without ever being read is written whole, with one warning per model", async () => {
+      const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+      try {
+        const vault = await storeOf(driver, vaultConstant, vaultDatabase);
+        const { id } = await vault.create({ label: "Draft" });
+        await vault.updateOneByQuery({ id }, { status: "claimed" });
+        const built = vault.hydrate({ ...vault.hydrate({ label: "Built" }), id });
+        await built.save();
+        await vault.hydrate({ ...vault.hydrate({ label: "Again" }), id }).save();
+        const stored = await vault.pickById(id);
+        expect([stored.label, stored.status]).toEqual(["Again", "open"]);
+        const warnings = warn.mock.calls.filter(([message]) => String(message).includes("vaultConf document"));
+        expect(warnings).toHaveLength(1);
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     test("[D4] saving a document twice writes the second change only", async () => {
