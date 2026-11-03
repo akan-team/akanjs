@@ -60,6 +60,7 @@ Akan.js 3.1.1. Read **Upgrade notes** before deploying an app that runs 3.1.0: s
 
 **Fixes**
 
+- `save()` on a document of a model with a `field.secret` field, or one read with a `select`, writes only the fields it changed, as for any other document, and after `refresh()` too. It wrote back every field the document held, undoing what another write changed in between, such as a counter's increment or a status move. A field the read left out is written only when you set it. Outside production, saving a document that was never read, which still writes every field it holds, logs a warning once per model.
 - A pubsub publishes `0`, `false` and `""`, which it dropped with `Failed to serialize data`; a `{ nullable: true }` pubsub (or one returning `Any`) delivers `null`, and publishing `undefined` to it delivers `null`.
 - A `router.push`, `router.replace` or `router.enterDeepLink` called before the router is initialized, as from a page's mount effect, waits for it instead of throwing `Router is not initialized`.
 - `fetch.ws` listeners on `"connect"` and `"disconnect"` fire. The `.reconnect()` overlay runs only where `AKAN_PUBLIC_ENV` is `local`.
