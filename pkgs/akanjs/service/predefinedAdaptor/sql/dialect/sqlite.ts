@@ -145,6 +145,15 @@ export class SqliteDialect implements SqlDialect {
     if (removed.length) sql = `json_remove(${sql}, ${removed.map((field) => this.#path(field)).join(", ")})`;
     return { sql, params: set.map(([, json]) => json) };
   }
+  //? RETURNING reads the table after the write, so whether the id was taken is counted first, in a CTE the insert's own
+  //? SELECT materializes; `WHERE true` keeps SQLite from reading ON CONFLICT as a join constraint.
+  upsertRow(table: string, conflict: string) {
+    const target = quoteIdent(table);
+    return `WITH "incoming" AS MATERIALIZED (SELECT ? AS "id", ? AS "createdAt", ? AS "updatedAt", ? AS "removedAt", ${this.docValuePlaceholder()} AS "_doc"),
+      "prior" AS MATERIALIZED (SELECT count(*) AS "taken" FROM ${target} WHERE "id" = (SELECT "id" FROM "incoming"))
+      INSERT INTO ${target} ("id", "createdAt", "updatedAt", "removedAt", "_doc") SELECT "incoming".* FROM "incoming", "prior" WHERE true
+      ON CONFLICT("id") ${conflict} RETURNING (SELECT "taken" FROM "prior") = 0 AS "inserted"`;
+  }
   affectedRows(result: unknown): number {
     return Number((result as { changes?: number | bigint } | null)?.changes ?? 0);
   }

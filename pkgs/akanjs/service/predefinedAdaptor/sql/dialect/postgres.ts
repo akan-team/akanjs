@@ -243,6 +243,11 @@ export class PostgresDialect implements SqlDialect {
     }
     return { sql, params };
   }
+  //? `xmax` is 0 only on a row version the statement inserted: ON CONFLICT locks the row it updates, which sets it.
+  upsertRow(table: string, conflict: string) {
+    return `INSERT INTO ${quoteIdent(table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ${this.docValuePlaceholder()})
+      ON CONFLICT("id") ${conflict} RETURNING ("xmax" = 0) AS "inserted"`;
+  }
   affectedRows(result: unknown): number {
     const row = result as { count?: number } | Array<unknown> | null;
     if (Array.isArray(row)) return (row as { count?: number }).count ?? row.length;
