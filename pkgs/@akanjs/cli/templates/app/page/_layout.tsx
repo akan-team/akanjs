@@ -17,7 +17,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
   return {
     filename: "_layout.tsx",
     content: `import "./styles.css";
-${isUsingShared ? 'import { Auth } from "@shared/ui";\n' : ""}import { rootLayout } from "akanjs/client";
+${isUsingShared ? 'import { Auth } from "@libs/shared/ui";\n' : ""}import { rootLayout } from "akanjs/client";
 
 export default rootLayout()
   .fonts([
