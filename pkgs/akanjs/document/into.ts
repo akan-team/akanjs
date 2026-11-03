@@ -95,6 +95,14 @@ export type Mdl<
   updateById(id: string, update: DocumentUpdateInput<_RawDoc>, options?: DocumentUpdateOptions): Promise<UpdateResult>;
   removeById(id: string): Promise<UpdateResult>;
   /**
+   * The same write, over a stored row only when the row matches `where`, a removed row only with `withRemoved`; a free
+   * id is inserted. `modifiedCount` is 0 when the stored row did not match, and `upsertedId` is set on an insert.
+   */
+  upsertById(
+    data: Partial<_RawDoc> & { id: string },
+    options: { where: _RawQuery; withRemoved?: boolean; preserveTimestamps?: boolean },
+  ): Promise<UpdateResult>;
+  /**
    * Writes the record as the row under its own id, a new one or in place of the stored one, with no hook: a sync's or a
    * backfill's write, which may run twice. `preserveTimestamps` keeps its `createdAt` and `updatedAt`.
    */

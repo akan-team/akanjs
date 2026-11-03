@@ -47,9 +47,11 @@ export interface DatabaseConfig {
   search?: SearchConfig;
 }
 
-export interface UpsertByIdOptions {
+export interface UpsertByIdOptions extends DocumentScopeOptions {
   /** Keep the record's own `createdAt` and `updatedAt`, as a backfill from another system must. */
   preserveTimestamps?: boolean;
+  /** Write over a stored row only when it matches, a removed one only with `withRemoved`; a free id still inserts. */
+  where?: DocumentQuery;
 }
 
 export interface DocumentStore {
@@ -297,6 +299,11 @@ export interface SqlDialect {
   /** The `definition` `indexesOf` reads back for `createIndex(props)`; absent where only the database can tell. */
   indexDefinition?(props: CreateIndexProps): string;
   applyUpdate(acc: string, op: DocumentUpdateOperator, path: string, value: unknown): SqlFrag;
+  /**
+   * One row's `INSERT … ON CONFLICT("id") <conflict>`, binding the id, `createdAt`, `updatedAt`, `removedAt` and
+   * `_doc` before the conflict clause's own values. Each row it wrote returns `"inserted"`, true when no row held the id.
+   */
+  upsertRow(table: string, conflict: string): string;
   /** The stored document with these top-level fields replaced (value as JSON text) and these removed. */
   mergeDocument(set: [field: string, json: string][], removed: string[]): SqlFrag;
   affectedRows(result: unknown): number;

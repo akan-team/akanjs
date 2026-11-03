@@ -120,6 +120,10 @@ this is the full contract behind them.
   still run — a nudge that re-sends a row its rooms must re-read, with no edit to stamp.
 - `upsertById(data, { preserveTimestamps })` writes a record whole under its own id, new or in place, with no
   hook: the write a sync or a backfill repeats safely, keeping the record's `createdAt`/`updatedAt` when asked.
+  With `{ where }` it writes over a stored row only when that row matches, in the same statement, and never over a
+  removed row unless `withRemoved` is also passed; an id no row holds is inserted. It then answers `updateOne`'s
+  result: `modifiedCount` 0 when the stored row did not match, and `upsertedId` set on an insert. A writer whose
+  lease may have lapsed passes the lease as `where`, so a takeover's row is never overwritten or revived.
 - **Writes that must land together go in `this.transaction(async () => …)`**, which every service has: it commits
   when the body resolves, returns its value, and rolls back when it throws, rethrowing that error unchanged. A
   server has one database, so it covers every model, hooks and query-level writes included; a nested call joins the

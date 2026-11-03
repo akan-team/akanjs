@@ -343,6 +343,44 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(synced.createdAt.valueOf()).toBe(createdAt.valueOf());
     });
 
+    test("upsertById with `where` inserts a free id, writes over a matching row, and leaves one that does not match", async () => {
+      const id = "64a0000000000000000000a3";
+      const asA = { where: { status: "a", tags: "lease" } };
+      expect(await store.upsertById({ id, title: "first", status: "a", tags: ["lease"] }, asA)).toEqual({
+        acknowledged: true,
+        matchedCount: 0,
+        modifiedCount: 1,
+        upsertedId: id,
+      });
+      expect(await store.upsertById({ id, title: "second", status: "a", tags: ["lease"] }, asA)).toEqual({
+        acknowledged: true,
+        matchedCount: 1,
+        modifiedCount: 1,
+        upsertedId: null,
+      });
+      await store.updateOneByQuery({ id }, { status: "b" });
+      expect(await store.upsertById({ id, title: "stale", status: "a", tags: ["lease"] }, asA)).toEqual({
+        acknowledged: true,
+        matchedCount: 0,
+        modifiedCount: 0,
+        upsertedId: null,
+      });
+      expect(await store.pickById(id)).toMatchObject({ title: "second", status: "b" });
+      expect(await store.count({})).toBe(1);
+    });
+
+    test("upsertById with `where` never revives a removed row, unless `withRemoved` lets a matching one", async () => {
+      const id = "64a0000000000000000000a4";
+      await store.upsertById({ id, title: "live" });
+      await store.removeOneByQuery({ id });
+      expect(await store.upsertById({ id, title: "late" }, { where: {} })).toMatchObject({ modifiedCount: 0 });
+      expect(await store.findOne({ id })).toBeNull();
+      expect((await store.findOne({ id }, { withRemoved: true }))?.title).toBe("live");
+      const revived = await store.upsertById({ id, title: "revived" }, { where: { title: "live" }, withRemoved: true });
+      expect(revived).toMatchObject({ matchedCount: 1, modifiedCount: 1, upsertedId: null });
+      expect((await store.pickById(id)).title).toBe("revived");
+    });
+
     test("a query-level write with `touch: false` leaves updatedAt as stored; without it updatedAt moves", async () => {
       const updatedAt = dayjs("2026-07-02T09:00:00Z");
       const { id } = await store.create({ title: "lease", score: 0, updatedAt });
@@ -1136,6 +1174,35 @@ const describeDriver = (kind: SqlDriverKind) => {
       if (queued !== null) expect(queued).toBe(racers.length);
       expect(counts.sort()).toEqual([0, 1]);
       expect(await store.pickById(id)).toMatchObject({ score: 1, note: "held" });
+    });
+
+    // The late write waits on the row the takeover holds, then checks `where` against what the takeover committed.
+    test("[PG-3] a conditional upsertById over a row another transaction holds checks the row it commits", async () => {
+      const { id } = await store.create({ title: "lease", status: "a" });
+      let held!: () => void;
+      const holding = new Promise<void>((resolve) => {
+        held = resolve;
+      });
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let holderPid = 0;
+      const holder = driver.database.transaction(async () => {
+        await store.updateOneByQuery({ id }, { status: "b" });
+        if (onPostgres) holderPid = await backendPidOf(driver);
+        held();
+        await released;
+      });
+      await holding;
+      const late = store.upsertById({ id, title: "stale", status: "a" }, { where: { status: "a" } });
+      const queued = onPostgres ? await lockWaitersBehind(driver, holderPid, 1) : null;
+      if (!onPostgres) await Bun.sleep(200);
+      release();
+      await holder;
+      if (queued !== null) expect(queued).toBe(1);
+      expect(await late).toMatchObject({ modifiedCount: 0 });
+      expect(await store.pickById(id)).toMatchObject({ title: "lease", status: "b" });
     });
   });
 

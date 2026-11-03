@@ -405,7 +405,10 @@ export class SqlDocumentStore {
 
   //* The write a sync or a backfill repeats safely: the row under the record's own id is written whole, a second run
   //* lands on the same row, and no hook runs — what arrives was validated where it was made. A live room learns nothing.
-  async upsertById(data: DocumentRecord & { id: string }, { preserveTimestamps = false }: UpsertByIdOptions = {}) {
+  async upsertById(
+    data: DocumentRecord & { id: string },
+    { preserveTimestamps = false, where, withRemoved }: UpsertByIdOptions = {},
+  ) {
     if (!isDocumentId(data.id)) throw new Error(`Invalid ID value: ${data.id}`);
     const now = dayjs();
     const keepsCreatedAt = preserveTimestamps && data.createdAt != null;
@@ -416,16 +419,44 @@ export class SqlDocumentStore {
     });
     const row = this.toRow(prepared);
     const kept = keepsCreatedAt ? `"createdAt" = excluded."createdAt", ` : "";
+    const update = `DO UPDATE SET ${kept}"updatedAt" = excluded."updatedAt", "removedAt" = excluded."removedAt", "_doc" = excluded."_doc"`;
+    if (where) return await this.#upsertWhere(data.id, row, update, where, { withRemoved });
     const stored = await this.owner
       .getConnection()
       .prepare(
         `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})
-           ON CONFLICT("id") DO UPDATE SET ${kept}"updatedAt" = excluded."updatedAt", "removedAt" = excluded."removedAt", "_doc" = excluded."_doc"
-           RETURNING "createdAt"`,
+           ON CONFLICT("id") ${update} RETURNING "createdAt"`,
       )
       .get<{ createdAt: number | string }>(row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc);
     const createdAt = Number(stored?.createdAt ?? row.createdAt);
     return this.#withStoredRow(this.hydrate({ ...prepared, createdAt: dayjs(createdAt) }), { ...row, createdAt });
+  }
+
+  // Postgres reads a bare column in ON CONFLICT's WHERE as ambiguous between the stored row and `excluded`, so the
+  // condition reads the stored row through a subquery that names its columns alone.
+  async #upsertWhere(id: string, row: StoredRow, update: string, where: DocumentQuery, scope: DocumentScopeOptions) {
+    const { where: condition, params } = this.writeQuery(where, "upsertById", scope);
+    const table = quoteIdent(this.table);
+    const columns = [...BASE_COLUMNS, "_doc"].map(
+      (column) => `${table}.${quoteIdent(column)} AS ${quoteIdent(column)}`,
+    );
+    const written = await this.owner
+      .getConnection()
+      .prepare(
+        this.dialect.upsertRow(
+          this.table,
+          `${update} WHERE EXISTS (SELECT 1 FROM (SELECT ${columns.join(", ")}) AS "stored" WHERE ${condition})`,
+        ),
+      )
+      .get<{ inserted: boolean | number }>(id, row.createdAt, row.updatedAt, row.removedAt, row._doc, ...params);
+    if (!written) return { acknowledged: true, matchedCount: 0, modifiedCount: 0, upsertedId: null };
+    const inserted = Boolean(Number(written.inserted));
+    return {
+      acknowledged: true,
+      matchedCount: inserted ? 0 : 1,
+      modifiedCount: 1,
+      upsertedId: inserted ? id : null,
+    };
   }
 
   async update(id: string, patch: DocumentRecord, options: WriteHookOptions = {}) {
