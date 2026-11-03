@@ -10,6 +10,6 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
 
 import * as cnst from "./${dict.model}.constant";
 
-${BiomeForm.call("", `export class ${dict.Model} extends by`, [`cnst.${dict.Model}`], " {}")}
+${BiomeForm.callArgs("", `export class ${dict.Model} extends by`, [`cnst.${dict.Model}`], " {}")}
 `;
 }

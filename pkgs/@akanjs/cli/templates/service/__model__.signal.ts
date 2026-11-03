@@ -11,8 +11,8 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
 
 import * as srv from "../srv";
 
-${BiomeForm.call("", `export class ${Model}Internal extends internal`, [`srv.${model}`, "() => ({})"], " {}")}
+${BiomeForm.callArgs("", `export class ${Model}Internal extends internal`, [`srv.${model}`, "() => ({})"], " {}")}
 
-${BiomeForm.call("", `export class ${Model}Endpoint extends endpoint`, [`srv.${model}`, "({ query, mutation }) => ({})"], " {}")}
+${BiomeForm.callArgs("", `export class ${Model}Endpoint extends endpoint`, [`srv.${model}`, "({ query, mutation }) => ({})"], " {}")}
 `;
 }

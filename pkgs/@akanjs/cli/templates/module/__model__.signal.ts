@@ -26,10 +26,10 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
 
 import * as srv from "../srv";
 
-${BiomeForm.call("", `export class ${Model}Internal extends internal`, [`srv.${model}`, "({ interval }) => ({})"], " {}")}
+${BiomeForm.callArgs("", `export class ${Model}Internal extends internal`, [`srv.${model}`, "({ interval }) => ({})"], " {}")}
 
-${BiomeForm.call("", `export class ${Model}Slice extends slice`, [`srv.${model}`, `{ guards: { root: ${writeGuard}, get: Public, cru: ${writeGuard} } }`, sliceBody], " {}")}
+${BiomeForm.callArgs("", `export class ${Model}Slice extends slice`, [`srv.${model}`, `{ guards: { root: ${writeGuard}, get: Public, cru: ${writeGuard} } }`, sliceBody], " {}")}
 
-${BiomeForm.call("", `export class ${Model}Endpoint extends endpoint`, [`srv.${model}`, "({ query, mutation }) => ({})"], " {}")}
+${BiomeForm.callArgs("", `export class ${Model}Endpoint extends endpoint`, [`srv.${model}`, "({ query, mutation }) => ({})"], " {}")}
 `;
 }

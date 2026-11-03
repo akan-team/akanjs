@@ -9,6 +9,6 @@ export default function getContent(scanInfo: null, dict: Dict) {
 
 // import type * as srv from "../srv";
 
-${BiomeForm.call("", `export class ${dict.LibName}Service extends serve`, [`"${dict.libName}" as const`, '{ serverMode: "batch" }', "() => ({})"], " {}")}
+${BiomeForm.callArgs("", `export class ${dict.LibName}Service extends serve`, [`"${dict.libName}" as const`, '{ serverMode: "batch" }', "() => ({})"], " {}")}
 `;
 }

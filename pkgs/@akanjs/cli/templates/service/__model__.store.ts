@@ -8,7 +8,7 @@ interface Dict {
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
   return `import { store } from "akanjs/store";
 
-${BiomeForm.call("", `export class ${dict.Model}Store extends store`, [`"${dict.model}" as const`, "() => ({\n  // state\n})"], " {")}
+${BiomeForm.callArgs("", `export class ${dict.Model}Store extends store`, [`"${dict.model}" as const`, "() => ({\n  // state\n})"], " {")}
   // action
 }
 `;

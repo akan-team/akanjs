@@ -11,6 +11,6 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
 
 import * as db from "../db";
 
-${BiomeForm.call("", `export class ${dict.Model}Service extends serve`, [`db.${dict.model}`, "({ use, service }) => ({})"], " {}")}
+${BiomeForm.callArgs("", `export class ${dict.Model}Service extends serve`, [`db.${dict.model}`, "({ use, service }) => ({})"], " {}")}
 `;
 }

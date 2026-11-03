@@ -12,10 +12,10 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
 
 import * as cnst from "../cnst";
 
-${BiomeForm.call("", `export class ${Model}Filter extends from`, [`cnst.${Model}`, "(filter) => ({\n  query: {},\n  sort: {},\n})"], " {}")}
+${BiomeForm.callArgs("", `export class ${Model}Filter extends from`, [`cnst.${Model}`, "(filter) => ({\n  query: {},\n  sort: {},\n})"], " {}")}
 
-${BiomeForm.call("", `export class ${Model} extends by`, [`cnst.${Model}`], " {}")}
+${BiomeForm.callArgs("", `export class ${Model} extends by`, [`cnst.${Model}`], " {}")}
 
-${BiomeForm.call("", `export class ${Model}Model extends into`, [Model, `${Model}Filter`, `cnst.${model}`, "() => ({})"], " {}")}
+${BiomeForm.callArgs("", `export class ${Model}Model extends into`, [Model, `${Model}Filter`, `cnst.${model}`, "() => ({})"], " {}")}
 `;
 }

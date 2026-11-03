@@ -29,7 +29,7 @@ export class BiomeForm {
   }
 
   //? A multi-line argument comes indented as it reads hugged, relative to the indent the call starts at.
-  static call(indent: string, head: string, args: string[], tail = "") {
+  static callArgs(indent: string, head: string, args: string[], tail = "") {
     const leading = args.slice(0, -1);
     const lastLines = (args.at(-1) ?? "").split("\n");
     if (lastLines.length === 1) {
@@ -56,9 +56,9 @@ export class BiomeForm {
 
   //? Biome breaks after `=` only when the right side cannot break before the line ends.
   static assign(indent: string, target: string, head: string, args: string[], tail = "") {
-    const call = BiomeForm.call(indent, `${target} = ${head}`, args, tail);
+    const call = BiomeForm.callArgs(indent, `${target} = ${head}`, args, tail);
     if (!call.includes("\n") || (args.length > 0 && BiomeForm.fits(`${indent}${target} = ${head}(`))) return call;
-    return `${indent}${target} =\n${BiomeForm.call(`${indent}  `, head, args, tail)}`;
+    return `${indent}${target} =\n${BiomeForm.callArgs(`${indent}  `, head, args, tail)}`;
   }
 
   //? A broken type argument list takes no trailing comma.

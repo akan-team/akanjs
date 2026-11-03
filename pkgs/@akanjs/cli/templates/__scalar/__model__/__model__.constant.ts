@@ -8,6 +8,6 @@ interface Dict {
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
   return `import { via } from "akanjs/constant";
 
-${BiomeForm.call("", `export class ${dict.Model} extends via`, ["(field) => ({\n  field: field(String),\n})"], " {}")}
+${BiomeForm.callArgs("", `export class ${dict.Model} extends via`, ["(field) => ({\n  field: field(String),\n})"], " {}")}
 `;
 }

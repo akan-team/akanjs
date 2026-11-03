@@ -10,8 +10,8 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
 
 import * as srv from "../srv";
 
-${BiomeForm.call("", `export class ${dict.AppName}Internal extends internal`, [`srv.${dict.appName}`, "() => ({})"], " {}")}
+${BiomeForm.callArgs("", `export class ${dict.AppName}Internal extends internal`, [`srv.${dict.appName}`, "() => ({})"], " {}")}
 
-${BiomeForm.call("", `export class ${dict.AppName}Endpoint extends endpoint`, [`srv.${dict.appName}`, "() => ({})"], " {}")}
+${BiomeForm.callArgs("", `export class ${dict.AppName}Endpoint extends endpoint`, [`srv.${dict.appName}`, "() => ({})"], " {}")}
 `;
 }
