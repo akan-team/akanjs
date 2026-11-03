@@ -3,8 +3,7 @@ interface Dict {
   LibName: string;
 }
 export default function getContent(scanInfo: null, dict: Dict) {
-  return `
-import { serviceDictionary } from "akanjs/dictionary";
+  return `import { serviceDictionary } from "akanjs/dictionary";
 
 import type { ${dict.LibName}Endpoint } from "./${dict.libName}.signal";
 

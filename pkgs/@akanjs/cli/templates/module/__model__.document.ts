@@ -1,4 +1,5 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../biomeForm";
 
 interface Dict {
   Model: string;
@@ -6,18 +7,15 @@ interface Dict {
   appName: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
-  return `
-import { by, from, into } from "akanjs/document";
+  const { Model, model } = dict;
+  return `import { by, from, into } from "akanjs/document";
 
 import * as cnst from "../cnst";
 
-export class ${dict.Model}Filter extends from(cnst.${dict.Model}, (filter) => ({
-  query: {},
-  sort: {},
-})) {}
+${BiomeForm.call("", `export class ${Model}Filter extends from`, [`cnst.${Model}`, "(filter) => ({\n  query: {},\n  sort: {},\n})"], " {}")}
 
-export class ${dict.Model} extends by(cnst.${dict.Model}) {}
+${BiomeForm.call("", `export class ${Model} extends by`, [`cnst.${Model}`], " {}")}
 
-export class ${dict.Model}Model extends into(${dict.Model}, ${dict.Model}Filter, cnst.${dict.model}, () => ({})) {}
+${BiomeForm.call("", `export class ${Model}Model extends into`, [Model, `${Model}Filter`, `cnst.${model}`, "() => ({})"], " {}")}
 `;
 }

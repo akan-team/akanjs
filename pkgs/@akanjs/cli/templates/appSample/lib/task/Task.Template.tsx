@@ -40,6 +40,7 @@ export const General = ({ className }: TaskEditProps) => {
       />
     </Layout.Template>
   );
-};`,
+};
+`,
   };
 }

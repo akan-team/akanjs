@@ -1,4 +1,5 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../biomeForm";
 
 interface Dict {
   Model: string;
@@ -9,8 +10,7 @@ interface Dict {
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
   return {
     filename: "_index.tsx",
-    content: `
-import { ${dict.Model}, fetch, usePage } from "${dict.clientPath}";
+    content: `${BiomeForm.importFrom([dict.Model, "fetch", "usePage"], dict.clientPath)}
 import { page } from "akanjs/client";
 import { buttonRecipe, Link } from "akanjs/ui";
 
@@ -18,7 +18,7 @@ export default page()
   .config({ transition: "none" })
   .render(() => {
     const { l } = usePage();
-    const { ${dict.model}InitInPublic } = fetch.init${dict.Model}InPublic();
+${BiomeForm.assign("    ", `const { ${dict.model}InitInPublic }`, `fetch.init${dict.Model}InPublic`, [], ";")}
     return (
       <div className="container flex flex-col gap-4">
         <div className="mt-5 h-full w-full px-5">

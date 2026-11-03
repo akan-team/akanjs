@@ -20,7 +20,11 @@ interface StartProps {
 }
 
 export const Start = ({ taskId }: StartProps) => (
-  <button type="button" className={jellyButtonRecipe({ variant: "primary", size: "xs" })} onClick={() => st.do.startTask(taskId)}>
+  <button
+    type="button"
+    className={jellyButtonRecipe({ variant: "primary", size: "xs" })}
+    onClick={() => st.do.startTask(taskId)}
+  >
     {usePage().l("task.taskStart")}
   </button>
 );
@@ -30,7 +34,11 @@ interface CompleteProps {
 }
 
 export const Complete = ({ taskId }: CompleteProps) => (
-  <button type="button" className={jellyButtonRecipe({ variant: "success", size: "xs" })} onClick={() => st.do.completeTask(taskId)}>
+  <button
+    type="button"
+    className={jellyButtonRecipe({ variant: "success", size: "xs" })}
+    onClick={() => st.do.completeTask(taskId)}
+  >
     {usePage().l("task.taskComplete")}
   </button>
 );
@@ -63,12 +71,16 @@ export const Toolbox = ({ taskId, status }: ToolboxProps) => {
         <>
           {status === "todo" && (
             <li>
-              <button type="button" onClick={() => st.do.startTask(taskId)}>{l("task.taskStart")}</button>
+              <button type="button" onClick={() => st.do.startTask(taskId)}>
+                {l("task.taskStart")}
+              </button>
             </li>
           )}
           {status === "inProgress" && (
             <li>
-              <button type="button" onClick={() => st.do.completeTask(taskId)}>{l("task.taskComplete")}</button>
+              <button type="button" onClick={() => st.do.completeTask(taskId)}>
+                {l("task.taskComplete")}
+              </button>
             </li>
           )}
           <li>

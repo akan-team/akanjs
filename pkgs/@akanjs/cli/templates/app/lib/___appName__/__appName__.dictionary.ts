@@ -5,8 +5,7 @@ interface Dict {
   AppName: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
-  return `
-import { serviceDictionary } from "akanjs/dictionary";
+  return `import { serviceDictionary } from "akanjs/dictionary";
 
 import type { ${dict.AppName}Endpoint } from "./${dict.appName}.signal";
 

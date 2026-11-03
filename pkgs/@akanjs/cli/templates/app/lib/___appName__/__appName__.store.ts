@@ -1,17 +1,15 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../../../biomeForm";
 
 interface Dict {
   appName: string;
   AppName: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
-  return `
-import { store } from "akanjs/store";
+  return `import { store } from "akanjs/store";
 
-export class ${dict.AppName}Store extends store("${dict.appName}" as const, () => ({
-  // state
-})) {
+${BiomeForm.call("", `export class ${dict.AppName}Store extends store`, [`"${dict.appName}" as const`, "() => ({\n  // state\n})"], " {")}
   // action
 }
-  `;
+`;
 }

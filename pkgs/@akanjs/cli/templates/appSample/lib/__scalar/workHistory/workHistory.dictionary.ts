@@ -3,7 +3,7 @@ import type { AppInfo, LibInfo } from "akanjs";
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { appName: string }) {
   return `import { scalarDictionary } from "akanjs/dictionary";
 
-import type { WorkHistoryAction, WorkHistory } from "./workHistory.constant";
+import type { WorkHistory, WorkHistoryAction } from "./workHistory.constant";
 
 // ===== workHistory.dictionary.ts =====
 // Convention: scalarDictionary() for scalar module i18n — fewer layers than modelDictionary().

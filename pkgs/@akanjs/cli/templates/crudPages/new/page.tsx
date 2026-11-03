@@ -1,4 +1,5 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../../biomeForm";
 
 interface Dict {
   Model: string;
@@ -7,10 +8,10 @@ interface Dict {
   clientPath: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
+  const form = `    const ${dict.model}Form: Partial<cnst.${dict.Model}> =`;
   return {
     filename: "_index.tsx",
-    content: `
-import { type cnst, fetch, usePage, ${dict.Model} } from "${dict.clientPath}";
+    content: `${BiomeForm.importFrom(["type cnst", "fetch", "usePage", dict.Model], dict.clientPath)}
 import { page } from "akanjs/client";
 import { Load } from "akanjs/ui";
 
@@ -18,7 +19,7 @@ export default page()
   .config({ transition: "none" })
   .render(() => {
     const { l } = usePage();
-    const ${dict.model}Form: Partial<cnst.${dict.Model}> = {};
+${BiomeForm.fits(`${form} {};`) ? `${form} {};` : `${form}\n      {};`}
     return (
       <div className="container">
         <div className="m-4 mt-8 flex justify-between">

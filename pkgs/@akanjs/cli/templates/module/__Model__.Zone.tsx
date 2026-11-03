@@ -1,4 +1,5 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../biomeForm";
 
 interface Dict {
   Model: string;
@@ -7,37 +8,44 @@ interface Dict {
   sysType: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
+  const { Model, model } = dict;
+  const card = {
+    tag: `${Model}.Unit.Card`,
+    attrs: [`key={${model}.id}`, `href={\`/${model}/\${${model}.id}\`}`, `${model}={${model}}`],
+  };
+  const units = {
+    tag: "Load.Units",
+    attrs: ["className={className}", "init={init}", { name: "renderItem", param: model, body: card }],
+  };
+  const view = {
+    tag: "Load.View",
+    attrs: [
+      "view={view}",
+      { name: "renderView", param: model, body: { tag: `${Model}.View.General`, attrs: [`${model}={${model}}`] } },
+    ],
+  };
   return {
-    filename: `${dict.Model}.Zone.tsx`,
-    content: `
-"use client";
-import { Load } from "akanjs/ui";
-import { type cnst, ${dict.Model} as ${dict.Model} } from "@${dict.sysType}s/${dict.sysName}/client";
+    filename: `${Model}.Zone.tsx`,
+    content: `"use client";
+${BiomeForm.importFrom(["type cnst", Model], `@${dict.sysType}s/${dict.sysName}/client`)}
 import type { ClientInit, ClientView, SliceMeta } from "akanjs/fetch";
+import { Load } from "akanjs/ui";
 
 interface CardProps {
   className?: string;
-  init: ClientInit<"${dict.model}", cnst.Light${dict.Model}>;
+${BiomeForm.typeArgs("  ", "init: ClientInit", [`"${model}"`, `cnst.Light${Model}`], ";")}
   slice?: SliceMeta;
 }
 export const Card = ({ className, init, slice }: CardProps) => {
-  return (
-    <Load.Units
-      className={className}
-      init={init}
-      renderItem={(${dict.model}) => (
-        <${dict.Model}.Unit.Card key={${dict.model}.id} href={\`/${dict.model}/\${${dict.model}.id}\`} ${dict.model}={${dict.model}} />
-      )}
-    />
-  );
+${BiomeForm.returnElement(units, "  ")}
 };
 
 interface ViewProps {
   className?: string;
-  view: ClientView<"${dict.model}", cnst.${dict.Model}>;
+${BiomeForm.typeArgs("  ", "view: ClientView", [`"${model}"`, `cnst.${Model}`], ";")}
 }
 export const View = ({ view }: ViewProps) => {
-  return <Load.View view={view} renderView={(${dict.model}) => <${dict.Model}.View.General ${dict.model}={${dict.model}} />} />;
+${BiomeForm.returnElement(view, "  ")}
 };
 `,
   };

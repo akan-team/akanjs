@@ -1,4 +1,5 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../biomeForm";
 
 interface Dict {
   Model: string;
@@ -6,19 +7,17 @@ interface Dict {
   sysName: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
-  return `
-import { via } from "akanjs/constant";
+  const { Model } = dict;
+  return `import { via } from "akanjs/constant";
 
-export class ${dict.Model}Input extends via((field) => ({
-  name: field(String),
-})) {}
+${BiomeForm.call("", `export class ${Model}Input extends via`, ["(field) => ({\n  name: field(String),\n})"], " {}")}
 
-export class ${dict.Model}Object extends via(${dict.Model}Input, (field) => ({})) {}
+${BiomeForm.call("", `export class ${Model}Object extends via`, [`${Model}Input`, "(field) => ({})"], " {}")}
 
-export class Light${dict.Model} extends via(${dict.Model}Object, ["name"] as const, (resolve) => ({})) {}
+${BiomeForm.call("", `export class Light${Model} extends via`, [`${Model}Object`, '["name"] as const', "(resolve) => ({})"], " {}")}
 
-export class ${dict.Model} extends via(${dict.Model}Object, Light${dict.Model}, (resolve) => ({})) {}
+${BiomeForm.call("", `export class ${Model} extends via`, [`${Model}Object`, `Light${Model}`, "(resolve) => ({})"], " {}")}
 
-export class ${dict.Model}Insight extends via(${dict.Model}, (field) => ({})) {}
+${BiomeForm.call("", `export class ${Model}Insight extends via`, [Model, "(field) => ({})"], " {}")}
 `;
 }

@@ -26,6 +26,7 @@ export default page().render(() => {
       <Task.Zone.Card className="flex flex-col gap-3" init={taskInitInPublic} />
     </main>
   );
-});`,
+});
+`,
   };
 }

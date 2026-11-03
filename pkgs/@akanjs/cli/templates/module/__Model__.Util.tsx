@@ -1,4 +1,5 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../biomeForm";
 
 interface Dict {
   Model: string;
@@ -7,21 +8,22 @@ interface Dict {
   sysType: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
+  const { Model, model } = dict;
+  const remove = { tag: "Model.Remove", attrs: [`modelId={${model}Id}`, `slice={fetch.slice.${model}}`] };
   return {
-    filename: `${dict.Model}.Util.tsx`,
-    content: `
-"use client";
+    filename: `${Model}.Util.tsx`,
+    content: `"use client";
+${BiomeForm.importFrom(["fetch", "usePage"], `@${dict.sysType}s/${dict.sysName}/client`)}
 import { Model } from "akanjs/ui";
-import { fetch, usePage } from "@${dict.sysType}s/${dict.sysName}/client";
 import { BiTrash } from "react-icons/bi";
 
 interface RemoveProps {
-  ${dict.model}Id: string;
+  ${model}Id: string;
 }
-export const Remove = ({ ${dict.model}Id }: RemoveProps) => {
+export const Remove = ({ ${model}Id }: RemoveProps) => {
   const { l } = usePage();
   return (
-    <Model.Remove modelId={${dict.model}Id} slice={fetch.slice.${dict.model}}>
+${BiomeForm.openingTag(remove, "    ")}
       <BiTrash /> {l("base.remove")}
     </Model.Remove>
   );

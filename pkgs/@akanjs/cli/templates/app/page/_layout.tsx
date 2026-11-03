@@ -5,12 +5,19 @@ interface Dict {
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict, options: { libs: string[] }) {
   const isUsingShared = options.libs.includes("shared");
+  const rendered = isUsingShared
+    ? `(
+      <>
+        {children}
+        <Auth.User />
+        <Auth.Admin />
+      </>
+    )`
+    : "<>{children}</>";
   return {
     filename: "_layout.tsx",
-    content: `
-import "./styles.css";
-import { rootLayout } from "akanjs/client";
-${isUsingShared ? "import { Auth } from '@shared/ui';" : ""}
+    content: `import "./styles.css";
+${isUsingShared ? 'import { Auth } from "@shared/ui";\n' : ""}import { rootLayout } from "akanjs/client";
 
 export default rootLayout()
   .fonts([
@@ -41,12 +48,8 @@ export default rootLayout()
     </>,
   )
   .render(({ children }) => {
-    return (
-      <>
-        {children}${isUsingShared ? "\n        <Auth.User />\n        <Auth.Admin />" : ""}
-      </>
-    );
+    return ${rendered};
   });
-  `,
+`,
   };
 }

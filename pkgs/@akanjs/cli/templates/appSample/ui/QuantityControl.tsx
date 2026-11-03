@@ -21,16 +21,11 @@ interface QuantityControlProps {
   max?: number;
 }
 
-export const QuantityControl = ({
-  className,
-  value,
-  onChange,
-  min = 0,
-  max = 99,
-}: QuantityControlProps) => {
+export const QuantityControl = ({ className, value, onChange, min = 0, max = 99 }: QuantityControlProps) => {
   return (
     <div className={cn("inline-flex items-center gap-1", className)}>
-      <button type="button"
+      <button
+        type="button"
         className={jellyButtonRecipe({ variant: "default", size: "icon" }, "size-7")}
         disabled={value <= min}
         onClick={() => onChange(Math.max(min, value - 1))}
@@ -38,7 +33,8 @@ export const QuantityControl = ({
         −
       </button>
       <span className="w-8 text-center font-medium tabular-nums">{value}</span>
-      <button type="button"
+      <button
+        type="button"
         className={jellyButtonRecipe({ variant: "default", size: "icon" }, "size-7")}
         disabled={value >= max}
         onClick={() => onChange(Math.min(max, value + 1))}
