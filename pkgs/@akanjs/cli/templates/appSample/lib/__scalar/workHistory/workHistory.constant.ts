@@ -12,11 +12,7 @@ import { via } from "akanjs/constant";
 // ---- Enum ----
 // WorkHistoryAction: the type of change recorded in a work history entry
 // Scalar enums follow the same enumOf() convention as model enums
-export class WorkHistoryAction extends enumOf("workHistoryAction", [
-  "created",
-  "started",
-  "completed",
-] as const) {}
+export class WorkHistoryAction extends enumOf("workHistoryAction", ["created", "started", "completed"] as const) {}
 
 // ---- Scalar Entry ----
 // WorkHistory: a single entry in a model's workHistory list

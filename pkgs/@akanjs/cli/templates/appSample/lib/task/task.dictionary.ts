@@ -14,10 +14,7 @@ import type { TaskFilter } from "./task.document";
 // Registered by akan sync into dict.ts barrel.
 
 export const dictionary = modelDictionary(["en", "ko"])
-  .of((t) =>
-    t(["Task", "할 일"])
-      .desc(["A unit of work to be completed", "완료해야 할 작업 단위"]),
-  )
+  .of((t) => t(["Task", "할 일"]).desc(["A unit of work to be completed", "완료해야 할 작업 단위"]))
   .model<Task>((t) => ({
     title: t(["Title", "제목"]).desc(["Task title", "할 일 제목"]),
     content: t(["Content", "내용"]).desc(["Detailed task description", "상세 작업 설명"]),
@@ -43,10 +40,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     completed: t(["Completed", "완료"]),
   }))
   .error({
-    cannotStartFromNonTodo: [
-      "Task can only start from todo status",
-      "할 일 상태에서만 시작할 수 있습니다",
-    ],
+    cannotStartFromNonTodo: ["Task can only start from todo status", "할 일 상태에서만 시작할 수 있습니다"],
     cannotCompleteFromNonInProgress: [
       "Task can only complete from in-progress status",
       "진행 중 상태에서만 완료할 수 있습니다",

@@ -29,6 +29,7 @@ export default page().render(() => {
       </div>
     </main>
   );
-});`,
+});
+`,
   };
 }

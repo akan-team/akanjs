@@ -1,15 +1,13 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../../biomeForm";
 
 interface Dict {
   model: string;
   Model: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
-  return `
-import { via } from "akanjs/constant";
+  return `import { via } from "akanjs/constant";
 
-export class ${dict.Model} extends via((field) => ({
-  field: field(String),
-})) {}
+${BiomeForm.callArgs("", `export class ${dict.Model} extends via`, ["(field) => ({\n  field: field(String),\n})"], " {}")}
 `;
 }

@@ -557,8 +557,8 @@ export class Executor {
     return fileContents;
   }
 
-  // A template cannot sort the identifiers it emits (`Task` vs `Zoo`). Best-effort: `create-akan-workspace`
-  // scaffolds before `bun install`, with no local Biome binary yet.
+  // Best-effort: `create-akan-workspace` scaffolds before `bun install`, with no local Biome binary yet, so a
+  // template emits Biome's form itself (`templates/biomeForm.ts`).
   async #formatAppliedTemplate(fileContents: FileContent[]) {
     const filePaths = fileContents
       .map((fileContent) => fileContent.filePath)

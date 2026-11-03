@@ -35,8 +35,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dic
     : "";
   return {
     filename: "_index.tsx",
-    content: `
-import { jellyButtonRecipe } from "@apps/${dict.appName}/ui";
+    content: `import { jellyButtonRecipe } from "@apps/${dict.appName}/ui";
 import { getEnv } from "akanjs/base";
 import { cn, page, usePage } from "akanjs/client";
 import { Image, Link, System } from "akanjs/ui";
@@ -293,6 +292,7 @@ export default page().render(() => {
       </div>
     </main>
   );
-});`,
+});
+`,
   };
 }

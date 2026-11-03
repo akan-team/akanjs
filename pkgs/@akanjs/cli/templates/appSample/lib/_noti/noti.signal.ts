@@ -1,7 +1,7 @@
 import type { AppInfo, LibInfo } from "akanjs";
 
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { appName: string }) {
-  return `import { internal, endpoint } from "akanjs/signal";
+  return `import { endpoint, internal } from "akanjs/signal";
 
 import * as srv from "../srv";
 

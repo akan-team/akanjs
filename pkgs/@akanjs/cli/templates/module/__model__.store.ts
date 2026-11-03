@@ -1,4 +1,5 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../biomeForm";
 
 interface Dict {
   Model: string;
@@ -6,14 +7,11 @@ interface Dict {
   sysName: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
-  return `
-import { store } from "akanjs/store";
+  return `import { store } from "akanjs/store";
 
 import { sig } from "../useClient";
 
-export class ${dict.Model}Store extends store(sig.${dict.model}, () => ({
-  // state
-})) {
+${BiomeForm.callArgs("", `export class ${dict.Model}Store extends store`, [`sig.${dict.model}`, "() => ({\n  // state\n})"], " {")}
   // action
 }
 `;

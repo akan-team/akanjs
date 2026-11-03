@@ -4,8 +4,7 @@ interface Dict {
   [key: string]: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict = {}) {
-  return `
-import { env as debug } from "./env.server.debug";
+  return `import { env as debug } from "./env.server.debug";
 import { env as develop } from "./env.server.develop";
 import { env as local } from "./env.server.local";
 import { env as main } from "./env.server.main";
@@ -16,5 +15,5 @@ const currentEnv = process.env.AKAN_PUBLIC_ENV ?? "local";
 if (!(currentEnv in envConfigs)) throw new Error(\`Unknown environment: \${currentEnv}\`);
 
 export const env = envConfigs[currentEnv as keyof typeof envConfigs];
-  `;
+`;
 }

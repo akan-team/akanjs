@@ -1,4 +1,5 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../biomeForm";
 
 interface Dict {
   Model: string;
@@ -7,21 +8,23 @@ interface Dict {
   sysType: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
+  const { Model, model } = dict;
   return {
-    filename: `${dict.Model}.View.tsx`,
-    content: `
+    filename: `${Model}.View.tsx`,
+    content: `${BiomeForm.importFrom(["type cnst", "usePage"], `@${dict.sysType}s/${dict.sysName}/client`)}
 import { cn } from "akanjs/client";
-import { cnst, usePage } from "@${dict.sysType}s/${dict.sysName}/client";
 
 interface GeneralProps {
   className?: string;
-  ${dict.model}: cnst.${dict.Model};
+  ${model}: cnst.${Model};
 }
-export const General = ({ className, ${dict.model} }: GeneralProps) => {
+export const General = ({ className, ${model} }: GeneralProps) => {
   const { l } = usePage();
   return (
     <div className={cn("w-full", className)}>
-      <div>{l("${dict.model}.name")}: {${dict.model}.name}</div>
+      <div>
+${BiomeForm.jsxSpaced("        ", `{l("${model}.name")}:`, `{${model}.name}`)}
+      </div>
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import type { AppInfo, LibInfo } from "akanjs";
+import { BiomeForm } from "../biomeForm";
 
 interface Dict {
   Model: string;
@@ -10,31 +11,29 @@ interface Dict {
   sysName: string;
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
-  const modelLabelEn = dict.modelLabelEn ?? dict.Model;
-  const modelLabelKo = dict.modelLabelKo ?? dict.Model;
+  const { Model, model } = dict;
+  const modelLabelEn = dict.modelLabelEn ?? Model;
+  const modelLabelKo = dict.modelLabelKo ?? Model;
   const modelDescEn = dict.modelDescEn ?? `Manage ${modelLabelEn.toLowerCase()}.`;
   const modelDescKo = dict.modelDescKo ?? `${modelLabelKo}을 관리합니다.`;
-  return `
-import { modelDictionary } from "akanjs/dictionary";
+  return `import { modelDictionary } from "akanjs/dictionary";
 
-import type { ${dict.Model}, ${dict.Model}Insight } from "./${dict.model}.constant";
-import type { ${dict.Model}Filter } from "./${dict.model}.document";
-import type { ${dict.Model}Endpoint, ${dict.Model}Slice } from "./${dict.model}.signal";
+${BiomeForm.importFrom([Model, `${Model}Insight`], `./${model}.constant`, { typeOnly: true })}
+${BiomeForm.importFrom([`${Model}Filter`], `./${model}.document`, { typeOnly: true })}
+${BiomeForm.importFrom([`${Model}Endpoint`, `${Model}Slice`], `./${model}.signal`, { typeOnly: true })}
 
 export const dictionary = modelDictionary(["en", "ko"])
-  .of((t) =>
-    t(["${modelLabelEn}", "${modelLabelKo}"]).desc(["${modelDescEn}", "${modelDescKo}"])
-  )
-  .model<${dict.Model}>((t) => ({
+${BiomeForm.dictionaryOf([modelLabelEn, modelLabelKo], [modelDescEn, modelDescKo])}
+  .model<${Model}>((t) => ({
     name: t(["Name", "이름"]).desc(["Name", "이름"]),
   }))
-  .insight<${dict.Model}Insight>((t) => ({}))
-  .query<${dict.Model}Filter>((fn) => ({}))
-  .sort<${dict.Model}Filter>((t) => ({}))
-  .slice<${dict.Model}Slice>((fn) => ({
-    inPublic: fn(["${dict.Model} In Public", "${dict.Model} 공개"]).arg((t) => ({})),
+  .insight<${Model}Insight>((t) => ({}))
+  .query<${Model}Filter>((fn) => ({}))
+  .sort<${Model}Filter>((t) => ({}))
+  .slice<${Model}Slice>((fn) => ({
+${BiomeForm.dictionarySlice("inPublic", [`${Model} In Public`, `${Model} 공개`])}
   }))
-  .endpoint<${dict.Model}Endpoint>((fn) => ({}))
+  .endpoint<${Model}Endpoint>((fn) => ({}))
   .error({})
   .translate({});
 `;

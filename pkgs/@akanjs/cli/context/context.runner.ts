@@ -164,7 +164,7 @@ export class ContextRunner extends runner("context") {
       throw new Error(`${configPath} already has an "akan" MCP server. Re-run with --force to overwrite it.`);
     }
     const nextConfig: CursorMcpConfig = { ...existing, mcpServers: { ...mcpServers, akan: nextAkanServer } };
-    await workspace.writeFile(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`);
+    await workspace.writeFile(configPath, nextConfig);
     return configPath;
   }
 

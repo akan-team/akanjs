@@ -14,11 +14,7 @@ import { WorkHistory } from "../__scalar/workHistory/workHistory.constant";
 //   Input = user-provided fields; Object = Input + system fields + embedded scalars; Light = subset for list views; Full = Object + Light.
 // Registered by akan sync into cnst.ts barrel.
 
-export class TaskStatus extends enumOf("taskStatus", [
-  "todo",
-  "inProgress",
-  "completed",
-] as const) {}
+export class TaskStatus extends enumOf("taskStatus", ["todo", "inProgress", "completed"] as const) {}
 
 export class TaskInput extends via((field) => ({
   title: field(String),

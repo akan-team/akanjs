@@ -4,7 +4,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
   return {
     filename: "Task.Unit.tsx",
     content: `import { type cnst, usePage } from "@apps/${dict.appName}/client";
-import { type ModelProps, cn } from "akanjs/client";
+import { cn, type ModelProps } from "akanjs/client";
 import { badgeRecipe, Layout } from "akanjs/ui";
 
 // ===== Task.Unit.tsx =====
@@ -60,6 +60,7 @@ export const Card = ({ task, className, href }: CardProps) => {
 // Abstract: abstracted summary display (search results, previews)
 // export const Abstract = ({ task }: AbstractProps) => (
 //   <div className="text-sm">{task.title} — {l("taskStatus", task.status)}</div>
-// );`,
+// );
+`,
   };
 }
