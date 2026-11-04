@@ -983,8 +983,8 @@ export default page()
       {
         name: "msg.success(key, { key, duration, data })",
         desc: l.trans({
-          en: "A toast from a dictionary key, 3 seconds by default. `info`, `warning`, `error`, `loading` too.",
-          ko: "dictionary key로 toast를 띄웁니다. 기본 3초이며 `info`, `warning`, `error`, `loading`도 같습니다.",
+          en: "A toast from a dictionary key, 3 seconds by default; a `duration` of 0 keeps it until a toast with its `key` replaces it. `info`, `warning`, `error`, `loading` too.",
+          ko: "dictionary key로 toast를 띄웁니다. 기본 3초이며, `duration`이 0이면 같은 `key`의 toast가 대신할 때까지 남습니다. `info`, `warning`, `error`, `loading`도 같습니다.",
         }),
       },
       {
