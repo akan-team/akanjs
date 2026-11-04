@@ -159,6 +159,7 @@ async function withFullSsrCacheHarness<T>(
     seedIndex?: RouteSeedIndex;
     onRenderInput?: (input: Parameters<SsrFromRscRenderer["render"]>[0]) => void;
     renderBody?: (pathname: string) => string;
+    renderStream?: () => ReadableStream<Uint8Array>;
   } = {},
 ): Promise<T> {
   const envSnapshot = {
@@ -196,6 +197,7 @@ async function withFullSsrCacheHarness<T>(
     options.onRenderInput?.(input);
     renderCount += 1;
     const pathname = input.request ? new URL(input.request.url).pathname : "/unknown";
+    if (options.renderStream) return options.renderStream();
     return streamOf(
       `<html><body>${pathname}:render-${renderCount}${options.renderBody?.(pathname) ?? ""}</body></html>`,
     );
@@ -1326,19 +1328,19 @@ describe("WebRouter HTML cache streaming", () => {
     expect(DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES).toBeGreaterThan(0);
   });
 
-  test("cancels the unused HTML stream for HEAD responses", async () => {
+  test("cancels the unused HTML stream for HEAD responses as an abort", async () => {
     let cancelledReason: unknown;
-    const reason = new Error("HEAD response does not consume body");
     const stream = new ReadableStream<Uint8Array>({
       cancel(actualReason) {
         cancelledReason = actualReason;
       },
     });
 
-    cancelStreamForHeadResponse(stream, reason);
+    cancelStreamForHeadResponse(stream, "HEAD response does not consume body");
     await sleep(0);
 
-    expect(cancelledReason).toBe(reason);
+    expect(cancelledReason).toBeInstanceOf(DOMException);
+    expect(cancelledReason).toMatchObject({ name: "AbortError", message: "HEAD response does not consume body" });
   });
 });
 
@@ -1626,6 +1628,42 @@ describe("WebRouter full SSR cache orchestration", () => {
         expect(response.headers.get("Cache-Control")).toBe("no-store");
       },
       { worker: fakeWorker },
+    );
+  });
+
+  test("answers HEAD as it answers GET and abandons the unread document as an abort", async () => {
+    const fakeWorker = createFakeRscWorker((req) => ({
+      lateControl: req.url.endsWith("/office")
+        ? { type: "redirect", location: "/en", method: "replace", status: 308 }
+        : null,
+    }));
+    const reasons: unknown[] = [];
+
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const get = await fullSsr(new Request("https://example.test/en/office"));
+        const head = await fullSsr(new Request("https://example.test/en/office", { method: "HEAD" }));
+        expect(head.status).toBe(308);
+        expect(head.status).toBe(get.status);
+        expect(head.headers.get("Location")).toBe(get.headers.get("Location"));
+
+        const page = await fullSsr(new Request("https://example.test/en", { method: "HEAD" }));
+        expect(page.status).toBe(200);
+        expect(await page.text()).toBe("");
+
+        await sleep(0);
+        expect(reasons).toHaveLength(3);
+        for (const reason of reasons) expect(reason).toMatchObject({ name: "AbortError" });
+      },
+      {
+        worker: fakeWorker,
+        renderStream: () =>
+          new ReadableStream<Uint8Array>({
+            cancel(reason) {
+              reasons.push(reason);
+            },
+          }),
+      },
     );
   });
 

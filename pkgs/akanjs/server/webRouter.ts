@@ -200,8 +200,10 @@ export function cacheHtmlWhileStreaming(
   );
 }
 
-export function cancelStreamForHeadResponse(stream: ReadableStream<Uint8Array>, reason: unknown): void {
-  void stream.cancel(reason).catch(() => {
+//? React reports a cancel's reason as an error of every boundary still pending; an AbortError is the one the renderer
+//? does not log as a failed render.
+export function cancelStreamForHeadResponse(stream: ReadableStream<Uint8Array>, message: string): void {
+  void stream.cancel(new DOMException(message, "AbortError")).catch(() => {
     // Best-effort: upstream may already be closed by the time HEAD handling runs.
   });
 }
@@ -725,7 +727,7 @@ export class WebRouter {
           //? response (a blocking or crawler render, or one raised before the shell was ready); then it is a real one.
           const lateControl = await Promise.race([rscResult.lateControl, Promise.resolve(null)]);
           if (lateControl?.type === "redirect") {
-            cancelStreamForHeadResponse(htmlStream, new Error("redirected before the response started"));
+            cancelStreamForHeadResponse(htmlStream, "redirected before the response started");
             return createDocumentRedirectResponse(new URL(lateControl.location, url.origin), lateControl.status);
           }
           const responseStatus = lateControl?.type === "not-found" ? 404 : (rscResult.status ?? 200);
@@ -737,7 +739,7 @@ export class WebRouter {
               headers.set("X-Akan-Cache", "BYPASS");
               headers.set("X-Akan-Cache-Reason", htmlCacheDecision.reason);
             }
-            cancelStreamForHeadResponse(htmlStream, new Error("HEAD response does not consume body"));
+            cancelStreamForHeadResponse(htmlStream, "HEAD response does not consume body");
             return new Response(null, { status: responseStatus, headers });
           }
           if (htmlCacheEntry && responseStatus === 200) {

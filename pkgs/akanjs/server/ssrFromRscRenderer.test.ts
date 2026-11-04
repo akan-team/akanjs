@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import path from "node:path";
+import { Logger } from "akanjs/common";
 import { createRequestStore, getRequestStore, headers } from "../fetch/requestStorage";
 import {
   createInlineRscScript,
@@ -571,6 +572,47 @@ describe("SsrFromRscRenderer.renderDocument", () => {
     expect(html).not.toContain('<div hidden id="S:');
     expect(html).not.toContain("<p>Loading</p>");
     expect(html).toContain("<h1>Indexed headline</h1>");
+  });
+});
+
+describe("SsrFromRscRenderer cancel", () => {
+  const cancelPendingDocument = async (reason: unknown) => {
+    const logged: string[] = [];
+    const spy = spyOn(Logger.prototype, "error").mockImplementation((message: unknown) => {
+      logged.push(String(message));
+    });
+    try {
+      const pendingBoundary =
+        '0:["$","html",null,{"children":["$","body",null,{"children":["$","$Sreact.suspense",null,{"fallback":"Loading","children":"$L1"}]}]}]\n';
+      const html = await new SsrFromRscRenderer().render({
+        request: new Request("https://example.test/en/office", { method: "HEAD" }),
+        rscStream: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(pendingBoundary));
+          },
+        }),
+        ssrManifest: { moduleLoading: null, moduleMap: {} },
+        lateControl: new Promise(() => {}),
+      });
+      await html.cancel(reason);
+      await sleep(20);
+    } finally {
+      spy.mockRestore();
+    }
+    return logged;
+  };
+
+  test("a document the server abandons as an abort logs no failed render", async () => {
+    expect(await cancelPendingDocument(new DOMException("HEAD response does not consume body", "AbortError"))).toEqual(
+      [],
+    );
+  });
+
+  test("any other reason for cancelling a pending boundary is logged as a failed render", async () => {
+    const logged = await cancelPendingDocument(new Error("boom"));
+
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toStartWith("[SSR] render failed path=/en/office: Error: boom");
   });
 });
 
