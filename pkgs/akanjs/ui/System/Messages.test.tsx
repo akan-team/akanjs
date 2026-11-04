@@ -20,6 +20,11 @@ const mount = async (children = <Messages />) => (await mountAsync(children)).un
 
 const wait = (ms: number) => act(async () => new Promise((resolve) => setTimeout(resolve, ms)));
 
+const stateOf = (text: string) =>
+  [...document.querySelectorAll("[data-state]")]
+    .find((card) => card.textContent?.includes(text))
+    ?.getAttribute("data-state");
+
 describe("Messages", () => {
   test("shows a message through the framework toast and drops it once its exit ends", async () => {
     const unmount = await mount();
@@ -68,6 +73,20 @@ describe("Messages", () => {
     // restarted it and left both on screen.
     expect(document.querySelector('[data-state="out"]')?.textContent).toContain("FIRST");
     expect(document.querySelector('[data-state="in"]')?.textContent).toContain("SECOND");
+    unmount();
+  });
+
+  test("keeps a message with a duration of 0 until one with its key replaces it", async () => {
+    const unmount = await mount();
+    await act(async () => st.do.showMessage({ key: "upload", type: "loading", content: "UPLOADING", duration: 0 }));
+    await wait(100);
+    expect(stateOf("UPLOADING")).toBe("in");
+
+    await act(async () => st.do.showMessage({ key: "upload", type: "success", content: "UPLOADED", duration: 0.05 }));
+    expect(stateOf("UPLOADING")).toBeUndefined();
+    expect(stateOf("UPLOADED")).toBe("in");
+    await wait(80);
+    expect(stateOf("UPLOADED")).toBe("out");
     unmount();
   });
 });

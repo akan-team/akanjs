@@ -514,7 +514,7 @@ Translation, toast messages and the error class. Import them from your app's `@a
 
 - l._(key): Same as `l`, without type-checking the key.
 
-- msg.success(key, { key, duration, data }): A toast from a dictionary key, 3 seconds by default. `info`, `warning`, `error`, `loading` too.
+- msg.success(key, { key, duration, data }): A toast from a dictionary key, 3 seconds by default; a `duration` of 0 keeps it until a toast with its `key` replaces it. `info`, `warning`, `error`, `loading` too.
 
 - new Err(key, data?): The translated error class. Keys look like `<module>.error.<key>`; the status is 400.
 

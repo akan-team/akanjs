@@ -14,7 +14,7 @@ interface MsgOption {
 
 interface ArmedMessage {
   message: Omit<ToastMessage, "leaving">;
-  timeoutId: ReturnType<typeof setTimeout>;
+  timeoutId: ReturnType<typeof setTimeout> | undefined;
 }
 
 // An override with no exit animation never fires `onClosed`, so a leaving message is dropped after this anyway.
@@ -65,7 +65,9 @@ export const Messages = () => {
       }
       running.set(message.key, {
         message,
-        timeoutId: setTimeout(() => startLeaving(message.key), message.duration * 1000),
+        //? A duration of 0 or less keeps the message until one with its key replaces it, as antd's `duration: 0` does.
+        timeoutId:
+          message.duration > 0 ? setTimeout(() => startLeaving(message.key), message.duration * 1000) : undefined,
       });
     }
     for (const [key, armed] of [...running]) {
