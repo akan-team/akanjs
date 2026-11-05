@@ -19,6 +19,7 @@ export type * from "./fileSys";
 export type * from "./frontendBuild";
 export type * from "./getRelatedCnsts";
 export type * from "./incrementalBuilder";
+export type * from "./maintainabilityContract";
 export type * from "./mobile";
 export type * from "./packageExportsMap";
 export type * from "./prompter";

@@ -156,11 +156,14 @@ export const workflowPathsForPlan = (plan: WorkflowPlan) => {
   const app = planInputString(plan, "app");
   const module = planInputString(plan, "module");
   const moduleClass = module ? capitalize(module) : "<Module>";
+  const interaction = planInputString(plan, "interaction");
   return plan.predictedChanges.map((change) =>
     change.target
       .replace(/^\*\//, app ? `apps/${app}/` : "")
       .replaceAll("<module>", module || "<module>")
-      .replaceAll("<Module>", moduleClass),
+      .replaceAll("<Module>", moduleClass)
+      .replaceAll("<interaction>", interaction || "<interaction>")
+      .replaceAll("<Interaction>", interaction ? capitalize(interaction) : "<Interaction>"),
   );
 };
 

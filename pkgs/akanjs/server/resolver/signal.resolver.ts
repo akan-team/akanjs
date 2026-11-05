@@ -78,7 +78,7 @@ export class SignalResolver {
   };
   static readonly #coalescingRooms = new Set<string>();
   static readonly #liveRoutes = new Map<string, { store: DocumentStore; route: LiveRoute }>();
-  static readonly #everyRowAsked = new Set<string>();
+  static readonly #cappedListKeys = new Set<string>();
   static readonly #websockets = new WeakMap<InjectRegistry, { key: AdaptorCls; websocket: WebsocketAdaptor }>();
 
   static coalescesRoom(roomId: string): boolean {
@@ -360,12 +360,16 @@ export class SignalResolver {
   }
 
   // `limit: 0` is Mongo's "every row", which a client is never served: it gets the most one page may hold instead.
-  static #clientPageLimit(listKey: string, asked: unknown) {
-    if (asked !== 0) return resolvePageLimit(asked);
-    if (!SignalResolver.#everyRowAsked.has(listKey)) {
-      SignalResolver.#everyRowAsked.add(listKey);
+  // A warning, never a throw, in every environment: a page that works in production must not throw in local.
+  static #clientPageLimit(listKey: string, storeKey: string, asked: unknown) {
+    const isCapped = asked === 0 || Number(asked) > MAX_PAGE_SIZE;
+    if (!isCapped) return resolvePageLimit(asked);
+    if (!SignalResolver.#cappedListKeys.has(listKey)) {
+      SignalResolver.#cappedListKeys.add(listKey);
       SignalResolver.logger.warn(
-        `${listKey} was asked for limit: 0 and served ${MAX_PAGE_SIZE} rows, the most a client may take; paginate, or name a page size`,
+        `${listKey} was asked for limit: ${String(asked)} and served at most ${MAX_PAGE_SIZE} rows, the most a client may take; ` +
+          `any row past them is dropped and the client is not told. Page with skip/limit at ${MAX_PAGE_SIZE} or fewer per request ` +
+          `(st.do.loadMoreOf${storeKey}() while hasMoreOf${storeKey}), or aggregate on the server in an insight or a dedicated endpoint`,
       );
     }
     return MAX_PAGE_SIZE;
@@ -419,7 +423,11 @@ export class SignalResolver {
           .exec(async function (this: any, ...requestArgs: any) {
             const args = requestArgs.slice(0, argLength);
             const skip = resolvePageSkip(requestArgs[argLength]);
-            const limit = SignalResolver.#clientPageLimit(listKey, requestArgs[argLength + 1]);
+            const limit = SignalResolver.#clientPageLimit(
+              listKey,
+              `${capitalizedRefName}${capitalizedKey}`,
+              requestArgs[argLength + 1],
+            );
             const sort = requestArgs[argLength + 2] ?? "latest";
             const internalArgs = requestArgs.slice(argLength + 3);
             const query = assertSliceQuery(

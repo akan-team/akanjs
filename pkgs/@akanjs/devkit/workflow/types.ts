@@ -49,6 +49,14 @@ export interface AddEnumFieldInput extends PrimitiveTargetInput {
 
 export interface AddMutationInput extends PrimitiveTargetInput {
   mutation: string | null;
+  guards?: string[] | null;
+  withCalls?: string[] | null;
+  afterCalls?: string[] | null;
+}
+
+export interface CreateInteractionInput {
+  app: string | null;
+  interaction: string | null;
 }
 
 export interface AddSliceInput extends PrimitiveTargetInput {
@@ -94,6 +102,7 @@ export interface WorkflowSpec {
   predictedChanges: readonly WorkflowPredictedChange[];
   validation: readonly WorkflowValidation[];
   completionCriteria: readonly string[];
+  replacesRules?: readonly string[];
 }
 
 export interface WorkflowDiagnostic {
@@ -382,6 +391,13 @@ export interface PrimitiveWriteReport {
   nextActions: PrimitiveNextAction[];
 }
 
+export interface ScaffoldFile {
+  path: string;
+  content: string;
+  action: "create" | "modify";
+  reason: string;
+}
+
 export type PrimitiveFileMap = Record<string, { filename: string; content: string }>;
 
 export interface WorkflowApplyReport {
@@ -482,4 +498,5 @@ export interface WorkflowPrimitiveOperations {
   addEnumField: (input: AddEnumFieldInput) => Promise<PrimitiveWriteReport>;
   addMutation: (input: AddMutationInput) => Promise<PrimitiveWriteReport>;
   addSlice: (input: AddSliceInput) => Promise<PrimitiveWriteReport>;
+  createInteraction: (input: CreateInteractionInput) => Promise<PrimitiveWriteReport>;
 }

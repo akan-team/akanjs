@@ -25,7 +25,7 @@ const planTaskWorkflow = async (
   const output = await runner.plan(
     workflow,
     { app: "demo", module: "task", ...inputs },
-    { format: "json", out: planPath },
+    { format: "json", out: planPath, workspace },
   );
   return { root, workspace, module, planPath, runner, output };
 };
@@ -45,10 +45,36 @@ describe("WorkflowRunner", () => {
       "add-field",
       "add-mutation",
       "add-slice",
+      "create-interaction",
       "create-module",
       "create-scalar",
       "create-ui",
     ]);
+  });
+
+  test("lists and explains the lint rules a workflow is the fix for", () => {
+    const runner = new WorkflowRunner();
+    const listed = JSON.parse(runner.list({ format: "json" })) as {
+      workflows: { name: string; replacesRules: string[] }[];
+    };
+    const rulesOf = (name: string) => listed.workflows.find((workflow) => workflow.name === name)?.replacesRules;
+
+    expect(rulesOf("add-mutation")).toEqual([
+      "akan.store.multi-write",
+      "akan.component.write-chain",
+      "akan.store.root-write-chain",
+      "akan.write.placement",
+    ]);
+    expect(rulesOf("create-interaction")).toEqual(["akan.component.store-access", "akan.write.placement"]);
+    expect(rulesOf("add-field")).toEqual([]);
+    expect(runner.list()).toContain("  - Fixes: `akan.component.store-access`");
+    const explained = runner.explain("add-mutation");
+    expect(explained).toContain(
+      "## Replaces Rules\nThis path is the fix when lint or the gate reports:\n- `akan.store.multi-write`",
+    );
+    expect(explained).toContain("- `guard` (required):");
+    expect(JSON.parse(runner.explain("add-mutation", { format: "json" })).replacesRules).toHaveLength(4);
+    expect(runner.explain("add-field")).not.toContain("## Replaces Rules");
   });
 
   test("explains add-field with ordered steps and optional surfaces", () => {
@@ -475,7 +501,7 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
 
   test("returns failed report for unsupported workflow steps", async () => {
     const { planPath, runner } = await planTaskWorkflow(
-      { mutation: "archive" },
+      { mutation: "archiveTask", guard: "Public" },
       { workflow: "add-mutation", plan: "archive-task", scaffold: false },
     );
 
@@ -506,11 +532,11 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     };
     const applyWorkflow = async (workflow: string, extra: Record<string, string>) => {
       const planPath = path.join(root, `.akan/workflows/plans/${workflow}.json`);
-      await runner.plan(workflow, { ...inputs, ...extra }, { format: "json", out: planPath });
+      await runner.plan(workflow, { ...inputs, ...extra }, { format: "json", out: planPath, workspace });
       return JSON.parse(await runner.apply(planPath, { format: "json", workspace, registry })) as WorkflowApplyReport;
     };
 
-    const mutationReport = await applyWorkflow("add-mutation", { mutation: "archive" });
+    const mutationReport = await applyWorkflow("add-mutation", { mutation: "archiveTask", guard: "Public" });
     const sliceReport = await applyWorkflow("add-slice", { slice: "inOwner" });
 
     for (const report of [mutationReport, sliceReport]) {
@@ -527,7 +553,7 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
       }),
     );
     const signalSource = await module.readFile("task.signal.ts");
-    expect(signalSource).toContain("archive: mutation(Boolean, { guards: [None] })");
+    expect(signalSource).toContain("archiveTask: mutation(cnst.Task, { guards: [Public], rateLimit: { calls: 20 } })");
     expect(signalSource).toContain("inOwner: init({ guards: [None] })");
     expect(signalSource).toMatch(/import \{[^}]*\bNone\b[^}]*\} from "akanjs\/signal";/);
   });
@@ -699,5 +725,147 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     const output = await runner.report(run.runId, { format: "json", workspace });
 
     expect(JSON.parse(output)).toMatchObject({ runId: run.runId, workflow: "add-field", mode: "validate" });
+  });
+
+  describe("add-mutation", () => {
+    const planMutation = async (inputs: WorkflowPlanInputs, { scaffold = true } = {}) => {
+      const planned = await planTaskWorkflow(
+        { mutation: "archiveTask", ...inputs },
+        { workflow: "add-mutation", plan: "archive-task", scaffold },
+      );
+      return { ...planned, plan: JSON.parse(planned.output) as WorkflowPlan };
+    };
+
+    test("refuses to plan without a guard and lists the guards the target reaches", async () => {
+      const { plan } = await planMutation({});
+
+      expect(plan.diagnostics).toContainEqual(
+        expect.objectContaining({ severity: "error", code: "workflow-input-missing", input: "guard" }),
+      );
+      expect(plan.diagnostics.map((diagnostic) => diagnostic.code)).not.toContain("add-mutation-guard-missing");
+      expect(plan.recommendations).toContainEqual(
+        expect.objectContaining({ code: "add-mutation-guard-choices", message: expect.stringContaining("Public") }),
+      );
+    });
+
+    test("refuses an unknown guard and None at plan time", async () => {
+      const { plan } = await planMutation({ guard: "Nobody,None" });
+
+      expect(plan.diagnostics).toContainEqual(
+        expect.objectContaining({ severity: "error", code: "add-mutation-guard-unknown", input: "guard" }),
+      );
+      expect(plan.diagnostics).toContainEqual(expect.objectContaining({ code: "add-mutation-guard-none" }));
+    });
+
+    test("refuses a CRUD name, and a name the module already declares", async () => {
+      const reserved = await planMutation({ mutation: "updateTask", guard: "Public" });
+      expect(reserved.plan.diagnostics).toContainEqual(
+        expect.objectContaining({ severity: "error", code: "add-mutation-name-reserved", input: "mutation" }),
+      );
+
+      const { root, workspace, planPath, runner } = await planMutation({ guard: "Public" });
+      const applied = JSON.parse(
+        await runner.apply(planPath, { format: "json", workspace, registry: WorkflowRunner.stepRegistry(workspace) }),
+      ) as WorkflowApplyReport;
+      expect(applied.status).toBe("passed");
+      const replanned = JSON.parse(
+        await runner.plan(
+          "add-mutation",
+          { app: "demo", module: "task", mutation: "archiveTask", guard: "Public" },
+          { format: "json", workspace, out: path.join(root, ".akan/workflows/plans/again.json") },
+        ),
+      ) as WorkflowPlan;
+      expect(replanned.diagnostics).toContainEqual(
+        expect.objectContaining({ severity: "error", code: "add-mutation-name-exists" }),
+      );
+    });
+
+    test("plans a module that does not exist yet with a warning, so a create-module plan can precede it", async () => {
+      const { plan } = await planMutation({ guard: "Public" }, { scaffold: false });
+
+      expect(plan.diagnostics).toEqual([
+        expect.objectContaining({ severity: "warning", code: "add-mutation-module-missing" }),
+      ]);
+    });
+
+    test("applies with and after into one transaction behind the guarded endpoint", async () => {
+      const { root, workspace, module } = track(await createTempModule("task"));
+      await new ModuleRunner().createModuleTemplate(module);
+      await writeText(
+        path.join(root, "apps/demo/srvkit/guards.ts"),
+        'import type { Guard } from "akanjs/signal";\n\nexport class Staff implements Guard {\n  canPass() {\n    return true;\n  }\n}\n',
+      );
+      await writeText(
+        path.join(root, "apps/demo/lib/_noti/noti.service.ts"),
+        'import { serve } from "akanjs/service";\n\nexport class NotiService extends serve("noti", () => ({})) {\n  async sendArchived(taskId: string) {\n    return taskId;\n  }\n}\n',
+      );
+      const runner = new WorkflowRunner();
+      const planPath = path.join(root, ".akan/workflows/plans/archive.json");
+      await runner.plan(
+        "add-mutation",
+        {
+          app: "demo",
+          module: "task",
+          mutation: "archiveTask",
+          guard: "Staff",
+          with: "task.getTask",
+          after: "noti.sendArchived",
+        },
+        { format: "json", out: planPath, workspace },
+      );
+
+      const report = JSON.parse(
+        await runner.apply(planPath, { format: "json", workspace, registry: WorkflowRunner.stepRegistry(workspace) }),
+      ) as WorkflowApplyReport;
+
+      expect(report.status).toBe("passed");
+      expect(report.changedFiles.map((file) => file.path)).toContain("apps/demo/lib/task/task.signal.test.ts");
+      expect(report.postApplyChecks?.every((check) => check.status === "passed")).toBe(true);
+      const service = await module.readFile("task.service.ts");
+      expect(service).toContain("notiService: service<srv.NotiService>(),");
+      expect(service).toContain("      await this.getTask(task.id);\n");
+      expect(service).toContain("      await this.afterCommit(() => this.notiService.sendArchived(task.id));\n");
+      expect(await module.readFile("task.signal.ts")).toContain(
+        "archiveTask: mutation(cnst.Task, { guards: [Staff] })",
+      );
+    });
+  });
+
+  describe("create-interaction", () => {
+    test("plans and applies the hook, the pure class and its test", async () => {
+      const { root, workspace, app } = track(await createTempModule("task"));
+      const runner = new WorkflowRunner();
+      const planPath = path.join(root, ".akan/workflows/plans/board-keys.json");
+      const plan = JSON.parse(
+        await runner.plan(
+          "create-interaction",
+          { app: "demo", interaction: "boardKeys" },
+          { format: "json", out: planPath, workspace },
+        ),
+      ) as WorkflowPlan;
+      expect(plan.diagnostics).toEqual([]);
+
+      const report = JSON.parse(
+        await runner.apply(planPath, { format: "json", workspace, registry: WorkflowRunner.stepRegistry(workspace) }),
+      ) as WorkflowApplyReport;
+
+      expect(report.status).toBe("passed");
+      expect(report.changedFiles.map((file) => file.path)).toEqual([
+        "apps/demo/common/boardKeys.ts",
+        "apps/demo/common/boardKeys.test.ts",
+        "apps/demo/webkit/useBoardKeys.tsx",
+      ]);
+      expect(await app.readFile("webkit/useBoardKeys.tsx")).toContain("export const useBoardKeys = ");
+      const replanned = JSON.parse(
+        await runner.plan(
+          "create-interaction",
+          { app: "demo", interaction: "boardKeys" },
+          { format: "json", workspace },
+        ),
+      ) as WorkflowPlan;
+      expect(replanned.diagnostics).toContainEqual(
+        expect.objectContaining({ severity: "error", code: "create-interaction-exists" }),
+      );
+    });
   });
 });

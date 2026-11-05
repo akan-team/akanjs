@@ -62,6 +62,10 @@ An `st` hook that a render can skip. Read each into its own `const` at the top o
 
 `fetch.init<Model><Suffix>` or `fetch.get<Model>Init<Suffix>` on the client. Load it in the route.
 
+`apps/` `libs/`, tests aside
+
+A list limit above 500, such as `fetch.xListInY(0, 10000)`; the server silently stops at 500. Page or aggregate.
+
 A `cnst` model as a prop type of an always-client file. Take an id instead.
 
 An endpoint that reuses a generated CRUD name, such as `create<Model>` or `view<Model>`.
@@ -162,7 +166,7 @@ Each diagnostic prints the name of the rule that fired. Find that name below; th
 
 Every Rule That Breaks The Build
 
-Thirty are grit plugins written for Akan, each an error unless its row names a warning, which prints without failing the build. The rest are Biome's own. Each plugin looks only at its scope, so a plain package under `pkgs/` never trips the module rules.
+Thirty-one are grit plugins written for Akan, each an error unless its row names a warning, which prints without failing the build. The rest are Biome's own. Each plugin looks only at its scope, so a plain package under `pkgs/` never trips the module rules.
 
 Colour vocabulary
 

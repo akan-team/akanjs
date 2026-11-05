@@ -22,6 +22,18 @@ export class WorkflowCommand extends command("workflow", [WorkflowScript], ({ pu
     .option("surface", String, { flag: "u", desc: "UI surface name", nullable: true })
     .option("mutation", String, { flag: "n", desc: "mutation name", nullable: true })
     .option("slice", String, { flag: "i", desc: "slice name", nullable: true })
+    .option("guard", String, { flag: "g", desc: "comma-separated guard class names", nullable: true })
+    .option("with", String, {
+      flag: "b",
+      desc: "comma-separated <serviceRef>.<method> writes committed with the mutation",
+      nullable: true,
+    })
+    .option("after", String, {
+      flag: "e",
+      desc: "comma-separated <serviceRef>.<method> side effects run after the commit",
+      nullable: true,
+    })
+    .option("interaction", String, { flag: "k", desc: "interaction name", nullable: true })
     .exec(
       async function (
         action,
@@ -40,11 +52,30 @@ export class WorkflowCommand extends command("workflow", [WorkflowScript], ({ pu
         surface,
         mutation,
         slice,
+        guard,
+        withCalls,
+        after,
+        interaction,
       ) {
         await this.workflowScript.workflow(
           action,
           workflow,
-          { app, module, field, type: typeName, values, default: defaultValue, scalar, surface, mutation, slice },
+          {
+            app,
+            module,
+            field,
+            type: typeName,
+            values,
+            default: defaultValue,
+            scalar,
+            surface,
+            mutation,
+            slice,
+            guard,
+            with: withCalls,
+            after,
+            interaction,
+          },
           { format, out, dryRun, workspace },
         );
       },

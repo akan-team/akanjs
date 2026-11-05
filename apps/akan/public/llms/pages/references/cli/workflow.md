@@ -126,7 +126,7 @@ MCP tool · mode
 
 Workflow Catalogue
 
-Seven workflows ship with the CLI. `akan workflow list` prints each with when to use it, and `akan workflow explain <name>` adds its inputs, steps and validation commands.
+Eight workflows ship with the CLI. `akan workflow list` prints each with when to use it, and `akan workflow explain <name>` adds its inputs, steps and validation commands.
 
 With `--format json`, explain also carries the predicted changes and the completion criteria.
 
@@ -140,7 +140,9 @@ With `--format json`, explain also carries the predicted changes and the complet
 
 - add-enum-field: A closed-value field: the enum class, its labels and options, and the field itself. Needs: `--app` `--module` `--field` `--values`
 
-- add-mutation: A service method and a mutation guarded by `None`; it only recommends a store action or UI control. Needs: `--app` `--module` `--mutation`
+- add-mutation: The whole write path: chain method, service, guarded mutation, one-line store action, dictionary, test stubs. Needs: `--app` `--module` `--mutation` `--guard`
+
+- create-interaction: A `webkit/use<X>.tsx` hook over a pure `common/<x>.ts` class, with the class's test. Needs: `--app` `--interaction`
 
 - add-slice: A service query and an `init` slice guarded by `None`; it only recommends the page load and Zone. Needs: `--app` `--module` `--slice`
 
@@ -163,6 +165,8 @@ Each workflow fixes the commands `validate` runs against its `--app`.
   - create-scalar
 
   - create-ui
+
+  - create-interaction
 
 - Add to a module
 
@@ -217,6 +221,14 @@ List, explain, plan, apply, or validate a workflow, or print an earlier run's re
 - --surface (String, view | unit | template | zone | util · -u): Plan input for `create-ui`: the UI file to create. `zone` and `util` plan but do not apply.
 
 - --mutation (String, -n): Plan input for `add-mutation`: the mutation or action name.
+
+- --guard (String, -g): Required by `add-mutation`: comma-separated guard classes the target can reach. `None` is refused.
+
+- --with (String, -b): `add-mutation`: `<serviceRef>.<method>` writes run inside the mutation's `this.transaction()`.
+
+- --after (String, -e): `add-mutation`: `<serviceRef>.<method>` side effects run in `this.afterCommit()`.
+
+- --interaction (String, -k): Plan input for `create-interaction`: a camelCase name, such as `boardKeys`.
 
 - --slice (String, -i): Plan input for `add-slice`: the slice or query name.
 

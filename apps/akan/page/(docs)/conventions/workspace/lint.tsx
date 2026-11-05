@@ -476,6 +476,14 @@ async refreshStock() {
         }),
       },
       {
+        rule: "no-oversized-list-limit",
+        scope: l.trans({ en: "`apps/` `libs/`, tests aside", ko: "`apps/` `libs/`, 테스트 제외" }),
+        desc: l.trans({
+          en: "A list limit above 500, such as `fetch.xListInY(0, 10000)`; the server silently stops at 500. Page or aggregate.",
+          ko: "`fetch.xListInY(0, 10000)`처럼 500을 넘는 목록 limit입니다. 서버는 500개에서 조용히 멈춥니다. 나눠 받거나 집계합니다.",
+        }),
+      },
+      {
         rule: "no-model-type-in-util-zone",
         scope: "`*.Util.tsx` `*.Zone.tsx`",
         desc: l.trans({
@@ -978,14 +986,14 @@ async refreshStock() {
               {l.trans({
                 en: (
                   <span>
-                    Thirty are grit plugins written for Akan, each an error unless its row names a warning, which prints
-                    without failing the build. The rest are Biome&apos;s own. Each plugin looks only at its scope, so a
-                    plain package under <code>pkgs/</code> never trips the module rules.
+                    Thirty-one are grit plugins written for Akan, each an error unless its row names a warning, which
+                    prints without failing the build. The rest are Biome&apos;s own. Each plugin looks only at its
+                    scope, so a plain package under <code>pkgs/</code> never trips the module rules.
                   </span>
                 ),
                 ko: (
                   <span>
-                    서른 개는 Akan을 위해 쓴 grit 플러그인이고, 표에 경고라고 적힌 것 말고는 모두 error입니다. 경고는
+                    서른한 개는 Akan을 위해 쓴 grit 플러그인이고, 표에 경고라고 적힌 것 말고는 모두 error입니다. 경고는
                     출력되지만 빌드를 깨지 않습니다. 나머지는 Biome 자체 규칙입니다. 플러그인은 자기 적용 범위만 보므로,{" "}
                     <code>pkgs/</code> 아래의 평범한 패키지는 모듈 규칙에 걸리지 않습니다.
                   </span>

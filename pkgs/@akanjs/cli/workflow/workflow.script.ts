@@ -25,7 +25,7 @@ export class WorkflowScript extends script("workflow", [WorkflowRunner]) {
       return;
     }
     if (action === "plan") {
-      Logger.rawLog(await this.workflowRunner.plan(workflow, inputs, { format, out }));
+      Logger.rawLog(await this.workflowRunner.plan(workflow, inputs, { format, out, workspace }));
       return;
     }
     if (action === "apply") {

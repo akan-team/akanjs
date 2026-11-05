@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { ACTION_META, DataList, Int, SLICE_META, STATE_DERIVED_META, STATE_INIT_META, STATE_META } from "akanjs/base";
 import { Translator } from "akanjs/client/translator";
-import { ConstantRegistry, via } from "akanjs/constant";
+import { ConstantRegistry, MAX_PAGE_SIZE, via } from "akanjs/constant";
 import type { ClientSignal } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
 import type { RootStoreCls } from "./rootStore";
@@ -503,6 +503,36 @@ describe("signal generated store contract", () => {
     await instance.do.refreshStoreTestItemByTitle({ invalidate: true });
     expect(signal.calls.storeTestItemListByTitle).toHaveBeenLastCalledWith("Ada", 0, 5, "latest", expect.any(Object));
     expect(titles()).toEqual(["row0", "row1", "row2", "row3", "row4"]);
+  });
+
+  test("keeps loading more past a limit the server caps at MAX_PAGE_SIZE", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const total = MAX_PAGE_SIZE + 3;
+    signal.calls.storeTestItemListByTitle = mock(async (_title: string, skip: number, limit: number) =>
+      new Array(Math.max(Math.min(limit || MAX_PAGE_SIZE, MAX_PAGE_SIZE, total - skip), 0))
+        .fill(null)
+        .map((_, i) => new StoreTestLight({ id: `${skip + i}`.padStart(24, "0"), title: `row${skip + i}` } as never)),
+    );
+    class CappedStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(CappedStore);
+    const instance = new StoreInstance(makeRoot("cappedRoot", CappedStore));
+    const loaded = () => (instance.get().storeTestItemListByTitle as DataList<{ id: string }>).length;
+
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 10000 });
+    expect(loaded()).toBe(MAX_PAGE_SIZE);
+    expect(instance.get().hasMoreOfStoreTestItemByTitle).toBe(true);
+
+    await instance.do.loadMoreOfStoreTestItemByTitle();
+    expect(signal.calls.storeTestItemListByTitle).toHaveBeenLastCalledWith(
+      "Ada",
+      MAX_PAGE_SIZE,
+      10000,
+      "latest",
+      undefined,
+    );
+    expect(loaded()).toBe(total);
+    expect(instance.get().hasMoreOfStoreTestItemByTitle).toBe(false);
   });
 
   test("a limit of 0 from a later page lists every row from the first page", async () => {

@@ -17,6 +17,7 @@ import {
   type DefaultOf,
   type FieldState,
   immerify,
+  MAX_PAGE_SIZE,
   type ProtoFile,
   type ProtoLightFile,
   withSharedInstances,
@@ -963,7 +964,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     const namesOfSlice = { ...keys.state, ...keys.action };
     // Read off the batch, not the insight count: that is absent under `{ insight: false }` and drifts with live events.
     const hasMoreFrom = (batch: unknown[], askedFor: number) => ({
-      [namesOfSlice.hasMoreOfModel]: batch.length >= askedFor && askedFor > 0,
+      [namesOfSlice.hasMoreOfModel]: batch.length >= (askedFor > 0 ? Math.min(askedFor, MAX_PAGE_SIZE) : MAX_PAGE_SIZE),
     });
     // `limit: 0` lists every row on one page.
     const lastPageFrom = (count: number, limit: number) => ({

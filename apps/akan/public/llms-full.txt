@@ -1888,6 +1888,8 @@ Other Exports
 
 - usePageActivity(): `"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
 
+- useNavigationGuard(guard): Holds `router.addNavigationGuard(guard)` only while this page is current, so a page kept under the next one stops asking.
+
 - useVisualViewportFrame(): `{ keyboardHeight, height, offsetTop }` of the part of the page left visible while the keyboard is up.
 
 - usePageTool, useScreenScope: Show a pager and on-screen items to the in-page agent. `Load.Units` and `Load.View` call them.
@@ -1901,8 +1903,6 @@ Other Exports
 **Call the hooks from a client file.** They are React hooks, so they need a file with `"use client"`. Put `lazy()` in the `ui/<Folder>/index_.tsx` boundary file.
 
 **Push and speech come from the util library.** `usePushNotification` and `useSpeech` are imported from `@libs/util/webkit`, not from here.
-
-Writing Your Own Hook
 
 ## Agent
 
@@ -2855,9 +2855,13 @@ Term
 
 Scan every app and library for code quality warnings, or measure the server/client render balance.`scan` (default) prints every warning, then the SSR balance and the suggested rules.`ssr` prints the SSR balance first, then only the warnings whose scope is `ssr`.
 
-- action (String, default scan, scan | ssr): Which report to print: `scan` covers everything, `ssr` the render balance alone.
+- action (String, default scan, scan | ssr | baseline): `scan` reports everything, `ssr` the render balance alone; `baseline` writes `akan.baseline.json`.
 
 - --format (String, default text, text | json): Short form `-f`; `json` prints the whole result for tools, each warning's `fix` included.
+
+- --force (Boolean, default false, -F): `baseline` only: rewrite an `akan.baseline.json` that already exists.
+
+- baseline: Records, per rule, the breaches `akan lint` refuses, once, when a workspace adopts that gate; lint then compares the file with its copy at the fork point of the default branch.
 
 - where to run: The workspace root, the folder holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 
@@ -2878,10 +2882,6 @@ Each warning says where, which rule, what is wrong and how to fix it. After the 
 **Sorted by scope name,** then by file and line, so the scopes below appear in this order.
 
 **Only need the render balance?** `akan quality ssr` prints it first and keeps only the `ssr` warnings.
-
-The Six Scopes
-
-- agent: Form fields that publish no agent tool because their setter is wrapped.
 
 ## Scalar
 

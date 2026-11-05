@@ -25,7 +25,7 @@ import type { BaseDevEnv, PackageJson } from "./types";
 export interface TypecheckOptions {
   clean?: boolean;
   incremental?: boolean;
-  /** The app's own tests and specs too (`akan typecheck`); a build leaves them out. */
+  /** The app's own tests, specs and `script/` files too (`akan typecheck`); a build leaves them out. */
   tests?: boolean;
 }
 
@@ -205,6 +205,7 @@ export class ApplicationBuildRunner {
         "../../page/**/*.ts",
         "../../page/**/*.tsx",
         ...libPageIncludes,
+        ...(options.tests ? ["../../script/**/*.ts"] : []),
         "../../../../pkgs/akanjs/*/types/**/*.d.ts",
       ],
       options,

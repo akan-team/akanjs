@@ -41,6 +41,7 @@ export const moduleSourcePaths = (moduleName: string) => {
     abstract: `lib/${moduleName}/${moduleName}.abstract.md`,
     constant: `lib/${moduleName}/${moduleName}.constant.ts`,
     dictionary: `lib/${moduleName}/${moduleName}.dictionary.ts`,
+    document: `lib/${moduleName}/${moduleName}.document.ts`,
     service: `lib/${moduleName}/${moduleName}.service.ts`,
     signal: `lib/${moduleName}/${moduleName}.signal.ts`,
     store: `lib/${moduleName}/${moduleName}.store.ts`,
@@ -189,20 +190,52 @@ export const normalizeFieldType = (typeName: string) => {
   return normalizedTypes[typeName.toLowerCase()] ?? typeName;
 };
 
+//? Biome's organizeImports order: case-insensitive, an uppercase name before its lowercase twin.
+const importOrder = (a: string, b: string) => {
+  const [lowerA, lowerB] = [a.toLowerCase(), b.toLowerCase()];
+  if (lowerA !== lowerB) return lowerA < lowerB ? -1 : 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+};
+
 export const ensureNamedImport = (content: string, moduleSpecifier: string, name: string) => {
   const source = sourceFileFor("source.ts", content);
-  const namedImport = findNamedImport(source, moduleSpecifier);
-  if (namedImport) {
-    if (namedImport.names.includes(name)) return content;
-    const nextNames = [...namedImport.names, name].sort();
-    return spliceText(
-      content,
-      namedImport.namedBindingsStart,
-      namedImport.namedBindingsEnd,
-      `{ ${nextNames.join(", ")} }`,
+  const namedImport = findNamedImport(source, moduleSpecifier, { valueOnly: true });
+  if (!namedImport) return ensureImportDeclaration(content, moduleSpecifier, `{ ${name} }`);
+  if (namedImport.names.includes(name)) return content;
+  const nextElements = [...namedImport.elements, { name, text: name }].sort((a, b) => importOrder(a.name, b.name));
+  return spliceText(
+    content,
+    namedImport.namedBindingsStart,
+    namedImport.namedBindingsEnd,
+    `{ ${nextElements.map((element) => element.text).join(", ")} }`,
+  );
+};
+
+export const ensureImportDeclaration = (content: string, moduleSpecifier: string, clause: string) => {
+  const line = `import ${clause} from "${moduleSpecifier}";`;
+  if (content.includes(line)) return content;
+  const source = sourceFileFor("source.ts", content);
+  const imports = source.statements
+    .filter((statement): statement is ts.ImportDeclaration => ts.isImportDeclaration(statement))
+    .flatMap((statement) =>
+      ts.isStringLiteral(statement.moduleSpecifier)
+        ? [{ specifier: statement.moduleSpecifier.text, start: statement.getStart(source), end: statement.getEnd() }]
+        : [],
     );
+  const isRelative = (specifier: string) => specifier.startsWith(".");
+  const peers = imports.filter((entry) => isRelative(entry.specifier) === isRelative(moduleSpecifier));
+  const before = peers.find((entry) => importOrder(entry.specifier, moduleSpecifier) > 0);
+  if (before) {
+    const insertAt = lineStartAt(content, before.start);
+    return spliceText(content, insertAt, insertAt, `${line}\n`);
   }
-  return `import { ${name} } from "${moduleSpecifier}";\n${content}`;
+  const after = peers.at(-1) ?? (isRelative(moduleSpecifier) ? imports.at(-1) : undefined);
+  if (after) {
+    const insertAt = lineEndAt(content, after.end);
+    return spliceText(content, insertAt, insertAt, peers.length ? `${line}\n` : `\n${line}\n`);
+  }
+  const insertAt = imports[0] ? lineStartAt(content, imports[0].start) : 0;
+  return spliceText(content, insertAt, insertAt, `${line}\n\n`);
 };
 
 export const ensureBaseImport = (content: string, name: string) => ensureNamedImport(content, "akanjs/base", name);
@@ -382,6 +415,7 @@ interface ArrayInsertionLocator {
 
 interface NamedImportLocator {
   names: string[];
+  elements: { name: string; text: string }[];
   namedBindingsStart: number;
   namedBindingsEnd: number;
 }
@@ -499,16 +533,23 @@ const dictionaryChainOrderValid = (chainMethods: readonly string[]) => {
   return true;
 };
 
-const findDictionaryModelObject = (source: ts.SourceFile, moduleClassName: string): DictionaryModelLocator | null => {
+const findDictionaryModelObject = (source: ts.SourceFile, moduleClassName: string) =>
+  findDictionaryStageObject(source, "model", moduleClassName);
+
+const findDictionaryStageObject = (
+  source: ts.SourceFile,
+  stage: string,
+  typeName: string,
+): DictionaryModelLocator | null => {
   let locator: DictionaryModelLocator | null = null;
   const visit = (node: ts.Node) => {
     if (locator) return;
-    if (!ts.isCallExpression(node) || callExpressionName(node) !== "model") {
+    if (!ts.isCallExpression(node) || callExpressionName(node) !== stage) {
       ts.forEachChild(node, visit);
       return;
     }
     const typeArgument = node.typeArguments?.[0];
-    if (!typeArgument || typeArgument.getText(source) !== moduleClassName) {
+    if (!typeArgument || typeArgument.getText(source) !== typeName) {
       ts.forEachChild(node, visit);
       return;
     }
@@ -556,14 +597,20 @@ const findLightProjectionArray = (source: ts.SourceFile, moduleClassName: string
   return locator;
 };
 
-const findNamedImport = (source: ts.SourceFile, moduleSpecifier: string): NamedImportLocator | null => {
+const findNamedImport = (
+  source: ts.SourceFile,
+  moduleSpecifier: string,
+  { valueOnly = false }: { valueOnly?: boolean } = {},
+): NamedImportLocator | null => {
   for (const statement of source.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     if (statement.moduleSpecifier.text !== moduleSpecifier) continue;
+    if (valueOnly && statement.importClause?.isTypeOnly) continue;
     const namedBindings = statement.importClause?.namedBindings;
     if (!namedBindings || !ts.isNamedImports(namedBindings)) continue;
     return {
       names: namedBindings.elements.map((element) => element.name.text),
+      elements: namedBindings.elements.map((element) => ({ name: element.name.text, text: element.getText(source) })),
       namedBindingsStart: namedBindings.getStart(source),
       namedBindingsEnd: namedBindings.getEnd(),
     };
@@ -816,6 +863,27 @@ export const hasDictionaryModelField = (content: string, moduleClassName: string
   return findDictionaryModelObject(source, moduleClassName)?.fields.some((field) => field.name === fieldName) ?? false;
 };
 
+export const hasDictionaryEndpointEntry = (content: string, moduleClassName: string, entryName: string) => {
+  const source = sourceFileFor("dictionary.ts", content);
+  return (
+    findDictionaryStageObject(source, "endpoint", `${moduleClassName}Endpoint`)?.fields.some(
+      (field) => field.name === entryName,
+    ) ?? false
+  );
+};
+
+export const insertDictionaryEndpointEntry = (
+  content: string,
+  moduleClassName: string,
+  entryName: string,
+  entryText: string,
+) => {
+  const source = sourceFileFor("dictionary.ts", content);
+  const locator = findDictionaryStageObject(source, "endpoint", `${moduleClassName}Endpoint`);
+  if (!locator) return null;
+  return insertOrderedFieldLine(content, locator, entryName, entryText, { fieldIndent: "    ", closingIndent: "  " });
+};
+
 export const ensureConstantTypeImport = (content: string, constantPath: string, typeName: string) => {
   if (new RegExp(`import type \\{[^}]*\\b${typeName}\\b[^}]*\\} from "${constantPath}";`).test(content)) return content;
   const importPattern = new RegExp(`import type \\{ ([^}]+) \\} from "${constantPath}";`);
@@ -880,6 +948,19 @@ export const hasClassMethod = (content: string, className: string, methodName: s
   const node = findClassDeclaration(sourceFileFor("service.ts", content), className);
   return Boolean(
     node?.members.some((member) => ts.isMethodDeclaration(member) && nodeName(member.name) === methodName),
+  );
+};
+
+export const classMethodParameters = (content: string, className: string, methodName: string) => {
+  const source = sourceFileFor("service.ts", content);
+  const method = findClassDeclaration(source, className)?.members.find(
+    (member): member is ts.MethodDeclaration => ts.isMethodDeclaration(member) && nodeName(member.name) === methodName,
+  );
+  return (
+    method?.parameters.map((parameter) => ({
+      name: nodeName(parameter.name),
+      optional: !!parameter.questionToken || !!parameter.initializer || !!parameter.dotDotDotToken,
+    })) ?? null
   );
 };
 
@@ -975,4 +1056,31 @@ export const insertSignalFactoryEntry = (
   });
   if (withEntry === content) return null;
   return paramEdit === "unchanged" ? withEntry : spliceText(withEntry, paramEdit.start, paramEdit.end, paramEdit.text);
+};
+
+export const appendTopLevelTestCases = (
+  content: string,
+  describeTitle: string,
+  render: (itName: string, indent: string) => string[],
+) => {
+  const bunImport = findNamedImport(sourceFileFor("test.ts", content), "bun:test", { valueOnly: true });
+  const itName = !bunImport?.names.includes("it") && bunImport?.names.includes("test") ? "test" : "it";
+  const imported = ensureNamedImport(content, "bun:test", itName);
+  const source = sourceFileFor("test.ts", imported);
+  const body = source.statements.flatMap((statement) => {
+    if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) return [];
+    if (expressionName(statement.expression.expression) !== "describe") return [];
+    const callback = factoryArrowOf(statement.expression);
+    return callback && ts.isBlock(callback.body) ? [callback.body] : [];
+  })[0];
+  if (!body) {
+    const block = [`describe(${JSON.stringify(describeTitle)}, () => {`, ...render(itName, "  "), "});", ""];
+    return `${ensureNamedImport(imported, "bun:test", "describe").trimEnd()}\n\n${block.join("\n")}`;
+  }
+  const firstStatement = body.statements[0];
+  const indent = firstStatement
+    ? lineIndentAt(imported, firstStatement.getStart(source))
+    : `${lineIndentAt(imported, body.getStart(source))}  `;
+  const insertAt = lineStartAt(imported, body.getEnd() - 1);
+  return spliceText(imported, insertAt, insertAt, `${render(itName, indent).join("\n")}\n`);
 };

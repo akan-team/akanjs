@@ -5,8 +5,13 @@ import { RESERVED_ROUTE_CONFIG_EXPORTS } from "akanjs/common";
 import ignore from "ignore";
 import ts from "typescript";
 import { AbstractDoc } from "./abstractDoc";
+import { CommentDensityScanner } from "./commentDensityScanner";
+import { DeprecatedCommentScanner } from "./deprecatedCommentScanner";
 import { FormSetterScanner } from "./formSetterScanner";
+import { KindBranchScanner } from "./kindBranchScanner";
+import { MaintainabilityExceptionScanner } from "./maintainabilityExceptionScanner";
 import { fileWarning, formatSsrBalance, type SsrBalanceEntry, SsrScanner } from "./ssrScanner";
+import { TestOnlyExportScanner } from "./testOnlyExportScanner";
 import {
   facetIndexShadowOf,
   isAllowedLibFacetRootFile,
@@ -17,7 +22,7 @@ import {
 } from "./workspaceLayout";
 
 type QualitySeverity = "warning";
-type QualityScope = "global" | "file" | "convention" | "layout" | "ssr" | "agent";
+type QualityScope = "global" | "file" | "convention" | "layout" | "ssr" | "agent" | "comment";
 
 export interface QualityWarning {
   rule: string;
@@ -115,6 +120,8 @@ const RULE_FIXES: Record<string, string> = {
     "Rename one of the exports, or if they are the same thing, extract it into one shared module and import it in both places.",
   "akan.global.duplicate-exported-function-body":
     "Extract the shared implementation into a single exported helper and import it, instead of copying the body.",
+  "akan.global.test-only-export":
+    "Delete the export together with its test. If a live caller in the same file needs it, keep it unexported and test it through that caller.",
   "akan.file.recommended-max-lines":
     "Split the file by responsibility — move Zones, Utils, or subcomponents into sibling files.",
   "akan.file.max-lines": "Break the file into smaller focused modules; keep one primary responsibility per file.",
@@ -163,6 +170,10 @@ const RULE_FIXES: Record<string, string> = {
     "Add a <Model>.Unit.tsx for list/card rendering and a <Model>.View.tsx for the detail surface, then have the Zone delegate to them.",
   "akan.ssr.template-client-state":
     "Bind the field to the store instead: `value={xForm.field}` with `onChange={st.do.setFieldOnX}`.",
+  "akan.comment.density":
+    'Delete comments that restate the code, label a section, or narrate a step; keep only those carrying a fact the code cannot show, such as a vendor quirk or security reasoning (AGENTS.md "Comments").',
+  "akan.comment.deprecated-marker":
+    "Replace the comment with `/** @deprecated <what to use instead> */` on the declaration, so every use site shows it struck through.",
 };
 
 function getRuleFix(rule: string): string | undefined {
@@ -193,6 +204,9 @@ export class AkanQualityScanner {
       ...sourceFiles.flatMap((sourceFile) => this.#scanLayoutQuality(sourceFile)),
       ...abstractFiles.flatMap((abstractFile) => this.#scanAbstractQuality(abstractFile)),
       ...new FormSetterScanner().scan(sourceFiles),
+      ...new CommentDensityScanner().scan(sourceFiles),
+      ...new DeprecatedCommentScanner().scan(sourceFiles),
+      ...(await new MaintainabilityExceptionScanner().scan(workspaceRoot)),
       ...ssr.warnings,
     ];
 
@@ -297,6 +311,8 @@ export class AkanQualityScanner {
       });
     }
 
+    warnings.push(...new TestOnlyExportScanner().scan(sourceFiles));
+    warnings.push(...new KindBranchScanner().scan(sourceFiles));
     return warnings;
   }
 

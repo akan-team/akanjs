@@ -355,3 +355,78 @@ describe("bang comments in browser-reachable files", () => {
     );
   });
 });
+
+describe("AkanQualityScanner comment and dead-export rules", () => {
+  test("reports comment density, a loose deprecated marker and a test-only export, each with its fix", async () => {
+    const root = await makeWorkspace({
+      "apps/demo/lib/court/court.constant.ts": [
+        ...Array.from({ length: 5 }, (_, idx) => `// restates line ${idx}`),
+        "export class CourtInput {",
+        "  legacyVenue?: string; // deprecated",
+        "}",
+        "",
+      ].join("\n"),
+      "apps/demo/webkit/boardLayout.ts": "export const computeGroupBoxes = () => [];\n",
+      "apps/demo/webkit/boardLayout.test.ts":
+        'import { computeGroupBoxes } from "./boardLayout";\ncomputeGroupBoxes();\n',
+    });
+
+    const result = await new AkanQualityScanner().scan(root);
+    const density = rulesOf(result, "akan.comment.density");
+    const deprecated = rulesOf(result, "akan.comment.deprecated-marker");
+    const testOnly = rulesOf(result, "akan.global.test-only-export");
+
+    expect(density.map((warning) => warning.file)).toEqual(["apps/demo/lib/court/court.constant.ts"]);
+    expect(density[0]?.fix).toContain('AGENTS.md "Comments"');
+    expect(deprecated.map((warning) => warning.line)).toEqual([7]);
+    expect(deprecated[0]?.fix).toContain("/** @deprecated");
+    expect(testOnly.map((warning) => warning.file)).toEqual(["apps/demo/webkit/boardLayout.ts"]);
+    expect(testOnly[0]?.fix).toContain("unexported");
+  });
+});
+
+describe("AkanQualityScanner kind-branch rule", () => {
+  test("warns on a kind compared across three files and points at a kind table", async () => {
+    const compare = 'export const isScene = (pin: { kind: string }) => pin.kind === "videoScene";\n';
+    const root = await makeWorkspace({
+      "apps/demo/lib/pin/pin.constant.ts":
+        'export class PinKind extends enumOf("pinKind", ["videoScene", "memo"] as const) {}\n',
+      "apps/demo/lib/board/board.constant.ts": compare,
+      "apps/demo/lib/take/take.store.ts": compare,
+      "apps/demo/webkit/pinLayout.ts": compare,
+    });
+
+    const warnings = rulesOf(await new AkanQualityScanner().scan(root), "akan.global.kind-branch");
+
+    expect(warnings.map(({ file, severity }) => ({ file, severity }))).toEqual([
+      { file: "apps/demo/lib/pin/pin.constant.ts", severity: "warning" },
+    ]);
+    expect(warnings[0]?.fix).toContain('cnst.PinKind["value"]');
+  });
+});
+
+describe("AkanQualityScanner baseline exceptions", () => {
+  test("reports each app's recorded baseline entries per rule", async () => {
+    const root = await makeWorkspace({
+      "apps/demo/akan.baseline.json": `${JSON.stringify(
+        {
+          "akan.size.file": { "ui/Board.tsx": 420 },
+          reasons: { "ui/Board.tsx": "Generated SVG path table for the court." },
+        },
+        null,
+        2,
+      )}\n`,
+      "apps/demo/ui/Board.tsx": "export const Board = () => null;\n",
+    });
+
+    const warnings = rulesOf(await new AkanQualityScanner().scan(root), "akan.baseline.exceptions");
+
+    expect(warnings.map(({ file, message }) => ({ file, message }))).toEqual([
+      {
+        file: "apps/demo/akan.baseline.json",
+        message:
+          'apps/demo carries 1 reasoned exception and 0 adopted-debt entries for akan.size.file: ui/Board.tsx ("Generated SVG path table for the court.").',
+      },
+    ]);
+  });
+});

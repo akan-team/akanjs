@@ -33,7 +33,13 @@ export const renderWorkflowList = (specs: readonly WorkflowSpec[]) =>
   [
     "# Akan Workflows",
     "",
-    ...specs.flatMap((spec) => [`- \`${spec.name}\`: ${spec.description}`, `  - When: ${spec.whenToUse}`]),
+    ...specs.flatMap((spec) => [
+      `- \`${spec.name}\`: ${spec.description}`,
+      `  - When: ${spec.whenToUse}`,
+      ...(spec.replacesRules?.length
+        ? [`  - Fixes: ${spec.replacesRules.map((rule) => `\`${rule}\``).join(", ")}`]
+        : []),
+    ]),
     "",
   ].join("\n");
 
@@ -46,6 +52,14 @@ export const renderWorkflowExplain = (spec: WorkflowSpec) =>
     "## When To Use",
     spec.whenToUse,
     "",
+    ...(spec.replacesRules?.length
+      ? [
+          "## Replaces Rules",
+          "This path is the fix when lint or the gate reports:",
+          ...spec.replacesRules.map((rule) => `- \`${rule}\``),
+          "",
+        ]
+      : []),
     "## Inputs",
     ...Object.entries(spec.inputs).map(
       ([name, input]) =>

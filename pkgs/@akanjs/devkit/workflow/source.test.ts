@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
+  appendTopLevelTestCases,
+  classMethodParameters,
+  ensureImportDeclaration,
+  ensureNamedImport,
   hasClassMethod,
+  hasDictionaryEndpointEntry,
   hasSignalFactoryEntry,
   hasSourceParseErrors,
   insertClassMethod,
+  insertDictionaryEndpointEntry,
   insertSignalFactoryEntry,
   inspectDictionaryStructure,
 } from "./source";
@@ -171,5 +177,129 @@ export class BannerEndpoint extends endpoint(srv.banner, ({ mutation }) => ({
       name: "mutation",
     });
     expect(next).toBe(content);
+  });
+});
+
+describe("import editing", () => {
+  const signal = `import { endpoint, internal, slice } from "akanjs/signal";
+
+import * as srv from "../srv";
+`;
+
+  test("adds a name in Biome's order and keeps a type modifier", () => {
+    const content = 'import { type Dayjs, dayjs } from "akanjs/base";\n';
+
+    expect(ensureNamedImport(content, "akanjs/base", "ID")).toBe(
+      'import { type Dayjs, dayjs, ID } from "akanjs/base";\n',
+    );
+    expect(ensureNamedImport(signal, "akanjs/signal", "None")).toContain(
+      'import { endpoint, internal, None, slice } from "akanjs/signal";',
+    );
+  });
+
+  test("never adds a value name to a type-only import", () => {
+    const next = ensureNamedImport('import type { Guard } from "akanjs/signal";\n', "akanjs/signal", "Public");
+
+    expect(next).toContain('import type { Guard } from "akanjs/signal";');
+    expect(next).toContain('import { Public } from "akanjs/signal";');
+  });
+
+  test("puts a new declaration in its chunk, in source order", () => {
+    const withPackages = ensureNamedImport(
+      ensureNamedImport(signal, "akanjs/base", "ID"),
+      "@libs/shared/srvkit",
+      "Admin",
+    );
+    const withRelative = ensureImportDeclaration(withPackages, "../cnst", "* as cnst");
+
+    expect(withRelative).toBe(`import { Admin } from "@libs/shared/srvkit";
+import { ID } from "akanjs/base";
+import { endpoint, internal, slice } from "akanjs/signal";
+
+import * as cnst from "../cnst";
+import * as srv from "../srv";
+`);
+    expect(
+      ensureImportDeclaration('import { serve } from "akanjs/service";\n\nexport {};\n', "../srv", "type * as srv"),
+    ).toBe('import { serve } from "akanjs/service";\n\nimport type * as srv from "../srv";\n\nexport {};\n');
+  });
+});
+
+describe("dictionary endpoint entries", () => {
+  const dictionary = `export const dictionary = modelDictionary(["en", "ko"])
+  .slice<TaskSlice>((fn) => ({}))
+  .endpoint<TaskEndpoint>((fn) => ({}))
+  .error({})
+  .translate({});
+`;
+
+  test("inserts an entry into the endpoint stage and finds it again", () => {
+    const next = insertDictionaryEndpointEntry(
+      dictionary,
+      "Task",
+      "archiveTask",
+      'archiveTask: fn(["Archive", "보관"]),',
+    );
+
+    expect(next).toContain('.endpoint<TaskEndpoint>((fn) => ({\n    archiveTask: fn(["Archive", "보관"]),\n  }))');
+    expect(hasDictionaryEndpointEntry(next ?? "", "Task", "archiveTask")).toBe(true);
+    expect(hasDictionaryEndpointEntry(dictionary, "Task", "archiveTask")).toBe(false);
+  });
+
+  test("answers null when the dictionary has no endpoint stage for the model", () => {
+    expect(insertDictionaryEndpointEntry(dictionary, "Note", "pinNote", "pinNote: fn([]),")).toBeNull();
+  });
+});
+
+describe("classMethodParameters", () => {
+  test("reads names and which parameters a caller may leave out", () => {
+    const content = `export class NoteService {
+  async pushNote(taskId: string, note?: string, retries = 3) {}
+}`;
+
+    expect(classMethodParameters(content, "NoteService", "pushNote")).toEqual([
+      { name: "taskId", optional: false },
+      { name: "note", optional: true },
+      { name: "retries", optional: true },
+    ]);
+    expect(classMethodParameters(content, "NoteService", "missing")).toBeNull();
+  });
+});
+
+describe("appendTopLevelTestCases", () => {
+  const render = (itName: string, indent: string) => [`${indent}${itName}.todo("archives");`];
+
+  test("appends inside the outermost describe with the runner name the file imports", () => {
+    const content = `import { describe, expect, test } from "bun:test";
+
+describe("Task Signal", () => {
+  test("creates", () => {
+    expect(1).toBe(1);
+  });
+});
+`;
+
+    expect(
+      appendTopLevelTestCases(content, "Task Signal", render),
+    ).toBe(`import { describe, expect, test } from "bun:test";
+
+describe("Task Signal", () => {
+  test("creates", () => {
+    expect(1).toBe(1);
+  });
+  test.todo("archives");
+});
+`);
+  });
+
+  test("adds a describe when the file has none", () => {
+    const next = appendTopLevelTestCases('import { expect } from "bun:test";\n', "Task Signal", render);
+
+    expect(next).toBe(`import { describe, expect, it } from "bun:test";
+
+describe("Task Signal", () => {
+  it.todo("archives");
+});
+`);
   });
 });

@@ -159,9 +159,16 @@ export default page()
       {
         name: "add-mutation",
         desc: `${l.trans({
-          en: "A service method and a mutation guarded by `None`; it only recommends a store action or UI control.",
-          ko: "service 메서드와 `None` 가드를 단 뮤테이션을 더하고, store 액션과 UI 컨트롤은 권장만 합니다.",
-        })}\n${needsLabel} \`--app\` \`--module\` \`--mutation\``,
+          en: "The whole write path: chain method, service, guarded mutation, one-line store action, dictionary, test stubs.",
+          ko: "쓰기 경로 전체입니다. chain 메서드, service, 가드를 단 뮤테이션, 한 줄 store 액션, dictionary, 테스트 뼈대를 만듭니다.",
+        })}\n${needsLabel} \`--app\` \`--module\` \`--mutation\` \`--guard\``,
+      },
+      {
+        name: "create-interaction",
+        desc: `${l.trans({
+          en: "A `webkit/use<X>.tsx` hook over a pure `common/<x>.ts` class, with the class's test.",
+          ko: "순수 `common/<x>.ts` 클래스 위의 `webkit/use<X>.tsx` 훅과 그 클래스의 테스트입니다.",
+        })}\n${needsLabel} \`--app\` \`--interaction\``,
       },
       {
         name: "add-slice",
@@ -242,6 +249,7 @@ export default page()
           { name: "create-module", marks: { sync: true, lint: true, typecheck: false, build: false } },
           { name: "create-scalar", marks: { sync: true, lint: true, typecheck: false, build: false } },
           { name: "create-ui", marks: { sync: true, lint: true, typecheck: false, build: false } },
+          { name: "create-interaction", marks: { sync: true, lint: true, typecheck: false, build: false } },
         ],
       },
       {
@@ -393,6 +401,42 @@ export default page()
             desc: l.trans({
               en: "Plan input for `add-mutation`: the mutation or action name.",
               ko: "`add-mutation`의 입력: 뮤테이션(액션) 이름입니다.",
+            }),
+          },
+          {
+            name: "--guard",
+            type: "String",
+            enumOrFlag: "-g",
+            desc: l.trans({
+              en: "Required by `add-mutation`: comma-separated guard classes the target can reach. `None` is refused.",
+              ko: "`add-mutation`에 필수입니다. 대상이 쓸 수 있는 가드 클래스를 쉼표로 적습니다. `None`은 거부됩니다.",
+            }),
+          },
+          {
+            name: "--with",
+            type: "String",
+            enumOrFlag: "-b",
+            desc: l.trans({
+              en: "`add-mutation`: `<serviceRef>.<method>` writes run inside the mutation's `this.transaction()`.",
+              ko: "`add-mutation`: 뮤테이션의 `this.transaction()` 안에서 함께 실행할 `<serviceRef>.<method>` 쓰기입니다.",
+            }),
+          },
+          {
+            name: "--after",
+            type: "String",
+            enumOrFlag: "-e",
+            desc: l.trans({
+              en: "`add-mutation`: `<serviceRef>.<method>` side effects run in `this.afterCommit()`.",
+              ko: "`add-mutation`: `this.afterCommit()`에서 실행할 `<serviceRef>.<method>` 부수효과입니다.",
+            }),
+          },
+          {
+            name: "--interaction",
+            type: "String",
+            enumOrFlag: "-k",
+            desc: l.trans({
+              en: "Plan input for `create-interaction`: a camelCase name, such as `boardKeys`.",
+              ko: "`create-interaction`의 입력: `boardKeys`처럼 camelCase 이름입니다.",
             }),
           },
           {
@@ -782,13 +826,13 @@ akan repair dictionary --app koyo --module icecreamOrder --format json`,
               {l.trans({
                 en: (
                   <span>
-                    Seven workflows ship with the CLI. <code>akan workflow list</code> prints each with when to use it,
+                    Eight workflows ship with the CLI. <code>akan workflow list</code> prints each with when to use it,
                     and <code>{"akan workflow explain <name>"}</code> adds its inputs, steps and validation commands.
                   </span>
                 ),
                 ko: (
                   <span>
-                    CLI에는 워크플로 일곱 개가 들어 있습니다. <code>akan workflow list</code>는 각각을 언제 쓰는지 보여
+                    CLI에는 워크플로 여덟 개가 들어 있습니다. <code>akan workflow list</code>는 각각을 언제 쓰는지 보여
                     주고, <code>{"akan workflow explain <name>"}</code>은 입력, 단계, 검증 명령까지 보여 줍니다.
                   </span>
                 ),
