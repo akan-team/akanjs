@@ -39,6 +39,7 @@ interface ServiceSource {
 
 export class MutationScaffold {
   static readonly #documentMethods = new Set(["isModified", "refresh", "remove", "save", "set", "toJSON", "toObject"]);
+  static readonly #serviceMethods = new Set(["afterCommit", "logger", "onDestroy", "onInit", "transaction"]);
   static readonly #callPattern = /^_?([a-z][A-Za-z0-9]*)\.([A-Za-z_$][\w$]*)$/;
   readonly #sys: Sys;
   readonly #catalog: GuardCatalog;
@@ -69,6 +70,15 @@ export class MutationScaffold {
     ]);
   }
 
+  static generates(modelClassName: string, name: string) {
+    return (
+      MutationScaffold.reservedNamesOf(modelClassName).has(name) ||
+      new RegExp(`^(init${modelClassName}|get${modelClassName}Init|(set|add|sub|upload)\\w+On${modelClassName}$)`).test(
+        name,
+      )
+    );
+  }
+
   static inputDiagnostics(input: MutationScaffoldInput): WorkflowDiagnostic[] {
     const diagnostics: WorkflowDiagnostic[] = [];
     const error = (code: string, inputName: string, message: string) =>
@@ -78,11 +88,7 @@ export class MutationScaffold {
       error("add-mutation-name-invalid", "mutation", `Mutation name "${mutation}" must be a camelCase identifier.`);
     if (module && mutation) {
       const modelClassName = moduleComponentName(module);
-      const reserved = MutationScaffold.reservedNamesOf(modelClassName);
-      const generatedPattern = new RegExp(
-        `^(init${modelClassName}|get${modelClassName}Init|(set|add|sub|upload)\\w+On${modelClassName}$)`,
-      );
-      if (reserved.has(mutation) || generatedPattern.test(mutation))
+      if (MutationScaffold.generates(modelClassName, mutation))
         error(
           "add-mutation-name-reserved",
           "mutation",
@@ -94,6 +100,12 @@ export class MutationScaffold {
           "add-mutation-name-reserved",
           "mutation",
           `"${mutation}" drops to the document chain method ${chainMethod}(), which every document already has.`,
+        );
+      else if (MutationScaffold.#serviceMethods.has(chainMethod))
+        error(
+          "add-mutation-name-reserved",
+          "mutation",
+          `"${mutation}" drops to the service method ${chainMethod}(), which every service already has.`,
         );
     }
     const guards = input.guards ?? [];
@@ -163,6 +175,14 @@ export class MutationScaffold {
     }
 
     const acting = this.#catalog.actingUserOf(guards);
+    if (acting)
+      recommendations.push({
+        code: "add-mutation-ownership",
+        kind: "manual-action",
+        confidence: "high",
+        message: `${guards.join(" and ")} admits any signed-in caller, so the service receives ${acting.serviceParam} and a TODO where it must refuse a caller who may not act on this ${module}.`,
+        action: `Check ${acting.serviceParam} against the ${module} before the chain, or guard the mutation with a Can<Verb><Model> resource guard.`,
+      });
     const source = new MutationSource({
       module,
       mutation,
@@ -269,7 +289,8 @@ export class MutationScaffold {
     const { mutation } = source.spec;
     const { modelClassName } = source;
     const taken = [
-      hasClassMethod(files.service, `${modelClassName}Service`, mutation) && `${modelClassName}Service`,
+      hasClassMethod(files.service, `${modelClassName}Service`, source.serviceMethod) &&
+        `${modelClassName}Service.${source.serviceMethod}()`,
       ["Internal", "Slice", "Endpoint"].some((kind) =>
         hasSignalFactoryEntry(files.signal, `${modelClassName}${kind}`, mutation),
       ) && `${source.spec.module}.signal.ts`,
@@ -284,17 +305,33 @@ export class MutationScaffold {
       });
   }
 
+  //? Every store is mixed into one root and every endpoint into one `fetch`, so a name another module or a reached lib
+  //? generates or declares refuses to boot (`[DI:fetch]`) however far away it lives.
   async #signalsDeclaring(mutation: string, ownModule: string) {
-    const modules = (await this.#sys.readdir("lib")).filter((name) => name !== ownModule && !name.includes("."));
     const pattern = new RegExp(`^\\s*${mutation}:\\s*(mutation|query|pubsub|message)\\(`, "m");
+    const roots = [`${this.#sys.type}s/${this.#sys.name}`, ...this.#catalog.reachedLibs.map((lib) => `libs/${lib}`)];
     const hits = await Promise.all(
-      modules.map(async (name) => {
-        const path = `lib/${name}/${name.replace(/^_+/, "")}.signal.ts`;
-        if (!(await this.#sys.exists(path))) return null;
-        return pattern.test(await this.#sys.readFile(path)) ? path : null;
+      roots.map(async (root) => {
+        if (!(await this.#sys.workspace.exists(`${root}/lib`))) return [];
+        const folders = (await this.#sys.workspace.readdir(`${root}/lib`)).filter(
+          (folder) => !folder.includes(".") && !folder.startsWith("__") && !(root === roots[0] && folder === ownModule),
+        );
+        return await Promise.all(
+          folders.map(async (folder) => {
+            const name = folder.replace(/^_+/, "");
+            const base = `${root}/lib/${folder}/${name}`;
+            if (
+              (await this.#sys.workspace.exists(`${base}.document.ts`)) &&
+              MutationScaffold.generates(moduleComponentName(name), mutation)
+            )
+              return `${root}/lib/${folder} (generated for ${moduleComponentName(name)})`;
+            if (!(await this.#sys.workspace.exists(`${base}.signal.ts`))) return null;
+            return pattern.test(await this.#sys.workspace.readFile(`${base}.signal.ts`)) ? `${base}.signal.ts` : null;
+          }),
+        );
       }),
     );
-    return hits.filter((hit): hit is string => !!hit);
+    return hits.flat().filter((hit): hit is string => !!hit);
   }
 
   async #resolveCalls(
@@ -340,8 +377,8 @@ export class MutationScaffold {
         if (!param.optional)
           this.#report(
             "add-mutation-call-args-unresolved",
-            `${inputName}: ${service.className}.${method}() takes "${param.name ?? "?"}", which add-mutation cannot supply; fill it in after apply.`,
-            { input: inputName, severity: "warning" },
+            `${inputName}: ${service.className}.${method}() takes "${param.name ?? "?"}", which add-mutation cannot supply. Name a method taking the ${source.model}, its id or the acting user, or call this one by hand after apply.`,
+            { input: inputName, severity: "error" },
           );
         break;
       }
@@ -458,9 +495,18 @@ export class MutationScaffold {
 
   #editDictionary(content: string, source: MutationSource) {
     return this.#required(
-      insertDictionaryEndpointEntry(content, source.modelClassName, source.spec.mutation, source.dictionaryEntry),
+      insertDictionaryEndpointEntry(
+        content,
+        source.modelClassName,
+        source.spec.mutation,
+        source.dictionaryEntryOf(MutationScaffold.#modelKoOf(content)),
+      ),
       `.endpoint<${source.modelClassName}Endpoint>() in the dictionary`,
     );
+  }
+
+  static #modelKoOf(dictionary: string) {
+    return dictionary.match(/\.of\(\s*\(t\)\s*=>\s*t\(\s*\[\s*"[^"]*"\s*,\s*"([^"]+)"\s*\]/)?.[1];
   }
 
   #required(content: string | null, shape: string) {

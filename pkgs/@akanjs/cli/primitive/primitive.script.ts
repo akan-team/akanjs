@@ -492,7 +492,8 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
     const changedFiles: PrimitiveChangedFile[] = [];
     if (workflowStatus(diagnostics) === "passed") {
       for (const file of files) {
-        await sys.writeFile(file.path, file.content);
+        //? Silent: the report lists every file, and `-o json` must print nothing but the report.
+        await sys.writeFile(file.path, file.content, { silent: true });
         changedFiles.push(sourceFile(sys, file.path, file.action, file.reason));
       }
     }

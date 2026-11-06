@@ -9,6 +9,7 @@ import {
   type WorkflowPlanInputs,
   type WorkflowValidationCommandExecutor,
   type WorkflowValidationRunReport,
+  workflowPathsForPlan,
   workflowStepKey,
 } from "@akanjs/devkit/workflow";
 import { ModuleRunner } from "../module/module.runner";
@@ -865,6 +866,21 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
       ) as WorkflowPlan;
       expect(replanned.diagnostics).toContainEqual(
         expect.objectContaining({ severity: "error", code: "create-interaction-exists" }),
+      );
+    });
+
+    test("predicts the files a use-prefixed name writes", async () => {
+      const { workspace } = track(await createTempModule("task"));
+      const plan = JSON.parse(
+        await new WorkflowRunner().plan(
+          "create-interaction",
+          { app: "demo", interaction: "useBoardKeys" },
+          { format: "json", workspace },
+        ),
+      ) as WorkflowPlan;
+
+      expect(workflowPathsForPlan(plan)).toEqual(
+        expect.arrayContaining(["apps/demo/common/boardKeys.ts", "apps/demo/webkit/useBoardKeys.tsx"]),
       );
     });
   });

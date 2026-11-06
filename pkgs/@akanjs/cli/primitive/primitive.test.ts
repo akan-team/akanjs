@@ -384,13 +384,13 @@ export class NoteService extends serve(db.note, ({ use, service }) => ({})) {
         "export class Task extends by(cnst.Task) {\n  // any → archived.\n  archive() {\n    return this;\n  }\n}",
       );
       expect(await module.readFile("task.service.ts")).toContain(
-        "  async archiveTask(taskId: string) {\n    const task = await this.getTask(taskId);\n    return await task.archive().save();\n  }",
+        "  async archive(taskId: string) {\n    const task = await this.getTask(taskId);\n    return await task.archive().save();\n  }",
       );
       const signal = await module.readFile("task.signal.ts");
       expect(signal).toContain('import { Staff } from "@apps/demo/srvkit";\nimport { ID } from "akanjs/base";');
       expect(signal).toContain('import * as cnst from "../cnst";\nimport * as srv from "../srv";');
       expect(signal).toContain(
-        'archiveTask: mutation(cnst.Task, { guards: [Staff] })\n    .param("taskId", ID)\n    .exec(async function (taskId) {\n      return await this.taskService.archiveTask(taskId);',
+        'archiveTask: mutation(cnst.Task, { guards: [Staff] })\n    .param("taskId", ID)\n    .exec(async function (taskId) {\n      return await this.taskService.archive(taskId);',
       );
       const store = await module.readFile("task.store.ts");
       expect(store).toContain('import { fetch, sig } from "../useClient";');
@@ -413,15 +413,17 @@ describe("Task Signal", () => {
       const { app, module, add } = await createTaskApp();
       await createNoteModule(app);
 
-      const report = await add({
-        withCalls: ["note.touchNote"],
-        afterCalls: ["note.sendArchived", "note.pushCommand"],
-      });
+      const before = await snapshot(module);
+      const unsuppliable = await add({ afterCalls: ["note.pushCommand"] });
+      expect(unsuppliable.status).toBe("failed");
+      expect(unsuppliable.diagnostics).toContainEqual(
+        expect.objectContaining({ severity: "error", code: "add-mutation-call-args-unresolved", input: "after" }),
+      );
+      expect(await snapshot(module)).toEqual(before);
+
+      const report = await add({ withCalls: ["note.touchNote"], afterCalls: ["note.sendArchived"] });
 
       expect(report.status).toBe("passed");
-      expect(report.diagnostics).toContainEqual(
-        expect.objectContaining({ severity: "warning", code: "add-mutation-call-args-unresolved", input: "after" }),
-      );
       const service = await module.readFile("task.service.ts");
       expect(service).toContain('import * as db from "../db";\nimport type * as srv from "../srv";');
       expect(service).toContain(
@@ -434,7 +436,6 @@ describe("Task Signal", () => {
           "      await task.archive().save();",
           "      await this.noteService.touchNote(task.id);",
           "      await this.afterCommit(() => this.noteService.sendArchived(task));",
-          "      await this.afterCommit(() => this.noteService.pushCommand());",
           "      return task;",
           "    });",
         ].join("\n"),
@@ -493,6 +494,23 @@ describe("Task Signal", () => {
       expect(again.status).toBe("failed");
       expect(again.diagnostics).toContainEqual(expect.objectContaining({ code: "add-mutation-name-exists" }));
       expect(again.changedFiles).toEqual([]);
+    });
+
+    test("refuses a name another module generates or declares, which the server would refuse at boot", async () => {
+      const { app, add } = await createTaskApp();
+      await createNoteModule(app);
+
+      const generated = await add({ mutation: "createNote" });
+      expect(generated.status).toBe("failed");
+      expect(generated.diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "add-mutation-name-exists",
+          message: expect.stringContaining("apps/demo/lib/note (generated for Note)"),
+        }),
+      );
+      expect((await add({ mutation: "transactionTask" })).diagnostics).toContainEqual(
+        expect.objectContaining({ code: "add-mutation-name-reserved" }),
+      );
     });
 
     test("refuses a with-call whose service method does not exist", async () => {

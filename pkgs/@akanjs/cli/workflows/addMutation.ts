@@ -55,7 +55,7 @@ export const addMutationWorkflowSpec: WorkflowSpec = {
       title: "Update service",
       tool: "updateServiceMutation",
       description:
-        "Add load → chain → return await save(); with `with`/`after`, wrap it in this.transaction() and queue side effects in this.afterCommit().",
+        "Add the bare verb (archive for archiveMemo): load → chain → return await save(); with `with`/`after`, wrap it in this.transaction() and queue side effects in this.afterCommit(). Under a guard that only checks sign-in, a TODO marks where the acting user's right to the record is checked.",
     },
     {
       id: "update-signal",

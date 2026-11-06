@@ -20,25 +20,19 @@ describe("MutationSource", () => {
   });
 
   test("writes the past participle the transition comment names", () => {
-    expect(["archive", "pin", "start", "apply", "send", "hide", "open"].map(MutationSource.participleOf)).toEqual([
-      "archived",
-      "pinned",
-      "started",
-      "applied",
-      "sent",
-      "hidden",
-      "opened",
-    ]);
+    expect(
+      ["archive", "pin", "start", "apply", "send", "hide", "open", "submit"].map(MutationSource.participleOf),
+    ).toEqual(["archived", "pinned", "started", "applied", "sent", "hidden", "opened", "submitted"]);
   });
 
   test("writes a chain method that mutates nothing until the author fills it", () => {
     expect(sourceOf().chainMethodBlock).toBe("  // any → archived.\n  archive() {\n    return this;\n  }");
   });
 
-  test("loads, chains and saves without a transaction when nothing rides along", () => {
+  test("loads, chains and saves under the bare verb without a transaction when nothing rides along", () => {
     expect(sourceOf().serviceMethodBlock).toBe(
       [
-        "  async archiveTask(taskId: string) {",
+        "  async archive(taskId: string) {",
         "    const task = await this.getTask(taskId);",
         "    return await task.archive().save();",
         "  }",
@@ -54,7 +48,7 @@ describe("MutationSource", () => {
 
     expect(source.serviceMethodBlock).toBe(
       [
-        "  async archiveTask(taskId: string) {",
+        "  async archive(taskId: string) {",
         "    return await this.transaction(async () => {",
         "      const task = await this.getTask(taskId);",
         "      await task.archive().save();",
@@ -67,7 +61,7 @@ describe("MutationSource", () => {
     );
   });
 
-  test("hands the acting user to the service only through the guard's internal arg", () => {
+  test("hands the acting user to the service only through the guard's internal arg, and marks where it is checked", () => {
     const source = sourceOf({
       guards: ["User"],
       acting: { argName: "Self", param: "self", value: "self.id", serviceParam: "selfId" },
@@ -79,13 +73,28 @@ describe("MutationSource", () => {
         '    .param("taskId", ID)',
         "    .with(Self)",
         "    .exec(async function (taskId, self) {",
-        "      return await this.taskService.archiveTask(taskId, self.id);",
+        "      return await this.taskService.archive(taskId, self.id);",
         "    }),",
       ].join("\n"),
     );
-    expect(source.serviceMethodBlock).toContain("async archiveTask(taskId: string, selfId: string) {");
+    expect(source.serviceMethodBlock).toBe(
+      [
+        "  async archive(taskId: string, selfId: string) {",
+        "    const task = await this.getTask(taskId);",
+        "    // TODO: User admits any signed-in caller; refuse a selfId that may not archive this task.",
+        "    return await task.archive().save();",
+        "  }",
+      ].join("\n"),
+    );
+    expect(source.testTitles).toContain("archiveTask refuses a signed-in caller who may not archive the task");
     expect(source.storeActionBlock).toBe(
       ["  async archiveTask(taskId: string) {", "    this.setTask(await fetch.archiveTask(taskId));", "  }"].join("\n"),
+    );
+  });
+
+  test("names the model's id in the dictionary with the model's own Korean label", () => {
+    expect(sourceOf().dictionaryEntryOf("할 일")).toContain(
+      'taskId: t(["Task ID", "할 일 ID"]).desc(["Task ID", "할 일 ID"]),',
     );
   });
 

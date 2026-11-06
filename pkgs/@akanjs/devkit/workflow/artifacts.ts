@@ -1,5 +1,6 @@
 import { capitalize } from "akanjs/common";
 import type { Workspace } from "../commandDecorators";
+import { InteractionScaffold } from "./interactionScaffold";
 import type {
   GeneratedSyncState,
   PrimitiveChangedFile,
@@ -156,7 +157,8 @@ export const workflowPathsForPlan = (plan: WorkflowPlan) => {
   const app = planInputString(plan, "app");
   const module = planInputString(plan, "module");
   const moduleClass = module ? capitalize(module) : "<Module>";
-  const interaction = planInputString(plan, "interaction");
+  const rawInteraction = planInputString(plan, "interaction");
+  const interaction = rawInteraction ? (InteractionScaffold.nameOf(rawInteraction) ?? rawInteraction) : null;
   return plan.predictedChanges.map((change) =>
     change.target
       .replace(/^\*\//, app ? `apps/${app}/` : "")

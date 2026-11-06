@@ -26,9 +26,12 @@ export interface MutationSourceSpec {
 
 export class MutationSource {
   static readonly #irregularParticiples = new Map([
+    ["admit", "admitted"],
     ["bind", "bound"],
     ["build", "built"],
     ["choose", "chosen"],
+    ["commit", "committed"],
+    ["control", "controlled"],
     ["cut", "cut"],
     ["find", "found"],
     ["freeze", "frozen"],
@@ -41,7 +44,9 @@ export class MutationSource {
     ["leave", "left"],
     ["lose", "lost"],
     ["make", "made"],
+    ["omit", "omitted"],
     ["pay", "paid"],
+    ["permit", "permitted"],
     ["put", "put"],
     ["read", "read"],
     ["run", "run"],
@@ -51,7 +56,9 @@ export class MutationSource {
     ["show", "shown"],
     ["shut", "shut"],
     ["split", "split"],
+    ["submit", "submitted"],
     ["take", "taken"],
+    ["transfer", "transferred"],
     ["win", "won"],
     ["write", "written"],
   ]);
@@ -104,20 +111,30 @@ export class MutationSource {
     ].join("\n");
   }
 
+  get serviceMethod() {
+    return this.chainMethod;
+  }
+
   get serviceMethodBlock() {
-    const params = [
-      `${this.idParam}: string`,
-      ...(this.spec.acting ? [`${this.spec.acting.serviceParam}: string`] : []),
-    ];
+    const { acting } = this.spec;
+    const params = [`${this.idParam}: string`, ...(acting ? [`${acting.serviceParam}: string`] : [])];
     const load = `const ${this.model} = await this.get${this.modelClassName}(${this.idParam});`;
+    const owned = acting
+      ? [
+          `// TODO: ${this.spec.guards.join(" and ")} admits any signed-in caller; refuse a ${acting.serviceParam} that may not ${this.#verb} this ${this.#noun}.`,
+        ]
+      : [];
     const chained = `${this.model}.${this.chainMethod}().save()`;
-    const head = `  async ${this.spec.mutation}(${params.join(", ")}) {`;
+    const head = `  async ${this.serviceMethod}(${params.join(", ")}) {`;
     if (!this.spec.withCalls.length && !this.spec.afterCalls.length)
-      return [head, `    ${load}`, `    return await ${chained};`, "  }"].join("\n");
+      return [head, `    ${load}`, ...owned.map((line) => `    ${line}`), `    return await ${chained};`, "  }"].join(
+        "\n",
+      );
     return [
       head,
       "    return await this.transaction(async () => {",
       `      ${load}`,
+      ...owned.map((line) => `      ${line}`),
       `      await ${chained};`,
       ...this.spec.withCalls.map((call) => `      await ${MutationSource.#callOf(call)};`),
       ...this.spec.afterCalls.map((call) => `      await this.afterCommit(() => ${MutationSource.#callOf(call)});`),
@@ -139,7 +156,7 @@ export class MutationSource {
       `    .param("${this.idParam}", ID)`,
       ...(acting ? [`    .with(${acting.argName})`] : []),
       `    .exec(async function (${execParams.join(", ")}) {`,
-      `      return await this.${this.model}Service.${this.spec.mutation}(${serviceArgs.join(", ")});`,
+      `      return await this.${this.model}Service.${this.serviceMethod}(${serviceArgs.join(", ")});`,
       "    }),",
     ].join("\n");
   }
@@ -152,9 +169,9 @@ export class MutationSource {
     ].join("\n");
   }
 
-  get dictionaryEntry() {
+  dictionaryEntryOf(modelKo?: string) {
     const label = bilingualLabelForField(this.spec.mutation);
-    const modelLabel = bilingualLabelForField(this.model);
+    const modelLabel = { ...bilingualLabelForField(this.model), ...(modelKo ? { ko: modelKo } : {}) };
     const pair = (en: string, ko: string) => `[${JSON.stringify(en)}, ${JSON.stringify(ko)}]`;
     const idPair = pair(`${modelLabel.en} ID`, `${modelLabel.ko} ID`);
     return [
@@ -174,6 +191,9 @@ export class MutationSource {
       ...(this.spec.guards.every((guard) => guard === "Public")
         ? []
         : [`${this.spec.mutation} refuses a caller ${guards} turns away`]),
+      ...(this.spec.acting
+        ? [`${this.spec.mutation} refuses a signed-in caller who may not ${this.#verb} the ${this.#noun}`]
+        : []),
     ];
   }
 
