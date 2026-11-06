@@ -38,13 +38,13 @@ export class StoreWriteScanner {
           line: sourceFile.getLineAndCharacterOfPosition(second.getStart(sourceFile)).line + 1,
           writes: writes.map((call) => path.labelOf(call, sourceFile)),
           writeCount,
-          isRootChain: writes.some((call) => StoreWriteScanner.#crossesStores(targets.get(call))),
+          isRootChain: writes.some((call) => StoreWriteScanner.#crossesStores(targets.get(call), method.store)),
         },
       ];
     });
   }
 
-  static #crossesStores(target: StoreCallTarget | undefined) {
-    return target?.kind === "static" || (target?.kind === "action" && !target.isOwn);
+  static #crossesStores(target: StoreCallTarget | undefined, ownStore: string) {
+    return (target?.kind === "static" && target.store !== ownStore) || (target?.kind === "action" && !target.isOwn);
   }
 }

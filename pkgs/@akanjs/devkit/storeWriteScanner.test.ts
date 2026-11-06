@@ -219,6 +219,21 @@ describe("StoreWriteScanner", () => {
     ]);
   });
 
+  test("reads the store's own writing static as its own write, not a chain through another store", () => {
+    const writes = scan(
+      storeOf(`  static async assignOnce(courtId: string) {
+    await fetch.assignCourtPc(courtId);
+  }
+  async assignAndPush(courtId: string) {
+    await CourtStore.assignOnce(courtId);
+    await fetch.pushPcCommand(courtId);
+  }`),
+    );
+    expect(writes).toMatchObject([
+      { action: "assignAndPush", writes: ["CourtStore.assignOnce", "fetch.pushPcCommand"], isRootChain: false },
+    ]);
+  });
+
   test("reads a recursive call as no write, and a static helper's own writes as a chain", () => {
     const writes = scan(
       storeOf(`  async undoOnCourt(courtId: string) {

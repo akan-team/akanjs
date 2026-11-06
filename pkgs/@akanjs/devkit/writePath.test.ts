@@ -38,6 +38,27 @@ describe("WritePath", () => {
     expect(writesIn("if (x) await writeB();\nawait writeC();")).toEqual(["writeB", "writeC"]);
   });
 
+  test("reads every branch that returns as exclusive of the statements after it, however it is nested", () => {
+    const countIn = (body: string) => pathIn(body).count;
+    expect(
+      countIn(
+        "if (x) {\n  await writeA();\n  return;\n} else if (y) {\n  await writeB();\n  return;\n}\nawait writeC();",
+      ),
+    ).toBe(1);
+    expect(countIn('switch (x) {\n  case "a":\n    await writeA();\n    return;\n}\nawait writeC();')).toBe(1);
+    expect(countIn("if (x) {\n  if (y) {\n    await writeA();\n    return;\n  }\n}\nawait writeC();")).toBe(1);
+    expect(writesIn("try {\n  await writeA();\n  return;\n} catch {\n  await writeB();\n}")).toEqual([
+      "writeA",
+      "writeB",
+    ]);
+  });
+
+  test("runs a switch clause without break on into the next one", () => {
+    expect(
+      writesIn("switch (x) {\n  case 1:\n    await writeA();\n  case 2:\n    await writeB();\n    break;\n}"),
+    ).toEqual(["writeA", "writeB"]);
+  });
+
   test("counts a write in a loop or a per-element callback as two, but not the list it loops over", () => {
     expect(pathIn("for (const id of ids) await writeA(id);")).toEqual({ labels: ["writeA (per item)"], count: 2 });
     expect(pathIn("for (const id of await writeA()) read(id);")).toEqual({ labels: ["writeA"], count: 1 });
@@ -47,6 +68,28 @@ describe("WritePath", () => {
       count: 2,
     });
     expect(pathIn("await read().then(() => writeA());")).toEqual({ labels: ["writeA"], count: 1 });
+    expect(pathIn("for (let i = 0; i < ids.length; i++) await writeA(ids[i]);")).toEqual({
+      labels: ["writeA (per item)"],
+      count: 2,
+    });
+    expect(pathIn("while (queue.length) await writeA(queue.shift());")).toEqual({
+      labels: ["writeA (per item)"],
+      count: 2,
+    });
+  });
+
+  test("counts a retry or a poll as one write, and a loop that returns on its write as one", () => {
+    expect(pathIn("for (let i = 0; i < 3; i++) {\n  try {\n    await writeA();\n    return;\n  } catch {}\n}")).toEqual(
+      {
+        labels: ["writeA"],
+        count: 1,
+      },
+    );
+    expect(pathIn("let ok = false;\nwhile (!ok) ok = await writeA();")).toEqual({ labels: ["writeA"], count: 1 });
+    expect(pathIn("for (const id of ids)\n  if (id) {\n    await writeA(id);\n    return;\n  }")).toEqual({
+      labels: ["writeA"],
+      count: 1,
+    });
   });
 
   test("weighs a branch writing per item above one writing once", () => {
