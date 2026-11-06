@@ -40,4 +40,17 @@ describe("ServiceLoopCallScanner", () => {
 
     expect(scan(body, (method) => method === "retry")).toEqual([]);
   });
+
+  test("spares a get or load a per-element callback issues in one tick, which the DataLoader batches", () => {
+    const calls = scan(`  async courtsOf(ids: string[], pcIds: string[]) {
+    await Promise.all(ids.map((id) => this.getCourt(id)));
+    await Promise.all(pcIds.map((id) => this.pcModel.loadPc(id)));
+    await Promise.all(ids.map((id) => this.courtModel.countCourt({ id })));
+    for (const id of ids) await this.courtModel.getCourt(id);
+  }`);
+
+    expect(calls).toEqual([
+      { method: "courtsOf", line: 5, calls: ["this.courtModel.countCourt", "this.courtModel.getCourt"] },
+    ]);
+  });
 });

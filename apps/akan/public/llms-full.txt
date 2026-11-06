@@ -2861,7 +2861,7 @@ Scan every app and library for code quality warnings, or measure the server/clie
 
 - --force (Boolean, default false, -F): `baseline` only: rewrite an `akan.baseline.json` that already exists.
 
-- baseline: Records, per rule, the breaches `akan lint` refuses, once, when a workspace adopts that gate; lint then compares the file with its copy at the fork point of the default branch.
+- baseline: Records, per rule, the breaches `akan lint` refuses, once, when a workspace adopts that gate; lint then compares the file with its copy at the fork point of the default branch, and fails in a clone without that history, so CI checks out with `fetch-depth: 0`.
 
 - where to run: The workspace root, the folder holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 

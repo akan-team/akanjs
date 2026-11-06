@@ -3,9 +3,9 @@ language js(typescript, jsx)
 
 // A client list request takes at most MAX_PAGE_SIZE (500) rows: SignalResolver.#clientPageLimit
 // (pkgs/akanjs/server/resolver/signal.resolver.ts) clamps a larger limit and answers with 500 rows and no
-// error, so a screen that asked for 10000 silently stops at row 500. A store list is no safer — its
-// hasMoreOf<Model><Suffix> compares the batch with the limit it asked for, reads false, and loadMoreOf never
-// asks for the rest. The server logs one warning per list; this rule moves it to the line that asked.
+// error, so a screen that asked for 10000 silently stops at row 500. A store list reads hasMoreOf<Model><Suffix>
+// as true after a full 500, so only a screen that calls loadMoreOf<Model><Suffix> ever sees the rest. The server
+// logs one warning per list; this rule moves it to the line that asked.
 //
 // Matched: a literal limit above 500 in the generated list fetch, `fetch.<model>List<Suffix>(...sliceArgs,
 // skip, limit, sort?, fetchPolicy?)`; as `limit:` in the option object of `fetch.init<Model><Suffix>`,

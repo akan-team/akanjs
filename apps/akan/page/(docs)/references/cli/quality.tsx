@@ -178,8 +178,8 @@ export default page()
           {
             name: "baseline",
             desc: l.trans({
-              en: "Records, per rule, the breaches `akan lint` refuses, once, when a workspace adopts that gate; lint then compares the file with its copy at the fork point of the default branch.",
-              ko: "`akan lint`가 막는 위반을 규칙별로, 워크스페이스가 이 검사를 처음 들일 때 한 번 기록합니다. 이후 lint는 이 파일을 기본 브랜치에서 갈라진 시점의 사본과 비교합니다.",
+              en: "Records, per rule, the breaches `akan lint` refuses, once, when a workspace adopts that gate; lint then compares the file with its copy at the fork point of the default branch, and fails in a clone without that history, so CI checks out with `fetch-depth: 0`.",
+              ko: "`akan lint`가 막는 위반을 규칙별로, 워크스페이스가 이 검사를 처음 들일 때 한 번 기록합니다. 이후 lint는 이 파일을 기본 브랜치에서 갈라진 시점의 사본과 비교하고, 그 히스토리가 없는 클론에서는 실패하므로 CI는 `fetch-depth: 0`으로 체크아웃합니다.",
             }),
           },
           {

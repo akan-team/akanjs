@@ -22,6 +22,19 @@ jobs:
       - uses: ./.github/actions/setup
       - run: ./node_modules/.bin/biome ci --diagnostic-level=error --reporter=github .
 
+  akan-lint:
+    name: Akan lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Full history: the maintainability gate compares each akan.baseline.json with its copy on main.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: bun run buildAkan
+      - run: bun run runAkan lint-all --no-fix
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest

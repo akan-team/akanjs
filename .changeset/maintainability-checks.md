@@ -6,21 +6,26 @@
 
 Rules an app could break without any check noticing now fail a check, and each failure names the workflow that builds the right shape.
 
+**Upgrade note.** After upgrading, `akan lint` fails in every app or library that already breaks these rules, until `akan quality baseline` records what is there. Run it once and commit the `akan.baseline.json` files it writes. A CI job that runs `akan lint` needs the default branch's history (`actions/checkout` with `fetch-depth: 0`); in a shallow clone the gate fails rather than pass unchecked.
+
 - **`akan lint` fails on size, store reach, where a write starts, chained writes and per-item service calls.** For an app or library, `akan lint` fails on:
   - **Size** (`akan.size.file`, `akan.size.component`): a `Zone`, `Util`, `Template`, `Unit`, `View`, `*.store.ts`, or `ui/` / `webkit/` file over 400 lines; a service or document over 500; an abstract over 300; a component or hook over 250.
   - **Store reach** (`akan.component.store-access`): a component or hook reaching `st` more than 16 times, form setters aside.
   - **Where a write starts** (`akan.write.placement`): a `fetch.<mutation>` outside a `*.store.ts`, or a writing `st.do.*` in `ui/` or `webkit/`. A server write leaves the browser through one store action, started by a module component; `ui/` and `webkit/` take it as a prop or hook argument.
-  - **Chained writes** (`akan.store.multi-write`, `akan.store.root-write-chain`, `akan.component.write-chain`): two or more writes, or one write per item in a loop or `map`, sent from the browser by one store action, one store `static`, or one handler of a component or hook. This holds directly, through a sibling action, or through another store via `RootStore`.
-  - **Per-item service calls** (`akan.service.call-in-loop`): a service method an `endpoint` or `slice` reaches that calls a service, a model or a generated query once per item. `internal` jobs and counted loops (retries, paging) are spared.
+  - **Chained writes** (`akan.store.multi-write`, `akan.store.root-write-chain`, `akan.component.write-chain`): two or more writes, or one write per item in a loop over items or a `map`, sent from the browser by one store action, one store `static`, or one handler of a component or hook. This holds directly, through a sibling action, or through another store via `RootStore`. Exclusive paths count apart, a branch that returns or throws included, and a retry or a poll counts its write once.
+  - **Per-item service calls** (`akan.service.call-in-loop`): a service method an `endpoint` or `slice` reaches that calls a service, a model or a generated query once per item. `internal` jobs and counted loops (retries, paging) are spared, and so is a `get<Model>` / `load<Model>` a `map` callback issues, which the model's DataLoader batches into one query.
 
   Each failure prints its rule and, where one exists, the `akan workflow plan …` command that fixes it.
 - **Adopting the gate.** In a workspace that already breaks these rules, run `akan quality baseline` once. It writes an `akan.baseline.json` at each app or library root that needs one, recording each breach under its rule id with what was measured: lines, store accesses, writes or calls. `--force` rewrites an existing file. Commit it.
   - After that, `akan lint` fails only on what grows or is new, and lowers an entry as its code shrinks.
-  - It refuses a baseline that adds or raises an entry against its copy at the fork point of the default branch, so a raise committed on a branch still fails.
-  - A size, store-reach or per-item entry may be added or raised when its key carries a `reasons` line, for code a person deliberately left that way. The write rules take no exceptions.
+  - It refuses a baseline that adds or raises an entry against its copy at the fork point of the default branch, so a raise committed on a branch still fails. With `--no-fix` it checks the file as written, so an entry recorded above what the code measures fails too.
+  - A size, store-reach or per-item entry may be added or raised when its key carries a `reasons` line, for code a person deliberately left that way. The write rules take no exceptions. `--force` keeps the reasons of the entries it records again.
   - `akan quality scan` counts each app's adopted debt and reasoned exceptions per rule (`akan.baseline.exceptions`).
 - **`akan workflow plan add-mutation`** builds the whole write path in one apply: the document chain method, the service method, the mutation, a one-line store action, the dictionary entry and signal test stubs.
   - `--guard` is required and checked against the guards the target can reach; `None` is refused.
+  - A name another module of the target or of a lib it reaches generates or declares is refused, as the server would refuse to boot on it.
+  - The service method takes the bare verb (`archive` for `archiveMemo`). Under a guard that only checks sign-in, it gets a `TODO` where the acting user's right to the record is checked, and the signal tests a refusal to fill in.
+  - A `--with` / `--after` method whose arguments the workflow cannot supply is refused.
   - `--with <ref>.<method>` runs other writes inside the mutation's `this.transaction()`.
   - `--after <ref>.<method>` runs side effects in `this.afterCommit()`.
   - A `Public` mutation gets a rate limit.
