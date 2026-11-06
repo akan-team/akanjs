@@ -518,6 +518,13 @@ export default page()
         }),
       },
       {
+        name: "transformEnv(fn)",
+        desc: l.trans({
+          en: "Rewrites the server env once, before any option, lib or `env(...)` injection reads it. `fn` gets a copy and returns the env to use; code that imports the env file itself still reads the original.",
+          ko: "option, lib, `env(...)` 주입이 읽기 전에 서버 env를 한 번 고칩니다. `fn`은 사본을 받아 쓸 env를 돌려줍니다. env 파일을 직접 import하는 코드는 원래 값을 읽습니다.",
+        }),
+      },
+      {
         name: "setCrossSite(option)",
         desc: l.trans({
           en: "Extra origins a browser may send mutations and open the websocket from. `{ enabled: false }` turns the check off.",
@@ -576,6 +583,13 @@ export default page()
       {
         name: "setCrossSite",
         desc: l.trans({ en: "The last call wins.", ko: "마지막 호출이 이깁니다." }),
+      },
+      {
+        name: "transformEnv",
+        desc: l.trans({
+          en: "All run, the libs' in mount order and the app's last; each gets what the one before returned.",
+          ko: "모두 실행됩니다. lib 순서대로, 앱이 마지막이며 각자 앞의 결과를 받습니다.",
+        }),
       },
     ];
 

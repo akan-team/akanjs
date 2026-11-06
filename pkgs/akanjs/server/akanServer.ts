@@ -216,7 +216,7 @@ export class AkanServer {
     this.name = name;
     this.logger = new Logger(name);
     this.libs = libs;
-    this.env = { ...env };
+    this.env = libs.reduce((current, lib) => lib.option.resolveEnv(current), { ...env });
     //? An edge server runs on premises for its own screens and machines: no agent there is one to serve unasked.
     if (AkanServer.#isEdge(this.env) && !AkanServer.#isEnvEnabled("AKAN_MCP", "AKAN_PUBLIC_MCP")) this.mcp = false;
     this.openapi = options?.openapi ?? this.openapi;
