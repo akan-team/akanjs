@@ -50,7 +50,12 @@ export class MaintainabilityBaseline {
     return (MaintainabilityBaseline.debtRules as readonly string[]).includes(name);
   }
 
-  static parse(text: string, source = MaintainabilityBaseline.fileName) {
+  //? `lenient` reads another commit's copy, whose sections an older or newer CLI may have named differently.
+  static parse(
+    text: string,
+    source = MaintainabilityBaseline.fileName,
+    { lenient = false }: { lenient?: boolean } = {},
+  ) {
     let json: unknown;
     try {
       json = JSON.parse(text);
@@ -68,10 +73,12 @@ export class MaintainabilityBaseline {
         reasons = new Map(entries);
         continue;
       }
-      if (!MaintainabilityBaseline.isDebtRule(name))
+      if (!MaintainabilityBaseline.isDebtRule(name)) {
+        if (lenient) continue;
         throw new Error(
           `${source}: "${name}" is not a rule id. Its sections are ${MaintainabilityBaseline.debtRules.join(", ")} and "reasons"; rewrite it with \`akan quality baseline --force\`.`,
         );
+      }
       const counts = MaintainabilityBaseline.#countsOf(value);
       if (!counts) throw new Error(`${source}: "${name}" maps each key to a whole-number count.`);
       sections.set(name, new Map(counts));
@@ -79,7 +86,7 @@ export class MaintainabilityBaseline {
     return new MaintainabilityBaseline(sections, reasons);
   }
 
-  static of(violations: MaintainabilityViolation[]) {
+  static of(violations: MaintainabilityViolation[], reasons: ReadonlyMap<string, string> = new Map()) {
     const sections = new Map<DebtRuleId, Map<string, number>>();
     for (const violation of violations) {
       const counts = sections.get(violation.rule) ?? new Map<string, number>();
@@ -87,7 +94,7 @@ export class MaintainabilityBaseline {
       counts.set(violation.key, Math.max(counts.get(violation.key) ?? 0, count));
       sections.set(violation.rule, counts);
     }
-    return new MaintainabilityBaseline(sections);
+    return new MaintainabilityBaseline(sections).#withReasonsOf(reasons);
   }
 
   constructor(
@@ -136,10 +143,13 @@ export class MaintainabilityBaseline {
         MaintainabilityBaseline.#lowered(counts, current.sections.get(rule) ?? new Map()),
       ]),
     );
-    const tightened = new MaintainabilityBaseline(sections);
+    return new MaintainabilityBaseline(sections).#withReasonsOf(this.reasons);
+  }
+
+  #withReasonsOf(reasons: ReadonlyMap<string, string>) {
     return new MaintainabilityBaseline(
-      sections,
-      new Map([...this.reasons].filter(([key]) => tightened.#holdsReasoned(key))),
+      this.sections,
+      new Map([...reasons].filter(([key]) => this.#holdsReasoned(key))),
     );
   }
 

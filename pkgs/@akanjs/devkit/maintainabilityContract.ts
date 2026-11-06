@@ -171,8 +171,9 @@ export class MaintainabilityContract {
     if (reference === null) return failures;
     const lines = ((await this.#readBaseline()) ?? "").split(/\r?\n/);
     const label = `${reference.ref}:${this.sysPath}/${MaintainabilityBaseline.fileName}`;
-    const growths = tightened
-      .grownFrom(MaintainabilityBaseline.parse(reference.text, label))
+    //? Without fix the file on disk is what merges, so an entry it holds above the measured count is checked as written.
+    const growths = (fix ? tightened : baseline)
+      .grownFrom(MaintainabilityBaseline.parse(reference.text, label, { lenient: true }))
       .map(
         ({ rule, ...growth }): BaselineGrowth => ({
           kind: "baselineGrowth",
@@ -195,7 +196,7 @@ export class MaintainabilityContract {
     const violations = await this.measure();
     const exists = existsSync(this.baselinePath);
     if (exists && !force) return { result: "kept", violations };
-    const next = MaintainabilityBaseline.of(violations);
+    const next = MaintainabilityBaseline.of(violations, MaintainabilityContract.#reasonsIn(await this.#readBaseline()));
     if (!next.isEmpty) await writeFile(this.baselinePath, next.stringify());
     else if (exists) await rm(this.baselinePath, { force: true });
     return { result: next.isEmpty ? (exists ? "removed" : "clean") : "written", violations };
@@ -338,13 +339,24 @@ export class MaintainabilityContract {
 
   //* A branch's own commits cannot be the reference: one that raises an entry would make the raise the new floor.
   //* The fork point from the default branch holds still, whatever the branch commits.
+  //* Without that history the only copy left is the branch's own, so a shallow checkout fails instead of passing.
   async #referenceRef() {
     for (const branch of MaintainabilityContract.#defaultBranches) {
       if ((await this.#git(["rev-parse", "--verify", "--quiet", `${branch}^{commit}`])) === null) continue;
       const forkPoint = (await this.#git(["merge-base", "HEAD", branch]))?.trim();
       if (forkPoint) return forkPoint;
+      throw new Error(MaintainabilityContract.#missingHistory(this.sysPath, `HEAD shares no commit with ${branch}`));
     }
+    if ((await this.#git(["rev-parse", "--is-shallow-repository"]))?.trim() === "true")
+      throw new Error(MaintainabilityContract.#missingHistory(this.sysPath, "this is a shallow clone"));
     return "HEAD";
+  }
+
+  static #missingHistory(sysPath: string, cause: string) {
+    return (
+      `${sysPath}/${MaintainabilityBaseline.fileName} is compared with its copy where this branch forked from the default branch, ` +
+      `but ${cause}. Fetch the default branch with its history (in GitHub Actions, actions/checkout with fetch-depth: 0).`
+    );
   }
 
   async #git(args: string[]) {
@@ -354,6 +366,16 @@ export class MaintainabilityContract {
       return exitCode === 0 ? text : null;
     } catch {
       return null;
+    }
+  }
+
+  static #reasonsIn(text: string | null) {
+    if (text === null) return new Map<string, string>();
+    try {
+      return MaintainabilityBaseline.parse(text, MaintainabilityBaseline.fileName, { lenient: true }).reasons;
+    } catch {
+      //? A file too broken to read is what `--force` replaces; its reasons go with it.
+      return new Map<string, string>();
     }
   }
 

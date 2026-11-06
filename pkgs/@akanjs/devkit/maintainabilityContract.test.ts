@@ -255,7 +255,7 @@ describe("MaintainabilityContract ratchet", () => {
     const failures = await contractOf(root).enforce({ fix: false });
 
     expect(failures).toMatchObject([
-      { kind: "baselineGrowth", key: "lib/court/Court.Zone.tsx", count: 450, committed: 440, line: 3 },
+      { kind: "baselineGrowth", key: "lib/court/Court.Zone.tsx", count: 460, committed: 440, line: 3 },
       { kind: "baselineGrowth", key: "lib/court/Court.View.tsx", file: "akan.baseline.json", line: 4 },
       {
         kind: "baselineGrowth",
@@ -266,7 +266,7 @@ describe("MaintainabilityContract ratchet", () => {
     ]);
     expect(failures).toHaveLength(3);
     expect(contractOf(root).describe(failures)).toMatch(
-      /apps\/demo\/akan\.baseline\.json:3 {2}akan\.baseline\.growth {2}entry "lib\/court\/Court\.Zone\.tsx" under akan\.size\.file allows 450 lines, above the 440 at [0-9a-f]{12}; the baseline may only shrink/,
+      /apps\/demo\/akan\.baseline\.json:3 {2}akan\.baseline\.growth {2}entry "lib\/court\/Court\.Zone\.tsx" under akan\.size\.file allows 460 lines, above the 440 at [0-9a-f]{12}; the baseline may only shrink/,
     );
   });
 
@@ -279,8 +279,57 @@ describe("MaintainabilityContract ratchet", () => {
     await git(root, "commit", "-q", "-am", "raise");
 
     expect(await contractOf(root).enforce({ fix: false })).toMatchObject([
-      { kind: "baselineGrowth", key: "lib/court/Court.Zone.tsx", count: 450, committed: 440 },
+      { kind: "baselineGrowth", key: "lib/court/Court.Zone.tsx", count: 460, committed: 440 },
     ]);
+  });
+
+  test("refuses headroom a baseline left unfixed records above what the code measures", async () => {
+    const root = await makeWorkspace({ [zone]: linesOf(450), "apps/demo/lib/court/Court.View.tsx": linesOf(10) });
+    await writeBaseline(root, { "akan.size.file": { "lib/court/Court.Zone.tsx": 450 } });
+    await commitAll(root);
+    await writeBaseline(root, {
+      "akan.size.file": { "lib/court/Court.Zone.tsx": 900, "lib/court/Court.View.tsx": 900 },
+    });
+
+    expect(await contractOf(root).enforce({ fix: false })).toMatchObject([
+      { kind: "baselineGrowth", key: "lib/court/Court.Zone.tsx", count: 900, committed: 450 },
+      { kind: "baselineGrowth", key: "lib/court/Court.View.tsx", count: 900, committed: undefined },
+    ]);
+    expect(await contractOf(root).enforce({ fix: true })).toEqual([]);
+    expect(await baselineOf(root)).toBe('{\n  "akan.size.file": {\n    "lib/court/Court.Zone.tsx": 450\n  }\n}\n');
+  });
+
+  test("fails where the fork point cannot be found, instead of comparing the baseline with itself", async () => {
+    const origin = await makeWorkspace({ [zone]: linesOf(450) });
+    await writeBaseline(origin, { "akan.size.file": { "lib/court/Court.Zone.tsx": 440 } });
+    await commitAll(origin);
+    await git(origin, "checkout", "-q", "-b", "feature");
+    await writeBaseline(origin, { "akan.size.file": { "lib/court/Court.Zone.tsx": 460 } });
+    await git(origin, "commit", "-q", "-am", "raise");
+    const shallow = await makeTempRoot();
+    await git(shallow, "init", "-q");
+    await git(shallow, "fetch", "-q", "--depth=1", `file://${origin}`, "+refs/heads/feature:refs/remotes/pull/1/merge");
+    await git(shallow, "checkout", "-q", "--detach", "refs/remotes/pull/1/merge");
+
+    await expect(contractOf(shallow).enforce({ fix: false })).rejects.toThrow(
+      "apps/demo/akan.baseline.json is compared with its copy where this branch forked from the default branch, but this is a shallow clone",
+    );
+
+    await git(origin, "checkout", "-q", "--orphan", "unrelated");
+    await git(origin, "commit", "-q", "-m", "unrelated");
+    await expect(contractOf(origin).enforce({ fix: false })).rejects.toThrow("HEAD shares no commit with main");
+  });
+
+  test("reads a reference baseline holding a section this version does not know", async () => {
+    const root = await makeWorkspace({ [zone]: linesOf(450) });
+    await writeBaseline(root, {
+      "akan.size.file": { "lib/court/Court.Zone.tsx": 450 },
+      "akan.size.retired": { "lib/court/Court.Zone.tsx": 2 },
+    });
+    await commitAll(root);
+    await writeBaseline(root, { "akan.size.file": { "lib/court/Court.Zone.tsx": 450 } });
+
+    expect(await contractOf(root).enforce({ fix: false })).toEqual([]);
   });
 
   test("passes a shape entry added or raised with a reason, and refuses a chained write whatever its reason", async () => {
@@ -419,6 +468,28 @@ describe("MaintainabilityContract seed", () => {
     expect((await contractOf(root).seed({ force: true })).result).toBe("removed");
     expect(existsSync(path.join(root, "apps/demo/akan.baseline.json"))).toBe(false);
     expect((await contractOf(root).seed()).result).toBe("clean");
+  });
+
+  test("keeps the reasons of the entries a forced seed records again", async () => {
+    const root = await makeWorkspace({ [zone]: linesOf(470) });
+    await writeBaseline(root, {
+      "akan.size.file": { "lib/court/Court.Zone.tsx": 450, "lib/gone/Gone.Zone.tsx": 900 },
+      reasons: {
+        "lib/court/Court.Zone.tsx": "The court canvas is one pointer state machine.",
+        "lib/gone/Gone.Zone.tsx": "A file deleted long ago kept this reason.",
+      },
+    });
+
+    expect((await contractOf(root).seed({ force: true })).result).toBe("written");
+    expect(await baselineOf(root)).toBe(`{
+  "akan.size.file": {
+    "lib/court/Court.Zone.tsx": 470
+  },
+  "reasons": {
+    "lib/court/Court.Zone.tsx": "The court canvas is one pointer state machine."
+  }
+}
+`);
   });
 });
 
@@ -606,10 +677,10 @@ ${Array.from({ length: accessNum }, (_, idx) => `  const v${idx} = st.use.court$
     const failures = await contract.enforce({ fix: false });
 
     expect(failures).toMatchObject([
-      { rule: "akan.baseline.growth", key: "lib/court/Court.Zone.tsx#Canvas", count: cap + 3, line: 3 },
+      { rule: "akan.baseline.growth", key: "lib/court/Court.Zone.tsx#Canvas", count: cap + 9, line: 3 },
     ]);
     expect(contract.describe(failures)).toContain(
-      `entry "lib/court/Court.Zone.tsx#Canvas" under akan.component.store-access allows ${cap + 3} store accesses, above the ${cap + 1} at`,
+      `entry "lib/court/Court.Zone.tsx#Canvas" under akan.component.store-access allows ${cap + 9} store accesses, above the ${cap + 1} at`,
     );
   });
 });
