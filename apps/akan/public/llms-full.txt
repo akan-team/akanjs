@@ -1884,7 +1884,7 @@ Other Exports
 
 - usePageFocusEffect(effect, deps): Runs `effect` while the user is on this page and cleans it up when they leave. A page kept under the current one for a swipe back stays mounted, so a plain effect there keeps running.
 
-- usePageLocation(): `{ pathname, params, searchParams }` of this page. `st.use.searchParams()` follows the page on screen, so a page being prepared or kept under the current one reads its own here.
+- usePageLocation(): This page's `{ pathname, params, searchParams }`: a CSR page off screen reads its own, an SSR page the router's.
 
 - usePageActivity(): `"current" | "prev" | "pending" | "hidden"` — where this page stands in the CSR stack; always `current` outside one.
 

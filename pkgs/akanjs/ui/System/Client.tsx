@@ -152,8 +152,8 @@ export const ClientPathWrapper = ({
   const hash = location?.hash ?? initialHash ?? (typeof window !== "undefined" ? window.location.hash : "");
   const pathname = location?.pathname ?? initialPathname ?? "/"; // ?? usePathname();
   const params = location?.params ?? initialParams ?? {}; // ?? (useParams() as unknown as Record<string, string>);
-  const searchParams = location?.searchParams ?? initialSearchParams ?? {}; //?? Object.fromEntries(useSearchParams());
   const search = location?.search ?? initialSearch ?? (typeof window !== "undefined" ? window.location.search : "");
+  const searchParams = location?.searchParams ?? initialSearchParams ?? parseSearchParams(search);
   const lang = params.lang;
   const firstPath = pathname.split("/")[2];
   const pathRoute: PathRoute = location?.pathRoute ?? {
@@ -204,6 +204,7 @@ export const ClientPathWrapper = ({
           pathRoute,
           ...(location?.entryId ? { entryId: location.entryId } : {}),
         },
+        followsRouter: !location,
         prefix,
         gestureEnabled,
         setGestureEnabled,
