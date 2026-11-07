@@ -114,6 +114,9 @@ not "fix" it back.
   `st.tool(…).exec()` / `.card()`, `st.useState(…).init()`, `st.expose(…).value()` — behind `||` / `&&` / `??`, in a
   ternary, an `if`, a `switch`, a loop, a `catch`, a default value, an optional call or a callback; not after an early
   `return` or inside a helper the component calls. Read each into its own `const` at the top, then combine.
+- **Never ask a list for more than 500 rows** (`no-oversized-list-limit`) — the server serves at most 500 per
+  request and drops the rest without an error, so `fetch.xListInY(0, 10000)` silently stops at row 500. Page with
+  skip/limit or `st.do.loadMoreOf<X>()` while `hasMoreOf<X>`, or compute the figure in an insight or an endpoint.
 - **No deep imports past a barrel**, except cross-module constants (`../map/map.constant`).
 - **Never import across the client/server boundary** (`apps/**`, `libs/**`). Client files (`ui/`, `webkit/`,
   `page/`, `*.store.ts`, every `.tsx`) never import a `*.document|dictionary|service|signal.ts`, `srvkit/`, a
@@ -137,6 +140,26 @@ not "fix" it back.
   discovery and aborts on a nested config); rename it `biome.jsonc` to document a disabled rule.
 - **`akan lint` prints up to 200 diagnostics** (`--max-diagnostics <n>`, `0` = all); Biome's own uncounted 20 reads
   as progress when the mix merely changed.
+- **Size, store reach, where writes start, and per-item calls fail `akan lint`** for an app or lib, each failure
+  naming its rule and the `akan workflow plan …` path that fixes it:
+  - `akan.size.file`: a `Zone` / `Util` / `Template` / `Unit` / `View`, a `*.store.ts`, or a `ui/` / `webkit/` file
+    over 400 lines; a service or document over 500; an abstract over 300. `akan.size.component`: a component or hook
+    over 250. `akan.component.store-access`: a component or hook reaching `st` more than 16 times (form setters aside).
+  - `akan.write.placement`: a server write leaves the browser only through a store action, started by a module
+    component — no `fetch.<mutation>` outside a `*.store.ts`, and no writing `st.do.*` in `ui/` or `webkit/`, which
+    take the write as an `onX` prop or hook argument.
+  - `akan.store.multi-write`, `akan.store.root-write-chain`, `akan.component.write-chain`: a store action, a store
+    `static`, or one handler (a hook's included) sending two or more writes — directly, through a sibling action,
+    through another store via `RootStore`, or once per item in a loop or `map`. Make them one service method
+    (`this.transaction(fn)`, a side effect in `this.afterCommit(fn)`) behind one endpoint, taking the list, that the
+    action calls once.
+  - `akan.service.call-in-loop`: a service method an `endpoint` or `slice` reaches calling a service, a model or a
+    generated query once per item (`for … of`, `map`, `forEach`); load the set once (`load<Model>Many`, one
+    filter query) or write it once. An `internal` job and a counted loop (a retry, paging) are spared.
+  - `akan.baseline.json` records, per rule, the debt adopted with the gate, and is compared with its copy at the
+    fork point of the default branch, so it only ever shrinks: never add or raise an entry. A size, store-reach or
+    per-item entry with a `reasons` line is an exception a person decided on, never an agent; the write rules take
+    no exceptions.
 
 ## Coding Style (`**/*.{ts,tsx}`)
 
@@ -190,7 +213,9 @@ not "fix" it back.
 - **One suite per module file**: `<model>.<role>.test.ts` beside the file it covers — never topic splits
   (`chatMessage.trim.signal.test.ts`); add a `describe`. A suite spanning modules goes in `srvkit/`
   (`libs/shared/srvkit/guards.signal.test.ts`), never the `lib/` root; `akan sync` refuses all three shapes. Only
-  `akan typecheck <app-or-lib>` typechecks tests (`bun:test` types included).
+  `akan typecheck <app-or-lib>` typechecks tests (`bun:test` types included) and the `script/` files nothing imports.
+- Delete an export only tests reference together with its test (`akan quality scan` reports
+  `akan.global.test-only-export` in an app's `common/`, `webkit/`, `srvkit/`, `ui/`).
 - Import `UserAgent` / `AdminAgent` from `lib/user/user.signal.spec.ts`, the one place agent types are re-typed.
 
 ## Comments
@@ -200,7 +225,10 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
 - Never restate the identifier, the signature, or the control flow; prefer names and structure. No JSDoc, section
   banners, or "why/how" comments on ordinary logic.
 - Density tracks the layer: pages carry none, product `lib/` and `ui/` stay under 1 %, `srvkit/` adapters and
-  `guards.ts` (what would leak without each guard) carry what the external constraints require.
+  `guards.ts` (what would leak without each guard) carry what the external constraints require. `akan quality scan`
+  reports a `lib/` module or `ui/` entry past 1 % once it holds five comment lines (`akan.comment.density`).
+- Mark a retired field or function `/** @deprecated <what to use instead> */` on its declaration, never a
+  `// deprecated` comment — only the tag strikes through every use site.
 - Warranted for: a vendor or protocol quirk; an infrastructure constraint; a library gotcha; security reasoning; why
   an arbitrary-looking rule is correct; a math derivation; a domain field's business meaning; a state transition above
   a document chain method; why an obvious alternative was rejected.
@@ -277,6 +305,24 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
   in two modes avoids `q.raw`.
 
 ## React Components And Styling (`**/*.tsx`)
+
+A screen that grows keeps five roles: an **assembly** `Zone` that reads the store and places pieces, with no
+branching; **pieces** (`Unit`, `View`, small components) that only display, server-rendered where they can be; a
+**kind table** `{ [kind in cnst.X["value"]]: Component }` instead of mode flags, so a new enum value without an entry
+is a type error — each entry is a component of the module that owns that kind's data (a tab of video scenes is
+`VideoScene.Zone.<X>`), so a screen spanning several models adds no folder; an **interaction hook**
+`webkit/use<X>.tsx` over a pure, tested `common/<x>.ts` class for drag, selection and keys, handed its writes as
+arguments; and **writes** as one-line store actions, one endpoint each. Kinds a screen invents rather than a model
+(canvas node kinds) key the table by an `as const` union in `common/`. A screen choosing along two axes (what to
+pick, and where the pick lands) keeps two tables, the second mapping each purpose to its one commit action. State
+several components or an agent tool read stays in the store, where `st.tool` sees it; the hook keeps only gesture
+state. Reach for the path, not the nearest file:
+
+| Task | Path |
+|---|---|
+| A state-changing act, or chained writes in an action or handler | `akan workflow plan add-mutation --app <app> --module <m> --mutation <verbModel> --guard <Guard>[,…] [--with <ref>.<method>] [--after <ref>.<method>]` |
+| Event, keyboard, pointer or layout logic growing in a component | `akan workflow plan create-interaction --app <app> --interaction <name>` |
+| A missing `View` / `Unit` / `Template` / `Zone` / `Util` | `akan workflow plan create-ui --app <app> --module <m> --surface <surface>` |
 
 - `export const X = ({ … }: XProps) => { return (…); };` — `export default` only for pages, layouts, `lazy()`
   targets. No `React.FC`, `defaultProps`, `PropsWithChildren`; defaults in the destructuring, `children: ReactNode`.
@@ -538,14 +584,14 @@ export default page()
 
 ## Akan Sync Conventions (`apps/**`, `libs/**`)
 
-- App root files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.config.ts`, `client.ts`, `main.ts`,
-  `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.tsbuildinfo`; folders: `.akan`, `common`, `env`, `lib`,
-  `native`, `page`, `plugin`, `private`, `public`, `script`, `secrets`, `srvkit`, `ui`, `webkit`. A Capacitor-era
+- App root files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.baseline.json`, `akan.config.ts`, `client.ts`,
+  `main.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.tsbuildinfo`; folders: `.akan`, `common`, `env`,
+  `lib`, `native`, `page`, `plugin`, `private`, `public`, `script`, `secrets`, `srvkit`, `ui`, `webkit`. A Capacitor-era
   `ios` / `android` / `mobile` folder or `capacitor.config.*` in an app root is refused as a leftover (native
   projects live under `dist/native/<app>/<target>`).
-- Lib root files: `AGENTS.md`, `CLAUDE.md`, `README.md`, `akan.config.ts`, `akan.lib.json`, `client.ts`, `index.ts`,
-  `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.spec.json`, `tsconfig.tsbuildinfo`; folders: the app's
-  minus `.akan`, `script`, `secrets` (no `main.ts` either — a lib is never booted).
+- Lib root files: `AGENTS.md`, `CLAUDE.md`, `README.md`, `akan.baseline.json`, `akan.config.ts`, `akan.lib.json`,
+  `client.ts`, `index.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.spec.json`, `tsconfig.tsbuildinfo`;
+  folders: the app's minus `.akan`, `script`, `secrets` (no `main.ts` either — a lib is never booted).
 - The allowlists' one source is `pkgs/@akanjs/devkit/workspaceLayout.ts`, read by `akan sync` (error), `akan doctor`
   and `akan quality scan` — add an entry there and mirror it here.
 - `apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md` carry a generated `## Recipes In Scope` block between the
@@ -576,9 +622,9 @@ export default page()
 | Folder | Admission test | Naming |
 |---|---|---|
 | `common/` | pure, isomorphic, zero-dependency; imports only sibling `common/*` and `akanjs/base` (so no `Err`, and no throwing code) | camelCase file named after its single export |
-| `webkit/` | touches `window` / `navigator` / the native bridge (`akanjs/client/native[/<plugin id>]`), or is a React hook | `use<Thing>.tsx`, `.tsx` even without JSX |
+| `webkit/` | touches `window` / `navigator` / the native bridge (`akanjs/client/native[/<plugin id>]`), or is a React hook; sends no server write | `use<Thing>.tsx`, `.tsx` even without JSX |
 | `srvkit/` | touches `node:*`, `Bun`, `process.env`, a secret, or a server SDK | camelCase file, PascalCase class |
-| `ui/` | renders JSX or defines a look (`Recipe/`, a lib's `tokens.css`), not bound to one model | PascalCase component, camelCase sidecar, `Recipe/<name>.ts` |
+| `ui/` | renders JSX or defines a look (`Recipe/`, a lib's `tokens.css`), not bound to one model; sends no server write | PascalCase component, camelCase sidecar, `Recipe/<name>.ts` |
 | `plugin/` | a build- or CLI-time `AkanPlugin` | `<name>.plugin.ts`, registered in `akan.config.ts` |
 | `native/` | a native plugin the app or lib owns — its page API reached only through a `webkit/` hook (`runtimeRule`) | `native/<id>/` |
 

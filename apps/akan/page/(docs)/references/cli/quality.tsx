@@ -145,10 +145,10 @@ export default page()
             type: "String",
             required: "no",
             defaultValue: "scan",
-            enumOrFlag: "scan | ssr",
+            enumOrFlag: "scan | ssr | baseline",
             desc: l.trans({
-              en: "Which report to print: `scan` covers everything, `ssr` the render balance alone.",
-              ko: "출력할 보고서로, `scan`은 전부를, `ssr`은 렌더 비율만 다룹니다.",
+              en: "`scan` reports everything, `ssr` the render balance alone; `baseline` writes `akan.baseline.json`.",
+              ko: "`scan`은 전부를, `ssr`은 렌더 비율만 보고하고, `baseline`은 `akan.baseline.json`을 씁니다.",
             }),
           },
         ],
@@ -163,8 +163,25 @@ export default page()
               ko: "짧게는 `-f`이며, `json`은 도구가 읽도록 각 경고의 `fix`까지 담은 전체 결과를 출력합니다.",
             }),
           },
+          {
+            name: "--force",
+            type: "Boolean",
+            defaultValue: "false",
+            enumOrFlag: "-F",
+            desc: l.trans({
+              en: "`baseline` only: rewrite an `akan.baseline.json` that already exists.",
+              ko: "`baseline`에만 씁니다. 이미 있는 `akan.baseline.json`을 다시 씁니다.",
+            }),
+          },
         ],
         notes: [
+          {
+            name: "baseline",
+            desc: l.trans({
+              en: "Records, per rule, the breaches `akan lint` refuses, once, when a workspace adopts that gate; lint then compares the file with its copy at the fork point of the default branch, and fails in a clone without that history, so CI checks out with `fetch-depth: 0`.",
+              ko: "`akan lint`가 막는 위반을 규칙별로, 워크스페이스가 이 검사를 처음 들일 때 한 번 기록합니다. 이후 lint는 이 파일을 기본 브랜치에서 갈라진 시점의 사본과 비교하고, 그 히스토리가 없는 클론에서는 실패하므로 CI는 `fetch-depth: 0`으로 체크아웃합니다.",
+            }),
+          },
           {
             name: l.trans({ en: "where to run", ko: "실행 위치" }),
             desc: l.trans({
@@ -197,11 +214,20 @@ export default page()
         examples: `akan quality
 akan quality scan
 akan quality ssr
-akan quality ssr --format json`,
+akan quality ssr --format json
+akan quality baseline`,
       },
     ];
 
     const scopes: IntroItem[] = [
+      {
+        name: "comment",
+        href: "#scan-rules",
+        desc: l.trans({
+          en: "A `lib/` module or `ui/` entry past 1 % comment lines, and a `// deprecated` comment that should be a `@deprecated` tag.",
+          ko: "주석 줄이 1 %를 넘는 `lib/` 모듈이나 `ui/` 항목, 그리고 `@deprecated` 태그여야 할 `// deprecated` 주석입니다.",
+        }),
+      },
       {
         name: "agent",
         href: "#scan-rules",
@@ -222,16 +248,16 @@ akan quality ssr --format json`,
         name: "file",
         href: "#scan-rules",
         desc: l.trans({
-          en: "Per-file hygiene: length, scaffold leftovers, globals, component-file exports, `//!` markers.",
-          ko: "파일 단위 위생으로, 길이, 남은 스캐폴드, 전역 선언, 컴포넌트 파일의 export, `//!` 마커를 봅니다.",
+          en: "Per-file hygiene: length, leftovers, globals, `//!` markers, and each rule's `akan.baseline.json` entries.",
+          ko: "파일 단위 위생으로, 길이, 남은 스캐폴드, 전역 선언, `//!` 마커, 규칙별 `akan.baseline.json` 항목을 봅니다.",
         }),
       },
       {
         name: "global",
         href: "#scan-rules",
         desc: l.trans({
-          en: "The same exported name, or the same function body, in more than one file.",
-          ko: "같은 export 이름이나 같은 함수 본문이 여러 파일에 있는 경우입니다.",
+          en: "One name or body in many files, an export only tests use, a kind compared in 3+ files.",
+          ko: "여러 파일의 같은 이름·본문, 테스트만 쓰는 export, 세 파일 이상에서 비교하는 kind 값입니다.",
         }),
       },
       {

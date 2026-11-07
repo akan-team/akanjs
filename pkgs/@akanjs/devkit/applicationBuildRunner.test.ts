@@ -9,6 +9,7 @@ import type { App } from "./commandDecorators";
 import { AppExecutor, Executor } from "./executors";
 import { bundleDefine } from "./frontendBuild/bundleDefine";
 import { createTempApp } from "./testHelpers";
+import { ProjectTypecheck } from "./typecheck/projectTypecheck";
 
 describe("ApplicationBuildRunner", () => {
   test("externalizes Akan optional backend dependencies", () => {
@@ -246,6 +247,22 @@ console.info(new SampleService().name);
         if (shellEnv[key] === undefined) delete process.env[key];
         else process.env[key] = shellEnv[key];
       }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("akan typecheck names the script/ files nothing imports, and a build's typecheck leaves them out", async () => {
+    const { root, app } = await createTempApp("portal");
+    const run = spyOn(ProjectTypecheck.prototype, "run").mockImplementation(async () => "");
+    try {
+      const runner = new ApplicationBuildRunner(app);
+      await runner.typecheck({ tests: true });
+      await runner.typecheck();
+      const [checked, built] = run.mock.calls.map(([entries]) => entries);
+      expect(checked).toContain("../../script/**/*.ts");
+      expect(built).not.toContain("../../script/**/*.ts");
+    } finally {
+      run.mockRestore();
       await rm(root, { recursive: true, force: true });
     }
   });

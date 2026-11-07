@@ -100,7 +100,7 @@ Related pages
 
   - **Set the frame from the root layout.** `.theme()`, `.fonts()`, `.manifest()`, `.layoutStyle()`, `.reconnect()` and `.wsConnect()` become `Provider`'s props, and `env` comes from `env/env.client.ts`.
 
-  - **`Reconnect` is a local-development aid.** It stays off until the root layout calls `.reconnect()`, and it renders only when `AKAN_PUBLIC_ENV` is `local`.
+  - **`Reconnect` is a local-development aid.** It stays off until the root layout calls `.reconnect()`, and it runs only when `AKAN_PUBLIC_ENV` is `local`.
 
   - **`ThemeToggle` needs at least two themes.** With `themes` left out or holding one entry it renders nothing. The choice is kept in the `theme` cookie.
 

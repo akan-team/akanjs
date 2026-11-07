@@ -3,7 +3,7 @@ import path from "node:path";
 import { collectScopeRecipeSources, extractAgentBlock, renderScopeAgentBlock } from "@akanjs/devkit/agentsIndex";
 import { biomeVersion } from "@akanjs/devkit/biomeBase";
 import { type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { SysExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { LibExecutor, SysExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { FileSys } from "@akanjs/devkit/fileSys";
 import {
   countBlocking,
@@ -12,10 +12,12 @@ import {
 } from "@akanjs/devkit/frontendBuild/styleContract";
 import { ThemeValidator } from "@akanjs/devkit/frontendBuild/themeValidator";
 import { Linter } from "@akanjs/devkit/linter";
+import { MaintainabilityContract } from "@akanjs/devkit/maintainabilityContract";
 import { collectRecipeSources, type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
 import type { PackageJson } from "@akanjs/devkit/types";
 import { Ed25519Key } from "akanjs/server/ed25519Key";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
+import { MaintainabilityPaths } from "../workflows/maintainabilityPaths";
 
 const defaultWorkspacePeerDependencies = new Set([
   "@react-spring/web",
@@ -202,6 +204,22 @@ export class WorkspaceRunner extends runner("workspace") {
     await this.#enforceStyleContract(exec);
     await this.#enforceRecipeGate(exec);
     await this.#enforceAgentsIndex(exec);
+    await this.#enforceMaintainability(exec, fix);
+  }
+
+  async maintainabilityContractOf(exec: SysExecutor) {
+    const libNames = new Set<string>();
+    const visit = async (sys: SysExecutor) => {
+      for (const libName of (await sys.scan({ write: false })).getScanResult().libDeps) {
+        if (libNames.has(libName)) continue;
+        libNames.add(libName);
+        await visit(LibExecutor.from(exec, libName));
+      }
+    };
+    await visit(exec);
+    return new MaintainabilityContract(exec.workspace.workspaceRoot, { type: exec.type, name: exec.name }, [
+      ...libNames,
+    ]);
   }
 
   /** `biome.json` first, mirroring Biome's own precedence; `biome.jsonc` is the one that may carry comments. */
@@ -231,6 +249,14 @@ export class WorkspaceRunner extends runner("workspace") {
       `[agentsIndex] The recipe index in ${scope.type}s/${scope.name}/AGENTS.md is stale: it differs from the recipe ` +
         `sources. Run \`akan sync ${scope.name}\` to regenerate it.`,
     );
+  }
+
+  // A breach fails unless akan.baseline.json records it, and that file only shrinks from the default branch's copy.
+  async #enforceMaintainability(exec: Exec, fix: boolean) {
+    if (!(exec instanceof SysExecutor)) return;
+    const contract = await this.maintainabilityContractOf(exec);
+    const failures = await contract.enforce({ fix });
+    if (failures.length) throw new Error(contract.describe(failures, new MaintainabilityPaths().commandsOf(exec.name)));
   }
 
   // A look with nothing to pick (no 2+ value axis, no boolean flag) is not a recipe, only an indirection.

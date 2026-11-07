@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
 import { CommandContainer, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { WorkspaceExecutor } from "@akanjs/devkit/executors";
 import {
   compactWorkflowInputs,
   createDryRunWorkflowApplyReport,
@@ -11,6 +12,7 @@ import {
   createWorkflowStepRegistry,
   createWorkflowValidationRunReport,
   getWorkflowSpec,
+  inspectWorkflowPlan,
   jsonText,
   listWorkflowSpecs,
   readWorkflowRunArtifact,
@@ -255,6 +257,7 @@ export class WorkflowRunner extends runner("workflow") {
       addEnumField: (input) => CommandContainer.get(PrimitiveScript).addEnumField(workspace, input),
       addMutation: (input) => CommandContainer.get(PrimitiveScript).addMutation(workspace, input),
       addSlice: (input) => CommandContainer.get(PrimitiveScript).addSlice(workspace, input),
+      createInteraction: (input) => CommandContainer.get(PrimitiveScript).createInteraction(workspace, input),
     });
   }
 
@@ -263,7 +266,12 @@ export class WorkflowRunner extends runner("workflow") {
     if (format === "json")
       return jsonText({
         schemaVersion: 1,
-        workflows: workflows.map(({ name, description, whenToUse }) => ({ name, description, whenToUse })),
+        workflows: workflows.map(({ name, description, whenToUse, replacesRules = [] }) => ({
+          name,
+          description,
+          whenToUse,
+          replacesRules,
+        })),
       });
     return renderWorkflowList(workflows);
   }
@@ -277,11 +285,18 @@ export class WorkflowRunner extends runner("workflow") {
   async plan(
     workflow: string,
     inputs: WorkflowPlanInputs,
-    { format = "markdown", out = null }: { format?: WorkflowFormat; out?: string | null } = {},
+    {
+      format = "markdown",
+      out = null,
+      workspace,
+    }: { format?: WorkflowFormat; out?: string | null; workspace?: Workspace } = {},
   ) {
     const spec = getWorkflowSpec(workflowSpecs, workflow);
     if (!spec) throw new Error(`Unknown workflow: ${workflow}. Run \`akan workflow list\` to see available workflows.`);
-    const plan = createWorkflowPlan(spec, compactWorkflowInputs(inputs));
+    const plan = await inspectWorkflowPlan(
+      workspace ?? WorkspaceExecutor.fromRoot(),
+      createWorkflowPlan(spec, compactWorkflowInputs(inputs)),
+    );
     if (out) {
       const outPath = resolvePath(out);
       await mkdir(path.dirname(outPath), { recursive: true });

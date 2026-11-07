@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import path from "node:path";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
-import { createTempModule, tempRoots } from "@akanjs/devkit/testHelpers";
+import { ModuleExecutor } from "@akanjs/devkit/executors";
+import { createTempModule, formatWithBiome, hasBiome, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
+import type { AddMutationInput } from "@akanjs/devkit/workflow";
 import { ModuleRunner } from "../module/module.runner";
 import { PrimitiveScript } from "./primitive.script";
 
@@ -320,5 +323,239 @@ export const dictionary = modelDictionary(["en", "ko"])
     expect(report.status).toBe("failed");
     expect(report.diagnostics.map((diagnostic) => diagnostic.input)).toEqual(["module", "field", "type"]);
     expect(report.changedFiles).toEqual([]);
+  });
+
+  describe("addMutation", () => {
+    const moduleFiles = ["document", "service", "signal", "store", "dictionary"].map((role) => `task.${role}.ts`);
+    const createTaskApp = async () => {
+      const temp = track(await createTempModule("task"));
+      await new ModuleRunner().createModuleTemplate(temp.module);
+      await writeText(
+        path.join(temp.root, "apps/demo/srvkit/guards.ts"),
+        'import type { Guard } from "akanjs/signal";\n\nexport class Staff implements Guard {\n  canPass() {\n    return true;\n  }\n}\n',
+      );
+      const add = (input: Partial<AddMutationInput>) =>
+        CommandContainer.get(PrimitiveScript).addMutation(temp.workspace, {
+          app: "demo",
+          module: "task",
+          mutation: "archiveTask",
+          guards: ["Staff"],
+          ...input,
+        });
+      return { ...temp, add };
+    };
+    const createNoteModule = async (app: Parameters<typeof ModuleExecutor.from>[0]) => {
+      const note = ModuleExecutor.from(app, "note");
+      await new ModuleRunner().createModuleTemplate(note);
+      await note.writeFile(
+        "note.service.ts",
+        `import { serve } from "akanjs/service";
+
+import * as db from "../db";
+
+export class NoteService extends serve(db.note, ({ use, service }) => ({})) {
+  async touchNote(taskId: string) {
+    return taskId;
+  }
+  async sendArchived(task: unknown, reason?: string) {
+    return [task, reason];
+  }
+  async pushCommand(command: string) {
+    return command;
+  }
+}
+`,
+      );
+    };
+    const snapshot = async (module: ModuleExecutor) =>
+      await Promise.all(moduleFiles.map((file) => module.readFile(file)));
+
+    test("writes the chain method, service, guarded signal, store action, dictionary entry and test placeholders", async () => {
+      const { module, add } = await createTaskApp();
+
+      const report = await add({});
+
+      expect(report.status).toBe("passed");
+      expect(report.changedFiles.map((file) => `${file.action} ${file.path}`)).toEqual([
+        ...moduleFiles.map((file) => `modify apps/demo/lib/task/${file}`),
+        "create apps/demo/lib/task/task.signal.test.ts",
+      ]);
+      expect(await module.readFile("task.document.ts")).toContain(
+        "export class Task extends by(cnst.Task) {\n  // any → archived.\n  archive() {\n    return this;\n  }\n}",
+      );
+      expect(await module.readFile("task.service.ts")).toContain(
+        "  async archive(taskId: string) {\n    const task = await this.getTask(taskId);\n    return await task.archive().save();\n  }",
+      );
+      const signal = await module.readFile("task.signal.ts");
+      expect(signal).toContain('import { Staff } from "@apps/demo/srvkit";\nimport { ID } from "akanjs/base";');
+      expect(signal).toContain('import * as cnst from "../cnst";\nimport * as srv from "../srv";');
+      expect(signal).toContain(
+        'archiveTask: mutation(cnst.Task, { guards: [Staff] })\n    .param("taskId", ID)\n    .exec(async function (taskId) {\n      return await this.taskService.archive(taskId);',
+      );
+      const store = await module.readFile("task.store.ts");
+      expect(store).toContain('import { fetch, sig } from "../useClient";');
+      expect(store).toContain(
+        "  async archiveTask(taskId: string) {\n    this.setTask(await fetch.archiveTask(taskId));\n  }",
+      );
+      expect(await module.readFile("task.dictionary.ts")).toContain(
+        '    archiveTask: fn(["Archive Task", "Archive Task"])\n      .desc(["API to archive task", "Archive Task API"])\n      .arg((t) => ({\n        taskId: t(["Task ID", "Task ID"]).desc(["Task ID", "Task ID"]),\n      })),',
+      );
+      expect(await module.readFile("task.signal.test.ts")).toBe(`import { describe, it } from "bun:test";
+
+describe("Task Signal", () => {
+  it.todo("archiveTask leaves the task archived for a caller Staff admits");
+  it.todo("archiveTask refuses a caller Staff turns away");
+});
+`);
+    });
+
+    test("bundles with-calls in a transaction and after-calls in afterCommit, injecting their services", async () => {
+      const { app, module, add } = await createTaskApp();
+      await createNoteModule(app);
+
+      const before = await snapshot(module);
+      const unsuppliable = await add({ afterCalls: ["note.pushCommand"] });
+      expect(unsuppliable.status).toBe("failed");
+      expect(unsuppliable.diagnostics).toContainEqual(
+        expect.objectContaining({ severity: "error", code: "add-mutation-call-args-unresolved", input: "after" }),
+      );
+      expect(await snapshot(module)).toEqual(before);
+
+      const report = await add({ withCalls: ["note.touchNote"], afterCalls: ["note.sendArchived"] });
+
+      expect(report.status).toBe("passed");
+      const service = await module.readFile("task.service.ts");
+      expect(service).toContain('import * as db from "../db";\nimport type * as srv from "../srv";');
+      expect(service).toContain(
+        "export class TaskService extends serve(db.task, ({ use, service }) => ({\n  noteService: service<srv.NoteService>(),\n})) {",
+      );
+      expect(service).toContain(
+        [
+          "    return await this.transaction(async () => {",
+          "      const task = await this.getTask(taskId);",
+          "      await task.archive().save();",
+          "      await this.noteService.touchNote(task.id);",
+          "      await this.afterCommit(() => this.noteService.sendArchived(task));",
+          "      return task;",
+          "    });",
+        ].join("\n"),
+      );
+    });
+
+    test.skipIf(!hasBiome)("writes every file the way Biome prints it", async () => {
+      const { root, app, module, add } = await createTaskApp();
+      await createNoteModule(app);
+      await writeText(
+        path.join(root, "apps/demo/srvkit/self.ts"),
+        'import type { Guard, InternalArg } from "akanjs/signal";\n\nexport class User implements Guard {\n  canPass() {\n    return true;\n  }\n}\n\nexport class Self implements InternalArg {\n  getArg() {\n    return null;\n  }\n}\n',
+      );
+      const report = await add({
+        guards: ["User", "Public"],
+        withCalls: ["note.touchNote"],
+        afterCalls: ["note.sendArchived"],
+      });
+      expect(report.status).toBe("passed");
+      expect(await module.readFile("task.signal.ts")).toContain('import { Self, User } from "@apps/demo/srvkit";');
+
+      for (const file of [...moduleFiles, "task.signal.test.ts"]) {
+        const written = await module.readFile(file);
+        expect(await formatWithBiome(written, `apps/demo/lib/task/${file}`)).toBe(written);
+      }
+    });
+
+    test("refuses an unknown guard, None, or no guard at all, and writes nothing", async () => {
+      const { module, add } = await createTaskApp();
+      const before = await snapshot(module);
+
+      const unknown = await add({ guards: ["Nobody"] });
+      const none = await add({ guards: ["None"] });
+      const missing = await add({ guards: [] });
+
+      expect(unknown.diagnostics).toContainEqual(
+        expect.objectContaining({ code: "add-mutation-guard-unknown", input: "guard" }),
+      );
+      expect(none.diagnostics).toContainEqual(expect.objectContaining({ code: "add-mutation-guard-none" }));
+      expect(missing.diagnostics).toContainEqual(expect.objectContaining({ code: "add-mutation-guard-missing" }));
+      for (const report of [unknown, none, missing]) {
+        expect(report.status).toBe("failed");
+        expect(report.changedFiles).toEqual([]);
+      }
+      expect(await snapshot(module)).toEqual(before);
+    });
+
+    test("refuses a generated CRUD name and a mutation that already exists", async () => {
+      const { add } = await createTaskApp();
+
+      const crud = await add({ mutation: "removeTask" });
+      expect(crud.diagnostics).toContainEqual(expect.objectContaining({ code: "add-mutation-name-reserved" }));
+
+      expect((await add({})).status).toBe("passed");
+      const again = await add({});
+      expect(again.status).toBe("failed");
+      expect(again.diagnostics).toContainEqual(expect.objectContaining({ code: "add-mutation-name-exists" }));
+      expect(again.changedFiles).toEqual([]);
+    });
+
+    test("refuses a name another module generates or declares, which the server would refuse at boot", async () => {
+      const { app, add } = await createTaskApp();
+      await createNoteModule(app);
+
+      const generated = await add({ mutation: "createNote" });
+      expect(generated.status).toBe("failed");
+      expect(generated.diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: "add-mutation-name-exists",
+          message: expect.stringContaining("apps/demo/lib/note (generated for Note)"),
+        }),
+      );
+      expect((await add({ mutation: "transactionTask" })).diagnostics).toContainEqual(
+        expect.objectContaining({ code: "add-mutation-name-reserved" }),
+      );
+    });
+
+    test("refuses a with-call whose service method does not exist", async () => {
+      const { add } = await createTaskApp();
+
+      const report = await add({ withCalls: ["ghost.haunt"] });
+
+      expect(report.status).toBe("failed");
+      expect(report.diagnostics).toContainEqual(
+        expect.objectContaining({ severity: "error", code: "add-mutation-call-service-missing", input: "with" }),
+      );
+    });
+  });
+
+  describe("createInteraction", () => {
+    test("writes a webkit hook over a pure common class and its test", async () => {
+      const { workspace, app } = track(await createTempModule("task"));
+      const create = () =>
+        CommandContainer.get(PrimitiveScript).createInteraction(workspace, {
+          app: "demo",
+          interaction: "useBoardKeys",
+        });
+
+      const report = await create();
+
+      expect(report.status).toBe("passed");
+      expect(report.changedFiles.map((file) => file.path)).toEqual([
+        "apps/demo/common/boardKeys.ts",
+        "apps/demo/common/boardKeys.test.ts",
+        "apps/demo/webkit/useBoardKeys.tsx",
+      ]);
+      const hook = await app.readFile("webkit/useBoardKeys.tsx");
+      expect(hook.startsWith('"use client";\nimport { BoardKeys } from "@apps/demo/common";\n')).toBe(true);
+      expect(hook).toContain("return { change };");
+      expect(await app.readFile("common/boardKeys.ts")).toContain("export class BoardKeys {");
+      expect(await app.readFile("common/boardKeys.test.ts")).toContain('import { BoardKeys } from "./boardKeys";');
+      if (hasBiome)
+        for (const file of ["common/boardKeys.ts", "common/boardKeys.test.ts", "webkit/useBoardKeys.tsx"]) {
+          const written = await app.readFile(file);
+          expect(await formatWithBiome(written, `apps/demo/${file}`)).toBe(written);
+        }
+
+      const again = await create();
+      expect(again.status).toBe("failed");
+      expect(again.diagnostics).toContainEqual(expect.objectContaining({ code: "create-interaction-exists" }));
+    });
   });
 });

@@ -1,5 +1,9 @@
 import { capitalize } from "akanjs/common";
+import type { Workspace } from "../commandDecorators";
 import { workflowPlanApproval } from "./artifacts";
+import { resolveWorkflowSys } from "./executor";
+import { InteractionScaffold } from "./interactionScaffold";
+import { MutationScaffold } from "./mutationScaffold";
 import { coerceFieldDefault, moduleSourcePaths } from "./source";
 import type {
   WorkflowDiagnostic,
@@ -418,5 +422,55 @@ export const createWorkflowPlan = (spec: WorkflowSpec, rawInputs: Record<string,
     recommendations: createWorkflowPlanRecommendations(spec, inputs),
     requiresApproval: true,
     approval: workflowPlanApproval,
+  };
+};
+
+const planString = (inputs: Record<string, WorkflowInputValue>, name: string) =>
+  typeof inputs[name] === "string" ? inputs[name] : null;
+const planStrings = (inputs: Record<string, WorkflowInputValue>, name: string) =>
+  Array.isArray(inputs[name]) ? inputs[name] : null;
+
+export const inspectWorkflowPlan = async (workspace: Workspace, plan: WorkflowPlan): Promise<WorkflowPlan> => {
+  if (plan.workflow !== "add-mutation" && plan.workflow !== "create-interaction") return plan;
+  const app = planString(plan.inputs, "app");
+  if (!app) return plan;
+  const sys = await resolveWorkflowSys(workspace, app).catch(() => null);
+  if (!sys)
+    return {
+      ...plan,
+      diagnostics: [
+        ...plan.diagnostics,
+        {
+          severity: "error",
+          code: "workflow-target-missing",
+          input: "app",
+          message: `No app or library named ${app}.`,
+        },
+      ],
+    };
+  const inspected =
+    plan.workflow === "add-mutation"
+      ? await MutationScaffold.build(
+          sys,
+          {
+            module: planString(plan.inputs, "module"),
+            mutation: planString(plan.inputs, "mutation"),
+            guards: planStrings(plan.inputs, "guard"),
+            withCalls: planStrings(plan.inputs, "with"),
+            afterCalls: planStrings(plan.inputs, "after"),
+          },
+          { strict: false },
+        )
+      : { ...(await InteractionScaffold.build(sys, planString(plan.inputs, "interaction"))), recommendations: [] };
+  const failedInputs = new Set(
+    plan.diagnostics.filter((diagnostic) => diagnostic.severity === "error").map((diagnostic) => diagnostic.input),
+  );
+  return {
+    ...plan,
+    diagnostics: [
+      ...plan.diagnostics,
+      ...inspected.diagnostics.filter((diagnostic) => !diagnostic.input || !failedInputs.has(diagnostic.input)),
+    ],
+    recommendations: [...plan.recommendations, ...inspected.recommendations],
   };
 };

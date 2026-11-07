@@ -312,7 +312,7 @@ const checkAddFieldStructure = async (workspace: Workspace, plan: WorkflowPlan):
   return { diagnostics, postApplyChecks };
 };
 
-const resolveWorkflowSys = async (workspace: Workspace, target: string | null): Promise<Sys | null> => {
+export const resolveWorkflowSys = async (workspace: Workspace, target: string | null): Promise<Sys | null> => {
   if (!target) return null;
   const [apps, libs] = await workspace.getSyss();
   if (apps.includes(target)) return AppExecutor.from(workspace, target);
@@ -375,10 +375,10 @@ const addMutationActionSurfaceInspection = (plan: WorkflowPlan): WorkflowStepRes
   const moduleClassName = moduleComponentName(module);
   return surfaceReview(plan, {
     code: "add-mutation-action-surface-review",
-    target: `*/${moduleSourcePaths(module).store}`,
-    action: `Name the endpoint's guards and add its dictionary .endpoint() entry with a .desc(). After sync, fetch.${mutation} exists; write a store action only for a toast, an optimistic update, or a multi-field write, and put the control that calls it in ${moduleClassName}.Util.tsx.`,
-    message: `Workflow apply does not write store or UI code for ${module}.${mutation}; review whether a screen should call it.`,
-    reason: "Review action surface guidance before manually editing store or UI files.",
+    target: `*/${moduleSourcePaths(module).util}`,
+    action: `Fill the ${moduleClassName} chain method (validate, mutate, return this) and replace its transition comment. After sync, call st.do.${mutation}(id) from the control in ${moduleClassName}.Util.tsx; a second write that must land with it is another with/after entry, never a second fetch in the store action.`,
+    message: `Workflow apply does not write UI code for ${module}.${mutation}; review which screen calls it.`,
+    reason: "Review action surface guidance before manually editing UI files.",
   });
 };
 
@@ -404,6 +404,7 @@ export const createWorkflowStepRegistry = ({
   addEnumField,
   addMutation,
   addSlice,
+  createInteraction,
 }: WorkflowPrimitiveOperations): WorkflowStepRegistry => {
   const inspect = async () => undefined;
   const commandOnly = async () => undefined;
@@ -484,17 +485,31 @@ export const createWorkflowStepRegistry = ({
       ),
     [workflowStepKey("add-enum-field", "update-dictionary")]: inspect,
     [workflowStepKey("add-enum-field", "update-option")]: inspect,
-    [workflowStepKey("add-mutation", "update-service")]: async (_step, plan) =>
+    [workflowStepKey("add-mutation", "update-document")]: async (_step, plan) =>
       primitiveReportToWorkflowStepResult(
         await addMutation({
           app: workflowStringInput(plan.inputs.app),
           module: workflowStringInput(plan.inputs.module),
           mutation: workflowStringInput(plan.inputs.mutation),
+          guards: workflowStringArrayInput(plan.inputs.guard),
+          withCalls: workflowStringArrayInput(plan.inputs.with),
+          afterCalls: workflowStringArrayInput(plan.inputs.after),
         }),
       ),
+    [workflowStepKey("add-mutation", "update-service")]: inspect,
     [workflowStepKey("add-mutation", "update-signal")]: inspect,
-    [workflowStepKey("add-mutation", "update-action-surfaces")]: async (_step, plan) =>
+    [workflowStepKey("add-mutation", "update-store")]: inspect,
+    [workflowStepKey("add-mutation", "update-dictionary")]: inspect,
+    [workflowStepKey("add-mutation", "add-signal-test")]: inspect,
+    [workflowStepKey("add-mutation", "connect-action-ui")]: async (_step, plan) =>
       addMutationActionSurfaceInspection(plan),
+    [workflowStepKey("create-interaction", "create-interaction")]: async (_step, plan) =>
+      primitiveReportToWorkflowStepResult(
+        await createInteraction({
+          app: workflowStringInput(plan.inputs.app),
+          interaction: workflowStringInput(plan.inputs.interaction),
+        }),
+      ),
     [workflowStepKey("add-slice", "update-service-query")]: async (_step, plan) =>
       primitiveReportToWorkflowStepResult(
         await addSlice({

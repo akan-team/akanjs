@@ -6,6 +6,7 @@ import {
   type AddMutationInput,
   type AddSliceInput,
   addFieldUiPolicyForType,
+  type CreateInteractionInput,
   coerceFieldDefault,
   compactDiagnostics,
   createPrimitiveWriteReport,
@@ -22,6 +23,7 @@ import {
   hasDictionaryModelField,
   hasSignalFactoryEntry,
   hasSourceParseErrors,
+  InteractionScaffold,
   insertClassMethod,
   insertDictionaryEnum,
   insertDictionaryModelField,
@@ -30,6 +32,7 @@ import {
   insertLightProjectionField,
   insertSignalFactoryEntry,
   insertTemplateField,
+  MutationScaffold,
   moduleComponentName,
   moduleSourcePaths,
   nextActionsForTarget,
@@ -37,6 +40,7 @@ import {
   type PrimitiveChangedFile,
   type PrimitiveTargetInput,
   parseValues,
+  type ScaffoldFile,
   sourceFile,
   type UiSurface,
   validationCommandsForTarget,
@@ -306,40 +310,25 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
   }
 
   async addMutation(workspace: Workspace, input: AddMutationInput) {
-    const moduleClassName = input.module ? moduleComponentName(input.module) : "";
-    const serviceRef = lowerlize(moduleClassName);
-    const name = input.mutation;
-    return await this.#writeServiceSignalEntry(workspace, {
-      command: "add-mutation",
-      app: input.app,
-      module: input.module,
-      entryKind: "mutation",
-      entryName: name,
-      requiredInput: "mutation",
-      serviceMethod: name
-        ? {
-            name,
-            block: [
-              `  async ${name}() {`,
-              `    // TODO(service): implement ${moduleClassName}Service.${name}`,
-              `    return true;`,
-              `  }`,
-            ].join("\n"),
-          }
-        : null,
-      signal: name
-        ? {
-            className: `${moduleClassName}Endpoint`,
-            entryLine: [
-              `${name}: mutation(Boolean, { guards: [None] })`,
-              `    .exec(async function () {`,
-              `      return await this.${serviceRef}Service.${name}();`,
-              `    }),`,
-            ].join("\n"),
-            param: { mode: "destructure", name: "mutation" },
-          }
-        : null,
-    });
+    const sys = await this.resolveSys(workspace, input.app);
+    if (!sys || !input.module || !input.mutation)
+      return PrimitiveScript.#refuse(
+        "add-mutation",
+        compactDiagnostics([
+          !sys && PrimitiveScript.#targetMissing(),
+          !input.module && PrimitiveScript.#inputMissing("module"),
+          !input.mutation && PrimitiveScript.#inputMissing("mutation", "Mutation name is required."),
+        ]),
+      );
+    const { diagnostics, files } = await MutationScaffold.build(sys, input);
+    return await PrimitiveScript.#writeScaffold("add-mutation", sys, files, diagnostics);
+  }
+
+  async createInteraction(workspace: Workspace, input: CreateInteractionInput) {
+    const sys = await this.resolveSys(workspace, input.app);
+    if (!sys) return PrimitiveScript.#refuse("create-interaction", [PrimitiveScript.#targetMissing()]);
+    const { diagnostics, files } = await InteractionScaffold.build(sys, input.interaction);
+    return await PrimitiveScript.#writeScaffold("create-interaction", sys, files, diagnostics);
   }
 
   async addSlice(workspace: Workspace, input: AddSliceInput) {
@@ -497,6 +486,18 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
     }
 
     return PrimitiveScript.#report(spec.command, sys, changedFiles, diagnostics);
+  }
+
+  static async #writeScaffold(command: string, sys: Sys, files: ScaffoldFile[], diagnostics: WorkflowDiagnostic[]) {
+    const changedFiles: PrimitiveChangedFile[] = [];
+    if (workflowStatus(diagnostics) === "passed") {
+      for (const file of files) {
+        //? Silent: the report lists every file, and `-o json` must print nothing but the report.
+        await sys.writeFile(file.path, file.content, { silent: true });
+        changedFiles.push(sourceFile(sys, file.path, file.action, file.reason));
+      }
+    }
+    return PrimitiveScript.#report(command, sys, changedFiles, diagnostics);
   }
 
   static #refuse(command: string, diagnostics: WorkflowDiagnostic[]) {

@@ -1,0 +1,73 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// A client list request takes at most MAX_PAGE_SIZE (500) rows: SignalResolver.#clientPageLimit
+// (pkgs/akanjs/server/resolver/signal.resolver.ts) clamps a larger limit and answers with 500 rows and no
+// error, so a screen that asked for 10000 silently stops at row 500. A store list reads hasMoreOf<Model><Suffix>
+// as true after a full 500, so only a screen that calls loadMoreOf<Model><Suffix> ever sees the rest. The server
+// logs one warning per list; this rule moves it to the line that asked.
+//
+// Matched: a literal limit above 500 in the generated list fetch, `fetch.<model>List<Suffix>(...sliceArgs,
+// skip, limit, sort?, fetchPolicy?)`; as `limit:` in the option object of `fetch.init<Model><Suffix>`,
+// `fetch.get<Model>Init<Suffix>`, `st.do.init<Model><Suffix>` and `st.do.refresh<Model><Suffix>`; and as the
+// argument of `st.do.setLimitOf<Model><Suffix>`.
+//
+// A rule cannot know a slice's arity, so the positional limit is found by shape: an argument that reads as a
+// skip (`0`, `null`, `undefined`, a name with skip/offset, a page multiplied out) directly before the literal,
+// and after it nothing but a non-numeric sort and a fetch policy. That keeps a numeric slice argument out
+// (`fetch.statListInYear(2026)`, `fetch.statListInMonth(11, 2026)`), as it does a variable limit, `limit: 0`
+// (the store's one-page mode, which the server warns about itself) and a `limit:` key anywhere else (rate
+// limits). Left over: a slice whose own last two arguments read as `(0, 1000)`, such as a price range; suppress
+// that one with `// biome-ignore lint/plugin: <reason>`.
+pattern over_max_page_size() {
+  JsNumberLiteralExpression() as $size where {
+    $size <: r"(?:50[1-9]|5[1-9][0-9]|[6-9][0-9]{2}|[1-9][0-9]{0,2}(?:_?[0-9]{3})+|[1-9]e\+?(?:[3-9]|[1-9][0-9]+))"
+  }
+}
+
+pattern page_skip() {
+  or { r"(?:0|null|undefined)", r"(?i)[\s\S]*(?:skip|offset)[\s\S]*", r"(?i)[\s\S]*page[\s\S]*\*[\s\S]*" }
+}
+
+pattern page_sort() {
+  not JsNumberLiteralExpression()
+}
+
+JsCallExpression(callee = $callee, arguments = JsCallArguments(args = $args)) where {
+  or {
+    and {
+      $callee <: `fetch.$endpoint`,
+      $endpoint <: r"[a-z][A-Za-z0-9_$]*List(?:[A-Z][A-Za-z0-9_$]*)?",
+      $args <: or {
+        [..., page_skip(), over_max_page_size() as $limit],
+        [..., page_skip(), over_max_page_size() as $limit, page_sort()],
+        [..., page_skip(), over_max_page_size() as $limit, page_sort(), $_]
+      }
+    },
+    and {
+      or {
+        and {
+          $callee <: `fetch.$endpoint`,
+          $endpoint <: or { r"init[A-Z][A-Za-z0-9_$]*", r"get[A-Z][A-Za-z0-9_$]*Init(?:[A-Z][A-Za-z0-9_$]*)?" }
+        },
+        and { $callee <: `st.do.$action`, $action <: r"(?:init|refresh)[A-Z][A-Za-z0-9_$]*" }
+      },
+      $args <: some JsObjectExpression(
+        members = some JsPropertyObjectMember(
+          name = r"(?:limit|\x22limit\x22|'limit')",
+          value = over_max_page_size() as $limit
+        )
+      )
+    },
+    and {
+      $callee <: `st.do.$action`,
+      $action <: r"setLimitOf[A-Z][A-Za-z0-9_$]*",
+      $args <: [over_max_page_size() as $limit, ...]
+    }
+  },
+  register_diagnostic(
+    span = $limit,
+    message = "The server serves at most 500 rows per list request and drops the rest without an error, so this list silently stops at row 500. Page through it at 500 or fewer per request (skip/limit, or st.do.loadMoreOf<Model><Suffix>() while hasMoreOf<Model><Suffix>), or compute what the screen needs on the server in an insight or a dedicated endpoint.",
+    severity = "error"
+  )
+}

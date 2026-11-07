@@ -47,9 +47,13 @@ Term
 
 Scan every app and library for code quality warnings, or measure the server/client render balance.`scan` (default) prints every warning, then the SSR balance and the suggested rules.`ssr` prints the SSR balance first, then only the warnings whose scope is `ssr`.
 
-- action (String, default scan, scan | ssr): Which report to print: `scan` covers everything, `ssr` the render balance alone.
+- action (String, default scan, scan | ssr | baseline): `scan` reports everything, `ssr` the render balance alone; `baseline` writes `akan.baseline.json`.
 
 - --format (String, default text, text | json): Short form `-f`; `json` prints the whole result for tools, each warning's `fix` included.
+
+- --force (Boolean, default false, -F): `baseline` only: rewrite an `akan.baseline.json` that already exists.
+
+- baseline: Records, per rule, the breaches `akan lint` refuses, once, when a workspace adopts that gate; lint then compares the file with its copy at the fork point of the default branch, and fails in a clone without that history, so CI checks out with `fetch-depth: 0`.
 
 - where to run: The workspace root, the folder holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 
@@ -73,13 +77,15 @@ Each warning says where, which rule, what is wrong and how to fix it. After the 
 
 The Six Scopes
 
+- comment: A `lib/` module or `ui/` entry past 1 % comment lines, and a `// deprecated` comment that should be a `@deprecated` tag.
+
 - agent: Form fields that publish no agent tool because their setter is wrapped.
 
 - convention: A module file declaring what its role does not allow, such as a helper in `.service.ts`.
 
-- file: Per-file hygiene: length, scaffold leftovers, globals, component-file exports, `//!` markers.
+- file: Per-file hygiene: length, leftovers, globals, `//!` markers, and each rule's `akan.baseline.json` entries.
 
-- global: The same exported name, or the same function body, in more than one file.
+- global: One name or body in many files, an export only tests use, a kind compared in 3+ files.
 
 - layout: Files and folders outside the allowed app, library and module layout.
 
@@ -232,6 +238,7 @@ akan quality
 akan quality scan
 akan quality ssr
 akan quality ssr --format json
+akan quality baseline
 ```
 
 ### Terminal

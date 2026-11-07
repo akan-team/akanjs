@@ -2379,14 +2379,17 @@ describe("SignalResolver declaration contracts", () => {
     try {
       expect(await listedLimit("serverResolverTestItemListInCategory", "news", 0, 0, "titleAsc")).toBe(500);
       expect(await listedLimit("serverResolverTestItemListInCategory", "news", 0, 0, "titleAsc")).toBe(500);
+      expect(await listedLimit("serverResolverTestItemList", undefined, undefined, 0, 9999, "latest")).toBe(500);
       expect(await listedLimit("serverResolverTestItemList", undefined, undefined, 0, 0, "latest")).toBe(500);
       expect(await listedLimit("serverResolverTestItemListInCategory", "news", 0, null, "titleAsc")).toBe(20);
       expect(await listedLimit("serverResolverTestItemListInCategory", "news", 0, undefined, "titleAsc")).toBe(20);
+      expect(await listedLimit("serverResolverTestItemListInCategory", "news", 0, 500, "titleAsc")).toBe(500);
       expect(await listedLimit("serverResolverTestItemListInCategory", "news", 0, 9999, "titleAsc")).toBe(500);
-      const askedEveryRow = warn.mock.calls.map(([message]) => String(message)).filter((m) => m.includes("limit: 0"));
-      expect(askedEveryRow).toHaveLength(2);
-      expect(askedEveryRow[0]).toContain("serverResolverTestItemListInCategory was asked for limit: 0 and served 500");
-      expect(askedEveryRow[1]).toContain("serverResolverTestItemList was asked for limit: 0");
+      const capped = warn.mock.calls.map(([message]) => String(message)).filter((m) => m.includes("was asked for"));
+      expect(capped).toHaveLength(2);
+      expect(capped[0]).toContain("serverResolverTestItemListInCategory was asked for limit: 0 and served at most 500");
+      expect(capped[1]).toContain("serverResolverTestItemList was asked for limit: 9999 and served at most 500");
+      expect(capped[1]).toContain("st.do.loadMoreOfServerResolverTestItem() while hasMoreOfServerResolverTestItem");
     } finally {
       warn.mockRestore();
     }

@@ -211,7 +211,10 @@
         "!**/*.spec.ts",
         "!**/*.spec.tsx"
       ],
-      "plugins": ["./node_modules/@akanjs/devkit/lint/no-init-fetch-in-client.grit"]
+      "plugins": [
+        "./node_modules/@akanjs/devkit/lint/no-init-fetch-in-client.grit",
+        "./node_modules/@akanjs/devkit/lint/no-oversized-list-limit.grit"
+      ]
     },
     {
       "includes": [
