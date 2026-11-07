@@ -1,0 +1,9 @@
+---
+description: Styling: Tailwind order, the semantic colour vocabulary, cn(), recipes and the app theme.
+globs: apps/**/*.tsx,libs/**/*.tsx,apps/**/*.css,libs/**/*.css,apps/*/ui/Recipe/**,libs/*/ui/Recipe/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/style.md

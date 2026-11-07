@@ -275,10 +275,6 @@ describe("Executor filesystem helpers", () => {
       "Akan workspace agent guide",
     );
     expect(await readFile(path.join(root, "workspace/AGENTS.md"), "utf8")).toContain("sample Agent Guide");
-    expect(await readFile(path.join(root, "workspace/docs/AI-DEVELOPMENT.md"), "utf8")).toContain(
-      "AI Development Guide",
-    );
-    expect(await readFile(path.join(root, "workspace/docs/GENERATED.md"), "utf8")).toContain("Generated Akan Files");
     // Rules live in the package's base config, so a framework release reaches an existing workspace on `bun update`.
     expect(await readFile(path.join(root, "workspace/biome.json"), "utf8")).toContain(
       '"extends": ["@akanjs/devkit/biome.base.json"]',

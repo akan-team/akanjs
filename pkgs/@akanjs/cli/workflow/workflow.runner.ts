@@ -98,6 +98,7 @@ const failedApplyReport = (workflow: string, code: string, message: string, plan
 
 const inferValidationKind = (command: WorkflowApplyCommand): WorkflowValidationKind => {
   if (command.kind) return command.kind;
+  if (/\bakan\s+verify\b/.test(command.command)) return "verify";
   if (/\bakan\s+sync\b/.test(command.command)) return "sync";
   if (/\bakan\s+lint\b/.test(command.command)) return "lint";
   if (/\bakan\s+typecheck\b/.test(command.command)) return "typecheck";
@@ -123,7 +124,7 @@ const classifyValidationFailure = (
     return "workspace-config";
   }
   const kind = inferValidationKind(command);
-  if (kind === "lint" || kind === "typecheck" || kind === "sync") return "source-change";
+  if (kind === "verify" || kind === "lint" || kind === "typecheck" || kind === "sync") return "source-change";
   return "unknown";
 };
 

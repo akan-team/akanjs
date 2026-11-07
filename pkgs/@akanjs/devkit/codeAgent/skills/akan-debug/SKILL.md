@@ -22,7 +22,7 @@ what survives in the scrollback is bordered and truncated to the pane.
 
 ## Which loop you are in
 
-- **A type or lint failure** is the `akan-validate` loop. `akan_verify`.
+- **A type or lint failure** is the `akan-validate` loop: `akan verify`.
 - **A runtime or SSR failure** is the dev log. The page renders blank, an overlay appears, or a request
   500s — none of that shows up in a typecheck.
 
@@ -38,5 +38,5 @@ reads like its own level is not one.
 
 ## Before you conclude
 
-A change that renders is not a change that passed. Run `akan_verify`, and for a `.tsx` change check
-`akan quality ssr` too — a UI edit that moves markup into a client bundle typechecks perfectly.
+A change that renders is not a change that passed. Run `akan verify`; for a `.tsx` change it also runs the
+SSR check, since a UI edit that moves markup into a client bundle typechecks perfectly.

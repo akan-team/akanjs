@@ -1,0 +1,9 @@
+---
+description: Akan app and library code: the lint gates, sync allowlists and the warts not to copy.
+globs: apps/**,libs/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/app.md

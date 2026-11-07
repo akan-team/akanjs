@@ -313,8 +313,8 @@ akan doctor --ios`,
         {
           name: l.trans({ en: "Workflow policy", ko: "워크플로 정책" }),
           desc: l.trans({
-            en: "`AGENTS.md` tells agents to plan with `--mode plan`, apply with `--mode apply`, prefer workflows.",
-            ko: "`AGENTS.md`는 에이전트에게 `--mode plan`으로 계획하고 `--mode apply`로 적용하며, 워크플로를 먼저 쓰라고 안내합니다.",
+            en: "`AGENTS.md` tells agents to prefer an Akan workflow to a hand edit, through these tools or the CLI.",
+            ko: "`AGENTS.md`는 에이전트에게 직접 고치기보다 Akan 워크플로를 먼저 쓰라고 안내합니다. 이 툴이나 CLI로 실행합니다.",
           }),
         },
         {
@@ -533,6 +533,14 @@ akan mcp-call plan_workflow --mode plan --args '{"workflow":"add-field","inputs"
         meaning: l.trans({
           en: "`AGENTS.md` carries no version stamp, so its age is unknown.",
           ko: "`AGENTS.md`에 버전 표시가 없어 언제 쓰였는지 알 수 없습니다.",
+        }),
+      },
+      {
+        code: "agent-guide-oversized",
+        level: warningLevel,
+        meaning: l.trans({
+          en: "`AGENTS.md` and an app's or library's guide near the 32 KiB past which Codex reads nothing.",
+          ko: "`AGENTS.md`와 앱·라이브러리 가이드를 합친 크기가, Codex가 더 읽지 않는 32 KiB에 가깝습니다.",
         }),
       },
       {

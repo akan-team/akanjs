@@ -58,14 +58,12 @@ export const generatedFilesForSync = (sys: Sys, reason = "Generated files may ch
 
 export const validationCommandsForTarget = (target: string) =>
   [
-    { command: `akan sync ${target}`, reason: "Refresh generated Akan files from source conventions." },
-    { command: `akan lint ${target}`, reason: "Validate formatting, imports, and static lint rules." },
+    { command: `akan verify ${target}`, reason: "Sync, lint, typecheck and build the target in one run." },
   ] satisfies PrimitiveValidationCommand[];
 
 export const nextActionsForTarget = (target: string) =>
   [
-    { command: `akan sync ${target}`, reason: "Refresh generated Akan files after source changes." },
-    { command: `akan lint ${target}`, reason: "Validate the target after generated files are refreshed." },
+    { command: `akan verify ${target}`, reason: "Refresh generated files and validate the target in one run." },
   ] satisfies PrimitiveNextAction[];
 
 export const createPrimitiveWriteReport = ({

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { tempDirs, writeText as write } from "../testHelpers";
 import { ProjectTypecheck } from "./projectTypecheck";
+import { TypecheckFailure } from "./typecheckFailure";
 
 const makeTempRoot = tempDirs("akan-devkit-project-typecheck-");
 
@@ -28,5 +29,22 @@ describe("ProjectTypecheck", () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain("lib/user/user.signal.test.ts");
     expect((error as Error).message).not.toContain("old.test.ts");
+  }, 60_000);
+
+  test("hands back one record per diagnostic when asked for records", async () => {
+    const { root, dir } = await project();
+    const error = await new ProjectTypecheck(dir, root, { ...process.env })
+      .run(["../../server.ts"], { tests: true, report: "records" })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(TypecheckFailure);
+    const [record, ...rest] = (error as TypecheckFailure).records;
+    expect(rest).toEqual([]);
+    expect(record).toMatchObject({
+      file: "libs/demo/lib/user/user.signal.test.ts",
+      line: 1,
+      col: 14,
+      code: "TS2322",
+      severity: "error",
+    });
   }, 60_000);
 });

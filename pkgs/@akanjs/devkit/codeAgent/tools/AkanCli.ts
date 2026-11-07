@@ -24,7 +24,8 @@ export class AkanCli {
       cwd: this.#cwd,
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
+      //? A workspace .env's AKAN_PUBLIC_LOG_LEVEL=verbose reaches the child too, and buried its error under 90 lines.
+      env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1", AKAN_LOG_STDOUT_LEVEL: "warn" },
     });
     const timer = setTimeout(() => proc.kill(), timeoutMs);
     const [stdout, stderr, exitCode] = await Promise.all([

@@ -95,6 +95,17 @@ export class MaintainabilityReport {
     ].join("\n");
   }
 
+  static entriesOf(sysPath: string, failures: MaintainabilityFailure[], commands: MaintainabilityCommands = {}) {
+    return failures.map((failure) => ({
+      file: `${sysPath}/${failure.file}`,
+      line: failure.line,
+      rule: failure.rule,
+      problem: MaintainabilityReport.#problemOf(failure),
+      fix: MaintainabilityReport.#fixes[MaintainabilityReport.#fixKeyOf(failure)],
+      path: commands[failure.rule]?.[0] ?? null,
+    }));
+  }
+
   static #problemOf(failure: MaintainabilityFailure) {
     if (failure.kind === "baselineGrowth") {
       const entry = `entry "${failure.key}" under ${failure.debtRule}`;

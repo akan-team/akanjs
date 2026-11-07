@@ -1,0 +1,9 @@
+---
+description: Guards and authorization on signals and srvkit: slice guard maps, endpoint guards, the acting user.
+globs: apps/**/*.signal.ts,libs/**/*.signal.ts,apps/**/srvkit/**,libs/**/srvkit/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/auth.md

@@ -79,8 +79,8 @@ export default page()
       {
         name: "akan agent install",
         desc: l.trans({
-          en: "Copies `framework`, `conventions` and `workspaceOnboarding` into the `AGENTS.md` agents read.",
-          ko: "`framework`, `conventions`, `workspaceOnboarding`을 에이전트가 읽는 `AGENTS.md`에 복사해 둡니다.",
+          en: "Writes `conventions` as the `AGENTS.md` core, the path rules and the skills, each guideline under the skill that uses it.",
+          ko: "`conventions`를 `AGENTS.md` 핵심과 경로 규칙, 스킬로 써 두고, 가이드라인은 그것을 쓰는 스킬 밑에 둡니다.",
         }),
       },
     ];
@@ -159,15 +159,8 @@ akan guideline show ssrRule`,
       {
         name: "conventions",
         desc: l.trans({
-          en: "The full convention set that `akan agent install` writes into `AGENTS.md`.",
-          ko: "`akan agent install`이 `AGENTS.md`에 써 넣는 컨벤션 전체입니다.",
-        }),
-      },
-      {
-        name: "workspaceOnboarding",
-        desc: l.trans({
-          en: "Workspace layout, the agent workflow, common commands, and where each kind of code goes.",
-          ko: "워크스페이스 구조, 에이전트 작업 흐름, 자주 쓰는 명령, 코드 종류별 위치를 담습니다.",
+          en: "The full convention set: the core `AGENTS.md` carries, then every path rule.",
+          ko: "컨벤션 전체입니다. `AGENTS.md`에 들어가는 핵심과 경로 규칙을 모두 담습니다.",
         }),
       },
       {

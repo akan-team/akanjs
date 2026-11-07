@@ -17,11 +17,13 @@ Workspace
 
 Workspace CLI
 
-These commands act on the whole workspace. Create a new one, lint or sync every app and library at once, or make a machine-token key.
+These commands act on the whole workspace. Create a new one, check what changed, lint or sync every app and library at once, or make a machine-token key.
 
 Command
 
 - create-workspace: Create a new workspace with its first app, agent rules and MCP config.
+
+- verify: Sync, lint, typecheck and build what changed in one run, printing only what failed.
 
 - lint: Format and lint one app, library or package with Biome.
 
@@ -43,7 +45,11 @@ Term
 
 Which One To Run
 
-The three upkeep commands differ in scope and in whether they lint after the sync.
+The upkeep commands differ in scope and in which checks they run.
+
+- What changed
+
+  - verify: You or an agent finished an edit. It checks what git reports as changed.
 
 - One target
 
@@ -88,6 +94,34 @@ Create a new workspace and its first app in one go. It runs these steps in order
 - framework version: There is no `--tag`. Move a workspace to another release channel with `akan update --tag <tag>`.
 
 - create-akan-workspace: `bunx create-akan-workspace` installs the matching `@akanjs/cli` globally, then runs this command.
+
+`akan verify [targets] [--files <paths>] [--lint-only] [--no-build] [--max <n>] [--format <format>]`
+
+Check a change in one run: sync, lint with fixes, typecheck, a fast build of each changed app, and the SSR check for a `.tsx` change. It prints one line when everything passes and one line per problem otherwise, so it is the one command to run after an edit.
+
+- targets (String): Apps, libraries or packages, comma-separated, checked whole. Left out, what git reports as changed.
+
+- --files (String, -F): Check these files, comma-separated, instead of the git changes.
+
+- --lint-only (Boolean, default false): Lint only, the quick pass between edits: no sync, typecheck, build or SSR check.
+
+- --build (Boolean, default true): Build each changed app once lint and typecheck pass. `--no-build` leaves it out.
+
+- --max (Number, default 20): How many problem lines to print. `0` prints every one.
+
+- --format (String, default text, text | json): `json` prints the whole result as one JSON line.
+
+- output: One `verify ok` line on a pass; on a failure, `file:line:col CODE message` per problem.
+
+- fixed N files: Lint rewrote those files on disk, so read them again before the next edit.
+
+- repeated problems: The same code and message in several places prints once, with `(×N: …)` listing where.
+
+- warnings: Print after the errors and never fail the run, the SSR check's included.
+
+- build: Skipped while lint or typecheck reports an error.
+
+- exit code: `0` passes, `1` fails, and `2` means a target is not in the workspace.
 
 `akan lint <app|lib|pkg> [--fix <boolean>] [--max-diagnostics <n>]`
 
@@ -153,6 +187,16 @@ Moves the workspace to another framework version or release channel.
 akan create-workspace acme --app shop
 akan create-workspace acme --app shop --dir projects --init false
 akan create-workspace acme --app shop --libs true
+```
+
+### verify
+
+```bash
+akan verify
+akan verify myapp
+akan verify --lint-only
+akan verify myapp,util --no-build
+akan verify --max 0
 ```
 
 ### lint

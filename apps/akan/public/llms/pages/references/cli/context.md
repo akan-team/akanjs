@@ -58,7 +58,7 @@ Starts the Akan MCP server over stdio. An MCP-aware coding agent asks it for wor
 
 - apply mode: Adds `apply_workflow`, `run_validation` and the repair tools, so it edits source.
 
-- Workflow policy: `AGENTS.md` tells agents to plan with `--mode plan`, apply with `--mode apply`, prefer workflows.
+- Workflow policy: `AGENTS.md` tells agents to prefer an Akan workflow to a hand edit, through these tools or the CLI.
 
 - Module context: `get_module_context` returns the module abstract first, then the module's file list.
 
@@ -171,6 +171,8 @@ Meaning
 - `agent-guide-stale` — warning — `AGENTS.md` was written by an older framework release than the one installed.
 
 - `agent-guide-unstamped` — warning — `AGENTS.md` carries no version stamp, so its age is unknown.
+
+- `agent-guide-oversized` — warning — `AGENTS.md` and an app's or library's guide near the 32 KiB past which Codex reads nothing.
 
 - `recipe-index-stale` — error — A recipe list in an `AGENTS.md` misses a recipe or names one that is gone.
 

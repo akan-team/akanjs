@@ -61,7 +61,7 @@ Path
 
 - akan://guidelines/<name>: An MCP client finds one resource per guideline in its resource list.
 
-- akan agent install: Copies `framework`, `conventions` and `workspaceOnboarding` into the `AGENTS.md` agents read.
+- akan agent install: Writes `conventions` as the `AGENTS.md` core, the path rules and the skills, each guideline under the skill that uses it.
 
 **AGENTS.md is a copy.** It is written when you run `akan agent install`. Every other path reads the installed CLI each time.
 
@@ -81,9 +81,7 @@ Whole Workspace
 
 - framework: The shortest overview: what apps, libs and pkgs own, and the layer order of a module.
 
-- conventions: The full convention set that `akan agent install` writes into `AGENTS.md`.
-
-- workspaceOnboarding: Workspace layout, the agent workflow, common commands, and where each kind of code goes.
+- conventions: The full convention set: the core `AGENTS.md` carries, then every path rule.
 
 - workspaceRecipes: Step-by-step recipes for frequent changes, and the API generated at each layer.
 

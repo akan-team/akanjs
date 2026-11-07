@@ -77,6 +77,8 @@ File
 
 - AGENTS.md, CLAUDE.md: Coding-agent guide; `CLAUDE.md` points to `AGENTS.md`, which `akan agent install` refreshes.
 
+- .claude/, .agents/, .cursor/: The path rules and skills `akan agent install` writes for each coding agent. Commit them.
+
 `.akan/`, `dist/` and `node_modules/` are written by the tools and gitignored, so you do not edit them by hand.
 
 Workspace Commands
@@ -154,6 +156,9 @@ The folders inside an app or library, and when code moves outward.
 ├── libs/
 │   └── shared/
 ├── pkgs/
+├── .agents/
+├── .claude/
+├── .cursor/
 ├── .env
 ├── package.json
 ├── tsconfig.json

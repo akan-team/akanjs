@@ -16,8 +16,8 @@ export default page()
     const title = lang === "ko" ? "CLI 레퍼런스: Workspace | Akan.js" : "CLI Reference: Workspace | Akan.js";
     const description =
       lang === "ko"
-        ? "워크스페이스를 만들고, 모든 앱과 라이브러리를 한 번에 린트·sync합니다."
-        : "Create a workspace, and lint or sync every app and library at once.";
+        ? "워크스페이스를 만들고, 바뀐 것을 검사하고, 모든 앱과 라이브러리를 한 번에 린트·sync합니다."
+        : "Create a workspace, check what changed, and lint or sync every app and library at once.";
     return (
       <>
         <title>{title}</title>
@@ -37,6 +37,14 @@ export default page()
         desc: l.trans({
           en: "Create a new workspace with its first app, agent rules and MCP config.",
           ko: "첫 앱, 에이전트 규칙, MCP 설정까지 갖춘 새 워크스페이스를 만듭니다.",
+        }),
+      },
+      {
+        name: "verify",
+        href: "#verify",
+        desc: l.trans({
+          en: "Sync, lint, typecheck and build what changed in one run, printing only what failed.",
+          ko: "바뀐 것을 한 번에 sync·린트·타입 검사·빌드하고, 실패한 것만 출력합니다.",
         }),
       },
       {
@@ -99,6 +107,19 @@ export default page()
 
     const upkeepGroups = [
       {
+        label: l.trans({ en: "What changed", ko: "바뀐 것" }),
+        rows: [
+          {
+            name: "verify",
+            desc: l.trans({
+              en: "You or an agent finished an edit. It checks what git reports as changed.",
+              ko: "직접, 또는 에이전트가 편집을 마쳤을 때 씁니다. git이 바뀌었다고 하는 것만 검사합니다.",
+            }),
+            marks: { sync: true, lint: true, typecheck: true, build: true },
+          },
+        ],
+      },
+      {
         label: l.trans({ en: "One target", ko: "대상 하나" }),
         rows: [
           {
@@ -151,6 +172,51 @@ export default page()
         desc: l.trans({
           en: "How many diagnostics Biome prints before it truncates. `0` removes the limit.",
           ko: "Biome이 잘라 내기 전까지 출력하는 진단 수입니다. `0`이면 제한이 없습니다.",
+        }),
+      },
+    ];
+
+    const verifyNotes: ReferenceRow[] = [
+      {
+        name: l.trans({ en: "output", ko: "출력" }),
+        desc: l.trans({
+          en: "One `verify ok` line on a pass; on a failure, `file:line:col CODE message` per problem.",
+          ko: "통과하면 `verify ok` 한 줄, 실패하면 문제마다 `file:line:col CODE message` 한 줄입니다.",
+        }),
+      },
+      {
+        name: "fixed N files",
+        desc: l.trans({
+          en: "Lint rewrote those files on disk, so read them again before the next edit.",
+          ko: "린트가 그 파일들을 디스크에서 고쳤다는 뜻입니다. 다음 편집 전에 다시 읽으세요.",
+        }),
+      },
+      {
+        name: l.trans({ en: "repeated problems", ko: "반복된 문제" }),
+        desc: l.trans({
+          en: "The same code and message in several places prints once, with `(×N: …)` listing where.",
+          ko: "같은 코드와 메시지가 여러 곳에 있으면 한 줄로 묶고, `(×N: …)`에 위치를 적습니다.",
+        }),
+      },
+      {
+        name: l.trans({ en: "warnings", ko: "경고" }),
+        desc: l.trans({
+          en: "Print after the errors and never fail the run, the SSR check's included.",
+          ko: "오류 뒤에 출력하며 실행을 실패시키지 않습니다. SSR 검사의 경고도 같습니다.",
+        }),
+      },
+      {
+        name: l.trans({ en: "build", ko: "빌드" }),
+        desc: l.trans({
+          en: "Skipped while lint or typecheck reports an error.",
+          ko: "린트나 타입 검사에 오류가 있으면 건너뜁니다.",
+        }),
+      },
+      {
+        name: l.trans({ en: "exit code", ko: "종료 코드" }),
+        desc: l.trans({
+          en: "`0` passes, `1` fails, and `2` means a target is not in the workspace.",
+          ko: "`0`은 통과, `1`은 실패, `2`는 워크스페이스에 없는 대상을 지정했다는 뜻입니다.",
         }),
       },
     ];
@@ -338,6 +404,78 @@ akan create-workspace acme --app shop --dir projects --init false
 akan create-workspace acme --app shop --libs true`,
       },
       {
+        name: "verify",
+        signature: "akan verify [targets] [--files <paths>] [--lint-only] [--no-build] [--max <n>] [--format <format>]",
+        desc: l.trans({
+          en: "Check a change in one run: sync, lint with fixes, typecheck, a fast build of each changed app, and the SSR check for a `.tsx` change. It prints one line when everything passes and one line per problem otherwise, so it is the one command to run after an edit.",
+          ko: "변경을 한 번에 검사합니다. sync, 고치기까지 하는 린트, 타입 검사, 바뀐 앱의 빠른 빌드, `.tsx`를 바꿨다면 SSR 검사까지 합니다. 모두 통과하면 한 줄, 아니면 문제마다 한 줄만 출력하므로 편집 뒤에는 이 명령 하나만 실행하면 됩니다.",
+        }),
+        args: [
+          {
+            name: "targets",
+            type: "String",
+            desc: l.trans({
+              en: "Apps, libraries or packages, comma-separated, checked whole. Left out, what git reports as changed.",
+              ko: "통째로 검사할 앱, 라이브러리, 패키지를 쉼표로 나열합니다. 생략하면 git이 바뀌었다고 하는 것을 검사합니다.",
+            }),
+          },
+        ],
+        options: [
+          {
+            name: "--files",
+            type: "String",
+            enumOrFlag: "-F",
+            desc: l.trans({
+              en: "Check these files, comma-separated, instead of the git changes.",
+              ko: "git 변경분 대신 쉼표로 나열한 이 파일들을 검사합니다.",
+            }),
+          },
+          {
+            name: "--lint-only",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "Lint only, the quick pass between edits: no sync, typecheck, build or SSR check.",
+              ko: "린트만 하는, 편집 사이의 빠른 검사입니다. sync, 타입 검사, 빌드, SSR 검사를 건너뜁니다.",
+            }),
+          },
+          {
+            name: "--build",
+            type: "Boolean",
+            defaultValue: "true",
+            desc: l.trans({
+              en: "Build each changed app once lint and typecheck pass. `--no-build` leaves it out.",
+              ko: "린트와 타입 검사를 통과하면 바뀐 앱을 빌드합니다. `--no-build`면 빌드를 뺍니다.",
+            }),
+          },
+          {
+            name: "--max",
+            type: "Number",
+            defaultValue: "20",
+            desc: l.trans({
+              en: "How many problem lines to print. `0` prints every one.",
+              ko: "출력할 문제 줄 수입니다. `0`이면 전부 출력합니다.",
+            }),
+          },
+          {
+            name: "--format",
+            type: "String",
+            defaultValue: "text",
+            enumOrFlag: "text | json",
+            desc: l.trans({
+              en: "`json` prints the whole result as one JSON line.",
+              ko: "`json`이면 전체 결과를 JSON 한 줄로 출력합니다.",
+            }),
+          },
+        ],
+        notes: verifyNotes,
+        examples: `akan verify
+akan verify myapp
+akan verify --lint-only
+akan verify myapp,util --no-build
+akan verify --max 0`,
+      },
+      {
         name: "lint",
         signature: "akan lint <app|lib|pkg> [--fix <boolean>] [--max-diagnostics <n>]",
         desc: l.trans({
@@ -433,8 +571,8 @@ akan lint-all --max-diagnostics 0`,
           <Docs.Description>
             <div>
               {l.trans({
-                en: "These commands act on the whole workspace. Create a new one, lint or sync every app and library at once, or make a machine-token key.",
-                ko: "워크스페이스 전체를 다루는 명령입니다. 새 워크스페이스를 만들고, 모든 앱과 라이브러리를 한 번에 린트·sync하거나, machine token 키를 만듭니다.",
+                en: "These commands act on the whole workspace. Create a new one, check what changed, lint or sync every app and library at once, or make a machine-token key.",
+                ko: "워크스페이스 전체를 다루는 명령입니다. 새 워크스페이스를 만들고, 바뀐 것을 검사하고, 모든 앱과 라이브러리를 한 번에 린트·sync하거나, machine token 키를 만듭니다.",
               })}
             </div>
             <Docs.IntroTable type={l.trans({ en: "Command", ko: "명령" })} items={catalogue} />
@@ -445,8 +583,8 @@ akan lint-all --max-diagnostics 0`,
             <Docs.SubSubTitle>{l.trans({ en: "Which One To Run", ko: "어떤 명령을 쓸까" })}</Docs.SubSubTitle>
             <div>
               {l.trans({
-                en: "The three upkeep commands differ in scope and in whether they lint after the sync.",
-                ko: "관리용 명령 세 개는 다루는 범위와, sync 뒤에 린트까지 하는지가 다릅니다.",
+                en: "The upkeep commands differ in scope and in which checks they run.",
+                ko: "관리용 명령은 다루는 범위와 실행하는 검사가 다릅니다.",
               })}
             </div>
             <Docs.Matrix
@@ -454,6 +592,8 @@ akan lint-all --max-diagnostics 0`,
               columns={[
                 { key: "sync", label: "sync", code: true },
                 { key: "lint", label: "lint", code: true },
+                { key: "typecheck", label: "typecheck", code: true },
+                { key: "build", label: "build", code: true },
               ]}
               groups={upkeepGroups}
               markLabel={l.trans({ en: "Runs it", ko: "실행함" })}

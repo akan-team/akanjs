@@ -1,0 +1,9 @@
+---
+description: Domain modules under lib/: what each module file owns, and the modeling gotchas.
+globs: apps/**/lib/**,libs/**/lib/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/module.md

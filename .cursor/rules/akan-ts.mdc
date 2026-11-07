@@ -1,0 +1,9 @@
+---
+description: TypeScript house style: classes, naming, file size, type shape, imports, comments.
+globs: apps/**/*.ts,apps/**/*.tsx,libs/**/*.ts,libs/**/*.tsx
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/ts.md

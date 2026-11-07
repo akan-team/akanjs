@@ -1917,61 +1917,61 @@ Agent
 
 Agent CLI
 
-`akan agent install` writes the rule files a coding agent reads before it touches your code: one `AGENTS.md` for every agent, plus pointers for Claude Code and Cursor. A convention is written once, and every agent reads the same copy.
+`akan agent install` writes the rule files a coding agent reads before it touches your code: a short `AGENTS.md` for every agent, path rules and skills it loads when a task needs them, and pointers for Claude Code and Cursor. A convention is written once, and every agent reads the same copy.
 
 Words Used on This Page
 
 Term
 
-- agent guide: The workspace's `AGENTS.md`, the one file holding the conventions every coding agent follows.
+- agent guide: The workspace's `AGENTS.md`: the short core every coding agent reads first.
+
+- path rule: One area's full contract, such as `page/**`, loaded when a matching file is touched.
+
+- skill: A procedure and its full guidelines, which an agent loads only when a task needs it.
 
 - pointer: A short file that only tells one tool to read `AGENTS.md`, such as `CLAUDE.md`.
 
 - managed block: The part of `AGENTS.md` between the `akan:agent` markers. The command rewrites only this part.
 
+- generated marker: `<!-- akan:generated -->` in a rule or skill file. Delete it to make the file yours.
+
 - scoped guide: `apps/<app>/AGENTS.md` or `libs/<lib>/AGENTS.md`: the UI recipes that scope can import.
 
 What Each Target Writes
 
-Name a target, or leave it out to write all three. The guide is refreshed in place; a pointer is written whole.
+Name a target, or leave it out to write everything but the hooks. The guide is refreshed in place; the other files are written whole.
 
 Target
 
-App/lib guides
+Guide
+
+Rules
+
+Skills
+
+Pointer
+
+Hooks
 
 - Guide · only the block is rewritten, so `--force` is never needed
 
-  - agents-md: Rebuilds the managed block, then writes every app and library guide.
+  - agents-md: Rebuilds the block and the rules and skills it lists, then every app and library guide.
 
-- Pointers · written whole, so an existing file needs `--force`
+- Generated files · rewritten while they carry the marker
+
+  - rules: Path rules for Claude Code, each with a Cursor rule pointing at it.
+
+  - skills: Skills for Claude Code, and the same skills for Codex and other agents.
+
+- Pointers · an existing one is kept unless you pass `--force`
 
   - claude: Claude Code imports the guide through `@AGENTS.md`.
 
   - cursor: An always-on Cursor rule that points at the guide.
 
-- Default
+- Opt-in · never part of `all`
 
-  - all: All three, in the order `cursor`, `agents-md`, `claude`.
-
-Writes
-
-Does not
-
-**`--force` replaces `CLAUDE.md` and the Cursor rule whole.** Anything you added there is lost, so keep your own instructions in `AGENTS.md`, outside the `akan:agent` markers.
-
-When to Run It
-
-**A new workspace already has them.** `create-workspace` runs `akan agent install all --force` unless you pass `--agent-install false`.
-
-**After upgrading Akan.** `bun update` leaves the guide as it was, so run `akan agent install agents-md`. A bare `akan agent install` stops at the existing Cursor rule and writes nothing.
-
-**When `akan doctor` warns.** `agent-guide-stale` means a release other than the installed one wrote the guide, and `agent-guide-unstamped` means it has no version stamp. `akan agent install agents-md` fixes both.
-
-**To add one pointer.** Pass `claude` or `cursor` as the target. Codex and other agents that read `AGENTS.md` by themselves need none.
-
-What the Guide Holds
-
-The managed block is rebuilt from the installed Akan release and your workspace. Top to bottom, it holds:
+  - hooks: Claude Code hooks that check every edit, merged into `.claude/settings.json`.
 
 ## Application
 
@@ -2238,7 +2238,7 @@ Starts the Akan MCP server over stdio. An MCP-aware coding agent asks it for wor
 
 - apply mode: Adds `apply_workflow`, `run_validation` and the repair tools, so it edits source.
 
-- Workflow policy: `AGENTS.md` tells agents to plan with `--mode plan`, apply with `--mode apply`, prefer workflows.
+- Workflow policy: `AGENTS.md` tells agents to prefer an Akan workflow to a hand edit, through these tools or the CLI.
 
 - Module context: `get_module_context` returns the module abstract first, then the module's file list.
 
@@ -2312,7 +2312,7 @@ Path
 
 - akan://guidelines/<name>: An MCP client finds one resource per guideline in its resource list.
 
-- akan agent install: Copies `framework`, `conventions` and `workspaceOnboarding` into the `AGENTS.md` agents read.
+- akan agent install: Writes `conventions` as the `AGENTS.md` core, the path rules and the skills, each guideline under the skill that uses it.
 
 **AGENTS.md is a copy.** It is written when you run `akan agent install`. Every other path reads the installed CLI each time.
 
@@ -3107,11 +3107,13 @@ Workspace
 
 Workspace CLI
 
-These commands act on the whole workspace. Create a new one, lint or sync every app and library at once, or make a machine-token key.
+These commands act on the whole workspace. Create a new one, check what changed, lint or sync every app and library at once, or make a machine-token key.
 
 Command
 
 - create-workspace: Create a new workspace with its first app, agent rules and MCP config.
+
+- verify: Sync, lint, typecheck and build what changed in one run, printing only what failed.
 
 - lint: Format and lint one app, library or package with Biome.
 
@@ -3133,7 +3135,11 @@ Term
 
 Which One To Run
 
-The three upkeep commands differ in scope and in whether they lint after the sync.
+The upkeep commands differ in scope and in which checks they run.
+
+- What changed
+
+  - verify: You or an agent finished an edit. It checks what git reports as changed.
 
 - One target
 
@@ -3156,12 +3162,6 @@ Create a new workspace and its first app in one go. It runs these steps in order
 - workspaceName (String, required): Organization or workspace name, lowercased with spaces as hyphens. Asked for when omitted.
 
 - --app (String, required): Name of the first app, lowercased with spaces as hyphens. Asked for when omitted.
-
-- --dir (String, default .): Parent folder, relative to where you run it unless absolute. Defaults to `local` if `USE_AKANJS_PKGS=true`.
-
-- --libs (Boolean, default false): Also install `shared` and `util`. Leave it off, as recommended, to start from an empty workspace.
-
-- --init (Boolean, default true): Run `bun install` once the files are written.
 
 ## Assets (public/ private/)
 

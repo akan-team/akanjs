@@ -1,6 +1,7 @@
 import fsPromise from "node:fs/promises";
 import { input, select } from "@inquirer/prompts";
 
+import { ConventionSet } from "./conventionSet";
 import { getDirname } from "./fileSys";
 
 interface FileUpdateRequestProps {
@@ -40,7 +41,13 @@ export class Prompter {
     if (!guideNames.includes(guideName))
       throw new Error(`Unknown guideline "${guideName}". Available: ${guideNames.join(", ")}`);
     const guidelineRoot = await Prompter.#getGuidelineRoot();
+    const composed = `${guidelineRoot}/${guideName}/core.md`;
+    if (await Bun.file(composed).exists())
+      return (await ConventionSet.load(`${guidelineRoot}/${guideName}`)).instruction;
     return await fsPromise.readFile(`${guidelineRoot}/${guideName}/${guideName}.instruction.md`, "utf-8");
+  }
+  static async getConventionSet() {
+    return await ConventionSet.load(`${await Prompter.#getGuidelineRoot()}/conventions`);
   }
   static async getUpdateRequest(guideName: string) {
     return await input({

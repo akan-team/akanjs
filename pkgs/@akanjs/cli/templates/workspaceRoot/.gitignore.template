@@ -18,6 +18,9 @@ apps/*/scripts
 **/secrets.*
 dump
 local
+.claude/worktrees/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Xcode
 build/

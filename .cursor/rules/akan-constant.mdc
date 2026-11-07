@@ -1,0 +1,9 @@
+---
+description: Model and scalar shapes in *.constant.ts: the five layers, scalars, defaults and field kinds.
+globs: apps/**/*.constant.ts,libs/**/*.constant.ts
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/constant.md

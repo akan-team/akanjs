@@ -1,0 +1,9 @@
+---
+description: Secret and env files: never print, commit or summarise their values.
+globs: **/.env*,**/*secret*,**/*credential*,infra/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/sensitive.md

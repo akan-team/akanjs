@@ -1,0 +1,9 @@
+---
+description: Runtime and build configuration: akan.config.ts, main.ts, env narrowing, native apps, database modes.
+globs: apps/*/akan.config.ts,libs/*/akan.config.ts,apps/*/main.ts,libs/*/main.ts,apps/*/env/**,libs/*/env/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/config.md

@@ -18,6 +18,7 @@ export const commandModules = {
   scalar: async () => (await import("./scalar/scalar.command")).ScalarCommand,
   primitive: async () => (await import("./primitive/primitive.command")).PrimitiveCommand,
   quality: async () => (await import("./quality/quality.command")).QualityCommand,
+  verify: async () => (await import("./verify/verify.command")).VerifyCommand,
   repair: async () => (await import("./repair/repair.command")).RepairCommand,
   workflow: async () => (await import("./workflow/workflow.command")).WorkflowCommand,
   pipeline: async () => (await import("./pipeline/pipeline.command")).PipelineCommand,

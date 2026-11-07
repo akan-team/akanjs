@@ -49,9 +49,6 @@ export const addEnumFieldWorkflowSpec: WorkflowSpec = {
     { target: "*/lib/<module>/<module>.dictionary.ts", action: "modify", reason: "Enum labels are added." },
     { target: "*/lib/<module>/<module>.option.ts", action: "modify", reason: "Enum options may be added." },
   ],
-  validation: [
-    ...baseValidation,
-    { command: "akan typecheck <app-name>", reason: "Validate enum usage across module surfaces.", kind: "typecheck" },
-  ],
+  validation: baseValidation,
   completionCriteria: ["Enum values are represented.", "Labels and options exist.", "Sync, lint, and typecheck pass."],
 };

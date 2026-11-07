@@ -138,14 +138,7 @@ export const addMutationWorkflowSpec: WorkflowSpec = {
     { target: "*/lib/srv.ts", action: "sync", reason: "Generated service barrel may change after sync." },
     { target: "*/lib/sig.ts", action: "sync", reason: "Generated signal barrel may change after sync." },
   ],
-  validation: [
-    ...baseValidation,
-    {
-      command: "akan typecheck <app-name>",
-      reason: "Validate the mutation across document, service, signal, and store.",
-      kind: "typecheck",
-    },
-  ],
+  validation: baseValidation,
   completionCriteria: [
     "The chain method validates and mutates, and its transition comment names the real states.",
     "Every write that must land together runs in the one service method; no store action sends a second mutation.",

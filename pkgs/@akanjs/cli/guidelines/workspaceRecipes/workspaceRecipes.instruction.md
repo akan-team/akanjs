@@ -1,7 +1,7 @@
 # Workspace Recipes — Worked Examples And The Auto-Generated API
 
 Step-by-step recipes for the most frequent Akan.js changes, and the reference of what `akan sync` generates for
-you at each layer. `workspaceOnboarding` carries the index and the rules; this is the worked code behind them.
+you at each layer. The `conventions` guideline carries the rules; this is the worked code behind them.
 Read the whole recipe before editing, and change only the sections it names — do not rewrite a file.
 
 ## Workflow Recipes
@@ -394,7 +394,7 @@ export const Insight = ({ sliceName }: { sliceName: string }) => {
 A route file used to be a default function beside named exports (`pageConfig`, `head`, `generateHead`, `Loading`,
 `fonts`, …). It is now one chain, and the chain is also what publishes a screen to agents. The legacy shape still
 loads and logs one warning per file at boot (`… uses the legacy route shape …`); migrate file by file, then run
-`bun run akan typecheck <app>` and `bun run akan lint <app>`.
+`bun run akan verify <app>`.
 
 ```tsx
 // before — page/(user)/project/[projectId]/_index.tsx
@@ -514,7 +514,7 @@ surface (`akan context`, the MCP tools, `akan guideline show`) is what feeds a c
 
 `~/.akan/config.json` keeps an `llm` entry if it had one. It is ignored; delete it, because it holds an API key.
 
-Then: `bun run akan typecheck <app>`, `bun run akan lint <app>`, and one agent turn in the browser to confirm the
+Then: `bun run akan verify <app>` and one agent turn in the browser to confirm the
 provider answers.
 
 ### Data Flow Summary

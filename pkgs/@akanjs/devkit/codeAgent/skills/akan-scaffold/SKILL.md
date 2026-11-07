@@ -43,8 +43,8 @@ Each result names the next call in `next.tool`. Follow it; do not improvise.
    and each workflow's inputs.)
 2. `apply_workflow({ planPath })` — writes the scaffold and syncs the generated barrels. Returns
    `validationTarget`.
-3. `run_validation({ runIdOrPlan: <validationTarget> })`, or just call `akan_verify`, which runs the whole
-   chain over everything the working tree changed.
+3. `run_validation({ runIdOrPlan: <validationTarget> })`, or run `akan verify` (`akan_verify` in akan code);
+   both are the whole chain in one process.
 4. **Read each scaffolded file before editing it.** They are a few lines each and they extend base classes
    that already generated the CRUD surface. Read the `akan-store` skill before touching a store or adding
    signal endpoints, or you will redeclare `create<Model>` and hit an "already exists" typecheck error.
@@ -60,9 +60,19 @@ Each result names the next call in `next.tool`. Follow it; do not improvise.
 - Hand-writing files is the fallback, used only when no workflow matches, or when apply reports
   unsupported / no-op / failed diagnostics telling you to act manually. Say which case applied.
 - Never hand-edit a generated file to "finish" a scaffold — use `repair_generated` or `akan sync <app>`.
-- No workflow tools this turn? The same order through bash:
-  `akan workflow list` → `akan workflow plan create-module --app <app> --module comment --format json --out <path>`
-  → `akan workflow apply <path> --format json`.
+
+## No workflow tools? The CLI is the same chain
+
+The tools come from `akan mcp` (`--mode plan` reads, `--mode apply` writes). When they are not connected, each
+has a command that prints the same report:
+
+| tool | command |
+| --- | --- |
+| `list_workflows` / `explain_workflow` | `akan workflow list` / `akan workflow explain <name>` |
+| `plan_workflow` | `akan workflow plan create-module --app <app> --module comment --format json --out <path>` |
+| `apply_workflow` | `akan workflow apply <path> --format json` (`--dry-run` previews) |
+| `run_validation` | `akan verify <app>` |
+| `repair_generated` / `repair_imports` / `repair_module_shape` | `akan repair generated\|imports\|module-shape --app <app>` |
 
 ## Worked example — "an intro page, two detail pages, and a comment zone with a database"
 
@@ -73,4 +83,4 @@ Each result names the next call in `next.tool`. Follow it; do not improvise.
    leave the store body empty unless you need extra state.
 4. Write the pages and the comment UI against the generated actions — `st.do.createComment`,
    `st.do.initCommentInPublic`, `st.use.commentListInPublic`.
-5. `akan_verify` until clean.
+5. `akan verify` until it prints `verify ok`.

@@ -280,6 +280,7 @@ const generatedFiles = [
 ];
 
 const validationCommands = [
+  "akan verify [<app-or-lib-or-pkg>]",
   "akan sync <app-or-lib>",
   "akan lint <app-or-lib-or-pkg>",
   "akan typecheck <app-or-lib>",
@@ -294,7 +295,7 @@ const unknownGeneratedFilesFreshness: GeneratedFilesFreshness = {
   status: "unknown" as const,
   message: "Run sync before validation so generated Akan files match the current source conventions.",
   refreshCommand: "akan sync <app-or-lib>",
-  verifyingCommands: ["akan lint <app-or-lib-or-pkg>", "akan build <app-name>"],
+  verifyingCommands: ["akan verify <app-or-lib>"],
 };
 
 const repairAction = (
@@ -454,7 +455,7 @@ const generatedFreshnessFromStates = async (workspace: WorkspaceExecutor): Promi
       ? `Generated files were refreshed for ${lastFresh.target} at ${lastFresh.lastSyncedAt}.`
       : "Generated sync state exists, but the last recorded repair did not pass.",
     refreshCommand: "akan sync <app-or-lib>",
-    verifyingCommands: ["akan lint <app-or-lib-or-pkg>", "akan build <app-name>"],
+    verifyingCommands: ["akan verify <app-or-lib>"],
     targets,
   };
 };
@@ -632,6 +633,22 @@ export class AkanContextAnalyzer {
     };
   }
 
+  //? Codex joins every AGENTS.md from the repo root down to its folder and drops what passes 32 KiB (`project_doc_max_bytes`).
+  static async #agentGuideOversize(workspace: WorkspaceExecutor, sysPaths: string[]) {
+    const sizeOf = async (file: string) => {
+      const content = await safeReadText(path.join(workspace.workspaceRoot, file));
+      return { file, bytes: content === null ? 0 : Buffer.byteLength(content) };
+    };
+    const root = await sizeOf("AGENTS.md");
+    if (root.bytes === 0) return null;
+    const scoped = await Promise.all(sysPaths.map((sysPath) => sizeOf(`${sysPath}/AGENTS.md`)));
+    const largest = scoped.reduce((max, entry) => (entry.bytes > max.bytes ? entry : max), { file: "", bytes: 0 });
+    const total = root.bytes + largest.bytes;
+    if (total <= 32 * 1024 * 0.8) return null;
+    const subject = largest.bytes ? `AGENTS.md and ${largest.file} add up to` : "AGENTS.md is";
+    return `${subject} ${Math.ceil(total / 1024)} KiB of the 32 KiB Codex reads — run \`akan agent install\`, then shorten the text outside the akan:agent markers or move it into a skill.`;
+  }
+
   //? Older templates wrote these for Next.js: nothing installs or reads them, and editors warn about the plugin.
   static async #configLeftovers(workspace: WorkspaceExecutor, sysPaths: string[]) {
     const leftovers: { path: string; message: string }[] = [];
@@ -724,6 +741,9 @@ export class AkanContextAnalyzer {
         repairAction("generated", "akan agent install agents-md", agentDrift.hint, true),
       );
     const sysPaths = [...context.apps, ...context.libs].map((sys) => sys.path);
+    const oversize = await AkanContextAnalyzer.#agentGuideOversize(workspace, sysPaths);
+    if (oversize)
+      diagnostics.push({ severity: "warning", code: "agent-guide-oversized", path: "AGENTS.md", message: oversize });
     for (const leftover of await AkanContextAnalyzer.#configLeftovers(workspace, sysPaths))
       diagnostics.push({ severity: "warning", code: "config-leftover", ...leftover });
 

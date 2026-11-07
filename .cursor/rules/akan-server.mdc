@@ -1,0 +1,9 @@
+---
+description: Services, signals, documents and srvkit adapters: calls, queries, injection and where errors are thrown.
+globs: apps/**/*.service.ts,apps/**/*.signal.ts,apps/**/*.document.ts,libs/**/*.service.ts,libs/**/*.signal.ts,libs/**/*.document.ts,apps/**/srvkit/**,libs/**/srvkit/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/server.md
