@@ -17,6 +17,7 @@ Domain code reaches none of them.
 | The production image | `docker: string \| { image, preRuns, postRuns, command }` |
 | iOS, Android, desktop | the `native` section; `desktop: { server: true }` carries the server |
 | SQLite, several databases, a cluster | `database: { modes: [...] }`, picked by `AKAN_DATABASE_MODE` |
+| URLs without `/<locale>/`: one language, or paths fixed from outside (OAuth callback, QR code, mail link) | `i18n: { localePrefix: "as-needed" }` — the default locale's pages and `<Link>` hrefs drop the prefix, other locales keep it |
 
 - `main.ts` imports `AkanApp` from `akanjs/server/akanApp`, never the barrel.
 - Never write `/api` or `/ws` literally, and never pass a prefix as a prop.
