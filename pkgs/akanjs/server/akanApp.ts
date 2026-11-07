@@ -1,4 +1,6 @@
 // styleguard-disable inline-color — the standalone status page renders before any theme CSS exists.
+//? First: the modules below may read the env as they load, so the build's defaults must be in it by then.
+import "./lifecycle/loadBuildEnv";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { Logger } from "akanjs/common";
