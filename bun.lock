@@ -176,6 +176,7 @@
       "name": "@akanjs/devkit",
       "version": "3.1.1",
       "dependencies": {
+        "@akanjs/language": "3.1.0",
         "@earendil-works/pi-agent-core": "1.3.0",
         "@earendil-works/pi-ai": "1.3.0",
         "@earendil-works/pi-codemode": "1.3.0",
@@ -206,6 +207,16 @@
         "react",
       ],
     },
+    "pkgs/@akanjs/language": {
+      "name": "@akanjs/language",
+      "version": "3.1.0",
+      "peerDependencies": {
+        "typescript": ">=5.0.0",
+      },
+      "optionalPeers": [
+        "typescript",
+      ],
+    },
     "pkgs/@akanjs/native": {
       "name": "@akanjs/native",
       "version": "0.1.0",
@@ -219,6 +230,16 @@
       },
       "peerDependencies": {
         "react": ">=19",
+      },
+    },
+    "pkgs/@akanjs/vscode": {
+      "name": "@akanjs/vscode",
+      "version": "0.1.0",
+      "dependencies": {
+        "@akanjs/language": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/vscode": "1.100.0",
       },
     },
     "pkgs/akanjs": {
@@ -321,7 +342,11 @@
 
     "@akanjs/devkit": ["@akanjs/devkit@workspace:pkgs/@akanjs/devkit"],
 
+    "@akanjs/language": ["@akanjs/language@workspace:pkgs/@akanjs/language"],
+
     "@akanjs/native": ["@akanjs/native@workspace:pkgs/@akanjs/native"],
+
+    "@akanjs/vscode": ["@akanjs/vscode@workspace:pkgs/@akanjs/vscode"],
 
     "@alcalzone/ansi-tokenize": ["@alcalzone/ansi-tokenize@0.2.5", "", { "dependencies": { "ansi-styles": "^6.2.1", "is-fullwidth-code-point": "^5.0.0" } }, "sha512-3NX/MpTdroi0aKz134A6RC2Gb2iXVECN4QaAXnvCIxxIm3C3AVB1mkUe8NaaiyvOpDfsrqWhYtj+Q6a62RrTsw=="],
 
@@ -1152,6 +1177,8 @@
     "@types/trusted-types": ["@types/trusted-types@2.0.7", "", {}, "sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw=="],
 
     "@types/unist": ["@types/unist@3.0.3", "", {}, "sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q=="],
+
+    "@types/vscode": ["@types/vscode@1.100.0", "", {}, "sha512-4uNyvzHoraXEeCamR3+fzcBlh7Afs4Ifjs4epINyUX/jvdk0uzLnwiDY35UKDKnkCHP5Nu3dljl2H8lR6s+rQw=="],
 
     "@types/webxr": ["@types/webxr@0.5.24", "", {}, "sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg=="],
 

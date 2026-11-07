@@ -57,7 +57,9 @@
       "@akanjs/cli": ["./pkgs/@akanjs/cli/index.ts"],
       "@akanjs/cli/*": ["./pkgs/@akanjs/cli/*"],
       "@akanjs/devkit": ["./pkgs/@akanjs/devkit/index.ts"],
-      "@akanjs/devkit/*": ["./pkgs/@akanjs/devkit/*"]
+      "@akanjs/devkit/*": ["./pkgs/@akanjs/devkit/*"],
+      "@akanjs/language": ["./pkgs/@akanjs/language/index.ts"],
+      "@akanjs/language/*": ["./pkgs/@akanjs/language/*"]
     }
   }
 }

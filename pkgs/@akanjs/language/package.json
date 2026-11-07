@@ -1,0 +1,37 @@
+{
+  "name": "@akanjs/language",
+  "version": "3.1.0",
+  "description": "Editor-independent Akan.js language core: resolves derived names (slices, queries, CRUD, form setters) back to the source key that produced them.",
+  "sourceType": "module",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://akanjs.com",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/@akanjs/language"
+  },
+  "exports": {
+    ".": {
+      "import": "./index.ts",
+      "types": "./index.ts",
+      "default": "./index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "akanjs": "3.1.0"
+  },
+  "devDependencies": {}
+}

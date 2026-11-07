@@ -77,7 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [akanjs, "@akanjs/devkit", "@akanjs/cli", "@akanjs/native", create-akan-workspace, use-agentic]
+        package: [akanjs, "@akanjs/devkit", "@akanjs/cli", "@akanjs/native", "@akanjs/language", create-akan-workspace, use-agentic]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup

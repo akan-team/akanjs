@@ -10,7 +10,7 @@ import path from "node:path";
  */
 class PackedConsumer {
   static readonly #root = path.resolve(import.meta.dir, "../..");
-  static readonly #packages = ["akanjs", "@akanjs/devkit"] as const;
+  static readonly #packages = ["akanjs", "@akanjs/devkit", "@akanjs/language"] as const;
   //? devkit ships its source, so the consumer's tsc checks every devkit file these facets reach.
   static readonly #imports = ["@akanjs/devkit/akanConfig", "@akanjs/devkit/mobile", "@akanjs/devkit/pipeline"] as const;
 
