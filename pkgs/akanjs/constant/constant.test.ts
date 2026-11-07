@@ -512,6 +512,30 @@ describe("serialize, deserialize, purify, and immerify", () => {
     expect(() => serializeFields({ name: "a", payload: 1, count: 1.5 })).toThrow("Invalid Int value: 1.5");
   });
 
+  test("answers a blank-default String as the empty string it holds, and still drops one an input leaves blank", () => {
+    const BlankTarget = via((f) => ({ ref: f(String, { default: "" }), note: f(String).optional() }));
+    ConstantRegistry.buildScalar("constantTestBlankTarget", BlankTarget, { BlankTarget });
+    const BlankHolder = via((f) => ({ name: f(String, { default: "" }), target: f(BlankTarget) }));
+    ConstantRegistry.buildScalar("constantTestBlankHolder", BlankHolder, { BlankHolder });
+    const roundTrip = (value: object) =>
+      deserialize(BlankHolder, 0, JSON.parse(JSON.stringify(serialize(BlankHolder, 0, value, "object", {}))), {});
+
+    expect(roundTrip({ name: "", target: { ref: "", note: "" } })).toEqual({
+      name: "",
+      target: { ref: "", note: "" },
+    } as never);
+    expect(roundTrip({ name: "", target: { ref: null, note: undefined } })).toEqual({
+      name: "",
+      target: { ref: null, note: null },
+    } as never);
+    expect(JSON.parse(JSON.stringify(serialize(String, 0, "", "object", { nullable: true })))).toBe("");
+    expect(serialize(BlankHolder, 0, { name: "", target: { ref: "", note: "" } }, "input", {})).toEqual({
+      name: undefined,
+      target: { ref: undefined, note: undefined },
+    } as never);
+    expect(serialize(String, 0, "", "input", { nullable: true })).toBeUndefined();
+  });
+
   test("refuses a value outside its enum wherever the enum was declared", () => {
     // `enumOf` erases to `String` in every argRef and modelRef, so without this the parser passed any string.
     expect(deserialize(String, 0, "admin", { enum: RoleKind as EnumInstance })).toBe("admin" as never);

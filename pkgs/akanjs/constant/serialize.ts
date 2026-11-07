@@ -28,6 +28,9 @@ const getSerializeFn = (inputRef: Cls, { optional = false }: { optional?: boolea
   PrimitiveRegistry.has(inputRef)
     ? (value: unknown) => (inputRef as typeof PrimitiveScalar)._serialize(value as never, { optional })
     : (value: unknown) => value as object;
+//? An input's "" means "not given", but an answer's is the stored value, and a `default: ""` field is nullable too.
+const keepsBlank = (primitive: unknown, value: unknown, serializeType: "input" | "object") =>
+  serializeType === "object" && value === "" && primitive === String;
 const optionalSerialize = { optional: true } as const;
 const requiredSerialize = { optional: false } as const;
 const serializeInput = <Input = unknown>(
@@ -49,6 +52,7 @@ const serializeInput = <Input = unknown>(
       ]),
     ) as unknown as Input;
   } else if (PrimitiveRegistry.has(inputRef as Cls)) {
+    if (keepsBlank(inputRef, value, serializeType)) return value;
     return (inputRef as typeof PrimitiveScalar)._serialize(
       value as never,
       optional ? optionalSerialize : requiredSerialize,
@@ -60,7 +64,7 @@ const serializeInput = <Input = unknown>(
       const fieldValue = (value as Record<string, unknown> | null | undefined)?.[key];
       serialized[key] =
         primitive && !field.arrDepth
-          ? serializePrimitive(primitive, fieldValue, serializeOption)
+          ? serializePrimitive(primitive, fieldValue, serializeOption, serializeType)
           : serializeType === "input" && isRelationRef
             ? serialize(ID, field.arrDepth, getRelationId(fieldValue), serializeType, serializeOption)
             : serialize(field.modelRef, field.arrDepth, fieldValue, serializeType, serializeOption);
@@ -93,11 +97,13 @@ const serializePrimitive = (
   primitive: typeof PrimitiveScalar,
   value: unknown,
   { nullable, key }: { nullable: boolean; key: string },
+  serializeType: "input" | "object",
 ) => {
   if (value === null || value === undefined) {
     if (nullable) return null;
     if ((primitive as unknown) !== Any) throw missingValueError(primitive, value, key);
   }
+  if (keepsBlank(primitive, value, serializeType)) return value;
   return primitive._serialize(value as never, nullable ? optionalSerialize : requiredSerialize);
 };
 const missingValueError = (argRef: unknown, value: unknown, key?: string) =>
