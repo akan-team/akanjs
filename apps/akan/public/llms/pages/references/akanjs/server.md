@@ -262,6 +262,8 @@ Method
 
 - setLlm(option | fn): The model the agent relay talks to: `apiKey`, `model`, `host` and more.
 
+- transformEnv(fn): Rewrites the server env once, before any option, lib or `env(...)` injection reads it. `fn` gets a copy and returns the env to use; code that imports the env file itself still reads the original.
+
 - setCrossSite(option): Extra origins a browser may send mutations and open the websocket from. `{ enabled: false }` turns the check off.
 
 A typical app option:
@@ -291,6 +293,8 @@ When several libs set it
 - setAgentAccess, setAgentRequestPolicy: The last call wins; `null` clears what a lib set.
 
 - setCrossSite: The last call wins.
+
+- transformEnv: All run, the libs' in mount order and the app's last; each gets what the one before returned.
 
 **Without `setAgentAccess`, the agent chat refuses every call.** No guard means nobody may spend the LLM key; name the guard your app already uses, such as `SignedIn`.
 

@@ -85,6 +85,7 @@ const loadRuntime = async () => {
   return {
     SolidPubSub,
     WebsocketAdaptorRole,
+    AkanLib,
     AkanOption,
     AkanServer,
     ServerResolverTestServerSignal,
@@ -564,6 +565,69 @@ describe("AkanServer rate limit", () => {
       if (previous === undefined) delete process.env.AKAN_RATE_LIMIT;
       else process.env.AKAN_RATE_LIMIT = previous;
       EndpointRateLimit.reset();
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("AkanServer env transform", () => {
+  const withSecret = (tmp: string) => ({ ...createEnv(tmp), security: { jwtSecret: "baked" } });
+  type SecretEnv = ReturnType<typeof withSecret>;
+
+  test("rewrites the env once, in mount order, before the option readers and without touching the imported env", async () => {
+    const { AkanLib, AkanOption, AkanServer, createLib } = await loadRuntime();
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-env-"));
+    try {
+      const imported = withSecret(tmp);
+      const order: string[] = [];
+      let mcpSaw: string | undefined;
+      const shared = new AkanLib("envTransformShared", {
+        databases: [],
+        services: [],
+        scalars: [],
+        option: new AkanOption().transformEnv((env) => {
+          order.push("shared");
+          (env as SecretEnv).security.jwtSecret = "overlaid";
+          return env;
+        }),
+      });
+      const app = createLib(
+        new AkanOption()
+          .transformEnv((env) => {
+            order.push("app");
+            const { security } = env as SecretEnv;
+            return { ...env, security: { jwtSecret: `${security.jwtSecret}+app` } };
+          })
+          .setMcp((env) => {
+            mcpSaw = (env as SecretEnv).security.jwtSecret;
+            return true;
+          }),
+      );
+
+      const server = new AkanServer("serverGet", imported, "all", shared, app);
+      expect(order).toEqual(["shared", "app"]);
+      expect(mcpSaw).toBe("overlaid+app");
+      expect((server.env as SecretEnv).security.jwtSecret).toBe("overlaid+app");
+      expect(imported.security.jwtSecret).toBe("baked");
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps the env as it was when no option transforms it, and refuses a transform that returns none", async () => {
+    const { AkanOption, AkanServer, createLib } = await loadRuntime();
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-env-none-"));
+    try {
+      const imported = withSecret(tmp);
+      const server = new AkanServer("serverGet", imported, "all", createLib());
+      expect(server.env).not.toBe(imported);
+      expect((server.env as SecretEnv).security).toBe(imported.security);
+
+      const forgot = createLib(new AkanOption().transformEnv(() => undefined as never));
+      expect(() => new AkanServer("serverGet", imported, "all", forgot)).toThrow(
+        "transformEnv must return the env object, and one returned undefined",
+      );
+    } finally {
       await rm(tmp, { recursive: true, force: true });
     }
   });

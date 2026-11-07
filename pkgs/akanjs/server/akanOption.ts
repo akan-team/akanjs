@@ -24,6 +24,7 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   readonly #adaptorOverrides: AdaptorOverride[] = [];
   readonly #webProxies: WebProxyRegistration[] = [];
   readonly #getLlms: ((env: Env) => LlmOption)[] = [];
+  readonly #envTransforms: ((env: Env) => Env)[] = [];
   #getMcp: ((env: Env) => boolean | McpServerOption) | undefined;
   #agentAccess: GuardCls | GuardCls[] | null | undefined;
   #agentRequestPolicy: AgentRequestPolicy | null | undefined;
@@ -97,6 +98,25 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
     else this.#getLlms.push(() => llmOrFn);
     return this;
   }
+  /**
+   * Rewrites the server env once, when the server is built and before any option, injection or lib reads it; libs in
+   * mount order, the app's last. Gets a copy, so the imported env module is left as it was.
+   */
+  transformEnv(fn: (env: Env) => Env) {
+    this.#envTransforms.push(fn);
+    return this;
+  }
+  resolveEnv(env: Env): Env {
+    if (!this.#envTransforms.length) return env;
+    return this.#envTransforms.reduce((current, fn) => {
+      const next = fn(current);
+      if (!next || typeof next !== "object")
+        throw new Error(
+          `transformEnv must return the env object, and one returned ${next === null ? "null" : typeof next}`,
+        );
+      return next;
+    }, AkanOption.#copyPlain(env));
+  }
   /** Every entry in declaration order, duplicates kept: the boot stage rejects a key claimed twice. */
   getUses(env: Env): [string, PromiseOrObject<unknown>][] {
     return this.#getUses.flatMap((fn) => Object.entries(fn(env)));
@@ -133,6 +153,14 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   }
   getLlm(env: Env): LlmOption {
     return Object.assign({}, ...this.#getLlms.map((fn) => fn(env)));
+  }
+  //? Not structuredClone, which throws on a function the env holds: a function or class instance stays shared.
+  static #copyPlain<T>(value: T): T {
+    if (Array.isArray(value)) return value.map((item) => AkanOption.#copyPlain(item)) as T;
+    if (!value || typeof value !== "object") return value;
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return value;
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, AkanOption.#copyPlain(item)])) as T;
   }
 }
 
