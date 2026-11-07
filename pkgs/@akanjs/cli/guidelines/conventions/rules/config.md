@@ -31,7 +31,8 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
 ## Running An App
 
 - After changing application code, run `bun run akan start <appName>` (`a,b`, `a b`, or `all` for several); check
-  the production build with `bun run akan build <appName>`.
+  the production build with `bun run akan build <appName>`, and serve it without Docker with
+  `cd dist/apps/<appName> && bun main.js` (`PORT` or any variable you set overrides the build's env).
 - A supervised session writes `local/apps/<app>/runtime/dev.log` (previous: `dev.prev.log`) — hand over that path,
   not a paste of the repainting full-screen view. Keys, `--plain`, boot waves, `--kill`, watch scope, running a
   built artifact, booting a server in a test: `runtimeRule`.
