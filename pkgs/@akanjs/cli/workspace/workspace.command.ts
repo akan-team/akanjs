@@ -1,3 +1,4 @@
+import path from "node:path";
 import { command, Exec, Workspace } from "@akanjs/devkit/commandDecorators";
 import { defaultMaxDiagnostics } from "./workspace.runner";
 import { WorkspaceScript } from "./workspace.script";
@@ -9,10 +10,12 @@ const maxDiagnosticsOption = {
 
 export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({ public: target }) => ({
   createWorkspace: target({ desc: "Create a new Akan.js workspace", runsOnWorkspaceRoot: false })
-    .arg("workspaceName", String, { desc: "what is the name of your organization?" })
+    .arg("workspaceName", String, {
+      desc: 'what is the name of your organization? ("." creates the workspace in --dir itself, named after it)',
+    })
     .option("app", String, { desc: "what is the codename of your first application? (e.g. myapp)" })
     .option("dir", String, {
-      desc: "directory of workspace",
+      desc: 'directory the workspace is created in, as <dir>/<name>, or as <dir> itself when the name is "."',
       default: process.env.USE_AKANJS_PKGS === "true" ? "local" : ".",
     })
     .option("libs", Boolean, {
@@ -41,15 +44,23 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
       desc: "Install Akan agent rules (AGENTS.md, CLAUDE.md, Cursor)? (Recommended)",
       default: true,
     })
-    .exec(async function (workspaceName, app, dir, libs, init, registry, owner, mcpInstall, agentInstall) {
+    .option("sample", Boolean, {
+      desc: "Generate the sample task module, pages and helpers in the first app?",
+      default: true,
+    })
+    .exec(async function (workspaceName, app, dir, libs, init, registry, owner, mcpInstall, agentInstall, sample) {
       const appName = app || "app";
+      const inPlace = workspaceName === ".";
+      const repoName = inPlace ? path.basename(path.resolve(dir)) : workspaceName;
       await this.workspaceScript.createWorkspace(
-        workspaceName.toLowerCase().replace(/ /g, "-"),
+        repoName.toLowerCase().replace(/ /g, "-"),
         appName.toLowerCase().replace(/ /g, "-"),
         {
           dirname: dir,
+          inPlace,
           installLibs: libs,
           init,
+          sample,
           owner,
           mcpInstall,
           agentInstall,

@@ -40,7 +40,13 @@ const defaultWorkspaceTypeDependencies = { "@types/react": "^19.3.0", "@types/re
 /** High enough that a real cleanup pass sees every finding at once; `0` on the CLI lifts the cap entirely. */
 export const defaultMaxDiagnostics = 200;
 
+export type WorkspaceCommit =
+  | { committed: true; repository: string; identity: { name: string; email: string } | null }
+  | { committed: false; repository: string };
+
 export class WorkspaceRunner extends runner("workspace") {
+  static readonly fallbackGitIdentity = { name: "Akan.js", email: "noreply@akanjs.com" };
+
   //* The private key never reaches stdout: a terminal's scrollback and an agent's transcript both keep what it prints.
   async machineKeygen(workspace: Workspace, out: string) {
     const file = path.resolve(workspace.workspaceRoot, out);
@@ -78,24 +84,42 @@ export class WorkspaceRunner extends runner("workspace") {
     appName: string,
     {
       dirname = ".",
+      inPlace = false,
       init = true,
       akanVersion,
       registryUrl,
       owner = "",
-    }: { dirname?: string; init?: boolean; akanVersion: string; registryUrl?: string; owner?: string },
+      libs = [],
+    }: {
+      dirname?: string;
+      inPlace?: boolean;
+      init?: boolean;
+      akanVersion: string;
+      registryUrl?: string;
+      owner?: string;
+      libs?: string[];
+    },
   ) {
     const cwdPath = process.cwd();
-    const workspaceRoot = path.resolve(cwdPath, dirname, repoName);
+    const workspaceRoot = inPlace ? path.resolve(cwdPath, dirname) : path.resolve(cwdPath, dirname, repoName);
     const normalizedRegistryUrl = registryUrl ? getNpmRegistryUrl(registryUrl) : undefined;
-
-    const workspace = WorkspaceExecutor.fromRoot({ workspaceRoot, repoName });
-    const templateSpinner = workspace.spinning(`Creating workspace template files in ${workspaceRoot}...`);
-    const latestTypesBunVersion = await getLatestPackageVersion("@types/bun", "latest", normalizedRegistryUrl);
-    await workspace.applyTemplate({
+    const rootTemplate = {
       basePath: ".",
       template: "workspaceRoot",
       dict: { repoName, appName, serveDomain: "localhost", owner },
-    });
+    };
+
+    const workspace = WorkspaceExecutor.fromRoot({ workspaceRoot, repoName });
+    const planned = await workspace.applyTemplate({ ...rootTemplate, dryRun: true });
+    await this.#refuseToOverwrite(workspace, [
+      ...planned.map((file) => path.relative(workspaceRoot, file.filePath)),
+      ...(normalizedRegistryUrl ? [".npmrc"] : []),
+      `apps/${appName}`,
+      ...libs.map((libName) => `libs/${libName}`),
+    ]);
+    const templateSpinner = workspace.spinning(`Creating workspace template files in ${workspaceRoot}...`);
+    const latestTypesBunVersion = await getLatestPackageVersion("@types/bun", "latest", normalizedRegistryUrl);
+    await workspace.applyTemplate(rootTemplate);
     if (normalizedRegistryUrl) await workspace.writeFile(".npmrc", `registry=${normalizedRegistryUrl}/\n`);
     templateSpinner.succeed(`Workspace files created in ${workspaceRoot}`);
     const [rootPackageJson, peerDependencies] = await Promise.all([
@@ -130,6 +154,44 @@ export class WorkspaceRunner extends runner("workspace") {
     }
 
     return workspace;
+  }
+
+  async #refuseToOverwrite(workspace: WorkspaceExecutor, paths: string[]) {
+    const occupied: string[] = [];
+    for (const target of paths) if (await workspace.exists(target)) occupied.push(target);
+    if (!occupied.length) return;
+    occupied.sort((a, b) => a.localeCompare(b));
+    throw new Error(
+      `${workspace.workspaceRoot} already holds ${occupied.join(", ")}, which a new workspace would overwrite. ` +
+        "Move them out of the way, or create the workspace in an empty folder.",
+    );
+  }
+
+  //? A repository nested in one that tracks its folder leaves the outer one a gitlink instead of the files, and a
+  //? commit in the outer one would land on the user's branch, so there the scaffold commits nothing.
+  async commitWorkspace(workspace: Workspace): Promise<WorkspaceCommit> {
+    const root = workspace.workspaceRoot;
+    const outer = (await WorkspaceRunner.#git(root, ["rev-parse", "--show-toplevel"]))?.trim();
+    if (outer && (await WorkspaceRunner.#git(root, ["check-ignore", "-q", root])) === null)
+      return { committed: false, repository: outer };
+    //? `git var` fails exactly where `git commit` would stop on "Please tell me who you are": a container, a CI image.
+    const known = await Promise.all(
+      ["GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"].map((ident) => WorkspaceRunner.#git(root, ["var", ident])),
+    );
+    const identity = known.every((ident) => ident !== null) ? undefined : WorkspaceRunner.fallbackGitIdentity;
+    await workspace.commit("Initial commit", { init: true, ...(identity ? { identity } : {}) });
+    return { committed: true, repository: root, identity: identity ?? null };
+  }
+
+  static async #git(cwd: string, args: string[]) {
+    try {
+      //? Without `env`, Bun.spawn passes the env Bun started with, not the live one `workspace.commit`'s git gets.
+      const proc = Bun.spawn(["git", ...args], { cwd, env: process.env, stdout: "pipe", stderr: "ignore" });
+      const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+      return code === 0 ? stdout : null;
+    } catch {
+      return null;
+    }
   }
 
   async #getAkanPeerDependencies(): Promise<Record<string, string>> {
