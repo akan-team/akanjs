@@ -1,4 +1,5 @@
 const RESTORE_WINDOW_MS = 2000;
+const FRAGMENT_WAIT_MS = 10_000;
 const PERSIST_DELAY_MS = 200;
 const userScrollEvents = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
 
@@ -72,7 +73,51 @@ export class RscScrollRestoration {
     const observer = new ResizeObserver(() => {
       if (Math.abs(window.scrollY - scrollY) > 1) window.scrollTo(0, scrollY);
     });
-    const timer = setTimeout(() => cancel(), RESTORE_WINDOW_MS);
+    observer.observe(document.body);
+    this.#holdWhile(observer, RESTORE_WINDOW_MS);
+  }
+
+  //? The browser looks for a fragment's target only while the document loads, so one that a `.loading()` boundary or a
+  //? navigation brings in later is scrolled to when it appears; React parks a segment it has not revealed in `[hidden]`.
+  scrollToHash(hash: string, fallbackScrollY = 0) {
+    this.#cancelPending?.();
+    const id = RscScrollRestoration.#fragmentIdOf(hash);
+    const shownTarget = () => {
+      const target = id ? document.getElementById(id) : null;
+      return target?.closest("[hidden]") ? null : target;
+    };
+    const target = shownTarget();
+    if (target) {
+      target.scrollIntoView();
+      return;
+    }
+    window.scrollTo(0, fallbackScrollY);
+    if (!id || typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(() => {
+      const appeared = shownTarget();
+      if (!appeared) return;
+      cancel();
+      appeared.scrollIntoView();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    const cancel = this.#holdWhile(observer, FRAGMENT_WAIT_MS);
+  }
+
+  restoreDocumentLoad() {
+    if (window.history.scrollRestoration === "manual") {
+      this.#manual = true;
+      const { scrollY } = RscScrollRestoration.#entryOf(window.history.state);
+      if (scrollY !== undefined) {
+        this.scrollTo(scrollY);
+        return;
+      }
+    }
+    //? Off the top, the browser has already reached the target, a reload restored its offset, or the visitor scrolled.
+    if (window.location.hash && window.scrollY === 0) this.scrollToHash(window.location.hash);
+  }
+
+  #holdWhile(observer: { disconnect: () => void }, windowMs: number): () => void {
+    const timer = setTimeout(() => cancel(), windowMs);
     const cancel = () => {
       observer.disconnect();
       clearTimeout(timer);
@@ -80,15 +125,8 @@ export class RscScrollRestoration {
       if (this.#cancelPending === cancel) this.#cancelPending = null;
     };
     for (const type of userScrollEvents) window.addEventListener(type, cancel, { capture: true, passive: true });
-    observer.observe(document.body);
     this.#cancelPending = cancel;
-  }
-
-  restoreDocumentLoad() {
-    if (window.history.scrollRestoration !== "manual") return;
-    this.#manual = true;
-    const { scrollY } = RscScrollRestoration.#entryOf(window.history.state);
-    if (scrollY !== undefined) this.scrollTo(scrollY);
+    return cancel;
   }
 
   #schedulePersist() {
@@ -125,6 +163,15 @@ export class RscScrollRestoration {
   static #writeEntry(fields: AkanEntryState) {
     const state = (window.history.state ?? {}) as { __akanRouter?: object };
     window.history.replaceState({ ...state, __akanRouter: { ...state.__akanRouter, ...fields } }, "");
+  }
+
+  static #fragmentIdOf(hash: string): string {
+    const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
   }
 
   static #mintKey() {

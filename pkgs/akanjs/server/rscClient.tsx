@@ -373,10 +373,11 @@ function forgetPagesOfAnotherAccount(): void {
 
 function Root(): ReactNode {
   const [thenable, setThenable] = useState<RscThenable>(initialThenable);
-  const [scrollRequest, setScrollRequest] = useState<{ scrollY: number } | null>(null);
+  const [scrollRequest, setScrollRequest] = useState<{ scrollY: number; hash?: string } | null>(null);
 
   useLayoutEffect(() => {
-    if (scrollRequest) scrollRestoration.scrollTo(scrollRequest.scrollY);
+    if (scrollRequest?.hash) scrollRestoration.scrollToHash(scrollRequest.hash, scrollRequest.scrollY);
+    else if (scrollRequest) scrollRestoration.scrollTo(scrollRequest.scrollY);
   }, [scrollRequest]);
 
   globalThis.__AKAN_RSC_CLEAR_CACHE__ = () => {
@@ -466,7 +467,8 @@ function Root(): ReactNode {
     let ownsEntry = !!options.replace;
     const replaceOnRedirect = () => ownsEntry;
     const scrollY = options.scrollY ?? ((options.scrollToTop ?? true) ? 0 : undefined);
-    const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY });
+    const hash = options.scrollY === undefined ? new URL(target).hash : "";
+    const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY, hash });
     try {
       let nextNode = rscCache.get(target);
       let notFound = false;

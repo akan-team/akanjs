@@ -1,5 +1,5 @@
 import "../test/registerDom";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -274,6 +274,31 @@ describe("rscClient fragment navigation", () => {
     expect(window.location.hash).toBe("");
     expect(idxOfEntry()).toBe(idx);
     expect(fetchCountOf("/guide")).toBe(requests);
+  });
+
+  test("a push to another page's fragment lands on its target, not the top", async () => {
+    const page = '[["$","p","p",{"children":"/manual"}],["$","h2","h",{"id":"faq","children":"FAQ"}]]';
+    served.set(
+      "/manual",
+      () =>
+        new Response(
+          `0:["$","html",null,{"children":[["$","head","h",{}],["$","body","b",{"children":["$","main",null,{"children":${page}}]}]]}]\n`,
+          { headers: { "Content-Type": "text/x-component" } },
+        ),
+    );
+    const scrolledTo: string[] = [];
+    const scrollIntoView = spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      scrolledTo.push(this.id);
+    });
+    try {
+      window.scrollTo(0, 500);
+      await navigate("/manual#faq");
+
+      expect(document.getElementById("faq")?.textContent).toBe("FAQ");
+      expect(scrolledTo).toEqual(["faq"]);
+    } finally {
+      scrollIntoView.mockRestore();
+    }
   });
 
   test("a move back from a fragment keeps the index the router stamped on the entry a document opened on", async () => {
