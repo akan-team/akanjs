@@ -126,9 +126,9 @@ own boundary as its own data lands, so one slow query no longer holds the page. 
 the aggregate the way `x<Slice>Init` must.
 
 **`await` is still the right call for what the page needs immediately.** It returns the shape the helper always
-gave and keeps that markup in the shell, which is what SEO snapshots, prerendering and pre-hydration E2E read; a
-boundary moves its subtree out of the shell and into the stream. Independent awaited fetches still go through one
-`Promise.all`.
+gave and keeps that markup in the shell — every level above the route's first `.loading()` — which is what SEO
+snapshots, prerendering and pre-hydration E2E read; a boundary moves its subtree out of the shell and into the
+stream. Independent awaited fetches still go through one `Promise.all`.
 
 Three rules the shape enforces:
 
@@ -145,13 +145,14 @@ Three rules the shape enforces:
 **A failure now surfaces where it happened.** One `Promise.all` in the page body reports nothing about which of
 eight queries threw; per-section boundaries put each rejection at its own boundary.
 
-**Know which redirects are real.** A streaming response starts while layout and page bodies still run, so a redirect
-is a real 3xx only when it was raised before any I/O was awaited, the body's own or a layout's above it (a layout that
-awaits `fetch.viewOrg` makes every page under it late); after one — `getSelf({ unauthorize: "/signin" })` fetches —
-a browser gets an HTTP 200 that navigates in the page, which `curl` does not follow, while a crawler, whose response
+**Know which redirects are real.** The response starts once every layout and page body above the route's first
+`.loading()` has rendered — the whole route when it declares none — so a redirect or `router.notFound()` raised in
+those bodies is a real 3xx or 404 even after I/O. Below a `.loading()` or inside a streamed section the response has
+already started: a redirect raised there after I/O — `getSelf({ unauthorize: "/signin" })` fetches — reaches a
+browser as an HTTP 200 that navigates in the page, which `curl` does not follow, while a crawler, whose response
 waits for the whole render, gets the real 3xx. Either way no markup below the redirect is sent. A route's `.guard()`
-runs before any layout body starts, so a redirect from it is a real 3xx even after the guard's own awaited query:
-gate there. A route that must answer a real 3xx from its body after I/O — a moved URL found by a query — takes
+runs before any layout body starts, so a redirect from it is a real 3xx even under a `.loading()`: gate there. A
+route with a `.loading()` that must answer a real 3xx from its body after I/O — a moved URL found by a query — takes
 `.config({ ssr: "block" })`: the response waits for the whole render. Never redirect from inside a streamed section.
 
 **⑥ Use named `ReactNode` slots, not just `children`.** A client shell that takes one slot per region lets a
@@ -165,7 +166,7 @@ the same method, so a client component that exists only to compute a label is ma
 **⑧ Gate auth on the server.** `.guard(() => signedIn())` (`@libs/shared/webkit`, which a new workspace has only
 with `create-workspace --libs true`) on `_layout.tsx` runs before any of the route renders, so the redirect is a
 real 3xx; `getSelf({ unauthorize: "/signin" })` in a layout body still redirects before any of the page's markup,
-in-page after I/O. A client-side check costs a hydration round-trip and flashes the wrong UI first.
+in-page after I/O under a `.loading()`. A client-side check costs a hydration round-trip and flashes the wrong UI first.
 
 **⑨ Prefer CSS over client state for pure visibility.** A `data-*` attribute plus `group-data-[…]` variants (see
 `libs/util/ui/Grid/*`) or `<details>`/`<summary>` keeps both branches server-rendered. Reach for `useState` when the
