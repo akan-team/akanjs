@@ -10,6 +10,7 @@ import {
   hasSourceParseErrors,
   insertClassMethod,
   insertDictionaryEndpointEntry,
+  insertDictionaryEnum,
   insertSignalFactoryEntry,
   inspectDictionaryStructure,
 } from "./source";
@@ -248,6 +249,60 @@ describe("dictionary endpoint entries", () => {
 
   test("answers null when the dictionary has no endpoint stage for the model", () => {
     expect(insertDictionaryEndpointEntry(dictionary, "Note", "pinNote", "pinNote: fn([]),")).toBeNull();
+  });
+});
+
+describe("insertDictionaryEnum", () => {
+  const dictionary = (tail: string) => `import { modelDictionary } from "akanjs/dictionary";
+
+import type { Task } from "./task.constant";
+
+// Stages: .model() field labels, .enum() value labels, .error() messages, .translate() UI messages.
+
+export const dictionary = modelDictionary(["en", "ko"])
+  .of((t) => t(["Task", "할 일"]))
+  .model<Task>((t) => ({
+    title: t(["Title", "제목"]),
+  }))${tail};
+`;
+
+  test("inserts before the chain's own .error() stage, not a comment that names it", () => {
+    const next = insertDictionaryEnum(
+      dictionary(`
+  .error({ notFound: ["Not found", "없음"] })
+  .translate({})`),
+      "TaskPriority",
+      "taskPriority",
+      ["low", "high"],
+    );
+    expect(next).not.toBeNull();
+    expect(hasSourceParseErrors(next ?? "", "task.dictionary.ts")).toBe(false);
+    expect(next?.split("\n").slice(-7)).toEqual([
+      '  .enum<TaskPriority>("taskPriority", (t) => ({',
+      '    low: t(["Low", "Low"]),',
+      '    high: t(["High", "High"]),',
+      "  }))",
+      '  .error({ notFound: ["Not found", "없음"] })',
+      "  .translate({});",
+      "",
+    ]);
+    expect(inspectDictionaryStructure(next ?? "", "Task").chainOrderValid).toBe(true);
+  });
+
+  test("appends to the end of a chain with no later stage", () => {
+    const next = insertDictionaryEnum(dictionary(""), "TaskPriority", "taskPriority", ["low"]);
+    expect(hasSourceParseErrors(next ?? "", "task.dictionary.ts")).toBe(false);
+    expect(next).toContain(
+      '  }))\n  .enum<TaskPriority>("taskPriority", (t) => ({\n    low: t(["Low", "Low"]),\n  }));\n',
+    );
+  });
+
+  test("leaves an existing enum stage alone and refuses a file that does not parse", () => {
+    const withEnum = insertDictionaryEnum(dictionary(""), "TaskPriority", "taskPriority", ["low"]) ?? "";
+    expect(insertDictionaryEnum(withEnum, "TaskPriority", "taskPriority", ["low"])).toBe(withEnum);
+    expect(
+      insertDictionaryEnum("export const dictionary = modelDictionary([", "TaskPriority", "taskPriority", ["low"]),
+    ).toBeNull();
   });
 });
 

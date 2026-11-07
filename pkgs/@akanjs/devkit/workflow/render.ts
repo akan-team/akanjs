@@ -1,3 +1,4 @@
+import { camelToKebabCase } from "../commandDecorators/camelToKebabCase";
 import type {
   PrimitiveFormat,
   PrimitiveWriteReport,
@@ -63,9 +64,9 @@ export const renderWorkflowExplain = (spec: WorkflowSpec) =>
     "## Inputs",
     ...Object.entries(spec.inputs).map(
       ([name, input]) =>
-        `- \`${name}\`${input.required ? " (required)" : ""}: ${input.description}${
-          input.allowedValues ? ` Allowed: ${input.allowedValues.join(", ")}.` : ""
-        }`,
+        `- \`${name}\`${camelToKebabCase(name) === name ? "" : ` (\`--${camelToKebabCase(name)}\`)`}${
+          input.required ? " (required)" : ""
+        }: ${input.description}${input.allowedValues ? ` Allowed: ${input.allowedValues.join(", ")}.` : ""}`,
     ),
     "",
     "## Optional Surfaces",
