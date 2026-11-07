@@ -17,8 +17,10 @@ and infrastructure. A workspace is Bun-first: `apps/<app>` holds pages, domain m
 4. After editing, run `akan verify [<app-or-lib>]` once. It syncs, lints with fixes, typechecks, fast-builds and
    checks SSR over what changed, and prints only what failed. Fix and rerun until it prints `verify ok`; never run
    `akan lint`, `akan typecheck` and `akan build` one by one.
-5. Check an endpoint with a signal test (`akan test <app> [files]`), never raw HTTP against the dev server.
-6. Scaffolds take the target positionally (`akan create-module photo <app>`, `akan sync <app>`); only `add-field` and
+5. After a page, UI or runtime change, run `akan preview <app> --changed` (or name the paths) and quote its verdict
+   lines; it reuses the running dev server. Name any platform you could not open.
+6. Check an endpoint with a signal test (`akan test <app> [files]`), never raw HTTP against the dev server.
+7. Scaffolds take the target positionally (`akan create-module photo <app>`, `akan sync <app>`); only `add-field` and
    `add-enum-field` take `--app` / `--module`.
 
 ## Change Scope

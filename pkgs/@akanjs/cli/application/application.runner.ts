@@ -158,7 +158,7 @@ export class ApplicationRunner extends runner("application") {
     });
   }
   // Must match what `resolveRuntimeDir` answers from the workspace root.
-  #runtimeDirOf(app: App, override?: string | null) {
+  static runtimeDirOf(app: App, override?: string | null) {
     return path.resolve(
       override ??
         process.env.AKAN_RUNTIME_DIR ??
@@ -168,7 +168,7 @@ export class ApplicationRunner extends runner("application") {
   async runLogs(app: App, options: LogsOptions) {
     const { LogControlUnavailableError, LogTailClient } = await import("akanjs/server/logging/logTailClient");
     const { LogQueryMatcher } = await import("akanjs/server/logging/logQuery");
-    const runtimeDir = this.#runtimeDirOf(app, options.runtimeDir);
+    const runtimeDir = ApplicationRunner.runtimeDirOf(app, options.runtimeDir);
     const socketPath = LogTailClient.socketPath(runtimeDir);
     const { level, grep, endpoint, trace, child, role, origin, since } = options;
     const query = Object.fromEntries(
@@ -224,7 +224,7 @@ export class ApplicationRunner extends runner("application") {
   async runConsole(app: App) {
     const serverPath = `${app.cwdPath}/server.ts`;
     if (!(await app.exists("server.ts"))) throw new Error(`Server file not found: apps/${app.name}/server.ts`);
-    const runtimeDir = this.#runtimeDirOf(app);
+    const runtimeDir = ApplicationRunner.runtimeDirOf(app);
     const code = `
 const serverModule = await import(${JSON.stringify(serverPath)});
 const { assertAkanConsoleAllowed, startAkanConsole } = await import("akanjs/server");

@@ -49,6 +49,7 @@ import { JsonFormatter } from "./jsonFormatter";
 import { Linter } from "./linter";
 import { ManifestDependencies } from "./manifestDependencies";
 import { resolveRepoName } from "./repoIdentity";
+import type { RouteSourceInfo } from "./routeSourceValidator";
 import { AppInfo, isAkanFrameworkDependency, LibInfo, PkgInfo, WorkspaceInfo } from "./scanInfo";
 import { Spinner } from "./spinner";
 // Type-only: `getTypeChecker` loads it on demand to keep `typescript` out of the resident module graph.
@@ -64,6 +65,12 @@ export interface PageRoot {
   realDir: string;
   /** Prefix that turns a `dir`-relative path into an app page key (empty for the app's own `page`). */
   keyPrefix: string;
+}
+
+export interface AppRouteSource {
+  key: string;
+  absPath: string;
+  info: RouteSourceInfo;
 }
 
 export interface WrittenFileContent extends FileContent {
@@ -1278,6 +1285,7 @@ export class AppExecutor extends SysExecutor {
   }
 
   #pageKeys: string[] | null = null;
+  #routeSources: AppRouteSource[] = [];
   #excludeDevOnlyPages = false;
   async getPageKeys({ refresh }: { refresh?: boolean } = {}): Promise<string[]> {
     if (this.#pageKeys && !refresh) return this.#pageKeys;
@@ -1288,6 +1296,7 @@ export class AppExecutor extends SysExecutor {
     const devOnlyKeys = new Set<string>();
     const devOnlyDirs: string[] = [];
     const pageRoots = await this.getPageRoots();
+    const routeSources: AppRouteSource[] = [];
     const libKeyPrefixes = pageRoots.map((root) => root.keyPrefix).filter(Boolean);
     for (const root of pageRoots) {
       if (!(await FileSys.dirExists(root.dir))) continue;
@@ -1333,6 +1342,7 @@ export class AppExecutor extends SysExecutor {
             rootLayout: isRootLayout,
             pattern: parsed.pattern,
           });
+          routeSources.push({ key, absPath, info });
           if (info.devOnly) {
             devOnlyKeys.add(key);
             //* A dev-only layout takes its whole subtree, or its pages would ship without their chrome.
@@ -1343,8 +1353,14 @@ export class AppExecutor extends SysExecutor {
       }
     }
     pageKeys.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    this.#routeSources = routeSources.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     this.#pageKeys = this.#excludeDevOnlyPages ? this.#dropDevOnlyPages(pageKeys, devOnlyKeys, devOnlyDirs) : pageKeys;
     return this.#pageKeys;
+  }
+  /** Each page and layout file `getPageKeys` read, with what its chain declares; overrides files are not listed. */
+  async getRouteSources({ refresh }: { refresh?: boolean } = {}): Promise<AppRouteSource[]> {
+    await this.getPageKeys({ refresh });
+    return this.#routeSources;
   }
   #dropDevOnlyPages(pageKeys: string[], devOnlyKeys: Set<string>, devOnlyDirs: string[]): string[] {
     if (!devOnlyKeys.size) return pageKeys;

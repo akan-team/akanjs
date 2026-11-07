@@ -34,6 +34,7 @@
     "./incrementalBuilder": "./incrementalBuilder/index.ts",
     "./mobile": "./mobile/index.ts",
     "./pipeline": "./pipeline/index.ts",
+    "./preview": "./preview/index.ts",
     "./transforms": "./transforms/index.ts",
     "./workflow": "./workflow/index.ts",
     "./*.ts": "./*.ts",

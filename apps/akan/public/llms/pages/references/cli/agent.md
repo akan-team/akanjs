@@ -102,7 +102,7 @@ Section
 
 - Workspace: The repo name, and the apps, libraries and packages in it.
 
-- Work loop: Read the abstract, prefer a workflow, sync after a file change, then run `akan verify` once.
+- Work loop: Read the abstract, prefer a workflow, sync, run `akan verify` once, then `akan preview` after a page change.
 
 - Change scope: Change only what the task needs, and follow the nearest established pattern.
 

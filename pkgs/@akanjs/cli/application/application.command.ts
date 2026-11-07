@@ -87,6 +87,51 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (migrationName, app) {
       await this.applicationScript.createMigration(app, migrationName);
     }),
+  preview: target({
+    desc: "Open pages of the app's dev server in a headless browser and print what broke, starting a server if none runs",
+    stdio: true,
+  })
+    .with(App)
+    .arg("paths", String, {
+      desc: "page paths, comma-separated; the default locale is added when missing (default: /)",
+      example: "/board,/board/new",
+      nullable: true,
+    })
+    .option("changed", Boolean, {
+      flag: "C",
+      desc: "also open the pages the uncommitted page and layout changes reach (/ when no route changed)",
+      default: false,
+    })
+    .option("csr", Boolean, { desc: "load each page as a native app does, in its CSR boot", default: false })
+    .option("engine", String, {
+      desc: "browser engine (default: webkit on macOS, chrome elsewhere)",
+      enum: ["webkit", "chrome"],
+      nullable: true,
+    })
+    .option("screenshot", Boolean, {
+      desc: "save a screenshot per page under local/apps/<app>/runtime/preview",
+      default: false,
+    })
+    .option("desktop", Boolean, { desc: "a 1280x800 viewport instead of the 390x844 phone one", default: false })
+    .option("keep", Boolean, { desc: "leave a server this command started running", default: false })
+    .option("timeout", Number, { desc: "seconds a page may take to load", default: 60 })
+    .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
+    .exec(async function (app, paths, changed, csr, engine, screenshot, desktop, keep, timeout, format) {
+      await this.applicationScript.preview(app, {
+        paths: (paths ?? "")
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean),
+        changed,
+        csr,
+        engine: engine === "webkit" || engine === "chrome" ? engine : null,
+        screenshot,
+        desktop,
+        keep,
+        timeoutMs: timeout * 1000,
+        format: format === "json" ? "json" : "text",
+      });
+    }),
   console: target({ desc: "Open an interactive server console for the application" })
     .with(App)
     .exec(async function (app) {

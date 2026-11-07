@@ -40,6 +40,41 @@ describe("ContextRunner", () => {
     expect(context.validationCommands.join("\n")).not.toContain("akan scan");
   });
 
+  test("lists the app's routes with their search names and guards, and folds a folder past the limit", async () => {
+    const { workspace, app } = track(await createTempApp("demo"));
+    const pageOf = (chain: string) =>
+      `import { page } from "akanjs/client";\nexport default page()${chain}.render(() => null);\n`;
+    await writeText(`${app.cwdPath}/page/_index.tsx`, pageOf(""));
+    await writeText(
+      `${app.cwdPath}/page/admin/_layout.tsx`,
+      'import { layout } from "akanjs/client";\nexport default layout().guard(() => true).render(({ children }) => children);\n',
+    );
+    await writeText(`${app.cwdPath}/page/admin/users.tsx`, pageOf('.search("q", String)'));
+    await writeText(`${app.cwdPath}/page/memo/[memoId].tsx`, pageOf('.param("memoId")'));
+    for (let idx = 0; idx < AkanContextAnalyzer.routeListLimit; idx++)
+      await writeText(`${app.cwdPath}/page/(docs)/doc${idx}.tsx`, pageOf(""));
+
+    const context = JSON.parse(
+      await new ContextRunner().getContext(workspace, { format: "json", app: "demo" }),
+    ) as Awaited<ReturnType<typeof AkanContextAnalyzer.analyze>>;
+    const routes = context.apps[0]?.routes ?? [];
+    expect(routes).toHaveLength(AkanContextAnalyzer.routeListLimit + 3);
+    expect(routes.find((route) => route.path === "/admin/users")).toEqual({
+      path: "/admin/users",
+      file: "apps/demo/page/admin/users.tsx",
+      search: ["q"],
+      guarded: true,
+      devOnly: false,
+    });
+
+    const markdown = await new ContextRunner().getContext(workspace, { app: "demo" });
+    expect(markdown).toContain("- /admin/users ?q (guarded) — apps/demo/page/admin/users.tsx");
+    expect(markdown).toContain("- /memo/:memoId — apps/demo/page/memo/[memoId].tsx");
+    expect(markdown).toContain(`- apps/demo/page/(docs)/: ${AkanContextAnalyzer.routeListLimit} routes folded`);
+    expect(markdown).not.toContain("- /doc0 —");
+    expect(await new ContextRunner().getContext(workspace, {})).not.toContain("## Routes");
+  });
+
   test("reports missing abstract as warning by default and error in strict mode", async () => {
     const { workspace, app } = track(await createTempApp("demo"));
     await writeText(`${app.cwdPath}/lib/post/post.constant.ts`, "export class Post {}\n");

@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
+export type PreviewEngine = "webkit" | "chrome";
+
 // Bun.WebView's `webkit` backend is the macOS system framework and throws on every other platform.
 export class PreviewChrome {
   /** Read by `Bun.WebView` itself; listed so the availability check agrees with what the launcher will do. */
@@ -30,7 +32,7 @@ export class PreviewChrome {
     "Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
   ];
 
-  static get backend(): "webkit" | "chrome" {
+  static get backend(): PreviewEngine {
     const declared = process.env[PreviewChrome.backendEnvKey];
     if (declared === "webkit" || declared === "chrome") return declared;
     return process.platform === "darwin" ? "webkit" : "chrome";
@@ -53,11 +55,15 @@ export class PreviewChrome {
   }
 
   static get available() {
-    return PreviewChrome.backend === "webkit" ? process.platform === "darwin" : !!PreviewChrome.executable();
+    return PreviewChrome.isAvailable();
   }
 
-  static backendOption() {
-    if (PreviewChrome.backend === "webkit") return "webkit";
+  static isAvailable(engine: PreviewEngine = PreviewChrome.backend) {
+    return engine === "webkit" ? process.platform === "darwin" : !!PreviewChrome.executable();
+  }
+
+  static backendOption(engine: PreviewEngine = PreviewChrome.backend) {
+    if (engine === "webkit") return "webkit";
     // Docker's default 64MB /dev/shm is below what Chromium's renderer allocates; the crash looks like a hung load.
     const argv = ["--disable-dev-shm-usage"];
     // Chromium refuses uid 0 with its sandbox on, and uid 0 is the ordinary uid in a container.
@@ -70,9 +76,9 @@ export class PreviewChrome {
     "apt-get update && apt-get install -y --no-install-recommends chromium fonts-liberation fonts-noto-color-emoji fonts-noto-cjk && rm -rf /var/lib/apt/lists/*",
   ];
 
-  static unavailableReason() {
-    if (PreviewChrome.available) return undefined;
-    if (PreviewChrome.backend === "webkit")
+  static unavailableReason(engine: PreviewEngine = PreviewChrome.backend) {
+    if (PreviewChrome.isAvailable(engine)) return undefined;
+    if (engine === "webkit")
       return `The webkit WebView backend exists only on macOS. Set ${PreviewChrome.backendEnvKey}=chrome and install a browser.`;
     return [
       "The page preview needs a browser and this machine has none on PATH.",

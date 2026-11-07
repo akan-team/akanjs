@@ -43,6 +43,43 @@ export const HMR_CLIENT_SCRIPT = `(function(){
     }
   };
 
+  var reportsHeard = false;
+  var reportQueue = [];
+  var reportedKeys = {};
+  var reportCount = 0;
+  var reportTarget = new URLSearchParams(location.search).get("akanMobileTarget");
+  function sendReports(){
+    while (reportsHeard && reportQueue.length && socket && socket.readyState === WebSocket.OPEN) {
+      try { socket.send(JSON.stringify(reportQueue.shift())); } catch(e) { return; }
+    }
+  }
+  function report(kind, error, fallback){
+    var message = error && typeof error.message === "string" ? error.message : String(fallback === undefined ? error : fallback);
+    var stack = error && typeof error.stack === "string" ? error.stack : "";
+    var key = kind + "|" + message + "|" + stack.slice(0, 300);
+    if (reportedKeys[key] || reportCount >= 50) return;
+    reportedKeys[key] = true;
+    reportCount++;
+    var native = self.__AKAN_NATIVE__;
+    reportQueue.push({
+      type: "client-report",
+      kind: kind,
+      message: (error && error.name && message.indexOf(error.name) !== 0 ? error.name + ": " : "") + message,
+      stack: stack,
+      href: location.pathname + location.search,
+      client: clientKind,
+      platform: native && typeof native.platform === "string" ? native.platform : "web",
+      target: reportTarget || undefined
+    });
+    if (reportQueue.length > 20) reportQueue.shift();
+    sendReports();
+  }
+  // A headless WebView never receives an uncaught error, so the dev server log is where an agent reads one.
+  if (!systemPage) {
+    self.addEventListener("error", function(ev){ report("error", ev.error, ev.message); });
+    self.addEventListener("unhandledrejection", function(ev){ report("rejection", ev.reason); });
+  }
+
   // Bun's React Fast Refresh transform can emit top-level calls to these globals
   // even when we fall back to full reload instead of applying React Refresh.
   self.$RefreshReg$ = self.$RefreshReg$ || function(type, id){
@@ -67,6 +104,8 @@ export const HMR_CLIENT_SCRIPT = `(function(){
       if (msg.type === "hello") {
         // Not on open: the gateway takes the socket before its upstream answers, and closes it when that fails.
         attempts = 0;
+        reportsHeard = true;
+        sendReports();
         var dropped = Array.isArray(msg.failingPhases) && dropBuildErrorsExcept(msg.failingPhases);
         if (dropped && systemPage) {
           reloadForUpdate("the build that failed to render this page recovered");
@@ -155,7 +194,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
         return;
       }
     });
-    socket.addEventListener("close", function(){ socket = null; schedule(); });
+    socket.addEventListener("close", function(){ socket = null; reportsHeard = false; schedule(); });
     socket.addEventListener("error", function(){ try { socket && socket.close(); } catch(e){} });
   }
 

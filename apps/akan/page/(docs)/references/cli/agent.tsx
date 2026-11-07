@@ -270,8 +270,8 @@ export default page()
       {
         name: <span className="font-sans">{l.trans({ en: "Work loop", ko: "작업 순서" })}</span>,
         desc: l.trans({
-          en: "Read the abstract, prefer a workflow, sync after a file change, then run `akan verify` once.",
-          ko: "모듈 abstract를 먼저 읽고, 워크플로를 먼저 쓰고, 파일을 바꾸면 sync한 뒤 `akan verify`를 한 번 실행합니다.",
+          en: "Read the abstract, prefer a workflow, sync, run `akan verify` once, then `akan preview` after a page change.",
+          ko: "abstract를 읽고, 워크플로를 먼저 쓰고, sync한 뒤 `akan verify`를 한 번, 페이지를 바꿨다면 `akan preview`를 실행합니다.",
         }),
       },
       {

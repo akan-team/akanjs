@@ -318,6 +318,14 @@ export default page()
               ko: "실행 중인 앱의 로그를 필터로 걸러 봅니다.",
             }),
           },
+          {
+            name: "preview",
+            href: "#preview",
+            desc: l.trans({
+              en: "Open pages in a headless browser and print what broke.",
+              ko: "페이지를 헤드리스 브라우저로 열어 무엇이 깨졌는지 출력합니다.",
+            }),
+          },
         ],
       },
       {
@@ -1094,6 +1102,109 @@ kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun 
 akan logs myapp --endpoint 'mutation:*' --replay 200
 akan logs myapp --trace 0f3c9a1b --follow false
 akan logs myapp --json true | jq 'select(.attrs.userId)'`,
+      },
+      {
+        name: "preview",
+        signature:
+          "akan preview <app> [paths] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>]",
+        desc: l.trans({
+          en: "Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.",
+          ko: "앱 개발 서버의 페이지를 헤드리스 브라우저로 열어 페이지마다 판정 한 줄을 출력합니다. 상태 코드, 제목, 잡히지 않은 오류, 페이지를 여는 동안 서버가 남긴 오류, 콘솔 오류, 레이아웃 이상이 담깁니다. 실행 중인 `akan start`가 있으면 그대로 쓰고, 없으면 띄웠다가 끝나면 내립니다. 실패한 페이지가 있으면 1로 끝납니다.",
+        }),
+        options: [
+          {
+            name: "paths",
+            type: "String",
+            desc: l.trans({
+              en: "Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`.",
+              ko: "쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다.",
+            }),
+          },
+          {
+            name: "--changed",
+            type: "Boolean",
+            defaultValue: "false",
+            enumOrFlag: "-C",
+            desc: l.trans({
+              en: "Also open the pages that uncommitted page and layout changes reach, `/` when no route changed.",
+              ko: "커밋하지 않은 페이지·레이아웃 변경이 닿는 페이지도 엽니다. 바뀐 라우트가 없으면 `/`입니다.",
+            }),
+          },
+          {
+            name: "--csr",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "Load each page through the CSR boot a native app uses.",
+              ko: "네이티브 앱처럼 CSR 부트로 각 페이지를 엽니다.",
+            }),
+          },
+          {
+            name: "--engine",
+            type: "String",
+            enumOrFlag: "webkit | chrome",
+            desc: l.trans({
+              en: "Browser engine: webkit on macOS, chrome elsewhere.",
+              ko: "브라우저 엔진입니다. macOS는 webkit, 그 밖은 chrome이 기본입니다.",
+            }),
+          },
+          {
+            name: "--screenshot",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "Save one PNG per page under `local/apps/<app>/runtime/preview`.",
+              ko: "페이지마다 PNG 하나를 `local/apps/<app>/runtime/preview`에 저장합니다.",
+            }),
+          },
+          {
+            name: "--desktop",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "A 1280×800 viewport instead of the 390×844 phone one.",
+              ko: "390×844 휴대폰 화면 대신 1280×800 화면으로 엽니다.",
+            }),
+          },
+          {
+            name: "--keep",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "Leave a server this command started running, and print how to stop it.",
+              ko: "이 명령이 띄운 서버를 끄지 않고 두며, 끄는 방법을 출력합니다.",
+            }),
+          },
+          {
+            name: "--timeout",
+            type: "Number",
+            defaultValue: "60",
+            desc: l.trans({
+              en: "Seconds one page may take to load.",
+              ko: "페이지 하나가 열리기까지 기다리는 초입니다.",
+            }),
+          },
+          {
+            name: "--format",
+            type: "String",
+            defaultValue: "text",
+            enumOrFlag: "text | json",
+            desc: l.trans({ en: "`json` prints the full report.", ko: "`json`은 보고서 전체를 출력합니다." }),
+          },
+        ],
+        notes: [
+          {
+            name: l.trans({ en: "native shells", ko: "네이티브 셸" }),
+            desc: l.trans({
+              en: "`--csr` checks the bundle a shell loads, not the shell. A simulator page's errors reach `akan logs`, tagged.",
+              ko: "`--csr`은 셸이 불러오는 번들만 확인합니다. 시뮬레이터 페이지의 오류는 표시가 붙어 `akan logs`에 나옵니다.",
+            }),
+          },
+        ],
+        examples: `akan preview myapp
+akan preview myapp /board,/board/new --screenshot
+akan preview myapp --changed --csr
+akan preview myapp /admin --desktop --format json`,
       },
       {
         name: "typecheck",

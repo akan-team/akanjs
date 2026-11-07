@@ -22,7 +22,7 @@ Prints the workspace structure in a form an agent can read. Use it when an exter
 
 - --format (String, default markdown, markdown | json): Output format: `json` for tools, `markdown` for people or a chat prompt.
 
-- --app (String, nullable): Lists only this app. Every library and package still appears.
+- --app (String, nullable): Lists only this app, with its routes: path, file, search keys, guard. Every library and package still appears.
 
 - --module (String, nullable): Lists only modules of this name and puts each `*.abstract.md` body before its file list.
 

@@ -1,12 +1,12 @@
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import type { CodeAgentMcpStatus, CodeAgentProfile, CodeAgentQuestion, CodeAgentSubagent } from "akanjs/common";
 import type { Workspace } from "../../commandDecorators";
+import { PreviewView } from "../../preview/PreviewView";
 import type { CodeAgentModelRef } from "../agent/akanCodeModel";
 import type { CodeMailbox } from "../agent/CodeMailbox";
 import { SubagentPool, type SubagentSpend } from "../agent/SubagentPool";
 import { DevLogFeedback } from "../feedback/DevLogFeedback";
 import { PreviewFeedback } from "../feedback/PreviewFeedback";
-import { PreviewView } from "../feedback/PreviewView";
 import { TurnFeedback, type TurnFeedbackSource } from "../feedback/TurnFeedback";
 import { VerifyFeedback } from "../feedback/VerifyFeedback";
 import { AkanToolPack } from "./AkanToolPack";

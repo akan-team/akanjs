@@ -1,5 +1,6 @@
 import { Logger } from "akanjs/common";
 import type { BuildPhase, HmrTrace } from "../artifact";
+import { ClientReport } from "./clientReport";
 
 // Sent over IPC by devkit's fs watcher.
 export type ChangeKind = "code" | "css" | "config" | "ignore";
@@ -111,14 +112,18 @@ export class HmrWsHub {
   }
 
   handleMessage(message: string): void {
-    if (!isSyncNavigationEnabled()) return;
     let parsed: unknown;
     try {
       parsed = JSON.parse(message);
     } catch {
       return;
     }
-    if (!isSyncNavigationMessage(parsed)) return;
+    const report = ClientReport.parse(parsed);
+    if (report) {
+      ClientReport.log(report);
+      return;
+    }
+    if (!isSyncNavigationEnabled() || !isSyncNavigationMessage(parsed)) return;
     this.broadcast(parsed);
   }
 }

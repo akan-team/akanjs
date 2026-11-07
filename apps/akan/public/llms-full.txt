@@ -2020,6 +2020,8 @@ These commands carry an app from creation to release: create it, run it locally,
 
   - logs: Follow a running app's logs, filtered.
 
+  - preview: Open pages in a headless browser and print what broke.
+
 - Check and Build
 
   - typecheck: Typecheck an app or a library, its tests included.
@@ -2041,8 +2043,6 @@ These commands carry an app from creation to release: create it, run it locally,
   - update-keygen, publish-update, pack-update, push-update, register-binary: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
 
 Command
-
-`akan create-application <appName> [--start <boolean>]`
 
 ## Cloud CLI
 
@@ -2202,7 +2202,7 @@ Prints the workspace structure in a form an agent can read. Use it when an exter
 
 - --format (String, default markdown, markdown | json): Output format: `json` for tools, `markdown` for people or a chat prompt.
 
-- --app (String, nullable): Lists only this app. Every library and package still appears.
+- --app (String, nullable): Lists only this app, with its routes: path, file, search keys, guard. Every library and package still appears.
 
 - --module (String, nullable): Lists only modules of this name and puts each `*.abstract.md` body before its file list.
 

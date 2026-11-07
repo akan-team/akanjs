@@ -50,6 +50,8 @@ These commands carry an app from creation to release: create it, run it locally,
 
   - logs: Follow a running app's logs, filtered.
 
+  - preview: Open pages in a headless browser and print what broke.
+
 - Check and Build
 
   - typecheck: Typecheck an app or a library, its tests included.
@@ -259,6 +261,30 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 - --runtime-dir (String, default local/apps/<app>/runtime, -d): Folder holding `akan-control.sock`. Without it, `AKAN_RUNTIME_DIR` and then the default apply.
 
 - in the console: `akan console` has the same filters as `.tail` and `.trace <id>`.
+
+`akan preview <app> [paths] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>]`
+
+Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.
+
+- paths (String): Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`.
+
+- --changed (Boolean, default false, -C): Also open the pages that uncommitted page and layout changes reach, `/` when no route changed.
+
+- --csr (Boolean, default false): Load each page through the CSR boot a native app uses.
+
+- --engine (String, webkit | chrome): Browser engine: webkit on macOS, chrome elsewhere.
+
+- --screenshot (Boolean, default false): Save one PNG per page under `local/apps/<app>/runtime/preview`.
+
+- --desktop (Boolean, default false): A 1280×800 viewport instead of the 390×844 phone one.
+
+- --keep (Boolean, default false): Leave a server this command started running, and print how to stop it.
+
+- --timeout (Number, default 60): Seconds one page may take to load.
+
+- --format (String, default text, text | json): `json` prints the full report.
+
+- native shells: `--csr` checks the bundle a shell loads, not the shell. A simulator page's errors reach `akan logs`, tagged.
 
 `akan typecheck <app|lib> [--write <boolean>] [--clean <boolean>] [--incremental <boolean>] [--tests <boolean>]`
 
@@ -759,6 +785,15 @@ akan logs myapp --level warn
 akan logs myapp --endpoint 'mutation:*' --replay 200
 akan logs myapp --trace 0f3c9a1b --follow false
 akan logs myapp --json true | jq 'select(.attrs.userId)'
+```
+
+### preview
+
+```bash
+akan preview myapp
+akan preview myapp /board,/board/new --screenshot
+akan preview myapp --changed --csr
+akan preview myapp /admin --desktop --format json
 ```
 
 ### typecheck
