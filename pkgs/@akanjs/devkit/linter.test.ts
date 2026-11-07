@@ -93,4 +93,16 @@ describe("Linter", () => {
       process.env.PATH = pathBefore;
     }
   });
+
+  test("splits path arguments into batches that stay under the command-line budget", () => {
+    const args = Array.from({ length: 10 }, (_, idx) => `apps/demo/lib/file${idx}.ts`);
+    const batches = Linter.batchArgs(args, 100);
+    expect(batches.flat()).toEqual(args);
+    expect(batches.length).toBeGreaterThan(1);
+    for (const batch of batches) expect(batch.reduce((sum, arg) => sum + arg.length + 3, 0)).toBeLessThanOrEqual(100);
+  });
+
+  test("keeps an argument longer than the budget in a batch of its own", () => {
+    expect(Linter.batchArgs(["a".repeat(50), "b", "c"], 10)).toEqual([["a".repeat(50)], ["b", "c"]]);
+  });
 });
