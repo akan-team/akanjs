@@ -58,10 +58,12 @@ class FakeElement {
 
 const createHmrHarness = ({
   selfOverrides = {},
+  search = "",
   runTimers = false,
   onTimer,
 }: {
   selfOverrides?: Record<string, unknown>;
+  search?: string;
   runTimers?: boolean;
   onTimer?: (callback: () => void, delay: number) => void;
 } = {}) => {
@@ -79,17 +81,25 @@ const createHmrHarness = ({
     host: "localhost:3000",
     href: "http://localhost:3000/",
     pathname: "/",
+    search,
     reload: () => {
       reloadCount += 1;
     },
   };
+  const windowListeners = new Map<string, ((event: unknown) => void)[]>();
   const self = {
     __AKAN_RSC_CLEAR_CACHE__: () => undefined,
     __AKAN_RSC_REFRESH__: () => Promise.resolve(),
+    addEventListener: (type: string, listener: (event: unknown) => void) => {
+      windowListeners.set(type, [...(windowListeners.get(type) ?? []), listener]);
+    },
     ...selfOverrides,
   };
   class FakeWebSocket {
+    static readonly OPEN = 1;
     readonly listeners = new Map<string, ((event?: { data: string }) => void)[]>();
+    readonly sent: string[] = [];
+    readyState = FakeWebSocket.OPEN;
 
     constructor(readonly url: string) {
       sockets.push(this);
@@ -103,6 +113,10 @@ const createHmrHarness = ({
 
     close(): void {
       for (const listener of this.listeners.get("close") ?? []) listener();
+    }
+
+    send(data: string): void {
+      this.sent.push(data);
     }
 
     sendMessage(message: unknown): void {
@@ -146,6 +160,9 @@ const createHmrHarness = ({
   return {
     ws: sockets[0],
     sockets,
+    dispatch: (type: string, event: unknown) => {
+      for (const listener of windowListeners.get(type) ?? []) listener(event);
+    },
     overlay,
     label,
     detail,
@@ -583,5 +600,56 @@ describe("HMR_CLIENT_SCRIPT", () => {
 
     expect(hmr.overlay().getAttribute("data-status")).toBe("ok");
     expect(hmr.label()).toBe("Build recovered");
+  });
+});
+
+describe("HMR_CLIENT_SCRIPT client reports", () => {
+  const reportsOf = (ws: { sent: string[] }) =>
+    ws.sent.map((frame) => JSON.parse(frame) as Record<string, unknown>).filter((msg) => msg.type === "client-report");
+
+  test("holds an error raised before the server's hello, then sends it once", () => {
+    const hmr = createHmrHarness();
+    const error = new TypeError("x is not a function");
+    hmr.dispatch("error", { error, message: `Uncaught ${error.message}` });
+    hmr.dispatch("error", { error, message: `Uncaught ${error.message}` });
+    expect(reportsOf(hmr.ws)).toEqual([]);
+
+    hmr.ws.sendMessage({ type: "hello", buildId: 1 });
+
+    expect(reportsOf(hmr.ws)).toEqual([
+      expect.objectContaining({
+        kind: "error",
+        message: "TypeError: x is not a function",
+        href: "/",
+        client: "ssr",
+        platform: "web",
+      }),
+    ]);
+  });
+
+  test("reports a rejection with a plain reason, and names the native shell and mobile target", () => {
+    const hmr = createHmrHarness({
+      search: "?csr=true&akanMobileTarget=lu",
+      selfOverrides: { __AKAN_HMR_CLIENT__: "csr", __AKAN_NATIVE__: { platform: "ios" } },
+    });
+    hmr.ws.sendMessage({ type: "hello", buildId: 1 });
+    hmr.dispatch("unhandledrejection", { reason: "session expired" });
+
+    expect(reportsOf(hmr.ws)).toEqual([
+      expect.objectContaining({
+        kind: "rejection",
+        message: "session expired",
+        client: "csr",
+        platform: "ios",
+        target: "lu",
+      }),
+    ]);
+  });
+
+  test("the dev error page reports nothing", () => {
+    const hmr = createHmrHarness({ selfOverrides: { __AKAN_HMR_SYSTEM_PAGE__: true } });
+    hmr.ws.sendMessage({ type: "hello", buildId: 1 });
+    hmr.dispatch("error", { error: new Error("boom"), message: "boom" });
+    expect(reportsOf(hmr.ws)).toEqual([]);
   });
 });

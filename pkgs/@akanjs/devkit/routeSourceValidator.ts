@@ -17,6 +17,10 @@ export interface RouteSourceChain {
   prompt?: string;
   /** The `.app()` names, each one MCP App the build gives a view of its own. */
   apps: string[];
+  /** The `.search()` names, in chain order; a name that is not a literal is left out. */
+  search: string[];
+  /** The chain calls `.guard()`, which gates this route and, on a layout, every route under it. */
+  guarded: boolean;
 }
 
 interface ChainStage {
@@ -104,6 +108,8 @@ export class RouteSourceValidator {
         params: chain.params,
         ...(chain.prompt ? { prompt: chain.prompt } : {}),
         apps: chain.apps,
+        search: chain.search,
+        guarded: chain.guarded,
       },
     };
   }
@@ -168,8 +174,10 @@ export class RouteSourceValidator {
   static #chainOf(kind: RouteSourceChain["kind"], stages: ChainStage[], filePath: string) {
     const params: string[] = [];
     const apps: string[] = [];
+    const search: string[] = [];
     let prompt: string | undefined;
     let devOnly = false;
+    let guarded = false;
     const literal = (stage: ChainStage) => {
       const first = stage.args[0];
       if (!first || !ts.isStringLiteralLike(first))
@@ -182,10 +190,14 @@ export class RouteSourceValidator {
       if (stage.name === "param") params.push(literal(stage));
       else if (stage.name === "prompt") prompt = literal(stage);
       else if (stage.name === "app") apps.push(literal(stage));
-      else if (stage.name === "config")
+      else if (stage.name === "guard") guarded = true;
+      else if (stage.name === "search") {
+        const first = stage.args[0];
+        if (first && ts.isStringLiteralLike(first)) search.push(first.text);
+      } else if (stage.name === "config")
         devOnly = RouteSourceValidator.#devOnlyOf(RouteSourceValidator.#unwrapExpression(stage.args[0]), filePath);
     }
-    return { kind, params, prompt, apps, devOnly };
+    return { kind, params, prompt, apps, search, guarded, devOnly };
   }
 
   /** The same rule the loader applies: a page names every `[x]` it sits under, a layout may name a subset. */

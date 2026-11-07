@@ -1425,6 +1425,12 @@ akan logs myapp --role rsc-worker --origin page --replay 50
 # ${l.trans({ en: "History only, as NDJSON", ko: "지난 기록만 NDJSON으로" })}
 akan logs myapp --since 5m --follow false --json
 
+# ${l.trans({
+                en: "In dev, what browser and native-shell pages threw",
+                ko: "개발 중 브라우저와 네이티브 셸 페이지가 던진 오류",
+              })}
+akan logs myapp --grep "Uncaught error"
+
 # ${l.trans({ en: "The same filters inside akan console", ko: "akan console 안에서도 같은 필터" })}
 akan:myapp> .tail level=warn grep=payment endpoint=mutation:*
 akan:myapp> .trace m8x1k2-a9f3c1

@@ -213,6 +213,8 @@ What the RSC worker rendered, with the last 50 buffered records first
 
 History only, as NDJSON
 
+In dev, what browser and native-shell pages threw
+
 The same filters inside akan console
 
 - --level (string): Minimum level, by name or by severity number.
@@ -466,6 +468,9 @@ akan logs myapp --role rsc-worker --origin page --replay 50
 
 # History only, as NDJSON
 akan logs myapp --since 5m --follow false --json
+
+# In dev, what browser and native-shell pages threw
+akan logs myapp --grep "Uncaught error"
 
 # The same filters inside akan console
 akan:myapp> .tail level=warn grep=payment endpoint=mutation:*

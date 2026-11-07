@@ -7,6 +7,7 @@ import {
   type Apps,
   assertPromptable,
   type Exec,
+  ExitCodeError,
   type Lib,
   markCliErrorPrinted,
   type Sys,
@@ -31,6 +32,7 @@ import {
   type MobileTargetOptions,
   type MobileUpdatePackOptions,
 } from "./application.runner";
+import { AppPreview, type AppPreviewOptions } from "./appPreview";
 import { DevPortReclaimer } from "./devPortReclaimer";
 import { DevStreamView } from "./devStreamView";
 import { DevSupervisor, type DevUiMode } from "./devSupervisor";
@@ -148,6 +150,15 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
 
   async logs(app: App, options: LogsOptions) {
     await this.applicationRunner.runLogs(app, options);
+  }
+
+  async preview(app: App, { format = "text", ...options }: AppPreviewOptions & { format?: "text" | "json" }) {
+    const report = await AppPreview.run(app, options);
+    Logger.rawLog(format === "json" ? JSON.stringify(report, null, 2) : AppPreview.render(report));
+    if (!report.pages.some((page) => page.failed)) return;
+    const failure = new ExitCodeError("preview found broken pages", 1);
+    markCliErrorPrinted(failure);
+    throw failure;
   }
 
   async build(

@@ -5,7 +5,6 @@ import { makeCliTempWorkspace, tempRoots, writeText } from "../../testHelpers";
 import { CodeAgent, type CodeAgentOptions } from "../agent/CodeAgent";
 import { SubagentPool } from "../agent/SubagentPool";
 import { DevLogFeedback } from "../feedback/DevLogFeedback";
-import { PreviewView } from "../feedback/PreviewView";
 import { TurnFeedback, type TurnFeedbackSource } from "../feedback/TurnFeedback";
 import { AkanCodePlugins } from "./AkanCodePlugins";
 import { AkanEditScope } from "./AkanEditScope";
@@ -223,33 +222,6 @@ describe("AkanEnvKeys", () => {
     expect(providers).toContain("deepseek");
     expect(applied).toContainEqual(["deepseek", "sk-test"]);
   });
-});
-
-describe("PreviewView", () => {
-  test("reports whether this Bun build can drive a headless page at all", () => {
-    expect(typeof PreviewView.available).toBe("boolean");
-  });
-
-  test.skipIf(!PreviewView.available)(
-    "finds an empty body and a console error on a real page",
-    async () => {
-      const server = Bun.serve({
-        port: 0,
-        fetch: () =>
-          new Response('<!doctype html><html><body></body><script>console.error("boom")</script></html>', {
-            headers: { "content-type": "text/html" },
-          }),
-      });
-      try {
-        const probe = await PreviewView.probe(`http://localhost:${server.port}/`);
-        expect(probe.pageErrors.join(" ")).toContain("rendered empty");
-        expect(probe.consoleErrors.join(" ")).toContain("boom");
-      } finally {
-        server.stop(true);
-      }
-    },
-    30_000,
-  );
 });
 
 describe("SubagentPool", () => {

@@ -107,6 +107,8 @@ Before you call a change done, run these two in order, as the workspace's agent 
 
 - akan test <app|lib|pkg> — Runs the test suites.
 
+- akan preview <app> --changed — Opens the changed pages in a headless browser and prints what they show and throw.
+
 Reports, not gates
 
 These three only print a report, so they never fail the run. Read them before a review.

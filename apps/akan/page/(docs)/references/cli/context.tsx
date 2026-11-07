@@ -166,8 +166,8 @@ export default page()
           defaultValue: "-",
           enumOrFlag: "nullable",
           desc: l.trans({
-            en: "Lists only this app. Every library and package still appears.",
-            ko: "이 앱만 나열합니다. 라이브러리와 패키지는 그대로 모두 나옵니다.",
+            en: "Lists only this app, with its routes: path, file, search keys, guard. Every library and package still appears.",
+            ko: "이 앱만 라우트(경로, 파일, search 키, guard)와 함께 나열합니다. 라이브러리와 패키지는 그대로 모두 나옵니다.",
           }),
         },
         {

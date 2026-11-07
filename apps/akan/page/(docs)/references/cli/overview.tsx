@@ -187,6 +187,13 @@ export default page()
         command: "akan test <app|lib|pkg>",
         desc: l.trans({ en: "Runs the test suites.", ko: "테스트를 실행합니다." }),
       },
+      {
+        command: "akan preview <app> --changed",
+        desc: l.trans({
+          en: "Opens the changed pages in a headless browser and prints what they show and throw.",
+          ko: "바뀐 페이지를 헤드리스 브라우저로 열어 무엇을 보여 주고 어떤 오류를 던지는지 출력합니다.",
+        }),
+      },
     ];
 
     const reportRows = [

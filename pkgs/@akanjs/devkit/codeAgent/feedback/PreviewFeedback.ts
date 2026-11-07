@@ -1,5 +1,5 @@
+import { PreviewView } from "../../preview/PreviewView";
 import { AkanEditScope } from "../tools/AkanEditScope";
-import { PreviewView } from "./PreviewView";
 import type { TurnFeedbackFinding, TurnFeedbackSource } from "./TurnFeedback";
 
 export interface PreviewFeedbackOptions {
@@ -35,7 +35,7 @@ export class PreviewFeedback implements TurnFeedbackSource {
     for (const route of this.#options.routes ?? ["/en/"]) {
       const url = new URL(route, this.#options.previewUrl).toString();
       const probe = await PreviewView.probe(url, { screenshot: !!this.#options.canSeeImages });
-      const problems = [...probe.pageErrors, ...probe.consoleErrors, ...probe.domFindings];
+      const problems = [...probe.pageErrors, ...probe.consoleErrors, ...probe.consoleWarnings, ...probe.domFindings];
       if (!problems.length) continue;
       findings.push(`**${url}**\n${problems.map((line) => `- ${line}`).join("\n")}`);
       if (probe.screenshot) images.push({ data: probe.screenshot, mimeType: "image/png" });

@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { capitalize, isRecord } from "akanjs/common";
+import { capitalize, isRecord, parseRouteModuleKey } from "akanjs/common";
 import { extractBlockVersion, readDevkitVersion } from "./agentsIndex";
 import { AppExecutor, LibExecutor, type SysExecutor, type WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
@@ -48,12 +48,25 @@ export interface AkanModuleContext {
   files: string[];
 }
 
+export interface AkanRouteContext {
+  /** The URL pattern without the `/:lang` segment every route starts with. */
+  path: string;
+  file: string;
+  search: string[];
+  /** The page or a layout above it calls `.guard()`. */
+  guarded: boolean;
+  devOnly: boolean;
+}
+
 export interface AkanSysContext {
   type: "app" | "lib";
   name: string;
   path: string;
   hasConfig: boolean;
   modules: AkanModuleContext[];
+  /** Listed for the app `--app` names only; reading them parses every route file. */
+  routes?: AkanRouteContext[];
+  routeError?: string;
 }
 
 export interface AkanPackageContext {
@@ -557,6 +570,34 @@ const getSysModules = async (
   return modules.sort((a, b) => `${a.sysName}:${a.path}`.localeCompare(`${b.sysName}:${b.path}`));
 };
 
+const getAppRoutes = async (app: AppExecutor, workspaceRoot: string): Promise<AkanRouteContext[]> => {
+  const sources = await app.getRouteSources();
+  const guardedLayouts = new Set<string>();
+  const pages: { source: (typeof sources)[number]; parsed: ReturnType<typeof parseRouteModuleKey> }[] = [];
+  for (const source of sources) {
+    const parsed = parseRouteModuleKey(source.key);
+    if (parsed.kind === "layout" && source.info.chain?.guarded) guardedLayouts.add(parsed.routeSegments.join("/"));
+    else if (parsed.kind === "page") pages.push({ source, parsed });
+  }
+  return pages
+    .map(({ source, parsed }) => {
+      const segments = parsed.routeSegments;
+      //? The layouts that wrap a page, as the route seed index walks them: an `_index` sits inside its own folder.
+      const reach = parsed.leaf === "_index" ? segments.length : segments.length - 1;
+      const underGuard = Array.from({ length: reach + 1 }, (_, idx) => segments.slice(0, idx).join("/")).some(
+        (prefix) => guardedLayouts.has(prefix),
+      );
+      return {
+        path: parsed.pattern.replace(/^\/:lang/, "") || "/",
+        file: path.relative(workspaceRoot, source.absPath),
+        search: source.info.chain?.search ?? [],
+        guarded: !!source.info.chain?.guarded || underGuard,
+        devOnly: source.info.devOnly,
+      };
+    })
+    .sort((a, b) => a.path.localeCompare(b.path));
+};
+
 const getSysContext = async (
   workspace: WorkspaceExecutor,
   type: "app" | "lib",
@@ -564,7 +605,7 @@ const getSysContext = async (
   options: AkanContextOptions,
 ): Promise<AkanSysContext> => {
   const sys = type === "app" ? AppExecutor.from(workspace, name) : LibExecutor.from(workspace, name);
-  return {
+  const context: AkanSysContext = {
     type,
     name,
     path: `${type}s/${name}`,
@@ -574,6 +615,12 @@ const getSysContext = async (
       module: options.module,
     }),
   };
+  if (sys instanceof AppExecutor && options.app === name)
+    await getAppRoutes(sys, workspace.workspaceRoot).then(
+      (routes) => (context.routes = routes),
+      (error: unknown) => (context.routeError = error instanceof Error ? error.message : String(error)),
+    );
+  return context;
 };
 
 export class AkanContextAnalyzer {
@@ -986,6 +1033,12 @@ export class AkanContextAnalyzer {
       ...context.pkgs.map((pkg) => `- ${pkg.name}${pkg.version ? ` (${pkg.version})` : ""}`),
     );
 
+    for (const app of context.apps) {
+      if (app.routeError) lines.push("", `## Routes: ${app.name}`, `- Not read: ${app.routeError}`);
+      else if (app.routes)
+        lines.push("", `## Routes: ${app.name}`, ...AkanContextAnalyzer.#routeLines(app.name, app.routes));
+    }
+
     const modules = AkanContextAnalyzer.findModules(context, moduleName);
     lines.push("", "## Modules");
     for (const module of modules) {
@@ -999,5 +1052,35 @@ export class AkanContextAnalyzer {
 
     lines.push("", "## Validation", ...context.validationCommands.map((command) => `- \`${command}\``));
     return `${lines.join("\n")}\n`;
+  }
+
+  static readonly routeListLimit = 60;
+
+  //? Past the limit the biggest top folders fold into one line each: a docs section alone would fill the context.
+  static #routeLines(appName: string, routes: AkanRouteContext[]) {
+    const folderOf = (route: AkanRouteContext) => route.file.split("/").slice(0, 4).join("/");
+    const groups = Map.groupBy(routes, folderOf);
+    const folded = new Set<string>();
+    let listed = routes.length;
+    for (const [folder, members] of [...groups].sort((a, b) => b[1].length - a[1].length)) {
+      if (listed <= AkanContextAnalyzer.routeListLimit) break;
+      folded.add(folder);
+      listed -= members.length;
+    }
+    const lines = [`Paths omit the \`/:lang\` prefix; \`akan preview ${appName} <path>\` opens one.`];
+    for (const route of routes) {
+      if (folded.has(folderOf(route))) continue;
+      const search = route.search.length ? ` ?${route.search.join("&")}` : "";
+      const marks = `${route.guarded ? " (guarded)" : ""}${route.devOnly ? " (dev only)" : ""}`;
+      lines.push(`- ${route.path}${search}${marks} — ${route.file}`);
+    }
+    for (const folder of folded) {
+      const members = groups.get(folder) ?? [];
+      const examples = members.slice(0, 3).map((route) => route.path);
+      lines.push(
+        `- ${folder}/: ${members.length} routes folded (${examples.join(", ")}, …); \`--format json\` lists every route`,
+      );
+    }
+    return lines;
   }
 }

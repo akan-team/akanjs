@@ -43,12 +43,14 @@ describe("RouteSourceValidator route chains", () => {
   const chain = (source: string, kind: "page" | "layout", pattern: string) =>
     RouteSourceValidator.validateRouteSourceExports(source, `page/${kind}.tsx`, kind, { pattern });
 
-  test("reads params, prompt, apps and devOnly off a page() chain without evaluating it", () => {
+  test("reads params, search names, prompt, apps, guard and devOnly off a page() chain without evaluating it", () => {
     const source = [
       'import { page } from "akanjs/client";',
       "export default page()",
       '  .param("projectId", ID, { desc: "The project." })',
       '  .search("status", String)',
+      "  .search(dynamicName, String)",
+      "  .guard(() => signedIn())",
       "  .config({ transition: 'stack', devOnly: true })",
       '  .prompt("briefProject", "Brief one project.")',
       '  .app("showProject", "Show one project.", ({ projectId }) => null)',
@@ -57,7 +59,14 @@ describe("RouteSourceValidator route chains", () => {
     ].join("\n");
     expect(chain(source, "page", "/:lang/project/:projectId")).toEqual({
       devOnly: true,
-      chain: { kind: "page", params: ["projectId"], prompt: "briefProject", apps: ["showProject", "showBoard"] },
+      chain: {
+        kind: "page",
+        params: ["projectId"],
+        prompt: "briefProject",
+        apps: ["showProject", "showBoard"],
+        search: ["status"],
+        guarded: true,
+      },
     });
   });
 
