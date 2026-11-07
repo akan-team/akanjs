@@ -67,6 +67,8 @@ describe("ModuleRunner", () => {
     expect(files.service.content).toContain('serve("localBuild" as const');
     expect(files.signal.content).toContain("LocalBuildEndpoint");
     expect(files.store.content).toContain('store("localBuild" as const');
+    expect(files.dictionary.content).toContain('serviceDictionary(["en", "ko"])');
+    expect(files.dictionary.content).not.toContain("modelDictionary");
     expect(await Bun.file(`${app.cwdPath}/lib/_localBuild/localBuild.service.ts`).exists()).toBe(true);
     expect(await Bun.file(`${app.cwdPath}/lib/_localBuild/localBuild.abstract.md`).exists()).toBe(true);
     expect(await Bun.file(`${app.cwdPath}/lib/_localBuild/localBuild.signal.ts`).exists()).toBe(true);
