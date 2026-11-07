@@ -1108,8 +1108,8 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
         signature:
           "akan preview <app> [paths] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>]",
         desc: l.trans({
-          en: "Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server's errors for that request, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.",
-          ko: "앱 개발 서버의 페이지를 헤드리스 브라우저로 열어 페이지마다 판정 한 줄을 출력합니다. 상태 코드, 제목, 잡히지 않은 오류, 그 요청에서 서버가 남긴 오류, 콘솔 오류, 레이아웃 이상이 담깁니다. 실행 중인 `akan start`가 있으면 그대로 쓰고, 없으면 띄웠다가 끝나면 내립니다. 실패한 페이지가 있으면 1로 끝납니다.",
+          en: "Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.",
+          ko: "앱 개발 서버의 페이지를 헤드리스 브라우저로 열어 페이지마다 판정 한 줄을 출력합니다. 상태 코드, 제목, 잡히지 않은 오류, 페이지를 여는 동안 서버가 남긴 오류, 콘솔 오류, 레이아웃 이상이 담깁니다. 실행 중인 `akan start`가 있으면 그대로 쓰고, 없으면 띄웠다가 끝나면 내립니다. 실패한 페이지가 있으면 1로 끝납니다.",
         }),
         options: [
           {

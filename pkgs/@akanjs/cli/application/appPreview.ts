@@ -9,6 +9,7 @@ import { type LogRecord, parseRouteModuleKey } from "akanjs/common";
 import { VerifyScope } from "../verify/verifyScope";
 import { ApplicationRunner } from "./application.runner";
 import { DevSupervisor } from "./devSupervisor";
+import { HostProcessProbe } from "./hostProcessProbe";
 
 export interface AppPreviewOptions {
   paths?: string[];
@@ -222,7 +223,7 @@ export class AppPreview {
     const server = {
       running: "already running",
       started: `started for this preview and stopped; its log: ${report.serverLog}`,
-      kept: `started for this preview and left running (pid ${report.serverPid}; stop it with \`kill -INT -${report.serverPid}\`); its log: ${report.serverLog}`,
+      kept: `started for this preview and left running (pid ${report.serverPid}; stop it with \`${AppPreview.stopArgvOf(report.serverPid ?? 0).join(" ")}\`); its log: ${report.serverLog}`,
     }[report.server];
     const lines = [
       `${report.origin}: ${report.app} dev server, ${server}`,
@@ -392,8 +393,18 @@ export class AppPreview {
     throw new Error(`The dev server this preview started ${what}${detail ? ` (${detail})` : ""}; see ${logPath}`);
   }
 
+  //? Windows has no process groups or SIGINT; `taskkill /T` ends the tree, as DevPortReclaimer does.
+  static stopArgvOf(pid: number, platform: NodeJS.Platform = process.platform) {
+    return platform === "win32" ? ["taskkill", "/PID", String(pid), "/T", "/F"] : ["kill", "-INT", `-${pid}`];
+  }
+
   static async #stopServer(proc: Bun.Subprocess) {
     if (proc.exitCode !== null) return;
+    if (process.platform === "win32") {
+      await HostProcessProbe.run(AppPreview.stopArgvOf(proc.pid));
+      await AppPreview.#raceTimer(proc.exited, AppPreview.stopGraceMs, null);
+      return;
+    }
     const signal = (name: NodeJS.Signals) => {
       try {
         process.kill(-proc.pid, name);

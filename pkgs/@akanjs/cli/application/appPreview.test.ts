@@ -124,12 +124,18 @@ describe("AppPreview.render", () => {
 
   test("prints a verdict per page, the redirect, each finding and how to stop a kept server", () => {
     const text = AppPreview.render(report);
-    expect(text).toContain("left running (pid 4242; stop it with `kill -INT -4242`)");
+    expect(text).toContain(`left running (pid 4242; stop it with \`${AppPreview.stopArgvOf(4242).join(" ")}\`)`);
     expect(text).toContain("client and server errors are not shown");
     expect(text).toContain("Not opened: /admin/:userId needs a concrete path.");
     expect(text).toContain('ok    /en/ -> /en/explore  200  "Board"  1.2s');
     expect(text).toContain('FAIL  /en/board  500  "Board"  1.2s\n  page: The page body rendered empty.');
     expect(text.trim().endsWith("1 of 2 page(s) failed.")).toBe(true);
+  });
+
+  test("stops a server's process group, and on Windows, which has none, its process tree", () => {
+    expect(AppPreview.stopArgvOf(4242, "linux")).toEqual(["kill", "-INT", "-4242"]);
+    expect(AppPreview.stopArgvOf(4242, "darwin")).toEqual(["kill", "-INT", "-4242"]);
+    expect(AppPreview.stopArgvOf(4242, "win32")).toEqual(["taskkill", "/PID", "4242", "/T", "/F"]);
   });
 });
 

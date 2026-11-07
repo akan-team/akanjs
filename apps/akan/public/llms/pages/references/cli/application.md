@@ -264,7 +264,7 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 
 `akan preview <app> [paths] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>]`
 
-Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server's errors for that request, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.
+Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.
 
 - paths (String): Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`.
 
