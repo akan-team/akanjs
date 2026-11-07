@@ -102,6 +102,9 @@ export const Title = ({ children }: TitleProps) => {
   const { setTitle } = useContext(DialogContext);
   useEffect(() => {
     setTitle(children);
+    return () => {
+      setTitle(null);
+    };
   }, [children]);
   return null;
 };
@@ -113,6 +116,9 @@ export const Action = ({ children }: ActionProps) => {
   const { setAction } = useContext(DialogContext);
   useEffect(() => {
     setAction(children);
+    return () => {
+      setAction(null);
+    };
   }, [children]);
   return null;
 };

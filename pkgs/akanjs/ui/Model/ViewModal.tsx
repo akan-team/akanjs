@@ -22,12 +22,14 @@ const ViewTools = ({ modelName, closeView }: ViewToolsProps) => {
 };
 
 interface ViewModalProps extends ModalSurfaceProps {
-  id: string;
+  /** Left out, the modal opens for whichever record `view<Model>` loads, listed or not. */
+  id?: string;
   modal?: string;
   modalClassName?: string;
   viewClassName?: string;
   slice: SliceMeta;
   renderTitle?: (model: any) => ReactNode | string;
+  /** The bottom bar's content; a `null` answer leaves the bar out. */
   renderAction?: (model: any) => ReactNode;
   renderView: (model: any) => ReactNode | null;
 }
@@ -58,18 +60,17 @@ export default function ViewModal({
   const model = storeUse[names.model]() as { id: string; [key: string]: any } | null;
   const modelModal = storeUse[names.modelModal]() as string | null;
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;
-  const isModalOpen = modelModal === (modal ?? "view") && (modelLoading === id || model?.id === id);
+  const isModalOpen =
+    modelModal === (modal ?? "view") &&
+    (id === undefined ? !!modelLoading || !!model : modelLoading === id || model?.id === id);
   const Title = () => {
     if (!model || modelLoading || !renderTitle) return null;
     const render = renderTitle(model);
     if (typeof render === "string") return <h2 className="flex items-center text-2xl">{render}</h2>;
     else return render;
   };
-  const Action = () => {
-    if (!model || modelLoading || !renderAction) return null;
-    const render = renderAction(model);
-    return render;
-  };
+  //? Called, not mounted: an action's own open modal survives a re-render, and a `null` answer draws no bar.
+  const action = isModalOpen && model && !modelLoading && renderAction ? renderAction(model) : null;
 
   const closeView = () => {
     storeDo[names.resetModel]();
@@ -83,8 +84,8 @@ export default function ViewModal({
         className={modalClassName}
         presentation={presentation}
         placement={placement}
-        title={<Title />}
-        action={<Action />}
+        title={renderTitle ? <Title /> : null}
+        action={action}
       >
         <View className={viewClassName} model={model} modelLoading={modelLoading} render={renderView} />
       </Modal>
