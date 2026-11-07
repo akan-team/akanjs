@@ -9,6 +9,7 @@ import { ProjectTypecheck } from "@akanjs/devkit/typecheck/projectTypecheck";
 import { TypecheckFailure } from "@akanjs/devkit/typecheck/typecheckFailure";
 import type { ApplicationRunner } from "../application/application.runner";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
+import { VerifyComments } from "./verifyComments";
 import { type VerifyDiagnostic, VerifyDiagnostics, type VerifyStepName } from "./verifyDiagnostics";
 import type { VerifyResult, VerifyStepResult } from "./verifyReport";
 import type { VerifyScope, VerifyTarget } from "./verifyScope";
@@ -46,7 +47,7 @@ export class VerifyPipeline {
     if (!lintOnly) await this.#each("sync", systems, (target) => this.#sync(target));
     const synced = !this.#failed("sync");
     await Promise.all([
-      this.#each("lint", scope.targets, (target) => this.#lint(target)),
+      this.#each("lint", scope.targets, (target) => this.#lint(target, { comments: !lintOnly })),
       lintOnly || !synced ? null : this.#each("typecheck", scope.targets, (target) => this.#typecheck(target)),
     ]);
     const apps = scope.targets.filter((target) => target.type === "app");
@@ -98,16 +99,18 @@ export class VerifyPipeline {
     return { diagnostics: [] };
   }
 
-  async #lint(target: VerifyTarget): Promise<StepOutcome> {
+  async #lint(target: VerifyTarget, { comments }: { comments: boolean }): Promise<StepOutcome> {
     const files = target.files.length
       ? target.files.filter((file) => existsSync(path.join(this.#root, file)))
       : [target.dir];
     const biome = files.length ? await this.#biome(files) : { diagnostics: [], fixed: 0 };
     const exec = this.#execOf(target);
     const gates = await this.#workspaceRunner.lintGateFailures(exec, true);
+    const added = comments && target.files.length ? await VerifyComments.added(this.#root, target.files) : [];
     return {
       diagnostics: [
         ...biome.diagnostics,
+        ...added,
         ...gates.messages.map((message) => VerifyDiagnostics.fromMessage("lint", message, "akan.lint")),
         ...VerifyDiagnostics.fromMaintainability(gates.maintainability),
       ],

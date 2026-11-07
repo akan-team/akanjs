@@ -21,12 +21,12 @@ paths:
   code into pages and layouts. Preserve file roles (`.document.ts`, `.service.ts`, `.store.ts`, `.constant.ts`,
   `.client.ts`), and inspect nearby files before introducing a new boundary pattern.
 
-- **Never import across the client/server boundary** (`apps/**`, `libs/**`). Client files (`ui/`, `webkit/`,
-  `page/`, `*.store.ts`, every `.tsx`) never import a `*.document|dictionary|service|signal.ts`, `srvkit/`, a
-  package `server` entrypoint, or the `db` / `srv` / `sig` / `dict` / `option` / `useServer` barrels. Server files
-  (those four suffixes, `srvkit/`) never import a `*.store.ts`, a module component, `ui/`, `webkit/`, a package
-  `client` entrypoint, or the `st` / `store` / `useClient` barrels. `common/` and `*.constant.ts` obey both.
-  `import type` is legal everywhere; a mixed value-and-type import is not.
+- **Never import across the client/server boundary** (`apps/**`, `libs/**`; `no-import-server-in-client`,
+  `no-import-client-in-server`). Client files (`ui/`, `webkit/`, `page/`, `*.store.ts`, every `.tsx`) never import a
+  `*.document|dictionary|service|signal.ts`, `srvkit/`, a package `server` entrypoint, or the `db` / `srv` / `sig` /
+  `dict` / `option` / `useServer` barrels. Server files (those four suffixes, `srvkit/`) never import a `*.store.ts`, a
+  module component, `ui/`, `webkit/`, a package `client` entrypoint, or the `st` / `store` / `useClient` barrels.
+  `common/` and `*.constant.ts` obey both. `import type` is legal everywhere; a mixed value-and-type import is not.
 - **Server-component discipline** on `page/**`, `*.Unit.tsx`, `*.View.tsx` (`no-import-client-functions`,
   `no-use-client-in-server`, `non-scalar-props-restricted`).
 

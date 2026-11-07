@@ -174,6 +174,8 @@ Meaning
 
 - `agent-guide-oversized` — warning — `AGENTS.md` and an app's or library's guide near the 32 KiB past which Codex reads nothing.
 
+- `agent-guide-leftover` — warning — An older template's `docs/AI-DEVELOPMENT.md` or `docs/GENERATED.md` is still there, or `AGENTS.md` points to one.
+
 - `recipe-index-stale` — error — A recipe list in an `AGENTS.md` misses a recipe or names one that is gone.
 
 - `recipe-inline-duplicate` — warning — An inline `className` repeats a recipe's look instead of using the recipe.

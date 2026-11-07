@@ -1,4 +1,4 @@
-import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { ExitCodeError, markCliErrorPrinted, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { Logger } from "akanjs/common";
 import { AgentRunner, type AgentTarget } from "./agent.runner";
 import { AgentHook, type AgentHookInput } from "./agentHook";
@@ -20,12 +20,24 @@ export class AgentScript extends script("agent", [AgentRunner]) {
     workspace: Workspace,
     action: string,
     target: string | null,
-    { force = false }: { force?: boolean } = {},
+    { force = false, check = false }: { force?: boolean; check?: boolean } = {},
   ) {
     if (action === "hook") return await this.#hook(workspace, target);
     if (action !== "install") throw new Error(`Unknown agent action: ${action}. Use "install" or "hook".`);
+    if (check) return await this.#check(workspace, resolveTargets(target));
     const written = await this.agentRunner.install(workspace, resolveTargets(target), { force });
     Logger.rawLog(`Agent rules written:\n${written.map((file) => `- ${file}`).join("\n")}`);
+  }
+
+  async #check(workspace: Workspace, targets: AgentTarget[]) {
+    const drift = await this.agentRunner.check(workspace, targets);
+    if (drift.length === 0) return Logger.rawLog("agent files ok");
+    const files = drift.length === 1 ? "1 file" : `${drift.length} files`;
+    const lines = drift.map(({ path, change }) => `${path} ${change}`);
+    Logger.rawLog([`agent files differ · ${files} · run \`akan agent install\``, ...lines].join("\n"));
+    const failure = new ExitCodeError("agent files differ", 1);
+    markCliErrorPrinted(failure);
+    throw failure;
   }
 
   async #hook(workspace: Workspace, event: string | null) {

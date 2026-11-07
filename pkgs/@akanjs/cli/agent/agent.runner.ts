@@ -19,6 +19,14 @@ import { AgentHook } from "./agentHook";
 export type AgentTarget = "cursor" | "agents-md" | "claude" | "rules" | "skills" | "hooks";
 type PointerTarget = Exclude<AgentTarget, "rules" | "skills" | "hooks">;
 
+export interface AgentDrift {
+  path: string;
+  change: "missing" | "outdated" | "retired";
+}
+
+//? The stamp follows whichever CLI rendered the block and `akan doctor` reports it apart, so a check compares content.
+const unstamped = (content: string) => content.replace(/<!-- akan:agent:version \S+ -->\n\n/, "");
+
 const targetPaths: Record<PointerTarget, string> = {
   cursor: ".cursor/rules/akan.mdc",
   "agents-md": "AGENTS.md",
@@ -172,6 +180,17 @@ export class AgentRunner extends runner("agent") {
   }
 
   async install(workspace: Workspace, targets: AgentTarget[], { force = false }: { force?: boolean } = {}) {
+    return await this.#apply(workspace, targets, force, null);
+  }
+
+  //* The scoped AGENTS.md blocks are left out: every `akan sync` rewrites them and `akan lint` fails while one is stale.
+  async check(workspace: Workspace, targets: AgentTarget[]) {
+    const drift: AgentDrift[] = [];
+    await this.#apply(workspace, targets, false, drift);
+    return drift;
+  }
+
+  async #apply(workspace: Workspace, targets: AgentTarget[], force: boolean, drift: AgentDrift[] | null) {
     const written: string[] = [];
     for (const target of targets) {
       if (target === "rules" || target === "skills" || target === "hooks") continue;
@@ -179,56 +198,70 @@ export class AgentRunner extends runner("agent") {
       const exists = await workspace.exists(filePath);
       // AGENTS.md rewrites only its managed block; the CLAUDE.md and Cursor pointers are the user's once they exist.
       if (exists && !force && target !== "agents-md") {
-        Logger.rawLog(`Kept ${filePath}: it already exists, and --force overwrites it.`);
+        if (!drift) Logger.rawLog(`Kept ${filePath}: it already exists, and --force overwrites it.`);
         continue;
       }
       const existing = exists ? await workspace.readFile(filePath) : null;
-      const content = await renderTarget(workspace, target, existing);
-      await workspace.writeFile(filePath, content, { overwrite: true });
+      await this.#put(workspace, filePath, await renderTarget(workspace, target, existing), drift);
       written.push(filePath);
     }
     if (targets.includes("rules")) {
       const appendix = { style: await renderFrameworkRecipes(workspace) };
       const assets = await AgentAssets.rules({ appendix });
-      written.push(await this.#writeAssets(workspace, assets, /^\.(claude|cursor)\/rules\//, force, "rules"));
+      written.push(await this.#writeAssets(workspace, assets, /^\.(claude|cursor)\/rules\//, force, "rules", drift));
     }
     if (targets.includes("skills")) {
       const assets = await AgentAssets.skills();
-      written.push(await this.#writeAssets(workspace, assets, /^\.(claude|agents)\/skills\//, force, "skills"));
+      written.push(await this.#writeAssets(workspace, assets, /^\.(claude|agents)\/skills\//, force, "skills", drift));
     }
-    if (targets.includes("hooks")) written.push(await this.#installHooks(workspace));
-    if (targets.includes("agents-md")) written.push(...(await this.#installScopeIndexes(workspace)));
+    if (targets.includes("hooks")) written.push(await this.#installHooks(workspace, drift));
+    if (targets.includes("agents-md") && !drift) written.push(...(await this.#installScopeIndexes(workspace)));
     return written;
   }
 
-  async #installHooks(workspace: Workspace) {
+  async #put(workspace: Workspace, file: string, content: string, drift: AgentDrift[] | null) {
+    if (!drift) return (await workspace.writeFile(file, content, { overwrite: true, silent: true })).written;
+    const current = (await workspace.exists(file)) ? await workspace.readFile(file) : null;
+    if (current === null) drift.push({ path: file, change: "missing" });
+    else if (unstamped(current) !== unstamped(content)) drift.push({ path: file, change: "outdated" });
+    return false;
+  }
+
+  async #installHooks(workspace: Workspace, drift: AgentDrift[] | null) {
     const settingsPath = ".claude/settings.json";
     const existing = (await workspace.exists(settingsPath))
       ? (JSON.parse(await workspace.readFile(settingsPath)) as Record<string, unknown>)
       : {};
-    await workspace.writeFile(settingsPath, `${JSON.stringify(AgentHook.mergeSettings(existing), null, 2)}\n`, {
-      silent: true,
-    });
+    await this.#put(workspace, settingsPath, `${JSON.stringify(AgentHook.mergeSettings(existing), null, 2)}\n`, drift);
     return `hooks: ${settingsPath}`;
   }
 
   // A generated file the user stripped of its marker is theirs: it is neither rewritten nor pruned without --force.
-  async #writeAssets(workspace: Workspace, assets: AgentAsset[], owned: RegExp, force: boolean, label: string) {
+  async #writeAssets(
+    workspace: Workspace,
+    assets: AgentAsset[],
+    owned: RegExp,
+    force: boolean,
+    label: string,
+    drift: AgentDrift[] | null,
+  ) {
     const fresh = new Set(assets.map((asset) => asset.path));
     const stale = (await AgentAssets.generatedFiles(workspace.workspaceRoot)).filter(
       (file) => owned.test(file) && !fresh.has(file),
     );
-    for (const file of stale) await workspace.remove(file);
+    if (drift) drift.push(...stale.map((file) => ({ path: file, change: "retired" as const })));
+    else for (const file of stale) await workspace.remove(file);
     let changed = 0;
     for (const asset of assets) {
       if (!force && (await workspace.exists(asset.path))) {
         const current = await workspace.readFile(asset.path);
         if (!current.includes(AgentAssets.marker)) {
-          Logger.rawLog(`Kept ${asset.path}: it carries no ${AgentAssets.marker} marker, and --force overwrites it.`);
+          if (!drift)
+            Logger.rawLog(`Kept ${asset.path}: it carries no ${AgentAssets.marker} marker, and --force overwrites it.`);
           continue;
         }
       }
-      if ((await workspace.writeFile(asset.path, asset.content, { silent: true })).written) changed++;
+      if (await this.#put(workspace, asset.path, asset.content, drift)) changed++;
     }
     const removed = stale.length ? `, ${stale.length} stale removed` : "";
     return `${label}: ${assets.length} files, ${changed} changed${removed}`;

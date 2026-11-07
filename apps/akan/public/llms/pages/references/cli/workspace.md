@@ -119,6 +119,8 @@ Check a change in one run: sync, lint with fixes, typecheck, a fast build of eac
 
 - warnings: Print after the errors and never fail the run, the SSR check's included.
 
+- akan.comment.added: A warning per code comment added since the last commit, so each one gets a second look. `--lint-only` skips it.
+
 - build: Skipped while lint or typecheck reports an error.
 
 - exit code: `0` passes, `1` fails, and `2` means a target is not in the workspace.

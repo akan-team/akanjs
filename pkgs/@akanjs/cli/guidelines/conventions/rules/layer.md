@@ -22,4 +22,4 @@ paths:
   server-safe `index.tsx` — merging the pair breaks RSC.
 
 - **No `//!` or `/*!` in browser-reachable code** (`ui/`, `webkit/`, `common/`, `page/**/*.tsx`, `*.constant.ts`,
-  `*.store.ts`, module components) — Bun keeps both through minification. Use `// FIXME:`.
+  `*.store.ts`, module components; `no-bang-comment-in-client`) — Bun keeps both through minification. Use `// FIXME:`.

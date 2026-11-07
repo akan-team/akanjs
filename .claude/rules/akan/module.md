@@ -52,10 +52,12 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
   invariants the code cannot show, an optional workflow chain (`draft -> signed -> active`). Never restate fields or
   types; update it when an invariant or workflow changes.
 
-- **`{name}`, never `{{name}}`**, in a dictionary `.error()` / `.translate()` entry — only single braces interpolate.
-- **Never return a value from a store action** — actions dispatch through `st.do.*` as `void`; write state with
-  `this.set({ ... })`. A bare `return;`, a nested callback's `return`, a getter, and a `static` helper are fine.
-- **Never redeclare a generated CRUD endpoint name** in `*.signal.ts`.
+- **`{name}`, never `{{name}}`** (`no-double-brace-placeholder`), in a dictionary `.error()` / `.translate()` entry —
+  only single braces interpolate.
+- **Never return a value from a store action** (`no-return-in-store-action`) — actions dispatch through `st.do.*` as
+  `void`; write state with `this.set({ ... })`. A bare `return;`, a nested callback's `return`, a getter, and a `static`
+  helper are fine.
+- **Never redeclare a generated CRUD endpoint name** in `*.signal.ts` (`no-redeclare-predefined-endpoint`).
 - **Never ask a list for more than 500 rows** (`no-oversized-list-limit`) — the server serves at most 500 per
   request and drops the rest without an error, so `fetch.xListInY(0, 10000)` silently stops at row 500. Page with
   skip/limit or `st.do.loadMoreOf<X>()` while `hasMoreOf<X>`, or compute the figure in an insight or an endpoint.

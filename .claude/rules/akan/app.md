@@ -14,26 +14,27 @@ paths:
 `biome.json` extends `@akanjs/devkit/biome.base.json`, which scopes every grit plugin in `@akanjs/devkit/lint/`;
 each plugin's header and diagnostic carry its full reasoning.
 
-- **Never construct a raw `Error`.** Throw `new Err("<module>.error.<key>")` with the key registered as `[en, ko]` in
-  the module dictionary's `.error({})` — imported from `"../dict"` on the server, from `"@libs/<lib>/client"` /
-  `"@apps/<app>/client"` in UI. A `throw` is an error; a raw `Error` rejected, returned or stored loses the key and
-  status too (a warning for now). Exempt: tests, `*.constant.ts`, a root `native/` folder (plugins throw
-  `AkanNativeError`), `script/migration/**` (an operator reads its message), and `common/**` / `env/**`, which have
-  no legal `Err` import — keep throwing code out of them.
-- **Never import a third-party package** from `page/**`, any barrel, a module logic file
+- **Never construct a raw `Error`** (`no-throw-raw-error`). Throw `new Err("<module>.error.<key>")` with the key
+  registered as `[en, ko]` in the module dictionary's `.error({})` — imported from `"../dict"` on the server, from
+  `"@libs/<lib>/client"` / `"@apps/<app>/client"` in UI. A `throw` is an error; a raw `Error` rejected, returned or
+  stored loses the key and status too (a warning for now). Exempt: tests, `*.constant.ts`, a root `native/` folder
+  (plugins throw `AkanNativeError`), `script/migration/**` (an operator reads its message), and `common/**` / `env/**`,
+  which have no legal `Err` import — keep throwing code out of them.
+- **Never import a third-party package** (`no-import-external-library`) from `page/**`, any barrel, a module logic file
   (`*.{constant,dictionary,document,service,signal,store}.ts`) or module component
   (`*.{Template,Unit,Util,View,Zone}.tsx`) — re-export it through a lib first (one-line shims in a lib's `common/`,
-  `webkit/`, `ui/` are load-bearing). `*.signal.test.ts` / `*.service.test.ts` too, though they may import `node:*`
-  and `bun:*`.
-- **No `console.log` / `console.debug`** (only `assert`, `error`, `info`, `warn`; server code uses `this.logger` or
-  `new Logger("ClassName")`), and **never `logger.log()` / `Logger.log()`** — it emits at `info` while reading like
-  its own level; write `.info()`. The ladder is `trace verbose debug info warn error`.
-- **Never touch `document.cookie`, `localStorage` or `sessionStorage`** — a native shell's page keeps no cookies on
-  iOS, macOS and Linux, and Web Storage throws during SSR. Use `getCookie` / `setCookie` / `removeCookie`,
-  `storage`, `secretStorage` from `akanjs/client`. Browser APIs a WebView lacks (`navigator.share`, `serviceWorker`,
-  `Notification`, `geolocation`, `vibrate`) live in a `webkit/` hook behind `isNativeApp()` (warning). Both in full:
-  `runtimeRule`.
-- **No deep imports past a barrel**, except cross-module constants (`../map/map.constant`).
+  `webkit/`, `ui/` are load-bearing). `*.signal.test.ts` / `*.service.test.ts` too, though they may import `node:*` and
+  `bun:*` (`no-import-external-library-in-test`).
+- **No `console.log` / `console.debug`** (`noConsole`; only `assert`, `error`, `info`, `warn`; server code uses
+  `this.logger` or `new Logger("ClassName")`), and **never `logger.log()` / `Logger.log()`** (`no-deprecated-log-level`)
+  — it emits at `info` while reading like its own level; write `.info()`. The ladder is
+  `trace verbose debug info warn error`.
+- **Never touch `document.cookie`, `localStorage` or `sessionStorage`** (`no-document-cookie`, `no-web-storage`) — a
+  native shell's page keeps no cookies on iOS, macOS and Linux, and Web Storage throws during SSR. Use `getCookie` /
+  `setCookie` / `removeCookie`, `storage`, `secretStorage` from `akanjs/client`. Browser APIs a WebView lacks
+  (`navigator.share`, `serviceWorker`, `Notification`, `geolocation`, `vibrate`) live in a `webkit/` hook behind
+  `isNativeApp()` (`no-web-only-api-outside-webkit`, a warning). Both in full: `runtimeRule`.
+- **No deep imports past a barrel** (`no-deep-internal-import`), except cross-module constants (`../map/map.constant`).
 - **Suppress a grit diagnostic as `lint/plugin`** (`// biome-ignore lint/plugin: <reason>`,
   `// biome-ignore-all lint/plugin: <reason>`); bare `plugin:` does nothing. `pkgs/` is out of scope.
 - **`biome.json` is strict JSON** — a comment breaks config resolution without an error (Biome falls back to

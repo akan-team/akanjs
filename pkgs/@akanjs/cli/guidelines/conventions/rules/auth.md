@@ -26,9 +26,9 @@ paths:
 - `Can<Verb><Model>` guards in `srvkit/guards.ts` fail closed and ship with the model's library (`transportRule`).
   Services re-check ownership behind a guard — two independent gates.
 
-- **Every endpoint and named slice names its guards** (warning) — a `query` / `mutation` / `pubsub` / `message`, a
-  named slice's `init()`, or a `slice()` map without `root` that names none (or `guards: []`) answers every caller.
-  Write `guards: [Public]` when anonymous access is the intent.
+- **Every endpoint and named slice names its guards** (`no-unguarded-endpoint`, a warning) — a `query` / `mutation` /
+  `pubsub` / `message`, a named slice's `init()`, or a `slice()` map without `root` that names none (or `guards: []`)
+  answers every caller. Write `guards: [Public]` when anonymous access is the intent.
 
 - **A `slice()` takes its guard map as a second argument**, `slice(srv.task, { guards: { root: Admin, get: SignedIn,
   cru: SignedIn } }, (init) => ({...}))`. An `endpoint()` takes no guard argument at all —

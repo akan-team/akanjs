@@ -3,8 +3,9 @@ import path from "node:path";
 import type { Workspace } from "@akanjs/devkit/commandDecorators";
 import { Logger } from "akanjs/common";
 import { ApplicationRunner } from "../application/application.runner";
+import { VerifyComments } from "../verify/verifyComments";
 import { VerifyPipeline } from "../verify/verifyPipeline";
-import { VerifyReport } from "../verify/verifyReport";
+import { VerifyReport, type VerifyResult } from "../verify/verifyReport";
 import { VerifyScope } from "../verify/verifyScope";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
 
@@ -109,26 +110,37 @@ export class AgentHook {
       ? (await this.#workspace.readFile(ledger)).split("\n").filter(Boolean)
       : [];
     if (files.length === 0) return { block: false, message: "" };
-    const outcome = await this.#verify(files, { lintOnly: false });
-    if (!outcome.block || input.stop_hook_active) await this.#workspace.remove(ledger);
-    return input.stop_hook_active ? { block: false, message: outcome.message } : outcome;
+    const result = await this.#verified(files, { lintOnly: false });
+    const comments = result?.diagnostics.filter((diagnostic) => diagnostic.code === VerifyComments.code).length ?? 0;
+    const block = !!result && (!result.ok || comments > 0);
+    if (!block || input.stop_hook_active) await this.#workspace.remove(ledger);
+    const message = result ? VerifyReport.text(result) : "";
+    if (!block || input.stop_hook_active) return { block: false, message };
+    const lead = comments
+      ? `${comments} comment${comments === 1 ? "" : "s"} added since the last commit in files you edited; delete each one the code already says, then stop again.`
+      : null;
+    return { block: true, message: lead ? `${lead}\n${message}` : message };
   }
 
   async #verify(files: string[], { lintOnly }: { lintOnly: boolean }): Promise<AgentHookOutcome> {
+    const result = await this.#verified(files, { lintOnly });
+    return result ? { block: !result.ok, message: VerifyReport.text(result) } : { block: false, message: "" };
+  }
+
+  async #verified(files: string[], { lintOnly }: { lintOnly: boolean }): Promise<VerifyResult | null> {
     const [apps, libs, pkgs] = await this.#workspace.getExecs();
     const scope = VerifyScope.resolve(
       files.map((file) => ({ code: " M", file })),
       { apps, libs, pkgs },
     );
-    if (scope.targets.length === 0) return { block: false, message: "" };
+    if (scope.targets.length === 0) return null;
     const consoleOutput = Logger.consoleOutput;
     Logger.consoleOutput = false;
-    const result = await new VerifyPipeline(this.#workspace, new WorkspaceRunner(), new ApplicationRunner())
+    return await new VerifyPipeline(this.#workspace, new WorkspaceRunner(), new ApplicationRunner())
       .run(scope, { lintOnly })
       .finally(() => {
         Logger.consoleOutput = consoleOutput;
       });
-    return { block: !result.ok, message: VerifyReport.text(result) };
   }
 
   async #record(session: string | undefined, file: string) {

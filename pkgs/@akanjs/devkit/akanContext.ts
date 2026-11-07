@@ -649,6 +649,26 @@ export class AkanContextAnalyzer {
     return `${subject} ${Math.ceil(total / 1024)} KiB of the 32 KiB Codex reads — run \`akan agent install\`, then shorten the text outside the akan:agent markers or move it into a skill.`;
   }
 
+  static async #agentGuideLeftovers(workspace: WorkspaceExecutor) {
+    const root = workspace.workspaceRoot;
+    const guide = (await safeReadText(path.join(root, "AGENTS.md"))) ?? "";
+    const leftovers: { path: string; message: string }[] = [];
+    for (const doc of ["docs/AI-DEVELOPMENT.md", "docs/GENERATED.md"]) {
+      const pointer = guide.includes(doc);
+      if ((await safeReadText(path.join(root, doc))) !== null)
+        leftovers.push({
+          path: doc,
+          message: `${doc} is an older template's copy of the agent guide, and nothing reads it now — delete it${pointer ? " and the AGENTS.md sentence that points to it" : ""}.`,
+        });
+      else if (pointer)
+        leftovers.push({
+          path: "AGENTS.md",
+          message: `AGENTS.md points to ${doc}, which is gone — delete that sentence.`,
+        });
+    }
+    return leftovers;
+  }
+
   //? Older templates wrote these for Next.js: nothing installs or reads them, and editors warn about the plugin.
   static async #configLeftovers(workspace: WorkspaceExecutor, sysPaths: string[]) {
     const leftovers: { path: string; message: string }[] = [];
@@ -744,6 +764,8 @@ export class AkanContextAnalyzer {
     const oversize = await AkanContextAnalyzer.#agentGuideOversize(workspace, sysPaths);
     if (oversize)
       diagnostics.push({ severity: "warning", code: "agent-guide-oversized", path: "AGENTS.md", message: oversize });
+    for (const leftover of await AkanContextAnalyzer.#agentGuideLeftovers(workspace))
+      diagnostics.push({ severity: "warning", code: "agent-guide-leftover", ...leftover });
     for (const leftover of await AkanContextAnalyzer.#configLeftovers(workspace, sysPaths))
       diagnostics.push({ severity: "warning", code: "config-leftover", ...leftover });
 

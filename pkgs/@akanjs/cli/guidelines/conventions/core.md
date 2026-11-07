@@ -41,23 +41,31 @@ and infrastructure. A workspace is Bun-first: `apps/<app>` holds pages, domain m
 
 ## Rules That Break The Build
 
-Lint enforces these, and `akan verify` reports them; the bracketed path rule carries the full contract.
+`akan verify` reports each through the check named in parentheses, and the bracketed path rule carries the full
+contract. Path rules name their checks the same way.
 
 - Throw `new Err("<module>.error.<key>")` with the key in the module dictionary's `.error({})`; never a raw `Error`
-  [app].
-- A third-party package reaches `page/**`, a barrel or a module file only through a lib re-export [app].
+  (`no-throw-raw-error`) [app].
+- A third-party package reaches `page/**`, a barrel or a module file only through a lib re-export
+  (`no-import-external-library`) [app].
 - Colors only from the semantic vocabulary (`bg-primary`, `text-foreground/70`) — no palette, arbitrary, daisyUI or
-  `style={{}}` colors [style].
-- No `console.log` / `console.debug`, never `logger.log()`; server code logs through `this.logger` [app].
-- No `document.cookie`, `localStorage` or `sessionStorage` — `getCookie`, `setCookie`, `storage`, `secretStorage`
-  from `akanjs/client` [app].
-- Client files never import server files and the reverse; `import type` is legal everywhere [ssr].
-- A server write leaves the browser only through a store action, one write per action or handler; chained writes
-  become one service method behind one endpoint [gates].
-- Every endpoint and named slice names its `guards` (`[Public]` when anonymous is the intent) [auth].
-- Never ask a list for more than 500 rows [module]; never call a hook conditionally, `st.*` hooks included [tsx].
-- A file or component past its size limit fails, and `akan.baseline.json` only shrinks — never add or raise an
-  entry [gates].
+  `style={{}}` colors (`no-raw-palette-class`, `no-arbitrary-color`, `no-daisyui-legacy-class`, `no-inline-color`)
+  [style].
+- No `console.log` / `console.debug`, never `logger.log()` (`noConsole`, `no-deprecated-log-level`); server code logs
+  through `this.logger` [app].
+- No `document.cookie`, `localStorage` or `sessionStorage` (`no-document-cookie`, `no-web-storage`) — `getCookie`,
+  `setCookie`, `storage`, `secretStorage` from `akanjs/client` [app].
+- Client files never import server files and the reverse (`no-import-server-in-client`, `no-import-client-in-server`);
+  `import type` is legal everywhere [ssr].
+- A server write leaves the browser only through a store action, one write per action or handler
+  (`akan.write.placement`, `akan.store.multi-write`, `akan.component.write-chain`); chained writes become one service
+  method behind one endpoint [gates].
+- Every endpoint and named slice names its `guards`, `[Public]` when anonymous is the intent (`no-unguarded-endpoint`)
+  [auth].
+- Never ask a list for more than 500 rows (`no-oversized-list-limit`) [module]; never call a hook conditionally, `st.*`
+  hooks included (`useHookAtTopLevel`, `no-conditional-st-hook`) [tsx].
+- A file or component past its size limit fails (`akan.size.file`, `akan.size.component`), and `akan.baseline.json`
+  only shrinks (`akan.baseline.growth`) — never add or raise an entry [gates].
 - Suppress a plugin diagnostic as `// biome-ignore lint/plugin: <reason>`; every suppression carries a reason [app].
 
 ## Code Style
@@ -67,9 +75,10 @@ Lint enforces these, and `akan verify` reports them; the bracketed path rule car
 - One class per file, named after it; TypeScript files are camelCase, component and convention files excepted.
 - Identifiers, endpoint names and logs are English; everything a user reads goes through `l("model.field")` or
   `l.trans({ en, ko })`, and dictionary entries are `[en, ko]` pairs.
-- Comment only what the code cannot say — a vendor quirk, an infrastructure constraint, security reasoning, a domain
-  field's meaning, a state transition, a rejected alternative. Never restate code, label a section or add JSDoc;
-  retire a symbol with `/** @deprecated <what instead> */`.
+- Comment only what the code cannot say (`akan verify` flags each new one as `akan.comment.added`) — a vendor quirk,
+  an infrastructure constraint, security reasoning, a domain field's meaning, a state transition, a rejected
+  alternative. Never restate code, label a section or add JSDoc; retire a symbol with
+  `/** @deprecated <what instead> */`.
 - Server rendering is the default: `"use client"` only for a hook, an event handler, the store, a browser global or
   a client-only package.
 

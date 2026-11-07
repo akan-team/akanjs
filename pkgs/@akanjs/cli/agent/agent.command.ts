@@ -12,8 +12,12 @@ export class AgentCommand extends command("agent", [AgentScript], ({ public: tar
       desc: "overwrite existing pointer files and generated files you took over",
       default: false,
     })
+    .option("check", Boolean, {
+      desc: "write nothing; exit 1 when install would create, change or remove a file",
+      default: false,
+    })
     .with(Workspace)
-    .exec(async function (action, targetName, force, workspace) {
-      await this.agentScript.agent(workspace, action, targetName, { force });
+    .exec(async function (action, targetName, force, check, workspace) {
+      await this.agentScript.agent(workspace, action, targetName, { force, check });
     }),
 })) {}

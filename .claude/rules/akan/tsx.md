@@ -54,24 +54,25 @@ state. Reach for the path, not the nearest file:
 
 ## Lint Rules On Components
 
-- **Never type a `*.Util.tsx` / `*.Zone.tsx` prop as a `cnst` model** — the server would hand a class instance to a
-  client component; take `bannerId: string` and read the model from the store. Exempt: `cnst.<Enum>["value"]`, a
-  `ClientInit` / `ClientView` / `ClientEdit` / `ModelsProps<…>` type argument, a function-typed prop, a `cnst` type
-  that never leaves the file; `ModelProps<…>` and other indexed accesses stay flagged.
-- **Never wrap a form setter in a pass-through arrow** — `(v) => st.do.setTypeOnTicket(v)` emits no
-  `data-akan-action` and publishes no agent tool. A wrapper that transforms, adds a statement, or calls `writeOnX`
-  is legal; publish it with an explicit `st.tool`.
+- **Never type a `*.Util.tsx` / `*.Zone.tsx` prop as a `cnst` model** (`no-model-type-in-util-zone`) — the server would
+  hand a class instance to a client component; take `bannerId: string` and read the model from the store. Exempt:
+  `cnst.<Enum>["value"]`, a `ClientInit` / `ClientView` / `ClientEdit` / `ModelsProps<…>` type argument, a
+  function-typed prop, a `cnst` type that never leaves the file; `ModelProps<…>` and other indexed accesses stay
+  flagged.
+- **Never wrap a form setter in a pass-through arrow** (`no-unpublished-form-setter`) —
+  `(v) => st.do.setTypeOnTicket(v)` emits no `data-akan-action` and publishes no agent tool. A wrapper that transforms,
+  adds a statement, or calls `writeOnX` is legal; publish it with an explicit `st.tool`.
 - **Never call a hook conditionally** — a skipped call shifts every later hook, and production React crashes
   elsewhere. Biome's `useHookAtTopLevel` checks plain hooks (`useState`, `useEffect`), early returns included.
   `no-conditional-st-hook` checks the `st` hooks it cannot see — `st.use.*`, `st.slice.<x>.use.*`, `st.sel`, `st.ref`,
   `st.tool(…).exec()` / `.card()`, `st.useState(…).init()`, `st.expose(…).value()` — behind `||` / `&&` / `??`, in a
   ternary, an `if`, a `switch`, a loop, a `catch`, a default value, an optional call or a callback; not after an early
   `return` or inside a helper the component calls. Read each into its own `const` at the top, then combine.
-- **No async component under `ui/`** — React has no async client component. Await in the page, or hand an
-  unawaited `fetch.*` field to a `Zone` / `<Load.Stream of={…}>`, and take the data as a prop. An async handler in a
-  synchronous component and `lazy(async () => import(…))` are untouched.
+- **No async component under `ui/`** (`no-async-component-in-ui`) — React has no async client component. Await in the
+  page, or hand an unawaited `fetch.*` field to a `Zone` / `<Load.Stream of={…}>`, and take the data as a prop. An async
+  handler in a synchronous component and `lazy(async () => import(…))` are untouched.
 - **Never call `fetch.init<Model><Suffix>` / `fetch.get<Model>Init<Suffix>` from a client file** (`"use client"` or
-  `*.store.ts`) — it is the hydration snapshot. Load it in the page and pass `init` down; reload with
-  `st.do.init<Model><Suffix>()`.
+  `*.store.ts`; `no-init-fetch-in-client`) — it is the hydration snapshot. Load it in the page and pass `init` down;
+  reload with `st.do.init<Model><Suffix>()`.
 - `noArrayIndexKey` and `useExhaustiveDependencies` are **off** on purpose — `key={idx}` for embedded scalars and
   short dependency arrays are intentional.

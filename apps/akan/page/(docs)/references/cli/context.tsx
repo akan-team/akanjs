@@ -544,6 +544,14 @@ akan mcp-call plan_workflow --mode plan --args '{"workflow":"add-field","inputs"
         }),
       },
       {
+        code: "agent-guide-leftover",
+        level: warningLevel,
+        meaning: l.trans({
+          en: "An older template's `docs/AI-DEVELOPMENT.md` or `docs/GENERATED.md` is still there, or `AGENTS.md` points to one.",
+          ko: "예전 템플릿이 만든 `docs/AI-DEVELOPMENT.md`나 `docs/GENERATED.md`가 남아 있거나, `AGENTS.md`가 그 파일을 가리킵니다.",
+        }),
+      },
+      {
         code: "recipe-index-stale",
         level: errorLevel,
         meaning: l.trans({

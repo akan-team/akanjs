@@ -83,4 +83,35 @@ describe("AgentHook", () => {
     expect(await Bun.file(path.join(root, ".akan/agent/edits-s1.txt")).exists()).toBe(false);
     expect((await hook.run("stop", { session_id: "s1" })).block).toBe(false);
   }, 120_000);
+
+  test("sends back comments added in edited files once, even when verify passes", async () => {
+    const { root, workspace } = await createTempPackage("@sample/tool");
+    roots.push(root);
+    await symlink(path.join(repoRoot, "node_modules"), path.join(root, "node_modules"));
+    const file = path.join(root, "pkgs/@sample/tool/index.ts");
+    await writeText(file, "export const value = 1;\n");
+    const git = (...args: string[]) =>
+      Bun.spawn(
+        ["git", "-c", "user.email=dev@example.com", "-c", "user.name=dev", "-c", "commit.gpgsign=false", ...args],
+        {
+          cwd: root,
+          stdout: "ignore",
+          stderr: "ignore",
+        },
+      ).exited;
+    await git("init", "-q");
+    await git("add", "-A");
+    await git("commit", "-q", "-m", "init");
+    await writeText(file, "// the value\nexport const value = 1;\n");
+    const hook = new AgentHook(workspace);
+    await hook.run("post-edit", { session_id: "s2", tool_input: { file_path: file } });
+
+    const stopped = await hook.run("stop", { session_id: "s2" });
+    expect(stopped.block).toBe(true);
+    expect(stopped.message.split("\n")[0]).toStartWith("1 comment added since the last commit");
+    expect(stopped.message).toContain("pkgs/@sample/tool/index.ts:1:1 warning akan.comment.added // the value");
+
+    expect((await hook.run("stop", { session_id: "s2", stop_hook_active: true })).block).toBe(false);
+    expect(await Bun.file(path.join(root, ".akan/agent/edits-s2.txt")).exists()).toBe(false);
+  }, 120_000);
 });

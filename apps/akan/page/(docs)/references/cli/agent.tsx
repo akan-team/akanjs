@@ -363,7 +363,7 @@ export default page()
     const commands: CommandReferenceItem[] = [
       {
         name: "agent",
-        signature: "akan agent install [target] [--force]",
+        signature: "akan agent install [target] [--force] [--check]",
         desc: l.trans({
           en: "Write the agent guide, its path rules, skills and pointers into the workspace.\nRun it again after upgrading Akan: only the managed block of `AGENTS.md` and the generated files are rewritten, so your own text stays.",
           ko: "에이전트 가이드와 경로 규칙, 스킬, 포인터 파일을 워크스페이스에 씁니다.\nAkan 버전을 올린 뒤 다시 실행하세요. `AGENTS.md`의 관리 블록과 생성 파일만 다시 쓰므로 직접 쓴 내용은 그대로 남습니다.",
@@ -398,6 +398,16 @@ export default page()
             desc: l.trans({
               en: "Overwrite an existing pointer, and a generated file whose marker you deleted.",
               ko: "이미 있는 포인터와, 생성 표시를 지운 생성 파일까지 덮어씁니다.",
+            }),
+          },
+          {
+            name: "--check",
+            type: "Boolean",
+            defaultValue: "false",
+            enumOrFlag: "-c",
+            desc: l.trans({
+              en: "Write nothing, list what install would change, and exit 1 if anything would. The version stamp is ignored.",
+              ko: "아무것도 쓰지 않고 install이 바꿀 파일을 나열하며, 하나라도 있으면 1로 끝납니다. 버전 표시는 비교하지 않습니다.",
             }),
           },
         ],
@@ -461,8 +471,8 @@ export default page()
           {
             name: l.trans({ en: "before stopping", ko: "멈추기 전" }),
             desc: l.trans({
-              en: "`akan verify` runs over the session's edits; a failure sends Claude Code back once to fix it.",
-              ko: "세션에서 편집한 파일로 `akan verify`를 실행하고, 실패하면 Claude Code를 한 번 되돌려 고치게 합니다.",
+              en: "`akan verify` runs over the session's edits; a failure or a comment added since the last commit sends it back once.",
+              ko: "세션에서 편집한 파일로 `akan verify`를 실행합니다. 실패하거나 마지막 커밋 뒤 추가된 주석이 있으면 Claude Code를 한 번 되돌려 보냅니다.",
             }),
           },
           {
@@ -524,8 +534,8 @@ export default page()
           {
             name: l.trans({ en: "flag position", ko: "플래그 위치" }),
             desc: l.trans({
-              en: "Put `--force` last: `--force claude` reads `claude` as its value, so `all` runs unforced.",
-              ko: "`--force`는 맨 뒤에 씁니다. `--force claude`는 `claude`를 플래그 값으로 읽어, `--force` 없이 `all`을 씁니다.",
+              en: "Put flags last: `--force claude` reads `claude` as the flag's value, so `all` runs unforced.",
+              ko: "플래그는 맨 뒤에 씁니다. `--force claude`는 `claude`를 플래그 값으로 읽어, `--force` 없이 `all`을 씁니다.",
             }),
           },
         ],
@@ -533,6 +543,7 @@ export default page()
 akan agent install agents-md
 akan agent install claude
 akan agent install hooks
+akan agent install --check
 akan agent install all --force`,
       },
     ];

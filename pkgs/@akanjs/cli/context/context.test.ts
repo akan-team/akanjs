@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { rm } from "node:fs/promises";
 import {
   AkanContextAnalyzer,
   createAkanClaudeMcpServer,
@@ -136,6 +137,34 @@ describe("ContextRunner", () => {
     expect(result.status).toBe("passed");
     expect(oversized(result)).toEqual([expect.objectContaining({ severity: "warning", path: "AGENTS.md" })]);
     expect(oversized(result)[0]?.message).toStartWith("AGENTS.md and apps/demo/AGENTS.md add up to 28 KiB");
+  });
+
+  test("warns about the agent guide copies older templates wrote beside AGENTS.md", async () => {
+    const { workspace } = track(await createTempApp("demo"));
+    const root = workspace.workspaceRoot;
+    const leftovers = async () =>
+      (await AkanContextAnalyzer.doctor(workspace)).diagnostics
+        .filter((diagnostic) => diagnostic.code === "agent-guide-leftover")
+        .map(({ path, severity, message }) => ({ path, severity, message }));
+
+    await writeText(`${root}/AGENTS.md`, "# Guide\n\nSee `docs/AI-DEVELOPMENT.md` and `docs/GENERATED.md`.\n");
+    await writeText(`${root}/docs/AI-DEVELOPMENT.md`, "# AI development\n");
+    expect(await leftovers()).toEqual([
+      {
+        path: "docs/AI-DEVELOPMENT.md",
+        severity: "warning",
+        message: expect.stringContaining("delete it and the AGENTS.md sentence that points to it"),
+      },
+      {
+        path: "AGENTS.md",
+        severity: "warning",
+        message: expect.stringContaining("AGENTS.md points to docs/GENERATED.md, which is gone"),
+      },
+    ]);
+
+    await writeText(`${root}/AGENTS.md`, "# Guide\n");
+    await rm(`${root}/docs`, { recursive: true, force: true });
+    expect(await leftovers()).toEqual([]);
   });
 
   test("explains core agent-facing commands", () => {
@@ -724,6 +753,34 @@ describe("AgentRunner", () => {
     expect(await Bun.file(`${root}/.claude/rules/akan/retired.md`).exists()).toBe(false);
     expect(await Bun.file(`${root}/.claude/rules/akan/team.md`).text()).toBe("# Team rule\n");
     expect(await Bun.file(`${root}/.claude/rules/akan/page.md`).text()).toBe("# Our page rule\n");
+  }, 60_000);
+
+  test("checks what install would change without writing, ignoring the version stamp and the user's files", async () => {
+    const { root, workspace } = track(await createTempApp("demo"));
+    const runner = new AgentRunner();
+    const targets = ["cursor", "agents-md", "claude", "rules", "skills"] as const;
+
+    expect((await runner.check(workspace, [...targets])).map((drift) => drift.change)).toContain("missing");
+    await runner.install(workspace, [...targets]);
+    expect(await runner.check(workspace, [...targets])).toEqual([]);
+
+    const agents = await Bun.file(`${root}/AGENTS.md`).text();
+    await Bun.write(`${root}/AGENTS.md`, agents.replace(/akan:agent:version \S+/, "akan:agent:version 0.0.1"));
+    await Bun.write(`${root}/.claude/rules/akan/team.md`, "# Team rule\n");
+    await Bun.write(`${root}/.claude/rules/akan/page.md`, "# Our page rule\n");
+    expect(await runner.check(workspace, [...targets])).toEqual([]);
+
+    const ts = `${root}/.claude/rules/akan/ts.md`;
+    await Bun.write(ts, (await Bun.file(ts).text()).replace("# TypeScript Style", "# TS"));
+    await Bun.write(`${root}/.claude/rules/akan/retired.md`, "---\n---\n\n<!-- akan:generated -->\n");
+    await Bun.file(`${root}/.agents/skills/akan-page/SKILL.md`).delete();
+    expect(await runner.check(workspace, [...targets])).toEqual([
+      { path: ".claude/rules/akan/retired.md", change: "retired" },
+      { path: ".claude/rules/akan/ts.md", change: "outdated" },
+      { path: ".agents/skills/akan-page/SKILL.md", change: "missing" },
+    ]);
+    expect(await Bun.file(`${root}/.claude/rules/akan/retired.md`).exists()).toBe(true);
+    expect(await Bun.file(`${root}/.agents/skills/akan-page/SKILL.md`).exists()).toBe(false);
   }, 60_000);
 
   test("guides removal of scaffolded samples while they exist", async () => {

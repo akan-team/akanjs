@@ -15,9 +15,10 @@ paths:
 
 - **Never hand-order Tailwind classes** — `nursery/useSortedClasses` sorts them, `cn()` arguments included, and its
   output (`font-bold text-2xl text-foreground`) is correct.
-- **Stay inside the color vocabulary**: no raw palette (`bg-blue-500`), arbitrary or interpolated color classes
-  (`bg-[#3b82f6]`), daisyUI classes or slots (`btn-primary`, `bg-base-100`), or color literals in `style={{}}` —
-  they render no CSS. Use semantic tokens (`bg-primary`, `text-foreground/70`); a legitimate fixed color takes
+- **Stay inside the color vocabulary** (`no-raw-palette-class`, `no-arbitrary-color`, `no-interpolated-arbitrary-class`,
+  `no-daisyui-legacy-class`, `no-inline-color`): no raw palette (`bg-blue-500`), arbitrary or interpolated color classes
+  (`bg-[#3b82f6]`), daisyUI classes or slots (`btn-primary`, `bg-base-100`), or color literals in `style={{}}` — they
+  render no CSS. Use semantic tokens (`bg-primary`, `text-foreground/70`); a legitimate fixed color takes
   `// biome-ignore lint/plugin: <reason>`. Slot replacements, SVG / `el.style` warnings, legal values: `cssRule`.
 
 - Static class strings stay plain. `cn` (from `akanjs/client`) only for a conditional or to merge an incoming

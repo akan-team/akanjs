@@ -23,5 +23,5 @@ paths:
   `== null`, never `=== undefined` or a default. `field.visual(T)` is rendered but stripped from every agent and MCP
   read. Full contract: `fieldRule`.
 
-- **No `static` on an `XObject` or `LightX` class** — `via()` mixes in their prototypes only; use `XInput` (or a
-  scalar), `X`, or `XInsight`.
+- **No `static` on an `XObject` or `LightX` class** (`no-static-in-object-light-model`) — `via()` mixes in their
+  prototypes only; use `XInput` (or a scalar), `X`, or `XInsight`.

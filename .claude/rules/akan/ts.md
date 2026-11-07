@@ -46,8 +46,9 @@ paths:
   compile), `via(Model, [...] as const, …)` Light tuple, and module-scope lookup map; never the `enum` keyword.
 - Async functions carry no `Async` suffix.
 
-- **`#private` is banned in exactly `*.constant.ts`, `*.document.ts`, `*.service.ts`, `*.store.ts`** (by path, so it
-  stays the house style everywhere else, `srvkit/` and `adapt()` classes included).
+- **`#private` is banned in exactly `*.constant.ts`, `*.document.ts`, `*.service.ts`, `*.store.ts`**
+  (`no-js-private-class-method`, by path, so it stays the house style everywhere else, `srvkit/` and `adapt()` classes
+  included).
 
 ## TypeScript And Imports
 

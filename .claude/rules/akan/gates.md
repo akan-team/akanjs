@@ -37,7 +37,7 @@ paths:
   - `akan.service.call-in-loop`: a service method an `endpoint` or `slice` reaches calling a service, a model or a
     generated query once per item (`for … of`, `map`, `forEach`); load the set once (`load<Model>Many`, one
     filter query) or write it once. An `internal` job and a counted loop (a retry, paging) are spared.
-  - `akan.baseline.json` records, per rule, the debt adopted with the gate, and is compared with its copy at the
-    fork point of the default branch, so it only ever shrinks: never add or raise an entry. A size, store-reach or
-    per-item entry with a `reasons` line is an exception a person decided on, never an agent; the write rules take
-    no exceptions.
+  - `akan.baseline.json` (`akan.baseline.growth`) records, per rule, the debt adopted with the gate, and is compared
+    with its copy at the fork point of the default branch, so it only ever shrinks: never add or raise an entry. A size,
+    store-reach or per-item entry with a `reasons` line is an exception a person decided on, never an agent; the write
+    rules take no exceptions.

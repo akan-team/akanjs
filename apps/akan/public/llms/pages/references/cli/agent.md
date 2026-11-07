@@ -142,7 +142,7 @@ What the `agent-guide-*` warnings mean.
 
 Prints the guidelines that the skills carry, one at a time.
 
-`akan agent install [target] [--force]`
+`akan agent install [target] [--force] [--check]`
 
 Write the agent guide, its path rules, skills and pointers into the workspace. Run it again after upgrading Akan: only the managed block of `AGENTS.md` and the generated files are rewritten, so your own text stays.
 
@@ -151,6 +151,8 @@ Write the agent guide, its path rules, skills and pointers into the workspace. R
 - target (String, default all, cursor | agents-md | claude | rules | skills | hooks | all): Which files to write. Left out, everything except `hooks`.
 
 - --force (Boolean, default false, -f): Overwrite an existing pointer, and a generated file whose marker you deleted.
+
+- --check (Boolean, default false, -c): Write nothing, list what install would change, and exit 1 if anything would. The version stamp is ignored.
 
 - agents-md: Writes `AGENTS.md`, the path rules and the skills, then each app and library guide.
 
@@ -168,7 +170,7 @@ Write the agent guide, its path rules, skills and pointers into the workspace. R
 
 - after an edit: The edited file is lint-fixed, and what lint cannot fix goes back to Claude Code.
 
-- before stopping: `akan verify` runs over the session's edits; a failure sends Claude Code back once to fix it.
+- before stopping: `akan verify` runs over the session's edits; a failure or a comment added since the last commit sends it back once.
 
 - existing AGENTS.md: Only the block between the markers is replaced. A file with no markers gets the block appended.
 
@@ -186,7 +188,7 @@ Write the agent guide, its path rules, skills and pointers into the workspace. R
 
 - version stamp: The block records the release that wrote it, and `akan doctor` compares it with yours.
 
-- flag position: Put `--force` last: `--force claude` reads `claude` as its value, so `all` runs unforced.
+- flag position: Put flags last: `--force claude` reads `claude` as the flag's value, so `all` runs unforced.
 
 ## Code Examples
 
@@ -197,6 +199,7 @@ akan agent install
 akan agent install agents-md
 akan agent install claude
 akan agent install hooks
+akan agent install --check
 akan agent install all --force
 ```
 

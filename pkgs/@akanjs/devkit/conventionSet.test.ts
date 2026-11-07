@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import fsPromise from "node:fs/promises";
+import path from "node:path";
 import { ConventionSet } from "./conventionSet";
+import { MaintainabilityContract } from "./maintainabilityContract";
 import { Prompter } from "./prompter";
 
 describe("ConventionSet", () => {
@@ -44,5 +47,27 @@ describe("ConventionSet", () => {
       expect(rule.body).toStartWith("# ");
       expect(instruction).toContain(`\n#${rule.body.split("\n")[0]}\n`);
     }
+  });
+
+  test("names only checks that exist, and names every lint plugin and maintainability gate somewhere", async () => {
+    const set = await Prompter.getConventionSet();
+    const named = new Set(
+      [set.core, ...set.rules.map((rule) => rule.body)].flatMap((text) =>
+        [...text.matchAll(/`([^`\s]+)`/g)].map((match) => match[1] ?? ""),
+      ),
+    );
+    const plugins = (await fsPromise.readdir(path.join(import.meta.dir, "lint")))
+      .filter((file) => file.endsWith(".grit"))
+      .map((file) => file.slice(0, -".grit".length));
+    const gates: readonly string[] = MaintainabilityContract.ruleIds;
+    const gateAreas = new Set(gates.map((id) => id.split(".").slice(0, 2).join(".")));
+    const isPluginName = (name: string) => /^non?-[a-z]+(-[a-z]+)+$/.test(name);
+    const isGateName = (name: string) =>
+      gateAreas.has(name.split(".").slice(0, 2).join(".")) && !name.endsWith(".json");
+
+    expect([...named].filter((name) => isPluginName(name) && !plugins.includes(name))).toEqual([]);
+    expect([...named].filter((name) => isGateName(name) && !gates.includes(name))).toEqual([]);
+    expect(plugins.filter((plugin) => !named.has(plugin))).toEqual([]);
+    expect(gates.filter((gate) => !named.has(gate))).toEqual([]);
   });
 });
