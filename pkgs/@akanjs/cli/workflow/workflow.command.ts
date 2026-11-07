@@ -20,6 +20,16 @@ export class WorkflowCommand extends command("workflow", [WorkflowScript], ({ pu
     .option("default", String, { desc: "default value", nullable: true })
     .option("scalar", String, { flag: "c", desc: "scalar name", nullable: true })
     .option("surface", String, { flag: "u", desc: "UI surface name", nullable: true })
+    .option("surfaces", String, {
+      flag: "s",
+      desc: "comma-separated UI surfaces add-field updates (template, unit, view)",
+      nullable: true,
+    })
+    .option("includeInLight", Boolean, {
+      flag: "p",
+      desc: "add the field to the Light<Model> projection used by lists and cards",
+      nullable: true,
+    })
     .option("mutation", String, { flag: "n", desc: "mutation name", nullable: true })
     .option("slice", String, { flag: "i", desc: "slice name", nullable: true })
     .option("guard", String, { flag: "g", desc: "comma-separated guard class names", nullable: true })
@@ -50,6 +60,8 @@ export class WorkflowCommand extends command("workflow", [WorkflowScript], ({ pu
         defaultValue,
         scalar,
         surface,
+        surfaces,
+        includeInLight,
         mutation,
         slice,
         guard,
@@ -69,6 +81,8 @@ export class WorkflowCommand extends command("workflow", [WorkflowScript], ({ pu
             default: defaultValue,
             scalar,
             surface,
+            surfaces,
+            includeInLight: includeInLight === null ? null : String(includeInLight),
             mutation,
             slice,
             guard,

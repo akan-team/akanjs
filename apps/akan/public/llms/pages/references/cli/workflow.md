@@ -152,7 +152,7 @@ With `--format json`, explain also carries the predicted changes and the complet
 
 **Defaults follow the type.** `--default` is converted to match `--type`, and an enum default must be one of `--values`.
 
-**Two add-field inputs are MCP-only.** Through `plan_workflow`, `surfaces: ["template"]` writes the field into a simple Template form and `includeInLight: true` adds it to the Light model.
+**add-field can also reach the form and the Light model.** `--surfaces template` writes the field into a simple Template form and `--include-in-light` adds it to the Light model. Through `plan_workflow` they are `surfaces: ["template"]` and `includeInLight: true`.
 
 What Validate Runs
 
@@ -215,6 +215,10 @@ List, explain, plan, apply, or validate a workflow, or print an earlier run's re
 - --values (String, -l): Plan input for `add-enum-field`, or `add-field` with `--type enum`: comma-separated enum values.
 
 - --default (String, -d): Plan input: the field default, converted by type. An enum default must be one of the values.
+
+- --surfaces (String, template | unit | view · -s): Plan input for `add-field`: comma-separated UI surfaces. `template` is applied, the others reviewed.
+
+- --include-in-light (Boolean, -p): Plan input for `add-field`: also add the field to the Light model lists and cards read.
 
 - --scalar (String, -c): Plan input for `create-scalar`: the scalar name.
 
