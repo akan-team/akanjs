@@ -227,16 +227,18 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>Two add-field inputs are MCP-only.</strong> Through <code>plan_workflow</code>,{" "}
-            <code>{'surfaces: ["template"]'}</code> writes the field into a simple Template form and{" "}
-            <code>includeInLight: true</code> adds it to the Light model.
+            <strong>add-field can also reach the form and the Light model.</strong> <code>--surfaces template</code>{" "}
+            writes the field into a simple Template form and <code>--include-in-light</code> adds it to the Light model.
+            Through <code>plan_workflow</code> they are <code>{'surfaces: ["template"]'}</code> and{" "}
+            <code>includeInLight: true</code>.
           </>
         ),
         ko: (
           <>
-            <strong>add-field 입력 두 개는 MCP에서만 넘길 수 있습니다.</strong> <code>plan_workflow</code>에서{" "}
-            <code>{'surfaces: ["template"]'}</code>를 주면 단순한 Template 폼에 필드를 넣고,{" "}
-            <code>includeInLight: true</code>를 주면 Light 모델에도 더합니다.
+            <strong>add-field는 폼과 Light 모델까지 바꿀 수 있습니다.</strong> <code>--surfaces template</code>를 주면
+            단순한 Template 폼에 필드를 넣고, <code>--include-in-light</code>를 주면 Light 모델에도 더합니다.{" "}
+            <code>plan_workflow</code>에서는 <code>{'surfaces: ["template"]'}</code>와 <code>includeInLight: true</code>
+            입니다.
           </>
         ),
       }),
@@ -374,6 +376,24 @@ export default page()
             desc: l.trans({
               en: "Plan input: the field default, converted by type. An enum default must be one of the values.",
               ko: "플랜 입력: 필드 기본값입니다. 타입에 맞게 변환되고, enum 기본값은 `--values` 중 하나여야 합니다.",
+            }),
+          },
+          {
+            name: "--surfaces",
+            type: "String",
+            enumOrFlag: "template | unit | view · -s",
+            desc: l.trans({
+              en: "Plan input for `add-field`: comma-separated UI surfaces. `template` is applied, the others reviewed.",
+              ko: "`add-field`의 입력: 쉼표로 구분한 UI 표면입니다. `template`은 적용되고 나머지는 검토 항목이 됩니다.",
+            }),
+          },
+          {
+            name: "--include-in-light",
+            type: "Boolean",
+            enumOrFlag: "-p",
+            desc: l.trans({
+              en: "Plan input for `add-field`: also add the field to the Light model lists and cards read.",
+              ko: "`add-field`의 입력: 목록과 카드가 읽는 Light 모델에도 필드를 더합니다.",
             }),
           },
           {

@@ -913,3 +913,41 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     });
   });
 });
+
+describe("akan workflow", () => {
+  test("passes --surfaces and --include-in-light to the add-field plan inputs", async () => {
+    const { root } = track(await createTempModule("task"));
+    const entry = path.join(root, "cli.ts");
+    await writeText(
+      entry,
+      [
+        `import { runCommands } from ${JSON.stringify(Bun.resolveSync("@akanjs/devkit/commandDecorators", import.meta.dir))};`,
+        `import { WorkflowCommand } from ${JSON.stringify(path.join(import.meta.dir, "workflow.command.ts"))};`,
+        "await runCommands(WorkflowCommand);",
+        "",
+      ].join("\n"),
+    );
+    const planPath = path.join(root, "plan.json");
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("AKAN_")));
+    const args = ["--app", "demo", "--module", "task", "--field", "budget", "--type", "Int", "--out", planPath];
+    const proc = Bun.spawn(
+      ["bun", entry, "workflow", "plan", "add-field", ...args, "--surfaces", "template,unit", "--include-in-light"],
+      {
+        cwd: root,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...env, HOME: path.join(root, "home"), GIT_CEILING_DIRECTORIES: path.dirname(root) },
+      },
+    );
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect({ code, stderr }).toEqual({ code: 0, stderr: "" });
+    expect(stdout).not.toContain("unknown option");
+    const plan = JSON.parse(await readFile(planPath, "utf8")) as WorkflowPlan;
+    expect(plan.inputs).toMatchObject({ surfaces: ["template", "unit"], includeInLight: true });
+  }, 60_000);
+});

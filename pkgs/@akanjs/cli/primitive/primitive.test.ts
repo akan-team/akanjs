@@ -311,6 +311,28 @@ export const dictionary = modelDictionary(["en", "ko"])
     );
   });
 
+  test("adds an enum field to the sample task module a new workspace ships", async () => {
+    const { workspace, module } = track(await createTempModule("task"));
+    const sampleConstant = (await import("../templates/appSample/lib/task/task.constant")).default;
+    const sampleDictionary = (await import("../templates/appSample/lib/task/task.dictionary")).default;
+    await module.writeFile("task.constant.ts", sampleConstant(null, { appName: "demo" }));
+    await module.writeFile("task.dictionary.ts", sampleDictionary(null, { appName: "demo" }));
+
+    const report = await CommandContainer.get(PrimitiveScript).addEnumField(workspace, {
+      app: "demo",
+      module: "task",
+      field: "priority",
+      values: "low,medium,high",
+      defaultValue: "medium",
+    });
+
+    expect(report.diagnostics).toEqual([]);
+    expect(report.status).toBe("passed");
+    const dictionary = await module.readFile("task.dictionary.ts");
+    expect(dictionary).toContain('.enum<TaskPriority>("taskPriority"');
+    expect(dictionary.indexOf('.enum<TaskPriority>("taskPriority"')).toBeLessThan(dictionary.indexOf("  .error({"));
+  });
+
   test("returns diagnostics for missing required inputs", async () => {
     const { workspace } = track(await createTempModule("unused"));
     const report = await CommandContainer.get(PrimitiveScript).addField(workspace, {

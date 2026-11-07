@@ -896,17 +896,38 @@ export const ensureConstantTypeImport = (content: string, constantPath: string, 
   return `import type { ${typeName} } from "${constantPath}";\n${content}`;
 };
 
+const dictionaryChainOf = (node: ts.Node): ts.CallExpression | undefined => {
+  if (
+    ts.isCallExpression(node) &&
+    outermostFluentCall(node) === node &&
+    protectedDictionaryChainOrder.some((method) => chainMethodsForCall(node).includes(method))
+  )
+    return node;
+  return ts.forEachChild(node, dictionaryChainOf);
+};
+
+const chainMethodNames = (call: ts.Expression): ts.Identifier[] => {
+  if (!ts.isCallExpression(call) || !ts.isPropertyAccessExpression(call.expression)) return [];
+  const name = call.expression.name;
+  return [...chainMethodNames(call.expression.expression), ...(ts.isIdentifier(name) ? [name] : [])];
+};
+
+//* Located on the parsed chain, never by text search: the sample dictionary's header comment mentions `.error()`.
 export const insertDictionaryEnum = (content: string, enumClassName: string, enumName: string, values: string[]) => {
   if (content.includes(`.enum<${enumClassName}>("${enumName}"`)) return content;
+  const source = sourceFileFor("dictionary.ts", content);
+  if (hasParseDiagnostics(source)) return null;
+  const chain = dictionaryChainOf(source);
+  if (!chain) return null;
   const enumBlock = `  .enum<${enumClassName}>("${enumName}", (t) => ({\n${values
     .map((value) => `    ${value}: t([${JSON.stringify(titleize(value))}, ${JSON.stringify(titleize(value))}]),`)
     .join("\n")}\n  }))\n`;
-  const chainEndIndex = content.lastIndexOf(";");
-  const insertBeforeIndex = [content.indexOf(".error("), content.indexOf(".translate("), chainEndIndex]
-    .filter((index) => index >= 0)
-    .sort((a, b) => a - b)[0];
-  if (insertBeforeIndex === undefined) return null;
-  return `${content.slice(0, insertBeforeIndex)}${enumBlock}${content.slice(insertBeforeIndex)}`;
+  const later = chainMethodNames(chain).find((name) => name.text === "error" || name.text === "translate");
+  if (!later) return spliceText(content, chain.getEnd(), chain.getEnd(), `\n${enumBlock.trimEnd()}`);
+  const dot = content.lastIndexOf(".", later.getStart(source));
+  const lineStart = lineStartAt(content, dot);
+  if (content.slice(lineStart, dot).trim() === "") return spliceText(content, lineStart, lineStart, enumBlock);
+  return spliceText(content, dot, dot, `\n${enumBlock}`);
 };
 
 export const parseValues = (value: string | null) =>
