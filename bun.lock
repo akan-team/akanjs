@@ -176,7 +176,7 @@
       "name": "@akanjs/devkit",
       "version": "3.1.1",
       "dependencies": {
-        "@akanjs/language": "3.1.0",
+        "@akanjs/language": "3.1.1",
         "@earendil-works/pi-agent-core": "1.3.0",
         "@earendil-works/pi-ai": "1.3.0",
         "@earendil-works/pi-codemode": "1.3.0",
@@ -209,7 +209,10 @@
     },
     "pkgs/@akanjs/language": {
       "name": "@akanjs/language",
-      "version": "3.1.0",
+      "version": "3.1.1",
+      "dependencies": {
+        "akanjs": "3.1.1",
+      },
       "peerDependencies": {
         "typescript": ">=5.0.0",
       },
