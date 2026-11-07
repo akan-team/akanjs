@@ -99,7 +99,8 @@ export function createSystemPageDocument(options: SystemPageOptions): ReactNode 
   const title = `${copy.status} - ${copy.eyebrow}`;
 
   return (
-    <html lang={options.lang ?? DEFAULT_AKAN_I18N.defaultLocale}>
+    //? The HTML stream adds the app theme's data-theme to <html>, which this tree, hydrated as an RSC 404, never names.
+    <html lang={options.lang ?? DEFAULT_AKAN_I18N.defaultLocale} suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
