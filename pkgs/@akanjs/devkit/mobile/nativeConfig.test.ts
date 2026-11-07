@@ -172,6 +172,20 @@ describe("NativeConfig.build", () => {
     });
   });
 
+  test('lists a basePath link with no locale segment for the default locale under localePrefix "as-needed"', () => {
+    const { config } = NativeConfig.build({
+      appPath: "/repo/apps/portal",
+      target: adminTarget,
+      webDir: "/web",
+      contributions: [],
+      locales: ["en", "ko"],
+      i18n: { defaultLocale: "en", localePrefix: "as-needed" },
+      platform: "android",
+    });
+
+    expect(config.deepLinks).toEqual({ domains: [{ host: "portal.example", pathPrefixes: ["/admin", "/ko/admin"] }] });
+  });
+
   test("a plugin that claims a permission replaces the builtin one and adds its Android entries", () => {
     const { config } = NativeConfig.build({
       appPath: "/repo/apps/portal",

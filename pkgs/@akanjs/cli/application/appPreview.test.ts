@@ -43,6 +43,15 @@ describe("AppPreview.pagePaths", () => {
     ]);
   });
 
+  test('keeps an unprefixed path under localePrefix "as-needed", which serves the default locale there', () => {
+    const asNeeded = { ...i18n, localePrefix: "as-needed" as const };
+    expect(AppPreview.pagePaths([], asNeeded, { csr: false })).toEqual(["/"]);
+    expect(AppPreview.pagePaths(["/board", "/ko/board"], asNeeded, { csr: false })).toEqual(["/board", "/ko/board"]);
+    expect(AppPreview.pagePaths(["/board"], asNeeded, { csr: true })).toEqual([
+      "/en/board?csr=true&akanMobileTarget=preview",
+    ]);
+  });
+
   test("takes a full URL by its path, and opens the CSR boot when asked", () => {
     expect(AppPreview.pagePaths(["http://localhost:8282/en/board"], i18n, { csr: true })).toEqual([
       "/en/board?csr=true&akanMobileTarget=preview",

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getEnv } from "akanjs/base";
-import { Logger, resolveSubRouteHosts } from "akanjs/common";
+import { LocalePath, Logger, parseAkanI18nEnv, resolveSubRouteHosts } from "akanjs/common";
 import type { BaseBuildArtifact } from "../types";
 import { AkanResponse, type WebProxy } from "./types";
 
@@ -29,11 +29,8 @@ export class HostBasePathWebProxy implements WebProxy {
 
     if (firstPath === basePath) {
       if (isInternalProxyRequest(requestUrl)) return AkanResponse.next({ request: { headers } });
-      const publicPath = `/${[locale, ...segments.slice(3)].filter(Boolean).join("/")}`;
-      return Response.redirect(
-        new URL(`${publicPath || `/${locale}`}${targetUrl.search}`, getPublicRequestUrl(request)),
-        308,
-      );
+      const publicPath = LocalePath.join(locale, `/${segments.slice(3).filter(Boolean).join("/")}`, parseAkanI18nEnv());
+      return Response.redirect(new URL(`${publicPath}${targetUrl.search}`, getPublicRequestUrl(request)), 308);
     }
 
     const internalPath = `/${[locale, basePath, ...segments.slice(2)].filter(Boolean).join("/")}`;
@@ -114,7 +111,7 @@ function getProxyTargetUrl(requestUrl: URL): URL {
   return target ? new URL(target, requestUrl.origin) : new URL(requestUrl);
 }
 
-function toProxyRequestUrl(requestUrl: URL, targetUrl: URL): URL {
+export function toProxyRequestUrl(requestUrl: URL, targetUrl: URL): URL {
   if (!isInternalProxyRequest(requestUrl)) return targetUrl;
   const rewritten = new URL(requestUrl);
   rewritten.searchParams.set("url", `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`);

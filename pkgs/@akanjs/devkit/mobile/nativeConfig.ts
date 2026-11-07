@@ -8,7 +8,7 @@ import type {
   NativeEnv,
   NativePermission,
 } from "akanjs";
-import { trimSlashes } from "akanjs/common";
+import { type AkanI18nConfig, LocalePath, trimSlashes } from "akanjs/common";
 import type { AkanNativeConfig } from "akanjs/native/config";
 import type { DesktopServerBundle } from "./desktopServerStage";
 import { type NativePlatform, resolveAppId } from "./mobileTarget";
@@ -24,6 +24,7 @@ export interface NativeConfigInput {
   /** What the app's and its libs' plugins declare. */
   contributions: AkanPluginNativeConfig[];
   locales: readonly string[];
+  i18n?: Pick<AkanI18nConfig, "defaultLocale" | "localePrefix">;
   /** The backend the binary talks to; an updates channel left unnamed follows it. */
   env?: NativeEnv;
   platform: NativePlatform;
@@ -95,6 +96,7 @@ export class NativeConfig {
     webDir,
     contributions,
     locales,
+    i18n,
     env,
     platform,
     desktopServer,
@@ -210,7 +212,7 @@ export class NativeConfig {
       ],
       ...(Object.keys(usageDescriptions).length ? { usageDescriptions } : {}),
       ...(target.deepLinks?.schemes?.length || target.deepLinks?.domains?.length
-        ? { deepLinks: NativeConfig.#deepLinks(target, locales) }
+        ? { deepLinks: NativeConfig.#deepLinks(target, locales, i18n) }
         : {}),
       ...(native ? { native } : {}),
       ...(updates ? { updates } : {}),
@@ -310,10 +312,14 @@ export class NativeConfig {
     return Object.assign({}, ...contributed, own);
   }
 
-  //* Every route sits under /:lang, so an app link limited to a basePath lists it once per locale.
-  static #deepLinks(target: AkanNativeTarget, locales: readonly string[]) {
+  //* An app link limited to a basePath lists it once per locale, with no segment where the web URL has none.
+  static #deepLinks(
+    target: AkanNativeTarget,
+    locales: readonly string[],
+    i18n: Pick<AkanI18nConfig, "defaultLocale" | "localePrefix"> = { defaultLocale: "" },
+  ) {
     const basePath = target.basePath ? trimSlashes(target.basePath) : "";
-    const pathPrefixes = basePath ? locales.map((locale) => `/${locale}/${basePath}`) : undefined;
+    const pathPrefixes = basePath ? locales.map((locale) => LocalePath.join(locale, `/${basePath}`, i18n)) : undefined;
     return {
       ...(target.deepLinks?.schemes?.length ? { schemes: target.deepLinks.schemes } : {}),
       ...(target.deepLinks?.domains?.length

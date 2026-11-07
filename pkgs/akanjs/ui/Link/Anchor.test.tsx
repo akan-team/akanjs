@@ -101,6 +101,21 @@ describe("SsrLink", () => {
     unmount();
   });
 
+  test('renders the default locale\'s path unprefixed under localePrefix "as-needed", and navigates there', () => {
+    pushes.length = 0;
+    process.env.AKAN_PUBLIC_LOCALE_PREFIX = "as-needed";
+    try {
+      const { container, unmount } = mount(<SsrLink href="/pokemon/deoxys">deoxys</SsrLink>);
+      const anchor = container.querySelector("a");
+      expect(anchor?.getAttribute("href")).toBe("/pokemon/deoxys");
+      click(anchor);
+      expect(pushes).toEqual(["/pokemon/deoxys"]);
+      unmount();
+    } finally {
+      delete process.env.AKAN_PUBLIC_LOCALE_PREFIX;
+    }
+  });
+
   for (const href of ["javascript:alert(1)", "data:text/html,hi"]) {
     test(`renders ${JSON.stringify(href)} as an inert in-app path`, () => {
       const { container, unmount } = mount(<SsrLink href={href}>{href}</SsrLink>);

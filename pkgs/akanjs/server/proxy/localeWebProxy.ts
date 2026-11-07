@@ -1,6 +1,6 @@
 import { getApiPrefix } from "akanjs/base";
-import { parseAkanI18nEnv } from "akanjs/common";
-import { getPublicRequestUrl, isInternalProxyRequest } from "./hostBasePathWebProxy";
+import { LocalePath, parseAkanI18nEnv } from "akanjs/common";
+import { getPublicRequestUrl, isInternalProxyRequest, toProxyRequestUrl } from "./hostBasePathWebProxy";
 import { AkanResponse, type WebProxy } from "./types";
 
 function getLocale(request: Bun.BunRequest): string {
@@ -46,29 +46,35 @@ export class LocaleWebProxy implements WebProxy {
 
     const targetUrl = getProxyTargetUrl(requestUrl);
     const pathname = targetUrl.pathname;
-    const pathnameIsMissingLocale = i18n.locales.every(
-      (locale) => !pathname.startsWith(`/${locale}/`) && pathname !== `/${locale}`,
-    );
+    const isInternal = isInternalProxyRequest(requestUrl);
+    const isPage = !isInternal && !isWellKnownRequest(pathname) && !isApiRequest(pathname);
+    const { locale, path, isPrefixed } = LocalePath.split(pathname, i18n);
 
-    if (
-      !isInternalProxyRequest(requestUrl) &&
-      !isWellKnownRequest(pathname) &&
-      !isApiRequest(pathname) &&
-      pathnameIsMissingLocale
-    ) {
+    if (isPage && !locale) {
       return Response.redirect(
         new URL(`/${getLocale(request)}/${pathname.slice(1)}${targetUrl.search}`, getPublicRequestUrl(request)),
         307,
       );
     }
+    //? A CSR boot's route table matches on the `/:lang` segment, so it always gets one; any other request for the
+    //? default locale's prefixed URL moves for good, so a link from an "always" past lands on the one URL it now has.
+    if (isPage && locale && LocalePath.omits(locale, i18n)) {
+      const publicUrl = getPublicRequestUrl(request);
+      if (isCsrRequest(targetUrl) && !isPrefixed)
+        return Response.redirect(new URL(`/${locale}${pathname}${targetUrl.search}`, publicUrl), 307);
+      if (!isCsrRequest(targetUrl) && isPrefixed)
+        return Response.redirect(new URL(`${path}${targetUrl.search}`, publicUrl), 308);
+    }
 
-    const splits = pathname.split("/");
-    const [, locale = i18n.defaultLocale] = splits;
     const headers = new Headers(request.headers);
+    headers.set("x-locale", locale ?? i18n.defaultLocale);
+    headers.set("x-path", path);
 
-    headers.set("x-locale", i18n.locales.includes(locale) ? locale : i18n.defaultLocale);
-    headers.set("x-path", `/${splits.slice(2).join("/")}`);
-
+    if (locale && !isPrefixed && (isPage || isInternal)) {
+      const localizedUrl = new URL(targetUrl);
+      localizedUrl.pathname = `/${locale}${pathname}`;
+      return AkanResponse.rewrite(toProxyRequestUrl(requestUrl, localizedUrl), { request: { headers } });
+    }
     return AkanResponse.next({ request: { headers } });
   }
 }
@@ -77,6 +83,10 @@ function getProxyTargetUrl(requestUrl: URL): URL {
   if (!isInternalProxyRequest(requestUrl)) return requestUrl;
   const target = requestUrl.searchParams.get("url");
   return target ? new URL(target, requestUrl.origin) : requestUrl;
+}
+
+function isCsrRequest(url: URL): boolean {
+  return url.searchParams.get("csr") === "true";
 }
 
 function isWellKnownRequest(pathname: string): boolean {
