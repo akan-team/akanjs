@@ -133,6 +133,8 @@ Data.ListContainer props
 
 - create (boolean, default true): Shows the New button, as long as `renderTemplate` is given.
 
+- viewInUrl (boolean, default false): Puts the open view in the URL as `?action=view&modelId=<id>`; a link opens it, listed or not. One per page.
+
 - title (ReactNode): The heading. Defaults to the model's name from its dictionary.
 
 - sort (sort key): The initial sort. The toolbar offers the model's other sort keys.
@@ -150,6 +152,8 @@ Render slots
 - renderView ((model) => ReactNode): The body of the view modal. Without it the view button opens nothing.
 
 - renderTitle ((model) => ReactNode): The modal title. Defaults to the model name and the id.
+
+- renderViewTitle ((model) => ReactNode | false): The view modal's own title, `renderTitle` when left out. `false` drops its title bar.
 
 - renderDashboard (({ summary, onSelect, queryKey, hidePresents }) => ReactNode): The area above the list, usually a `Data.Dashboard`. It needs the app's `summary` state.
 

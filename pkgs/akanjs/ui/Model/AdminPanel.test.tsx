@@ -8,6 +8,8 @@ let AdminPanel: typeof import("./AdminPanel").default;
 let makeStore: (state?: Record<string, unknown>) => void;
 let calls: Record<string, ReturnType<typeof mock>>;
 let setState: (state: Record<string, unknown>) => void;
+let storeDo: Record<string, (...args: unknown[]) => Promise<void>>;
+let Full: Awaited<ReturnType<typeof itemFixtureOf>>["Full"];
 
 const slice = { refName: "adminTestItem", sliceName: "adminTestItem", argLength: 2 };
 const components = { Template: {}, Unit: {}, View: {} };
@@ -16,10 +18,12 @@ beforeAll(async () => {
   setTestEnv("adminpaneltest");
   const { Int } = await import("akanjs/base");
   const { ConstantRegistry, via } = await import("akanjs/constant");
-  const { Light, Insight, storeMaker } = await itemFixtureOf("adminTestItem");
+  const { Light, Full: FullModel, Insight, storeMaker } = await itemFixtureOf("adminTestItem");
+  Full = FullModel;
   const { registerClientRuntime } = await import("akanjs/client");
   const { st } = await import("akanjs/store");
   setState = (state) => (st as unknown as { set: (state: Record<string, unknown>) => void }).set(state);
+  storeDo = st.do as unknown as typeof storeDo;
   // A counter names the query it counts, which is where a tile with no `queryMap` entry finds its filter.
   const SummaryInput = via((f) => ({
     pendingItem: f(Int, { default: 0 }).meta({
@@ -407,5 +411,128 @@ describe("Model.AdminPanel", () => {
     expect([...container.querySelectorAll("input")].map((input) => input.value)).toEqual(["FromMeta"]);
     unmount();
     setState({ summary: undefined });
+  });
+});
+
+describe("Model.AdminPanel view modal", () => {
+  const listedId = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  const offPageId = "bbbbbbbbbbbbbbbbbbbbbbbb";
+  const otherId = "dddddddddddddddddddddddd";
+  const viewComponents = {
+    Template: {},
+    Unit: {},
+    View: {
+      General: ({ adminTestItem }: { adminTestItem: { title: string } }) => <p>view of {adminTestItem.title}</p>,
+    },
+  };
+  const replaces: { href: string; options?: { shallow?: boolean } }[] = [];
+  const paramsOf = (href = "") => Object.fromEntries(new URL(href, "http://localhost").searchParams);
+  const dialog = () => document.body.querySelector("[role=dialog]");
+  const viewing = (title: string) => () => document.body.textContent?.includes(`view of ${title}`) ?? false;
+
+  beforeAll(async () => {
+    const { router } = await import("akanjs/client");
+    globalThis.__AKAN_RSC_NAVIGATE__ = () => Promise.resolve();
+    router.init({
+      type: "ssr",
+      side: "client",
+      lang: "en",
+      router: {
+        push: () => undefined,
+        replace: (href, options) => {
+          replaces.push({ href, options });
+        },
+        back: () => undefined,
+        refresh: () => undefined,
+      },
+    });
+    calls.adminTestItem = mock(async (id: string) => new Full({ id, title: id === otherId ? "Linus" : "Grace" }));
+  });
+
+  test("opens the record a link names though the page does not list it, and follows a link to another", async () => {
+    makeStore();
+    replaces.length = 0;
+    setState({ searchParams: { topMenu: "account", action: "view", modelId: offPageId } });
+    const { unmount } = await mount(
+      <AdminPanel slice={slice} components={viewComponents} viewInUrl renderViewTitle={false} />,
+      viewing("Grace"),
+    );
+
+    expect(calls.adminTestItem).toHaveBeenCalledWith(offPageId, expect.anything());
+    expect(dialog()?.getAttribute("aria-labelledby")).toBeNull();
+    expect(dialog()?.querySelector(".border-t")).toBeNull();
+    expect(dialog()?.querySelector('[aria-label="Close"]')).not.toBeNull();
+    expect(replaces).toEqual([]);
+
+    setState({ searchParams: { topMenu: "account", action: "view", modelId: otherId } });
+    await waitFor(viewing("Linus"));
+    expect(document.body.textContent).not.toContain("view of Grace");
+    expect(replaces).toEqual([]);
+    unmount();
+    setState({ searchParams: {} });
+  });
+
+  test("writes the open view into the URL beside the other params, and takes it out on close", async () => {
+    makeStore();
+    replaces.length = 0;
+    setState({ searchParams: { topMenu: "account", subMenu: "user" } });
+    const { unmount } = await mount(
+      <AdminPanel slice={slice} components={viewComponents} viewInUrl />,
+      () => calls.adminTestItemList.mock.calls.length > 0,
+    );
+
+    await act(() => storeDo.viewAdminTestItem(listedId));
+    await waitFor(() => replaces.length === 1);
+    expect(paramsOf(replaces[0]?.href)).toEqual({
+      topMenu: "account",
+      subMenu: "user",
+      action: "view",
+      modelId: listedId,
+    });
+    expect(replaces[0]?.options).toMatchObject({ shallow: true, scrollToTop: false });
+    //* The fake router leaves the store's params alone, where the real one writes the href it was handed.
+    setState({ searchParams: paramsOf(replaces[0]?.href) });
+    expect(dialog()?.querySelector("[id]")?.textContent).toBe(`Admin Test Item - ${listedId}`);
+
+    await act(() => storeDo.resetAdminTestItem());
+    await waitFor(() => replaces.length === 2);
+    expect(paramsOf(replaces[1]?.href)).toEqual({ topMenu: "account", subMenu: "user" });
+    unmount();
+    setState({ searchParams: {} });
+  });
+
+  test("closes a link whose record fails to load and takes its params out of the URL", async () => {
+    makeStore();
+    replaces.length = 0;
+    calls.adminTestItem.mockImplementationOnce(async () => {
+      throw new Error("adminTestItem.error.notFound");
+    });
+    setState({ searchParams: { topMenu: "account", action: "view", modelId: offPageId } });
+    const { unmount } = await mount(
+      <AdminPanel slice={slice} components={viewComponents} viewInUrl />,
+      () => replaces.length === 1,
+    );
+
+    expect(paramsOf(replaces[0]?.href)).toEqual({ topMenu: "account" });
+    expect(dialog()).toBeNull();
+    unmount();
+    setState({ searchParams: {} });
+  });
+
+  test("leaves the URL alone and ignores its params without `viewInUrl`", async () => {
+    makeStore();
+    replaces.length = 0;
+    setState({ searchParams: { action: "view", modelId: offPageId } });
+    const { unmount } = await mount(
+      <AdminPanel slice={slice} components={viewComponents} />,
+      () => calls.adminTestItemList.mock.calls.length > 0,
+    );
+
+    await act(() => storeDo.viewAdminTestItem(listedId));
+    await waitFor(viewing("Grace"));
+    expect(calls.adminTestItem.mock.calls.map(([id]) => id)).toEqual([listedId]);
+    expect(replaces).toEqual([]);
+    unmount();
+    setState({ searchParams: {} });
   });
 });

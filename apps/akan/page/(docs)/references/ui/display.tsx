@@ -372,6 +372,15 @@ export default page()
         }),
       },
       {
+        key: "viewInUrl",
+        type: "boolean",
+        default: "false",
+        desc: l.trans({
+          en: "Puts the open view in the URL as `?action=view&modelId=<id>`; a link opens it, listed or not. One per page.",
+          ko: "열린 view를 URL에 `?action=view&modelId=<id>`로 남기고, 링크는 목록에 없는 record도 엽니다. 한 화면에 하나만.",
+        }),
+      },
+      {
         key: "title",
         type: "ReactNode",
         desc: l.trans({
@@ -436,6 +445,14 @@ export default page()
         desc: l.trans({
           en: "The modal title. Defaults to the model name and the id.",
           ko: "modal 제목입니다. 기본값은 모델 이름과 id입니다.",
+        }),
+      },
+      {
+        key: "renderViewTitle",
+        type: "(model) => ReactNode | false",
+        desc: l.trans({
+          en: "The view modal's own title, `renderTitle` when left out. `false` drops its title bar.",
+          ko: "view modal만의 제목으로, 없으면 `renderTitle`을 씁니다. `false`면 제목 줄을 그리지 않습니다.",
         }),
       },
       {

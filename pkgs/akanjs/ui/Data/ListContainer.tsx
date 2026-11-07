@@ -38,6 +38,7 @@ import { columnKey, downloadBlob, toCsvBlob, toJsonBlob } from "./dataExport";
 import { dictLabel } from "./dataText";
 import { QueryMakerArgs, QueryMakerKey, resolveQuerySetting, useQueryMaker } from "./QueryMaker";
 import DataTableList from "./TableList";
+import { useViewInUrl } from "./useViewInUrl";
 
 const controlClassName = "h-9";
 const pageLimits = [10, 20, 50, 100];
@@ -83,7 +84,14 @@ export interface ListContainerProps<
   renderItem?: (props: ModelProps<any, any>) => ReactNode;
   renderTemplate?: (props: any) => ReactNode | null;
   renderTitle?: (model: Full) => string | ReactNode;
+  /** The view modal's title, `renderTitle` when left out; `false` draws the view without a title bar. */
+  renderViewTitle?: ((model: Full) => string | ReactNode) | false;
   renderView?: (model: Full) => ReactNode | null;
+  /**
+   * Mirrors the open view modal in the URL as `?action=view&modelId=<id>`, keeping every other param, and opens the
+   * record such a link names, listed or not. Give it to one listing per page: the params do not name the model.
+   */
+  viewInUrl?: boolean;
   renderQueryMaker?: () => ReactNode;
   renderInsight?: (props: ModelInsightProps) => ReactNode;
   renderLoading?: () => ReactNode;
@@ -113,7 +121,9 @@ export default function ListContainer<
   renderItem,
   renderTemplate,
   renderTitle,
+  renderViewTitle,
   renderView,
+  viewInUrl = false,
   renderQueryMaker,
   renderInsight,
   renderLoading,
@@ -218,6 +228,7 @@ export default function ListContainer<
 
   const modelLabel = dictLabel(l._, `${sliceName}.modelName`, refName);
   const RenderTitle = renderTitle ?? ((model: Full) => `${modelLabel} - ${model.id ? model.id : "New"}`);
+  useViewInUrl(slice, viewInUrl && !!renderView);
   // `summary` is an app-level state key, so it is read off the state; built as a value, not `<ModelDashboard />`,
   // since a component type created in render remounts every render and loses the picked tile.
   const summary = storeSel<Record<string, unknown> | undefined>(
@@ -383,7 +394,6 @@ export default function ListContainer<
           renderItem={renderItem ?? (() => null)}
           renderLoading={renderLoading}
           renderTemplate={renderTemplate}
-          renderView={renderView}
           renderTitle={RenderTitle}
           columns={columns}
           actions={actions}
@@ -396,12 +406,19 @@ export default function ListContainer<
           actions={actions}
           renderTemplate={renderTemplate}
           renderTitle={RenderTitle}
-          renderView={renderView}
         />
       )}
       <Model.EditModal slice={slice} renderTitle={RenderTitle}>
         {RenderTemplate ? <RenderTemplate /> : null}
       </Model.EditModal>
+      {/* One for the container, not one per row, so a record off the loaded page opens too. */}
+      {renderView ? (
+        <Model.ViewModal
+          slice={slice}
+          renderTitle={renderViewTitle === false ? undefined : (renderViewTitle ?? RenderTitle)}
+          renderView={renderView}
+        />
+      ) : null}
     </div>
   );
 }

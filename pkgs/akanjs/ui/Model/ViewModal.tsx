@@ -22,7 +22,8 @@ const ViewTools = ({ modelName, closeView }: ViewToolsProps) => {
 };
 
 interface ViewModalProps extends ModalSurfaceProps {
-  id: string;
+  /** Left out, the modal opens for whichever record `view<Model>` loads, listed or not. */
+  id?: string;
   modal?: string;
   modalClassName?: string;
   viewClassName?: string;
@@ -58,7 +59,9 @@ export default function ViewModal({
   const model = storeUse[names.model]() as { id: string; [key: string]: any } | null;
   const modelModal = storeUse[names.modelModal]() as string | null;
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;
-  const isModalOpen = modelModal === (modal ?? "view") && (modelLoading === id || model?.id === id);
+  const isModalOpen =
+    modelModal === (modal ?? "view") &&
+    (id === undefined ? !!modelLoading || !!model : modelLoading === id || model?.id === id);
   const Title = () => {
     if (!model || modelLoading || !renderTitle) return null;
     const render = renderTitle(model);
@@ -83,8 +86,8 @@ export default function ViewModal({
         className={modalClassName}
         presentation={presentation}
         placement={placement}
-        title={<Title />}
-        action={<Action />}
+        title={renderTitle ? <Title /> : null}
+        action={renderAction ? <Action /> : null}
       >
         <View className={viewClassName} model={model} modelLoading={modelLoading} render={renderView} />
       </Modal>
