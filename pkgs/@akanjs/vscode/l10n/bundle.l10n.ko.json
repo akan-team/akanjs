@@ -1,0 +1,6 @@
+{
+  "{0} uses": "사용처 {0}",
+  "Place the cursor on a slice key or a Filter query key.": "slice 키나 Filter 쿼리 키에 커서를 두세요.",
+  "Rename {0} and every name derived from it": "{0}와 거기서 파생된 이름을 모두 바꿉니다",
+  "Not an identifier": "식별자가 아닙니다"
+}
