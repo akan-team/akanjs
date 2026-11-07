@@ -23,8 +23,8 @@ const Probe = () => {
 const shown = (container: HTMLElement) => JSON.parse(container.textContent ?? "{}");
 
 describe("usePageLocation", () => {
-  test("follows the router on an SSR page, keeping the route params its wrapper was given", async () => {
-    setState({ pathname: "/en/admin", searchParams: { topMenu: "account" } });
+  test("follows the router's query on an SSR page, keeping the pathname and route params its wrapper was given", async () => {
+    setState({ pathname: "/admin", searchParams: { topMenu: "account" } });
     const { container, unmount } = await mountAsync(
       <ClientPathWrapper
         initialPathname="/en/admin"
