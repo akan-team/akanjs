@@ -45,6 +45,26 @@ akan start <app-name> --open
 The creator asks for a workspace name and an app name, installs the `akan` CLI and the workspace's dependencies, and
 generates a sample app. The app opens on `http://localhost:8282`.
 
+### Inside an existing repository
+
+When a task fixes where the app lives and how it runs, for example a folder in another repository, a host with only
+Node and npm, or URLs given by a spec, a coding agent needs these, and nothing has to ask:
+
+- **Create the workspace in that folder:** `bunx create-akan-workspace@latest . --app <app> --dir <folder> --sample false`.
+  It writes into `<folder>` itself, refuses to overwrite a file already there, and leaves out the sample module and
+  pages. Keep the `AGENTS.md`, `CLAUDE.md`, `.claude/` and `.mcp.json` it writes: they carry the rules and tools an
+  agent works through.
+- **Check each change with `akan verify <app>`.** It syncs, lints, typechecks, builds and checks SSR, and prints only
+  what failed. `akan preview <app> --changed` opens the pages a change reaches.
+- **Exact URLs:** pages live under `/<locale>/…`. To serve the default locale at the bare path (`/pokemon/deoxys`),
+  set `i18n: { defaultLocale: "en", locales: ["en"], localePrefix: "as-needed" }` in `akan.config.ts`; `<Link>`
+  follows.
+- **A host with only Node and npm:** put `bun` in `dependencies` and `@akanjs/cli` in `devDependencies`, and let the
+  package scripts call `akan`. If `akan` is not found after a global install, add the folder `bun pm bin -g` prints to
+  `PATH`.
+- **Run the production build without Docker:** `akan build <app>`, then `cd dist/apps/<app> && PORT=3000 bun main.js`.
+  The build carries the env it needs.
+
 ## All Of It Is One Line
 
 ```ts

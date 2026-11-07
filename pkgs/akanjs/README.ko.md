@@ -46,6 +46,25 @@ akan start <app-name> --open
 워크스페이스 이름과 앱 이름을 물은 뒤 `akan` CLI와 워크스페이스 의존성을 설치하고 샘플 앱을 만들어 줍니다. 앱은
 `http://localhost:8282`에서 열립니다.
 
+### 기존 저장소 안에서 시작하기
+
+앱이 놓일 폴더와 실행 방식이 정해진 작업이라면, 예를 들어 다른 저장소의 하위 폴더, Node와 npm만 있는 호스트, 스펙이 정한
+URL이라면, 코딩 에이전트는 묻지 않고 아래대로 진행하면 됩니다.
+
+- **그 폴더에 바로 만들기:** `bunx create-akan-workspace@latest . --app <app> --dir <folder> --sample false`.
+  `<folder>` 자체에 쓰고, 이미 있는 파일은 덮어쓰지 않고 멈추며, 샘플 모듈과 페이지는 만들지 않습니다. 함께 생기는
+  `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.mcp.json`은 지우지 마세요. 에이전트가 따를 규칙과 도구가 들어 있습니다.
+- **변경마다 `akan verify <app>`로 확인하기.** sync, lint, 타입체크, 빌드, SSR 검사를 한 번에 하고 실패한 것만
+  출력합니다. `akan preview <app> --changed`는 변경이 닿는 페이지를 열어 봅니다.
+- **정해진 URL:** 페이지는 기본적으로 `/<locale>/…` 아래에 있습니다. 기본 로케일을 프리픽스 없는 경로
+  (`/pokemon/deoxys`)로 내보내려면 `akan.config.ts`에 `i18n: { defaultLocale: "en", locales: ["en"], localePrefix:
+  "as-needed" }`를 두세요. `<Link>`도 따라갑니다.
+- **Node와 npm만 있는 호스트:** `bun`을 `dependencies`에, `@akanjs/cli`를 `devDependencies`에 두고 package
+  script에서 `akan`을 부르세요. 전역 설치 뒤 `akan`을 찾지 못하면 `bun pm bin -g`가 출력하는 폴더를 `PATH`에
+  더하세요.
+- **Docker 없이 프로덕션 빌드 실행:** `akan build <app>` 뒤 `cd dist/apps/<app> && PORT=3000 bun main.js`. 빌드에
+  필요한 env가 함께 들어 있습니다.
+
 ## 이 모든 게 한 줄입니다
 
 ```ts
