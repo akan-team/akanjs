@@ -1,6 +1,6 @@
 "use client";
 import { cn, isRscNavigationFromCache, router, usePage } from "akanjs/client";
-import { capitalize, type DynamicRecord, deepObjectify, lowerlize } from "akanjs/common";
+import { capitalize, type DynamicRecord, deepObjectify, lowerlize, modelNames, stateSetterName } from "akanjs/common";
 import { ConstantRegistry, immerify } from "akanjs/constant";
 import type { ClientEdit, ServerEdit, SliceMeta } from "akanjs/fetch";
 import { type CreateOption, StoreRegistry, type Submit, st } from "akanjs/store";
@@ -63,18 +63,7 @@ const EditModel = <Full,>({
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => void };
   const { refName } = slice;
   const [modelName, ModelName] = useMemo(() => [lowerlize(refName), capitalize(refName)], []);
-  const names = useMemo(
-    () => ({
-      model: modelName,
-      Model: ModelName,
-      modelForm: `${modelName}Form`,
-      modelFormLoading: `${modelName}FormLoading`,
-      modelFormUploading: `${modelName}FormUploading`,
-      modelModal: `${modelName}Modal`,
-      checkModelSubmitable: `check${ModelName}Submitable`,
-    }),
-    [],
-  );
+  const names = useMemo(() => modelNames(modelName), []);
   const modelModal = storeUse[names.modelModal]() as string | null;
   const modelForm = storeUse[names.modelForm]() as { id: string | null; [key: string]: any };
   // An upload that settles without touching the form (a failure) must still re-open submit.
@@ -167,29 +156,9 @@ export default function EditModal<Full extends { id: string }>({
     ? use(edit as Usable<any>)
     : edit) as unknown as ServerEdit<string, Full> | Full | undefined;
   const { refName, sliceName } = slice;
-  const [modelName, ModelName] = useMemo(() => [lowerlize(refName), capitalize(refName)], []);
-  const names = useMemo(
-    () => ({
-      model: modelName,
-      modelForm: `${modelName}Form`,
-      modelFormLoading: `${modelName}FormLoading`,
-      modelModal: `${modelName}Modal`,
-      modelSubmit: `${modelName}Submit`,
-      modelFormUploading: `${modelName}FormUploading`,
-      submitModel: `submit${ModelName}`,
-      resetModel: `reset${ModelName}`,
-      setModelModal: `set${ModelName}Modal`,
-      modelLoading: `${modelName}Loading`,
-      modelViewAt: `${modelName}ViewAt`,
-      editModel: `edit${ModelName}`,
-      modelDraft: `${modelName}FormDraft`,
-      loadModelDraft: `load${ModelName}FormDraft`,
-      newModel: `new${ModelName}`,
-      crystalizeModel: `crystalize${ModelName}`,
-      modelObj: `${modelName}Obj`,
-    }),
-    [],
-  );
+  const modelName = useMemo(() => lowerlize(refName), []);
+  const names = useMemo(() => modelNames(modelName), []);
+  const setModelModal = stateSetterName(names.modelModal);
   const modelModal = storeUse[names.modelModal]() as string | null;
   const modelFormId = storeSel<string | null>(
     (state: unknown) => (state as { [key: string]: { id: string | null } })[names.modelForm].id,
@@ -244,7 +213,7 @@ export default function EditModal<Full extends { id: string }>({
           st.set({ [names.modelFormLoading]: false });
         });
       // A fresh payload skips `edit<Model>`, so the draft load it would have ended with happens here.
-      else void storeDo[names.loadModelDraft](draftScope);
+      else void storeDo[names.loadModelFormDraft](draftScope);
     } else {
       const crystal = new modelRef().set(modelEdit as Full) as unknown as Full;
       const draftScope = newDraftScope(draft, {
@@ -286,7 +255,7 @@ export default function EditModal<Full extends { id: string }>({
         if (state[names.modelModal] !== modalName) return;
         const formId = (state[names.modelForm] as { id: string | null } | undefined)?.id ?? null;
         if (formId !== (modalId ?? null)) return;
-        void storeDo[names.setModelModal](null);
+        void storeDo[setModelModal](null);
       });
     };
   }, []);
@@ -294,7 +263,7 @@ export default function EditModal<Full extends { id: string }>({
   const handleCancel = useCallback(() => {
     const modelForm = (st.get() as DynamicRecord)[names.modelForm] as Full;
     const form = deepObjectify(modelForm);
-    void storeDo[names.setModelModal](null);
+    void storeDo[setModelModal](null);
     if (typeof onCancel === "function") onCancel(form);
     else if (onCancel === "back") router.back();
     else if (onCancel === "reset") void storeDo[names.resetModel]();
@@ -339,7 +308,7 @@ export default function EditModal<Full extends { id: string }>({
                     if (onSubmit === "back") router.back();
                     else if (onSubmit === "reset") void storeDo[names.resetModel]();
                     else if (typeof onSubmit === "string")
-                      router.replace(onSubmit.replace(new RegExp(`\\[${names.model}Id\\]`, "g"), model.id));
+                      router.replace(onSubmit.replace(new RegExp(`\\[${names.modelId}\\]`, "g"), model.id));
                   },
                 });
               };

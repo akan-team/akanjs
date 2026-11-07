@@ -9,10 +9,9 @@ import {
   STATE_INIT_META,
   STATE_META,
 } from "akanjs/base";
-import { applyMixins } from "akanjs/common";
+import { applyMixins, formSetterNames } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import { attachAgentic } from "./agentic";
-import { formSetterNames } from "./formSetterNames";
 import type { RootStoreCls } from "./rootStore";
 import type { StoreCls } from "./store";
 import { StoreInstance } from "./storeInstance";

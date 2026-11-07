@@ -4,11 +4,14 @@ import {
   type DynamicRecord,
   deepObjectify,
   type FetchPolicy,
+  formSetterNames,
   isQueryEqual,
   Logger,
+  modelNames,
   pathSet,
   plainFieldsOf,
   resolveFileUploadCapability,
+  sliceNames,
 } from "akanjs/common";
 import {
   type BaseInsight,
@@ -40,9 +43,7 @@ import type {
 } from "akanjs/signal";
 import { expandQueryArgs, normalizeQueryArgs } from "../fetch/client/sliceQueryArgs";
 import { tagAction } from "./actionTag";
-import { databaseStateNames } from "./databaseStateNames";
 import { DraftStore } from "./draftStore";
-import { formSetterNames } from "./formSetterNames";
 import { type LiveSortableRow, livePlacementIndex } from "./liveInsert";
 import { SliceRequest } from "./SliceRequest";
 import { servedEndpointOf } from "./servedEndpointOf";
@@ -305,16 +306,11 @@ export type DefaultAction<
 
 export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
   type Light = BaseObject;
-  const [fieldName, className] = [refName, capitalize(refName)];
+  const className = capitalize(refName);
   const modelRef = ConstantRegistry.getDatabase(refName).full;
   const fileUploadRefName = resolveFileUploadCapability(fetch.serializedSignal)?.refName;
 
-  const names = {
-    modelForm: `${fieldName}Form`,
-    modelFormUploading: databaseStateNames(refName).modelFormUploading,
-    writeOnModel: `writeOn${className}`,
-    addModelFiles: `add${className}Files`,
-  };
+  const names = modelNames(refName);
   type UploadState = { [key: string]: { [field: string]: string[] } };
   let uploadSeq = 0;
   const releaseUpload = (state: UploadState, field: string, ticket?: string) => {
@@ -448,7 +444,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
                 void postSet.call(this, (this.get() as { [key: string]: any })[names.modelForm][namesOfField.field]);
               // A light-declared field stores the light projection, so the poll re-reads through the light endpoint.
               const fileReadName = ConstantRegistry.isLight(field.modelRef)
-                ? `light${capitalize(fileUploadRefName)}`
+                ? modelNames(fileUploadRefName).lightModel
                 : fileUploadRefName;
               const holdsFile = (id: string) => {
                 const value = (this.get() as { [key: string]: { [key: string]: unknown } })[names.modelForm][
@@ -515,40 +511,17 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   type Light = BaseObject;
   type Filter = FilterInstance;
   type Sort = BaseFilterSortKey;
-  const [fieldName, className] = [refName, capitalize(refName)];
+  const className = capitalize(refName);
   const cnst = ConstantRegistry.getDatabase(refName);
   const modelRef = cnst.full;
   // Deliberately not store state: a secret field in the opened form must not reach a subscribed component.
   let openFormBase: object | null = null;
-  const slices = Object.entries(slice).map(([suffix, serializedSlice]) => ({
-    sliceName: `${refName}${capitalize(suffix)}`,
-    keys: sliceKeysOf(refName, suffix),
-    slice: serializedSlice,
-  }));
-  const names = {
-    ...databaseStateNames(refName),
-    Model: className,
-    modelInsight: `${fieldName}Insight`,
-    modelList: `${fieldName}List`,
-    modelListLoading: `${fieldName}ListLoading`,
-    createModelInForm: `create${className}InForm`,
-    updateModelInForm: `update${className}InForm`,
-    createModel: `create${className}`,
-    updateModel: `update${className}`,
-    removeModel: `remove${className}`,
-    checkModelSubmitable: `check${className}Submitable`,
-    submitModel: `submit${className}`,
-    newModel: `new${className}`,
-    editModel: `edit${className}`,
-    mergeModel: `merge${className}`,
-    viewModel: `view${className}`,
-    setModel: `set${className}`,
-    resetModel: `reset${className}`,
-    invalidateModel: `invalidate${className}`,
-    loadModelDraft: `load${className}FormDraft`,
-    restoreModelDraft: `restore${className}FormDraft`,
-    discardModelDraft: `discard${className}FormDraft`,
-  };
+  const slices = Object.entries(slice).map(([suffix, serializedSlice]) => {
+    const keys = sliceKeysOf(refName, suffix);
+    return { sliceName: keys.slice, keys, slice: serializedSlice };
+  });
+  const { modelInsight, modelList, modelListLoading } = sliceNames(refName).state;
+  const names = { ...modelNames(refName), Model: className, modelInsight, modelList, modelListLoading };
   // A save while a file is still uploading would store the form without it.
   const isUploadingIn = (state: { [key: string]: any }) =>
     Object.keys(state[names.modelFormUploading] as object).length > 0;
@@ -917,7 +890,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       this.set(staleAtOfSlices());
     },
     // For a form seeded from an RSC payload: arms saving and offers the draft, as `edit<Model>` does after its fetch.
-    [names.loadModelDraft]: async function (this: SetGet, draftScope?: string) {
+    [names.loadModelFormDraft]: async function (this: SetGet, draftScope?: string) {
       const currentState = this.get() as { [key: string]: any };
       const model = currentState[names.model] as Full | null;
       const modelForm = currentState[names.modelForm] as object;
@@ -926,7 +899,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       });
       if (draftScope) await applyDraft.call(this, { auto: false });
     },
-    [names.restoreModelDraft]: function (this: SetGet) {
+    [names.restoreModelFormDraft]: function (this: SetGet) {
       const draft = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
       if (!draft?.pending) return;
       this.set({
@@ -934,7 +907,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.modelDraft]: { ...draft, pending: null, appliedAt: draft.pending.savedAt },
       });
     },
-    [names.discardModelDraft]: function (this: SetGet) {
+    [names.discardModelFormDraft]: function (this: SetGet) {
       const draft = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
       if (!draft) return;
       void DraftStore.remove(draft.key);
@@ -945,7 +918,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       });
     },
   };
-  const sliceAction = slices.reduce((acc, { sliceName, keys, slice }) => {
+  const sliceAction = slices.reduce((acc, { keys, slice }) => {
     // One ticket per slice: every action below writes the same list.
     const requests = new SliceRequest();
     // One room per slice, not per component: a second room would apply every event to the one list twice.
@@ -971,7 +944,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       [namesOfSlice.lastPageOfModel]: limit > 0 ? Math.max(Math.floor((count - 1) / limit) + 1, 1) : 1,
     });
     const fetchList = (queryArgs: unknown[], skip: number, limit: number, sort: Sort, options?: object) =>
-      (fetch[namesOfSlice.modelList] as (...args: any[]) => Promise<Light[]>)(
+      (fetch[keys.endpoint.list] as (...args: any[]) => Promise<Light[]>)(
         ...expandQueryArgs(queryArgs, slice.args),
         skip,
         limit,
@@ -979,7 +952,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         options,
       );
     const fetchInsight = (queryArgs: unknown[], options?: object) =>
-      (fetch[namesOfSlice.modelInsight] as (...args: any[]) => Promise<Insight & BaseInsight>)(
+      (fetch[keys.endpoint.insight] as (...args: any[]) => Promise<Insight & BaseInsight>)(
         ...expandQueryArgs(queryArgs, slice.args),
         options,
       );
@@ -1335,9 +1308,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         const apply = self[namesOfSlice.applyLiveModel] as (event: unknown) => void;
         const refresh = self[namesOfSlice.refreshModel] as (form: object) => Promise<void>;
         // The generated subscriber serializes room args as the list query does; a hand-built id would not.
-        const subscribe = fetch[`subscribe${capitalize(sliceName.replace(names.model, `${names.model}Live`))}`] as
-          | ((...args: unknown[]) => () => void)
-          | undefined;
+        const subscribe = fetch[keys.endpoint.subscribeLive] as ((...args: unknown[]) => () => void) | undefined;
         if (!subscribe) return;
         const dispose = subscribe(...args, (event: unknown) => apply(event), {
           crystalize: false,

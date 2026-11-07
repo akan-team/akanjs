@@ -9,8 +9,8 @@ import {
   PrimitiveRegistry,
   type PrimitiveScalar,
 } from "akanjs/base";
+import { databaseStateNames } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
-import { databaseStateNames } from "./databaseStateNames";
 
 export type StateInitializer = () => unknown;
 export type StateInitializerMap = Record<string, StateInitializer>;

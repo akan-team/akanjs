@@ -1,5 +1,5 @@
 "use client";
-import { deepObjectify } from "akanjs/common";
+import { type DynamicRecord, deepObjectify, modelNames } from "akanjs/common";
 import type { ClientEdit, ServerEdit, SliceMeta } from "akanjs/fetch";
 import type { CreateOption } from "akanjs/store";
 import type { ReactNode } from "react";
@@ -57,12 +57,12 @@ function Render<T extends string, Full extends { id: string }>({
 }: RenderProps<T, Full>) {
   const editType: "edit" | "new" =
     (edit as ServerEdit<string, Full>).refName &&
-    ((edit as ServerEdit<string, Full>)[`${(edit as ServerEdit<string, Full>).refName}Obj`] as Full)
+    ((edit as DynamicRecord)[modelNames((edit as ServerEdit<string, Full>).refName).modelObj] as Full)
       ? "edit"
       : "new";
   const modelId =
     editType === "edit"
-      ? ((edit as ServerEdit<string, Full>)[`${(edit as ServerEdit<string, Full>).refName}Obj`] as Full).id
+      ? ((edit as DynamicRecord)[modelNames((edit as ServerEdit<string, Full>).refName).modelObj] as Full).id
       : undefined;
   return (
     <Model.EditModal

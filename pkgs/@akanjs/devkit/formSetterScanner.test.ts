@@ -10,8 +10,26 @@ const fileOf = (file: string, content: string): SourceFileInfo => ({
   sourceFile: ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX),
 });
 
+const taskConstant = fileOf(
+  "apps/demo/lib/task/task.constant.ts",
+  `export class TaskInput extends via((field) => ({
+  title: field(String),
+  type: field(String),
+  phone: field(String),
+  project: field(Project).optional(),
+  members: field([User]),
+})) {}
+
+export class TaskObject extends via(TaskInput, (field) => {
+  return { status: field(String) };
+}) {}
+
+export class TaskInsight extends via(Task, (field) => ({ onSale: field(Int) })) {}
+`,
+);
+
 const scan = (content: string) =>
-  new FormSetterScanner().scan([fileOf("apps/demo/lib/task/Task.Template.tsx", content)]);
+  new FormSetterScanner().scan([taskConstant, fileOf("apps/demo/lib/task/Task.Template.tsx", content)]);
 
 describe("FormSetterScanner", () => {
   test("a setter passed by reference publishes, so nothing is reported", () => {
@@ -71,6 +89,31 @@ describe("FormSetterScanner", () => {
 );
 `),
     ).toEqual([]);
+  });
+
+  test("a slice setter is not a field setter, though its name reads set…On…", () => {
+    expect(
+      scan(`export const Filters = () => (
+  <Select onChange={(page) => st.do.setPageOfTaskOnSale(page)} />
+);
+`),
+    ).toEqual([]);
+  });
+
+  test("a field is known from its model's constant, so another model's setter is not counted", () => {
+    expect(
+      scan(`export const General = () => (
+  <>
+    <Field.Text onChange={(title) => st.do.setTitleOnProject(title)} />
+    <Field.Text onChange={(onSale) => st.do.setOnSaleOnTask(onSale)} />
+  </>
+);
+`),
+    ).toEqual([]);
+    expect(
+      scan(`export const General = () => <Field.Text onChange={(status) => st.do.setStatusOnTask(status)} />;\n`)[0]
+        ?.message,
+    ).toContain("setStatusOnTask");
   });
 
   test("only .tsx is scanned", () => {

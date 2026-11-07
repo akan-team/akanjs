@@ -1,7 +1,7 @@
 import type { Cls } from "akanjs/base";
+import { databaseStateNames } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import type { AgentRefusal } from "akanjs/signal";
-import { databaseStateModelTypes, databaseStateNames } from "../databaseStateNames";
 import type { SliceStateKey } from "../state";
 import type { StoreInstance } from "../storeInstance";
 
@@ -23,6 +23,13 @@ const sliceStateModelTypes: { [key in SliceStateKey]?: SerializedStoreState["mod
   modelSelection: "light",
   modelInsight: "insight",
 };
+
+// The agent catalogue masks a read by this declared class: `immerify` drops the constructor from the live value.
+const databaseStateModelTypes = {
+  model: "full",
+  modelForm: "input",
+  defaultModel: "full",
+} as const satisfies { [key in keyof ReturnType<typeof databaseStateNames>]?: SerializedStoreState["modelType"] };
 
 /** Every store key an agent may read and the model its reads are masked by. Keys only: tools come from `st.tool`. */
 export class StoreCatalogue {

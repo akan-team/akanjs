@@ -1,4 +1,5 @@
 import { type BaseEnv, INJECT_META } from "akanjs/base";
+import { modelNames } from "akanjs/common";
 import type { AdaptorCls, InjectInfo, ServiceCls } from "akanjs/service";
 import type { DiLifecycle } from "../di/diLifecycle";
 import type { DepEdge, DepEdgeKind, DepNode, DepNodeKind, DepsData } from "./types";
@@ -126,7 +127,7 @@ export class DepsSerializer {
     const kind = injectInfo.type as DepEdgeKind;
     switch (kind) {
       case "database":
-        return { from, to: this.#node("adaptor", `${injectInfo.parentRefName}Model`), kind, prop };
+        return { from, to: this.#node("adaptor", modelNames(injectInfo.parentRefName).modelModel), kind, prop };
       case "service":
         return prop.endsWith("Service")
           ? { from, to: this.#node("service", prop.slice(0, -"Service".length)), kind, prop }
