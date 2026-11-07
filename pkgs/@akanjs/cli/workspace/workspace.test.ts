@@ -334,18 +334,22 @@ describe("WorkspaceRunner", () => {
     });
     expect(workspacePackageJson.dependencies.akanjs).toBe("2.0.0-beta.0");
     expect(workspacePackageJson.dependencies).toMatchObject({
-      "@react-spring/web": expect.any(String),
-      "@use-gesture/react": expect.any(String),
       chance: expect.any(String),
       react: expect.any(String),
       "react-dom": expect.any(String),
       "react-icons": expect.any(String),
-      "react-refresh": expect.any(String),
       "react-server-dom-webpack": expect.any(String),
-      "react-spring": expect.any(String),
-      scheduler: expect.any(String),
       tailwindcss: expect.any(String),
     });
+    for (const shippedByAkanjs of [
+      "@react-spring/web",
+      "@use-gesture/react",
+      "react-refresh",
+      "react-spring",
+      "scheduler",
+      "tailwind-scrollbar",
+    ])
+      expect(workspacePackageJson.dependencies).not.toHaveProperty(shippedByAkanjs);
     expect(workspacePackageJson.dependencies).not.toHaveProperty("typescript");
     expect(workspacePackageJson.devDependencies).toMatchObject({
       "@biomejs/biome": expect.any(String),
