@@ -29,6 +29,7 @@ interface ViewModalProps extends ModalSurfaceProps {
   viewClassName?: string;
   slice: SliceMeta;
   renderTitle?: (model: any) => ReactNode | string;
+  /** The bottom bar's content; a `null` answer leaves the bar out. */
   renderAction?: (model: any) => ReactNode;
   renderView: (model: any) => ReactNode | null;
 }
@@ -68,11 +69,8 @@ export default function ViewModal({
     if (typeof render === "string") return <h2 className="flex items-center text-2xl">{render}</h2>;
     else return render;
   };
-  const Action = () => {
-    if (!model || modelLoading || !renderAction) return null;
-    const render = renderAction(model);
-    return render;
-  };
+  //? Called, not mounted: an action's own open modal survives a re-render, and a `null` answer draws no bar.
+  const action = isModalOpen && model && !modelLoading && renderAction ? renderAction(model) : null;
 
   const closeView = () => {
     storeDo[names.resetModel]();
@@ -87,7 +85,7 @@ export default function ViewModal({
         presentation={presentation}
         placement={placement}
         title={renderTitle ? <Title /> : null}
-        action={renderAction ? <Action /> : null}
+        action={action}
       >
         <View className={viewClassName} model={model} modelLoading={modelLoading} render={renderView} />
       </Modal>

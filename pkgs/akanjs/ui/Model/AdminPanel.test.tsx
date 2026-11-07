@@ -429,6 +429,18 @@ describe("Model.AdminPanel view modal", () => {
   const paramsOf = (href = "") => Object.fromEntries(new URL(href, "http://localhost").searchParams);
   const dialog = () => document.body.querySelector("[role=dialog]");
   const viewing = (title: string) => () => document.body.textContent?.includes(`view of ${title}`) ?? false;
+  const barLabels = () =>
+    [...(dialog()?.querySelector(".border-t")?.querySelectorAll("button") ?? [])].map((button) =>
+      button.textContent?.trim(),
+    );
+  const buttonOf = (text: string) =>
+    [...document.body.querySelectorAll("button")].find((button) => button.textContent?.trim() === text) as
+      | HTMLButtonElement
+      | undefined;
+  const click = (element: HTMLElement | null | undefined) =>
+    act(async () => {
+      element?.click();
+    });
 
   beforeAll(async () => {
     const { router } = await import("akanjs/client");
@@ -454,7 +466,7 @@ describe("Model.AdminPanel view modal", () => {
     replaces.length = 0;
     setState({ searchParams: { topMenu: "account", action: "view", modelId: offPageId } });
     const { unmount } = await mount(
-      <AdminPanel slice={slice} components={viewComponents} viewInUrl renderViewTitle={false} />,
+      <AdminPanel slice={slice} components={viewComponents} actions={["view"]} viewInUrl renderViewTitle={false} />,
       viewing("Grace"),
     );
 
@@ -513,6 +525,111 @@ describe("Model.AdminPanel view modal", () => {
       () => replaces.length === 1,
     );
 
+    expect(paramsOf(replaces[0]?.href)).toEqual({ topMenu: "account" });
+    expect(dialog()).toBeNull();
+    unmount();
+    setState({ searchParams: {} });
+  });
+
+  test("draws the row's actions but view in the view's bar, and no bar when view is all that is left", async () => {
+    const barFor = async (props: Record<string, unknown>) => {
+      makeStore();
+      const { unmount } = await mount(
+        <AdminPanel slice={slice} components={viewComponents} {...props} />,
+        () => calls.adminTestItemList.mock.calls.length > 0,
+      );
+      await act(() => storeDo.viewAdminTestItem(listedId));
+      await waitFor(viewing("Grace"));
+      const bar = dialog()?.querySelector(".border-t") ? barLabels() : null;
+      unmount();
+      return bar;
+    };
+
+    expect(await barFor({ actions: ["edit", "view", "remove"] })).toEqual(["base.edit", "base.remove"]);
+    expect(await barFor({})).toEqual(["base.remove", "base.edit"]);
+    expect(await barFor({ actions: ["view"] })).toBeNull();
+    expect(await barFor({ actions: ["edit", "view"], viewActions: false })).toBeNull();
+  });
+
+  test("asks an `actions` function for the viewed record, off the page too, and drops the bar it empties", async () => {
+    makeStore();
+    const { unmount } = await mount(
+      <AdminPanel
+        slice={slice}
+        components={viewComponents}
+        actions={(item: { id: string }, idx: number) =>
+          item.id === otherId
+            ? ["view"]
+            : [
+                "view",
+                <button key="custom" type="button">
+                  custom {idx}
+                </button>,
+                null,
+                "edit",
+              ]
+        }
+      />,
+      () => calls.adminTestItemList.mock.calls.length > 0,
+    );
+
+    await act(() => storeDo.viewAdminTestItem(listedId));
+    await waitFor(() => barLabels().length > 0);
+    expect(barLabels()).toEqual(["custom 0", "base.edit"]);
+    await act(() => storeDo.viewAdminTestItem(offPageId));
+    await waitFor(() => barLabels()[0] === "custom -1");
+    expect(barLabels()).toEqual(["custom -1", "base.edit"]);
+    await act(() => storeDo.viewAdminTestItem(otherId));
+    await waitFor(viewing("Linus"));
+    expect(dialog()?.querySelector(".border-t")).toBeNull();
+    unmount();
+  });
+
+  test("goes back to the view an edit was opened from, which the URL names all along", async () => {
+    makeStore();
+    replaces.length = 0;
+    calls.updateAdminTestItem = mock(async (id: string) => new Full({ id, title: "Hopper" }));
+    setState({ searchParams: { topMenu: "account", action: "view", modelId: offPageId } });
+    const { unmount } = await mount(
+      <AdminPanel slice={slice} components={viewComponents} actions={["edit", "view"]} viewInUrl />,
+      viewing("Grace"),
+    );
+
+    await click(buttonOf("base.edit"));
+    await waitFor(() => !!buttonOf("base.updateModel"));
+    expect(document.body.textContent).not.toContain("view of Grace");
+    await click(dialog()?.querySelector<HTMLElement>('[aria-label="Close"]'));
+    await waitFor(viewing("Grace"));
+
+    await click(buttonOf("base.edit"));
+    await waitFor(() => !!buttonOf("base.updateModel") && !buttonOf("base.updateModel")?.disabled);
+    await click(buttonOf("base.updateModel"));
+    await waitFor(viewing("Hopper"));
+    expect(calls.updateAdminTestItem).toHaveBeenCalledWith(offPageId, expect.anything(), expect.anything());
+    expect(replaces).toEqual([]);
+
+    await act(() => storeDo.resetAdminTestItem());
+    await waitFor(() => replaces.length === 1);
+    expect(paramsOf(replaces[0]?.href)).toEqual({ topMenu: "account" });
+    unmount();
+    setState({ searchParams: {} });
+  });
+
+  test("removes from the view behind the row's confirm, then closes it and takes its params out", async () => {
+    makeStore();
+    replaces.length = 0;
+    calls.removeAdminTestItem = mock(async (id: string) => new Full({ id, title: "Grace" }));
+    setState({ searchParams: { topMenu: "account", action: "view", modelId: listedId } });
+    const { unmount } = await mount(
+      <AdminPanel slice={slice} components={viewComponents} actions={["remove", "view"]} viewInUrl />,
+      viewing("Grace"),
+    );
+
+    await click(buttonOf("base.remove"));
+    expect(calls.removeAdminTestItem).not.toHaveBeenCalled();
+    await click(buttonOf("base.ok"));
+    await waitFor(() => replaces.length === 1);
+    expect(calls.removeAdminTestItem).toHaveBeenCalledWith(listedId, expect.anything());
     expect(paramsOf(replaces[0]?.href)).toEqual({ topMenu: "account" });
     expect(dialog()).toBeNull();
     unmount();

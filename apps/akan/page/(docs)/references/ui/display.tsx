@@ -349,8 +349,8 @@ export default page()
         type: "DataAction[] | (item, idx) => DataAction[]",
         default: '["remove", "edit", "view"]',
         desc: l.trans({
-          en: "Row buttons. A function decides them per row.",
-          ko: "행마다 붙는 버튼입니다. 함수로 주면 행마다 따로 정합니다.",
+          en: "Row buttons, also in the view modal's bar without view. A function decides them per record.",
+          ko: "행마다 붙는 버튼으로, view를 뺀 나머지는 view modal 아래 줄에도 붙습니다. 함수로 주면 record마다 정합니다.",
         }),
       },
       {
@@ -378,6 +378,15 @@ export default page()
         desc: l.trans({
           en: "Puts the open view in the URL as `?action=view&modelId=<id>`; a link opens it, listed or not. One per page.",
           ko: "열린 view를 URL에 `?action=view&modelId=<id>`로 남기고, 링크는 목록에 없는 record도 엽니다. 한 화면에 하나만.",
+        }),
+      },
+      {
+        key: "viewActions",
+        type: "boolean",
+        default: "true",
+        desc: l.trans({
+          en: "Draws `actions` but view in the view modal's bar; an edit from there returns to the view. `false` drops it.",
+          ko: "view를 뺀 `actions`를 view modal 아래 줄에 그리고, 거기서 연 수정은 닫으면 view로 돌아옵니다. `false`면 뺍니다.",
         }),
       },
       {

@@ -4,7 +4,7 @@ import { capitalize } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { usePageLocation } from "akanjs/webkit";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 const firstOf = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
@@ -23,27 +23,43 @@ const hrefWithView = (searchParams: SearchParams, modelId: string | null) => {
   return `${router.getPath()}${search ? `?${search}` : ""}`;
 };
 
-//? Two-way, so a side is followed only when it moved since the last agreement: the URL on mount and on a Link or
-//? back, the store when a row's view button or close changed it.
-export const useViewInUrl = (slice: SliceMeta, enabled: boolean) => {
+export const useViewModal = (slice: SliceMeta, { inUrl }: { inUrl: boolean }) => {
   const storeUse = st.use as unknown as { [key: string]: (option?: { agent: false }) => unknown };
   const storeDo = st.do as unknown as { [key: string]: (...args: unknown[]) => Promise<void> | void };
   const { refName } = slice;
-  const names = { view: `view${capitalize(refName)}`, reset: `reset${capitalize(refName)}` };
+  const ModelName = capitalize(refName);
+  const names = {
+    view: `view${ModelName}`,
+    edit: `edit${ModelName}`,
+    reset: `reset${ModelName}`,
+    setModal: `set${ModelName}Modal`,
+  };
   const { searchParams } = usePageLocation() as { searchParams: SearchParams };
   const model = storeUse[refName]({ agent: false }) as { id: string } | null;
   const modelModal = storeUse[`${refName}Modal`]({ agent: false }) as string | null;
   const modelLoading = storeUse[`${refName}Loading`]({ agent: false }) as string | boolean;
-  const urlId = enabled && firstOf(searchParams.action) === "view" ? (firstOf(searchParams.modelId) ?? null) : null;
+  const [editedFrom, setEditedFrom] = useState<string | null>(null);
+  //? An edit opened from the view goes back to it once closed, so until then the URL keeps naming the view.
+  const isReturning = !!editedFrom && (modelModal === "edit" || (modelModal === null && model?.id === editedFrom));
+  const urlId = inUrl && firstOf(searchParams.action) === "view" ? (firstOf(searchParams.modelId) ?? null) : null;
   const storeId =
     modelModal === "view"
       ? typeof modelLoading === "string" && modelLoading
         ? modelLoading
         : (model?.id ?? null)
-      : null;
+      : isReturning
+        ? editedFrom
+        : null;
+  useEffect(() => {
+    if (!editedFrom || modelModal === "edit") return;
+    setEditedFrom(null);
+    if (isReturning) void storeDo[names.setModal]("view");
+  }, [modelModal]);
+  //? Two-way, so a side is followed only when it moved since the last agreement: the URL on mount and on a Link or
+  //? back, the store when a row's view button or close changed it.
   const agreed = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    if (!enabled) return;
+    if (!inUrl) return;
     if (urlId === storeId) {
       agreed.current = urlId;
       return;
@@ -57,5 +73,11 @@ export const useViewInUrl = (slice: SliceMeta, enabled: boolean) => {
     }
     agreed.current = storeId;
     void router.replace(hrefWithView(searchParams, storeId), { shallow: true, scrollToTop: false });
-  }, [enabled, urlId, storeId]);
+  }, [inUrl, urlId, storeId]);
+  const editInView = (id: string) => {
+    setEditedFrom(id);
+    //? A form that failed to load never opened, so the view it was asked from comes back.
+    void Promise.resolve(storeDo[names.edit](id)).catch(() => storeDo[names.setModal]("view"));
+  };
+  return { editInView };
 };

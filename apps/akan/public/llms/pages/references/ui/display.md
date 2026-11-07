@@ -127,13 +127,15 @@ Data.ListContainer props
 
 - columns (DataColumn[], default ["id", "createdAt", "updatedAt"]): Fields shown in each row and card, and written by the CSV export.
 
-- actions (DataAction[] | (item, idx) => DataAction[], default ["remove", "edit", "view"]): Row buttons. A function decides them per row.
+- actions (DataAction[] | (item, idx) => DataAction[], default ["remove", "edit", "view"]): Row buttons, also in the view modal's bar without view. A function decides them per record.
 
 - tools (DataTool[] | (list) => DataTool[], default []): Extra entries in the toolbar's more menu, beside CSV and JSON export.
 
 - create (boolean, default true): Shows the New button, as long as `renderTemplate` is given.
 
 - viewInUrl (boolean, default false): Puts the open view in the URL as `?action=view&modelId=<id>`; a link opens it, listed or not. One per page.
+
+- viewActions (boolean, default true): Draws `actions` but view in the view modal's bar; an edit from there returns to the view. `false` drops it.
 
 - title (ReactNode): The heading. Defaults to the model's name from its dictionary.
 

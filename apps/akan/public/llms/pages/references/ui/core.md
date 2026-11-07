@@ -291,7 +291,7 @@ Modals and bodies with no trigger
 
 - Model.EditModal ({ slice, children, edit?, type?, id?, renderTitle?, submitText?, renderSubmit?, onSubmit?, onCancel?, draft?, presentation?, placement?, … }): The edit shell with no trigger. `onSubmit` / `onCancel`: `"back"`, `"reset"`, a path, or a callback.
 
-- Model.ViewModal ({ slice, renderView, id?, renderTitle?, renderAction?, modal?, modalClassName?, viewClassName?, presentation?, placement? }): The detail view in a modal. Title and action bars need their render function; without `id` it opens any record.
+- Model.ViewModal ({ slice, renderView, id?, renderTitle?, renderAction?, modal?, modalClassName?, viewClassName?, presentation?, placement? }): The detail view in a modal. A bar shows only for a render function and a non-null action; no `id` opens any record.
 
 - Model.ViewEditModal ({ slice, renderView, renderTemplate, renderTitle?, menu?, editLabel?, saveLabel?, presentation?, placement? }): One modal that flips between view and form; edit and the remove entry appear only for verbs the slice's guards open, and `menu={false}` drops the kebab.
 
