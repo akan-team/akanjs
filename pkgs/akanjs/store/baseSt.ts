@@ -1,4 +1,5 @@
 import type { PageState } from "akanjs/client";
+import { parseSearchParams } from "akanjs/common";
 import { Responsive, responsiveWidths } from "akanjs/constant";
 import { type Account, getDefaultAccount } from "akanjs/fetch";
 import type { SignalType } from "akanjs/signal";
@@ -24,7 +25,10 @@ export class BaseStore extends store("base" as const, () => ({
   path: "/",
   pathname: typeof window !== "undefined" ? window.location.pathname : "/",
   params: {} as { [key: string]: string },
-  searchParams: {} as BaseSearchParamsState,
+  //? Read before hydration, so an SSR page's first browser render sees the params its server render did.
+  searchParams: (typeof window !== "undefined"
+    ? parseSearchParams(window.location.search)
+    : {}) as BaseSearchParamsState,
   theme: "system",
   innerWidth: 0,
   innerHeight: 0,

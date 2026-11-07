@@ -10,6 +10,7 @@ let calls: Record<string, ReturnType<typeof mock>>;
 let setState: (state: Record<string, unknown>) => void;
 let storeDo: Record<string, (...args: unknown[]) => Promise<void>>;
 let Full: Awaited<ReturnType<typeof itemFixtureOf>>["Full"];
+let ClientPathWrapper: typeof import("../System/Client").ClientPathWrapper;
 
 const slice = { refName: "adminTestItem", sliceName: "adminTestItem", argLength: 2 };
 const components = { Template: {}, Unit: {}, View: {} };
@@ -65,6 +66,7 @@ beforeAll(async () => {
   } as never);
   makeStore = storeMaker({ root: "adminPanelRoot", calls, sliceArgs: rootSliceArgs });
   ({ default: AdminPanel } = await import("./AdminPanel"));
+  ({ ClientPathWrapper } = await import("../System/Client"));
 });
 
 /** The Data barrel is a React.lazy over a real dynamic import, so the first paint is the suspense fallback. */
@@ -634,6 +636,92 @@ describe("Model.AdminPanel view modal", () => {
     expect(dialog()).toBeNull();
     unmount();
     setState({ searchParams: {} });
+  });
+
+  describe("on an SSR page", () => {
+    const setUrl = (url: string) =>
+      (window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(url);
+    //* Mounted the way `SSR.tsx` draws a page, the wrapper holding the request's location. The store starts from the
+    //* address bar, as the base store does in a browser, where it loads after the URL is set (`baseSt.test.ts`).
+    const mountSsr = async (url: string, node: ReactNode, ready: () => boolean) => {
+      setUrl(url);
+      makeStore();
+      const { pathname, search } = new URL(url);
+      setState({ searchParams: Object.fromEntries(new URLSearchParams(search)) });
+      return mount(
+        <ClientPathWrapper
+          initialHref={url}
+          initialPath={pathname.replace(/^\/en/, "") || "/"}
+          initialPathname={pathname}
+          initialParams={{ lang: "en" }}
+          initialSearch={search}
+          initialHash=""
+        >
+          {node}
+        </ClientPathWrapper>,
+        ready,
+      );
+    };
+
+    test("opens the record a link names and keeps the page's own params when the view closes", async () => {
+      replaces.length = 0;
+      const { unmount } = await mountSsr(
+        `http://localhost/en/admin?topMenu=account&subMenu=user&action=view&modelId=${offPageId}`,
+        <AdminPanel slice={slice} components={viewComponents} actions={["view"]} viewInUrl />,
+        viewing("Grace"),
+      );
+
+      expect(calls.adminTestItem).toHaveBeenCalledWith(offPageId, expect.anything());
+      await act(() => storeDo.resetAdminTestItem());
+      await waitFor(() => replaces.length === 1);
+      expect(paramsOf(replaces[0]?.href)).toEqual({ topMenu: "account", subMenu: "user" });
+      unmount();
+      setUrl("http://localhost/");
+      setState({ searchParams: {} });
+    });
+
+    test("writes a row's view beside the page's params, and follows the store as the URL moves", async () => {
+      replaces.length = 0;
+      const { unmount } = await mountSsr(
+        "http://localhost/en/admin?topMenu=account&subMenu=user",
+        <AdminPanel slice={slice} components={viewComponents} actions={["view"]} viewInUrl />,
+        () => calls.adminTestItemList.mock.calls.length > 0,
+      );
+
+      await act(() => storeDo.viewAdminTestItem(listedId));
+      await waitFor(() => replaces.length === 1);
+      expect(paramsOf(replaces[0]?.href)).toEqual({
+        topMenu: "account",
+        subMenu: "user",
+        action: "view",
+        modelId: listedId,
+      });
+      setState({ searchParams: paramsOf(replaces[0]?.href) });
+      setState({ searchParams: { topMenu: "account", subMenu: "user", action: "view", modelId: otherId } });
+      await waitFor(viewing("Linus"));
+      expect(replaces).toHaveLength(1);
+      unmount();
+      setUrl("http://localhost/");
+      setState({ searchParams: {} });
+    });
+
+    test("opens the listing on the query a `?filter=` link names", async () => {
+      const { unmount } = await mountSsr(
+        "http://localhost/en/admin?topMenu=account&filter=pendingItem",
+        <AdminPanel
+          slice={slice}
+          components={viewComponents}
+          queryMap={{ pendingItem: { queryKey: "byPending" } }}
+          init={{ limit: 20 }}
+        />,
+        () => calls.adminTestItemList.mock.calls.length > 0,
+      );
+
+      expect(calls.adminTestItemList).toHaveBeenCalledWith("byPending", [], 0, 20, "latest", expect.any(Object));
+      unmount();
+      setUrl("http://localhost/");
+      setState({ searchParams: {} });
+    });
   });
 
   test("leaves the URL alone and ignores its params without `viewInUrl`", async () => {
