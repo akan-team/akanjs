@@ -1,0 +1,9 @@
+---
+description: The client/server boundary and SSR-first rendering for .tsx files and pages.
+globs: apps/**/*.tsx,libs/**/*.tsx,apps/**/page/**,libs/**/page/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/ssr.md

@@ -95,14 +95,7 @@ export const addFieldWorkflowSpec: WorkflowSpec = {
       reason: "Generated dictionary barrel may change after sync.",
     },
   ],
-  validation: [
-    ...baseValidation,
-    {
-      command: "akan typecheck <app-name>",
-      reason: "Validate cross-surface TypeScript contracts after field changes.",
-      kind: "typecheck",
-    },
-  ],
+  validation: baseValidation,
   completionCriteria: [
     "Field exists in source-of-truth module shape.",
     "Dictionary labels cover the field.",

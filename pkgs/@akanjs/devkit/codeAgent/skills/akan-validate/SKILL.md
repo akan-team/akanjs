@@ -7,17 +7,19 @@ description: "Run the akan check loop after editing and fix each failure class t
 
 ## One call does the whole chain
 
-`akan_verify` runs sync → lint → typecheck → `quality ssr` over everything the working tree has changed, in
-the right order, and reports only what failed. **Call it after editing, before you say you are done.** It
-also runs itself at the end of a turn that changed source, so a failure comes back to you either way.
+`akan verify` (the `akan_verify` tool in akan code) syncs, lints with fixes, typechecks, fast-builds each
+changed app, and runs the SSR check for a `.tsx` change — over everything the working tree has changed, in one
+process. It prints one line when it passes and one line per problem when it fails. **Run it after editing,
+before you say you are done.** In akan code it also runs itself at the end of a turn that changed source.
 
-The same chain by hand, for the app you are editing:
+Never run `akan lint`, `akan typecheck` and `akan build` in turn: that is the same work three times over, at
+three times the output. Narrow the one command instead:
 
-- `akan sync <app>` — after adding, renaming, or deleting any file. Regenerates the barrels.
-- `akan lint <app>` — fast; run after every edit. Prints up to 200 diagnostics.
-- `akan typecheck <app>` — the client/server boundary violations land here, not in lint.
-- `akan quality ssr` — only when you wrote or changed a `.tsx`. Did the server share hold?
-- `akan build <app>` — the full production build; slower, and only when the build itself is in question.
+- `akan verify <app-or-lib-or-pkg>` — that target whole, changed or not.
+- `akan verify --lint-only` — the quick pass between edits.
+- `akan verify --no-build` — leave the app build out.
+- `akan verify --max 0` — every line, when the report ends in `+N more`.
+- `fixed N files` in the header means lint rewrote them on disk: re-read before editing them again.
 
 Raw `tsc` misses the generated barrels and reports false errors. Do not reach for it.
 

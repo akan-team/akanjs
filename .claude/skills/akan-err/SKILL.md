@@ -1,0 +1,41 @@
+---
+name: akan-err
+description: "Throw errors the Akan way — a typed Err with a dictionary key, never a bare throw new Error. Lint-enforced."
+---
+
+<!-- akan:generated -->
+
+# throw → Err
+
+Domain code throws `new Err("<module>.error.<key>")` and registers the key as `[en, ko]` in that module's
+dictionary `.error({})`. `throw new Error(...)` fails the build (`no-throw-raw-error.grit`).
+
+## Getting the import side right
+
+This is the common failure. Import `Err` from the source matching the **runtime side of the file**:
+
+- server code: `import { Err } from "../dict"`
+- UI: `from "@libs/<lib>/client"` or `from "@apps/<app>/client"`
+
+## Where the rule does not apply
+
+The lint rule exempts tests, `*.constant.ts`, `common/**`, and `env/**`. The last two have **no legal `Err`
+import path at all**, so keep throwing code out of them entirely rather than reaching for a workaround.
+
+## Where each error belongs
+
+- a state-machine precondition → `document.ts`
+- a cross-document rule → `service.ts`
+- request-level policy → a guard in `signal.ts`
+
+Best-effort code returns a sentinel (`null`, `undefined`, `{}`) instead of throwing. `try/catch` is rare and
+always converts an exception into a decision: a guard catches, warns, and returns `false`; an adapter
+catches, logs, and returns `null`. A store action never catches — let the framework toast the `Err`.
+Client-side validation failure is `msg.error("<key>")` plus an early return, never a throw.
+
+**A failure another process reported travels as itself.** A server-to-server `fetch.<endpoint>(…, { origin })`
+restores the remote `Err` with its class, key and data. Rethrow it as-is — wrapping it in a `new Error`
+discards what the endpoint chose to say, and a bare `Error` is generalized to "Internal Server Error" on the
+way out.
+
+Korean `.error()` messages end in `다.`.

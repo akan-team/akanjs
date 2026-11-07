@@ -112,7 +112,7 @@ describe("ModuleScript", () => {
       schemaVersion: 1,
       command: "create-module",
       status: "passed",
-      validationCommands: [{ command: "akan sync demo" }, { command: "akan lint demo" }],
+      validationCommands: [{ command: "akan verify demo" }],
     });
   });
 

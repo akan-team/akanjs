@@ -26,11 +26,10 @@ export class VerifyFeedback implements TurnFeedbackSource {
 
   async observe() {
     const scope = await AkanEditScope.since(this.#options.cwd, this.#baseline);
-    if (!scope.apps.length && !scope.libs.length) return undefined;
+    if (!scope.apps.length && !scope.libs.length && !scope.pkgs.length) return undefined;
     if (this.#options.readOnly) return VerifyFeedback.#readOnlyNotice(scope.needsSync, [...scope.apps, ...scope.libs]);
-    const report = await this.#verifier.verify(scope);
-    if (report.ok) return undefined;
-    return AkanVerifier.summarize(report);
+    const report = await this.#verifier.verify(scope.paths);
+    return report.ok ? undefined : report.text;
   }
 
   static #readOnlyNotice(needsSync: boolean, targets: string[]) {

@@ -489,6 +489,8 @@ export class ContextRunner extends runner("context") {
         "`akan add-field --app <app-or-lib> --module <module> --field <field> --type <String|Boolean|Date|Int|Float|scalar> --format json` updates source constant/dictionary files. Use Int or Float for numeric fields, not Number.",
       "add-enum-field":
         "`akan add-enum-field --app <app-or-lib> --module <module> --field <field> --values a,b --format json` adds an enum field to source constant/dictionary files without editing generated files.",
+      verify:
+        "`akan verify [<app-or-lib-or-pkg>]` syncs, lints, typechecks and fast-builds what git reports as changed in one run, printing one line per problem; run it instead of lint, typecheck and build in turn.",
       sync: "`akan sync <app-or-lib>` refreshes generated Akan files from source conventions.",
       lint: "`akan lint <app-or-lib-or-pkg>` runs Biome linting after preparing generated files.",
       typecheck:

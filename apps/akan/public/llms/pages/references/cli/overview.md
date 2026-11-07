@@ -101,17 +101,11 @@ What the CLI does
 
 Validation Order
 
-Before you call a change done, run these five in order. It is the order the workspace's agent guide, `AGENTS.md`, prescribes.
+Before you call a change done, run these two in order, as the workspace's agent guide, `AGENTS.md`, prescribes. `sync`, `lint`, `typecheck` and `build` still run alone when you need only one.
 
-- akan sync <app|lib> — Updates dependencies, config and generated files. Needed after adding, renaming or deleting a file.
-
-- akan lint <app|lib|pkg> — Formats and lints with Biome, including Akan's convention rules.
-
-- akan typecheck <app> — Checks TypeScript types across the app.
+- akan verify [app|lib|pkg] — Syncs, lints with fixes, typechecks and fast-builds what changed in one run, printing only what failed.
 
 - akan test <app|lib|pkg> — Runs the test suites.
-
-- akan build <app> — Builds the production output.
 
 Reports, not gates
 
@@ -129,9 +123,11 @@ Every name below follows `akan`, as in `akan lint myapp`. Open a group title for
 
 Internal and development-only commands are left out on purpose.
 
-- Workspace — Create a workspace, and lint and sync everything in it at once.
+- Workspace — Create a workspace, check what changed, and lint and sync everything in it at once.
 
   - create-workspace <workspaceName>: Creates a new workspace. `--app <app>` names its first app.
+
+  - verify [targets]: Syncs, lints, typechecks and builds what changed in one run, and prints only what failed.
 
   - lint <app|lib|pkg>: Lints one app, lib or package with Biome and fixes what it can. An app or lib is synced first.
 
@@ -305,7 +301,7 @@ Internal and development-only commands are left out on purpose.
 
 - Agent Rules — Install the rule files that editors and coding agents read.
 
-  - agent install [target]: Writes the rules for `cursor`, `agents-md` or `claude`, or all three when left off.
+  - agent install [target]: Writes `AGENTS.md`, path rules, skills and pointers; `hooks` adds Claude Code hooks.
 
 - Code Agent — Run the Akan coding agent in the terminal, with the workspace's own tools and skills.
 

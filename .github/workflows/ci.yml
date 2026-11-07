@@ -33,6 +33,8 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup
       - run: bun run buildAkan
+      - name: Generated agent files match their sources
+        run: bun run runAkan agent install --check
       - run: bun run runAkan lint-all --no-fix
 
   typecheck:

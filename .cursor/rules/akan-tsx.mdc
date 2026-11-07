@@ -1,0 +1,9 @@
+---
+description: React components: the five roles, forms, loading states, hooks and the lint rules on .tsx files.
+globs: apps/**/*.tsx,libs/**/*.tsx
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/tsx.md

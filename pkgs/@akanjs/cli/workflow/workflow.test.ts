@@ -85,7 +85,7 @@ describe("WorkflowRunner", () => {
     expect(output).toContain("1. `inspect-module`");
     expect(output).toContain("2. `update-constant`");
     expect(output).toContain("- `template`: infer");
-    expect(output).toContain("akan sync <app-or-lib>");
+    expect(output).toContain("akan verify <app-or-lib>");
   });
 
   test("plans add-field as read-only json contract", async () => {
@@ -125,7 +125,7 @@ describe("WorkflowRunner", () => {
       expect.objectContaining({ target: "apps/demo/lib/task/task.constant.ts", applyScope: "auto" }),
     );
     expect(plan.validation).toContainEqual(
-      expect.objectContaining({ command: "akan sync <app-or-lib>", kind: "sync" }),
+      expect.objectContaining({ command: "akan verify <app-or-lib>", kind: "verify" }),
     );
     expect(output).not.toContain("akan scan");
   });
@@ -218,8 +218,8 @@ describe("WorkflowRunner", () => {
     expect(report.changedFiles.map((file) => file.path)).toContain("apps/demo/lib/task/task.constant.ts");
     expect(report.summary.sourceFilesChanged.map((file) => file.path)).toContain("apps/demo/lib/task/task.constant.ts");
     expect(report.summary.generatedFilesSynced.map((file) => file.path)).toContain("apps/demo/lib/cnst.ts");
-    expect(report.commands.map((command) => command.command)).toContain("akan sync demo");
-    expect(report.recommendedValidationCommands.map((command) => command.command)).toContain("akan sync demo");
+    expect(report.commands.map((command) => command.command)).toContain("akan verify demo");
+    expect(report.recommendedValidationCommands.map((command) => command.command)).toEqual(["akan verify demo"]);
     expect(report.appliedCommands).toEqual([]);
     expect(await module.readFile("task.constant.ts")).not.toContain("priority");
   });
@@ -249,8 +249,8 @@ describe("WorkflowRunner", () => {
 
     expect(report).toMatchObject({ workflow: "add-field", mode: "apply", status: "passed" });
     expect(report.changedFiles.map((file) => file.path)).toContain("apps/demo/lib/task/task.constant.ts");
-    expect(report.commands.map((command) => command.command)).toContain("akan sync demo");
-    expect(report.recommendedValidationCommands.map((command) => command.command)).toContain("akan typecheck demo");
+    expect(report.commands.map((command) => command.command)).toContain("akan verify demo");
+    expect(report.recommendedValidationCommands.map((command) => command.command)).toEqual(["akan verify demo"]);
     expect(report.postApplyChecks).toContainEqual(
       expect.objectContaining({ code: "workflow-post-apply-constant-shape-valid", status: "passed" }),
     );
@@ -594,9 +594,37 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
       },
       overallStatus: "passed",
     });
-    expect(report.commands).toContainEqual(expect.objectContaining({ command: "akan sync demo", kind: "sync" }));
+    expect(report.commands).toContainEqual(expect.objectContaining({ command: "akan verify demo", kind: "verify" }));
     expect(report.knownBlockers).toEqual([]);
     expect(saved.runId).toBe(report.runId);
+  });
+
+  test("reads a failed sync out of the akan verify header", async () => {
+    const { workspace, planPath, runner } = await planTaskWorkflow(
+      { field: "priority", type: "String" },
+      { scaffold: false },
+    );
+    const validateWith = async (stdout: string) =>
+      JSON.parse(
+        await runner.validate(planPath, {
+          format: "json",
+          workspace,
+          execute: async (command) => ({
+            command: command.command,
+            reason: command.reason,
+            kind: command.kind,
+            status: "failed",
+            exitCode: 1,
+            stdout,
+          }),
+        }),
+      ) as WorkflowValidationRunReport;
+
+    const syncFailed = await validateWith("verify fail · demo · sync 1 error · typecheck skipped · 0.4s\nx");
+    const lintFailed = await validateWith("verify fail · demo · lint 2 errors · typecheck ok · 3.1s\nx");
+
+    expect(syncFailed.summary.generatedSync).toBe("failed");
+    expect(lintFailed.summary.generatedSync).toBe("passed");
   });
 
   test("adds failure scope hints to validation command failures", async () => {
@@ -608,10 +636,10 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
       command: command.command,
       reason: command.reason,
       kind: command.kind,
-      status: command.kind === "lint" ? "failed" : "passed",
-      exitCode: command.kind === "lint" ? 1 : 0,
-      failureScope: command.kind === "lint" ? "workspace-config" : undefined,
-      stderr: command.kind === "lint" ? "Biome configuration file is invalid" : undefined,
+      status: command.kind === "verify" ? "failed" : "passed",
+      exitCode: command.kind === "verify" ? 1 : 0,
+      failureScope: command.kind === "verify" ? "workspace-config" : undefined,
+      stderr: command.kind === "verify" ? "Biome configuration file is invalid" : undefined,
     });
 
     const output = await runner.validate(planPath, { format: "json", workspace, execute: lintFails });
@@ -634,16 +662,16 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
       overallStatus: "blocked-by-workspace-config",
     });
     expect(report.knownBlockers).toContainEqual(
-      expect.objectContaining({ command: "akan lint demo", failureScope: "workspace-config" }),
+      expect.objectContaining({ command: "akan verify demo", failureScope: "workspace-config" }),
     );
     expect(report.commands).toContainEqual(
-      expect.objectContaining({ command: "akan lint demo", kind: "lint", failureScope: "workspace-config" }),
+      expect.objectContaining({ command: "akan verify demo", kind: "verify", failureScope: "workspace-config" }),
     );
     expect(report.diagnostics).toContainEqual(
       expect.objectContaining({
         code: "workflow-validation-command-failed",
-        command: "akan lint demo",
-        kind: "lint",
+        command: "akan verify demo",
+        kind: "verify",
         failureScope: "workspace-config",
       }),
     );
@@ -653,7 +681,7 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
 
     expect(secondReport.knownBlockers).toContainEqual(
       expect.objectContaining({
-        command: "akan lint demo",
+        command: "akan verify demo",
         failureScope: "workspace-config",
         known: true,
         message: expect.stringContaining("Known baseline blocker"),

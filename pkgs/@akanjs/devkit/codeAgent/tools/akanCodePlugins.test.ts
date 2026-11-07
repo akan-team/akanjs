@@ -111,38 +111,18 @@ describe("TurnFeedback", () => {
 });
 
 describe("AkanVerifier.summarize", () => {
-  const scope = { paths: ["apps/a/x.ts"], apps: ["a"], libs: [], needsSync: false, touchesTsx: false };
+  test("passes the verify report through untouched", () => {
+    const output =
+      "verify fail · a · lint ok · typecheck 1 error · 4.1s\napps/a/x.ts:1:7 TS2322 Type 'string' is not assignable to type 'number'.";
+    expect(AkanVerifier.summarize({ command: "akan verify", ok: false, exitCode: 1, output })).toBe(output);
+  });
 
-  test("names the failing step and keeps only its tail", () => {
+  test("keeps only the tail of a crash that never reached the report", () => {
     const output = [...Array(100).keys()].map((n) => `line ${n}`).join("\n");
-    const text = AkanVerifier.summarize(
-      {
-        ok: false,
-        scope,
-        steps: [
-          { command: "akan lint a", ok: true, exitCode: 0, output: "" },
-          { command: "akan typecheck a", ok: false, exitCode: 1, output },
-        ],
-      },
-      { tailLines: 5 },
-    );
-    expect(text).toContain("Verification failed: akan typecheck a");
-    expect(text).toContain("Passed: akan lint a");
+    const text = AkanVerifier.summarize({ command: "akan verify", ok: false, exitCode: 1, output });
+    expect(text).toStartWith("akan verify exited 1 before reporting:");
     expect(text).toContain("line 99");
-    expect(text).not.toContain("line 10\n");
-  });
-
-  test("says so plainly when everything passed", () => {
-    const text = AkanVerifier.summarize({
-      ok: true,
-      scope,
-      steps: [{ command: "akan lint a", ok: true, exitCode: 0, output: "" }],
-    });
-    expect(text).toContain("Verification passed");
-  });
-
-  test("an untouched workspace is not a failure", () => {
-    expect(AkanVerifier.summarize({ ok: true, scope, steps: [] })).toContain("nothing to verify");
+    expect(text).not.toContain("line 79\n");
   });
 });
 
@@ -153,9 +133,11 @@ describe("AkanEditScope", () => {
     const baseline = await AkanEditScope.baseline(root);
     await writeText(path.join(root, "apps", "demo", "lib", "post", "post.service.ts"), "export {};\n");
     await writeText(path.join(root, "libs", "shared", "ui", "Card.tsx"), "export const Card = () => null;\n");
+    await writeText(path.join(root, "pkgs", "@akanjs", "cli", "index.ts"), "export {};\n");
     const scope = await AkanEditScope.since(root, baseline);
     expect(scope.apps).toEqual(["demo"]);
     expect(scope.libs).toEqual(["shared"]);
+    expect(scope.pkgs).toEqual(["@akanjs/cli"]);
     expect(scope.needsSync).toBe(true);
     expect(scope.touchesTsx).toBe(true);
   });
@@ -165,7 +147,7 @@ describe("AkanEditScope", () => {
     await Bun.spawn(["git", "init", "-q"], { cwd: root, stdout: "ignore", stderr: "ignore" }).exited;
     const baseline = await AkanEditScope.baseline(root);
     const scope = await AkanEditScope.since(root, baseline);
-    expect(scope).toEqual({ paths: [], apps: [], libs: [], needsSync: false, touchesTsx: false });
+    expect(scope).toEqual({ paths: [], apps: [], libs: [], pkgs: [], needsSync: false, touchesTsx: false });
   });
 });
 

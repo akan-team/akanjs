@@ -13,7 +13,7 @@ export const akanSystemPrompt = (profile: CodeAgentProfile) => {
   ];
   if (profile.tools.builtin.includes("write"))
     lines.push(
-      "- After editing, call `akan_verify`. It runs sync, lint, typecheck and the SSR check over what the working tree changed. A turn that edits and does not verify is not finished.",
+      "- After editing, call `akan_verify` once. It runs sync, lint, typecheck, a fast build and the SSR check over what the working tree changed; never run `akan lint`, `akan typecheck` or `akan build` separately. A turn that edits and does not verify is not finished.",
     );
   else
     lines.push(

@@ -31,6 +31,9 @@ apps/*/public/firebase-messaging-sw.js
 .vite
 dump
 local
+.claude/worktrees/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
 **/tsconfig.tsbuildinfo
 
 # Xcode

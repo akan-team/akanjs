@@ -16,7 +16,7 @@ describe("ScalarScript", () => {
       schemaVersion: 1,
       command: "create-scalar",
       status: "passed",
-      validationCommands: [{ command: "akan sync demo" }, { command: "akan lint demo" }],
+      validationCommands: [{ command: "akan verify demo" }],
     });
     expect(report.changedFiles.map((file) => file.path)).toContain("apps/demo/lib/__scalar/money/money.constant.ts");
   });

@@ -168,6 +168,13 @@ export default page()
           ko: "코딩 에이전트용 가이드로, `CLAUDE.md`는 `akan agent install`이 갱신하는 `AGENTS.md`를 불러옵니다.",
         }),
       },
+      {
+        name: [".claude/", ".agents/", ".cursor/"],
+        desc: l.trans({
+          en: "The path rules and skills `akan agent install` writes for each coding agent. Commit them.",
+          ko: "`akan agent install`이 코딩 에이전트별로 쓰는 경로 규칙과 스킬입니다. 함께 커밋합니다.",
+        }),
+      },
     ];
 
     const createRows = [
@@ -269,6 +276,9 @@ export default page()
 ├── libs/
 │   └── shared/
 ├── pkgs/
+├── .agents/
+├── .claude/
+├── .cursor/
 ├── .env
 ├── package.json
 ├── tsconfig.json

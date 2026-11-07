@@ -46,5 +46,4 @@ the package client path — `import { cnst, fetch, st, usePage } from "@apps/<ap
 
 ## Validate
 
-`akan_verify`, or `akan sync <app>` then `akan lint <app>` then `akan typecheck <app>`. Raw `tsc` misses the
-generated barrels and reports false errors.
+`akan verify`. Raw `tsc` misses the generated barrels and reports false errors.

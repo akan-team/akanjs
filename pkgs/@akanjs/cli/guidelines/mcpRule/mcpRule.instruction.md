@@ -580,7 +580,7 @@ element, beside the tools it explains. Exactly these texts reach every client: `
 
 ## Verifying An App
 
-- `akan lint <app>`, `akan typecheck <app>`, `akan sync <app>`, then the boot log above.
+- `akan verify <app>`, then the boot log above.
 - The lib's own suites run wherever it is mounted: the OAuth signal test (metadata, registration, both `authorize`
   redirects, code exchange, `/mcp` with the minted token and the refusal of a first-party or forged one, refresh
   rotation) and the refresh-session and option unit tests.

@@ -177,30 +177,15 @@ export default page()
 
     const validationSteps = [
       {
-        command: "akan sync <app|lib>",
+        command: "akan verify [app|lib|pkg]",
         desc: l.trans({
-          en: "Updates dependencies, config and generated files. Needed after adding, renaming or deleting a file.",
-          ko: "의존성, 설정, 생성 파일을 최신으로 맞춥니다. 파일을 추가하거나 이름을 바꾸거나 지운 뒤에 꼭 필요합니다.",
+          en: "Syncs, lints with fixes, typechecks and fast-builds what changed in one run, printing only what failed.",
+          ko: "바뀐 것을 한 번에 sync하고, 고치기까지 하는 린트, 타입 검사, 빠른 빌드를 거쳐 실패한 것만 출력합니다.",
         }),
-      },
-      {
-        command: "akan lint <app|lib|pkg>",
-        desc: l.trans({
-          en: "Formats and lints with Biome, including Akan's convention rules.",
-          ko: "Biome으로 포맷과 린트를 합니다. Akan 컨벤션 규칙도 함께 검사합니다.",
-        }),
-      },
-      {
-        command: "akan typecheck <app>",
-        desc: l.trans({ en: "Checks TypeScript types across the app.", ko: "앱 전체의 TypeScript 타입을 검사합니다." }),
       },
       {
         command: "akan test <app|lib|pkg>",
         desc: l.trans({ en: "Runs the test suites.", ko: "테스트를 실행합니다." }),
-      },
-      {
-        command: "akan build <app>",
-        desc: l.trans({ en: "Builds the production output.", ko: "프로덕션 결과물을 빌드합니다." }),
       },
     ];
 
@@ -233,8 +218,8 @@ export default page()
         title: l.trans({ en: "Workspace", ko: "워크스페이스" }),
         href: "/references/cli/workspace",
         desc: l.trans({
-          en: "Create a workspace, and lint and sync everything in it at once.",
-          ko: "워크스페이스를 만들고, 안의 모든 것을 한 번에 린트·동기화합니다.",
+          en: "Create a workspace, check what changed, and lint and sync everything in it at once.",
+          ko: "워크스페이스를 만들고, 바뀐 것을 검사하고, 안의 모든 것을 한 번에 린트·동기화합니다.",
         }),
         commands: [
           {
@@ -243,6 +228,14 @@ export default page()
             desc: l.trans({
               en: "Creates a new workspace. `--app <app>` names its first app.",
               ko: "새 워크스페이스를 만듭니다. `--app <app>`으로 첫 앱의 이름을 정합니다.",
+            }),
+          },
+          {
+            name: "verify [targets]",
+            href: "/references/cli/workspace#verify",
+            desc: l.trans({
+              en: "Syncs, lints, typechecks and builds what changed in one run, and prints only what failed.",
+              ko: "바뀐 것을 한 번에 sync·린트·타입 검사·빌드하고, 실패한 것만 출력합니다.",
             }),
           },
           {
@@ -935,8 +928,8 @@ export default page()
             name: "agent install [target]",
             href: "/references/cli/agent#agent",
             desc: l.trans({
-              en: "Writes the rules for `cursor`, `agents-md` or `claude`, or all three when left off.",
-              ko: "`cursor`, `agents-md`, `claude` 규칙을 씁니다. 생략하면 셋 모두 씁니다.",
+              en: "Writes `AGENTS.md`, path rules, skills and pointers; `hooks` adds Claude Code hooks.",
+              ko: "`AGENTS.md`, 경로 규칙, 스킬, 포인터를 씁니다. `hooks`는 Claude Code 훅을 더합니다.",
             }),
           },
         ],
@@ -1083,14 +1076,16 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    Before you call a change done, run these five in order. It is the order the workspace's agent guide,{" "}
-                    <code>AGENTS.md</code>, prescribes.
+                    Before you call a change done, run these two in order, as the workspace's agent guide,{" "}
+                    <code>AGENTS.md</code>, prescribes. <code>sync</code>, <code>lint</code>, <code>typecheck</code> and{" "}
+                    <code>build</code> still run alone when you need only one.
                   </span>
                 ),
                 ko: (
                   <span>
-                    변경을 마쳤다고 하기 전에 아래 다섯 가지를 순서대로 실행합니다. 워크스페이스의 에이전트 가이드인{" "}
-                    <code>AGENTS.md</code>가 정한 순서입니다.
+                    변경을 마쳤다고 하기 전에 아래 두 가지를 순서대로 실행합니다. 워크스페이스의 에이전트 가이드인{" "}
+                    <code>AGENTS.md</code>가 정한 순서입니다. 하나만 필요하면 <code>sync</code>, <code>lint</code>,{" "}
+                    <code>typecheck</code>, <code>build</code>를 따로 실행해도 됩니다.
                   </span>
                 ),
               })}

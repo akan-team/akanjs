@@ -25,8 +25,8 @@ describe("PrimitiveScript", () => {
 
     expect(report.status).toBe("passed");
     expect(report.changedFiles.map((file) => file.path)).toContain("apps/demo/lib/post/post.constant.ts");
-    expect(report.validationCommands.map((validation) => validation.command)).toContain("akan sync demo");
-    expect(report.nextActions.map((action) => action.command)).toContain("akan sync demo");
+    expect(report.validationCommands.map((validation) => validation.command)).toEqual(["akan verify demo"]);
+    expect(report.nextActions.map((action) => action.command)).toEqual(["akan verify demo"]);
     expect(await module.readFile("post.constant.ts")).toContain("priority: field(String),");
     const dictionary = await module.readFile("post.dictionary.ts");
     expect(dictionary).toContain(

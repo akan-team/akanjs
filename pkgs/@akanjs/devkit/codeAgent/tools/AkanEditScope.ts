@@ -2,12 +2,13 @@ export interface AkanEditScopeResult {
   paths: string[];
   apps: string[];
   libs: string[];
+  pkgs: string[];
   /** A created, deleted or renamed file under `apps/**` or `libs/**` — the only kind a barrel has to catch up with. */
   needsSync: boolean;
   touchesTsx: boolean;
 }
 
-const empty: AkanEditScopeResult = { paths: [], apps: [], libs: [], needsSync: false, touchesTsx: false };
+const empty: AkanEditScopeResult = { paths: [], apps: [], libs: [], pkgs: [], needsSync: false, touchesTsx: false };
 
 // Read from git, not tool events: an edit made through `bash` (a heredoc, sed, a codemod) produces no write tool call.
 export class AkanEditScope {
@@ -21,6 +22,7 @@ export class AkanEditScope {
       paths,
       apps: AkanEditScope.#targets(paths, "apps"),
       libs: AkanEditScope.#targets(paths, "libs"),
+      pkgs: AkanEditScope.#targets(paths, "pkgs"),
       needsSync: entries.some((entry) => /[ARD?]/.test(entry.code) && /^(apps|libs)\//.test(entry.file)),
       touchesTsx: paths.some((file) => file.endsWith(".tsx")),
     };
@@ -38,10 +40,13 @@ export class AkanEditScope {
     return new Set(text.split("\n").filter((line) => line.trim().length > 3));
   }
 
-  static #targets(paths: string[], root: "apps" | "libs") {
+  static #targets(paths: string[], root: "apps" | "libs" | "pkgs") {
     const names = paths
       .filter((file) => file.startsWith(`${root}/`))
-      .map((file) => file.split("/")[1] ?? "")
+      .map((file) => {
+        const [, first = "", second = ""] = file.split("/");
+        return first.startsWith("@") && second ? `${first}/${second}` : first;
+      })
       .filter(Boolean);
     return [...new Set(names)];
   }

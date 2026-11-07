@@ -13,6 +13,16 @@ export interface ProjectTypecheckResult {
   message: string;
 }
 
+export interface TypecheckRecord {
+  /** Relative to the workspace root, `/`-separated; `null` for a diagnostic tied to no file. */
+  file: string | null;
+  line: number;
+  col: number;
+  code: string;
+  severity: "error" | "warning";
+  message: string;
+}
+
 export class TypeChecker {
   readonly configPath: string;
   readonly configFile: { config?: any; error?: ts.Diagnostic };
@@ -196,6 +206,28 @@ export class TypeChecker {
     );
     if (parsedConfig.errors.length > 0) throw new Error(TypeChecker.formatDiagnosticMessages(parsedConfig.errors));
     return parsedConfig;
+  }
+
+  static toRecords(diagnostics: ts.Diagnostic[], root: string): TypecheckRecord[] {
+    return diagnostics
+      .filter(
+        (diagnostic) =>
+          diagnostic.category === ts.DiagnosticCategory.Error || diagnostic.category === ts.DiagnosticCategory.Warning,
+      )
+      .map((diagnostic) => {
+        const position =
+          diagnostic.file && diagnostic.start !== undefined
+            ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
+            : null;
+        return {
+          file: diagnostic.file ? path.relative(root, diagnostic.file.fileName).split(path.sep).join("/") : null,
+          line: position ? position.line + 1 : 0,
+          col: position ? position.character + 1 : 0,
+          code: `TS${diagnostic.code}`,
+          severity: diagnostic.category === ts.DiagnosticCategory.Error ? "error" : "warning",
+          message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+        };
+      });
   }
 
   static formatDiagnosticMessages(diagnostics: ts.Diagnostic[]): string {

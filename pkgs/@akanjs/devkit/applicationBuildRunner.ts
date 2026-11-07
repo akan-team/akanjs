@@ -27,6 +27,7 @@ export interface TypecheckOptions {
   incremental?: boolean;
   /** The app's own tests, specs and `script/` files too (`akan typecheck`); a build leaves them out. */
   tests?: boolean;
+  report?: "pretty" | "records";
 }
 
 export type BuildPhaseId = "prepare" | "typecheck" | "backend" | "ssr" | "csr" | "assets" | "compress" | "metadata";

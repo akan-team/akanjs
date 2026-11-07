@@ -1,0 +1,9 @@
+---
+description: Data migrations under script/migration: table() writes, plan hashing and resumable applies.
+globs: apps/*/script/migration/**,libs/*/script/migration/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/migration.md

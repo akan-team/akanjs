@@ -62,14 +62,7 @@ export const addSliceWorkflowSpec: WorkflowSpec = {
     },
     { target: "*/lib/sig.ts", action: "sync", reason: "Generated signal barrel may change after sync." },
   ],
-  validation: [
-    ...baseValidation,
-    {
-      command: "akan build <app-name>",
-      reason: "Validate page and list surfaces when a slice changes app behavior.",
-      kind: "custom",
-    },
-  ],
+  validation: baseValidation,
   completionCriteria: [
     "Slice query and signal shape align.",
     "Optional view surfaces are planned.",

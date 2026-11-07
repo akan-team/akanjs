@@ -13,6 +13,7 @@ import {
 import { ThemeValidator } from "@akanjs/devkit/frontendBuild/themeValidator";
 import { Linter } from "@akanjs/devkit/linter";
 import { MaintainabilityContract } from "@akanjs/devkit/maintainabilityContract";
+import { MaintainabilityReport } from "@akanjs/devkit/maintainabilityReport";
 import { collectRecipeSources, type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
 import type { PackageJson } from "@akanjs/devkit/types";
 import { Ed25519Key } from "akanjs/server/ed25519Key";
@@ -205,6 +206,26 @@ export class WorkspaceRunner extends runner("workspace") {
     await this.#enforceRecipeGate(exec);
     await this.#enforceAgentsIndex(exec);
     await this.#enforceMaintainability(exec, fix);
+  }
+
+  /** The gates `lint` stops at one by one, run to the end so a caller can report every breach at once. */
+  async lintGateFailures(exec: Exec, fix: boolean) {
+    const messages: string[] = [];
+    for (const gate of [
+      () => this.#enforceStyleContract(exec),
+      () => this.#enforceRecipeGate(exec),
+      () => this.#enforceAgentsIndex(exec),
+    ])
+      await gate().catch((error: unknown) => messages.push(error instanceof Error ? error.message : String(error)));
+    if (!(exec instanceof SysExecutor)) return { messages, maintainability: [] };
+    const contract = await this.maintainabilityContractOf(exec);
+    const failures = await contract.enforce({ fix });
+    const maintainability = MaintainabilityReport.entriesOf(
+      contract.sysPath,
+      failures,
+      new MaintainabilityPaths().commandsOf(exec.name),
+    );
+    return { messages, maintainability };
   }
 
   async maintainabilityContractOf(exec: SysExecutor) {

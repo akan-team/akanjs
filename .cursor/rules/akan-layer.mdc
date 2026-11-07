@@ -1,0 +1,9 @@
+---
+description: The shared layers common/, webkit/, srvkit/, ui/, plugin/, native/: what each admits.
+globs: apps/*/common/**,apps/*/webkit/**,apps/*/srvkit/**,apps/*/ui/**,apps/*/plugin/**,apps/*/native/**,libs/*/common/**,libs/*/webkit/**,libs/*/srvkit/**,libs/*/ui/**,libs/*/plugin/**,libs/*/native/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/layer.md

@@ -1,0 +1,9 @@
+---
+description: Tests: Bun's runner, one suite per module file, the signal test split and how to run them.
+globs: apps/**/*.test.ts,apps/**/*.spec.ts,libs/**/*.test.ts,libs/**/*.spec.ts
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/test.md

@@ -1,0 +1,9 @@
+---
+description: Route files under page/: the one chain, params, heads, guards and lib pages.
+globs: apps/**/page/**,libs/**/page/**
+alwaysApply: false
+---
+
+<!-- akan:generated -->
+
+@.claude/rules/akan/page.md

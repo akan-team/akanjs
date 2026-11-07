@@ -282,6 +282,15 @@ const statusForValidationKind = (
   return matching.some((command) => command.status === "failed") ? "failed" : "passed";
 };
 
+//? `akan verify` syncs first and names a failed sync in its header line (`sync 1 error`), so one run answers both.
+const generatedSyncStatus = (commands: readonly WorkflowValidationCommandResult[]): WorkflowValidationStatus => {
+  const sync = statusForValidationKind(commands, "sync");
+  const verify = commands.filter((command) => command.kind === "verify");
+  if (sync !== "unknown" || verify.length === 0) return sync;
+  const syncFailed = verify.some((command) => /^verify fail · .*\bsync \d+ errors?\b/m.test(command.stdout ?? ""));
+  return syncFailed ? "failed" : "passed";
+};
+
 const statusForCommands = (commands: readonly WorkflowValidationCommandResult[]): WorkflowValidationStatus => {
   if (commands.length === 0) return "unknown";
   return commandStatus(commands) === "failed" ? "failed" : "passed";
@@ -438,7 +447,7 @@ const createValidationStatuses = (
     overallStatus,
     summary: {
       sourceChange: sourceStatus,
-      generatedSync: statusForValidationKind(commands, "sync"),
+      generatedSync: generatedSyncStatus(commands),
       validationCommands: validationCommandsStatus,
       baseline: baselineStatus,
       workspaceConfig: statusForScope(commands, diagnostics, scopes, "workspace-config"),

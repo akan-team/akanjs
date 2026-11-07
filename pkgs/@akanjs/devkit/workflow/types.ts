@@ -8,7 +8,7 @@ export type WorkflowFormat = "markdown" | "json";
 export type WorkflowPlanInputs = Record<string, string | null>;
 export type PrimitiveFormat = "markdown" | "json";
 export type UiSurface = "view" | "unit" | "template";
-export type WorkflowValidationKind = "sync" | "lint" | "typecheck" | "doctor" | "custom";
+export type WorkflowValidationKind = "verify" | "sync" | "lint" | "typecheck" | "doctor" | "custom";
 export type WorkflowFailureScope = "workspace-config" | "environment" | "source-change" | "unknown";
 export type WorkflowValidationStatus = "passed" | "failed" | "unknown";
 export interface WorkflowValidationSummary {
