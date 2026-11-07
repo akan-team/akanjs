@@ -11,6 +11,7 @@ apps/*/data
 apps/*/scripts
 **/env.client.*.ts
 !**/env.client.type.ts
+!**/env.client.example.ts
 **/env.server.*.ts
 !**/env.server.example.ts
 **/*secrets.yaml
