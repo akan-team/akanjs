@@ -3,6 +3,7 @@ import path from "node:path";
 import type { BaseBuildArtifact } from "akanjs/server";
 import { type PageEntry, resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
+import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { createBrowserDirnamePlugin } from "../transforms/browserDirnamePlugin";
 import { SideEffectImportOrder } from "../transforms/sideEffectImportOrder";
 import { bundleDefine } from "./bundleDefine";
@@ -67,6 +68,8 @@ export class CsrArtifactBuilder {
     const options = CsrArtifactBuilder.bundleOptions(this.#app, this.#command, akanConfig.optimizeImports);
     const result = await Bun.build({
       ...options,
+      //? Whole, the akanjs/ui barrel bundles every component and the optional peers (react-icons) they import.
+      plugins: [...options.plugins, await createBarrelImportsPlugin(this.#app, { barrels: ["akanjs/ui"] })],
       entrypoints: htmlBasePaths.map((basePath) => this.#generatedPath(CsrArtifactBuilder.htmlFilename(basePath))),
       files: generatedFiles,
       root: this.#generatedDir,

@@ -32,8 +32,9 @@ async function writeGeneratedOverridesLayoutFile(opts: {
 }): Promise<string> {
   const filename = `${opts.key.replace(/^\.\//, "").replace(/[^a-zA-Z0-9]+/g, "_")}.tsx`;
   const absPath = path.join(path.resolve(opts.appCwdPath), IMPLICIT_OVERRIDES_DIR, filename);
+  //? From its file, as the root layout imports System.
   const source = `"use client";
-import { UiOverrideProvider } from "akanjs/ui";
+import { UiOverrideProvider } from "akanjs/ui/UiOverride/UiOverride.tsx";
 import { createElement, type ReactNode } from "react";
 import value from ${JSON.stringify(importSpecifier(absPath, opts.userAbsPath))};
 
@@ -213,11 +214,13 @@ ${guardExport}
 
 ${layoutSignature}({ children, params, searchParams }: LayoutProps) {
 ${layoutBinding}  return `;
+  //? System from its file, not the barrel: a dev registry compiles every module the barrel names, and with them the
+  //? optional peers (react-icons) an app drawing none of those components never installs.
   const source = opts.includeSystemProvider
     ? `import type { LayoutModule, LayoutProps, PageProps } from "akanjs/client";
 import { assertGuardOnChain, loadFonts, RouteGuards, resolveRouteModule, RouteHead } from "akanjs/client";
 import type { ReactNode } from "react";
-import { System } from "akanjs/ui";
+import { System } from "akanjs/ui/System/index.tsx";
 import type { McpAppRootProps } from "akanjs/webkit";
 import { env } from "@apps/${opts.appName}/env/env.client";
 import { allDictionary } from ${JSON.stringify(dictMacroSpecifier)};
