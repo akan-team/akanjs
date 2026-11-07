@@ -258,21 +258,29 @@ export class RouteElementComposer {
     for (let i = renders.length - 1; i >= 0; i--) {
       const routeRender = renders[i];
       if (!routeRender) continue;
-      const loadingFallback = RouteElementComposer.#composeLoadingFallback(renders.slice(i), params);
-      const suspenseKey =
-        navKey && loadingFallback != null && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
       element = (
-        <Suspense key={suspenseKey} fallback={loadingFallback}>
-          <RouteElementComposer.AsyncRender
-            routeRender={routeRender}
-            params={params}
-            searchParams={searchParams}
-            notFound={notFound ? { ...notFound, owners: [...owners, ...renders.slice(0, i)] } : undefined}
-          >
-            {element}
-          </RouteElementComposer.AsyncRender>
-        </Suspense>
+        <RouteElementComposer.AsyncRender
+          routeRender={routeRender}
+          params={params}
+          searchParams={searchParams}
+          notFound={notFound ? { ...notFound, owners: [...owners, ...renders.slice(0, i)] } : undefined}
+        >
+          {element}
+        </RouteElementComposer.AsyncRender>
       );
+      //? A boundary with no fallback only outlines its level into a segment React reveals up to 300ms late. The level's
+      //? own `.loading()` decides, not the composite fallback, so every route under a layout gives it one element type.
+      const loadingFallback = routeRender.Loading
+        ? RouteElementComposer.#composeLoadingFallback(renders.slice(i), params)
+        : null;
+      if (loadingFallback != null) {
+        const suspenseKey = navKey && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
+        element = (
+          <Suspense key={suspenseKey} fallback={loadingFallback}>
+            {element}
+          </Suspense>
+        );
+      }
       const segment = segments?.[i];
       if (segments && segment?.kind === "page") {
         const outletKey =

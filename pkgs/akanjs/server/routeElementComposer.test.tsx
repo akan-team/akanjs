@@ -138,6 +138,26 @@ describe("RouteElementComposer navigation keying", () => {
   });
 });
 
+describe("RouteElementComposer boundaries", () => {
+  test("wraps only a level with its own Loading, so the pages under one layout give it the same element", () => {
+    const layoutRender: RouteRender = {
+      render: (({ children }: { children: ReactNode }) => <section>{children}</section>) as RouteRender["render"],
+    };
+    const composeUnder = (pageRender: RouteRender) =>
+      RouteElementComposer.composeRenders({
+        renders: [layoutRender, pageRender],
+        params: {},
+        searchParams: {},
+      }) as ReactElement;
+
+    const underLoadingPage = composeUnder(suspendingPageRender(pending));
+    const underPlainPage = composeUnder({ render: (() => <p>plain</p>) as RouteRender["render"] });
+
+    expect(underLoadingPage.type).toBe(RouteElementComposer.AsyncRender);
+    expect(underPlainPage.type).toBe(RouteElementComposer.AsyncRender);
+  });
+});
+
 describe("RouteElementComposer.resolveSuffixLoadings", () => {
   test("populates Loading on the patched stack so the suffix fallback is not empty", async () => {
     const pageRender: RouteRender = {

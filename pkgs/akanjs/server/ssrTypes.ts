@@ -64,9 +64,12 @@ export interface SsrFromRscInput {
   injectThemeInitScript?: boolean;
   lateControl?: Promise<SsrLateControl | null>;
   onCancel?: (reason?: unknown) => void;
-  /** Buffers until `stream.allReady` (`pageConfig.ssr: "block"`); `AKAN_SSR_WAIT_FOR_ALL_READY=1` forces it globally. */
+  /**
+   * Buffers until `stream.allReady` and writes every Suspense boundary in place (`pageConfig.ssr: "block"`);
+   * `AKAN_SSR_WAIT_FOR_ALL_READY=1` forces it globally.
+   */
   waitForAllReady?: boolean;
-  /** Buffers like `waitForAllReady` and writes every Suspense boundary in place, for a reader that runs no script. */
+  /** Buffers like `waitForAllReady`, for a reader that runs no script. */
   inlineBoundaries?: boolean;
 }
 

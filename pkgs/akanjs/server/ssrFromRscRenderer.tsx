@@ -613,7 +613,14 @@ export class SsrFromRscRenderer {
         inlineBoundaries: input.inlineBoundaries,
         onError: (error, phase) => SsrFromRscRenderer.#reportRenderError(error, input, phase),
       });
-    const htmlStream = await inRequestScope(renderHtml);
+    let htmlStream: ReadableStream<Uint8Array>;
+    try {
+      htmlStream = await inRequestScope(renderHtml);
+    } catch (error) {
+      stderrSuppressor?.stop();
+      void rscForClient.cancel(error).catch(() => {});
+      throw error;
+    }
 
     const withHeadScripts = SsrFromRscRenderer.#injectHeadScriptsIntoHead(htmlStream, {
       importmap: input.importmap,
@@ -672,13 +679,15 @@ export class SsrFromRscRenderer {
   // only `block` routes await allReady, trading the Loading fallback for a clean page on a late non-redirect error,
   // and so does a crawler, which runs no script to swap a streamed segment in.
   static async renderDocument(root: ReactNode, options: SsrDocumentOptions): Promise<ReadableStream<Uint8Array>> {
+    const buffered = options.waitForAllReady || options.inlineBoundaries;
     const stream = await renderToReadableStream(root, {
       bootstrapScriptContent: options.bootstrap,
-      //? Even after allReady, React outlines a boundary past this size into a hidden segment only `$RC` reveals.
-      ...(options.inlineBoundaries ? { progressiveChunkSize: Number.POSITIVE_INFINITY } : {}),
+      //? Even after allReady, React outlines a boundary past this size into a hidden segment only `$RC` reveals, and
+      //? it throttles that reveal to 300ms after the first paint, so a buffered page would show its Loading meanwhile.
+      ...(buffered ? { progressiveChunkSize: Number.POSITIVE_INFINITY } : {}),
       onError: (error) => options.onError(error),
     });
-    if (options.waitForAllReady || options.inlineBoundaries) await stream.allReady;
+    if (buffered) await stream.allReady;
     else SsrFromRscRenderer.holdPostShellErrors(stream, (error) => options.onError(error, "post-shell"));
     return stream;
   }
