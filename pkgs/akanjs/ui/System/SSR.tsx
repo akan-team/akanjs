@@ -9,7 +9,7 @@ import {
   Translator,
   usePage,
 } from "akanjs/client";
-import { getRequestFrameState, setRequestTheme } from "akanjs/fetch";
+import { getRequestFrameState, setRequestTheme, untrackedRequest } from "akanjs/fetch";
 import { Children, type CSSProperties, Fragment, type ReactNode, Suspense } from "react";
 import { FontCss } from "../fontCss";
 import { frameSlotContainerClassNames, frameSlotContentClassNames, frameSlotStyles } from "../Layout/frameSlot";
@@ -139,7 +139,9 @@ const SSRWrapper = ({
   layoutStyle = "web",
   pageState = defaultPageState,
 }: SSRWrapperProps) => {
-  const { href, pathname, search, hash } = getPathInfo(path, lang, prefix ?? "");
+  //? `path` is the locale proxy's x-path, which drops the query, so the page's location takes the request's own.
+  const requestSearch = path.includes("?") ? "" : new URL(untrackedRequest()?.url ?? "http://localhost").search;
+  const { href, pathname, search, hash } = getPathInfo(`${path}${requestSearch}`, lang, prefix ?? "");
   const frameCssVars = getFrameCssVars(pageState, { cssResolved: true });
   const pageContentStyle: CSSProperties = {
     paddingTop: "var(--akan-page-padding-top)",

@@ -656,10 +656,10 @@ export default page()
       },
       {
         key: "Model.ViewModal",
-        type: "{ id, slice, renderView, renderTitle?, renderAction?, modal?, modalClassName?, viewClassName?, presentation?, placement? }",
+        type: "{ slice, renderView, id?, renderTitle?, renderAction?, modal?, modalClassName?, viewClassName?, presentation?, placement? }",
         desc: l.trans({
-          en: "The detail view in a modal, with title and action slots.",
-          ko: "상세 보기를 modal로 띄우며, 제목과 action 자리가 있습니다.",
+          en: "The detail view in a modal. A bar shows only for a render function and a non-null action; no `id` opens any record.",
+          ko: "상세 보기 modal입니다. 제목 줄은 render 함수가, action 줄은 null 아닌 결과가 있어야 그리고, `id`가 없으면 어떤 record든 엽니다.",
         }),
       },
       {

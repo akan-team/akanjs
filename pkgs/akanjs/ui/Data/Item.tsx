@@ -94,7 +94,9 @@ export default function Item<T extends string, Full extends { id: string }, Ligh
   const { sliceName } = slice;
   const strActions = actions
     .filter((action) => typeof action === "string")
-    .map((action) => <Action key={action} action={action} outline={false} model={model} slice={slice} />);
+    .map((action) => (
+      <Action key={action} action={action} outline={false} model={model} slice={slice} className="m-0 size-7" />
+    ));
 
   const customActions = actions
     .filter((action) => typeof action !== "string")
@@ -123,6 +125,12 @@ export default function Item<T extends string, Full extends { id: string }, Ligh
       );
     })
     .filter((col) => !!col);
+  const [hasId, hasStatus, hasTime] = (["id", "status", "createdAt"] as const).map((key) => columns.includes(key));
+  const hasActions = !!(strActions.length || customActions.length);
+  const isTimeInFooter = hasTime && hasActions && !hasId && !hasStatus;
+  const time = hasTime ? (
+    <RecentTime date={(model as unknown as BaseObject).createdAt} className="text-muted-foreground text-xs" />
+  ) : null;
 
   return (
     <div className={cn("flex h-full flex-col", className)}>
@@ -137,29 +145,35 @@ export default function Item<T extends string, Full extends { id: string }, Ligh
       ) : title ? (
         <div className="font-bold">{title}</div>
       ) : null}
-      <div className="mt-2 flex h-full flex-col gap-2 rounded-box border border-border bg-card p-3 transition hover:border-primary/40">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">{columns.find((c) => c === "id") ? <ObjectId id={model.id} /> : null}</div>
-          <div className="flex items-center gap-2">
-            {columns.find((c) => c === "createdAt") ? (
-              <RecentTime date={(model as unknown as BaseObject).createdAt} className="text-muted-foreground text-xs" />
-            ) : null}
-            {columns.find((c) => c === "status") ? (
-              <StatusTag status={(model as unknown as { status: string }).status} />
-            ) : null}
+      <div
+        className={cn(
+          "flex h-full flex-col gap-1.5 rounded-box border border-border bg-card px-3 py-2 transition hover:border-primary/40",
+          (children || title) && "mt-2",
+        )}
+      >
+        {hasId || hasStatus || (hasTime && !isTimeInFooter) ? (
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">{hasId ? <ObjectId id={model.id} /> : null}</div>
+            <div className="flex items-center gap-2">
+              {isTimeInFooter ? null : time}
+              {hasStatus ? <StatusTag status={(model as unknown as { status: string }).status} /> : null}
+            </div>
           </div>
-        </div>
+        ) : null}
         {extraCols.length ? <div className="flex flex-col gap-1">{extraCols}</div> : null}
-        {strActions.length || customActions.length ? (
-          <div className="mt-auto flex items-center justify-end gap-1 border-border/60 border-t pt-2">
-            {strActions}
-            {customActions.length ? (
-              <Dropdown
-                buttonClassName={buttonRecipe({ variant: "ghost", size: "icon" }, "size-8")}
-                value={<AiOutlineMore className="text-foreground" />}
-                content={customActions.map((action) => <li key={action.key}>{action.label}</li>)}
-              />
-            ) : null}
+        {hasActions ? (
+          <div className="mt-auto flex items-center gap-1 border-border/60 border-t pt-1">
+            {isTimeInFooter ? time : null}
+            <div className="ml-auto flex items-center gap-1">
+              {strActions}
+              {customActions.length ? (
+                <Dropdown
+                  buttonClassName={buttonRecipe({ variant: "ghost", size: "icon" }, "size-7")}
+                  value={<AiOutlineMore className="text-foreground" />}
+                  content={customActions.map((action) => <li key={action.key}>{action.label}</li>)}
+                />
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>
@@ -171,11 +185,13 @@ interface ActionProps<_T extends string, _M extends { id: string }, L extends { 
   action: DataAction;
   model: L;
   slice: SliceMeta;
+  className?: string;
 }
 export const Action = <T extends string, M extends { id: string }, L extends { id: string }>({
   action,
   model,
   slice,
+  className,
   outline = true,
 }: ActionProps<T, M, L> & { outline?: boolean }) => {
   const { l } = usePage();
@@ -199,6 +215,7 @@ export const Action = <T extends string, M extends { id: string }, L extends { i
       className={buttonRecipe({ variant: outline ? "outline" : "ghost", size: "icon" }, [
         "m-1 size-8 text-center",
         outline && "border-dashed",
+        className,
       ])}
       onClick={() => void storeDo[namesOfSlice.editModel](model.id)}
     >
@@ -210,6 +227,7 @@ export const Action = <T extends string, M extends { id: string }, L extends { i
       className={buttonRecipe({ variant: outline ? "outline" : "ghost", size: "icon" }, [
         "m-1 size-8 text-center",
         outline && "border-dashed",
+        className,
       ])}
       onClick={() => void storeDo[namesOfSlice.viewModel](model.id)}
     >
@@ -226,6 +244,7 @@ export const Action = <T extends string, M extends { id: string }, L extends { i
         className={buttonRecipe({ variant: outline ? "outline" : "ghost", size: "icon" }, [
           "m-1 size-8 text-center",
           outline && "border-dashed",
+          className,
         ])}
       >
         <AiOutlineDelete />

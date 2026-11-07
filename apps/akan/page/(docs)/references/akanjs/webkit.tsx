@@ -137,8 +137,8 @@ export default page()
       {
         name: "usePageLocation()",
         desc: l.trans({
-          en: "`{ pathname, params, searchParams }` of this page. `st.use.searchParams()` follows the page on screen, so a page being prepared or kept under the current one reads its own here.",
-          ko: "이 페이지의 `{ pathname, params, searchParams }`입니다. `st.use.searchParams()`는 화면에 보이는 페이지를 따르므로, 준비 중이거나 현재 페이지 아래 남은 페이지는 여기서 자기 값을 읽습니다.",
+          en: "This page's `{ pathname, params, searchParams }`: a CSR page off screen reads its own, an SSR page the router's.",
+          ko: "이 페이지의 `{ pathname, params, searchParams }`입니다. 화면 밖 CSR 페이지는 자기 값을, SSR 페이지는 router 값을 읽습니다.",
         }),
       },
       {

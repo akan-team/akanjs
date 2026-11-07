@@ -38,6 +38,9 @@ import { columnKey, downloadBlob, toCsvBlob, toJsonBlob } from "./dataExport";
 import { dictLabel } from "./dataText";
 import { QueryMakerArgs, QueryMakerKey, resolveQuerySetting, useQueryMaker } from "./QueryMaker";
 import DataTableList from "./TableList";
+import UnlistedEditModal from "./UnlistedEditModal";
+import { useViewModal } from "./useViewModal";
+import ViewActions from "./ViewActions";
 
 const controlClassName = "h-9";
 const pageLimits = [10, 20, 50, 100];
@@ -66,6 +69,7 @@ export interface ListContainerProps<
   sort?: unknown;
   columns?: DataColumn<any>[];
   tools?: DataTool[] | ((modelList: Light[]) => DataTool[]);
+  /** In the view modal `idx` is the record's place on the loaded page, -1 for a record the page does not list. */
   actions?: DataAction[] | ((item: Light, idx: number) => DataAction[]);
   renderDashboard?: ({
     summary,
@@ -83,7 +87,16 @@ export interface ListContainerProps<
   renderItem?: (props: ModelProps<any, any>) => ReactNode;
   renderTemplate?: (props: any) => ReactNode | null;
   renderTitle?: (model: Full) => string | ReactNode;
+  /** The view modal's title, `renderTitle` when left out; `false` draws the view without a title bar. */
+  renderViewTitle?: ((model: Full) => string | ReactNode) | false;
   renderView?: (model: Full) => ReactNode | null;
+  /**
+   * Mirrors the open view modal in the URL as `?action=view&modelId=<id>`, keeping every other param, and opens the
+   * record such a link names, listed or not. Give it to one listing per page: the params do not name the model.
+   */
+  viewInUrl?: boolean;
+  /** Draws the record's `actions`, all but "view", in the view modal's bottom bar; `false` leaves the bar out. */
+  viewActions?: boolean;
   renderQueryMaker?: () => ReactNode;
   renderInsight?: (props: ModelInsightProps) => ReactNode;
   renderLoading?: () => ReactNode;
@@ -113,7 +126,10 @@ export default function ListContainer<
   renderItem,
   renderTemplate,
   renderTitle,
+  renderViewTitle,
   renderView,
+  viewInUrl = false,
+  viewActions = true,
   renderQueryMaker,
   renderInsight,
   renderLoading,
@@ -218,6 +234,20 @@ export default function ListContainer<
 
   const modelLabel = dictLabel(l._, `${sliceName}.modelName`, refName);
   const RenderTitle = renderTitle ?? ((model: Full) => `${modelLabel} - ${model.id ? model.id : "New"}`);
+  const { editInView } = useViewModal(slice, { inUrl: viewInUrl && !!renderView });
+  const renderViewAction = (model: Full) => {
+    const loaded = storeGet<DataList<Light>>()[namesOfSlice.modelList] as DataList<Light>;
+    const actionsOfModel = Array.isArray(actions)
+      ? actions
+      : actions(
+          model as unknown as Light,
+          loaded.findIndex((item) => item.id === model.id),
+        );
+    const remaining = actionsOfModel.filter((action) => !!action && action !== "view");
+    return remaining.length ? (
+      <ViewActions model={model} slice={slice} actions={remaining} onEdit={editInView} />
+    ) : null;
+  };
   // `summary` is an app-level state key, so it is read off the state; built as a value, not `<ModelDashboard />`,
   // since a component type created in render remounts every render and loses the picked tile.
   const summary = storeSel<Record<string, unknown> | undefined>(
@@ -383,7 +413,6 @@ export default function ListContainer<
           renderItem={renderItem ?? (() => null)}
           renderLoading={renderLoading}
           renderTemplate={renderTemplate}
-          renderView={renderView}
           renderTitle={RenderTitle}
           columns={columns}
           actions={actions}
@@ -396,12 +425,21 @@ export default function ListContainer<
           actions={actions}
           renderTemplate={renderTemplate}
           renderTitle={RenderTitle}
-          renderView={renderView}
         />
       )}
       <Model.EditModal slice={slice} renderTitle={RenderTitle}>
         {RenderTemplate ? <RenderTemplate /> : null}
       </Model.EditModal>
+      <UnlistedEditModal slice={slice} renderTitle={RenderTitle} renderTemplate={renderTemplate} />
+      {/* One for the container, not one per row, so a record off the loaded page opens too. */}
+      {renderView ? (
+        <Model.ViewModal
+          slice={slice}
+          renderTitle={renderViewTitle === false ? undefined : (renderViewTitle ?? RenderTitle)}
+          renderView={renderView}
+          renderAction={viewActions ? renderViewAction : undefined}
+        />
+      ) : null}
     </div>
   );
 }

@@ -366,6 +366,8 @@ export interface PathContextType {
   pageType: CsrPageType;
   pageKey?: string;
   location: Location;
+  /** An SSR page's: `location` is the request's, and in the browser the store holds the router's live one. */
+  followsRouter?: boolean;
   prefix?: string;
   gestureEnabled: boolean;
   setGestureEnabled: (enabled: boolean) => void;
