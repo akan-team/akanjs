@@ -62,11 +62,22 @@ URL이라면, 코딩 에이전트는 묻지 않고 아래대로 진행하면 됩
 - **정해진 URL:** 페이지는 기본적으로 `/<locale>/…` 아래에 있습니다. 기본 로케일을 프리픽스 없는 경로
   (`/pokemon/deoxys`)로 내보내려면 `akan.config.ts`에 `i18n: { defaultLocale: "en", locales: ["en"], localePrefix:
   "as-needed" }`를 두세요. `<Link>`도 따라갑니다.
-- **Node와 npm만 있는 호스트:** `npm install -g bun`으로 생성기를 실행할 런타임을 받으세요. 호스트에도 설치되도록
-  워크스페이스의 `dependencies`에 `bun`을 두고, package script에서는 `devDependencies`의 `@akanjs/cli`로 `akan`을
-  부르세요. 전역 설치 뒤 `akan`을 찾지 못하면 `bun pm bin -g`가 출력하는 폴더를 `PATH`에 더하세요.
-- **Docker 없이 프로덕션 빌드 실행:** `akan build <app>` 뒤 `cd dist/apps/<app> && PORT=3000 bun main.js`. 빌드에
-  필요한 env가 함께 들어 있습니다.
+- **Node와 npm만 있는 호스트:** 생성기를 npx로 실행하세요. 전역에 아무것도 쓰지 않습니다:
+  `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`. 호스트에도
+  설치되도록 워크스페이스의 `dependencies`에 `bun`을 두고, package script에서는 `devDependencies`의 `@akanjs/cli`로
+  `akan`을 부르세요. 전역 설치 뒤 `akan`을 찾지 못하면 `bun pm bin -g`가 출력하는 폴더를 `PATH`에 더하세요.
+- **Docker 없이 빌드하고 실행하기:** 아래 package script를 두고 `npm run build` 뒤 `PORT=3000 npm start`로 띄웁니다.
+
+  ```json
+  "build": "akan build <app>",
+  "start": "cd dist/apps/<app> && bun main.js"
+  ```
+
+  새로 clone한 사본도 그대로 빌드됩니다. env 파일은 gitignore된 채로 두면 `akan`이 없는 것을 만들어 주므로 커밋할
+  필요가 없습니다. 빌드에 필요한 env가 함께 들어 있고, 실행할 때 지정한 변수가 그 값을 덮어씁니다.
+- **실행할 곳에 맞게 빌드하기.** `.env`가 없으면 `akan build`는 `local`로 빌드합니다. 내 컴퓨터나 테스트 러너에서는
+  이대로 맞지만, dev 라우트를 누구에게나 엽니다. 다른 사람이 접속하는 호스트라면 `AKAN_PUBLIC_ENV=main`,
+  `AKAN_PUBLIC_REPO_NAME`, `AKAN_PUBLIC_SERVE_DOMAIN`(서비스할 도메인)을 셸이나 워크스페이스 `.env`에 지정하세요.
 
 ## 이 모든 게 한 줄입니다
 

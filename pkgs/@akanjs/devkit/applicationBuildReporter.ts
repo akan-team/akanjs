@@ -15,6 +15,7 @@ export interface ApplicationBuildResult {
   durationMs: number;
   outputDir: string;
   artifactDir: string;
+  environment: string;
 }
 
 export interface ApplicationBuildProgressReporter {
@@ -35,7 +36,11 @@ export class ApplicationBuildReporter {
     Logger.rawLog(`Route artifacts: ${result.artifactDir}`);
     Logger.rawLog(`Server output: ${result.outputDir}`);
     Logger.rawLog(`Done in ${ApplicationBuildReporter.formatDuration(result.durationMs)}`);
+    if (result.environment === "local") Logger.rawLog(ApplicationBuildReporter.localBuildNotice);
   }
+
+  static readonly localBuildNotice =
+    "Built for local, which serves the dev routes to every caller. For a host others can reach, build with AKAN_PUBLIC_ENV=main, AKAN_PUBLIC_REPO_NAME and AKAN_PUBLIC_SERVE_DOMAIN set.";
 
   static formatError(error: unknown, workspaceRoot = process.cwd()): string {
     if (error instanceof AggregateError) {
