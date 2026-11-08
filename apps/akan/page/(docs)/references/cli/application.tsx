@@ -326,6 +326,14 @@ export default page()
               ko: "페이지를 헤드리스 브라우저로 열어 무엇이 깨졌는지 출력합니다.",
             }),
           },
+          {
+            name: "studio",
+            href: "#studio",
+            desc: l.trans({
+              en: "Print the Akan Studio URL of a running dev server.",
+              ko: "실행 중인 개발 서버의 Akan Studio URL을 출력합니다.",
+            }),
+          },
         ],
       },
       {
@@ -1212,6 +1220,57 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
 akan preview myapp /board,/board/new --screenshot
 akan preview myapp --changed --csr
 akan preview myapp /admin --desktop --format json`,
+      },
+      {
+        name: "studio",
+        signature:
+          "akan studio <app> [--module <module>] [--view <erd|signals>] [--editor <vscode|cursor>] [--open] [--format <format>]",
+        desc: l.trans({
+          en: "Print the URL of Akan Studio on the app's running `akan start`: the ERD of its models, or one module's path from component to model, each name linked to its source. It exits 1 when no dev server answers.",
+          ko: "실행 중인 `akan start`의 Akan Studio URL을 출력합니다. 모델 ERD나, 한 모듈의 컴포넌트에서 모델까지 이어지는 경로를 그리며, 이름마다 소스 링크가 걸립니다. 응답하는 개발 서버가 없으면 1로 끝납니다.",
+        }),
+        options: [
+          {
+            name: "--module",
+            type: "String",
+            desc: l.trans({
+              en: "The module to show. The ERD shows every module without it.",
+              ko: "보여 줄 모듈입니다. 비우면 ERD는 모든 모듈을 보여 줍니다.",
+            }),
+          },
+          {
+            name: "--view",
+            type: "String",
+            defaultValue: "erd",
+            enumOrFlag: "erd | signals",
+            desc: l.trans({
+              en: "`signals` lays one module out from component to model.",
+              ko: "`signals`는 한 모듈을 컴포넌트에서 모델까지 펼칩니다.",
+            }),
+          },
+          {
+            name: "--editor",
+            type: "String",
+            defaultValue: "vscode",
+            enumOrFlag: "vscode | cursor",
+            desc: l.trans({ en: "The editor source links open in.", ko: "소스 링크를 열 에디터입니다." }),
+          },
+          {
+            name: "--open",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({ en: "Also open the URL in the browser.", ko: "URL을 브라우저로도 엽니다." }),
+          },
+          {
+            name: "--format",
+            type: "String",
+            defaultValue: "text",
+            enumOrFlag: "text | json",
+            desc: l.trans({ en: "`json` prints `{ url }`.", ko: "`json`은 `{ url }`을 출력합니다." }),
+          },
+        ],
+        examples: `akan studio myapp --open
+akan studio myapp --view signals --module memo --editor cursor`,
       },
       {
         name: "typecheck",

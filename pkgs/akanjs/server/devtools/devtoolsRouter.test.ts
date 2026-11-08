@@ -175,10 +175,25 @@ describe("Akan Studio", () => {
     expect(html).toContain("Public");
   });
 
+  test("lets only an editor webview frame it, and answers the panel that does", async () => {
+    const response = await studioRoutes(async () => studioPayload)["/_akan/studio"].GET(
+      new Request("http://localhost/_akan/studio"),
+    );
+    expect(response.headers.get("X-Frame-Options")).toBeNull();
+    expect(response.headers.get("Content-Security-Policy")).toBe(
+      "frame-ancestors 'self' vscode-webview: vscode-file:; base-uri 'self'",
+    );
+    const html = await response.text();
+    expect(html).toContain("akan-studio:host");
+    expect(html).toContain("akan-studio:open");
+  });
+
   test("says where to open it when no dev builder can draw the graph", async () => {
     const response = await studioRoutes()["/_akan/studio"].GET(new Request("http://localhost/_akan/studio"));
     expect(response.status).toBe(503);
-    expect(await response.text()).toContain("akan start");
+    const html = await response.text();
+    expect(html).toContain("akan start");
+    expect(html).toContain("akan-studio:ready");
     const failing = await studioRoutes(async () => {
       throw new Error("[builder] build-graph failed: boom");
     })["/_akan/studio/graph"].GET(new Request("http://localhost/_akan/studio/graph"));

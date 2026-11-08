@@ -132,6 +132,28 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         format: format === "json" ? "json" : "text",
       });
     }),
+  studio: target({
+    desc: "Print the Akan Studio URL of the app's running dev server: its ERD and each module's signals",
+  })
+    .with(App)
+    .option("module", String, { desc: "the module to show", nullable: true })
+    .option("view", String, { flag: "w", desc: "the view to open", default: "erd", enum: ["erd", "signals"] })
+    .option("editor", String, {
+      desc: "the editor source links open in",
+      default: "vscode",
+      enum: ["vscode", "cursor"],
+    })
+    .option("open", Boolean, { desc: "also open it in the browser", default: false })
+    .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
+    .exec(async function (app, module, view, editor, open, format) {
+      await this.applicationScript.studio(app, {
+        module,
+        view: view === "signals" ? "signals" : "erd",
+        editor: editor === "cursor" ? "cursor" : "vscode",
+        open,
+        format: format === "json" ? "json" : "text",
+      });
+    }),
   console: target({ desc: "Open an interactive server console for the application" })
     .with(App)
     .exec(async function (app) {

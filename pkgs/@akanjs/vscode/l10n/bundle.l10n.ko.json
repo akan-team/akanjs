@@ -31,5 +31,12 @@
   "Applying {0}": "{0} 적용 중",
   "{0} failed.": "{0} 실패.",
   "Verify": "검증",
-  "{0} changed {1} files. Verify syncs the generated files and checks them.": "{0}이(가) 파일 {1}개를 바꿨습니다. 검증하면 생성 파일을 동기화하고 확인합니다."
+  "{0} changed {1} files. Verify syncs the generated files and checks them.": "{0}이(가) 파일 {1}개를 바꿨습니다. 검증하면 생성 파일을 동기화하고 확인합니다.",
+  "Open Akan Studio for": "Akan Studio를 열 앱",
+  "Opening Akan Studio for {0}": "{0}의 Akan Studio를 여는 중",
+  "akan studio failed.": "akan studio가 실패했습니다.",
+  "Start {0}": "{0} 시작",
+  "Akan Studio · {0}": "Akan Studio · {0}",
+  "Open in Browser": "브라우저로 열기",
+  "Akan Studio did not load in the editor.": "Akan Studio를 에디터 안에서 불러오지 못했습니다."
 }
