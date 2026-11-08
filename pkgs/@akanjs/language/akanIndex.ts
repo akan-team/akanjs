@@ -129,7 +129,7 @@ export class AkanIndex {
   graph(readText: (fileName: string) => string | undefined): AkanGraph {
     return new GraphBuilder({
       ts: this.#ts,
-      facts: [...this.#facts.values()],
+      facts: [...this.#facts].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, facts]) => facts),
       files: [...this.#fileWords].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
       readText,
       parse: (fileName, text) => this.#parse(fileName, text),

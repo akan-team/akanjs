@@ -96,6 +96,12 @@ const boxesOf = (scene: ReturnType<typeof StudioLayout.erd>) =>
 describe("StudioLayout", () => {
   test("lists the modules the graph's nodes belong to", () => {
     expect(StudioLayout.modulesOf(graph)).toEqual(["file", "folder", "memo"]);
+    const scalars = [node("scalar:libs/shared:geo"), node("enum:libs/shared:GeoKind", { module: "__scalar" })];
+    expect(StudioLayout.modulesOf({ ...graph, nodes: [...graph.nodes, ...scalars] })).toEqual([
+      "file",
+      "folder",
+      "memo",
+    ]);
   });
 
   test("draws the ERD with each referenced type to the right of the model that names it", () => {
