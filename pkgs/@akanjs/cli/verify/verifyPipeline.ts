@@ -11,8 +11,10 @@ import type { ApplicationRunner } from "../application/application.runner";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
 import { VerifyComments } from "./verifyComments";
 import { type VerifyDiagnostic, VerifyDiagnostics, type VerifyStepName } from "./verifyDiagnostics";
+import { VerifyPrivateMethods } from "./verifyPrivateMethods";
 import type { VerifyResult, VerifyStepResult } from "./verifyReport";
 import type { VerifyScope, VerifyTarget } from "./verifyScope";
+import { VerifyStyleClasses } from "./verifyStyleClasses";
 
 export interface VerifyPipelineOptions {
   lintOnly?: boolean;
@@ -46,8 +48,17 @@ export class VerifyPipeline {
     const systems = scope.targets.filter((target) => target.type !== "pkg");
     if (!lintOnly) await this.#each("sync", systems, (target) => this.#sync(target));
     const synced = !this.#failed("sync");
+    //? Before typecheck starts, so it reads the renamed files: a rename can clash with an inherited member.
+    const renames = new Map<VerifyTarget, Map<string, string>>();
+    for (const target of systems)
+      renames.set(
+        target,
+        await VerifyPrivateMethods.fix(this.#root, target.dir, target.files).catch(() => new Map<string, string>()),
+      );
     await Promise.all([
-      this.#each("lint", scope.targets, (target) => this.#lint(target, { comments: !lintOnly })),
+      this.#each("lint", scope.targets, (target) =>
+        this.#lint(target, { comments: !lintOnly, rewritten: renames.get(target) ?? new Map<string, string>() }),
+      ),
       lintOnly || !synced ? null : this.#each("typecheck", scope.targets, (target) => this.#typecheck(target)),
     ]);
     const apps = scope.targets.filter((target) => target.type === "app");
@@ -99,11 +110,17 @@ export class VerifyPipeline {
     return { diagnostics: [] };
   }
 
-  async #lint(target: VerifyTarget, { comments }: { comments: boolean }): Promise<StepOutcome> {
+  async #lint(
+    target: VerifyTarget,
+    { comments, rewritten }: { comments: boolean; rewritten: Map<string, string> },
+  ): Promise<StepOutcome> {
     const files = target.files.length
       ? target.files.filter((file) => existsSync(path.join(this.#root, file)))
       : [target.dir];
-    const biome = files.length ? await this.#biome(files) : { diagnostics: [], fixed: 0 };
+    const biome = files.length
+      ? await this.#biome(files, VerifyPipeline.#cssDirsOf(target))
+      : { diagnostics: [], fixed: 0 };
+    const formattedAfter = await this.#changedSince(rewritten);
     const exec = this.#execOf(target);
     const gates = await this.#workspaceRunner.lintGateFailures(exec, true);
     const added = comments && target.files.length ? await VerifyComments.added(this.#root, target.files) : [];
@@ -114,11 +131,24 @@ export class VerifyPipeline {
         ...gates.messages.map((message) => VerifyDiagnostics.fromMessage("lint", message, "akan.lint")),
         ...VerifyDiagnostics.fromMaintainability(gates.maintainability),
       ],
-      fixed: biome.fixed,
+      fixed: (biome.fixed ?? 0) + rewritten.size - formattedAfter,
     };
   }
 
-  async #biome(files: string[]): Promise<StepOutcome> {
+  static #cssDirsOf(target: VerifyTarget) {
+    if (target.type === "pkg") return [];
+    return target.type === "app" ? [target.dir, "libs"] : ["libs"];
+  }
+
+  //? Biome counts the files it changed, so a renamed file it also reformatted is one file fixed, not two.
+  async #changedSince(rewritten: Map<string, string>) {
+    let changed = 0;
+    for (const [file, text] of rewritten)
+      if ((await Bun.file(path.join(this.#root, file)).text()) !== text) changed += 1;
+    return changed;
+  }
+
+  async #biome(files: string[], cssDirs: string[]): Promise<StepOutcome> {
     const configPath = await WorkspaceRunner.resolveBiomeConfigPath(this.#workspace);
     const [biome, ...biomeArgs] = Linter.biomeCommand(this.#root);
     const proc = Bun.spawn(
@@ -142,7 +172,11 @@ export class VerifyPipeline {
     ]);
     try {
       const report = parseBiomeReport(stdout);
-      return { diagnostics: VerifyDiagnostics.fromBiome(report), fixed: report.summary?.changed ?? 0 };
+      const diagnostics = await VerifyStyleClasses.dropDefined(this.#root, report.diagnostics ?? [], cssDirs);
+      return {
+        diagnostics: VerifyDiagnostics.fromBiome({ ...report, diagnostics }),
+        fixed: report.summary?.changed ?? 0,
+      };
     } catch {
       return { diagnostics: [VerifyDiagnostics.fromMessage("lint", (stderr || stdout).trim(), "biome")] };
     }

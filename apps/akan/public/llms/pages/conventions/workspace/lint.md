@@ -76,7 +76,7 @@ An endpoint or slice `init()` with no `guards` or `guards: []`, which refuses ev
 
 `{{name}}` in an `.error()` or `.translate()` entry is never filled in and shows as typed. Write `{name}`.
 
-A `#private` method. Use a TypeScript `private _method()` instead.
+A `#private` method. Use a TypeScript `private method()`; `akan verify` renames it.
 
 A `static` on `XObject` or `LightX`, which never reaches the full model. Declare it on `XInput`, `X` or `XInsight`.
 
@@ -162,7 +162,7 @@ Each diagnostic prints the name of the rule that fired. Find that name below; th
 
   - The Zone only renders what it is handed: — apps/myapp/lib/ticket/Ticket.Zone.tsx
 
-- private-methods — no-js-private-class-method — #private In One Of Four Suffixes — The framework merges `constant`, `document`, `service` and `store` classes by copying methods onto another class. A copied method that calls a `#` member throws. — Use a TypeScript `private` method with an underscore prefix. Everywhere else, `srvkit/` included, `#private` stays the house style.
+- private-methods — no-js-private-class-method — #private In One Of Four Suffixes — The framework merges `constant`, `document`, `service` and `store` classes by copying methods onto another class. A copied method that calls a `#` member throws. — Use a TypeScript `private` method without an underscore, since a service runs `_preCreate`-style names as hooks. `akan verify` renames each `#method` and its calls. Everywhere else, `srvkit/` included, `#private` stays the house style.
 
 Every Rule That Breaks The Build
 
@@ -176,7 +176,7 @@ All five look at every `.ts` and `.tsx` file in `apps/` and `libs/`, except test
 
 - no-arbitrary-color: Colour values such as `bg-[#3b82f6]` ignore `data-theme`. A `var()` reference is fine.
 
-- no-daisyui-legacy-class: Removed daisyUI classes such as `btn-primary`, `card-body` and `bg-base-100` render unstyled.
+- no-daisyui-legacy-class: daisyUI colour slots such as `bg-base-100` render unstyled. A component class (`card-body`) only warns, and `akan verify` drops it once your CSS defines it.
 
 - no-inline-color: A colour literal in `style={{ ... }}` or a `<style>` body skips tokens and theme switching. The same literal in an SVG colour attribute (`fill`, `stroke`, `stopColor`, …) or an `el.style` write is a warning.
 
@@ -405,12 +405,12 @@ export const Card = ({ init }: CardProps) => {
 
 ```ts
 async #syncStock() { // [!code --]
-private async _syncStock() { // [!code ++]
+private async syncStock() { // [!code ++]
   return await this.ticketModel.syncStock();
 }
 async refreshStock() {
   return await this.#syncStock(); // [!code --]
-  return await this._syncStock(); // [!code ++]
+  return await this.syncStock(); // [!code ++]
 }
 ```
 
