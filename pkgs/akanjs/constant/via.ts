@@ -209,10 +209,6 @@ export interface ConstantMethods<Schema = any> {
   set(obj: Partial<Schema>): this;
 }
 
-type DatabaseSchemaOf<Schema, HiddenKey> = {
-  [K in keyof Schema]: K extends HiddenKey ? NonNullable<Schema[K]> : Schema[K];
-};
-
 export interface ConstantStatics<
   Schema = any,
   OwnSchema = Schema,
@@ -246,7 +242,7 @@ export interface ConstantStatics<
   _SecretKey: SecretKey;
   _OwnSchema: OwnSchema;
   _OwnFieldObj: OwnFieldObj;
-  _DatabaseSchema: DatabaseSchemaOf<Schema, HiddenKey>;
+  _DatabaseSchema: Schema;
   _ModelType: ModelType;
   [SERVER_VALUE]: Schema;
   [CLIENT_VALUE]: Schema;
@@ -264,13 +260,7 @@ export interface DatabaseConstantStatics<Schema = any, FieldObj extends FieldObj
   enums: Set<EnumInstance>;
   text: TextFieldPaths;
   cascade: CascadePaths;
-  _DatabaseSchema: {
-    [K in keyof Schema]: K extends keyof FieldObj
-      ? FieldObj[K]["fieldType"] extends "hidden"
-        ? NonNullable<Schema[K]>
-        : Schema[K]
-      : Schema[K];
-  };
+  _DatabaseSchema: Schema;
 }
 
 export type ConstantModelRef<
@@ -294,7 +284,7 @@ export type DocumentConstantModelRef<
   Schema = any,
   FieldObj extends FieldObject = FieldObject,
   ModelType extends ConstantType = ConstantType,
-  DatabaseSchema = DatabaseSchemaOf<Schema, never>,
+  DatabaseSchema = Schema,
 > = Cls<
   Schema,
   {
