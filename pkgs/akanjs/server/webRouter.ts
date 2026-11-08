@@ -7,6 +7,7 @@ import {
   CookieJar,
   DEFAULT_AKAN_I18N,
   getBasePathFromPathname,
+  LocalePath,
   Logger,
   type LogRecord,
   parseAkanI18nEnv,
@@ -527,11 +528,15 @@ export class WebRouter {
           const clientOrigin = getClientFacingOrigin(req);
           const target = reqUrl.searchParams.get("url");
           const rawTargetUrl = target ? new URL(target, clientOrigin) : reqUrl;
+          const i18n = this.#artifact.i18n;
+          const { locale: targetLocale, path: targetPath, isPrefixed } = LocalePath.split(rawTargetUrl.pathname, i18n);
+          const localizedTargetUrl = new URL(rawTargetUrl);
+          if (targetLocale && !isPrefixed) localizedTargetUrl.pathname = `/${targetLocale}${rawTargetUrl.pathname}`;
           const requestBasePath = this.#requestBasePath(req);
-          const normalizedTarget = normalizeRscTargetUrlForHostBasePath(rawTargetUrl, {
+          const normalizedTarget = normalizeRscTargetUrlForHostBasePath(localizedTargetUrl, {
             basePath: requestBasePath,
             basePaths: this.#artifact.basePaths,
-            i18n: this.#artifact.i18n,
+            i18n,
             seedEntries: this.#seedIndex.entries,
           });
           const targetUrl = normalizedTarget.url;
@@ -541,10 +546,9 @@ export class WebRouter {
           const rscHeaders = new Headers(req.headers);
           if (normalizedTarget.basePath) rscHeaders.set("x-base-path", normalizedTarget.basePath);
           // No WebProxy runs on /__rsc: these are the headers LocaleWebProxy gives a page load of this URL.
-          const [, targetLocale = "", ...targetPath] = rawTargetUrl.pathname.split("/");
-          if (this.#artifact.i18n.locales.includes(targetLocale)) {
+          if (targetLocale) {
             rscHeaders.set("x-locale", targetLocale);
-            rscHeaders.set("x-path", `/${targetPath.join("/")}`);
+            rscHeaders.set("x-path", targetPath);
           }
           const rscReq = new Request(targetUrl, {
             method: "GET",

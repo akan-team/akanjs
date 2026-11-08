@@ -1,7 +1,7 @@
 "use client";
 import { ID } from "akanjs/base";
 import { cn, usePage } from "akanjs/client";
-import { capitalize } from "akanjs/common";
+import { modelNames } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import type { ReactNode } from "react";
@@ -21,9 +21,7 @@ interface RemoveWrapperProps {
 export default function RemoveWrapper({ children, slice, name, modelId, className, modal }: RemoveWrapperProps) {
   const { l } = usePage();
   const { refName: modelName } = slice;
-  const names = {
-    removeModel: `remove${capitalize(modelName)}`,
-  };
+  const names = modelNames(modelName);
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   // The `remove` prefix turns on the approval card, the agent's half of the Popconfirm drawn for a person.
   const removeModel = st

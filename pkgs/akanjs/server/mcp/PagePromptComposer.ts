@@ -1,5 +1,5 @@
 import { PrimitiveRegistry } from "akanjs/base";
-import { Logger } from "akanjs/common";
+import { Logger, sliceNames } from "akanjs/common";
 import { agentRead, ConstantRegistry, type ConstantType, type MaskModel } from "akanjs/constant";
 import type { McpDocument } from "../../signal/mcp/McpDocument";
 import { Msg, type PromptMessage } from "../../signal/mcp/Msg";
@@ -154,14 +154,11 @@ export class PagePromptComposer {
     const refName = argName.replace(/Id$/, "");
     if (!refName || refName === argName) return undefined;
     const document = this.#props.document;
+    const rootList = sliceNames(refName).endpoint.list;
     const listTools = document.tools
       .map((tool) => tool.name)
-      .filter((name) => document.findTool(name)?.refName === refName && name.startsWith(`${refName}List`));
-    return (
-      listTools.find((name) => /Search/.test(name)) ??
-      listTools.find((name) => name === `${refName}List`) ??
-      listTools[0]
-    );
+      .filter((name) => document.findTool(name)?.refName === refName && name.startsWith(rootList));
+    return listTools.find((name) => /Search/.test(name)) ?? listTools.find((name) => name === rootList) ?? listTools[0];
   }
 
   static #resource(attachment: Attachment): PromptMessage {

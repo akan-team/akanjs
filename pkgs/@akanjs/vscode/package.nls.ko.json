@@ -1,0 +1,5 @@
+{
+  "akan.reindex.title": "이름 색인 다시 만들기",
+  "akan.codeLens.enabled.description": "slice, 쿼리, 필드, store state, 소켓 endpoint 선언 위에 사용처 수를 표시합니다.",
+  "akan.renameSourceKey.title": "slice·쿼리 키와 파생 이름을 함께 바꾸기"
+}

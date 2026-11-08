@@ -1,6 +1,5 @@
 "use client";
 import { cn, fetch, usePage } from "akanjs/client";
-import { capitalize } from "akanjs/common";
 import type { QuerySetting, SliceMeta } from "akanjs/fetch";
 import type { SerializedArg } from "akanjs/signal";
 import { st } from "akanjs/store";
@@ -8,6 +7,7 @@ import { useDebounce } from "akanjs/webkit";
 import { useRef, useState } from "react";
 import { Select } from "../Select";
 import Arg from "../Signal/Arg";
+import { sliceNamesOf } from "../sliceNamesOf";
 import { dictLabel } from "./dataText";
 import RefPicker from "./RefPicker";
 
@@ -63,6 +63,7 @@ export const isReadyQuery = (args: SerializedArg[], values: unknown[]) =>
 // A hook, not a component: the key select rides the toolbar while its args render under it — two places, one state.
 export const useQueryMaker = ({ slice, query, onApply }: QueryMakerProps): QueryMakerState => {
   const { refName, sliceName } = slice;
+  const { setQueryArgsOfModel } = sliceNamesOf(refName, sliceName).namesOfSlice;
   const storeDo = st.do as unknown as { [key: string]: (...args: unknown[]) => Promise<void> };
   const filterQuery = fetch.filterQueryMap?.get(refName) ?? {};
   const queryKeys = Object.entries(filterQuery)
@@ -76,7 +77,7 @@ export const useQueryMaker = ({ slice, query, onApply }: QueryMakerProps): Query
   const applyRef = useRef<(setting: ResolvedQuerySetting) => void>(() => undefined);
   applyRef.current = (setting) => {
     if (onApply) onApply(setting);
-    else void storeDo[`setQueryArgsOf${capitalize(sliceName)}`](setting.queryKey, setting.args);
+    else void storeDo[setQueryArgsOfModel](setting.queryKey, setting.args);
   };
   // Debounced because a text arg writes on every keystroke, and each write is a round trip.
   const applyQuery = useDebounce((setting: ResolvedQuerySetting) => {

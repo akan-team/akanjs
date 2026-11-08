@@ -1,6 +1,6 @@
 "use client";
 import { type DataAction, usePage } from "akanjs/client";
-import { capitalize } from "akanjs/common";
+import { modelNames } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { Fragment } from "react";
@@ -17,11 +17,11 @@ interface ViewActionsProps {
 export default function ViewActions({ model, slice, actions, onEdit }: ViewActionsProps) {
   const { l } = usePage();
   const storeDo = st.do as unknown as { [key: string]: (...args: unknown[]) => Promise<void> };
-  const ModelName = capitalize(slice.refName);
+  const names = modelNames(slice.refName);
   const remove = () => {
     //? The action has already shown the error; the view stays open on the record it failed to remove.
-    void storeDo[`remove${ModelName}`](model.id).then(
-      () => storeDo[`reset${ModelName}`](),
+    void storeDo[names.removeModel](model.id).then(
+      () => storeDo[names.resetModel](),
       () => null,
     );
   };

@@ -1,4 +1,4 @@
-import { lowerlize } from "akanjs/common";
+import { lowerlize, modelNames } from "akanjs/common";
 import type { Sys } from "../commandDecorators";
 import { GuardCatalog } from "./guardCatalog";
 import { type MutationActingUser, type MutationCall, MutationSource } from "./mutationSource";
@@ -53,20 +53,34 @@ export class MutationScaffold {
   }
 
   static reservedNamesOf(modelClassName: string) {
-    const model = lowerlize(modelClassName);
-    const prefixed = ["light", "create", "update", "remove", "view", "edit", "merge", "get", "load", "set", "reset"];
+    const names = modelNames(lowerlize(modelClassName));
     return new Set([
-      model,
-      ...[...prefixed, "new", "submit", "invalidate"].map((prefix) => `${prefix}${modelClassName}`),
-      `create${modelClassName}InForm`,
-      `update${modelClassName}InForm`,
-      `load${modelClassName}Many`,
-      `get${modelClassName}View`,
-      `get${modelClassName}Edit`,
-      `add${modelClassName}Files`,
-      `check${modelClassName}Submitable`,
-      `writeOn${modelClassName}`,
-      ...["load", "restore", "discard"].map((prefix) => `${prefix}${modelClassName}FormDraft`),
+      names.model,
+      names.lightModel,
+      names.createModel,
+      names.updateModel,
+      names.removeModel,
+      names.viewModel,
+      names.editModel,
+      names.mergeModel,
+      names.getModel,
+      names.loadModel,
+      names.setModel,
+      names.resetModel,
+      names.newModel,
+      names.submitModel,
+      names.invalidateModel,
+      names.createModelInForm,
+      names.updateModelInForm,
+      names.loadModelMany,
+      names.getModelView,
+      names.getModelEdit,
+      names.addModelFiles,
+      names.checkModelSubmitable,
+      names.writeOnModel,
+      names.loadModelFormDraft,
+      names.restoreModelFormDraft,
+      names.discardModelFormDraft,
     ]);
   }
 
@@ -415,17 +429,17 @@ export class MutationScaffold {
   #parametersOf(service: ServiceSource, ref: string, method: string) {
     const declared = classMethodParameters(service.content, service.className, method);
     if (declared) return declared;
-    const modelClassName = moduleComponentName(ref);
+    const names = modelNames(lowerlize(moduleComponentName(ref)));
     const generated: Record<string, { name: string; optional: boolean }[]> = {
-      [`get${modelClassName}`]: [{ name: "id", optional: false }],
-      [`load${modelClassName}`]: [{ name: "id", optional: true }],
-      [`load${modelClassName}Many`]: [{ name: "ids", optional: false }],
-      [`create${modelClassName}`]: [{ name: "data", optional: false }],
-      [`update${modelClassName}`]: [
+      [names.getModel]: [{ name: "id", optional: false }],
+      [names.loadModel]: [{ name: "id", optional: true }],
+      [names.loadModelMany]: [{ name: "ids", optional: false }],
+      [names.createModel]: [{ name: "data", optional: false }],
+      [names.updateModel]: [
         { name: "id", optional: false },
         { name: "data", optional: false },
       ],
-      [`remove${modelClassName}`]: [{ name: "id", optional: false }],
+      [names.removeModel]: [{ name: "id", optional: false }],
     };
     return generated[method] ?? null;
   }

@@ -1,6 +1,6 @@
 "use client";
 import { fetch, isClientRuntimeRegistered } from "akanjs/client";
-import { capitalize } from "akanjs/common";
+import { modelNames } from "akanjs/common";
 
 interface LightRow {
   id: string;
@@ -38,7 +38,7 @@ export class LightRefCache {
     const key = LightRefCache.#keyOf(refName, id);
     if (LightRefCache.#rows.has(key) || LightRefCache.#inflight.has(key)) return;
     if (!isClientRuntimeRegistered()) return;
-    const read = (fetch as unknown as { [key: string]: unknown })[`light${capitalize(refName)}`];
+    const read = (fetch as unknown as { [key: string]: unknown })[modelNames(refName).lightModel];
     if (typeof read !== "function") {
       LightRefCache.#write(refName, id, null);
       return;

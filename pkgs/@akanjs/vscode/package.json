@@ -1,0 +1,68 @@
+{
+  "name": "@akanjs/vscode",
+  "displayName": "Akan.js",
+  "description": "Go from Akan.js derived names (initMemoInPublic, listByName, setNameOnMemo, srv.memo) to the slice, query, field or class that produces them, and see where each source key is used.",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "akanjs",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akan-team/akanjs.git",
+    "directory": "pkgs/@akanjs/vscode"
+  },
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/akan.config.ts"
+  ],
+  "main": "./extension.js",
+  "l10n": "./l10n",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In an untrusted workspace the extension uses its bundled language core instead of loading the workspace's @akanjs/language."
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "akan.reindex",
+        "title": "%akan.reindex.title%",
+        "category": "Akan"
+      },
+      {
+        "command": "akan.renameSourceKey",
+        "title": "%akan.renameSourceKey.title%",
+        "category": "Akan"
+      }
+    ],
+    "configuration": {
+      "title": "Akan.js",
+      "properties": {
+        "akan.codeLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%akan.codeLens.enabled.description%"
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "akan.renameSourceKey",
+        "key": "f2",
+        "when": "editorTextFocus && !editorReadonly && akan.onRenameableKey"
+      }
+    ]
+  },
+  "dependencies": {
+    "@akanjs/language": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.100.0"
+  }
+}
