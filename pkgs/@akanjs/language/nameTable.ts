@@ -30,9 +30,15 @@ export interface AkanEntry extends AkanTarget {
   role: string;
   gate: AkanReceiverGate | null;
   renamed?: (sourceKey: string) => string;
+  dictionary?: { section: "slice" | "query"; className: string };
 }
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+interface ConstantScope {
+  own: ConstantClassFact[];
+  libs: ConstantClassFact[];
+}
 
 interface ModuleGroup {
   owner: string | null;
@@ -49,9 +55,22 @@ export class NameTable {
   constructor(files: Iterable<FileFacts>) {
     const all = [...files];
     const constantsByOwner = new Map<string | null, ConstantClassFact[]>();
-    for (const facts of all)
-      constantsByOwner.set(facts.owner, [...(constantsByOwner.get(facts.owner) ?? []), ...facts.constants]);
-    for (const group of NameTable.#groupsOf(all)) this.#addGroup(group, constantsByOwner);
+    for (const facts of all) {
+      const constants = constantsByOwner.get(facts.owner) ?? [];
+      constants.push(...facts.constants);
+      constantsByOwner.set(facts.owner, constants);
+    }
+    const libConstants = [...constantsByOwner].filter(([owner]) => owner?.startsWith("libs/"));
+    const scope = (owner: string | null): ConstantScope => ({
+      own: constantsByOwner.get(owner) ?? [],
+      libs: libConstants.filter(([key]) => key !== owner).flatMap(([, constants]) => constants),
+    });
+    const scopes = new Map<string | null, ConstantScope>();
+    for (const group of NameTable.#groupsOf(all)) {
+      const constants = scopes.get(group.owner) ?? scope(group.owner);
+      scopes.set(group.owner, constants);
+      this.#addGroup(group, constants);
+    }
   }
 
   lookup(name: string) {
@@ -117,7 +136,7 @@ export class NameTable {
     this.#byFile.set(entry.span.fileName, sameFile);
   }
 
-  #addGroup(group: ModuleGroup, constantsByOwner: Map<string | null, ConstantClassFact[]>) {
+  #addGroup(group: ModuleGroup, constants: ConstantScope) {
     const { owner, refName } = group;
     const Model = capitalize(refName);
     const base = { owner, refName };
@@ -181,7 +200,7 @@ export class NameTable {
           label: `model ${Model}`,
           detail: [],
         });
-      for (const field of NameTable.#fieldsOf(modelClass, owner, constantsByOwner)) {
+      for (const field of NameTable.#fieldsOf(modelClass, constants)) {
         const setters = formSetterNames(Model, field.name);
         for (const role of [
           "setFieldOnModel",
@@ -227,6 +246,7 @@ export class NameTable {
           refName,
           key.name,
           modelNameSet,
+          slice.name,
         );
     }
 
@@ -256,6 +276,7 @@ export class NameTable {
             gate: null,
             label: `query ${query.name}`,
             renamed: (key) => queryNames(key)[role],
+            dictionary: { section: "query", className: filterClass.name },
           });
     }
 
@@ -308,6 +329,7 @@ export class NameTable {
     refName: string,
     suffix: string,
     skip: Set<string>,
+    className?: string,
   ) {
     for (const [role, name] of NameTable.#sliceRoles(refName, suffix)) {
       if (!suffix && role !== "slice" && skip.has(name)) continue;
@@ -316,20 +338,17 @@ export class NameTable {
         name,
         role,
         gate: role === "slice" ? "slice" : null,
-        ...(suffix ? { renamed: (key: string) => NameTable.#sliceRoles(refName, key).get(role) ?? name } : {}),
+        ...(suffix && className
+          ? {
+              renamed: (key: string) => NameTable.#sliceRoles(refName, key).get(role) ?? name,
+              dictionary: { section: "slice" as const, className },
+            }
+          : {}),
       });
     }
   }
 
-  static #fieldsOf(
-    modelClass: ConstantClassFact,
-    owner: string | null,
-    constantsByOwner: Map<string | null, ConstantClassFact[]>,
-  ) {
-    const own = constantsByOwner.get(owner) ?? [];
-    const libs = [...constantsByOwner.entries()]
-      .filter(([key]) => key !== owner && key?.startsWith("libs/"))
-      .flatMap(([, constants]) => constants);
+  static #fieldsOf(modelClass: ConstantClassFact, { own, libs }: ConstantScope) {
     const classNamed = (name: string, near: ConstantClassFact) =>
       own.find((constant) => constant.name === name && constant.span.fileName === near.span.fileName) ??
       own.find((constant) => constant.name === name) ??

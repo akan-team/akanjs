@@ -62,6 +62,17 @@ export class MemoStore extends store(sig.memo, () => ({
   }
 }
 `,
+  "apps/demo/lib/memo/memo.dictionary.ts": `import { modelDictionary } from "akanjs/dictionary";
+import type { MemoFilter } from "./memo.document";
+import type { MemoSlice } from "./memo.signal";
+export const dictionary = modelDictionary(["en", "ko"])
+  .query<MemoFilter>((fn) => ({
+    byName: fn(["By Name", "이름으로"]),
+  }))
+  .slice<MemoSlice>((fn) => ({
+    "inPublic": fn(["In Public", "공개"]),
+  }));
+`,
   "apps/demo/page/memo.tsx": `import { fetch, st, sig, srv } from "@apps/demo/client";
 export default async function Page() {
   const { memoListInPublic } = await fetch.initMemoInPublic();
@@ -210,6 +221,68 @@ describe("AkanIndex references and source keys", () => {
     expect(local.referencesAt(`${root}/${rel}`, offset, () => text)).toEqual([]);
   });
 
+  it("leaves a query name behind another model's receiver to that model", () => {
+    const noteFiles: Record<string, string> = {
+      ...files,
+      "apps/demo/lib/note/note.document.ts": `import { from, into } from "akanjs/document";
+export class NoteFilter extends from(cnst.Note, (filter) => ({
+  query: { byName: filter().arg("name", String).query((name) => ({ name })) },
+})) {}
+export class NoteModel extends into(Note, NoteFilter, cnst.note, () => ({})) {
+  async named(name: string) {
+    return await this.listByName(name);
+  }
+}
+`,
+      "apps/demo/lib/note/note.service.ts": `import { serve } from "akanjs/service";
+export class NoteService extends serve(db.note, () => ({})) {
+  async named(name: string) {
+    return await this.noteModel.listByName(name);
+  }
+}
+`,
+    };
+    const local = new AkanIndex({ ts, root });
+    for (const [rel, text] of Object.entries(noteFiles)) local.setFile(`${root}/${rel}`, text);
+    const definitionOf = (rel: string, needle: string) => {
+      const text = noteFiles[rel];
+      const offset = text.indexOf(needle) + needle.lastIndexOf(".") + 1;
+      return local
+        .definitionAt(`${root}/${rel}`, text, offset)
+        .map((target) => `${target.span.fileName.slice(root.length + 1)}:${target.span.line + 1}`);
+    };
+    expect(definitionOf("apps/demo/lib/note/note.service.ts", "this.noteModel.listByName")).toEqual([
+      "apps/demo/lib/note/note.document.ts:3",
+    ]);
+    expect(definitionOf("apps/demo/lib/note/note.document.ts", "this.listByName")).toEqual([
+      "apps/demo/lib/note/note.document.ts:3",
+    ]);
+    const memoDocument = "apps/demo/lib/memo/memo.document.ts";
+    const offset = noteFiles[memoDocument].indexOf("byName:");
+    const edits = local.renameAt(
+      `${root}/${memoDocument}`,
+      offset,
+      "byTitle",
+      (fileName) => noteFiles[fileName.slice(root.length + 1)],
+    );
+    expect(edits?.map((edit) => edit.span.fileName.slice(root.length + 1))).toEqual([
+      memoDocument,
+      "apps/demo/lib/memo/memo.service.ts",
+      "apps/demo/lib/memo/memo.signal.ts",
+      "apps/demo/lib/memo/memo.dictionary.ts",
+    ]);
+  });
+
+  it("accepts Windows paths and answers with forward slashes", () => {
+    const local = new AkanIndex({ ts, root: "C:\\ws\\" });
+    for (const [rel, text] of Object.entries(files)) local.setFile(`C:\\ws\\${rel.replaceAll("/", "\\")}`, text);
+    const signal = "C:\\ws\\apps\\demo\\lib\\memo\\memo.signal.ts";
+    const offset = files["apps/demo/lib/memo/memo.signal.ts"].indexOf("inPublic:");
+    expect(local.sourceKeysOf(signal).map((key) => key.sourceKey)).toContain("inPublic");
+    const uses = local.referencesAt(signal, offset, (fileName) => files[fileName.slice("C:/ws/".length)]);
+    expect(uses.map((span) => span.fileName)).toEqual([`C:/ws/${page}`, `C:/ws/${page}`, `C:/ws/${page}`]);
+  });
+
   it("lists lens keys for slices, queries, fields, state and socket endpoints", () => {
     const keys = (rel: string) => index.sourceKeysOf(`${root}/${rel}`).map((key) => key.sourceKey);
     expect(keys("apps/demo/lib/memo/memo.signal.ts")).toEqual(["MemoSlice", "inPublic", "memoChanged", "ping"]);
@@ -227,7 +300,13 @@ describe("AkanIndex references and source keys", () => {
   it("renames a slice key with every derived use in its own casing", () => {
     const { fileName, offset } = at("apps/demo/lib/memo/memo.signal.ts", "inPublic:");
     const edits = index.renameAt(fileName, offset, "inFeed", readText) ?? [];
-    expect(edits.map((edit) => edit.newText)).toEqual(["inFeed", "memoListInFeed", "initMemoInFeed", "memoInFeed"]);
+    expect(edits.map((edit) => edit.newText)).toEqual([
+      "inFeed",
+      "memoListInFeed: memoListInPublic",
+      "initMemoInFeed",
+      "memoInFeed",
+      `"inFeed"`,
+    ]);
     expect(index.renameAt(fileName, offset, "not valid", readText)).toBeNull();
   });
 
@@ -237,6 +316,7 @@ describe("AkanIndex references and source keys", () => {
       "byTitle",
       "listByTitle",
       "queryByTitle",
+      "byTitle",
     ]);
     const field = at("apps/demo/lib/memo/memo.constant.ts", "name:");
     expect(index.renameTargetAt(field.fileName, field.offset)).toBeNull();
