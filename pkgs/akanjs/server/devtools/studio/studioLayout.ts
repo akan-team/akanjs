@@ -57,7 +57,9 @@ const flowEdgeKinds = new Set(["calls", "fetches", "uses"]);
 export class StudioLayout {
   static modulesOf(graph: AkanGraph): string[] {
     const modules = new Set<string>();
-    for (const node of graph.nodes) if (node.module && node.kind !== "component") modules.add(node.module);
+    //? A scalar's module is its own name and an enum under `lib/__scalar/` reads `__scalar`; neither has signals.
+    for (const node of graph.nodes)
+      if (node.module && node.kind !== "component" && flowColumnOf.has(node.kind)) modules.add(node.module);
     return [...modules].sort();
   }
 
