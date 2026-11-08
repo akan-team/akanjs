@@ -1,7 +1,7 @@
 import { capitalize } from "akanjs/common";
 import type { QueryOf } from "akanjs/constant";
 import type { DatabaseModel, DataInputOf, Doc, DocumentTouchOptions, DocumentUpdateInput } from "akanjs/document";
-import { type DatabaseService, type ServiceCls, ServiceModel } from "akanjs/service";
+import { type DatabaseService, type Service, type ServiceCls, ServiceModel } from "akanjs/service";
 import type { CascadeRunner } from "./CascadeRunner";
 import { DatabaseResolver } from "./database.resolver";
 
@@ -16,6 +16,17 @@ export class ServiceResolver {
         const input = await this.__libsPreCreate(data);
         const doc = await this.__databaseModel.__create(input);
         return await this.__libsPostCreate(doc);
+      },
+      async __createMany(this: DatabaseService & Service, data: DataInputOf[]) {
+        if (!data.length) return [];
+        return await this.transaction(async () => {
+          const inputs: DataInputOf[] = [];
+          for (const row of data) inputs.push(await this.__libsPreCreate(row));
+          const created: Doc[] = [];
+          for (const doc of await this.__databaseModel.__createMany(inputs))
+            created.push(await this.__libsPostCreate(doc));
+          return created;
+        });
       },
       async __update(this: DatabaseService, id: string, data: DataInputOf) {
         const input = await this.__libsPreUpdate(id, data);
@@ -56,7 +67,13 @@ export class ServiceResolver {
   }
   static resolveDatabaseService(database: DatabaseModel, srvRef: ServiceCls, cascade: CascadeRunner): ServiceCls {
     const className = capitalize(database.refName);
-    Object.assign(srvRef.prototype, ServiceResolver.#getDefaultDbServiceMethods(database.refName, className, cascade));
+    //? `create<Model>Many` came after services had written their own under that name; assigning would replace theirs.
+    const createMany = `create${className}Many`;
+    const methods = Object.entries(ServiceResolver.#getDefaultDbServiceMethods(database.refName, className, cascade));
+    Object.assign(
+      srvRef.prototype,
+      Object.fromEntries(methods.filter(([key]) => key !== createMany || !Object.hasOwn(srvRef.prototype, key))),
+    );
     DatabaseResolver.applyFilterMethods(srvRef.prototype, database, className);
     return srvRef;
   }

@@ -399,6 +399,9 @@ export class DatabaseResolver {
       async [`create${className}`](data: DataInputOf<any, any>) {
         return this.__create(data);
       }
+      async __createMany(data: DataInputOf<any, any>[]) {
+        return await timedQuery(() => this.__store.createMany(data));
+      }
       async __update(id: string, data: DataInputOf<any, any>) {
         return await timedQuery(() => this.__store.update(id, data));
       }

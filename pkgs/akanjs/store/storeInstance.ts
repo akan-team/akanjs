@@ -373,6 +373,7 @@ export class StoreInstance {
       }
     }
     for (const k of Object.keys(actions)) {
+      const silent = this.#actionOwners.get(k)?.silent === true;
       const dispatch = async (...args: unknown[]) => {
         Logger.verbose(`${k} action loading...`);
         const start = Date.now();
@@ -380,8 +381,12 @@ export class StoreInstance {
           await (this.#ctx[k] as StoreAction)(...args);
           Logger.verbose(`=> ${k} action dispatched (${Date.now() - start}ms)`);
         } catch (error) {
-          this.#showActionErrorMessage(k, error);
-          Logger.error(`${k} action error return: ${error instanceof Error ? error.message : String(error)}`);
+          const message = error instanceof Error ? error.message : String(error);
+          if (silent) Logger.verbose(`${k} action failed silently: ${message}`);
+          else {
+            this.#showActionErrorMessage(k, error);
+            Logger.error(`${k} action error return: ${message}`);
+          }
           throw error;
         }
       };

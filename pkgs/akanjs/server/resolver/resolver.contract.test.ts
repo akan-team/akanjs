@@ -15,6 +15,7 @@ import {
   type LiveChange,
   SolidPubSub,
   SolidQueue,
+  serve,
   type WebsocketAdaptor,
 } from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
@@ -1157,6 +1158,77 @@ describe("ServiceResolver declaration contracts", () => {
       queries: [{ category: "news" }, { removedAt: { kind: "op", op: "empty" } }],
     });
     expect(await service.getServerResolverTestItem(validId)).toEqual({ id: validId, title: "loaded" });
+  });
+
+  test("creates many rows in one transaction: every pre-create hook in order, one model write, then every post-create", async () => {
+    const cascade = new CascadeRunner();
+    cascade.register(serverResolverTestConstant, new DocumentSchema(), ServerResolverTestService);
+    cascade.seal(() => null as never);
+    const ServiceRef = ServiceResolver.resolveDatabaseService(
+      serverResolverTestDatabase,
+      ServerResolverTestService,
+      cascade,
+    );
+    const service = new ServiceRef() as unknown as {
+      __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
+      createServerResolverTestItemMany: (data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>;
+    };
+    const steps: string[] = [];
+    let open = false;
+    Object.assign(service, {
+      transaction: async (fn: () => Promise<unknown>) => {
+        steps.push("begin");
+        open = true;
+        try {
+          return await fn();
+        } finally {
+          open = false;
+          steps.push("commit");
+        }
+      },
+    });
+    const writes: unknown[][] = [];
+    service.__databaseModel = {
+      __createMany: async (rows: unknown) => {
+        steps.push(`write:${open}`);
+        writes.push(rows as unknown[]);
+        return (rows as Record<string, unknown>[]).map((row, idx) => ({ ...row, id: `id${idx}` }));
+      },
+    };
+
+    const created = await service.createServerResolverTestItemMany([{ title: "Alpha" }, { title: "Beta" }]);
+
+    expect(steps).toEqual(["begin", "write:true", "commit"]);
+    expect(writes).toEqual([
+      [
+        { title: "Alpha", parentPreCreate: true, childPreCreate: true },
+        { title: "Beta", parentPreCreate: true, childPreCreate: true },
+      ],
+    ]);
+    expect(created.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "id0", title: "Alpha" },
+      { id: "id1", title: "Beta" },
+    ]);
+    expect(created.every((doc) => doc.parentPostCreate && doc.childPostCreate)).toBe(true);
+    expect(await service.createServerResolverTestItemMany([])).toEqual([]);
+    expect(steps).toEqual(["begin", "write:true", "commit"]);
+  });
+
+  test("keeps a service's own create<Model>Many, written before the generated one existed", async () => {
+    class OwnBatchService extends serve(serverResolverTestDatabase, () => ({})) {
+      // @ts-expect-error A service written before the generated method takes its own arguments, and typechecks no more.
+      async createServerResolverTestItemMany(num: number) {
+        return Array.from({ length: num }, (_, idx) => ({ id: `own${idx}` }));
+      }
+    }
+    const cascade = new CascadeRunner();
+    cascade.register(serverResolverTestConstant, new DocumentSchema(), OwnBatchService);
+    cascade.seal(() => null as never);
+    const ServiceRef = ServiceResolver.resolveDatabaseService(serverResolverTestDatabase, OwnBatchService, cascade);
+    const service = new ServiceRef() as unknown as OwnBatchService & { __createMany: unknown };
+
+    expect(await service.createServerResolverTestItemMany(2)).toEqual([{ id: "own0" }, { id: "own1" }]);
+    expect(typeof service.__createMany).toBe("function");
   });
 
   test("generates a query-level write per filter, with the patch on a terminal set()", async () => {

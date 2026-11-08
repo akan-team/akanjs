@@ -371,6 +371,14 @@ export default page()
         example: "const story = await this.createStory(data);",
       },
       {
+        name: "create<Model>Many(rows)",
+        desc: l.trans({
+          en: "Creates the rows in one transaction, every `_preCreate` running before the first row is written.",
+          ko: "한 트랜잭션에서 여러 행을 생성하며, 모든 `_preCreate`가 첫 행을 쓰기 전에 실행됩니다.",
+        }),
+        example: "const chats = await this.createChatMany(rows);",
+      },
+      {
         name: "update<Model>(id, data)",
         desc: l.trans({
           en: "Applies a patch through `_preUpdate` and `_postUpdate`, then returns the document.",

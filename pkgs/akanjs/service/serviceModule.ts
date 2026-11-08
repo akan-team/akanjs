@@ -131,6 +131,20 @@ export class ServiceModel<
       async [`create${className}`](this: DatabaseService, data: DataInputOf) {
         return this.__create(data);
       },
+      async __createMany(this: DatabaseService, data: DataInputOf[]) {
+        const inputs: DataInputOf[] = [];
+        for (const row of data)
+          inputs.push((this.__libsPreCreate ? await this.__libsPreCreate(row) : await this._preCreate?.(row)) ?? row);
+        const created: Doc[] = [];
+        for (const doc of await this.__databaseModel.__createMany(inputs))
+          created.push(
+            (this.__libsPostCreate ? await this.__libsPostCreate(doc) : await this._postCreate?.(doc)) ?? doc,
+          );
+        return created;
+      },
+      async [`create${className}Many`](this: DatabaseService, data: DataInputOf[]) {
+        return this.__createMany(data);
+      },
       async __update(this: DatabaseService, id: string, data: DataInputOf) {
         const input = this.__libsPreUpdate ? await this.__libsPreUpdate(id, data) : await this._preUpdate?.(id, data);
         const doc = await this.__databaseModel.__update(id, input);

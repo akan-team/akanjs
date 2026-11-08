@@ -3,6 +3,8 @@ import { ACTION_TAG } from "akanjs/base";
 /** Which module declared an action. The dictionary node its words live in is named after it. */
 export interface ActionOwner {
   refName: string;
+  /** Listed in its store's `static silent`: a failure reaches the caller alone, with no toast. */
+  silent?: boolean;
 }
 
 export interface ActionTag {

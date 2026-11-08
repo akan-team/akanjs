@@ -1750,7 +1750,10 @@ st.set({ ticketModal: null });`}
                         No <code>try/catch</code> in an action.
                       </strong>{" "}
                       A thrown <code>Err</code> is shown as a toast for you. For a client-side check, call{" "}
-                      <code>{'msg.error("<key>")'}</code> and return early instead of throwing.
+                      <code>{'msg.error("<key>")'}</code> and return early instead of throwing. When no screen waits on
+                      an action (a token refresh), name it in the store's{" "}
+                      <code>{'static silent = ["refreshToken"] satisfies (keyof UserStore)[]'}</code>: it then shows no
+                      toast, and the caller awaits it and handles the error.
                     </span>
                   ),
                   ko: (
@@ -1759,7 +1762,9 @@ st.set({ ticketModal: null });`}
                         액션에는 <code>try/catch</code>를 쓰지 않습니다.
                       </strong>{" "}
                       던져진 <code>Err</code>는 자동으로 토스트로 표시됩니다. 클라이언트 쪽 검사가 실패하면 throw 대신{" "}
-                      <code>{'msg.error("<key>")'}</code>를 부르고 일찍 return합니다.
+                      <code>{'msg.error("<key>")'}</code>를 부르고 일찍 return합니다. 화면이 기다리지 않는 액션(토큰
+                      갱신)은 store의 <code>{'static silent = ["refreshToken"] satisfies (keyof UserStore)[]'}</code>에
+                      이름을 적습니다. 그러면 토스트 없이, 액션을 기다린 호출부가 에러를 직접 처리합니다.
                     </span>
                   ),
                 })}

@@ -41,7 +41,7 @@ export class MaintainabilityReport {
     "akan.write.placement":
       "A server write leaves the browser through one store action, started by one module component. Move a `fetch.<mutation>` into a store action, and hand `ui/` and `webkit/` code the write as an `onX` prop or hook argument from the module's `Zone` or `Util`: they stay free of any one model, and an agent or another screen reaches the write through the store.",
     "akan.service.call-in-loop":
-      "Load the set once (`load<Model>Many(ids)`, one filter query) or write it once (one batch method), then loop in memory: a call per item is a round trip per item, so the endpoint slows as its input grows.",
+      "Load the set once (`load<Model>Many(ids)`, one filter query) or write it once (`create<Model>Many(rows)`, one batch method), then loop in memory: a call per item is a round trip per item, so the endpoint slows as its input grows.",
     "akan.baseline.growth":
       "Restore the entry from the default branch, then split the file or move the writes instead: `akan lint` lowers an entry as the code shrinks and never raises one.",
   };

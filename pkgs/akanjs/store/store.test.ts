@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { ACTION_META, DataList, Int, SLICE_META, STATE_DERIVED_META, STATE_INIT_META, STATE_META } from "akanjs/base";
 import { Translator } from "akanjs/client/translator";
 import { ConstantRegistry, MAX_PAGE_SIZE, via } from "akanjs/constant";
@@ -287,6 +287,51 @@ describe("StoreInstance runtime", () => {
     expect(instance.get().messages).toEqual([
       { content: "Blocked Ada", type: "error", key: "failWithTranslatedError", duration: 3 },
     ]);
+  });
+
+  test("a silent action rejects with its own error and shows no toast, while its siblings still show theirs", async () => {
+    setupEnv();
+    const refused = new Error("silentTest.error.revokedRefreshToken");
+    class SilentMessageStore extends store("silentMessage" as const, () => ({
+      messages: [] as { content: string; key: string }[],
+    })) {
+      static silent = ["refreshQuietly"] satisfies (keyof SilentMessageStore)[];
+      showMessage(message: { content: string; key: string }) {
+        this.set({ messages: [...this.get().messages, { content: message.content, key: message.key }] });
+      }
+      async refreshQuietly() {
+        throw refused;
+      }
+      async failLoudly() {
+        throw new Error("silentTest.error.loud");
+      }
+    }
+    StoreRegistry.register(SilentMessageStore);
+    const instance = new StoreInstance(makeRoot("silentMessageRoot", SilentMessageStore));
+
+    await expect(instance.do.refreshQuietly()).rejects.toBe(refused);
+    expect(instance.get().messages).toEqual([]);
+    await expect(instance.do.failLoudly()).rejects.toThrow("silentTest.error.loud");
+    expect(instance.get().messages).toMatchObject([{ key: "failLoudly" }]);
+  });
+
+  test("a static silent name that is no action of the store is reported at registration", () => {
+    setupEnv();
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      class MisnamedSilentStore extends store("misnamedSilent" as const, () => ({ count: 0 })) {
+        static silent = ["refreshQuitely"];
+        async refreshQuietly() {
+          return;
+        }
+      }
+      StoreRegistry.register(MisnamedSilentStore);
+      expect(warn.mock.calls.map(([message]) => String(message))).toEqual([
+        "[misnamedSilentStore] static silent names refreshQuitely, which is not an action of the store.",
+      ]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("hydrates and syncs persist/session storage and materializes search params only in browser", () => {

@@ -25,8 +25,9 @@ description: "Write filters, slices and list loading: query descriptors, init pa
   `purgeMany`, for data past retention.
 - A filter's `remove*` / `update*`, `updateById` and `removeById` run no hooks and no cascade. A model with a
   cascade or `_postRemove` removes through `remove<Model>(id)`.
-- Load a set once (`load<Model>Many`, one filter query) instead of one call per item in a loop — lint fails a
-  per-item service call an endpoint reaches.
+- Load a set once (`load<Model>Many`, one filter query) and create one with `create<Model>Many(rows)` instead of one
+  call per item in a loop — lint fails a per-item service call an endpoint reaches. `create<Model>Many` runs every
+  row's `_preCreate` before writing any, so a check there does not see the batch's own rows.
 
 ## Search and cascade
 
