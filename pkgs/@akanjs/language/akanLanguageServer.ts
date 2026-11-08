@@ -1,4 +1,4 @@
-import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
+import { type Dirent, existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -23,6 +23,7 @@ interface Position {
 interface PositionParams {
   textDocument: { uri: string };
   position: Position;
+  context?: { includeDeclaration?: boolean };
 }
 
 interface InitializeParams {
@@ -30,7 +31,7 @@ interface InitializeParams {
   rootPath?: string | null;
   workspaceFolders?: { uri: string }[] | null;
   capabilities?: {
-    workspace?: { didChangeWatchedFiles?: { dynamicRegistration?: boolean } };
+    workspace?: { didChangeWatchedFiles?: { dynamicRegistration?: boolean; relativePatternSupport?: boolean } };
     textDocument?: { hover?: { contentFormat?: string[] } };
   };
 }
@@ -41,8 +42,9 @@ interface WorkspaceRoot {
 }
 
 const systemKinds = ["apps", "libs"];
-const skippedDirs = new Set(["node_modules", "dist", ".akan"]);
-const indexedPath = /^(apps|libs)\/(?!(?:.*\/)?(?:node_modules|dist|\.akan)\/).*\.tsx?$/;
+const isSkippedDir = (name: string) => name === "node_modules" || name === "dist" || name.startsWith(".");
+const indexedPath = /^(apps|libs)\/(?!(?:.*\/)?(?:node_modules|dist|\.[^/]*)\/).*\.tsx?$/;
+const sourceGlob = "{apps,libs}/**/*.{ts,tsx}";
 const editDelayMs = 150;
 const filesPerYield = 200;
 const infoMessage = 3;
@@ -64,25 +66,43 @@ const fileOf = (uri: string) => {
   }
 };
 
+const isAkanRoot = (dir: string) =>
+  systemKinds.some((kind) => {
+    try {
+      return readdirSync(path.join(dir, kind)).some((system) =>
+        existsSync(path.join(dir, kind, system, "akan.config.ts")),
+      );
+    } catch {
+      return false;
+    }
+  });
+
 const workspaceRootOf = (dir: string): string | null => {
   const parent = path.dirname(dir);
-  if (systemKinds.some((kind) => isDirectory(path.join(dir, kind)))) return dir;
+  if (isAkanRoot(dir)) return dir;
   return parent === dir ? null : workspaceRootOf(parent);
 };
 
+const caseOf = (fileName: string) => (process.platform === "win32" ? fileName.toLowerCase() : fileName);
+
 const sourceFilesOf = (root: string) => {
   const found: string[] = [];
+  const visited = new Set<string>();
   const walk = (dir: string) => {
     let entries: Dirent[];
     try {
+      const real = realpathSync(dir);
+      if (visited.has(real)) return;
+      visited.add(real);
       entries = readdirSync(dir, { withFileTypes: true });
     } catch {
       return;
     }
     for (const entry of entries) {
       const at = path.join(dir, entry.name);
-      if (entry.isDirectory() && !skippedDirs.has(entry.name)) walk(at);
-      else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(at);
+      const isDir = entry.isDirectory() || (entry.isSymbolicLink() && isDirectory(at));
+      if (isDir && !isSkippedDir(entry.name)) walk(at);
+      else if (!isDir && /\.tsx?$/.test(entry.name)) found.push(at);
     }
   };
   for (const kind of systemKinds) walk(path.join(root, kind));
@@ -97,13 +117,12 @@ const offsetAt = (text: string, { line, character }: Position) => {
   return Math.min(start + character, end);
 };
 
-const locationOf = (span: AkanSpan) => ({
-  uri: pathToFileURL(span.fileName).href,
-  range: {
-    start: { line: span.line, character: span.character },
-    end: { line: span.endLine, character: span.endCharacter },
-  },
-});
+//? TypeScript also breaks lines at U+2028 and U+2029 and LSP does not, so ranges are counted here, not taken from spans.
+const positionAt = (text: string, offset: number): Position => {
+  const breaks = [...text.slice(0, offset).matchAll(/\r\n|\r|\n/g)];
+  const last = breaks.at(-1);
+  return { line: breaks.length, character: last ? offset - last.index - last[0].length : offset };
+};
 
 const escapeMarkdown = (text: string) => text.replace(/[\\`*_{}[\]()#+\-.!|<>]/g, "\\$&");
 
@@ -119,7 +138,9 @@ export class AkanLanguageServer {
   readonly #pendingEdits = new Map<string, ReturnType<typeof setTimeout>>();
   #roots: WorkspaceRoot[] = [];
   #ready: Promise<void> = Promise.resolve();
+  #queue: Promise<void> = Promise.resolve();
   #watchesFiles: boolean = false;
+  #watchesRelative: boolean = false;
   #hoversMarkdown: boolean = true;
   #isInitialized: boolean = false;
   #isShutdown: boolean = false;
@@ -131,10 +152,15 @@ export class AkanLanguageServer {
     input.on("end", () => this.#stop());
   }
 
-  #handle({ id, method, params }: LspMessage) {
+  //? One message at a time: a request waiting on the first index must not see a didChange that was sent after it.
+  #handle(message: LspMessage) {
+    this.#queue = this.#queue.then(() => this.#process(message)).catch((error: unknown) => this.#log(messageOf(error)));
+  }
+
+  async #process({ id, method, params }: LspMessage) {
     if (method === undefined) return;
-    if (id === undefined || id === null) this.#notified(method, params);
-    else void this.#answer(id, method, params);
+    if (id !== undefined && id !== null) return await this.#answer(id, method, params);
+    if (this.#isInitialized || method === "exit") this.#notified(method, params);
   }
 
   async #answer(id: LspId, method: string, params: unknown) {
@@ -198,11 +224,13 @@ export class AkanLanguageServer {
 
   #initialize(params: InitializeParams) {
     this.#isInitialized = true;
-    this.#watchesFiles = params.capabilities?.workspace?.didChangeWatchedFiles?.dynamicRegistration === true;
+    const watched = params.capabilities?.workspace?.didChangeWatchedFiles;
+    this.#watchesFiles = watched?.dynamicRegistration === true;
+    this.#watchesRelative = watched?.relativePatternSupport === true;
     this.#hoversMarkdown = params.capabilities?.textDocument?.hover?.contentFormat?.includes("markdown") ?? true;
-    const given = params.workspaceFolders?.map((folder) => fileOf(folder.uri)) ?? [
-      params.rootUri ? fileOf(params.rootUri) : (params.rootPath ?? null),
-    ];
+    const given = params.workspaceFolders?.length
+      ? params.workspaceFolders.map((folder) => fileOf(folder.uri))
+      : [params.rootUri ? fileOf(params.rootUri) : (params.rootPath ?? null)];
     const roots = new Set(given.flatMap((dir) => (dir ? [workspaceRootOf(path.resolve(dir))] : [])));
     this.#roots = [...roots]
       .flatMap((root) => (root ? [{ root, index: new AkanIndex({ ts: this.#ts, root }) }] : []))
@@ -240,13 +268,13 @@ export class AkanLanguageServer {
 
   #watch() {
     if (!this.#watchesFiles || !this.#roots.length) return;
+    //? A plain pattern is matched only inside the editor's own folders, which may sit below the indexed root.
+    const watchers = this.#watchesRelative
+      ? this.#roots.map(({ root }) => ({ globPattern: { baseUri: pathToFileURL(root).href, pattern: sourceGlob } }))
+      : [{ globPattern: `**/${sourceGlob}` }];
     this.#connection.request("client/registerCapability", {
       registrations: [
-        {
-          id: "akan-source-files",
-          method: "workspace/didChangeWatchedFiles",
-          registerOptions: { watchers: [{ globPattern: "**/{apps,libs}/**/*.{ts,tsx}" }] },
-        },
+        { id: "akan-source-files", method: "workspace/didChangeWatchedFiles", registerOptions: { watchers } },
       ],
     });
   }
@@ -272,7 +300,22 @@ export class AkanLanguageServer {
   };
 
   #rootOf(fileName: string) {
-    return this.#roots.find(({ root }) => fileName.startsWith(`${root}${path.sep}`)) ?? null;
+    return this.#roots.find(({ root }) => caseOf(fileName).startsWith(caseOf(`${root}${path.sep}`))) ?? null;
+  }
+
+  #locationsOf(spans: AkanSpan[]) {
+    const texts = new Map<string, string | undefined>();
+    return spans.map(({ fileName, start, end, line, character, endLine, endCharacter }) => {
+      if (!texts.has(fileName)) texts.set(fileName, this.#readText(fileName));
+      const text = texts.get(fileName);
+      return {
+        uri: pathToFileURL(fileName).href,
+        range:
+          text === undefined
+            ? { start: { line, character }, end: { line: endLine, character: endCharacter } }
+            : { start: positionAt(text, start), end: positionAt(text, end) },
+      };
+    });
   }
 
   #update(fileName: string) {
@@ -346,21 +389,28 @@ export class AkanLanguageServer {
 
   async #definition(params: PositionParams) {
     const at = await this.#locate(params);
-    return at?.entry.index.definitionAt(at.fileName, at.text, at.offset).map((target) => locationOf(target.span));
+    return (
+      at && this.#locationsOf(at.entry.index.definitionAt(at.fileName, at.text, at.offset).map(({ span }) => span))
+    );
   }
 
   async #references(params: PositionParams) {
     const at = await this.#locate(params);
-    return at?.entry.index.referencesAt(at.fileName, at.offset, this.#readText).map(locationOf);
+    if (!at) return null;
+    const uses = at.entry.index.referencesAt(at.fileName, at.offset, this.#readText);
+    const key =
+      params.context?.includeDeclaration && uses.length ? at.entry.index.sourceKeyAt(at.fileName, at.offset) : null;
+    return this.#locationsOf(key ? [key.span, ...uses] : uses);
   }
 
   async #hover(params: PositionParams) {
     const at = await this.#locate(params);
     const hover = at?.entry.index.hoverAt(at.fileName, at.text, at.offset);
     if (!at || !hover) return null;
-    const lineOf = (target: AkanTarget) => {
+    const lines = this.#locationsOf(hover.targets.map(({ span }) => span)).map(({ range }) => range.start.line + 1);
+    const lineOf = (target: AkanTarget, idx: number) => {
       const summary = [target.label, ...target.detail].join(" · ");
-      const where = `${path.relative(at.entry.root, target.span.fileName).split(path.sep).join("/")}:${target.span.line + 1}`;
+      const where = `${path.relative(at.entry.root, target.span.fileName).split(path.sep).join("/")}:${lines[idx]}`;
       return this.#hoversMarkdown
         ? `**akan** · ${escapeMarkdown(summary)} — \`${where}\``
         : `akan · ${summary} — ${where}`;

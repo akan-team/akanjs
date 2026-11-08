@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import { AkanLanguageServer } from "./akanLanguageServer";
 import { LspConnection, type LspMessage } from "./lspConnection";
@@ -45,6 +45,7 @@ export default async function Page() {
   return memoListInPublic;
 }
 `,
+  "apps/demo/akan.config.ts": "export default {};\n",
   "apps/demo/node_modules/pkg/memo.signal.ts": "export const ignored = 1;\n",
 };
 
@@ -89,7 +90,8 @@ const startServer = () => {
   });
   const linesOf = (message: LspMessage) =>
     (message.result as { uri: string; range: { start: { line: number } } }[]).map(
-      ({ uri, range }) => `${path.relative(root, new URL(uri).pathname)}:${range.start.line + 1}`,
+      ({ uri, range }) =>
+        `${path.relative(root, fileURLToPath(uri)).split(path.sep).join("/")}:${range.start.line + 1}`,
     );
   return { client, call, at, linesOf, received, exits, input: toServer };
 };
@@ -182,6 +184,120 @@ describe("AkanLanguageServer", () => {
     } finally {
       writeFileSync(path.join(root, signal), files[signal]);
     }
+  });
+
+  it("answers a request against the buffer it was sent with, not a later edit", async () => {
+    const server = startServer();
+    await server.call("initialize", { rootUri: pathToFileURL(root).href, capabilities: {} });
+    server.client.notify("textDocument/didOpen", {
+      textDocument: { uri: uriOf(page), languageId: "typescriptreact", version: 1, text: files[page] },
+    });
+    const asked = server.call("textDocument/definition", server.at(page, "initMemoInPublic"));
+    server.client.notify("textDocument/didChange", {
+      textDocument: { uri: uriOf(page), version: 2 },
+      contentChanges: [{ text: `\n\n${files[page]}` }],
+    });
+    expect(server.linesOf(await asked)).toEqual([`${signal}:4`]);
+  });
+
+  it("logs a malformed notification and keeps serving", async () => {
+    const server = startServer();
+    await initialize(server);
+    server.client.notify("textDocument/didClose", {});
+    const found = await server.call("textDocument/definition", server.at(page, "initMemoInPublic"));
+    expect(server.linesOf(found)).toEqual([`${signal}:4`]);
+    expect(server.exits).toEqual([]);
+    expect(server.received.filter(({ method }) => method === "window/logMessage").length).toBeGreaterThan(1);
+  });
+
+  it("watches each indexed root by a relative pattern when the editor's folder sits below it", async () => {
+    const server = startServer();
+    await initialize(server, {
+      rootUri: null,
+      workspaceFolders: [{ uri: uriOf("apps/demo") }],
+      capabilities: {
+        workspace: { didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true } },
+      },
+    });
+    await server.call("textDocument/hover", server.at(page, "initMemoInPublic"));
+    expect(server.received.find(({ method }) => method === "client/registerCapability")?.params).toEqual({
+      registrations: [
+        {
+          id: "akan-source-files",
+          method: "workspace/didChangeWatchedFiles",
+          registerOptions: {
+            watchers: [{ globPattern: { baseUri: pathToFileURL(root).href, pattern: "{apps,libs}/**/*.{ts,tsx}" } }],
+          },
+        },
+      ],
+    });
+  });
+
+  it("indexes only a folder whose apps or libs hold an akan.config.ts", async () => {
+    const plain = realpathSync(mkdtempSync(path.join(tmpdir(), "akan-lsp-plain-")));
+    mkdirSync(path.join(plain, "apps/web/lib/memo"), { recursive: true });
+    writeFileSync(path.join(plain, "apps/web/lib/memo/memo.signal.ts"), files[signal]);
+    try {
+      const server = startServer();
+      await initialize(server, { rootUri: pathToFileURL(plain).href });
+      const found = await server.call("textDocument/references", {
+        textDocument: { uri: pathToFileURL(path.join(plain, "apps/web/lib/memo/memo.signal.ts")).href },
+        position: positionOf(files[signal], "inPublic:"),
+      });
+      expect(found.result).toBeNull();
+    } finally {
+      rmSync(plain, { recursive: true, force: true });
+    }
+  });
+
+  it("follows a symlinked module folder, includes the declaration on request, and counts LSP line breaks", async () => {
+    const linked = realpathSync(mkdtempSync(path.join(tmpdir(), "akan-lsp-linked-")));
+    const commented = files[signal].replace("export class", "// a\u2028b\nexport class");
+    mkdirSync(path.join(linked, "memo"), { recursive: true });
+    writeFileSync(path.join(linked, "memo/memo.signal.ts"), commented);
+    mkdirSync(path.join(root, "apps/linked/lib"), { recursive: true });
+    writeFileSync(path.join(root, "apps/linked/akan.config.ts"), "export default {};\n");
+    symlinkSync(path.join(linked, "memo"), path.join(root, "apps/linked/lib/memo"), "dir");
+    const linkedPage = "apps/linked/page/memo.tsx";
+    mkdirSync(path.join(root, "apps/linked/page"), { recursive: true });
+    writeFileSync(path.join(root, linkedPage), files[page].replace("@apps/demo", "@apps/linked"));
+    try {
+      const server = startServer();
+      await initialize(server);
+      const found = await server.call(
+        "textDocument/definition",
+        server.at(linkedPage, "initMemoInPublic", files[page]),
+      );
+      expect(server.linesOf(found)).toEqual(["apps/linked/lib/memo/memo.signal.ts:5"]);
+      const linkedSignal = "apps/linked/lib/memo/memo.signal.ts";
+      const uses = await server.call("textDocument/references", {
+        ...server.at(linkedSignal, "inPublic:", commented),
+        context: { includeDeclaration: true },
+      });
+      expect(server.linesOf(uses)).toEqual([`${linkedSignal}:5`, `${linkedPage}:3`, `${linkedPage}:3`]);
+    } finally {
+      rmSync(path.join(root, "apps/linked"), { recursive: true, force: true });
+      rmSync(linked, { recursive: true, force: true });
+    }
+  });
+
+  it("runs as a bin that speaks LSP on stdio only when asked to", async () => {
+    const entry = path.join(import.meta.dir, "server.ts");
+    const refused = Bun.spawnSync([process.execPath, entry], { stderr: "pipe" });
+    expect(refused.exitCode).toBe(2);
+    const child = Bun.spawn([process.execPath, entry, "--stdio"], { stdin: "pipe", stdout: "pipe" });
+    const frame = (message: object) => {
+      const body = Buffer.from(JSON.stringify({ jsonrpc: "2.0", ...message }));
+      return Buffer.concat([Buffer.from(`Content-Length: ${body.length}\r\n\r\n`), body]);
+    };
+    child.stdin.write(frame({ id: 1, method: "initialize", params: { rootUri: pathToFileURL(root).href } }));
+    child.stdin.write(frame({ id: 2, method: "shutdown" }));
+    child.stdin.write(frame({ method: "exit" }));
+    await child.stdin.end();
+    expect(await child.exited).toBe(0);
+    const output = await new Response(child.stdout).text();
+    expect(output).toContain('"name":"akan-language-server"');
+    expect(output).toContain('{"jsonrpc":"2.0","id":2,"result":null}');
   });
 
   it("refuses requests before initialize and unknown methods, and exits by the shutdown it saw", async () => {

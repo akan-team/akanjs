@@ -45,14 +45,21 @@ ES module과 CommonJS로 배포하며, 런타임 의존성은 없습니다.
 
 `akan-language-server --stdio`는 같은 색인을 LSP로 냅니다. Akan 확장이 있는 VS Code와 Cursor 말고 다른 에디터를
 위한 것입니다. TypeScript 서버 옆에 띄우면 에디터가 두 서버의 답을 합쳐 줍니다. 정의, hover, 참조를 답합니다.
-에디터의 루트나 그 위에서 `apps/` 또는 `libs/`를 가진 폴더를 색인합니다. 에디터가 watched-file 등록을 지원하면
-디스크에서 바뀐 파일도 다시 읽습니다.
+에디터의 루트나 그 위에서 가장 가까운, `apps/*`나 `libs/*`에 `akan.config.ts`가 있는 폴더를 색인합니다. 에디터가
+watched-file 등록을 지원하면 디스크에서 바뀐 파일도 다시 읽습니다.
 
-Neovim 0.11:
+설치 절처럼 워크스페이스에 추가해서 bin이 `node_modules/.bin`에 들어가게 하세요. 그러면 `bunx --no-install`이 그
+사본을 실행하고, 레지스트리에서 받아 오지 않습니다.
+
+Neovim 0.11 이상:
 
 ```lua
 vim.lsp.config("akan", {
-  cmd = { "bunx", "akan-language-server", "--stdio" },
+  cmd = function(dispatchers, config)
+    return vim.lsp.rpc.start({ "bunx", "--no-install", "akan-language-server", "--stdio" }, dispatchers, {
+      cwd = config.root_dir,
+    })
+  end,
   filetypes = { "typescript", "typescriptreact" },
   root_markers = { "bun.lock" },
 })
@@ -64,7 +71,7 @@ Helix의 `languages.toml`:
 ```toml
 [language-server.akan]
 command = "bunx"
-args = ["akan-language-server", "--stdio"]
+args = ["--no-install", "akan-language-server", "--stdio"]
 
 [[language]]
 name = "typescript"
