@@ -156,12 +156,13 @@ worker per web-serving replica.
   and neither does a save in a sibling app. An import that makes a new lib a dependency needs a fresh
   `akan start`, because it needs a `sync` first anyway. Before the first `sync` the manifests do not exist yet and
   the whole `libs/` container is watched, which is the safe direction.
-- **A built artifact runs from the generated app directory** with the Akan runtime environment variables:
+- **A built artifact runs from the generated app directory, without Docker and without an env.** `akan build`
+  writes `akan.env.json` beside `main.js` with the values the Dockerfile's `ENV` lines set, and `main.js` takes
+  each one the process was not started with, so a variable you set (or the image's `ENV`) wins. Start it from that
+  directory: the runtime reads its artifacts and writes `runtime/` and SQLite files relative to the cwd.
 
   ```bash
-  cd dist/apps/<appName> && USE_AKANJS_PKGS=true AKAN_PUBLIC_REPO_NAME=<repo> AKAN_PUBLIC_SERVE_DOMAIN="<domain>" \
-    AKAN_PUBLIC_APP_NAME=<appName> AKAN_PUBLIC_ENV=local AKAN_PUBLIC_OPERATION_MODE=local SERVER_MODE=federation \
-    AKAN_PUBLIC_BASE_PATHS=<basePaths> bun main.js
+  cd dist/apps/<appName> && PORT=3100 bun main.js
   ```
 
 - **A server a test boots in-process takes `start({ listen: false, schedules: false })`** to run no internal
@@ -394,11 +395,11 @@ const config: AppConfig = {
 A desktop app whose `native` section, or target, declares `desktop: { server: true }` carries the app's server:
 `akan build-desktop`, `start-desktop --release` and `publish-update` put the backend `akan build` made into the
 app — everything the backend build wrote (the `.js`, `akan.build.json`, `private/`, a bundled package's `.node`,
-`.wasm` or file asset) but the Dockerfile, the RSC worker, the console, `csr/` and `public/` — and install its
-packages first with `bun install --production --prefer-offline`, before `akan build` runs. `start-desktop` without
-`--release` starts `akan start` beside the app when no dev server of this checkout answers. The setting is the
-app's backend, so it does not change under an installed app: an update whose release carries a server when the app
-has none, or none when it has one, is refused, and switching means a reinstall.
+`.wasm` or file asset) but the Dockerfile and its `akan.env.json`, the RSC worker, the console, `csr/` and
+`public/` — and install its packages first with `bun install --production --prefer-offline`, before `akan build`
+runs. `start-desktop` without `--release` starts `akan start` beside the app when no dev server of this checkout
+answers. The setting is the app's backend, so it does not change under an installed app: an update whose release
+carries a server when the app has none, or none when it has one, is refused, and switching means a reinstall.
 `desktop: { server: { omit: ["rclnodejs"] } }` carries the server without packages only the image needs — an addon
 tied to the image's system, code only a process the app never starts loads — and whatever only they pull in; the
 image keeps them, and the server's own bundle must not import them. A package another dependency still installs

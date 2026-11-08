@@ -150,6 +150,11 @@
       "types": "./server/lifecycle/portInUse.ts",
       "default": "./server/lifecycle/portInUse.ts"
     },
+    "./server/lifecycle/buildEnv": {
+      "import": "./server/lifecycle/buildEnv.ts",
+      "types": "./server/lifecycle/buildEnv.ts",
+      "default": "./server/lifecycle/buildEnv.ts"
+    },
     "./server/artifact/routeSeedIndexStore": {
       "import": "./server/artifact/routeSeedIndexStore.ts",
       "types": "./server/artifact/routeSeedIndexStore.ts",

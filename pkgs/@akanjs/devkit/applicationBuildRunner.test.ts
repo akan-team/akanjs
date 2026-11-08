@@ -84,6 +84,42 @@ console.info(new SampleService().name);
     }
   });
 
+  test("writes beside main.js the env its Dockerfile sets, so a host without the image runs the build as is", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akan-build-meta-"));
+    const config = new AkanAppConfig(
+      { name: "portal" } as never,
+      [],
+      { name: "repo", version: "1.0.0", description: "repo" },
+      {},
+      { repoName: "akanjs", serveDomain: "akanjs.com", env: "local", portOffset: 0, workspaceRoot: root },
+    );
+    const app = {
+      getConfig: async () => config,
+      dist: new Executor("dist", root),
+      workspace: { workspaceRoot: root },
+      logger: { warn: () => undefined },
+    } as unknown as App;
+    const builtEnv = async () => JSON.parse(await readFile(path.join(root, "akan.env.json"), "utf8")) as object;
+    const dockerfileEnv = async () =>
+      Object.fromEntries(
+        (await readFile(path.join(root, "Dockerfile"), "utf8"))
+          .split("\n")
+          .filter((line) => line.startsWith("ENV "))
+          .map((line) => line.slice("ENV ".length).split(/=(.*)/s).slice(0, 2)),
+      );
+    try {
+      await new ApplicationBuildRunner(app, { environment: "debug" }).buildAppMeta();
+      expect(await builtEnv()).toEqual(config.getProductionEnv("debug"));
+      expect(await builtEnv()).toEqual(await dockerfileEnv());
+      expect(await builtEnv()).toMatchObject({ AKAN_PUBLIC_APP_NAME: "portal", AKAN_PUBLIC_ENV: "debug" });
+      await new ApplicationBuildRunner(app).buildAppMeta();
+      expect(await builtEnv()).toMatchObject({ AKAN_PUBLIC_ENV: "local" });
+      expect(await builtEnv()).toEqual(await dockerfileEnv());
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("writes the pruned lockfile beside package.json, or warns and leaves the image's install unlocked", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "akan-build-meta-"));
     const config = new AkanAppConfig(
