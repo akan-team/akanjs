@@ -19,7 +19,7 @@ describe("studioRuntime", () => {
     const host = (origin: string) =>
       window.dispatchEvent(
         new MessageEvent("message", {
-          data: { type: "akan-studio:host" },
+          data: { type: "akan-studio:host", accepts: ["open", "workflow", "module"] },
           origin,
           source: parent as unknown as Window,
         }),
@@ -47,13 +47,11 @@ describe("studioRuntime", () => {
     Object.defineProperty(window, "parent", { value: parent, configurable: true });
     document.body.innerHTML = `${bar}${diagram}`;
     studioRuntime();
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        data: { type: "akan-studio:host" },
-        origin: "vscode-webview://panel",
-        source: parent as unknown as Window,
-      }),
-    );
+    document.querySelector("rect")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(buttons()).toEqual(["Add field"]);
+    hostWith(parent, ["open", "workflow", "module"]);
+    expect(buttons()).toEqual(["Open module", "Add field"]);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(buttons()).toEqual(["New module"]);
     document.querySelector("rect")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(buttons()).toEqual(["Open module", "Add field"]);
@@ -70,6 +68,27 @@ describe("studioRuntime", () => {
     });
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(buttons()).toEqual(["New module"]);
+  });
+
+  test("leaves a host that lists nothing to source links, and copies the workflow command there", async () => {
+    const posted: { type: string }[] = [];
+    const parent = { postMessage: (message: { type: string }) => posted.push(message) };
+    Object.defineProperty(window, "parent", { value: parent, configurable: true });
+    const copied: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: async (text: string) => void copied.push(text) },
+      configurable: true,
+    });
+    document.body.innerHTML = `${bar}${diagram}`;
+    studioRuntime();
+    hostWith(parent);
+    document.querySelector("rect")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(buttons()).toEqual(["Add field"]);
+    document.querySelector<HTMLButtonElement>("[data-studio-actions] button")?.click();
+    await Promise.resolve();
+    expect(copied).toEqual([addField.command]);
+    expect(posted.map(({ type }) => type)).toContain("akan-studio:ready");
+    expect(posted.filter(({ type }) => type !== "akan-studio:ready")).toEqual([]);
   });
 
   test("copies the workflow command in a browser, where no editor runs it", async () => {
@@ -105,6 +124,14 @@ const addField = {
   inputs: { app: "demo", module: "memo" },
   command: "akan workflow plan add-field --app demo --module memo --field <field> --type <type>",
 };
+const hostWith = (parent: object, accepts?: string[]) =>
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      data: { type: "akan-studio:host", ...(accepts ? { accepts } : {}) },
+      origin: "vscode-webview://panel",
+      source: parent as unknown as Window,
+    }),
+  );
 const attribute = (value: unknown) => JSON.stringify(value).replace(/"/g, "&quot;");
 const bar = `<div data-studio-actions="" data-label="demo" data-actions="${attribute([newModule])}"></div>`;
 const diagram = `<svg data-studio=""><g data-node="model:apps/demo:memo" data-label="Memo" data-actions="${attribute([openModule, addField])}">

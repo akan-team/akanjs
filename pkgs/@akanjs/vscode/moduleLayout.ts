@@ -14,6 +14,7 @@ export interface EditorGrid {
 
 const roles = ["constant", "dictionary", "document", "service", "signal", "store"] as const;
 const systemKinds = ["apps", "libs"] as const;
+const segment = /^[A-Za-z0-9][\w-]{0,63}$/;
 
 const isDirectory = (dir: string) => existsSync(dir) && statSync(dir).isDirectory();
 
@@ -27,12 +28,13 @@ export class ModuleLayout {
   static #folderAt(lib: string, system: string, folder: string, scalar?: string): ModuleFolder | null {
     const isScalar = folder === "__scalar";
     const name = isScalar ? scalar : folder;
-    if (!name || name.includes(".")) return null;
+    if (!name || name.includes(".") || (!isScalar && folder.startsWith("__"))) return null;
     const dir = isScalar ? path.join(lib, folder, name) : path.join(lib, folder);
     return isDirectory(dir) ? { dir, name: name.replace(/^_+/, ""), system } : null;
   }
 
   static folderFor(root: string, system: string, module: string): ModuleFolder | null {
+    if (!segment.test(system) || !segment.test(module)) return null;
     for (const kind of systemKinds)
       for (const folder of [module, `_${module}`, path.join("__scalar", module)]) {
         const dir = path.join(root, kind, system, "lib", folder);
@@ -68,13 +70,13 @@ export class ModuleLayout {
     return roles.map((role) => path.join(dir, `${name}.${role}.ts`)).filter((file) => existsSync(file));
   }
 
-  static gridOf(count: number): EditorGrid {
-    if (count <= 3) return { orientation: 0, groups: Array.from({ length: Math.max(count, 1) }, () => ({})) };
-    return {
-      orientation: 0,
-      groups: Array.from({ length: Math.ceil(count / 2) }, (_, idx) => ({
-        groups: idx * 2 + 1 < count ? [{}, {}] : [{}],
-      })),
-    };
+  static gridOf(count: number, { besideStudio = false } = {}): EditorGrid {
+    const files =
+      count <= 3
+        ? Array.from({ length: Math.max(count, 1) }, () => ({}))
+        : Array.from({ length: Math.ceil(count / 2) }, (_, idx) => ({
+            groups: idx * 2 + 1 < count ? [{}, {}] : [{}],
+          }));
+    return { orientation: 0, groups: besideStudio ? [...files, {}] : files };
   }
 }

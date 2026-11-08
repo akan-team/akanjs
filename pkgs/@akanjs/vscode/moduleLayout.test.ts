@@ -18,6 +18,7 @@ beforeAll(async () => {
   for (const role of ["dictionary", "service", "signal"]) await touch(`apps/demo/lib/_oauth/oauth.${role}.ts`);
   for (const role of ["constant", "dictionary"]) await touch(`libs/shared/lib/__scalar/geo/geo.${role}.ts`);
   await touch("apps/demo/lib/cnst.ts");
+  await touch("apps/demo/lib/__lib/lib.constant.ts");
   await mkdir(path.join(root, "apps/demo/lib/empty"), { recursive: true });
 });
 afterAll(async () => {
@@ -36,6 +37,7 @@ describe("ModuleLayout", () => {
       path.join(root, "libs/shared/lib/__scalar/geo"),
     );
     expect(ModuleLayout.folderOf(root, path.join(root, "apps/demo/lib/cnst.ts"))).toBeNull();
+    expect(ModuleLayout.folderOf(root, path.join(root, "apps/demo/lib/__lib/lib.constant.ts"))).toBeNull();
     expect(ModuleLayout.folderOf(root, path.join(root, "apps/demo/page/_index.tsx"))).toBeNull();
     expect(ModuleLayout.folderOf(root, path.join(root, "../elsewhere/apps/demo/lib/memo/memo.store.ts"))).toBeNull();
   });
@@ -60,6 +62,13 @@ describe("ModuleLayout", () => {
     expect(ModuleLayout.folderFor(root, "demo", "ghost")).toBeNull();
   });
 
+  test("takes only plain names, so no argument reaches outside lib/ or a generated folder", () => {
+    expect(ModuleLayout.folderFor(root, "demo", "_lib")).toBeNull();
+    expect(ModuleLayout.folderFor(root, "demo", "_oauth")).toBeNull();
+    expect(ModuleLayout.folderFor(root, "../../demo", "memo")).toBeNull();
+    expect(ModuleLayout.folderFor(root, "demo", "../memo")).toBeNull();
+  });
+
   test("lists every module with files to open", () => {
     expect(ModuleLayout.modulesOf(root).map(({ system, name }) => `${system}/${name}`)).toEqual([
       "demo/oauth",
@@ -75,5 +84,11 @@ describe("ModuleLayout", () => {
       groups: [{ groups: [{}, {}] }, { groups: [{}, {}] }, { groups: [{}, {}] }],
     });
     expect(ModuleLayout.gridOf(5).groups.at(-1)).toEqual({ groups: [{}] });
+    expect(ModuleLayout.gridOf(2, { besideStudio: true })).toEqual({ orientation: 0, groups: [{}, {}, {}] });
+    expect(ModuleLayout.gridOf(4, { besideStudio: true }).groups).toEqual([
+      { groups: [{}, {}] },
+      { groups: [{}, {}] },
+      {},
+    ]);
   });
 });

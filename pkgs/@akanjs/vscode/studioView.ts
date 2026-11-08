@@ -41,7 +41,8 @@ const isPosition = (value: unknown): value is number => Number.isInteger(value) 
 const relay = (origin: string) => `
 const vscode = acquireVsCodeApi();
 const frame = document.querySelector("iframe");
-frame.addEventListener("load", () => frame.contentWindow?.postMessage({ type: "akan-studio:host" }, ${JSON.stringify(origin)}));
+const host = { type: "akan-studio:host", accepts: ["open", "workflow", "module"] };
+frame.addEventListener("load", () => frame.contentWindow?.postMessage(host, ${JSON.stringify(origin)}));
 window.addEventListener("message", (event) => {
   if (event.origin === ${JSON.stringify(origin)} && event.source === frame.contentWindow) vscode.postMessage(event.data);
 });`;

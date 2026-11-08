@@ -28,6 +28,12 @@ interface WorkflowApplyReport {
   diagnostics: WorkflowDiagnostic[];
 }
 
+interface ModuleTarget {
+  root?: string;
+  app: string;
+  module: string;
+}
+
 const writingActions = new Set(["create", "modify"]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
@@ -333,7 +339,7 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     if (isRecord(report) && typeof report.url === "string")
       return await StudioPanel.show(cli.root, app, report.url, {
         runWorkflow: ({ workflow, inputs }) => runWorkflow(workflow, inputs, cli.root),
-        openModule: (target) => openModule({ ...target, root: cli.root }),
+        openModule: (target, revealStudio) => openModule({ ...target, root: cli.root }, revealStudio),
       });
     log.appendLine(result.stdout.trimEnd());
     const reason = result.stdout.trim().split("\n").at(-1) || vscode.l10n.t("akan studio failed.");
@@ -361,7 +367,7 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     return picked?.folder ?? null;
   };
 
-  const openModule = async (target?: { root?: string; app: string; module: string }) => {
+  const openModuleOnce = async (target?: ModuleTarget, revealStudio?: (column: number) => void) => {
     const root = target?.root ?? (await folderOf())?.uri.fsPath;
     if (!root) return false;
     const active = vscode.window.activeTextEditor?.document.uri;
@@ -378,14 +384,28 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
       void vscode.window.showErrorMessage(vscode.l10n.t("{0} has no module files to open.", folder.name));
       return false;
     }
-    await vscode.commands.executeCommand("vscode.setEditorLayout", ModuleLayout.gridOf(files.length));
+    const grid = ModuleLayout.gridOf(files.length, { besideStudio: !!revealStudio });
+    await vscode.commands.executeCommand("vscode.setEditorLayout", grid);
     for (const [idx, file] of files.entries())
       await vscode.window.showTextDocument(vscode.Uri.file(file), {
         viewColumn: idx + 1,
         preview: false,
         preserveFocus: idx > 0,
       });
+    //? Moving Studio first would empty its old group, which VS Code closes, shifting every later column onto Studio.
+    revealStudio?.(files.length + 1);
     return true;
+  };
+
+  let isModuleOpening = false;
+  const openModule = async (target?: ModuleTarget, revealStudio?: (column: number) => void) => {
+    if (isModuleOpening) return false;
+    isModuleOpening = true;
+    try {
+      return await openModuleOnce(target, revealStudio);
+    } finally {
+      isModuleOpening = false;
+    }
   };
 
   return [

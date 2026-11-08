@@ -8,18 +8,22 @@ interface StudioRuntimeAction {
 
 export const studioRuntime = () => {
   let host: string | null = null;
+  let accepted = new Set<unknown>();
   if (window.parent !== window) {
     window.addEventListener("message", (event) => {
       if (event.source !== window.parent || !event.origin.startsWith("vscode-webview:")) return;
-      if ((event.data as { type?: unknown } | null)?.type !== "akan-studio:host") return;
+      const data = event.data as { type?: unknown; accepts?: unknown } | null;
+      if (data?.type !== "akan-studio:host") return;
       host = event.origin;
+      //? A host that lists nothing predates the list and only opens source links.
+      accepted = new Set(Array.isArray(data.accepts) ? data.accepts : ["open"]);
       window.parent.postMessage({ type: "akan-studio:ready", href: location.href }, host);
       showActions(shown);
     });
     document.addEventListener("click", (event) => {
       const href = event.target instanceof Element ? event.target.closest("a[href]")?.getAttribute("href") : null;
       const source = href?.match(/^[a-z-]+:\/\/file(\/.+):(\d+):(\d+)$/);
-      if (!host || !source) return;
+      if (!host || !accepted.has("open") || !source) return;
       event.preventDefault();
       const [, path, line, column] = source;
       window.parent.postMessage(
@@ -36,7 +40,7 @@ export const studioRuntime = () => {
     status.textContent = text;
   };
   const run = ({ kind, workflow, inputs, command }: StudioRuntimeAction) => {
-    if (host) {
+    if (host && accepted.has(kind)) {
       const message =
         kind === "module" ? { type: "akan-studio:module", inputs } : { type: "akan-studio:workflow", workflow, inputs };
       window.parent.postMessage(message, host);
@@ -57,7 +61,7 @@ export const studioRuntime = () => {
     if (!bar) return;
     const from = box instanceof SVGElement || box instanceof HTMLElement ? box : bar;
     const listed = JSON.parse(from.dataset.actions ?? "[]") as StudioRuntimeAction[];
-    const actions = listed.filter((action) => host || action.command);
+    const actions = listed.filter((action) => (host && accepted.has(action.kind)) || action.command);
     const label = document.createElement("span");
     label.className = "muted";
     label.textContent = from.dataset.label ?? "";

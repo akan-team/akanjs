@@ -5,7 +5,7 @@ const readyTimeoutMs = 20_000;
 
 export interface StudioHandlers {
   runWorkflow: (request: StudioWorkflowRequest) => Promise<boolean>;
-  openModule: (target: StudioModuleTarget) => Promise<boolean>;
+  openModule: (target: StudioModuleTarget, revealStudio: (column: number) => void) => Promise<boolean>;
 }
 
 export class StudioPanel {
@@ -26,7 +26,9 @@ export class StudioPanel {
       "akan.studio",
       title,
       { viewColumn: vscode.ViewColumn.Beside },
-      { enableScripts: true, localResourceRoots: [] },
+      //? The pinned node and the page reached inside the frame live only in the dev server's page; without retained
+      //? context a hidden or moved panel reloads the last URL it was handed and loses both.
+      { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true },
     );
     this.#panel.webview.onDidReceiveMessage((message: unknown) => this.#receive(message));
     this.#panel.onDidDispose(() => {
@@ -99,7 +101,7 @@ export class StudioPanel {
     }
     const target = StudioView.moduleTargetOf(message);
     if (target) {
-      await this.#handlers?.openModule(target);
+      await this.#handlers?.openModule(target, (column) => this.#panel.reveal(column, true));
       return;
     }
     const source = StudioView.sourceOf(message, this.#root);
