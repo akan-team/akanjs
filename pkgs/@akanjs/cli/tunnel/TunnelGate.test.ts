@@ -58,6 +58,8 @@ describe("TunnelGate", () => {
       "/_akan/hmr",
       "/_akan/app/logs",
       "/_akan/ops/snapshot",
+      "/_akan/studio",
+      "/_akan/studio/graph",
       "//_akan/devtools",
       "/_akan//hmr",
       "/_akan/%64evtools",

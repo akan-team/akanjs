@@ -1,3 +1,4 @@
+import type { AkanGraph } from "akanjs/common";
 import type { SsrManifest } from "../ssrTypes";
 
 export interface BuildRouteResultPayload {
@@ -79,6 +80,17 @@ export type BuilderCsrReq = { type: "build-csr"; id: number; reason: string; she
 export type BuilderCsrRes =
   | { type: "build-csr-res"; id: number; ok: true }
   | { type: "build-csr-res"; id: number; ok: false; error: string };
+
+export interface BuildGraphPayload {
+  workspaceRoot: string;
+  graph: AkanGraph;
+}
+
+export type BuilderGraphReq = { type: "build-graph"; id: number };
+
+export type BuilderGraphRes =
+  | { type: "build-graph-res"; id: number; ok: true; data: BuildGraphPayload }
+  | { type: "build-graph-res"; id: number; ok: false; error: string };
 
 /** Drain and exit (the only way bundler memory returns to the OS); draining, not killing, keeps a rebuild whole. */
 export type BuilderControl = { type: "builder-shutdown"; reason: string };
@@ -164,7 +176,11 @@ export type BuilderEvent =
   /** The boot builds settled (the SSR registry's, and CSR's when the env arms it): their workers are a boot's peak. */
   | { type: "boot-armed" };
 
-export type BuilderMessage = BuilderReq | BuilderRes | BuilderCsrReq | BuilderCsrRes | BuilderControl | BuilderEvent;
+export type BuilderRequest = BuilderReq | BuilderCsrReq | BuilderGraphReq;
+
+export type BuilderResponse = BuilderRes | BuilderCsrRes | BuilderGraphRes;
+
+export type BuilderMessage = BuilderRequest | BuilderResponse | BuilderControl | BuilderEvent;
 
 export interface ClientManifestEntry {
   id: string;

@@ -129,6 +129,69 @@ process.send({ type: "build-batch-result", data: { generation, errors, artifact:
     expect(messages.some((message) => message.type === "build-status")).toBe(false);
   }, 30_000);
 
+  test("draws the app's graph on request, with the libs it reaches and no other app", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `const { generation } = JSON.parse(process.argv[2]);
+process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+`,
+    );
+    await writeText(path.join(appDir, "page/_index.tsx"), "export default () => null;\n");
+    const moduleFiles = (owner: string, name: string) => {
+      const model = `${name[0].toUpperCase()}${name.slice(1)}`;
+      return [
+        writeText(
+          path.join(root, owner, `lib/${name}/${name}.constant.ts`),
+          `export class ${model} extends via((field) => ({ name: field(String) })) {}\n`,
+        ),
+        writeText(
+          path.join(root, owner, `lib/${name}/${name}.service.ts`),
+          `export class ${model}Service extends serve(db.${name}, () => ({})) {}\n`,
+        ),
+      ];
+    };
+    await Promise.all([
+      ...moduleFiles("apps/demo", "memo"),
+      ...moduleFiles("apps/other", "note"),
+      ...moduleFiles("libs/shared", "file"),
+    ]);
+    const messages: BuilderMessage[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+        AKAN_WATCH: "0",
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+      serialization: "advanced",
+      ipc: (message: BuilderMessage) => {
+        messages.push(message);
+      },
+    });
+    try {
+      await until(proc, "builder-ready", () => messages.some((message) => message.type === "builder-ready"));
+      proc.send({ type: "build-graph", id: 5 } satisfies BuilderMessage);
+      await until(proc, "build-graph-res", () => messages.some((message) => message.type === "build-graph-res"));
+    } finally {
+      proc.kill();
+      await proc.exited;
+    }
+    const answer = messages.find((message) => message.type === "build-graph-res");
+    if (answer?.type !== "build-graph-res" || !answer.ok) throw new Error(`no graph: ${JSON.stringify(answer)}`);
+    expect(answer.data.workspaceRoot).toBe(root);
+    expect(answer.data.graph.nodes.map((node) => node.id).sort()).toEqual([
+      "model:apps/demo:memo",
+      "model:libs/shared:file",
+    ]);
+  }, 30_000);
+
   test("answers a second shell request in the same generation without building again", async () => {
     const { root } = track(await createTempApp("demo"));
     const appDir = path.join(root, "apps/demo");

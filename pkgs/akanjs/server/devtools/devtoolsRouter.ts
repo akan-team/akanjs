@@ -2,11 +2,13 @@ import type { BaseEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { DictionaryRegistry, type RootDictionary } from "akanjs/dictionary";
 import { isLocalDevRuntime } from "../../signal/trace";
+import type { BuildGraphPayload } from "../artifact";
 import type { DiLifecycle } from "../di/diLifecycle";
 import type { HttpRoutes } from "../types";
 import { ConstantSerializer } from "./constantSerializer";
 import { DepsSerializer } from "./depsSerializer";
 import { SignalSerializer } from "./signalSerializer";
+import { StudioRoute } from "./studio/studioRoute";
 import type { DevtoolsApp, DevtoolsEnvelope, DevtoolsIndex, DictionaryData } from "./types";
 
 export interface DevtoolsRouterContext {
@@ -18,6 +20,7 @@ export interface DevtoolsRouterContext {
   websocketPrefix: string;
   openapi: boolean;
   getStatus: () => string;
+  buildGraph?: () => Promise<BuildGraphPayload | null>;
 }
 
 /** Builtin routes, not signals: off `/api` and guards, and never in the `serializedSignal` payload sent to clients. */
@@ -41,7 +44,14 @@ export class DevtoolsRouter {
 
   createRoutes(): HttpRoutes {
     if (!DevtoolsRouter.isEnabled(this.#context.env)) return {};
+    const studio = new StudioRoute({
+      basePath: `${DevtoolsRouter.basePath}/studio`,
+      appName: this.#context.env.appName,
+      buildGraph: this.#context.buildGraph ?? null,
+    });
     return {
+      [`${DevtoolsRouter.basePath}/studio`]: { GET: (req: Request) => this.#gated(() => studio.page(req)) },
+      [`${DevtoolsRouter.basePath}/studio/graph`]: { GET: () => this.#gated(() => studio.graph()) },
       [`${DevtoolsRouter.basePath}/devtools`]: { GET: () => DevtoolsRouter.#json(this.#index()) },
       [`${DevtoolsRouter.basePath}/constant`]: {
         GET: () => this.#respond("constant", () => ConstantSerializer.serialize()),
@@ -98,6 +108,11 @@ export class DevtoolsRouter {
       DevtoolsRouter.logger.warn(`Failed to serialize /_akan/${kind}: ${message}`);
       return DevtoolsRouter.#json({ kind, error: message }, 500);
     }
+  }
+
+  async #gated(respond: () => Promise<Response>): Promise<Response> {
+    if (!DevtoolsRouter.isEnabled(this.#context.env)) return DevtoolsRouter.#json({ error: "Not found" }, 404);
+    return await respond();
   }
 
   #envelope<Kind extends string, Data>(kind: Kind, data: Data): DevtoolsEnvelope<Kind, Data> {

@@ -50,7 +50,7 @@ import {
   UNAVAILABLE_REDIS_HOST,
 } from "./devHostPolicy";
 
-const backendMsgTypeSet = new Set<BuilderMessage["type"]>(["build-route", "build-csr"]);
+const backendMsgTypeSet = new Set<BuilderMessage["type"]>(["build-route", "build-csr", "build-graph"]);
 
 const asMib = (bytes: number) => Math.round(bytes / 1024 / 1024);
 
@@ -504,7 +504,7 @@ export class AkanAppHost {
       await this.#handleInvalidate(message);
       return;
     }
-    if (message.type === "build-route-res" || message.type === "build-csr-res") {
+    if (message.type === "build-route-res" || message.type === "build-csr-res" || message.type === "build-graph-res") {
       const answer = this.#builderRequests.settle(message);
       if (!answer) {
         this.logger.verbose(`[builder] dropped a ${message.type} no live backend is waiting for (id=${message.id})`);
@@ -925,6 +925,8 @@ export class AkanAppHost {
       this.#sendToBackend({ type: "build-route-res", id: message.id, ok: false, error });
     else if (message.type === "build-csr")
       this.#sendToBackend({ type: "build-csr-res", id: message.id, ok: false, error });
+    else if (message.type === "build-graph")
+      this.#sendToBackend({ type: "build-graph-res", id: message.id, ok: false, error });
     else return false;
     return true;
   }
@@ -1308,7 +1310,7 @@ export class AkanAppHost {
       this.logger.verbose(`[csr] armed dev CSR rebuilds (${message.reason})`);
     }
     // Renumbered per backend generation; the failure replies below use that backend's own `message.id`.
-    if (message.type === "build-route" || message.type === "build-csr") {
+    if (message.type === "build-route" || message.type === "build-csr" || message.type === "build-graph") {
       const outgoing = this.#builderRequests.issue(message);
       if (this.#builder?.send(outgoing)) return;
       this.#builderRequests.withdraw(outgoing.id);

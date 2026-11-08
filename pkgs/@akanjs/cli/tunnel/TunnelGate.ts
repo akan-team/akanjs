@@ -14,6 +14,7 @@ const devRoutePrefixes = [
   "/_akan/hmr",
   "/_akan/app",
   "/_akan/ops",
+  "/_akan/studio",
 ];
 
 // The gate answers the caller's handshake itself, so these never reach the dial to the app.

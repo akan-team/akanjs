@@ -138,6 +138,8 @@ Run the dev server, SSR frontend and backend together. Name apps space- or comma
 
 - memory budget: `AKAN_MEMORY_LIMIT` lowers the memory `--concurrency` is derived from.
 
+- Akan Studio: `/_akan/studio` on the dev URL draws the ERD and each module's request path, linked to source. `--share` hides it.
+
 `akan dbup [--mode <mode>]`
 
 Start the local database services with Docker Compose: Redis for `multiple`, Redis and Postgres 18 for `cluster`. `akan start` already runs it unless `--dbup false`.

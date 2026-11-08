@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { type AkanGraph, AkanIndex } from "@akanjs/language";
+import { type AkanGraph, type AkanGraphNode, AkanIndex } from "@akanjs/language";
 import ts from "typescript";
 import type { Workspace } from "./commandDecorators";
 
@@ -44,6 +44,14 @@ export class WorkspaceGraph {
     const edges = graph.edges.filter((edge) => seeds.has(edge.from) || seeds.has(edge.to));
     const ids = new Set([...seeds, ...edges.flatMap((edge) => [edge.from, edge.to])]);
     return { version: 1, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges };
+  }
+
+  static visibleTo(graph: AkanGraph, app: string): AkanGraph {
+    const appOwner = `apps/${app}`;
+    const isVisible = ({ owner }: AkanGraphNode) => !owner || owner === appOwner || owner.startsWith("libs/");
+    const nodes = graph.nodes.filter(isVisible);
+    const ids = new Set(nodes.map((node) => node.id));
+    return { version: 1, nodes, edges: graph.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to)) };
   }
 
   static answer(graph: AkanGraph, scope: GraphScope) {

@@ -1,11 +1,10 @@
 import { Logger } from "akanjs/common";
 import type {
-  BuilderCsrReq,
-  BuilderCsrRes,
   BuilderEvent,
   BuilderMessage,
-  BuilderReq,
-  BuilderRes,
+  BuilderRequest,
+  BuilderResponse,
+  BuildGraphPayload,
   BuildRouteClientResult,
   BuildRouteResultPayload,
   CsrUpdatedPayload,
@@ -31,7 +30,7 @@ export class BuilderRpc {
   readonly #logger = new Logger("BuilderRpc");
   readonly #pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   readonly #offMessage: () => void;
-  readonly #send: (msg: BuilderReq | BuilderCsrReq) => void;
+  readonly #send: (msg: BuilderRequest) => void;
   #nextId = 1;
   #disposed = false;
 
@@ -40,13 +39,13 @@ export class BuilderRpc {
       throw new Error("[builder] process.send unavailable — backend must be spawned by the CLI with ipc enabled");
     this.#send = process.send.bind(process);
     this.#offMessage = this.#listen((msg) => {
-      if (msg.type === "build-route-res" || msg.type === "build-csr-res") {
-        const res = msg as BuilderRes | BuilderCsrRes;
+      if (msg.type === "build-route-res" || msg.type === "build-csr-res" || msg.type === "build-graph-res") {
+        const res = msg as BuilderResponse;
         const waiter = this.#pending.get(res.id);
         if (!waiter) return;
         this.#pending.delete(res.id);
         if (!res.ok) waiter.reject(new Error(`[builder] ${res.type} failed: ${res.error}`));
-        else waiter.resolve(res.type === "build-route-res" ? res.data : undefined);
+        else waiter.resolve(res.type === "build-csr-res" ? undefined : res.data);
         return;
       }
       const ev = msg as BuilderEvent;
@@ -112,6 +111,10 @@ export class BuilderRpc {
     await this.#request<void>(`build-csr (${reason})`, (id) =>
       this.#send({ type: "build-csr", id, reason, ...(shell ? { shell } : {}) }),
     );
+  }
+
+  async buildGraph(): Promise<BuildGraphPayload> {
+    return await this.#request<BuildGraphPayload>("build-graph", (id) => this.#send({ type: "build-graph", id }));
   }
 
   // Generous on purpose: a cold CSR build of every page takes tens of seconds; the point is only to be finite.

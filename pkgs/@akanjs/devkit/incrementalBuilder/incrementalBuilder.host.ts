@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
-import type { BuilderMessage } from "akanjs/server";
+import type { BuilderMessage, BuilderRequest } from "akanjs/server";
 import { CSR_DEV_DIRNAME, CSR_DEV_PATCHING_MARKER, SSR_DEV_DIRNAME } from "akanjs/server/hmr/csrDevManifest";
 import { MemoryLimit } from "akanjs/server/memoryLimit";
 import type { App } from "../commandDecorators";
@@ -9,6 +9,7 @@ import type { App } from "../commandDecorators";
 const builderMsgTypeSet = new Set<BuilderMessage["type"]>([
   "build-route-res",
   "build-csr-res",
+  "build-graph-res",
   "builder-ready",
   "invalidate",
   "css-updated",
@@ -73,7 +74,7 @@ export class IncrementalBuilderHost {
   #manualStop = false;
   // Nothing else answers a request whose builder exits holding it: a crash or kill sends nothing, and a drain races
   // its own exit, so an unanswered page request would spin forever.
-  readonly #inFlight = new Map<number, "build-route" | "build-csr">();
+  readonly #inFlight = new Map<number, BuilderRequest["type"]>();
   #startOptions: IncrementalBuilderStartOptions = {};
   constructor({
     app,
@@ -129,7 +130,8 @@ export class IncrementalBuilderHost {
       ipc: (msg: BuilderMessage) => {
         if (this.#proc !== proc) return;
         if (!msg || typeof msg !== "object") return;
-        if (msg.type === "build-route-res" || msg.type === "build-csr-res") this.#inFlight.delete(msg.id);
+        if (msg.type === "build-route-res" || msg.type === "build-csr-res" || msg.type === "build-graph-res")
+          this.#inFlight.delete(msg.id);
         if (builderMsgTypeSet.has(msg.type)) this.#onMessage(msg);
         if (msg.type === "builder-ready" && !this.ready) {
           this.ready = true;
@@ -269,7 +271,8 @@ export class IncrementalBuilderHost {
     }
     try {
       this.#proc.send(message);
-      if (message.type === "build-route" || message.type === "build-csr") this.#inFlight.set(message.id, message.type);
+      if (message.type === "build-route" || message.type === "build-csr" || message.type === "build-graph")
+        this.#inFlight.set(message.id, message.type);
       return true;
     } catch (error) {
       this.logger.warn(
