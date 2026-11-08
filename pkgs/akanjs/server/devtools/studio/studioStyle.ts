@@ -16,6 +16,10 @@ header a { color: inherit; text-decoration: none; padding: 4px 8px; border-radiu
 header a[aria-current] { background: var(--line); }
 header select, header input { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line);
   border-radius: 6px; padding: 4px 8px; }
+header .actions { order: 1; flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+header button { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 3px 10px; cursor: pointer; }
+header button:hover { border-color: var(--muted); }
 .muted { color: var(--muted); }
 .empty { padding: 48px; color: var(--muted); }
 .unmapped { padding: 0 24px 24px; }

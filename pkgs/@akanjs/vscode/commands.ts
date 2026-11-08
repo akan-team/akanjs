@@ -2,7 +2,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 import { AkanCli, type AkanRun, type VerifyResult } from "./akanCli";
 import { StudioPanel } from "./studioPanel";
-import { StudioView } from "./studioView";
+import { StudioView, studioTargetInputs } from "./studioView";
 
 interface WorkflowInputSpec {
   type: string;
@@ -159,13 +159,20 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     });
   };
 
-  const askInputs = async (cli: AkanCli, specs: Record<string, WorkflowInputSpec>) => {
+  const askInputs = async (
+    cli: AkanCli,
+    specs: Record<string, WorkflowInputSpec>,
+    given: Record<string, string>,
+  ): Promise<Record<string, string | boolean> | null> => {
     const active = vscode.window.activeTextEditor?.document.uri;
     const place = active ? AkanCli.placeOf(cli.root, active.fsPath) : { system: null, module: null };
     const presets: Partial<Record<string, string | null>> = { app: place.system, module: place.module };
-    const entries = Object.entries(specs);
+    const isGiven = Object.keys(given).length > 0;
+    const entries = Object.entries(specs).filter(
+      ([name]) => !(name in given) && !(isGiven && studioTargetInputs.has(name)),
+    );
     const optional = entries.filter(([, spec]) => !spec.required);
-    const values: Record<string, string | boolean> = {};
+    const values: Record<string, string | boolean> = { ...given };
     for (const [name, spec] of entries.filter(([, spec]) => spec.required)) {
       const value = await askInput(cli, name, spec, presets[name] ?? null);
       if (value === undefined) return null;
@@ -191,9 +198,9 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     return values;
   };
 
-  const runWorkflow = async (name?: string) => {
+  const runWorkflow = async (name?: string, given: Record<string, string> = {}): Promise<boolean> => {
     const cli = await cliOf();
-    if (!cli) return;
+    if (!cli) return false;
     let workflow = name;
     if (!workflow) {
       const listed = reportOf(
@@ -210,24 +217,24 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
         )
       )?.label;
     }
-    if (!workflow) return;
+    if (!workflow) return false;
     const spec = reportOf(
       await run(cli, vscode.l10n.t("Reading {0}", workflow), ["workflow", "explain", workflow, "--format", "json"]),
       "workflow explain",
     );
-    if (!spec || !isRecord(spec.inputs)) return;
-    const inputs = await askInputs(cli, spec.inputs as Record<string, WorkflowInputSpec>);
-    if (!inputs) return;
+    if (!spec || !isRecord(spec.inputs)) return false;
+    const inputs = await askInputs(cli, spec.inputs as Record<string, WorkflowInputSpec>, given);
+    if (!inputs) return false;
 
     const planPath = path.join(".akan", "workflows", "plans", `editor-${workflow}.json`);
     const planArgs = ["workflow", "plan", workflow, ...AkanCli.argsOf(inputs), "--format", "json", "--out", planPath];
     const planned = reportOf(await run(cli, vscode.l10n.t("Planning {0}", workflow), planArgs), "workflow plan");
-    if (!planned) return;
+    if (!planned) return false;
     const plan = planned as unknown as WorkflowPlan;
     const planErrors = errorsOf(plan.diagnostics);
     if (planErrors.length) {
       void vscode.window.showErrorMessage(planErrors.join(" "));
-      return;
+      return false;
     }
     const writes = plan.predictedChanges.filter((change) => writingActions.has(change.action));
     const applyLabel = vscode.l10n.t("Apply");
@@ -236,31 +243,35 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
       { modal: true, detail: writes.map((change) => `${change.action} ${change.target}`).join("\n") },
       applyLabel,
     );
-    if (confirmed !== applyLabel) return;
+    if (confirmed !== applyLabel) return false;
 
     const applied = reportOf(
       await run(cli, vscode.l10n.t("Applying {0}", workflow), ["workflow", "apply", planPath, "--format", "json"]),
       "workflow apply",
     );
-    if (!applied) return;
+    if (!applied) return false;
     const report = applied as unknown as WorkflowApplyReport;
     for (const file of report.changedFiles) log.appendLine(`[akan] ${workflow}: ${file.path}`);
     if (report.status !== "passed") {
       void vscode.window.showErrorMessage(
         errorsOf(report.diagnostics).join(" ") || vscode.l10n.t("{0} failed.", workflow),
       );
-      return;
+      return false;
     }
     const verifyLabel = vscode.l10n.t("Verify");
-    const picked = await vscode.window.showInformationMessage(
-      vscode.l10n.t(
-        "{0} changed {1} files. Verify syncs the generated files and checks them.",
-        workflow,
-        report.changedFiles.length,
-      ),
-      verifyLabel,
-    );
-    if (picked === verifyLabel) await verify(typeof inputs.app === "string" ? inputs.app : undefined);
+    void vscode.window
+      .showInformationMessage(
+        vscode.l10n.t(
+          "{0} changed {1} files. Verify syncs the generated files and checks them.",
+          workflow,
+          report.changedFiles.length,
+        ),
+        verifyLabel,
+      )
+      .then((picked) => {
+        if (picked === verifyLabel) void verify(typeof inputs.app === "string" ? inputs.app : undefined);
+      });
+    return true;
   };
 
   const openStudio = async ({
@@ -302,7 +313,8 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     const result = await run(cli, vscode.l10n.t("Opening Akan Studio for {0}", app), args);
     if (!result) return false;
     const report = AkanCli.jsonOf(result.stdout);
-    if (isRecord(report) && typeof report.url === "string") return await StudioPanel.show(cli.root, app, report.url);
+    if (isRecord(report) && typeof report.url === "string")
+      return await StudioPanel.show(cli.root, app, report.url, ({ workflow, inputs }) => runWorkflow(workflow, inputs));
     log.appendLine(result.stdout.trimEnd());
     const reason = result.stdout.trim().split("\n").at(-1) || vscode.l10n.t("akan studio failed.");
     if (!result.stdout.includes("No dev server answers")) {

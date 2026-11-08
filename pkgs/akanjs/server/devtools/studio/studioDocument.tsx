@@ -1,5 +1,6 @@
 import type { AkanChangeMap, AkanGraph, AkanGraphChange, AkanGraphLocation } from "akanjs/common";
 import type { BuildChangesPayload, BuildGraphPayload } from "../../artifact";
+import { StudioActions } from "./studioActions";
 import { type StudioBox, StudioLayout, type StudioScene, type StudioView } from "./studioLayout";
 import { studioRuntime } from "./studioRuntime";
 import { studioStyle } from "./studioStyle";
@@ -101,6 +102,12 @@ export class StudioDocument {
             <input type="search" placeholder="Filter by name" data-studio-filter="" />
             {changeMap ? <span className="muted">{StudioDocument.#summary(changeMap)}</span> : null}
             <span className="muted">{`${scene.boxes.length} nodes · ${scene.links.length} edges`}</span>
+            <div
+              className="actions"
+              data-studio-actions=""
+              data-label={appName}
+              data-actions={JSON.stringify(StudioActions.ofApp(appName))}
+            />
             <nav className="end">
               {(["vscode", "cursor"] as const).map((editor) => (
                 <a key={editor} href={hrefOf({ editor })} aria-current={editor === query.editor ? "true" : undefined}>
@@ -227,12 +234,14 @@ export class StudioDocument {
     const kind = [lib, kindShownIn[view].has(node.kind) ? node.kind : null].filter(Boolean).join(" · ");
     const chars = Math.floor((width - 24) / charWidth);
     const mark = view === "changes" ? (node.change ?? "context") : null;
+    const actions = StudioActions.of(node);
     return (
       <g
         key={node.id}
         className={mark ? `box ${node.kind} ${mark}` : `box ${node.kind}`}
         data-node={node.id}
         data-label={node.label}
+        data-actions={actions.length ? JSON.stringify(actions) : undefined}
       >
         <title>{node.at ? `${node.label}\n${node.at.file}:${node.at.line}` : node.label}</title>
         <rect x={x} y={y} width={width} height={height} rx={6} />
