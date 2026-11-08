@@ -60,10 +60,10 @@ body shape — this is the full contract behind them. Before changing route beha
   (`.guard(() => signedIn())`), because `.guard(signedIn)` would hand the route's arguments to `unauthorize`.
 - **On the server every guard of the chain runs before any layout body starts**, root layout first and before the
   route's arguments are checked, so a redirect is a real 307 even after an awaited query, and a not-found is a 404 —
-  where a `getSelf({ unauthorize })` inside a layout body after I/O redirects late, inside the stream. A query in a
-  guard that the server refuses with 403 or 404 (an owner check) answers not-found, so the page never confirms the
-  record exists. A refusal's not-found keeps only the layouts above the refusing guard, and a path no page matches
-  asks the guards of the layouts its not-found would sit under first.
+  where a `getSelf({ unauthorize })` inside a layout body under a `.loading()` redirects late after I/O, inside the
+  stream. A query in a guard that the server refuses with 403 or 404 (an owner check) answers not-found, so the page
+  never confirms the record exists. A refusal's not-found keeps only the layouts above the refusing guard, and a path
+  no page matches asks the guards of the layouts its not-found would sit under first.
 - **On a client navigation a page's layers wait for its guards.** The verdict is kept by what the guards read (a
   query only the page reads keeps it) and lasts while a layer of that location is on screen. Only the page in front
   asks — never a parked one, nor the one under it during a swipe back; back in front, a cached page included, it asks

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PathRoute, RouteRender } from "akanjs/client";
-import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
 import { renderToReadableStream } from "react-dom/server.browser";
 import { AkanNotFoundError } from "../client/router";
 import { RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
@@ -135,6 +135,27 @@ describe("RouteElementComposer navigation keying", () => {
     const el = composePage(pending);
 
     expect(el.key).toBeNull();
+  });
+});
+
+describe("RouteElementComposer boundaries", () => {
+  test("wraps every level in a boundary, so the pages under one layout give it the same element", () => {
+    const layoutRender: RouteRender = {
+      render: (({ children }: { children: ReactNode }) => <section>{children}</section>) as RouteRender["render"],
+    };
+    const composeUnder = (pageRender: RouteRender) =>
+      RouteElementComposer.composeRenders({
+        renders: [layoutRender, pageRender],
+        params: {},
+        searchParams: {},
+      }) as ReactElement;
+
+    const underLoadingPage = composeUnder(suspendingPageRender(pending));
+    const underPlainPage = composeUnder({ render: (() => <p>plain</p>) as RouteRender["render"] });
+
+    expect(underLoadingPage.type).toBe(Suspense);
+    expect(underPlainPage.type).toBe(Suspense);
+    expect(underLoadingPage.key).toBe(underPlainPage.key);
   });
 });
 

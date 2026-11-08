@@ -58,6 +58,7 @@ import {
 import { LogForwarder } from "./logging/logForwarder";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
+import { RouteShellGate } from "./routeShellGate";
 import {
   type AkanRscPatchDecision,
   createAkanRouterState,
@@ -70,7 +71,7 @@ import {
   resolveAkanRscPatchDecision,
 } from "./routeState";
 import { type PagesContext, RouteTreeBuilder } from "./routeTreeBuilder";
-import { encodeAkanRedirectDigest } from "./rscHttp";
+import { concatBytes, encodeAkanRedirectDigest } from "./rscHttp";
 import { RscPagePrompts } from "./rscPagePrompts";
 import {
   type CachedRscResult,
@@ -626,6 +627,7 @@ export class RscRenderer {
         let effectivePatchDecision = safePatchDecision;
         const notFoundProbe = { hit: false };
         const notFound = this.#notFoundInPlace(urlObj, notFoundProbe);
+        const gate = new RouteShellGate();
         if (match && safePatchDecision.status === "patch" && safePatchDecision.patch) {
           const suffixElement = await this.#renderMatchedSuffix(
             urlObj,
@@ -641,11 +643,11 @@ export class RscRenderer {
               reason: "suffix-compose-fallback",
               commonPrefixLength: safePatchDecision.commonPrefixLength,
             };
-            element = await this.#renderMatched(urlObj, match, searchParams, notFound, { guarded: true });
+            element = await this.#renderMatched(urlObj, match, searchParams, notFound, { guarded: true, gate });
           } else element = suffixElement;
         } else if (match)
-          element = await this.#renderMatched(urlObj, match, searchParams, notFound, { guarded: admitted });
-        else element = await this.#renderNotFound(urlObj);
+          element = await this.#renderMatched(urlObj, match, searchParams, notFound, { guarded: admitted, gate });
+        else element = await this.#renderNotFound(urlObj, gate);
         const traceCacheKey =
           effectivePatchDecision.status === "patch" ? (patchCacheEntry?.key ?? cacheEntry?.key) : cacheEntry?.key;
         const ssrBlocking = getRequestFrameState<PageState>()?.ssr === "block";
@@ -665,6 +667,7 @@ export class RscRenderer {
           status: match ? undefined : 404,
           trace,
           notFoundProbe,
+          gate,
           onComplete: ({ chunks, bytes, chunksCount, control, lateControlSent }) => {
             const cacheState = shouldStoreRouteCache({
               policy: getRequestPolicy(),
@@ -898,6 +901,7 @@ export class RscRenderer {
       trace?: RscTraceMetadata;
       /** Raised by a render that answered `router.notFound()` in place, which React never reports as an error. */
       notFoundProbe?: { hit: boolean };
+      gate?: RouteShellGate;
       onComplete?: (
         result: Omit<FlightRenderResult, "cancelled">,
       ) => Promise<RouteCacheRenderState> | RouteCacheRenderState;
@@ -931,6 +935,9 @@ export class RscRenderer {
     let sentChunk = false;
     let lateControlSent = false;
     const chunks: Uint8Array[] = [];
+    //? Held until the levels above the first `.loading()` settle, so an error they throw still gets its `.error()`.
+    let holding = options.gate?.holding ? options.gate : null;
+    let held: Uint8Array | null = null;
     let reportedTheme: AkanTheme | undefined;
     const sendMeta = () => {
       if (!options.requestId || sentMeta) return;
@@ -964,8 +971,26 @@ export class RscRenderer {
     const readProbe = () => {
       if (!controlRef.current && options.notFoundProbe?.hit) controlRef.current = { type: "not-found" };
     };
+    const emit = (chunk: Uint8Array) => {
+      if (options.collectChunks) chunks.push(chunk);
+      if (!options.requestId) return;
+      sendMeta();
+      sendLateTheme();
+      this.#send({ type: "chunk", requestId: options.requestId, data: chunk });
+      sentChunk = true;
+    };
+    const releaseHeld = () => {
+      holding = null;
+      if (!held) return;
+      if (controlRef.current) {
+        sendMeta();
+        sendLateControl();
+      }
+      emit(held);
+      held = null;
+    };
     // Once bytes have left the status is the host's to decide: a redirect becomes a navigation, a not-found a 404 only
-    // where the host still holds the response (a blocking or crawler render). An error stays in React's error path.
+    // where the host still holds the response (a held level, a blocking or crawler render). An error stays in React's.
     const sendLateControl = () => {
       const control = controlRef.current;
       if (!options.requestId || lateControlSent || !control || control.type === "error") return;
@@ -987,17 +1012,27 @@ export class RscRenderer {
       this.#send({ type: "late-not-found", requestId: options.requestId });
     };
     try {
+      let pendingRead: ReturnType<typeof reader.read> | null = null;
       for (;;) {
         if (options.requestId && this.#cancelledRenderRequests.has(options.requestId))
           return await cancelWith(null, true);
-        const { value, done } = await reader.read();
+        pendingRead ??= reader.read();
+        if (holding && (await Promise.race([pendingRead.then(() => false), holding.opened.then(() => true)]))) {
+          readProbe();
+          if (controlRef.current?.type === "error") return await cancelWith(controlRef.current, false);
+          releaseHeld();
+          continue;
+        }
+        const { value, done } = await pendingRead;
+        pendingRead = null;
         readProbe();
-        if (controlRef.current && !sentChunk) return await cancelWith(controlRef.current, false);
+        if (controlRef.current && !sentChunk && (!holding || controlRef.current.type === "error"))
+          return await cancelWith(controlRef.current, false);
         if (controlRef.current && sentChunk) sendLateControl();
         if (done) break;
         //? Flight writes its first row before an async render settles; held one task, a redirect or not-found the body
         //? raised with no I/O awaited still leaves before any byte, as a real status.
-        if (!sentChunk && options.requestId) {
+        if (chunksCount === 0 && options.requestId) {
           await new Promise((resolve) => setTimeout(resolve, 0));
           readProbe();
           if (controlRef.current) return await cancelWith(controlRef.current, false);
@@ -1005,13 +1040,8 @@ export class RscRenderer {
         const chunk = value instanceof Uint8Array ? value : new Uint8Array(value as ArrayBufferLike);
         bytes += chunk.byteLength;
         chunksCount += 1;
-        if (options.collectChunks) chunks.push(chunk);
-        if (options.requestId) {
-          sendMeta();
-          sendLateTheme();
-          this.#send({ type: "chunk", requestId: options.requestId, data: chunk });
-          sentChunk = true;
-        }
+        if (holding) held = held ? concatBytes(held, chunk) : chunk;
+        else emit(chunk);
       }
     } catch (error) {
       if (options.requestId && this.#cancelledRenderRequests.has(options.requestId)) {
@@ -1023,6 +1053,7 @@ export class RscRenderer {
       reader.releaseLock();
     }
     readProbe();
+    if (holding && controlRef.current?.type !== "error") releaseHeld();
     if (controlRef.current && sentChunk) sendLateControl();
     if (controlRef.current && !sentChunk)
       return { chunks, bytes, chunksCount, control: controlRef.current, lateControlSent, cancelled: false };
@@ -1072,6 +1103,7 @@ export class RscRenderer {
     trace?: RscTraceMetadata;
   }): Promise<boolean> {
     try {
+      const gate = new RouteShellGate();
       const element = await this.#renderFallbackDocument({
         kind,
         route,
@@ -1081,9 +1113,17 @@ export class RscRenderer {
         url,
         error: kind === "error" && process.env.NODE_ENV !== "production" ? error : undefined,
         digest: kind === "error" ? "AKAN_RENDER_ERROR" : undefined,
+        gate,
       });
       if (!element) return false;
-      return await this.#trySendFlight(requestId, element, clientManifest, kind === "not-found" ? 404 : 500, trace);
+      return await this.#trySendFlight(
+        requestId,
+        element,
+        clientManifest,
+        kind === "not-found" ? 404 : 500,
+        trace,
+        gate,
+      );
     } catch (fallbackError) {
       this.#logger.error(
         `render[${requestId}] custom ${kind} fallback failed: ${
@@ -1124,8 +1164,9 @@ export class RscRenderer {
     clientManifest: ClientManifest,
     status: number,
     trace?: RscTraceMetadata,
+    gate?: RouteShellGate,
   ): Promise<boolean> {
-    const result = await this.#renderFlightElement(element, clientManifest, { requestId, status, trace });
+    const result = await this.#renderFlightElement(element, clientManifest, { requestId, status, trace, gate });
     if (result.cancelled) return true;
     if (result.control) return false;
     this.#recordFlight(result);
@@ -1284,6 +1325,7 @@ export class RscRenderer {
     url,
     error,
     digest,
+    gate,
   }: {
     kind: "not-found" | "error";
     route: PathRoute | LayoutFallbackRoute;
@@ -1293,6 +1335,7 @@ export class RscRenderer {
     url: URL;
     error?: unknown;
     digest?: string;
+    gate?: RouteShellGate;
   }): Promise<ReactNode | null> {
     setRequestFrameState(
       await RouteElementComposer.resolveSsrFallbackFrameState({
@@ -1308,6 +1351,7 @@ export class RscRenderer {
       pathname,
       error,
       digest,
+      gate,
     });
     if (!body) return null;
     const viewport = await RscRenderer.#firstRootValue(route.renderRootLayouts, (render) =>
@@ -1331,7 +1375,10 @@ export class RscRenderer {
           {routeHeadSnapshot ? null : this.#renderLocaleAlternates(url)}
           {this.#renderStylesheet(pathname)}
         </head>
-        <body key="body">{body}</body>
+        <body key="body">
+          {body}
+          {gate?.holding ? <RouteShellGate.Wait until={gate.opened} /> : null}
+        </body>
       </html>
     );
   }
@@ -1370,7 +1417,7 @@ export class RscRenderer {
     match: { pathRoute: PathRoute; params: Record<string, string> },
     searchParams: Record<string, string | string[]>,
     notFound: RouteNotFoundInPlace,
-    { guarded = false }: { guarded?: boolean } = {},
+    { guarded = false, gate }: { guarded?: boolean; gate?: RouteShellGate } = {},
   ): Promise<ReactNode> {
     this.#logger.verbose(
       `composing route element pathname=${url.pathname} search=${url.search || "(none)"} params=${JSON.stringify(match.params)}`,
@@ -1401,6 +1448,7 @@ export class RscRenderer {
       searchParams,
       navKey: url.pathname + url.search,
       notFound,
+      gate,
     });
     // Cookie theme is applied on the HTML stream and by the client so RSC cache cannot replay a stale data-theme.
     return (
@@ -1417,7 +1465,10 @@ export class RscRenderer {
           {routeHeadSnapshot ? null : this.#renderLocaleAlternates(url)}
           {this.#renderStylesheet(url.pathname)}
         </head>
-        <body key="body">{body}</body>
+        <body key="body">
+          {body}
+          {gate?.holding ? <RouteShellGate.Wait until={gate.opened} /> : null}
+        </body>
       </html>
     );
   }
@@ -1450,7 +1501,7 @@ export class RscRenderer {
     });
   }
 
-  async #renderNotFound(url: URL): Promise<ReactNode> {
+  async #renderNotFound(url: URL, gate?: RouteShellGate): Promise<ReactNode> {
     const matchedFallback = RouteTreeBuilder.matchFallback(url.pathname, this.#fallbackRoutes);
     if (matchedFallback) {
       const searchParams = parseSearchParams(url.search);
@@ -1466,6 +1517,7 @@ export class RscRenderer {
           searchParams,
           pathname: url.pathname,
           url,
+          gate,
         });
         if (fallback) return fallback;
       } catch (error) {

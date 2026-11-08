@@ -47,5 +47,5 @@ promise across — `const { xInitInY, xListInY } = fetch.initXInY(id)`, `xInitIn
 `<Load.Stream>` (model instances, server-only) — and `await` only what the shell must contain; ⑥ named `ReactNode`
 slots (`Layout.Navbar`); ⑦ derived display logic on `Light<Model>`; ⑧ `.guard(() => signedIn())`
 (`@libs/shared/webkit`) on `_layout.tsx` (a real 3xx before anything renders; `getSelf({ unauthorize })` in a body
-redirects in-page after I/O); ⑨ CSS (`data-*` + `group-data-[…]`, `<details>`) over client state for visibility;
-⑩ heavy islands behind `index_.tsx` + `lazy()`.
+under a `.loading()` redirects in-page after I/O); ⑨ CSS (`data-*` + `group-data-[…]`, `<details>`) over client
+state for visibility; ⑩ heavy islands behind `index_.tsx` + `lazy()`.

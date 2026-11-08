@@ -449,6 +449,34 @@ describe("late redirect stderr suppression", () => {
     expect(output).toBe(benignConnectionClosed);
   });
 
+  test("releases the hook when the document's shell fails", async () => {
+    const logged = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    try {
+      const { result, restored } = await withCapturedStderr(async () => {
+        const rows = [
+          `0:["$","html",null,{"children":["$","body",null,{"children":"$L1"}]}]\n`,
+          `1:E${JSON.stringify({ message: "page broke", stack: "", env: "Server", digest: "" })}\n`,
+        ];
+        return await new SsrFromRscRenderer()
+          .render({
+            request: new Request("https://example.test/en/broken"),
+            rscStream: textStream([{ text: rows[0] as string }, { text: rows[1] as string, delayMs: 10 }]),
+            ssrManifest: { moduleLoading: null, moduleMap: {} },
+            lateControl: Promise.resolve(null),
+          })
+          .then(
+            () => "rendered",
+            (error: unknown) => String(error),
+          );
+      });
+
+      expect(result).toBe("Error: page broke");
+      expect(restored).toBe(true);
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
   test("does not install the process-wide stderr hook in production by default", async () => {
     const previousNodeEnv = process.env.NODE_ENV;
     const previousSuppress = process.env.AKAN_SUPPRESS_LATE_REDIRECT_STDERR;
@@ -560,10 +588,12 @@ describe("SsrFromRscRenderer.renderDocument", () => {
     expect(html).toContain('<div hidden id="S:');
   });
 
-  test("allReady alone still leaves a large boundary in a hidden segment", async () => {
+  test("a blocking route gets a large boundary in place, with no fallback for a throttled reveal to replace", async () => {
     const html = await renderLargeBoundary({ waitForAllReady: true });
 
-    expect(html).toContain('<div hidden id="S:');
+    expect(html).not.toContain('<div hidden id="S:');
+    expect(html).not.toContain("<p>Loading</p>");
+    expect(html).toContain("<h1>Indexed headline</h1>");
   });
 
   test("a crawler gets every boundary in place, readable without a script", async () => {
