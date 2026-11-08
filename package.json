@@ -53,7 +53,7 @@
     "@akanjs/native": "workspace:*",
     "@biomejs/biome": "2.5.14",
     "@changesets/cli": "^2.31.0",
-    "@happy-dom/global-registrator": "21.0.3",
+    "@happy-dom/global-registrator": "21.0.4",
     "@playwright/test": "^1.64.1",
     "@types/bun": "^1.4.4",
     "@types/chance": "^1.1.8",
@@ -69,7 +69,7 @@
     "@types/ssh2": "^1.15.5",
     "@types/subset-font": "^2.3.0",
     "chance": "^1.1.13",
-    "happy-dom": "21.0.3",
+    "happy-dom": "21.0.4",
     "typescript": "^6.0.3",
     "use-agentic": "workspace:*"
   },
@@ -178,10 +178,11 @@
     "typebox": "1.3.37",
     "ua-parser-js": "^2.0.9",
     "yjs": "^13.6.32",
-    "zod": "3.25.76"
+    "zod": "4.6.7"
   },
   "patchedDependencies": {
     "zod@3.25.76": "patches/zod@3.25.76.patch",
-    "zod@4.4.3": "patches/zod@4.4.3.patch"
+    "zod@4.4.3": "patches/zod@4.4.3.patch",
+    "zod@4.6.7": "patches/zod@4.6.7.patch"
   }
 }
