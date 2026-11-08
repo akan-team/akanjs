@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { collectScopeRecipeSources, extractAgentBlock, renderScopeAgentBlock } from "@akanjs/devkit/agentsIndex";
 import { biomeVersion } from "@akanjs/devkit/biomeBase";
@@ -102,6 +103,7 @@ export class WorkspaceRunner extends runner("workspace") {
   ) {
     const cwdPath = process.cwd();
     const workspaceRoot = inPlace ? path.resolve(cwdPath, dirname) : path.resolve(cwdPath, dirname, repoName);
+    this.#refuseSharedFolder(workspaceRoot);
     const normalizedRegistryUrl = registryUrl ? getNpmRegistryUrl(registryUrl) : undefined;
     const rootTemplate = {
       basePath: ".",
@@ -110,13 +112,20 @@ export class WorkspaceRunner extends runner("workspace") {
     };
 
     const workspace = WorkspaceExecutor.fromRoot({ workspaceRoot, repoName });
-    const planned = await workspace.applyTemplate({ ...rootTemplate, dryRun: true });
-    await this.#refuseToOverwrite(workspace, [
-      ...planned.map((file) => path.relative(workspaceRoot, file.filePath)),
+    //? `getPath` drops a path's leading folders that its root ends with; the filesystem root ends with none.
+    const fsRoot = path.parse(workspaceRoot).root;
+    const planned = await WorkspaceExecutor.fromRoot({ workspaceRoot: fsRoot, repoName }).applyTemplate({
+      ...rootTemplate,
+      dryRun: true,
+    });
+    const writes = [
+      ...planned.map((file) => path.relative(fsRoot, file.filePath)),
       ...(normalizedRegistryUrl ? [".npmrc"] : []),
       `apps/${appName}`,
       ...libs.map((libName) => `libs/${libName}`),
-    ]);
+    ];
+    this.#refuseMisresolvedPaths(workspace, writes);
+    await this.#refuseToOverwrite(workspace, writes);
     const templateSpinner = workspace.spinning(`Creating workspace template files in ${workspaceRoot}...`);
     const latestTypesBunVersion = await getLatestPackageVersion("@types/bun", "latest", normalizedRegistryUrl);
     await workspace.applyTemplate(rootTemplate);
@@ -156,6 +165,32 @@ export class WorkspaceRunner extends runner("workspace") {
     return workspace;
   }
 
+  #refuseSharedFolder(root: string) {
+    const shared =
+      root === path.resolve(os.homedir())
+        ? "your home folder"
+        : path.dirname(root) === root
+          ? "a filesystem root"
+          : null;
+    if (!shared) return;
+    throw new Error(
+      `${root} is ${shared}, and a workspace there would commit every file below it and write its agent and MCP ` +
+        "settings over your global ones. Create the workspace in a folder of its own.",
+    );
+  }
+
+  #refuseMisresolvedPaths(workspace: WorkspaceExecutor, paths: string[]) {
+    const root = workspace.workspaceRoot;
+    const misresolved = paths
+      .filter((target) => workspace.getPath(target) !== path.join(root, target))
+      .sort((a, b) => a.localeCompare(b));
+    if (!misresolved.length) return;
+    throw new Error(
+      `Akan would write ${misresolved.join(", ")} to the wrong place in ${root}, since it drops a path's leading ` +
+        "folders when the workspace folder's path ends with them. Create the workspace in a folder with another name.",
+    );
+  }
+
   async #refuseToOverwrite(workspace: WorkspaceExecutor, paths: string[]) {
     const occupied: string[] = [];
     for (const target of paths) if (await workspace.exists(target)) occupied.push(target);
@@ -172,7 +207,8 @@ export class WorkspaceRunner extends runner("workspace") {
   async commitWorkspace(workspace: Workspace): Promise<WorkspaceCommit> {
     const root = workspace.workspaceRoot;
     const outer = (await WorkspaceRunner.#git(root, ["rev-parse", "--show-toplevel"]))?.trim();
-    if (outer && (await WorkspaceRunner.#git(root, ["check-ignore", "-q", root])) === null)
+    //? An outer `app/*` ignores every file in the folder but not the folder, so ask about a file the scaffold writes.
+    if (outer && (await WorkspaceRunner.#git(root, ["check-ignore", "-q", path.join(root, "package.json")])) === null)
       return { committed: false, repository: outer };
     //? `git var` fails exactly where `git commit` would stop on "Please tell me who you are": a container, a CI image.
     const known = await Promise.all(
