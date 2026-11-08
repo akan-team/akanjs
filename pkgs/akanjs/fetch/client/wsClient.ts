@@ -6,6 +6,7 @@ import {
   type WebsocketHeartbeatAckData,
   websocketAuthContract,
   websocketBinaryFrameContract,
+  websocketCredentialContract,
   websocketHeartbeatContract,
 } from "akanjs/common";
 import type {
@@ -37,6 +38,11 @@ export interface WsClientOptions {
   onRevoked?: (roomId: string) => void;
   /** A frame the server answered with an error, and the subscribe or message key it answered. */
   onError?: (error: unknown, key?: string) => void;
+  /**
+   * Awaited, up to `WsClient.renewTimeoutMs`, before the reconnect that follows the server closing the socket at its
+   * credential's expiry: renew the session cookie, or call `setJwt`, so the new handshake carries a live credential.
+   */
+  onCredentialExpired?: () => unknown;
 }
 
 interface SubscribeOption {
@@ -68,6 +74,7 @@ export class WsClient {
     return websocketRoomContract.idOf(key, args);
   }
   static readonly stableMs = 5_000;
+  static renewTimeoutMs = 10_000;
 
   readonly logger = new Logger("WsClient");
   readonly url: string;
@@ -91,6 +98,7 @@ export class WsClient {
   #outbox: string[] = [];
   #unconnectedWarnTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #jwt: string | null = null;
+  #renewing: Promise<unknown> | null = null;
   #heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   #lastInboundAt = 0;
   #options: WsClientOptions = {};
@@ -268,7 +276,8 @@ export class WsClient {
       //? Only a socket that stayed up ends the streak: a gateway that upgrades and drops at once is another failure.
       if (openedAt && Date.now() - openedAt >= WsClient.stableMs) this.#reconnectAttempts = 0;
       if (this.#destroyed) return;
-      this.#closed();
+      if (event.code === websocketCredentialContract.expiredCode) this.#renewThenReconnect();
+      else this.#closed();
       // After the reconnect is scheduled, so a listener that throws cannot cancel it.
       this.#handleMessage("disconnect", { code: event.code, reason: event.reason });
     };
@@ -295,6 +304,29 @@ export class WsClient {
     this.#setState("closed");
     if (this.#destroyed || this.#ws || this.#reconnectTimer || this.#state !== "closed") return;
     this.#scheduleReconnect();
+  }
+
+  //? Not a failure: the server ends a healthy socket on time, so the reconnect skips the backoff and its count.
+  #renewThenReconnect() {
+    this.#reconnectAttempts = 0;
+    this.#setState("closed");
+    const renewing = Promise.race([
+      Promise.resolve()
+        .then(() => this.#options.onCredentialExpired?.())
+        .catch((error: unknown) => {
+          this.logger.warn(`WebSocket credential renewal failed: ${error instanceof Error ? error.message : error}`);
+        }),
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, WsClient.renewTimeoutMs).unref?.();
+      }),
+    ]);
+    this.#renewing = renewing;
+    void renewing.then(() => {
+      if (this.#renewing !== renewing) return;
+      this.#renewing = null;
+      if (this.#destroyed || this.#ws || this.#reconnectTimer) return;
+      this.#connect();
+    });
   }
 
   #startHeartbeat() {

@@ -16,6 +16,7 @@ import type { HttpRoutes, SignalRouteOptions, WebsocketRoutes } from "../types";
 import { AppWsData } from "./appWsData";
 import type { HostAllowlist } from "./hostAllowlist";
 import { ServerLimits } from "./serverLimits";
+import { WsCredentialExpiry } from "./wsCredentialExpiry";
 import { WsUpgrade } from "./wsUpgrade";
 
 export interface HmrStateSource {
@@ -160,6 +161,7 @@ export class ApiRouter {
           return;
         }
         SignalResolver.handleWsOpen(ws, registry);
+        WsCredentialExpiry.watch(ws);
       },
       message: async (ws, message) => {
         const data = ws.data as WsTaggedData | undefined;
@@ -177,6 +179,7 @@ export class ApiRouter {
             if (msg.key === websocketAuthContract.key) {
               // Must stay synchronous: the next frame (e.g. a subscribe) has to see the new credential.
               AppWsData.applyCredential(AppWsData.of(ws), websocketAuthContract.readJwt(msg.data));
+              WsCredentialExpiry.watch(ws);
               const revokedRooms = await SignalResolver.revalidateWsRooms(ws, registry, live);
               ws.send(JSON.stringify(websocketAuthContract.makeAck(revokedRooms)));
               return;
@@ -210,6 +213,7 @@ export class ApiRouter {
           hmrHub.detach(ws as unknown as Bun.ServerWebSocket<HmrWsData>);
           return;
         }
+        WsCredentialExpiry.unwatch(ws);
         SignalResolver.handleWsClose(ws, registry, live);
       },
     };

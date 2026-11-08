@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Any, DataList, getEnv, ID, Int, Upload } from "akanjs/base";
-import { Logger, websocketBinaryFrameContract } from "akanjs/common";
+import { Logger, websocketBinaryFrameContract, websocketCredentialContract } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import {
   buildEndpoint,
@@ -275,9 +275,9 @@ class FakeWebSocket {
     this.onmessage?.({ data: frame.buffer.slice(frame.byteOffset, frame.byteOffset + frame.byteLength) });
   }
 
-  close() {
+  close(code = 1000, reason = "closed") {
     this.readyState = FakeWebSocket.CLOSED;
-    this.onclose?.({ code: 1000, reason: "closed" });
+    this.onclose?.({ code, reason });
   }
 
   send(data: string) {
@@ -2356,6 +2356,75 @@ describe("WsClient", () => {
       expect(JSON.parse(second.sent.at(-1) ?? "{}")).toEqual({ key: "send", data: ["hello"] });
       reconnecting = false;
       client.destroy();
+    }
+  });
+
+  test("renews the credential, then reconnects at once and resubscribes, when the server closes at its expiry", async () => {
+    setFakeWebSocket();
+    const states: string[] = [];
+    let renewals = 0;
+    let finishRenewal = () => {};
+    const client = new WsClient("ws://example/ws").configure({
+      reconnect: { min: 60_000, jitter: 0 },
+      onStateChange: (state) => states.push(state),
+      onCredentialExpired: () => {
+        renewals += 1;
+        return new Promise<void>((resolve) => {
+          finishRenewal = resolve;
+        });
+      },
+    });
+    client.subscribe({ key: "roomKey", data: ["r1"], handleEvent: () => undefined });
+    client.connect();
+    FakeWebSocket.instances[0].open();
+    FakeWebSocket.instances[0].close(websocketCredentialContract.expiredCode, "credential expired");
+    await new Promise((resolve) => originalSetTimeout(resolve, 5));
+    expect(renewals).toBe(1);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    finishRenewal();
+    await waitUntil(() => FakeWebSocket.instances.length > 1);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    FakeWebSocket.instances[1].open();
+    expect(JSON.parse(FakeWebSocket.instances[1].sent[0] ?? "{}")).toMatchObject({ key: "roomKey", subscribe: true });
+    expect(states).toEqual(["connecting", "open", "closed", "connecting", "open"]);
+    client.destroy();
+  });
+
+  test("reconnects after a credential renewal that throws or never answers, and not after a destroy", async () => {
+    const renewTimeoutMs = WsClient.renewTimeoutMs;
+    WsClient.renewTimeoutMs = 10;
+    try {
+      for (const onCredentialExpired of [
+        () => {
+          throw new Error("refresh refused");
+        },
+        () => new Promise<void>(() => undefined),
+      ]) {
+        setFakeWebSocket();
+        const client = new WsClient("ws://example/ws").configure({
+          reconnect: { min: 60_000, jitter: 0 },
+          onCredentialExpired,
+        });
+        client.logger.warn = (() => undefined) as typeof client.logger.warn;
+        client.connect();
+        FakeWebSocket.instances[0].open();
+        FakeWebSocket.instances[0].close(websocketCredentialContract.expiredCode, "credential expired");
+        await waitUntil(() => FakeWebSocket.instances.length > 1);
+        expect(FakeWebSocket.instances).toHaveLength(2);
+        client.destroy();
+      }
+
+      setFakeWebSocket();
+      const destroyed = new WsClient("ws://example/ws").configure({ reconnect: { min: 60_000, jitter: 0 } });
+      destroyed.connect();
+      FakeWebSocket.instances[0].open();
+      FakeWebSocket.instances[0].close(websocketCredentialContract.expiredCode, "credential expired");
+      destroyed.destroy();
+      await new Promise((resolve) => originalSetTimeout(resolve, 30));
+      expect(FakeWebSocket.instances).toHaveLength(1);
+    } finally {
+      WsClient.renewTimeoutMs = renewTimeoutMs;
     }
   });
 

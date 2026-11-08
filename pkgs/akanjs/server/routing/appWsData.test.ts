@@ -1,8 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { authTokenKey } from "akanjs/common";
 import { AppWsData } from "./appWsData";
+
+Object.assign(process.env, {
+  AKAN_PUBLIC_APP_NAME: "alpha",
+  AKAN_PUBLIC_REPO_NAME: "akanjs",
+  AKAN_PUBLIC_SERVE_DOMAIN: "example.com",
+  AKAN_PUBLIC_OPERATION_MODE: "local",
+});
 
 const handshake = (headers: Record<string, string> = {}) =>
   AppWsData.fromRequest(new Request("http://localhost/api/ws", { headers }));
+const jwtExpiringAt = (exp?: unknown) =>
+  `header.${Buffer.from(JSON.stringify({ userId: "u1", exp })).toString("base64url")}.signature`;
 
 describe("AppWsData", () => {
   test("snapshots only the credential headers from the handshake", () => {
@@ -32,6 +42,19 @@ describe("AppWsData", () => {
     expect(data.ip).toBe("203.0.113.10");
     expect(data.port).toBe(54321);
     expect(data.headers.get("x-secret")).toBeNull();
+  });
+
+  test("reads the credential's expiry off the bearer token over the session cookie, and none off a token without exp", () => {
+    const cookie = `${authTokenKey()}=${jwtExpiringAt(2_000)}`;
+
+    expect(handshake({ cookie }).credentialExpiresAt()).toBe(2_000_000);
+    expect(handshake({ cookie, authorization: `Bearer ${jwtExpiringAt(3_000)}` }).credentialExpiresAt()).toBe(
+      3_000_000,
+    );
+    expect(handshake({ cookie: `${authTokenKey()}=${jwtExpiringAt()}` }).credentialExpiresAt()).toBeNull();
+    expect(handshake({ authorization: "Bearer opaque-token" }).credentialExpiresAt()).toBeNull();
+    expect(handshake({ cookie: `${cookie}; ${cookie}` }).credentialExpiresAt()).toBeNull();
+    expect(handshake().credentialExpiresAt()).toBeNull();
   });
 
   test("falls back to the socket peer only when nothing proxied the handshake", () => {

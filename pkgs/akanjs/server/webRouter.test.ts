@@ -21,6 +21,7 @@ import {
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
 import type { RscRenderResult } from "./rscWorkerHost";
+import { SessionRefresh } from "./sessionRefresh";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { SsrLateRedirect } from "./ssrTypes";
 import { type BaseBuildArtifact, defaultAkanImageConfig } from "./types";
@@ -403,6 +404,97 @@ describe("WebRouter sub route host resolution", () => {
     );
 
     expect(rendered).toBe("/en/soft/office/admin [soft]");
+  });
+});
+
+describe("WebRouter session refresh", () => {
+  const renewed = ["jwt=new-access; Path=/; HttpOnly", "refresh=new-refresh; Path=/; HttpOnly"];
+  const sent = "theme=dark; jwt=expired; refresh=old-refresh";
+  const withRefresh = async <T>(run: (requests: Request[]) => Promise<T>) => {
+    const requests: Request[] = [];
+    SessionRefresh.use((request) => {
+      requests.push(request);
+      return renewed;
+    });
+    try {
+      return await run(requests);
+    } finally {
+      SessionRefresh.use(null);
+    }
+  };
+  const redirectingWorker = (): FakeRscWorker => ({
+    ...createFakeRscWorker(),
+    async renderWithMeta(req) {
+      this.renderCalls.push(req);
+      return { type: "redirect", location: "/en/signin", method: "replace", status: 307 };
+    },
+  });
+
+  test("renders a page with the renewed session and answers it with the cookies, uncacheable", async () => {
+    await withRefresh(async (requests) => {
+      let storeCookie: string | null | undefined;
+      const { response, renderCookie } = await withFullSsrCacheHarness(
+        async ({ fullSsr, fakeWorker }) => {
+          const response = await fullSsr(new Request("http://localhost/en/home", { headers: { cookie: sent } }));
+          await response.text();
+          return { response, renderCookie: fakeWorker.renderCalls[0]?.headers.get("cookie") };
+        },
+        {
+          htmlCacheEnabled: "1",
+          onRenderInput: (input) => {
+            storeCookie = input.requestStore?.request.headers.get("cookie");
+          },
+        },
+      );
+
+      expect(requests.map((request) => new URL(request.url).pathname)).toEqual(["/en/home"]);
+      expect(renderCookie).toBe("theme=dark; jwt=new-access; refresh=new-refresh");
+      expect(storeCookie).toBe("theme=dark; jwt=new-access; refresh=new-refresh");
+      expect(response.headers.getSetCookie()).toEqual(renewed);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("x-akan-cache")).toBe("BYPASS");
+    });
+  });
+
+  test("answers the page's redirect and an RSC navigation, redirect or not, with the renewed cookies", async () => {
+    await withRefresh(async () => {
+      const redirect = await withFullSsrCacheHarness(
+        async ({ fullSsr }) => await fullSsr(new Request("http://localhost/en/admin", { headers: { cookie: sent } })),
+        { worker: redirectingWorker() },
+      );
+      expect(redirect.status).toBe(307);
+      expect(redirect.headers.getSetCookie()).toEqual(renewed);
+
+      const navigations = await Promise.all(
+        [createFakeRscWorker(), redirectingWorker()].map((worker) =>
+          withFullSsrCacheHarness(
+            async ({ renderEnvRoutes, fakeWorker }) => {
+              const response = await renderEnvRoutes["/__rsc"](
+                new Request("http://localhost/__rsc?url=%2Fen%2Fadmin", {
+                  headers: { host: "localhost", cookie: sent },
+                }),
+              );
+              return { response, renderCookie: fakeWorker.renderCalls[0]?.headers.get("cookie") };
+            },
+            { worker },
+          ),
+        ),
+      );
+      for (const { response, renderCookie } of navigations) {
+        expect(renderCookie).toBe("theme=dark; jwt=new-access; refresh=new-refresh");
+        expect(response.headers.getSetCookie()).toEqual(renewed);
+      }
+    });
+  });
+
+  test("is not asked for an asset, a crawler file or a CSR shell", async () => {
+    await withRefresh(async (requests) => {
+      await withFullSsrCacheHarness(async ({ fullSsr }) => {
+        for (const pathname of ["/robots.txt", "/_akan/image", "/en/home?csr=true"])
+          await fullSsr(new Request(`http://localhost${pathname}`, { headers: { cookie: sent } }));
+      });
+      expect(requests).toEqual([]);
+    });
   });
 });
 

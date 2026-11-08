@@ -351,6 +351,35 @@ describe("ApiRouter websocket authentication", () => {
     expect(AppWsData.of(ws).account).toBeUndefined();
   });
 
+  test("closes a socket at the expiry of the credential an auth frame swapped in, timed again by the next one", async () => {
+    const { AppWsData } = await import("./appWsData");
+    const { websocketAuthContract, websocketCredentialContract } = await import("akanjs/common");
+    const jwtExpiringIn = (ms: number) =>
+      `header.${Buffer.from(JSON.stringify({ exp: (Date.now() + ms) / 1000 })).toString("base64url")}.signature`;
+    const socket = () => {
+      const closes: number[] = [];
+      const ws = Object.assign(fakeWs(AppWsData.fromRequest(new Request("http://localhost/api/ws"))), {
+        close: (code: number) => closes.push(code),
+      });
+      return { ws, closes };
+    };
+    const handlers = await buildWebsocketHandlers({});
+    const auth = (ws: Bun.ServerWebSocket<{ kind?: string }>, jwt: string | null) =>
+      handlers.message?.(ws, JSON.stringify(websocketAuthContract.makeRequest(jwt)));
+
+    const expiring = socket();
+    const renewed = socket();
+    const signedOut = socket();
+    await Promise.all([expiring, renewed, signedOut].map(({ ws }) => auth(ws, jwtExpiringIn(20))));
+    await auth(renewed.ws, jwtExpiringIn(60_000));
+    await auth(signedOut.ws, null);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(expiring.closes).toEqual([websocketCredentialContract.expiredCode]);
+    expect([...renewed.closes, ...signedOut.closes]).toEqual([]);
+    await auth(renewed.ws, null);
+  });
+
   test("answers a heartbeat frame instead of rejecting it as an unregistered route", async () => {
     const { AppWsData } = await import("./appWsData");
     const { websocketHeartbeatContract } = await import("akanjs/common");
