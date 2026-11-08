@@ -51,6 +51,7 @@ import { RoomReplay } from "./routing/roomReplay";
 import { RouteHosts } from "./routing/routeHosts";
 import { ServerLimits } from "./routing/serverLimits";
 import { createSoloAppRoutes } from "./routing/soloAppRoutes";
+import { SessionRefresh } from "./sessionRefresh";
 import {
   getWebConfigFromEnv,
   type HttpRoutes,
@@ -223,6 +224,7 @@ export class AkanServer {
     this.openapi = options?.openapi ?? this.openapi;
     // Each lib's `option.ts` in mount order, the app's last, and an option passed here over all of them.
     EndpointRateLimit.reset();
+    SessionRefresh.use(null);
     libs.forEach((lib) => {
       const mcp = lib.option.getMcp(this.env);
       if (mcp !== undefined) this.setMcp(mcp);
@@ -236,6 +238,8 @@ export class AkanServer {
       if (crossSite !== undefined) CrossSiteGuard.configure(crossSite);
       const rateLimit = lib.option.getRateLimit(this.env);
       if (rateLimit !== undefined) EndpointRateLimit.configure(rateLimit);
+      const sessionRefresh = lib.option.getSessionRefresh();
+      if (sessionRefresh !== undefined) SessionRefresh.use(sessionRefresh);
     });
     EndpointRateLimit.applyEnv(process.env.AKAN_RATE_LIMIT, getEnv().environment);
     this.setMcp(options?.mcp ?? this.mcp);

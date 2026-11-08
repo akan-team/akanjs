@@ -14,6 +14,7 @@ export * from "./nativeSecret";
 export * from "./oauth";
 export * from "./processMetricsCollector";
 export * from "./proxy";
+export type { SessionRefreshHook } from "./sessionRefresh";
 // `routeElementComposer`/`routeTreeBuilder` stay out: they would pull React into every process that loads this barrel.
 export * from "./sitemap";
 export type { SsrManifest, SsrManifestEntry } from "./ssrTypes";

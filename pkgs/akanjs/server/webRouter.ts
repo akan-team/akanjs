@@ -78,6 +78,7 @@ import {
   AKAN_RSC_RESPONSE_STATE_HEADER,
 } from "./routeState";
 import { type RscRedirectMethod, type RscRedirectStatus, type RscRenderResult, RscWorker } from "./rscWorkerHost";
+import { SessionRefresh } from "./sessionRefresh";
 import { createDefaultSitemapXml, getSitemapBasePath } from "./sitemap";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { RscTraceMetadata, SsrManifest } from "./ssrTypes";
@@ -523,7 +524,7 @@ export class WebRouter {
               this.#devHmr?.handleWs(req) ?? new Response("HMR unavailable", { status: 404 }),
           }
         : {}),
-      "/__rsc": async (req) => {
+      "/__rsc": SessionRefresh.answering(async (req) => {
         this.#requestStats.rscNavigation += 1;
         try {
           const reqUrl = new URL(req.url);
@@ -545,6 +546,7 @@ export class WebRouter {
           const targetUrl = normalizedTarget.url;
           if (!WebRouter.#isTrustedRscTarget(clientOrigin, targetUrl))
             return new Response("Bad Request", { status: 400 });
+          await SessionRefresh.apply(req);
           const manifest = await this.#ensureRoute(targetUrl);
           const rscHeaders = new Headers(req.headers);
           if (normalizedTarget.basePath) rscHeaders.set("x-base-path", normalizedTarget.basePath);
@@ -574,7 +576,7 @@ export class WebRouter {
         } catch (err) {
           return this.#renderRscErrorResponse("__rsc", err);
         }
-      },
+      }),
       ...(!this.#prodMode || process.env.AKAN_EXPOSE_RSC_MANIFEST === "1"
         ? {
             "/__rsc/manifest": () =>
@@ -600,7 +602,7 @@ export class WebRouter {
           status: 404,
           headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
         }),
-      "/*": async (req) => {
+      "/*": SessionRefresh.answering(async (req) => {
         const url = new URL(req.url);
         if (url.pathname.endsWith("/_akan/image")) {
           this.#requestStats.image += 1;
@@ -682,6 +684,7 @@ export class WebRouter {
 
         try {
           this.#requestStats.fullSsr += 1;
+          await SessionRefresh.apply(req);
           const manifest = await this.#ensureRoute(url);
           const isCrawler = isCrawlerUserAgent(req.headers.get("user-agent"));
           const htmlCacheDecision = this.#getHtmlCacheEntry(req, url, isCrawler);
@@ -814,7 +817,7 @@ export class WebRouter {
         } catch (err) {
           return this.#renderErrorResponse(req, url.pathname, err);
         }
-      },
+      }),
     };
     return { renderEnvRoutes, hmrHub: this.#hub, builderRpc: this.#builderRpc };
   }

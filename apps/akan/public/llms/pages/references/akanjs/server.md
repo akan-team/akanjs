@@ -266,6 +266,8 @@ Method
 
 - setCrossSite(option): Extra origins a browser may send mutations and open the websocket from. `{ enabled: false }` turns the check off.
 
+- setSessionRefresh(fn): Runs before a page or RSC navigation renders and returns `Set-Cookie` values, such as a renewed session. The render reads those cookies and the response carries them.
+
 A typical app option:
 
 **The type parameter is the env.** `AkanOption<ModulesOptions>` types what every function form receives, so keys and secrets come from the app's server env.
@@ -293,6 +295,8 @@ When several libs set it
 - setAgentAccess, setAgentRequestPolicy: The last call wins; `null` clears what a lib set.
 
 - setCrossSite: The last call wins.
+
+- setSessionRefresh: The last call wins; `null` clears what a lib set.
 
 - transformEnv: All run, the libs' in mount order and the app's last; each gets what the one before returned.
 

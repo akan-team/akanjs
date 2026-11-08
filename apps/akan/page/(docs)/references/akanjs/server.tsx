@@ -531,6 +531,13 @@ export default page()
           ko: "브라우저가 mutation을 보내고 웹소켓을 열어도 되는 다른 origin입니다. `{ enabled: false }`면 검사를 끕니다.",
         }),
       },
+      {
+        name: "setSessionRefresh(fn)",
+        desc: l.trans({
+          en: "Runs before a page or RSC navigation renders and returns `Set-Cookie` values, such as a renewed session. The render reads those cookies and the response carries them.",
+          ko: "페이지나 RSC 이동이 렌더되기 전에 실행되어 갱신한 세션 같은 `Set-Cookie` 값을 돌려줍니다. 렌더는 그 쿠키를 읽고 응답이 그 쿠키를 싣습니다.",
+        }),
+      },
     ];
 
     const mergeRows = [
@@ -583,6 +590,13 @@ export default page()
       {
         name: "setCrossSite",
         desc: l.trans({ en: "The last call wins.", ko: "마지막 호출이 이깁니다." }),
+      },
+      {
+        name: "setSessionRefresh",
+        desc: l.trans({
+          en: "The last call wins; `null` clears what a lib set.",
+          ko: "마지막 호출이 이깁니다. `null`은 lib이 정한 값을 지웁니다.",
+        }),
       },
       {
         name: "transformEnv",

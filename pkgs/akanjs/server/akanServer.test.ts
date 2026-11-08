@@ -188,6 +188,33 @@ describe("AkanServer OpenAPI config", () => {
   });
 });
 
+describe("AkanServer session refresh", () => {
+  test("runs the hook a lib's option sets, and none once a server without one is built", async () => {
+    const { AkanServer, AkanOption, createLib } = await loadRuntime();
+    const { SessionRefresh } = await import("./sessionRefresh");
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-session-refresh-"));
+    const asked: string[] = [];
+    const page = () => new Request("http://localhost/en/home", { headers: { cookie: "refresh=r1" } });
+
+    try {
+      new AkanServer(
+        "serverGet",
+        createEnv(tmp),
+        "all",
+        createLib(new AkanOption().setSessionRefresh((request) => [`seen=${asked.push(request.url)}`])),
+      );
+      expect(await SessionRefresh.apply(page())).toEqual(["seen=1"]);
+
+      new AkanServer("serverGet", createEnv(tmp), "all", createLib());
+      expect(await SessionRefresh.apply(page())).toEqual([]);
+      expect(asked).toHaveLength(1);
+    } finally {
+      SessionRefresh.use(null);
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("AkanServer web config", () => {
   test("reads AKAN_SSR / AKAN_CSR and lets setWeb narrow but never widen", async () => {
     const { AkanServer, createLib } = await loadRuntime();
