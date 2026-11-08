@@ -1,15 +1,7 @@
 "use client";
 import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
-import {
-  AiOutlineCheckCircle,
-  AiOutlineClose,
-  AiOutlineExclamationCircle,
-  AiOutlineInfoCircle,
-  AiOutlineLoading3Quarters,
-  AiOutlineWarning,
-} from "react-icons/ai";
-
+import { Icon } from "./Icon";
 import { overlayZ } from "./overlayLayer";
 import { createOverridable } from "./UiOverride";
 
@@ -26,18 +18,18 @@ export interface ToastMessage {
 }
 
 const messageTone: { [key in ToastType]: { card: string; chip: string; icon: ReactNode } } = {
-  info: { card: "border-info/35", chip: "bg-info/15 text-info", icon: <AiOutlineInfoCircle /> },
-  success: { card: "border-success/35", chip: "bg-success/15 text-success", icon: <AiOutlineCheckCircle /> },
-  warning: { card: "border-warning/35", chip: "bg-warning/15 text-warning", icon: <AiOutlineWarning /> },
+  info: { card: "border-info/35", chip: "bg-info/15 text-info", icon: <Icon.InfoCircle /> },
+  success: { card: "border-success/35", chip: "bg-success/15 text-success", icon: <Icon.CheckCircle /> },
+  warning: { card: "border-warning/35", chip: "bg-warning/15 text-warning", icon: <Icon.Warning /> },
   error: {
     card: "border-destructive/35",
     chip: "bg-destructive/15 text-destructive",
-    icon: <AiOutlineExclamationCircle />,
+    icon: <Icon.ExclamationCircle />,
   },
   loading: {
     card: "border-border",
     chip: "bg-muted text-foreground/60",
-    icon: <AiOutlineLoading3Quarters className="animate-spin" />,
+    icon: <Icon.Loading className="animate-spin" />,
   },
 };
 
@@ -79,7 +71,7 @@ export const DefaultToastItem = ({ className, message, onClose, onClosed }: Toas
           onClick={onClose}
           type="button"
         >
-          <AiOutlineClose className="text-sm" />
+          <Icon.Close className="text-sm" />
         </button>
       </div>
     </div>

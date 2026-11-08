@@ -22,17 +22,11 @@ import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 import { MaintainabilityPaths } from "../workflows/maintainabilityPaths";
 
 const defaultWorkspacePeerDependencies = new Set([
-  "@react-spring/web",
-  "@use-gesture/react",
   "chance",
   "react",
   "react-dom",
   "react-icons",
-  "react-refresh",
   "react-server-dom-webpack",
-  "react-spring",
-  "scheduler",
-  "tailwind-scrollbar",
   "tailwindcss",
   "typescript",
 ]);

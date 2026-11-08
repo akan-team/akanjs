@@ -1,9 +1,9 @@
 "use client";
+import { SpringValue, useSpring } from "@react-spring/web";
 import { useGesture } from "@use-gesture/react";
 import type { ReactDOMAttributes } from "@use-gesture/react/dist/declarations/src/types";
 import { cn } from "akanjs/client";
 import { type ReactNode, useContext, useRef } from "react";
-import { SpringValue, useSpring } from "react-spring";
 import { sharedContext } from "../client/sharedContext";
 import { animated } from "./animated";
 

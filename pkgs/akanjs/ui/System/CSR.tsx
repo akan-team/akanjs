@@ -30,7 +30,7 @@ import { RenderLayer } from "../../webkit/RenderLayer";
 import { animated } from "../animated";
 
 import { FontFace } from "../FontFace";
-import { Load } from "../Load";
+import LoadPage from "../Load/Page";
 import { Client, ClientPathWrapper } from "./Client";
 import { getFrameCssVars, ManifestLink, type ProviderProps } from "./Common";
 
@@ -60,7 +60,7 @@ const CSRProvider = ({
   of,
 }: CSRProviderProps) => {
   return (
-    <Load.Page
+    <LoadPage
       of={of}
       loader={async () => {
         const { lang } = params;

@@ -13,7 +13,7 @@ import { getRequestFrameState, setRequestTheme, untrackedRequest } from "akanjs/
 import { Children, type CSSProperties, Fragment, type ReactNode, Suspense } from "react";
 import { FontCss } from "../fontCss";
 import { frameSlotContainerClassNames, frameSlotContentClassNames, frameSlotStyles } from "../Layout/frameSlot";
-import { Load } from "../Load";
+import LoadPage from "../Load/Page";
 import { ClientBridge, ClientInner, ClientPathWrapper, ClientSsrBridge, ClientWrapper } from "./Client";
 import { getFrameCssVars, isResponsiveFrame, type ProviderProps } from "./Common";
 
@@ -54,7 +54,7 @@ const SSRProvider = ({
   const pageState = getRequestFrameState<PageState>() ?? defaultPageState;
 
   return (
-    <Load.Page
+    <LoadPage
       of={of}
       loader={async () => {
         if (!router.isInitialized) router.init({ type: "ssr", side: "server", lang: activeLocale, prefix });

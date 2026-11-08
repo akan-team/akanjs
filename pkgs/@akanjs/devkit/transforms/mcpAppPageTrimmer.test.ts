@@ -2,9 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { symlink } from "node:fs/promises";
 import path from "node:path";
 import { tempDirs, writeText } from "../testHelpers";
+import { createBarrelImportsPlugin } from "./barrelImportsPlugin";
 import { McpAppPageTrimmer } from "./mcpAppPageTrimmer";
 
 const makeTempRoot = tempDirs("akan-mcp-app-trim-");
+const trimmerPlugin = async (root: string, pagePaths: string[]) =>
+  await createBarrelImportsPlugin(
+    { workspace: { workspaceRoot: root }, getTsConfig: async () => ({ compilerOptions: {} }) } as never,
+    { barrels: [], pipeAfter: McpAppPageTrimmer.pipe(pagePaths) },
+  );
 
 describe("McpAppPageTrimmer", () => {
   test("hands every stage but the apps a function that draws nothing, and keeps the rest of the chain as written", () => {
@@ -51,7 +57,7 @@ describe("McpAppPageTrimmer", () => {
     await writeText(path.join(root, "entry.ts"), 'import login from "./linked/login.tsx";\nexport { login };\n');
     const result = await Bun.build({
       entrypoints: [path.join(root, "entry.ts")],
-      plugins: [McpAppPageTrimmer.plugin([path.join(root, "linked/login.tsx")])],
+      plugins: [await trimmerPlugin(root, [path.join(root, "linked/login.tsx")])],
     });
     const [output] = result.outputs;
     expect(result.success).toBe(true);
@@ -73,7 +79,7 @@ describe("McpAppPageTrimmer", () => {
     await writeText(path.join(root, "entry.ts"), 'import trip from "./trip.tsx";\nconsole.info(trip);\n');
     const result = await Bun.build({
       entrypoints: [path.join(root, "entry.ts")],
-      plugins: [McpAppPageTrimmer.plugin([path.join(root, "trip.tsx")])],
+      plugins: [await trimmerPlugin(root, [path.join(root, "trip.tsx")])],
       splitting: false,
     });
     const text = (await result.outputs[0]?.text()) ?? "";

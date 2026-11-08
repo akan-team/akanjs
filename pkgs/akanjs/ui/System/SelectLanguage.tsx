@@ -4,8 +4,8 @@ import { parseAkanI18nEnv } from "akanjs/common";
 import { st } from "akanjs/store";
 
 import { agentAttrs } from "../agentAttrs";
-import { buttonRecipe } from "../Button";
 import { Dropdown } from "../Dropdown";
+import { buttonRecipe } from "../recipe";
 
 const languageNames = {
   en: "English",
