@@ -137,6 +137,7 @@ export class NativeApp {
       webDir: this.web.dir,
       contributions: plugins.flatMap((plugin) => (plugin.native ? [plugin.native] : [])),
       locales: appConfig.i18n.locales,
+      i18n: appConfig.i18n,
       env: this.env,
       platform,
       nativePlugins,

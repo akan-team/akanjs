@@ -1,5 +1,5 @@
 import type { PromiseOrObject } from "akanjs/base";
-import { applyMixins, capitalize } from "akanjs/common";
+import { applyMixins, capitalize, modelNames } from "akanjs/common";
 import { type ConstantModel, type QueryOf, resolvePageLimit, resolvePageSkip } from "akanjs/constant";
 import {
   assertFilterFitsCrud,
@@ -65,6 +65,7 @@ export class DatabaseResolver {
     database: DatabaseModel,
   ): { adaptor: AdaptorCls<DatabaseInstance>; schema: DocumentSchema } {
     const [modelName, className]: [string, string] = [database.refName, capitalize(database.refName)];
+    const names = modelNames(modelName);
     // null (no sort named) lets the store pick relevance for a text search; defaulting to "latest" here would hide it.
     // An unknown key is refused, not ignored: sortKeys reach the client, and a typo must not silently reorder a list.
     const resolveSort = (sortKey?: string | null): { [key: string]: 1 | -1 } | null => {
@@ -135,10 +136,10 @@ export class DatabaseResolver {
     const listenPreHook = listen("pre");
     const listenPostHook = listen("post");
 
-    class DatabaseModelInstance extends adapt(`${modelName}Model`, ({ plug }) => ({
+    class DatabaseModelInstance extends adapt(names.modelModel, ({ plug }) => ({
       __database: plug(DatabaseAdaptorRole, (database) => database),
       __cache: plug(CacheAdaptorRole, (cache) => new CacheDatabase(modelName, cache)),
-      [`${modelName}Cache` as never]: plug(CacheAdaptorRole, (cache) => new CacheDatabase(modelName, cache)),
+      [names.modelCache as never]: plug(CacheAdaptorRole, (cache) => new CacheDatabase(modelName, cache)),
     })) {
       declare readonly __database: DatabaseAdaptor;
       __store!: DocumentStore;
@@ -156,11 +157,11 @@ export class DatabaseResolver {
             const byId = new Map(docs.map((doc) => [String(doc.id), doc]));
             return ids.map((id) => byId.get(String(id)) ?? null);
           },
-          { name: `${modelName}Loader`, cache: false },
+          { name: names.modelLoader, cache: false },
         );
         Object.assign(this, {
           [className]: this.__model,
-          [`${modelName}Loader`]: this.__loader,
+          [names.modelLoader]: this.__loader,
         });
         Object.entries(getLoaderInfos(database.model)).forEach(([key, loaderInfo]) => {
           Object.assign(this, {
@@ -375,19 +376,19 @@ export class DatabaseResolver {
         if (!doc) throw new NoDocumentError(`No Document (${database.refName}): ${id}`);
         return doc;
       }
-      async [`get${className}`](id: string) {
+      async [names.getModel](id: string) {
         return this.__get(id);
       }
       async __load(id?: string) {
         return (id ? await this.__loader.load(id) : null) as unknown;
       }
-      async [`load${className}`](id?: string) {
+      async [names.loadModel](id?: string) {
         return this.__load(id);
       }
       async __loadMany(ids: string[]) {
         return await this.__loader.loadMany(ids);
       }
-      async [`load${className}Many`](ids: string[]) {
+      async [names.loadModelMany](ids: string[]) {
         return this.__loadMany(ids);
       }
       async clone(data: DataInputOf<any, any> & { id: string }) {
@@ -396,13 +397,13 @@ export class DatabaseResolver {
       async __create(data: DataInputOf<any, any>) {
         return await timedQuery(() => this.__store.create(data));
       }
-      async [`create${className}`](data: DataInputOf<any, any>) {
+      async [names.createModel](data: DataInputOf<any, any>) {
         return this.__create(data);
       }
       async __update(id: string, data: DataInputOf<any, any>) {
         return await timedQuery(() => this.__store.update(id, data));
       }
-      async [`update${className}`](id: string, data: DataInputOf<any, any>) {
+      async [names.updateModel](id: string, data: DataInputOf<any, any>) {
         return this.__update(id, data);
       }
       async __remove(id: string) {
@@ -423,7 +424,7 @@ export class DatabaseResolver {
       async __updateOne(query: QueryOf<any>, update: DocumentUpdateInput, options?: DocumentTouchOptions) {
         return await timedQuery(() => this.__store.updateOneByQuery(query, update, ...touchArgs(options)));
       }
-      async [`remove${className}`](id: string) {
+      async [names.removeModel](id: string) {
         return this.__remove(id);
       }
     }

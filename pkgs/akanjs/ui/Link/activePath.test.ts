@@ -31,4 +31,20 @@ describe("isActiveHref", () => {
     expect(at("/en", "/")).toBe(true);
     expect(at("/en/org/1/ticket/3", "/org/1/project", ["/org/1/ticket"])).toBe(true);
   });
+
+  test('matches an unprefixed default-locale pathname under "as-needed" as it does a prefixed one', () => {
+    const at = (pathname: string, href: string, lang = "en", exact = false) =>
+      isActiveHref({ pathname, href, lang, prefix: "", exact });
+    process.env.AKAN_PUBLIC_LOCALE_PREFIX = "as-needed";
+    try {
+      expect(at("/pokemon/deoxys", "/pokemon")).toBe(true);
+      expect(at("/pokemon/deoxys", "/pokemon/deoxys", "en", true)).toBe(true);
+      expect(at("/pokemon", "/types")).toBe(false);
+      expect(at("/", "/")).toBe(true);
+      expect(at("/types", "/")).toBe(false);
+      expect(at("/ko/pokemon/deoxys", "/pokemon", "ko")).toBe(true);
+    } finally {
+      delete process.env.AKAN_PUBLIC_LOCALE_PREFIX;
+    }
+  });
 });

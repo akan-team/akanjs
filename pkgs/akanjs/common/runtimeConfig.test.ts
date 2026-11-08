@@ -16,11 +16,16 @@ import {
 
 describe("runtime config helpers", () => {
   test("normalizes i18n config and validates default locale membership", () => {
-    expect(DEFAULT_AKAN_I18N).toEqual({ defaultLocale: "en", locales: ["en", "ko"] });
+    expect(DEFAULT_AKAN_I18N).toEqual({ defaultLocale: "en", locales: ["en", "ko"], localePrefix: "always" });
     expect(resolveAkanI18nConfig({ defaultLocale: "ko", locales: [" en ", "ko", "ko"] })).toEqual({
       defaultLocale: "ko",
       locales: ["en", "ko"],
+      localePrefix: "always",
     });
+    expect(resolveAkanI18nConfig({ localePrefix: "as-needed" }).localePrefix).toBe("as-needed");
+    expect(() => resolveAkanI18nConfig({ localePrefix: "never" as never })).toThrow(
+      '[i18n] localePrefix "never" must be one of: always, as-needed',
+    );
     expect(() => resolveAkanI18nConfig({ defaultLocale: "ja", locales: ["en", "ko"] })).toThrow(
       '[i18n] defaultLocale "ja" must be included in locales: en,ko',
     );
@@ -33,7 +38,14 @@ describe("runtime config helpers", () => {
         AKAN_PUBLIC_DEFAULT_LOCALE: "ko",
         AKAN_PUBLIC_LOCALES: "en,ko,ja",
       }),
-    ).toEqual({ defaultLocale: "ko", locales: ["en", "ko", "ja"] });
+    ).toEqual({ defaultLocale: "ko", locales: ["en", "ko", "ja"], localePrefix: "always" });
+    expect(
+      parseAkanI18nEnv({
+        AKAN_PUBLIC_DEFAULT_LOCALE: "ko",
+        AKAN_PUBLIC_LOCALES: "en,ko,ja",
+        AKAN_PUBLIC_LOCALE_PREFIX: "as-needed",
+      }).localePrefix,
+    ).toBe("as-needed");
   });
 
   test("answers the same frozen config while the variables read the same, and a new one once they change", () => {

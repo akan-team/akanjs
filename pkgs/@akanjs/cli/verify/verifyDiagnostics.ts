@@ -20,16 +20,38 @@ type MaintainabilityEntry = ReturnType<typeof MaintainabilityReport.entriesOf>[n
 
 export class VerifyDiagnostics {
   static fromTypecheck(records: TypecheckRecord[]): VerifyDiagnostic[] {
-    return records.map((record) => ({
-      step: "typecheck",
-      file: record.file,
-      line: record.line,
-      col: record.col,
-      code: record.code,
-      severity: record.severity,
+    return records.map((record) => {
       //? A TS message chain repeats the head in each elaboration; the first line is the one a fix starts from.
-      message: record.message.split("\n")[0] ?? record.message,
-    }));
+      const message = record.message.split("\n")[0] ?? record.message;
+      return {
+        step: "typecheck",
+        file: record.file,
+        line: record.line,
+        col: record.col,
+        code: record.code,
+        severity: record.severity,
+        ...(VerifyDiagnostics.#dictionaryKeyMiss(message) ?? { message }),
+      };
+    });
+  }
+
+  //? TS cuts the dictionary's key union short (`... 47 more ...`), so the missing key is the only useful part.
+  static readonly #dictionaryKeyArg =
+    /^(?:Argument of type|Type) '"([\w$-]+)\.([\w$.-]+)"' is not assignable to (?:parameter of )?type '(?:"base\.|ServiceTranslatorKey<"base")/;
+
+  static #dictionaryKeyMiss(message: string): { message: string; fix: string } | null {
+    const [, refName, key] = message.match(VerifyDiagnostics.#dictionaryKeyArg) ?? [];
+    if (!refName || !key) return null;
+    const dictionaryFile = `${refName}.dictionary.ts`;
+    if (key.startsWith("error."))
+      return {
+        message: `"${refName}.${key}" is not an error key of the ${refName} dictionary`,
+        fix: `add ${key.slice("error.".length)}: [en, ko] to .error({}) in ${dictionaryFile} (a service module's dictionary must be a serviceDictionary)`,
+      };
+    return {
+      message: `"${refName}.${key}" is not a key of the ${refName} dictionary`,
+      fix: `check the spelling, or add ${key}: [en, ko] to .translate({}) in ${dictionaryFile}; one-off text takes l.trans({ en, ko })`,
+    };
   }
 
   static fromBiome(report: BiomeReport): VerifyDiagnostic[] {

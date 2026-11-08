@@ -150,6 +150,11 @@
       "types": "./server/lifecycle/portInUse.ts",
       "default": "./server/lifecycle/portInUse.ts"
     },
+    "./server/lifecycle/buildEnv": {
+      "import": "./server/lifecycle/buildEnv.ts",
+      "types": "./server/lifecycle/buildEnv.ts",
+      "default": "./server/lifecycle/buildEnv.ts"
+    },
     "./server/artifact/routeSeedIndexStore": {
       "import": "./server/artifact/routeSeedIndexStore.ts",
       "types": "./server/artifact/routeSeedIndexStore.ts",
@@ -206,12 +211,12 @@
     "tailwind-variants": "^3.3.1"
   },
   "peerDependencies": {
-    "@happy-dom/global-registrator": "^21.0.3",
+    "@happy-dom/global-registrator": "^21.0.4",
     "@playwright/test": "^1.64.1",
     "bullmq": "^5.81.5",
     "chance": "^1.1.13",
     "firebase": "^13.0.0",
-    "happy-dom": "^21.0.3",
+    "happy-dom": "^21.0.4",
     "ioredis": "^5.11.1",
     "postgres": "^3.4.9",
     "protobufjs": "^8.8.1",

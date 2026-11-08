@@ -16,6 +16,47 @@ describe("VerifyDiagnostics", () => {
     expect(diagnostic?.message).toBe("Type '{ a: string; }' is not assignable to type 'Memo'.");
   });
 
+  test("names the dictionary to edit when an error key is missing, not the cut-off key union", () => {
+    const [diagnostic] = VerifyDiagnostics.fromTypecheck([
+      {
+        file: "apps/minimal/lib/memo/memo.service.ts",
+        line: 12,
+        col: 19,
+        code: "TS2345",
+        severity: "error",
+        message:
+          'Argument of type \'"memo.error.imageTooLargeTypo"\' is not assignable to parameter of type \'"base.error.documentNotFound" | "base.error.gatewayTimeout" | ... 47 more ... | "memo.error.imageRejected"\'.',
+      },
+    ]);
+    expect(diagnostic?.message).toBe('"memo.error.imageTooLargeTypo" is not an error key of the memo dictionary');
+    expect(diagnostic?.fix).toContain("add imageTooLargeTypo: [en, ko] to .error({}) in memo.dictionary.ts");
+  });
+
+  test("names the dictionary to edit when a translation key is missing", () => {
+    const [diagnostic] = VerifyDiagnostics.fromTypecheck([
+      {
+        file: "apps/minimal/ui/RegistryProbe.tsx",
+        line: 52,
+        col: 12,
+        code: "TS2345",
+        severity: "error",
+        message:
+          'Argument of type \'"memo.titleTypo"\' is not assignable to parameter of type \'ServiceTranslatorKey<"base", BaseEndpoint, "edit" | "error" | ... 116 more ... | "new"> | ... 12 more ... | ServiceTranslatorKey<...>\'.',
+      },
+    ]);
+    expect(diagnostic?.message).toBe('"memo.titleTypo" is not a key of the memo dictionary');
+    expect(diagnostic?.fix).toContain("add titleTypo: [en, ko] to .translate({}) in memo.dictionary.ts");
+  });
+
+  test("leaves a string-literal mismatch outside the dictionary as TS wrote it", () => {
+    const message = 'Argument of type \'"a.b"\' is not assignable to parameter of type \'"c.d" | "e.f"\'.';
+    const [diagnostic] = VerifyDiagnostics.fromTypecheck([
+      { file: "apps/minimal/main.ts", line: 1, col: 1, code: "TS2345", severity: "error", message },
+    ]);
+    expect(diagnostic?.message).toBe(message);
+    expect(diagnostic?.fix).toBeUndefined();
+  });
+
   test("drops Biome information diagnostics and normalises Windows paths", () => {
     const diagnostics = VerifyDiagnostics.fromBiome({
       diagnostics: [

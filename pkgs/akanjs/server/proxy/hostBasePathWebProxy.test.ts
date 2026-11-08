@@ -125,6 +125,24 @@ describe("HostBasePathWebProxy", () => {
     expect((result as Response).headers.get("location")).toBe("http://soft-angelo.try.akanjs.com/en/home");
   });
 
+  test('redirects to the unprefixed public url of the default locale under localePrefix "as-needed"', () => {
+    process.env.AKAN_SUB_ROUTE_HOSTS = "soft=soft-angelo.try.akanjs.com";
+    const localePrefix = process.env.AKAN_PUBLIC_LOCALE_PREFIX;
+    process.env.AKAN_PUBLIC_LOCALE_PREFIX = "as-needed";
+    try {
+      const redirect = (url: string) =>
+        (new HostBasePathWebProxy().use(request(url, "soft-angelo.try.akanjs.com")) as Response).headers.get(
+          "location",
+        );
+      expect(redirect("http://internal/en/soft/home")).toBe("http://soft-angelo.try.akanjs.com/home");
+      expect(redirect("http://internal/en/soft")).toBe("http://soft-angelo.try.akanjs.com/");
+      expect(redirect("http://internal/ko/soft/home")).toBe("http://soft-angelo.try.akanjs.com/ko/home");
+    } finally {
+      if (localePrefix === undefined) delete process.env.AKAN_PUBLIC_LOCALE_PREFIX;
+      else process.env.AKAN_PUBLIC_LOCALE_PREFIX = localePrefix;
+    }
+  });
+
   test("routes and redirects on the first host and proto of a multi-hop forwarded chain", () => {
     process.env.AKAN_SUB_ROUTE_HOSTS = "soft=soft-angelo.try.akanjs.com";
     const forwarded = (url: string) =>

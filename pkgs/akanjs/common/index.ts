@@ -1,3 +1,13 @@
+export {
+  databaseStateNames,
+  endpointNames,
+  formSetterNames,
+  modelNames,
+  moduleNames,
+  queryNames,
+  sliceNames,
+  stateSetterName,
+} from "./akanNames";
 export { AppHosts } from "./appHosts";
 export { applyMixins, getAllPropertyDescriptors } from "./applyMixins";
 export { cookieHeaderHasAuthToken, isAuthTokenKey, legacyAuthTokenKey } from "./authCookie";
@@ -109,10 +119,13 @@ export {
 export {
   type AkanI18nConfig,
   type AkanI18nConfigInput,
+  type AkanLocalePrefix,
+  akanLocalePrefixes,
   DEFAULT_AKAN_I18N,
   parseAkanI18nEnv,
   resolveAkanI18nConfig,
 } from "./localeConfig";
+export { LocalePath } from "./localePath";
 export {
   type LogContextReader,
   type LogContextSnapshot,

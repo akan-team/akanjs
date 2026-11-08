@@ -14,7 +14,8 @@ the server errors logged meanwhile, console errors and warnings, and layout smel
 - It uses the dev server that answers for this app and checkout. With none, it starts one for the run and
   stops it after; `--keep` leaves it up for the next preview. It never starts a second server beside a
   running one.
-- Paths are comma-separated and get the default locale when they lack one: `akan preview <app> /board,/board/new`.
+- Paths are comma-separated (`akan preview <app> /board,/board/new`) and get the default locale when they lack
+  one, unless the app sets `localePrefix: "as-needed"` and `--csr` is off.
   `--changed` adds the pages your uncommitted page and layout edits reach. A dynamic route needs a concrete
   path (`/memo/1`); `akan context --app <app>` lists every route with its params and search names.
 - The viewport is a 390x844 phone; `--desktop` is 1280x800. `--csr` loads each page in the CSR boot the native

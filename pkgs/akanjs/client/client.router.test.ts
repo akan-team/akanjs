@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { interpolateTranslation } from "../common/interpolateTranslation";
+import { LocalePath } from "../common/localePath";
 import { pathGetLoose } from "../common/objectPath";
 import { originFromRequest } from "../common/requestOrigin";
 import { trimSlashes } from "../common/trimSlashes";
@@ -11,6 +12,7 @@ const envState = {
   side: "client" as Side,
   operationMode: "local",
   basePaths: "admin,console",
+  localePrefix: "always" as "always" | "as-needed",
 };
 const requestState = {
   request: undefined as Request | undefined,
@@ -53,7 +55,8 @@ beforeAll(() => {
         },
       },
     ),
-    parseAkanI18nEnv: () => ({ locales: ["en", "ko"], defaultLocale: "en" }),
+    parseAkanI18nEnv: () => ({ locales: ["en", "ko"], defaultLocale: "en", localePrefix: envState.localePrefix }),
+    LocalePath,
     parseBasePaths: (value?: string) => (value ? value.split(",").filter(Boolean) : []),
     pathGet: (path: string, obj: Record<string, unknown>, separator = ".", fallback?: unknown) =>
       path.split(separator).reduce<unknown>((acc, key) => {
@@ -200,6 +203,7 @@ afterEach(() => {
   envState.side = "client";
   envState.operationMode = "local";
   envState.basePaths = "admin,console";
+  envState.localePrefix = "always";
   process.env.AKAN_PUBLIC_BASE_PATHS = envState.basePaths;
   requestState.request = undefined;
   requestState.headers = new Map();
@@ -691,6 +695,103 @@ describe("router", () => {
       pathname: "/ko/akanjs/docs/intro/fundamentals",
       hash: "section",
     });
+  });
+
+  test("builds hrefs without the default locale's segment under \"as-needed\", and keeps other locales' segments", async () => {
+    const { getPathInfo } = await import("./router");
+
+    expect(getPathInfo("/pokemon/deoxys?x=1#a", "en", "", "as-needed")).toEqual({
+      path: "/pokemon/deoxys",
+      pathname: "/pokemon/deoxys",
+      hash: "a",
+      search: "x=1",
+      href: "/pokemon/deoxys?x=1#a",
+    });
+    expect(getPathInfo("/", "en", "", "as-needed").href).toBe("/");
+    expect(getPathInfo("/en/pokemon", "en", "", "as-needed").href).toBe("/pokemon");
+    expect(getPathInfo("/en", "en", "", "as-needed").href).toBe("/");
+    expect(getPathInfo("/users", "en", "admin", "as-needed").href).toBe("/admin/users");
+    expect(getPathInfo("/pokemon", "ko", "", "as-needed").href).toBe("/ko/pokemon");
+    expect(getPathInfo("/ko/pokemon", "ko", "", "as-needed").path).toBe("/pokemon");
+    expect(getPathInfo("/pokemon", "en", "", "always").href).toBe("/en/pokemon");
+
+    envState.localePrefix = "as-needed";
+    expect(getPathInfo("/pokemon", "en", "").href).toBe("/pokemon");
+    envState.localePrefix = "always";
+    expect(getPathInfo("/pokemon", "en", "").href).toBe("/en/pokemon");
+  });
+
+  test('keeps a scheme-relative, backslash or script href in-app when "as-needed" leaves it no locale segment', async () => {
+    const { getPathInfo } = await import("./router");
+
+    expect(getPathInfo("//evil.test/x", "en", "", "as-needed").href).toBe("/evil.test/x");
+    expect(getPathInfo("/\\evil.test/x", "en", "", "as-needed").href).toBe("/evil.test/x");
+    for (const href of ["/\t/evil.test/x", "\t//evil.test/x", "/\n/evil.test/x", " //evil.test/x"])
+      expect(new URL(getPathInfo(href, "en", "", "as-needed").href, "https://site.test").host).toBe("site.test");
+    expect(getPathInfo("javascript:alert(1)", "en", "", "as-needed").href).toBe("/javascript:alert(1)");
+    expect(getPathInfo("https://external.test/x", "en", "", "as-needed").href).toBe("https://external.test/x");
+  });
+
+  test('an SSR router under "as-needed" navigates, posts and switches locale on unprefixed default-locale paths', async () => {
+    envState.side = "client";
+    envState.operationMode = "main";
+    envState.localePrefix = "as-needed";
+    installClientWindow("/pokemon/deoxys", "?from=nav");
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+
+    router.init({ type: "ssr", side: "client", lang: "en", prefix: "", router: recordingRouter(calls) });
+
+    router.push("/types");
+    expect(calls).toEqual([["push", "/types", undefined]]);
+    expect(messages[0]).toMatchObject({ type: "pathChange", path: "/types", pathname: "/types" });
+    expect(router.getPath("/pokemon/deoxys")).toBe("/pokemon/deoxys");
+    expect(router.getFullPath()).toBe("/pokemon/deoxys");
+
+    router.setLang("ko");
+    expect(calls.at(-1)).toEqual(["replace", "/ko/pokemon/deoxys?from=nav", undefined]);
+
+    Object.assign(window.location, { pathname: "/ko/pokemon/deoxys" });
+    router.setLang("en");
+    expect(calls.at(-1)).toEqual(["replace", "/pokemon/deoxys?from=nav", undefined]);
+  });
+
+  test('a CSR router keeps every locale segment under "as-needed", since its routes match on it', async () => {
+    envState.side = "client";
+    envState.localePrefix = "as-needed";
+    installClientWindow("/en/admin/current");
+    installHistory();
+    const restoreTimeout = queueTimeouts();
+    const calls: unknown[] = [];
+    const { router } = await import("./router");
+
+    router.init({ type: "csr", lang: "en", prefix: "admin", router: recordingRouter(calls) });
+
+    router.push("/users");
+    expect(calls).toEqual([["push", "/en/admin/users", undefined]]);
+    expect(router.getPrefixedPath("/next")).toBe("/en/admin/next");
+    restoreTimeout();
+  });
+
+  test('a server redirect under "as-needed" drops only the default locale\'s segment', async () => {
+    envState.side = "server";
+    envState.operationMode = "main";
+    envState.localePrefix = "as-needed";
+    const { AkanRedirectError, router } = await import("./router");
+    const locationOf = (locale: string) => {
+      requestState.request = new Request(`https://site.test/${locale}/signin`);
+      requestState.headers = new Map([["x-locale", locale]]);
+      try {
+        router.redirect("/users?tab=a");
+      } catch (error) {
+        if (error instanceof AkanRedirectError) return error.location;
+        throw error;
+      }
+      throw new Error("no redirect");
+    };
+
+    expect(locationOf("en")).toBe("/users?tab=a");
+    expect(locationOf("ko")).toBe("/ko/users?tab=a");
   });
 
   test("throws initialized guard before init and server redirect/notFound errors", async () => {

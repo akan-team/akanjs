@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { Int } from "akanjs/base";
+import { formSetterNames } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import type { FetchProxy } from "akanjs/fetch";
 import { makeFormSetter } from "./action";
-import { formSetterNames } from "./formSetterNames";
 import { store } from "./store";
 import { StoreRegistry } from "./storeRegistry";
 

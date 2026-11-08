@@ -1,4 +1,4 @@
-import { capitalize } from "akanjs/common";
+import { stateSetterName } from "akanjs/common";
 import type { ParamFieldType } from "akanjs/constant";
 import type { Dispatch, SetStateAction } from "react";
 import { type JsonSchema, useAgentState } from "use-agentic";
@@ -62,7 +62,7 @@ export class StStateBuilder<T extends AgentFieldType> {
         ? {
             set: set.schema,
             parse: (value) =>
-              StToolBuilder.checkedValue(`set${capitalize(name ?? "")}`, "value", set.type, value) as Value,
+              StToolBuilder.checkedValue(stateSetterName(name ?? ""), "value", set.type, value) as Value,
           }
         : {}),
     });

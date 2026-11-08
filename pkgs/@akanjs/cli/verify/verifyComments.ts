@@ -20,6 +20,7 @@ export class VerifyComments {
   static readonly #directive =
     /^(\/\/\/?|\/\*+)\s*(biome-ignore|@ts-|eslint-|prettier-ignore|#region|#endregion|<reference|[#@]__PURE__|@__NO_SIDE_EFFECTS__)/;
   static #typescriptLoad: Promise<TypeScript> | undefined;
+  static #templateCommentsLoad: Promise<Set<string>> | undefined;
 
   // Lazy: `typescript` is ~70 MB resident and the cli entry reaches this file (`entryModuleGraph.test.ts`).
   static #loadTypescript(): Promise<TypeScript> {
@@ -33,6 +34,7 @@ export class VerifyComments {
     const changed = await VerifyComments.#addedLines(root, code);
     if (!changed) return [];
     const typescript = await VerifyComments.#loadTypescript();
+    const templateComments = await VerifyComments.#loadTemplateComments();
     const diagnostics: VerifyDiagnostic[] = [];
     for (const file of code) {
       const lines = changed.get(file);
@@ -40,6 +42,7 @@ export class VerifyComments {
       const text = await Bun.file(path.join(root, file)).text();
       for (const comment of VerifyComments.commentsOf(typescript, file, text)) {
         if (VerifyComments.#directive.test(comment.text)) continue;
+        if (VerifyComments.#scaffolded(comment, templateComments)) continue;
         if (lines && !VerifyComments.#touches(comment, lines)) continue;
         diagnostics.push({
           step: "lint",
@@ -88,6 +91,27 @@ export class VerifyComments {
           lastLine: end.line + 1,
         };
       });
+  }
+
+  //? A scaffold writes into new, untracked files, so the diff alone would count every comment its templates carry.
+  static #scaffolded(comment: CommentRange, templateComments: Set<string>) {
+    return comment.text.split("\n").every((line) => !line.trim() || templateComments.has(line.trim()));
+  }
+
+  //? A template emits its comments from inside template literals and quoted strings: hence the `\n` split and unescape.
+  static #loadTemplateComments(): Promise<Set<string>> {
+    VerifyComments.#templateCommentsLoad ??= (async () => {
+      const comments = new Set<string>();
+      const root = ["templates", "../templates"].map((dir) => path.join(import.meta.dir, dir)).find(existsSync);
+      if (!root) return comments;
+      for (const file of new Bun.Glob("**/*.{ts,tsx,template}").scanSync({ cwd: root, dot: true }))
+        for (const raw of (await Bun.file(path.join(root, file)).text()).split(/\n|\\n/)) {
+          const line = raw.replace(/\\([`$\\])/g, "$1").trim();
+          for (const { index } of line.matchAll(/\/\/|\/\*|^\*/g)) comments.add(line.slice(index).trim());
+        }
+      return comments;
+    })();
+    return VerifyComments.#templateCommentsLoad;
   }
 
   static #touches(comment: CommentRange, lines: Set<number>) {

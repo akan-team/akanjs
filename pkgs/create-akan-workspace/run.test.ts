@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import type { SpawnOptions } from "node:child_process";
+import { delimiter } from "node:path";
 import { run } from "./run";
 
 interface SpawnCall {
@@ -8,14 +9,16 @@ interface SpawnCall {
   options: SpawnOptions;
 }
 
-const createSpawnMock = (exitCodes: number[] = []) => {
+const createSpawnMock = (outcomes: (number | Error)[] = []) => {
   const calls: SpawnCall[] = [];
   const spawnCommand = (command: string, args: readonly string[], options: SpawnOptions) => {
     calls.push({ command, args: [...args], options });
-    const code = exitCodes.shift() ?? 0;
+    const outcome = outcomes.shift() ?? 0;
     return {
-      on(event: string, callback: (code: number | null, signal: NodeJS.Signals | null) => void) {
-        if (event === "exit") queueMicrotask(() => callback(code, null));
+      on(event: string, callback: (...args: unknown[]) => void) {
+        if (outcome instanceof Error) {
+          if (event === "error") queueMicrotask(() => callback(outcome));
+        } else if (event === "exit") queueMicrotask(() => callback(outcome, null));
         return this;
       },
     };
@@ -23,6 +26,9 @@ const createSpawnMock = (exitCodes: number[] = []) => {
 
   return { calls, spawnCommand };
 };
+
+//? Windows spells the key `Path`, and the env the run hands a child is a plain copy without case-insensitive lookup.
+const pathOf = (env: NodeJS.ProcessEnv) => env[Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH"];
 
 describe("create-akan-workspace", () => {
   test("installs the matching Akan CLI version then forwards workspace options", async () => {
@@ -117,5 +123,57 @@ describe("create-akan-workspace", () => {
       }),
     ).rejects.toEqual({ code: 1, signal: null });
     expect(calls.map((call) => call.command)).toEqual(["bun"]);
+  });
+
+  test("runs akan with Bun's global bin on PATH and says when the shell cannot reach it", async () => {
+    const { calls, spawnCommand } = createSpawnMock();
+    const warned = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await run({
+        argv: ["bun", "create-akan-workspace", "my-org", "--app", "web"],
+        spawnCommand: spawnCommand as never,
+        getGlobalBinDir: () => "/opt/bun-global/bin",
+      });
+
+      const env = calls.at(1)?.options.env as NodeJS.ProcessEnv;
+      expect(pathOf(env)?.split(delimiter)[0]).toBe("/opt/bun-global/bin");
+      expect(warned).toHaveBeenCalledTimes(1);
+      expect(warned.mock.calls[0]?.[0]).toContain("/opt/bun-global/bin");
+    } finally {
+      warned.mockRestore();
+    }
+  });
+
+  test("leaves PATH alone when Bun's global bin is already on it", async () => {
+    const { calls, spawnCommand } = createSpawnMock();
+    const warned = spyOn(console, "warn").mockImplementation(() => undefined);
+    const firstOnPath = process.env.PATH?.split(delimiter)[0] ?? "";
+    try {
+      await run({
+        argv: ["bun", "create-akan-workspace", "my-org", "--app", "web"],
+        spawnCommand: spawnCommand as never,
+        getGlobalBinDir: () => firstOnPath,
+      });
+
+      const env = calls.at(1)?.options.env as NodeJS.ProcessEnv;
+      expect(env.PATH).toBe(process.env.PATH);
+      expect(warned).not.toHaveBeenCalled();
+    } finally {
+      warned.mockRestore();
+    }
+  });
+
+  test("rejects instead of hanging when akan cannot be spawned", async () => {
+    const notFound = new Error('Executable not found in $PATH: "akan"');
+    const { calls, spawnCommand } = createSpawnMock([0, notFound]);
+
+    await expect(
+      run({
+        argv: ["bun", "create-akan-workspace", "my-org"],
+        spawnCommand: spawnCommand as never,
+        getGlobalBinDir: () => undefined,
+      }),
+    ).rejects.toBe(notFound);
+    expect(calls.map((call) => call.command)).toEqual(["bun", "akan"]);
   });
 });

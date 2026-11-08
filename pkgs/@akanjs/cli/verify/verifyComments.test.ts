@@ -1,9 +1,13 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { writeText } from "@akanjs/devkit/testHelpers";
+import { bilingualDescriptionForField, bilingualLabelForField } from "@akanjs/devkit/workflow";
+import { capitalize, Logger } from "akanjs/common";
 import ts from "typescript";
+import { pluralizeName } from "../pluralizeName";
 import { VerifyComments } from "./verifyComments";
 
 const roots: string[] = [];
@@ -99,6 +103,73 @@ describe("VerifyComments", () => {
     ]);
     expect(found.every((entry) => entry.code === "akan.comment.added" && entry.severity === "warning")).toBe(true);
     expect(found.map((entry) => !!entry.fix)).toEqual([true, false, false]);
+  });
+
+  test("skips the comments scaffold templates write into new files, and still counts one written beside them", async () => {
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+    try {
+      const root = await repo({ "package.json": "{}\n" });
+      const workspace = WorkspaceExecutor.fromRoot({ workspaceRoot: root, repoName: "repo" });
+      const scaffold = async (
+        basePath: string,
+        template: string,
+        dict: Record<string, string>,
+        options: Record<string, unknown> = {},
+      ) => {
+        const capitals = Object.entries(dict).map(([key, value]) => [capitalize(key), capitalize(value)]);
+        const written = await workspace._applyTemplate({
+          basePath,
+          template,
+          dict: { ...dict, ...Object.fromEntries(capitals) },
+          options,
+        });
+        return written.map((file) => path.relative(root, file.filePath));
+      };
+      const label = bilingualLabelForField("photo");
+      const description = bilingualDescriptionForField("photo");
+      const crud = { model: "photo", appName: "myapp", clientPath: "@apps/myapp/client" };
+      const files = [
+        ...(await scaffold(".", "workspaceRoot", { repoName: "repo", appName: "myapp", serveDomain: "x", owner: "" })),
+        ...(await scaffold("apps/myapp", "app", { appName: "myapp" }, { libs: [], sample: true })),
+        ...(await scaffold("apps/myapp", "appSample", { appName: "myapp" }, { libs: [] })),
+        ...(await scaffold(
+          "apps/myapp/lib/photo",
+          "module",
+          {
+            model: "photo",
+            models: pluralizeName("photo"),
+            sysName: "myapp",
+            sysType: "app",
+            modelLabelEn: label.en,
+            modelLabelKo: label.ko,
+            modelDescEn: description.en,
+            modelDescKo: description.ko,
+          },
+          { sharedGuards: false },
+        )),
+        ...(await scaffold("apps/myapp/lib/_pingCheck", "service", { model: "pingCheck", sysName: "myapp" })),
+        ...(await scaffold("apps/myapp/lib/__scalar", "__scalar", { model: "address", models: "addresses" })),
+        ...(await scaffold("apps/myapp/page/(myapp)/(public)/photo", "crudPages", crud)),
+        ...(await scaffold("apps/myapp/page/(myapp)/(single)/photo", "crudSinglePage", crud)),
+        ...(await scaffold("apps/myapp/script/migration", "migration", { migrationId: "202611080000_x", title: "X" })),
+        ...(await scaffold("libs/mylib", "libRoot", { libName: "mylib" })),
+      ];
+      expect(files.filter((file) => file.endsWith(".ts") || file.endsWith(".tsx")).length).toBeGreaterThan(50);
+      expect(await VerifyComments.added(root, files)).toEqual([]);
+
+      const store = "apps/myapp/lib/photo/photo.store.ts";
+      const storeText = await Bun.file(path.join(root, store)).text();
+      await writeText(path.join(root, store), `${storeText}// keeps the cover photo first\n`);
+      await writeText(path.join(root, "apps/myapp/lib/photo/cover.ts"), "/** The cover. */\nexport const cover = 1;\n");
+      const found = await VerifyComments.added(root, [...files, "apps/myapp/lib/photo/cover.ts"]);
+
+      expect(found.map(({ file, line, message }) => [file, line, message])).toEqual([
+        [store, storeText.split("\n").length, "// keeps the cover photo first"],
+        ["apps/myapp/lib/photo/cover.ts", 1, "/** The cover. */"],
+      ]);
+    } finally {
+      printed.mockRestore();
+    }
   });
 
   test("reports nothing outside a git repository", async () => {

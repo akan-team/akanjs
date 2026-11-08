@@ -13,6 +13,7 @@ export class PackageRunner extends runner("package") {
     "akanjs",
     "@akanjs/cli",
     "@akanjs/devkit",
+    "@akanjs/language",
     "create-akan-workspace",
   ] as const;
   // Embedded into the dist, so naming them as dependencies would point a consumer at a missing registry entry.
@@ -91,7 +92,7 @@ export class PackageRunner extends runner("package") {
       packageRuntimeDependencies[pkg.name] = [
         ...Object.keys(((devkitPackageJson as PackageJson).dependencies ?? {}) as Record<string, string>),
         "tailwind-scrollbar",
-      ].filter((dep) => dep !== "akanjs" && dep !== "@akanjs/devkit");
+      ].filter((dep) => dep !== "akanjs" && dep !== "@akanjs/devkit" && dep !== "@akanjs/language");
     }
     const bundledRuntimeDeps = new Set(PackageRunner.#bundledRuntimeDependencies[pkg.name] ?? []);
     const forcedRuntimeDeps = packageRuntimeDependencies[pkg.name] ?? [];
