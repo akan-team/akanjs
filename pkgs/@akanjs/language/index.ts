@@ -1,5 +1,8 @@
 export type {
+  AkanChangedFile,
+  AkanChangeMap,
   AkanGraph,
+  AkanGraphChange,
   AkanGraphEdge,
   AkanGraphEdgeKind,
   AkanGraphField,
@@ -7,6 +10,7 @@ export type {
   AkanGraphNode,
   AkanGraphNodeKind,
 } from "akanjs/common/akanGraph.ts";
+export { type AkanGraphChanges, AkanGraphDiff } from "./akanGraphDiff";
 export { type AkanHover, AkanIndex, type AkanIndexOptions, type AkanRenameEdit, type AkanSourceKey } from "./akanIndex";
 export { type AkanAst, createAst, type Ts } from "./ast";
 export {

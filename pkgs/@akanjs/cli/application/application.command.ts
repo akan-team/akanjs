@@ -133,11 +133,20 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       });
     }),
   studio: target({
-    desc: "Print the Akan Studio URL of the app's running dev server: its ERD and each module's signals",
+    desc: "Print the Akan Studio URL of the app's running dev server: its ERD, each module's signals and the Change Map",
   })
     .with(App)
     .option("module", String, { desc: "the module to show", nullable: true })
-    .option("view", String, { flag: "w", desc: "the view to open", default: "erd", enum: ["erd", "signals"] })
+    .option("view", String, {
+      flag: "w",
+      desc: "the view to open",
+      default: "erd",
+      enum: ["erd", "signals", "changes"],
+    })
+    .option("since", String, {
+      desc: "the git revision the Change Map compares with (default: where HEAD forked from the default branch)",
+      nullable: true,
+    })
     .option("editor", String, {
       desc: "the editor source links open in",
       default: "vscode",
@@ -145,10 +154,11 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     })
     .option("open", Boolean, { desc: "also open it in the browser", default: false })
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
-    .exec(async function (app, module, view, editor, open, format) {
+    .exec(async function (app, module, view, since, editor, open, format) {
       await this.applicationScript.studio(app, {
         module,
-        view: view === "signals" ? "signals" : "erd",
+        view: view === "signals" || view === "changes" ? view : "erd",
+        since,
         editor: editor === "cursor" ? "cursor" : "vscode",
         open,
         format: format === "json" ? "json" : "text",

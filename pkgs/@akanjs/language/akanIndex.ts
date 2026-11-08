@@ -126,8 +126,9 @@ export class AkanIndex {
     return this.#usesOf(this.#sourceEntriesAt(pathOf(givenName), offset), readText).map((use) => use.span);
   }
 
-  graph(readText: (fileName: string) => string | undefined): AkanGraph {
+  graph(readText: (fileName: string) => string | undefined, { digests = false } = {}): AkanGraph {
     return new GraphBuilder({
+      digests,
       ts: this.#ts,
       facts: [...this.#facts].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, facts]) => facts),
       files: [...this.#fileWords].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),

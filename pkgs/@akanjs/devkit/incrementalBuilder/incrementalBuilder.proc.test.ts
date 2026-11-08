@@ -129,7 +129,7 @@ process.send({ type: "build-batch-result", data: { generation, errors, artifact:
     expect(messages.some((message) => message.type === "build-status")).toBe(false);
   }, 30_000);
 
-  test("draws the app's graph on request, with the libs it reaches and no other app", async () => {
+  test("draws the app's graph and Change Map on request, with the libs it reaches and no other app", async () => {
     const { root } = track(await createTempApp("demo"));
     const appDir = path.join(root, "apps/demo");
     await writeText(
@@ -157,6 +157,27 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       ...moduleFiles("apps/other", "note"),
       ...moduleFiles("libs/shared", "file"),
     ]);
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(
+        ["git", "-c", "user.name=akan", "-c", "user.email=akan@example.com", "-c", "commit.gpgsign=false", ...args],
+        { cwd: root, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } },
+      );
+      expect(result.exitCode).toBe(0);
+    };
+    git("init", "-q", "-b", "main");
+    git("add", "-A");
+    git("commit", "-q", "--no-verify", "-m", "base");
+    await Promise.all(
+      [
+        ["apps/demo/lib/memo/memo.constant.ts", "Memo"],
+        ["apps/other/lib/note/note.constant.ts", "Note"],
+      ].map(([file, model]) =>
+        writeText(
+          path.join(root, file),
+          `export class ${model} extends via((field) => ({ name: field(String), pinned: field(Boolean) })) {}\n`,
+        ),
+      ),
+    );
     const messages: BuilderMessage[] = [];
     const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
       cwd: appDir,
@@ -178,18 +199,32 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
     try {
       await until(proc, "builder-ready", () => messages.some((message) => message.type === "builder-ready"));
       proc.send({ type: "build-graph", id: 5 } satisfies BuilderMessage);
-      await until(proc, "build-graph-res", () => messages.some((message) => message.type === "build-graph-res"));
+      proc.send({ type: "build-graph", id: 6, changes: { since: null } } satisfies BuilderMessage);
+      proc.send({ type: "build-graph", id: 7, changes: { since: "main" } } satisfies BuilderMessage);
+      await until(
+        proc,
+        "build-graph-res",
+        () => messages.filter((message) => message.type === "build-graph-res").length === 3,
+      );
     } finally {
       proc.kill();
       await proc.exited;
     }
-    const answer = messages.find((message) => message.type === "build-graph-res");
-    if (answer?.type !== "build-graph-res" || !answer.ok) throw new Error(`no graph: ${JSON.stringify(answer)}`);
-    expect(answer.data.workspaceRoot).toBe(root);
-    expect(answer.data.graph.nodes.map((node) => node.id).sort()).toEqual([
-      "model:apps/demo:memo",
-      "model:libs/shared:file",
-    ]);
+    const answerTo = (id: number) => {
+      const answer = messages.find((message) => message.type === "build-graph-res" && message.id === id);
+      if (answer?.type !== "build-graph-res" || !answer.ok) throw new Error(`no graph: ${JSON.stringify(answer)}`);
+      return answer.data;
+    };
+    const graph = answerTo(5);
+    if (!("graph" in graph)) throw new Error("build-graph answered with changes");
+    expect(graph.workspaceRoot).toBe(root);
+    expect(graph.graph.nodes.map((node) => node.id).sort()).toEqual(["model:apps/demo:memo", "model:libs/shared:file"]);
+    const changes = answerTo(6);
+    if (!("changes" in changes) || "error" in changes.changes)
+      throw new Error(`no changes: ${JSON.stringify(changes)}`);
+    expect(changes.changes.nodes.map(({ id, change }) => [id, change])).toEqual([["model:apps/demo:memo", "changed"]]);
+    expect(changes.changes.summary).toEqual({ added: 0, removed: 0, changed: 1 });
+    expect(answerTo(7)).toEqual(changes);
   }, 30_000);
 
   test("answers a second shell request in the same generation without building again", async () => {

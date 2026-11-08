@@ -167,22 +167,27 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     {
       module,
       view,
+      since = null,
       editor,
       open,
       format,
     }: {
       module: string | null;
-      view: "erd" | "signals";
+      view: "erd" | "signals" | "changes";
+      since?: string | null;
       editor: "vscode" | "cursor";
       open: boolean;
       format: "text" | "json";
     },
   ) {
+    if (since && view !== "changes")
+      throw new Error("`--since` picks what the Change Map compares with; pass `--view changes` with it.");
     const origin = `http://localhost:${await app.getDevPort()}`;
     if (!(await ApplicationRunner.answers(origin, app.name, app.workspace.workspaceRoot)))
       throw new Error(`No dev server answers ${origin}. Run \`akan start ${app.name}\` first.`);
     const search = new URLSearchParams({ view, editor });
     if (module) search.set("module", module);
+    if (since) search.set("since", since);
     const url = `${origin}/_akan/studio?${search.toString()}`;
     if (open) await openBrowser(url);
     Logger.rawLog(format === "json" ? JSON.stringify({ url }) : url);

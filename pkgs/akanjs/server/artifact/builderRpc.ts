@@ -1,5 +1,6 @@
 import { Logger } from "akanjs/common";
 import type {
+  BuildChangesPayload,
   BuilderEvent,
   BuilderMessage,
   BuilderRequest,
@@ -115,6 +116,12 @@ export class BuilderRpc {
 
   async buildGraph(): Promise<BuildGraphPayload> {
     return await this.#request<BuildGraphPayload>("build-graph", (id) => this.#send({ type: "build-graph", id }));
+  }
+
+  async buildChanges(since: string | null): Promise<BuildChangesPayload> {
+    return await this.#request<BuildChangesPayload>("build-graph changes", (id) =>
+      this.#send({ type: "build-graph", id, changes: { since } }),
+    );
   }
 
   // Generous on purpose: a cold CSR build of every page takes tens of seconds; the point is only to be finite.

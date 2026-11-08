@@ -232,11 +232,15 @@ export class ContextRunner extends runner("context") {
       return modules;
     }
 
-    if (name === "get_graph")
-      return WorkspaceGraph.answer(await WorkspaceGraph.build(workspace), {
+    if (name === "get_graph") {
+      const scope = {
         app: typeof args.app === "string" ? args.app : null,
         module: typeof args.module === "string" ? args.module : null,
-      });
+      };
+      return typeof args.since === "string"
+        ? WorkspaceGraph.answerChanges(await WorkspaceGraph.changes(workspace, args.since), scope)
+        : WorkspaceGraph.answer(await WorkspaceGraph.build(workspace), scope);
+    }
     if (name === "get_guideline") return await Prompter.getInstruction(stringArg(args, "name"));
     if (name === "doctor_workspace")
       return compactDoctorWorkspaceResult(

@@ -263,7 +263,15 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     if (picked === verifyLabel) await verify(typeof inputs.app === "string" ? inputs.app : undefined);
   };
 
-  const openStudio = async ({ app: appName, module: moduleName }: { app?: string; module?: string | null } = {}) => {
+  const openStudio = async ({
+    app: appName,
+    module: moduleName,
+    view,
+  }: {
+    app?: string;
+    module?: string | null;
+    view?: "changes";
+  } = {}) => {
     const cli = await cliOf();
     if (!cli) return false;
     const active = vscode.window.activeTextEditor?.document.uri;
@@ -277,17 +285,31 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
           ? apps[0]
           : await vscode.window.showQuickPick(apps, { title: vscode.l10n.t("Open Akan Studio for") }));
     if (!app) return false;
-    const module = moduleName === undefined ? StudioView.moduleOf(place.module) : moduleName;
+    const module =
+      moduleName !== undefined ? moduleName : view === "changes" ? null : StudioView.moduleOf(place.module);
     const editor = vscode.env.uriScheme === "cursor" ? "cursor" : "vscode";
-    const args = ["studio", app, "--editor", editor, "--format", "json"];
-    if (module) args.push("--module", module, "--view", "signals");
+    const args = [
+      "studio",
+      app,
+      "--editor",
+      editor,
+      "--format",
+      "json",
+      "--view",
+      view ?? (module ? "signals" : "erd"),
+    ];
+    if (module) args.push("--module", module);
     const result = await run(cli, vscode.l10n.t("Opening Akan Studio for {0}", app), args);
     if (!result) return false;
     const report = AkanCli.jsonOf(result.stdout);
     if (isRecord(report) && typeof report.url === "string") return await StudioPanel.show(cli.root, app, report.url);
     log.appendLine(result.stdout.trimEnd());
-    const start = vscode.l10n.t("Start {0}", app);
     const reason = result.stdout.trim().split("\n").at(-1) || vscode.l10n.t("akan studio failed.");
+    if (!result.stdout.includes("No dev server answers")) {
+      void vscode.window.showErrorMessage(reason);
+      return false;
+    }
+    const start = vscode.l10n.t("Start {0}", app);
     if ((await vscode.window.showErrorMessage(reason, start)) !== start) return false;
     const terminal = vscode.window.createTerminal({ name: `akan start ${app}`, cwd: cli.root });
     terminal.sendText([...cli.command, "start", app].map(AkanCli.shellArgOf).join(" "));
@@ -307,7 +329,19 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     vscode.commands.registerCommand("akan.createModule", () => runWorkflow("create-module")),
     vscode.commands.registerCommand("akan.addField", () => runWorkflow("add-field")),
     vscode.commands.registerCommand("akan.openStudio", (options?: unknown) =>
-      openStudio(isRecord(options) ? (options as { app?: string; module?: string | null }) : undefined),
+      openStudio({
+        app: isRecord(options) && typeof options.app === "string" ? options.app : undefined,
+        module:
+          isRecord(options) && (typeof options.module === "string" || options.module === null)
+            ? options.module
+            : undefined,
+      }),
+    ),
+    vscode.commands.registerCommand("akan.openChangeMap", (options?: unknown) =>
+      openStudio({
+        app: isRecord(options) && typeof options.app === "string" ? options.app : undefined,
+        view: "changes",
+      }),
     ),
   ];
 };
