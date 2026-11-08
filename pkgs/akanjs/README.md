@@ -52,16 +52,18 @@ Node and npm, or URLs given by a spec, a coding agent needs these, and nothing h
 
 - **Create the workspace in that folder:** `bunx create-akan-workspace@latest . --app <app> --dir <folder> --sample false`.
   It writes into `<folder>` itself, refuses to overwrite a file already there, and leaves out the sample module and
-  pages. Keep the `AGENTS.md`, `CLAUDE.md`, `.claude/` and `.mcp.json` it writes: they carry the rules and tools an
-  agent works through.
+  pages. Keep the `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`, `.cursor/` and `.mcp.json` it writes: they carry
+  the rules and tools an agent works through.
+- **Work from `<folder>`.** `akan` runs only from the workspace root, and an agent session opened there loads the
+  workspace's rules and MCP server.
 - **Check each change with `akan verify <app>`.** It syncs, lints, typechecks, builds and checks SSR, and prints only
   what failed. `akan preview <app> --changed` opens the pages a change reaches.
 - **Exact URLs:** pages live under `/<locale>/…`. To serve the default locale at the bare path (`/pokemon/deoxys`),
   set `i18n: { defaultLocale: "en", locales: ["en"], localePrefix: "as-needed" }` in `akan.config.ts`; `<Link>`
   follows.
-- **A host with only Node and npm:** put `bun` in `dependencies` and `@akanjs/cli` in `devDependencies`, and let the
-  package scripts call `akan`. If `akan` is not found after a global install, add the folder `bun pm bin -g` prints to
-  `PATH`.
+- **A host with only Node and npm:** `npm install -g bun` gives the creator its runtime. Put `bun` in the workspace's
+  `dependencies` so the host installs it too, and let the package scripts call `akan` from the `@akanjs/cli` in
+  `devDependencies`. If `akan` is not found after a global install, add the folder `bun pm bin -g` prints to `PATH`.
 - **Run the production build without Docker:** `akan build <app>`, then `cd dist/apps/<app> && PORT=3000 bun main.js`.
   The build carries the env it needs.
 
