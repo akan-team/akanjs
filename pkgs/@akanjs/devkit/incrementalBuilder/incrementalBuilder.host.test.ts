@@ -108,6 +108,7 @@ describe("IncrementalBuilderHost", () => {
     const { spawns, messages, host } = startRecordingHost();
     expect(host.send({ type: "build-route", id: 1, routeId: "a", seeds: [], knownEntries: [] })).toBe(true);
     expect(host.send({ type: "build-csr", id: 2, reason: "device webview" })).toBe(true);
+    expect(host.send({ type: "build-graph", id: 4 })).toBe(true);
     // Answered before the exit, so this one must not be failed again afterwards.
     expect(host.send({ type: "build-route", id: 3, routeId: "c", seeds: [], knownEntries: [] })).toBe(true);
     spawns[0]?.options.ipc?.({ type: "build-route-res", id: 3, ok: true, data: { routeId: "c" } });
@@ -126,6 +127,12 @@ describe("IncrementalBuilderHost", () => {
       {
         type: "build-csr-res",
         id: 2,
+        ok: false,
+        error: "builder exited to release bundler memory before answering; reload to retry",
+      },
+      {
+        type: "build-graph-res",
+        id: 4,
         ok: false,
         error: "builder exited to release bundler memory before answering; reload to retry",
       },

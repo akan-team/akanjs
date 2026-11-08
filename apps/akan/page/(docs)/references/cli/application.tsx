@@ -631,6 +631,13 @@ akan plan-slice myapp --format json`,
               ko: "`AKAN_MEMORY_LIMIT`을 주면 `--concurrency` 계산에 쓰는 메모리가 줄어듭니다.",
             }),
           },
+          {
+            name: l.trans({ en: "Akan Studio", ko: "Akan Studio" }),
+            desc: l.trans({
+              en: "`/_akan/studio` on the dev URL draws the ERD and each module's request path, linked to source. `--share` hides it.",
+              ko: "개발 URL의 `/_akan/studio`가 ERD와 모듈별 요청 경로를 소스 링크와 함께 그립니다. `--share`로는 열리지 않습니다.",
+            }),
+          },
         ],
         examples: `akan start myapp
 akan start myapp,admin --concurrency 2

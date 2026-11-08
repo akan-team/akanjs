@@ -1,7 +1,4 @@
-import type { BuilderCsrReq, BuilderCsrRes, BuilderReq, BuilderRes } from "akanjs/server";
-
-type BuilderRequest = BuilderReq | BuilderCsrReq;
-type BuilderResponse = BuilderRes | BuilderCsrRes;
+import type { BuilderRequest, BuilderResponse } from "akanjs/server";
 
 // `BuilderRpc` numbers from 1 per backend process while the builder outlives backends, so ids collide across a
 // restart; host-owned ids keep a dead generation's answer from settling the new backend's request.

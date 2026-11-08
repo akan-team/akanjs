@@ -9,7 +9,7 @@ import { getApiPrefix, getWsPrefix, normalizeRoutePrefix, resetEnvCache } from "
 import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { isTraceEnabled } from "../signal/trace";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
-import type { BuilderCsrReq, BuilderCsrRes, BuilderMessage, BuilderReq, BuilderRes } from "./artifact";
+import type { BuilderMessage, BuilderRequest, BuilderResponse } from "./artifact";
 import { type AssetHeaderOptions, applySecurityHeaders, assetHeaders } from "./assetHeaders";
 import { compressResponse, compressStreamResponse, encodedFileResponse } from "./contentEncoding";
 import { isPortInUseError } from "./lifecycle/portInUse";
@@ -1169,6 +1169,7 @@ export class AkanApp {
         return;
       case "build-route":
       case "build-csr":
+      case "build-graph":
         this.#forwardBuilderReq(idx, message);
         return;
     }
@@ -1188,6 +1189,7 @@ export class AkanApp {
         return;
       case "build-route-res":
       case "build-csr-res":
+      case "build-graph-res":
         this.#forwardBuilderRes(message);
         return;
     }
@@ -1375,13 +1377,13 @@ export class AkanApp {
     }
   }
 
-  #forwardBuilderReq(childIdx: number, message: BuilderReq | BuilderCsrReq) {
+  #forwardBuilderReq(childIdx: number, message: BuilderRequest) {
     const gatewayReqId = this.#nextBuilderReqId++;
     this.#builderReqMap.set(gatewayReqId, { childIdx, childLocalId: message.id });
-    process.send?.({ ...message, id: gatewayReqId } satisfies BuilderReq | BuilderCsrReq);
+    process.send?.({ ...message, id: gatewayReqId } satisfies BuilderRequest);
   }
 
-  #forwardBuilderRes(message: BuilderRes | BuilderCsrRes) {
+  #forwardBuilderRes(message: BuilderResponse) {
     const request = this.#builderReqMap.get(message.id);
     if (!request) {
       this.logger.warn(`No child found for ${message.type} id=${message.id}`);
@@ -1390,7 +1392,7 @@ export class AkanApp {
     this.#builderReqMap.delete(message.id);
     const child = this.#children.get(request.childIdx);
     if (!child || child.proc.killed) return;
-    this.#sendToChild(child, { ...message, id: request.childLocalId } satisfies BuilderRes | BuilderCsrRes);
+    this.#sendToChild(child, { ...message, id: request.childLocalId } satisfies BuilderResponse);
   }
 
   #fanoutToFederation(message: AkanIpcMessage | BuilderMessage, exceptIdx?: number) {

@@ -18,13 +18,16 @@ import { RouteClientBuilder } from "@akanjs/devkit/frontendBuild/routeClientBuil
 import { ServerGraphFile } from "@akanjs/devkit/frontendBuild/serverGraphFile";
 import { SsrDevBundler } from "@akanjs/devkit/frontendBuild/ssrDevBundler";
 import { WatchRootResolver } from "@akanjs/devkit/frontendBuild/watchRootResolver";
+import { WorkspaceGraph } from "@akanjs/devkit/workspaceGraph";
 import { Logger } from "akanjs/common";
 import type {
   BaseBuildArtifact,
   BuilderCsrReq,
+  BuilderGraphReq,
   BuilderMessage,
   BuilderReq,
   BuilderRes,
+  BuildGraphPayload,
   BuildPhase,
   BuildRouteResultPayload,
   ChangeBatch,
@@ -64,6 +67,7 @@ class IncrementalBuilder {
   #watcher: HmrWatcher | null = null;
   #generation = 0;
   #shellKey: string | null = null;
+  #graph: { generation: number; payload: BuildGraphPayload } | null = null;
   #discoveredThrough = 0;
   #csrActive = IncrementalBuilder.#csrArmedByEnv();
   #csrBundler: CsrDevBundler;
@@ -873,6 +877,22 @@ class IncrementalBuilder {
     this.#logger.verbose(`announced boot state after recycle generation=${generation}`);
   }
 
+  async handleBuildGraph(msg: BuilderGraphReq): Promise<void> {
+    const generation = this.#generation;
+    try {
+      if (this.#graph?.generation !== generation) {
+        const { workspace } = this.#app;
+        const graph = WorkspaceGraph.visibleTo(await WorkspaceGraph.build(workspace), this.#app.name);
+        this.#graph = { generation, payload: { workspaceRoot: workspace.workspaceRoot, graph } };
+      }
+      await BuilderChannel.send({ type: "build-graph-res", id: msg.id, ok: true, data: this.#graph.payload });
+    } catch (err) {
+      const error = ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot);
+      this.#logger.error(`build-graph failed: ${error}`);
+      await BuilderChannel.send({ type: "build-graph-res", id: msg.id, ok: false, error });
+    }
+  }
+
   // On demand: dev serves CSR only via the opt-in `/__csr` and `?csr=true` routes; once built, it rebuilds every save.
   async handleBuildCsr(msg: BuilderCsrReq): Promise<void> {
     if (msg.shell) {
@@ -1080,13 +1100,18 @@ class IncrementalBuilder {
         void builder.shutdown(msg.reason);
         return;
       }
-      if (msg.type !== "build-route" && msg.type !== "build-csr") return;
+      if (msg.type !== "build-route" && msg.type !== "build-csr" && msg.type !== "build-graph") return;
       if (!builder || builder.shuttingDown) {
         const error = builder?.shuttingDown ? recyclingError : bootingError;
         BuilderChannel.emit({ type: `${msg.type}-res`, id: msg.id, ok: false, error });
         return;
       }
-      const handled = msg.type === "build-route" ? builder.handleBuildRoute(msg) : builder.handleBuildCsr(msg);
+      const handled =
+        msg.type === "build-route"
+          ? builder.handleBuildRoute(msg)
+          : msg.type === "build-csr"
+            ? builder.handleBuildCsr(msg)
+            : builder.handleBuildGraph(msg);
       // Unhandled, a rejection (an ipc write that failed) would exit the builder and drop the watcher with it.
       void handled.catch((err: unknown) =>
         logger.error(`${msg.type} failed: ${err instanceof Error ? err.message : String(err)}`),
