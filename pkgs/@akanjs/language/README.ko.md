@@ -35,7 +35,8 @@ index.renameAt(fileName, offset, "inFeed", readText);
 
 호스트가 쓰는 `typescript`를 넘기세요. 이 패키지는 TypeScript를 번들하지 않으며, 사본이 둘이면 `SyntaxKind` 숫자가
 어긋납니다. `apps/**`와 `libs/**`의 TypeScript 파일을 모두 `setFile`로 넣고, 파일이 바뀌면 `setFile`을 다시 부르거나
-`removeFile`을 부르세요. 이름은 자기 앱과 모든 lib 안에서만 풀리고, 다른 앱으로는 가지 않습니다. `renameAt`은 slice
-키나 쿼리 키를, 그 키에서 만들어진 이름 전부와 함께 바꾸는 편집을 돌려줍니다.
+`removeFile`을 부르세요. 파일 이름의 구분자는 `\`와 `/` 어느 쪽이든 되고, `readText`에 넘기는 이름과 span의 이름은 `/`를
+씁니다. 이름은 자기 앱과 모든 lib 안에서만 풀리고, 다른 앱으로는 가지 않습니다. `renameAt`은 slice 키나 쿼리 키를, 그
+키에서 만들어진 이름 전부와 모듈 dictionary의 키와 함께 바꾸는 편집을 돌려줍니다.
 
 ES module과 CommonJS로 배포하며, 런타임 의존성은 없습니다.

@@ -66,7 +66,7 @@ export class MemoStore extends store(sig.memo, () => ({
 import type { MemoFilter } from "./memo.document";
 import type { MemoSlice } from "./memo.signal";
 export const dictionary = modelDictionary(["en", "ko"])
-  .query<MemoFilter>((fn) => ({
+  .query((fn) => ({
     byName: fn(["By Name", "이름으로"]),
   }))
   .slice<MemoSlice>((fn) => ({
@@ -239,6 +239,9 @@ export class NoteService extends serve(db.note, () => ({})) {
   async named(name: string) {
     return await this.noteModel.listByName(name);
   }
+  async counted(name: string) {
+    return await this.#memoService.memoModel.countByName(name);
+  }
 }
 `,
     };
@@ -257,6 +260,9 @@ export class NoteService extends serve(db.note, () => ({})) {
     expect(definitionOf("apps/demo/lib/note/note.document.ts", "this.listByName")).toEqual([
       "apps/demo/lib/note/note.document.ts:3",
     ]);
+    expect(definitionOf("apps/demo/lib/note/note.service.ts", "this.#memoService.memoModel.countByName")).toEqual([
+      "apps/demo/lib/memo/memo.document.ts:5",
+    ]);
     const memoDocument = "apps/demo/lib/memo/memo.document.ts";
     const offset = noteFiles[memoDocument].indexOf("byName:");
     const edits = local.renameAt(
@@ -269,7 +275,26 @@ export class NoteService extends serve(db.note, () => ({})) {
       memoDocument,
       "apps/demo/lib/memo/memo.service.ts",
       "apps/demo/lib/memo/memo.signal.ts",
+      "apps/demo/lib/note/note.service.ts",
       "apps/demo/lib/memo/memo.dictionary.ts",
+    ]);
+  });
+
+  it("does not count a rest binding as a use", () => {
+    const local = indexOf();
+    const rest = `${root}/apps/demo/page/rest.tsx`;
+    const text = `export const rest = async () => {
+  const { ...memoListInPublic } = await fetch.initMemoInPublic();
+  return memoListInPublic;
+};
+`;
+    local.setFile(rest, text);
+    const { fileName, offset } = at("apps/demo/lib/memo/memo.signal.ts", "inPublic:");
+    const uses = local.referencesAt(fileName, offset, (file) =>
+      file === rest ? text : files[file.slice(root.length + 1)],
+    );
+    expect(uses.filter((span) => span.fileName === rest).map((span) => text.slice(span.start, span.end))).toEqual([
+      "initMemoInPublic",
     ]);
   });
 

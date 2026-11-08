@@ -47,6 +47,7 @@ const parseCacheSize = 64;
 //? TypeScript rewrites a source file's name to forward slashes, and every span carries that name.
 const pathOf = (fileName: string) => fileName.replace(/\\/g, "/");
 const escapeRegExp = (text: string) => text.replace(regExpSpecials, (special) => `\\${special}`);
+const receiverGap = String.raw`(?:\s|\)|\/\*[\s\S]*?\*\/)*`;
 
 export class AkanIndex {
   readonly #ts: Ts;
@@ -168,7 +169,9 @@ export class AkanIndex {
     const receiverPatterns = sources.map((source, at) => {
       const gateWord = gateWordsOf[at];
       return gateWord
-        ? new RegExp(`(?<![\\w$])${gateWord}\\s*[?!]?\\.\\s*${escapeRegExp(source.name)}(?![\\w$])`)
+        ? new RegExp(
+            String.raw`(?<![\w$])${gateWord}${receiverGap}[?!]?\.${receiverGap}${escapeRegExp(source.name)}(?![\w$])`,
+          )
         : null;
     });
     const named = (words: string, at: number) =>
@@ -205,23 +208,30 @@ export class AkanIndex {
     if (!dictionary) return [];
     const ts = this.#ts;
     const keys: { span: AkanSpan; quote: string }[] = [];
+    const moduleDir = source.span.fileName.slice(0, source.span.fileName.lastIndexOf("/"));
     for (const [file, words] of this.#fileWords) {
       if (!dictionaryPattern.test(file) || this.#ownerOf(file) !== source.owner) continue;
-      if (!words.includes(`\n${dictionary.className}\n`) || !words.includes(`\n${dictionary.section}\n`)) continue;
+      const sameModule = file.slice(0, file.lastIndexOf("/")) === moduleDir;
+      if (!words.includes(`\n${dictionary.section}\n`)) continue;
+      if (!sameModule && !words.includes(`\n${dictionary.className}\n`)) continue;
       const text = readText(file);
       if (text === undefined) continue;
       const parsed = this.#parse(file, text);
       const visit = (node: TS.Node) => {
         const typeArgument = ts.isCallExpression(node) ? node.typeArguments?.[0] : undefined;
         const builder = ts.isCallExpression(node) ? node.arguments.at(-1) : undefined;
+        const typed =
+          !!typeArgument &&
+          ts.isTypeReferenceNode(typeArgument) &&
+          ts.isIdentifier(typeArgument.typeName) &&
+          typeArgument.typeName.text === dictionary.className;
+        //? An untyped `.query((t) => …)` names no class, so only the source key's own module dictionary claims it.
+        const untyped = !typeArgument && sameModule;
         const object =
           ts.isCallExpression(node) &&
           ts.isPropertyAccessExpression(node.expression) &&
           node.expression.name.text === dictionary.section &&
-          typeArgument &&
-          ts.isTypeReferenceNode(typeArgument) &&
-          ts.isIdentifier(typeArgument.typeName) &&
-          typeArgument.typeName.text === dictionary.className &&
+          (typed || untyped) &&
           builder
             ? this.#ast.firstObjectReturnedByArrow(builder)
             : null;
@@ -294,6 +304,7 @@ export class AkanIndex {
     if (ts.isPropertyAccessExpression(parent) && parent.name === identifier) chain = this.#chainOf(parent.expression);
     else if (
       ts.isBindingElement(parent) &&
+      !parent.dotDotDotToken &&
       ts.isObjectBindingPattern(parent.parent) &&
       (parent.propertyName === identifier || (!parent.propertyName && parent.name === identifier))
     )
@@ -344,7 +355,7 @@ export class AkanIndex {
     const { chain } = site;
     if (!chain) return null;
     if (chain.length === 1 && chain[0] === "this") return site.classModel;
-    const holder = chain.length === 2 && chain[0] === "this" ? chain[1] : chain.length === 1 ? chain[0] : null;
+    const holder = chain.at(-1)?.replace(/^#/, "");
     const suffix = holder?.match(/.(Service|Model)$/)?.[1];
     if (holder && suffix) return holder.slice(0, -suffix.length);
     if (chain.length === 2 && (chain[0] === "db" || chain[0] === "srv")) return chain[1];

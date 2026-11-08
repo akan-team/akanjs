@@ -35,7 +35,8 @@ index.renameAt(fileName, offset, "inFeed", readText);
 
 Pass the host's own `typescript`: the package bundles none, and two copies would disagree on `SyntaxKind` numbers.
 Feed every `apps/**` and `libs/**` TypeScript file to `setFile`, then call `setFile` again or `removeFile` as files
-change. A name resolves within its own app and every lib, never another app. `renameAt` returns the edits that rename
-a slice or query key together with every name derived from it.
+change. File names may use either separator; `readText` is called with, and every span carries, forward slashes. A
+name resolves within its own app and every lib, never another app. `renameAt` returns the edits that rename a slice or
+query key together with every name derived from it and its key in the module dictionary.
 
 The package ships as an ES module and as CommonJS, with no runtime dependency.
