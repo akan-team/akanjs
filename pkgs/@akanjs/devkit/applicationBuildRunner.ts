@@ -182,6 +182,7 @@ export class ApplicationBuildRunner {
       durationMs: Date.now() - this.#startedAt,
       outputDir: this.#app.dist.cwdPath,
       artifactDir: path.join(this.#app.dist.cwdPath, ".akan/artifact"),
+      environment,
     };
   }
 

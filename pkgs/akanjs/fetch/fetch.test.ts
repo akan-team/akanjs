@@ -1415,6 +1415,25 @@ describe("FetchClient HTTP generation", () => {
     });
   });
 
+  test("names the endpoint and the declaration it lacks when a non-nullable return answers null", async () => {
+    setMockFetch();
+    jsonResponses.push(null, null, null);
+    const lookupSignal: SerializedSignal = {
+      endpoint: {
+        species: { type: "query", args: [], returns: { refName: "Any" } },
+        speciesOrNone: { type: "query", args: [], returns: { refName: "Any", nullable: true } },
+        renameSpecies: { type: "mutation", args: [], returns: { refName: "String" } },
+      },
+    };
+    const client = new FetchClient("https://api.example", {}, { service: lookupSignal });
+
+    await expect(client.handler.species()).rejects.toThrow(
+      "query species answered null, but its return is not nullable: answer a value, or declare { nullable: true } and answer null",
+    );
+    expect(await client.handler.speciesOrNone()).toBeNull();
+    await expect(client.handler.renameSpecies()).rejects.toThrow("mutation renameSpecies answered null");
+  });
+
   test("sends a mutation with the verb it declares", async () => {
     setMockFetch();
     jsonResponses.push("patched");
