@@ -21,7 +21,8 @@ Full contract — guards, apps, heads, CSR root layouts, typed params, lib pages
 - **Name every `[x]` segment with `.param("x", Type)`** and read query keys only via `.search("k", Type)`; values
   arrive typed. `lang` is never declared — every stage receives it.
 - `.head()` takes JSX or a function returning it — never a metadata object; deeper heads replace by tag identity,
-  and a canonical link / `og:url` comes only from the page's own `.head()`.
+  and a canonical link / `og:url` comes only from the page's own `.head()`. A 404's title is the `<title>` a layout's
+  `.notFound()` returns at its top: `.notFound(() => <><title>Not found</title>…</>)`.
 - In a CSR bundle a root layout's own markup is hidden: what a person must see from it renders through
   `createPortal(…, document.body)`.
 - `_overrides.tsx` is one `export default override({ Slot: AppComponent })` (`akanjs/ui`), no logic, no
