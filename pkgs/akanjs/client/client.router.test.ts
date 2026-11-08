@@ -726,6 +726,8 @@ describe("router", () => {
 
     expect(getPathInfo("//evil.test/x", "en", "", "as-needed").href).toBe("/evil.test/x");
     expect(getPathInfo("/\\evil.test/x", "en", "", "as-needed").href).toBe("/evil.test/x");
+    for (const href of ["/\t/evil.test/x", "\t//evil.test/x", "/\n/evil.test/x", " //evil.test/x"])
+      expect(new URL(getPathInfo(href, "en", "", "as-needed").href, "https://site.test").host).toBe("site.test");
     expect(getPathInfo("javascript:alert(1)", "en", "", "as-needed").href).toBe("/javascript:alert(1)");
     expect(getPathInfo("https://external.test/x", "en", "", "as-needed").href).toBe("https://external.test/x");
   });
@@ -744,6 +746,7 @@ describe("router", () => {
     expect(calls).toEqual([["push", "/types", undefined]]);
     expect(messages[0]).toMatchObject({ type: "pathChange", path: "/types", pathname: "/types" });
     expect(router.getPath("/pokemon/deoxys")).toBe("/pokemon/deoxys");
+    expect(router.getFullPath()).toBe("/pokemon/deoxys");
 
     router.setLang("ko");
     expect(calls.at(-1)).toEqual(["replace", "/ko/pokemon/deoxys?from=nav", undefined]);

@@ -160,6 +160,11 @@ declare global {
   var __AKAN_ROUTER__: Router | undefined;
 }
 
+const withoutNetworkPath = (pathname: string) => {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the URL parser drops tabs and newlines anywhere and trims leading C0 controls
+  const path = pathname.replace(/[\t\n\r]/g, "").replace(/^[\u0000-\u0020/\\]+/, "");
+  return `/${path}`;
+};
 export const getPathInfo = (
   requestUrl: string,
   lang: string,
@@ -187,7 +192,7 @@ export const getPathInfo = (
     ? path
     : langSegment || subRoute
       ? appPathname
-      : `/${appPathname.replace(/^[/\\]+/, "")}`;
+      : withoutNetworkPath(appPathname);
   const href = `${pathname}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
   return { path, pathname, hash, search, href };
 };
@@ -708,7 +713,8 @@ class Router {
   }
   getFullPath(withLang = true) {
     if (getEnv().side === "server") throw new Error("getPath is only available in client side");
-    return `${withLang ? `${this.#langSegment()}/` : ""}${this.#prefix}${this.getPath()}`;
+    const path = `${this.#prefix}${this.getPath()}`;
+    return withLang ? `${this.#langSegment()}/${path}`.replace(/^\/+/, "/") : path;
   }
   getPrefix() {
     return this.#prefix;

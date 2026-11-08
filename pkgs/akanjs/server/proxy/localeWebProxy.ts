@@ -61,9 +61,13 @@ export class LocaleWebProxy implements WebProxy {
     if (isPage && locale && LocalePath.omits(locale, i18n)) {
       const publicUrl = getPublicRequestUrl(request);
       if (isCsrRequest(targetUrl) && !isPrefixed)
-        return Response.redirect(new URL(`/${locale}${pathname}${targetUrl.search}`, publicUrl), 307);
+        return Response.redirect(onOrigin(publicUrl, `/${locale}${pathname}`, targetUrl.search), 307);
+      //? A 308 with no freshness is kept indefinitely, and switching back to "always" would then loop between the two URLs.
       if (!isCsrRequest(targetUrl) && isPrefixed)
-        return Response.redirect(new URL(`${path}${targetUrl.search}`, publicUrl), 308);
+        return new Response(null, {
+          status: 308,
+          headers: { location: onOrigin(publicUrl, path, targetUrl.search).href, "cache-control": "max-age=86400" },
+        });
     }
 
     const headers = new Headers(request.headers);
@@ -77,6 +81,14 @@ export class LocaleWebProxy implements WebProxy {
     }
     return AkanResponse.next({ request: { headers } });
   }
+}
+
+//? `new URL("//host/x", base)` names another host, and an unprefixed `/en//host/x` leaves exactly that path.
+function onOrigin(publicUrl: URL, pathname: string, search: string): URL {
+  const location = new URL(publicUrl);
+  location.pathname = pathname;
+  location.search = search;
+  return location;
 }
 
 function getProxyTargetUrl(requestUrl: URL): URL {

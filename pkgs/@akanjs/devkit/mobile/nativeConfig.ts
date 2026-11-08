@@ -312,14 +312,20 @@ export class NativeConfig {
     return Object.assign({}, ...contributed, own);
   }
 
-  //* An app link limited to a basePath lists it once per locale, with no segment where the web URL has none.
+  //* An app link limited to a basePath lists it per locale, plus the unprefixed URL `"as-needed"` gives the default one.
   static #deepLinks(
     target: AkanNativeTarget,
     locales: readonly string[],
     i18n: Pick<AkanI18nConfig, "defaultLocale" | "localePrefix"> = { defaultLocale: "" },
   ) {
     const basePath = target.basePath ? trimSlashes(target.basePath) : "";
-    const pathPrefixes = basePath ? locales.map((locale) => LocalePath.join(locale, `/${basePath}`, i18n)) : undefined;
+    const pathPrefixes = basePath
+      ? [
+          ...new Set(
+            locales.flatMap((locale) => [LocalePath.join(locale, `/${basePath}`, i18n), `/${locale}/${basePath}`]),
+          ),
+        ]
+      : undefined;
     return {
       ...(target.deepLinks?.schemes?.length ? { schemes: target.deepLinks.schemes } : {}),
       ...(target.deepLinks?.domains?.length

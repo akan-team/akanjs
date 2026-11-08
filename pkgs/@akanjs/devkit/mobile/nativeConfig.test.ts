@@ -183,7 +183,9 @@ describe("NativeConfig.build", () => {
       platform: "android",
     });
 
-    expect(config.deepLinks).toEqual({ domains: [{ host: "portal.example", pathPrefixes: ["/admin", "/ko/admin"] }] });
+    expect(config.deepLinks).toEqual({
+      domains: [{ host: "portal.example", pathPrefixes: ["/admin", "/en/admin", "/ko/admin"] }],
+    });
   });
 
   test("a plugin that claims a permission replaces the builtin one and adds its Android entries", () => {

@@ -97,6 +97,18 @@ describe("LocaleWebProxy", () => {
         location: "http://site.test/pokemon/deoxys?x=1",
       });
       expect(redirectOf(use("http://site.test/en"))).toEqual({ status: 308, location: "http://site.test/" });
+      expect((use("http://site.test/en") as Response).headers.get("cache-control")).toBe("max-age=86400");
+    });
+
+    test("keeps the move on its own host when the rest of the path starts with another slash", () => {
+      expect(redirectOf(use("http://site.test/en//evil.test/x?a=1"))).toEqual({
+        status: 308,
+        location: "http://site.test//evil.test/x?a=1",
+      });
+      expect(redirectOf(use("http://site.test//evil.test/x?csr=true"))).toEqual({
+        status: 307,
+        location: "http://site.test/en//evil.test/x?csr=true",
+      });
     });
 
     test("keeps a CSR boot on the prefixed URL its route table matches", () => {
