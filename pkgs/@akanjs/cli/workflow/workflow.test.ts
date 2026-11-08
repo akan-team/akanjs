@@ -50,6 +50,7 @@ describe("WorkflowRunner", () => {
       "create-module",
       "create-scalar",
       "create-ui",
+      "rename-key",
     ]);
   });
 
@@ -915,6 +916,104 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     });
   });
 
+  describe("rename-key", () => {
+    const taskPage = [
+      'import { fetch } from "@apps/demo/client";',
+      "",
+      "export default async function Page() {",
+      "  const { taskListInPublic } = await fetch.initTaskInPublic();",
+      "  return taskListInPublic.length;",
+      "}",
+      "",
+    ].join("\n");
+    const setUpTask = async () => {
+      const { root, workspace, module } = track(await createTempModule("task"));
+      await new ModuleRunner().createModuleTemplate(module);
+      await writeText(path.join(root, "apps/demo/page/tasks.tsx"), taskPage);
+      const runner = new WorkflowRunner();
+      const planPath = path.join(root, ".akan/workflows/plans/rename.json");
+      const plan = async (inputs: WorkflowPlanInputs) =>
+        JSON.parse(
+          await runner.plan(
+            "rename-key",
+            { app: "demo", module: "task", ...inputs },
+            { format: "json", out: planPath, workspace },
+          ),
+        ) as WorkflowPlan;
+      const apply = async () =>
+        JSON.parse(
+          await runner.apply(planPath, { format: "json", workspace, registry: WorkflowRunner.stepRegistry(workspace) }),
+        ) as WorkflowApplyReport;
+      return { root, module, plan, apply };
+    };
+
+    test("renames a slice key with every derived name and its dictionary entry", async () => {
+      const { root, module, plan, apply } = await setUpTask();
+      const planned = await plan({ slice: "inPublic", to: "inFeed" });
+      expect(planned.diagnostics).toEqual([]);
+      expect(planned.predictedChanges.map((change) => change.target)).toEqual([
+        "apps/demo/lib/task/task.dictionary.ts",
+        "apps/demo/lib/task/task.signal.ts",
+        "apps/demo/page/tasks.tsx",
+      ]);
+
+      const report = await apply();
+
+      expect(report.status).toBe("passed");
+      expect(report.changedFiles.map((file) => file.path)).toEqual(
+        planned.predictedChanges.map((change) => change.target),
+      );
+      expect(await module.readFile("task.signal.ts")).toContain("  inFeed: init({ guards: [Public] })");
+      expect(await module.readFile("task.dictionary.ts")).toContain('    inFeed: fn(["Task In Public"');
+      expect(await readFile(path.join(root, "apps/demo/page/tasks.tsx"), "utf8")).toBe(
+        taskPage
+          .replace("{ taskListInPublic }", "{ taskListInFeed: taskListInPublic }")
+          .replace("initTaskInPublic", "initTaskInFeed"),
+      );
+    });
+
+    test("renames a Filter query key in the document and the service query it derives", async () => {
+      const { module, plan, apply } = await setUpTask();
+      const document = await module.readFile("task.document.ts");
+      await module.writeFile(
+        "task.document.ts",
+        document.replace(
+          "query: {}",
+          'query: {\n    byName: filter().arg("name", String).query((name) => ({ name })),\n  }',
+        ),
+      );
+      const signal = await module.readFile("task.signal.ts");
+      await module.writeFile("task.signal.ts", signal.replace("queryAny()", 'queryByName("a")'));
+
+      expect((await plan({ query: "byName", to: "byTitle" })).diagnostics).toEqual([]);
+      expect((await apply()).status).toBe("passed");
+
+      expect(await module.readFile("task.document.ts")).toContain("    byTitle: filter()");
+      expect(await module.readFile("task.signal.ts")).toContain('this.taskService.queryByTitle("a")');
+    });
+
+    test("refuses at plan time a key the module lacks, a key it has, two keys, or a name that is not camelCase", async () => {
+      const { module, plan } = await setUpTask();
+      const signal = await module.readFile("task.signal.ts");
+      await module.writeFile(
+        "task.signal.ts",
+        signal.replace(
+          "  inPublic: init(",
+          "  inFeed: init({ guards: [Public] }).exec(function () {\n    return this.taskService.queryAny();\n  }),\n  inPublic: init(",
+        ),
+      );
+      const codesOf = async (inputs: WorkflowPlanInputs) =>
+        (await plan(inputs)).diagnostics.map((diagnostic) => diagnostic.code);
+
+      expect(await codesOf({ slice: "inNowhere", to: "inSoon" })).toEqual(["rename-key-source-missing"]);
+      expect(await codesOf({ slice: "inPublic", to: "inFeed" })).toEqual(["rename-key-exists"]);
+      expect(await codesOf({ slice: "inPublic", query: "byName", to: "inSoon" })).toEqual([
+        "rename-key-source-invalid",
+      ]);
+      expect(await codesOf({ slice: "inPublic", to: "InSoon" })).toEqual(["rename-key-name-invalid"]);
+    });
+  });
+
   describe("create-interaction", () => {
     test("plans and applies the hook, the pure class and its test", async () => {
       const { root, workspace, app } = track(await createTempModule("task"));
@@ -970,7 +1069,7 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
 });
 
 describe("akan workflow", () => {
-  test("passes --surfaces and --include-in-light to the add-field plan inputs", async () => {
+  const planThroughCli = async (workflowArgs: string[]) => {
     const { root } = track(await createTempModule("task"));
     const entry = path.join(root, "cli.ts");
     await writeText(
@@ -984,9 +1083,8 @@ describe("akan workflow", () => {
     );
     const planPath = path.join(root, "plan.json");
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("AKAN_")));
-    const args = ["--app", "demo", "--module", "task", "--field", "budget", "--type", "Int", "--out", planPath];
     const proc = Bun.spawn(
-      ["bun", entry, "workflow", "plan", "add-field", ...args, "--surfaces", "template,unit", "--include-in-light"],
+      ["bun", entry, "workflow", "plan", ...workflowArgs, "--app", "demo", "--module", "task", "--out", planPath],
       {
         cwd: root,
         stdout: "pipe",
@@ -999,10 +1097,21 @@ describe("akan workflow", () => {
       new Response(proc.stderr).text(),
       proc.exited,
     ]);
-
     expect({ code, stderr }).toEqual({ code: 0, stderr: "" });
     expect(stdout).not.toContain("unknown option");
-    const plan = JSON.parse(await readFile(planPath, "utf8")) as WorkflowPlan;
+    return JSON.parse(await readFile(planPath, "utf8")) as WorkflowPlan;
+  };
+
+  test("passes --surfaces and --include-in-light to the add-field plan inputs", async () => {
+    const plan = await planThroughCli([
+      "add-field",
+      ...["--field", "budget", "--type", "Int", "--surfaces", "template,unit", "--include-in-light"],
+    ]);
     expect(plan.inputs).toMatchObject({ surfaces: ["template", "unit"], includeInLight: true });
+  }, 60_000);
+
+  test("passes --query and --to to the rename-key plan inputs", async () => {
+    const plan = await planThroughCli(["rename-key", "--query", "byName", "--to", "byTitle"]);
+    expect(plan.inputs).toMatchObject({ query: "byName", to: "byTitle" });
   }, 60_000);
 });

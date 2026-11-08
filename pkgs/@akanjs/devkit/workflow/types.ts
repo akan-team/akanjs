@@ -63,6 +63,12 @@ export interface AddSliceInput extends PrimitiveTargetInput {
   slice: string | null;
 }
 
+export interface RenameKeyInput extends PrimitiveTargetInput {
+  slice: string | null;
+  query: string | null;
+  to: string | null;
+}
+
 export interface WorkflowInputSpec {
   type: WorkflowInputType;
   required?: boolean;
@@ -498,5 +504,6 @@ export interface WorkflowPrimitiveOperations {
   addEnumField: (input: AddEnumFieldInput) => Promise<PrimitiveWriteReport>;
   addMutation: (input: AddMutationInput) => Promise<PrimitiveWriteReport>;
   addSlice: (input: AddSliceInput) => Promise<PrimitiveWriteReport>;
+  renameKey: (input: RenameKeyInput) => Promise<PrimitiveWriteReport>;
   createInteraction: (input: CreateInteractionInput) => Promise<PrimitiveWriteReport>;
 }

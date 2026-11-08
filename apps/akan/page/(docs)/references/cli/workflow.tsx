@@ -177,6 +177,13 @@ export default page()
           ko: "service 쿼리와 `None` 가드를 단 `init` 슬라이스를 더하고, 페이지 로드와 Zone은 권장만 합니다.",
         })}\n${needsLabel} \`--app\` \`--module\` \`--slice\``,
       },
+      {
+        name: "rename-key",
+        desc: `${l.trans({
+          en: "Renames a slice or Filter query key with every name derived from it and its dictionary entry, in the app and every lib.",
+          ko: "슬라이스나 Filter 쿼리 키를, 거기서 만들어진 이름 전부와 dictionary 항목까지 앱과 모든 lib에서 함께 바꿉니다.",
+        })}\n${needsLabel} \`--app\` \`--module\` \`--slice\` | \`--query\` \`--to\``,
+      },
     ];
 
     const catalogueNotes = [
@@ -263,13 +270,17 @@ export default page()
           { name: "add-slice", marks: { sync: true, lint: true, typecheck: false, build: true } },
         ],
       },
+      {
+        label: l.trans({ en: "Rename", ko: "이름 바꾸기" }),
+        rows: [{ name: "rename-key", marks: { sync: true, lint: true, typecheck: true, build: true } }],
+      },
     ];
 
     const commands: CommandReferenceItem[] = [
       {
         name: "workflow",
         signature:
-          "akan workflow <action> [workflow] [--format <markdown|json>] [--out <path>] [--dry-run <boolean>] [--app <name>] [--module <name>] [--field <name>] [--type <type>] [--values <a,b,c>] [--default <value>] [--scalar <name>] [--surface <name>] [--mutation <name>] [--slice <name>]",
+          "akan workflow <action> [workflow] [--format <markdown|json>] [--out <path>] [--dry-run <boolean>] [--app <name>] [--module <name>] [--field <name>] [--type <type>] [--values <a,b,c>] [--default <value>] [--scalar <name>] [--surface <name>] [--mutation <name>] [--slice <name>] [--query <name>] [--to <name>]",
         desc: l.trans({
           en: "List, explain, plan, apply, or validate a workflow, or print an earlier run's report.\n`plan` and `explain` never write source. Only `apply` does, and only from a plan file.",
           ko: "워크플로를 나열, 설명, 계획, 적용, 검증하거나 지난 실행의 리포트를 다시 봅니다.\n`plan`과 `explain`은 소스를 쓰지 않습니다. 소스를 쓰는 것은 `apply`뿐이고, 그것도 플랜 파일로만 씁니다.",
@@ -464,8 +475,26 @@ export default page()
             type: "String",
             enumOrFlag: "-i",
             desc: l.trans({
-              en: "Plan input for `add-slice`: the slice or query name.",
-              ko: "`add-slice`의 입력: 슬라이스(쿼리) 이름입니다.",
+              en: "Plan input for `add-slice`: the slice or query name. For `rename-key`, the slice key to rename.",
+              ko: "`add-slice`의 입력: 슬라이스(쿼리) 이름입니다. `rename-key`에서는 바꿀 슬라이스 키입니다.",
+            }),
+          },
+          {
+            name: "--query",
+            type: "String",
+            enumOrFlag: "-q",
+            desc: l.trans({
+              en: "Plan input for `rename-key`: the Filter query key to rename, instead of `--slice`.",
+              ko: "`rename-key`의 입력: `--slice` 대신 바꿀 Filter 쿼리 키입니다.",
+            }),
+          },
+          {
+            name: "--to",
+            type: "String",
+            enumOrFlag: "-x",
+            desc: l.trans({
+              en: "Plan input for `rename-key`: the new camelCase key.",
+              ko: "`rename-key`의 입력: 새 camelCase 키입니다.",
             }),
           },
         ],

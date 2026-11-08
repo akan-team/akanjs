@@ -2,6 +2,7 @@ export * from "./artifacts";
 export * from "./executor";
 export * from "./guardCatalog";
 export * from "./interactionScaffold";
+export * from "./keyRename";
 export * from "./moduleIndex";
 export * from "./mutationScaffold";
 export * from "./mutationSource";

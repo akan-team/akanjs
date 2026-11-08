@@ -38,13 +38,14 @@ describe("akan skills", () => {
       "add-enum-field",
       "add-mutation",
       "add-slice",
+      "rename-key",
     ]);
     const named = { tools: new Set<string>(), guidelines: new Set<string>(), workflows: new Set<string>() };
     for (const name of names) {
       const body = bodyOf(name);
       // A backticked snake_case identifier in these documents is always a tool name.
       for (const match of body.matchAll(/`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)[`(]/g)) named.tools.add(match[1] ?? "");
-      for (const match of body.matchAll(/`((?:create|add)-[a-z-]+)`/g)) named.workflows.add(match[1] ?? "");
+      for (const match of body.matchAll(/`((?:create|add|rename)-[a-z-]+)`/g)) named.workflows.add(match[1] ?? "");
       // Only paragraphs offering a deeper read, so a prose identifier is not taken for a guideline name.
       for (const paragraph of body.split(/\n\s*\n/).filter((block) => block.includes("get_guideline")))
         for (const match of paragraph.matchAll(/`([a-zA-Z]+)`/g))

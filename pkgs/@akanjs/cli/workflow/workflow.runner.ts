@@ -294,6 +294,7 @@ export class WorkflowRunner extends runner("workflow") {
       addEnumField: (input) => CommandContainer.get(PrimitiveScript).addEnumField(workspace, input),
       addMutation: (input) => CommandContainer.get(PrimitiveScript).addMutation(workspace, input),
       addSlice: (input) => CommandContainer.get(PrimitiveScript).addSlice(workspace, input),
+      renameKey: (input) => CommandContainer.get(PrimitiveScript).renameKey(workspace, input),
       createInteraction: (input) => CommandContainer.get(PrimitiveScript).createInteraction(workspace, input),
     });
   }
