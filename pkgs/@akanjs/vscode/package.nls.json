@@ -1,5 +1,9 @@
 {
   "akan.reindex.title": "Rebuild the name index",
   "akan.codeLens.enabled.description": "Show how many places use each slice, query, field, store state and socket endpoint above its declaration.",
-  "akan.renameSourceKey.title": "Rename the slice or query key with its derived names"
+  "akan.renameSourceKey.title": "Rename the slice or query key with its derived names",
+  "akan.verify.title": "Verify this app or library",
+  "akan.runWorkflow.title": "Run a workflow…",
+  "akan.createModule.title": "Create a module…",
+  "akan.addField.title": "Add a field…"
 }

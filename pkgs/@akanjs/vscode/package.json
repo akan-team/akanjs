@@ -1,7 +1,7 @@
 {
   "name": "@akanjs/vscode",
   "displayName": "Akan.js",
-  "description": "Go from Akan.js derived names (initMemoInPublic, listByName, setNameOnMemo, srv.memo) to the slice, query, field or class that produces them, and see where each source key is used.",
+  "description": "Go from Akan.js derived names (initMemoInPublic, listByName, setNameOnMemo, srv.memo) to the slice, query, field or class that produces them, see where each source key is used, and run akan verify and workflows from the editor.",
   "version": "0.1.0",
   "private": true,
   "publisher": "akanjs",
@@ -25,7 +25,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In an untrusted workspace the extension uses its bundled language core instead of loading the workspace's @akanjs/language."
+      "description": "In an untrusted workspace the extension uses its bundled language core instead of loading the workspace's @akanjs/language, and its verify and workflow commands, which run the workspace's akan CLI, are off."
     }
   },
   "contributes": {
@@ -39,6 +39,30 @@
         "command": "akan.renameSourceKey",
         "title": "%akan.renameSourceKey.title%",
         "category": "Akan"
+      },
+      {
+        "command": "akan.verify",
+        "title": "%akan.verify.title%",
+        "category": "Akan",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "akan.runWorkflow",
+        "title": "%akan.runWorkflow.title%",
+        "category": "Akan",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "akan.createModule",
+        "title": "%akan.createModule.title%",
+        "category": "Akan",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "akan.addField",
+        "title": "%akan.addField.title%",
+        "category": "Akan",
+        "enablement": "isWorkspaceTrusted"
       }
     ],
     "configuration": {
