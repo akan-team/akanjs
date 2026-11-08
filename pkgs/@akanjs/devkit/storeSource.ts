@@ -1,3 +1,4 @@
+import { modelNames } from "akanjs/common";
 import ts from "typescript";
 import type { SourceFileInfo } from "./qualityScanner";
 
@@ -28,15 +29,15 @@ export class StoreSource {
 
   //? The actions `store()` generates that send a mutation; `upload<Field>On<Model>` only stages a file the form saves.
   static generatedWritesOf(refName: string) {
-    const model = `${refName.charAt(0).toUpperCase()}${refName.slice(1)}`;
+    const names = modelNames(refName);
     return [
-      `create${model}`,
-      `update${model}`,
-      `remove${model}`,
-      `merge${model}`,
-      `create${model}InForm`,
-      `update${model}InForm`,
-      `submit${model}`,
+      names.createModel,
+      names.updateModel,
+      names.removeModel,
+      names.mergeModel,
+      names.createModelInForm,
+      names.updateModelInForm,
+      names.submitModel,
     ];
   }
 

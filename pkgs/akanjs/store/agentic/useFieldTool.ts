@@ -1,9 +1,8 @@
 "use client";
-import { capitalize } from "akanjs/common";
+import { capitalize, databaseStateNames, formSetterNames } from "akanjs/common";
 import type { JsonSchema, ToolEntry } from "use-agentic";
 import { useScopePath, useSurface } from "use-agentic";
 import { actionTagOf } from "../actionTag";
-import { formSetterNames } from "../formSetterNames";
 // Through the `"use client"` shim, not `react` — see `StToolBuilder`.
 import { useEffect, useRef } from "../hooks";
 import { StoreRegistry } from "../storeRegistry";
@@ -20,7 +19,9 @@ const dispatcherOf = (action: string) =>
   StoreRegistry.instance.do[action] as ((...args: unknown[]) => unknown) | undefined;
 
 const rowsOf = (ref: FormFieldRef): unknown[] => {
-  const form = StoreRegistry.instance.get()[`${ref.refName}Form`] as { [key: string]: unknown } | undefined;
+  const form = StoreRegistry.instance.get()[databaseStateNames(ref.refName).modelForm] as
+    | { [key: string]: unknown }
+    | undefined;
   const rows = form?.[ref.key];
   return Array.isArray(rows) ? rows : [];
 };

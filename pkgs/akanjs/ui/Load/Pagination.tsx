@@ -1,6 +1,6 @@
 "use client";
 import { cn, router } from "akanjs/client";
-import { type DynamicRecord, lowerlize } from "akanjs/common";
+import { type DynamicRecord, lowerlize, sliceNames } from "akanjs/common";
 import type { BaseInsight } from "akanjs/constant";
 import type { ClientInit, ServerInit } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -29,9 +29,9 @@ function Render<RefName extends string, Light>({ className, init, scrollToTop }:
   const storeGet = st.get as unknown as <T>() => { [key: string]: T };
   const { refName, sliceName } = init;
   const modelName = lowerlize(refName);
-  const initModelInitAt = (init as DynamicRecord)[`${modelName}InitAt`] as Date;
-  const loaded = useRef(storeGet<Date>()[`${refName}InitAt`].getTime() >= initModelInitAt.getTime());
   const { names, namesOfSlice } = sliceNamesOf(modelName, sliceName);
+  const initModelInitAt = (init as DynamicRecord)[names.modelInitAt] as Date;
+  const loaded = useRef(storeGet<Date>()[sliceNames(refName).state.modelInitAt].getTime() >= initModelInitAt.getTime());
   const modelInsight = storeUse[namesOfSlice.modelInsight]() as BaseInsight;
   const limitOfModel = storeUse[namesOfSlice.limitOfModel]() as number;
   const pageOfModel = storeUse[namesOfSlice.pageOfModel]() as number;

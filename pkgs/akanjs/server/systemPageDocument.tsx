@@ -1,5 +1,5 @@
 import type { AkanI18nConfig } from "akanjs/common";
-import { DEFAULT_AKAN_I18N, getBasePathFromPathname } from "akanjs/common";
+import { DEFAULT_AKAN_I18N, getBasePathFromPathname, LocalePath } from "akanjs/common";
 import type { ReactNode } from "react";
 
 export type SystemPageKind = "not-found" | "error";
@@ -147,7 +147,7 @@ export function getSystemPageHomeHref({
     i18n,
     headerBasePath,
   });
-  return `/${[locale, basePath].filter(Boolean).join("/")}`;
+  return LocalePath.join(locale, basePath ? `/${basePath}` : "/", i18n);
 }
 
 export interface SubRouteIndexOptions {

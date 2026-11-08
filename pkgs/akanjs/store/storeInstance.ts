@@ -1,6 +1,6 @@
 import { ACTION_META, ACTION_OWNER_META, STATE_DERIVED_META, STATE_INIT_META } from "akanjs/base";
 import { isNativeApp, Translator } from "akanjs/client";
-import { capitalize, type DynamicRecord, isRecord, Logger, parseAkanI18nEnv } from "akanjs/common";
+import { type DynamicRecord, isRecord, Logger, parseAkanI18nEnv, stateSetterName } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import type { SerializedArg } from "akanjs/signal";
 import { enableMapSet, produce } from "immer";
@@ -364,7 +364,7 @@ export class StoreInstance {
               return this.#sel((s) => s[k]);
             };
         if (this.#derivedMeta.derivedKeys.has(k)) continue;
-        const setKey = `set${capitalize(k)}`;
+        const setKey = stateSetterName(k);
         // A declared action of the same name (`setPageOfX` is a slice action) wins the key; no convenience setter.
         if (setKey in actions) continue;
         this.do[setKey] = tagAction((value: unknown) => this.set({ [k]: value }), { action: setKey, state: k });
@@ -373,6 +373,7 @@ export class StoreInstance {
       }
     }
     for (const k of Object.keys(actions)) {
+      const silent = this.#actionOwners.get(k)?.silent === true;
       const dispatch = async (...args: unknown[]) => {
         Logger.verbose(`${k} action loading...`);
         const start = Date.now();
@@ -380,8 +381,12 @@ export class StoreInstance {
           await (this.#ctx[k] as StoreAction)(...args);
           Logger.verbose(`=> ${k} action dispatched (${Date.now() - start}ms)`);
         } catch (error) {
-          this.#showActionErrorMessage(k, error);
-          Logger.error(`${k} action error return: ${error instanceof Error ? error.message : String(error)}`);
+          const message = error instanceof Error ? error.message : String(error);
+          if (silent) Logger.verbose(`${k} action failed silently: ${message}`);
+          else {
+            this.#showActionErrorMessage(k, error);
+            Logger.error(`${k} action error return: ${message}`);
+          }
           throw error;
         }
       };
@@ -416,9 +421,8 @@ export class StoreInstance {
   }
 
   #buildSlice(refName: string, suffix: string, serializedSlice: { args?: SerializedArg[] }) {
-    const sliceName = `${refName}${capitalize(suffix)}`;
     const names = sliceKeysOf(refName);
-    const { state: namesOfSliceState, action: namesOfSliceAction } = sliceKeysOf(refName, suffix);
+    const { slice: sliceName, state: namesOfSliceState, action: namesOfSliceAction } = sliceKeysOf(refName, suffix);
     const targetSlice: {
       do: { [key: string]: (...args: any[]) => void };
       use: { [key: string]: () => any };
@@ -449,8 +453,8 @@ export class StoreInstance {
         targetSlice.use[names.state[key]] = this.use[rootStateKey];
         this.#sliceStateRoles.set(rootStateKey, { role: key, refName, sliceName });
       }
-      const setRootKey = `set${capitalize(rootStateKey)}`;
-      const setLocalKey = `set${capitalize(names.state[key])}`;
+      const setRootKey = stateSetterName(rootStateKey);
+      const setLocalKey = stateSetterName(names.state[key]);
       if (this.do[setRootKey]) targetSlice.do[setLocalKey] = this.do[setRootKey];
     }
 

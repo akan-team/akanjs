@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import type { SpawnOptions } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import path, { delimiter } from "node:path";
 import { run } from "./run";
 
 interface SpawnCall {
@@ -11,14 +11,16 @@ interface SpawnCall {
   options: SpawnOptions;
 }
 
-const createSpawnMock = (exitCodes: number[] = []) => {
+const createSpawnMock = (outcomes: (number | Error)[] = []) => {
   const calls: SpawnCall[] = [];
   const spawnCommand = (command: string, args: readonly string[], options: SpawnOptions) => {
     calls.push({ command, args: [...args], options });
-    const code = exitCodes.shift() ?? 0;
+    const outcome = outcomes.shift() ?? 0;
     return {
-      on(event: string, callback: (code: number | null, signal: NodeJS.Signals | null) => void) {
-        if (event === "exit") queueMicrotask(() => callback(code, null));
+      on(event: string, callback: (...args: unknown[]) => void) {
+        if (outcome instanceof Error) {
+          if (event === "error") queueMicrotask(() => callback(outcome));
+        } else if (event === "exit") queueMicrotask(() => callback(outcome, null));
         return this;
       },
     };
@@ -44,6 +46,9 @@ const inRepo = async (dotenv: string | null, body: () => Promise<void>, file = "
   }
 };
 
+//? Windows spells the key `Path`, and the env the run hands a child is a plain copy without case-insensitive lookup.
+const pathOf = (env: NodeJS.ProcessEnv) => env[Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH"];
+
 describe("create-akan-workspace", () => {
   test("installs the matching Akan CLI version then forwards workspace options", async () => {
     const { calls, spawnCommand } = createSpawnMock();
@@ -62,13 +67,26 @@ describe("create-akan-workspace", () => {
         "true",
         "--init",
         "false",
+        "--sample",
+        "false",
       ],
       spawnCommand: spawnCommand as never,
     });
 
     expect(calls.map((call) => [call.command, call.args])).toEqual([
       ["bun", ["install", "-g", `@akanjs/cli@${version}`]],
-      ["akan", ["create-workspace", "my-org", "--app=web", "--dir=./projects", "--libs=true", "--init=false"]],
+      [
+        "akan",
+        [
+          "create-workspace",
+          "my-org",
+          "--app=web",
+          "--dir=./projects",
+          "--libs=true",
+          "--init=false",
+          "--sample=false",
+        ],
+      ],
     ]);
     expect(calls.every((call) => call.options.stdio === "inherit")).toBe(true);
   });
@@ -86,7 +104,15 @@ describe("create-akan-workspace", () => {
       ["bun", ["install", "-g", `@akanjs/cli@${version}`, "--registry", "http://127.0.0.1:4873"]],
       [
         "akan",
-        ["create-workspace", "my-org", "--app=web", "--libs=false", "--init=true", "--registry=http://127.0.0.1:4873"],
+        [
+          "create-workspace",
+          "my-org",
+          "--app=web",
+          "--libs=false",
+          "--init=true",
+          "--sample=true",
+          "--registry=http://127.0.0.1:4873",
+        ],
       ],
     ]);
     expect(
@@ -100,7 +126,11 @@ describe("create-akan-workspace", () => {
     try {
       await inRepo(null, async () => {
         const { calls, spawnCommand } = createSpawnMock();
-        await run({ argv: ["bun", "create-akan-workspace", "my-org"], spawnCommand: spawnCommand as never });
+        await run({
+          argv: ["bun", "create-akan-workspace", "my-org"],
+          spawnCommand: spawnCommand as never,
+          getGlobalBinDir: () => undefined,
+        });
         expect(calls.at(0)?.args).toEqual([
           "install",
           "-g",
@@ -113,10 +143,14 @@ describe("create-akan-workspace", () => {
 
       await inRepo("export AKAN_NPM_REGISTRY=http://127.0.0.1:4999\n", async () => {
         const { calls, spawnCommand } = createSpawnMock();
-        await run({ argv: ["bun", "create-akan-workspace", "my-org"], spawnCommand: spawnCommand as never });
+        await run({
+          argv: ["bun", "create-akan-workspace", "my-org"],
+          spawnCommand: spawnCommand as never,
+          getGlobalBinDir: () => undefined,
+        });
         expect(calls.map((call) => call.args)).toEqual([
           ["install", "-g", `@akanjs/cli@${version}`],
-          ["create-workspace", "my-org", "--libs=false", "--init=true"],
+          ["create-workspace", "my-org", "--libs=false", "--init=true", "--sample=true"],
         ]);
       });
       expect(warned.mock.calls.map(([line]) => line)).toEqual([
@@ -140,7 +174,11 @@ describe("create-akan-workspace", () => {
         dotenv,
         async () => {
           const { calls, spawnCommand } = createSpawnMock();
-          await run({ argv: ["bun", "create-akan-workspace", "my-org"], spawnCommand: spawnCommand as never });
+          await run({
+            argv: ["bun", "create-akan-workspace", "my-org"],
+            spawnCommand: spawnCommand as never,
+            getGlobalBinDir: () => undefined,
+          });
           expect(calls.every((call) => !call.args.includes("--registry"))).toBe(true);
         },
         file,
@@ -153,7 +191,7 @@ describe("create-akan-workspace", () => {
     }
   });
 
-  test("forwards libs=false when libs is omitted", async () => {
+  test("forwards libs=false and sample=true when they are omitted", async () => {
     const { calls, spawnCommand } = createSpawnMock();
 
     await run({
@@ -161,7 +199,33 @@ describe("create-akan-workspace", () => {
       spawnCommand: spawnCommand as never,
     });
 
-    expect(calls.at(1)?.args).toEqual(["create-workspace", "my-org", "--app=web", "--libs=false", "--init=true"]);
+    expect(calls.at(1)?.args).toEqual([
+      "create-workspace",
+      "my-org",
+      "--app=web",
+      "--libs=false",
+      "--init=true",
+      "--sample=true",
+    ]);
+  });
+
+  test('forwards "." so the workspace is created in --dir itself', async () => {
+    const { calls, spawnCommand } = createSpawnMock();
+
+    await run({
+      argv: ["bun", "create-akan-workspace", ".", "--app", "web", "--dir", "app", "-s", "false"],
+      spawnCommand: spawnCommand as never,
+    });
+
+    expect(calls.at(1)?.args).toEqual([
+      "create-workspace",
+      ".",
+      "--app=web",
+      "--dir=app",
+      "--libs=false",
+      "--init=true",
+      "--sample=false",
+    ]);
   });
 
   test("refuses a Bun older than its engines range before installing anything", async () => {
@@ -196,5 +260,57 @@ describe("create-akan-workspace", () => {
       }),
     ).rejects.toEqual({ code: 1, signal: null });
     expect(calls.map((call) => call.command)).toEqual(["bun"]);
+  });
+
+  test("runs akan with Bun's global bin on PATH and says when the shell cannot reach it", async () => {
+    const { calls, spawnCommand } = createSpawnMock();
+    const warned = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await run({
+        argv: ["bun", "create-akan-workspace", "my-org", "--app", "web"],
+        spawnCommand: spawnCommand as never,
+        getGlobalBinDir: () => "/opt/bun-global/bin",
+      });
+
+      const env = calls.at(1)?.options.env as NodeJS.ProcessEnv;
+      expect(pathOf(env)?.split(delimiter)[0]).toBe("/opt/bun-global/bin");
+      expect(warned).toHaveBeenCalledTimes(1);
+      expect(warned.mock.calls[0]?.[0]).toContain("/opt/bun-global/bin");
+    } finally {
+      warned.mockRestore();
+    }
+  });
+
+  test("leaves PATH alone when Bun's global bin is already on it", async () => {
+    const { calls, spawnCommand } = createSpawnMock();
+    const warned = spyOn(console, "warn").mockImplementation(() => undefined);
+    const firstOnPath = process.env.PATH?.split(delimiter)[0] ?? "";
+    try {
+      await run({
+        argv: ["bun", "create-akan-workspace", "my-org", "--app", "web"],
+        spawnCommand: spawnCommand as never,
+        getGlobalBinDir: () => firstOnPath,
+      });
+
+      const env = calls.at(1)?.options.env as NodeJS.ProcessEnv;
+      expect(env.PATH).toBe(process.env.PATH);
+      expect(warned).not.toHaveBeenCalled();
+    } finally {
+      warned.mockRestore();
+    }
+  });
+
+  test("rejects instead of hanging when akan cannot be spawned", async () => {
+    const notFound = new Error('Executable not found in $PATH: "akan"');
+    const { calls, spawnCommand } = createSpawnMock([0, notFound]);
+
+    await expect(
+      run({
+        argv: ["bun", "create-akan-workspace", "my-org"],
+        spawnCommand: spawnCommand as never,
+        getGlobalBinDir: () => undefined,
+      }),
+    ).rejects.toBe(notFound);
+    expect(calls.map((call) => call.command)).toEqual(["bun", "akan"]);
   });
 });

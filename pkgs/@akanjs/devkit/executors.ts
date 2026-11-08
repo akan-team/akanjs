@@ -44,6 +44,7 @@ import {
 import { AkanAppConfig, AkanLibConfig, AkanWorkspaceConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
 import { getRootBoundarySegments, isRootBoundarySegments } from "./artifact/implicitRootLayout";
 import { CodegenLock } from "./codegenLock";
+import { EnvSeed } from "./envSeed";
 import { FileSys, getDirname } from "./fileSys";
 import { JsonFormatter } from "./jsonFormatter";
 import { Linter } from "./linter";
@@ -429,11 +430,13 @@ export class Executor {
       targetPath,
       scanInfo,
       overwrite = true,
+      dryRun = false,
     }: {
       templatePath: string;
       targetPath: string;
       scanInfo?: AppInfo | LibInfo | null;
       overwrite?: boolean;
+      dryRun?: boolean;
     },
     dict: { [key: string]: string } = {},
     options: { [key: string]: unknown } = {},
@@ -456,6 +459,7 @@ export class Executor {
       const filename = typeof result === "object" ? result.filename : path.basename(targetPath).replace(".js", ".ts");
       const content = typeof result === "object" ? result.content : result;
       const convertedTargetPath = convertPath(`${path.dirname(targetPath)}/${filename}`);
+      if (dryRun) return { filePath: this.getPath(convertedTargetPath), content, written: false };
       this.logger.verbose(`Apply template ${templatePath} to ${convertedTargetPath}`);
       return this.writeFile(convertedTargetPath, content, { overwrite });
     } else if (targetPath.endsWith(".template")) {
@@ -465,11 +469,13 @@ export class Executor {
         (data, [key, value]) => data.replace(new RegExp(`<%= ${key} %>`, "g"), value),
         content,
       );
+      if (dryRun) return { filePath: this.getPath(convertedTargetPath), content: convertedContent, written: false };
       this.logger.verbose(`Apply template ${templatePath} to ${convertedTargetPath}`);
       return this.writeFile(convertedTargetPath, convertedContent, { overwrite });
     } else if (staticTemplateFileExtensions.has(path.extname(targetPath).toLowerCase())) {
       const convertedTargetPath = convertPath(targetPath);
       const writePath = this.getPath(convertedTargetPath);
+      if (dryRun) return { filePath: writePath, content: "", written: false };
       if (!overwrite && (await FileSys.fileExists(writePath)))
         return { filePath: writePath, content: "", written: false };
       const dirname = path.dirname(writePath);
@@ -486,6 +492,7 @@ export class Executor {
     dict = {},
     options = {},
     overwrite = true,
+    dryRun = false,
   }: {
     basePath: string;
     template: string;
@@ -493,6 +500,7 @@ export class Executor {
     dict?: { [key: string]: string };
     options?: { [key: string]: unknown };
     overwrite?: boolean;
+    dryRun?: boolean;
   }): Promise<WrittenFileContent[]> {
     const templateRoot = await this.#resolveTemplateRoot();
     const templatePath = `${templateRoot}${template ? `/${template}` : ""}`;
@@ -503,6 +511,7 @@ export class Executor {
           targetPath: path.join(basePath, path.basename(templatePath)),
           scanInfo,
           overwrite,
+          dryRun,
         },
         dict,
         options,
@@ -521,6 +530,7 @@ export class Executor {
                   targetPath: path.join(basePath, subdir),
                   scanInfo,
                   overwrite,
+                  dryRun,
                 },
                 dict,
                 options,
@@ -533,6 +543,7 @@ export class Executor {
                 scanInfo,
                 dict,
                 overwrite,
+                dryRun,
                 options,
               });
           }),
@@ -558,6 +569,7 @@ export class Executor {
     dict?: { [key: string]: string };
     options?: { [key: string]: unknown };
     overwrite?: boolean;
+    dryRun?: boolean;
   }): Promise<FileContent[]> {
     const fileContents = await this._applyTemplate({ ...options, dict: withCapitalizedDict(options.dict) });
     await this.#formatAppliedTemplate(fileContents.filter((fileContent) => fileContent.written));
@@ -712,6 +724,10 @@ export class WorkspaceExecutor extends Executor {
       defaulted,
     };
   }
+  //? A clone has no `.env` (gitignored for its secrets): it runs local, as a new workspace and env.server.ts do, not debug.
+  static defaultCloneToLocalEnv(workspaceRoot: string) {
+    if (!existsSync(path.join(workspaceRoot, ".env"))) process.env.AKAN_PUBLIC_ENV ??= "local";
+  }
   //? A build or tunnel for a real environment carries these into an image, a bundle or a host name it dials.
   static assertDeployableEnv(baseDevEnv: BaseDevEnv, environment: string, purpose: string) {
     const defaulted = environment === "local" ? [] : (baseDevEnv.defaulted ?? []);
@@ -804,11 +820,19 @@ export class WorkspaceExecutor extends Executor {
     };
     return await getDirs(basePath);
   }
-  async commit(message: string, { init = false, add = true }: { init?: boolean; add?: boolean } = {}) {
+  async commit(
+    message: string,
+    {
+      init = false,
+      add = true,
+      identity,
+    }: { init?: boolean; add?: boolean; identity?: { name: string; email: string } } = {},
+  ) {
     if (init) await this.spawn("git", ["init", "--quiet"]);
     if (add) await this.spawn("git", ["add", "."]);
+    const author = identity ? ["-c", `user.name=${identity.name}`, "-c", `user.email=${identity.email}`] : [];
     // Argument vector, not a shell string: a message carrying a double quote breaks the interpolated form.
-    await this.spawn("git", ["commit", "--quiet", "-m", message]);
+    await this.spawn("git", [...author, "commit", "--quiet", "-m", message]);
   }
   /** `git commit` exits non-zero on an empty index, so a re-runnable caller has to ask first. */
   async hasChanges() {
@@ -923,8 +947,23 @@ export class SysExecutor extends Executor {
     if (!this.hasScanInfo() && !allowEmpty) throw new Error("Scan info is not available");
     return this.#scanInfo as AllowEmpty extends true ? AppInfo | LibInfo | null : AppInfo | LibInfo;
   }
+  async #seedEnvFiles(): Promise<FileContent[]> {
+    const envDir = path.join(this.cwdPath, "env");
+    const missing = await new EnvSeed(envDir).missing();
+    if (!missing.length) return [];
+    const written = await Promise.all(
+      missing.map(({ fileName, content }) =>
+        this.writeFile(path.join(envDir, fileName), content, { overwrite: false, silent: true }),
+      ),
+    );
+    this.logger.info(
+      `${missing.map(({ fileName }) => `env/${fileName}`).join(", ")} were missing (gitignored, so a clone has none) and now hold local defaults: put this machine's values in them, or fetch the team's with \`akan download-env\`.`,
+    );
+    return written;
+  }
   #getScanTemplateTasks(scanInfo: AppInfo | LibInfo): (Promise<FileContent[]> | null)[] {
     return [
+      this.#seedEnvFiles(),
       this._applyTemplate({ basePath: "env", template: "env", scanInfo }),
       this._applyTemplate({ basePath: "lib", template: "lib", scanInfo }),
       this._applyTemplate({ basePath: ".", template: "server.ts", scanInfo }),

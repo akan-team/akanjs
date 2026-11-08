@@ -1,4 +1,4 @@
-import { capitalize } from "./capitalize";
+import { modelNames } from "./akanNames";
 
 // Shared by the server's MCP catalogue and the browser API explorer, so the two cannot disagree.
 export interface McpExposureEndpoint {
@@ -25,11 +25,11 @@ export interface McpExposureOption {
 export const isMcpDescribableArg = (arg: { refName: string }) => arg.refName !== "Any";
 
 export const mcpBaseVerbOf = (refName: string, key: string) => {
-  const cap = capitalize(refName);
-  if (key === refName || key === `light${cap}`) return "get" as const;
-  if (key === `create${cap}`) return "create" as const;
-  if (key === `update${cap}`) return "update" as const;
-  if (key === `remove${cap}`) return "remove" as const;
+  const names = modelNames(refName);
+  if (key === names.model || key === names.lightModel) return "get" as const;
+  if (key === names.createModel) return "create" as const;
+  if (key === names.updateModel) return "update" as const;
+  if (key === names.removeModel) return "remove" as const;
   return null;
 };
 
@@ -56,7 +56,7 @@ export const mcpRefusalOf = (
     return `its guards (${(endpoint.guards ?? []).join(", ")}) admit no agent — an act reserved for a person, so it is off the agent shelf. HTTP still serves it.`;
   if (!endpoint.guards?.length)
     return "it declares no guards, and exposure follows them — write `guards: [Public]` if anonymous access is the intent.";
-  if (key === `light${capitalize(refName)}` && !view)
+  if (key === modelNames(refName).lightModel && !view)
     return `it reads the same document as \`${refName}\` in a smaller shape — call \`${refName}\` instead.`;
   if (endpoint.type === "pubsub" || endpoint.type === "message")
     return `\`${endpoint.type}\` rides the websocket, and its internal arguments read a socket an MCP request does not have.`;

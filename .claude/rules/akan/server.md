@@ -94,5 +94,6 @@ paths:
   `Err.is(error, "ticket.error.locked")`.
 - `try/catch` turns an exception into a decision: guards → `logger.warn` → `false`; adapters → `logger.error` →
   `null`; UI `try/finally` resets a spinner. A bodyless `catch {}` needs a one-line reason.
-- Store actions do not `try/catch` (the framework toasts the `Err`); client validation is `msg.error("<key>")` plus
-  an early return, never a throw.
+- Store actions do not `try/catch` (the framework toasts the `Err`); one no screen waits on (a token refresh) is
+  listed in the store's `static silent`, rejecting untoasted to the caller that handles it. Client validation is
+  `msg.error("<key>")` plus an early return, never a throw.

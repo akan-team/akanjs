@@ -1,3 +1,5 @@
+import { createAst, createFactReader, type FileFacts } from "@akanjs/language";
+import { modelNames } from "akanjs/common";
 import ts from "typescript";
 import type { SourceFileInfo } from "./qualityScanner";
 
@@ -8,8 +10,14 @@ interface EndpointShape {
 
 export class SignalMutationIndex {
   //? As the client generates them: `update<Model>(id, data, option?)`, `add<Model>Files(files, parentId?, option?)`.
-  static #generatedArgCounts = { create: 1, update: 2, remove: 1, merge: 2 } as const;
-  static #argMethods = new Set(["param", "body", "search", "room", "msg"]);
+  static #generatedArgCounts = [
+    ["createModel", 1],
+    ["updateModel", 2],
+    ["removeModel", 1],
+    ["mergeModel", 2],
+    ["addModelFiles", 2],
+  ] as const;
+  static #reader = createFactReader(ts, createAst(ts));
   readonly #shapesByOwner = new Map<string, Map<string, EndpointShape>>();
 
   constructor(sourceFiles: SourceFileInfo[]) {
@@ -17,7 +25,7 @@ export class SignalMutationIndex {
       if (!/^(apps|libs)\/[^/]+\/lib\/.+\.signal\.ts$/.test(file)) continue;
       const owner = file.split("/").slice(0, 2).join("/");
       const shapes = this.#shapesByOwner.get(owner) ?? new Map<string, EndpointShape>();
-      SignalMutationIndex.#collect(sourceFile, shapes);
+      SignalMutationIndex.#collect(SignalMutationIndex.#reader.read(sourceFile, owner), shapes);
       this.#shapesByOwner.set(owner, shapes);
     }
   }
@@ -43,85 +51,18 @@ export class SignalMutationIndex {
     return undefined;
   }
 
-  static #collect(sourceFile: ts.SourceFile, kinds: Map<string, EndpointShape>) {
-    const visit = (node: ts.Node) => {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-        if (node.expression.text === "slice") SignalMutationIndex.#collectGenerated(node, kinds);
-        else if (node.expression.text === "endpoint") SignalMutationIndex.#collectEndpoints(node, kinds);
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
-  }
-
-  static #collectGenerated(slice: ts.CallExpression, kinds: Map<string, EndpointShape>) {
-    let service: ts.Expression | undefined = slice.arguments[0];
-    while (service && ts.isCallExpression(service) && ts.isPropertyAccessExpression(service.expression))
-      service = service.expression.expression;
-    if (!service || !ts.isPropertyAccessExpression(service) || !SignalMutationIndex.#isNamed(service.expression, "srv"))
-      return;
-    const model = service.name.text;
-    const capModel = `${model.charAt(0).toUpperCase()}${model.slice(1)}`;
-    for (const [verb, argCount] of Object.entries(SignalMutationIndex.#generatedArgCounts))
-      kinds.set(`${verb}${capModel}`, { kind: "mutation", argCount });
-    kinds.set(`add${capModel}Files`, { kind: "mutation", argCount: 2 });
-  }
-
-  static #collectEndpoints(endpoint: ts.CallExpression, kinds: Map<string, EndpointShape>) {
-    const builder = endpoint.arguments[1];
-    if (!builder || (!ts.isArrowFunction(builder) && !ts.isFunctionExpression(builder))) return;
-    const map = SignalMutationIndex.#returnedObjectOf(builder);
-    if (!map) return;
-    const verbOf = SignalMutationIndex.#verbReaderOf(builder.parameters[0]);
-    for (const property of map.properties) {
-      if (!ts.isPropertyAssignment(property)) continue;
-      if (!ts.isIdentifier(property.name) && !ts.isStringLiteral(property.name)) continue;
-      const { root, argCount } = SignalMutationIndex.#chainOf(property.initializer);
-      const verb = verbOf(root);
-      //? A socket message writes with the visitor's credential as a mutation does, and the client refuses it alike.
-      const kind = verb === "message" ? "mutation" : verb;
-      if (kind === "query" || kind === "mutation") kinds.set(property.name.text, { kind, argCount });
+  static #collect(facts: FileFacts, shapes: Map<string, EndpointShape>) {
+    for (const { model } of facts.slices) {
+      if (!model) continue;
+      const names = modelNames(model);
+      for (const [role, argCount] of SignalMutationIndex.#generatedArgCounts)
+        shapes.set(names[role], { kind: "mutation", argCount });
     }
-  }
-
-  static #returnedObjectOf(builder: ts.ArrowFunction | ts.FunctionExpression) {
-    let body: ts.Node | undefined = builder.body;
-    if (ts.isBlock(body)) body = body.statements.find(ts.isReturnStatement)?.expression;
-    while (body && ts.isParenthesizedExpression(body)) body = body.expression;
-    return body && ts.isObjectLiteralExpression(body) ? body : null;
-  }
-
-  static #verbReaderOf(parameter: ts.ParameterDeclaration | undefined) {
-    const verbs = new Map<string, string>();
-    if (parameter && ts.isObjectBindingPattern(parameter.name))
-      for (const element of parameter.name.elements) {
-        const verb = element.propertyName ?? element.name;
-        if (ts.isIdentifier(verb) && ts.isIdentifier(element.name)) verbs.set(element.name.text, verb.text);
+    for (const { keys } of facts.endpoints)
+      for (const { name, verb, argCount } of keys) {
+        //? A socket message writes with the visitor's credential as a mutation does, and the client refuses it alike.
+        const kind = verb === "message" ? "mutation" : verb;
+        if (kind === "query" || kind === "mutation") shapes.set(name, { kind, argCount });
       }
-    const holder = parameter && ts.isIdentifier(parameter.name) ? parameter.name.text : null;
-    return (callee: ts.Expression | undefined) => {
-      if (callee && ts.isIdentifier(callee)) return verbs.get(callee.text);
-      if (callee && ts.isPropertyAccessExpression(callee) && SignalMutationIndex.#isNamed(callee.expression, holder))
-        return callee.name.text;
-      return undefined;
-    };
-  }
-
-  static #isNamed(expression: ts.Expression, name: string | null) {
-    return ts.isIdentifier(expression) && expression.text === name;
-  }
-
-  static #chainOf(initializer: ts.Expression) {
-    let root = initializer;
-    let argCount = 0;
-    while (
-      ts.isCallExpression(root) &&
-      ts.isPropertyAccessExpression(root.expression) &&
-      ts.isCallExpression(root.expression.expression)
-    ) {
-      if (SignalMutationIndex.#argMethods.has(root.expression.name.text)) argCount += 1;
-      root = root.expression.expression;
-    }
-    return { root: ts.isCallExpression(root) ? root.expression : undefined, argCount };
   }
 }

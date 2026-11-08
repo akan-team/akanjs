@@ -1,4 +1,4 @@
-import { isMcpDescribableArg, lowerlize, mcpHintsOf, mcpRefusalOf } from "akanjs/common";
+import { isMcpDescribableArg, lowerlize, mcpHintsOf, mcpRefusalOf, sliceNames } from "akanjs/common";
 import { FetchClient } from "akanjs/fetch";
 import { type AgentCandidate, AgentCatalogue, type AgentRefusal, type AgentUndescribed } from "../agent";
 import { type JsonSchema, JsonSchemaBuilder } from "../schema";
@@ -192,7 +192,7 @@ export class McpDocument {
 
   static #addressable({ origin, refName, key, baseVerb }: AgentCandidate): boolean {
     if (origin === "base") return baseVerb === "get";
-    if (origin === "slice") return key.startsWith(`${refName}List`);
+    if (origin === "slice") return key.startsWith(sliceNames(refName).endpoint.list);
     return false;
   }
 
@@ -308,7 +308,7 @@ export class McpDocument {
 
   static #uriTemplate(refName: string, key: string, endpoint: SerializedEndpoint) {
     if (key === refName) return McpUriTemplate.model(refName);
-    const listPrefix = `${refName}List`;
+    const listPrefix = sliceNames(refName).endpoint.list;
     if (!key.startsWith(listPrefix)) return undefined;
     const suffix = key.slice(listPrefix.length);
     // Read the args off the endpoint: pagination comes from the client generator, and a slice's required params

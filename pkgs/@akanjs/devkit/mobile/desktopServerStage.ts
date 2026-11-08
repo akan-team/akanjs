@@ -2,6 +2,7 @@ import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { toError } from "akanjs/common";
 import type { ServerPolicy } from "akanjs/native/api";
+import { BUILD_ENV_FILE } from "akanjs/server/lifecycle/buildEnv";
 import type { AkanAppConfig, NativeEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import type { PackageJson } from "../types";
@@ -26,9 +27,10 @@ export interface DesktopServerRun extends ServerPolicy {
 export class DesktopServerStage {
   //? An API-only server starts neither the RSC worker nor the akan console and serves no CSR, public/ or SSR
   //? artifact, and `install` wrote its own package.json and bun.lock. The rest of dist is the server's: its chunks,
-  //? a `.node`, a `.wasm`.
+  //? a `.node`, a `.wasm`. The build's env file would hand it the PORT and AKAN_LOG_TO_FILE its launcher leaves out.
   static readonly uncarried = new Set([
     "Dockerfile",
+    BUILD_ENV_FILE,
     "package.json",
     "bun.lock",
     "rscWorker.js",

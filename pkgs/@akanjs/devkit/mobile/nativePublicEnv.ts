@@ -16,6 +16,7 @@ export class NativePublicEnv {
     "AKAN_PUBLIC_RENDER_ENV",
     "AKAN_PUBLIC_DEFAULT_LOCALE",
     "AKAN_PUBLIC_LOCALES",
+    "AKAN_PUBLIC_LOCALE_PREFIX",
   ];
   //? Akan Cloud's own limits on a recorded env: a build it would refuse fails here, before anything is signed.
   static readonly #keyPattern = /^AKAN_PUBLIC_[A-Z0-9_]{1,128}$/;

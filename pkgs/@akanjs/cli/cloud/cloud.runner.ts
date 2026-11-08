@@ -58,7 +58,13 @@ const addRemoteEnvServerValue = "__addRemoteEnvServer";
 const removeRemoteEnvServerValue = "__removeRemoteEnvServer";
 
 export class CloudRunner extends runner("cloud") {
-  #akanFrameworkPackages = new Set(["akanjs", "@akanjs/devkit", "@akanjs/cli", "create-akan-workspace"]);
+  #akanFrameworkPackages = new Set([
+    "akanjs",
+    "@akanjs/devkit",
+    "@akanjs/cli",
+    "@akanjs/language",
+    "create-akan-workspace",
+  ]);
 
   #getRegistryArgs(registryUrl?: string) {
     return registryUrl ? ["--registry", getNpmRegistryUrl(registryUrl)] : [];
@@ -159,6 +165,11 @@ export class CloudRunner extends runner("cloud") {
 
   #getRemoteEnvArchiveDir() {
     const { repoName } = WorkspaceExecutor.getBaseDevEnv();
+    //? ssh hands the path to the remote login shell, so a space or `;` in a clone's folder name would split or run it.
+    if (!/^[A-Za-z0-9][\w.-]*$/.test(repoName))
+      throw new Error(
+        `The repository name "${repoName}" cannot name the remote env folder ~/secrets/<name>: it takes letters, digits, ".", "_" and "-". Set AKAN_PUBLIC_REPO_NAME in the workspace .env to such a name.`,
+      );
     return `~/secrets/${repoName}`;
   }
 
@@ -371,7 +382,7 @@ export class CloudRunner extends runner("cloud") {
     const latestPublishedVersion = await getLatestPackageVersion("akanjs", tag, registryUrl);
     const rootPackageJson = await workspace.getPackageJson();
     if (!rootPackageJson.dependencies) throw new Error("No dependencies found in package.json");
-    for (const name of ["akanjs", "@akanjs/devkit", "@akanjs/cli"]) {
+    for (const name of ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"]) {
       if (rootPackageJson.dependencies[name]) rootPackageJson.dependencies[name] = latestPublishedVersion;
       if (rootPackageJson.devDependencies?.[name]) rootPackageJson.devDependencies[name] = latestPublishedVersion;
     }
@@ -417,8 +428,8 @@ export class CloudRunner extends runner("cloud") {
   }
   async downloadEnvByScp(workspace: Workspace) {
     const envArchivePath = "local/env.tar";
-    const remoteServer = await this.#getRemoteEnvServerWithUsername();
     const remoteArchivePath = this.#getRemoteEnvArchivePath();
+    const remoteServer = await this.#getRemoteEnvServerWithUsername();
     const remoteTarget = this.#getScpTarget(remoteServer.config, remoteArchivePath);
     await workspace.mkdir("local");
     await workspace.remove(envArchivePath);
@@ -435,9 +446,9 @@ export class CloudRunner extends runner("cloud") {
     }
   }
   async uploadEnvByScp(workspace: Workspace, filePath: string) {
-    const remoteServer = await this.#getRemoteEnvServerWithUsername();
     const remoteArchiveDir = this.#getRemoteEnvArchiveDir();
     const remoteArchivePath = this.#getRemoteEnvArchivePath();
+    const remoteServer = await this.#getRemoteEnvServerWithUsername();
     const remoteTarget = this.#getScpTarget(remoteServer.config, remoteArchivePath);
     try {
       await workspace.spawn("ssh", this.#getSshArgs(remoteServer.config, `mkdir -p ${remoteArchiveDir}`), {

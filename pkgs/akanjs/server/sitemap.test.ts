@@ -45,6 +45,21 @@ describe("sitemap fallback helpers", () => {
     ]);
   });
 
+  test('lists the default locale\'s URLs unprefixed under localePrefix "as-needed"', () => {
+    const urls = createDefaultSitemapUrls({
+      origin: "https://example.com",
+      entries: seedEntries("/:lang", "/:lang/about"),
+      i18n: { ...i18n, localePrefix: "as-needed" },
+    });
+
+    expect(urls).toEqual([
+      "https://example.com/",
+      "https://example.com/ko",
+      "https://example.com/about",
+      "https://example.com/ko/about",
+    ]);
+  });
+
   test("recognizes root and subroute sitemap paths", () => {
     expect(getSitemapBasePath("/sitemap.xml", [])).toBeNull();
     expect(getSitemapBasePath("/sitemap.xml", ["akanjs"])).toBeUndefined();

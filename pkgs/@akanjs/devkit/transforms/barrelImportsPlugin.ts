@@ -12,14 +12,17 @@ export interface BarrelImportsPluginOptions {
   pipeAfter?: (source: string, args: { path: string }) => string | Promise<string | null> | null;
   /** Barrels the bundle leaves external: a rewritten import would inline the modules the import map already serves. */
   external?: readonly string[];
+  /** The barrels to rewrite, instead of the app config's `barrelImports`. */
+  barrels?: readonly string[];
 }
 
 export const createBarrelImportsPlugin = async (
   app: App,
-  { skipPath = defaultSkipPath, pipeAfter, external = [] }: BarrelImportsPluginOptions = {},
+  { skipPath = defaultSkipPath, pipeAfter, external = [], barrels: only }: BarrelImportsPluginOptions = {},
 ): Promise<BunPlugin> => {
-  const akanConfig = await app.getConfig();
-  const barrels = [...new Set(akanConfig.barrelImports)].filter((barrel) => barrel && !external.includes(barrel));
+  const barrels = [...new Set(only ?? (await app.getConfig()).barrelImports)].filter(
+    (barrel) => barrel && !external.includes(barrel),
+  );
   const analyzer = new BarrelAnalyzer({
     resolvePackage: await createTsconfigPackageResolver(app),
   });
@@ -37,7 +40,10 @@ export const createBarrelImportsPlugin = async (
         async (args) => {
           const realPath = args.path.replace(/\?v=\d+$/, "");
           const loader = loaderFor(realPath);
-          let source = await Bun.file(realPath).text();
+          const file = Bun.file(realPath);
+          //? A build's `files` entry has no copy on disk: Bun loads it itself.
+          if (!(await file.exists())) return undefined;
+          let source = await file.text();
           if (skipPath(realPath)) return { contents: source, loader };
 
           // Bun's macro evaluator races when a rewritten module holds `with { type: "macro" }` imports while another

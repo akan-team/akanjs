@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { CloudApi, CloudHttpError, GlobalConfig, PipelineSecrets } from "@akanjs/devkit/cloud";
 import { CommandContainer, ExitCodeError, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { DesktopRelease, NativeApp, type NativeUpdatePack } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import {
@@ -227,6 +227,22 @@ describe("CloudRunner", () => {
       "@akanjs/cli": "9.9.9-rc.0",
       typescript: "5.9.0",
     });
+  });
+
+  test("refuses a repository name the remote shell would split, before it asks for a server or runs ssh", async () => {
+    const getRemoteEnvServers = spyOn(GlobalConfig, "getRemoteEnvServers");
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace", {}, recorder);
+    for (const repoName of ["my repo", "repo;touch pwned", "..", "-rf"]) {
+      spyOn(WorkspaceExecutor, "getBaseDevEnv").mockReturnValue({ repoName } as never);
+      await expect(new CloudRunner().uploadEnvByScp(workspace as never, "local/env.tar")).rejects.toThrow(
+        "AKAN_PUBLIC_REPO_NAME",
+      );
+      await expect(new CloudRunner().downloadEnvByScp(workspace as never)).rejects.toThrow("AKAN_PUBLIC_REPO_NAME");
+    }
+
+    expect(getRemoteEnvServers).not.toHaveBeenCalled();
+    expect(recorder.calls).toEqual([]);
   });
 
   test("login opens its session through CloudApi.fromHost, so one in its last hour is refreshed, not signed in again", async () => {

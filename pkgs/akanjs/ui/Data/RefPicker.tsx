@@ -1,6 +1,6 @@
 "use client";
 import { cn, fetch, usePage } from "akanjs/client";
-import { capitalize } from "akanjs/common";
+import { capitalize, sliceNames } from "akanjs/common";
 import { ConstantRegistry, labelOf } from "akanjs/constant";
 import { useEffect, useState } from "react";
 import { AiOutlineClose, AiOutlineSearch } from "react-icons/ai";
@@ -59,7 +59,8 @@ export default function RefPicker({ className, refName, value, onChange }: RefPi
       setRows([]);
       return;
     }
-    const listFn = fetch[`${refName}List`] as (...args: unknown[]) => Promise<Record<string, unknown>[]>;
+    const listKey = sliceNames(refName).endpoint.list;
+    const listFn = fetch[listKey] as (...args: unknown[]) => Promise<Record<string, unknown>[]>;
     const cnst = ConstantRegistry.getDatabase(refName);
     let cancelled = false;
     setLoading(true);

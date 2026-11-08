@@ -78,7 +78,13 @@ export class McpAppViewBuilder {
     const pagePaths = [...new Set(views.map((view) => view.page.moduleAbsPath))];
     const result = await Bun.build({
       ...options,
-      plugins: [...options.plugins, McpAppPageTrimmer.plugin(pagePaths), PureLazyMarker.plugin()],
+      plugins: [
+        ...options.plugins,
+        //? Bun runs one onLoad per module, so the one rewriting the barrel also trims the pages and marks `lazy()`; the
+        //? marker plugin takes the TypeScript that one leaves to Bun, a package's own outside node_modules/akanjs.
+        await CsrArtifactBuilder.barrelImportsPlugin(this.#app, McpAppPageTrimmer.pipe(pagePaths)),
+        PureLazyMarker.plugin(),
+      ],
       entrypoints: views.map((view) => path.join(generatedDir, `${view.name}.html`)),
       files,
       root: generatedDir,

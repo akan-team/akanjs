@@ -160,12 +160,13 @@ worker per web-serving replica.
   and neither does a save in a sibling app. An import that makes a new lib a dependency needs a fresh
   `akan start`, because it needs a `sync` first anyway. Before the first `sync` the manifests do not exist yet and
   the whole `libs/` container is watched, which is the safe direction.
-- **A built artifact runs from the generated app directory** with the Akan runtime environment variables:
+- **A built artifact runs from the generated app directory, without Docker and without an env.** `akan build`
+  writes `akan.env.json` beside `main.js` with the values the Dockerfile's `ENV` lines set, and `main.js` takes
+  each one the process was not started with, so a variable you set (or the image's `ENV`) wins. Start it from that
+  directory: the runtime reads its artifacts and writes `runtime/` and SQLite files relative to the cwd.
 
   ```bash
-  cd dist/apps/<appName> && USE_AKANJS_PKGS=true AKAN_PUBLIC_REPO_NAME=<repo> AKAN_PUBLIC_SERVE_DOMAIN="<domain>" \
-    AKAN_PUBLIC_APP_NAME=<appName> AKAN_PUBLIC_ENV=local AKAN_PUBLIC_OPERATION_MODE=local SERVER_MODE=federation \
-    AKAN_PUBLIC_BASE_PATHS=<basePaths> bun main.js
+  cd dist/apps/<appName> && PORT=3100 bun main.js
   ```
 
 - **A server a test boots in-process takes `start({ listen: false, schedules: false })`** to run no internal

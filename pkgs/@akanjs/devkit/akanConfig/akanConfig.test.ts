@@ -238,6 +238,17 @@ describe("AkanAppConfig", () => {
     expect(config.dockerfile).toContain(`COPY . .\n${envBlock}\nCMD ["bun","main.js"]`);
   });
 
+  test('publishes localePrefix "as-needed" to the bundles and the image, and leaves the default out of the image', () => {
+    const asNeeded = new AkanAppConfig(app, [], packageJson, { i18n: { localePrefix: "as-needed" } }, baseDevEnv);
+    expect(process.env.AKAN_PUBLIC_LOCALE_PREFIX).toBe("as-needed");
+    expect(asNeeded.getProductionEnv().AKAN_PUBLIC_LOCALE_PREFIX).toBe("as-needed");
+    expect(asNeeded.dockerfile).toContain("ENV AKAN_PUBLIC_LOCALE_PREFIX=as-needed");
+
+    const always = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
+    expect(process.env.AKAN_PUBLIC_LOCALE_PREFIX).toBe("always");
+    expect(always.getProductionEnv()).not.toHaveProperty("AKAN_PUBLIC_LOCALE_PREFIX");
+  });
+
   test("writes the Dockerfile instructions it wrote before its env came from getProductionEnv", () => {
     //? 9adfb95c's output for this config, less the blank lines its empty interpolations left and its floating tag.
     const before = [

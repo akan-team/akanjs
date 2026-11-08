@@ -376,6 +376,23 @@ describe("Workspace and app executor environment contracts", () => {
     });
   });
 
+  test("a workspace with no .env, as a fresh clone has, runs local unless the shell names an environment", async () => {
+    const root = await makeTempRoot();
+    delete process.env.AKAN_PUBLIC_ENV;
+
+    WorkspaceExecutor.defaultCloneToLocalEnv(root);
+    expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env")).env).toBe("local");
+
+    process.env.AKAN_PUBLIC_ENV = "main";
+    WorkspaceExecutor.defaultCloneToLocalEnv(root);
+    expect(process.env.AKAN_PUBLIC_ENV).toBe("main");
+
+    delete process.env.AKAN_PUBLIC_ENV;
+    await writeFile(path.join(root, ".env"), "AKAN_PUBLIC_REPO_NAME=repo\n");
+    WorkspaceExecutor.defaultCloneToLocalEnv(root);
+    expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env")).env).toBe("debug");
+  });
+
   test("a build or tunnel for a real environment refuses a defaulted value, and a local one takes it", () => {
     const baseDevEnv = {
       repoName: "fixture-repo",
@@ -1305,7 +1322,8 @@ const createScannableLib = async (
   await writeJson(path.join(libDir, "tsconfig.json"), { compilerOptions: { target: "ESNext", paths: {} } });
   await writeText(path.join(libDir, "akan.config.ts"), config);
   await mkdir(path.join(libDir, "lib", "__scalar"), { recursive: true });
-  for (const [file, content] of Object.entries(files)) await writeText(path.join(libDir, file), content);
+  const libFiles = { "env/env.server.testing.ts": "export const env = {};\n", ...files };
+  for (const [file, content] of Object.entries(libFiles)) await writeText(path.join(libDir, file), content);
   return { ...temp, libDir };
 };
 

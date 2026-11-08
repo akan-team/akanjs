@@ -1,10 +1,10 @@
 "use client";
+import { useSpring } from "@react-spring/web";
 import { cn } from "akanjs/client";
 import { st } from "akanjs/store";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiOutlineClose, AiOutlineMenu } from "react-icons/ai";
 import { BiX } from "react-icons/bi";
-import { useSpring } from "react-spring";
 import { agentAttrs } from "../agentAttrs";
 import { animated } from "../animated";
 import { buttonRecipe } from "../Button";

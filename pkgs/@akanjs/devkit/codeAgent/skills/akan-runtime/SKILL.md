@@ -17,6 +17,7 @@ Domain code reaches none of them.
 | The production image | `docker: string \| { image, preRuns, postRuns, command }` |
 | iOS, Android, desktop | the `native` section; `desktop: { server: true }` carries the server |
 | SQLite, several databases, a cluster | `database: { modes: [...] }`, picked by `AKAN_DATABASE_MODE` |
+| URLs without `/<locale>/`: one language, or paths fixed from outside (OAuth callback, QR code, mail link) | `i18n: { localePrefix: "as-needed" }` — the default locale's pages and `<Link>` hrefs drop the prefix, other locales keep it |
 
 - `main.ts` imports `AkanApp` from `akanjs/server/akanApp`, never the barrel.
 - Never write `/api` or `/ws` literally, and never pass a prefix as a prop.
@@ -28,6 +29,8 @@ Domain code reaches none of them.
 - `akan start <app>` (`a,b` or `all` for several) runs the dev server; `akan build <app>` checks the production
   build. A supervised session writes `local/apps/<app>/runtime/dev.log` — hand over that path, not a paste of the
   live view. Tail with `akan logs <app>`.
+- Run a build without Docker with `cd dist/apps/<app> && bun main.js`: it boots with the env the Dockerfile sets,
+  read from `akan.env.json` beside it, and a variable you set yourself (`PORT=3000`) wins.
 - Give every log sink a floor (`Logger.addSink(sink, { minLevel })`) and never log once per delivered record.
 
 ## Native and desktop

@@ -84,6 +84,13 @@ describe("system pages", () => {
     ).toBe("/en/soft");
   });
 
+  test('points the default locale\'s home link at its unprefixed URL under localePrefix "as-needed"', () => {
+    const i18n = { ...DEFAULT_AKAN_I18N, localePrefix: "as-needed" as const };
+    expect(getSystemPageHomeHref({ pathname: "/en/missing", i18n })).toBe("/");
+    expect(getSystemPageHomeHref({ pathname: "/en/akanjs/missing", i18n, basePaths: ["akanjs"] })).toBe("/akanjs");
+    expect(getSystemPageHomeHref({ pathname: "/ko/missing", i18n })).toBe("/ko");
+  });
+
   test("lists every basePath as a locale-aware link on the sub route index", async () => {
     const response = await createSubRouteIndexResponse({
       locale: "ko",

@@ -1,10 +1,11 @@
 "use client";
 import { DataList } from "akanjs/base";
-import { capitalize, lowerlize } from "akanjs/common";
+import { lowerlize } from "akanjs/common";
 import { ConstantRegistry, labelOf } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { sliceNamesOf } from "../sliceNamesOf";
 import { LightRefCache } from "./lightRefCache";
 import { useRelationWindow } from "./useRelationWindow";
 
@@ -45,15 +46,7 @@ export const useRelationOptions = <Light extends { id: string }>({
   renderOption,
 }: RelationOptionsSource<Light>) => {
   const { refName, sliceName, argLength } = slice;
-  const [modelName, ModelName] = [lowerlize(refName), capitalize(refName)];
-  const names = {
-    modelList: sliceName.replace(modelName, `${modelName}List`),
-    modelListLoading: sliceName.replace(modelName, `${modelName}ListLoading`),
-    refreshModel: sliceName.replace(modelName, `refresh${ModelName}`),
-    queryArgsOfModel: sliceName.replace(modelName, `queryArgsOf${ModelName}`),
-    limitOfModel: sliceName.replace(modelName, `limitOf${ModelName}`),
-    sortOfModel: sliceName.replace(modelName, `sortOf${ModelName}`),
-  };
+  const { namesOfSlice: names } = sliceNamesOf(lowerlize(refName), sliceName);
   const storeUse = st.use as { [key: string]: () => unknown };
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   const storeGet = st.get as unknown as <V>() => { [key: string]: V };

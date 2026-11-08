@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { tempDirs, writeText as write } from "../testHelpers";
+import { CsrArtifactBuilder } from "./csrArtifactBuilder";
 import { McpAppViewBuilder } from "./mcpAppViewBuilder";
 
 const makeTempRoot = tempDirs("akan-mcp-app-views-");
@@ -129,6 +130,68 @@ describe("McpAppViewBuilder.discover", () => {
     await expect(McpAppViewBuilder.discover([entryOf("c")], [])).rejects.toThrow(
       'app name "../showMemo" in ./c.tsx must match',
     );
+  });
+});
+
+describe("McpAppViewBuilder.build", () => {
+  test("rewrites the akanjs/ui barrel, trims the page to its apps and drops a lazy component nothing renders", async () => {
+    const root = await makeTempRoot();
+    const file = (rel: string) => path.join(root, rel);
+    await write(
+      file("node_modules/akanjs/package.json"),
+      JSON.stringify({
+        name: "akanjs",
+        exports: { "./ui": "./ui/index.ts", "./ui/*": "./ui/*", "./webkit": "./webkit.ts" },
+      }),
+    );
+    await write(
+      file("node_modules/akanjs/webkit.ts"),
+      "export const McpAppBoot = { run: (view: unknown) => console.info(view) };\n",
+    );
+    await write(
+      file("node_modules/akanjs/ui/index.ts"),
+      'export { Link } from "./Link";\nexport { Toolbox } from "./Toolbox";\n',
+    );
+    await write(file("node_modules/akanjs/ui/Link.ts"), 'export const Link = "a link";\n');
+    await write(
+      file("node_modules/akanjs/ui/Toolbox.ts"),
+      'console.info("a toolbox loaded");\nexport const Toolbox = "a toolbox";\n',
+    );
+    await write(file("apps/demo/ui/lazy.ts"), "export const lazy = (load: () => Promise<unknown>) => ({ load });\n");
+    await write(file("apps/demo/ui/Heavy.ts"), 'export default "a heavy chunk";\n');
+    await write(
+      file("apps/demo/ui/cards.ts"),
+      'import { lazy } from "./lazy";\nexport const Heavy = lazy(() => import("./Heavy"));\nexport const Card = "a card";\n',
+    );
+    await write(
+      file("apps/demo/page/home.tsx"),
+      [
+        'import { Link } from "akanjs/ui";',
+        'import { Card } from "../ui/cards";',
+        "const page = () => ({ app: (name: string, description: string, draw: () => unknown) => ({ render: (render: () => unknown) => [name, description, draw, render] }) });",
+        'export default page().app("showHome", "Show home.", () => [Link, Card]).render(() => "drawn by the render");',
+      ].join("\n"),
+    );
+    const app = {
+      cwdPath: file("apps/demo"),
+      dist: { cwdPath: file("dist/apps/demo") },
+      workspace: { workspaceRoot: root },
+      getTsConfig: async () => ({ compilerOptions: {} }),
+      getPublicEnv: () => ({}),
+      logger: { warn: () => undefined },
+    };
+
+    await new McpAppViewBuilder(app as never, "build").build(
+      [{ key: "./home.tsx", moduleAbsPath: file("apps/demo/page/home.tsx") }],
+      { basePaths: [], cssAssets: {}, options: CsrArtifactBuilder.bundleOptions(app as never, "build") },
+    );
+
+    const view = await Bun.file(file("dist/apps/demo/mcp-apps/showHome.html")).text();
+    expect(view).toContain("a link");
+    expect(view).toContain("a card");
+    expect(view).not.toContain("a toolbox");
+    expect(view).not.toContain("drawn by the render");
+    expect(view).not.toContain("a heavy chunk");
   });
 });
 

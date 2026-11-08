@@ -1,6 +1,6 @@
 "use client";
 import { fetch, usePage } from "akanjs/client";
-import { capitalize } from "akanjs/common";
+import { capitalize, modelNames } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import type { ReactNode } from "react";
@@ -44,7 +44,7 @@ interface ActionProps {
 const EditAction = ({ modelName, label, onAct, closeView }: ActionProps) => {
   useCloseViewTool(modelName, closeView);
   const editModel = st
-    .tool(`edit${capitalize(modelName)}`)
+    .tool(modelNames(modelName).editModel)
     .desc(`Turn the open ${modelName} from its detail view into the edit form.`)
     .exec(onAct);
   return (
@@ -62,7 +62,7 @@ const EditAction = ({ modelName, label, onAct, closeView }: ActionProps) => {
 const SaveAction = ({ modelName, label, onAct, closeView, isBlocked = false }: ActionProps) => {
   useCloseViewTool(modelName, closeView);
   const submitModel = st
-    .tool(`submit${capitalize(modelName)}`, {
+    .tool(modelNames(modelName).submitModel, {
       guard: () => (isBlocked ? `The ${modelName} form is not ready to submit.` : true),
     })
     .desc(`Save the ${modelName} the open form holds.`)
@@ -110,27 +110,16 @@ export default function ViewEditModal({
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => void };
   const storeSel = st.sel as unknown as <Ret, Val>(selector: (state: { [key: string]: Val }) => Ret) => Ret;
   const { refName, sliceName } = slice;
-  const [modelName, ModelName] = [refName, capitalize(refName)];
-  const names = {
-    model: modelName,
-    Model: ModelName,
-    viewModel: `view${ModelName}`,
-    modelLoading: `${modelName}Loading`,
-    modelModal: `${modelName}Modal`,
-    resetModel: `reset${ModelName}`,
-    editModel: `edit${ModelName}`,
-    submitModel: `submit${ModelName}`,
-    modelForm: `${modelName}Form`,
-    modelFormLoading: `${modelName}FormLoading`,
-  };
+  const modelName = refName;
+  const names = modelNames(modelName);
   const model = storeUse[names.model]() as { id: string; [key: string]: any } | null;
   const modelModal = storeUse[names.modelModal]() as string | null;
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;
   const modelFormLoading = storeUse[names.modelFormLoading]() as string | boolean;
   const modelFormId = storeSel<string, { id: string }>((state) => state[names.modelForm].id);
-  const isUploading = Object.keys(storeUse[`${modelName}FormUploading`]({ agent: false }) as object).length > 0;
-  const canUpdate = !!servedEndpointOf(fetch, `update${ModelName}`);
-  const canRemove = !!servedEndpointOf(fetch, `remove${ModelName}`);
+  const isUploading = Object.keys(storeUse[names.modelFormUploading]({ agent: false }) as object).length > 0;
+  const canUpdate = !!servedEndpointOf(fetch, names.updateModel);
+  const canRemove = !!servedEndpointOf(fetch, names.removeModel);
   const isModalOpen = modelModal === "view" || (modelModal === "edit" && (!!modelFormLoading || !!modelFormId));
   const Title = () => {
     if (!model || modelLoading || !renderTitle) return null;

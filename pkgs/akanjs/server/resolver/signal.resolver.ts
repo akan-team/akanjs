@@ -13,7 +13,7 @@ import {
   type PromiseOrObject,
   SLICE_META,
 } from "akanjs/base";
-import { capitalize, Logger } from "akanjs/common";
+import { capitalize, Logger, modelNames, moduleNames, sliceNames } from "akanjs/common";
 import {
   type ConstantField,
   deserialize,
@@ -195,7 +195,7 @@ export class SignalResolver {
     const refName = cnst.refName;
     const liveKeys = Object.entries(sliceMeta)
       .filter(([, sliceInfo]) => sliceInfo.liveOption && sliceInfo.execFn)
-      .map(([key]) => `${refName}Live${capitalize(key)}`);
+      .map(([key]) => sliceNames(refName, key).endpoint.live);
     if (!liveKeys.length) return [];
     const service = live.service.get(refName) as
       | {
@@ -387,8 +387,8 @@ export class SignalResolver {
     const cnst = sliceCls.srv.cnst;
     if (!cnst) throw new Error("Constant is not set for slice");
     const refName = cnst.refName;
-    const serviceName = `${refName}Service`;
-    const capitalizedRefName = capitalize(refName);
+    const serviceName = moduleNames(refName).service;
+    const names = modelNames(refName);
 
     // Unchecked, an array fails deep in query compilation as the opaque "Unknown document field path: 0".
     const assertSliceQuery = (query: unknown, key: string) => {
@@ -406,10 +406,10 @@ export class SignalResolver {
       const endpointObj: { [key: string]: EndpointInfo } = {};
       Object.entries(sliceMeta).forEach(([key, sliceInfo]) => {
         if (!sliceInfo.execFn) return;
-        const capitalizedKey = capitalize(key);
+        const { slice: sliceName, endpoint: namesOfSlice } = sliceNames(refName, key);
         const argLength = sliceInfo.args.length;
 
-        const listKey = `${refName}List${capitalizedKey}`;
+        const listKey = namesOfSlice.list;
         endpointObj[listKey] = (builder as any)
           .query([sliceInfo.light], sliceInfo.signalOption)
           ._addArgs(sliceInfo.args)
@@ -420,11 +420,7 @@ export class SignalResolver {
           .exec(async function (this: any, ...requestArgs: any) {
             const args = requestArgs.slice(0, argLength);
             const skip = resolvePageSkip(requestArgs[argLength]);
-            const limit = SignalResolver.#clientPageLimit(
-              listKey,
-              `${capitalizedRefName}${capitalizedKey}`,
-              requestArgs[argLength + 1],
-            );
+            const limit = SignalResolver.#clientPageLimit(listKey, capitalize(sliceName), requestArgs[argLength + 1]);
             const sort = requestArgs[argLength + 2] ?? "latest";
             const internalArgs = requestArgs.slice(argLength + 3);
             const query = assertSliceQuery(
@@ -448,7 +444,7 @@ export class SignalResolver {
             );
           SignalResolver.#assertLiveSort(refName, key, sliceInfo);
           SignalResolver.#assertLivePauseOn(refName, key, sliceInfo);
-          const liveKey = `${refName}Live${capitalizedKey}`;
+          const liveKey = namesOfSlice.live;
           // The list's own guards (a room delivers its rows); `getGuards` would fail closed: rooms carry no doc id.
           const liveBuilder = (builder as any).pubsub(Any, {
             ...sliceInfo.signalOption,
@@ -477,7 +473,7 @@ export class SignalResolver {
             });
         }
 
-        const insightKey = `${refName}Insight${capitalizedKey}`;
+        const insightKey = namesOfSlice.insight;
         endpointObj[insightKey] = (builder as any)
           .query(sliceInfo.insight, sliceInfo.signalOption)
           ._addArgs(sliceInfo.args)
@@ -494,23 +490,23 @@ export class SignalResolver {
       });
 
       if (sliceCls.crud.get) {
-        endpointObj[refName] = (builder as any)
+        endpointObj[names.model] = (builder as any)
           .query(cnst.full, { guards: sliceCls.getGuards })
-          .param(`${refName}Id`, ID)
+          .param(names.modelId, ID)
           .exec(async function (this: any, id: string) {
-            return await this[serviceName][`get${capitalizedRefName}`](id);
+            return await this[serviceName][names.getModel](id);
           });
 
-        endpointObj[`light${capitalizedRefName}`] = (builder as any)
+        endpointObj[names.lightModel] = (builder as any)
           .query(cnst.light, { guards: sliceCls.getGuards })
-          .param(`${refName}Id`, ID)
+          .param(names.modelId, ID)
           .exec(async function (this: any, id: string) {
-            return await this[serviceName][`get${capitalizedRefName}`](id);
+            return await this[serviceName][names.getModel](id);
           });
       }
 
       if (sliceCls.crud.create)
-        endpointObj[`create${capitalizedRefName}`] = (builder as any)
+        endpointObj[names.createModel] = (builder as any)
           .mutation(cnst.full, { guards: sliceCls.createGuards })
           .body("data", cnst.input)
           .exec(async function (this: any, data: any) {
@@ -518,18 +514,18 @@ export class SignalResolver {
           });
 
       if (sliceCls.crud.update)
-        endpointObj[`update${capitalizedRefName}`] = (builder as any)
+        endpointObj[names.updateModel] = (builder as any)
           .mutation(cnst.full, { guards: sliceCls.updateGuards })
-          .param(`${refName}Id`, ID)
+          .param(names.modelId, ID)
           .body("data", cnst.input)
           .exec(async function (this: any, id: string, data: any) {
             return await this[serviceName].__update(id, data);
           });
 
       if (sliceCls.crud.remove)
-        endpointObj[`remove${capitalizedRefName}`] = (builder as any)
+        endpointObj[names.removeModel] = (builder as any)
           .mutation(cnst.full, { guards: sliceCls.removeGuards })
-          .param(`${refName}Id`, ID)
+          .param(names.modelId, ID)
           .exec(async function (this: any, id: string) {
             return await this[serviceName].__remove(id);
           });
