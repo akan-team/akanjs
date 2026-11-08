@@ -52,6 +52,8 @@ These commands carry an app from creation to release: create it, run it locally,
 
   - preview: Open pages in a headless browser and print what broke.
 
+  - studio: Print the Akan Studio URL of a running dev server.
+
 - Check and Build
 
   - typecheck: Typecheck an app or a library, its tests included.
@@ -287,6 +289,20 @@ Open pages of the app's dev server in a headless browser and print one verdict l
 - --format (String, default text, text | json): `json` prints the full report.
 
 - native shells: `--csr` checks the bundle a shell loads, not the shell. A simulator page's errors reach `akan logs`, tagged.
+
+`akan studio <app> [--module <module>] [--view <erd|signals>] [--editor <vscode|cursor>] [--open] [--format <format>]`
+
+Print the URL of Akan Studio on the app's running `akan start`: the ERD of its models, or one module's path from component to model, each name linked to its source. It exits 1 when no dev server answers.
+
+- --module (String): The module to show. The ERD shows every module without it.
+
+- --view (String, default erd, erd | signals): `signals` lays one module out from component to model.
+
+- --editor (String, default vscode, vscode | cursor): The editor source links open in.
+
+- --open (Boolean, default false): Also open the URL in the browser.
+
+- --format (String, default text, text | json): `json` prints `{ url }`.
 
 `akan typecheck <app|lib> [--write <boolean>] [--clean <boolean>] [--incremental <boolean>] [--tests <boolean>]`
 
@@ -796,6 +812,13 @@ akan preview myapp
 akan preview myapp /board,/board/new --screenshot
 akan preview myapp --changed --csr
 akan preview myapp /admin --desktop --format json
+```
+
+### studio
+
+```bash
+akan studio myapp --open
+akan studio myapp --view signals --module memo --editor cursor
 ```
 
 ### typecheck

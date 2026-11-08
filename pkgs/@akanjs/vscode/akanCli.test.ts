@@ -50,6 +50,7 @@ describe("AkanCli", () => {
       "libs/shared/akan.config.ts": "",
     });
     expect(AkanCli.systemsOf(root)).toEqual(["shop", "shared"]);
+    expect(AkanCli.systemsOf(root, ["apps"])).toEqual(["shop"]);
   });
 
   test("reads the app and module a file sits in", () => {
@@ -67,6 +68,12 @@ describe("AkanCli", () => {
     expect(
       AkanCli.argsOf({ app: "demo", field: "budget", includeInLight: true, surfaces: "", isDraft: false }),
     ).toEqual(["--app", "demo", "--field", "budget", "--include-in-light"]);
+  });
+
+  test("quotes a shell argument only when it needs it", () => {
+    expect(AkanCli.shellArgOf("/ws/node_modules/@akanjs/cli/index.js")).toBe("/ws/node_modules/@akanjs/cli/index.js");
+    expect(AkanCli.shellArgOf("/Users/me/My Work/cli.js")).toBe("'/Users/me/My Work/cli.js'");
+    expect(AkanCli.shellArgOf("it's")).toBe("'it'\\''s'");
   });
 
   test("finds the JSON report after build and sync lines", () => {

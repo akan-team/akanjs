@@ -59,8 +59,17 @@ export class StudioRoute {
     }
   }
 
+  //? The editor extension's panel frames Studio from a `vscode-webview:` document under a `vscode-file:` window; no
+  //? web page has either scheme, so the page stays unframeable from the web.
+  static #headers(): Headers {
+    const headers = createSystemPageHeaders();
+    headers.delete("X-Frame-Options");
+    headers.set("Content-Security-Policy", "frame-ancestors 'self' vscode-webview: vscode-file:; base-uri 'self'");
+    return headers;
+  }
+
   static async #html(document: ReactNode, status: number): Promise<Response> {
     const { renderToReadableStream } = await import("react-dom/server.browser");
-    return new Response(await renderToReadableStream(document), { status, headers: createSystemPageHeaders() });
+    return new Response(await renderToReadableStream(document), { status, headers: StudioRoute.#headers() });
   }
 }

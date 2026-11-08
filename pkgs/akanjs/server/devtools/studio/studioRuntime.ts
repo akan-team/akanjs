@@ -1,4 +1,24 @@
 export const studioRuntime = () => {
+  if (window.parent !== window) {
+    let host: string | null = null;
+    window.addEventListener("message", (event) => {
+      if (event.source !== window.parent || !event.origin.startsWith("vscode-webview:")) return;
+      if ((event.data as { type?: unknown } | null)?.type !== "akan-studio:host") return;
+      host = event.origin;
+      window.parent.postMessage({ type: "akan-studio:ready", href: location.href }, host);
+    });
+    document.addEventListener("click", (event) => {
+      const href = event.target instanceof Element ? event.target.closest("a[href]")?.getAttribute("href") : null;
+      const source = href?.match(/^[a-z-]+:\/\/file(\/.+):(\d+):(\d+)$/);
+      if (!host || !source) return;
+      event.preventDefault();
+      const [, path, line, column] = source;
+      window.parent.postMessage(
+        { type: "akan-studio:open", path: decodeURI(path), line: +line, column: +column },
+        host,
+      );
+    });
+  }
   const select = document.querySelector<HTMLSelectElement>("select[data-studio-module]");
   select?.addEventListener("change", () => select.form?.submit());
   const svg = document.querySelector<SVGSVGElement>("svg[data-studio]");

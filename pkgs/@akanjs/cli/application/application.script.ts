@@ -21,6 +21,7 @@ import { formatSlicePlan } from "@akanjs/devkit/slicePlanner";
 import { confirm } from "@inquirer/prompts";
 import { Logger, toError } from "akanjs/common";
 import { LibraryScript } from "../library/library.script";
+import { openBrowser } from "../openBrowser";
 import {
   ApplicationRunner,
   type IosReleaseOptions,
@@ -159,6 +160,32 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     const failure = new ExitCodeError("preview found broken pages", 1);
     markCliErrorPrinted(failure);
     throw failure;
+  }
+
+  async studio(
+    app: App,
+    {
+      module,
+      view,
+      editor,
+      open,
+      format,
+    }: {
+      module: string | null;
+      view: "erd" | "signals";
+      editor: "vscode" | "cursor";
+      open: boolean;
+      format: "text" | "json";
+    },
+  ) {
+    const origin = `http://localhost:${await app.getDevPort()}`;
+    if (!(await ApplicationRunner.answers(origin, app.name, app.workspace.workspaceRoot)))
+      throw new Error(`No dev server answers ${origin}. Run \`akan start ${app.name}\` first.`);
+    const search = new URLSearchParams({ view, editor });
+    if (module) search.set("module", module);
+    const url = `${origin}/_akan/studio?${search.toString()}`;
+    if (open) await openBrowser(url);
+    Logger.rawLog(format === "json" ? JSON.stringify({ url }) : url);
   }
 
   async build(

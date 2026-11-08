@@ -1,6 +1,8 @@
 import path from "node:path";
 import * as vscode from "vscode";
 import { AkanCli, type AkanRun, type VerifyResult } from "./akanCli";
+import { StudioPanel } from "./studioPanel";
+import { StudioView } from "./studioView";
 
 interface WorkflowInputSpec {
   type: string;
@@ -261,6 +263,38 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     if (picked === verifyLabel) await verify(typeof inputs.app === "string" ? inputs.app : undefined);
   };
 
+  const openStudio = async ({ app: appName, module: moduleName }: { app?: string; module?: string | null } = {}) => {
+    const cli = await cliOf();
+    if (!cli) return false;
+    const active = vscode.window.activeTextEditor?.document.uri;
+    const place = active ? AkanCli.placeOf(cli.root, active.fsPath) : { system: null, module: null };
+    const apps = AkanCli.systemsOf(cli.root, ["apps"]);
+    const app =
+      appName ??
+      (place.system && apps.includes(place.system)
+        ? place.system
+        : apps.length === 1
+          ? apps[0]
+          : await vscode.window.showQuickPick(apps, { title: vscode.l10n.t("Open Akan Studio for") }));
+    if (!app) return false;
+    const module = moduleName === undefined ? StudioView.moduleOf(place.module) : moduleName;
+    const editor = vscode.env.uriScheme === "cursor" ? "cursor" : "vscode";
+    const args = ["studio", app, "--editor", editor, "--format", "json"];
+    if (module) args.push("--module", module, "--view", "signals");
+    const result = await run(cli, vscode.l10n.t("Opening Akan Studio for {0}", app), args);
+    if (!result) return false;
+    const report = AkanCli.jsonOf(result.stdout);
+    if (isRecord(report) && typeof report.url === "string") return await StudioPanel.show(cli.root, app, report.url);
+    log.appendLine(result.stdout.trimEnd());
+    const start = vscode.l10n.t("Start {0}", app);
+    const reason = result.stdout.trim().split("\n").at(-1) || vscode.l10n.t("akan studio failed.");
+    if ((await vscode.window.showErrorMessage(reason, start)) !== start) return false;
+    const terminal = vscode.window.createTerminal({ name: `akan start ${app}`, cwd: cli.root });
+    terminal.sendText([...cli.command, "start", app].map(AkanCli.shellArgOf).join(" "));
+    terminal.show();
+    return false;
+  };
+
   return [
     problems,
     vscode.workspace.onDidChangeTextDocument((event) => {
@@ -272,5 +306,8 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     ),
     vscode.commands.registerCommand("akan.createModule", () => runWorkflow("create-module")),
     vscode.commands.registerCommand("akan.addField", () => runWorkflow("add-field")),
+    vscode.commands.registerCommand("akan.openStudio", (options?: unknown) =>
+      openStudio(isRecord(options) ? (options as { app?: string; module?: string | null }) : undefined),
+    ),
   ];
 };

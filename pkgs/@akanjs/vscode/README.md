@@ -18,6 +18,8 @@ nothing. This extension adds the missing answers next to TypeScript's own (the b
   active file, or on what git reports as changed, and lists what failed in Problems. Editing a file clears its entries.
 - **Akan: Run a workflow…** (also **Create a module…** and **Add a field…**) asks for the workflow's inputs, shows
   the files its plan would change, and applies it once you confirm. The app and module start from the active file.
+- **Akan: Open Akan Studio** opens the running `akan start`'s ERD beside the editor, or the active module's path
+  from component to model. Clicking a name opens its source in the editor.
   These commands run the workspace's akan CLI, so they need a trusted workspace.
 
 The index is built from syntax alone, so it never waits for the type checker. In a trusted workspace the extension

@@ -5,5 +5,6 @@
   "akan.verify.title": "Verify this app or library",
   "akan.runWorkflow.title": "Run a workflow…",
   "akan.createModule.title": "Create a module…",
-  "akan.addField.title": "Add a field…"
+  "akan.addField.title": "Add a field…",
+  "akan.openStudio.title": "Open Akan Studio"
 }

@@ -90,8 +90,7 @@ export class StudioDocument {
               <p className="empty">Nothing to draw here. Pick another module or view.</p>
             )}
           </main>
-          {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the Studio runtime, a function the server owns */}
-          <script dangerouslySetInnerHTML={{ __html: `(${studioRuntime.toString()})();` }} />
+          {StudioDocument.#runtime()}
         </body>
       </html>
     );
@@ -107,8 +106,16 @@ export class StudioDocument {
         </head>
         <body>
           <p className="empty">{reason}</p>
+          {StudioDocument.#runtime()}
         </body>
       </html>
+    );
+  }
+
+  static #runtime() {
+    return (
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: the Studio runtime, a function the server owns
+      <script dangerouslySetInnerHTML={{ __html: `(${studioRuntime.toString()})();` }} />
     );
   }
 

@@ -68,8 +68,8 @@ export class AkanCli {
     }
   }
 
-  static systemsOf(root: string) {
-    return ["apps", "libs"].flatMap((kind) => {
+  static systemsOf(root: string, kinds: ("apps" | "libs")[] = ["apps", "libs"]) {
+    return kinds.flatMap((kind) => {
       const dir = path.join(root, kind);
       if (!existsSync(dir)) return [];
       return readdirSync(dir, { withFileTypes: true })
@@ -90,6 +90,10 @@ export class AkanCli {
       if (value === false || value === "") return [];
       return value === true ? [`--${kebabOf(name)}`] : [`--${kebabOf(name)}`, value];
     });
+  }
+
+  static shellArgOf(arg: string) {
+    return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, "'\\''")}'`;
   }
 
   //? stdout can carry build or sync lines before the report, so the report starts at the first line that parses.
