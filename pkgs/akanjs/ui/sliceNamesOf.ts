@@ -30,7 +30,7 @@ export const sliceNamesOf = (model: string, sliceName: string) => {
     exportJsonOfModel,
   };
   const namesOfSlice = Object.fromEntries(
-    Object.entries(names).map(([key, name]) => [key, sliceName.replace(model, name)]),
+    Object.entries(names).map(([key, name]) => [key, sliceName.replace(model, () => name)]),
   ) as typeof names;
   return { names, namesOfSlice };
 };

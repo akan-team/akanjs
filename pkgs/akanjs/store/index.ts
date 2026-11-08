@@ -3,6 +3,7 @@ export * from "./actionTag";
 export * from "./agent";
 export * from "./agentic";
 export * from "./baseSt";
+export * from "./deprecatedNames";
 export * from "./draftStore";
 export * from "./formUploadOf";
 export * from "./liveInsert";

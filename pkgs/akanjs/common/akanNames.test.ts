@@ -21,29 +21,29 @@ import { ServiceModel, serve } from "akanjs/service";
 import { endpoint, internal, Public, SignalRegistry, serverSignal, slice } from "akanjs/signal";
 import { StoreRegistry, store } from "akanjs/store";
 
-export class GizmoInput extends via((field) => ({
+export class GizmoPartInput extends via((field) => ({
   name: field(String),
   tags: field([String]),
 })) {}
-export class GizmoObject extends via(GizmoInput, (field) => ({
+export class GizmoPartObject extends via(GizmoPartInput, (field) => ({
   count: field(Int, { default: 0 }),
 })) {}
-export class LightGizmo extends via(GizmoObject, ["name"] as const, (resolve) => ({})) {}
-export class Gizmo extends via(GizmoObject, LightGizmo, (resolve) => ({})) {}
-export class GizmoInsight extends via(Gizmo, (field) => ({})) {}
-const gizmoCnstModule = { GizmoInput, GizmoObject, LightGizmo, Gizmo, GizmoInsight };
-export const gizmoCnst = ConstantRegistry.buildModel(
-  "gizmo" as const,
-  GizmoInput,
-  GizmoObject,
-  Gizmo,
-  LightGizmo,
-  GizmoInsight,
-  gizmoCnstModule,
+export class LightGizmoPart extends via(GizmoPartObject, ["name"] as const, (resolve) => ({})) {}
+export class GizmoPart extends via(GizmoPartObject, LightGizmoPart, (resolve) => ({})) {}
+export class GizmoPartInsight extends via(GizmoPart, (field) => ({})) {}
+const gizmoPartCnstModule = { GizmoPartInput, GizmoPartObject, LightGizmoPart, GizmoPart, GizmoPartInsight };
+export const gizmoPartCnst = ConstantRegistry.buildModel(
+  "gizmoPart" as const,
+  GizmoPartInput,
+  GizmoPartObject,
+  GizmoPart,
+  LightGizmoPart,
+  GizmoPartInsight,
+  gizmoPartCnstModule,
   "fixture",
 );
 
-export class GizmoFilter extends from(Gizmo, (filter) => ({
+export class GizmoPartFilter extends from(GizmoPart, (filter) => ({
   query: {
     byName: filter()
       .opt("name", String)
@@ -51,67 +51,67 @@ export class GizmoFilter extends from(Gizmo, (filter) => ({
   },
   sort: {},
 })) {}
-export class GizmoDoc extends by(Gizmo) {}
-export class GizmoModel extends into(GizmoDoc, GizmoFilter, gizmoCnst, () => ({})) {}
-class GizmoInputDoc extends by(GizmoInput) {}
-class GizmoInsightDoc extends by(GizmoInsight) {}
-export const gizmoDb = DatabaseRegistry.buildModel(
-  "gizmo" as const,
-  GizmoInputDoc,
-  GizmoDoc,
-  GizmoModel,
-  Gizmo,
-  GizmoInsightDoc,
-  GizmoFilter,
+export class GizmoPartDoc extends by(GizmoPart) {}
+export class GizmoPartModel extends into(GizmoPartDoc, GizmoPartFilter, gizmoPartCnst, () => ({})) {}
+class GizmoPartInputDoc extends by(GizmoPartInput) {}
+class GizmoPartInsightDoc extends by(GizmoPartInsight) {}
+export const gizmoPartDb = DatabaseRegistry.buildModel(
+  "gizmoPart" as const,
+  GizmoPartInputDoc,
+  GizmoPartDoc,
+  GizmoPartModel,
+  GizmoPart,
+  GizmoPartInsightDoc,
+  GizmoPartFilter,
 );
 
-export class GizmoService extends serve(gizmoDb, () => ({})) {}
-export const gizmoSrv = ServiceModel.fromModel(GizmoService, gizmoCnst, gizmoDb);
+export class GizmoPartService extends serve(gizmoPartDb, () => ({})) {}
+export const gizmoPartSrv = ServiceModel.fromModel(GizmoPartService, gizmoPartCnst, gizmoPartDb);
 
-export class GizmoInternal extends internal(gizmoSrv, () => ({})) {}
-export class GizmoSlice extends slice(gizmoSrv, { guards: { root: Public, get: Public, cru: Public } }, (init) => ({
+export class GizmoPartInternal extends internal(gizmoPartSrv, () => ({})) {}
+export class GizmoPartSlice extends slice(gizmoPartSrv, { guards: { root: Public, get: Public, cru: Public } }, (init) => ({
   inPublic: init({ guards: [Public] })
     .live()
     .exec(function () {
-      return this.gizmoService.queryByName();
+      return this.gizmoPartService.queryByName();
     }),
 })) {}
-export class GizmoEndpoint extends endpoint(gizmoSrv, ({ pubsub, message }) => ({
-  gizmoMoved: pubsub(Int, { guards: [Public] })
+export class GizmoPartEndpoint extends endpoint(gizmoPartSrv, ({ pubsub, message }) => ({
+  gizmoPartMoved: pubsub(Int, { guards: [Public] })
     .room("roomId", String)
     .exec(() => undefined),
-  gizmoPing: message(Boolean, { guards: [Public] })
+  gizmoPartPing: message(Boolean, { guards: [Public] })
     .msg("roomId", String)
     .exec(() => true),
 })) {}
-export class GizmoSignal extends serverSignal(GizmoEndpoint, GizmoInternal) {}
-export const gizmo = SignalRegistry.registerDatabase(
-  "gizmo" as const,
-  GizmoInternal,
-  GizmoEndpoint,
-  GizmoSlice,
-  GizmoSignal,
+export class GizmoPartSignal extends serverSignal(GizmoPartEndpoint, GizmoPartInternal) {}
+export const gizmoPart = SignalRegistry.registerDatabase(
+  "gizmoPart" as const,
+  GizmoPartInternal,
+  GizmoPartEndpoint,
+  GizmoPartSlice,
+  GizmoPartSignal,
   "fixture",
 );
-export const fetchSignals = [gizmo] as const;
+export const fetchSignals = [gizmoPart] as const;
 export type Fetch = FetchClientType<typeof fetchSignals>;
-type SigModule = { fetch: Fetch; gizmo: typeof gizmo };
+type SigModule = { fetch: Fetch; gizmoPart: typeof gizmoPart };
 type Proto = ReturnType<typeof FetchClient.build<SigModule>>;
 declare const sig: Proto["sig"];
 
-export class GizmoStore extends store(sig.gizmo, () => ({})) {}
-export class FixtureRootStore extends StoreRegistry.merge("fixture" as const, StoreRegistry.register(GizmoStore)) {}
+export class GizmoPartStore extends store(sig.gizmoPart, () => ({})) {}
+export class FixtureRootStore extends StoreRegistry.merge("fixture" as const, StoreRegistry.register(GizmoPartStore)) {}
 export const st = StoreRegistry.build(FixtureRootStore);
 
 export type StoreState = typeof st.use;
 export type StoreAction = typeof st.do;
-export type ViewData = Awaited<ReturnType<Fetch["viewGizmo"]>>;
-export type ServerViewData = Awaited<ReturnType<Fetch["getGizmoView"]>>;
-export type EditData = Awaited<ReturnType<Fetch["editGizmo"]>>;
-export type ServerEditData = Awaited<ReturnType<Fetch["getGizmoEdit"]>>;
-export type RootInitData = Awaited<ReturnType<Fetch["initGizmo"]>>;
-export type InitData = Awaited<ReturnType<Fetch["initGizmoInPublic"]>>;
-export type ServerInitData = Awaited<ReturnType<Fetch["getGizmoInitInPublic"]>>;
+export type ViewData = Awaited<ReturnType<Fetch["viewGizmoPart"]>>;
+export type ServerViewData = Awaited<ReturnType<Fetch["getGizmoPartView"]>>;
+export type EditData = Awaited<ReturnType<Fetch["editGizmoPart"]>>;
+export type ServerEditData = Awaited<ReturnType<Fetch["getGizmoPartEdit"]>>;
+export type RootInitData = Awaited<ReturnType<Fetch["initGizmoPart"]>>;
+export type InitData = Awaited<ReturnType<Fetch["initGizmoPartInPublic"]>>;
+export type ServerInitData = Awaited<ReturnType<Fetch["getGizmoPartInitInPublic"]>>;
 `;
 
 const compileFixture = () => {
@@ -156,23 +156,23 @@ const compileFixture = () => {
 };
 
 const fixture = compileFixture();
-const byRef = (name: string) => /gizmo/i.test(name);
+const byRef = (name: string) => /gizmoPart/i.test(name);
 const byRefOrQuery = (name: string) => byRef(name) || /(Any|ByName)$/.test(name);
 
-const refName = "gizmo";
+const refName = "gizmoPart";
 const model = modelNames(refName);
 const slices = ["", "inPublic"].map((suffix) => sliceNames(refName, suffix));
 const [rootSlice, publicSlice] = slices as [ReturnType<typeof sliceNames>, ReturnType<typeof sliceNames>];
 const queries = ["any", "byName"].map(queryNames);
 const scalarSetters = ["name", "count", "id", "createdAt", "updatedAt", "removedAt"].map((key) =>
-  formSetterNames("Gizmo", key),
+  formSetterNames("GizmoPart", key),
 );
-const arraySetters = ["tags"].map((key) => formSetterNames("Gizmo", key));
+const arraySetters = ["tags"].map((key) => formSetterNames("GizmoPart", key));
 const stateKeys = [
   ...new Set([...Object.values(databaseStateNames(refName)), ...slices.flatMap(({ state }) => Object.values(state))]),
 ];
-const pubsub = endpointNames("gizmoMoved");
-const message = endpointNames("gizmoPing");
+const pubsub = endpointNames("gizmoPartMoved");
+const message = endpointNames("gizmoPartPing");
 
 const probes: { type: string; derived: (name: string) => boolean; names: string[] }[] = [
   {
@@ -191,7 +191,7 @@ const probes: { type: string; derived: (name: string) => boolean; names: string[
       model.addModelFiles,
       model.mergeModel,
       ...slices.flatMap(({ endpoint }) => [endpoint.list, endpoint.insight, endpoint.init, endpoint.getInit]),
-      "gizmoPing",
+      "gizmoPartPing",
       pubsub.subscribe,
       message.listen,
     ],
@@ -235,7 +235,7 @@ const probes: { type: string; derived: (name: string) => boolean; names: string[
     ],
   },
   {
-    type: "GizmoModel",
+    type: "GizmoPartModel",
     derived: byRefOrQuery,
     names: [
       model.getModel,
@@ -250,7 +250,7 @@ const probes: { type: string; derived: (name: string) => boolean; names: string[
     ],
   },
   {
-    type: "GizmoService",
+    type: "GizmoPartService",
     derived: byRefOrQuery,
     names: [
       model.modelModel,
@@ -294,7 +294,7 @@ const probes: { type: string; derived: (name: string) => boolean; names: string[
   },
 ];
 
-const typeOnly: { [type: string]: string[] } = { GizmoModel: ["Gizmo"] };
+const typeOnly: { [type: string]: string[] } = { GizmoPartModel: ["GizmoPart"] };
 const runtimeOnly: { type: string; names: string[] }[] = [
   { type: "Fetch", names: [publicSlice.endpoint.live, publicSlice.endpoint.subscribeLive] },
   { type: "StoreAction", names: slices.flatMap(({ action }) => [action.applyLiveModel, action.watchLiveModel]) },

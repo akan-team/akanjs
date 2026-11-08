@@ -25,7 +25,7 @@ const sliceStateModelTypes: { [key in SliceStateKey]?: SerializedStoreState["mod
 };
 
 // The agent catalogue masks a read by this declared class: `immerify` drops the constructor from the live value.
-const databaseStateModelTypes = {
+export const databaseStateModelTypes = {
   model: "full",
   modelForm: "input",
   defaultModel: "full",

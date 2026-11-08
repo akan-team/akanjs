@@ -40,7 +40,7 @@ export const sliceNames = (refName: string, suffix = "") => {
       list: `${refName}List${Suffix}`,
       insight: `${refName}Insight${Suffix}`,
       live: `${refName}Live${Suffix}`,
-      subscribeLive: `subscribe${Model}Live${Suffix}`,
+      subscribeLive: endpointNames(`${refName}Live${Suffix}`).subscribe,
       init: `init${Model}${Suffix}`,
       getInit: `get${Model}Init${Suffix}`,
       initResult: `${refName}Init${Suffix}`,
