@@ -27,6 +27,9 @@ const createSpawnMock = (outcomes: (number | Error)[] = []) => {
   return { calls, spawnCommand };
 };
 
+//? Windows spells the key `Path`, and the env the run hands a child is a plain copy without case-insensitive lookup.
+const pathOf = (env: NodeJS.ProcessEnv) => env[Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH"];
+
 describe("create-akan-workspace", () => {
   test("installs the matching Akan CLI version then forwards workspace options", async () => {
     const { calls, spawnCommand } = createSpawnMock();
@@ -133,7 +136,7 @@ describe("create-akan-workspace", () => {
       });
 
       const env = calls.at(1)?.options.env as NodeJS.ProcessEnv;
-      expect(env.PATH?.split(delimiter)[0]).toBe("/opt/bun-global/bin");
+      expect(pathOf(env)?.split(delimiter)[0]).toBe("/opt/bun-global/bin");
       expect(warned).toHaveBeenCalledTimes(1);
       expect(warned.mock.calls[0]?.[0]).toContain("/opt/bun-global/bin");
     } finally {
