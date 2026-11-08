@@ -1,3 +1,12 @@
+export type {
+  AkanGraph,
+  AkanGraphEdge,
+  AkanGraphEdgeKind,
+  AkanGraphField,
+  AkanGraphLocation,
+  AkanGraphNode,
+  AkanGraphNodeKind,
+} from "./akanGraph";
 export {
   databaseStateNames,
   endpointNames,

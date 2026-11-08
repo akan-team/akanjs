@@ -16,21 +16,40 @@ export interface NamedFact {
   span: AkanSpan;
 }
 
-export interface SliceKeyFact extends NamedFact {
+export interface Extent {
+  start: number;
+  end: number;
+}
+
+export interface MemberFact extends NamedFact {
+  extent: Extent;
+}
+
+export interface SliceKeyFact extends MemberFact {
   guards: string[];
   live: boolean;
   argCount: number;
 }
 
-export interface EndpointKeyFact extends NamedFact {
+export interface EndpointKeyFact extends MemberFact {
   verb: string | null;
   guards: string[];
   argCount: number;
 }
 
+export interface FieldFact extends NamedFact {
+  type: string | null;
+  array: boolean;
+  optional: boolean;
+}
+
 export interface ConstantClassFact extends NamedFact {
-  fields: NamedFact[];
+  fields: FieldFact[];
   parents: string[];
+}
+
+export interface EnumClassFact extends NamedFact {
+  values: string[];
 }
 
 export interface FilterClassFact extends NamedFact {
@@ -50,23 +69,29 @@ export interface EndpointClassFact extends ModuleClassFact {
   keys: EndpointKeyFact[];
 }
 
+export interface ServiceClassFact extends ModuleClassFact {
+  methods: MemberFact[];
+}
+
 export interface StoreClassFact extends ModuleClassFact {
   stateKeys: NamedFact[];
+  actions: MemberFact[];
 }
 
 export interface FileFacts {
   fileName: string;
   owner: string | null;
   constants: ConstantClassFact[];
+  enums: EnumClassFact[];
   filters: FilterClassFact[];
   models: ModuleClassFact[];
-  services: ModuleClassFact[];
+  services: ServiceClassFact[];
   slices: SliceClassFact[];
   endpoints: EndpointClassFact[];
   stores: StoreClassFact[];
 }
 
-const moduleCallees = new Set(["via", "from", "into", "serve", "slice", "endpoint", "store"]);
+const moduleCallees = new Set(["via", "from", "into", "serve", "slice", "endpoint", "store", "enumOf"]);
 const argMethods = new Set(["param", "body", "search", "room", "msg"]);
 
 export const ownerOf = (relativePath: string) => {
@@ -90,6 +115,11 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       endCharacter: tail.character,
     };
   };
+
+  const extentOf = (source: TS.SourceFile, node: TS.Node): Extent => ({
+    start: node.getStart(source),
+    end: node.getEnd(),
+  });
 
   const unwrap = (expression: TS.Expression): TS.Expression => {
     let current = expression;
@@ -175,6 +205,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         {
           name,
           span: spanOf(source, property.name),
+          extent: extentOf(source, property),
           guards: root ? guardsIn(optionObjectOf(root)) : [],
           live: methods.includes("live"),
           argCount: methods.filter((method) => argMethods.has(method)).length,
@@ -214,6 +245,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         {
           name,
           span: spanOf(source, property.name),
+          extent: extentOf(source, property),
           verb: root ? verbOf(root.expression) : null,
           guards: root ? guardsIn(optionObjectOf(root)) : [],
           argCount: methods.filter((method) => argMethods.has(method)).length,
@@ -230,15 +262,48 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     return query && ts.isObjectLiteralExpression(query) ? objectKeys(source, query) : [];
   };
 
+  const typeOf = (expression: TS.Expression | undefined): { type: string | null; array: boolean } => {
+    const value = expression && unwrap(expression);
+    if (value && ts.isArrayLiteralExpression(value)) return { type: typeOf(value.elements[0]).type, array: true };
+    return { type: value ? ast.expressionName(value) : null, array: false };
+  };
+
+  const fieldsOf = (source: TS.SourceFile, object: TS.ObjectLiteralExpression | null) =>
+    (object?.properties ?? []).flatMap((property): FieldFact[] => {
+      const name = ast.propertyName(property);
+      const node = keyName(property);
+      if (!name || !node) return [];
+      const { root, methods } = ts.isPropertyAssignment(property)
+        ? chainOf(property.initializer)
+        : { root: null, methods: [] };
+      return [
+        { name, span: spanOf(source, node), ...typeOf(root?.arguments[0]), optional: methods.includes("optional") },
+      ];
+    });
+
   const constantOf = (source: TS.SourceFile, name: NamedFact, call: TS.CallExpression): ConstantClassFact => {
     const parents = call.arguments
       .map(unwrap)
       .filter((arg) => ts.isIdentifier(arg) || ts.isPropertyAccessExpression(arg))
       .map((arg) => ast.expressionName(arg))
       .filter((parent) => parent !== null);
-    const fields = call.arguments.flatMap((arg) => objectKeys(source, ast.firstObjectReturnedByArrow(arg)));
+    const fields = call.arguments.flatMap((arg) => fieldsOf(source, ast.firstObjectReturnedByArrow(arg)));
     return { ...name, parents, fields };
   };
+
+  const enumValuesOf = (call: TS.CallExpression) => {
+    const list = call.arguments[1] && unwrap(call.arguments[1]);
+    if (!list || !ts.isArrayLiteralExpression(list)) return [];
+    return list.elements.flatMap((element) => (ts.isStringLiteralLike(element) ? [element.text] : []));
+  };
+
+  const methodsOf = (source: TS.SourceFile, statement: TS.ClassDeclaration) =>
+    statement.members.flatMap((member): MemberFact[] => {
+      if (!ts.isMethodDeclaration(member) || !member.body) return [];
+      const name = ast.nodeName(member.name);
+      if (!name || ts.getModifiers(member)?.some(({ kind }) => kind === ts.SyntaxKind.StaticKeyword)) return [];
+      return [{ name, span: spanOf(source, member.name), extent: extentOf(source, member) }];
+    });
 
   const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 
@@ -247,6 +312,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       fileName: source.fileName,
       owner,
       constants: [],
+      enums: [],
       filters: [],
       models: [],
       services: [],
@@ -262,10 +328,16 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       const name: NamedFact = { name: statement.name.text, span: spanOf(source, statement.name) };
       const builder = builderOf(call);
       if (callee === "via") facts.constants.push(constantOf(source, name, call));
+      else if (callee === "enumOf") facts.enums.push({ ...name, values: enumValuesOf(call) });
       else if (callee === "from") facts.filters.push({ ...name, queries: filterQueriesOf(source, builder) });
       else if (callee === "into")
         facts.models.push({ ...name, model: name.name.endsWith("Model") ? lowerFirst(name.name.slice(0, -5)) : null });
-      else if (callee === "serve") facts.services.push({ ...name, model: moduleRefOf(call.arguments[0], "db") });
+      else if (callee === "serve")
+        facts.services.push({
+          ...name,
+          model: moduleRefOf(call.arguments[0], "db"),
+          methods: methodsOf(source, statement),
+        });
       else if (callee === "slice")
         facts.slices.push({
           ...name,
@@ -284,6 +356,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           ...name,
           model: moduleRefOf(call.arguments[0], "sig"),
           stateKeys: objectKeys(source, returnedObject(builder)),
+          actions: methodsOf(source, statement),
         });
     }
     return facts;

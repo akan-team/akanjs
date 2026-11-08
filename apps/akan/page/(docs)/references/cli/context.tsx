@@ -622,6 +622,14 @@ akan mcp-call plan_workflow --mode plan --args '{"workflow":"add-field","inputs"
             marks: allModes,
           },
           {
+            name: "get_graph",
+            desc: l.trans({
+              en: "The Akan Graph from source: models, relations, guards, calls and the components using them. Scope it with `app` or `module`.",
+              ko: "소스에서 그린 Akan 그래프입니다. 모델, 관계, 가드, 호출, 그것을 쓰는 컴포넌트를 담습니다. `app`이나 `module`로 범위를 좁힙니다.",
+            }),
+            marks: allModes,
+          },
+          {
             name: "get_guideline",
             desc: l.trans({
               en: "One Akan guideline by name, the same text as `akan guideline show`.",
