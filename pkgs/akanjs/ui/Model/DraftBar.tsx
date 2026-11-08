@@ -1,6 +1,6 @@
 "use client";
 import { cn, usePage } from "akanjs/client";
-import { capitalize, lowerlize } from "akanjs/common";
+import { lowerlize, modelNames } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { type DraftState, st } from "akanjs/store";
 import { useMemo } from "react";
@@ -69,28 +69,21 @@ interface DraftBarProps {
 
 export default function DraftBar({ className, slice }: DraftBarProps) {
   const { refName } = slice;
-  const [modelName, ModelName] = useMemo(() => [lowerlize(refName), capitalize(refName)], []);
-  const names = useMemo(
-    () => ({
-      modelDraft: `${modelName}FormDraft`,
-      restoreModelDraft: `restore${ModelName}FormDraft`,
-      discardModelDraft: `discard${ModelName}FormDraft`,
-    }),
-    [],
-  );
+  const modelName = useMemo(() => lowerlize(refName), []);
+  const names = useMemo(() => modelNames(modelName), []);
   const storeUse = st.use as { [key: string]: (option?: { agent?: boolean }) => unknown };
   const storeDo = st.do as unknown as { [key: string]: () => void };
   // `agent: false`: the value is the whole form, which would ride every later turn; the tools below are the surface.
   const draft = storeUse[names.modelDraft]({ agent: false }) as DraftState | null;
 
   const restoreDraft = st
-    .tool(draft?.pending ? names.restoreModelDraft : null)
+    .tool(draft?.pending ? names.restoreModelFormDraft : null)
     .desc(`Put the unsaved ${modelName} the user left behind back into the open form.`)
-    .exec(() => storeDo[names.restoreModelDraft]());
+    .exec(() => storeDo[names.restoreModelFormDraft]());
   const discardDraft = st
-    .tool(draft?.pending || draft?.appliedAt ? names.discardModelDraft : null)
+    .tool(draft?.pending || draft?.appliedAt ? names.discardModelFormDraft : null)
     .desc(`Throw away the recovered ${modelName} draft and keep the form as it was opened.`)
-    .exec(() => storeDo[names.discardModelDraft]());
+    .exec(() => storeDo[names.discardModelFormDraft]());
 
   if (draft?.pending)
     return (

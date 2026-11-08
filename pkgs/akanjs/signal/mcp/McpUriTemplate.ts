@@ -1,4 +1,4 @@
-import { capitalize } from "akanjs/common";
+import { modelNames, sliceNames } from "akanjs/common";
 
 export interface McpResourceTarget {
   endpointKey: string;
@@ -12,7 +12,7 @@ export class McpUriTemplate {
   static readonly #reserved = new Set(["list"]);
 
   static model(refName: string) {
-    return `${McpUriTemplate.scheme}://${refName}/{${refName}Id}`;
+    return `${McpUriTemplate.scheme}://${refName}/{${modelNames(refName).modelId}}`;
   }
   /** The root list is the bare `…/list`: any third-segment token could also be an author's slice key. */
   static list(refName: string, sliceKey: string, argNames: string[]) {
@@ -50,11 +50,11 @@ export class McpUriTemplate {
     const [refName, second, third] = decoded as [string, string?, string?];
 
     if (segments.length === 2 && second && !McpUriTemplate.#reserved.has(second))
-      return { endpointKey: refName, args: { [`${refName}Id`]: second } };
+      return { endpointKey: refName, args: { [modelNames(refName).modelId]: second } };
     if (segments.length === 2 && second === "list")
-      return { endpointKey: `${refName}List`, args: McpUriTemplate.#searchArgs(search) };
+      return { endpointKey: sliceNames(refName).endpoint.list, args: McpUriTemplate.#searchArgs(search) };
     if (segments.length === 3 && second === "list" && third)
-      return { endpointKey: `${refName}List${capitalize(third)}`, args: McpUriTemplate.#searchArgs(search) };
+      return { endpointKey: sliceNames(refName, third).endpoint.list, args: McpUriTemplate.#searchArgs(search) };
     return null;
   }
 

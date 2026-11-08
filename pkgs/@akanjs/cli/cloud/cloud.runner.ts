@@ -57,7 +57,13 @@ const addRemoteEnvServerValue = "__addRemoteEnvServer";
 const removeRemoteEnvServerValue = "__removeRemoteEnvServer";
 
 export class CloudRunner extends runner("cloud") {
-  #akanFrameworkPackages = new Set(["akanjs", "@akanjs/devkit", "@akanjs/cli", "create-akan-workspace"]);
+  #akanFrameworkPackages = new Set([
+    "akanjs",
+    "@akanjs/devkit",
+    "@akanjs/cli",
+    "@akanjs/language",
+    "create-akan-workspace",
+  ]);
 
   #getRegistryArgs(registryUrl?: string) {
     return registryUrl ? ["--registry", getNpmRegistryUrl(registryUrl)] : [];
@@ -375,7 +381,7 @@ export class CloudRunner extends runner("cloud") {
     const latestPublishedVersion = await getLatestPackageVersion("akanjs", tag, registryUrl);
     const rootPackageJson = await workspace.getPackageJson();
     if (!rootPackageJson.dependencies) throw new Error("No dependencies found in package.json");
-    for (const name of ["akanjs", "@akanjs/devkit", "@akanjs/cli"]) {
+    for (const name of ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"]) {
       if (rootPackageJson.dependencies[name]) rootPackageJson.dependencies[name] = latestPublishedVersion;
       if (rootPackageJson.devDependencies?.[name]) rootPackageJson.devDependencies[name] = latestPublishedVersion;
     }

@@ -1,4 +1,4 @@
-import { mcpBaseVerbOf } from "akanjs/common";
+import { mcpBaseVerbOf, sliceNames } from "akanjs/common";
 import { FetchClient } from "akanjs/fetch";
 import type { SerializedEndpoint, SerializedSignal, SerializedSlice } from "../types";
 
@@ -100,7 +100,8 @@ export class AgentCatalogue {
    */
   entryTexts(refName: string, key: string) {
     const borrowed = `its only text is the model's own, and \`${refName}\` has no \`.desc()\` to lend it.`;
-    if (key === `${refName}List` || key === `${refName}Insight`) {
+    const { list, insight } = sliceNames(refName).endpoint;
+    if (key === list || key === insight) {
       const texts = this.texts(`${refName}.modelName`, `${refName}.modelDesc`);
       if (!texts.description) this.#undescribedByKey.set(key, borrowed);
       return texts;

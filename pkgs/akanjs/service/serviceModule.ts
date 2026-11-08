@@ -1,5 +1,5 @@
 import type { MergeAllKeyOfObjects, UnCls } from "akanjs/base";
-import { capitalize, lowerlize } from "akanjs/common";
+import { lowerlize, modelNames, moduleNames, queryNames } from "akanjs/common";
 import type { ConstantModel, QueryOf } from "akanjs/constant";
 import {
   type DatabaseModel,
@@ -31,7 +31,7 @@ export class ServiceModel<
     this.srv = srv;
     this.cnst = cnst ?? (null as unknown as CnstModel);
     this.db = db ?? (null as unknown as DbModel);
-    this.srvMap = (srvMap ?? { [`${lowerlize(srv.refName)}Service`]: srv }) as unknown as SrvMap;
+    this.srvMap = (srvMap ?? { [moduleNames(lowerlize(srv.refName)).service]: srv }) as unknown as SrvMap;
   }
   static fromModel<Srv extends ServiceCls, CnstModel extends ConstantModel, DbModel extends DatabaseModel>(
     srv: Srv,
@@ -53,23 +53,24 @@ export class ServiceModel<
   }
 
   static getDefaultDbServiceMethods(className: string) {
+    const names = modelNames(lowerlize(className));
     const dbServiceMethods = {
       async __get(this: DatabaseService, id: string) {
         return await this.__databaseModel.__get(id);
       },
-      async [`get${className}`](this: DatabaseService, id: string) {
+      async [names.getModel](this: DatabaseService, id: string) {
         return this.__get(id);
       },
       async __load(this: DatabaseService, id?: string) {
         return await this.__databaseModel.__load(id);
       },
-      async [`load${className}`](this: DatabaseService, id?: string) {
+      async [names.loadModel](this: DatabaseService, id?: string) {
         return this.__load(id);
       },
       async __loadMany(this: DatabaseService, ids: string[]) {
         return await this.__databaseModel.__loadMany(ids);
       },
-      async [`load${className}Many`](this: DatabaseService, ids: string[]) {
+      async [names.loadModelMany](this: DatabaseService, ids: string[]) {
         return this.__loadMany(ids);
       },
       async __list(this: DatabaseService, query: QueryOf<any>, queryOption?: ListQueryOption) {
@@ -128,7 +129,7 @@ export class ServiceModel<
         const doc = await this.__databaseModel.__create(input ?? data);
         return (this.__libsPostCreate ? await this.__libsPostCreate(doc) : await this._postCreate?.(doc)) ?? doc;
       },
-      async [`create${className}`](this: DatabaseService, data: DataInputOf) {
+      async [names.createModel](this: DatabaseService, data: DataInputOf) {
         return this.__create(data);
       },
       async __update(this: DatabaseService, id: string, data: DataInputOf) {
@@ -136,7 +137,7 @@ export class ServiceModel<
         const doc = await this.__databaseModel.__update(id, input);
         return (this.__libsPostUpdate ? await this.__libsPostUpdate(doc) : await this._postUpdate?.(doc)) ?? doc;
       },
-      async [`update${className}`](this: DatabaseService, id: string, data: DataInputOf) {
+      async [names.updateModel](this: DatabaseService, id: string, data: DataInputOf) {
         return this.__update(id, data);
       },
       async __remove(this: DatabaseService, id: string): Promise<Doc> {
@@ -145,7 +146,7 @@ export class ServiceModel<
         const doc = await this.__databaseModel.__remove(id);
         return (this.__libsPostRemove ? await this.__libsPostRemove(doc) : await this._postRemove?.(doc)) ?? doc;
       },
-      async [`remove${className}`](this: DatabaseService, id: string): Promise<Doc> {
+      async [names.removeModel](this: DatabaseService, id: string): Promise<Doc> {
         return this.__remove(id);
       },
     };
@@ -160,56 +161,56 @@ export class ServiceModel<
       const { queryArgs, queryOption } = splitFilterArgs(filterInfo, args);
       return { query: queryFn(...queryArgs, documentQueryHelper), queryOption };
     };
-    const key = capitalize(queryKey);
+    const names = queryNames(queryKey);
     return {
-      [`list${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.list]: async function (this: DatabaseService, ...args: any) {
         const { query, queryOption } = dataOf(args);
         return this.__list(query, queryOption);
       },
-      [`listIds${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.listIds]: async function (this: DatabaseService, ...args: any) {
         const { query, queryOption } = dataOf(args);
         return this.__listIds(query, queryOption);
       },
-      [`find${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.find]: async function (this: DatabaseService, ...args: any) {
         const { query, queryOption } = dataOf(args);
         return this.__find(query, queryOption);
       },
-      [`findId${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.findId]: async function (this: DatabaseService, ...args: any) {
         const { query, queryOption } = dataOf(args);
         return this.__findId(query, queryOption);
       },
-      [`pick${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.pick]: async function (this: DatabaseService, ...args: any) {
         const { query, queryOption } = dataOf(args);
         return this.__pick(query, queryOption);
       },
-      [`pickId${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.pickId]: async function (this: DatabaseService, ...args: any) {
         const { query, queryOption } = dataOf(args);
         return this.__pickId(query, queryOption);
       },
-      [`exists${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.exists]: async function (this: DatabaseService, ...args: any) {
         return this.__exists(queryOf(args));
       },
-      [`count${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.count]: async function (this: DatabaseService, ...args: any) {
         return this.__count(queryOf(args));
       },
-      [`insight${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.insight]: async function (this: DatabaseService, ...args: any) {
         return this.__insight(queryOf(args));
       },
-      [`query${key}`]: (...args: any) => queryOf(args),
-      [`remove${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.query]: (...args: any) => queryOf(args),
+      [names.remove]: async function (this: DatabaseService, ...args: any) {
         return this.__removeMany(queryOf(args));
       },
-      [`removeOne${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.removeOne]: async function (this: DatabaseService, ...args: any) {
         return this.__removeOne(queryOf(args));
       },
-      [`purge${key}`]: async function (this: DatabaseService, ...args: any) {
+      [names.purge]: async function (this: DatabaseService, ...args: any) {
         return this.__purgeMany(queryOf(args));
       },
-      [`update${key}`]: function (this: DatabaseService, ...args: any): UpdateChain {
+      [names.update]: function (this: DatabaseService, ...args: any): UpdateChain {
         const query = queryOf(args);
         return { set: (...set) => this.__updateMany(query, ...set) };
       },
-      [`updateOne${key}`]: function (this: DatabaseService, ...args: any): UpdateChain {
+      [names.updateOne]: function (this: DatabaseService, ...args: any): UpdateChain {
         const query = queryOf(args);
         return { set: (...set) => this.__updateOne(query, ...set) };
       },

@@ -1,7 +1,7 @@
 "use client";
 import { type Dayjs, dayjs } from "akanjs/base";
 import { cn, type DataAction, type DataColumn, usePage } from "akanjs/client";
-import { capitalize } from "akanjs/common";
+import { capitalize, modelNames } from "akanjs/common";
 import type { BaseObject } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -197,13 +197,7 @@ export const Action = <T extends string, M extends { id: string }, L extends { i
   const { l } = usePage();
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   const { refName, sliceName } = slice;
-  const [modelName, modelClassName] = [refName, capitalize(refName)];
-  const names = {
-    model: modelName,
-    editModel: `edit${modelClassName}`,
-    viewModel: `view${modelClassName}`,
-    removeModel: `remove${modelClassName}`,
-  };
+  const names = modelNames(refName);
   const namesOfSlice = {
     editModel: sliceName.replace(names.model, names.editModel),
     viewModel: sliceName.replace(names.model, names.viewModel),

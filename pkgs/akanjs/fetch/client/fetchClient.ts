@@ -1,12 +1,14 @@
 import { getApiPrefix, getEnv, getWsPrefix, PrimitiveRegistry, type PromiseOrObject } from "akanjs/base";
 import {
-  capitalize,
+  endpointNames,
   type FetchPolicy,
   fileUploadContract,
   Logger,
+  modelNames,
   type RetryPolicy,
   readSessionToken,
   resolveFileUploadCapability,
+  sliceNames,
   trimTrailingSlashes,
 } from "akanjs/common";
 import { type BaseInsight, type BaseObject, ConstantRegistry, deserialize, serialize } from "akanjs/constant";
@@ -523,7 +525,7 @@ export class FetchClient {
         this.#setHandlerFactory(key, () => this.#makeHttpFn(key, endpoint, prefix));
         return;
       case "pubsub": {
-        this.#setHandlerFactory(`subscribe${capitalize(key)}`, () => {
+        this.#setHandlerFactory(endpointNames(key).subscribe, () => {
           const roomArgs = endpoint.args.filter((arg) => arg.type === "room");
           const roomArgLength = roomArgs.length;
           const serializerMap = this.#makeArgSerializer(endpoint.args);
@@ -571,7 +573,7 @@ export class FetchClient {
             this.#resolveWs(fetchPolicy?.origin).emit(key, data);
           };
         });
-        this.#setHandlerFactory(`listen${capitalize(key)}`, () => {
+        this.#setHandlerFactory(endpointNames(key).listen, () => {
           const parseReturn = this.#makeReturnParser(endpoint.returns);
           const wrappedListeners = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
           return ((handleEvent: (data: unknown) => void, fetchPolicy: FetchPolicy = {}) => {
@@ -658,15 +660,7 @@ export class FetchClient {
   }
 
   static getBaseEndpoint(refName: string, signal: SerializedSignal) {
-    const capRefName = capitalize(refName);
-    const names = {
-      createModel: `create${capRefName}`,
-      updateModel: `update${capRefName}`,
-      removeModel: `remove${capRefName}`,
-      model: refName,
-      modelId: `${refName}Id`,
-      lightModel: `light${capRefName}`,
-    };
+    const names = modelNames(refName);
     const createGuards = FetchClient.#mountedGuards(signal, "create");
     const updateGuards = FetchClient.#mountedGuards(signal, "update");
     const removeGuards = FetchClient.#mountedGuards(signal, "remove");
@@ -729,22 +723,6 @@ export class FetchClient {
     const guards = verb === "get" ? signal.getGuards : (signal[`${verb}Guards`] ?? signal.cruGuards);
     return guards?.some((guard) => guard !== "None") ? guards : undefined;
   }
-  static #modelNames(refName: string) {
-    const capRefName = capitalize(refName);
-    return {
-      createModel: `create${capRefName}`,
-      updateModel: `update${capRefName}`,
-      removeModel: `remove${capRefName}`,
-      model: refName,
-      lightModel: `light${capRefName}`,
-      viewModel: `view${capRefName}`,
-      getModelView: `get${capRefName}View`,
-      editModel: `edit${capRefName}`,
-      getModelEdit: `get${capRefName}Edit`,
-      addModelFiles: `add${capRefName}Files`,
-      mergeModel: `merge${capRefName}`,
-    };
-  }
   // view/edit exist exactly when the get handler does; edit also needs a write endpoint; merge wraps updateModel.
   static #helpersOf(signal: SerializedSignal) {
     const get = !!FetchClient.#mountedGuards(signal, "get");
@@ -753,24 +731,13 @@ export class FetchClient {
       update || !!FetchClient.#mountedGuards(signal, "create") || !!FetchClient.#mountedGuards(signal, "remove");
     return { view: get, edit: get && write, merge: update };
   }
-  static #sliceNames(refName: string, suffix: string) {
-    const capSuffix = capitalize(suffix);
-    const capRefName = capitalize(refName);
-    return {
-      list: `${refName}List${capSuffix}`,
-      insight: `${refName}Insight${capSuffix}`,
-      live: `${refName}Live${capSuffix}`,
-      init: `init${capRefName}${capSuffix}`,
-      getInit: `get${capRefName}Init${capSuffix}`,
-    };
-  }
   /** The `fetch.*` names a module's signal registers, and the bare socket route of each pubsub and message. */
   static claimsOf(refName: string, signal: SerializedSignal) {
     const handlers: FetchClaim[] = [];
     const sockets: FetchClaim[] = [];
     const claim = (key: string, endpoint: SerializedEndpoint, by: string) => {
-      handlers.push({ key: endpoint.type === "pubsub" ? `subscribe${capitalize(key)}` : key, by });
-      if (endpoint.type === "message") handlers.push({ key: `listen${capitalize(key)}`, by });
+      handlers.push({ key: endpoint.type === "pubsub" ? endpointNames(key).subscribe : key, by });
+      if (endpoint.type === "message") handlers.push({ key: endpointNames(key).listen, by });
       if (endpoint.type === "pubsub" || endpoint.type === "message") sockets.push({ key, by });
     };
     for (const [key, endpoint] of Object.entries(signal.endpoint))
@@ -779,7 +746,7 @@ export class FetchClient {
     const generated = "the generated CRUD";
     for (const [key, endpoint] of Object.entries(FetchClient.getBaseEndpoint(refName, signal)))
       claim(key, endpoint, generated);
-    const names = FetchClient.#modelNames(refName);
+    const names = modelNames(refName);
     const helpers = FetchClient.#helpersOf(signal);
     const helperKeys = [
       ...(helpers.view ? [names.viewModel, names.getModelView] : []),
@@ -792,13 +759,13 @@ export class FetchClient {
       const by = suffix ? `the slice "${suffix}"` : "the root slice";
       for (const [key, endpoint] of Object.entries(FetchClient.getEndpointFromSlice(refName, suffix, slice)))
         claim(key, endpoint, by);
-      const { init, getInit } = FetchClient.#sliceNames(refName, suffix);
+      const { init, getInit } = sliceNames(refName, suffix).endpoint;
       handlers.push({ key: init, by }, { key: getInit, by });
     }
     return { handlers, sockets };
   }
   #registerModelBaseEndpoint(refName: string, signal: SerializedSignal) {
-    const names = FetchClient.#modelNames(refName);
+    const names = modelNames(refName);
     // The tab-wide client may have applied a lib's signal first; a later slice denying a verb takes its handler back.
     for (const key of Object.values(names).filter((key) => this.#generatedBy.get(key) === refName)) {
       this.#handlerFactory.delete(key);
@@ -814,7 +781,7 @@ export class FetchClient {
     if (helpers.view) {
       this.#setHandlerFactory(
         names.viewModel,
-        () => this.#makeModelHandleFn(refName, names.model, names.viewModel, `${refName}View`),
+        () => this.#makeModelHandleFn(refName, names.model, names.viewModel, names.modelView),
         refName,
       );
       this.#setHandlerFactory(names.getModelView, () => this.#makeModelObjFn(refName, names.getModelView), refName);
@@ -822,7 +789,7 @@ export class FetchClient {
     if (helpers.edit) {
       this.#setHandlerFactory(
         names.editModel,
-        () => this.#makeModelHandleFn(refName, names.model, names.editModel, `${refName}Edit`),
+        () => this.#makeModelHandleFn(refName, names.model, names.editModel, names.modelEdit),
         refName,
       );
       this.#setHandlerFactory(names.getModelEdit, () => this.#makeModelObjFn(refName, names.getModelEdit), refName);
@@ -871,14 +838,16 @@ export class FetchClient {
   }
 
   #makeModelObjFn(refName: string, callerKey: string) {
+    const names = modelNames(refName);
     return (async (id: string, option?: FetchPolicy) => {
       const modelObj = await this.#requireHandler(refName, callerKey)(id, { ...option, crystalize: false });
-      return { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() };
+      return { refName, [names.modelObj]: modelObj, [names.modelViewAt]: new Date() };
     }) as FetchHandler;
   }
 
   //* The full model is built lazily — a route handing the payload to `Load.View` never reads it; `ViewAt` stamps once.
   #makeModelHandleFn(refName: string, modelKey: string, callerKey: string, payloadKey: string) {
+    const names = modelNames(refName);
     return ((id: string, option?: FetchPolicy) => {
       const cnst = ConstantRegistry.getDatabase(refName);
       const modelFn = this.#requireHandler(modelKey, callerKey);
@@ -887,7 +856,7 @@ export class FetchClient {
       let payload: object | undefined;
       const modelOf = (modelObj: object) => (model ??= new cnst.full(modelObj));
       const payloadOf = (modelObj: object) =>
-        (payload ??= { refName, [`${refName}Obj`]: modelObj, [`${refName}ViewAt`]: new Date() });
+        (payload ??= { refName, [names.modelObj]: modelObj, [names.modelViewAt]: new Date() });
       return FetchHandle.of<Record<string, unknown>, Record<string, Promise<unknown>>>(
         [modelRequest],
         async () => {
@@ -907,7 +876,7 @@ export class FetchClient {
     suffix: string,
     slice: SerializedSlice,
   ): { [key: string]: SerializedEndpoint } {
-    const names = FetchClient.#sliceNames(refName, suffix);
+    const names = sliceNames(refName, suffix).endpoint;
     // One `mcp: false` on `init()` covers both the list and the aggregate.
     const mcp = {
       ...(slice.mcp === false ? { mcp: false as const } : {}),
@@ -942,10 +911,7 @@ export class FetchClient {
     return endpoint;
   }
   #registerSlice(refName: string, suffix: string, slice: SerializedSlice, prefix?: string) {
-    const capSuffix = capitalize(suffix);
-    const sliceName = `${refName}${capSuffix}`;
-    const capRefName = capitalize(refName);
-    const names = FetchClient.#sliceNames(refName, suffix);
+    const { slice: sliceName, endpoint: names } = sliceNames(refName, suffix);
 
     const endpoint = FetchClient.getEndpointFromSlice(refName, suffix, slice);
     // Through `#registerEndpoint`: a slice may also generate a pubsub entry, which is no request.
@@ -978,8 +944,7 @@ export class FetchClient {
       ) as Promise<BaseInsight | null>;
       return new SliceInitHandle({
         refName,
-        capRefName,
-        capSuffix,
+        suffix,
         sliceName,
         argLength,
         queryArgs,
@@ -997,7 +962,7 @@ export class FetchClient {
         names.init,
         names.getInit,
       );
-      return await initFn(...args)[`${refName}Init${capSuffix}`];
+      return await initFn(...args)[names.initResult];
     });
   }
   #makeArgSerializer(args: SerializedArg[]) {
@@ -1124,7 +1089,7 @@ export class FetchClient {
       const cnst = ConstantRegistry.getDatabase(refName, { allowEmpty: true });
       if (!cnst) return;
       const slices = Object.entries(serializedSignal.slice).map(([suffix, serializedSlice]) => {
-        const sliceName = `${refName}${capitalize(suffix)}`;
+        const { slice: sliceName } = sliceNames(refName, suffix);
         proxy.slice[sliceName] = { refName, sliceName, argLength: serializedSlice.args.length };
         return { refName, sliceName, serializedSlice };
       });
