@@ -28,6 +28,7 @@ import { confirm, input, select } from "@inquirer/prompts";
 import { Logger } from "akanjs/common";
 import chalk from "chalk";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
+import { EnvArchive } from "./envArchive";
 import { RemoteLogin } from "./remoteLogin";
 
 interface SettlePlatformTestsOptions {
@@ -416,9 +417,7 @@ export class CloudRunner extends runner("cloud") {
     const localPath = (await cloudApi.downloadEnv(workspaceId).catch((error: unknown) => {
       throw CloudApi.refusal(error, "downloading its env archive takes the project owner's own `akan login`");
     })) as string;
-    // Relative, so GNU tar never reads a Windows drive letter (`C:\…`) as a remote `host:file` spec.
-    const relativePath = path.relative(workspace.workspaceRoot, localPath).split(path.sep).join("/");
-    await workspace.spawn("tar", ["-xf", relativePath], { cwd: workspace.workspaceRoot });
+    await EnvArchive.extract(workspace, localPath);
     await workspace.remove(localPath);
   }
   async uploadEnv(cloudApi: CloudApi, workspaceId: string, filePath: string) {
@@ -440,7 +439,7 @@ export class CloudRunner extends runner("cloud") {
         cwd: workspace.workspaceRoot,
         stdio: "inherit",
       });
-      await workspace.spawn("tar", ["-xf", envArchivePath], { cwd: workspace.workspaceRoot });
+      await EnvArchive.extract(workspace, envArchivePath);
       await workspace.remove(envArchivePath);
     } catch (error) {
       throw new Error(`Failed to download env archive from remote server "${remoteServer.name}"`, { cause: error });
@@ -470,7 +469,7 @@ export class CloudRunner extends runner("cloud") {
     workspace: Workspace,
     { scope, archivePath = "local/env.tar" }: { scope?: EnvScope; archivePath?: string } = {},
   ) {
-    const envFilePattern = /^env\.(client|server)\.(?!(type|example)\.ts$).+\.ts$/;
+    const { envFilePattern } = EnvArchive;
     const [workspaceAppNames, workspaceLibNames] = await workspace.getExecs();
     const appNames = scope?.apps ?? workspaceAppNames;
     const libNames = scope?.libs ?? workspaceLibNames;

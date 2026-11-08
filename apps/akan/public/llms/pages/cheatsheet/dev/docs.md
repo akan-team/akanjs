@@ -104,7 +104,7 @@ Press **Send Request**.
 
 Check that the response pane shows `"ping"`.
 
-**`ping` shows MCP refused on purpose.** It declares no guards, and MCP publishes only endpoints whose guards say who may call them.
+**`ping` shows MCP refused on purpose.** It is opened with `[Public]` and taken off the agent shelf with `mcp: false`.
 
 Reading a row
 

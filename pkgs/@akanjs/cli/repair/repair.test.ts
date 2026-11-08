@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { createTempModule, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
-import type { RepairReport, WorkflowValidationCommandExecutor } from "@akanjs/devkit/workflow";
-import { RepairRunner } from "./repair.runner";
+import { isWorkflowSysName, type RepairReport, type WorkflowValidationCommandExecutor } from "@akanjs/devkit/workflow";
+import { akanCommandArgs, RepairRunner, spawnAkan } from "./repair.runner";
 
 const passes: WorkflowValidationCommandExecutor = async (command) => ({
   command: command.command,
@@ -95,5 +95,55 @@ describe("RepairRunner", () => {
 
     expect(report.diagnostics.map((diagnostic) => diagnostic.code)).toContain("module-shape-invalid");
     expect(report.nextActions.map((action) => action.command).join("\n")).toContain("akan create-module");
+  });
+
+  test("runs nothing for an app, target or module the workspace does not have", async () => {
+    const { workspace } = track(await createTempModule("task"));
+    const ran: string[] = [];
+    const records: WorkflowValidationCommandExecutor = async (command) => {
+      ran.push(command.command);
+      return await passes(command);
+    };
+    const repair = async (kind: RepairReport["kind"], target: { app?: string; target?: string; module?: string }) =>
+      JSON.parse(
+        await new RepairRunner().repair(kind, { workspace, ...target, format: "json", execute: records }),
+      ) as RepairReport;
+
+    const reports = [
+      await repair("generated", { app: "demo; touch marker #" }),
+      await repair("generated", { app: "missing" }),
+      await repair("imports", { target: "../demo" }),
+      await repair("module-shape", { app: "demo", module: "task/../../x" }),
+    ];
+
+    expect(ran).toEqual([]);
+    for (const report of reports) {
+      expect(report.status).toBe("failed");
+      expect(report.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["repair-input-unknown"]);
+    }
+  });
+
+  test("splits an akan command into plain arguments and refuses anything else", async () => {
+    const { workspace } = track(await createTempModule("task"));
+
+    expect(akanCommandArgs("akan verify demo")).toEqual(["verify", "demo"]);
+    expect(akanCommandArgs("akan doctor --strict --format json")).toEqual(["doctor", "--strict", "--format", "json"]);
+    expect(akanCommandArgs("akan lint @akanjs/cli")).toEqual(["lint", "@akanjs/cli"]);
+    for (const command of [
+      "akan sync demo; id",
+      "akan verify $(id)",
+      "akan verify demo|cat",
+      "akan verify ../demo",
+      "akan verify demo\nakan code",
+      "bun run build",
+      "akan",
+    ])
+      expect(akanCommandArgs(command)).toBeNull();
+    await expect(spawnAkan(workspace, "akan sync demo && id")).rejects.toThrow("Not run");
+  });
+
+  test("takes every app name create-application can produce, and no path", () => {
+    for (const name of ["demo", "my-app", "my_app", "2048game", "myApp"]) expect(isWorkflowSysName(name)).toBe(true);
+    for (const name of ["", "-x", "_x", "a/b", "a.b", "..", "a b"]) expect(isWorkflowSysName(name)).toBe(false);
   });
 });

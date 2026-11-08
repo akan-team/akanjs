@@ -317,6 +317,7 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
 
     private func openExternally(_ url: URL) {
         guard view.window?.windowScene?.activationState == .foregroundActive else { return }
+        guard AkanNativeKernel.externalOpenPermitted(bridge.acl, url.absoluteString) else { return AkanNativeLog.info("not opening \(url.scheme ?? "?"): link: the app's opener capabilities leave it out") }
         guard AkanNativeExternal.allowed() else { return AkanNativeLog.info("not opening \(url.scheme ?? "?"): link: at most one per second leaves the app") }
         UIApplication.shared.open(url)
     }

@@ -27,6 +27,26 @@ export class CodeCommand extends command("code", [CodeScript], ({ public: target
       flag: "i",
       default: false,
     })
+    .option("trustWorkspace", Boolean, {
+      desc: "start this repo's own MCP servers and extensions for this run without asking",
+      flag: "T",
+      default: false,
+    })
+    .option("askNetwork", Boolean, {
+      desc: "ask before fetching an unlisted host or running a networking command (local profile)",
+      flag: "N",
+      default: true,
+    })
+    .option("rpcBindAny", Boolean, {
+      desc: "let --rpc-listen bind an address other machines can reach",
+      flag: "B",
+      default: false,
+    })
+    .option("rpcToken", Boolean, {
+      desc: "make a --rpc-listen tcp: connection open with its token",
+      flag: "K",
+      default: true,
+    })
     .with(Workspace)
     .exec(
       async function (
@@ -41,9 +61,28 @@ export class CodeCommand extends command("code", [CodeScript], ({ public: target
         rpcListen,
         resume,
         interactive,
+        trustWorkspace,
+        askNetwork,
+        rpcBindAny,
+        rpcToken,
         workspace,
       ) {
-        const options = { app, profile, model, compactAt, json, thinking, rpc, rpcListen, interactive, resume };
+        const options = {
+          app,
+          profile,
+          model,
+          compactAt,
+          json,
+          thinking,
+          rpc,
+          rpcListen,
+          interactive,
+          resume,
+          trustWorkspace,
+          askNetwork,
+          rpcBindAny,
+          rpcToken,
+        };
         await this.codeScript.run(workspace, prompt ?? "", options);
       },
     ),

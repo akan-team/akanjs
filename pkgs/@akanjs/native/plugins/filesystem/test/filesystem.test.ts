@@ -321,8 +321,11 @@ describe("desktop", () => {
       temp: "/var/T/dev.test/files",
     });
     expect(
-      baseDirs({ app: ctx.app, appDataDir: "/a" }, "linux", { XDG_CACHE_HOME: "/xdg" }, "/home/u", "/tmp").cache,
-    ).toBe("/xdg/dev.test/files");
+      baseDirs({ app: ctx.app, appDataDir: "/a" }, "linux", { XDG_CACHE_HOME: "/xdg" }, "/home/u", "/tmp"),
+    ).toMatchObject({
+      cache: "/xdg/dev.test/files",
+      temp: "/xdg/dev.test/tmp/files",
+    });
   });
 
   test("text, base64 and FileRef round trips", async () => {

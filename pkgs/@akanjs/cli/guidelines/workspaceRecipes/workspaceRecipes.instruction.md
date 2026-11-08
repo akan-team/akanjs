@@ -488,7 +488,7 @@ export const env: ModulesOptions = {
 | `setLlm({ apiKey })`, relying on the DeepSeek default | `setLlm({ apiKey, model, host })` | The app boots, the log warns once, and the chat answers `llmUnavailable` to every turn |
 | `applyAdaptor(LlmAdaptorRole, DeepseekLlm)` | `OpenaiLlm` + `host: "https://api.deepseek.com"` | Build error — the class is gone |
 | `OpenaiLlm` pointed at a **named** `host`, reading images | add `accepts: { image: true }` to `setLlm` | **Silent**: images reach the model as a note saying they could not be read |
-| An adaptor of your own throwing `agent.error.<vendor>RequestFailed` | `new Err("agent.error.llmRequestFailed", { provider, status, reason })` | The chat prints the raw key instead of a sentence |
+| An adaptor of your own throwing `agent.error.<vendor>RequestFailed` | `throw LlmOverflow.refusal(host, status, reason)`, which sends `{ provider, status }` and logs `reason` on the server | The chat prints the raw key instead of a sentence |
 | Provider settings in a second `option.use({ myLlmOption })` | put them in `setLlm` and read `use<MyLlmOption>()` | Nothing breaks; the second channel is no longer needed |
 
 `OpenaiLlm` claims vision for its default host (`https://api.openai.com/v1`) and for nothing else, because a host

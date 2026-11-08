@@ -145,8 +145,8 @@ export default page()
           {
             name: <span className="font-sans">{l.trans({ en: "no guards", ko: "guards 없음" })}</span>,
             desc: l.trans({
-              en: "Refused. A missing guards array now costs visibility as well as authorization.",
-              ko: "거부됩니다. guards 배열을 빠뜨리면 권한뿐 아니라 노출까지 잃습니다.",
+              en: "Refused, as it is over HTTP, where an endpoint without guards answers 403.",
+              ko: "거부됩니다. HTTP에서도 guards가 없는 endpoint는 403으로 응답합니다.",
             }),
             marks: leftOut,
           },

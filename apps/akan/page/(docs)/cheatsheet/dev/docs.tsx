@@ -537,7 +537,7 @@ export default page()
                     <strong>
                       <code>ping</code> shows MCP refused on purpose.
                     </strong>{" "}
-                    It declares no guards, and MCP publishes only endpoints whose guards say who may call them.
+                    It is opened with <code>[Public]</code> and taken off the agent shelf with <code>mcp: false</code>.
                   </span>
                 ),
                 ko: (
@@ -545,7 +545,7 @@ export default page()
                     <strong>
                       <code>ping</code>에 MCP refused가 뜨는 것은 정상입니다.
                     </strong>{" "}
-                    가드를 선언하지 않았고, MCP는 누가 호출할 수 있는지 가드로 밝힌 엔드포인트만 공개합니다.
+                    <code>[Public]</code>으로 열어 두되 <code>mcp: false</code>로 에이전트 목록에서 뺐습니다.
                   </span>
                 ),
               })}

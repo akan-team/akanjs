@@ -25,6 +25,7 @@ const jsonContentType = /^application\/(?:[\w.+-]+\+)?json\b/i;
 
 const transportErrorKeyMap = {
   408: "base.error.gatewayTimeout",
+  413: "base.error.payloadTooLarge",
   429: "base.error.tooManyRequests",
   502: "base.error.serverUnavailable",
   503: "base.error.serverUnavailable",

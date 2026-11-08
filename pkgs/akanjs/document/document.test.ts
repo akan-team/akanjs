@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { dayjs, FIELD_META, ID, Int, LOADER_META, type PrimitiveScalar } from "akanjs/base";
-import { ConstantRegistry, type DocumentModel, type FieldToValue, via } from "akanjs/constant";
+import { Any, dayjs, FIELD_META, ID, Int, LOADER_META, type PrimitiveScalar } from "akanjs/base";
+import { ConstantRegistry, type DocumentModel, type FieldToValue, InputParser, via } from "akanjs/constant";
 import {
   by,
   convertAggregateMatch,
@@ -19,6 +19,7 @@ import {
   documentQueryHelper,
   encodeDocumentValue,
   FilterQueryError,
+  fieldValueProblem,
   fillMissingFilterArgs,
   from,
   getFilterInfoByKey,
@@ -26,9 +27,11 @@ import {
   getFilterSortByKey,
   getLoaderInfos,
   into,
+  isBuiltQueryNode,
   isDocumentId,
   isDocumentQueryNode,
   type ModelCls,
+  queryNodeProblem,
   resolveFilterQuery,
   type SchemaOf,
   sanitizeJson,
@@ -701,6 +704,39 @@ describe("document query helpers and schemas", () => {
       [{ kind: "all", queries: [] }],
     ];
     for (const query of fieldQueries) expect(isDocumentQueryNode(query)).toBe(false);
+  });
+
+  test("takes a raw or search condition only as q built it, and never a condition a request carried", () => {
+    const q = createDocumentQueryHelper();
+    const [raw, search] = [q.raw("score > ?", [10]), q.search("kit")];
+    const [rawCopy, searchCopy] = [{ ...raw }, JSON.parse(JSON.stringify(search))];
+    const [requested] = InputParser.parse(Any, 0, [{ kind: "all", queries: [] }], { key: "args" }) as object[];
+
+    expect([isBuiltQueryNode(raw), isBuiltQueryNode(search), isBuiltQueryNode(rawCopy)]).toEqual([true, true, false]);
+    expect([queryNodeProblem(raw), queryNodeProblem(search), queryNodeProblem(q.all())]).toEqual([null, null, null]);
+    expect(queryNodeProblem(rawCopy)).toContain("must be built by q.raw()");
+    expect(queryNodeProblem(searchCopy)).toContain("must be built by q.search()");
+    expect(isDocumentQueryNode(requested) && queryNodeProblem(requested)).toContain("arrived as a request value");
+  });
+
+  test("refuses a combinator at a field, and an operator object at a field when a request carried it", () => {
+    const q = createDocumentQueryHelper();
+    const [requested, requestedNode] = InputParser.parse(
+      Any,
+      0,
+      [{ ne: "draft" }, { kind: "op", op: "ne", value: "draft" }],
+      { key: "args" },
+    ) as object[];
+
+    expect(fieldValueProblem("score", q.gte(1))).toBeNull();
+    expect(fieldValueProblem("score", { gte: 1 })).toBeNull();
+    expect(fieldValueProblem("meta", { label: "kit" })).toBeNull();
+    expect(fieldValueProblem("score", q.any())).toContain("q.any({ score: ... })");
+    expect(fieldValueProblem("score", q.all({ score: 1 }))).toContain("q.all({ score: ... })");
+    expect(fieldValueProblem("score", q.raw("1 = 1"))).toContain("put it beside the field's condition");
+    expect(fieldValueProblem("status", requested)).toContain("arrived in a request and holds query operators");
+    expect(fieldValueProblem("status", requestedNode)).toContain("arrived in a request and holds query operators");
+    expect(fieldValueProblem("status", q.ne("draft"))).toBeNull();
   });
 
   test("creates and validates document ids", () => {

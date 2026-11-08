@@ -72,7 +72,7 @@ An endpoint that reuses a generated CRUD name, such as `create<Model>` or `view<
 
 `*.signal.ts` — a warning
 
-An endpoint or slice `init()` with no `guards` or `guards: []`, and a slice with no `guards` or no `root`. Each is open to every caller; write `guards: [Public]` when that is the intent.
+An endpoint or slice `init()` with no `guards` or `guards: []`, which refuses every caller, and a slice with no `guards` or no `root`, which leaves its root list unmounted. Write `guards: [Public]` when anonymous access is the intent.
 
 `{{name}}` in an `.error()` or `.translate()` entry is never filled in and shows as typed. Write `{name}`.
 

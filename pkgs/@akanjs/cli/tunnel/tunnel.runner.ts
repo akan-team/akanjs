@@ -22,7 +22,8 @@ export class TunnelRunner extends runner("tunnel") {
     const copied = await writeClipboard(share.url);
     Logger.rawLog(`\n  ${chalk.bold(share.url)}${copied ? chalk.dim("  (copied)") : ""}`);
     if (share.grant.expiresAt) Logger.rawLog(chalk.dim(`  expires ${share.grant.expiresAt}`));
-    Logger.rawLog(chalk.dim(`  code ${share.grant.code} — stop it with: akan tunnel --stop ${share.grant.code}\n`));
+    Logger.rawLog(chalk.dim(`  code ${share.grant.code} — stop it with: akan tunnel --stop ${share.grant.code}`));
+    Logger.rawLog(chalk.yellow(`  ${TunnelShare.exposureNotice(app.name, !!options.devRoutes)}\n`));
     await TunnelRunner.holdUntilInterrupt(() => share.close());
   }
 

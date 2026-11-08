@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { AkanCodeEnv } from "./AkanCodeEnv";
 import { AkanCodeServices } from "./AkanCodeServices";
 import { akanCodeDefaultModel, akanCodeModel } from "./akanCodeModel";
+import { akanCodePaths } from "./akanCodePaths";
 import { CodeAgentProxy } from "./CodeAgentProxy";
 
 const seen: { path: string; auth: string | null }[] = [];
@@ -71,4 +73,54 @@ describe("CodeAgentProxy", () => {
   test("refuses to start with a proxy URL and no token source", () => {
     expect(() => new CodeAgentProxy({ baseUrl: "https://proxy", providers: ["deepseek"] })).toThrow("TOKEN");
   });
+});
+
+describe("AkanCodeEnv", () => {
+  const inRepo = (dotenv: string | null, run: () => void) => {
+    const repo = mkdtempSync(path.join(tmpdir(), "akan-code-env-"));
+    const cwd = process.cwd();
+    const had = process.env.AKAN_CODE_PROXY_URL;
+    try {
+      if (dotenv !== null) writeFileSync(path.join(repo, ".env"), dotenv);
+      process.chdir(repo);
+      process.env.AKAN_CODE_PROXY_URL = "https://proxy.example/{provider}";
+      run();
+    } finally {
+      process.chdir(cwd);
+      if (had === undefined) delete process.env.AKAN_CODE_PROXY_URL;
+      else process.env.AKAN_CODE_PROXY_URL = had;
+      rmSync(repo, { recursive: true, force: true });
+    }
+  };
+
+  test("a setting the repo's own dotenv file names is ignored, and the start warning says so", () => {
+    inRepo("export AKAN_CODE_PROXY_URL=placeholder\n", () => {
+      expect(AkanCodeEnv.get("AKAN_CODE_PROXY_URL")).toBeUndefined();
+      expect(CodeAgentProxy.fromEnv()).toBeNull();
+      expect(AkanCodeEnv.ignored()).toEqual([expect.stringContaining("AKAN_CODE_PROXY_URL is set in .env")]);
+    });
+  });
+
+  test("a setting from the shell is read when no dotenv file names it", () => {
+    inRepo("OTHER_KEY=placeholder\n", () => {
+      expect(AkanCodeEnv.get("AKAN_CODE_PROXY_URL")).toBe("https://proxy.example/{provider}");
+      expect(AkanCodeEnv.ignored()).toEqual([]);
+    });
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "the home directory is made owner-only, even one made looser before",
+    () => {
+      const loose = path.join(home, "loose-home");
+      mkdirSync(loose, { mode: 0o755 });
+      chmodSync(loose, 0o755);
+      process.env.AKAN_CODE_HOME = loose;
+      try {
+        akanCodePaths.ensureGlobalDir();
+        expect(statSync(loose).mode & 0o777).toBe(0o700);
+      } finally {
+        process.env.AKAN_CODE_HOME = home;
+      }
+    },
+  );
 });

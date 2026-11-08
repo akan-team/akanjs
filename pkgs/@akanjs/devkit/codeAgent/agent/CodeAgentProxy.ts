@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { type CodeAgentProfile, trimTrailingSlashes } from "akanjs/common";
+import { AkanCodeEnv } from "./AkanCodeEnv";
 import { akanCodeDefaultModel } from "./akanCodeModel";
 
 interface PreparedRequest {
@@ -36,17 +37,17 @@ export class CodeAgentProxy {
   }
 
   static fromEnv(profile?: CodeAgentProfile): CodeAgentProxy | null {
-    const baseUrl = process.env.AKAN_CODE_PROXY_URL?.trim() || profile?.network.proxyBaseUrl;
+    const baseUrl = AkanCodeEnv.get("AKAN_CODE_PROXY_URL")?.trim() || profile?.network.proxyBaseUrl;
     if (!baseUrl) return null;
-    const providers = (process.env.AKAN_CODE_PROXY_PROVIDERS ?? akanCodeDefaultModel.provider)
+    const providers = (AkanCodeEnv.get("AKAN_CODE_PROXY_PROVIDERS") ?? akanCodeDefaultModel.provider)
       .split(",")
       .map((provider) => provider.trim())
       .filter(Boolean);
     return new CodeAgentProxy({
       baseUrl,
       providers,
-      tokenFile: process.env.AKAN_CODE_PROXY_TOKEN_FILE?.trim() || undefined,
-      token: process.env.AKAN_CODE_PROXY_TOKEN?.trim() || undefined,
+      tokenFile: AkanCodeEnv.get("AKAN_CODE_PROXY_TOKEN_FILE")?.trim() || undefined,
+      token: AkanCodeEnv.get("AKAN_CODE_PROXY_TOKEN")?.trim() || undefined,
     });
   }
 

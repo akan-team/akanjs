@@ -34,6 +34,8 @@ export interface NativeConfigInput {
   nativePlugins?: NativePluginFolder[];
   /** A desktop build's staged `bin` executables (DesktopBin). */
   desktopBin?: string;
+  /** The `AKAN_PUBLIC_*` the web build inlined, derived keys included. */
+  publicEnv?: Record<string, string>;
 }
 
 export interface NativeConfigResult {
@@ -59,6 +61,42 @@ export class NativeConfig {
     "secure-storage",
     "haptics",
   ] as const;
+  //? Only scripts stay strict ('self', inline ones by hash): injected script must not reach the native bridge.
+  static readonly defaultCsp: Readonly<Record<string, readonly string[]>> = {
+    "default-src": ["'self'"],
+    "script-src": ["'self'", "'wasm-unsafe-eval'"],
+    "style-src": ["'self'", "'unsafe-inline'", "https:"],
+    "img-src": ["'self'", "blob:", "data:", "https:"],
+    "media-src": ["'self'", "blob:", "data:", "https:"],
+    "font-src": ["'self'", "data:", "https:"],
+    "connect-src": ["'self'", "blob:", "data:", "https:", "wss:"],
+    "worker-src": ["'self'", "blob:"],
+    "frame-src": ["'self'", "https:"],
+    "object-src": ["'none'"],
+    "base-uri": ["'self'"],
+    "form-action": ["'self'"],
+  };
+  static readonly #fetchDirectives: readonly string[] = [
+    "child-src",
+    "connect-src",
+    "fenced-frame-src",
+    "font-src",
+    "frame-src",
+    "img-src",
+    "manifest-src",
+    "media-src",
+    "object-src",
+    "prefetch-src",
+    "script-src",
+    "script-src-elem",
+    "script-src-attr",
+    "style-src",
+    "style-src-elem",
+    "style-src-attr",
+    "worker-src",
+  ];
+  //? Also bounds the links the shell hands to the OS; on mobile, openExternalUrl sends http(s) to the browser plugin.
+  static readonly defaultOpenUrls: readonly string[] = ["https://*:*", "mailto:*", "tel:*"];
   //* Used when no plugin of the app or its libs claims the permission; speech has no native plugin yet.
   static readonly builtinContributions: { [permission in NativePermission]: AkanPluginNativeConfig } = {
     camera: {
@@ -102,6 +140,7 @@ export class NativeConfig {
     desktopServer,
     nativePlugins = [],
     desktopBin,
+    publicEnv = {},
   }: NativeConfigInput): NativeConfigResult {
     const warnings: string[] = [];
     const applied = (target.permissions ?? []).flatMap((permission) => {
@@ -191,6 +230,8 @@ export class NativeConfig {
       backgroundColorDark: typeof background === "string" ? undefined : background?.dark,
       devtools: target.devtools ? true : undefined,
     });
+    const csp = NativeConfig.#csp(target, NativeConfig.#plainOrigins(publicEnv, env, !!desktopServer));
+    const openUrls = target.openUrls ?? NativeConfig.defaultOpenUrls;
     const config: AkanNativeConfig = {
       app: {
         id: resolveAppId(target.appId, platform),
@@ -207,9 +248,14 @@ export class NativeConfig {
         {
           identifier: "app",
           description: `The plugins ${target.appName} ships, each with its default permissions`,
-          permissions: pluginIds.map((id) => `${id}:default`),
+          permissions: pluginIds.map((id) =>
+            id === "opener" && !openUrls.includes("*")
+              ? { identifier: "opener:default", allow: openUrls.map((url) => ({ url })) }
+              : `${id}:default`,
+          ),
         },
       ],
+      ...(csp ? { security: { csp } } : {}),
       ...(Object.keys(usageDescriptions).length ? { usageDescriptions } : {}),
       ...(target.deepLinks?.schemes?.length || target.deepLinks?.domains?.length
         ? { deepLinks: NativeConfig.#deepLinks(target, locales, i18n) }
@@ -237,6 +283,69 @@ export class NativeConfig {
       ...(shell ? { shell } : {}),
     };
     return { config, warnings };
+  }
+
+  static #csp({ name, csp: setting }: AkanNativeTarget, plainOrigins: string[]) {
+    if (setting === false) return undefined;
+    if (typeof setting === "string") {
+      if (!setting.trim())
+        throw new Error(
+          `Native target '${name}': csp "" is no policy; write \`csp: false\` to ship the page without one.`,
+        );
+      return setting;
+    }
+    const policy: Record<string, string[]> = Object.fromEntries(
+      Object.entries(NativeConfig.defaultCsp).map(([directive, sources]) => [directive, [...sources]]),
+    );
+    const add = (directive: string, sources: readonly string[]) => {
+      const list = policy[directive] ?? [];
+      policy[directive] = [...new Set([...list.filter((source) => source !== "'none'"), ...sources])];
+    };
+    add("connect-src", [...plainOrigins, ...plainOrigins.map((origin) => origin.replace(/^http/, "ws"))]);
+    add("img-src", plainOrigins);
+    add("media-src", plainOrigins);
+    const asked = new Map<string, string[]>();
+    for (const [key, sources] of Object.entries(setting ?? {})) {
+      const directive = key.toLowerCase();
+      const list = typeof sources === "string" ? sources.split(/\s+/).filter(Boolean) : sources;
+      asked.set(directive, [...(asked.get(directive) ?? []), ...list]);
+    }
+    //? Each fetch directive the default names overrides default-src, so a default-src entry has to reach every one.
+    const everywhere = asked.get("default-src") ?? [];
+    asked.delete("default-src");
+    if (everywhere.length)
+      for (const directive of Object.keys(policy))
+        if (
+          directive === "default-src" ||
+          (directive !== "object-src" && NativeConfig.#fetchDirectives.includes(directive))
+        )
+          add(directive, everywhere);
+    const variant = /^(script|style)-src-(elem|attr)$/;
+    //? A directive the default lacks starts from its CSP fallback, else naming it would drop 'self' and the hashes.
+    for (const [directive, sources] of [...asked].sort(
+      ([a], [b]) => Number(variant.test(a)) - Number(variant.test(b)),
+    )) {
+      const from = variant.test(directive)
+        ? directive.replace(/-(elem|attr)$/, "")
+        : NativeConfig.#fetchDirectives.includes(directive)
+          ? "default-src"
+          : null;
+      policy[directive] ??= [...(from ? (policy[from] ?? []) : [])];
+      add(directive, sources);
+    }
+    return policy;
+  }
+
+  //? https: and wss: cover a cloud API, so only plain-http origins are named; a carried server's port comes at launch.
+  static #plainOrigins(publicEnv: Record<string, string | undefined>, env: NativeEnv | undefined, carried: boolean) {
+    const origins = new Set<string>();
+    const pinned = publicEnv.AKAN_PUBLIC_SERVER_URL;
+    if (pinned && URL.canParse(pinned) && new URL(pinned).protocol === "http:") origins.add(new URL(pinned).origin);
+    const environment = publicEnv.AKAN_PUBLIC_ENV ?? env ?? "debug";
+    const mode = publicEnv.AKAN_PUBLIC_OPERATION_MODE ?? (environment === "local" ? "local" : "cloud");
+    if (mode === "local") origins.add("http://localhost:*");
+    if (carried) origins.add("http://127.0.0.1:*");
+    return [...origins];
   }
 
   static #icon(

@@ -10,6 +10,7 @@ import { akanCodePaths } from "./akanCodePaths";
 import { akanSystemPrompt } from "./akanSystemPrompt";
 import type { CodeAgentProxy } from "./CodeAgentProxy";
 import { CodeSessionIndex } from "./CodeSessionIndex";
+import { WorkspaceTrust } from "./WorkspaceTrust";
 
 export interface AkanCodeServicesOptions {
   workspaceRoot: string;
@@ -34,7 +35,7 @@ export class AkanCodeServices {
 
   // The engine locks and rewrites `authPath` itself, so two `akan code` refreshing a token at once cannot clobber it.
   static async runtime(workspaceRoot: string, proxy: CodeAgentProxy | null = null) {
-    mkdirSync(akanCodePaths.globalDir(), { recursive: true, mode: 0o700 });
+    akanCodePaths.ensureGlobalDir();
     const runtime = await ModelRuntime.create({
       //* Behind a proxy no real key may reach a request, so credentials live in a throwaway file.
       authPath: proxy
@@ -88,7 +89,9 @@ export class AkanCodeServices {
           : agentsFiles,
       }),
       appendSystemPrompt: [akanSystemPrompt(options.profile)],
-      additionalExtensionPaths: present(akanCodePaths.extensionsDir(options.workspaceRoot)),
+      additionalExtensionPaths: WorkspaceTrust.isTrusted(options.workspaceRoot, "extensions")
+        ? present(akanCodePaths.extensionsDir(options.workspaceRoot))
+        : [],
       additionalSkillPaths: AkanCodeServices.#skillPaths(options.profile, options.workspaceRoot),
       extensionFactories: options.extensions,
     };

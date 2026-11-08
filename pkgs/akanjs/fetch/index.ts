@@ -4,4 +4,5 @@ export * from "./client";
 export * from "./fetchType";
 export * from "./renderScope";
 export * from "./requestStorage";
+export * from "./sessionCookie";
 export * from "./types";

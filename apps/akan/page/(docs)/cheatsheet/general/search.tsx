@@ -798,7 +798,7 @@ export class ProductObject extends via(ProductInput, (field) => ({
                       A named slice is guarded only by its own <code>init({"{ guards }"})</code>.
                     </strong>{" "}
                     The <code>slice()</code> map covers the root slice and generated CRUD. With no guards of its own,
-                    the search is open to anyone over HTTP and left out of MCP.
+                    the search refuses every caller with 403 and is left out of MCP.
                   </span>
                 ),
                 ko: (
@@ -806,8 +806,8 @@ export class ProductObject extends via(ProductInput, (field) => ({
                     <strong>
                       이름 붙은 slice는 자기 <code>init({"{ guards }"})</code>로만 보호됩니다.
                     </strong>{" "}
-                    <code>slice()</code>의 guard 맵은 root slice와 생성된 CRUD에만 적용됩니다. 자기 guard가 없으면
-                    HTTP로 누구나 호출할 수 있고, MCP에는 공개되지 않습니다.
+                    <code>slice()</code>의 guard 맵은 root slice와 생성된 CRUD에만 적용됩니다. 자기 guard가 없으면 모든
+                    호출을 403으로 거절하고, MCP에도 공개되지 않습니다.
                   </span>
                 ),
               })}

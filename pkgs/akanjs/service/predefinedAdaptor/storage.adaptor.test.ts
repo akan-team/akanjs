@@ -76,6 +76,35 @@ describe("BlobStorage.resolveLocalPath", () => {
     await storage.uploadDataFromLocal({ path: "memo/b.txt", localPath: local, access: "private" });
     expect(await Bun.file(storage.resolveLocalPath("memo/b.txt", "private") ?? "").text()).toBe("hello");
   });
+
+  test("every read, write, copy, delete and listing refuses a key outside its root", async () => {
+    useEnv({ AKAN_PUBLIC_ENV: "local", AKAN_PUBLIC_OPERATION_MODE: "local" });
+    const outside = `${workspace}/outside.txt`;
+    await Bun.write(outside, "kept");
+    await Bun.write(`${workspace}/backend/memo/c.txt`, "c");
+    const escape = "../outside.txt";
+
+    await expect(storage.readData(escape)).rejects.toThrow("outside the storage root");
+    await expect(storage.readDataAsJson(escape)).rejects.toThrow("outside the storage root");
+    await expect(storage.getDataList("../")).rejects.toThrow("outside the storage root");
+    await expect(storage.uploadDataFromLocal({ path: escape, localPath: outside })).rejects.toThrow(
+      "outside the storage root",
+    );
+    await expect(
+      storage.uploadDataFromLocal({ path: "../x.txt", localPath: outside, access: "private" }),
+    ).rejects.toThrow("outside the storage root");
+    await expect(
+      storage.copyData({ bucket: "", copyPath: "memo/c.txt", pastePath: escape, filename: "c.txt" }),
+    ).rejects.toThrow("outside the storage root");
+    await expect(
+      storage.copyData({ bucket: "", copyPath: escape, pastePath: "memo/d.txt", filename: "d.txt" }),
+    ).rejects.toThrow("outside the storage root");
+    expect(await storage.deleteDataByPath(escape)).toBe(false);
+    expect(await storage.deleteDataByPath("/etc/hosts")).toBe(false);
+    expect(await Bun.file(outside).text()).toBe("kept");
+    expect(await Bun.file(`${workspace}/backend/memo/d.txt`).exists()).toBe(false);
+    expect((await storage.getDataList("memo")).map((url) => url.split("/").at(-1))).toEqual(["c.txt"]);
+  });
 });
 
 describe("BlobStorage.assertShared", () => {

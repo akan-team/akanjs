@@ -371,7 +371,8 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
                 AkanNativeNavigation.LOAD -> false
                 AkanNativeNavigation.DROP -> true.also { Log.i(TAG, "blocked a ${url.scheme}: navigation (${if (request.isForMainFrame) "top level" else "a frame"})") }
                 AkanNativeNavigation.OPEN -> {
-                    if (!AkanNativeExternal.allowed()) Log.i(TAG, "not opening a ${url.scheme}: link: at most one per second leaves the app")
+                    if (!AkanNativeKernel.externalOpenPermitted(bridge.acl, url.toString())) Log.i(TAG, "not opening a ${url.scheme}: link: the app's opener capabilities leave it out")
+                    else if (!AkanNativeExternal.allowed()) Log.i(TAG, "not opening a ${url.scheme}: link: at most one per second leaves the app")
                     else try {
                         startActivity(Intent(Intent.ACTION_VIEW, url).addCategory(Intent.CATEGORY_BROWSABLE))
                     } catch (e: ActivityNotFoundException) {

@@ -61,13 +61,13 @@ export const Provider = ({
     .desc("Whether this dialog is showing.")
     .value(openState);
   const openDialog = st
-    .tool(namespace ? `openDialogIn${suffix}` : null)
+    .tool(namespace ? `openDialogIn${suffix}` : null, { taint: "exempt" })
     .desc(`Open the ${namespace ?? ""} dialog.`)
     .exec(() => {
       setOpenState(true);
     });
   const closeDialog = st
-    .tool(namespace ? `closeDialogIn${suffix}` : null)
+    .tool(namespace ? `closeDialogIn${suffix}` : null, { taint: "exempt" })
     .desc(`Close the ${namespace ?? ""} dialog.`)
     .exec(() => {
       // The surface's own dismissal, the X button's path; flipping the state is for a dialog with no modal.

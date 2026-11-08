@@ -293,7 +293,7 @@ Left out
 
   - guards: [Admin]: An endpoint that declares a real guard is published to agents.
 
-  - no guards: Refused. A missing guards array now costs visibility as well as authorization.
+  - no guards: Refused, as it is over HTTP, where an endpoint without guards answers 403.
 
   - mutation · [Public]: A mutation whose only guard is Public is refused too.
 

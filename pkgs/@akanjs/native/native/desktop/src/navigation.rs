@@ -46,6 +46,18 @@ fn extra_schemes() -> &'static [String] {
   EXTRA_SCHEMES.get().map_or(&[], |v| v.as_slice())
 }
 
+/// boot.json's ACL; None when it has none, and then every link of an external scheme may leave.
+static ACL: OnceLock<Option<crate::acl::Acl>> = OnceLock::new();
+
+pub fn set_acl(acl: Option<crate::acl::Acl>) {
+  let _ = ACL.set(acl);
+}
+
+/// kernel.ts externalOpenPermitted: a link or window.open leaves only where opener.openUrl may open it.
+pub fn opener_permits(url: &str, window: u32) -> bool {
+  ACL.get().and_then(Option::as_ref).is_none_or(|acl| acl.opener_permits(url, window))
+}
+
 /// Whether the OS may be handed a URL of this scheme: the contract's, and what the app added (never
 /// the forbidden ones).
 fn external(scheme: &str, extra: &[String]) -> bool {
@@ -116,7 +128,7 @@ pub fn shown(url: &str) -> String {
 
 /// wry's navigation handler. `false` cancels the navigation.
 #[cfg(not(target_os = "linux"))]
-pub fn allow(url: &str) -> bool {
+pub fn allow(url: &str, window: u32) -> bool {
   #[cfg(target_os = "macos")]
   let top_level = !mac::in_sub_frame();
   #[cfg(not(target_os = "macos"))]
@@ -124,7 +136,7 @@ pub fn allow(url: &str) -> bool {
   match decide(url, top_level) {
     Decision::Load => true,
     Decision::Open => {
-      crate::open_external(url);
+      crate::open_external(url, window);
       false
     }
     Decision::Drop => {
@@ -136,7 +148,7 @@ pub fn allow(url: &str) -> bool {
 
 /// Navigation and media policy for a new webview (macOS: both delegates' methods, once per class).
 #[cfg(target_os = "macos")]
-pub fn install(webview: &wry::WebView) {
+pub fn install(webview: &wry::WebView, _window: u32) {
   mac::install(webview);
   mac::install_media(webview);
 }
@@ -144,7 +156,7 @@ pub fn install(webview: &wry::WebView) {
 /// Frames inside the page: WebView2 would otherwise let them start apps by scheme (with its own
 /// prompt).
 #[cfg(target_os = "windows")]
-pub fn install(webview: &wry::WebView) {
+pub fn install(webview: &wry::WebView, _window: u32) {
   use webview2_com::{take_pwstr, NavigationStartingEventHandler};
   use windows::core::PWSTR;
   use wry::WebViewExtWindows;
@@ -358,7 +370,7 @@ pub mod mac {
 }
 
 #[cfg(target_os = "linux")]
-pub fn install(webview: &wry::WebView) {
+pub fn install(webview: &wry::WebView, window: u32) {
   use webkit2gtk::{
     glib::prelude::*, NavigationPolicyDecision, NavigationPolicyDecisionExt, NetworkError, PolicyDecisionExt, PolicyDecisionType, PolicyError, ResponsePolicyDecision,
     ResponsePolicyDecisionExt, URIRequestExt, URIResponseExt, WebViewExt,
@@ -366,7 +378,7 @@ pub fn install(webview: &wry::WebView) {
   use wry::WebViewExtUnix;
   let view = webview.webview();
   // true: decided here.
-  view.connect_decide_policy(|_, decision, kind| match kind {
+  view.connect_decide_policy(move |_, decision, kind| match kind {
     PolicyDecisionType::NavigationAction => {
       let Some(action) = decision.dynamic_cast_ref::<NavigationPolicyDecision>().and_then(|d| d.navigation_action()) else { return false };
       let url = action.request().and_then(|r| r.uri()).map(|u| u.to_string()).unwrap_or_default();
@@ -376,7 +388,7 @@ pub fn install(webview: &wry::WebView) {
       }
       // mailto:, tel: and every other scheme, in any frame: only a click may open a mail or phone app.
       if opens_externally(&url) && action.is_user_gesture() {
-        crate::open_external(&url);
+        crate::open_external(&url, window);
       } else {
         log!("blocked a navigation to {}", shown(&url));
       }
@@ -392,7 +404,7 @@ pub fn install(webview: &wry::WebView) {
         Decision::Load => false,
         Decision::Open => {
           decision.ignore();
-          crate::open_external(&url);
+          crate::open_external(&url, window);
           true
         }
         Decision::Drop => {
@@ -407,14 +419,14 @@ pub fn install(webview: &wry::WebView) {
   // A top-level load that fails before its response (offline, unknown host) would replace the app
   // with WebKit's error page: the link goes to the browser instead, which shows the error.
   // true: no error page.
-  view.connect_load_failed(|_, _, url, error| {
+  view.connect_load_failed(move |_, _, url, error| {
     if in_app(url) {
       return false;
     }
     // Ignored above (already opened), or stopped.
     let ended_here = error.matches(PolicyError::FrameLoadInterruptedByPolicyChange) || error.matches(NetworkError::Cancelled);
     if !ended_here && opens_externally(url) {
-      crate::open_external(url);
+      crate::open_external(url, window);
     }
     true
   });

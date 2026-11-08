@@ -60,7 +60,12 @@
   an inline arrow can be clicked by a person and by nobody else. `.desc()` is required and comes first, `.arg()`
   is an argument the caller must pass and `.opt()` one it may leave out (the `exec` parameter is then `| null`),
   and `.exec()` is the only hook, so the chain completes in one unconditional statement and the callable carries
-  `data-akan-action` like a store setter does. A `remove*` name defaults to a confirm gate. `st.tool("x", { label:
+  `data-akan-action` like a store setter does. A name starting with a write verb (`remove`, `delete`, `create`,
+  `update`, `upsert`, `submit`, `save`, `send`, `export`) asks the user first unless it says `{ confirm: false }`;
+  `AgentConfirm.set({ byName })` moves that default app-wide. After a tool marked `taint: "source"` (`readScreen`,
+  `readState`, `viewImage`) returns text the user did not write, the next call that changes something asks once,
+  whatever its own `confirm` says, until the user approves a call; `taint: "exempt"` marks a tool that only moves the
+  view, and `AgentConfirm.set({ afterScreenRead: false })` turns the rule off. `st.tool("x", { label:
   l("ticket.archive") })` gives the action a name a person reads — `Agent.useScreenActions()` hands it to a command
   palette, and the model never sees it. Reach a store action
   from the body — `.exec((id) => st.do.removeX(id))` — which is how an agent gets CRUD; `st.do` on its own

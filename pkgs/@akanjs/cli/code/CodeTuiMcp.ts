@@ -6,6 +6,7 @@ export interface CodeTuiMcpView {
   declared: McpDeclaredServer[]; // what the files say now
   files: { scope: McpServerScope; file: string }[];
   problem?: string;
+  workspaceApproved?: boolean;
 }
 
 interface McpRow {
@@ -13,6 +14,7 @@ interface McpRow {
   disabled?: boolean;
   scope?: McpServerScope;
   live?: CodeAgentMcpStatus;
+  unapproved?: boolean;
 }
 
 export class CodeTuiMcp {
@@ -67,7 +69,12 @@ export class CodeTuiMcp {
   static #rows(view: CodeTuiMcpView) {
     const byName = new Map<string, McpRow>();
     for (const entry of view.declared)
-      byName.set(entry.ref.name, { ref: entry.ref, disabled: entry.disabled, scope: entry.scope });
+      byName.set(entry.ref.name, {
+        ref: entry.ref,
+        disabled: entry.disabled,
+        scope: entry.scope,
+        unapproved: entry.scope === "workspace" && view.workspaceApproved === false,
+      });
     for (const live of view.status) byName.set(live.name, { ...byName.get(live.name), live });
     return [...byName]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -80,6 +87,7 @@ export class CodeTuiMcp {
 
   static #stateOf(entry: McpRow) {
     if (entry.disabled) return "disabled in the file";
+    if (entry.unapproved && !entry.live) return "not approved · restart akan code to approve it";
     if (!entry.live) return "declared · /mcp reload to connect";
     // Before the error branch: a 401 is a server answering correctly, not a broken one.
     if (entry.live.auth === "required") return `sign-in needed · /mcp login ${entry.live.name}`;

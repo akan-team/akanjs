@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { adapt, getDefaultInjectRegistry, getDefaultLiveRegistry } from "akanjs/service";
 import { buildEndpoint, type EndpointInfo } from "./endpointInfo";
 import { EndpointRateLimit } from "./endpointRateLimit";
+import { Public } from "./guards";
 import { SignalContext } from "./signalContext";
 
 let bodyReads = 0;
@@ -50,7 +51,7 @@ afterEach(() => {
 describe("EndpointRateLimit", () => {
   test("refuses past an ip budget with 429 and Retry-After, before the body is read", async () => {
     const endpointInfo = buildEndpoint
-      .mutation(Boolean, { rateLimit: { calls: 2, windowMs: 60_000 } })
+      .mutation(Boolean, { guards: [Public], rateLimit: { calls: 2, windowMs: 60_000 } })
       .body("text", String)
       .exec(() => true);
     const request = () => requestOf({ body: { text: "hi" } });
@@ -70,8 +71,8 @@ describe("EndpointRateLimit", () => {
   });
 
   test("keeps a budget per address and per endpoint", async () => {
-    const limitedInfo = buildEndpoint.query(String, { rateLimit: { calls: 1 } }).exec(() => "ok");
-    const otherInfo = buildEndpoint.query(String, { rateLimit: { calls: 1 } }).exec(() => "ok");
+    const limitedInfo = buildEndpoint.query(String, { guards: [Public], rateLimit: { calls: 1 } }).exec(() => "ok");
+    const otherInfo = buildEndpoint.query(String, { guards: [Public], rateLimit: { calls: 1 } }).exec(() => "ok");
 
     expect((await call("limited", limitedInfo)).status).toBe(200);
     expect((await call("limited", limitedInfo)).status).toBe(429);
@@ -81,7 +82,9 @@ describe("EndpointRateLimit", () => {
   });
 
   test("an account budget counts the account, and an anonymous caller by address", async () => {
-    const endpointInfo = buildEndpoint.query(String, { rateLimit: { calls: 1, by: "account" } }).exec(() => "ok");
+    const endpointInfo = buildEndpoint
+      .query(String, { guards: [Public], rateLimit: { calls: 1, by: "account" } })
+      .exec(() => "ok");
 
     expect((await call("mine", endpointInfo, requestOf({ account: { sid: "s1" } }))).status).toBe(200);
     expect((await call("mine", endpointInfo, requestOf({ account: { sid: "s1" } }))).status).toBe(429);
@@ -94,7 +97,9 @@ describe("EndpointRateLimit", () => {
     EndpointRateLimit.configure({
       accountKey: (account) => (account as { self?: { id?: string } } | null)?.self?.id ?? null,
     });
-    const endpointInfo = buildEndpoint.query(String, { rateLimit: { calls: 1, by: "account" } }).exec(() => "ok");
+    const endpointInfo = buildEndpoint
+      .query(String, { guards: [Public], rateLimit: { calls: 1, by: "account" } })
+      .exec(() => "ok");
     const session = (sid: string) => requestOf({ account: { sid, self: { id: "user-1" } } });
 
     expect((await call("mine", endpointInfo, session("s1"))).status).toBe(200);
@@ -103,8 +108,8 @@ describe("EndpointRateLimit", () => {
 
   test("the app budget covers undeclared endpoints, and an endpoint override or `false` wins", async () => {
     EndpointRateLimit.configure({ budget: { calls: 1 }, endpoints: { raised: { calls: 2 }, exempt: false } });
-    const undeclared = buildEndpoint.query(String).exec(() => "ok");
-    const optedOut = buildEndpoint.query(String, { rateLimit: false }).exec(() => "ok");
+    const undeclared = buildEndpoint.query(String, { guards: [Public] }).exec(() => "ok");
+    const optedOut = buildEndpoint.query(String, { guards: [Public], rateLimit: false }).exec(() => "ok");
 
     expect((await call("undeclared", undeclared)).status).toBe(200);
     expect((await call("undeclared", undeclared)).status).toBe(429);
@@ -116,8 +121,8 @@ describe("EndpointRateLimit", () => {
   });
 
   test("the env turns budgets off, keeps them off in a local environment unless on, and names a default", () => {
-    const declared = buildEndpoint.query(String, { rateLimit: { calls: 1 } }).exec(() => "ok");
-    const undeclared = buildEndpoint.query(String).exec(() => "ok");
+    const declared = buildEndpoint.query(String, { guards: [Public], rateLimit: { calls: 1 } }).exec(() => "ok");
+    const undeclared = buildEndpoint.query(String, { guards: [Public] }).exec(() => "ok");
 
     EndpointRateLimit.applyEnv(undefined, "local");
     expect(EndpointRateLimit.budgetOf("declared", declared)).toBeNull();
@@ -143,7 +148,7 @@ describe("EndpointRateLimit", () => {
 
   test("never refuses leaving a room", async () => {
     const endpointInfo = buildEndpoint
-      .pubsub(String, { rateLimit: { calls: 1 } })
+      .pubsub(String, { guards: [Public], rateLimit: { calls: 1 } })
       .room("roomId", String)
       .exec(() => undefined);
     const leave = () =>
@@ -156,7 +161,7 @@ describe("EndpointRateLimit", () => {
 
   test("callers without an address share one budget", async () => {
     SignalContext.setHttpPeerResolver(null);
-    const endpointInfo = buildEndpoint.query(String, { rateLimit: { calls: 1 } }).exec(() => "ok");
+    const endpointInfo = buildEndpoint.query(String, { guards: [Public], rateLimit: { calls: 1 } }).exec(() => "ok");
 
     expect((await call("unknown", endpointInfo)).status).toBe(200);
     expect((await call("unknown", endpointInfo)).status).toBe(429);

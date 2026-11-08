@@ -61,7 +61,7 @@ hidden and secret fields masked
 
 first refusal
 
-**No guards array means no checks.** Akan has no default policy: an endpoint that names no `guards` runs zero checks. A `mutation` without guards is callable by anyone who can reach the route, and nothing asks them to sign in first.
+**No guards array means no caller.** An endpoint that names no `guards` answers every call with 403, and outside local operation the server does not boot with one. Name the guards it needs, or `[Public]` when anonymous access is the intent.
 
 The Guards That Ship
 
@@ -259,11 +259,11 @@ Endpoint
 
   - guards: [Every]: A real guard publishes the endpoint, and the same guard judges every call on both.
 
-  - no guards: Anyone may call it over HTTP, and it is never published. Write `guards: [Public]` if that is the intent.
+  - no guards: Every call is refused with 403, and outside local operation the server does not boot. Write `guards: [Public]` if anonymous access is the intent.
 
   - query · [Public]: Anonymous access, written down: a query publishes.
 
-  - mutation · [Public]: Not published: `[Public]` on a mutation is having no guard, spelled out.
+  - mutation · [Public]: Not published, though HTTP serves it to anonymous callers.
 
   - [Every, Person]: `Person` sets `static agents = false`: the act is gone from the catalogue, not hidden per caller.
 

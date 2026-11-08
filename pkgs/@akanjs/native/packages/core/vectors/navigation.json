@@ -1,5 +1,5 @@
 {
-  "about": "Where a navigation goes (SH-4, architecture.md §5 and the L0 shell policy). cases: [url, top level (false: a frame), schemes the app added to the external list (contract.json schemes.neverExternal never count), load|open|drop]. The app origin is written app://localhost; each host runs these with its own origin (https://app.localhost on Android and Windows). The app's own /__akan_native/* paths are never a top-level document (FileRefs, init.js, the bridge), and a frame may show only a FileRef there. fileRefSandbox: [a FileRef's mime, whether it is served with Content-Security-Policy: sandbox (everything but images other than SVG, audio, video, fonts and PDF: macOS WebKit draws nothing for a sandboxed PDF)].",
+  "about": "Where a navigation goes (SH-4, architecture.md §5 and the L0 shell policy). cases: [url, top level (false: a frame), schemes the app added to the external list (contract.json schemes.neverExternal never count), load|open|drop]. The app origin is written app://localhost; each host runs these with its own origin (https://app.localhost on Android and Windows). The app's own /__akan_native/* paths are never a top-level document (FileRefs, init.js, the bridge), and a frame may show only a FileRef there. links: [the ACL boot.json carries (null: none), a URL a link or window.open would hand to the OS, the window, whether it may leave]: only where opener.openUrl may open it, so the opener scope bounds links too. fileRefSandbox: [a FileRef's mime, whether it is served with Content-Security-Policy: sandbox (everything but images other than SVG, audio, video, fonts and PDF: macOS WebKit draws nothing for a sandboxed PDF)].",
   "cases": [
     ["app://localhost/", true, [], "load"],
     ["app://localhost/page?x=1#y", true, [], "load"],
@@ -37,6 +37,8 @@
     ["myapp://x", false, ["myapp"], "drop"],
     ["app://localhost/__akan_native/file/abc.html", true, [], "drop"],
     ["app://localhost/__akan_native/file/abc.html", false, [], "load"],
+    ["app://localhost/x/../__akan_native/file/abc.html", true, [], "drop"],
+    ["app://localhost/x/%2e%2e/__akan_native/file/abc.html", false, [], "drop"],
     ["app://localhost/__akan_native/file/abc.html?x#y", true, [], "drop"],
     ["app://localhost/__akan_native/init.js", true, [], "drop"],
     ["app://localhost/__akan_native/init.js", false, [], "drop"],
@@ -71,5 +73,24 @@
     ["image/svg+xml; charset=utf-8", true],
     ["image/png; x=1", false],
     ["", true]
+  ],
+  "links": [
+    [null, "https://example.com/", 1, true],
+    [null, "kakaotalk://open", 1, true],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": ["openUrl", "canOpenUrl", "openSettings"], "allow": [{ "url": "https://*:*" }, { "url": "mailto:*" }, { "url": "tel:*" }] }] }, "https://example.com/a", 1, true],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": ["openUrl", "canOpenUrl", "openSettings"], "allow": [{ "url": "https://*:*" }, { "url": "mailto:*" }, { "url": "tel:*" }] }] }, "HTTPS://Example.COM:8443/a", 1, true],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": ["openUrl", "canOpenUrl", "openSettings"], "allow": [{ "url": "https://*:*" }, { "url": "mailto:*" }, { "url": "tel:*" }] }] }, "http://example.com/", 1, false],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": ["openUrl", "canOpenUrl", "openSettings"], "allow": [{ "url": "https://*:*" }, { "url": "mailto:*" }, { "url": "tel:*" }] }] }, "mailto:a@example.com", 1, true],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": ["openUrl", "canOpenUrl", "openSettings"], "allow": [{ "url": "https://*:*" }, { "url": "mailto:*" }, { "url": "tel:*" }] }] }, "tel:+821012345678", 1, true],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": ["openUrl", "canOpenUrl", "openSettings"], "allow": [{ "url": "https://*:*" }, { "url": "mailto:*" }, { "url": "tel:*" }] }] }, "sms:+821012345678", 1, false],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": ["openUrl", "canOpenUrl", "openSettings"], "allow": [{ "url": "https://*:*" }, { "url": "mailto:*" }, { "url": "tel:*" }] }] }, "kakaotalk://open", 1, false],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": ["openUrl"] }] }, "http://example.com/", 1, true],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": "*", "allow": [{ "url": "https://*.example.com/*" }], "deny": [{ "url": "https://private.example.com" }] }] }, "https://docs.example.com/x", 1, true],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": "*", "allow": [{ "url": "https://*.example.com/*" }], "deny": [{ "url": "https://private.example.com" }] }] }, "https://evil.com/x.example.com/", 1, false],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": "*", "allow": [{ "url": "https://*.example.com/*" }], "deny": [{ "url": "https://private.example.com" }] }] }, "https://private.example.com/x", 1, false],
+    [{ "grants": [{ "plugin": "browser", "windows": "*", "items": ["open"] }] }, "https://example.com/", 1, false],
+    [{ "grants": [{ "plugin": "opener", "windows": "*", "items": ["openUrl"] }], "denied": { "opener": ["openUrl"] } }, "https://example.com/", 1, false],
+    [{ "grants": [{ "plugin": "opener", "windows": [1], "items": ["openUrl"] }] }, "https://example.com/", 1, true],
+    [{ "grants": [{ "plugin": "opener", "windows": [1], "items": ["openUrl"] }] }, "https://example.com/", 2, false]
   ]
 }

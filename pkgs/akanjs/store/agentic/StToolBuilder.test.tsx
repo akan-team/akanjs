@@ -2,9 +2,10 @@ import "../../test/registerDom";
 import { describe, expect, test } from "bun:test";
 import { dayjs, enumOf, Float, ID, Int } from "akanjs/base";
 import { act, useState } from "react";
-import { AgenticSurface, AgentProvider } from "use-agentic";
+import { AgenticSurface, AgentProvider, type ToolEntry, ToolRunner } from "use-agentic";
 import { actionTagOf } from "../actionTag";
 import { mount } from "../mount.fixture";
+import { AgentConfirm } from "./AgentConfirm";
 import { StToolBuilder } from "./StToolBuilder";
 import { StToolDraft } from "./StToolDraft";
 
@@ -392,6 +393,59 @@ describe("StToolBuilder.exec", () => {
     ]);
     await expect(surface.call("answerSurvey", {})).rejects.toThrow('Missing argument "reason" for answerSurvey.');
     unmount();
+  });
+
+  test("a tool named for a write confirms unless it says otherwise, and the app's policy can narrow that back", () => {
+    const surface = new AgenticSurface();
+    const Tools = () => {
+      for (const name of ["submitPost", "createPost", "updatePost", "exportCsvOfPost", "removePost", "openPost"])
+        new StToolDraft(name).desc(`${name}.`).exec(() => undefined);
+      new StToolDraft("sendNote", { confirm: false }).desc("sendNote.").exec(() => undefined);
+      new StToolDraft("settler", { taint: "exempt" }).desc("settler.").exec(() => undefined);
+      return null;
+    };
+    const asks = () =>
+      Object.fromEntries(
+        surface
+          .snapshot()
+          .tools.filter((tool) => tool.name !== "sendNote")
+          .map((tool) => [tool.name, tool.needsConfirm] as const),
+      );
+    const unmount = mount(
+      <AgentProvider surface={surface}>
+        <Tools />
+      </AgentProvider>,
+    );
+    expect(asks()).toEqual({
+      submitPost: true,
+      createPost: true,
+      updatePost: true,
+      exportCsvOfPost: true,
+      removePost: true,
+      openPost: false,
+      settler: false,
+    });
+    expect(ToolRunner.confirmMessage("sendNote", surface.tool("sendNote") as ToolEntry, {})).toBeNull();
+    expect(surface.snapshot().tools.find((tool) => tool.name === "sendNote")?.needsConfirm).toBe(false);
+    expect(ToolRunner.confirmMessage("submitPost", surface.tool("submitPost") as ToolEntry, {})).toBe(
+      "Run submitPost?",
+    );
+    expect(surface.tool("settler")?.taint).toBe("exempt");
+    unmount();
+    const policy = AgentConfirm.policy;
+    AgentConfirm.set({ byName: (name) => name.startsWith("remove") });
+    try {
+      const narrowed = mount(
+        <AgentProvider surface={surface}>
+          <Tools />
+        </AgentProvider>,
+      );
+      expect(asks().submitPost).toBe(false);
+      expect(asks().removePost).toBe(true);
+      narrowed();
+    } finally {
+      AgentConfirm.set(policy);
+    }
   });
 
   test("one name declared twice is a clash only when the two describe it differently", () => {

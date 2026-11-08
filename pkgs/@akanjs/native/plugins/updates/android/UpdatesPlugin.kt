@@ -268,6 +268,12 @@ class UpdatesPlugin(private val context: AkanNativePluginContext) : UpdatesPlugi
         val revokeKeys = List(revokeList?.length() ?: 0) { revokeList?.opt(it) as? String ?: throw bad("revokeKeys") }
         if (revokeKeys.size > AkanNativeKernel.MAX_REVOKE_KEYS || !revokeKeys.all(AkanNativeKernel::isUpdateKeyId)) throw bad("revokeKeys")
         if (o.has("resetSequence") && o.opt("resetSequence") !is Boolean) throw bad("resetSequence")
+        //? kernel.ts manifestExpiry: a signed expiresAt (Unix seconds) the manifest may leave out.
+        if (o.has("expiresAt")) {
+            val expires = (o.opt("expiresAt") as? Number)?.toDouble() ?: throw bad("expiresAt")
+            if (!expires.isFinite() || expires <= 0) throw bad("expiresAt")
+            if (System.currentTimeMillis() / 1000.0 >= expires) throw bad("it expired at ${expires.toLong()}")
+        }
         val bundle = o.optString("bundle")
         if (!AkanNativeUpdates.isBundleId(bundle)) throw bad("bundle id")
         val sequence = o.optDouble("sequence", -1.0)

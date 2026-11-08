@@ -68,7 +68,7 @@ Common mistake: an endpoint with no guards
 
 This `libs/util` file used to have the shape to avoid. The red line is how it read; the green line is the fix it carries now:
 
-**An endpoint that names no guards runs zero checks.** Without one, anyone could encrypt any input with the app's own key, which turns `encrypt` into an oracle. A library that cannot reach `libs/shared`'s `Admin` closes the endpoint with `[None]` and keeps it off MCP with `mcp: false`.
+**An endpoint that names no guards answers every call with 403**, and outside local operation the server does not boot with one. A library that cannot reach `libs/shared`'s `Admin` closes the endpoint with `[None]` and keeps it off MCP with `mcp: false`.
 
 Every Endpoint Names Its Guards
 
@@ -96,7 +96,7 @@ Agents see it — MCP
 
   - mutation(T, { guards: [Public] }): Runs for anyone over HTTP. MCP treats it as having no guard.
 
-  - no guards: Zero checks over HTTP, and refused by MCP.
+  - no guards: Refused with 403 over HTTP and by MCP; outside local operation the server does not boot.
 
 Yes
 
@@ -110,7 +110,7 @@ An open endpoint is fine when it is a decision, written down as one. The docs ap
 
 **A miss is an `Err`, not an empty page.** `readDocPage` throws `doc.error.docPageNotFound` so an agent is told it asked for nothing.
 
-**`[Public]` on a mutation is having no guard, spelled out.** MCP refuses a `mutation` whose only guard is `Public`, just as it refuses one with no guards at all. Which guard to use when is on the Authorization cheatsheet.
+**`[Public]` on a mutation opens it over HTTP and keeps it from agents.** MCP refuses a `mutation` whose only guard is `Public`, just as it refuses one with no guards at all. Which guard to use when is on the Authorization cheatsheet.
 
 Routes A Protocol Fixes
 
@@ -212,7 +212,7 @@ The service publishes into the room through its own signal, injected with `signa
 
 **Neither reaches MCP.** Agents never see a `pubsub` or a `message`, whatever its guards say.
 
-**A `pubsub` or `message` is open until it names its own `guards`.** Nothing above covers it, not even a slice default in a model module. Both endpoints above say `[Public]` only because `minimal` is a benchmark app, not an example. A room's guards re-run whenever the socket's credential changes.
+**A `pubsub` or `message` refuses every caller until it names its own `guards`.** Nothing above covers it, not even a slice default in a model module. Both endpoints above say `[Public]` only because `minimal` is a benchmark app, not an example. A room's guards re-run whenever the socket's credential changes.
 
 ## Code Examples
 

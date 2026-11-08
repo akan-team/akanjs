@@ -1,6 +1,7 @@
 //! The shared vectors (packages/core/vectors) against the desktop kernel: routes.rs and
 //! navigation.rs. The TypeScript reference runs the same files in bun test.
 
+use crate::acl::{url_match, Acl};
 use crate::contract;
 use crate::json::{self, V};
 use crate::navigation::{decide_for, Decision};
@@ -120,6 +121,33 @@ fn navigation() {
     let c = arr(case);
     if file_ref_sandboxed(&text(&c[0])) != c[1].as_bool().unwrap() {
       failed.push(format!("sandbox {:?}", text(&c[0])));
+    }
+  }
+  for case in arr(v.get("links").unwrap()) {
+    let c = arr(case);
+    let url = text(&c[1]);
+    let window = c[2].as_f64().unwrap() as u32;
+    let got = match &c[0] {
+      V::Null => true,
+      acl => Acl::from(acl).opener_permits(&url, window),
+    };
+    if got != c[3].as_bool().unwrap() {
+      failed.push(format!("link {url:?} from window {window}: {got}"));
+    }
+  }
+  assert!(failed.is_empty(), "{failed:#?}");
+}
+
+#[test]
+fn url_scopes() {
+  let v = load(include_str!("../../../packages/core/vectors/scope.json"));
+  let mut failed = Vec::new();
+  for case in arr(v.get("url").unwrap()) {
+    let c = arr(case);
+    let (pattern, url) = (text(&c[0]), text(&c[1]));
+    let got = url_match(&pattern, &url, text(&c[2]) == "deny");
+    if got != c[3].as_bool().unwrap() {
+      failed.push(format!("{pattern:?} {} {url:?}: {got}", text(&c[2])));
     }
   }
   assert!(failed.is_empty(), "{failed:#?}");

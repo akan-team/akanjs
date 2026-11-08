@@ -1,5 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { TrustedProxy } from "../../common/TrustedProxy";
+import { SignalContext } from "../../signal/signalContext";
 import { StatusAccess } from "../ops/statusAccess";
+import type { HttpRoutes } from "../types";
+import { ServerLimits } from "./serverLimits";
 import { createSoloAppRoutes, type SoloAppStatus } from "./soloAppRoutes";
 
 const running: SoloAppStatus = {
@@ -18,6 +22,36 @@ const routesOf = (status: SoloAppStatus | (() => SoloAppStatus), access = new St
   createSoloAppRoutes(typeof status === "function" ? status : () => status, null, null, access) as unknown as {
     [path: string]: { GET: (req?: Request) => Response };
   };
+
+//? Served the way `AkanServer` serves a solo app: through every `ApiRouter` wrapper, which hands a handler the request
+//? alone, with the listening server answering the peer through `SignalContext`.
+const serveSolo = async (builtinRoutes: HttpRoutes) => {
+  process.env.AKAN_PUBLIC_APP_NAME ??= "test";
+  process.env.AKAN_PUBLIC_REPO_NAME ??= "akanjs";
+  process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "example.com";
+  const { ApiRouter } = await import("./apiRouter");
+  const routes = ApiRouter.buildRoutes({
+    prefix: "/api",
+    websocketPrefix: "/ws",
+    routes: {} as HttpRoutes,
+    builtinRoutes,
+    renderEnvRoutes: {},
+    upgradeAppWs: () => false,
+    bodyLimits: new ServerLimits({}),
+  });
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", routes } as Parameters<typeof Bun.serve>[0]);
+  servers.push(server);
+  SignalContext.setHttpPeerResolver((req) => server.requestIP(req) ?? undefined);
+  return (pathname: string, headers: Record<string, string>) =>
+    fetch(`http://127.0.0.1:${server.port}${pathname}`, { headers });
+};
+
+const servers: { stop(force?: boolean): unknown }[] = [];
+afterEach(() => {
+  for (const server of servers.splice(0)) server.stop(true);
+  SignalContext.setHttpPeerResolver(null);
+  TrustedProxy.reset();
+});
 
 describe("solo app routes", () => {
   test("reports this process as the one child, in the gateway's own shape", async () => {
@@ -75,5 +109,19 @@ describe("solo app routes", () => {
     status = running;
     const body = (await routes["/_akan/app/health"].GET(signedIn()).json()) as { children: { ready: boolean }[] };
     expect(body.children[0]?.ready).toBe(true);
+  });
+
+  test("refuses an address that keeps presenting a wrong token even the right one, and no other address", async () => {
+    const access = new StatusAccess({ tokens: [token], failuresPerMinute: 2 });
+    const get = await serveSolo(createSoloAppRoutes(() => running, null, null, access));
+    const from = (address: string, presented: string) => ({
+      "x-forwarded-for": address,
+      authorization: `Bearer ${presented}`,
+    });
+    for (let attempt = 0; attempt < 2; attempt++)
+      expect((await get("/_akan/app/metrics", from("198.51.100.4", "not-the-token"))).status).toBe(401);
+    expect((await get("/_akan/app/metrics", from("198.51.100.4", token))).status).toBe(401);
+    expect(await (await get("/_akan/app/health", from("198.51.100.4", token))).json()).toEqual({ status: "running" });
+    expect((await get("/_akan/app/metrics", from("198.51.100.5", token))).status).toBe(200);
   });
 });

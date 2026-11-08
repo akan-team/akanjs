@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildEndpoint } from "./endpointInfo";
+import { Public } from "./guards";
 import { type MiddlewareCls, middleware } from "./middleware";
 import { MiddlewareChain } from "./middlewareChain";
 import type { SignalContext } from "./signalContext";
@@ -29,7 +30,9 @@ describe("MiddlewareChain", () => {
       ["first", recording("first", order, uses)],
       ["second", recording("second", order, uses)],
     ]);
-    const endpointInfo = buildEndpoint.query(String, { middlewares: [recording("own", order, uses)] }).exec(() => "ok");
+    const endpointInfo = buildEndpoint
+      .query(String, { guards: [Public], middlewares: [recording("own", order, uses)] })
+      .exec(() => "ok");
 
     for (let i = 0; i < 3; i += 1) {
       const result = await MiddlewareChain.of(global, env, endpointInfo).run(context, async () => {
@@ -74,7 +77,7 @@ describe("MiddlewareChain", () => {
       }
     }
     const global = new Map([["flaky", Flaky as unknown as MiddlewareCls]]);
-    const endpointInfo = buildEndpoint.query(String).exec(() => "ok");
+    const endpointInfo = buildEndpoint.query(String, { guards: [Public] }).exec(() => "ok");
     const call = () => MiddlewareChain.of(global, env, endpointInfo).run(context, async () => "ok");
 
     await expect(call()).rejects.toThrow("setup failed");
@@ -86,7 +89,7 @@ describe("MiddlewareChain", () => {
     const order: string[] = [];
     const global = new Map([["first", recording("first", order)]]);
     const copy = new Map(global);
-    const endpointInfo = buildEndpoint.query(String).exec(() => "ok");
+    const endpointInfo = buildEndpoint.query(String, { guards: [Public] }).exec(() => "ok");
     const before = MiddlewareChain.of(global, env, endpointInfo);
     const fromCopy = MiddlewareChain.of(copy, env, endpointInfo);
 

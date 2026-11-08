@@ -1,5 +1,5 @@
 import { type TunnelOpenFrame, tunnelWireContract } from "akanjs/common";
-import { type TunnelStream, type TunnelStreamLink, tunnelResetCodeOf } from "./tunnelStream";
+import { type TunnelStream, type TunnelStreamLink, tunnelResetCodeOf, tunnelTargetUrl } from "./tunnelStream";
 
 // Bun's fetch decodes the body but keeps content-encoding and the compressed content-length, so both are dropped.
 const reframedHeaders = new Set(["content-encoding", "content-length"]);
@@ -27,8 +27,13 @@ export class TunnelHttpStream implements TunnelStream {
 
   async run() {
     const { streamId, method = "GET", path = "/", headers = [] } = this.#open;
+    const target = tunnelTargetUrl(this.#origin, path);
+    if (!target) {
+      this.#link.sendFrame({ type: "reset", streamId, code: "protocol", message: "path leaves the shared origin" });
+      return;
+    }
     try {
-      const response = await fetch(`${this.#origin}${path}`, {
+      const response = await fetch(target, {
         method,
         headers: tunnelWireContract.headersOf(headers),
         body: this.#bodyStream,

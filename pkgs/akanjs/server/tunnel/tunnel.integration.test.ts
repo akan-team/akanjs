@@ -564,18 +564,99 @@ describe("tunnel agent against a gateway", () => {
       socket.on("end", () => socket.end(`reply:${got}`));
     });
     await new Promise<void>((resolve) => tcpOrigin.listen(0, "127.0.0.1", resolve));
+    const port = (tcpOrigin.address() as net.AddressInfo).port;
+    const own = new GatewayStub(1);
+    const sharing = new TunnelAgent({
+      gatewayUrl: own.url,
+      token: "test-token",
+      hostnames: ["tcp.tunnel.akanjs.com"],
+      origin: `http://localhost:${origin.port}`,
+      tcpPorts: [port],
+    });
     try {
-      const stream = await gateway.tcp((tcpOrigin.address() as net.AddressInfo).port);
+      await sharing.start();
+      await until(() => own.idle.length >= 1);
+      const stream = await own.tcp(port);
       expect(await until(() => stream.head()?.status === 200)).toBe(true);
       stream.send("request");
       stream.end();
       expect(await stream.finished).toBeUndefined();
       expect(stream.chunks.map((chunk) => textOf(chunk)).join("")).toBe("reply:request");
       expect(await until(stream.socketClosed)).toBe(true);
+      expect(await until(() => own.idle.length >= 1)).toBe(true);
+    } finally {
+      await sharing.stop();
+      own.stop();
+      tcpOrigin.close();
+    }
+  });
+
+  test("refuses a tcp stream to a port the agent was not given, and never dials it", async () => {
+    let dialed = 0;
+    const tcpOrigin = net.createServer(() => {
+      dialed += 1;
+    });
+    await new Promise<void>((resolve) => tcpOrigin.listen(0, "127.0.0.1", resolve));
+    try {
+      const stream = await gateway.tcp((tcpOrigin.address() as net.AddressInfo).port);
+      expect(await stream.finished).toStartWith("protocol: tcp port");
+      expect(dialed).toBe(0);
       expect(await until(() => gateway.idle.length >= gateway.idleTarget)).toBe(true);
     } finally {
       tcpOrigin.close();
     }
+  });
+
+  test("refuses a path that would move the request to another host", async () => {
+    let reached = 0;
+    const elsewhere = Bun.serve({
+      port: 0,
+      fetch: () => {
+        reached += 1;
+        return new Response("elsewhere");
+      },
+    });
+    try {
+      const answer = await gateway.request({ path: `@localhost:${elsewhere.port}/x` });
+      expect(answer.reset).toStartWith("protocol: path leaves the shared origin");
+      const socket = await gateway.websocket(`@localhost:${elsewhere.port}/ws`);
+      expect(await socket.finished).toStartWith("protocol: path leaves the shared origin");
+      expect(reached).toBe(0);
+      expect(textOf((await gateway.request({ path: "//double/slash" })).body)).toBe("hello");
+    } finally {
+      elsewhere.stop(true);
+    }
+  });
+
+  test("holds no more data sockets than its own ceiling, whatever the gateway asks for", async () => {
+    const greedy = new GatewayStub(20);
+    const capped = new TunnelAgent({
+      gatewayUrl: greedy.url,
+      token: "test-token",
+      hostnames: ["cap.tunnel.akanjs.com"],
+      origin: `http://localhost:${origin.port}`,
+      maxSockets: 3,
+    });
+    try {
+      await capped.start();
+      expect(await until(() => greedy.idle.length >= 3)).toBe(true);
+      await Bun.sleep(100);
+      expect(greedy.idle.length).toBe(3);
+    } finally {
+      await capped.stop();
+      greedy.stop();
+    }
+  });
+
+  test("dials a gateway only over wss, or plain ws on loopback", () => {
+    const options = { token: "t", hostnames: ["h.tunnel.akanjs.com"], origin: "http://localhost:1" };
+    for (const gatewayUrl of ["ws://tunnel.example.com", "http://localhost:1", "not a url"])
+      expect(() => new TunnelAgent({ ...options, gatewayUrl })).toThrow("wss://");
+    for (const gatewayUrl of ["wss://tunnel.example.com", "ws://localhost:1", "ws://127.0.0.1:1", "ws://[::1]:1"])
+      expect(() => new TunnelAgent({ ...options, gatewayUrl })).not.toThrow();
+    expect(
+      () => new TunnelAgent({ ...options, gatewayUrl: "ws://tunnel.example.com", allowInsecureGateway: true }),
+    ).not.toThrow();
   });
 
   test("gives up on a refusal instead of retrying a token that will never be accepted", async () => {

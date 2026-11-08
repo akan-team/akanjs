@@ -606,16 +606,16 @@ export class PostEndpoint extends endpoint(srv.post, ({ mutation }) => ({
                 en: (
                   <span>
                     <strong>Every custom endpoint names its own guards.</strong> The slice's guard map covers only the
-                    generated CRUD, never <code>publishPost</code>. An endpoint without <code>guards</code> is open to
-                    anyone over HTTP and is left out of the MCP catalogue; so is a mutation guarded only by{" "}
-                    <code>Public</code>.
+                    generated CRUD, never <code>publishPost</code>. An endpoint without <code>guards</code> answers 403
+                    over HTTP and is left out of the MCP catalogue; a mutation guarded only by <code>Public</code> is
+                    left out too.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>직접 만든 endpoint는 모두 자기 guard를 따로 적습니다.</strong> slice의 guard map은 자동
                     생성된 CRUD에만 적용되고 <code>publishPost</code>에는 닿지 않습니다. <code>guards</code>가 없는
-                    endpoint는 HTTP로 누구나 부를 수 있고 MCP 카탈로그에서도 빠집니다. <code>Public</code> guard만 단
+                    endpoint는 HTTP에서 403으로 거절되고 MCP 카탈로그에서도 빠집니다. <code>Public</code> guard만 단
                     mutation도 마찬가지로 빠집니다.
                   </span>
                 ),

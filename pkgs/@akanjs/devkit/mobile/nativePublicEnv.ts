@@ -47,6 +47,7 @@ export class NativePublicEnv {
       const word = NativePublicEnv.#secretWords.find((secret) => key.includes(secret));
       if (word) return [`${key} names a ${word.toLowerCase()}, which a page bundle must not carry`];
       if (typeof value !== "string") return [`${key} is not a string`];
+      if (/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(value)) return [`${key} holds a private key`];
       // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what is refused
       if (/[\u0000-\u001f\u007f]/.test(value)) return [`${key} holds a control character`];
       return [];
@@ -70,6 +71,17 @@ export class NativePublicEnv {
     const file = Bun.file(CsrArtifactBuilder.publicEnvPath(app));
     if (!(await file.exists())) return null;
     return NativePublicEnv.of((await file.json()) as Record<string, unknown>);
+  }
+
+  /** Every `AKAN_PUBLIC_*` the last `akan build` inlined, derived keys included, else the ones this process has. */
+  static async inlined(app: App): Promise<PublicEnv> {
+    const file = Bun.file(CsrArtifactBuilder.publicEnvPath(app));
+    const env = (await file.exists()) ? ((await file.json()) as Record<string, unknown>) : process.env;
+    return Object.fromEntries(
+      Object.entries(env).flatMap(([key, value]) =>
+        key.startsWith("AKAN_PUBLIC_") && typeof value === "string" ? [[key, value]] : [],
+      ),
+    );
   }
 
   /** A bundle.json's record, or null when it has none (a build from before the record, or no file at all). */

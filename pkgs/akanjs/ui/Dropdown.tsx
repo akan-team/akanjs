@@ -70,13 +70,13 @@ export const DefaultDropdown = ({
     .desc("Whether this dropdown menu is showing.")
     .value(opened);
   const openDropdown = st
-    .tool(namespace ? `openDropdownIn${suffix}` : null)
+    .tool(namespace ? `openDropdownIn${suffix}` : null, { taint: "exempt" })
     .desc(`Open the ${namespace ?? ""} dropdown menu.`)
     .exec(() => {
       setOpened(true);
     });
   const closeDropdown = st
-    .tool(namespace ? `closeDropdownIn${suffix}` : null)
+    .tool(namespace ? `closeDropdownIn${suffix}` : null, { taint: "exempt" })
     .desc(`Close the ${namespace ?? ""} dropdown menu.`)
     .exec(() => {
       setOpened(false);

@@ -68,6 +68,7 @@ interface McpCall {
   era: McpEra;
   req: Request;
   ui: boolean;
+  inProcess?: boolean;
 }
 
 interface McpErrorOptions {
@@ -332,19 +333,19 @@ export class McpRouter {
           discoverCache,
         );
       case "tools/list":
-        return await this.#list(call, "tools", [
+        return await this.#list(call, "tools", async () => [
           ...document.tools,
           ...(await this.#pages.tools(call.ui, document, call.req)),
         ]);
       case "resources/list":
-        return await this.#list(call, "resources", [
+        return await this.#list(call, "resources", async () => [
           ...document.resources,
           ...(await this.#pages.resources(call.ui, call.req)),
         ]);
       case "resources/templates/list":
-        return await this.#list(call, "resourceTemplates", document.resourceTemplates);
+        return await this.#list(call, "resourceTemplates", () => document.resourceTemplates);
       case "prompts/list":
-        return await this.#list(call, "prompts", await this.#pages.prompts(call.req));
+        return await this.#list(call, "prompts", () => this.#pages.prompts(call.req));
       case "tools/call": {
         const slot = await this.#acquire(call);
         if ("refused" in slot) return slot.refused;
@@ -372,12 +373,16 @@ export class McpRouter {
   }
 
   // Filter first, then page: an offset has to address the list the caller can actually see.
-  async #list<T extends { name: string }>(call: McpCall, key: string, items: T[]) {
-    const visible = await this.#dispatcher.filterForAccount(items, call.req);
-    const page = McpRouter.#page(visible, call.params.cursor, this.#props.pageSize ?? defaultPageSize);
-    if (!page) return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Invalid cursor.");
-    const result = { [key]: page.items, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
-    return this.#result(call, result, listCache);
+  //? Rate-limited like a call, as a listing runs the account and route guards; `listFor` (in-process) is not.
+  async #list<T extends { name: string }>(call: McpCall, key: string, itemsOf: () => Promise<T[]> | T[]) {
+    const list = async () => {
+      const visible = await this.#dispatcher.filterForAccount(await itemsOf(), call.req);
+      const page = McpRouter.#page(visible, call.params.cursor, this.#props.pageSize ?? defaultPageSize);
+      if (!page) return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Invalid cursor.");
+      const result = { [key]: page.items, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
+      return this.#result(call, result, listCache);
+    };
+    return call.inProcess ? await list() : await this.#limited(call, list);
   }
 
   /** The catalogue as built, before any caller filter: refusals, undescribed entries, `findTool`. */
@@ -405,7 +410,15 @@ export class McpRouter {
     const items: unknown[] = [];
     let cursor: string | undefined;
     do {
-      const call: McpCall = { id: 0, method, params: cursor ? { cursor } : {}, era: "legacy", req, ui };
+      const call: McpCall = {
+        id: 0,
+        method,
+        params: cursor ? { cursor } : {},
+        era: "legacy",
+        req,
+        ui,
+        inProcess: true,
+      };
       const body = (await (await this.#dispatch(call)).json()) as McpJsonRpcResponse;
       const result = body.result as Record<string, unknown> | undefined;
       if (!result) throw new Error(`MCP ${method} failed: ${body.error?.message ?? "no result"}`);
@@ -428,7 +441,7 @@ export class McpRouter {
 
   async #acquire(call: McpCall): Promise<{ refused: Response } | { release: () => void }> {
     if (!this.#limiter) return { release: () => {} };
-    const verdict = await this.#limiter.acquire(McpAuth.callerKey(call.req));
+    const verdict = await this.#limiter.acquire(this.#auth.callerKey(call.req));
     if (verdict.ok) return { release: verdict.release };
     const seconds = Math.max(1, Math.ceil(verdict.retryAfterMs / 1000));
     const message =
@@ -588,15 +601,15 @@ export class McpRouter {
     return this.#result(call, { contents: [{ uri, mimeType: "application/json", text }] });
   }
 
-  // MCP clients normally send no `Origin`. Matching our own host stops other sites but not DNS rebinding (the
-  // attacker's name resolves here, so Origin and host agree): `allowedOrigins` is what decides browser access.
+  // MCP clients normally send no `Origin`. Matching our own host stops other sites but not DNS rebinding (another
+  // site's name resolves here, so Origin and host agree), so the host also has to be one this app answers to.
   #originAllowed(req: Request) {
     const origin = req.headers.get("origin");
     if (!origin) return true;
     if ((this.#props.allowedOrigins ?? []).includes(origin)) return true;
     try {
       // The public host: behind a proxy `req.url` names the internal child; a configured resource pins it.
-      return new URL(origin).host === new URL(this.#auth.publicOrigin(req)).host;
+      return new URL(origin).host === new URL(this.#auth.publicOrigin(req)).host && this.#auth.answersTo(req);
     } catch {
       return false;
     }

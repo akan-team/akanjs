@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PromiseOrObject } from "akanjs/base";
-import { bearerTokenOf, decodeJwtPayload } from "akanjs/common";
+import { AppHosts, bearerTokenOf, decodeJwtPayload, IpLiteral } from "akanjs/common";
 import { SignalContext } from "../../signal/signalContext";
 import type { HttpRoutes } from "../types";
 
@@ -97,7 +97,7 @@ export class McpAuth {
     // named: its tokens for other resources could then arrive audience-less (RFC 8707 confused deputy).
     if (this.#props.authorizationServers?.length && !audience.length)
       return { status: 401, error: "invalid_token", description: "The access token names no resource." };
-    if (audience.length && !audience.includes(this.#resource(req)))
+    if (audience.length && !(this.answersTo(req) && audience.includes(this.#resource(req))))
       return { status: 401, error: "invalid_token", description: "The access token was issued for another resource." };
     const missing = this.#missingScopes(claims);
     // Every missing scope at once — a client that has to discover them one 403 at a time re-authorizes N times.
@@ -159,6 +159,15 @@ export class McpAuth {
     return McpAuth.origin(req);
   }
 
+  //? A rebound name is never an IP literal or localhost, so any other host must be one the app declares.
+  answersTo(req: Request): boolean {
+    if (this.#props.resource) return true;
+    const host = URL.parse(McpAuth.origin(req))?.host;
+    const name = host ? AppHosts.nameOf(host) : null;
+    if (!host || !name) return false;
+    return !!IpLiteral.parse(host) || name === "localhost" || name.endsWith(".localhost") || AppHosts.allows(host);
+  }
+
   // Behind a proxy `req.url` is the internal host, while `aud` names the URL the client used. `x-forwarded-host` is
   // only as trustworthy as the edge (a direct caller can forge it), hence `publicOrigin` prefers a pinned resource.
   static origin(req: Request) {
@@ -168,11 +177,11 @@ export class McpAuth {
     return `${forwarded("x-forwarded-proto") ?? url.protocol.replace(":", "")}://${host}`;
   }
 
-  // Read unverified on purpose: this runs after `reject`, so the token already passed whatever verification exists.
-  static callerKey(req: Request): string {
+  // Read unverified on purpose: this runs after `reject`, so the token already passed `verify`.
+  callerKey(req: Request): string {
     const token = McpAuth.#bearer(req);
-    // Security: a forwarded header counts only from a trusted proxy, or any caller could pick a fresh budget per call.
-    if (!token) return `ip:${SignalContext.clientIpOf(req) ?? "anonymous"}`;
+    // Security: only a trusted proxy's header or a verified token names a budget, or any caller could pick a fresh one.
+    if (!token || !this.#props.verify) return `ip:${SignalContext.clientIpOf(req) ?? "anonymous"}`;
     const claims = McpAuth.#claims(token);
     const id = [claims?.sid, claims?.jti, claims?.sub].find((value) => typeof value === "string" && value);
     return typeof id === "string" ? `token:${id}` : `token:${createHash("sha256").update(token).digest("base64url")}`;

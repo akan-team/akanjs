@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import {
   Any,
   Binary,
@@ -32,13 +32,13 @@ import {
 import { endpoint } from "./endpoint";
 import { buildEndpoint, type EndpointInfo } from "./endpointInfo";
 import { Exception } from "./exception";
-import type { Guard, GuardCls, GuardScope } from "./guard";
+import { type Guard, type GuardCls, type GuardScope, guard } from "./guard";
 import { None, Public } from "./guards";
 import { type Internal, internal } from "./internal";
 import type { InternalArg } from "./internalArg";
 import { Ws } from "./internalArg";
 import { buildInternal } from "./internalInfo";
-import { middleware, Timeout } from "./middleware";
+import { Logging, middleware, Timeout } from "./middleware";
 import { FetchSerializer } from "./serializer";
 import { serverSignal } from "./serverSignal";
 import { SignalContext } from "./signalContext";
@@ -290,7 +290,7 @@ const makeHttpRequest = ({
   }) as unknown as Bun.BunRequest;
 
 const makeSignalContext = ({
-  endpointInfo = buildEndpoint.query(String).exec(() => "ok"),
+  endpointInfo = buildEndpoint.query(String, { guards: [Public] }).exec(() => "ok"),
   request = makeHttpRequest(),
   adaptor = new (adapt("signalTestContextAdaptor"))(),
   live = getDefaultLiveRegistry(),
@@ -379,15 +379,23 @@ describe("signal metadata builders", () => {
     expect(endpointInfo.returns.nullable).toBe(true);
     expect(endpointInfo.signalOption.partial).toEqual(["title"]);
     expect(endpointInfo.getPath("fallback")).toBe("/custom/items/:id");
-    expect(buildEndpoint.query(String).param("id", ID).getPath("getOne")).toBe("/getOne/:id");
-    expect(buildEndpoint.query(String, { name: "renamed" }).getPath("getOne")).toBe("/renamed");
-    expect(() => buildEndpoint.query(String).body("maybe", String, { nullable: true }).param("id", ID)).toThrow(
-      "Last argument is nullable",
-    );
+    expect(
+      buildEndpoint
+        .query(String, { guards: [Public] })
+        .param("id", ID)
+        .getPath("getOne"),
+    ).toBe("/getOne/:id");
+    expect(buildEndpoint.query(String, { guards: [Public], name: "renamed" }).getPath("getOne")).toBe("/renamed");
+    expect(() =>
+      buildEndpoint
+        .query(String, { guards: [Public] })
+        .body("maybe", String, { nullable: true })
+        .param("id", ID),
+    ).toThrow("Last argument is nullable");
     expect(() => endpointInfo.param("late", String)).toThrow("Query function is already set");
     expect(() =>
       buildEndpoint
-        .query(String)
+        .query(String, { guards: [Public] })
         .exec(() => "ok")
         .exec(() => "again"),
     ).toThrow("Query function is already set");
@@ -900,7 +908,7 @@ describe("SignalContext execution", () => {
 
   test("parses HTTP params, query arrays, nullable search args, and JSON body", async () => {
     const endpointInfo = buildEndpoint
-      .mutation(String)
+      .mutation(String, { guards: [Public] })
       .param("id", ID)
       .search("ids", [ID])
       .search("maybe", String)
@@ -931,7 +939,7 @@ describe("SignalContext execution", () => {
 
   test("parses boolean search args sent as query text", async () => {
     const endpointInfo = buildEndpoint
-      .query(String)
+      .query(String, { guards: [Public] })
       .search("archived", Boolean)
       .exec((archived) => `archived:${String(archived)}`);
     const context = makeSignalContext({
@@ -948,7 +956,7 @@ describe("SignalContext execution", () => {
 
   test("parses an Any search arg as the JSON the query string carries", async () => {
     const endpointInfo = buildEndpoint
-      .query(String)
+      .query(String, { guards: [Public] })
       .search("args", Any)
       .exec((args) => JSON.stringify(args));
     const contextOf = (url: string) => makeSignalContext({ endpointInfo, request: makeHttpRequest({ url }) });
@@ -970,12 +978,12 @@ describe("SignalContext execution", () => {
 
   test("parses websocket message and pubsub room args", async () => {
     const messageInfo = buildEndpoint
-      .message(String)
+      .message(String, { guards: [Public] })
       .msg("text", String)
       .with(Ws)
       .exec((text, ws) => `${text}:${ws.subscribe}`);
     const pubsubInfo = buildEndpoint
-      .pubsub(String)
+      .pubsub(String, { guards: [Public] })
       .room("roomId", String)
       .exec(() => undefined);
     const wsReq = {
@@ -1010,12 +1018,13 @@ describe("SignalContext execution", () => {
     expect(messageContext.args).toEqual(["hello"]);
     expect(messageContext.internalArgs).toEqual([]);
     expect(pubsubContext.args).toEqual(["room-1"]);
-    expect(pubsubContext.getRoomId("roomKey")).toBe("roomKey-room-1");
+    expect(pubsubContext.getRoomId("roomKey")).toBe("roomKey-room%2D1");
+    expect(pubsubContext.getRequestRoomId("roomKey")).toBe("roomKey-room-1");
   });
 
   test("hands a message handler the socket id minted at the handshake", async () => {
     const endpointInfo = buildEndpoint
-      .message(String)
+      .message(String, { guards: [Public] })
       .msg("text", String)
       .with(Ws)
       .exec((text, ws) => `${text}:${ws.socketId}`);
@@ -1041,7 +1050,7 @@ describe("SignalContext execution", () => {
   test("registers ws cleanup through the detached on/off the Ws arg hands out", async () => {
     const cleaned: string[] = [];
     const endpointInfo = buildEndpoint
-      .pubsub(String)
+      .pubsub(String, { guards: [Public] })
       .room("roomId", String)
       .with(Ws)
       .exec((roomId, ws) => {
@@ -1544,10 +1553,200 @@ describe("SignalContext execution", () => {
     expect([count, label, id, tags]).toEqual([3, "123", "64a0000000000000000000a1", ["a", "b"]]);
   });
 
+  test("reads a multipart field named __proto__ as a field, never as the body's prototype", async () => {
+    let received: unknown[] = [];
+    const info = buildEndpoint
+      .mutation(Boolean, { guards: [Public], fileUpload: true })
+      .body("file", Upload)
+      .body("name", String, { nullable: true })
+      .exec((...args: unknown[]) => {
+        received = args;
+        return true;
+      });
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array([1])], "shot.png"));
+    form.append("__proto__", new File([new Uint8Array([2])], "other.png"));
+    const request = {
+      url: "http://localhost/api/upload",
+      params: {},
+      body: {},
+      headers: new Headers({ "content-type": "multipart/form-data; boundary=x" }),
+      formData: async () => form,
+    } as unknown as Bun.BunRequest;
+    const context = makeSignalContext({ endpointInfo: info, request });
+    await context.init();
+    await context.exec();
+
+    expect((received[0] as File).name).toBe("shot.png");
+    expect(received[1]).toBeNull();
+  });
+
+  test("answers 400 to a JSON body that is not an object, or not JSON", async () => {
+    const info = buildEndpoint
+      .mutation(String, { guards: [Public] })
+      .body("title", String)
+      .exec((title) => title);
+    const adaptor = new (adapt("signalTestBodyShapeAdaptor"))();
+    const statusOf = async (json: () => Promise<unknown>) => {
+      const request = {
+        url: "http://localhost/api/title",
+        params: {},
+        body: {},
+        headers: new Headers({ "content-type": "application/json" }),
+        json,
+      } as unknown as Bun.BunRequest;
+      const response = await SignalContext.try(adaptor, info, "title", async () => {
+        const context = makeSignalContext({ endpointInfo: info, request, adaptor });
+        await context.init();
+        return (await context.exec()) as Response;
+      });
+      return response?.status;
+    };
+    expect(await statusOf(async () => null)).toBe(400);
+    expect(await statusOf(async () => ["title"])).toBe(400);
+    expect(await statusOf(async () => "title")).toBe(400);
+    expect(
+      await statusOf(async () => {
+        throw new SyntaxError("Unexpected end of JSON input");
+      }),
+    ).toBe(400);
+    expect(await statusOf(async () => ({ title: "kept" }))).toBe(200);
+  });
+
+  test("reads no body for a caller its account guards refuse", async () => {
+    const info = buildEndpoint
+      .mutation(String, { guards: [TestDeny] })
+      .body("title", String)
+      .exec((title) => title);
+    let bodyReads = 0;
+    const request = {
+      url: "http://localhost/api/title",
+      params: {},
+      body: {},
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => {
+        bodyReads += 1;
+        return { title: "never read" };
+      },
+    } as unknown as Bun.BunRequest;
+    const context = makeSignalContext({ endpointInfo: info, request });
+    await context.init();
+    await expect(context.exec()).rejects.toThrow("Access denied by guard: TestDeny");
+    expect(bodyReads).toBe(0);
+  });
+
+  const bodyRequest = (url: string, params: Record<string, string>, json: () => Promise<unknown>) =>
+    ({
+      url,
+      params,
+      body: {},
+      headers: new Headers({ "content-type": "application/json" }),
+      json,
+    }) as unknown as Bun.BunRequest;
+
+  test("hands a middleware and an account guard a body mutation's param and search arguments before the body", async () => {
+    let bodyReads = 0;
+    const seen: unknown[] = [];
+    class ReadsArgsGuard implements Guard {
+      static name = "ReadsArgsGuard";
+      static scope: GuardScope = "account";
+      canPass(context: SignalContext) {
+        seen.push(["guard", context.getArg("id"), context.getArg("mode"), context.getArg("title"), bodyReads]);
+        return true;
+      }
+    }
+    class ReadsArgsMiddleware extends middleware("readsArgs") {
+      override async use() {
+        return async (context: SignalContext, next: () => Promise<unknown>) => {
+          seen.push(["middleware", [...context.args], bodyReads]);
+          return await next();
+        };
+      }
+    }
+    const info = buildEndpoint
+      .mutation(String, { guards: [ReadsArgsGuard] })
+      .param("id", String)
+      .search("mode", String)
+      .body("title", String)
+      .exec((id, mode, title) => `${id}:${mode}:${title}`);
+    const request = bodyRequest("http://localhost/api/title/123?mode=draft", { id: "123" }, async () => {
+      bodyReads += 1;
+      return { title: "kept" };
+    });
+    const context = makeSignalContext({
+      endpointInfo: info,
+      request,
+      middlewareMap: new Map([["readsArgs", ReadsArgsMiddleware]]) as never,
+    });
+    await context.init();
+
+    expect(await ((await context.exec()) as Response).json()).toBe("123:draft:kept");
+    expect(seen).toEqual([
+      ["middleware", ["123", "draft", undefined], 0],
+      ["guard", "123", "draft", undefined, 0],
+    ]);
+    expect(bodyReads).toBe(1);
+  });
+
+  test("keeps a deferred body's upload off a declared timeout's clock, and the handler on it", async () => {
+    const adaptor = new (adapt("signalTestUploadTimeoutAdaptor"))();
+    const statusOf = async (handlerMs: number) => {
+      const info = buildEndpoint
+        .mutation(String, { guards: [Public], timeout: 20 })
+        .body("title", String)
+        .exec(async (title) => {
+          await Bun.sleep(handlerMs);
+          return title;
+        });
+      const request = bodyRequest("http://localhost/api/title", {}, async () => {
+        await Bun.sleep(60);
+        return { title: "slow upload" };
+      });
+      const response = await SignalContext.try(adaptor, info, "upload", async () => {
+        const context = makeSignalContext({
+          endpointInfo: info,
+          request,
+          adaptor,
+          middlewareMap: new Map([["timeout", Timeout]]) as never,
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      });
+      return response?.status;
+    };
+    expect(await statusOf(0)).toBe(200);
+    expect(await statusOf(60)).toBe(504);
+  });
+
+  test("answers a body that is not JSON 400 without an error line from the logging middleware", async () => {
+    const info = buildEndpoint
+      .mutation(String, { guards: [Public] })
+      .body("title", String)
+      .exec((title) => title);
+    const adaptor = new (adapt("signalTestMalformedBodyAdaptor"))();
+    const errors = spyOn(adaptor.logger, "error");
+    const request = bodyRequest("http://localhost/api/title", {}, async () => {
+      throw new SyntaxError("Unexpected end of JSON input");
+    });
+    const response = await SignalContext.try(adaptor, info, "title", async () => {
+      const context = makeSignalContext({
+        endpointInfo: info,
+        request,
+        adaptor,
+        middlewareMap: new Map([["logging", Logging]]) as never,
+      });
+      await context.init();
+      return (await context.exec()) as Response;
+    });
+
+    expect(response?.status).toBe(400);
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   test("reports guard and internal argument failures through HTTP responses", async () => {
     const denyInfo = buildEndpoint.query(String, { guards: [TestDeny] }).exec(() => "blocked");
     const missingInternalInfo = buildEndpoint
-      .query(String)
+      .query(String, { guards: [Public] })
       .with(MissingInternalArg)
       .exec(() => "missing");
     const denyAdaptor = new (adapt("signalTestDenyAdaptor"))();
@@ -1562,7 +1761,7 @@ describe("SignalContext execution", () => {
       return (await context.exec()) as Response;
     });
     const nullableInfo = buildEndpoint
-      .query(String)
+      .query(String, { guards: [Public] })
       .with(MissingInternalArg, { nullable: true })
       .exec((arg) => (arg === null ? "nullable" : "value"));
     const nullableContext = makeSignalContext({ endpointInfo: nullableInfo });
@@ -1590,7 +1789,7 @@ describe("SignalContext execution", () => {
       statusCode: 400,
       toJSON: () => ({ error: "signalTest.error.applyTimeout", statusCode: 400, data: { timeout: 3000 } }),
     });
-    const endpointInfo = buildEndpoint.query(String).exec(() => {
+    const endpointInfo = buildEndpoint.query(String, { guards: [Public] }).exec(() => {
       throw remote;
     });
     const adaptor = new (adapt("signalTestRemoteAdaptor"))();
@@ -1618,9 +1817,11 @@ describe("SignalContext execution", () => {
         return (await context.exec()) as Response;
       })) as Response;
     };
-    const nullablePrimitive = await run(buildEndpoint.query(Date, { nullable: true }).exec(() => undefined as never));
-    const nullableAny = await run(buildEndpoint.query(Any).exec(() => undefined as never));
-    const required = await run(buildEndpoint.query(Date).exec(() => undefined as never));
+    const nullablePrimitive = await run(
+      buildEndpoint.query(Date, { guards: [Public], nullable: true }).exec(() => undefined as never),
+    );
+    const nullableAny = await run(buildEndpoint.query(Any, { guards: [Public] }).exec(() => undefined as never));
+    const required = await run(buildEndpoint.query(Date, { guards: [Public] }).exec(() => undefined as never));
 
     expect(nullablePrimitive.status).toBe(200);
     expect(await nullablePrimitive.json()).toBeNull();
@@ -1630,7 +1831,9 @@ describe("SignalContext execution", () => {
   });
 
   test("passes through raw Response results", async () => {
-    const endpointInfo = buildEndpoint.query(Response as never).exec(() => Response.json({ ok: true }) as never);
+    const endpointInfo = buildEndpoint
+      .query(Response as never, { guards: [Public] })
+      .exec(() => Response.json({ ok: true }) as never);
     const context = makeSignalContext({ endpointInfo });
 
     await context.init();
@@ -1773,18 +1976,33 @@ describe("SignalContext guards", () => {
     expect(guardTrace).not.toContain("exec");
   });
 
-  test("skips guard checking entirely when no guards are configured", async () => {
-    const noGuards = await execWithGuards([]);
+  test("refuses an endpoint that declares no guards, unless the environment opens them as before", async () => {
+    const refused = await execWithGuards([]);
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ statusCode: 403, error: 'Access denied: "contextKey" declares no guards' });
+    expect(guardTrace).toEqual([]);
 
-    expect(noGuards.status).toBe(200);
-    expect(noGuards.body).toBe("passed");
-    expect(guardTrace).toEqual(["exec"]);
+    process.env.AKAN_UNGUARDED_ENDPOINTS = "open";
+    try {
+      const opened = await execWithGuards([]);
+      expect(opened.status).toBe(200);
+      expect(guardTrace).toEqual(["exec"]);
+    } finally {
+      delete process.env.AKAN_UNGUARDED_ENDPOINTS;
+    }
+  });
+
+  test("refuses through a guard built from guard() that never overrode canPass", async () => {
+    class Unfinished extends guard("Unfinished") {}
+    const refused = await execWithGuards([Unfinished]);
+    expect(refused.status).toBe(403);
+    expect(guardTrace).toEqual([]);
   });
 });
 
 describe("SignalContext byte returns", () => {
   test("sends a Binary return over HTTP as base64, which the Binary parser reads back", async () => {
-    const endpointInfo = buildEndpoint.query(Binary).exec(() => new Uint8Array([1, 2, 3]));
+    const endpointInfo = buildEndpoint.query(Binary, { guards: [Public] }).exec(() => new Uint8Array([1, 2, 3]));
     const context = makeSignalContext({ endpointInfo });
 
     await context.init();
@@ -1796,7 +2014,9 @@ describe("SignalContext byte returns", () => {
 
   test("refuses bytes returned through Any instead of sending an empty object", async () => {
     for (const bytes of [new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3]).buffer]) {
-      const context = makeSignalContext({ endpointInfo: buildEndpoint.query(Any).exec(() => bytes) });
+      const context = makeSignalContext({
+        endpointInfo: buildEndpoint.query(Any, { guards: [Public] }).exec(() => bytes),
+      });
       await context.init();
       await expect(context.exec()).rejects.toThrow("returns bytes through Any");
     }
@@ -2294,11 +2514,11 @@ describe("representative signal usage regressions", () => {
 
   test("mirrors custom path, prefix false, wildcard, and process internal metadata", () => {
     const customPath = buildEndpoint
-      .query(String, { path: "wsl/homes/:dongho/erv", prefix: false })
+      .query(String, { guards: [Public], path: "wsl/homes/:dongho/erv", prefix: false })
       .param("dongho", String)
       .exec((dongho) => dongho);
     const wildcard = buildEndpoint
-      .query(Response as never, { path: "localFile/getBlob/*" })
+      .query(Response as never, { guards: [Public], path: "localFile/getBlob/*" })
       .exec(() => new Response() as never);
     const processInternal = buildInternal
       .process(Boolean, { serverMode: "all" })
@@ -2355,7 +2575,7 @@ describe("SignalContext websocket authorization", () => {
   test("reads the account from the socket on websocket and from the request on http", () => {
     const wsContext = makeWsContext({
       endpointInfo: buildEndpoint
-        .pubsub(String)
+        .pubsub(String, { guards: [Public] })
         .room("roomId", String)
         .exec(() => undefined),
       wsData: { account: { role: "admin" } },
@@ -2367,7 +2587,9 @@ describe("SignalContext websocket authorization", () => {
     expect(wsContext.get<{ role?: string }>("account")).toEqual({ role: "admin" });
     expect(httpContext.get<{ role?: string }>("account")).toEqual({ role: "user" });
     expect(
-      makeWsContext({ endpointInfo: buildEndpoint.pubsub(String).exec(() => undefined) }).get("account"),
+      makeWsContext({ endpointInfo: buildEndpoint.pubsub(String, { guards: [Public] }).exec(() => undefined) }).get(
+        "account",
+      ),
     ).toBeNull();
   });
 
@@ -2384,7 +2606,7 @@ describe("SignalContext websocket authorization", () => {
 
     await expect(denied.exec()).rejects.toThrow("Access denied by guard: AccountGuard");
     await allowed.exec();
-    expect(allowed.getRoomId("wsKey")).toBe("wsKey-room-1");
+    expect(allowed.getRoomId("wsKey")).toBe("wsKey-room%2D1");
   });
 
   test("blocks a websocket message whose guard denies", async () => {

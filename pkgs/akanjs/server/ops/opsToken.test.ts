@@ -8,9 +8,9 @@ const { publicKey, privateKey } = generateKeyPairSync("ed25519");
 const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 const mint = (
   claims: Record<string, unknown>,
-  { key = privateKey, alg = "EdDSA" }: { key?: KeyObject; alg?: string } = {},
+  { key = privateKey, alg = "EdDSA", typ = "JWT" }: { key?: KeyObject; alg?: string; typ?: string } = {},
 ) => {
-  const head = `${b64({ alg, typ: "JWT" })}.${b64(claims)}`;
+  const head = `${b64({ alg, typ })}.${b64(claims)}`;
   return `${head}.${sign(null, Buffer.from(head), key).toString("base64url")}`;
 };
 const claims = (extra: Record<string, unknown> = {}) => ({
@@ -57,6 +57,17 @@ describe("OpsTokenVerifier", () => {
     expect(verifier.verify(`${head}.${sign(null, Buffer.from(head), privateKey).toString("base64url")}`, now).ok).toBe(
       true,
     );
+  });
+
+  test("refuses a token typed as another kind before it spends the jti, and takes the ops type", () => {
+    const verifier = new OpsTokenVerifier(publicKey, "puffinplace/main/edge-3");
+    const jti = crypto.randomUUID();
+    for (const typ of ["akan-machine+jwt", "at+jwt"])
+      expect(verifier.verify(mint(claims({ jti }), { typ }), now)).toEqual({
+        ok: false,
+        reason: "typ must be akan-ops+jwt",
+      });
+    expect(verifier.verify(mint(claims({ jti }), { typ: OpsTokenVerifier.type }), now).ok).toBe(true);
   });
 
   test("refuses another key's signature and a non-EdDSA header", () => {

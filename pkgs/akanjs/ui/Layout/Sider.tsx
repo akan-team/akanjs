@@ -25,13 +25,13 @@ export const Sider = ({ className, bgClassName, trigger, header, close, children
   const [isOpen, setIsOpen] = useState(false);
   const path = st.use.path({ agent: false });
   const openMenu = st
-    .tool("openMenu")
+    .tool("openMenu", { taint: "exempt" })
     .desc("Open the side navigation drawer.")
     .exec(() => {
       setIsOpen(true);
     });
   const closeMenu = st
-    .tool("closeMenu")
+    .tool("closeMenu", { taint: "exempt" })
     .desc("Close the side navigation drawer.")
     .exec(() => {
       setIsOpen(false);

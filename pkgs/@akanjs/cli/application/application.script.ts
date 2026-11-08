@@ -522,6 +522,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
         urls.set(app.name, share.url);
         // For `--plain`; the full-screen view's first repaint wipes this, so its header carries the URL.
         Logger.rawLog(`${app.name} is shared at ${share.url}`);
+        Logger.rawLog(TunnelShare.exposureNotice(app.name, false));
       }),
     ).catch((error: unknown) => {
       Logger.rawLog(`Could not open the tunnel: ${toError(error).message}`, undefined, "error");

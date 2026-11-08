@@ -129,6 +129,19 @@ describe("RemoteLogin", () => {
       { host, auth: { accessToken } },
       { host, auth: { accessToken, self } },
     ]);
+    expect(logs.join("\n")).toContain(`${host} handed the session out for the sign-in URL's id`);
+  });
+
+  test("takes the device code's answer over the login id's when both carry a session, and warns about neither", async () => {
+    const legacyToken = { ...accessToken, jwt: "legacy-session" };
+    cloud.deviceAnswers = [accessToken];
+    cloud.loginIdAnswers = [legacyToken];
+    cloud.selfAnswers = [self];
+
+    await login().signIn(remoteId);
+
+    expect(saved[0]).toEqual({ host, auth: { accessToken } });
+    expect(logs.join("\n")).not.toContain("handed the session out");
   });
 
   test("stops polling by the login id once the cloud refuses it, and keeps polling by the device code", async () => {

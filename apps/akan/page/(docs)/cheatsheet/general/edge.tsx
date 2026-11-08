@@ -678,7 +678,7 @@ unsubscribe();`}
                       <strong>
                         The edge's pubsub declares its own <code>guards</code>.
                       </strong>{" "}
-                      A slice's guard map does not reach a pubsub, so a room without guards is open to any socket.
+                      A slice's guard map does not reach a pubsub, so a room without guards refuses every socket.
                     </span>
                   ),
                   ko: (
@@ -686,8 +686,8 @@ unsubscribe();`}
                       <strong>
                         엣지의 pubsub에는 <code>guards</code>를 직접 선언합니다.
                       </strong>{" "}
-                      slice의 guard map은 pubsub에 적용되지 않으므로, guards가 없는 room은 어떤 소켓이든 구독할 수
-                      있습니다.
+                      slice의 guard map은 pubsub에 적용되지 않으므로, guards가 없는 room은 모든 소켓의 구독을
+                      거절합니다.
                     </span>
                   ),
                 })}

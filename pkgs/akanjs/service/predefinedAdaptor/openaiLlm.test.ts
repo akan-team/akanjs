@@ -78,13 +78,13 @@ describe("OpenaiLlm content parts", () => {
 });
 
 describe("OpenaiLlm refusals", () => {
-  test("carries the provider's own sentence, named by the host that refused", async () => {
+  test("names the host that refused and its status, and keeps the provider's sentence to the server", async () => {
     const body = JSON.stringify({ error: { message: "Incorrect API key provided" } });
     const error = (await OpenaiLlm.refusal(OpenaiLlm.defaultHost, new Response(body, { status: 401 }))) as Error & {
       data?: Record<string, string>;
     };
     expect(error.message).toBe("agent.error.llmRequestFailed");
-    expect(error.data).toEqual({ provider: "api.openai.com", status: "401", reason: "Incorrect API key provided" });
+    expect(error.data).toEqual({ provider: "api.openai.com", status: "401" });
   });
 
   test("a prompt past the window is its own refusal, named by the gateway and the window it gave", async () => {
@@ -105,7 +105,9 @@ describe("OpenaiLlm refusals", () => {
       new Response("<html>gateway</html>", { status: 502 }),
     )) as Error & { data?: Record<string, string> };
     expect(error.data?.status).toBe("502");
-    expect(error.data?.reason).toBeTruthy();
+    expect(
+      await OpenaiDialect.reasonOf(new Response("<html>gateway</html>", { status: 502, statusText: "Bad Gateway" })),
+    ).toBe("Bad Gateway");
   });
 });
 

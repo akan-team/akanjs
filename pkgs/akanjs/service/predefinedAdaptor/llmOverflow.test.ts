@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { Logger } from "akanjs/common";
 import { LlmOverflow } from "./llmOverflow";
 
 describe("LlmOverflow.match", () => {
@@ -38,11 +39,24 @@ describe("LlmOverflow.match", () => {
 });
 
 describe("LlmOverflow.refusal", () => {
-  test("keeps every other refusal the sentence it was", () => {
-    const error = LlmOverflow.refusal("https://api.openai.com/v1", 500, "server exploded") as Error & {
-      data?: Record<string, unknown>;
-    };
-    expect(error.message).toBe("agent.error.llmRequestFailed");
-    expect(error.data).toEqual({ provider: "api.openai.com", status: "500", reason: "server exploded" });
+  test("answers every other refusal with the provider and status, and logs the provider's sentence", () => {
+    const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    try {
+      const error = LlmOverflow.refusal(
+        "https://api.openai.com/v1",
+        401,
+        "Incorrect API key provided: sk-ab***wxyz",
+      ) as Error & {
+        data?: Record<string, unknown>;
+      };
+      expect(error.message).toBe("agent.error.llmRequestFailed");
+      expect(error.data).toEqual({ provider: "api.openai.com", status: "401" });
+      expect(JSON.stringify(error)).not.toContain("sk-ab");
+      expect(warn).toHaveBeenCalledWith(
+        "api.openai.com refused a turn with status 401: Incorrect API key provided: sk-ab***wxyz",
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

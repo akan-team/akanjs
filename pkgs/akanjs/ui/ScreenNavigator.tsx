@@ -98,7 +98,7 @@ export const ScreenNavigator = ({ children, setMenu = () => {}, menus, namespace
   st.expose(namespace ? `screenIn${suffix}` : null, String)
     .desc("The screen this navigator is showing.")
     .value(currentMenu);
-  st.tool(namespace ? `goToScreenIn${suffix}` : null)
+  st.tool(namespace ? `goToScreenIn${suffix}` : null, { taint: "exempt" })
     .desc(`Slide the ${namespace ?? ""} navigator to one screen.`)
     .arg("screen", String, { oneOf: menus })
     .exec(onClickMenu);

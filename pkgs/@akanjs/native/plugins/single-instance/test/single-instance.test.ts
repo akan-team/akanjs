@@ -1,6 +1,16 @@
 import { dlopen, FFIType, ptr } from "bun:ffi";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { closeSync, existsSync, mkdtempSync, openSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -15,6 +25,7 @@ import {
   decodeMessage,
   encodeMessage,
   lockFile,
+  privateFolder,
   sidText,
   socketPath,
   tokenSid,
@@ -118,6 +129,38 @@ describe("single-instance socket", () => {
     const third = await claim(path, hello, () => {});
     open.push(third);
     expect(third.kind).toBe("primary");
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "a folder other users can enter holds the lock and socket in a 0700 folder of this user's",
+    async () => {
+      const path = tempSocket();
+      chmodSync(dir, 0o1777);
+      const uid = process.getuid?.() ?? -1;
+      const own = join(dir, `akan-native-${uid}`);
+      expect(privateFolder(dir)).toBe(own);
+      expect(statSync(own).mode & 0o777).toBe(0o700);
+      const first = await claim(path, hello, () => {});
+      open.push(first);
+      expect(first.kind).toBe("primary");
+      expect(existsSync(path)).toBe(false);
+      expect(existsSync(join(own, "s.sock"))).toBe(true);
+      expect(existsSync(join(own, "s.lock"))).toBe(true);
+      expect((await claim(path, hello, () => {})).kind).toBe("forwarded");
+      expect(privateFolder(own)).toBe(own);
+    },
+  );
+
+  test.skipIf(process.platform === "win32")("a lock folder another user could open or own is refused", async () => {
+    tempSocket();
+    chmodSync(dir, 0o755);
+    const own = join(dir, `akan-native-${process.getuid?.() ?? -1}`);
+    mkdirSync(own, { mode: 0o755 });
+    chmodSync(own, 0o755);
+    expect(privateFolder(dir)).toBeInstanceOf(Error);
+    const c = await claim(join(dir, "s.sock"), hello, () => {});
+    expect(c.kind).toBe("failed");
+    expect(privateFolder(dir, (process.getuid?.() ?? 0) + 1)).toBeInstanceOf(Error);
   });
 
   test("a stale socket file (crashed instance) is replaced", async () => {

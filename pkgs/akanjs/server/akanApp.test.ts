@@ -49,6 +49,19 @@ const withTimeout = async <T>(promise: Promise<T>, message: string, timeoutMs = 
 
 const randomPort = () => 24_000 + Math.floor(Math.random() * 10_000);
 
+const withEnvSet = <T>(vars: Record<string, string>, run: () => T): T => {
+  const previous = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, vars);
+  try {
+    return run();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+};
+
 const makeRoot = async (name: string, runtime = "runtime") => {
   const root = await mkdtemp(path.join(tmpdir(), name));
   tempRoots.push(root);
@@ -788,6 +801,8 @@ describe("AkanApp", () => {
       expect(htmlRes.status).toBe(503);
       expect(htmlRes.headers.get("content-type") ?? "").toContain("text/html");
       expect(htmlRes.headers.get("cache-control")).toBe("no-store");
+      expect(htmlRes.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(htmlRes.headers.get("x-frame-options")).toBe("SAMEORIGIN");
       const htmlBody = await htmlRes.text();
       expect(htmlBody).toContain("Backend is starting");
       expect(htmlBody).toContain("location.reload()");
@@ -1114,6 +1129,128 @@ describe("AkanApp", () => {
     });
   }, 20_000);
 
+  test("refuses a body over the request limit at the gateway, declared or streamed, and relays an upload", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-body-limit-");
+    await Bun.write(
+      serverPath,
+      `
+          export const server = {
+            async start() {
+              const http = Bun.serve({
+                unix: process.env.AKAN_CHILD_SOCKET,
+                async fetch(req) { return new Response(String((await req.arrayBuffer()).byteLength)); },
+              });
+              process.on("message", (message) => {
+                if (!message || typeof message !== "object") return;
+                ${answerHealthPing}
+                if (message.type === "shutdown") {
+                  http.stop(true);
+                  process.exit(0);
+                }
+              });
+              ${sendReady()}
+            },
+          };
+        `,
+    );
+    const app = withEnvSet(
+      { AKAN_MAX_REQUEST_BODY: "1kb" },
+      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port }),
+    );
+    const running = app.start();
+    try {
+      await waitForReady(port);
+      const url = `http://127.0.0.1:${port}/api/echo`;
+      const json = { "content-type": "application/json" };
+      const declared = await fetch(url, { method: "POST", headers: json, body: "a".repeat(2048) });
+      expect(declared.status).toBe(413);
+      const streamed = await fetch(url, {
+        method: "POST",
+        headers: json,
+        body: new Blob([new Uint8Array(2048)]).stream(),
+        duplex: "half",
+      } as never);
+      expect(streamed.status).toBe(413);
+      const form = new FormData();
+      form.append("file", new Blob([new Uint8Array(4096)]), "a.bin");
+      expect((await fetch(url, { method: "POST", body: form })).status).toBe(200);
+      expect(await (await fetch(url, { method: "POST", headers: json, body: "{}" })).text()).toBe("2");
+    } finally {
+      await app.stop();
+      await Promise.race([running, wait(1_000)]);
+    }
+  }, 20_000);
+
+  test("closes a socket that sends too much before its replica's socket opens, and caps sockets per address", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-ws-bounds-");
+    await Bun.write(
+      serverPath,
+      `
+          export const server = {
+            async start() {
+              const http = Bun.serve({ unix: process.env.AKAN_CHILD_SOCKET, fetch() { return new Response("ok"); } });
+              const ws = Bun.serve({
+                port: 0,
+                async fetch(req, server) {
+                  if (new URL(req.url).searchParams.has("slow")) await Bun.sleep(3_000);
+                  if (server.upgrade(req, { data: {} })) return undefined;
+                  return new Response("no-upgrade");
+                },
+                websocket: { message(socket, message) { socket.send("echo:" + String(message).slice(0, 8)); } },
+              });
+              process.on("message", (message) => {
+                if (!message || typeof message !== "object") return;
+                ${answerHealthPing}
+                if (message.type === "shutdown") {
+                  http.stop(true);
+                  ws.stop(true);
+                  process.exit(0);
+                }
+              });
+              ${sendReady(`{ type: "tcp", host: "127.0.0.1", port: ws.port }`)}
+            },
+          };
+        `,
+    );
+    const app = withEnvSet(
+      { AKAN_MAX_WEBSOCKETS_PER_IP: "1" },
+      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port }),
+    );
+    const running = app.start();
+    const connect = (query = "") => {
+      const socket = new WebSocket(`ws://127.0.0.1:${port}/api/ws${query}`);
+      const outcome = new Promise<"open" | "refused">((resolve) => {
+        socket.addEventListener("open", () => resolve("open"));
+        socket.addEventListener("error", () => resolve("refused"));
+      });
+      const closed = new Promise<number>((resolve) => socket.addEventListener("close", (event) => resolve(event.code)));
+      return { socket, outcome, closed };
+    };
+    try {
+      await waitForReady(port);
+      const first = connect();
+      expect(await withTimeout(first.outcome, "first socket")).toBe("open");
+      const second = connect();
+      expect(await withTimeout(second.outcome, "second socket")).toBe("refused");
+      first.socket.close();
+      await withTimeout(first.closed, "first close");
+
+      const flooding = connect("?slow=1");
+      expect(await withTimeout(flooding.outcome, "slow socket")).toBe("open");
+      const frame = "x".repeat(600 * 1024);
+      flooding.socket.send(frame);
+      flooding.socket.send(frame);
+      expect(await withTimeout(flooding.closed, "flood close")).toBe(1009);
+
+      const after = connect();
+      expect(await withTimeout(after.outcome, "socket after close")).toBe("open");
+      after.socket.close();
+    } finally {
+      await app.stop();
+      await Promise.race([running, wait(1_000)]);
+    }
+  }, 20_000);
+
   test("hands a replica the client address the gateway resolved, over HTTP and websocket alike", async () => {
     const { serverPath, runtimeDir, port } = await makeRoot("akan-app-client-address-");
     const trustedProxyPath = JSON.stringify(path.join(import.meta.dir, "..", "common", "TrustedProxy.ts"));
@@ -1226,6 +1363,15 @@ describe("AkanApp", () => {
           expect(metrics.status).toBe(200);
           expect(await metrics.json()).toHaveProperty("children");
         }
+
+        const from = (address: string, presented: string) => ({
+          "x-forwarded-for": address,
+          authorization: `Bearer ${presented}`,
+        });
+        for (let attempt = 0; attempt < 10; attempt++)
+          expect((await statusOf("metrics", from("198.51.100.4", "not-the-token"))).status).toBe(401);
+        expect((await statusOf("metrics", from("198.51.100.4", statusToken))).status).toBe(401);
+        expect((await statusOf("metrics", from("198.51.100.5", statusToken))).status).toBe(200);
       });
     } finally {
       if (saved.env === undefined) delete process.env.AKAN_PUBLIC_ENV;

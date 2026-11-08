@@ -12,7 +12,15 @@ import {
   into,
 } from "akanjs/document";
 import { type AkanSqlClient, type AkanSqlStatement, SqlDocumentStore } from "./database.adaptor";
-import { DEFAULT_TOKENIZER, Fts5SearchEngine, parseSearchEnabled, SearchIndex } from "./searchIndex";
+import {
+  DEFAULT_SEARCH_MAX_LENGTH,
+  DEFAULT_SEARCH_MAX_TERMS,
+  DEFAULT_SEARCH_WEIGHTS,
+  DEFAULT_TOKENIZER,
+  Fts5SearchEngine,
+  parseSearchEnabled,
+  SearchIndex,
+} from "./searchIndex";
 
 class SearchHistory extends via((f) => ({
   action: f(String, { text: "tag" }),
@@ -236,6 +244,44 @@ describe("Fts5SearchEngine.matchExpression", () => {
       const expression = Fts5SearchEngine.matchExpression(raw);
       expect(() => (expression ? matchIds(expression) : [])).not.toThrow();
     }
+  });
+});
+
+describe("SearchIndex.join", () => {
+  const queryOf = (text: string) => ({
+    ref: "searchTest",
+    text,
+    prefix: false,
+    columns: undefined,
+    weights: DEFAULT_SEARCH_WEIGHTS,
+  });
+  const words = (count: number) => Array.from({ length: count }, (_, idx) => `w${idx}`).join(" ");
+
+  test("joins text up to the term and length limits, as it did before them", async () => {
+    const index = await build();
+    const atLimit = index.join(queryOf(words(DEFAULT_SEARCH_MAX_TERMS)));
+    expect(atLimit?.params).toEqual([Fts5SearchEngine.matchExpression(words(DEFAULT_SEARCH_MAX_TERMS)), "searchTest"]);
+    expect(index.join(queryOf("x".repeat(DEFAULT_SEARCH_MAX_LENGTH)))).not.toBeNull();
+  });
+
+  test("refuses text past either limit as a bad request, and takes limits the config raises", async () => {
+    const index = await build();
+    for (const text of [words(DEFAULT_SEARCH_MAX_TERMS + 1), "x".repeat(DEFAULT_SEARCH_MAX_LENGTH + 1)]) {
+      expect(() => index.join(queryOf(text))).toThrow("base.error.invalidArgument");
+      try {
+        index.join(queryOf(text));
+      } catch (error) {
+        expect((error as { statusCode?: number }).statusCode).toBe(400);
+      }
+    }
+    const raised = new SearchIndex(owner as never, {
+      enabled: true,
+      tokenizer: DEFAULT_TOKENIZER,
+      maxTerms: 64,
+      maxLength: 4000,
+    });
+    expect(raised.join(queryOf(words(64)))).not.toBeNull();
+    expect(() => raised.join(queryOf(words(65)))).toThrow("base.error.invalidArgument");
   });
 });
 

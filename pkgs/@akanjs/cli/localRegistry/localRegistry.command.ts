@@ -1,4 +1,5 @@
 import { command, Workspace } from "@akanjs/devkit/commandDecorators";
+import { npmRegistryFromEnv, warnIgnoredNpmRegistry } from "../npmRegistry";
 import { LocalRegistryScript } from "./localRegistry.script";
 
 export class LocalRegistryCommand extends command("local-registry", [LocalRegistryScript], ({ public: target }) => ({
@@ -6,9 +7,10 @@ export class LocalRegistryCommand extends command("local-registry", [LocalRegist
     .with(Workspace)
     .option("registry", String, {
       desc: "local npm registry URL",
-      default: process.env.AKAN_NPM_REGISTRY ?? "http://127.0.0.1:4873",
+      default: npmRegistryFromEnv() ?? "http://127.0.0.1:4873",
     })
     .exec(async function (workspace, registry) {
+      warnIgnoredNpmRegistry();
       await this.localRegistryScript.start(workspace, { registryUrl: registry });
     }),
   resetRegistry: target({ devOnly: true, desc: "Stop and clear the local Verdaccio npm registry" })
@@ -20,8 +22,9 @@ export class LocalRegistryCommand extends command("local-registry", [LocalRegist
     .with(Workspace)
     .option("tag", String, { flag: "g", desc: "dist-tag for local registry publish", default: "rc" })
     .option("test", Boolean, { desc: "run package tests before publishing", default: true })
-    .option("registry", String, { desc: "local npm registry URL", default: process.env.AKAN_NPM_REGISTRY })
+    .option("registry", String, { desc: "local npm registry URL", default: npmRegistryFromEnv() })
     .exec(async function (workspace, tag, test, registry) {
+      warnIgnoredNpmRegistry();
       await this.localRegistryScript.smoke(workspace, { tag, test, registryUrl: registry });
     }),
 })) {}

@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
-import { createCallRecorder, createFakeExecutor } from "@akanjs/devkit/testHelpers";
+import { createCallRecorder, createFakeExecutor, makeCliTempWorkspace, tempRoots } from "@akanjs/devkit/testHelpers";
+import { Logger } from "akanjs/common";
 import { LocalRegistryCommand } from "./localRegistry.command";
 import { LocalRegistryRunner } from "./localRegistry.runner";
 import { LocalRegistryScript } from "./localRegistry.script";
@@ -9,6 +10,7 @@ afterEach(() => {
   CommandContainer.clear();
   mock.restore();
 });
+const track = tempRoots();
 
 describe("LocalRegistryCommand", () => {
   test("uses globally unique dev-only command names", () => {
@@ -72,6 +74,46 @@ describe("LocalRegistryScript", () => {
 describe("LocalRegistryRunner", () => {
   test("normalizes the default local registry URL", () => {
     expect(new LocalRegistryRunner().getRegistryUrl("http://127.0.0.1:4873/")).toBe("http://127.0.0.1:4873");
+  });
+
+  test("publishes the registry port on the interface its URL names, loopback by default", async () => {
+    const { root } = track(await makeCliTempWorkspace());
+    const runWith = async (registryUrl?: string) => {
+      const recorder = createCallRecorder();
+      const workspace = createFakeExecutor(
+        "workspace",
+        {
+          workspaceRoot: root,
+          spawn: async (command: string, args: string[]) => {
+            recorder.record("workspace.spawn", command, args);
+            if (args[0] === "inspect") throw new Error("No such object: akan-verdaccio");
+            return "";
+          },
+        },
+        recorder,
+      );
+      await new LocalRegistryRunner().start(workspace as never, { registryUrl });
+      const run = recorder.calls.find((call) => (call.args[1] as string[])[0] === "run")?.args[1] as string[];
+      return run[run.indexOf("-p") + 1];
+    };
+
+    expect(await runWith("http://127.0.0.1:4873")).toBe("127.0.0.1:4873:4873");
+    expect(await runWith("http://localhost:4900")).toBe("127.0.0.1:4900:4873");
+    expect(await runWith("http://0.0.0.0:4873")).toBe("0.0.0.0:4873:4873");
+  });
+
+  test("warns when the running registry container listens on every interface", async () => {
+    const warn = spyOn(Logger, "warn");
+    const inspected = JSON.stringify([
+      { HostConfig: { PortBindings: { "4873/tcp": [{ HostIp: "", HostPort: "4873" }] } } },
+    ]);
+    const workspace = createFakeExecutor("workspace", { spawn: async () => inspected });
+
+    await new LocalRegistryRunner().start(workspace as never, { registryUrl: "http://127.0.0.1:4873" });
+
+    expect(warn.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
+      "listens on every network interface",
+    );
   });
 
   test("typechecks the generated published-package workspace before building it", async () => {

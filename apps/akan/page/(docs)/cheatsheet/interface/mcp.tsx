@@ -203,8 +203,8 @@ export default page()
           ko: "가드가 `Public` 하나뿐인 `mutation`이다",
         }),
         why: l.trans({
-          en: "`[Public]` on a write is having no guard, spelled out; add a real one.",
-          ko: "쓰기에 `[Public]`만 붙인 것은 가드가 없다는 말을 풀어 쓴 것입니다. 실제 가드를 붙이세요.",
+          en: "MCP treats `[Public]` alone on a write as no guard; add a real one.",
+          ko: "MCP는 쓰기에 `[Public]`만 붙인 것을 가드가 없는 것으로 봅니다. 실제 가드를 붙이세요.",
         }),
       },
       {

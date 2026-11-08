@@ -202,6 +202,43 @@ describe("AKAN_TRUSTED_PROXIES", () => {
   });
 });
 
+describe("TrustedProxy with no list set", () => {
+  afterEach(() => TrustedProxy.reset());
+
+  test("reports once, naming no header value, a forwarded chain whose x-real-ip a proxy did not set", () => {
+    TrustedProxy.configure(undefined);
+    const { lines, stop } = captureWarnings();
+    try {
+      const forged = headers({ "x-real-ip": "203.0.113.9", "x-forwarded-for": "198.51.100.7" });
+      expect(TrustedProxy.clientAddress(forged, "10.0.0.5")).toBe("203.0.113.9");
+      TrustedProxy.clientAddress(headers({ "x-forwarded-for": "203.0.113.9, 198.51.100.7" }), "10.0.0.5");
+    } finally {
+      stop();
+    }
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("AKAN_TRUSTED_PROXIES");
+    expect(lines[0]).not.toContain("203.0.113.9");
+    expect(lines[0]).not.toContain("198.51.100.7");
+  });
+
+  test("stays quiet for a proxy that sets x-real-ip to the hop it appended, and for a loopback peer", () => {
+    TrustedProxy.configure(undefined);
+    const { lines, stop } = captureWarnings();
+    try {
+      TrustedProxy.clientAddress(
+        headers({ "x-real-ip": "198.51.100.7", "x-forwarded-for": "198.51.100.7" }),
+        "10.0.0.5",
+      );
+      TrustedProxy.clientAddress(headers({ "x-forwarded-for": "203.0.113.9" }), "10.0.0.5");
+      TrustedProxy.clientAddress(headers({ "x-forwarded-for": "203.0.113.9, 198.51.100.7" }), "127.0.0.1");
+      TrustedProxy.clientAddress(headers({ "x-forwarded-for": "203.0.113.9, 198.51.100.7" }), null);
+    } finally {
+      stop();
+    }
+    expect(lines).toEqual([]);
+  });
+});
+
 describe("TrustedProxy.isPrivateAddress", () => {
   afterEach(() => TrustedProxy.reset());
 
@@ -226,6 +263,24 @@ describe("TrustedProxy.isPrivateAddress", () => {
     ])
       expect(TrustedProxy.isPrivateAddress(address)).toBe(true);
     for (const address of ["93.184.216.34", "8.8.8.8", "2606:4700::6810:84e5", "::ffff:93.184.216.34"])
+      expect(TrustedProxy.isPrivateAddress(address)).toBe(false);
+  });
+
+  test("judges the IPv4 address an IPv6 notation carries", () => {
+    for (const address of [
+      "::ffff:7f00:1",
+      "::ffff:a00:1",
+      "::7f00:1",
+      "::ffff:0:7f00:1",
+      "64:ff9b::7f00:1",
+      "64:ff9b::a9fe:a9fe",
+      "64:ff9b:1::1",
+      "2002:7f00:1::",
+      "2002:c0a8:101::1",
+      "2001:0:4136:e378:8000:63bf:80ff:fffe",
+    ])
+      expect(TrustedProxy.isPrivateAddress(address)).toBe(true);
+    for (const address of ["::ffff:5db8:d822", "64:ff9b::808:808", "2002:808:808::1", "2001:4860:4860::8888"])
       expect(TrustedProxy.isPrivateAddress(address)).toBe(false);
   });
 

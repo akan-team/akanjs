@@ -1,5 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { bearerTokenOf, EventStream, Logger } from "akanjs/common";
+import { FailureLimiter } from "../ops/failureLimiter";
+import { StatusAccess } from "../ops/statusAccess";
 import type { LogHub, LogHubEntry } from "./logHub";
 import { LogQueryMatcher } from "./logQuery";
 import { LogStdoutWriter } from "./logStdoutWriter";
@@ -12,11 +14,12 @@ export class LogStreamRoute {
   static readonly heartbeatMs = 15_000;
 
   readonly #hub: () => LogHub | null;
-  readonly #token: Buffer;
+  readonly #digest: Buffer;
+  readonly #failures = new FailureLimiter({ limit: 10 });
 
   constructor(hub: () => LogHub | null, token: string) {
     this.#hub = hub;
-    this.#token = Buffer.from(token);
+    this.#digest = StatusAccess.digest(token);
   }
 
   /** Without a token the route is not registered at all, rather than mounted to answer "forbidden". */
@@ -33,8 +36,8 @@ export class LogStreamRoute {
     return new LogStreamRoute(hub, token);
   }
 
-  handle(req: Request): Response {
-    if (!this.#authorized(req))
+  handle(req: Request, client?: string | null): Response {
+    if (!this.#authorized(req, client))
       return new Response("Unauthorized", { status: 401, headers: { "www-authenticate": "Bearer" } });
     const hub = this.#hub();
     if (!hub) return new Response("Log hub is not running", { status: 503 });
@@ -55,11 +58,12 @@ export class LogStreamRoute {
     return stream.response();
   }
 
-  #authorized(req: Request): boolean {
+  #authorized(req: Request, client: string | null | undefined): boolean {
     const token = bearerTokenOf(req.headers.get("authorization"));
-    if (!token) return false;
-    const presented = Buffer.from(token);
-    return presented.length === this.#token.length && timingSafeEqual(presented, this.#token);
+    if (!token || this.#failures.blocked(client)) return false;
+    const matched = timingSafeEqual(StatusAccess.digest(token), this.#digest);
+    if (!matched) this.#failures.fail(client);
+    return matched;
   }
 
   static #resume(hub: LogHub, stream: EventStream, matcher: LogQueryMatcher, lastEventId: number) {

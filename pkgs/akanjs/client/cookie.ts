@@ -14,7 +14,7 @@ import {
   SessionCookies,
 } from "akanjs/common";
 import type { Account } from "akanjs/fetch";
-import { cookieJar as serverCookieJar, headers as serverHeaders } from "akanjs/fetch";
+import { SessionCookie, cookieJar as serverCookieJar, headers as serverHeaders } from "akanjs/fetch";
 import { secretStorage } from "./storage";
 import { fetch } from "./useClient";
 
@@ -115,10 +115,19 @@ const sentAuthToken = (): string | undefined => {
   }
 };
 
+/** The session's claims from its readable cookie: a JWT without its signature, so never a credential. */
+export const getSessionClaims = (): string | undefined =>
+  isCsrClient() ? undefined : cookieJar().read(SessionCookie.claimsKey()).value || undefined;
+
+const serverHoldsSession = () => getEnv().side !== "server" && !!getSessionClaims();
+
 /** The auth token this app holds: on a CSR client the one `fetch` sends first, since a native shell's page keeps no
- * session cookie; then the app-scoped cookie, unless it is held more than once. */
+ * session cookie; then the app-scoped cookie, unless it is held more than once; then, while the server holds the
+ * session where no script reads it, the token this page was handed at sign-in, if any. */
 export const getAuthToken = (): string | undefined =>
-  (isCsrClient() ? sentAuthToken() : undefined) ?? readSessionToken(cookieJar()).token;
+  (isCsrClient() ? sentAuthToken() : undefined) ??
+  readSessionToken(cookieJar()).token ??
+  (serverHoldsSession() ? sentAuthToken() : undefined);
 
 /** The auth token this app holds in client storage — the OS credential store in a native app, localStorage elsewhere. */
 export const getStoredAuthToken = async (): Promise<string | undefined> =>
@@ -136,7 +145,7 @@ export const getAccount = <AddData = unknown>(): Account<AddData> => {
   const embedded = globalThis.__AKAN_EMBED__;
   if (embedded)
     return embedded.account ? ({ ...defaultAccount, ...embedded.account } as Account<AddData>) : defaultAccount;
-  const jwt = getAuthToken() ?? bearerTokenOf(getHeader("authorization"));
+  const jwt = getAuthToken() ?? bearerTokenOf(getHeader("authorization")) ?? getSessionClaims();
   if (!jwt) return defaultAccount;
   const account = decodeJwtPayload<Account<AddData>>(jwt);
   if (account.appName !== getEnv().appName || account.environment !== getEnv().environment) return defaultAccount;
@@ -151,12 +160,17 @@ interface SetAuthOption {
 const announceAuth = () => {
   if (typeof window !== "undefined") window.dispatchEvent(new Event("akan:auth"));
 };
-/** Sets the active auth token on fetch, the cookie jar (except on a CSR client), and client storage. */
+/** Sets the active auth token on fetch, then keeps it where the next launch finds it: client storage on a CSR client,
+ * the session cookie elsewhere unless the server already holds it there (`SessionCookie.issue`). */
 export const setAuth = ({ jwt }: SetAuthOption) => {
   fetch.setJwt(jwt);
   // A CSR client authenticates with the bearer header alone; a cookie copy would only leave the token in a jar.
-  if (!isCsrClient()) setCookie(authTokenKey(), jwt);
-  void secretStorage.setItem(storedAuthTokenKey(), jwt);
+  if (isCsrClient()) void secretStorage.setItem(storedAuthTokenKey(), jwt);
+  else {
+    //? Security: a page that sends the cookie needs no copy in localStorage, which outlives the session and any sign-out.
+    void secretStorage.removeItem(storedAuthTokenKey());
+    if (!serverHoldsSession()) setCookie(authTokenKey(), jwt);
+  }
   // Jars written before the key was scoped or prefixed still hold it under an older name.
   for (const key of retiredAuthTokenKeys()) removeCookie(key);
   void secretStorage.removeItem(legacyAuthTokenKey);
@@ -212,9 +226,11 @@ export const initAuth = ({ jwt }: InitAuthOption = {}) => {
   Logger.verbose(`JWT ${token ? "restored" : "not found"}`);
 };
 
+/** Signs this page out; an HttpOnly session the server holds ends only with `SessionCookie.expire`. */
 export const resetAuth = () => {
   fetch.setJwt(null);
   removeCookie(authTokenKey());
+  removeCookie(SessionCookie.claimsKey());
   for (const key of retiredAuthTokenKeys()) removeCookie(key);
   void secretStorage.removeItem(storedAuthTokenKey());
   void secretStorage.removeItem(legacyAuthTokenKey);

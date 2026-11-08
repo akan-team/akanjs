@@ -116,6 +116,10 @@ enum AkanNativeVectors {
         for c in rows(navigation, "fileRefSandbox") {
             check(AkanNativeKernel.fileRefSandboxed(c[0] as! String) == c[1] as? Bool, "sandbox \(c)")
         }
+        for c in rows(navigation, "links") {
+            let acl = AkanNativeAcl.from(c[0] is NSNull ? [:] : ["acl": c[0]]).acl
+            check(AkanNativeKernel.externalOpenPermitted(acl, c[1] as! String, window: (c[2] as! NSNumber).intValue) == c[3] as? Bool, "link \(c)")
+        }
         for item in (load("retained")["cases"] as? [[String: Any]]) ?? [] {
             let events = AkanNativeRetained<String>()
             var log: [String] = []

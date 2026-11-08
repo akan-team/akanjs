@@ -13,6 +13,7 @@ export * from "./invalidInputError";
 export * from "./labelOf";
 export * from "./mask";
 export * from "./purify";
+export * from "./requestValue";
 export * from "./serialize";
 export * from "./textFieldPathSet";
 export * from "./textFieldPaths";

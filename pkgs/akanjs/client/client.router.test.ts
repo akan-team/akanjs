@@ -19,6 +19,7 @@ const requestState = {
   headers: new Map<string, string>(),
 };
 const messages: unknown[] = [];
+const messageTargets: unknown[] = [];
 const warnings: string[] = [];
 const errors: string[] = [];
 const windowListeners = new Map<string, Array<(event: { state: unknown }) => void>>();
@@ -96,7 +97,12 @@ const installClientWindow = (pathname = "/en/admin/current", search = "", hash =
   Object.defineProperty(globalThis, "window", {
     value: {
       location: { origin, host: "example.test", href: `${origin}${pathname}${search}${hash}`, pathname, search, hash },
-      parent: { postMessage: (message: unknown) => messages.push(message) },
+      parent: {
+        postMessage: (message: unknown, target: unknown) => {
+          messages.push(message);
+          messageTargets.push(target);
+        },
+      },
       addEventListener: (type: string, listener: (event: { state: unknown }) => void) =>
         windowListeners.set(type, [...(windowListeners.get(type) ?? []), listener]),
     },
@@ -208,6 +214,7 @@ afterEach(() => {
   requestState.request = undefined;
   requestState.headers = new Map();
   messages.length = 0;
+  messageTargets.length = 0;
   warnings.length = 0;
   errors.length = 0;
   windowListeners.clear();
@@ -426,6 +433,36 @@ describe("router", () => {
     } finally {
       globalThis.__AKAN_EMBED__ = undefined;
     }
+    expect(messages).toEqual([]);
+  });
+
+  test("in production tells only a same-origin parent, or the origins the app names, where the page went", async () => {
+    envState.side = "client";
+    envState.operationMode = "cloud";
+    installClientWindow("/en/admin/c");
+    installHistory();
+    const { router } = await import("./router");
+    router.init({ type: "csr", lang: "en", prefix: "admin", router: recordingRouter([]) });
+
+    router.postPathChange({ page: 1 });
+    expect(messageTargets).toEqual(["https://example.test"]);
+
+    messageTargets.length = 0;
+    router.setFrameParentOrigins(["https://studio.example"]);
+    router.postPathChange({ page: 2 });
+    expect(messageTargets).toEqual(["https://example.test", "https://studio.example"]);
+
+    messageTargets.length = 0;
+    router.setFrameParentOrigins("*");
+    router.postPathChange({ page: 3 });
+    envState.operationMode = "local";
+    router.setFrameParentOrigins([]);
+    router.postPathChange({ page: 4 });
+    expect(messageTargets).toEqual(["*", "*"]);
+
+    messages.length = 0;
+    Object.assign(window, { parent: window });
+    router.postPathChange({ page: 5 });
     expect(messages).toEqual([]);
   });
 

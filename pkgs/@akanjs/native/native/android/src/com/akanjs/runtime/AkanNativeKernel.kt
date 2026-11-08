@@ -195,10 +195,11 @@ object AkanNativeKernel {
         return if (segments.last().contains('.')) AkanNativeRoute.NotFound else AkanNativeRoute.Asset("index.html")
     }
 
-    /** Paths the shell answers itself even with a dev server: /__akan_native/…, and paths that do not decode. */
+    /** Paths the shell answers itself even with a dev server: /__akan_native/…, paths that do not decode, and dot segments. */
     fun isHostPath(pathname: String): Boolean {
         val decoded = decodePath(pathname) ?: return true
-        return decoded.split('/').firstOrNull { it.isNotEmpty() } == AkanNativeContract.ROUTE_ROOT
+        val segments = decoded.split('/')
+        return segments.any { it == "." || it == ".." } || segments.firstOrNull { it.isNotEmpty() } == AkanNativeContract.ROUTE_ROOT
     }
 
     // ---------------------------------------------------------------- MIME
@@ -362,6 +363,13 @@ object AkanNativeKernel {
         if (scheme == null) return AkanNativeNavigation.DROP
         if (!topLevel) return if (scheme in AkanNativeContract.FRAME_SCHEMES) AkanNativeNavigation.LOAD else AkanNativeNavigation.DROP
         return if (scheme in externalSchemes(extra)) AkanNativeNavigation.OPEN else AkanNativeNavigation.DROP
+    }
+
+    /** kernel.ts externalOpenPermitted: a link or window.open leaves only where opener.openUrl may open it. */
+    fun externalOpenPermitted(acl: AkanNativeAcl?, url: String, window: Int = 1): Boolean {
+        if (acl == null) return true
+        val (allowed, scope) = acl.check("opener", "openUrl", window)
+        return allowed && (scope?.permits(mapOf("url" to url), urlFields = setOf("url")) ?: true)
     }
 
     /**

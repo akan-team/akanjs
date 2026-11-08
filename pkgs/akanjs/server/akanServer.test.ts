@@ -459,8 +459,8 @@ describe("AkanServer MCP config", () => {
       // Routes on, web off: the report rides with the builtin routes, which a script/console process never mounts.
       await server.init({ web: false });
       const log = lines.join("\n");
-      expect(log).toContain("MCP catalogue: tools=4 resourceTemplates=2");
-      // The fixture's `[Public]` writes and guardless reads are the two shapes the guard rule refuses.
+      expect(log).toContain("MCP catalogue: tools=6 resourceTemplates=3");
+      // The fixture's `[Public]` writes are the shape the guard rule refuses.
       expect(log).toContain('did not expose "createServerResolverTestItem"');
       expect(log).toContain('did not expose "updateTitle"');
     } finally {

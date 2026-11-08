@@ -1,21 +1,33 @@
 import "../../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
+import { createElement } from "react";
 import {
   AgenticSurface,
+  type AgentSession,
   type ChatMessage,
   type SessionHistory,
   type SurfaceSource,
   type SurfaceView,
 } from "use-agentic";
-import { setTestEnv } from "../testHelpers.fixture";
+import { mount, setTestEnv } from "../testHelpers.fixture";
 
 let sessionView: typeof import("./agentSessionOf").sessionView;
 let sessionHistoryOf: typeof import("./agentSessionOf").sessionHistoryOf;
+let identity: () => string;
 
 beforeAll(async () => {
   setTestEnv("historytest");
   ({ sessionView, sessionHistoryOf } = await import("./agentSessionOf"));
+  const { DraftStore } = await import("akanjs/store");
+  identity = () => DraftStore.identity();
 });
+
+const jwtOf = (payload: Record<string, unknown>) => `x.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.y`;
+const signIn = (sub: string | null) =>
+  Object.defineProperty(document, "cookie", {
+    get: () => (sub ? `__Host-jwt:historytest=${jwtOf({ sub })}` : ""),
+    configurable: true,
+  });
 
 // The web-storage branch loads synchronously; only a host's own history may answer with a promise.
 const stored = (history: SessionHistory | undefined): ChatMessage[] | null => {
@@ -83,12 +95,12 @@ describe("sessionView", () => {
 });
 
 describe("sessionHistoryOf", () => {
-  test("round-trips through sessionStorage under an app-scoped key", () => {
+  test("round-trips through sessionStorage under a key scoped to the app and the signed-in account", () => {
     const history = sessionHistoryOf(true);
     if (!history) throw new Error("expected a history");
     const messages: ChatMessage[] = [{ role: "user", text: "hi" }];
     history.save(messages);
-    expect(window.sessionStorage.getItem("akan.agent.historytest")).toContain('"hi"');
+    expect(window.sessionStorage.getItem("akan.agent.historytest.anon")).toContain('"hi"');
     expect(stored(history)).toEqual(messages);
     history.clear();
     expect(stored(history)).toBeNull();
@@ -107,7 +119,7 @@ describe("sessionHistoryOf", () => {
         ],
       },
     ]);
-    const raw = window.sessionStorage.getItem("akan.agent.historytest.refs") ?? "";
+    const raw = window.sessionStorage.getItem("akan.agent.historytest.anon.refs") ?? "";
     expect(raw).not.toContain("a wide shot");
     expect(raw).toContain("videoCut");
     const [message] = stored(history) ?? [];
@@ -131,19 +143,22 @@ describe("sessionHistoryOf", () => {
   test("a zone path keys its own entry, and local storage is the explicit opt-up", () => {
     const zone = sessionHistoryOf(true, "comments");
     zone?.save([{ role: "user", text: "zone" }]);
-    expect(window.sessionStorage.getItem("akan.agent.historytest.comments")).toContain('"zone"');
+    expect(window.sessionStorage.getItem("akan.agent.historytest.anon.comments")).toContain('"zone"');
     const local = sessionHistoryOf({ storage: "local" });
     local?.save([{ role: "user", text: "kept" }]);
-    expect(window.localStorage.getItem("akan.agent.historytest")).toContain('"kept"');
+    expect(window.localStorage.getItem("akan.agent.historytest.anon")).toContain('"kept"');
     zone?.clear();
     local?.clear();
   });
 
   test("a stale version envelope is discarded instead of replayed", () => {
-    window.sessionStorage.setItem("akan.agent.historytest", JSON.stringify({ v: 0, messages: [{ role: "user" }] }));
+    window.sessionStorage.setItem(
+      "akan.agent.historytest.anon",
+      JSON.stringify({ v: 0, owner: "anon", messages: [{ role: "user" }] }),
+    );
     const history = sessionHistoryOf(true);
     expect(stored(history)).toBeNull();
-    window.sessionStorage.removeItem("akan.agent.historytest");
+    window.sessionStorage.removeItem("akan.agent.historytest.anon");
   });
 
   test("a host's own history is handed back untouched, cap and attachment stripping included", async () => {
@@ -158,7 +173,7 @@ describe("sessionHistoryOf", () => {
     expect(await history?.load()).toEqual([{ role: "user", text: "from the server" }]);
     history?.save([{ role: "user", text: "kept whole" }]);
     expect(saved).toEqual([[{ role: "user", text: "kept whole" }]]);
-    expect(window.sessionStorage.getItem("akan.agent.historytest.server")).toBeNull();
+    expect(window.sessionStorage.getItem("akan.agent.historytest.anon.server")).toBeNull();
   });
 
   test("only the newest messages survive the cap", () => {
@@ -185,7 +200,7 @@ describe("sessionHistoryOf", () => {
         ],
       },
     ]);
-    const raw = window.sessionStorage.getItem("akan.agent.historytest.attach") ?? "";
+    const raw = window.sessionStorage.getItem("akan.agent.historytest.anon.attach") ?? "";
     expect(raw).not.toContain("AAAA");
     expect(raw).not.toContain("a very long extraction");
     expect(stored(history)?.[0]?.attachments).toEqual([
@@ -214,7 +229,7 @@ describe("sessionHistoryOf", () => {
         ],
       },
     ]);
-    expect(window.sessionStorage.getItem("akan.agent.historytest.toolfile") ?? "").not.toContain("CCCC");
+    expect(window.sessionStorage.getItem("akan.agent.historytest.anon.toolfile") ?? "").not.toContain("CCCC");
     expect(stored(history)?.[2]?.toolResults).toEqual([
       {
         id: "c1",
@@ -224,6 +239,127 @@ describe("sessionHistoryOf", () => {
       },
     ]);
     history?.clear();
+  });
+
+  test("another account neither restores, overwrites nor keeps the last one's transcript", () => {
+    signIn("u1");
+    const first = identity();
+    const before = sessionHistoryOf({ storage: "local" }, "switch");
+    before?.save([{ role: "user", text: "u1 said" }]);
+    expect(window.localStorage.getItem(`akan.agent.historytest.${first}.switch`)).toContain("u1 said");
+
+    signIn("u2");
+    before?.save([
+      { role: "user", text: "u1 said" },
+      { role: "user", text: "written after" },
+    ]);
+    const after = sessionHistoryOf({ storage: "local" }, "switch");
+    expect(stored(after)).toBeNull();
+    expect(window.localStorage.getItem(`akan.agent.historytest.${first}.switch`)).toBeNull();
+    expect(window.localStorage.getItem(`akan.agent.historytest.${identity()}.switch`)).toBeNull();
+    signIn(null);
+  });
+
+  test("an app-chosen key is dropped, not restored, once another account loads it", () => {
+    signIn("u1");
+    sessionHistoryOf({ key: "app-chat" })?.save([{ role: "user", text: "u1 said" }]);
+    signIn("u2");
+    expect(stored(sessionHistoryOf({ key: "app-chat" }))).toBeNull();
+    expect(window.sessionStorage.getItem("app-chat")).toBeNull();
+    signIn(null);
+  });
+
+  test("an app-chosen key under the app's prefix survives a reload and another session's load", () => {
+    signIn("u1");
+    const keys = ["akan.agent.historytest", "akan.agent.historytest.support"];
+    for (const key of keys) sessionHistoryOf({ key })?.save([{ role: "user", text: key }]);
+    window.sessionStorage.setItem(`akan.agent.historytest.0badf00d.support`, JSON.stringify({ v: 1, messages: [] }));
+    for (const key of keys) expect(stored(sessionHistoryOf({ key }))).toEqual([{ role: "user", text: key }]);
+    expect(stored(sessionHistoryOf(true, "support"))).toBeNull();
+    for (const key of keys) expect(window.sessionStorage.getItem(key)).toContain(`"text":"${key}"`);
+    expect(window.sessionStorage.getItem(`akan.agent.historytest.0badf00d.support`)).toBeNull();
+    for (const key of keys) window.sessionStorage.removeItem(key);
+    signIn(null);
+  });
+
+  test("a transcript stored before it named its account is discarded", () => {
+    window.sessionStorage.setItem("akan.agent.historytest", JSON.stringify({ v: 1, messages: [{ role: "user" }] }));
+    expect(stored(sessionHistoryOf(true))).toBeNull();
+    expect(window.sessionStorage.getItem("akan.agent.historytest")).toBeNull();
+  });
+
+  test("a mounted session ends once someone else is signed in, and the last account's transcripts go", async () => {
+    const { useAccountBoundSession } = await import("./useAccountBoundSession");
+    let resets = 0;
+    const session = {
+      reset: async () => {
+        resets += 1;
+      },
+    } as unknown as AgentSession;
+    const Probe = () => {
+      useAccountBoundSession(session);
+      return null;
+    };
+    signIn("u1");
+    const first = identity();
+    window.localStorage.setItem(`akan.agent.historytest.${first}`, "{}");
+    const { unmount } = mount(createElement(Probe));
+
+    window.dispatchEvent(new Event("akan:auth"));
+    expect(resets).toBe(0);
+    signIn(null);
+    window.dispatchEvent(new Event("akan:auth"));
+    expect(resets).toBe(1);
+    expect(window.localStorage.getItem(`akan.agent.historytest.${first}`)).toBeNull();
+    signIn("u2");
+    window.dispatchEvent(new Event("focus"));
+    expect(resets).toBe(2);
+
+    unmount();
+    signIn(null);
+    window.dispatchEvent(new Event("akan:auth"));
+    expect(resets).toBe(2);
+  });
+
+  test("after an account change, the session's own transcript is kept under the account now signed in", async () => {
+    const { agentSessionOf } = await import("./agentSessionOf");
+    const { useAccountBoundSession } = await import("./useAccountBoundSession");
+    signIn("u1");
+    const first = identity();
+    const session = agentSessionOf({
+      l: (key) => key,
+      view: ["rebind"],
+      persist: { storage: "local" },
+      runner: {
+        async *run() {
+          yield { type: "text", delta: "ok" };
+          yield { type: "done", stop: "end" };
+        },
+      },
+    });
+    const Probe = () => {
+      useAccountBoundSession(session);
+      return null;
+    };
+    const { unmount } = mount(createElement(Probe));
+    const settled = () => new Promise((resolve) => setTimeout(resolve, 350));
+    await session.send("from u1");
+    await settled();
+    expect(window.localStorage.getItem(`akan.agent.historytest.${first}.rebind`)).toContain("from u1");
+
+    signIn("u2");
+    window.dispatchEvent(new Event("akan:auth"));
+    await settled();
+    expect(session.messages).toEqual([]);
+    expect(window.localStorage.getItem(`akan.agent.historytest.${first}.rebind`)).toBeNull();
+    await session.send("from u2");
+    await settled();
+    const kept = window.localStorage.getItem(`akan.agent.historytest.${identity()}.rebind`) ?? "";
+    expect(kept).toContain("from u2");
+    expect(kept).not.toContain("from u1");
+    unmount();
+    window.localStorage.removeItem(`akan.agent.historytest.${identity()}.rebind`);
+    signIn(null);
   });
 
   test("persist off or no window answers undefined", () => {

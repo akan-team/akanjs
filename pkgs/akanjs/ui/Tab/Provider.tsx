@@ -46,6 +46,7 @@ export const Provider = ({ className, defaultMenu = null, namespace, children }:
   // A call-time guard, not a static `oneOf`: the children fill `menus` after this render.
   const switchTab = st
     .tool(namespace ? `switchTabIn${suffix}` : null, {
+      taint: "exempt",
       guard: ({ menu }) => {
         const disabled = menus.current.get(menu as string);
         if (disabled === undefined)

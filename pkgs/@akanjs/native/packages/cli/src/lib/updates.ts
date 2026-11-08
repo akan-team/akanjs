@@ -62,6 +62,10 @@ export interface UpdatesConfig {
   reportUrl: string | null;
   /** Desktop: false leaves checking, downloading and applying to the app; a phone always takes a web bundle itself. */
   automatic: boolean;
+  /** Windows: uppercase SHA-1 thumbprints a release's Authenticode certificate must be one of. */
+  windowsSigners?: string[];
+  /** Seconds a manifest `update publish` signs stays good for; absent, manifests do not expire. */
+  expiresIn?: number;
 }
 
 export interface UpdateFile {
@@ -112,6 +116,8 @@ export interface UpdateManifest {
   revokeKeys?: string[];
   /** Schema 2: with a new revocation, compare this release with the binary's own bundle instead of the running one. */
   resetSequence?: boolean;
+  /** Schema 2: Unix seconds after which apps refuse the manifest (updates.expiresIn). */
+  expiresAt?: number;
 }
 
 /**
@@ -217,6 +223,12 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
     problems.push("updates.target must be the name of the release target, 1 to 100 characters");
   if (r.automatic !== undefined && typeof r.automatic !== "boolean")
     problems.push("updates.automatic must be a boolean");
+  const windowsSigners = updateWindowsSigners(r.windowsSigners, problems);
+  if (
+    r.expiresIn !== undefined &&
+    (typeof r.expiresIn !== "number" || !Number.isInteger(r.expiresIn) || r.expiresIn < 3600)
+  )
+    problems.push("updates.expiresIn must be a whole number of seconds, at least 3600");
   for (const key of Object.keys(r))
     if (
       ![
@@ -229,6 +241,8 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
         "report",
         "target",
         "automatic",
+        "windowsSigners",
+        "expiresIn",
       ].includes(key)
     )
       problems.push(`updates.${key} is not supported`);
@@ -246,7 +260,22 @@ export function validateUpdates(raw: unknown, problems: string[]): UpdatesConfig
     reportUrl,
     target: typeof r.target === "string" ? r.target : null,
     automatic: r.automatic !== false,
+    ...(windowsSigners.length ? { windowsSigners } : {}),
+    ...(typeof r.expiresIn === "number" ? { expiresIn: r.expiresIn } : {}),
   };
+}
+
+/** SHA-1 certificate thumbprints, as `Get-AuthenticodeSignature` and certmgr show them, spaces or colons allowed. */
+function updateWindowsSigners(raw: unknown, problems: string[]): string[] {
+  if (raw === undefined) return [];
+  const thumbprints = Array.isArray(raw)
+    ? raw.map((value) => (typeof value === "string" ? value.replace(/[\s:]/g, "").toUpperCase() : ""))
+    : [];
+  if (!Array.isArray(raw) || !raw.length || !thumbprints.every((value) => /^[0-9A-F]{40}$/.test(value))) {
+    problems.push("updates.windowsSigners must list SHA-1 certificate thumbprints: 40 hex characters each");
+    return [];
+  }
+  return [...new Set(thumbprints)];
 }
 
 function withoutTrailingSlashes(url: string): string {
@@ -458,6 +487,7 @@ export function updatesResource(
     readyTimeout: updates.readyTimeout,
     ...(updates.target && platform !== "ios" && platform !== "android" ? { target: updates.target } : {}),
     ...(updates.automatic === false && platform !== "ios" && platform !== "android" ? { automatic: false } : {}),
+    ...(updates.windowsSigners?.length && platform === "windows" ? { windowsSigners: updates.windowsSigners } : {}),
     ...(updates.reportUrl && (platform === "ios" || platform === "android") ? { reportUrl: updates.reportUrl } : {}),
   });
 }

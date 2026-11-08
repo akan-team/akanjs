@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { dayjs, FIELD_META, ID, Int } from "akanjs/base";
-import { ConstantRegistry, via } from "akanjs/constant";
+import { Any, dayjs, FIELD_META, ID, Int } from "akanjs/base";
+import { ConstantRegistry, InputParser, via } from "akanjs/constant";
 import {
   by,
   createDocumentQueryHelper,
@@ -169,6 +169,23 @@ const describeDriver = (kind: SqlDriverKind) => {
       );
       expect(await store.find({ id: upsertedId })).toMatchObject([{ kind: "audio", title: "eta", score: 5 }]);
       await store.remove(upsertedId as string);
+    });
+
+    test("a condition the compiler refuses, the evaluator refuses too", async () => {
+      const [requested] = InputParser.parse(Any, 0, [{ ne: "nobody" }], { key: "args" }) as [string];
+      const refused: DocumentQuery[] = [
+        { score: q.any() },
+        q.any({ title: "alpha" }, { score: q.not({ title: "alpha" }) }),
+        { status: requested },
+        JSON.parse('{"kind":"raw","sql":"1 = 1","params":[]}'),
+      ];
+      for (const query of refused) {
+        await expect(store.find(query)).rejects.toThrow();
+        expect(() => {
+          for (const { row } of all) evaluator.evaluate(query, row);
+        }).toThrow();
+        expect(DocumentQueryEvaluator.unevaluableReason(query)).not.toBeNull();
+      }
     });
 
     for (const { name, query } of cases) {

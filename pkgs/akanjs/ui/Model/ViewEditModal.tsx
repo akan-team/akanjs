@@ -20,7 +20,7 @@ import View from "./View";
 // published once and withdrawn on close.
 const useCloseViewTool = (modelName: string, closeView: () => void) =>
   st
-    .tool(`closeViewOf${capitalize(modelName)}`)
+    .tool(`closeViewOf${capitalize(modelName)}`, { taint: "exempt" })
     .desc(`Close the open ${modelName} modal.`)
     .exec(closeView);
 

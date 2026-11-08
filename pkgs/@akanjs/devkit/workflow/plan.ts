@@ -19,6 +19,24 @@ import { addFieldUiPolicyForType } from "./uiPolicy";
 
 const surfaceModes = new Set<WorkflowSurfaceMode>(["infer", "include", "skip"]);
 
+const sysNamePattern = /^[a-z0-9][a-zA-Z0-9_-]*$/;
+const identifierPattern = /^_{0,2}[a-zA-Z][a-zA-Z0-9_-]*$/;
+//? These inputs become path segments, identifiers and command arguments, so none may carry a separator or a dot.
+const nameInputPatterns: Record<string, RegExp> = {
+  app: sysNamePattern,
+  module: identifierPattern,
+  scalar: identifierPattern,
+  field: identifierPattern,
+  slice: identifierPattern,
+  mutation: identifierPattern,
+  interaction: identifierPattern,
+};
+
+export const isWorkflowSysName = (value: unknown): value is string =>
+  typeof value === "string" && sysNamePattern.test(value);
+export const isWorkflowModuleName = (value: unknown): value is string =>
+  typeof value === "string" && identifierPattern.test(value);
+
 const parseStringList = (value: unknown) => {
   if (Array.isArray(value)) {
     const values = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
@@ -362,6 +380,16 @@ export const createWorkflowPlan = (spec: WorkflowSpec, rawInputs: Record<string,
         code: "workflow-input-invalid",
         input: name,
         message: `Workflow ${spec.name} input "${name}" must be ${inputSpec.type}.`,
+      });
+      continue;
+    }
+    const namePattern = nameInputPatterns[name];
+    if (namePattern && typeof value === "string" && !namePattern.test(value)) {
+      diagnostics.push({
+        severity: "error",
+        code: "workflow-input-invalid",
+        input: name,
+        message: `Workflow ${spec.name} input "${name}" must be a plain name without dots, slashes or spaces, not ${JSON.stringify(value)}.`,
       });
       continue;
     }

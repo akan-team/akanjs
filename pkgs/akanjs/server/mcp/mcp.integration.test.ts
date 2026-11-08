@@ -336,8 +336,16 @@ beforeAll(async () => {
   });
   di = new DiLifecycle({ env }, lib);
   httpRoutes = (await di.initializeAll()).routes ?? {};
+  // The container's cache shares the limiter's count, so every anonymous call in this file would draw on one budget.
   mcpRouter = (props: Partial<McpRouterProps> = {}) =>
-    new McpRouter({ registry: di.registry, live: di.live, middleware: new Map(di.modules.middleware), env, ...props });
+    new McpRouter({
+      registry: di.registry,
+      live: di.live,
+      middleware: new Map(di.modules.middleware),
+      env,
+      rateLimit: false,
+      ...props,
+    });
   mcpRoutes = (props: Partial<McpRouterProps> = {}) =>
     mcpRouter(props).createRoutes() as Record<string, Record<string, (req: Request) => Promise<Response>>>;
   const send = async (body: object, headers: Record<string, string> = {}, props: Partial<McpRouterProps> = {}) => {
@@ -1240,12 +1248,13 @@ describe("MCP over a booted container", () => {
         new Request("http://akan-child:9001/mcp", {
           method: "POST",
           body: JSON.stringify(rpc("tools/list")),
-          headers: { "content-type": "application/json", origin: "https://app.example.com", ...headers },
+          headers: { "content-type": "application/json", origin: `https://${host}`, ...headers },
         }),
       );
-    const forwarded = await proxied({ "x-forwarded-host": "app.example.com", "x-forwarded-proto": "https" });
+    const host = "mcpintegration-local.example.com";
+    const forwarded = await proxied({ "x-forwarded-host": host, "x-forwarded-proto": "https" });
     expect(forwarded.status).toBe(200);
-    expect(forwarded.headers.get("access-control-allow-origin")).toBe("https://app.example.com");
+    expect(forwarded.headers.get("access-control-allow-origin")).toBe(`https://${host}`);
     expect((await proxied({})).status).toBe(403);
   });
 

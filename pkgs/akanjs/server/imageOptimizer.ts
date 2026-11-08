@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import fs from "node:fs/promises";
+import { isIP } from "node:net";
 import path from "node:path";
-import { Logger } from "akanjs/common";
+import { Logger, TrustedProxy } from "akanjs/common";
 import { isAnimatedImage } from "./animatedImage";
 import { matchesIfNoneMatch } from "./contentEncoding";
 import { ImageOptimizerError } from "./imageOptimizerError";
@@ -13,6 +15,7 @@ import {
   type AkanImagePattern,
   getAkanImageWidths,
   mergeAkanImageConfig,
+  type ResolvedAkanImageConfig,
 } from "./types";
 
 export interface ImageOptimizerOptions {
@@ -20,6 +23,7 @@ export interface ImageOptimizerOptions {
   cacheDir: string;
   prodMode: boolean;
   config?: Partial<AkanImageConfig>;
+  resolveHost?: (hostname: string) => Promise<{ address: string }[]>;
 }
 
 interface ParsedImageRequest {
@@ -67,12 +71,17 @@ export class ImageOptimizer {
   #publicDir: string;
   #cacheDir: string;
   #prodMode: boolean;
-  #config: AkanImageConfig;
+  #config: ResolvedAkanImageConfig;
   #semaphore: Semaphore;
+  readonly #resolveHost: (hostname: string) => Promise<{ address: string }[]>;
+  readonly #encodeSlots: number;
+  #encoding = 0;
+  #cacheBytes: number | null = null;
+  #pruning: Promise<void> | null = null;
   readonly #inflight = new Map<string, Promise<OptimizedImage>>();
   #logger = new Logger("ImageOptimizer");
 
-  constructor({ publicDir, cacheDir, prodMode, config }: ImageOptimizerOptions) {
+  constructor({ publicDir, cacheDir, prodMode, config, resolveHost }: ImageOptimizerOptions) {
     this.#publicDir = publicDir;
     this.#cacheDir = cacheDir;
     this.#prodMode = prodMode;
@@ -83,7 +92,18 @@ export class ImageOptimizer {
       this.#logger.warn(`${dropped.join(", ")} needs an OS codec this platform does not have; serving webp instead`);
     }
     this.#config = { ...merged, formats: formats.length ? formats : ["image/webp"] };
-    this.#semaphore = new Semaphore(ImageOptimizer.#resolveConcurrency(this.#config.maxConcurrency));
+    const concurrency = ImageOptimizer.#resolveConcurrency(this.#config.maxConcurrency);
+    this.#semaphore = new Semaphore(concurrency);
+    this.#encodeSlots = this.#config.maxQueue > 0 ? concurrency + this.#config.maxQueue : Number.POSITIVE_INFINITY;
+    this.#resolveHost =
+      resolveHost ??
+      (async (hostname) =>
+        await Promise.race([
+          lookup(hostname, { all: true }),
+          new Promise<never>((_resolve, reject) =>
+            setTimeout(() => reject(new Error("DNS lookup timed out")), this.#config.fetchTimeoutMs).unref(),
+          ),
+        ]));
   }
 
   // Bun.Image shares the off-thread pool with fs and hashing, sized by visible CPUs (1 under a cpu limit): take half.
@@ -107,7 +127,7 @@ export class ImageOptimizer {
     } catch (error) {
       const message = error instanceof ImageOptimizerError ? error.message : "Unable to optimize image";
       const status = error instanceof ImageOptimizerError ? error.status : 500;
-      return new Response(message, { status });
+      return new Response(message, { status, headers: status === 503 ? { "retry-after": "1" } : undefined });
     }
   }
 
@@ -150,9 +170,8 @@ export class ImageOptimizer {
       return null;
     }
     if (!pointer.file || pointer.expireAt <= Date.now()) return null;
-    const file = Bun.file(pointer.file);
-    if (!(await file.exists())) return null;
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const buffer = await ImageOptimizer.#readCached(pointer.file);
+    if (!buffer) return null;
     return {
       buffer,
       contentType: pointer.contentType,
@@ -170,7 +189,7 @@ export class ImageOptimizer {
       maxAge: optimized.maxAge,
       expireAt: Date.now() + optimized.maxAge * 1000,
     };
-    await Bun.write(this.#getPointerPath(parsed), JSON.stringify(pointer));
+    await this.#writeCache(this.#getPointerPath(parsed), JSON.stringify(pointer));
   }
 
   #getPointerPath(parsed: ParsedImageRequest) {
@@ -196,7 +215,7 @@ export class ImageOptimizer {
     let href: string;
     let isRemote = false;
     if (url.startsWith("/")) {
-      href = url;
+      href = ImageOptimizer.#localHref(this.#config.localPatterns, url);
       const pathname = ImageOptimizer.#safeDecodePathname(url);
       if (!pathname) return { error: '"url" parameter is invalid' };
       if (pathname === ImageOptimizer.#optimizerPath || pathname.startsWith(`${ImageOptimizer.#optimizerPath}/`)) {
@@ -268,6 +287,7 @@ export class ImageOptimizer {
       if (!ImageOptimizer.#hasRemoteMatch(this.#config.remotePatterns, current)) {
         throw new ImageOptimizerError(400, '"url" parameter is not allowed');
       }
+      await this.#assertPublicHost(current);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), this.#config.fetchTimeoutMs);
       try {
@@ -282,7 +302,7 @@ export class ImageOptimizer {
           current = new URL(location, current);
           continue;
         }
-        if (!res.ok) throw new ImageOptimizerError(res.status, "Remote image request failed");
+        if (!res.ok) throw new ImageOptimizerError(502, "Remote image request failed");
         const buffer = await ImageOptimizer.#readResponseBuffer(res, this.#config.maxRemoteBytes);
         return {
           buffer,
@@ -296,6 +316,23 @@ export class ImageOptimizer {
       }
     }
     throw new ImageOptimizerError(400, "Remote image exceeded maximum redirects");
+  }
+
+  //? Security: a pattern judges the name, not its addresses; Bun's fetch cannot pin one, so rebinding is egress's job.
+  async #assertPublicHost(url: URL) {
+    if (this.#config.dangerouslyAllowLocalIP) return;
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    let addresses: string[];
+    if (isIP(host)) addresses = [host];
+    else {
+      try {
+        addresses = (await this.#resolveHost(host)).map(({ address }) => address);
+      } catch {
+        throw new ImageOptimizerError(502, "Remote image request failed");
+      }
+    }
+    if (!addresses.length || addresses.some((address) => TrustedProxy.isPrivateAddress(address)))
+      throw new ImageOptimizerError(400, '"url" parameter is not allowed');
   }
 
   async #getOptimizedImage(source: ImageSource, params: ParsedImageRequest): Promise<OptimizedImage> {
@@ -325,13 +362,12 @@ export class ImageOptimizer {
       outputType,
       upstreamTag: source.upstreamTag,
     });
-    const cached = Bun.file(cachePath);
-    if (await cached.exists()) {
-      const buffer = Buffer.from(await cached.arrayBuffer());
+    const cached = await ImageOptimizer.#readCached(cachePath);
+    if (cached) {
       return {
-        buffer,
+        buffer: cached,
         contentType: outputType,
-        etag: ImageOptimizer.#hashBuffer(buffer),
+        etag: ImageOptimizer.#hashBuffer(cached),
         maxAge,
         cacheFile: cachePath,
       };
@@ -341,12 +377,15 @@ export class ImageOptimizer {
     let contentType = inputType;
     let cacheable = true;
     if (shouldEncode) {
+      if (this.#encoding >= this.#encodeSlots) throw new ImageOptimizerError(503, "Image optimizer is busy");
+      this.#encoding += 1;
       try {
         buffer = await this.#semaphore.run(() =>
           ImageOptimizer.#optimize(source.buffer, {
             width: params.width,
             quality: params.quality,
             contentType: outputType,
+            maxPixels: this.#config.maxInputPixels,
           }),
         );
         contentType = outputType;
@@ -354,13 +393,12 @@ export class ImageOptimizer {
         buffer = source.buffer;
         contentType = inputType;
         cacheable = false;
+      } finally {
+        this.#encoding -= 1;
       }
     }
 
-    if (cacheable) {
-      await fs.mkdir(this.#cacheDir, { recursive: true });
-      await Bun.write(cachePath, buffer);
-    }
+    if (cacheable) await this.#writeCache(cachePath, buffer);
     return {
       buffer,
       contentType,
@@ -368,6 +406,53 @@ export class ImageOptimizer {
       maxAge,
       cacheFile: cacheable ? cachePath : null,
     };
+  }
+
+  // A file the pruner removed between the check and the read is a miss, not a failed request.
+  static async #readCached(cachePath: string): Promise<Buffer | null> {
+    try {
+      const file = Bun.file(cachePath);
+      return (await file.exists()) ? Buffer.from(await file.arrayBuffer()) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async #writeCache(file: string, data: Buffer | string) {
+    await fs.mkdir(this.#cacheDir, { recursive: true });
+    this.#cacheBytes ??= (await this.#listCache()).reduce((total, entry) => total + entry.size, 0);
+    await Bun.write(file, data);
+    this.#cacheBytes += Buffer.byteLength(data);
+    const ceiling = this.#config.maxCacheBytes;
+    if (ceiling <= 0 || this.#cacheBytes <= ceiling) return;
+    this.#pruning ??= this.#pruneCache(ceiling).finally(() => {
+      this.#pruning = null;
+    });
+    await this.#pruning;
+  }
+
+  async #listCache(): Promise<{ file: string; size: number; mtimeMs: number }[]> {
+    const names = await fs.readdir(this.#cacheDir).catch(() => [] as string[]);
+    const entries = await Promise.all(
+      names.map(async (name) => {
+        const file = path.join(this.#cacheDir, name);
+        const stat = await fs.stat(file).catch(() => null);
+        return stat?.isFile() ? { file, size: stat.size, mtimeMs: stat.mtimeMs } : null;
+      }),
+    );
+    return entries.filter((entry) => entry !== null);
+  }
+
+  //? Oldest written first, down to 80% so the next write does not prune again; a read does not refresh an entry.
+  async #pruneCache(ceiling: number) {
+    const entries = (await this.#listCache()).sort((a, b) => a.mtimeMs - b.mtimeMs);
+    let total = entries.reduce((sum, entry) => sum + entry.size, 0);
+    for (const entry of entries) {
+      if (total <= ceiling * 0.8) break;
+      await fs.rm(entry.file, { force: true });
+      total -= entry.size;
+    }
+    this.#cacheBytes = total;
   }
 
   #getCachePath(input: Record<string, string | number>) {
@@ -394,9 +479,11 @@ export class ImageOptimizer {
 
   static async #optimize(
     buffer: Buffer,
-    options: { width: number; quality: number; contentType: string },
+    options: { width: number; quality: number; contentType: string; maxPixels: number },
   ): Promise<Buffer> {
-    const image = new Bun.Image(buffer).resize(options.width, undefined, { withoutEnlargement: true });
+    const image = new Bun.Image(buffer, { maxPixels: options.maxPixels }).resize(options.width, undefined, {
+      withoutEnlargement: true,
+    });
 
     if (options.contentType === ImageOptimizer.#avif) return await image.avif({ quality: options.quality }).toBuffer();
     if (options.contentType === ImageOptimizer.#webp) return await image.webp({ quality: options.quality }).toBuffer();
@@ -414,6 +501,18 @@ export class ImageOptimizer {
       if (pattern.search !== undefined && pattern.search !== url.search) return false;
       return true;
     });
+  }
+
+  //? The file is read by its path alone, so a query is part of the cache key only where a pattern names it.
+  static #localHref(patterns: Pick<AkanImagePattern, "pathname" | "search">[], href: string): string {
+    const url = new URL(href, "http://local.akan");
+    const namesQuery = patterns.some(
+      (pattern) =>
+        pattern.search !== undefined &&
+        pattern.search === url.search &&
+        (!pattern.pathname || ImageOptimizer.#globMatch(pattern.pathname, url.pathname)),
+    );
+    return namesQuery ? `${url.pathname}${url.search}` : url.pathname;
   }
 
   static #hasLocalMatch(patterns: Pick<AkanImagePattern, "pathname" | "search">[], href: string): boolean {

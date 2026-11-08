@@ -1,11 +1,12 @@
 import { Err } from "akanjs/dictionary";
-import type {
-  AgentWireAttachment,
-  AgentWireMessage,
-  AgentWireReference,
-  AgentWireToolResult,
-  LlmAccepts,
-  LlmTurnRequest,
+import {
+  type AgentWireAttachment,
+  type AgentWireMessage,
+  type AgentWireReference,
+  type AgentWireToolResult,
+  type LlmAccepts,
+  type LlmTurnRequest,
+  pageContentInstruction,
 } from "./predefinedAdaptor/llm.adaptor";
 import { LlmAdaptorRole } from "./predefinedAdaptor/role.adaptor";
 import { serve } from "./serve";
@@ -45,6 +46,7 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
     "A tool result already reports what it changed, so never call a read afterwards to confirm work you have just done — answer the user from the results you already have.",
     "Tools belong to the screen on display: navigate and goBack replace the screen's own tools, and the new screen's are listed only on your next turn, so end the turn at a navigation and call them once they are listed.",
     "Call a tool only by a name listed to you — never compose or guess one.",
+    pageContentInstruction,
   ].join(" ");
 
   static instructed(request: LlmTurnRequest): LlmTurnRequest {

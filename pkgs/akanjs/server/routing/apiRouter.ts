@@ -15,6 +15,7 @@ import { SignalResolver } from "../resolver";
 import type { HttpRoutes, SignalRouteOptions, WebsocketRoutes } from "../types";
 import { AppWsData } from "./appWsData";
 import type { HostAllowlist } from "./hostAllowlist";
+import { ServerLimits } from "./serverLimits";
 import { WsUpgrade } from "./wsUpgrade";
 
 export interface HmrStateSource {
@@ -43,6 +44,10 @@ export interface ApiRouteInputs {
   upgradeAppWs: (req: Request, data: AppWsData) => boolean;
   webProxyRunner?: WebProxyRunner | null;
   hostAllowlist?: HostAllowlist | null;
+  bodyLimits?: ServerLimits | null;
+  /** Off behind the gateway, which already counted the chunked body it streams on. */
+  countChunkedBodies?: boolean;
+  idleTimeout?: number;
 }
 
 type RouteValue = NonNullHttpRoutes[keyof NonNullHttpRoutes];
@@ -72,6 +77,9 @@ export class ApiRouter {
     upgradeAppWs,
     webProxyRunner,
     hostAllowlist,
+    bodyLimits,
+    countChunkedBodies = true,
+    idleTimeout = 0,
   }: ApiRouteInputs): NonNullHttpRoutes {
     const endpointEntries = Object.entries(routes ?? {}).map(
       ([p, handler]) =>
@@ -111,7 +119,11 @@ export class ApiRouter {
       served,
       new Set([...endpointEntries.map(([path]) => path), ...Object.keys(renderEnvRoutes ?? {})]),
     );
-    return ApiRouter.#dropForgedForwarding(hostAllowlist ? ApiRouter.#guardHosts(swept, hostAllowlist) : swept);
+    const limited = bodyLimits ? ApiRouter.#limitBodies(swept, bodyLimits, countChunkedBodies) : swept;
+    const routed = ApiRouter.#dropForgedForwarding(
+      hostAllowlist ? ApiRouter.#guardHosts(limited, hostAllowlist) : limited,
+    );
+    return idleTimeout ? ApiRouter.#holdOpen(routed, idleTimeout) : routed;
   }
 
   static buildWebsocketHandlers({
@@ -257,6 +269,59 @@ export class ApiRouter {
               if (names.length && !SignalContext.isTrustedHop(req)) for (const name of names) req.headers.delete(name);
               return handler(req);
             }),
+      ]),
+    ) as NonNullHttpRoutes;
+  }
+
+  //? A handler that fails on the cut body may answer it as its own error, so a tripped limit decides the answer.
+  static #limitBodies(routes: NonNullHttpRoutes, limits: ServerLimits, countChunked: boolean): NonNullHttpRoutes {
+    return Object.fromEntries(
+      Object.entries(routes).map(([path, route]) => [
+        path,
+        route instanceof Response
+          ? route
+          : ApiRouter.#mapRoute(route, (handler) => (req) => {
+              const refused = limits.refuseDeclared(req);
+              if (refused) return refused;
+              const limit = countChunked && !req.headers.has("content-length") ? limits.bodyLimitOf(req) : null;
+              if (limit === null || !req.body) return handler(req);
+              let exceeded = false;
+              const body = ServerLimits.limitBody(req.body, limit, () => {
+                exceeded = true;
+              });
+              const counted = new Request(req.url, {
+                method: req.method,
+                headers: req.headers,
+                body,
+                signal: req.signal,
+                duplex: "half",
+              } as RequestInit);
+              return (async () => {
+                try {
+                  const response = await handler(copyBunRequestFields(counted, req));
+                  return exceeded ? ServerLimits.payloadTooLarge() : response;
+                } catch (error) {
+                  if (exceeded) return ServerLimits.payloadTooLarge();
+                  throw error;
+                }
+              })();
+            }),
+      ]),
+    ) as NonNullHttpRoutes;
+  }
+
+  //? Outermost: `server.timeout` needs the request Bun dispatched, not a copy a wrapper made.
+  static #holdOpen(routes: NonNullHttpRoutes, idleTimeout: number): NonNullHttpRoutes {
+    return Object.fromEntries(
+      Object.entries(routes).map(([path, route]) => [
+        path,
+        route instanceof Response
+          ? route
+          : ApiRouter.#mapRoute(
+              route,
+              (handler) => (req, server?: Bun.Server<unknown>) =>
+                server ? ServerLimits.holdOpen(server, req, idleTimeout, () => handler(req)) : handler(req),
+            ),
       ]),
     ) as NonNullHttpRoutes;
   }

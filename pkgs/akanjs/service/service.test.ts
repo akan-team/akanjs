@@ -41,14 +41,17 @@ const testItemConstant = ConstantRegistry.buildModel(
   { TestItemInput, TestItemObject, TestItemFull, TestItemLight, TestItemInsight },
 );
 
+const TestItemMetaInput = via((f) => ({ select: f(String), nested: f(Any) }));
+ConstantRegistry.buildScalar("serviceTestItemMeta", TestItemMetaInput, { TestItemMetaInput });
+
 class TestItemFilter extends from(TestItemFull, (filter) => ({
   query: {
     inCategory: filter()
       .opt("category", String)
       .query((category) => ({ category })),
     withMeta: filter()
-      .arg("meta", Any)
-      .query((meta) => ({ meta: meta as string })),
+      .arg("meta", TestItemMetaInput)
+      .query((meta) => ({ meta: meta as unknown as string })),
     scoredAbove: filter()
       .arg("score", Int)
       .query((score, q) => ({ score: q.gt(score) })),

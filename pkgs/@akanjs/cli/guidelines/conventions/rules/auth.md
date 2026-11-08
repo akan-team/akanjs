@@ -11,10 +11,10 @@ paths:
   `guards: { cru: false }` (or per verb) takes a generated verb off HTTP; `mcp: { cru: false }` only keeps it off the
   agent shelf.
 - **Every custom `mutation` / `query` / `message` names its own `guards: [...]`** — the slice map reaches only
-  generated endpoints, and a `pubsub` / `message` without its own is unguarded. `Public` belongs on a slice `get:`;
+  generated endpoints, and a `pubsub` / `message` without its own declares none. `Public` belongs on a slice `get:`;
   on a mutation only for an act that must work signed out (sign-up/in, token refresh, an OAuth route), which also
-  declares a `rateLimit`. A guardless endpoint is warned at boot and never published to MCP, which also refuses a
-  mutation guarded only by `Public`.
+  declares a `rateLimit`. A guardless endpoint answers every call with 403 and stops the boot outside local
+  operation; MCP also refuses a mutation guarded only by `Public`.
 - Guards serve HTTP and websocket alike: read `context.get<T>("account")`, never `getHttpContext()` /
   `getWebSocketContext()`; keep them side-effect free and re-runnable. The acting user comes from `.with(Self)` /
   `.with(CurrentUserId)` / `.with(Me)` (never a client-supplied id) and the caller's address from `.with(Ip)`.
@@ -28,7 +28,8 @@ paths:
 
 - **Every endpoint and named slice names its guards** (`no-unguarded-endpoint`, a warning) — a `query` / `mutation` /
   `pubsub` / `message`, a named slice's `init()`, or a `slice()` map without `root` that names none (or `guards: []`)
-  answers every caller. Write `guards: [Public]` when anonymous access is the intent.
+  refuses every caller, and outside local operation the server does not boot. Write `guards: [Public]` when
+  anonymous access is the intent.
 
 - **A `slice()` takes its guard map as a second argument**, `slice(srv.task, { guards: { root: Admin, get: SignedIn,
   cru: SignedIn } }, (init) => ({...}))`. An `endpoint()` takes no guard argument at all —

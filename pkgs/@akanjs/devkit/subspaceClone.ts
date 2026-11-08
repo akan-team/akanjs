@@ -5,7 +5,7 @@ import { Executor, WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
 import { LibSource } from "./libSource";
 import { type SlicePlan, SlicePlanner } from "./slicePlanner";
-import type { SubspaceDeclaration } from "./subspaceConfig";
+import { SubspaceConfig, type SubspaceDeclaration } from "./subspaceConfig";
 import type { PackageJson } from "./types";
 
 export class SubspaceClone {
@@ -43,6 +43,8 @@ export class SubspaceClone {
   constructor(workspace: WorkspaceExecutor, declaration: SubspaceDeclaration) {
     this.#workspace = workspace;
     this.#declaration = declaration;
+    if (!SubspaceConfig.namePattern.test(declaration.name))
+      throw new Error(`Subspace name "${declaration.name}" cannot name a folder under .akan/subspace.`);
     this.#clonePath = path.join(workspace.workspaceRoot, ".akan/subspace", declaration.name);
     this.#clone = new Executor(`subspace-${declaration.name}`, this.#clonePath);
   }

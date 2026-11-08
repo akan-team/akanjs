@@ -3,11 +3,14 @@ export class SignalFailure {
   static readonly message = "Internal Server Error";
   static #detailed: boolean | null = null;
 
-  /** Off in a deployed build (the `WebRouter` test) unless `AKAN_ERROR_DETAIL=1`. */
+  /** On only under `akan start`, a development or test NODE_ENV, or `AKAN_ERROR_DETAIL=1`; off when NODE_ENV is unset. */
   static get detailed(): boolean {
+    const nodeEnv = process.env.NODE_ENV;
     SignalFailure.#detailed ??=
       process.env.AKAN_ERROR_DETAIL === "1" ||
-      !(process.env.NODE_ENV === "production" && process.env.AKAN_COMMAND_TYPE !== "start");
+      process.env.AKAN_COMMAND_TYPE === "start" ||
+      nodeEnv === "development" ||
+      nodeEnv === "test";
     return SignalFailure.#detailed;
   }
 

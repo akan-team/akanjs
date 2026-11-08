@@ -81,10 +81,10 @@ pub fn route(pathname: &str, exists: impl Fn(&str) -> bool) -> Route {
 }
 
 /// Paths the host answers itself even when its pages come from a dev server (akan-native dev --hmr,
-/// devproxy.rs): /__akan_native/*, and paths that do not decode (route() refuses them).
+/// devproxy.rs): /__akan_native/*, and paths that do not decode or have a "." or ".." segment (route() refuses them).
 pub fn is_host_path(pathname: &str) -> bool {
   let Some(decoded) = decode(pathname) else { return true };
-  decoded.split('/').find(|s| !s.is_empty()) == Some(contract::ROUTE_ROOT)
+  decoded.split('/').any(|s| s == "." || s == "..") || decoded.split('/').find(|s| !s.is_empty()) == Some(contract::ROUTE_ROOT)
 }
 
 /// The MIME type for a file name (FileRefs): application/octet-stream when unknown.

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { command, Exec, Workspace } from "@akanjs/devkit/commandDecorators";
+import { npmRegistryFromEnv, warnIgnoredNpmRegistry } from "../npmRegistry";
 import { defaultMaxDiagnostics } from "./workspace.runner";
 import { WorkspaceScript } from "./workspace.script";
 
@@ -32,7 +33,7 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     .option("init", Boolean, { desc: "Do you want to initialize the workspace? (Recommended)", default: true })
     .option("registry", String, {
       desc: "npm registry URL for installing Akan packages",
-      default: process.env.AKAN_NPM_REGISTRY ?? "https://registry.npmjs.org",
+      default: npmRegistryFromEnv() ?? "https://registry.npmjs.org",
     })
     .option("owner", String, { desc: "owner of the workspace", default: process.env.GITHUB_OWNER, nullable: true })
     .option("mcpInstall", Boolean, {
@@ -49,6 +50,7 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
       default: true,
     })
     .exec(async function (workspaceName, app, dir, libs, init, registry, owner, mcpInstall, agentInstall, sample) {
+      warnIgnoredNpmRegistry();
       const appName = app || "app";
       const inPlace = workspaceName === ".";
       const repoName = inPlace ? path.basename(path.resolve(dir)) : workspaceName;

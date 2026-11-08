@@ -56,7 +56,7 @@ Every signal file declares the three classes in this order, even when one is emp
 
 **Barrels come in as values.** A signal imports `* as cnst` and `* as srv` with a plain `import`, not `import type`.
 
-**Every slice and every custom endpoint names its guards.** `slice()` takes `{ guards: { root: Admin, … } }`, and each custom endpoint its own `guards: [...]`. The guards also decide what AI agents see: an endpoint with none is open to anyone and hidden from agents.
+**Every slice and every custom endpoint names its guards.** `slice()` takes `{ guards: { root: Admin, … } }`, and each custom endpoint its own `guards: [...]`. The guards also decide what AI agents see: an endpoint with none is refused with 403 and hidden from agents.
 
 Extending A Library Model
 
@@ -410,9 +410,7 @@ AI agent — /mcp
 
 - Served, but hidden from agents
 
-  - no guards: Anyone can call it, and no agent can see it.
-
-  - mutation · guards: [Public]: `Public` alone on a write counts as no guard.
+  - mutation · guards: [Public]: Agents treat `Public` alone on a write as no guard; HTTP serves it to anyone.
 
   - mcp: false: Taken off the agent shelf on purpose. Guards are unchanged.
 
@@ -421,6 +419,10 @@ AI agent — /mcp
   - message · pubsub: They ride the websocket, which an MCP call does not have.
 
   - Any · Binary · Upload: A return typed `Any` or `Binary`, or a file upload, cannot be described to a model.
+
+- Refused to every caller
+
+  - no guards: Every call answers 403, and outside local operation the server does not boot.
 
 Can call it
 

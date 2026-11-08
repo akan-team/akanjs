@@ -1,5 +1,6 @@
 import { type Dayjs, dayjs } from "akanjs/base";
 import { isValidDate } from "akanjs/common";
+import { RequestValue } from "akanjs/constant";
 
 export type DocumentId = string & { readonly __brand: "DocumentId" };
 
@@ -154,7 +155,7 @@ export type DocumentQuery<T = any> =
     };
 
 // A model may declare its own `kind` field, so `{ kind: "image" }` is a field query; only a node's whole shape is a
-// node. Not a brand: framework code and callers build node literals, and a spread or JSON round trip drops a symbol.
+// node. The shape alone is enough for the combinators and operators, which framework code and callers build as literals.
 export const isDocumentQueryNode = (value: unknown): value is DocumentQueryNode => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const node = value as Record<string, unknown>;
@@ -174,6 +175,42 @@ export const isDocumentQueryNode = (value: unknown): value is DocumentQueryNode 
     default:
       return false;
   }
+};
+
+// `raw` and `search` must also come from `q`: JSON can spell either shape, and `raw` reaches the SQL text as written.
+// Interned, since a built main.js and server.js each bundle this module and a node built in one compiles in the other.
+const builtNodeKey = Symbol.for("akanjs.document.builtQueryNodes");
+const builtNodeHolder = globalThis as unknown as Record<symbol, WeakSet<object> | undefined>;
+const builtNodes = builtNodeHolder[builtNodeKey] ?? new WeakSet<object>();
+builtNodeHolder[builtNodeKey] = builtNodes;
+const built = <Node extends DocumentQueryNode>(node: Node): Node => {
+  builtNodes.add(node);
+  return node;
+};
+export const isBuiltQueryNode = (node: object) => builtNodes.has(node);
+
+export const queryNodeProblem = (node: DocumentQueryNode): string | null => {
+  if (RequestValue.isFrom(node))
+    return `A q.${node.kind}() condition arrived as a request value; build query conditions with q in code`;
+  if ((node.kind === "raw" || node.kind === "search") && !isBuiltQueryNode(node))
+    return `A q.${node.kind}() condition must be built by q.${node.kind}(); an object of the same shape is refused`;
+  return null;
+};
+
+export const fieldValueProblem = (path: string, value: unknown): string | null => {
+  // From code, `{ gte: 1 }` is a condition; from a caller it would replace the condition the code put on the field.
+  if (
+    RequestValue.isFrom(value) &&
+    (isDocumentQueryNode(value) || Object.keys(value as object).some((key) => queryOperatorKeys.has(key)))
+  )
+    return `The value of "${path}" arrived in a request and holds query operators; build the condition with q from checked values`;
+  if (isDocumentQueryNode(value)) {
+    if (value.kind === "op") return null;
+    if (value.kind === "raw" || value.kind === "search")
+      return `q.${value.kind}() cannot be the value of "${path}"; put it beside the field's condition`;
+    return `q.${value.kind}() cannot be the value of "${path}"; it combines whole conditions, as in q.${value.kind}({ ${path}: ... })`;
+  }
+  return null;
 };
 
 export interface SqlFragment {
@@ -209,13 +246,14 @@ export const createDocumentQueryHelper = () => ({
   empty: (path: string) => ({ [path]: op("empty") }),
   has: (value: unknown) => op("has", value),
   contains: (value: unknown) => op("contains", value),
-  raw: (sql: string, params: unknown[] = []): DocumentQueryNode => ({ kind: "raw", sql, params }),
+  raw: (sql: string, params: unknown[] = []): DocumentQueryNode => built({ kind: "raw", sql, params }),
   // A pure descriptor: the compiler decides whether search is available, so a filter still builds with it off.
-  search: (text: string, options: DocumentSearchOptions = {}): DocumentQueryNode => ({
-    kind: "search",
-    text,
-    ...options,
-  }),
+  search: (text: string, options: DocumentSearchOptions = {}): DocumentQueryNode =>
+    built({
+      kind: "search",
+      text,
+      ...options,
+    }),
   when: (condition: unknown, query: DocumentQuery): DocumentQuery => (condition ? query : {}),
 });
 

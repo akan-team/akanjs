@@ -21,6 +21,15 @@ interface ErrPayload extends ErrRestoreOption {
   data?: Record<string, unknown>;
 }
 
+const htmlEntities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const escapeRichParams = (param: { [key: string]: string | number } | undefined) =>
+  Object.fromEntries(
+    Object.entries(param ?? {}).map(([key, value]) => [
+      key,
+      String(value).replace(/[&<>"']/g, (char) => htmlEntities[char] ?? char),
+    ]),
+  );
+
 const getPageInfo = (): { locale: string; path: string } => {
   const { defaultLocale, locales } = parseAkanI18nEnv();
   const localeSet = new Set(locales);
@@ -156,10 +165,10 @@ export const makePageProto = <
       l.rich = (key: DictKey, param?: { [key: string]: string | number }) =>
         (
           <span
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: <a>an explanation</a>
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: the markup is the app's own dictionary text; every param value is HTML-escaped before it is interpolated
             dangerouslySetInnerHTML={{
               __html: translator.translate(lang, key, {
-                ...param,
+                ...escapeRichParams(param),
                 br: `<br />`,
               }),
             }}

@@ -14,6 +14,18 @@ const skipTags = new Set([
 const headingLevels = { H1: 1, H2: 2, H3: 3, H4: 4, H5: 5, H6: 6 } as const;
 const headingSelector = "h1, h2, h3, h4, h5, h6";
 const unprintedHrefScheme = /^(?:javascript|data|vbscript):/i;
+const privateAttr = "data-agent-private";
+const credentialAutocomplete = new Set([
+  "one-time-code",
+  "current-password",
+  "new-password",
+  "cc-number",
+  "cc-csc",
+  "cc-exp",
+  "cc-exp-month",
+  "cc-exp-year",
+]);
+const privateNote = "That part of the screen is private: the page keeps it from the assistant.";
 const blockTags = new Set([
   "ADDRESS",
   "ARTICLE",
@@ -51,12 +63,14 @@ export interface ScreenReadOptions {
   images?: boolean;
 }
 
-/** The rendered page as compact text for an agent; skips `data-agent-ui` and never reads a password value. */
+/** The rendered page as compact text for an agent; skips `data-agent-ui`, leaves `data-agent-private` unread, and never
+ * reads a password, a one-time code or a card number. */
 export class ScreenReader {
   static readonly limit = 8000;
 
   static read(root?: HTMLElement | null, options: ScreenReadOptions = {}): string {
     if (typeof document === "undefined") return "No rendered document is available.";
+    if (root?.closest(`[${privateAttr}]`)) return privateNote;
     const reader = new ScreenReader(options);
     const title = document.title.trim();
     if (title) reader.#lines.push(`Page: ${title}`);
@@ -68,6 +82,7 @@ export class ScreenReader {
   /** One heading's section: its container when that holds no peer heading, else its following siblings. */
   static readFrom(heading: HTMLElement, root?: HTMLElement | null, options: ScreenReadOptions = {}): string {
     if (typeof document === "undefined") return "No rendered document is available.";
+    if (heading.closest(`[${privateAttr}]`)) return privateNote;
     const reader = new ScreenReader(options);
     const container = ScreenReader.#sectionOf(heading, root);
     if (container) reader.#walk(container, true);
@@ -135,7 +150,13 @@ export class ScreenReader {
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const el = node as HTMLElement;
     const tag = el.tagName.toUpperCase();
-    if (skipTags.has(tag) || el.hasAttribute("data-agent-ui") || el.hasAttribute("data-agent-skip")) return;
+    if (
+      skipTags.has(tag) ||
+      el.hasAttribute("data-agent-ui") ||
+      el.hasAttribute("data-agent-skip") ||
+      el.hasAttribute(privateAttr)
+    )
+      return;
     const level = headingLevels[tag as keyof typeof headingLevels];
     if (level) {
       const anchor = ScreenReader.anchorOf(el);
@@ -198,6 +219,11 @@ export class ScreenReader {
     }
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
       this.#control(el, tag);
+      return;
+    }
+    if (el.hasAttribute(privateAttr)) {
+      const label = el.getAttribute(privateAttr)?.trim();
+      this.#buffer += ` [private${label ? `: ${label}` : ""}]`;
       return;
     }
     if (tag === "IMG") {
@@ -289,8 +315,9 @@ export class ScreenReader {
       el.getAttribute("name") ??
       type;
     const off = ScreenReader.#off(el);
-    if (type === "password") {
-      this.#buffer += ` [input ${name}${off}]`;
+    if (type === "password" || el.hasAttribute(privateAttr) || ScreenReader.#holdsCredential(el)) {
+      const kind = type === "checkbox" || type === "radio" ? type : tag === "SELECT" ? "select" : "input";
+      this.#buffer += ` [${kind} ${name}${off}]`;
       return;
     }
     if (type === "checkbox" || type === "radio") {
@@ -304,6 +331,11 @@ export class ScreenReader {
         : input.value;
     const value = (raw ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
     this.#buffer += ` [${tag === "SELECT" ? "select" : "input"} ${name}${off}: ${JSON.stringify(value)}]`;
+  }
+
+  static #holdsCredential(el: HTMLElement) {
+    const tokens = (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/);
+    return tokens.some((token) => credentialAutocomplete.has(token));
   }
 
   #pre(el: HTMLElement) {

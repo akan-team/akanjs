@@ -1,6 +1,7 @@
 import type { BaseEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { DictionaryRegistry, type RootDictionary } from "akanjs/dictionary";
+import { isLocalDevRuntime } from "../../signal/trace";
 import type { DiLifecycle } from "../di/diLifecycle";
 import type { HttpRoutes } from "../types";
 import { ConstantSerializer } from "./constantSerializer";
@@ -24,12 +25,12 @@ export class DevtoolsRouter {
   static readonly basePath = "/_akan";
   static readonly logger = new Logger("DevtoolsRouter");
 
-  /** Local-only unless `AKAN_DEVTOOLS` ("true"/"1", "false"/"0") overrides it, e.g. to debug a deployed env. */
+  /** A local dev runtime only, unless `AKAN_DEVTOOLS` ("true"/"1", "false"/"0") overrides it, e.g. to debug a deployed env. */
   static isEnabled(env: BaseEnv): boolean {
     const override = process.env.AKAN_DEVTOOLS;
     if (override === "false" || override === "0") return false;
     if (override === "true" || override === "1") return true;
-    return env.environment === "local";
+    return isLocalDevRuntime(env);
   }
 
   readonly #context: DevtoolsRouterContext;

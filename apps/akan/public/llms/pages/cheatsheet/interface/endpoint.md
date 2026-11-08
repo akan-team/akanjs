@@ -112,7 +112,7 @@ The second argument of `mutation()` or `query()` is the options object:
 
 **A timeout answers the caller; it does not stop the work.** The handler still runs to the end, with nobody waiting for its result.
 
-**Every custom endpoint names its own guards.** The slice's guard map covers only the generated CRUD, never `publishPost`. An endpoint without `guards` is open to anyone over HTTP and is left out of the MCP catalogue; so is a mutation guarded only by `Public`.
+**Every custom endpoint names its own guards.** The slice's guard map covers only the generated CRUD, never `publishPost`. An endpoint without `guards` answers 403 over HTTP and is left out of the MCP catalogue; a mutation guarded only by `Public` is left out too.
 
 Put Rules In Service And Document
 

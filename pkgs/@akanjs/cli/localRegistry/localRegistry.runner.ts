@@ -2,22 +2,50 @@ import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { Logger } from "akanjs/common";
-import { getNpmRegistryUrl } from "../npmRegistry";
+import { getNpmRegistryUrl, npmRegistryFromEnv } from "../npmRegistry";
 
 const defaultLocalRegistryUrl = "http://127.0.0.1:4873";
 const containerName = "akan-verdaccio";
 const smokeRepoName = "akan-local-smoke";
 const smokeAppName = "demo";
 
+const ipv4Pattern = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+
+interface ContainerPortBindings {
+  HostConfig?: { PortBindings?: Record<string, { HostIp?: string }[] | null> };
+}
+
 export class LocalRegistryRunner extends runner("localRegistry") {
-  getRegistryUrl(registryUrl = process.env.AKAN_NPM_REGISTRY ?? defaultLocalRegistryUrl) {
+  getRegistryUrl(registryUrl = npmRegistryFromEnv() ?? defaultLocalRegistryUrl) {
     return getNpmRegistryUrl(registryUrl);
+  }
+
+  //? Anyone who reaches the port can publish, so it listens where the URL points: loopback unless an IP says otherwise.
+  static publishAddressOf(registry: string) {
+    const { hostname, port } = new URL(registry);
+    return { host: ipv4Pattern.test(hostname) ? hostname : "127.0.0.1", port: port || "4873" };
+  }
+
+  static #listensEverywhere(inspectOutput: string) {
+    try {
+      const [container] = JSON.parse(inspectOutput) as ContainerPortBindings[];
+      return Object.values(container?.HostConfig?.PortBindings ?? {}).some((bindings) =>
+        (bindings ?? []).some(({ HostIp }) => !HostIp || HostIp === "0.0.0.0" || HostIp === "::"),
+      );
+    } catch {
+      return false;
+    }
   }
 
   async start(workspace: Workspace, { registryUrl }: { registryUrl?: string } = {}) {
     const registry = this.getRegistryUrl(registryUrl);
+    const address = LocalRegistryRunner.publishAddressOf(registry);
     try {
-      await workspace.spawn("docker", ["inspect", containerName]);
+      const inspected = await workspace.spawn("docker", ["inspect", containerName]);
+      if (address.host !== "0.0.0.0" && LocalRegistryRunner.#listensEverywhere(inspected))
+        Logger.warn(
+          `The running ${containerName} container listens on every network interface; run \`docker rm -f ${containerName}\` and start it again to bind it to ${address.host}.`,
+        );
       Logger.info(`Local registry is already running at ${registry}`);
       return registry;
     } catch {
@@ -36,7 +64,7 @@ export class LocalRegistryRunner extends runner("localRegistry") {
         "--name",
         containerName,
         "-p",
-        "4873:4873",
+        `${address.host}:${address.port}:4873`,
         "-v",
         `${configPath}:/verdaccio/conf/config.yaml:ro`,
         "-v",

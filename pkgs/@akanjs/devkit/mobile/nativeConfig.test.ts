@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { buildCsp, cspHash, parseCsp } from "../../native/packages/cli/src/lib/csp";
+import { rewriteDevHtml } from "../../native/packages/cli/src/lib/hmr";
 import type { AkanNativeTarget } from "../akanConfig";
 import { tempDirs } from "../testHelpers";
 import { NativeApi } from "./nativeApi";
@@ -42,6 +44,19 @@ const adminTarget: AkanNativeTarget = {
     files: { "res/raw/chime.mp3": "assets/chime.mp3" },
   },
 };
+
+const cloudEnv = { AKAN_PUBLIC_APP_NAME: "minimal", AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_SERVE_DOMAIN: "example.com" };
+const policy = (extra: Record<string, string[]> = {}) =>
+  Object.fromEntries(
+    Object.entries(NativeConfig.defaultCsp).map(([directive, sources]) => [
+      directive,
+      [...sources, ...(extra[directive] ?? [])],
+    ]),
+  );
+const permissionOf = (id: string) =>
+  id === "opener"
+    ? { identifier: "opener:default", allow: NativeConfig.defaultOpenUrls.map((url) => ({ url })) }
+    : `${id}:default`;
 
 const ed25519Key = () =>
   generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64");
@@ -102,6 +117,7 @@ describe("NativeConfig.build", () => {
       contributions: [{ permission: "push", plugins: ["push"] }],
       locales: ["en", "ko"],
       platform: "android",
+      publicEnv: cloudEnv,
     });
 
     expect(warnings).toEqual([]);
@@ -113,9 +129,10 @@ describe("NativeConfig.build", () => {
         {
           identifier: "app",
           description: "The plugins minimal ships, each with its default permissions",
-          permissions: [...NativeConfig.basePlugins, "single-instance", "push"].map((plugin) => `${plugin}:default`),
+          permissions: [...NativeConfig.basePlugins, "single-instance", "push"].map(permissionOf),
         },
       ],
+      security: { csp: policy() },
       deepLinks: { schemes: ["minimal"], domains: ["example.com"] },
       android: {
         debugAppIdSuffix: ".debug",
@@ -144,11 +161,10 @@ describe("NativeConfig.build", () => {
         {
           identifier: "app",
           description: "The plugins Portal Admin ships, each with its default permissions",
-          permissions: [...NativeConfig.basePlugins, "camera", "geolocation", "contacts", "iap"].map(
-            (plugin) => `${plugin}:default`,
-          ),
+          permissions: [...NativeConfig.basePlugins, "camera", "geolocation", "contacts", "iap"].map(permissionOf),
         },
       ],
+      security: { csp: policy() },
       usageDescriptions: {
         NSCameraUsageDescription: "Portal Admin requires access to the camera to take photos.",
         NSPhotoLibraryAddUsageDescription: "Portal Admin requires access to the photo library to take photos.",
@@ -378,7 +394,7 @@ describe("NativeConfig.build", () => {
 
     expect(config.plugins).toEqual([...NativeConfig.basePlugins, "./vendor/led-panel", kiosk]);
     expect(config.capabilities?.[0]?.permissions).toEqual(
-      [...NativeConfig.basePlugins, "led-panel", "kiosk"].map((id) => `${id}:default`),
+      [...NativeConfig.basePlugins, "led-panel", "kiosk"].map(permissionOf),
     );
     await mkdir(path.join(root, "web"), { recursive: true });
     await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
@@ -507,6 +523,178 @@ describe("NativeConfig.build", () => {
     expect(build("main")).toEqual({ ...updates, channel: "main", target });
     expect(build("debug", "pilot")).toEqual({ ...updates, channel: "pilot", target });
     expect(build()).toEqual({ ...updates, target });
+  });
+
+  describe("the page's content security policy", () => {
+    const build = (
+      target: Partial<AkanNativeTarget> = {},
+      more: Partial<Parameters<typeof NativeConfig.build>[0]> = {},
+    ) =>
+      NativeConfig.build({
+        appPath: "/repo/apps/minimal",
+        target: { ...minimalTarget, ...target },
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "ios",
+        publicEnv: cloudEnv,
+        ...more,
+      }).config.security?.csp as Record<string, string[]> | string | undefined;
+
+    test("lets a local build reach the dev server on any port, and a carried server on loopback", () => {
+      const local = build({}, { publicEnv: { AKAN_PUBLIC_ENV: "local" } }) as Record<string, string[]>;
+      expect(local["connect-src"]).toEqual([
+        ...(NativeConfig.defaultCsp["connect-src"] ?? []),
+        "http://localhost:*",
+        "ws://localhost:*",
+      ]);
+      expect(local["script-src"]).toEqual(["'self'", "'wasm-unsafe-eval'"]);
+      const desktopServer = { dir: "/srv", entry: "main.js", env: {} };
+      const carried = build({}, { platform: "macos", desktopServer }) as Record<string, string[]>;
+      expect(carried["connect-src"]).toContain("http://127.0.0.1:*");
+      expect(carried["connect-src"]).toContain("ws://127.0.0.1:*");
+    });
+
+    test("a dev page under the default policy reaches the dev gateway's socket, on this computer or over the LAN", () => {
+      const csp = build({}, { publicEnv: { AKAN_PUBLIC_ENV: "local" } });
+      const devPolicy = (wsOrigin?: string) => {
+        const { html } = rewriteDevHtml(
+          '<!doctype html><html><head><meta charset="utf-8"></head><body><script type="module" src="/_akan/client/main.js"></script></body></html>',
+          {
+            platform: "ios",
+            port: 4321,
+            hmrPath: "/_akan/hmr",
+            wsPaths: ["/ws"],
+            ...(wsOrigin ? { wsOrigin } : {}),
+            csp,
+          },
+        );
+        const content = /http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(html)?.[1] ?? "";
+        return parseCsp(content.replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
+      };
+
+      const loopback = devPolicy();
+      expect(loopback.get("connect-src")).toEqual(
+        expect.arrayContaining(["'self'", "http://localhost:*", "ws://localhost:*", "ws://127.0.0.1:4321"]),
+      );
+      expect(loopback.get("script-src")).toEqual(expect.arrayContaining(["'self'", "blob:"]));
+      const lan = devPolicy("ws://192.168.0.12:4321");
+      expect(lan.get("connect-src")).toEqual(
+        expect.arrayContaining(["'self'", "ws://192.168.0.12:4321", "http://192.168.0.12:4321"]),
+      );
+      expect(lan.get("object-src")).toEqual(["'none'"]);
+    });
+
+    test("reaches any https or wss origin and loads https images, media, fonts and stylesheets, while scripts stay the app's", () => {
+      const csp = build() as Record<string, string[]>;
+      expect(csp["connect-src"]).toEqual(["'self'", "blob:", "data:", "https:", "wss:"]);
+      for (const directive of ["img-src", "media-src", "font-src"]) expect(csp[directive]).toContain("https:");
+      expect(csp["style-src"]).toEqual(["'self'", "'unsafe-inline'", "https:"]);
+      expect(csp["script-src"]).toEqual(["'self'", "'wasm-unsafe-eval'"]);
+    });
+
+    test("names a pinned AKAN_PUBLIC_SERVER_URL only when it is plain http", () => {
+      const connect = (url: string) =>
+        (build({}, { publicEnv: { ...cloudEnv, AKAN_PUBLIC_SERVER_URL: url } }) as Record<string, string[]>)[
+          "connect-src"
+        ];
+      expect(connect("https://api.example.com/x")).toEqual(["'self'", "blob:", "data:", "https:", "wss:"]);
+      expect(connect("http://192.168.0.5:8080/api")).toEqual([
+        "'self'",
+        "blob:",
+        "data:",
+        "https:",
+        "wss:",
+        "http://192.168.0.5:8080",
+        "ws://192.168.0.5:8080",
+      ]);
+    });
+
+    test("a directive map adds to the default, a string replaces it, and false ships none", () => {
+      const added = build({
+        csp: { "script-src": "https://sdk.example.com", "object-src": ["https://embed.example.com"] },
+      }) as Record<string, string[]>;
+      expect(added["script-src"]).toEqual(["'self'", "'wasm-unsafe-eval'", "https://sdk.example.com"]);
+      expect(added["object-src"]).toEqual(["https://embed.example.com"]);
+      expect(build({ csp: "strict" })).toBe("strict");
+      expect(build({ csp: false })).toBeUndefined();
+    });
+
+    test("a directive the default lacks starts from its CSP fallback, so the bundle and init.js still run", () => {
+      const csp = build({
+        csp: {
+          "script-src": "https://sdk.example.com",
+          "script-src-elem": ["https://cdn.example.com"],
+          "style-src-attr": "https://styles.example.com",
+          "manifest-src": ["https://manifest.example.com"],
+          "upgrade-insecure-requests": [],
+        },
+      }) as Record<string, string[]>;
+      expect(csp["script-src-elem"]).toEqual([
+        "'self'",
+        "'wasm-unsafe-eval'",
+        "https://sdk.example.com",
+        "https://cdn.example.com",
+      ]);
+      expect(csp["style-src-attr"]).toEqual(["'self'", "'unsafe-inline'", "https:", "https://styles.example.com"]);
+      expect(csp["manifest-src"]).toEqual(["'self'", "https://manifest.example.com"]);
+      expect(csp["upgrade-insecure-requests"]).toEqual([]);
+
+      const page =
+        '<html><head><meta charset="utf-8"><script src="/__akan_native/init.js"></script></head><body><script type="module">boot()</script></body></html>';
+      expect(parseCsp(buildCsp(csp, page).policy).get("script-src-elem")).toEqual(
+        expect.arrayContaining(["'self'", cspHash("boot()")]),
+      );
+    });
+
+    test("directive names ignore case, and a default-src entry reaches every fetch directive but object-src", () => {
+      const csp = build({
+        csp: { "Connect-Src": ["https://upload.example.com"], "default-src": "https://cdn.example.com" },
+      }) as Record<string, string[]>;
+      expect(Object.keys(csp)).not.toContain("Connect-Src");
+      expect(csp["connect-src"]).toEqual([
+        "'self'",
+        "blob:",
+        "data:",
+        "https:",
+        "wss:",
+        "https://cdn.example.com",
+        "https://upload.example.com",
+      ]);
+      expect(csp["default-src"]).toEqual(["'self'", "https://cdn.example.com"]);
+      for (const directive of ["script-src", "style-src", "img-src", "font-src", "worker-src", "frame-src"])
+        expect(csp[directive]).toContain("https://cdn.example.com");
+      expect(csp["object-src"]).toEqual(["'none'"]);
+      expect(csp["base-uri"]).toEqual(["'self'"]);
+    });
+
+    test("refuses an empty policy string and names csp: false", () => {
+      expect(() => build({ csp: "" })).toThrow("`csp: false`");
+      expect(() => build({ csp: " " })).toThrow("`csp: false`");
+    });
+  });
+
+  test("opener opens https, mailto and tel links unless the app names its own", () => {
+    const opener = (openUrls?: string[]) =>
+      NativeConfig.build({
+        appPath: "/repo/apps/minimal",
+        target: { ...minimalTarget, ...(openUrls ? { openUrls } : {}) },
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "android",
+        publicEnv: cloudEnv,
+      }).config.capabilities?.[0]?.permissions.find((permission) => JSON.stringify(permission).includes("opener"));
+
+    expect(opener()).toEqual({
+      identifier: "opener:default",
+      allow: [{ url: "https://*:*" }, { url: "mailto:*" }, { url: "tel:*" }],
+    });
+    expect(opener(["https://*.example.com/*"])).toEqual({
+      identifier: "opener:default",
+      allow: [{ url: "https://*.example.com/*" }],
+    });
+    expect(opener(["*"])).toBe("opener:default");
   });
 
   test("keeps a file name the runtime accepts", () => {

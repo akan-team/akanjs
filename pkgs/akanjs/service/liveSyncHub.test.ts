@@ -143,6 +143,16 @@ describe("LiveSyncHub membership", () => {
     expect(hub.roomCount).toBe(0);
   });
 
+  test("a room is shared only with a subscriber of the same query, whatever its key order", () => {
+    const hub = new LiveSyncHub();
+    hub.join({ refName: "task", roomId: "inOrg", query: { org: "o1", status: "draft" }, fallback: null });
+    hub.join({ refName: "task", roomId: "inOrg", query: { status: "draft", org: "o1" }, fallback: null });
+    expect(() => hub.join({ refName: "task", roomId: "inOrg", query: { org: "o2" }, fallback: null })).toThrow(
+      'Live room "inOrg" is already held for another query',
+    );
+    expect(hub.route("task", doc({ org: "o2" }))).toEqual([]);
+  });
+
   test("a base column or an array field is never taken into the index", () => {
     const byId = hubWith([{ roomId: "byId", query: { id: "a".repeat(24) } }]);
     expect(byId.route("task", doc())).toEqual([{ roomId: "byId", op: "enter", invalidate: false, payload: "light" }]);

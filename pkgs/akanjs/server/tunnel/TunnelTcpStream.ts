@@ -7,21 +7,24 @@ export class TunnelTcpStream implements TunnelStream {
   readonly #open: TunnelOpenFrame;
   readonly #link: TunnelStreamLink;
   readonly #hostname: string;
+  readonly #ports: readonly number[];
   #socket: net.Socket | null = null;
   #forwarding: Promise<void> = Promise.resolve();
   #closed: boolean = false;
   #gatewayEnded: boolean = false;
 
-  constructor(open: TunnelOpenFrame, link: TunnelStreamLink, hostname: string) {
+  constructor(open: TunnelOpenFrame, link: TunnelStreamLink, hostname: string, ports: readonly number[]) {
     this.#open = open;
     this.#link = link;
     this.#hostname = hostname;
+    this.#ports = ports;
   }
 
   async run() {
     const { streamId, port } = this.#open;
-    if (!port) {
-      this.#link.sendFrame({ type: "reset", streamId, code: "protocol", message: "tcp open carries no port" });
+    if (!port || !this.#ports.includes(port)) {
+      const message = port ? `tcp port ${port} is not shared` : "tcp open carries no port";
+      this.#link.sendFrame({ type: "reset", streamId, code: "protocol", message });
       this.#link.closeSocket();
       return;
     }

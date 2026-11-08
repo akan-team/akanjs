@@ -28,6 +28,17 @@ export class SignedIn implements Guard {
   }
 }
 
+// Open locally and under \`akan test\` so the sample works before sign-in; once the app signs users in, use SignedIn.
+export class LocalOrSignedIn implements Guard {
+  static name = "LocalOrSignedIn";
+  static scope: GuardScope = "account";
+
+  canPass(context: SignalContext): boolean {
+    const environment = process.env.AKAN_PUBLIC_ENV;
+    return environment === "local" || environment === "testing" || new SignedIn().canPass(context);
+  }
+}
+
 // ---- Expandable additional fields: ----
 // Role-based guard: only allow users with a specific role
 // export class IsAdmin implements Guard {

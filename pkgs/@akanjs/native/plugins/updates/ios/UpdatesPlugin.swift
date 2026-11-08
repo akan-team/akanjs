@@ -279,6 +279,12 @@ final class UpdatesPlugin: UpdatesPluginSpec {
         guard o["revokeKeys"] == nil || o["revokeKeys"] is [String], revokeKeys.count <= AkanNativeKernel.maxRevokeKeys,
               revokeKeys.allSatisfy(AkanNativeKernel.isUpdateKeyId),
               o["resetSequence"].map({ CFGetTypeID($0 as CFTypeRef) == CFBooleanGetTypeID() }) ?? true else { throw bad("revokeKeys or resetSequence") }
+        //? kernel.ts manifestExpiry: a signed expiresAt (Unix seconds) the manifest may leave out.
+        if let raw = o["expiresAt"] {
+            guard CFGetTypeID(raw as CFTypeRef) != CFBooleanGetTypeID(), let expires = (raw as? NSNumber)?.doubleValue,
+                  expires.isFinite, expires > 0 else { throw bad("expiresAt") }
+            guard Date().timeIntervalSince1970 < expires else { throw bad("it expired at \(Int(expires))") }
+        }
         guard let bundle = o["bundle"] as? String, AkanNativeUpdates.isBundleId(bundle) else { throw bad("bundle id") }
         guard let sequence = (o["sequence"] as? NSNumber)?.doubleValue, sequence.isFinite, sequence > 0 else { throw bad("sequence") }
         guard let nativeApi = o["nativeApi"] as? String, let list = o["files"] as? [[String: Any]], (1...5000).contains(list.count) else { throw bad("nativeApi or files") }

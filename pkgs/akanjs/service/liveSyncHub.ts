@@ -7,6 +7,7 @@ import {
   isDocumentQueryNode,
   type QueryFieldMap,
 } from "akanjs/document";
+import { canonicalJson } from "../common/websocketContract";
 
 /** What happened to one document from one room's point of view — never the CRUD verb that caused it. */
 export type LiveOp = "enter" | "update" | "leave";
@@ -37,6 +38,7 @@ interface LiveRoom {
   refName: string;
   roomId: string;
   query: DocumentQuery | undefined;
+  queryKey: string;
   invalidate: boolean;
   evaluator: DocumentQueryEvaluator;
   payload: "light" | "id";
@@ -63,8 +65,11 @@ export class LiveSyncHub {
 
   /** Idempotent: a second socket subscribing to the same room shares the one evaluation. */
   join({ refName, roomId, query, fallback, payload = "light", fields }: LiveRoomRegistration): LiveRoom {
+    const queryKey = canonicalJson(query ?? null);
     const existing = this.#rooms.get(roomId);
     if (existing) {
+      //? A room is routed by the query it was created with, so a subscriber holding another one would read its matches.
+      if (existing.queryKey !== queryKey) throw new Error(`Live room "${roomId}" is already held for another query`);
       existing.subscribers += 1;
       return existing;
     }
@@ -81,6 +86,7 @@ export class LiveSyncHub {
       refName,
       roomId,
       query,
+      queryKey,
       invalidate,
       evaluator: new DocumentQueryEvaluator(fields ?? {}),
       payload,

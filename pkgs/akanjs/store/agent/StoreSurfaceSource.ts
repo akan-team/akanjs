@@ -40,6 +40,7 @@ export class StoreSurfaceSource implements SurfaceSource {
   static #navigate(): ToolEntry {
     return {
       name: "navigate",
+      taint: "exempt",
       description: "Navigate this page to an internal path of this app, e.g. /docs/intro/quickstart.",
       parameters: {
         type: "object",
@@ -102,6 +103,7 @@ export class StoreSurfaceSource implements SurfaceSource {
   static #goBack(): ToolEntry {
     return {
       name: "goBack",
+      taint: "exempt",
       description:
         "Go back to the previous page in this session's history. Use it to undo a navigation; use navigate for a path.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
@@ -140,6 +142,7 @@ export class StoreSurfaceSource implements SurfaceSource {
         additionalProperties: false,
       },
       settle: false,
+      taint: "source",
       run: (args) => {
         const root = StoreSurfaceSource.#zoneRoot(viewKey);
         const section = typeof args.section === "string" ? args.section.trim() : "";
@@ -212,6 +215,7 @@ export class StoreSurfaceSource implements SurfaceSource {
         additionalProperties: false,
       },
       settle: false,
+      taint: "source",
       // Only what the screen shows: an arbitrary address would have the user's browser fetch it for the model.
       guard: (args) => {
         const src = typeof args.src === "string" ? args.src.trim() : "";
@@ -241,6 +245,7 @@ export class StoreSurfaceSource implements SurfaceSource {
         additionalProperties: false,
       },
       settle: false,
+      taint: "source",
       run: (args: Record<string, unknown>) => {
         this.#bridge ??= AgentBridge.of();
         return this.#bridge.read(String(args.key), viewKey);

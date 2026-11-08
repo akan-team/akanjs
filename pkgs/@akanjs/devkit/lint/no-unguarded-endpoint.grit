@@ -1,8 +1,8 @@
 engine biome(1.0)
 language js(typescript, jsx)
 
-// `SignalContext` checks `signalOption.guards ?? []`, so an endpoint, a named slice, or a slice's root query declaring
-// none is open to every HTTP and websocket caller. An option the rule cannot read, a variable or a spread, is left alone.
+// `SignalContext` refuses an endpoint, a named slice, or a slice's root query declaring no guards, and outside local
+// operation the server does not boot with one. An option the rule cannot read, a variable or a spread, is left alone.
 or {
   JsCallExpression(callee = $callee, arguments = JsCallArguments(args = $args)) as $call where {
     or {
@@ -32,7 +32,7 @@ or {
     },
     register_diagnostic(
       span = $callee,
-      message = "No `guards`, so every HTTP and websocket caller reaches this endpoint: a missing or empty `guards` fails open, which is also why MCP refuses it. Name the guards it needs, or write `guards: [Public]` when anonymous access is the intent.",
+      message = "No `guards`, so every call to this endpoint is refused with 403, and outside local operation the server does not boot. Name the guards it needs, or write `guards: [Public]` when anonymous access is the intent.",
       severity = "warn"
     )
   },
@@ -47,7 +47,7 @@ or {
         },
         register_diagnostic(
           span = $sliceOption,
-          message = "No `guards` on this slice, so every HTTP and websocket caller reaches its root query and generated reads and writes: a missing guard fails open. Pass { guards: { root: Admin, get: …, cru: … } }, naming `Public` where anonymous access is the intent.",
+          message = "No `guards` on this slice, so it mounts no root list or insight and none of its generated reads and writes. Pass { guards: { root: Admin, get: …, cru: … } }, naming `Public` where anonymous access is the intent.",
           severity = "warn"
         )
       },
@@ -64,7 +64,7 @@ or {
         },
         register_diagnostic(
           span = $guardMap,
-          message = "No `root` guard on this slice, so its root query lists any filter to every HTTP and websocket caller: a missing or empty `root` fails open. Write `root: Admin`.",
+          message = "No `root` guard on this slice. Left out, it mounts no root list or insight; `root: []` refuses every caller with 403, and outside local operation the server does not boot. Write `root: Admin`, or `root: Public` for anonymous access.",
           severity = "warn"
         )
       }

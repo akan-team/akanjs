@@ -75,7 +75,13 @@ export interface CodeAgentProfile {
   paths: { root: string; allow?: string[]; deny?: string[] };
   session: { store: "file" | "memory" | "remote"; crossSession: boolean };
   interaction: { question: CodeAgentInteractionMode; approval: CodeAgentInteractionMode };
-  network: { allowHosts?: string[]; proxyBaseUrl?: string };
+  network: {
+    /** Hosts `web_fetch` may reach at all; any other is refused. Unset reaches any host. */
+    allowHosts?: string[];
+    /** Hosts (and subdomains) fetched without asking; others and networking commands need approval. Unset never asks. */
+    askOutside?: string[];
+    proxyBaseUrl?: string;
+  };
   ui: { canPrompt: boolean };
   limits: {
     turnMs: number;
@@ -97,8 +103,49 @@ export const codeAgentReadOnlyBuiltins: CodeAgentBuiltinTool[] = ["read", "ls", 
 
 const baseLimits = { turnMs: 900_000, toolOutputBytes: 200_000, contextTokens: 0, feedback: 2 };
 
-/** Paths no profile may read, whatever its allowlist says. */
-export const codeAgentDeniedPaths = ["**/.env", "**/.env.*", "**/secrets/**", "**/*.pem", "**/*.key"];
+/** Paths no profile may read or write, whatever its allowlist says. `~/` is the home directory. */
+export const codeAgentDeniedPaths = [
+  "**/.env",
+  "**/.env.*",
+  // Per-environment server env files hold an app's secrets; the loader `env.server.ts` and the type file do not.
+  "**/env.server.{debug,develop,main,testing,local}*.ts",
+  "**/secrets/**",
+  "**/*.pem",
+  "**/*.key",
+  "**/*-secret.yaml",
+  "**/*secrets.yaml",
+  "**/kubeconfig*",
+  "**/regcred.yaml",
+  "**/credentials.sh",
+  "**/.jenkins.conf",
+  "**/bunkan-id*",
+  // Read at the next start as servers to run and code to load, and routinely carries a server's token.
+  "**/.akan/code/mcp.json",
+  "**/.akan/code/extensions/**",
+  "~/.akan/**",
+  "~/.ssh/**",
+  "~/.aws/**",
+  "~/.kube/**",
+  "~/.docker/config.json",
+  "~/.netrc",
+  "~/.git-credentials",
+];
+
+/** Documentation and registry hosts the `local` profile reads without asking; nobody but their owner sees a request. */
+const trustedHosts = [
+  "akanjs.com",
+  "github.com",
+  "githubusercontent.com",
+  "npmjs.com",
+  "npmjs.org",
+  "bun.sh",
+  "bun.com",
+  "developer.mozilla.org",
+  "nodejs.org",
+  "typescriptlang.org",
+  "react.dev",
+  "tailwindcss.com",
+];
 
 export const codeAgentPresets = {
   local: (root: string): CodeAgentProfile => ({
@@ -114,7 +161,7 @@ export const codeAgentPresets = {
     paths: { root, deny: codeAgentDeniedPaths },
     session: { store: "file", crossSession: true },
     interaction: { question: "await", approval: "await" },
-    network: {},
+    network: { askOutside: trustedHosts },
     ui: { canPrompt: true },
     limits: baseLimits,
     context: { projectFiles: true, skills: true },

@@ -3,6 +3,9 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Logger } from "akanjs/common";
+import { resetEnvCache } from "../../base/baseEnv";
+import { Ed25519Key } from "../ed25519Key";
 import type { AppDetailInfo } from "./appInfo";
 import { MigrateJobs, type MigrateProcessOutput } from "./migrateJobs";
 import { OpsRoute } from "./opsRoute";
@@ -66,10 +69,12 @@ const fakeCapture = (id: string, withSolid: boolean): SnapshotCapture => {
 const setup = ({
   status = 200,
   rateLimitPerMinute = 30,
+  failuresPerMinute = 10,
   migrate = async () => ({ code: 0, stdout: '{"ok":true,"action":"list","migrations":[]}\n', stderr: "" }),
 }: {
   status?: number;
   rateLimitPerMinute?: number;
+  failuresPerMinute?: number;
   migrate?: () => Promise<MigrateProcessOutput>;
 } = {}) => {
   const puts: string[] = [];
@@ -89,15 +94,19 @@ const setup = ({
     return await migrate();
   });
   const verifier = new OpsTokenVerifier(publicKey, audience);
-  const route = new OpsRoute({ verifier, detail, jobs, migrateJobs, rateLimitPerMinute });
+  const route = new OpsRoute({ verifier, detail, jobs, migrateJobs, rateLimitPerMinute, failuresPerMinute });
   return { route, jobs, puts, migrateJobs, migrateCalls };
 };
 
-const call = (route: OpsRoute, pathname: string, init: RequestInit & { auth?: boolean; sub?: string } = {}) => {
-  const { auth = true, sub, ...rest } = init;
+const call = (
+  route: OpsRoute,
+  pathname: string,
+  init: RequestInit & { auth?: boolean; sub?: string; client?: string } = {},
+) => {
+  const { auth = true, sub, client, ...rest } = init;
   const headers = new Headers(rest.headers);
   if (auth) headers.set("authorization", `Bearer ${token(sub)}`);
-  return route.handle(new Request(`http://edge.local${pathname}`, { ...rest, headers }));
+  return route.handle(new Request(`http://edge.local${pathname}`, { ...rest, headers }), client);
 };
 
 const snapshotBody = (id: string, extra: Record<string, unknown> = {}) =>
@@ -211,10 +220,73 @@ describe("OpsRoute", () => {
     expect((await call(route, "/_akan/ops/migrate/l2")).status).toBe(404);
   });
 
-  test("rate limits before verifying anything", async () => {
+  test("counts only verified calls against the rate limit, so unsigned ones cannot spend it", async () => {
     const { route } = setup({ rateLimitPerMinute: 2 });
-    await call(route, "/_akan/ops/info", { auth: false });
-    await call(route, "/_akan/ops/info", { auth: false });
+    for (let idx = 0; idx < 5; idx += 1)
+      expect((await call(route, "/_akan/ops/info", { auth: false })).status).toBe(401);
+    expect((await call(route, "/_akan/ops/info")).status).toBe(200);
+    expect((await call(route, "/_akan/ops/info")).status).toBe(200);
     expect((await call(route, "/_akan/ops/info")).status).toBe(429);
+  });
+
+  test("limits refusals per client, leaving every other client's calls alone", async () => {
+    const { route } = setup({ failuresPerMinute: 2 });
+    for (let idx = 0; idx < 2; idx += 1)
+      expect((await call(route, "/_akan/ops/info", { auth: false, client: "203.0.113.7" })).status).toBe(401);
+    expect((await call(route, "/_akan/ops/info", { client: "203.0.113.7" })).status).toBe(429);
+    expect((await call(route, "/_akan/ops/info", { client: "198.51.100.2" })).status).toBe(200);
+    for (let idx = 0; idx < 4; idx += 1) await call(route, "/_akan/ops/info", { auth: false });
+    expect((await call(route, "/_akan/ops/info")).status).toBe(200);
+  });
+
+  test("logs the first refusals of a minute and then says it stops logging each", async () => {
+    const warnings: string[] = [];
+    const stop = Logger.addSink(({ level, record, plainMessage }) => {
+      if (level === "warn" && record.name === "OpsRoute") warnings.push(plainMessage);
+    });
+    try {
+      const { route } = setup();
+      for (let idx = 0; idx < OpsRoute.loggedRefusalsPerMinute + 5; idx += 1)
+        await call(route, "/_akan/ops/info", { auth: false });
+    } finally {
+      stop();
+    }
+    expect(warnings.filter((message) => message.includes("Refused ops call"))).toHaveLength(
+      OpsRoute.loggedRefusalsPerMinute,
+    );
+    expect(warnings.filter((message) => message.includes("without logging each"))).toHaveLength(1);
+  });
+
+  test("stays off when its key is also the machine token key", () => {
+    const keys = [
+      "AKAN_OPS_PUBLIC_KEY",
+      "AKAN_MACHINE_PUBLIC_KEY",
+      "AKAN_MACHINE_PRIVATE_KEY",
+      "AKAN_PUBLIC_APP_NAME",
+      "AKAN_PUBLIC_REPO_NAME",
+      "AKAN_PUBLIC_SERVE_DOMAIN",
+    ] as const;
+    const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    const sources = () => ({ main: path.join(root, "fromenv.db"), solid: null });
+    try {
+      Object.assign(process.env, {
+        AKAN_PUBLIC_APP_NAME: "opsapp",
+        AKAN_PUBLIC_REPO_NAME: "akan",
+        AKAN_PUBLIC_SERVE_DOMAIN: "example.com",
+        AKAN_OPS_PUBLIC_KEY: Ed25519Key.rawPublic(publicKey),
+        AKAN_MACHINE_PUBLIC_KEY: Ed25519Key.rawPublic(publicKey),
+      });
+      delete process.env.AKAN_MACHINE_PRIVATE_KEY;
+      resetEnvCache();
+      expect(OpsRoute.fromEnv({ detail, sources })).toBeNull();
+      process.env.AKAN_MACHINE_PUBLIC_KEY = Ed25519Key.rawPublic(generateKeyPairSync("ed25519").publicKey);
+      expect(OpsRoute.fromEnv({ detail, sources })).toBeInstanceOf(OpsRoute);
+    } finally {
+      for (const key of keys) {
+        if (saved[key] === undefined) delete process.env[key];
+        else process.env[key] = saved[key];
+      }
+      resetEnvCache();
+    }
   });
 });

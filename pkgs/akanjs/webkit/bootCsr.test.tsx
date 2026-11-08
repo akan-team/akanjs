@@ -13,6 +13,7 @@ const deviceState = {
 const storageState = {
   jwt: null as string | null,
 };
+const initAuthCalls: unknown[] = [];
 
 const setRequiredEnv = () => {
   process.env.AKAN_PUBLIC_APP_NAME = "test";
@@ -55,6 +56,7 @@ beforeAll(() => {
     },
     // `akanjs/store` reads the auth token to scope a form draft, so the barrel links this even here.
     getAuthToken: () => undefined,
+    getSessionClaims: () => undefined,
     getExplicitPageConfigKeys: () => ({}),
     insetBreakpoints,
     normalizeDeepLinkHref: (href: string) => href,
@@ -81,7 +83,7 @@ beforeAll(() => {
       return { path, pathname, hash, search, href };
     },
     debugFrame: () => undefined,
-    initAuth: () => undefined,
+    initAuth: (option: unknown) => void initAuthCalls.push(option),
     readCssSafeAreaInsets: () => ({ top: 0, bottom: 0 }),
     resolvePageState: ({
       configChain = [],
@@ -178,6 +180,7 @@ afterEach(() => {
   deviceState.lang = "en";
   deviceState.platform = "web";
   storageState.jwt = null;
+  initAuthCalls.length = 0;
 });
 
 describe("bootCsr", () => {
@@ -195,6 +198,18 @@ describe("bootCsr", () => {
 
     expect(loaded).toBe(false);
     expect(document.body.style.overflow).toBe("hidden");
+  });
+
+  test("restores the stored token, or with none stored lets initAuth read the session cookie", async () => {
+    installWindow({ href: "https://example.test/en/home" });
+    const { bootCsr } = await import("./bootCsr");
+
+    storageState.jwt = "stored";
+    await bootCsr({ "./_index.tsx": async () => ({ default: () => null }) });
+    storageState.jwt = null;
+    await bootCsr({ "./_index.tsx": async () => ({ default: () => null }) });
+
+    expect(initAuthCalls).toEqual([{ jwt: "stored" }, {}]);
   });
 
   test("redirects to language-prefixed path when missing language prefix", async () => {

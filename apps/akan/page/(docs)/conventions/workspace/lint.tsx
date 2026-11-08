@@ -503,8 +503,8 @@ async refreshStock() {
         rule: "no-unguarded-endpoint",
         scope: l.trans({ en: "`*.signal.ts` — a warning", ko: "`*.signal.ts` — 경고" }),
         desc: l.trans({
-          en: "An endpoint or slice `init()` with no `guards` or `guards: []`, and a slice with no `guards` or no `root`. Each is open to every caller; write `guards: [Public]` when that is the intent.",
-          ko: "`guards`가 없거나 `guards: []`인 엔드포인트와 slice의 `init()`, 그리고 `guards`나 `root`가 없는 slice입니다. 모두 누구에게나 열립니다. 의도한 것이라면 `guards: [Public]`을 씁니다.",
+          en: "An endpoint or slice `init()` with no `guards` or `guards: []`, which refuses every caller, and a slice with no `guards` or no `root`, which leaves its root list unmounted. Write `guards: [Public]` when anonymous access is the intent.",
+          ko: "`guards`가 없거나 `guards: []`인 엔드포인트와 slice의 `init()`은 모든 호출자를 거절하고, `guards`나 `root`가 없는 slice는 루트 목록을 마운트하지 않습니다. 익명 접근이 의도라면 `guards: [Public]`을 씁니다.",
         }),
       },
       {

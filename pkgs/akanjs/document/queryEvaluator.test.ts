@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { dayjs } from "akanjs/base";
+import { Any, dayjs } from "akanjs/base";
+import { InputParser } from "akanjs/constant";
 import { createDocumentQueryHelper, type DocumentQuery, DocumentQueryEvaluator } from ".";
 
 const q = createDocumentQueryHelper();
@@ -153,5 +154,42 @@ describe("DocumentQueryEvaluator unevaluable nodes", () => {
 
   test("evaluating one throws rather than guessing", () => {
     expect(() => evaluator.evaluate(q.raw("1 = 1"), rowOf({}))).toThrow(/cannot be evaluated in memory/);
+  });
+
+  test("a combinator at a field is reported and refused rather than looping", () => {
+    const atField = [{ score: q.any() }, { score: q.all({ score: 1 }) }, q.all({ a: 1 }, { score: q.not({ a: 1 }) })];
+    for (const query of atField) {
+      expect(DocumentQueryEvaluator.unevaluableReason(query as DocumentQuery)).toContain(
+        'cannot be the value of "score"',
+      );
+      expect(() => evaluator.evaluate(query as DocumentQuery, rowOf({ a: 1, score: 1 }))).toThrow(
+        "cannot be the value of",
+      );
+    }
+    expect(DocumentQueryEvaluator.unevaluableReason({ score: q.raw("1 = 1") } as DocumentQuery)).toContain(
+      "put it beside the field's condition",
+    );
+  });
+
+  test("a condition a request carried, or a raw-shaped object q did not build, is reported and refused", () => {
+    const [operators, node, opNode] = InputParser.parse(
+      Any,
+      0,
+      [{ ne: "x" }, { kind: "any", queries: [] }, { kind: "op", op: "ne", value: "x" }],
+      { key: "args" },
+    ) as [Record<string, unknown>, DocumentQuery, Record<string, unknown>];
+    const shaped = JSON.parse('{"kind":"raw","sql":"1 = 1","params":[]}') as DocumentQuery;
+
+    expect(DocumentQueryEvaluator.unevaluableReason({ status: operators })).toContain("holds query operators");
+    expect(() => matches({ status: operators }, { status: "y" })).toThrow("holds query operators");
+    expect(matches({ status: { ne: "x" } }, { status: "y" })).toBe(true);
+    expect(DocumentQueryEvaluator.unevaluableReason({ status: opNode })).toContain("holds query operators");
+    expect(() => matches({ status: opNode }, { status: "y" })).toThrow("holds query operators");
+    expect(matches({ status: q.ne("x") }, { status: "y" })).toBe(true);
+    expect(DocumentQueryEvaluator.unevaluableReason(q.all({ status: "y" }, node))).toContain(
+      "arrived as a request value",
+    );
+    expect(() => evaluator.evaluate(node, rowOf({}))).toThrow("arrived as a request value");
+    expect(DocumentQueryEvaluator.unevaluableReason(shaped)).toContain("must be built by q.raw()");
   });
 });

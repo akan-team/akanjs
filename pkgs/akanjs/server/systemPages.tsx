@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { applySecurityHeaders } from "./assetHeaders";
 import {
   createSubRouteIndexDocument,
   createSystemPageDocument,
@@ -38,10 +39,13 @@ export async function createSubRouteIndexResponse(options: SubRouteIndexResponse
 }
 
 export function createSystemPageHeaders(): Headers {
-  return new Headers({
-    "Content-Type": "text/html; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
+  return applySecurityHeaders(
+    new Headers({
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    }),
+    { html: true },
+  );
 }
 
 export function createSystemPageFallbackText(kind: SystemPageKind): string {
@@ -70,10 +74,12 @@ async function renderDocumentResponse({
   } catch {
     return new Response(fallbackText(), {
       status,
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-store",
-      },
+      headers: applySecurityHeaders(
+        new Headers({
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store",
+        }),
+      ),
     });
   }
 }

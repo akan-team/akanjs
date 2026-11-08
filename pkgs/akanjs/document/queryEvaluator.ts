@@ -4,7 +4,9 @@ import {
   type DocumentQueryNode,
   type DocumentQueryOperator,
   encodeDocumentValue,
+  fieldValueProblem,
   isDocumentQueryNode,
+  queryNodeProblem,
   queryOperatorKeys,
   sanitizeJson,
 } from "./documentQuery";
@@ -51,6 +53,8 @@ export class DocumentQueryEvaluator {
   static unevaluableReason(query: DocumentQuery | undefined): string | null {
     if (!query || typeof query !== "object") return null;
     if (isDocumentQueryNode(query)) {
+      const problem = queryNodeProblem(query);
+      if (problem) return problem;
       if (query.kind === "raw") return "q.raw() carries SQL that only the database can run";
       if (query.kind === "search") return "q.search() compiles to a full-text JOIN with no in-memory equivalent";
       if (query.kind === "all" || query.kind === "any")
@@ -69,12 +73,12 @@ export class DocumentQueryEvaluator {
 
   static #unevaluableField(path: string, value: unknown): string | null {
     if (!value || typeof value !== "object") return null;
+    const problem = fieldValueProblem(path, value);
+    if (problem) return problem;
     if (baseDocumentColumns.has(path)) return null;
     const keyAbsence = `${path}: exists/missing asks whether the key is in the stored JSON, which a document in hand cannot answer — use q.empty()`;
-    if (isDocumentQueryNode(value)) {
-      if (value.kind === "op") return value.op === "exists" || value.op === "missing" ? keyAbsence : null;
-      return DocumentQueryEvaluator.unevaluableReason(value as DocumentQuery);
-    }
+    if (isDocumentQueryNode(value))
+      return value.kind === "op" && (value.op === "exists" || value.op === "missing") ? keyAbsence : null;
     const operators = value as Record<string, unknown>;
     // `empty: false` is the compiler's spelling of `exists`, so it asks the same unanswerable question.
     if ("exists" in operators || "missing" in operators || ("empty" in operators && !operators.empty))
@@ -102,6 +106,8 @@ export class DocumentQueryEvaluator {
   }
 
   #node(node: DocumentQueryNode, row: DocumentRowView): boolean {
+    const problem = queryNodeProblem(node);
+    if (problem) throw new Error(problem);
     switch (node.kind) {
       // An empty `all`/`any` compiles to `1 = 1`, so both are vacuously true rather than following boolean algebra.
       case "all":
@@ -119,10 +125,9 @@ export class DocumentQueryEvaluator {
   }
 
   #field(path: string, value: unknown, row: DocumentRowView): boolean {
-    if (isDocumentQueryNode(value)) {
-      if (value.kind !== "op") return this.evaluate({ [path]: value } as DocumentQuery, row);
-      return this.#operator(path, value.op, value.value, row);
-    }
+    const problem = fieldValueProblem(path, value);
+    if (problem) throw new Error(problem);
+    if (isDocumentQueryNode(value) && value.kind === "op") return this.#operator(path, value.op, value.value, row);
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const operators = value as Record<string, unknown>;
       const keys = Object.keys(operators);
