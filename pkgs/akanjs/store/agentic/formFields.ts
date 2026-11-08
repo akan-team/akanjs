@@ -1,8 +1,7 @@
 import { type Cls, FIELD_META, PrimitiveRegistry } from "akanjs/base";
-import { capitalize } from "akanjs/common";
+import { capitalize, formSetterNames } from "akanjs/common";
 import { type ConstantField, ConstantRegistry, type ParamFieldType } from "akanjs/constant";
 import type { JsonSchema } from "use-agentic";
-import { formSetterNames } from "../formSetterNames";
 import { StToolBuilder } from "./StToolBuilder";
 
 export interface FormFieldRef {

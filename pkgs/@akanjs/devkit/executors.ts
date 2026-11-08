@@ -44,6 +44,7 @@ import {
 import { AkanAppConfig, AkanLibConfig, AkanWorkspaceConfig, decreaseBuildNum, increaseBuildNum } from "./akanConfig";
 import { getRootBoundarySegments, isRootBoundarySegments } from "./artifact/implicitRootLayout";
 import { CodegenLock } from "./codegenLock";
+import { EnvSeed } from "./envSeed";
 import { FileSys, getDirname } from "./fileSys";
 import { JsonFormatter } from "./jsonFormatter";
 import { Linter } from "./linter";
@@ -723,6 +724,10 @@ export class WorkspaceExecutor extends Executor {
       defaulted,
     };
   }
+  //? A clone has no `.env` (gitignored for its secrets): it runs local, as a new workspace and env.server.ts do, not debug.
+  static defaultCloneToLocalEnv(workspaceRoot: string) {
+    if (!existsSync(path.join(workspaceRoot, ".env"))) process.env.AKAN_PUBLIC_ENV ??= "local";
+  }
   //? A build or tunnel for a real environment carries these into an image, a bundle or a host name it dials.
   static assertDeployableEnv(baseDevEnv: BaseDevEnv, environment: string, purpose: string) {
     const defaulted = environment === "local" ? [] : (baseDevEnv.defaulted ?? []);
@@ -942,8 +947,23 @@ export class SysExecutor extends Executor {
     if (!this.hasScanInfo() && !allowEmpty) throw new Error("Scan info is not available");
     return this.#scanInfo as AllowEmpty extends true ? AppInfo | LibInfo | null : AppInfo | LibInfo;
   }
+  async #seedEnvFiles(): Promise<FileContent[]> {
+    const envDir = path.join(this.cwdPath, "env");
+    const missing = await new EnvSeed(envDir).missing();
+    if (!missing.length) return [];
+    const written = await Promise.all(
+      missing.map(({ fileName, content }) =>
+        this.writeFile(path.join(envDir, fileName), content, { overwrite: false, silent: true }),
+      ),
+    );
+    this.logger.info(
+      `${missing.map(({ fileName }) => `env/${fileName}`).join(", ")} were missing (gitignored, so a clone has none) and now hold local defaults: put this machine's values in them, or fetch the team's with \`akan download-env\`.`,
+    );
+    return written;
+  }
   #getScanTemplateTasks(scanInfo: AppInfo | LibInfo): (Promise<FileContent[]> | null)[] {
     return [
+      this.#seedEnvFiles(),
       this._applyTemplate({ basePath: "env", template: "env", scanInfo }),
       this._applyTemplate({ basePath: "lib", template: "lib", scanInfo }),
       this._applyTemplate({ basePath: ".", template: "server.ts", scanInfo }),

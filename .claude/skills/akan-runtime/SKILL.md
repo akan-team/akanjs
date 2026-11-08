@@ -30,6 +30,8 @@ Domain code reaches none of them.
 - `akan start <app>` (`a,b` or `all` for several) runs the dev server; `akan build <app>` checks the production
   build. A supervised session writes `local/apps/<app>/runtime/dev.log` — hand over that path, not a paste of the
   live view. Tail with `akan logs <app>`.
+- Run a build without Docker with `cd dist/apps/<app> && bun main.js`: it boots with the env the Dockerfile sets,
+  read from `akan.env.json` beside it, and a variable you set yourself (`PORT=3000`) wins.
 - Give every log sink a floor (`Logger.addSink(sink, { minLevel })`) and never log once per delivered record.
 
 ## Native and desktop

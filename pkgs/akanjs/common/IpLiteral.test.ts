@@ -41,4 +41,11 @@ describe("IpLiteral.parse", () => {
       expect(IpLiteral.parse(entry)).toBeNull();
     expect(IpLiteral.parse("10.0.0.0")).toBe("10.0.0.0");
   });
+
+  test("refuses a header-sized run of colons in linear time", () => {
+    const started = performance.now();
+    expect(IpLiteral.parse(`[${":".repeat(100_000)}`)).toBeNull();
+    expect(IpLiteral.parse(`[${":".repeat(100_000)}]x`)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(100);
+  });
 });

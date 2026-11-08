@@ -1,7 +1,7 @@
 "use client";
 import { ID } from "akanjs/base";
 import { cn } from "akanjs/client";
-import { capitalize } from "akanjs/common";
+import { modelNames } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import type { ReactNode } from "react";
@@ -32,9 +32,7 @@ export default function EditWrapper({
   draft,
 }: EditWrapperProps) {
   const { refName: modelName } = slice;
-  const names = {
-    editModel: `edit${capitalize(modelName)}`,
-  };
+  const names = modelNames(modelName);
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   // Every row registers this name; the id rides in the argument, not the closure, so the copies are interchangeable.
   const editModel = st
@@ -44,7 +42,7 @@ export default function EditWrapper({
     .exec((id) => {
       void storeDo[names.editModel](id, { modal, draftScope: editDraftScope(draft, id) });
       resets?.forEach((reset) => {
-        void storeDo[`reset${capitalize(reset)}`]();
+        void storeDo[modelNames(reset).resetModel]();
       });
     });
   return (

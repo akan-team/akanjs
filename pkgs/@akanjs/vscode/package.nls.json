@@ -1,0 +1,5 @@
+{
+  "akan.reindex.title": "Rebuild the name index",
+  "akan.codeLens.enabled.description": "Show how many places use each slice, query, field, store state and socket endpoint above its declaration.",
+  "akan.renameSourceKey.title": "Rename the slice or query key with its derived names"
+}

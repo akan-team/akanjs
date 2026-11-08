@@ -1,5 +1,5 @@
 import type { GetStateObject } from "akanjs/base";
-import { capitalize } from "akanjs/common";
+import { capitalize, modelNames, sliceNames } from "akanjs/common";
 import type { BaseInsight, BaseObject } from "akanjs/constant";
 import type { BaseFilterQueryKey, BaseFilterSortKey } from "akanjs/document";
 import type { DictArgNames, DictEndpointShape, DictFilterQuery, DictFilterSort, DictSliceShape } from "./dictShape";
@@ -178,23 +178,24 @@ export class ModelDictInfo<
   };
   static getBaseSignalDictionary<T extends string>(refName: T): BaseModelCrudGetSignalTranslation<T, [string, string]> {
     const capRefName = capitalize(refName);
+    const names = modelNames(refName);
     type Translate = (trans: [string, string]) => FieldTranslation<[string, string]>;
     const crud = (en: string, ko: string) => fn([en, ko]).desc([en, ko]);
     const idArg = (t: Translate) => ({
-      [`${refName}Id`]: t(["Id", "아이디"]).desc([`Id of ${capRefName}`, `${capRefName} 아이디`]),
+      [names.modelId]: t(["Id", "아이디"]).desc([`Id of ${capRefName}`, `${capRefName} 아이디`]),
     });
     const dataArg = (t: Translate) => ({
       data: t(["Data", "데이터"]).desc([`Data of ${capRefName}`, `${capRefName} 데이터`]),
     });
     return {
-      [refName]: crud(`Get ${capRefName}`, `${capRefName} 조회`).arg(idArg),
-      [`light${capRefName}`]: crud(`Get light version of ${capRefName}`, `${capRefName} 경량화 버전 조회`).arg(idArg),
-      [`create${capRefName}`]: crud(`Create ${capRefName}`, `${capRefName} 생성`).arg(dataArg),
-      [`update${capRefName}`]: crud(`Update ${capRefName}`, `${capRefName} 수정`).arg((t) => ({
+      [names.model]: crud(`Get ${capRefName}`, `${capRefName} 조회`).arg(idArg),
+      [names.lightModel]: crud(`Get light version of ${capRefName}`, `${capRefName} 경량화 버전 조회`).arg(idArg),
+      [names.createModel]: crud(`Create ${capRefName}`, `${capRefName} 생성`).arg(dataArg),
+      [names.updateModel]: crud(`Update ${capRefName}`, `${capRefName} 수정`).arg((t) => ({
         ...idArg(t),
         ...dataArg(t),
       })),
-      [`remove${capRefName}`]: crud(`Remove ${capRefName}`, `${capRefName} 삭제`).arg(idArg),
+      [names.removeModel]: crud(`Remove ${capRefName}`, `${capRefName} 삭제`).arg(idArg),
     } as unknown as BaseModelCrudGetSignalTranslation<T, [string, string]>;
   }
   static baseSliceDictionary: {
@@ -439,8 +440,7 @@ export class ModelDictInfo<
     for (const [sliceKey, sliceTrans] of Object.entries(
       this.sliceDictionary as { [key: string]: FunctionTranslation<Languages> },
     )) {
-      const listKey = `${refName}List${capitalize(sliceKey)}`;
-      const insightKey = `${refName}Insight${capitalize(sliceKey)}`;
+      const { list: listKey, insight: insightKey } = sliceNames(refName, sliceKey).endpoint;
       root.head(["signal"], listKey, sliceTrans, (t) => `Slice List - ${t}`);
       root.head(["signal"], insightKey, sliceTrans, (t) => `Slice Insight - ${t}`);
       for (const [argKey, argTrans] of Object.entries(sliceTrans.argTrans as { [key: string]: Translated })) {

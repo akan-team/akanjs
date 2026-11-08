@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "akanjs/client";
-import { capitalize } from "akanjs/common";
+import { type DynamicRecord, modelNames, sliceNames } from "akanjs/common";
 import { ConstantRegistry, labelOf } from "akanjs/constant";
 import type { ClientView, ServerView } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -40,32 +40,33 @@ function Render<T extends string, Full extends { id: string }>({
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   const storeGet = st.get as unknown as <T>() => { [key: string]: T };
   const { refName } = view;
+  const names = modelNames(refName);
   const model = storeUse[refName]() as Full | null;
   const cnst = ConstantRegistry.getDatabase(refName);
-  const modelLoading = storeUse[`${refName}Loading`]() as string | boolean;
-  const modelObj = view[`${refName}Obj`] as Full;
-  const modelViewAt = view[`${refName}ViewAt`] as Date;
+  const modelLoading = storeUse[names.modelLoading]() as string | boolean;
+  const modelObj = (view as DynamicRecord)[names.modelObj] as Full;
+  const modelViewAt = (view as DynamicRecord)[names.modelViewAt] as Date;
   if (
     !modelLoading &&
     model?.id === modelObj.id &&
-    storeGet<Date>()[`${refName}ViewAt`].getTime() >= modelViewAt.getTime()
+    storeGet<Date>()[names.modelViewAt].getTime() >= modelViewAt.getTime()
   )
     loadedId.current = modelObj.id;
 
   const modelInit = useMemo(() => {
-    const modelObj = view[`${refName}Obj`] as Full;
+    const modelObj = (view as DynamicRecord)[names.modelObj] as Full;
     if (loadedId.current === modelObj.id) return model;
     return new cnst.full().set(modelObj) as unknown as Full;
   }, [view]);
 
   useEffect(() => {
     if (loadedId.current === modelObj.id) return;
-    const modelViewAt = view[`${refName}ViewAt`] as Date;
+    const modelViewAt = (view as DynamicRecord)[names.modelViewAt] as Date;
     st.set({
       [refName]: modelInit,
-      [`${refName}Loading`]: false,
-      [`${refName}Modal`]: "view",
-      [`${refName}ViewAt`]: modelViewAt,
+      [names.modelLoading]: false,
+      [names.modelModal]: "view",
+      [names.modelViewAt]: modelViewAt,
     });
     loadedId.current = modelObj.id;
   }, [modelViewAt, modelObj.id]);
@@ -73,10 +74,10 @@ function Render<T extends string, Full extends { id: string }>({
   useEffect(() => {
     // A payload older than the last local write is an RSC-cache replay, so the model hydrated above is stale.
     // `<refName>StaleAt` is the root slice's stamp, absent only when the signal declares no slice.
-    const modelStaleAt = storeGet<Date | undefined>()[`${refName}StaleAt`];
-    if (!modelStaleAt || storeGet<Date>()[`${refName}ViewAt`].getTime() >= modelStaleAt.getTime()) return;
-    if (storeGet<string | boolean>()[`${refName}Loading`]) return;
-    void storeDo[`view${capitalize(refName)}`](modelObj.id);
+    const modelStaleAt = storeGet<Date | undefined>()[sliceNames(refName).state.modelStaleAt];
+    if (!modelStaleAt || storeGet<Date>()[names.modelViewAt].getTime() >= modelStaleAt.getTime()) return;
+    if (storeGet<string | boolean>()[names.modelLoading]) return;
+    void storeDo[names.viewModel](modelObj.id);
   }, [modelViewAt, modelObj.id]);
 
   const renderModel = loadedId.current === modelObj.id ? model : modelInit;

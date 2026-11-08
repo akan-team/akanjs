@@ -41,6 +41,7 @@
     "./*": "./*.ts"
   },
   "dependencies": {
+    "@akanjs/language": "3.1.1",
     "@earendil-works/pi-agent-core": "1.3.0",
     "@earendil-works/pi-ai": "1.3.0",
     "@earendil-works/pi-codemode": "1.3.0",

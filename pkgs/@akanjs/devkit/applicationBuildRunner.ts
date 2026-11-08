@@ -1,5 +1,6 @@
 import path from "node:path";
 import { toError } from "akanjs/common";
+import { BUILD_ENV_FILE } from "akanjs/server/lifecycle/buildEnv";
 import type { BunPlugin } from "bun";
 import { ProductionLockfile } from "./akanConfig/productionLockfile";
 import type {
@@ -240,13 +241,13 @@ export class ApplicationBuildRunner {
 
   async buildAppMeta() {
     const akanConfig = await this.#app.getConfig();
+    const environment = this.#environment ?? akanConfig.baseDevEnv.env;
     const packageJson = akanConfig.getProductionPackageJson();
     const lockfile = await this.#pruneLockfile(packageJson);
-    const dockerfile = akanConfig.dockerfileFor(this.#environment ?? akanConfig.baseDevEnv.env, {
-      lockfile: lockfile !== null,
-    });
+    const dockerfile = akanConfig.dockerfileFor(environment, { lockfile: lockfile !== null });
     await Promise.all([
       this.#app.dist.writeJson("package.json", packageJson),
+      this.#app.dist.writeJson(BUILD_ENV_FILE, akanConfig.getProductionEnv(environment)),
       ...(lockfile !== null
         ? [this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/${ProductionLockfile.fileName}`, lockfile)]
         : []),

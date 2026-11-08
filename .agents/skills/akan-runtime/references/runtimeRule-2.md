@@ -138,11 +138,11 @@ const config: AppConfig = {
 A desktop app whose `native` section, or target, declares `desktop: { server: true }` carries the app's server:
 `akan build-desktop`, `start-desktop --release` and `publish-update` put the backend `akan build` made into the
 app — everything the backend build wrote (the `.js`, `akan.build.json`, `private/`, a bundled package's `.node`,
-`.wasm` or file asset) but the Dockerfile, the RSC worker, the console, `csr/` and `public/` — and install its
-packages first with `bun install --production --prefer-offline`, before `akan build` runs. `start-desktop` without
-`--release` starts `akan start` beside the app when no dev server of this checkout answers. The setting is the
-app's backend, so it does not change under an installed app: an update whose release carries a server when the app
-has none, or none when it has one, is refused, and switching means a reinstall.
+`.wasm` or file asset) but the Dockerfile and its `akan.env.json`, the RSC worker, the console, `csr/` and
+`public/` — and install its packages first with `bun install --production --prefer-offline`, before `akan build`
+runs. `start-desktop` without `--release` starts `akan start` beside the app when no dev server of this checkout
+answers. The setting is the app's backend, so it does not change under an installed app: an update whose release
+carries a server when the app has none, or none when it has one, is refused, and switching means a reinstall.
 `desktop: { server: { omit: ["rclnodejs"] } }` carries the server without packages only the image needs — an addon
 tied to the image's system, code only a process the app never starts loads — and whatever only they pull in; the
 image keeps them, and the server's own bundle must not import them. A package another dependency still installs

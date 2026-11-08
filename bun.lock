@@ -109,14 +109,14 @@
         "typebox": "1.3.37",
         "ua-parser-js": "^2.0.9",
         "yjs": "^13.6.32",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
       },
       "devDependencies": {
         "@akanjs/devkit": "workspace:*",
         "@akanjs/native": "workspace:*",
         "@biomejs/biome": "2.5.14",
         "@changesets/cli": "^2.31.0",
-        "@happy-dom/global-registrator": "21.0.3",
+        "@happy-dom/global-registrator": "21.0.4",
         "@playwright/test": "^1.64.1",
         "@types/bun": "^1.4.4",
         "@types/chance": "^1.1.8",
@@ -132,7 +132,7 @@
         "@types/ssh2": "^1.15.5",
         "@types/subset-font": "^2.3.0",
         "chance": "^1.1.13",
-        "happy-dom": "21.0.3",
+        "happy-dom": "21.0.4",
         "typescript": "^6.0.3",
         "use-agentic": "workspace:*",
       },
@@ -176,6 +176,7 @@
       "name": "@akanjs/devkit",
       "version": "3.1.1",
       "dependencies": {
+        "@akanjs/language": "3.1.1",
         "@earendil-works/pi-agent-core": "1.3.0",
         "@earendil-works/pi-ai": "1.3.0",
         "@earendil-works/pi-codemode": "1.3.0",
@@ -206,6 +207,19 @@
         "react",
       ],
     },
+    "pkgs/@akanjs/language": {
+      "name": "@akanjs/language",
+      "version": "3.1.1",
+      "dependencies": {
+        "akanjs": "3.1.1",
+      },
+      "peerDependencies": {
+        "typescript": ">=5.0.0",
+      },
+      "optionalPeers": [
+        "typescript",
+      ],
+    },
     "pkgs/@akanjs/native": {
       "name": "@akanjs/native",
       "version": "0.1.0",
@@ -219,6 +233,16 @@
       },
       "peerDependencies": {
         "react": ">=19",
+      },
+    },
+    "pkgs/@akanjs/vscode": {
+      "name": "@akanjs/vscode",
+      "version": "0.1.0",
+      "dependencies": {
+        "@akanjs/language": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/vscode": "1.100.0",
       },
     },
     "pkgs/akanjs": {
@@ -238,14 +262,14 @@
         "@types/bun": "^1.4.4",
       },
       "peerDependencies": {
-        "@happy-dom/global-registrator": "^21.0.3",
+        "@happy-dom/global-registrator": "^21.0.4",
         "@playwright/test": "^1.64.1",
         "@react-spring/web": "^10.1.2",
         "@use-gesture/react": "^10.3.1",
         "bullmq": "^5.81.5",
         "chance": "^1.1.13",
         "firebase": "^13.0.0",
-        "happy-dom": "^21.0.3",
+        "happy-dom": "^21.0.4",
         "ioredis": "^5.11.1",
         "postgres": "^3.4.9",
         "protobufjs": "^8.8.1",
@@ -296,8 +320,8 @@
       "name": "use-agentic",
       "version": "0.3.0",
       "devDependencies": {
-        "@happy-dom/global-registrator": "21.0.3",
-        "happy-dom": "21.0.3",
+        "@happy-dom/global-registrator": "21.0.4",
+        "happy-dom": "21.0.4",
         "react": "19.3.1",
         "react-dom": "19.3.1",
       },
@@ -307,6 +331,7 @@
     },
   },
   "patchedDependencies": {
+    "zod@4.6.7": "patches/zod@4.6.7.patch",
     "zod@3.25.76": "patches/zod@3.25.76.patch",
   },
   "overrides": {
@@ -321,7 +346,11 @@
 
     "@akanjs/devkit": ["@akanjs/devkit@workspace:pkgs/@akanjs/devkit"],
 
+    "@akanjs/language": ["@akanjs/language@workspace:pkgs/@akanjs/language"],
+
     "@akanjs/native": ["@akanjs/native@workspace:pkgs/@akanjs/native"],
+
+    "@akanjs/vscode": ["@akanjs/vscode@workspace:pkgs/@akanjs/vscode"],
 
     "@alcalzone/ansi-tokenize": ["@alcalzone/ansi-tokenize@0.2.5", "", { "dependencies": { "ansi-styles": "^6.2.1", "is-fullwidth-code-point": "^5.0.0" } }, "sha512-3NX/MpTdroi0aKz134A6RC2Gb2iXVECN4QaAXnvCIxxIm3C3AVB1mkUe8NaaiyvOpDfsrqWhYtj+Q6a62RrTsw=="],
 
@@ -647,7 +676,7 @@
 
     "@grpc/proto-loader": ["@grpc/proto-loader@0.7.15", "", { "dependencies": { "lodash.camelcase": "^4.3.0", "long": "^5.0.0", "protobufjs": "^7.2.5", "yargs": "^17.7.2" }, "bin": { "proto-loader-gen-types": "build/bin/proto-loader-gen-types.js" } }, "sha512-tMXdRCfYVixjuFK+Hk0Q1s38gV9zDiDJfWL3h1rv4Qc39oILCu1TRTDt7+fGUI8K4G1Fj125Hx/ru3azECWTyQ=="],
 
-    "@happy-dom/global-registrator": ["@happy-dom/global-registrator@21.0.3", "", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^21.0.3" } }, "sha512-0LhVbq+Bjw8H0MuByKtXhuUr4JYKY29PBP6Czhkv/ij6C+zHDihZXSpP56HNKGImf5jur6uJDr46b0EiyZ2NvQ=="],
+    "@happy-dom/global-registrator": ["@happy-dom/global-registrator@21.0.4", "", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^21.0.4" } }, "sha512-Bbr0hW9hhDhBf3Jp0EyDlkCbFgbr0z2jd3BMKYOYW+fOkPM4Nx195GMXyCtRCGEgoNn6i09FabXrSkNFm2ONzg=="],
 
     "@iconify/types": ["@iconify/types@2.0.0", "", {}, "sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg=="],
 
@@ -1152,6 +1181,8 @@
     "@types/trusted-types": ["@types/trusted-types@2.0.7", "", {}, "sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw=="],
 
     "@types/unist": ["@types/unist@3.0.3", "", {}, "sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q=="],
+
+    "@types/vscode": ["@types/vscode@1.100.0", "", {}, "sha512-4uNyvzHoraXEeCamR3+fzcBlh7Afs4Ifjs4epINyUX/jvdk0uzLnwiDY35UKDKnkCHP5Nu3dljl2H8lR6s+rQw=="],
 
     "@types/webxr": ["@types/webxr@0.5.24", "", {}, "sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg=="],
 
@@ -1827,7 +1858,7 @@
 
     "hachure-fill": ["hachure-fill@0.5.2", "", {}, "sha512-3GKBOn+m2LX9iq+JC1064cSFprJY4jL1jCXTcpnfER5HYE2l/4EfWSGzkPa/ZDBmYI0ZOEj5VHV/eKnPGkHuOg=="],
 
-    "happy-dom": ["happy-dom@21.0.3", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-PesNgu5BnIEmAwzKGewB3K1ORFeznFZJ4JrRz89ea1wkHnxskdpzX9sN/+zb4KO6k8oSMhyJSj/cwXAFrYBBNA=="],
+    "happy-dom": ["happy-dom@21.0.4", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw=="],
 
     "harfbuzzjs": ["harfbuzzjs@1.6.3", "", {}, "sha512-R5Mfo1UUvQmZJmtScP7fBLKYKnYu82ZdtFT7WbQYeGb3Ut5PR3xfFCJ5/FjbcW5SAfb9cqCSny/KNjp+NJBx0w=="],
 
@@ -2973,7 +3004,7 @@
 
     "zdog": ["zdog@1.1.3", "", {}, "sha512-raRj6r0gPzopFm5XWBJZr/NuV4EEnT4iE+U3dp5FV5pCb588Gmm3zLIp/j9yqqcMiHH8VNQlerLTgOqL7krh6w=="],
 
-    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+    "zod": ["zod@4.6.7", "", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
 
     "zustand": ["zustand@4.5.7", "", { "dependencies": { "use-sync-external-store": "^1.2.2" }, "peerDependencies": { "@types/react": ">=16.8", "immer": ">=9.0.6", "react": ">=16.8" }, "optionalPeers": ["@types/react", "immer", "react"] }, "sha512-CHOUy7mu3lbD6o6LJLfllpjkzhHXSBlX8B9+qPddUsIfeF5S/UZ5q0kmCsnRqT1UHFQZchNFDDzMbQsuesHWlw=="],
 
@@ -3204,6 +3235,8 @@
     "chevrotain/lodash-es": ["lodash-es@4.17.21", "", {}, "sha512-mKnC+QJ9pWVzv+C4/U3rRsHapFfHvQFoFB92e52xeyGMcX6/OlIl78je1u8vePzYZSkkogMPJ2yjxxsb89cxyw=="],
 
     "chrome-launcher/escape-string-regexp": ["escape-string-regexp@4.0.0", "", {}, "sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA=="],
+
+    "chromium-bidi/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "chromium-edge-launcher/escape-string-regexp": ["escape-string-regexp@4.0.0", "", {}, "sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA=="],
 
