@@ -140,7 +140,9 @@ export class AkanIndex {
         (source) => source.span.fileName === target.span.fileName && source.span.start === target.span.start,
       );
     const byName = new Map(sources.map((source) => [source.name, source]));
-    const naming = new RegExp(`\\n(?:${[...byName.keys()].map((name) => name.replace(/\$/g, "\\$")).join("|")})\\n`);
+    const naming = new RegExp(
+      `\\n(?:${[...byName.keys()].map((name) => name.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")).join("|")})\\n`,
+    );
     const files = [...this.#fileWords].filter(([, words]) => naming.test(words)).map(([file]) => file);
     const found: { span: AkanSpan; entry: AkanEntry }[] = [];
     for (const file of files.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {

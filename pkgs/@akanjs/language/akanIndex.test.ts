@@ -200,6 +200,16 @@ describe("AkanIndex references and source keys", () => {
     expect(index.referencesAt(fileName, offset, readText).map((span) => span.line + 1)).toEqual([6]);
   });
 
+  it("searches a quoted source key as literal text", () => {
+    const local = indexOf();
+    const rel = "apps/demo/lib/memo/memo.document.ts";
+    const text = files[rel].replace("byName:", `"by(Name":`);
+    local.setFile(`${root}/${rel}`, text);
+    const offset = text.indexOf(`"by(Name"`) + 1;
+    expect(local.sourceKeyAt(`${root}/${rel}`, offset)?.sourceKey).toBe("by(Name");
+    expect(local.referencesAt(`${root}/${rel}`, offset, () => text)).toEqual([]);
+  });
+
   it("lists lens keys for slices, queries, fields, state and socket endpoints", () => {
     const keys = (rel: string) => index.sourceKeysOf(`${root}/${rel}`).map((key) => key.sourceKey);
     expect(keys("apps/demo/lib/memo/memo.signal.ts")).toEqual(["MemoSlice", "inPublic", "memoChanged", "ping"]);
