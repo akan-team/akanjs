@@ -10,12 +10,18 @@ import { TunnelDataSocket } from "./TunnelDataSocket";
 export interface TunnelAgentOptions {
   /** The gateway, as `wss://tunnel.akanjs.com` — scheme included, no path, no trailing slash. */
   gatewayUrl: string;
+  /** Accepts a `ws://` gateway off loopback, whose frames and token would cross the network in cleartext. */
+  allowInsecureGateway?: boolean;
   token: string;
   hostnames: string[];
   /** The local app, as `http://localhost:8282`. */
   origin: string;
   /** Where a `tcp` stream dials. Local by construction: an agent is a door into one machine, not a router. */
   tcpHost?: string;
+  /** The only ports a `tcp` stream may dial; none by default, so the gateway can reach nothing but `origin`. */
+  tcpPorts?: readonly number[];
+  /** The data sockets this agent ever holds, whatever the gateway asks for (default 128). */
+  maxSockets?: number;
   name?: string;
   /** Attempts on a link that has never gone ready before the agent gives up (default 10). */
   retryLimit?: number;
@@ -58,7 +64,16 @@ export class TunnelAgent {
   #stopped = false;
 
   constructor(options: TunnelAgentOptions) {
+    TunnelAgent.#assertGateway(options.gatewayUrl, options.allowInsecureGateway ?? false);
     this.#options = options;
+  }
+
+  static #assertGateway(gatewayUrl: string, allowInsecure: boolean) {
+    const url = URL.parse(gatewayUrl);
+    if (url?.protocol === "wss:") return;
+    if (url?.protocol === "ws:" && (allowInsecure || ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))
+      return;
+    throw new Error(`Tunnel gateway must be a wss:// URL (ws:// only on loopback), not ${gatewayUrl}`);
   }
 
   get ready() {
@@ -223,18 +238,20 @@ export class TunnelAgent {
     const ready = this.#ready;
     if (!ready || this.#stopped) return;
     const idle = [...this.#sockets].filter((socket) => !socket.busy).length;
-    const room = Math.min(ready.idle - idle, ready.maxSockets - this.#sockets.size);
+    const ceiling = Math.min(ready.maxSockets, this.#options.maxSockets ?? tunnelWireContract.defaultMaxSockets);
+    const room = Math.min(ready.idle - idle, ceiling - this.#sockets.size);
     for (let opened = 0; opened < room; opened += 1) this.#open(ready.sessionId);
   }
 
   #open(sessionId: string) {
-    const { gatewayUrl, token, origin, tcpHost = "127.0.0.1" } = this.#options;
+    const { gatewayUrl, token, origin, tcpHost = "127.0.0.1", tcpPorts = [] } = this.#options;
     const socket = new TunnelDataSocket({
       gatewayUrl,
       token,
       sessionId,
       origin,
       tcpHost,
+      tcpPorts,
       logger: this.logger,
       onIdle: () => this.#grow(),
       onBusy: () => this.#grow(),

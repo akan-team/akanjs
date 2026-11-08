@@ -113,6 +113,8 @@ export class SqlDocumentStore {
   /** Set on a document read as removed, which only a `withRemoved` read hands out. */
   static readonly #readRemoved = Symbol("akan.readRemoved");
   static readonly #purgeBatchRows = 1000;
+  //? Five parameters a row keeps a statement far under SQLite's 32766 and Postgres's 65535 bound parameters.
+  static readonly #insertBatchRows = 500;
 
   constructor(
     private readonly owner: DocumentDatabaseOwner,
@@ -379,17 +381,7 @@ export class SqlDocumentStore {
   }
 
   async create(data: DocumentRecord, { runSaveHooks = true }: WriteHookOptions = {}) {
-    const now = Date.now();
-    const id = data.id ?? createDocumentId(now);
-    if (!isDocumentId(id)) throw new Error(`Invalid ID value: ${id}`);
-    const doc = this.hydrate(
-      this.prepareDocument({
-        ...data,
-        id,
-        createdAt: data.createdAt ?? dayjs(now),
-        updatedAt: data.updatedAt ?? dayjs(now),
-      }),
-    );
+    const doc = this.#newDocument(data, Date.now());
     if (runSaveHooks) await this.runHooks("save", "create", doc, "pre");
     await this.runHooks("create", "create", doc, "pre");
     const row = this.toRow(doc);
@@ -397,6 +389,45 @@ export class SqlDocumentStore {
     await this.runHooks("create", "create", doc, "post");
     if (runSaveHooks) await this.runHooks("save", "create", doc, "post");
     return this.#withStoredRow(doc, row);
+  }
+
+  async createMany(data: DocumentRecord[]) {
+    if (!data.length) return [];
+    const now = Date.now();
+    const docs = data.map((record) => this.#newDocument(record, now));
+    for (const doc of docs) {
+      await this.runHooks("save", "create", doc, "pre");
+      await this.runHooks("create", "create", doc, "pre");
+    }
+    const written = docs.map((doc) => ({ doc, row: this.toRow(doc) }));
+    const write = async () => {
+      for (let start = 0; start < written.length; start += SqlDocumentStore.#insertBatchRows) {
+        const batch = written.slice(start, start + SqlDocumentStore.#insertBatchRows);
+        await this.prepareStmt(this.#insertManySql(batch.length)).run(
+          ...batch.flatMap(({ row }) => [row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc]),
+        );
+      }
+      for (const doc of docs) {
+        await this.runHooks("create", "create", doc, "post");
+        await this.runHooks("save", "create", doc, "post");
+      }
+    };
+    if (this.owner.transaction) await this.owner.transaction(write);
+    else await write();
+    return written.map(({ doc, row }) => this.#withStoredRow(doc, row));
+  }
+
+  #newDocument(data: DocumentRecord, now: number) {
+    const id = data.id ?? createDocumentId(now);
+    if (!isDocumentId(id)) throw new Error(`Invalid ID value: ${id}`);
+    return this.hydrate(
+      this.prepareDocument({
+        ...data,
+        id,
+        createdAt: data.createdAt ?? dayjs(now),
+        updatedAt: data.updatedAt ?? dayjs(now),
+      }),
+    );
   }
 
   async clone(data: DocumentRecord & { id: string }) {
@@ -1358,9 +1389,12 @@ export class SqlDocumentStore {
   }
 
   private insertStmt() {
-    return this.prepareStmt(
-      `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})`,
-    );
+    return this.prepareStmt(this.#insertManySql(1));
+  }
+
+  #insertManySql(rowNum: number) {
+    const values = `(?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})`;
+    return `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES ${Array.from({ length: rowNum }, () => values).join(", ")}`;
   }
 
   private prepareStmt(sql: string) {

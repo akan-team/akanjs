@@ -1,10 +1,22 @@
+import { ShellOnlyEnv } from "@akanjs/devkit/shellOnlyEnv";
+import { Logger } from "akanjs/common";
+
 interface NpmPackageMetadata {
   "dist-tags"?: Record<string, string>;
 }
 
 const defaultNpmRegistry = "https://registry.npmjs.org";
 
-export const getNpmRegistryUrl = (registryUrl = process.env.AKAN_NPM_REGISTRY ?? defaultNpmRegistry) =>
+//? The registry picks the code `akan` installs and runs, so a repo's dotenv cannot choose it.
+const registryEnv = new ShellOnlyEnv(["AKAN_NPM_REGISTRY"]);
+
+export const npmRegistryFromEnv = () => registryEnv.get("AKAN_NPM_REGISTRY");
+
+export const warnIgnoredNpmRegistry = () => {
+  for (const line of registryEnv.ignored()) Logger.warn(line);
+};
+
+export const getNpmRegistryUrl = (registryUrl = npmRegistryFromEnv() ?? defaultNpmRegistry) =>
   registryUrl.replace(/\/+$/, "");
 
 export async function getLatestPackageVersion(

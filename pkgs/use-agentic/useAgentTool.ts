@@ -1,13 +1,14 @@
 "use client";
 import { useEffect, useRef } from "react";
 import { useScopePath, useSurface } from "./surfaceContext";
-import type { JsonSchema, ToolConfirm, ToolGuard } from "./types";
+import type { JsonSchema, ToolConfirm, ToolEntry, ToolGuard } from "./types";
 
 export interface AgentToolMeta {
   description?: string;
   parameters?: JsonSchema;
   settle?: boolean;
   confirm?: ToolConfirm;
+  taint?: ToolEntry["taint"];
   guard?: ToolGuard;
 }
 
@@ -37,7 +38,8 @@ export const useAgentTool = <Args extends Record<string, unknown> = Record<strin
       description: declared.description,
       parameters: declared.parameters,
       settle: declared.settle,
-      ...(declared.confirm === undefined
+      ...(declared.taint ? { taint: declared.taint } : {}),
+      ...(declared.confirm === undefined || declared.confirm === false
         ? {}
         : {
             confirm: (args: Record<string, unknown>) => {

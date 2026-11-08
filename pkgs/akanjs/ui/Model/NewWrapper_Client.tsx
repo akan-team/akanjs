@@ -1,7 +1,7 @@
 "use client";
 import type { GetStateObject } from "akanjs/base";
 import { cn, usePage } from "akanjs/client";
-import { capitalize } from "akanjs/common";
+import { capitalize, modelNames } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
@@ -37,11 +37,7 @@ export const NewWrapper_Client = <Full,>({
   const { path } = usePage();
   const { refName, sliceName } = slice;
   const modelName = refName;
-  const names = {
-    newModel: `new${capitalize(modelName)}`,
-    crystalizeModel: `crystalize${capitalize(modelName)}`,
-    modelModal: `${modelName}Modal`,
-  };
+  const names = modelNames(modelName);
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   const storeUse = st.use as { [key: string]: () => unknown };
   const modelModal = storeUse[names.modelModal]() as string | null;
@@ -64,7 +60,7 @@ export const NewWrapper_Client = <Full,>({
       NewFormOrigin.set(modelName, sliceName);
       void storeDo[names.newModel](crystal, { modal, setDefault, sliceName, draftScope });
       resets?.forEach((reset) => {
-        void storeDo[`reset${capitalize(reset)}`]();
+        void storeDo[modelNames(reset).resetModel]();
       });
     });
   return (

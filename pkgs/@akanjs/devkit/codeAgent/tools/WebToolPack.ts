@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import type { ExtensionAPI, InlineExtension } from "@earendil-works/pi-coding-agent";
 import { type CodeAgentProfile, codeAgentClip } from "akanjs/common";
 import { Type } from "typebox";
+import { codeAgentHostListed, codeAgentHostOf, codeAgentIsLoopback } from "../agent/codeAgentHosts";
 import { DeepSeekWeb } from "./DeepSeekWeb";
 
 export interface WebToolPackOptions {
@@ -34,6 +35,7 @@ interface WebPage {
 export class WebToolPack {
   static readonly pageChars = 10_000;
   static readonly maxResults = 10;
+  static readonly maxRedirects = 5;
   static readonly #rememberedPages = 16;
   readonly #options: WebToolPackOptions;
   // A continuation reads the snapshot its first page came from; a fresh read always refetches, since a local dev
@@ -164,8 +166,10 @@ export class WebToolPack {
   }
 
   async #read(url: string, signal?: AbortSignal): Promise<WebPage> {
+    const within = this.#boundOf(new URL(url).hostname);
     const deepseek = this.#options.deepseek;
-    if (deepseek && !(await this.#isLocal(new URL(url).hostname))) {
+    // DeepSeek follows a redirect on its own servers, where no host list reaches it.
+    if (deepseek && !within && !(await this.#isLocal(new URL(url).hostname))) {
       try {
         const page = await deepseek.fetch(url, signal);
         return { status: 200, ok: true, title: page.title, text: page.content };
@@ -173,11 +177,51 @@ export class WebToolPack {
         if (signal?.aborted) throw error;
       }
     }
-    const response = await fetch(url, {
-      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000),
-      redirect: "follow",
-    });
-    return { status: response.status, ok: response.ok, title: "", text: WebToolPack.#readable(await response.text()) };
+    const timeout = signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000);
+    if (!within) {
+      const response = await fetch(url, { signal: timeout, redirect: "follow" });
+      return {
+        status: response.status,
+        ok: response.ok,
+        title: "",
+        text: WebToolPack.#readable(await response.text()),
+      };
+    }
+    return await WebToolPack.#readWithin(url, within, timeout);
+  }
+
+  #boundOf(hostname: string): ((host: string) => boolean) | undefined {
+    const { allowHosts, askOutside } = this.#options.profile.network;
+    if (allowHosts?.length) return (host) => allowHosts.includes(host);
+    const quiet = (host: string) => codeAgentIsLoopback(host) || codeAgentHostListed(host, askOutside ?? []);
+    return askOutside && quiet(hostname) ? quiet : undefined;
+  }
+
+  static async #readWithin(url: string, within: (host: string) => boolean, signal: AbortSignal): Promise<WebPage> {
+    let current = url;
+    for (let hop = 0; hop <= WebToolPack.maxRedirects; hop += 1) {
+      const response = await fetch(current, { signal, redirect: "manual" });
+      const location = response.headers.get("location");
+      if (response.status < 300 || response.status >= 400 || !location)
+        return {
+          status: response.status,
+          ok: response.ok,
+          title: "",
+          text: WebToolPack.#readable(await response.text()),
+        };
+      await response.body?.cancel();
+      const next = new URL(location, current).href;
+      const host = codeAgentHostOf(next);
+      if (!host || !within(host))
+        return {
+          status: response.status,
+          ok: false,
+          title: "",
+          text: `Redirected to ${next}, which this profile does not reach without asking. web_fetch that URL to follow it.`,
+        };
+      current = next;
+    }
+    return { status: 310, ok: false, title: "", text: `More than ${WebToolPack.maxRedirects} redirects.` };
   }
 
   #remember(url: string, page: WebPage) {

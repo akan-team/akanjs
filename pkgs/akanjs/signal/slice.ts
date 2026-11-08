@@ -64,6 +64,7 @@ interface RootSliceOption {
    * HTTP: `mcp: { cru: false }` merely keeps it off the agent shelf. `create`/`update`/`remove` fall back to `cru`.
    */
   guards?: {
+    /** Omitted, the root list and insight are not mounted; an empty list stays mounted and refuses every call. */
     root?: GuardCls | GuardCls[];
     get?: GuardCls | GuardCls[] | false;
     cru?: GuardCls | GuardCls[] | false;
@@ -163,7 +164,7 @@ export function slice<
   const filterRef = srv.db.filter;
   const init = buildSlice(srv.srv.refName, srv.cnst.input, srv.cnst.full, srv.cnst.light, srv.cnst.insight, filterRef);
   const toGuards = (guard?: GuardCls | GuardCls[] | false) => (guard ? (Array.isArray(guard) ? guard : [guard]) : []);
-  const rootGuards = toGuards(option.guards?.root);
+  const rootGuards = option.guards?.root === undefined ? null : toGuards(option.guards.root);
   const getGuards = toGuards(option.guards?.get);
   const cruGuards = toGuards(option.guards?.cru);
   // An omitted override keeps the same `cruGuards` reference: serialization detects "not overridden" by identity.
@@ -200,6 +201,30 @@ export function slice<
   const srvKeys = [
     ...new Set([...Object.keys(srv.srvMap), ...libSlices.flatMap((libSlice) => Object.keys(libSlice.srv.srvMap))]),
   ];
+  // Names one of the model's filters rather than taking a raw query, which would let a caller compose any query.
+  const rootSlice =
+    rootGuards &&
+    init({ guards: rootGuards, ...(rootMcp ? {} : { mcp: false }) })
+      .search<"queryKey", string>("queryKey", String)
+      .search<"args", unknown[]>("args", Any)
+      .exec((queryKey, args) => {
+        try {
+          return resolveFilterQuery(filterRef, queryKey, args);
+        } catch (error) {
+          // The schema already names every filter and argument, so saying which one is wrong leaks nothing.
+          if (error instanceof FilterQueryError) throw new Exception.BadRequest(error.message);
+          throw error;
+        }
+      });
+  // The app's own slices go last: its root slice resolves its own filter, which already includes the lib's filters.
+  const sliceMeta: { [key: string]: SliceInfo } = Object.assign(
+    {},
+    ...libSlices.map((libSlice) => libSlice[SLICE_META]),
+    rootSlice ? { "": rootSlice } : {},
+    sliceBuilder(init as Parameters<BuildSlice>[0]),
+  );
+  //? Nor a lib's root: like a verb's, `guards.root` is always this slice's own.
+  if (!rootSlice) delete sliceMeta[""];
   const sliceCls = class Slice extends dangerouslyAdapt(`${srv.srv.refName}Slice`, ({ service }) => ({
     ...Object.fromEntries(srvKeys.map((srvRefName) => [srvRefName, service()])),
   })) {
@@ -212,27 +237,7 @@ export function slice<
     static removeGuards = removeGuards;
     static mcp = mcp;
     static crud = crud;
-    // The app's own slices go last: its root slice resolves its own filter, which already includes the lib's filters.
-    static [SLICE_META] = Object.assign(
-      {},
-      ...libSlices.map((libSlice) => libSlice[SLICE_META]),
-      {
-        // Names one of the model's filters rather than taking a raw query, which would let a caller compose any query.
-        "": init({ guards: rootGuards, ...(rootMcp ? {} : { mcp: false }) })
-          .search<"queryKey", string>("queryKey", String)
-          .search<"args", unknown[]>("args", Any)
-          .exec((queryKey, args) => {
-            try {
-              return resolveFilterQuery(filterRef, queryKey, args);
-            } catch (error) {
-              // The schema already names every filter and argument, so saying which one is wrong leaks nothing.
-              if (error instanceof FilterQueryError) throw new Exception.BadRequest(error.message);
-              throw error;
-            }
-          }),
-      },
-      sliceBuilder(init as Parameters<BuildSlice>[0]),
-    );
+    static [SLICE_META] = sliceMeta;
   };
   Object.assign(srv.srvMap, Object.assign({}, ...libSlices.map((libSlice) => libSlice.srv.srvMap), srv.srvMap));
   applyMixins(sliceCls, libSlices);

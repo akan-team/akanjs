@@ -191,7 +191,10 @@
   or `<nav>` and the component insists on a label. A region that is hidden anyway leaves no marker claiming it is
   there. **It hides text, not behaviour**: tools and state keys are declarations rather than markup, so an
   `st.tool` inside is published exactly as before and `highlight` still reaches a control in there. This is
-  `field.visual` one layer up — cost, not secrecy.
+  `field.visual` one layer up — cost, not secrecy. Secrecy is `data-agent-private="<label>"`: the read prints
+  `[private: <label>]` in its place even when asked for by name, and it is no `section` or `highlight` target. A
+  password, one-time-code or card input (its standard `autocomplete`) is never read either; any other value on
+  screen is.
 - **Reach for it second.** A read narrows from the other side too: `Agent.Zone` and `readScreen({ section })` scope
   to one container, which beats blocklisting five regions on a screen that is mostly chrome. And a footer is last
   in the document, so on a page long enough to truncate it was already past the cut — the regions worth marking are

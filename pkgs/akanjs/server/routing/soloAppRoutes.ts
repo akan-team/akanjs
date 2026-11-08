@@ -1,4 +1,5 @@
 import type { AkanChildRole, AkanMetricsReport } from "akanjs/service";
+import { SignalContext } from "akanjs/signal";
 import { AppInfo } from "../ops/appInfo";
 import type { OpsRoute } from "../ops/opsRoute";
 import { StatusAccess } from "../ops/statusAccess";
@@ -15,7 +16,7 @@ export interface SoloAppStatus {
 // Answers in the gateway's `/_akan/app/*` shape (one-entry `children`) so probes and tooling read one contract.
 export const createSoloAppRoutes = (
   read: () => SoloAppStatus,
-  logStream: { handle(req: Request): Response } | null = null,
+  logStream: { handle(req: Request, client?: string | null): Response } | null = null,
   ops: OpsRoute | null = null,
   access = StatusAccess.fromEnv(),
 ): HttpRoutes => {
@@ -33,22 +34,32 @@ export const createSoloAppRoutes = (
   return {
     "/_akan/app/health": {
       GET: (req: Request) =>
-        access.health(req, () => ({ status: read().status, pid: process.pid, solo: true, children: [child()] })),
+        access.health(
+          req,
+          () => ({ status: read().status, pid: process.pid, solo: true, children: [child()] }),
+          SignalContext.clientIpOf(req),
+        ),
     },
     "/_akan/app/metrics": {
       GET: (req: Request) =>
-        access.metrics(req, () => ({
-          rooms: 0,
-          sockets: 0,
-          solo: true,
-          gateway: null,
-          proxyHop: null,
-          children: [{ ...child(), metrics: read().metrics }],
-        })),
+        access.metrics(
+          req,
+          () => ({
+            rooms: 0,
+            sockets: 0,
+            solo: true,
+            gateway: null,
+            proxyHop: null,
+            children: [{ ...child(), metrics: read().metrics }],
+          }),
+          SignalContext.clientIpOf(req),
+        ),
     },
     [AppInfo.publicPath]: { GET: () => AppInfo.handlePublic() },
     "/_akan/bench/ping": { GET: () => new Response("ok") },
-    ...(logStream ? { "/_akan/app/logs": { GET: (req: Request) => logStream.handle(req) } } : {}),
-    ...(ops ? { "/_akan/ops/*": (req: Request) => ops.handle(req) } : {}),
+    ...(logStream
+      ? { "/_akan/app/logs": { GET: (req: Request) => logStream.handle(req, SignalContext.clientIpOf(req)) } }
+      : {}),
+    ...(ops ? { "/_akan/ops/*": (req: Request) => ops.handle(req, SignalContext.clientIpOf(req)) } : {}),
   };
 };

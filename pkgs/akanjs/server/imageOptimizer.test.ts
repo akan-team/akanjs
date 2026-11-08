@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
+import { readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ImageOptimizer } from "./imageOptimizer";
@@ -20,28 +20,51 @@ let optimizer: ImageOptimizer;
 const request = (url: string, width: number, accept: string) =>
   new Request(`http://local.akan/_akan/image?url=${encodeURIComponent(url)}&w=${width}&q=75`, { headers: { accept } });
 
-const withUpstreamImage = async (run: (upstream: { url: string; hits: () => number }) => Promise<void>) => {
+const withUpstreamImage = async (
+  run: (upstream: { url: string; port: number; hits: () => number }) => Promise<void>,
+  respond?: (req: Request, port: number) => Response | undefined,
+) => {
   const photo = await Bun.file(path.join(root, "public/photo.png")).bytes();
   let served = 0;
   const upstream = Bun.serve({
     port: 0,
-    fetch: async () => {
+    fetch: async (req, server) => {
       served += 1;
       await Bun.sleep(20);
-      return new Response(photo, { headers: { "content-type": "image/png" } });
+      return respond?.(req, server.port ?? 0) ?? new Response(photo, { headers: { "content-type": "image/png" } });
     },
   });
   try {
-    await run({ url: `http://localhost:${upstream.port}/photo.png`, hits: () => served });
+    const port = upstream.port ?? 0;
+    await run({ url: `http://localhost:${port}/photo.png`, port, hits: () => served });
   } finally {
     upstream.stop(true);
   }
 };
 
-const optimizerFor = (cacheDir: string, config?: Partial<AkanImageConfig>, prodMode = true) =>
-  new ImageOptimizer({ publicDir: path.join(root, "public"), cacheDir: path.join(root, cacheDir), prodMode, config });
+const optimizerFor = (
+  cacheDir: string,
+  config?: Partial<AkanImageConfig>,
+  prodMode = true,
+  resolveHost?: (hostname: string) => Promise<{ address: string }[]>,
+) =>
+  new ImageOptimizer({
+    publicDir: path.join(root, "public"),
+    cacheDir: path.join(root, cacheDir),
+    prodMode,
+    config,
+    resolveHost,
+  });
 
 const remotePatterns = [{ protocol: "http" as const, hostname: "localhost" }];
+const loopbackOrigin = { remotePatterns, dangerouslyAllowLocalIP: true };
+
+const cacheEntries = async (cacheDir: string) => {
+  const names = await readdir(path.join(root, cacheDir)).catch(() => [] as string[]);
+  return await Promise.all(
+    names.map(async (name) => ({ name, size: (await stat(path.join(root, cacheDir, name))).size })),
+  );
+};
 
 describe("ImageOptimizer", () => {
   beforeAll(async () => {
@@ -134,7 +157,7 @@ describe("ImageOptimizer", () => {
 
   test("collapses concurrent requests for one image into a single fetch and encode", async () => {
     await withUpstreamImage(async ({ url, hits }) => {
-      const remote = optimizerFor("cache-remote", { remotePatterns });
+      const remote = optimizerFor("cache-remote", loopbackOrigin);
       const all = await Promise.all(Array.from({ length: 8 }, () => remote.handle(request(url, 32, "image/webp"))));
 
       expect(all.map((res) => res.status)).toEqual(Array(8).fill(200));
@@ -145,7 +168,7 @@ describe("ImageOptimizer", () => {
 
   test("serves a warm remote image without touching the origin", async () => {
     await withUpstreamImage(async ({ url, hits }) => {
-      const remote = optimizerFor("cache-warm-remote", { remotePatterns });
+      const remote = optimizerFor("cache-warm-remote", loopbackOrigin);
       const etags: (string | null)[] = [];
       for (let i = 0; i < 4; i += 1) {
         const res = await remote.handle(request(url, 32, "image/webp"));
@@ -161,7 +184,7 @@ describe("ImageOptimizer", () => {
 
   test("refetches a remote image once its ttl has run out", async () => {
     await withUpstreamImage(async ({ url, hits }) => {
-      const remote = optimizerFor("cache-expiring-remote", { remotePatterns, minimumCacheTTL: 0 });
+      const remote = optimizerFor("cache-expiring-remote", { ...loopbackOrigin, minimumCacheTTL: 0 });
       for (let i = 0; i < 3; i += 1) expect((await remote.handle(request(url, 32, "image/webp"))).status).toBe(200);
 
       expect(hits()).toBe(3);
@@ -170,7 +193,7 @@ describe("ImageOptimizer", () => {
 
   test("refetches a remote image every time under akan start", async () => {
     await withUpstreamImage(async ({ url, hits }) => {
-      const dev = optimizerFor("cache-dev-remote", { remotePatterns }, false);
+      const dev = optimizerFor("cache-dev-remote", loopbackOrigin, false);
       for (let i = 0; i < 3; i += 1) expect((await dev.handle(request(url, 32, "image/webp"))).status).toBe(200);
 
       expect(hits()).toBe(3);
@@ -184,5 +207,133 @@ describe("ImageOptimizer", () => {
 
     expect(all.map((res) => res.status)).toEqual(widths.map(() => 200));
     expect(new Set(all.map((res) => res.headers.get("Content-Type")))).toEqual(new Set(["image/webp"]));
+  });
+
+  test("keys a local image by its path, unless a pattern names the query", async () => {
+    const local = optimizerFor("cache-query");
+    for (const version of ["a", "b", "c"]) {
+      expect((await local.handle(request(`/photo.png?v=${version}`, 32, "image/webp"))).status).toBe(200);
+    }
+    expect(await cacheEntries("cache-query")).toHaveLength(1);
+
+    const versioned = optimizerFor("cache-query-named", {
+      localPatterns: [
+        { pathname: "/photo.png", search: "?v=a" },
+        { pathname: "/photo.png", search: "?v=b" },
+      ],
+    });
+    for (const version of ["a", "b"]) {
+      expect((await versioned.handle(request(`/photo.png?v=${version}`, 32, "image/webp"))).status).toBe(200);
+    }
+    expect(await cacheEntries("cache-query-named")).toHaveLength(2);
+  });
+
+  test("keeps the disk cache under its size by dropping the oldest entries", async () => {
+    const probe = optimizerFor("cache-size-probe");
+    await probe.handle(request("/photo.png", 32, "image/webp"));
+    const [entry] = await cacheEntries("cache-size-probe");
+    const ceiling = (entry?.size ?? 0) * 3;
+
+    const bounded = optimizerFor("cache-bounded", { maxCacheBytes: ceiling });
+    const widths = [32, 48, 64, 96, 128, 256];
+    for (const width of widths) {
+      expect((await bounded.handle(request("/photo.png", width, "image/webp"))).status).toBe(200);
+      await Bun.sleep(5);
+    }
+    const left = await cacheEntries("cache-bounded");
+    expect(left.reduce((total, file) => total + file.size, 0)).toBeLessThanOrEqual(ceiling);
+    expect(left.length).toBeGreaterThan(0);
+    expect(left.length).toBeLessThan(widths.length);
+
+    const first = await bounded.handle(request("/photo.png", 32, "image/webp"));
+    expect(first.status).toBe(200);
+    expect(first.headers.get("Content-Type")).toBe("image/webp");
+  });
+
+  test("answers 503 with retry-after once the encode queue is full", async () => {
+    await Bun.write(
+      path.join(root, "public/large.png"),
+      await new Bun.Image(onePixelPng).resize(2048, 2048).png().bytes(),
+    );
+    const queued = optimizerFor("cache-queue", { maxConcurrency: 1, maxQueue: 1 });
+    const widths = [640, 750, 828, 1080, 1200, 1920];
+    const all = await Promise.all(widths.map((width) => queued.handle(request("/large.png", width, "image/webp"))));
+    const busy = all.filter((res) => res.status === 503);
+
+    expect(all.filter((res) => res.status === 200).length).toBeGreaterThanOrEqual(2);
+    expect(busy.length).toBeGreaterThan(0);
+    expect(all.every((res) => res.status === 200 || res.status === 503)).toBe(true);
+    expect(busy.every((res) => res.headers.get("retry-after") === "1")).toBe(true);
+
+    const unbounded = optimizerFor("cache-queue-off", { maxConcurrency: 1, maxQueue: 0 });
+    const served = await Promise.all(
+      widths.map((width) => unbounded.handle(request("/large.png", width, "image/webp"))),
+    );
+    expect(served.map((res) => res.status)).toEqual(widths.map(() => 200));
+  });
+
+  test("serves a source over the pixel cap as it is, without decoding it", async () => {
+    const capped = optimizerFor("cache-pixels", { maxInputPixels: 64 * 64 - 1 });
+    const res = await capped.handle(request("/photo.png", 32, "image/webp"));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(
+      Buffer.from(await Bun.file(path.join(root, "public/photo.png")).bytes()),
+    );
+    expect(await cacheEntries("cache-pixels")).toHaveLength(0);
+  });
+
+  test("refuses a remote host that resolves to a loopback or private address", async () => {
+    await withUpstreamImage(async ({ url, port, hits }) => {
+      const remote = optimizerFor("cache-private", {
+        remotePatterns: [...remotePatterns, { protocol: "http", hostname: "127.0.0.1" }],
+      });
+      expect((await remote.handle(request(url, 32, "image/webp"))).status).toBe(400);
+      expect((await remote.handle(request(`http://127.0.0.1:${port}/photo.png`, 32, "image/webp"))).status).toBe(400);
+
+      const parked = optimizerFor("cache-parked", { remotePatterns }, true, async () => [
+        { address: "203.0.113.9" },
+        { address: "10.0.0.7" },
+      ]);
+      expect((await parked.handle(request(url, 32, "image/webp"))).status).toBe(400);
+
+      const unresolved = optimizerFor("cache-unresolved", { remotePatterns }, true, async () => {
+        throw new Error("ENOTFOUND");
+      });
+      expect((await unresolved.handle(request(url, 32, "image/webp"))).status).toBe(502);
+      expect(hits()).toBe(0);
+    });
+  });
+
+  test("checks the address again on every redirect hop", async () => {
+    await withUpstreamImage(
+      async ({ url, hits }) => {
+        const remote = optimizerFor(
+          "cache-redirect",
+          { remotePatterns: [...remotePatterns, { protocol: "http", hostname: "127.0.0.1" }] },
+          true,
+          async () => [{ address: "203.0.113.9" }],
+        );
+        expect((await remote.handle(request(url, 32, "image/webp"))).status).toBe(400);
+        expect(hits()).toBe(1);
+      },
+      (req, port) =>
+        new URL(req.url).pathname === "/photo.png"
+          ? Response.redirect(`http://127.0.0.1:${port}/moved.png`, 302)
+          : undefined,
+    );
+  });
+
+  test("answers 502 for a remote error rather than its own status", async () => {
+    await withUpstreamImage(
+      async ({ url }) => {
+        const remote = optimizerFor("cache-remote-error", loopbackOrigin);
+        const res = await remote.handle(request(url, 32, "image/webp"));
+
+        expect(res.status).toBe(502);
+      },
+      () => new Response("no", { status: 401 }),
+    );
   });
 });

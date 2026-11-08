@@ -98,6 +98,10 @@ object AkanNativeVectors {
             check(got.wire == c[3]) { "navigation $c: ${got.wire}" }
         }
         for (c in rows(navigation, "fileRefSandbox")) check(AkanNativeKernel.fileRefSandboxed(c[0] as String) == c[1]) { "sandbox $c" }
+        for (c in rows(navigation, "links")) {
+            val acl = AkanNativeAcl.from(if (c[0] == null) emptyMap<String, Any?>() else mapOf("acl" to c[0])).first
+            check(AkanNativeKernel.externalOpenPermitted(acl, c[1] as String, (c[2] as Number).toInt()) == c[3]) { "link $c" }
+        }
         for (item in (load("retained")["cases"] as? List<*>) ?: emptyList<Any?>()) {
             val case = item as Map<*, *>
             val events = AkanNativeRetained<String>()

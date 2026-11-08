@@ -71,6 +71,24 @@ describe("useAgentTool", () => {
     app.unmount();
   });
 
+  test("confirm: false publishes a tool that never asks, as one that declares no confirm", () => {
+    const surface = new AgenticSurface();
+    const Tools = () => {
+      useAgentTool("sendNote", { confirm: false }, () => "sent");
+      useAgentTool("removeNote", { confirm: "Remove it?" }, () => "removed");
+      return null;
+    };
+    const app = mount(
+      <AgentProvider surface={surface}>
+        <Tools />
+      </AgentProvider>,
+    );
+    const asks = Object.fromEntries(surface.snapshot().tools.map((tool) => [tool.name, tool.needsConfirm]));
+    expect(asks).toEqual({ sendNote: false, removeNote: true });
+    expect(surface.tool("sendNote")?.confirm).toBeUndefined();
+    app.unmount();
+  });
+
   test("the returned callable keeps one identity across renders", () => {
     const surface = new AgenticSurface();
     const seen: Array<(args?: Record<string, unknown>) => Promise<unknown>> = [];

@@ -73,6 +73,10 @@ export class MachineToken {
     return !!MachineToken.#keyPair().publicKey;
   }
 
+  static publicKey(): KeyObject | null {
+    return MachineToken.#keyPair().publicKey;
+  }
+
   static issue(identity: MachineIdentity, { expiresAt, audience }: MachineTokenIssueOptions = {}): string {
     const { privateKey } = MachineToken.#keyPair();
     if (!privateKey) throw new Error("MachineToken.issue needs AKAN_MACHINE_PRIVATE_KEY on the server that issues it");

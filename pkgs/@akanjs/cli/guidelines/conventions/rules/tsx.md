@@ -47,7 +47,8 @@ state. Reach for the path, not the nearest file:
   values never saved; field `cache` / `cacheKey` props are deprecated no-ops — `modelStore`).
 - `<Link>` from `akanjs/ui` for internal navigation; `<a>` only for `mailto:` and external links. A `<Link>` handed
   an absolute URL (any scheme, any case) or a `//host` path passes it through untouched and opens it outside the app;
-  only an app path gets the locale and basePath. `Href.isExternal(href)` from `akanjs/client` is that test.
+  only an app path gets the locale (none for the default locale under `i18n.localePrefix: "as-needed"`) and basePath.
+  `Href.isExternal(href)` from `akanjs/client` is that test.
 
 ## Lint Rules On Components
 

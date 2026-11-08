@@ -94,7 +94,16 @@ export class RemoteLogin {
     let failures = 0;
     while (this.#now() < deadline) {
       const answers = await Promise.allSettled(ids.map((id) => this.#api.getRemoteAuthToken(id)));
-      for (const answer of answers) if (answer.status === "fulfilled" && answer.value) return answer.value;
+      const [deviceAnswer, legacyAnswer] = answers;
+      if (deviceAnswer?.status === "fulfilled" && deviceAnswer.value) return deviceAnswer.value;
+      if (legacyAnswer?.status === "fulfilled" && legacyAnswer.value) {
+        Logger.rawLog(
+          chalk.yellow(
+            `${this.#api.host} handed the session out for the sign-in URL's id; it should answer by the device code alone.`,
+          ),
+        );
+        return legacyAnswer.value;
+      }
       const [device, legacy] = answers.map((answer) => (answer.status === "rejected" ? answer.reason : null));
       if (RemoteLogin.#isFinal(device)) throw this.#refusal(device);
       //? Only the device code's poll ends the wait: a cloud on the new contract may refuse the URL's id outright.

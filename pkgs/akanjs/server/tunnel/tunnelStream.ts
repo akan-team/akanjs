@@ -33,3 +33,10 @@ export const tunnelResetCodeOf = (error: unknown): TunnelResetCode => {
   if (typeof code === "string" && code.startsWith("E")) return "originUnreachable";
   return "internal";
 };
+
+//* The path is joined onto the origin as text, so one like `@host/x` would move the authority to another host.
+export const tunnelTargetUrl = (origin: string, path: string): URL | null => {
+  if (!path.startsWith("/")) return null;
+  const url = URL.parse(`${origin}${path}`);
+  return url && url.origin === URL.parse(origin)?.origin ? url : null;
+};

@@ -40,8 +40,59 @@ export const websocketHeartbeatContract = {
   makeAck: (): WebsocketHeartbeatAckData => ({ type: "pong" }),
 } as const;
 
+const canonicalOf = (value: unknown, holding: Set<object>): unknown => {
+  if (typeof value === "bigint") return `${value}n`;
+  if (typeof value === "function" || typeof value === "symbol") return undefined;
+  if (value === null || typeof value !== "object") return value;
+  if (holding.has(value)) throw new Error("A room key cannot be built from a value that contains itself");
+  holding.add(value);
+  try {
+    const toJSON = (value as { toJSON?: unknown }).toJSON;
+    if (typeof toJSON === "function") return canonicalOf(toJSON.call(value), holding);
+    if (ArrayBuffer.isView(value))
+      return { "%bytes": [...new Uint8Array(value.buffer, value.byteOffset, value.byteLength)] };
+    if (value instanceof Map)
+      return { "%map": [...value].map(([key, item]) => [canonicalOf(key, holding), canonicalOf(item, holding)]) };
+    if (value instanceof Set) return { "%set": [...value].map((item) => canonicalOf(item, holding)) };
+    if (value instanceof RegExp) return { "%regexp": [value.source, value.flags] };
+    if (Array.isArray(value)) return value.map((item) => canonicalOf(item, holding) ?? null);
+    const record: Record<string, unknown> = {};
+    for (const key of Object.keys(value).sort()) {
+      const item = canonicalOf((value as Record<string, unknown>)[key], holding);
+      if (item !== undefined) record[key] = item;
+    }
+    return record;
+  } finally {
+    holding.delete(value);
+  }
+};
+
+export const canonicalJson = (value: unknown): string => JSON.stringify(canonicalOf(value, new Set())) ?? "~";
+
+// Every code unit outside `[A-Za-z0-9_.]` is escaped, so `-` only separates and `("a-b", "c")` is not `("a", "b-c")`.
+const escapeRoomToken = (text: string) =>
+  text.replace(/[^A-Za-z0-9_.]/g, (char) => {
+    const code = char.charCodeAt(0);
+    return code < 0x100
+      ? `%${code.toString(16).toUpperCase().padStart(2, "0")}`
+      : `%u${code.toString(16).toUpperCase().padStart(4, "0")}`;
+  });
+
 export const websocketRoomContract = {
+  /** The label a client files a subscription under; the server joins `roomOf`, and the ack names both. */
   idOf: (key: string, args: unknown[]) => `${key}${args.length ? "-" : ""}${args.join("-")}`,
+  roomOf: (key: string, tokens: string[]) => (tokens.length ? `${key}-${tokens.join("-")}` : key),
+  /** For an argument of one declared type; `~` is never an escape's output, so it can stand for an absent value. */
+  tokenOf: (value: unknown): string => {
+    if (value === null || value === undefined) return "~";
+    if (typeof value === "string") return escapeRoomToken(value);
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint")
+      return escapeRoomToken(String(value));
+    const canonical = canonicalOf(value, new Set());
+    return escapeRoomToken(typeof canonical === "string" ? canonical : (JSON.stringify(canonical) ?? "~"));
+  },
+  /** For an `Any` argument, where `"1"` and `1` are different values. */
+  jsonTokenOf: (value: unknown): string => (value === undefined ? "~" : escapeRoomToken(canonicalJson(value))),
 } as const;
 
 export interface WebsocketBinaryFrame {

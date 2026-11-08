@@ -16,6 +16,9 @@ export type OpsTokenVerdict = { ok: true; claims: OpsTokenClaims } | { ok: false
 
 // Security: verify-only EdDSA — the edge holds just a public key, so a stolen machine can mint no tokens.
 export class OpsTokenVerifier {
+  static readonly type = "akan-ops+jwt";
+  //? A control plane that predates `type` sends `JWT` or nothing; any other `typ` belongs to another kind of token.
+  static readonly acceptedTypes: ReadonlySet<unknown> = new Set([undefined, "JWT", OpsTokenVerifier.type]);
   static readonly maxLifetimeSec = 300;
   static readonly clockSkewSec = 30;
   static readonly maxRememberedJti = 10_000;
@@ -47,6 +50,8 @@ export class OpsTokenVerifier {
   }
 
   verify(token: string, nowSec = Math.floor(Date.now() / 1000)): OpsTokenVerdict {
+    if (!OpsTokenVerifier.acceptedTypes.has(EdDsaJwt.headerOf(token)?.typ))
+      return { ok: false, reason: `typ must be ${OpsTokenVerifier.type}` };
     const verdict = EdDsaJwt.verify(token, this.#key, { audience: this.audience });
     if (!verdict.ok) return verdict;
     const { exp, iat, jti, sub } = verdict.claims;

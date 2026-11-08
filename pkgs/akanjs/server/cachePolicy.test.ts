@@ -9,6 +9,7 @@ import {
   normalizeRouteCacheTtl,
   parsePositiveInt,
   resolveAutoRouteCacheTtl,
+  resolveHtmlCacheControl,
   resolvePublicRouteCacheEntryDecision,
   resolveRouteCacheStoreTtl,
   shouldInvalidateRouteCacheEntry,
@@ -411,6 +412,16 @@ describe("route cache policy helpers", () => {
     expect(cache.byteSize).toBe(4);
     expect(cache.get("small")).toBe("1234");
     expect(cache.get("huge")).toBeNull();
+  });
+
+  test("sends no HTML Cache-Control under any of the off spellings, and keeps an anonymous value otherwise", () => {
+    const anonymous = new Request("http://app.test/");
+    for (const off of ["off", "OFF", "none", "false", "0"]) expect(resolveHtmlCacheControl(anonymous, off)).toBeNull();
+    expect(resolveHtmlCacheControl(anonymous, undefined)).toBe("no-cache");
+    expect(resolveHtmlCacheControl(anonymous, "public, max-age=60")).toBe("public, max-age=60");
+    expect(resolveHtmlCacheControl(new Request("http://app.test/", { headers: { cookie: "sid=1" } }), "")).toBe(
+      "private, no-cache",
+    );
   });
 
   test("parses byte ceilings from env strings", () => {

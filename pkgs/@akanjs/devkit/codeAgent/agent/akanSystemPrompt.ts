@@ -31,6 +31,10 @@ export const akanSystemPrompt = (profile: CodeAgentProfile) => {
     lines.push(
       `- Some tool calls need the user's approval (policy: ${profile.approval}). A refusal is an answer; do not retry it a different way.`,
     );
+  if (profile.network.askOutside)
+    lines.push(
+      "- `web_fetch` to a host outside a short list of documentation sites, and a shell command that reaches the network (`curl`, `wget`, `ssh`, …), wait for the user's approval. A refusal is an answer; do not retry it a different way.",
+    );
   lines.push(
     "- Secrets are refused at the tool boundary. If you need a value from `.env`, ask the user for it rather than looking for another way to read the file.",
     "",

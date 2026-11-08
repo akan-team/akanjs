@@ -13,6 +13,7 @@ import {
   type AkanI18nConfig,
   DEFAULT_AKAN_I18N,
   getBasePathFromPathname,
+  LocalePath,
   Logger,
   parseSearchParams,
 } from "akanjs/common";
@@ -1625,7 +1626,7 @@ export class RscRenderer {
     const publicUrl = RscRenderer.#getPublicRequestUrl(url);
     for (const lang of this.#i18n.locales) {
       const alternateUrl = new URL(publicUrl);
-      alternateUrl.pathname = RscRenderer.#replaceLocalePathSegment(publicUrl.pathname, lang);
+      alternateUrl.pathname = RscRenderer.#replaceLocalePathSegment(publicUrl.pathname, lang, this.#i18n);
       languages[lang] = alternateUrl.href;
     }
     const xDefaultUrl = new URL(publicUrl);
@@ -1675,10 +1676,9 @@ export class RscRenderer {
     return publicUrl;
   }
 
-  static #replaceLocalePathSegment(pathname: string, lang: string): string {
+  static #replaceLocalePathSegment(pathname: string, lang: string, i18n: AkanI18nConfig): string {
     const parts = pathname.split("/").filter(Boolean);
-    if (parts.length === 0) return `/${lang}`;
-    return `/${[lang, ...parts.slice(1)].join("/")}`;
+    return LocalePath.join(lang, `/${parts.slice(1).join("/")}`, i18n);
   }
 }
 

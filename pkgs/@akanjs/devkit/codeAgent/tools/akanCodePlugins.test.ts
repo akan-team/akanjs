@@ -1,9 +1,12 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { codeAgentPresets } from "akanjs/common";
 import { makeCliTempWorkspace, tempRoots, writeText } from "../../testHelpers";
 import { CodeAgent, type CodeAgentOptions } from "../agent/CodeAgent";
 import { SubagentPool } from "../agent/SubagentPool";
+import { WorkspaceTrust } from "../agent/WorkspaceTrust";
 import { DevLogFeedback } from "../feedback/DevLogFeedback";
 import { TurnFeedback, type TurnFeedbackSource } from "../feedback/TurnFeedback";
 import { AkanCodePlugins } from "./AkanCodePlugins";
@@ -18,6 +21,26 @@ import { WebToolPack } from "./WebToolPack";
 
 const track = tempRoots();
 const tempRoot = async () => track(await makeCliTempWorkspace()).root;
+
+let codeHome: string;
+let realCodeHome: string | undefined;
+
+beforeAll(() => {
+  realCodeHome = process.env.AKAN_CODE_HOME;
+  codeHome = mkdtempSync(path.join(tmpdir(), "akan-code-home-"));
+  process.env.AKAN_CODE_HOME = codeHome;
+});
+
+afterAll(() => {
+  if (realCodeHome === undefined) delete process.env.AKAN_CODE_HOME;
+  else process.env.AKAN_CODE_HOME = realCodeHome;
+  rmSync(codeHome, { recursive: true, force: true });
+});
+
+const approved = (root: string) => {
+  WorkspaceTrust.approve(root, WorkspaceTrust.pending(root), false);
+  return root;
+};
 
 type ToolExecute = (
   id: string,
@@ -554,8 +577,20 @@ for await (const line of console) {
     return root;
   };
 
-  test("connects a declared stdio server, lists its tools and calls one", async () => {
+  test("a server the repo declares is not started until it is approved", async () => {
     const root = await withServer();
+    const notices: string[] = [];
+    const pack = await McpToolPack.connect({
+      workspaceRoot: root,
+      profile: codeAgentPresets.local(root),
+      onNotice: (message) => notices.push(message),
+    });
+    expect(pack).toBeUndefined();
+    expect(notices.join(" ")).toContain("not approved: echo");
+  });
+
+  test("connects a declared stdio server, lists its tools and calls one", async () => {
+    const root = approved(await withServer());
     const pack = await McpToolPack.connect({ workspaceRoot: root, profile: codeAgentPresets.local(root) });
     expect(pack).toBeDefined();
     try {
@@ -582,6 +617,7 @@ for await (const line of console) {
       path.join(root, ".akan", "code", "mcp.json"),
       JSON.stringify({ mcpServers: { broken: { command: "/nonexistent/binary" } } }),
     );
+    approved(root);
     const notices: string[] = [];
     const pack = await McpToolPack.connect({
       workspaceRoot: root,
@@ -651,6 +687,38 @@ describe("WebToolPack", () => {
       } as never);
       expect(refused?.isError).toBe(true);
       expect(refused?.content[0]?.text).toContain("docs.akanjs.com");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("follows a redirect only to a host the profile reaches without asking", async () => {
+    const server: ReturnType<typeof Bun.serve> = Bun.serve({
+      port: 0,
+      fetch: (request): Response => {
+        const { pathname } = new URL(request.url);
+        if (pathname === "/out") return Response.redirect("https://outside.example/page", 302);
+        if (pathname === "/in") return Response.redirect(`http://localhost:${server.port}/final`, 302);
+        if (pathname === "/loopback") return Response.redirect(`http://127.0.0.1:${server.port}/final`, 302);
+        return new Response("<p>final page</p>");
+      },
+    });
+    try {
+      const profile = codeAgentPresets.local(root);
+      const read = async (pack: WebToolPack, path: string) =>
+        await toolsOf(pack.extension()).get("web_fetch")?.("1", {
+          url: `http://localhost:${server.port}${path}`,
+        } as never);
+
+      const local = new WebToolPack({ profile });
+      expect((await read(local, "/in"))?.content[0]?.text).toContain("final page");
+      const out = await read(local, "/out");
+      expect(out?.isError).toBe(true);
+      expect(out?.content[0]?.text).toContain("Redirected to https://outside.example/page");
+
+      const narrowed = new WebToolPack({ profile: { ...profile, network: { allowHosts: ["localhost"] } } });
+      expect((await read(narrowed, "/in"))?.content[0]?.text).toContain("final page");
+      expect((await read(narrowed, "/loopback"))?.content[0]?.text).toContain(`Redirected to http://127.0.0.1:`);
     } finally {
       server.stop(true);
     }

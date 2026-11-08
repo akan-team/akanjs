@@ -43,12 +43,14 @@ describe("NativePublicEnv", () => {
         AKAN_PUBLIC_MAP_TOKEN: "x",
         AKAN_PUBLIC_PORT: 8282,
         AKAN_PUBLIC_NOTE: "line\nbreak",
+        AKAN_PUBLIC_SIGNER: "-----BEGIN EC PRIVATE KEY-----\\nMHc\\n-----END EC PRIVATE KEY-----",
       }),
     ).toEqual([
       "AKAN_PUBLIC_lower is not an AKAN_PUBLIC_[A-Z0-9_] name",
       "AKAN_PUBLIC_MAP_TOKEN names a token, which a page bundle must not carry",
       "AKAN_PUBLIC_PORT is not a string",
       "AKAN_PUBLIC_NOTE holds a control character",
+      "AKAN_PUBLIC_SIGNER holds a private key",
     ]);
     const many = Object.fromEntries(Array.from({ length: 257 }, (_, idx) => [`AKAN_PUBLIC_K${idx}`, "v"]));
     expect(NativePublicEnv.problems(many)).toEqual(["257 keys, more than 256"]);

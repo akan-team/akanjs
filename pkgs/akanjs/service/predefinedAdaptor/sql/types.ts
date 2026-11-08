@@ -39,6 +39,8 @@ export interface PostgresDatabaseConfig {
 export interface SearchConfig {
   enabled?: boolean;
   tokenizer?: string;
+  maxTerms?: number;
+  maxLength?: number;
 }
 
 export interface DatabaseConfig {
@@ -57,6 +59,7 @@ export interface UpsertByIdOptions extends DocumentScopeOptions {
 export interface DocumentStore {
   ensure(): Promise<void>;
   create(data: DocumentRecord): Promise<any>;
+  createMany(data: DocumentRecord[]): Promise<any[]>;
   clone(data: DocumentRecord & { id: string }): Promise<any>;
   upsertById(data: DocumentRecord & { id: string }, options?: UpsertByIdOptions): Promise<any>;
   update(id: string, patch: DocumentRecord): Promise<any>;

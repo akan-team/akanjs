@@ -58,7 +58,11 @@
     ["/%5F_akan_native/x", true],
     ["/%E0%A4%A", true],
     ["/a%+1", true],
+    ["/x/../__akan_native/file/abc", true],
+    ["/x/%2E%2E/__akan_native/x", true],
+    ["/./page", true],
     ["/", false],
+    ["/v1..v2/notes.", false],
     ["/index.html", false],
     ["/app/__akan_native", false],
     ["/__akan_nativex", false]

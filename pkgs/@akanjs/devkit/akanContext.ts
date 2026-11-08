@@ -589,7 +589,7 @@ const getAppRoutes = async (app: AppExecutor, workspaceRoot: string): Promise<Ak
       );
       return {
         path: parsed.pattern.replace(/^\/:lang/, "") || "/",
-        file: path.relative(workspaceRoot, source.absPath),
+        file: path.relative(workspaceRoot, source.absPath).replaceAll(path.sep, "/"),
         search: source.info.chain?.search ?? [],
         guarded: !!source.info.chain?.guarded || underGuard,
         devOnly: source.info.devOnly,

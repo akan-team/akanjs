@@ -85,6 +85,17 @@ describe("/mcp", () => {
     expect(text).toMatch(/github\s+stdio\s+npx -y server-github\s+2 tools · removed from the file/);
   });
 
+  test("a server this repo declares and nobody approved says so, and a home one is unaffected", () => {
+    const text = CodeTuiMcp.list(
+      view({
+        workspaceApproved: false,
+        declared: [declared(ref("repo")), declared(ref("home"), { scope: "global" })],
+      }),
+    );
+    expect(text).toMatch(/repo\s+workspace\s+stdio\s+npx -y server-repo\s+not approved/);
+    expect(text).toMatch(/home\s+global\s+stdio\s+npx -y server-home\s+declared · \/mcp reload to connect/);
+  });
+
   test("a server removed from the file is still the one this session is holding", () => {
     expect(CodeTuiMcp.list(view({ status: [live("github")] }))).toContain("removed from the file");
   });

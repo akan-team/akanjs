@@ -32,6 +32,7 @@ import {
   type WorkflowPlan,
   type WorkflowPlanInputs,
   type WorkflowRunArtifact,
+  type WorkflowSpec,
   type WorkflowStepRegistry,
   type WorkflowValidationCommandExecutor,
   type WorkflowValidationKind,
@@ -44,7 +45,7 @@ import {
 import { isRecord } from "akanjs/common";
 import { ModuleScript } from "../module/module.script";
 import { PrimitiveScript } from "../primitive/primitive.script";
-import { spawnShell } from "../repair/repair.runner";
+import { isWorkspaceTarget, spawnAkan } from "../repair/repair.runner";
 import { ScalarScript } from "../scalar/scalar.script";
 import { workflowSpecs } from "../workflows";
 
@@ -133,7 +134,7 @@ const defaultValidationExecutor =
   async (command) => {
     const base = { command: command.command, reason: command.reason, kind: inferValidationKind(command) };
     try {
-      return { ...base, status: "passed", exitCode: 0, stdout: await spawnShell(workspace, command.command) };
+      return { ...base, status: "passed", exitCode: 0, stdout: await spawnAkan(workspace, command.command) };
     } catch (error) {
       const commandError = error as { code?: number | null; stdout?: string; stderr?: string; message?: string };
       return {
@@ -148,6 +149,41 @@ const defaultValidationExecutor =
   };
 
 const readJsonFile = async (filePath: string) => JSON.parse(await readFile(resolvePath(filePath), "utf8"));
+
+const toMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+const inputShapeCodes = new Set(["workflow-input-invalid", "workflow-input-not-allowed"]);
+
+const inputErrorsOf = (spec: WorkflowSpec, plan: WorkflowPlan): WorkflowDiagnostic[] => {
+  try {
+    return createWorkflowPlan(spec, isRecord(plan.inputs) ? plan.inputs : {}).diagnostics.filter((diagnostic) =>
+      inputShapeCodes.has(diagnostic.code),
+    );
+  } catch (error) {
+    return [{ severity: "error", code: "workflow-input-invalid", message: toMessage(error) }];
+  }
+};
+
+//? A plan or report file is plain JSON anyone can write, so what runs is rebuilt from the spec, never read from it.
+const specValidationOf = async (workspace: Workspace, plan: WorkflowPlan | undefined) => {
+  if (!plan) return { commands: [] as WorkflowApplyCommand[], diagnostics: [] as WorkflowDiagnostic[] };
+  const refused = (code: string, message: string) => ({
+    commands: [] as WorkflowApplyCommand[],
+    diagnostics: [{ severity: "error" as const, code, message }],
+  });
+  const spec = getWorkflowSpec(workflowSpecs, plan.workflow);
+  if (!spec) return refused("workflow-unknown", `Unknown workflow in plan: ${JSON.stringify(plan.workflow)}.`);
+  const target = plan.inputs.app;
+  if (typeof target !== "string" || !(await isWorkspaceTarget(workspace, target)))
+    return refused(
+      "workflow-target-missing",
+      `Workflow plan input "app" is not an app or library of this workspace: ${JSON.stringify(target)}.`,
+    );
+  return {
+    commands: workflowCommandsForPlan({ ...plan, inputs: { app: target }, validation: spec.validation }),
+    diagnostics: [] as WorkflowDiagnostic[],
+  };
+};
 
 const workflowDiagnosticFromDoctor = (
   {
@@ -338,6 +374,12 @@ export class WorkflowRunner extends runner("workflow") {
       const message = `Unknown workflow in plan: ${plan.workflow}.`;
       return await renderApplyReport(failedApplyReport(plan.workflow, "workflow-unknown", message, plan));
     }
+    const inputErrors = inputErrorsOf(spec, plan);
+    if (inputErrors.length) {
+      const message = inputErrors.map((diagnostic) => diagnostic.message).join(" ");
+      return await renderApplyReport(failedApplyReport(plan.workflow, "workflow-plan-inputs-invalid", message, plan));
+    }
+    plan = { ...plan, steps: spec.steps, validation: spec.validation };
     if (dryRun) return await renderApplyReport(createDryRunWorkflowApplyReport(plan));
     if (!registry) {
       const message = "Workflow apply requires a step runner registry.";
@@ -361,6 +403,7 @@ export class WorkflowRunner extends runner("workflow") {
     },
   ) {
     const loaded = await this.loadValidationTarget(runIdOrPlan, workspace);
+    const trusted = await specValidationOf(workspace, loaded.plan);
     const doctor = await AkanContextAnalyzer.doctor(workspace, {
       strict: true,
       runIdOrPlan,
@@ -373,9 +416,9 @@ export class WorkflowRunner extends runner("workflow") {
           workflow: loaded.plan?.workflow ?? loaded.workflow,
           source: loaded.source,
           plan: loaded.plan,
-          commands: loaded.commands,
+          commands: trusted.commands,
           execute: execute ?? defaultValidationExecutor(workspace),
-          diagnostics: loaded.diagnostics,
+          diagnostics: [...loaded.diagnostics, ...trusted.diagnostics],
           baselineDiagnostics: (doctor.baselineDiagnostics ?? []).map((diagnostic) =>
             workflowDiagnosticFromDoctor(diagnostic, "baseline"),
           ),

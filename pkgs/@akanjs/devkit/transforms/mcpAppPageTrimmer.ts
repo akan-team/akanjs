@@ -1,6 +1,4 @@
 import { realpathSync } from "node:fs";
-import path from "node:path";
-import type { BunPlugin } from "bun";
 import ts from "typescript";
 import { PureLazyMarker } from "./pureLazyMarker";
 
@@ -11,24 +9,11 @@ type ChainStage = ts.CallExpression & { expression: ts.PropertyAccessExpression 
 export class McpAppPageTrimmer {
   static readonly #unused = new Set(["render", "head", "loading", "guard"]);
 
-  /** Trims exactly `pagePaths`: the rest of the graph loads as it does for the CSR shell. */
-  static plugin(pagePaths: string[]): BunPlugin {
-    return {
-      name: "akan-mcp-app-page",
-      setup(build) {
-        if (!pagePaths.length) return;
-        //? The bundler loads a module by the path a link points at: a synced lib page is one under `page/(libs)`.
-        const loadedPaths = new Set(
-          pagePaths.flatMap((pagePath) => [pagePath, McpAppPageTrimmer.#realPathOf(pagePath)]),
-        );
-        const filter = new RegExp(`^(?:${[...loadedPaths].map((pagePath) => RegExp.escape(pagePath)).join("|")})$`);
-        //? The bundler runs one onLoad per module, so this one also marks the page's own `lazy()` components.
-        build.onLoad({ filter }, async (args) => ({
-          contents: PureLazyMarker.mark(McpAppPageTrimmer.trim(await Bun.file(args.path).text(), args.path), args.path),
-          loader: path.extname(args.path).slice(1) as "tsx" | "ts" | "jsx" | "js",
-        }));
-      },
-    };
+  static pipe(pagePaths: string[]): (source: string, args: { path: string }) => string {
+    //? The bundler loads a module by the path a link points at: a synced lib page is one under `page/(libs)`.
+    const loadedPaths = new Set(pagePaths.flatMap((pagePath) => [pagePath, McpAppPageTrimmer.#realPathOf(pagePath)]));
+    return (source, { path: filePath }) =>
+      PureLazyMarker.mark(loadedPaths.has(filePath) ? McpAppPageTrimmer.trim(source, filePath) : source, filePath);
   }
 
   static trim(source: string, filePath: string): string {

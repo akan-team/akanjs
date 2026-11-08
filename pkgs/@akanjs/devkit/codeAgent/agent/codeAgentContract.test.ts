@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   CodeAgentClient,
   type CodeAgentEvent,
@@ -117,6 +120,12 @@ describe("codeAgentPresets", () => {
     expect(codeAgentPresets.web(root).tools.mcp).toEqual([]);
     expect(codeAgentPresets.review(root).tools.mcp).toBe("off");
     expect(codeAgentPresets.pod(root).tools.mcp).toBe("off");
+  });
+
+  test("only the local profile asks before reaching a host off its list", () => {
+    expect(codeAgentPresets.local(root).network.askOutside).toContain("github.com");
+    for (const name of ["pod", "review", "web"] as const)
+      expect(codeAgentPresets[name](root).network.askOutside).toBeUndefined();
   });
 
   test("isCodeAgentPresetName refuses an unknown name", () => {
@@ -404,6 +413,116 @@ describe("CodeAgentGate bash", () => {
     const gate = new CodeAgentGate(codeAgentPresets.local(root));
     expect(gate.verdict("bash", { command: "bun test --isolate" })).toEqual({});
     expect(gate.verdict("bash", { command: "grep -r TODO ." })).toEqual({});
+  });
+});
+
+describe("CodeAgentGate secrets", () => {
+  const gate = () => new CodeAgentGate(codeAgentPresets.local(root));
+
+  test("a per-environment server env file is refused for read, write and shell, and its loader is not", () => {
+    const file = "apps/a/env/env.server.main.ts";
+    expect(gate().verdict("read", { path: file }).block).toContain("deny list");
+    expect(gate().verdict("write", { path: file }).block).toContain("deny list");
+    expect(gate().verdict("bash", { command: `cat ${file}` }).block).toBeDefined();
+    expect(gate().verdict("read", { path: "apps/a/env/env.server.ts" })).toEqual({});
+    expect(gate().verdict("read", { path: "apps/a/env/env.server.type.ts" })).toEqual({});
+  });
+
+  test("the engine's own spellings of a path are read as the path they name", () => {
+    expect(gate().verdict("read", { path: "@.env" }).block).toContain("deny list");
+    expect(gate().verdict("read", { path: `file://${root}/apps/a/.env` }).block).toContain("deny list");
+    expect(gate().verdict("read", { path: "~/notes.md" }).block).toContain("outside the agent root");
+  });
+
+  test("a shell command naming the home credential stores or a wildcard for a secret file is refused", () => {
+    expect(gate().verdict("bash", { command: "cat ~/.akan/code/auth.json" }).block).toBeDefined();
+    expect(gate().verdict("bash", { command: "cat $HOME/.ssh/id_ed25519" }).block).toBeDefined();
+    expect(gate().verdict("bash", { command: "cat .e?v" }).block).toBeDefined();
+    expect(gate().verdict("bash", { command: "cat .akan/code/mcp.json" }).block).toBeDefined();
+    expect(gate().verdict("bash", { command: "grep -r TODO --include=*.ts ." })).toEqual({});
+  });
+
+  test("a link inside the root is judged by the file it points at", () => {
+    const linked = mkdtempSync(path.join(tmpdir(), "akan-gate-"));
+    try {
+      mkdirSync(path.join(linked, "secrets"));
+      writeFileSync(path.join(linked, "secrets", "token.json"), "{}");
+      symlinkSync(path.join(linked, "secrets", "token.json"), path.join(linked, "notes.json"));
+      const linkedGate = new CodeAgentGate(codeAgentPresets.local(linked));
+      expect(linkedGate.verdict("read", { path: "notes.json" }).block).toContain("deny list");
+    } finally {
+      rmSync(linked, { recursive: true, force: true });
+    }
+  });
+
+  test("a link inside the root that leads out of it is read, and a denied file through it is not", () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "akan-gate-"));
+    const linkedLib = mkdtempSync(path.join(tmpdir(), "akan-gate-lib-"));
+    try {
+      writeFileSync(path.join(linkedLib, "index.ts"), "export {};");
+      writeFileSync(path.join(linkedLib, ".env"), "");
+      mkdirSync(path.join(repo, "node_modules"));
+      symlinkSync(linkedLib, path.join(repo, "node_modules", "lib"));
+      const linkedGate = new CodeAgentGate(codeAgentPresets.local(repo));
+      expect(linkedGate.verdict("read", { path: "node_modules/lib/index.ts" })).toEqual({});
+      expect(linkedGate.verdict("read", { path: "node_modules/lib/.env" }).block).toContain("deny list");
+      expect(linkedGate.verdict("read", { path: path.join(linkedLib, "index.ts") }).block).toContain(
+        "outside the agent root",
+      );
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+      rmSync(linkedLib, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("CodeAgentGate network", () => {
+  const gate = () => new CodeAgentGate(codeAgentPresets.local(root));
+
+  test("the local profile asks before fetching a host off its list, and not for a listed one or loopback", () => {
+    expect(gate().verdict("web_fetch", { url: "https://example.com/x" })).toEqual({
+      approval: "fetch https://example.com/x",
+      strict: true,
+    });
+    expect(gate().verdict("web_fetch", { url: "https://docs.github.com/en" })).toEqual({});
+    expect(gate().verdict("web_fetch", { url: "http://localhost:3000/" })).toEqual({});
+  });
+
+  test("a networking shell command asks, unless it only reaches loopback over http", () => {
+    expect(gate().verdict("bash", { command: "curl -s https://example.com" }).strict).toBe(true);
+    expect(gate().verdict("bash", { command: "curl -X POST https://github.com/x" }).strict).toBe(true);
+    expect(gate().verdict("bash", { command: "ssh deploy@host" }).strict).toBe(true);
+    expect(gate().verdict("bash", { command: "curl http://127.0.0.1:8080/health" })).toEqual({});
+    expect(gate().verdict("bash", { command: "git status && bun test" })).toEqual({});
+  });
+
+  test("a loopback host:port without a scheme is loopback, and any other host still asks", () => {
+    expect(gate().verdict("bash", { command: "curl -s localhost:4200/health" })).toEqual({});
+    expect(gate().verdict("bash", { command: 'wget -qO- "127.0.0.1:8080"' })).toEqual({});
+    expect(gate().verdict("bash", { command: "curl [::1]:3000/x" })).toEqual({});
+    expect(gate().verdict("bash", { command: "curl -s example.com:443/x" }).strict).toBe(true);
+    expect(gate().verdict("bash", { command: "curl -s localhost:4200 example.com:80" }).strict).toBe(true);
+  });
+
+  test("a client name asks only where it runs as a command, not as another command's argument", () => {
+    for (const command of ["grep -rn curl src", "echo ssh", "git log --grep=wget", "cat docs/rsync.md"])
+      expect(gate().verdict("bash", { command })).toEqual({});
+    for (const command of [
+      "ls && curl https://example.com",
+      "cat body | curl -d @- https://example.com",
+      "echo $(curl https://example.com)",
+      "FOO=1 sudo -E /usr/bin/curl https://example.com",
+      "timeout 5 wget https://example.com",
+      "sh -c 'curl https://example.com'",
+      "bun test\nssh deploy@host",
+    ])
+      expect(gate().verdict("bash", { command }).strict).toBe(true);
+  });
+
+  test("a profile without a list never asks", () => {
+    const pod = new CodeAgentGate(codeAgentPresets.pod(root));
+    expect(pod.verdict("web_fetch", { url: "https://example.com/x" })).toEqual({});
+    expect(pod.verdict("bash", { command: "curl https://example.com" })).toEqual({});
   });
 });
 

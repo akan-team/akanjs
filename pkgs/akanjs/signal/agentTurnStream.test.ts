@@ -1,5 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { Logger } from "akanjs/common";
+import { Err } from "akanjs/dictionary";
 import { AgentTurnStream } from "./agentTurnStream";
+import { SignalFailure } from "./SignalFailure";
 
 const framesOf = async (response: Response) => {
   const text = await response.text();
@@ -55,7 +58,7 @@ describe("AgentTurnStream", () => {
   test("a failure after the stream opened travels as the wire's error event", async () => {
     const response = AgentTurnStream.response(async (onDelta) => {
       onDelta("par");
-      throw new Error("agent.error.llmUnavailable");
+      throw new Err("agent.error.llmUnavailable");
     });
     expect(await framesOf(response)).toEqual([
       { type: "text", delta: "par" },
@@ -65,9 +68,7 @@ describe("AgentTurnStream", () => {
 
   test("a domain Err sends the values its text interpolates alongside its key", async () => {
     const response = AgentTurnStream.response(async () => {
-      throw Object.assign(new Error("agent.error.llmRequestFailed"), {
-        data: { status: "400", reason: "context length exceeded" },
-      });
+      throw new Err("agent.error.llmRequestFailed", { status: "400", reason: "context length exceeded" });
     });
     expect(await framesOf(response)).toEqual([
       {
@@ -95,9 +96,7 @@ describe("AgentTurnStream", () => {
 
   test("a prompt past the window is flagged, so a session can compact and ask again", async () => {
     const response = AgentTurnStream.response(async () => {
-      throw Object.assign(new Error("agent.error.contextOverflow"), {
-        data: { provider: "api.deepseek.com", limit: 65_536 },
-      });
+      throw new Err("agent.error.contextOverflow", { provider: "api.deepseek.com", limit: 65_536 });
     });
     expect(await framesOf(response)).toEqual([
       {
@@ -107,5 +106,29 @@ describe("AgentTurnStream", () => {
         overflow: { limit: 65_536 },
       },
     ]);
+  });
+
+  test("an adapter's own error reaches the chat as a generic failure outside development, and the log in full", async () => {
+    const keys = ["NODE_ENV", "AKAN_COMMAND_TYPE", "AKAN_ERROR_DETAIL"] as const;
+    const saved = keys.map((key) => [key, process.env[key]] as const);
+    const logged = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    for (const key of keys) delete process.env[key];
+    process.env.NODE_ENV = "production";
+    SignalFailure.reset();
+    try {
+      const response = AgentTurnStream.response(async () => {
+        throw new Error("upstream 401: invalid key for https://llm.internal/v1");
+      });
+      expect(await framesOf(response)).toEqual([{ type: "error", message: "Internal Server Error" }]);
+      expect(logged.mock.calls.map(([line]) => String(line))).toEqual([
+        "agent turn failed after its stream opened: Error: upstream 401: invalid key for https://llm.internal/v1",
+      ]);
+    } finally {
+      for (const [key, value] of saved)
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      SignalFailure.reset();
+      logged.mockRestore();
+    }
   });
 });

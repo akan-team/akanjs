@@ -17,6 +17,7 @@ import type { ConstantField, FieldObject } from "./fieldInfo";
 import { FieldPlan, type FieldPlanEntry } from "./fieldPlan";
 import { defaultPlanOf } from "./getDefault";
 import { InvalidInputError } from "./invalidInputError";
+import { RequestValue } from "./requestValue";
 import { deserialize } from "./serialize";
 
 type ModelCls = Cls & { [FIELD_META]: FieldObject };
@@ -54,7 +55,11 @@ export class InputParser {
       if (nullable) return null;
       throw new InvalidInputError(key, null);
     }
-    if (PrimitiveRegistry.has(argRef)) return deserialize(argRef, arrDepth, value, option);
+    if (PrimitiveRegistry.has(argRef)) {
+      const parsed = deserialize(argRef, arrDepth, value, option);
+      RequestValue.admit(parsed, key);
+      return parsed;
+    }
     return InputParser.#walk(value, arrDepth, key, (item, path) => InputParser.#value(argRef, item, path));
   }
 
@@ -85,6 +90,7 @@ export class InputParser {
     }
     if (enumRef && !enumRef.has(parsed as never))
       throw new InvalidInputError(path, `one of ${enumRef.values.join(", ")}`);
+    RequestValue.admit(parsed, path);
     return parsed;
   }
 
@@ -137,7 +143,7 @@ export class InputParser {
   static #map(of: Cls | Cls[], value: unknown, path: string) {
     if (!isRecord(value)) throw new InvalidInputError(path, "object");
     const [valueRef, valueArrDepth] = getNonArrayModel(of);
-    return Object.fromEntries(
+    const parsed = Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
         InputParser.#walk(item, valueArrDepth, `${path}.${key}`, (entry, entryPath) =>
@@ -145,6 +151,8 @@ export class InputParser {
         ),
       ]),
     );
+    RequestValue.admit(parsed, path);
+    return parsed;
   }
 
   // The rule `prepareDocument` fills from: a default, an empty array, a constructible scalar, or an open `Any`.

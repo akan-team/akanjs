@@ -274,6 +274,10 @@ export async function prepare(project: Project, platform: Platform, options: Bui
     throw new CliError(
       `updates.report.url must be https in a release build (http only for this machine): ${reportUrl}`,
     );
+  if (options.profile === "release" && config.shell.devtools && platform !== "web")
+    log.warn(
+      "shell.devtools is on in a release build: a web inspector attached to the device or the computer can call every plugin the page can",
+    );
   for (const warning of aclWarnings(resolveAcl(config.capabilities, project.plugins, platform), project.plugins))
     log.warn(warning);
   if (options.profile === "release" && config.capabilities === undefined && project.plugins.length) {

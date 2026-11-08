@@ -1,5 +1,5 @@
 import type { AkanI18nConfig } from "akanjs/common";
-import { DEFAULT_AKAN_I18N, getBasePathFromPathname } from "akanjs/common";
+import { DEFAULT_AKAN_I18N, getBasePathFromPathname, LocalePath } from "akanjs/common";
 import type { ReactNode } from "react";
 
 export type SystemPageKind = "not-found" | "error";
@@ -80,7 +80,7 @@ export const SystemPageMain = (options: Omit<SystemPageOptions, "lang" | "styles
           <a className="akan-system-action" href={options.homeHref}>
             {copy.actionLabel}
           </a>
-          <a className="akan-system-action akan-system-secondary" href={options.pathname}>
+          <a className="akan-system-action akan-system-secondary" href={getSameOriginHref(options.pathname)}>
             Try again
           </a>
         </div>
@@ -122,6 +122,9 @@ export function createSystemPageDocument(options: SystemPageOptions): ReactNode 
   );
 }
 
+//? A browser reads a leading `//`, `/\` or `\\` as another host, and strips tabs and newlines before it does.
+export const getSameOriginHref = (pathname: string): string => `/${pathname.replace(/^[\s/\\]+/, "")}`;
+
 export function getSystemPageErrorDetails(error: unknown): string {
   if (error instanceof Error) return error.stack ?? error.message;
   return String(error);
@@ -144,7 +147,7 @@ export function getSystemPageHomeHref({
     i18n,
     headerBasePath,
   });
-  return `/${[locale, basePath].filter(Boolean).join("/")}`;
+  return LocalePath.join(locale, basePath ? `/${basePath}` : "/", i18n);
 }
 
 export interface SubRouteIndexOptions {

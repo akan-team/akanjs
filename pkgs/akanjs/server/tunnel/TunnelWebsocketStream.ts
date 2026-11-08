@@ -1,5 +1,5 @@
 import { type TunnelHeaderList, type TunnelOpenFrame, tunnelWireContract, tunnelWsPayload } from "akanjs/common";
-import { type TunnelStream, type TunnelStreamLink, tunnelResetCodeOf, wsBytes } from "./tunnelStream";
+import { type TunnelStream, type TunnelStreamLink, tunnelResetCodeOf, tunnelTargetUrl, wsBytes } from "./tunnelStream";
 
 // Negotiated per connection: replayed, they make the local server answer a handshake never asked of it.
 // The subprotocol is the caller's choice, so it travels as `protocols` instead.
@@ -27,7 +27,14 @@ export class TunnelWebsocketStream implements TunnelStream {
 
   async run() {
     const { streamId, path = "/", headers = [] } = this.#open;
-    const url = `${this.#origin.replace(/^http/, "ws")}${path}`;
+    const target = tunnelTargetUrl(this.#origin, path);
+    if (!target) {
+      this.#link.sendFrame({ type: "reset", streamId, code: "protocol", message: "path leaves the shared origin" });
+      this.#finish();
+      return;
+    }
+    target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
+    const url = target.href;
     const protocols = headers.find(([name]) => name.toLowerCase() === "sec-websocket-protocol")?.[1];
     const dialHeaders: Record<string, string> = {};
     for (const [name, value] of headers) {

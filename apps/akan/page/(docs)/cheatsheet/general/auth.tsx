@@ -643,10 +643,10 @@ export default page()
           {
             name: <span className="font-sans">{l.trans({ en: "no guards", ko: "guards 없음" })}</span>,
             desc: l.trans({
-              en: "Anyone may call it over HTTP, and it is never published. Write `guards: [Public]` if that is the intent.",
-              ko: "HTTP로는 누구나 부를 수 있고, 에이전트에게는 공개되지 않습니다. 익명 접근이 의도라면 `guards: [Public]`이라고 적으세요.",
+              en: "Every call is refused with 403, and outside local operation the server does not boot. Write `guards: [Public]` if anonymous access is the intent.",
+              ko: "모든 호출이 403으로 거절되고, local 운영이 아니면 서버가 부팅하지 않습니다. 익명 접근이 의도라면 `guards: [Public]`이라고 적으세요.",
             }),
-            marks: httpOnly,
+            marks: {},
           },
           {
             name: "query · [Public]",
@@ -659,8 +659,8 @@ export default page()
           {
             name: "mutation · [Public]",
             desc: l.trans({
-              en: "Not published: `[Public]` on a mutation is having no guard, spelled out.",
-              ko: "공개되지 않습니다. mutation의 `[Public]`은 가드가 없다는 말을 적어 둔 것과 같습니다.",
+              en: "Not published, though HTTP serves it to anonymous callers.",
+              ko: "공개되지 않지만, HTTP로는 익명 호출자에게도 제공됩니다.",
             }),
             marks: httpOnly,
           },
@@ -766,16 +766,16 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    <strong>No guards array means no checks.</strong> Akan has no default policy: an endpoint that names
-                    no <code>guards</code> runs zero checks. A <code>mutation</code> without guards is callable by
-                    anyone who can reach the route, and nothing asks them to sign in first.
+                    <strong>No guards array means no caller.</strong> An endpoint that names no <code>guards</code>{" "}
+                    answers every call with 403, and outside local operation the server does not boot with one. Name the
+                    guards it needs, or <code>[Public]</code> when anonymous access is the intent.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>guards 배열이 없으면 검사도 없습니다.</strong> Akan에는 기본 정책이 없어서,{" "}
-                    <code>guards</code>를 적지 않은 엔드포인트는 검사를 하나도 하지 않습니다. 가드 없는{" "}
-                    <code>mutation</code>은 라우트에 닿는 누구나 호출할 수 있고, 로그인을 요구하는 곳도 없습니다.
+                    <strong>guards 배열이 없으면 아무도 호출할 수 없습니다.</strong> <code>guards</code>를 적지 않은
+                    엔드포인트는 모든 호출에 403으로 답하고, local 운영이 아니면 그런 엔드포인트가 있는 서버는 부팅하지
+                    않습니다. 필요한 가드를 적거나, 익명 접근이 의도라면 <code>[Public]</code>을 적으세요.
                   </span>
                 ),
               })}

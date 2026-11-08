@@ -58,6 +58,7 @@ import {
   isUpdateKeyId,
   isUpdatePublicKey,
   MAX_REVOKE_KEYS,
+  manifestExpiry,
   updateDecision,
 } from "../../../packages/core/src/kernel.ts";
 import { applyDelta } from "../../../packages/desktop/src/delta.ts";
@@ -89,6 +90,8 @@ export interface UpdatesConfig {
   readyTimeout: number;
   /** false (updates.automatic): no check in the background, and nothing installed as the app quits. */
   automatic?: boolean;
+  /** Windows (updates.windowsSigners): SHA-1 thumbprints a release's Authenticode certificate must be one of. */
+  windowsSigners?: string[];
 }
 
 interface Entry {
@@ -155,6 +158,8 @@ interface Manifest {
   target?: string;
   revokeKeys?: string[];
   resetSequence?: boolean;
+  /** Schema 2: Unix seconds after which the manifest is refused (updates.expiresIn); absent, it never expires. */
+  expiresAt?: number;
 }
 
 /** A verified manifest and, in protocol v2, the keyId of its envelope's signer. */
@@ -176,6 +181,10 @@ export const MAX_STRIKES = 3;
 /** The first background check, after a launch's own work: its server's first boot, the trial of a new release. */
 export const AUTO_CHECK_DELAY = 30_000;
 export const AUTO_CHECK_INTERVAL = 60 * 60_000;
+/** A quit request waits at most this for the download's check: codesign of a large bundle takes seconds. */
+const QUIT_CHECK_TIMEOUT = 10_000;
+/** The install at quit waits at most this for a check still running: all quit hooks share QUIT_HOOK_TIMEOUT. */
+const QUIT_CHECK_WAIT = 500;
 
 const MAX_MANIFEST = 1 << 20;
 const MAX_SIGNATURE = 1024;
@@ -212,17 +221,24 @@ const powershell = () =>
 
 /**
  * Whether the release's executable is signed by the installed one's signer, decided in PowerShell and printed as one
- * ASCII verdict line: `unsigned` (the installed one has no valid signature), `same` or `other`. Constrained Language
- * Mode (WDAC, AppLocker) refuses .NET type literals and method calls, so the script makes none, and an error ends it
- * before any verdict.
+ * ASCII verdict line: `unsigned` (the installed one has no valid signature), `same` or `other`. With thumbprints in
+ * AKAN_NATIVE_SIGNERS, `same` only for a valid signature by one of them, whatever signed the installed one. Constrained
+ * Language Mode (WDAC, AppLocker) refuses .NET type literals and method calls, so the script makes none, and an error
+ * ends it before any verdict.
  */
 const AUTHENTICODE = `$ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$own = Get-AuthenticodeSignature -LiteralPath $env:AKAN_NATIVE_INSTALLED_EXE
 $release = Get-AuthenticodeSignature -LiteralPath $env:AKAN_NATIVE_RELEASE_EXE
-if ("$($own.Status)" -cne 'Valid') { 'akan-signer: unsigned' }
-elseif ("$($release.Status)" -ceq 'Valid' -and "$($release.SignerCertificate.Subject)" -ceq "$($own.SignerCertificate.Subject)") { 'akan-signer: same' }
-else { 'akan-signer: other' }`;
+$pins = @("$env:AKAN_NATIVE_SIGNERS" -split ',' | Where-Object { $_ })
+if ($pins.Count -gt 0) {
+  if ("$($release.Status)" -ceq 'Valid' -and $pins -contains "$($release.SignerCertificate.Thumbprint)") { 'akan-signer: same' }
+  else { 'akan-signer: other' }
+} else {
+  $own = Get-AuthenticodeSignature -LiteralPath $env:AKAN_NATIVE_INSTALLED_EXE
+  if ("$($own.Status)" -cne 'Valid') { 'akan-signer: unsigned' }
+  elseif ("$($release.Status)" -ceq 'Valid' -and "$($release.SignerCertificate.Subject)" -ceq "$($own.SignerCertificate.Subject)") { 'akan-signer: same' }
+  else { 'akan-signer: other' }
+}`;
 
 /**
  * Whether an executable is unsigned, read from its PE header without PowerShell: an x64 or arm64 image (PE32+) whose
@@ -687,6 +703,13 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     ) {
       throw new AkanNativeError("INTERNAL", "invalid release manifest");
     }
+    const expiry = manifestExpiry(m.expiresAt, Date.now() / 1000);
+    if (expiry === "invalid") throw new AkanNativeError("INTERNAL", "invalid release manifest: expiresAt");
+    if (expiry === "expired")
+      throw new AkanNativeError(
+        "INTERNAL",
+        `the release manifest expired at ${m.expiresAt}: its server has to sign it again`,
+      );
     return { m, signer };
   };
 
@@ -752,6 +775,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       return code === 0 ? null : `the release is not signed by team ${team}, as this app is; publish it with --sign`;
     }
     if (!windows) return null;
+    const pins = config?.windowsSigners ?? [];
     const { code, output } = await signatureTool(
       [
         powershell(),
@@ -760,16 +784,53 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         "-EncodedCommand",
         Buffer.from(AUTHENTICODE, "utf16le").toString("base64"),
       ],
-      { AKAN_NATIVE_INSTALLED_EXE: executableIn(app), AKAN_NATIVE_RELEASE_EXE: executableIn(staged) },
+      {
+        AKAN_NATIVE_INSTALLED_EXE: executableIn(app),
+        AKAN_NATIVE_RELEASE_EXE: executableIn(staged),
+        AKAN_NATIVE_SIGNERS: pins.join(","),
+      },
     );
     const verdict = code === 0 ? /^akan-signer: (unsigned|same|other)\r?$/m.exec(output)?.[1] : undefined;
-    if (verdict === "unsigned" || verdict === "same") return null;
-    if (verdict === "other")
-      return "the release is not Authenticode-signed by the signer of this app; publish it with --sign";
+    if (verdict === "same" || (verdict === "unsigned" && !pins.length)) return null;
+    if (verdict && pins.length)
+      return "the release is not Authenticode-signed by a certificate of updates.windowsSigners; publish it with --sign";
+    if (verdict) return "the release is not Authenticode-signed by the signer of this app; publish it with --sign";
+    if (pins.length)
+      return "PowerShell could not check the release's signer against updates.windowsSigners; install the release with its installer";
     //? No verdict (PowerShell blocked by AppLocker, SRP or WDAC, or a script it refused) does not make this app unsigned:
     //? only its PE header shows that. Any other app refuses, so a leaked update key alone cannot replace it.
     if (isUnsignedImage(executableIn(app))) return null;
     return "PowerShell could not check the release's signer against this app's; install the release with its installer";
+  };
+
+  const codesignProblem = async (staged: string): Promise<string | null> => {
+    if (!mac) return null;
+    const verified = await signatureTool(["/usr/bin/codesign", "--verify", "--deep", "--strict", staged]);
+    return verified.code === 0 ? null : `codesign failed: ${verified.output.trim()}`;
+  };
+  //? A staged download sits in a folder this user can write until it installs, so it is checked again right before.
+  const stagedRefusal = async (staged: string, app: string): Promise<string | null> =>
+    (await codesignProblem(staged)) ?? (await signerRefusal(staged, app));
+  //? What the install at quit reads instead of checking: made as a download is staged, at the start for one an
+  //? earlier run left, and when a quit is asked for, before the quit hooks' time starts.
+  let checked: { staged: string; refusal: Promise<string | null> } | undefined;
+  const recheck = (staged: string) => {
+    const refusal = stagedRefusal(staged, installed as string);
+    refusal.catch(() => {});
+    checked = { staged, refusal };
+    return refusal;
+  };
+  const checkWithin = (refusal: Promise<string | null>, ms: number): Promise<string | null | undefined> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<undefined>((resolve) => (timer = setTimeout(() => resolve(undefined), ms)));
+    return Promise.race([refusal, late]).finally(() => clearTimeout(timer));
+  };
+  const dropChanged = (pending: NonNullable<State["pending"]>, why: string) => {
+    rmSync(dirname(pending.staged), { recursive: true, force: true });
+    const latest = readState();
+    if (latest.pending?.staged === pending.staged) latest.pending = undefined;
+    writeState(latest);
+    return `the downloaded ${pending.bundle} changed since it was checked (${why}); download it again`;
   };
 
   /** null once the carried server answered ready and stayed up SERVER_SETTLE; else why it did not in time. */
@@ -952,10 +1013,8 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         throw new AkanNativeError("INTERNAL", `the release is ${id || "not an akan-native app"}, not ${c.app}`);
       // The manifest signature already vouches for the bytes; macOS also checks the code signature, and an app
       // signed by a team or with Authenticode takes only its own signer's release (Linux packages: CLI-9).
-      if (mac) {
-        const verified = await signatureTool(["/usr/bin/codesign", "--verify", "--deep", "--strict", staged]);
-        if (verified.code !== 0) throw new AkanNativeError("INTERNAL", `codesign failed: ${verified.output.trim()}`);
-      }
+      const codesign = await codesignProblem(staged);
+      if (codesign) throw new AkanNativeError("INTERNAL", codesign);
       const unpackedRefusal = (await signerRefusal(staged, app)) ?? serverRefusal(carries(staged), app);
       if (unpackedRefusal) {
         rmSync(staging, { recursive: true, force: true });
@@ -987,6 +1046,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         staged,
       };
       writeState(latest);
+      checked = { staged, refusal: Promise.resolve(null) };
       return { bundle: m.bundle };
     } finally {
       awake();
@@ -1103,12 +1163,33 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       if (rollingBack || runningIs(state.trial) || !pending || !existsSync(pending.staged)) return;
       const c = need(state);
       if (!applicable(c, state, pending) || serverRefusal(carries(pending.staged), installed)) return;
-      await install(c, state, pending, false);
+      const check = checked;
+      if (check?.staged !== pending.staged) return;
+      const changed = await checkWithin(check.refusal, QUIT_CHECK_WAIT);
+      if (changed === undefined) {
+        console.warn("[akan-native] updates: the download's check did not finish; it stays for the next quit");
+        return;
+      }
+      if (changed) {
+        console.warn(`[akan-native] updates: ${dropChanged(pending, changed)}`);
+        return;
+      }
+      const latest = readState();
+      if (latest.pending?.staged !== pending.staged || runningIs(latest.trial)) return;
+      await install(c, latest, pending, false);
     } catch (error) {
       console.warn("[akan-native] updates: the download stays for the next quit", error);
     } finally {
       rmSync(ownerPath(), { force: true });
     }
+  };
+
+  const checkBeforeQuit = async () => {
+    const state = readState();
+    const pending = state.pending;
+    if (!installed || rollingBack || runningIs(state.trial) || !pending || !existsSync(pending.staged)) return;
+    if (!ownsAutomatic()) return;
+    await checkWithin(recheck(pending.staged), QUIT_CHECK_TIMEOUT).catch(() => {});
   };
 
   const setup = async (ctx: DesktopContext) => {
@@ -1117,7 +1198,9 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     dir = join(ctx.appLocalDataDir, ctx.dev ? "akan-native-updates-debug" : "akan-native-updates");
     const app = installed;
     if (!config || !app) return;
-    if (config.automatic !== false && !ctx.dev) {
+    const automatic = config.automatic !== false && !ctx.dev;
+    if (automatic) {
+      ctx.onBeforeQuit(checkBeforeQuit);
       ctx.onQuit(installAtQuit);
       scheduleChecks(ctx, autoCheckDelay);
     }
@@ -1211,6 +1294,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         rmSync(path, { recursive: true, force: true });
       }
     }
+    if (automatic && state.pending && !state.trial && existsSync(state.pending.staged)) recheck(state.pending.staged);
     const trial = state.trial;
     if (!trial) return;
     const boot = bootTime();
@@ -1282,7 +1366,12 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           writeState(state);
           throw new AkanNativeError("NOT_ALLOWED", refusal);
         }
-        await install(c, state, pending, true);
+        const changed = await stagedRefusal(pending.staged, app);
+        if (changed) throw new AkanNativeError("NOT_ALLOWED", dropChanged(pending, changed));
+        const latest = readState();
+        if (latest.pending?.staged !== pending.staged || runningIs(latest.trial))
+          throw new AkanNativeError("CANCELLED", "the download changed while it was checked; apply again");
+        await install(c, latest, pending, true);
         setTimeout(() => ctx.quit(0), 50); // answer first
       },
 

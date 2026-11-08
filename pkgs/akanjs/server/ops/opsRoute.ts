@@ -1,7 +1,10 @@
 import { Logger } from "akanjs/common";
 import { getEnv } from "../../base/baseEnv";
+import { Ed25519Key } from "../ed25519Key";
+import { MachineToken } from "../machine/machineToken";
 import { SelfExec } from "../selfExec";
 import type { AppDetailInfo } from "./appInfo";
+import { FailureLimiter } from "./failureLimiter";
 import { MigrateJobs, type MigrateProcessOutput } from "./migrateJobs";
 import { type OpsTokenClaims, OpsTokenVerifier } from "./opsToken";
 import { type SnapshotJobRequest, SnapshotJobs } from "./snapshotJobs";
@@ -15,6 +18,7 @@ export interface OpsRouteOptions {
   jobs: SnapshotJobs;
   migrateJobs: MigrateJobs;
   rateLimitPerMinute?: number;
+  failuresPerMinute?: number;
 }
 
 export interface OpsRouteEnvOptions {
@@ -25,6 +29,7 @@ export interface OpsRouteEnvOptions {
 // Security: deliberately not a signal, so nothing here reaches MCP or the in-page agent.
 export class OpsRoute {
   static readonly prefix = "/_akan/ops/";
+  static readonly loggedRefusalsPerMinute = 10;
 
   readonly #logger = new Logger("OpsRoute");
   readonly #verifier: OpsTokenVerifier;
@@ -32,14 +37,25 @@ export class OpsRoute {
   readonly #jobs: SnapshotJobs;
   readonly #migrateJobs: MigrateJobs;
   readonly #rateLimit: number;
+  readonly #failures: FailureLimiter;
   #window: number[] = [];
+  #refusalWindowAt = 0;
+  #refusalCount = 0;
 
-  constructor({ verifier, detail, jobs, migrateJobs, rateLimitPerMinute = 30 }: OpsRouteOptions) {
+  constructor({
+    verifier,
+    detail,
+    jobs,
+    migrateJobs,
+    rateLimitPerMinute = 30,
+    failuresPerMinute = 10,
+  }: OpsRouteOptions) {
     this.#verifier = verifier;
     this.#detail = detail;
     this.#jobs = jobs;
     this.#migrateJobs = migrateJobs;
     this.#rateLimit = rateLimitPerMinute;
+    this.#failures = new FailureLimiter({ limit: failuresPerMinute });
   }
 
   static fromEnv({ detail, sources = SqliteFiles.fromEnv }: OpsRouteEnvOptions): OpsRoute | null {
@@ -49,21 +65,28 @@ export class OpsRoute {
     const logger = new Logger("OpsRoute");
     let verifier: OpsTokenVerifier;
     try {
-      verifier = new OpsTokenVerifier(
-        OpsTokenVerifier.parsePublicKey(publicKey),
-        OpsTokenVerifier.audienceOf(appName, environment),
-      );
+      const key = OpsTokenVerifier.parsePublicKey(publicKey);
+      //* A shared key would let whoever holds the machine signing key mint ops tokens as well.
+      const machineKey = OpsRoute.#machinePublicKey();
+      if (machineKey && Ed25519Key.rawPublic(machineKey) === Ed25519Key.rawPublic(key))
+        throw new Error("AKAN_OPS_PUBLIC_KEY is also the machine token key; give the ops channel a key of its own");
+      verifier = new OpsTokenVerifier(key, OpsTokenVerifier.audienceOf(appName, environment));
     } catch (error) {
       //* An edge keeps serving its residents with the ops channel off rather than crash-looping over a bad key.
       logger.error(`Ops channel disabled: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
     const snapshotDir = SqliteFiles.snapshotDir(sources());
+    void SqliteSnapshot.sweep(snapshotDir);
     const jobs = new SnapshotJobs({
       snapshotDir,
       capture: (request) => OpsRoute.captureInChild(request, sources(), snapshotDir),
     });
-    logger.info(`Ops channel enabled for audience ${verifier.audience}`);
+    logger.info(
+      process.env.AKAN_OPS_INSTANCE?.trim()
+        ? `Ops channel enabled for audience ${verifier.audience}`
+        : `Ops channel enabled for audience ${verifier.audience}; without AKAN_OPS_INSTANCE a token for it is good on every instance of ${appName}/${environment}`,
+    );
     const migrateJobs = new MigrateJobs((argv) => OpsRoute.migrateInChild(argv));
     return new OpsRoute({ verifier, detail, jobs, migrateJobs });
   }
@@ -107,14 +130,17 @@ export class OpsRoute {
     return pathname.startsWith(OpsRoute.prefix);
   }
 
-  async handle(req: Request): Promise<Response> {
+  async handle(req: Request, client?: string | null): Promise<Response> {
     const url = new URL(req.url);
-    if (!this.#admit()) return OpsRoute.#json({ error: "rate limited" }, 429, { "retry-after": "60" });
+    if (this.#failures.blocked(client)) return OpsRoute.#rateLimited();
     const verdict = this.#verifier.verifyRequest(req);
     if (!verdict.ok) {
-      this.#logger.warn(`Refused ops call to ${url.pathname}: ${verdict.reason}`);
+      this.#failures.fail(client);
+      this.#noteRefusal(url.pathname, verdict.reason);
       return OpsRoute.#json({ error: "unauthorized" }, 401, { "www-authenticate": "Bearer" });
     }
+    //* Counted only once verified, so an unsigned caller cannot spend the budget the control plane's calls need.
+    if (!this.#admit()) return OpsRoute.#rateLimited();
     const route = url.pathname.slice(OpsRoute.prefix.length);
     if (route === "info" && req.method === "GET") return OpsRoute.#json(this.#detail(), 200);
     if (route === "snapshot" && req.method === "POST") return await this.#startSnapshot(req);
@@ -180,6 +206,31 @@ export class OpsRoute {
     if (this.#window.length >= this.#rateLimit) return false;
     this.#window.push(now);
     return true;
+  }
+
+  #noteRefusal(pathname: string, reason: string) {
+    const now = Date.now();
+    if (now - this.#refusalWindowAt >= 60_000) {
+      this.#refusalWindowAt = now;
+      this.#refusalCount = 0;
+    }
+    this.#refusalCount += 1;
+    if (this.#refusalCount <= OpsRoute.loggedRefusalsPerMinute)
+      this.#logger.warn(`Refused ops call to ${pathname}: ${reason}`);
+    else if (this.#refusalCount === OpsRoute.loggedRefusalsPerMinute + 1)
+      this.#logger.warn("Refusing further ops calls this minute without logging each");
+  }
+
+  static #machinePublicKey() {
+    try {
+      return MachineToken.publicKey();
+    } catch {
+      return null;
+    }
+  }
+
+  static #rateLimited() {
+    return OpsRoute.#json({ error: "rate limited" }, 429, { "retry-after": "60" });
   }
 
   static #json(value: unknown, status: number, headers: Record<string, string> = {}) {

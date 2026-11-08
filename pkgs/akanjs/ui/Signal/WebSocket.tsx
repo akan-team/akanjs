@@ -1,6 +1,6 @@
 "use client";
 import { fetch, usePage } from "akanjs/client";
-import { capitalize, type DynamicRecord } from "akanjs/common";
+import { type DynamicRecord, endpointNames } from "akanjs/common";
 import type { FetchProxy } from "akanjs/fetch";
 import type { SerializedEndpoint } from "akanjs/signal";
 import { st } from "akanjs/store";
@@ -122,7 +122,7 @@ export const MessageTry = ({ endpointKey, endpoint }: MessageTryProps) => {
   const onListen = () => {
     setResponse({ status: "loading", data: null });
     const fetchFn = (
-      (fetch as unknown as DynamicRecord)[`listen${capitalize(endpointKey)}`] as (...args: any[]) => Promise<any>
+      (fetch as unknown as DynamicRecord)[endpointNames(endpointKey).listen] as (...args: any[]) => Promise<any>
     ).bind(fetch) as (data: (data: any) => void) => Promise<() => void>;
     setResponse({ status: "loading", data: messages });
     const stopListen = fetchFn((data: any) => {

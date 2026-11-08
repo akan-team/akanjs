@@ -14,6 +14,7 @@ import {
   AgenticSurface,
   type JsonSchema,
   type ToolConfirm,
+  type ToolEntry,
   type ToolGuard,
   useScopePath,
   useSurface,
@@ -21,6 +22,7 @@ import {
 import { tagAction } from "../actionTag";
 // Through the `"use client"` shim: a raw `react` import resolves to react-server in the RSC bundle, which has no hooks.
 import { useEffect, useRef } from "../hooks";
+import { AgentConfirm } from "./AgentConfirm";
 
 /** `submit`'s value is what the model reads back; the first of the two calls settles the card. */
 export interface StToolCardControl {
@@ -32,6 +34,8 @@ export interface StToolMeta {
   /** Default true: the screen is waited out before the call reports; `false` for a read of what is already there. */
   settle?: boolean;
   confirm?: ToolConfirm;
+  /** `"exempt"` for a tool that only moves the view, so a call right after a screen read does not ask. */
+  taint?: ToolEntry["taint"];
   guard?: ToolGuard;
   /** What a person reads for this action in a command palette, in their language (an `l()` result); never the model. */
   label?: string;
@@ -144,12 +148,13 @@ export class StToolBuilder<Args extends unknown[] = []> {
         settle: spec.meta.settle,
         parameters: StToolBuilder.parametersOf(spec.args),
         label: () => live.current.meta.label,
-        // A `remove*` tool confirms unless it declares otherwise — destructiveness read off the key, as MCP hints are.
-        ...(spec.meta.confirm === undefined && !name.startsWith("remove")
+        ...(spec.meta.taint ? { taint: spec.meta.taint } : {}),
+        // A write confirms unless it declares otherwise — the verb read off the key, as MCP hints are.
+        ...(spec.meta.confirm === false || (spec.meta.confirm === undefined && !AgentConfirm.policy.byName(name))
           ? {}
           : {
               confirm: (args: Record<string, unknown>) => {
-                const confirm = live.current.meta.confirm ?? name.startsWith("remove");
+                const confirm = live.current.meta.confirm ?? AgentConfirm.policy.byName(name);
                 return typeof confirm === "function" ? confirm(args) : confirm;
               },
             }),

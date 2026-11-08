@@ -22,6 +22,10 @@ paths:
 
 ## Calls, Queries, Agents
 
+- **Guards (`transportRule`)**: an endpoint, a named slice's `init()` or a root slice that declares no guards is
+  refused with 403 on every transport, and outside local operation the server does not boot with one. Name its
+  guards, or `[Public]` to open it on purpose; `AKAN_UNGUARDED_ENDPOINTS=open` is a deployment's stopgap, never the
+  fix.
 - **Wire (`transportRule`)**: a deadline is the endpoint's `{ timeout: <ms> }` (undeclared, the client quits at
   30 s; the handler is not cancelled); `{ cache }` only on a `query` with no internal argument, capped at one day,
   dropped early by `invalidate(endpoint, args?)` on a plugged `EndpointCacheControl`; `{ rateLimit }` per endpoint,
@@ -55,7 +59,7 @@ paths:
   `page().app(name, description, load)` — a read-only tool whose `load` may only query.
 - **In-page agent (`agentRule`)**: mount `<Agent.Chat />` once in a layout; it never executes tools and refuses
   every call until `option.setAgentAccess(<guard>)`, which decides who — what a turn may ask is
-  `option.setAgentRequestPolicy`; the LLM is `option.setLlm({ apiKey, model, host })`, never env.
+  `option.setAgentRequestPolicy`, size-capped until one is set; the LLM is `option.setLlm({ apiKey, model, host })`, never env.
   The surface is what components declare — `st.tool(…).exec(fn)` beside its control, `st.use` / `st.sel` /
   `st.ref` keys — never a store class. `st.use.x({ agent: false })` hides a key; its model's `hidden` / `secret` /
   `visual` fields are stripped at read. A tool value is capped at 20,000 characters. Route guidance is
@@ -90,5 +94,6 @@ paths:
   `Err.is(error, "ticket.error.locked")`.
 - `try/catch` turns an exception into a decision: guards → `logger.warn` → `false`; adapters → `logger.error` →
   `null`; UI `try/finally` resets a spinner. A bodyless `catch {}` needs a one-line reason.
-- Store actions do not `try/catch` (the framework toasts the `Err`); client validation is `msg.error("<key>")` plus
-  an early return, never a throw.
+- Store actions do not `try/catch` (the framework toasts the `Err`); one no screen waits on (a token refresh) is
+  listed in the store's `static silent`, rejecting untoasted to the caller that handles it. Client validation is
+  `msg.error("<key>")` plus an early return, never a throw.

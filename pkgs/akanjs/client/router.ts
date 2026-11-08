@@ -1,6 +1,8 @@
 import { getEnv } from "akanjs/base";
 import {
+  type AkanLocalePrefix,
   getBasePathFromPathname,
+  LocalePath,
   Logger,
   originFromRequest,
   parseAkanI18nEnv,
@@ -108,11 +110,6 @@ const getConfiguredBasePaths = () => new Set(parseBasePaths(process.env.AKAN_PUB
 const shouldExposeBasePath = () => getEnv().operationMode === "local";
 const CSR_RUNTIME_SEARCH_PARAMS = ["csr", "akanMobileTarget", "akanMobileBasePath", "akanMobileIndexPath"] as const;
 
-const getLocaleFromPathname = (pathname: string) => {
-  const [firstSegment] = pathname.split("/").filter(Boolean);
-  return parseAkanI18nEnv().locales.find((locale) => locale === firstSegment);
-};
-
 const normalizeRoutePath = (path: string | undefined) => {
   const normalized = path?.trim();
   if (!normalized) return undefined;
@@ -163,7 +160,17 @@ declare global {
   var __AKAN_ROUTER__: Router | undefined;
 }
 
-export const getPathInfo = (requestUrl: string, lang: string, prefix: string) => {
+const withoutNetworkPath = (pathname: string) => {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the URL parser drops tabs and newlines anywhere and trims leading C0 controls
+  const path = pathname.replace(/[\t\n\r]/g, "").replace(/^[\u0000-\u0020/\\]+/, "");
+  return `/${path}`;
+};
+export const getPathInfo = (
+  requestUrl: string,
+  lang: string,
+  prefix: string,
+  localePrefix: AkanLocalePrefix | undefined = parseAkanI18nEnv().localePrefix,
+) => {
   const [urlWithoutHash, hash = ""] = requestUrl.split("#");
   const [url, search = ""] = urlWithoutHash.split("?");
   const langLength = lang.length + 1;
@@ -177,13 +184,21 @@ export const getPathInfo = (requestUrl: string, lang: string, prefix: string) =>
         ? pathWithSubRoute.slice(prefixLength)
         : pathWithSubRoute;
   const subRoute = prefix ? `/${prefix}` : "";
-  //? Only explicit http(s) passes through; scheme-relative, backslash and script URLs stay /<lang> paths.
-  const pathname = Href.hasWebScheme(path) ? path : path === "/" ? `/${lang}${subRoute}` : `/${lang}${subRoute}${path}`;
+  const langSegment = LocalePath.segmentOf(lang, { defaultLocale: parseAkanI18nEnv().defaultLocale, localePrefix });
+  const appPathname = `${langSegment}${subRoute}${path === "/" ? "" : path}`;
+  //? Only explicit http(s) passes through; scheme-relative, backslash and script URLs stay in-app paths: behind the
+  //? `/<lang>` segment as written, and with none, stripped of the leading slashes that would take `//host` off-origin.
+  const pathname = Href.hasWebScheme(path)
+    ? path
+    : langSegment || subRoute
+      ? appPathname
+      : withoutNetworkPath(appPathname);
   const href = `${pathname}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`;
   return { path, pathname, hash, search, href };
 };
 class Router {
   isInitialized: boolean = false;
+  #isCsr: boolean = false;
   #prefix = "";
   #lang = parseAkanI18nEnv().defaultLocale;
   #routePaths = new Set<string>();
@@ -201,6 +216,7 @@ class Router {
   #expectedPops: { idx: number; isAllowed: boolean; onLand?: () => void }[] = [];
   //? A page's mount effects run before the root layout's, and the root layout is what initializes the client router.
   #beforeInit: (() => void)[] = [];
+  #frameParentOrigins: string[] | "*" = [];
   #instance: RouterInstance = {
     push: (href: string) => {
       const { href: fullHref } = this.#getPathInfo(href);
@@ -218,6 +234,7 @@ class Router {
     },
   };
   init(options: SsrClientRouterOption | SsrServerRouterOption | CSRClientRouterOption) {
+    this.#isCsr = options.type === "csr";
     this.#prefix = options.prefix ?? "";
     this.#lang = options.lang ?? parseAkanI18nEnv().defaultLocale;
     this.#routePaths = new Set(
@@ -396,8 +413,18 @@ class Router {
     csrLocation.replace(nextState);
   }
 
+  //? A CSR boot's route table matches on the `/:lang` segment, so it keeps one in every mode.
+  #localePrefix(): AkanLocalePrefix {
+    return this.#isCsr ? "always" : (parseAkanI18nEnv().localePrefix ?? "always");
+  }
+  #langSegment(lang = this.#lang) {
+    return LocalePath.segmentOf(lang, {
+      defaultLocale: parseAkanI18nEnv().defaultLocale,
+      localePrefix: this.#localePrefix(),
+    });
+  }
   #getPathInfo(href: string, prefix = this.#prefix) {
-    return getPathInfo(href, this.#lang, prefix);
+    return getPathInfo(href, this.#lang, prefix, this.#localePrefix());
   }
   #getNavigationPathInfo(href: string) {
     return this.#getPathInfo(href, shouldExposeBasePath() ? this.#prefix : "");
@@ -418,11 +445,15 @@ class Router {
     return `${pathname}${query ? `?${query}` : ""}${hash ? `#${hash}` : ""}`;
   }
   #getVisiblePathInfo(href: string, lang = this.#lang) {
-    return getPathInfo(href, lang, shouldExposeBasePath() ? this.#prefix : "");
+    return getPathInfo(href, lang, shouldExposeBasePath() ? this.#prefix : "", this.#localePrefix());
   }
   //? `document.referrer` names the last document, not the entry a same-document push left; once history moves, the URL is.
   #postPathAfterBack() {
     if (this.canGoBack()) this.#backsAwaitingPopstate += 1;
+  }
+  /** Origins besides the page's own that hear `pathChange` when they frame it in production; `"*"` is any parent. */
+  setFrameParentOrigins(origins: string[] | "*") {
+    this.#frameParentOrigins = origins;
   }
   /** Tells the frame embedding this page where it went: a new path, or a page of a paginated list. */
   postPathChange(change: { path: string; pathname: string; hash: string } | { page: number }) {
@@ -432,8 +463,13 @@ class Router {
         : { type: "pathChange", path: change.path, pathname: change.pathname, hash: change.hash };
     if (!("page" in change)) Logger.info(`pathChange-start:${change.path}${change.hash ? `#${change.hash}` : ""}`);
     //? An MCP host reads every message from its view as JSON-RPC; this one would arrive as a malformed request.
-    if (isMcpView()) return;
-    window.parent.postMessage(message, "*");
+    if (isMcpView() || window.parent === window) return;
+    // A path or hash can carry a token, so only a named cross-origin parent hears it; local dev posts to any frame.
+    const targets =
+      getEnv().operationMode === "local" || this.#frameParentOrigins === "*"
+        ? ["*"]
+        : [window.location.origin, ...this.#frameParentOrigins];
+    for (const target of targets) window.parent.postMessage(message, target);
   }
   #postDevSyncNavigation(kind: "push" | "replace", href: string) {
     if (globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;
@@ -641,7 +677,12 @@ class Router {
       const langFromPath = reqPathname.split("/").find(Boolean);
       const lang = (h.get("x-locale") ?? langFromPath ?? this.#lang) as string;
       const basePath = getServerBasePath(reqPathname, lang, h.get("x-base-path") ?? undefined, this.#prefix);
-      const { pathname, href: fullHref } = getPathInfo(href, lang, shouldExposeBasePath() ? basePath : "");
+      const { pathname, href: fullHref } = getPathInfo(
+        href,
+        lang,
+        shouldExposeBasePath() ? basePath : "",
+        this.#localePrefix(),
+      );
       Logger.info(`redirect to:${pathname}`);
       throw new AkanRedirectError(fullHref, method, status);
     } else {
@@ -665,7 +706,8 @@ class Router {
   setLang(lang: string) {
     if (getEnv().side === "server") throw new Error("setLang is only available in client side");
     this.#checkInitialized();
-    const currentLang = getLocaleFromPathname(csrLocation.pathname) ?? this.#lang;
+    const i18n = { ...parseAkanI18nEnv(), localePrefix: this.#localePrefix() };
+    const currentLang = LocalePath.split(csrLocation.pathname, i18n).locale ?? this.#lang;
     const { path, search, hash } = this.#getVisiblePathInfo(csrLocation.href, currentLang);
     this.#lang = lang;
     this.#instance.replace(`${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`);
@@ -681,13 +723,14 @@ class Router {
   }
   getFullPath(withLang = true) {
     if (getEnv().side === "server") throw new Error("getPath is only available in client side");
-    return `${withLang ? `/${this.#lang}/` : ""}${this.#prefix}${this.getPath()}`;
+    const path = `${this.#prefix}${this.getPath()}`;
+    return withLang ? `${this.#langSegment()}/${path}`.replace(/^\/+/, "/") : path;
   }
   getPrefix() {
     return this.#prefix;
   }
   getPrefixedPath(path: string) {
-    return this.#prefix ? `${this.#lang ? `/${this.#lang}` : ""}/${this.#prefix}${path}` : path;
+    return this.#prefix ? `${this.#lang ? this.#langSegment() : ""}/${this.#prefix}${path}` : path;
   }
 }
 const browserRouter = () => {

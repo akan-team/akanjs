@@ -1,5 +1,6 @@
 "use client";
 import type { DataList } from "akanjs/base";
+import { modelNames } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import type { ReactNode } from "react";
@@ -18,7 +19,7 @@ export default function UnlistedEditModal({ slice, renderTitle, renderTemplate }
   const storeSel = st.sel as <Ret>(selector: (state: unknown) => Ret) => Ret;
   const { names, namesOfSlice } = sliceNamesOf(slice.refName, slice.sliceName);
   const formId = storeSel(
-    (state) => (state as { [key: string]: { id: string | null } })[`${slice.refName}Form`]?.id ?? null,
+    (state) => (state as { [key: string]: { id: string | null } })[modelNames(slice.refName).modelForm]?.id ?? null,
   );
   const modelList = storeUse[namesOfSlice.modelList]({ agent: false }) as DataList<{ id: string }>;
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]({ agent: false }) as string | boolean;

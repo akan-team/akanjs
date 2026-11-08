@@ -104,9 +104,11 @@ worker per web-serving replica.
   gateway's own shape — a `children` array with one entry — so a probe reads one contract either way. It owns the
   rotating log file the gateway would otherwise write, in the same `runtime/logs` directory.
 - **Health detail and metrics answer only `Authorization: Bearer $AKAN_STATUS_TOKEN`** (or the log stream token)
-  outside `local`: without it `/_akan/app/health` is `{ status }` alone (still 200) and `/_akan/app/metrics` is 401.
-  A probe that reads only the status code needs nothing; give a scraper or monitor `AKAN_STATUS_TOKEN`, which reads
-  nothing else.
+  outside the local dev runtime — `AKAN_PUBLIC_ENV` and the operation mode both `local`, under `akan start` or a
+  `NODE_ENV` other than `production`, so a built server stays closed: without it `/_akan/app/health` is `{ status }`
+  alone (still 200) and `/_akan/app/metrics` is 401. An address that sends 10 wrong bearers in a minute is refused
+  the right one too until the minute passes. A probe that reads only the status code needs nothing; give a scraper or
+  monitor `AKAN_STATUS_TOKEN` (32 characters or more, or it warns), which reads nothing else.
 - **Nothing supervises a solo process but the orchestrator**, since the gateway's crash-restart-with-backoff went
   with it. `infra/app/templates/app.yaml` carries the liveness, readiness and startup probes that replace it.
 - **`PORT` is the whole tree's port, and a server-side self-call follows it.** `AkanApp` resolves it once
@@ -158,12 +160,13 @@ worker per web-serving replica.
   and neither does a save in a sibling app. An import that makes a new lib a dependency needs a fresh
   `akan start`, because it needs a `sync` first anyway. Before the first `sync` the manifests do not exist yet and
   the whole `libs/` container is watched, which is the safe direction.
-- **A built artifact runs from the generated app directory** with the Akan runtime environment variables:
+- **A built artifact runs from the generated app directory, without Docker and without an env.** `akan build`
+  writes `akan.env.json` beside `main.js` with the values the Dockerfile's `ENV` lines set, and `main.js` takes
+  each one the process was not started with, so a variable you set (or the image's `ENV`) wins. Start it from that
+  directory: the runtime reads its artifacts and writes `runtime/` and SQLite files relative to the cwd.
 
   ```bash
-  cd dist/apps/<appName> && USE_AKANJS_PKGS=true AKAN_PUBLIC_REPO_NAME=<repo> AKAN_PUBLIC_SERVE_DOMAIN="<domain>" \
-    AKAN_PUBLIC_APP_NAME=<appName> AKAN_PUBLIC_ENV=local AKAN_PUBLIC_OPERATION_MODE=local SERVER_MODE=federation \
-    AKAN_PUBLIC_BASE_PATHS=<basePaths> bun main.js
+  cd dist/apps/<appName> && PORT=3100 bun main.js
   ```
 
 - **A server a test boots in-process takes `start({ listen: false, schedules: false })`** to run no internal
@@ -209,7 +212,8 @@ normalized to `info` with one warning.
   server's socket rather than reading their own logs.
 - **The generated Dockerfile sets `AKAN_LOG_TO_FILE=0`.** A container's writable layer is ephemeral and nothing
   collects a file from it; stdout is the collection path. A deployment that wants the files back sets
-  `AKAN_LOG_TO_FILE=1`.
+  `AKAN_LOG_TO_FILE=1`; they are created 0600, so a collector running as another user needs `AKAN_LOG_FILE_MODE`
+  (octal, e.g. `640`), and a file already there keeps its mode.
 - **`AKAN_LOG_FORMAT=ndjson` makes the container's stdout one JSON record per line, and the hub owner (gateway or
   solo replica) its only writer** — every other server process turns its console off and forwards from
   `AKAN_LOG_STDOUT_LEVEL` (default: the console level); a child's or the RSC worker's crash stack is wrapped as a
@@ -218,8 +222,8 @@ normalized to `info` with one warning.
   unset, the route does not exist. The same bearer also unlocks the health detail and metrics.
 - **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call; **`AKAN_LOG_FLIGHT=1`**
   keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past
-  `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — in `local`, or with the
-  `AKAN_LOG_DEBUG_HEADER` secret.
+  `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — under the local dev runtime, or
+  with the `AKAN_LOG_DEBUG_HEADER` secret.
 - **Structured values go in `LogRecord.attrs` via `Logger.emit(...)`**; a key naming a secret is `[redacted]`
   before the record exists.
 - **Never log per delivered record in anything that delivers records.** The control socket and the hub do not,

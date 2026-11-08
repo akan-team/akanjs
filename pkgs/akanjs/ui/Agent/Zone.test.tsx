@@ -169,3 +169,57 @@ describe("Agent.Zone", () => {
     expect(own.messages.at(-1)?.text).toBe("A");
   });
 });
+
+describe("Agent.Zone account change", () => {
+  const jwtOf = (sub: string) => `x.${Buffer.from(JSON.stringify({ sub })).toString("base64url")}.y`;
+  const signIn = (sub: string | null) =>
+    Object.defineProperty(document, "cookie", {
+      get: () => (sub ? `__Host-jwt:zonetest=${jwtOf(sub)}` : ""),
+      configurable: true,
+    });
+  const appHistory = () => {
+    const state = { cleared: 0 };
+    const history = {
+      load: (): ChatMessage[] => [{ role: "user", text: "from u1" }],
+      save: () => undefined,
+      clear: () => {
+        state.cleared += 1;
+      },
+    };
+    return { state, history };
+  };
+
+  test("resets the zone's own conversation and leaves a session or history the app passed alone", async () => {
+    const lib = await import("use-agentic");
+    const owned = appHistory();
+    const passed = appHistory();
+    const own = new lib.AgentSession(lib.AgenticSurface.shared, runnerOf("A", []), { history: passed.history });
+    const held: { owned?: AgentSession } = {};
+    const Probe = () => {
+      held.owned = useAgent();
+      return null;
+    };
+    signIn("u1");
+    const { unmount } = mount(
+      <>
+        <Zone id="ownedHistory" persist={owned.history} runner={runnerOf("A", [])}>
+          <Probe />
+        </Zone>
+        <Zone id="passedSession" session={own}>
+          <p>passed</p>
+        </Zone>
+      </>,
+    );
+    expect(held.owned?.messages.map((message) => message.text)).toEqual(["from u1"]);
+    signIn("u2");
+    await act(async () => {
+      window.dispatchEvent(new Event("akan:auth"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(held.owned?.messages).toEqual([]);
+    expect(own.messages.map((message) => message.text)).toEqual(["from u1"]);
+    expect([owned.state.cleared, passed.state.cleared]).toEqual([0, 0]);
+    unmount();
+    signIn(null);
+  });
+});

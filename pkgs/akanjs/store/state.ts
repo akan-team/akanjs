@@ -1,4 +1,5 @@
 import { DataList } from "akanjs/base";
+import { databaseStateNames } from "akanjs/common";
 import { ConstantRegistry, type DefaultOf, type ProtoLightFile } from "akanjs/constant";
 import type { ExtractSort, FilterInstance } from "akanjs/document";
 import type {
@@ -13,7 +14,6 @@ import type {
   SlceDbSort,
   SliceCls,
 } from "akanjs/signal";
-import { databaseStateNames } from "./databaseStateNames";
 import { sliceKeysOf } from "./sliceKeys";
 import type { StoreSliceArgs, StoreSliceMap, StoreSliceSuffixCap, Submit } from "./types";
 

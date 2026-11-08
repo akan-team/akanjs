@@ -12,10 +12,21 @@ export class TunnelCommand extends command("tunnel", [TunnelScript], ({ public: 
     })
     .option("port", Number, { desc: "local port to share (default: the app's dev port)", nullable: true })
     .option("ttl", Number, { desc: "minutes before the share expires", nullable: true })
+    .option("devRoutes", Boolean, {
+      flag: "d",
+      desc: "also share devtools, the HMR socket and source maps, which a share leaves out by default",
+      default: false,
+    })
     .with(Workspace)
-    .exec(async function (app, list, stop, host, port, ttl, workspace) {
+    .exec(async function (app, list, stop, host, port, ttl, devRoutes, workspace) {
       if (list) return await this.tunnelScript.list(workspace, host);
       if (stop) return await this.tunnelScript.stop(stop, workspace, host);
-      await this.tunnelScript.share(app, { workspace, host, ...(port ? { port } : {}), ...(ttl ? { ttl } : {}) });
+      await this.tunnelScript.share(app, {
+        workspace,
+        host,
+        devRoutes,
+        ...(port ? { port } : {}),
+        ...(ttl ? { ttl } : {}),
+      });
     }),
 })) {}

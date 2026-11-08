@@ -386,25 +386,48 @@ export class Linter {
     return { ...lintResult, fixed: stdout !== source, output: stdout };
   }
 
-  // One spawn for all files: Biome's startup dominates a small file. Missing paths are dropped (a template may
-  // decline a file).
+  // As few spawns as the command line allows: Biome's startup dominates a small file. Missing paths are dropped (a
+  // template may decline a file).
   async fixFiles(filePaths: string[]): Promise<{ fixed: string[] }> {
     const resolved = filePaths.map((filePath) => this.#resolveFilePath(filePath)).filter(existsSync);
     if (resolved.length === 0) return { fixed: [] };
     const before = new Map(resolved.map((filePath) => [filePath, readFileSync(filePath, "utf8")]));
-    await this.#runBiome([
-      "check",
-      "--write",
-      "--reporter=json",
-      "--max-diagnostics=none",
-      "--no-errors-on-unmatched",
-      "--config-path",
-      this.configPath,
-      ...resolved.map((filePath) => this.#toBiomePath(filePath)),
-    ]);
+    const biomePaths = resolved.map((filePath) => this.#toBiomePath(filePath));
+    for (const batch of Linter.batchArgs(biomePaths, Linter.#pathArgsBudget))
+      await this.#runBiome([
+        "check",
+        "--write",
+        "--reporter=json",
+        "--max-diagnostics=none",
+        "--no-errors-on-unmatched",
+        "--config-path",
+        this.configPath,
+        ...batch,
+      ]);
     return {
       fixed: resolved.filter((filePath) => readFileSync(filePath, "utf8") !== before.get(filePath)),
     };
+  }
+
+  //? Windows refuses a command line past 32,767 characters (ENAMETOOLONG), and a whole workspace scaffold passes it.
+  static readonly #pathArgsBudget = 24_000;
+
+  static batchArgs(args: string[], budget: number): string[][] {
+    const batches: string[][] = [];
+    let batch: string[] = [];
+    let length = 0;
+    for (const arg of args) {
+      const cost = arg.length + 3;
+      if (batch.length > 0 && length + cost > budget) {
+        batches.push(batch);
+        batch = [];
+        length = 0;
+      }
+      batch.push(arg);
+      length += cost;
+    }
+    if (batch.length > 0) batches.push(batch);
+    return batches;
   }
 
   async getConfigForFile(filePath: string): Promise<unknown> {

@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { trimTrailingSlashes } from "akanjs/common";
 import dayjs from "dayjs";
 import { FileSys } from "../fileSys";
@@ -36,7 +36,7 @@ export class GlobalConfig {
   // Holds the cloud jwt and refresh token, so owner-only 0600: written to a 0600 sibling and renamed over the file,
   // which also replaces a world-readable one and never shows another CLI process a half-written file.
   static async #setAkanGlobalConfig(akanConfig: AkanGlobalConfig) {
-    await mkdir(basePath, { recursive: true, mode: 0o700 });
+    FileSys.ensurePrivateDir(basePath);
     const temp = `${configPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
     try {
       await writeFile(temp, JSON.stringify(akanConfig, null, 2), { mode: 0o600 });

@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { Any, dayjs, Int } from "akanjs/base";
 import { Logger } from "akanjs/common";
-import { type ConstantModel, ConstantRegistry, via } from "akanjs/constant";
+import { type ConstantModel, ConstantRegistry, InputParser, via } from "akanjs/constant";
 import {
   by,
   createDocumentId,
@@ -20,6 +20,7 @@ import { getDefaultInjectRegistry, InjectInfo } from "../injectInfo";
 import { serve } from "../serve";
 import { SqlDocumentStore } from "./database.adaptor";
 import { DatabaseAdaptorRole } from "./role.adaptor";
+import type { AkanSqlStatement } from "./sql/types";
 import { descriptorHash } from "./sql/values";
 
 // Every case states the SQLite answer, the contract live sync's in-memory evaluator is pinned to. A known divergence is
@@ -518,6 +519,45 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(titlesOf(await store.find(q.search("revenue")))).toEqual(["Quarterly revenue report"]);
     });
 
+    test("a raw-shaped object q.raw() did not build is refused, so it cannot widen the condition beside it", async () => {
+      await store.create({ title: "mine", status: "active" });
+      await store.create({ title: "theirs", status: "draft" });
+      const shaped = JSON.parse('{"kind":"raw","sql":"1 = 1) OR (1 = 1","params":[]}');
+      await expect(store.find(q.all({ status: "active" }, shaped))).rejects.toThrow("q.raw()");
+      expect(titlesOf(await store.find(q.all({ status: "active" }, q.raw("1 = 1"))))).toEqual(["mine"]);
+    });
+
+    test("an operator object a request carried is refused at a field; the same shorthand in code applies", async () => {
+      await store.create({ title: "mine", status: "active" });
+      await store.create({ title: "theirs", status: "draft" });
+      const [requested, requestedNode] = InputParser.parse(
+        Any,
+        0,
+        [{ ne: "__nobody__" }, { kind: "op", op: "ne", value: "__nobody__" }],
+        { key: "args" },
+      ) as [string, string];
+      await expect(store.find({ status: requested })).rejects.toThrow("holds query operators");
+      await expect(store.find({ status: requestedNode })).rejects.toThrow("holds query operators");
+      expect(titlesOf(await store.find({ status: { ne: "draft" } as unknown as string }))).toEqual(["mine"]);
+    });
+
+    test("an object is refused as the value of a field that holds one value", async () => {
+      await store.create({ title: "mine", meta: { tier: "gold" } });
+      await expect(store.find({ status: { tier: "gold" } as unknown as string })).rejects.toThrow(
+        'Query value at "status"',
+      );
+      await expect(store.find({ id: { tier: "gold" } as unknown as string })).rejects.toThrow('Query value at "id"');
+      expect(titlesOf(await store.find({ meta: { tier: "gold" } }))).toEqual(["mine"]);
+    });
+
+    test("a combinator at a field is refused rather than compiled", async () => {
+      await store.create({ title: "mine" });
+      for (const value of [q.any(), q.all({ status: "active" }), q.not({ status: "active" })])
+        await expect(store.find({ status: value as unknown as string })).rejects.toThrow(
+          'cannot be the value of "status"',
+        );
+    });
+
     test("[DDL-3] two indexes whose names differ past 63 bytes both exist", async () => {
       await storeOf(
         driver,
@@ -540,6 +580,107 @@ const describeDriver = (kind: SqlDriverKind) => {
       await uniqueStore.create({ label: "null-1", code: null });
       await uniqueStore.create({ label: "null-2", code: null });
       expect(await uniqueStore.find({})).toHaveLength(3);
+    });
+
+    test("createMany writes the rows in order, 500 to a statement, each under its own id", async () => {
+      const insertedRowNums: number[] = [];
+      const prepared = store as unknown as { prepareStmt(sql: string): AkanSqlStatement };
+      const prepare = prepared.prepareStmt.bind(store);
+      const spy = spyOn(prepared, "prepareStmt").mockImplementation((sql: string) => {
+        const statement = prepare(sql);
+        if (!sql.startsWith("INSERT")) return statement;
+        return {
+          run: async (...params: unknown[]) => {
+            insertedRowNums.push(params.length / 5);
+            return await statement.run(...params);
+          },
+          get: statement.get.bind(statement),
+          all: statement.all.bind(statement),
+        };
+      });
+      try {
+        const titles = Array.from({ length: 1201 }, (_, idx) => `row${idx}`);
+        const created = await store.createMany(titles.map((title, idx) => ({ title, score: idx })));
+        expect(insertedRowNums).toEqual([500, 500, 201]);
+        expect(titlesOf(created)).toEqual(titles);
+        expect(new Set(created.map(({ id }) => id)).size).toBe(titles.length);
+        expect(await store.count({})).toBe(titles.length);
+        expect(await store.findOne({ title: "row1200" })).toMatchObject({ score: 1200, status: "active" });
+        expect(await store.createMany([])).toEqual([]);
+        expect(insertedRowNums).toHaveLength(3);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    test("createMany runs every row's pre hooks before writing any, and the post hooks once the rows commit", async () => {
+      const sibling = await driver.sibling();
+      try {
+        const committed = await storeOf(sibling, confConstant, confDatabase);
+        const heard: string[] = [];
+        const schema = new DocumentSchema();
+        schema.pre("save", async function (this: { title: string }, _next, type) {
+          heard.push(`pre:${type}:${this.title}:${await committed.count({})}`);
+        });
+        schema.post("create", async function (this: { title: string }, _next, type) {
+          heard.push(`post:${type}:${this.title}:${await committed.count({})}`);
+        });
+        const hooked = await storeOf(driver, confConstant, confDatabase, schema);
+
+        await hooked.createMany([{ title: "a" }, { title: "b" }]);
+
+        expect(heard).toEqual(["pre:create:a:0", "pre:create:b:0", "post:create:a:2", "post:create:b:2"]);
+      } finally {
+        await sibling.close();
+      }
+    });
+
+    test("createMany writes no row and fires no post hook when a pre hook refuses a row", async () => {
+      const heard: string[] = [];
+      const schema = new DocumentSchema();
+      schema.pre("save", async function (this: { title: string }) {
+        if (this.title === "b") throw new Error("refused b");
+      });
+      schema.post("create", async function (this: { title: string }) {
+        heard.push(this.title);
+      });
+      const hooked = await storeOf(driver, confConstant, confDatabase, schema);
+
+      await expect(hooked.createMany([{ title: "a" }, { title: "b" }, { title: "c" }])).rejects.toThrow("refused b");
+
+      expect(heard).toEqual([]);
+      expect(await store.count({})).toBe(0);
+    });
+
+    test("createMany writes none of the batch when the database refuses one row", async () => {
+      const uniqueStore = await storeOf(
+        driver,
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ code: 1 }, { unique: true }),
+      );
+      await driver.database.getConnection().execute(`DELETE FROM "uniqueConf"`);
+      await expect(
+        uniqueStore.createMany([
+          { label: "first", code: "B" },
+          { label: "second", code: "C" },
+          { label: "repeat", code: "B" },
+        ]),
+      ).rejects.toThrow();
+      expect(await uniqueStore.find({})).toEqual([]);
+    });
+
+    test("createMany rolls back the statements already run when a later one is refused", async () => {
+      const uniqueStore = await storeOf(
+        driver,
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ code: 1 }, { unique: true }),
+      );
+      await driver.database.getConnection().execute(`DELETE FROM "uniqueConf"`);
+      const rows = Array.from({ length: 500 }, (_, idx) => ({ label: `row${idx}`, code: `c${idx}` }));
+      await expect(uniqueStore.createMany([...rows, { label: "repeat", code: "c0" }])).rejects.toThrow();
+      expect(await uniqueStore.count({})).toBe(0);
     });
   });
 

@@ -57,6 +57,19 @@ describe("OAuthRegistration parse", () => {
     }
   });
 
+  test("bounds how many redirect URIs one registration stores, and how long each is", async () => {
+    const uris = (count: number) => Array.from({ length: count }, (_, idx) => `https://a.example/cb/${idx}`);
+    expect(OAuthRegistration.parse({ redirect_uris: uris(OAuthRegistration.maxRedirectUris) }).ok).toBe(true);
+    const long = `https://a.example/${"p".repeat(OAuthRegistration.maxRedirectUriLength)}`;
+    for (const redirect_uris of [uris(OAuthRegistration.maxRedirectUris + 1), [long]]) {
+      const result = OAuthRegistration.parse({ redirect_uris });
+      if (result.ok) throw new Error("expected a refusal");
+      const json = await body(result.response);
+      expect(json.error).toBe("invalid_redirect_uri");
+      expect(String(json.error_description)).not.toContain("pppp");
+    }
+  });
+
   test("answers a registration with the stored metadata and the assigned id, uncacheable", async () => {
     const res = OAuthRegistration.response(
       {

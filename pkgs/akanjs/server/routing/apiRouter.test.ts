@@ -593,6 +593,89 @@ describe("ApiRouter endpoint responses over a real socket", () => {
     }
   });
 
+  test("answers a body over the request limit 413, declared or streamed, and leaves an upload to the ceiling", async () => {
+    const { ServerLimits } = await import("./serverLimits");
+    const bodyLimits = new ServerLimits({ AKAN_MAX_REQUEST_BODY: "1kb" });
+    const echo = async (req: Request) => {
+      try {
+        return new Response(String((await req.text()).length));
+      } catch {
+        return new Response("handler failed", { status: 500 });
+      }
+    };
+    const streamOf = (size: number) =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (let sent = 0; sent < size; sent += 256) controller.enqueue(new Uint8Array(256).fill(97));
+          controller.close();
+        },
+      });
+    const serve = async (countChunkedBodies: boolean) =>
+      Bun.serve({
+        port: 0,
+        routes: (await buildRoutes({
+          routes: { "/echo": { POST: echo } } as HttpRoutes,
+          bodyLimits,
+          countChunkedBodies,
+        })) as never,
+      });
+    const json = { "content-type": "application/json" };
+    const server = await serve(true);
+    const relayed = await serve(false);
+    try {
+      const url = `http://localhost:${server.port}/api/echo`;
+      expect((await fetch(url, { method: "POST", headers: json, body: "a".repeat(2048) })).status).toBe(413);
+      const streamed = await fetch(url, {
+        method: "POST",
+        headers: json,
+        body: streamOf(2048),
+        duplex: "half",
+      } as never);
+      expect(streamed.status).toBe(413);
+      const small = await fetch(url, { method: "POST", headers: json, body: streamOf(512), duplex: "half" } as never);
+      expect(await small.text()).toBe("512");
+      const form = new FormData();
+      form.append("file", new Blob([new Uint8Array(4096)]), "a.bin");
+      expect((await fetch(url, { method: "POST", body: form })).status).toBe(200);
+      const behindGateway = await fetch(`http://localhost:${relayed.port}/api/echo`, {
+        method: "POST",
+        headers: json,
+        body: streamOf(2048),
+        duplex: "half",
+      } as never);
+      expect(await behindGateway.text()).toBe("2048");
+    } finally {
+      server.stop(true);
+      relayed.stop(true);
+    }
+  });
+
+  test("answers a handler slower than the server's idle limit", async () => {
+    const slow = async () => {
+      await Bun.sleep(5_000);
+      return new Response("done");
+    };
+    const server = Bun.serve({
+      port: 0,
+      idleTimeout: 1,
+      routes: (await buildRoutes({
+        routes: { "/slow": { GET: slow } } as HttpRoutes,
+        renderEnvRoutes: { "/*": slow } as HttpRoutes,
+        idleTimeout: 1,
+      })) as never,
+    });
+    try {
+      const [endpoint, page] = await Promise.all([
+        fetch(`http://localhost:${server.port}/api/slow`),
+        fetch(`http://localhost:${server.port}/en`),
+      ]);
+      expect(await endpoint.text()).toBe("done");
+      expect(await page.text()).toBe("done");
+    } finally {
+      server.stop(true);
+    }
+  }, 20_000);
+
   test("compresses a signal endpoint's JSON, and leaves the decoded body identical", async () => {
     const payload = { rows: Array.from({ length: 200 }, (_, i) => ({ id: i, title: "repeated title" })) };
     const server = Bun.serve({

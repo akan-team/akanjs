@@ -12,11 +12,12 @@ It installs the `akan` CLI (`@akanjs/cli`, at this package's own version) global
 `akan create-workspace`, which:
 
 1. asks for a workspace name and an app name, unless you passed them,
-2. creates `./<workspace>` and installs its dependencies,
-3. generates the first app with a sample `task` module and pages,
+2. creates `./<workspace>`, or fills the current folder when the name is `.`, and installs its dependencies,
+3. generates the first app with a sample `task` module and pages, unless you pass `--sample false`,
 4. writes `AGENTS.md`, `CLAUDE.md` and Cursor rules, and registers the Akan MCP server for Claude Code, Codex and
    Cursor,
-5. makes the first git commit.
+5. makes the first git commit, as `Akan.js <noreply@akanjs.com>` when git has no identity configured. In a folder
+   another git repository tracks, it commits nothing and leaves the new files for you to commit there.
 
 Then start the app. It opens on `http://localhost:8282`.
 
@@ -37,15 +38,29 @@ The [quick start](https://akanjs.com/docs/intro/quickstart) has a prompt to past
 checks Bun, runs this, and starts the app. Reopen the agent inside the new workspace afterwards: its MCP server and
 rules load from there.
 
+## In an Existing Folder
+
+Name the workspace `.` to create it in the current folder, or in `--dir` itself, instead of a new subfolder. The
+workspace takes the folder's name. The folder may already hold files the workspace does not write, such as `.git` or
+notes. When it holds one the workspace would overwrite, such as `package.json` or `README.md`, nothing is written and
+the command names the files to move away.
+
+```bash
+bunx create-akan-workspace@latest . --app web                # the current folder
+bunx create-akan-workspace@latest . --app web --dir app      # ./app
+bunx create-akan-workspace@latest my-company --app web --sample false   # no sample module or pages
+```
+
 ## Options
 
 | Option | Description | Default |
 | --- | --- | --- |
-| `[org]` | Workspace (organization) name | asked |
+| `[org]` | Workspace (organization) name, or `.` for `--dir` itself | asked |
 | `-a, --app <name>` | First application name | asked |
-| `-d, --dir <path>` | Directory to create the workspace in | `.` |
+| `-d, --dir <path>` | Directory to create the workspace in, as `<dir>/<org>` | `.` |
 | `-l, --libs <boolean>` | Also install the `shared` and `util` libraries (admin, user, file, and more) | `false` |
 | `-i, --init <boolean>` | Install the workspace's dependencies | `true` |
+| `-s, --sample <boolean>` | Generate the sample `task` module, pages and helpers in the first app | `true` |
 | `-r, --registry <url>` | npm registry for the Akan packages (or `AKAN_NPM_REGISTRY`) | npmjs |
 | `-o, --owner <name>` | Owner of the workspace | — |
 

@@ -1,7 +1,8 @@
 // Per-user app folders of a desktop app, the same places as Tauri's path resolver
 // (tauri/crates/tauri/src/path/desktop.rs: app_data_dir, app_local_data_dir).
 
-import { homedir } from "node:os";
+import { chmodSync, mkdirSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 type Env = Record<string, string | undefined>;
@@ -56,6 +57,28 @@ export function webviewDataDir(
   if (platform === "win32") return join(appLocalDataDir(id, platform, env, home), "WebView2");
   if (platform === "linux") return join(appDataDir(id, platform, env, home), "webview");
   return undefined;
+}
+
+/**
+ * The app's scratch folder, private to the user and the same in every run; Linux skips /tmp (shared) and
+ * $XDG_RUNTIME_DIR (a small tmpfs), so there nothing empties it at a restart. file-picker and external-view empty
+ * their own subfolder at launch; the filesystem plugin's `temp` keeps what the app wrote.
+ */
+export function appTempDir(
+  id: string,
+  platform: NodeJS.Platform = process.platform,
+  env: Env = process.env,
+  home = homedir(),
+  tmp = tmpdir(),
+): string {
+  if (platform === "darwin" || platform === "win32") return join(tmp, id);
+  return join(xdg(env.XDG_CACHE_HOME, join(home, ".cache")), id, "tmp");
+}
+
+export function makePrivateDir(dir: string, platform: NodeJS.Platform = process.platform): string {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (platform !== "win32") chmodSync(dir, 0o700);
+  return dir;
 }
 
 /**

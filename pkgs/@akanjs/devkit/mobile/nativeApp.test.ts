@@ -313,18 +313,33 @@ describe("NativeApp", () => {
     expect(await injected()).toContain('"indexPath":"/mobile"');
   });
 
-  test("builds its config from the app's locales and the plugins' native contributions", async () => {
+  test("builds its config from the app's locales, the plugins' native contributions and the inlined public env", async () => {
     const push: AkanPlugin = { name: "push-notification", native: { permission: "push", plugins: ["push"] } };
-    const app = new NativeApp(
-      fakeApp([push, { name: "other" }]),
-      target({ basePath: undefined, permissions: ["push"] }),
-    );
+    const root = await makeTempRoot();
+    const portal = { ...fakeApp([push, { name: "other" }]), dist: { cwdPath: path.join(root, "dist/apps/portal") } };
+    await CsrArtifactBuilder.writePublicEnv(portal as unknown as App, {
+      "process.env.AKAN_PUBLIC_APP_NAME": '"portal"',
+      "process.env.AKAN_PUBLIC_ENV": '"main"',
+      "process.env.AKAN_PUBLIC_SERVE_DOMAIN": '"akamir.com"',
+      "process.env.AKAN_PUBLIC_SERVER_URL": '"http://192.168.0.5:8080/api"',
+    });
+    const app = new NativeApp(portal as unknown as App, target({ basePath: undefined, permissions: ["push"] }));
 
     const { config, warnings } = await app.config({ platform: "android" });
 
     expect(warnings).toEqual([]);
     expect(config.plugins).toEqual([...NativeConfig.basePlugins, "push"]);
     expect(config.web.dir).toBe(path.join(nativeDir, "default/web"));
+    const csp = config.security?.csp as Record<string, string[]> | undefined;
+    expect(csp?.["connect-src"]).toEqual([
+      "'self'",
+      "blob:",
+      "data:",
+      "https:",
+      "wss:",
+      "http://192.168.0.5:8080",
+      "ws://192.168.0.5:8080",
+    ]);
   });
 
   test("a config nothing is built from (the update key's) stages no desktop bin", async () => {

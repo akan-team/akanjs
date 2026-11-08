@@ -104,6 +104,7 @@ export type DatabaseService<
   __load: (id?: string) => Promise<Doc | null>;
   __loadMany: (ids: string[]) => Promise<Doc[]>;
   __create: (data: _DataInputOfDoc) => Promise<Doc>;
+  __createMany: (data: _DataInputOfDoc[]) => Promise<Doc[]>;
   __update: (id: string, data: Partial<Doc>) => Promise<Doc>;
   __remove: (id: string) => Promise<Doc>;
   __removeMany: (query: _QueryOfDoc) => Promise<UpdateResult>;
@@ -150,6 +151,8 @@ export type DatabaseService<
   [K in `load${_CapitalizedRefName}Many`]: (ids: string[]) => Promise<Doc[]>;
 } & {
   [K in `create${_CapitalizedRefName}`]: (data: _DataInputOfDoc) => Promise<Doc>;
+} & {
+  [K in `create${_CapitalizedRefName}Many`]: (data: _DataInputOfDoc[]) => Promise<Doc[]>;
 } & {
   [K in `update${_CapitalizedRefName}`]: (id: string, data: Partial<Doc>) => Promise<Doc>;
 } & {

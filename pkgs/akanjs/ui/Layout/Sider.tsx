@@ -1,10 +1,10 @@
 "use client";
+import { useSpring } from "@react-spring/web";
 import { cn } from "akanjs/client";
 import { st } from "akanjs/store";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiOutlineClose, AiOutlineMenu } from "react-icons/ai";
 import { BiX } from "react-icons/bi";
-import { useSpring } from "react-spring";
 import { agentAttrs } from "../agentAttrs";
 import { animated } from "../animated";
 import { buttonRecipe } from "../Button";
@@ -25,13 +25,13 @@ export const Sider = ({ className, bgClassName, trigger, header, close, children
   const [isOpen, setIsOpen] = useState(false);
   const path = st.use.path({ agent: false });
   const openMenu = st
-    .tool("openMenu")
+    .tool("openMenu", { taint: "exempt" })
     .desc("Open the side navigation drawer.")
     .exec(() => {
       setIsOpen(true);
     });
   const closeMenu = st
-    .tool("closeMenu")
+    .tool("closeMenu", { taint: "exempt" })
     .desc("Close the side navigation drawer.")
     .exec(() => {
       setIsOpen(false);

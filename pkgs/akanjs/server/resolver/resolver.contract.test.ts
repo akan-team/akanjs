@@ -15,6 +15,7 @@ import {
   type LiveChange,
   SolidPubSub,
   SolidQueue,
+  serve,
   type WebsocketAdaptor,
 } from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
@@ -1159,6 +1160,132 @@ describe("ServiceResolver declaration contracts", () => {
     expect(await service.getServerResolverTestItem(validId)).toEqual({ id: validId, title: "loaded" });
   });
 
+  test("creates many rows: every pre-create hook, one model write, then every post-create, opening no transaction of its own", async () => {
+    const cascade = new CascadeRunner();
+    cascade.register(serverResolverTestConstant, new DocumentSchema(), ServerResolverTestService);
+    cascade.seal(() => null as never);
+    const ServiceRef = ServiceResolver.resolveDatabaseService(
+      serverResolverTestDatabase,
+      ServerResolverTestService,
+      cascade,
+    );
+    const service = new ServiceRef() as unknown as {
+      __databaseModel: Record<string, (...args: unknown[]) => Promise<unknown>>;
+      createServerResolverTestItemMany: (data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>;
+    };
+    const steps: string[] = [];
+    Object.assign(service, {
+      transaction: async (fn: () => Promise<unknown>) => {
+        steps.push("transaction");
+        return await fn();
+      },
+    });
+    const writes: unknown[][] = [];
+    service.__databaseModel = {
+      __createMany: async (rows: unknown) => {
+        steps.push("write");
+        writes.push(rows as unknown[]);
+        return (rows as Record<string, unknown>[]).map((row, idx) => ({ ...row, id: `id${idx}` }));
+      },
+    };
+
+    const created = await service.createServerResolverTestItemMany([{ title: "Alpha" }, { title: "Beta" }]);
+
+    expect(steps).toEqual(["write"]);
+    expect(writes).toEqual([
+      [
+        { title: "Alpha", parentPreCreate: true, childPreCreate: true },
+        { title: "Beta", parentPreCreate: true, childPreCreate: true },
+      ],
+    ]);
+    expect(created.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "id0", title: "Alpha" },
+      { id: "id1", title: "Beta" },
+    ]);
+    expect(created.every((doc) => doc.parentPostCreate && doc.childPostCreate)).toBe(true);
+    expect(await service.createServerResolverTestItemMany([])).toEqual([]);
+    expect(steps).toEqual(["write"]);
+  });
+
+  test("creates many rows on SQLite in one commit before any _postCreate, so a _postCreate refusing a row keeps them all", async () => {
+    const driver = await ConformanceEnv.openSqlDriver("sqlite", { memory: true });
+    try {
+      const { instance } = await bootModel<{ __count: (query?: unknown) => Promise<number> }>(
+        driver.database as unknown as FakeSqliteDatabase,
+      );
+      const postCreated: string[] = [];
+      class RefusingPostCreateService extends serve(serverResolverTestDatabase, () => ({})) {
+        override async _postCreate<Created extends { title: string }>(doc: Created) {
+          postCreated.push(doc.title);
+          if (doc.title === "Beta") throw new Error("serverResolverTestItem.error.postCreateRefused");
+          return doc;
+        }
+      }
+      const cascade = new CascadeRunner();
+      cascade.register(serverResolverTestConstant, new DocumentSchema(), RefusingPostCreateService);
+      cascade.seal(() => null as never);
+      const ServiceRef = ServiceResolver.resolveDatabaseService(
+        serverResolverTestDatabase,
+        RefusingPostCreateService,
+        cascade,
+      );
+      const service = new ServiceRef() as unknown as RefusingPostCreateService & {
+        createServerResolverTestItemMany: (data: Record<string, unknown>[]) => Promise<unknown[]>;
+      };
+      Object.assign(service, { __databaseModel: instance, __database: driver.database });
+      const row = { ownerId: validId, category: "news", nested: { label: "n" }, secret: "s", resolvedLabel: "r" };
+
+      await expect(
+        service.createServerResolverTestItemMany([
+          { ...row, title: "Alpha" },
+          { ...row, title: "Beta" },
+          { ...row, title: "Gamma" },
+        ]),
+      ).rejects.toThrow("serverResolverTestItem.error.postCreateRefused");
+
+      expect(postCreated).toEqual(["Alpha", "Beta"]);
+      expect(await instance.__count({})).toBe(3);
+    } finally {
+      await driver.close();
+    }
+  });
+
+  test("keeps a service's own create<Model>Many, written before the generated one existed", async () => {
+    class OwnBatchService extends serve(serverResolverTestDatabase, () => ({})) {
+      // @ts-expect-error A service written before the generated method takes its own arguments, and typechecks no more.
+      async createServerResolverTestItemMany(num: number) {
+        return Array.from({ length: num }, (_, idx) => ({ id: `own${idx}` }));
+      }
+    }
+    const cascade = new CascadeRunner();
+    cascade.register(serverResolverTestConstant, new DocumentSchema(), OwnBatchService);
+    cascade.seal(() => null as never);
+    const ServiceRef = ServiceResolver.resolveDatabaseService(serverResolverTestDatabase, OwnBatchService, cascade);
+    const service = new ServiceRef() as unknown as OwnBatchService & { __createMany: unknown };
+
+    expect(await service.createServerResolverTestItemMany(2)).toEqual([{ id: "own0" }, { id: "own1" }]);
+    expect(typeof service.__createMany).toBe("function");
+  });
+
+  test("keeps a create<Model>Many a lib service declares, mixed in through serve()", async () => {
+    class LibBatchService extends serve(serverResolverTestDatabase, () => ({})) {
+      // @ts-expect-error A service written before the generated method takes its own arguments, and typechecks no more.
+      async createServerResolverTestItemMany(num: number) {
+        return Array.from({ length: num }, (_, idx) => ({ id: `lib${idx}` }));
+      }
+    }
+    class AppBatchService extends serve(serverResolverTestDatabase, () => ({}), LibBatchService) {}
+    const cascade = new CascadeRunner();
+    cascade.register(serverResolverTestConstant, new DocumentSchema(), AppBatchService);
+    cascade.seal(() => null as never);
+    const ServiceRef = ServiceResolver.resolveDatabaseService(serverResolverTestDatabase, AppBatchService, cascade);
+    const service = new ServiceRef() as unknown as {
+      createServerResolverTestItemMany: (num: number) => Promise<unknown>;
+    };
+
+    expect(await service.createServerResolverTestItemMany(2)).toEqual([{ id: "lib0" }, { id: "lib1" }]);
+  });
+
   test("generates a query-level write per filter, with the patch on a terminal set()", async () => {
     const cascade = new CascadeRunner();
     cascade.register(serverResolverTestConstant, new DocumentSchema(), ServerResolverTestService);
@@ -1787,7 +1914,7 @@ describe("SignalResolver declaration contracts", () => {
       serverResolverTestServiceModel,
       { guards: { root: Public, get: Public, cru: Public } },
       (init) => ({
-        inCategory: init()
+        inCategory: init({ guards: [Public] })
           .search("category", String)
           .live()
           .exec(function (category) {
@@ -1828,14 +1955,24 @@ describe("SignalResolver declaration contracts", () => {
     const resolved = resolveWith(SliceEndpoint, sliceEndpoint as never, { registry, live });
 
     const ws = makeWs();
-    const ack = await resolved.wsRoutes?.serverResolverTestItemLiveInCategory?.(ws, ["news"], "subscribe");
-    expect(ack).toMatchObject({ type: "sub", roomId: "serverResolverTestItemLiveInCategory-news", subscribe: true });
+    const ack = (await resolved.wsRoutes?.serverResolverTestItemLiveInCategory?.(
+      ws,
+      ["news"],
+      "subscribe",
+    )) as WebsocketSubscribeAck;
+    expect(ack).toMatchObject({
+      type: "sub",
+      requestRoomId: "serverResolverTestItemLiveInCategory-news",
+      subscribe: true,
+    });
+    expect(ack.roomId).toMatch(/^serverResolverTestItemLiveInCategory-news::[0-9a-f]{32}$/);
+    const liveRoomId = ack.roomId;
     expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(1);
 
     const inRoom = { id: validId, category: "news", title: "Alpha", createdAt: dayjs(1000), updatedAt: dayjs(1000) };
     await listeners[0](inRoom, "create", undefined);
     expect(published).toHaveLength(1);
-    expect(published[0].roomId).toBe("serverResolverTestItemLiveInCategory-news");
+    expect(published[0].roomId).toBe(liveRoomId);
     expect(published[0].data).toMatchObject({ op: "enter", id: validId });
     expect(websocket.instance.calls.map((call: { method: string }) => call.method)).toEqual([
       "joinRoom",
@@ -1848,7 +1985,7 @@ describe("SignalResolver declaration contracts", () => {
     await Bun.sleep(0);
     expect(published).toEqual([
       {
-        roomId: "serverResolverTestItemLiveInCategory-news",
+        roomId: liveRoomId,
         data: expect.objectContaining({ op: "enter", id: elsewhere.id }),
       },
     ]);
@@ -1870,7 +2007,7 @@ describe("SignalResolver declaration contracts", () => {
       serverResolverTestServiceModel,
       { guards: { root: Public, get: Public } },
       (init) => ({
-        inCategory: init()
+        inCategory: init({ guards: [Public] })
           .search("category", String)
           .search("title", String)
           .live()
@@ -1939,7 +2076,7 @@ describe("SignalResolver declaration contracts", () => {
     await route(other, ["sports"], "subscribe");
     await route(other, ["news"], "unsubscribe");
     await route(other, ["news"], "unsubscribe");
-    expect(live.syncHub.roomIds()).toEqual([
+    expect(live.syncHub.roomIds().map((roomId) => roomId.split("::")[0])).toEqual([
       "serverResolverTestItemLiveInCategory-news",
       "serverResolverTestItemLiveInCategory-sports",
     ]);
@@ -1988,7 +2125,9 @@ describe("SignalResolver declaration contracts", () => {
       open();
       gate = null;
       expect(await revalidating).toEqual([]);
-      expect(live.syncHub.roomIds()).toContain(`serverResolverTestItemLiveInCategory-${category}`);
+      expect(live.syncHub.roomIds().map((roomId) => roomId.split("::")[0])).toContain(
+        `serverResolverTestItemLiveInCategory-${category}`,
+      );
     }
   });
 
@@ -2220,7 +2359,7 @@ describe("SignalResolver declaration contracts", () => {
   test("refuses a pauseOn naming an unknown argument or a required one", () => {
     const build = (pauseOn: string[]) =>
       class extends slice(serverResolverTestServiceModel, { guards: { root: Public, get: Public } }, (init) => ({
-        inCategory: init()
+        inCategory: init({ guards: [Public] })
           .param("category", String)
           .search("text", String)
           .live({ pauseOn: pauseOn as never })
@@ -2239,7 +2378,7 @@ describe("SignalResolver declaration contracts", () => {
     try {
       SignalResolver.resolveSlice(
         class extends slice(serverResolverTestServiceModel, { guards: { root: Public, get: Public } }, (init) => ({
-          inCategory: init()
+          inCategory: init({ guards: [Public] })
             .param("category", String)
             .live({ sort: ["titleAsc"] })
             .exec(function (category) {
@@ -2257,7 +2396,7 @@ describe("SignalResolver declaration contracts", () => {
     expect(() =>
       SignalResolver.resolveSlice(
         class extends slice(serverResolverTestServiceModel, { guards: { root: Public, get: Public } }, (init) => ({
-          inCategory: init()
+          inCategory: init({ guards: [Public] })
             .search("category", String)
             .live({ sort: ["noSuchSort"] })
             .exec(function (category) {
@@ -2299,18 +2438,76 @@ describe("SignalResolver declaration contracts", () => {
     expect(unguarded.synthesized).toEqual([]);
   });
 
-  test("warns at resolve time about every endpoint that declares no guards", () => {
+  test("mounts no root list or insight for an omitted root and boots, but refuses to boot an empty one", () => {
+    const keys = ["NODE_ENV", "AKAN_UNGUARDED_ENDPOINTS", "AKAN_PUBLIC_ENV", "AKAN_PUBLIC_OPERATION_MODE"] as const;
+    const saved = keys.map((key) => [key, process.env[key]] as const);
+    try {
+      process.env.NODE_ENV = "production";
+      for (const key of keys.slice(1)) delete process.env[key];
+      class NoRootSlice extends slice(serverResolverTestServiceModel, { guards: { get: Public } }, (init) => ({
+        inCategory: init({ guards: [Public] })
+          .param("category", String)
+          .exec(function (category) {
+            return this.serverResolverTestItemService.queryInCategory(category);
+          }),
+      })) {}
+      const NoRootEndpoint = SignalResolver.resolveSlice(NoRootSlice);
+      expect(Object.keys(NoRootEndpoint[ENDPOINT_META]).filter((key) => /List|Insight/.test(key))).toEqual([
+        "serverResolverTestItemListInCategory",
+        "serverResolverTestItemInsightInCategory",
+      ]);
+      expect(() => resolveWith(NoRootEndpoint, new NoRootEndpoint() as never)).not.toThrow();
+      const signal = FetchSerializer.serializeDatabaseSignal(NoRootSlice, ServerResolverTestEndpoint);
+      expect(Object.keys(signal.slice ?? {})).toEqual(["inCategory"]);
+
+      class EmptyRootSlice extends slice(
+        serverResolverTestServiceModel,
+        { guards: { root: [], get: Public } },
+        () => ({}),
+      ) {}
+      const EmptyRootEndpoint = SignalResolver.resolveSlice(EmptyRootSlice);
+      expect(() => resolveWith(EmptyRootEndpoint, new EmptyRootEndpoint() as never)).toThrow(
+        "serverResolverTestItemList, serverResolverTestItemInsight declare no guards",
+      );
+    } finally {
+      for (const [key, value] of saved)
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+  });
+
+  test("warns locally about every endpoint that declares no guards, and refuses to boot one elsewhere", async () => {
     class OpenEndpoint extends endpoint(serverResolverTestServiceModel, ({ query }) => ({
       openRead: query(String).exec(() => "open"),
       publicRead: query(String, { guards: [Public] }).exec(() => "public"),
     })) {}
     const warn = spyOn(SignalResolver.logger, "warn");
+    const keys = ["NODE_ENV", "AKAN_UNGUARDED_ENDPOINTS", "AKAN_PUBLIC_ENV", "AKAN_PUBLIC_OPERATION_MODE"] as const;
+    const saved = keys.map((key) => [key, process.env[key]] as const);
     try {
-      resolveWith(OpenEndpoint, new OpenEndpoint());
+      const routes = resolveWith(OpenEndpoint, new OpenEndpoint()).routes as Record<
+        string,
+        Record<string, (req: Bun.BunRequest) => Promise<Response>>
+      >;
       const lines = warn.mock.calls.map(([line]) => String(line));
-      expect(lines.some((line) => line.startsWith("openRead declares no guards"))).toBe(true);
+      expect(lines.some((line) => line.startsWith("openRead declares no guards, so every call"))).toBe(true);
       expect(lines.some((line) => line.includes("publicRead"))).toBe(false);
+      const openPath = Object.keys(routes).find((path) => path.includes("openRead")) ?? "";
+      const refused = await routes[openPath]?.GET?.(
+        Object.assign(new Request(`http://localhost${openPath}`), { params: {} }) as unknown as Bun.BunRequest,
+      );
+      expect(refused?.status).toBe(403);
+
+      process.env.NODE_ENV = "production";
+      delete process.env.AKAN_PUBLIC_ENV;
+      delete process.env.AKAN_PUBLIC_OPERATION_MODE;
+      expect(() => resolveWith(OpenEndpoint, new OpenEndpoint())).toThrow("openRead declares no guards");
+      process.env.AKAN_UNGUARDED_ENDPOINTS = "open";
+      expect(() => resolveWith(OpenEndpoint, new OpenEndpoint())).not.toThrow();
     } finally {
+      for (const [key, value] of saved)
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
       warn.mockRestore();
     }
   });
@@ -2477,6 +2674,52 @@ describe("SignalResolver declaration contracts", () => {
 
     await serverSignal.processItem(validId, { delay: 10 });
     expect(queueCalls).toEqual([{ key: "processItem", args: [validId], options: { delay: 10 } }]);
+  });
+
+  test("keeps argument lists that join to one label in separate rooms, and publishes into the subscribed one", async () => {
+    const { registry, websocket } = withFakeWebsocket();
+    const localPublishes: { roomId: string; data: unknown }[] = [];
+    SignalResolver.setLocalPublish((roomId, data) => localPublishes.push({ roomId, data }), websocket.instance);
+    class PairEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
+      pairFeed: builder
+        .pubsub(String, { guards: [Public] })
+        .room("left", String)
+        .room("right", String)
+        .exec(() => undefined),
+    })) {}
+    class PairServerSignal extends serverSignal(
+      PairEndpoint,
+      internal(serverResolverTestServiceModel, () => ({})),
+    ) {}
+    const route = resolveWith(PairEndpoint, new PairEndpoint() as never, { registry }).wsRoutes.pairFeed;
+    const [first, second] = [makeWs(), makeWs()];
+    const firstAck = (await route(first, ["a-b", "c"], "subscribe")) as WebsocketSubscribeAck;
+    const secondAck = (await route(second, ["a", "b-c"], "subscribe")) as WebsocketSubscribeAck;
+    expect([firstAck.requestRoomId, secondAck.requestRoomId]).toEqual(["pairFeed-a-b-c", "pairFeed-a-b-c"]);
+    expect([firstAck.roomId, secondAck.roomId]).toEqual(["pairFeed-a%2Db-c", "pairFeed-a-b%2Dc"]);
+    expect([first.subscribed, second.subscribed]).toEqual([[firstAck.roomId], [secondAck.roomId]]);
+
+    const ServerSignalRef = SignalResolver.resolveServerSignal(PairServerSignal, {
+      registry,
+      live: getDefaultLiveRegistry(),
+    });
+    const publisher = new ServerSignalRef() as InstanceType<typeof ServerSignalRef> & {
+      pairFeed: (left: string, right: string, data: string) => Promise<void>;
+    };
+    await publisher.pairFeed("a", "b-c", "for the second");
+    expect(localPublishes).toEqual([{ roomId: secondAck.roomId, data: "for the second" }]);
+  });
+
+  test("gives subscribers whose live queries differ separate rooms, though their arguments read the same", async () => {
+    let tenant = "first";
+    const { live, route } = resolveLiveCategoryRoute({ queryInCategory: (category) => ({ category, tenant }) });
+    const [firstWs, secondWs] = [makeWs(), makeWs()];
+    const first = (await route(firstWs, ["news"], "subscribe")) as WebsocketSubscribeAck;
+    tenant = "second";
+    const second = (await route(secondWs, ["news"], "subscribe")) as WebsocketSubscribeAck;
+    expect(first.requestRoomId).toBe(second.requestRoomId);
+    expect(first.roomId).not.toBe(second.roomId);
+    expect(live.syncHub.roomIds()).toEqual([first.roomId, second.roomId]);
   });
 
   test("publishes a falsy value and a nullable null, and refuses null on a non-nullable return", async () => {
@@ -2767,7 +3010,7 @@ const resolveLiveCategoryRoute = ({
     serverResolverTestServiceModel,
     { guards: { root: Public, get: Public, cru: Public } },
     (init) => ({
-      inCategory: init()
+      inCategory: init({ guards: [Public] })
         .search("category", String)
         .live()
         .exec(function (category) {

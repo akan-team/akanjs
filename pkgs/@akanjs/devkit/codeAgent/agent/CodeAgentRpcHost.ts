@@ -55,6 +55,9 @@ export class CodeAgentRpcHost {
     } catch {
       return this.#emit({ type: "error", message: "malformed command frame", fatal: false, seq: -1 });
     }
+    // A client that always opens with its token still connects where none is asked for.
+    if (request && typeof request === "object" && "auth" in request && !request.command)
+      return this.#reply({ type: "reply", id: "auth", ok: true });
     try {
       this.#reply({ type: "reply", id: request.id, ok: true, data: await this.#run(request.command) });
     } catch (error) {

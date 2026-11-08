@@ -9,6 +9,9 @@ export class OAuthRegistration {
   static readonly authMethods: readonly OAuthClientAuthMethod[] = ["none", "client_secret_post", "client_secret_basic"];
   static readonly grantTypes: readonly string[] = ["authorization_code", "refresh_token"];
   static readonly maxNameLength = 200;
+  //? Registration is anonymous, so what one request may make the server store is bounded; an app may raise either.
+  static maxRedirectUris = 10;
+  static maxRedirectUriLength = 2048;
 
   static parse(body: unknown, policy: OAuthRedirectPolicy = {}): OAuthRegistrationResult {
     if (!body || typeof body !== "object" || Array.isArray(body))
@@ -17,6 +20,12 @@ export class OAuthRegistration {
     const redirectUris = meta.redirect_uris;
     if (!OAuthRegistration.#strings(redirectUris) || !redirectUris.length)
       return OAuthRegistration.#fail("invalid_redirect_uri", "`redirect_uris` must be a non-empty array of strings.");
+    const { maxRedirectUris, maxRedirectUriLength } = OAuthRegistration;
+    if (redirectUris.length > maxRedirectUris || redirectUris.some((uri) => uri.length > maxRedirectUriLength))
+      return OAuthRegistration.#fail(
+        "invalid_redirect_uri",
+        `\`redirect_uris\` may hold ${maxRedirectUris} URIs of at most ${maxRedirectUriLength} characters each.`,
+      );
     const rejected = redirectUris.find((uri) => !OAuthRedirect.isRegistrable(uri, policy));
     if (rejected !== undefined)
       return OAuthRegistration.#fail(

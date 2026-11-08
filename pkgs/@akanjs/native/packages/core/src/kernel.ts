@@ -5,6 +5,7 @@
 // vectors (packages/core/vectors; scripts/native-vectors.ts, cargo test, and on the device in
 // the self-test). Tables and constants come from contract.json (contract.ts).
 
+import { aclCheck, type ResolvedAcl, scopePermits } from "./acl.ts";
 import {
   EXTERNAL_SCHEMES,
   FRAME_SCHEMES,
@@ -119,10 +120,12 @@ export function route(pathname: string, exists: (relativePath: string) => boolea
   return segments[segments.length - 1]!.includes(".") ? { kind: "not-found" } : { kind: "asset", path: "index.html" };
 }
 
-/** Paths a host answers itself even when its pages come from a dev server: /__akan_native/*, and paths that do not decode. */
+/** Paths a host answers itself even with a dev server: /__akan_native/*, paths that do not decode, and dot segments. */
 export function isHostPath(pathname: string): boolean {
   const decoded = decodePath(pathname);
-  return decoded === null || decoded.split("/").find((s) => s.length > 0) === ROUTES.root;
+  if (decoded === null) return true;
+  const segments = decoded.split("/");
+  return segments.some((s) => s === "." || s === "..") || segments.find((s) => s.length > 0) === ROUTES.root;
 }
 
 // ------------------------------------------------------------------ MIME
@@ -301,6 +304,12 @@ export function decideNavigation(
   return externalSchemes(extra).includes(scheme) ? "open" : "drop";
 }
 
+/** A link or window.open that decideNavigation opens leaves only where opener.openUrl could open it. */
+export function externalOpenPermitted(acl: ResolvedAcl | null | undefined, url: string, window = 1): boolean {
+  const access = aclCheck(acl, "opener", "openUrl", window);
+  return access.allowed && scopePermits(access.scope, { url }, [], ["url"]);
+}
+
 export interface UpdateDecisionInput {
   /** The binary's keyIds, in `updates.publicKeys` order, without those `updates.revokedKeys` lists. */
   ring: readonly string[];
@@ -414,6 +423,13 @@ export function isUpdatePublicKey(key: string): boolean {
 
 /** The most keys a manifest may revoke: every host refuses a longer revokeKeys. */
 export const MAX_REVOKE_KEYS = 16;
+
+/** A manifest's optional signed `expiresAt`, in Unix seconds; past it the signer no longer vouches for the manifest. */
+export function manifestExpiry(expiresAt: unknown, nowSeconds: number): "fresh" | "expired" | "invalid" {
+  if (expiresAt === undefined) return "fresh";
+  if (typeof expiresAt !== "number" || !Number.isFinite(expiresAt) || expiresAt <= 0) return "invalid";
+  return nowSeconds < expiresAt ? "fresh" : "expired";
+}
 
 /** The largest manifest an envelope may carry, in bytes. */
 export const MAX_UPDATE_MANIFEST = 1 << 20;

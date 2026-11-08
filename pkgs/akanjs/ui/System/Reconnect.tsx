@@ -2,7 +2,7 @@
 import { cn, fetch, usePage } from "akanjs/client";
 import { useInterval } from "akanjs/webkit";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { TbPlugConnected, TbPlugConnectedX } from "react-icons/tb";
+import { Icon } from "../Icon";
 import { overlayZ } from "../overlayLayer";
 
 const DOTS_LENGTH = 4;
@@ -89,7 +89,7 @@ const ReconnectOverlay = () => {
             connectStatus === "connecting" && "animate-pulse",
           )}
         >
-          {connectStatus === "connected" ? <TbPlugConnected /> : <TbPlugConnectedX />}
+          {connectStatus === "connected" ? <Icon.PlugConnected /> : <Icon.PlugConnectedX />}
         </div>
         <div className="font-bold text-2xl leading-snug">
           {connectStatus === "disconnected"

@@ -5,7 +5,7 @@ import type { DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { App } from "@akanjs/devkit/commandDecorators";
 import type { AppRouteSource } from "@akanjs/devkit/executors";
 import { PreviewChrome, type PreviewEngine, PreviewView } from "@akanjs/devkit/preview";
-import { type LogRecord, parseRouteModuleKey } from "akanjs/common";
+import { type AkanLocalePrefix, type LogRecord, parseRouteModuleKey } from "akanjs/common";
 import { VerifyScope } from "../verify/verifyScope";
 import { ApplicationRunner } from "./application.runner";
 import { DevSupervisor } from "./devSupervisor";
@@ -60,6 +60,7 @@ export interface AppPreviewReport {
 interface I18nLike {
   defaultLocale: string;
   locales: readonly string[];
+  localePrefix?: AkanLocalePrefix;
 }
 
 interface StartedServer {
@@ -138,12 +139,14 @@ export class AppPreview {
     }
   }
 
-  /** Every route sits under `/:lang`, and an unprefixed path answers with a redirect or a 503. */
+  /** An unprefixed path answers with a redirect or a 503 where it does not name the default locale itself: under
+   * `"always"`, and in a CSR boot, whose routes match on the locale segment. */
   static pagePaths(paths: string[], i18n: I18nLike, { csr }: { csr: boolean }) {
+    const keepsUnprefixed = i18n.localePrefix === "as-needed" && !csr;
     const pages = (paths.length ? paths : ["/"]).map((raw) => {
       const url = new URL(/^https?:\/\//.test(raw) ? raw : `http://localhost${raw.startsWith("/") ? "" : "/"}${raw}`);
       const [first] = url.pathname.split("/").filter(Boolean);
-      if (!first || !i18n.locales.includes(first))
+      if (!keepsUnprefixed && (!first || !i18n.locales.includes(first)))
         url.pathname = `/${i18n.defaultLocale}${url.pathname === "/" ? "/" : url.pathname}`;
       if (csr) {
         url.searchParams.set("csr", "true");

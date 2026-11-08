@@ -227,6 +227,7 @@ export class AkanAppConfig implements AppConfigResult {
     this.i18n = resolveAkanI18nConfig(config?.i18n);
     process.env.AKAN_PUBLIC_DEFAULT_LOCALE = this.i18n.defaultLocale;
     process.env.AKAN_PUBLIC_LOCALES = this.i18n.locales.join(",");
+    process.env.AKAN_PUBLIC_LOCALE_PREFIX = this.i18n.localePrefix ?? "always";
     this.api = {
       prefix: normalizeRoutePrefix(config?.api?.prefix) ?? "/api",
       websocketPrefix: normalizeRoutePrefix(config?.api?.websocketPrefix) ?? "/ws",
@@ -468,6 +469,8 @@ export class AkanAppConfig implements AppConfigResult {
       "deepLinks",
       "updates",
       "devtools",
+      "csp",
+      "openUrls",
       "ios",
       "android",
       "desktop",
@@ -623,6 +626,7 @@ export class AkanAppConfig implements AppConfigResult {
       ...(this.basePaths.size ? { AKAN_PUBLIC_BASE_PATHS: [...this.basePaths].join(",") } : {}),
       AKAN_PUBLIC_DEFAULT_LOCALE: this.i18n.defaultLocale,
       AKAN_PUBLIC_LOCALES: this.i18n.locales.join(","),
+      ...(this.i18n.localePrefix === "as-needed" ? { AKAN_PUBLIC_LOCALE_PREFIX: this.i18n.localePrefix } : {}),
       AKAN_PUBLIC_API_PREFIX: this.api.prefix,
       AKAN_PUBLIC_WS_PREFIX: this.api.websocketPrefix,
       AKAN_PUBLIC_OPERATION_MODE: "cloud",
@@ -634,6 +638,11 @@ export class AkanAppConfig implements AppConfigResult {
       ...(this.web.csr ? {} : { AKAN_CSR: "false" }),
     };
   }
+  //? An image runs where the build cannot see, and AKAN_PUBLIC_ENV=local serves the dev routes to every caller there.
+  static readonly localImageGuard = [
+    "ARG AKAN_ALLOW_LOCAL_IMAGE",
+    `RUN if [ "$AKAN_ALLOW_LOCAL_IMAGE" != "1" ]; then echo "This build ran with AKAN_PUBLIC_ENV=local, which serves the dev routes to every caller. Build with the environment it deploys to, or pass --build-arg AKAN_ALLOW_LOCAL_IMAGE=1." >&2; exit 1; fi`,
+  ].join("\n");
   dockerfileFor(environment: string, { lockfile = true }: { lockfile?: boolean } = {}): string {
     return this.#makeDockerfile(environment, lockfile);
   }
@@ -643,8 +652,9 @@ export class AkanAppConfig implements AppConfigResult {
     const preRunScripts = this.#getDockerRunScripts(preRuns);
     const postRunScripts = this.#getDockerRunScripts(postRuns);
     const imageScript = this.#getDockerImageScript(image, DEFAULT_DOCKER_IMAGE);
+    const isLocal = (environment ?? this.baseDevEnv.env) === "local";
     const envLines = Object.entries(this.getProductionEnv(environment)).map(([key, value]) => `ENV ${key}=${value}`);
-    return `${imageScript}
+    return `${imageScript}${isLocal ? `\n${AkanAppConfig.localImageGuard}` : ""}
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
 ARG TARGETARCH

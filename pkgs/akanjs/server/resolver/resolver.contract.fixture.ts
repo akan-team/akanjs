@@ -189,7 +189,7 @@ export class ServerResolverTestEndpoint extends endpoint(serverResolverTestServi
       return `${id}:${suffix}:${this.serverResolverTestItemService.categoryEcho("public")}`;
     }),
   updateTitle: builder
-    .mutation(ServerResolverTestLight)
+    .mutation(ServerResolverTestLight, { guards: [Public] })
     .param("id", ID)
     .body("data", ServerResolverTestInput)
     .exec((id, data) => {
@@ -198,17 +198,17 @@ export class ServerResolverTestEndpoint extends endpoint(serverResolverTestServi
       return row;
     }),
   roomFeed: builder
-    .pubsub(ServerResolverTestLight)
+    .pubsub(ServerResolverTestLight, { guards: [Public] })
     .room("roomId", ID)
     .exec(() => {
       resolverOrder.push("pubsub-subscribe");
     }),
   roomStream: builder
-    .pubsub(Binary)
+    .pubsub(Binary, { guards: [Public] })
     .room("channel", String)
     .exec(() => undefined),
   roomQueuedStream: builder
-    .pubsub(Binary, { backpressure: "queue" })
+    .pubsub(Binary, { guards: [Public], backpressure: "queue" })
     .room("channel", String)
     .exec(() => undefined),
   guardedRoomFeed: builder
@@ -216,7 +216,7 @@ export class ServerResolverTestEndpoint extends endpoint(serverResolverTestServi
     .room("roomId", ID)
     .exec(() => undefined),
   echoMessage: builder
-    .message(String)
+    .message(String, { guards: [Public] })
     .msg("text", String)
     .exec((text) => `echo:${text}`),
 })) {}
@@ -225,7 +225,7 @@ export class ServerResolverTestSlice extends slice(
   serverResolverTestServiceModel,
   { guards: { root: Public, get: Public, cru: Public } },
   (init) => ({
-    inCategory: init()
+    inCategory: init({ guards: [Public] })
       .search("category", String)
       .exec(function (category) {
         return this.serverResolverTestItemService.queryInCategory(category ?? "all");

@@ -10,10 +10,14 @@ import {
   subspaceOption,
   writeOption,
 } from "../application/commandOptions";
+import { npmRegistryFromEnv, warnIgnoredNpmRegistry } from "../npmRegistry";
 import { CloudScript } from "./cloud.script";
 
-const localRegistryUrl = () => process.env.AKAN_NPM_REGISTRY ?? "http://127.0.0.1:4873";
-const resolveRegistryUrl = (registry: "npm" | "local") => (registry === "local" ? localRegistryUrl() : undefined);
+const localRegistryUrl = () => npmRegistryFromEnv() ?? "http://127.0.0.1:4873";
+const resolveRegistryUrl = (registry: "npm" | "local") => {
+  warnIgnoredNpmRegistry();
+  return registry === "local" ? localRegistryUrl() : undefined;
+};
 
 export class CloudCommand extends command("cloud", [CloudScript], ({ public: target }) => ({
   login: target({ desc: "Login to Akan Cloud services" })

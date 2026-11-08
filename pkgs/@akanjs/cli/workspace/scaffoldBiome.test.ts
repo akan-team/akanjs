@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { readFile, symlink } from "node:fs/promises";
+import { mkdir, readFile, symlink } from "node:fs/promises";
 import path from "node:path";
 import { WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { Linter } from "@akanjs/devkit/linter";
@@ -125,6 +125,12 @@ describe("scaffold output", () => {
       const canary = path.join(root, "apps/myapp/canary.ts");
       await writeText(canary, "export const  canary = { a:1 }\n");
       await symlink(path.join(repoRoot, "node_modules"), path.join(root, "node_modules"), "junction");
+      //? Windows resolves a relative symlink met through a junction against the junction's path, so the repo's
+      //? `node_modules/@akanjs/devkit -> ../../pkgs/@akanjs/devkit` lands here, where Biome reads its plugins.
+      if (process.platform === "win32") {
+        await mkdir(path.join(root, "pkgs", "@akanjs"), { recursive: true });
+        await symlink(path.join(repoRoot, "pkgs/@akanjs/devkit"), path.join(root, "pkgs/@akanjs/devkit"), "junction");
+      }
       const checked = scaffold.written.filter((file) => /\.(tsx?|jsonc?)$/.test(file));
       const before = new Map(
         await Promise.all(checked.map(async (file) => [file, await readFile(file, "utf8")] as const)),

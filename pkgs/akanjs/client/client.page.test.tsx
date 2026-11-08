@@ -198,6 +198,12 @@ describe("makePageProto", () => {
 
     const rich = usePage().l.rich("user.rich" as never);
     expect(rich).toMatchObject({ props: { dangerouslySetInnerHTML: { __html: "Line<br />" } } });
+    const richWithParam = usePage().l.rich("user.hello" as never, { name: `<img src=x onerror="a('&')">` });
+    expect(richWithParam).toMatchObject({
+      props: { dangerouslySetInnerHTML: { __html: "Hello &lt;img src=x onerror=&quot;a(&#39;&amp;&#39;)&quot;&gt;" } },
+    });
+    const richOverridingBr = usePage().l.rich("user.rich" as never, { br: "<script>" });
+    expect(richOverridingBr).toMatchObject({ props: { dangerouslySetInnerHTML: { __html: "Line<br />" } } });
     expect(new Err("user.failure" as never).message).toBe("user.failure");
     expect(new Err.NotFound("user.failure" as never).statusCode).toBe(404);
     expect(

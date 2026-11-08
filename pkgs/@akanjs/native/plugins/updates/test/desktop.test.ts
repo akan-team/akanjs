@@ -1,6 +1,6 @@
 // The desktop updates plugin on an app folder in a temporary "install", with a scripted relaunch and a local
 // release server; the Linux layout on every OS (macOS would check a code signature).
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash, createPublicKey, generateKeyPairSync, type KeyObject, sign, verify } from "node:crypto";
 import {
   chmodSync,
@@ -59,6 +59,7 @@ interface HarnessOptions {
   /** The folder the app is installed in, when it is not a fresh temporary one. */
   root?: string;
   signatureTool?: DesktopUpdatesOptions["signatureTool"];
+  windowsSigners?: string[];
   /** The native shell's ops (ctx.shell); none by default, so every op is UNSUPPORTED. */
   shell?: (op: string, args?: Record<string, unknown>) => Promise<unknown>;
   /** updates.automatic, off by default here; named, `quit()` runs the app's quit hooks. */
@@ -66,6 +67,7 @@ interface HarnessOptions {
   autoCheckDelay?: number;
   /** The relaunch helper refuses (another relaunch is under way). */
   relaunchRefuses?: boolean;
+  quitHookTimeout?: number;
 }
 
 async function harness(options: HarnessOptions = {}) {
@@ -88,6 +90,7 @@ async function harness(options: HarnessOptions = {}) {
     publicKey: options.publicKey ?? options.publicKeys?.[0] ?? "",
     ...(options.publicKeys ? { protocol: 2, publicKeys: options.publicKeys } : {}),
     ...(options.target ? { target: options.target } : {}),
+    ...(options.windowsSigners ? { windowsSigners: options.windowsSigners } : {}),
     channel: "main",
     readyTimeout: options.readyTimeout ?? 50,
     ...(options.automatic ? {} : { automatic: false }),
@@ -123,6 +126,7 @@ async function harness(options: HarnessOptions = {}) {
           exit: (code) => void quits.push(code),
           cancelSessionEnd: () => {},
           hideWindow: async () => {},
+          ...(options.quitHookTimeout ? { quitHookTimeout: options.quitHookTimeout } : {}),
         })
       : undefined;
   const dispatcher = createDispatcher([plugin], {
@@ -144,6 +148,7 @@ async function harness(options: HarnessOptions = {}) {
   });
   await dispatcher.launched;
   const quit = () => lifecycle?.quit(0);
+  const requestQuit = () => lifecycle?.requestQuit("user");
   const call = async (method: string, args?: unknown) =>
     (await dispatcher.handle(
       JSON.stringify({ v: 1, id: 1, plugin: "updates", method, ...(args !== undefined ? { args } : {}) }),
@@ -157,7 +162,7 @@ async function harness(options: HarnessOptions = {}) {
     for (const listener of listeners.get(type) ?? []) listener({ type, ...event });
   };
   const state = () => JSON.parse(readFileSync(join(stateDir, "state.json"), "utf8")) as Record<string, unknown>;
-  return { root, install, app, stateDir, call, fire, state, relaunches, quits, quit };
+  return { root, install, app, stateDir, call, fire, state, relaunches, quits, quit, requestQuit };
 }
 
 /** A carried server the test moves through its states (the plugin host's ctx.server). */
@@ -686,6 +691,7 @@ interface ReleaseOptions {
   target?: string;
   revokeKeys?: string[];
   resetSequence?: boolean;
+  expiresAt?: unknown;
   /** An envelope other than the one `signer` seals. */
   envelope?: (manifest: Uint8Array) => { manifest: string; keyId: string; signature: string };
 }
@@ -757,6 +763,7 @@ function releaseFiles(
     target,
     revokeKeys,
     resetSequence,
+    expiresAt,
     envelope,
   }: ReleaseOptions,
   privateKey: KeyObject,
@@ -789,6 +796,7 @@ function releaseFiles(
       ...(target === undefined ? {} : { target }),
       ...(revokeKeys ? { revokeKeys } : {}),
       ...(resetSequence === undefined ? {} : { resetSequence }),
+      ...(expiresAt === undefined ? {} : { expiresAt }),
     }),
   );
   const base = `/linux-${process.arch}`;
@@ -809,6 +817,12 @@ function releaseFiles(
       };
   return { ...signed, [`${base}/app/release.tar.gz`]: new Blob([gz]) };
 }
+
+//? An unsigned Windows build, as PowerShell answers for it: apply and quit check a download's signer again.
+const unsignedWindows: DesktopUpdatesOptions["signatureTool"] = async () => ({
+  code: 0,
+  output: "akan-signer: unsigned\r\n",
+});
 
 describe("desktop updates: download and apply", () => {
   test("an app installed under another name than the build's takes the release under its own name", async () => {
@@ -929,6 +943,7 @@ describe("desktop updates: download and apply", () => {
   test("Windows hands the helper the moves with a recovery for a swap cut short", async () => {
     const { call, relaunches, state, app } = await harness({
       platform: "win32",
+      signatureTool: unsignedWindows,
       state: (app) => pendingOf(app, BUILD + 100),
     });
     expect(await call("apply")).toMatchObject({ ok: true });
@@ -1078,6 +1093,7 @@ describe("desktop updates: by itself (updates.automatic)", () => {
   test("Windows hands the helper the moves at quit and has it start nothing", async () => {
     const { quit, relaunches, state, app } = await harness({
       platform: "win32",
+      signatureTool: unsignedWindows,
       automatic: true,
       autoCheckDelay: 60_000,
       state: (app) => pendingOf(app, BUILD + 100),
@@ -1097,9 +1113,92 @@ describe("desktop updates: by itself (updates.automatic)", () => {
     expect(state()).toMatchObject({ trial: { from: BUILD, staged } });
   });
 
+  test("a quit installs nothing from a download whose signer no longer passes, and drops it", async () => {
+    const { quit, relaunches, state, app } = await harness({
+      platform: "win32",
+      signatureTool: async () => ({ code: 0, output: "akan-signer: other\r\n" }),
+      automatic: true,
+      autoCheckDelay: 60_000,
+      state: (app) => pendingOf(app, BUILD + 100),
+    });
+    await quit();
+    expect(relaunches).toEqual([]);
+    expect(state().pending).toBeUndefined();
+    expect(state().failed).toEqual([]);
+    expect(existsSync(`${app}.update-${BUILD + 100}-aaaaaaaa`)).toBe(false);
+  });
+
+  test("the install at quit runs no signature check: it takes the one the start made", async () => {
+    let calls = 0;
+    const { quit, quits, relaunches, app } = await harness({
+      platform: "win32",
+      signatureTool: (async () => {
+        calls++;
+        return calls > 1 ? new Promise<never>(() => {}) : { code: 0, output: "akan-signer: unsigned\r\n" };
+      }) satisfies DesktopUpdatesOptions["signatureTool"],
+      automatic: true,
+      autoCheckDelay: 60_000,
+      state: (app) => pendingOf(app, BUILD + 100),
+    });
+    await until(() => calls === 1);
+    await quit();
+    expect(calls).toBe(1);
+    expect(quits).toEqual([0]);
+    expect(relaunches[0]?.moves).toEqual([
+      [app, `${app}.previous`],
+      [join(`${app}.update-${BUILD + 100}-aaaaaaaa`, "Sample"), app],
+    ]);
+  });
+
+  test("a quit the user asks for checks the download again before the quit hooks, and drops one that no longer passes", async () => {
+    let answer = "unsigned";
+    let calls = 0;
+    const { requestQuit, quits, relaunches, state, app } = await harness({
+      platform: "win32",
+      signatureTool: (async () => {
+        calls++;
+        if (calls > 1) await Bun.sleep(150);
+        return { code: 0, output: `akan-signer: ${answer}\r\n` };
+      }) satisfies DesktopUpdatesOptions["signatureTool"],
+      automatic: true,
+      autoCheckDelay: 60_000,
+      quitHookTimeout: 50,
+      state: (app) => pendingOf(app, BUILD + 100),
+    });
+    await until(() => calls === 1);
+    answer = "other";
+    expect(await requestQuit()).toBe(true);
+    await until(() => quits.length > 0);
+    expect(calls).toBe(2);
+    expect(relaunches).toEqual([]);
+    expect(state().pending).toBeUndefined();
+    expect(existsSync(`${app}.update-${BUILD + 100}-aaaaaaaa`)).toBe(false);
+  });
+
+  test("a check still running at quit installs nothing, and the download stays", async () => {
+    const warned = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { quit, quits, relaunches, state } = await harness({
+        platform: "win32",
+        signatureTool: async () => new Promise<never>(() => {}),
+        automatic: true,
+        autoCheckDelay: 60_000,
+        state: (app) => pendingOf(app, BUILD + 100),
+      });
+      await quit();
+      expect(quits).toEqual([0]);
+      expect(relaunches).toEqual([]);
+      expect(state().pending).toMatchObject({ bundle: `${BUILD + 100}-aaaaaaaa` });
+      expect(warned.mock.calls.flat().join(" ")).toContain("the download's check did not finish");
+    } finally {
+      warned.mockRestore();
+    }
+  });
+
   test("a Windows helper that cannot take the moves leaves the download as it was, for apply() and quit alike", async () => {
     const { call, quit, state } = await harness({
       platform: "win32",
+      signatureTool: unsignedWindows,
       automatic: true,
       autoCheckDelay: 60_000,
       relaunchRefuses: true,
@@ -1184,12 +1283,62 @@ describe("desktop updates: the signer of a release", () => {
       expect(state().pending).toMatchObject({ bundle: "2000-abcdef12" });
     });
 
+  test("with updates.windowsSigners, only PowerShell's pinned verdict takes a release, and no verdict refuses it", async () => {
+    const pins = ["AB".repeat(20), "CD".repeat(20)];
+    const pinned = async (answer: { code: number; output: string }, asked: PowerShellRun[] = []) => {
+      const root = mkdtempSync(join(tmpdir(), "akan-native-updates-release-"));
+      roots.push(root);
+      const release = serveRelease(root);
+      stops.push(release.stop);
+      const updates = await harness({
+        url: release.url,
+        publicKey: release.publicKey,
+        platform: "win32",
+        signatureTool: powershell(answer, asked),
+        windowsSigners: pins,
+      });
+      writeFileSync(join(updates.app, EXE), peImage(false));
+      return { ...updates, result: await updates.call("download") };
+    };
+    const asked: PowerShellRun[] = [];
+    expect((await pinned(verdict("same"), asked)).result).toMatchObject({ ok: true });
+    expect(asked[0]?.env.AKAN_NATIVE_SIGNERS).toBe(pins.join(","));
+    for (const answer of [verdict("other"), verdict("unsigned"), { code: -1, output: "EPERM" }]) {
+      const { result } = await pinned(answer);
+      expect(result).toMatchObject({ ok: false, error: { code: "NOT_ALLOWED" } });
+      expect(result.error?.message).toContain("updates.windowsSigners");
+    }
+  });
+
   test("PowerShell gets a script Constrained Language Mode runs: no .NET type, method call or base64", async () => {
     const asked: PowerShellRun[] = [];
     await download(powershell(verdict("same"), asked));
     const script = Buffer.from(asked[0]?.cmd.at(-1) ?? "", "base64").toString("utf16le");
     expect(script).toContain("Get-AuthenticodeSignature");
+    expect(script).toContain("$env:AKAN_NATIVE_SIGNERS");
     expect(script).not.toMatch(/\[[\w.]+\]|::|\.\w+\(|Add-Type|New-Object/);
+  });
+
+  test("a download is checked again before apply or a quit installs it, and dropped when it no longer passes", async () => {
+    let answer = verdict("same");
+    const asked: PowerShellRun[] = [];
+    const tool = (async (cmd, env) => {
+      if (!cmd.includes("-EncodedCommand") || !env) return { code: 1, output: "" };
+      asked.push({ cmd, env });
+      return answer;
+    }) satisfies DesktopUpdatesOptions["signatureTool"];
+    const { result, state, call, app } = await download(tool);
+    expect(result).toMatchObject({ ok: true });
+    const staged = (state().pending as { staged: string }).staged;
+    answer = verdict("other");
+    const applied = await call("apply");
+    expect(applied).toMatchObject({ ok: false, error: { code: "NOT_ALLOWED" } });
+    expect(applied.error?.message).toContain("changed since it was checked");
+    expect(asked).toHaveLength(2);
+    expect(state().pending).toBeUndefined();
+    expect(state().failed).toEqual([]);
+    expect(existsSync(staged)).toBe(false);
+    expect(existsSync(app)).toBe(true);
   });
 
   for (const [what, answer] of [
@@ -1328,6 +1477,24 @@ describe("desktop updates: protocol v2", () => {
       expect(state().pending).toMatchObject({ bundle: "2000-abcdef12", keyId: keyIdOf(rawKey(spare)) });
       release.publish({});
       expect(await call("check")).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+    } finally {
+      release.stop();
+    }
+  });
+
+  test("a manifest past its signed expiresAt is refused, and one without it or before it is taken", async () => {
+    const key = newKey();
+    const now = Math.floor(Date.now() / 1000);
+    const release = feed({ signer: key, expiresAt: now + 3600 });
+    try {
+      const { call } = await harness({ url: release.url, publicKeys: [rawKey(key)] });
+      expect(await call("check")).toMatchObject({ ok: true, result: { available: true } });
+      release.publish({ signer: key, expiresAt: now - 1 });
+      expect(await call("check")).toMatchObject(refused("expired"));
+      release.publish({ signer: key, expiresAt: "soon" });
+      expect(await call("check")).toMatchObject(refused("expiresAt"));
+      release.publish({ signer: key });
+      expect(await call("check")).toMatchObject({ ok: true, result: { available: true } });
     } finally {
       release.stop();
     }

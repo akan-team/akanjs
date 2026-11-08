@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 const barrel = "@akanjs/devkit/codeAgent";
 const codeAgentDir = `${import.meta.dir}/../../devkit/codeAgent`;
@@ -19,8 +21,12 @@ describe("command module graph", () => {
       );
       if (specifiers.some((s) => s.startsWith("@earendil-works/") || s === barrel)) offenders.push(name);
       for (const specifier of specifiers) {
-        if (specifier.startsWith("./")) await visit(`${import.meta.dir}/${specifier.slice(2)}.ts`);
-        else if (specifier.startsWith(barrel)) await visit(`${codeAgentDir}${specifier.slice(barrel.length)}.ts`);
+        const base = specifier.startsWith(".")
+          ? path.resolve(path.dirname(file), specifier)
+          : specifier.startsWith(`${barrel}/`)
+            ? `${codeAgentDir}${specifier.slice(barrel.length)}`
+            : undefined;
+        if (base) await visit([`${base}.ts`, `${base}.tsx`].find((candidate) => existsSync(candidate)) ?? `${base}.ts`);
       }
     };
     await visit(`${import.meta.dir}/code.command.ts`);

@@ -84,6 +84,13 @@ describe("system pages", () => {
     ).toBe("/en/soft");
   });
 
+  test('points the default locale\'s home link at its unprefixed URL under localePrefix "as-needed"', () => {
+    const i18n = { ...DEFAULT_AKAN_I18N, localePrefix: "as-needed" as const };
+    expect(getSystemPageHomeHref({ pathname: "/en/missing", i18n })).toBe("/");
+    expect(getSystemPageHomeHref({ pathname: "/en/akanjs/missing", i18n, basePaths: ["akanjs"] })).toBe("/akanjs");
+    expect(getSystemPageHomeHref({ pathname: "/ko/missing", i18n })).toBe("/ko");
+  });
+
   test("lists every basePath as a locale-aware link on the sub route index", async () => {
     const response = await createSubRouteIndexResponse({
       locale: "ko",
@@ -106,6 +113,22 @@ describe("system pages", () => {
     expect(createSystemPageFallbackText("error")).toBe("500 Server error");
     expect(headers.get("Content-Type")).toBe("text/html; charset=utf-8");
     expect(headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  test("refuses framing by another origin and type sniffing", async () => {
+    const response = await createSystemPageResponse({ kind: "not-found", pathname: "/en/missing", homeHref: "/en" });
+
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
+    expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
+  });
+
+  test("keeps the retry link on the same origin whatever the requested path starts with", async () => {
+    for (const pathname of ["//example.com/x", "/\\example.com/x", "\\\\example.com/x", "/\t/example.com/x"]) {
+      const html = await (await createSystemPageResponse({ kind: "not-found", pathname, homeHref: "/en" })).text();
+      expect(html).toContain('href="/example.com/x"');
+      expect(html).not.toMatch(/href="[\\/]{2}/);
+    }
   });
 
   test("keeps RSC worker system-page helpers free of react-dom/server", async () => {

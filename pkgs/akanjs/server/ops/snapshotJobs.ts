@@ -60,6 +60,8 @@ export class SnapshotJobs {
   async #run(job: SnapshotJobState, request: SnapshotJobRequest) {
     try {
       const capture = await this.#options.capture(request);
+      if (!capture.manifest.encryption)
+        this.#logger.warn(`Snapshot ${job.id} is not encrypted: AKAN_BACKUP_RECIPIENT is unset`);
       job.manifest = capture.manifest;
       job.status = "uploading";
       for (const file of capture.manifest.files) {
@@ -119,7 +121,7 @@ export class SnapshotJobs {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
     const dated = await Promise.all(
       entries
-        .filter((entry) => entry.isDirectory())
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
         .map(async (entry) => {
           const full = path.join(dir, entry.name);
           const manifest = await stat(path.join(full, "manifest.json")).catch(() => null);

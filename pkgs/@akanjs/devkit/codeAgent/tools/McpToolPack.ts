@@ -7,6 +7,7 @@ import {
   codeAgentOutputChars,
 } from "akanjs/common";
 import { Type } from "typebox";
+import { WorkspaceTrust } from "../agent/WorkspaceTrust";
 import { McpClient, type McpToolInfo, McpUnauthorized } from "./McpClient";
 import { McpServerConfig } from "./McpServerConfig";
 import { McpSignIn } from "./McpSignIn";
@@ -194,6 +195,12 @@ export class McpToolPack {
   static #refs(options: McpToolPackOptions): CodeAgentMcpServerRef[] {
     if (options.profile.tools.mcp === "off") return [];
     const declared = Array.isArray(options.profile.tools.mcp) ? options.profile.tools.mcp : [];
-    return [...McpServerConfig.read(options.workspaceRoot), ...declared];
+    if (WorkspaceTrust.isTrusted(options.workspaceRoot, "mcp"))
+      return [...McpServerConfig.read(options.workspaceRoot), ...declared];
+    const skipped = McpServerConfig.read(options.workspaceRoot, ["workspace"]).map((ref) => ref.name);
+    options.onNotice?.(
+      `Not started, because this repo's MCP servers are not approved: ${skipped.join(", ")}. Start akan code in a terminal to approve them, or pass --trust-workspace.`,
+    );
+    return [...McpServerConfig.read(options.workspaceRoot, ["global"]), ...declared];
   }
 }

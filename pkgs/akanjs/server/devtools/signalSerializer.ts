@@ -6,7 +6,7 @@ import {
   type PrimitiveScalar,
   SLICE_META,
 } from "akanjs/base";
-import { capitalize } from "akanjs/common";
+import { sliceNames } from "akanjs/common";
 import { ConstantRegistry, type ConstantType } from "akanjs/constant";
 import type {
   ArgInfo,
@@ -149,10 +149,10 @@ export class SignalSerializer {
   static #sliceDerivedKeys(refName: string, sliceCls: SliceCls | undefined): Set<string> {
     const sliceMeta = (sliceCls?.[SLICE_META] ?? {}) as Record<string, SliceInfo>;
     return new Set(
-      Object.keys(sliceMeta).flatMap((key) => [
-        `${refName}List${capitalize(key)}`,
-        `${refName}Insight${capitalize(key)}`,
-      ]),
+      Object.keys(sliceMeta).flatMap((key) => {
+        const { list, insight } = sliceNames(refName, key).endpoint;
+        return [list, insight];
+      }),
     );
   }
 

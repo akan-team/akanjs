@@ -28,7 +28,8 @@ import path at all**, so keep throwing code out of them entirely rather than rea
 
 Best-effort code returns a sentinel (`null`, `undefined`, `{}`) instead of throwing. `try/catch` is rare and
 always converts an exception into a decision: a guard catches, warns, and returns `false`; an adapter
-catches, logs, and returns `null`. A store action never catches — let the framework toast the `Err`.
+catches, logs, and returns `null`. A store action never catches — let the framework toast the `Err`, or list it in
+the store's `static silent` when no screen waits on it and its caller handles the rejection.
 Client-side validation failure is `msg.error("<key>")` plus an early return, never a throw.
 
 **A failure another process reported travels as itself.** A server-to-server `fetch.<endpoint>(…, { origin })`

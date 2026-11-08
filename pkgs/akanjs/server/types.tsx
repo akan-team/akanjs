@@ -59,9 +59,19 @@ export interface AkanImageConfig {
   maxRemoteBytes: number;
   /** Concurrent encodes; `0` sizes it from the CPUs the serving process sees, which the build machine's count is not. */
   maxConcurrency: number;
+  /** Bytes the optimized-image cache may hold on disk before its oldest entries go; `0` keeps every entry. */
+  maxCacheBytes?: number;
+  /** Encodes that may wait for a free slot before a request is answered 503; `0` lets any number wait. */
+  maxQueue?: number;
+  /** A source over this many pixels is served as it is, never decoded. */
+  maxInputPixels?: number;
+  /** Fetch a remote pattern whose host resolves to a private, loopback or link-local address. */
+  dangerouslyAllowLocalIP?: boolean;
 }
 
-export const defaultAkanImageConfig: AkanImageConfig = {
+export type ResolvedAkanImageConfig = Required<AkanImageConfig>;
+
+export const defaultAkanImageConfig: ResolvedAkanImageConfig = {
   deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
   imageSizes: [32, 48, 64, 96, 128, 256, 384],
   formats: ["image/webp"],
@@ -74,9 +84,13 @@ export const defaultAkanImageConfig: AkanImageConfig = {
   fetchTimeoutMs: 7000,
   maxRemoteBytes: 25 * 1024 * 1024,
   maxConcurrency: 0,
+  maxCacheBytes: 1024 ** 3,
+  maxQueue: 256,
+  maxInputPixels: 120_000_000,
+  dangerouslyAllowLocalIP: false,
 };
 
-export function mergeAkanImageConfig(config: Partial<AkanImageConfig> = {}): AkanImageConfig {
+export function mergeAkanImageConfig(config: Partial<AkanImageConfig> = {}): ResolvedAkanImageConfig {
   return {
     ...defaultAkanImageConfig,
     ...config,
@@ -86,6 +100,10 @@ export function mergeAkanImageConfig(config: Partial<AkanImageConfig> = {}): Aka
     qualities: config.qualities ?? defaultAkanImageConfig.qualities,
     remotePatterns: config.remotePatterns ?? defaultAkanImageConfig.remotePatterns,
     localPatterns: config.localPatterns ?? defaultAkanImageConfig.localPatterns,
+    maxCacheBytes: config.maxCacheBytes ?? defaultAkanImageConfig.maxCacheBytes,
+    maxQueue: config.maxQueue ?? defaultAkanImageConfig.maxQueue,
+    maxInputPixels: config.maxInputPixels ?? defaultAkanImageConfig.maxInputPixels,
+    dangerouslyAllowLocalIP: config.dangerouslyAllowLocalIP ?? defaultAkanImageConfig.dangerouslyAllowLocalIP,
   };
 }
 

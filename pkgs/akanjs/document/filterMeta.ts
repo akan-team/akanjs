@@ -1,12 +1,12 @@
 import type { Cls, EnumInstance, MergeAllDoubleKeyOfObjects } from "akanjs/base";
-import { FILTER_DICT_SHAPE, FILTER_META, getNonArrayModel, isEnum } from "akanjs/base";
+import { Any, FILTER_DICT_SHAPE, FILTER_META, getNonArrayModel, isEnum, PrimitiveRegistry } from "akanjs/base";
 import {
   type BaseObject,
   type ConstantFieldType,
   type ConstantFieldTypeInput,
   type DocumentModel,
-  deserialize,
   type FieldToValue,
+  InputParser,
   type PlainTypeToFieldType,
   type QueryOf,
   type Serialized,
@@ -66,7 +66,8 @@ export const getFilterInfoByKey = <ArgNames extends string[] = [], Args extends 
   modelRef: FilterCls,
   key: string,
 ): FilterInfo<ArgNames, Args, Model> => {
-  const queryMeta = getFilterMeta(modelRef).query[key];
+  const { query } = getFilterMeta(modelRef);
+  const queryMeta = Object.hasOwn(query, key) ? query[key] : undefined;
   if (!queryMeta) throw new Error(`queryMeta is not defined for key: ${key}`);
   return queryMeta;
 };
@@ -78,7 +79,10 @@ export const setFilterInfoByKey = <ArgNames extends string[] = [], Args extends 
   const filterMeta = getFilterMeta(modelRef);
   Object.assign(filterMeta.query, { [key]: filterInfo });
 };
-export const getFilterSortByKey = (modelRef: FilterCls, key: string) => getFilterMeta(modelRef).sort[key];
+export const getFilterSortByKey = (modelRef: FilterCls, key: string) => {
+  const { sort } = getFilterMeta(modelRef);
+  return Object.hasOwn(sort, key) ? sort[key] : undefined;
+};
 
 export const fillMissingFilterArgs = (filterInfo: FilterInfo, args: unknown[]) => {
   if (args.length >= filterInfo.args.length) return args;
@@ -111,7 +115,11 @@ export interface FilterArgInfo {
   enum?: EnumInstance;
   nullable: boolean;
   ref?: string;
+  maxItems: number;
 }
+
+// Each item of a list arg is one bound parameter, and a caller of the root slice picks how many it sends.
+export const DEFAULT_FILTER_ARG_MAX_ITEMS = 1000;
 /** Unwraps a filter arg's declaration the way `EndpointInfo.getArgInfo` unwraps an endpoint's. */
 export const getFilterArgInfo = (arg: FilterInfo["args"][number]): FilterArgInfo => {
   const [singleArg, arrDepth] = getNonArrayModel(arg.argRef as Cls);
@@ -123,6 +131,7 @@ export const getFilterArgInfo = (arg: FilterInfo["args"][number]): FilterArgInfo
     enum: argIsEnum ? (singleArg as EnumInstance) : undefined,
     nullable: !!arg.option?.nullable,
     ref: arg.option?.ref,
+    maxItems: arg.option?.maxItems ?? DEFAULT_FILTER_ARG_MAX_ITEMS,
   };
 };
 export const getFilterArgInfos = (filterInfo: FilterInfo): FilterArgInfo[] => filterInfo.args.map(getFilterArgInfo);
@@ -130,9 +139,38 @@ export const getFilterArgInfos = (filterInfo: FilterInfo): FilterArgInfo[] => fi
 /** A caller named a filter that does not exist, or gave it arguments it cannot take. Its callers answer 400. */
 export class FilterQueryError extends Error {}
 
-const tryDeserializeFilterArg = (arg: FilterArgInfo, value: unknown, key: string) => {
+const countItems = (value: unknown, arrDepth: number): number =>
+  arrDepth && Array.isArray(value) ? value.reduce((sum: number, item) => sum + countItems(item, arrDepth - 1), 0) : 1;
+
+const isPlainContainer = (value: unknown) => {
+  if (!value || typeof value !== "object") return false;
+  const proto = Object.getPrototypeOf(value);
+  return Array.isArray(value) || proto === Object.prototype || proto === null;
+};
+
+// `deserialize` would coerce a JSON object to "[object Object]" and a lone value to a one-item list.
+const primitiveShapeProblem = (value: unknown, arrDepth: number): string | null => {
+  if (!arrDepth) return isPlainContainer(value) ? "a single value" : null;
+  if (!Array.isArray(value)) return "a list";
+  for (const item of value) {
+    const problem = primitiveShapeProblem(item, arrDepth - 1);
+    if (problem) return problem;
+  }
+  return null;
+};
+
+const parseFilterArg = (arg: FilterArgInfo, value: unknown, key: string) => {
+  const shapeProblem = PrimitiveRegistry.has(arg.argRef as Cls) ? primitiveShapeProblem(value, arg.arrDepth) : null;
+  if (shapeProblem && value !== null && value !== undefined)
+    throw new FilterQueryError(`Invalid filter argument "${arg.name}" for key: ${key}: expected ${shapeProblem}`);
+  if (arg.arrDepth && countItems(value, arg.arrDepth) > arg.maxItems)
+    throw new FilterQueryError(`Filter argument "${arg.name}" for key: ${key} takes at most ${arg.maxItems} items`);
   try {
-    return deserialize(arg.argRef, arg.arrDepth, value, { key: arg.name, nullable: arg.nullable });
+    return InputParser.parse(arg.argRef as Cls, arg.arrDepth, value, {
+      key: arg.name,
+      nullable: arg.nullable,
+      enum: arg.enum,
+    });
   } catch (error) {
     throw new FilterQueryError(
       `Invalid filter argument "${arg.name}" for key: ${key}: ${error instanceof Error ? error.message : String(error)}`,
@@ -150,7 +188,8 @@ export const resolveFilterQuery = (
   args?: unknown[] | null,
 ): QueryOf<any> => {
   const key = queryKey || "any";
-  const filterInfo = getFilterMeta(filterRef).query[key];
+  const { query } = getFilterMeta(filterRef);
+  const filterInfo = Object.hasOwn(query, key) ? query[key] : undefined;
   const queryFn = filterInfo?.queryFn;
   if (!queryFn) throw new FilterQueryError(`No filter query for key: ${key}`);
   const given = Array.isArray(args) ? args : [];
@@ -158,7 +197,7 @@ export const resolveFilterQuery = (
     const value = given[idx];
     if (!arg.nullable && (value === null || value === undefined))
       throw new FilterQueryError(`Missing filter argument "${arg.name}" for key: ${key}`);
-    const parsed = tryDeserializeFilterArg(arg, value, key);
+    const parsed = parseFilterArg(arg, value, key);
     // Every other filter call path pads a missing optional with `undefined`; a query that tests `arg === undefined`
     // must not start seeing `null` because the args arrived over the wire.
     return parsed === null ? undefined : parsed;
@@ -278,6 +317,7 @@ interface ArgProps<Value = unknown> {
   nullable?: boolean;
   ref?: string;
   default?: Value;
+  maxItems?: number;
 }
 export class FilterInfo<ArgNames extends string[] = any, Args extends any[] = any, Model = any> {
   readonly argNames: ArgNames = [] as unknown as ArgNames;
@@ -295,6 +335,7 @@ export class FilterInfo<ArgNames extends string[] = any, Args extends any[] = an
   >(name: ArgName, argRef: Arg, option?: Omit<ArgProps<_FieldToValue>, "nullable">) {
     if (this.queryFn) throw new Error("Query function is already set");
     else if (this.args.at(-1)?.option?.nullable) throw new Error("Last argument is nullable");
+    FilterInfo.#assertTyped(name, argRef);
     this.argNames.push(name);
     this.args.push({ name, argRef, option });
     return this as unknown as FilterInfo<[...ArgNames, ArgName], [...Args, arg: _FieldToValue], Model>;
@@ -306,6 +347,7 @@ export class FilterInfo<ArgNames extends string[] = any, Args extends any[] = an
     _FieldToValue = DocumentModel<FieldToValue<Arg>>,
   >(name: ArgName, argRef: Arg, option?: Omit<ArgProps<_FieldToValue>, "nullable">) {
     if (this.queryFn) throw new Error("Query function is already set");
+    FilterInfo.#assertTyped(name, argRef);
     this.argNames.push(name);
     this.args.push({ name, argRef, option: { ...option, nullable: true } });
     return this as unknown as FilterInfo<[...ArgNames, ArgName], [...Args, opt?: _FieldToValue | null], Model>;
@@ -314,6 +356,14 @@ export class FilterInfo<ArgNames extends string[] = any, Args extends any[] = an
     if (this.queryFn) throw new Error("Query function is already set");
     this.queryFn = query;
     return this;
+  }
+  // The root slice hands a caller's args to the filter, and an `Any` arg would let the caller shape the query itself.
+  static #assertTyped(name: string, argRef: ConstantFieldTypeInput) {
+    const [single] = getNonArrayModel(argRef as Cls);
+    if (single === Any)
+      throw new Error(
+        `Filter argument "${name}" is declared as Any; declare its type (a primitive, an enum or a scalar) so a caller's value is checked against it`,
+      );
   }
 }
 

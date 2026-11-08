@@ -22,8 +22,8 @@ import {
   listAkanMcpTools,
   parseJsonOutput,
   stringArg,
+  workflowArtifactPath,
   workflowInputsArg,
-  workspacePath,
 } from "@akanjs/devkit/akanMcpContract";
 import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
@@ -236,7 +236,7 @@ export class ContextRunner extends runner("context") {
       return compactDoctorWorkspaceResult(
         await AkanContextAnalyzer.doctor(workspace, {
           strict: !!args.strict,
-          runIdOrPlan: typeof args.runIdOrPlan === "string" ? workspacePath(workspace, args.runIdOrPlan) : null,
+          runIdOrPlan: typeof args.runIdOrPlan === "string" ? workflowArtifactPath(workspace, args.runIdOrPlan) : null,
           changedFiles: Array.isArray(args.changedFiles)
             ? args.changedFiles.filter((file): file is string => typeof file === "string")
             : [],
@@ -256,7 +256,7 @@ export class ContextRunner extends runner("context") {
       const plan = parseJsonOutput(
         await new WorkflowRunner().plan(workflow, inputs, {
           format: "json",
-          out: workspacePath(workspace, planPath),
+          out: workflowArtifactPath(workspace, planPath),
         }),
       );
       return {
@@ -272,7 +272,7 @@ export class ContextRunner extends runner("context") {
     }
     if (name === "apply_workflow") {
       const report = parseJsonOutput(
-        await new WorkflowRunner().apply(workspacePath(workspace, stringArg(args, "planPath")), {
+        await new WorkflowRunner().apply(workflowArtifactPath(workspace, stringArg(args, "planPath")), {
           format: "json",
           dryRun: !!args.dryRun,
           workspace,
@@ -294,7 +294,7 @@ export class ContextRunner extends runner("context") {
     }
     if (name === "run_validation")
       return parseJsonOutput(
-        await new WorkflowRunner().validate(workspacePath(workspace, stringArg(args, "runIdOrPlan")), {
+        await new WorkflowRunner().validate(workflowArtifactPath(workspace, stringArg(args, "runIdOrPlan")), {
           format: "json",
           workspace,
           includeBaselineDetails: !!args.includeBaselineDetails,

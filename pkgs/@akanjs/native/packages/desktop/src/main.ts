@@ -6,6 +6,7 @@
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { loadAcl, type ResolvedAcl } from "../../core/src/acl.ts";
 import { renderInitScript } from "../../core/src/protocol.ts";
 import { GATE_TIMEOUT_MS, SETUP_TIMEOUT_MS } from "./dispatcher.ts";
 import { ABI_MAJOR, cstr, lastError, openNative, resolvePaths } from "./ffi.ts";
@@ -103,13 +104,15 @@ export async function startMain(workerUrl: string): Promise<never> {
   let fileEnv: Record<string, string>;
   let dev = false;
   let appId = "";
+  let acl: ResolvedAcl | null = null;
   try {
     shell = JSON.parse(readFileSync(join(paths.resources, "shell.json"), "utf8"));
     boot = readFileSync(join(paths.resources, "boot.json"), "utf8");
     fileEnv = JSON.parse(readFileSync(join(paths.resources, "env.runtime.json"), "utf8")) as Record<string, string>;
-    const parsed = JSON.parse(boot) as { dev?: boolean; app?: { id?: string } };
+    const parsed = JSON.parse(boot) as { dev?: boolean; app?: { id?: string }; acl?: unknown };
     dev = parsed.dev === true;
     appId = parsed.app?.id ?? "";
+    acl = loadAcl(parsed).acl;
   } catch (error) {
     fail(`cannot read app resources in ${paths.resources}`, error);
   }
@@ -174,6 +177,7 @@ export async function startMain(workerUrl: string): Promise<never> {
     backgroundColor: shell.backgroundColor,
     backgroundColorDark: shell.backgroundColorDark,
     externalSchemes: shell.externalSchemes ?? [],
+    ...(acl ? { acl } : {}),
     ...(shell.recovery ? { recovery: shell.recovery } : {}),
     ...(shell.screenCapture ? { screenCapture: shell.screenCapture } : {}),
     // Tests start the app without stealing focus from the user.

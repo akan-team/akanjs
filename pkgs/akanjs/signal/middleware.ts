@@ -34,6 +34,8 @@ export class Logging extends middleware("logging") {
         }
         return result;
       } catch (error) {
+        //? A body the caller could not deliver is its own 400, unlogged as when the body was read before the chain.
+        if (context.isBodyReadFailure(error)) throw error;
         const line = `Error ${context.endpointInfo.type}-${context.key} / ${Date.now() - start}ms: ${String(error)}`;
         // A refused flood would write a line per call; `EndpointRateLimit` already warned once for the endpoint.
         if (isExceptionLike(error) && error.statusCode === 429) {
@@ -52,16 +54,28 @@ export class Timeout extends middleware("timeout") {
     return async (context: SignalContext, next: () => Promise<unknown>) => {
       const timeout = context.endpointInfo.signalOption.timeout;
       if (!timeout || !Number.isFinite(timeout) || timeout <= 0) return await next();
+      const start = performance.now();
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let settled = false;
       try {
         return await Promise.race([
           next(),
           // A dictionary key, the same answer the client gives when its own budget runs out.
           new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Exception(504, "base.error.gatewayTimeout")), timeout);
+            //? Off the clock while a deferred body uploads: that runs at the caller's pace, not the handler's.
+            const expire = () => {
+              if (settled) return;
+              const { ms, pending } = context.bodyReadTime;
+              if (pending) return void pending.then(expire);
+              const left = start + timeout + ms - performance.now();
+              if (left > 0) timer = setTimeout(expire, left);
+              else reject(new Exception(504, "base.error.gatewayTimeout"));
+            };
+            timer = setTimeout(expire, timeout);
           }),
         ]);
       } finally {
+        settled = true;
         clearTimeout(timer);
       }
     };

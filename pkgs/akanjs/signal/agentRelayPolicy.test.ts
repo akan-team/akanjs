@@ -41,9 +41,45 @@ const relay = (body: LlmTurnRequest, accept: string, account: object | null, ip:
 };
 
 describe("AgentRelayPolicy", () => {
-  test("hands the request on untouched while no policy is set", async () => {
+  test("hands a request within the default caps on untouched while no policy is set", async () => {
     const sent = request();
     expect(await AgentRelayPolicy.apply(sent, { account: null, ip: null })).toBe(sent);
+  });
+
+  test("refuses a request past a default cap while no policy is set, and an identity policy relays it", async () => {
+    const { messages, tools, chars, attachmentChars } = AgentRelayPolicy.defaultLimits;
+    const oversized: LlmTurnRequest[] = [
+      { ...request(), messages: Array.from({ length: messages + 1 }, () => ({ role: "user" as const, text: "hi" })) },
+      { ...request(), tools: Array.from({ length: tools + 1 }, (_, idx) => ({ name: `tool${idx}` })) },
+      { ...request(), instructions: "x".repeat(chars + 1) },
+      {
+        ...request(),
+        messages: [
+          {
+            role: "user",
+            text: "look",
+            attachments: [{ name: "a.png", mimeType: "image/png", data: "A".repeat(attachmentChars + 1) }],
+          },
+        ],
+      },
+    ];
+    for (const sent of oversized) {
+      const refusal = await AgentRelayPolicy.apply(sent, { account: null, ip: null }).catch((error: unknown) => error);
+      expect(Err.is(refusal, "agent.error.requestRefused")).toBe(true);
+      expect((refusal as { statusCode: number }).statusCode).toBe(413);
+    }
+    AgentRelayPolicy.use((sent) => sent);
+    for (const sent of oversized) expect(await AgentRelayPolicy.apply(sent, { account: null, ip: null })).toBe(sent);
+  });
+
+  test("keeps the caps under a policy of the app's own that asks for them, at its own limits", async () => {
+    AgentRelayPolicy.use((sent) => AgentRelayPolicy.capped({ ...sent, instructions: "Server scope." }, { tools: 2 }));
+    const refusal = await AgentRelayPolicy.apply(request(), { account: null, ip: null }).catch(
+      (error: unknown) => error,
+    );
+    expect(Err.is(refusal, "agent.error.requestRefused")).toBe(true);
+    const within = await AgentRelayPolicy.apply({ ...request(), tools: [] }, { account: null, ip: null });
+    expect(within.instructions).toBe("Server scope.");
   });
 
   test("sends what the policy returns, and null clears it", async () => {

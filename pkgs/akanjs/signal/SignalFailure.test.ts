@@ -33,6 +33,15 @@ describe("SignalFailure", () => {
     });
   });
 
+  test("says nothing either for a server started without NODE_ENV, or with one it does not know", () => {
+    for (const NODE_ENV of [undefined, "staging"])
+      withEnv({ NODE_ENV, AKAN_COMMAND_TYPE: undefined, AKAN_ERROR_DETAIL: undefined }, () => {
+        const body = SignalFailure.body(new Error("SQLITE_ERROR: no such column: user.secret"));
+        expect(body.error).toBe("Internal Server Error");
+        expect("stack" in body).toBe(false);
+      });
+  });
+
   test("keeps the message and stack outside a production build", () => {
     withEnv({ NODE_ENV: "development", AKAN_COMMAND_TYPE: undefined, AKAN_ERROR_DETAIL: undefined }, () => {
       const body = SignalFailure.body(new Error("boom")) as { error: string; stack?: string };

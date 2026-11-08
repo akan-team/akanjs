@@ -21,6 +21,11 @@ export class McpExecutionContext extends HttpExecutionContext {
     this.#arguments = args;
   }
 
+  // The arguments came in the JSON-RPC call, which the router has already read.
+  override defersBody(): boolean {
+    return false;
+  }
+
   // Absent values become null, as a missing query string does. Undeclared names are refused: clients often ignore
   // `additionalProperties: false`, and an unpublished `Any` arg would let an agent pass an arbitrary query.
   override async readArgs(endpointInfo: EndpointInfo): Promise<unknown[]> {

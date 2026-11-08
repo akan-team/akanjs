@@ -49,6 +49,25 @@ describe("DevtoolsRouter gating", () => {
     expect(DevtoolsRouter.isEnabled(makeEnv("main"))).toBe(false);
   });
 
+  test("stays shut for a local environment built for production or run in a non-local operation mode", () => {
+    const saved = { nodeEnv: process.env.NODE_ENV, command: process.env.AKAN_COMMAND_TYPE };
+    try {
+      delete process.env.AKAN_COMMAND_TYPE;
+      process.env.NODE_ENV = "production";
+      expect(DevtoolsRouter.isEnabled(makeEnv("local"))).toBe(false);
+      process.env.AKAN_COMMAND_TYPE = "start";
+      expect(DevtoolsRouter.isEnabled(makeEnv("local"))).toBe(true);
+      expect(DevtoolsRouter.isEnabled({ ...makeEnv("local"), operationMode: "cloud" })).toBe(false);
+      process.env.AKAN_DEVTOOLS = "true";
+      expect(DevtoolsRouter.isEnabled({ ...makeEnv("local"), operationMode: "cloud" })).toBe(true);
+    } finally {
+      if (saved.nodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = saved.nodeEnv;
+      if (saved.command === undefined) delete process.env.AKAN_COMMAND_TYPE;
+      else process.env.AKAN_COMMAND_TYPE = saved.command;
+    }
+  });
+
   test("AKAN_DEVTOOLS forces the gate open or shut", () => {
     process.env.AKAN_DEVTOOLS = "true";
     expect(DevtoolsRouter.isEnabled(makeEnv("debug"))).toBe(true);

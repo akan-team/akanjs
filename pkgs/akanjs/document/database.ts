@@ -153,6 +153,7 @@ export type DatabaseInstanceWithQuerySort<
   __load: (id?: string) => Promise<Doc | null>;
   __loadMany: (ids: string[]) => Promise<Doc[]>;
   __create: (data: _DataInput) => Promise<Doc>;
+  __createMany: (data: _DataInput[]) => Promise<Doc[]>;
   __update: (id: string, data: Partial<Doc>) => Promise<Doc>;
   __remove: (id: string) => Promise<Doc>;
   __removeMany: (query: _QueryOfDoc) => Promise<UpdateResult>;

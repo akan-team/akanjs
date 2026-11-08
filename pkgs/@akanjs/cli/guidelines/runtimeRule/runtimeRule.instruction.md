@@ -102,9 +102,11 @@ worker per web-serving replica.
   gateway's own shape — a `children` array with one entry — so a probe reads one contract either way. It owns the
   rotating log file the gateway would otherwise write, in the same `runtime/logs` directory.
 - **Health detail and metrics answer only `Authorization: Bearer $AKAN_STATUS_TOKEN`** (or the log stream token)
-  outside `local`: without it `/_akan/app/health` is `{ status }` alone (still 200) and `/_akan/app/metrics` is 401.
-  A probe that reads only the status code needs nothing; give a scraper or monitor `AKAN_STATUS_TOKEN`, which reads
-  nothing else.
+  outside the local dev runtime — `AKAN_PUBLIC_ENV` and the operation mode both `local`, under `akan start` or a
+  `NODE_ENV` other than `production`, so a built server stays closed: without it `/_akan/app/health` is `{ status }`
+  alone (still 200) and `/_akan/app/metrics` is 401. An address that sends 10 wrong bearers in a minute is refused
+  the right one too until the minute passes. A probe that reads only the status code needs nothing; give a scraper or
+  monitor `AKAN_STATUS_TOKEN` (32 characters or more, or it warns), which reads nothing else.
 - **Nothing supervises a solo process but the orchestrator**, since the gateway's crash-restart-with-backoff went
   with it. `infra/app/templates/app.yaml` carries the liveness, readiness and startup probes that replace it.
 - **`PORT` is the whole tree's port, and a server-side self-call follows it.** `AkanApp` resolves it once
@@ -156,12 +158,13 @@ worker per web-serving replica.
   and neither does a save in a sibling app. An import that makes a new lib a dependency needs a fresh
   `akan start`, because it needs a `sync` first anyway. Before the first `sync` the manifests do not exist yet and
   the whole `libs/` container is watched, which is the safe direction.
-- **A built artifact runs from the generated app directory** with the Akan runtime environment variables:
+- **A built artifact runs from the generated app directory, without Docker and without an env.** `akan build`
+  writes `akan.env.json` beside `main.js` with the values the Dockerfile's `ENV` lines set, and `main.js` takes
+  each one the process was not started with, so a variable you set (or the image's `ENV`) wins. Start it from that
+  directory: the runtime reads its artifacts and writes `runtime/` and SQLite files relative to the cwd.
 
   ```bash
-  cd dist/apps/<appName> && USE_AKANJS_PKGS=true AKAN_PUBLIC_REPO_NAME=<repo> AKAN_PUBLIC_SERVE_DOMAIN="<domain>" \
-    AKAN_PUBLIC_APP_NAME=<appName> AKAN_PUBLIC_ENV=local AKAN_PUBLIC_OPERATION_MODE=local SERVER_MODE=federation \
-    AKAN_PUBLIC_BASE_PATHS=<basePaths> bun main.js
+  cd dist/apps/<appName> && PORT=3100 bun main.js
   ```
 
 - **A server a test boots in-process takes `start({ listen: false, schedules: false })`** to run no internal
@@ -207,7 +210,8 @@ normalized to `info` with one warning.
   server's socket rather than reading their own logs.
 - **The generated Dockerfile sets `AKAN_LOG_TO_FILE=0`.** A container's writable layer is ephemeral and nothing
   collects a file from it; stdout is the collection path. A deployment that wants the files back sets
-  `AKAN_LOG_TO_FILE=1`.
+  `AKAN_LOG_TO_FILE=1`; they are created 0600, so a collector running as another user needs `AKAN_LOG_FILE_MODE`
+  (octal, e.g. `640`), and a file already there keeps its mode.
 - **`AKAN_LOG_FORMAT=ndjson` makes the container's stdout one JSON record per line, and the hub owner (gateway or
   solo replica) its only writer** — every other server process turns its console off and forwards from
   `AKAN_LOG_STDOUT_LEVEL` (default: the console level); a child's or the RSC worker's crash stack is wrapped as a
@@ -216,8 +220,8 @@ normalized to `info` with one warning.
   unset, the route does not exist. The same bearer also unlocks the health detail and metrics.
 - **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call; **`AKAN_LOG_FLIGHT=1`**
   keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past
-  `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — in `local`, or with the
-  `AKAN_LOG_DEBUG_HEADER` secret.
+  `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — under the local dev runtime, or
+  with the `AKAN_LOG_DEBUG_HEADER` secret.
 - **Structured values go in `LogRecord.attrs` via `Logger.emit(...)`**; a key naming a secret is `[redacted]`
   before the record exists.
 - **Never log per delivered record in anything that delivers records.** The control socket and the hub do not,
@@ -394,11 +398,11 @@ const config: AppConfig = {
 A desktop app whose `native` section, or target, declares `desktop: { server: true }` carries the app's server:
 `akan build-desktop`, `start-desktop --release` and `publish-update` put the backend `akan build` made into the
 app — everything the backend build wrote (the `.js`, `akan.build.json`, `private/`, a bundled package's `.node`,
-`.wasm` or file asset) but the Dockerfile, the RSC worker, the console, `csr/` and `public/` — and install its
-packages first with `bun install --production --prefer-offline`, before `akan build` runs. `start-desktop` without
-`--release` starts `akan start` beside the app when no dev server of this checkout answers. The setting is the
-app's backend, so it does not change under an installed app: an update whose release carries a server when the app
-has none, or none when it has one, is refused, and switching means a reinstall.
+`.wasm` or file asset) but the Dockerfile and its `akan.env.json`, the RSC worker, the console, `csr/` and
+`public/` — and install its packages first with `bun install --production --prefer-offline`, before `akan build`
+runs. `start-desktop` without `--release` starts `akan start` beside the app when no dev server of this checkout
+answers. The setting is the app's backend, so it does not change under an installed app: an update whose release
+carries a server when the app has none, or none when it has one, is refused, and switching means a reinstall.
 `desktop: { server: { omit: ["rclnodejs"] } }` carries the server without packages only the image needs — an addon
 tied to the image's system, code only a process the app never starts loads — and whatever only they pull in; the
 image keeps them, and the server's own bundle must not import them. A package another dependency still installs
@@ -598,8 +602,8 @@ serving without a key. Everything else is behind the ops channel.
 
 | surface | what it does |
 |---|---|
-| `bun main.js ops snapshot [--id] [--out] [--include-solid] [--json]` | `VACUUM INTO` a consistent copy, `integrity_check`, sha256, gzip, optional age encryption, `manifest.json` |
-| `bun main.js ops restore <manifest.json> [--identity <file>]` | offline only: verify, stage, keep the old file as `<db>.pre-restore-<ts>` (its `-wal`/`-shm` beside it), swap |
+| `bun main.js ops snapshot [--id] [--out] [--include-solid] [--allow-plaintext] [--json]` | `VACUUM INTO` a consistent copy, `integrity_check`, sha256, gzip, age encryption, `manifest.json` |
+| `bun main.js ops restore <manifest.json> [--identity <file>] [--allow-plaintext]` | offline only: verify, stage, keep the old file as `<db>.pre-restore-<ts>` (its `-wal`/`-shm` beside it), swap |
 | `GET /_akan/ops/info` | the public info plus `akanVersion`, `buildId`, `serverMode`, `databaseMode`, `solo`, `startedAt`, `replicaIdx` |
 | `POST /_akan/ops/snapshot` `{ id, includeSolid?, uploadUrls: { main, solid?, manifest } }` | 202; a child process snapshots, then PUTs each file and the manifest **last** |
 | `GET /_akan/ops/snapshot/:id` | `running` → `uploading` → `done` \| `failed`; kept in memory, so a restart answers 404 |
@@ -612,12 +616,15 @@ serving without a key. Everything else is behind the ops channel.
 - **Restore refuses while an app answers `/_akan/app/health` on `PORT`** and names it by its `/_akan/app/info`;
   `--force` is for a port some other app holds.
 - **The channel exists only when `AKAN_OPS_PUBLIC_KEY` is set** (Ed25519: PEM, JWK, base64 SPKI or raw 32 bytes).
-  The control plane signs a short EdDSA JWS — `aud`, `iat`, `exp` at most 300s after `iat`, a `jti` the process
-  refuses twice, and optionally `sub`, whom it acts for — and the host holds only the public half, so a machine
-  someone carries off mints nothing.
+  The control plane signs a short EdDSA JWS — `typ` `akan-ops+jwt` (`JWT` or none from an older control plane; any
+  other `typ` is refused), `aud`, `iat`, `exp` at most 300s after `iat`, a `jti` the process refuses twice, and
+  optionally `sub`, whom it acts for — and the host holds only the public half, so a machine someone carries off
+  mints nothing.
   `aud` is `<appName>/<environment>`, or `<appName>/<environment>/<AKAN_OPS_INSTANCE>` when that is set, and then
-  only that: a token minted for the app as a whole would replay across every host sharing the name. 30 calls a
-  minute per process; every refusal is the same 401. A malformed key leaves the app serving with the channel off.
+  only that: a token minted for the app as a whole would replay across every host sharing the name. Verified calls
+  get 30 a minute per process; every refusal is the same 401 and spends none of them, and an address refused 10
+  times in a minute gets 429 until it passes. A malformed key, or the machine token's own key
+  (`AKAN_MACHINE_PUBLIC_KEY`), logs an error and leaves the app serving with the channel off.
 - **A migrate job runs for the token's `sub`**, which the run records as its actor: apply and rollback refuse a
   token without one, and a body naming `actor` is refused. Each option reaches the command as `--name=value`. One
   job runs at a time per process (409 meanwhile); the run's own lease keeps two hosts on one database apart. Jobs
@@ -629,10 +636,13 @@ serving without a key. Everything else is behind the ops channel.
   (`SQLITE_DATABASE_PATH`, `AKAN_SOLID_DB_PATH`, `AKAN_SQLITE_DIR`); a solo process uses the path its adaptor
   actually opened, so a gateway deployment that moved the file in `env.server.ts` names it in the env too.
 - **`AKAN_BACKUP_RECIPIENT=age1…[,age1…]` encrypts before upload** — age v1 X25519, so `age -d -i key.txt` opens
-  it. Restore takes `--identity` / `AKAN_BACKUP_IDENTITY_FILE`, or a file an operator already decrypted with
-  `age -d -o <name without .age>`.
+  it. Outside local operation a snapshot refuses to run without it, the ops channel's job included, unless
+  `--allow-plaintext` or `AKAN_BACKUP_PLAINTEXT=1` allows an unencrypted one. Restore takes `--identity` /
+  `AKAN_BACKUP_IDENTITY_FILE`, or a file an operator already decrypted with `age -d -o <name without .age>`; given
+  an identity, it refuses a manifest recording no encryption without `--allow-plaintext`.
 - **The host keeps the newest `AKAN_OPS_SNAPSHOT_KEEP` (default 2) snapshots** under `AKAN_OPS_SNAPSHOT_DIR`
-  (default `<db dir>/snapshots/<id>/`) — the copy an edge still has while its uplink or the bucket is down.
+  (default `<db dir>/snapshots/<id>/`) — the copy an edge still has while its uplink or the bucket is down. Files are
+  0600 and each `<id>/` 0700; `AKAN_OPS_SNAPSHOT_FILE_MODE` (octal, e.g. `640`) sets another mode.
 - **`buildId` is `AKAN_BUILD_ID` when the deployment sets it**, else the git sha `akan build` wrote into
   `akan.build.json` beside `main.js` (`-dirty` when the tree was).
 - **`operationMode` does not gate any of this** — the key does. `edge` means a production host outside the

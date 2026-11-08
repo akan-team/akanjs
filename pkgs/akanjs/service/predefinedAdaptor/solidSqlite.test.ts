@@ -1008,6 +1008,21 @@ describe("sql dialects", () => {
     expect(d.applyUpdate(col, "unset", "status", undefined).sql).toBe(`("_doc") #- '{status}'`);
   });
 
+  test("postgres dialect quotes a path key the array literal would otherwise split", () => {
+    const d = new PostgresDialect();
+    const pathOf = (path: string) => d.eq(path, "x", "text").sql.match(/#>> (.*)\) COLLATE/)?.[1];
+
+    expect(pathOf("metadata.plain_key-1")).toBe(`'{metadata,plain_key-1}'`);
+    expect(pathOf("metadata.a,b")).toBe(`'{metadata,"a,b"}'`);
+    expect(pathOf("metadata.a}b")).toBe(`'{metadata,"a}b"}'`);
+    expect(pathOf('metadata.say "hi"')).toBe(`'{metadata,"say \\"hi\\""}'`);
+    expect(pathOf("metadata.back\\slash")).toBe(`'{metadata,"back\\\\slash"}'`);
+    expect(pathOf("metadata. padded")).toBe(`'{metadata," padded"}'`);
+    expect(pathOf("metadata.null")).toBe(`'{metadata,"null"}'`);
+    expect(pathOf("metadata.it's")).toBe(`'{metadata,it''s}'`);
+    expect(pathOf("metadata.{it's}")).toBe(`'{metadata,"{it''s}"}'`);
+  });
+
   test("postgres folding keeps params aligned with placeholders", () => {
     const d = new PostgresDialect();
     let acc = d.docColumn();

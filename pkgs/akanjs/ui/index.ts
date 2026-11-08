@@ -154,7 +154,6 @@ export { ToggleSelect } from "./ToggleSelect";
 export { Tooltip, type TooltipProps } from "./Tooltip";
 // Public so a `Dropdown` replacement can put the menu's aria state on its own trigger, as the default does.
 export { triggerSlot } from "./triggerSlot";
-// `UiOverrideProvider` is imported from here by the wrapper devkit generates for every `_overrides.tsx`.
 export {
   type AkanModalComponent,
   type AkanUiOverrideManifest,

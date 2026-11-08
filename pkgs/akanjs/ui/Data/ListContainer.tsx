@@ -170,19 +170,19 @@ export default function ListContainer<
   const loadedList = () => [...(storeGet<DataList<Light>>()[namesOfSlice.modelList] as DataList<Light>)];
   const whileLoaded = () => (modelListLoading ? `The ${refName} list is still loading.` : true);
   const setViewOfModel = st
-    .tool(namesOfSlice.setViewOfModel)
+    .tool(namesOfSlice.setViewOfModel, { taint: "exempt" })
     .desc(`Render the ${refName} list as cards or as a table.`)
     .arg("mode", String, { oneOf: ["card", "list"] })
     .exec((mode) => {
       setView(mode);
     });
   const setSortOfModel = st
-    .tool(sortKeys.length > 1 ? namesOfSlice.setSortOfModel : null)
+    .tool(sortKeys.length > 1 ? namesOfSlice.setSortOfModel : null, { taint: "exempt" })
     .desc(`Reorder the ${refName} list.`)
     .arg("sortKey", String, { oneOf: sortKeys })
     .exec((sortKey) => storeDo[namesOfSlice.setSortOfModel](sortKey));
   const setLimitOfModel = st
-    .tool(namesOfSlice.setLimitOfModel)
+    .tool(namesOfSlice.setLimitOfModel, { taint: "exempt" })
     .desc(`Set how many ${refName} rows one page holds.`)
     .arg("limit", Int, { oneOf: pageLimits })
     .exec((limit) => storeDo[namesOfSlice.setLimitOfModel](limit));
@@ -214,7 +214,7 @@ export default function ListContainer<
     .desc(`Open one ${refName} in the edit form.`)
     .arg("modelId", ID)
     .exec((modelId) => storeDo[namesOfSlice.editModel](modelId));
-  st.tool(rowActions.includes("view") && renderView ? namesOfSlice.viewModel : null)
+  st.tool(rowActions.includes("view") && renderView ? namesOfSlice.viewModel : null, { taint: "exempt" })
     .desc(`Open one ${refName} in the detail view.`)
     .arg("modelId", ID)
     .exec((modelId) => storeDo[namesOfSlice.viewModel](modelId));

@@ -2,7 +2,7 @@
 import { ImageResult } from "akanjs/base";
 import { csrLocation } from "akanjs/client";
 import { Logger } from "akanjs/common";
-import { AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle, StoreRegistry } from "akanjs/store";
+import { AgentConfirm, AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle, StoreRegistry } from "akanjs/store";
 import {
   type AgenticSurface,
   type MessageAttachment,
@@ -37,6 +37,7 @@ export class McpAppAgent {
     this.#surface = surface;
     this.#runner = new ToolRunner(surface, {
       approve: (request, signal) => McpAppAgent.#ask(approvals, request, signal),
+      ...(AgentConfirm.policy.afterScreenRead ? {} : { askAfterUntrusted: false }),
       settle: () => ScreenSettle.wait(),
       activity: (event) => AgentVisual.on(event),
     });

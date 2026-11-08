@@ -1,4 +1,4 @@
-import { capitalize } from "akanjs/common";
+import { capitalize, formSetterNames, modelNames } from "akanjs/common";
 import { actionTagOf } from "./actionTag";
 import { StoreRegistry } from "./storeRegistry";
 
@@ -16,11 +16,12 @@ export const formUploadOf = (setter: unknown): FormUpload | null => {
   const tag = actionTagOf(setter);
   const [formKey, field, ...rest] = tag?.state?.split(".") ?? [];
   if (!formKey?.endsWith("Form") || !field || rest.length) return null;
-  const [Model, Field] = [capitalize(formKey.slice(0, -"Form".length)), capitalize(field)];
-  if (tag?.action !== `set${Field}On${Model}`) return null;
+  const refName = formKey.slice(0, -"Form".length);
+  const names = formSetterNames(capitalize(refName), field);
+  if (tag?.action !== names.setFieldOnModel) return null;
   const actions = StoreRegistry.instance.do as unknown as { [key: string]: unknown };
-  const upload = actions[`upload${Field}On${Model}`];
-  const writeOn = actions[`writeOn${Model}`] as ((path: string, value: unknown) => unknown) | undefined;
+  const upload = actions[names.uploadFieldOnModel];
+  const writeOn = actions[modelNames(refName).writeOnModel] as ((path: string, value: unknown) => unknown) | undefined;
   if (typeof upload !== "function" || typeof writeOn !== "function") return null;
   // Read at write time, not when the poll started: a file the field no longer holds is not written back.
   const refresh = (files: HeldFile[]) => {

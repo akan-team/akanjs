@@ -33,6 +33,8 @@ const KNOWN: Shape = {
     report: { url: true },
     target: true,
     automatic: true,
+    windowsSigners: true,
+    expiresIn: true,
   },
   deepLinks: { schemes: true, domains: { "[]": { host: true, pathPrefixes: true } } },
   native: {

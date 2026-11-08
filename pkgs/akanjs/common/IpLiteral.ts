@@ -4,9 +4,11 @@ export class IpLiteral {
   //? A proxy may record a hop as `a.b.c.d:port` or `[v6]:port`; anything else that is not an address is `null`.
   static parse(entry: string): string | null {
     const trimmed = entry.trim();
-    const bracketed = /^\[([^\]]*:[^\]]*)\](?::\d{1,5})?$/.exec(trimmed);
+    //? The colon is checked apart: `[^\]]*:[^\]]*` backtracks quadratically on a forwarded header of `[:::…`.
+    const bracketed = /^\[([^\]]*)\](?::\d{1,5})?$/.exec(trimmed)?.[1];
+    const v6InBrackets = bracketed?.includes(":") ? bracketed : undefined;
     const v4WithPort = /^(\d{1,3}(?:\.\d{1,3}){3}):\d{1,5}$/.exec(trimmed);
-    const [address = "", zone, ...rest] = (bracketed?.[1] ?? v4WithPort?.[1] ?? trimmed).split("%");
+    const [address = "", zone, ...rest] = (v6InBrackets ?? v4WithPort?.[1] ?? trimmed).split("%");
     if (rest.length) return null;
     if (zone !== undefined && !(address.includes(":") && /^[A-Za-z0-9_.-]{1,64}$/.test(zone))) return null;
     const bytes = IpBytes.of(IpBytes.normalize(address));

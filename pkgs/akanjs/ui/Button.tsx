@@ -3,8 +3,8 @@ import { cn, usePage } from "akanjs/client";
 import { isThenable } from "akanjs/common";
 import type React from "react";
 import { type ButtonHTMLAttributes, type ComponentType, createElement, useState } from "react";
-import { AiFillCheckCircle, AiOutlineLoading3Quarters } from "react-icons/ai";
 import { agentAttrs } from "./agentAttrs";
+import { Icon } from "./Icon";
 import { type ButtonVariants, buttonRecipe } from "./recipe";
 import { useUiOverride, useUiRecipe } from "./UiOverride";
 
@@ -117,11 +117,11 @@ const DefaultButton = <Result = unknown>({
             >
               {state.shown === "success" ? (
                 <>
-                  <AiFillCheckCircle className={successIconClass} /> {l("base.processed")}
+                  <Icon.CheckCircleFill className={successIconClass} /> {l("base.processed")}
                 </>
               ) : (
                 <>
-                  <AiOutlineLoading3Quarters className="animate-spin" /> {l("base.processing")}
+                  <Icon.Loading className="animate-spin" /> {l("base.processing")}
                 </>
               )}
             </span>
@@ -140,9 +140,9 @@ const DefaultButton = <Result = unknown>({
               )}
             >
               {state.shown === "success" ? (
-                <AiFillCheckCircle className={successIconClass} />
+                <Icon.CheckCircleFill className={successIconClass} />
               ) : (
-                <AiOutlineLoading3Quarters className="animate-spin" />
+                <Icon.Loading className="animate-spin" />
               )}
             </span>
           </>

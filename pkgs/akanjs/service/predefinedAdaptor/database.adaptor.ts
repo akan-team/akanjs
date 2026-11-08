@@ -9,6 +9,8 @@ import type { ReservedSql, Sql, TransactionSql } from "postgres";
 import { adapt } from "../adapt";
 import { ScheduleAdaptorRole } from "./role.adaptor";
 import {
+  DEFAULT_SEARCH_MAX_LENGTH,
+  DEFAULT_SEARCH_MAX_TERMS,
   DEFAULT_TOKENIZER,
   OPTIMIZE_CRON,
   OPTIMIZE_CRON_KEY,
@@ -74,6 +76,8 @@ export { descriptorHash, stableJson } from "./sql/values";
 const searchConfigOf = (env: SqliteEnv): Required<SearchConfig> => ({
   enabled: env.database?.search?.enabled ?? parseSearchEnabled(process.env.AKAN_SEARCH_ENABLED),
   tokenizer: env.database?.search?.tokenizer ?? process.env.AKAN_SEARCH_TOKENIZER ?? DEFAULT_TOKENIZER,
+  maxTerms: env.database?.search?.maxTerms ?? DEFAULT_SEARCH_MAX_TERMS,
+  maxLength: env.database?.search?.maxLength ?? DEFAULT_SEARCH_MAX_LENGTH,
 });
 
 export class SqliteDatabase

@@ -535,6 +535,13 @@ export class CodeAgent {
           const verdict = this.#gate.verdict(event.toolName, event.input);
           if (verdict.block) return this.#refuse(event.toolCallId, event.toolName, event.input, verdict.block);
           if (!verdict.approval) return undefined;
+          if (verdict.strict && !this.#profile.ui.canPrompt)
+            return this.#refuse(
+              event.toolCallId,
+              event.toolName,
+              event.input,
+              "This reaches a host outside the profile's list, which needs the user's approval, and nobody can be asked in this session. Use a listed host, or say what you need fetched.",
+            );
           const approved = await this.#requestApproval(event.toolCallId, event.toolName, event.input, verdict.approval);
           if (approved) return undefined;
           return this.#refuse(event.toolCallId, event.toolName, event.input, "The user declined this action.");

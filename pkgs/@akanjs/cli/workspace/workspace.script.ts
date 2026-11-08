@@ -29,16 +29,20 @@ export class WorkspaceScript extends script("workspace", [
     appName: string,
     {
       dirname = ".",
+      inPlace = false,
       installLibs = false,
       init = true,
+      sample = true,
       registryUrl,
       owner,
       mcpInstall = true,
       agentInstall = true,
     }: {
       dirname?: string;
+      inPlace?: boolean;
       installLibs?: boolean;
       init?: boolean;
+      sample?: boolean;
       registryUrl?: string;
       owner?: string | null;
       mcpInstall?: boolean;
@@ -46,10 +50,13 @@ export class WorkspaceScript extends script("workspace", [
     },
   ) {
     const akanVersion = await this.packageScript.version(null, { log: false });
+    const libs = installLibs ? ["util", "shared"] : [];
     const workspace = await this.workspaceRunner.createWorkspace(repoName, appName, {
       dirname,
+      inPlace,
       init,
       akanVersion,
+      libs,
       ...(registryUrl ? { registryUrl } : {}),
       ...(owner ? { owner } : {}),
     });
@@ -57,22 +64,27 @@ export class WorkspaceScript extends script("workspace", [
       await this.libraryScript.installLibrary(workspace, "util");
       await this.libraryScript.installLibrary(workspace, "shared");
     }
-    await this.applicationScript.createApplication(appName, workspace, {
-      libs: installLibs ? ["util", "shared"] : [],
-      sample: true,
-    });
-    await workspace.applyTemplate({
-      basePath: `apps/${appName}`,
-      template: "appSample",
-      dict: { appName },
-      options: { libs: installLibs ? ["util", "shared"] : [] },
-    });
+    await this.applicationScript.createApplication(appName, workspace, { libs, sample });
+    if (sample)
+      await workspace.applyTemplate({
+        basePath: `apps/${appName}`,
+        template: "appSample",
+        dict: { appName },
+        options: { libs },
+      });
     if (agentInstall) await this.agentScript.agent(workspace, "install", "all", { force: true });
     if (mcpInstall) await this.contextScript.mcpInstall(workspace, "all", { force: true });
     const gitSpinner = workspace.spinning("Initializing git repository and commit...");
     try {
-      await workspace.commit("Initial commit", { init: true });
-      gitSpinner.succeed("Git repository initialized and committed");
+      const commit = await this.workspaceRunner.commitWorkspace(workspace);
+      if (!commit.committed)
+        gitSpinner.succeed(`Left the new files uncommitted in the git repository at ${commit.repository}`);
+      else if (commit.identity)
+        gitSpinner.succeed(
+          `Git repository initialized and committed as ${commit.identity.name} <${commit.identity.email}>, since git ` +
+            "has no identity here. Once user.name and user.email are set, `git commit --amend --reset-author` makes it yours",
+        );
+      else gitSpinner.succeed("Git repository initialized and committed");
     } catch (_) {
       gitSpinner.fail("Git repository initialization failed. It's not fatal, you can commit manually");
     }

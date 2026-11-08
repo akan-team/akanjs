@@ -1,5 +1,5 @@
 import { getEnv } from "akanjs/base";
-import { getAuthToken } from "akanjs/client";
+import { getAuthToken, getSessionClaims } from "akanjs/client";
 import { decodeJwtPayload, deepObjectify, isDayjs, Logger } from "akanjs/common";
 import { ConstantRegistry, immerify, stripSecrets } from "akanjs/constant";
 
@@ -83,7 +83,7 @@ export class DraftStore {
   /** Hashes the whole JWT payload: the claim naming the user lives in the app's own `AddData`, not in `Account`. */
   static identity(): string {
     if (typeof window === "undefined") return "anon";
-    const jwt = getAuthToken();
+    const jwt = getAuthToken() ?? getSessionClaims();
     if (!jwt) return "anon";
     try {
       const payload = decodeJwtPayload<Record<string, unknown>>(jwt);

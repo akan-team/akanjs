@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { mkdtemp, realpath } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
@@ -56,6 +59,7 @@ describe("WorkspaceCommand", () => {
       ["Option", 6],
       ["Option", 7],
       ["Option", 8],
+      ["Option", 9],
     ]);
 
     const command = CommandContainer.get(WorkspaceCommand);
@@ -67,7 +71,38 @@ describe("WorkspaceCommand", () => {
     await handler?.call(command, "My Repo", "My App", "local", true, false, "http://127.0.0.1:4873");
 
     expect(calls).toEqual([
-      ["my-repo", "my-app", { dirname: "local", installLibs: true, init: false, registryUrl: "http://127.0.0.1:4873" }],
+      [
+        "my-repo",
+        "my-app",
+        { dirname: "local", inPlace: false, installLibs: true, init: false, registryUrl: "http://127.0.0.1:4873" },
+      ],
+    ]);
+  });
+
+  test('creates the workspace in --dir itself when its name is ".", naming it after that folder', async () => {
+    const command = CommandContainer.get(WorkspaceCommand);
+    const calls: unknown[] = [];
+    command.workspaceScript.createWorkspace = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(WorkspaceCommand).find((meta) => meta.key === "createWorkspace")?.handler;
+    const dir = path.join(repoRoot, "local", "My App");
+    await handler?.call(command, ".", "web", dir, false, true, undefined, undefined, true, true, false);
+
+    expect(calls).toEqual([
+      [
+        "my-app",
+        "web",
+        {
+          dirname: dir,
+          inPlace: true,
+          installLibs: false,
+          init: true,
+          sample: false,
+          mcpInstall: true,
+          agentInstall: true,
+        },
+      ],
     ]);
   });
 
@@ -80,7 +115,7 @@ describe("WorkspaceCommand", () => {
     const handler = getTargetMetas(WorkspaceCommand).find((meta) => meta.key === "createWorkspace")?.handler;
     await handler?.call(command, "My Repo", undefined, ".", false, false);
 
-    expect(calls).toEqual([["my-repo", "app", { dirname: ".", installLibs: false, init: false }]]);
+    expect(calls).toEqual([["my-repo", "app", { dirname: ".", inPlace: false, installLibs: false, init: false }]]);
   });
 
   test("delegates generateAgentRules with overwrite options", async () => {
@@ -131,6 +166,10 @@ describe("WorkspaceScript", () => {
     script.contextScript.mcpInstall = async (...args: unknown[]) => {
       recorder.record("mcpInstall", ...args);
     };
+    script.workspaceRunner.commitWorkspace = async (...args: unknown[]) => {
+      recorder.record("commitWorkspace", ...args);
+      return { committed: true, repository: "/workspace", identity: null };
+    };
 
     const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
 
@@ -149,13 +188,13 @@ describe("WorkspaceScript", () => {
         "agent",
         "mcpInstall",
         "workspace.spinning",
-        "commit",
+        "commitWorkspace",
         "spinner.succeed",
       ]);
       expect(recorder.calls.find((call) => call.name === "createWorkspace")?.args).toEqual([
         "repo",
         "demo",
-        { dirname: "local", init: false, akanVersion: "2.0.0-beta.0" },
+        { dirname: "local", inPlace: false, init: false, akanVersion: "2.0.0-beta.0", libs: ["util", "shared"] },
       ]);
       expect(recorder.calls.find((call) => call.name === "createApplication")?.args).toEqual([
         "demo",
@@ -173,7 +212,10 @@ describe("WorkspaceScript", () => {
         "all",
         { force: true },
       ]);
-      expect(recorder.calls.find((call) => call.name === "commit")?.args).toEqual(["Initial commit", { init: true }]);
+      expect(recorder.calls.find((call) => call.name === "commitWorkspace")?.args).toEqual([workspace]);
+      expect(recorder.calls.find((call) => call.name === "spinner.succeed")?.args).toEqual([
+        "Git repository initialized and committed",
+      ]);
     } finally {
       if (previousUseAkanjsPkgs === undefined) delete process.env.USE_AKANJS_PKGS;
       else process.env.USE_AKANJS_PKGS = previousUseAkanjsPkgs;
@@ -200,6 +242,11 @@ describe("WorkspaceScript", () => {
     script.contextScript.mcpInstall = async (...args: unknown[]) => {
       recorder.record("mcpInstall", ...args);
     };
+    script.workspaceRunner.commitWorkspace = async () => ({
+      committed: true,
+      repository: "/workspace",
+      identity: null,
+    });
 
     await script.createWorkspace("repo", "demo", {
       dirname: "local",
@@ -210,6 +257,68 @@ describe("WorkspaceScript", () => {
 
     expect(recorder.names()).not.toContain("agent");
     expect(recorder.names()).not.toContain("mcpInstall");
+  });
+
+  test("skips the sample module, pages and helpers with sample false", async () => {
+    const script = CommandContainer.get(WorkspaceScript);
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor(
+      "workspace",
+      { applyTemplate: async (...args: unknown[]) => recorder.record("applyTemplate", ...args) },
+      recorder,
+    );
+    script.workspaceRunner.createWorkspace = async () => workspace as never;
+    script.applicationScript.createApplication = async (...args: unknown[]) => {
+      recorder.record("createApplication", ...args);
+    };
+    script.packageScript.version = async () => "2.0.0-beta.0";
+    script.workspaceRunner.commitWorkspace = async () => ({
+      committed: true,
+      repository: "/workspace",
+      identity: null,
+    });
+
+    await script.createWorkspace("repo", "demo", {
+      init: false,
+      sample: false,
+      mcpInstall: false,
+      agentInstall: false,
+    });
+
+    expect(recorder.calls.find((call) => call.name === "createApplication")?.args).toEqual([
+      "demo",
+      workspace,
+      { libs: [], sample: false },
+    ]);
+    expect(recorder.names()).not.toContain("applyTemplate");
+  });
+
+  test("says why the first commit was left to the user or made under a stand-in identity", async () => {
+    const script = CommandContainer.get(WorkspaceScript);
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace", { applyTemplate: async () => [] }, recorder);
+    script.workspaceRunner.createWorkspace = async () => workspace as never;
+    script.applicationScript.createApplication = async () => {};
+    script.packageScript.version = async () => "2.0.0-beta.0";
+    const options = { init: false, mcpInstall: false, agentInstall: false };
+    const succeeded = () =>
+      recorder.calls.filter((call) => call.name === "spinner.succeed").map((call) => call.args[0]);
+    spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    script.workspaceRunner.commitWorkspace = async () => ({ committed: false, repository: "/repo" });
+    await script.createWorkspace("repo", "demo", options);
+    script.workspaceRunner.commitWorkspace = async () => ({
+      committed: true,
+      repository: "/workspace",
+      identity: WorkspaceRunner.fallbackGitIdentity,
+    });
+    await script.createWorkspace("repo", "demo", options);
+
+    expect(succeeded()).toEqual([
+      "Left the new files uncommitted in the git repository at /repo",
+      expect.stringContaining("committed as Akan.js <noreply@akanjs.com>, since git has no identity here"),
+    ]);
+    expect(succeeded()[1]).toContain("git commit --amend --reset-author");
   });
 
   test("lints all apps/libs/packages except contract after syncing apps and libs", async () => {
@@ -334,18 +443,22 @@ describe("WorkspaceRunner", () => {
     });
     expect(workspacePackageJson.dependencies.akanjs).toBe("2.0.0-beta.0");
     expect(workspacePackageJson.dependencies).toMatchObject({
-      "@react-spring/web": expect.any(String),
-      "@use-gesture/react": expect.any(String),
       chance: expect.any(String),
       react: expect.any(String),
       "react-dom": expect.any(String),
       "react-icons": expect.any(String),
-      "react-refresh": expect.any(String),
       "react-server-dom-webpack": expect.any(String),
-      "react-spring": expect.any(String),
-      scheduler: expect.any(String),
       tailwindcss: expect.any(String),
     });
+    for (const shippedByAkanjs of [
+      "@react-spring/web",
+      "@use-gesture/react",
+      "react-refresh",
+      "react-spring",
+      "scheduler",
+      "tailwind-scrollbar",
+    ])
+      expect(workspacePackageJson.dependencies).not.toHaveProperty(shippedByAkanjs);
     expect(workspacePackageJson.dependencies).not.toHaveProperty("typescript");
     expect(workspacePackageJson.devDependencies).toMatchObject({
       "@biomejs/biome": expect.any(String),
@@ -392,6 +505,113 @@ describe("WorkspaceRunner", () => {
     expect(workspace.workspaceRoot).toBe(path.join(target, "repo"));
     expect(await Bun.file(path.join(target, "repo", "package.json")).exists()).toBe(true);
     expect(await Bun.file(path.join(cwd, target, "repo", "package.json")).exists()).toBe(false);
+  });
+
+  test("creates the workspace in an existing folder itself, keeping the files it does not write", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    const target = path.join(root, "app");
+    await writeText(path.join(target, "notes.txt"), "keep\n");
+    await writeText(path.join(target, ".vscode", "launch.json"), "{}\n");
+    process.chdir(root);
+    const workspace = await runner.createWorkspace("app", "demo", {
+      dirname: "app",
+      inPlace: true,
+      init: false,
+      akanVersion: "2.0.0-beta.0",
+    });
+
+    expect(await realpath(workspace.workspaceRoot)).toBe(await realpath(target));
+    expect(await Bun.file(path.join(target, "package.json")).exists()).toBe(true);
+    expect(await Bun.file(path.join(target, ".vscode", "settings.json")).exists()).toBe(true);
+    expect(await Bun.file(path.join(target, "notes.txt")).text()).toBe("keep\n");
+    expect(await Bun.file(path.join(target, ".vscode", "launch.json")).text()).toBe("{}\n");
+    expect(existsSync(path.join(target, "app"))).toBe(false);
+  });
+
+  test("refuses a folder holding files a new workspace would overwrite, before writing any of its own", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    const target = path.join(root, "app");
+    await writeText(path.join(target, "README.md"), "# mine\n");
+    await writeText(path.join(target, ".vscode", "settings.json"), "{}\n");
+    await writeText(path.join(target, "apps", "demo", "keep.ts"), "export {};\n");
+    const error = await runner
+      .createWorkspace("app", "demo", { dirname: target, inPlace: true, init: false, akanVersion: "2.0.0-beta.0" })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    const { message } = error as Error;
+    expect(message).toStartWith(`${target} already holds `);
+    for (const occupied of ["README.md", path.join(".vscode", "settings.json"), path.join("apps", "demo")])
+      expect(message).toContain(occupied);
+    expect(message).toContain("which a new workspace would overwrite");
+    expect(await Bun.file(path.join(target, "package.json")).exists()).toBe(false);
+    expect(await Bun.file(path.join(target, "README.md")).text()).toBe("# mine\n");
+  });
+
+  test("refuses the home folder and a filesystem root before writing anything", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    const home = path.join(root, "home");
+    await writeText(path.join(home, "notes.txt"), "keep\n");
+    spyOn(os, "homedir").mockReturnValue(home);
+    const applied = spyOn(WorkspaceExecutor.prototype, "applyTemplate").mockImplementation(async () => {
+      throw new Error("planned a template");
+    });
+    const fsRoot = path.parse(home).root;
+    const refusals = await Promise.all(
+      [home, fsRoot].map((dirname) =>
+        runner
+          .createWorkspace("repo", "demo", { dirname, inPlace: true, init: false, akanVersion: "2.0.0-beta.0" })
+          .catch((caught: unknown) => (caught as Error).message),
+      ),
+    );
+
+    expect(refusals[0]).toStartWith(`${home} is your home folder, and a workspace there would commit every file`);
+    expect(refusals[1]).toStartWith(`${fsRoot} is a filesystem root, and a workspace there would commit every file`);
+    expect(applied).not.toHaveBeenCalled();
+    expect(await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: home, dot: true }))).toEqual(["notes.txt"]);
+  });
+
+  test("refuses a folder whose path ends the way a path the workspace writes begins", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    const refusal = async (dirname: string, appName: string) =>
+      await runner
+        .createWorkspace(path.basename(dirname), appName, {
+          dirname,
+          inPlace: true,
+          init: false,
+          akanVersion: "2.0.0-beta.0",
+        })
+        .catch((caught: unknown) => (caught as Error).message);
+    const misplaced = [
+      { dirname: path.join(root, "apps"), appName: "web", paths: "apps/web" },
+      { dirname: path.join(root, "nested", "apps", "web"), appName: "web", paths: "apps/web" },
+      {
+        dirname: path.join(root, "patches"),
+        appName: "web",
+        paths: `${path.join("patches", "zod@3.25.76.patch")}, ${path.join("patches", "zod@4.4.3.patch")}`,
+      },
+    ];
+
+    for (const { dirname, appName, paths } of misplaced) {
+      expect(await refusal(dirname, appName)).toStartWith(`Akan would write ${paths} to the wrong place in ${dirname}`);
+      expect(existsSync(path.join(dirname, "package.json"))).toBe(false);
+    }
+    const named = await runner.createWorkspace("web", "web", {
+      dirname: path.join(root, "web"),
+      inPlace: true,
+      init: false,
+      akanVersion: "2.0.0-beta.0",
+    });
+    expect(await Bun.file(path.join(named.workspaceRoot, "package.json")).exists()).toBe(true);
+    expect(existsSync(path.join(named.workspaceRoot, "patches", "zod@4.4.3.patch"))).toBe(true);
   });
 
   test("gives a new workspace React's type packages at the versions the repo root uses", async () => {
@@ -558,6 +778,90 @@ describe("WorkspaceRunner", () => {
     expect(AppExecutor.from(workspace, "demo")).toBeInstanceOf(AppExecutor);
     expect(LibExecutor.from(workspace, "shared")).toBeInstanceOf(LibExecutor);
     expect(PkgExecutor.from(workspace, "@sample/tool")).toBeInstanceOf(PkgExecutor);
+  });
+});
+
+describe("WorkspaceRunner.commitWorkspace", () => {
+  const isolatedEnv = ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"];
+  const withGitConfig = async <Result>(root: string, config: string, run: () => Promise<Result>) => {
+    const saved = Object.fromEntries(
+      [...isolatedEnv, "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_CEILING_DIRECTORIES"].map((key) => [
+        key,
+        process.env[key],
+      ]),
+    );
+    await writeText(path.join(root, "gitconfig"), config);
+    for (const key of isolatedEnv) delete process.env[key];
+    Object.assign(process.env, {
+      GIT_CONFIG_GLOBAL: path.join(root, "gitconfig"),
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CEILING_DIRECTORIES: path.dirname(root),
+    });
+    try {
+      return await run();
+    } finally {
+      for (const [key, value] of Object.entries(saved))
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+  };
+  const git = (cwd: string, ...args: string[]) => {
+    const proc = Bun.spawnSync(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
+    return { ok: proc.exitCode === 0, out: proc.stdout.toString().trim() };
+  };
+  const scratch = async () => track({ root: await realpath(await mkdtemp(path.join(os.tmpdir(), "akan-git-"))) }).root;
+  const workspaceIn = async (workspaceRoot: string) => {
+    await writeText(path.join(workspaceRoot, "apps", "demo", "main.ts"), "export const demo = 1;\n");
+    return WorkspaceExecutor.fromRoot({ workspaceRoot, repoName: "repo" });
+  };
+  const userIdentity = "[user]\n\tname = Dev\n\temail = dev@example.com\n";
+
+  test("commits under a stand-in identity only when git has none", async () => {
+    const root = await scratch();
+    const bare = await workspaceIn(path.join(root, "bare"));
+    const named = await workspaceIn(path.join(root, "named"));
+
+    const anonymous = await withGitConfig(root, "[user]\n\tuseConfigOnly = true\n", () =>
+      new WorkspaceRunner().commitWorkspace(bare),
+    );
+    const configured = await withGitConfig(root, userIdentity, () => new WorkspaceRunner().commitWorkspace(named));
+
+    expect(anonymous).toEqual({
+      committed: true,
+      repository: bare.workspaceRoot,
+      identity: WorkspaceRunner.fallbackGitIdentity,
+    });
+    expect(git(bare.workspaceRoot, "log", "--format=%an <%ae> %s").out).toBe(
+      "Akan.js <noreply@akanjs.com> Initial commit",
+    );
+    expect(git(bare.workspaceRoot, "status", "--porcelain").out).toBe("");
+    expect(configured).toEqual({ committed: true, repository: named.workspaceRoot, identity: null });
+    expect(git(named.workspaceRoot, "log", "--format=%an <%ae>").out).toBe("Dev <dev@example.com>");
+  });
+
+  test("leaves a workspace inside another repository to it, unless that repository ignores its folder", async () => {
+    const outer = await scratch();
+    expect(git(outer, "init", "-q").ok).toBe(true);
+    await writeText(path.join(outer, ".gitignore"), "scratch/\nvendored/*\n!vendored/.gitkeep\n");
+    await writeText(path.join(outer, "vendored", ".gitkeep"), "");
+    const tracked = await workspaceIn(path.join(outer, "app"));
+    const ignored = await workspaceIn(path.join(outer, "scratch", "app"));
+    const contentsIgnored = await workspaceIn(path.join(outer, "vendored"));
+
+    const [inTracked, inIgnored, inContentsIgnored] = await withGitConfig(outer, userIdentity, async () => [
+      await new WorkspaceRunner().commitWorkspace(tracked),
+      await new WorkspaceRunner().commitWorkspace(ignored),
+      await new WorkspaceRunner().commitWorkspace(contentsIgnored),
+    ]);
+
+    expect(inTracked).toEqual({ committed: false, repository: outer });
+    expect(existsSync(path.join(tracked.workspaceRoot, ".git"))).toBe(false);
+    expect(git(outer, "rev-parse", "--verify", "HEAD").ok).toBe(false);
+    expect(git(outer, "status", "--porcelain", "--untracked-files=all").out).toContain("?? app/apps/demo/main.ts");
+    expect(inIgnored).toEqual({ committed: true, repository: ignored.workspaceRoot, identity: null });
+    expect(git(ignored.workspaceRoot, "log", "--format=%s").out).toBe("Initial commit");
+    expect(inContentsIgnored).toEqual({ committed: true, repository: contentsIgnored.workspaceRoot, identity: null });
+    expect(git(contentsIgnored.workspaceRoot, "log", "--format=%s").out).toBe("Initial commit");
   });
 });
 

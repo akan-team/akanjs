@@ -10,10 +10,11 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
 ## Guards And Transports
 
 - Guards run on both HTTP and websocket calls. Read the caller with `context.get<T>("account")` (`pkgs/akanjs/signal/signalContext.ts`) instead of branching on `getHttpContext()` / `getWebSocketContext()`.
-- Slice-level `guards` only reach the generated query/mutation endpoints. A `pubsub`/`message` endpoint is unguarded unless it declares its own `guards` in its signal option.
-- **Every endpoint that declares no guards is named in a boot `warn`**, since it answers anyone over HTTP and
-  WebSocket — a named slice's `init()`, a root slice, a `pubsub`/`message`/`query`/`mutation`. Write
-  `guards: [Public]` to keep one open on purpose.
+- Slice-level `guards` only reach the generated query/mutation endpoints. A `pubsub`/`message` endpoint declares none unless it names its own `guards` in its signal option.
+- **An endpoint that declares no guards is refused** — 403 over HTTP and WebSocket, and MCP neither lists nor runs
+  it: a named slice's `init()`, a root slice, a `pubsub`/`message`/`query`/`mutation`. Local operation names each in a boot `warn`;
+  anywhere else the boot fails, so the deploy does. Write `guards: [Public]` to keep one open on purpose;
+  `AKAN_UNGUARDED_ENDPOINTS=open` answers them to anyone as before, with a boot warning.
 - **A generated verb is taken off HTTP with `guards: { cru: false }`** (or `get`/`create`/`update`/`remove:
   false`), and a verb whose guards resolve to none is not mounted at all. `mcp: { cru: false }` does **not** do
   this: it keeps the verbs off the agent shelf while HTTP serves them to whoever passes their guards.

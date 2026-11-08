@@ -33,7 +33,8 @@ export const bootCsr = async (context: CsrRouteContext) => {
   if (!mobileTarget && !pathname.startsWith(`/${device.lang}`))
     window.location.replace(`/${device.lang}${pathname}${window.location.search}${window.location.hash}`);
 
-  if (jwt) initAuth({ jwt });
+  //? With nothing stored, a web CSR page still adopts a session cookie an SSR page on its origin wrote at sign-in.
+  initAuth(jwt ? { jwt } : {});
   Logger.verbose(`Set default language: ${device.lang}`);
 
   const basePaths = process.env.AKAN_PUBLIC_BASE_PATHS ? parseBasePaths(process.env.AKAN_PUBLIC_BASE_PATHS) : null;

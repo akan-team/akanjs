@@ -9,8 +9,30 @@ export interface AssetHeaderOptions {
 export const applySecurityHeaders = (headers: Headers, { html = false } = {}): Headers => {
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  if (html) headers.set("X-Frame-Options", "SAMEORIGIN");
+  if (!html) return headers;
+  headers.set("X-Frame-Options", "SAMEORIGIN");
+  const policy = htmlContentSecurityPolicy();
+  if (policy) headers.set("Content-Security-Policy", policy);
   return headers;
+};
+
+export const isOff = (value: string) => ["off", "false", "0", "none"].includes(value.toLowerCase());
+
+//? No script-src by default: SSR inlines bootstrap scripts without a nonce, and a cached HTML body would replay one.
+//? base-uri: an injected <base> would re-point the root-relative module scripts and import map at another origin.
+export const DEFAULT_HTML_CONTENT_SECURITY_POLICY = "frame-ancestors 'self'; base-uri 'self'";
+
+export const htmlContentSecurityPolicy = (raw = process.env.AKAN_CONTENT_SECURITY_POLICY?.trim()): string | null => {
+  if (!raw || /[\r\n]/.test(raw)) return DEFAULT_HTML_CONTENT_SECURITY_POLICY;
+  return isOff(raw) ? null : raw;
+};
+
+export const DEFAULT_STRICT_TRANSPORT_SECURITY = "max-age=31536000";
+
+// Browsers ignore the header over plain HTTP, on an IP-literal host and behind a certificate error.
+export const strictTransportSecurity = (raw = process.env.AKAN_HSTS?.trim()): string | null => {
+  if (!raw || /[\r\n]/.test(raw)) return DEFAULT_STRICT_TRANSPORT_SECURITY;
+  return isOff(raw) ? null : raw;
 };
 
 // `anyOrigin` is for public files a page elsewhere may load: a font is always fetched in CORS mode, so an MCP view,

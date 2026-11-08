@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Any, dayjs, enumOf, Int } from "akanjs/base";
 
-import { ConstantRegistry, InputParser, InvalidInputError, via } from ".";
+import { ConstantRegistry, InputParser, InvalidInputError, RequestValue, via } from ".";
 
 class InputParserTestStatus extends enumOf("inputParserTestStatus", ["draft", "active"] as const) {}
 
@@ -45,6 +45,7 @@ const InputParserTestInput = via((f) => ({
   prices: f(Map, { of: Int }),
   point: f(InputParserTestPoint),
   memo: f(String).optional(),
+  extra: f(Any).optional(),
 }));
 const InputParserTestObject = via(InputParserTestInput, () => ({}));
 const InputParserTestLight = via(InputParserTestObject, ["name"] as const, () => ({}));
@@ -140,5 +141,24 @@ describe("InputParser", () => {
       expected: null,
     });
     expect(InputParser.parse(String, 0, undefined, { key: "orderId", nullable: true })).toBeNull();
+  });
+
+  test("remembers every object an open value carries in, and refuses one spelled as a SQL condition", () => {
+    const parseArgs = (value: unknown) => InputParser.parse(Any, 0, value, { key: "args" });
+    const args = parseArgs([{ kind: "search", text: "kit" }, { ne: "x" }]) as object[];
+    const { extra } = parse(body({ extra: { nested: { gte: 1 } } })) as { extra: { nested: object } };
+
+    expect(args).toEqual([{ kind: "search", text: "kit" }, { ne: "x" }]);
+    expect(args.every((arg) => RequestValue.isFrom(arg))).toBe(true);
+    expect(RequestValue.isFrom(extra) && RequestValue.isFrom(extra.nested)).toBe(true);
+    expect(RequestValue.isFrom({ ne: "x" })).toBe(false);
+    expect(refusal([{ kind: "raw", sql: "1 = 1", params: [] }], parseArgs)).toEqual({
+      path: "args.0",
+      expected: "a value, not a SQL condition",
+    });
+    expect(refusal(body({ extra: { at: { kind: "raw", sql: "1 = 1", params: [] } } }))).toEqual({
+      path: "data.extra.at",
+      expected: "a value, not a SQL condition",
+    });
   });
 });

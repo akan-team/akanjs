@@ -92,7 +92,7 @@ Why, and what to do
 
 - It takes a file upload — A file upload has no MCP representation.
 
-- It is a `mutation` whose only guard is `Public` — `[Public]` on a write is having no guard, spelled out; add a real one.
+- It is a `mutation` whose only guard is `Public` — MCP treats `[Public]` alone on a write as no guard; add a real one.
 
 - A required argument is typed `Any` — `Any` is left out of the schema, so expose a named filter slice instead.
 

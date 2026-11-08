@@ -31,15 +31,16 @@ packages:
     publish: $all
     unpublish: $all
 
+  # Every other name comes from npm. max_users -1 lets nobody sign up, so $authenticated keeps one from being shadowed.
   "@*/*":
     access: $all
-    publish: $all
-    unpublish: $all
+    publish: $authenticated
+    unpublish: $authenticated
     proxy: npmjs
   "**":
     access: $all
-    publish: $all
-    unpublish: $all
+    publish: $authenticated
+    unpublish: $authenticated
     proxy: npmjs
 
 log: { type: stdout, format: pretty, level: http }

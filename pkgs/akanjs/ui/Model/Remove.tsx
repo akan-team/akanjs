@@ -1,7 +1,7 @@
 "use client";
 import { ID } from "akanjs/base";
 import { cn, msg, router, usePage } from "akanjs/client";
-import { capitalize } from "akanjs/common";
+import { modelNames } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { type ReactNode, useState } from "react";
@@ -39,7 +39,7 @@ export default function Remove({
   const [modalOpen, setModalOpen] = useState(false);
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   const { refName: modelName } = slice;
-  const names = { removeModel: `remove${capitalize(modelName)}` };
+  const names = modelNames(modelName);
   const removeModel = async (id: string, { onError }: { onError?: (e: string) => void } = {}) => {
     await storeDo[names.removeModel](id, { onError, modal });
     msg.success("base.removeSuccess", { data: { model: l(`${modelName}.modelName` as "base.new") } });

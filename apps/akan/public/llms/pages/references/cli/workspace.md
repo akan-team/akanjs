@@ -67,13 +67,13 @@ Skips it
 
 `akan create-workspace <workspaceName> --app <app> [options]`
 
-Create a new workspace and its first app in one go. It runs these steps in order:Write the workspace files into `<dir>/<workspaceName>`, with `--registry` saved to `.npmrc`.Run `bun install`. `--init false` skips it.Install the `util` and `shared` libraries, only with `--libs true`.Create the first app, named by `--app`.Write the agent rules and the MCP config. `--agent-install` and `--mcp-install` turn them off.Make the first git commit. If git fails, the workspace still works; commit by hand.It ends by printing the next step: `cd <dir>/<workspaceName> && akan start <app>`.
+Create a new workspace and its first app in one go. It runs these steps in order:Write the workspace files into `<dir>/<workspaceName>`, or into `<dir>` itself when the name is `.`, with `--registry` saved to `.npmrc`. It writes nothing when the folder already holds a file it would overwrite, and names those files.Run `bun install`. `--init false` skips it.Install the `util` and `shared` libraries, only with `--libs true`.Create the first app, named by `--app`, with the sample `task` module and pages. `--sample false` leaves them out.Write the agent rules and the MCP config. `--agent-install` and `--mcp-install` turn them off.Make the first git commit, as `Akan.js <noreply@akanjs.com>` when git has no identity. In a folder another git repository tracks, it commits nothing and leaves the files to that repository. If git fails, the workspace still works; commit by hand.It ends by printing the next step: `cd <dir>/<workspaceName> && akan start <app>`.
 
-- workspaceName (String, required): Organization or workspace name, lowercased with spaces as hyphens. Asked for when omitted.
+- workspaceName (String, required): Organization or workspace name, lowercased with spaces as hyphens. `.` creates the workspace in `--dir` itself, named after that folder. Asked for when omitted.
 
 - --app (String, required): Name of the first app, lowercased with spaces as hyphens. Asked for when omitted.
 
-- --dir (String, default .): Parent folder, relative to where you run it unless absolute. Defaults to `local` if `USE_AKANJS_PKGS=true`.
+- --dir (String, default .): Parent folder, or the workspace folder itself when the name is `.`. Relative to where you run it unless absolute. Defaults to `local` if `USE_AKANJS_PKGS=true`.
 
 - --libs (Boolean, default false): Also install `shared` and `util`. Leave it off, as recommended, to start from an empty workspace.
 
@@ -86,6 +86,8 @@ Create a new workspace and its first app in one go. It runs these steps in order
 - --mcp-install (Boolean, default true): Register the Akan MCP server for Cursor, Claude Code and Codex in their project config files.
 
 - --agent-install (Boolean, default true, -A): Write `AGENTS.md`, `CLAUDE.md` and `.cursor/rules/akan.mdc` for coding agents.
+
+- --sample (Boolean, default true): Generate the sample `task` module, pages and helpers in the first app. `false` starts from an empty app.
 
 - where to run: Any folder works, because this command creates the workspace root.
 
@@ -188,6 +190,7 @@ Moves the workspace to another framework version or release channel.
 ```bash
 akan create-workspace acme --app shop
 akan create-workspace acme --app shop --dir projects --init false
+akan create-workspace . --app shop --dir app --sample false
 akan create-workspace acme --app shop --libs true
 ```
 

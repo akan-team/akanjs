@@ -53,7 +53,10 @@ export const CsrLink = ({
         const url = href.startsWith("#") ? `${csrLocation.pathname}#${hash}` : href;
         if (isExternal) {
           const target = Href.toExternalUrl(href, document.baseURI);
-          void openExternalUrl(target).catch(() => window.open(target, "_blank", "noopener,noreferrer"));
+          void openExternalUrl(target).catch((error: unknown) => {
+            if (!(error instanceof Error && "code" in error && error.code === "NOT_ALLOWED"))
+              window.open(target, "_blank", "noopener,noreferrer");
+          });
         } else if (replace) router.replace(url, { scrollToTop });
         else router.push(url, { scrollToTop });
       }}

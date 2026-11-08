@@ -1,14 +1,16 @@
 // styleguard-disable inline-color — the standalone status page renders before any theme CSS exists.
+//? First: the modules below may read the env as they load, so the build's defaults must be in it by then.
+import "./lifecycle/loadBuildEnv";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { Logger } from "akanjs/common";
+import { Logger, TrustedProxy } from "akanjs/common";
 import type { AkanChildRole, AkanChildStatus, AkanIpcMessage, AkanMetricsReport, AkanUpstream } from "akanjs/service";
 import { getApiPrefix, getWsPrefix, normalizeRoutePrefix, resetEnvCache } from "../base/baseEnv";
 import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { isTraceEnabled } from "../signal/trace";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
 import type { BuilderCsrReq, BuilderCsrRes, BuilderMessage, BuilderReq, BuilderRes } from "./artifact";
-import { type AssetHeaderOptions, assetHeaders } from "./assetHeaders";
+import { type AssetHeaderOptions, applySecurityHeaders, assetHeaders } from "./assetHeaders";
 import { compressResponse, compressStreamResponse, encodedFileResponse } from "./contentEncoding";
 import { isPortInUseError } from "./lifecycle/portInUse";
 import { resolveRuntimeDir } from "./lifecycle/runtimeDir";
@@ -24,6 +26,7 @@ import type { OpsRoute } from "./ops/opsRoute";
 import { StatusAccess } from "./ops/statusAccess";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { HostAllowlist } from "./routing/hostAllowlist";
+import { ServerLimits } from "./routing/serverLimits";
 import { WsUpgrade } from "./routing/wsUpgrade";
 import { SelfExec } from "./selfExec";
 import { resolveStaticPath } from "./staticPath";
@@ -59,6 +62,9 @@ interface SoloServer {
 interface GatewayWsData {
   childIdx: number;
   upstream: WebSocket;
+  clientIp: string | null;
+  pending: (string | ArrayBuffer)[];
+  pendingBytes: number;
 }
 
 type GatewayUpstream = {
@@ -148,6 +154,16 @@ export class AkanApp {
   #logStream: LogStreamRoute | null = null;
   #ops: OpsRoute | null = null;
   #hostAllowlist = HostAllowlist.fromEnv();
+  readonly #limits = new ServerLimits();
+  //? A frame sent before the replica's socket opens waits here; past this the client is flooding a connecting hop.
+  static readonly #wsPendingLimitBytes = 1024 * 1024;
+  static readonly #wsUpstreamOpenTimeoutMs = 10_000;
+  readonly #wsCaps = {
+    total: AkanApp.#positiveIntEnv("AKAN_MAX_WEBSOCKETS"),
+    perIp: AkanApp.#positiveIntEnv("AKAN_MAX_WEBSOCKETS_PER_IP"),
+  };
+  #wsOpen = 0;
+  readonly #wsOpenByIp = new Map<string, number>();
   readonly #statusAccess = StatusAccess.fromEnv();
   static readonly #ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
   #gatewayMetrics: AkanMetricsReport = {};
@@ -610,12 +626,14 @@ export class AkanApp {
 
   #listen() {
     this.#server = Bun.serve({
-      idleTimeout: 0,
+      idleTimeout: this.#limits.idleTimeout,
+      maxRequestBodySize: this.#limits.uploadBodyBytes,
       port: this.#port,
-      hostname: process.env.AKAN_LISTEN_HOST || undefined,
-      fetch: (req, server) => this.#handleFetch(req, server),
+      hostname: ServerLimits.listenHostname(),
+      fetch: (req, server) =>
+        ServerLimits.holdOpen(server, req, this.#limits.idleTimeout, () => this.#handleFetch(req, server)),
       websocket: {
-        idleTimeout: 0,
+        idleTimeout: this.#limits.wsIdleTimeout,
         maxPayloadLength: 16 * 1024 * 1024,
         backpressureLimit: 1024 * 1024,
         closeOnBackpressureLimit: true,
@@ -630,17 +648,27 @@ export class AkanApp {
 
   async #handleFetch(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response | undefined> {
     if (this.#hostAllowlist && !this.#hostAllowlist.allows(req)) return this.#hostAllowlist.refuse();
+    const oversized = this.#limits.refuseDeclared(req);
+    if (oversized) return oversized;
     const url = new URL(req.url);
-    if (url.pathname === "/_akan/app/health") return this.#statusAccess.health(req, () => this.#getHealthStatus());
-    if (url.pathname === "/_akan/app/metrics") return this.#statusAccess.metrics(req, () => this.#getMetricsStatus());
-    if (url.pathname === LogStreamRoute.path && this.#logStream) return this.#logStream.handle(req);
+    if (url.pathname === "/_akan/app/health")
+      return this.#statusAccess.health(req, () => this.#getHealthStatus(), AkanApp.#clientOf(req, server));
+    if (url.pathname === "/_akan/app/metrics")
+      return this.#statusAccess.metrics(req, () => this.#getMetricsStatus(), AkanApp.#clientOf(req, server));
+    if (url.pathname === LogStreamRoute.path && this.#logStream)
+      return this.#logStream.handle(req, AkanApp.#clientOf(req, server));
     if (url.pathname === "/_akan/bench/ping") return new Response("ok");
     if (url.pathname === AppInfo.publicPath) return AppInfo.handlePublic();
-    if (this.#ops?.matches(url.pathname)) return await this.#ops.handle(req);
+    if (this.#ops?.matches(url.pathname)) return await this.#ops.handle(req, AkanApp.#clientOf(req, server));
     if (this.#isWebSocketPath(url.pathname)) return this.#upgradeWebSocket(req, server);
     const assetResponse = await this.#serveImmutableArtifact(req, url);
     if (assetResponse) return assetResponse;
     return await this.#proxyHttp(req, server);
+  }
+
+  //? The gateway listens on TCP only, so a missing peer is unknown, never the unix-socket hop whose headers count.
+  static #clientOf(req: Request, server: Bun.Server<GatewayWsData>) {
+    return TrustedProxy.clientAddress(req.headers, server.requestIP(req)?.address);
   }
 
   #isWebSocketPath(pathname: string) {
@@ -682,40 +710,68 @@ export class AkanApp {
       return new Response("Forbidden", { status: 403 });
     }
     if (!WsUpgrade.isRequested(req)) return WsUpgrade.required();
+    const peer = server.requestIP(req) ?? undefined;
+    const clientIp = TrustedProxy.clientAddress(req.headers, peer?.address);
+    const refused = this.#refuseWebSocket(clientIp);
+    if (refused) return refused;
     const upstreamWs = new WebSocket(`ws://${upstream.host}:${upstream.port}${url.pathname}${url.search}`, {
-      headers: makeAkanChildProxyHeaders(req, child.idx, server.requestIP(req)),
+      headers: makeAkanChildProxyHeaders(req, child.idx, peer),
     } as unknown as string[]);
     // No socket id on this hop: the child mints the one its room bookkeeping and endpoints see.
-    const upgraded = server.upgrade(req, { data: { childIdx: child.idx, upstream: upstreamWs } });
+    const upgraded = server.upgrade(req, {
+      data: { childIdx: child.idx, upstream: upstreamWs, clientIp, pending: [], pendingBytes: 0 },
+    });
     if (!upgraded) {
       upstreamWs.close();
       return new Response("WebSocket upgrade failed", { status: 500 });
     }
     child.metrics.activeWebSockets = (child.metrics.activeWebSockets ?? 0) + 1;
+    this.#wsOpen += 1;
+    if (clientIp) this.#wsOpenByIp.set(clientIp, (this.#wsOpenByIp.get(clientIp) ?? 0) + 1);
     return undefined;
+  }
+
+  #refuseWebSocket(clientIp: string | null): Response | null {
+    const headers = { "cache-control": "no-store" };
+    if (this.#wsCaps.total && this.#wsOpen >= this.#wsCaps.total)
+      return new Response("Too many open websockets", { status: 503, headers });
+    if (this.#wsCaps.perIp && clientIp && (this.#wsOpenByIp.get(clientIp) ?? 0) >= this.#wsCaps.perIp)
+      return new Response("Too many open websockets from this address", { status: 429, headers });
+    return null;
+  }
+
+  static #positiveIntEnv(name: string): number | null {
+    const value = Number(process.env[name]);
+    return Number.isInteger(value) && value > 0 ? value : null;
   }
 
   #handleWsOpen(ws: Bun.ServerWebSocket<GatewayWsData>) {
     const upstream = ws.data.upstream;
-    const pending: (string | ArrayBuffer)[] = [];
+    const openTimer =
+      upstream.readyState === WebSocket.CONNECTING
+        ? setTimeout(() => {
+            if (upstream.readyState === WebSocket.OPEN) return;
+            upstream.close();
+            ws.close(1013, "upstream websocket did not open");
+          }, AkanApp.#wsUpstreamOpenTimeoutMs)
+        : null;
     upstream.addEventListener("open", () => {
-      for (const message of pending.splice(0)) upstream.send(message);
+      if (openTimer) clearTimeout(openTimer);
+      for (const message of ws.data.pending.splice(0)) upstream.send(message);
+      ws.data.pendingBytes = 0;
     });
     upstream.addEventListener("message", (event) => {
       const result = ws.send(event.data as string | ArrayBuffer);
       if (result === 0) upstream.close();
     });
     upstream.addEventListener("close", (event) => {
+      if (openTimer) clearTimeout(openTimer);
       ws.close(relayableCloseCode(event.code), event.reason);
     });
     upstream.addEventListener("error", () => ws.close(1011, "upstream websocket error"));
-    Object.assign(ws.data, { pending });
   }
 
-  #handleWsMessage(
-    ws: Bun.ServerWebSocket<GatewayWsData & { pending?: (string | ArrayBuffer)[] }>,
-    message: string | ArrayBuffer | Uint8Array,
-  ) {
+  #handleWsMessage(ws: Bun.ServerWebSocket<GatewayWsData>, message: string | ArrayBuffer | Uint8Array) {
     const upstream = ws.data.upstream;
     const payload =
       typeof message === "string"
@@ -723,14 +779,29 @@ export class AkanApp {
         : message instanceof ArrayBuffer
           ? message
           : new Uint8Array(message).slice().buffer;
-    if (upstream.readyState === WebSocket.OPEN) upstream.send(payload);
-    else ws.data.pending?.push(payload as string | ArrayBuffer);
+    if (upstream.readyState === WebSocket.OPEN) {
+      upstream.send(payload);
+      return;
+    }
+    const size = typeof payload === "string" ? Buffer.byteLength(payload) : payload.byteLength;
+    if (ws.data.pendingBytes + size > AkanApp.#wsPendingLimitBytes) {
+      ws.data.pending.length = 0;
+      ws.close(1009, "too much data before the upstream opened");
+      return;
+    }
+    ws.data.pending.push(payload as string | ArrayBuffer);
+    ws.data.pendingBytes += size;
   }
 
   #handleWsClose(ws: Bun.ServerWebSocket<GatewayWsData>, code: number, reason: string) {
     ws.data.upstream.close(relayableCloseCode(code), reason);
     const child = this.#children.get(ws.data.childIdx);
     if (child) child.metrics.activeWebSockets = Math.max(0, (child.metrics.activeWebSockets ?? 1) - 1);
+    this.#wsOpen = Math.max(0, this.#wsOpen - 1);
+    const { clientIp } = ws.data;
+    const remaining = clientIp ? (this.#wsOpenByIp.get(clientIp) ?? 1) - 1 : 0;
+    if (clientIp && remaining > 0) this.#wsOpenByIp.set(clientIp, remaining);
+    else if (clientIp) this.#wsOpenByIp.delete(clientIp);
   }
 
   #getHealthStatus() {
@@ -789,23 +860,30 @@ export class AkanApp {
     const { socketPath } = child.upstream;
     const url = new URL(req.url);
     const upstreamUrl = `http://akan-child${url.pathname}${url.search}`;
-    const headers = makeAkanChildProxyHeaders(req, child.idx, server.requestIP(req));
+    const headers = makeAkanChildProxyHeaders(req, child.idx, server.requestIP(req) ?? undefined);
     child.metrics.activeRequests = (child.metrics.activeRequests ?? 0) + 1;
     child.metrics.totalRequests = (child.metrics.totalRequests ?? 0) + 1;
     const traced = isTraceEnabled();
     const hopStart = traced ? performance.now() : 0;
+    const chunkedLimit = req.headers.has("content-length") ? null : this.#limits.bodyLimitOf(req);
     try {
       const upstreamRes = await fetch(upstreamUrl, {
         unix: socketPath,
         method: req.method,
         headers,
-        body: req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
+        body:
+          req.method === "GET" || req.method === "HEAD"
+            ? undefined
+            : chunkedLimit !== null && req.body
+              ? ServerLimits.limitBody(req.body, chunkedLimit)
+              : req.body,
         signal: req.signal,
         redirect: "manual",
         decompress: false,
       });
       return await this.#proxyResponse(req, upstreamRes);
     } catch (error) {
+      if (ServerLimits.isPayloadTooLarge(error)) return ServerLimits.payloadTooLarge();
       if (AkanApp.#isUpstreamOpenFailure(error)) {
         this.logger.error(`Child ${child.idx}/${child.role} upstream is unreachable (${socketPath}); restarting`);
         this.#scheduleChildRestart(child, child.proc, "upstream-open-failed");
@@ -857,13 +935,10 @@ export class AkanApp {
           detail,
           note: "The replica is restarting — this page reloads itself as soon as it answers.",
         }),
-        { status: 502, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } },
+        { status: 502, headers: AkanApp.#statusHeaders("text/html; charset=utf-8") },
       );
     }
-    return new Response(detail, {
-      status: 502,
-      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
-    });
+    return new Response(detail, { status: 502, headers: AkanApp.#statusHeaders("text/plain; charset=utf-8") });
   }
 
   // Waits rather than 503s at once: a restarting replica is back within seconds, but a browser stays on a 503 page.
@@ -910,7 +985,7 @@ export class AkanApp {
     if (req.headers.get("accept")?.includes("text/html")) {
       return new Response(AkanApp.#statusPageHtml(page), {
         status: 503,
-        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        headers: AkanApp.#statusHeaders("text/html; charset=utf-8"),
       });
     }
     return AkanApp.#unavailableResponse(req, page.text);
@@ -924,6 +999,11 @@ export class AkanApp {
       { error: "base.error.serverUnavailable", statusCode: 503, data: { status: 503 }, details: detail },
       { status: 503, headers },
     );
+  }
+
+  static #statusHeaders(contentType: string): Headers {
+    const headers = new Headers({ "content-type": contentType, "cache-control": "no-store" });
+    return applySecurityHeaders(headers, { html: contentType.startsWith("text/html") });
   }
 
   static #statusPageHtml({ heading, detail, note }: { heading: string; detail: string; note: string }) {

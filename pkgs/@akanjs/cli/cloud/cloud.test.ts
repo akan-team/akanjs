@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { CloudApi, CloudHttpError, GlobalConfig, PipelineSecrets } from "@akanjs/devkit/cloud";
 import { CommandContainer, ExitCodeError, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { DesktopRelease, NativeApp, type NativeUpdatePack } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import {
@@ -227,6 +227,22 @@ describe("CloudRunner", () => {
       "@akanjs/cli": "9.9.9-rc.0",
       typescript: "5.9.0",
     });
+  });
+
+  test("refuses a repository name the remote shell would split, before it asks for a server or runs ssh", async () => {
+    const getRemoteEnvServers = spyOn(GlobalConfig, "getRemoteEnvServers");
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace", {}, recorder);
+    for (const repoName of ["my repo", "repo;touch pwned", "..", "-rf"]) {
+      spyOn(WorkspaceExecutor, "getBaseDevEnv").mockReturnValue({ repoName } as never);
+      await expect(new CloudRunner().uploadEnvByScp(workspace as never, "local/env.tar")).rejects.toThrow(
+        "AKAN_PUBLIC_REPO_NAME",
+      );
+      await expect(new CloudRunner().downloadEnvByScp(workspace as never)).rejects.toThrow("AKAN_PUBLIC_REPO_NAME");
+    }
+
+    expect(getRemoteEnvServers).not.toHaveBeenCalled();
+    expect(recorder.calls).toEqual([]);
   });
 
   test("login opens its session through CloudApi.fromHost, so one in its last hour is refreshed, not signed in again", async () => {
@@ -580,6 +596,63 @@ describe("CloudRunner", () => {
     const result = await new CloudRunner().gatherEnvFiles(workspace as never);
 
     expect(result.files).toEqual(["apps/demo/env/env.client.local.ts", "apps/demo/env/env.server.local.ts"]);
+  });
+
+  test("downloads only env files and declared secrets out of an env archive", async () => {
+    const root = await makeTempRoot();
+    const source = mkdtempSync(path.join(os.tmpdir(), "akan-env-archive-"));
+    try {
+      const members = {
+        "apps/demo/env/env.server.local.ts": "export const env = {};\n",
+        "apps/demo/secrets/token.json": "{}",
+        "libs/kit/env/env.client.local.ts": "export const env = {};\n",
+        "apps/demo/akan.config.ts": "export default {};\n",
+        "apps/demo/env/env.server.type.ts": "export {};\n",
+        "package.json": "{}",
+        ".claude/settings.json": "{}",
+      };
+      for (const [member, content] of Object.entries(members)) await writeText(path.join(source, member), content);
+      symlinkSync(path.join(source, "package.json"), path.join(source, "apps/demo/env/env.server.debug.ts"));
+      await writeText(`${root}/local/env.download.tar`, "");
+      const archive = Bun.spawnSync(
+        ["tar", "-cf", `${root}/local/env.download.tar`, ...Object.keys(members), "apps/demo/env/env.server.debug.ts"],
+        { cwd: source },
+      );
+      expect(archive.exitCode).toBe(0);
+      stubAppConfigs({ demo: ["secrets/**/*"] });
+      const workspace = createFakeExecutor("workspace", {
+        workspaceRoot: root,
+        getExecs: async () => [["demo"], ["kit"], []],
+        mkdir: async (dirPath: string) => void mkdirSync(path.join(root, dirPath), { recursive: true }),
+        remove: async (filePath: string) => rmSync(filePath, { force: true }),
+        spawn: async (command: string, args: string[], options: { cwd: string }) => {
+          const proc = Bun.spawnSync([command, ...args], { cwd: options.cwd });
+          if (proc.exitCode !== 0) throw new Error(proc.stderr.toString());
+          return proc.stdout.toString();
+        },
+      });
+      const cloudApi = { downloadEnv: async () => `${root}/local/env.download.tar` };
+
+      await new CloudRunner().downloadEnv(cloudApi as never, workspace as never, "workspace-1");
+
+      const landed = (member: string) => existsSync(path.join(root, member));
+      expect(
+        ["apps/demo/env/env.server.local.ts", "apps/demo/secrets/token.json", "libs/kit/env/env.client.local.ts"].every(
+          landed,
+        ),
+      ).toBe(true);
+      for (const member of [
+        "apps/demo/akan.config.ts",
+        "apps/demo/env/env.server.type.ts",
+        "apps/demo/env/env.server.debug.ts",
+        "package.json",
+        ".claude/settings.json",
+      ])
+        expect(landed(member)).toBe(false);
+      expect(readdirSync(path.join(root, "local"))).toEqual([]);
+    } finally {
+      rmSync(source, { recursive: true, force: true });
+    }
   });
 
   test("throws when no env files and no secret matches exist", async () => {

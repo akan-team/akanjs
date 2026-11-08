@@ -3,8 +3,8 @@
 import { getCookie, setCookie } from "akanjs/client";
 import { st } from "akanjs/store";
 import { useLayoutEffect } from "react";
-import { buttonRecipe } from "../Button";
 import { Dropdown } from "../Dropdown";
+import { buttonRecipe } from "../recipe";
 import { Switch } from "../Switch";
 
 export const DevModeToggle = () => {

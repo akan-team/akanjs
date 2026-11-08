@@ -163,6 +163,10 @@ export interface AkanNativeUpdatesConfig {
    * phone always takes a new web bundle by itself. Default true.
    */
   automatic?: boolean;
+  /** Windows: SHA-1 thumbprints a release must be Authenticode-signed by, in place of the installed app's signer. */
+  windowsSigners?: string[];
+  /** Seconds a published manifest stays valid, at least 3600; left out, manifests never expire. */
+  expiresIn?: number;
 }
 
 export interface AkanNativeIosConfig {
@@ -328,6 +332,10 @@ export interface AkanNativeSettings {
    * internal test target only, since anyone holding the device can then read and drive the page.
    */
   devtools?: boolean;
+  /** Directives extend the default policy, a string replaces it (`"strict"` is the native preset), false ships none. */
+  csp?: false | string | Record<string, string | string[]>;
+  /** The URL patterns `opener` may open. Default https, `mailto:` and `tel:` links; `["*"]` lifts the limit. */
+  openUrls?: string[];
   ios?: AkanNativeIosConfig;
   android?: AkanNativeAndroidConfig;
   desktop?: AkanNativeDesktopConfig;

@@ -592,6 +592,7 @@ export default page()
     ];
     const published = { client: true, agent: true };
     const clientOnly = { client: true, agent: false };
+    const refused = { client: false, agent: false };
     const agentGroups = [
       {
         label: l.trans({ en: "Published to agents", ko: "에이전트에게 공개" }),
@@ -618,18 +619,10 @@ export default page()
         label: l.trans({ en: "Served, but hidden from agents", ko: "제공되지만 에이전트에게는 숨김" }),
         rows: [
           {
-            name: <span className="font-sans">{l.trans({ en: "no guards", ko: "guard 없음" })}</span>,
-            desc: l.trans({
-              en: "Anyone can call it, and no agent can see it.",
-              ko: "누구나 호출할 수 있고, 에이전트는 볼 수 없습니다.",
-            }),
-            marks: clientOnly,
-          },
-          {
             name: "mutation · guards: [Public]",
             desc: l.trans({
-              en: "`Public` alone on a write counts as no guard.",
-              ko: "쓰기에 `Public`만 달면 guard가 없는 것으로 봅니다.",
+              en: "Agents treat `Public` alone on a write as no guard; HTTP serves it to anyone.",
+              ko: "에이전트는 쓰기에 `Public`만 단 것을 guard가 없는 것으로 보고, HTTP는 누구에게나 제공합니다.",
             }),
             marks: clientOnly,
           },
@@ -664,6 +657,19 @@ export default page()
               ko: "`Any`나 `Binary` 반환, 파일 업로드는 모델에게 설명할 수 없습니다.",
             }),
             marks: clientOnly,
+          },
+        ],
+      },
+      {
+        label: l.trans({ en: "Refused to every caller", ko: "모든 호출자에게 거부" }),
+        rows: [
+          {
+            name: <span className="font-sans">{l.trans({ en: "no guards", ko: "guard 없음" })}</span>,
+            desc: l.trans({
+              en: "Every call answers 403, and outside local operation the server does not boot.",
+              ko: "모든 호출이 403으로 거절되고, local 운영이 아니면 서버가 부팅되지 않습니다.",
+            }),
+            marks: refused,
           },
         ],
       },
@@ -796,7 +802,7 @@ export class StoryEndpoint extends endpoint(srv.story, ({ query }) => ({
                     <strong>Every slice and every custom endpoint names its guards.</strong> <code>slice()</code> takes{" "}
                     <code>{"{ guards: { root: Admin, … } }"}</code>, and each custom endpoint its own{" "}
                     <code>{"guards: [...]"}</code>. The guards also decide what AI agents see: an endpoint with none is
-                    open to anyone and hidden from agents.
+                    refused with 403 and hidden from agents.
                   </span>
                 ),
                 ko: (
@@ -804,7 +810,7 @@ export class StoryEndpoint extends endpoint(srv.story, ({ query }) => ({
                     <strong>모든 slice와 custom endpoint는 guard를 직접 적습니다.</strong> <code>slice()</code>는{" "}
                     <code>{"{ guards: { root: Admin, … } }"}</code>를, custom endpoint는 각자{" "}
                     <code>{"guards: [...]"}</code>를 받습니다. guard는 AI 에이전트에게 보일지도 정합니다. guard가 없는
-                    endpoint는 누구나 호출할 수 있고, 에이전트에게는 보이지 않습니다.
+                    endpoint는 403으로 거절되고, 에이전트에게도 보이지 않습니다.
                   </span>
                 ),
               })}

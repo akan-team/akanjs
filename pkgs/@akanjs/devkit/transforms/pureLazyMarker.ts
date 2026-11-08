@@ -25,7 +25,7 @@ export class PureLazyMarker {
 
   static mark(source: string, filePath: string): string {
     if (!source.includes("lazy(")) return source;
-    const kind = filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+    const kind = /\.[jt]sx$/.test(filePath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
     const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, kind);
     const starts: number[] = [];
     const visit = (node: ts.Node) => {

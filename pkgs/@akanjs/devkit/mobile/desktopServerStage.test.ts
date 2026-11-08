@@ -145,6 +145,7 @@ describe("DesktopServerStage", () => {
     ];
     const imageOnly = [
       "Dockerfile",
+      "akan.env.json",
       "package.json",
       "rscWorker.js",
       "console.js",

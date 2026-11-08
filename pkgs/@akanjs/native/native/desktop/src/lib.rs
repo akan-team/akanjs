@@ -13,6 +13,7 @@ macro_rules! log {
   ($($arg:tt)*) => { eprintln!("[akan-native native] {}", format!($($arg)*)) };
 }
 
+mod acl;
 mod contract;
 mod devproxy;
 mod external;
@@ -561,6 +562,10 @@ fn dev_build() -> bool {
 /// out of its windows (kiosk.rs, win/kiosk.rs, linux/kiosk.rs).
 static UNATTENDED: AtomicBool = AtomicBool::new(false);
 
+/// desktop.screenCapture "auto" (Windows): Chromium's switch for it would grant camera and microphone requests too.
+#[cfg(target_os = "windows")]
+static SCREEN_CAPTURE_AUTO: AtomicBool = AtomicBool::new(false);
+
 fn unattended() -> bool {
   UNATTENDED.load(Ordering::Acquire)
 }
@@ -813,6 +818,8 @@ struct Config {
   app_id: String,
   /// security.shell.externalSchemes (L0): schemes links may also hand to the OS (navigation.rs).
   external_schemes: Vec<String>,
+  /// boot.json's ACL (main.ts): a link leaves only where opener.openUrl may open it.
+  acl: Option<acl::Acl>,
   /// desktop.recovery "reload": a page that ends is always loaded again, and a browser process that ends
   /// is the host's to relaunch (host.ts), instead of an error page and a quit.
   recovery_reload: bool,
@@ -896,6 +903,7 @@ fn parse_config(s: &str) -> Result<Config, String> {
       Some(json::V::Arr(a)) => a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
       _ => Vec::new(),
     },
+    acl: j.get("acl").map(acl::Acl::from),
     recovery_reload: match get_s("recovery").as_deref() {
       None | Some("errorPage") => false,
       Some("reload") => true,
@@ -1127,13 +1135,17 @@ fn in_app(url: &str) -> bool {
 
 /// Hands a link to the OS (navigation.rs): http(s) to the browser, mailto and tel to their apps.
 /// Any other scheme is refused, so the page cannot start other programs this way.
-fn open_external(url: &str) {
+fn open_external(url: &str, window: u32) {
   if unattended() {
     log!("not opening {}: an unattended app (desktop.recovery \"reload\") hands no link to the OS", navigation::shown(url));
     return;
   }
   if !navigation::opens_externally(url) {
     log!("not opening {}: only http, https, mailto, tel and security.shell.externalSchemes links leave the app", navigation::shown(url));
+    return;
+  }
+  if !navigation::opener_permits(url, window) {
+    log!("not opening {}: the app's opener capabilities leave it out", navigation::shown(url));
     return;
   }
   if !navigation::external_open_allowed() {
@@ -1279,6 +1291,10 @@ fn permission_for(id: u32, kind: PermissionKind) -> PermissionResponse {
     // Screen sharing is never given on its own, nor anything this code does not know.
     #[cfg(target_os = "linux")]
     PermissionKind::DisplayCapture | PermissionKind::Other => PermissionResponse::Deny,
+    #[cfg(target_os = "windows")]
+    PermissionKind::Camera | PermissionKind::Microphone if SCREEN_CAPTURE_AUTO.load(Ordering::Acquire) => {
+      PermissionResponse::Deny
+    }
     // WebView2 asks the user itself, naming the origin, and remembers the answer (Default).
     _ => PermissionResponse::Default,
   }
@@ -1482,19 +1498,19 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   let builder = if unattended() { builder.with_initialization_script_for_main_only(KIOSK_SCRIPT, false) } else { builder };
   // SH-4: pages never leave the app origin (navigation.rs). Linux decides in its own signal handlers.
   #[cfg(not(target_os = "linux"))]
-  let builder = builder.with_navigation_handler(|url| navigation::allow(&url));
+  let builder = builder.with_navigation_handler(move |url| navigation::allow(&url, id));
   let builder = builder
     .with_id(&webview_id)
     .with_url(format!("{START_URL}{}", opts.path))
     .with_background_color(background)
     .with_devtools(shell.devtools)
-    .with_new_window_req_handler(|url, _features| {
+    .with_new_window_req_handler(move |url, _features| {
       // window.open and target=_blank: links go to the OS; the app's own pages open no second
       // window this way (the window plugin opens app windows).
       if in_app(&url) {
         log!("window.open({}) opens nothing: app windows come from the window plugin", navigation::shown(&url));
       } else {
-        open_external(&url);
+        open_external(&url, id);
       }
       NewWindowResponse::Deny
     })
@@ -1560,7 +1576,7 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
   #[cfg(not(target_os = "linux"))]
   let webview = builder.build(&window);
   let webview = webview.map_err(|e| format!("webview: {e}"))?;
-  navigation::install(&webview);
+  navigation::install(&webview, id);
   watch_web_process(&webview, id);
   if unattended() {
     #[cfg(target_os = "windows")]
@@ -1978,7 +1994,7 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
   if config_json.is_null() {
     return -2;
   }
-  let cfg = match parse_config(&CStr::from_ptr(config_json).to_string_lossy()) {
+  let mut cfg = match parse_config(&CStr::from_ptr(config_json).to_string_lossy()) {
     Ok(c) => c,
     Err(e) => {
       log!("bad config: {e}");
@@ -1991,7 +2007,10 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
     log!("pages from {base} (akan-native dev --hmr)");
   }
   navigation::set_extra_schemes(cfg.external_schemes.clone());
+  navigation::set_acl(cfg.acl.take());
   UNATTENDED.store(cfg.recovery_reload, Ordering::Release);
+  #[cfg(target_os = "windows")]
+  SCREEN_CAPTURE_AUTO.store(cfg.screen_capture_auto, Ordering::Release);
   // Linux: GTK names the window after the program (X11 WM_CLASS, Wayland app_id), and a dock shows the <name>.desktop
   // that matches it, so the name is the app id the deep links and the dock plugin write their entry under. Not tao's
   // with_app_id: a second launch would then hand itself to the first over D-Bus and exit before single-instance runs.

@@ -1,5 +1,5 @@
 import { type BaseEnv, type Cls, INJECT_META, LIBS_REMOVE_HOOK, type PromiseOrObject } from "akanjs/base";
-import { applyMixins, capitalize, Logger, lowerlize } from "akanjs/common";
+import { applyMixins, Logger, lowerlize, modelNames, moduleNames } from "akanjs/common";
 import type { DatabaseModel } from "akanjs/document";
 
 import {
@@ -126,7 +126,7 @@ export function serve(
   const injectInfoMap = injectBuilder(injectionBuilder(refName));
   if (serviceType === "database")
     Object.assign(injectInfoMap, {
-      [`${refName}Model`]: new InjectInfo("database", { parentRefName: refName }),
+      [modelNames(refName).modelModel]: new InjectInfo("database", { parentRefName: refName }),
       __databaseModel: new InjectInfo("database", { parentRefName: refName }),
     });
   const srvRef = class Service {
@@ -145,7 +145,7 @@ export function serve(
       return enabledCache;
     }
     static get name() {
-      return `${capitalize(refName)}Service`;
+      return moduleNames(refName).ServiceClass;
     }
     static [INJECT_META] = {};
     readonly logger = new Logger(this.constructor.name);

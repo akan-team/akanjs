@@ -1,5 +1,6 @@
 import { CookieJar, originFromRequest } from "akanjs/common";
 import type { AkanDynamicUsage, AkanRequestPolicy } from "akanjs/fetch";
+import { isOff } from "./assetHeaders";
 
 export const DEFAULT_ROUTE_CACHE_TTL_SECONDS = 30;
 
@@ -88,14 +89,27 @@ export function getClientFacingOrigin(request: Request, url = new URL(request.ur
   return originFromRequest(request.headers, url);
 }
 
-export function isPublicRouteCacheableRequest(request: Request): boolean {
-  if (request.method !== "GET") return false;
-  if (request.headers.has("authorization")) return false;
+export function carriesCredentials(request: Request): boolean {
+  if (request.headers.has("authorization")) return true;
   const cookie = request.headers.get("cookie");
-  if (!cookie) return true;
+  if (!cookie) return false;
   return CookieJar.parse(cookie)
     .names()
-    .every((name) => name === "theme");
+    .some((name) => name !== "theme");
+}
+
+export function isPublicRouteCacheableRequest(request: Request): boolean {
+  return request.method === "GET" && !carriesCredentials(request);
+}
+
+//? Anonymous HTML still varies by locale, theme and Accept-Language, which a URL-keyed CDN cannot tell apart.
+export function resolveHtmlCacheControl(
+  request: Request,
+  raw = process.env.AKAN_HTML_CACHE_CONTROL?.trim(),
+): string | null {
+  if (raw && isOff(raw)) return null;
+  if (carriesCredentials(request)) return "private, no-cache";
+  return raw && !/[\r\n]/.test(raw) ? raw : "no-cache";
 }
 
 const isAtOrUnder = (value: string, prefix: string) =>

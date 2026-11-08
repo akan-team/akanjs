@@ -116,6 +116,41 @@ describe("ScreenReader", () => {
     expect(text).toContain("[button: Save → submitTask]");
   });
 
+  test("names a one-time code, a card number or a private field without reading its value", () => {
+    const text = readOf(
+      '<input autocomplete="one-time-code" name="otp" value="482913" />' +
+        '<input autocomplete="shipping cc-number" name="card" value="4111111111111111" />' +
+        '<input data-agent-private name="ssn" value="900-00-0000" />' +
+        '<select data-agent-private name="plan"><option selected>Gold</option></select>' +
+        '<input autocomplete="email" name="email" value="a@example.test" />',
+    );
+    expect(text).toContain("[input otp]");
+    expect(text).toContain("[input card]");
+    expect(text).toContain("[input ssn]");
+    expect(text).toContain("[select plan]");
+    for (const secret of ["482913", "4111111111111111", "900-00-0000", "Gold"]) expect(text).not.toContain(secret);
+    expect(text).toContain('[input email: "a@example.test"]');
+  });
+
+  test("a private region reads as a marker, even when asked for by name, and is no target", () => {
+    const text = readOf(
+      "<p>public body</p>" +
+        '<section id="billing" data-agent-private="billing details"><h2>Card on file</h2><p>Visa 1111</p>' +
+        '<img src="/card.png" alt="card" /></section>',
+    );
+    expect(text).toContain("public body");
+    expect(text).toContain("[private: billing details]");
+    expect(text).not.toContain("Visa 1111");
+    expect(text).not.toContain("Card on file");
+    const section = document.getElementById("billing");
+    expect(ScreenReader.read(section)).not.toContain("Visa 1111");
+    const heading = document.querySelector("h2");
+    if (!heading) throw new Error("expected the heading");
+    expect(ScreenReader.readFrom(heading as HTMLElement)).not.toContain("Visa 1111");
+    expect(ScreenTarget.heading("Card on file")).toBeNull();
+    expect(ScreenTarget.container("billing")).toBeNull();
+  });
+
   test("says a control is disabled, so a refused write is a fact the agent could read first", () => {
     const text = readOf(
       '<input data-akan-state="task.title" value="Pinned" disabled />' +

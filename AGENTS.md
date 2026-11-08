@@ -20,14 +20,14 @@ by `akan agent install`; edit anything outside the markers freely.
   `pkgs/@akanjs/devkit/codeAgent/skills/`. Edit those sources, then run `akan agent install`.
 
 <!-- akan:agent:start -->
-<!-- akan:agent:version 3.1.0 -->
+<!-- akan:agent:version 3.1.1 -->
 
 ## Workspace
 
 - Repo: akanjs
 - Apps: akan, groupedroot, minimal
 - Libraries: shared, util
-- Packages: @akanjs/cli, @akanjs/devkit, @akanjs/native, akanjs, create-akan-workspace, use-agentic
+- Packages: @akanjs/cli, @akanjs/devkit, @akanjs/language, @akanjs/native, @akanjs/vscode, akanjs, create-akan-workspace, use-agentic
 
 ## Akan.js
 

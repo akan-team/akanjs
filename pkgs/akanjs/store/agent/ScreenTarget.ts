@@ -124,7 +124,7 @@ export class ScreenTarget {
   }
 
   static visible(el: HTMLElement) {
-    if (el.closest('[hidden], [aria-hidden="true"], [inert], [data-agent-ui]')) return false;
+    if (el.closest('[hidden], [aria-hidden="true"], [inert], [data-agent-ui], [data-agent-private]')) return false;
     return typeof el.checkVisibility === "function" ? el.checkVisibility() : true;
   }
 

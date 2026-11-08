@@ -1,4 +1,5 @@
 import { type BackendEnv, type Cls, dayjs, INJECT_META, PrimitiveRegistry } from "akanjs/base";
+import { modelNames } from "akanjs/common";
 import {
   type ConstantFieldTypeInput,
   ConstantRegistry,
@@ -185,7 +186,7 @@ export class InjectInfo<
     adaptorClsRegistry: Map<string, AdaptorCls>,
     adaptorRegistry: Map<AdaptorCls, Adaptor>,
   ) {
-    const databaseAdaptorRefName = `${injectInfo.parentRefName}Model`;
+    const databaseAdaptorRefName = modelNames(injectInfo.parentRefName).modelModel;
     const databaseAdaptorCls = adaptorClsRegistry.get(databaseAdaptorRefName);
     if (!databaseAdaptorCls) throw new Error(`Database adaptor "${databaseAdaptorRefName}" is not registered`);
     const databaseAdaptor = adaptorRegistry.get(databaseAdaptorCls);

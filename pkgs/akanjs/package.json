@@ -1,6 +1,6 @@
 {
   "name": "akanjs",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "sourceType": "module",
   "type": "module",
   "publishConfig": {
@@ -150,6 +150,11 @@
       "types": "./server/lifecycle/portInUse.ts",
       "default": "./server/lifecycle/portInUse.ts"
     },
+    "./server/lifecycle/buildEnv": {
+      "import": "./server/lifecycle/buildEnv.ts",
+      "types": "./server/lifecycle/buildEnv.ts",
+      "default": "./server/lifecycle/buildEnv.ts"
+    },
     "./server/artifact/routeSeedIndexStore": {
       "import": "./server/artifact/routeSeedIndexStore.ts",
       "types": "./server/artifact/routeSeedIndexStore.ts",
@@ -194,32 +199,31 @@
   "dependencies": {
     "@lexical/plain-text": "^0.52.0",
     "@noble/ciphers": "^2.4.0",
+    "@react-spring/web": "^10.1.2",
+    "@use-gesture/react": "^10.3.1",
     "dayjs": "^1.11.23",
     "immer": "^11.1.21",
     "lexical": "^0.52.0",
+    "react-refresh": "^0.19.0",
+    "scheduler": "^0.28.0",
     "tailwind-merge": "^3.7.0",
+    "tailwind-scrollbar": "^4.0.2",
     "tailwind-variants": "^3.3.1"
   },
   "peerDependencies": {
-    "@happy-dom/global-registrator": "^21.0.3",
+    "@happy-dom/global-registrator": "^21.0.4",
     "@playwright/test": "^1.64.1",
-    "@react-spring/web": "^10.1.2",
-    "@use-gesture/react": "^10.3.1",
     "bullmq": "^5.81.5",
     "chance": "^1.1.13",
     "firebase": "^13.0.0",
-    "happy-dom": "^21.0.3",
+    "happy-dom": "^21.0.4",
     "ioredis": "^5.11.1",
     "postgres": "^3.4.9",
     "protobufjs": "^8.8.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-icons": "^5.7.0",
-    "react-refresh": "^0.19.0",
     "react-server-dom-webpack": "19.3.1",
-    "react-spring": "^10.0.4",
-    "scheduler": "^0.28.0",
-    "tailwind-scrollbar": "^4.0.2",
     "typescript": "^6.0.3"
   },
   "peerDependenciesMeta": {
@@ -227,12 +231,6 @@
       "optional": true
     },
     "@playwright/test": {
-      "optional": true
-    },
-    "@react-spring/web": {
-      "optional": true
-    },
-    "@use-gesture/react": {
       "optional": true
     },
     "bullmq": {
@@ -265,19 +263,7 @@
     "react-icons": {
       "optional": true
     },
-    "react-refresh": {
-      "optional": true
-    },
     "react-server-dom-webpack": {
-      "optional": true
-    },
-    "react-spring": {
-      "optional": true
-    },
-    "scheduler": {
-      "optional": true
-    },
-    "tailwind-scrollbar": {
       "optional": true
     },
     "typescript": {

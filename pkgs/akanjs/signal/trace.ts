@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   type LogAttrs,
   type LogFlightRecorder,
@@ -63,10 +63,25 @@ export const setFlightThresholdMs = (ms: number): void => {
   flightThresholdCache = ms;
 };
 
+//* `AKAN_PUBLIC_ENV=local` can be baked into an image, so NODE_ENV=production or a non-local mode closes dev surfaces.
+export const isLocalDevRuntime = ({
+  environment = process.env.AKAN_PUBLIC_ENV,
+  operationMode = process.env.AKAN_PUBLIC_OPERATION_MODE ?? "local",
+}: {
+  environment?: string;
+  operationMode?: string;
+} = {}): boolean =>
+  environment === "local" &&
+  operationMode === "local" &&
+  (process.env.NODE_ENV !== "production" || process.env.AKAN_COMMAND_TYPE === "start");
+
 // `x-akan-debug` lowers one request's log floor to `trace`; outside `local` it must carry `AKAN_LOG_DEBUG_HEADER`,
 // since a client that can lower the log level is a log-volume vector.
-export const isDebugHeaderAllowed = (): boolean =>
-  process.env.AKAN_PUBLIC_ENV === "local" || !!process.env.AKAN_LOG_DEBUG_HEADER;
+export const isDebugHeaderAllowed = (): boolean => isLocalDevRuntime() || !!process.env.AKAN_LOG_DEBUG_HEADER;
+
+//? Digests have one length, so neither a length check nor a multi-byte header value can make the comparison throw.
+const sameSecret = (presented: string, secret: string): boolean =>
+  timingSafeEqual(createHash("sha256").update(presented).digest(), createHash("sha256").update(secret).digest());
 
 const refreshLoggerContextGate = () => {
   Logger.contextGate = isFlightRecorderEnabled() || isDebugHeaderAllowed();
@@ -180,9 +195,7 @@ export class SignalTrace {
   applyDebugHeader(value: string | null | undefined): boolean {
     if (!value) return false;
     const secret = process.env.AKAN_LOG_DEBUG_HEADER;
-    const allowed =
-      process.env.AKAN_PUBLIC_ENV === "local" ||
-      (!!secret && value.length === secret.length && timingSafeEqual(Buffer.from(value), Buffer.from(secret)));
+    const allowed = isLocalDevRuntime() || (!!secret && sameSecret(value, secret));
     if (!allowed) return false;
     this.debugSev = logSeverity.trace;
     return true;

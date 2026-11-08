@@ -1059,8 +1059,8 @@ export default page()
       {
         write: 'persist={{ key: "…" }}',
         desc: l.trans({
-          en: "Your own storage key; the default is `akan.agent.<appName>`, plus the zone path in a zone.",
-          ko: "저장 키를 직접 정하며, 기본값은 `akan.agent.<appName>`에 zone 안이면 zone 경로가 붙습니다.",
+          en: "Your own storage key; the default is `akan.agent.<appName>.<account>`, plus the zone path in a zone.",
+          ko: "저장 키를 직접 정하며, 기본값은 `akan.agent.<appName>.<account>`에 zone 안이면 zone 경로가 붙습니다.",
         }),
       },
       {

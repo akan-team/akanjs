@@ -1,8 +1,19 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { akanCodePaths } from "../agent/akanCodePaths";
+import { WorkspaceTrust } from "../agent/WorkspaceTrust";
 import { McpServerConfig, type McpServerScope } from "./McpServerConfig";
 
 const roots: string[] = [];
@@ -208,5 +219,123 @@ describe("MCP server config", () => {
       "npx -y x",
     );
     expect(McpServerConfig.targetOf({ name: "a", transport: "http", url: "https://x" })).toBe("https://x");
+  });
+});
+
+describe("workspace trust", () => {
+  const extension = (root: string, name: string, body: string) => {
+    const file = path.join(akanCodePaths.extensionsDir(root), name);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, body);
+  };
+
+  afterEach(() => {
+    rmSync(akanCodePaths.trustFile(), { force: true });
+  });
+
+  test("a repo with no servers or extensions of its own needs no approval", () => {
+    const root = workspace();
+    McpServerConfig.add(root, "home", ["https://home.example/mcp"], "global");
+    expect(WorkspaceTrust.pending(root)).toEqual([]);
+    expect(WorkspaceTrust.isTrusted(root, "mcp")).toBe(true);
+  });
+
+  test("the repo's servers and extensions wait for approval, and a remembered one stays approved", () => {
+    const root = workspace(JSON.stringify({ mcpServers: { tool: { command: "node", args: ["x.js"] } } }));
+    extension(root, "hello.ts", "export default () => {};");
+    expect(WorkspaceTrust.pending(root).map((item) => item.kind)).toEqual(["mcp", "extensions"]);
+    expect(WorkspaceTrust.pending(root)[0]?.lines).toEqual(["tool: node x.js"]);
+    WorkspaceTrust.approve(root, WorkspaceTrust.pending(root), true);
+    expect(WorkspaceTrust.pending(root)).toEqual([]);
+    expect(Object.keys(JSON.parse(readFileSync(akanCodePaths.trustFile(), "utf8")).workspaces)).toHaveLength(1);
+  });
+
+  test.skipIf(process.platform === "win32")("the trust file is readable only by its owner", () => {
+    const root = workspace(JSON.stringify({ mcpServers: { tool: { command: "node" } } }));
+    WorkspaceTrust.approve(root, WorkspaceTrust.pending(root), true);
+    expect(statSync(akanCodePaths.trustFile()).mode & 0o777).toBe(0o600);
+  });
+
+  test("a change to what was approved is asked about again", () => {
+    const root = workspace(JSON.stringify({ mcpServers: { tool: { command: "node", args: ["x.js"] } } }));
+    extension(root, "hello.ts", "export default () => {};");
+    WorkspaceTrust.approve(root, WorkspaceTrust.pending(root), true);
+    writeFileSync(
+      McpServerConfig.file(root),
+      JSON.stringify({ mcpServers: { tool: { command: "node", args: ["y.js"] } } }),
+    );
+    extension(root, "nested/more.ts", "export default () => {};");
+    expect(WorkspaceTrust.pending(root).map((item) => item.kind)).toEqual(["mcp", "extensions"]);
+    expect(WorkspaceTrust.isTrusted(root, "mcp")).toBe(false);
+  });
+
+  test("an approval that is not remembered lasts only for this process", () => {
+    const root = workspace(JSON.stringify({ mcpServers: { tool: { command: "node" } } }));
+    WorkspaceTrust.approve(root, WorkspaceTrust.pending(root), false);
+    expect(WorkspaceTrust.isTrusted(root, "mcp")).toBe(true);
+    expect(existsSync(akanCodePaths.trustFile())).toBe(false);
+  });
+
+  test("an edit made through akan code keeps the approval the content had", () => {
+    const root = workspace(JSON.stringify({ mcpServers: { tool: { command: "node" } } }));
+    WorkspaceTrust.approve(root, WorkspaceTrust.pending(root), true);
+    WorkspaceTrust.carry(root, "mcp", () =>
+      McpServerConfig.add(root, "more", ["https://more.example/mcp"], "workspace"),
+    );
+    expect(WorkspaceTrust.isTrusted(root, "mcp")).toBe(true);
+    const untrusted = workspace(JSON.stringify({ mcpServers: { tool: { command: "node" } } }));
+    WorkspaceTrust.carry(untrusted, "mcp", () => McpServerConfig.add(untrusted, "more", ["x"], "workspace"));
+    expect(WorkspaceTrust.isTrusted(untrusted, "mcp")).toBe(false);
+  });
+
+  test("a link that stays in the extensions folder is followed and checked", () => {
+    const root = workspace();
+    extension(root, "real/index.ts", "export default () => {};");
+    symlinkSync(
+      path.join(akanCodePaths.extensionsDir(root), "real"),
+      path.join(akanCodePaths.extensionsDir(root), "alias"),
+    );
+    const [item] = WorkspaceTrust.pending(root);
+    expect(item?.lines).toEqual(["alias/index.ts"]);
+    expect(item?.hash).not.toBe("");
+    WorkspaceTrust.approve(root, [item as NonNullable<typeof item>], true);
+    extension(root, "real/index.ts", "export default () => 1;");
+    expect(WorkspaceTrust.isTrusted(root, "extensions")).toBe(false);
+  });
+
+  test("a link out of the extensions folder is not followed, and an approval of that folder is never remembered", () => {
+    const root = workspace();
+    const outside = workspace();
+    writeFileSync(path.join(outside, "secret-notes.ts"), "export default () => {};");
+    extension(root, "hello.ts", "export default () => {};");
+    symlinkSync(outside, path.join(akanCodePaths.extensionsDir(root), "linked"));
+    const [item] = WorkspaceTrust.pending(root);
+    expect(item?.hash).toBe("");
+    expect(item?.lines[0]).toContain("linked links out of the folder");
+    expect(item?.lines.join("\n")).not.toContain("secret-notes");
+    WorkspaceTrust.approve(root, [item as NonNullable<typeof item>], true);
+    expect(existsSync(akanCodePaths.trustFile())).toBe(false);
+  });
+
+  test("an extensions folder past the file or byte cap is not checked, and its approval is never remembered", () => {
+    const many = workspace();
+    const modules = path.join(akanCodePaths.extensionsDir(many), "node_modules", "dep");
+    mkdirSync(modules, { recursive: true });
+    for (let index = 0; index <= 10_000; index++) writeFileSync(path.join(modules, `f${index}.js`), "");
+    const large = workspace();
+    extension(large, "big.js", "");
+    truncateSync(path.join(akanCodePaths.extensionsDir(large), "big.js"), 64 * 1024 * 1024 + 1);
+    for (const root of [many, large]) {
+      const [item] = WorkspaceTrust.pending(root);
+      expect(item?.hash).toBe("");
+      expect(item?.lines[0]).toContain("too many to check");
+      WorkspaceTrust.approve(root, [item as NonNullable<typeof item>], true);
+    }
+    expect(existsSync(akanCodePaths.trustFile())).toBe(false);
+  });
+
+  test("a disabled server needs no approval", () => {
+    const root = workspace(JSON.stringify({ mcpServers: { tool: { command: "node", disabled: true } } }));
+    expect(WorkspaceTrust.pending(root)).toEqual([]);
   });
 });

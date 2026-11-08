@@ -2,13 +2,17 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { TrustedProxy } from "akanjs/common";
 
 import { buildEndpoint } from "./endpointInfo";
+import { Public } from "./guards";
 import { SignalContext } from "./signalContext";
 
 const req = new Request("http://akan-child/api/user/google");
 
 const contextOf = (request: Request | { ws: unknown; data: unknown[]; eventType: string }, type = "query") =>
   new SignalContext("contextKey", request as never, {
-    endpointInfo: (type === "query" ? buildEndpoint.query(String) : buildEndpoint.message(String)).exec(() => "ok"),
+    endpointInfo: (type === "query"
+      ? buildEndpoint.query(String, { guards: [Public] })
+      : buildEndpoint.message(String, { guards: [Public] })
+    ).exec(() => "ok"),
     adaptor: {} as never,
     registry: {} as never,
     env: {} as never,

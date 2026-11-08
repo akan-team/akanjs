@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { resolveStaticPath } from "./staticPath";
+import { resolveStaticPath, staysInTree } from "./staticPath";
 
 const roots: string[] = [];
 afterAll(() => {
@@ -57,6 +57,34 @@ describe("resolveStaticPath", () => {
     const resolved = resolveStaticPath(base, "/libs/kaiden/model.glb");
     expect(resolved).toBe(path.join(base, "libs", "kaiden", "model.glb"));
     expect(fs.readFileSync(resolved as string, "utf8")).toBe("glb");
+  });
+
+  test("refuses a symlink that leads out of the tree", async () => {
+    const { root, base } = await makeTree();
+    await symlink(root, path.join(base, "outside"), "dir");
+    await symlink(path.join(root, "secret.txt"), path.join(base, "img", "secret.txt"));
+
+    expect(resolveStaticPath(base, "/outside/secret.txt")).toBeNull();
+    expect(resolveStaticPath(base, "/img/secret.txt")).toBeNull();
+    expect(staysInTree(base, path.join(base, "outside", "secret.txt"))).toBe(false);
+  });
+
+  test("refuses a libs/ link that is not a lib's public directory", async () => {
+    const { root, base } = await makeTree();
+    fs.mkdirSync(path.join(base, "libs"), { recursive: true });
+    await symlink(root, path.join(base, "libs", "kaiden"), "dir");
+    fs.mkdirSync(path.join(root, "libs", "other", "public"), { recursive: true });
+    await writeFile(path.join(root, "libs", "other", "public", "a.txt"), "a");
+    await symlink(path.join(root, "libs", "other", "public"), path.join(base, "libs", "renamed"), "dir");
+
+    expect(resolveStaticPath(base, "/libs/kaiden/secret.txt")).toBeNull();
+    expect(resolveStaticPath(base, "/libs/renamed/a.txt")).toBeNull();
+  });
+
+  test("follows a symlink that stays inside the tree", async () => {
+    const { base } = await makeTree();
+    await symlink(path.join(base, "img"), path.join(base, "images"), "dir");
+    expect(resolveStaticPath(base, "/images/logo.png")).toBe(path.join(base, "images", "logo.png"));
   });
 
   test("the base directory itself resolves to the base", async () => {

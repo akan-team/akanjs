@@ -67,21 +67,27 @@ export class LogControlSocket {
     //? that dev server unreachable by `akan logs` until it restarts.
     if (await LogControlSocket.#answers(this.path)) throw new Error("another server is listening on it");
     await rm(this.path, { force: true });
-    this.#server = Bun.listen<ClientState>({
-      unix: this.path,
-      socket: {
-        open: (socket) => {
-          socket.data = { inbox: "", pending: "", droppedWhilePending: 0, subscriptions: new Map() };
+    //* Under a 0177 umask, since the chmod below lands only after listen and a looser umask leaves it open till then.
+    const umask = process.platform === "win32" ? null : process.umask(0o177);
+    try {
+      this.#server = Bun.listen<ClientState>({
+        unix: this.path,
+        socket: {
+          open: (socket) => {
+            socket.data = { inbox: "", pending: "", droppedWhilePending: 0, subscriptions: new Map() };
+          },
+          data: (socket, chunk) => this.#onData(socket, chunk),
+          drain: (socket) => this.#drain(socket),
+          close: (socket) => this.#release(socket),
+          error: (socket, error) => {
+            this.#logger.debug(`control socket client error: ${error.message}`);
+            this.#release(socket);
+          },
         },
-        data: (socket, chunk) => this.#onData(socket, chunk),
-        drain: (socket) => this.#drain(socket),
-        close: (socket) => this.#release(socket),
-        error: (socket, error) => {
-          this.#logger.debug(`control socket client error: ${error.message}`);
-          this.#release(socket);
-        },
-      },
-    });
+      });
+    } finally {
+      if (umask !== null) process.umask(umask);
+    }
     await chmod(this.path, 0o600);
   }
 

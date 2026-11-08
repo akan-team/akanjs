@@ -656,6 +656,31 @@ describe("ContextRunner", () => {
     ).rejects.toThrow('MCP tool "apply_workflow" is not available in readonly mode');
   });
 
+  test("keeps MCP workflow paths inside .akan/workflows and repairs only workspace targets", async () => {
+    const { root, workspace } = track(await createTempApp("demo"));
+    const runner = new ContextRunner();
+    const inputs = { app: "demo", module: "task", field: "priority", type: "String" };
+    const refused: [string, Record<string, unknown>][] = [
+      ["plan_workflow", { workflow: "add-field", inputs, out: `${root}/apps/demo/plan.json` }],
+      ["apply_workflow", { planPath: "../plan.json", dryRun: true }],
+      ["run_validation", { runIdOrPlan: `${root}/package.json` }],
+      ["doctor_workspace", { runIdOrPlan: "/tmp/plan.json" }],
+    ];
+
+    for (const [name, args] of refused)
+      await expect(runner.callMcpTool(workspace, name, args, { mode: "apply" })).rejects.toThrow(
+        "MCP workflow files live under .akan/workflows/",
+      );
+    const repair = (await runner.callMcpTool(
+      workspace,
+      "repair_generated",
+      { app: "demo; touch marker #" },
+      { mode: "apply" },
+    )) as { status: string; commands: unknown[]; diagnostics: { code: string }[] };
+    expect(repair).toMatchObject({ status: "failed", commands: [] });
+    expect(repair.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["repair-input-unknown"]);
+  });
+
   test("returns repair reports through apply MCP mode", async () => {
     const { workspace, app } = track(await createTempApp("demo"));
     await writeText(`${app.cwdPath}/lib/post/post.constant.ts`, "export class Post {}\n");

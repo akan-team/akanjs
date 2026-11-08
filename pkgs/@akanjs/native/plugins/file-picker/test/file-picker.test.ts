@@ -1,10 +1,11 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pluginDecls } from "../../../packages/cli/src/lib/native-plugins.ts";
 import { installMockHost, type MockHost } from "../../../packages/core/src/testing.ts";
 import { resolveGrant } from "../../../packages/desktop/src/grants.ts";
+import { appTempDir } from "../../../packages/desktop/src/paths.ts";
 import type { DesktopContext } from "../../../packages/desktop/src/plugin.ts";
 import manifest from "../native-plugin.json";
 import { checkLimit, checkName, checkSaveSource, checkTypes, isFileRef } from "../src/common.ts";
@@ -239,7 +240,7 @@ describe("desktop", () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "akan-native-picker-")));
   afterAll(() => {
     rmSync(root, { recursive: true, force: true });
-    rmSync(join(tmpdir(), "dev.test.picker"), { recursive: true, force: true }); // the staged copies
+    rmSync(appTempDir("dev.test.picker"), { recursive: true, force: true }); // the staged copies
   });
   const registered: string[] = [];
 
@@ -291,7 +292,8 @@ describe("desktop", () => {
     expect(shellCalls[0]).toEqual({ op: "panel.open", args: { types: ["pdf", "text/plain"], multiple: true } });
     expect(shellCalls[1]).toEqual({ op: "panel.mime", args: { exts: ["pdf", "txt"] } });
     const copy = registered.at(-2)!;
-    expect(copy.startsWith(join(tmpdir(), "dev.test.picker", "file-picker"))).toBe(true);
+    expect(copy.startsWith(join(appTempDir("dev.test.picker"), "file-picker"))).toBe(true);
+    expect(statSync(dirname(copy)).mode & 0o077).toBe(0);
     expect(readFileSync(copy, "utf8")).toBe("%PDF");
   });
 

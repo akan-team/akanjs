@@ -1,5 +1,5 @@
 "use client";
-import { capitalize } from "akanjs/common";
+import { capitalize, modelNames } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import type { ReactNode } from "react";
@@ -15,7 +15,7 @@ interface ViewToolsProps {
 
 // Mounted only by the open modal, so a list of per-row `ViewModal`s publishes the close verb once.
 const ViewTools = ({ modelName, closeView }: ViewToolsProps) => {
-  st.tool(`closeViewOf${capitalize(modelName)}`)
+  st.tool(`closeViewOf${capitalize(modelName)}`, { taint: "exempt" })
     .desc(`Close the ${modelName} detail view.`)
     .exec(closeView);
   return null;
@@ -48,15 +48,8 @@ export default function ViewModal({
   const storeUse = st.use as unknown as { [key: string]: () => unknown };
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => void };
   const { refName } = slice;
-  const [modelName, ModelName] = [refName, capitalize(refName)];
-  const names = {
-    model: modelName,
-    Model: ModelName,
-    viewModel: `view${ModelName}`,
-    modelLoading: `${modelName}Loading`,
-    modelModal: `${modelName}Modal`,
-    resetModel: `reset${ModelName}`,
-  };
+  const modelName = refName;
+  const names = modelNames(modelName);
   const model = storeUse[names.model]() as { id: string; [key: string]: any } | null;
   const modelModal = storeUse[names.modelModal]() as string | null;
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;

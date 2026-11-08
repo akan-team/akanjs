@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { websocketBinaryFrameContract } from "./websocketContract";
+import { dayjs } from "akanjs/base";
+import { canonicalJson, websocketBinaryFrameContract, websocketRoomContract } from "./websocketContract";
 
 describe("websocketBinaryFrameContract", () => {
   test("round-trips a room and its payload", () => {
@@ -50,5 +51,40 @@ describe("websocketBinaryFrameContract", () => {
     expect(() =>
       websocketBinaryFrameContract.encode({ roomId: "x".repeat(70_000), payload: new Uint8Array(1) }),
     ).toThrow("too long to frame");
+  });
+});
+
+describe("websocketRoomContract", () => {
+  const { roomOf, tokenOf, jsonTokenOf, idOf } = websocketRoomContract;
+
+  test("keeps argument lists apart that the joined label spells alike", () => {
+    expect(idOf("chat", ["a-b", "c"])).toBe(idOf("chat", ["a", "b-c"]));
+    expect(roomOf("chat", ["a-b", "c"].map(tokenOf))).not.toBe(roomOf("chat", ["a", "b-c"].map(tokenOf)));
+    expect(roomOf("chat", ["%2D"].map(tokenOf))).not.toBe(roomOf("chat", ["-"].map(tokenOf)));
+    expect(roomOf("chat", ["~"].map(tokenOf))).not.toBe(roomOf("chat", [null].map(tokenOf)));
+  });
+
+  test("spells an id-like argument as the label does, so most rooms need no alias", () => {
+    expect(roomOf("roomFeed", ["507f1f77bcf86cd799439011"].map(tokenOf))).toBe("roomFeed-507f1f77bcf86cd799439011");
+    expect(roomOf("tick", [])).toBe("tick");
+  });
+
+  test("gives objects with different fields different tokens, and equal ones the same", () => {
+    expect(tokenOf({ area: "north" })).not.toBe(tokenOf({ area: "south" }));
+    expect(tokenOf({ a: 1, b: 2 })).toBe(tokenOf({ b: 2, a: 1 }));
+    expect(tokenOf(dayjs("2026-01-01T00:00:00.000Z"))).toBe(tokenOf(new Date("2026-01-01T00:00:00.000Z")));
+  });
+
+  test("tells a string from a number only where the argument is untyped", () => {
+    expect(jsonTokenOf("1")).not.toBe(jsonTokenOf(1));
+    expect(tokenOf("1")).toBe(tokenOf(1));
+  });
+
+  test("spells equal values alike whatever their key order or container", () => {
+    expect(canonicalJson({ b: [1, { d: 1, c: 2 }], a: undefined })).toBe('{"b":[1,{"c":2,"d":1}]}');
+    expect(canonicalJson(new Map([["k", 1]]))).not.toBe(canonicalJson({}));
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(() => canonicalJson(cyclic)).toThrow();
   });
 });
