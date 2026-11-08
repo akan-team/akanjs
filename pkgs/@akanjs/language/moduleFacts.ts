@@ -38,6 +38,7 @@ export interface EndpointKeyFact extends MemberFact {
 }
 
 export interface FieldFact extends NamedFact {
+  extent: Extent;
   type: string | null;
   array: boolean;
   optional: boolean;
@@ -277,7 +278,13 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         ? chainOf(property.initializer)
         : { root: null, methods: [] };
       return [
-        { name, span: spanOf(source, node), ...typeOf(root?.arguments[0]), optional: methods.includes("optional") },
+        {
+          name,
+          span: spanOf(source, node),
+          extent: extentOf(source, property),
+          ...typeOf(root?.arguments[0]),
+          optional: methods.includes("optional"),
+        },
       ];
     });
 

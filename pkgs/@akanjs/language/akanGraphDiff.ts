@@ -13,10 +13,11 @@ export interface AkanGraphChanges extends AkanGraph {
 const edgeKeyOf = ({ from, to, kind, label }: AkanGraphEdge) => `${from}\n${to}\n${kind}\n${label ?? ""}`;
 const shapeOf = ({ type, array, optional, declaredIn }: AkanGraphField) =>
   `${type ?? ""}${array ? "[]" : ""}${optional ? "?" : ""} ${declaredIn}`;
+const isEdited = (before: { digest?: string }, after: { digest?: string }) =>
+  before.digest !== undefined && after.digest !== undefined && before.digest !== after.digest;
 const byId = (a: AkanGraphNode, b: AkanGraphNode) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 export class AkanGraphDiff {
-  //? A changed node keeps its unchanged edges in both directions, so the map shows what calls it and what it calls.
   static between(base: AkanGraph, head: AkanGraph): AkanGraphChanges {
     const baseNodes = new Map(base.nodes.map((node) => [node.id, node]));
     const headNodes = new Map(head.nodes.map((node) => [node.id, node]));
@@ -67,7 +68,7 @@ export class AkanGraphDiff {
   static #compare(before: AkanGraphNode, after: AkanGraphNode): AkanGraphNode | null {
     const fields = AkanGraphDiff.#fieldsBetween(before.fields, after.fields);
     const isChanged =
-      (before.digest !== undefined && after.digest !== undefined && before.digest !== after.digest) ||
+      isEdited(before, after) ||
       before.label !== after.label ||
       before.detail.join("\n") !== after.detail.join("\n") ||
       (before.values ?? []).join("\n") !== (after.values ?? []).join("\n") ||
@@ -84,7 +85,7 @@ export class AkanGraphDiff {
       ...(after ?? []).map((field): AkanGraphField => {
         const old = previous.get(field.name);
         if (!old) return { ...field, change: "added" };
-        return shapeOf(old) === shapeOf(field) ? field : { ...field, change: "changed" };
+        return shapeOf(old) === shapeOf(field) && !isEdited(old, field) ? field : { ...field, change: "changed" };
       }),
       ...(before ?? [])
         .filter((field) => !names.has(field.name))
@@ -93,6 +94,6 @@ export class AkanGraphDiff {
   }
 
   static #withoutDigest({ digest: _digest, ...node }: AkanGraphNode): AkanGraphNode {
-    return node;
+    return node.fields ? { ...node, fields: node.fields.map(({ digest: _field, ...field }) => field) } : node;
   }
 }

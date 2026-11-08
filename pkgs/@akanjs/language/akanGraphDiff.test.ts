@@ -91,6 +91,24 @@ describe("AkanGraphDiff", () => {
     expect(shareNode?.change).toBeUndefined();
     expect(changes.nodes.some((node) => node.id === "endpoint:apps/demo:memo.shareMemo")).toBe(false);
     expect(changes.nodes.every((node) => node.digest === undefined)).toBe(true);
+    expect(changes.nodes.flatMap((node) => node.fields ?? []).every((field) => field.digest === undefined)).toBe(true);
+  });
+
+  it("marks a field whose options changed, and reads a CRLF checkout of the same text as unchanged", () => {
+    const withDefault = {
+      ...base,
+      "apps/demo/lib/memo/memo.constant.ts": constant('  name: field(String, { default: "x" }),\n  place: field(Geo),'),
+    };
+    const fieldsOf = (changes: ReturnType<typeof AkanGraphDiff.between>) =>
+      changes.nodes
+        .find((node) => node.id === "model:apps/demo:memo")
+        ?.fields?.map(({ name, change }) => `${name} ${change ?? "unchanged"}`);
+    expect(fieldsOf(AkanGraphDiff.between(graphOf(base), graphOf(withDefault)))).toEqual([
+      "name changed",
+      "place unchanged",
+    ]);
+    const crlf = Object.fromEntries(Object.entries(base).map(([file, text]) => [file, text.replace(/\n/g, "\r\n")]));
+    expect(AkanGraphDiff.between(graphOf(base), graphOf(crlf)).nodes).toEqual([]);
   });
 
   it("marks every node and field of a deleted module removed", () => {

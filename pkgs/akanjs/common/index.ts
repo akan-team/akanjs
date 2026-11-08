@@ -1,4 +1,5 @@
 export type {
+  AkanChangedFile,
   AkanChangeMap,
   AkanGraph,
   AkanGraphChange,

@@ -25,12 +25,14 @@ export class WorkspaceGraph {
     const files = (await workspace.getAllFiles("{apps,libs}/**/*.{ts,tsx}"))
       .map(slashed)
       .filter((file) => indexedPath.test(file));
-    const texts = new Map(
-      await Promise.all(
-        files.map(async (file) => [file, await readFile(path.join(root, file), "utf8")] as [string, string]),
-      ),
+    return WorkspaceGraph.#graphOf(root, await WorkspaceGraph.#textsOf(root, files), digests);
+  }
+
+  static async #textsOf(root: string, files: string[]) {
+    const read = await Promise.all(
+      files.map(async (file) => [file, await readFile(path.join(root, file), "utf8").catch(() => null)] as const),
     );
-    return WorkspaceGraph.#graphOf(root, texts, digests);
+    return new Map(read.filter((entry): entry is readonly [string, string] => entry[1] !== null));
   }
 
   static async changes(workspace: Workspace, since: string | null): Promise<AkanChangeMap | { error: string }> {
@@ -41,7 +43,15 @@ export class WorkspaceGraph {
     const { sha } = forkPoint;
     const [before, after, files] = await Promise.all([
       WorkspaceGraph.#baseAt(root, sha),
-      WorkspaceGraph.build(workspace, { digests: true }),
+      git
+        .workingFiles()
+        .then((working) =>
+          WorkspaceGraph.#textsOf(
+            root,
+            working.filter((file) => indexedPath.test(file)),
+          ),
+        )
+        .then((texts) => WorkspaceGraph.#graphOf(root, texts, true)),
       git.changedFilesSince(sha),
     ]);
     const changes = AkanGraphDiff.between(before, after);
@@ -54,7 +64,7 @@ export class WorkspaceGraph {
         ]),
       ...changes.edges.filter((edge) => edge.change).map((edge) => edge.at?.file),
     ]);
-    const unmapped = files.filter((file) => !mapped.has(file) && !hiddenPath.test(file));
+    const unmapped = files.filter(({ file }) => !mapped.has(file) && !hiddenPath.test(file));
     return { ...changes, since: sha.slice(0, 12), unmapped };
   }
 
@@ -108,24 +118,28 @@ export class WorkspaceGraph {
       return {
         diagnostics: [{ severity: "error", code: "graph-since-unknown", message: changes.error, input: "since" }],
       };
-    const answer = WorkspaceGraph.answer(changes, scope);
-    if ("diagnostics" in answer) return answer;
+    const answer = WorkspaceGraph.answer(
+      changes,
+      scope,
+      changes.nodes.filter((node) => node.change),
+    );
+    if ("diagnostics" in answer) return { since: changes.since, summary: changes.summary, ...answer };
     const summary = { added: 0, removed: 0, changed: 0 };
     for (const { change } of answer.nodes) if (change) summary[change] += 1;
     const owners = scope.app ? [`apps/${scope.app}/`, `libs/${scope.app}/`] : null;
     const modules = scope.module ? [`/lib/${scope.module}/`, `/lib/_${scope.module}/`] : null;
     const unmapped = changes.unmapped.filter(
-      (file) =>
+      ({ file }) =>
         (!owners || owners.some((owner) => file.startsWith(owner))) &&
         (!modules || modules.some((segment) => file.includes(segment))),
     );
     return { since: changes.since, summary, ...answer, unmapped };
   }
 
-  static answer(graph: AkanGraph, scope: GraphScope) {
+  static answer(graph: AkanGraph, scope: GraphScope, counted = graph.nodes) {
     if (scope.app || scope.module || graph.nodes.length <= unscopedNodeLimit) return WorkspaceGraph.scope(graph, scope);
     const owners = new Map<string, number>();
-    for (const node of graph.nodes) if (node.owner) owners.set(node.owner, (owners.get(node.owner) ?? 0) + 1);
+    for (const node of counted) if (node.owner) owners.set(node.owner, (owners.get(node.owner) ?? 0) + 1);
     return {
       diagnostics: [
         {

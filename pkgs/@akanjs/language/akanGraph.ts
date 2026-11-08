@@ -236,12 +236,20 @@ export class GraphBuilder {
   }
 
   //? FNV-1a over the body text only, so moving a member leaves it unchanged; a 32-bit collision at worst leaves one
-  //? changed node unmarked in a Change Map.
-  #digest(node: AkanGraphNode, text: string | undefined, { start, end }: Extent) {
-    if (!this.#source.digests || node.digest || text === undefined) return;
+  //? change unmarked in a Change Map. `\r` is skipped: git with core.autocrlf checks CRLF out over an LF blob.
+  #hashOf(text: string | undefined, { start, end }: Extent) {
+    if (!this.#source.digests || text === undefined) return null;
     let hash = 0x811c9dc5;
-    for (let idx = start; idx < end; idx++) hash = Math.imul(hash ^ text.charCodeAt(idx), 0x01000193);
-    node.digest = (hash >>> 0).toString(16).padStart(8, "0");
+    for (let idx = start; idx < end; idx++) {
+      const code = text.charCodeAt(idx);
+      if (code !== 13) hash = Math.imul(hash ^ code, 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  #digest(node: AkanGraphNode, text: string | undefined, extent: Extent) {
+    const digest = node.digest ? null : this.#hashOf(text, extent);
+    if (digest) node.digest = digest;
   }
 
   #addEdge(from: string, to: string, kind: AkanGraphEdgeKind, label: string | null, at: AkanGraphLocation | null) {
@@ -278,17 +286,20 @@ export class GraphBuilder {
           scope.find((other) => other.name === parent);
         if (parentClass) visit(parentClass);
       }
-      for (const field of current.fields)
-        if (!fields.has(field.name))
-          fields.set(field.name, {
-            name: field.name,
-            type: field.type,
-            array: field.array,
-            optional: field.optional,
-            ref: null,
-            declaredIn: current.name,
-            at: this.#location(field.span),
-          });
+      for (const field of current.fields) {
+        if (fields.has(field.name)) continue;
+        const digest = this.#hashOf(this.#source.readText(field.span.fileName), field.extent);
+        fields.set(field.name, {
+          name: field.name,
+          type: field.type,
+          array: field.array,
+          optional: field.optional,
+          ref: null,
+          declaredIn: current.name,
+          at: this.#location(field.span),
+          ...(digest ? { digest } : {}),
+        });
+      }
     };
     visit(constant);
     return [...fields.values()];

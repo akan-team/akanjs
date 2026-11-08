@@ -28,6 +28,7 @@ export interface AkanGraphField {
   ref: string | null;
   declaredIn: string;
   at: AkanGraphLocation;
+  digest?: string;
   change?: AkanGraphChange;
 }
 
@@ -62,8 +63,13 @@ export interface AkanGraph {
   edges: AkanGraphEdge[];
 }
 
+export interface AkanChangedFile {
+  file: string;
+  change: AkanGraphChange;
+}
+
 export interface AkanChangeMap extends AkanGraph {
   since: string;
   summary: { [change in AkanGraphChange]: number };
-  unmapped: string[];
+  unmapped: AkanChangedFile[];
 }

@@ -371,12 +371,15 @@ describe("ContextRunner", () => {
     const { workspace, app, module } = track(await createTempModule("post"));
     await new ModuleRunner().createModuleTemplate(module);
     const git = (...args: string[]) =>
-      Bun.spawnSync(["git", "-c", "user.name=akan", "-c", "user.email=akan@example.com", ...args], {
-        cwd: workspace.workspaceRoot,
-      });
+      expect(
+        Bun.spawnSync(
+          ["git", "-c", "user.name=akan", "-c", "user.email=akan@example.com", "-c", "commit.gpgsign=false", ...args],
+          { cwd: workspace.workspaceRoot },
+        ).exitCode,
+      ).toBe(0);
     git("init", "-q");
     git("add", "-A");
-    git("commit", "-q", "-m", "base");
+    git("commit", "-q", "--no-verify", "-m", "base");
     const dir = `${app.cwdPath}/lib/post`;
     const edit = async (file: string, from: string, to: string) => {
       const text = await Bun.file(`${dir}/${file}`).text();
@@ -396,7 +399,7 @@ describe("ContextRunner", () => {
       since: string;
       summary: { added: number };
       nodes: { id: string; change?: string; fields?: { name: string; change?: string }[] }[];
-      unmapped: string[];
+      unmapped: { file: string; change: string }[];
     };
     expect(changes.since).toMatch(/^[0-9a-f]{12}$/);
     const post = changes.nodes.find((node) => node.id === "model:apps/demo:post");
@@ -404,8 +407,8 @@ describe("ContextRunner", () => {
     expect(post?.fields?.find((field) => field.name === "pinned")?.change).toBe("added");
     expect(changes.nodes.find((node) => node.id === "method:apps/demo:post.pin")?.change).toBe("added");
     expect(changes.summary.added).toBeGreaterThan(0);
-    expect(changes.unmapped).toContain("apps/demo/lib/post/post.dictionary.ts");
-    expect(changes.unmapped.some((file) => file.includes("/env/"))).toBe(false);
+    expect(changes.unmapped).toContainEqual({ file: "apps/demo/lib/post/post.dictionary.ts", change: "changed" });
+    expect(changes.unmapped.some(({ file }) => file.includes("/env/"))).toBe(false);
 
     for (const since of ["no-such-branch", "--output=/tmp/x"])
       expect(await new ContextRunner().callMcpTool(workspace, "get_graph", { since })).toEqual({
