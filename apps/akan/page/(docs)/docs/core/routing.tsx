@@ -177,8 +177,8 @@ const chainStages = [
         layout: true,
         rootLayout: true,
         required: false,
-        en: "404 UI rendered inside the layout when a child route is missing; takes raw route props.",
-        ko: "하위 라우트가 없을 때 레이아웃 안에 그리는 404 UI입니다. 타입 인자가 아니라 원본 route props를 받습니다.",
+        en: "404 UI rendered inside the layout when a child route is missing; takes raw route props. A <title> or <meta> at its top replaces the head.",
+        ko: "하위 라우트가 없을 때 레이아웃 안에 그리는 404 UI입니다. 타입 인자가 아니라 원본 route props를 받습니다. 맨 위에 둔 <title>·<meta>가 head를 대신합니다.",
       },
       {
         name: ".error",

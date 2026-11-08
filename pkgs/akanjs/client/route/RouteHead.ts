@@ -37,6 +37,29 @@ export class RouteHead {
     return RouteHead.merge([RouteHead.#withoutPageIdentity(layouts), page]);
   }
 
+  /** The tags at the top of `node` that a head merges by identity, apart from the rest, which is `node` if none. */
+  static split(node: ReactNode): { tags: ReactNode[]; rest: ReactNode } {
+    const children = RouteHead.#flatten(node);
+    const tags = children.filter((child) => RouteHead.#keyOfNode(child) !== null);
+    if (!tags.length) return { tags, rest: node };
+    const rest = children.filter((child) => RouteHead.#keyOfNode(child) === null);
+    return { tags, rest: createElement(Fragment, null, ...rest) };
+  }
+
+  /** A `robots` meta that adds `noindex` to the directives of the last `robots` meta at the top of `node`. */
+  static noindexOver(node: ReactNode): ReactElement {
+    const robots = RouteHead.#flatten(node).findLast((child) => RouteHead.#keyOfNode(child) === "meta:name:robots");
+    const content = isValidElement(robots) ? (robots.props as TagProps).content : undefined;
+    const kept =
+      typeof content === "string"
+        ? content
+            .split(",")
+            .map((directive) => directive.trim())
+            .filter((directive) => directive && !/^(?:index|noindex|all)$/i.test(directive))
+        : [];
+    return createElement("meta", { key: "robots", name: "robots", content: ["noindex", ...kept].join(", ") });
+  }
+
   /** What makes two tags the same tag; `null` for one that never replaces another. */
   static keyOf(tag: string, props: TagProps): string | null {
     if (tag === "title" || tag === "base") return tag;

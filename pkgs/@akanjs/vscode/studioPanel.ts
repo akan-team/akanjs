@@ -1,13 +1,21 @@
 import * as vscode from "vscode";
-import { StudioView } from "./studioView";
+import { type StudioModuleTarget, StudioView, type StudioWorkflowRequest } from "./studioView";
 
 const readyTimeoutMs = 20_000;
+
+export interface StudioHandlers {
+  runWorkflow: (request: StudioWorkflowRequest) => Promise<boolean>;
+  openModule: (target: StudioModuleTarget, revealStudio: (column: number) => void) => Promise<boolean>;
+}
 
 export class StudioPanel {
   static readonly #panels = new Map<string, StudioPanel>();
   readonly #panel: vscode.WebviewPanel;
   readonly #root: string;
   #sourceColumn = vscode.ViewColumn.One;
+  #url = "";
+  #frameOrigin = "";
+  #handlers: StudioHandlers | null = null;
   #loads = 0;
   #isDisposed = false;
   #ready: ((isReady: boolean) => void) | null = null;
@@ -18,7 +26,9 @@ export class StudioPanel {
       "akan.studio",
       title,
       { viewColumn: vscode.ViewColumn.Beside },
-      { enableScripts: true, localResourceRoots: [] },
+      //? The pinned node and the page reached inside the frame live only in the dev server's page; without retained
+      //? context a hidden or moved panel reloads the last URL it was handed and loses both.
+      { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true },
     );
     this.#panel.webview.onDidReceiveMessage((message: unknown) => this.#receive(message));
     this.#panel.onDidDispose(() => {
@@ -28,11 +38,12 @@ export class StudioPanel {
     });
   }
 
-  static async show(root: string, app: string, url: string) {
+  static async show(root: string, app: string, url: string, handlers: StudioHandlers) {
     const key = `${root}\n${app}`;
     const panel = StudioPanel.#panels.get(key) ?? new StudioPanel(root, key, vscode.l10n.t("Akan Studio · {0}", app));
     StudioPanel.#panels.set(key, panel);
     panel.#sourceColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
+    panel.#handlers = handlers;
     return await panel.#load(url);
   }
 
@@ -41,6 +52,8 @@ export class StudioPanel {
   async #load(url: string) {
     const target = new URL(url);
     const origin = (await vscode.env.asExternalUri(vscode.Uri.parse(target.origin))).toString(true);
+    this.#url = url;
+    this.#frameOrigin = new URL(origin).origin;
     const load = ++this.#loads;
     this.#settle(false);
     const isReady = new Promise<boolean>((resolve) => {
@@ -61,6 +74,11 @@ export class StudioPanel {
     ready?.(isReady);
   }
 
+  async #run(request: StudioWorkflowRequest) {
+    if (!this.#handlers || !(await this.#handlers.runWorkflow(request)) || this.#isDisposed) return;
+    await this.#load(this.#url);
+  }
+
   async #offerBrowser(url: string) {
     const open = vscode.l10n.t("Open in Browser");
     const picked = await vscode.window.showWarningMessage(
@@ -72,7 +90,18 @@ export class StudioPanel {
 
   async #receive(message: unknown) {
     if (StudioView.isReady(message)) {
+      this.#url = StudioView.followed(message, this.#url, this.#frameOrigin) ?? this.#url;
       this.#settle(true);
+      return;
+    }
+    const request = StudioView.workflowOf(message);
+    if (request) {
+      await this.#run(request);
+      return;
+    }
+    const target = StudioView.moduleTargetOf(message);
+    if (target) {
+      await this.#handlers?.openModule(target, (column) => this.#panel.reveal(column, true));
       return;
     }
     const source = StudioView.sourceOf(message, this.#root);

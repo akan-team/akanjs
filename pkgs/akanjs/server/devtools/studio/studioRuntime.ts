@@ -1,16 +1,29 @@
+interface StudioRuntimeAction {
+  kind: string;
+  label: string;
+  workflow?: string;
+  inputs: unknown;
+  command: string | null;
+}
+
 export const studioRuntime = () => {
+  let host: string | null = null;
+  let accepted = new Set<unknown>();
   if (window.parent !== window) {
-    let host: string | null = null;
     window.addEventListener("message", (event) => {
       if (event.source !== window.parent || !event.origin.startsWith("vscode-webview:")) return;
-      if ((event.data as { type?: unknown } | null)?.type !== "akan-studio:host") return;
+      const data = event.data as { type?: unknown; accepts?: unknown } | null;
+      if (data?.type !== "akan-studio:host") return;
       host = event.origin;
+      //? A host that lists nothing predates the list and only opens source links.
+      accepted = new Set(Array.isArray(data.accepts) ? data.accepts : ["open"]);
       window.parent.postMessage({ type: "akan-studio:ready", href: location.href }, host);
+      showActions(shown);
     });
     document.addEventListener("click", (event) => {
       const href = event.target instanceof Element ? event.target.closest("a[href]")?.getAttribute("href") : null;
       const source = href?.match(/^[a-z-]+:\/\/file(\/.+):(\d+):(\d+)$/);
-      if (!host || !source) return;
+      if (!host || !accepted.has("open") || !source) return;
       event.preventDefault();
       const [, path, line, column] = source;
       window.parent.postMessage(
@@ -21,6 +34,49 @@ export const studioRuntime = () => {
   }
   const select = document.querySelector<HTMLSelectElement>("select[data-studio-module]");
   select?.addEventListener("change", () => select.form?.submit());
+  const bar = document.querySelector<HTMLElement>("[data-studio-actions]");
+  const status = document.createElement("output");
+  const say = (text: string) => {
+    status.textContent = text;
+  };
+  const run = ({ kind, workflow, inputs, command }: StudioRuntimeAction) => {
+    if (host && accepted.has(kind)) {
+      const message =
+        kind === "module" ? { type: "akan-studio:module", inputs } : { type: "akan-studio:workflow", workflow, inputs };
+      window.parent.postMessage(message, host);
+      return;
+    }
+    if (!command) return;
+    const copied = navigator.clipboard?.writeText(command);
+    if (!copied) say(command);
+    else
+      copied.then(
+        () => say(`Copied: ${command}`),
+        () => say(command),
+      );
+  };
+  let shown: Element | null = null;
+  const showActions = (box: Element | null) => {
+    shown = box;
+    if (!bar) return;
+    const from = box instanceof SVGElement || box instanceof HTMLElement ? box : bar;
+    const listed = JSON.parse(from.dataset.actions ?? "[]") as StudioRuntimeAction[];
+    const actions = listed.filter((action) => (host && accepted.has(action.kind)) || action.command);
+    const label = document.createElement("span");
+    label.className = "muted";
+    label.textContent = from.dataset.label ?? "";
+    const buttons = actions.map((action) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = action.label;
+      button.title = action.command ?? "";
+      button.addEventListener("click", () => run(action));
+      return button;
+    });
+    say("");
+    bar.replaceChildren(label, ...buttons, status);
+  };
+  showActions(null);
   const svg = document.querySelector<SVGSVGElement>("svg[data-studio]");
   if (!svg) return;
   const links = [...svg.querySelectorAll<SVGPathElement>("path[data-from]")];
@@ -49,12 +105,14 @@ export const studioRuntime = () => {
       if (event.target instanceof Element && event.target.closest("a[href]")) return;
       pinned = pinned === id ? null : id;
       focus(pinned ?? id);
+      showActions(pinned ? box : null);
     });
   }
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     pinned = null;
     focus(null);
+    showActions(null);
   });
   const filter = document.querySelector<HTMLInputElement>("input[data-studio-filter]");
   filter?.addEventListener("input", () => {

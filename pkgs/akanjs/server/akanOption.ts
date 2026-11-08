@@ -12,6 +12,7 @@ import type {
 import type { McpServerOption } from "./akanServer";
 import type { WebProxyRegistration } from "./proxy";
 import { HostBasePathWebProxy, LocaleWebProxy } from "./proxy";
+import type { SessionRefreshHook } from "./sessionRefresh";
 
 export interface AdaptorOverride {
   role: AdaptorCls;
@@ -32,6 +33,7 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   #agentQuota: AgentQuotaHook | null | undefined;
   #crossSite: CrossSiteOption | undefined;
   #getRateLimit: ((env: Env) => RateLimitSetting | false) | undefined;
+  #sessionRefresh: SessionRefreshHook | null | undefined;
   use(fnOrObject: ((env: Env) => Record<string, PromiseOrObject<unknown>>) | Record<string, PromiseOrObject<unknown>>) {
     if (typeof fnOrObject === "function")
       this.#getUses.push(fnOrObject as (env: Env) => Record<string, PromiseOrObject<unknown>>);
@@ -92,6 +94,15 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
     this.#getRateLimit = typeof settingOrFn === "function" ? settingOrFn : () => settingOrFn;
     return this;
   }
+  /**
+   * Runs before a page or RSC navigation renders, with the request as the browser sent it, and returns `Set-Cookie`
+   * values (or none). The render reads the cookies they set and the response carries them, so a session whose access
+   * token expired is renewed before a guard sees it. The app's wins over its libs'; `null` clears a lib's.
+   */
+  setSessionRefresh(hook: SessionRefreshHook | null) {
+    this.#sessionRefresh = hook;
+    return this;
+  }
   /** Injected into the `LlmAdaptorRole` adaptor as the `llmOption` use; merged in mount order, the app's last. */
   setLlm<Option extends LlmOption>(llmOrFn: Option | ((env: Env) => Option)) {
     if (typeof llmOrFn === "function") this.#getLlms.push(llmOrFn);
@@ -150,6 +161,9 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   }
   getRateLimit(env: Env): RateLimitSetting | false | undefined {
     return this.#getRateLimit?.(env);
+  }
+  getSessionRefresh(): SessionRefreshHook | null | undefined {
+    return this.#sessionRefresh;
   }
   getLlm(env: Env): LlmOption {
     return Object.assign({}, ...this.#getLlms.map((fn) => fn(env)));

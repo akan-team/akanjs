@@ -270,8 +270,10 @@ export class GraphBuilder {
     this.#addEdge(node.id, id, "guard", role, node.at);
   }
 
+  //? `lib/_<service>/` holds the `<service>` module, as its methods and actions already read; `__scalar` stays whole.
   #moduleDirOf(fileName: string) {
-    return this.#source.relative(fileName).match(moduleDirPattern)?.[1] ?? null;
+    const dir = this.#source.relative(fileName).match(moduleDirPattern)?.[1] ?? null;
+    return dir?.startsWith("_") && !dir.startsWith("__") ? dir.slice(1) : dir;
   }
 
   #fieldsOf(constant: ConstantClassFact, scope: ConstantClassFact[]): AkanGraphField[] {

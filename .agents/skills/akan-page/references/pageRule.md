@@ -116,6 +116,9 @@ body shape — this is the full contract behind them. Before changing route beha
   `property`, and a canonical / manifest / icon link, and keeps the rest — so a page states only what it changes.
 - A canonical link and `og:url` each name one URL, so a page carries them only from its own `.head()`, never from a
   layout's.
+- **A not-found or error view titles itself**: the `<title>` and `<meta>` at the top of what a layout's `.notFound()`
+  / `.error()` returns replace the layouts' head, and the page's own head is dropped. Under a `.loading()` the head is
+  already out, so they stay in the view.
 
 ## A Root Layout Inside A CSR Bundle
 

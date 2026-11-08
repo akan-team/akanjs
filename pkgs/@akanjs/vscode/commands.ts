@@ -1,6 +1,7 @@
 import path from "node:path";
 import * as vscode from "vscode";
 import { AkanCli, type AkanRun, type VerifyResult } from "./akanCli";
+import { type ModuleFolder, ModuleLayout } from "./moduleLayout";
 import { StudioPanel } from "./studioPanel";
 import { StudioView } from "./studioView";
 
@@ -27,6 +28,12 @@ interface WorkflowApplyReport {
   diagnostics: WorkflowDiagnostic[];
 }
 
+interface ModuleTarget {
+  root?: string;
+  app: string;
+  module: string;
+}
+
 const writingActions = new Set(["create", "modify"]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
@@ -45,18 +52,20 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     return folders.length === 1 ? folders[0] : await vscode.window.showWorkspaceFolderPick();
   };
 
-  const cliOf = async () => {
+  const cliOf = async (root?: string) => {
     if (!vscode.workspace.isTrusted) {
       void vscode.window.showWarningMessage(
         vscode.l10n.t("Akan commands run the workspace's CLI, so they need a trusted workspace."),
       );
       return null;
     }
-    const folder = await folderOf();
-    if (!folder) return null;
-    const cli = AkanCli.of(folder.uri.fsPath);
+    const folderPath = root ?? (await folderOf())?.uri.fsPath;
+    if (!folderPath) return null;
+    const cli = AkanCli.of(folderPath);
     if (!cli)
-      void vscode.window.showErrorMessage(vscode.l10n.t("{0} has no akan CLI. Install @akanjs/cli.", folder.name));
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("{0} has no akan CLI. Install @akanjs/cli.", path.basename(folderPath)),
+      );
     return cli;
   };
 
@@ -93,8 +102,8 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     return null;
   };
 
-  const verify = async (target?: string) => {
-    const cli = await cliOf();
+  const verify = async (target?: string, root?: string) => {
+    const cli = await cliOf(root);
     if (!cli) return;
     await vscode.workspace.saveAll(false);
     const active = vscode.window.activeTextEditor?.document.uri;
@@ -159,13 +168,17 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     });
   };
 
-  const askInputs = async (cli: AkanCli, specs: Record<string, WorkflowInputSpec>) => {
+  const askInputs = async (
+    cli: AkanCli,
+    specs: Record<string, WorkflowInputSpec>,
+    given: Record<string, string>,
+  ): Promise<Record<string, string | boolean> | null> => {
     const active = vscode.window.activeTextEditor?.document.uri;
     const place = active ? AkanCli.placeOf(cli.root, active.fsPath) : { system: null, module: null };
     const presets: Partial<Record<string, string | null>> = { app: place.system, module: place.module };
-    const entries = Object.entries(specs);
+    const entries = StudioView.inputsToAsk(specs, given);
     const optional = entries.filter(([, spec]) => !spec.required);
-    const values: Record<string, string | boolean> = {};
+    const values: Record<string, string | boolean> = { ...given };
     for (const [name, spec] of entries.filter(([, spec]) => spec.required)) {
       const value = await askInput(cli, name, spec, presets[name] ?? null);
       if (value === undefined) return null;
@@ -191,9 +204,23 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     return values;
   };
 
-  const runWorkflow = async (name?: string) => {
-    const cli = await cliOf();
-    if (!cli) return;
+  let isWorkflowRunning = false;
+  const runWorkflow = async (name?: string, given: Record<string, string> = {}, root?: string): Promise<boolean> => {
+    if (isWorkflowRunning) {
+      void vscode.window.showInformationMessage(vscode.l10n.t("Another Akan workflow is still running."));
+      return false;
+    }
+    isWorkflowRunning = true;
+    try {
+      return await runWorkflowOnce(name, given, root);
+    } finally {
+      isWorkflowRunning = false;
+    }
+  };
+
+  const runWorkflowOnce = async (name: string | undefined, given: Record<string, string>, root?: string) => {
+    const cli = await cliOf(root);
+    if (!cli) return false;
     let workflow = name;
     if (!workflow) {
       const listed = reportOf(
@@ -210,57 +237,64 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
         )
       )?.label;
     }
-    if (!workflow) return;
+    if (!workflow) return false;
     const spec = reportOf(
       await run(cli, vscode.l10n.t("Reading {0}", workflow), ["workflow", "explain", workflow, "--format", "json"]),
       "workflow explain",
     );
-    if (!spec || !isRecord(spec.inputs)) return;
-    const inputs = await askInputs(cli, spec.inputs as Record<string, WorkflowInputSpec>);
-    if (!inputs) return;
+    if (!spec || !isRecord(spec.inputs)) return false;
+    const inputs = await askInputs(cli, spec.inputs as Record<string, WorkflowInputSpec>, given);
+    if (!inputs) return false;
 
     const planPath = path.join(".akan", "workflows", "plans", `editor-${workflow}.json`);
     const planArgs = ["workflow", "plan", workflow, ...AkanCli.argsOf(inputs), "--format", "json", "--out", planPath];
     const planned = reportOf(await run(cli, vscode.l10n.t("Planning {0}", workflow), planArgs), "workflow plan");
-    if (!planned) return;
+    if (!planned) return false;
     const plan = planned as unknown as WorkflowPlan;
     const planErrors = errorsOf(plan.diagnostics);
     if (planErrors.length) {
       void vscode.window.showErrorMessage(planErrors.join(" "));
-      return;
+      return false;
     }
     const writes = plan.predictedChanges.filter((change) => writingActions.has(change.action));
     const applyLabel = vscode.l10n.t("Apply");
+    const inputLine = Object.entries(inputs)
+      .map(([input, value]) => `${input}=${String(value)}`)
+      .join(" ");
     const confirmed = await vscode.window.showInformationMessage(
       vscode.l10n.t("Apply {0}?", workflow),
-      { modal: true, detail: writes.map((change) => `${change.action} ${change.target}`).join("\n") },
+      { modal: true, detail: [inputLine, ...writes.map((change) => `${change.action} ${change.target}`)].join("\n") },
       applyLabel,
     );
-    if (confirmed !== applyLabel) return;
+    if (confirmed !== applyLabel) return false;
 
     const applied = reportOf(
       await run(cli, vscode.l10n.t("Applying {0}", workflow), ["workflow", "apply", planPath, "--format", "json"]),
       "workflow apply",
     );
-    if (!applied) return;
+    if (!applied) return false;
     const report = applied as unknown as WorkflowApplyReport;
     for (const file of report.changedFiles) log.appendLine(`[akan] ${workflow}: ${file.path}`);
     if (report.status !== "passed") {
       void vscode.window.showErrorMessage(
         errorsOf(report.diagnostics).join(" ") || vscode.l10n.t("{0} failed.", workflow),
       );
-      return;
+      return false;
     }
     const verifyLabel = vscode.l10n.t("Verify");
-    const picked = await vscode.window.showInformationMessage(
-      vscode.l10n.t(
-        "{0} changed {1} files. Verify syncs the generated files and checks them.",
-        workflow,
-        report.changedFiles.length,
-      ),
-      verifyLabel,
-    );
-    if (picked === verifyLabel) await verify(typeof inputs.app === "string" ? inputs.app : undefined);
+    void vscode.window
+      .showInformationMessage(
+        vscode.l10n.t(
+          "{0} changed {1} files. Verify syncs the generated files and checks them.",
+          workflow,
+          report.changedFiles.length,
+        ),
+        verifyLabel,
+      )
+      .then((picked) => {
+        if (picked === verifyLabel) void verify(typeof inputs.app === "string" ? inputs.app : undefined, cli.root);
+      });
+    return true;
   };
 
   const openStudio = async ({
@@ -302,7 +336,11 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     const result = await run(cli, vscode.l10n.t("Opening Akan Studio for {0}", app), args);
     if (!result) return false;
     const report = AkanCli.jsonOf(result.stdout);
-    if (isRecord(report) && typeof report.url === "string") return await StudioPanel.show(cli.root, app, report.url);
+    if (isRecord(report) && typeof report.url === "string")
+      return await StudioPanel.show(cli.root, app, report.url, {
+        runWorkflow: ({ workflow, inputs }) => runWorkflow(workflow, inputs, cli.root),
+        openModule: (target, revealStudio) => openModule({ ...target, root: cli.root }, revealStudio),
+      });
     log.appendLine(result.stdout.trimEnd());
     const reason = result.stdout.trim().split("\n").at(-1) || vscode.l10n.t("akan studio failed.");
     if (!result.stdout.includes("No dev server answers")) {
@@ -315,6 +353,59 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     terminal.sendText([...cli.command, "start", app].map(AkanCli.shellArgOf).join(" "));
     terminal.show();
     return false;
+  };
+
+  const pickModule = async (root: string) => {
+    const picked = await vscode.window.showQuickPick(
+      ModuleLayout.modulesOf(root).map((folder) => ({
+        label: folder.name,
+        description: path.relative(root, folder.dir),
+        folder,
+      })),
+      { title: vscode.l10n.t("Open which module side by side"), matchOnDescription: true },
+    );
+    return picked?.folder ?? null;
+  };
+
+  const openModuleOnce = async (target?: ModuleTarget, revealStudio?: (column: number) => void) => {
+    const root = target?.root ?? (await folderOf())?.uri.fsPath;
+    if (!root) return false;
+    const active = vscode.window.activeTextEditor?.document.uri;
+    const folder: ModuleFolder | null = target
+      ? ModuleLayout.folderFor(root, target.app, target.module)
+      : ((active && ModuleLayout.folderOf(root, active.fsPath)) ?? (await pickModule(root)));
+    if (!folder) {
+      if (target)
+        void vscode.window.showErrorMessage(vscode.l10n.t("No module {0} in {1}.", target.module, target.app));
+      return false;
+    }
+    const files = ModuleLayout.filesIn(folder);
+    if (!files.length) {
+      void vscode.window.showErrorMessage(vscode.l10n.t("{0} has no module files to open.", folder.name));
+      return false;
+    }
+    const grid = ModuleLayout.gridOf(files.length, { besideStudio: !!revealStudio });
+    await vscode.commands.executeCommand("vscode.setEditorLayout", grid);
+    for (const [idx, file] of files.entries())
+      await vscode.window.showTextDocument(vscode.Uri.file(file), {
+        viewColumn: idx + 1,
+        preview: false,
+        preserveFocus: idx > 0,
+      });
+    //? Moving Studio first would empty its old group, which VS Code closes, shifting every later column onto Studio.
+    revealStudio?.(files.length + 1);
+    return true;
+  };
+
+  let isModuleOpening = false;
+  const openModule = async (target?: ModuleTarget, revealStudio?: (column: number) => void) => {
+    if (isModuleOpening) return false;
+    isModuleOpening = true;
+    try {
+      return await openModuleOnce(target, revealStudio);
+    } finally {
+      isModuleOpening = false;
+    }
   };
 
   return [
@@ -336,6 +427,13 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
             ? options.module
             : undefined,
       }),
+    ),
+    vscode.commands.registerCommand("akan.openModule", (options?: unknown) =>
+      openModule(
+        isRecord(options) && typeof options.app === "string" && typeof options.module === "string"
+          ? { app: options.app, module: options.module }
+          : undefined,
+      ),
     ),
     vscode.commands.registerCommand("akan.openChangeMap", (options?: unknown) =>
       openStudio({

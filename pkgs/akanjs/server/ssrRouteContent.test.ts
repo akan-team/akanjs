@@ -15,7 +15,10 @@ interface Rendered {
 const readsWindowId = "routecontent/readsWindow";
 const readsWindowModule = path.join(import.meta.dir, "ssrRouteContentClient.fixture.tsx");
 
-const withRouteContentWorker = async (run: (render: (route: string) => Promise<Rendered>) => Promise<void>) => {
+const withRouteContentWorker = async (
+  run: (render: (route: string) => Promise<Rendered>) => Promise<void>,
+  fixture = "ssrRouteContent.fixture.tsx",
+) => {
   const vars: Record<string, string> = {
     AKAN_RSC_WORKER_PATH: path.join(import.meta.dir, "rscWorker.tsx"),
     AKAN_PUBLIC_APP_NAME: "routecontent",
@@ -25,7 +28,7 @@ const withRouteContentWorker = async (run: (render: (route: string) => Promise<R
   const saved = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]));
   Object.assign(process.env, vars);
   const rsc = new RscWorker({
-    pagesBundlePath: path.join(import.meta.dir, "ssrRouteContent.fixture.tsx"),
+    pagesBundlePath: path.join(import.meta.dir, fixture),
     pagesBundleBuildId: 1,
     rscRuntimeClientManifest: { [readsWindowId]: { id: readsWindowId, chunks: [], name: "ReadsWindow" } },
   } as unknown as BaseBuildArtifact);
@@ -153,5 +156,74 @@ describe("SSR of a route with a .loading()", () => {
       expect(html.indexOf("<p>inner content</p>")).toBeGreaterThan(-1);
       expect(html.indexOf("<p>inner content</p>")).toBeLessThan(html.lastIndexOf('$RC("B:0"'));
     });
+  }, 20_000);
+});
+
+const headTags = (html: string) => {
+  const head = html.slice(0, html.indexOf("</head>"));
+  return {
+    titles: [...html.matchAll(/<title[^>]*>([^<]*)<\/title>/g)].map((match) => match[1]),
+    descriptions: [...html.matchAll(/<meta name="description" content="([^"]*)"/g)].map((match) => match[1]),
+    robots: [...html.matchAll(/<meta name="robots" content="([^"]*)"/g)].map((match) => match[1]),
+    inHead: (text: string) => head.includes(text),
+  };
+};
+
+describe("SSR head of a not-found or error view", () => {
+  test("is the NotFound's own title and meta, once, for an unmatched path and a page's or head's router.notFound()", async () => {
+    await withRouteContentWorker(async (render) => {
+      for (const route of ["no/such/page", "creature/missingno", "named/missingno"]) {
+        const missing = await render(route);
+        expect(missing.status).toBe(404);
+        expect(missing.html).toContain(`missing /en/${route}`);
+        const { titles, descriptions, robots, inHead } = headTags(missing.html);
+        expect({ route, titles, descriptions, robots }).toEqual({
+          route,
+          titles: ["Not found – Dex"],
+          descriptions: ["Nothing here"],
+          robots: ["noindex"],
+        });
+        expect(inHead("<title>Not found – Dex</title>")).toBe(true);
+        expect(inHead('<link rel="manifest"')).toBe(true);
+      }
+    }, "ssrNotFoundHead.fixture.tsx");
+  }, 20_000);
+
+  test("keeps the layouts' head and robots directives when the NotFound writes none, and the page's head when nothing is missing", async () => {
+    await withRouteContentWorker(async (render) => {
+      const plain = await render("plain/anything");
+      expect(plain.html).toContain('<p id="plain-missing">plain missing</p>');
+      expect(headTags(plain.html)).toMatchObject({ titles: ["Dex"], robots: ["noindex, nofollow"] });
+
+      const found = await render("creature/mew");
+      expect(found.status).toBe(200);
+      //? Chromium reads a manifest link only among <head>'s children.
+      expect(headTags(found.html).inHead('<link rel="manifest" href="/manifest.webmanifest"/>')).toBe(true);
+      expect(headTags(found.html)).toMatchObject({
+        titles: ["mew – Dex"],
+        descriptions: ["Every creature"],
+        robots: [],
+      });
+    }, "ssrNotFoundHead.fixture.tsx");
+  }, 20_000);
+
+  test("is an .error() view's own title, once, for an error a page throws", async () => {
+    await withLoggedErrors(async () => {
+      await withRouteContentWorker(async (render) => {
+        const failed = await render("failing/inner");
+        expect(failed.status).toBe(500);
+        expect(failed.html).toContain('<p id="broken">broken</p>');
+        expect(headTags(failed.html).titles).toEqual(["Broken – Dex"]);
+      }, "ssrNotFoundHead.fixture.tsx");
+    });
+  }, 20_000);
+
+  test("leaves the NotFound's tags in its view below a .loading(), whose shell is out before it renders", async () => {
+    await withRouteContentWorker(async (render) => {
+      const late = await render("slow/missingno");
+      expect(late.html).toContain("missing /en/slow/missingno");
+      expect(late.html.indexOf("<title>slow – Dex</title>")).toBeLessThan(late.html.indexOf("</head>"));
+      expect(headTags(late.html).titles).toContain("Not found – Dex");
+    }, "ssrNotFoundHead.fixture.tsx");
   }, 20_000);
 });

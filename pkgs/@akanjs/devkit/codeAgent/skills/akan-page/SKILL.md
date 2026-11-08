@@ -34,6 +34,25 @@ export default page()
 6. Re-skin an `akanjs/ui` component for a subtree with `_overrides.tsx`:
    `export default override({ Slot: AppComponent })`, no logic.
 
+## API at a glance
+
+`page`, `layout` and `router` come from `akanjs/client`, `Link` from `akanjs/ui`, `usePageLocation` from
+`akanjs/webkit`. A stage receives the declared params and search keys plus `lang`.
+
+- Data-driven title: `.head(async ({ name }) => <title>{(await fetch.pokemon(name))?.label}</title>)`.
+- Async page: `.render(async ({ name }) => { const pokemon = await fetch.pokemon(name); if (!pokemon) router.notFound(); … })`;
+  the same query in `.head()` and `.render()` is one request.
+- `router.notFound()` from `.guard()`, `.head()` or `.render()` answers 404 with the nearest layout's `.notFound()`
+  above it (an unmatched URL: the deepest layout covering it), else the built-in 404.
+- A layout's own 404 and error views: `.notFound(({ pathname }) => …)` and `.error(({ error }) => …)` on `layout()`
+  or `rootLayout()`.
+- `<Link href="/pokemon/deoxys">`: write the path without the locale; Link adds it, or leaves it off for the default
+  locale under `i18n.localePrefix: "as-needed"`. `activeClassName` marks the current one.
+- From a handler: `router.push(href)` / `router.replace(href)`; in a server stage, `router.redirect(href)`.
+- A client filter kept in the URL without reloading the page: ``router.replace(`/pokemon?q=${q}`, { shallow: true,
+  scrollToTop: false })`` in a `"use client"` component, read back with `usePageLocation().searchParams`. Shallow
+  holds only while the path stays the same; a server `.search()` sees the value at the next full navigation.
+
 ## Never
 
 - A `fetch.<mutation>()` while rendering — it throws `base.error.mutationInRender`, because opening a link would

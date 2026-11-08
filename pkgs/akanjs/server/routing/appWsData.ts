@@ -1,10 +1,13 @@
 import {
+  bearerTokenOf,
   CookieJar,
   clientAddressFromHeaders,
   clientPortFromHeaders,
   forwardedHeaders,
   isAuthTokenKey,
+  readSessionToken,
   TrustedProxy,
+  websocketCredentialContract,
 } from "akanjs/common";
 
 const CREDENTIAL_HEADERS = ["authorization", "cookie", "user-agent"] as const;
@@ -50,6 +53,11 @@ export class AppWsData {
   }
   ipOf(ws: Bun.ServerWebSocket<unknown>): string | null {
     return TrustedProxy.clientAddress(this.headers, ws.remoteAddress);
+  }
+  //? The bearer first: `__auth` sets one over the handshake cookie, which stays in the jar.
+  credentialExpiresAt(): number | null {
+    const token = bearerTokenOf(this.headers.get("authorization")) ?? readSessionToken(this.jar).token;
+    return token ? websocketCredentialContract.expiresAtOf(token) : null;
   }
   constructor(headers: Headers) {
     this.createdAt = Date.now();

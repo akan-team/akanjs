@@ -172,6 +172,21 @@ describe("AkanIndex.graph", () => {
     ]);
   });
 
+  it("files a component under lib/_<service>/ in the <service> module", () => {
+    const index = new AkanIndex({ ts, root });
+    const withService: Record<string, string> = {
+      ...files,
+      "apps/demo/lib/_auth/Auth.Zone.tsx": `import { st } from "@apps/demo/client";
+export const Login = () => st.do.shareMemo();
+`,
+    };
+    for (const [rel, text] of Object.entries(withService)) index.setFile(`${root}/${rel}`, text);
+    const graph = index.graph((fileName) => withService[fileName.slice(root.length + 1)]);
+    const zone = graph.nodes.find((node) => node.kind === "component" && node.label === "Auth.Zone.Login");
+    expect(zone?.module).toBe("auth");
+    expect(graph.nodes.find((node) => node.label === "Memo.Util.Share")?.module).toBe("memo");
+  });
+
   it("links an app module that extends a lib module to the app's own node", () => {
     const index = new AkanIndex({ ts, root });
     const extended: Record<string, string> = {

@@ -49,6 +49,7 @@ import {
   resolveRouteCacheStoreTtl,
   shouldStoreRouteCache,
 } from "./cachePolicy";
+import { FallbackHead } from "./fallbackHead";
 import {
   createAkanLocaleAlternateHeadSnapshot,
   mergeAkanHeadSnapshots,
@@ -1343,6 +1344,7 @@ export class RscRenderer {
         basePath: this.#getBasePath(url),
       }),
     );
+    const fallbackHead = new FallbackHead();
     const body = await RouteElementComposer.composeFallback({
       kind,
       route,
@@ -1352,6 +1354,7 @@ export class RscRenderer {
       error,
       digest,
       gate,
+      head: fallbackHead,
     });
     if (!body) return null;
     const viewport = await RscRenderer.#firstRootValue(route.renderRootLayouts, (render) =>
@@ -1359,20 +1362,17 @@ export class RscRenderer {
     );
     const manifestLink = await this.#renderManifestLink(url, route.renderRootLayouts);
     const routeHead = await RscRenderer.#resolveFallbackHead({ kind, route, params, searchParams });
-    const routeHeadSnapshot = this.#createRouteHeadSnapshot(url, routeHead);
     return (
       <html lang={params.lang ?? getPathnameLocale(pathname, this.#i18n)} suppressHydrationWarning>
         <head key="head">
           <meta key="charset" charSet="utf-8" />
           {this.#renderViewport(viewport)}
-          <meta key="robots" name="robots" content="noindex" />
-          {RouteHead.mergeNodes([
-            manifestLink,
-            routeHeadSnapshot
-              ? renderAkanHeadSnapshot(routeHeadSnapshot)
-              : (routeHead.node ?? this.#renderDefaultHead()),
-          ])}
-          {routeHeadSnapshot ? null : this.#renderLocaleAlternates(url)}
+          <FallbackHead.Settled
+            key="route-head"
+            head={fallbackHead}
+            until={gate?.opened ?? Promise.resolve()}
+            render={(tags) => this.#renderHeadTags(url, { manifestLink, routeHead, noindex: true, tags })}
+          />
           {this.#renderStylesheet(pathname)}
         </head>
         <body key="body">
@@ -1441,28 +1441,37 @@ export class RscRenderer {
       params: match.params,
       searchParams,
     });
-    const routeHeadSnapshot = this.#createRouteHeadSnapshot(url, routeHead);
+    const fallbackHead = new FallbackHead();
     const body = RouteElementComposer.compose({
       pathRoute,
       params: match.params,
       searchParams,
       navKey: url.pathname + url.search,
-      notFound,
+      notFound: { ...notFound, head: fallbackHead },
       gate,
     });
+    const renderHead = async (tags: ReactNode[] | null) => {
+      if (!tags) return this.#renderHeadTags(url, { manifestLink, routeHead });
+      const layoutsHead = await RscRenderer.#resolveFallbackHead({
+        kind: "not-found",
+        route: pathRoute,
+        params: match.params,
+        searchParams,
+      });
+      return this.#renderHeadTags(url, { manifestLink, routeHead: layoutsHead, noindex: true, tags });
+    };
     // Cookie theme is applied on the HTML stream and by the client so RSC cache cannot replay a stale data-theme.
     return (
       <html lang={match.params.lang ?? this.#i18n.defaultLocale} suppressHydrationWarning>
         <head key="head">
           <meta key="charset" charSet="utf-8" />
           {this.#renderViewport(viewport, themeColorTheme)}
-          {RouteHead.mergeNodes([
-            manifestLink,
-            routeHeadSnapshot
-              ? renderAkanHeadSnapshot(routeHeadSnapshot)
-              : (routeHead.node ?? this.#renderDefaultHead()),
-          ])}
-          {routeHeadSnapshot ? null : this.#renderLocaleAlternates(url)}
+          <FallbackHead.Settled
+            key="route-head"
+            head={fallbackHead}
+            until={gate?.opened ?? Promise.resolve()}
+            render={renderHead}
+          />
           {this.#renderStylesheet(url.pathname)}
         </head>
         <body key="body">
@@ -1586,6 +1595,27 @@ export class RscRenderer {
     //? The basePath the URL shows; one a host maps to (x-base-path) is not in the path, and the server reads it there.
     const basePath = getBasePathFromPathname(url.pathname, { basePaths: this.#basePaths, i18n: this.#i18n });
     return <link key="manifest" rel="manifest" href={webManifestHref(basePath)} />;
+  }
+
+  #renderHeadTags(
+    url: URL,
+    {
+      manifestLink,
+      routeHead,
+      noindex = false,
+      tags = null,
+    }: { manifestLink: ReactNode; routeHead: ResolvedHead; noindex?: boolean; tags?: ReactNode[] | null },
+  ): ReactNode {
+    const routeHeadSnapshot = this.#createRouteHeadSnapshot(url, routeHead);
+    const head = routeHeadSnapshot
+      ? renderAkanHeadSnapshot(routeHeadSnapshot)
+      : (routeHead.node ?? this.#renderDefaultHead());
+    return (
+      <>
+        {RouteHead.mergeNodes([manifestLink, head, noindex ? RouteHead.noindexOver(head) : null, tags])}
+        {routeHeadSnapshot ? null : this.#renderLocaleAlternates(url)}
+      </>
+    );
   }
 
   #renderDefaultHead(): ReactNode {

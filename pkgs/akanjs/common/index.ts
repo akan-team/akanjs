@@ -273,5 +273,6 @@ export {
   type WebsocketHeartbeatRequest,
   websocketAuthContract,
   websocketBinaryFrameContract,
+  websocketCredentialContract,
   websocketHeartbeatContract,
 } from "./websocketContract";

@@ -1,3 +1,5 @@
+import { decodeJwtPayload } from "./jwtDecode";
+
 export interface WebsocketAuthRequest {
   key: string;
   data: [string | null];
@@ -27,6 +29,21 @@ export interface WebsocketHeartbeatRequest {
 export interface WebsocketHeartbeatAckData {
   type: "pong";
 }
+
+//? A page cannot hand an open socket the cookie it renewed: the server closes the socket at the credential's `exp`, and
+//? the reconnect's handshake carries the cookie the browser holds by then. Read unverified, it only times the close.
+export const websocketCredentialContract = {
+  expiredCode: 4401,
+  expiredReason: "credential expired",
+  expiresAtOf: (jwt: string): number | null => {
+    try {
+      const { exp } = decodeJwtPayload<{ exp?: unknown }>(jwt);
+      return typeof exp === "number" && Number.isFinite(exp) ? exp * 1000 : null;
+    } catch {
+      return null;
+    }
+  },
+} as const;
 
 // A browser cannot send a protocol ping, so an idle socket would be reaped by intermediaries; the ack matters because a
 // half-open socket still accepts `send()`, leaving inbound traffic the only evidence the peer is there.

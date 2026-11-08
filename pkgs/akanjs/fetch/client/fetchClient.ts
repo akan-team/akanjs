@@ -458,7 +458,7 @@ export class FetchClient {
   #makeHttpFn(key: string, endpoint: SerializedEndpoint, prefix?: string) {
     const argLength = endpoint.args.length;
     const serializerMap = this.#makeArgSerializer(endpoint.args);
-    const parseReturn = this.#makeReturnParser(endpoint.returns);
+    const parseReturn = FetchClient.#refusingUndeclaredNull(key, endpoint, this.#makeReturnParser(endpoint.returns));
     const { bodyArgs, uploadArgs } = FetchClient.classifyHttpArgs(endpoint.args);
     const requestOf = (argData: unknown[]) => {
       const args = argData.slice(0, argLength);
@@ -982,6 +982,20 @@ export class FetchClient {
       }),
     );
     return serializerMap;
+  }
+  static #refusingUndeclaredNull<Parse extends (value: unknown, option?: { crystalize?: boolean }) => unknown>(
+    key: string,
+    endpoint: SerializedEndpoint,
+    parse: Parse,
+  ): Parse {
+    if (endpoint.returns.nullable) return parse;
+    return ((value: unknown, option?: { crystalize?: boolean }) => {
+      if (value === null || value === undefined)
+        throw new Error(
+          `${endpoint.type} ${key} answered ${value}, but its return is not nullable: answer a value, or declare { nullable: true } and answer null`,
+        );
+      return parse(value, option);
+    }) as Parse;
   }
   #makeReturnParser(returns: SerializedReturns) {
     if (returns.modelType) {

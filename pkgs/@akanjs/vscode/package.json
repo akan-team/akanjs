@@ -75,6 +75,11 @@
         "title": "%akan.openChangeMap.title%",
         "category": "Akan",
         "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "akan.openModule",
+        "title": "%akan.openModule.title%",
+        "category": "Akan"
       }
     ],
     "configuration": {
