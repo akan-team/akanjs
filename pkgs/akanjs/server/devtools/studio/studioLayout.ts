@@ -1,12 +1,22 @@
-import type { AkanGraph, AkanGraphEdge, AkanGraphLocation, AkanGraphNode, AkanGraphNodeKind } from "akanjs/common";
+import type {
+  AkanChangedFile,
+  AkanGraph,
+  AkanGraphChange,
+  AkanGraphEdge,
+  AkanGraphField,
+  AkanGraphLocation,
+  AkanGraphNode,
+  AkanGraphNodeKind,
+} from "akanjs/common";
 
-export type StudioView = "erd" | "signals";
+export type StudioView = "erd" | "signals" | "changes";
 
 export interface StudioRow {
   text: string;
   hint: string;
   y: number;
   at: AkanGraphLocation | null;
+  change?: AkanGraphChange;
 }
 
 export interface StudioBox {
@@ -51,7 +61,14 @@ const flowColumns: { label: string; kinds: AkanGraphNodeKind[] }[] = [
   { label: "Service methods", kinds: ["method"] },
   { label: "Queries & models", kinds: ["query", "model"] },
 ];
-const flowColumnOf = new Map(flowColumns.flatMap(({ kinds }, idx) => kinds.map((kind) => [kind, idx] as const)));
+const changeColumns: { label: string; kinds: AkanGraphNodeKind[] }[] = [
+  ...flowColumns,
+  { label: "Scalars, enums & guards", kinds: ["scalar", "enum", "guard"] },
+];
+const columnsOf = (columns: { kinds: AkanGraphNodeKind[] }[]) =>
+  new Map(columns.flatMap(({ kinds }, idx) => kinds.map((kind) => [kind, idx] as const)));
+const flowColumnOf = columnsOf(flowColumns);
+const changeColumnOf = columnsOf(changeColumns);
 const flowEdgeKinds = new Set(["calls", "fetches", "uses"]);
 
 export class StudioLayout {
@@ -84,6 +101,21 @@ export class StudioLayout {
       labels: flowColumns.map(({ label }) => label),
       rowsOf: StudioLayout.#chipRows,
     });
+  }
+
+  static changes(graph: AkanGraph, module: string | null): StudioScene {
+    const { nodes, edges } = StudioLayout.#around(graph.nodes, graph.edges, module);
+    const groups = changeColumns.map((_, idx) => nodes.filter((node) => changeColumnOf.get(node.kind) === idx));
+    return StudioLayout.#place(groups, edges, {
+      width: 264,
+      labels: changeColumns.map(({ label }) => label),
+      rowsOf: StudioLayout.#changeRows,
+    });
+  }
+
+  static unmappedIn(files: AkanChangedFile[], module: string | null): AkanChangedFile[] {
+    if (!module) return files;
+    return files.filter(({ file }) => file.includes(`/lib/${module}/`) || file.includes(`/lib/_${module}/`));
   }
 
   static #around(nodes: AkanGraphNode[], edges: AkanGraphEdge[], module: string | null) {
@@ -121,11 +153,24 @@ export class StudioLayout {
 
   static #typeRows(node: AkanGraphNode): Omit<StudioRow, "y">[] {
     if (node.values) return node.values.map((value) => ({ text: value, hint: "", at: null }));
-    return (node.fields ?? []).map((field) => ({
+    return (node.fields ?? []).map(StudioLayout.#fieldRow);
+  }
+
+  static #fieldRow(field: AkanGraphField): Omit<StudioRow, "y"> {
+    return {
       text: field.name,
       hint: `${field.type ?? "?"}${field.array ? "[]" : ""}${field.optional ? "?" : ""}`,
       at: field.at,
-    }));
+    };
+  }
+
+  static #changeRows(node: AkanGraphNode): Omit<StudioRow, "y">[] {
+    if (node.fields)
+      return node.fields.flatMap(({ change, ...field }) =>
+        change ? [{ ...StudioLayout.#fieldRow(field), at: change === "removed" ? null : field.at, change }] : [],
+      );
+    if (node.values) return node.change ? StudioLayout.#typeRows(node) : [];
+    return StudioLayout.#chipRows(node);
   }
 
   static #chipRows(node: AkanGraphNode): Omit<StudioRow, "y">[] {

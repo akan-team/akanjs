@@ -69,6 +69,12 @@
         "title": "%akan.openStudio.title%",
         "category": "Akan",
         "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "akan.openChangeMap",
+        "title": "%akan.openChangeMap.title%",
+        "category": "Akan",
+        "enablement": "isWorkspaceTrusted"
       }
     ],
     "configuration": {

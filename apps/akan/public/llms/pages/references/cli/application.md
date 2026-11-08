@@ -140,7 +140,7 @@ Run the dev server, SSR frontend and backend together. Name apps space- or comma
 
 - memory budget: `AKAN_MEMORY_LIMIT` lowers the memory `--concurrency` is derived from.
 
-- Akan Studio: `/_akan/studio` on the dev URL draws the ERD and each module's request path, linked to source. `--share` hides it.
+- Akan Studio: `/_akan/studio` on the dev URL draws the ERD, request paths and Change Map, linked to source. `--share` hides it.
 
 `akan dbup [--mode <mode>]`
 
@@ -290,13 +290,15 @@ Open pages of the app's dev server in a headless browser and print one verdict l
 
 - native shells: `--csr` checks the bundle a shell loads, not the shell. A simulator page's errors reach `akan logs`, tagged.
 
-`akan studio <app> [--module <module>] [--view <erd|signals>] [--editor <vscode|cursor>] [--open] [--format <format>]`
+`akan studio <app> [--module <module>] [--view <erd|signals|changes>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]`
 
-Print the URL of Akan Studio on the app's running `akan start`: the ERD of its models, or one module's path from component to model, each name linked to its source. It exits 1 when no dev server answers.
+Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, or the Change Map of what changed since a git revision, and links each name to its source. It exits 1 when no dev server answers.
 
-- --module (String): The module to show. The ERD shows every module without it.
+- --module (String): The module to show. Without it, the ERD and the Change Map show every module.
 
-- --view (String, default erd, erd | signals): `signals` lays one module out from component to model.
+- --view (String, default erd, erd | signals | changes): `signals` lays one module out from component to model; `changes` draws the Change Map.
+
+- --since (String): With `--view changes`, map what changed since HEAD forked from this git revision. Without it, the default branch.
 
 - --editor (String, default vscode, vscode | cursor): The editor source links open in.
 
@@ -819,6 +821,7 @@ akan preview myapp /admin --desktop --format json
 ```bash
 akan studio myapp --open
 akan studio myapp --view signals --module memo --editor cursor
+akan studio myapp --view changes --since main
 ```
 
 ### typecheck

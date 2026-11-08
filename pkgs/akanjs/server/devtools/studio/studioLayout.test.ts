@@ -157,6 +157,65 @@ describe("StudioLayout", () => {
     expect(loop).toBeGreaterThan(x1);
   });
 
+  test("draws the Change Map in flow order with only the fields that changed", () => {
+    const field = (name: string, change?: "added" | "removed") => ({
+      name,
+      type: "String",
+      array: false,
+      optional: false,
+      ref: null,
+      declaredIn: "MemoInput",
+      at: at("m", 3),
+      ...(change ? { change } : {}),
+    });
+    const changes: AkanGraph = {
+      version: 1,
+      nodes: [
+        node("model:apps/demo:memo", {
+          label: "Memo",
+          change: "changed",
+          fields: [field("name"), field("pinned", "added"), field("place", "removed")],
+        }),
+        node("endpoint:apps/demo:memo.pinMemo", { label: "memo.pinMemo", change: "added" }),
+        node("method:apps/demo:memo.pin", { label: "MemoService.pin" }),
+        node("guard:Owner", { owner: null, module: null, change: "added" }),
+        node("scalar:libs/shared:geo", { module: "geo", label: "Geo", fields: [field("lat")] }),
+        node("method:apps/demo:folder.open", { label: "FolderService.open", change: "removed" }),
+      ],
+      edges: [
+        { ...edge("endpoint:apps/demo:memo.pinMemo", "calls", "method:apps/demo:memo.pin", "pin"), change: "added" },
+        { ...edge("endpoint:apps/demo:memo.pinMemo", "guard", "guard:Owner"), change: "added" },
+        { ...edge("model:apps/demo:memo", "field", "scalar:libs/shared:geo", "place"), change: "removed" },
+      ],
+    };
+    const scene = StudioLayout.changes(changes, null);
+    expect(scene.columns.map(({ label }) => label)).toEqual([
+      "Endpoints & slices",
+      "Service methods",
+      "Queries & models",
+      "Scalars, enums & guards",
+    ]);
+    const boxes = boxesOf(scene);
+    const columnOf = (id: string) => scene.columns.findIndex(({ x }) => x === boxes[id]?.x);
+    expect(columnOf("guard:Owner")).toBe(3);
+    expect(columnOf("scalar:libs/shared:geo")).toBe(3);
+    expect(boxes["model:apps/demo:memo"].rows.map(({ text, change, at }) => [text, change, at?.line ?? null])).toEqual([
+      ["pinned", "added", 3],
+      ["place", "removed", null],
+    ]);
+    expect(boxes["scalar:libs/shared:geo"].rows).toEqual([]);
+    expect(Object.keys(boxesOf(StudioLayout.changes(changes, "folder")))).toEqual(["method:apps/demo:folder.open"]);
+    expect(
+      StudioLayout.unmappedIn(
+        [
+          { file: "apps/demo/lib/_auth/auth.dictionary.ts", change: "changed" },
+          { file: "apps/demo/page/a.tsx", change: "added" },
+        ],
+        "auth",
+      ),
+    ).toEqual([{ file: "apps/demo/lib/_auth/auth.dictionary.ts", change: "changed" }]);
+  });
+
   test("wraps a column taller than the page into a second one beside it", () => {
     const many: AkanGraph = {
       version: 1,

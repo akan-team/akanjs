@@ -642,8 +642,8 @@ akan plan-slice myapp --format json`,
           {
             name: l.trans({ en: "Akan Studio", ko: "Akan Studio" }),
             desc: l.trans({
-              en: "`/_akan/studio` on the dev URL draws the ERD and each module's request path, linked to source. `--share` hides it.",
-              ko: "개발 URL의 `/_akan/studio`가 ERD와 모듈별 요청 경로를 소스 링크와 함께 그립니다. `--share`로는 열리지 않습니다.",
+              en: "`/_akan/studio` on the dev URL draws the ERD, request paths and Change Map, linked to source. `--share` hides it.",
+              ko: "개발 URL의 `/_akan/studio`가 ERD, 요청 경로, Change Map을 소스 링크와 함께 그립니다. `--share`로는 열리지 않습니다.",
             }),
           },
         ],
@@ -1224,28 +1224,36 @@ akan preview myapp /admin --desktop --format json`,
       {
         name: "studio",
         signature:
-          "akan studio <app> [--module <module>] [--view <erd|signals>] [--editor <vscode|cursor>] [--open] [--format <format>]",
+          "akan studio <app> [--module <module>] [--view <erd|signals|changes>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]",
         desc: l.trans({
-          en: "Print the URL of Akan Studio on the app's running `akan start`: the ERD of its models, or one module's path from component to model, each name linked to its source. It exits 1 when no dev server answers.",
-          ko: "실행 중인 `akan start`의 Akan Studio URL을 출력합니다. 모델 ERD나, 한 모듈의 컴포넌트에서 모델까지 이어지는 경로를 그리며, 이름마다 소스 링크가 걸립니다. 응답하는 개발 서버가 없으면 1로 끝납니다.",
+          en: "Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, or the Change Map of what changed since a git revision, and links each name to its source. It exits 1 when no dev server answers.",
+          ko: "실행 중인 `akan start`의 Akan Studio URL을 출력합니다. Studio는 모델 ERD, 한 모듈의 컴포넌트에서 모델까지 이어지는 경로, git 리비전 이후 바뀐 것을 담은 Change Map을 그리고, 이름마다 소스 링크를 겁니다. 응답하는 개발 서버가 없으면 1로 끝납니다.",
         }),
         options: [
           {
             name: "--module",
             type: "String",
             desc: l.trans({
-              en: "The module to show. The ERD shows every module without it.",
-              ko: "보여 줄 모듈입니다. 비우면 ERD는 모든 모듈을 보여 줍니다.",
+              en: "The module to show. Without it, the ERD and the Change Map show every module.",
+              ko: "보여 줄 모듈입니다. 비우면 ERD와 Change Map은 모든 모듈을 보여 줍니다.",
             }),
           },
           {
             name: "--view",
             type: "String",
             defaultValue: "erd",
-            enumOrFlag: "erd | signals",
+            enumOrFlag: "erd | signals | changes",
             desc: l.trans({
-              en: "`signals` lays one module out from component to model.",
-              ko: "`signals`는 한 모듈을 컴포넌트에서 모델까지 펼칩니다.",
+              en: "`signals` lays one module out from component to model; `changes` draws the Change Map.",
+              ko: "`signals`는 한 모듈을 컴포넌트에서 모델까지 펼치고, `changes`는 Change Map을 그립니다.",
+            }),
+          },
+          {
+            name: "--since",
+            type: "String",
+            desc: l.trans({
+              en: "With `--view changes`, map what changed since HEAD forked from this git revision. Without it, the default branch.",
+              ko: "`--view changes`와 함께 쓰며, HEAD가 이 git 리비전에서 갈라진 뒤 바뀐 것을 그립니다. 비우면 기본 브랜치와 비교합니다.",
             }),
           },
           {
@@ -1270,7 +1278,8 @@ akan preview myapp /admin --desktop --format json`,
           },
         ],
         examples: `akan studio myapp --open
-akan studio myapp --view signals --module memo --editor cursor`,
+akan studio myapp --view signals --module memo --editor cursor
+akan studio myapp --view changes --since main`,
       },
       {
         name: "typecheck",
