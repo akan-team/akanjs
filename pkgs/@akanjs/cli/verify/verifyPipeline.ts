@@ -48,8 +48,17 @@ export class VerifyPipeline {
     const systems = scope.targets.filter((target) => target.type !== "pkg");
     if (!lintOnly) await this.#each("sync", systems, (target) => this.#sync(target));
     const synced = !this.#failed("sync");
+    //? Before typecheck starts, so it reads the renamed files: a rename can clash with an inherited member.
+    const renames = new Map<VerifyTarget, Map<string, string>>();
+    for (const target of systems)
+      renames.set(
+        target,
+        await VerifyPrivateMethods.fix(this.#root, target.dir, target.files).catch(() => new Map<string, string>()),
+      );
     await Promise.all([
-      this.#each("lint", scope.targets, (target) => this.#lint(target, { comments: !lintOnly })),
+      this.#each("lint", scope.targets, (target) =>
+        this.#lint(target, { comments: !lintOnly, rewritten: renames.get(target) ?? new Map<string, string>() }),
+      ),
       lintOnly || !synced ? null : this.#each("typecheck", scope.targets, (target) => this.#typecheck(target)),
     ]);
     const apps = scope.targets.filter((target) => target.type === "app");
@@ -101,14 +110,13 @@ export class VerifyPipeline {
     return { diagnostics: [] };
   }
 
-  async #lint(target: VerifyTarget, { comments }: { comments: boolean }): Promise<StepOutcome> {
+  async #lint(
+    target: VerifyTarget,
+    { comments, rewritten }: { comments: boolean; rewritten: Map<string, string> },
+  ): Promise<StepOutcome> {
     const files = target.files.length
       ? target.files.filter((file) => existsSync(path.join(this.#root, file)))
       : [target.dir];
-    const rewritten =
-      target.type === "pkg"
-        ? new Map<string, string>()
-        : await VerifyPrivateMethods.fix(this.#root, target.dir, target.files);
     const biome = files.length
       ? await this.#biome(files, VerifyPipeline.#cssDirsOf(target))
       : { diagnostics: [], fixed: 0 };

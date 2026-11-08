@@ -12,6 +12,7 @@ interface Edit {
 
 export class VerifyPrivateMethods {
   static readonly #moduleFile = /^(?:apps|libs)\/.+\.(?:constant|document|service|store)\.ts$/;
+  static readonly #ignoredDirs = new Set(["node_modules", "dist", ".akan", "dump", "local"]);
   static #typescriptLoad: Promise<TypeScript> | undefined;
 
   static #loadTypescript(): Promise<TypeScript> {
@@ -21,14 +22,20 @@ export class VerifyPrivateMethods {
 
   static async fix(root: string, dir: string, files: string[]): Promise<Map<string, string>> {
     const candidates = (files.length ? files : await VerifyPrivateMethods.#moduleFilesIn(root, dir)).filter(
-      (file) => VerifyPrivateMethods.#moduleFile.test(file) && existsSync(path.join(root, file)),
+      (file) =>
+        VerifyPrivateMethods.#moduleFile.test(file) &&
+        !VerifyPrivateMethods.#isIgnored(file) &&
+        existsSync(path.join(root, file)),
     );
     const rewritten = new Map<string, string>();
     for (const file of candidates) {
       const absolute = path.join(root, file);
       const text = await Bun.file(absolute).text();
       if (!text.includes("#")) continue;
-      const result = VerifyPrivateMethods.rewrite(await VerifyPrivateMethods.#loadTypescript(), file, text);
+      const typescript = await VerifyPrivateMethods.#loadTypescript();
+      if (!VerifyPrivateMethods.rewrite(typescript, file, text).renamed.length) continue;
+      const beside = await VerifyPrivateMethods.#namesBeside(typescript, root, file);
+      const result = VerifyPrivateMethods.rewrite(typescript, file, text, beside);
       if (!result.renamed.length) continue;
       await Bun.write(absolute, result.text);
       rewritten.set(file, result.text);
@@ -42,12 +49,44 @@ export class VerifyPrivateMethods {
     for await (const file of new Bun.Glob("**/*.{constant,document,service,store}.ts").scan({
       cwd: path.join(root, dir),
     }))
-      if (!file.split(/[\\/]/).includes("node_modules")) files.push(path.posix.join(dir, file.replaceAll("\\", "/")));
+      files.push(path.posix.join(dir, file.replaceAll("\\", "/")));
     return files;
   }
 
+  static #isIgnored(file: string) {
+    return file.split("/").some((segment) => VerifyPrivateMethods.#ignoredDirs.has(segment));
+  }
+
+  //? Every store's actions land on one merged object, and a lib's module file is mixed into the app's of the same
+  //? name, so a name another of those classes declares would silently replace one or the other at runtime.
+  static async #namesBeside(typescript: TypeScript, root: string, file: string): Promise<Set<string>> {
+    const base = path.posix.basename(file);
+    const pattern = base.endsWith(".store.ts") ? "{apps,libs}/**/*.store.ts" : `{apps,libs}/**/${base}`;
+    const names = new Set<string>();
+    for await (const found of new Bun.Glob(pattern).scan({ cwd: root })) {
+      const other = found.replaceAll("\\", "/");
+      if (other === file || VerifyPrivateMethods.#isIgnored(other)) continue;
+      const text = await Bun.file(path.join(root, other)).text();
+      const source = typescript.createSourceFile(other, text, typescript.ScriptTarget.Latest, false);
+      const visit = (node: ts.Node) => {
+        if (typescript.isClassLike(node))
+          for (const { name } of node.members)
+            if (name && (typescript.isIdentifier(name) || typescript.isPrivateIdentifier(name)))
+              names.add(name.text.replace(/^#/, ""));
+        typescript.forEachChild(node, visit);
+      };
+      visit(source);
+    }
+    return names;
+  }
+
   //? `private name`, never `_name`: a service runs `_preCreate`-style names as lifecycle hooks.
-  static rewrite(typescript: TypeScript, fileName: string, text: string): { text: string; renamed: string[] } {
+  static rewrite(
+    typescript: TypeScript,
+    fileName: string,
+    text: string,
+    beside: ReadonlySet<string> = new Set(),
+  ): { text: string; renamed: string[] } {
     const source = typescript.createSourceFile(
       fileName,
       text,
@@ -59,7 +98,7 @@ export class VerifyPrivateMethods {
     const renamed: string[] = [];
     const visit = (node: ts.Node) => {
       if (typescript.isClassLike(node))
-        renamed.push(...VerifyPrivateMethods.#renameIn(typescript, source, node, edits));
+        renamed.push(...VerifyPrivateMethods.#renameIn(typescript, source, node, edits, beside));
       typescript.forEachChild(node, visit);
     };
     visit(source);
@@ -75,9 +114,10 @@ export class VerifyPrivateMethods {
     source: ts.SourceFile,
     cls: ts.ClassLikeDeclaration,
     edits: Edit[],
+    beside: ReadonlySet<string>,
   ): string[] {
     const methods = new Map<string, ts.MethodDeclaration[]>();
-    const taken = new Set<string>();
+    const taken = new Set<string>(beside);
     for (const member of cls.members) {
       if (typescript.isConstructorDeclaration(member))
         for (const parameter of member.parameters)

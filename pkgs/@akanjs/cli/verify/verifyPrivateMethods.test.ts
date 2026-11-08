@@ -100,4 +100,27 @@ describe("VerifyPrivateMethods", () => {
       [],
     );
   });
+
+  test("leaves a name another store or the same-named lib module declares, and skips what Biome ignores", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "verify-private-"));
+    roots.push(root);
+    const store = "export class PostStore { #reset() { return 1; } #mark() { return 2; } }\n";
+    const service = "export class PostService { #load() { return 1; } #cache() { return 2; } }\n";
+    await writeText(path.join(root, "apps/demo/lib/post/post.store.ts"), store);
+    await writeText(path.join(root, "libs/shared/lib/comment/comment.store.ts"), "export class C { #reset() {} }\n");
+    await writeText(path.join(root, "apps/demo/lib/post/post.service.ts"), service);
+    await writeText(path.join(root, "libs/shared/lib/post/post.service.ts"), "export class P { load() {} }\n");
+    await writeText(path.join(root, "apps/demo/lib/user/user.service.ts"), "export class U { cache() {} }\n");
+    await writeText(path.join(root, "apps/demo/local/old/old.service.ts"), service);
+
+    await VerifyPrivateMethods.fix(root, "apps/demo", []);
+
+    expect(await Bun.file(path.join(root, "apps/demo/lib/post/post.store.ts")).text()).toBe(
+      "export class PostStore { #reset() { return 1; } private mark() { return 2; } }\n",
+    );
+    expect(await Bun.file(path.join(root, "apps/demo/lib/post/post.service.ts")).text()).toBe(
+      "export class PostService { #load() { return 1; } private cache() { return 2; } }\n",
+    );
+    expect(await Bun.file(path.join(root, "apps/demo/local/old/old.service.ts")).text()).toBe(service);
+  });
 });
