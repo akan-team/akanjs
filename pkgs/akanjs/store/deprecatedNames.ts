@@ -1,10 +1,6 @@
-import {
-  databaseStateNames as commonDatabaseStateNames,
-  formSetterNames as commonFormSetterNames,
+export {
+  /** @deprecated Import `databaseStateNames` from `akanjs/common`. */
+  databaseStateNames,
+  /** @deprecated Import `formSetterNames` from `akanjs/common`. */
+  formSetterNames,
 } from "akanjs/common";
-
-/** @deprecated Import `databaseStateNames` from `akanjs/common`. */
-export const databaseStateNames = commonDatabaseStateNames;
-
-/** @deprecated Import `formSetterNames` from `akanjs/common`. */
-export const formSetterNames = commonFormSetterNames;

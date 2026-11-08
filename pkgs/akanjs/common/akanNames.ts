@@ -4,6 +4,7 @@ import { capitalize, lowerlize } from "./capitalize";
 
 export const sliceNames = (refName: string, suffix = "") => {
   const [Model, Suffix] = [capitalize(refName), capitalize(suffix)];
+  const live = `${refName}Live${Suffix}`;
   return {
     slice: `${refName}${Suffix}`,
     state: {
@@ -39,8 +40,8 @@ export const sliceNames = (refName: string, suffix = "") => {
     endpoint: {
       list: `${refName}List${Suffix}`,
       insight: `${refName}Insight${Suffix}`,
-      live: `${refName}Live${Suffix}`,
-      subscribeLive: endpointNames(`${refName}Live${Suffix}`).subscribe,
+      live,
+      subscribeLive: endpointNames(live).subscribe,
       init: `init${Model}${Suffix}`,
       getInit: `get${Model}Init${Suffix}`,
       initResult: `${refName}Init${Suffix}`,
