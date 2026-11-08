@@ -40,3 +40,37 @@ name resolves within its own app and every lib, never another app. `renameAt` re
 query key together with every name derived from it and its key in the module dictionary.
 
 The package ships as an ES module and as CommonJS, with no runtime dependency.
+
+## Language server
+
+`akan-language-server --stdio` serves the same index over LSP. It is for editors other than VS Code and Cursor,
+which have the Akan extension: run it next to TypeScript's server, and the editor merges the two servers' answers. It
+answers definition, hover and references. It indexes the folder holding `apps/` or `libs/` at or above the editor's
+root. It rereads files changed on disk when the editor supports watched-file registration.
+
+Neovim 0.11:
+
+```lua
+vim.lsp.config("akan", {
+  cmd = { "bunx", "akan-language-server", "--stdio" },
+  filetypes = { "typescript", "typescriptreact" },
+  root_markers = { "bun.lock" },
+})
+vim.lsp.enable("akan")
+```
+
+Helix, in `languages.toml`:
+
+```toml
+[language-server.akan]
+command = "bunx"
+args = ["akan-language-server", "--stdio"]
+
+[[language]]
+name = "typescript"
+language-servers = ["typescript-language-server", "akan"]
+
+[[language]]
+name = "tsx"
+language-servers = ["typescript-language-server", "akan"]
+```

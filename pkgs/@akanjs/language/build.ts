@@ -28,6 +28,15 @@ for (const [format, naming] of [
   });
   if (!result.success) fail(result.logs);
 }
+const server = await Bun.build({
+  entrypoints: [`${pkgDir}/server.ts`],
+  outdir,
+  naming: "server.js",
+  target: "node",
+  format: "esm",
+  external: ["typescript"],
+});
+if (!server.success) fail(server.logs);
 
 const typesDir = `${outdir}/.types`;
 const tsconfigPath = `${outdir}/tsconfig.build.json`;
@@ -70,6 +79,7 @@ await Bun.write(
       module: "./index.js",
       types: "./index.d.ts",
       sideEffects: false,
+      bin: { "akan-language-server": "./server.js" },
       exports: {
         ".": { types: "./index.d.ts", import: "./index.js", require: "./index.cjs" },
         "./package.json": "./package.json",
