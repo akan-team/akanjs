@@ -12,6 +12,8 @@ export type AkanGraphNodeKind =
 
 export type AkanGraphEdgeKind = "field" | "guard" | "calls" | "fetches" | "uses";
 
+export type AkanGraphChange = "added" | "removed" | "changed";
+
 export interface AkanGraphLocation {
   file: string;
   line: number;
@@ -26,6 +28,7 @@ export interface AkanGraphField {
   ref: string | null;
   declaredIn: string;
   at: AkanGraphLocation;
+  change?: AkanGraphChange;
 }
 
 export interface AkanGraphNode {
@@ -39,6 +42,8 @@ export interface AkanGraphNode {
   at: AkanGraphLocation | null;
   fields?: AkanGraphField[];
   values?: string[];
+  digest?: string;
+  change?: AkanGraphChange;
 }
 
 export interface AkanGraphEdge {
@@ -48,10 +53,17 @@ export interface AkanGraphEdge {
   label: string | null;
   count: number;
   at: AkanGraphLocation | null;
+  change?: Exclude<AkanGraphChange, "changed">;
 }
 
 export interface AkanGraph {
   version: 1;
   nodes: AkanGraphNode[];
   edges: AkanGraphEdge[];
+}
+
+export interface AkanChangeMap extends AkanGraph {
+  since: string;
+  summary: { [change in AkanGraphChange]: number };
+  unmapped: string[];
 }

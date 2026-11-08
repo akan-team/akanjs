@@ -21,6 +21,7 @@ export interface AkanGraphSource {
   resolve: (fileName: string, identifier: TS.Identifier) => AkanTarget[];
   relative: (fileName: string) => string;
   ownerOf: (fileName: string) => string | null;
+  digests?: boolean;
 }
 
 interface Context {
@@ -103,13 +104,17 @@ export class GraphBuilder {
         const refName = lowerFirst(filter.name.slice(0, -"Filter".length));
         this.#addNode(this.#key("query", owner, refName), "query", owner, refName, "", filter.span);
         for (const query of filter.queries)
-          this.#addNode(
-            this.#key("query", owner, refName, query.name),
-            "query",
-            owner,
-            refName,
-            query.name,
-            query.span,
+          this.#digest(
+            this.#addNode(
+              this.#key("query", owner, refName, query.name),
+              "query",
+              owner,
+              refName,
+              query.name,
+              query.span,
+            ),
+            this.#source.readText(file.fileName),
+            query.extent,
           );
       }
       for (const slice of file.slices) {
@@ -220,6 +225,7 @@ export class GraphBuilder {
   ) {
     const id = this.#key(kind, owner, refName, member.name);
     const node = this.#addNode(id, kind, owner, refName, member.name, member.span, detail, label);
+    this.#digest(node, this.#source.readText(fileName), member.extent);
     this.#contexts.set(fileName, [
       ...(this.#contexts.get(fileName) ?? []),
       { id, kind, owner, module: refName, extent: member.extent },
@@ -227,6 +233,15 @@ export class GraphBuilder {
     const byName = `${kind}:${member.name}`;
     this.#members.set(byName, [...(this.#members.get(byName) ?? []), node]);
     return node;
+  }
+
+  //? FNV-1a over the body text only, so moving a member leaves it unchanged; a 32-bit collision at worst leaves one
+  //? changed node unmarked in a Change Map.
+  #digest(node: AkanGraphNode, text: string | undefined, { start, end }: Extent) {
+    if (!this.#source.digests || node.digest || text === undefined) return;
+    let hash = 0x811c9dc5;
+    for (let idx = start; idx < end; idx++) hash = Math.imul(hash ^ text.charCodeAt(idx), 0x01000193);
+    node.digest = (hash >>> 0).toString(16).padStart(8, "0");
   }
 
   #addEdge(from: string, to: string, kind: AkanGraphEdgeKind, label: string | null, at: AkanGraphLocation | null) {
@@ -360,7 +375,10 @@ export class GraphBuilder {
       .filter((id) => id !== null);
     const targets = resolved.length ? resolved : this.#plainTargetsOf(chain, identifier.text, context, owner);
     if (!targets.length) return;
-    if (context.pending && !this.#nodes.has(context.id)) this.#nodes.set(context.id, context.pending);
+    if (context.pending && !this.#nodes.has(context.id)) {
+      this.#nodes.set(context.id, context.pending);
+      this.#digest(context.pending, source.text, context.extent);
+    }
     //? An app module that shares a lib module's name extends it, so the app's own node stands for the merged module.
     const own = targets.filter((id) => this.#nodes.get(id)?.owner === owner);
     const kind: AkanGraphEdgeKind =

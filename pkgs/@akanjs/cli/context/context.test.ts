@@ -367,6 +367,52 @@ describe("ContextRunner", () => {
     expect(new ContextRunner().listMcpTools("readonly").map((tool) => tool.name)).toContain("get_graph");
   });
 
+  test("draws the Change Map since a commit for get_graph, uncommitted work included and env files left out", async () => {
+    const { workspace, app, module } = track(await createTempModule("post"));
+    await new ModuleRunner().createModuleTemplate(module);
+    const git = (...args: string[]) =>
+      Bun.spawnSync(["git", "-c", "user.name=akan", "-c", "user.email=akan@example.com", ...args], {
+        cwd: workspace.workspaceRoot,
+      });
+    git("init", "-q");
+    git("add", "-A");
+    git("commit", "-q", "-m", "base");
+    const dir = `${app.cwdPath}/lib/post`;
+    const edit = async (file: string, from: string, to: string) => {
+      const text = await Bun.file(`${dir}/${file}`).text();
+      expect(text).toContain(from);
+      await writeText(`${dir}/${file}`, text.replace(from, to));
+    };
+    await edit("post.constant.ts", "name: field(String),", "name: field(String),\n  pinned: field(Boolean),");
+    await edit("post.service.ts", "=> ({})) {}", "=> ({})) {\n  async pin(id: string) {\n    return id;\n  }\n}");
+    await writeText(`${dir}/post.dictionary.ts`, `${await Bun.file(`${dir}/post.dictionary.ts`).text()}\n`);
+    await writeText(`${app.cwdPath}/env/env.server.local.ts`, "export const leaked = 1;\n");
+
+    const changes = (await new ContextRunner().callMcpTool(workspace, "get_graph", {
+      app: "demo",
+      module: "post",
+      since: "HEAD",
+    })) as {
+      since: string;
+      summary: { added: number };
+      nodes: { id: string; change?: string; fields?: { name: string; change?: string }[] }[];
+      unmapped: string[];
+    };
+    expect(changes.since).toMatch(/^[0-9a-f]{12}$/);
+    const post = changes.nodes.find((node) => node.id === "model:apps/demo:post");
+    expect(post?.change).toBe("changed");
+    expect(post?.fields?.find((field) => field.name === "pinned")?.change).toBe("added");
+    expect(changes.nodes.find((node) => node.id === "method:apps/demo:post.pin")?.change).toBe("added");
+    expect(changes.summary.added).toBeGreaterThan(0);
+    expect(changes.unmapped).toContain("apps/demo/lib/post/post.dictionary.ts");
+    expect(changes.unmapped.some((file) => file.includes("/env/"))).toBe(false);
+
+    for (const since of ["no-such-branch", "--output=/tmp/x"])
+      expect(await new ContextRunner().callMcpTool(workspace, "get_graph", { since })).toEqual({
+        diagnostics: [expect.objectContaining({ code: "graph-since-unknown", input: "since" })],
+      });
+  });
+
   test("returns validation contract modes as cumulative MCP tool lists", async () => {
     const { workspace } = track(await createTempApp("demo"));
 

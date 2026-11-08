@@ -1,5 +1,7 @@
 export type {
+  AkanChangeMap,
   AkanGraph,
+  AkanGraphChange,
   AkanGraphEdge,
   AkanGraphEdgeKind,
   AkanGraphField,
