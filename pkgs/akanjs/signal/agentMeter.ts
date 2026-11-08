@@ -21,6 +21,7 @@ export class AgentMeter {
   static #usage: AgentUsageHook | null = null;
   static #quota: AgentQuotaHook | null = null;
   static #serial: boolean = true;
+  static usageTimeoutMs = 30_000;
   static readonly #lanes = new Map<string, Promise<void>>();
   static #logger = new Logger("AgentMeter");
 
@@ -84,12 +85,26 @@ export class AgentMeter {
       return result;
     }
     //* Never awaited: a slow or failing ledger must not cost the user a turn the provider already billed.
-    void Promise.resolve()
+    const reported = Promise.resolve()
       .then(() => hook({ account, model: result.model ?? null, usage }))
       .catch((error: unknown) =>
         AgentMeter.#logger.error(`agent usage hook failed: ${error instanceof Error ? error.message : String(error)}`),
-      )
-      .finally(settled);
+      );
+    const timeoutMs = AgentMeter.usageTimeoutMs;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stalled = new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        AgentMeter.#logger.warn(
+          `agent usage hook has not settled in ${timeoutMs} ms; the caller's next turn goes ahead`,
+        );
+        resolve();
+      }, timeoutMs);
+      timer.unref();
+    });
+    void Promise.race([reported, stalled]).finally(() => {
+      clearTimeout(timer);
+      settled();
+    });
     return result;
   }
 

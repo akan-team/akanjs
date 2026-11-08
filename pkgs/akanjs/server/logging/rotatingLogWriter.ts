@@ -69,7 +69,7 @@ export class RotatingLogWriter {
         operationMode: env.operationMode,
         maxSizeBytes: RotatingLogWriter.#parseMaxSizeBytes(process.env.AKAN_LOG_MAX_SIZE_MB),
         maxFiles: RotatingLogWriter.#parseMaxFiles(process.env.AKAN_LOG_MAX_FILES),
-        fileMode: RotatingLogWriter.#parseFileMode(process.env.AKAN_LOG_FILE_MODE),
+        fileMode: RotatingLogWriter.fileMode(),
       });
     } catch (error) {
       RotatingLogWriter.#defaultWarn(
@@ -187,9 +187,13 @@ export class RotatingLogWriter {
     return parsed;
   }
 
-  static #parseFileMode(value: string | undefined) {
-    const parsed = Number.parseInt(value ?? "", 8);
-    return Number.isInteger(parsed) && parsed > 0 && parsed <= 0o777 ? parsed : RotatingLogWriter.defaultFileMode;
+  static fileMode(value = process.env.AKAN_LOG_FILE_MODE, warn = RotatingLogWriter.#defaultWarn) {
+    const raw = value?.trim();
+    if (!raw) return RotatingLogWriter.defaultFileMode;
+    const parsed = /^[0-7]{3,4}$/.test(raw) ? Number.parseInt(raw, 8) : 0;
+    if (parsed > 0 && parsed <= 0o777) return parsed;
+    warn(`AKAN_LOG_FILE_MODE="${raw}" is not an octal mode such as 644; using 600`);
+    return RotatingLogWriter.defaultFileMode;
   }
 
   static #defaultWarn(message: string) {

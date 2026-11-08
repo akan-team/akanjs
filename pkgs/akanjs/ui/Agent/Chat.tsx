@@ -181,7 +181,7 @@ export const DefaultChat = ({
       visual,
     });
   const session = held.current;
-  useAccountBoundSession(session);
+  useAccountBoundSession(session === provided ? null : session);
   const version = useSyncExternalStore(
     session.subscribe,
     () => session.version,

@@ -499,8 +499,9 @@ export class AgentSession {
    * Empties the transcript and the persisted history, ending a turn that is still running. Awaiting the abort
    * matters: the loop settles in its own `finally`, a microtask later, and a transcript emptied before that lands
    * is one the winding-down turn appends onto. The returned promise waits for the history to clear too.
+   * `keepHistory` leaves the persisted history as it is, and drops a save still pending for the old transcript.
    */
-  reset = async () => {
+  reset = async ({ keepHistory = false }: { keepHistory?: boolean } = {}) => {
     if (this.#active) {
       this.#controller?.abort();
       await this.#active;
@@ -515,7 +516,7 @@ export class AgentSession {
       clearTimeout(this.#saveTimer);
       this.#saveTimer = null;
     }
-    const history = this.#history;
+    const history = keepHistory ? undefined : this.#history;
     if (history) {
       // Chained behind the pending saves so a clear can never be overtaken by one queued before it, and awaited
       // so the returned promise means what it says: an async host has cleared by the time this resolves.

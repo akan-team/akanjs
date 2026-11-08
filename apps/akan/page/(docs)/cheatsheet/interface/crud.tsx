@@ -377,7 +377,8 @@ export class PostEndpoint extends endpoint(srv.post, () => ({})) {}`}
                       A named slice is guarded only by its own <code>{"init({ guards })"}</code>.
                     </strong>{" "}
                     <code>get</code> and <code>cru</code> never reach it, so <code>inAdmin: init()</code> with no guards
-                    serves every post to any caller. <code>None</code> closes an endpoint to everyone.
+                    refuses every caller with 403, and outside local operation the server does not boot.{" "}
+                    <code>None</code> closes an endpoint to everyone on purpose.
                   </span>
                 ),
                 ko: (
@@ -386,7 +387,8 @@ export class PostEndpoint extends endpoint(srv.post, () => ({})) {}`}
                       이름 있는 slice는 자기 <code>{"init({ guards })"}</code>로만 지켜집니다.
                     </strong>{" "}
                     <code>get</code>과 <code>cru</code>는 여기에 닿지 않으므로, guard 없는 <code>inAdmin: init()</code>
-                    은 누가 호출하든 모든 post를 내줍니다. <code>None</code>은 endpoint를 모두에게 닫습니다.
+                    은 모든 호출자를 403으로 거절하고, local 운영이 아니면 서버가 부팅하지 않습니다. <code>None</code>은
+                    endpoint를 의도적으로 모두에게 닫습니다.
                   </span>
                 ),
               })}

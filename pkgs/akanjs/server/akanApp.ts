@@ -708,8 +708,8 @@ export class AkanApp {
       return new Response("Forbidden", { status: 403 });
     }
     if (!WsUpgrade.isRequested(req)) return WsUpgrade.required();
-    const peer = server.requestIP(req);
-    const clientIp = TrustedProxy.clientAddress(req.headers, peer === null ? null : peer?.address);
+    const peer = server.requestIP(req) ?? undefined;
+    const clientIp = TrustedProxy.clientAddress(req.headers, peer?.address);
     const refused = this.#refuseWebSocket(clientIp);
     if (refused) return refused;
     const upstreamWs = new WebSocket(`ws://${upstream.host}:${upstream.port}${url.pathname}${url.search}`, {
@@ -858,7 +858,7 @@ export class AkanApp {
     const { socketPath } = child.upstream;
     const url = new URL(req.url);
     const upstreamUrl = `http://akan-child${url.pathname}${url.search}`;
-    const headers = makeAkanChildProxyHeaders(req, child.idx, server.requestIP(req));
+    const headers = makeAkanChildProxyHeaders(req, child.idx, server.requestIP(req) ?? undefined);
     child.metrics.activeRequests = (child.metrics.activeRequests ?? 0) + 1;
     child.metrics.totalRequests = (child.metrics.totalRequests ?? 0) + 1;
     const traced = isTraceEnabled();

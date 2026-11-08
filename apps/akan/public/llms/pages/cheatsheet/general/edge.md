@@ -102,7 +102,7 @@ When the edge keeps sending status, subscribe to its `pubsub` endpoint with the 
 
 **Events sent during a disconnect are lost.** Pass `onResync` to reload the current state once the room is back.
 
-**The edge's pubsub declares its own `guards`.** A slice's guard map does not reach a pubsub, so a room without guards is open to any socket.
+**The edge's pubsub declares its own `guards`.** A slice's guard map does not reach a pubsub, so a room without guards refuses every socket.
 
 Wrap A Remote Node
 

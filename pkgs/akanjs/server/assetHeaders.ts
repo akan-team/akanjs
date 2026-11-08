@@ -16,7 +16,7 @@ export const applySecurityHeaders = (headers: Headers, { html = false } = {}): H
   return headers;
 };
 
-const isOff = (value: string) => ["off", "false", "0", "none"].includes(value.toLowerCase());
+export const isOff = (value: string) => ["off", "false", "0", "none"].includes(value.toLowerCase());
 
 //? No script-src by default: SSR inlines bootstrap scripts without a nonce, and a cached HTML body would replay one.
 //? base-uri: an injected <base> would re-point the root-relative module scripts and import map at another origin.

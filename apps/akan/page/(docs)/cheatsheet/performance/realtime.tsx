@@ -634,16 +634,15 @@ export class ChatEndpoint extends endpoint(srv.chat, ({ pubsub }) => ({
               {l.trans({
                 en: (
                   <span>
-                    <strong>A pubsub has no guard unless it declares one.</strong> The slice's guard map reaches only
-                    the generated query and mutation endpoints, so a room without its own <code>guards</code> array is
-                    open to anyone who can open a socket.
+                    <strong>A pubsub declares its own guards.</strong> The slice's guard map reaches only the generated
+                    query and mutation endpoints, so a room without its own <code>guards</code> array refuses every
+                    socket.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>pubsub은 직접 선언하지 않으면 가드가 없습니다.</strong> slice의 guard map은 생성된
-                    query·mutation endpoint에만 적용되므로, <code>guards</code> 배열이 없는 room은 소켓을 열 수 있는
-                    누구에게나 열려 있습니다.
+                    <strong>pubsub은 가드를 직접 선언합니다.</strong> slice의 guard map은 생성된 query·mutation
+                    endpoint에만 적용되므로, <code>guards</code> 배열이 없는 room은 모든 소켓의 구독을 거절합니다.
                   </span>
                 ),
               })}

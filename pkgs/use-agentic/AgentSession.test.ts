@@ -683,6 +683,21 @@ describe("AgentSession history", () => {
     expect(state.stored).toBeNull();
   });
 
+  test("reset with keepHistory empties the transcript and leaves the stored one alone", async () => {
+    const { state, history } = memoryHistory([{ role: "user", text: "stored" }]);
+    const { runner } = scripted([
+      { type: "text", delta: "answer" },
+      { type: "done", stop: "end" },
+    ]);
+    const session = new AgentSession(new AgenticSurface(), runner, { history });
+    await session.send("question");
+    await session.reset({ keepHistory: true });
+    expect(session.messages).toEqual([]);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect([state.cleared, state.saves]).toEqual([0, 0]);
+    expect(state.stored).toEqual([{ role: "user", text: "stored" }]);
+  });
+
   test("an async load lands into an untouched transcript and reports while it is in flight", async () => {
     let settle: (messages: import("./types").ChatMessage[]) => void = () => undefined;
     const pending = new Promise<import("./types").ChatMessage[]>((resolve) => {

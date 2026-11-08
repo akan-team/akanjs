@@ -58,6 +58,21 @@ describe("AgentMeter", () => {
     expect(order).toEqual(["check:0", "turn", "check:1"]);
   });
 
+  test("a usage hook that never settles holds the caller's next turn only until the timeout", async () => {
+    const timeout = AgentMeter.usageTimeoutMs;
+    AgentMeter.usageTimeoutMs = 20;
+    try {
+      AgentMeter.use({ quota: () => true, usage: () => new Promise<void>(() => undefined) });
+      await AgentMeter.run({ id: "u1" }, async () => ({ usage, text: "first" }));
+      const next = AgentMeter.run({ id: "u1" }, async () => ({ usage, text: "next" }));
+      const early = await Promise.race([next.then(() => "ran"), Bun.sleep(5).then(() => "held")]);
+      expect(early).toBe("held");
+      await expect(next).resolves.toMatchObject({ text: "next" });
+    } finally {
+      AgentMeter.usageTimeoutMs = timeout;
+    }
+  });
+
   test("callers do not wait on one another, nor do anonymous ones or a meter told it need not", async () => {
     const gate = Promise.withResolvers<void>();
     AgentMeter.use({ quota: () => true });

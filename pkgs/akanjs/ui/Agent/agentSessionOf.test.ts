@@ -269,6 +269,19 @@ describe("sessionHistoryOf", () => {
     signIn(null);
   });
 
+  test("an app-chosen key under the app's prefix survives a reload and another session's load", () => {
+    signIn("u1");
+    const keys = ["akan.agent.historytest", "akan.agent.historytest.support"];
+    for (const key of keys) sessionHistoryOf({ key })?.save([{ role: "user", text: key }]);
+    window.sessionStorage.setItem(`akan.agent.historytest.0badf00d.support`, JSON.stringify({ v: 1, messages: [] }));
+    for (const key of keys) expect(stored(sessionHistoryOf({ key }))).toEqual([{ role: "user", text: key }]);
+    expect(stored(sessionHistoryOf(true, "support"))).toBeNull();
+    for (const key of keys) expect(window.sessionStorage.getItem(key)).toContain(`"text":"${key}"`);
+    expect(window.sessionStorage.getItem(`akan.agent.historytest.0badf00d.support`)).toBeNull();
+    for (const key of keys) window.sessionStorage.removeItem(key);
+    signIn(null);
+  });
+
   test("a transcript stored before it named its account is discarded", () => {
     window.sessionStorage.setItem("akan.agent.historytest", JSON.stringify({ v: 1, messages: [{ role: "user" }] }));
     expect(stored(sessionHistoryOf(true))).toBeNull();
@@ -306,6 +319,47 @@ describe("sessionHistoryOf", () => {
     signIn(null);
     window.dispatchEvent(new Event("akan:auth"));
     expect(resets).toBe(2);
+  });
+
+  test("after an account change, the session's own transcript is kept under the account now signed in", async () => {
+    const { agentSessionOf } = await import("./agentSessionOf");
+    const { useAccountBoundSession } = await import("./useAccountBoundSession");
+    signIn("u1");
+    const first = identity();
+    const session = agentSessionOf({
+      l: (key) => key,
+      view: ["rebind"],
+      persist: { storage: "local" },
+      runner: {
+        async *run() {
+          yield { type: "text", delta: "ok" };
+          yield { type: "done", stop: "end" };
+        },
+      },
+    });
+    const Probe = () => {
+      useAccountBoundSession(session);
+      return null;
+    };
+    const { unmount } = mount(createElement(Probe));
+    const settled = () => new Promise((resolve) => setTimeout(resolve, 350));
+    await session.send("from u1");
+    await settled();
+    expect(window.localStorage.getItem(`akan.agent.historytest.${first}.rebind`)).toContain("from u1");
+
+    signIn("u2");
+    window.dispatchEvent(new Event("akan:auth"));
+    await settled();
+    expect(session.messages).toEqual([]);
+    expect(window.localStorage.getItem(`akan.agent.historytest.${first}.rebind`)).toBeNull();
+    await session.send("from u2");
+    await settled();
+    const kept = window.localStorage.getItem(`akan.agent.historytest.${identity()}.rebind`) ?? "";
+    expect(kept).toContain("from u2");
+    expect(kept).not.toContain("from u1");
+    unmount();
+    window.localStorage.removeItem(`akan.agent.historytest.${identity()}.rebind`);
+    signIn(null);
   });
 
   test("persist off or no window answers undefined", () => {

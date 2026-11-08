@@ -382,7 +382,7 @@ How it is kept
 
 - persist={{ storage: "local" }} — `localStorage`, for a conversation that should outlive the tab.
 
-- persist={{ key: "…" }} — Your own storage key; the default is `akan.agent.<appName>`, plus the zone path in a zone.
+- persist={{ key: "…" }} — Your own storage key; the default is `akan.agent.<appName>.<account>`, plus the zone path in a zone.
 
 - <Agent.History /> — Your own server, through three functions you write.
 

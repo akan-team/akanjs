@@ -529,8 +529,14 @@ const describeDriver = (kind: SqlDriverKind) => {
     test("an operator object a request carried is refused at a field; the same shorthand in code applies", async () => {
       await store.create({ title: "mine", status: "active" });
       await store.create({ title: "theirs", status: "draft" });
-      const [requested] = InputParser.parse(Any, 0, [{ ne: "__nobody__" }], { key: "args" }) as [string];
+      const [requested, requestedNode] = InputParser.parse(
+        Any,
+        0,
+        [{ ne: "__nobody__" }, { kind: "op", op: "ne", value: "__nobody__" }],
+        { key: "args" },
+      ) as [string, string];
       await expect(store.find({ status: requested })).rejects.toThrow("holds query operators");
+      await expect(store.find({ status: requestedNode })).rejects.toThrow("holds query operators");
       expect(titlesOf(await store.find({ status: { ne: "draft" } as unknown as string }))).toEqual(["mine"]);
     });
 

@@ -426,6 +426,7 @@ describe("StToolBuilder.exec", () => {
       settler: false,
     });
     expect(ToolRunner.confirmMessage("sendNote", surface.tool("sendNote") as ToolEntry, {})).toBeNull();
+    expect(surface.snapshot().tools.find((tool) => tool.name === "sendNote")?.needsConfirm).toBe(false);
     expect(ToolRunner.confirmMessage("submitPost", surface.tool("submitPost") as ToolEntry, {})).toBe(
       "Run submitPost?",
     );

@@ -159,6 +159,23 @@ describe("ServerLimits bodies", () => {
     ).toBeNull();
   });
 
+  test("lets the agent turn, which resends its transcript's attachments, past the JSON cap up to the ceiling", () => {
+    const limits = new ServerLimits({});
+    const turn = (path: string, length: number) =>
+      new Request(`http://127.0.0.1${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": String(length) },
+        body: "{}",
+      });
+    const relayLimits = 64 * 1024 * 1024 + 3 * 8_000_000;
+    expect(limits.uploadBodyBytes).toBeGreaterThan(relayLimits);
+    expect(limits.bodyLimitOf(turn("/api/runAgentTurn", 2))).toBeNull();
+    expect(limits.refuseDeclared(turn("/api/runAgentTurn", relayLimits))).toBeNull();
+    expect(limits.refuseDeclared(turn("/runAgentTurn?x=1", relayLimits))).toBeNull();
+    expect(limits.refuseDeclared(turn("/api/runAgentTurnLog", relayLimits))?.status).toBe(413);
+    expect(limits.refuseDeclared(turn("/api/x", relayLimits))?.status).toBe(413);
+  });
+
   test("errors a streamed body once it passes the limit, and lets a smaller one through whole", async () => {
     const bytes = new Uint8Array(1024);
     let exceeded = false;

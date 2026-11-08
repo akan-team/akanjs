@@ -10,6 +10,7 @@ export class ServerLimits {
   static readonly defaultUploadBodyBytes = 128 * 1024 * 1024;
   static readonly defaultRequestBodyBytes = 16 * 1024 * 1024;
   static readonly loopbackHost = "127.0.0.1";
+  static readonly #agentTurnPath = "/runAgentTurn";
   static readonly #tooLarge = new Error("Request body is over the server's limit");
   static readonly #logger = new Logger("ServerLimits");
   static readonly #warned = new Set<string>();
@@ -109,10 +110,12 @@ export class ServerLimits {
   }
 
   //? Multipart carries the uploads and takes the server-wide ceiling; every other body is parsed whole in memory.
+  //? The agent turn resends its whole transcript, attachments included, so it takes the ceiling its relay limits fit under.
   bodyLimitOf(req: Request): number | null {
     if (this.requestBodyBytes === null || req.method === "GET" || req.method === "HEAD") return null;
     const type = req.headers.get("content-type")?.toLowerCase() ?? "";
-    return type.startsWith("multipart/form-data") ? null : this.requestBodyBytes;
+    if (type.startsWith("multipart/form-data")) return null;
+    return new URL(req.url).pathname.endsWith(ServerLimits.#agentTurnPath) ? null : this.requestBodyBytes;
   }
 
   refuseDeclared(req: Request): Response | null {

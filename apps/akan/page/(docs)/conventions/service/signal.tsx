@@ -157,8 +157,8 @@ export default page()
           {
             name: <span className="font-sans">{l.trans({ en: "no guards", ko: "가드 없음" })}</span>,
             desc: l.trans({
-              en: "Zero checks over HTTP, and refused by MCP.",
-              ko: "HTTP에서는 검사를 하나도 하지 않고, MCP는 거절합니다.",
+              en: "Refused with 403 over HTTP and by MCP; outside local operation the server does not boot.",
+              ko: "HTTP에서는 403으로 거절하고 MCP도 거절합니다. local 운영이 아니면 서버가 부팅되지 않습니다.",
             }),
             marks: { checks: false, mcp: false },
           },
@@ -468,18 +468,18 @@ export class SecurityEndpoint extends endpoint(srv.security, ({ mutation }) => (
               {l.trans({
                 en: (
                   <span>
-                    <strong>An endpoint that names no guards runs zero checks.</strong> Without one, anyone could
-                    encrypt any input with the app's own key, which turns <code>encrypt</code> into an oracle. A library
-                    that cannot reach <code>libs/shared</code>'s <code>Admin</code> closes the endpoint with{" "}
-                    <code>[None]</code> and keeps it off MCP with <code>mcp: false</code>.
+                    <strong>An endpoint that names no guards answers every call with 403</strong>, and outside local
+                    operation the server does not boot with one. A library that cannot reach <code>libs/shared</code>'s{" "}
+                    <code>Admin</code> closes the endpoint with <code>[None]</code> and keeps it off MCP with{" "}
+                    <code>mcp: false</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>가드를 하나도 적지 않은 엔드포인트는 아무 검사도 하지 않습니다.</strong> 가드가 없으면
-                    누구나 앱의 키로 아무 입력이나 암호화할 수 있어서 <code>encrypt</code>가 암호화 오라클이 됩니다.{" "}
-                    <code>libs/shared</code>의 <code>Admin</code>에 닿지 못하는 라이브러리는 <code>[None]</code>으로
-                    엔드포인트를 닫고, <code>mcp: false</code>로 MCP에서도 뺍니다.
+                    <strong>가드를 하나도 적지 않은 엔드포인트는 모든 호출에 403으로 답합니다.</strong> local 운영이
+                    아니면 그런 엔드포인트가 있는 서버는 부팅하지 않습니다. <code>libs/shared</code>의{" "}
+                    <code>Admin</code>에 닿지 못하는 라이브러리는 <code>[None]</code>으로 엔드포인트를 닫고,{" "}
+                    <code>mcp: false</code>로 MCP에서도 뺍니다.
                   </span>
                 ),
               })}
@@ -644,7 +644,7 @@ export class DocEndpoint extends endpoint(srv.doc, ({ query }) => ({
                 en: (
                   <span>
                     <strong>
-                      <code>[Public]</code> on a mutation is having no guard, spelled out.
+                      <code>[Public]</code> on a mutation opens it over HTTP and keeps it from agents.
                     </strong>{" "}
                     MCP refuses a <code>mutation</code> whose only guard is <code>Public</code>, just as it refuses one
                     with no guards at all. Which guard to use when is on the{" "}
@@ -657,7 +657,7 @@ export class DocEndpoint extends endpoint(srv.doc, ({ query }) => ({
                 ko: (
                   <span>
                     <strong>
-                      mutation에 붙은 <code>[Public]</code>은 가드가 없다는 말을 적어 놓은 것과 같습니다.
+                      mutation에 붙은 <code>[Public]</code>은 HTTP로는 열어 두지만 에이전트에게는 공개하지 않습니다.
                     </strong>{" "}
                     MCP는 가드가 <code>Public</code> 하나뿐인 <code>mutation</code>을 가드가 아예 없는 것과 똑같이
                     거절합니다. 어떤 가드를 언제 쓰는지는{" "}
@@ -1261,7 +1261,8 @@ export class ReceiptEndpoint extends endpoint(srv.receipt, ({ mutation }) => ({
                 en: (
                   <span>
                     <strong>
-                      A <code>pubsub</code> or <code>message</code> is open until it names its own <code>guards</code>.
+                      A <code>pubsub</code> or <code>message</code> refuses every caller until it names its own{" "}
+                      <code>guards</code>.
                     </strong>{" "}
                     Nothing above covers it, not even a slice default in a model module. Both endpoints above say{" "}
                     <code>[Public]</code> only because <code>minimal</code> is a benchmark app, not an example. A room's
@@ -1271,7 +1272,8 @@ export class ReceiptEndpoint extends endpoint(srv.receipt, ({ mutation }) => ({
                 ko: (
                   <span>
                     <strong>
-                      <code>pubsub</code>과 <code>message</code>는 자기 <code>guards</code>를 적기 전까지 열려 있습니다.
+                      <code>pubsub</code>과 <code>message</code>는 자기 <code>guards</code>를 적기 전까지 모든 호출자를
+                      거절합니다.
                     </strong>{" "}
                     위쪽의 무엇도 덮어 주지 않고, 모델 모듈의 슬라이스 기본값도 닿지 않습니다. 위 두 엔드포인트가{" "}
                     <code>[Public]</code>인 것은 <code>minimal</code>이 예시가 아니라 벤치마크 앱이기 때문입니다. room의

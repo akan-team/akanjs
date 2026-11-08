@@ -721,7 +721,12 @@ describe("document query helpers and schemas", () => {
 
   test("refuses a combinator at a field, and an operator object at a field when a request carried it", () => {
     const q = createDocumentQueryHelper();
-    const [requested] = InputParser.parse(Any, 0, [{ ne: "draft" }], { key: "args" }) as object[];
+    const [requested, requestedNode] = InputParser.parse(
+      Any,
+      0,
+      [{ ne: "draft" }, { kind: "op", op: "ne", value: "draft" }],
+      { key: "args" },
+    ) as object[];
 
     expect(fieldValueProblem("score", q.gte(1))).toBeNull();
     expect(fieldValueProblem("score", { gte: 1 })).toBeNull();
@@ -730,6 +735,8 @@ describe("document query helpers and schemas", () => {
     expect(fieldValueProblem("score", q.all({ score: 1 }))).toContain("q.all({ score: ... })");
     expect(fieldValueProblem("score", q.raw("1 = 1"))).toContain("put it beside the field's condition");
     expect(fieldValueProblem("status", requested)).toContain("arrived in a request and holds query operators");
+    expect(fieldValueProblem("status", requestedNode)).toContain("arrived in a request and holds query operators");
+    expect(fieldValueProblem("status", q.ne("draft"))).toBeNull();
   });
 
   test("creates and validates document ids", () => {

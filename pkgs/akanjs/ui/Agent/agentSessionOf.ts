@@ -50,6 +50,8 @@ export interface AgentSessionSetup {
   visual?: boolean | AgentVisualOption;
 }
 
+const ownHistories = new WeakMap<AgentSession, SessionHistory>();
+
 export const agentSessionOf = ({
   l,
   view = [],
@@ -65,7 +67,7 @@ export const agentSessionOf = ({
   const { surface } = ensureStoreSurface();
   const history = sessionHistoryOf(persist, view.join("."));
   const drawing = AgentVisual.sink(visual);
-  return new AgentSession(sessionView(surface, view, builtins), runner ?? fetchRunner(), {
+  const session = new AgentSession(sessionView(surface, view, builtins), runner ?? fetchRunner(), {
     buildContext: (scoped) => AgentContext.of().blocks(scoped, view),
     settle: () => ScreenSettle.wait(),
     continueAsk: () => ({ question: l("base.agentContinue"), keep: l("base.agentKeepGoing") }),
@@ -77,7 +79,11 @@ export const agentSessionOf = ({
     ...(onCompact ? { onCompact } : {}),
     ...(drawing ?? {}),
   });
+  if (history && history !== persist) ownHistories.set(session, history);
+  return session;
 };
+
+export const ownHistoryOf = (session: AgentSession): SessionHistory | undefined => ownHistories.get(session);
 
 // Narrowed per session (the source is shared), and from `call` too: a tool reachable by guessing is not withheld.
 export const sessionView = (surface: AgenticSurface, path: string[], builtins?: BuiltinOption): SurfaceView => {
@@ -143,13 +149,28 @@ const withoutContent = (message: ChatMessage): ChatMessage => {
 
 const transcriptPrefix = () => `akan.agent.${getEnv().appName}`;
 
+const ownerSegment = /^(?:[0-9a-f]{8}|anon)$/;
+
+const namesNoOwner = (raw: string | null) => {
+  try {
+    const parsed = JSON.parse(raw ?? "") as { owner?: unknown; messages?: unknown } | null;
+    return !!parsed && typeof parsed === "object" && parsed.owner === undefined && Array.isArray(parsed.messages);
+  } catch {
+    return false;
+  }
+};
+
+//? Default keys read `<prefix>.<owner>[.<zone>]`; another is an app's `persist.key`, dropped only if it predates owners.
 export const forgetOtherAccounts = (owner: string) => {
   if (typeof window === "undefined") return;
   const prefix = transcriptPrefix();
-  const kept = `${prefix}.${owner}`;
-  const isStale = (key: string | null): key is string =>
-    !!key && (key === prefix || (key.startsWith(`${prefix}.`) && key !== kept && !key.startsWith(`${kept}.`)));
   for (const storage of [window.localStorage, window.sessionStorage]) {
+    const isStale = (key: string | null): key is string => {
+      if (!key || (key !== prefix && !key.startsWith(`${prefix}.`))) return false;
+      const segment = key.slice(prefix.length + 1).split(".")[0] ?? "";
+      if (ownerSegment.test(segment)) return segment !== owner;
+      return namesNoOwner(storage.getItem(key));
+    };
     const stale = Array.from({ length: storage.length }, (_, idx) => storage.key(idx)).filter(isStale);
     for (const key of stale) storage.removeItem(key);
   }

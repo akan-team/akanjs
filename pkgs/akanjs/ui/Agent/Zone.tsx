@@ -80,7 +80,7 @@ export const Zone = ({
       visual,
     });
   const session = held.current;
-  useAccountBoundSession(session);
+  useAccountBoundSession(session === provided ? null : session);
   useEffect(
     // Unmounted, nothing renders an owned session's approvals; a provided one belongs to the app.
     () => (provided ? undefined : () => session.abort()),

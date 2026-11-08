@@ -39,7 +39,7 @@ export const useAgentTool = <Args extends Record<string, unknown> = Record<strin
       parameters: declared.parameters,
       settle: declared.settle,
       ...(declared.taint ? { taint: declared.taint } : {}),
-      ...(declared.confirm === undefined
+      ...(declared.confirm === undefined || declared.confirm === false
         ? {}
         : {
             confirm: (args: Record<string, unknown>) => {

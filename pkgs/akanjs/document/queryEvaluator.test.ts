@@ -172,14 +172,20 @@ describe("DocumentQueryEvaluator unevaluable nodes", () => {
   });
 
   test("a condition a request carried, or a raw-shaped object q did not build, is reported and refused", () => {
-    const [operators, node] = InputParser.parse(Any, 0, [{ ne: "x" }, { kind: "any", queries: [] }], {
-      key: "args",
-    }) as [Record<string, unknown>, DocumentQuery];
+    const [operators, node, opNode] = InputParser.parse(
+      Any,
+      0,
+      [{ ne: "x" }, { kind: "any", queries: [] }, { kind: "op", op: "ne", value: "x" }],
+      { key: "args" },
+    ) as [Record<string, unknown>, DocumentQuery, Record<string, unknown>];
     const shaped = JSON.parse('{"kind":"raw","sql":"1 = 1","params":[]}') as DocumentQuery;
 
     expect(DocumentQueryEvaluator.unevaluableReason({ status: operators })).toContain("holds query operators");
     expect(() => matches({ status: operators }, { status: "y" })).toThrow("holds query operators");
     expect(matches({ status: { ne: "x" } }, { status: "y" })).toBe(true);
+    expect(DocumentQueryEvaluator.unevaluableReason({ status: opNode })).toContain("holds query operators");
+    expect(() => matches({ status: opNode }, { status: "y" })).toThrow("holds query operators");
+    expect(matches({ status: q.ne("x") }, { status: "y" })).toBe(true);
     expect(DocumentQueryEvaluator.unevaluableReason(q.all({ status: "y" }, node))).toContain(
       "arrived as a request value",
     );

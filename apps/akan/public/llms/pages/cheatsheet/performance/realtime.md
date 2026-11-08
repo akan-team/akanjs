@@ -61,7 +61,7 @@ Use `pubsub` when the server sends one event to everyone in a room. A new chat m
 
 **`ws.socketId` is a connection, not a user.** A reconnect gets a new id, so keep per-user state on the account.
 
-**A pubsub has no guard unless it declares one.** The slice's guard map reaches only the generated query and mutation endpoints, so a room without its own `guards` array is open to anyone who can open a socket.
+**A pubsub declares its own guards.** The slice's guard map reaches only the generated query and mutation endpoints, so a room without its own `guards` array refuses every socket.
 
 Calling From the Browser
 

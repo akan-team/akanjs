@@ -83,7 +83,7 @@ What it guards
 
 - init({ guards }): A named slice's own list, which the `guards` map above never reaches.
 
-**A named slice is guarded only by its own `init({ guards })`.** `get` and `cru` never reach it, so `inAdmin: init()` with no guards serves every post to any caller. `None` closes an endpoint to everyone.
+**A named slice is guarded only by its own `init({ guards })`.** `get` and `cru` never reach it, so `inAdmin: init()` with no guards refuses every caller with 403, and outside local operation the server does not boot. `None` closes an endpoint to everyone on purpose.
 
 List And Open
 

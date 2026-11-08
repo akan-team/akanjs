@@ -8,9 +8,10 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { resetEnvCache } from "../../base/baseEnv";
@@ -190,6 +191,15 @@ describe("SqliteSnapshot", () => {
       expect([modeOf(wider.dir), modeOf(wider.manifestPath)]).toEqual([0o750, 0o640]);
       expect(SqliteSnapshot.fileMode("644")).toBe(0o644);
       expect(SqliteSnapshot.fileMode("nonsense")).toBe(0o600);
+      const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+      try {
+        expect([SqliteSnapshot.fileMode("680"), SqliteSnapshot.fileMode("0640"), SqliteSnapshot.fileMode("")]).toEqual([
+          0o600, 0o640, 0o600,
+        ]);
+        expect(stderr).toHaveBeenCalledTimes(1);
+      } finally {
+        stderr.mockRestore();
+      }
     },
   );
 
@@ -205,8 +215,8 @@ describe("SqliteSnapshot", () => {
     const dir = path.join(root, "sweep");
     const exited = Bun.spawn(["bun", "--version"], { stdout: "ignore" });
     await exited.exited;
-    const dead = path.join(dir, `${SqliteSnapshot.stagingPrefix}${exited.pid}-abc`);
-    const live = path.join(dir, `${SqliteSnapshot.stagingPrefix}${process.pid}-def`);
+    const dead = path.join(dir, `${SqliteSnapshot.stagingOwner(hostname(), exited.pid)}-abc`);
+    const live = path.join(dir, `${SqliteSnapshot.stagingOwner()}-def`);
     for (const staging of [dead, live]) {
       mkdirSync(staging, { recursive: true });
       writeFileSync(path.join(staging, "opsapp-main.db"), "plaintext");
@@ -214,6 +224,21 @@ describe("SqliteSnapshot", () => {
     mkdirSync(path.join(dir, "kept"));
     await SqliteSnapshot.sweep(dir);
     expect(readdirSync(dir).sort()).toEqual([path.basename(live), "kept"]);
+  });
+
+  test("sweeps a capture left by an earlier process under the same PID, and another host's once it stops writing", async () => {
+    const dir = path.join(root, "sweep-hosts");
+    const restarted = path.join(dir, `${SqliteSnapshot.stagingOwner(hostname(), process.pid, 1)}-abc`);
+    const elsewhere = path.join(dir, `${SqliteSnapshot.stagingOwner("other-host", 1)}-def`);
+    const idle = path.join(dir, `${SqliteSnapshot.stagingOwner("other-host", 1)}-ghi`);
+    for (const staging of [restarted, elsewhere, idle]) {
+      mkdirSync(staging, { recursive: true });
+      writeFileSync(path.join(staging, "opsapp-main.db"), "plaintext");
+    }
+    const past = new Date(Date.now() - SqliteSnapshot.staleAfterMs - 60_000);
+    for (const file of [path.join(idle, "opsapp-main.db"), idle]) utimesSync(file, past, past);
+    await SqliteSnapshot.sweep(dir);
+    expect(readdirSync(dir)).toEqual([path.basename(elsewhere)]);
   });
 
   test("restore refuses a manifest naming a file outside its own dir, or a role it does not know", async () => {

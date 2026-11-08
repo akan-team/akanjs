@@ -164,7 +164,7 @@ A public catalog search, with its own guard:
 
 **A live search slice refetches.** A search cannot be matched in memory, so a `.live()` slice holding one declares `{ fallback: "invalidate" }`.
 
-**A named slice is guarded only by its own `init({ guards })`.** The `slice()` map covers the root slice and generated CRUD. With no guards of its own, the search is open to anyone over HTTP and left out of MCP.
+**A named slice is guarded only by its own `init({ guards })`.** The `slice()` map covers the root slice and generated CRUD. With no guards of its own, the search refuses every caller with 403 and is left out of MCP.
 
 Operating It
 

@@ -150,7 +150,7 @@ export class StToolBuilder<Args extends unknown[] = []> {
         label: () => live.current.meta.label,
         ...(spec.meta.taint ? { taint: spec.meta.taint } : {}),
         // A write confirms unless it declares otherwise — the verb read off the key, as MCP hints are.
-        ...(spec.meta.confirm === undefined && !AgentConfirm.policy.byName(name)
+        ...(spec.meta.confirm === false || (spec.meta.confirm === undefined && !AgentConfirm.policy.byName(name))
           ? {}
           : {
               confirm: (args: Record<string, unknown>) => {

@@ -5,7 +5,7 @@
 The server, gateway and image optimizer bound the resources one client can hold, and HTML responses carry stricter default headers.
 
 - A connection that sends nothing for 120 seconds is closed, where it used to stay open for good; `akan start` keeps it open. A request whose handler is still working is never cut; a streamed response that sends nothing for that long is. `AKAN_IDLE_TIMEOUT` (`30` or `30s`) sets it, up to Bun's 255, and `0` restores the old behaviour. The gateway's WebSockets now idle out the same way after 120 seconds without a frame, which the automatic pings keep from happening to a live socket; `AKAN_WS_IDLE_TIMEOUT=0` restores the old behaviour.
-- A request body is capped at 128 MiB server-wide (`AKAN_MAX_UPLOAD_BODY`, e.g. `512mb`, `512M`, `1.5g` or `512MiB`), and a body other than `multipart/form-data` at 16 MiB (`AKAN_MAX_REQUEST_BODY`, `off` lifts it). A declared length over the cap gets 413 before the body is read, and a chunked body gets 413 once it passes the cap.
+- A request body is capped at 128 MiB server-wide (`AKAN_MAX_UPLOAD_BODY`, e.g. `512mb`, `512M`, `1.5g` or `512MiB`), and a body other than `multipart/form-data` or the agent's `runAgentTurn` relay at 16 MiB (`AKAN_MAX_REQUEST_BODY`, `off` lifts it). A declared length over the cap gets 413 before the body is read, and a chunked body gets 413 once it passes the cap.
 - A size or timeout value the server cannot read is logged once as a warning, and the default applies.
 - `akan start` binds the dev server to 127.0.0.1 outside a container instead of every interface. `AKAN_LISTEN_HOST=*` binds every interface again, and `AKAN_LISTEN_HOST` still takes one address.
 - The gateway's socket to its replicas is readable and writable by its owner only.

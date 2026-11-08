@@ -1,5 +1,6 @@
 import { CookieJar, originFromRequest } from "akanjs/common";
 import type { AkanDynamicUsage, AkanRequestPolicy } from "akanjs/fetch";
+import { isOff } from "./assetHeaders";
 
 export const DEFAULT_ROUTE_CACHE_TTL_SECONDS = 30;
 
@@ -106,7 +107,7 @@ export function resolveHtmlCacheControl(
   request: Request,
   raw = process.env.AKAN_HTML_CACHE_CONTROL?.trim(),
 ): string | null {
-  if (raw?.toLowerCase() === "off") return null;
+  if (raw && isOff(raw)) return null;
   if (carriesCredentials(request)) return "private, no-cache";
   return raw && !/[\r\n]/.test(raw) ? raw : "no-cache";
 }

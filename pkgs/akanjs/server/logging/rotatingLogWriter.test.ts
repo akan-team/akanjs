@@ -78,6 +78,17 @@ describe("RotatingLogWriter", () => {
     expect(await modeOf("akan-local-local-2026-05-25-0-federation-0001.log")).toBe(0o640);
   });
 
+  test("reads AKAN_LOG_FILE_MODE as an octal mode only, and warns before falling back to 600", () => {
+    const warnings: string[] = [];
+    const warn = (message: string) => void warnings.push(message);
+    expect(RotatingLogWriter.fileMode("644", warn)).toBe(0o644);
+    expect(RotatingLogWriter.fileMode("0640", warn)).toBe(0o640);
+    expect(RotatingLogWriter.fileMode(undefined, warn)).toBe(0o600);
+    expect(RotatingLogWriter.fileMode("680", warn)).toBe(0o600);
+    expect(RotatingLogWriter.fileMode("rw-r--r--", warn)).toBe(0o600);
+    expect(warnings).toHaveLength(2);
+  });
+
   test("keeps retention per process key", async () => {
     const writer = new RotatingLogWriter({
       logDir: tmp,

@@ -47,7 +47,7 @@ or {
         },
         register_diagnostic(
           span = $sliceOption,
-          message = "No `guards` on this slice, so its root query refuses every caller with 403 and its generated reads and writes are not mounted, and outside local operation the server does not boot. Pass { guards: { root: Admin, get: …, cru: … } }, naming `Public` where anonymous access is the intent.",
+          message = "No `guards` on this slice, so it mounts no root list or insight and none of its generated reads and writes. Pass { guards: { root: Admin, get: …, cru: … } }, naming `Public` where anonymous access is the intent.",
           severity = "warn"
         )
       },
@@ -64,7 +64,7 @@ or {
         },
         register_diagnostic(
           span = $guardMap,
-          message = "No `root` guard on this slice, so its root query refuses every caller with 403, and outside local operation the server does not boot. Write `root: Admin`.",
+          message = "No `root` guard on this slice. Left out, it mounts no root list or insight; `root: []` refuses every caller with 403, and outside local operation the server does not boot. Write `root: Admin`, or `root: Public` for anonymous access.",
           severity = "warn"
         )
       }

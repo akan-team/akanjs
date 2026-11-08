@@ -198,15 +198,18 @@ export const queryNodeProblem = (node: DocumentQueryNode): string | null => {
 };
 
 export const fieldValueProblem = (path: string, value: unknown): string | null => {
+  // From code, `{ gte: 1 }` is a condition; from a caller it would replace the condition the code put on the field.
+  if (
+    RequestValue.isFrom(value) &&
+    (isDocumentQueryNode(value) || Object.keys(value as object).some((key) => queryOperatorKeys.has(key)))
+  )
+    return `The value of "${path}" arrived in a request and holds query operators; build the condition with q from checked values`;
   if (isDocumentQueryNode(value)) {
     if (value.kind === "op") return null;
     if (value.kind === "raw" || value.kind === "search")
       return `q.${value.kind}() cannot be the value of "${path}"; put it beside the field's condition`;
     return `q.${value.kind}() cannot be the value of "${path}"; it combines whole conditions, as in q.${value.kind}({ ${path}: ... })`;
   }
-  // From code, `{ gte: 1 }` is a condition; from a caller it would replace the condition the code put on the field.
-  if (RequestValue.isFrom(value) && Object.keys(value as object).some((key) => queryOperatorKeys.has(key)))
-    return `The value of "${path}" arrived in a request and holds query operators; build the condition with q from checked values`;
   return null;
 };
 
