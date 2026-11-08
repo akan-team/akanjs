@@ -430,11 +430,13 @@ export class Executor {
       targetPath,
       scanInfo,
       overwrite = true,
+      dryRun = false,
     }: {
       templatePath: string;
       targetPath: string;
       scanInfo?: AppInfo | LibInfo | null;
       overwrite?: boolean;
+      dryRun?: boolean;
     },
     dict: { [key: string]: string } = {},
     options: { [key: string]: unknown } = {},
@@ -457,6 +459,7 @@ export class Executor {
       const filename = typeof result === "object" ? result.filename : path.basename(targetPath).replace(".js", ".ts");
       const content = typeof result === "object" ? result.content : result;
       const convertedTargetPath = convertPath(`${path.dirname(targetPath)}/${filename}`);
+      if (dryRun) return { filePath: this.getPath(convertedTargetPath), content, written: false };
       this.logger.verbose(`Apply template ${templatePath} to ${convertedTargetPath}`);
       return this.writeFile(convertedTargetPath, content, { overwrite });
     } else if (targetPath.endsWith(".template")) {
@@ -466,11 +469,13 @@ export class Executor {
         (data, [key, value]) => data.replace(new RegExp(`<%= ${key} %>`, "g"), value),
         content,
       );
+      if (dryRun) return { filePath: this.getPath(convertedTargetPath), content: convertedContent, written: false };
       this.logger.verbose(`Apply template ${templatePath} to ${convertedTargetPath}`);
       return this.writeFile(convertedTargetPath, convertedContent, { overwrite });
     } else if (staticTemplateFileExtensions.has(path.extname(targetPath).toLowerCase())) {
       const convertedTargetPath = convertPath(targetPath);
       const writePath = this.getPath(convertedTargetPath);
+      if (dryRun) return { filePath: writePath, content: "", written: false };
       if (!overwrite && (await FileSys.fileExists(writePath)))
         return { filePath: writePath, content: "", written: false };
       const dirname = path.dirname(writePath);
@@ -487,6 +492,7 @@ export class Executor {
     dict = {},
     options = {},
     overwrite = true,
+    dryRun = false,
   }: {
     basePath: string;
     template: string;
@@ -494,6 +500,7 @@ export class Executor {
     dict?: { [key: string]: string };
     options?: { [key: string]: unknown };
     overwrite?: boolean;
+    dryRun?: boolean;
   }): Promise<WrittenFileContent[]> {
     const templateRoot = await this.#resolveTemplateRoot();
     const templatePath = `${templateRoot}${template ? `/${template}` : ""}`;
@@ -504,6 +511,7 @@ export class Executor {
           targetPath: path.join(basePath, path.basename(templatePath)),
           scanInfo,
           overwrite,
+          dryRun,
         },
         dict,
         options,
@@ -522,6 +530,7 @@ export class Executor {
                   targetPath: path.join(basePath, subdir),
                   scanInfo,
                   overwrite,
+                  dryRun,
                 },
                 dict,
                 options,
@@ -534,6 +543,7 @@ export class Executor {
                 scanInfo,
                 dict,
                 overwrite,
+                dryRun,
                 options,
               });
           }),
@@ -559,6 +569,7 @@ export class Executor {
     dict?: { [key: string]: string };
     options?: { [key: string]: unknown };
     overwrite?: boolean;
+    dryRun?: boolean;
   }): Promise<FileContent[]> {
     const fileContents = await this._applyTemplate({ ...options, dict: withCapitalizedDict(options.dict) });
     await this.#formatAppliedTemplate(fileContents.filter((fileContent) => fileContent.written));
@@ -809,11 +820,19 @@ export class WorkspaceExecutor extends Executor {
     };
     return await getDirs(basePath);
   }
-  async commit(message: string, { init = false, add = true }: { init?: boolean; add?: boolean } = {}) {
+  async commit(
+    message: string,
+    {
+      init = false,
+      add = true,
+      identity,
+    }: { init?: boolean; add?: boolean; identity?: { name: string; email: string } } = {},
+  ) {
     if (init) await this.spawn("git", ["init", "--quiet"]);
     if (add) await this.spawn("git", ["add", "."]);
+    const author = identity ? ["-c", `user.name=${identity.name}`, "-c", `user.email=${identity.email}`] : [];
     // Argument vector, not a shell string: a message carrying a double quote breaks the interpolated form.
-    await this.spawn("git", ["commit", "--quiet", "-m", message]);
+    await this.spawn("git", [...author, "commit", "--quiet", "-m", message]);
   }
   /** `git commit` exits non-zero on an empty index, so a re-runnable caller has to ask first. */
   async hasChanges() {

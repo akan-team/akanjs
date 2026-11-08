@@ -46,6 +46,7 @@ interface Options {
   dir: string;
   libs: string | boolean;
   init: string | boolean;
+  sample: string | boolean;
   registry?: string;
   owner?: string;
 }
@@ -73,11 +74,12 @@ export const run = async ({
   const program = new Command().name("create-akan-workspace");
 
   program
-    .argument("[org]", "organization name")
+    .argument("[org]", 'organization name, or "." to create the workspace in --dir itself')
     .option("-a, --app <string>", "application name")
-    .option("-d, --dir <string>", "directory")
+    .option("-d, --dir <string>", 'directory the workspace is created in, as <dir>/<org>, or <dir> itself for "."')
     .option("-l, --libs <boolean>", "install shared and util libraries", false)
     .option("-i, --init <boolean>", "install dependencies and initialize git", true)
+    .option("-s, --sample <boolean>", "generate the sample task module, pages and helpers", true)
     .option("-r, --registry <string>", "npm registry URL for installing Akan packages")
     .option("-o, --owner <string>", "owner of the workspace")
     .action(async (org: string | undefined, options: Partial<Options>) => {
@@ -97,6 +99,7 @@ export const run = async ({
       );
       const libs = options.libs === true || options.libs === "true";
       const init = options.init === undefined || options.init === true || options.init === "true";
+      const sample = options.sample === undefined || options.sample === true || options.sample === "true";
       //? `bun install -g` links `akan` into Bun's global bin, which is not on PATH when Bun itself came from npm.
       const globalBinDir = getGlobalBinDir();
       await spawnProcess(
@@ -109,6 +112,7 @@ export const run = async ({
           ...(options.dir ? [`--dir=${options.dir}`] : []),
           `--libs=${libs}`,
           `--init=${init}`,
+          `--sample=${sample}`,
           ...(registryUrl ? [`--registry=${registryUrl}`] : []),
           ...(options.owner ? [`--owner=${options.owner}`] : []),
         ],

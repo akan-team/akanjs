@@ -238,8 +238,9 @@ export default page()
               <span>Create a new workspace and its first app in one go. It runs these steps in order:</span>
               <ol className="my-3 list-decimal space-y-1 pl-5">
                 <li>
-                  Write the workspace files into <code>{"<dir>/<workspaceName>"}</code>, with <code>--registry</code>{" "}
-                  saved to <code>.npmrc</code>.
+                  Write the workspace files into <code>{"<dir>/<workspaceName>"}</code>, or into <code>{"<dir>"}</code>{" "}
+                  itself when the name is <code>.</code>, with <code>--registry</code> saved to <code>.npmrc</code>. It
+                  writes nothing when the folder already holds a file it would overwrite, and names those files.
                 </li>
                 <li>
                   Run <code>bun install</code>. <code>--init false</code> skips it.
@@ -248,13 +249,18 @@ export default page()
                   Install the <code>util</code> and <code>shared</code> libraries, only with <code>--libs true</code>.
                 </li>
                 <li>
-                  Create the first app, named by <code>--app</code>.
+                  Create the first app, named by <code>--app</code>, with the sample <code>task</code> module and pages.{" "}
+                  <code>--sample false</code> leaves them out.
                 </li>
                 <li>
                   Write the agent rules and the MCP config. <code>--agent-install</code> and <code>--mcp-install</code>{" "}
                   turn them off.
                 </li>
-                <li>Make the first git commit. If git fails, the workspace still works; commit by hand.</li>
+                <li>
+                  Make the first git commit, as <code>{"Akan.js <noreply@akanjs.com>"}</code> when git has no identity.
+                  In a folder another git repository tracks, it commits nothing and leaves the files to that repository.
+                  If git fails, the workspace still works; commit by hand.
+                </li>
               </ol>
               <span>
                 It ends by printing the next step: <code>{"cd <dir>/<workspaceName> && akan start <app>"}</code>.
@@ -266,8 +272,9 @@ export default page()
               <span>새 워크스페이스와 첫 앱을 한 번에 만듭니다. 아래 순서로 진행합니다.</span>
               <ol className="my-3 list-decimal space-y-1 pl-5">
                 <li>
-                  <code>{"<dir>/<workspaceName>"}</code>에 워크스페이스 파일을 씁니다. <code>--registry</code> 값은{" "}
-                  <code>.npmrc</code>에 들어갑니다.
+                  <code>{"<dir>/<workspaceName>"}</code>에, 이름이 <code>.</code>이면 <code>{"<dir>"}</code> 자체에
+                  워크스페이스 파일을 씁니다. <code>--registry</code> 값은 <code>.npmrc</code>에 들어갑니다. 덮어쓸
+                  파일이 이미 있으면 아무것도 쓰지 않고 그 파일들을 알려 줍니다.
                 </li>
                 <li>
                   <code>bun install</code>을 실행합니다. <code>--init false</code>면 건너뜁니다.
@@ -276,13 +283,18 @@ export default page()
                   <code>--libs true</code>일 때만 <code>util</code>과 <code>shared</code> 라이브러리를 설치합니다.
                 </li>
                 <li>
-                  <code>--app</code>으로 정한 이름의 첫 앱을 만듭니다.
+                  <code>--app</code>으로 정한 이름의 첫 앱을 샘플 <code>task</code> 모듈, 페이지와 함께 만듭니다.{" "}
+                  <code>--sample false</code>면 샘플을 뺍니다.
                 </li>
                 <li>
                   에이전트 규칙과 MCP 설정을 씁니다. <code>--agent-install</code>과 <code>--mcp-install</code>로 끌 수
                   있습니다.
                 </li>
-                <li>첫 git 커밋을 남깁니다. git이 실패해도 워크스페이스는 그대로 쓸 수 있으니 직접 커밋합니다.</li>
+                <li>
+                  첫 git 커밋을 남깁니다. git에 사용자 정보가 없으면 <code>{"Akan.js <noreply@akanjs.com>"}</code>으로
+                  커밋합니다. 다른 git 저장소가 추적하는 폴더라면 커밋하지 않고 그 저장소에 맡깁니다. git이 실패해도
+                  워크스페이스는 그대로 쓸 수 있으니 직접 커밋합니다.
+                </li>
               </ol>
               <span>
                 마지막에 다음 단계를 안내합니다: <code>{"cd <dir>/<workspaceName> && akan start <app>"}</code>.
@@ -296,8 +308,8 @@ export default page()
             type: "String",
             required: "yes",
             desc: l.trans({
-              en: "Organization or workspace name, lowercased with spaces as hyphens. Asked for when omitted.",
-              ko: "조직 또는 워크스페이스 이름입니다. 소문자로 바뀌고 공백은 하이픈이 됩니다. 생략하면 물어봅니다.",
+              en: "Organization or workspace name, lowercased with spaces as hyphens. `.` creates the workspace in `--dir` itself, named after that folder. Asked for when omitted.",
+              ko: "조직 또는 워크스페이스 이름입니다. 소문자로 바뀌고 공백은 하이픈이 됩니다. `.`이면 `--dir` 폴더 자체에 그 폴더 이름으로 만듭니다. 생략하면 물어봅니다.",
             }),
           },
         ],
@@ -316,8 +328,8 @@ export default page()
             type: "String",
             defaultValue: ".",
             desc: l.trans({
-              en: "Parent folder, relative to where you run it unless absolute. Defaults to `local` if `USE_AKANJS_PKGS=true`.",
-              ko: "워크스페이스를 담을 상위 폴더로, 절대 경로가 아니면 실행 위치 기준입니다. `USE_AKANJS_PKGS=true`면 `local`입니다.",
+              en: "Parent folder, or the workspace folder itself when the name is `.`. Relative to where you run it unless absolute. Defaults to `local` if `USE_AKANJS_PKGS=true`.",
+              ko: "워크스페이스를 담을 상위 폴더이고, 이름이 `.`이면 워크스페이스 폴더 자체입니다. 절대 경로가 아니면 실행 위치 기준입니다. `USE_AKANJS_PKGS=true`면 `local`입니다.",
             }),
           },
           {
@@ -375,6 +387,15 @@ export default page()
               ko: "코딩 에이전트용 `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/akan.mdc`를 씁니다.",
             }),
           },
+          {
+            name: "--sample",
+            type: "Boolean",
+            defaultValue: "true",
+            desc: l.trans({
+              en: "Generate the sample `task` module, pages and helpers in the first app. `false` starts from an empty app.",
+              ko: "첫 앱에 샘플 `task` 모듈, 페이지, 헬퍼를 만듭니다. `false`면 빈 앱에서 시작합니다.",
+            }),
+          },
         ],
         notes: [
           {
@@ -408,6 +429,7 @@ export default page()
         ],
         examples: `akan create-workspace acme --app shop
 akan create-workspace acme --app shop --dir projects --init false
+akan create-workspace . --app shop --dir app --sample false
 akan create-workspace acme --app shop --libs true`,
       },
       {

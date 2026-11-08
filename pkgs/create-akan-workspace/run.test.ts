@@ -48,13 +48,26 @@ describe("create-akan-workspace", () => {
         "true",
         "--init",
         "false",
+        "--sample",
+        "false",
       ],
       spawnCommand: spawnCommand as never,
     });
 
     expect(calls.map((call) => [call.command, call.args])).toEqual([
       ["bun", ["install", "-g", `@akanjs/cli@${version}`]],
-      ["akan", ["create-workspace", "my-org", "--app=web", "--dir=./projects", "--libs=true", "--init=false"]],
+      [
+        "akan",
+        [
+          "create-workspace",
+          "my-org",
+          "--app=web",
+          "--dir=./projects",
+          "--libs=true",
+          "--init=false",
+          "--sample=false",
+        ],
+      ],
     ]);
     expect(calls.every((call) => call.options.stdio === "inherit")).toBe(true);
   });
@@ -72,7 +85,15 @@ describe("create-akan-workspace", () => {
       ["bun", ["install", "-g", `@akanjs/cli@${version}`, "--registry", "http://127.0.0.1:4873"]],
       [
         "akan",
-        ["create-workspace", "my-org", "--app=web", "--libs=false", "--init=true", "--registry=http://127.0.0.1:4873"],
+        [
+          "create-workspace",
+          "my-org",
+          "--app=web",
+          "--libs=false",
+          "--init=true",
+          "--sample=true",
+          "--registry=http://127.0.0.1:4873",
+        ],
       ],
     ]);
     expect(
@@ -80,7 +101,7 @@ describe("create-akan-workspace", () => {
     ).toBe(true);
   });
 
-  test("forwards libs=false when libs is omitted", async () => {
+  test("forwards libs=false and sample=true when they are omitted", async () => {
     const { calls, spawnCommand } = createSpawnMock();
 
     await run({
@@ -88,7 +109,33 @@ describe("create-akan-workspace", () => {
       spawnCommand: spawnCommand as never,
     });
 
-    expect(calls.at(1)?.args).toEqual(["create-workspace", "my-org", "--app=web", "--libs=false", "--init=true"]);
+    expect(calls.at(1)?.args).toEqual([
+      "create-workspace",
+      "my-org",
+      "--app=web",
+      "--libs=false",
+      "--init=true",
+      "--sample=true",
+    ]);
+  });
+
+  test('forwards "." so the workspace is created in --dir itself', async () => {
+    const { calls, spawnCommand } = createSpawnMock();
+
+    await run({
+      argv: ["bun", "create-akan-workspace", ".", "--app", "web", "--dir", "app", "-s", "false"],
+      spawnCommand: spawnCommand as never,
+    });
+
+    expect(calls.at(1)?.args).toEqual([
+      "create-workspace",
+      ".",
+      "--app=web",
+      "--dir=app",
+      "--libs=false",
+      "--init=true",
+      "--sample=false",
+    ]);
   });
 
   test("refuses a Bun older than its engines range before installing anything", async () => {
