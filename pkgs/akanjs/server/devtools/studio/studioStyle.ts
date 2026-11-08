@@ -22,6 +22,7 @@ header select, header input { font: inherit; color: inherit; background: var(--b
 .unmapped h2 { font-size: 13px; color: var(--muted); }
 .unmapped ul { margin: 0; padding-left: 18px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .unmapped a { color: inherit; }
+.unmapped li.added { color: var(--added); } .unmapped li.changed { color: var(--changed); } .unmapped li.removed { color: var(--removed); }
 main { overflow: auto; }
 svg { display: block; }
 svg text { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--fg); }

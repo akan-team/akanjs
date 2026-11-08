@@ -304,8 +304,12 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     const report = AkanCli.jsonOf(result.stdout);
     if (isRecord(report) && typeof report.url === "string") return await StudioPanel.show(cli.root, app, report.url);
     log.appendLine(result.stdout.trimEnd());
-    const start = vscode.l10n.t("Start {0}", app);
     const reason = result.stdout.trim().split("\n").at(-1) || vscode.l10n.t("akan studio failed.");
+    if (!result.stdout.includes("No dev server answers")) {
+      void vscode.window.showErrorMessage(reason);
+      return false;
+    }
+    const start = vscode.l10n.t("Start {0}", app);
     if ((await vscode.window.showErrorMessage(reason, start)) !== start) return false;
     const terminal = vscode.window.createTerminal({ name: `akan start ${app}`, cwd: cli.root });
     terminal.sendText([...cli.command, "start", app].map(AkanCli.shellArgOf).join(" "));
@@ -325,10 +329,19 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     vscode.commands.registerCommand("akan.createModule", () => runWorkflow("create-module")),
     vscode.commands.registerCommand("akan.addField", () => runWorkflow("add-field")),
     vscode.commands.registerCommand("akan.openStudio", (options?: unknown) =>
-      openStudio(isRecord(options) ? (options as { app?: string; module?: string | null }) : undefined),
+      openStudio({
+        app: isRecord(options) && typeof options.app === "string" ? options.app : undefined,
+        module:
+          isRecord(options) && (typeof options.module === "string" || options.module === null)
+            ? options.module
+            : undefined,
+      }),
     ),
     vscode.commands.registerCommand("akan.openChangeMap", (options?: unknown) =>
-      openStudio({ ...(isRecord(options) ? (options as { app?: string }) : {}), view: "changes" }),
+      openStudio({
+        app: isRecord(options) && typeof options.app === "string" ? options.app : undefined,
+        view: "changes",
+      }),
     ),
   ];
 };

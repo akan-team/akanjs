@@ -205,9 +205,15 @@ describe("StudioLayout", () => {
     ]);
     expect(boxes["scalar:libs/shared:geo"].rows).toEqual([]);
     expect(Object.keys(boxesOf(StudioLayout.changes(changes, "folder")))).toEqual(["method:apps/demo:folder.open"]);
-    expect(StudioLayout.unmappedIn(["apps/demo/lib/_auth/auth.dictionary.ts", "apps/demo/page/a.tsx"], "auth")).toEqual(
-      ["apps/demo/lib/_auth/auth.dictionary.ts"],
-    );
+    expect(
+      StudioLayout.unmappedIn(
+        [
+          { file: "apps/demo/lib/_auth/auth.dictionary.ts", change: "changed" },
+          { file: "apps/demo/page/a.tsx", change: "added" },
+        ],
+        "auth",
+      ),
+    ).toEqual([{ file: "apps/demo/lib/_auth/auth.dictionary.ts", change: "changed" }]);
   });
 
   test("wraps a column taller than the page into a second one beside it", () => {

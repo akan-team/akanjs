@@ -18,6 +18,7 @@ import { RouteClientBuilder } from "@akanjs/devkit/frontendBuild/routeClientBuil
 import { ServerGraphFile } from "@akanjs/devkit/frontendBuild/serverGraphFile";
 import { SsrDevBundler } from "@akanjs/devkit/frontendBuild/ssrDevBundler";
 import { WatchRootResolver } from "@akanjs/devkit/frontendBuild/watchRootResolver";
+import { GitRevision } from "@akanjs/devkit/gitRevision";
 import { WorkspaceGraph } from "@akanjs/devkit/workspaceGraph";
 import { Logger } from "akanjs/common";
 import type {
@@ -69,6 +70,7 @@ class IncrementalBuilder {
   #generation = 0;
   #shellKey: string | null = null;
   #graph: { generation: number; payload: BuildGraphPayload } | null = null;
+  #changes: { key: string; payload: Promise<BuildChangesPayload> } | null = null;
   #discoveredThrough = 0;
   #csrActive = IncrementalBuilder.#csrArmedByEnv();
   #csrBundler: CsrDevBundler;
@@ -900,12 +902,22 @@ class IncrementalBuilder {
   }
 
   async #changesPayload(since: string | null): Promise<BuildChangesPayload> {
-    const { workspace } = this.#app;
-    const changes = await WorkspaceGraph.changes(workspace, since);
-    return {
-      workspaceRoot: workspace.workspaceRoot,
-      changes: "error" in changes ? changes : WorkspaceGraph.changesVisibleTo(changes, this.#app.name),
-    };
+    const { workspace, name } = this.#app;
+    const { workspaceRoot } = workspace;
+    const forkPoint = await new GitRevision(workspaceRoot).forkPointOf(since);
+    if (forkPoint.error !== undefined) return { workspaceRoot, changes: { error: forkPoint.error } };
+    const key = `${this.#generation}:${forkPoint.sha}`;
+    if (this.#changes?.key !== key) {
+      const payload = WorkspaceGraph.changesAt(workspace, forkPoint.sha).then((changes) => ({
+        workspaceRoot,
+        changes: WorkspaceGraph.changesVisibleTo(changes, name),
+      }));
+      payload.catch(() => {
+        if (this.#changes?.payload === payload) this.#changes = null;
+      });
+      this.#changes = { key, payload };
+    }
+    return await this.#changes.payload;
   }
 
   // On demand: dev serves CSR only via the opt-in `/__csr` and `?csr=true` routes; once built, it rebuilds every save.

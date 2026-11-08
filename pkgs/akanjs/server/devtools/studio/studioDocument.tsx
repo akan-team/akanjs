@@ -30,14 +30,18 @@ const kindShownIn: { [view in StudioView]: Set<string> } = {
   changes: new Set(["endpoint", "slice", "query", "model", "scalar", "enum", "guard"]),
 };
 const emptyGraph: AkanGraph = { version: 1, nodes: [], edges: [] };
-const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+const clip = (text: string, max: number) => {
+  const room = Math.max(8, max);
+  return text.length > room ? `${text.slice(0, room - 1)}…` : text;
+};
 
 export class StudioDocument {
   static render({ basePath, appName, payload, query }: StudioDocumentProps) {
     const changes = "changes" in payload ? payload.changes : null;
     const changeMap = changes && "nodes" in changes ? changes : null;
     const graph = "graph" in payload ? payload.graph : (changeMap ?? emptyGraph);
-    const modules = StudioLayout.modulesOf(graph);
+    const listed = StudioLayout.modulesOf(graph);
+    const modules = query.module && !listed.includes(query.module) ? [query.module, ...listed] : listed;
     const scene =
       query.view === "erd"
         ? StudioLayout.erd(graph, query.module)
@@ -87,6 +91,8 @@ export class StudioDocument {
                   placeholder="Since: default branch"
                   aria-label="Since"
                 />
+              ) : query.since ? (
+                <input type="hidden" name="since" value={query.since} />
               ) : null}
               <noscript>
                 <button type="submit">Show</button>
@@ -120,9 +126,10 @@ export class StudioDocument {
               <section className="unmapped">
                 <h2>Changed files no node covers</h2>
                 <ul>
-                  {unmapped.map((file) => (
-                    <li key={file}>
-                      <a href={openOf({ file, line: 1, column: 1 })}>{file}</a>
+                  {unmapped.map(({ file, change }) => (
+                    <li key={file} className={change}>
+                      {`${changeSigns[change]} `}
+                      {change === "removed" ? file : <a href={openOf({ file, line: 1, column: 1 })}>{file}</a>}
                     </li>
                   ))}
                 </ul>
@@ -161,7 +168,7 @@ export class StudioDocument {
   static href(basePath: string, { view, module, editor, since }: StudioQuery): string {
     const search = new URLSearchParams({ view, editor });
     if (module) search.set("module", module);
-    if (view === "changes" && since) search.set("since", since);
+    if (since) search.set("since", since);
     return `${basePath}?${search.toString()}`;
   }
 
@@ -217,7 +224,7 @@ export class StudioDocument {
     openOf: (at: AkanGraphLocation | null) => string | undefined,
   ) {
     const lib = node.owner?.startsWith("libs/") ? node.owner.slice(5) : null;
-    const kind = [node.change, lib, kindShownIn[view].has(node.kind) ? node.kind : null].filter(Boolean).join(" · ");
+    const kind = [lib, kindShownIn[view].has(node.kind) ? node.kind : null].filter(Boolean).join(" · ");
     const chars = Math.floor((width - 24) / charWidth);
     const mark = view === "changes" ? (node.change ?? "context") : null;
     return (
@@ -232,7 +239,10 @@ export class StudioDocument {
         <rect className="bar" x={x} y={y} width={4} height={height} rx={2} />
         <a href={openOf(node.change === "removed" ? null : node.at)}>
           <text className="title" x={x + 12} y={y + 18}>
-            {clip(node.label, kind ? chars - kind.length - 1 : chars)}
+            {clip(
+              node.change ? `${changeSigns[node.change]} ${node.label}` : node.label,
+              kind ? chars - kind.length - 1 : chars,
+            )}
           </text>
         </a>
         <text className="kind" x={x + width - 10} y={y + 18} textAnchor="end">

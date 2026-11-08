@@ -1,4 +1,5 @@
 import type {
+  AkanChangedFile,
   AkanGraph,
   AkanGraphChange,
   AkanGraphEdge,
@@ -112,9 +113,9 @@ export class StudioLayout {
     });
   }
 
-  static unmappedIn(files: string[], module: string | null): string[] {
+  static unmappedIn(files: AkanChangedFile[], module: string | null): AkanChangedFile[] {
     if (!module) return files;
-    return files.filter((file) => file.includes(`/lib/${module}/`) || file.includes(`/lib/_${module}/`));
+    return files.filter(({ file }) => file.includes(`/lib/${module}/`) || file.includes(`/lib/_${module}/`));
   }
 
   static #around(nodes: AkanGraphNode[], edges: AkanGraphEdge[], module: string | null) {

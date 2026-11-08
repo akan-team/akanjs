@@ -157,14 +157,16 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       ...moduleFiles("apps/other", "note"),
       ...moduleFiles("libs/shared", "file"),
     ]);
-    const git = (...args: string[]) =>
-      Bun.spawnSync(["git", "-c", "user.name=akan", "-c", "user.email=akan@example.com", ...args], {
-        cwd: root,
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      });
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(
+        ["git", "-c", "user.name=akan", "-c", "user.email=akan@example.com", "-c", "commit.gpgsign=false", ...args],
+        { cwd: root, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } },
+      );
+      expect(result.exitCode).toBe(0);
+    };
     git("init", "-q", "-b", "main");
     git("add", "-A");
-    git("commit", "-q", "-m", "base");
+    git("commit", "-q", "--no-verify", "-m", "base");
     await Promise.all(
       [
         ["apps/demo/lib/memo/memo.constant.ts", "Memo"],
@@ -198,10 +200,11 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       await until(proc, "builder-ready", () => messages.some((message) => message.type === "builder-ready"));
       proc.send({ type: "build-graph", id: 5 } satisfies BuilderMessage);
       proc.send({ type: "build-graph", id: 6, changes: { since: null } } satisfies BuilderMessage);
+      proc.send({ type: "build-graph", id: 7, changes: { since: "main" } } satisfies BuilderMessage);
       await until(
         proc,
         "build-graph-res",
-        () => messages.filter((message) => message.type === "build-graph-res").length === 2,
+        () => messages.filter((message) => message.type === "build-graph-res").length === 3,
       );
     } finally {
       proc.kill();
@@ -221,6 +224,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       throw new Error(`no changes: ${JSON.stringify(changes)}`);
     expect(changes.changes.nodes.map(({ id, change }) => [id, change])).toEqual([["model:apps/demo:memo", "changed"]]);
     expect(changes.changes.summary).toEqual({ added: 0, removed: 0, changed: 1 });
+    expect(answerTo(7)).toEqual(changes);
   }, 30_000);
 
   test("answers a second shell request in the same generation without building again", async () => {

@@ -40,7 +40,11 @@ describe("WorkspaceGraph.changesVisibleTo", () => {
       ],
       since: "0123456789ab",
       summary: { added: 2, removed: 0, changed: 1 },
-      unmapped: ["apps/admin/page/b.tsx", "apps/demo/lib/memo/memo.dictionary.ts", "libs/shared/lib/file/file.md"],
+      unmapped: [
+        { file: "apps/admin/page/b.tsx", change: "added" },
+        { file: "apps/demo/lib/memo/memo.dictionary.ts", change: "changed" },
+        { file: "libs/shared/lib/file/file.md", change: "removed" },
+      ],
     };
     const visible = WorkspaceGraph.changesVisibleTo(changes, "demo");
     expect(visible.nodes.map(({ id }) => id)).toEqual([
@@ -50,7 +54,10 @@ describe("WorkspaceGraph.changesVisibleTo", () => {
     ]);
     expect(visible.edges).toHaveLength(1);
     expect(visible.summary).toEqual({ added: 2, removed: 0, changed: 0 });
-    expect(visible.unmapped).toEqual(["apps/demo/lib/memo/memo.dictionary.ts", "libs/shared/lib/file/file.md"]);
+    expect(visible.unmapped.map(({ file }) => file)).toEqual([
+      "apps/demo/lib/memo/memo.dictionary.ts",
+      "libs/shared/lib/file/file.md",
+    ]);
     expect(visible.since).toBe("0123456789ab");
   });
 });

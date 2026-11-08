@@ -212,7 +212,10 @@ describe("Akan Studio", () => {
         edges: [{ ...studioPayload.graph.edges[0], change: "added" }],
         since: "0123456789ab",
         summary: { added: 0, removed: 0, changed: 1 },
-        unmapped: ["apps/devtools/lib/memo/memo.dictionary.ts"],
+        unmapped: [
+          { file: "apps/devtools/lib/memo/memo.dictionary.ts", change: "changed" },
+          { file: "apps/devtools/lib/memo/memo.util.ts", change: "removed" },
+        ],
       },
     };
     const buildChanges = async (since: string | null) => {
@@ -232,8 +235,12 @@ describe("Akan Studio", () => {
     expect(html).toContain('class="link calls added"');
     expect(html).toContain("since 0123456789ab · +0 −0 ~1");
     expect(html).toContain('href="vscode://file/ws/apps/devtools/lib/memo/memo.dictionary.ts:1:1"');
+    expect(html).toContain("memo.util.ts");
+    expect(html).not.toContain("memo.util.ts:1:1");
     expect(html).toContain('href="/_akan/studio/graph?view=changes&amp;editor=vscode&amp;since=main"');
     expect(html).toContain('name="since" value="main"');
+    expect(html).toContain("~ memo.inPublic");
+    expect(html).toContain('href="/_akan/studio?view=erd&amp;editor=vscode&amp;since=main"');
     const graph = await routes["/_akan/studio/graph"].GET(
       new Request("http://localhost/_akan/studio/graph?view=changes"),
     );
@@ -243,7 +250,11 @@ describe("Akan Studio", () => {
     );
     expect(unknown.status).toBe(200);
     expect(await unknown.text()).toContain("nope is not a commit in this repository.");
-    expect(asked).toEqual(["main", null, "nope"]);
+    const scoped = await routes["/_akan/studio"].GET(
+      new Request("http://localhost/_akan/studio?view=changes&module=ghost"),
+    );
+    expect(await scoped.text()).toContain('<option value="ghost" selected="">ghost</option>');
+    expect(asked).toEqual(["main", null, "nope", null]);
   });
 
   test("serves the graph it draws as JSON", async () => {

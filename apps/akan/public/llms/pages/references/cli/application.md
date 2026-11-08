@@ -298,7 +298,7 @@ Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD
 
 - --view (String, default erd, erd | signals | changes): `signals` lays one module out from component to model; `changes` draws the Change Map.
 
-- --since (String): The git revision `changes` compares with. Without it, where HEAD forked from the default branch.
+- --since (String): With `--view changes`, map what changed since HEAD forked from this git revision. Without it, the default branch.
 
 - --editor (String, default vscode, vscode | cursor): The editor source links open in.
 

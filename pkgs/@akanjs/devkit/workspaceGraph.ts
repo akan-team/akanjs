@@ -36,11 +36,14 @@ export class WorkspaceGraph {
   }
 
   static async changes(workspace: Workspace, since: string | null): Promise<AkanChangeMap | { error: string }> {
+    const forkPoint = await new GitRevision(workspace.workspaceRoot).forkPointOf(since);
+    if (forkPoint.error !== undefined) return { error: forkPoint.error };
+    return await WorkspaceGraph.changesAt(workspace, forkPoint.sha);
+  }
+
+  static async changesAt(workspace: Workspace, sha: string): Promise<AkanChangeMap> {
     const root = workspace.workspaceRoot;
     const git = new GitRevision(root);
-    const forkPoint = await git.forkPointOf(since);
-    if (forkPoint.error !== undefined) return { error: forkPoint.error };
-    const { sha } = forkPoint;
     const [before, after, files] = await Promise.all([
       WorkspaceGraph.#baseAt(root, sha),
       git

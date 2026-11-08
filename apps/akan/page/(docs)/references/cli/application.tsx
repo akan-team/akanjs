@@ -1252,8 +1252,8 @@ akan preview myapp /admin --desktop --format json`,
             name: "--since",
             type: "String",
             desc: l.trans({
-              en: "The git revision `changes` compares with. Without it, where HEAD forked from the default branch.",
-              ko: "`changes`가 비교할 git 리비전입니다. 비우면 HEAD가 기본 브랜치에서 갈라진 지점과 비교합니다.",
+              en: "With `--view changes`, map what changed since HEAD forked from this git revision. Without it, the default branch.",
+              ko: "`--view changes`와 함께 쓰며, HEAD가 이 git 리비전에서 갈라진 뒤 바뀐 것을 그립니다. 비우면 기본 브랜치와 비교합니다.",
             }),
           },
           {
