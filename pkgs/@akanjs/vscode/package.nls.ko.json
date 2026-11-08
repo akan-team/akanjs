@@ -6,5 +6,6 @@
   "akan.runWorkflow.title": "워크플로 실행…",
   "akan.createModule.title": "모듈 만들기…",
   "akan.addField.title": "필드 추가…",
-  "akan.openStudio.title": "Akan Studio 열기"
+  "akan.openStudio.title": "Akan Studio 열기",
+  "akan.openChangeMap.title": "Change Map 열기"
 }

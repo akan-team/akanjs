@@ -113,6 +113,26 @@ export class WorkspaceGraph {
     return { version: 1, nodes, edges: graph.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to)) };
   }
 
+  static changesVisibleTo(changes: AkanChangeMap, app: string): AkanChangeMap {
+    const visible = WorkspaceGraph.visibleTo(changes, app);
+    const linked = new Set(visible.edges.flatMap((edge) => [edge.from, edge.to]));
+    const nodes = visible.nodes.filter((node) => node.change || linked.has(node.id));
+    const appPath = `apps/${app}/`;
+    return {
+      ...changes,
+      nodes,
+      edges: visible.edges,
+      summary: WorkspaceGraph.#summaryOf(nodes),
+      unmapped: changes.unmapped.filter(({ file }) => file.startsWith(appPath) || file.startsWith("libs/")),
+    };
+  }
+
+  static #summaryOf(nodes: AkanGraphNode[]) {
+    const summary = { added: 0, removed: 0, changed: 0 };
+    for (const { change } of nodes) if (change) summary[change] += 1;
+    return summary;
+  }
+
   static answerChanges(changes: AkanChangeMap | { error: string }, scope: GraphScope) {
     if ("error" in changes)
       return {
@@ -124,8 +144,7 @@ export class WorkspaceGraph {
       changes.nodes.filter((node) => node.change),
     );
     if ("diagnostics" in answer) return { since: changes.since, summary: changes.summary, ...answer };
-    const summary = { added: 0, removed: 0, changed: 0 };
-    for (const { change } of answer.nodes) if (change) summary[change] += 1;
+    const summary = WorkspaceGraph.#summaryOf(answer.nodes);
     const owners = scope.app ? [`apps/${scope.app}/`, `libs/${scope.app}/`] : null;
     const modules = scope.module ? [`/lib/${scope.module}/`, `/lib/_${scope.module}/`] : null;
     const unmapped = changes.unmapped.filter(

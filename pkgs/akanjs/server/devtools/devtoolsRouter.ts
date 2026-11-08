@@ -2,7 +2,7 @@ import type { BaseEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { DictionaryRegistry, type RootDictionary } from "akanjs/dictionary";
 import { isLocalDevRuntime } from "../../signal/trace";
-import type { BuildGraphPayload } from "../artifact";
+import type { BuildChangesPayload, BuildGraphPayload } from "../artifact";
 import type { DiLifecycle } from "../di/diLifecycle";
 import type { HttpRoutes } from "../types";
 import { ConstantSerializer } from "./constantSerializer";
@@ -21,6 +21,7 @@ export interface DevtoolsRouterContext {
   openapi: boolean;
   getStatus: () => string;
   buildGraph?: () => Promise<BuildGraphPayload | null>;
+  buildChanges?: (since: string | null) => Promise<BuildChangesPayload | null>;
 }
 
 /** Builtin routes, not signals: off `/api` and guards, and never in the `serializedSignal` payload sent to clients. */
@@ -48,10 +49,11 @@ export class DevtoolsRouter {
       basePath: `${DevtoolsRouter.basePath}/studio`,
       appName: this.#context.env.appName,
       buildGraph: this.#context.buildGraph ?? null,
+      buildChanges: this.#context.buildChanges ?? null,
     });
     return {
       [`${DevtoolsRouter.basePath}/studio`]: { GET: (req: Request) => this.#gated(() => studio.page(req)) },
-      [`${DevtoolsRouter.basePath}/studio/graph`]: { GET: () => this.#gated(() => studio.graph()) },
+      [`${DevtoolsRouter.basePath}/studio/graph`]: { GET: (req: Request) => this.#gated(() => studio.graph(req)) },
       [`${DevtoolsRouter.basePath}/devtools`]: { GET: () => DevtoolsRouter.#json(this.#index()) },
       [`${DevtoolsRouter.basePath}/constant`]: {
         GET: () => this.#respond("constant", () => ConstantSerializer.serialize()),

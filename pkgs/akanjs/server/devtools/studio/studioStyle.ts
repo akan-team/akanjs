@@ -1,7 +1,7 @@
 export const studioStyle = `
 :root { color-scheme: light dark; --bg: #f6f6f7; --fg: #1d1d1f; --muted: #6e6e73; --panel: #ffffff; --line: #c9c9ce;
   --model: #2563eb; --scalar: #0d9488; --enum: #9333ea; --query: #64748b; --slice: #ea580c; --endpoint: #dc2626;
-  --method: #0891b2; --action: #16a34a; --component: #ca8a04; }
+  --method: #0891b2; --action: #16a34a; --component: #ca8a04; --added: #16a34a; --removed: #dc2626; --changed: #d97706; }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #111113; --fg: #ececf1; --muted: #9a9aa3; --panel: #1c1c1f; --line: #3d3d44; }
 }
@@ -9,6 +9,8 @@ body { margin: 0; font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-s
 header { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
   padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
 header nav { display: flex; gap: 4px; }
+header form { display: flex; gap: 8px; }
+header input[name="since"] { width: 22ch; }
 header nav.end { margin-left: auto; }
 header a { color: inherit; text-decoration: none; padding: 4px 8px; border-radius: 6px; }
 header a[aria-current] { background: var(--line); }
@@ -16,6 +18,10 @@ header select, header input { font: inherit; color: inherit; background: var(--b
   border-radius: 6px; padding: 4px 8px; }
 .muted { color: var(--muted); }
 .empty { padding: 48px; color: var(--muted); }
+.unmapped { padding: 0 24px 24px; }
+.unmapped h2 { font-size: 13px; color: var(--muted); }
+.unmapped ul { margin: 0; padding-left: 18px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.unmapped a { color: inherit; }
 main { overflow: auto; }
 svg { display: block; }
 svg text { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--fg); }
@@ -34,6 +40,14 @@ svg a:hover text { text-decoration: underline; }
 .link.fetches { stroke-dasharray: 5 3; }
 .link.uses { stroke-dasharray: 2 3; }
 .arrow { fill: var(--muted); }
+.box.added rect:not(.bar) { stroke: var(--added); stroke-width: 2; }
+.box.changed rect:not(.bar) { stroke: var(--changed); stroke-width: 2; }
+.box.removed rect:not(.bar) { stroke: var(--removed); stroke-width: 2; stroke-dasharray: 4 3; }
+.box.removed .title { text-decoration: line-through; }
+.box.context { opacity: 0.55; }
+.box text.added { fill: var(--added); } .box text.changed { fill: var(--changed); } .box text.removed { fill: var(--removed); }
+.link.added { stroke: var(--added); }
+.link.removed { stroke: var(--removed); stroke-dasharray: 4 3; }
 svg.focused .box:not(.hot), svg.focused .link:not(.hot), .box.muted { opacity: 0.16; }
 .link.hot { stroke: var(--fg); stroke-width: 2; }
 `;

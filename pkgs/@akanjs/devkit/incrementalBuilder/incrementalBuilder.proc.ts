@@ -22,6 +22,7 @@ import { WorkspaceGraph } from "@akanjs/devkit/workspaceGraph";
 import { Logger } from "akanjs/common";
 import type {
   BaseBuildArtifact,
+  BuildChangesPayload,
   BuilderCsrReq,
   BuilderGraphReq,
   BuilderMessage,
@@ -878,19 +879,33 @@ class IncrementalBuilder {
   }
 
   async handleBuildGraph(msg: BuilderGraphReq): Promise<void> {
-    const generation = this.#generation;
     try {
-      if (this.#graph?.generation !== generation) {
-        const { workspace } = this.#app;
-        const graph = WorkspaceGraph.visibleTo(await WorkspaceGraph.build(workspace), this.#app.name);
-        this.#graph = { generation, payload: { workspaceRoot: workspace.workspaceRoot, graph } };
-      }
-      await BuilderChannel.send({ type: "build-graph-res", id: msg.id, ok: true, data: this.#graph.payload });
+      const data = msg.changes ? await this.#changesPayload(msg.changes.since) : await this.#graphPayload();
+      await BuilderChannel.send({ type: "build-graph-res", id: msg.id, ok: true, data });
     } catch (err) {
       const error = ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot);
       this.#logger.error(`build-graph failed: ${error}`);
       await BuilderChannel.send({ type: "build-graph-res", id: msg.id, ok: false, error });
     }
+  }
+
+  async #graphPayload(): Promise<BuildGraphPayload> {
+    const generation = this.#generation;
+    if (this.#graph?.generation !== generation) {
+      const { workspace } = this.#app;
+      const graph = WorkspaceGraph.visibleTo(await WorkspaceGraph.build(workspace), this.#app.name);
+      this.#graph = { generation, payload: { workspaceRoot: workspace.workspaceRoot, graph } };
+    }
+    return this.#graph.payload;
+  }
+
+  async #changesPayload(since: string | null): Promise<BuildChangesPayload> {
+    const { workspace } = this.#app;
+    const changes = await WorkspaceGraph.changes(workspace, since);
+    return {
+      workspaceRoot: workspace.workspaceRoot,
+      changes: "error" in changes ? changes : WorkspaceGraph.changesVisibleTo(changes, this.#app.name),
+    };
   }
 
   // On demand: dev serves CSR only via the opt-in `/__csr` and `?csr=true` routes; once built, it rebuilds every save.

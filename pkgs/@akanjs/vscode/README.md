@@ -20,6 +20,8 @@ nothing. This extension adds the missing answers next to TypeScript's own (the b
   the files its plan would change, and applies it once you confirm. The app and module start from the active file.
 - **Akan: Open Akan Studio** opens the running `akan start`'s ERD beside the editor, or the active module's path
   from component to model. Clicking a name opens its source in the editor.
+- **Akan: Open the Change Map** opens Studio on what changed since HEAD forked from the default branch, uncommitted
+  work included, with each model, signal, method and component marked added, removed or changed.
   These commands run the workspace's akan CLI, so they need a trusted workspace.
 
 The index is built from syntax alone, so it never waits for the type checker. In a trusted workspace the extension

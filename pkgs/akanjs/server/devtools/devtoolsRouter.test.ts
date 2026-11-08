@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { BaseEnv } from "akanjs/base";
 import { getDefaultInjectRegistry, getDefaultLiveRegistry } from "akanjs/service";
-import type { BuildGraphPayload } from "../artifact";
+import type { BuildChangesPayload, BuildGraphPayload } from "../artifact";
 import type { DiLifecycle } from "../di/diLifecycle";
 import { DevtoolsRouter, type DevtoolsRouterContext } from "./devtoolsRouter";
 
@@ -199,6 +199,51 @@ describe("Akan Studio", () => {
     })["/_akan/studio/graph"].GET(new Request("http://localhost/_akan/studio/graph"));
     expect(failing.status).toBe(503);
     expect(await failing.json()).toEqual({ error: "[builder] build-graph failed: boom" });
+  });
+
+  test("draws the Change Map since the revision asked for, with the changed files no node covers", async () => {
+    const asked: (string | null)[] = [];
+    const [slice, method] = studioPayload.graph.nodes;
+    const changesPayload: BuildChangesPayload = {
+      workspaceRoot: "/ws",
+      changes: {
+        ...studioPayload.graph,
+        nodes: [{ ...slice, change: "changed" }, method],
+        edges: [{ ...studioPayload.graph.edges[0], change: "added" }],
+        since: "0123456789ab",
+        summary: { added: 0, removed: 0, changed: 1 },
+        unmapped: ["apps/devtools/lib/memo/memo.dictionary.ts"],
+      },
+    };
+    const buildChanges = async (since: string | null) => {
+      asked.push(since);
+      return since === "nope"
+        ? { workspaceRoot: "/ws", changes: { error: "nope is not a commit in this repository." } }
+        : changesPayload;
+    };
+    const routes = new DevtoolsRouter({ ...makeContext("local"), buildChanges }).createRoutes() as AsyncRoutes;
+    const response = await routes["/_akan/studio"].GET(
+      new Request("http://localhost/_akan/studio?view=changes&since=main"),
+    );
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('class="box slice changed"');
+    expect(html).toContain('class="box method context"');
+    expect(html).toContain('class="link calls added"');
+    expect(html).toContain("since 0123456789ab · +0 −0 ~1");
+    expect(html).toContain('href="vscode://file/ws/apps/devtools/lib/memo/memo.dictionary.ts:1:1"');
+    expect(html).toContain('href="/_akan/studio/graph?view=changes&amp;editor=vscode&amp;since=main"');
+    expect(html).toContain('name="since" value="main"');
+    const graph = await routes["/_akan/studio/graph"].GET(
+      new Request("http://localhost/_akan/studio/graph?view=changes"),
+    );
+    expect(await graph.json()).toEqual(changesPayload);
+    const unknown = await routes["/_akan/studio"].GET(
+      new Request("http://localhost/_akan/studio?view=changes&since=nope"),
+    );
+    expect(unknown.status).toBe(200);
+    expect(await unknown.text()).toContain("nope is not a commit in this repository.");
+    expect(asked).toEqual(["main", null, "nope"]);
   });
 
   test("serves the graph it draws as JSON", async () => {
