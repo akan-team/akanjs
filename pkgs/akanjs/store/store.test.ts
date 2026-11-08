@@ -315,6 +315,30 @@ describe("StoreInstance runtime", () => {
     expect(instance.get().messages).toMatchObject([{ key: "failLoudly" }]);
   });
 
+  test("a generated action a lib store lists in static silent stays silent in the store extending it", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const refused = new Error("storeTestItem.error.locked");
+    signal.calls.removeStoreTestItem = mock(async () => {
+      throw refused;
+    });
+    class SilentLibItemStore extends store(signal, () => ({
+      messages: [] as { content: string; key: string }[],
+    })) {
+      static silent = ["removeStoreTestItem"] satisfies (keyof SilentLibItemStore)[];
+      showMessage(message: { content: string; key: string }) {
+        this.set({ messages: [...this.get().messages, { content: message.content, key: message.key }] });
+      }
+    }
+    StoreRegistry.register(SilentLibItemStore);
+    class SilentAppItemStore extends store(signal, () => ({}), SilentLibItemStore) {}
+    StoreRegistry.register(SilentAppItemStore);
+    const instance = new StoreInstance(makeRoot("silentAppItemRoot", SilentAppItemStore));
+
+    await expect(instance.do.removeStoreTestItem("aaaaaaaaaaaaaaaaaaaaaaaa")).rejects.toBe(refused);
+    expect(instance.get().messages).toEqual([]);
+  });
+
   test("a static silent name that is no action of the store is reported at registration", () => {
     setupEnv();
     const warn = spyOn(console, "warn").mockImplementation(() => undefined);

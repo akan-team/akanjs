@@ -1160,7 +1160,7 @@ describe("ServiceResolver declaration contracts", () => {
     expect(await service.getServerResolverTestItem(validId)).toEqual({ id: validId, title: "loaded" });
   });
 
-  test("creates many rows in one transaction: every pre-create hook in order, one model write, then every post-create", async () => {
+  test("creates many rows: every pre-create hook, one model write, then every post-create, opening no transaction of its own", async () => {
     const cascade = new CascadeRunner();
     cascade.register(serverResolverTestConstant, new DocumentSchema(), ServerResolverTestService);
     cascade.seal(() => null as never);
@@ -1174,23 +1174,16 @@ describe("ServiceResolver declaration contracts", () => {
       createServerResolverTestItemMany: (data: Record<string, unknown>[]) => Promise<Record<string, unknown>[]>;
     };
     const steps: string[] = [];
-    let open = false;
     Object.assign(service, {
       transaction: async (fn: () => Promise<unknown>) => {
-        steps.push("begin");
-        open = true;
-        try {
-          return await fn();
-        } finally {
-          open = false;
-          steps.push("commit");
-        }
+        steps.push("transaction");
+        return await fn();
       },
     });
     const writes: unknown[][] = [];
     service.__databaseModel = {
       __createMany: async (rows: unknown) => {
-        steps.push(`write:${open}`);
+        steps.push("write");
         writes.push(rows as unknown[]);
         return (rows as Record<string, unknown>[]).map((row, idx) => ({ ...row, id: `id${idx}` }));
       },
@@ -1198,7 +1191,7 @@ describe("ServiceResolver declaration contracts", () => {
 
     const created = await service.createServerResolverTestItemMany([{ title: "Alpha" }, { title: "Beta" }]);
 
-    expect(steps).toEqual(["begin", "write:true", "commit"]);
+    expect(steps).toEqual(["write"]);
     expect(writes).toEqual([
       [
         { title: "Alpha", parentPreCreate: true, childPreCreate: true },
@@ -1211,7 +1204,50 @@ describe("ServiceResolver declaration contracts", () => {
     ]);
     expect(created.every((doc) => doc.parentPostCreate && doc.childPostCreate)).toBe(true);
     expect(await service.createServerResolverTestItemMany([])).toEqual([]);
-    expect(steps).toEqual(["begin", "write:true", "commit"]);
+    expect(steps).toEqual(["write"]);
+  });
+
+  test("creates many rows on SQLite in one commit before any _postCreate, so a _postCreate refusing a row keeps them all", async () => {
+    const driver = await ConformanceEnv.openSqlDriver("sqlite", { memory: true });
+    try {
+      const { instance } = await bootModel<{ __count: (query?: unknown) => Promise<number> }>(
+        driver.database as unknown as FakeSqliteDatabase,
+      );
+      const postCreated: string[] = [];
+      class RefusingPostCreateService extends serve(serverResolverTestDatabase, () => ({})) {
+        override async _postCreate<Created extends { title: string }>(doc: Created) {
+          postCreated.push(doc.title);
+          if (doc.title === "Beta") throw new Error("serverResolverTestItem.error.postCreateRefused");
+          return doc;
+        }
+      }
+      const cascade = new CascadeRunner();
+      cascade.register(serverResolverTestConstant, new DocumentSchema(), RefusingPostCreateService);
+      cascade.seal(() => null as never);
+      const ServiceRef = ServiceResolver.resolveDatabaseService(
+        serverResolverTestDatabase,
+        RefusingPostCreateService,
+        cascade,
+      );
+      const service = new ServiceRef() as unknown as RefusingPostCreateService & {
+        createServerResolverTestItemMany: (data: Record<string, unknown>[]) => Promise<unknown[]>;
+      };
+      Object.assign(service, { __databaseModel: instance, __database: driver.database });
+      const row = { ownerId: validId, category: "news", nested: { label: "n" }, secret: "s", resolvedLabel: "r" };
+
+      await expect(
+        service.createServerResolverTestItemMany([
+          { ...row, title: "Alpha" },
+          { ...row, title: "Beta" },
+          { ...row, title: "Gamma" },
+        ]),
+      ).rejects.toThrow("serverResolverTestItem.error.postCreateRefused");
+
+      expect(postCreated).toEqual(["Alpha", "Beta"]);
+      expect(await instance.__count({})).toBe(3);
+    } finally {
+      await driver.close();
+    }
   });
 
   test("keeps a service's own create<Model>Many, written before the generated one existed", async () => {
@@ -1229,6 +1265,25 @@ describe("ServiceResolver declaration contracts", () => {
 
     expect(await service.createServerResolverTestItemMany(2)).toEqual([{ id: "own0" }, { id: "own1" }]);
     expect(typeof service.__createMany).toBe("function");
+  });
+
+  test("keeps a create<Model>Many a lib service declares, mixed in through serve()", async () => {
+    class LibBatchService extends serve(serverResolverTestDatabase, () => ({})) {
+      // @ts-expect-error A service written before the generated method takes its own arguments, and typechecks no more.
+      async createServerResolverTestItemMany(num: number) {
+        return Array.from({ length: num }, (_, idx) => ({ id: `lib${idx}` }));
+      }
+    }
+    class AppBatchService extends serve(serverResolverTestDatabase, () => ({}), LibBatchService) {}
+    const cascade = new CascadeRunner();
+    cascade.register(serverResolverTestConstant, new DocumentSchema(), AppBatchService);
+    cascade.seal(() => null as never);
+    const ServiceRef = ServiceResolver.resolveDatabaseService(serverResolverTestDatabase, AppBatchService, cascade);
+    const service = new ServiceRef() as unknown as {
+      createServerResolverTestItemMany: (num: number) => Promise<unknown>;
+    };
+
+    expect(await service.createServerResolverTestItemMany(2)).toEqual([{ id: "lib0" }, { id: "lib1" }]);
   });
 
   test("generates a query-level write per filter, with the patch on a terminal set()", async () => {

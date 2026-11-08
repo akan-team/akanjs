@@ -373,8 +373,8 @@ export default page()
       {
         name: "create<Model>Many(rows)",
         desc: l.trans({
-          en: "Creates the rows in one transaction, every `_preCreate` running before the first row is written.",
-          ko: "한 트랜잭션에서 여러 행을 생성하며, 모든 `_preCreate`가 첫 행을 쓰기 전에 실행됩니다.",
+          en: "Writes the rows in one transaction: every `_preCreate` runs before it, every `_postCreate` once it commits.",
+          ko: "여러 행을 한 트랜잭션으로 씁니다. 모든 `_preCreate`는 그 전에, 모든 `_postCreate`는 커밋된 뒤에 실행됩니다.",
         }),
         example: "const chats = await this.createChatMany(rows);",
       },

@@ -575,20 +575,42 @@ const describeDriver = (kind: SqlDriverKind) => {
     });
 
     test("createMany runs every row's pre hooks before writing any, and the post hooks once the rows commit", async () => {
+      const sibling = await driver.sibling();
+      try {
+        const committed = await storeOf(sibling, confConstant, confDatabase);
+        const heard: string[] = [];
+        const schema = new DocumentSchema();
+        schema.pre("save", async function (this: { title: string }, _next, type) {
+          heard.push(`pre:${type}:${this.title}:${await committed.count({})}`);
+        });
+        schema.post("create", async function (this: { title: string }, _next, type) {
+          heard.push(`post:${type}:${this.title}:${await committed.count({})}`);
+        });
+        const hooked = await storeOf(driver, confConstant, confDatabase, schema);
+
+        await hooked.createMany([{ title: "a" }, { title: "b" }]);
+
+        expect(heard).toEqual(["pre:create:a:0", "pre:create:b:0", "post:create:a:2", "post:create:b:2"]);
+      } finally {
+        await sibling.close();
+      }
+    });
+
+    test("createMany writes no row and fires no post hook when a pre hook refuses a row", async () => {
       const heard: string[] = [];
       const schema = new DocumentSchema();
-      let hooked!: SqlDocumentStore;
-      schema.pre("save", async function (this: { title: string }, _next, type) {
-        heard.push(`pre:${type}:${this.title}:${await hooked.count({})}`);
+      schema.pre("save", async function (this: { title: string }) {
+        if (this.title === "b") throw new Error("refused b");
       });
-      schema.post("create", async function (this: { title: string }, _next, type) {
-        heard.push(`post:${type}:${this.title}:${await hooked.count({})}`);
+      schema.post("create", async function (this: { title: string }) {
+        heard.push(this.title);
       });
-      hooked = await storeOf(driver, confConstant, confDatabase, schema);
+      const hooked = await storeOf(driver, confConstant, confDatabase, schema);
 
-      await hooked.createMany([{ title: "a" }, { title: "b" }]);
+      await expect(hooked.createMany([{ title: "a" }, { title: "b" }, { title: "c" }])).rejects.toThrow("refused b");
 
-      expect(heard).toEqual(["pre:create:a:0", "pre:create:b:0", "post:create:a:2", "post:create:b:2"]);
+      expect(heard).toEqual([]);
+      expect(await store.count({})).toBe(0);
     });
 
     test("createMany writes none of the batch when the database refuses one row", async () => {
@@ -607,6 +629,19 @@ const describeDriver = (kind: SqlDriverKind) => {
         ]),
       ).rejects.toThrow();
       expect(await uniqueStore.find({})).toEqual([]);
+    });
+
+    test("createMany rolls back the statements already run when a later one is refused", async () => {
+      const uniqueStore = await storeOf(
+        driver,
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ code: 1 }, { unique: true }),
+      );
+      await driver.database.getConnection().execute(`DELETE FROM "uniqueConf"`);
+      const rows = Array.from({ length: 500 }, (_, idx) => ({ label: `row${idx}`, code: `c${idx}` }));
+      await expect(uniqueStore.createMany([...rows, { label: "repeat", code: "c0" }])).rejects.toThrow();
+      expect(await uniqueStore.count({})).toBe(0);
     });
   });
 

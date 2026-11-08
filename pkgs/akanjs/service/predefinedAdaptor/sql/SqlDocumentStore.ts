@@ -391,17 +391,16 @@ export class SqlDocumentStore {
     return this.#withStoredRow(doc, row);
   }
 
-  //? Every row's pre hooks run before the first is written, so a pre hook that queries the table sees none of the batch.
   async createMany(data: DocumentRecord[]) {
     if (!data.length) return [];
+    const now = Date.now();
+    const docs = data.map((record) => this.#newDocument(record, now));
+    for (const doc of docs) {
+      await this.runHooks("save", "create", doc, "pre");
+      await this.runHooks("create", "create", doc, "pre");
+    }
+    const written = docs.map((doc) => ({ doc, row: this.toRow(doc) }));
     const write = async () => {
-      const now = Date.now();
-      const docs = data.map((record) => this.#newDocument(record, now));
-      for (const doc of docs) {
-        await this.runHooks("save", "create", doc, "pre");
-        await this.runHooks("create", "create", doc, "pre");
-      }
-      const written = docs.map((doc) => ({ doc, row: this.toRow(doc) }));
       for (let start = 0; start < written.length; start += SqlDocumentStore.#insertBatchRows) {
         const batch = written.slice(start, start + SqlDocumentStore.#insertBatchRows);
         await this.prepareStmt(this.#insertManySql(batch.length)).run(
@@ -412,9 +411,10 @@ export class SqlDocumentStore {
         await this.runHooks("create", "create", doc, "post");
         await this.runHooks("save", "create", doc, "post");
       }
-      return written.map(({ doc, row }) => this.#withStoredRow(doc, row));
     };
-    return this.owner.transaction ? await this.owner.transaction(write) : await write();
+    if (this.owner.transaction) await this.owner.transaction(write);
+    else await write();
+    return written.map(({ doc, row }) => this.#withStoredRow(doc, row));
   }
 
   #newDocument(data: DocumentRecord, now: number) {

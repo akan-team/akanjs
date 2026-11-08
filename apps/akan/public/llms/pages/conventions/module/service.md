@@ -181,7 +181,7 @@ Method
 
 - create<Model>(data): Creates a document through `_preCreate` and `_postCreate`. — Example: `const story = await this.createStory(data);`
 
-- create<Model>Many(rows): Creates the rows in one transaction, every `_preCreate` running before the first row is written. — Example: `const chats = await this.createChatMany(rows);`
+- create<Model>Many(rows): Writes the rows in one transaction: every `_preCreate` runs before it, every `_postCreate` once it commits. — Example: `const chats = await this.createChatMany(rows);`
 
 - update<Model>(id, data): Applies a patch through `_preUpdate` and `_postUpdate`, then returns the document. — Example: `const story = await this.updateStory(storyId, { status: "active" });`
 
