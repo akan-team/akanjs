@@ -59,6 +59,24 @@ describe("RscScrollRestoration on a document opened at a fragment", () => {
     expect(scrolledTo).toEqual([]);
   });
 
+  test("leaves a reloaded or revisited document at the offset the browser restored, the top included", async () => {
+    for (const type of ["reload", "back_forward"]) {
+      const navigation = spyOn(performance, "getEntriesByType").mockReturnValue([
+        { type } as unknown as PerformanceEntry,
+      ]);
+      try {
+        new RscScrollRestoration().restoreDocumentLoad();
+        revealSegment();
+        await settle();
+
+        expect(scrolledTo).toEqual([]);
+        expect(navigation).toHaveBeenCalledWith("navigation");
+      } finally {
+        navigation.mockRestore();
+      }
+    }
+  });
+
   test("gives up once the visitor scrolls before the target appears", async () => {
     new RscScrollRestoration().restoreDocumentLoad();
     window.dispatchEvent(new Event("wheel"));

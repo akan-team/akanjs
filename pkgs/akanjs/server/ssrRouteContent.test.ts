@@ -8,8 +8,12 @@ import type { BaseBuildArtifact } from "./types";
 
 interface Rendered {
   html: string;
+  status: number;
   controlAtShell: SsrLateControl | null;
 }
+
+const readsWindowId = "routecontent/readsWindow";
+const readsWindowModule = path.join(import.meta.dir, "ssrRouteContentClient.fixture.tsx");
 
 const withRouteContentWorker = async (run: (render: (route: string) => Promise<Rendered>) => Promise<void>) => {
   const vars: Record<string, string> = {
@@ -23,7 +27,7 @@ const withRouteContentWorker = async (run: (render: (route: string) => Promise<R
   const rsc = new RscWorker({
     pagesBundlePath: path.join(import.meta.dir, "ssrRouteContent.fixture.tsx"),
     pagesBundleBuildId: 1,
-    rscRuntimeClientManifest: {},
+    rscRuntimeClientManifest: { [readsWindowId]: { id: readsWindowId, chunks: [], name: "ReadsWindow" } },
   } as unknown as BaseBuildArtifact);
   try {
     await rsc.ready;
@@ -34,12 +38,24 @@ const withRouteContentWorker = async (run: (render: (route: string) => Promise<R
       const stream = await new SsrFromRscRenderer().render({
         request,
         rscStream: result.stream,
-        ssrManifest: { moduleLoading: null, moduleMap: {} },
+        ssrManifest: {
+          moduleLoading: null,
+          moduleMap: {
+            [readsWindowId]: {
+              ReadsWindow: {
+                id: readsWindowModule,
+                chunks: [readsWindowModule, readsWindowModule],
+                name: "ReadsWindow",
+              },
+            },
+          },
+        },
         lateControl: result.lateControl,
       });
       //? What the host reads to pick the status, the moment the shell is ready.
       const controlAtShell = await Promise.race([result.lateControl, Promise.resolve(null)]);
-      return { html: await new Response(stream).text(), controlAtShell };
+      const status = controlAtShell?.type === "not-found" ? 404 : (result.status ?? 200);
+      return { html: await new Response(stream).text(), status, controlAtShell };
     });
   } finally {
     rsc.kill();
@@ -50,16 +66,25 @@ const withRouteContentWorker = async (run: (render: (route: string) => Promise<R
   }
 };
 
+const withLoggedErrors = async (run: () => Promise<void>) => {
+  const logged = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+  try {
+    await run();
+  } finally {
+    logged.mockRestore();
+  }
+};
+
 describe("SSR of a route with no .loading()", () => {
   test("writes the page in place in the shell, a large one included, with nothing left for a reveal script", async () => {
     await withRouteContentWorker(async (render) => {
       const quick = await render("quick");
-      expect(quick.html).toContain('<main>root:<p id="quick">quick content</p></main>');
+      expect(quick.html).toContain('<main>root:<!--$--><p id="quick">quick content</p><!--/$--></main>');
       expect(quick.html).not.toContain('<div hidden id="S:');
       expect(quick.html).not.toContain("$RC(");
 
       const large = await render("large");
-      expect(large.html).toContain('<main>root:<article id="large">');
+      expect(large.html).toContain('<main>root:<!--$--><article id="large">');
       expect(large.html).not.toContain('<div hidden id="S:');
     });
   }, 20_000);
@@ -72,14 +97,35 @@ describe("SSR of a route with no .loading()", () => {
   }, 20_000);
 
   test("fails the document on an error the page throws after I/O, rather than ship one the browser breaks on", async () => {
-    const logged = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
-    try {
+    await withLoggedErrors(async () => {
       await withRouteContentWorker(async (render) => {
         await expect(render("broken")).rejects.toThrow("page broke");
       });
-    } finally {
-      logged.mockRestore();
-    }
+    });
+  }, 20_000);
+
+  test("answers an error the page throws after I/O with its layout's .error() view and a 500", async () => {
+    await withLoggedErrors(async () => {
+      await withRouteContentWorker(async (render) => {
+        const failed = await render("failing/inner");
+        expect(failed.status).toBe(500);
+        expect(failed.html).toContain("<section>failing:");
+        expect(failed.html).toContain('<p id="failing-error">failing error <!-- -->AKAN_RENDER_ERROR</p>');
+      });
+    });
+  }, 20_000);
+
+  test("client-renders only the level whose client component fails on the server, in a 200 document", async () => {
+    await withLoggedErrors(async () => {
+      await withRouteContentWorker(async (render) => {
+        const page = await render("clientonly");
+        expect(page.status).toBe(200);
+        expect(page.controlAtShell).toBeNull();
+        expect(page.html).toContain("<main>root:<!--$!-->");
+        expect(page.html).not.toContain("<b>");
+        expect(page.html).not.toContain('<div hidden id="S:');
+      });
+    });
   }, 20_000);
 });
 
@@ -100,8 +146,12 @@ describe("SSR of a route with a .loading()", () => {
       expect(html).toContain(
         '<main>root:<!--$?--><template id="B:0"></template><i>section loading</i><!--/$--></main>',
       );
-      expect(html).toContain("inner content");
-      expect(html.match(/\$RC\("B:\d+"/g)).toEqual(['$RC("B:0"']);
+      //? Each level below keeps its own boundary, revealed inside the still-hidden one, so only `B:0` changes the page.
+      const reveals = html.match(/\$RC\("B:\d+"/g) ?? [];
+      expect(reveals.filter((reveal) => reveal === '$RC("B:0"')).toHaveLength(1);
+      expect(reveals.at(-1)).toBe('$RC("B:0"');
+      expect(html.indexOf("<p>inner content</p>")).toBeGreaterThan(-1);
+      expect(html.indexOf("<p>inner content</p>")).toBeLessThan(html.lastIndexOf('$RC("B:0"'));
     });
   }, 20_000);
 });

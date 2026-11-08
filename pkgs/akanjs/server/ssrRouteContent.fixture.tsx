@@ -1,7 +1,16 @@
 import type { ReactNode } from "react";
+import { registerClientReference } from "react-server-dom-webpack/server.node";
 import { layout, page } from "../client/route/routeBuilders";
 import { router } from "../client/router";
 import type { PagesContext } from "./routeTreeBuilder";
+
+const ReadsWindow = registerClientReference(
+  (_: { label: string }): ReactNode => {
+    throw new Error("ReadsWindow is a client component");
+  },
+  "routecontent/readsWindow",
+  "ReadsWindow",
+);
 
 export const pages: PagesContext = {
   "./__root_layout.tsx": async () => ({
@@ -57,6 +66,23 @@ export const pages: PagesContext = {
     default: page().render(async () => {
       await Bun.sleep(20);
       throw new Error("page broke");
+    }),
+  }),
+  "./clientonly/_index.tsx": async () => ({
+    default: page().render(async () => {
+      await Bun.sleep(20);
+      return <ReadsWindow label="client only" />;
+    }),
+  }),
+  "./failing/_layout.tsx": async () => ({
+    default: layout()
+      .error(({ digest }) => <p id="failing-error">failing error {digest}</p>)
+      .render(({ children }) => <section>failing:{children}</section>),
+  }),
+  "./failing/inner.tsx": async () => ({
+    default: page().render(async () => {
+      await Bun.sleep(20);
+      throw new Error("inner broke");
     }),
   }),
 };

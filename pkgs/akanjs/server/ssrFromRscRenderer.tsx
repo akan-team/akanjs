@@ -655,7 +655,7 @@ export class SsrFromRscRenderer {
     const registry = new SsrChunkRegistry<Record<string, unknown>>(
       parsePositiveInt(process.env.AKAN_SSR_CHUNK_REGISTRY_MAX_ENTRIES) ?? DEFAULT_SSR_CHUNK_REGISTRY_MAX_ENTRIES,
     );
-    g.__webpack_chunk_load__ = async (chunkId: string) => {
+    const loadChunk = async (chunkId: string) => {
       if (registry.get(chunkId)) {
         SsrFromRscRenderer.#chunkRegistryStats.ssrChunkCacheHitCount += 1;
         return;
@@ -668,6 +668,14 @@ export class SsrFromRscRenderer {
       SsrFromRscRenderer.#chunkRegistryStats.ssrChunkRegistrySize = registry.size;
       SsrFromRscRenderer.#chunkRegistryStats.ssrChunkEvictionCount = registry.evictionCount;
     };
+    g.__webpack_chunk_load__ = (chunkId: string) => {
+      const load = loadChunk(chunkId);
+      const loading = SsrFromRscRenderer.#chunkLoads();
+      const settle = () => loading.delete(load);
+      loading.add(load);
+      load.then(settle, settle);
+      return load;
+    };
     g.__webpack_require__ = (id: string) => {
       const mod = registry.get(id);
       if (!mod) throw new Error(`[ssrFromRsc] module not loaded yet: ${id}`);
@@ -679,17 +687,35 @@ export class SsrFromRscRenderer {
   // only `block` routes await allReady, trading the Loading fallback for a clean page on a late non-redirect error,
   // and so does a crawler, which runs no script to swap a streamed segment in.
   static async renderDocument(root: ReactNode, options: SsrDocumentOptions): Promise<ReadableStream<Uint8Array>> {
-    const buffered = options.waitForAllReady || options.inlineBoundaries;
     const stream = await renderToReadableStream(root, {
       bootstrapScriptContent: options.bootstrap,
-      //? Even after allReady, React outlines a boundary past this size into a hidden segment only `$RC` reveals, and
-      //? it throttles that reveal to 300ms after the first paint, so a buffered page would show its Loading meanwhile.
-      ...(buffered ? { progressiveChunkSize: Number.POSITIVE_INFINITY } : {}),
+      //? Past this size React outlines a finished boundary into a hidden segment `$RC` reveals, throttled to 300ms.
+      progressiveChunkSize: Number.POSITIVE_INFINITY,
       onError: (error) => options.onError(error),
     });
-    if (buffered) await stream.allReady;
-    else SsrFromRscRenderer.holdPostShellErrors(stream, (error) => options.onError(error, "post-shell"));
+    if (options.waitForAllReady || options.inlineBoundaries) await stream.allReady;
+    else {
+      SsrFromRscRenderer.holdPostShellErrors(stream, (error) => options.onError(error, "post-shell"));
+      await SsrFromRscRenderer.#settleChunkLoads();
+    }
     return stream;
+  }
+
+  //? React flushes on the first read: let a level waiting on its client module finish (the load, then React's ping).
+  //? Every render in the process shares the set, so the rounds are capped: another request's loads cannot hold this one.
+  static async #settleChunkLoads(): Promise<void> {
+    const loading = SsrFromRscRenderer.#chunkLoads();
+    for (let round = 0; round < 4 && loading.size > 0; round++) {
+      await Promise.allSettled(loading);
+      for (let turn = 0; turn < 2; turn++) await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  //? On globalThis beside the shims they track: the server bundles carry their own copy of this module.
+  static #chunkLoads(): Set<Promise<void>> {
+    const g = globalThis as unknown as { __rsc_ssr_chunk_loads__?: Set<Promise<void>> };
+    g.__rsc_ssr_chunk_loads__ ??= new Set();
+    return g.__rsc_ssr_chunk_loads__;
   }
 
   // React rejects allReady on a post-shell fatal error but handles it itself only on the shell-error path; unheld,

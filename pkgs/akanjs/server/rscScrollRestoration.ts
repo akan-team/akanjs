@@ -112,8 +112,14 @@ export class RscScrollRestoration {
         return;
       }
     }
-    //? Off the top, the browser has already reached the target, a reload restored its offset, or the visitor scrolled.
-    if (window.location.hash && window.scrollY === 0) this.scrollToHash(window.location.hash);
+    //? A reload or history visit keeps its restored offset; off the top, the target is reached or the visitor scrolled.
+    if (window.location.hash && window.scrollY === 0 && !RscScrollRestoration.#isRevisit())
+      this.scrollToHash(window.location.hash);
+  }
+
+  static #isRevisit(): boolean {
+    const [entry] = (performance.getEntriesByType?.("navigation") ?? []) as PerformanceNavigationTiming[];
+    return entry?.type === "reload" || entry?.type === "back_forward";
   }
 
   #holdWhile(observer: { disconnect: () => void }, windowMs: number): () => void {

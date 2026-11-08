@@ -12,6 +12,7 @@ import { Children, cloneElement, isValidElement, type ReactElement, type ReactNo
 import { getExplicitPageConfigKeys, resolvePageState } from "../client/frameConfig";
 import { RouteGuards } from "../client/route/RouteGuards";
 import { resolveHeadResult } from "./head";
+import { RouteShellGate } from "./routeShellGate";
 import {
   type AkanRouteSegmentState,
   createAkanRouteSegments,
@@ -73,12 +74,14 @@ export class RouteElementComposer {
     searchParams,
     navKey,
     notFound,
+    gate,
   }: {
     pathRoute: PathRoute;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     navKey?: string;
     notFound?: RouteNotFoundInPlace;
+    gate?: RouteShellGate;
   }): ReactNode {
     return RouteElementComposer.composeRenders({
       renders: RouteElementComposer.#getRenderStack(pathRoute),
@@ -87,6 +90,7 @@ export class RouteElementComposer {
       searchParams,
       navKey,
       notFound,
+      gate,
     });
   }
 
@@ -211,6 +215,7 @@ export class RouteElementComposer {
     pathname,
     error,
     digest,
+    gate,
   }: {
     kind: "not-found" | "error";
     route: PathRoute | LayoutFallbackRoute;
@@ -219,6 +224,7 @@ export class RouteElementComposer {
     pathname: string;
     error?: unknown;
     digest?: string;
+    gate?: RouteShellGate;
   }): Promise<ReactNode | null> {
     const layoutStack = [...route.renderRootLayouts, ...route.renderLayouts];
     for (let index = layoutStack.length - 1; index >= 0; index--) {
@@ -231,7 +237,7 @@ export class RouteElementComposer {
         ...layoutStack.slice(0, index + 1),
         RouteElementComposer.#makeFallbackRouteRender({ kind, fallback, pathname, error, digest }),
       ];
-      return RouteElementComposer.composeRenders({ renders, params, searchParams });
+      return RouteElementComposer.composeRenders({ renders, params, searchParams, gate });
     }
     return null;
   }
@@ -244,6 +250,7 @@ export class RouteElementComposer {
     searchParams,
     navKey,
     notFound,
+    gate,
   }: {
     renders: RouteRender[];
     /** Layouts above `renders` that this element leaves out (a patch) but whose `.notFound()` still applies. */
@@ -253,34 +260,36 @@ export class RouteElementComposer {
     searchParams: Record<string, string | string[]>;
     navKey?: string;
     notFound?: RouteNotFoundInPlace;
+    /** Holds the response until every level above the first `.loading()` has rendered. */
+    gate?: RouteShellGate;
   }): ReactNode {
+    const levelGates = gate ? RouteElementComposer.#gateLevels(renders, gate) : [];
     let element: ReactNode = null;
     for (let i = renders.length - 1; i >= 0; i--) {
       const routeRender = renders[i];
       if (!routeRender) continue;
-      element = (
+      const loadingFallback = RouteElementComposer.#composeLoadingFallback(renders.slice(i), params);
+      const suspenseKey =
+        navKey && loadingFallback != null && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
+      const levelGate = levelGates[i];
+      const level = (
         <RouteElementComposer.AsyncRender
           routeRender={routeRender}
           params={params}
           searchParams={searchParams}
           notFound={notFound ? { ...notFound, owners: [...owners, ...renders.slice(0, i)] } : undefined}
+          gate={levelGate}
         >
           {element}
         </RouteElementComposer.AsyncRender>
       );
-      //? A boundary with no fallback only outlines its level into a segment React reveals up to 300ms late. The level's
-      //? own `.loading()` decides, not the composite fallback, so every route under a layout gives it one element type.
-      const loadingFallback = routeRender.Loading
-        ? RouteElementComposer.#composeLoadingFallback(renders.slice(i), params)
-        : null;
-      if (loadingFallback != null) {
-        const suspenseKey = navKey && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
-        element = (
-          <Suspense key={suspenseKey} fallback={loadingFallback}>
-            {element}
-          </Suspense>
-        );
-      }
+      //? Even with no fallback, the boundary is where React client-renders a level that failed SSR or hydration.
+      element = (
+        <Suspense key={suspenseKey} fallback={loadingFallback}>
+          {level}
+          {routeRender.Loading && levelGate ? <RouteShellGate.Wait until={levelGate.opened} /> : null}
+        </Suspense>
+      );
       const segment = segments?.[i];
       if (segments && segment?.kind === "page") {
         const outletKey =
@@ -300,13 +309,16 @@ export class RouteElementComposer {
     params,
     searchParams,
     notFound,
+    gate,
   }: {
     routeRender: RouteRender;
     children: ReactNode;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     notFound?: RouteNotFoundInPlace & { owners: RouteRender[] };
+    gate?: RouteShellGate;
   }) => {
+    gate?.enter();
     try {
       return RouteElementComposer.#normalizeReactNode(
         await routeRender.render({ children, params, searchParams } as never),
@@ -315,6 +327,8 @@ export class RouteElementComposer {
       if (!notFound || (error as { digest?: unknown } | null)?.digest !== "AKAN_NOT_FOUND") throw error;
       notFound.onNotFound();
       return await RouteElementComposer.#renderNotFoundInPlace(notFound, params, searchParams);
+    } finally {
+      gate?.leave();
     }
   };
 
@@ -392,6 +406,18 @@ export class RouteElementComposer {
     const layoutConfigs = await RouteElementComposer.#resolveLayoutPageConfigChain(pathRoute);
     const pageConfig = await pathRoute.renderPage.getPageConfig?.();
     return [...layoutConfigs, ...(pageConfig ? [pageConfig] : [])];
+  }
+
+  //? A `.loading()` boundary holds its own gate beside its level, outside the levels below, so it reveals them at once.
+  static #gateLevels(renders: RouteRender[], gate: RouteShellGate): RouteShellGate[] {
+    let current = gate;
+    const gates = renders.map((routeRender) => {
+      if (routeRender?.Loading) current = new RouteShellGate();
+      return current;
+    });
+    for (const levelGate of new Set([gate, ...gates]))
+      levelGate.hold(gates.filter((held, index) => held === levelGate && renders[index]).length);
+    return gates;
   }
 
   static #composeLoadingFallback(renders: RouteRender[], params: Record<string, string>): ReactNode {
