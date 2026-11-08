@@ -3,7 +3,7 @@ import path from "node:path";
 import type { BaseBuildArtifact } from "akanjs/server";
 import { type PageEntry, resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
-import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
+import { type BarrelImportsPluginOptions, createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { createBrowserDirnamePlugin } from "../transforms/browserDirnamePlugin";
 import { SideEffectImportOrder } from "../transforms/sideEffectImportOrder";
 import { bundleDefine } from "./bundleDefine";
@@ -68,8 +68,7 @@ export class CsrArtifactBuilder {
     const options = CsrArtifactBuilder.bundleOptions(this.#app, this.#command, akanConfig.optimizeImports);
     const result = await Bun.build({
       ...options,
-      //? Whole, the akanjs/ui barrel bundles every component and the optional peers (react-icons) they import.
-      plugins: [...options.plugins, await createBarrelImportsPlugin(this.#app, { barrels: ["akanjs/ui"] })],
+      plugins: [...options.plugins, await CsrArtifactBuilder.barrelImportsPlugin(this.#app)],
       entrypoints: htmlBasePaths.map((basePath) => this.#generatedPath(CsrArtifactBuilder.htmlFilename(basePath))),
       files: generatedFiles,
       root: this.#generatedDir,
@@ -119,6 +118,11 @@ export class CsrArtifactBuilder {
       // A raw `.css` in the route graph is Tailwind source; the base artifact's compiled sheet is the only stylesheet.
       plugins: [PagesBundleBuilder.createCssStubPlugin(), createBrowserDirnamePlugin(), SideEffectImportOrder.plugin()],
     };
+  }
+
+  //? Whole, the akanjs/ui barrel bundles every component and the optional peers (react-icons) they import.
+  static async barrelImportsPlugin(app: App, pipeAfter?: BarrelImportsPluginOptions["pipeAfter"]) {
+    return await createBarrelImportsPlugin(app, { barrels: ["akanjs/ui"], pipeAfter });
   }
 
   /** Where a build records the `AKAN_PUBLIC_*` it inlined, which nothing in the minified bundle names. */

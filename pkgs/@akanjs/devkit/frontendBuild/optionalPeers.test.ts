@@ -53,6 +53,35 @@ const writeApp = async (indexPage: string) => {
   return { root, appDir, pageKeys: ["./_index.tsx", "./_overrides.tsx"] };
 };
 
+const buildCsr = async (indexPage: string) => {
+  const { root, appDir, pageKeys } = await writeApp(indexPage);
+  const app = {
+    name: "demo",
+    cwdPath: appDir,
+    dist: { cwdPath: path.join(root, "dist/apps/demo") },
+    workspace: { workspaceRoot: root },
+    getPageKeys: async () => pageKeys,
+    getConfig: async () => ({ basePaths: [], optimizeImports: [], barrelImports: [] }),
+    getTsConfig: async () => ({ compilerOptions: { paths: { "@apps/*": ["./apps/*"] } } }),
+    getPublicEnv: () => ({}),
+    log: () => undefined,
+    verbose: () => undefined,
+    logger: { warn: () => undefined },
+  };
+  const reached: string[] = [];
+  const build = Bun.build;
+  const recorded = spyOn(Bun, "build").mockImplementation((config) =>
+    build({ ...config, plugins: [recordOptionalPeers(reached), ...(config.plugins ?? [])] }),
+  );
+
+  try {
+    await new CsrArtifactBuilder(app as never, "build").build();
+  } finally {
+    recorded.mockRestore();
+  }
+  return { root, reached };
+};
+
 describe("optional peers of akanjs", () => {
   test("the generated root layout, the _overrides.tsx wrapper and the runtime entries import none", async () => {
     const { appDir, pageKeys } = await writeApp("export default function Page() {\n  return null;\n}\n");
@@ -85,34 +114,19 @@ describe("optional peers of akanjs", () => {
   });
 
   test("the CSR shell build of a page drawing akanjs/ui components imports none", async () => {
-    const { root, appDir, pageKeys } = await writeApp(
+    const { reached } = await buildCsr(
       'import { Link, System } from "akanjs/ui";\n\nexport default function Page() {\n  return (\n    <Link href="/">\n      <System.ThemeToggle />\n    </Link>\n  );\n}\n',
     );
-    const app = {
-      name: "demo",
-      cwdPath: appDir,
-      dist: { cwdPath: path.join(root, "dist/apps/demo") },
-      workspace: { workspaceRoot: root },
-      getPageKeys: async () => pageKeys,
-      getConfig: async () => ({ basePaths: [], optimizeImports: [], barrelImports: [] }),
-      getTsConfig: async () => ({ compilerOptions: { paths: { "@apps/*": ["./apps/*"] } } }),
-      getPublicEnv: () => ({}),
-      log: () => undefined,
-      verbose: () => undefined,
-      logger: { warn: () => undefined },
-    };
-    const reached: string[] = [];
-    const build = Bun.build;
-    const recorded = spyOn(Bun, "build").mockImplementation((config) =>
-      build({ ...config, plugins: [recordOptionalPeers(reached), ...(config.plugins ?? [])] }),
+
+    expect(reached).toEqual([]);
+  });
+
+  test("the MCP App view build of a page drawing akanjs/ui components imports none", async () => {
+    const { root, reached } = await buildCsr(
+      'import { page } from "akanjs/client";\nimport { Link } from "akanjs/ui";\n\nexport default page()\n  .app("showHome", "Show the home link.", () => <Link href="/">home</Link>)\n  .render(() => null);\n',
     );
 
-    try {
-      await new CsrArtifactBuilder(app as never, "build").build();
-    } finally {
-      recorded.mockRestore();
-    }
-
+    expect(await Bun.file(path.join(root, "dist/apps/demo/mcp-apps/showHome.html")).exists()).toBe(true);
     expect(reached).toEqual([]);
   });
 });

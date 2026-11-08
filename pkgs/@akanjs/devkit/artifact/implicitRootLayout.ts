@@ -32,7 +32,6 @@ async function writeGeneratedOverridesLayoutFile(opts: {
 }): Promise<string> {
   const filename = `${opts.key.replace(/^\.\//, "").replace(/[^a-zA-Z0-9]+/g, "_")}.tsx`;
   const absPath = path.join(path.resolve(opts.appCwdPath), IMPLICIT_OVERRIDES_DIR, filename);
-  //? From its file, as the root layout imports System.
   const source = `"use client";
 import { UiOverrideProvider } from "akanjs/ui/UiOverride/UiOverride.tsx";
 import { createElement, type ReactNode } from "react";
