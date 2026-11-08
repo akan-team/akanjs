@@ -37,7 +37,7 @@ await Promise.all([
 
 if (process.argv.includes("--vsix")) {
   const vsix = path.join(outdir, "..", `akan-${manifest.version}.vsix`);
-  const pack = Bun.spawnSync(["bunx", "@vscode/vsce@3", "package", "--no-dependencies", "--out", vsix], {
+  const pack = Bun.spawnSync(["bunx", "@vscode/vsce@3.9.2", "package", "--no-dependencies", "--out", vsix], {
     cwd: outdir,
     stdout: "inherit",
     stderr: "inherit",

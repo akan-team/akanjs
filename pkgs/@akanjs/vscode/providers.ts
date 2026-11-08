@@ -6,6 +6,8 @@ import type { WorkspaceIndex } from "./workspaceIndex";
 export const goToSourceCommand = "akan.goToSource";
 export const renameSourceKeyCommand = "akan.renameSourceKey";
 
+const lensDelayMs = 500;
+
 const rangeOf = (span: AkanSpan) => new vscode.Range(span.line, span.character, span.endLine, span.endCharacter);
 
 const locationOf = (span: AkanSpan) => new vscode.Location(vscode.Uri.file(span.fileName), rangeOf(span));
@@ -112,7 +114,8 @@ export const registerProviders = (workspace: WorkspaceIndex): vscode.Disposable[
 
   //? F2 reaches TypeScript's rename provider before this extension's, so the keybinding takes over on the keys
   //? whose derived names TypeScript cannot rename.
-  const updateRenameContext = (editor: vscode.TextEditor | undefined) => {
+  const updateRenameContext = () => {
+    const editor = vscode.window.activeTextEditor;
     const document = editor?.document;
     const renameable =
       !!document &&
@@ -123,6 +126,11 @@ export const registerProviders = (workspace: WorkspaceIndex): vscode.Disposable[
   };
 
   const lensChanged = new vscode.EventEmitter<void>();
+  let lensTimer: ReturnType<typeof setTimeout> | undefined;
+  const refreshLenses = () => {
+    clearTimeout(lensTimer);
+    lensTimer = setTimeout(() => lensChanged.fire(), lensDelayMs);
+  };
   const lenses: vscode.CodeLensProvider<vscode.CodeLens & { akan?: { fileName: string; offset: number } }> = {
     onDidChangeCodeLenses: lensChanged.event,
     provideCodeLenses(document) {
@@ -151,9 +159,14 @@ export const registerProviders = (workspace: WorkspaceIndex): vscode.Disposable[
     },
   };
 
+  updateRenameContext();
   return [
     lensChanged,
-    workspace.onDidChange(() => lensChanged.fire()),
+    { dispose: () => clearTimeout(lensTimer) },
+    workspace.onDidChange(() => {
+      refreshLenses();
+      updateRenameContext();
+    }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("akan.codeLens")) lensChanged.fire();
     }),
@@ -162,8 +175,10 @@ export const registerProviders = (workspace: WorkspaceIndex): vscode.Disposable[
     vscode.languages.registerReferenceProvider(selector, references),
     vscode.languages.registerCodeLensProvider(selector, lenses),
     vscode.languages.registerRenameProvider(selector, renames),
-    vscode.window.onDidChangeTextEditorSelection(({ textEditor }) => updateRenameContext(textEditor)),
-    vscode.window.onDidChangeActiveTextEditor(updateRenameContext),
+    vscode.window.onDidChangeTextEditorSelection(({ textEditor }) => {
+      if (textEditor === vscode.window.activeTextEditor) updateRenameContext();
+    }),
+    vscode.window.onDidChangeActiveTextEditor(() => updateRenameContext()),
     vscode.commands.registerCommand(renameSourceKeyCommand, async (givenName?: string) => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) return;
@@ -172,9 +187,7 @@ export const registerProviders = (workspace: WorkspaceIndex): vscode.Disposable[
         .folderOf(document.uri)
         ?.index.renameTargetAt(document.uri.fsPath, document.offsetAt(selection.active));
       if (!target) {
-        void vscode.window.showInformationMessage(
-          vscode.l10n.t("Place the cursor on a slice key or a Filter query key."),
-        );
+        await vscode.commands.executeCommand("editor.action.rename");
         return;
       }
       const newName =

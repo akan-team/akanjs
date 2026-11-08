@@ -69,6 +69,8 @@ jobs:
       - run: bun run release:build-packages
       - run: bun run release:verify-packages
       - run: bun run release:typecheck-consumer
+      - name: Build the editor extension
+        run: DIST_DIR="$RUNNER_TEMP/akan-vscode" bun pkgs/@akanjs/vscode/build.ts
 
   test:
     name: Test (${{ matrix.package }})

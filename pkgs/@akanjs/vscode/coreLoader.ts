@@ -10,18 +10,41 @@ export interface LoadedCore {
   source: string;
 }
 
+export const bundledCore: AkanCore = bundled;
+
+const coreMethods = [
+  "setFile",
+  "removeFile",
+  "definitionAt",
+  "hoverAt",
+  "referencesAt",
+  "sourceKeysOf",
+  "sourceKeyAt",
+  "renameTargetAt",
+  "renameAt",
+] as const;
+
+const fallback: LoadedCore = { core: bundledCore, source: "bundled" };
+
+const isInside = (root: string, file: string) => {
+  const relative = path.relative(root, file);
+  return relative !== "" && !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
+};
+
 //? The workspace copy is loaded only when built (`.cjs`/`.js`): inside the akanjs monorepo it is TypeScript source,
-//? which the extension host's Node cannot require.
+//? which the extension host's Node cannot require. Resolution walks up past the folder, so the hit must sit inside it.
 export const loadCore = (root: string, trusted: boolean): LoadedCore => {
-  if (!trusted || !existsSync(path.join(root, "package.json"))) return { core: bundled, source: "bundled" };
+  if (!trusted || !existsSync(path.join(root, "package.json"))) return fallback;
   try {
     const requireFromRoot = createRequire(path.join(root, "package.json"));
     const entry = requireFromRoot.resolve("@akanjs/language");
-    if (!/\.c?js$/.test(entry)) return { core: bundled, source: "bundled" };
+    if (!/\.c?js$/.test(entry) || !isInside(root, entry)) return fallback;
+    delete requireFromRoot.cache[entry];
     const workspace = requireFromRoot(entry) as Partial<AkanCore>;
-    if (typeof workspace.AkanIndex !== "function") return { core: bundled, source: "bundled" };
+    const prototype = workspace.AkanIndex?.prototype as Partial<Record<string, unknown>> | undefined;
+    if (!prototype || !coreMethods.every((method) => typeof prototype[method] === "function")) return fallback;
     return { core: workspace as AkanCore, source: entry };
   } catch {
-    return { core: bundled, source: "bundled" };
+    return fallback;
   }
 };
