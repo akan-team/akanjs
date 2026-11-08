@@ -1,4 +1,4 @@
-import { capitalize } from "akanjs/common";
+import { capitalize, modelNames } from "akanjs/common";
 import type { QueryOf } from "akanjs/constant";
 import type { DatabaseModel, DataInputOf, Doc, DocumentTouchOptions, DocumentUpdateInput } from "akanjs/document";
 import { type DatabaseService, type ServiceCls, ServiceModel } from "akanjs/service";
@@ -66,7 +66,7 @@ export class ServiceResolver {
   static resolveDatabaseService(database: DatabaseModel, srvRef: ServiceCls, cascade: CascadeRunner): ServiceCls {
     const className = capitalize(database.refName);
     //? `create<Model>Many` came after services had written their own under that name; assigning would replace theirs.
-    const createMany = `create${className}Many`;
+    const createMany = modelNames(database.refName).createModelMany;
     const methods = Object.entries(ServiceResolver.#getDefaultDbServiceMethods(database.refName, className, cascade));
     Object.assign(
       srvRef.prototype,

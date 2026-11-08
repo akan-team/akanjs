@@ -258,6 +258,7 @@ const probes: { type: string; derived: (name: string) => boolean; names: string[
       model.loadModel,
       model.loadModelMany,
       model.createModel,
+      model.createModelMany,
       model.updateModel,
       model.removeModel,
       ...queries.flatMap((names) => Object.values(names)),

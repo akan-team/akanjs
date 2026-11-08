@@ -132,7 +132,7 @@ export class ServiceModel<
       async [names.createModel](this: DatabaseService, data: DataInputOf) {
         return this.__create(data);
       },
-      async [`create${className}Many`](this: DatabaseService, data: DataInputOf[]) {
+      async [names.createModelMany](this: DatabaseService, data: DataInputOf[]) {
         return this.__createMany(data);
       },
       async __update(this: DatabaseService, id: string, data: DataInputOf) {
