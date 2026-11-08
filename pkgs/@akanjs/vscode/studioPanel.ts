@@ -1,9 +1,12 @@
 import * as vscode from "vscode";
-import { StudioView, type StudioWorkflowRequest } from "./studioView";
+import { type StudioModuleTarget, StudioView, type StudioWorkflowRequest } from "./studioView";
 
 const readyTimeoutMs = 20_000;
 
-export type StudioWorkflowRunner = (request: StudioWorkflowRequest) => Promise<boolean>;
+export interface StudioHandlers {
+  runWorkflow: (request: StudioWorkflowRequest) => Promise<boolean>;
+  openModule: (target: StudioModuleTarget, revealStudio: (column: number) => void) => Promise<boolean>;
+}
 
 export class StudioPanel {
   static readonly #panels = new Map<string, StudioPanel>();
@@ -12,7 +15,7 @@ export class StudioPanel {
   #sourceColumn = vscode.ViewColumn.One;
   #url = "";
   #frameOrigin = "";
-  #runWorkflow: StudioWorkflowRunner | null = null;
+  #handlers: StudioHandlers | null = null;
   #loads = 0;
   #isDisposed = false;
   #ready: ((isReady: boolean) => void) | null = null;
@@ -23,7 +26,9 @@ export class StudioPanel {
       "akan.studio",
       title,
       { viewColumn: vscode.ViewColumn.Beside },
-      { enableScripts: true, localResourceRoots: [] },
+      //? The pinned node and the page reached inside the frame live only in the dev server's page; without retained
+      //? context a hidden or moved panel reloads the last URL it was handed and loses both.
+      { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true },
     );
     this.#panel.webview.onDidReceiveMessage((message: unknown) => this.#receive(message));
     this.#panel.onDidDispose(() => {
@@ -33,12 +38,12 @@ export class StudioPanel {
     });
   }
 
-  static async show(root: string, app: string, url: string, runWorkflow: StudioWorkflowRunner) {
+  static async show(root: string, app: string, url: string, handlers: StudioHandlers) {
     const key = `${root}\n${app}`;
     const panel = StudioPanel.#panels.get(key) ?? new StudioPanel(root, key, vscode.l10n.t("Akan Studio · {0}", app));
     StudioPanel.#panels.set(key, panel);
     panel.#sourceColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
-    panel.#runWorkflow = runWorkflow;
+    panel.#handlers = handlers;
     return await panel.#load(url);
   }
 
@@ -70,7 +75,7 @@ export class StudioPanel {
   }
 
   async #run(request: StudioWorkflowRequest) {
-    if (!this.#runWorkflow || !(await this.#runWorkflow(request)) || this.#isDisposed) return;
+    if (!this.#handlers || !(await this.#handlers.runWorkflow(request)) || this.#isDisposed) return;
     await this.#load(this.#url);
   }
 
@@ -92,6 +97,11 @@ export class StudioPanel {
     const request = StudioView.workflowOf(message);
     if (request) {
       await this.#run(request);
+      return;
+    }
+    const target = StudioView.moduleTargetOf(message);
+    if (target) {
+      await this.#handlers?.openModule(target, (column) => this.#panel.reveal(column, true));
       return;
     }
     const source = StudioView.sourceOf(message, this.#root);

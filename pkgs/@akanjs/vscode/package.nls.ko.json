@@ -7,5 +7,6 @@
   "akan.createModule.title": "모듈 만들기…",
   "akan.addField.title": "필드 추가…",
   "akan.openStudio.title": "Akan Studio 열기",
-  "akan.openChangeMap.title": "Change Map 열기"
+  "akan.openChangeMap.title": "Change Map 열기",
+  "akan.openModule.title": "모듈 파일을 나란히 열기"
 }
