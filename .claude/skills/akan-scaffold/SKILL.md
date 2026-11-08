@@ -34,6 +34,7 @@ Then pick the workflow that matches the intent:
 | a new field with a closed set of values | `add-enum-field` |
 | a new state-changing action | `add-mutation` |
 | a filtered list, tab, or reusable query | `add-slice` |
+| a slice or query key renamed, with every name derived from it | `rename-key` |
 | a View / Unit / Template / Zone / Util for an existing module | `create-ui` |
 
 ## The chain

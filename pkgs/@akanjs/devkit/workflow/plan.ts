@@ -3,6 +3,7 @@ import type { Workspace } from "../commandDecorators";
 import { workflowPlanApproval } from "./artifacts";
 import { resolveWorkflowSys } from "./executor";
 import { InteractionScaffold } from "./interactionScaffold";
+import { KeyRename } from "./keyRename";
 import { MutationScaffold } from "./mutationScaffold";
 import { coerceFieldDefault, moduleSourcePaths } from "./source";
 import type {
@@ -28,6 +29,8 @@ const nameInputPatterns: Record<string, RegExp> = {
   scalar: identifierPattern,
   field: identifierPattern,
   slice: identifierPattern,
+  query: identifierPattern,
+  to: identifierPattern,
   mutation: identifierPattern,
   interaction: identifierPattern,
 };
@@ -458,7 +461,26 @@ const planString = (inputs: Record<string, WorkflowInputValue>, name: string) =>
 const planStrings = (inputs: Record<string, WorkflowInputValue>, name: string) =>
   Array.isArray(inputs[name]) ? inputs[name] : null;
 
+const inspectRenameKeyPlan = async (workspace: Workspace, plan: WorkflowPlan): Promise<WorkflowPlan> => {
+  if (plan.diagnostics.some((diagnostic) => diagnostic.severity === "error")) return plan;
+  const { diagnostics, files } = await KeyRename.build(workspace, {
+    app: planString(plan.inputs, "app"),
+    module: planString(plan.inputs, "module"),
+    slice: planString(plan.inputs, "slice"),
+    query: planString(plan.inputs, "query"),
+    to: planString(plan.inputs, "to"),
+  });
+  return {
+    ...plan,
+    diagnostics: [...plan.diagnostics, ...diagnostics],
+    predictedChanges: files.length
+      ? files.map((file) => ({ target: file.path, action: "modify", applyScope: "auto", reason: file.reason }))
+      : plan.predictedChanges,
+  };
+};
+
 export const inspectWorkflowPlan = async (workspace: Workspace, plan: WorkflowPlan): Promise<WorkflowPlan> => {
+  if (plan.workflow === "rename-key") return await inspectRenameKeyPlan(workspace, plan);
   if (plan.workflow !== "add-mutation" && plan.workflow !== "create-interaction") return plan;
   const app = planString(plan.inputs, "app");
   if (!app) return plan;

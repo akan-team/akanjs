@@ -32,6 +32,8 @@ export class WorkflowCommand extends command("workflow", [WorkflowScript], ({ pu
     })
     .option("mutation", String, { flag: "n", desc: "mutation name", nullable: true })
     .option("slice", String, { flag: "i", desc: "slice name", nullable: true })
+    .option("query", String, { desc: "Filter query key for rename-key", nullable: true })
+    .option("to", String, { flag: "x", desc: "new key name for rename-key", nullable: true })
     .option("guard", String, { flag: "g", desc: "comma-separated guard class names", nullable: true })
     .option("with", String, {
       flag: "b",
@@ -64,6 +66,8 @@ export class WorkflowCommand extends command("workflow", [WorkflowScript], ({ pu
         includeInLight,
         mutation,
         slice,
+        query,
+        to,
         guard,
         withCalls,
         after,
@@ -85,6 +89,8 @@ export class WorkflowCommand extends command("workflow", [WorkflowScript], ({ pu
             includeInLight: includeInLight === null ? null : String(includeInLight),
             mutation,
             slice,
+            query,
+            to,
             guard,
             with: withCalls,
             after,

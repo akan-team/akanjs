@@ -7,6 +7,7 @@ import { createInteractionWorkflowSpec } from "./createInteraction";
 import { createModuleWorkflowSpec } from "./createModule";
 import { createScalarWorkflowSpec } from "./createScalar";
 import { createUiWorkflowSpec } from "./createUi";
+import { renameKeyWorkflowSpec } from "./renameKey";
 
 export const workflowSpecs: readonly WorkflowSpec[] = [
   createModuleWorkflowSpec,
@@ -17,4 +18,5 @@ export const workflowSpecs: readonly WorkflowSpec[] = [
   addEnumFieldWorkflowSpec,
   addMutationWorkflowSpec,
   addSliceWorkflowSpec,
+  renameKeyWorkflowSpec,
 ];

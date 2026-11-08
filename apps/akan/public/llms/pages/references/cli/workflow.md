@@ -146,6 +146,8 @@ With `--format json`, explain also carries the predicted changes and the complet
 
 - add-slice: A service query and an `init` slice guarded by `None`; it only recommends the page load and Zone. Needs: `--app` `--module` `--slice`
 
+- rename-key: Renames a slice or Filter query key with every name derived from it and its dictionary entry, in the app and every lib. Needs: `--app` `--module` `--slice` | `--query` `--to`
+
 **create-ui plans five surfaces and applies three.** `--surface` accepts `view`, `unit`, `template`, `zone` and `util`; apply builds only the first three.
 
 **Numbers are Int or Float.** A plan with `--type Number` carries an error, and a plan with an error applies nothing.
@@ -178,6 +180,10 @@ Each workflow fixes the commands `validate` runs against its `--app`.
 
   - add-slice
 
+- Rename
+
+  - rename-key
+
 Run by validate
 
 Not run
@@ -190,7 +196,7 @@ The commands a workflow applies through. You can also run them directly.
 
 Serves workflows and repairs to an agent as MCP tools.
 
-`akan workflow <action> [workflow] [--format <markdown|json>] [--out <path>] [--dry-run <boolean>] [--app <name>] [--module <name>] [--field <name>] [--type <type>] [--values <a,b,c>] [--default <value>] [--scalar <name>] [--surface <name>] [--mutation <name>] [--slice <name>]`
+`akan workflow <action> [workflow] [--format <markdown|json>] [--out <path>] [--dry-run <boolean>] [--app <name>] [--module <name>] [--field <name>] [--type <type>] [--values <a,b,c>] [--default <value>] [--scalar <name>] [--surface <name>] [--mutation <name>] [--slice <name>] [--query <name>] [--to <name>]`
 
 List, explain, plan, apply, or validate a workflow, or print an earlier run's report. `plan` and `explain` never write source. Only `apply` does, and only from a plan file.
 
@@ -234,7 +240,11 @@ List, explain, plan, apply, or validate a workflow, or print an earlier run's re
 
 - --interaction (String, -k): Plan input for `create-interaction`: a camelCase name, such as `boardKeys`.
 
-- --slice (String, -i): Plan input for `add-slice`: the slice or query name.
+- --slice (String, -i): Plan input for `add-slice`: the slice or query name. For `rename-key`, the slice key to rename.
+
+- --query (String, -q): Plan input for `rename-key`: the Filter query key to rename, instead of `--slice`.
+
+- --to (String, -x): Plan input for `rename-key`: the new camelCase key.
 
 - explain · plan: `workflow` is a name from `akan workflow list`.
 

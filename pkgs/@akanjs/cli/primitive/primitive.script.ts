@@ -17,6 +17,7 @@ import {
   ensureNamedImport,
   type FactoryParamPlan,
   fieldExpression,
+  generatedFilePathsForTarget,
   generatedFilesForSync,
   hasClassMethod,
   hasConstantInputField,
@@ -32,6 +33,7 @@ import {
   insertLightProjectionField,
   insertSignalFactoryEntry,
   insertTemplateField,
+  KeyRename,
   MutationScaffold,
   moduleComponentName,
   moduleSourcePaths,
@@ -40,6 +42,7 @@ import {
   type PrimitiveChangedFile,
   type PrimitiveTargetInput,
   parseValues,
+  type RenameKeyInput,
   type ScaffoldFile,
   sourceFile,
   type UiSurface,
@@ -368,6 +371,28 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
               param: { mode: "positional", name: "init" },
             }
           : null,
+    });
+  }
+
+  async renameKey(workspace: Workspace, input: RenameKeyInput) {
+    const { diagnostics, files } = await KeyRename.build(workspace, input);
+    const changedFiles: PrimitiveChangedFile[] = [];
+    if (workflowStatus(diagnostics) === "passed")
+      for (const file of files) {
+        await workspace.writeFile(file.path, file.content, { silent: true });
+        changedFiles.push({ path: file.path, action: file.action, reason: file.reason });
+      }
+    const targets = KeyRename.targetsOf(changedFiles);
+    const names = targets.map((target) => target.slice(target.indexOf("/") + 1));
+    return createPrimitiveWriteReport({
+      command: "rename-key",
+      changedFiles,
+      generatedFiles: targets.flatMap((target) =>
+        generatedFilePathsForTarget(target, "Generated files may change after sync."),
+      ),
+      validationCommands: names.flatMap(validationCommandsForTarget),
+      diagnostics,
+      nextActions: names.flatMap(nextActionsForTarget),
     });
   }
 

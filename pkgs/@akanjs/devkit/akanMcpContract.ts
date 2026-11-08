@@ -188,6 +188,8 @@ export const defaultWorkflowPlanPath = (workflow: string, inputs: WorkflowPlanIn
     slugPart(inputs.surface),
     slugPart(inputs.mutation),
     slugPart(inputs.slice),
+    slugPart(inputs.query),
+    slugPart(inputs.to),
   ]
     .filter(Boolean)
     .join("-");

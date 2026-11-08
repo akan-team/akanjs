@@ -404,6 +404,7 @@ export const createWorkflowStepRegistry = ({
   addEnumField,
   addMutation,
   addSlice,
+  renameKey,
   createInteraction,
 }: WorkflowPrimitiveOperations): WorkflowStepRegistry => {
   const inspect = async () => undefined;
@@ -520,6 +521,16 @@ export const createWorkflowStepRegistry = ({
       ),
     [workflowStepKey("add-slice", "update-signal-slice")]: inspect,
     [workflowStepKey("add-slice", "connect-view-surfaces")]: async (_step, plan) => addSliceViewSurfaceInspection(plan),
+    [workflowStepKey("rename-key", "rename-key")]: async (_step, plan) =>
+      primitiveReportToWorkflowStepResult(
+        await renameKey({
+          app: workflowStringInput(plan.inputs.app),
+          module: workflowStringInput(plan.inputs.module),
+          slice: workflowStringInput(plan.inputs.slice),
+          query: workflowStringInput(plan.inputs.query),
+          to: workflowStringInput(plan.inputs.to),
+        }),
+      ),
   };
 };
 
