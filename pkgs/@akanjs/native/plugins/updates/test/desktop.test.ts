@@ -1,6 +1,6 @@
 // The desktop updates plugin on an app folder in a temporary "install", with a scripted relaunch and a local
 // release server; the Linux layout on every OS (macOS would check a code signature).
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash, createPublicKey, generateKeyPairSync, type KeyObject, sign, verify } from "node:crypto";
 import {
   chmodSync,
@@ -67,6 +67,7 @@ interface HarnessOptions {
   autoCheckDelay?: number;
   /** The relaunch helper refuses (another relaunch is under way). */
   relaunchRefuses?: boolean;
+  quitHookTimeout?: number;
 }
 
 async function harness(options: HarnessOptions = {}) {
@@ -125,6 +126,7 @@ async function harness(options: HarnessOptions = {}) {
           exit: (code) => void quits.push(code),
           cancelSessionEnd: () => {},
           hideWindow: async () => {},
+          ...(options.quitHookTimeout ? { quitHookTimeout: options.quitHookTimeout } : {}),
         })
       : undefined;
   const dispatcher = createDispatcher([plugin], {
@@ -146,6 +148,7 @@ async function harness(options: HarnessOptions = {}) {
   });
   await dispatcher.launched;
   const quit = () => lifecycle?.quit(0);
+  const requestQuit = () => lifecycle?.requestQuit("user");
   const call = async (method: string, args?: unknown) =>
     (await dispatcher.handle(
       JSON.stringify({ v: 1, id: 1, plugin: "updates", method, ...(args !== undefined ? { args } : {}) }),
@@ -159,7 +162,7 @@ async function harness(options: HarnessOptions = {}) {
     for (const listener of listeners.get(type) ?? []) listener({ type, ...event });
   };
   const state = () => JSON.parse(readFileSync(join(stateDir, "state.json"), "utf8")) as Record<string, unknown>;
-  return { root, install, app, stateDir, call, fire, state, relaunches, quits, quit };
+  return { root, install, app, stateDir, call, fire, state, relaunches, quits, quit, requestQuit };
 }
 
 /** A carried server the test moves through its states (the plugin host's ctx.server). */
@@ -1123,6 +1126,73 @@ describe("desktop updates: by itself (updates.automatic)", () => {
     expect(state().pending).toBeUndefined();
     expect(state().failed).toEqual([]);
     expect(existsSync(`${app}.update-${BUILD + 100}-aaaaaaaa`)).toBe(false);
+  });
+
+  test("the install at quit runs no signature check: it takes the one the start made", async () => {
+    let calls = 0;
+    const { quit, quits, relaunches, app } = await harness({
+      platform: "win32",
+      signatureTool: (async () => {
+        calls++;
+        return calls > 1 ? new Promise<never>(() => {}) : { code: 0, output: "akan-signer: unsigned\r\n" };
+      }) satisfies DesktopUpdatesOptions["signatureTool"],
+      automatic: true,
+      autoCheckDelay: 60_000,
+      state: (app) => pendingOf(app, BUILD + 100),
+    });
+    await until(() => calls === 1);
+    await quit();
+    expect(calls).toBe(1);
+    expect(quits).toEqual([0]);
+    expect(relaunches[0]?.moves).toEqual([
+      [app, `${app}.previous`],
+      [join(`${app}.update-${BUILD + 100}-aaaaaaaa`, "Sample"), app],
+    ]);
+  });
+
+  test("a quit the user asks for checks the download again before the quit hooks, and drops one that no longer passes", async () => {
+    let answer = "unsigned";
+    let calls = 0;
+    const { requestQuit, quits, relaunches, state, app } = await harness({
+      platform: "win32",
+      signatureTool: (async () => {
+        calls++;
+        if (calls > 1) await Bun.sleep(150);
+        return { code: 0, output: `akan-signer: ${answer}\r\n` };
+      }) satisfies DesktopUpdatesOptions["signatureTool"],
+      automatic: true,
+      autoCheckDelay: 60_000,
+      quitHookTimeout: 50,
+      state: (app) => pendingOf(app, BUILD + 100),
+    });
+    await until(() => calls === 1);
+    answer = "other";
+    expect(await requestQuit()).toBe(true);
+    await until(() => quits.length > 0);
+    expect(calls).toBe(2);
+    expect(relaunches).toEqual([]);
+    expect(state().pending).toBeUndefined();
+    expect(existsSync(`${app}.update-${BUILD + 100}-aaaaaaaa`)).toBe(false);
+  });
+
+  test("a check still running at quit installs nothing, and the download stays", async () => {
+    const warned = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { quit, quits, relaunches, state } = await harness({
+        platform: "win32",
+        signatureTool: async () => new Promise<never>(() => {}),
+        automatic: true,
+        autoCheckDelay: 60_000,
+        state: (app) => pendingOf(app, BUILD + 100),
+      });
+      await quit();
+      expect(quits).toEqual([0]);
+      expect(relaunches).toEqual([]);
+      expect(state().pending).toMatchObject({ bundle: `${BUILD + 100}-aaaaaaaa` });
+      expect(warned.mock.calls.flat().join(" ")).toContain("the download's check did not finish");
+    } finally {
+      warned.mockRestore();
+    }
   });
 
   test("a Windows helper that cannot take the moves leaves the download as it was, for apply() and quit alike", async () => {

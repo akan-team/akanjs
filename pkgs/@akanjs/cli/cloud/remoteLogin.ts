@@ -99,7 +99,7 @@ export class RemoteLogin {
       if (legacyAnswer?.status === "fulfilled" && legacyAnswer.value) {
         Logger.rawLog(
           chalk.yellow(
-            `${this.#api.host} handed the session out for the sign-in URL's id, which anyone who saw the URL can poll as well; it should answer by the device code alone.`,
+            `${this.#api.host} handed the session out for the sign-in URL's id; it should answer by the device code alone.`,
           ),
         );
         return legacyAnswer.value;

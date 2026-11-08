@@ -64,7 +64,7 @@ export class NativeConfig {
   static readonly defaultCsp: Readonly<Record<string, readonly string[]>> = {
     "default-src": ["'self'"],
     "script-src": ["'self'", "'wasm-unsafe-eval'"],
-    "style-src": ["'self'", "'unsafe-inline'"],
+    "style-src": ["'self'", "'unsafe-inline'", "https:"],
     "img-src": ["'self'", "blob:", "data:", "https:"],
     "media-src": ["'self'", "blob:", "data:", "https:"],
     "font-src": ["'self'", "data:", "https:"],

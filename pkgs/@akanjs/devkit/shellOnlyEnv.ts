@@ -1,8 +1,19 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-// Bun loads these from the working directory before any code runs, so a cloned repo's file can set them.
-const dotenvFiles = [".env", ".env.local", ".env.development", ".env.production", ".env.test"];
+// Bun loads the ones NODE_ENV picks from the working directory before code runs, so a cloned repo's file can set them.
+const dotenvFiles = [
+  ".env",
+  ".env.local",
+  ".env.development",
+  ".env.development.local",
+  ".env.production",
+  ".env.production.local",
+  ".env.test",
+  ".env.test.local",
+];
+// Bun also reads `KEY: value` lines.
+const assignedKey = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*[=:]/;
 
 // Judged by presence, not value: a comparison would trust whatever a parser difference with Bun's reader lets through.
 export class ShellOnlyEnv<Key extends string> {
@@ -29,13 +40,11 @@ export class ShellOnlyEnv<Key extends string> {
     const cwd = process.cwd();
     if (this.#cache?.cwd === cwd) return this.#cache.found;
     const found = new Map<string, string>();
-    // `bun --no-env-file` loaded none of them, so every value came from the parent process.
-    if (process.execArgv.includes("--no-env-file")) return found;
     for (const name of dotenvFiles) {
       const file = path.join(cwd, name);
       if (!existsSync(file)) continue;
       for (const line of readFileSync(file, "utf8").split("\n")) {
-        const key = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line)?.[1];
+        const key = line.match(assignedKey)?.[1];
         if (key && this.#keys.has(key) && !found.has(key)) found.set(key, name);
       }
     }

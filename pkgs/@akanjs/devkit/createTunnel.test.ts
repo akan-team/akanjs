@@ -183,7 +183,7 @@ describe("createTunnel", () => {
     expect(ssh.methods.filter((method) => method !== "none")).toEqual(["password"]);
   });
 
-  test("warns when it falls back to the repo name as the SSH password", async () => {
+  test("warns when it signs in with the default shared credential", async () => {
     const { root, app } = track(await createTempApp("demo"));
     const ssh = await startSshServer();
     Object.assign(process.env, {
@@ -198,7 +198,7 @@ describe("createTunnel", () => {
     await createTunnel("redis", { app, environment: "testing", port: freePort() });
 
     expect(warn.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-      "signs in with the workspace repo name as its password",
+      "uses the default shared credential",
     );
   });
 

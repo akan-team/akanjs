@@ -495,9 +495,23 @@ describe("MCP sign-in", () => {
 
   test("signing out forgets the token and leaves nothing behind", async () => {
     await McpSignIn.run(refOf(), { open: browser });
-    expect(McpTokenStore.clear("fake")).toBe(true);
+    expect(McpTokenStore.clear(refOf())).toBe(true);
     expect(McpTokenStore.read(refOf())).toBeUndefined();
-    expect(McpTokenStore.clear("fake")).toBe(false);
+    expect(McpTokenStore.clear(refOf())).toBe(false);
+  });
+
+  test("signing out of a renamed server forgets the token its origin still hands it", async () => {
+    await McpSignIn.run(refOf(), { open: browser });
+    expect(McpTokenStore.read(refOf({ name: "renamed" }))?.accessToken).toBe("access-1");
+    expect(McpTokenStore.clear(refOf({ name: "renamed" }))).toBe(true);
+    expect(McpTokenStore.read(refOf({ name: "renamed" }))).toBeUndefined();
+    expect(McpTokenStore.names()).toEqual([]);
+  });
+
+  test("signing out by the name alone forgets a token whose server is no longer declared", async () => {
+    await McpSignIn.run(refOf(), { open: browser });
+    expect(McpTokenStore.clear({ name: "fake" })).toBe(true);
+    expect(McpTokenStore.read(refOf())).toBeUndefined();
   });
 });
 

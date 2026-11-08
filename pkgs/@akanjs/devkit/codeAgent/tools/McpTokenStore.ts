@@ -65,9 +65,11 @@ export class McpTokenStore {
     McpTokenStore.#save([...kept, { ...auth, name: owner.name, origin }]);
   }
 
-  static clear(name: string) {
+  //? Everything `read` could hand this server goes: its origin's tokens under any name, and its name's at any origin.
+  static clear(owner: McpTokenOwner) {
+    const origin = McpTokenStore.#originOf(owner.url);
     const all = McpTokenStore.#all();
-    const kept = all.filter((entry) => entry.name !== name);
+    const kept = all.filter((entry) => entry.name !== owner.name && entry.origin !== origin);
     if (kept.length === all.length) return false;
     McpTokenStore.#save(kept);
     return true;

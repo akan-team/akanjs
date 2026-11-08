@@ -1,5 +1,15 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { akanCodePaths } from "../agent/akanCodePaths";
@@ -276,6 +286,52 @@ describe("workspace trust", () => {
     const untrusted = workspace(JSON.stringify({ mcpServers: { tool: { command: "node" } } }));
     WorkspaceTrust.carry(untrusted, "mcp", () => McpServerConfig.add(untrusted, "more", ["x"], "workspace"));
     expect(WorkspaceTrust.isTrusted(untrusted, "mcp")).toBe(false);
+  });
+
+  test("a link that stays in the extensions folder is followed and checked", () => {
+    const root = workspace();
+    extension(root, "real/index.ts", "export default () => {};");
+    symlinkSync(
+      path.join(akanCodePaths.extensionsDir(root), "real"),
+      path.join(akanCodePaths.extensionsDir(root), "alias"),
+    );
+    const [item] = WorkspaceTrust.pending(root);
+    expect(item?.lines).toEqual(["alias/index.ts"]);
+    expect(item?.hash).not.toBe("");
+    WorkspaceTrust.approve(root, [item as NonNullable<typeof item>], true);
+    extension(root, "real/index.ts", "export default () => 1;");
+    expect(WorkspaceTrust.isTrusted(root, "extensions")).toBe(false);
+  });
+
+  test("a link out of the extensions folder is not followed, and an approval of that folder is never remembered", () => {
+    const root = workspace();
+    const outside = workspace();
+    writeFileSync(path.join(outside, "secret-notes.ts"), "export default () => {};");
+    extension(root, "hello.ts", "export default () => {};");
+    symlinkSync(outside, path.join(akanCodePaths.extensionsDir(root), "linked"));
+    const [item] = WorkspaceTrust.pending(root);
+    expect(item?.hash).toBe("");
+    expect(item?.lines[0]).toContain("linked links out of the folder");
+    expect(item?.lines.join("\n")).not.toContain("secret-notes");
+    WorkspaceTrust.approve(root, [item as NonNullable<typeof item>], true);
+    expect(existsSync(akanCodePaths.trustFile())).toBe(false);
+  });
+
+  test("an extensions folder past the file or byte cap is not checked, and its approval is never remembered", () => {
+    const many = workspace();
+    const modules = path.join(akanCodePaths.extensionsDir(many), "node_modules", "dep");
+    mkdirSync(modules, { recursive: true });
+    for (let index = 0; index <= 10_000; index++) writeFileSync(path.join(modules, `f${index}.js`), "");
+    const large = workspace();
+    extension(large, "big.js", "");
+    truncateSync(path.join(akanCodePaths.extensionsDir(large), "big.js"), 64 * 1024 * 1024 + 1);
+    for (const root of [many, large]) {
+      const [item] = WorkspaceTrust.pending(root);
+      expect(item?.hash).toBe("");
+      expect(item?.lines[0]).toContain("too many to check");
+      WorkspaceTrust.approve(root, [item as NonNullable<typeof item>], true);
+    }
+    expect(existsSync(akanCodePaths.trustFile())).toBe(false);
   });
 
   test("a disabled server needs no approval", () => {

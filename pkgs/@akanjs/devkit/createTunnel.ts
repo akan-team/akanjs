@@ -29,8 +29,8 @@ const tunnelAuth = (
   if (keyPath) return { privateKey: readFileSync(keyPath), ...(passphrase ? { passphrase } : {}) };
   if (process.env.SSH_TUNNEL_PASSWORD) return { password: process.env.SSH_TUNNEL_PASSWORD };
   app.logger.warn(
-    "The SSH tunnel signs in with the workspace repo name as its password, a value every browser bundle carries. " +
-      "Set SSH_TUNNEL_PRIVATE_KEY_PATH (or SSH_TUNNEL_PASSWORD) once the cluster's tunnel endpoint accepts it.",
+    "The SSH tunnel uses the default shared credential. " +
+      "Set SSH_TUNNEL_PRIVATE_KEY_PATH to a key (or SSH_TUNNEL_PASSWORD) once the cluster's tunnel endpoint accepts it.",
   );
   return { password: repoName };
 };

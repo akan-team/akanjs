@@ -959,11 +959,11 @@ export class CodeTui {
   #mcpAuth(verb: "login" | "logout", name: string | undefined) {
     const root = this.#agent.workspaceRoot;
     if (!name) return this.#open("mcp", [`Usage: /mcp ${verb} <name>`, "", ...CodeTuiMcp.usage].join("\n"));
+    const ref = McpServerConfig.read(root).find((entry) => entry.name === name);
     if (verb === "logout") {
-      if (!McpTokenStore.clear(name)) return this.#open("mcp", `"${name}" is not signed in.`);
+      if (!McpTokenStore.clear(ref ?? { name })) return this.#open("mcp", `"${name}" is not signed in.`);
       return this.#reload(`signed out of ${name}`);
     }
-    const ref = McpServerConfig.read(root).find((entry) => entry.name === name);
     if (!ref) return this.#open("mcp", `No server named "${name}" is declared.`);
     this.#say(`signing in to ${name} — finish in the browser`);
     void McpSignIn.run(ref, { open: (url) => void openBrowser(url), onNotice: (message) => this.#say(message) })

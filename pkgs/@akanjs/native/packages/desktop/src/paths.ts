@@ -59,7 +59,11 @@ export function webviewDataDir(
   return undefined;
 }
 
-/** One run's scratch folder, private to the user; Linux skips /tmp (shared) and $XDG_RUNTIME_DIR (a small tmpfs). */
+/**
+ * The app's scratch folder, private to the user and the same in every run; Linux skips /tmp (shared) and
+ * $XDG_RUNTIME_DIR (a small tmpfs), so there nothing empties it at a restart. file-picker and external-view empty
+ * their own subfolder at launch; the filesystem plugin's `temp` keeps what the app wrote.
+ */
 export function appTempDir(
   id: string,
   platform: NodeJS.Platform = process.platform,

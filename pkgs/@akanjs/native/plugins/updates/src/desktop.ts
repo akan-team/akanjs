@@ -181,6 +181,10 @@ export const MAX_STRIKES = 3;
 /** The first background check, after a launch's own work: its server's first boot, the trial of a new release. */
 export const AUTO_CHECK_DELAY = 30_000;
 export const AUTO_CHECK_INTERVAL = 60 * 60_000;
+/** A quit request waits at most this for the download's check: codesign of a large bundle takes seconds. */
+const QUIT_CHECK_TIMEOUT = 10_000;
+/** The install at quit waits at most this for a check still running: all quit hooks share QUIT_HOOK_TIMEOUT. */
+const QUIT_CHECK_WAIT = 500;
 
 const MAX_MANIFEST = 1 << 20;
 const MAX_SIGNATURE = 1024;
@@ -807,6 +811,20 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
   //? A staged download sits in a folder this user can write until it installs, so it is checked again right before.
   const stagedRefusal = async (staged: string, app: string): Promise<string | null> =>
     (await codesignProblem(staged)) ?? (await signerRefusal(staged, app));
+  //? What the install at quit reads instead of checking: made as a download is staged, at the start for one an
+  //? earlier run left, and when a quit is asked for, before the quit hooks' time starts.
+  let checked: { staged: string; refusal: Promise<string | null> } | undefined;
+  const recheck = (staged: string) => {
+    const refusal = stagedRefusal(staged, installed as string);
+    refusal.catch(() => {});
+    checked = { staged, refusal };
+    return refusal;
+  };
+  const checkWithin = (refusal: Promise<string | null>, ms: number): Promise<string | null | undefined> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<undefined>((resolve) => (timer = setTimeout(() => resolve(undefined), ms)));
+    return Promise.race([refusal, late]).finally(() => clearTimeout(timer));
+  };
   const dropChanged = (pending: NonNullable<State["pending"]>, why: string) => {
     rmSync(dirname(pending.staged), { recursive: true, force: true });
     const latest = readState();
@@ -1028,6 +1046,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         staged,
       };
       writeState(latest);
+      checked = { staged, refusal: Promise.resolve(null) };
       return { bundle: m.bundle };
     } finally {
       awake();
@@ -1144,7 +1163,13 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       if (rollingBack || runningIs(state.trial) || !pending || !existsSync(pending.staged)) return;
       const c = need(state);
       if (!applicable(c, state, pending) || serverRefusal(carries(pending.staged), installed)) return;
-      const changed = await stagedRefusal(pending.staged, installed);
+      const check = checked;
+      if (check?.staged !== pending.staged) return;
+      const changed = await checkWithin(check.refusal, QUIT_CHECK_WAIT);
+      if (changed === undefined) {
+        console.warn("[akan-native] updates: the download's check did not finish; it stays for the next quit");
+        return;
+      }
       if (changed) {
         console.warn(`[akan-native] updates: ${dropChanged(pending, changed)}`);
         return;
@@ -1159,13 +1184,23 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     }
   };
 
+  const checkBeforeQuit = async () => {
+    const state = readState();
+    const pending = state.pending;
+    if (!installed || rollingBack || runningIs(state.trial) || !pending || !existsSync(pending.staged)) return;
+    if (!ownsAutomatic()) return;
+    await checkWithin(recheck(pending.staged), QUIT_CHECK_TIMEOUT).catch(() => {});
+  };
+
   const setup = async (ctx: DesktopContext) => {
     //? Local, never Roaming: the unpacked releases are the whole app, and a trial belongs to this PC's install. A debug
     //? build has the release app's id: a record of its own keeps it from dropping that app's downloads as older.
     dir = join(ctx.appLocalDataDir, ctx.dev ? "akan-native-updates-debug" : "akan-native-updates");
     const app = installed;
     if (!config || !app) return;
-    if (config.automatic !== false && !ctx.dev) {
+    const automatic = config.automatic !== false && !ctx.dev;
+    if (automatic) {
+      ctx.onBeforeQuit(checkBeforeQuit);
       ctx.onQuit(installAtQuit);
       scheduleChecks(ctx, autoCheckDelay);
     }
@@ -1259,6 +1294,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         rmSync(path, { recursive: true, force: true });
       }
     }
+    if (automatic && state.pending && !state.trial && existsSync(state.pending.staged)) recheck(state.pending.staged);
     const trial = state.trial;
     if (!trial) return;
     const boot = bootTime();

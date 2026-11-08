@@ -27,12 +27,12 @@ const createSpawnMock = (exitCodes: number[] = []) => {
   return { calls, spawnCommand };
 };
 
-const inRepo = async (dotenv: string | null, body: () => Promise<void>) => {
+const inRepo = async (dotenv: string | null, body: () => Promise<void>, file = ".env") => {
   const repo = mkdtempSync(path.join(tmpdir(), "create-akan-workspace-"));
   const cwd = process.cwd();
   const had = process.env.AKAN_NPM_REGISTRY;
   try {
-    if (dotenv !== null) writeFileSync(path.join(repo, ".env"), dotenv);
+    if (dotenv !== null) writeFileSync(path.join(repo, file), dotenv);
     process.chdir(repo);
     process.env.AKAN_NPM_REGISTRY = "http://127.0.0.1:4873";
     await body();
@@ -121,6 +121,32 @@ describe("create-akan-workspace", () => {
       });
       expect(warned.mock.calls.map(([line]) => line)).toEqual([
         "AKAN_NPM_REGISTRY is set in .env, which the repository controls, so it is ignored. Export it in your shell instead.",
+      ]);
+    } finally {
+      warned.mockRestore();
+    }
+  });
+
+  test.each([
+    [".env.development.local", "AKAN_NPM_REGISTRY=http://127.0.0.1:4999\n"],
+    [".env.production.local", "AKAN_NPM_REGISTRY=http://127.0.0.1:4999\n"],
+    [".env.test.local", "AKAN_NPM_REGISTRY=http://127.0.0.1:4999\n"],
+    [".env", "AKAN_NPM_REGISTRY: http://127.0.0.1:4999\n"],
+    [".env.local", "export AKAN_NPM_REGISTRY:\thttp://127.0.0.1:4999\n"],
+  ])("ignores the registry that %s names as %j", async (file, dotenv) => {
+    const warned = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await inRepo(
+        dotenv,
+        async () => {
+          const { calls, spawnCommand } = createSpawnMock();
+          await run({ argv: ["bun", "create-akan-workspace", "my-org"], spawnCommand: spawnCommand as never });
+          expect(calls.every((call) => !call.args.includes("--registry"))).toBe(true);
+        },
+        file,
+      );
+      expect(warned.mock.calls.map(([line]) => line)).toEqual([
+        `AKAN_NPM_REGISTRY is set in ${file}, which the repository controls, so it is ignored. Export it in your shell instead.`,
       ]);
     } finally {
       warned.mockRestore();

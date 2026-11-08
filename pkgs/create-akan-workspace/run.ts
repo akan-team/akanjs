@@ -36,12 +36,21 @@ interface Options {
 }
 const normalizeRegistryUrl = (registryUrl: string) => registryUrl.replace(/\/+$/, "");
 
-//? Bun loads these from the cwd first, so a cloned repo's file could pick the registry the CLI installs from.
-const dotenvFiles = [".env", ".env.local", ".env.development", ".env.production", ".env.test"];
-const registryLine = /^\s*(?:export\s+)?AKAN_NPM_REGISTRY\s*=/m;
+//? Bun loads the ones NODE_ENV picks from the cwd first, so a cloned repo's file could pick the CLI's registry.
+const dotenvFiles = [
+  ".env",
+  ".env.local",
+  ".env.development",
+  ".env.development.local",
+  ".env.production",
+  ".env.production.local",
+  ".env.test",
+  ".env.test.local",
+];
+//? Bun also reads `KEY: value` lines.
+const registryLine = /^\s*(?:export\s+)?AKAN_NPM_REGISTRY\s*[=:]/m;
 
 const registryFromShell = () => {
-  if (process.execArgv.includes("--no-env-file")) return process.env.AKAN_NPM_REGISTRY;
   const file = dotenvFiles.find((name) => {
     const filePath = path.join(process.cwd(), name);
     return existsSync(filePath) && registryLine.test(readFileSync(filePath, "utf8"));

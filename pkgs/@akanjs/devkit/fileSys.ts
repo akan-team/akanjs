@@ -76,7 +76,12 @@ export class FileSys {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     if (process.platform === "win32") return dir;
     const { mode, uid } = statSync(dir);
-    if ((mode & 0o077) !== 0 && uid === process.getuid?.()) chmodSync(dir, 0o700);
+    if ((mode & 0o077) === 0 || uid !== process.getuid?.()) return dir;
+    try {
+      chmodSync(dir, 0o700);
+    } catch (error) {
+      FileSys.logger.warn(`${dir} stays at mode ${(mode & 0o777).toString(8)}: ${(error as Error).message}`);
+    }
     return dir;
   }
   static async writeJson(path: string, content: object) {

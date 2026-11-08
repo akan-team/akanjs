@@ -57,9 +57,12 @@ reload` makes it take effect.
 
 **This repo's own servers start only once the user approves them.** At start, `akan code` lists what this
 repo's `.akan/code/mcp.json` would run, and the extensions in `.akan/code/extensions/`, and asks once; a yes is
-remembered in `~/.akan/code/trust.json` until that content changes, and is asked again after. With nobody at a
-terminal they are not started, and `/mcp` shows `not approved`. `--trust-workspace` (`-T`) starts them for one
-run without asking. Servers in `~/.akan/code/mcp.json`, and ones added with `/mcp add`, need no approval.
+remembered in `~/.akan/code/trust.json` until that content changes, and is asked again after. An extensions
+folder past 10,000 files or 64 MiB, or with a link that leads out of it, is asked about at every start. With
+nobody at a terminal they are not started, and `/mcp` shows `not approved`. `--trust-workspace` (`-T`) starts
+them for one run without asking. Servers in `~/.akan/code/mcp.json`, where `/mcp add` writes, need no approval;
+`/mcp add --local` writes this repo's file and keeps the approval it had, so a server added while that file
+waits for approval waits with it.
 
 `/mcp remove` on a name both files declare takes this repo's entry and leaves the home file's in force; its
 notice says so, and running it again removes that one too.

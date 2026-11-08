@@ -569,10 +569,11 @@ describe("NativeConfig.build", () => {
       expect(lan.get("object-src")).toEqual(["'none'"]);
     });
 
-    test("reaches any https or wss origin and loads https images, media and fonts, while scripts stay the app's", () => {
+    test("reaches any https or wss origin and loads https images, media, fonts and stylesheets, while scripts stay the app's", () => {
       const csp = build() as Record<string, string[]>;
       expect(csp["connect-src"]).toEqual(["'self'", "blob:", "data:", "https:", "wss:"]);
       for (const directive of ["img-src", "media-src", "font-src"]) expect(csp[directive]).toContain("https:");
+      expect(csp["style-src"]).toEqual(["'self'", "'unsafe-inline'", "https:"]);
       expect(csp["script-src"]).toEqual(["'self'", "'wasm-unsafe-eval'"]);
     });
 
@@ -619,7 +620,7 @@ describe("NativeConfig.build", () => {
         "https://sdk.example.com",
         "https://cdn.example.com",
       ]);
-      expect(csp["style-src-attr"]).toEqual(["'self'", "'unsafe-inline'", "https://styles.example.com"]);
+      expect(csp["style-src-attr"]).toEqual(["'self'", "'unsafe-inline'", "https:", "https://styles.example.com"]);
       expect(csp["manifest-src"]).toEqual(["'self'", "https://manifest.example.com"]);
       expect(csp["upgrade-insecure-requests"]).toEqual([]);
 

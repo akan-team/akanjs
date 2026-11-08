@@ -9,9 +9,12 @@ import { stringArg } from "./stringArg";
 
 const writeTools = new Set(["write", "edit"]);
 const commandTools = new Set(["bash"]);
+// A client in command position (after a separator, `sh -c '`, `-exec`), past `VAR=value` and wrappers like `timeout 5`.
 const networkClients =
-  /(?:^|[\s;&|(`$/])(curl|wget|nc|ncat|netcat|socat|telnet|ssh|scp|sftp|rsync|ftp)(?=$|[\s;&|)`])/g;
+  /(?:^|[\n;&|(`{]|\s-\w*c\s+['"]|\s-exec(?:dir)?\s+)\s*(?:(?:[A-Za-z_]\w*=\S*|sudo|env|command|exec|nohup|time|timeout|nice|watch|stdbuf|xargs|-\S+|\d\S*)\s+)*(?:[^\s;&|()`'"]*\/)?(curl|wget|nc|ncat|netcat|socat|telnet|ssh|scp|sftp|rsync|ftp)(?=$|[\s;&|)`'"])/g;
 const urlPattern = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`<>|;&()]+/gi;
+// curl and wget read a `host:port` argument without a scheme as http.
+const hostPortPattern = /(?<=^|[\s'"=])(?:\[[0-9a-f:.]+\]|[a-z0-9.-]+):\d{1,5}(?=[/?#\s'"]|$)/gi;
 // A glob in a command that also matches these names is a broad sweep (`*.ts`), not an aim at one secret file.
 const ordinaryNames = ["index.ts", "a.ts", "a.tsx", "a.js", "a.json", "a.yaml", "a.md", "a.txt", "a.log", "README"];
 
@@ -106,20 +109,18 @@ export class CodeAgentGate {
 
   #deniedReason(target: string) {
     const absolute = path.resolve(this.#profile.paths.root, CodeAgentGate.#expandPath(target));
-    // The real path as well, so a link inside the root cannot lend a denied file an innocent name.
+    const relative = path.relative(path.resolve(this.#profile.paths.root), absolute);
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+      return `Path is outside the agent root (${this.#profile.paths.root}).`;
+    // The deny list also judges the real path, so a link inside the root cannot lend a denied file an innocent name;
+    // the root is judged as written, since a linked package or lib leads out of it on purpose.
     const real = CodeAgentGate.#real(absolute);
-    const candidates: [string, string][] = [
-      [absolute, path.resolve(this.#profile.paths.root)],
-      [real, this.#realRoot],
+    const candidates = [
+      [absolute, relative],
+      [real, path.relative(this.#realRoot, real)],
     ];
-    for (const [candidate, root] of candidates) {
-      const relative = path.relative(root, candidate);
-      if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
-        return `Path is outside the agent root (${this.#profile.paths.root}).`;
-      if (this.#deny.some((glob) => glob.match(candidate) || glob.match(relative)))
-        return "Path is on the profile's deny list (secrets and environment files are never readable).";
-    }
-    const relative = path.relative(this.#profile.paths.root, absolute);
+    if (candidates.some(([candidate, rel]) => this.#deny.some((glob) => glob.match(candidate) || glob.match(rel))))
+      return "Path is on the profile's deny list (secrets and environment files are never readable).";
     if (this.#allow.length && !this.#allow.some((glob) => glob.match(absolute) || glob.match(relative)))
       return "Path is outside the profile's allow list.";
     return undefined;
@@ -139,7 +140,10 @@ export class CodeAgentGate {
     const clients = [...command.matchAll(networkClients)].map((match) => match[1]);
     if (!clients.length) return undefined;
     // Only loopback is exempt here: a listed host still takes an upload under someone else's account.
-    const hosts = [...command.matchAll(urlPattern)].map((match) => codeAgentHostOf(match[0]));
+    const hosts = [
+      ...[...command.matchAll(urlPattern)].map((match) => codeAgentHostOf(match[0])),
+      ...[...command.matchAll(hostPortPattern)].map((match) => codeAgentHostOf(`http://${match[0]}`)),
+    ];
     const httpOnly = clients.every((client) => client === "curl" || client === "wget");
     if (httpOnly && hosts.length && hosts.every((host) => host && codeAgentIsLoopback(host))) return undefined;
     return `reach the network: ${command.slice(0, 200)}`;
