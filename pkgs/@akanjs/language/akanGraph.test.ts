@@ -189,4 +189,20 @@ export class MemoService extends serve(db.memo, () => ({})) {}
     expect(graph.nodes.some((node) => node.id === "model:libs/shared:memo")).toBe(true);
     expect(edgesOf(graph).filter((edge) => edge.includes("model:libs/shared:memo"))).toEqual([]);
   });
+
+  it("draws the same graph whatever order the files were read in", () => {
+    const withFolder: Record<string, string> = {
+      ...files,
+      "apps/demo/lib/folder/folder.signal.ts": `import { slice } from "akanjs/signal";
+import * as srv from "../srv";
+export class FolderSlice extends slice(srv.folder, { guards: { root: Admin, get: Public } }, (init) => ({})) {}
+`,
+    };
+    const graphIn = (order: [string, string][]) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of order) index.setFile(`${root}/${rel}`, text);
+      return JSON.stringify(index.graph((fileName) => withFolder[fileName.slice(root.length + 1)]));
+    };
+    expect(graphIn(Object.entries(withFolder).reverse())).toBe(graphIn(Object.entries(withFolder)));
+  });
 });
