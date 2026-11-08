@@ -10,8 +10,9 @@ import { stringArg } from "./stringArg";
 const writeTools = new Set(["write", "edit"]);
 const commandTools = new Set(["bash"]);
 // A client in command position (after a separator, `sh -c '`, `-exec`), past `VAR=value` and wrappers like `timeout 5`.
+// Gaps are spaces and tabs only: a newline is itself a separator, and letting `\s` take it too backtracks polynomially.
 const networkClients =
-  /(?:^|[\n;&|(`{]|\s-\w*c\s+['"]|\s-exec(?:dir)?\s+)\s*(?:(?:[A-Za-z_]\w*=\S*|sudo|env|command|exec|nohup|time|timeout|nice|watch|stdbuf|xargs|-\S+|\d\S*)\s+)*(?:[^\s;&|()`'"]*\/)?(curl|wget|nc|ncat|netcat|socat|telnet|ssh|scp|sftp|rsync|ftp)(?=$|[\s;&|)`'"])/g;
+  /(?:^[ \t]*|[\n;&|(`{][ \t]*|\s-\w*c\s+['"][ \t]*|\s-exec(?:dir)?\s+)(?:(?:[A-Za-z_]\w*=\S*|sudo|env|command|exec|nohup|time|timeout|nice|watch|stdbuf|xargs|-\S+|\d\S*)[ \t]+)*(?:[^\s;&|()`'"]*\/)?(curl|wget|nc|ncat|netcat|socat|telnet|ssh|scp|sftp|rsync|ftp)(?=$|[\s;&|)`'"])/g;
 const urlPattern = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`<>|;&()]+/gi;
 // curl and wget read a `host:port` argument without a scheme as http.
 const hostPortPattern = /(?<=^|[\s'"=])(?:\[[0-9a-f:.]+\]|[a-z0-9.-]+):\d{1,5}(?=[/?#\s'"]|$)/gi;
