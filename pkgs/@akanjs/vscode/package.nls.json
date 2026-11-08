@@ -7,5 +7,6 @@
   "akan.createModule.title": "Create a module…",
   "akan.addField.title": "Add a field…",
   "akan.openStudio.title": "Open Akan Studio",
-  "akan.openChangeMap.title": "Open the Change Map"
+  "akan.openChangeMap.title": "Open the Change Map",
+  "akan.openModule.title": "Open the module side by side"
 }

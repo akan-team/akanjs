@@ -10,10 +10,11 @@ export type StudioWorkflow =
   | "rename-key";
 
 export interface StudioAction {
-  workflow: StudioWorkflow;
+  kind: "workflow" | "module";
+  workflow?: StudioWorkflow;
   label: string;
   inputs: { [input: string]: string };
-  command: string;
+  command: string | null;
 }
 
 const askedInputs: { [workflow in StudioWorkflow]: string[] } = {
@@ -46,15 +47,23 @@ const keyInputs: { [kind in AkanGraphNodeKind]?: { input: string; label: string 
 export class StudioActions {
   static of(node: AkanGraphNode): StudioAction[] {
     const app = node.owner?.split("/").at(-1);
-    if (!app || !node.module || node.change === "removed") return [];
-    if (!identifier.test(app) || !identifier.test(node.module) || (node.name && !identifier.test(node.name))) return [];
-    const target = { app, module: node.module };
+    const { module } = node;
+    if (!app || !module || module.startsWith("__") || node.change === "removed") return [];
+    if (!identifier.test(app) || !identifier.test(module)) return [];
+    const target = { app, module };
+    const open: StudioAction = { kind: "module", label: "Open module", inputs: target, command: null };
+    return [open, ...StudioActions.#workflowsOf(node, target)];
+  }
+
+  static #workflowsOf(node: AkanGraphNode, target: StudioAction["inputs"]): StudioAction[] {
     const keyed = keyInputs[node.kind];
-    if (keyed)
-      return node.name
-        ? [StudioActions.#action("rename-key", keyed.label, { ...target, [keyed.input]: node.name })]
-        : [];
-    return (actionsByKind[node.kind] ?? []).map(([workflow, label]) => StudioActions.#action(workflow, label, target));
+    if (!keyed)
+      return (actionsByKind[node.kind] ?? []).map(([workflow, label]) =>
+        StudioActions.#action(workflow, label, target),
+      );
+    return node.name && identifier.test(node.name)
+      ? [StudioActions.#action("rename-key", keyed.label, { ...target, [keyed.input]: node.name })]
+      : [];
   }
 
   static ofApp(app: string): StudioAction[] {
@@ -64,6 +73,7 @@ export class StudioActions {
   static #action(workflow: StudioWorkflow, label: string, inputs: StudioAction["inputs"]): StudioAction {
     const given = Object.entries(inputs).map(([name, value]) => `--${name} ${value}`);
     const asked = askedInputs[workflow].map((name) => `--${name} <${name}>`);
-    return { workflow, label, inputs, command: ["akan workflow plan", workflow, ...given, ...asked].join(" ") };
+    const command = ["akan workflow plan", workflow, ...given, ...asked].join(" ");
+    return { kind: "workflow", workflow, label, inputs, command };
   }
 }

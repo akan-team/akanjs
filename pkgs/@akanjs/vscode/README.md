@@ -22,6 +22,9 @@ nothing. This extension adds the missing answers next to TypeScript's own (the b
   from component to model. Clicking a name opens its source in the editor.
 - **Akan: Open the Change Map** opens Studio on what changed since HEAD forked from the default branch, uncommitted
   work included, with each model, signal, method and component marked added, removed or changed.
+- **Akan: Open the module side by side** opens the active file's module, or one you pick, as a grid of its
+  constant, dictionary, document, service, signal and store files. Studio's **Open module** button does the same for
+  a node.
 - **Studio's workflow buttons:** clicking a model, slice key or query in the Studio panel lists the workflows
   it can start (Add field, Add slice, Rename slice key, and so on). A button runs the workflow with its app and module
   already filled in, names them in the confirm, then reloads Studio once it applies.

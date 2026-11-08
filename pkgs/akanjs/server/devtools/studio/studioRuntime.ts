@@ -1,8 +1,9 @@
 interface StudioRuntimeAction {
+  kind: string;
   label: string;
-  workflow: string;
+  workflow?: string;
   inputs: unknown;
-  command: string;
+  command: string | null;
 }
 
 export const studioRuntime = () => {
@@ -13,6 +14,7 @@ export const studioRuntime = () => {
       if ((event.data as { type?: unknown } | null)?.type !== "akan-studio:host") return;
       host = event.origin;
       window.parent.postMessage({ type: "akan-studio:ready", href: location.href }, host);
+      showActions(shown);
     });
     document.addEventListener("click", (event) => {
       const href = event.target instanceof Element ? event.target.closest("a[href]")?.getAttribute("href") : null;
@@ -33,11 +35,14 @@ export const studioRuntime = () => {
   const say = (text: string) => {
     status.textContent = text;
   };
-  const run = ({ workflow, inputs, command }: StudioRuntimeAction) => {
+  const run = ({ kind, workflow, inputs, command }: StudioRuntimeAction) => {
     if (host) {
-      window.parent.postMessage({ type: "akan-studio:workflow", workflow, inputs }, host);
+      const message =
+        kind === "module" ? { type: "akan-studio:module", inputs } : { type: "akan-studio:workflow", workflow, inputs };
+      window.parent.postMessage(message, host);
       return;
     }
+    if (!command) return;
     const copied = navigator.clipboard?.writeText(command);
     if (!copied) say(command);
     else
@@ -46,10 +51,13 @@ export const studioRuntime = () => {
         () => say(command),
       );
   };
+  let shown: Element | null = null;
   const showActions = (box: Element | null) => {
+    shown = box;
     if (!bar) return;
     const from = box instanceof SVGElement || box instanceof HTMLElement ? box : bar;
-    const actions = JSON.parse(from.dataset.actions ?? "[]") as StudioRuntimeAction[];
+    const listed = JSON.parse(from.dataset.actions ?? "[]") as StudioRuntimeAction[];
+    const actions = listed.filter((action) => host || action.command);
     const label = document.createElement("span");
     label.className = "muted";
     label.textContent = from.dataset.label ?? "";
@@ -57,7 +65,7 @@ export const studioRuntime = () => {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = action.label;
-      button.title = action.command;
+      button.title = action.command ?? "";
       button.addEventListener("click", () => run(action));
       return button;
     });

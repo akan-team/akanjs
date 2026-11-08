@@ -12,6 +12,11 @@ export interface StudioWorkflowRequest {
   inputs: Record<string, string>;
 }
 
+export interface StudioModuleTarget {
+  app: string;
+  module: string;
+}
+
 //? Studio is a page the dev server serves, so a request from it names a target and nothing more: the workflow is
 //? allowlisted, every input it may preset is a plain identifier, and the plan still waits for a modal confirm.
 const studioWorkflows = new Set([
@@ -78,6 +83,13 @@ export class StudioView {
       studioTargetInputs.has(name) && typeof value === "string" && identifier.test(value);
     if (typeof inputs.app !== "string" || !entries.every(isTarget)) return null;
     return { workflow, inputs: Object.fromEntries(entries) as Record<string, string> };
+  }
+
+  static moduleTargetOf(message: unknown): StudioModuleTarget | null {
+    if (!isRecord(message) || message.type !== "akan-studio:module" || !isRecord(message.inputs)) return null;
+    const { app, module, ...rest } = message.inputs;
+    if (typeof app !== "string" || typeof module !== "string" || Object.keys(rest).length) return null;
+    return identifier.test(app) && identifier.test(module) ? { app, module } : null;
   }
 
   static inputsToAsk<Spec extends { required?: boolean }>(specs: Record<string, Spec>, given: Record<string, string>) {

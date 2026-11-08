@@ -1,6 +1,7 @@
 import path from "node:path";
 import * as vscode from "vscode";
 import { AkanCli, type AkanRun, type VerifyResult } from "./akanCli";
+import { type ModuleFolder, ModuleLayout } from "./moduleLayout";
 import { StudioPanel } from "./studioPanel";
 import { StudioView } from "./studioView";
 
@@ -330,9 +331,10 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     if (!result) return false;
     const report = AkanCli.jsonOf(result.stdout);
     if (isRecord(report) && typeof report.url === "string")
-      return await StudioPanel.show(cli.root, app, report.url, ({ workflow, inputs }) =>
-        runWorkflow(workflow, inputs, cli.root),
-      );
+      return await StudioPanel.show(cli.root, app, report.url, {
+        runWorkflow: ({ workflow, inputs }) => runWorkflow(workflow, inputs, cli.root),
+        openModule: (target) => openModule({ ...target, root: cli.root }),
+      });
     log.appendLine(result.stdout.trimEnd());
     const reason = result.stdout.trim().split("\n").at(-1) || vscode.l10n.t("akan studio failed.");
     if (!result.stdout.includes("No dev server answers")) {
@@ -345,6 +347,45 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     terminal.sendText([...cli.command, "start", app].map(AkanCli.shellArgOf).join(" "));
     terminal.show();
     return false;
+  };
+
+  const pickModule = async (root: string) => {
+    const picked = await vscode.window.showQuickPick(
+      ModuleLayout.modulesOf(root).map((folder) => ({
+        label: folder.name,
+        description: path.relative(root, folder.dir),
+        folder,
+      })),
+      { title: vscode.l10n.t("Open which module side by side"), matchOnDescription: true },
+    );
+    return picked?.folder ?? null;
+  };
+
+  const openModule = async (target?: { root?: string; app: string; module: string }) => {
+    const root = target?.root ?? (await folderOf())?.uri.fsPath;
+    if (!root) return false;
+    const active = vscode.window.activeTextEditor?.document.uri;
+    const folder: ModuleFolder | null = target
+      ? ModuleLayout.folderFor(root, target.app, target.module)
+      : ((active && ModuleLayout.folderOf(root, active.fsPath)) ?? (await pickModule(root)));
+    if (!folder) {
+      if (target)
+        void vscode.window.showErrorMessage(vscode.l10n.t("No module {0} in {1}.", target.module, target.app));
+      return false;
+    }
+    const files = ModuleLayout.filesIn(folder);
+    if (!files.length) {
+      void vscode.window.showErrorMessage(vscode.l10n.t("{0} has no module files to open.", folder.name));
+      return false;
+    }
+    await vscode.commands.executeCommand("vscode.setEditorLayout", ModuleLayout.gridOf(files.length));
+    for (const [idx, file] of files.entries())
+      await vscode.window.showTextDocument(vscode.Uri.file(file), {
+        viewColumn: idx + 1,
+        preview: false,
+        preserveFocus: idx > 0,
+      });
+    return true;
   };
 
   return [
@@ -366,6 +407,13 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
             ? options.module
             : undefined,
       }),
+    ),
+    vscode.commands.registerCommand("akan.openModule", (options?: unknown) =>
+      openModule(
+        isRecord(options) && typeof options.app === "string" && typeof options.module === "string"
+          ? { app: options.app, module: options.module }
+          : undefined,
+      ),
     ),
     vscode.commands.registerCommand("akan.openChangeMap", (options?: unknown) =>
       openStudio({

@@ -37,6 +37,17 @@ describe("StudioView", () => {
     expect(ask({ type: "akan-studio:open" })).toBeNull();
   });
 
+  test("opens only an identifier app and module the Studio asks for", () => {
+    const ask = (inputs: unknown) => StudioView.moduleTargetOf({ type: "akan-studio:module", inputs });
+    expect(ask({ app: "demo", module: "memo" })).toEqual({ app: "demo", module: "memo" });
+    expect(ask({ app: "demo", module: "../memo" })).toBeNull();
+    expect(ask({ app: "demo", module: "memo", slice: "inPublic" })).toBeNull();
+    expect(ask({ app: "demo" })).toBeNull();
+    expect(
+      StudioView.moduleTargetOf({ type: "akan-studio:workflow", inputs: { app: "demo", module: "memo" } }),
+    ).toBeNull();
+  });
+
   test("asks for every input Studio did not preset, but no other target once Studio named one", () => {
     const target = { app: { required: true }, module: { required: true } };
     const asked = (specs: Record<string, { required?: boolean }>, given: Record<string, string>) =>

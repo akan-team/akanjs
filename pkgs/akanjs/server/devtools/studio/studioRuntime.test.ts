@@ -56,8 +56,14 @@ describe("studioRuntime", () => {
     );
     expect(buttons()).toEqual(["New module"]);
     document.querySelector("rect")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(buttons()).toEqual(["Add field"]);
-    document.querySelector<HTMLButtonElement>("[data-studio-actions] button")?.click();
+    expect(buttons()).toEqual(["Open module", "Add field"]);
+    const [openModule, runAddField] = document.querySelectorAll<HTMLButtonElement>("[data-studio-actions] button");
+    openModule.click();
+    expect(posted.at(-1)).toEqual({
+      message: { type: "akan-studio:module", inputs: { app: "demo", module: "memo" } },
+      origin: "vscode-webview://panel",
+    });
+    runAddField.click();
     expect(posted.at(-1)).toEqual({
       message: { type: "akan-studio:workflow", workflow: "add-field", inputs: { app: "demo", module: "memo" } },
       origin: "vscode-webview://panel",
@@ -79,16 +85,21 @@ describe("studioRuntime", () => {
     await Promise.resolve();
     expect(copied).toEqual([newModule.command]);
     expect(document.querySelector("[data-studio-actions] output")?.textContent).toBe(`Copied: ${newModule.command}`);
+    document.querySelector("rect")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(buttons()).toEqual(["Add field"]);
   });
 });
 
 const newModule = {
+  kind: "workflow",
   workflow: "create-module",
   label: "New module",
   inputs: { app: "demo" },
   command: "akan workflow plan create-module --app demo --module <module>",
 };
+const openModule = { kind: "module", label: "Open module", inputs: { app: "demo", module: "memo" }, command: null };
 const addField = {
+  kind: "workflow",
   workflow: "add-field",
   label: "Add field",
   inputs: { app: "demo", module: "memo" },
@@ -96,7 +107,7 @@ const addField = {
 };
 const attribute = (value: unknown) => JSON.stringify(value).replace(/"/g, "&quot;");
 const bar = `<div data-studio-actions="" data-label="demo" data-actions="${attribute([newModule])}"></div>`;
-const diagram = `<svg data-studio=""><g data-node="model:apps/demo:memo" data-label="Memo" data-actions="${attribute([addField])}">
+const diagram = `<svg data-studio=""><g data-node="model:apps/demo:memo" data-label="Memo" data-actions="${attribute([openModule, addField])}">
   <rect></rect></g></svg>`;
 const buttons = () =>
   [...document.querySelectorAll("[data-studio-actions] button")].map((button) => button.textContent);
