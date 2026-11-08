@@ -15,6 +15,13 @@ describe("StudioView", () => {
     expect(html).toContain('event.origin === "http://localhost:8284" && event.source === frame.contentWindow');
   });
 
+  test("names the module a lib folder holds, and none for scalars", () => {
+    expect(StudioView.moduleOf("memo")).toBe("memo");
+    expect(StudioView.moduleOf("_oauth")).toBe("oauth");
+    expect(StudioView.moduleOf("__scalar")).toBeNull();
+    expect(StudioView.moduleOf(null)).toBeNull();
+  });
+
   test("opens a source the Studio asks for only when it sits in the workspace", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "akan-studio-"));
     try {

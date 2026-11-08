@@ -40,6 +40,12 @@ export class StudioView {
 </html>`;
   }
 
+  //? A `lib/_<service>/` folder holds module `<service>`; `lib/__scalar/` holds scalars, which have no signals.
+  static moduleOf(folder: string | null) {
+    if (!folder || folder === "__scalar") return null;
+    return folder.replace(/^_/, "");
+  }
+
   static isReady(message: unknown) {
     return isRecord(message) && message.type === "akan-studio:ready";
   }

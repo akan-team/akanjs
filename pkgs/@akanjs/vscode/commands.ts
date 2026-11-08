@@ -2,6 +2,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 import { AkanCli, type AkanRun, type VerifyResult } from "./akanCli";
 import { StudioPanel } from "./studioPanel";
+import { StudioView } from "./studioView";
 
 interface WorkflowInputSpec {
   type: string;
@@ -276,7 +277,7 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
           ? apps[0]
           : await vscode.window.showQuickPick(apps, { title: vscode.l10n.t("Open Akan Studio for") }));
     if (!app) return false;
-    const module = moduleName === undefined ? place.module : moduleName;
+    const module = moduleName === undefined ? StudioView.moduleOf(place.module) : moduleName;
     const editor = vscode.env.uriScheme === "cursor" ? "cursor" : "vscode";
     const args = ["studio", app, "--editor", editor, "--format", "json"];
     if (module) args.push("--module", module, "--view", "signals");
