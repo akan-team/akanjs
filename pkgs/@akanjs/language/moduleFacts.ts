@@ -38,6 +38,7 @@ export interface EndpointKeyFact extends MemberFact {
 }
 
 export interface FieldFact extends NamedFact {
+  extent: Extent;
   type: string | null;
   array: boolean;
   optional: boolean;
@@ -53,7 +54,7 @@ export interface EnumClassFact extends NamedFact {
 }
 
 export interface FilterClassFact extends NamedFact {
-  queries: NamedFact[];
+  queries: MemberFact[];
 }
 
 export interface ModuleClassFact extends NamedFact {
@@ -189,10 +190,10 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       : null;
 
   const objectKeys = (source: TS.SourceFile, object: TS.ObjectLiteralExpression | null | undefined) =>
-    (object?.properties ?? []).flatMap((property): NamedFact[] => {
+    (object?.properties ?? []).flatMap((property): MemberFact[] => {
       const name = ast.propertyName(property);
       const node = keyName(property);
-      return name && node ? [{ name, span: spanOf(source, node) }] : [];
+      return name && node ? [{ name, span: spanOf(source, node), extent: extentOf(source, property) }] : [];
     });
 
   const sliceKeysOf = (source: TS.SourceFile, builder: TS.ArrowFunction | TS.FunctionExpression | undefined) =>
@@ -277,7 +278,13 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         ? chainOf(property.initializer)
         : { root: null, methods: [] };
       return [
-        { name, span: spanOf(source, node), ...typeOf(root?.arguments[0]), optional: methods.includes("optional") },
+        {
+          name,
+          span: spanOf(source, node),
+          extent: extentOf(source, property),
+          ...typeOf(root?.arguments[0]),
+          optional: methods.includes("optional"),
+        },
       ];
     });
 

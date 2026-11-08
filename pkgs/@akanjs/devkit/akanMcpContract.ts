@@ -324,8 +324,8 @@ export const readonlyMcpTools: McpToolDefinition[] = [
   {
     name: "get_graph",
     description:
-      "Read-only Akan Graph from source, no dev server needed: models with their fields and relations, slices and endpoints with guards, the service methods and queries each calls, the store actions that fetch them, and the components and pages that use them. Every node and edge carries its source location. Pass app and/or module to scope a large workspace.",
-    inputSchema: { type: "object", properties: { app: stringProperty, module: stringProperty } },
+      "Read-only Akan Graph from source, no dev server needed: models with their fields and relations, slices and endpoints with guards, the service methods and queries each calls, the store actions that fetch them, and the components and pages that use them. Every node and edge carries its source location. Pass app and/or module to scope a large workspace. Pass since (a git revision such as main, or HEAD for uncommitted work) for the Change Map instead: what changed since HEAD forked from it, working tree included, with each node, field and edge marked added, removed or changed, the unchanged neighbours they call or are called by, and the changed files no node covers, each marked the same way.",
+    inputSchema: { type: "object", properties: { app: stringProperty, module: stringProperty, since: stringProperty } },
   },
   {
     name: "get_guideline",
