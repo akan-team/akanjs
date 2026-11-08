@@ -14,6 +14,7 @@ export class SessionRefresh {
   //? A refresh token is single-use: a request the browser sent with the old cookies before it stored the new ones
   //? gets the same answer, instead of presenting a rotated token the app may read as reuse.
   static reuseMs = 10_000;
+  static timeoutMs = 10_000;
   static #hook: SessionRefreshHook | null = null;
   static readonly #flights = new Map<string, Promise<string[]>>();
   static readonly #issued = new WeakMap<Request, string[]>();
@@ -72,12 +73,26 @@ export class SessionRefresh {
   }
 
   static async #run(hook: SessionRefreshHook, request: Request): Promise<string[]> {
+    const late = Symbol("late");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<typeof late>((resolve) => {
+      timer = setTimeout(() => resolve(late), SessionRefresh.timeoutMs);
+    });
     try {
-      const setCookies = (await hook(request)) ?? [];
-      return setCookies.filter((line) => typeof line === "string" && line.includes("=") && !/[\r\n\0]/.test(line));
+      const answer = await Promise.race([(async () => await hook(request))(), deadline]);
+      if (answer === late) {
+        SessionRefresh.#logger.warn(`session refresh gave no answer in ${SessionRefresh.timeoutMs}ms`);
+        return [];
+      }
+      //? Cookie values are ASCII (RFC 6265), and a line Bun refuses as a header would fail the render after the hook ran.
+      return (answer ?? []).filter(
+        (line) => typeof line === "string" && line.includes("=") && /^[\t\x20-\x7e]+$/.test(line),
+      );
     } catch (error) {
       SessionRefresh.#logger.warn(`session refresh failed: ${error instanceof Error ? error.message : String(error)}`);
       return [];
+    } finally {
+      clearTimeout(timer);
     }
   }
 

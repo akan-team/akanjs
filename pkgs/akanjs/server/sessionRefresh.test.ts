@@ -117,7 +117,34 @@ describe("SessionRefresh", () => {
     expect(await SessionRefresh.apply(request)).toEqual([]);
     expect(request.headers.get("cookie")).toBe("jwt=expired");
 
-    SessionRefresh.use(() => ["jwt=new; Path=/\r\nX-Injected: 1", "claims=a\0b; Path=/", "refresh=new; Path=/"]);
-    expect(await SessionRefresh.apply(pageRequest("jwt=expired"))).toEqual(["refresh=new; Path=/"]);
+    SessionRefresh.use(() => [
+      "jwt=new; Path=/\r\nX-Injected: 1",
+      "claims=a\0b; Path=/",
+      "name=\u4e2d; Path=/",
+      "refresh=new; Path=/",
+    ]);
+    const issuing = pageRequest("jwt=expired");
+    expect(await SessionRefresh.apply(issuing)).toEqual(["refresh=new; Path=/"]);
+    expect(issuing.headers.get("cookie")).toBe("jwt=expired; refresh=new");
+  });
+
+  test("renders with the cookies the browser sent when the hook gives no answer in time, and asks again after", async () => {
+    const timeoutMs = SessionRefresh.timeoutMs;
+    SessionRefresh.timeoutMs = 5;
+    try {
+      let calls = 0;
+      SessionRefresh.use(() => {
+        calls += 1;
+        return calls === 1 ? new Promise<string[]>(() => undefined) : renewed;
+      });
+      const request = pageRequest("jwt=expired; refresh=old-refresh");
+      expect(await SessionRefresh.apply(request)).toEqual([]);
+      expect(request.headers.get("cookie")).toBe("jwt=expired; refresh=old-refresh");
+
+      expect(await SessionRefresh.apply(pageRequest("jwt=expired; refresh=old-refresh"))).toEqual(renewed);
+      expect(calls).toBe(2);
+    } finally {
+      SessionRefresh.timeoutMs = timeoutMs;
+    }
   });
 });

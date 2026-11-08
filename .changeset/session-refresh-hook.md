@@ -8,8 +8,8 @@ A session whose access token expired can be renewed on the server before a page 
   - `fn` gets the request as the browser sent it and returns the `Set-Cookie` values to answer it with, or none.
   - The render reads the cookies those values set, so a page guard, an `unauthorize:` redirect and every server fetch see the renewed session.
   - Every response to that request carries the values, a redirect, a not-found or an error included, as `Cache-Control: private, no-store`.
-  - Concurrent requests with the same cookies share one call. A request that arrives with them in the next 10 seconds gets the same answer, so a single-use refresh token is not presented twice.
-  - A throwing `fn` is logged, and the page renders with the cookies the browser sent. The app's call wins over its libs'; `null` clears a lib's.
+  - Concurrent requests with the same cookies share one call. A request that arrives with them in the next 10 seconds gets the same answer, so a single-use refresh token is not presented twice. That holds within one server process: with several replicas, `fn` should accept a refresh token presented again within a few seconds. Since requests with the same cookies share an answer, `fn` answers only from the cookies the request carries.
+  - A throwing `fn`, or one with no answer in 10 seconds (`SessionRefresh.timeoutMs`), is logged, and the page renders with the cookies the browser sent. The app's call wins over its libs'; `null` clears a lib's.
   - It does not run for API endpoints, assets or a CSR shell.
 - **A websocket closes at its credential's expiry.**
   - The server reads `exp` off the bearer token, or else the session cookie, at the handshake and at each `__auth` frame.
