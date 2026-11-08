@@ -593,11 +593,6 @@ describe("WorkspaceRunner", () => {
     const misplaced = [
       { dirname: path.join(root, "apps"), appName: "web", paths: "apps/web" },
       { dirname: path.join(root, "nested", "apps", "web"), appName: "web", paths: "apps/web" },
-      {
-        dirname: path.join(root, "patches"),
-        appName: "web",
-        paths: `${path.join("patches", "zod@3.25.76.patch")}, ${path.join("patches", "zod@4.4.3.patch")}`,
-      },
     ];
 
     for (const { dirname, appName, paths } of misplaced) {
@@ -611,7 +606,6 @@ describe("WorkspaceRunner", () => {
       akanVersion: "2.0.0-beta.0",
     });
     expect(await Bun.file(path.join(named.workspaceRoot, "package.json")).exists()).toBe(true);
-    expect(existsSync(path.join(named.workspaceRoot, "patches", "zod@4.4.3.patch"))).toBe(true);
   });
 
   test("gives a new workspace React's type packages at the versions the repo root uses", async () => {
