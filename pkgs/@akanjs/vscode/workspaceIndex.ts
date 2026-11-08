@@ -98,45 +98,67 @@ export class WorkspaceIndex implements vscode.Disposable {
 
   async #indexFolder(folder: vscode.WorkspaceFolder, generation: number) {
     const started = Date.now();
-    const files = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, filePattern), excludePattern);
-    if (!files.length || generation !== this.#generation) return undefined;
-    const loaded = loadCore(folder.uri.fsPath, vscode.workspace.isTrusted);
-    let source = loaded.source;
-    let index: AkanIndex | null;
-    try {
-      index = await this.#fill(loaded.core, folder, files, generation);
-    } catch (error) {
-      if (loaded.core === bundledCore) throw error;
-      this.#log.appendLine(`[akan] ${folder.name}: ${source} failed, using the bundled core: ${messageOf(error)}`);
-      source = "bundled";
-      index = await this.#fill(bundledCore, folder, files, generation);
-    }
-    if (!index) return undefined;
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, filePattern));
-    const entry: FolderIndex = { folder, index, source, watcher };
-    watcher.onDidCreate((uri) => this.#reloadFromDisk(uri, entry));
-    watcher.onDidChange((uri) => this.#reloadFromDisk(uri, entry));
-    watcher.onDidDelete((uri) => {
-      entry.index.removeFile(uri.fsPath);
-      this.#changed.fire();
-    });
-    this.#log.appendLine(
-      `[akan] ${folder.name}: indexed ${index.fileCount} files in ${Date.now() - started}ms (core: ${source})`,
-    );
-    return entry;
+    const touched = new Map<string, vscode.Uri>();
+    let entry: FolderIndex | undefined;
+    const onDisk = (uri: vscode.Uri) => {
+      if (entry) this.#reloadFromDisk(uri, entry);
+      else touched.set(uri.toString(), uri);
+    };
+    watcher.onDidCreate(onDisk);
+    watcher.onDidChange(onDisk);
+    watcher.onDidDelete(onDisk);
+    try {
+      const files = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, filePattern), excludePattern);
+      if (!files.length || generation !== this.#generation) {
+        watcher.dispose();
+        return undefined;
+      }
+      const loaded = loadCore(folder.uri.fsPath, vscode.workspace.isTrusted);
+      let filled = await this.#fill(loaded.core, folder, files, generation).catch((error: unknown) => ({ error }));
+      let source = loaded.source;
+      if (loaded.core !== bundledCore && filled && ("error" in filled || filled.failures.length)) {
+        const reason = "error" in filled ? filled.error : filled.failures[0];
+        this.#log.appendLine(`[akan] ${folder.name}: ${source} failed, using the bundled core: ${messageOf(reason)}`);
+        source = "bundled";
+        filled = await this.#fill(bundledCore, folder, files, generation);
+      }
+      if (filled && "error" in filled) throw filled.error;
+      if (!filled) {
+        watcher.dispose();
+        return undefined;
+      }
+      const { index, failures } = filled;
+      if (failures.length)
+        this.#log.appendLine(`[akan] ${folder.name}: skipped ${failures.length} files: ${messageOf(failures[0])}`);
+      entry = { folder, index, source, watcher };
+      for (const uri of touched.values()) this.#reloadFromDisk(uri, entry);
+      this.#log.appendLine(
+        `[akan] ${folder.name}: indexed ${index.fileCount} files in ${Date.now() - started}ms (core: ${source})`,
+      );
+      return entry;
+    } catch (error) {
+      watcher.dispose();
+      throw error;
+    }
   }
 
   async #fill(core: AkanCore, folder: vscode.WorkspaceFolder, files: vscode.Uri[], generation: number) {
     const index = new core.AkanIndex({ ts, root: folder.uri.fsPath });
+    const failures: unknown[] = [];
     for (const [at, uri] of files.entries()) {
       if (at % filesPerYield === filesPerYield - 1) {
         await yieldToHost();
         if (generation !== this.#generation) return null;
       }
       const text = this.readText(uri.fsPath);
-      if (text !== undefined) index.setFile(uri.fsPath, text);
+      try {
+        if (text !== undefined) index.setFile(uri.fsPath, text);
+      } catch (error) {
+        failures.push(error);
+      }
     }
-    return index;
+    return { index, failures };
   }
 
   #indexedEntryOf(uri: vscode.Uri, entry = this.folderOf(uri)) {
@@ -176,7 +198,8 @@ export class WorkspaceIndex implements vscode.Disposable {
     let text: string | undefined;
     try {
       text = readFileSync(uri.fsPath, "utf8");
-    } catch {
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) return;
       text = undefined;
     }
     this.#update(uri, text, entry);

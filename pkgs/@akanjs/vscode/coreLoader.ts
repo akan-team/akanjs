@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import * as bundled from "@akanjs/language";
@@ -26,10 +26,11 @@ const coreMethods = [
 
 const fallback: LoadedCore = { core: bundledCore, source: "bundled" };
 
-const isInside = (root: string, file: string) => {
-  const relative = path.relative(root, file);
-  return relative !== "" && !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
-};
+const isInside = (root: string, file: string) =>
+  [root, realpathSync(root)].some((base) => {
+    const relative = path.relative(base, file);
+    return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  });
 
 //? The workspace copy is loaded only when built (`.cjs`/`.js`): inside the akanjs monorepo it is TypeScript source,
 //? which the extension host's Node cannot require. Resolution walks up past the folder, so the hit must sit inside it.
