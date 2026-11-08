@@ -222,7 +222,8 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
     const user = await this.transaction(async () => {
       const draft = await this.getPrepareUser(userId);
       const { activateVerifies, idlessActivateVerifies } = this.signupPolicy;
-      const proofs = (await this.userModel.getAccountId(draft.id, false)) ? activateVerifies : idlessActivateVerifies;
+      const accountId = await this.userModel.getAccountId(draft.id, false);
+      const proofs = accountId && isEmail(accountId) ? activateVerifies : idlessActivateVerifies;
       if (proofs.length && !draft.verifies.some((verify) => proofs.includes(verify)))
         throw new Err("user.error.signupNotVerified");
       if (agreePolicies.length) draft.set({ agreePolicies });

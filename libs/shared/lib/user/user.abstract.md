@@ -8,8 +8,9 @@
   (`activateUserByAdmin`)는 가입 정책을 건너뛰고 세션을 발급하지 않는다.
 - signup token을 발급하는 응답은 같은 토큰을 HttpOnly 쿠키로도 내리고, 인자가 비어 있으면 서버가 그 쿠키를 읽는다.
   SSR 페이지는 쿠키만 쓰고 CSR·네이티브는 인자로 낸다. 활성화 응답은 그 쿠키를 만료시킨다.
-- 활성화에는 정책의 verify가 하나 이상 있어야 한다. 기본은 accountId가 있는 draft에 이메일을 증명한 verify
-  (`Verify.provesEmail`)를, accountId가 없는 draft(지갑·휴대폰 가입)에 password를 뺀 verify를 요구한다.
+- 활성화에는 정책의 verify가 하나 이상 있어야 한다. 기본은 accountId가 이메일 주소인 draft에 이메일을 증명한 verify
+  (`Verify.provesEmail`)를, accountId가 주소가 아닌 draft(지갑·휴대폰 가입, GitHub의 `github:<id>`)에 password를 뺀
+  verify를 요구한다.
   `signup.requireVerifiedEmail: false`나 `activateVerifies: [...Verify.provesIdentity]`는 password를 뺀 전부를 받는다.
   `signup.activateVerifies: []`만이 인증 없는 가입을 허용한다. 가입자가 직접 내는 accountId는 이메일 주소여야 하고
   SSO 행의 `<provider>:<id>` 모양(`:`)일 수 없다. 활성화 화면에서 동의한 약관(`activateUserWithAgreePolicies`)은 활성화와 함께 쓰여, 거절되면 동의도

@@ -23,8 +23,9 @@ export interface SignupOptions {
   // `[...Verify.provesIdentity]` any verify but `password`. Unset follows `requireVerifiedEmail`.
   activateVerifies?: cnst.Verify["value"][];
   // Unset or true asks a draft that names an accountId for a verify that proves an email address: `email` plus the
-  // email-based SSOs. github is not one, because its accountId is the GitHub user id, not an address. A draft naming
-  // none (a wallet or phone sign-up) claims no address and takes `Verify.provesIdentity`; `false` takes that for all.
+  // email-based SSOs. github is not one, because its accountId is the GitHub user id, not an address. A draft whose
+  // accountId is no address (none, for a wallet or phone sign-up, or `github:<id>`) takes `Verify.provesIdentity`;
+  // `false` takes that for all.
   requireVerifiedEmail?: boolean;
 }
 

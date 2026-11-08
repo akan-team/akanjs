@@ -747,6 +747,12 @@ describe("Signup Token", () => {
     }
   });
 
+  it("activates a GitHub draft on its github verify, since `github:<id>` names no address", async () => {
+    const { userId, signupToken } = await fetch.generatePrepareUser(null);
+    await userService.userModel.setSsoInPrepareUser(userId, `github:${Date.now()}`, "github");
+    expect((await fetch.activateUser(userId, signupToken)).jwt).toBeTruthy();
+  });
+
   it("activates a draft that names no accountId on an identity verify, since it claims no address", async () => {
     const { userId, signupToken } = await fetch.generatePrepareUser(null);
     await expect(fetch.activateUser(userId, signupToken)).rejects.toThrow(/signupNotVerified/);
