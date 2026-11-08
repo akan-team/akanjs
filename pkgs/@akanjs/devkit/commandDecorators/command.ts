@@ -436,7 +436,10 @@ export const runCommands = async (...commands: CommandCls[]) => {
           reportFailure = async (failure) =>
             await onFailure?.(failure, { usage: false, given: givenOptionsOf(allArgMetas, opt) });
           const commandArgs = [] as unknown[];
-          if (targetMeta.targetOption.runsOnWorkspaceRoot) await assertCurrentDirectoryIsWorkspaceRoot();
+          if (targetMeta.targetOption.runsOnWorkspaceRoot) {
+            await assertCurrentDirectoryIsWorkspaceRoot();
+            WorkspaceExecutor.defaultCloneToLocalEnv(process.cwd());
+          }
           const workspace = WorkspaceExecutor.fromRoot();
           const commandContext: CommandContext = { values: {} };
           for (const argMeta of allArgMetas) {
