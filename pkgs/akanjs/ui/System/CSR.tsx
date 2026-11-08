@@ -376,7 +376,7 @@ interface CSRBridgeProps {
 const CSRBridge = ({ lang, prefix = "" }: CSRBridgeProps) => {
   const { location, pageContentRef } = useCsr();
   useEffect(() => {
-    const { path, pathname } = getPathInfo(location.pathname, lang, prefix);
+    const { path, pathname } = getPathInfo(location.pathname, lang, prefix, "always");
     st.set({
       params: location.params as unknown as { [key: string]: string },
       searchParams: location.searchParams as unknown as { [key: string]: string | string[] },

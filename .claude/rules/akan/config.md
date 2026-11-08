@@ -32,6 +32,9 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
   `NativeSecret` (the OS credential store), never in a file.
 - **`database: { modes: [...] }`** (`single`, `multiple`, `cluster`), chosen by `AKAN_DATABASE_MODE`; an app running
   in two modes avoids `q.raw`.
+- **`i18n: { localePrefix: "as-needed" }`** serves the default locale at unprefixed paths (`/pokemon/x`, and `<Link>`
+  renders them so) while other locales keep `/<locale>/…`. Use it, not a raw `<a>`, for a single-language app or URLs
+  fixed from outside (OAuth callbacks, QR codes, mail links, a migrated site).
 
 ## Running An App
 

@@ -227,6 +227,7 @@ export class AkanAppConfig implements AppConfigResult {
     this.i18n = resolveAkanI18nConfig(config?.i18n);
     process.env.AKAN_PUBLIC_DEFAULT_LOCALE = this.i18n.defaultLocale;
     process.env.AKAN_PUBLIC_LOCALES = this.i18n.locales.join(",");
+    process.env.AKAN_PUBLIC_LOCALE_PREFIX = this.i18n.localePrefix ?? "always";
     this.api = {
       prefix: normalizeRoutePrefix(config?.api?.prefix) ?? "/api",
       websocketPrefix: normalizeRoutePrefix(config?.api?.websocketPrefix) ?? "/ws",
@@ -623,6 +624,7 @@ export class AkanAppConfig implements AppConfigResult {
       ...(this.basePaths.size ? { AKAN_PUBLIC_BASE_PATHS: [...this.basePaths].join(",") } : {}),
       AKAN_PUBLIC_DEFAULT_LOCALE: this.i18n.defaultLocale,
       AKAN_PUBLIC_LOCALES: this.i18n.locales.join(","),
+      ...(this.i18n.localePrefix === "as-needed" ? { AKAN_PUBLIC_LOCALE_PREFIX: this.i18n.localePrefix } : {}),
       AKAN_PUBLIC_API_PREFIX: this.api.prefix,
       AKAN_PUBLIC_WS_PREFIX: this.api.websocketPrefix,
       AKAN_PUBLIC_OPERATION_MODE: "cloud",

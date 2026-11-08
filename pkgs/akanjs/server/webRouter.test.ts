@@ -368,6 +368,28 @@ describe("WebRouter sub route host resolution", () => {
     expect(renderHeaders?.get("x-path")).toBe("/docs/intro");
   });
 
+  test('routes an unprefixed RSC navigation under the default locale when localePrefix is "as-needed"', async () => {
+    const renderOf = async (target: string) =>
+      await withFullSsrCacheHarness(
+        async ({ renderEnvRoutes, fakeWorker }) => {
+          await renderEnvRoutes["/__rsc"](
+            new Request(`http://internal/__rsc?url=${encodeURIComponent(target)}`, {
+              headers: { host: "akanjs.example.test" },
+            }),
+          );
+          const call = fakeWorker.renderCalls[0];
+          return call
+            ? `${new URL(call.url).pathname} [${call.headers.get("x-locale")} ${call.headers.get("x-path")}]`
+            : null;
+        },
+        { artifact: { ...createTestArtifact(), i18n: { ...DEFAULT_AKAN_I18N, localePrefix: "as-needed" } } },
+      );
+
+    expect(await renderOf("/pokemon/deoxys")).toBe("/en/pokemon/deoxys [en /pokemon/deoxys]");
+    expect(await renderOf("/")).toBe("/en/ [en /]");
+    expect(await renderOf("/ko/pokemon/deoxys")).toBe("/ko/pokemon/deoxys [ko /pokemon/deoxys]");
+  });
+
   test("renders an RSC navigation on a sub-route host inside that host's basePath only", async () => {
     const rendered = await withFullSsrCacheHarness(
       async ({ renderEnvRoutes, fakeWorker }) => {

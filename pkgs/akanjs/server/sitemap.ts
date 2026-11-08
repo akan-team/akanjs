@@ -1,4 +1,4 @@
-import { type AkanI18nConfig, trimSlashes, trimTrailingSlashes } from "akanjs/common";
+import { type AkanI18nConfig, LocalePath, trimSlashes, trimTrailingSlashes } from "akanjs/common";
 import type { RouteSeedEntry } from "./artifact";
 
 export interface DefaultSitemapOptions {
@@ -26,7 +26,7 @@ export function createDefaultSitemapXml({ origin, basePath, entries, i18n }: Def
 export function createDefaultSitemapUrls({ origin, basePath, entries, i18n }: DefaultSitemapOptions): string[] {
   const normalizedOrigin = trimTrailingSlashes(origin);
   const normalizedBasePath = normalizeSegment(basePath ?? "");
-  const paths = entries.flatMap((entry) => expandStaticRoute(entry.pattern, normalizedBasePath, i18n.locales));
+  const paths = entries.flatMap((entry) => expandStaticRoute(entry.pattern, normalizedBasePath, i18n));
   return paths.map((pathname) => `${normalizedOrigin}${pathname}`);
 }
 
@@ -46,7 +46,7 @@ export function getSitemapBasePath(
   return basePaths.map(normalizeSegment).includes(normalizedHeaderBasePath) ? normalizedHeaderBasePath : undefined;
 }
 
-function expandStaticRoute(pattern: string, basePath: string, locales: readonly string[]): string[] {
+function expandStaticRoute(pattern: string, basePath: string, i18n: AkanI18nConfig): string[] {
   const segments = pattern.split("/").filter(Boolean);
   const langIndex = segments.indexOf(":lang");
   if (langIndex < 0) return [];
@@ -59,10 +59,8 @@ function expandStaticRoute(pattern: string, basePath: string, locales: readonly 
     staticSegments = staticSegments.slice(1);
   }
 
-  return locales.map((locale) => {
-    const parts = [locale, ...staticSegments].filter(Boolean);
-    return `/${parts.map(encodePathSegment).join("/")}`;
-  });
+  const path = `/${staticSegments.filter(Boolean).map(encodePathSegment).join("/")}`;
+  return i18n.locales.map((locale) => LocalePath.join(locale, path, i18n));
 }
 
 function normalizePathname(pathname: string): string {
