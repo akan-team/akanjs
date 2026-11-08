@@ -36,6 +36,49 @@ describe("Admin Signal", () => {
       adminAgent.fetch = adminAgent.fetch.clone({ jwt: adminAgent.accessToken.jwt }) as typeof adminAgent.fetch;
     });
 
+    it("sets an admin's roles in one call, only within the caller's level, and a demotion ends the sessions", async () => {
+      const target = await adminSpec.getPlainAdminAgent(rootAdminAgent);
+      const granted = await rootAdminAgent.fetch.setAdminRoles(target.admin.id, ["manager", "admin", "manager"]);
+      expect([...granted.roles].sort()).toEqual(["admin", "manager"]);
+      await expect(target.fetch.setAdminRoles(target.admin.id, ["superAdmin"])).rejects.toThrow();
+
+      const accessToken = await target.fetch.signinAdmin(target.adminInput.accountId, target.password);
+      const targetFetch = target.fetch.clone({ jwt: accessToken.jwt }) as typeof target.fetch;
+      const other = await adminSpec.getPlainAdminAgent(rootAdminAgent);
+      await expect(targetFetch.setAdminRoles(other.admin.id, ["superAdmin"])).rejects.toThrow();
+      await expect(targetFetch.setAdminRoles(rootAdminAgent.admin.id, ["admin"])).rejects.toThrow();
+      expect((await rootAdminAgent.fetch.admin(rootAdminAgent.admin.id)).roles).toContain("superAdmin");
+      expect((await targetFetch.setAdminRoles(other.admin.id, ["manager"])).roles).toEqual(["manager"]);
+
+      await rootAdminAgent.fetch.setAdminRoles(target.admin.id, ["admin", "manager"]);
+      const refreshed = await targetFetch.refreshAdminJwt(accessToken.refreshToken);
+      const demoted = await rootAdminAgent.fetch.setAdminRoles(target.admin.id, ["manager"]);
+      expect(demoted.roles).toEqual(["manager"]);
+      await expect(targetFetch.refreshAdminJwt(refreshed.refreshToken)).rejects.toThrow();
+    });
+
+    it("answers an unknown account and a wrong password with the same key", async () => {
+      await expect(adminAgent.fetch.signinAdmin(sample.email(), adminAgent.password)).rejects.toThrow(
+        /invalidCredentials/,
+      );
+      await expect(
+        adminAgent.fetch.signinAdmin(adminAgent.adminInput.accountId, sample.string({ length: 12 })),
+      ).rejects.toThrow(/invalidCredentials/);
+    });
+
+    it("asks for the current password when an admin changes their own", async () => {
+      const target = await adminSpec.getAdminAgentFromSuperAdmin(rootAdminAgent);
+      const nextPassword = sample.string({ length: 12 });
+      await expect(target.fetch.setAdminPassword(target.admin.id, nextPassword, null)).rejects.toThrow(
+        /passwordNotMatched/,
+      );
+      await expect(
+        target.fetch.setAdminPassword(target.admin.id, nextPassword, sample.string({ length: 12 })),
+      ).rejects.toThrow(/passwordNotMatched/);
+      expect(await target.fetch.setAdminPassword(target.admin.id, nextPassword, target.password)).toBe(true);
+      expect((await target.fetch.signinAdmin(target.adminInput.accountId, nextPassword)).jwt).toBeTruthy();
+    });
+
     it("finds an admin to mention by any word of the account id, and by its start", async () => {
       const { accountId } = adminAgent.admin;
       const [localPart = "", domain = ""] = accountId.split("@");

@@ -10,6 +10,7 @@ interface AdministratorProps {
   ssoTypes?: cnst.SsoType["value"][];
   logo?: ReactNode;
   footer?: ReactNode;
+  toolMenuExtra?: ReactNode;
   themes?: string[];
 }
 
@@ -19,6 +20,7 @@ export const Administrator = ({
   logo,
   pageMenus,
   footer,
+  toolMenuExtra,
   themes = ["light", "dark"],
 }: AdministratorProps) => {
   const searchParams = st.use.searchParams();
@@ -60,7 +62,7 @@ export const Administrator = ({
         </nav>
         <div className="ml-auto flex shrink-0 items-center gap-4">
           <Admin.View.General admin={me} />
-          <Admin.Util.ToolMenu themes={themes} />
+          <Admin.Util.ToolMenu themes={themes} extra={toolMenuExtra} />
         </div>
       </header>
       {isArray ? (

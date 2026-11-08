@@ -1,12 +1,6 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import {
-  $getSelection,
-  $isRangeSelection,
-  COMMAND_PRIORITY_CRITICAL,
-  PASTE_COMMAND,
-  type PasteCommandType,
-} from "lexical";
+import { $getSelection, $isRangeSelection, COMMAND_PRIORITY_HIGH, PASTE_COMMAND, type PasteCommandType } from "lexical";
 import { useEffect } from "react";
 
 /**
@@ -15,7 +9,8 @@ import { useEffect } from "react";
  * Lexical's rich-text paste reads `text/html`, so copying off a web page into what the person sees as a
  * textarea drops in headings, tables and colours the field offers no control for — content its own
  * markdown cannot round-trip, and which the agent's whole-field write would then refuse to overwrite.
- * Registered above `RichTextPlugin`'s handler, and mounted only where `isPlainOnly` holds.
+ * Registered above `RichTextPlugin`'s handler and below `MentionPastePlugin`'s, which turns a lone link into a
+ * chip first, and mounted only where `isPlainOnly` holds.
  */
 export const PlainPastePlugin = () => {
   const [editor] = useLexicalComposerContext();
@@ -34,7 +29,7 @@ export const PlainPastePlugin = () => {
           });
           return true;
         },
-        COMMAND_PRIORITY_CRITICAL,
+        COMMAND_PRIORITY_HIGH,
       ),
     [editor],
   );

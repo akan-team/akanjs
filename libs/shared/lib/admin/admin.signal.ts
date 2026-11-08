@@ -5,12 +5,14 @@ import {
   Me,
   makeAdminAccessTokenResponse as makeAccessTokenResponse,
   makeAdminSignoutResponse as makeSignoutResponse,
+  Person,
+  PlatformAdminList,
   readRefreshTokenCookie,
   Staff,
   SuperAdmin,
 } from "@libs/shared/srvkit";
 import { ID, Int } from "akanjs/base";
-import { endpoint, internal, Public, Req, slice } from "akanjs/signal";
+import { endpoint, Ip, internal, Public, Req, slice } from "akanjs/signal";
 import * as cnst from "../cnst";
 import { Err } from "../dict";
 import * as srv from "../srv";
@@ -35,7 +37,7 @@ export class AdminSlice extends slice(
   }),
 ) {}
 
-export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsub, message }) => ({
+export class AdminEndpoint extends endpoint(srv.admin.with(srv.user), ({ query, mutation, pubsub, message }) => ({
   isAdminSystemInitialized: query(Boolean, { guards: [Public], mcp: false }).exec(async function () {
     return await this.adminService.isAdminSystemInitialized();
   }),
@@ -51,20 +53,36 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
     .exec(async function (me) {
       return me ? await this.adminService.getAdmin(me.id) : null;
     }),
-  setAdminPassword: mutation(Boolean, { guards: [Staff], mcp: false })
+  isPlatformAdmin: query(Boolean, { guards: [AdminGuard], mcp: false })
+    .with(Me)
+    .exec((me) => PlatformAdminList.includes(me.id)),
+  setAdminPassword: mutation(Boolean, {
+    guards: [Staff, Person],
+    mcp: false,
+    rateLimit: { calls: 10, by: "account" },
+    errors: { 400: ["admin.error.noAccessToSetPassword", "admin.error.passwordNotMatched"] },
+  })
     .body("adminId", ID)
     .body("password", String)
+    .body("prevPassword", String, { nullable: true })
     .with(Me, { nullable: false })
-    .exec(async function (adminId, password, me) {
+    .exec(async function (adminId, password, prevPassword, me) {
       if (!me.roles.includes("superAdmin") && me.id !== adminId) throw new Err("admin.error.noAccessToSetPassword");
+      if (me.id === adminId) await this.adminService.assertPassword(adminId, prevPassword ?? null);
       await this.adminService.setPassword(adminId, password);
       return true;
     }),
-  signinAdmin: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
+  signinAdmin: mutation(cnst.util.AccessToken, {
+    guards: [Public],
+    mcp: false,
+    rateLimit: { calls: 20 },
+    errors: { 400: ["admin.error.invalidCredentials", "admin.error.tooManySigninAttempts"] },
+  })
     .body("accountId", String)
     .body("password", String)
-    .exec(async function (accountId, password) {
-      return makeAccessTokenResponse(await this.adminService.signinAdmin(accountId, password)) as never;
+    .with(Ip, { nullable: true })
+    .exec(async function (accountId, password, ip) {
+      return makeAccessTokenResponse(await this.adminService.signinAdmin(accountId, password, ip)) as never;
     }),
   signoutAdmin: mutation(cnst.util.AccessToken, { guards: [Staff], mcp: false })
     .with(Account)
@@ -79,7 +97,12 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
       const token = refreshToken ?? readRefreshTokenCookie(req, "admin");
       if (!token) throw new Err("admin.error.noRefreshToken");
       try {
-        return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account)) as never;
+        const readSelf = async (userId: string) => {
+          const user = await this.userService.getUser(userId).catch(() => null);
+          const signable = user ? await this.userService._assertSignable(user).catch(() => null) : null;
+          return signable ? await this.userService.makeSelf(signable) : null;
+        };
+        return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account, readSelf)) as never;
       } catch (error) {
         if (
           !refreshToken &&
@@ -94,13 +117,13 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
   // `mcp: false`: the statement is read-only by construction, but it answers with raw rows rather than a model,
   // so it is the one read that walks past `mask()` — `SELECT * FROM "user"` returns the columns every model
   // response strips. One injected instruction in an operator's agent would be the whole database.
-  runAdminSql: mutation(cnst.InsightRows, { guards: [SuperAdmin], mcp: false })
+  runAdminSql: mutation(cnst.InsightRows, { guards: [SuperAdmin, Person], mcp: false })
     .body("sql", String, { example: 'SELECT COUNT(*) AS total FROM "user"' })
     .body("limit", Int, { nullable: true })
     .exec(async function (sql, limit) {
       return await this.adminService.runInsight(sql, limit);
     }),
-  addAdminRole: mutation(cnst.Admin, { guards: [AdminGuard], mcp: false })
+  addAdminRole: mutation(cnst.Admin, { guards: [AdminGuard, Person], mcp: false })
     .body("adminId", ID)
     .body("role", cnst.AdminRole)
     .with(Me)
@@ -115,7 +138,7 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
       await onChange?.({ actor: me.accountId, adminId, role, verb: "add" });
       return admin;
     }),
-  subAdminRole: mutation(cnst.Admin, { guards: [AdminGuard], mcp: false })
+  subAdminRole: mutation(cnst.Admin, { guards: [AdminGuard, Person], mcp: false })
     .body("adminId", ID)
     .body("role", cnst.AdminRole)
     .with(Me)
@@ -129,5 +152,12 @@ export class AdminEndpoint extends endpoint(srv.admin, ({ query, mutation, pubsu
       const admin = await this.adminService.subRole(adminId, role);
       await onChange?.({ actor: me.accountId, adminId, role, verb: "sub" });
       return admin;
+    }),
+  setAdminRoles: mutation(cnst.Admin, { guards: [AdminGuard, Person], mcp: false })
+    .body("adminId", ID)
+    .body("roles", [cnst.AdminRole])
+    .with(Me)
+    .exec(async function (adminId, roles, me) {
+      return await this.adminService.setRoles(adminId, roles, me);
     }),
 })) {}

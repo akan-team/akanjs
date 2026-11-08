@@ -32,6 +32,7 @@ export { type ButtonVariants, buttonRecipe } from "./button";
 export { type CheckboxVariants, checkboxRecipe } from "./checkbox";
 export { collapseClass, collapseContentClass, collapseTitleRecipe } from "./collapse";
 export { type InputVariants, inputRecipe } from "./input";
+export { menuItemClass, optionItemClass } from "./menu";
 export { type RangeVariants, rangeRecipe } from "./range";
 export {
   type AlertVariants,

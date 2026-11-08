@@ -1,10 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import { appBadgeCache } from "../common/appBadgeCache";
+import { pushColdOpenParam } from "../common/pushColdOpenParam";
 import { pushNavigateMessage } from "../common/pushNavigateMessage";
 import {
   createFirebaseMessagingServiceWorker,
   generatedServiceWorkerBanner,
   normalizeFirebaseClientConfig,
 } from "./firebaseMessagingSw";
+
+interface PushEvent {
+  data: { json: () => unknown } | null;
+  waitUntil: (promise: Promise<unknown>) => void;
+}
 
 interface ClickEvent {
   notification: { data: unknown; close: () => void };
@@ -14,16 +21,33 @@ interface ClickEvent {
 
 //? Runs the worker body against a fake `self` and a stand-in for firebase-messaging-compat whose `messaging()` registers
 //? a click listener that swallows FCM notifications, like `onNotificationClick` in @firebase/messaging's sw build.
-const runWorker = (body: string) => {
+const runWorker = (
+  body: string,
+  openUrls: string[] = [],
+  { visible = false, badgeState = null }: { visible?: boolean; badgeState?: unknown } = {},
+) => {
   const clickListeners: ((event: ClickEvent) => void)[] = [];
+  const pushListeners: ((event: PushEvent) => void)[] = [];
+  const badges: number[] = [];
+  const stored = new Map<string, string>(badgeState ? [[appBadgeCache.path, JSON.stringify(badgeState)]] : []);
   const opened: string[] = [];
+  const posted: unknown[] = [];
+  const windows = openUrls.map((url) => ({
+    url,
+    visibilityState: visible ? "visible" : "hidden",
+    focus: async () => undefined,
+    postMessage: (message: unknown) => {
+      posted.push(message);
+    },
+  }));
   const self = {
     location: { origin: "https://app.example" },
-    addEventListener: (type: string, listener: (event: ClickEvent) => void) => {
-      if (type === "notificationclick") clickListeners.push(listener);
+    addEventListener: (type: string, listener: (event: ClickEvent & PushEvent) => void) => {
+      if (type === "notificationclick") clickListeners.push(listener as (event: ClickEvent) => void);
+      if (type === "push") pushListeners.push(listener as (event: PushEvent) => void);
     },
     clients: {
-      matchAll: async () => [],
+      matchAll: async () => windows,
       openWindow: async (href: string) => {
         opened.push(href);
       },
@@ -43,7 +67,35 @@ const runWorker = (body: string) => {
       return { onBackgroundMessage: () => undefined };
     },
   };
-  new Function("self", "importScripts", "firebase", body)(self, () => undefined, firebase);
+  const navigator = {
+    setAppBadge: async (count: number) => {
+      badges.push(count);
+    },
+  };
+  const caches = {
+    open: async () => ({
+      match: async (path: string) => {
+        const text = stored.get(path);
+        return text === undefined ? undefined : new Response(text);
+      },
+      put: async (path: string, response: Response) => {
+        stored.set(path, await response.text());
+      },
+    }),
+  };
+  new Function("self", "importScripts", "firebase", "navigator", "caches", body)(
+    self,
+    () => undefined,
+    firebase,
+    navigator,
+    caches,
+  );
+  const push = async (payload: unknown) => {
+    const pending: Promise<unknown>[] = [];
+    for (const listener of pushListeners)
+      listener({ data: { json: () => payload }, waitUntil: (promise) => pending.push(promise) });
+    await Promise.all(pending);
+  };
   const click = async (data: unknown) => {
     const pending: Promise<unknown>[] = [];
     let isStopped = false;
@@ -62,7 +114,7 @@ const runWorker = (body: string) => {
     }
     await Promise.all(pending);
   };
-  return { click, opened };
+  return { click, push, opened, posted, badges };
 };
 
 const configOf = () =>
@@ -167,13 +219,20 @@ describe("createFirebaseMessagingServiceWorker", () => {
   test("opens the deep link of a notification the SDK drew, although the SDK listener swallows FCM clicks", async () => {
     const worker = runWorker(createFirebaseMessagingServiceWorker(configOf()));
     await worker.click({ FCM_MSG: { notification: { title: "New reply" }, data: { url: "/en/chat/1" } } });
-    expect(worker.opened).toEqual(["https://app.example/en/chat/1"]);
+    expect(worker.opened).toEqual([`https://app.example/en/chat/1?${pushColdOpenParam}=1`]);
   });
 
   test("opens the deep link of a data-only notification the worker drew itself", async () => {
     const worker = runWorker(createFirebaseMessagingServiceWorker(configOf()));
     await worker.click({ url: "/en/chat/2?focus=1", FCM_MSG: { data: { url: "/en/chat/2?focus=1" } } });
-    expect(worker.opened).toEqual(["https://app.example/en/chat/2?focus=1"]);
+    expect(worker.opened).toEqual([`https://app.example/en/chat/2?focus=1&${pushColdOpenParam}=1`]);
+  });
+
+  test("hands an open window the route as it is, with no cold-open mark", async () => {
+    const worker = runWorker(createFirebaseMessagingServiceWorker(configOf()), ["https://app.example/en/home"]);
+    await worker.click({ url: "/en/chat/3", FCM_MSG: { data: { url: "/en/chat/3" } } });
+    expect(worker.opened).toEqual([]);
+    expect(worker.posted).toEqual([{ type: pushNavigateMessage, url: "/en/chat/3" }]);
   });
 
   test("leaves a click without a deep link to the SDK", async () => {
@@ -182,9 +241,43 @@ describe("createFirebaseMessagingServiceWorker", () => {
     expect(worker.opened).toEqual([]);
   });
 
-  test("applies a badge count only where setAppBadge exists", () => {
-    const body = createFirebaseMessagingServiceWorker(configOf());
-    expect(body).toContain("applyBadge(payload?.data?.badgeCount)");
-    expect(body).toContain("!navigator.setAppBadge");
+  test("sets the count a push names", async () => {
+    const worker = runWorker(createFirebaseMessagingServiceWorker(configOf()));
+    await worker.push({ data: { badgeCount: "7" } });
+    expect(worker.badges).toEqual([7]);
+  });
+
+  test("counts unread pushes per url on the icon for an app that clears them", async () => {
+    const worker = runWorker(createFirebaseMessagingServiceWorker(configOf()), ["https://app.example/ko/office/home"], {
+      visible: true,
+      badgeState: { enabled: true, unread: { "/org/o1/chat/c2": 2 } },
+    });
+    await worker.push({ data: { title: "#chit-chat", url: "/org/o1/chat/c1" } });
+    await worker.push({ data: { title: "#chit-chat", url: "/org/o1/chat/c1" } });
+    expect(worker.badges).toEqual([3, 4]);
+  });
+
+  test("does not count a push for the screen a visible window is reading", async () => {
+    const reading = runWorker(
+      createFirebaseMessagingServiceWorker(configOf()),
+      ["https://app.example/ko/office/org/o1/chat/c1"],
+      { visible: true, badgeState: { enabled: true, unread: {} } },
+    );
+    await reading.push({ data: { title: "#chit-chat", url: "/org/o1/chat/c1" } });
+    expect(reading.badges).toEqual([]);
+
+    const away = runWorker(
+      createFirebaseMessagingServiceWorker(configOf()),
+      ["https://app.example/ko/office/org/o1/chat/c1"],
+      { badgeState: { enabled: true, unread: {} } },
+    );
+    await away.push({ data: { title: "#chit-chat", url: "/org/o1/chat/c1" } });
+    expect(away.badges).toEqual([1]);
+  });
+
+  test("leaves the icon alone for an app that never turned counting on", async () => {
+    const worker = runWorker(createFirebaseMessagingServiceWorker(configOf()));
+    await worker.push({ data: { title: "Mention" } });
+    expect(worker.badges).toEqual([]);
   });
 });

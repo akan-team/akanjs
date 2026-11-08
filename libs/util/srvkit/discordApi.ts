@@ -2,6 +2,7 @@ import { adapt } from "akanjs/service";
 import { Err } from "../lib/dict";
 import type { ModulesOptions } from "../lib/option";
 import type { DiscordEmbed, SendWebhookMessageWithEmbedType } from "./discordApi.helper";
+import { PreviewMode } from "./previewMode";
 import { SignalTestHarness } from "./signalTestHarness";
 
 export interface DiscordApiOptions {
@@ -16,6 +17,10 @@ export class DiscordApi extends adapt("discordApi", ({ env }) => ({
     return !!this.options;
   }
   async #post(body: { content: string; embeds?: DiscordEmbed[] }) {
+    if (PreviewMode.isOn()) {
+      this.logger.info(`webhook post skipped in a preview: ${body.embeds?.length ?? 0} embed(s)`);
+      return;
+    }
     if (!this.options) throw new Err("util.error.adaptorNotConfigured", { adaptor: "DiscordApi", option: "discord" });
     if (SignalTestHarness.isRunning()) {
       this.logger.debug(`webhook post suppressed in the signal-test harness: ${body.embeds?.length ?? 0} embed(s)`);

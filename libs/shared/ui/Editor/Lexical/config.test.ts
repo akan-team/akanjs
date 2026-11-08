@@ -175,3 +175,28 @@ describe("registered editor nodes", () => {
     ]);
   });
 });
+
+describe("createEditorConfig", () => {
+  let createEditorConfig: typeof import("./config").createEditorConfig;
+  beforeAll(async () => {
+    ({ createEditorConfig } = await import("./config"));
+  });
+
+  test("hands LexicalComposer `undefined` for an empty field under seedParagraph, which it seeds with an empty paragraph", () => {
+    const emptyDocument = { root: { type: "root", version: 1, children: [] } };
+    for (const value of [null, undefined, [], "", emptyDocument])
+      expect(
+        createEditorConfig({ editable: true, initialJson: value, seedParagraph: true }).editorState,
+      ).toBeUndefined();
+  });
+
+  test("leaves an empty root bare without seedParagraph, as a collaborative editor and a read-only render need", () => {
+    expect(createEditorConfig({ editable: true, initialJson: null }).editorState).toBeNull();
+    expect(createEditorConfig({ editable: false, initialJson: [] }).editorState).toBeNull();
+  });
+
+  test("still loads stored content under seedParagraph", () => {
+    const config = createEditorConfig({ editable: true, initialJson: "hello", seedParagraph: true });
+    expect(typeof config.editorState).toBe("function");
+  });
+});

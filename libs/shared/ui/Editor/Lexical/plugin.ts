@@ -2,7 +2,7 @@ import type { Klass, LexicalEditor, LexicalNode } from "lexical";
 import type { ReactNode } from "react";
 
 import type { EditorFeature } from "./feature";
-import type { MentionSource } from "./mention.type";
+import type { MentionLinkReader, MentionSource } from "./mention.type";
 
 /** The slash menu's sections, in the order it draws them. */
 export const editorSlashGroups = ["text", "list", "media", "structure", "reference"] as const;
@@ -38,6 +38,8 @@ export interface EditorSlashOption {
  * - `mentionSources` — mentionable domain models for the `@` menu. Unlike `nodes`
  *   these are re-read on every render, because `MentionNode` is registered with
  *   the editor itself and only the search behavior arrives here.
+ * - `readMentionLink` — recognises a pasted link to one of the app's own
+ *   documents, which the editor then swaps for that document's chip.
  * - `render` — returns extra plugin components rendered inside `<LexicalComposer>`
  *   (e.g. a mutation listener for cleanup on node deletion). May freely use
  *   `useLexicalComposerContext` and the host lib's own hooks/stores.
@@ -47,6 +49,7 @@ export interface EditorPlugin {
   features?: readonly EditorFeature[];
   slashOptions?: readonly EditorSlashOption[];
   mentionSources?: readonly MentionSource[];
+  readMentionLink?: MentionLinkReader;
   render?: () => ReactNode;
 }
 
@@ -65,3 +68,7 @@ export const collectPluginSlashOptions = (plugins: readonly EditorPlugin[] | und
 /** Flatten every plugin's mentionable models for `MentionPlugin`. */
 export const collectPluginMentionSources = (plugins: readonly EditorPlugin[] | undefined): MentionSource[] =>
   (plugins ?? []).flatMap((plugin) => [...(plugin.mentionSources ?? [])]);
+
+/** Every plugin's link reader, for `MentionPastePlugin`. */
+export const collectPluginMentionLinkReaders = (plugins: readonly EditorPlugin[] | undefined): MentionLinkReader[] =>
+  (plugins ?? []).flatMap((plugin) => (plugin.readMentionLink ? [plugin.readMentionLink] : []));

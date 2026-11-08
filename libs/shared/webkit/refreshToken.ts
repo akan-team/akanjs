@@ -1,6 +1,7 @@
+import { sessionCookieMaxAgeSec } from "@libs/shared/common";
 import { getEnv } from "akanjs/base";
-import { getAuthToken, secretStorage, setAuth } from "akanjs/client";
-import { decodeJwtPayload } from "akanjs/common";
+import { getAuthToken, getSessionClaims, secretStorage, setAuth } from "akanjs/client";
+import { authTokenKey, decodeJwtPayload } from "akanjs/common";
 
 type RefreshScope = "user" | "admin";
 type RefreshCall = (refreshToken: string | null) => Promise<{ jwt: string; refreshToken?: string | null }>;
@@ -27,8 +28,22 @@ export const loadRefreshToken = async (scope: RefreshScope): Promise<string | nu
   return (await secretStorage.getItem(refreshTokenKey(scope))) ?? null;
 };
 
-const isFresh = (scope: RefreshScope) => {
+// `setAuth` writes a session cookie, which a phone drops whenever the OS ends the browser or home-screen app. Same name,
+// path and flags as `setAuth`'s, so this replaces that cookie rather than adding a second one.
+export const persistAuthCookie = () => {
+  if (typeof document === "undefined" || isCsrClient() || window.location.protocol === "app:") return;
+  //? The server holds this session in an HttpOnly cookie with its own Max-Age; a page write would only add a readable copy.
+  if (getSessionClaims()) return;
   const jwt = getAuthToken();
+  if (!jwt) return;
+  // biome-ignore lint/plugin lint/suspicious/noDocumentCookie: setCookie takes no Max-Age; app:// pages returned above.
+  document.cookie = `${authTokenKey()}=${jwt}; path=/; SameSite=lax; Secure; Max-Age=${sessionCookieMaxAgeSec}`;
+};
+
+export const sessionTokenOf = () => getAuthToken() ?? getSessionClaims();
+
+const isFresh = (scope: RefreshScope) => {
+  const jwt = sessionTokenOf();
   if (!jwt) return false;
   try {
     const payload = decodeJwtPayload<{ exp?: number; self?: unknown; me?: unknown }>(jwt);
@@ -50,6 +65,7 @@ export const refreshSession = (scope: RefreshScope, refresh: RefreshCall, { forc
     if (!force && isFresh(scope)) return;
     const accessToken = await refresh(await loadRefreshToken(scope));
     setAuth({ jwt: accessToken.jwt });
+    persistAuthCookie();
     await saveRefreshToken(scope, accessToken.refreshToken);
   };
   const locks = typeof navigator === "undefined" ? undefined : navigator.locks;

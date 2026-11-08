@@ -9,7 +9,7 @@ Built on `@libs/util`; every app mounts it.
 |---|---|
 | `@libs/shared/server` | server barrel: `option`, services, signals, documents |
 | `@libs/shared/client` | client barrel: `cnst`, `fetch`, `st`, module components (`User`, `Admin`, `File`, …) |
-| `@libs/shared/srvkit` | guards (`Every`, `User`, `Staff`, `Admin`, `SuperAdmin`, `SelfOrAdmin`, `SignupHolder`, `Person`, `SSOGoogle` and the other `SSO*`), internal args (`Self`, `Me`, `Account`, `AgentCall`, `SignupUserId`), caller helpers (`accountOf`, `isAdmin`, `isStaff`, `activeUserId`, `isAgentCall`), refresh sessions, `SignupToken`, `SsoFlow`, `AccountMiddleware` |
+| `@libs/shared/srvkit` | guards (`Every`, `User`, `Staff`, `Admin`, `SuperAdmin`, `SelfOrAdmin`, `SelfOrStaff`, `SignupHolder`, `Person`, `SSOGoogle` and the other `SSO*`), internal args (`Self`, `Me`, `Account`, `AgentCall`, `SignupUserId`), caller helpers (`accountOf`, `isAdmin`, `isStaff`, `activeUserId`, `isAgentCall`), refresh sessions, `SignupToken`, `SsoFlow`, `AccountMiddleware` |
 | `@libs/shared/webkit` | browser helpers: `refreshSession`, signup-token storage, `useAutoSubmit`, `useYjsRelay`, `addFileUntilActive` |
 | `@libs/shared/common` | isomorphic helpers: `RichText` (editor document codec), `RichUrl`, `MentionGrammar`, `withRedirectQuery`, `safeRedirectPath`, `idOf`, `pkcePair`, `getQueryMeta` |
 | `@libs/shared/ui` | `Field`, `Editor`, `Markdown`, `Administrator`, `Auth`, `Only`, `StatTile`, `UserLeave` |

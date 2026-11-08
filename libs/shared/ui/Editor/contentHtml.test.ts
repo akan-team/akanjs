@@ -34,6 +34,18 @@ describe("ContentHtml", () => {
     expect(html).toContain("<code");
   });
 
+  test("keeps the space between two adjacent formatted runs", () => {
+    const html = ContentHtml.render(doc(paragraph(text("ㅇㅇ", 1), text(" "), text("ㅇㅇㅇㅇ", 3))));
+    expect(html?.replace(/<[^>]+>/g, "")).toBe("ㅇㅇ ㅇㅇㅇㅇ");
+  });
+
+  test("renders a fenced code block as one pre", () => {
+    const html = ContentHtml.render(doc({ type: "code", version: 1, children: [text("const a = 1;\nrun();")] }));
+    expect(html).toContain("<pre");
+    expect(html).toContain("const a = 1;\nrun();");
+    expect(html).not.toContain("```");
+  });
+
   test("draws an empty paragraph as a line break so it keeps its height", () => {
     expect(ContentHtml.render(doc(paragraph()))).toContain("<br />");
   });
@@ -166,6 +178,47 @@ describe("ContentHtml", () => {
     for (const href of ["https://evil.com", "//evil.com", "/\\evil.com", "javascript:x"]) {
       expect(chip(href)).not.toContain("href=");
       expect(chip(href)).toContain("ada");
+    }
+  });
+
+  test("opens a link to another site in a new tab and keeps one on this site in place", () => {
+    const link = (url: string) =>
+      ContentHtml.render(doc(paragraph({ type: "link", version: 1, url, children: [text("go")] })));
+    for (const url of ["https://example.com/a", "http://example.com", "//example.com/a"])
+      expect(link(url)).toContain('target="_blank" rel="noreferrer noopener"');
+    for (const url of ["/org/1", "?tab=2", "#top", "mailto:a@b.com"]) expect(link(url)).not.toContain("target=");
+    const autolink = ContentHtml.render(
+      doc(paragraph({ type: "autolink", version: 1, url: "https://example.com", children: [text("example.com")] })),
+    );
+    expect(autolink).toContain('target="_blank"');
+  });
+
+  test("draws a mention's avatar the way the editor's chip does", () => {
+    const chip = (imageUrl: string | null, href?: string) =>
+      ContentHtml.render(
+        doc(paragraph({ type: "akan-mention", version: 1, label: "ada", refName: "user", href, imageUrl, format: 0 })),
+      );
+    const html = chip("https://cdn.example.com/u1.png");
+    expect(html).toContain("before:[background-image:var(--mention-avatar)]");
+    expect(html).toContain('style="--mention-avatar: url(&quot;https://cdn.example.com/u1.png&quot;)"');
+    expect(chip("https://cdn.example.com/u1.png", "/user/1")).toContain('href="/user/1"');
+    expect(chip(null)).not.toContain("--mention-avatar");
+  });
+
+  // The url sits inside a quoted CSS url() in a style attribute, so anything that could close it draws no avatar.
+  test("draws no avatar from a url that is not media or could break out of the style", () => {
+    const chip = (imageUrl: string) =>
+      ContentHtml.render(doc(paragraph({ type: "akan-mention", version: 1, label: "ada", imageUrl, format: 0 })));
+    for (const imageUrl of [
+      "javascript:alert(1)",
+      'https://a.com/x.png") ; background:red',
+      "https://a.com/x.png'",
+      "https://a.com/(x).png",
+      "https://a.com/x\\.png",
+      "https://a.com/x y.png",
+    ]) {
+      expect(chip(imageUrl)).not.toContain("--mention-avatar");
+      expect(chip(imageUrl)).toContain("ada");
     }
   });
 

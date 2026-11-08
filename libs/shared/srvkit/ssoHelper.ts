@@ -1,6 +1,9 @@
-import { hostOnlyCookieKey } from "@libs/shared/common";
+import { hostOnlyCookieKey, sessionCookieMaxAgeSec } from "@libs/shared/common";
 import { getEnv } from "akanjs/base";
 import { authTokenKey, CookieJar, retiredAuthTokenKeys, SessionCookies } from "akanjs/common";
+import { SessionCookie } from "akanjs/fetch";
+
+import { SignupToken } from "./signupToken";
 
 export interface SsoCookie {
   signupToken?: string;
@@ -52,16 +55,17 @@ export const expireCookie = (key: string, httpOnly = false) =>
 export const setHttpOnlyCookie = (key: string, value: string, maxAgeSec?: number) =>
   `${key}=${encodeURIComponent(value)}; ${cookieAttrs()}; HttpOnly${maxAgeSec ? `; Max-Age=${maxAgeSec}` : ""}`;
 
-const isRefreshTokenCookieKey = (key: string) => {
-  const name = key.startsWith("__Host-") ? key.slice("__Host-".length) : key;
-  return [userRefreshTokenLegacyKey, adminRefreshTokenLegacyKey].some(
-    (legacy) => name === legacy || name.startsWith(`${legacy}:`),
-  );
+const appendSessionCookies = (headers: Headers, jwt: string) => {
+  for (const setCookie of SessionCookie.issue(jwt, { maxAge: sessionCookieMaxAgeSec }))
+    headers.append("Set-Cookie", setCookie);
 };
 
 const appendRefreshTokenCookies = (headers: Headers, kind: RefreshKind, refreshToken?: string) => {
   const { scoped, retired } = refreshTokenKeys(kind);
-  headers.append("Set-Cookie", refreshToken ? setHttpOnlyCookie(scoped, refreshToken) : expireCookie(scoped, true));
+  headers.append(
+    "Set-Cookie",
+    refreshToken ? setHttpOnlyCookie(scoped, refreshToken, sessionCookieMaxAgeSec) : expireCookie(scoped, true),
+  );
   for (const key of retired) headers.append("Set-Cookie", expireCookie(key, true));
 };
 
@@ -78,8 +82,8 @@ export const makeSsoRedirectResponse = (
 
   if (cookie) {
     for (const [key, value] of Object.entries(cookie)) {
-      const httpOnly = isRefreshTokenCookieKey(key) ? "; HttpOnly" : "";
-      headers.append("Set-Cookie", `${key}=${encodeURIComponent(value)}; ${cookieAttrs()}${httpOnly}`);
+      if (key === authTokenKey()) appendSessionCookies(headers, value);
+      else headers.append("Set-Cookie", setHttpOnlyCookie(key, value, sessionCookieMaxAgeSec));
     }
     for (const key of retiredAuthTokenKeys()) headers.append("Set-Cookie", expireCookie(key));
     for (const kind of ["user", "admin"] as const)
@@ -90,26 +94,42 @@ export const makeSsoRedirectResponse = (
   return new Response(null, { status: 302, headers });
 };
 
-export const makeAccessTokenResponse = (accessToken: AccessTokenResponse) => {
+interface AccessTokenResponseOption {
+  endsSignup?: boolean;
+}
+
+const makeTokenResponse = (
+  accessToken: AccessTokenResponse,
+  kind: RefreshKind,
+  { endsSignup = false }: AccessTokenResponseOption,
+) => {
   const headers = new Headers({ "Content-Type": "application/json" });
-  if (accessToken.refreshToken) appendRefreshTokenCookies(headers, "user", accessToken.refreshToken);
+  if (accessToken.jwt) appendSessionCookies(headers, accessToken.jwt);
+  if (accessToken.refreshToken) appendRefreshTokenCookies(headers, kind, accessToken.refreshToken);
+  if (endsSignup) headers.append("Set-Cookie", expireCookie(SignupToken.cookieKey(), true));
   return new Response(JSON.stringify(accessToken), { headers });
 };
 
-export const makeSignoutResponse = (accessToken: AccessTokenResponse) => {
+const makeTokenEndResponse = (accessToken: AccessTokenResponse, kind: RefreshKind) => {
   const headers = new Headers({ "Content-Type": "application/json" });
-  appendRefreshTokenCookies(headers, "user");
+  for (const setCookie of SessionCookie.expire()) headers.append("Set-Cookie", setCookie);
+  appendRefreshTokenCookies(headers, kind);
   return new Response(JSON.stringify(accessToken), { headers });
 };
 
-export const makeAdminAccessTokenResponse = (accessToken: AccessTokenResponse) => {
-  const headers = new Headers({ "Content-Type": "application/json" });
-  if (accessToken.refreshToken) appendRefreshTokenCookies(headers, "admin", accessToken.refreshToken);
-  return new Response(JSON.stringify(accessToken), { headers });
-};
+export const makeAccessTokenResponse = (accessToken: AccessTokenResponse, option: AccessTokenResponseOption = {}) =>
+  makeTokenResponse(accessToken, "user", option);
 
-export const makeAdminSignoutResponse = (accessToken: AccessTokenResponse) => {
+export const makeSignoutResponse = (accessToken: AccessTokenResponse) => makeTokenEndResponse(accessToken, "user");
+
+export const makeAdminAccessTokenResponse = (accessToken: AccessTokenResponse) =>
+  makeTokenResponse(accessToken, "admin", {});
+
+export const makeAdminSignoutResponse = (accessToken: AccessTokenResponse) =>
+  makeTokenEndResponse(accessToken, "admin");
+
+export const makeSignupTicketResponse = (ticket: { signupToken: string }) => {
   const headers = new Headers({ "Content-Type": "application/json" });
-  appendRefreshTokenCookies(headers, "admin");
-  return new Response(JSON.stringify(accessToken), { headers });
+  headers.append("Set-Cookie", setHttpOnlyCookie(SignupToken.cookieKey(), ticket.signupToken, SignupToken.seconds));
+  return new Response(JSON.stringify(ticket), { headers });
 };

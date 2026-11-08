@@ -99,10 +99,10 @@ export class ObjectStorageApi implements StorageBackend {
     }
     return allKeys;
   }
-  async uploadDataFromLocal({ path, localPath, meta, access = "public" }: UploadRequest) {
+  async uploadDataFromLocal({ path, localPath, mimetype, meta, access = "public" }: UploadRequest) {
     const Key = `${this.root}/${path}`;
     await this.#s3.file(Key).write(Bun.file(localPath), {
-      type: this.#getContentType(path),
+      type: mimetype ?? this.#getContentType(path),
       ...this.#getAclOption(access),
     });
     return `${this.urlPrefix}/${Key}`;

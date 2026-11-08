@@ -1,16 +1,16 @@
 import {
+  CacheLock,
   createRefreshSession,
   hashPassword,
-  isPasswordMatch,
   type RotateRefreshSessionOptions,
   revokeRefreshSessionBySid,
   revokeRefreshSessions,
   rotateRefreshSession,
+  SignChallenge,
 } from "@libs/shared/srvkit";
 import { randomString } from "@libs/util/common";
-import { createOpaqueToken, hashToken } from "@libs/util/srvkit";
 import { type Dayjs, dayjs } from "akanjs/base";
-import { plainFieldsOf } from "akanjs/common";
+import { isEmail, plainFieldsOf } from "akanjs/common";
 import { by, from, into, type SchemaOf } from "akanjs/document";
 
 import * as cnst from "../cnst";
@@ -58,12 +58,14 @@ export class UserFilter extends from(cnst.User, (filter) => ({
         return { ...lastLoginAtQuery, ...(statuses?.length ? { status: q.oneOf(statuses) } : {}) };
       }),
   },
-  sort: {},
+  sort: {
+    latestLoginAt: { lastLoginAt: -1 },
+  },
 })) {}
 
 export class User extends by(cnst.User) {
   //? Must equal the `maxlength` of `nickname` on cnst.UserInput.
-  static readonly nicknameMaxLength = 12;
+  static readonly nicknameMaxLength = 20;
   static assertNickname(nickname: string) {
     const trimmed = nickname.trim();
     if (!trimmed || trimmed.length > User.nicknameMaxLength)
@@ -76,12 +78,10 @@ export class User extends by(cnst.User) {
   }
   addRole(role: cnst.UserRole["value"]) {
     if (!this.roles.includes(role)) this.roles = [...this.roles, role];
-    // void (this.constructor as UserModel["User"]).addSummary(role);
     return this;
   }
   subRole(role: cnst.UserRole["value"]) {
     this.roles = this.roles.filter((r) => r !== role);
-    // void (this.constructor as UserModel["User"]).subSummary(role);
     return this;
   }
   addBadgeCount() {
@@ -91,19 +91,6 @@ export class User extends by(cnst.User) {
   subBadgeCount() {
     this.badgeCount--;
     if (this.badgeCount < 0) this.badgeCount = 0;
-    return this;
-  }
-  approveImages() {
-    this.images = this.appliedImages;
-    this.appliedImages = [];
-    if (["reapplied", "applied"].includes(this.profileStatus)) this.profileStatus = "approved";
-    return this;
-  }
-  // profile: any → applied, once the active user has uploaded images to be judged.
-  applyUserProfile() {
-    if (this.status !== "active") throw new Err("user.error.profileExamNotAvailable");
-    if (!this.appliedImages.length) throw new Err("user.error.imagesNotUploaded");
-    this.profileStatus = "applied";
     return this;
   }
   // active or dormant → restricted until `until`; restricting a restricted account moves its end.
@@ -121,31 +108,12 @@ export class User extends by(cnst.User) {
     this.restrictInfo = undefined;
     return this;
   }
-  // profile: applied → approved; the applied images become the profile, so an empty application approves nothing.
-  approveUserProfile() {
-    if (this.status !== "active") throw new Err("user.error.profileExamNotAvailable");
-    if (!this.appliedImages.length) throw new Err("user.error.imagesNotUploaded");
-    this.images = this.appliedImages;
-    this.image = this.appliedImages[0];
-    this.appliedImages = [];
-    this.profileStatus = "approved";
-    return this;
-  }
 }
 
 export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
-  //? bcrypt reads at most 72 bytes, so anything past them would be silently ignored.
-  private static readonly passwordMaxBytes = 72;
-  private static readonly passwordMinLength = 7;
-  private static readonly maxCodeFails = 10;
-  private static readonly maxSigninFails = 10;
-
   static override _onSchema(schema: SchemaOf<UserModel, User>) {
     schema.pre<User>("save", function (next) {
-      if (this.isModified("images")) {
-        this.imageNum = this.images.length;
-        if (this.profileStatus === "active") this.profileStatus = "prepare";
-      }
+      if (this.isModified("images")) this.imageNum = this.images.length;
     });
   }
   async getActiveUser(userId: string) {
@@ -164,45 +132,23 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     return user?.status === "prepare" ? user : null;
   }
   async createPrepareUser() {
-    return await this.createUser({ nickname: "", images: [], appliedImages: [] });
+    return await this.createUser({ nickname: "", images: [] });
   }
-  // Only the hash is kept and the first use consumes it; a sign-in token and a password token never stand in for each other.
-  async setSignToken(userId: string, purpose: "signin" | "password", expireAt = dayjs().add(10, "minute")) {
-    const signToken = createOpaqueToken();
-    await this.userCache.set(`${purpose}Token`, hashToken(signToken), userId, { expireAt });
-    return signToken;
-  }
-  async consumeSignToken(purpose: "signin" | "password", signToken: string) {
-    return (await this.userCache.getDel<string>(`${purpose}Token`, hashToken(signToken))) ?? null;
-  }
-  // A fixed window per key; the count expires with the window it started.
-  async takeSendSlot(topic: string, key: string, limit: number, windowEnd = dayjs().add(1, "day")) {
-    return (await this.userCache.incr(topic, hashToken(key), 1, { expireAt: windowEnd })) <= limit;
-  }
-  async isSigninLocked(accountId: string) {
-    const fails = Number((await this.userCache.get<number>("signinFails", hashToken(accountId))) ?? 0);
-    return fails >= UserModel.maxSigninFails;
-  }
-  async failSignin(accountId: string) {
-    await this.userCache.incr("signinFails", hashToken(accountId), 1, { expireAt: dayjs().add(15, "minute") });
-  }
-  async clearSigninFailures(accountId: string) {
-    await this.userCache.delete("signinFails", hashToken(accountId));
-  }
-  // Written just before a removal: once removedAt is set the row is unreadable, so this is all a re-signup can check.
-  async recordLeave(keys: string[], at = dayjs()) {
-    await Promise.all(
-      keys.map((key) => this.userCache.set("leftAt", hashToken(key), at.valueOf(), { expireAt: at.add(1, "year") })),
-    );
+  get signChallenge() {
+    return new SignChallenge(this.userCache);
   }
   async assertResignable(key: string, resignupDays: number) {
-    if (!resignupDays) return;
-    const leftAt = await this.userCache.get<number>("leftAt", hashToken(key));
-    if (leftAt && dayjs(Number(leftAt)).add(resignupDays, "day").isAfter(dayjs()))
-      throw new Err("user.error.resignupNotAvailable", { days: resignupDays });
+    await this.signChallenge.assertResignable(key, resignupDays);
+  }
+  async writeLeaveInfo(userId: string, leaveInfo: db.LeaveInfo) {
+    await this.User.updateById(userId, { leaveInfo: plainFieldsOf(leaveInfo) }, { withRemoved: true });
   }
   async getLeaveKeys(userId: string) {
-    const { accountId, phone } = (await this.User.pickById(userId, { accountId: true, phone: true })) as {
+    const { accountId, phone } = ((await this.User.findById(
+      userId,
+      { accountId: true, phone: true },
+      { withRemoved: true },
+    )) ?? {}) as {
       accountId?: string;
       phone?: string;
     };
@@ -249,140 +195,59 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   async setAccountIdInPrepareUser(userId: string, accountId: string, resignupDays = 0) {
     const userExists = await this.existsByAccountId(accountId, ["active", "dormant", "restricted"]);
     if (userExists) throw new Err("user.error.accountIdAlreadyExists");
-    await this.assertResignable(accountId, resignupDays);
-    await this.User.updateMany({ accountId, status: "prepare" }, ({ unset }) => ({ accountId: unset() }));
-    // A verified email belongs to the address it was sent to, so a new address starts unverified again.
-    await this.User.updateOne({ id: userId }, ({ pull }) => ({ verifies: pull("email") }));
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ pull }) => ({
-      accountId,
-      verifies: pull("password"),
-    }));
-    return !!modifiedCount;
+    await this.signChallenge.assertResignable(accountId, resignupDays);
+    return await this.claimAccountId(userId, accountId, await this.verifiesKeptOnAccountId(userId, accountId));
   }
+  // Verifies other than phone and wallet vouch for the accountId they were earned under, so a new id drops them.
+  private async verifiesKeptOnAccountId(userId: string, accountId: string) {
+    const user = (await this.User.pickById(userId, { accountId: true, verifies: true })) as Pick<User, "verifies"> & {
+      accountId?: string | null;
+    };
+    if (user.accountId === accountId) return user.verifies;
+    return user.verifies.filter((verify) => verify === "phone" || verify === "wallet");
+  }
+  // An email proof vouches for the address it was earned under, so the new address starts without one.
   async setAccountIdInActiveUser(userId: string, accountId: string) {
     const userExists = await this.existsByAccountId(accountId, ["active", "dormant", "restricted"]);
     if (userExists) throw new Err("user.error.accountIdAlreadyExists");
-    await this.User.updateMany({ accountId, status: "prepare" }, ({ unset }) => ({ accountId: unset() }));
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { accountId });
+    const { verifies } = (await this.User.pickById(userId, { verifies: true })) as Pick<User, "verifies">;
+    return await this.claimAccountId(
+      userId,
+      accountId,
+      verifies.filter((verify) => !cnst.Verify.isEmailProof(verify)),
+    );
+  }
+  // The id leaves every draft that typed it, taking a verify earned under it along when one is named.
+  private async claimAccountId(
+    userId: string,
+    accountId: string,
+    verifies: cnst.Verify["value"][],
+    droppedVerify?: cnst.Verify["value"],
+  ) {
+    await this.User.updateMany({ accountId, status: "prepare" }, ({ unset, pull }) =>
+      droppedVerify ? { accountId: unset(), verifies: pull(droppedVerify) } : { accountId: unset() },
+    );
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, { accountId, verifies });
     return !!modifiedCount;
   }
-  static assertPassword(password: string) {
-    const bytes = new TextEncoder().encode(password).length;
-    if (password.length < UserModel.passwordMinLength || bytes > UserModel.passwordMaxBytes)
-      throw new Err("user.error.invalidPasswordLength", { min: UserModel.passwordMinLength });
-  }
   async setPasswordInPrepareUser(userId: string, accountId: string, password: string) {
-    UserModel.assertPassword(password);
+    SignChallenge.assertPassword(password);
     const { accountId: existingAccountId } = await this.User.pickById(userId, { accountId: true });
     if (!existingAccountId) throw new Err("user.error.noAccountIdInUser");
     if (existingAccountId !== accountId) throw new Err("user.error.invalidAccountId");
-    const hashedPassword = await hashPassword(password);
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
-      password: hashedPassword,
-      verifies: addToSet("password"),
-    }));
-    return !!modifiedCount;
-  }
-  // Every miss looks the same to the caller, so a sign-in cannot tell which account ids exist.
-  async findUserByPassword(accountId: string, password: string) {
-    const auth = (await this.findByAccountId(accountId, ["active", "dormant", "restricted"], {
-      select: { accountId: true, password: true },
-    })) as { id: string; password?: string } | null;
-    if (!auth?.password || !(await isPasswordMatch(password, auth.password))) return null;
-    return await this.getUser(auth.id);
-  }
-  async getUserByPassword(accountId: string, password: string) {
-    const auth = (await this.findByAccountId(accountId, ["active", "dormant", "restricted"], {
-      select: { accountId: true, password: true },
-    })) as { accountId: string; password: string } | null;
-    if (!auth) throw new Err("user.error.noAccount");
-    if (!auth.accountId) throw new Err("user.error.noAccountIdInUser");
-    if (!auth.password) throw new Err("user.error.noPasswordInUser");
-    const isMatched = await isPasswordMatch(password, auth.password);
-    if (!isMatched) throw new Err("user.error.wrongPassword");
-    const user = await this.pickByAccountId(accountId);
-    return user;
+    return await this.setPasswordInActiveUser(userId, password);
   }
   async setPasswordInActiveUser(userId: string, password: string) {
-    UserModel.assertPassword(password);
+    SignChallenge.assertPassword(password);
+    return await this.storePassword(userId, password);
+  }
+  async storePassword(userId: string, password: string) {
     const hashedPassword = await hashPassword(password);
     const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
       password: hashedPassword,
       verifies: addToSet("password"),
     }));
     return !!modifiedCount;
-  }
-  async logResetTime(userId: string, at = dayjs()) {
-    await this.userCache.set("lastResetAt", userId, at.toDate().getTime(), { expireAt: at.add(3, "minute") });
-  }
-  async isResetable(userId: string) {
-    const lastResetTime = await this.userCache.get<number>("lastResetAt", userId);
-    const lastResetAt = lastResetTime ? dayjs(lastResetTime) : undefined;
-    const isResetable = !lastResetAt || lastResetAt.isBefore(dayjs().subtract(3, "minute"));
-    return isResetable;
-  }
-  // A reset only offers a second password; the stored one changes when the mailbox owner signs in with it, so
-  // asking for a reset cannot lock the account out.
-  async setResetPassword(userId: string, password: string, expireAt = dayjs().add(30, "minute")) {
-    await this.userCache.set("resetPassword", userId, await hashPassword(password), { expireAt });
-  }
-  async consumeResetPassword(accountId: string, password: string) {
-    const userId = await this.findIdByAccountId(accountId, ["active"]);
-    if (!userId) return null;
-    const hashedPassword = await this.userCache.get<string>("resetPassword", userId);
-    if (!hashedPassword || !(await isPasswordMatch(password, hashedPassword))) return null;
-    await this.userCache.delete("resetPassword", userId);
-    await this.setPasswordInActiveUser(userId, password);
-    await this.revokeRefreshSessions(userId);
-    return await this.getUser(userId);
-  }
-  // One live code per account and purpose: a new request replaces the old one instead of adding a second guess.
-  async registerPhoneCode(userId: string, phone: string, purpose: string, phoneCode: string) {
-    await this.userCache.set("phoneCode", `${userId}:${purpose}`, `${phone}:${hashToken(phoneCode)}`, {
-      expireAt: dayjs().add(3, "minute"),
-    });
-  }
-  async isPhoneCodeValid(userId: string, phone: string, purpose: string, phoneCode: string) {
-    await this.assertCodeAttemptsLeft(userId);
-    const stored = await this.userCache.get<string>("phoneCode", `${userId}:${purpose}`);
-    if (stored !== `${phone}:${hashToken(phoneCode)}`) {
-      await this.failCodeAttempt(userId);
-      return false;
-    }
-    await this.userCache.delete("phoneCode", `${userId}:${purpose}`);
-    await this.userCache.delete("codeFails", userId);
-    return true;
-  }
-  // Misses count for a day however many codes were sent, so asking for a fresh code never resets the guesses.
-  private async assertCodeAttemptsLeft(userId: string) {
-    const fails = Number((await this.userCache.get<number>("codeFails", userId)) ?? 0);
-    if (fails >= UserModel.maxCodeFails) throw new Err("user.error.tooManyCodeFailures");
-  }
-  private async failCodeAttempt(userId: string) {
-    await this.userCache.incr("codeFails", userId, 1, { expireAt: dayjs().add(1, "day") });
-  }
-  async assertPhoneOfUser(userId: string, phone: string) {
-    const { phone: storedPhone } = (await this.User.pickById(userId, { phone: true })) as { phone?: string };
-    if (!storedPhone || storedPhone !== phone) throw new Err("user.error.invalidPhoneNumber");
-  }
-  async registerEmailCode(userId: string, accountId: string, emailCode: string) {
-    const sendNum = (await this.userCache.get<number>("emailCodeSends", accountId)) ?? 0;
-    if (sendNum >= 5) throw new Err("user.error.tooManyEmailCodes");
-    await this.userCache.set("emailCodeSends", accountId, sendNum + 1, { expireAt: dayjs().add(1, "hour") });
-    await this.userCache.set("emailCode", userId, `${accountId}:${hashToken(emailCode)}`, {
-      expireAt: dayjs().add(10, "minute"),
-    });
-  }
-  async isEmailCodeValid(userId: string, accountId: string, emailCode: string) {
-    await this.assertCodeAttemptsLeft(userId);
-    const existingEmailCode = await this.userCache.get<string>("emailCode", userId);
-    if (existingEmailCode !== `${accountId}:${hashToken(emailCode)}`) {
-      await this.failCodeAttempt(userId);
-      return false;
-    }
-    await this.userCache.delete("emailCode", userId);
-    await this.userCache.delete("codeFails", userId);
-    return true;
   }
   async verifyEmailInPrepareUser(userId: string, accountId: string) {
     const { modifiedCount } = await this.User.updateOne({ id: userId, accountId }, ({ addToSet }) => ({
@@ -390,10 +255,30 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     }));
     return !!modifiedCount;
   }
+  //? The accountId is proven the way sign-up proves it; any other address, or one the accountId just moved off, is
+  //? listed beside it and never signs in.
+  async addVerifiedEmail(userId: string, email: string) {
+    const accountId = await this.getAccountId(userId, false);
+    if (accountId?.trim().toLowerCase() === email && (await this.verifyEmailInPrepareUser(userId, accountId))) return;
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
+      verifiedEmails: addToSet(email),
+    }));
+    if (!modifiedCount) throw new Err("user.error.emailVerifyNotSaved");
+  }
+  async removeVerifiedEmail(userId: string, email: string) {
+    if (!(await this.getVerifiedEmails(userId)).includes(email)) throw new Err("user.error.verifiedEmailNotFound");
+    await this.User.updateOne({ id: userId }, ({ pull }) => ({ verifiedEmails: pull(email) }));
+  }
+  async getVerifiedEmails(userId: string) {
+    const { verifiedEmails } = (await this.User.pickById(userId, { verifiedEmails: true })) as {
+      verifiedEmails?: string[] | null;
+    };
+    return verifiedEmails ?? [];
+  }
   async setPhoneInPrepareUser(userId: string, phone: string, resignupDays = 0) {
     const userExists = await this.existsByPhone(phone, ["active", "dormant", "restricted"]);
     if (userExists) throw new Err("user.error.phoneAlreadyExists");
-    await this.assertResignable(phone, resignupDays);
+    await this.signChallenge.assertResignable(phone, resignupDays);
     const { modifiedCount } = await this.User.updateOne({ id: userId }, { phone });
     return !!modifiedCount;
   }
@@ -403,22 +288,17 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
 
     const auth = (await this.User.pickById(userId, { phone: true })) as { phone?: string };
     if (auth.phone !== phone) throw new Err("user.error.invalidPhoneNumber");
-
-    await this.User.updateMany({ phone, status: "prepare" }, ({ unset, pull }) => ({
-      phone: unset(),
-      verifies: pull("phone"),
-    }));
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
-      phone,
-      verifies: addToSet("phone"),
-    }));
-    return !!modifiedCount;
+    return await this.claimVerifiedPhone(userId, phone);
   }
   async setPhoneInActiveUser(userId: string, phone: string) {
     const auth = (await this.User.pickById(userId, { phone: true })) as { phone?: string };
     if (auth.phone === phone) throw new Err("user.error.phoneNumberUnchanged");
     const userExists = await this.existsByPhone(phone, ["active", "dormant", "restricted"]);
     if (userExists) throw new Err("user.error.phoneAlreadyExists");
+    return await this.claimVerifiedPhone(userId, phone);
+  }
+  // The number leaves every draft that typed it, so only the account that proved it carries the phone verify.
+  private async claimVerifiedPhone(userId: string, phone: string) {
     await this.User.updateMany({ phone, status: "prepare" }, ({ unset, pull }) => ({
       phone: unset(),
       verifies: pull("phone"),
@@ -433,63 +313,35 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   async setSsoInPrepareUser(userId: string, accountId: string, ssoType: cnst.SsoType["value"], resignupDays = 0) {
     const userExists = await this.existsByAccountId(accountId, ["active", "dormant", "restricted"]);
     if (userExists) throw new Err("user.error.accountIdAlreadyExists");
-    await this.assertResignable(accountId, resignupDays);
-    await this.User.updateMany({ accountId, status: "prepare" }, ({ unset, pull }) => ({
-      accountId: unset(),
-      verifies: pull(ssoType),
-    }));
-    await this.User.updateOne({ id: userId }, ({ pull }) => ({ verifies: pull("email") }));
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ addToSet }) => ({
+    await this.signChallenge.assertResignable(accountId, resignupDays);
+    const verifies = await this.verifiesKeptOnAccountId(userId, accountId);
+    return await this.claimAccountId(
+      userId,
       accountId,
-      verifies: addToSet(ssoType),
-    }));
-    return !!modifiedCount;
+      [...verifies.filter((verify) => verify !== ssoType), ssoType],
+      ssoType,
+    );
   }
-  // A provider whose identifier for an account changed: the row moves onto the new id once, and only if it signed up
-  // with that provider.
-  async renameSsoAccountId(legacyAccountId: string, accountId: string, ssoType: cnst.SsoType["value"]) {
-    if (await this.existsByAccountId(accountId)) return false;
+  // A provider whose identifier for an account changed: the row moves onto the new id once, only if it signed up with
+  // that provider and holds an address the provider verified for the account. Answers the row it refused, if any.
+  async renameSsoAccountId(
+    legacyAccountId: string,
+    accountId: string,
+    ssoType: cnst.SsoType["value"],
+    providerEmails: string[],
+  ): Promise<{ renamed: boolean; unprovenUserId?: string }> {
+    if (await this.existsByAccountId(accountId)) return { renamed: false };
     const legacy = (await this.findByAccountId(legacyAccountId, ["active", "dormant", "restricted"], {
-      select: { accountId: true, verifies: true },
-    })) as Pick<User, "id" | "verifies"> | null;
-    if (!legacy?.verifies.includes(ssoType)) return false;
-    const { modifiedCount } = await this.User.updateOne({ id: legacy.id }, { accountId });
-    return !!modifiedCount;
-  }
-  async getActiveUserBySso(accountId: string, ssoType: cnst.SsoType["value"]) {
-    const auth = (await this.pickByAccountId(accountId, ["active", "restricted", "dormant"], {
-      select: { accountId: true, verifies: true },
-    })) as Pick<User, "id" | "accountId" | "verifies">;
-    if (!auth.verifies.includes(ssoType)) throw new Err("user.error.noVerifiesInUser", { ssoType });
-    const user = await this.getUser(auth.id);
-    return user;
-  }
-  async setName(userId: string, name: string) {
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { name });
-    return !!modifiedCount;
-  }
-  /** SSO 프로필 이름을 nickname 규격(최대 12자, active 유저와 중복 불가)으로 다듬는다. */
-  async makeUniqueNickname(seed: string, fallback = "user") {
-    const base = (seed.split("@")[0] ?? "").replace(/\s+/gu, " ").trim().slice(0, User.nicknameMaxLength) || fallback;
-    for (let count = 0; count < 100; count++) {
-      const suffix = count ? String(count) : "";
-      const nickname = `${base.slice(0, User.nicknameMaxLength - suffix.length)}${suffix}`;
-      if (!(await this.findIdByNickname(nickname, "active"))) return nickname;
-    }
-    return `${base.slice(0, User.nicknameMaxLength - 6)}${randomString(6)}`;
-  }
-  async setNickname(userId: string, nickname: string) {
-    User.assertNickname(nickname);
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { nickname });
-    return !!modifiedCount;
-  }
-  async setAppliedImages(userId: string, appliedImages: string[]) {
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { appliedImages });
-    return !!modifiedCount;
-  }
-  async setAgreePolicies(userId: string, agreePolicies: string[]) {
-    const { modifiedCount } = await this.User.updateOne({ id: userId }, { agreePolicies });
-    return !!modifiedCount;
+      select: { accountId: true, verifies: true, verifiedEmails: true },
+    })) as Pick<User, "id" | "verifies" | "verifiedEmails"> | null;
+    if (!legacy?.verifies.includes(ssoType)) return { renamed: false };
+    const storedEmails = [legacyAccountId, ...(legacy.verifiedEmails ?? [])].filter((email) => isEmail(email));
+    if (!providerEmails.some((email) => storedEmails.some((stored) => stored.toLowerCase() === email.toLowerCase())))
+      return { renamed: false, unprovenUserId: legacy.id };
+    // The provider that renamed the id still vouches for it; an email proof earned under the old id does not.
+    const verifies = legacy.verifies.filter((verify) => verify === ssoType || !cnst.Verify.isEmailProof(verify));
+    const { modifiedCount } = await this.User.updateOne({ id: legacy.id }, { accountId, verifies });
+    return { renamed: !!modifiedCount };
   }
   /**
    * `notiInfo` is written whole, never through a dotted path. A dotted write lands in a JSON object that may
@@ -498,36 +350,28 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
    * combination is why a registered device token was silently never stored.
    */
   // Two devices registering at once would each write back the list it read; a short per-user lock serializes them.
-  private async withNotiInfoLock<T>(userId: string, write: () => Promise<T>) {
-    const owner = createOpaqueToken(8);
-    for (let attempt = 0; attempt < 40; attempt++) {
-      if (await this.userCache.setIfAbsent("notiInfoLock", userId, owner, { expireAt: dayjs().add(5, "second") })) {
-        try {
-          return await write();
-        } finally {
-          if ((await this.userCache.get<string>("notiInfoLock", userId)) === owner)
-            await this.userCache.delete("notiInfoLock", userId);
-        }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    //? Past a second of waiting the write goes ahead unlocked: losing a device token is worse than a rare race.
-    return await write();
+  private get notiInfoLock() {
+    return new CacheLock(this.userCache, "notiInfoLock");
+  }
+  //? `pauseUntil` is a prototype accessor on a hydrated scalar, which a spread alone would drop.
+  private static wholeNotiInfo(notiInfo: db.NotiInfo | undefined, patch: Partial<db.NotiInfo>) {
+    return { ...plainFieldsOf(notiInfo ?? new cnst.NotiInfo()), ...patch };
   }
   private async writeNotiInfo(userId: string, patch: Partial<db.NotiInfo>) {
-    //? `pauseUntil` is a prototype accessor on a hydrated scalar, which a spread alone would drop.
-    const current = plainFieldsOf((await this.getNotiInfo(userId)) ?? new cnst.NotiInfo());
-    const notiInfo = { ...current, ...patch };
+    const notiInfo = UserModel.wholeNotiInfo(await this.getNotiInfo(userId), patch);
     await this.User.updateOne({ id: userId }, { notiInfo });
     const written = await this.getNotiInfo(userId);
     return !!written;
   }
   async setNotiSetting(userId: string, notiSetting: cnst.NotiSetting["value"]) {
-    return await this.withNotiInfoLock(userId, async () => await this.writeNotiInfo(userId, { setting: notiSetting }));
+    return await this.notiInfoLock.hold(
+      [userId],
+      async () => await this.writeNotiInfo(userId, { setting: notiSetting }),
+    );
   }
   // The same token, or a new token from the same installation, replaces the entry it had.
   async addNotiDeviceToken(userId: string, { token, provider, platform, deviceId }: db.DeviceToken) {
-    return await this.withNotiInfoLock(userId, async () => {
+    return await this.notiInfoLock.hold([userId], async () => {
       const notiInfo = await this.getNotiInfo(userId);
       const others = (notiInfo?.deviceTokens ?? []).filter(
         (each) => each.token !== token && !(deviceId && each.deviceId === deviceId),
@@ -536,21 +380,31 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
       return await this.writeNotiInfo(userId, { deviceTokens: [...others, registered] });
     });
   }
-  async subNotiDeviceTokens(userId: string, tokens: string[]) {
-    return await this.withNotiInfoLock(userId, async () => {
+  private async keepDeviceTokens(userId: string, keep: (deviceToken: db.DeviceToken) => boolean) {
+    return await this.notiInfoLock.hold([userId], async () => {
       const notiInfo = await this.getNotiInfo(userId);
-      const deviceTokens = (notiInfo?.deviceTokens ?? []).filter((each) => !tokens.includes(each.token));
-      return await this.writeNotiInfo(userId, { deviceTokens });
+      return await this.writeNotiInfo(userId, { deviceTokens: (notiInfo?.deviceTokens ?? []).filter(keep) });
     });
   }
   async subNotiDeviceToken(userId: string, token: string) {
-    return await this.subNotiDeviceTokens(userId, [token]);
+    return await this.keepDeviceTokens(userId, (each) => each.token !== token);
   }
   async subNotiDevice(userId: string, deviceId: string) {
-    return await this.withNotiInfoLock(userId, async () => {
-      const notiInfo = await this.getNotiInfo(userId);
-      const deviceTokens = (notiInfo?.deviceTokens ?? []).filter((each) => each.deviceId !== deviceId);
-      return await this.writeNotiInfo(userId, { deviceTokens });
+    return await this.keepDeviceTokens(userId, (each) => each.deviceId !== deviceId);
+  }
+  // Every owner's dead tokens leave in one read and one write, under the per-user locks a registration takes.
+  async subNotiDeviceTokensOfUsers(tokensByUser: Map<string, string[]>) {
+    const userIds = [...tokensByUser.keys()];
+    if (!userIds.length) return;
+    await this.notiInfoLock.hold(userIds, async () => {
+      const operations = (await this.listNotiInfos(userIds)).map(({ id, notiInfo }) => {
+        const deadTokens = tokensByUser.get(id) ?? [];
+        const deviceTokens = (notiInfo?.deviceTokens ?? []).filter((each) => !deadTokens.includes(each.token));
+        return {
+          updateOne: { filter: { id }, update: { notiInfo: UserModel.wholeNotiInfo(notiInfo, { deviceTokens }) } },
+        };
+      });
+      await this.User.bulkWrite(operations);
     });
   }
   //? Rows written before tokens carried a provider hold bare strings, which no sender can route. They are dropped
@@ -581,6 +435,19 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
       restrictInfo?: db.RestrictInfo;
     };
     return restrictInfo;
+  }
+  async clearRestrictInfo(userId: string) {
+    const { modifiedCount } = await this.User.updateOne({ id: userId }, ({ unset }) => ({ restrictInfo: unset() }));
+    return !!modifiedCount;
+  }
+  async makeUniqueNickname(seed: string, fallback = "user") {
+    const base = (seed.split("@")[0] ?? "").replace(/\s+/gu, " ").trim().slice(0, User.nicknameMaxLength) || fallback;
+    for (let count = 0; count < 100; count++) {
+      const suffix = count ? String(count) : "";
+      const nickname = `${base.slice(0, User.nicknameMaxLength - suffix.length)}${suffix}`;
+      if (!(await this.findIdByNickname(nickname, "active"))) return nickname;
+    }
+    return `${base.slice(0, User.nicknameMaxLength - 6)}${randomString(6)}`;
   }
   async getEncourageInfo(userId: string) {
     const { encourageInfo } = (await this.User.pickById(userId, { encourageInfo: true })) as {

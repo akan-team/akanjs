@@ -1,5 +1,7 @@
+import { hostOnlyCookieKey } from "@libs/shared/common";
 import { jwtSign, jwtVerify, resolveJwtSecret } from "@libs/util/srvkit";
 import { dayjs, getEnv } from "akanjs/base";
+import { CookieJar } from "akanjs/common";
 import type { SignalContext } from "akanjs/signal";
 
 interface SignupTokenEnv {
@@ -41,9 +43,24 @@ export class SignupToken {
     return resolveJwtSecret(appName, environment, (context.getEnv() as SignupTokenEnv).security?.jwtSecret);
   }
 
+  static cookieKey() {
+    return hostOnlyCookieKey("signupToken");
+  }
+
+  //? An SSR page cannot read its HttpOnly signup cookie, so it sends the argument empty and the cookie stands in.
+  static cookieOf(req: Request) {
+    return CookieJar.parse(req.headers.get("cookie")).read(SignupToken.cookieKey()).value || null;
+  }
+
   static async userIdOf(context: SignalContext) {
-    const token = context.getArg("signupToken");
-    if (typeof token !== "string" || !token) return null;
+    const arg = context.getArg("signupToken");
+    const token =
+      typeof arg === "string" && arg
+        ? arg
+        : context.transport === "http"
+          ? SignupToken.cookieOf(context.getHttpContext().req)
+          : null;
+    if (!token) return null;
     return await SignupToken.verify(token, SignupToken.secretOf(context));
   }
 }

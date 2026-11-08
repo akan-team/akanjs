@@ -11,6 +11,7 @@ interface ExecuteCommandStreamOptions {
   onStdout?: (chunk: string) => void | Promise<void>;
   onStderr?: (chunk: string) => void | Promise<void>;
   capture?: { stdout: OutputCapture; stderr: OutputCapture };
+  timeoutMs?: number;
 }
 
 export const executeCommand = (command: string, logger?: Logger): Promise<{ stdout: string; stderr: string }> => {
@@ -19,10 +20,25 @@ export const executeCommand = (command: string, logger?: Logger): Promise<{ stdo
 
 export const executeCommandStream = (
   command: string,
-  { logger, onStdout, onStderr, capture }: ExecuteCommandStreamOptions = {},
+  { logger, onStdout, onStderr, capture, timeoutMs }: ExecuteCommandStreamOptions = {},
 ): Promise<{ stdout: string; stderr: string }> => {
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-    const proc = spawn("sh", ["-c", command], { stdio: "pipe" });
+    //? A group of its own, so a timeout kills what the shell started too: killing the shell alone leaves them running.
+    const proc = spawn("sh", ["-c", command], { stdio: "pipe", detached: !!timeoutMs });
+    let isTimedOut = false;
+    const timer = timeoutMs
+      ? setTimeout(() => {
+          isTimedOut = true;
+          try {
+            if (proc.pid) process.kill(-proc.pid, "SIGKILL");
+          } catch (error) {
+            //? ESRCH is a group that already exited while a process it moved out still holds the pipes; a throw from this timer is uncaught, and the server exits on one.
+            if ((error as { code?: string }).code !== "ESRCH")
+              logger?.warn(`Failed to kill the process group of a timed-out command: ${String(error)}`);
+          }
+          reject(Object.assign(new Error(`Command timed out after ${timeoutMs}ms: ${command}`), { stdout, stderr }));
+        }, timeoutMs)
+      : null;
 
     let stdout = "";
     let stderr = "";
@@ -44,6 +60,8 @@ export const executeCommandStream = (
     });
 
     proc.on("close", async (code) => {
+      if (timer) clearTimeout(timer);
+      if (isTimedOut) return;
       await Promise.allSettled(callbacks);
       if (capture) {
         stdout = capture.stdout.text;

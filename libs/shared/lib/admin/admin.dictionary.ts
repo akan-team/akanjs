@@ -46,9 +46,17 @@ export const dictionary = modelDictionary(["en", "ko"])
       data: t(["Data", "데이터"]).desc(["Data Description", "데이터 설명"]),
     })),
     me: fn(["Me", "나"]),
+    isPlatformAdmin: fn(["Is Platform Admin", "플랫폼 관리자 여부"]).desc([
+      "Whether the signed-in admin is on the platform admin list",
+      "로그인한 관리자가 플랫폼 관리자 목록에 있는지 여부",
+    ]),
     setAdminPassword: fn(["Set Admin Password", "관리자 비밀번호 설정"]).arg((t) => ({
       adminId: t(["Admin ID", "관리자 아이디"]).desc(["Admin ID Description", "관리자 아이디 설명"]),
       password: t(["Password", "패스워드"]).desc(["Password Description", "패스워드 설명"]),
+      prevPassword: t(["Previous Password", "이전 패스워드"]).desc([
+        "The current password, required when an admin changes their own",
+        "본인 비밀번호를 바꿀 때 필요한 현재 비밀번호",
+      ]),
     })),
     signinAdmin: fn(["Sign in Admin", "관리자 로그인"]).arg((t) => ({
       accountId: t(["Account ID", "아이디"]).desc(["Account ID Description", "아이디 설명"]),
@@ -66,6 +74,15 @@ export const dictionary = modelDictionary(["en", "ko"])
       adminId: t(["Admin ID", "관리자 아이디"]).desc(["Admin ID Description", "관리자 아이디 설명"]),
       role: t(["Role", "권한"]).desc(["Role Description", "권한 설명"]),
     })),
+    setAdminRoles: fn(["Set Admin Roles", "관리자 권한 설정"])
+      .desc([
+        "Replaces an admin's roles in one change; every role it adds or drops must be one the caller may grant",
+        "관리자의 권한을 한 번에 바꾼다. 추가하거나 빼는 권한은 모두 요청자가 줄 수 있는 권한이어야 한다",
+      ])
+      .arg((t) => ({
+        adminId: t(["Admin ID", "관리자 아이디"]).desc(["Admin ID Description", "관리자 아이디 설명"]),
+        roles: t(["Roles", "권한 목록"]).desc(["The admin's complete role list", "관리자가 가질 권한 전체"]),
+      })),
     runAdminSql: fn(["Run SQL", "SQL 실행"])
       .desc([
         "Runs one read-only statement against this app's database. Reads only: SELECT or WITH, one statement, and the `_doc` column — where every hidden and secret field lives — cannot be reached. Rows are capped.",
@@ -85,6 +102,11 @@ export const dictionary = modelDictionary(["en", "ko"])
   .error({
     adminSystemAlreadyInitialized: ["Admin system already initialized", "관리자 시스템이 이미 초기화되었습니다"],
     passwordNotMatched: ["Password does not match", "비밀번호가 일치하지 않습니다"],
+    invalidCredentials: ["The account ID or password is wrong", "아이디 또는 비밀번호가 올바르지 않습니다."],
+    tooManySigninAttempts: [
+      "Too many failed sign-ins. Try again in 15 minutes",
+      "로그인 실패가 너무 많습니다. 15분 후에 다시 시도해 주세요.",
+    ],
     noAdminAccount: ["No admin account", "관리자 계정이 없습니다"],
     adminSsoNotAllowed: [
       "This account cannot sign in — ask an administrator to register it.",

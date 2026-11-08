@@ -34,7 +34,20 @@ export interface GithubCompareDto {
 export interface GithubWebhookDto {
   id: number;
   active?: boolean;
+  //? `*` stands for every event.
+  events?: string[];
   config?: { url?: string };
+}
+
+export type GithubCommitState = "pending" | "success" | "failure" | "error";
+
+export interface GithubCommitStatus {
+  sha: string;
+  state: GithubCommitState;
+  //? A commit keeps one status per context, the latest one posted.
+  context: string;
+  description: string;
+  targetUrl?: string;
 }
 export interface GithubRepository {
   id: number;
@@ -91,6 +104,25 @@ export interface GithubInstallationAccessToken {
 export interface GithubInstallation {
   id: string;
   accountLogin: string;
+}
+
+export interface GithubRepositoryInstallation extends GithubInstallation {
+  accountId: string;
+  accountType: string;
+  //? What the installation's owner accepted, which trails what the App requests until that owner approves the update.
+  permissions: { [permission: string]: string };
+  suspended: boolean;
+}
+
+export interface GithubCollaboratorPermission {
+  //? GitHub folds `maintain` into `write` and `triage` into `read`.
+  permission: string;
+  userId: string;
+}
+
+export interface GithubAppBot {
+  login: string;
+  id: string;
 }
 
 export interface GithubInfoDto {

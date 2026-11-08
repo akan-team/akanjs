@@ -1,5 +1,5 @@
 import { type cnst, User, usePage } from "@libs/shared/client";
-import { Icon } from "@libs/util/ui";
+import { badgeRecipe, Icon } from "@libs/util/ui";
 import { cn } from "akanjs/client";
 import { Image } from "akanjs/ui";
 
@@ -84,6 +84,34 @@ export const Discord = ({ className, imageUrl, joinUrl, user }: DiscordProps) =>
           <Image src="/libs/shared/discord/join_light.png" width={218} height={70} />
         </a>
       </div>
+    </div>
+  );
+};
+
+interface VerifiedEmailsProps {
+  className?: string;
+  verifiedEmails: cnst.VerifiedEmail[];
+}
+export const VerifiedEmails = ({ className, verifiedEmails }: VerifiedEmailsProps) => {
+  const { l } = usePage();
+  if (!verifiedEmails.length) return null;
+  return (
+    <div className={cn("flex flex-col gap-1", className)}>
+      <p className="font-medium text-sm">{l("user.verifiedEmailsTitle")}</p>
+      <ul className="flex flex-col divide-y divide-dashed divide-border border-border border-y border-dashed">
+        {verifiedEmails.map(({ email, isAccountId }) => (
+          <li key={email} className="flex min-h-11 items-center justify-between gap-2 py-1.5">
+            <span className="min-w-0 truncate text-sm">{email}</span>
+            {isAccountId ? (
+              <span className={badgeRecipe({ variant: "outline", size: "sm" }, "shrink-0")}>
+                {l("user.signinEmail")}
+              </span>
+            ) : (
+              <User.Util.RemoveVerifiedEmail className="shrink-0" email={email} />
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 };

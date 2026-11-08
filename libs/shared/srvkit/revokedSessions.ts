@@ -1,7 +1,10 @@
 import { type Dayjs, dayjs } from "akanjs/base";
+import { Logger } from "akanjs/common";
 
 type RevokedSessionCheck = (sessionId: string) => Promise<boolean>;
 type RevokedSessionMark = (sessionId: string, until: Dayjs) => Promise<void>;
+
+const logger = new Logger("RevokedSessions");
 
 /**
  * Whether an access token's session was revoked before the token expired. The answer lives in the OAuth service's
@@ -20,13 +23,19 @@ export class RevokedSessions {
     RevokedSessions.#mark = mark;
   }
 
-  /** A cache that cannot answer lets the token live: locking every caller out is the worse failure. */
-  static async has(sessionId: string | undefined): Promise<boolean> {
+  /**
+   * A cache that cannot answer lets a user's token live, since locking every caller out is the worse failure; an
+   * admin's is refused (`failClosed`), since a console session revoked during the outage must not come back.
+   */
+  static async has(sessionId: string | undefined, { failClosed = false }: { failClosed?: boolean } = {}) {
     if (!sessionId || !RevokedSessions.#check) return false;
     try {
       return await RevokedSessions.#check(sessionId);
-    } catch {
-      return false;
+    } catch (error) {
+      logger.warn(
+        `Revocation check for session ${sessionId} failed, answering ${failClosed ? "revoked" : "live"}: ${String(error)}`,
+      );
+      return failClosed;
     }
   }
 

@@ -1,15 +1,30 @@
 "use client";
 import { st, User, usePage } from "@libs/shared/client";
-import { Field, Only } from "@libs/shared/ui";
-import { buttonRecipe, CodeInput, Upload } from "@libs/util/ui";
+import { Field, LeaveInfo as LeaveSurvey, Only } from "@libs/shared/ui";
+import { buttonRecipe, CodeInput } from "@libs/util/ui";
 import { cn } from "akanjs/client";
 import { isEmail, isPhoneNumber } from "akanjs/common";
-import type { ProtoFile } from "akanjs/constant";
-import { Button, Image, Input, Layout } from "akanjs/ui";
+import { Input, Layout } from "akanjs/ui";
 import { useEffect, useRef } from "react";
-import { AiOutlinePlus } from "react-icons/ai";
 
-export { LeaveInfo, LeaveTypeStep, Reason, Satisfaction, Voc } from "../../ui/UserLeave";
+export { LeaveTypeStep, Reason, Satisfaction, Voc } from "../../ui/UserLeave";
+export {
+  GeneratePrepareUserWithAccountId,
+  SubmitAccountId,
+  SubmitPassword,
+  SubmitPhone,
+  SubmitPolicy,
+} from "../_sign/Sign.Util";
+
+interface LeaveInfoProps {
+  className?: string;
+  redirect?: string;
+  leaveReasons?: string[];
+  comeBackReasons?: string[];
+}
+export const LeaveInfo = ({ redirect, ...props }: LeaveInfoProps) => {
+  return <LeaveSurvey {...props} onLeave={() => st.do.removeSelf({ redirect })} />;
+};
 
 interface GeneralProps {
   className?: string;
@@ -69,30 +84,6 @@ export const Phone = ({ className, inputClassName, placeholder, userId, redirect
       }}
       validate={(value) => true}
     />
-  );
-};
-
-interface SubmitPhoneProps {
-  className?: string;
-  userId: string;
-  redirect: string;
-  hash?: string;
-}
-
-export const SubmitPhone = ({ className = "", userId, redirect, hash }: SubmitPhoneProps) => {
-  const { l } = usePage();
-  const phone = st.use.phone();
-  return (
-    <button
-      type="button"
-      className={cn(buttonRecipe({ variant: "primary" }), className)}
-      disabled={!isPhoneNumber(phone)}
-      onClick={() => {
-        void st.do.setPhoneInPrepareUser(userId, phone, { hash, redirect });
-      }}
-    >
-      {l("user.getPhoneCode")}
-    </button>
   );
 };
 
@@ -212,53 +203,6 @@ export const AccountId = ({
   );
 };
 
-interface GeneratePrepareUserWithAccountIdProps {
-  redirect: string;
-  requestEmailCode?: boolean;
-}
-export const GeneratePrepareUserWithAccountId = ({
-  redirect,
-  requestEmailCode,
-}: GeneratePrepareUserWithAccountIdProps) => {
-  const { l } = usePage();
-  const accountId = st.use.accountId();
-  return (
-    <button
-      type="button"
-      className={buttonRecipe({ variant: "primary" })}
-      disabled={!accountId || !isEmail(accountId)}
-      onClick={() => {
-        if (!accountId || !isEmail(accountId)) return;
-        void st.do.generatePrepareUserWithAccountId({ redirect, requestEmailCode });
-      }}
-    >
-      {l("util.next")}
-    </button>
-  );
-};
-
-interface SubmitAccountIdProps {
-  userId: string;
-  redirect: string;
-}
-export const SubmitAccountId = ({ userId, redirect }: SubmitAccountIdProps) => {
-  const { l } = usePage();
-  const accountId = st.use.accountId();
-  return (
-    <button
-      type="button"
-      className={buttonRecipe({ variant: "primary" })}
-      disabled={!accountId || !isEmail(accountId)}
-      onClick={() => {
-        if (!accountId || !isEmail(accountId)) return;
-        void st.do.setAccountIdInPrepareUser(userId, { redirect });
-      }}
-    >
-      {l("util.next")}
-    </button>
-  );
-};
-
 interface PasswordWithConfirmProps {
   className?: string;
   userId: string;
@@ -287,55 +231,6 @@ export const PasswordWithConfirm = ({ className, userId, redirect }: PasswordWit
   );
 };
 
-interface SubmitPasswordProps {
-  userId: string;
-  redirect: string;
-}
-export const SubmitPassword = ({ userId, redirect }: SubmitPasswordProps) => {
-  const { l } = usePage();
-  const accountId = st.use.accountId();
-  const password = st.use.password();
-  const passwordConfirm = st.use.passwordConfirm();
-  return (
-    <button
-      type="button"
-      className={buttonRecipe({ variant: "primary" })}
-      disabled={!accountId || !password || !passwordConfirm || password !== passwordConfirm}
-      onClick={() => {
-        void st.do.setPasswordInPrepareUser(userId, { redirect });
-      }}
-    >
-      {l("util.next")}
-    </button>
-  );
-};
-
-interface SubmitPolicyProps {
-  userId: string;
-  redirect: string;
-  mandatoryPolicies?: string[];
-}
-export const SubmitPolicy = ({
-  userId,
-  redirect,
-  mandatoryPolicies = ["termsofservice", "privacy", "location"],
-}: SubmitPolicyProps) => {
-  const { l } = usePage();
-  const agreePolicies = st.use.agreePolicies();
-  return (
-    <button
-      type="button"
-      className={buttonRecipe({ variant: "primary" })}
-      disabled={!mandatoryPolicies.every((policy) => agreePolicies.includes(policy))}
-      onClick={() => {
-        void st.do.setAgreePoliciesOfPrepareUser(userId, agreePolicies, { redirect });
-      }}
-    >
-      {l("util.next")}
-    </button>
-  );
-};
-
 interface NicknameProps {
   className?: string;
   inputClassName?: string;
@@ -351,7 +246,7 @@ export const Nickname = ({ className, inputClassName, placeholder }: NicknamePro
       inputClassName={inputClassName}
       placeholder={placeholder ?? l("user.nicknamePlaceholder")}
       validate={(value: string | null) =>
-        value && value.length >= 2 && value.length <= 12 ? true : l("user.nicknameLength")
+        value && value.length >= 2 && value.length <= 20 ? true : l("user.nicknameLength")
       }
       value={userForm.nickname}
       onChange={st.do.setNicknameOnUser}
@@ -399,103 +294,6 @@ export const SubmitNickname = ({ redirect, className }: SubmitNicknameProps) => 
     >
       {l("util.next")}
     </button>
-  );
-};
-
-export const AppliedImages = () => {
-  const userForm = st.use.userForm();
-  const { l } = usePage();
-  const onRemove = (index: number) => {
-    if (!window.confirm(l("user.removeAppliedImageConfirm"))) return;
-    st.do.subAppliedImagesOnUser(index);
-  };
-  return (
-    <>
-      <div className="mb-2 grid w-full grid-cols-2 gap-2">
-        {Array.from({ length: 2 }, (_, i) => (
-          <Upload.Image
-            key={i}
-            aspectRatio={[9, 16]}
-            type="crop"
-            styleType="square"
-            protoFile={userForm.appliedImages[i]}
-            onRemove={() => {
-              onRemove(i);
-            }}
-            renderEmpty={() => (
-              <div
-                className={cn(
-                  "flex aspect-1 w-full items-center justify-center rounded-2xl bg-muted duration-300 hover:opacity-50",
-                  i === 0 ? "border-4 border-primary" : "",
-                )}
-              >
-                <AiOutlinePlus className="font-bold text-6xl text-primary opacity-60" />
-                {i === 0 ? (
-                  <div className="absolute top-2 left-2 rounded-md bg-primary px-1 text-white text-xs">
-                    {l("user.mainAppliedImage")}
-                  </div>
-                ) : null}
-              </div>
-            )}
-            renderComplete={(file) => (
-              <div
-                className={cn("aspect-1 w-full overflow-hidden rounded-2xl", i === 0 ? "border-4 border-primary" : "")}
-              >
-                <Image file={file} className="size-full object-cover" />
-              </div>
-            )}
-            onSave={(file) => void st.do.uploadAppliedImagesOnUser([file] as unknown as FileList)}
-          />
-        ))}
-      </div>
-
-      <div className="grid w-full grid-cols-3 gap-1">
-        {Array.from({ length: 3 }, (_, i) => (
-          <Upload.Image
-            key={i + 2}
-            aspectRatio={[9, 16]}
-            type="crop"
-            styleType="square"
-            onRemove={() => {
-              onRemove(i + 2);
-            }}
-            renderEmpty={() => (
-              <div className="flex aspect-1 w-full items-center justify-center rounded-xl bg-muted text-primary duration-300 hover:opacity-50">
-                <AiOutlinePlus className="font-bold text-2xl opacity-60" />
-              </div>
-            )}
-            renderComplete={(file) => (
-              <div className="aspect-1 w-full rounded-xl">
-                <Image file={file as unknown as ProtoFile} className="size-full rounded-xl object-cover" />
-              </div>
-            )}
-            protoFile={userForm.appliedImages[i + 2]}
-            onSave={(file) => {
-              void st.do.uploadAppliedImagesOnUser([file] as unknown as FileList);
-            }}
-          />
-        ))}
-      </div>
-    </>
-  );
-};
-
-interface SubmitAppliedImagesProps {
-  redirect: string;
-}
-export const SubmitAppliedImages = ({ redirect }: SubmitAppliedImagesProps) => {
-  const { l } = usePage();
-  const userForm = st.use.userForm();
-  return (
-    <Button
-      className="border-primary-light bg-primary-light"
-      disabled={userForm.appliedImages.length < 2}
-      onClick={() => {
-        void st.do.setAppliedImagesOfSelf(userForm.appliedImages, { redirect });
-      }}
-    >
-      {l("user.signupSubmit")}
-    </Button>
   );
 };
 

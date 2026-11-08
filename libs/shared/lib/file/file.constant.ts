@@ -1,5 +1,5 @@
 import { formatBytes } from "@libs/util/common";
-import { dayjs, enumOf, Int } from "akanjs/base";
+import { dayjs, enumOf, ID, Int } from "akanjs/base";
 import { type ProtoFile, via } from "akanjs/constant";
 
 export class FileStatus extends enumOf("fileStatus", ["active", "uploading", "failed"] as const) {}
@@ -20,6 +20,7 @@ export class FileObject
     lastModifiedAt: field(Date, { default: () => dayjs() }),
     progress: field(Int).optional(),
     status: field(FileStatus, { default: "uploading" }),
+    uploader: field.hidden(ID).optional(), // user whose session uploaded it; empty for admin, server-side and older files
   }))
   implements ProtoFile {}
 

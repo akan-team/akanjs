@@ -3,6 +3,7 @@ import type { MulticastMessage } from "firebase-admin/messaging";
 
 import type { ModulesOptions } from "../lib/option";
 import { ApnsClient, type ApnsCredentials } from "./apnsClient";
+import { PreviewMode } from "./previewMode";
 import type {
   MessageOptions,
   PushNotificationMessage,
@@ -50,11 +51,17 @@ export interface PushNotificationServerOptions {
   };
   // iOS: the app sends APNs device tokens, and the server signs its own requests with the team's .p8 key.
   apns?: ApnsCredentials;
+  // Web only, paths under the app's own public/: the notification's picture, and the status-bar glyph Android draws
+  // from the badge's alpha channel alone — a full-colour icon there is a white square.
+  webIcon?: string;
+  webBadge?: string;
 }
 
 export class PushNotificationServer extends adapt("pushNotificationServer", ({ env }) => ({
   firebase: env((env: ModulesOptions) => env.pushNoti?.firebase),
   apns: env((env: ModulesOptions) => env.pushNoti?.apns),
+  webIcon: env((env: ModulesOptions) => env.pushNoti?.webIcon),
+  webBadge: env((env: ModulesOptions) => env.pushNoti?.webBadge),
 })) {
   #apnsClient: ApnsClient | null = null;
 
@@ -131,7 +138,15 @@ export class PushNotificationServer extends adapt("pushNotificationServer", ({ e
       },
       fcmOptions: {},
       webpush: {
-        notification: { title, body, image: imageUrl, tag, renotify: !!tag },
+        notification: {
+          title,
+          body,
+          image: imageUrl,
+          icon: this.webIcon,
+          badge: this.webBadge,
+          tag,
+          renotify: !!tag,
+        },
         headers: { TTL: "86400" },
       },
       ...(Object.keys(messageData).length ? { data: messageData } : {}),
@@ -145,6 +160,10 @@ export class PushNotificationServer extends adapt("pushNotificationServer", ({ e
    */
   async sendEach(targets: PushTarget[], message: PushNotificationMessage): Promise<PushSendResult> {
     const result: PushSendResult = { successCount: 0, failureCount: 0, invalidTokens: [] };
+    if (PreviewMode.isOn()) {
+      if (targets.length) this.logger.info(`Push skipped in a preview: ${targets.length} devices.`);
+      return result;
+    }
     const fcmTokens = targets.filter(({ provider }) => provider === "fcm").map(({ token }) => token);
     const apnsTokens = targets.filter(({ provider }) => provider === "apns").map(({ token }) => token);
     await Promise.all([this.#sendFcm(fcmTokens, message, result), this.#sendApns(apnsTokens, message, result)]);

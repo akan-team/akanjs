@@ -8,11 +8,11 @@ import { useEffect, useState } from "react";
 
 interface LeaveInfoProps {
   className?: string;
-  redirect?: string;
   leaveReasons?: string[];
   comeBackReasons?: string[];
+  onLeave: () => Promise<void>;
 }
-export const LeaveInfo = ({ className, redirect, leaveReasons, comeBackReasons }: LeaveInfoProps) => {
+export const LeaveInfo = ({ className, leaveReasons, comeBackReasons, onLeave }: LeaveInfoProps) => {
   const leaveInfo = st.use.leaveInfo();
   useEffect(() => {
     st.do.setLeaveInfo(new cnst.LeaveInfo());
@@ -74,7 +74,7 @@ export const LeaveInfo = ({ className, redirect, leaveReasons, comeBackReasons }
         onChange={(voc) => {
           st.do.setLeaveInfo({ ...leaveInfo, voc });
         }}
-        redirect={redirect}
+        onLeave={onLeave}
       />
     );
 };
@@ -231,15 +231,14 @@ interface VocProps {
   className?: string;
   value: string | null;
   onChange: (value: string) => void;
-  redirect?: string;
+  onLeave: () => Promise<void>;
 }
-export const Voc = ({ className, value, onChange, redirect }: VocProps) => {
+export const Voc = ({ className, value, onChange, onLeave }: VocProps) => {
   const { l } = usePage();
   st.tool("leaveService", { confirm: l("leaveInfo.leaveConfirmPermanent") })
     .desc("Close this account for good and submit the leaving survey with it.")
     .exec(async () => {
-      await st.do.setLeaveInfoOfSelf();
-      await st.do.removeSelf({ redirect });
+      await onLeave();
       msg.success("user.leaveSuccess");
     });
   return (
@@ -260,9 +259,8 @@ export const Voc = ({ className, value, onChange, redirect }: VocProps) => {
         type="button"
         className={buttonRecipe({ variant: "secondary" }, "w-full")}
         onClick={async () => {
-          await st.do.setLeaveInfoOfSelf();
           if (!window.confirm(l("leaveInfo.leaveConfirm"))) return;
-          await st.do.removeSelf({ redirect });
+          await onLeave();
           msg.success("user.leaveSuccess");
         }}
       >

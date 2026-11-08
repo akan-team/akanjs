@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { type BackendEnv, type BaseEnv, type Environment, getEnv } from "akanjs/base";
+import { type BaseEnv, type Environment, getEnv } from "akanjs/base";
 import { bearerTokenOf, Logger } from "akanjs/common";
 import { Err } from "../lib/dict";
 import { jwtVerify } from "./jwt";
@@ -71,18 +71,26 @@ export const assertJwtSecretConfigured = ({
   throw new Err("util.error.jwtSecretRequired");
 };
 
-const namesOf = (hostname: BackendEnv["hostname"]) => {
-  if (typeof hostname === "string") return hostname ? [hostname] : [];
-  return (hostname ?? []).map((host) => host.trim()).filter((host) => host.length > 0);
+export interface HostSource {
+  hostname?: string | readonly string[] | null;
+}
+
+const namesOf = (hostname: HostSource["hostname"]) => {
+  const values = typeof hostname === "string" ? [hostname] : (hostname ?? []);
+  return values.map((host) => host.trim()).filter((host) => host.length > 0);
 };
 
-// The first name is what links, the issuer and mail use. The rest only name other hosts this server answers.
-export const generateHosts = (options: BackendEnv) => {
+const fallbackHost = () => {
   const env = getEnv();
-  if (process.env.HOST_NAME) return [process.env.HOST_NAME];
-  const configured = namesOf(options.hostname);
-  if (configured.length) return configured;
-  return [env.operationMode === "local" ? "localhost" : `${env.appName}-${env.environment}.${env.serveDomain}`];
+  return env.operationMode === "local" ? "localhost" : `${env.appName}-${env.environment}.${env.serveDomain}`;
 };
 
-export const generateHost = (options: BackendEnv) => generateHosts(options)[0] ?? "localhost";
+// The first name is what links and the issuer use. The rest only name other hosts this server answers.
+export const generateHosts = (options: HostSource) => {
+  const fromEnv = process.env.HOST_NAME?.trim();
+  if (fromEnv) return [fromEnv];
+  const configured = namesOf(options.hostname);
+  return configured.length ? configured : [fallbackHost()];
+};
+
+export const generateHost = (options: HostSource) => generateHosts(options)[0] ?? fallbackHost();

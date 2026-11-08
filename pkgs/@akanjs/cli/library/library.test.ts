@@ -105,12 +105,9 @@ describe("LibraryRunner", () => {
     expect(workspace.commit).not.toHaveBeenCalled();
   });
 
-  test("brings the type packages the shipped shared and util libraries compile against into the root", async () => {
+  test("brings the type package the shipped shared library compiles against into the root", async () => {
     const repoPackageJson = (await Bun.file(path.join(repoRoot, "package.json")).json()) as PackageJson;
-    for (const [libName, typesPackage] of [
-      ["shared", "@types/react-dom"],
-      ["util", "@types/nodemailer"],
-    ] as const) {
+    for (const [libName, typesPackage] of [["shared", "@types/react-dom"]] as const) {
       const { root, lib, readRoot } = await mergeFixture(libName, { changed: true });
       await Bun.write(
         `${root}/libs/${libName}/package.json`,

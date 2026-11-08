@@ -1,5 +1,6 @@
 "use client";
 import { type cnst, st, usePage } from "@libs/shared/client";
+import { Auth as AuthUi } from "@libs/shared/ui";
 import { buttonRecipe, Icon } from "@libs/util/ui";
 import { ID } from "akanjs/base";
 import { cn } from "akanjs/client";
@@ -160,20 +161,22 @@ const menuItemClass =
 
 interface ToolMenuProps {
   themes?: string[];
+  extra?: ReactNode;
 }
 // XXX: SetPassword publishes nothing. It writes an admin credential, and a password an agent chose is a
 // password nobody told the person — the modal is the only way in.
-export const ToolMenu = ({ themes = ["light", "dark"] }: ToolMenuProps) => {
+export const ToolMenu = ({ themes = ["light", "dark"], extra }: ToolMenuProps) => {
   return (
     <Dropdown
       buttonClassName={buttonRecipe({ variant: "ghost" })}
-      dropdownClassName="z-[1] w-32 rounded-box p-2 shadow-sm border border-foreground/10"
+      dropdownClassName="z-[1] w-max min-w-32 rounded-box p-2 shadow-sm border border-foreground/10"
       value={<AiOutlineMenu className="mt-0.5" />}
       content={
         <>
           <li className="flex items-center justify-start px-3 py-2">
             <ThemeToggle themes={themes} />
           </li>
+          {extra ? <li className="flex items-center justify-start px-3 py-2">{extra}</li> : null}
           <li onClick={() => void st.do.signoutAdmin()}>
             <div className={menuItemClass}>
               <AiOutlinePoweroff /> Logout
@@ -263,7 +266,9 @@ interface SetPasswordProps {
 }
 export const SetPassword = ({ className, id }: SetPasswordProps) => {
   const { l } = usePage();
-  const [passwordState, setPasswordState] = useState({ modalOpen: false, password: "" });
+  const me = st.use.me();
+  const [passwordState, setPasswordState] = useState({ modalOpen: false, password: "", prevPassword: "" });
+  const isSelf = me.id === id;
 
   return (
     <>
@@ -271,7 +276,7 @@ export const SetPassword = ({ className, id }: SetPasswordProps) => {
         type="button"
         className={cn(buttonRecipe({ size: "sm", variant: "default" }), className)}
         onClick={() => {
-          setPasswordState({ modalOpen: true, password: "" });
+          setPasswordState({ modalOpen: true, password: "", prevPassword: "" });
         }}
       >
         {l("shared.setPassword")}
@@ -279,25 +284,35 @@ export const SetPassword = ({ className, id }: SetPasswordProps) => {
       <Modal
         open={passwordState.modalOpen}
         onCancel={() => {
-          setPasswordState({ modalOpen: false, password: "" });
+          setPasswordState({ modalOpen: false, password: "", prevPassword: "" });
         }}
         action={
           <button
             type="button"
             className={buttonRecipe({ variant: "primary" })}
             onClick={async () => {
-              await st.do.setAdminPassword(id, passwordState.password);
-              setPasswordState({ modalOpen: false, password: "" });
+              await st.do.setAdminPassword(id, passwordState.password, isSelf ? passwordState.prevPassword : null);
+              setPasswordState({ modalOpen: false, password: "", prevPassword: "" });
             }}
           >
             {l("shared.submit")}
           </button>
         }
       >
+        {isSelf ? (
+          <Input.Password
+            value={passwordState.prevPassword}
+            placeholder={l("user.prevPassword")}
+            onChange={(prevPassword) => {
+              setPasswordState({ ...passwordState, prevPassword });
+            }}
+            validate={(prevPassword) => prevPassword.length > 0}
+          />
+        ) : null}
         <Input.Password
           value={passwordState.password}
           onChange={(password) => {
-            setPasswordState({ modalOpen: passwordState.modalOpen, password: password });
+            setPasswordState({ ...passwordState, password });
           }}
           validate={(password) => {
             if (password.length < 8) return l("base.textTooShortError", { minlength: 8 });
@@ -324,3 +339,5 @@ export const Signout = ({ className, href, children }: SignoutProps) => {
     </Link>
   );
 };
+
+export const TokenRefresh = () => <AuthUi.TokenRefresh scope="admin" onRefresh={() => st.do.refreshAdminSession()} />;

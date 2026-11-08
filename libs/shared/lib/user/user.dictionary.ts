@@ -18,10 +18,6 @@ export const dictionary = modelDictionary(["en", "ko"])
     ]),
     image: t(["Image", "이미지"]).desc(["Profile image of the user", "유저의 프로필 이미지"]),
     images: t(["Images", "이미지들"]).desc(["Profile images of the user", "유저의 프로필 이미지들"]),
-    appliedImages: t(["Applied Images", "신청된 이미지들"]).desc([
-      "Applied images of the user",
-      "유저의 신청된 이미지들",
-    ]),
     name: t(["Name", "이름"]).desc(["Name of the user", "유저의 이름"]),
     agreePolicies: t(["Agree Policies", "동의 정책"]).desc(["Agreed policies of the user", "유저의 동의 정책"]),
     discord: t(["Discord", "디스코드"]).desc(["Discord information of the user", "유저의 디스코드 정보"]),
@@ -34,6 +30,10 @@ export const dictionary = modelDictionary(["en", "ko"])
     restrictInfo: t(["Restrict Info", "제한 정보"]).desc(["Restrict information of the user", "유저의 제한 정보"]),
     leaveInfo: t(["Leave Info", "탈퇴 정보"]).desc(["Leave information of the user", "유저의 탈퇴 정보"]),
     verifies: t(["Verifies", "인증정보"]).desc(["Verification information of the user", "유저의 인증정보"]),
+    verifiedEmails: t(["Verified Emails", "인증한 이메일"]).desc([
+      "Email addresses the user proved after signing up, besides the account ID",
+      "가입한 뒤에 유저가 인증한 이메일 주소. 아이디와 별개다",
+    ]),
     roles: t(["Roles", "권한"]).desc(["Authorized roles of the user", "유저의 권한"]),
     playing: t(["Playing", "플레이 중"]).desc(["Services that the user is playing", "유저가 플레이 중인 서비스"]),
     isOnline: t(["Is Online", "온라인 상태"]).desc(["Online status of the user", "유저의 온라인 상태"]),
@@ -69,7 +69,9 @@ export const dictionary = modelDictionary(["en", "ko"])
       statuses: t(["Statuses", "상태들"]).desc(["Statuses to search", "상태들로 조회"]),
     })),
   }))
-  .sort<UserFilter>((t) => ({}))
+  .sort<UserFilter>((t) => ({
+    latestLoginAt: t(["Latest Login", "최근 로그인순"]).desc(["Most recently signed in first", "최근에 로그인한 순"]),
+  }))
   .enum<Verify>("verify", (t) => ({
     naver: t(["Naver", "네이버"]).desc(["Naver verify", "네이버 인증"]),
     kakao: t(["Kakao", "카카오"]).desc(["Kakao verify", "카카오 인증"]),
@@ -145,6 +147,19 @@ export const dictionary = modelDictionary(["en", "ko"])
           "이어서 진행하는 가입의 증명",
         ]),
       })),
+    activateUserWithAgreePolicies: fn(["Agree and Activate User", "약관 동의 후 유저 활성화"])
+      .desc([
+        "Record the agreed policies and activate the user in one step, or neither",
+        "동의한 약관 기록과 유저 활성화를 한 번에, 하나라도 안 되면 둘 다 하지 않는 API",
+      ])
+      .arg((t) => ({
+        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
+        agreePolicies: t(["Agree Policies", "동의 약관"]).desc(["Policies agreed on", "동의한 약관 목록"]),
+        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
+          "Proof of the sign-up the call continues",
+          "이어서 진행하는 가입의 증명",
+        ]),
+      })),
     activateUserByAdmin: fn(["Activate User by Admin", "관리자에 의한 유저 활성화"])
       .desc([
         "Open a prepare user's account without the signup policy or a session",
@@ -171,20 +186,30 @@ export const dictionary = modelDictionary(["en", "ko"])
       .arg((t) => ({
         nickname: t(["Nickname", "닉네임"]).desc(["Nickname", "닉네임"]),
       })),
-    setAppliedImagesOfSelf: fn(["Set Applied Images of Self", "자기 자신 적용 이미지 설정"])
-      .desc(["API to set the applied images of the self", "자기 자신의 적용 이미지를 설정하는 API"])
-      .arg((t) => ({
-        appliedImages: t(["Applied Images", "적용 이미지"]).desc(["Applied Images", "적용 이미지"]),
-      })),
     setLeaveInfoOfSelf: fn(["Set Leave Info of Self", "자기 자신 탈퇴 정보 설정"])
       .desc(["API to set the leave info of the self", "자기 자신의 탈퇴 정보를 설정하는 API"])
       .arg((t) => ({
         leaveInfo: t(["Leave Info", "탈퇴 정보"]).desc(["Leave Info", "탈퇴 정보"]),
       })),
-    approveUserImages: fn(["Approve User Images", "유저 이미지 승인"])
-      .desc(["API to approve user images", "유저 이미지를 승인하는 API"])
+    leaveSelf: fn(["Leave Service", "회원 탈퇴"])
+      .desc([
+        "Remove the caller's own account, writing the leaving survey only once the removal is done",
+        "자기 계정을 삭제하고, 삭제가 끝난 뒤에만 탈퇴 설문을 기록하는 API",
+      ])
       .arg((t) => ({
-        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
+        leaveInfo: t(["Leave Info", "탈퇴 정보"]).desc(["The leaving survey, or none", "탈퇴 설문, 없으면 비움"]),
+      })),
+    leaveAndSignoutSelf: fn(["Leave and Sign Out", "탈퇴 후 로그아웃"])
+      .desc([
+        "Remove the caller's own account and end its session on this device in one call",
+        "자기 계정을 삭제하고 이 기기의 세션까지 한 번에 끝내는 API",
+      ])
+      .arg((t) => ({
+        leaveInfo: t(["Leave Info", "탈퇴 정보"]).desc(["The leaving survey, or none", "탈퇴 설문, 없으면 비움"]),
+        pushDeviceId: t(["Push Device ID", "푸시 기기 ID"]).desc([
+          "The device whose push registration leaves with the session",
+          "세션과 함께 푸시 등록을 지울 기기",
+        ]),
       })),
     myAccountId: fn(["My Account ID", "내 아이디 조회"]).desc(["API to get my account ID", "내 아이디를 조회하는 API"]),
     userExistsHasAccountId: fn(["User Exists Has Account ID", "유저 존재 여부 조회"])
@@ -275,6 +300,35 @@ export const dictionary = modelDictionary(["en", "ko"])
           "Proof of the sign-up the call continues",
           "이어서 진행하는 가입의 증명",
         ]),
+      })),
+    requestEmailCodeInActiveUser: fn(["Request Email Code in Active User", "활성 유저 이메일 인증번호 요청"])
+      .desc([
+        "Mail a six-digit code to an email address the signed-in user names, to prove it is theirs",
+        "로그인한 유저가 적은 이메일 주소로, 그 주소가 자기 것임을 증명할 6자리 인증번호를 보내는 API",
+      ])
+      .arg((t) => ({
+        email: t(["Email", "이메일"]).desc(["The address to prove", "증명할 이메일 주소"]),
+      })),
+    verifyEmailInActiveUser: fn(["Verify Email in Active User", "활성 유저 이메일 인증"])
+      .desc([
+        "Prove an email address with the code mailed to it; the account ID does not change",
+        "메일로 받은 인증번호로 이메일 주소를 증명하는 API. 아이디는 바뀌지 않는다",
+      ])
+      .arg((t) => ({
+        email: t(["Email", "이메일"]).desc(["The address the code was mailed to", "인증번호를 받은 이메일 주소"]),
+        emailCode: t(["Email Code", "이메일 인증번호"]).desc(["Email Code", "이메일 인증번호"]),
+      })),
+    verifiedEmailsOfSelf: fn(["My Verified Emails", "내 인증 이메일 조회"]).desc([
+      "List the addresses invitations to this account trust, marking the one it signs in with",
+      "이 계정 앞으로 온 초대가 믿는 주소 목록을 조회하는 API. 로그인 주소를 표시한다",
+    ]),
+    removeVerifiedEmailOfSelf: fn(["Remove My Verified Email", "내 인증 이메일 삭제"])
+      .desc([
+        "Stop trusting an address proven after sign-up: invitations sent to it are no longer listed or accepted, while invitations already bound to the account stay",
+        "가입한 뒤 인증한 주소를 삭제하는 API. 그 주소로 온 초대는 더 보이지 않고 수락할 수 없지만, 이미 계정에 연결된 초대는 그대로 남는다",
+      ])
+      .arg((t) => ({
+        email: t(["Email", "이메일"]).desc(["The verified address to remove", "삭제할 인증 이메일 주소"]),
       })),
     userExistsHasPhone: fn(["User Exists Has Phone", "휴대폰 번호 가입 여부 조회"])
       .desc(["Whether an account already uses this phone number", "이 휴대폰 번호로 가입한 계정이 있는지 조회합니다"])
@@ -520,16 +574,6 @@ export const dictionary = modelDictionary(["en", "ko"])
     kakaoCallback: fn(["Kakao Callback", "카카오 콜백"]).desc(["Kakao Callback", "카카오 콜백"]),
     facebook: fn(["Facebook", "페이스북"]).desc(["Facebook", "페이스북"]),
     facebookCallback: fn(["Facebook Callback", "페이스북 콜백"]).desc(["Facebook Callback", "페이스북 콜백"]),
-    setAppliedImagesOfPrepareUser: fn(["Set applied images of prepare user", "준비중 유저의 프로필 사진을 설정합니다."])
-      .desc(["Set applied images of prepare user", "준비중 유저의 프로필 사진을 설정합니다."])
-      .arg((t) => ({
-        userId: t(["User ID", "유저 ID"]).desc(["User ID", "유저 ID"]),
-        appliedImages: t(["Applied images", "적용된 사진"]).desc(["Applied images", "적용된 사진"]),
-        signupToken: t(["Signup Token", "가입 진행 토큰"]).desc([
-          "Proof of the sign-up the call continues",
-          "이어서 진행하는 가입의 증명",
-        ]),
-      })),
     setNicknameOfPrepareUser: fn(["Set nickname of prepare user", "준비중 유저의 닉네임을 설정합니다."])
       .desc(["Set nickname of prepare user", "준비중 유저의 닉네임을 설정합니다."])
       .arg((t) => ({
@@ -577,6 +621,19 @@ export const dictionary = modelDictionary(["en", "ko"])
       "The reset mail could not be sent. Try again later",
       "재설정 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.",
     ],
+    verifiedEmailNotFound: ["That address is not among your verified emails", "인증한 이메일 목록에 없는 주소입니다."],
+    signinEmailNotRemovable: [
+      "Your sign-in address cannot be removed from your verified emails",
+      "로그인 주소는 인증한 이메일에서 삭제할 수 없습니다.",
+    ],
+    emailVerifyNotSaved: [
+      "The address could not be saved as verified. Ask for a new code and verify it again",
+      "주소를 인증한 것으로 저장하지 못했습니다. 새 인증번호를 받아 다시 인증해야 합니다.",
+    ],
+    emailCodeMailFailed: [
+      "The verification code mail could not be sent. Try again later",
+      "인증번호 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    ],
     noAccount: ["No account exists. Sign up is needed,", "가입되지 않은 이메일입니다. 회원가입을 먼저 해주세요."],
     wrongPassword: ["Wrong password. Please try again.", "비밀번호가 틀렸습니다. 다시 시도해주세요."],
     userNotActive: ["User is not in active status", "유저가 활성 상태가 아닙니다"],
@@ -586,6 +643,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     resignupNotAvailable: ["Retry after {days} days", "{days}일 후에 다시 시도해주세요"],
     noAccountIdInUser: ["No accountId in this user", "이 유저에 아이디가 없습니다"],
     invalidAccountId: ["Invalid accountId", "유효하지 않은 아이디입니다"],
+    signupAccountIdNotEmail: ["Sign up with an email address", "이메일 주소로 가입해야 합니다."],
     noPasswordInUser: ["No password in this user", "이 유저에 비밀번호가 없습니다"],
     noSsoTypeInUser: ["No ssoType in this user", "이 유저에 해당 SSO 유형이 없습니다"],
     ssoCallbackSchemeNotAllowed: [
@@ -601,8 +659,10 @@ export const dictionary = modelDictionary(["en", "ko"])
     invalidPhoneNumber: ["Invalid phone number", "유효하지 않은 휴대폰 번호입니다"],
     phoneNumberUnchanged: ["Already set the same phone number", "이미 동일한 휴대폰 번호로 설정되어 있습니다"],
     noVerifiesInUser: ["No verifies {ssoType} in this user", "이 유저에 {ssoType} 인증 정보가 없습니다"],
-    profileExamNotAvailable: ["Profile exam is not available.", "프로필 심사를 사용할 수 없습니다."],
-    imagesNotUploaded: ["Images are not uploaded.", "이미지가 업로드되지 않았습니다."],
+    imageNotUploadedBySelf: [
+      "Only photos you uploaded yourself can go on your profile",
+      "직접 올린 사진만 프로필에 쓸 수 있습니다.",
+    ],
     userNotActivated: ["Not activated yet", "아직 활성화되지 않았습니다"],
     invalidPhoneCode: ["Invalid phone code", "유효하지 않은 인증번호입니다"],
     invalidSignToken: ["Invalid sign token", "유효하지 않은 서명 토큰입니다"],
@@ -621,8 +681,6 @@ export const dictionary = modelDictionary(["en", "ko"])
     unauthorized: ["Unauthorized", "권한이 없습니다"],
   })
   .translate({
-    removeAppliedImageConfirm: ["Remove this photo?", "이 사진을 삭제할까요?"],
-    mainAppliedImage: ["Main photo", "대표 사진"],
     setAccountIdByAdminInvalid: [
       "Use at least four characters, and keep the email form when the account signs in with one.",
       "4자 이상이어야 하고, 이메일로 로그인하는 계정이면 이메일 형식을 유지해야 한다.",
@@ -682,6 +740,24 @@ export const dictionary = modelDictionary(["en", "ko"])
     expiredPhoneCodeError: ["Expired phone code. Please try again.", "만료된 인증번호입니다. 다시 시도해주세요."],
     emailSentSuccess: ["Email Sent", "이메일이 발송되었습니다."],
     emailCodeSentSuccess: ["Code sent to your email", "이메일로 인증번호를 보냈습니다."],
+    verifyEmailTitle: ["Verify an email", "이메일 인증"],
+    verifyEmailDesc: [
+      "Prove an address to accept the invitations sent to it. Your sign-in ID stays the same.",
+      "주소를 인증하면 그 주소로 온 초대를 수락할 수 있습니다. 로그인 아이디는 바뀌지 않습니다.",
+    ],
+    sendEmailCode: ["Send code", "인증번호 받기"],
+    verifyEmailCodePlaceholder: ["Six-digit code from the mail", "메일로 받은 6자리 인증번호"],
+    verifyEmailSubmit: ["Verify", "인증하기"],
+    emailVerifiedSuccess: ["Email verified", "이메일을 인증했습니다."],
+    verifiedEmailsTitle: ["Verified emails", "인증한 이메일"],
+    signinEmail: ["Sign-in", "로그인 주소"],
+    removeVerifiedEmail: ["Remove", "삭제"],
+    removeVerifiedEmailConfirm: ["Remove {email}?", "{email} 주소를 삭제할까요?"],
+    removeVerifiedEmailConfirmDesc: [
+      "Invitations sent to this address will no longer be listed or accepted here. Invitations already linked to your account stay.",
+      "이 주소로 온 초대는 더 이상 목록에 보이지 않고 수락할 수 없습니다. 이미 계정에 연결된 초대는 그대로 남습니다.",
+    ],
+    verifiedEmailRemovedSuccess: ["Email removed", "이메일을 삭제했습니다."],
     resendEmailCode: ["Resend code", "인증번호 다시받기"],
     resendCode: ["Resend code", "인증번호 다시받기"],
     getPhoneCode: ["Get a code", "인증번호 받기"],
@@ -690,7 +766,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     namePlaceholder: ["Enter your name", "이름을 입력해주세요"],
     nameLength: ["Use 2 to 20 characters", "2자 이상 20자 이내로 입력해주세요."],
     nicknamePlaceholder: ["Enter a nickname", "닉네임을 입력해주세요"],
-    nicknameLength: ["Use 2 to 12 characters", "2자 이상 12자 이내로 입력해주세요."],
+    nicknameLength: ["Use 2 to 20 characters", "2자 이상 20자 이내로 입력해주세요."],
     emailPlaceholder: ["Enter your email", "이메일을 입력해주세요"],
     invalidEmailFormat: ["That is not an email address", "이메일 형식이 아닙니다."],
     requestPhoneCode: ["Send code", "인증요청"],

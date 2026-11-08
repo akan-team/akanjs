@@ -4,6 +4,7 @@ import {
   revokeRefreshSessionBySid,
   revokeRefreshSessions,
   rotateRefreshSession,
+  SignChallenge,
 } from "@libs/shared/srvkit";
 import { dayjs } from "akanjs/base";
 import { by, documentQueryHelper, from, into, type SchemaOf } from "akanjs/document";
@@ -32,6 +33,10 @@ export class Admin extends by(cnst.Admin) {
     this.roles = this.roles.filter((r) => r !== role);
     return this;
   }
+  setRoles(roles: cnst.AdminRole["value"][]) {
+    this.roles = [...new Set(roles)];
+    return this;
+  }
   updateAccess() {
     this.lastLoginAt = dayjs();
     return this;
@@ -52,20 +57,22 @@ export class AdminModel extends into(Admin, AdminFilter, cnst.admin, ({ byField 
       if (!this.password || AdminModel.bcryptDigest.test(this.password)) return;
       this.password = await hashPassword(this.password);
     });
-    schema.index({ accountId: "text" });
+    schema.index({ accountId: 1 });
   }
   async hasAnotherAdmin(accountId: string) {
     const q = documentQueryHelper;
     const exists = await this.Admin.exists(q.all({ accountId: q.ne(accountId) }, q.missing("removedAt")));
     return !!exists;
   }
-  async getAdminSecret(accountId: string): Promise<{ id: string; roles: cnst.AdminRole["value"][]; password: string }> {
+  async findAdminSecret(accountId: string) {
     const q = documentQueryHelper;
-    const adminSecret = await this.Admin.pickOne(q.all({ accountId }, q.missing("removedAt")), {
-      roles: true,
-      password: true,
-    });
-    return adminSecret as { id: string; roles: cnst.AdminRole["value"][]; password: string };
+    const query = q.all({ accountId }, q.missing("removedAt"));
+    if (!(await this.Admin.exists(query))) return null;
+    const adminSecret = await this.Admin.pickOne(query, { roles: true, password: true });
+    return adminSecret as { id: string; roles: cnst.AdminRole["value"][]; password?: string };
+  }
+  get signChallenge() {
+    return new SignChallenge(this.adminCache);
   }
   async createRefreshSession(
     adminId: string,

@@ -42,6 +42,7 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
     globalPrefix: false,
     mcp: false,
     path: "oauth/register",
+    rateLimit: { calls: 10 },
   })
     .with(Req)
     .with(Ip, { nullable: true })
@@ -88,7 +89,11 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
       return await this.oauthService.revokeConnection(sessionId, account);
     }),
 
-  viewOAuthAuthorizationRequest: query(cnst.OauthRequest, { guards: [Every, Person], mcp: false })
+  viewOAuthAuthorizationRequest: query(cnst.OauthRequest, {
+    guards: [Every, Person],
+    mcp: false,
+    errors: { 403: ["oauth.error.adminSubjectNotAllowed"] },
+  })
     .param("requestId", String)
     .with(Account)
     .exec(async function (requestId, account) {
@@ -97,7 +102,11 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
 
   // Both answer a plain browser form post with the redirect the client is waiting for, so the consent page needs no
   // script: the cookie session authenticates it and `CrossSiteGuard` holds the post to this origin.
-  approveOAuthConsent: mutation(Any, { guards: [Every, Person], mcp: false })
+  approveOAuthConsent: mutation(Any, {
+    guards: [Every, Person],
+    mcp: false,
+    errors: { 403: ["oauth.error.adminSubjectNotAllowed"] },
+  })
     .param("requestId", String)
     .with(Req)
     .with(Account)
@@ -105,7 +114,11 @@ export class OauthEndpoint extends endpoint(srv.oauth, ({ query, mutation }) => 
       return await this.oauthService.decide(requestId, account, true, req.headers.get("user-agent") ?? undefined);
     }),
 
-  denyOAuthConsent: mutation(Any, { guards: [Every, Person], mcp: false })
+  denyOAuthConsent: mutation(Any, {
+    guards: [Every, Person],
+    mcp: false,
+    errors: { 403: ["oauth.error.adminSubjectNotAllowed"] },
+  })
     .param("requestId", String)
     .with(Account)
     .exec(async function (requestId, account) {

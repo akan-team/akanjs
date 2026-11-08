@@ -28,6 +28,7 @@ export interface RichProps {
   /** The capabilities this field offers, out of `editorFeatureKeys`. Omitted, it offers all of them. */
   features?: readonly EditorFeatureKey[];
   placeholder?: string;
+  lineHint?: string;
   nullable?: boolean;
   disabled?: boolean;
   onPressEnter?: () => void;

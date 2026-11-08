@@ -1,4 +1,4 @@
-import type { MentionSource } from "./mention.type";
+import type { MentionLinkReader, MentionSource } from "./mention.type";
 import type { EditorPlugin } from "./plugin";
 
 /**
@@ -9,3 +9,6 @@ import type { EditorPlugin } from "./plugin";
  * search/link behavior — never a node class.
  */
 export const mentionEditorPlugin = (sources: readonly MentionSource[]): EditorPlugin => ({ mentionSources: sources });
+
+/** Turns a pasted link to one of the app's own documents into its chip, in a field that takes mentions. */
+export const mentionLinkEditorPlugin = (read: MentionLinkReader): EditorPlugin => ({ readMentionLink: read });

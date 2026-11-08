@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { rename } from "node:fs/promises";
+import { isAbsolute, resolve, sep } from "node:path";
 import { getEnv } from "akanjs/base";
 import { Try } from "akanjs/server";
 import { adapt } from "akanjs/service";
@@ -36,8 +38,17 @@ export class BlobStorageApi
   #localPathToUrl(path: string) {
     return `${this.urlPrefix}/${path}`;
   }
-  #resolveFilePath(path: string) {
-    return path.startsWith("private/") ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
+  #resolveFilePath(path: string, access?: "public" | "private") {
+    const isPrivate = access ? access === "private" : path.startsWith("private/");
+    return BlobStorageApi.#within(isPrivate ? this.privateRoot : this.root, path);
+  }
+  //? A key is joined under a root on the server's own disk, so `../` or an absolute key would reach any file it can write.
+  static #within(root: string, path: string, { allowRoot = false } = {}) {
+    const base = resolve(root);
+    const target = resolve(base, path);
+    const isInside = target.startsWith(`${base}${sep}`) || (allowRoot && target === base);
+    if (path.includes("\0") || isAbsolute(path) || !isInside) throw new Err("security.error.storagePathOutsideRoot");
+    return target;
   }
   async readData(path: string): Promise<ReadableStream> {
     const filePath = this.#resolveFilePath(path);
@@ -52,12 +63,15 @@ export class BlobStorageApi
     return Bun.file(filePath).json() as T;
   }
   async getDataList(prefix?: string) {
-    const dir = `${this.root}${prefix ? `/${prefix}` : ""}`;
+    const dir = BlobStorageApi.#within(prefix?.startsWith("private/") ? this.privateRoot : this.root, prefix ?? "", {
+      allowRoot: true,
+    });
+    if (!existsSync(dir)) return [];
     const paths = Array.from(new Bun.Glob("*").scanSync({ cwd: dir, onlyFiles: false }));
     return paths.map((path) => this.#localPathToUrl(path));
   }
   async uploadDataFromLocal({ path, localPath, meta, access = "public" }: UploadRequest) {
-    const filePath = access === "private" ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
+    const filePath = this.#resolveFilePath(path, access);
     await Bun.write(filePath, Bun.file(localPath));
     if (meta) await Bun.write(`${filePath}.meta`, JSON.stringify(meta));
     return this.#localPathToUrl(path);
@@ -70,9 +84,8 @@ export class BlobStorageApi
     uploadSuccess,
     access = "public",
   }: UploadFromStreamRequest) {
-    const filePath = access === "private" ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
     try {
-      await writeReadableStreamToFile(filePath, body);
+      await writeReadableStreamToFile(this.#resolveFilePath(path, access), body);
       await uploadSuccess(this.#localPathToUrl(path));
     } catch (error) {
       this.logger.error(error instanceof Error ? error.message : String(error));
@@ -83,7 +96,7 @@ export class BlobStorageApi
     body,
     access = "public",
   }: UploadReadableStreamRequest): Promise<UploadResult> {
-    const filePath = access === "private" ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
+    const filePath = this.#resolveFilePath(path, access);
     let size = 0;
     const countedBody = body.pipeThrough(
       new TransformStream<Uint8Array, Uint8Array>({
@@ -103,7 +116,10 @@ export class BlobStorageApi
     return { localPath: renamePath ?? localPath };
   }
   async copyData({ copyPath, pastePath, host }: CopyRequest) {
-    await Bun.write(`${this.root}/${pastePath}`, Bun.file(`${this.root}/${copyPath}`));
+    await Bun.write(
+      BlobStorageApi.#within(this.root, pastePath),
+      Bun.file(BlobStorageApi.#within(this.root, copyPath)),
+    );
     return pastePath;
   }
   @Try()

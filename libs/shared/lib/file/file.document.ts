@@ -19,8 +19,10 @@ export class File extends by(cnst.File) {}
 
 export class FileModel extends into(File, FileFilter, cnst.file, () => ({})) {
   static override _onSchema(schema: SchemaOf<FileModel, File>) {
-    schema.index({ filename: "text" });
     schema.index({ status: 1, updatedAt: 1 });
+  }
+  async countUploadedBy(ids: string[], uploader: string) {
+    return await this.File.count({ id: q.oneOf(ids), uploader });
   }
   async progressUpload(id: string, loadSize: number | undefined, totalSize: number) {
     await this.File.updateOne({ id }, { progress: Math.floor(((loadSize ?? 0) / (totalSize || 1)) * 100) });

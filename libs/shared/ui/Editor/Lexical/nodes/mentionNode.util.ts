@@ -7,7 +7,6 @@ import {
   type NodeKey,
   type SerializedTextNode,
   type Spread,
-  type TextNode,
 } from "lexical";
 import { MentionNode } from "./MentionNode";
 
@@ -36,11 +35,11 @@ export const $isMentionNode = (node: LexicalNode | null | undefined): node is Me
   node instanceof MentionNode;
 
 /**
- * Swaps the typeahead's trigger text (`@que` / `/admin`) for a chip and parks the
+ * Swaps the typeahead's trigger text (`@que` / `/admin`) or a pasted link for a chip and parks the
  * caret after a trailing space, so the next keystroke starts a fresh text node
  * instead of being swallowed by the mention.
  */
-export const $insertMention = (payload: MentionPayload, nodeToRemove?: TextNode | null) => {
+export const $insertMention = (payload: MentionPayload, nodeToRemove?: LexicalNode | null) => {
   const mention = $createMentionNode(payload);
   if (nodeToRemove) nodeToRemove.replace(mention);
   else {

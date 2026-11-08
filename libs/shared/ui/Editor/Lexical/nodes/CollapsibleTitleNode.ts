@@ -2,7 +2,9 @@ import {
   $createParagraphNode,
   $isElementNode,
   type DOMConversionMap,
+  type EditorConfig,
   ElementNode,
+  type LexicalEditor,
   type RangeSelection,
   type SerializedElementNode,
 } from "lexical";
@@ -35,9 +37,15 @@ export class CollapsibleTitleNode extends ElementNode {
     return { ...super.exportJSON(), type: "akan-collapsible-title", version: 1 };
   }
 
-  override createDOM(): HTMLElement {
+  override createDOM(_config: EditorConfig, editor: LexicalEditor): HTMLElement {
     const dom = document.createElement("summary");
     dom.className = titleClass;
+    // Only the triangle gutter toggles while editing; a click on the title text must leave the caret alone.
+    dom.addEventListener("click", (event) => {
+      if (!editor.isEditable()) return;
+      const gutter = Number.parseFloat(getComputedStyle(dom).paddingLeft);
+      if (event.clientX - dom.getBoundingClientRect().left >= gutter) event.preventDefault();
+    });
     return dom;
   }
 

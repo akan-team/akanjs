@@ -1,7 +1,8 @@
 import { adapt } from "akanjs/service";
 import { Err } from "../lib/dict";
 import type { ModulesOptions } from "../lib/option";
-import type { SendMailOptions, Transporter } from "./emailApi.helper";
+import type { Address, SendMailOptions, SMTPSentMessageInfo, Transporter } from "./emailApi.helper";
+import { PreviewMode } from "./previewMode";
 import { SignalTestHarness } from "./signalTestHarness";
 
 export interface EmailApiOptions {
@@ -9,22 +10,27 @@ export interface EmailApiOptions {
   //? Ignored (the transport is `address` on port 587); optional so env files that still set it type-check.
   service?: unknown;
   auth: { user: string; pass: string };
+  //? The relay rejects or silently drops mail whose From is not a sender it verified; the SMTP login may not be one.
+  from?: string;
 }
 
 export class EmailApi extends adapt("emailApi", ({ env }) => ({
   options: env((options: ModulesOptions) => options.mailer),
 })) {
   static #nodemailerLoad: Promise<typeof import("nodemailer")> | null = null;
-  #mailerLoad: Promise<Transporter> | null = null;
+  #mailerLoad: Promise<Transporter<SMTPSentMessageInfo>> | null = null;
 
   get configured() {
     return !!this.options;
+  }
+  get sender() {
+    return this.options?.from ?? this.options?.auth.user;
   }
   #requireOptions(): EmailApiOptions {
     if (!this.options) throw new Err("util.error.adaptorNotConfigured", { adaptor: "EmailApi", option: "mailer" });
     return this.options;
   }
-  #getMailer(): Promise<Transporter> {
+  #getMailer(): Promise<Transporter<SMTPSentMessageInfo>> {
     const { address, auth } = this.#requireOptions();
     EmailApi.#nodemailerLoad ??= import("nodemailer");
     this.#mailerLoad ??= EmailApi.#nodemailerLoad.then(({ createTransport }) =>
@@ -112,26 +118,33 @@ export class EmailApi extends adapt("emailApi", ({ env }) => ({
 </html>
       `;
   }
+  static #entriesOf(input: SendMailOptions["to"]): (string | Address)[] {
+    return Array.isArray(input) ? input.flatMap((entry) => EmailApi.#entriesOf(entry)) : input ? [input] : [];
+  }
+  static #addressOf(entry: string | Address) {
+    return typeof entry === "string" ? entry : (entry.address ?? "");
+  }
   static #maskRecipients(to: SendMailOptions["to"]) {
-    return (Array.isArray(to) ? to : to ? [to] : [])
-      .flatMap((recipient) => (typeof recipient === "string" ? recipient.split(",") : [recipient.address]))
+    return EmailApi.#entriesOf(to)
+      .flatMap((entry) => (typeof entry === "string" ? entry.split(",") : [EmailApi.#addressOf(entry)]))
       .map((address) => `***@${address.split("@").at(-1)?.replace(/[>\s]/g, "") ?? ""}`)
       .join(",");
   }
   async sendMail(mail: SendMailOptions) {
+    EmailApi.#assertRecipients(mail);
+    if (PreviewMode.isOn()) {
+      this.logger.info(`sendMail skipped in a preview: ${EmailApi.#maskRecipients(mail.to)}`);
+      return true;
+    }
     try {
-      const { auth } = this.#requireOptions();
+      this.#requireOptions();
       if (SignalTestHarness.isRunning()) {
         this.logger.debug(`sendMail suppressed in the signal-test harness: ${EmailApi.#maskRecipients(mail.to)}`);
         return true;
       }
       const mailer = await this.#getMailer();
-      const res = await mailer.sendMail({ from: auth.user, ...mail });
-      const toAddresses = Array.isArray(mail.to)
-        ? mail.to.map((t) => (typeof t === "string" ? t : t.address)).join(",")
-        : typeof mail.to === "string"
-          ? mail.to
-          : mail.to?.address;
+      const res = await mailer.sendMail({ from: this.sender, ...mail });
+      const toAddresses = EmailApi.#entriesOf(mail.to).map(EmailApi.#addressOf).join(",");
       this.logger.debug(`sendMail: ${toAddresses} ${mail.subject} ${res.accepted.length}`);
       return !!res.accepted.length;
     } catch (error) {
@@ -139,7 +152,58 @@ export class EmailApi extends adapt("emailApi", ({ env }) => ({
       return false;
     }
   }
-  async sendPasswordResetMail(to: string, password: string, serviceName: string, from = this.options?.auth.user) {
+  //? One bare address and nothing else: nodemailer's addressparser expands "a@x.com, b@y.com", "a@x.com; b@y.com",
+  //? `Name <a@x.com>` and `group: a@x.com, b@y.com;` into several recipients, which a count of the list never sees.
+  static #plainAddress = /^[^\s@,;:<>()[\]"\\]+@[^\s@,;:<>()[\]"'\\]+\.[^\s@,;:<>()[\]"'\\]+$/;
+  static #isWithinLength(address: string) {
+    return address.length <= 254 && address.indexOf("@") <= 64;
+  }
+  static isPlainAddress(address: string) {
+    return EmailApi.#isWithinLength(address) && EmailApi.#plainAddress.test(address);
+  }
+  static #assertPlainAddress(address: string) {
+    if (!EmailApi.#isWithinLength(address)) throw new Err("util.error.recipientTooLong");
+    if (!EmailApi.#plainAddress.test(address)) throw new Err("util.error.invalidRecipient", { address });
+  }
+  static #assertRecipient(entry: string | Address) {
+    if (typeof entry !== "string" && (entry.group || /[\r\n]/.test(entry.name ?? "")))
+      throw new Err("util.error.invalidRecipient", { address: EmailApi.#addressOf(entry) });
+    EmailApi.#assertPlainAddress(EmailApi.#addressOf(entry));
+  }
+  static #assertRecipients({ to, cc, bcc, envelope }: SendMailOptions) {
+    for (const input of [to, cc, bcc, envelope?.to, envelope?.cc, envelope?.bcc])
+      for (const entry of EmailApi.#entriesOf(input)) EmailApi.#assertRecipient(entry);
+  }
+  static recipientOf(address: string) {
+    const recipient = address.trim();
+    EmailApi.#assertPlainAddress(recipient);
+    return recipient;
+  }
+  static recipientsOf(addresses: string[], { max = 20 }: { max?: number } = {}) {
+    const recipients = [...new Set(addresses.map((address) => EmailApi.recipientOf(address)))];
+    if (recipients.length > max) throw new Err("util.error.tooManyRecipients", { max });
+    return recipients;
+  }
+  //? The platform account stays the sender: an org's own address is unverified, so it only answers as Reply-To.
+  async sendMailOnBehalf(
+    { to, subject, html }: { to: string; subject: string; html: string },
+    { name, address }: { name: string; address: string },
+  ) {
+    if (!EmailApi.isPlainAddress(to)) {
+      this.logger.warn(
+        `sendMailOnBehalf refused a recipient that is not one plain address: ${EmailApi.#maskRecipients(to)}`,
+      );
+      return false;
+    }
+    return await this.sendMail({
+      to,
+      subject,
+      html,
+      from: { name, address: this.sender ?? "" },
+      replyTo: { name, address },
+    });
+  }
+  async sendPasswordResetMail(to: string, password: string, serviceName: string, from = this.sender) {
     const html = EmailApi.getHtmlContent(to, password, serviceName);
     return await this.sendMail({ to, subject: "Password Reset", html, from });
   }
@@ -166,7 +230,7 @@ export class EmailApi extends adapt("emailApi", ({ env }) => ({
 </html>
       `;
   }
-  async sendVerificationCodeMail(to: string, code: string, serviceName: string, from = this.options?.auth.user) {
+  async sendVerificationCodeMail(to: string, code: string, serviceName: string, from = this.sender) {
     const html = EmailApi.getVerificationCodeHtml(code, serviceName);
     return await this.sendMail({ to, subject: `[${serviceName}] Email verification code`, html, from });
   }

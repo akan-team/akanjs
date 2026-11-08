@@ -1,6 +1,7 @@
 "use client";
+import { RichUrl } from "@libs/shared/common";
 import { cn } from "akanjs/client";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 // `prose` gives typography (headings, bold, lists, code, tables) in a single robustly scanned class —
@@ -12,6 +13,19 @@ import remarkGfm from "remark-gfm";
 // palette is a fixed gray. Rendering this component from another app produces unstyled markdown.
 const markdownClass = "prose prose-sm max-w-none break-words";
 
+const components: Components = {
+  a: ({ node: _node, href, children, ...props }) =>
+    RichUrl.external(href) ? (
+      <a {...props} href={href} target="_blank" rel="noreferrer noopener">
+        {children}
+      </a>
+    ) : (
+      <a {...props} href={href}>
+        {children}
+      </a>
+    ),
+};
+
 interface MarkdownProps {
   className?: string;
   children: string;
@@ -21,7 +35,9 @@ interface MarkdownProps {
 export const Markdown = ({ className, children }: MarkdownProps) => {
   return (
     <div className={cn(markdownClass, className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {children}
+      </ReactMarkdown>
     </div>
   );
 };

@@ -40,6 +40,30 @@ const httpCall = async (headers: Record<string, string>) => {
 };
 const tokenOf = async (sid: string) => (await accessToken(sid)).slice("Bearer ".length);
 
+const oauthCall = async (
+  clientId: string,
+  signalOption: { mcp?: boolean; guards?: unknown[] },
+  { origin = "http", key = "x", callEnv = env }: { origin?: string; key?: string; callEnv?: ModulesOptions } = {},
+) => {
+  const { appName, environment } = getEnv();
+  const jwt = await utilSrvkit.jwtSign(
+    { appName, environment, tokenType: "access", sid: "s", self: { id: "u" }, aud: "x/mcp", client_id: clientId },
+    jwtSecret,
+    { expiresAt: dayjs().add(1, "hour") },
+  );
+  const req = new Request(`https://app.example.com/api/${key}`, { headers: { authorization: `Bearer ${jwt}` } });
+  const context = {
+    transport: "http",
+    origin,
+    key,
+    endpointInfo: { signalOption },
+    getHttpContext: () => ({ req }),
+  } as unknown as SignalContext;
+  await (await new AccountMiddleware().use(callEnv))(context, async () => undefined);
+  return (req as Request & { account?: { self?: { id: string } } }).account;
+};
+const offShelfRefusal = expect.objectContaining({ statusCode: 403, message: "shared.error.agentTokenNotAllowed" });
+
 afterEach(() => {
   RevokedSessions.use(null);
   setSystemTime();
@@ -104,5 +128,52 @@ describe("AccountMiddleware", () => {
     const cookie = `${key}=${await tokenOf("planted")}; ${key}=${await tokenOf("other")}`;
 
     expect((await httpCall({ cookie, authorization: await accessToken("bearer") })).me?.id).toBe("bearer");
+  });
+
+  test("an OAuth client's token is refused off the MCP shelf, and a token an app mints for itself is not", async () => {
+    await expect(oauthCall("dcr_client", { mcp: false })).rejects.toEqual(offShelfRefusal);
+    await expect(oauthCall("https://client.example.com/meta.json", { mcp: false })).rejects.toEqual(offShelfRefusal);
+    expect((await oauthCall("dcr_client", {}))?.self?.id).toBe("u");
+    expect((await oauthCall("dcr_client", { mcp: false }, { origin: "mcp" }))?.self?.id).toBe("u");
+    expect((await oauthCall("dcr_client", { mcp: false, guards: [{ agents: false }] }))?.self?.id).toBe("u");
+    expect((await oauthCall("app-own-runner", { mcp: false }))?.self?.id).toBe("u");
+  });
+
+  test("an endpoint an app names in offShelfEndpoints refuses an OAuth client's token like an mcp: false one", async () => {
+    const excluding = { ...env, offShelfEndpoints: ["createAgentSession"] } as ModulesOptions;
+    const at = (key: string, origin = "http") => ({ key, origin, callEnv: excluding });
+    await expect(oauthCall("dcr_client", {}, at("createAgentSession"))).rejects.toEqual(offShelfRefusal);
+    expect((await oauthCall("dcr_client", {}, at("ticketListInProject")))?.self?.id).toBe("u");
+    expect((await oauthCall("dcr_client", {}, at("createAgentSession", "mcp")))?.self?.id).toBe("u");
+    expect((await oauthCall("akan-runner", {}, at("createAgentSession")))?.self?.id).toBe("u");
+    expect((await oauthCall("dcr_client", { guards: [{ agents: false }] }, at("createAgentSession")))?.self?.id).toBe(
+      "u",
+    );
+    expect((await oauthCall("dcr_client", {}, { key: "createAgentSession" }))?.self?.id).toBe("u");
+  });
+
+  test("a revocation check that fails drops an admin identity and keeps a user's", async () => {
+    const { appName, environment } = getEnv();
+    const signed = async (claims: Record<string, unknown>) =>
+      `Bearer ${await utilSrvkit.jwtSign({ appName, environment, tokenType: "access", ...claims }, jwtSecret, {
+        expiresAt: dayjs().add(1, "hour"),
+      })}`;
+    RevokedSessions.use(async () => {
+      throw new Error("cache unreachable");
+    });
+    try {
+      const both = (await httpCall({
+        authorization: await signed({ self: { id: "u" }, selfSid: "s1", me: { id: "a" }, meSid: "s2" }),
+      })) as { self?: { id: string }; me?: { id: string } };
+      expect(both.self?.id).toBe("u");
+      expect(both.me).toBeUndefined();
+      expect((await httpCall({ authorization: await accessToken("legacy-admin") })).me).toBeUndefined();
+      const user = (await httpCall({ authorization: await signed({ sid: "s3", self: { id: "u" } }) })) as {
+        self?: { id: string };
+      };
+      expect(user.self?.id).toBe("u");
+    } finally {
+      RevokedSessions.use(null);
+    }
   });
 });

@@ -13,7 +13,6 @@ export class PrivFile extends by(cnst.PrivFile) {}
 
 export class PrivFileModel extends into(PrivFile, PrivFileFilter, cnst.privFile, () => ({})) {
   static override _onSchema(schema: SchemaOf<PrivFileModel, PrivFile>) {
-    schema.index({ alias: "text" });
     schema.index({ status: 1, createdAt: 1 });
   }
 

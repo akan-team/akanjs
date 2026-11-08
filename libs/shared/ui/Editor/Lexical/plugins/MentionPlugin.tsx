@@ -1,20 +1,29 @@
 "use client";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { LexicalTypeaheadMenuPlugin, useBasicTypeaheadTriggerMatch } from "@lexical/react/LexicalTypeaheadMenuPlugin";
+import { LexicalTypeaheadMenuPlugin } from "@lexical/react/LexicalTypeaheadMenuPlugin";
 import { mergeRegister } from "@lexical/utils";
 import { usePage } from "@libs/shared/client";
 import { buttonRecipe } from "@libs/util/ui";
-import { resolveServerUrl } from "akanjs/client";
-import { $getSelection, $setSelection, type BaseSelection, COMMAND_PRIORITY_EDITOR, type TextNode } from "lexical";
+import { cn, resolveServerUrl } from "akanjs/client";
+import {
+  $getSelection,
+  $isRangeSelection,
+  $setSelection,
+  type BaseSelection,
+  COMMAND_PRIORITY_CRITICAL,
+  COMMAND_PRIORITY_EDITOR,
+  type TextNode,
+} from "lexical";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MentionCandidate, MentionSource } from "../mention.type";
 import { rememberMention } from "../mentionCache";
 import { $insertMention } from "../nodes/mentionNode.util";
+import { TypeaheadPopover, typeaheadAnchorClassName, typeaheadFrameOf } from "../TypeaheadPopover";
 import { useLocalOnlyTrigger } from "../typeaheadTrigger";
 import { OPEN_MENTION_PICKER_COMMAND, SET_MENTION_SOURCE_COMMAND } from "./mentionPlugin.command";
 import { MentionOption } from "./mentionPlugin.option";
-import { mentionSearchDebounceMs, mentionTrigger, searchMentionSources, toMentionPayload } from "./mentionPlugin.util";
+import { MentionSession, mentionSearchDebounceMs, searchMentionSources, toMentionPayload } from "./mentionPlugin.util";
 
 interface MentionPluginProps {
   sources: readonly MentionSource[];
@@ -28,8 +37,8 @@ interface MentionPluginProps {
  * A model's `/<label>` slash entry funnels into the same menu, scoped to that one
  * source, or opens the source's own `Picker` dialog when it ships one.
  *
- * Whitespace closes the menu (the basic trigger's default) — pass `allowWhitespace`
- * if labels with spaces ever need to be searchable.
+ * The query may hold spaces (`@Doyun Kim`); `MentionSession` ends it once a query
+ * with a space finds nothing, or on a double space.
  */
 export const MentionPlugin = ({ sources }: MentionPluginProps) => {
   const [editor] = useLexicalComposerContext();
@@ -41,7 +50,19 @@ export const MentionPlugin = ({ sources }: MentionPluginProps) => {
   // The caret is lost while a picker dialog holds focus, so it is captured on open.
   const pickerSelection = useRef<BaseSelection | null>(null);
 
-  const triggerFn = useLocalOnlyTrigger(useBasicTypeaheadTriggerMatch(mentionTrigger, { minLength: 0 }));
+  const session = useMemo(() => new MentionSession(), []);
+
+  const triggerFn = useLocalOnlyTrigger(
+    useCallback(
+      (text: string) => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection)) return null;
+        const node = selection.anchor.getNode();
+        return session.match(text, { key: node.getKey(), text: node.getTextContent() });
+      },
+      [session],
+    ),
+  );
 
   const scopedSources = useMemo(
     () => (scopedRefName ? sources.filter((source) => source.refName === scopedRefName) : sources),
@@ -84,6 +105,7 @@ export const MentionPlugin = ({ sources }: MentionPluginProps) => {
     const timer = setTimeout(() => {
       void searchMentionSources(scopedSources, query, controller.signal).then((matches) => {
         if (controller.signal.aborted) return;
+        session.settle(query, scopedSources, matches);
         setOptions(matches.map((match) => new MentionOption(match.source, match.candidate)));
         setIsSearching(false);
       });
@@ -92,7 +114,7 @@ export const MentionPlugin = ({ sources }: MentionPluginProps) => {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [scopedSources, query]);
+  }, [session, scopedSources, query]);
 
   const onSelectOption = useCallback(
     (selected: MentionOption, nodeToRemove: TextNode | null, closeMenu: () => void) => {
@@ -130,11 +152,14 @@ export const MentionPlugin = ({ sources }: MentionPluginProps) => {
         options={options}
         onQueryChange={setQuery}
         onSelectOption={onSelectOption}
-        onClose={() => setScopedRefName(null)}
+        onClose={() => {
+          setScopedRefName(null);
+          session.reset();
+        }}
         triggerFn={triggerFn}
-        // Lexical appends this anchor to <body> with no z-index; without one the menu
-        // renders under any positioned overlay hosting the editor (Modal, BottomSheet).
-        anchorClassName="z-[9999]"
+        anchorClassName={typeaheadAnchorClassName}
+        // Ahead of a chat composer's ↩-to-send (HIGH), so ↩ picks the highlighted row instead of sending.
+        commandPriority={COMMAND_PRIORITY_CRITICAL}
         menuRenderFn={(anchorRef, { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex }) => {
           if (anchorRef.current === null) return null;
           if (!options.length && !isSearching) return null;
@@ -142,6 +167,7 @@ export const MentionPlugin = ({ sources }: MentionPluginProps) => {
             <MentionMenuList
               options={options}
               isSearching={isSearching}
+              isWide={!!typeaheadFrameOf(editor.getRootElement())}
               showGroups={scopedSources.length > 1}
               selectedIndex={selectedIndex}
               onSelect={selectOptionAndCleanUp}
@@ -233,6 +259,7 @@ export const MentionPickerDialog = ({ label, children, onClose }: MentionPickerD
 interface MentionMenuListProps {
   options: MentionOption[];
   isSearching: boolean;
+  isWide?: boolean;
   showGroups: boolean;
   selectedIndex: number | null;
   onSelect: (option: MentionOption) => void;
@@ -243,6 +270,7 @@ interface MentionMenuListProps {
 export const MentionMenuList = ({
   options,
   isSearching,
+  isWide,
   showGroups,
   selectedIndex,
   onSelect,
@@ -251,20 +279,26 @@ export const MentionMenuList = ({
   const { l } = usePage();
   const grouped = options
     .map((option, index) => ({ option, index }))
-    .reduce<{ refName: string; label: string; items: { option: MentionOption; index: number }[] }[]>((acc, entry) => {
-      const section = acc.find((candidate) => candidate.refName === entry.option.source.refName);
+    .reduce<{ source: MentionSource; items: { option: MentionOption; index: number }[] }[]>((acc, entry) => {
+      const section = acc.find((candidate) => candidate.source.refName === entry.option.source.refName);
       if (section) section.items.push(entry);
-      else acc.push({ refName: entry.option.source.refName, label: entry.option.source.label, items: [entry] });
+      else acc.push({ source: entry.option.source, items: [entry] });
       return acc;
     }, []);
 
   return (
-    <div className="max-h-80 w-72 overflow-y-auto rounded-md border border-foreground/10 bg-background p-1 shadow-lg">
-      {grouped.map((section) => (
-        <div key={section.refName}>
+    <TypeaheadPopover className={isWide ? "p-1.5" : "w-72"}>
+      {grouped.map((section, sectionIdx) => (
+        <div key={section.source.refName}>
           {showGroups ? (
-            <div className="px-2 py-1 font-medium text-foreground/40 text-xs uppercase tracking-wide">
-              {section.label}
+            <div
+              className={cn(
+                "flex items-center gap-1.5 px-2 pt-2 pb-1 font-semibold text-[13px] text-foreground/70",
+                sectionIdx > 0 && "mt-1 border-border border-t",
+              )}
+            >
+              {section.source.icon ? <span className="text-sm">{section.source.icon}</span> : null}
+              {section.source.label}
             </div>
           ) : null}
           {section.items.map(({ option, index }) => (
@@ -272,27 +306,45 @@ export const MentionMenuList = ({
               key={option.key}
               type="button"
               ref={(el) => option.setRefElement(el)}
-              className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors ${
-                index === selectedIndex ? "bg-muted" : "hover:bg-muted/60"
-              }`}
+              className={cn(
+                "flex w-full items-center rounded px-2 text-left transition-colors",
+                isWide ? "gap-3 py-2" : "gap-2 py-1.5",
+                index === selectedIndex ? "bg-muted" : "hover:bg-muted/60",
+              )}
               // Keep editor selection intact while clicking the menu.
               onMouseDown={(event) => event.preventDefault()}
               onMouseEnter={() => onHighlight(index)}
               onClick={() => onSelect(option)}
             >
-              {option.candidate.imageUrl ? (
-                <img
-                  src={resolveServerUrl(option.candidate.imageUrl)}
-                  alt=""
-                  className="size-6 shrink-0 rounded-full object-cover"
-                />
-              ) : null}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-sm">{option.candidate.label}</span>
-                {option.candidate.description ? (
-                  <span className="block truncate text-foreground/50 text-xs">{option.candidate.description}</span>
-                ) : null}
+              <span
+                className={cn(
+                  "grid shrink-0 place-items-center overflow-hidden rounded-full bg-muted font-medium text-foreground/70 text-xs",
+                  isWide ? "size-7" : "size-6",
+                )}
+              >
+                {option.candidate.imageUrl ? (
+                  <img src={resolveServerUrl(option.candidate.imageUrl)} alt="" className="size-full object-cover" />
+                ) : (
+                  Array.from(option.candidate.label.replace(/^[^\p{L}\p{N}]+/u, ""))[0]?.toUpperCase()
+                )}
               </span>
+              {isWide ? (
+                <>
+                  <span className="min-w-0 flex-1 truncate font-medium text-[15px]">{option.candidate.label}</span>
+                  {option.candidate.description ? (
+                    <span className="max-w-[45%] shrink-0 truncate text-foreground/50 text-sm">
+                      {option.candidate.description}
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-sm">{option.candidate.label}</span>
+                  {option.candidate.description ? (
+                    <span className="block truncate text-foreground/50 text-xs">{option.candidate.description}</span>
+                  ) : null}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -300,6 +352,6 @@ export const MentionMenuList = ({
       {isSearching ? (
         <div className="px-2 py-1.5 text-foreground/40 text-xs">{l("shared.editor-searching")}</div>
       ) : null}
-    </div>
+    </TypeaheadPopover>
   );
 };

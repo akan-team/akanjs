@@ -23,7 +23,7 @@ export class HandlerSet<Args extends unknown[]> {
   emit(...args: Args): void {
     for (const handler of this.handlers) {
       try {
-        handler(...args);
+        void Promise.resolve(handler(...args)).catch(() => undefined);
       } catch {
         // isolated: one listener's failure must not stop the rest, nor fail the emitter
       }

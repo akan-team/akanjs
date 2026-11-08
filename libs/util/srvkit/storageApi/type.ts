@@ -11,6 +11,7 @@ export interface LocalFilePath {
 export interface UploadRequest {
   path: string;
   localPath: string;
+  mimetype?: string;
   meta?: { [key: string]: string };
   rename?: string;
   host?: string;

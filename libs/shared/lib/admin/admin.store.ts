@@ -1,5 +1,5 @@
 import { msg } from "@libs/shared/client";
-import { saveRefreshToken } from "@libs/shared/webkit";
+import { refreshSession, saveRefreshToken } from "@libs/shared/webkit";
 import { getApiPrefix } from "akanjs/base";
 import { router, setAuth, setCookie } from "akanjs/client";
 import { store } from "akanjs/store";
@@ -11,6 +11,10 @@ import { fetch, sig } from "../useClient";
 export class AdminStore extends store(sig.admin, () => ({
   me: new cnst.Admin(),
 })) {
+  static silent = ["refreshAdminSession"] satisfies (keyof AdminStore)[];
+  async refreshAdminSession() {
+    await refreshSession("admin", fetch.refreshAdminJwt);
+  }
   async addAdminRole(adminId: string, role: cnst.AdminRole["value"]) {
     const admin = await fetch.addAdminRole(adminId, role);
     const { adminList } = this.get();
@@ -21,12 +25,17 @@ export class AdminStore extends store(sig.admin, () => ({
     const { adminList } = this.get();
     this.set({ adminList: adminList.set(admin).save() });
   }
+  async setAdminRoles(adminId: string, roles: cnst.AdminRole["value"][]) {
+    const admin = await fetch.setAdminRoles(adminId, roles);
+    const { adminList } = this.get();
+    this.set({ adminList: adminList.set(admin).save() });
+  }
   async initAdminAuth() {
     const me = await fetch.me();
     this.set({ me: me ?? new cnst.Admin() });
   }
-  async setAdminPassword(adminId: string, password: string) {
-    await fetch.setAdminPassword(adminId, password);
+  async setAdminPassword(adminId: string, password: string, prevPassword: string | null = null) {
+    await fetch.setAdminPassword(adminId, password, prevPassword);
     msg.success("base.success", { key: "setAdminPassword" });
   }
   async signinAdmin({ redirect }: { redirect?: string } = {}) {

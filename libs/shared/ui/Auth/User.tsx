@@ -1,9 +1,8 @@
-import { fetch } from "@libs/shared/client";
+import { fetch, User as UserModule } from "@libs/shared/client";
 import { getAccount } from "akanjs/client";
 import { Load } from "akanjs/ui";
 
 import { Bridge } from "./Bridge";
-import { TokenRefresh } from "./TokenRefresh";
 
 export const User = () => {
   const account = getAccount<{ me?: { id: string }; self?: { id: string } }>();
@@ -23,7 +22,7 @@ export const User = () => {
       render={({ selfPromise }) => (
         <>
           <Bridge selfPromise={selfPromise} />
-          <TokenRefresh scope="user" />
+          <UserModule.Util.TokenRefresh />
         </>
       )}
     />
