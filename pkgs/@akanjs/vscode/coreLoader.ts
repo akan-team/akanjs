@@ -26,7 +26,7 @@ const coreMethods = [
 
 const fallback: LoadedCore = { core: bundledCore, source: "bundled" };
 
-const isInside = (root: string, file: string) =>
+export const isInside = (root: string, file: string) =>
   [root, realpathSync(root)].some((base) => {
     const relative = path.relative(base, file);
     return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);

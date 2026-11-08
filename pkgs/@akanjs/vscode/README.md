@@ -14,6 +14,11 @@ nothing. This extension adds the missing answers next to TypeScript's own (the b
 
 - **Rename** (F2) on a slice key or Filter query key renames it together with every name derived from it. F2
   anywhere else, a constant field included, stays TypeScript's rename.
+- **Akan: Verify this app or library** saves open files and runs `akan verify` on the app or library of the
+  active file, or on what git reports as changed, and lists what failed in Problems. Editing a file clears its entries.
+- **Akan: Run a workflow…** (also **Create a module…** and **Add a field…**) asks for the workflow's inputs, shows
+  the files its plan would change, and applies it once you confirm. The app and module start from the active file.
+  These commands run the workspace's akan CLI, so they need a trusted workspace.
 
 The index is built from syntax alone, so it never waits for the type checker. In a trusted workspace the extension
 uses the workspace's own `@akanjs/language` when one is installed, so its rules match the framework version.

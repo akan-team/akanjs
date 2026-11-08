@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { registerCommands } from "./commands";
 import { registerProviders } from "./providers";
 import { WorkspaceIndex } from "./workspaceIndex";
 
@@ -9,6 +10,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
     log,
     workspace,
     ...registerProviders(workspace),
+    ...registerCommands(log),
     vscode.commands.registerCommand("akan.reindex", () => workspace.rebuild()),
   );
   await workspace.rebuild();
