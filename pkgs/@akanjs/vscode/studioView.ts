@@ -23,7 +23,7 @@ const studioWorkflows = new Set([
   "create-ui",
   "rename-key",
 ]);
-export const studioTargetInputs = new Set(["app", "module", "slice", "query"]);
+const studioTargetInputs = new Set(["app", "module", "slice", "query"]);
 const identifier = /^[A-Za-z_$][\w$-]{0,63}$/;
 
 const attributeOf = (text: string) =>
@@ -78,6 +78,13 @@ export class StudioView {
       studioTargetInputs.has(name) && typeof value === "string" && identifier.test(value);
     if (typeof inputs.app !== "string" || !entries.every(isTarget)) return null;
     return { workflow, inputs: Object.fromEntries(entries) as Record<string, string> };
+  }
+
+  static inputsToAsk<Spec extends { required?: boolean }>(specs: Record<string, Spec>, given: Record<string, string>) {
+    const isGiven = Object.keys(given).length > 0;
+    return Object.entries(specs).filter(
+      ([name, spec]) => !(name in given) && !(isGiven && !spec.required && studioTargetInputs.has(name)),
+    );
   }
 
   static followed(message: unknown, loaded: string, frameOrigin: string): string | null {

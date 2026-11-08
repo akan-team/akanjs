@@ -26,15 +26,17 @@ const askedInputs: { [workflow in StudioWorkflow]: string[] } = {
   "rename-key": ["to"],
 };
 
-const fieldActions: [StudioWorkflow, string][] = [
-  ["add-field", "Add field"],
-  ["add-enum-field", "Add enum field"],
-];
-
+//? Scalars get none: the workflows read `lib/<module>/` and never `lib/__scalar/<module>/`, so apply would refuse.
 const actionsByKind: { [kind in AkanGraphNodeKind]?: [StudioWorkflow, string][] } = {
-  model: [...fieldActions, ["add-mutation", "Add mutation"], ["add-slice", "Add slice"], ["create-ui", "Create UI"]],
-  scalar: fieldActions,
+  model: [
+    ["add-field", "Add field"],
+    ["add-enum-field", "Add enum field"],
+    ["add-mutation", "Add mutation"],
+    ["add-slice", "Add slice"],
+    ["create-ui", "Create UI"],
+  ],
 };
+const identifier = /^[A-Za-z_$][\w$-]{0,63}$/;
 
 const keyInputs: { [kind in AkanGraphNodeKind]?: { input: string; label: string } } = {
   slice: { input: "slice", label: "Rename slice key" },
@@ -45,6 +47,7 @@ export class StudioActions {
   static of(node: AkanGraphNode): StudioAction[] {
     const app = node.owner?.split("/").at(-1);
     if (!app || !node.module || node.change === "removed") return [];
+    if (!identifier.test(app) || !identifier.test(node.module) || (node.name && !identifier.test(node.name))) return [];
     const target = { app, module: node.module };
     const keyed = keyInputs[node.kind];
     if (keyed)
@@ -55,7 +58,7 @@ export class StudioActions {
   }
 
   static ofApp(app: string): StudioAction[] {
-    return [StudioActions.#action("create-module", "New module", { app })];
+    return identifier.test(app) ? [StudioActions.#action("create-module", "New module", { app })] : [];
   }
 
   static #action(workflow: StudioWorkflow, label: string, inputs: StudioAction["inputs"]): StudioAction {

@@ -13,7 +13,6 @@ export class StudioPanel {
   #url = "";
   #frameOrigin = "";
   #runWorkflow: StudioWorkflowRunner | null = null;
-  #running: Promise<void> | null = null;
   #loads = 0;
   #isDisposed = false;
   #ready: ((isReady: boolean) => void) | null = null;
@@ -71,16 +70,8 @@ export class StudioPanel {
   }
 
   async #run(request: StudioWorkflowRequest) {
-    const runWorkflow = this.#runWorkflow;
-    if (this.#running || !runWorkflow) return;
-    this.#running = runWorkflow(request)
-      .then(async (isApplied) => {
-        if (isApplied && !this.#isDisposed) await this.#load(this.#url);
-      })
-      .finally(() => {
-        this.#running = null;
-      });
-    await this.#running;
+    if (!this.#runWorkflow || !(await this.#runWorkflow(request)) || this.#isDisposed) return;
+    await this.#load(this.#url);
   }
 
   async #offerBrowser(url: string) {

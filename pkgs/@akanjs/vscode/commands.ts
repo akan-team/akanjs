@@ -2,7 +2,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 import { AkanCli, type AkanRun, type VerifyResult } from "./akanCli";
 import { StudioPanel } from "./studioPanel";
-import { StudioView, studioTargetInputs } from "./studioView";
+import { StudioView } from "./studioView";
 
 interface WorkflowInputSpec {
   type: string;
@@ -45,18 +45,20 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     return folders.length === 1 ? folders[0] : await vscode.window.showWorkspaceFolderPick();
   };
 
-  const cliOf = async () => {
+  const cliOf = async (root?: string) => {
     if (!vscode.workspace.isTrusted) {
       void vscode.window.showWarningMessage(
         vscode.l10n.t("Akan commands run the workspace's CLI, so they need a trusted workspace."),
       );
       return null;
     }
-    const folder = await folderOf();
-    if (!folder) return null;
-    const cli = AkanCli.of(folder.uri.fsPath);
+    const folderPath = root ?? (await folderOf())?.uri.fsPath;
+    if (!folderPath) return null;
+    const cli = AkanCli.of(folderPath);
     if (!cli)
-      void vscode.window.showErrorMessage(vscode.l10n.t("{0} has no akan CLI. Install @akanjs/cli.", folder.name));
+      void vscode.window.showErrorMessage(
+        vscode.l10n.t("{0} has no akan CLI. Install @akanjs/cli.", path.basename(folderPath)),
+      );
     return cli;
   };
 
@@ -93,8 +95,8 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     return null;
   };
 
-  const verify = async (target?: string) => {
-    const cli = await cliOf();
+  const verify = async (target?: string, root?: string) => {
+    const cli = await cliOf(root);
     if (!cli) return;
     await vscode.workspace.saveAll(false);
     const active = vscode.window.activeTextEditor?.document.uri;
@@ -167,10 +169,7 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     const active = vscode.window.activeTextEditor?.document.uri;
     const place = active ? AkanCli.placeOf(cli.root, active.fsPath) : { system: null, module: null };
     const presets: Partial<Record<string, string | null>> = { app: place.system, module: place.module };
-    const isGiven = Object.keys(given).length > 0;
-    const entries = Object.entries(specs).filter(
-      ([name]) => !(name in given) && !(isGiven && studioTargetInputs.has(name)),
-    );
+    const entries = StudioView.inputsToAsk(specs, given);
     const optional = entries.filter(([, spec]) => !spec.required);
     const values: Record<string, string | boolean> = { ...given };
     for (const [name, spec] of entries.filter(([, spec]) => spec.required)) {
@@ -198,8 +197,22 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     return values;
   };
 
-  const runWorkflow = async (name?: string, given: Record<string, string> = {}): Promise<boolean> => {
-    const cli = await cliOf();
+  let isWorkflowRunning = false;
+  const runWorkflow = async (name?: string, given: Record<string, string> = {}, root?: string): Promise<boolean> => {
+    if (isWorkflowRunning) {
+      void vscode.window.showInformationMessage(vscode.l10n.t("Another Akan workflow is still running."));
+      return false;
+    }
+    isWorkflowRunning = true;
+    try {
+      return await runWorkflowOnce(name, given, root);
+    } finally {
+      isWorkflowRunning = false;
+    }
+  };
+
+  const runWorkflowOnce = async (name: string | undefined, given: Record<string, string>, root?: string) => {
+    const cli = await cliOf(root);
     if (!cli) return false;
     let workflow = name;
     if (!workflow) {
@@ -238,9 +251,12 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     }
     const writes = plan.predictedChanges.filter((change) => writingActions.has(change.action));
     const applyLabel = vscode.l10n.t("Apply");
+    const inputLine = Object.entries(inputs)
+      .map(([input, value]) => `${input}=${String(value)}`)
+      .join(" ");
     const confirmed = await vscode.window.showInformationMessage(
       vscode.l10n.t("Apply {0}?", workflow),
-      { modal: true, detail: writes.map((change) => `${change.action} ${change.target}`).join("\n") },
+      { modal: true, detail: [inputLine, ...writes.map((change) => `${change.action} ${change.target}`)].join("\n") },
       applyLabel,
     );
     if (confirmed !== applyLabel) return false;
@@ -269,7 +285,7 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
         verifyLabel,
       )
       .then((picked) => {
-        if (picked === verifyLabel) void verify(typeof inputs.app === "string" ? inputs.app : undefined);
+        if (picked === verifyLabel) void verify(typeof inputs.app === "string" ? inputs.app : undefined, cli.root);
       });
     return true;
   };
@@ -314,7 +330,9 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
     if (!result) return false;
     const report = AkanCli.jsonOf(result.stdout);
     if (isRecord(report) && typeof report.url === "string")
-      return await StudioPanel.show(cli.root, app, report.url, ({ workflow, inputs }) => runWorkflow(workflow, inputs));
+      return await StudioPanel.show(cli.root, app, report.url, ({ workflow, inputs }) =>
+        runWorkflow(workflow, inputs, cli.root),
+      );
     log.appendLine(result.stdout.trimEnd());
     const reason = result.stdout.trim().split("\n").at(-1) || vscode.l10n.t("akan studio failed.");
     if (!result.stdout.includes("No dev server answers")) {

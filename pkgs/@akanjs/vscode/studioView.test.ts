@@ -37,6 +37,25 @@ describe("StudioView", () => {
     expect(ask({ type: "akan-studio:open" })).toBeNull();
   });
 
+  test("asks for every input Studio did not preset, but no other target once Studio named one", () => {
+    const target = { app: { required: true }, module: { required: true } };
+    const asked = (specs: Record<string, { required?: boolean }>, given: Record<string, string>) =>
+      StudioView.inputsToAsk(specs, given).map(([name]) => name);
+    expect(asked(target, { app: "demo" })).toEqual(["module"]);
+    expect(asked({ ...target, slice: { required: true } }, { app: "demo", module: "memo" })).toEqual(["slice"]);
+    expect(
+      asked(
+        { ...target, slice: {}, query: {}, to: { required: true } },
+        { app: "demo", module: "memo", slice: "inPublic" },
+      ),
+    ).toEqual(["to"]);
+    expect(asked({ ...target, field: { required: true }, default: {} }, { app: "demo", module: "memo" })).toEqual([
+      "field",
+      "default",
+    ]);
+    expect(asked({ ...target, slice: {}, query: {} }, {})).toEqual(["app", "module", "slice", "query"]);
+  });
+
   test("follows the Studio page the panel navigated to, on the dev server's own origin", () => {
     const loaded = "http://localhost:8284/_akan/studio?view=erd&editor=vscode";
     const follow = (href: unknown) =>

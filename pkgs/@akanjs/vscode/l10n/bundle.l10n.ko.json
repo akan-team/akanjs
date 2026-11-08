@@ -27,6 +27,7 @@
   "Reading {0}": "{0} 읽는 중",
   "Planning {0}": "{0} 계획 중",
   "Apply {0}?": "{0}을(를) 적용할까요?",
+  "Another Akan workflow is still running.": "다른 Akan 워크플로가 아직 실행 중입니다.",
   "Apply": "적용",
   "Applying {0}": "{0} 적용 중",
   "{0} failed.": "{0} 실패.",

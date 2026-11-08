@@ -23,14 +23,12 @@ describe("StudioActions", () => {
       "add-slice",
       "create-ui",
     ]);
-    const [addField] = StudioActions.of(
-      node("scalar:libs/shared:geo", { kind: "scalar", owner: "libs/shared", module: "geo" }),
-    );
+    const [addField] = StudioActions.of(node("model:libs/shared:file", { owner: "libs/shared", module: "file" }));
     expect(addField).toEqual({
       workflow: "add-field",
       label: "Add field",
-      inputs: { app: "shared", module: "geo" },
-      command: "akan workflow plan add-field --app shared --module geo --field <field> --type <type>",
+      inputs: { app: "shared", module: "file" },
+      command: "akan workflow plan add-field --app shared --module file --field <field> --type <type>",
     });
     expect(
       StudioActions.of(
@@ -53,8 +51,13 @@ describe("StudioActions", () => {
     });
   });
 
-  test("offers nothing for a node with no workflow, a default slice or query, or a removed node", () => {
+  test("offers nothing for a node with no workflow, a default slice or query, a removed node or an odd name", () => {
     expect(StudioActions.of(node("method:apps/demo:memo.list", { kind: "method", name: "list" }))).toEqual([]);
+    const scalar = node("scalar:libs/shared:geo", { kind: "scalar", owner: "libs/shared", module: "geo" });
+    expect(StudioActions.of(scalar)).toEqual([]);
+    expect(StudioActions.of(node("model:apps/my app:memo", { owner: "apps/my app" }))).toEqual([]);
+    expect(StudioActions.of(node("slice:apps/demo:memo.$(x)", { kind: "slice", name: "$(x)" }))).toEqual([]);
+    expect(StudioActions.ofApp("my;app")).toEqual([]);
     expect(StudioActions.of(node("slice:apps/demo:memo", { kind: "slice", name: "" }))).toEqual([]);
     expect(StudioActions.of(node("query:apps/demo:memo", { kind: "query", name: "" }))).toEqual([]);
     expect(StudioActions.of(node("model:apps/demo:memo", { change: "removed" }))).toEqual([]);
