@@ -26,8 +26,8 @@ export const agentDictionary = serviceDictionary(["en", "ko"])
     ],
     // One key for every provider: an app's own adaptor cannot add a key here, so it reports through this one too.
     llmRequestFailed: [
-      "{provider} refused this turn with status {status}. Reason: {reason}",
-      "{provider}가 이번 턴을 거절했습니다 (status {status}). 사유: {reason}",
+      "{provider} refused this turn with status {status}",
+      "{provider}가 이번 턴을 거절했습니다 (status {status})",
     ],
     // Printed only once the chat has already summarized itself and been refused again, so it names what is left.
     contextOverflow: [

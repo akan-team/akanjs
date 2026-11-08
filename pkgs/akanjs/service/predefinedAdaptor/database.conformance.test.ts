@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { Any, dayjs, Int } from "akanjs/base";
 import { Logger } from "akanjs/common";
-import { type ConstantModel, ConstantRegistry, via } from "akanjs/constant";
+import { type ConstantModel, ConstantRegistry, InputParser, via } from "akanjs/constant";
 import {
   by,
   createDocumentId,
@@ -516,6 +516,39 @@ const describeDriver = (kind: SqlDriverKind) => {
       await store.create({ title: "Quarterly revenue report" });
       await store.create({ title: "Team offsite" });
       expect(titlesOf(await store.find(q.search("revenue")))).toEqual(["Quarterly revenue report"]);
+    });
+
+    test("a raw-shaped object q.raw() did not build is refused, so it cannot widen the condition beside it", async () => {
+      await store.create({ title: "mine", status: "active" });
+      await store.create({ title: "theirs", status: "draft" });
+      const shaped = JSON.parse('{"kind":"raw","sql":"1 = 1) OR (1 = 1","params":[]}');
+      await expect(store.find(q.all({ status: "active" }, shaped))).rejects.toThrow("q.raw()");
+      expect(titlesOf(await store.find(q.all({ status: "active" }, q.raw("1 = 1"))))).toEqual(["mine"]);
+    });
+
+    test("an operator object a request carried is refused at a field; the same shorthand in code applies", async () => {
+      await store.create({ title: "mine", status: "active" });
+      await store.create({ title: "theirs", status: "draft" });
+      const [requested] = InputParser.parse(Any, 0, [{ ne: "__nobody__" }], { key: "args" }) as [string];
+      await expect(store.find({ status: requested })).rejects.toThrow("holds query operators");
+      expect(titlesOf(await store.find({ status: { ne: "draft" } as unknown as string }))).toEqual(["mine"]);
+    });
+
+    test("an object is refused as the value of a field that holds one value", async () => {
+      await store.create({ title: "mine", meta: { tier: "gold" } });
+      await expect(store.find({ status: { tier: "gold" } as unknown as string })).rejects.toThrow(
+        'Query value at "status"',
+      );
+      await expect(store.find({ id: { tier: "gold" } as unknown as string })).rejects.toThrow('Query value at "id"');
+      expect(titlesOf(await store.find({ meta: { tier: "gold" } }))).toEqual(["mine"]);
+    });
+
+    test("a combinator at a field is refused rather than compiled", async () => {
+      await store.create({ title: "mine" });
+      for (const value of [q.any(), q.all({ status: "active" }), q.not({ status: "active" })])
+        await expect(store.find({ status: value as unknown as string })).rejects.toThrow(
+          'cannot be the value of "status"',
+        );
     });
 
     test("[DDL-3] two indexes whose names differ past 63 bytes both exist", async () => {

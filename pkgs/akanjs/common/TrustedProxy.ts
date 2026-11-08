@@ -31,6 +31,7 @@ export class TrustedProxy {
   static readonly #verdicts = new Map<string, boolean>();
   static readonly #verdictLimit = 1024;
   static #warnedIgnoredPeer = false;
+  static #warnedUnlistedChain = false;
 
   static configure(list: string | null | undefined) {
     TrustedProxy.reset();
@@ -41,6 +42,7 @@ export class TrustedProxy {
     TrustedProxy.#policy = null;
     TrustedProxy.#verdicts.clear();
     TrustedProxy.#warnedIgnoredPeer = false;
+    TrustedProxy.#warnedUnlistedChain = false;
   }
 
   static #load(): TrustPolicy {
@@ -110,6 +112,7 @@ export class TrustedProxy {
       //* keeps it too: trusting every hop, the walk would always end at the entry the client wrote.
       const judge = TrustedProxy.#load().strict ? (address: string) => TrustedProxy.isTrusted(address) : undefined;
       const recorded = clientAddressFromHeaders(headers, judge);
+      if (peerAddress) TrustedProxy.#noteUnlistedChain(headers, peerAddress);
       if (recorded) return { address: recorded, forwarded: true };
     } else if (peerAddress) TrustedProxy.#noteIgnoredPeer(headers, peerAddress);
     return {
@@ -130,16 +133,58 @@ export class TrustedProxy {
     );
   }
 
+  //* Once, without header values: nginx sets x-real-ip to the hop it appended, so only a chain that disagrees warns.
+  static #noteUnlistedChain(headers: Headers, peerAddress: string) {
+    if (TrustedProxy.#warnedUnlistedChain) return;
+    const policy = TrustedProxy.#load();
+    if (policy.strict || policy.trustAll) return;
+    const hops = (headers.get("x-forwarded-for") ?? "")
+      .split(",")
+      .map((hop) => hop.trim())
+      .filter((hop) => hop);
+    const realIp = headers.get("x-real-ip")?.trim();
+    const last = hops.at(-1);
+    const disagrees = realIp ? !!last && IpLiteral.parse(last) !== IpLiteral.parse(realIp) : hops.length > 1;
+    if (!disagrees) return;
+    const bytes = IpBytes.of(normalizeIpAddress(peerAddress));
+    if (!bytes || TrustedProxy.#isLoopback(bytes)) return;
+    TrustedProxy.#warnedUnlistedChain = true;
+    new Logger("TrustedProxy").warn(
+      `AKAN_TRUSTED_PROXIES is unset, so the client address comes from the x-real-ip or leftmost x-forwarded-for that ${normalizeIpAddress(peerAddress)} sent. If that proxy appends to those headers instead of overwriting them, list it in AKAN_TRUSTED_PROXIES so the chain is read from the nearest hop.`,
+    );
+  }
+
   /** For refusing an outbound fetch to a caller-chosen name: judges the address alone, never the proxy list. */
   static isPrivateAddress(address: string): boolean {
     const bytes = IpBytes.of(normalizeIpAddress(address));
-    if (!bytes) return true;
+    return !bytes || TrustedProxy.#isNonPublic(bytes);
+  }
+
+  static #isNonPublic(bytes: Uint8Array): boolean {
     if (TrustedProxy.#isLoopback(bytes) || TrustedProxy.#isPrivateRange(bytes)) return true;
     if (bytes.length === 4) {
       const [a = 0, b = 0] = bytes;
       return a === 0 || (a === 100 && b >= 64 && b <= 127) || a >= 224;
     }
-    return bytes.every((byte) => byte === 0) || bytes[0] === 0xff;
+    const embedded = TrustedProxy.#embeddedIpv4(bytes);
+    if (embedded) return TrustedProxy.#isNonPublic(embedded);
+    const [first = 0, second = 0, third = 0, fourth = 0, fifth = 0, sixth = 0] = bytes;
+    const localNat64 =
+      first === 0 && second === 0x64 && third === 0xff && fourth === 0x9b && fifth === 0 && sixth === 1;
+    return localNat64 || first === 0xff;
+  }
+
+  //? Mapped, compatible, SIIT, NAT64, 6to4 and Teredo addresses are delivered to the IPv4 host they carry.
+  static #embeddedIpv4(bytes: Uint8Array): Uint8Array | null {
+    const zero = (from: number, to: number) => bytes.subarray(from, to).every((byte) => byte === 0);
+    const groupAt = (idx: number) => ((bytes[idx] ?? 0) << 8) | (bytes[idx + 1] ?? 0);
+    const tail = bytes.slice(12);
+    if (zero(0, 10) && (groupAt(10) === 0xffff || groupAt(10) === 0)) return tail;
+    if (zero(0, 8) && groupAt(8) === 0xffff && groupAt(10) === 0) return tail;
+    if (groupAt(0) === 0x64 && groupAt(2) === 0xff9b && zero(4, 12)) return tail;
+    if (groupAt(0) === 0x2002) return bytes.slice(2, 6);
+    if (groupAt(0) === 0x2001 && groupAt(2) === 0) return tail.map((byte) => byte ^ 0xff);
+    return null;
   }
 
   static #isLoopback(bytes: Uint8Array): boolean {

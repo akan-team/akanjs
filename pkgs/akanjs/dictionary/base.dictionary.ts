@@ -44,6 +44,10 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
       "Too many requests. Please try again in {seconds} seconds.",
       "요청이 너무 많습니다. {seconds}초 후 다시 시도해주세요.",
     ],
+    payloadTooLarge: [
+      "The request is too large for the server to accept.",
+      "요청이 너무 커서 서버가 받을 수 없습니다.",
+    ],
     unexpectedResponse: [
       "The server returned an unexpected response ({status}).",
       "서버가 예상하지 못한 응답을 보냈습니다. ({status})",

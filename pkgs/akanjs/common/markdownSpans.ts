@@ -13,8 +13,9 @@ export type MarkdownSpan =
 const inline =
   /(!?)\[([^[\]]*)\]\(((?:[^\s()]|\([^\s()]*\))+)\)|`([^`]+)`|\*\*([\s\S]+?)\*\*|\*([^*\n]+?)\*|~~([\s\S]+?)~~/g;
 
-// A link's scheme is refused here for every host: the text is model output and React writes a `javascript:` href as
-// given. Underscore emphasis is deliberately unmatched, because snake_case is everywhere in this content.
+// A link's scheme is refused here for every host: the text is model output, and a host may render it through a sink
+// that does not block `javascript:` as React does. Underscore emphasis is deliberately unmatched, because snake_case is
+// everywhere in this content.
 export class MarkdownSpans {
   static of(text: string): MarkdownSpan[] {
     const spans: MarkdownSpan[] = [];
@@ -40,7 +41,9 @@ export class MarkdownSpans {
   }
 
   static isSafeHref(href: string) {
-    return !/^[a-z][a-z0-9+.-]*:/i.test(href) || /^(?:https?|mailto|tel):/i.test(href);
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: mirrors the URL parser, which drops tab and newline anywhere and trims leading C0 controls and spaces before it reads the scheme
+    const parsed = href.replace(/[\t\n\r]/g, "").replace(/^[\u0000-\u0020]+/, "");
+    return !/^[a-z][a-z0-9+.-]*:/i.test(parsed) || /^(?:https?|mailto|tel):/i.test(parsed);
   }
 
   static plain(text: string): string {

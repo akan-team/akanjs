@@ -39,6 +39,8 @@ export interface PostgresDatabaseConfig {
 export interface SearchConfig {
   enabled?: boolean;
   tokenizer?: string;
+  maxTerms?: number;
+  maxLength?: number;
 }
 
 export interface DatabaseConfig {

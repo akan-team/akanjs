@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { statSync } from "node:fs";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -82,6 +83,32 @@ describe("LogControlSocket", () => {
     expect(mode).toBe(0o600);
     expect(path.basename(control.path)).toBe("akan-control.sock");
   });
+
+  test.skipIf(process.platform === "win32")(
+    "is private from the moment it is bound, whatever the process umask, and restores that umask",
+    async () => {
+      const own = await mkdtemp(path.join(os.tmpdir(), "akan-lcs-"));
+      const second = new LogControlSocket(hub, own);
+      const modes: number[] = [];
+      const listen = Bun.listen;
+      const spy = spyOn(Bun, "listen").mockImplementation(((options: Parameters<typeof Bun.listen>[0]) => {
+        const server = listen(options);
+        modes.push(statSync(second.path).mode & 0o777);
+        return server;
+      }) as typeof Bun.listen);
+      const previous = process.umask(0);
+      try {
+        await second.start();
+        expect(modes).toEqual([0o600]);
+        expect(process.umask(0)).toBe(0);
+      } finally {
+        process.umask(previous);
+        spy.mockRestore();
+        await second.stop();
+        await rm(own, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("a subscriber receives exactly the records its query matches, and nothing about its own delivery", async () => {
     const client = new Client();

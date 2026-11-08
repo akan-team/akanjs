@@ -12,6 +12,8 @@ export interface TunnelDataSocketOptions {
   origin: string;
   /** Where a `tcp` stream dials; the port comes from the open frame. */
   tcpHost: string;
+  /** The ports an open frame may name; any other is refused. */
+  tcpPorts: readonly number[];
   logger: Logger;
   onIdle: (socket: TunnelDataSocket) => void;
   onBusy: (socket: TunnelDataSocket) => void;
@@ -114,7 +116,7 @@ export class TunnelDataSocket {
   }
 
   #start(open: TunnelOpenFrame) {
-    const { origin, tcpHost } = this.#options;
+    const { origin, tcpHost, tcpPorts } = this.#options;
     const link: TunnelStreamLink = {
       sendFrame: (frame) => this.#send(frame),
       sendPayload: (payload) => this.#sendPayload(payload),
@@ -125,7 +127,7 @@ export class TunnelDataSocket {
       open.kind === "websocket"
         ? new TunnelWebsocketStream(open, link, origin)
         : open.kind === "tcp"
-          ? new TunnelTcpStream(open, link, tcpHost)
+          ? new TunnelTcpStream(open, link, tcpHost, tcpPorts)
           : new TunnelHttpStream(open, link, origin);
     this.#options.onBusy(this);
     void this.#stream.run();

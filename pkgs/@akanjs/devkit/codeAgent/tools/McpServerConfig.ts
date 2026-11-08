@@ -42,16 +42,18 @@ export class McpServerConfig {
     ];
   }
 
-  static read(workspaceRoot: string): CodeAgentMcpServerRef[] {
-    return McpServerConfig.declared(workspaceRoot)
+  static read(workspaceRoot: string, scopes?: McpServerScope[]): CodeAgentMcpServerRef[] {
+    return McpServerConfig.declared(workspaceRoot, scopes)
       .filter((entry) => !entry.disabled)
       .map((entry) => entry.ref);
   }
 
   /** Every declared server including the disabled ones, which is what a listing has to show. */
-  static declared(workspaceRoot: string): McpDeclaredServer[] {
+  static declared(workspaceRoot: string, scopes?: McpServerScope[]): McpDeclaredServer[] {
     const byName = new Map<string, McpDeclaredServer>();
-    for (const { scope } of McpServerConfig.files(workspaceRoot))
+    for (const { scope } of McpServerConfig.files(workspaceRoot).filter(
+      (file) => !scopes || scopes.includes(file.scope),
+    ))
       for (const [name, entry] of Object.entries(McpServerConfig.#parse(workspaceRoot, scope).map))
         byName.set(name, { ref: McpServerConfig.#refOf(name, entry), disabled: !!entry.disabled, scope });
     return [...byName.values()];

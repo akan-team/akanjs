@@ -20,26 +20,84 @@ export type AgentQuotaHook = (check: AgentQuotaCheck) => PromiseOrObject<boolean
 export class AgentMeter {
   static #usage: AgentUsageHook | null = null;
   static #quota: AgentQuotaHook | null = null;
+  static #serial: boolean = true;
+  static readonly #lanes = new Map<string, Promise<void>>();
   static #logger = new Logger("AgentMeter");
 
-  static use({ usage, quota }: { usage?: AgentUsageHook | null; quota?: AgentQuotaHook | null }) {
+  /** `serial: false` lets one caller's turns run side by side again, each checking the quota on its own. */
+  static use({
+    usage,
+    quota,
+    serial,
+  }: {
+    usage?: AgentUsageHook | null;
+    quota?: AgentQuotaHook | null;
+    serial?: boolean;
+  }) {
     if (usage !== undefined) AgentMeter.#usage = usage;
     if (quota !== undefined) AgentMeter.#quota = quota;
+    if (serial !== undefined) AgentMeter.#serial = serial;
   }
 
   static async run<T extends { usage?: LlmUsage; model?: string }>(account: unknown, turn: () => Promise<T>) {
-    if (AgentMeter.#quota && !(await AgentMeter.#quota({ account }))) throw new Err("agent.error.quotaExceeded");
+    const quota = AgentMeter.#quota;
+    if (!quota) return await AgentMeter.#spend(account, turn, () => undefined);
+    const key = AgentMeter.#serial ? AgentMeter.#keyOf(account) : null;
+    if (key === null) {
+      if (!(await quota({ account }))) throw new Err("agent.error.quotaExceeded");
+      return await AgentMeter.#spend(account, turn, () => undefined);
+    }
+    //? One turn per caller until its usage is reported, or a burst sent together passes the quota before any is billed.
+    const ahead = AgentMeter.#lanes.get(key);
+    let open: () => void = () => undefined;
+    const lane = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    AgentMeter.#lanes.set(key, lane);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      if (AgentMeter.#lanes.get(key) === lane) AgentMeter.#lanes.delete(key);
+      open();
+    };
+    try {
+      await ahead;
+      if (!(await quota({ account }))) throw new Err("agent.error.quotaExceeded");
+      return await AgentMeter.#spend(account, turn, release);
+    } catch (error) {
+      release();
+      throw error;
+    }
+  }
+
+  static async #spend<T extends { usage?: LlmUsage; model?: string }>(
+    account: unknown,
+    turn: () => Promise<T>,
+    settled: () => void,
+  ) {
     const result = await turn();
     const hook = AgentMeter.#usage;
+    const usage = result.usage;
+    if (!hook || !usage) {
+      settled();
+      return result;
+    }
     //* Never awaited: a slow or failing ledger must not cost the user a turn the provider already billed.
-    if (hook && result.usage)
-      void Promise.resolve()
-        .then(() => hook({ account, model: result.model ?? null, usage: result.usage as LlmUsage }))
-        .catch((error: unknown) =>
-          AgentMeter.#logger.error(
-            `agent usage hook failed: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-        );
+    void Promise.resolve()
+      .then(() => hook({ account, model: result.model ?? null, usage }))
+      .catch((error: unknown) =>
+        AgentMeter.#logger.error(`agent usage hook failed: ${error instanceof Error ? error.message : String(error)}`),
+      )
+      .finally(settled);
     return result;
+  }
+
+  //? An anonymous caller names no one to queue behind, so its turns are not held for one another.
+  static #keyOf(account: unknown): string | null {
+    if (!account || typeof account !== "object") return null;
+    const { id, sub, sid } = account as { id?: unknown; sub?: unknown; sid?: unknown };
+    const claim = [id, sub, sid].find((value) => typeof value === "string" && value);
+    return typeof claim === "string" ? claim : null;
   }
 }

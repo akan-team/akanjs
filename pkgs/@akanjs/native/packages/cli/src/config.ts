@@ -143,6 +143,16 @@ export interface AkanNativeConfig {
      * installs it as it quits. false leaves all three to the app's own `updates` calls. Default true.
      */
     automatic?: boolean;
+    /**
+     * Windows: SHA-1 thumbprints of the certificates a release must be Authenticode-signed by, in place of the
+     * installed app's signer. List a renewed certificate before the release signed with it ships.
+     */
+    windowsSigners?: string[];
+    /**
+     * Seconds a manifest `update publish` signs stays good for: it carries a signed expiresAt, and apps refuse it
+     * after then, so publish again before it passes. Absent: manifests do not expire.
+     */
+    expiresIn?: number;
   };
   /** Links that open the app, delivered through the app plugin's urlOpen (and getLaunchUrl). */
   deepLinks?: {

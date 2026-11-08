@@ -901,6 +901,7 @@ describe("ApplicationRunner mobile", () => {
       ({
         name: "demo",
         cwdPath: path.join(repoRoot, "apps/minimal"),
+        dist: { cwdPath: home },
         workspace: { workspaceRoot: repoRoot },
         getScanInfo: () => ({ getLibs: () => [] }),
         collectPlugins: async () => [],
@@ -964,6 +965,7 @@ describe("ApplicationRunner mobile", () => {
     const keygen = {
       name: "demo",
       cwdPath: path.join(repoRoot, "apps/minimal"),
+      dist: { cwdPath: home },
       workspace: { workspaceRoot: repoRoot },
       getScanInfo: () => ({ getLibs: () => [] }),
       collectPlugins: async () => [],

@@ -377,7 +377,7 @@ export class FetchClient {
     Object.entries(this.handler).forEach(([key, handler]) => {
       if (!(key in instance.handler)) instance.handler[key] = handler;
     });
-    instance.setJwt(jwt ?? this.jwt);
+    instance.setJwt(jwt ?? (FetchClient.#sameOrigin(instance.origin, this.origin) ? this.jwt : null));
     if (connect) instance.connect();
     return FetchClient.#makeProxy(instance);
   }
@@ -390,7 +390,6 @@ export class FetchClient {
   setJwt(jwt: string | null) {
     this.jwt = jwt;
     this.ws.setJwt(jwt);
-    for (const ws of this.#originWs.values()) ws.setJwt(jwt);
   }
   // A socket's URL is fixed, so `FetchPolicy.origin` gets a socket of its own, connected on first use.
   #resolveWs(origin?: string) {
@@ -400,7 +399,6 @@ export class FetchClient {
     if (cached) return cached;
     const ws = new WsClient(FetchClient.#makeWsUri(target), this.ErrorCls).configure(this.#wsOptions);
     this.#originWs.set(target, ws);
-    ws.setJwt(this.jwt);
     ws.connect();
     return ws;
   }
@@ -426,10 +424,13 @@ export class FetchClient {
   static #sameOrigin(a: string, b: string) {
     return FetchClient.#normalizeOrigin(a) === FetchClient.#normalizeOrigin(b);
   }
-  // Security: the request being rendered belongs to this server's visitor; a call aimed at another server carries only
-  // the token its caller gave it, or the visitor's session would reach a server they never signed in to.
+  #ownOrigin(option?: FetchPolicy) {
+    return !option?.origin || FetchClient.#sameOrigin(option.origin, this.origin);
+  }
+  // Security: the request being rendered and the token `setJwt` holds belong to this server's visitor; a call aimed at
+  // another server carries only the token its caller gave it, or the session would reach a server they never signed in to.
   #forwardsVisitor(option?: FetchPolicy) {
-    return !this.#foreign && (!option?.origin || FetchClient.#sameOrigin(option.origin, this.origin));
+    return !this.#foreign && this.#ownOrigin(option);
   }
   #makeAuthHeaders(option?: FetchPolicy): Record<string, string> {
     if (option?.token) return { Authorization: `Bearer ${option.token}` };
@@ -444,7 +445,7 @@ export class FetchClient {
     } catch {
       // Tests and standalone clients can run without Akan public env. Fall back to instance JWT.
     }
-    return this.jwt ? { Authorization: `Bearer ${this.jwt}` } : {};
+    return this.jwt && this.#ownOrigin(option) ? { Authorization: `Bearer ${this.jwt}` } : {};
   }
   #baseUrlOf(endpoint: SerializedEndpoint, origin?: string) {
     if (endpoint.globalPrefix !== false) return origin;

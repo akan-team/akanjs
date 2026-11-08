@@ -36,7 +36,7 @@ export function vectorCounts(): Record<string, number> {
     ranges: n(v.ranges.cases),
     ids: n(v.ids.cases) + n(v.ids.mime?.cases),
     bridge: n(v.bridge.requests) + n(v.bridge.declarations) + n(v.bridge.documents),
-    navigation: n(v.navigation.cases) + n(v.navigation.fileRefSandbox),
+    navigation: n(v.navigation.cases) + n(v.navigation.fileRefSandbox) + n(v.navigation.links),
     acl: (v.acl.cases as { checks: unknown[] }[]).reduce((sum, c) => sum + 1 + c.checks.length, 0),
     retained: n(v.retained.cases),
     ed25519: n(v.ed25519.cases),

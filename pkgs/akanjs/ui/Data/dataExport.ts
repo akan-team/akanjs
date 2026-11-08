@@ -21,6 +21,9 @@ const csvCell = (value: unknown) => {
           : typeof value === "object"
             ? JSON.stringify(value)
             : String(value);
+  // A spreadsheet runs a text cell that opens with = + - @, a tab or a CR as a formula; a leading ' keeps it text.
+  if (typeof value !== "number" && typeof value !== "bigint" && /^[=+\-@\t\r]/.test(text))
+    return `"'${text.replace(/"/g, '""')}"`;
   return /["\n\r,]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 

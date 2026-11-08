@@ -8,7 +8,14 @@ const requestWith = (authorization?: string) =>
 const detail = () => ({ status: "running", pid: 42, children: [{ lastErrorMessage: "db down" }] });
 
 describe("StatusAccess", () => {
-  const keys = ["AKAN_STATUS_TOKEN", "AKAN_LOG_STREAM_TOKEN", "AKAN_PUBLIC_ENV"] as const;
+  const keys = [
+    "AKAN_STATUS_TOKEN",
+    "AKAN_LOG_STREAM_TOKEN",
+    "AKAN_PUBLIC_ENV",
+    "AKAN_PUBLIC_OPERATION_MODE",
+    "AKAN_COMMAND_TYPE",
+    "NODE_ENV",
+  ] as const;
   const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   afterEach(() => {
     for (const key of keys) {
@@ -65,11 +72,49 @@ describe("StatusAccess", () => {
     expect(StatusAccess.fromEnv().allows(requestWith("Bearer scrape-only"))).toBe(true);
   });
 
-  test("stays open only in local", () => {
+  test("stays open only in a local dev runtime", () => {
+    delete process.env.AKAN_PUBLIC_OPERATION_MODE;
+    delete process.env.AKAN_COMMAND_TYPE;
+    process.env.NODE_ENV = "development";
     process.env.AKAN_PUBLIC_ENV = "main";
     expect(StatusAccess.fromEnv().allows(requestWith())).toBe(false);
     process.env.AKAN_PUBLIC_ENV = "local";
     expect(StatusAccess.fromEnv().allows(requestWith())).toBe(true);
+    process.env.NODE_ENV = "production";
+    expect(StatusAccess.fromEnv().allows(requestWith())).toBe(false);
+    process.env.AKAN_COMMAND_TYPE = "start";
+    expect(StatusAccess.fromEnv().allows(requestWith())).toBe(true);
+    process.env.AKAN_PUBLIC_OPERATION_MODE = "cloud";
+    expect(StatusAccess.fromEnv().allows(requestWith())).toBe(false);
+  });
+
+  test("stops checking a caller's tokens after repeated wrong ones, and only that caller's", () => {
+    const access = new StatusAccess({ tokens: ["s3cret"], failuresPerMinute: 3 });
+    for (let idx = 0; idx < 3; idx += 1) expect(access.allows(requestWith("Bearer wrong"), "10.0.0.1")).toBe(false);
+    expect(access.allows(requestWith("Bearer s3cret"), "10.0.0.1")).toBe(false);
+    expect(access.metrics(requestWith("Bearer s3cret"), detail, "10.0.0.1").status).toBe(401);
+    expect(access.allows(requestWith("Bearer s3cret"), "10.0.0.2")).toBe(true);
+    expect(access.allows(requestWith("Bearer s3cret"))).toBe(true);
+  });
+
+  test("still accepts a short token, warning once without its value", () => {
+    const warnings: string[] = [];
+    const stop = Logger.addSink(({ level, plainMessage }) => {
+      if (level === "warn" && plainMessage.includes("AKAN_SHORT_TEST_TOKEN")) warnings.push(plainMessage);
+    });
+    try {
+      process.env.AKAN_SHORT_TEST_TOKEN = "brief-reader";
+      expect(StatusAccess.tokenOf("AKAN_SHORT_TEST_TOKEN")).toBe("brief-reader");
+      expect(StatusAccess.tokenOf("AKAN_SHORT_TEST_TOKEN")).toBe("brief-reader");
+      process.env.AKAN_SHORT_TEST_TOKEN = "x".repeat(StatusAccess.minTokenLength);
+      StatusAccess.tokenOf("AKAN_SHORT_TEST_TOKEN");
+    } finally {
+      stop();
+      delete process.env.AKAN_SHORT_TEST_TOKEN;
+    }
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(`shorter than ${StatusAccess.minTokenLength}`);
+    expect(warnings[0]).not.toContain("brief-reader");
   });
 
   test("ignores a token no bearer header could carry, and says so once per variable without its value", () => {

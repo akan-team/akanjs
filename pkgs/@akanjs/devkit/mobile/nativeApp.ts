@@ -124,10 +124,11 @@ export class NativeApp {
     stageBin?: boolean;
     arch?: DesktopArch;
   }) {
-    const [appConfig, plugins, nativePlugins] = await Promise.all([
+    const [appConfig, plugins, nativePlugins, publicEnv] = await Promise.all([
       this.app.getConfig(),
       this.app.collectPlugins(),
       NativePluginFolders.of(this.app),
+      NativePublicEnv.inlined(this.app),
     ]);
     const desktop = platform === "macos" || platform === "windows" || platform === "linux";
     const carried = desktop && stageBin ? await new DesktopBin(this.app, appConfig).stage(this.binDir, arch) : [];
@@ -140,6 +141,7 @@ export class NativeApp {
       env: this.env,
       platform,
       nativePlugins,
+      publicEnv,
       ...(server ? { desktopServer: server } : {}),
       ...(carried.length ? { desktopBin: this.binDir } : {}),
     });

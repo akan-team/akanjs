@@ -93,8 +93,10 @@ export class BlobStorage
   #localPathToUrl(path: string) {
     return `${this.urlPrefix}/${path}`;
   }
-  #resolveFilePath(path: string) {
-    return path.startsWith("private/") ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
+  #filePathOf(path: string, access?: "public" | "private") {
+    const filePath = this.resolveLocalPath(path, access);
+    if (!filePath) throw new Error(`Storage key is outside the storage root: ${JSON.stringify(path)}`);
+    return filePath;
   }
   resolveLocalPath(path: string, access?: "public" | "private") {
     // A key is always joined under the root (`${root}/${path}`), so a rooted one (`/x`, `C:x`) names another file.
@@ -108,21 +110,21 @@ export class BlobStorage
     return target;
   }
   async readData(path: string): Promise<ReadableStream> {
-    const filePath = this.#resolveFilePath(path);
+    const filePath = this.#filePathOf(path);
     return Bun.file(filePath).stream();
   }
   async readDataAsJson<T>(path: string) {
-    const filePath = this.#resolveFilePath(path);
+    const filePath = this.#filePathOf(path);
     return Bun.file(filePath).json() as T;
   }
   async getDataList(prefix?: string) {
-    const dir = `${this.root}${prefix ? `/${prefix}` : ""}`;
+    const dir = prefix ? this.#filePathOf(prefix, "public") : resolve(this.root);
     const paths = Array.from(new Bun.Glob("*").scanSync({ cwd: dir, onlyFiles: false }));
     return paths.map((path) => this.#localPathToUrl(path));
   }
   async uploadDataFromLocal({ path, localPath, meta, access = "public" }: UploadRequest) {
     BlobStorage.assertShared("BlobStorage");
-    const filePath = access === "private" ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
+    const filePath = this.#filePathOf(path, access);
     await Bun.write(filePath, Bun.file(localPath));
     if (meta) await Bun.write(`${filePath}.meta`, JSON.stringify(meta));
     return this.#localPathToUrl(path);
@@ -136,9 +138,8 @@ export class BlobStorage
     access = "public",
   }: UploadFromStreamRequest) {
     BlobStorage.assertShared("BlobStorage");
-    const filePath = access === "private" ? `${this.privateRoot}/${path}` : `${this.root}/${path}`;
     try {
-      await Bun.write(filePath, new Response(body));
+      await Bun.write(this.#filePathOf(path, access), new Response(body));
       uploadSuccess(this.#localPathToUrl(path));
     } catch (error) {
       this.logger.error(error instanceof Error ? error.message : String(error));
@@ -152,12 +153,12 @@ export class BlobStorage
   }
   async copyData({ copyPath, pastePath, host }: CopyRequest) {
     BlobStorage.assertShared("BlobStorage");
-    await Bun.write(`${this.root}/${pastePath}`, Bun.file(`${this.root}/${copyPath}`));
+    await Bun.write(this.#filePathOf(pastePath, "public"), Bun.file(this.#filePathOf(copyPath, "public")));
     return pastePath;
   }
   async deleteDataByPath(path: string) {
     try {
-      await Bun.file(this.#resolveFilePath(path)).delete();
+      await Bun.file(this.#filePathOf(path)).delete();
       return true;
     } catch (error) {
       this.logger.error(error instanceof Error ? error.message : "Unknown error");

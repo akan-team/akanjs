@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { getEnv } from "../../base/baseEnv";
 import type { AkanServer } from "../akanServer";
 import { MigrationCommand } from "../migration/migrationCommand";
 import type { Migrations } from "../migration/migrations";
@@ -18,8 +19,8 @@ export interface OpsHost {
 export class OpsCommand {
   static readonly usage = [
     "Usage:",
-    "  bun main.js ops snapshot [--id <id>] [--out <dir>] [--include-solid] [--db <file>] [--solid-db <file>] [--json]",
-    "  bun main.js ops restore <manifest.json> [--identity <file>] [--db <file>] [--solid-db <file>] [--force]",
+    "  bun main.js ops snapshot [--id <id>] [--out <dir>] [--include-solid] [--db <file>] [--solid-db <file>] [--allow-plaintext] [--json]",
+    "  bun main.js ops restore <manifest.json> [--identity <file>] [--db <file>] [--solid-db <file>] [--allow-plaintext] [--force]",
     "  bun main.js ops migrate [list|plan|apply|verify|rollback] [<id>] [--param <name>=<value>]... [--expect <planHash>] [--items <n>] [--actor <id>] [--json]",
   ].join("\n");
 
@@ -46,6 +47,7 @@ export class OpsCommand {
         db: { type: "string" },
         "solid-db": { type: "string" },
         "include-solid": { type: "boolean", default: false },
+        "allow-plaintext": { type: "boolean", default: false },
         json: { type: "boolean", default: false },
       },
     });
@@ -55,7 +57,7 @@ export class OpsCommand {
       dir: path.resolve(values.out ?? SqliteFiles.snapshotDir(sources)),
       sources,
       includeSolid: values["include-solid"],
-      encryptor: await OpsCommand.#encryptor(),
+      encryptor: await OpsCommand.#encryptor(values["allow-plaintext"]),
     });
     process.stdout.write(values.json ? `${JSON.stringify(capture)}\n` : `${JSON.stringify(capture, null, 2)}\n`);
     return 0;
@@ -69,6 +71,7 @@ export class OpsCommand {
         identity: { type: "string" },
         db: { type: "string" },
         "solid-db": { type: "string" },
+        "allow-plaintext": { type: "boolean", default: false },
         force: { type: "boolean", default: false },
       },
     });
@@ -83,6 +86,7 @@ export class OpsCommand {
       manifestPath: path.resolve(manifestPath),
       sources: OpsCommand.#sources(values.db, values["solid-db"]),
       decryptor: await OpsCommand.#decryptor(values.identity),
+      allowPlaintext: values["allow-plaintext"],
     });
     for (const { role, target, preservedAs } of restored)
       process.stdout.write(`restored ${role} → ${target}${preservedAs ? ` (previous kept at ${preservedAs})` : ""}\n`);
@@ -131,10 +135,19 @@ export class OpsCommand {
     }
   }
 
-  static async #encryptor() {
-    if (!process.env.AKAN_BACKUP_RECIPIENT?.trim()) return null;
-    const { AgeEncryption } = await import("./ageEncryption");
-    return await AgeEncryption.fromEnv();
+  //* Outside local operation the upload carries the whole database to a URL the caller chose, so cleartext is opt-in.
+  static async #encryptor(allowPlaintext: boolean) {
+    if (process.env.AKAN_BACKUP_RECIPIENT?.trim()) {
+      const { AgeEncryption } = await import("./ageEncryption");
+      return await AgeEncryption.fromEnv();
+    }
+    if (getEnv().operationMode === "local") return null;
+    if (!allowPlaintext && !["1", "true"].includes(process.env.AKAN_BACKUP_PLAINTEXT ?? ""))
+      throw new Error(
+        "AKAN_BACKUP_RECIPIENT is unset; set it to an age recipient, or allow an unencrypted snapshot with --allow-plaintext or AKAN_BACKUP_PLAINTEXT=1",
+      );
+    process.stderr.write("ops snapshot: AKAN_BACKUP_RECIPIENT is unset, so this snapshot is not encrypted\n");
+    return null;
   }
 
   static async #decryptor(identityFile = process.env.AKAN_BACKUP_IDENTITY_FILE) {

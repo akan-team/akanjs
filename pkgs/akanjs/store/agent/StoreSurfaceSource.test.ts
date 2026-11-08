@@ -103,7 +103,10 @@ describe("StoreSurfaceSource", () => {
     const { router } = await import("akanjs/client");
     const priorWindow = globalThis.window;
     Object.defineProperty(globalThis, "window", {
-      value: { parent: { postMessage: () => undefined } },
+      value: {
+        parent: { postMessage: () => undefined },
+        location: { origin: "https://example.test", host: "example.test", hostname: "example.test", port: "" },
+      },
       configurable: true,
     });
     const refusal = new Error("[rscClient] no route at /nope");
@@ -127,6 +130,7 @@ describe("StoreSurfaceSource", () => {
 
     router.init({ side: "server", routeManifest: [] } as never);
     Object.defineProperty(globalThis, "window", { value: priorWindow, configurable: true });
+    resetEnvCache();
   });
 
   test("navigate says where the page landed when the app sent it somewhere else", async () => {
@@ -231,6 +235,12 @@ describe("StoreSurfaceSource", () => {
   test("the built-ins that change nothing a resource holds do not wait for the screen", () => {
     for (const name of ["readScreen", "readState", "highlight", "viewImage"]) expect(entryOf(name)?.settle).toBe(false);
     for (const name of ["navigate", "goBack"]) expect(entryOf(name)?.settle).toBeUndefined();
+  });
+
+  test("the built-ins that return page text mark it untrusted, and moving between pages never needs a second look", () => {
+    for (const name of ["readScreen", "readState", "viewImage"]) expect(entryOf(name)?.taint).toBe("source");
+    for (const name of ["navigate", "goBack"]) expect(entryOf(name)?.taint).toBe("exempt");
+    expect(entryOf("highlight")?.taint).toBeUndefined();
   });
 
   test("readScreen is published and answers honestly with no document", async () => {

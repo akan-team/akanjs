@@ -87,7 +87,24 @@ describe("updates config (UP-1, UP-2)", () => {
     });
     expect(validateUpdates({ url: "https://u", publicKey: key, target: "pilot" }, problems)?.target).toBe("pilot");
     expect(validateUpdates({ url: "https://u", publicKey: key, automatic: false }, problems)?.automatic).toBe(false);
+    expect(
+      validateUpdates(
+        { url: "https://u", publicKey: key, windowsSigners: [`${"ab".repeat(19)}cd`, `${"AB:".repeat(19)}CD`] },
+        problems,
+      )?.windowsSigners,
+    ).toEqual([`${"AB".repeat(19)}CD`]);
+    expect(validateUpdates({ url: "https://u", publicKey: key, expiresIn: 86_400 }, problems)?.expiresIn).toBe(86_400);
     expect(problems).toEqual([]);
+    for (const [raw, problem] of [
+      [{ windowsSigners: ["abc"] }, "updates.windowsSigners must list SHA-1"],
+      [{ windowsSigners: [] }, "updates.windowsSigners must list SHA-1"],
+      [{ expiresIn: 60 }, "updates.expiresIn must be a whole number of seconds"],
+      [{ expiresIn: 3600.5 }, "updates.expiresIn must be a whole number of seconds"],
+    ] as const) {
+      const refused: string[] = [];
+      validateUpdates({ url: "https://u", publicKey: key, ...raw }, refused);
+      expect(refused.join()).toContain(problem);
+    }
     //? Posted to as it is: a receiver whose route ends in "/" may not redirect a POST.
     expect(
       validateUpdates(
@@ -308,6 +325,17 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(resource("macos")).toMatchObject({ protocol: 2, publicKeys: [spare], publicKey: online, target: "pilot" });
     expect(resource("windows")).toMatchObject({ protocol: 2, target: "pilot" });
     expect(resource("macos").automatic).toBeUndefined();
+    const pinned = (platform: "macos" | "windows") =>
+      JSON.parse(
+        updatesResource(
+          { ...updates, windowsSigners: ["AB".repeat(20)] },
+          { id: "dev.x", version: "1" },
+          platform,
+          "abc",
+          false,
+        ),
+      ).windowsSigners;
+    expect([pinned("windows"), pinned("macos")]).toEqual([["AB".repeat(20)], undefined]);
     const manual = (platform: "android" | "linux") =>
       JSON.parse(
         updatesResource({ ...updates, automatic: false }, { id: "dev.x", version: "1" }, platform, "abc", false),
@@ -602,6 +630,24 @@ describe("publishing a release", () => {
     });
   });
 
+  test("updates.expiresIn signs an expiresAt into the manifest, and a manifest has none without it", async () => {
+    await keyring(async (keys) => {
+      const { ring, out, signWith } = keys;
+      signWith("online");
+      const plain = phoneBuild(keys.home, ring);
+      expect((await publishRelease(plain, "android", "", out, "main")).manifest.expiresAt).toBeUndefined();
+      const expiring = phoneBuild(keys.home, ring);
+      (expiring.project.config.updates as { expiresIn?: number }).expiresIn = 86_400;
+      const before = Math.floor(Date.now() / 1000);
+      const { file } = await publishRelease(expiring, "android", "", out, "main");
+      const { expiresAt } = JSON.parse(
+        new TextDecoder().decode(openEnvelope(readFileSync(file, "utf8"), ring).manifest),
+      );
+      expect(expiresAt).toBeGreaterThanOrEqual(before + 86_400);
+      expect(expiresAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 86_400);
+    });
+  });
+
   test("--revoke starts a revocation, signed with a key listed after it, and resets the sequence on request", async () => {
     await keyring(async (keys) => {
       const { id, ring, out, signWith } = keys;
@@ -750,6 +796,36 @@ describe("release builds", () => {
         expect((await prepare(project(report), "android", release)).profile).toBe("release");
       const debug = { ...release, profile: "debug" as const };
       expect((await prepare(project("http://10.0.2.2:8791/r"), "android", debug)).profile).toBe("debug");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("warn when shell.devtools ships in a release build", async () => {
+    const { prepare } = await import("../src/lib/prepare.ts");
+    const dir = mkdtempSync(join(tmpdir(), "akan-native-devtools-"));
+    try {
+      mkdirSync(join(dir, "web"));
+      writeFileSync(join(dir, "web", "index.html"), "<!doctype html><html><head></head><body></body></html>");
+      const project = projectFromConfig(
+        {
+          app: { id: "dev.test.devtools", name: "Devtools", version: "1.0.0" },
+          web: { dir: "web" },
+          shell: { devtools: true },
+        } as AkanNativeConfig,
+        dir,
+      );
+      const build = { mode: "production", skipWebBuild: true, outDir: join(dir, "out"), api: true, envFiles: false };
+      const warned = async (profile: "release" | "debug") => {
+        const events: LogEvent[] = [];
+        await withLogSink(
+          (event) => events.push(event),
+          () => prepare(project, "android", { ...build, profile }),
+        );
+        return events.some((event) => event.level === "warn" && event.message.includes("shell.devtools"));
+      };
+      expect(await warned("release")).toBe(true);
+      expect(await warned("debug")).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

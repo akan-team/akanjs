@@ -1,5 +1,7 @@
-import { EventStream } from "akanjs/common";
+import { EventStream, Logger } from "akanjs/common";
 import type { AgentWireToolCall, LlmLimits, LlmUsage } from "akanjs/service";
+import { isExceptionLike } from "./exception";
+import { SignalFailure } from "./SignalFailure";
 
 interface StreamedTurn {
   text?: string;
@@ -14,6 +16,8 @@ type RunTurn = (onDelta: (delta: string) => void) => Promise<StreamedTurn>;
 // use-agentic WIRE.md: one RunnerEvent JSON per SSE `data:` line, ending with `done`. The signal layer passes a raw
 // `Response` through untouched, which is what lets one mutation serve both shapes.
 export class AgentTurnStream {
+  static #logger = new Logger("AgentTurnStream");
+
   static wants(request: Bun.BunRequest): boolean {
     return !!request.headers.get("accept")?.includes("text/event-stream");
   }
@@ -24,6 +28,11 @@ export class AgentTurnStream {
     data?: Record<string, string | number>;
     overflow?: { limit?: number };
   } {
+    //? Security: an adapter's error can quote the provider's response, so it is generalized like an HTTP failure.
+    if (!isExceptionLike(error)) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return { message: SignalFailure.detailed ? detail : SignalFailure.message };
+    }
     const message = error instanceof Error ? error.message : String(error);
     const raw = (error as { data?: unknown } | null)?.data;
     const data =
@@ -58,6 +67,8 @@ export class AgentTurnStream {
       const limits = turn.limits && (turn.limits.window || turn.limits.output) ? turn.limits : null;
       stream.write({ type: "done", stop, ...(usage ? { usage } : {}), ...(limits ? { limits } : {}) });
     } catch (error) {
+      if (!isExceptionLike(error))
+        AgentTurnStream.#logger.error(`agent turn failed after its stream opened: ${String(error)}`);
       // The status line is long gone once the stream is open.
       stream.write({ type: "error", ...AgentTurnStream.failure(error) });
     } finally {

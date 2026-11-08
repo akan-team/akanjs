@@ -16,11 +16,11 @@
 //   the user chose to save, and the server writes the file.
 // - One panel at a time (a second call rejects CANCELLED, as on the other platforms).
 import { randomBytes } from "node:crypto";
-import { constants, copyFileSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { constants, copyFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { AkanNativeError, mimeFor } from "../../../packages/core/src/index.ts";
 import { grantFile } from "../../../packages/desktop/src/grants.ts";
+import { appTempDir, makePrivateDir } from "../../../packages/desktop/src/paths.ts";
 import { type DesktopContext, defineDesktopPlugin } from "../../../packages/desktop/src/plugin.ts";
 import { base64ToBytes, checkFlag, checkLimit, checkName, checkObject, checkSaveSource, checkTypes } from "./common.ts";
 import type { DirectoryFile, FilePickerApi, PickedFile } from "./index.ts";
@@ -68,12 +68,10 @@ export function createDesktopFilePicker() {
   let root: string | null = null;
   let busy = false;
 
-  /** A fresh folder for this call's copies, under $TMPDIR/<app id>/file-picker (emptied at launch). */
+  /** A fresh folder for this call's copies, under appTempDir/file-picker (emptied at launch). */
   function stageDir(ctx: DesktopContext): string {
-    root ??= join(tmpdir(), ctx.app.id, "file-picker");
-    const dir = join(root, randomBytes(6).toString("hex"));
-    mkdirSync(dir, { recursive: true });
-    return dir;
+    root ??= join(appTempDir(ctx.app.id), "file-picker");
+    return makePrivateDir(join(root, randomBytes(6).toString("hex")));
   }
 
   /** One panel at a time, like the other platforms. */
@@ -118,7 +116,7 @@ export function createDesktopFilePicker() {
   return defineDesktopPlugin<FilePickerApi>({
     id: "file-picker",
     setup(ctx) {
-      root = join(tmpdir(), ctx.app.id, "file-picker");
+      root = join(appTempDir(ctx.app.id), "file-picker");
       // Copies of an earlier session are no longer reachable (their FileRefs are gone).
       rmSync(root, { recursive: true, force: true });
     },

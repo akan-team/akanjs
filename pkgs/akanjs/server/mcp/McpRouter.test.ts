@@ -98,6 +98,30 @@ describe("McpRouter transport", () => {
     expect(forwarded.res.status).toBe(403);
   });
 
+  test("refuses a browser whose Origin and Host name a host the app does not answer to", async () => {
+    const handlers = routes()["/mcp"];
+    const at = (host: string) =>
+      handlers.POST(
+        new Request(`http://${host}/mcp`, {
+          method: "POST",
+          body: JSON.stringify(rpc("tools/list")),
+          headers: { "Content-Type": "application/json", host, Origin: `http://${host}` },
+        }),
+      );
+    expect((await at("rebound.example.net:8080")).status).toBe(403);
+    expect((await at("localhost:8080")).status).toBe(200);
+    expect((await at("probe-local.example.com")).status).toBe(200);
+    const allowed = routes({ allowedOrigins: ["http://rebound.example.net:8080"] })["/mcp"];
+    const listed = await allowed.POST(
+      new Request("http://rebound.example.net:8080/mcp", {
+        method: "POST",
+        body: JSON.stringify(rpc("tools/list")),
+        headers: { "Content-Type": "application/json", Origin: "http://rebound.example.net:8080" },
+      }),
+    );
+    expect(listed.status).toBe(200);
+  });
+
   test("reports a broken body as a parse error rather than crashing", async () => {
     const handlers = routes()["/mcp"];
     const res = await handlers.POST(new Request("http://127.0.0.1:8080/mcp", { method: "POST", body: "{not json" }));
@@ -255,13 +279,14 @@ describe("McpRouter rate limit", () => {
     params: { name: "nothing", arguments: {} },
   });
 
-  test("answers the call past the budget with 429, a JSON-RPC error and Retry-After, per caller", async () => {
-    const handlers = routes({ rateLimit: { calls: 2, windowMs: 60_000 } })["/mcp"];
-    const bearer = (sid: string) => ({
-      headers: {
-        Authorization: `Bearer x.${Buffer.from(JSON.stringify({ sid })).toString("base64url")}.y`,
-      },
-    });
+  const bearer = (sid: string) => ({
+    headers: {
+      Authorization: `Bearer x.${Buffer.from(JSON.stringify({ sid })).toString("base64url")}.y`,
+    },
+  });
+
+  test("answers the call past the budget with 429, a JSON-RPC error and Retry-After, per verified caller", async () => {
+    const handlers = routes({ rateLimit: { calls: 2, windowMs: 60_000 }, auth: { verify: () => ({}) } })["/mcp"];
     for (const id of [1, 2]) {
       const { res, json } = await post(call(id), bearer("a"), handlers);
       expect(res.status).toBe(200);
@@ -273,7 +298,23 @@ describe("McpRouter rate limit", () => {
     expect(third.json.error?.code).toBe(-32010);
     expect(third.json.error?.message).toContain("2 calls per 60s");
     expect((await post(call(4), bearer("b"), handlers)).res.status).toBe(200);
-    expect((await post({ jsonrpc: "2.0", id: 5, method: "tools/list" }, bearer("a"), handlers)).res.status).toBe(200);
+  });
+
+  test("shares one budget among tokens no verifier vouched for", async () => {
+    const handlers = routes({ rateLimit: { calls: 2, windowMs: 60_000 } })["/mcp"];
+    for (const sid of ["a", "b"]) expect((await post(call(1), bearer(sid), handlers)).res.status).toBe(200);
+    expect((await post(call(3), bearer("c"), handlers)).res.status).toBe(429);
+  });
+
+  test("counts every listing against the caller's budget", async () => {
+    const handlers = routes({ rateLimit: { calls: 4, windowMs: 60_000 } })["/mcp"];
+    for (const method of ["tools/list", "resources/list", "resources/templates/list", "prompts/list"])
+      expect((await post(rpc(method), {}, handlers)).res.status).toBe(200);
+    for (const method of ["tools/list", "prompts/list"]) {
+      const { res, json } = await post(rpc(method), {}, handlers);
+      expect(res.status).toBe(429);
+      expect(json.error?.code).toBe(-32010);
+    }
   });
 
   test("is on by default and can be turned off", async () => {

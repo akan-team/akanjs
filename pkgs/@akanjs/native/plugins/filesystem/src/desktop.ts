@@ -27,6 +27,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { AkanNativeError, type FileRef, scopePermits } from "../../../packages/core/src/index.ts";
+import { appTempDir, makePrivateDir } from "../../../packages/desktop/src/paths.ts";
 import { type DesktopContext, defineDesktopPlugin } from "../../../packages/desktop/src/plugin.ts";
 import {
   BASES,
@@ -71,7 +72,7 @@ export function baseDirs(
     data: join(ctx.appDataDir, "files"),
     cache: join(cacheRoot, id, "files"),
     documents: platform === "win32" ? join(env.USERPROFILE || home, "Documents") : join(home, "Documents"),
-    temp: join(tmp, id, "files"),
+    temp: join(appTempDir(id, platform, env, home, tmp), "files"),
   };
 }
 
@@ -147,7 +148,8 @@ export function createDesktopFilesystem(dirsFor: (ctx: DesktopContext) => Dirs =
     dirs ??= dirsFor(ctx);
     let real = roots.get(base);
     if (!real) {
-      await mkdir(dirs[base], { recursive: true });
+      if (base === "temp") makePrivateDir(dirs[base]);
+      else await mkdir(dirs[base], { recursive: true });
       real = await realpath(dirs[base]);
       roots.set(base, real);
       folding.set(base, await caseInsensitive(real));

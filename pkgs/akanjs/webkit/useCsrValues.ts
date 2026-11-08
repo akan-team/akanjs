@@ -1094,8 +1094,12 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
         //? redirect has no click for a popup blocker to let through. A native app keeps `CsrLink`'s in-app browser.
         if (Href.hasWebScheme(href)) {
           const target = Href.toExternalUrl(href, document.baseURI);
+          //? A refusal by the app's capabilities is final; window.open is not a second way out.
           if (isNativeApp())
-            void openExternalUrl(target).catch(() => window.open(target, "_blank", "noopener,noreferrer"));
+            void openExternalUrl(target).catch((error: unknown) => {
+              if (!(error instanceof Error && "code" in error && error.code === "NOT_ALLOWED"))
+                window.open(target, "_blank", "noopener,noreferrer");
+            });
           else if (kind === "push") csrLocation.assign(target);
           else window.location.replace(target);
           return;

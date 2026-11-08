@@ -8,6 +8,7 @@ export interface TunnelShareArgs {
   host?: string | null;
   port?: number;
   ttl?: number;
+  devRoutes?: boolean;
 }
 
 export class TunnelScript extends script("tunnel", [TunnelRunner]) {
@@ -22,13 +23,14 @@ export class TunnelScript extends script("tunnel", [TunnelRunner]) {
     return AppExecutor.from(workspace, await select<string>({ message: "Select the app to share", choices: appNames }));
   }
 
-  async share(name: string | null, { workspace, host, port, ttl }: TunnelShareArgs) {
+  async share(name: string | null, { workspace, host, port, ttl, devRoutes }: TunnelShareArgs) {
     const app = await TunnelScript.resolveApp(workspace, name);
     await this.tunnelRunner.share(app, {
       workspace,
       ...(host ? { host } : {}),
       ...(port ? { port } : {}),
       ...(ttl ? { ttlMinutes: ttl } : {}),
+      ...(devRoutes ? { devRoutes } : {}),
     });
   }
 

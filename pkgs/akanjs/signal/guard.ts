@@ -20,13 +20,13 @@ export type GuardCls<Name extends string = string> = Cls<
 export const refusesAgents = (guards: readonly GuardCls[] | undefined): boolean =>
   !!guards?.some((GuardCls) => GuardCls.agents === false);
 
-/** Starts as `scope = "account"`, the side that errs hidden. */
+/** Starts as `scope = "account"`, the side that errs hidden, and refuses until `canPass` is overridden. */
 export const guard = <T extends string>(name: T): GuardCls<T> => {
   return class Guard {
     static name = name;
     static scope: GuardScope = "account";
     canPass(context: SignalContext): PromiseOrObject<boolean> {
-      return true;
+      return false;
     }
   };
 };

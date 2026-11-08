@@ -856,6 +856,18 @@ describe("HttpClient", () => {
     expect(immediate).toMatchObject({ statusCode: 429, data: { status: 429, seconds: 0 } });
   });
 
+  test("restores a 413 as a request too large, and does not send it again", async () => {
+    setMockFetch();
+    rawResponses.push(new Response("Payload Too Large", { status: 413, headers: { "content-type": "text/plain" } }));
+    const client = new HttpClient("https://api.example", { ErrorCls: TestErr });
+
+    const error = (await client.post("/uploads", { file: "x" }).catch((error: unknown) => error)) as TestErr;
+
+    expect(error.message).toBe("base.error.payloadTooLarge");
+    expect(error).toMatchObject({ statusCode: 413, data: { status: 413 } });
+    expect(HttpClient.retryWait(error, 1, { attempts: 4 })).toBeNull();
+  });
+
   test("caps the transport error detail so a page body never becomes the message", async () => {
     setMockFetch();
     rawResponses.push(new Response("x".repeat(5000), { status: 500, headers: { "content-type": "text/plain" } }));
@@ -1640,6 +1652,53 @@ describe("FetchClient HTTP generation", () => {
       null,
       "Bearer visitor",
     ]);
+  });
+
+  test("sends the token setJwt holds only to this client's origin: another origin gets the token its caller gave or none", async () => {
+    setMockFetch();
+    setFakeWebSocket();
+    jsonResponses.push("own", "policy", "token", "clone", "machine", "same-clone", "machine-again");
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    client.setJwt("visitor");
+    type Getter = { getThing: (id: string, tags: string[], empty: null) => Promise<unknown> };
+    const id = "abcdefabcdefabcdefabcdef";
+
+    await client.handler.getThing(id, [], null);
+    await client.handler.getThing(id, [], null, { origin: "https://partner.example" });
+    await client.handler.getThing(id, [], null, { origin: "https://partner.example", token: "given" });
+    await (client.clone({ origin: "https://partner.example", connect: false }) as unknown as Getter).getThing(
+      id,
+      [],
+      null,
+    );
+    const machine = client.clone({ origin: "https://partner.example", jwt: "machine", connect: false });
+    await (machine as unknown as Getter).getThing(id, [], null);
+    await (client.clone({ origin: "https://api.example/", connect: false }) as unknown as Getter).getThing(
+      id,
+      [],
+      null,
+    );
+    await (machine.clone({ connect: false }) as unknown as Getter).getThing(id, [], null);
+
+    const sent = (idx: number) => new Headers(fetchCalls[idx]?.init?.headers as HeadersInit).get("authorization");
+    expect([sent(0), sent(1), sent(2), sent(3), sent(4), sent(5), sent(6)]).toEqual([
+      "Bearer visitor",
+      null,
+      "Bearer given",
+      null,
+      "Bearer machine",
+      "Bearer visitor",
+      "Bearer machine",
+    ]);
+
+    client.handler.subscribeRoomThing("r1", () => undefined, { origin: "https://partner.example" });
+    client.setJwt("rotated");
+    const partnerSocket = FakeWebSocket.instances.find((ws) => ws.url.startsWith("wss://partner.example"));
+    expect(partnerSocket).toBeDefined();
+    expect(partnerSocket?.options?.headers).not.toHaveProperty("authorization");
+    partnerSocket?.open();
+    expect(partnerSocket?.sent.some((frame) => frame.includes("rotated") || frame.includes("visitor"))).toBe(false);
+    client.disconnect();
   });
 
   test("in a signal test each clone names its own client address, unless given one", async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { createTempModule, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
@@ -737,6 +737,61 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     expect(detailedReport.baselineDiagnostics).toContainEqual(
       expect.objectContaining({ code: "app-root-unknown-entry" }),
     );
+  });
+
+  test("runs the validation its spec names for a workspace target, not what a plan file carries", async () => {
+    const { workspace, planPath, runner } = await planTaskWorkflow(
+      { field: "priority", type: "String" },
+      { scaffold: false },
+    );
+    const ran: string[] = [];
+    const records: WorkflowValidationCommandExecutor = async (command) => {
+      ran.push(command.command);
+      return { command: command.command, reason: command.reason, status: "passed", exitCode: 0 };
+    };
+    const rewritePlan = async (edit: (plan: WorkflowPlan) => WorkflowPlan) =>
+      await writeFile(planPath, JSON.stringify(edit(JSON.parse(await readFile(planPath, "utf8")) as WorkflowPlan)));
+
+    await rewritePlan((plan) => ({
+      ...plan,
+      validation: [
+        { command: "akan verify <app-or-lib>; touch marker", reason: "edited", kind: "verify" },
+        { command: "akan deploy demo", reason: "edited", kind: "custom" },
+      ],
+    }));
+    await runner.validate(planPath, { format: "json", workspace, execute: records });
+    expect(ran).toEqual(["akan verify demo"]);
+
+    ran.length = 0;
+    await rewritePlan((plan) => ({ ...plan, inputs: { ...plan.inputs, app: "demo;id" } }));
+    const report = JSON.parse(
+      await runner.validate(planPath, { format: "json", workspace, execute: records }),
+    ) as WorkflowValidationRunReport;
+    expect(ran).toEqual([]);
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "workflow-target-missing" }));
+  });
+
+  test("refuses to plan or apply name inputs that carry a path or shell text", async () => {
+    const { workspace, planPath, runner, output } = await planTaskWorkflow(
+      { field: "priority level", type: "String" },
+      { scaffold: false },
+    );
+    expect((JSON.parse(output) as WorkflowPlan).diagnostics).toContainEqual(
+      expect.objectContaining({ code: "workflow-input-invalid", input: "field" }),
+    );
+
+    const plan = JSON.parse(await readFile(planPath, "utf8")) as WorkflowPlan;
+    await writeFile(
+      planPath,
+      JSON.stringify({ ...plan, diagnostics: [], inputs: { ...plan.inputs, field: "priority", module: "../../x" } }),
+    );
+    const report = JSON.parse(
+      await runner.apply(planPath, { format: "json", workspace, registry: WorkflowRunner.stepRegistry(workspace) }),
+    ) as WorkflowApplyReport;
+
+    expect(report.status).toBe("failed");
+    expect(report.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["workflow-plan-inputs-invalid"]);
+    expect(report.changedFiles).toEqual([]);
   });
 
   test("reads stored workflow run reports", async () => {

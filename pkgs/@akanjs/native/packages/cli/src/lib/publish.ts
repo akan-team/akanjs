@@ -306,6 +306,8 @@ export async function publishRelease(
       resetSequence,
     });
   }
+  const { expiresIn } = config.updates;
+  if (expiresIn) manifest = { ...manifest, expiresAt: Math.floor(Date.now() / 1000) + expiresIn };
   const encode = (value: UpdateManifest) => new TextEncoder().encode(`${JSON.stringify(value, null, 2)}\n`);
   const bytes = encode(manifest);
   const { publicKeys } = config.updates;

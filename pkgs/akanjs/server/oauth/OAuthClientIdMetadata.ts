@@ -1,6 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { TrustedProxy } from "akanjs/common";
 import { OAuthRedirect } from "./OAuthRedirect";
+import { OAuthRegistration } from "./OAuthRegistration";
 import type { OAuthClientRecord, OAuthRedirectPolicy } from "./oauthTypes";
 
 export interface OAuthClientIdMetadataResult {
@@ -68,8 +69,8 @@ export class OAuthClientIdMetadata {
     }).catch(() => null);
     if (!res?.ok) return null;
     if (Number(res.headers.get("content-length")) > OAuthClientIdMetadata.maxBytes) return null;
-    const text = await res.text().catch(() => "");
-    if (!text || text.length > OAuthClientIdMetadata.maxBytes) return null;
+    const text = await OAuthClientIdMetadata.#readCapped(res).catch(() => null);
+    if (!text) return null;
     let json: unknown;
     try {
       json = JSON.parse(text);
@@ -90,17 +91,40 @@ export class OAuthClientIdMetadata {
     if (!Array.isArray(redirectUris) || !redirectUris.length) return null;
     if (!redirectUris.every((uri) => typeof uri === "string" && OAuthRedirect.isRegistrable(uri, policy))) return null;
     if ((doc.token_endpoint_auth_method ?? "none") !== "none") return null;
-    const grantTypes = Array.isArray(doc.grant_types)
-      ? doc.grant_types.filter((g) => typeof g === "string")
-      : undefined;
+    //? A document names its own grants, so it is granted only those the token endpoint serves.
+    const named = Array.isArray(doc.grant_types) ? (doc.grant_types as unknown[]) : [];
+    const grantTypes = named.length
+      ? [
+          ...new Set(
+            named.filter((g): g is string => typeof g === "string" && OAuthRegistration.grantTypes.includes(g)),
+          ),
+        ]
+      : ["authorization_code"];
     return {
       clientId,
       clientName: doc.client_name.trim(),
       redirectUris: redirectUris as string[],
-      grantTypes: grantTypes?.length ? grantTypes : ["authorization_code"],
+      grantTypes,
       tokenEndpointAuthMethod: "none",
       source: "metadataDocument",
     };
+  }
+
+  // A chunked body states no length, so the cap is counted as it arrives and the stream cancelled past it.
+  static async #readCapped(res: Response): Promise<string | null> {
+    const reader = res.body?.getReader();
+    if (!reader) return null;
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+      bytes += chunk.value.byteLength;
+      if (bytes > OAuthClientIdMetadata.maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      chunks.push(chunk.value);
+    }
+    return Buffer.concat(chunks).toString("utf8");
   }
 
   // Same deadline as the fetch: a resolver that hangs is a fetch that hangs.

@@ -1,5 +1,6 @@
 import type { CodeAgent, CodeSessionEntry } from "@akanjs/devkit/codeAgent";
 import { SubagentPool } from "@akanjs/devkit/codeAgent/agent/SubagentPool";
+import { WorkspaceTrust } from "@akanjs/devkit/codeAgent/agent/WorkspaceTrust";
 import { McpServerConfig } from "@akanjs/devkit/codeAgent/tools/McpServerConfig";
 import { McpSignIn } from "@akanjs/devkit/codeAgent/tools/McpSignIn";
 import { McpTokenStore } from "@akanjs/devkit/codeAgent/tools/McpTokenStore";
@@ -37,6 +38,7 @@ export interface CodeTuiOptions {
   /** Draw the model's reasoning in full. Folded to one line otherwise, and `/thinking` flips it either way. */
   thinking?: boolean;
   notice?: string;
+  warnings?: string[];
   stdout?: NodeJS.WriteStream;
   stdin?: NodeJS.ReadStream;
 }
@@ -108,6 +110,7 @@ export class CodeTui {
   #clipboardTimer: ReturnType<typeof setInterval> | null = null;
   #notice = "";
   readonly #opening: string;
+  readonly #warnings: string[];
   #thinking: boolean;
   #noticeTimer: ReturnType<typeof setTimeout> | null = null;
   #frameTimer: ReturnType<typeof setTimeout> | null = null;
@@ -115,10 +118,11 @@ export class CodeTui {
   #unsubscribe: (() => void) | undefined;
   #exiting = false;
 
-  constructor(agent: CodeAgent, { thinking = false, notice, ...streams }: CodeTuiOptions = {}) {
+  constructor(agent: CodeAgent, { thinking = false, notice, warnings = [], ...streams }: CodeTuiOptions = {}) {
     this.#agent = agent;
     this.#thinking = thinking;
     this.#opening = notice ?? "";
+    this.#warnings = warnings;
     this.#files = new CodeTuiFiles(agent.profile.paths.root);
     this.#stdout = streams.stdout ?? process.stdout;
     this.#stdout.on("resize", this.#onResize);
@@ -159,6 +163,7 @@ export class CodeTui {
   async run(seed?: string) {
     this.#stdout.write(`${CodeTui.pasteOn}${CodeTuiMouse.on}`);
     if (this.#opening) this.#say(this.#opening);
+    for (const warning of this.#warnings) this.#transcript.note("warning", warning);
     this.#unsubscribe = this.#agent.on((event) => {
       this.#transcript.apply(event);
       if (event.type === "question") this.#openQuestion(event.question);
@@ -925,7 +930,9 @@ export class CodeTui {
       return this.#open("mcp", `"${name}" cannot name a server: letters, digits, dash and underscore only.`);
     try {
       if (verb === "remove") {
-        const scope = McpServerConfig.remove(root, name, local ? "workspace" : undefined);
+        const scope = WorkspaceTrust.carry(root, "mcp", () =>
+          McpServerConfig.remove(root, name, local ? "workspace" : undefined),
+        );
         const remaining = McpServerConfig.declared(root).find((entry) => entry.ref.name === name);
         if (!scope)
           return this.#open(
@@ -940,7 +947,7 @@ export class CodeTui {
         );
       }
       const scope = local ? "workspace" : "global";
-      const ref = McpServerConfig.add(root, name, rest, scope);
+      const ref = WorkspaceTrust.carry(root, "mcp", () => McpServerConfig.add(root, name, rest, scope));
       const where = scope === "global" ? "every repo" : "this repo";
       return this.#reload(`added ${name} · ${McpServerConfig.targetOf(ref)} · ${where}`);
     } catch (error: unknown) {
@@ -971,6 +978,7 @@ export class CodeTui {
       status: this.#agent.mcpServers(),
       declared: McpServerConfig.declared(root),
       files: McpServerConfig.files(root),
+      workspaceApproved: WorkspaceTrust.isTrusted(root, "mcp"),
       ...(problem ? { problem } : {}),
     };
   }

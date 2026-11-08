@@ -9,9 +9,9 @@ This is the tool the user is talking to right now. When they ask how to do somet
 with their code — answer from here, and quote the exact gesture: the slash command to type, or the file to
 edit. Do not guess a command; everything this tool offers is listed below.
 
-You cannot type a slash command yourself. They are the host's, not yours — say which one to type. You *can*
-edit the files named below, which is the useful half of most of these answers: write the change, then say
-which command makes it take effect.
+You cannot type a slash command yourself. They are the host's, not yours — say which one to type. You cannot
+edit `mcp.json`, `.akan/code/extensions/` or anything under `~/.akan/` either: the deny list covers them, so
+quote the `/mcp` command that makes the change instead. The context files and skills named below you can edit.
 
 ## MCP servers
 
@@ -52,8 +52,14 @@ From the prompt:
 
 **A server added now is not reachable until the session reloads.** The tool allowlist is fixed when the
 session is created, so `add`, `remove`, `login` and `logout` all reload by themselves — a session that has
-said nothing yet has nothing on disk to reopen, and says so. If you edit `mcp.json` yourself, tell the user to
-run `/mcp reload`.
+said nothing yet has nothing on disk to reopen, and says so. After the user edits `mcp.json` by hand, `/mcp
+reload` makes it take effect.
+
+**This repo's own servers start only once the user approves them.** At start, `akan code` lists what this
+repo's `.akan/code/mcp.json` would run, and the extensions in `.akan/code/extensions/`, and asks once; a yes is
+remembered in `~/.akan/code/trust.json` until that content changes, and is asked again after. With nobody at a
+terminal they are not started, and `/mcp` shows `not approved`. `--trust-workspace` (`-T`) starts them for one
+run without asking. Servers in `~/.akan/code/mcp.json`, and ones added with `/mcp add`, need no approval.
 
 `/mcp remove` on a name both files declare takes this repo's entry and leaves the home file's in force; its
 notice says so, and running it again removes that one too.
@@ -61,8 +67,9 @@ notice says so, and running it again removes that one too.
 Sign-in is discovered, not configured: the server's `401` names its resource metadata, that names the
 authorization server, and most hosted servers register a client on demand — so a url is usually the whole
 entry. For a provider that issues client ids by hand, add `"oauth": { "clientId": "…", "scope": "…" }`.
-Tokens are stored per server in `~/.akan/code/mcpAuth.json` at mode 0600, never in the repo, and refreshed
-silently — at connect when one has expired, and mid-session when a server refuses one, after which the call is
+Tokens are stored in `~/.akan/code/mcpAuth.json` at mode 0600, never in the repo, bound to the server's origin
+rather than its name — a server renamed in the file keeps its sign-in, and one moved to another url signs in
+again. They are refreshed silently — at connect when one has expired, and mid-session when a server refuses one, after which the call is
 retried once. When a refresh cannot fix it, `/mcp` shows `sign-in needed` and that server's tools answer with
 `/mcp login <name>` until the user signs in; the sign-in reloads the session, which brings the server back.
 
@@ -89,16 +96,19 @@ Stored under `.akan/code/sessions` — project history, so a second checkout of 
 - A provider is authorized by **`<PROVIDER>_API_KEY`** — `DEEPSEEK_API_KEY`, `ANTHROPIC_API_KEY`. The
   workspace's own `.env` is read as well as the environment, and a key found there is used for the run and
   never copied anywhere.
-- Credentials and the model catalogue live in `~/.akan/code/` (`auth.json`, `models.json`). **`AKAN_CODE_HOME`
-  moves the whole directory** — for a container with no home, or a checkout that wants its own.
+- Credentials and the model catalogue live in `~/.akan/code/` (`auth.json`, `models.json`), mode 0700.
+  **`AKAN_CODE_HOME` moves the whole directory** — for a container with no home, or a checkout that wants its
+  own. It, `AKAN_CODE_CAN_PROMPT`, the `AKAN_CODE_PROXY_*` settings and `AKAN_CODE_RPC_TOKEN_FILE` are read
+  from the shell only: one a repo's `.env` names is ignored, with a warning at start.
 
 ## What the agent reads, and how to change it
 
 - Every `AGENTS.md` / `CLAUDE.md` from the workspace root down to the working directory, `.cursorrules`, and
   any `.cursor/rules/*.mdc` that applies unconditionally (`alwaysApply: true`, or no frontmatter at all).
   Edit those to change how this agent behaves in this repo — they are the files the editor beside it reads.
-- Skills: drop a `<name>/SKILL.md` into `.akan/code/skills`. Extensions: `.akan/code/extensions`. Neither is
-  read from a home directory, so a session behaves the same in two checkouts.
+- Skills: drop a `<name>/SKILL.md` into `.akan/code/skills`. Extensions: `.akan/code/extensions`, loaded once
+  the user approves them (see MCP servers). Neither is read from a home directory, so a session behaves the
+  same in two checkouts.
 
 ## Keys
 
@@ -124,7 +134,20 @@ akan code -i "<prompt>"         open the session with the prompt already sent
 --profile local|pod|review|web  what it may do (default local)
 --model <provider>/<id>         --thinking, --json, --rpc, --resume <id>
 --compact-at <percent>          compact once the window is this full (10, 20, … 100)
+--trust-workspace               start this repo's MCP servers and extensions without asking
+--no-ask-network                never ask before an unlisted host (local profile)
+--rpc-listen unix:<path>|tcp:[host:]<port>   serve the RPC wire on a socket instead of stdio
 ```
+
+`local` runs as the user: it refuses known secret files and the home credential stores, and asks before it
+fetches a page from a host off a short documentation list or a shell command that reaches the network
+(`curl`, `ssh`, …) — refused outright where nobody can answer, as in a one-shot `akan code "<prompt>"`. It is
+not a sandbox; `pod` in a container is.
+
+A `tcp:` listener asks every connection to open with `{"auth":"<token>"}` on its first line; the token is a
+fresh one in `~/.akan/code/rpc/<port>.token`, or the one in the file `AKAN_CODE_RPC_TOKEN_FILE` names.
+`--no-rpc-token` drops it, and only a loopback address is bound unless `--rpc-bind-any` is given. A unix
+socket is created owner-only and asks for no token.
 
 `review` reads and never writes, loads no project context files, and keeps no session on disk. `pod` has
 nobody in front of it: it cannot ask a question. MCP is off in both.

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { Logger, type LoggerSinkEntry, logSeverity } from "akanjs/common";
 import {
   getCurrentTrace,
+  isLocalDevRuntime,
   runTraced,
   SignalTrace,
   setCanonicalLineMode,
@@ -340,7 +341,10 @@ describe("flight recorder", () => {
 describe("x-akan-debug", () => {
   const env = {
     AKAN_PUBLIC_ENV: process.env.AKAN_PUBLIC_ENV,
+    AKAN_PUBLIC_OPERATION_MODE: process.env.AKAN_PUBLIC_OPERATION_MODE,
     AKAN_LOG_DEBUG_HEADER: process.env.AKAN_LOG_DEBUG_HEADER,
+    AKAN_COMMAND_TYPE: process.env.AKAN_COMMAND_TYPE,
+    NODE_ENV: process.env.NODE_ENV,
   };
   const restore = () => {
     for (const [key, value] of Object.entries(env)) {
@@ -349,8 +353,10 @@ describe("x-akan-debug", () => {
     }
   };
 
-  test("is honoured unconditionally in local", () => {
+  test("is honoured unconditionally in a local dev runtime", () => {
     process.env.AKAN_PUBLIC_ENV = "local";
+    delete process.env.AKAN_PUBLIC_OPERATION_MODE;
+    process.env.NODE_ENV = "development";
     try {
       const trace = new SignalTrace("x", "query", { mode: "context" });
       expect(trace.applyDebugHeader(null)).toBe(false);
@@ -371,6 +377,38 @@ describe("x-akan-debug", () => {
       expect(trace.applyDebugHeader("nope")).toBe(false);
       expect(trace.applyDebugHeader("s3cret")).toBe(true);
       expect(trace.debugSev).toBe(logSeverity.trace);
+    } finally {
+      restore();
+    }
+  });
+
+  test("a local env built for production, or run in a non-local operation mode, needs the secret too", () => {
+    process.env.AKAN_PUBLIC_ENV = "local";
+    delete process.env.AKAN_LOG_DEBUG_HEADER;
+    delete process.env.AKAN_COMMAND_TYPE;
+    try {
+      process.env.NODE_ENV = "production";
+      expect(isLocalDevRuntime()).toBe(false);
+      expect(new SignalTrace("x", "query", { mode: "context" }).applyDebugHeader("1")).toBe(false);
+      process.env.AKAN_COMMAND_TYPE = "start";
+      expect(isLocalDevRuntime()).toBe(true);
+      process.env.AKAN_PUBLIC_OPERATION_MODE = "cloud";
+      expect(isLocalDevRuntime()).toBe(false);
+      expect(new SignalTrace("x", "query", { mode: "context" }).applyDebugHeader("1")).toBe(false);
+      expect(isLocalDevRuntime({ environment: "local", operationMode: "local" })).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  test("a value of another length, or with multi-byte characters, is refused without throwing", () => {
+    process.env.AKAN_PUBLIC_ENV = "main";
+    process.env.AKAN_LOG_DEBUG_HEADER = "abcd";
+    try {
+      const trace = new SignalTrace("x", "query", { mode: "context" });
+      for (const value of ["", "abc", "abcde", "ab\u00e9", "\u00e9\u00e9\u00e9\u00e9", "\ud83d\ude00\ud83d\ude00"])
+        expect(trace.applyDebugHeader(value)).toBe(false);
+      expect(trace.applyDebugHeader("abcd")).toBe(true);
     } finally {
       restore();
     }

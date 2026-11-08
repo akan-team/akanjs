@@ -24,7 +24,7 @@ export default function ViewWrapper({ children, slice, modelId, className, modal
   };
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
   const viewModel = st
-    .tool(names.viewModel)
+    .tool(names.viewModel, { taint: "exempt" })
     .desc(`Open one ${modelName} in the detail view.`)
     .arg("modelId", ID)
     .exec((id) => {

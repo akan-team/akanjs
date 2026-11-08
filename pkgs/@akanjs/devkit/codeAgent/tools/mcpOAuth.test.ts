@@ -239,7 +239,7 @@ describe("MCP sign-in", () => {
     expect(auth.resource).toBe(provider.mcpUrl);
     expect(provider.registrations).toHaveLength(1);
     expect(provider.registrations[0]?.redirect_uris?.[0]).toBe(auth.redirectUri);
-    expect(McpTokenStore.read("fake")?.accessToken).toBe("access-1");
+    expect(McpTokenStore.read(refOf())?.accessToken).toBe("access-1");
   });
 
   test("the token is what makes the server publish its tools", async () => {
@@ -270,23 +270,23 @@ describe("MCP sign-in", () => {
 
   test("an expired token is refreshed without anybody being asked", async () => {
     const auth = await McpSignIn.run(refOf(), { open: browser });
-    McpTokenStore.write("fake", { ...auth, expiresAt: Date.now() - 1 });
+    McpTokenStore.write(refOf(), { ...auth, expiresAt: Date.now() - 1 });
     expect(await McpSignIn.token(refOf())).toBe("access-refreshed-2");
-    expect(McpTokenStore.read("fake")?.refreshToken).toBe("refresh-2");
+    expect(McpTokenStore.read(refOf())?.refreshToken).toBe("refresh-2");
   });
 
   test("a refreshed token the server gave no lifetime is kept until refused, not refreshed on every connect", async () => {
     const auth = await McpSignIn.run(refOf(), { open: browser });
-    McpTokenStore.write("fake", { ...auth, expiresAt: Date.now() - 1 });
+    McpTokenStore.write(refOf(), { ...auth, expiresAt: Date.now() - 1 });
     provider.refreshExpiresIn = undefined;
     expect(await McpSignIn.token(refOf())).toBe("access-refreshed-2");
     expect(await McpSignIn.token(refOf())).toBe("access-refreshed-2");
-    expect(McpTokenStore.read("fake")?.expiresAt).toBeUndefined();
+    expect(McpTokenStore.read(refOf())?.expiresAt).toBeUndefined();
   });
 
   test("a refresh the server refuses reports no token rather than throwing", async () => {
     const auth = await McpSignIn.run(refOf(), { open: browser });
-    McpTokenStore.write("fake", { ...auth, expiresAt: Date.now() - 1 });
+    McpTokenStore.write(refOf(), { ...auth, expiresAt: Date.now() - 1 });
     provider.refreshable = false;
     const notices: string[] = [];
     expect(await McpSignIn.token(refOf(), (message) => notices.push(message))).toBeUndefined();
@@ -308,7 +308,7 @@ describe("MCP sign-in", () => {
     try {
       expect(pack?.status[0]).toMatchObject({ auth: "authorized" });
       expect(pack?.toolNames).toEqual(["mcp__fake__search"]);
-      expect(McpTokenStore.read("fake")).toMatchObject({
+      expect(McpTokenStore.read(refOf())).toMatchObject({
         accessToken: "access-refreshed-1",
         refreshToken: "refresh-2",
       });
@@ -365,7 +365,7 @@ describe("MCP sign-in", () => {
       expect((await search(pack)).content[0]?.text).toBe("found");
       expect(provider.refreshes).toBe(1);
       expect(provider.calls).toEqual([{ token: "access-refreshed-1", session: "session-2" }]);
-      expect(McpTokenStore.read("fake")).toMatchObject({
+      expect(McpTokenStore.read(refOf())).toMatchObject({
         accessToken: "access-refreshed-1",
         refreshToken: "refresh-2",
       });
@@ -405,7 +405,7 @@ describe("MCP sign-in", () => {
 
   test("a session connecting with an expired token while a call is refused shares one refresh with it", async () => {
     const auth = await McpSignIn.run(refOf(), { open: browser });
-    McpTokenStore.write("fake", { ...auth, expiresAt: Date.now() - 1 });
+    McpTokenStore.write(refOf(), { ...auth, expiresAt: Date.now() - 1 });
     provider.refreshDelayMs = 50;
     const tokens = await Promise.all([McpSignIn.token(refOf()), McpSignIn.retryToken(refOf(), auth.accessToken)]);
     expect(tokens).toEqual(["access-refreshed-2", "access-refreshed-2"]);
@@ -496,7 +496,7 @@ describe("MCP sign-in", () => {
   test("signing out forgets the token and leaves nothing behind", async () => {
     await McpSignIn.run(refOf(), { open: browser });
     expect(McpTokenStore.clear("fake")).toBe(true);
-    expect(McpTokenStore.read("fake")).toBeUndefined();
+    expect(McpTokenStore.read(refOf())).toBeUndefined();
     expect(McpTokenStore.clear("fake")).toBe(false);
   });
 });
@@ -514,10 +514,32 @@ describe("the token file", () => {
     expect(statSync(McpTokenStore.file()).mode & 0o777).toBe(0o600);
   });
 
+  test("a token is found by the server's origin, so the same name at another url gets none", async () => {
+    await McpSignIn.run(refOf(), { open: browser });
+    expect(await McpSignIn.token(refOf({ url: "http://127.0.0.1:9/mcp" }))).toBeUndefined();
+    expect(await McpSignIn.token(refOf({ name: "renamed" }))).toBe("access-1");
+    expect(McpTokenStore.names()).toEqual(["fake"]);
+  });
+
+  test("a file an older build keyed by name keeps its tokens at the origin they were minted for", async () => {
+    const auth = await McpSignIn.run(refOf(), { open: browser });
+    await Bun.write(
+      McpTokenStore.file(),
+      JSON.stringify({ servers: { fake: auth, broken: { ...auth, resource: "" } } }),
+    );
+    expect(McpTokenStore.read(refOf())?.accessToken).toBe("access-1");
+    expect(McpTokenStore.read(refOf({ url: "https://elsewhere.example/mcp" }))).toBeUndefined();
+    expect(McpTokenStore.names()).toEqual(["fake"]);
+    McpTokenStore.write(refOf(), { ...auth, accessToken: "access-rewritten" });
+    const saved = (await Bun.file(McpTokenStore.file()).json()) as { servers?: unknown; tokens: object };
+    expect(saved.servers).toBeUndefined();
+    expect(Object.keys(saved.tokens)).toEqual([`${provider.origin} ${provider.origin}`]);
+  });
+
   test("a corrupt file costs the sign-ins and not the session", async () => {
     await McpSignIn.run(refOf(), { open: browser });
     await Bun.write(McpTokenStore.file(), "{ not json");
-    expect(McpTokenStore.read("fake")).toBeUndefined();
+    expect(McpTokenStore.read(refOf())).toBeUndefined();
     expect(McpTokenStore.names()).toEqual([]);
   });
 });
@@ -582,7 +604,7 @@ process.exit(0);
     });
     await taken.promise;
     const retried = McpSignIn.retryToken(refOf(), auth.accessToken);
-    McpTokenStore.write("fake", { ...auth, accessToken: "access-elsewhere", refreshToken: "refresh-elsewhere" });
+    McpTokenStore.write(refOf(), { ...auth, accessToken: "access-elsewhere", refreshToken: "refresh-elsewhere" });
     released.resolve();
     await elsewhere;
     expect(await retried).toBe("access-elsewhere");

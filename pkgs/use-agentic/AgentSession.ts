@@ -116,6 +116,8 @@ export interface AgentSessionOptions {
    * something no message renders.
    */
   onActivity?: (event: ToolActivity) => void | Promise<void>;
+  /** `false` lets a call after a `taint: "source"` read run as its own `confirm` decides; see `ToolRunnerHost`. */
+  askAfterUntrusted?: boolean;
   /**
    * Called when a turn starts and when it settles — the boundary a host draws the agent's own presence in. The
    * calls of one turn arrive with model turns between them, seconds long, so anything measured in the gap
@@ -202,6 +204,7 @@ export class AgentSession {
     this.#options = options;
     this.#tools = new ToolRunner(surface, {
       approve: (request, signal) => this.#awaitApproval(request, signal),
+      ...(options.askAfterUntrusted === false ? { askAfterUntrusted: false } : {}),
       card: (request, signal) => this.#awaitCard(request, signal),
       settle: () => this.#options.settle?.(),
       activity: (event) => this.#options.onActivity?.(event),
@@ -505,6 +508,7 @@ export class AgentSession {
     this.#messages = [];
     this.#staged = [];
     this.#inserts = [];
+    this.#tools.forgetUntrusted();
     this.#compactFloor = { transcript: 0, prompt: 0 };
     // The pending debounced save would re-create the entry clear() just removed.
     if (this.#saveTimer) {

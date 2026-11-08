@@ -18,7 +18,7 @@ final class AkanNativeBridge: NSObject {
     private var plugins: [String: AkanNativePlugin] = [:]
     private var listeners: [String: Int] = [:] // "plugin\0event" → count
     /// The app's capabilities (PL-11); nil for builds without an ACL (everything allowed).
-    private let acl = AkanNativeAcl.load(AkanNativeResources.json("boot.json"))
+    let acl = AkanNativeAcl.load(AkanNativeResources.json("boot.json"))
     /// boot.json `plugins`: what each plugin declares natively on iOS (the L2 declaration gate).
     private let declarations = AkanNativeResources.json("boot.json")["plugins"] as? [String: Any] ?? [:]
     /// "plugin\0event" of events whose payload is a snapshot (plugins[].coalesce): only the latest of a

@@ -184,10 +184,11 @@ enum AkanNativeKernel {
         return segments.last!.contains(".") ? .notFound : .asset("index.html")
     }
 
-    /// Paths the shell answers itself even with a dev server: /__akan_native/*, and paths that do not decode.
+    /// Paths the shell answers itself even with a dev server: /__akan_native/*, paths that do not decode, and dot segments.
     static func isHostPath(_ pathname: String) -> Bool {
         guard let decoded = decodePath(pathname) else { return true }
-        return decoded.split(separator: "/", omittingEmptySubsequences: true).first.map(String.init) == AkanNativeContract.routeRoot
+        let segments = decoded.split(separator: "/", omittingEmptySubsequences: true)
+        return segments.contains { $0 == "." || $0 == ".." } || segments.first.map(String.init) == AkanNativeContract.routeRoot
     }
 
     // MARK: MIME
@@ -349,6 +350,13 @@ enum AkanNativeKernel {
         guard let scheme else { return .drop }
         if !topLevel { return AkanNativeContract.frameSchemes.contains(scheme) ? .load : .drop }
         return externalSchemes(extra).contains(scheme) ? .open : .drop
+    }
+
+    /// kernel.ts externalOpenPermitted: a link or window.open leaves only where opener.openUrl may open it.
+    static func externalOpenPermitted(_ acl: AkanNativeAcl?, _ url: String, window: Int = 1) -> Bool {
+        guard let acl else { return true }
+        let (allowed, scope) = acl.check(plugin: "opener", item: "openUrl", window: window)
+        return allowed && (scope?.permits(["url": url], urlFields: ["url"]) ?? true)
     }
 
     /// kernel.ts updateDecision: a key revokes only keys listed before it (a leaked online key, listed first, cannot

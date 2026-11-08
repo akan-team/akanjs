@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pluginDecls } from "../../../packages/cli/src/lib/native-plugins.ts";
 import { AkanNativeError } from "../../../packages/core/src/index.ts";
+import { appTempDir } from "../../../packages/desktop/src/paths.ts";
 import { fakeHost } from "../../menu/test/fake-host.ts";
 import manifest from "../native-plugin.json";
 import {
@@ -146,7 +146,7 @@ describe("external-view plugin", () => {
   });
 
   test("keeps one capture per view in the app's own temporary folder, and none from an earlier launch", async () => {
-    const dir = join(tmpdir(), "dev.test", "external-view");
+    const dir = join(appTempDir("dev.test"), "external-view");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "board-1.png"), "");
     const png = Buffer.alloc(33);

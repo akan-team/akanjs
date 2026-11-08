@@ -35,6 +35,8 @@ interface ToolEntryBase {
    */
   settle?: boolean;
   confirm?: ToolConfirm;
+  /** `"source"` returns text the user did not write, so the next change asks first; `"exempt"` never needs that ask. */
+  taint?: "source" | "exempt";
   guard?: ToolGuard;
   /** What a person reads for the action in the host's own UI, a command palette; never sent to the model. */
   label?: () => string | undefined;

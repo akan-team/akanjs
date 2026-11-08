@@ -7,7 +7,7 @@ export interface ScreenAction {
   description?: string;
   /** The tool's `label` (`st.tool(name, { label })`): what to show a person, in their language. */
   label?: string;
-  /** A `remove*` tool, or one that declares `confirm`: ask the person before `run`. */
+  /** A tool named for a write (`AgentConfirm.writeVerbs`), or one that declares `confirm`: ask the person before `run`. */
   needsConfirm: boolean;
   /** Runs the control's own handler, as its click does; refuses as the tool's guard does. */
   run: () => Promise<void>;

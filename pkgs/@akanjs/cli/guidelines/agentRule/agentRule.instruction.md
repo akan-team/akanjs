@@ -34,7 +34,12 @@ pages declaring one name never clash, and a registry kept outside the surface re
   cannot spend the LLM key. **The guard decides who, not what** — the browser writes the instructions, tools and
   transcript — so `option.setAgentRequestPolicy((request, { account, ip }) => request)` sees each turn after the
   guard, before the quota and the model (tool names as the page published them), and returns what is sent, or
-  throws an `Err` (`agent.error.requestRefused`) to refuse it.
+  throws an `Err` (`agent.error.requestRefused`) to refuse it. With no policy set, a turn past
+  `AgentRelayPolicy.defaultLimits` (5,000 messages, 512 tools, 256 context entries, 8M characters, 64 MiB of
+  attachments) is refused with 413; a policy of the app's own keeps them by returning
+  `AgentRelayPolicy.capped(request, limits)`, and `(request) => request` lifts them. An error that is not an `Err`
+  reaches the chat as a generic failure and the server log in full, unless `AKAN_ERROR_DETAIL=1` or a development
+  runtime (`akan start`, `NODE_ENV` `development` or `test`) shows its message.
   `persist` keeps the transcript across reloads (sessionStorage; `{ storage: "local" }` to outlive the tab),
   default off, and `shortcut={false}` gives the browser back the Cmd/Ctrl+L the launcher otherwise captures.
   **`persist` also takes a `SessionHistory` of the app's own** — `{ load, save, clear }` — which is how a
@@ -111,11 +116,12 @@ pages declaring one name never clash, and a registry kept outside the surface re
   app's own chat-completions adaptor claims through `OpenaiLlm.acceptsOf(llmOption)` instead of copying the rule —
   a copy that read "any host is a gateway" kept a vision model text-only for an app that spelled out
   `https://api.openai.com/v1`.
-- **A refusal is `agent.error.llmRequestFailed`, and it names the host** — unless the prompt did not fit. The
-  provider's own sentence rides in `reason` and the hostname in `provider`. `LlmOverflow.refusal(host, status,
-  reason)` builds it, and reads the one refusal a chat can undo — a prompt past the window, recognized from each
-  provider's own sentence — as `agent.error.contextOverflow` with the `limit` it named, which the relay flags so
-  the chat compacts and asks again. An adaptor an app wrote throws through the same function, so its refusals
+- **A refusal is `agent.error.llmRequestFailed`, and it names the host** — unless the prompt did not fit. It
+  carries `{ provider, status }`, the hostname and the HTTP status; the provider's own sentence goes to the server
+  log only, because it can quote an account id or part of a key and `Err` data reaches the browser.
+  `LlmOverflow.refusal(host, status, reason)` builds it, and reads the one refusal a chat can undo — a prompt past
+  the window, recognized from each provider's own sentence — as `agent.error.contextOverflow` with the `limit` it
+  named, which the relay flags so the chat compacts and asks again. An adaptor an app wrote throws through the same function, so its refusals
   translate and recover the way the shipped ones do without a key in the framework's dictionary it cannot add.
 - **`accepts` is answered per model, through `option.setLlm({ accepts })`.** An adaptor answers for an API and one
   API serves models that differ, so the override rides beside the `model` it is a fact about. It is not a table
@@ -322,7 +328,12 @@ pages declaring one name never clash, and a registry kept outside the surface re
   an inline arrow can be clicked by a person and by nobody else. `.desc()` is required and comes first, `.arg()`
   is an argument the caller must pass and `.opt()` one it may leave out (the `exec` parameter is then `| null`),
   and `.exec()` is the only hook, so the chain completes in one unconditional statement and the callable carries
-  `data-akan-action` like a store setter does. A `remove*` name defaults to a confirm gate. `st.tool("x", { label:
+  `data-akan-action` like a store setter does. A name starting with a write verb (`remove`, `delete`, `create`,
+  `update`, `upsert`, `submit`, `save`, `send`, `export`) asks the user first unless it says `{ confirm: false }`;
+  `AgentConfirm.set({ byName })` moves that default app-wide. After a tool marked `taint: "source"` (`readScreen`,
+  `readState`, `viewImage`) returns text the user did not write, the next call that changes something asks once,
+  whatever its own `confirm` says, until the user approves a call; `taint: "exempt"` marks a tool that only moves the
+  view, and `AgentConfirm.set({ afterScreenRead: false })` turns the rule off. `st.tool("x", { label:
   l("ticket.archive") })` gives the action a name a person reads — `Agent.useScreenActions()` hands it to a command
   palette, and the model never sees it. Reach a store action
   from the body — `.exec((id) => st.do.removeX(id))` — which is how an agent gets CRUD; `st.do` on its own
@@ -718,7 +729,10 @@ pages declaring one name never clash, and a registry kept outside the surface re
   or `<nav>` and the component insists on a label. A region that is hidden anyway leaves no marker claiming it is
   there. **It hides text, not behaviour**: tools and state keys are declarations rather than markup, so an
   `st.tool` inside is published exactly as before and `highlight` still reaches a control in there. This is
-  `field.visual` one layer up — cost, not secrecy.
+  `field.visual` one layer up — cost, not secrecy. Secrecy is `data-agent-private="<label>"`: the read prints
+  `[private: <label>]` in its place even when asked for by name, and it is no `section` or `highlight` target. A
+  password, one-time-code or card input (its standard `autocomplete`) is never read either; any other value on
+  screen is.
 - **Reach for it second.** A read narrows from the other side too: `Agent.Zone` and `readScreen({ section })` scope
   to one container, which beats blocklisting five regions on a screen that is mostly chrome. And a footer is last
   in the document, so on a page long enough to truncate it was already past the cut — the regions worth marking are

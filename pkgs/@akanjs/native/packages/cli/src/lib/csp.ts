@@ -126,9 +126,8 @@ export function buildCsp(
       map.set(directive, sources);
     }
     if (sources.includes("'unsafe-inline'")) {
-      warnings.push(
-        `security.csp: ${directive} has 'unsafe-inline'; inline ${directive === "script-src" ? "scripts" : "styles"} are not hashed`,
-      );
+      if (directive.startsWith("script-src"))
+        warnings.push(`security.csp: ${directive} has 'unsafe-inline'; inline scripts are not hashed`);
       return;
     }
     if (sources.includes("'none'")) sources.splice(sources.indexOf("'none'"), 1);
@@ -136,6 +135,9 @@ export function buildCsp(
   };
   add("script-src", scripts);
   add("style-src", styles);
+  // A CSP3 engine (iOS 16+, Chromium) checks <script> and <style> against the -elem directive when there is one.
+  if (map.has("script-src-elem")) add("script-src-elem", scripts);
+  if (map.has("style-src-elem")) add("style-src-elem", styles);
   return { policy: serializeCsp(map), scripts: scripts.length, styles: styles.length, warnings };
 }
 

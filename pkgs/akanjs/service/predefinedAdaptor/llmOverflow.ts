@@ -1,3 +1,4 @@
+import { Logger } from "akanjs/common";
 import { Err } from "akanjs/dictionary";
 import { llmProviderOf } from "./llm.adaptor";
 
@@ -9,6 +10,7 @@ export interface LlmOverflowFacts {
 
 /** Matches each provider's own too-long-prompt sentence; a status code cannot tell it from any other bad request. */
 export class LlmOverflow {
+  static readonly #logger = new Logger("LlmRefusal");
   static readonly patterns = [
     /prompt (?:is )?too long/i, // Anthropic: "prompt is too long: 213462 tokens > 200000 maximum"
     /request_too_large/i, // Anthropic, past the request byte ceiling
@@ -53,7 +55,9 @@ export class LlmOverflow {
     const provider = llmProviderOf(host);
     const overflow = LlmOverflow.match(reason);
     if (overflow) return new Err("agent.error.contextOverflow", { provider, ...overflow });
-    return new Err("agent.error.llmRequestFailed", { provider, status: String(status), reason });
+    // A provider's sentence can quote part of the API key or an account id, so only the server log carries it.
+    LlmOverflow.#logger.warn(`${provider} refused a turn with status ${status}: ${reason}`);
+    return new Err("agent.error.llmRequestFailed", { provider, status: String(status) });
   }
 
   static #count(text: string | undefined): number | undefined {

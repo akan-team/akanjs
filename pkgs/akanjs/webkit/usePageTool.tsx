@@ -19,6 +19,7 @@ export const usePageTool = ({ name, model, page, lastPage, total, onSelect }: Pa
     .value({ page, lastPage, total });
   return st
     .tool(name, {
+      taint: "exempt",
       guard: ({ page }) =>
         Number(page) >= 1 && Number(page) <= lastPage
           ? true

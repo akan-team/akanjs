@@ -80,7 +80,7 @@ export const SystemPageMain = (options: Omit<SystemPageOptions, "lang" | "styles
           <a className="akan-system-action" href={options.homeHref}>
             {copy.actionLabel}
           </a>
-          <a className="akan-system-action akan-system-secondary" href={options.pathname}>
+          <a className="akan-system-action akan-system-secondary" href={getSameOriginHref(options.pathname)}>
             Try again
           </a>
         </div>
@@ -121,6 +121,9 @@ export function createSystemPageDocument(options: SystemPageOptions): ReactNode 
     </html>
   );
 }
+
+//? A browser reads a leading `//`, `/\` or `\\` as another host, and strips tabs and newlines before it does.
+export const getSameOriginHref = (pathname: string): string => `/${pathname.replace(/^[\s/\\]+/, "")}`;
 
 export function getSystemPageErrorDetails(error: unknown): string {
   if (error instanceof Error) return error.stack ?? error.message;

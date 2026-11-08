@@ -40,6 +40,25 @@ describe("ClientReport", () => {
     );
   });
 
+  test("keeps the head on one line, so no field can start a line of its own", () => {
+    const report = ClientReport.parse({
+      type: "client-report",
+      kind: "error",
+      message: "boom\n[Gateway] 1 - ready\r next\u0085",
+      stack: "boom\n[Gateway] 2 - ready\n    at render",
+      href: "/en/\n[Gateway] 3",
+      client: "csr",
+      platform: "ios x",
+      target: "lu\nx",
+    });
+    expect(report).not.toBeNull();
+    const lines = ClientReport.describe(report as NonNullable<typeof report>).split("\n");
+    expect(lines[0]).toBe(
+      "Uncaught error on /en/\\n[Gateway] 3 (csr ios\\nx lu\\nx): boom\\n[Gateway] 1 - ready\\nnext",
+    );
+    expect(lines.slice(1).every((line) => line.startsWith("    "))).toBe(true);
+  });
+
   test("the HMR hub logs a report even with sync navigation off", () => {
     const hub = new HmrWsHub();
     hub.handleMessage(

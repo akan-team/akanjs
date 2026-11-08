@@ -15,6 +15,7 @@ import {
 } from "use-agentic";
 import { agentSessionOf, type BuiltinOption, type PersistOption } from "./agentSessionOf";
 import { Guide } from "./Guide";
+import { useAccountBoundSession } from "./useAccountBoundSession";
 
 export interface ZoneProps {
   className?: string;
@@ -79,6 +80,7 @@ export const Zone = ({
       visual,
     });
   const session = held.current;
+  useAccountBoundSession(session);
   useEffect(
     // Unmounted, nothing renders an owned session's approvals; a provided one belongs to the app.
     () => (provided ? undefined : () => session.abort()),

@@ -1,8 +1,10 @@
 import { getEnv } from "akanjs/base";
 import {
+  AgentConfirm,
   AgentContext,
   AgentVisual,
   type AgentVisualOption,
+  DraftStore,
   ensureStoreSurface,
   ScreenSettle,
   StoreSurfaceSource,
@@ -67,6 +69,7 @@ export const agentSessionOf = ({
     buildContext: (scoped) => AgentContext.of().blocks(scoped, view),
     settle: () => ScreenSettle.wait(),
     continueAsk: () => ({ question: l("base.agentContinue"), keep: l("base.agentKeepGoing") }),
+    ...(AgentConfirm.policy.afterScreenRead ? {} : { askAfterUntrusted: false }),
     ...(instructions ? { instructions } : {}),
     ...(maxTurns ? { maxTurns } : {}),
     ...(compact ? { compact } : {}),
@@ -138,6 +141,21 @@ const withoutContent = (message: ChatMessage): ChatMessage => {
   };
 };
 
+const transcriptPrefix = () => `akan.agent.${getEnv().appName}`;
+
+export const forgetOtherAccounts = (owner: string) => {
+  if (typeof window === "undefined") return;
+  const prefix = transcriptPrefix();
+  const kept = `${prefix}.${owner}`;
+  const isStale = (key: string | null): key is string =>
+    !!key && (key === prefix || (key.startsWith(`${prefix}.`) && key !== kept && !key.startsWith(`${kept}.`)));
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    const stale = Array.from({ length: storage.length }, (_, idx) => storage.key(idx)).filter(isStale);
+    for (const key of stale) storage.removeItem(key);
+  }
+};
+
+//? Security: a transcript holds what the agent read on one account's screens, so no other account loads or writes it.
 export const sessionHistoryOf = (
   persist: PersistOption | SessionHistory | undefined,
   pathKey = "",
@@ -148,23 +166,35 @@ export const sessionHistoryOf = (
   if (typeof window === "undefined") return undefined;
   const option = persist === true ? {} : (persist as Exclude<PersistOption, boolean>);
   const storage = option.storage === "local" ? window.localStorage : window.sessionStorage;
-  const key = option.key ?? `akan.agent.${getEnv().appName}${pathKey ? `.${pathKey}` : ""}`;
+  const keyOf = (owner: string) => option.key ?? `${transcriptPrefix()}.${owner}${pathKey ? `.${pathKey}` : ""}`;
+  let owner: string | null = null;
   const version = 1;
   const cap = 50;
   return {
     load: () => {
+      owner = DraftStore.identity();
+      forgetOtherAccounts(owner);
+      const key = keyOf(owner);
       const raw = storage.getItem(key);
       if (!raw) return null;
-      const parsed = JSON.parse(raw) as { v?: number; messages?: ChatMessage[] };
+      const parsed = JSON.parse(raw) as { v?: number; owner?: string; messages?: ChatMessage[] };
+      if (parsed.owner !== owner) {
+        storage.removeItem(key);
+        return null;
+      }
       return parsed.v === version && Array.isArray(parsed.messages) ? parsed.messages : null;
     },
     save: (messages) => {
+      const signedIn = DraftStore.identity();
+      owner ??= signedIn;
+      if (signedIn !== owner) return;
       // Cap before `sanitize`: the window may open between a tool call and its result, which a provider refuses.
       const kept = Transcript.sanitize(messages.slice(-cap)).map(withoutContent);
-      storage.setItem(key, JSON.stringify({ v: version, messages: kept }));
+      storage.setItem(keyOf(owner), JSON.stringify({ v: version, owner, messages: kept }));
     },
     clear: () => {
-      storage.removeItem(key);
+      storage.removeItem(keyOf(owner ?? DraftStore.identity()));
+      owner = null;
     },
   };
 };

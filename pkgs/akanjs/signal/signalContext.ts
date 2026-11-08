@@ -22,6 +22,7 @@ import {
 } from "akanjs/constant";
 import { Err } from "akanjs/dictionary";
 import type { Adaptor, AdaptorCls, DatabaseService, InjectRegistry, LiveRegistry } from "akanjs/service";
+import { websocketRoomContract } from "../common/websocketContract";
 import type { Internal, InternalCls, InternalInfo, MiddlewareCls } from ".";
 import { CrossSiteGuard } from "./CrossSiteGuard";
 import { EndpointCache } from "./endpointCache";
@@ -32,6 +33,7 @@ import { EndpointRateLimit } from "./endpointRateLimit";
 import { Exception, type ExceptionLike, isExceptionLike } from "./exception";
 import { type GuardCls, type GuardScope, guardOf } from "./guard";
 import { MiddlewareChain } from "./middlewareChain";
+import { RoomKey } from "./roomKey";
 import { SignalFailure } from "./SignalFailure";
 import { getCurrentTrace, runTraced, SignalTrace, type TraceOrigin, traceSpan } from "./trace";
 
@@ -100,6 +102,10 @@ export class SignalContext<
   readonly #option: SignalContextOption<Ctx, Env>;
   #rawArgs: unknown[] | null = null;
   #args: unknown[] | null = null;
+  #bodyPending = false;
+  #argsLackBody = false;
+  #bodyRead: { ms: number; pending: Promise<void> | null } = { ms: 0, pending: null };
+  #bodyFailure: unknown = undefined;
   #registry: InjectRegistry;
   #env: Env;
   #live: LiveRegistry;
@@ -142,7 +148,7 @@ export class SignalContext<
     if (!service) throw new Exception.Error(`Service "${refName}" not found in live registry`);
     return service as T;
   }
-  /** Reads the request but parses no argument: that waits for the account guards in `exec()`. */
+  /** Reads the request but its body and parses no argument: both wait for the account guards in `exec()`. */
   async init() {
     // Before the body is read. Only a mutation: a cross-origin caller cannot read a GET's response, and a websocket
     // frame rides a socket whose upgrade route already refused a cross-site Origin (ApiRouter).
@@ -153,33 +159,88 @@ export class SignalContext<
     // Leaving a room is never refused: a client held there could not get out.
     const admitting = this.#isLeavingRoom() ? undefined : EndpointRateLimit.admit(this, "ip");
     if (admitting) await admitting;
+    this.#bodyPending = this.transport === "http" && this.getHttpContext().defersBody(this.endpointInfo);
     const start = this.#spanned ? performance.now() : 0;
-    this.#rawArgs = await this.ctx.readArgs(this.endpointInfo);
+    this.#rawArgs =
+      this.transport === "http"
+        ? await this.getHttpContext().readArgs(this.endpointInfo, { body: !this.#bodyPending })
+        : await this.ctx.readArgs(this.endpointInfo);
     if (this.#spanned) this.trace?.recordSpan("argRead", performance.now() - start);
     return this;
   }
-  /** Parsed on first read, so a guard or middleware that reads one still gets it; a parser runs at most once per call. */
+  //? Read once the account guards admitted the caller, so a refused one costs no upload.
+  async #readBody() {
+    const start = performance.now();
+    const reading = this.getHttpContext().readArgs(this.endpointInfo);
+    const settled = reading.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#bodyRead = { ms: 0, pending: settled };
+    let raw: unknown[];
+    try {
+      raw = await reading;
+    } catch (error) {
+      this.#bodyFailure = error;
+      throw error;
+    } finally {
+      this.#bodyRead = { ms: performance.now() - start, pending: null };
+      if (this.#spanned) this.trace?.recordSpan("bodyRead", this.#bodyRead.ms);
+    }
+    this.#rawArgs = raw;
+    this.#bodyPending = false;
+    const parsed = this.#argsLackBody ? this.#args : null;
+    this.#argsLackBody = false;
+    if (parsed)
+      this.endpointInfo.args.forEach((arg, idx) => {
+        if (arg.type === "body") parsed[idx] = this.ctx.parseArg(arg, raw[idx]);
+      });
+  }
+  get bodyReadTime(): { ms: number; pending: Promise<void> | null } {
+    return this.#bodyRead;
+  }
+  isBodyReadFailure(error: unknown): boolean {
+    return this.#bodyFailure !== undefined && error === this.#bodyFailure;
+  }
+  /**
+   * Parsed on first read, so a guard or middleware that reads one still gets it; a parser runs at most once per call.
+   * A body argument is `undefined` until the account guards pass.
+   */
   get args(): unknown[] {
-    this.#args ??= this.#parseArgs();
+    if (this.#args) return this.#args;
+    if (!this.#rawArgs) return [];
+    this.#args = this.#parseArgs();
     return this.#args;
   }
   set args(args: unknown[]) {
     this.#args = args;
+    this.#argsLackBody = false;
   }
   #parseArgs(): unknown[] {
     const raw = this.#rawArgs;
     if (!raw) return [];
     const start = this.#spanned ? performance.now() : 0;
-    const args = this.endpointInfo.args.map((arg, idx) => this.ctx.parseArg(arg, raw[idx]));
+    const lacksBody = this.#bodyPending;
+    const args = this.endpointInfo.args.map((arg, idx) =>
+      lacksBody && arg.type === "body" ? undefined : this.ctx.parseArg(arg, raw[idx]),
+    );
+    this.#argsLackBody = lacksBody;
     if (this.#spanned) this.trace?.recordSpan("argParse", performance.now() - start);
     return args;
   }
   #isLeavingRoom() {
     return this.transport === "websocket" && this.getWebSocketContext().eventType === "unsubscribe";
   }
+  static unguardedOpen(): boolean {
+    return process.env.AKAN_UNGUARDED_ENDPOINTS === "open";
+  }
   // Sequential, not parallel: a call refused by two guards names the same one every time and stops at the first.
   async #checkGuards(scope?: GuardScope) {
-    for (const GuardCls of this.endpointInfo.signalOption.guards ?? []) {
+    const guards = this.endpointInfo.signalOption.guards ?? [];
+    //? Fails closed: a guard list left out is refused, not open; `[Public]` is how an endpoint is opened on purpose.
+    if (!guards.length && scope !== "resource" && !SignalContext.unguardedOpen())
+      throw new Exception.Forbidden(`Access denied: "${this.key}" declares no guards`);
+    for (const GuardCls of guards) {
       if (scope && (GuardCls.scope === "account" ? "account" : "resource") !== scope) continue;
       if (!(await guardOf(GuardCls).canPass(this)))
         throw new Exception.Forbidden(`Access denied by guard: ${GuardCls.name}`);
@@ -209,7 +270,9 @@ export class SignalContext<
    * closed without arguments, so it is left to `#checkGuards` at call time.
    */
   async canListForAccount(): Promise<boolean> {
-    const guards = (this.endpointInfo.signalOption.guards ?? []).filter((GuardCls) => GuardCls.scope === "account");
+    const declared = this.endpointInfo.signalOption.guards ?? [];
+    if (!declared.length) return SignalContext.unguardedOpen();
+    const guards = declared.filter((GuardCls) => GuardCls.scope === "account");
     if (guards.length === 0) return true;
     try {
       // Without logging: a refusal is the expected answer for most of a catalogue, not an `Error …` line per listing.
@@ -283,6 +346,7 @@ export class SignalContext<
         const account = this.get<{ id?: unknown }>("account");
         if (typeof account?.id === "string") this.trace.setAttr("userId", account.id);
       }
+      if (this.#bodyPending) await this.#readBody();
       // Parsed only now: a caller the account guards refused never reaches an argument parser.
       this.#args ??= this.#parseArgs();
       if (this.#spanned) await traceSpan("resourceGuards", () => this.#checkGuards("resource"));
@@ -728,37 +792,24 @@ export class SignalContext<
     return clientPortFromHeaders(ws.data.headers);
   }
   getRoomId(key: string) {
-    if (this.transport !== "websocket") throw new Error("Transport is not websocket");
-    else if (this.endpointInfo.type !== "pubsub") throw new Error("Endpoint is not pubsub");
-    return `${key}${this.args.length ? "-" : ""}${this.args.join("-")}`;
+    this.#assertPubsub();
+    return RoomKey.idOf(key, this.endpointInfo.args, this.args);
+  }
+  /** The label the client built from its own arguments, which the subscribe ack echoes back as `requestRoomId`. */
+  getRequestRoomId(key: string) {
+    this.#assertPubsub();
+    return websocketRoomContract.idOf(key, this.args);
   }
   /**
-   * Appends the caller's internal arguments so subscribers of an `inSelf` slice do not share a room — only for live
-   * rooms, whose sole publisher holds this id. A non-id token is digested so no credential is spelled out in a log.
+   * Digests the caller's internal arguments and the resolved query into the id, so subscribers of an `inSelf` slice or
+   * of differing queries never share a room — only for live rooms, whose sole publisher holds this id.
    */
-  getLiveRoomId(key: string) {
-    const base = this.getRoomId(key);
-    if (!this.internalArgs.length) return base;
-    return `${base}::${this.internalArgs.map((arg) => SignalContext.#liveRoomToken(arg)).join(".")}`;
+  getLiveRoomId(key: string, query: unknown) {
+    return RoomKey.liveIdOf(this.getRoomId(key), this.internalArgs, query);
   }
-  static #liveRoomToken(value: unknown): string {
-    if (value === null || value === undefined) return "~";
-    if (typeof value === "object") {
-      const id = (value as { id?: unknown }).id;
-      if (typeof id === "string") return id;
-      return `h${SignalContext.#digest(JSON.stringify(value))}`;
-    }
-    const token = String(value);
-    return /^[A-Za-z0-9_@.:+-]{1,64}$/.test(token) ? token : `h${SignalContext.#digest(token)}`;
-  }
-  /** FNV-1a. Not a security boundary — only a stable, short, room-safe token for a value that is not an id. */
-  static #digest(value: string): string {
-    let hash = 0x811c9dc5;
-    for (let idx = 0; idx < value.length; idx += 1) {
-      hash ^= value.charCodeAt(idx);
-      hash = Math.imul(hash, 0x01000193) >>> 0;
-    }
-    return hash.toString(36);
+  #assertPubsub() {
+    if (this.transport !== "websocket") throw new Error("Transport is not websocket");
+    else if (this.endpointInfo.type !== "pubsub") throw new Error("Endpoint is not pubsub");
   }
   getEnv() {
     return this.#env;
@@ -798,16 +849,20 @@ export class HttpExecutionContext<Appended = unknown> {
     const raw = await this.readArgs(endpointInfo);
     return endpointInfo.args.map((arg, idx) => this.parseArg(arg, raw[idx]));
   }
+  defersBody(endpointInfo: EndpointInfo): boolean {
+    return endpointInfo.type === "mutation" && endpointInfo.args.some((arg) => arg.type === "body") && !!this.req.body;
+  }
   /** Each argument as the request carries it; `parseArg` turns one into its declared type. */
-  async readArgs(endpointInfo: EndpointInfo): Promise<unknown[]> {
+  async readArgs(endpointInfo: EndpointInfo, { body = true }: { body?: boolean } = {}): Promise<unknown[]> {
     if (endpointInfo.args.length === 0) return [];
     this.params = this.req.params;
     const hasBodyArgs = endpointInfo.args.some((arg) => arg.type === "body");
     const hasUploadArgs = hasBodyArgs && endpointInfo.args.some((arg) => arg.type === "body" && arg.argRef === Upload);
-    if (endpointInfo.type === "mutation" && hasBodyArgs && this.req.body) {
+    if (body && endpointInfo.type === "mutation" && hasBodyArgs && this.req.body) {
       if (hasUploadArgs) {
         const formData = await this.req.formData();
-        this.body = {};
+        //? Prototype-free: a field named `__proto__` would otherwise swap the record's prototype, not add a key.
+        this.body = Object.create(null) as RuntimeRecord;
         for (const [key, value] of formData.entries()) {
           const argInfo = endpointInfo.args.find((arg) => arg.name === key && arg.type === "body");
           if (argInfo && argInfo.argRef === Upload) {
@@ -822,7 +877,12 @@ export class HttpExecutionContext<Appended = unknown> {
         }
       } else {
         CrossSiteGuard.assertJsonBody(this.req.headers.get("content-type"));
-        this.body = (await this.req.json()) as RuntimeRecord;
+        const body: unknown = await this.req.json().catch(() => {
+          throw new Exception.BadRequest("The request body is not JSON");
+        });
+        if (!body || typeof body !== "object" || Array.isArray(body))
+          throw new Exception.BadRequest("A JSON body is an object of the endpoint's body arguments");
+        this.body = body as RuntimeRecord;
       }
     }
 
@@ -831,7 +891,7 @@ export class HttpExecutionContext<Appended = unknown> {
         case "param":
           return this.params[arg.name];
         case "body":
-          return this.body[arg.name];
+          return Object.hasOwn(this.body, arg.name) ? this.body[arg.name] : undefined;
         case "search":
           return arg.arrDepth ? this.url.searchParams.getAll(arg.name) : this.url.searchParams.get(arg.name);
         default:

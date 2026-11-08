@@ -37,6 +37,7 @@ import Queued from "./Queued";
 import Steps from "./Steps";
 import ToolCard from "./ToolCard";
 import { tokenCount } from "./tokenCount";
+import { useAccountBoundSession } from "./useAccountBoundSession";
 import { useChatAttachments } from "./useChatAttachments";
 import { type QueuedMessage, useChatQueue } from "./useChatQueue";
 import { useChatReferences } from "./useChatReferences";
@@ -180,6 +181,7 @@ export const DefaultChat = ({
       visual,
     });
   const session = held.current;
+  useAccountBoundSession(session);
   const version = useSyncExternalStore(
     session.subscribe,
     () => session.version,

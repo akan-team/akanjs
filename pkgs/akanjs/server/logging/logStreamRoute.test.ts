@@ -78,6 +78,15 @@ describe("LogStreamRoute gate", () => {
       expect(route.handle(request("", { authorization })).status).toBe(401);
   });
 
+  test("stops checking a caller's bearer after ten wrong ones, and only that caller's", () => {
+    const route = new LogStreamRoute(() => null, "tok");
+    const wrong = request("", { authorization: "Bearer wrong-and-much-longer-than-the-token" });
+    for (let idx = 0; idx < 10; idx += 1) expect(route.handle(wrong, "10.0.0.1").status).toBe(401);
+    expect(route.handle(request(), "10.0.0.1").status).toBe(401);
+    expect(route.handle(request(), "10.0.0.2").status).toBe(503);
+    expect(route.handle(request()).status).toBe(503);
+  });
+
   test("stays off for a configured token holding whitespace, and never logs the token", () => {
     const previous = process.env.AKAN_LOG_STREAM_TOKEN;
     const messages: string[] = [];

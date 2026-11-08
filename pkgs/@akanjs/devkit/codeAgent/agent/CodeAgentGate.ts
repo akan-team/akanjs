@@ -1,28 +1,68 @@
+import { realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { CodeAgentProfile } from "akanjs/common";
+import { akanCodePaths } from "./akanCodePaths";
+import { codeAgentHostListed, codeAgentHostOf, codeAgentIsLoopback } from "./codeAgentHosts";
 import { stringArg } from "./stringArg";
 
 const writeTools = new Set(["write", "edit"]);
 const commandTools = new Set(["bash"]);
+const networkClients =
+  /(?:^|[\s;&|(`$/])(curl|wget|nc|ncat|netcat|socat|telnet|ssh|scp|sftp|rsync|ftp)(?=$|[\s;&|)`])/g;
+const urlPattern = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`<>|;&()]+/gi;
+// A glob in a command that also matches these names is a broad sweep (`*.ts`), not an aim at one secret file.
+const ordinaryNames = ["index.ts", "a.ts", "a.tsx", "a.js", "a.json", "a.yaml", "a.md", "a.txt", "a.log", "README"];
 
 export interface GateVerdict {
   /** `undefined` means the call may run without asking. */
   block?: string;
   approval?: string;
+  /** Refused, not run, when nobody can be asked: the call would leave the machine. */
+  strict?: boolean;
+}
+
+interface NameRule {
+  glob: Bun.Glob;
+  samples: string[];
 }
 
 // Gated here, not in the engine's file-ops port: a throw there reads to the model as a tool bug, and it retries.
 export class CodeAgentGate {
   readonly #profile: CodeAgentProfile;
+  readonly #realRoot: string;
   readonly #deny: Bun.Glob[];
   readonly #allow: Bun.Glob[];
   readonly #deniedFragments: string[];
+  readonly #nameRules: NameRule[];
 
   constructor(profile: CodeAgentProfile) {
     this.#profile = profile;
-    this.#deny = (profile.paths.deny ?? []).map((pattern) => new Bun.Glob(pattern));
+    this.#realRoot = CodeAgentGate.#real(path.resolve(profile.paths.root));
+    const home = homedir();
+    const codeHome = path.resolve(akanCodePaths.globalDir());
+    const patterns = [
+      ...(profile.paths.deny ?? []).map((pattern) =>
+        pattern.startsWith("~/") ? path.join(home, pattern.slice(2)) : pattern,
+      ),
+      ...(profile.paths.deny?.length ? [`${codeHome}/**`] : []),
+    ];
+    this.#deny = patterns.map((pattern) => new Bun.Glob(pattern));
     this.#allow = (profile.paths.allow ?? []).map((pattern) => new Bun.Glob(pattern));
-    this.#deniedFragments = [...new Set((profile.paths.deny ?? []).map(CodeAgentGate.#fragmentOf).filter(Boolean))];
+    this.#deniedFragments = [
+      ...new Set(
+        (profile.paths.deny ?? [])
+          .flatMap(CodeAgentGate.#expandBraces)
+          .flatMap((pattern) => CodeAgentGate.#fragmentsOf(pattern, home)),
+      ),
+    ].filter(Boolean);
+    this.#nameRules = (profile.paths.deny ?? []).flatMap((pattern) => {
+      const name = /^\*\*\/([^/]+)$/.exec(pattern)?.[1];
+      if (!name || name === "**") return [];
+      const samples = CodeAgentGate.#expandBraces(name).map((entry) => entry.replace(/[*?]/g, "x"));
+      return [{ glob: new Bun.Glob(name), samples }];
+    });
   }
 
   verdict(toolName: string, args: unknown): GateVerdict {
@@ -36,6 +76,8 @@ export class CodeAgentGate {
       const denied = this.#deniedCommandReason(command);
       if (denied) return { block: denied };
     }
+    const network = this.#networkApproval(toolName, args);
+    if (network) return { approval: network, strict: true };
     if (!this.#needsApproval(toolName)) return {};
     return { approval: CodeAgentGate.#summarize(toolName, args) };
   }
@@ -43,21 +85,64 @@ export class CodeAgentGate {
   // A speed bump, not a boundary: a shell reaches any path; the real boundary is the `pod` profile's container.
   // It stops the obvious accident (`cat .env`) from persisting a live key into the transcript.
   #deniedCommandReason(command: string) {
-    const hit = this.#deniedFragments.find((fragment) => command.includes(fragment));
+    const hit =
+      this.#deniedFragments.find((fragment) => command.includes(fragment)) ??
+      CodeAgentGate.#wordsOf(command).find((word) => this.#namesDeniedFile(word));
     if (!hit) return undefined;
     return `The command names "${hit}", which the profile's deny list covers. Ask the user for the value instead of reading the file.`;
   }
 
+  #namesDeniedFile(word: string) {
+    const expanded = CodeAgentGate.#expandHome(word);
+    const name = path.basename(expanded);
+    if (/[*?[{]/.test(name)) {
+      const swept = new Bun.Glob(name);
+      if (ordinaryNames.some((ordinary) => swept.match(ordinary))) return false;
+      return this.#nameRules.some((rule) => rule.samples.some((sample) => swept.match(sample)));
+    }
+    const absolute = path.resolve(this.#profile.paths.root, expanded);
+    return this.#deny.some((glob) => glob.match(expanded) || glob.match(absolute));
+  }
+
   #deniedReason(target: string) {
-    const absolute = path.isAbsolute(target) ? target : path.resolve(this.#profile.paths.root, target);
+    const absolute = path.resolve(this.#profile.paths.root, CodeAgentGate.#expandPath(target));
+    // The real path as well, so a link inside the root cannot lend a denied file an innocent name.
+    const real = CodeAgentGate.#real(absolute);
+    const candidates: [string, string][] = [
+      [absolute, path.resolve(this.#profile.paths.root)],
+      [real, this.#realRoot],
+    ];
+    for (const [candidate, root] of candidates) {
+      const relative = path.relative(root, candidate);
+      if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+        return `Path is outside the agent root (${this.#profile.paths.root}).`;
+      if (this.#deny.some((glob) => glob.match(candidate) || glob.match(relative)))
+        return "Path is on the profile's deny list (secrets and environment files are never readable).";
+    }
     const relative = path.relative(this.#profile.paths.root, absolute);
-    if (relative.startsWith("..") || path.isAbsolute(relative))
-      return `Path is outside the agent root (${this.#profile.paths.root}).`;
-    if (this.#deny.some((glob) => glob.match(absolute) || glob.match(relative)))
-      return "Path is on the profile's deny list (secrets and environment files are never readable).";
     if (this.#allow.length && !this.#allow.some((glob) => glob.match(absolute) || glob.match(relative)))
       return "Path is outside the profile's allow list.";
     return undefined;
+  }
+
+  #networkApproval(toolName: string, args: unknown) {
+    const quiet = this.#profile.network.askOutside;
+    if (!quiet) return undefined;
+    if (toolName === "web_fetch") {
+      const url = stringArg(args, "url");
+      const host = url ? codeAgentHostOf(url) : undefined;
+      if (!host || codeAgentIsLoopback(host) || codeAgentHostListed(host, quiet)) return undefined;
+      return `fetch ${url}`;
+    }
+    const command = stringArg(args, "command");
+    if (!command || !commandTools.has(toolName)) return undefined;
+    const clients = [...command.matchAll(networkClients)].map((match) => match[1]);
+    if (!clients.length) return undefined;
+    // Only loopback is exempt here: a listed host still takes an upload under someone else's account.
+    const hosts = [...command.matchAll(urlPattern)].map((match) => codeAgentHostOf(match[0]));
+    const httpOnly = clients.every((client) => client === "curl" || client === "wget");
+    if (httpOnly && hosts.length && hosts.every((host) => host && codeAgentIsLoopback(host))) return undefined;
+    return `reach the network: ${command.slice(0, 200)}`;
   }
 
   #needsApproval(toolName: string) {
@@ -75,13 +160,69 @@ export class CodeAgentGate {
     }
   }
 
+  // The engine's own path reading: `@` is stripped, `~` and `file://` expand, odd spaces become plain ones.
+  static #expandPath(target: string) {
+    const value = target.replace(/[  -   　]/g, " ").replace(/^@/, "");
+    if (/^file:\/\//.test(value)) {
+      try {
+        return fileURLToPath(value);
+      } catch {
+        return value;
+      }
+    }
+    return CodeAgentGate.#expandHome(value);
+  }
+
+  static #expandHome(value: string) {
+    const home = /^(?:~|\$HOME|\$\{HOME\})(?=\/|$)/.exec(value);
+    return home ? path.join(homedir(), value.slice(home[0].length)) : value;
+  }
+
+  static #real(absolute: string) {
+    const rest: string[] = [];
+    let head = absolute;
+    for (;;) {
+      try {
+        return path.join(realpathSync(head), ...rest);
+      } catch {
+        const parent = path.dirname(head);
+        if (parent === head) return absolute;
+        rest.unshift(path.basename(head));
+        head = parent;
+      }
+    }
+  }
+
+  static #wordsOf(command: string) {
+    return command.split(/[\s;&|<>()`'"=,@]+/).filter(Boolean);
+  }
+
+  static #expandBraces(pattern: string): string[] {
+    const open = pattern.indexOf("{");
+    const close = open >= 0 ? pattern.indexOf("}", open) : -1;
+    if (close < 0) return [pattern];
+    const head = pattern.slice(0, open);
+    const tail = pattern.slice(close + 1);
+    return pattern
+      .slice(open + 1, close)
+      .split(",")
+      .flatMap((choice) => CodeAgentGate.#expandBraces(`${head}${choice}${tail}`));
+  }
+
   // A glob cannot match a shell line, so a deny pattern is reduced to a literal; a mid-pattern wildcard is dropped.
-  static #fragmentOf(pattern: string) {
+  static #fragmentsOf(pattern: string, home: string) {
+    if (pattern.startsWith("~/")) {
+      const rest = pattern.slice(2).replace(/\/\*\*$/, "");
+      return rest.includes("*")
+        ? []
+        : ["~/", "$HOME/", "$" + "{HOME}/", `${home}/`].map((prefix) => `${prefix}${rest}`);
+    }
     const trimmed = pattern
       .replace(/^\*\*\//, "")
       .replace(/\/\*\*$/, "/")
-      .replace(/^\*+/, "");
-    return trimmed.includes("*") ? "" : trimmed;
+      .replace(/^\*+/, "")
+      .replace(/\*+$/, "");
+    return trimmed.includes("*") ? [] : [trimmed];
   }
 
   static #summarize(toolName: string, args: unknown) {

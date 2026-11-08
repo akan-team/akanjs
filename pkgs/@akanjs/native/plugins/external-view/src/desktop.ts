@@ -1,9 +1,9 @@
 // Desktop: external views live in the shell (native/desktop/src/external.rs). Trusted keys and the capture go
 // through the view's Chrome DevTools Protocol on WebView2, which the shell reaches as `externalView.cdp`.
-import { mkdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { AkanNativeError } from "../../../packages/core/src/index.ts";
+import { appTempDir, makePrivateDir } from "../../../packages/desktop/src/paths.ts";
 import { type DesktopContext, defineDesktopPlugin } from "../../../packages/desktop/src/plugin.ts";
 import type {
   ExternalViewApi,
@@ -56,7 +56,7 @@ export function consoleLevel(value: unknown): ExternalViewConsoleLevel | null {
 
 const shell = (ctx: DesktopContext, op: string, args: Record<string, unknown>) => ctx.shell(`externalView.${op}`, args);
 
-const captureDir = (ctx: DesktopContext) => join(tmpdir(), ctx.app.id, "external-view");
+const captureDir = (ctx: DesktopContext) => join(appTempDir(ctx.app.id), "external-view");
 
 /** The engine's own text, which the shell sends on as a string: JSON, or not, as the engine had it. */
 function parsed(value: unknown): unknown {
@@ -283,8 +283,7 @@ export function createDesktopExternalView() {
           await shell(ctx, "cdp", { view, method: "Page.captureScreenshot", params: { format: "png" } }),
         ) as { data?: string } | null;
         if (!shot?.data) throw new AkanNativeError("INTERNAL", "the view answered no screenshot");
-        const dir = captureDir(ctx);
-        mkdirSync(dir, { recursive: true });
+        const dir = makePrivateDir(captureDir(ctx));
         const file = join(dir, `${view}-${Date.now()}.png`);
         const bytes = Buffer.from(shot.data, "base64");
         await Bun.write(file, bytes);

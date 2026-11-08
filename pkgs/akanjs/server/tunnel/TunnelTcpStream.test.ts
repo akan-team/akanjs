@@ -69,6 +69,7 @@ describe("TunnelTcpStream", () => {
         closeSocket: () => undefined,
       },
       "127.0.0.1",
+      [server.port],
     );
     try {
       await stream.run();
@@ -111,6 +112,7 @@ describe("TunnelTcpStream", () => {
         },
       },
       "127.0.0.1",
+      [(origin.address() as net.AddressInfo).port],
     );
     try {
       await stream.run();
@@ -152,6 +154,7 @@ describe("TunnelTcpStream", () => {
         closeSocket: () => undefined,
       },
       "127.0.0.1",
+      [(origin.address() as net.AddressInfo).port],
     );
     try {
       await stream.run();
@@ -161,4 +164,36 @@ describe("TunnelTcpStream", () => {
       origin.close();
     }
   }, 20_000);
+
+  test("refuses a port it was not given without dialing it", async () => {
+    let dialed = 0;
+    const origin = await halfCloseOrigin(() => {
+      dialed += 1;
+    });
+    const frames: TunnelDataFromAgent[] = [];
+    let socketCloses = 0;
+    const stream = new TunnelTcpStream(
+      openTo(origin),
+      {
+        sendFrame: (frame) => void frames.push(frame),
+        sendPayload: async () => undefined,
+        closeSocket: () => {
+          socketCloses += 1;
+        },
+      },
+      "127.0.0.1",
+      [1],
+    );
+    try {
+      await stream.run();
+      await Bun.sleep(20);
+      expect(frames).toEqual([
+        expect.objectContaining({ type: "reset", code: "protocol", message: expect.stringContaining("not shared") }),
+      ]);
+      expect(socketCloses).toBe(1);
+      expect(dialed).toBe(0);
+    } finally {
+      origin.close();
+    }
+  });
 });

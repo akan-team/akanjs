@@ -502,7 +502,7 @@ describe("WebRouter dev route builds", () => {
     process.send = ((): boolean => true) as typeof process.send;
     try {
       expect(await cacheControlOf({ nodeEnv: "development", commandType: "start" })).toBe("no-store");
-      expect(await cacheControlOf({ nodeEnv: "production" })).toBeNull();
+      expect(await cacheControlOf({ nodeEnv: "production" })).toBe("no-cache");
     } finally {
       process.send = originalSend;
     }
@@ -1474,6 +1474,111 @@ describe("WebRouter full SSR cache orchestration", () => {
       },
       { worker: fakeWorker },
     );
+  });
+
+  test("marks production HTML private when the request carries a cookie or Authorization, revalidated otherwise", async () => {
+    await withFullSsrCacheHarness(async ({ fullSsr }) => {
+      const anonymous = await fullSsr(new Request("https://example.test/docs"));
+      expect(anonymous.headers.get("Cache-Control")).toBe("no-cache");
+      await anonymous.text();
+      const cached = await fullSsr(new Request("https://example.test/docs"));
+      expect(cached.headers.get("X-Akan-Cache")).toBe("HIT");
+      expect(cached.headers.get("Cache-Control")).toBe("no-cache");
+      await cached.text();
+      const themed = await fullSsr(new Request("https://example.test/docs", { headers: { cookie: "theme=dark" } }));
+      expect(themed.headers.get("Cache-Control")).toBe("no-cache");
+      await themed.text();
+      const withCookie = await fullSsr(new Request("https://example.test/docs", { headers: { cookie: "jwt=1" } }));
+      expect(withCookie.headers.get("Cache-Control")).toBe("private, no-cache");
+      await withCookie.text();
+      const withAuth = await fullSsr(
+        new Request("https://example.test/docs", { headers: { authorization: "Bearer 1" } }),
+      );
+      expect(withAuth.headers.get("Cache-Control")).toBe("private, no-cache");
+      await withAuth.text();
+    });
+  });
+
+  test("takes the anonymous HTML Cache-Control from the env, and sends none when it is off", async () => {
+    const previous = process.env.AKAN_HTML_CACHE_CONTROL;
+    try {
+      process.env.AKAN_HTML_CACHE_CONTROL = "public, s-maxage=60";
+      await withFullSsrCacheHarness(async ({ fullSsr }) => {
+        const anonymous = await fullSsr(new Request("https://example.test/docs"));
+        expect(anonymous.headers.get("Cache-Control")).toBe("public, s-maxage=60");
+        await anonymous.text();
+        const withCookie = await fullSsr(new Request("https://example.test/docs", { headers: { cookie: "jwt=1" } }));
+        expect(withCookie.headers.get("Cache-Control")).toBe("private, no-cache");
+        await withCookie.text();
+      });
+      process.env.AKAN_HTML_CACHE_CONTROL = "off";
+      await withFullSsrCacheHarness(async ({ fullSsr }) => {
+        const withCookie = await fullSsr(new Request("https://example.test/docs", { headers: { cookie: "jwt=1" } }));
+        expect(withCookie.headers.get("Cache-Control")).toBeNull();
+        await withCookie.text();
+      });
+    } finally {
+      setEnv("AKAN_HTML_CACHE_CONTROL", previous);
+    }
+  });
+
+  test("sends Strict-Transport-Security on an HTTPS production page only, unless the env turns it off", async () => {
+    const previous = process.env.AKAN_HSTS;
+    try {
+      delete process.env.AKAN_HSTS;
+      await withFullSsrCacheHarness(async ({ fullSsr }) => {
+        const secure = await fullSsr(new Request("https://example.test/docs"));
+        expect(secure.headers.get("Strict-Transport-Security")).toBe("max-age=31536000");
+        expect(secure.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
+        await secure.text();
+        const plain = await fullSsr(new Request("http://example.test/docs"));
+        expect(plain.headers.get("Strict-Transport-Security")).toBeNull();
+        await plain.text();
+        const forwarded = await fullSsr(
+          new Request("http://akan-child/docs", { headers: { host: "example.test", "x-forwarded-proto": "https" } }),
+        );
+        expect(forwarded.headers.get("Strict-Transport-Security")).toBe("max-age=31536000");
+        await forwarded.text();
+      });
+      const originalSend = process.send;
+      process.send = ((): boolean => true) as typeof process.send;
+      try {
+        await withFullSsrCacheHarness(
+          async ({ fullSsr }) => {
+            const dev = await fullSsr(new Request("https://example.test/docs"));
+            expect(dev.headers.get("Strict-Transport-Security")).toBeNull();
+            await dev.text();
+          },
+          { nodeEnv: "development", commandType: "start" },
+        );
+      } finally {
+        process.send = originalSend;
+      }
+      process.env.AKAN_HSTS = "off";
+      await withFullSsrCacheHarness(async ({ fullSsr }) => {
+        const secure = await fullSsr(new Request("https://example.test/docs"));
+        expect(secure.headers.get("Strict-Transport-Security")).toBeNull();
+        await secure.text();
+      });
+    } finally {
+      setEnv("AKAN_HSTS", previous);
+    }
+  });
+
+  test("serves the RSC client manifest only outside production unless the env exposes it", async () => {
+    const previous = process.env.AKAN_EXPOSE_RSC_MANIFEST;
+    try {
+      delete process.env.AKAN_EXPOSE_RSC_MANIFEST;
+      await withFullSsrCacheHarness(async ({ renderEnvRoutes }) => {
+        expect(renderEnvRoutes["/__rsc/manifest"]).toBeUndefined();
+      });
+      process.env.AKAN_EXPOSE_RSC_MANIFEST = "1";
+      await withFullSsrCacheHarness(async ({ renderEnvRoutes }) => {
+        expect(renderEnvRoutes["/__rsc/manifest"]).toBeDefined();
+      });
+    } finally {
+      setEnv("AKAN_EXPOSE_RSC_MANIFEST", previous);
+    }
   });
 
   test("stores completed full SSR HTML and serves the next request from cache", async () => {

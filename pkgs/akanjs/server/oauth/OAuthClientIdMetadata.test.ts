@@ -104,4 +104,34 @@ describe("OAuthClientIdMetadata", () => {
     };
     expect(await OAuthClientIdMetadata.fetch(clientId, { fetchImpl: throwing, resolve })).toBeNull();
   });
+
+  test("stops reading a body that states no length once it passes the cap", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const endless = new ReadableStream<Uint8Array>({
+      pull: (controller) => {
+        pulled += 1;
+        controller.enqueue(new Uint8Array(16 * 1024).fill(0x20));
+      },
+      cancel: () => {
+        cancelled = true;
+      },
+    });
+    const chunked = async () => new Response(endless, { headers: { "content-type": "application/json" } });
+    expect(await OAuthClientIdMetadata.fetch(clientId, { fetchImpl: chunked, resolve })).toBeNull();
+    expect(cancelled).toBe(true);
+    expect(pulled * 16 * 1024).toBeLessThanOrEqual(OAuthClientIdMetadata.maxBytes + 2 * 16 * 1024);
+  });
+
+  test("grants a document only the grants the token endpoint serves", async () => {
+    const asking = { ...document, grant_types: ["refresh_token", "client_credentials", "urn:custom", "refresh_token"] };
+    const result = await OAuthClientIdMetadata.fetch(clientId, { fetchImpl: fetching(asking), resolve });
+    expect(result?.client.grantTypes).toEqual(["refresh_token"]);
+    const silent = { ...document, grant_types: undefined };
+    expect(OAuthClientIdMetadata.validate(clientId, silent)?.grantTypes).toEqual(["authorization_code"]);
+    expect(OAuthClientIdMetadata.validate(clientId, document)?.grantTypes).toEqual([
+      "authorization_code",
+      "refresh_token",
+    ]);
+  });
 });

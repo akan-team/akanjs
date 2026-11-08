@@ -12,6 +12,10 @@ export interface CodeScriptOptions {
   rpcListen: string | null;
   interactive: boolean;
   resume: string | null;
+  trustWorkspace: boolean;
+  askNetwork: boolean;
+  rpcBindAny: boolean;
+  rpcToken: boolean;
 }
 
 export class CodeScript extends script("code", [CodeRunner]) {
@@ -25,6 +29,10 @@ export class CodeScript extends script("code", [CodeRunner]) {
       json: options.json,
       thinking: options.thinking,
       ...(options.resume ? { resume: options.resume } : {}),
+      trustWorkspace: options.trustWorkspace,
+      askNetwork: options.askNetwork,
+      rpcBindAny: options.rpcBindAny,
+      rpcToken: options.rpcToken,
     };
     if (options.rpcListen) return await this.codeRunner.serve(run, options.rpcListen);
     if (options.rpc) return await this.codeRunner.serve(run);

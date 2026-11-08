@@ -513,6 +513,16 @@ describe("SubspaceConfig", () => {
     ).toThrow(/duplicate subspace/);
   });
 
+  test("refuses a subspace name that is not a plain folder name", () => {
+    for (const name of ["..", "../outside", "a/b", ".hidden", "-x", "a b"])
+      expect(() => new SubspaceConfig({ subspaces: [{ name, repo: "a.git", apps: ["one"] }] })).toThrow(
+        /subspace name .* takes letters, digits/,
+      );
+    expect(
+      new SubspaceConfig({ subspaces: [{ name: "acme.v2_beta-1", repo: "a.git", apps: ["one"] }] }).subspaces,
+    ).toHaveLength(1);
+  });
+
   test("refuses two subspaces on one cloud workspace, and takes a declaration with none", () => {
     expect(
       () =>

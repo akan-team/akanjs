@@ -1,5 +1,6 @@
 import { Logger } from "akanjs/common";
 import type { ConstantModel } from "akanjs/constant";
+import { Err } from "akanjs/dictionary";
 import type { DatabaseModel } from "akanjs/document";
 import { Fts5SearchEngine } from "./sql/search/fts5";
 import { SearchMirror } from "./sql/search/mirror";
@@ -34,10 +35,15 @@ export const RETRY_INTERVAL_KEY = "searchIndexRetry";
 export const RETRY_INTERVAL_MS = 60_000;
 // Positional over `searchColumns`; `filter` weighs 0 — matchable, but never outranking a real title hit.
 export const DEFAULT_SEARCH_WEIGHTS = [10, 1, 3, 0];
+// Each term is bound once per searched column (twice under a Postgres trigram), so the typed text sizes the statement.
+export const DEFAULT_SEARCH_MAX_TERMS = 32;
+export const DEFAULT_SEARCH_MAX_LENGTH = 1000;
 
 export interface SearchIndexOptions {
   enabled: boolean;
   tokenizer: string;
+  maxTerms?: number;
+  maxLength?: number;
 }
 
 /** Unset means enabled; an unrecognised value fails the boot, since a typo like `ture` would look like the default. */
@@ -54,6 +60,8 @@ export class SearchIndex {
   readonly #owner: SearchIndexOwner;
   readonly #engine: SearchEngine;
   readonly #enabled: boolean;
+  readonly #maxTerms: number;
+  readonly #maxLength: number;
   readonly #logger = new Logger("SearchIndex");
   readonly #claims = new Map<string, string>();
   // Refs another process held at boot: not waited on, but retried, since nothing else would return to them.
@@ -61,11 +69,18 @@ export class SearchIndex {
 
   constructor(
     owner: SearchIndexOwner,
-    { enabled, tokenizer }: SearchIndexOptions,
+    {
+      enabled,
+      tokenizer,
+      maxTerms = DEFAULT_SEARCH_MAX_TERMS,
+      maxLength = DEFAULT_SEARCH_MAX_LENGTH,
+    }: SearchIndexOptions,
     engine: SearchEngine = new Fts5SearchEngine(owner, tokenizer),
   ) {
     this.#owner = owner;
     this.#enabled = enabled;
+    this.#maxTerms = maxTerms;
+    this.#maxLength = maxLength;
     this.#engine = engine;
   }
 
@@ -211,6 +226,11 @@ export class SearchIndex {
 
   /** The subquery `q.search()` joins; null when the text holds nothing to match, which matches no row. */
   join(query: SearchQuery) {
+    if (query.text.length > this.#maxLength || query.text.split(/\s+/).filter(Boolean).length > this.#maxTerms)
+      throw new Err.BadRequest("base.error.invalidArgument", {
+        name: "search",
+        expected: `at most ${this.#maxTerms} words and ${this.#maxLength} characters`,
+      });
     return this.#engine.join(query);
   }
 

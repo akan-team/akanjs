@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AppExecutor, WorkspaceExecutor } from "../executors";
+import { NativeConfig } from "../mobile/nativeConfig";
 import type { PackageJson } from "../types";
 import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
 import type { LibConfigInput } from "./types";
@@ -163,6 +164,23 @@ describe("AkanAppConfig", () => {
     expect(locked.indexOf("--frozen-lockfile")).toBeLessThan(locked.indexOf("echo after"));
     expect(unlocked).toContain("COPY ./package.json ./package.json\nRUN bun install --production\n");
     expect(unlocked).not.toContain("bun.lock");
+  });
+
+  test("writes a Dockerfile for a local build that refuses docker build without an explicit build arg", () => {
+    const config = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
+    const local = config.dockerfileFor("local");
+    const guard = local.split("\n").find((line) => line.includes("AKAN_ALLOW_LOCAL_IMAGE") && line.startsWith("RUN "));
+    if (!guard) throw new Error("expected the local image guard");
+    const run = (allow?: string) =>
+      Bun.spawnSync(["sh", "-c", guard.slice("RUN ".length)], {
+        env: { PATH: process.env.PATH ?? "", ...(allow ? { AKAN_ALLOW_LOCAL_IMAGE: allow } : {}) },
+      });
+
+    expect(local).toContain(`FROM ${pinnedBunImage}\nARG AKAN_ALLOW_LOCAL_IMAGE\nRUN if`);
+    expect(config.dockerfileFor("main")).not.toContain("AKAN_ALLOW_LOCAL_IMAGE");
+    expect(run().exitCode).toBe(1);
+    expect(run().stderr.toString()).toContain("--build-arg AKAN_ALLOW_LOCAL_IMAGE=1");
+    expect(run("1").exitCode).toBe(0);
   });
 
   test("defaults both web surfaces on and keeps the image free of web env overrides", () => {
@@ -677,6 +695,52 @@ describe("AkanAppConfig", () => {
     expect(
       () => new AkanAppConfig(app, [], packageJson, { native: { updates: { channel: "pilot" } } }, baseDevEnv),
     ).toThrow("native.updates in apps/portal/akan.config.ts has no url or publicKeys.");
+  });
+
+  test("takes the page policy, the opener's links and the release checks from akan.config.ts into the native build", () => {
+    const updates = { url: "https://releases.example.com/portal", publicKey: "key=", expiresIn: 86_400 };
+    const native = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      {
+        native: {
+          csp: { "connect-src": ["https://upload.example.com"] },
+          openUrls: ["https://*.example.com/*"],
+          updates,
+          targets: {
+            default: {},
+            kiosk: { csp: false, openUrls: ["*"], updates: { windowsSigners: ["AB12"] } },
+          },
+        },
+      },
+      baseDevEnv,
+    ).native;
+    const build = (name: string) =>
+      NativeConfig.build({
+        appPath: "/repo/apps/portal",
+        target: native.targets[name] as NonNullable<(typeof native.targets)[string]>,
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "windows",
+        publicEnv: { AKAN_PUBLIC_APP_NAME: "portal", AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_SERVE_DOMAIN: "example.com" },
+      }).config;
+    const opener = (config: ReturnType<typeof build>) =>
+      config.capabilities?.[0]?.permissions.find((permission) => JSON.stringify(permission).includes("opener"));
+
+    const store = build("default");
+    expect(store.security?.csp).toMatchObject({
+      "connect-src": expect.arrayContaining(["https://upload.example.com"]),
+    });
+    expect(opener(store)).toEqual({ identifier: "opener:default", allow: [{ url: "https://*.example.com/*" }] });
+    expect(store.updates).toMatchObject({ expiresIn: 86_400 });
+    expect(store.updates).not.toHaveProperty("windowsSigners");
+
+    const kiosk = build("kiosk");
+    expect(kiosk.security).toBeUndefined();
+    expect(opener(kiosk)).toBe("opener:default");
+    expect(kiosk.updates).toMatchObject({ expiresIn: 86_400, windowsSigners: ["AB12"] });
   });
 
   test("refuses updates holding both publicKey and publicKeys, a target's own key beside the section's list included", () => {

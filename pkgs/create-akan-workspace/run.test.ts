@@ -1,5 +1,8 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import type { SpawnOptions } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { run } from "./run";
 
 interface SpawnCall {
@@ -22,6 +25,23 @@ const createSpawnMock = (exitCodes: number[] = []) => {
   };
 
   return { calls, spawnCommand };
+};
+
+const inRepo = async (dotenv: string | null, body: () => Promise<void>) => {
+  const repo = mkdtempSync(path.join(tmpdir(), "create-akan-workspace-"));
+  const cwd = process.cwd();
+  const had = process.env.AKAN_NPM_REGISTRY;
+  try {
+    if (dotenv !== null) writeFileSync(path.join(repo, ".env"), dotenv);
+    process.chdir(repo);
+    process.env.AKAN_NPM_REGISTRY = "http://127.0.0.1:4873";
+    await body();
+  } finally {
+    process.chdir(cwd);
+    if (had === undefined) delete process.env.AKAN_NPM_REGISTRY;
+    else process.env.AKAN_NPM_REGISTRY = had;
+    rmSync(repo, { recursive: true, force: true });
+  }
 };
 
 describe("create-akan-workspace", () => {
@@ -72,6 +92,39 @@ describe("create-akan-workspace", () => {
     expect(
       calls.every((call) => (call.options.env as NodeJS.ProcessEnv).AKAN_NPM_REGISTRY === "http://127.0.0.1:4873"),
     ).toBe(true);
+  });
+
+  test("takes the registry from the shell, but not from a dotenv file in the working directory", async () => {
+    const { version } = await Bun.file(new URL("./package.json", import.meta.url)).json();
+    const warned = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await inRepo(null, async () => {
+        const { calls, spawnCommand } = createSpawnMock();
+        await run({ argv: ["bun", "create-akan-workspace", "my-org"], spawnCommand: spawnCommand as never });
+        expect(calls.at(0)?.args).toEqual([
+          "install",
+          "-g",
+          `@akanjs/cli@${version}`,
+          "--registry",
+          "http://127.0.0.1:4873",
+        ]);
+      });
+      expect(warned).not.toHaveBeenCalled();
+
+      await inRepo("export AKAN_NPM_REGISTRY=http://127.0.0.1:4999\n", async () => {
+        const { calls, spawnCommand } = createSpawnMock();
+        await run({ argv: ["bun", "create-akan-workspace", "my-org"], spawnCommand: spawnCommand as never });
+        expect(calls.map((call) => call.args)).toEqual([
+          ["install", "-g", `@akanjs/cli@${version}`],
+          ["create-workspace", "my-org", "--libs=false", "--init=true"],
+        ]);
+      });
+      expect(warned.mock.calls.map(([line]) => line)).toEqual([
+        "AKAN_NPM_REGISTRY is set in .env, which the repository controls, so it is ignored. Export it in your shell instead.",
+      ]);
+    } finally {
+      warned.mockRestore();
+    }
   });
 
   test("forwards libs=false when libs is omitted", async () => {

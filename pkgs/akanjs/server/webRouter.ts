@@ -29,7 +29,7 @@ import {
   type RoutesManifest,
   RoutesManifestStore,
 } from "./artifact";
-import { type AssetHeaderOptions, applySecurityHeaders, assetHeaders } from "./assetHeaders";
+import { type AssetHeaderOptions, applySecurityHeaders, assetHeaders, strictTransportSecurity } from "./assetHeaders";
 import {
   getClientFacingOrigin,
   hasRouteCacheInvalidationScope,
@@ -38,6 +38,7 @@ import {
   type RouteCacheEntry,
   type RouteCacheInvalidation,
   type RouteCacheRenderState,
+  resolveHtmlCacheControl,
   resolvePublicRouteCacheEntryDecision,
   resolveRouteCacheStoreTtl,
   shouldInvalidateRouteCacheEntry,
@@ -77,7 +78,7 @@ import { type RscRedirectMethod, type RscRedirectStatus, type RscRenderResult, R
 import { createDefaultSitemapXml, getSitemapBasePath } from "./sitemap";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { RscTraceMetadata, SsrManifest } from "./ssrTypes";
-import { resolveStaticPath } from "./staticPath";
+import { resolveStaticPath, staysInTree } from "./staticPath";
 import { getPathnameLocale } from "./systemPageDocument";
 import { createSubRouteIndexResponse, createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
 import { type BaseBuildArtifact, type HttpRoutes, type RenderState, resolveWebConfig } from "./types";
@@ -435,7 +436,7 @@ export class WebRouter {
     <script type="module" src="/csr.js"></script>
   </body>
 </html>`;
-              return new Response(this.#withCsrHmr(htmlText), { headers: this.#htmlResponseHeaders(200) });
+              return new Response(this.#withCsrHmr(htmlText), { headers: this.#htmlResponseHeaders(200, req) });
             },
             ...(this.#csrDevShell
               ? {
@@ -568,10 +569,16 @@ export class WebRouter {
           return this.#renderRscErrorResponse("__rsc", err);
         }
       },
-      "/__rsc/manifest": () =>
-        new Response(JSON.stringify(this.#routeCache.merged.clientManifest, null, 2), {
-          headers: { "Content-Type": "application/json; charset=utf-8" },
-        }),
+      ...(!this.#prodMode || process.env.AKAN_EXPOSE_RSC_MANIFEST === "1"
+        ? {
+            "/__rsc/manifest": () =>
+              new Response(JSON.stringify(this.#routeCache.merged.clientManifest, null, 2), {
+                headers: applySecurityHeaders(
+                  new Headers({ "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }),
+                ),
+              }),
+          }
+        : {}),
       [APPLE_APP_SITE_ASSOCIATION_PATH]: () =>
         WebRouter.#deepLinkAssociationResponse(APPLE_APP_SITE_ASSOCIATION_PATH, this.#artifact, {
           cacheControl: this.#prodMode ? "public, max-age=3600" : "no-store",
@@ -602,7 +609,7 @@ export class WebRouter {
             const csrHtml = await this.#resolveCsrHtml(csrOutputDir, url.pathname);
             if (!csrHtml) return this.#csrUnavailableResponse(url.pathname);
             const html = await Bun.file(csrHtml).text();
-            return new Response(this.#withCsrHmr(html), { headers: this.#htmlResponseHeaders(200) });
+            return new Response(this.#withCsrHmr(html), { headers: this.#htmlResponseHeaders(200, req) });
           }
 
           const csrAssetPath = path.extname(url.pathname) ? resolveStaticPath(csrOutputDir, url.pathname) : null;
@@ -675,7 +682,7 @@ export class WebRouter {
           const htmlCacheEntry = htmlCacheDecision.entry;
           const cachedHtml = htmlCacheEntry ? this.#getCachedHtml(htmlCacheEntry.key) : null;
           if (cachedHtml) {
-            const cachedHeaders = this.#htmlResponseHeaders(200);
+            const cachedHeaders = this.#htmlResponseHeaders(200, req);
             cachedHeaders.set("X-Akan-Cache", "HIT");
             return encodedBodyResponse(req, cachedHtml, { headers: cachedHeaders });
           }
@@ -731,7 +738,7 @@ export class WebRouter {
             return createDocumentRedirectResponse(new URL(lateControl.location, url.origin), lateControl.status);
           }
           const responseStatus = lateControl?.type === "not-found" ? 404 : (rscResult.status ?? 200);
-          const responseHeaders = this.#htmlResponseHeaders(responseStatus);
+          const responseHeaders = this.#htmlResponseHeaders(responseStatus, req);
           if (req.method === "HEAD") {
             const headers = new Headers(responseHeaders);
             if (htmlCacheEntry && responseStatus === 200) headers.set("X-Akan-Cache", "MISS");
@@ -1120,9 +1127,15 @@ export class WebRouter {
 
   //? Dev: a back/forward navigation replays a document from the HTTP cache without asking, which would boot a tab onto
   //? the RSC payload and registry config of a build the server no longer runs.
-  #htmlResponseHeaders(status: number): Headers {
+  #htmlResponseHeaders(status: number, req: Request): Headers {
     const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
     if (status >= 400 || !this.#prodMode) headers.set("Cache-Control", "no-store");
+    else {
+      const cacheControl = resolveHtmlCacheControl(req);
+      if (cacheControl) headers.set("Cache-Control", cacheControl);
+    }
+    const hsts = this.#prodMode ? strictTransportSecurity() : null;
+    if (hsts && getClientFacingOrigin(req).startsWith("https:")) headers.set("Strict-Transport-Security", hsts);
     return applySecurityHeaders(headers, { html: true });
   }
   #withCsrHmr(html: string): string {
@@ -1143,7 +1156,7 @@ export class WebRouter {
       cssHref: this.#getStylesheetHref(req, pathname),
     });
     if (!html) return this.#csrUnavailableResponse(pathname);
-    return new Response(this.#withCsrHmr(html), { headers: this.#htmlResponseHeaders(200) });
+    return new Response(this.#withCsrHmr(html), { headers: this.#htmlResponseHeaders(200, req) });
   }
   async #resolveCsrHtml(csrOutputDir: string, pathname: string): Promise<string | null> {
     const resolved = WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
@@ -1200,7 +1213,10 @@ export class WebRouter {
     const files = new Set<string>();
     if (!fs.existsSync(dir)) return files;
     const scan = new Bun.Glob("**/*").scanSync({ cwd: dir, onlyFiles: true, dot: true, followSymlinks: true });
-    for (const relative of scan) files.add(path.resolve(dir, relative));
+    for (const relative of scan) {
+      const filePath = path.resolve(dir, relative);
+      if (staysInTree(dir, filePath)) files.add(filePath);
+    }
     return files;
   }
 

@@ -5,7 +5,8 @@
 //
 // Differences from tauri-plugins-workspace/plugins/single-instance/src/platform_impl/macos.rs:
 // - the files live in the per-user temporary folder ($TMPDIR on macOS, $XDG_RUNTIME_DIR on
-//   Linux, both 0700) instead of /tmp, so two users of one Mac do not see each other's app
+//   Linux, both 0700) instead of /tmp, so two users of one Mac do not see each other's app; a
+//   folder others can enter (/tmp when neither is set) gets a 0700 akan-native-<uid> folder inside
 // - the lock, not the socket, decides: two launches that both found a stale socket used to both
 //   remove it and bind, and both run as the first instance (plugins-workspace #3542 / #3495)
 // - a launch that sees the lock taken never runs: it hands over its message, or exits anyway
@@ -13,10 +14,10 @@
 
 import { dlopen, FFIType, ptr } from "bun:ffi";
 import { createHash } from "node:crypto";
-import { chmodSync, closeSync, constants, openSync, rmSync } from "node:fs";
+import { chmodSync, closeSync, constants, lstatSync, mkdirSync, openSync, rmSync } from "node:fs";
 import { connect, createServer, type Server, type Socket } from "node:net";
 import { tmpdir, userInfo } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { SecondInstance } from "./index.ts";
 
 const FORMAT = 1;
@@ -261,13 +262,32 @@ export async function claim(
   return { kind: "failed", error: new Error(`could not claim ${path}`) };
 }
 
+/** The lock and socket need a folder of this user's alone: another user's could block the app or read its arguments. */
+export function privateFolder(dir: string, uid = process.getuid?.() ?? -1): string | Error {
+  const owned = (at: string) => {
+    const stat = lstatSync(at, { throwIfNoEntry: false });
+    return !!stat && stat.isDirectory() && stat.uid === uid && (stat.mode & 0o077) === 0;
+  };
+  if (owned(dir)) return dir;
+  const own = join(dir, `akan-native-${uid}`);
+  try {
+    mkdirSync(own, { mode: 0o700 });
+  } catch (error) {
+    if (errno(error) !== "EEXIST") return error as Error;
+  }
+  return owned(own) ? own : new Error(`${own} is not a folder of this user's alone`);
+}
+
 /** macOS and Linux: whoever holds the lock file runs; the socket only carries messages. */
 async function claimLocked(
-  path: string,
+  requested: string,
   message: SecondInstance,
   onMessage: (m: SecondInstance) => void,
   timeoutMs: number,
 ): Promise<Claim> {
+  const dir = privateFolder(dirname(requested));
+  if (dir instanceof Error) return { kind: "failed", error: dir };
+  const path = join(dir, basename(requested));
   const lock = lockFile(`${path.replace(/\.sock$/, "")}.lock`);
   if (lock.kind === "unavailable") return { kind: "failed", error: lock.error };
   if (lock.kind === "held") {

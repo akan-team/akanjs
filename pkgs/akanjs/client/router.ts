@@ -201,6 +201,7 @@ class Router {
   #expectedPops: { idx: number; isAllowed: boolean; onLand?: () => void }[] = [];
   //? A page's mount effects run before the root layout's, and the root layout is what initializes the client router.
   #beforeInit: (() => void)[] = [];
+  #frameParentOrigins: string[] | "*" = [];
   #instance: RouterInstance = {
     push: (href: string) => {
       const { href: fullHref } = this.#getPathInfo(href);
@@ -424,6 +425,10 @@ class Router {
   #postPathAfterBack() {
     if (this.canGoBack()) this.#backsAwaitingPopstate += 1;
   }
+  /** Origins besides the page's own that hear `pathChange` when they frame it in production; `"*"` is any parent. */
+  setFrameParentOrigins(origins: string[] | "*") {
+    this.#frameParentOrigins = origins;
+  }
   /** Tells the frame embedding this page where it went: a new path, or a page of a paginated list. */
   postPathChange(change: { path: string; pathname: string; hash: string } | { page: number }) {
     const message =
@@ -432,8 +437,13 @@ class Router {
         : { type: "pathChange", path: change.path, pathname: change.pathname, hash: change.hash };
     if (!("page" in change)) Logger.info(`pathChange-start:${change.path}${change.hash ? `#${change.hash}` : ""}`);
     //? An MCP host reads every message from its view as JSON-RPC; this one would arrive as a malformed request.
-    if (isMcpView()) return;
-    window.parent.postMessage(message, "*");
+    if (isMcpView() || window.parent === window) return;
+    // A path or hash can carry a token, so only a named cross-origin parent hears it; local dev posts to any frame.
+    const targets =
+      getEnv().operationMode === "local" || this.#frameParentOrigins === "*"
+        ? ["*"]
+        : [window.location.origin, ...this.#frameParentOrigins];
+    for (const target of targets) window.parent.postMessage(message, target);
   }
   #postDevSyncNavigation(kind: "push" | "replace", href: string) {
     if (globalThis.__AKAN_DEV_SYNC_NAVIGATION_APPLYING__) return;

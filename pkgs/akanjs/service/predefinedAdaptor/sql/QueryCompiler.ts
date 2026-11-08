@@ -1,5 +1,12 @@
-import { FIELD_META, ID } from "akanjs/base";
-import { type DocumentQuery, type DocumentQueryNode, isDocumentQueryNode, searchColumns } from "akanjs/document";
+import { FIELD_META, Float, ID, Int } from "akanjs/base";
+import {
+  type DocumentQuery,
+  type DocumentQueryNode,
+  fieldValueProblem,
+  isDocumentQueryNode,
+  queryNodeProblem,
+  searchColumns,
+} from "akanjs/document";
 import { DEFAULT_SEARCH_WEIGHTS, type SearchIndex } from "../searchIndex";
 import {
   BASE_COLUMNS,
@@ -14,6 +21,13 @@ import {
   type SqlDialect,
 } from "./types";
 import { BASE_COLUMN_LEAF, quoteIdent } from "./values";
+
+const singleValueRefs = new Set<unknown>([String, ID, Int, Float, Boolean, Date]);
+const isPlainRecord = (value: unknown) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+};
 
 export class QueryCompiler {
   constructor(
@@ -76,6 +90,8 @@ export class QueryCompiler {
   // false) is rejected rather than silently widening the result.
   private compileNode(query: DocumentQuery, ctx: CompileContext): { sql: string; params: unknown[] } {
     if (isDocumentQueryNode(query)) {
+      const problem = queryNodeProblem(query);
+      if (problem) throw new Error(`${problem} (on "${this.ref}")`);
       if (query.kind === "search") {
         if (!ctx.conjunctive)
           throw new Error(
@@ -151,8 +167,9 @@ export class QueryCompiler {
     const field = this.fields[path]?.getProps?.() ?? this.fields[path];
     const leaf = this.#leaf(path);
     const kind = this.pathKind(path);
-    if (isDocumentQueryNode(value)) {
-      if (value.kind !== "op") return this.compileNode({ [path]: value } as DocumentQuery, ctx);
+    const problem = fieldValueProblem(path, value);
+    if (problem) throw new Error(`${problem} (on "${this.ref}")`);
+    if (isDocumentQueryNode(value) && value.kind === "op") {
       switch (value.op) {
         case "eq":
           return leaf.eq(path, value.value, kind);
@@ -223,8 +240,15 @@ export class QueryCompiler {
         };
       }
     }
+    if (isPlainRecord(value) && this.#holdsSingleValue(path, field))
+      throw new Error(`Query value at "${path}" on "${this.ref}" is an object, but the field holds a single value`);
     if (field?.isArray && !Array.isArray(value)) return this.#arrayHas(leaf, path, value, ctx);
     return leaf.eq(path, value, kind);
+  }
+
+  #holdsSingleValue(path: string, field: Record<string, unknown> | undefined) {
+    if (BASE_COLUMNS.has(path)) return true;
+    return !!field && !field.isArray && !field.isMap && singleValueRefs.has(field.modelRef);
   }
 
   #arrayHas(leaf: QueryLeafOps, path: string, value: unknown, ctx: CompileContext) {

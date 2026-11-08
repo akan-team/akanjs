@@ -35,7 +35,6 @@ import {
   type WebsocketAdaptor,
   WebsocketAdaptorRole,
 } from "akanjs/service";
-import { websocketRoomContract } from "../../common/websocketContract";
 import { type Endpoint, type EndpointCls, sliceEndpoint } from "../../signal/endpoint";
 import { EndpointErrorContract } from "../../signal/endpointErrorContract";
 import type { EndpointInfo } from "../../signal/endpointInfo";
@@ -43,6 +42,7 @@ import type { Internal, InternalCls } from "../../signal/internal";
 import { Machine } from "../../signal/internalArg";
 import type { InternalInfo } from "../../signal/internalInfo";
 import type { MiddlewareCls } from "../../signal/middleware";
+import { RoomKey } from "../../signal/roomKey";
 import type { ServerSignal, ServerSignalCls } from "../../signal/serverSignal";
 import { SignalContext, type WebSocketExecutionContext } from "../../signal/signalContext";
 import type { SliceCls } from "../../signal/slice";
@@ -70,9 +70,6 @@ type HttpMethodRoutes = Record<string, (req: Bun.BunRequest) => Response | Promi
 export class SignalResolver {
   static logger = new Logger("SignalResolver");
 
-  static makeRoomId(key: string, args: unknown[]) {
-    return websocketRoomContract.idOf(key, args);
-  }
   static #localPublish: LocalPublish = () => {
     SignalResolver.logger.verbose(`Local publish is not initialized yet`);
   };
@@ -143,7 +140,7 @@ export class SignalResolver {
             registry,
             live,
           });
-          const roomId = SignalResolver.makeRoomId(key, roomArgs);
+          const roomId = RoomKey.idOfPublished(key, endpointInfo.args, roomArgs);
           if (isBinaryFrame) {
             const bytes = Binary._parse(resolvedData as Uint8Array) as Uint8Array;
             websocket.publish(roomId, bytes, { coalesce: SignalResolver.coalescesRoom(roomId) });
@@ -666,7 +663,7 @@ export class SignalResolver {
     const routeOptions: NonNullable<SignalRoutes["routeOptions"]> = {};
     const wsRoutes: WebsocketRoutes = {};
     const defaultPrefix = endpointCls.srv.cnst?.refName;
-    SignalResolver.#warnUnguarded(endpointMeta);
+    SignalResolver.#checkUnguarded(endpointMeta);
     SignalResolver.#warnMachineKeyless(endpointMeta);
     SignalResolver.#warnUndefinedErrors(endpointMeta);
     Object.entries(endpointMeta).forEach(([key, endpointInfo]) => {
@@ -718,12 +715,13 @@ export class SignalResolver {
                 const liveOption = endpointInfo.signalOption.live;
                 //? Before the room id, which parses the arguments: a subscribe its guards refuse never reaches a parser.
                 const query = subscribe ? await context.exec() : null;
-                // The client-built id the ack is matched against; for every room but a live one it is also the room.
-                const requestRoomId = context.getRoomId(key);
+                //? The client's own label, which two argument lists can share; rooms and matches use the escaped id.
+                const requestRoomId = context.getRequestRoomId(key);
+                const baseRoomId = context.getRoomId(key);
                 if (subscribe) {
                   const isClosed = SignalResolver.#closedWs.has(ws);
                   //? The close or the unsubscribe already left what it found, so a room joined now would stay joined.
-                  if (isClosed || SignalResolver.#pendingSubscribes.isLeft(ws, requestRoomId, arrival)) {
+                  if (isClosed || SignalResolver.#pendingSubscribes.isLeft(ws, baseRoomId, arrival)) {
                     await SignalResolver.#runLifecycleHandlers(
                       [context as SignalContext<WebSocketExecutionContext>],
                       isClosed ? ["unsubscribe", "disconnect"] : ["unsubscribe"],
@@ -737,7 +735,7 @@ export class SignalResolver {
                     };
                     return unsubscribed;
                   }
-                  const roomId = liveOption ? context.getLiveRoomId(key) : requestRoomId;
+                  const roomId = liveOption ? context.getLiveRoomId(key, query) : baseRoomId;
                   const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws) ?? new Map();
                   if (liveOption && !roomCtxMap.has(roomId))
                     live.syncHub.join({
@@ -771,10 +769,10 @@ export class SignalResolver {
                   };
                   return ack;
                 }
-                SignalResolver.#pendingSubscribes.leave(ws, requestRoomId, arrival);
+                SignalResolver.#pendingSubscribes.leave(ws, baseRoomId, arrival);
                 //? By the id the subscribe was matched with: a live room's id derived again now can differ (`.with(Ws)`).
                 const heldRooms = [...(SignalResolver.#liveWsPubsubRoomCtx.get(ws) ?? [])].filter(
-                  ([, roomCtx]) => roomCtx.getRoomId(roomCtx.key) === requestRoomId,
+                  ([, roomCtx]) => roomCtx.getRoomId(roomCtx.key) === baseRoomId,
                 );
                 for (const [roomId, roomCtx] of heldRooms) {
                   SignalResolver.#leaveWsRoom(ws, roomId, roomCtx, websocket, liveOption ? live : undefined);
@@ -815,15 +813,31 @@ export class SignalResolver {
     return { routes, wsRoutes, routeOptions };
   }
 
-  // Security: guards are the only gate a transport has, so an endpoint naming none answers anyone over HTTP and WS.
-  static #warnUnguarded(endpointMeta: { [key: string]: EndpointInfo }) {
-    const open = Object.entries(endpointMeta)
+  // Security: an unguarded endpoint is refused at runtime; outside local operation the boot stops, failing the deploy.
+  static #checkUnguarded(endpointMeta: { [key: string]: EndpointInfo }) {
+    const unguarded = Object.entries(endpointMeta)
       .filter(([, endpointInfo]) => !endpointInfo.signalOption.guards?.length)
       .map(([key]) => key);
-    if (!open.length) return;
-    SignalResolver.logger.warn(
-      `${open.join(", ")} declare${open.length === 1 ? "s" : ""} no guards, so anyone can call ${open.length === 1 ? "it" : "them"} over HTTP and WebSocket. Name the guards, or \`guards: [Public]\` to keep one open on purpose.`,
+    if (!unguarded.length) return;
+    const names = `${unguarded.join(", ")} declare${unguarded.length === 1 ? "s" : ""} no guards`;
+    const fix = "Name the guards, or `guards: [Public]` to open one on purpose.";
+    if (SignalContext.unguardedOpen()) {
+      SignalResolver.logger.warn(`${names}, and AKAN_UNGUARDED_ENDPOINTS=open lets anyone call them. ${fix}`);
+      return;
+    }
+    if (SignalResolver.#isLocalOperation()) {
+      SignalResolver.logger.warn(`${names}, so every call to them is refused. ${fix}`);
+      return;
+    }
+    throw new Error(
+      `${names}, so every call to them would be refused. ${fix} AKAN_UNGUARDED_ENDPOINTS=open answers them as before.`,
     );
+  }
+  //? Read from the environment, not `getEnv()`: a test boots signals without the public env `getEnv()` requires.
+  static #isLocalOperation() {
+    if (process.env.NODE_ENV === "test") return true;
+    const environment = process.env.AKAN_PUBLIC_ENV ?? "debug";
+    return (process.env.AKAN_PUBLIC_OPERATION_MODE ?? (environment === "local" ? "local" : "cloud")) === "local";
   }
   // A declared key no dictionary defines is published to OpenAPI and MCP as an error nobody can translate. Skipped when
   // no dictionary is registered at all, as in a test that boots signals alone.

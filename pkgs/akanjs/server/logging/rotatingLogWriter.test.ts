@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RotatingLogWriter } from "./rotatingLogWriter";
@@ -63,6 +63,19 @@ describe("RotatingLogWriter", () => {
       "akan-local-local-2026-05-25-gateway-0001.log",
       "akan-local-local-2026-05-25-gateway-0002.log",
     ]);
+  });
+
+  test.skipIf(process.platform === "win32")("creates each log file readable by its owner only", async () => {
+    const now = () => new Date(2026, 4, 25, 10);
+    const writer = new RotatingLogWriter({ logDir: tmp, ...akanApp, maxSizeBytes: 1024, now });
+    writer.write("gateway", "private\n");
+    await writer.close();
+    const shared = new RotatingLogWriter({ logDir: tmp, ...akanApp, maxSizeBytes: 1024, fileMode: 0o640, now });
+    shared.write("0-federation", "shared\n");
+    await shared.close();
+    const modeOf = async (name: string) => (await stat(join(tmp, name))).mode & 0o777;
+    expect(await modeOf("akan-local-local-2026-05-25-gateway-0001.log")).toBe(0o600);
+    expect(await modeOf("akan-local-local-2026-05-25-0-federation-0001.log")).toBe(0o640);
   });
 
   test("keeps retention per process key", async () => {

@@ -49,6 +49,7 @@ import type { AppWsData } from "./routing/appWsData";
 import { HostAllowlist } from "./routing/hostAllowlist";
 import { RoomReplay } from "./routing/roomReplay";
 import { RouteHosts } from "./routing/routeHosts";
+import { ServerLimits } from "./routing/serverLimits";
 import { createSoloAppRoutes } from "./routing/soloAppRoutes";
 import {
   getWebConfigFromEnv,
@@ -444,6 +445,7 @@ export class AkanServer {
     this.logger.verbose(`${this.name} is serving on ${unix ? `unix://${unix}` : `port ${port}`}`);
     const { routes, routeOptions, wsRoutes, builtinRoutes, renderEnvRoutes, hmrHub, webRouter, webProxyRunner } =
       this.#prepared;
+    const limits = new ServerLimits();
     const websocketHandlers = {
       ...ApiRouter.buildWebsocketHandlers({
         wsRoutes,
@@ -460,11 +462,14 @@ export class AkanServer {
         logger: this.logger,
         onDrain: () => this.#binaryPubsub.flush(),
       }),
+      idleTimeout: limits.wsIdleTimeout,
       data: {},
     } as Bun.WebSocketHandler<AppWsData | HmrWsData>;
     //? Behind the gateway the Host a child sees is the gateway's hop, so only a server bound to TCP checks it.
     const hostAllowlist = unix ? null : HostAllowlist.fromEnv();
-    const hostname = process.env.AKAN_LISTEN_HOST || undefined;
+    const hostname = ServerLimits.listenHostname();
+    //? Off on the gateway's socket: it bounds each client, and a pooled keep-alive this side closed would answer 502.
+    const idleTimeout = unix ? 0 : limits.idleTimeout;
     const buildRoutes = (upgradeAppWs: ApiRouteInputs["upgradeAppWs"], allowlist: HostAllowlist | null) =>
       ApiRouter.buildRoutes({
         prefix: this.prefix,
@@ -476,13 +481,19 @@ export class AkanServer {
         upgradeAppWs,
         webProxyRunner,
         hostAllowlist: allowlist,
+        bodyLimits: limits,
+        countChunkedBodies: !unix,
+        idleTimeout,
       });
-    this.#server = Bun.serve({
-      idleTimeout: 0,
-      ...(unix ? { unix } : { port, hostname }),
-      routes: buildRoutes((req, data) => this.#server?.upgrade(req, { data }) ?? false, hostAllowlist),
-      websocket: websocketHandlers,
-    } as Parameters<typeof Bun.serve>[0]);
+    const serve = () =>
+      Bun.serve({
+        idleTimeout,
+        maxRequestBodySize: limits.uploadBodyBytes,
+        ...(unix ? { unix } : { port, hostname }),
+        routes: buildRoutes((req, data) => this.#server?.upgrade(req, { data }) ?? false, hostAllowlist),
+        websocket: websocketHandlers,
+      } as Parameters<typeof Bun.serve>[0]);
+    this.#server = unix ? ServerLimits.serveOwnerOnly(unix, serve) : serve();
     if (unix && process.env.AKAN_CHILD_WS_PORT) {
       const preferredWsPort = Number(process.env.AKAN_CHILD_WS_PORT);
       //? Only the gateway dials this port, at the loopback address the ready message names below. A page on a name

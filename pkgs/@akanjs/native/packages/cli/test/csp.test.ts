@@ -61,7 +61,28 @@ describe("CSP policy (SEC-4)", () => {
     const map = parseCsp(built.policy);
     expect(map.get("style-src")).toEqual(["'self'", "'unsafe-inline'"]);
     expect(map.get("script-src")?.[0]).toMatch(/^'sha256-/);
-    expect(built.warnings.join()).toContain("'unsafe-inline'");
+    expect(built.warnings).toEqual([]);
+  });
+
+  test("only an 'unsafe-inline' script-src is warned about", () => {
+    const built = buildCsp({ "default-src": "'self'", "script-src": ["'self'", "'unsafe-inline'"] }, PAGE);
+    expect(built.warnings).toEqual(["security.csp: script-src has 'unsafe-inline'; inline scripts are not hashed"]);
+  });
+
+  test("inline scripts and styles are hashed into script-src-elem and style-src-elem too when the policy has them", () => {
+    const built = buildCsp(
+      "default-src 'self'; script-src-elem 'self' https://cdn.example.com; style-src-elem 'self'",
+      PAGE,
+    );
+    const map = parseCsp(built.policy);
+    const scriptHashes = inlineBlocks(PAGE).scripts.map(cspHash);
+    expect(map.get("script-src-elem")).toEqual(["'self'", "https://cdn.example.com", ...scriptHashes]);
+    expect(map.get("script-src")).toEqual(["'self'", ...scriptHashes]);
+    expect(map.get("style-src-elem")).toEqual(["'self'", cspHash("body{color:red}")]);
+    expect(map.has("script-src-attr")).toBe(false);
+    expect(
+      buildCsp({ "script-src": "'self'", "script-src-elem": ["'self'", "'unsafe-inline'"] }, PAGE).warnings,
+    ).toEqual(["security.csp: script-src-elem has 'unsafe-inline'; inline scripts are not hashed"]);
   });
 
   test("header-only directives are dropped from the meta policy with a warning", () => {

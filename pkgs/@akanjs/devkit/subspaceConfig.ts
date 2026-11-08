@@ -7,6 +7,7 @@ export type { SubspaceConfigInput, SubspaceDeclaration };
 export class SubspaceConfig {
   static readonly source = "subspace in the workspace root akan.config.ts";
   static readonly defaultPushableBranches = ["main", "develop", "debug"];
+  static readonly namePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
   static async from(workspace: WorkspaceExecutor): Promise<SubspaceConfig | null> {
     const { subspace } = await workspace.getConfig();
@@ -31,6 +32,11 @@ export class SubspaceConfig {
     for (const subspace of this.subspaces) {
       if (!subspace.name || !subspace.repo)
         throw new Error(`${SubspaceConfig.source}: every subspace needs a name and a repo`);
+      //? The name is the clone folder under .akan/subspace, which a fresh clone empties first.
+      if (!SubspaceConfig.namePattern.test(subspace.name))
+        throw new Error(
+          `${SubspaceConfig.source}: subspace name "${subspace.name}" takes letters, digits, ".", "_" and "-", starting with a letter or digit`,
+        );
       if (seenNames.has(subspace.name))
         throw new Error(`${SubspaceConfig.source}: duplicate subspace "${subspace.name}"`);
       seenNames.add(subspace.name);

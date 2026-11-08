@@ -10,6 +10,7 @@ import {
   checkUpdateEnvelope,
   decideNavigation,
   declares,
+  externalOpenPermitted,
   fileMime,
   fileRefSandboxed,
   idValid,
@@ -20,6 +21,7 @@ import {
   isUpdatePublicKey,
   MAX_REVOKE_KEYS,
   MAX_UPDATE_MANIFEST,
+  manifestExpiry,
   parseRange,
   RetainedEvents,
   route,
@@ -157,6 +159,12 @@ describe("navigation", () => {
   test.each(navigation.fileRefSandbox as [string, boolean][])("a %j FileRef is sandboxed: %p", (mime, expected) => {
     expect(fileRefSandboxed(mime)).toBe(expected);
   });
+  test.each(navigation.links as [unknown, string, number, boolean][])(
+    "under %j a link to %s from window %d leaves: %p",
+    (acl, url, window, expected) => {
+      expect(externalOpenPermitted(loadAcl(acl === null ? {} : { acl }).acl, url, window)).toBe(expected);
+    },
+  );
 });
 
 // Ed25519 as the desktop verifies web bundle updates (Bun's node:crypto); Swift (CryptoKit) and Kotlin
@@ -198,6 +206,14 @@ const updates = (await load("updates")) as {
 };
 const keyIdOf = (key: string) =>
   createHash("sha256").update(Buffer.from(key, "base64")).digest().subarray(0, 8).toString("hex");
+test("a manifest's signed expiresAt is optional, and refused once the clock reaches it", () => {
+  expect(manifestExpiry(undefined, 1_000)).toBe("fresh");
+  expect(manifestExpiry(1_001, 1_000)).toBe("fresh");
+  expect(manifestExpiry(1_000, 1_000)).toBe("expired");
+  for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, "2000", true, null])
+    expect(manifestExpiry(bad, 1_000)).toBe("invalid");
+});
+
 describe("updates vectors", () => {
   test.each(updates.keyIds)("keyId of %s is %s", (publicKey, keyId) => {
     expect(keyIdOf(publicKey)).toBe(keyId);

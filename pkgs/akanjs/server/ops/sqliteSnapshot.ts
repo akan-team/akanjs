@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -28,6 +28,7 @@ export interface SnapshotCaptureOptions {
   sources: SnapshotSources;
   includeSolid?: boolean;
   encryptor?: SnapshotEncryptor | null;
+  fileMode?: number;
 }
 
 export interface SnapshotCapture {
@@ -40,13 +41,21 @@ export interface SnapshotCapture {
 export class SqliteSnapshot {
   static readonly manifestName = "manifest.json";
   static readonly idPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+  static readonly stagingPrefix = ".capture-";
 
+  static fileMode(value = process.env.AKAN_OPS_SNAPSHOT_FILE_MODE) {
+    const mode = Number.parseInt(value ?? "", 8);
+    return Number.isInteger(mode) && mode > 0 && mode <= 0o777 ? mode : 0o600;
+  }
+
+  //* Staged privately and renamed whole, so an `<id>/` is always complete; a killed capture's copy is left for `sweep`.
   static async capture({
     id,
     dir,
     sources,
     includeSolid = false,
     encryptor = null,
+    fileMode = SqliteSnapshot.fileMode(),
   }: SnapshotCaptureOptions): Promise<SnapshotCapture> {
     if (!SqliteSnapshot.idPattern.test(id)) throw new Error(`Invalid snapshot id "${id}"`);
     const { appName, environment, databaseMode } = getEnv();
@@ -54,7 +63,9 @@ export class SqliteSnapshot {
       throw new Error(`Snapshots support SQLite database modes only, not "${databaseMode ?? "unknown"}"`);
     const targetDir = path.join(dir, id);
     if (existsSync(targetDir)) throw new Error(`Snapshot ${id} already exists at ${targetDir}`);
-    await mkdir(targetDir, { recursive: true });
+    await mkdir(dir, { recursive: true });
+    await SqliteSnapshot.sweep(dir);
+    const staging = await mkdtemp(path.join(dir, `${SqliteSnapshot.stagingPrefix}${process.pid}-`));
     try {
       const roles: [SnapshotFileRole, string][] = [["main", sources.main]];
       if (includeSolid && sources.solid) roles.push(["solid", sources.solid]);
@@ -62,9 +73,9 @@ export class SqliteSnapshot {
       const integrity: string[] = [];
       const paths: SnapshotCapture["paths"] = {};
       for (const [role, source] of roles) {
-        const { file, problems, packedPath } = await SqliteSnapshot.#captureOne(role, source, targetDir, encryptor);
+        const { file, problems } = await SqliteSnapshot.#captureOne(role, source, staging, encryptor, fileMode);
         files.push(file);
-        paths[role] = packedPath;
+        paths[role] = path.join(targetDir, file.name);
         integrity.push(...problems.map((problem) => `${role}: ${problem}`));
       }
       const { akanVersion, buildId } = AppInfo.build();
@@ -81,31 +92,70 @@ export class SqliteSnapshot {
         integrity: integrity.length ? integrity : "ok",
         encryption: encryptor?.encryption ?? null,
       };
-      const manifestPath = path.join(targetDir, SqliteSnapshot.manifestName);
-      await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-      return { dir: targetDir, manifest, manifestPath, paths };
+      await writeFile(path.join(staging, SqliteSnapshot.manifestName), `${JSON.stringify(manifest, null, 2)}\n`, {
+        mode: fileMode,
+      });
+      //? mkdtemp made it 0700; a wider file mode also opens the directory to whoever may read the files.
+      await chmod(staging, fileMode | ((fileMode & 0o444) >> 2));
+      await rename(staging, targetDir);
+      return { dir: targetDir, manifest, manifestPath: path.join(targetDir, SqliteSnapshot.manifestName), paths };
     } catch (error) {
-      await rm(targetDir, { recursive: true, force: true });
+      await rm(staging, { recursive: true, force: true });
       throw error;
     }
   }
 
-  static async #captureOne(role: SnapshotFileRole, source: string, dir: string, encryptor: SnapshotEncryptor | null) {
+  static async sweep(dir: string) {
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory() && entry.name.startsWith(SqliteSnapshot.stagingPrefix))
+        .filter(
+          (entry) => !SqliteSnapshot.#alive(Number.parseInt(entry.name.slice(SqliteSnapshot.stagingPrefix.length))),
+        )
+        .map((entry) => rm(path.join(dir, entry.name), { recursive: true, force: true }).catch(() => undefined)),
+    );
+  }
+
+  static #alive(pid: number) {
+    if (!Number.isInteger(pid) || pid <= 0) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "EPERM";
+    }
+  }
+
+  static async #captureOne(
+    role: SnapshotFileRole,
+    source: string,
+    dir: string,
+    encryptor: SnapshotEncryptor | null,
+    fileMode: number,
+  ) {
     if (!existsSync(source)) throw new Error(`No ${role} database at ${source}`);
     const baseName = path.basename(source);
     const rawPath = path.join(dir, baseName);
-    SqliteSnapshot.vacuumInto(source, rawPath);
-    const problems = SqliteSnapshot.integrityProblems(rawPath);
-    const sizeBytes = (await stat(rawPath)).size;
     const name = `${baseName}.gz${encryptor?.extension ?? ""}`;
-    const packedPath = path.join(dir, name);
     const sourceHash = createHash("sha256");
     const uploadHash = createHash("sha256");
-    const stages: NodeJS.ReadWriteStream[] = [SqliteSnapshot.tap(sourceHash), createGzip()];
-    if (encryptor) stages.push(encryptor.transform());
-    stages.push(SqliteSnapshot.tap(uploadHash));
-    await pipeline([createReadStream(rawPath), ...stages, createWriteStream(packedPath)]);
-    await rm(rawPath, { force: true });
+    let problems: string[];
+    let sizeBytes: number;
+    try {
+      SqliteSnapshot.vacuumInto(source, rawPath);
+      await chmod(rawPath, 0o600);
+      problems = SqliteSnapshot.integrityProblems(rawPath);
+      sizeBytes = (await stat(rawPath)).size;
+      const stages: NodeJS.ReadWriteStream[] = [SqliteSnapshot.tap(sourceHash), createGzip()];
+      if (encryptor) stages.push(encryptor.transform());
+      stages.push(SqliteSnapshot.tap(uploadHash));
+      const packed = createWriteStream(path.join(dir, name), { mode: fileMode });
+      await pipeline([createReadStream(rawPath), ...stages, packed]);
+    } finally {
+      await rm(rawPath, { force: true });
+    }
+    const packedPath = path.join(dir, name);
     const file: SnapshotFile = {
       role,
       name,

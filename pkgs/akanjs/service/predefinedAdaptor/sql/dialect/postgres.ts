@@ -47,10 +47,15 @@ export class PostgresDialect implements SqlDialect {
   docValuePlaceholder() {
     return "?::text::jsonb";
   }
+  // A text[] element ends at `,` or `}`, so such keys are quoted; a plain key stays bare so index hashes hold.
+  static #element(part: string) {
+    if (part && part === part.trim() && part.toUpperCase() !== "NULL" && !/[{}",\\]/.test(part)) return part;
+    return `"${part.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  }
   #path(path: string) {
     return `'{${path
       .split(".")
-      .map((part) => part.replaceAll("'", "''"))
+      .map((part) => PostgresDialect.#element(part).replaceAll("'", "''"))
       .join(",")}}'`;
   }
   #jsonb(path: string) {

@@ -36,6 +36,7 @@ const makeJwt = (payload: Record<string, unknown>) => {
 // Loaded once `akanjs/base` is mocked: the real helpers read `getEnv()`, and a static import binds it first.
 let authToken: typeof import("../common/authToken");
 let sessionCookies: typeof import("../common/sessionCookies");
+let sessionCookie: typeof import("../fetch/sessionCookie");
 const authTokenKey = () => authToken.authTokenKey();
 
 // The real parser: `client/cookie.ts` reads through it on both sides, so a copy could pass while the two disagree.
@@ -87,7 +88,9 @@ beforeAll(async () => {
     interpolateTranslation,
     pathGetLoose,
   }));
+  sessionCookie = await import("../fetch/sessionCookie");
   mock.module("akanjs/fetch", () => ({
+    SessionCookie: sessionCookie.SessionCookie,
     defaultAccount: { appName: envState.appName, environment: envState.environment },
     requestStorage: {
       getStore: () => requestState.request,
@@ -315,15 +318,18 @@ describe("cookies, headers, and auth", () => {
     const jwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
     const nextJwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u2" });
     installBrowserGlobals(`${authTokenKey()}=${jwt}; theme=dark`);
-    const { cookies, getAccount, getAuthToken, getCookie, initAuth, resetAuth, setAuth } = await import("./cookie");
+    const { cookies, getAccount, getAuthToken, getCookie, getStoredAuthToken, initAuth, resetAuth, setAuth } =
+      await import("./cookie");
 
     expect(cookies()).toBeInstanceOf(Map);
     expect(getCookie(authTokenKey())).toBe(jwt);
     expect(getAuthToken()).toBe(jwt);
     expect(getAccount<{ userId?: string }>().userId).toBe("u1");
+    localStore.set("jwt:test-app", jwt);
     setAuth({ jwt: nextJwt });
     expect(fetchJwtCalls.at(-1)).toBe(nextJwt);
-    expect(localStore.get("jwt:test-app")).toBe(nextJwt);
+    expect(getCookie(authTokenKey())).toBe(nextJwt);
+    expect(await getStoredAuthToken()).toBeUndefined();
     expect(localStore.has(authTokenKey())).toBe(false);
     expect(localStore.has("jwt")).toBe(false);
 
@@ -459,7 +465,7 @@ describe("cookies, headers, and auth", () => {
     envState.side = "client";
     envState.renderMode = "csr";
     installBrowserGlobals();
-    const { getAccount, getAuthToken, initAuth, resetAuth, setAuth } = await import("./cookie");
+    const { getAccount, getAuthToken, getStoredAuthToken, initAuth, resetAuth, setAuth } = await import("./cookie");
     const jwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
 
     expect(getAuthToken()).toBeUndefined();
@@ -467,6 +473,7 @@ describe("cookies, headers, and auth", () => {
     expect(getAuthToken()).toBe(jwt);
     expect(getAccount<{ userId?: string }>().userId).toBe("u1");
     expect(document.cookie).toBe("");
+    expect(await getStoredAuthToken()).toBe(jwt);
 
     initAuth();
     expect(fetchJwtCalls.at(-1)).toBe(jwt);
@@ -474,6 +481,49 @@ describe("cookies, headers, and auth", () => {
     resetAuth();
     expect(getAuthToken()).toBeUndefined();
     expect(getAccount<Record<string, unknown>>()).toEqual({ appName: "test-app", environment: "debug" });
+  });
+
+  test("a session the server holds HttpOnly is read from its claims, never written or copied by the page", async () => {
+    envState.side = "client";
+    envState.renderMode = "ssr";
+    const jwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
+    const { SessionCookie } = sessionCookie;
+    installBrowserGlobals(`${SessionCookie.claimsKey()}=${SessionCookie.claimsOf(jwt)}`);
+    const { getAccount, getAuthToken, getSessionClaims, getStoredAuthToken, initAuth, resetAuth, setAuth } =
+      await import("./cookie");
+
+    expect(getSessionClaims()).toBe("header.".concat(jwt.split(".")[1] ?? ""));
+    expect(getAuthToken()).toBeUndefined();
+    expect(getAccount<{ userId?: string }>().userId).toBe("u1");
+    initAuth();
+    expect(fetchJwtCalls).toHaveLength(0);
+
+    setAuth({ jwt });
+    expect(getAuthToken()).toBe(jwt);
+    expect(cookieWrites.filter((entry) => entry.startsWith(`${authTokenKey()}=`))).toEqual([]);
+    expect(await getStoredAuthToken()).toBeUndefined();
+
+    resetAuth();
+    expect(getSessionClaims()).toBeUndefined();
+    expect(getAccount<Record<string, unknown>>()).toEqual({ appName: "test-app", environment: "debug" });
+  });
+
+  test("a server issues the session pair HttpOnly beside its readable claims, and expires both", async () => {
+    envState.side = "server";
+    const jwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
+    const { SessionCookie } = sessionCookie;
+
+    expect(SessionCookie.issue(jwt)).toEqual([
+      `__Host-jwt:test-app=${jwt}; Path=/; SameSite=Lax; Secure; HttpOnly`,
+      `__Host-jwt:test-app.claims=${SessionCookie.claimsOf(jwt)}; Path=/; SameSite=Lax; Secure`,
+    ]);
+    expect(SessionCookie.issue(jwt, { maxAge: 60 })[0]).toEndWith("; HttpOnly; Max-Age=60");
+    expect(SessionCookie.expire()).toEqual([
+      "__Host-jwt:test-app=; Path=/; SameSite=Lax; Secure; HttpOnly; Max-Age=0",
+      "__Host-jwt:test-app.claims=; Path=/; SameSite=Lax; Secure; Max-Age=0",
+    ]);
+    envState.operationMode = "local";
+    expect(SessionCookie.issue(jwt)[0]).toBe(`jwt:test-app=${jwt}; Path=/; SameSite=Lax; HttpOnly`);
   });
 
   test("a custom-scheme page keeps its cookies in localStorage", async () => {

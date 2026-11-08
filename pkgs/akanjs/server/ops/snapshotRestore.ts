@@ -16,6 +16,8 @@ export interface SnapshotRestoreOptions {
   manifestPath: string;
   sources: SnapshotSources;
   decryptor?: SnapshotDecryptor | null;
+  /** Restores a manifest that records no encryption even though a decryptor was given. */
+  allowPlaintext?: boolean;
   now?: Date;
 }
 
@@ -33,9 +35,21 @@ interface StagedFile {
 
 /** Offline only: it swaps files under a closed database, and nothing here can tell an open connection to let go. */
 export class SnapshotRestore {
-  static async run({ manifestPath, sources, decryptor = null, now = new Date() }: SnapshotRestoreOptions) {
+  static async run({
+    manifestPath,
+    sources,
+    decryptor = null,
+    allowPlaintext = false,
+    now = new Date(),
+  }: SnapshotRestoreOptions) {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as SnapshotManifest;
     if (manifest.format !== "akan-snapshot/v1") throw new Error(`Unknown snapshot format "${String(manifest.format)}"`);
+    //? A manifest is as easy to forge as the files beside it: an identity is the operator expecting ciphertext.
+    if (decryptor && !manifest.encryption && !allowPlaintext)
+      throw new Error(
+        "The manifest records no encryption although an identity was given; pass --allow-plaintext to restore it",
+      );
+    for (const file of manifest.files) SnapshotRestore.#assertFile(file);
     const dir = path.dirname(manifestPath);
     const stamp = now.toISOString().replace(/[:.]/g, "-");
     const staged: StagedFile[] = [];
@@ -98,6 +112,14 @@ export class SnapshotRestore {
       throw new Error(`${file.name} fails integrity_check: ${problems.slice(0, 3).join("; ")}`);
     }
     return stagedPath;
+  }
+
+  static #assertFile(file: SnapshotFile) {
+    if (file.role !== "main" && file.role !== "solid")
+      throw new Error(`Unknown snapshot file role "${String(file.role)}"`);
+    const name = String(file.name);
+    if (!name || name === "." || name === ".." || path.basename(name) !== name)
+      throw new Error(`Snapshot file "${name}" must name a file beside the manifest`);
   }
 
   //* The old -wal/-shm move with the old file: left in place they would be replayed into the restored database.

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -93,6 +94,7 @@ export class SsrMemoryProbe {
   }
 
   readonly #options: SsrMemoryProbeOptions;
+  readonly #statusToken = randomBytes(32).toString("hex");
   #gatewayPid = 0;
 
   constructor(options: SsrMemoryProbeOptions) {
@@ -119,6 +121,8 @@ export class SsrMemoryProbe {
         SERVER_MODE: "federation",
         ...(basePaths ? { AKAN_PUBLIC_BASE_PATHS: basePaths } : {}),
         PORT: String(port),
+        // A built app run outside `akan start` keeps the health detail and metrics behind this token.
+        AKAN_STATUS_TOKEN: this.#statusToken,
         AKAN_MEMORY_LOG: "1",
         AKAN_MEMORY_LOG_INTERVAL_MS: String(this.#options.metricsIntervalMs),
         ...(cacheOff ? { AKAN_HTML_RESULT_CACHE: "0", AKAN_RSC_RESULT_CACHE: "0" } : {}),
@@ -315,6 +319,7 @@ export class SsrMemoryProbe {
   async #fetchChildMetrics(): Promise<Array<Record<string, number>>> {
     try {
       const res = await fetch(`http://localhost:${this.#options.port}/_akan/app/metrics`, {
+        headers: { authorization: `Bearer ${this.#statusToken}` },
         signal: AbortSignal.timeout(5_000),
       });
       if (!res.ok) return [];
@@ -393,6 +398,7 @@ export class SsrMemoryProbe {
     while (Date.now() < deadline) {
       try {
         const res = await fetch(`http://localhost:${this.#options.port}/_akan/app/health`, {
+          headers: { authorization: `Bearer ${this.#statusToken}` },
           signal: AbortSignal.timeout(2_000),
         });
         if (res.ok) {

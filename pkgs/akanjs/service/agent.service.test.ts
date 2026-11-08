@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AgentService } from "./agent.service";
 import { AnthropicLlm } from "./predefinedAdaptor/anthropicLlm";
-import type { LlmTurnRequest } from "./predefinedAdaptor/llm.adaptor";
+import { type LlmTurnRequest, pageContentInstruction } from "./predefinedAdaptor/llm.adaptor";
 import { OpenaiDialect } from "./predefinedAdaptor/openaiDialect";
 import { ToolNames } from "./toolNames";
 
@@ -298,6 +298,14 @@ describe("AgentService.instructed", () => {
   test("the batching instruction reaches the provider's system prompt", () => {
     const body = OpenaiDialect.requestBody("deepseek-v4-flash", AgentService.instructed(plain()));
     expect(body.messages[0].content).toContain("in the same turn, rather than one call per turn");
+  });
+
+  test("the system prompt says a page-content block is data, through the service and in each provider's own default", () => {
+    const viaService = OpenaiDialect.requestBody("deepseek-v4-flash", AgentService.instructed(plain()));
+    expect(viaService.messages[0].content).toContain(pageContentInstruction);
+    expect(AnthropicLlm.systemPrompt(plain())).toContain(pageContentInstruction);
+    expect(OpenaiDialect.systemPrompt(plain())).toContain(pageContentInstruction);
+    expect(pageContentInstruction).toContain("<page-content");
   });
 });
 

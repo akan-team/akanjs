@@ -1,3 +1,4 @@
+import { lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { isRecord } from "akanjs/common";
 import { AkanContextAnalyzer, type AkanDiagnostic, type AkanModuleContext } from "./akanContext";
@@ -127,8 +128,55 @@ const isInspectAkanContextRequestType = (value: unknown): value is InspectAkanCo
 
 export const parseJsonOutput = (output: string) => JSON.parse(output) as unknown;
 
-export const workspacePath = (workspace: Workspace, filePath: string) =>
-  path.isAbsolute(filePath) ? filePath : path.join(workspace.workspaceRoot, filePath);
+const workflowArtifactDir = ".akan/workflows";
+const workflowRunIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+const isInside = (base: string, target: string) => {
+  const relative = path.relative(base, target);
+  return !!relative && !relative.startsWith("..") && !path.isAbsolute(relative);
+};
+
+const hasEntry = (filePath: string) => {
+  try {
+    lstatSync(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const realPathOfNearest = (filePath: string) => {
+  const rest: string[] = [];
+  let current = filePath;
+  while (!hasEntry(current) && path.dirname(current) !== current) {
+    rest.unshift(path.basename(current));
+    current = path.dirname(current);
+  }
+  return path.join(realpathSync(current), ...rest);
+};
+
+const staysInside = (workspaceRoot: string, root: string, resolved: string) => {
+  try {
+    const realRoot = realPathOfNearest(root);
+    return isInside(realPathOfNearest(workspaceRoot), realRoot) && isInside(realRoot, realPathOfNearest(resolved));
+  } catch {
+    return false;
+  }
+};
+
+//? An MCP caller acts on text it was shown, so the plans and reports it names stay in the workspace's workflow folder.
+export const workflowArtifactPath = (workspace: Workspace, filePath: string) => {
+  const root = path.resolve(workspace.workspaceRoot, workflowArtifactDir);
+  const resolved =
+    workflowRunIdPattern.test(filePath) && !filePath.endsWith(".json")
+      ? path.join(root, "runs", `${filePath}.json`)
+      : path.resolve(workspace.workspaceRoot, filePath);
+  if (!isInside(root, resolved) || !staysInside(workspace.workspaceRoot, root, resolved))
+    throw new Error(
+      `MCP workflow files live under ${workflowArtifactDir}/ of the workspace, not ${JSON.stringify(filePath)}.`,
+    );
+  return resolved;
+};
 
 export const defaultWorkflowPlanPath = (workflow: string, inputs: WorkflowPlanInputs) => {
   const slug = [
@@ -490,7 +538,7 @@ export const inspectAkanContext = async (
   if (props.request.type === "workflowDiagnostics") {
     const doctor = await AkanContextAnalyzer.doctor(workspace, {
       strict: true,
-      runIdOrPlan: workspacePath(workspace, props.request.runIdOrPlan),
+      runIdOrPlan: workflowArtifactPath(workspace, props.request.runIdOrPlan),
     });
     const toWorkflowDiagnostic = (
       { severity, code, message, scope }: AkanDiagnostic,

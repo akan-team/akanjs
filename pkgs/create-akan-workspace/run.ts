@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 import { type SpawnOptions, spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { Command } from "commander";
 import { engines } from "./package.json";
 
@@ -34,6 +36,23 @@ interface Options {
 }
 const normalizeRegistryUrl = (registryUrl: string) => registryUrl.replace(/\/+$/, "");
 
+//? Bun loads these from the cwd first, so a cloned repo's file could pick the registry the CLI installs from.
+const dotenvFiles = [".env", ".env.local", ".env.development", ".env.production", ".env.test"];
+const registryLine = /^\s*(?:export\s+)?AKAN_NPM_REGISTRY\s*=/m;
+
+const registryFromShell = () => {
+  if (process.execArgv.includes("--no-env-file")) return process.env.AKAN_NPM_REGISTRY;
+  const file = dotenvFiles.find((name) => {
+    const filePath = path.join(process.cwd(), name);
+    return existsSync(filePath) && registryLine.test(readFileSync(filePath, "utf8"));
+  });
+  if (!file) return process.env.AKAN_NPM_REGISTRY;
+  console.warn(
+    `AKAN_NPM_REGISTRY is set in ${file}, which the repository controls, so it is ignored. Export it in your shell instead.`,
+  );
+  return undefined;
+};
+
 export const run = async ({
   argv = process.argv,
   spawnCommand = spawn,
@@ -63,7 +82,7 @@ export const run = async ({
     .option("-o, --owner <string>", "owner of the workspace")
     .action(async (org: string | undefined, options: Partial<Options>) => {
       const packageVersion = await getPackageVersion();
-      const registry = options.registry ?? process.env.AKAN_NPM_REGISTRY;
+      const registry = options.registry ?? registryFromShell();
       const registryUrl = registry ? normalizeRegistryUrl(registry) : undefined;
       const registryArgs = registryUrl ? ["--registry", registryUrl] : [];
       const spawnOptions = registryUrl

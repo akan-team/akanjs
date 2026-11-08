@@ -276,14 +276,14 @@ describe("AnthropicLlm answers", () => {
     ).toBe("length");
   });
 
-  test("a refusal carries the API's own sentence, named by the host that refused", async () => {
+  test("a refusal names the host that refused and its status, and keeps the API's sentence to the server", async () => {
     const body = JSON.stringify({ error: { type: "not_found_error", message: "model: claude-nope" } });
     const error = (await AnthropicLlm.refusal(
       "https://api.anthropic.com/v1",
       new Response(body, { status: 404 }),
     )) as Error & { data?: Record<string, string> };
     expect(error.message).toBe("agent.error.llmRequestFailed");
-    expect(error.data).toEqual({ provider: "api.anthropic.com", status: "404", reason: "model: claude-nope" });
+    expect(error.data).toEqual({ provider: "api.anthropic.com", status: "404" });
   });
 
   test("a prompt past the window is its own refusal, with both counts the API named", async () => {

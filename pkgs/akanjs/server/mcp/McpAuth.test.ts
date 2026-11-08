@@ -1,6 +1,15 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { AppHosts } from "akanjs/common";
 import { SignalContext } from "../../signal/signalContext";
 import { McpAuth } from "./McpAuth";
+
+process.env.AKAN_PUBLIC_APP_NAME = "probe";
+process.env.AKAN_PUBLIC_REPO_NAME = "akan";
+process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+process.env.AKAN_PUBLIC_ENV = "main";
+
+beforeAll(() => AppHosts.declare(["app.example.com"]));
+afterAll(() => AppHosts.reset());
 
 const auth = (option: Partial<ConstructorParameters<typeof McpAuth>[0]> = {}) =>
   new McpAuth({ path: "/mcp", ...option });
@@ -80,16 +89,23 @@ describe("McpAuth metadata", () => {
 });
 
 describe("McpAuth callerKey", () => {
-  test("keys a bearer on its session, one connection or many, and an anonymous caller on its address", () => {
+  const verified = auth({ verify: () => ({}) });
+
+  test("keys a verified bearer on its session, one connection or many, and an anonymous caller on its address", () => {
     const sid = request(`Bearer ${token({ sid: "s1", jti: "j1", sub: "user:u1" })}`);
-    expect(McpAuth.callerKey(sid)).toBe("token:s1");
-    expect(McpAuth.callerKey(request(`Bearer ${token({ jti: "j1", sub: "user:u1" })}`))).toBe("token:j1");
-    expect(McpAuth.callerKey(request(`Bearer ${token({ sub: "user:u1" })}`))).toBe("token:user:u1");
-    const opaque = McpAuth.callerKey(request("Bearer opaque-token"));
+    expect(verified.callerKey(sid)).toBe("token:s1");
+    expect(verified.callerKey(request(`Bearer ${token({ jti: "j1", sub: "user:u1" })}`))).toBe("token:j1");
+    expect(verified.callerKey(request(`Bearer ${token({ sub: "user:u1" })}`))).toBe("token:user:u1");
+    const opaque = verified.callerKey(request("Bearer opaque-token"));
     expect(opaque.startsWith("token:")).toBe(true);
-    expect(opaque).toBe(McpAuth.callerKey(request("Bearer opaque-token")));
-    expect(opaque).not.toBe(McpAuth.callerKey(request("Bearer other-token")));
-    expect(McpAuth.callerKey(request())).toBe("ip:anonymous");
+    expect(opaque).toBe(verified.callerKey(request("Bearer opaque-token")));
+    expect(opaque).not.toBe(verified.callerKey(request("Bearer other-token")));
+    expect(verified.callerKey(request())).toBe("ip:anonymous");
+  });
+
+  test("keys every bearer on its address while no verifier vouches for tokens", () => {
+    for (const authorization of [`Bearer ${token({ sid: "s1" })}`, `Bearer ${token({ sub: "u2" })}`, "Bearer x"])
+      expect(auth().callerKey(request(authorization))).toBe("ip:anonymous");
   });
 
   afterEach(() => SignalContext.setHttpPeerResolver(null));
@@ -100,9 +116,40 @@ describe("McpAuth callerKey", () => {
       headers: { "x-real-ip": "203.0.113.9" },
     });
     SignalContext.setHttpPeerResolver(() => ({ address: "10.0.0.2", port: 50_000 }));
-    expect(McpAuth.callerKey(proxied)).toBe("ip:203.0.113.9");
+    expect(auth().callerKey(proxied)).toBe("ip:203.0.113.9");
     SignalContext.setHttpPeerResolver(() => ({ address: "198.51.100.4", port: 50_000 }));
-    expect(McpAuth.callerKey(proxied)).toBe("ip:198.51.100.4");
+    expect(auth().callerKey(proxied)).toBe("ip:198.51.100.4");
+  });
+});
+
+describe("McpAuth host", () => {
+  const hosted = (host: string) => new Request(`http://${host}/mcp`, { method: "POST", headers: { host } });
+
+  test("answers to an address, localhost and the hosts the app declares, and to any once a resource is pinned", () => {
+    for (const host of [
+      "127.0.0.1:8080",
+      "[::1]:8080",
+      "192.168.0.7",
+      "localhost:8282",
+      "app.localhost",
+      "app.example.com",
+    ])
+      expect(auth().answersTo(hosted(host))).toBe(true);
+    expect(auth().answersTo(hosted("probe-main.example.com"))).toBe(true);
+    expect(auth().answersTo(hosted("rebound.example.net:8080"))).toBe(false);
+    expect(auth({ resource: "https://app.example.com/mcp" }).answersTo(hosted("rebound.example.net"))).toBe(true);
+  });
+
+  test("expects an audience naming its own host, so a token for another resource is refused whatever Host says", async () => {
+    const other = new Request("https://other.example.com/mcp", {
+      method: "POST",
+      headers: { host: "other.example.com" },
+    });
+    other.headers.set("authorization", `Bearer ${token({ aud: "https://other.example.com/mcp" })}`);
+    expect((await auth().reject(other))?.status).toBe(401);
+    const ours = new Request("https://app.example.com/mcp", { method: "POST" });
+    ours.headers.set("authorization", `Bearer ${token({ aud: "https://app.example.com/mcp" })}`);
+    expect(await auth().reject(ours)).toBeNull();
   });
 });
 
@@ -183,7 +230,7 @@ describe("McpAuth token rejection", () => {
     const federated = auth({ authorizationServers: ["https://auth.example.com"] });
     for (const authorization of [`Bearer ${foreign} x`, `Bearer\t${foreign}`, `Bearer ${foreign}\tx`]) {
       expect(await auth().reject(request(authorization))).toBeNull();
-      expect(McpAuth.callerKey(request(authorization))).toBe("ip:anonymous");
+      expect(auth({ verify: () => ({}) }).callerKey(request(authorization))).toBe("ip:anonymous");
       expect(federated.challengeAnonymous(request(authorization))?.status).toBe(401);
     }
   });
