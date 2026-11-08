@@ -202,6 +202,8 @@ Tool
 
   - get_module_context: One module with its abstract body. Pass `app` when two apps share the module name.
 
+  - get_graph: The Akan Graph from source: models, relations, guards, calls and the components using them. Scope it with `app` or `module`.
+
   - get_guideline: One Akan guideline by name, the same text as `akan guideline show`.
 
   - explain_command: A short explanation of one `akan` command.

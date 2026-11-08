@@ -322,6 +322,12 @@ export const readonlyMcpTools: McpToolDefinition[] = [
     inputSchema: { type: "object", properties: { app: stringProperty, module: stringProperty }, required: ["module"] },
   },
   {
+    name: "get_graph",
+    description:
+      "Read-only Akan Graph from source, no dev server needed: models with their fields and relations, slices and endpoints with guards, the service methods and queries each calls, the store actions that fetch them, and the components and pages that use them. Every node and edge carries its source location. Pass app and/or module to scope a large workspace.",
+    inputSchema: { type: "object", properties: { app: stringProperty, module: stringProperty } },
+  },
+  {
     name: "get_guideline",
     description: "Return an Akan agent guideline resource by name.",
     inputSchema: { type: "object", properties: { name: stringProperty }, required: ["name"] },

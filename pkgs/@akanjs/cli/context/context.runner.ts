@@ -30,6 +30,7 @@ import { AppExecutor } from "@akanjs/devkit/executors";
 import { appIdsOf, getMobileTargets, isPlaceholderAppId, NativeApp } from "@akanjs/devkit/mobile";
 import { Prompter } from "@akanjs/devkit/prompter";
 import { createWorkflowBaselineSummary, jsonText } from "@akanjs/devkit/workflow";
+import { WorkspaceGraph } from "@akanjs/devkit/workspaceGraph";
 import { RepairRunner } from "../repair/repair.runner";
 import { WorkflowRunner } from "../workflow/workflow.runner";
 
@@ -231,6 +232,11 @@ export class ContextRunner extends runner("context") {
       return modules;
     }
 
+    if (name === "get_graph")
+      return WorkspaceGraph.answer(await WorkspaceGraph.build(workspace), {
+        app: typeof args.app === "string" ? args.app : null,
+        module: typeof args.module === "string" ? args.module : null,
+      });
     if (name === "get_guideline") return await Prompter.getInstruction(stringArg(args, "name"));
     if (name === "doctor_workspace")
       return compactDoctorWorkspaceResult(

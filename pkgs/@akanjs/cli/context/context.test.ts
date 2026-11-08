@@ -348,6 +348,25 @@ describe("ContextRunner", () => {
     });
   });
 
+  test("draws the module's graph from source for get_graph and never reads env files", async () => {
+    const { workspace, app, module } = track(await createTempModule("post"));
+    await new ModuleRunner().createModuleTemplate(module);
+    await writeText(`${app.cwdPath}/env/env.server.local.ts`, "export const leaked = fetch.slice.post;\n");
+
+    const graph = (await new ContextRunner().callMcpTool(workspace, "get_graph", { app: "demo", module: "post" })) as {
+      nodes: { id: string; kind: string; at: { file: string } | null }[];
+      edges: { from: string; to: string }[];
+    };
+
+    expect(graph.nodes.map((node) => node.id)).toEqual(
+      expect.arrayContaining(["model:apps/demo:post", "slice:apps/demo:post", "query:apps/demo:post"]),
+    );
+    const ids = new Set(graph.nodes.map((node) => node.id));
+    expect(graph.edges.every((edge) => ids.has(edge.from) && ids.has(edge.to))).toBe(true);
+    expect(graph.nodes.some((node) => node.at?.file.includes("/env/"))).toBe(false);
+    expect(new ContextRunner().listMcpTools("readonly").map((tool) => tool.name)).toContain("get_graph");
+  });
+
   test("returns validation contract modes as cumulative MCP tool lists", async () => {
     const { workspace } = track(await createTempApp("demo"));
 

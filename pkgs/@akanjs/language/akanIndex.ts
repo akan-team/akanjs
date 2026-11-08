@@ -1,4 +1,6 @@
+import type { AkanGraph } from "akanjs/common/akanGraph.ts";
 import type * as TS from "typescript";
+import { GraphBuilder } from "./akanGraph";
 import { type AkanAst, createAst, type Ts } from "./ast";
 import { type AkanFactReader, type AkanSpan, createFactReader, type FileFacts, ownerOf } from "./moduleFacts";
 import { type AkanEntry, type AkanFamily, type AkanTarget, NameTable } from "./nameTable";
@@ -122,6 +124,23 @@ export class AkanIndex {
 
   referencesAt(givenName: string, offset: number, readText: (fileName: string) => string | undefined): AkanSpan[] {
     return this.#usesOf(this.#sourceEntriesAt(pathOf(givenName), offset), readText).map((use) => use.span);
+  }
+
+  graph(readText: (fileName: string) => string | undefined): AkanGraph {
+    return new GraphBuilder({
+      ts: this.#ts,
+      facts: [...this.#facts].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, facts]) => facts),
+      files: [...this.#fileWords].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+      readText,
+      parse: (fileName, text) => this.#parse(fileName, text),
+      resolve: (fileName, identifier) => {
+        if (!this.#nameTable().lookup(identifier.text).length) return [];
+        const site = this.#siteOf(identifier);
+        return site ? this.#resolve(fileName, site) : [];
+      },
+      relative: (fileName) => this.#relative(fileName),
+      ownerOf: (fileName) => this.#ownerOf(fileName),
+    }).build();
   }
 
   renameTargetAt(givenName: string, offset: number) {
