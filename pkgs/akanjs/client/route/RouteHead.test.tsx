@@ -181,4 +181,18 @@ describe("RouteHead", () => {
     const plain = <p>only body</p>;
     expect(RouteHead.split(plain)).toEqual({ tags: [], rest: plain });
   });
+
+  test("noindexOver keeps the other robots directives a head gives and drops the ones noindex overrides", async () => {
+    const head = (
+      <>
+        <meta name="robots" content="all" />
+        <meta name="ROBOTS" content="Index, nofollow, max-snippet:0" />
+      </>
+    );
+
+    expect(await html(RouteHead.noindexOver(head))).toBe(
+      '<meta name="robots" content="noindex, nofollow, max-snippet:0"/>',
+    );
+    expect(await html(RouteHead.noindexOver(<title>plain</title>))).toBe('<meta name="robots" content="noindex"/>');
+  });
 });

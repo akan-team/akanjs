@@ -189,11 +189,11 @@ describe("SSR head of a not-found or error view", () => {
     }, "ssrNotFoundHead.fixture.tsx");
   }, 20_000);
 
-  test("keeps the layouts' head when the NotFound writes none, and the page's head when nothing is missing", async () => {
+  test("keeps the layouts' head and robots directives when the NotFound writes none, and the page's head when nothing is missing", async () => {
     await withRouteContentWorker(async (render) => {
       const plain = await render("plain/anything");
       expect(plain.html).toContain('<p id="plain-missing">plain missing</p>');
-      expect(headTags(plain.html).titles).toEqual(["Dex"]);
+      expect(headTags(plain.html)).toMatchObject({ titles: ["Dex"], robots: ["noindex, nofollow"] });
 
       const found = await render("creature/mew");
       expect(found.status).toBe(200);

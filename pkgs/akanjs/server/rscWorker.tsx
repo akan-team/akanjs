@@ -1607,14 +1607,12 @@ export class RscRenderer {
     }: { manifestLink: ReactNode; routeHead: ResolvedHead; noindex?: boolean; tags?: ReactNode[] | null },
   ): ReactNode {
     const routeHeadSnapshot = this.#createRouteHeadSnapshot(url, routeHead);
+    const head = routeHeadSnapshot
+      ? renderAkanHeadSnapshot(routeHeadSnapshot)
+      : (routeHead.node ?? this.#renderDefaultHead());
     return (
       <>
-        {RouteHead.mergeNodes([
-          manifestLink,
-          routeHeadSnapshot ? renderAkanHeadSnapshot(routeHeadSnapshot) : (routeHead.node ?? this.#renderDefaultHead()),
-          noindex ? <meta key="robots" name="robots" content="noindex" /> : null,
-          tags,
-        ])}
+        {RouteHead.mergeNodes([manifestLink, head, noindex ? RouteHead.noindexOver(head) : null, tags])}
         {routeHeadSnapshot ? null : this.#renderLocaleAlternates(url)}
       </>
     );

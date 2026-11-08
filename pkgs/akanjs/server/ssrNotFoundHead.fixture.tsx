@@ -70,6 +70,7 @@ export const pages: PagesContext = {
   }),
   "./plain/_layout.tsx": async () => ({
     default: layout()
+      .head(<meta name="robots" content="index, nofollow" />)
       .notFound(() => <p id="plain-missing">plain missing</p>)
       .render(({ children }) => <section>{children}</section>),
   }),
