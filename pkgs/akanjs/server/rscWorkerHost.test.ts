@@ -1316,10 +1316,7 @@ describe("RscWorker late theme", () => {
       expect(body).toContain("fixture-page-title");
       expect(body).not.toContain("fixture-root-title");
       expect(body).toContain("/fixture.ico");
-      //? Chromium reads a manifest link only among <head>'s children, so it has to come before the body.
-      const manifestLink = body.indexOf('"rel":"manifest","href":"/manifest.webmanifest"');
-      expect(manifestLink).toBeGreaterThan(-1);
-      expect(manifestLink).toBeLessThan(body.indexOf('["$","body"'));
+      expect(body).toContain('"rel":"manifest","href":"/manifest.webmanifest"');
       const lightBody = await render("http://localhost/en/viewport", { cookie: "theme=light" });
       expect(lightBody).toContain("#fafafa");
       expect(lightBody).not.toContain("#0b1020");

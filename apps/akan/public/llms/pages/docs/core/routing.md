@@ -101,7 +101,7 @@ Stage
 
 - layout() and rootLayout()
 
-  - .notFound: 404 UI rendered inside the layout when a child route is missing; takes raw route props. — (fn)
+  - .notFound: 404 UI rendered inside the layout when a child route is missing; takes raw route props. A <title> or <meta> at its top replaces the head. — (fn)
 
   - .error: SSR error UI under the nearest layout when a child throws; raw props, error and digest. — (fn)
 

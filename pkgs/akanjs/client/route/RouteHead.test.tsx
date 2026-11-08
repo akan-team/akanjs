@@ -158,4 +158,41 @@ describe("RouteHead", () => {
       ),
     ).toEqual({ node: null, headSnapshot: { version: 1, nodes: [{ tag: "title", text: "Root" }] } });
   });
+
+  test("split takes the identity tags at the top of a view, through fragments and arrays, and leaves the rest alone", async () => {
+    const view = (
+      <>
+        <title>Missing</title>
+        {[<meta key="description" name="description" content="gone" />, <p key="body">body</p>]}
+        <link rel="stylesheet" href="/a.css" />
+        <section>
+          <title>nested</title>
+        </section>
+      </>
+    );
+
+    const { tags, rest } = RouteHead.split(view);
+
+    expect(await html(tags)).toBe('<title>Missing</title><meta name="description" content="gone"/>');
+    const restHtml = await html(rest);
+    expect(restHtml).toContain("<p>body</p>");
+    expect(restHtml).toContain("<title>nested</title>");
+    expect(restHtml).not.toContain("Missing");
+    const plain = <p>only body</p>;
+    expect(RouteHead.split(plain)).toEqual({ tags: [], rest: plain });
+  });
+
+  test("noindexOver keeps the other robots directives a head gives and drops the ones noindex overrides", async () => {
+    const head = (
+      <>
+        <meta name="robots" content="all" />
+        <meta name="ROBOTS" content="Index, nofollow, max-snippet:0" />
+      </>
+    );
+
+    expect(await html(RouteHead.noindexOver(head))).toBe(
+      '<meta name="robots" content="noindex, nofollow, max-snippet:0"/>',
+    );
+    expect(await html(RouteHead.noindexOver(<title>plain</title>))).toBe('<meta name="robots" content="noindex"/>');
+  });
 });

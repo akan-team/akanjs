@@ -11,6 +11,8 @@ import type {
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
 import { getExplicitPageConfigKeys, resolvePageState } from "../client/frameConfig";
 import { RouteGuards } from "../client/route/RouteGuards";
+import { RouteHead } from "../client/route/RouteHead";
+import type { FallbackHead } from "./fallbackHead";
 import { resolveHeadResult } from "./head";
 import { RouteShellGate } from "./routeShellGate";
 import {
@@ -27,6 +29,8 @@ export interface RouteNotFoundInPlace {
   /** Rendered when no layout above the thrower declares `.notFound()`. */
   systemFallback: () => ReactNode;
   onNotFound: () => void;
+  /** The document head still to be written, which then carries the not-found view's head tags and `noindex`. */
+  head?: FallbackHead;
 }
 
 export class RouteElementComposer {
@@ -216,6 +220,7 @@ export class RouteElementComposer {
     error,
     digest,
     gate,
+    head,
   }: {
     kind: "not-found" | "error";
     route: PathRoute | LayoutFallbackRoute;
@@ -225,6 +230,7 @@ export class RouteElementComposer {
     error?: unknown;
     digest?: string;
     gate?: RouteShellGate;
+    head?: FallbackHead;
   }): Promise<ReactNode | null> {
     const layoutStack = [...route.renderRootLayouts, ...route.renderLayouts];
     for (let index = layoutStack.length - 1; index >= 0; index--) {
@@ -235,7 +241,7 @@ export class RouteElementComposer {
       if (!fallback) continue;
       const renders = [
         ...layoutStack.slice(0, index + 1),
-        RouteElementComposer.#makeFallbackRouteRender({ kind, fallback, pathname, error, digest }),
+        RouteElementComposer.#makeFallbackRouteRender({ kind, fallback, pathname, error, digest, head }),
       ];
       return RouteElementComposer.composeRenders({ renders, params, searchParams, gate });
     }
@@ -333,26 +339,31 @@ export class RouteElementComposer {
   };
 
   static async #renderNotFoundInPlace(
-    { owners, pathname, systemFallback }: RouteNotFoundInPlace & { owners: RouteRender[] },
+    { owners, pathname, systemFallback, head }: RouteNotFoundInPlace & { owners: RouteRender[] },
     params: Record<string, string>,
     searchParams: Record<string, string | string[]>,
   ): Promise<ReactNode> {
-    for (let index = owners.length - 1; index >= 0; index--) {
-      const fallback = await owners[index]?.resolveNotFound?.();
-      if (!fallback) continue;
-      return (
-        <>
-          <meta name="robots" content="noindex" />
-          {RouteElementComposer.#normalizeReactNode(await fallback({ params, searchParams, pathname }))}
-        </>
-      );
-    }
+    const nearest = await RouteElementComposer.#nearestNotFoundView(owners, { params, searchParams, pathname });
+    const view = nearest ? nearest.view : systemFallback();
+    const { tags, rest } = RouteHead.split(view);
+    if (head?.offer(tags)) return rest;
     return (
       <>
         <meta name="robots" content="noindex" />
-        {systemFallback()}
+        {view}
       </>
     );
+  }
+
+  static async #nearestNotFoundView(
+    owners: RouteRender[],
+    props: { params: Record<string, string>; searchParams: Record<string, string | string[]>; pathname: string },
+  ): Promise<{ view: ReactNode } | null> {
+    for (let index = owners.length - 1; index >= 0; index--) {
+      const fallback = await owners[index]?.resolveNotFound?.();
+      if (fallback) return { view: RouteElementComposer.#normalizeReactNode(await fallback(props)) };
+    }
+    return null;
   }
 
   static #makeFallbackRouteRender({
@@ -361,19 +372,24 @@ export class RouteElementComposer {
     pathname,
     error,
     digest,
+    head,
   }: {
     kind: "not-found" | "error";
     fallback: LayoutNotFoundRender | LayoutErrorRender;
     pathname: string;
     error?: unknown;
     digest?: string;
+    head?: FallbackHead;
   }): RouteRender {
     return {
-      render: (props: { params: Record<string, string>; searchParams: Record<string, string | string[]> }) => {
+      render: async (props: { params: Record<string, string>; searchParams: Record<string, string | string[]> }) => {
         const { params, searchParams } = props;
-        return kind === "not-found"
-          ? (fallback as LayoutNotFoundRender)({ params, searchParams, pathname })
-          : (fallback as LayoutErrorRender)({ params, searchParams, pathname, error, digest });
+        const view =
+          kind === "not-found"
+            ? await (fallback as LayoutNotFoundRender)({ params, searchParams, pathname })
+            : await (fallback as LayoutErrorRender)({ params, searchParams, pathname, error, digest });
+        const { tags, rest } = RouteHead.split(view);
+        return head?.offer(tags) ? rest : view;
       },
     };
   }
