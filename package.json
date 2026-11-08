@@ -178,10 +178,5 @@
     "ua-parser-js": "^2.0.9",
     "yjs": "^13.6.32",
     "zod": "4.6.7"
-  },
-  "patchedDependencies": {
-    "zod@3.25.76": "patches/zod@3.25.76.patch",
-    "zod@4.4.3": "patches/zod@4.4.3.patch",
-    "zod@4.6.7": "patches/zod@4.6.7.patch"
   }
 }
