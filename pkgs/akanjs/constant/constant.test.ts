@@ -192,6 +192,15 @@ type _RelationMethodAssertions = [
   Assert<Equal<Extract<NonFunctionalKeys<InstanceType<typeof MethodUserLight>>, "hello">, never>>,
   Assert<Equal<Extract<NonFunctionalKeys<InstanceType<typeof MethodUserLight>>, "name">, "name">>,
 ];
+const HiddenFieldInput = via((f) => ({
+  encoding: f.hidden(String),
+  origin: f.hidden(String).optional(),
+}));
+type HiddenFieldInputDoc = DocumentModel<(typeof HiddenFieldInput)["_DatabaseSchema"]>;
+type _HiddenFieldAssertions = [
+  Assert<Equal<HiddenFieldInputDoc["encoding"], string>>,
+  Assert<Equal<Pick<HiddenFieldInputDoc, "origin">, { origin?: string | undefined }>>,
+];
 type _UnknownModelAssertions = [
   Assert<Equal<PurifiedModel<unknown>, unknown>>,
   Assert<Equal<DocumentModel<unknown>, unknown>>,
