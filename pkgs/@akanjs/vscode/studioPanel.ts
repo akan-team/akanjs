@@ -1,13 +1,18 @@
 import * as vscode from "vscode";
-import { StudioView } from "./studioView";
+import { StudioView, type StudioWorkflowRequest } from "./studioView";
 
 const readyTimeoutMs = 20_000;
+
+export type StudioWorkflowRunner = (request: StudioWorkflowRequest) => Promise<boolean>;
 
 export class StudioPanel {
   static readonly #panels = new Map<string, StudioPanel>();
   readonly #panel: vscode.WebviewPanel;
   readonly #root: string;
   #sourceColumn = vscode.ViewColumn.One;
+  #url = "";
+  #frameOrigin = "";
+  #runWorkflow: StudioWorkflowRunner | null = null;
   #loads = 0;
   #isDisposed = false;
   #ready: ((isReady: boolean) => void) | null = null;
@@ -28,11 +33,12 @@ export class StudioPanel {
     });
   }
 
-  static async show(root: string, app: string, url: string) {
+  static async show(root: string, app: string, url: string, runWorkflow: StudioWorkflowRunner) {
     const key = `${root}\n${app}`;
     const panel = StudioPanel.#panels.get(key) ?? new StudioPanel(root, key, vscode.l10n.t("Akan Studio · {0}", app));
     StudioPanel.#panels.set(key, panel);
     panel.#sourceColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
+    panel.#runWorkflow = runWorkflow;
     return await panel.#load(url);
   }
 
@@ -41,6 +47,8 @@ export class StudioPanel {
   async #load(url: string) {
     const target = new URL(url);
     const origin = (await vscode.env.asExternalUri(vscode.Uri.parse(target.origin))).toString(true);
+    this.#url = url;
+    this.#frameOrigin = new URL(origin).origin;
     const load = ++this.#loads;
     this.#settle(false);
     const isReady = new Promise<boolean>((resolve) => {
@@ -61,6 +69,11 @@ export class StudioPanel {
     ready?.(isReady);
   }
 
+  async #run(request: StudioWorkflowRequest) {
+    if (!this.#runWorkflow || !(await this.#runWorkflow(request)) || this.#isDisposed) return;
+    await this.#load(this.#url);
+  }
+
   async #offerBrowser(url: string) {
     const open = vscode.l10n.t("Open in Browser");
     const picked = await vscode.window.showWarningMessage(
@@ -72,7 +85,13 @@ export class StudioPanel {
 
   async #receive(message: unknown) {
     if (StudioView.isReady(message)) {
+      this.#url = StudioView.followed(message, this.#url, this.#frameOrigin) ?? this.#url;
       this.#settle(true);
+      return;
+    }
+    const request = StudioView.workflowOf(message);
+    if (request) {
+      await this.#run(request);
       return;
     }
     const source = StudioView.sourceOf(message, this.#root);

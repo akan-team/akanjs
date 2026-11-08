@@ -40,4 +40,63 @@ describe("studioRuntime", () => {
       origin: "vscode-webview://panel",
     });
   });
+
+  test("shows the pinned node's workflows, and asks the editor panel to run one", () => {
+    const posted: { message: unknown; origin: string }[] = [];
+    const parent = { postMessage: (message: unknown, origin: string) => posted.push({ message, origin }) };
+    Object.defineProperty(window, "parent", { value: parent, configurable: true });
+    document.body.innerHTML = `${bar}${diagram}`;
+    studioRuntime();
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "akan-studio:host" },
+        origin: "vscode-webview://panel",
+        source: parent as unknown as Window,
+      }),
+    );
+    expect(buttons()).toEqual(["New module"]);
+    document.querySelector("rect")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(buttons()).toEqual(["Add field"]);
+    document.querySelector<HTMLButtonElement>("[data-studio-actions] button")?.click();
+    expect(posted.at(-1)).toEqual({
+      message: { type: "akan-studio:workflow", workflow: "add-field", inputs: { app: "demo", module: "memo" } },
+      origin: "vscode-webview://panel",
+    });
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(buttons()).toEqual(["New module"]);
+  });
+
+  test("copies the workflow command in a browser, where no editor runs it", async () => {
+    Object.defineProperty(window, "parent", { value: window, configurable: true });
+    const copied: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: async (text: string) => void copied.push(text) },
+      configurable: true,
+    });
+    document.body.innerHTML = `${bar}${diagram}`;
+    studioRuntime();
+    document.querySelector<HTMLButtonElement>("[data-studio-actions] button")?.click();
+    await Promise.resolve();
+    expect(copied).toEqual([newModule.command]);
+    expect(document.querySelector("[data-studio-actions] output")?.textContent).toBe(`Copied: ${newModule.command}`);
+  });
 });
+
+const newModule = {
+  workflow: "create-module",
+  label: "New module",
+  inputs: { app: "demo" },
+  command: "akan workflow plan create-module --app demo --module <module>",
+};
+const addField = {
+  workflow: "add-field",
+  label: "Add field",
+  inputs: { app: "demo", module: "memo" },
+  command: "akan workflow plan add-field --app demo --module memo --field <field> --type <type>",
+};
+const attribute = (value: unknown) => JSON.stringify(value).replace(/"/g, "&quot;");
+const bar = `<div data-studio-actions="" data-label="demo" data-actions="${attribute([newModule])}"></div>`;
+const diagram = `<svg data-studio=""><g data-node="model:apps/demo:memo" data-label="Memo" data-actions="${attribute([addField])}">
+  <rect></rect></g></svg>`;
+const buttons = () =>
+  [...document.querySelectorAll("[data-studio-actions] button")].map((button) => button.textContent);

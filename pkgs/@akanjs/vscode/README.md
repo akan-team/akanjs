@@ -22,6 +22,9 @@ nothing. This extension adds the missing answers next to TypeScript's own (the b
   from component to model. Clicking a name opens its source in the editor.
 - **Akan: Open the Change Map** opens Studio on what changed since HEAD forked from the default branch, uncommitted
   work included, with each model, signal, method and component marked added, removed or changed.
+- **Studio's workflow buttons:** clicking a model, slice key or query in the Studio panel lists the workflows
+  it can start (Add field, Add slice, Rename slice key, and so on). A button runs the workflow with its app and module
+  already filled in, names them in the confirm, then reloads Studio once it applies.
   These commands run the workspace's akan CLI, so they need a trusted workspace.
 
 The index is built from syntax alone, so it never waits for the type checker. In a trusted workspace the extension

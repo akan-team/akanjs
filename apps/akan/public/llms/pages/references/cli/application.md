@@ -292,7 +292,7 @@ Open pages of the app's dev server in a headless browser and print one verdict l
 
 `akan studio <app> [--module <module>] [--view <erd|signals|changes>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]`
 
-Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, or the Change Map of what changed since a git revision, and links each name to its source. It exits 1 when no dev server answers.
+Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, or the Change Map of what changed since a git revision, and links each name to its source. A clicked node lists the workflows it can start: in a browser a button copies the `akan workflow plan` command, and in the editor panel it runs the workflow. It exits 1 when no dev server answers.
 
 - --module (String): The module to show. Without it, the ERD and the Change Map show every module.
 

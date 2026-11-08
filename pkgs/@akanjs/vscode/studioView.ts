@@ -7,6 +7,25 @@ export interface StudioSource {
   column: number;
 }
 
+export interface StudioWorkflowRequest {
+  workflow: string;
+  inputs: Record<string, string>;
+}
+
+//? Studio is a page the dev server serves, so a request from it names a target and nothing more: the workflow is
+//? allowlisted, every input it may preset is a plain identifier, and the plan still waits for a modal confirm.
+const studioWorkflows = new Set([
+  "create-module",
+  "add-field",
+  "add-enum-field",
+  "add-mutation",
+  "add-slice",
+  "create-ui",
+  "rename-key",
+]);
+const studioTargetInputs = new Set(["app", "module", "slice", "query"]);
+const identifier = /^[A-Za-z_$][\w$-]{0,63}$/;
+
 const attributeOf = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -48,6 +67,32 @@ export class StudioView {
 
   static isReady(message: unknown) {
     return isRecord(message) && message.type === "akan-studio:ready";
+  }
+
+  static workflowOf(message: unknown): StudioWorkflowRequest | null {
+    if (!isRecord(message) || message.type !== "akan-studio:workflow") return null;
+    const { workflow, inputs } = message;
+    if (typeof workflow !== "string" || !studioWorkflows.has(workflow) || !isRecord(inputs)) return null;
+    const entries = Object.entries(inputs);
+    const isTarget = ([name, value]: [string, unknown]) =>
+      studioTargetInputs.has(name) && typeof value === "string" && identifier.test(value);
+    if (typeof inputs.app !== "string" || !entries.every(isTarget)) return null;
+    return { workflow, inputs: Object.fromEntries(entries) as Record<string, string> };
+  }
+
+  static inputsToAsk<Spec extends { required?: boolean }>(specs: Record<string, Spec>, given: Record<string, string>) {
+    const isGiven = Object.keys(given).length > 0;
+    return Object.entries(specs).filter(
+      ([name, spec]) => !(name in given) && !(isGiven && !spec.required && studioTargetInputs.has(name)),
+    );
+  }
+
+  static followed(message: unknown, loaded: string, frameOrigin: string): string | null {
+    if (!isRecord(message) || typeof message.href !== "string" || !URL.canParse(message.href)) return null;
+    const at = new URL(message.href);
+    const base = new URL(loaded);
+    if (at.origin !== frameOrigin || at.pathname !== base.pathname) return null;
+    return new URL(`${at.pathname}${at.search}`, base.origin).toString();
   }
 
   static sourceOf(message: unknown, root: string): StudioSource | null {
