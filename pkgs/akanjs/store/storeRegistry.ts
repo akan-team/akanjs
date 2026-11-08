@@ -55,11 +55,24 @@ export class StoreRegistry {
       actions[key] = descriptor.value;
       owners[key] = { refName: store.refName };
     });
+    for (const key of StoreRegistry.#silentKeysOf(store)) {
+      const owner = owners[key];
+      if (owner && key in actions) owners[key] = { ...owner, silent: true };
+      else console.warn(`[${store.refName}Store] static silent names ${key}, which is not an action of the store.`);
+    }
     store[ACTION_META] = actions;
     store[ACTION_OWNER_META] = owners;
     StoreRegistry.#state.store.set(store.refName, store);
     StoreRegistry.#warnUnknownPostSetHooks(store);
     return store;
+  }
+
+  static #silentKeysOf(store: StoreCls): string[] {
+    const silent = (store as { silent?: unknown }).silent;
+    if (silent === undefined) return [];
+    if (!Array.isArray(silent) || silent.some((key) => typeof key !== "string"))
+      throw new Error(`[${store.refName}Store] static silent takes a list of action names`);
+    return silent;
   }
 
   // A `_postSet<Field>` hook cannot be typed (TS2425), so a misspelled one would silently never run.

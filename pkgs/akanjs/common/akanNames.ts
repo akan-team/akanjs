@@ -95,6 +95,7 @@ export const modelNames = (refName: string) => {
     loadModel: `load${Model}`,
     loadModelMany: `load${Model}Many`,
     createModel: `create${Model}`,
+    createModelMany: `create${Model}Many`,
     updateModel: `update${Model}`,
     removeModel: `remove${Model}`,
     modelModel: `${refName}Model`,

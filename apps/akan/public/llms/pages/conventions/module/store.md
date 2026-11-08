@@ -372,7 +372,7 @@ Check a store against these rules before you commit it:
 
 **Use generated actions after a mutation.** `this.setTicket(await fetch.x())` updates the open model and every loaded list that holds the row.
 
-**No `try/catch` in an action.** A thrown `Err` is shown as a toast for you. For a client-side check, call `msg.error("<key>")` and return early instead of throwing.
+**No `try/catch` in an action.** A thrown `Err` is shown as a toast for you. For a client-side check, call `msg.error("<key>")` and return early instead of throwing. When no screen waits on an action (a token refresh), name it in the store's `static silent = ["refreshToken"] satisfies (keyof UserStore)[]`: it then shows no toast, and the caller awaits it and handles the error.
 
 **Use `pick` for required state, `get` when `null` is a valid branch.** See Reading And Writing State.
 

@@ -132,6 +132,9 @@ export class ServiceModel<
       async [names.createModel](this: DatabaseService, data: DataInputOf) {
         return this.__create(data);
       },
+      async [names.createModelMany](this: DatabaseService, data: DataInputOf[]) {
+        return this.__createMany(data);
+      },
       async __update(this: DatabaseService, id: string, data: DataInputOf) {
         const input = this.__libsPreUpdate ? await this.__libsPreUpdate(id, data) : await this._preUpdate?.(id, data);
         const doc = await this.__databaseModel.__update(id, input);
