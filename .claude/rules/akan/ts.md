@@ -48,7 +48,8 @@ paths:
 
 - **`#private` is banned in exactly `*.constant.ts`, `*.document.ts`, `*.service.ts`, `*.store.ts`**
   (`no-js-private-class-method`, by path, so it stays the house style everywhere else, `srvkit/` and `adapt()` classes
-  included).
+  included). A `#method` there becomes `private method()`, never `_method` (a service runs `_preCreate`-style names as
+  hooks); `akan verify` renames it and its calls unless the class already has that name.
 
 ## TypeScript And Imports
 

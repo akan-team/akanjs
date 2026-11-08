@@ -92,6 +92,8 @@ paths:
   option, with keys its dictionary defines and never `base.error.*`. That is the status's OpenAPI response and a line
   of the MCP tool's description; outside production a thrown key it leaves out warns once. A caller narrows with
   `Err.is(error, "ticket.error.locked")`.
+- An `srvkit/` adapter belongs to no module: its keys go in the app's or lib's own service dictionary,
+  `lib/_<name>/<name>.dictionary.ts`, thrown as `new Err("<name>.error.<key>")` with `Err` from `"../lib/dict"`.
 - `try/catch` turns an exception into a decision: guards → `logger.warn` → `false`; adapters → `logger.error` →
   `null`; UI `try/finally` resets a spinner. A bodyless `catch {}` needs a one-line reason.
 - Store actions do not `try/catch` (the framework toasts the `Err`); one no screen waits on (a token refresh) is

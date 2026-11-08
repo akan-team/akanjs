@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { BiomeReport } from "@akanjs/devkit/linter";
 import type { MaintainabilityReport } from "@akanjs/devkit/maintainabilityReport";
 import type { QualityWarning } from "@akanjs/devkit/qualityScanner";
@@ -57,15 +58,33 @@ export class VerifyDiagnostics {
   static fromBiome(report: BiomeReport): VerifyDiagnostic[] {
     return (report.diagnostics ?? [])
       .filter((diagnostic) => diagnostic.severity === "error" || diagnostic.severity === "warning")
-      .map((diagnostic) => ({
-        step: "lint",
-        file: diagnostic.location?.path?.replaceAll("\\", "/") ?? null,
-        line: diagnostic.location?.start?.line ?? 0,
-        col: diagnostic.location?.start?.column ?? 0,
-        code: diagnostic.category ?? "biome",
-        severity: diagnostic.severity === "error" ? "error" : "warning",
-        message: diagnostic.message,
-      }));
+      .map((diagnostic) => {
+        const file = diagnostic.location?.path?.replaceAll("\\", "/") ?? null;
+        return {
+          step: "lint",
+          file,
+          line: diagnostic.location?.start?.line ?? 0,
+          col: diagnostic.location?.start?.column ?? 0,
+          code: diagnostic.category ?? "biome",
+          severity: diagnostic.severity === "error" ? "error" : "warning",
+          ...(VerifyDiagnostics.#adapterErrorOf(file, diagnostic.message) ?? { message: diagnostic.message }),
+        };
+      });
+  }
+
+  static readonly #rawError = /^Do not (throw|construct) a raw `Error`/;
+  static readonly #srvkitFile = /^((?:apps|libs)\/([\w-]+))\/srvkit\//;
+
+  //? An adapter belongs to no module, so its keys go in the app's or lib's own service dictionary (`lib/_<name>/`).
+  static #adapterErrorOf(file: string | null, message: string): { message: string; fix: string } | null {
+    const [, verb] = message.match(VerifyDiagnostics.#rawError) ?? [];
+    const [, root, name] = file?.match(VerifyDiagnostics.#srvkitFile) ?? [];
+    if (!file || !verb || !root || !name) return null;
+    const dict = path.posix.relative(path.posix.dirname(file), `${root}/lib/dict`);
+    return {
+      message: `Do not ${verb} a raw \`Error\`: an srvkit adapter uses \`Err\` with a key of the ${name} dictionary`,
+      fix: `import { Err } from "${dict}"; add <key>: [en, ko] to .error({}) in ${root}/lib/_${name}/${name}.dictionary.ts; ${verb === "throw" ? "throw " : ""}new Err("${name}.error.<key>")`,
+    };
   }
 
   static fromMaintainability(entries: MaintainabilityEntry[]): VerifyDiagnostic[] {

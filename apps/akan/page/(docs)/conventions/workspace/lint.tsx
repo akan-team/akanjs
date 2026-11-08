@@ -299,19 +299,19 @@ export const Card = ({ init }: CardProps) => {
           ko: "프레임워크는 `constant`, `document`, `service`, `store` 클래스의 메서드를 다른 클래스로 복사해 합칩니다. 복사된 메서드가 `#` 멤버를 부르면 에러가 납니다.",
         }),
         fix: l.trans({
-          en: "Use a TypeScript `private` method with an underscore prefix. Everywhere else, `srvkit/` included, `#private` stays the house style.",
-          ko: "밑줄로 시작하는 TypeScript `private` 메서드를 씁니다. `srvkit/`를 포함한 나머지 파일에서는 `#private`이 그대로 기본 스타일입니다.",
+          en: "Use a TypeScript `private` method without an underscore, since a service runs `_preCreate`-style names as hooks. `akan verify` renames each `#method` and its calls. Everywhere else, `srvkit/` included, `#private` stays the house style.",
+          ko: "밑줄 없는 TypeScript `private` 메서드를 씁니다. 서비스는 `_preCreate` 같은 이름을 hook으로 실행하기 때문입니다. `akan verify`가 `#메서드`와 그 호출을 바꿔 줍니다. `srvkit/`를 포함한 나머지 파일에서는 `#private`이 그대로 기본 스타일입니다.",
         }),
         snippets: [
           {
             title: "apps/myapp/lib/ticket/ticket.service.ts",
             code: `async #syncStock() { // [!code --]
-private async _syncStock() { // [!code ++]
+private async syncStock() { // [!code ++]
   return await this.ticketModel.syncStock();
 }
 async refreshStock() {
   return await this.#syncStock(); // [!code --]
-  return await this._syncStock(); // [!code ++]
+  return await this.syncStock(); // [!code ++]
 }`,
           },
         ],
@@ -336,8 +336,8 @@ async refreshStock() {
       {
         name: "no-daisyui-legacy-class",
         desc: l.trans({
-          en: "Removed daisyUI classes such as `btn-primary`, `card-body` and `bg-base-100` render unstyled.",
-          ko: "`btn-primary`, `card-body`, `bg-base-100` 같은 daisyUI class는 제거되어 스타일 없이 그려집니다.",
+          en: "daisyUI colour slots such as `bg-base-100` render unstyled. A component class (`card-body`) only warns, and `akan verify` drops it once your CSS defines it.",
+          ko: "`bg-base-100` 같은 daisyUI 색 slot은 스타일 없이 그려집니다. `card-body` 같은 컴포넌트 class는 경고만 하고, 앱 CSS가 정의하면 `akan verify`가 지웁니다.",
         }),
       },
       {
@@ -519,8 +519,8 @@ async refreshStock() {
         rule: "no-js-private-class-method",
         scope: "`*.constant.ts` `*.document.ts` `*.service.ts` `*.store.ts`",
         desc: l.trans({
-          en: "A `#private` method. Use a TypeScript `private _method()` instead.",
-          ko: "`#private` 메서드입니다. 대신 TypeScript `private _method()`를 씁니다.",
+          en: "A `#private` method. Use a TypeScript `private method()`; `akan verify` renames it.",
+          ko: "`#private` 메서드입니다. 대신 TypeScript `private method()`를 씁니다. `akan verify`가 바꿔 줍니다.",
         }),
       },
       {

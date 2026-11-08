@@ -1,42 +1,23 @@
 engine biome(1.0)
 language js(typescript, jsx)
 
+// No rewrite: one node's rewrite cannot rename every reference, skip a taken name, or leave a `#field` alone, so
+// `akan verify` renames a class's `#method`s and their calls in one pass instead (cli verifyPrivateMethods.ts).
+// A call is matched by its callee, so `this.#cache.get()` on a `#private` field is not a private method call.
 or {
   JsMethodClassMember() as $method where {
-    $method <: contains JsPrivateClassMemberName() as $name,
-    $method <: r"async\s+#",
-    $method <: contains `async` as $asyncToken,
-    $name <: r"#(.*)"($bareName),
-    $privateName = join(list = ["_", $bareName], separator = ""),
+    $method <: contains JsPrivateClassMemberName(),
     register_diagnostic(
       span = $method,
-      message = "JavaScript private class methods (#) should not be used in mixin-enabled modules. Use a TypeScript private method with an underscore prefix instead.",
+      message = "A `#private` method breaks once this class is mixed into another. Use a TypeScript `private` method, `private name()` called as `this.name()`; `akan verify` renames it unless the class already has that name.",
       severity = "error"
-    ),
-    $asyncToken => `private async`,
-    $name => $privateName
+    )
   },
-  JsMethodClassMember() as $method where {
-    $method <: contains JsPrivateClassMemberName() as $name,
-    not $method <: r"async\s+#",
-    $name <: r"#(.*)"($bareName),
-    $privateName = join(list = ["private _", $bareName], separator = ""),
-    register_diagnostic(
-      span = $method,
-      message = "JavaScript private class methods (#) should not be used in mixin-enabled modules. Use a TypeScript private method with an underscore prefix instead.",
-      severity = "error"
-    ),
-    $name => $privateName
-  },
-  JsCallExpression() as $call where {
-    $call <: contains JsPrivateName() as $name,
-    $name <: r"#(.*)"($bareName),
-    $privateName = join(list = ["_", $bareName], separator = ""),
+  JsCallExpression(callee = JsStaticMemberExpression(member = JsPrivateName())) as $call where {
     register_diagnostic(
       span = $call,
-      message = "Calls to JavaScript private class methods (#) should use the underscore-prefixed TypeScript private method.",
+      message = "A call to a `#private` method: call the TypeScript `private` method that replaces it, `this.name()`.",
       severity = "error"
-    ),
-    $name => $privateName
+    )
   }
 }

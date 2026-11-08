@@ -19,7 +19,9 @@ paths:
   `no-daisyui-legacy-class`, `no-inline-color`): no raw palette (`bg-blue-500`), arbitrary or interpolated color classes
   (`bg-[#3b82f6]`), daisyUI classes or slots (`btn-primary`, `bg-base-100`), or color literals in `style={{}}` — they
   render no CSS. Use semantic tokens (`bg-primary`, `text-foreground/70`); a legitimate fixed color takes
-  `// biome-ignore lint/plugin: <reason>`. Slot replacements, SVG / `el.style` warnings, legal values: `cssRule`.
+  `// biome-ignore lint/plugin: <reason>`. A daisyUI component name (`stat-value`) is only a warning, which
+  `akan verify` drops once the app's or a lib's CSS defines that class. Slot replacements, SVG / `el.style` warnings,
+  legal values: `cssRule`.
 
 - Static class strings stay plain. `cn` (from `akanjs/client`) only for a conditional or to merge an incoming
   `className`, caller last: `cn("base", cond && "extra", className)` — the only combiner: no `clsx`, raw `twMerge`,

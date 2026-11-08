@@ -16,10 +16,12 @@ Use TailwindCSS with Akan's semantic design-token layer and the `akanjs/ui` prim
 ## Color Vocabulary — What Lint Refuses
 - Vocabulary closure strips the raw Tailwind palette, so these render as no CSS and fail lint: raw palette classes
   (`bg-blue-500`, `text-gray-400`), arbitrary color values (`bg-[#3b82f6]`), an arbitrary class built by
-  interpolation, daisyUI legacy classes (`btn-primary`, `card-body`) and its dropped color slots (`bg-base-100`,
+  interpolation, daisyUI's dropped color slots (`bg-base-100`,
   `text-base-content`, `text-primary-content`, `bg-error` — use `background`/`muted`/`border`, `foreground`,
   `<color>-foreground`, `destructive`), and color literals in `style={{...}}` (`no-raw-palette-class`,
   `no-arbitrary-color`, `no-daisyui-legacy-class`, `no-inline-color`, `no-interpolated-arbitrary-class`).
+- daisyUI component classes (`btn-primary`, `card-body`) render no CSS unless the app defines them, so lint only warns;
+  `akan verify` drops the warning once the app's or a lib's stylesheet defines the class.
 - A legitimate fixed color (OS-chrome mockups, data-viz) takes a `// biome-ignore lint/plugin: <reason>`.
 - Color literals in SVG color attributes (`fill`, `stroke`, `stopColor`, `floodColor`, `lightingColor`, `color`) and
   in `el.style.<prop> = …` / `el.style.setProperty(…)` writes are flagged as warnings for now; `currentColor`,

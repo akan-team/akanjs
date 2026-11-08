@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { BiomeSeverity } from "@akanjs/devkit/linter";
 import { VerifyDiagnostics } from "./verifyDiagnostics";
 
 describe("VerifyDiagnostics", () => {
@@ -79,6 +80,34 @@ describe("VerifyDiagnostics", () => {
         severity: "error",
         message: "Don't use console.",
       },
+    ]);
+  });
+
+  test("points a raw Error in an srvkit adapter at its Err import and the app's own dictionary", () => {
+    const rawError = (severity: BiomeSeverity, verb: "throw" | "construct", file: string) => ({
+      severity,
+      message: `Do not ${verb} a raw \`Error\`: it carries no translatable key or status.`,
+      category: "plugin",
+      location: { path: file, start: { line: 9, column: 11 } },
+    });
+    const diagnostics = VerifyDiagnostics.fromBiome({
+      diagnostics: [
+        rawError("error", "throw", "apps/pokedex/srvkit/pokeApi.ts"),
+        rawError("warning", "construct", "libs/shared/srvkit/storage/s3Api.ts"),
+        rawError("error", "throw", "apps/pokedex/lib/pokemon/pokemon.service.ts"),
+      ],
+    });
+
+    expect(diagnostics.map(({ message, fix }) => ({ message, fix }))).toEqual([
+      {
+        message: "Do not throw a raw `Error`: an srvkit adapter uses `Err` with a key of the pokedex dictionary",
+        fix: 'import { Err } from "../lib/dict"; add <key>: [en, ko] to .error({}) in apps/pokedex/lib/_pokedex/pokedex.dictionary.ts; throw new Err("pokedex.error.<key>")',
+      },
+      {
+        message: "Do not construct a raw `Error`: an srvkit adapter uses `Err` with a key of the shared dictionary",
+        fix: 'import { Err } from "../../lib/dict"; add <key>: [en, ko] to .error({}) in libs/shared/lib/_shared/shared.dictionary.ts; new Err("shared.error.<key>")',
+      },
+      { message: "Do not throw a raw `Error`: it carries no translatable key or status.", fix: undefined },
     ]);
   });
 
