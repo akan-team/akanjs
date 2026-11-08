@@ -88,7 +88,7 @@ Method
 
 - redirect(href, { method, status, external }): On the server, answers with a redirect (307 by default). In the browser, navigates. A URL on another origin goes to the index path instead unless `external: true`.
 
-- notFound(): Shows the nearest layout's .notFound() view with a 404. Raised once the page has begun streaming, the view still shows but a browser keeps status 200; crawlers and ssr: "block" routes get the 404.
+- notFound(): Shows the nearest layout's .notFound() view with a 404. Raised in a body under a .loading() after the page has begun streaming, the view still shows but a browser keeps status 200; crawlers and ssr: "block" routes get the 404.
 
 - setLang(lang): Switches the locale and stays on the same route. Browser only.
 
