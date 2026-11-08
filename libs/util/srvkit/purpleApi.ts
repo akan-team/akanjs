@@ -2,6 +2,7 @@ import { dayjs } from "akanjs/base";
 import { adapt } from "akanjs/service";
 import { Err } from "../lib/dict";
 import type { ModulesOptions } from "../lib/option";
+import { PreviewMode } from "./previewMode";
 import { SignalTestHarness } from "./signalTestHarness";
 
 export interface PurpleApiOptions {
@@ -40,6 +41,10 @@ export class PurpleApi extends adapt("purpleApi", ({ env }) => ({
     return this.#message;
   }
   async send(to: string, text: string, at = new Date()) {
+    if (PreviewMode.isOn()) {
+      this.logger.info(`send skipped in a preview: ***${to.slice(-4)} (${text.length} chars)`);
+      return true;
+    }
     const { phone } = this.#requireOptions();
     if (SignalTestHarness.isRunning()) {
       this.logger.debug(`send suppressed in the signal-test harness: ***${to.slice(-4)}`);

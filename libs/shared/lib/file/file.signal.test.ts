@@ -7,7 +7,8 @@ import { McpDocument, type SerializedSignal } from "akanjs/signal";
 import { configureSignalTest, getOrSetupSignalTestFetch } from "akanjs/test";
 
 import type * as cnst from "../cnst";
-import type { AdminAgent } from "../user/user.signal.spec";
+import type { AdminAgent, UserAgent } from "../user/user.signal.spec";
+import * as userSpec from "../user/user.signal.spec";
 import type { fetch as sharedFetch } from "../useServer";
 
 type SharedFetch = typeof sharedFetch;
@@ -60,6 +61,37 @@ describe("File Signal", () => {
     // });
   });
 
+  describe("File reads by id", () => {
+    let file: cnst.LightFile;
+    let userAgent: UserAgent;
+    beforeAll(async () => {
+      [file] = await fileSpec.getActiveFiles(1, adminAgent.fetch);
+      userAgent = await userSpec.getUserAgentWithPassword();
+    });
+
+    it("refuses an anonymous read by id, single or batched", async () => {
+      const anonFetch = await getOrSetupSignalTestFetch<SharedFetch>();
+      await expect(anonFetch.file(file.id)).rejects.toThrow();
+      await expect(anonFetch.lightFile(file.id)).rejects.toThrow();
+      await expect(anonFetch.fileListInIds([file.id])).rejects.toThrow();
+    });
+
+    it("leaves the batch read to the console", async () => {
+      await expect(userAgent.fetch.fileListInIds([file.id])).rejects.toThrow();
+      expect((await adminAgent.fetch.fileListInIds([file.id])).map(({ id }) => id)).toEqual([file.id]);
+    });
+
+    it("still serves a signed-in account the file it polls after uploading", async () => {
+      const [uploaded] = await fileSpec.getActiveFiles(1, userAgent.fetch);
+      expect((await userAgent.fetch.lightFile(uploaded.id)).status).toBe("active");
+    });
+
+    it("stores an upload under a key its id alone does not name", () => {
+      expect(file.url).not.toContain(`/${file.id}.`);
+      expect(file.url).toMatch(new RegExp(`/${file.id}-[A-Za-z0-9_-]{22}\\.[a-z0-9]+$`));
+    });
+  });
+
   describe("File Upload Ticket", () => {
     let fileTicket: cnst.FileUploadTicket;
 
@@ -89,7 +121,7 @@ describe("File Signal", () => {
       expect(response.status).toBe(200);
       const uploaded = (await response.json()) as { id: string }[];
       expect(uploaded).toHaveLength(2);
-      const files = await Promise.all(uploaded.map(({ id }) => fileSpec.waitUploadedFile(id)));
+      const files = await Promise.all(uploaded.map(({ id }) => fileSpec.waitUploadedFile(id, adminAgent.fetch)));
       for (const file of files) {
         expect(file.status).toBe("active");
         expect(file.url).toContain("/banner/default/");

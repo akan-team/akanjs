@@ -1,34 +1,8 @@
 {
-  "akan.size.file": {
-    "lib/_oauth/oauth.service.ts": 513,
-    "lib/user/User.Template.tsx": 520,
-    "lib/user/User.Util.tsx": 1021,
-    "lib/user/user.document.ts": 606,
-    "lib/user/user.service.ts": 653,
-    "lib/user/user.store.ts": 418,
-    "ui/Field.tsx": 506
-  },
-  "akan.size.component": {
-    "ui/Editor/Lexical/Editor.tsx#Editor": 282
-  },
-  "akan.store.multi-write": {
-    "lib/user/user.store.ts#activateUser": 2,
-    "lib/user/user.store.ts#generatePrepareUserWithAccountId": 3,
-    "lib/user/user.store.ts#signinWithPhoneCode": 2,
-    "lib/user/user.store.ts#startPhoneSign": 2
-  },
-  "akan.store.root-write-chain": {
-    "lib/user/user.store.ts#removeSelf": 2
-  },
-  "akan.component.write-chain": {
-    "ui/UserLeave.tsx#Voc": 2
-  },
-  "akan.write.placement": {
-    "ui/Auth/tokenRefresh.util.ts": 2,
-    "ui/UserLeave.tsx": 4
-  },
   "akan.service.call-in-loop": {
-    "lib/file/file.service.ts#addFiles": 1,
-    "lib/notification/notification.service.ts#push": 1
+    "lib/file/file.service.ts#addFiles": 1
+  },
+  "reasons": {
+    "lib/file/file.service.ts#addFiles": "The rows are one createFileMany insert; only the upload streams start per file after commit, since each file is its own storage object and reports its own progress and completion."
   }
 }

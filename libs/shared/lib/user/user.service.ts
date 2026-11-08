@@ -1,23 +1,13 @@
 import type { Me, Self } from "@libs/shared/common";
-import { hostOnlyCookieKey, safeRedirectPath, withRedirectQuery } from "@libs/shared/common";
 import {
   type AuthTokenMeta,
-  NativeSso,
-  type NativeSsoIdentity,
-  type NativeSsoResult,
-  type NativeSsoStart,
   RevokedSessions,
   type RotateRefreshSessionOptions,
   SignupToken,
-  type SsoCookie,
-  type SsoIdentity,
-  ssoSessionCookies,
 } from "@libs/shared/srvkit";
-import { createOpaqueToken, EmailApi, hashToken, PurpleApi } from "@libs/util/srvkit";
 import { type Dayjs, dayjs } from "akanjs/base";
 import { isEmail } from "akanjs/common";
 import type { Account } from "akanjs/fetch";
-import { OAuthPkce } from "akanjs/server";
 import { serve } from "akanjs/service";
 import * as cnst from "../cnst";
 import * as db from "../db";
@@ -32,29 +22,17 @@ const summaryCounterOf = {
   restricted: "restrictedUser",
 } as const;
 
-export class UserService extends serve(db.user, ({ use, service, env, plug, memory }) => ({
+export class UserService extends serve(db.user, ({ use, service }) => ({
   adminService: service<srv.AdminService>(),
   fileService: service<srv.FileService>(),
   securityService: service<srv.util.SecurityService>(),
   settingService: service<srv.SettingService>(),
   summaryService: service<srv.SummaryService>(),
-  host: use<string>(),
-  hosts: use<string[]>(),
   jwtSecret: use<string>(),
-  emailApi: plug(EmailApi),
-  purpleApi: plug(PurpleApi),
   signupPolicy: use<option.SignupPolicy>(),
-  nativeSsoPolicy: use<option.NativeSsoPolicy>(),
-  ssoStarts: memory(Map, { of: cnst.SsoHandoff }),
-  ssoCodes: memory(Map, { of: cnst.SsoHandoff }),
-  masterPhones: env(() => process.env.MASTER_PHONES?.split(",") ?? []),
-  masterPhoneCode: env(() => process.env.MASTER_PHONECODE),
-  masterEmailCode: env(() => process.env.MASTER_EMAILCODE),
 })) {
-  override async _preRemove(id: string) {
-    await this.userModel.recordLeave(await this.userModel.getLeaveKeys(id));
-  }
   override async _postRemove(user: db.User) {
+    await this.userModel.signChallenge.recordLeave(await this.userModel.getLeaveKeys(user.id));
     await this.userModel.revokeRefreshSessions(user.id);
     await this.summaryService.decValue(summaryCounterOf[user.status]);
     return user;
@@ -78,7 +56,7 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
   // The admin identity a browser also holds rides along only while its own session is live, with its current roles.
   async _carryAdminIdentity(account?: Account): Promise<{ me?: Me; meSid?: string }> {
     const { me, meSid } = (account ?? {}) as { me?: Me; meSid?: string };
-    if (!me || !meSid || (await RevokedSessions.has(meSid))) return {};
+    if (!me || !meSid || (await RevokedSessions.has(meSid, { failClosed: true }))) return {};
     const current = await this.adminService.findMe(me.id);
     return current ? { me: current, meSid } : {};
   }
@@ -144,44 +122,52 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
   ): Promise<Throw extends true ? string : string | null> {
     return await this.userModel.getAccountId(userId, throwError);
   }
+  // An email-proving verify vouches only for the accountId it was earned under; the rest were each proven by a code.
+  async listVerifiedEmails(userId: string) {
+    return (await this.collectVerifiedEmails(userId)).emails;
+  }
+  async listVerifiedEmailEntries(userId: string) {
+    const { accountId, emails } = await this.collectVerifiedEmails(userId);
+    const accountAddress = accountId?.trim().toLowerCase();
+    const entryMap = new Map<string, cnst.VerifiedEmail>();
+    for (const email of emails) {
+      const address = email.trim().toLowerCase();
+      if (!entryMap.has(address))
+        entryMap.set(address, new cnst.VerifiedEmail().set({ email, isAccountId: address === accountAddress }));
+    }
+    return [...entryMap.values()];
+  }
+  async removeVerifiedEmail(userId: string, email: string) {
+    const user = await this.getUser(userId);
+    const address = email.trim().toLowerCase();
+    const accountId = await this.userModel.getAccountId(user.id, false);
+    if (accountId?.trim().toLowerCase() === address) throw new Err("user.error.signinEmailNotRemovable");
+    await this.userModel.removeVerifiedEmail(user.id, address);
+  }
+  private async collectVerifiedEmails(userId: string) {
+    const user = await this.getUser(userId);
+    const accountId = await this.userModel.getAccountId(user.id, false);
+    const isProven = user.verifies.some((verify) => cnst.Verify.isEmailProof(verify));
+    const provenAccountId = accountId && isEmail(accountId) && isProven ? [accountId] : [];
+    const emails = [...new Set([...provenAccountId, ...(await this.userModel.getVerifiedEmails(user.id))])];
+    return { accountId, emails };
+  }
   async setNickname(userId: string, nickname: string) {
     const user = await this.getUser(userId);
     return await user.rename(nickname).save();
-  }
-  async setAppliedImages(userId: string, appliedImages: string[]) {
-    const user = await this.getUser(userId);
-    return await user.set({ appliedImages }).save();
   }
   async setImages(userId: string, images: string[]) {
     const user = await this.getUser(userId);
     return await user.set({ images }).save();
   }
-  async approveUserImages(userId: string) {
+  // An id already on the row passes, so a profile set before files recorded their uploader stays editable.
+  async canSetImages(userId: string, uploaderId: string, fileIds: string[]) {
     const user = await this.getUser(userId);
-    return await user.approveImages().save();
-  }
-  async applyUserProfile(userId: string) {
-    const user = await this.getUser(userId);
-    await user.applyUserProfile().save();
-    await this.setJourney(user.id, "waiting");
-    return user;
-  }
-  async approveUserProfile(userId: string) {
-    const user = await this.getUser(userId);
-    const approvedUser = await user.approveUserProfile().save();
-    return approvedUser;
-  }
-  async rejectUserProfile(userId: string) {
-    const user = await this.getUser(userId);
-    return await user.set({ profileStatus: "rejected" }).save();
-  }
-  async reserveUserProfile(userId: string) {
-    const user = await this.getUser(userId);
-    return await user.set({ profileStatus: "reserved" }).save();
-  }
-  async featureUserProfile(userId: string) {
-    const user = await this.getUser(userId);
-    return await user.set({ profileStatus: "featured" }).save();
+    const kept = new Set([user.image, ...user.images]);
+    return await this.fileService.isUploadedBy(
+      fileIds.filter((id) => !kept.has(id)),
+      uploaderId,
+    );
   }
   async firstJoinJourney(userId: string) {
     const user = await this.getUser(userId);
@@ -224,27 +210,6 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
     return await user.subBadgeCount().save();
   }
 
-  async setAccountIdInPrepareUser(userId: string, accountId: string) {
-    const setting = await this.settingService.getActiveSetting();
-    const user = await this.getPrepareUser(userId);
-    await this.userModel.setAccountIdInPrepareUser(user.id, accountId, setting.resignupDays);
-  }
-  async setPasswordInPrepareUser(userId: string, accountId: string, password: string) {
-    const user = await this.getPrepareUser(userId);
-    await this.userModel.setPasswordInPrepareUser(user.id, accountId, password);
-  }
-  async signinWithPassword(accountId: string, password: string, account: Account): Promise<db.util.AccessToken> {
-    if (await this.userModel.isSigninLocked(accountId)) throw new Err("user.error.tooManySigninAttempts");
-    const user =
-      (await this.userModel.consumeResetPassword(accountId, password)) ??
-      (await this.userModel.findUserByPassword(accountId, password));
-    if (!user) {
-      await this.userModel.failSignin(accountId);
-      throw new Err("user.error.invalidCredentials");
-    }
-    await this.userModel.clearSigninFailures(accountId);
-    return await this._issueUserToken(await this._assertSignable(user), account);
-  }
   // The device leaves with the session: a phone handed to the next person must not keep this account's pushes.
   async signoutUser(account: Account<{ self?: Self } & AuthTokenMeta>, pushDeviceId: string | null = null) {
     if (!account.self) return { jwt: "" };
@@ -252,269 +217,19 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
     if (pushDeviceId) await this.userModel.subNotiDevice(account.self.id, pushDeviceId);
     return { jwt: "" };
   }
-  async changePassword(userId: string, password: string, prevPassword: string) {
-    const accountId = await this.userModel.getAccountId(userId);
-    const user = await this.userModel.getUserByPassword(accountId, prevPassword);
-    await this.userModel.setPasswordInActiveUser(user.id, password);
-    await this.userModel.revokeRefreshSessions(user.id);
-    return user;
-  }
-  async requestPhoneCodeForSetPassword(userId: string, phone: string, hash: string) {
-    const user = await this.getActiveUser(userId);
-    await this.userModel.assertPhoneOfUser(user.id, phone);
-    await this._registerPhoneCode(user.id, phone, "setPasswordWithSignToken", hash);
-  }
-  async getSignTokenForSetPassword(userId: string, phone: string, phoneCode: string) {
-    const user = await this.userModel.getUser(userId);
-    await this.userModel.assertPhoneOfUser(user.id, phone);
-    const isValid = await this.userModel.isPhoneCodeValid(user.id, phone, "setPasswordWithSignToken", phoneCode);
-    if (!isValid) throw new Err("user.error.invalidPhoneCode");
-    return await this.userModel.setSignToken(user.id, "password");
-  }
-  async setPasswordWithSignToken(userId: string, password: string, signToken: string) {
-    if ((await this.userModel.consumeSignToken("password", signToken)) !== userId)
-      throw new Err("user.error.invalidSignToken");
-    await this.userModel.setPasswordInActiveUser(userId, password);
-    await this.userModel.revokeRefreshSessions(userId);
-  }
-  async resetPassword(accountId: string): Promise<boolean> {
-    const user = await this.userModel.pickByAccountId(accountId, ["active"]);
-    const isResetable = await this.userModel.isResetable(user.id);
-    if (!isResetable) throw new Err("user.error.resetRetryLater");
-    const password = crypto.randomUUID().replaceAll("-", "").slice(0, 16);
-    if (!(await this.emailApi.sendPasswordResetMail(accountId, password, this.host)))
-      throw new Err("user.error.resetMailFailed");
-    await this.userModel.setResetPassword(user.id, password);
-    await this.userModel.logResetTime(user.id);
-    return true;
-  }
-  async requestEmailCodeInPrepareUser(userId: string) {
-    const user = await this.getPrepareUser(userId);
-    const accountId = await this.userModel.getAccountId(user.id);
-    await this._sendEmailCode(user.id, accountId);
-  }
-  /*
-   * 인증을 통과하면 서명 토큰을 내준다. 다음 단계(비밀번호 설정)가 이 토큰을 되돌려 줘야 통과하므로,
-   * 화면을 건너뛰고 엔드포인트를 직접 부르는 것으로는 메일 인증을 우회할 수 없다.
-   */
-  async verifyEmailInPrepareUser(userId: string, emailCode: string) {
-    const user = await this.getPrepareUser(userId);
-    const accountId = await this.userModel.getAccountId(user.id);
-    const isValid = await this.userModel.isEmailCodeValid(user.id, accountId, emailCode);
-    if (!isValid) throw new Err("user.error.invalidEmailCode");
-    await this.userModel.verifyEmailInPrepareUser(user.id, accountId);
-    return await this.userModel.setSignToken(user.id, "password");
-  }
-  async setPasswordInPrepareUserWithSignToken(userId: string, password: string, signToken: string) {
-    const user = await this.getPrepareUser(userId);
-    if ((await this.userModel.consumeSignToken("password", signToken)) !== user.id)
-      throw new Err("user.error.invalidSignToken");
-    const accountId = await this.userModel.getAccountId(user.id);
-    await this.userModel.setPasswordInPrepareUser(user.id, accountId, password);
-  }
-  /*
-   * 사용자가 직접 새 비밀번호를 정하는 재설정. 위의 `resetPassword` 는 임시 비밀번호를 메일로 쏘는
-   * 다른 흐름이라 섞지 않는다 — 그쪽은 메일을 한 번 보는 것만으로 계정이 넘어간다.
-   *
-   * 계정이 없어도 같은 응답을 주고 아무것도 보내지 않는다. 오류로 갈라 주면 이 엔드포인트가 곧
-   * "이 메일이 가입돼 있는가" 를 묻는 조회창이 된다.
-   */
-  async requestEmailCodeForResetPassword(accountId: string) {
-    const userId = await this.userModel.findIdByAccountId(accountId, ["active"]);
-    if (!userId) return;
-    await this._sendEmailCode(userId, accountId);
-  }
-  async verifyEmailCodeForResetPassword(accountId: string, emailCode: string) {
-    const userId = await this.userModel.findIdByAccountId(accountId, ["active"]);
-    if (!userId) throw new Err("user.error.invalidEmailCode");
-    const isValid = await this.userModel.isEmailCodeValid(userId, accountId, emailCode);
-    if (!isValid) throw new Err("user.error.invalidEmailCode");
-    return await this.userModel.setSignToken(userId, "password");
-  }
-  async resetPasswordWithSignToken(accountId: string, password: string, signToken: string) {
-    const user = await this.userModel.pickByAccountId(accountId, ["active"]);
-    if ((await this.userModel.consumeSignToken("password", signToken)) !== user.id)
-      throw new Err("user.error.invalidSignToken");
-    await this.userModel.setPasswordInActiveUser(user.id, password);
-    // 비밀번호가 바뀌면 남아 있던 세션은 전부 끊는다 — 탈취당한 쪽이 계속 들어와 있으면 재설정이 무의미하다.
-    await this.userModel.revokeRefreshSessions(user.id);
-  }
-  private async _sendEmailCode(userId: string, accountId: string) {
-    if (!isEmail(accountId)) throw new Err("user.error.invalidAccountId");
-    const dryrun = this._isMasterEmail(accountId);
-    const emailCode = dryrun && this.masterEmailCode ? this.masterEmailCode : this._generateCode();
-    await this.userModel.registerEmailCode(userId, accountId, emailCode);
-    if (!dryrun) await this.emailApi.sendVerificationCodeMail(accountId, emailCode, this.host);
-  }
-  // Reserved test domains (RFC 2606) cannot receive mail, so the master code can never vouch for a real mailbox.
-  private _isMasterEmail(accountId: string) {
-    return !!this.masterEmailCode && /\.(test|example|invalid|localhost)$/i.test(accountId.split("@")[1] ?? "");
-  }
-  private _generateCode() {
-    for (;;) {
-      const value = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
-      //? 4_294_000_000 is the largest multiple of 1_000_000 below 2^32; redrawing above it keeps every code equally likely.
-      if (value < 4_294_000_000) return String(value % 1_000_000).padStart(6, "0");
-    }
-  }
-
-  async userExistsHasPhone(phone: string) {
-    return !!(await this.userModel.findIdByPhone(phone, ["active", "dormant", "restricted"]));
-  }
-  async _getUserIdByPhone(phone: string) {
-    const userId = await this.userModel.findIdByPhone(phone, ["active", "dormant", "restricted"]);
-    if (!userId) throw new Err("user.error.invalidPhoneNumber");
-    return userId;
-  }
-  async setPhoneInPrepareUser(userId: string, phone: string, hash: string) {
-    const setting = await this.settingService.getActiveSetting();
-    const user = await this.getPrepareUser(userId);
-    await this.userModel.setPhoneInPrepareUser(user.id, phone, setting.resignupDays);
-    await this._registerPhoneCode(user.id, phone, "setPhoneInPrepareUser", hash);
-  }
-  async verifyPhoneInPrepareUser(userId: string, phone: string, phoneCode: string) {
-    const user = await this.getPrepareUser(userId);
-    const isValid = await this.userModel.isPhoneCodeValid(userId, phone, "setPhoneInPrepareUser", phoneCode);
-    if (!isValid) throw new Err("user.error.invalidPhoneCode");
-    return await this.userModel.verifyPhoneInPrepareUser(user.id, phone);
-  }
-  // The code goes to the new number, so only its holder can move the account onto it.
-  async requestPhoneCodeForChangePhone(userId: string, phone: string, hash: string) {
-    const user = await this.getActiveUser(userId);
-    if (await this.userExistsHasPhone(phone)) throw new Err("user.error.phoneAlreadyExists");
-    await this._registerPhoneCode(user.id, phone, "setPhoneInActiveUser", hash);
-  }
-  async setPhoneInActiveUser(userId: string, phone: string, phoneCode: string) {
-    const user = await this.getActiveUser(userId);
-    const isValid = await this.userModel.isPhoneCodeValid(user.id, phone, "setPhoneInActiveUser", phoneCode);
-    if (!isValid) throw new Err("user.error.invalidPhoneCode");
-    return await this.userModel.setPhoneInActiveUser(user.id, phone);
-  }
-  // The code goes only to the number already on an account; the caller never learns whose account it is.
-  async requestPhoneCodeForSignin(phone: string, hash: string) {
-    await this._registerPhoneCode(await this._getUserIdByPhone(phone), phone, "signinWithSignToken", hash);
-  }
-  async getSignTokenForSignin(phone: string, phoneCode: string) {
-    const userId = await this._getUserIdByPhone(phone);
-    const isValid = await this.userModel.isPhoneCodeValid(userId, phone, "signinWithSignToken", phoneCode);
-    if (!isValid) throw new Err("user.error.invalidPhoneCode");
-    return await this.userModel.setSignToken(userId, "signin");
-  }
-
-  // A text costs money and lands on someone's phone, so a number takes a bounded number of them a day.
-  private async _registerPhoneCode(userId: string, phone: string, purpose: string, hash: string) {
-    const user = await this.userModel.getUser(userId);
-    if (!(await this.userModel.takeSendSlot("phoneCodeSends", phone, 10)))
-      throw new Err("user.error.tooManyPhoneCodes");
-    const dryrun = this.masterPhones.includes(phone);
-    const phoneCode = dryrun && this.masterPhoneCode ? this.masterPhoneCode : this._generateCode();
-    await this.userModel.registerPhoneCode(user.id, phone, purpose, phoneCode);
-    // `hash` is appended to the text as-is for Android's SMS Retriever, which only ever needs an 11-char app hash.
-    const appHash = /^[A-Za-z0-9+/]{1,11}$/.test(hash) ? hash : "";
-    if (!dryrun) await this.purpleApi.sendPhoneCode(phone, phoneCode, appHash);
-  }
-  async signinWithSignToken(signToken: string, account?: Account) {
-    const userId = await this.userModel.consumeSignToken("signin", signToken);
-    if (!userId) throw new Err("user.error.invalidSignToken");
-    return await this._issueUserToken(await this._assertSignable(await this.getUser(userId)), account);
-  }
-
-  async handleSsoCallback(
-    identity: SsoIdentity,
-    ssoType: cnst.SsoType["value"],
-    ssoCookie: SsoCookie,
-    account?: Account,
-  ): Promise<{ cookie?: { [key: string]: string }; redirect: string }> {
-    if (ssoCookie.ssoFor === "admin") {
-      const accessToken = await this.adminService.ssoSigninAdmin(identity.accountId, account);
-      return {
-        cookie: ssoSessionCookies(accessToken.jwt, accessToken.refreshToken ?? "", "admin"),
-        redirect: safeRedirectPath(ssoCookie.adminRedirect, "/admin"),
-      };
-    }
-    const signin = await this._resolveSsoUser(identity, ssoType, { account, signupToken: ssoCookie.signupToken });
-    if (signin.prepareUserId)
-      return {
-        cookie: { [hostOnlyCookieKey("signupToken")]: signin.signupToken ?? "" },
-        redirect: withRedirectQuery(safeRedirectPath(ssoCookie.signupRedirect, "/"), { userId: signin.prepareUserId }),
-      };
-    return {
-      cookie: ssoSessionCookies(signin.jwt ?? "", signin.refreshToken ?? "", "user"),
-      redirect: safeRedirectPath(ssoCookie.signinRedirect, "/"),
-    };
-  }
-  async startNativeSso(ssoType: cnst.SsoType["value"], start: NativeSsoStart): Promise<string> {
-    if (!this.nativeSsoPolicy.callbackSchemes.includes(start.callbackScheme))
-      throw new Err("user.error.ssoCallbackSchemeNotAllowed", { scheme: start.callbackScheme });
-    const state = createOpaqueToken();
-    const expiresAt = dayjs().add(NativeSso.startMinutes, "minute");
-    await this.ssoStarts.set(hashToken(state), new cnst.SsoHandoff().set({ ssoType, ...start, expiresAt }), {
-      expireAt: expiresAt,
+  // prepare → active. Policies agreed on the activating screen land with the activation, or not at all.
+  async activateUser(userId: string, account?: Account, agreePolicies: string[] = []) {
+    const user = await this.transaction(async () => {
+      const draft = await this.getPrepareUser(userId);
+      const { activateVerifies, idlessActivateVerifies } = this.signupPolicy;
+      const proofs = (await this.userModel.getAccountId(draft.id, false)) ? activateVerifies : idlessActivateVerifies;
+      if (proofs.length && !draft.verifies.some((verify) => proofs.includes(verify)))
+        throw new Err("user.error.signupNotVerified");
+      if (agreePolicies.length) draft.set({ agreePolicies });
+      const activated = await draft.set({ status: "active" }).save();
+      await this.summaryService.moveValue("prepareUser", "activeUser");
+      return activated;
     });
-    return state;
-  }
-  async takeNativeSso(state: string | null) {
-    if (!state) return null;
-    return (await this.ssoStarts.getDel(hashToken(state))) ?? null;
-  }
-  async handOffNativeSso(start: cnst.SsoHandoff, identify: () => Promise<NativeSsoIdentity>): Promise<NativeSsoResult> {
-    try {
-      const { accountId, nickname, legacyAccountId } = await identify();
-      const code = createOpaqueToken();
-      const expiresAt = dayjs().add(NativeSso.codeSeconds, "second");
-      const handoff = new cnst.SsoHandoff().set(start).set({ accountId, nickname, legacyAccountId, expiresAt });
-      await this.ssoCodes.set(hashToken(code), handoff, { expireAt: expiresAt });
-      return { code };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : String(error) };
-    }
-  }
-  async exchangeNativeSsoCode(code: string, codeVerifier: string, account?: Account): Promise<cnst.SsoSignin> {
-    const handoff = await this.ssoCodes.getDel(hashToken(code));
-    if (
-      !handoff?.accountId ||
-      dayjs(handoff.expiresAt).isBefore(dayjs()) ||
-      !OAuthPkce.verify(codeVerifier, handoff.codeChallenge)
-    )
-      throw new Err("user.error.invalidSsoCode");
-    const identity = {
-      accountId: handoff.accountId,
-      nickname: handoff.nickname ?? "",
-      legacyAccountId: handoff.legacyAccountId ?? undefined,
-    };
-    return await this._resolveSsoUser(identity, handoff.ssoType, { account });
-  }
-  protected async _resolveSsoUser(
-    { accountId, nickname, legacyAccountId }: SsoIdentity,
-    ssoType: cnst.SsoType["value"],
-    { account, signupToken }: { account?: Account; signupToken?: string | null } = {},
-  ): Promise<cnst.SsoSignin> {
-    if (legacyAccountId) await this.userModel.renameSsoAccountId(legacyAccountId, accountId, ssoType);
-    const userId = await this.userModel.findIdByAccountId(accountId, ["active", "restricted", "dormant"]);
-    if (userId) {
-      const user = await this._assertSignable(await this.userModel.getActiveUserBySso(accountId, ssoType));
-      const { jwt, refreshToken } = await this._issueUserToken(user, account);
-      return new cnst.SsoSignin().set({ jwt, refreshToken });
-    }
-    const { userId: prepareUserId, signupToken: nextSignupToken } = await this.openSignup(signupToken);
-    const user = await this.getPrepareUser(prepareUserId);
-    await this.userModel.setSsoInPrepareUser(user.id, accountId, ssoType);
-    // 가입 화면에서 닉네임을 따로 받지 않는다 — SSO 프로필 이름을 그대로 쓰고, 비면 계정 아이디나 SSO 종류에서 만든다.
-    if (!user.nickname)
-      await this.userModel.setNickname(
-        user.id,
-        await this.userModel.makeUniqueNickname(nickname || (isEmail(accountId) ? accountId : ssoType)),
-      );
-    return new cnst.SsoSignin().set({ prepareUserId: user.id, signupToken: nextSignupToken });
-  }
-
-  async activateUser(userId: string, account?: Account) {
-    const user = await this.getPrepareUser(userId);
-    const { activateVerifies } = this.signupPolicy;
-    if (activateVerifies.length && !user.verifies.some((verify) => activateVerifies.includes(verify)))
-      throw new Err("user.error.signupNotVerified");
-    await user.set({ status: "active" }).save();
-    await this.summaryService.moveValue("prepareUser", "activeUser");
     return await this._issueUserToken(user, account);
   }
   async activateUserByAdmin(userId: string) {
@@ -527,13 +242,34 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
     const user = await this.userModel.getUser(userId);
     return await user.set({ leaveInfo }).save();
   }
+  //? The survey is written onto the removed row, so a removal a pre-remove hook refuses leaves no answer behind.
+  async leave(userId: string, leaveInfo: db.LeaveInfo | null = null) {
+    const user = await this.removeUser(userId);
+    if (!leaveInfo) return user;
+    try {
+      await this.userModel.writeLeaveInfo(userId, leaveInfo);
+    } catch (error) {
+      this.logger.error(`Leave survey of removed user ${userId} was not saved: ${String(error)}`);
+    }
+    return user;
+  }
+  // The device leaves before the row does: a removed row is out of reach of the write that drops it.
+  async leaveAndSignout(userId: string, leaveInfo: db.LeaveInfo | null = null, pushDeviceId: string | null = null) {
+    await this.transaction(async () => {
+      if (pushDeviceId) await this.userModel.subNotiDevice(userId, pushDeviceId);
+      await this.leave(userId, leaveInfo);
+    });
+    return { jwt: "" };
+  }
   async addUserRole(userId: string, role: cnst.UserRole["value"]) {
     const user = await this.userModel.getUser(userId);
     return await user.addRole(role).save();
   }
   async subUserRole(userId: string, role: cnst.UserRole["value"]) {
     const user = await this.userModel.getUser(userId);
-    return await user.subRole(role).save();
+    const demoted = await user.subRole(role).save();
+    await this.userModel.revokeRefreshSessions(demoted.id);
+    return demoted;
   }
   async getRestrictInfo(userId: string) {
     return await this.userModel.getRestrictInfo(userId);
@@ -550,6 +286,7 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
   async releaseUser(userId: string) {
     const user = await this.getUser(userId);
     const released = await user.release().save();
+    await this.userModel.clearRestrictInfo(userId);
     await this.summaryService.moveValue("restrictedUser", "activeUser");
     return released;
   }
@@ -603,20 +340,16 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
 
   async setNicknameOfPrepareUser(userId: string, nickname: string) {
     const user = await this.getPrepareUser(userId);
-    await this.userModel.setNickname(user.id, nickname);
-  }
-  async setAppliedImagesOfPrepareUser(userId: string, appliedImages: string[]) {
-    const user = await this.getPrepareUser(userId);
-    await this.userModel.setAppliedImages(user.id, appliedImages);
+    return await user.rename(nickname).save();
   }
 
   async setNameOfPrepareUser(userId: string, name: string) {
     const user = await this.getPrepareUser(userId);
-    await this.userModel.setName(user.id, name);
+    return await user.set({ name }).save();
   }
   async setAgreePoliciesOfPrepareUser(userId: string, agreePolicies: string[]) {
     const user = await this.getPrepareUser(userId);
-    await this.userModel.setAgreePolicies(user.id, agreePolicies);
+    return await user.set({ agreePolicies }).save();
   }
   // Returns whether a row was written. The caller reports it, because a silent no-op is how a notification
   // preference ends up ignored with nothing to look at.
@@ -646,7 +379,7 @@ export class UserService extends serve(db.user, ({ use, service, env, plug, memo
     const user = await this.getUser(userId);
     return await this.userModel.subNotiDeviceToken(user.id, notiDeviceToken);
   }
-  async subNotiDeviceTokensOfUser(userId: string, notiDeviceTokens: string[]) {
-    return await this.userModel.subNotiDeviceTokens(userId, notiDeviceTokens);
+  async subNotiDeviceTokensOfUsers(tokensByUser: Map<string, string[]>) {
+    await this.userModel.subNotiDeviceTokensOfUsers(tokensByUser);
   }
 }

@@ -35,6 +35,7 @@ export const dictionary = modelDictionary(["en", "ko"])
       "미리보기를 위한 이미지 파일의 추상화된 블러 처리된 인코딩 데이터",
     ]),
     status: t(["Status", "상태"]).desc(["Status of the file", "파일의 상태"]),
+    uploader: t(["Uploader", "업로더"]).desc(["User whose session uploaded the file", "파일을 올린 세션의 사용자"]),
   }))
   .insight<FileInsight>((t) => ({}))
   .query<FileFilter>((fn) => ({
@@ -116,6 +117,10 @@ export const dictionary = modelDictionary(["en", "ko"])
       "파일 스트림과 파일 메타의 수가 일치하지 않습니다",
     ],
     fileReadFailed: ["Failed to read the file data of {filename}", "{filename} 파일 데이터를 읽지 못했습니다"],
+    fileTooLarge: [
+      "{filename} is larger than the {maxSize}MB upload limit.",
+      "{filename} 파일이 업로드 상한 {maxSize}MB를 넘습니다.",
+    ],
   })
   .translate({
     maxFilesExceeded: ["Up to {max} files can be attached here.", "여기에는 파일을 {max}개까지 올릴 수 있습니다."],

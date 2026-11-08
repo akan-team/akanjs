@@ -11,12 +11,15 @@ const DATA_URL_OVERHEAD_BYTES = 64;
 const REF_MAX_EDGE = 1024;
 const REF_MIN_QUALITY = 50;
 
-const fitsDataUrl = (byteLength: number) =>
-  Math.ceil(byteLength / 3) * 4 + DATA_URL_OVERHEAD_BYTES <= REF_MAX_DATA_URL_BYTES;
+const dataUrlBytesOf = (byteLength: number) => Math.ceil(byteLength / 3) * 4 + DATA_URL_OVERHEAD_BYTES;
 
 interface ShrunkImage {
   base64: string;
   mimetype: string;
+}
+interface RefImageBudget {
+  maxDataUrlBytes?: number;
+  maxEdge?: number;
 }
 /**
  * 레퍼런스 그림을 보내기 좋은 크기로 줄인다. 이미 작으면 그대로 둔다.
@@ -24,11 +27,16 @@ interface ShrunkImage {
  * 긴 변을 먼저 줄이고, 그래도 크면 jpeg 품질을 낮춰 가며 한계 안으로 넣는다. 줄이다 실패하면
  * (형식을 못 읽는 등) 원본을 그대로 돌려준다 — 레퍼런스가 없는 것보다는 큰 채로라도 보내는 편이 낫다.
  */
-export const shrinkRefImage = async (buffer: Buffer, mimetype: string): Promise<ShrunkImage> => {
+export const shrinkRefImage = async (
+  buffer: Buffer,
+  mimetype: string,
+  { maxDataUrlBytes = REF_MAX_DATA_URL_BYTES, maxEdge = REF_MAX_EDGE }: RefImageBudget = {},
+): Promise<ShrunkImage> => {
   const original = { base64: buffer.toString("base64"), mimetype };
+  const fitsDataUrl = (byteLength: number) => dataUrlBytesOf(byteLength) <= maxDataUrlBytes;
   if (fitsDataUrl(buffer.byteLength)) return original;
   try {
-    const resized = new Bun.Image(buffer, { autoOrient: true }).resize(REF_MAX_EDGE, REF_MAX_EDGE, {
+    const resized = new Bun.Image(buffer, { autoOrient: true }).resize(maxEdge, maxEdge, {
       fit: "inside",
       withoutEnlargement: true,
     });

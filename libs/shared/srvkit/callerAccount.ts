@@ -1,6 +1,7 @@
 import type { Me, Self } from "@libs/shared/common";
 import type { SignalContext } from "akanjs/signal";
 import type { SerAccount } from "./account";
+import { PlatformAdminList } from "./platformAdminList";
 
 export type CallerAccount = SerAccount<{ self?: Self; me?: Me }>;
 export type CallerRole = "user" | "viewer" | "manager" | "admin" | "superAdmin";
@@ -16,6 +17,9 @@ export const hasRole = (account: CallerAccount | null, role: CallerRole) =>
 
 /** An admin who can run the console: `admin` or `superAdmin`, not removed. */
 export const isAdmin = (account: CallerAccount | null) => hasRole(account, "admin") || hasRole(account, "superAdmin");
+
+export const isPlatformAdmin = (account: CallerAccount | null) =>
+  isAdmin(account) && PlatformAdminList.includes(account?.me?.id);
 
 /** Any admin role, `viewer` included, not removed. */
 export const isStaff = (account: CallerAccount | null) => staffRoles.some((role) => hasRole(account, role));

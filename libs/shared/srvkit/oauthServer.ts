@@ -1,5 +1,5 @@
-import { generateHost, jwtVerify } from "@libs/util/srvkit";
-import { type BackendEnv, getEnv } from "akanjs/base";
+import { generateHost, type HostSource, jwtVerify } from "@libs/util/srvkit";
+import { getEnv } from "akanjs/base";
 import { parseBasePaths } from "akanjs/common";
 import type { OAuthClientAuthMethod } from "akanjs/server";
 import { RevokedSessions } from "./revokedSessions";
@@ -40,6 +40,8 @@ export interface OAuthOptions {
   accessTokenSeconds?: number;
   /** Client ID Metadata Documents — how Claude Code identifies itself. On, and resolved before fetched, by default. */
   clientIdMetadata?: OAuthClientIdMetadataOptions;
+  /** Lets a session holding only the admin console identity grant as that admin. Off, only a user may grant. */
+  allowAdminSubject?: boolean;
 }
 
 export type ResolvedOAuthOptions = Required<Omit<OAuthOptions, "clientIdMetadata">> & {
@@ -62,7 +64,7 @@ const routeOf = (path: string) => {
  * URL it used. So it is fixed here from configuration and never read off a request
  * whose `Host` a proxy may have rewritten. Locally the dev host hands the child its public port.
  */
-export const resolveOAuthOptions = (options: BackendEnv & { oauth?: OAuthOptions }): ResolvedOAuthOptions => {
+export const resolveOAuthOptions = (options: HostSource & { oauth?: OAuthOptions }): ResolvedOAuthOptions => {
   const { oauth = {} } = options;
   const derived =
     getEnv().operationMode === "local"
@@ -81,6 +83,7 @@ export const resolveOAuthOptions = (options: BackendEnv & { oauth?: OAuthOptions
     dynamicRegistration: oauth.dynamicRegistration ?? true,
     allowedRedirectSchemes: oauth.allowedRedirectSchemes ?? ["cursor"],
     accessTokenSeconds: oauth.accessTokenSeconds ?? 3600,
+    allowAdminSubject: oauth.allowAdminSubject ?? false,
     clientIdMetadata: {
       enabled: oauth.clientIdMetadata?.enabled ?? true,
       refusePrivateAddresses: oauth.clientIdMetadata?.refusePrivateAddresses ?? true,
@@ -98,7 +101,8 @@ export const verifyAkanAccessToken = async (token: string, jwtSecret: string) =>
     const claims = await jwtVerify(token, jwtSecret);
     const { appName, environment } = getEnv();
     if (claims.appName !== appName || claims.environment !== environment || claims.tokenType !== "access") return null;
-    if (typeof claims.sid === "string" && (await RevokedSessions.has(claims.sid))) return null;
+    if (typeof claims.sid === "string" && (await RevokedSessions.has(claims.sid, { failClosed: !!claims.me })))
+      return null;
     return claims;
   } catch {
     return null;

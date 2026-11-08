@@ -2,10 +2,16 @@ import {
   type AuthTokenMeta,
   getRefreshSession,
   listRefreshSessions,
+  type OauthAccessClaims,
   type OauthCodeGrantParams,
   type OauthLineage,
   type OauthRefreshParams,
   type OauthSubject,
+  oauthClientRecordOf,
+  oauthDynamicClientPrefix,
+  oauthLineageOfAccessClaims,
+  oauthStaticClientRecord,
+  oauthSubjectOf,
   type RefreshSession,
   type ResolvedOAuthOptions,
   RevokedSessions,
@@ -15,7 +21,7 @@ import {
   type SerAccount,
 } from "@libs/shared/srvkit";
 import { createOpaqueToken, hashToken } from "@libs/util/srvkit";
-import { dayjs, getEnv, Int } from "akanjs/base";
+import { dayjs, Int } from "akanjs/base";
 import {
   OAuthAuthorize,
   OAuthClientIdMetadata,
@@ -44,6 +50,7 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
   grants: memory(Map, { of: cnst.OauthGrant }),
   registrations: memory(Map, { of: Int }),
   revokedSessions: memory(Map, { of: Int }),
+  implicitRedirects: memory(Map, { of: Boolean }),
 })) {
   readonly codeSeconds = 60;
   readonly requestMinutes = 10;
@@ -53,8 +60,10 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
   override onInit() {
     RevokedSessions.use(
       async (sessionId) => !!(await this.revokedSessions.get(sessionId)),
+      // The entry holds its own expiry, so a later, shorter mark cannot cut a longer denial short.
       async (sessionId, until) => {
-        await this.revokedSessions.set(sessionId, 1, { expireAt: until });
+        if (((await this.revokedSessions.get(sessionId)) ?? 0) >= until.valueOf()) return;
+        await this.revokedSessions.set(sessionId, until.valueOf(), { expireAt: until });
       },
     );
   }
@@ -89,7 +98,7 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
     const clientSecret = parsed.client.tokenEndpointAuthMethod === "none" ? undefined : createOpaqueToken(32);
     const client = OauthService.constant({
       ...parsed.client,
-      clientId: `dcr_${createOpaqueToken(24)}`,
+      clientId: `${oauthDynamicClientPrefix}${createOpaqueToken(24)}`,
       clientSecretHash: clientSecret ? hashToken(clientSecret) : undefined,
       source: "dynamic",
     });
@@ -97,25 +106,14 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
     this.logger.info(
       `OAuth client registered from ${address}: ${client.clientName || client.clientId} → ${client.redirectUris.join(", ")}`,
     );
-    return OAuthRegistration.response(OauthService.record(client), { clientSecret });
+    return OAuthRegistration.response(oauthClientRecordOf(client), { clientSecret });
   }
 
   async resolveClient(clientId: string): Promise<OAuthClientRecord | null> {
     const configured = this.oauthOption.clients.find((client) => client.clientId === clientId);
-    if (configured)
-      return {
-        clientId,
-        clientName: configured.clientName,
-        redirectUris: configured.redirectUris,
-        grantTypes: ["authorization_code", "refresh_token"],
-        tokenEndpointAuthMethod: configured.clientSecret
-          ? (configured.tokenEndpointAuthMethod ?? "client_secret_post")
-          : "none",
-        clientSecretHash: configured.clientSecret ? hashToken(configured.clientSecret) : undefined,
-        source: "static",
-      };
+    if (configured) return oauthStaticClientRecord(configured);
     const known = await this.clients.get(clientId);
-    if (known) return OauthService.record(known);
+    if (known) return oauthClientRecordOf(known);
     const { clientIdMetadata } = this.oauthOption;
     if (!clientIdMetadata.enabled || !OAuthClientIdMetadata.isDocumentUrl(clientId)) return null;
     const fetched = await OAuthClientIdMetadata.fetch(clientId, {
@@ -139,7 +137,7 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
     if (!parsed.ok) return parsed.response;
     const { params } = parsed;
     const redirect = OAuthRedirect.parse(params.redirectUri);
-    const subject = OauthService.subjectOf(account);
+    const subject = oauthSubjectOf(account, { allowAdmin: this.oauthOption.allowAdminSubject });
     const request = new cnst.OauthRequest({
       requestId: createOpaqueToken(32),
       clientId: params.clientId,
@@ -156,6 +154,10 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
       status: "pending",
     });
     await this.requests.set(request.requestId, request, { expireAt: this.requestExpiry(request) });
+    if (!url.searchParams.has("redirect_uri"))
+      await this.implicitRedirects.set(request.requestId, true, {
+        expireAt: this.requestExpiry(request).add(this.codeSeconds, "second"),
+      });
     const query = `?request=${request.requestId}`;
     return OauthService.redirect(
       subject ? `${consentPath}${query}` : `${signinPath}?redirect=${encodeURIComponent(`${consentRoute}${query}`)}`,
@@ -165,8 +167,9 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
   async viewRequest(requestId: string, account: SerAccount | null): Promise<cnst.OauthRequest> {
     const request = await this.requests.get(requestId);
     if (request?.status !== "pending") throw new Err("oauth.error.requestNotFound");
-    const subject = OauthService.subjectOf(account);
+    const subject = oauthSubjectOf(account);
     if (!subject) throw new Err("oauth.error.notSignedIn", undefined, { statusCode: 401 });
+    this.assertSubjectAllowed(subject);
     if (!request.subjectId) {
       request.subjectType = subject.type;
       request.subjectId = subject.id;
@@ -261,7 +264,7 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
 
   /** The account's live grants, one per lineage, for a connected-apps list. Browser sessions are not among them. */
   async listConnections(account: SerAccount | null): Promise<cnst.OauthConnection[]> {
-    const subject = OauthService.subjectOf(account);
+    const subject = oauthSubjectOf(account);
     if (!subject) throw new Err("oauth.error.notSignedIn", undefined, { statusCode: 401 });
     const currentSid = (account as SerAccount<AuthTokenMeta> | null)?.sid;
     const heads = new Map<string, RefreshSession>();
@@ -290,7 +293,7 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
 
   /** The account's owner disconnecting one application. `false` when the id names no live grant of theirs. */
   async revokeConnection(sessionId: string, account: SerAccount | null): Promise<boolean> {
-    const subject = OauthService.subjectOf(account);
+    const subject = oauthSubjectOf(account);
     if (!subject) throw new Err("oauth.error.notSignedIn", undefined, { statusCode: 401 });
     const sessions = await listRefreshSessions(this.cacheOf(subject.type), subject.type, subject.id);
     const lineage = sessions.find((session) => session.id === sessionId && session.clientId);
@@ -304,35 +307,26 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
     return !!(await this.revokedSessions.get(sessionId));
   }
 
-  /**
-   * A refresh token is found by its hash in either subject's cache; an access token carries its lineage as `sid` and
-   * its subject as `sub`, and is believed only with this app's signature, app and environment on it.
-   */
+  /** A refresh token is found by its hash in either subject's cache; an access token only with this app's signature. */
   private async lineageOf(token: string): Promise<OauthLineage | null> {
     const hash = hashToken(token);
     const refresh =
       (await getRefreshSession(this.userService.userModel.userCache, hash)) ??
       (await getRefreshSession(this.adminService.adminModel.adminCache, hash));
     if (refresh) return refresh;
-    const claims = await this.securityService
-      .verify<AuthTokenMeta & { appName?: string; environment?: string; client_id?: string; sub?: string }>(token)
-      .catch(() => null);
-    const { appName, environment } = getEnv();
-    if (!claims || claims.appName !== appName || claims.environment !== environment) return null;
-    if (claims.tokenType !== "access" || typeof claims.sid !== "string" || typeof claims.client_id !== "string")
-      return null;
-    const [subject, subjectId] = (claims.sub ?? "").split(":");
-    if ((subject !== "user" && subject !== "admin") || !subjectId) return null;
-    return { id: claims.sid, subject, subjectId, clientId: claims.client_id };
+    const claims = await this.securityService.verify<OauthAccessClaims>(token).catch(() => null);
+    return oauthLineageOfAccessClaims(claims);
   }
 
+  // Access tokens are stateless, so the lineage id every one of them carries as `sid` is denied through
+  // `RevokedSessions` for as long as any token could live; `AccountMiddleware` and the `/mcp` verifier both ask it.
   private async revokeLineage({ id, subject, subjectId }: OauthLineage) {
     await revokeRefreshSessionBySid(this.cacheOf(subject), subject, subjectId, id);
-    // Access tokens are stateless, so the lineage id every one of them carries as `sid` is denied for the longest
-    // one could still be valid; `AccountMiddleware` and the `/mcp` verifier both ask `RevokedSessions`.
-    await this.revokedSessions.set(id, 1, {
-      expireAt: dayjs().add(this.oauthOption.accessTokenSeconds, "second"),
-    });
+  }
+
+  private assertSubjectAllowed(subject: OauthSubject) {
+    if (subject.type === "admin" && !this.oauthOption.allowAdminSubject)
+      throw new Err("oauth.error.adminSubjectNotAllowed", undefined, { statusCode: 403 });
   }
 
   private cacheOf(subject: RefreshSession["subject"]) {
@@ -355,8 +349,10 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
     if (!grant || dayjs(grant.expiresAt).isBefore(dayjs()))
       return invalid("The authorization code is unknown, expired or already used.");
     if (grant.clientId !== client.clientId) return invalid("The authorization code belongs to another client.");
-    if (params.redirectUri && params.redirectUri !== grant.redirectUri)
-      return invalid("redirect_uri does not match the authorization request.");
+    // RFC 6749 §4.1.3: the token request may leave redirect_uri out only when the authorization request did.
+    const redirectUri =
+      params.redirectUri ?? ((await this.implicitRedirects.getDel(grant.requestId)) ? grant.redirectUri : undefined);
+    if (redirectUri !== grant.redirectUri) return invalid("redirect_uri does not match the authorization request.");
     if (!OAuthPkce.verify(params.codeVerifier, grant.codeChallenge)) return invalid("PKCE verification failed.");
     if (params.resource && !OAuthAuthorize.sameResource(params.resource, grant.resource))
       return OAuthErrors.token(
@@ -416,6 +412,7 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
       return await rotateRefreshSession(cache, presented, next.refreshTokenHash, next.refreshTokenExpiresAt, {
         graceMs: refreshRotationGraceMs,
         reuseRevokes: "lineage",
+        clientId: client.clientId,
       });
     } catch (error) {
       const reason = OauthService.reason(error);
@@ -452,6 +449,7 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
    * `McpAuth` reads `aud`. Minted from the live account, not from a snapshot, so a role change reaches the next token.
    */
   private async mint(client: OAuthClientRecord, subject: OauthSubject, sid: string, refreshToken: string) {
+    this.assertSubjectAllowed(subject);
     const identity =
       subject.type === "user"
         ? { self: await this.userService.makeSelf(await this.userService.getActiveUser(subject.id)) }
@@ -481,25 +479,6 @@ export class OauthService extends serve("oauth" as const, ({ use, service, memor
       clientName: client.clientName ?? "",
       clientSecretHash: client.clientSecretHash ?? "",
     });
-  }
-
-  private static record(client: cnst.OauthClient): OAuthClientRecord {
-    return {
-      clientId: client.clientId,
-      clientName: client.clientName || undefined,
-      redirectUris: client.redirectUris,
-      grantTypes: client.grantTypes,
-      tokenEndpointAuthMethod: client.tokenEndpointAuthMethod,
-      clientSecretHash: client.clientSecretHash || undefined,
-      source: client.source,
-    };
-  }
-
-  private static subjectOf(account: SerAccount | null): OauthSubject | null {
-    const { self, me } = (account ?? {}) as SerAccount<{ self?: { id?: string }; me?: { id?: string } }>;
-    if (self?.id) return { type: "user", id: self.id };
-    if (me?.id) return { type: "admin", id: me.id };
-    return null;
   }
 
   private static reason(error: unknown) {

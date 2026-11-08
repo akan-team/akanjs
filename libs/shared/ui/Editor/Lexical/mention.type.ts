@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 /** One selectable row in the mention menu — a single document of a domain model. */
 export interface MentionCandidate {
@@ -10,6 +10,21 @@ export interface MentionCandidate {
   /** Overrides `MentionSource.hrefOf` for this candidate. */
   href?: string;
 }
+
+/** A link to one of the app's own documents, read back into the chip it stands for. */
+export interface LinkedMention {
+  refName: string;
+  refId: string;
+  label: string;
+  href?: string;
+  imageUrl?: string;
+}
+
+/**
+ * Null, synchronously, for a link the app does not own — a paste has to decide on the spot whether to take
+ * over. Otherwise a promise of the chip, or of null when the caller cannot read the document.
+ */
+export type MentionLinkReader = (url: string) => Promise<LinkedMention | null> | null;
 
 export interface MentionPickerProps {
   onSelect: (candidate: MentionCandidate) => void;
@@ -26,6 +41,8 @@ export interface MentionSource {
   refName: string;
   /** Menu group heading, and the `/<label>` slash entry once M3 lands. */
   label: string;
+  /** Drawn before the group heading. */
+  icon?: ReactNode;
   /** Extra slash/menu search terms beyond `label`. */
   keywords?: string[];
   /** Skip this source until the query is at least this long. Defaults to 0. */

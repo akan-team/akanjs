@@ -1,3 +1,5 @@
+import { appBadgeCache } from "../common/appBadgeCache";
+import { pushColdOpenParam } from "../common/pushColdOpenParam";
 import { pushNavigateMessage } from "../common/pushNavigateMessage";
 
 const FIREBASE_WEB_SDK_VERSION = "12.13.0";
@@ -50,13 +52,44 @@ const firebaseConfig = ${configJson};
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
-const applyBadge = (count) => {
-  // Firefox and desktop Safari ship no setAppBadge; calling it unguarded is a synchronous TypeError.
-  if (typeof count === "undefined" || !navigator.setAppBadge) return;
-  const parsed = Number.parseInt(count, 10);
-  if (Number.isNaN(parsed)) return;
-  void navigator.setAppBadge(parsed);
+const appBadgeCache = ${JSON.stringify(appBadgeCache)};
+
+// A push naming its own count sets it. Otherwise the icon shows the pushes not yet read, kept per notification url so
+// the screen that url opens clears its own — only for an app whose page does that clearing (it turns \`enabled\` on).
+// A screen reads a url when its path ends in the url's and carries every query value the url names, as the page checks.
+const readsUrl = (pageHref, url) => {
+  const page = new URL(pageHref, self.location.origin);
+  const target = new URL(url, self.location.origin);
+  if (!page.pathname.endsWith(target.pathname)) return false;
+  for (const [key, value] of target.searchParams) if (page.searchParams.get(key) !== value) return false;
+  return true;
 };
+
+const countPushOnBadge = async (event) => {
+  // Firefox and desktop Safari ship no setAppBadge; calling it unguarded is a synchronous TypeError.
+  if (!navigator.setAppBadge) return;
+  let payload = null;
+  try {
+    payload = event.data?.json() ?? null;
+  } catch {
+    //? A push that is not JSON carries no count; the icon still counts it below.
+  }
+  const explicit = Number.parseInt(payload?.data?.badgeCount, 10);
+  if (!Number.isNaN(explicit)) return await navigator.setAppBadge(explicit);
+  const cache = await caches.open(appBadgeCache.name);
+  const stored = await cache.match(appBadgeCache.path);
+  const state = stored ? await stored.json() : { enabled: false };
+  if (!state.enabled) return;
+  const url = notificationUrl(payload) || "/";
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  if (windows.some((client) => client.visibilityState === "visible" && readsUrl(client.url, url))) return;
+  const unread = { ...state.unread, [url]: (state.unread?.[url] || 0) + 1 };
+  await cache.put(appBadgeCache.path, new Response(JSON.stringify({ enabled: true, unread })));
+  await navigator.setAppBadge(Object.values(unread).reduce((sum, count) => sum + count, 0));
+};
+
+// Its own listener, so the worker stays alive until the count is written; the SDK's handler gives no waitUntil.
+self.addEventListener("push", (event) => event.waitUntil(countPushOnBadge(event)));
 
 const notificationUrl = (payload) =>
   payload?.data?.url || payload?.fcmOptions?.link || payload?.notification?.click_action;
@@ -66,6 +99,8 @@ const openDeepLink = async (url) => {
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   const existing = windows.find((client) => new URL(client.url).origin === target.origin);
   if (!existing) {
+    // A window opened here has nothing behind it, so the page rebuilds the screens above the target from this mark.
+    target.searchParams.set("${pushColdOpenParam}", "1");
     await self.clients.openWindow(target.href);
     return;
   }
@@ -94,7 +129,6 @@ if (firebaseConfig) {
   const messaging = firebase.messaging();
 
   messaging.onBackgroundMessage((payload) => {
-    applyBadge(payload?.data?.badgeCount);
     // firebase-js-sdk's sw-controller draws a payload carrying a \`notification\` block itself and only then
     // calls this handler, so drawing it again here is what turns one push into two notifications.
     if (payload?.notification) return;

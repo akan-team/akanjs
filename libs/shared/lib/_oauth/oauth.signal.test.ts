@@ -1,11 +1,14 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it, setSystemTime } from "bun:test";
+import * as adminSpec from "@libs/shared/lib/admin/admin.signal.spec";
 import * as userSpec from "@libs/shared/lib/user/user.signal.spec";
+import { RevokedSessions } from "@libs/shared/srvkit";
 import { createOpaqueToken } from "@libs/util/srvkit";
-import { getApiPrefix } from "akanjs/base";
+import { dayjs, getApiPrefix } from "akanjs/base";
 import { OAuthPkce } from "akanjs/server";
 import { getOrSetupSignalTestFetch } from "akanjs/test";
 
 import type { fetch as sharedFetch } from "../useServer";
+import { OauthService } from "./oauth.service";
 
 interface TokenResponse {
   access_token: string;
@@ -20,6 +23,7 @@ interface Claims {
   iss: string;
   client_id: string;
   sub: string;
+  sid: string;
   tokenType: string;
   self: { id: string };
   scope?: string;
@@ -79,7 +83,7 @@ describe("Oauth Signal", () => {
       state: "xyz",
       ...params,
     };
-    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+    for (const [key, value] of Object.entries(query)) if (value) url.searchParams.set(key, value);
     return await fetch(url, { redirect: "manual", headers: jwt ? { authorization: `Bearer ${jwt}` } : {} });
   };
   // An anonymous authorize lands on `/signin?redirect=/oauth/consent?request=…`, a signed-in one on the consent page.
@@ -112,11 +116,11 @@ describe("Oauth Signal", () => {
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(fields).toString(),
     });
-  const grant = async (asClient = clientId) =>
+  const grant = async (asClient = clientId, jwt = owner.accessToken.jwt) =>
     await json<TokenResponse>(
       await token({
         grant_type: "authorization_code",
-        code: await approvedCode(asClient),
+        code: await approvedCode(asClient, jwt),
         code_verifier: verifier,
         redirect_uri: redirectUri,
         client_id: asClient,
@@ -126,12 +130,36 @@ describe("Oauth Signal", () => {
     await json<Connection[]>(
       await fetch(`${base}${getApiPrefix()}/listOAuthConnections`, { headers: { authorization: `Bearer ${jwt}` } }),
     );
-  const approvedCode = async (asClient = clientId) => {
-    const requestId = requestIdOf(await authorize(owner.accessToken.jwt, { client_id: asClient }));
-    const target = new URL(
-      (await decide("approveOAuthConsent", requestId, owner.accessToken.jwt)).headers.get("location") ?? "",
-    );
+  const grantedConnection = async () => {
+    const before = new Set((await connections(owner.accessToken.jwt)).map((connection) => connection.sessionId));
+    const fresh = await grant();
+    const added = (await connections(owner.accessToken.jwt)).filter((connection) => !before.has(connection.sessionId));
+    expect(added).toHaveLength(1);
+    return { fresh, connection: added[0] };
+  };
+  const approvedCode = async (
+    asClient = clientId,
+    jwt = owner.accessToken.jwt,
+    params: Record<string, string> = {},
+  ) => {
+    const requestId = requestIdOf(await authorize(jwt, { client_id: asClient, ...params }));
+    const target = new URL((await decide("approveOAuthConsent", requestId, jwt)).headers.get("location") ?? "");
     return target.searchParams.get("code") ?? "";
+  };
+  const liveOauthService = async () => {
+    const { metadata } = OauthService.prototype;
+    const reached: { service?: OauthService } = {};
+    OauthService.prototype.metadata = function (this: OauthService) {
+      reached.service = this;
+      return metadata.call(this);
+    };
+    try {
+      await fetch(`${base}/.well-known/oauth-authorization-server`);
+    } finally {
+      OauthService.prototype.metadata = metadata;
+    }
+    expect(reached.service).toBeDefined();
+    return reached.service as OauthService;
   };
 
   beforeAll(async () => {
@@ -279,6 +307,32 @@ describe("Oauth Signal", () => {
     expect((await json(reused)).error).toBe("invalid_grant");
   });
 
+  it("requires the token request to repeat a redirect_uri the authorization request carried", async () => {
+    const exchange = async (fields: Record<string, string>) =>
+      await token({
+        grant_type: "authorization_code",
+        code: await approvedCode(),
+        code_verifier: verifier,
+        client_id: clientId,
+        ...fields,
+      });
+    expect((await json(await exchange({}))).error).toBe("invalid_grant");
+    expect((await json(await exchange({ redirect_uri: "http://localhost:51234/elsewhere" }))).error).toBe(
+      "invalid_grant",
+    );
+    expect((await exchange({ redirect_uri: redirectUri })).status).toBe(200);
+  });
+
+  it("lets the token request omit redirect_uri when the authorization request did too", async () => {
+    const omitted = await token({
+      grant_type: "authorization_code",
+      code: await approvedCode(clientId, owner.accessToken.jwt, { redirect_uri: "" }),
+      code_verifier: verifier,
+      client_id: clientId,
+    });
+    expect(omitted.status).toBe(200);
+  });
+
   it("spends a code on a failed PKCE check so the right verifier cannot follow", async () => {
     const stolenCode = await approvedCode();
     const fields = {
@@ -360,20 +414,82 @@ describe("Oauth Signal", () => {
     expect((await json(unknown)).error).toBe("invalid_client");
   });
 
-  it("lists the account's connected apps, one per grant, and marks the one asking", async () => {
+  it("answers its refresh token at refreshJwt as an unknown one, and the client keeps refreshing with it", async () => {
     const fresh = await grant();
-    const mine = await connections(fresh.access_token);
-    const current = mine.filter((connection) => connection.isCurrent);
-    expect(current).toHaveLength(1);
-    expect(current[0]).toMatchObject({ clientId, clientName: "Probe" });
-    expect(current[0].createdAt).toBeTruthy();
-    // The browser session sees the same grants and is itself not among them.
+    const refused = "shared.error.invalidRefreshToken";
+    await expect(anonFetch.refreshJwt("not-a-refresh-token")).rejects.toThrow(refused);
+    await expect(anonFetch.refreshJwt(fresh.refresh_token)).rejects.toThrow(refused);
+    await expect(owner.fetch.refreshJwt(fresh.refresh_token)).rejects.toThrow(refused);
+    const rotated = await token({
+      grant_type: "refresh_token",
+      refresh_token: fresh.refresh_token,
+      client_id: clientId,
+    });
+    expect(rotated.status).toBe(200);
+    const live = await json<TokenResponse>(rotated);
+    expect(decode(live.access_token).client_id).toBe(clientId);
+    // The rotated-away token is refused the same way, not read as a reuse that signs the account out everywhere.
+    await expect(anonFetch.refreshJwt(fresh.refresh_token)).rejects.toThrow(refused);
+    const next = await token({ grant_type: "refresh_token", refresh_token: live.refresh_token, client_id: clientId });
+    expect(next.status).toBe(200);
+    const browser = await other.fetch.refreshJwt(other.accessToken.refreshToken);
+    expect(browser.jwt).toBeTruthy();
+    expect(decode(browser.jwt).aud).toBeUndefined();
+    expect(decode(browser.jwt).client_id).toBeUndefined();
+    await expect(owner.fetch.listOAuthConnections()).resolves.toBeDefined();
+  });
+
+  it("refuses consent from an admin-only session unless the app allows an admin subject", async () => {
+    const admin = await adminSpec.getAdminAgentWithInitialize();
+    const requestId = requestIdOf(await authorize(admin.accessToken.jwt));
+    await expect(admin.fetch.viewOAuthAuthorizationRequest(requestId)).rejects.toThrow(
+      "oauth.error.adminSubjectNotAllowed",
+    );
+    expect((await decide("approveOAuthConsent", requestId, admin.accessToken.jwt)).status).toBe(403);
+
+    const { oauthOption } = await liveOauthService();
+    oauthOption.allowAdminSubject = true;
+    let refreshToken = "";
+    try {
+      const adminGrant = await grant(clientId, admin.accessToken.jwt);
+      expect(decode(adminGrant.access_token).sub).toBe(`admin:${admin.admin.id}`);
+      await expect(anonFetch.refreshAdminJwt(adminGrant.refresh_token)).rejects.toThrow(
+        "shared.error.invalidRefreshToken",
+      );
+      refreshToken = adminGrant.refresh_token;
+    } finally {
+      oauthOption.allowAdminSubject = false;
+    }
+    // Turning the option off ends the admin grants already issued at their next refresh.
+    const refreshed = await token({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId });
+    expect((await json(refreshed)).error).toBe("invalid_grant");
+  });
+
+  it("lists the account's connected apps to the browser, one per grant", async () => {
+    const { connection } = await grantedConnection();
+    expect(connection).toMatchObject({ clientId, clientName: "Probe", isCurrent: false });
+    expect(connection.createdAt).toBeTruthy();
     const fromBrowser = await connections(owner.accessToken.jwt);
-    expect(fromBrowser.map((connection) => connection.sessionId)).toContain(current[0].sessionId);
-    expect(fromBrowser.some((connection) => connection.isCurrent)).toBe(false);
-    expect(fromBrowser.every((connection) => connection.clientId)).toBe(true);
-    // Another account has none of them.
+    expect(fromBrowser.every((listed) => listed.clientId && !listed.isCurrent)).toBe(true);
     expect(await connections(other.accessToken.jwt)).toEqual([]);
+  });
+
+  it("refuses an agent's token at an mcp: false endpoint over HTTP, and serves it the published ones", async () => {
+    const { fresh } = await grantedConnection();
+    const offShelf = await fetch(`${base}${getApiPrefix()}/listOAuthConnections`, {
+      headers: { authorization: `Bearer ${fresh.access_token}` },
+    });
+    expect(offShelf.status).toBe(403);
+    const agentFetch = owner.fetch.clone({ jwt: fresh.access_token }) as typeof sharedFetch;
+    await expect(agentFetch.listOAuthConnections()).rejects.toThrow("shared.error.agentTokenNotAllowed");
+    await expect(agentFetch.myAccountId()).resolves.toBeTruthy();
+    const called = await json<ToolResult>(
+      await mcp(
+        { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "myAccountId", arguments: {} } },
+        fresh.access_token,
+      ),
+    );
+    expect(called.result.isError).toBe(false);
   });
 
   it("revokes a grant through RFC 7009 for its own client only, and answers 200 either way", async () => {
@@ -407,6 +523,23 @@ describe("Oauth Signal", () => {
     expect((await revoke({ token: "nothing", client_id: "dcr_nobody" })).status).toBe(401);
   });
 
+  it("keeps a revoked grant's lineage refused once an access token's lifetime has passed", async () => {
+    const fresh = await grant();
+    const { sid } = decode(fresh.access_token);
+    expect((await revoke({ token: fresh.refresh_token, client_id: clientId })).status).toBe(200);
+    await RevokedSessions.markRevoked([sid], dayjs().add(1, "minute"));
+    setSystemTime(
+      dayjs()
+        .add(fresh.expires_in + 60, "second")
+        .toDate(),
+    );
+    try {
+      expect(await RevokedSessions.has(sid)).toBe(true);
+    } finally {
+      setSystemTime();
+    }
+  });
+
   it("revokes a grant by its access token too", async () => {
     const fresh = await grant();
     expect(
@@ -418,9 +551,7 @@ describe("Oauth Signal", () => {
   });
 
   it("lets the account's owner disconnect an app from the browser, and nobody else", async () => {
-    const fresh = await grant();
-    const [connection] = (await connections(fresh.access_token)).filter((c) => c.isCurrent);
-    expect(connection).toBeDefined();
+    const { fresh, connection } = await grantedConnection();
     await expect(other.fetch.revokeOAuthConnection(connection.sessionId)).resolves.toBe(false);
     expect((await mcp({ jsonrpc: "2.0", id: 1, method: "tools/list" }, fresh.access_token)).status).toBe(200);
     await expect(owner.fetch.revokeOAuthConnection(connection.sessionId)).resolves.toBe(true);
@@ -432,15 +563,15 @@ describe("Oauth Signal", () => {
   });
 
   it("refuses a consent decision or a disconnect made with an agent's own token", async () => {
-    const fresh = await grant();
+    const { fresh, connection } = await grantedConnection();
     const requestId = requestIdOf(await authorize(owner.accessToken.jwt));
     expect((await decide("approveOAuthConsent", requestId, fresh.access_token)).status).toBe(403);
     expect((await decide("denyOAuthConsent", requestId, fresh.access_token)).status).toBe(403);
-    const [connection] = (await connections(fresh.access_token)).filter((c) => c.isCurrent);
     const cut = await fetch(`${base}${getApiPrefix()}/revokeOAuthConnection/${connection.sessionId}`, {
       method: "POST",
       headers: { authorization: `Bearer ${fresh.access_token}` },
     });
     expect(cut.status).toBe(403);
+    await expect(owner.fetch.revokeOAuthConnection(connection.sessionId)).resolves.toBe(true);
   });
 });

@@ -75,6 +75,11 @@ describe("RichTrim.trim", () => {
     expect(trimmed.root.children).toEqual([block]);
   });
 
+  it("keeps the space between two formatted runs", () => {
+    const line = paragraph(text("ㅇㅇ", 1), text(" "), text("ㅇㅇㅇㅇ", 3));
+    expect(RichTrim.trim(doc(line)).root.children).toEqual([line]);
+  });
+
   it("keeps the spaces of inline code on an edge", () => {
     const trimmed = RichTrim.trim(doc(paragraph(text("  x = 1  ", 16))));
     expect(trimmed.root.children).toEqual([paragraph(text("  x = 1  ", 16))]);

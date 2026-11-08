@@ -68,8 +68,11 @@ export const postFilesWithTicket = async (fileTicket: cnst.FileUploadTicket, fil
   return await globalThis.fetch(fileTicket.uploadUrl, { method: "POST", body: form });
 };
 
-export const waitUploadedFile = async (fileId: string): Promise<cnst.LightFile> => {
-  const fetch = await getFetch();
+export const waitUploadedFile = async (
+  fileId: string,
+  reader: Pick<SharedFetch, "lightFile">,
+): Promise<cnst.LightFile> => {
+  const fetch = reader;
   let file = await fetch.lightFile(fileId);
   for (let i = 0; i < 5 && file.status === "uploading"; i++) {
     await sleep(1000);

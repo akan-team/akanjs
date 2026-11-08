@@ -2,13 +2,14 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { LexicalTypeaheadMenuPlugin, useBasicTypeaheadTriggerMatch } from "@lexical/react/LexicalTypeaheadMenuPlugin";
 import { usePage } from "@libs/shared/client";
-import type { TextNode } from "lexical";
+import { COMMAND_PRIORITY_CRITICAL, type TextNode } from "lexical";
 import { useCallback, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { EditorFeatureKey } from "../feature";
 import type { MentionSource } from "../mention.type";
 import { type EditorSlashGroup, type EditorSlashOption, editorSlashGroups } from "../plugin";
+import { TypeaheadPopover, typeaheadAnchorClassName } from "../TypeaheadPopover";
 import { useLocalOnlyTrigger } from "../typeaheadTrigger";
 import { useEditorUpload } from "../UploadContext";
 import type { SlashOption } from "./slashMenuPlugin.option";
@@ -70,9 +71,9 @@ export const SlashMenuPlugin = ({ features, extraOptions = [], mentionSources = 
       onQueryChange={setQuery}
       onSelectOption={onSelectOption}
       triggerFn={triggerFn}
-      // Lexical appends this anchor to <body> with no z-index; without one the menu
-      // renders under any positioned overlay hosting the editor (Modal, BottomSheet).
-      anchorClassName="z-[9999]"
+      anchorClassName={typeaheadAnchorClassName}
+      // Ahead of a chat composer's ↩-to-send (HIGH), so ↩ picks the highlighted row instead of sending.
+      commandPriority={COMMAND_PRIORITY_CRITICAL}
       menuRenderFn={(anchorRef, { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex }) => {
         if (anchorRef.current === null || options.length === 0) return null;
         return createPortal(
@@ -108,7 +109,7 @@ export const SlashMenuList = ({ options, selectedIndex, onSelect, onHighlight }:
     .filter((section) => section.items.length > 0);
 
   return (
-    <div className="max-h-80 w-64 overflow-y-auto rounded-md border border-foreground/10 bg-background p-1 shadow-lg">
+    <TypeaheadPopover className="w-64">
       {grouped.map((section) => (
         <div key={section.group}>
           <div className="px-2 py-1 font-medium text-foreground/40 text-xs uppercase tracking-wide">
@@ -133,6 +134,6 @@ export const SlashMenuList = ({ options, selectedIndex, onSelect, onHighlight }:
           ))}
         </div>
       ))}
-    </div>
+    </TypeaheadPopover>
   );
 };

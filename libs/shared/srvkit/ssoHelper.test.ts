@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { sessionCookieMaxAgeSec } from "@libs/shared/common";
 import * as base from "akanjs/base";
 import { authTokenKey, SessionCookies } from "akanjs/common";
+import { SignupToken } from "./signupToken";
 import {
   adminRefreshTokenKey,
   makeAccessTokenResponse,
+  makeAdminSignoutResponse,
   makeSignoutResponse,
+  makeSignupTicketResponse,
   makeSsoRedirectResponse,
   readRefreshTokenCookie,
   ssoSessionCookies,
@@ -50,7 +54,12 @@ describe("ssoHelper auth cookies", () => {
       `adminRefreshToken:${appName}`,
     ]);
     const cookies = cookieValues(makeSsoRedirectResponse("/home", ssoSessionCookies("token", "refresh", "user")));
-    expect(cookies).toContain(`userRefreshToken:${appName}=refresh; Path=/; SameSite=Lax; HttpOnly`);
+    expect(cookies).toContain(
+      `userRefreshToken:${appName}=refresh; Path=/; SameSite=Lax; HttpOnly; Max-Age=${sessionCookieMaxAgeSec}`,
+    );
+    expect(cookies).toContain(
+      `jwt:${appName}=token; Path=/; SameSite=Lax; HttpOnly; Max-Age=${sessionCookieMaxAgeSec}`,
+    );
     expect(expired(cookies, `userRefreshToken:${appName}`)).toBe(false);
   });
 
@@ -83,23 +92,65 @@ describe("ssoHelper auth cookies", () => {
 
   test("access-token response writes the refresh cookie HttpOnly and expires every retired name", () => {
     const cookies = cookieValues(makeAccessTokenResponse({ jwt: "token", refreshToken: "refresh" }));
-    expect(cookies).toContain(`__Host-userRefreshToken:${appName}=refresh; Path=/; SameSite=Lax; Secure; HttpOnly`);
+    expect(cookies).toContain(
+      `__Host-userRefreshToken:${appName}=refresh; Path=/; SameSite=Lax; Secure; HttpOnly; Max-Age=${sessionCookieMaxAgeSec}`,
+    );
     expect(expired(cookies, "userRefreshToken")).toBe(true);
     expect(expired(cookies, `userRefreshToken:${appName}`)).toBe(true);
   });
 
-  test("signout expires the current and every retired refresh cookie", () => {
+  test("access-token response issues the session HttpOnly beside a readable claims cookie", () => {
+    const cookies = cookieValues(makeAccessTokenResponse({ jwt: "header.payload.signature" }));
+    expect(cookies).toContain(
+      `__Host-jwt:${appName}=header.payload.signature; Path=/; SameSite=Lax; Secure; HttpOnly; Max-Age=${sessionCookieMaxAgeSec}`,
+    );
+    expect(cookies).toContain(
+      `__Host-jwt:${appName}.claims=header.payload; Path=/; SameSite=Lax; Secure; Max-Age=${sessionCookieMaxAgeSec}`,
+    );
+    expect(cookies.some((cookie) => cookie.includes("signupToken"))).toBe(false);
+  });
+
+  test("activation expires the signup cookie with the session it hands out", () => {
+    const cookies = cookieValues(makeAccessTokenResponse({ jwt: "token" }, { endsSignup: true }));
+    expect(expired(cookies, SignupToken.cookieKey())).toBe(true);
+  });
+
+  test("signout expires the session pair and the current and every retired refresh cookie", () => {
     const cookies = cookieValues(makeSignoutResponse({ jwt: "" }));
     for (const name of [userRefreshTokenKey(), "userRefreshToken", `userRefreshToken:${appName}`])
       expect(expired(cookies, name)).toBe(true);
+    for (const name of [`__Host-jwt:${appName}`, `__Host-jwt:${appName}.claims`])
+      expect(expired(cookies, name)).toBe(true);
+    expect(expired(cookieValues(makeAdminSignoutResponse({ jwt: "" })), `__Host-jwt:${appName}`)).toBe(true);
+  });
+
+  test("a signup ticket hands its token over HttpOnly for as long as the token lives", () => {
+    const cookies = cookieValues(makeSignupTicketResponse({ signupToken: "draft" }));
+    expect(cookies).toEqual([
+      `__Host-signupToken=draft; Path=/; SameSite=Lax; Secure; HttpOnly; Max-Age=${SignupToken.seconds}`,
+    ]);
   });
 
   test("SSO redirect writes the session and refresh cookies and expires every retired name", () => {
     const cookies = cookieValues(makeSsoRedirectResponse("/home", ssoSessionCookies("token", "refresh", "user")));
-    expect(cookies).toContain(`__Host-jwt:${appName}=token; Path=/; SameSite=Lax; Secure`);
-    expect(cookies).toContain(`__Host-userRefreshToken:${appName}=refresh; Path=/; SameSite=Lax; Secure; HttpOnly`);
+    expect(cookies).toContain(
+      `__Host-jwt:${appName}=token; Path=/; SameSite=Lax; Secure; HttpOnly; Max-Age=${sessionCookieMaxAgeSec}`,
+    );
+    expect(cookies).toContain(
+      `__Host-jwt:${appName}.claims=token.; Path=/; SameSite=Lax; Secure; Max-Age=${sessionCookieMaxAgeSec}`,
+    );
+    expect(cookies).toContain(
+      `__Host-userRefreshToken:${appName}=refresh; Path=/; SameSite=Lax; Secure; HttpOnly; Max-Age=${sessionCookieMaxAgeSec}`,
+    );
     for (const name of ["jwt", `jwt:${appName}`, "userRefreshToken", `userRefreshToken:${appName}`])
       expect(expired(cookies, name)).toBe(true);
     for (const name of ["adminRefreshToken", `adminRefreshToken:${appName}`]) expect(expired(cookies, name)).toBe(true);
+  });
+
+  test("an SSO sign-up hands the signup token over HttpOnly", () => {
+    const cookies = cookieValues(makeSsoRedirectResponse("/signup", { [SignupToken.cookieKey()]: "draft" }));
+    expect(cookies).toContain(
+      `__Host-signupToken=draft; Path=/; SameSite=Lax; Secure; HttpOnly; Max-Age=${sessionCookieMaxAgeSec}`,
+    );
   });
 });

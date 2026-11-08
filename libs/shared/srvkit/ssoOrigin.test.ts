@@ -50,6 +50,15 @@ describe("SsoOrigin", () => {
     );
   });
 
+  test("a trusted proxy that forwards only the scheme keeps the request's own host", () => {
+    AppHosts.declare(["cloud.akanjs.com"]);
+    peerAt("10.0.0.2");
+
+    expect(SsoOrigin.of(requestOf("http://cloud.akanjs.com/api/user/google", { "x-forwarded-proto": "https" }))).toBe(
+      "https://cloud.akanjs.com",
+    );
+  });
+
   test("refuses a host the app does not declare, wherever it came from", () => {
     AppHosts.declare(["app.example.com"]);
     peerAt("10.0.0.2");
@@ -93,6 +102,15 @@ describe("SsoOrigin", () => {
       { "x-forwarded-host": "app.example.com", "x-forwarded-proto": "https://evil.example#" },
     ])
       expect(() => originOf(headers)).toThrow("shared.error.invalidSsoOrigin");
+  });
+
+  test("accepts every host in a configured list", () => {
+    expect(SsoOrigin.of(requestOf("https://www.sceny.ai/api/user/google"), ["sceny.ai", "www.sceny.ai"])).toBe(
+      "https://www.sceny.ai",
+    );
+    expect(() => SsoOrigin.of(requestOf("https://evil.example/api/user/google"), ["sceny.ai", "www.sceny.ai"])).toThrow(
+      "shared.error.invalidSsoOrigin",
+    );
   });
 
   test("a local server takes its own origin without declaring it", () => {

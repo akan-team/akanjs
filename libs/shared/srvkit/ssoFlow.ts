@@ -7,6 +7,7 @@ import type { Account } from "akanjs/fetch";
 import { Err } from "../lib/dict";
 import type { SerAccount } from "./account";
 import { NativeSso, type NativeSsoIdentity, type NativeSsoResult, type NativeSsoStart } from "./nativeSso";
+import { SignupToken } from "./signupToken";
 import { expireCookie, makeSsoRedirectResponse, type SsoCookie, setHttpOnlyCookie } from "./ssoHelper";
 import { SsoOrigin } from "./ssoOrigin";
 import { type SsoIdentity, SsoProvider } from "./ssoProvider";
@@ -17,7 +18,7 @@ type NativeHandoff = NativeSsoStart & { ssoType: SsoType };
 
 /** What the flow needs from the user service; declared here so srvkit does not import the service. */
 export interface SsoFlowService {
-  readonly host?: string;
+  readonly host?: string | readonly string[];
   readonly hosts?: readonly string[];
   startNativeSso(ssoType: SsoType, start: NativeSsoStart): Promise<string>;
   takeNativeSso(state: string | null): Promise<NativeHandoff | null>;
@@ -95,7 +96,7 @@ export class SsoFlow {
     const read = (name: keyof SsoCookie) => jar.read(name).value;
     return {
       ssoFor: read("ssoFor") === "admin" ? "admin" : "user",
-      signupToken: jar.read(hostOnlyCookieKey("signupToken")).value,
+      signupToken: jar.read(SignupToken.cookieKey()).value,
       signinRedirect: read("signinRedirect") ?? "",
       signupRedirect: read("signupRedirect") ?? "",
       adminRedirect: read("adminRedirect"),

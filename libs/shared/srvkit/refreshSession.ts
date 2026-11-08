@@ -1,4 +1,5 @@
 import { dayjs } from "akanjs/base";
+import { Logger } from "akanjs/common";
 
 import { Err } from "../lib/dict";
 import { RevokedSessions } from "./revokedSessions";
@@ -37,7 +38,7 @@ export interface RefreshSession {
   rotatedAt?: string;
   replacedBy?: string;
   userAgent?: string;
-  /** The OAuth client the session was issued to; a refresh presented by any other client is refused. */
+  /** The OAuth client the session was issued to; a refresh presented by any other client, or by none, is refused. */
   clientId?: string;
   /** Absent on sessions written before it was recorded. */
   createdAt?: string;
@@ -51,6 +52,8 @@ interface CreateRefreshSessionInput {
   userAgent?: string;
   clientId?: string;
 }
+
+const logger = new Logger("RefreshSession");
 
 const sessionNamespace = "refreshSessionByTokenHash";
 const claimNamespace = "refreshSessionClaimByTokenHash";
@@ -146,6 +149,12 @@ export interface RotateRefreshSessionOptions {
    * §6.1's sense — so a stale token replayed by one MCP client cannot log the browser and every other client out.
    */
   reuseRevokes?: "account" | "lineage";
+  /**
+   * The OAuth client presenting the token, unset at a first-party refresh. A session issued to anyone else is answered
+   * as an unknown token before anything is written: an MCP client's token traded at `refreshJwt` would come back
+   * without `aud` / `client_id`, and `Person` would read the model as the account's owner.
+   */
+  clientId?: string;
 }
 
 export const rotateRefreshSession = async (
@@ -153,10 +162,18 @@ export const rotateRefreshSession = async (
   refreshTokenHash: string,
   nextRefreshTokenHash: string,
   nextExpiresAt: Date,
-  { graceMs = 0, now = dayjs(), reuseRevokes = "account" }: RotateRefreshSessionOptions = {},
+  { graceMs = 0, now = dayjs(), reuseRevokes = "account", clientId }: RotateRefreshSessionOptions = {},
 ) => {
   const session = await getSession(cache, refreshTokenHash);
   if (!session) throw new Err("shared.error.invalidRefreshToken");
+  if ((session.clientId ?? "") !== (clientId ?? "")) {
+    const owner = session.clientId ? `OAuth client ${session.clientId}` : "a first-party sign-in";
+    const presenter = clientId ? `OAuth client ${clientId}` : "a first-party refresh endpoint";
+    logger.warn(
+      `Refresh refused for ${session.subject}:${session.subjectId}: a token issued to ${owner} was presented by ${presenter}`,
+    );
+    throw new Err("shared.error.invalidRefreshToken");
+  }
   if (session.revokedAt) throw new Err("shared.error.revokedRefreshToken");
   if (dayjs(session.expiresAt).isBefore(now)) throw new Err("shared.error.expiredRefreshToken");
   // With no window no clock is read: a presentation whose `now` is earlier than the claim it lost is still a reuse.

@@ -3,20 +3,26 @@ import {
   type AdminAccess,
   type AuthTokenMeta,
   adminAccessHook,
+  adminRolePolicy,
   adminSsoPolicy,
+  isAdminSsoTypeAllowed,
+  isBcryptHash,
   isPasswordMatch,
   RevokedSessions,
+  SignChallenge,
 } from "@libs/shared/srvkit";
+import { getEnv } from "akanjs/base";
 import type { Account } from "akanjs/fetch";
 import { DatabaseAdaptorRole, InsightQuery, serve } from "akanjs/service";
-import type * as cnst from "../cnst";
+import * as cnst from "../cnst";
 import * as db from "../db";
 import { Err } from "../dict";
 import type * as option from "../option";
 import type * as srv from "../srv";
 
 export class AdminService extends serve(db.admin, ({ use, service, memory, signal, plug }) => ({
-  rootAdminInfo: use<option.AccountInfo>(),
+  rootAdminInfo: use<option.AccountInfo | undefined>(),
+  resetRootAdmin: use<boolean>(),
   securityService: service<srv.util.SecurityService>(),
   database: plug(DatabaseAdaptorRole),
 })) {
@@ -24,17 +30,27 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     await this.adminModel.revokeRefreshSessions(admin.id);
     return admin;
   }
+  static readonly minRootPasswordLength = 12;
+  static isRootPasswordTooShort(operationMode: string, password: string) {
+    return operationMode !== "local" && password.length < AdminService.minRootPasswordLength;
+  }
   async initializeAdmin() {
-    const rootAdmin =
-      (await this.adminModel.findByAccountId(this.rootAdminInfo.accountId)) ??
-      (await this.adminModel.createAdmin(this.rootAdminInfo));
+    if (!this.rootAdminInfo) return;
+    if (AdminService.isRootPasswordTooShort(getEnv().operationMode, this.rootAdminInfo.password))
+      this.logger.error(
+        `root admin password is shorter than ${AdminService.minRootPasswordLength} characters and should be rotated`,
+      );
+    const rootAdmin = await this.adminModel.findByAccountId(this.rootAdminInfo.accountId);
+    if (!rootAdmin) {
+      const created = await this.adminModel.createAdmin(this.rootAdminInfo);
+      await created.set({ roles: ["admin", "superAdmin"] }).save();
+      return;
+    }
+    if (!this.resetRootAdmin) return;
     await rootAdmin.set({ roles: ["admin", "superAdmin"] }).save();
-    const storedPassword = await this.adminModel
-      .getAdminSecret(this.rootAdminInfo.accountId)
-      .then((adminSecret) => adminSecret.password)
-      .catch(() => "");
-    const isRootPasswordMatched = await isPasswordMatch(this.rootAdminInfo.password, storedPassword || "");
-    if (!isRootPasswordMatched) await this.setPassword(rootAdmin.id, this.rootAdminInfo.password);
+    const storedPassword = (await this.adminModel.findAdminSecret(this.rootAdminInfo.accountId))?.password;
+    if (!(await isPasswordMatch(this.rootAdminInfo.password, storedPassword || "")))
+      await this.setPassword(rootAdmin.id, this.rootAdminInfo.password);
   }
   async getMe(adminId: string): Promise<Me> {
     return this._makeMe(await this.adminModel.getAdmin(adminId));
@@ -53,10 +69,15 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
   }
   // The user identity a browser also holds rides along only while its own session is live; a restriction, a removal
   // and a password change all end that session.
-  private async _carryUserIdentity(account?: Account): Promise<{ self?: Self; selfSid?: string }> {
+  private async _carryUserIdentity(
+    account?: Account,
+    readSelf?: (userId: string) => Promise<Self | null>,
+  ): Promise<{ self?: Self; selfSid?: string }> {
     const { self, selfSid } = (account ?? {}) as { self?: Self; selfSid?: string };
     if (!self || !selfSid || (await RevokedSessions.has(selfSid))) return {};
-    return { self, selfSid };
+    if (!readSelf) return { self, selfSid };
+    const current = await readSelf(self.id);
+    return current ? { self: current, selfSid } : {};
   }
   private async _issueAdminToken(admin: db.Admin, account?: Account, userAgent?: string): Promise<db.util.AccessToken> {
     const { refreshToken, refreshTokenHash, refreshTokenExpiresAt } = this.securityService.createRefreshToken();
@@ -73,7 +94,11 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     );
     return { ...accessToken, refreshToken };
   }
-  async refreshAdminToken(refreshToken: string, account?: Account) {
+  async refreshAdminToken(
+    refreshToken: string,
+    account?: Account,
+    readSelf: (userId: string) => Promise<Self | null> = async () => null,
+  ) {
     const nextRefreshToken = this.securityService.createRefreshToken();
     const session = await this.adminModel.rotateRefreshSession(
       this.securityService.hashRefreshToken(refreshToken),
@@ -83,13 +108,13 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     const admin = await this.adminModel.getAdmin(session.subjectId);
     const me = this._makeMe(admin);
     const accessToken = await this.securityService.signAccessToken(
-      { ...(await this._carryUserIdentity(account)), me, meSid: session.id },
+      { ...(await this._carryUserIdentity(account, readSelf)), me, meSid: session.id },
       { sid: session.id, jti: crypto.randomUUID() },
     );
     return { ...accessToken, refreshToken: nextRefreshToken.refreshToken };
   }
   async isAdminSystemInitialized() {
-    return await this.adminModel.hasAnotherAdmin(this.rootAdminInfo.accountId);
+    return await this.adminModel.hasAnotherAdmin(this.rootAdminInfo?.accountId ?? "");
   }
   async createAdminWithInitialize(data: db.AdminInput) {
     if (await this.isAdminSystemInitialized()) throw new Err("admin.error.adminSystemAlreadyInitialized");
@@ -102,11 +127,24 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     await this.adminModel.revokeRefreshSessions(admin.id);
     return updatedAdmin;
   }
-  async signinAdmin(accountId: string, password: string, account?: Account) {
-    const adminSecret = await this.adminModel.getAdminSecret(accountId);
-    const matched = await isPasswordMatch(password, adminSecret.password || "");
-    if (!matched) throw new Err("admin.error.passwordNotMatched");
+  async assertPassword(adminId: string, password: string | null) {
+    const admin = await this.adminModel.getAdmin(adminId);
+    const storedPassword = (await this.adminModel.findAdminSecret(admin.accountId))?.password;
+    if (!password || !storedPassword || !(await isPasswordMatch(password, storedPassword)))
+      throw new Err("admin.error.passwordNotMatched");
+  }
+  async signinAdmin(accountId: string, password: string, ip: string | null = null, account?: Account) {
+    const challenge = this.adminModel.signChallenge;
+    if (await challenge.isSigninLocked(accountId, ip)) throw new Err("admin.error.tooManySigninAttempts");
+    const adminSecret = await this.adminModel.findAdminSecret(accountId);
+    const isMatched = await SignChallenge.isStoredPasswordMatch(password, adminSecret?.password);
+    if (!adminSecret || !isMatched) {
+      await challenge.failSignin(accountId, ip);
+      throw new Err("admin.error.invalidCredentials");
+    }
+    await challenge.clearSigninFailures(accountId, ip);
     const admin = await this.adminModel.getAdmin(adminSecret.id);
+    if (!isBcryptHash(adminSecret.password ?? "")) await admin.set({ password }).save();
     void admin.updateAccess().save();
     this._notifyAccess({ accountId: admin.accountId, method: "password" });
     return await this._issueAdminToken(admin, account);
@@ -128,13 +166,17 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
       .catch((error: unknown) => this.logger.warn(`admin access hook failed - ${(error as Error).message}`));
   }
   /**
-   * SSO 로그인. 계정이 없으면 앱이 허용한 경우에만 만들어 준다(`setAdminSsoPolicy`).
+   * SSO 로그인. 있는 계정은 `canSignin` 이, 없는 계정은 `canSignup` 이 허용할 때만 들어온다(`setAdminSsoPolicy`).
    *
-   * 허용하지 않으면 예전처럼 던진다 — 자동 가입이 기본이면 이 라이브러리를 쓰는 앱 전부가 구글 계정
+   * 허용하지 않으면 던진다 — 자동 가입이 기본이면 이 라이브러리를 쓰는 앱 전부가 구글 계정
    * 아무에게나 열린다. 새로 만든 관리자의 등급도 앱이 정한다: 비어 있으면 로그인만 되고 가드가 전부 막는다.
    */
-  async ssoSigninAdmin(accountId: string, account?: Account) {
-    const admin = (await this.adminModel.findByAccountId(accountId)) ?? (await this._signupSsoAdmin(accountId));
+  async ssoSigninAdmin(accountId: string, ssoType: cnst.SsoType["value"], account?: Account) {
+    if (!isAdminSsoTypeAllowed(ssoType)) throw new Err("admin.error.adminSsoNotAllowed");
+    const existing = await this.adminModel.findByAccountId(accountId);
+    if (existing && !(await adminSsoPolicy().canSignin?.(accountId, ssoType)))
+      throw new Err("admin.error.adminSsoNotAllowed");
+    const admin = existing ?? (await this._signupSsoAdmin(accountId));
     void admin.updateAccess().save();
     this._notifyAccess({ accountId: admin.accountId, method: "sso" });
     return await this._issueAdminToken(admin, account);
@@ -142,7 +184,7 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
 
   private async _signupSsoAdmin(accountId: string) {
     const policy = adminSsoPolicy();
-    if (!policy.canSignup(accountId)) throw new Err("admin.error.adminSsoNotAllowed");
+    if (!(await policy.canSignup(accountId))) throw new Err("admin.error.adminSsoNotAllowed");
     const admin = await this.adminModel.createAdmin({ accountId } as db.AdminInput);
     const roles = policy.roles ?? [];
     return roles.length ? await admin.set({ roles: roles as cnst.AdminRole["value"][] }).save() : admin;
@@ -160,5 +202,29 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     const demoted = await admin.subRole(role).save();
     await this.adminModel.revokeRefreshSessions(demoted.id);
     return demoted;
+  }
+  async setRoles(adminId: string, roles: cnst.AdminRole["value"][], me: Me) {
+    const { onChange } = adminRolePolicy();
+    const { admin, isDemoted } = await this.transaction(async () => {
+      const admin = await this.adminModel.getAdmin(adminId);
+      const changes = [
+        ...roles.filter((role) => !admin.roles.includes(role)).map((role) => ({ role, verb: "add" as const })),
+        ...admin.roles.filter((role) => !roles.includes(role)).map((role) => ({ role, verb: "sub" as const })),
+      ];
+      if (changes.some(({ role }) => !this._canChangeRole(me.roles, role))) throw new Err("admin.error.notAllowed");
+      if (!changes.length) return { admin, isDemoted: false };
+      const updated = await admin.setRoles(roles).save();
+      for (const { role, verb } of changes) await onChange?.({ actor: me.accountId, adminId, role, verb });
+      return { admin: updated, isDemoted: changes.some(({ verb }) => verb === "sub") };
+    });
+    // Not `afterCommit`: it only logs a failed callback, and a demotion whose sessions survived must not answer success.
+    if (isDemoted) await this.adminModel.revokeRefreshSessions(admin.id);
+    return admin;
+  }
+  private _canChangeRole(myRoles: readonly string[], role: cnst.AdminRole["value"]) {
+    const { canChange } = adminRolePolicy();
+    if (canChange) return canChange(myRoles, role);
+    const level = cnst.AdminRole.indexOf(role);
+    return myRoles.some((myRole) => cnst.AdminRole.indexOf(myRole as cnst.AdminRole["value"]) >= level);
   }
 }

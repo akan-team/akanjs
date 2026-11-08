@@ -40,4 +40,28 @@ describe("safeRedirectPath", () => {
       expect(safeRedirectPath(path, "/fallback")).toBe("/fallback");
     expect(safeRedirectPath("/a\u0000b", "/fallback")).toBe("/fallback");
   });
+
+  it("falls back for a target that only looks like a path once the browser has parsed it", () => {
+    for (const path of [
+      "/\t/evil.com",
+      "/\n/evil.com",
+      "/\r\nhttps://evil.com",
+      "/\u007f/evil.com",
+      "\\\\evil.com",
+      "/\\/evil.com",
+      "///evil.com",
+      " //evil.com",
+      "https:evil.com",
+      "HTTPS://evil.com",
+      "JavaScript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      undefined,
+    ])
+      expect(safeRedirectPath(path)).toBe("/");
+  });
+
+  it("keeps the in-app redirects the sign-in pages hand over", () => {
+    for (const path of ["/", "/admin", "/org", "/remoteAuth?remoteId=r%2F1", "/oauth/consent?client_id=c#top"])
+      expect(safeRedirectPath(path)).toBe(path);
+  });
 });

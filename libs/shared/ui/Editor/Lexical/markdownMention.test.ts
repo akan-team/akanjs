@@ -156,6 +156,16 @@ describe("markdown mention", () => {
       const twice = importMarkdown(exportMarkdown(once));
       expect(mentionIn(twice)).toMatchObject({ refName: "bizDoc", refId: "b3" });
     });
+
+    it("round-trips a place chip whose label carries a channel sign and a separator", () => {
+      const markdown = "see @[#general › Deploy plan](mention:chatMessage/m1)";
+      expect(exportMarkdown(importMarkdown(markdown))).toBe(markdown);
+      expect(mentionIn(importMarkdown(markdown))).toMatchObject({
+        refName: "chatMessage",
+        refId: "m1",
+        label: "#general › Deploy plan",
+      });
+    });
   });
 
   /**

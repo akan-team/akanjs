@@ -193,6 +193,61 @@ for (const kind of ConformanceEnv.cacheKinds("refresh session")) {
       ).rejects.toThrow("shared.error.expiredRefreshToken");
     });
 
+    test("answers an OAuth client's token as unknown anywhere but that client, and spends nothing doing so", async () => {
+      const agent = await createRefreshSession(cache, {
+        subject: "user",
+        subjectId: "u1",
+        refreshTokenHash: "a0",
+        expiresAt: expiresAt(),
+        clientId: "dcr_claude",
+      });
+      await createRefreshSession(cache, {
+        subject: "user",
+        subjectId: "u1",
+        refreshTokenHash: "b0",
+        expiresAt: expiresAt(),
+      });
+      for (const option of [{}, { graceMs: refreshRotationGraceMs, reuseRevokes: "lineage" } as const])
+        await expect(rotateRefreshSession(cache, "a0", "x1", expiresAt(), option)).rejects.toThrow(
+          "shared.error.invalidRefreshToken",
+        );
+      await expect(rotateRefreshSession(cache, "a0", "x2", expiresAt(), { clientId: "dcr_other" })).rejects.toThrow(
+        "shared.error.invalidRefreshToken",
+      );
+      await expect(rotateRefreshSession(cache, "b0", "x3", expiresAt(), { clientId: "dcr_claude" })).rejects.toThrow(
+        "shared.error.invalidRefreshToken",
+      );
+      const untouched = await getRefreshSession(cache, "a0");
+      expect(untouched?.rotatedAt).toBeUndefined();
+      expect(untouched?.revokedAt).toBeUndefined();
+      for (const hash of ["x1", "x2", "x3"]) expect(await getRefreshSession(cache, hash)).toBeUndefined();
+      expect((await rotateRefreshSession(cache, "a0", "a1", expiresAt(), { clientId: "dcr_claude" })).id).toBe(
+        agent.id,
+      );
+      expect((await rotateRefreshSession(cache, "b0", "b1", expiresAt())).refreshTokenHash).toBe("b1");
+    });
+
+    test("a rotated-away OAuth token presented at a first-party refresh is refused, not read as a reuse", async () => {
+      for (const [refreshTokenHash, clientId] of [
+        ["a0", "dcr_claude"],
+        ["b0", undefined],
+      ] as const)
+        await createRefreshSession(cache, {
+          subject: "user",
+          subjectId: "u1",
+          refreshTokenHash,
+          expiresAt: expiresAt(),
+          clientId,
+        });
+      await rotateRefreshSession(cache, "a0", "a1", expiresAt(), { clientId: "dcr_claude" });
+      await expect(rotateRefreshSession(cache, "a0", "x1", expiresAt())).rejects.toThrow(
+        "shared.error.invalidRefreshToken",
+      );
+      expect(
+        (await listRefreshSessions(cache, "user", "u1")).map((session) => session.refreshTokenHash).sort(),
+      ).toEqual(["a1", "b0"]);
+    });
+
     test("lists the live heads only: rotated-away, revoked and expired entries drop out", async () => {
       const browser = await createRefreshSession(cache, {
         subject: "user",
@@ -209,7 +264,7 @@ for (const kind of ConformanceEnv.cacheKinds("refresh session")) {
         userAgent: "Claude Code",
       });
       expect(agent.createdAt).toBeTruthy();
-      await rotateRefreshSession(cache, "a0", "a1", expiresAt());
+      await rotateRefreshSession(cache, "a0", "a1", expiresAt(), { clientId: "dcr_claude" });
       const expired = await createRefreshSession(cache, {
         subject: "user",
         subjectId: "u1",

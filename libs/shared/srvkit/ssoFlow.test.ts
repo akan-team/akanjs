@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import * as base from "akanjs/base";
 import { AppHosts } from "akanjs/common";
 import { OAuthPkce } from "akanjs/server";
+import { SignalContext } from "akanjs/signal";
 
+import type { NativeSsoStart } from "./nativeSso";
 import { SsoFlow, type SsoFlowService } from "./ssoFlow";
 import { SsoProvider } from "./ssoProvider";
 
@@ -12,6 +14,8 @@ process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "localhost";
 
 const origin = "https://app.example.com";
 const stateCookie = "__Host-ssoState";
+const proxied = { "x-forwarded-proto": "https", "x-forwarded-host": "office.akanjs.com" };
+const ann = { accountId: "ann@example.com", nickname: "Ann" };
 SsoProvider.configure({ google: { clientID: "google-client", clientSecret: "google-secret" } });
 
 const serviceOf = (overrides: Partial<SsoFlowService> = {}): SsoFlowService => ({
@@ -22,8 +26,8 @@ const serviceOf = (overrides: Partial<SsoFlowService> = {}): SsoFlowService => (
   ...overrides,
 });
 
-const requestOf = (url: string, cookie = "") =>
-  new Request(url, { headers: cookie ? { cookie } : {} }) as unknown as Bun.BunRequest;
+const requestOf = (url: string, cookie = "", headers: Record<string, string> = {}) =>
+  new Request(url, { headers: cookie ? { ...headers, cookie } : headers }) as unknown as Bun.BunRequest;
 const locationOf = (response: Response) => new URL(response.headers.get("location") ?? "", origin);
 const redirectUriOf = (response: Response) => locationOf(response).searchParams.get("redirect_uri");
 
@@ -36,6 +40,7 @@ describe("SsoFlow", () => {
 
   afterEach(() => {
     mock.restore();
+    SignalContext.setHttpPeerResolver(null);
   });
 
   test("a web start binds a fresh state to the browser with an HttpOnly cookie", async () => {
@@ -74,6 +79,15 @@ describe("SsoFlow", () => {
     ])
       await expect(SsoFlow.start("google", requestOf(url), service)).rejects.toThrow("shared.error.invalidSsoOrigin");
     expect(isNativeStarted).toBe(false);
+  });
+
+  test("every configured host counts as the app's own", async () => {
+    const response = await SsoFlow.start(
+      "google",
+      requestOf("https://www.login.example.com/api/user/google"),
+      serviceOf({ hosts: ["login.example.com", "www.login.example.com"] }),
+    );
+    expect(redirectUriOf(response)).toBe("https://www.login.example.com/api/user/google/callback");
   });
 
   test("the service's configured host counts as the app's own", async () => {
@@ -206,5 +220,65 @@ describe("SsoFlow", () => {
     );
     expect(locationOf(response).origin).toBe(origin);
     expect(locationOf(response).searchParams.get("error")).toBe("user.error.ssoProviderFailed");
+  });
+
+  test("behind a trusted proxy the callback redeems the code with the redirect_uri its start sent", async () => {
+    AppHosts.declare(["office.akanjs.com"]);
+    SignalContext.setHttpPeerResolver(() => null);
+    const planted = "ssoOrigin=https://evil.tunnel.akanjs.com";
+    const start = await SsoFlow.start(
+      "google",
+      requestOf("http://akan-child/api/user/google", planted, proxied),
+      serviceOf(),
+    );
+    const state = locationOf(start).searchParams.get("state") ?? "";
+    const identify = spyOn(SsoProvider, "identify").mockResolvedValue(ann);
+    await SsoFlow.callback(
+      "google",
+      requestOf(
+        `http://akan-child/api/user/google/callback?code=c&state=${encodeURIComponent(state)}`,
+        `${stateCookie}=${state}; ${planted}`,
+        proxied,
+      ),
+      serviceOf(),
+    );
+    const redeemedWith = identify.mock.calls[0]?.[2] ?? "";
+    expect(redirectUriOf(start)).toBe(SsoProvider.callbackUrl("google", redeemedWith));
+    expect(redeemedWith).toBe("https://office.akanjs.com");
+  });
+
+  test("a native sign-in redeems the code at the origin its start resolved, whatever the callback carries", async () => {
+    AppHosts.declare(["office.akanjs.com"]);
+    SignalContext.setHttpPeerResolver(() => null);
+    let handoff: NativeSsoStart | null = null;
+    const service = serviceOf({
+      startNativeSso: async (_type, start) => {
+        handoff = start;
+        return "native-state";
+      },
+      takeNativeSso: async (state) => (handoff && state === "native-state" ? { ...handoff, ssoType: "google" } : null),
+      handOffNativeSso: async (_start, identify) => {
+        await identify();
+        return { code: "native-code" };
+      },
+    });
+    const challenge = OAuthPkce.challengeOf("v".repeat(64));
+    await SsoFlow.start(
+      "google",
+      requestOf(
+        `http://akan-child/api/user/google?callbackScheme=angelo&codeChallenge=${challenge}&state=n1`,
+        "",
+        proxied,
+      ),
+      service,
+    );
+    const identify = spyOn(SsoProvider, "identify").mockResolvedValue(ann);
+    const callback = await SsoFlow.callback(
+      "google",
+      requestOf("http://akan-child/api/user/google/callback?code=c&state=native-state"),
+      service,
+    );
+    expect(identify).toHaveBeenCalledWith("google", "c", "https://office.akanjs.com");
+    expect(callback.headers.get("location")).toBe("angelo://sso/callback?code=native-code&state=n1");
   });
 });

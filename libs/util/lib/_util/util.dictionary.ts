@@ -14,12 +14,17 @@ export const dictionary = serviceDictionary(["en", "ko"])
     set: ["Set", "설정"],
     print: ["Print", "인쇄"],
     linkCopied: ["Link copied. Share it wherever you want!", "링크 복사 완료! 원하는 곳에 공유해보세요!"],
-    uploadImageClick: ["Click and select image", "클릭하여 업로드 할 이미지를 선택해주세요."],
-    uploadImageDrop: ["Drop image here", "업로드 할 이미지를 여기에 놓아주세요."],
-    uploadFileClick: ["Click and select file", "클릭하여 업로드 할 파일을 선택해주세요."],
-    uploadFileDrop: ["Drop file here", "업로드 할 파일을 여기에 놓아주세요."],
-    uploadFilesClick: ["Click and select files", "클릭하여 업로드 할 파일들을 선택해주세요."],
-    uploadFilesDrop: ["Drop files here", "업로드 할 파일들을 여기에 놓아주세요."],
+    uploadImageClick: ["Choose image", "이미지 선택"],
+    uploadImageDrop: ["or drop one here", "끌어다 놓아도 됩니다"],
+    uploadImageChange: ["Change", "변경"],
+    uploadImageHint: [
+      "PNG, JPG, GIF or WebP. You can drop one here too.",
+      "PNG, JPG, GIF, WebP. 끌어다 놓아도 됩니다.",
+    ],
+    uploadFileClick: ["Choose file", "파일 선택"],
+    uploadFileDrop: ["or drop one here", "끌어다 놓아도 됩니다"],
+    uploadFilesClick: ["Choose files", "파일 선택"],
+    uploadFilesDrop: ["or drop them here", "끌어다 놓아도 됩니다"],
     uploadTypeNotAllowed: ["This file type is not allowed", "허용되지 않는 파일 형식입니다."],
     uploadFileName: ["File Name", "파일 이름"],
     uploadFileSize: ["Size", "크기"],
@@ -44,6 +49,12 @@ export const dictionary = serviceDictionary(["en", "ko"])
       "상태 {status}로 Discord 웹훅 전송에 실패했습니다.",
     ],
     invalidDataUri: ["The data URI is malformed", "data URI 형식이 잘못되었습니다."],
+    invalidRecipient: ["{address} is not a single e-mail address", "{address}은(는) 하나의 이메일 주소가 아닙니다."],
+    recipientTooLong: [
+      "An e-mail address holds at most 64 characters before the @ and 254 in all",
+      "이메일 주소는 @ 앞 64자, 전체 254자까지 쓸 수 있습니다.",
+    ],
+    tooManyRecipients: ["A mail goes to at most {max} addresses", "메일은 {max}곳까지 보낼 수 있습니다."],
     untrustedUrlRejected: ["This URL cannot be fetched: {reason}", "이 주소는 가져올 수 없습니다: {reason}"],
     untrustedFetchFailed: ["The download failed with status {status}", "상태 {status}로 다운로드에 실패했습니다."],
     untrustedFetchTimedOut: ["The download timed out", "다운로드 시간이 초과되었습니다."],
@@ -58,6 +69,10 @@ export const dictionary = serviceDictionary(["en", "ko"])
       "로컬 경로 {localPath}에 파일 이름이 필요합니다",
     ],
     githubApiFailed: ["GitHub request failed: {reason}", "GitHub 요청에 실패했습니다: {reason}"],
+    githubInvalidName: [
+      "{name} is not a valid GitHub account, repository or installation name",
+      "{name}은(는) 올바른 GitHub 계정, 저장소 또는 설치 이름이 아닙니다.",
+    ],
     githubAccessTokenExchangeFailed: [
       "Failed to sign in with GitHub: {reason}",
       "GitHub 로그인에 실패했습니다: {reason}",
@@ -74,6 +89,10 @@ export const dictionary = serviceDictionary(["en", "ko"])
     githubInstallationAccessTokenCreateFailed: [
       "Failed to create installation access token: {reason}",
       "설치 액세스 토큰을 생성하지 못했습니다: {reason}",
+    ],
+    githubInstallationAccessTokenRevokeFailed: [
+      "Failed to revoke installation access token: {reason}",
+      "설치 액세스 토큰을 폐기하지 못했습니다: {reason}",
     ],
     githubInstallationRepositoriesListFailed: [
       "Failed to list installation repositories: {reason}",
@@ -98,6 +117,15 @@ export const dictionary = serviceDictionary(["en", "ko"])
     githubWebhookUpdateFailed: [
       "Failed to update the repository webhook: {reason}",
       "저장소 웹훅을 갱신하지 못했습니다: {reason}",
+    ],
+    githubCommitStatusCreateFailed: [
+      "Failed to post the commit status: {reason}",
+      "커밋 상태를 올리지 못했습니다. 원인은 {reason}입니다.",
+    ],
+    githubInvalidCommitSha: ["{sha} is not a full commit SHA", "{sha}은(는) 전체 커밋 SHA가 아닙니다."],
+    githubWriteInPreview: [
+      "{request}: a pull request preview does not write to GitHub.",
+      "{request}: 풀 리퀘스트 미리보기는 GitHub에 쓰지 않습니다.",
     ],
     githubPrivateKeyNotConfigured: [
       "GitHub App private key is not configured",

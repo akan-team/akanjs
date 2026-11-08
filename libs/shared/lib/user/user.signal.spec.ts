@@ -15,7 +15,9 @@ process.env.MASTER_EMAILCODE ??= "135790";
 export const testEmailCode = process.env.MASTER_EMAILCODE;
 export const testEmail = () => `${crypto.randomUUID().slice(0, 12)}@signup.test`;
 
-const getFetch = async () => await getOrSetupSignalTestFetch<SharedFetch>();
+//? Each sign-up runs on a clone of its own, which the harness gives its own address, so the per-IP limits on the
+//? public sign-up endpoints count one simulated person rather than every fixture in the process.
+const getFetch = async () => (await getOrSetupSignalTestFetch<SharedFetch>()).clone() as SharedFetch;
 
 export interface UserAgent<Fetch = SharedFetch, User = cnst.User, UserInput = cnst.UserInput> {
   user: User;
@@ -42,6 +44,10 @@ export const getUserAgentWithPhone = async <Fetch = SharedFetch, User = cnst.Use
 
   // 3. 인증코드 인증
   await fetch.verifyPhoneInPrepareUser(userId, phone, phoneCode, signupToken);
+  //? The default sign-up policy opens a draft only on a proven address, so the phone account proves one as well.
+  await fetch.setAccountIdInPrepareUser(userId, testEmail(), signupToken);
+  await fetch.requestEmailCodeInPrepareUser(userId, signupToken);
+  await fetch.verifyEmailInPrepareUser(userId, testEmailCode, signupToken);
 
   // 4. 유저 정보 업데이트
   await fetch.setAgreePoliciesOfPrepareUser(userId, ["privacy", "termsofservice"], signupToken);

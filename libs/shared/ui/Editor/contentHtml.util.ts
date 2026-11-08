@@ -1,6 +1,14 @@
 import { RichNode, type RichNodeLike, RichUrl } from "@libs/shared/common";
+import { resolveServerUrl } from "akanjs/client";
 
-import { akanEditorTheme, type CalloutVariant, calloutVariants, mentionChip, mentionChipLink } from "./Lexical/theme";
+import {
+  akanEditorTheme,
+  type CalloutVariant,
+  calloutVariants,
+  mentionChip,
+  mentionChipAvatar,
+  mentionChipLink,
+} from "./Lexical/theme";
 
 interface ContentNode extends RichNodeLike {
   children?: ContentNode[];
@@ -22,6 +30,7 @@ interface ContentNode extends RichNodeLike {
   rowSpan?: number;
   href?: string | null;
   label?: string;
+  imageUrl?: string | null;
   highlightType?: string;
 }
 
@@ -252,7 +261,8 @@ export class ContentHtml {
     const url = RichUrl.link(node.url);
     if (!url) return this.#fail();
     if (this.#options.disableHref) return this.#tag("a", akanEditorTheme.link ?? "", this.#children(node));
-    const target = node.target === "_blank" ? ' target="_blank" rel="noreferrer noopener"' : "";
+    const target =
+      node.target === "_blank" || RichUrl.external(url) ? ' target="_blank" rel="noreferrer noopener"' : "";
     return this.#tag(
       "a",
       akanEditorTheme.link ?? "",
@@ -285,10 +295,20 @@ export class ContentHtml {
     return this.#tag("div", className, this.#children(node));
   }
 
+  // XXX: lands inside a quoted CSS url() in a style attribute — a quote, paren, backslash or space would close it.
+  static #avatarUrl(url: unknown) {
+    const media = RichUrl.media(url);
+    const resolved = media ? resolveServerUrl(media) : null;
+    return resolved && !/["'()\\\s]/.test(resolved) ? resolved : null;
+  }
+
   #mention(node: ContentNode) {
     const label = ContentHtml.escape(node.label ?? node.text ?? "");
+    const avatarUrl = ContentHtml.#avatarUrl(node.imageUrl);
+    const chip = avatarUrl ? `${mentionChip} ${mentionChipAvatar}` : mentionChip;
+    const style = avatarUrl ? ` style="${ContentHtml.escape(`--mention-avatar: url("${avatarUrl}")`)}"` : "";
     const href = this.#options.disableHref ? null : RichUrl.internalPath(node.href);
-    if (!href) return this.#tag("span", mentionChip, label);
-    return this.#tag("a", `${mentionChip} ${mentionChipLink}`, label, ` href="${ContentHtml.escape(href)}"`);
+    if (!href) return this.#tag("span", chip, label, style);
+    return this.#tag("a", `${chip} ${mentionChipLink}`, label, ` href="${ContentHtml.escape(href)}"${style}`);
   }
 }

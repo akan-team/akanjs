@@ -76,6 +76,11 @@ export interface CreateEditorConfigOptions {
   editable: boolean;
   /** Persisted content — a Lexical `SerializedEditorState`, plain text, or garbage that fails safe to empty. */
   initialJson?: unknown;
+  /**
+   * Open an empty document on an empty paragraph: in a bare root the caret sits a paragraph margin above the
+   * placeholder, which is drawn as that paragraph. A collaborative editor stays bare, as its room supplies one.
+   */
+  seedParagraph?: boolean;
   /** Extra node classes contributed by `plugins` (must be known at creation). */
   extraNodes?: readonly Klass<LexicalNode>[];
   /** Telemetry / error surface. Defaults to `console.error`; never throws (keeps the editor alive). */
@@ -93,6 +98,7 @@ export interface CreateEditorConfigOptions {
 export const createEditorConfig = ({
   editable,
   initialJson,
+  seedParagraph = false,
   extraNodes,
   onError,
 }: CreateEditorConfigOptions): InitialConfigType => ({
@@ -100,7 +106,7 @@ export const createEditorConfig = ({
   editable,
   theme: akanEditorTheme,
   nodes: [...akanEditorNodes, ...(extraNodes ?? [])],
-  editorState: resolveEditorState(initialJson),
+  editorState: resolveEditorState(initialJson, seedParagraph),
   onError: (error) => {
     // Surface for telemetry but keep the editor mounted (fail-safe philosophy).
     // eslint-disable-next-line no-console
@@ -110,12 +116,12 @@ export const createEditorConfig = ({
 });
 
 /**
- * Returns a lazy initializer for `initialConfig.editorState`, or `null` (empty
- * document) when `initialJson` holds nothing to show.
+ * Returns a lazy initializer for `initialConfig.editorState`. For nothing to show it returns `null`, a bare root —
+ * or, under `seedParagraph`, `undefined`, which `LexicalComposer` fills with one empty paragraph.
  */
-const resolveEditorState = (initialJson: unknown): InitialConfigType["editorState"] => {
+const resolveEditorState = (initialJson: unknown, seedParagraph: boolean): InitialConfigType["editorState"] => {
   const state = toSerializedEditorState(initialJson);
-  if (!state) return null;
+  if (!state?.root.children?.length) return seedParagraph ? undefined : null;
   return (editor: LexicalEditor) => {
     try {
       editor.setEditorState(editor.parseEditorState(state));

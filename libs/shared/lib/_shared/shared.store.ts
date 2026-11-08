@@ -1,3 +1,4 @@
+import { safeRedirectPath } from "@libs/shared/common";
 import { saveRefreshToken } from "@libs/shared/webkit";
 import { loadPushDeviceId } from "@libs/util/webkit";
 import { router, setAuth } from "akanjs/client";
@@ -19,7 +20,7 @@ export class SharedStore extends store("shared" as const, () => ({
       if (auth === "admin") await (this as unknown as RootStore).initAdminAuth();
       else await (this as unknown as RootStore).getSelf();
       // 2. Redirect
-      if (redirect) router.push(redirect);
+      if (redirect) router.push(safeRedirectPath(redirect));
     } catch (err) {
       Logger.debug(`Login failed: ${err}`);
       // resetAuth();

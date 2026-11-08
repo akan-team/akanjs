@@ -12,6 +12,7 @@ export interface SsoIdentity {
   accountId: string;
   nickname: string;
   legacyAccountId?: string; // the id the account was stored under before, rewritten to `accountId` on sign-in
+  verifiedEmails?: string[]; // addresses the provider verified for the account; the old row must hold one to move
 }
 
 interface OAuthSpec {
@@ -19,6 +20,7 @@ interface OAuthSpec {
   token: string;
   scope: string[];
   scopeSeparator: " " | ",";
+  authorizeParams?: { [key: string]: string };
   identify: (accessToken: string) => Promise<SsoIdentity>;
 }
 
@@ -37,6 +39,10 @@ interface GithubProfile {
   id?: number;
   login?: string;
   name?: string | null;
+}
+interface GithubEmail {
+  email?: string;
+  verified?: boolean;
 }
 interface GoogleProfile {
   email?: string;
@@ -91,15 +97,21 @@ export class SsoProvider {
       scope: ["user"],
       scopeSeparator: " ",
       identify: async (accessToken) => {
-        const profile = await SsoProvider.#api<GithubProfile>("github", "https://api.github.com/user", {
-          headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-        });
+        const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
+        const profile = await SsoProvider.#api<GithubProfile>("github", "https://api.github.com/user", { headers });
         if (!profile.id || !profile.login) throw new Err("user.error.ssoProviderFailed", { type: "github" });
+        //? Without the list no old row moves, which is the safe answer; signing in by the numeric id does not need it.
+        const emails = await SsoProvider.#api<GithubEmail[]>("github", "https://api.github.com/user/emails", {
+          headers,
+        }).catch(() => []);
         //? A login can be renamed and then registered by someone else; only the numeric id stays with one person.
         return {
           accountId: `github:${profile.id}`,
           nickname: profile.name || profile.login,
           legacyAccountId: profile.login,
+          verifiedEmails: (Array.isArray(emails) ? emails : []).flatMap((each) =>
+            each.verified === true && each.email ? [each.email] : [],
+          ),
         };
       },
     },
@@ -108,6 +120,8 @@ export class SsoProvider {
       token: "https://oauth2.googleapis.com/token",
       scope: ["email", "profile"],
       scopeSeparator: " ",
+      //? Without it Google signs the browser's Google session straight back in, so a signed-out member cannot switch.
+      authorizeParams: { prompt: "select_account" },
       identify: async (accessToken) => {
         const profile = await SsoProvider.#api<GoogleProfile>(
           "google",
@@ -162,6 +176,7 @@ export class SsoProvider {
     if (type === "apple") return `https://appleid.apple.com/auth/authorize?${params.toString()}&response_mode=query`;
     const spec = SsoProvider.#specs[type];
     if (spec.scope.length) params.set("scope", spec.scope.join(spec.scopeSeparator));
+    for (const [key, value] of Object.entries(spec.authorizeParams ?? {})) params.set(key, value);
     return `${spec.authorize}?${params.toString()}`;
   }
 

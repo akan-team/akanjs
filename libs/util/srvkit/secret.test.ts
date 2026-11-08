@@ -1,7 +1,15 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
+import * as base from "akanjs/base";
 import { Logger, type LoggerSinkEntry } from "akanjs/common";
 import { jwtSign } from "./jwt";
-import { assertJwtSecretConfigured, generateJwtSecret, resolveJwt, resolveJwtSecret } from "./secret";
+import {
+  assertJwtSecretConfigured,
+  generateHost,
+  generateHosts,
+  generateJwtSecret,
+  resolveJwt,
+  resolveJwtSecret,
+} from "./secret";
 
 describe("assertJwtSecretConfigured", () => {
   const originalJwtSecret = process.env.JWT_SECRET;
@@ -113,5 +121,42 @@ describe("resolveJwt", () => {
       `Bearer ${token}\tx`,
     ])
       expect(await resolveJwt(secret, authorization, anonymous)).toBe(anonymous);
+  });
+});
+
+describe("generateHosts", () => {
+  const originalHostName = process.env.HOST_NAME;
+  const cloud = {
+    operationMode: "cloud",
+    appName: "sceny",
+    environment: "main",
+    serveDomain: "akamir.com",
+  } as ReturnType<typeof base.getEnv>;
+
+  afterEach(() => {
+    mock.restore();
+    if (originalHostName === undefined) delete process.env.HOST_NAME;
+    else process.env.HOST_NAME = originalHostName;
+  });
+
+  test("keeps a string as one host and an array in order, with the first name canonical", () => {
+    expect(generateHost({ hostname: "sceny.ai" })).toBe("sceny.ai");
+    expect(generateHosts({ hostname: "sceny.ai" })).toEqual(["sceny.ai"]);
+    expect(generateHosts({ hostname: [" sceny.ai ", "", "www.sceny.ai"] })).toEqual(["sceny.ai", "www.sceny.ai"]);
+    expect(generateHost({ hostname: ["sceny.ai", "www.sceny.ai"] })).toBe("sceny.ai");
+  });
+
+  test("HOST_NAME replaces the declared list", () => {
+    process.env.HOST_NAME = "from-env.example";
+    expect(generateHosts({ hostname: ["sceny.ai", "www.sceny.ai"] })).toEqual(["from-env.example"]);
+    expect(generateHost({ hostname: ["sceny.ai", "www.sceny.ai"] })).toBe("from-env.example");
+  });
+
+  test("an empty declaration falls back to the derived host", () => {
+    const getEnv = spyOn(base, "getEnv").mockReturnValue(cloud);
+    expect(generateHosts({})).toEqual(["sceny-main.akamir.com"]);
+    getEnv.mockReturnValue({ ...cloud, operationMode: "local" });
+    expect(generateHosts({ hostname: null })).toEqual(["localhost"]);
+    expect(generateHosts({ hostname: [] })).toEqual(["localhost"]);
   });
 });

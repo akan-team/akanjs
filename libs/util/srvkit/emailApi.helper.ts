@@ -1,1 +1,1 @@
-export type { SendMailOptions, Transporter } from "nodemailer";
+export type { Address, SendMailOptions, SMTPSentMessageInfo, Transporter } from "nodemailer";

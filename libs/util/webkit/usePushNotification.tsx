@@ -4,6 +4,7 @@ import { router, storage } from "akanjs/client";
 import { isNativeApp, type NativePushToken, push } from "akanjs/client/native";
 import type { Messaging } from "firebase/messaging";
 import { useEffect } from "react";
+import { pushColdOpenParam } from "../common/pushColdOpenParam";
 import { pushNavigateMessage } from "../common/pushNavigateMessage";
 
 export type PushNotificationPlatform = "web" | "ios" | "android";
@@ -189,6 +190,27 @@ const restoreForegroundDisplay = async () => {
   if (!registration) return;
   const messaging = await getWebMessaging();
   if (messaging) await initForegroundDisplay(messaging, registration);
+};
+
+//? akanjs steps its own deep-link stack 450ms apart, so each pushed screen finishes its transition before the next.
+const coldOpenStepMs = 450;
+
+/**
+ * A window a notification opened has nothing behind it, so Back left the app on a blank screen. When the worker
+ * marked this load as such, lays the screens `parentsOf` names under the target and drops the mark.
+ */
+export const enterPushColdOpen = (parentsOf: (href: string) => string[]) => {
+  if (!isWebRuntime()) return false;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(pushColdOpenParam)) return false;
+  url.searchParams.delete(pushColdOpenParam);
+  const target = `${url.pathname}${url.search}${url.hash}`;
+  const [first, ...rest] = [...parentsOf(target), target];
+  router.replace(first);
+  rest.forEach((href, idx) => {
+    setTimeout(() => router.push(href), coldOpenStepMs * (idx + 1));
+  });
+  return true;
 };
 
 /** The web's notification clicks. A native shell's taps are deep links the framework routes from boot. */

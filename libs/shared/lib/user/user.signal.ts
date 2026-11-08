@@ -5,18 +5,23 @@ import {
   Every,
   makeAccessTokenResponse,
   makeSignoutResponse,
+  makeSignupTicketResponse,
+  OwnImages,
+  Person,
   readRefreshTokenCookie,
   Self,
   SelfOrAdmin,
+  SelfOrStaff,
   type SerAccount,
   SignupHolder,
+  SignupToken,
   SSO,
   SsoFlow,
   Staff,
   User,
 } from "@libs/shared/srvkit";
 import { Any, ID } from "akanjs/base";
-import { endpoint, internal, Public, Req, slice } from "akanjs/signal";
+import { endpoint, Ip, internal, Public, Req, slice } from "akanjs/signal";
 
 import * as cnst from "../cnst";
 import { Err } from "../dict";
@@ -31,11 +36,11 @@ export class UserInternal extends internal(srv.user, ({ cron }) => ({
 
 export class UserSlice extends slice(
   srv.user,
-  { guards: { root: Staff, get: Public, cru: SelfOrAdmin, create: Admin } },
+  { guards: { root: Staff, get: Public, cru: SelfOrAdmin, create: Admin, update: [SelfOrAdmin, OwnImages] } },
   () => ({}),
 ) {}
 
-export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ query, mutation }) => ({
+export class UserEndpoint extends endpoint(srv.user.with(srv.util.security, srv.sign), ({ query, mutation }) => ({
   // The unread badge the app shell draws. It counts what the person has looked at, so an agent moving it
   // rewrites the record of what they read.
   addBadgeCount: mutation(cnst.User, { guards: [SelfOrAdmin], mcp: false })
@@ -63,7 +68,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("signToken", String)
     .with(Account)
     .exec(async function (signToken, account) {
-      return makeAccessTokenResponse(await this.userService.signinWithSignToken(signToken, account)) as never;
+      return makeAccessTokenResponse(await this.signService.signinWithSignToken(signToken, account)) as never;
     }),
   signoutUser: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
     .body("pushDeviceId", String, { nullable: true })
@@ -76,7 +81,19 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("signupToken", String)
     .with(Account)
     .exec(async function (userId, _signupToken, account) {
-      return makeAccessTokenResponse(await this.userService.activateUser(userId, account)) as never;
+      return makeAccessTokenResponse(await this.userService.activateUser(userId, account), {
+        endsSignup: true,
+      }) as never;
+    }),
+  activateUserWithAgreePolicies: mutation(cnst.util.AccessToken, { guards: [SignupHolder], mcp: false })
+    .param("userId", ID)
+    .body("agreePolicies", [String])
+    .body("signupToken", String)
+    .with(Account)
+    .exec(async function (userId, agreePolicies, _signupToken, account) {
+      return makeAccessTokenResponse(await this.userService.activateUser(userId, account, agreePolicies), {
+        endsSignup: true,
+      }) as never;
     }),
   // An admin vouches for the account, so the signup policy does not apply and no session is handed out.
   activateUserByAdmin: mutation(cnst.User, { guards: [Admin], mcp: false })
@@ -87,8 +104,11 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
   // Resumes the draft its token names, or opens a new one; either way the answer carries a fresh token.
   generatePrepareUser: mutation(cnst.SignupTicket, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
     .body("signupToken", String, { nullable: true })
-    .exec(async function (signupToken) {
-      return await this.userService.openSignup(signupToken);
+    .with(Req)
+    .exec(async function (signupToken, req) {
+      return makeSignupTicketResponse(
+        await this.userService.openSignup(signupToken || SignupToken.cookieOf(req)),
+      ) as never;
     }),
   setNicknameOfSelf: mutation(cnst.User, { guards: [User] })
     .body("nickname", String)
@@ -96,24 +116,26 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .exec(async function (nickname, self) {
       return await this.userService.setNickname(self.id, nickname);
     }),
-  setAppliedImagesOfSelf: mutation(cnst.User, { guards: [User] })
-    .body("appliedImages", [ID])
-    .with(Self)
-    .exec(async function (appliedImages, self) {
-      return await this.userService.setAppliedImages(self.id, appliedImages);
-    }),
-  // One step of the account-removal flow the page drives; on its own it records a reason for a departure that
-  // has not happened.
+  // Kept for app builds released before leaveSelf, which save the survey here and then call removeUser; on its own it
+  // records a reason for a departure that has not happened.
   setLeaveInfoOfSelf: mutation(cnst.User, { guards: [User], mcp: false })
     .body("leaveInfo", cnst.LeaveInfo)
     .with(Self)
     .exec(async function (leaveInfo, self) {
       return await this.userService.setLeaveInfo(self.id, leaveInfo);
     }),
-  approveUserImages: mutation(cnst.User, { guards: [Admin] })
-    .param("userId", ID)
-    .exec(async function (userId) {
-      return await this.userService.approveUserImages(userId);
+  leaveSelf: mutation(cnst.User, { guards: [User, Person] })
+    .body("leaveInfo", cnst.LeaveInfo, { nullable: true })
+    .with(Self)
+    .exec(async function (leaveInfo, self) {
+      return await this.userService.leave(self.id, leaveInfo);
+    }),
+  leaveAndSignoutSelf: mutation(cnst.util.AccessToken, { guards: [User, Person], mcp: false })
+    .body("leaveInfo", cnst.LeaveInfo, { nullable: true })
+    .body("pushDeviceId", String, { nullable: true })
+    .with(Self)
+    .exec(async function (leaveInfo, pushDeviceId, self) {
+      return makeSignoutResponse(await this.userService.leaveAndSignout(self.id, leaveInfo, pushDeviceId)) as never;
     }),
   myAccountId: query(String, { guards: [User], nullable: true })
     .with(Self)
@@ -121,18 +143,22 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       return await this.userService.getAccountId(self.id, false);
     }),
 
-  userExistsHasAccountId: query(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 120 } })
+  userExistsHasAccountId: query(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .param("accountId", String)
     .exec(async function (accountId) {
       const exists = await this.userService.existsByAccountId(accountId, ["active", "restricted", "dormant"]);
       return !!exists;
     }),
-  setAccountIdInPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false })
+  setAccountIdInPrepareUser: mutation(Boolean, {
+    guards: [SignupHolder],
+    mcp: false,
+    errors: { 400: ["user.error.signupAccountIdNotEmail"] },
+  })
     .body("userId", ID)
     .body("accountId", String)
     .body("signupToken", String)
     .exec(async function (userId, accountId) {
-      await this.userService.setAccountIdInPrepareUser(userId, accountId);
+      await this.signService.setAccountIdInPrepareUser(userId, accountId);
       return true;
     }),
   setPasswordInPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false })
@@ -141,22 +167,25 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("password", String)
     .body("signupToken", String)
     .exec(async function (userId, accountId, password) {
-      await this.userService.setPasswordInPrepareUser(userId, accountId, password);
+      await this.signService.setPasswordInPrepareUser(userId, accountId, password);
       return true;
     }),
   signinWithPassword: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
     .body("accountId", String)
     .body("password", String)
     .with(Account)
-    .exec(async function (accountId, password, account) {
-      return makeAccessTokenResponse(await this.userService.signinWithPassword(accountId, password, account)) as never;
+    .with(Ip, { nullable: true })
+    .exec(async function (accountId, password, account, ip) {
+      return makeAccessTokenResponse(
+        await this.signService.signinWithPassword(accountId, password, account, ip),
+      ) as never;
     }),
-  changePassword: mutation(Boolean, { guards: [Every], rateLimit: { calls: 10, by: "account" } })
+  changePassword: mutation(Boolean, { guards: [Every, Person], rateLimit: { calls: 10, by: "account" } })
     .body("password", String)
     .body("prevPassword", String)
     .with(Self)
     .exec(async function (password, prevPassword, self) {
-      await this.userService.changePassword(self.id, password, prevPassword);
+      await this.signService.changePassword(self.id, password, prevPassword);
       return true;
     }),
   requestPhoneCodeForSetPassword: mutation(Boolean, {
@@ -168,7 +197,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("hash", String)
     .with(Self)
     .exec(async function (phone, hash, self) {
-      await this.userService.requestPhoneCodeForSetPassword(self.id, phone, hash);
+      await this.signService.requestPhoneCodeForSetPassword(self.id, phone, hash);
       return true;
     }),
   getSignTokenForSetPassword: mutation(String, { guards: [User], mcp: false })
@@ -176,26 +205,26 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("phoneCode", String)
     .with(Self)
     .exec(async function (phone, phoneCode, self) {
-      return await this.userService.getSignTokenForSetPassword(self.id, phone, phoneCode);
+      return await this.signService.getSignTokenForSetPassword(self.id, phone, phoneCode);
     }),
-  setPasswordWithSignToken: mutation(Boolean, { guards: [User], mcp: false })
+  setPasswordWithSignToken: mutation(Boolean, { guards: [User, Person], mcp: false })
     .body("password", String)
     .body("signToken", String)
     .with(Self)
     .exec(async function (password, signToken, self) {
-      await this.userService.setPasswordWithSignToken(self.id, password, signToken);
+      await this.signService.setPasswordWithSignToken(self.id, password, signToken);
       return true;
     }),
   resetPassword: mutation(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("accountId", String)
     .exec(async function (accountId) {
-      return await this.userService.resetPassword(accountId);
+      return await this.signService.resetPassword(accountId);
     }),
   requestEmailCodeInPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false, rateLimit: { calls: 60 } })
     .body("userId", ID)
     .body("signupToken", String)
     .exec(async function (userId) {
-      await this.userService.requestEmailCodeInPrepareUser(userId);
+      await this.signService.requestEmailCodeInPrepareUser(userId);
       return true;
     }),
   verifyEmailInPrepareUser: mutation(String, { guards: [SignupHolder], mcp: false, rateLimit: { calls: 60 } })
@@ -203,7 +232,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("emailCode", String)
     .body("signupToken", String)
     .exec(async function (userId, emailCode) {
-      return await this.userService.verifyEmailInPrepareUser(userId, emailCode);
+      return await this.signService.verifyEmailInPrepareUser(userId, emailCode);
     }),
   setPasswordInPrepareUserWithSignToken: mutation(Boolean, { guards: [SignupHolder], mcp: false })
     .body("userId", ID)
@@ -211,14 +240,49 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("signToken", String)
     .body("signupToken", String)
     .exec(async function (userId, password, signToken) {
-      await this.userService.setPasswordInPrepareUserWithSignToken(userId, password, signToken);
+      await this.signService.setPasswordInPrepareUserWithSignToken(userId, password, signToken);
       return true;
     }),
 
-  userExistsHasPhone: query(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 120 } })
+  requestEmailCodeInActiveUser: mutation(Boolean, {
+    guards: [User, Person],
+    mcp: false,
+    rateLimit: { calls: 5, windowMs: 3_600_000, by: "account" },
+  })
+    .body("email", String)
+    .with(Self)
+    .exec(async function (email, self) {
+      await this.signService.requestEmailCodeInActiveUser(self.id, email);
+      return true;
+    }),
+  verifyEmailInActiveUser: mutation(Boolean, {
+    guards: [User, Person],
+    mcp: false,
+    rateLimit: { calls: 20, windowMs: 3_600_000, by: "account" },
+  })
+    .body("email", String)
+    .body("emailCode", String)
+    .with(Self)
+    .exec(async function (email, emailCode, self) {
+      await this.signService.verifyEmailInActiveUser(self.id, email, emailCode);
+      return true;
+    }),
+  verifiedEmailsOfSelf: query([cnst.VerifiedEmail], { guards: [User, Person], mcp: false })
+    .with(Self)
+    .exec(async function (self) {
+      return await this.userService.listVerifiedEmailEntries(self.id);
+    }),
+  removeVerifiedEmailOfSelf: mutation(Boolean, { guards: [User, Person], mcp: false })
+    .body("email", String)
+    .with(Self)
+    .exec(async function (email, self) {
+      await this.userService.removeVerifiedEmail(self.id, email);
+      return true;
+    }),
+  userExistsHasPhone: query(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .param("phone", String)
     .exec(async function (phone) {
-      return await this.userService.userExistsHasPhone(phone);
+      return await this.signService.userExistsHasPhone(phone);
     }),
   setPhoneInPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false, rateLimit: { calls: 60 } })
     .body("userId", ID)
@@ -226,7 +290,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("hash", String)
     .body("signupToken", String)
     .exec(async function (userId, phone, hash) {
-      await this.userService.setPhoneInPrepareUser(userId, phone, hash);
+      await this.signService.setPhoneInPrepareUser(userId, phone, hash);
       return true;
     }),
   verifyPhoneInPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false, rateLimit: { calls: 60 } })
@@ -235,7 +299,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("phoneCode", String)
     .body("signupToken", String)
     .exec(async function (userId, phone, phoneCode) {
-      await this.userService.verifyPhoneInPrepareUser(userId, phone, phoneCode);
+      await this.signService.verifyPhoneInPrepareUser(userId, phone, phoneCode);
       return true;
     }),
   requestPhoneCodeForChangePhone: mutation(Boolean, {
@@ -247,7 +311,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("hash", String)
     .with(Self)
     .exec(async function (phone, hash, self) {
-      await this.userService.requestPhoneCodeForChangePhone(self.id, phone, hash);
+      await this.signService.requestPhoneCodeForChangePhone(self.id, phone, hash);
       return true;
     }),
   setPhoneInActiveUser: mutation(Boolean, { guards: [User], mcp: false })
@@ -255,41 +319,41 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("phoneCode", String)
     .with(Self)
     .exec(async function (phone, phoneCode, self) {
-      await this.userService.setPhoneInActiveUser(self.id, phone, phoneCode);
+      await this.signService.setPhoneInActiveUser(self.id, phone, phoneCode);
       return true;
     }),
   requestPhoneCodeForSignin: mutation(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("phone", String)
     .body("hash", String)
     .exec(async function (phone, hash) {
-      await this.userService.requestPhoneCodeForSignin(phone, hash);
+      await this.signService.requestPhoneCodeForSignin(phone, hash);
       return true;
     }),
   getSignTokenForSignin: mutation(String, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("phone", String)
     .body("phoneCode", String)
     .exec(async function (phone, phoneCode) {
-      return await this.userService.getSignTokenForSignin(phone, phoneCode);
+      return await this.signService.getSignTokenForSignin(phone, phoneCode);
     }),
 
   requestEmailCodeForResetPassword: mutation(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("accountId", String)
     .exec(async function (accountId) {
-      await this.userService.requestEmailCodeForResetPassword(accountId);
+      await this.signService.requestEmailCodeForResetPassword(accountId);
       return true;
     }),
   verifyEmailCodeForResetPassword: mutation(String, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("accountId", String)
     .body("emailCode", String)
     .exec(async function (accountId, emailCode) {
-      return await this.userService.verifyEmailCodeForResetPassword(accountId, emailCode);
+      return await this.signService.verifyEmailCodeForResetPassword(accountId, emailCode);
     }),
   resetPasswordWithSignToken: mutation(Boolean, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("accountId", String)
     .body("password", String)
     .body("signToken", String)
     .exec(async function (accountId, password, signToken) {
-      await this.userService.resetPasswordWithSignToken(accountId, password, signToken);
+      await this.signService.resetPasswordWithSignToken(accountId, password, signToken);
       return true;
     }),
 
@@ -306,42 +370,40 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       return await this.userService.subUserRole(userId, role);
     }),
   // Restricting and releasing an account is a moderation decision with a person behind it.
-  restrictUser: mutation(Boolean, { guards: [Admin], mcp: false })
+  restrictUser: mutation(cnst.User, { guards: [Admin], mcp: false })
     .param("userId", ID)
     .body("reason", String)
     .body("until", Date, { nullable: true })
     .exec(async function (userId, reason, until) {
-      await this.userService.restrictUser(userId, reason, until);
-      return true;
+      return await this.userService.restrictUser(userId, reason, until);
     }),
-  releaseUser: mutation(Boolean, { guards: [Admin], mcp: false })
+  releaseUser: mutation(cnst.User, { guards: [Admin], mcp: false })
     .param("userId", ID)
     .exec(async function (userId) {
-      await this.userService.releaseUser(userId);
-      return true;
+      return await this.userService.releaseUser(userId);
     }),
-  getRestrictInfo: query(cnst.RestrictInfo, { guards: [SelfOrAdmin], nullable: true })
+  getRestrictInfo: query(cnst.RestrictInfo, { guards: [SelfOrStaff], nullable: true })
     .param("userId", ID)
     .exec(async function (userId) {
       return await this.userService.getRestrictInfo(userId);
     }),
-  setAccountIdByAdmin: mutation(Boolean, { guards: [Admin], mcp: false })
+  // The next three change somebody else's credentials, so from an agent's token, the operator's own included, they are
+  // account takeover; `Person` refuses one on every transport, which `mcp: false` alone does not.
+  setAccountIdByAdmin: mutation(Boolean, { guards: [Admin, Person], mcp: false })
     .param("userId", ID)
     .body("accountId", String)
     .exec(async function (userId, accountId) {
       await this.userService.setAccountId(userId, accountId);
       return true;
     }),
-  // The next four change somebody else's credentials, so on an agent shelf they are account takeover with the
-  // operator's own token. They stay page actions; `mcp: false` is curation, and HTTP serves them as before.
-  setPasswordByAdmin: mutation(Boolean, { guards: [Admin], mcp: false })
+  setPasswordByAdmin: mutation(Boolean, { guards: [Admin, Person], mcp: false })
     .param("userId", ID)
     .body("password", String)
     .exec(async function (userId, password) {
       await this.userService.setPassword(userId, password);
       return true;
     }),
-  setPhoneByAdmin: mutation(Boolean, { guards: [Admin], mcp: false })
+  setPhoneByAdmin: mutation(Boolean, { guards: [Admin, Person], mcp: false })
     .param("userId", ID)
     .body("phone", String)
     .exec(async function (userId, phone) {
@@ -349,11 +411,11 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
       return true;
     }),
   // Mints a token for someone else, so on an agent shelf it is a way around every other guard in the catalogue:
-  // one call and the rest of the session acts as that account. Impersonation stays an operator action over HTTP.
-  getAccessTokenByAdmin: query(cnst.util.AccessToken, { guards: [Admin], mcp: false })
+  // one call and the rest of the session acts as that account. Impersonation stays an operator's own action.
+  getAccessTokenByAdmin: query(cnst.util.AccessToken, { guards: [Admin, Person], mcp: false })
     .param("userId", ID)
     .exec(async function (userId) {
-      return makeAccessTokenResponse(await this.userService.getAccessTokenByAdmin(userId)) as never;
+      return await this.userService.getAccessTokenByAdmin(userId);
     }),
   getEncourageInfo: query(cnst.EncourageInfo, { guards: [Staff] })
     .param("userId", ID)
@@ -381,14 +443,6 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
     .body("signupToken", String)
     .exec(async function (userId, nickname) {
       await this.userService.setNicknameOfPrepareUser(userId, nickname);
-      return true;
-    }),
-  setAppliedImagesOfPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false })
-    .body("userId", ID)
-    .body("appliedImages", [String])
-    .body("signupToken", String)
-    .exec(async function (userId, appliedImages) {
-      await this.userService.setAppliedImagesOfPrepareUser(userId, appliedImages);
       return true;
     }),
   setNameOfPrepareUser: mutation(Boolean, { guards: [SignupHolder], mcp: false })
@@ -444,69 +498,69 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security), ({ 
   github: query(Any, { guards: [SSO.Github] })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.start("github", req as Bun.BunRequest, this.userService);
+      return await SsoFlow.start("github", req as Bun.BunRequest, this.signService);
     }),
   githubCallback: query(Any, { guards: [SSO.Github], path: "github/callback" })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.callback("github", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
+      return await SsoFlow.callback("github", req as Bun.BunRequest & { account?: SerAccount }, this.signService);
     }),
   google: query(Any, { guards: [SSO.Google] })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.start("google", req as Bun.BunRequest, this.userService);
+      return await SsoFlow.start("google", req as Bun.BunRequest, this.signService);
     }),
   googleCallback: query(Any, { guards: [SSO.Google], path: "google/callback" })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.callback("google", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
+      return await SsoFlow.callback("google", req as Bun.BunRequest & { account?: SerAccount }, this.signService);
     }),
   facebook: query(Any, { guards: [SSO.Facebook] })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.start("facebook", req as Bun.BunRequest, this.userService);
+      return await SsoFlow.start("facebook", req as Bun.BunRequest, this.signService);
     }),
   facebookCallback: query(Any, { guards: [SSO.Facebook], path: "facebook/callback" })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.callback("facebook", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
+      return await SsoFlow.callback("facebook", req as Bun.BunRequest & { account?: SerAccount }, this.signService);
     }),
   apple: query(Any, { guards: [SSO.Apple] })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.start("apple", req as Bun.BunRequest, this.userService);
+      return await SsoFlow.start("apple", req as Bun.BunRequest, this.signService);
     }),
   appleCallback: query(Any, { guards: [SSO.Apple], path: "apple/callback" })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.callback("apple", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
+      return await SsoFlow.callback("apple", req as Bun.BunRequest & { account?: SerAccount }, this.signService);
     }),
   kakao: query(Any, { guards: [SSO.Kakao] })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.start("kakao", req as Bun.BunRequest, this.userService);
+      return await SsoFlow.start("kakao", req as Bun.BunRequest, this.signService);
     }),
   kakaoCallback: query(Any, { guards: [SSO.Kakao], path: "kakao/callback" })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.callback("kakao", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
+      return await SsoFlow.callback("kakao", req as Bun.BunRequest & { account?: SerAccount }, this.signService);
     }),
   naver: query(Any, { guards: [SSO.Naver] })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.start("naver", req as Bun.BunRequest, this.userService);
+      return await SsoFlow.start("naver", req as Bun.BunRequest, this.signService);
     }),
   naverCallback: query(Any, { guards: [SSO.Naver], path: "naver/callback" })
     .with(Req)
     .exec(async function (req) {
-      return await SsoFlow.callback("naver", req as Bun.BunRequest & { account?: SerAccount }, this.userService);
+      return await SsoFlow.callback("naver", req as Bun.BunRequest & { account?: SerAccount }, this.signService);
     }),
   exchangeSsoCode: mutation(cnst.SsoSignin, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("code", String)
     .body("codeVerifier", String)
     .with(Account)
     .exec(async function (code, codeVerifier, account) {
-      return await this.userService.exchangeNativeSsoCode(code, codeVerifier, account);
+      return await this.signService.exchangeNativeSsoCode(code, codeVerifier, account);
     }),
   refreshJwt: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
     .body("refreshToken", String, { nullable: true })

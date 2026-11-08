@@ -6,9 +6,17 @@ export const dictionary = serviceDictionary(["en", "ko"])
   .endpoint<SharedEndpoint>((fn) => ({}))
   .error({
     noAuthenticationAccount: ["No authentication account", "인증 계정이 없습니다"],
+    agentTokenNotAllowed: [
+      "This action is not available to an application's token",
+      "애플리케이션의 토큰으로는 이 작업을 할 수 없다.",
+    ],
     noAuthenticationWithRoles: [
       "[{key}] No authentication with roles: {roles}, your roles are {yourRoles}",
       "[{key}] 필요한 권한이 없습니다: {roles}, 현재 권한: {yourRoles}",
+    ],
+    notPlatformAdmin: [
+      "[{key}] Only a platform admin can do this, and this admin account is not one.",
+      "[{key}] 플랫폼 관리자만 할 수 있는 일이고, 이 관리자 계정은 플랫폼 관리자가 아닙니다.",
     ],
     invalidRefreshToken: ["Invalid refresh token", "유효하지 않은 리프레시 토큰입니다"],
     revokedRefreshToken: ["Revoked refresh token", "취소된 리프레시 토큰입니다"],

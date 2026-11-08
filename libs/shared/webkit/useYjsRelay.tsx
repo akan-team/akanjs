@@ -278,7 +278,7 @@ export interface YjsRelay {
   /** Peers currently on this document, by their yjs client id. */
   peers: UserState[];
   /**
-   * The shared document, once `CollaborationPlugin` has asked for a provider.
+   * The shared document, once its provider has connected and applied the room's state.
    *
    * A caller that keeps a field outside the editor body — a title, an icon — puts it in a sibling type here
    * instead of round-tripping through the server: the relay already carries the whole document, so the field
@@ -318,6 +318,7 @@ export const useYjsRelay = (id: string, transport: YjsRelayTransport, enabled = 
       room.close();
       setJoined(null);
       setFailed(false);
+      setDoc(null);
     };
   }, [id, enabled]);
 
@@ -325,10 +326,14 @@ export const useYjsRelay = (id: string, transport: YjsRelayTransport, enabled = 
     return (docId, docMap) => {
       const sharedDoc = docMap.get(docId) ?? new Doc();
       docMap.set(docId, sharedDoc);
-      setDoc(sharedDoc);
       const ownJoin = joined?.id === docId ? joined : null;
       const room = ownJoin?.room ?? new YjsRelayRoom(docId, transport);
       const provider = new RelayProvider(sharedDoc, docId, transport, room, ownJoin?.state ?? "");
+      // Handed out only once synced: a write before connect() reaches no update listener, and yjs parks every
+      // later update of this client behind that gap — on the server and on every peer.
+      provider.on("sync", () => {
+        setDoc(sharedDoc);
+      });
       provider.awareness.on("update", () => {
         setPeers([...provider.awareness.getStates().values()]);
         setIsLeader(provider.peerIds().every((peerId) => provider.clientId < peerId));

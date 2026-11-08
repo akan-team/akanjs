@@ -5,7 +5,7 @@ import { serve } from "akanjs/service";
 import { Err } from "../dict";
 
 interface SignOption {
-  expiresIn?: number; // seconds; omitted, the token never expires
+  expiresIn: number; // seconds
   typ?: string; // what the token is for; `verify` with the same `typ` refuses any other kind
 }
 
@@ -14,10 +14,10 @@ export class SecurityService extends serve("security" as const, ({ use }) => ({
 })) {
   readonly refreshTokenDays = 30;
 
-  async sign(message: object, { expiresIn, typ }: SignOption = {}) {
-    const expiresAt = expiresIn ? dayjs().add(expiresIn, "second") : undefined;
+  async sign(message: object, { expiresIn, typ }: SignOption) {
+    const expiresAt = dayjs().add(expiresIn, "second");
     const claims = typ ? { ...message, typ } : message;
-    return { jwt: await jwtSign(claims, this.jwtSecret, { expiresAt, issuedAt: !!expiresAt }) };
+    return { jwt: await jwtSign(claims, this.jwtSecret, { expiresAt, issuedAt: true }) };
   }
   async signAccessToken(
     data: Record<string, unknown>,

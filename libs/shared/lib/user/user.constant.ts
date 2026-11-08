@@ -9,7 +9,15 @@ import { File } from "../file/file.constant";
 
 export class SsoType extends enumOf("ssoType", ["naver", "kakao", "github", "google", "apple", "facebook"] as const) {}
 
-export class Verify extends enumOf("verify", [...SsoType.values, "wallet", "password", "phone", "email"] as const) {}
+export class Verify extends enumOf("verify", [...SsoType.values, "wallet", "password", "phone", "email"] as const) {
+  //? github is not one: its accountId is the GitHub user id, not an address.
+  static provesEmail = ["email", "google", "kakao", "naver", "apple", "facebook"] as const;
+  //? A password proves nothing about who signs up, so on its own it would let anyone claim someone else's address.
+  static provesIdentity = [...SsoType.values, "wallet", "phone", "email"] as const;
+  static isEmailProof(verify: string) {
+    return (Verify.provesEmail as readonly string[]).includes(verify);
+  }
+}
 
 export class UserRole extends enumOf("userRole", ["root", "admin", "user", "business", "guest"] as const) {}
 
@@ -27,10 +35,9 @@ export class ProfileStatus extends enumOf("profileStatus", [
 export class UserStatus extends enumOf("userStatus", ["prepare", "active", "dormant", "restricted"] as const) {}
 
 export class UserInput extends via((field) => ({
-  nickname: field(String, { default: "", maxlength: 12, text: "title" }),
+  nickname: field(String, { default: "", maxlength: 20, text: "title" }),
   image: field(File, { text: "thumb" }).optional(),
   images: field([File]),
-  appliedImages: field([File]),
 })) {}
 
 export class UserObject extends via(UserInput, (field) => ({
@@ -46,6 +53,7 @@ export class UserObject extends via(UserInput, (field) => ({
   restrictInfo: field.secret(RestrictInfo).optional(),
   leaveInfo: field.secret(LeaveInfo).optional(),
   verifies: field([Verify]),
+  verifiedEmails: field.secret([String]), // addresses proven after sign-up, lowercased; none of them signs in
   roles: field([UserRole], { default: ["user"], text: "filter" }),
   playing: field([String]),
   isOnline: field(Boolean, { default: true }),

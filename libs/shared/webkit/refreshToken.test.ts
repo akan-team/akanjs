@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 const envState = { side: "client" as "client" | "server", renderMode: "csr" as "csr" | "ssr" };
 const stored = new Map<string, string>();
 const authToken = { value: null as string | null };
+const sessionClaims = { value: undefined as string | undefined };
 const jwtExpiringIn = (seconds: number) =>
   `h.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds, self: { id: "u1" } })).toString("base64url")}.s`;
 
@@ -11,7 +12,8 @@ beforeAll(() => {
     getEnv: () => ({ ...envState, appName: "shop" }),
   }));
   mock.module("akanjs/client", () => ({
-    getAuthToken: () => authToken.value,
+    getAuthToken: () => authToken.value ?? undefined,
+    getSessionClaims: () => sessionClaims.value,
     setAuth: ({ jwt }: { jwt: string }) => {
       authToken.value = jwt;
     },
@@ -32,6 +34,7 @@ afterEach(() => {
   envState.renderMode = "csr";
   stored.clear();
   authToken.value = null;
+  sessionClaims.value = undefined;
 });
 
 describe("refresh token keeping", () => {
@@ -94,6 +97,18 @@ describe("refreshSession", () => {
     await refreshSession("user", refresh);
     expect(calls).toHaveLength(0);
     await refreshSession("user", refresh, { force: true });
+    expect(calls).toHaveLength(1);
+  });
+
+  test("a session the server holds is judged by its claims cookie, so a fresh one is not refreshed on every load", async () => {
+    envState.renderMode = "ssr";
+    const { refreshSession } = await import("./refreshToken");
+    const { calls, refresh } = refreshCounting();
+    sessionClaims.value = jwtExpiringIn(600).split(".").slice(0, 2).join(".");
+    await refreshSession("user", refresh);
+    expect(calls).toHaveLength(0);
+    sessionClaims.value = jwtExpiringIn(30).split(".").slice(0, 2).join(".");
+    await refreshSession("user", refresh);
     expect(calls).toHaveLength(1);
   });
 

@@ -57,6 +57,11 @@ describe("SsoProvider", () => {
     expect(url.searchParams.get("scope")).toBe("email profile");
   });
 
+  test("Google always shows its account chooser, so a signed-out member can pick another account", () => {
+    const url = new URL(SsoProvider.authorizeUrl("google", origin, "state-1"));
+    expect(url.searchParams.get("prompt")).toBe("select_account");
+  });
+
   test("Apple is asked to answer on the query, without the scopes that force a cross-site form post", () => {
     const url = new URL(SsoProvider.authorizeUrl("apple", origin, "state-2"));
     expect(url.searchParams.get("response_mode")).toBe("query");
@@ -83,13 +88,33 @@ describe("SsoProvider", () => {
     await expect(SsoProvider.verifyAppleIdToken(forged, clientId, jwks)).rejects.toThrow();
   });
 
-  test("GitHub is identified by its numeric id, keeping the login only to migrate old rows", async () => {
-    answer([{ access_token: "t" }, { id: 42, login: "alice", name: null }]);
+  test("GitHub is identified by its numeric id, keeping the login and its verified addresses to migrate old rows", async () => {
+    answer([
+      { access_token: "t" },
+      { id: 42, login: "alice", name: null },
+      [
+        { email: "alice@example.com", verified: true, primary: true },
+        { email: "old@example.com", verified: false, primary: false },
+      ],
+    ]);
     expect(await SsoProvider.identify("github", "code", origin)).toEqual({
       accountId: "github:42",
       nickname: "alice",
       legacyAccountId: "alice",
+      verifiedEmails: ["alice@example.com"],
     });
+  });
+
+  test("a GitHub account whose addresses cannot be read still signs in, with no address to migrate on", async () => {
+    let call = 0;
+    spyOn(globalThis, "fetch").mockImplementation((async () => {
+      call += 1;
+      if (call === 3) return new Response("{}", { status: 403 });
+      return new Response(JSON.stringify(call === 1 ? { access_token: "t" } : { id: 7, login: "bob" }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch);
+    expect((await SsoProvider.identify("github", "code", origin)).verifiedEmails).toEqual([]);
   });
 
   test("an email the provider has not verified does not sign anyone in", async () => {

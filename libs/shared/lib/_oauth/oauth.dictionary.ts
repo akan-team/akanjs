@@ -59,6 +59,10 @@ export const dictionary = serviceDictionary(["en", "ko"])
       "이 인가 요청은 다른 계정이 시작했다.",
     ],
     notSignedIn: ["Sign in to continue", "계속하려면 로그인해야 한다."],
+    adminSubjectNotAllowed: [
+      "Sign in with a user account to authorize an application; this server does not grant the admin console's access",
+      "애플리케이션을 허용하려면 사용자 계정으로 로그인해야 한다. 이 서버는 관리자 콘솔의 권한을 위임하지 않는다.",
+    ],
     disabled: ["OAuth is disabled on this server", "이 서버에서 OAuth 가 꺼져 있다."],
   })
   .translate({

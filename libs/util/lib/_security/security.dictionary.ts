@@ -33,4 +33,5 @@ export const dictionary = serviceDictionary(["en", "ko"])
   }))
   .error({
     unexpectedTokenType: ["This token is not a {typ} token", "{typ} 용도의 토큰이 아닙니다."],
+    storagePathOutsideRoot: ["The storage path leaves its storage root.", "저장소 경로가 저장소 루트 밖을 가리킵니다."],
   });

@@ -23,10 +23,12 @@ export class FileService extends serve(db.file, ({ plug, use, memory }) => ({
   ipfsApi: plug(IpfsApi),
   oauthOption: use<ResolvedOAuthOptions>(),
   uploadTicketDirs: memory(Map, { of: String }),
+  uploadTicketUploaders: memory(Map, { of: String }),
 })) {
   private static readonly uriDownloadDir = "./data/uriDownload";
   private static readonly uploadTicketSeconds = 10 * 60;
-  private static readonly servedTypePattern = /^(?:(?:image|video)\/[a-z0-9][a-z0-9.+-]*|application\/pdf)$/;
+  private static readonly servedTypePattern = /^(?:(?:image|video|audio)\/[a-z0-9][a-z0-9.+-]*|application\/pdf)$/;
+  static readonly maxUploadBytes = 100 * 1024 * 1024;
 
   override async _postRemove(file: db.File) {
     await this.storageApi.deleteData(file.url);
@@ -41,31 +43,57 @@ export class FileService extends serve(db.file, ({ plug, use, memory }) => ({
     fileMetas: db.FileMeta[],
     purpose: string,
     group = "default",
+    uploader?: string,
   ): Promise<db.File[]> {
     if (fileStreams.length !== fileMetas.length) throw new Err("file.error.fileStreamsAndMetasMismatch");
-    const files = await Promise.all(
-      fileStreams.map(
-        async (fileStream, idx) =>
-          await this._addFileFromStream(fileStream, fileMetas[idx] as db.FileMeta, purpose, group),
-      ),
+    const uploads = await Promise.all(
+      fileStreams.map(async (fileStream) => await (fileStream as unknown as Promise<File>)),
     );
-    return files;
+    const oversized = uploads.find(({ size }) => size > FileService.maxUploadBytes);
+    if (oversized)
+      throw new Err(
+        "file.error.fileTooLarge",
+        { filename: oversized.name, maxSize: FileService.maxUploadBytes / 1024 / 1024 },
+        { statusCode: 413 },
+      );
+    return await this.transaction(async () => {
+      const files = await this.createFileMany(
+        uploads.map((upload, idx) => ({
+          ...FileService.uploadInputOf(upload, fileMetas[idx] as db.FileMeta),
+          uploader,
+        })),
+      );
+      //? Each stream runs past the response, so none starts before every row of the batch is committed.
+      await this.afterCommit(() => {
+        files.forEach((file, idx) => {
+          this._streamUpload(file, uploads[idx] as File, purpose, group);
+        });
+      });
+      return files;
+    });
   }
-  async requestFileUpload(purpose: string, group = "default") {
+  async requestFileUpload(purpose: string, group = "default", uploader?: string) {
     const ticket = createOpaqueToken();
     const expiresAt = dayjs().add(FileService.uploadTicketSeconds, "second");
     const dir = `${FileService.segmentOf(purpose)}/${FileService.segmentOf(group)}`;
     await this.uploadTicketDirs.set(hashToken(ticket), dir, { expireAt: expiresAt });
+    if (uploader) await this.uploadTicketUploaders.set(hashToken(ticket), uploader, { expireAt: expiresAt });
     const uploadUrl = `${this.oauthOption.issuer}${getApiPrefix()}/file/addFilesByTicket`;
     return new cnst.FileUploadTicket().set({ ticket, uploadUrl, expiresAt });
   }
   async addFilesByTicket(fileStreams: File[], ticket: string): Promise<db.File[]> {
     const dir = await this.uploadTicketDirs.getDel(hashToken(ticket));
     if (!dir) throw new Err("file.error.invalidUploadTicket", undefined, { statusCode: 401 });
+    const uploader = (await this.uploadTicketUploaders.getDel(hashToken(ticket))) ?? undefined;
     const [purpose = "default", group = "default"] = dir.split("/");
     const lastModifiedAt = dayjs();
     const fileMetas = fileStreams.map(() => ({ lastModifiedAt, size: 0 }));
-    return await this.addFiles(fileStreams, fileMetas, purpose, group);
+    return await this.addFiles(fileStreams, fileMetas, purpose, group, uploader);
+  }
+  async isUploadedBy(fileIds: string[], uploader: string) {
+    const ids = [...new Set(fileIds)];
+    if (!ids.length) return true;
+    return (await this.fileModel.countUploadedBy(ids, uploader)) === ids.length;
   }
   async addFileFromUri(
     uri: string,
@@ -141,35 +169,22 @@ export class FileService extends serve(db.file, ({ plug, use, memory }) => ({
     return Buffer.from(await new Response(stream).arrayBuffer());
   }
 
-  async _addFileFromStream(fileStream: File, fileMeta: db.FileMeta, purpose: string, group: string | null) {
-    const upload = await (fileStream as unknown as Promise<File>);
-    const mimetype = FileService.contentTypeOf(upload.type);
-    const file = await this.fileModel.createFile({
-      progress: 0,
-      url: "",
-      imageSize: [0, 0],
-      filename: upload.name,
-      mimetype,
-      encoding: "7bit",
-      lastModifiedAt: fileMeta.lastModifiedAt,
-      size: upload.size,
-    });
-    const path = `${FileService.segmentOf(purpose)}/${FileService.segmentOf(group)}/${file.id}${FileService.extensionOf(upload.name, mimetype)}`;
+  private _streamUpload(file: db.File, upload: File, purpose: string, group: string | null) {
+    const path = `${FileService.segmentOf(purpose)}/${FileService.segmentOf(group)}/${FileService.objectNameOf(file.id)}${FileService.extensionOf(upload.name, file.mimetype)}`;
     this.storageApi.uploadDataFromStream({
       path: path,
       body: upload.stream(),
-      mimetype,
+      mimetype: file.mimetype,
       updateProgress: async (progress) => {
         await this.fileModel.progressUpload(file.id, progress.loaded, upload.size);
       },
       uploadSuccess: async (url) => {
-        const abstract = mimetype.startsWith("image/")
+        const abstract = file.mimetype.startsWith("image/")
           ? await getImageAbstract(await upload.arrayBuffer().then((b) => Buffer.from(b)))
           : {};
         void this.fileModel.finishUpload(file.id, url, abstract);
       },
     });
-    return file;
   }
   async addFileFromLocal(
     localFile: LocalFile,
@@ -178,18 +193,22 @@ export class FileService extends serve(db.file, ({ plug, use, memory }) => ({
     { origin, fileId }: { origin?: string; fileId?: string } = {},
   ): Promise<db.File> {
     const { size } = await FileManager.getFileStat(localFile);
-    const imageSize = localFile.mimetype.startsWith("image/") ? await getImageSize(localFile.localPath) : [0, 0];
-    const data = { ...localFile, url: "", imageSize, origin, size };
+    const mimetype = FileService.contentTypeOf(localFile.mimetype);
+    const imageSize = mimetype.startsWith("image/") ? await getImageSize(localFile.localPath) : [0, 0];
+    const data = { ...localFile, mimetype, url: "", imageSize, origin, size };
+    const replacedUrl = fileId ? (await this.fileModel.loadFile(fileId))?.url : undefined;
     // An edge or station copying a file down from the cloud keeps the source's id so both sides
     // resolve the same reference.
     const file = fileId ? await this._writeFileWithId(fileId, data) : await this.fileModel.createFile(data);
-    const path = `${FileService.segmentOf(purpose)}/${FileService.segmentOf(group)}/${this._convertFileName(file)}`;
-    const url = await this.storageApi.uploadDataFromLocal({
-      path,
-      localPath: localFile.localPath,
-    });
-    const abstract = localFile.mimetype.startsWith("image/") ? await getImageAbstract(localFile.localPath) : {};
+    const path = `${FileService.segmentOf(purpose)}/${FileService.segmentOf(group)}/${FileService.objectNameOf(file.id)}${FileService.extensionOf(localFile.filename, mimetype)}`;
+    const url = await this.storageApi.uploadDataFromLocal({ path, localPath: localFile.localPath, mimetype });
+    const abstract = mimetype.startsWith("image/") ? await getImageAbstract(localFile.localPath) : {};
     await this.fileModel.finishUpload(file.id, url, abstract);
+    //? Every copy lands under a fresh random key, so the object a re-copied file used to name would stay in the bucket.
+    if (replacedUrl && replacedUrl !== url)
+      await this.storageApi.deleteData(replacedUrl).catch((error) => {
+        this.logger.warn(`Removing the object file ${file.id} was copied over from failed: ${String(error)}`);
+      });
     return file.set({ status: "active", progress: 100, url, ...abstract });
   }
   private async _writeFileWithId(fileId: string, data: Partial<db.File>) {
@@ -229,10 +248,9 @@ export class FileService extends serve(db.file, ({ plug, use, memory }) => ({
     const ext = basename.includes(".") ? `.${basename.split(".").pop()}` : "";
     return `${createDocumentId()}${ext}`;
   }
-  private _convertFileName(file: db.File) {
-    const split = file.filename.split(".");
-    const ext = split.length > 1 ? `.${split.at(-1)}` : "";
-    return `${file.id}${ext}`;
+  //? The bucket serves anyone who names a key, and a document id is guessable, so the key carries a secret of its own.
+  private static objectNameOf(fileId: string) {
+    return `${fileId}-${createOpaqueToken(16)}`;
   }
   private static segmentOf(value: string | null) {
     return value?.replace(/[^A-Za-z0-9_-]/g, "") || "default";
@@ -248,7 +266,20 @@ export class FileService extends serve(db.file, ({ plug, use, memory }) => ({
     const ext = /\.([a-z0-9]{1,10})$/i.exec(filename)?.[1]?.toLowerCase();
     if (contentType === "application/octet-stream") return ext ? `.${ext}` : "";
     if (ext && Bun.file(`file.${ext}`).type.split(";")[0] === contentType) return `.${ext}`;
-    return `.${contentType.split("/")[1] ?? ""}`;
+    const subtype = contentType.split("/")[1] ?? "";
+    return /^[a-z0-9]{1,10}$/.test(subtype) ? `.${subtype}` : "";
+  }
+  private static uploadInputOf(upload: File, fileMeta: db.FileMeta) {
+    return {
+      progress: 0,
+      url: "",
+      imageSize: [0, 0] as [number, number],
+      filename: upload.name,
+      mimetype: FileService.contentTypeOf(upload.type),
+      encoding: "7bit",
+      lastModifiedAt: fileMeta.lastModifiedAt,
+      size: upload.size,
+    };
   }
   //? A URI can carry a presigned token in its query, so a log line names only its origin and drops every query.
   private static failureOf(uri: string, err: unknown) {
