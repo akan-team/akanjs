@@ -123,11 +123,16 @@ Only on `page()`:
 .app<Name extends string>(name: Name & FreeName<Name, Record<never, never>>, description: string, load: (args: RouteBaseArgs) => PromiseOrObject<ReactNode>)
 ```
 
-On `layout()` and `rootLayout()`:
+On `layout()` and `rootLayout()`, where a line replaces its shared form above:
 
 ```ts
+interface LayoutExtra { children: ReactNode; }
+.param<Name extends string, Type extends RouteArgType>(name: Name, type: Type, option?: RouteArgOption)
+.search<Name extends string, Type extends RouteSearchType>(name: Name, type: Type, option?: RouteArgOption)
 .notFound(render: LayoutNotFoundRender)
 .error(render: LayoutErrorRender)
+.loading(render: (args: RouteBaseArgs & LayoutExtra) => PromiseOrObject<ReactNode>)
+.render(render: (args: RouteBaseArgs & LayoutExtra) => PromiseOrObject<ReactNode>)
 ```
 
 Only on `rootLayout()`, before `.param()` and `.search()`:

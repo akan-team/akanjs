@@ -23,6 +23,8 @@ describe("ApiReference", () => {
     expect(rendered).toContain('import { layout, page, rootLayout, router } from "akanjs/client";');
     expect(rendered).toMatch(/^query<.+>\(returnRef: Returns, signalOption\?: SignalOption<Returns, Nullable>\)$/m);
     expect(rendered).toMatch(/^\.param<.+>\(name: .+, type: Type, option\?: RouteArgOption\)$/m);
+    expect(rendered).toMatch(/^\.render\(render: \(args: RouteBaseArgs & LayoutExtra\) => .+\)$/m);
+    expect(rendered).toMatch(/children: ReactNode/);
     expect(rendered).toMatch(/^\/\*\* .+ \*\/\nserverMode\?: "batch" \| "federation";$/m);
   });
 });

@@ -31,7 +31,8 @@ export default page()
 2. Name every `[x]` segment with `.param("x", Type)` and read a query key only with `.search("k", Type)`. Values
    arrive typed; `lang` reaches every stage and is never declared.
 3. Gate with `.guard(() => signedIn())` on the `_layout.tsx` (a real redirect before anything renders), and repeat
-   a stricter guard on a page that needs more. The endpoint guards are still the real gate.
+   a stricter guard on a page that needs more. The endpoint guards are still the real gate. `signedIn` comes from
+   `@libs/shared/webkit`, and a new workspace has that lib only with `create-workspace --libs true`.
 4. In `.render()`: `usePage()`, then fetch, then return. Hand `fetch.init*` / `view*` / `edit*` fields to sections
    unawaited; await only what the shell reads, in one `Promise.all`.
 5. `.head()` takes JSX (or a function returning it), never a metadata object. A canonical link comes only from the
