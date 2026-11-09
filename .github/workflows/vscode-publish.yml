@@ -1,0 +1,95 @@
+name: Publish editor extension
+
+on:
+  push:
+    branches: [main, rc]
+    paths:
+      - pkgs/@akanjs/vscode/**
+      - pkgs/@akanjs/language/**
+      - bun.lock
+      - .github/workflows/vscode-publish.yml
+  workflow_dispatch:
+
+concurrency:
+  group: vscode-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build the vsix
+    if: github.ref_name == 'main' || github.ref_name == 'rc'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      published: ${{ steps.check.outputs.published }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: DIST_DIR="$RUNNER_TEMP/akan-vscode" bun pkgs/@akanjs/vscode/build.ts --vsix ${{ github.ref_name == 'rc' && format('--pre-release={0}', github.run_number) || '' }}
+      - name: Check the version against the registries
+        id: check
+        run: |
+          version=$(jq -r .version "$RUNNER_TEMP/akan-vscode/package.json")
+          versions=$(curl -fsS -X POST https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery \
+            -H 'Content-Type: application/json' -H 'Accept: application/json;api-version=7.2-preview.1' \
+            -d '{"filters":[{"criteria":[{"filterType":7,"value":"akanjs.akan"}]}],"flags":1}' \
+            | jq -c '[.results[0].extensions[0].versions[]?.version]')
+          if [ "$GITHUB_REF_NAME" = rc ]; then
+            higher=$(jq -r --arg v "$version" '($v | split(".") | map(tonumber)) as $mine
+              | map(select((split(".") | map(tonumber)) > $mine)) | max_by(split(".") | map(tonumber)) // empty' <<< "$versions")
+            if [ -n "$higher" ]; then
+              echo "::error::Pre-release $version is below the published $higher, so no one would get it. Merge main into rc."
+              exit 1
+            fi
+            exit 0
+          fi
+          openvsx=$(curl -s -o /dev/null -w '%{http_code}' "https://open-vsx.org/api/akanjs/akan/$version")
+          if [ "$openvsx" != 200 ] && [ "$openvsx" != 404 ]; then
+            echo "::error::Open VSX answered $openvsx for akanjs.akan $version."
+            exit 1
+          fi
+          if [ "$openvsx" = 200 ] && jq -e --arg v "$version" 'any(.[]; . == $v)' <<< "$versions" > /dev/null; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::akanjs.akan $version is already on the VS Marketplace and Open VSX."
+          elif [ $(( $(cut -d. -f2 <<< "$version") % 2 )) -ne 0 ]; then
+            echo "::error::Release $version has an odd minor, which pre-releases from rc use. Bump @akanjs/vscode to an even minor."
+            exit 1
+          fi
+      - if: steps.check.outputs.published != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: ${{ runner.temp }}/akan-*.vsix
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish (${{ github.ref_name == 'rc' && 'pre-release' || 'release' }})
+    needs: build
+    if: needs.build.outputs.published != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: vscode-publish
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: VS Marketplace
+        run: npx --yes @vscode/vsce@4.1.0 publish --oidc --skip-duplicate --packagePath akan-*.vsix ${{ github.ref_name == 'rc' && '--pre-release' || '' }}
+      - name: Open VSX
+        run: npx --yes ovsx@1.4.0 publish --trusted-publishing --skip-duplicate --packagePath akan-*.vsix
