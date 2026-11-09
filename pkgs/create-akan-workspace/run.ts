@@ -28,6 +28,14 @@ const readGlobalBinDir = () => {
 //? Windows spells the key `Path`, and a spread copy of process.env loses its case-insensitive lookup.
 const getPathKey = (env: NodeJS.ProcessEnv) => Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
 const isOnPath = (env: NodeJS.ProcessEnv, dir: string) => (env[getPathKey(env)] ?? "").split(delimiter).includes(dir);
+//? npx and npm scripts put a package's `node_modules/.bin` on PATH for that one run, so the shell afterwards lacks it.
+export const isBunOnLastingPath = (env: NodeJS.ProcessEnv) => {
+  const PATH = (env[getPathKey(env)] ?? "")
+    .split(delimiter)
+    .filter((dir) => dir && !dir.split(/[\\/]/).some((part) => part.toLowerCase() === "node_modules"))
+    .join(delimiter);
+  return Bun.which("bun", { PATH }) !== null;
+};
 const prependToPath = (env: NodeJS.ProcessEnv, dir: string | undefined): NodeJS.ProcessEnv => {
   if (!dir || isOnPath(env, dir)) return env;
   const pathKey = getPathKey(env);
@@ -84,11 +92,13 @@ export const run = async ({
   spawnCommand = spawn,
   bunVersion = Bun.version,
   getGlobalBinDir = readGlobalBinDir,
+  isBunOnPath = () => isBunOnLastingPath(process.env),
 }: {
   argv?: string[];
   spawnCommand?: SpawnCommand;
   bunVersion?: string;
   getGlobalBinDir?: () => string | undefined;
+  isBunOnPath?: () => boolean;
 } = {}) => {
   //? A range admits no prerelease of a later release (`1.4.5-canary.1`), so a canary build is judged by its release.
   if (!Bun.semver.satisfies(bunVersion.replace(/-.*$/, ""), engines.bun)) {
@@ -129,6 +139,7 @@ export const run = async ({
       const sample = options.sample === undefined || options.sample === true || options.sample === "true";
       //? `bun install -g` links `akan` into Bun's global bin, which is not on PATH when Bun itself came from npm.
       const globalBinDir = getGlobalBinDir();
+      const bunOnPath = isBunOnPath();
       await spawnProcess(
         spawnCommand,
         "akan",
@@ -142,10 +153,15 @@ export const run = async ({
           `--sample=${sample}`,
           ...(registryUrl ? [`--registry=${registryUrl}`] : []),
           ...(options.owner ? [`--owner=${options.owner}`] : []),
+          ...(bunOnPath ? [] : [`--bun-dependency=${bunVersion}`]),
         ],
         { env: prependToPath(env, globalBinDir) },
       );
-      if (globalBinDir && !isOnPath(process.env, globalBinDir))
+      if (!bunOnPath)
+        console.warn(
+          `\nBun ${bunVersion} is not on your PATH, so \`akan\` cannot run from the shell. The workspace lists bun in its dependencies instead: from the workspace, run \`npm run build\`, \`npm start\` or \`npx akan <command>\`.`,
+        );
+      else if (globalBinDir && !isOnPath(process.env, globalBinDir))
         console.warn(
           `\nThe \`akan\` command was installed to ${globalBinDir}, which is not on your PATH. Add that directory to PATH to run \`akan\` from the workspace.`,
         );

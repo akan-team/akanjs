@@ -4,7 +4,7 @@
 "@akanjs/devkit": patch
 ---
 
-An app can now serve its default locale at unprefixed paths. Set `i18n.localePrefix` to `"as-needed"` in `akan.config.ts`, and `/pokemon/deoxys` is the English page itself. Before, every page lived under `/<locale>/…`, and an unprefixed path answered with a 307 to the locale the browser asked for. An app with one language, or with URLs fixed from outside (OAuth callbacks, QR codes, links in mail, a migrated site), could only meet them with raw `<a href>`s, which reloaded the whole page and went through that 307 on every click.
+An app can now serve its default locale at unprefixed paths. Set `i18n.localePrefix` to `"as-needed"` in `akan.config.ts`, and `/books/OL45804W` is the English page itself. Before, every page lived under `/<locale>/…`, and an unprefixed path answered with a 307 to the locale the browser asked for. An app with one language, or with URLs fixed from outside (OAuth callbacks, QR codes, links in mail, a migrated site), could only meet them with raw `<a href>`s, which reloaded the whole page and went through that 307 on every click.
 
 ```ts
 const config: AppConfig = {

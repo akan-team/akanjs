@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { BiomeReport } from "@akanjs/devkit/linter";
+import type { BiomeDiagnostic, BiomeReport } from "@akanjs/devkit/linter";
 import type { MaintainabilityReport } from "@akanjs/devkit/maintainabilityReport";
 import type { QualityWarning } from "@akanjs/devkit/qualityScanner";
 import type { TypecheckRecord } from "@akanjs/devkit/typeChecker";
@@ -55,7 +56,7 @@ export class VerifyDiagnostics {
     };
   }
 
-  static fromBiome(report: BiomeReport): VerifyDiagnostic[] {
+  static fromBiome(report: BiomeReport, root?: string): VerifyDiagnostic[] {
     return (report.diagnostics ?? [])
       .filter((diagnostic) => diagnostic.severity === "error" || diagnostic.severity === "warning")
       .map((diagnostic) => {
@@ -67,9 +68,37 @@ export class VerifyDiagnostics {
           col: diagnostic.location?.start?.column ?? 0,
           code: diagnostic.category ?? "biome",
           severity: diagnostic.severity === "error" ? "error" : "warning",
-          ...(VerifyDiagnostics.#adapterErrorOf(file, diagnostic.message) ?? { message: diagnostic.message }),
+          ...(VerifyDiagnostics.#adapterErrorOf(file, diagnostic.message) ??
+            VerifyDiagnostics.#deepImportOf(root, file, diagnostic) ?? { message: diagnostic.message }),
         };
       });
+  }
+
+  static readonly #deepImport = /^Module files should not import from two or more parent directories/;
+  static readonly #deepSpecifier = /["'](\.\.\/\.\.\/[^"']*)["']/g;
+  static readonly #layerOf = /^(apps|libs)\/([\w-]+)\/(common|srvkit|webkit|ui)(?:\/|$)/;
+
+  //? The alias rule refuses a path past `@apps/<app>/<layer>`, so the layer's barrel is the one import left.
+  static #deepImportOf(root: string | undefined, file: string | null, diagnostic: BiomeDiagnostic) {
+    const start = diagnostic.location?.start;
+    if (!root || !file || !start || !VerifyDiagnostics.#deepImport.test(diagnostic.message)) return null;
+    let line: string;
+    try {
+      line = readFileSync(path.join(root, file), "utf8").split("\n")[start.line - 1] ?? "";
+    } catch {
+      return null;
+    }
+    const specifiers = [...line.matchAll(VerifyDiagnostics.#deepSpecifier)];
+    const specifier = (specifiers.find((match) => match.index === start.column - 1) ?? specifiers[0])?.[1];
+    if (!specifier) return null;
+    const target = path.posix.join(path.posix.dirname(file), specifier);
+    const [, kind, name, layer] = target.match(VerifyDiagnostics.#layerOf) ?? [];
+    if (!kind || !name || !layer) return null;
+    const barrel = `@${kind}/${name}/${layer}`;
+    return {
+      message: `Module files should not reach ${barrel} through two or more parent directories.`,
+      fix: `import from "${barrel}"`,
+    };
   }
 
   static readonly #rawError = /^Do not (throw|construct) a raw `Error`/;

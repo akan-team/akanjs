@@ -19,7 +19,7 @@ or {
     $source <: r"\"\.\./\.\./.*\"",
     register_diagnostic(
       span = $source,
-      message = "Module files should not import from two or more parent directories."
+      message = "Module files should not import from two or more parent directories. Import from the layer barrel instead: @apps/<app>/<layer> or @libs/<lib>/<layer>."
     )
   },
   JsModuleSource() as $source where {

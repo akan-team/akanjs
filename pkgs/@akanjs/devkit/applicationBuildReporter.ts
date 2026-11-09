@@ -40,7 +40,7 @@ export class ApplicationBuildReporter {
   }
 
   static readonly localBuildNotice =
-    "Built for local, which serves the dev routes to every caller. For a host others can reach, build with AKAN_PUBLIC_ENV=main, AKAN_PUBLIC_REPO_NAME and AKAN_PUBLIC_SERVE_DOMAIN set.";
+    "Built for local: the server runs without endpoint rate limits, and boots on local defaults (Redis on localhost, the first database mode) where a deployment would stop to ask. For a host others can reach, run `akan build <app> --env main` with AKAN_PUBLIC_REPO_NAME and AKAN_PUBLIC_SERVE_DOMAIN set in the workspace .env.";
 
   static formatError(error: unknown, workspaceRoot = process.cwd()): string {
     if (error instanceof AggregateError) {

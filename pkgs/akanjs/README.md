@@ -58,14 +58,13 @@ Node and npm, or URLs given by a spec, a coding agent needs these, and nothing h
   workspace's rules and MCP server.
 - **Check each change with `akan verify <app>`.** It syncs, lints, typechecks, builds and checks SSR, and prints only
   what failed. `akan preview <app> --changed` opens the pages a change reaches.
-- **Exact URLs:** pages live under `/<locale>/…`. To serve the default locale at the bare path (`/pokemon/deoxys`),
+- **Exact URLs:** pages live under `/<locale>/…`. To serve the default locale at the bare path (`/books/OL45804W`),
   set `i18n: { defaultLocale: "en", locales: ["en"], localePrefix: "as-needed" }` in `akan.config.ts`; `<Link>`
   follows.
 - **A host with only Node and npm:** run the creator through npx, which writes nothing global:
-  `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`. Put `bun` in the
-  workspace's `dependencies` so the host installs it too, and let the package scripts call `akan` from the
-  `@akanjs/cli` in `devDependencies`. If `akan` is not found after a global install, add the folder `bun pm bin -g`
-  prints to `PATH`.
+  `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`. That Bun is not on
+  `PATH` afterwards, so the creator lists `bun` in the workspace's `dependencies` and writes the scripts below; run
+  any other command as `npx akan …`.
 - **Build and run without Docker** through these package scripts; `npm run build`, then `PORT=3000 npm start`:
 
   ```json
@@ -75,9 +74,10 @@ Node and npm, or URLs given by a spec, a coding agent needs these, and nothing h
 
   A fresh clone builds as is: the env files stay gitignored and `akan` writes the ones it lacks, so commit none. The
   build carries the env it needs, and a variable set at start overrides it.
-- **Build for where it runs.** Without a `.env`, `akan build` builds for `local`, right for your own machine or a test
-  runner but serving the dev routes to every caller. For a host others can reach, set `AKAN_PUBLIC_ENV=main`,
-  `AKAN_PUBLIC_REPO_NAME` and `AKAN_PUBLIC_SERVE_DOMAIN` (the domain it serves) in the shell or the workspace `.env`.
+- **Build for where it runs.** `akan build` builds for the `AKAN_PUBLIC_ENV` of the workspace `.env`, `local` in a new
+  workspace. That suits your own machine or a test runner, but the server runs without endpoint rate limits and on local
+  defaults. For a host others can reach, set `AKAN_PUBLIC_REPO_NAME` and `AKAN_PUBLIC_SERVE_DOMAIN` (the domain it
+  serves) in the workspace `.env`, and run `akan build <app> --env main`.
 
 ## All Of It Is One Line
 
