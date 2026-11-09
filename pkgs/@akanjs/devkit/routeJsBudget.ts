@@ -29,7 +29,7 @@ export interface RouteJsBudgetCheck {
 //* Each entry is the brotli KB of every client module statically reachable from a route's page and layouts, plus
 //* their vendors. `--update-budget` adds a new route and lowers an entry its route now fits under; only a hand edit
 //* raises one. The check allows the larger of 1% and 4KB over an entry, as BundleSizeGate does: the bundles inline
-//* `AKAN_PUBLIC_*`, so a budget recorded on a local build measures tens of bytes off a `--env main` one.
+//* `AKAN_PUBLIC_*`, so a budget recorded on a local build can measure over a kilobyte off a `--env main` one.
 export class RouteJsBudget {
   static readonly fileName = "akan.budget.json";
   static readonly section = "routeJsBrotliKB";
