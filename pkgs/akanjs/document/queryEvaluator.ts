@@ -26,6 +26,11 @@ export interface DocumentRowView {
 /** Only `isArray` is read; the shape matches the field metadata `QueryCompiler` holds. */
 export type QueryFieldMap = Record<string, { getProps?: () => Record<string, unknown> } & Record<string, unknown>>;
 
+export interface EqualityConjunct {
+  path: string;
+  keys: string[];
+}
+
 interface PathValue {
   /** `json_type(...) IS NOT NULL` — the key is in the stored JSON, whatever it holds. */
   present: boolean;
@@ -105,6 +110,41 @@ export class DocumentQueryEvaluator {
     return entries.every(([path, value]) => this.#field(path, value, row));
   }
 
+  equalityConjuncts(query: DocumentQuery | undefined): EqualityConjunct[] {
+    if (!query || typeof query !== "object") return [];
+    if (isDocumentQueryNode(query))
+      return query.kind === "all" ? query.queries.flatMap((sub) => this.equalityConjuncts(sub)) : [];
+    return Object.entries(query).flatMap(([path, value]) => this.#conjunctsAt(path, value));
+  }
+
+  /** Equal to an operand's key whenever `#compare` finds the two equal, so an index probed with it misses no match. */
+  static keyAt(path: string, row: DocumentRowView): string | null {
+    return DocumentQueryEvaluator.#keyOf(DocumentQueryEvaluator.#read(path, row).value);
+  }
+
+  #conjunctsAt(path: string, value: unknown): EqualityConjunct[] {
+    if (fieldValueProblem(path, value) || this.#isArrayField(path)) return [];
+    if (isDocumentQueryNode(value))
+      return value.kind === "op" ? DocumentQueryEvaluator.#conjunctOf(path, value.op, value.value) : [];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const operators = Object.entries(value as Record<string, unknown>).filter(([key]) => queryOperatorKeys.has(key));
+      if (operators.length)
+        return operators.flatMap(([op, operand]) => DocumentQueryEvaluator.#conjunctOf(path, op, operand));
+    }
+    return DocumentQueryEvaluator.#conjunctOf(path, "eq", value);
+  }
+
+  static #conjunctOf(path: string, op: string, operand: unknown): EqualityConjunct[] {
+    const operands = op === "eq" ? [operand] : op === "oneOf" && Array.isArray(operand) ? operand : [];
+    const keys = operands.flatMap((item) => DocumentQueryEvaluator.#keyOf(DocumentQueryEvaluator.#encode(item)) ?? []);
+    return keys.length ? [{ path, keys: [...new Set(keys)] }] : [];
+  }
+
+  static #keyOf(value: unknown): string | null {
+    const kind = DocumentQueryEvaluator.#classOf(value);
+    return kind === 0 ? null : kind === 1 ? `n:${Number(value)}` : `s:${String(value)}`;
+  }
+
   #node(node: DocumentQueryNode, row: DocumentRowView): boolean {
     const problem = queryNodeProblem(node);
     if (problem) throw new Error(problem);
@@ -151,7 +191,7 @@ export class DocumentQueryEvaluator {
 
   #operator(path: string, op: DocumentQueryOperator, operand: unknown, row: DocumentRowView): boolean {
     const isBase = baseDocumentColumns.has(path);
-    const read = this.#read(path, row);
+    const read = DocumentQueryEvaluator.#read(path, row);
     switch (op) {
       case "eq":
         return operand === null ? read.value === null : DocumentQueryEvaluator.#equals(read.value, operand);
@@ -223,7 +263,7 @@ export class DocumentQueryEvaluator {
     return items.some((item) => DocumentQueryEvaluator.#equals(DocumentQueryEvaluator.#extract(item), operand));
   }
 
-  #read(path: string, row: DocumentRowView): PathValue {
+  static #read(path: string, row: DocumentRowView): PathValue {
     if (baseDocumentColumns.has(path)) {
       const value = (row as unknown as Record<string, unknown>)[path] ?? null;
       return { present: value !== null, value, raw: value };

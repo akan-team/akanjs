@@ -212,7 +212,7 @@ describe("WorkspaceScript", () => {
       expect(recorder.calls.find((call) => call.name === "createApplication")?.args).toEqual([
         "demo",
         workspace,
-        { libs: ["util", "shared"], sample: true },
+        { libs: ["util", "shared"] },
       ]);
       expect(recorder.calls.find((call) => call.name === "agent")?.args).toEqual([
         workspace,
@@ -335,7 +335,7 @@ describe("WorkspaceScript", () => {
     expect(recorder.calls.find((call) => call.name === "createApplication")?.args).toEqual([
       "demo",
       workspace,
-      { libs: [], sample: false },
+      { libs: [] },
     ]);
     expect(recorder.names()).not.toContain("applyTemplate");
   });
@@ -477,16 +477,6 @@ describe("WorkspaceRunner", () => {
       "setup:agent": "akan agent install all --force",
       "agent:doctor": "akan doctor --strict --format json",
       "agent:mcp:plan": "akan mcp-install all --mode plan --force",
-      "agent:sample:service": "akan create-service billing demo --format json",
-      "agent:sample:module": "akan create-module project demo --page=true --format json",
-      "agent:sample:field":
-        "akan add-field --app demo --module project --field budget --type Int --default 0 --format json",
-      "agent:sample:status":
-        "akan add-enum-field --app demo --module project --field status --values draft,active,archived --default draft --format json",
-      "agent:sample:workflow:plan":
-        "akan workflow plan add-field --app demo --module task --field priority --type enum --values low,medium,high --default medium --format json --out .akan/workflows/plans/task-priority.json",
-      "agent:sample:workflow:dry-run":
-        "akan workflow apply .akan/workflows/plans/task-priority.json --dry-run --format json",
     });
     expect(workspacePackageJson.dependencies.akanjs).toBe("2.0.0-beta.0");
     expect(workspacePackageJson.dependencies).toMatchObject({

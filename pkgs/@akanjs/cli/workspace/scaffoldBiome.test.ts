@@ -106,13 +106,13 @@ describe("scaffold output", () => {
         serveDomain: "localhost",
         owner: "",
       });
-      await scaffold.apply("apps/myapp", "app", { appName: "myapp" }, { libs: ["util", "shared"], sample: true });
+      await scaffold.apply("apps/myapp", "app", { appName: "myapp" }, { libs: ["util", "shared"] });
       await scaffold.apply("apps/myapp", "appSample", { appName: "myapp" }, { libs: ["util", "shared"] });
       await scaffold.apply(
         "apps/zooKeeperAdministrationPortal",
         "app",
         { appName: "zooKeeperAdministrationPortal" },
-        { libs: [], sample: false },
+        { libs: [] },
       );
       for (const libName of ["mylib", "analyticsWarehouseConnector"])
         await scaffold.apply(`libs/${libName}`, "libRoot", { libName });

@@ -1,3 +1,5 @@
+import { AkanError } from "akanjs/base";
+
 export type MigrationErrorCode =
   | "usage"
   | "notFound"
@@ -10,15 +12,13 @@ export type MigrationErrorCode =
   | "failed";
 
 /** A refusal or failure whose `code` the JSON result carries, so a caller decides by it rather than by the message. */
-export class MigrationError extends Error {
-  readonly code: MigrationErrorCode;
+export class MigrationError extends AkanError<MigrationErrorCode> {
   /** The ledger run the failure was recorded on, when it got that far. */
   runId: string | null = null;
 
   constructor(code: MigrationErrorCode, message: string, options?: { cause?: unknown }) {
-    super(message, options);
+    super(code, message, options);
     this.name = "MigrationError";
-    this.code = code;
   }
 
   static codeOf(error: unknown): MigrationErrorCode {

@@ -48,7 +48,12 @@ const specifierPatternOf = (name: string) =>
     "g",
   );
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
-const TEST_FILE_PATTERNS = ["**/*.{test,spec}.{ts,tsx,js,jsx}", "**/*.fixture.{ts,tsx}", "**/*.instance.ts"];
+const TEST_FILE_PATTERNS = [
+  "**/*.{test,spec}.{ts,tsx,js,jsx}",
+  "**/*.fixture.{ts,tsx}",
+  "**/*.instance.ts",
+  "**/*.bench.ts",
+];
 
 const removeTestFiles = async () => {
   for (const pattern of TEST_FILE_PATTERNS)
@@ -56,7 +61,7 @@ const removeTestFiles = async () => {
       await rm(`${OUT_DIR}/${file}`, { force: true });
 };
 // `*.instance.ts` is a process a conformance test spawns, and it imports that test's fixture.
-const testFilePattern = /\.(?:test|spec|fixture|instance)\.[cm]?[tj]sx?$/;
+const testFilePattern = /\.(?:test|spec|fixture|instance|bench)\.[cm]?[tj]sx?$/;
 
 const rewriteFiles = async (
   targetDir: string,
