@@ -54,7 +54,7 @@ export const createServerEnvPlugin = ({
         build.onLoad({ filter }, async (args) => {
           const name = path.basename(args.path, ".ts").slice("env.server.".length);
           const { exports } = new Bun.Transpiler({ loader: "ts" }).scan(await Bun.file(args.path).text());
-          const message = `env/env.server.${name}.ts is not in this build: \`akan build\` bundles the server env of AKAN_PUBLIC_ENV=${environment} alone, the environment its image runs. To run ${name}, build for it: AKAN_PUBLIC_ENV=${name} in the workspace's .env, which outranks the shell, or --env ${name} on a desktop or mobile build.`;
+          const message = `env/env.server.${name}.ts is not in this build: \`akan build\` bundles the server env of AKAN_PUBLIC_ENV=${environment} alone, the environment its image runs. To run ${name}, build for it with \`--env ${name}\` (\`akan build\` or a desktop or mobile build), or AKAN_PUBLIC_ENV=${name} in the workspace's .env, which outranks the shell.`;
           return {
             loader: "js",
             contents: [

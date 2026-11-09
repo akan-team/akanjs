@@ -380,9 +380,16 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       reporter,
       spinner = false,
       envProfile,
-    }: { fast?: boolean; reporter?: BuildProgressReporter; spinner?: boolean; envProfile?: string } = {},
+      environment,
+    }: {
+      fast?: boolean;
+      reporter?: BuildProgressReporter;
+      spinner?: boolean;
+      envProfile?: string;
+      environment?: string;
+    } = {},
   ): Promise<BuildResult> {
-    return new (await loadBuildRunner())(app, { fast, reporter, profile: envProfile }).build({ spinner });
+    return new (await loadBuildRunner())(app, { fast, reporter, profile: envProfile, environment }).build({ spinner });
   }
   async start(
     app: App,

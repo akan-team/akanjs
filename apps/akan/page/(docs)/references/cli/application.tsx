@@ -1365,7 +1365,8 @@ akan test util`,
       },
       {
         name: "build",
-        signature: "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>]",
+        signature:
+          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>]",
         desc: l.trans({
           en: "Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.",
           ko: "배포용 빌드를 `dist/apps/<app>`에 만듭니다. 타입을 검사한 뒤 백엔드, SSR 라우트, CSR 번들을 차례로 만듭니다.",
@@ -1393,6 +1394,15 @@ akan test util`,
             desc: l.trans({
               en: "A server env profile: the build bundles `env/env.server.<env>.<profile>.ts` in place of the environment's own file, and each lib's `env.server.testing.<profile>.ts` in place of its defaults. The app's profile file must exist, and a profile file whose secret-named key holds a value stops the build.",
               ko: "서버 env 프로필입니다. 빌드가 환경 자신의 파일 대신 `env/env.server.<env>.<profile>.ts`를, lib의 기본값 대신 그 lib의 `env.server.testing.<profile>.ts`를 번들합니다. 앱의 프로필 파일이 있어야 하고, 비밀 이름의 키에 값이 든 프로필 파일이 있으면 빌드가 멈춥니다.",
+            }),
+          },
+          {
+            name: "--env",
+            type: "String",
+            enumOrFlag: "local | debug | develop | main",
+            desc: l.trans({
+              en: "The environment the server runs in. Without it, the build takes `AKAN_PUBLIC_ENV` from the workspace `.env`, which outranks the shell.",
+              ko: "서버가 실행될 환경입니다. 주지 않으면 워크스페이스 `.env`의 `AKAN_PUBLIC_ENV`를 따르며, 이 값이 셸보다 우선합니다.",
             }),
           },
         ],

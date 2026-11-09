@@ -638,10 +638,10 @@ export class AkanAppConfig implements AppConfigResult {
       ...(this.web.csr ? {} : { AKAN_CSR: "false" }),
     };
   }
-  //? An image runs where the build cannot see, and AKAN_PUBLIC_ENV=local serves the dev routes to every caller there.
+  //? An image runs where the build cannot see, and AKAN_PUBLIC_ENV=local turns off its rate limits and boot checks there.
   static readonly localImageGuard = [
     "ARG AKAN_ALLOW_LOCAL_IMAGE",
-    `RUN if [ "$AKAN_ALLOW_LOCAL_IMAGE" != "1" ]; then echo "This build ran with AKAN_PUBLIC_ENV=local, which serves the dev routes to every caller. Build with the environment it deploys to, or pass --build-arg AKAN_ALLOW_LOCAL_IMAGE=1." >&2; exit 1; fi`,
+    `RUN if [ "$AKAN_ALLOW_LOCAL_IMAGE" != "1" ]; then echo "This build ran with AKAN_PUBLIC_ENV=local, so the server runs without endpoint rate limits and on local defaults for Redis and the database mode. Build for the environment it deploys to with akan build --env, or pass --build-arg AKAN_ALLOW_LOCAL_IMAGE=1." >&2; exit 1; fi`,
   ].join("\n");
   dockerfileFor(environment: string, { lockfile = true }: { lockfile?: boolean } = {}): string {
     return this.#makeDockerfile(environment, lockfile);

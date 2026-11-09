@@ -14,13 +14,14 @@ describe("ApplicationBuildReporter.printSummary", () => {
   const rawLog = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
   afterEach(() => rawLog.mockClear());
 
-  test("names every variable a deployed build needs when the build is for local", () => {
+  test("names the flag and the variables a deployed build needs when the build is for local", () => {
     ApplicationBuildReporter.printSummary(resultFor("local"));
 
     const notice = rawLog.mock.calls.map(([line]) => line).at(-1);
     expect(notice).toBe(ApplicationBuildReporter.localBuildNotice);
-    for (const key of ["AKAN_PUBLIC_ENV=main", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"])
-      expect(notice).toContain(key);
+    for (const part of ["akan build <app> --env main", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"])
+      expect(notice).toContain(part);
+    expect(notice).not.toContain("dev routes");
   });
 
   test("adds nothing to a build for a deployed environment", () => {
