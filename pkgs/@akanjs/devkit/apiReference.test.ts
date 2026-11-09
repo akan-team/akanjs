@@ -27,4 +27,11 @@ describe("ApiReference", () => {
     expect(rendered).toMatch(/children: ReactNode/);
     expect(rendered).toMatch(/^\/\*\* .+ \*\/\nserverMode\?: "batch" \| "federation";$/m);
   });
+
+  test("lists the keys of akan.config.ts, so the web and i18n shapes have a field to belong to", () => {
+    const appConfig = rendered.slice(rendered.indexOf("### `AppConfigInput`"));
+    expect(appConfig).toMatch(/^web\?: AkanWebOption;$/m);
+    expect(appConfig).toMatch(/^i18n\?: DeepPartial<AkanI18nConfig>;$/m);
+    expect(appConfig.indexOf("### `AkanWebOption`")).toBeGreaterThan(appConfig.indexOf("web?: AkanWebOption;"));
+  });
 });

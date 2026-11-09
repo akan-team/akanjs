@@ -97,6 +97,7 @@ const sections: Section[] = [
     title: "App config (`akan.config.ts`)",
     items: [
       { name: "AppConfig", from: "akanjs", show: { kind: "declaration" } },
+      { name: "AppConfigInput", from: "akanjs", show: { kind: "props" } },
       { name: "AkanWebOption", from: "akanjs", show: { kind: "declaration" } },
       { name: "AkanI18nConfig", file: "common/localeConfig.ts", show: { kind: "props" } },
     ],
