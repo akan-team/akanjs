@@ -558,6 +558,107 @@ describe("rscClient account change", () => {
   });
 });
 
+describe("rscClient prefetch", () => {
+  const prefetch = async (href: string) => {
+    await act(async () => {
+      globalThis.__AKAN_RSC_PREFETCH__?.(href);
+      await sleep(10);
+    });
+  };
+
+  test("a prefetched page commits on the click without asking the server again, as a replay", async () => {
+    await navigate("/store");
+    await prefetch("/store/item");
+    expect(fetchCountOf("/store/item")).toBe(1);
+
+    await navigate("/store/item");
+
+    expect(fetchCountOf("/store/item")).toBe(1);
+    expect(shown()).toBe("/store/item");
+    expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
+  });
+
+  test("a click while the prefetch is loading waits on it instead of asking twice", async () => {
+    await navigate("/menu");
+    let release = () => {};
+    served.set(
+      "/menu/dish",
+      () => new Promise<Response>((resolve) => (release = () => resolve(responseOf("/menu/dish")))),
+    );
+    await prefetch("/menu/dish");
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/menu/dish");
+      await sleep(10);
+    });
+
+    await act(async () => {
+      release();
+      await pending;
+    });
+
+    expect(fetchCountOf("/menu/dish")).toBe(1);
+    expect(shown()).toBe("/menu/dish");
+  });
+
+  test("a page prefetched for one account is asked for again after the account changes", async () => {
+    signIn("owner");
+    await navigate("/hall");
+    served.set("/notes", () => responseOf("owner notes"));
+    await prefetch("/notes");
+
+    signIn("visitor");
+    served.set("/notes", () => responseOf("visitor notes"));
+    await navigate("/notes");
+
+    expect(fetchCountOf("/notes")).toBe(2);
+    expect(shown()).toBe("visitor notes");
+  });
+
+  test("a page the navigation cache holds is not prefetched", async () => {
+    await navigate("/rack");
+    await navigate("/rack/next");
+
+    await prefetch("/rack");
+
+    expect(fetchCountOf("/rack")).toBe(1);
+  });
+
+  test("a visitor saving data is sent nothing ahead of the click", async () => {
+    Object.defineProperty(navigator, "connection", { value: { saveData: true }, configurable: true });
+    try {
+      await prefetch("/heavy");
+    } finally {
+      Reflect.deleteProperty(navigator, "connection");
+    }
+
+    expect(fetchCountOf("/heavy")).toBe(0);
+  });
+
+  test("a refresh drops what was prefetched", async () => {
+    await navigate("/board");
+    await prefetch("/board/2");
+    await refresh();
+
+    await navigate("/board/2");
+
+    expect(fetchCountOf("/board/2")).toBe(2);
+  });
+
+  test("a prefetch answered with a redirect moves nothing until the click", async () => {
+    await navigate("/porch2");
+    served.set("/members2", preStreamRedirectTo("/door2"));
+    await prefetch("/members2");
+    expect(window.location.pathname).toBe("/porch2");
+
+    await navigate("/members2");
+    await waitFor(() => shown() === "/door2");
+
+    expect(window.location.pathname).toBe("/door2");
+    expect(fetchCountOf("/members2")).toBe(1);
+  });
+});
+
 describe("rscClient not-found", () => {
   test("a page answered with its not-found view shows the view at the URL it was asked for", async () => {
     served.set("/vault/7", notFoundViewOf("vault missing"));

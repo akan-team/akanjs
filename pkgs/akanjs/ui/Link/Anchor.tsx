@@ -5,6 +5,7 @@ import { Logger } from "akanjs/common";
 import { st } from "akanjs/store";
 import type { AnchorHTMLAttributes } from "react";
 import { isActiveHref, useCurrentPathname } from "./activePath";
+import { type LinkPrefetch, usePrefetchIntent } from "./prefetchIntent";
 
 export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
   /** Omitted, or with `disabled`, Link renders a plain div around the same children. */
@@ -20,6 +21,8 @@ export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "hre
   activeMatch?: string[];
   /** @deprecated Has no effect: neither renderer reads it. */
   noCache?: boolean;
+  /** `"hover"` (the default, or `true`) loads the page on hover, touch or focus, `"viewport"` also once it shows. */
+  prefetch?: LinkPrefetch;
 };
 type AnchorProps = Omit<CommonLinkProps, "href" | "disabled"> & { href: string };
 
@@ -33,6 +36,7 @@ export const CsrLink = ({
   activeExact,
   activeMatch,
   noCache,
+  prefetch,
   ...props
 }: AnchorProps) => {
   const { prefix } = usePathCtx();
@@ -76,11 +80,13 @@ export const SsrLink = ({
   activeExact,
   activeMatch,
   noCache,
+  prefetch = "hover",
   ...props
 }: AnchorProps) => {
   const prefix = usePathCtx().prefix ?? "";
   const { lang } = usePage();
   const pathname = useCurrentPathname();
+  const prefetchIntent = usePrefetchIntent(href, prefetch, props);
   const currentPath = getPathInfo(pathname, lang, prefix).path;
   const isExternal = Href.isExternal(href);
   const internalPathInfo = getPathInfo(href, lang, prefix);
@@ -102,6 +108,7 @@ export const SsrLink = ({
       )}
       href={isExternal ? href : requestHref}
       {...props}
+      {...prefetchIntent}
       onClick={(event) => {
         props.onClick?.(event);
         if (event.defaultPrevented) return;

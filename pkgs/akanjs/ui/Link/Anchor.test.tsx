@@ -1,5 +1,6 @@
 import "../../test/registerDom";
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { act } from "react";
 import { mount, setTestEnv } from "../testHelpers.fixture";
 
 let SsrLink: typeof import("./Anchor").SsrLink;
@@ -8,6 +9,7 @@ let Link: typeof import("./index").Link;
 let router: typeof import("akanjs/client").router;
 
 const pushes: string[] = [];
+const prefetches: string[] = [];
 const opens: Array<[string, string | undefined, string | undefined]> = [];
 let originalOpen: typeof window.open;
 const fakeRouter = {
@@ -19,6 +21,9 @@ const fakeRouter = {
   },
   back: () => undefined,
   refresh: () => undefined,
+  prefetch: (href: string) => {
+    prefetches.push(href);
+  },
 };
 const externalHrefs = [
   "HTTPS://example.com/x",
@@ -235,6 +240,7 @@ describe("Link", () => {
           activeClassName="a"
           activeExact
           noCache
+          prefetch="viewport"
         >
           Docs
         </Link>,
@@ -246,5 +252,91 @@ describe("Link", () => {
     } finally {
       console.error = originalError;
     }
+  });
+});
+
+describe("SsrLink prefetch", () => {
+  beforeAll(() => {
+    router.init({ type: "ssr", side: "client", lang: "en", router: fakeRouter });
+  });
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const hover = (anchor: HTMLAnchorElement | null) =>
+    act(() => {
+      anchor?.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
+    });
+  const inProduction = async (run: () => Promise<void>) => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    prefetches.length = 0;
+    try {
+      await run();
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  };
+
+  test("loads the page once the pointer rests on the link, under the path a click would push", () =>
+    inProduction(async () => {
+      const onPointerEnter = mock(() => undefined);
+      const { container, unmount } = mount(
+        <SsrLink href="/docs" onPointerEnter={onPointerEnter}>
+          Docs
+        </SsrLink>,
+      );
+      hover(container.querySelector("a"));
+      expect(prefetches).toEqual([]);
+      await act(async () => {
+        await sleep(100);
+      });
+
+      expect(prefetches).toEqual(["/en/docs"]);
+      expect(onPointerEnter).toHaveBeenCalledTimes(1);
+      unmount();
+    }));
+
+  test("asks nothing when the pointer leaves before resting", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(<SsrLink href="/docs">Docs</SsrLink>);
+      const anchor = container.querySelector("a");
+      hover(anchor);
+      act(() => {
+        anchor?.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "mouse" }));
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+
+      expect(prefetches).toEqual([]);
+      unmount();
+    }));
+
+  test("loads the page at once when the link takes focus", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(<SsrLink href="/guide">Guide</SsrLink>);
+      act(() => container.querySelector("a")?.focus());
+
+      expect(prefetches).toEqual(["/en/guide"]);
+      unmount();
+    }));
+
+  test("loads nothing with prefetch={false}, for an external href, or outside production", async () => {
+    await inProduction(async () => {
+      const { container, unmount } = mount(
+        <>
+          <SsrLink href="/a" prefetch={false}>
+            A
+          </SsrLink>
+          <SsrLink href="https://example.com/x">X</SsrLink>
+        </>,
+      );
+      for (const anchor of container.querySelectorAll("a")) act(() => anchor.focus());
+      unmount();
+    });
+    prefetches.length = 0;
+    const { container, unmount } = mount(<SsrLink href="/b">B</SsrLink>);
+    act(() => container.querySelector("a")?.focus());
+
+    expect(prefetches).toEqual([]);
+    unmount();
   });
 });

@@ -12,6 +12,20 @@ export type RscClientFetchResponseResult =
   | { type: "not-found" }
   | { type: "redirected"; status?: number };
 
+const rscEndpointOf = (href: string, buildId?: number) => {
+  const endpoint = new URL("/__rsc", window.location.origin);
+  endpoint.searchParams.set("url", href);
+  if (buildId !== undefined) endpoint.searchParams.set("buildId", String(buildId));
+  return endpoint;
+};
+
+const rscRequestHeaders = () => new Headers({ Accept: "text/x-component", "Cache-Control": "no-cache" });
+
+//? Without the router state: the page the prefetch leaves from may not be the one the click leaves from, so only a
+//? whole payload is valid for both.
+export const fetchRscPrefetchResponse = (href: string, signal: AbortSignal) =>
+  fetch(rscEndpointOf(href), { headers: rscRequestHeaders(), credentials: "same-origin", cache: "no-store", signal });
+
 export async function fetchRscNavigationResponse(
   href: string,
   options: {
@@ -22,20 +36,20 @@ export async function fetchRscNavigationResponse(
     sendRouterState?: boolean;
     shouldApplyNavigation?: () => boolean;
     signal?: AbortSignal;
+    prefetched?: Response;
   },
 ): Promise<RscClientFetchResponseResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
-  const endpoint = new URL("/__rsc", window.location.origin);
-  endpoint.searchParams.set("url", href);
-  if (options.buildId !== undefined) endpoint.searchParams.set("buildId", String(options.buildId));
-  const headers = new Headers({ Accept: "text/x-component", "Cache-Control": "no-cache" });
+  const headers = rscRequestHeaders();
   if (options.sendRouterState !== false) appendAkanRouterStateRequestHeaders(headers, options.currentRouterState);
-  const response = await fetch(endpoint, {
-    headers,
-    credentials: "same-origin",
-    cache: "no-store",
-    signal: options.signal,
-  });
+  const response =
+    options.prefetched ??
+    (await fetch(rscEndpointOf(href, options.buildId), {
+      headers,
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: options.signal,
+    }));
   const redirect = response.headers.get("X-Akan-Redirect");
   if (redirect) {
     const method = response.headers.get("X-Akan-Redirect-Method");
@@ -60,6 +74,7 @@ export async function fetchRscNavigationResponse(
       await response.body?.cancel();
       return fetchRscNavigationResponse(href, {
         ...options,
+        prefetched: undefined,
         sendRouterState: false,
       });
     }

@@ -43,6 +43,7 @@ export interface RouterInstance {
   refresh: () => void;
   /** Whether `back` has a page to return to; left out, the router reads the index stamped on the history entry. */
   canGoBack?: () => boolean;
+  prefetch?: (href: string) => void;
 }
 interface RouterOptions {
   prefix?: string;
@@ -265,6 +266,7 @@ class Router {
     this.#instance = {
       push: navigate("push"),
       replace: navigate("replace"),
+      prefetch: (href) => options.router.prefetch?.(this.#getNavigationPathInfo(href).href),
       back: () => {
         this.#postPathAfterBack();
         options.router.back();
@@ -545,6 +547,10 @@ class Router {
     if (this.#refusesOffsite("replace", href, routeOptions)) return undefined as never;
     this.#guarded("replace", href, () => this.#move("replace", href, routeOptions));
     return undefined as never;
+  }
+  prefetch(href: string) {
+    if (!this.isInitialized || this.#leavesOrigin(href)) return;
+    this.#instance.prefetch?.(href);
   }
   #move(kind: "push" | "replace", href: string, routeOptions?: RouteOptions) {
     this.#navigations += 1;

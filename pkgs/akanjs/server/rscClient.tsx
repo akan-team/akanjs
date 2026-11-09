@@ -15,7 +15,7 @@ import {
   isAkanRscPartialCommitEnabled,
   readAkanRouterStateResponseHeader,
 } from "./routeState";
-import { fetchRscNavigationResponse } from "./rscClientFetch";
+import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
 import { validateRscPatchForGuardedCommit } from "./rscClientPatch";
 import {
   commitPreparedAkanHeadSnapshotPatch,
@@ -37,6 +37,7 @@ import {
   rememberRscCacheNode,
   resolveCachedRscPatchNavigation,
 } from "./rscNavigationState";
+import { RscPrefetchCache } from "./rscPrefetchCache";
 import { RscScrollRestoration } from "./rscScrollRestoration";
 import { commitAkanSegmentOutletPatch, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
@@ -235,6 +236,7 @@ async function fetchRsc(
     sendRouterState?: boolean;
     navId?: number;
     signal?: AbortSignal;
+    prefetched?: Response;
   } = {},
 ): Promise<RscFetchResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
@@ -246,6 +248,7 @@ async function fetchRsc(
     sendRouterState: options.sendRouterState,
     shouldApplyNavigation,
     signal: options.signal,
+    prefetched: options.prefetched,
   });
   if (responseResult.type === "redirected" || responseResult.type === "not-found") return responseResult;
   //? Awaited before the result is returned, so no caller commits a page whose locale the Translator lacks.
@@ -278,6 +281,7 @@ async function fetchRsc(
     }
     return fetchRsc(href, {
       ...options,
+      prefetched: undefined,
       sendRouterState: false,
     });
   }
@@ -319,6 +323,7 @@ const readAuthCookies = () =>
     .join("; ");
 const rscCache = new Map<string, RscCacheNode>();
 const rscPatchCache = new Map<string, RscPatchNavigationCacheNode<RscThenable>>();
+const rscPrefetchCache = new RscPrefetchCache({ fetchResponse: fetchRscPrefetchResponse });
 const initialThenable = createRscThenable(createInitialRscStream());
 const initialRouterState = decodeAkanRouterState(globalThis.__AKAN_RSC_INITIAL_STATE__);
 const initialNode = createRscNavigationCacheNode({
@@ -386,10 +391,26 @@ function forgetPagesOfAnotherAccount(): void {
   cachedAuthCookies = authCookies;
   rscCache.clear();
   rscPatchCache.clear();
+  rscPrefetchCache.clear();
   //? The layouts on screen were rendered for the other account too, so the next page is not patched onto them.
   currentRouterState = null;
   currentSegmentTree = null;
 }
+
+const isConstrainedNetwork = () => {
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
+    .connection;
+  return connection?.saveData === true || /2g$/.test(connection?.effectiveType ?? "");
+};
+
+globalThis.__AKAN_RSC_PREFETCH__ = (href) => {
+  if (isConstrainedNetwork()) return;
+  const target = normalizeHref(href);
+  if (new URL(target).origin !== window.location.origin) return;
+  forgetPagesOfAnotherAccount();
+  if (rscCache.has(target)) return;
+  rscPrefetchCache.request(target, cachedAuthCookies);
+};
 
 function Root(): ReactNode {
   const [thenable, setThenable] = useState<RscThenable>(initialThenable);
@@ -403,6 +424,7 @@ function Root(): ReactNode {
   globalThis.__AKAN_RSC_CLEAR_CACHE__ = () => {
     rscCache.clear();
     rscPatchCache.clear();
+    rscPrefetchCache.clear();
     if (currentCommitKind === "patch") {
       void globalThis.__AKAN_RSC_REFRESH__?.();
       return;
@@ -427,6 +449,7 @@ function Root(): ReactNode {
     const target = normalizeHref(window.location.href);
     rscCache.clear();
     rscPatchCache.clear();
+    rscPrefetchCache.clear();
     try {
       const next = await fetchRsc(target, {
         ...options,
@@ -484,6 +507,7 @@ function Root(): ReactNode {
       return;
     }
     forgetPagesOfAnotherAccount();
+    rscPrefetchCache.dropQueued();
     const navId = supersedeNavigation();
     const signal = requestSignalOf(navId);
     const target = normalizeHref(href);
@@ -496,7 +520,7 @@ function Root(): ReactNode {
     try {
       let nextNode = rscCache.get(target);
       let notFound = false;
-      const servedFromCache = !!nextNode;
+      let servedFromCache = !!nextNode;
       if (!nextNode) {
         const cachedPatch = rscPatchCache.get(target);
         if (cachedPatch) {
@@ -532,11 +556,15 @@ function Root(): ReactNode {
           }
           rscPatchCache.delete(target);
         }
+        const prefetched = (await rscPrefetchCache.take(target, cachedAuthCookies, signal)) ?? undefined;
+        //? Rendered before the click, so the data on it is replayed as a cached page's is, and refetched by what reads it.
+        servedFromCache = !!prefetched;
         const fetched = await fetchRsc(target, {
           replaceOnRedirect,
           navId,
           shouldApplyNavigation: () => navId === navigationSeq,
           signal,
+          prefetched,
         });
         if (fetched.type === "redirected") return;
         if (fetched.type === "not-found") throw new RscRouteNotFound(target);
