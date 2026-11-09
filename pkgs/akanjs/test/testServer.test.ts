@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { getApiPrefix } from "akanjs/base";
+import { getApiPrefix, getEnv, resetEnvCache } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { FetchClient } from "akanjs/fetch";
 import { AkanLib, AkanOption } from "akanjs/server";
@@ -189,5 +189,55 @@ describe("TestServer served MCP catalogue", () => {
   test("warns at boot about each exclusion that matches nothing", () => {
     expect(bootLines.find((line) => line.includes("excludeSignals names"))).toContain('"serverResolverTestItme"');
     expect(bootLines.find((line) => line.includes("excludeEndpoints names"))).toContain('"quietGret"');
+  });
+});
+
+describe("TestServer.applyProcessEnv", () => {
+  const keys = [
+    "NODE_ENV",
+    "SERVER_MODE",
+    "PORT",
+    "AKAN_PUBLIC_APP_NAME",
+    "AKAN_PUBLIC_REPO_NAME",
+    "AKAN_PUBLIC_SERVE_DOMAIN",
+    "AKAN_PUBLIC_ENV",
+    "AKAN_PUBLIC_OPERATION_MODE",
+    "AKAN_PUBLIC_SERVER_PORT",
+    "SERVER_HTTP_PROTOCOL",
+  ] as const;
+
+  test("points a fetch client built after it at the test port, though a lib already read getEnv() on the default", () => {
+    const saved = keys.map((key) => [key, process.env[key]] as const);
+    try {
+      for (const key of keys) delete process.env[key];
+      Object.assign(process.env, {
+        AKAN_PUBLIC_APP_NAME: "early",
+        AKAN_PUBLIC_REPO_NAME: "akanjs",
+        AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
+        AKAN_PUBLIC_OPERATION_MODE: "local",
+      });
+      resetEnvCache();
+      expect(getEnv().serverHttpUri).toContain("localhost:8282");
+
+      TestServer.applyProcessEnv(
+        {
+          appName: "harness",
+          repoName: "akanjs",
+          serveDomain: "akanjs.com",
+          environment: "testing",
+          operationMode: "local",
+        },
+        { port: 39_123 },
+      );
+
+      expect(getEnv().serverHttpUri).toContain("localhost:39123");
+      expect(FetchClient.from().origin).toContain("localhost:39123");
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      resetEnvCache();
+    }
   });
 });
