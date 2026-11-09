@@ -1,4 +1,5 @@
 import {
+  AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   type AkanRouterStateV1,
   type AkanRscPatchMetadata,
@@ -28,6 +29,8 @@ export async function fetchRscNavigationResponse(
   endpoint.searchParams.set("url", href);
   if (options.buildId !== undefined) endpoint.searchParams.set("buildId", String(options.buildId));
   const headers = new Headers({ Accept: "text/x-component", "Cache-Control": "no-cache" });
+  const importMapKey = (globalThis as { __AKAN_IMPORT_MAP_KEY__?: string }).__AKAN_IMPORT_MAP_KEY__;
+  if (importMapKey) headers.set(AKAN_RSC_IMPORT_MAP_HEADER, importMapKey);
   if (options.sendRouterState !== false) appendAkanRouterStateRequestHeaders(headers, options.currentRouterState);
   const response = await fetch(endpoint, {
     headers,

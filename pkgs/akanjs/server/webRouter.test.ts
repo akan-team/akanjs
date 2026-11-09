@@ -16,6 +16,7 @@ import {
 } from "./cachePolicy";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
+  AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   encodeAkanRouterState,
   encodeAkanRscPatchSegmentPath,
@@ -404,6 +405,47 @@ describe("WebRouter sub route host resolution", () => {
     );
 
     expect(rendered).toBe("/en/soft/office/admin [soft]");
+  });
+});
+
+describe("WebRouter import map skew", () => {
+  const artifactWithStoreVendor = (url: string): BaseBuildArtifact => ({
+    ...createTestArtifact(),
+    vendorMap: { "akanjs/store": url },
+  });
+  const importMapKeyOf = async (artifact: BaseBuildArtifact) => {
+    const inputs: Array<Parameters<SsrFromRscRenderer["render"]>[0]> = [];
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        await fullSsr(new Request("https://example.test/en/docs"));
+      },
+      { artifact, onRenderInput: (input) => inputs.push(input) },
+    );
+    return inputs[0]?.extraBootstrapInline?.match(/self\.__AKAN_IMPORT_MAP_KEY__="([^"]+)";/)?.[1] ?? "";
+  };
+  const navigateWith = async (headers: Record<string, string>) =>
+    await withFullSsrCacheHarness(
+      async ({ renderEnvRoutes, fakeWorker }) => {
+        const res = await renderEnvRoutes["/__rsc"](
+          new Request("https://example.test/__rsc?url=%2Fen%2Fdocs", { headers }),
+        );
+        return { status: res.status, rendered: fakeWorker.renderCalls.length };
+      },
+      { artifact: artifactWithStoreVendor("/_akan/client/store-b.js") },
+    );
+
+  test("refuses, unrendered, an RSC navigation from a document another build's import map loaded", async () => {
+    const before = await importMapKeyOf(artifactWithStoreVendor("/_akan/client/store-a.js"));
+    const current = await importMapKeyOf(artifactWithStoreVendor("/_akan/client/store-b.js"));
+
+    expect(before).not.toBe("");
+    expect(current).not.toBe(before);
+    expect(await navigateWith({ [AKAN_RSC_IMPORT_MAP_HEADER]: before })).toEqual({ status: 409, rendered: 0 });
+    expect(await navigateWith({ [AKAN_RSC_IMPORT_MAP_HEADER]: current })).toEqual({ status: 200, rendered: 1 });
+  });
+
+  test("renders a navigation from a document that names no import map, as one served before the check", async () => {
+    expect(await navigateWith({})).toEqual({ status: 200, rendered: 1 });
   });
 });
 
