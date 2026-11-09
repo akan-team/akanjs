@@ -1,5 +1,5 @@
 import { getEnv } from "akanjs/base";
-import { parseAkanI18nEnv, RequestLocale } from "akanjs/common";
+import { hasErrKey, parseAkanI18nEnv, RequestLocale } from "akanjs/common";
 import { untrackedHeaders, untrackedRequest } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { csrLocation } from "./csrLocation";
@@ -116,6 +116,10 @@ export const makePageProto = <
 
     static fromJSON(payload: ErrPayload) {
       return new Err(payload.error as ErrorKey, payload.data, payload);
+    }
+
+    static is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is Err & { readonly error: Key } {
+      return hasErrKey(error, keys);
     }
 
     static BadRequest = class BadRequestErr extends Err {
