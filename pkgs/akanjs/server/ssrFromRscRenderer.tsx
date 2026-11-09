@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
 import { renderToReadableStream } from "react-dom/server.edge";
 import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { parsePositiveInt } from "./cachePolicy";
-import { concatBytes } from "./rscHttp";
+import { mapFlightLineRows } from "./flightRowReader";
 import type {
   SsrChunkRegistryStats,
   SsrDocumentOptions,
@@ -138,48 +138,24 @@ function sanitizeFlightRows(
   const encoder = new TextEncoder();
   const hlStylesheetRe = /(:HL\["[^"\\]*(?:\\.[^"\\]*)*",)"stylesheet"(\])/g;
   const redirectErrorRowRe = /^([0-9a-z]+):E(\{[^\n]*"digest":"AKAN_REDIRECT(?:;[^"]*)?"[^\n]*\})(\n?)$/;
-  const debugInfoRowRe = /^[0-9a-z]+:D/;
-  let buffered: Uint8Array<ArrayBuffer> = new Uint8Array(0);
 
-  const sanitizeRow = (row: Uint8Array): Uint8Array => {
+  const rewriteRow = (row: Uint8Array, pattern: RegExp, replacement: string): Uint8Array => {
     let text: string;
     try {
       text = decoder.decode(row);
     } catch {
       return row;
     }
-    if (options.dropDebugInfoRows && debugInfoRowRe.test(text)) return new Uint8Array(0);
-    const sanitized = (options.rewriteStylesheetHints ? text.replace(hlStylesheetRe, `$1"style"$2`) : text).replace(
-      redirectErrorRowRe,
-      "$1:null$3",
-    );
-    return sanitized === text ? row : encoder.encode(sanitized);
+    const rewritten = text.replace(pattern, replacement);
+    return rewritten === text ? row : encoder.encode(rewritten);
   };
 
-  const enqueueCompleteRows = (chunk: Uint8Array, controller: TransformStreamDefaultController<Uint8Array>) => {
-    buffered = concatBytes(buffered, chunk);
-    let rowStart = 0;
-    for (let index = 0; index < buffered.byteLength; index += 1) {
-      if (buffered[index] !== 10) continue;
-      controller.enqueue(sanitizeRow(buffered.slice(rowStart, index + 1)));
-      rowStart = index + 1;
-    }
-    buffered = rowStart === 0 ? buffered : buffered.slice(rowStart);
-  };
-
-  return stream.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        enqueueCompleteRows(chunk, controller);
-      },
-      flush(controller) {
-        if (buffered.byteLength > 0) {
-          controller.enqueue(sanitizeRow(buffered));
-          buffered = new Uint8Array(0);
-        }
-      },
-    }),
-  );
+  return mapFlightLineRows(stream, (row, tag) => {
+    if (tag === "D") return options.dropDebugInfoRows ? null : row;
+    if (tag === "E") return rewriteRow(row, redirectErrorRowRe, "$1:null$3");
+    if (tag === "H" && options.rewriteStylesheetHints) return rewriteRow(row, hlStylesheetRe, `$1"style"$2`);
+    return row;
+  });
 }
 
 // RSDW hints each stylesheet as `:HL[href,"stylesheet"]`, which the browser preloads with an invalid
