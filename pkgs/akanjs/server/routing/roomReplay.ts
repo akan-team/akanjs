@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { SolidPubSub, type WebsocketAdaptor } from "akanjs/service";
 import type { WebsocketPublishData, WebsocketRoomCursor } from "akanjs/signal";
+import { RecencyList } from "./recencyList";
 
 interface RoomLog {
   /** Names this numbering: a room log that expired and started over counts from 1 again under another epoch. */
@@ -9,7 +10,8 @@ interface RoomLog {
   watchedAt: number;
   /** The last number before a frame went out without one (a binary one); a cursor at or below it may have missed it. */
   unnumberedAfter: number;
-  frames: { seq: number; at: number; frame: string }[];
+  frames: { seq: number; at: number; frame: string; bytes: number }[];
+  bytes: number;
 }
 
 export interface RoomReplayOptions {
@@ -23,6 +25,8 @@ export interface RoomReplayOptions {
   rooms?: number;
   /** Whether a socket here subscribes to the room: its log is never dropped, or it would number from 1 under it. */
   subscribed?: (roomId: string) => boolean;
+  /** Frame bytes kept across every room; past it, the room that published least recently loses its oldest first. */
+  bytes?: number;
 }
 
 //* Numbers each JSON frame a room delivers from this process, so a socket can tell a hole in what it received (a
@@ -44,8 +48,16 @@ export class RoomReplay {
   readonly #depth: number;
   readonly #retainMs: number;
   readonly #maxRooms: number;
+  readonly #maxBytes: number;
   readonly #subscribed: (roomId: string) => boolean;
   readonly #rooms = new Map<string, RoomLog>();
+  //* Each oldest first by `watchedAt`. A room enters `#held` only once a socket here is seen subscribed to it, and the
+  //* room cap evicts from `#idle` alone, so a sweep stops at the first room it keeps instead of walking every held one.
+  readonly #held = new RecencyList<RoomLog>();
+  readonly #idle = new RecencyList<RoomLog>();
+  /** Rooms keeping frames, oldest last frame first: the stale and the over-budget ones sit at the front. */
+  readonly #published = new RecencyList<RoomLog>();
+  #bytes = 0;
 
   constructor({
     vouches,
@@ -53,36 +65,46 @@ export class RoomReplay {
     retainMs = 5 * 60_000,
     rooms = 10_000,
     subscribed = () => false,
+    bytes = 64 * 1024 * 1024,
   }: RoomReplayOptions) {
     this.vouches = vouches;
     this.#depth = depth;
     this.#retainMs = retainMs;
     this.#maxRooms = rooms;
+    this.#maxBytes = bytes;
     this.#subscribed = subscribed;
   }
 
   /** A socket subscribed here: the room is numbered from now on, and for `retainMs` after its last subscriber left. */
   watch(roomId: string, now = Date.now()) {
-    const room = this.#rooms.get(roomId) ?? {
-      epoch: `${this.#process}.${++this.#generation}`,
-      seq: 0,
-      watchedAt: now,
-      unnumberedAfter: -1,
-      frames: [],
-    };
-    this.#touch(roomId, room, now);
-    this.#trim(now);
+    const room = this.#rooms.get(roomId);
+    if (room && this.#held.has(roomId)) this.#hold(roomId, room, now);
+    else
+      this.#release(
+        roomId,
+        room ?? {
+          epoch: `${this.#process}.${++this.#generation}`,
+          seq: 0,
+          watchedAt: now,
+          unnumberedAfter: -1,
+          frames: [],
+          bytes: 0,
+        },
+        now,
+      );
+    //? The socket subscribes after this returns, so the room just watched cannot yet prove it is held.
+    this.#sweep(now, roomId);
   }
 
   /** A socket left the room here; its retention counts from the last one to leave. */
   left(roomId: string, now = Date.now()) {
     const room = this.#rooms.get(roomId);
-    if (room) this.#touch(roomId, room, now);
+    if (room) this.#release(roomId, room, now);
   }
 
   /** The room's numbering no longer covers what was published to it, as for a live room routed nothing while empty. */
   forget(roomId: string) {
-    this.#rooms.delete(roomId);
+    this.#drop(roomId);
   }
 
   /** A frame went out to the room without a number, so no cursor taken before it is vouched for. */
@@ -93,18 +115,26 @@ export class RoomReplay {
 
   /** The frame to send for one publish; numbered while the room is watched, and kept when this process vouches. */
   frameOf(publishData: WebsocketPublishData, subscribed: boolean, now = Date.now()): string {
-    this.#trim(now);
-    const room = this.#rooms.get(publishData.roomId);
-    if (room && subscribed) this.#touch(publishData.roomId, room, now);
+    const { roomId } = publishData;
+    this.#sweep(now);
+    const room = this.#rooms.get(roomId);
+    if (room && subscribed) this.#hold(roomId, room, now);
     if (!room || now - room.watchedAt > this.#retainMs) {
-      if (room) this.#rooms.delete(publishData.roomId);
+      if (room) this.#drop(roomId);
       return JSON.stringify(publishData);
     }
     room.seq += 1;
     const frame = JSON.stringify({ ...publishData, seq: room.seq });
-    if (this.vouches) room.frames.push({ seq: room.seq, at: now, frame });
+    if (this.vouches) {
+      const bytes = Buffer.byteLength(frame);
+      room.frames.push({ seq: room.seq, at: now, frame, bytes });
+      room.bytes += bytes;
+      this.#bytes += bytes;
+      this.#published.touch(roomId, room);
+    }
     while (room.frames.length > this.#depth || (room.frames[0] && now - room.frames[0].at > this.#retainMs))
-      room.frames.shift();
+      this.#shiftFrame(roomId, room);
+    this.#trimFrames(now);
     return frame;
   }
 
@@ -127,20 +157,67 @@ export class RoomReplay {
     return room.frames.filter((entry) => entry.seq > seq).map((entry) => entry.frame);
   }
 
-  #touch(roomId: string, room: RoomLog, now: number) {
+  #hold(roomId: string, room: RoomLog, now: number) {
     room.watchedAt = now;
-    this.#rooms.delete(roomId);
     this.#rooms.set(roomId, room);
+    this.#idle.delete(roomId);
+    this.#held.touch(roomId, room);
   }
 
-  //? Every watchedAt write goes through #touch, so the map runs oldest first and the first room still in use ends this.
-  #trim(now: number) {
-    let budget = this.#rooms.size;
-    for (const [roomId, room] of this.#rooms) {
-      if (budget-- === 0) break;
-      if (this.#rooms.size <= this.#maxRooms && now - room.watchedAt <= this.#retainMs) break;
-      if (this.#subscribed(roomId)) this.#touch(roomId, room, now);
-      else this.#rooms.delete(roomId);
+  #release(roomId: string, room: RoomLog, now: number) {
+    room.watchedAt = now;
+    this.#rooms.set(roomId, room);
+    this.#held.delete(roomId);
+    this.#idle.touch(roomId, room);
+  }
+
+  #drop(roomId: string) {
+    const room = this.#rooms.get(roomId);
+    if (!room) return;
+    this.#rooms.delete(roomId);
+    this.#held.delete(roomId);
+    this.#idle.delete(roomId);
+    this.#clearFrames(roomId, room);
+  }
+
+  #clearFrames(roomId: string, room: RoomLog) {
+    this.#bytes -= room.bytes;
+    room.bytes = 0;
+    room.frames = [];
+    this.#published.delete(roomId);
+  }
+
+  #shiftFrame(roomId: string, room: RoomLog) {
+    const dropped = room.frames.shift();
+    room.bytes -= dropped?.bytes ?? 0;
+    this.#bytes -= dropped?.bytes ?? 0;
+    if (!room.frames.length) this.#published.delete(roomId);
+  }
+
+  //? Every watchedAt write goes through #hold or #release, so each list runs oldest first and its first kept room ends
+  //? its loop; a held room is asked again only once it has gone quiet for retainMs.
+  #sweep(now: number, watching?: string) {
+    let checks = this.#held.size;
+    for (let front = this.#held.oldest(); front && checks-- > 0; front = this.#held.oldest()) {
+      if (now - front.value.watchedAt <= this.#retainMs) break;
+      if (this.#subscribed(front.key)) this.#hold(front.key, front.value, now);
+      else this.#drop(front.key);
+    }
+    for (let front = this.#idle.oldest(); front && front.key !== watching; front = this.#idle.oldest()) {
+      if (this.#rooms.size <= this.#maxRooms && now - front.value.watchedAt <= this.#retainMs) break;
+      if (this.#subscribed(front.key)) this.#hold(front.key, front.value, now);
+      else this.#drop(front.key);
+    }
+    this.#trimFrames(now);
+  }
+
+  #trimFrames(now: number) {
+    for (let front = this.#published.oldest(); front; front = this.#published.oldest()) {
+      const last = front.value.frames.at(-1);
+      const stale = !last || now - last.at > this.#retainMs;
+      if (!stale && this.#bytes <= this.#maxBytes) break;
+      if (stale) this.#clearFrames(front.key, front.value);
+      else this.#shiftFrame(front.key, front.value);
     }
   }
 

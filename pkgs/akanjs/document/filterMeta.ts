@@ -1,5 +1,13 @@
 import type { Cls, EnumInstance, MergeAllDoubleKeyOfObjects } from "akanjs/base";
-import { Any, FILTER_DICT_SHAPE, FILTER_META, getNonArrayModel, isEnum, PrimitiveRegistry } from "akanjs/base";
+import {
+  AkanError,
+  Any,
+  FILTER_DICT_SHAPE,
+  FILTER_META,
+  getNonArrayModel,
+  isEnum,
+  PrimitiveRegistry,
+} from "akanjs/base";
 import {
   type BaseObject,
   type ConstantFieldType,
@@ -137,7 +145,11 @@ export const getFilterArgInfo = (arg: FilterInfo["args"][number]): FilterArgInfo
 export const getFilterArgInfos = (filterInfo: FilterInfo): FilterArgInfo[] => filterInfo.args.map(getFilterArgInfo);
 
 /** A caller named a filter that does not exist, or gave it arguments it cannot take. Its callers answer 400. */
-export class FilterQueryError extends Error {}
+export class FilterQueryError extends AkanError<"invalidFilter"> {
+  constructor(message = "", options?: ErrorOptions) {
+    super("invalidFilter", message, { statusCode: 400, cause: options?.cause });
+  }
+}
 
 const countItems = (value: unknown, arrDepth: number): number =>
   arrDepth && Array.isArray(value) ? value.reduce((sum: number, item) => sum + countItems(item, arrDepth - 1), 0) : 1;

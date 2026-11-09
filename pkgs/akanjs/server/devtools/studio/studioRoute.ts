@@ -4,16 +4,18 @@ import type { BuildChangesPayload, BuildGraphPayload } from "../../artifact";
 import { createSystemPageHeaders } from "../../systemPages";
 import { StudioDocument, type StudioEditor, type StudioQuery } from "./studioDocument";
 import type { StudioView } from "./studioLayout";
+import type { StudioRuntimePayload } from "./studioRuntimeGraph";
 
 export interface StudioRouteContext {
   basePath: string;
   appName: string;
   buildGraph: (() => Promise<BuildGraphPayload | null>) | null;
   buildChanges: ((since: string | null) => Promise<BuildChangesPayload | null>) | null;
+  runtime: () => StudioRuntimePayload;
 }
 
 const editors = new Set<StudioEditor>(["vscode", "cursor"]);
-const views = new Set<StudioView>(["erd", "signals", "changes"]);
+const views = new Set<StudioView>(["erd", "signals", "changes", "runtime"]);
 
 export class StudioRoute {
   static readonly logger = new Logger("StudioRoute");
@@ -52,8 +54,11 @@ export class StudioRoute {
   async #load({
     view,
     since,
-  }: StudioQuery): Promise<{ payload: BuildGraphPayload | BuildChangesPayload } | { error: string }> {
-    const { buildGraph, buildChanges } = this.#context;
+  }: StudioQuery): Promise<
+    { payload: BuildGraphPayload | BuildChangesPayload | StudioRuntimePayload } | { error: string }
+  > {
+    const { buildGraph, buildChanges, runtime } = this.#context;
+    if (view === "runtime") return { payload: runtime() };
     try {
       const payload =
         view === "changes" ? (buildChanges ? await buildChanges(since) : null) : buildGraph ? await buildGraph() : null;

@@ -21,6 +21,7 @@ import {
   type PathRoute,
   pageActivityContext,
   pathContext,
+  prefetchRsc,
   type RouteViewport,
   refreshRsc,
   router,
@@ -430,6 +431,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
           syncHref(window.location.href);
           void refreshRsc();
         },
+        prefetch: prefetchRsc,
       },
     });
     void Device.load({ lang });

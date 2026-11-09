@@ -1,12 +1,7 @@
 "use client";
 import { cn } from "akanjs/client";
-import {
-  type AgentBridge,
-  AgentContext,
-  ensureStoreSurface,
-  type SerializedStoreState,
-  StoreRegistry,
-} from "akanjs/store";
+import { StoreRegistry } from "akanjs/store";
+import { type AgentBridge, AgentContext, ensureStoreSurface, type SerializedStoreState } from "akanjs/store/agent";
 import { type ReactNode, useRef, useState } from "react";
 import { type AgentCall, AgenticSurface, type PublishedTool, type SurfaceView } from "use-agentic";
 import { buttonRecipe } from "../recipe";

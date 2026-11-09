@@ -140,6 +140,7 @@ export class AkanApp {
   readonly #roomChildren = new Map<string, Set<number>>();
   readonly #childRooms = new Map<number, Map<string, Set<string>>>();
   readonly #socketRooms = new Map<string, { childIdx: number; rooms: Set<string> }>();
+  readonly #childLiveModels = new Map<number, Set<string>>();
   #nextBuilderReqId = 1;
   readonly #builderReqMap = new Map<number, { childIdx: number; childLocalId: number }>();
   #server: Bun.Server<GatewayWsData> | null = null;
@@ -1167,9 +1168,13 @@ export class AkanApp {
         return;
       case "pubsub.snapshot":
         this.#replaceRoomSnapshot(idx, message.rooms);
+        if (message.liveModels) this.#setLiveModels(idx, message.liveModels);
         return;
       case "live.change":
         this.#fanoutLiveChange(idx, message);
+        return;
+      case "live.models":
+        this.#setLiveModels(idx, message.models);
         return;
       case "metrics.report":
         this.#updateMetrics(idx, message.metrics);
@@ -1339,6 +1344,12 @@ export class AkanApp {
     for (const [socketId, socket] of this.#socketRooms.entries()) {
       if (socket.childIdx === childIdx) this.#socketRooms.delete(socketId);
     }
+    this.#setLiveModels(childIdx, []);
+  }
+
+  #setLiveModels(childIdx: number, models: string[]) {
+    if (models.length) this.#childLiveModels.set(childIdx, new Set(models));
+    else this.#childLiveModels.delete(childIdx);
   }
 
   #updateMetrics(childIdx: number, metrics: AkanMetricsReport) {
@@ -1428,10 +1439,12 @@ export class AkanApp {
     for (const child of this.#children.values()) this.#sendToChild(child, message);
   }
 
-  // Every replica that serves sockets routes a write to the live rooms it holds; the writer has routed its own.
+  //? A batch replica holds no rooms, so it never reports a model; the writer has routed its own rooms.
   #fanoutLiveChange(originIdx: number, message: Extract<AkanIpcMessage, { type: "live.change" }>) {
-    for (const child of this.#children.values())
-      if (child.idx !== originIdx && child.role !== "batch") this.#sendToChild(child, message);
+    for (const [childIdx, models] of this.#childLiveModels) {
+      const child = this.#children.get(childIdx);
+      if (child && childIdx !== originIdx && models.has(message.change.refName)) this.#sendToChild(child, message);
+    }
   }
 
   #fanoutToBatch(message: AkanIpcMessage) {

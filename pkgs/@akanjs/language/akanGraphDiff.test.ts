@@ -78,7 +78,7 @@ describe("AkanGraphDiff", () => {
         .filter((edge) => edge.change)
         .map((edge) => `${edge.change} ${edge.from} -${edge.label}-> ${edge.to}`),
     ).toEqual([
-      "added endpoint:apps/demo:memo.pinMemo -null-> guard:Owner",
+      "added endpoint:apps/demo:memo.pinMemo -null-> guard::Owner",
       "added method:apps/demo:memo.touch -getMemo-> model:apps/demo:memo",
       "added endpoint:apps/demo:memo.pinMemo -pin-> method:apps/demo:memo.pin",
       "removed model:apps/demo:memo -place-> scalar:libs/shared:geo",
@@ -109,6 +109,26 @@ describe("AkanGraphDiff", () => {
     ]);
     const crlf = Object.fromEntries(Object.entries(base).map(([file, text]) => [file, text.replace(/\n/g, "\r\n")]));
     expect(AkanGraphDiff.between(graphOf(base), graphOf(crlf)).nodes).toEqual([]);
+  });
+
+  it("marks a layout that gains a guard changed, and leaves the routes it wraps unmarked", () => {
+    const layout = (guard: string) => `import { layout } from "akanjs/client";
+import { signedIn } from "@libs/shared/webkit";
+export default layout()${guard}
+  .render(({ children }) => children);
+`;
+    const pages = (guard: string) => ({
+      "libs/shared/webkit/signedIn.ts": "export const signedIn = () => true;\n",
+      "apps/demo/page/(app)/_layout.tsx": layout(guard),
+      "apps/demo/page/(app)/memo.tsx": "export default page().render(() => null);\n",
+      "apps/demo/page/(app)/pin.tsx": "export default page().render(() => null);\n",
+    });
+    const changes = AkanGraphDiff.between(graphOf(pages("")), graphOf(pages("\n  .guard(() => signedIn())")));
+    expect(changes.summary).toEqual({ added: 1, removed: 0, changed: 1 });
+    expect(changes.nodes.filter((node) => node.change).map(({ id, change }) => `${change} ${id}`)).toEqual([
+      "added guard:libs/shared:signedIn",
+      "changed layout:apps/demo:/(app)",
+    ]);
   });
 
   it("marks every node and field of a deleted module removed", () => {

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  AkanError,
   type BackendEnv,
   CLIENT_VALUE,
   DEFAULT_VALUE,
@@ -240,6 +241,9 @@ class McpItemEndpoint extends endpoint(serverResolverTestServiceModel, (builder)
     .exec((id) => {
       throw new Exception(409, "mcpItem.error.locked", { field: "title" }, { id });
     }),
+  codedTitle: builder.query(String, { guards: [Public] }).exec(() => {
+    throw new AkanError("titleTaken", "title t-7 is held by tenant-7", { statusCode: 409 });
+  }),
   vendorTitle: builder.query(String, { guards: [Public] }).exec(() => {
     throw Object.assign(new Error("GET https://vendor.example/?key=secret 422"), { statusCode: 422, data: { raw: 1 } });
   }),
@@ -448,6 +452,7 @@ describe("MCP over a booted container", () => {
   test("lists every endpoint its guards admit", async () => {
     const { json } = await post(rpc("tools/list"));
     expect(json.result.tools.map((tool: { name: string }) => tool.name)).toEqual([
+      "codedTitle",
       "dataUrlShot",
       "echoTitle",
       "failingTitle",
@@ -567,10 +572,10 @@ describe("MCP over a booted container", () => {
     }
     const log = lines.join("\n");
     // The whole build, not one caller's view: per-credential hiding makes these counts exceed tools/list above.
-    expect(log).toContain("MCP catalogue: tools=25 resourceTemplates=3 · listing ");
-    expect(log).toContain("MCP catalogue cost: serverResolverTestItem 25/");
+    expect(log).toContain("MCP catalogue: tools=26 resourceTemplates=3 · listing ");
+    expect(log).toContain("MCP catalogue cost: serverResolverTestItem 26/");
     expect(lines.find((line) => line.includes('"publicRenameTitle"'))).toContain("`[Public]` is having none");
-    expect(log).toContain("MCP catalogue: tools=22 resourceTemplates=3 (read-only deployment)");
+    expect(log).toContain("MCP catalogue: tools=23 resourceTemplates=3 (read-only deployment)");
     expect(lines.find((line) => line.includes('did not expose "renameTitle"'))).toContain("read-only");
     // These signals carry no dictionary, so every entry, generated ones included, is named.
     expect(lines.find((line) => line.includes('exposed "echoTitle" with no description'))).toContain(
@@ -713,6 +718,13 @@ describe("MCP over a booted container", () => {
     expect(json.result.isError).toBe(true);
     expect(json.result.content[0].text).toBe("The server failed to complete this request.");
     expect(JSON.stringify(json)).not.toContain("boom");
+  });
+
+  test("reports a coded refusal by its status and code, as HTTP does, and not by its message", async () => {
+    const json = await call("codedTitle");
+    expect(json.result.isError).toBe(true);
+    expect(json.result.content[0].text).toBe("Conflict: titleTaken");
+    expect(JSON.stringify(json)).not.toContain("tenant-7");
   });
 
   test("reads a resource through the same path as its tool", async () => {
