@@ -261,6 +261,30 @@ describe("StoreInstance runtime", () => {
     expect(() => instance.set({ label: "manual" })).toThrow("Cannot set derived state directly: label");
   });
 
+  test("a computed key that reads a lib store's computed key follows it on every write", () => {
+    setupEnv();
+    class ChainLibStore extends store(
+      "chainLib" as const,
+      () => ({ base: 1 }),
+      ({ computed }) => ({ doubled: computed(["base"], (base) => base * 2) }),
+    ) {}
+    class ChainStore extends store(
+      "chainApp" as const,
+      () => ({ other: 0 }),
+      ({ computed }) => ({ quadrupled: computed(["doubled"] as never, (doubled: number) => doubled * 2) }),
+      ChainLibStore,
+    ) {}
+    const instance = new StoreInstance(makeRoot("chainRoot", ChainStore));
+
+    expect(instance.get()).toMatchObject({ doubled: 2, quadrupled: 4 });
+    instance.set({ base: 3 });
+    expect(instance.get()).toMatchObject({ doubled: 6, quadrupled: 12 });
+    instance.set((state) => {
+      state.base = 5;
+    });
+    expect(instance.get()).toMatchObject({ doubled: 10, quadrupled: 20 });
+  });
+
   test("shows translated error messages when actions reject", async () => {
     setupEnv();
     Translator.seed("en", {
@@ -763,6 +787,75 @@ describe("signal generated store contract", () => {
     Object.values(signal.calls).forEach((call) => {
       expect(call).not.toHaveBeenCalled();
     });
+  });
+
+  test("a model write lands in one set across every slice holding the row, and leaves the old lists as they were", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class OneWriteStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(OneWriteStore);
+    const instance = new StoreInstance(makeRoot("oneWriteRoot", OneWriteStore));
+    await instance.do.initStoreTestItem();
+    await instance.do.initStoreTestItemByTitle("Ada");
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    type Rows = DataList<InstanceType<typeof StoreTestLight>>;
+    const listsOf = () => [instance.get().storeTestItemList as Rows, instance.get().storeTestItemListByTitle as Rows];
+    const setsDuring = async (write: () => unknown) => {
+      let setNum = 0;
+      const unsubscribe = instance.subscribe(() => {
+        setNum++;
+      });
+      await write();
+      unsubscribe();
+      return setNum;
+    };
+
+    const untouched = instance.get().storeTestItemListByTags;
+    const loaded = listsOf();
+    expect(await setsDuring(() => instance.do.updateStoreTestItem(id, { title: "updated", count: 0, tags: [] }))).toBe(
+      1,
+    );
+    expect(listsOf().map((list) => list.get(id)?.title)).toEqual(["updated", "updated"]);
+    expect(loaded.map((list) => list.get(id)?.title)).toEqual(["Ada", "Ada"]);
+
+    const updated = listsOf();
+    expect(
+      await setsDuring(() => instance.do.setStoreTestItem(new StoreTestLight({ id, title: "pushed" }) as never)),
+    ).toBe(1);
+    expect(listsOf().map((list) => list.get(id)?.title)).toEqual(["pushed", "pushed"]);
+    expect(updated.map((list) => list.get(id)?.title)).toEqual(["updated", "updated"]);
+
+    expect(await setsDuring(() => instance.do.removeStoreTestItem(id))).toBe(1);
+    expect(listsOf().map((list) => list.has(id))).toEqual([false, false]);
+    expect(instance.get().storeTestItemListByTags).toBe(untouched);
+
+    await instance.do.createStoreTestItem(
+      { title: "created", count: 0, tags: [] },
+      { sliceName: "storeTestItemNowhere" },
+    );
+    expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { title: "created" } });
+  });
+
+  test("overlapping creates each add their row and count to the list", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class OverlappingCreateStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(OverlappingCreateStore);
+    const instance = new StoreInstance(makeRoot("overlappingCreateRoot", OverlappingCreateStore));
+    await instance.do.initStoreTestItem();
+    const answers: ((model: unknown) => void)[] = [];
+    signal.calls.createStoreTestItem = mock(() => new Promise((resolve) => answers.push(resolve)));
+
+    const first = instance.do.createStoreTestItem({ title: "one", count: 0, tags: [] });
+    const second = instance.do.createStoreTestItem({ title: "two", count: 0, tags: [] });
+    answers[0]?.(new StoreTestFull({ id: "cccccccccccccccccccccccc", title: "one" } as never));
+    await first;
+    answers[1]?.(new StoreTestFull({ id: "dddddddddddddddddddddddd", title: "two" } as never));
+    await second;
+
+    const rows = [...(instance.get().storeTestItemList as DataList<InstanceType<typeof StoreTestLight>>)];
+    expect(rows.map((row) => row.title)).toEqual(["two", "one", "Ada", "Ben"]);
+    expect((instance.get().storeTestItemInsight as { count: number }).count).toBe(4);
   });
 });
 

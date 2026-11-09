@@ -593,35 +593,42 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     if (draft) void DraftStore.remove(draft.key);
     return null;
   };
+  const isLiveSlice = (sliceName: string) => !!slices.find((entry) => entry.sliceName === sliceName)?.slice.live;
   // A live slice places the row through `applyLive`, so the server's echo of this create is not counted twice.
-  function applyLocalCreate(this: SetGet, sliceName: string, model: Full, seen: { [key: string]: any }) {
-    const target = slices.find((entry) => entry.sliceName === sliceName);
-    if (target?.slice.live) {
-      const applyLive = (this as unknown as DynamicRecord)[target.keys.action.applyLiveModel] as
-        | ((event: LiveEventPayload) => void)
-        | undefined;
-      applyLive?.({ op: "enter", id: model.id, light: new cnst.light().set(model) as unknown as object });
-      return;
-    }
-    if (seen[sliceName.replace(names.model, names.modelListLoading)]) return;
+  const createdListPatchOf = (sliceName: string, model: Full, seen: { [key: string]: unknown }) => {
     const listKey = sliceName.replace(names.model, names.modelList);
+    if (isLiveSlice(sliceName) || seen[sliceName.replace(names.model, names.modelListLoading)] || !seen[listKey])
+      return {};
     const insightKey = sliceName.replace(names.model, names.modelInsight);
     const modelInsight = seen[insightKey] as Insight & BaseInsight;
-    this.set({
+    return {
       [listKey]: new DataList([model, ...(seen[listKey] as DataList<Light>)]),
       [insightKey]: new cnst.insight().set({ ...modelInsight, count: modelInsight.count + 1 }),
-    });
+    };
+  };
+  function applyLiveCreate(this: SetGet, sliceName: string, model: Full) {
+    const target = slices.find((entry) => entry.sliceName === sliceName);
+    if (!target?.slice.live) return;
+    const applyLive = (this as unknown as DynamicRecord)[target.keys.action.applyLiveModel] as
+      | ((event: LiveEventPayload) => void)
+      | undefined;
+    applyLive?.({ op: "enter", id: model.id, light: new cnst.light().set(model) as unknown as object });
   }
-  function patchLists(this: SetGet, updatedModel: Full) {
-    const updatedLightModel = new cnst.light().set(updatedModel) as unknown as Light;
-    slices.forEach(({ keys: { state: namesOfSlice } }) => {
-      const currentState = this.get() as { [key: string]: any };
-      const modelList = currentState[namesOfSlice.modelList] as DataList<Light>;
-      const modelListLoading = currentState[namesOfSlice.modelListLoading] as boolean;
-      if (modelListLoading || !modelList.has(updatedModel.id)) return;
-      this.set({ [namesOfSlice.modelList]: new DataList(modelList).set(updatedLightModel) });
-    });
-  }
+  const updatedListPatchOf = (state: { [key: string]: unknown }, ...updatedModels: Full[]) => {
+    const lightModels = withSharedInstances(() =>
+      updatedModels.map((updatedModel) => new cnst.light().set(updatedModel) as unknown as Light),
+    );
+    const patch: { [key: string]: DataList<Light> } = {};
+    for (const { keys } of slices) {
+      const namesOfSlice = keys.state;
+      const modelList = state[namesOfSlice.modelList] as DataList<Light>;
+      if (state[namesOfSlice.modelListLoading] || !lightModels.some(({ id }) => modelList.has(id))) continue;
+      const nextList = new DataList(modelList);
+      for (const lightModel of lightModels) if (nextList.has(lightModel.id)) nextList.set(lightModel);
+      patch[namesOfSlice.modelList] = nextList;
+    }
+    return patch;
+  };
   const baseAction = {
     [names.createModelInForm]: async function (
       this: SetGet,
@@ -644,8 +651,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.modelModal]: modal ?? null,
         ...staleAtOfSlices(),
         ...(typeof path === "string" && path ? { [path]: model } : {}),
+        ...createdListPatchOf(sliceName, model, this.get()),
       });
-      applyLocalCreate.call(this, sliceName, model, currentState);
+      applyLiveCreate.call(this, sliceName, model);
       await onSuccess?.(model);
     },
     [names.updateModelInForm]: async function (
@@ -669,8 +677,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.modelModal]: modal ?? null,
         ...staleAtOfSlices(),
         ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
+        ...updatedListPatchOf(this.get(), updatedModel),
       });
-      patchLists.call(this, updatedModel);
       await onSuccess?.(updatedModel);
     },
     [names.createModel]: async function (
@@ -678,7 +686,6 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       data: GetStateObject<Input>,
       { path, modal, sliceName = names.model, onError, onSuccess }: CreateOption<Full> = {},
     ) {
-      const currentState = this.get() as { [key: string]: any };
       const modelInput = (cnst.input.purify as (data: any) => Input | null)(data);
       if (!modelInput) return;
       this.set({ [names.modelLoading]: true });
@@ -690,8 +697,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.modelModal]: modal ?? null,
         ...staleAtOfSlices(),
         ...(typeof path === "string" && path ? { [path]: model } : {}),
+        ...createdListPatchOf(sliceName, model, this.get()),
       });
-      applyLocalCreate.call(this, sliceName, model, currentState);
+      applyLiveCreate.call(this, sliceName, model);
       await onSuccess?.(model);
     },
     [names.updateModel]: async function (
@@ -715,45 +723,40 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.modelModal]: modal ?? null,
         ...staleAtOfSlices(),
         ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
+        ...updatedListPatchOf(this.get(), updatedModel),
       });
-      patchLists.call(this, updatedModel);
       await onSuccess?.(updatedModel);
     },
     [names.removeModel]: async function (this: SetGet, id: string, options?: FetchPolicy & { modal?: string | null }) {
       const { modal, ...fetchPolicyOptions } = options ?? {};
       const model = await servedFetch<Full & { removedAt: Dayjs | null }>(names.removeModel)(id, fetchPolicyOptions);
-      const lightModel = new cnst.light().set(model) as unknown as Light;
-      slices.forEach(({ keys: { state: namesOfSlice } }) => {
-        const currentState = this.get() as { [key: string]: any };
+      const currentState = this.get() as { [key: string]: unknown };
+      if (!model.removedAt) {
+        const listPatch = updatedListPatchOf(currentState, model);
+        this.set({
+          ...listPatch,
+          ...(modal !== undefined && Object.keys(listPatch).length ? { [names.modelModal]: modal } : {}),
+          ...staleAtOfSlices(),
+        });
+        return;
+      }
+      const removedPatch: { [key: string]: unknown } = {};
+      for (const { keys } of slices) {
+        const namesOfSlice = keys.state;
         const modelList = currentState[namesOfSlice.modelList] as DataList<Light>;
-        const modelListLoading = currentState[namesOfSlice.modelListLoading] as boolean;
         const modelSelection = currentState[namesOfSlice.modelSelection] as DataList<Light>;
         const modelInsight = currentState[namesOfSlice.modelInsight] as Insight & BaseInsight;
-        if (modelListLoading || !modelList.has(model.id)) return;
-        const newModelList = new DataList(modelList);
-        if (model.removedAt) {
-          newModelList.delete(id);
-          const newModelInsight = new cnst.insight().set({
-            ...modelInsight,
-            count: modelInsight.count - 1,
-          });
-          const newModelSelection = new DataList(modelSelection);
-          newModelSelection.delete(id);
-          this.set({
-            [namesOfSlice.modelList]: newModelList,
-            [namesOfSlice.modelInsight]: newModelInsight,
-            ...(modelSelection.has(model.id) ? { [namesOfSlice.modelSelection]: newModelSelection } : {}),
-            ...(modal !== undefined ? { [names.modelModal]: modal } : {}),
-          });
-        } else {
-          newModelList.set(lightModel);
-          this.set({
-            [namesOfSlice.modelList]: newModelList,
-            ...(modal !== undefined ? { [names.modelModal]: modal } : {}),
-          });
-        }
-      });
-      this.set(staleAtOfSlices());
+        if (currentState[namesOfSlice.modelListLoading] || !modelList.has(model.id)) continue;
+        removedPatch[namesOfSlice.modelList] = new DataList(modelList).delete(id);
+        removedPatch[namesOfSlice.modelInsight] = new cnst.insight().set({
+          ...modelInsight,
+          count: modelInsight.count - 1,
+        });
+        if (modelSelection.has(model.id))
+          removedPatch[namesOfSlice.modelSelection] = new DataList(modelSelection).delete(id);
+        if (modal !== undefined) removedPatch[names.modelModal] = modal;
+      }
+      this.set({ ...removedPatch, ...staleAtOfSlices() });
     },
     [names.checkModelSubmitable]: function (this: SetGet, disabled?: boolean) {
       const currentState = this.get() as { [key: string]: any };
@@ -833,8 +836,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.model]: id === model?.id ? updatedModel : model,
         [names.modelLoading]: false,
         ...staleAtOfSlices(),
+        ...updatedListPatchOf(this.get(), updatedModel),
       });
-      patchLists.call(this, updatedModel);
     },
     [names.viewModel]: async function (
       this: SetGet,
@@ -852,27 +855,16 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const firstModel = fullOrLightModels[0];
       const model = currentState[names.model] as Full | null;
       const isFull = firstModel instanceof modelRef;
-      if (isFull) {
-        const crystalizedModel = new cnst.full().set(firstModel) as unknown as Full;
-        this.set({ [names.model]: crystalizedModel });
-      } else if (model?.id === firstModel.id) {
-        const crystalizedModel = new cnst.full().set(model).set(firstModel) as unknown as Full;
-        this.set({ [names.model]: crystalizedModel });
-      }
-      const lightModels = withSharedInstances(() =>
-        fullOrLightModels.map((fullOrLightModel) => new cnst.light().set(fullOrLightModel) as unknown as Light),
-      );
-      slices.forEach(({ keys: { state: namesOfSlice } }) => {
-        const modelList = currentState[namesOfSlice.modelList] as DataList<Light>;
-        const modelListLoading = currentState[namesOfSlice.modelListLoading] as boolean;
-        if (modelListLoading) return;
-        lightModels.forEach((lightModel) => {
-          if (!modelList.has(lightModel.id)) return;
-          modelList.set(lightModel);
-        });
-        this.set({ [namesOfSlice.modelList]: modelList.save() });
+      const crystalizedModel = isFull
+        ? (new cnst.full().set(firstModel) as unknown as Full)
+        : model?.id === firstModel.id
+          ? (new cnst.full().set(model).set(firstModel) as unknown as Full)
+          : null;
+      this.set({
+        ...(crystalizedModel ? { [names.model]: crystalizedModel } : {}),
+        ...updatedListPatchOf(currentState, ...fullOrLightModels),
+        ...staleAtOfSlices(),
       });
-      this.set(staleAtOfSlices());
     },
     [names.resetModel]: function (this: SetGet, model?: Full) {
       const currentState = this.get() as { [key: string]: any };
