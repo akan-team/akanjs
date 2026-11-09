@@ -28,7 +28,7 @@ export type DocumentModel<T> = unknown extends T
       : T extends Map<infer K, infer V>
         ? Map<K, DocumentModel<V>>
         : Docify<T>;
-//? A received Binary is decoded from base64 into a new ArrayBuffer, while one the server returns may be any view.
+//? A received Binary is decoded from base64, so it is never a SharedArrayBuffer view; one the server sends may be.
 export type ServerArgModel<T> = unknown extends T
   ? T
   : T extends Uint8Array

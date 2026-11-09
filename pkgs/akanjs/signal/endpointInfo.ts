@@ -167,7 +167,8 @@ export class EndpointInfo<
     Arg extends ConstantFieldTypeInput = PlainTypeToFieldType<ExplicitType>,
     _ArgType = unknown extends ExplicitType ? FieldToValue<Arg> : ExplicitType,
     _ClientArg = PurifiedModel<_ArgType>,
-    _ServerArg = ServerArgModel<_ArgType>,
+    //? A room arg is also what server code passes when it publishes, so it accepts any Uint8Array.
+    _ServerArg = DocumentModel<_ArgType>,
   >(name: string, arg: Arg, option?: Omit<EndpointArgProps, "nullable">) {
     this.#addArg("room", name, arg, option);
     return this as unknown as EndpointInfo<
