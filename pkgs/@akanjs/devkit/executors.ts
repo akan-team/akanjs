@@ -683,13 +683,14 @@ export class WorkspaceExecutor extends Executor {
   } = {}) {
     return new WorkspaceExecutor({ workspaceRoot, repoName });
   }
-  /** The public env a native build was told to reproduce (`--public-env`): it outranks `.env`, which outranks the rest. */
+  /** The public env a native build was told to reproduce (`--public-env`): it outranks the shell, which outranks `.env`. */
   static publicEnvPin: Record<string, string> | null = null;
   static readonly localServeDomain = "localhost";
   static getBaseDevEnv(envPath?: string) {
     // Bun auto-loads .env, so we use process.env directly
     const sourceEnv = {
-      ...(envPath ? { ...process.env, ...parseEnvFile(envPath) } : process.env),
+      ...(envPath ? parseEnvFile(envPath) : {}),
+      ...process.env,
       ...WorkspaceExecutor.publicEnvPin,
     };
 

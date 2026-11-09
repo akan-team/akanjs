@@ -104,25 +104,14 @@ export class ApplicationBuildRunner {
     return path.join(this.#app.cwdPath, "env");
   }
 
-  //? Bundles bake AKAN_PUBLIC_* from process.env, where the shell outranks the .env that the server env and the
-  //? Dockerfile read: a page built otherwise drops the image's tokens as foreign or dials another serve domain.
+  //? Bundles bake AKAN_PUBLIC_* from process.env, which lacks `--env` and the defaults an unset repo name or serve
+  //? domain takes: a page built otherwise drops the image's tokens as foreign or dials another serve domain.
   #pinImageEnv(baseDevEnv: BaseDevEnv, environment: string) {
-    const imageEnv = {
+    Object.assign(process.env, {
       AKAN_PUBLIC_ENV: environment,
       AKAN_PUBLIC_REPO_NAME: baseDevEnv.repoName,
       AKAN_PUBLIC_SERVE_DOMAIN: baseDevEnv.serveDomain,
-    };
-    const outranked = Object.entries(imageEnv).filter(([key, value]) => {
-      const given = process.env[key];
-      return !!given && given !== value && !(key === "AKAN_PUBLIC_ENV" && this.#environment);
     });
-    if (outranked.length)
-      this.#app.logger.warn(
-        `The workspace .env outranks this process's environment: the bundles and the image take ${outranked
-          .map(([key, value]) => `${key}=${value} (not ${process.env[key]})`)
-          .join(", ")}. Pick the environment with \`akan build --env\`, and set the rest in the workspace .env.`,
-      );
-    Object.assign(process.env, imageEnv);
   }
 
   async build({ spinner = false }: BuildOptions = {}): Promise<BuildResult> {
@@ -295,7 +284,6 @@ export class ApplicationBuildRunner {
   #serverEnvPlugin(baseEnv: string, branches: Iterable<string>): BunPlugin {
     this.#serverEnv ??= createServerEnvPlugin({
       envDir: this.#envDir,
-      //? The root .env wins over the shell in baseDevEnv, so a `--env` build names its own; a desktop app runs it.
       environment: this.#environment ?? baseEnv,
       environments: ["local", "testing", ...branches],
       profile: this.#profile,
