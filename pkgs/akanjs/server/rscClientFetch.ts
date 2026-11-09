@@ -21,6 +21,7 @@ export async function fetchRscNavigationResponse(
     replaceOnRedirect?: () => boolean;
     sendRouterState?: boolean;
     shouldApplyNavigation?: () => boolean;
+    signal?: AbortSignal;
   },
 ): Promise<RscClientFetchResponseResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
@@ -33,6 +34,7 @@ export async function fetchRscNavigationResponse(
     headers,
     credentials: "same-origin",
     cache: "no-store",
+    signal: options.signal,
   });
   const redirect = response.headers.get("X-Akan-Redirect");
   if (redirect) {

@@ -234,6 +234,7 @@ async function fetchRsc(
     shouldApplyNavigation?: () => boolean;
     sendRouterState?: boolean;
     navId?: number;
+    signal?: AbortSignal;
   } = {},
 ): Promise<RscFetchResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
@@ -244,6 +245,7 @@ async function fetchRsc(
     replaceOnRedirect: options.replaceOnRedirect,
     sendRouterState: options.sendRouterState,
     shouldApplyNavigation,
+    signal: options.signal,
   });
   if (responseResult.type === "redirected" || responseResult.type === "not-found") return responseResult;
   //? Awaited before the result is returned, so no caller commits a page whose locale the Translator lacks.
@@ -331,7 +333,25 @@ let currentFullNode: RscCacheNode | null = initialNode;
 let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
+let pendingRequest: { navId: number; controller: AbortController } | null = null;
 let cachedAuthCookies = readAuthCookies();
+
+//? Only a request whose page has not committed is cut: a committed one may still stream the Suspense content on screen.
+function supersedeNavigation(): number {
+  pendingRequest?.controller.abort();
+  pendingRequest = null;
+  return ++navigationSeq;
+}
+
+function requestSignalOf(navId: number): AbortSignal {
+  const controller = new AbortController();
+  pendingRequest = { navId, controller };
+  return controller.signal;
+}
+
+function settleRequestOf(navId: number): void {
+  if (pendingRequest?.navId === navId) pendingRequest = null;
+}
 
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
 globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
@@ -403,7 +423,7 @@ function Root(): ReactNode {
   };
 
   globalThis.__AKAN_RSC_REFRESH__ = async (options = {}) => {
-    const navId = ++navigationSeq;
+    const navId = supersedeNavigation();
     const target = normalizeHref(window.location.href);
     rscCache.clear();
     rscPatchCache.clear();
@@ -414,6 +434,7 @@ function Root(): ReactNode {
         sendRouterState: false,
         navId,
         shouldApplyNavigation: () => navId === navigationSeq,
+        signal: requestSignalOf(navId),
       });
       if (next.type === "redirected") return;
       if (next.type === "not-found") {
@@ -452,16 +473,19 @@ function Root(): ReactNode {
     } catch (error) {
       if (error instanceof RscRedirectNavigationStarted) return;
       if (navId === navigationSeq) hardNavigateAfterRscFailure(target, true, error);
+    } finally {
+      settleRequestOf(navId);
     }
   };
 
   globalThis.__AKAN_RSC_NAVIGATE__ = async (href, options = {}) => {
     if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) {
-      navigationSeq += 1;
+      supersedeNavigation();
       return;
     }
     forgetPagesOfAnotherAccount();
-    const navId = ++navigationSeq;
+    const navId = supersedeNavigation();
+    const signal = requestSignalOf(navId);
     const target = normalizeHref(href);
     //? A redirect replaces the entry this navigation is on, which a push does not write until its page commits.
     let ownsEntry = !!options.replace;
@@ -512,6 +536,7 @@ function Root(): ReactNode {
           replaceOnRedirect,
           navId,
           shouldApplyNavigation: () => navId === navigationSeq,
+          signal,
         });
         if (fetched.type === "redirected") return;
         if (fetched.type === "not-found") throw new RscRouteNotFound(target);
@@ -543,6 +568,7 @@ function Root(): ReactNode {
             sendRouterState: false,
             navId,
             shouldApplyNavigation: () => navId === navigationSeq,
+            signal,
           });
           if (fallback.type === "redirected") return;
           if (fallback.type === "not-found") throw new RscRouteNotFound(target);
@@ -593,6 +619,8 @@ function Root(): ReactNode {
       // Rethrown before the fallback: a document navigation would land on the very 404 this refusal exists to avoid.
       if (error instanceof RscRouteNotFound) throw error;
       if (navId === navigationSeq) hardNavigateAfterRscFailure(target, options.replace, error);
+    } finally {
+      settleRequestOf(navId);
     }
   };
 
@@ -612,7 +640,7 @@ window.addEventListener("popstate", (event) => {
       ?.catch((error: unknown) => hardNavigateAfterRscFailure(window.location.href, true, error));
   else {
     //? Still a navigation: one in flight would otherwise commit its page onto the entry this move landed on.
-    navigationSeq += 1;
+    supersedeNavigation();
     if (scrollY !== undefined) scrollRestoration.scrollTo(scrollY);
   }
   window.setTimeout(() => {

@@ -42,8 +42,9 @@ const back = async (expected: string) => {
   await waitFor(() => shown() === expected);
 };
 const served = new Map<string, () => Response | Promise<Response>>();
-const fetched: { pathname: string; sentRouterState: boolean }[] = [];
+const fetched: { pathname: string; sentRouterState: boolean; signal?: AbortSignal }[] = [];
 const fetchCountOf = (pathname: string) => fetched.filter((request) => request.pathname === pathname).length;
+const signalOf = (pathname: string) => fetched.findLast((request) => request.pathname === pathname)?.signal;
 const sentRouterStateFor = (pathname: string) =>
   fetched.findLast((request) => request.pathname === pathname)?.sentRouterState;
 const routedResponseOf = (text: string) =>
@@ -116,8 +117,15 @@ beforeAll(async () => {
     fetch: async (input: string | URL, init?: RequestInit) => {
       const target = new URL(new URL(String(input)).searchParams.get("url") ?? "/", origin);
       const sentRouterState = new Headers(init?.headers).has(AKAN_RSC_CURRENT_ROUTE_HEADER);
-      fetched.push({ pathname: target.pathname, sentRouterState });
-      return served.get(target.pathname)?.() ?? responseOf(`${target.pathname}${target.search}`);
+      const signal = init?.signal ?? undefined;
+      fetched.push({ pathname: target.pathname, sentRouterState, signal });
+      const response = served.get(target.pathname)?.() ?? responseOf(`${target.pathname}${target.search}`);
+      if (!signal) return response;
+      signal.throwIfAborted();
+      return new Promise<Response>((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        void Promise.resolve(response).then(resolve, reject);
+      });
     },
   });
   document.documentElement.innerHTML = "<head></head><body><main>/list</main></body>";
@@ -188,6 +196,82 @@ describe("rscClient overtaken navigation", () => {
     expect(shown()).toBe("/thread/2");
   });
 
+  test("a navigation overtaken before its page commits has its request aborted", async () => {
+    await navigate("/street");
+    const { held, respond } = heldUntilReleased("/street/slow");
+    served.set("/street/slow", respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/street/slow");
+      await sleep(10);
+    });
+    await navigate("/street/fast");
+
+    expect(signalOf("/street/slow")?.aborted).toBe(true);
+    await act(async () => {
+      held.release();
+      await pending;
+    });
+    expect(window.location.pathname).toBe("/street/fast");
+    expect(shown()).toBe("/street/fast");
+  });
+
+  test("a refresh aborts the navigation it overtakes", async () => {
+    await navigate("/desk");
+    const { held, respond } = heldUntilReleased("/desk/next");
+    served.set("/desk/next", respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/desk/next");
+      await sleep(10);
+    });
+    await refresh();
+
+    expect(signalOf("/desk/next")?.aborted).toBe(true);
+    await act(async () => {
+      held.release();
+      await pending;
+    });
+    expect(window.location.pathname).toBe("/desk");
+  });
+
+  test("a committed page still streaming is not cut by the navigation after it", async () => {
+    const encoder = new TextEncoder();
+    const rest = { send: () => {} };
+    served.set(
+      "/live",
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode(rowOf("$L1")));
+              rest.send = () => {
+                controller.enqueue(encoder.encode('1:"late"\n'));
+                controller.close();
+              };
+            },
+          }),
+          { headers: { "Content-Type": "text/x-component" } },
+        ),
+    );
+    await navigate("/live");
+    const { held, respond } = heldUntilReleased("/live/next");
+    served.set("/live/next", respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/live/next");
+      await sleep(10);
+    });
+
+    expect(signalOf("/live")?.aborted).toBe(false);
+    await act(async () => {
+      rest.send();
+      held.release();
+      await pending;
+    });
+    expect(shown()).toBe("/live/next");
+  });
+
   test("a shallow push made while a navigation is loading is not overtaken by it", async () => {
     await navigate("/catalog");
     const { held, respond } = heldUntilReleased("/catalog/next");
@@ -198,6 +282,7 @@ describe("rscClient overtaken navigation", () => {
       await sleep(10);
     });
     await navigate("/catalog?peek=1", { shallow: true });
+    expect(signalOf("/catalog/next")?.aborted).toBe(true);
 
     await act(async () => {
       held.release();
