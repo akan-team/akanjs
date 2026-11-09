@@ -522,6 +522,120 @@ describe("signal generated store contract", () => {
     expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
   });
 
+  test("aborts the request a newer page request supersedes, which then writes nothing and shows no error", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const requests: { signal: AbortSignal; answer: () => void }[] = [];
+    signal.calls.storeTestItemListByTitle = mock(
+      async (_title: string, skip: number, _limit: number, _sort: string, option: { signal: AbortSignal }) =>
+        await new Promise<InstanceType<typeof StoreTestLight>[]>((resolve, reject) => {
+          option.signal.addEventListener("abort", () => reject(option.signal.reason));
+          requests.push({
+            signal: option.signal,
+            answer: () => resolve([new StoreTestLight({ id: "aaaaaaaaaaaaaaaaaaaaaaaa", title: `skip${skip}` })]),
+          });
+        }),
+    );
+    class AbortStore extends store(signal, () => ({ messages: [] as unknown[] })) {
+      showMessage(message: unknown) {
+        this.set({ messages: [...this.get().messages, message] });
+      }
+    }
+    StoreRegistry.register(AbortStore);
+    const instance = new StoreInstance(makeRoot("abortRoot", AbortStore));
+    const first = instance.do.initStoreTestItemByTitle("Ada", { limit: 1 });
+    requests[0]?.answer();
+    await first;
+
+    const toPage2 = instance.do.setPageOfStoreTestItemByTitle(2);
+    const toPage3 = instance.do.setPageOfStoreTestItemByTitle(3);
+    expect(requests[1]?.signal.aborted).toBe(true);
+    expect(requests[2]?.signal.aborted).toBe(false);
+    requests[2]?.answer();
+    await Promise.all([toPage2, toPage3]);
+
+    expect(instance.get().pageOfStoreTestItemByTitle).toBe(3);
+    const rows = [...(instance.get().storeTestItemListByTitle as DataList<InstanceType<typeof StoreTestLight>>)];
+    expect(rows.map((row) => row.title)).toEqual(["skip2"]);
+    expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
+    expect(instance.get().messages).toEqual([]);
+
+    const more = instance.do.loadMoreOfStoreTestItemByTitle();
+    const refresh = instance.do.refreshStoreTestItemByTitle({ invalidate: true });
+    expect(requests[3]?.signal.aborted).toBe(true);
+    requests[4]?.answer();
+    await Promise.all([more, refresh]);
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(false);
+    expect(instance.get().messages).toEqual([]);
+  });
+
+  test("ends a load its caller aborts without a write, an error or a spinner left on", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class CallerAbortStore extends store(signal, () => ({ messages: [] as unknown[] })) {
+      showMessage(message: unknown) {
+        this.set({ messages: [...this.get().messages, message] });
+      }
+    }
+    StoreRegistry.register(CallerAbortStore);
+    const instance = new StoreInstance(makeRoot("callerAbortRoot", CallerAbortStore));
+    await instance.do.initStoreTestItemByTitle("Ada");
+    signal.calls.storeTestItemListByTitle = mock(
+      async (_title: string, _skip: number, _limit: number, _sort: string, option: { signal: AbortSignal }) =>
+        await new Promise<InstanceType<typeof StoreTestLight>[]>((_resolve, reject) => {
+          option.signal.addEventListener("abort", () => reject(option.signal.reason));
+        }),
+    );
+    const controller = new AbortController();
+
+    const toPage2 = instance.do.setPageOfStoreTestItemByTitle(2, { signal: controller.signal });
+    expect(instance.get().storeTestItemListLoadingByTitle).toBe(true);
+    controller.abort();
+    await toPage2;
+
+    expect(instance.get().pageOfStoreTestItemByTitle).toBe(1);
+    expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
+    expect(instance.get().messages).toEqual([]);
+  });
+
+  test("a load called with a signal already aborted sends nothing and leaves the live load running", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class SpentSignalStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(SpentSignalStore);
+    const instance = new StoreInstance(makeRoot("spentSignalRoot", SpentSignalStore));
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 1 });
+    const requests: { signal: AbortSignal; answer: () => void }[] = [];
+    signal.calls.storeTestItemListByTitle = mock(
+      async (_title: string, skip: number, _limit: number, _sort: string, option: { signal: AbortSignal }) =>
+        await new Promise<InstanceType<typeof StoreTestLight>[]>((resolve) => {
+          requests.push({
+            signal: option.signal,
+            answer: () => resolve([new StoreTestLight({ id: "aaaaaaaaaaaaaaaaaaaaaaaa", title: `skip${skip}` })]),
+          });
+        }),
+    );
+    const spent = new AbortController();
+    spent.abort();
+
+    const toPage2 = instance.do.setPageOfStoreTestItemByTitle(2);
+    await instance.do.setPageOfStoreTestItemByTitle(3, { signal: spent.signal });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.signal.aborted).toBe(false);
+    requests[0]?.answer();
+    await toPage2;
+    expect(instance.get().pageOfStoreTestItemByTitle).toBe(2);
+    expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
+
+    const more = instance.do.loadMoreOfStoreTestItemByTitle();
+    await instance.do.loadMoreOfStoreTestItemByTitle({ signal: spent.signal });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.signal.aborted).toBe(false);
+    requests[1]?.answer();
+    await more;
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
+  });
+
   test.each(["refetch", "load-more"] as const)(
     "drops a %s that answers after the slice was seeded with other arguments",
     async (request) => {
@@ -580,7 +694,7 @@ describe("signal generated store contract", () => {
     expect(instance.get().hasMoreOfStoreTestItemByTitle).toBe(true);
 
     await instance.do.loadMoreOfStoreTestItemByTitle();
-    expect(signal.calls.storeTestItemListByTitle).toHaveBeenLastCalledWith("Ada", 2, 2, "latest", undefined);
+    expect(signal.calls.storeTestItemListByTitle).toHaveBeenLastCalledWith("Ada", 2, 2, "latest", expect.any(Object));
     expect(titles()).toEqual(["row0", "row1", "row2", "row3"]);
     expect(instance.get().pageOfStoreTestItemByTitle).toBe(1);
     expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
@@ -622,7 +736,7 @@ describe("signal generated store contract", () => {
       MAX_PAGE_SIZE,
       10000,
       "latest",
-      undefined,
+      expect.any(Object),
     );
     expect(loaded()).toBe(total);
     expect(instance.get().hasMoreOfStoreTestItemByTitle).toBe(false);
@@ -637,11 +751,11 @@ describe("signal generated store contract", () => {
     await instance.do.initStoreTestItemByTitle("Ada", { page: 2, limit: 20 });
 
     await instance.do.setLimitOfStoreTestItemByTitle(0);
-    expect(signal.calls.storeTestItemListByTitle).toHaveBeenLastCalledWith("Ada", 0, 0, "latest", undefined);
+    expect(signal.calls.storeTestItemListByTitle).toHaveBeenLastCalledWith("Ada", 0, 0, "latest", expect.any(Object));
     expect(instance.get()).toMatchObject({ pageOfStoreTestItemByTitle: 1, lastPageOfStoreTestItemByTitle: 1 });
 
     await instance.do.setLimitOfStoreTestItemByTitle(20);
-    expect(signal.calls.storeTestItemListByTitle).toHaveBeenLastCalledWith("Ada", 0, 20, "latest", undefined);
+    expect(signal.calls.storeTestItemListByTitle).toHaveBeenLastCalledWith("Ada", 0, 20, "latest", expect.any(Object));
     expect(instance.get().pageOfStoreTestItemByTitle).toBe(1);
   });
 
