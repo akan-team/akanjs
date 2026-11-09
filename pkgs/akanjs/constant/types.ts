@@ -23,11 +23,19 @@ export type DocumentModel<T> = unknown extends T
   ? T
   : T extends (infer S)[]
     ? DocumentModel<S>[]
-    : T extends string | number | boolean | Dayjs | File
+    : T extends string | number | boolean | Dayjs | File | Uint8Array
       ? T
       : T extends Map<infer K, infer V>
         ? Map<K, DocumentModel<V>>
         : Docify<T>;
+//? A received Binary is decoded from base64, so it is never a SharedArrayBuffer view; one the server sends may be.
+export type ServerArgModel<T> = unknown extends T
+  ? T
+  : T extends Uint8Array
+    ? Uint8Array<ArrayBuffer>
+    : T extends (infer S)[]
+      ? ServerArgModel<S>[]
+      : DocumentModel<T>;
 
 export type FieldState<T> = T extends { id: string } ? T | null : T;
 export type DefaultOf<S> = {

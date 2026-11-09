@@ -30,7 +30,7 @@ import {
   serve,
 } from "akanjs/service";
 import { endpoint } from "./endpoint";
-import { buildEndpoint, type EndpointInfo } from "./endpointInfo";
+import { buildEndpoint, type EndpInfoServerArgs, type EndpointInfo } from "./endpointInfo";
 import { Exception } from "./exception";
 import { type Guard, type GuardCls, type GuardScope, guard } from "./guard";
 import { None, Public } from "./guards";
@@ -2010,6 +2010,31 @@ describe("SignalContext byte returns", () => {
 
     expect(body).toBe("AQID");
     expect(Binary.parseValue(body as string)).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  test("hands a Binary body to exec as a Uint8Array<ArrayBuffer>, and takes any Uint8Array back", async () => {
+    const lengthOf = (frame: Uint8Array<ArrayBuffer>) => frame.byteLength;
+    const reply: Uint8Array = new Uint8Array([9]);
+    const endpointInfo = buildEndpoint
+      .mutation(Binary, { guards: [Public] })
+      .body("frame", Binary)
+      .exec((frame) => (lengthOf(frame) === 3 && frame instanceof Uint8Array ? reply : frame));
+    const context = makeSignalContext({ endpointInfo, request: makeHttpRequest({ body: { frame: "AQID" } }) });
+
+    await context.init();
+
+    expect(await ((await context.exec()) as Response).json()).toBe("CQ==");
+  });
+
+  test("lets server code publish to a Binary room with any Uint8Array", () => {
+    const roomInfo = buildEndpoint
+      .pubsub(String, { guards: [Public] })
+      .room("deviceKey", Binary)
+      .exec(() => undefined);
+    const key: Uint8Array = new Uint8Array(new SharedArrayBuffer(2));
+    const publishArgs: EndpInfoServerArgs<typeof roomInfo> = [key];
+
+    expect(publishArgs[0]).toBe(key);
   });
 
   test("refuses bytes returned through Any instead of sending an empty object", async () => {
