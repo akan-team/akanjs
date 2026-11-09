@@ -177,8 +177,7 @@ export class TypeChecker {
       configFileParsingDiagnostics: parsedConfig.errors,
       host,
     });
-    const program = builderProgram.getProgram();
-    const diagnostics = [...ts.getPreEmitDiagnostics(program), ...builderProgram.emit().diagnostics];
+    const diagnostics = [...TypeChecker.#preEmitDiagnostics(builderProgram), ...builderProgram.emit().diagnostics];
     const errors = diagnostics.filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
     const warnings = diagnostics.filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Warning);
     return {
@@ -188,6 +187,19 @@ export class TypeChecker {
       warnings,
       message: TypeChecker.formatDiagnosticMessages(diagnostics),
     };
+  }
+
+  //* getPreEmitDiagnostics on the Program re-checks every file; the builder answers unchanged ones from .tsbuildinfo.
+  static #preEmitDiagnostics(builderProgram: ts.BuilderProgram) {
+    const { declaration, composite } = builderProgram.getCompilerOptions();
+    return ts.sortAndDeduplicateDiagnostics([
+      ...builderProgram.getConfigFileParsingDiagnostics(),
+      ...builderProgram.getOptionsDiagnostics(),
+      ...builderProgram.getSyntacticDiagnostics(),
+      ...builderProgram.getGlobalDiagnostics(),
+      ...builderProgram.getSemanticDiagnostics(),
+      ...(declaration || composite ? builderProgram.getDeclarationDiagnostics() : []),
+    ]);
   }
 
   static parseConfig(configPath: string): ts.ParsedCommandLine {
