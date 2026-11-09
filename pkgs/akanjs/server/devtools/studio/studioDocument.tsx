@@ -1,11 +1,14 @@
 import type { AkanChangeMap, AkanGraph, AkanGraphChange, AkanGraphLocation } from "akanjs/common";
-import type { BuildChangesPayload, BuildGraphPayload } from "../../artifact";
+import type { BuildChangesPayload, BuildFrameworkPayload, BuildGraphPayload } from "../../artifact";
 import { StudioActions } from "./studioActions";
+import { StudioFramework } from "./studioFramework";
 import { type StudioBox, StudioLayout, type StudioScene, type StudioView } from "./studioLayout";
 import { studioRuntime } from "./studioRuntime";
 import { studioStyle } from "./studioStyle";
 
 export type StudioEditor = "vscode" | "cursor";
+
+export type StudioPayload = BuildGraphPayload | BuildChangesPayload | BuildFrameworkPayload;
 
 export interface StudioQuery {
   view: StudioView;
@@ -17,18 +20,24 @@ export interface StudioQuery {
 export interface StudioDocumentProps {
   basePath: string;
   appName: string;
-  payload: BuildGraphPayload | BuildChangesPayload;
+  payload: StudioPayload;
   query: StudioQuery;
 }
 
 const editorLabels: { [editor in StudioEditor]: string } = { vscode: "VS Code", cursor: "Cursor" };
-const viewLabels: { [view in StudioView]: string } = { erd: "ERD", signals: "Signals", changes: "Changes" };
+const viewLabels: { [view in StudioView]: string } = {
+  erd: "ERD",
+  signals: "Signals",
+  changes: "Changes",
+  framework: "Framework",
+};
 const changeSigns: { [change in AkanGraphChange]: string } = { added: "+", removed: "−", changed: "~" };
 const charWidth = 7.3;
 const kindShownIn: { [view in StudioView]: Set<string> } = {
   erd: new Set(["model", "scalar", "enum"]),
   signals: new Set(["endpoint", "slice", "query", "model"]),
   changes: new Set(["endpoint", "slice", "query", "model", "scalar", "enum", "guard"]),
+  framework: new Set(),
 };
 const emptyGraph: AkanGraph = { version: 1, nodes: [], edges: [] };
 const clip = (text: string, max: number) => {
@@ -40,6 +49,7 @@ export class StudioDocument {
   static render({ basePath, appName, payload, query }: StudioDocumentProps) {
     const changes = "changes" in payload ? payload.changes : null;
     const changeMap = changes && "nodes" in changes ? changes : null;
+    const framework = "framework" in payload ? payload.framework : null;
     const graph = "graph" in payload ? payload.graph : (changeMap ?? emptyGraph);
     const listed = StudioLayout.modulesOf(graph);
     const modules = query.module && !listed.includes(query.module) ? [query.module, ...listed] : listed;
@@ -52,7 +62,10 @@ export class StudioDocument {
     const hrefOf = (next: Partial<StudioQuery>) => StudioDocument.href(basePath, { ...query, ...next });
     const openOf = (at: AkanGraphLocation | null) =>
       at ? StudioDocument.editorHref(query.editor, payload.workspaceRoot, at) : undefined;
-    const graphHref = query.view === "changes" ? StudioDocument.href(`${basePath}/graph`, query) : `${basePath}/graph`;
+    const graphHref =
+      query.view === "changes" || query.view === "framework"
+        ? StudioDocument.href(`${basePath}/graph`, query)
+        : `${basePath}/graph`;
     const unmapped = changeMap ? StudioLayout.unmappedIn(changeMap.unmapped, query.module) : [];
     return (
       <html lang="en">
@@ -67,13 +80,13 @@ export class StudioDocument {
             <strong>Akan Studio</strong>
             <span className="muted">{appName}</span>
             <nav>
-              {(["erd", "signals", "changes"] as const).map((view) => (
+              {(["erd", "signals", "changes", "framework"] as const).map((view) => (
                 <a key={view} href={hrefOf({ view })} aria-current={view === query.view ? "page" : undefined}>
                   {viewLabels[view]}
                 </a>
               ))}
             </nav>
-            <form method="get" action={basePath}>
+            <form method="get" action={basePath} hidden={query.view === "framework"}>
               <input type="hidden" name="view" value={query.view} />
               <input type="hidden" name="editor" value={query.editor} />
               <select name="module" defaultValue={query.module ?? ""} data-studio-module="">
@@ -101,7 +114,13 @@ export class StudioDocument {
             </form>
             <input type="search" placeholder="Filter by name" data-studio-filter="" />
             {changeMap ? <span className="muted">{StudioDocument.#summary(changeMap)}</span> : null}
-            <span className="muted">{`${scene.boxes.length} nodes · ${scene.links.length} edges`}</span>
+            <span className="muted">
+              {query.view === "framework"
+                ? framework
+                  ? StudioFramework.summary(framework)
+                  : ""
+                : `${scene.boxes.length} nodes · ${scene.links.length} edges`}
+            </span>
             <div
               className="actions"
               data-studio-actions=""
@@ -118,7 +137,16 @@ export class StudioDocument {
             </nav>
           </header>
           <main>
-            {changes && "error" in changes ? (
+            {query.view === "framework" ? (
+              framework ? (
+                StudioFramework.render(framework, openOf)
+              ) : (
+                <p className="empty">
+                  Akan Studio maps the framework from <code>pkgs/akanjs</code> or <code>node_modules/akanjs</code>, and
+                  this workspace has neither.
+                </p>
+              )
+            ) : changes && "error" in changes ? (
               <p className="empty">{changes.error}</p>
             ) : scene.boxes.length ? (
               StudioDocument.#svg(scene, query.view, openOf)

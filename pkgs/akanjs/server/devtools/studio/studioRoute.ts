@@ -1,8 +1,8 @@
 import { Logger } from "akanjs/common";
 import type { ReactNode } from "react";
-import type { BuildChangesPayload, BuildGraphPayload } from "../../artifact";
+import type { BuildChangesPayload, BuildFrameworkPayload, BuildGraphPayload } from "../../artifact";
 import { createSystemPageHeaders } from "../../systemPages";
-import { StudioDocument, type StudioEditor, type StudioQuery } from "./studioDocument";
+import { StudioDocument, type StudioEditor, type StudioPayload, type StudioQuery } from "./studioDocument";
 import type { StudioView } from "./studioLayout";
 
 export interface StudioRouteContext {
@@ -10,10 +10,11 @@ export interface StudioRouteContext {
   appName: string;
   buildGraph: (() => Promise<BuildGraphPayload | null>) | null;
   buildChanges: ((since: string | null) => Promise<BuildChangesPayload | null>) | null;
+  buildFramework: (() => Promise<BuildFrameworkPayload | null>) | null;
 }
 
 const editors = new Set<StudioEditor>(["vscode", "cursor"]);
-const views = new Set<StudioView>(["erd", "signals", "changes"]);
+const views = new Set<StudioView>(["erd", "signals", "changes", "framework"]);
 
 export class StudioRoute {
   static readonly logger = new Logger("StudioRoute");
@@ -49,14 +50,16 @@ export class StudioRoute {
     return Response.json(loaded.payload, { headers: { "Cache-Control": "no-store" } });
   }
 
-  async #load({
-    view,
-    since,
-  }: StudioQuery): Promise<{ payload: BuildGraphPayload | BuildChangesPayload } | { error: string }> {
-    const { buildGraph, buildChanges } = this.#context;
+  async #payloadOf({ view, since }: StudioQuery): Promise<StudioPayload | null> {
+    const { buildGraph, buildChanges, buildFramework } = this.#context;
+    if (view === "changes") return buildChanges ? await buildChanges(since) : null;
+    if (view === "framework") return buildFramework ? await buildFramework() : null;
+    return buildGraph ? await buildGraph() : null;
+  }
+
+  async #load(query: StudioQuery): Promise<{ payload: StudioPayload } | { error: string }> {
     try {
-      const payload =
-        view === "changes" ? (buildChanges ? await buildChanges(since) : null) : buildGraph ? await buildGraph() : null;
+      const payload = await this.#payloadOf(query);
       return payload
         ? { payload }
         : { error: "Akan Studio reads the graph from the dev builder; open it under `akan start`." };

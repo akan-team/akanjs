@@ -1224,10 +1224,10 @@ akan preview myapp /admin --desktop --format json`,
       {
         name: "studio",
         signature:
-          "akan studio <app> [--module <module>] [--view <erd|signals|changes>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]",
+          "akan studio <app> [--module <module>] [--view <erd|signals|changes|framework>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]",
         desc: l.trans({
-          en: "Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, or the Change Map of what changed since a git revision, and links each name to its source. A clicked node lists the workflows it can start: in a browser a button copies the `akan workflow plan` command, and in the editor panel it runs the workflow. It exits 1 when no dev server answers.",
-          ko: "실행 중인 `akan start`의 Akan Studio URL을 출력합니다. Studio는 모델 ERD, 한 모듈의 컴포넌트에서 모델까지 이어지는 경로, git 리비전 이후 바뀐 것을 담은 Change Map을 그리고, 이름마다 소스 링크를 겁니다. 노드를 클릭하면 시작할 수 있는 워크플로가 나오고, 브라우저에서는 버튼이 `akan workflow plan` 명령을 복사하며 에디터 패널에서는 워크플로를 실행합니다. 응답하는 개발 서버가 없으면 1로 끝납니다.",
+          en: "Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, the Change Map of what changed since a git revision, or the framework's own facets and the messages its processes exchange, and links each name to its source. A clicked node lists the workflows it can start: in a browser a button copies the `akan workflow plan` command, and in the editor panel it runs the workflow. It exits 1 when no dev server answers.",
+          ko: "실행 중인 `akan start`의 Akan Studio URL을 출력합니다. Studio는 모델 ERD, 한 모듈의 컴포넌트에서 모델까지 이어지는 경로, git 리비전 이후 바뀐 것을 담은 Change Map, 프레임워크 자체의 패싯과 프로세스끼리 주고받는 메시지를 그리고, 이름마다 소스 링크를 겁니다. 노드를 클릭하면 시작할 수 있는 워크플로가 나오고, 브라우저에서는 버튼이 `akan workflow plan` 명령을 복사하며 에디터 패널에서는 워크플로를 실행합니다. 응답하는 개발 서버가 없으면 1로 끝납니다.",
         }),
         options: [
           {
@@ -1242,10 +1242,10 @@ akan preview myapp /admin --desktop --format json`,
             name: "--view",
             type: "String",
             defaultValue: "erd",
-            enumOrFlag: "erd | signals | changes",
+            enumOrFlag: "erd | signals | changes | framework",
             desc: l.trans({
-              en: "`signals` lays one module out from component to model; `changes` draws the Change Map.",
-              ko: "`signals`는 한 모듈을 컴포넌트에서 모델까지 펼치고, `changes`는 Change Map을 그립니다.",
+              en: "`signals` lays one module out from component to model; `changes` draws the Change Map; `framework` maps the framework's facets and process messages.",
+              ko: "`signals`는 한 모듈을 컴포넌트에서 모델까지 펼치고, `changes`는 Change Map을, `framework`는 프레임워크의 패싯과 프로세스 메시지 지도를 그립니다.",
             }),
           },
           {

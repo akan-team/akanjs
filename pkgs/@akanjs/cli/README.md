@@ -107,6 +107,9 @@ against the built packages and checks metadata that must be correct before `depl
 For repository releases, prefer `bun run release:build-packages && bun run release:verify-packages` so the CLI package
 artifact is built last and is not overwritten by the root `akan` bootstrap script.
 
+`akan sync-architecture` regenerates the facet layers and process-message tables of `pkgs/akanjs/ARCHITECTURE.md`
+from the framework source, and fails when the hand-kept part names a class the source no longer has.
+
 ## Package Boundary
 
 - Use `akanjs` from application and runtime code.

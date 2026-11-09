@@ -173,7 +173,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       format,
     }: {
       module: string | null;
-      view: "erd" | "signals" | "changes";
+      view: "erd" | "signals" | "changes" | "framework";
       since?: string | null;
       editor: "vscode" | "cursor";
       open: boolean;

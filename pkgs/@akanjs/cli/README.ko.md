@@ -108,6 +108,9 @@ Akan 프레임워크 패키지는 `dist/pkgs/*`에서만 배포합니다. `verif
 확인합니다. 저장소 릴리스에서는 `bun run release:build-packages && bun run release:verify-packages`를 쓰세요. CLI
 패키지 결과물이 마지막에 빌드되어 루트 `akan` 부트스트랩 스크립트가 덮어쓰지 않습니다.
 
+`akan sync-architecture`는 `pkgs/akanjs/ARCHITECTURE.md`의 패싯 레이어와 프로세스 메시지 표를 프레임워크 소스에서
+다시 만들고, 손으로 쓴 부분이 소스에 더는 없는 클래스를 가리키면 실패합니다.
+
 ## 패키지 경계
 
 - 애플리케이션과 런타임 코드에서는 `akanjs`를 사용합니다.

@@ -24,6 +24,7 @@ import { SignalContext } from "../signal/signalContext";
 import {
   type BuildChangesPayload,
   type BuilderRpc,
+  type BuildFrameworkPayload,
   type BuildGraphPayload,
   type MergedManifest,
   RouteClientCache,
@@ -837,6 +838,9 @@ export class WebRouter {
   }
   async buildChanges(since: string | null): Promise<BuildChangesPayload | null> {
     return this.#builderRpc ? await this.#builderRpc.buildChanges(since) : null;
+  }
+  async buildFramework(): Promise<BuildFrameworkPayload | null> {
+    return this.#builderRpc ? await this.#builderRpc.buildFramework() : null;
   }
   refreshHmrState(): void {
     this.#devHmr?.refreshRegistryState();

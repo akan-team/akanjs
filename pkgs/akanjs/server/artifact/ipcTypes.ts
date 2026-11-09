@@ -1,4 +1,4 @@
-import type { AkanChangeMap, AkanGraph } from "akanjs/common";
+import type { AkanChangeMap, AkanGraph, FrameworkMap } from "akanjs/common";
 import type { SsrManifest } from "../ssrTypes";
 
 export interface BuildRouteResultPayload {
@@ -91,11 +91,27 @@ export interface BuildChangesPayload {
   changes: AkanChangeMap | { error: string };
 }
 
+/** `framework` is null when the workspace holds no framework source: neither `pkgs/akanjs` nor `node_modules/akanjs`. */
+export interface BuildFrameworkPayload {
+  workspaceRoot: string;
+  framework: FrameworkMap | null;
+}
+
 /** `changes` asks for the Change Map since `since`, or since HEAD forked from the default branch when it is null. */
-export type BuilderGraphReq = { type: "build-graph"; id: number; changes?: { since: string | null } };
+export type BuilderGraphReq = {
+  type: "build-graph";
+  id: number;
+  changes?: { since: string | null };
+  framework?: boolean;
+};
 
 export type BuilderGraphRes =
-  | { type: "build-graph-res"; id: number; ok: true; data: BuildGraphPayload | BuildChangesPayload }
+  | {
+      type: "build-graph-res";
+      id: number;
+      ok: true;
+      data: BuildGraphPayload | BuildChangesPayload | BuildFrameworkPayload;
+    }
   | { type: "build-graph-res"; id: number; ok: false; error: string };
 
 /** Drain and exit (the only way bundler memory returns to the OS); draining, not killing, keeps a rebuild whole. */

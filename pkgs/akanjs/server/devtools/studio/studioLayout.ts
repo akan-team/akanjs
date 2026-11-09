@@ -9,7 +9,7 @@ import type {
   AkanGraphNodeKind,
 } from "akanjs/common";
 
-export type StudioView = "erd" | "signals" | "changes";
+export type StudioView = "erd" | "signals" | "changes" | "framework";
 
 export interface StudioRow {
   text: string;

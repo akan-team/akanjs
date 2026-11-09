@@ -5,6 +5,7 @@ import type {
   BuilderMessage,
   BuilderRequest,
   BuilderResponse,
+  BuildFrameworkPayload,
   BuildGraphPayload,
   BuildRouteClientResult,
   BuildRouteResultPayload,
@@ -121,6 +122,12 @@ export class BuilderRpc {
   async buildChanges(since: string | null): Promise<BuildChangesPayload> {
     return await this.#request<BuildChangesPayload>("build-graph changes", (id) =>
       this.#send({ type: "build-graph", id, changes: { since } }),
+    );
+  }
+
+  async buildFramework(): Promise<BuildFrameworkPayload> {
+    return await this.#request<BuildFrameworkPayload>("build-graph framework", (id) =>
+      this.#send({ type: "build-graph", id, framework: true }),
     );
   }
 

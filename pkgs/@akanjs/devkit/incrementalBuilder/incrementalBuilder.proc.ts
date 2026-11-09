@@ -6,6 +6,7 @@ import { ApplicationBuildReporter } from "@akanjs/devkit/applicationBuildReporte
 import { CodegenLock } from "@akanjs/devkit/codegenLock";
 import type { App } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, type PageRoot, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { FrameworkGraph } from "@akanjs/devkit/frameworkGraph";
 import { AutoImportSync } from "@akanjs/devkit/frontendBuild/autoImportSync";
 import type { ClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientBuildTypes";
 import { GraphClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientEntryDiscovery";
@@ -29,6 +30,7 @@ import type {
   BuilderMessage,
   BuilderReq,
   BuilderRes,
+  BuildFrameworkPayload,
   BuildGraphPayload,
   BuildPhase,
   BuildRouteResultPayload,
@@ -370,6 +372,7 @@ class IncrementalBuilder {
   }
 
   async #handleWatchBatch(batch: ChangeBatch) {
+    FrameworkGraph.touched(this.#app.workspace.workspaceRoot, batch.files);
     const rawKinds = new Set(batch.kinds);
     if (rawKinds.size === 0) return;
     const generation = ++this.#generation;
@@ -882,7 +885,11 @@ class IncrementalBuilder {
 
   async handleBuildGraph(msg: BuilderGraphReq): Promise<void> {
     try {
-      const data = msg.changes ? await this.#changesPayload(msg.changes.since) : await this.#graphPayload();
+      const data = msg.framework
+        ? await this.#frameworkPayload()
+        : msg.changes
+          ? await this.#changesPayload(msg.changes.since)
+          : await this.#graphPayload();
       await BuilderChannel.send({ type: "build-graph-res", id: msg.id, ok: true, data });
     } catch (err) {
       const error = ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot);
@@ -899,6 +906,11 @@ class IncrementalBuilder {
       this.#graph = { generation, payload: { workspaceRoot: workspace.workspaceRoot, graph } };
     }
     return this.#graph.payload;
+  }
+
+  async #frameworkPayload(): Promise<BuildFrameworkPayload> {
+    const { workspaceRoot } = this.#app.workspace;
+    return { workspaceRoot, framework: await FrameworkGraph.cached(workspaceRoot) };
   }
 
   async #changesPayload(since: string | null): Promise<BuildChangesPayload> {

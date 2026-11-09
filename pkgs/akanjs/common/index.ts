@@ -102,6 +102,16 @@ export {
   resolveFileUploadCapability,
 } from "./fileUpload";
 export { formatNumber } from "./formatNumber";
+export type {
+  FrameworkChannel,
+  FrameworkClass,
+  FrameworkFacet,
+  FrameworkImport,
+  FrameworkMap,
+  FrameworkMessage,
+  FrameworkPackage,
+  FrameworkSite,
+} from "./frameworkMap";
 export { hasErrKey } from "./hasErrKey";
 export { type AkanHmrPhase, getAkanHmrPhase, isAkanHmrApplying } from "./hmrPhase";
 export { IpLiteral } from "./IpLiteral";
