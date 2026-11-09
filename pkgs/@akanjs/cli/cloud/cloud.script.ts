@@ -289,7 +289,15 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       test = true,
       registryUrl,
       platforms = [],
-    }: { test?: boolean; registryUrl?: string; platforms?: RemoteTestPlatform[] } = {},
+      prerelease = null,
+      yes = false,
+    }: {
+      test?: boolean;
+      registryUrl?: string;
+      platforms?: RemoteTestPlatform[];
+      prerelease?: string | null;
+      yes?: boolean;
+    } = {},
   ) {
     const akanPkgs = await this.cloudRunner.getAkanPkgs(workspace);
     await this.packageScript.updateWorskpaceRootPackageJson(workspace);
@@ -315,7 +323,12 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
     }
     for (const pkg of pkgs) await this.packageScript.buildPackage(pkg);
     await this.packageScript.verifyAkanPublishPackages(workspace);
-    await this.cloudRunner.deployAkan(workspace, akanPkgs, { registryUrl });
+    await this.cloudRunner.deployAkan(workspace, akanPkgs, {
+      registryUrl,
+      prerelease,
+      confirmPublish: !yes,
+      npmLogin: !yes,
+    });
   }
   async testPlatforms(workspace: Workspace, { platforms, pkgs }: { platforms: RemoteTestPlatform[]; pkgs?: string[] }) {
     if (!platforms.length) throw new Error("No platform to test on — pass --platforms linux,windows");

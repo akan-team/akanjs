@@ -66,8 +66,9 @@ describe("CloudCommand", () => {
       ]);
 
       const handler = getTargetMetas(CloudCommand).find((meta) => meta.key === "deployAkan")?.handler;
-      await handler?.call(command, true, "npm", "linux,windows", workspace);
-      await handler?.call(command, false, "local", "none", workspace);
+      await handler?.call(command, true, "npm", "linux,windows", null, false, workspace);
+      await handler?.call(command, false, "local", "none", null, false, workspace);
+      await handler?.call(command, false, "npm", "none", "rc", true, workspace);
     } finally {
       if (previousRegistry === undefined) delete process.env.AKAN_NPM_REGISTRY;
       else process.env.AKAN_NPM_REGISTRY = previousRegistry;
@@ -76,11 +77,21 @@ describe("CloudCommand", () => {
     expect(recorder.calls).toEqual([
       {
         name: "deployAkan",
-        args: [workspace, { test: true, registryUrl: undefined, platforms: ["linux", "windows"] }],
+        args: [
+          workspace,
+          { test: true, registryUrl: undefined, platforms: ["linux", "windows"], prerelease: null, yes: false },
+        ],
       },
       {
         name: "deployAkan",
-        args: [workspace, { test: false, registryUrl: "http://127.0.0.1:4873", platforms: [] }],
+        args: [
+          workspace,
+          { test: false, registryUrl: "http://127.0.0.1:4873", platforms: [], prerelease: null, yes: false },
+        ],
+      },
+      {
+        name: "deployAkan",
+        args: [workspace, { test: false, registryUrl: undefined, platforms: [], prerelease: "rc", yes: true }],
       },
     ]);
   });
@@ -131,7 +142,26 @@ describe("CloudScript", () => {
     expect(recorder.calls.at(-1)?.args).toEqual([
       workspace,
       ["akanjs", "@akanjs/cli"],
-      { registryUrl: "http://127.0.0.1:4873" },
+      { registryUrl: "http://127.0.0.1:4873", prerelease: null, confirmPublish: true, npmLogin: true },
+    ]);
+  });
+
+  test("an unattended deploy neither asks nor runs npm login", async () => {
+    const script = CommandContainer.get(CloudScript);
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace", {}, recorder);
+    script.cloudRunner.getAkanPkgs = async () => ["akanjs"];
+    script.packageScript.updateWorskpaceRootPackageJson = async () => undefined;
+    script.packageScript.buildPackage = async () => undefined;
+    script.packageScript.verifyAkanPublishPackages = async () => [];
+    script.cloudRunner.deployAkan = async (...args) => recorder.record("deployAkan", ...args);
+
+    await script.deployAkan(workspace as never, { test: false, prerelease: "rc", yes: true });
+
+    expect(recorder.calls.at(-1)?.args).toEqual([
+      workspace,
+      ["akanjs"],
+      { registryUrl: undefined, prerelease: "rc", confirmPublish: false, npmLogin: false },
     ]);
   });
 });
@@ -451,6 +481,77 @@ describe("CloudRunner", () => {
       expect(await readFile(path.join(root, dir, "package.json"), "utf8")).toBe(
         `${JSON.stringify({ name: "akanjs", version: "2.1.0-rc.4" }, null, 2)}\n`,
       );
+  });
+
+  const createVersionedWorkspace = (version: string, recorder = createCallRecorder()) => {
+    const files = new Map<string, unknown>();
+    for (const dir of ["pkgs", "dist/pkgs"]) {
+      files.set(`${dir}/akanjs/package.json`, { name: "akanjs", version });
+      files.set(`${dir}/@akanjs/cli/package.json`, { name: "@akanjs/cli", version, dependencies: { akanjs: version } });
+    }
+    const workspace = createFakeExecutor(
+      "workspace",
+      {
+        workspaceRoot: "/repo",
+        readJson: async (filePath: string) => files.get(filePath),
+        writeJson: async (filePath: string, content: unknown) => files.set(filePath, content),
+      },
+      recorder,
+    );
+    return { files, workspace, recorder };
+  };
+
+  test("--prerelease publishes a stable version's next prerelease under that tag, and an unattended run skips npm login", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(
+      async () => new Response(JSON.stringify({ "dist-tags": { latest: "3.1.1", rc: "3.1.2-rc.4" } })),
+    ) as never;
+    const { files, workspace, recorder } = createVersionedWorkspace("3.1.2");
+
+    try {
+      await new CloudRunner().deployAkan(workspace as never, ["akanjs", "@akanjs/cli"], {
+        prerelease: "rc",
+        confirmPublish: false,
+        npmLogin: false,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(files.get("dist/pkgs/@akanjs/cli/package.json")).toMatchObject({
+      version: "3.1.2-rc.5",
+      dependencies: { akanjs: "3.1.2-rc.5" },
+    });
+    expect(recorder.calls.filter((call) => call.name === "workspace.spawn").map((call) => call.args)).toEqual(
+      ["akanjs", "@akanjs/cli"].map((library) => [
+        "npm",
+        ["publish", "--tag", "rc"],
+        { cwd: path.join("/repo", "dist/pkgs", library), env: process.env, stdio: "inherit" },
+      ]),
+    );
+  });
+
+  test("--prerelease refuses a version npm has already released, before it writes or publishes anything", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(
+      async () => new Response(JSON.stringify({ "dist-tags": { latest: "3.1.1", rc: "3.1.2-rc.4" } })),
+    ) as never;
+    const { files, workspace, recorder } = createVersionedWorkspace("3.1.1");
+
+    try {
+      await expect(
+        new CloudRunner().deployAkan(workspace as never, ["akanjs", "@akanjs/cli"], {
+          prerelease: "rc",
+          confirmPublish: false,
+          npmLogin: false,
+        }),
+      ).rejects.toThrow("akanjs 3.1.1 is already released, so 3.1.1-rc.N would sort below it");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(files.get("dist/pkgs/akanjs/package.json")).toEqual({ name: "akanjs", version: "3.1.1" });
+    expect(recorder.names()).not.toContain("workspace.spawn");
   });
 
   const createEnvWorkspace = (

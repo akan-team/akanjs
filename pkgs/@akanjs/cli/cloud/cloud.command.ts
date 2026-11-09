@@ -46,12 +46,23 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       desc: "platforms to test on besides this machine, comma-separated: linux, windows (none to skip)",
       default: "linux,windows",
     })
+    .option("prerelease", String, {
+      flag: "P",
+      desc: "publish the next <version>-<prerelease>.N under that dist-tag, whatever the packages carry (example: rc)",
+      nullable: true,
+    })
+    .option("yes", Boolean, {
+      desc: "publish without the confirmation and `npm login`, with the credentials npm already has",
+      default: false,
+    })
     .with(Workspace)
-    .exec(async function (test, registry, platforms, workspace) {
+    .exec(async function (test, registry, platforms, prerelease, yes, workspace) {
       await this.cloudScript.deployAkan(workspace, {
         test,
         registryUrl: resolveRegistryUrl(registry),
         platforms: PlatformTestRun.parsePlatforms(platforms),
+        prerelease,
+        yes,
       });
     }),
   testPlatforms: target({

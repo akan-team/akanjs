@@ -107,6 +107,10 @@ against the built packages and checks metadata that must be correct before `depl
 For repository releases, prefer `bun run release:build-packages && bun run release:verify-packages` so the CLI package
 artifact is built last and is not overwritten by the root `akan` bootstrap script.
 
+Release candidates publish from CI: each push to the `rc` branch runs the CI suite, then publishes the next
+`<version>-rc.N` of the version the pending changesets will release, with npm provenance, and tags that commit
+`v<version>-rc.N`. Stable releases stay manual: `bun run changeset:version`, then `akan deploy-akan --registry npm`.
+
 ## Package Boundary
 
 - Use `akanjs` from application and runtime code.

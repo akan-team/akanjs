@@ -40,7 +40,9 @@ interface SettlePlatformTestsOptions {
 interface RegistryOptions {
   registryUrl?: string;
   confirmPublish?: boolean;
+  npmLogin?: boolean;
   tag?: string;
+  prerelease?: string | null;
 }
 
 /** The apps and libraries an env archive covers, when it carries a slice of the workspace rather than all of it. */
@@ -309,16 +311,25 @@ export class CloudRunner extends runner("cloud") {
   async deployAkan(
     workspace: Workspace,
     akanPkgs: string[],
-    { registryUrl, confirmPublish = true, tag: distTag }: RegistryOptions = {},
+    { registryUrl, confirmPublish = true, npmLogin = true, tag: distTag, prerelease }: RegistryOptions = {},
   ) {
     const registry = registryUrl ? getNpmRegistryUrl(registryUrl) : undefined;
     const akanPackageJson = (await workspace.readJson("pkgs/akanjs/package.json")) as { version: string };
     const [majorVersion, minorVersion, patchVersion, devPatchVersion] = akanPackageJson.version.split(".");
-    const isOfficialRelease = !devPatchVersion;
-    const targetVersionPrefix = isOfficialRelease
-      ? `${majorVersion}.${minorVersion}`
+    const releaseVersion = `${majorVersion}.${minorVersion}.${patchVersion.split("-")[0]}`;
+    const isOfficialRelease = !devPatchVersion && !prerelease;
+    const prereleasePrefix = prerelease
+      ? `${releaseVersion}-${prerelease}`
       : `${majorVersion}.${minorVersion}.${patchVersion}`;
-    const tag = distTag ?? (isOfficialRelease ? "latest" : (patchVersion.split("-").at(1) ?? "dev"));
+    const targetVersionPrefix = isOfficialRelease ? `${majorVersion}.${minorVersion}` : prereleasePrefix;
+    const tag = distTag ?? (isOfficialRelease ? "latest" : (prerelease ?? patchVersion.split("-").at(1) ?? "dev"));
+    if (prerelease) {
+      const released = await getLatestPackageVersion("akanjs", "latest", registry).catch(() => null);
+      if (released && Bun.semver.order(releaseVersion, released) <= 0)
+        throw new Error(
+          `akanjs ${released} is already released, so ${targetVersionPrefix}.N would sort below it; run \`changeset version\` first so the packages carry the next release`,
+        );
+    }
     const latestPublishedVersion = await getLatestPackageVersion("akanjs", tag, registry).catch(() => null);
     const latestPatch = latestPublishedVersion?.startsWith(targetVersionPrefix)
       ? parseInt(latestPublishedVersion.split(".").at(-1) ?? "-1")
@@ -346,7 +357,7 @@ export class CloudRunner extends runner("cloud") {
       return;
     }
     // No `npm login` for a local registry: it takes no registry argument and would prompt for npmjs.org credentials.
-    if (!registry) {
+    if (!registry && npmLogin) {
       Logger.info("Logging in to npm...");
       await workspace.spawn("npm", ["login"], { stdio: "inherit" });
       Logger.info("Logged in to npm");
