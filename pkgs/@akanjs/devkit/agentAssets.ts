@@ -31,7 +31,7 @@ export class AgentAssets {
     "akan-scaffold": ["workspaceRecipes"],
     "akan-module": ["moduleOverview", "modelConstant", "modelDictionary", "fieldRule"],
     "akan-scalar": ["scalarModule", "scalarConstant", "scalarDictionary"],
-    "akan-service": ["modelService", "modelSignal", "modelDocument"],
+    "akan-service": ["modelService", "modelSignal", "modelDocument", "akanApi"],
     "akan-store": ["modelStore"],
     "akan-ui": [
       "ssrRule",
@@ -48,7 +48,7 @@ export class AgentAssets {
     "akan-err": [],
     "akan-deps": [],
     "akan-debug": [],
-    "akan-page": ["pageRule"],
+    "akan-page": ["pageRule", "akanApi"],
     "akan-query": ["queryRule"],
     "akan-transport": ["transportRule"],
     "akan-runtime": ["runtimeRule"],

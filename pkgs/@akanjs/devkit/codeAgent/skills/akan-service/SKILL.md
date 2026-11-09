@@ -20,6 +20,10 @@ dictionary is a `serviceDictionary`.
   explicitly `void`-ed.
 - Return `null` / `false` for "not allowed" or "not found" and let the signal decide whether that is an
   error.
+- `serve(name, { serverMode: "batch" }, …)` mounts the module, endpoints included, only in a `batch` or `all`
+  process; a `federation` replica, the one serving requests in a split deployment, skips it. The app's own
+  `lib/_<app>/` service is scaffolded with it for cron and queue work. Leave it off a service a page calls, as
+  `akan create-service` does.
 
 ## Reaching other things
 
@@ -37,6 +41,8 @@ self-registers, so do **not** add it to `lib/option.ts`.
 
 ```ts
 // srvkit/pokeApi.ts — read at boot, so the built server takes API_BASE_URL from the host that runs it
+import { adapt } from "akanjs/service";
+
 export class PokeApi extends adapt("pokeApi" as const, ({ env }) => ({
   baseUrl: env(() => process.env.API_BASE_URL ?? "http://localhost:9000"),
 })) {
@@ -53,6 +59,14 @@ export class PokeApi extends adapt("pokeApi" as const, ({ env }) => ({
 }
 
 // lib/_pokeapi/pokeapi.service.ts — shape the upstream JSON here, not in the page
+import { PokeApi } from "@apps/<app>/srvkit";
+import { serve } from "akanjs/service";
+
+interface ApiPokemon {
+  id: number;
+  name: string;
+}
+
 export class PokeapiService extends serve("pokeapi" as const, ({ plug }) => ({ pokeApi: plug(PokeApi) })) {
   async getPokemon(name: string) {
     const pokemon = await this.pokeApi.get<ApiPokemon>(`pokemon/${name}`);
@@ -61,6 +75,11 @@ export class PokeapiService extends serve("pokeapi" as const, ({ plug }) => ({ p
 }
 
 // lib/_pokeapi/pokeapi.signal.ts — Any answers plain JSON; nullable lets it answer null for "not found"
+import { Any } from "akanjs/base";
+import { endpoint, Public } from "akanjs/signal";
+
+import * as srv from "../srv";
+
 export class PokeapiEndpoint extends endpoint(srv.pokeapi, ({ query }) => ({
   pokemon: query(Any, { guards: [Public], nullable: true })
     .param("name", String)
@@ -70,7 +89,14 @@ export class PokeapiEndpoint extends endpoint(srv.pokeapi, ({ query }) => ({
 })) {}
 
 // lib/_pokeapi/pokeapi.dictionary.ts — typecheck asks a label for every endpoint
+import { serviceDictionary } from "akanjs/dictionary";
+
+import type { PokeapiEndpoint } from "../sig";
+
+export const dictionary = serviceDictionary(["en", "ko"])
   .endpoint<PokeapiEndpoint>((fn) => ({ pokemon: fn(["Pokémon", "포켓몬"]) }))
+  .error({})
+  .translate({});
 ```
 
 The page calls it as `await fetch.pokemon(name)` (`fetch` from `@apps/<app>/client`) and answers
@@ -78,4 +104,5 @@ The page calls it as `await fetch.pokemon(name)` (`fetch` from `@apps/<app>/clie
 `common/`, or return a scalar (`akan create-scalar`) for a typed wire shape. A query that answers `null` without
 `nullable: true` fails the render, naming the endpoint.
 
-Full detail: `get_guideline` with `modelService`.
+Full detail: `get_guideline` with `modelService`; every import path and the exact signatures of serve, adapt,
+endpoint and serviceDictionary: `akanApi`.
