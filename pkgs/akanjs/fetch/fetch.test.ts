@@ -2531,6 +2531,45 @@ describe("WsClient", () => {
     });
   });
 
+  test("keeps the newest outboxLimit messages while disconnected, says how many it dropped, and resubscribes", () => {
+    setFakeWebSocket();
+    const warnings: string[] = [];
+    const warn = Logger.prototype.warn;
+    Logger.prototype.warn = ((message: string) => {
+      warnings.push(message);
+    }) as typeof Logger.prototype.warn;
+    try {
+      const client = new WsClient("ws://example/ws").configure({ outboxLimit: 3 });
+      client.subscribe({ key: "roomKey", data: ["r1"], handleEvent: () => undefined });
+      client.connect();
+      for (const idx of [1, 2, 3, 4, 5]) client.emit("send", [`m${idx}`]);
+      const ws = FakeWebSocket.instances[0];
+      ws.open();
+
+      expect(ws.sent.map((frame) => JSON.parse(frame))).toEqual([
+        { key: "roomKey", data: ["r1"], subscribe: true },
+        { key: "send", data: ["m3"] },
+        { key: "send", data: ["m4"] },
+        { key: "send", data: ["m5"] },
+      ]);
+      expect(warnings).toEqual(["WebSocket dropped 2 oldest queued message(s) while disconnected"]);
+
+      ws.close(1006, "gone");
+      client.connect();
+      const next = FakeWebSocket.instances[1];
+      client.emit("send", ["after"]);
+      next.open();
+      expect(next.sent.map((frame) => JSON.parse(frame))).toEqual([
+        { key: "roomKey", data: ["r1"], subscribe: true },
+        { key: "send", data: ["after"] },
+      ]);
+      expect(warnings).toHaveLength(1);
+      client.destroy();
+    } finally {
+      Logger.prototype.warn = warn;
+    }
+  });
+
   test("connectOnUse opens nothing until the first emit, then opens and sends it without warning", async () => {
     setFakeWebSocket();
     await captureWarnings(async (warnings) => {
