@@ -589,6 +589,120 @@ export default page().render(() => sample);
     expect(routes.every((node) => /^[0-9a-f]{8}$/.test(node.digest ?? ""))).toBe(true);
   });
 
+  it("draws a module's jobs and the adaptors its service plugs, down to the adaptor a method calls", () => {
+    const index = new AkanIndex({ ts, root });
+    const wired: Record<string, string> = {
+      "libs/util/srvkit/storageApi.ts": `import { adapt } from "akanjs/service";
+export class BlobStorageApi extends adapt("blobStorageApi", () => ({})) {}
+
+// Stores files on the object store, or on disk when none is configured.
+export class StorageApi extends adapt("storageApi", ({ env, plug }) => ({
+  options: env(() => null),
+  blob: plug(BlobStorageApi),
+})) {
+  async deleteData(url: string) {
+    return this.blob.getMemo(url);
+  }
+}
+`,
+      "apps/demo/plugin/mailer.ts": `import { adapt, dangerouslyAdapt } from "akanjs/service";
+export class Clock extends adapt("clock") {}
+export class Mailer extends dangerouslyAdapt("mailer", ({ env }) => ({ host: env(() => "") })) {
+  send() {
+    return 1;
+  }
+}
+`,
+      "apps/demo/lib/memo/memo.constant.ts": files["apps/demo/lib/memo/memo.constant.ts"],
+      "apps/demo/lib/memo/memo.service.ts": `import * as srvkit from "@libs/util/srvkit";
+import { DatabaseAdaptorRole, serve } from "akanjs/service";
+import { Clock, Mailer } from "../../plugin/mailer";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug, use }) => ({
+  storageApi: plug(srvkit.StorageApi),
+  database: plug(DatabaseAdaptorRole),
+  mailer: plug(Mailer),
+  clock: plug(Clock),
+  option: use<string>(),
+})) {
+  async sweep(url: string) {
+    await this.storageApi.deleteData(url);
+    [url].forEach(function () {
+      this.mailer.send();
+    });
+    const Local = class {
+      mailer = { send: () => 1 };
+      run() {
+        return this.mailer.send();
+      }
+    };
+    return this.database.count(Local);
+  }
+  async stamp() {
+    return this.clock.getMemo();
+  }
+}
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { internal } from "akanjs/signal";
+import * as srv from "../srv";
+export class MemoInternal extends internal(
+  srv.memo,
+  ({ interval, cron, initialize, timeout, resolveField, destroy, process }) => ({
+    ownerName: resolveField(String).exec(async function (memo) {
+      return memo.owner;
+    }),
+    sweepMemos: interval(5 * 60 * 1000).exec(async function () {
+      await this.memoService.sweep("");
+    }),
+    reportMemos: cron("0 * * * *", { serverMode: "batch", operationMode: ["cloud"] }).exec(async function () {}),
+    hourly: cron(EVERY_HOUR, { lock: false }).exec(async function () {}),
+    seedMemos: initialize({ enabled: false, once: true }).exec(async function () {}),
+    cleanUp: destroy({ serverMode: ServerMode.batch }).exec(async function () {}),
+    handleMemo: process(cnst.Memo, { serverMode: "federation" }).exec(async function () {}),
+    later: timeout(SECONDS).exec(async function () {}),
+  }),
+) {}
+`,
+    };
+    for (const [rel, text] of Object.entries(wired)) index.setFile(`${root}/${rel}`, text);
+    const graph = index.graph((fileName) => wired[fileName.slice(root.length + 1)], { digests: true });
+    const internals = graph.nodes.filter((node) => node.kind === "internal");
+    expect(internals.map(({ id, label, detail }) => [id, label, detail])).toEqual([
+      ["internal:apps/demo:memo.cleanUp", "MemoInternal.cleanUp", ["destroy", "batch"]],
+      ["internal:apps/demo:memo.handleMemo", "MemoInternal.handleMemo", ["process", "federation"]],
+      ["internal:apps/demo:memo.hourly", "MemoInternal.hourly", ["cron", "EVERY_HOUR", "unlocked"]],
+      ["internal:apps/demo:memo.later", "MemoInternal.later", ["timeout", "SECONDS"]],
+      ["internal:apps/demo:memo.reportMemos", "MemoInternal.reportMemos", ["cron", "0 * * * *", "batch", "cloud"]],
+      ["internal:apps/demo:memo.seedMemos", "MemoInternal.seedMemos", ["initialize", "disabled", "once"]],
+      ["internal:apps/demo:memo.sweepMemos", "MemoInternal.sweepMemos", ["interval", "5m"]],
+    ]);
+    const adaptors = graph.nodes.filter((node) => node.kind === "adaptor");
+    expect(adaptors.map(({ id, detail, at, doc }) => [id, detail, at && `${at.file}:${at.line}`, doc ?? null])).toEqual(
+      [
+        ["adaptor::DatabaseAdaptorRole", ["akanjs"], null, null],
+        ["adaptor:apps/demo:Clock", ["clock"], "apps/demo/plugin/mailer.ts:2", null],
+        ["adaptor:apps/demo:Mailer", ["mailer"], "apps/demo/plugin/mailer.ts:3", null],
+        ["adaptor:libs/util:BlobStorageApi", ["blobStorageApi"], "libs/util/srvkit/storageApi.ts:2", null],
+        [
+          "adaptor:libs/util:StorageApi",
+          ["storageApi"],
+          "libs/util/srvkit/storageApi.ts:5",
+          "Stores files on the object store, or on disk when none is configured.",
+        ],
+      ],
+    );
+    expect(edgesOf(graph, "plugs")).toEqual(["adaptor:libs/util:StorageApi -blob-> adaptor:libs/util:BlobStorageApi"]);
+    expect(edgesOf(graph, "calls")).toEqual([
+      "internal:apps/demo:memo.sweepMemos -sweep-> method:apps/demo:memo.sweep",
+      "method:apps/demo:memo.stamp -getMemo-> adaptor:apps/demo:Clock",
+      "method:apps/demo:memo.sweep -count-> adaptor::DatabaseAdaptorRole",
+      "method:apps/demo:memo.sweep -deleteData-> adaptor:libs/util:StorageApi",
+    ]);
+    expect(
+      [...internals, ...adaptors.filter((node) => node.at)].every((node) => /^[0-9a-f]{8}$/.test(node.digest ?? "")),
+    ).toBe(true);
+  });
+
   it("draws the same graph whatever order the files were read in", () => {
     const withFolder: Record<string, string> = {
       ...files,
@@ -612,6 +726,14 @@ export class Admin implements Guard {
       "apps/demo/srvkit/guards.ts": `import { resourceGuard } from "@libs/shared/srvkit";
 export const Admin = resourceGuard("admin");
 `,
+      "apps/demo/srvkit/clockA.ts": `import { adapt } from "akanjs/service";
+// Reads the wall clock.
+export class Clock extends adapt("clockA") {}
+`,
+      "apps/demo/srvkit/clockB.ts": `import { adapt } from "akanjs/service";
+// Reads a frozen clock.
+export class Clock extends adapt("clockB") {}
+`,
     };
     const graphIn = (order: [string, string][]) => {
       const index = new AkanIndex({ ts, root });
@@ -620,6 +742,9 @@ export const Admin = resourceGuard("admin");
     };
     const graph = graphIn(Object.entries(withFolder));
     expect(graph).toContain('"from":"slice:apps/demo:folder","to":"guard:apps/demo:Admin"');
+    expect(graph).toContain(
+      '"detail":["clockA"],"at":{"file":"apps/demo/srvkit/clockA.ts","line":3,"column":14},"doc":"Reads the wall clock."',
+    );
     expect(graphIn(Object.entries(withFolder).reverse())).toBe(graph);
   });
 });

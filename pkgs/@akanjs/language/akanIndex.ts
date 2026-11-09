@@ -89,7 +89,7 @@ export class AkanIndex {
     const words = `\n${[...new Set(text.match(wordPattern))].join("\n")}\n`;
     this.#fileWords.set(fileName, words);
     const isSource = AkanIndex.isSourcePath(fileName);
-    if (!isSource && !AkanIndex.#holdsGuards(fileName, words)) {
+    if (!isSource && !AkanIndex.#holdsFacts(fileName, words)) {
       this.#facts.delete(fileName);
       return;
     }
@@ -185,9 +185,11 @@ export class AkanIndex {
   }
 
   //? Guards live in `srvkit/`, often made by a factory imported from another lib, so that file names no `Guard`.
-  static #holdsGuards(fileName: string, words: string) {
+  static #holdsFacts(fileName: string, words: string) {
     if (testFilePattern.test(fileName)) return false;
-    return srvkitPattern.test(fileName) || (words.includes("\nGuard\n") && words.includes("\ncanPass\n"));
+    if (srvkitPattern.test(fileName)) return true;
+    const holdsGuards = words.includes("\nGuard\n") && words.includes("\ncanPass\n");
+    return holdsGuards || words.includes("\nadapt\n") || words.includes("\ndangerouslyAdapt\n");
   }
 
   static #sourceKeyOf({ family, sourceKey, label, detail, span }: AkanEntry): AkanSourceKey {

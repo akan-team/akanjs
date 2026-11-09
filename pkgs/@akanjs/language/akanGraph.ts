@@ -10,6 +10,7 @@ import type {
 import type * as TS from "typescript";
 import type { Ts } from "./ast";
 import {
+  type AdaptorFact,
   type AkanFactReader,
   type AkanSpan,
   type ConstantClassFact,
@@ -45,13 +46,19 @@ interface Context {
   pending?: AkanGraphNode;
 }
 
-type MemberKind = "method" | "slice" | "endpoint" | "action";
+type MemberKind = "method" | "slice" | "endpoint" | "action" | "internal";
 
 type GuardSite = Pick<FileFacts, "fileName" | "owner" | "imports">;
 
 interface GuardPart {
   fileName: string;
   extent: Extent;
+}
+
+interface DeclaredAdaptor {
+  fact: AdaptorFact;
+  owner: string | null;
+  fileName: string;
 }
 
 interface DeclaredGuard {
@@ -113,6 +120,8 @@ export class GraphBuilder {
   readonly #routeFiles = new Map<string, { id: string; alias: string | null }>();
   readonly #declarations = new Map<string, Declaration | null>();
   readonly #routes: RouteFactReader;
+  readonly #adaptors = new Map<string, DeclaredAdaptor[]>();
+  readonly #plugs = new Map<string, string>();
 
   constructor(source: AkanGraphSource) {
     this.#source = source;
@@ -129,6 +138,23 @@ export class GraphBuilder {
       ...[...constantsByOwner].filter(([key]) => key !== owner && key?.startsWith("libs/")).flatMap(([, list]) => list),
     ];
     const typed: AkanGraphNode[] = [];
+
+    for (const file of facts)
+      for (const fact of file.adaptors) {
+        const declared = { fact, owner: file.owner, fileName: file.fileName };
+        this.#adaptors.set(fact.name, [...(this.#adaptors.get(fact.name) ?? []), declared]);
+        this.#adaptorNodeOf(declared);
+      }
+    for (const file of facts)
+      for (const fact of file.adaptors)
+        for (const plug of fact.plugs)
+          this.#addEdge(
+            this.#key("adaptor", file.owner, fact.name),
+            this.#adaptorIdOf(plug.target, file),
+            "plugs",
+            plug.name,
+            this.#location(plug.span),
+          );
 
     this.#declareGuards(facts);
 
@@ -162,6 +188,8 @@ export class GraphBuilder {
         }
         for (const method of service.methods)
           this.#addMember("method", owner, refName, method, `${service.name}.${method.name}`, file.fileName);
+        for (const plug of service.plugs)
+          this.#plugs.set(`${owner ?? ""}\n${refName}\n${plug.name}`, this.#adaptorIdOf(plug.target, file));
       }
       for (const filter of file.filters) {
         if (!filter.name.endsWith("Filter")) continue;
@@ -217,6 +245,18 @@ export class GraphBuilder {
           for (const guard of key.guards) this.#guard(node, guard, file);
         }
       }
+      for (const internal of file.internals)
+        for (const key of internal.keys)
+          if (internal.model && key.type !== "resolveField")
+            this.#addMember(
+              "internal",
+              owner,
+              internal.model,
+              key,
+              `${internal.name}.${key.name}`,
+              file.fileName,
+              [key.type, key.schedule, ...key.modes].filter((item) => item !== null),
+            );
       for (const store of file.stores)
         if (store.model)
           for (const action of store.actions)
@@ -615,6 +655,34 @@ export class GraphBuilder {
     return node.id;
   }
 
+  #adaptorIdOf(local: string, file: GuardSite) {
+    const [head, member] = local.split(".");
+    const imported = file.imports.find((item) => item.name === head);
+    const from = imported ? this.#ownerOfSpecifier(file.fileName, imported.from) : undefined;
+    const name =
+      member ?? (imported && imported.imported !== "default" && imported.imported !== "*" ? imported.imported : head);
+    const declared = this.#adaptors.get(name) ?? [];
+    const found =
+      from === undefined
+        ? (declared.find((adaptor) => adaptor.owner === file.owner) ??
+          declared.find((adaptor) => this.#visible(adaptor.owner, file.owner)))
+        : (declared.find((adaptor) => adaptor.owner === from) ??
+          (from === frameworkOwner ? undefined : declared.find((adaptor) => this.#visible(adaptor.owner, from))));
+    if (found) return this.#adaptorNodeOf(found);
+    const owner = from === frameworkOwner ? null : imported ? (from ?? null) : file.owner;
+    const detail = from === frameworkOwner ? [frameworkOwner] : [];
+    return this.#addNode(this.#key("adaptor", owner, name), "adaptor", owner, null, name, null, detail).id;
+  }
+
+  #adaptorNodeOf({ fact, owner, fileName }: DeclaredAdaptor) {
+    const id = this.#key("adaptor", owner, fact.name);
+    const detail = fact.refName ? [fact.refName] : [];
+    const node = this.#addNode(id, "adaptor", owner, null, fact.name, fact.span, detail);
+    if (fact.doc && !node.doc) node.doc = fact.doc;
+    this.#digest(node, this.#source.readText(fileName), fact.extent);
+    return node.id;
+  }
+
   #guardNodeOf({ name, owner, span, scope, doc, parts }: DeclaredGuard) {
     const node = this.#addNode(this.#key("guard", owner, name), "guard", owner, null, name, span, scope ? [scope] : []);
     if (doc && !node.doc) node.doc = doc;
@@ -765,10 +833,16 @@ export class GraphBuilder {
     context: Context,
     owner: string | null,
   ) {
-    const resolved = this.#source
-      .resolve(fileName, identifier)
-      .map((target) => this.#targetNodeOf(target))
-      .filter((id) => id !== null);
+    const plugged =
+      chain?.length === 2 && chain[0] === "this" && context.kind === "method" && this.#isServiceThis(identifier)
+        ? this.#plugs.get(`${context.owner ?? ""}\n${context.module}\n${chain[1]}`)
+        : undefined;
+    const resolved = plugged
+      ? [plugged]
+      : this.#source
+          .resolve(fileName, identifier)
+          .map((target) => this.#targetNodeOf(target))
+          .filter((id) => id !== null);
     const targets = resolved.length ? resolved : this.#plainTargetsOf(chain, identifier.text, context, owner);
     if (!targets.length) return;
     if (context.pending && !this.#nodes.has(context.id)) {
@@ -783,6 +857,18 @@ export class GraphBuilder {
     const at = { file: this.#source.relative(fileName), line: position.line + 1, column: position.character + 1 };
     for (const target of new Set(own.length ? own : targets))
       this.#addEdge(context.id, target, kind, identifier.text, at);
+  }
+
+  //? `this` inside a function expression or a nested class is another object, not the service that plugs the field.
+  #isServiceThis(identifier: TS.Node) {
+    const { ts } = this.#source;
+    for (let current = identifier.parent; !ts.isSourceFile(current); current = current.parent) {
+      if (ts.isMethodDeclaration(current) || ts.isAccessor(current) || ts.isConstructorDeclaration(current))
+        return ts.isClassDeclaration(current.parent) && ts.isSourceFile(current.parent.parent);
+      if (ts.isFunctionExpression(current) || ts.isFunctionDeclaration(current) || ts.isClassLike(current))
+        return false;
+    }
+    return false;
   }
 
   #chainOf(expression: TS.Expression): string[] | null {
