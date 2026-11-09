@@ -276,6 +276,22 @@ describe("CloudRunner", () => {
     expect(logs.join("\n")).toContain("The session is saved");
   });
 
+  test("login signs in again when the saved session lost its refresh token and is due, though its jwt still works", async () => {
+    const host = "https://cloud.test";
+    const getRemoteSelf = mock(async () => ({ id: "u1", nickname: "akan" }));
+    spyOn(CloudApi, "fromHost").mockResolvedValue({ host, needsSignIn: true, getRemoteSelf } as never);
+    const signIn = spyOn(RemoteLogin.prototype, "signIn").mockResolvedValue({ id: "u1", nickname: "akan" });
+    const logs: string[] = [];
+    spyOn(Logger, "rawLog").mockImplementation((msg = "") => {
+      logs.push(msg);
+    });
+
+    expect(await new CloudRunner().login(host, createFakeExecutor("workspace") as never)).toBe(true);
+    expect(signIn).toHaveBeenCalledTimes(1);
+    expect(getRemoteSelf).not.toHaveBeenCalled();
+    expect(logs.join("\n")).not.toContain("Already logged in");
+  });
+
   test("logout clears a saved session that never read its account", async () => {
     const host = "https://cloud.test";
     spyOn(GlobalConfig, "getHostConfig").mockResolvedValue({

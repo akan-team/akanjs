@@ -16,6 +16,7 @@ import type {
   ParamFieldType,
   PlainTypeToFieldType,
   PurifiedModel,
+  ServerArgModel,
   UploadableClientArg,
 } from "akanjs/constant";
 import type { ServiceModel } from "akanjs/service";
@@ -121,7 +122,7 @@ export class EndpointInfo<
     ArgName extends string,
     Arg extends ParamFieldType,
     _ClientArg = FieldToValue<Arg>,
-    _ServerArg = DocumentModel<_ClientArg>,
+    _ServerArg = ServerArgModel<_ClientArg>,
   >(name: string, arg: Arg, option?: Omit<EndpointArgProps, "nullable">) {
     this.#addArg("param", name, arg, option);
     return this as unknown as EndpointInfo<
@@ -144,7 +145,7 @@ export class EndpointInfo<
     Optional extends boolean = false,
     _ArgType = unknown extends ExplicitType ? FieldToValue<Arg> : ExplicitType,
     _ClientArg = UploadableClientArg<PurifiedModel<_ArgType>>,
-    _ServerArg = DocumentModel<_ArgType>,
+    _ServerArg = ServerArgModel<_ArgType>,
   >(name: ArgName, arg: Arg, option?: EndpointArgProps<Optional>) {
     this.#addArg("body", name, arg, option);
     return this as unknown as EndpointInfo<
@@ -166,6 +167,7 @@ export class EndpointInfo<
     Arg extends ConstantFieldTypeInput = PlainTypeToFieldType<ExplicitType>,
     _ArgType = unknown extends ExplicitType ? FieldToValue<Arg> : ExplicitType,
     _ClientArg = PurifiedModel<_ArgType>,
+    //? A room arg is also what server code passes when it publishes, so it accepts any Uint8Array.
     _ServerArg = DocumentModel<_ArgType>,
   >(name: string, arg: Arg, option?: Omit<EndpointArgProps, "nullable">) {
     this.#addArg("room", name, arg, option);
@@ -189,7 +191,7 @@ export class EndpointInfo<
     Optional extends boolean = false,
     _ArgType = unknown extends ExplicitType ? FieldToValue<Arg> : ExplicitType,
     _ClientArg = PurifiedModel<_ArgType>,
-    _ServerArg = DocumentModel<_ArgType>,
+    _ServerArg = ServerArgModel<_ArgType>,
   >(name: string, arg: Arg, option?: EndpointArgProps<Optional>) {
     this.#addArg("msg", name, arg, option);
     return this as unknown as EndpointInfo<
@@ -211,7 +213,7 @@ export class EndpointInfo<
     Arg extends ConstantFieldTypeInput = PlainTypeToFieldType<ExplicitType>,
     _ArgType = unknown extends ExplicitType ? FieldToValue<Arg> : ExplicitType,
     _ClientArg = PurifiedModel<_ArgType>,
-    _ServerArg = DocumentModel<_ArgType>,
+    _ServerArg = ServerArgModel<_ArgType>,
   >(name: string, arg: Arg, option?: Omit<EndpointArgProps, "nullable">) {
     this.#addArg("search", name, arg, { ...option, nullable: true });
     return this as unknown as EndpointInfo<

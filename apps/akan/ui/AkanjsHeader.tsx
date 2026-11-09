@@ -105,7 +105,7 @@ export const AkanjsHeader = ({
   return (
     <>
       <div className={cn("fixed top-0 z-50 w-full", className)}>
-        <div className="relative z-10 grid h-16 w-full grid-cols-[auto_1fr_auto] items-center border-foreground/6 border-b bg-background/70 px-6 text-foreground backdrop-blur-xl backdrop-saturate-150 md:h-20 lg:grid-cols-[1fr_auto_1fr]">
+        <div className="relative z-10 grid h-16 w-full grid-cols-[auto_1fr_auto] items-center border-foreground/6 border-b bg-background/70 pointer-coarse:bg-background/95 px-6 text-foreground backdrop-blur-xl backdrop-saturate-150 pointer-coarse:backdrop-filter-none md:h-20 lg:grid-cols-[1fr_auto_1fr]">
           <div className="block lg:hidden">
             <button
               type="button"
@@ -215,7 +215,7 @@ export const AkanjsHeader = ({
         ) : null}
         <div
           className={cn(
-            "overflow-hidden border-foreground/6 border-b bg-background/70 px-3 backdrop-blur-xl backdrop-saturate-150 transition-all duration-300 ease-out lg:hidden",
+            "overflow-hidden border-foreground/6 border-b bg-background/70 pointer-coarse:bg-background/95 px-3 backdrop-blur-xl backdrop-saturate-150 pointer-coarse:backdrop-filter-none transition-all duration-300 ease-out lg:hidden",
             collapseMobileSubMenuOnScroll
               ? isMobileSubMenuVisible
                 ? "max-h-14 translate-y-0 py-2 opacity-100"

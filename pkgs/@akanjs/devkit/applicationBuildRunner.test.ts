@@ -217,7 +217,7 @@ console.info(new SampleService().name);
       expect(imageEnv.AKAN_PUBLIC_SERVE_DOMAIN).toBe("akanjs.com");
       expect(warn).toHaveBeenCalledTimes(1);
       expect(warn.mock.calls[0]?.[0]).toBe(
-        "The workspace .env outranks this process's environment: the bundles and the image take AKAN_PUBLIC_ENV=main (not local), AKAN_PUBLIC_REPO_NAME=repo (not shell-repo), AKAN_PUBLIC_SERVE_DOMAIN=akanjs.com (not localhost).",
+        "The workspace .env outranks this process's environment: the bundles and the image take AKAN_PUBLIC_ENV=main (not local), AKAN_PUBLIC_REPO_NAME=repo (not shell-repo), AKAN_PUBLIC_SERVE_DOMAIN=akanjs.com (not localhost). Pick the environment with `akan build --env`, and set the rest in the workspace .env.",
       );
     } finally {
       for (const key of keys) {

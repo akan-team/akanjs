@@ -191,7 +191,7 @@ export class CloudRunner extends runner("cloud") {
 
   async login(host: string, workspace: Workspace) {
     const cloudApi = await CloudApi.fromHost(workspace, host);
-    const signedIn = await cloudApi.getRemoteSelf().catch(() => null);
+    const signedIn = cloudApi.needsSignIn ? null : await cloudApi.getRemoteSelf().catch(() => null);
     if (signedIn) {
       Logger.rawLog(chalk.green(`\n✓ Already logged in akan cloud as ${signedIn.nickname}\n`));
       return true;

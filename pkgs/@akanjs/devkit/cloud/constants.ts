@@ -61,9 +61,12 @@ export interface AccessTokenDto {
   jwt: string;
   refreshToken: string | null;
   expiresAt: string | null;
+  issuedAt?: string | null;
 }
 export interface AccessToken {
   jwt: string;
   refreshToken: string | null;
   expiresAt: Dayjs | null;
+  //? When this CLI received the token, on its own clock: the cloud's answer names only the expiry.
+  issuedAt?: Dayjs | null;
 }

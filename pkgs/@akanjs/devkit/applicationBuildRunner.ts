@@ -118,7 +118,7 @@ export class ApplicationBuildRunner {
       this.#app.logger.warn(
         `The workspace .env outranks this process's environment: the bundles and the image take ${outranked
           .map(([key, value]) => `${key}=${value} (not ${process.env[key]})`)
-          .join(", ")}.`,
+          .join(", ")}. Pick the environment with \`akan build --env\`, and set the rest in the workspace .env.`,
       );
     Object.assign(process.env, imageEnv);
   }
