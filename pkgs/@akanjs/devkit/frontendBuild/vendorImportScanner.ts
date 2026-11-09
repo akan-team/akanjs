@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
@@ -14,6 +15,7 @@ export class VendorImportScanner {
   /** The names each specifier's importers read across a directory's `.js` files; a specifier read whole is left out. */
   static async exportsUsedIn(dir: string, specifiers: readonly string[]): Promise<Record<string, string[]>> {
     const scanner = new VendorImportScanner(specifiers);
+    if (!fs.existsSync(dir)) return scanner.usedExports();
     for await (const relative of new Bun.Glob("**/*.js").scan({ cwd: dir }))
       scanner.scan(await Bun.file(path.join(dir, relative)).text(), relative);
     return scanner.usedExports();
@@ -64,11 +66,10 @@ export class VendorImportScanner {
     else for (const element of clause.elements) this.#add(specifier, (element.propertyName ?? element.name).text);
   }
 
+  //? Only `import()` reaches the import map: a `require` left in a browser chunk is Bun's shim, which throws there.
   #readCall(node: ts.CallExpression): void {
-    const callee = node.expression;
-    const loads =
-      callee.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(callee) && /^_*require$/.test(callee.text));
-    const specifier = loads ? this.#specifierOf(node.arguments[0]) : null;
+    if (node.expression.kind !== ts.SyntaxKind.ImportKeyword) return;
+    const specifier = this.#specifierOf(node.arguments[0]);
     if (specifier) this.#whole.add(specifier);
   }
 

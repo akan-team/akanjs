@@ -1,6 +1,7 @@
+import fs from "node:fs";
 import path from "node:path";
 import type { BunPlugin } from "bun";
-import type { VendorSpecifier } from "./vendorSpecifiers";
+import { VENDOR_SPECIFIERS, type VendorSpecifier } from "./vendorSpecifiers";
 
 //? Bun puts a module in the chunk of every entry that reaches it, read or not, so a deprecated re-export would keep
 //? its target in a vendor every page loads; a narrowed build blanks it unless a route imports one of its names.
@@ -15,9 +16,19 @@ export class VendorNarrowing {
   readonly #akanjsRoot: string;
   readonly #vendorExports: Partial<Record<VendorSpecifier, readonly string[]>>;
 
+  //? A devkit newer than the installed akanjs finds no agent vendor or deprecated re-export there, and builds that
+  //? akanjs's vendors whole, as the devkit it shipped with did.
+  static entriesIn(akanServerPath: string): VendorEntry[] {
+    return VENDOR_SPECIFIERS.map((specifier) => ({
+      specifier,
+      absPath: path.resolve(akanServerPath, "vendor", `${specifier.replaceAll("/", "-").replaceAll(".", "-")}.ts`),
+    })).filter(({ absPath }) => fs.existsSync(absPath));
+  }
+
   constructor(akanjsRoot: string, vendorExports: Partial<Record<VendorSpecifier, readonly string[]>>) {
     this.#akanjsRoot = akanjsRoot;
-    this.#vendorExports = vendorExports;
+    const current = Object.values(deprecatedReexports).every((file) => fs.existsSync(path.join(akanjsRoot, file)));
+    this.#vendorExports = current ? vendorExports : {};
   }
 
   entryExports(vendorEntries: VendorEntry[]): Record<string, readonly string[]> {

@@ -13,7 +13,7 @@ import { FontOptimizer } from "./fontOptimizer";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
 import { RouteClientBuilder } from "./routeClientBuilder";
 import { VendorNarrowing } from "./vendorNarrowing";
-import { VENDOR_SPECIFIERS, type VendorSpecifier } from "./vendorSpecifiers";
+import type { VendorSpecifier } from "./vendorSpecifiers";
 
 export interface BuildSsrBaseArtifactResult {
   artifact: BaseBuildArtifact;
@@ -130,10 +130,7 @@ export class SsrBaseArtifactBuilder {
     const akanServerPath = await this.#resolveAkanServerPath();
     const rscClientEntry = path.resolve(akanServerPath, "rscClient.tsx");
     const rscSegmentOutletEntry = path.resolve(akanServerPath, "rscSegmentOutlet.tsx");
-    const vendorEntries = VENDOR_SPECIFIERS.map((specifier) => ({
-      specifier,
-      absPath: path.resolve(akanServerPath, "vendor", `${specifier.replaceAll("/", "-").replaceAll(".", "-")}.ts`),
-    }));
+    const vendorEntries = VendorNarrowing.entriesIn(akanServerPath);
     const entries = [rscClientEntry, rscSegmentOutletEntry, ...vendorEntries.map((v) => v.absPath)];
     const narrowing = new VendorNarrowing(path.dirname(akanServerPath), this.#vendorExports);
     const clientBundle = await new ClientEntriesBundler({

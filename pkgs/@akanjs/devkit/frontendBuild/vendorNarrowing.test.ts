@@ -80,6 +80,21 @@ describe("VendorNarrowing", () => {
     expect(store).toContain(agentOnlyText);
   }, 60_000);
 
+  test("an akanjs older than the agent split keeps whole vendors and gets no agent entry", async () => {
+    const root = await makeTempRoot();
+    for (const name of ["akanjs-store", "akanjs-base"])
+      await write(path.join(root, "server/vendor", `${name}.ts`), `export * from "${name}";\n`);
+    const entries = VendorNarrowing.entriesIn(path.join(root, "server"));
+    const narrowing = new VendorNarrowing(root, { "akanjs/store": ["st"], "akanjs/base": [] });
+
+    expect(entries.map(({ specifier }) => specifier)).toEqual(["akanjs/store", "akanjs/base"]);
+    expect(narrowing.entryExports(entries)).toEqual({});
+    expect(await narrowing.plugins()).toEqual([]);
+    expect(VendorNarrowing.entriesIn(path.join(akanjsRoot, "server")).map(({ specifier }) => specifier)).toContain(
+      "akanjs/store/agent",
+    );
+  });
+
   test("an alias narrowed to no names still loads its entry, so the entry's side effects run", () => {
     expect(ClientEntriesBundler.narrowedAliasSource("/v/akanjs-fetch.ts", [])).toBe(
       `export {} from ${JSON.stringify(path.resolve("/v/akanjs-fetch.ts"))};\n`,

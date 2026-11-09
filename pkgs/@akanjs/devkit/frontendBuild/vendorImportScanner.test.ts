@@ -26,16 +26,20 @@ describe("VendorImportScanner", () => {
     });
   });
 
-  test("leaves out a specifier read whole: a namespace import, an export star, a dynamic import or a require", () => {
+  test("leaves out a specifier read whole: a namespace import, an export star or a dynamic import", () => {
     expect(scan('import*as s from"akanjs/store";import{isEmail}from"akanjs/common";')).not.toHaveProperty(
       "akanjs/store",
     );
     expect(scan('export*from"akanjs/store";')).not.toHaveProperty("akanjs/store");
     expect(scan('export*as s from"akanjs/store";')).not.toHaveProperty("akanjs/store");
     expect(scan('const load=()=>import("akanjs/store");')).not.toHaveProperty("akanjs/store");
-    expect(scan('var s=require("akanjs/store");')).not.toHaveProperty("akanjs/store");
-    expect(scan('var s=__require("akanjs/store");')).not.toHaveProperty("akanjs/store");
     expect(scan('export{twMerge as m}from"tailwind-merge";')["tailwind-merge"]).toEqual(["twMerge"]);
+  });
+
+  test("reads nothing from a require, which a browser chunk carries as Bun's shim and never resolves", () => {
+    const used = scan('function C9(){let{untrackedHeaders:n,untrackedRequest:d}=ii("akanjs/fetch");return d}');
+
+    expect(used["akanjs/fetch"]).toEqual([]);
   });
 
   test("ignores a specifier quoted in a string, as a docs page shows code", () => {
@@ -55,5 +59,13 @@ describe("VendorImportScanner", () => {
     const used = await VendorImportScanner.exportsUsedIn(dir, ["akanjs/store"]);
 
     expect(used).toEqual({ "akanjs/store": ["RootStore", "st"] });
+  });
+
+  test("reads a client output directory a build never wrote as importing nothing", async () => {
+    const dir = await makeTempRoot();
+
+    expect(await VendorImportScanner.exportsUsedIn(path.join(dir, "client"), ["akanjs/store"])).toEqual({
+      "akanjs/store": [],
+    });
   });
 });
