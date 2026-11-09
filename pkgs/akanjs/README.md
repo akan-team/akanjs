@@ -62,10 +62,9 @@ Node and npm, or URLs given by a spec, a coding agent needs these, and nothing h
   set `i18n: { defaultLocale: "en", locales: ["en"], localePrefix: "as-needed" }` in `akan.config.ts`; `<Link>`
   follows.
 - **A host with only Node and npm:** run the creator through npx, which writes nothing global:
-  `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`. Put `bun` in the
-  workspace's `dependencies` so the host installs it too, and let the package scripts call `akan` from the
-  `@akanjs/cli` in `devDependencies`. If `akan` is not found after a global install, add the folder `bun pm bin -g`
-  prints to `PATH`.
+  `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`. That Bun is not on
+  `PATH` afterwards, so the creator lists `bun` in the workspace's `dependencies` and writes the scripts below; run
+  any other command as `npx akan …`.
 - **Build and run without Docker** through these package scripts; `npm run build`, then `PORT=3000 npm start`:
 
   ```json

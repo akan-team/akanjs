@@ -63,9 +63,9 @@ URL이라면, 코딩 에이전트는 묻지 않고 아래대로 진행하면 됩
   (`/pokemon/deoxys`)로 내보내려면 `akan.config.ts`에 `i18n: { defaultLocale: "en", locales: ["en"], localePrefix:
   "as-needed" }`를 두세요. `<Link>`도 따라갑니다.
 - **Node와 npm만 있는 호스트:** 생성기를 npx로 실행하세요. 전역에 아무것도 쓰지 않습니다:
-  `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`. 호스트에도
-  설치되도록 워크스페이스의 `dependencies`에 `bun`을 두고, package script에서는 `devDependencies`의 `@akanjs/cli`로
-  `akan`을 부르세요. 전역 설치 뒤 `akan`을 찾지 못하면 `bun pm bin -g`가 출력하는 폴더를 `PATH`에 더하세요.
+  `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`. 그 Bun은 이후
+  `PATH`에 없으므로 생성기가 워크스페이스의 `dependencies`에 `bun`을 넣고 아래 script를 씁니다. 다른 명령은
+  `npx akan …`으로 실행하세요.
 - **Docker 없이 빌드하고 실행하기:** 아래 package script를 두고 `npm run build` 뒤 `PORT=3000 npm start`로 띄웁니다.
 
   ```json
