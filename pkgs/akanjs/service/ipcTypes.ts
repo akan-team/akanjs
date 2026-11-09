@@ -119,6 +119,7 @@ export interface AkanMetricsReport {
   ssrChunkEvictionCount?: number;
   httpFullSsrCount?: number;
   httpRscNavigationCount?: number;
+  httpRscPrefetchCount?: number;
   httpStaticAssetCount?: number;
   httpCsrCount?: number;
   httpImageCount?: number;

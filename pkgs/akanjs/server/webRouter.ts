@@ -76,6 +76,7 @@ import {
   AKAN_RSC_PATCH_SEGMENT_PATH_HEADER,
   AKAN_RSC_PATCH_START_INDEX_HEADER,
   AKAN_RSC_PATCH_START_SEGMENT_HEADER,
+  AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_RESPONSE_STATE_HEADER,
 } from "./routeState";
 import {
@@ -334,6 +335,7 @@ export class WebRouter {
   readonly #requestStats = {
     fullSsr: 0,
     rscNavigation: 0,
+    rscPrefetch: 0,
     staticAsset: 0,
     csr: 0,
     image: 0,
@@ -539,7 +541,8 @@ export class WebRouter {
           }
         : {}),
       "/__rsc": SessionRefresh.answering(async (req) => {
-        this.#requestStats.rscNavigation += 1;
+        if (req.headers.get(AKAN_RSC_PREFETCH_HEADER) === "1") this.#requestStats.rscPrefetch += 1;
+        else this.#requestStats.rscNavigation += 1;
         try {
           //? A tab imports through its document's import map, whose narrowed vendors lack names another build imports;
           //? the client loads a target it cannot fetch as a document, which brings this build's import map.
@@ -918,6 +921,7 @@ export class WebRouter {
       ssrChunkEvictionCount: ssrStats.ssrChunkEvictionCount,
       httpFullSsrCount: this.#requestStats.fullSsr,
       httpRscNavigationCount: this.#requestStats.rscNavigation,
+      httpRscPrefetchCount: this.#requestStats.rscPrefetch,
       httpStaticAssetCount: this.#requestStats.staticAsset,
       httpCsrCount: this.#requestStats.csr,
       httpImageCount: this.#requestStats.image,
