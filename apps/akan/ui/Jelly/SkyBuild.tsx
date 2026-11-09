@@ -21,7 +21,8 @@ export const SkyBuild = ({ className, chapters }: SkyBuildProps) => {
     <section className={cn("build-scope relative pb-[24svh]", className)}>
       <div className="relative mx-auto w-full max-w-7xl px-6 lg:px-8">
         <div className="pointer-events-none absolute inset-0 lg:left-1/2">
-          <div className="sticky top-[var(--akanjs-header-offset)] flex h-[42svh] items-center justify-center lg:h-[calc(100svh-var(--akanjs-header-offset))]">
+          {/* WebKit composites every later layer on the page while a transform animation runs, unless an ancestor clips it. */}
+          <div className="sticky top-[var(--akanjs-header-offset)] flex h-[42svh] items-center justify-center overflow-clip lg:h-[calc(100svh-var(--akanjs-header-offset))]">
             <BuildStage className="w-[min(80vw,36svh)] lg:w-[min(34rem,calc(100svh-var(--akanjs-header-offset)-5rem))]" />
           </div>
         </div>

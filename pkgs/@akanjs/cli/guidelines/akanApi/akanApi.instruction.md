@@ -121,11 +121,16 @@ Only on `page()`:
 .app<Name extends string>(name: Name & FreeName<Name, Record<never, never>>, description: string, load: (args: RouteBaseArgs) => PromiseOrObject<ReactNode>)
 ```
 
-On `layout()` and `rootLayout()`:
+On `layout()` and `rootLayout()`, where a line replaces its shared form above:
 
 ```ts
+interface LayoutExtra { children: ReactNode; }
+.param<Name extends string, Type extends RouteArgType>(name: Name, type: Type, option?: RouteArgOption)
+.search<Name extends string, Type extends RouteSearchType>(name: Name, type: Type, option?: RouteArgOption)
 .notFound(render: LayoutNotFoundRender)
 .error(render: LayoutErrorRender)
+.loading(render: (args: RouteBaseArgs & LayoutExtra) => PromiseOrObject<ReactNode>)
+.render(render: (args: RouteBaseArgs & LayoutExtra) => PromiseOrObject<ReactNode>)
 ```
 
 Only on `rootLayout()`, before `.param()` and `.search()`:
@@ -265,6 +270,33 @@ serviceDictionary<Languages extends [string, ...string[]] = [string]>(languages?
 
 ```ts
 type AppConfig = AppConfigInput | ((app: AppConfigContext) => AppConfigInput)
+```
+
+### `AppConfigInput` · `akanjs`
+
+```ts
+database?: DeepPartial<AkanDatabaseConfig>;
+/** Baked into every client bundle, since a prebuilt CSR shell or mobile bundle never asks the server; `new AkanApp({ prefix })` still overrides the server and every server-rendered page. */
+api?: DeepPartial<AkanApiConfig>;
+routes?: AkanRouteConfig[];
+/** Mounts `libs/<lib>/page` under `page/(libs)/(<lib>)` on sync: `true` every lib dependency with a `page` folder, an array exactly those libs, `false` (the default) nothing, removing what a previous sync created. */
+syncPageLibs?: boolean | string[];
+externalLibs?: string[];
+/** Dependencies whose install scripts `bun install --production` runs, in the image and in a desktop app's server. */
+trustedDependencies?: string[];
+barrelImports?: string[];
+optimizeImports?: string[];
+images?: DeepPartial<AkanImageConfig>;
+i18n?: DeepPartial<AkanI18nConfig>;
+publicEnv?: string[];
+secrets?: string[];
+assets?: DeepPartial<AkanAssetsConfig>;
+docker?: DockerOption;
+web?: AkanWebOption;
+bin?: AkanBinConfig;
+native?: AkanNativeAppConfig;
+plugins?: AkanPlugin[];
+pipeline?: AppPipelineConfig;
 ```
 
 ### `AkanWebOption` · `akanjs`

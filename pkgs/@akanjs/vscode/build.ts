@@ -42,6 +42,12 @@ await Promise.all([
   cp(`${pkgDir}/package.nls.ko.json`, `${outdir}/package.nls.ko.json`),
   cp(`${pkgDir}/README.md`, `${outdir}/README.md`),
   cp(`${workspaceRoot}/pkgs/akanjs/LICENSE`, `${outdir}/LICENSE`),
+  cp(`${workspaceRoot}/apps/akan/public/icon-512x512.png`, `${outdir}/icon.png`),
+  cp(`${pkgDir}/CHANGELOG.md`, `${outdir}/CHANGELOG.md`).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+  }),
+  //? vsce warns without a `.vscodeignore` or a `files` list, and `files` drops LICENSE and CHANGELOG unless listed; outdir holds only what this script writes.
+  Bun.write(`${outdir}/.vscodeignore`, ""),
 ]);
 
 if (process.argv.includes("--vsix")) {

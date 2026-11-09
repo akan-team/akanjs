@@ -23,6 +23,15 @@ describe("ApiReference", () => {
     expect(rendered).toContain('import { layout, page, rootLayout, router } from "akanjs/client";');
     expect(rendered).toMatch(/^query<.+>\(returnRef: Returns, signalOption\?: SignalOption<Returns, Nullable>\)$/m);
     expect(rendered).toMatch(/^\.param<.+>\(name: .+, type: Type, option\?: RouteArgOption\)$/m);
+    expect(rendered).toMatch(/^\.render\(render: \(args: RouteBaseArgs & LayoutExtra\) => .+\)$/m);
+    expect(rendered).toMatch(/children: ReactNode/);
     expect(rendered).toMatch(/^\/\*\* .+ \*\/\nserverMode\?: "batch" \| "federation";$/m);
+  });
+
+  test("lists the keys of akan.config.ts, so the web and i18n shapes have a field to belong to", () => {
+    const appConfig = rendered.slice(rendered.indexOf("### `AppConfigInput`"));
+    expect(appConfig).toMatch(/^web\?: AkanWebOption;$/m);
+    expect(appConfig).toMatch(/^i18n\?: DeepPartial<AkanI18nConfig>;$/m);
+    expect(appConfig.indexOf("### `AkanWebOption`")).toBeGreaterThan(appConfig.indexOf("web?: AkanWebOption;"));
   });
 });
