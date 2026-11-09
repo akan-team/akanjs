@@ -58,7 +58,7 @@ Node and npm, or URLs given by a spec, a coding agent needs these, and nothing h
   workspace's rules and MCP server.
 - **Check each change with `akan verify <app>`.** It syncs, lints, typechecks, builds and checks SSR, and prints only
   what failed. `akan preview <app> --changed` opens the pages a change reaches.
-- **Exact URLs:** pages live under `/<locale>/…`. To serve the default locale at the bare path (`/pokemon/deoxys`),
+- **Exact URLs:** pages live under `/<locale>/…`. To serve the default locale at the bare path (`/books/OL45804W`),
   set `i18n: { defaultLocale: "en", locales: ["en"], localePrefix: "as-needed" }` in `akan.config.ts`; `<Link>`
   follows.
 - **A host with only Node and npm:** run the creator through npx, which writes nothing global:

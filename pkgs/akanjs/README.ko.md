@@ -60,7 +60,7 @@ URL이라면, 코딩 에이전트는 묻지 않고 아래대로 진행하면 됩
 - **변경마다 `akan verify <app>`로 확인하기.** sync, lint, 타입체크, 빌드, SSR 검사를 한 번에 하고 실패한 것만
   출력합니다. `akan preview <app> --changed`는 변경이 닿는 페이지를 열어 봅니다.
 - **정해진 URL:** 페이지는 기본적으로 `/<locale>/…` 아래에 있습니다. 기본 로케일을 프리픽스 없는 경로
-  (`/pokemon/deoxys`)로 내보내려면 `akan.config.ts`에 `i18n: { defaultLocale: "en", locales: ["en"], localePrefix:
+  (`/books/OL45804W`)로 내보내려면 `akan.config.ts`에 `i18n: { defaultLocale: "en", locales: ["en"], localePrefix:
   "as-needed" }`를 두세요. `<Link>`도 따라갑니다.
 - **Node와 npm만 있는 호스트:** 생성기를 npx로 실행하세요. 전역에 아무것도 쓰지 않습니다:
   `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`. 그 Bun은 이후
