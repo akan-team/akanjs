@@ -147,6 +147,15 @@ export default page()
           ko: "특정 빌드에 고정할 때만 적습니다.",
         }),
       },
+      {
+        key: "readinessPath",
+        type: "string",
+        default: "/_akan/app/health",
+        desc: l.trans({
+          en: "The readiness probe's path. Set `/_akan/app/ready` once the image's akanjs serves it; an older image answers it 404.",
+          ko: "readiness probe가 부르는 경로입니다. 이미지의 akanjs가 `/_akan/app/ready`를 제공하면 그 경로로 바꿉니다. 그보다 오래된 이미지는 404로 답합니다.",
+        }),
+      },
     ];
 
     const branchKeys = [
@@ -779,15 +788,15 @@ main:
                 en: (
                   <span>
                     <strong>Some settings are not values.</strong> Port 8282, <code>replicas: 1</code>, the 40-second
-                    termination grace period and the three probes are fixed in <code>templates/app.yaml</code>. Changing
-                    them means editing the chart.
+                    termination grace period and the probes, apart from <code>readinessPath</code>, are fixed in{" "}
+                    <code>templates/app.yaml</code>. Changing them means editing the chart.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>values로 바꿀 수 없는 설정도 있습니다.</strong> 8282 포트, <code>replicas: 1</code>, 40초
-                    종료 유예, probe 세 개는 <code>templates/app.yaml</code>에 고정돼 있습니다. 바꾸려면 chart를 직접
-                    고쳐야 합니다.
+                    종료 유예, <code>readinessPath</code>를 뺀 probe 설정은 <code>templates/app.yaml</code>에 고정돼
+                    있습니다. 바꾸려면 chart를 직접 고쳐야 합니다.
                   </span>
                 ),
               })}
@@ -831,14 +840,19 @@ main:
               {l.trans({
                 en: (
                   <span>
-                    With a single process there is no gateway to restart it, so the kubelet does. The chart points three
-                    probes at <code>/_akan/app/health</code>, which a solo process answers itself.
+                    With a single process there is no gateway to restart it, so the kubelet does. The startup and
+                    liveness probes call <code>/_akan/app/health</code>, which answers 200 while the process is up. The
+                    readiness probe calls <code>readinessPath</code>; <code>/_akan/app/ready</code> answers 503 while
+                    the pod cannot serve: no replica is ready, or a solo server's page renderer is not.
                   </span>
                 ),
                 ko: (
                   <span>
-                    프로세스가 하나면 재시작해 줄 gateway가 없어서 kubelet이 그 일을 맡습니다. chart는 probe 세 개를{" "}
-                    <code>/_akan/app/health</code>로 보내고, solo 프로세스가 이 경로에 직접 응답합니다.
+                    프로세스가 하나면 재시작해 줄 gateway가 없어서 kubelet이 그 일을 맡습니다. startup probe와 liveness
+                    probe는 <code>/_akan/app/health</code>를 부르며, 이 경로는 프로세스가 떠 있는 동안 200으로 답합니다.
+                    readiness probe는 <code>readinessPath</code>를 부릅니다. <code>/_akan/app/ready</code>는 pod가
+                    요청을 처리할 수 없는 동안, 곧 준비된 replica가 없거나 solo 서버의 페이지 렌더러가 준비되지 않았을
+                    때 503으로 답합니다.
                   </span>
                 ),
               })}

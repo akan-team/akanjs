@@ -1,7 +1,20 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { Logger } from "akanjs/common";
+import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { createRequestStore, getRequestStore, headers } from "../fetch/requestStorage";
+import {
+  joinBytes,
+  mixedFlight,
+  mixedFlightRows,
+  offsetsWhereOutputDiffers,
+  readBytes,
+  rowShapedBytes,
+  rowShapedText,
+  streamOfChunks,
+  textRow,
+} from "./flightRows.fixture";
 import {
   createInlineRscScript,
   createSoftRedirectScript,
@@ -190,6 +203,46 @@ describe("inline RSC chunks", () => {
     const output = await new Response(sanitizeFlightForClientStream(textStream([{ text: raw }]))).text();
 
     expect(output).toBe(raw);
+  });
+
+  test("passes a long text row through both branches byte for byte, though its lines look like rows", async () => {
+    const flight = joinBytes(textRow("1", rowShapedText), '0:"$1"\n');
+    const ssrOutput = await readBytes(sanitizeFlightForSsrStream(streamOfChunks([flight])));
+    const clientOutput = await readBytes(sanitizeFlightForClientStream(streamOfChunks([flight])));
+
+    expect(decoder.decode(ssrOutput)).toBe(decoder.decode(flight));
+    expect(decoder.decode(clientOutput)).toBe(decoder.decode(flight));
+    const decoded = await Promise.resolve(
+      createFromNodeStream<string>(Readable.from([ssrOutput]), { moduleLoading: null, moduleMap: {} }),
+    );
+    expect(decoded).toBe(rowShapedText);
+  });
+
+  test("sanitizes the same rows wherever a chunk boundary falls", async () => {
+    const rows = mixedFlightRows;
+    const clientExpected = joinBytes(
+      ':HL["/style.css","style"]\n',
+      rows.debug,
+      rows.text,
+      rows.bytes,
+      rows.empty,
+      "c7:null\n",
+      rows.model,
+    );
+    const ssrExpected = joinBytes(rows.hint, rows.text, rows.bytes, rows.empty, "c7:null\n", rows.model);
+
+    expect(await offsetsWhereOutputDiffers(mixedFlight, clientExpected, sanitizeFlightForClientStream)).toEqual([]);
+    expect(await offsetsWhereOutputDiffers(mixedFlight, ssrExpected, sanitizeFlightForSsrStream)).toEqual([]);
+    const ssrOutput = await readBytes(sanitizeFlightForSsrStream(streamOfChunks([mixedFlight])));
+    const decoded = await Promise.resolve(
+      createFromNodeStream<{ text: string; bytes: Uint8Array; empty: ArrayBuffer }>(Readable.from([ssrOutput]), {
+        moduleLoading: null,
+        moduleMap: {},
+      }),
+    );
+    expect(decoded.text).toBe(rowShapedText);
+    expect([...decoded.bytes]).toEqual([...rowShapedBytes]);
+    expect(decoded.empty.byteLength).toBe(0);
   });
 });
 

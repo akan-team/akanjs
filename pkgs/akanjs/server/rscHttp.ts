@@ -1,3 +1,5 @@
+import { mapFlightLineRows } from "./flightRowReader";
+
 export const RSC_CONTENT_TYPE = "text/x-component; charset=utf-8";
 const RSC_REDIRECT_ROW_RE = /^([0-9a-z]+):E(\{[^\n]*"digest":"AKAN_REDIRECT(?:;[^"]*)?"[^\n]*\})(\n?)$/;
 const AKAN_REDIRECT_DIGEST_PREFIX = "AKAN_REDIRECT";
@@ -60,7 +62,6 @@ export function guardRscRedirectRows(
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const encoder = new TextEncoder();
-  let buffered: Uint8Array<ArrayBuffer> = new Uint8Array(0);
   let redirected = false;
 
   const getRedirectRow = (row: Uint8Array): RscRedirectRow | null => {
@@ -81,47 +82,13 @@ export function guardRscRedirectRows(
     }
   };
 
-  const enqueueCompleteRows = (chunk: Uint8Array, controller: TransformStreamDefaultController<Uint8Array>) => {
-    buffered = concatBytes(buffered, chunk);
-    let rowStart = 0;
-    for (let index = 0; index < buffered.byteLength; index += 1) {
-      if (buffered[index] !== 10) continue;
-      const row = buffered.slice(rowStart, index + 1);
-      const redirect = getRedirectRow(row);
-      if (redirect) {
-        if (!redirected) {
-          redirected = true;
-          options.onRedirect?.(redirect);
-        }
-        controller.enqueue(encoder.encode(`${redirect.rowId}:null\n`));
-        rowStart = index + 1;
-        continue;
-      }
-      controller.enqueue(row);
-      rowStart = index + 1;
+  return mapFlightLineRows(stream, (row, tag) => {
+    const redirect = tag === "E" ? getRedirectRow(row) : null;
+    if (!redirect) return row;
+    if (!redirected) {
+      redirected = true;
+      options.onRedirect?.(redirect);
     }
-    buffered = rowStart === 0 ? buffered : buffered.slice(rowStart);
-  };
-
-  return stream.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        enqueueCompleteRows(chunk, controller);
-      },
-      flush(controller) {
-        if (buffered.byteLength === 0) return;
-        const redirect = getRedirectRow(buffered);
-        if (redirect) {
-          if (!redirected) {
-            redirected = true;
-            options.onRedirect?.(redirect);
-          }
-          controller.enqueue(encoder.encode(`${redirect.rowId}:null`));
-          return;
-        }
-        controller.enqueue(buffered);
-        buffered = new Uint8Array(0);
-      },
-    }),
-  );
+    return encoder.encode(`${redirect.rowId}:null${row[row.byteLength - 1] === 10 ? "\n" : ""}`);
+  });
 }

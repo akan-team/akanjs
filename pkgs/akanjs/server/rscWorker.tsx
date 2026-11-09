@@ -873,14 +873,16 @@ export class RscRenderer {
   }
 
   // Past the first Flight chunk only a late redirect reaches the host, so this log is the only record of the failure.
-  #reportRenderError(error: unknown, pathname?: string): void {
-    const description = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    const scope = pathname ? ` path=${pathname}` : "";
-    if (RscRenderer.#isExpectedRequestAbort(error)) {
-      this.#logger.debug(`[rsc] render aborted${scope}: ${description}`);
-      return;
-    }
-    this.#logger.error(`[rsc] render failed${scope}: ${description}`);
+  //? Security: React sends the returned digest to the browser, and a thrown message can quote a statement's row data.
+  #reportRenderError(error: unknown, pathname?: string): string {
+    const message = error instanceof Error ? error.message : String(error);
+    const description = error instanceof Error ? (error.stack ?? message) : message;
+    const opaque = process.env.NODE_ENV === "production";
+    const digest = opaque ? crypto.randomUUID().slice(0, 8) : message;
+    const scope = `${pathname ? ` path=${pathname}` : ""}${opaque ? ` digest=${digest}` : ""}`;
+    if (RscRenderer.#isExpectedRequestAbort(error)) this.#logger.debug(`[rsc] render aborted${scope}: ${description}`);
+    else this.#logger.error(`[rsc] render failed${scope}: ${description}`);
+    return digest;
   }
 
   static #isExpectedRequestAbort(error: unknown): boolean {
@@ -924,8 +926,7 @@ export class RscRenderer {
           return error.digest;
         }
         controlRef.current = { type: "error", error };
-        this.#reportRenderError(error, options.trace?.pathname);
-        return error instanceof Error ? error.message : String(error);
+        return this.#reportRenderError(error, options.trace?.pathname);
       },
     });
     const reader = stream.getReader();

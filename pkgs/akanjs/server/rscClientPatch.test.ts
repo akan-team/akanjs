@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { joinBytes, rowShapedText, textRow } from "./flightRows.fixture";
 import {
   AKAN_RSC_RESPONSE_STATE_HEADER,
   type AkanHeadSnapshotV1,
@@ -241,5 +242,21 @@ describe("rscClient patch fallback flow", () => {
 
     expect(redirectResult).toEqual({ status: "rejected", reason: "redirect-in-patch" });
     expect(errorResult).toEqual({ status: "rejected", reason: "error-in-patch" });
+  });
+
+  test("keeps a patch whose long text holds lines shaped like redirect or error rows", async () => {
+    const currentState = makeRouterState("https://example.test/docs/intro", "/docs/intro");
+    const targetState = makeRouterState("https://example.test/docs/api", "/docs/api");
+    const body = new TextDecoder().decode(joinBytes(textRow("1", rowShapedText), '0:"$1"\n'));
+
+    const result = await validateRscPatchAndRequestFullFallback({
+      href: targetState.href,
+      response: patchResponse(body, targetState),
+      patch: makePatch("/docs/api"),
+      currentTree: makeTreeOf(currentState, "intro"),
+      createThenable: (stream) => new Response(stream).text().then(() => "api"),
+    });
+
+    expect(result.patchResult.status).toBe("patched");
   });
 });

@@ -150,6 +150,8 @@ export class DatabaseResolver {
         this.__store = this.__database.getStore(constant, database, schema);
         await this.__store.ensure();
         this.__model = this.#createModelFacade() as unknown as Mdl<any, any>;
+        // One instance shared by two callers would carry one's unsaved edits into the other's save.
+        const copy = (doc: Record<string, unknown> | null) => (doc ? this.__store.rehydrate(doc) : doc);
         this.__loader = new DataLoader<string, any>(
           async (ids) => {
             traceDataLoaderBatch(ids.length);
@@ -157,7 +159,7 @@ export class DatabaseResolver {
             const byId = new Map(docs.map((doc) => [String(doc.id), doc]));
             return ids.map((id) => byId.get(String(id)) ?? null);
           },
-          { name: names.modelLoader, cache: false },
+          { name: names.modelLoader, cache: false, copy },
         );
         Object.assign(this, {
           [className]: this.__model,
@@ -197,7 +199,7 @@ export class DatabaseResolver {
                 const byKey = new Map(docs.map((doc) => [String(doc[field]), doc]));
                 return keys.map((key) => byKey.get(String(key)) ?? null);
               },
-              { name: key, cache: loaderInfo.cache },
+              { name: key, cache: loaderInfo.cache, copy },
             ),
           });
         });

@@ -1158,6 +1158,70 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(titlesOf(await store.find({}))).toEqual(["outside-write"]);
     });
 
+    test("[SQ-2] a write that waited out one transaction is not taken into the next and rolled back with it", async () => {
+      let firstEntered!: () => void;
+      const firstInside = new Promise<void>((resolve) => {
+        firstEntered = resolve;
+      });
+      let releaseFirst!: () => void;
+      const firstReleased = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      const first = driver.database.transaction(async () => {
+        await store.create({ title: "first" });
+        firstEntered();
+        await firstReleased;
+      });
+      await firstInside;
+      const outside = store.create({ title: "outside-write" });
+      await Bun.sleep(10);
+      let secondEntered!: () => void;
+      const secondInside = new Promise<void>((resolve) => {
+        secondEntered = resolve;
+      });
+      const second = driver.database.transaction(async () => {
+        await store.create({ title: "second" });
+        secondEntered();
+        await Bun.sleep(20);
+        throw new Error("rollback-probe");
+      });
+      releaseFirst();
+      await first;
+      await Promise.race([secondInside, second.catch(() => undefined)]);
+      await outside;
+      await expect(second).rejects.toThrow("rollback-probe");
+      expect(titlesOf(await store.find({})).sort((a, b) => a.localeCompare(b))).toEqual(["first", "outside-write"]);
+    });
+
+    test("a read from another request sees what is committed, not the rows an open transaction wrote", async () => {
+      await store.create({ title: "committed" });
+      let entered!: () => void;
+      const inside = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let readInside: string[] = [];
+      const transaction = driver.database.transaction(async () => {
+        await store.create({ title: "uncommitted" });
+        readInside = titlesOf(await store.find({}));
+        entered();
+        await released;
+        throw new Error("rollback-probe");
+      });
+      await Promise.race([inside, transaction.catch(() => undefined)]);
+      const readOutside = titlesOf(await store.find({}));
+      const countedOutside = await store.count({});
+      release();
+      await expect(transaction).rejects.toThrow("rollback-probe");
+      expect(readInside.sort((a, b) => a.localeCompare(b))).toEqual(["committed", "uncommitted"]);
+      expect(readOutside).toEqual(["committed"]);
+      expect(countedOutside).toBe(1);
+      expect(titlesOf(await store.find({}))).toEqual(["committed"]);
+    });
+
     test("a service's transaction commits its writes to two models together, or neither, rethrowing the error", async () => {
       const ledger = ledgerOn(driver);
       const other = await storeOf(driver, uniqueConstant, uniqueDatabase);
@@ -1512,6 +1576,32 @@ const describeDriver = (kind: SqlDriverKind) => {
       await saved.set({ rank: 3 }).save();
       const stored = await store.pickById(id);
       expect([stored.title, stored.score, stored.rank]).toEqual(["Published", 5, 3]);
+    });
+
+    test("[D4] a rehydrated document is the one read, not the one held, and saves only what it changed", async () => {
+      const { id } = await store.create({ title: "Draft", score: 1, tags: ["a"] });
+      const held = await store.pickById(id);
+      held.set({ title: "Refused, never saved" }).tags.push("b");
+      const copy = store.rehydrate(held);
+      expect(Object.getPrototypeOf(copy)).toBe(Object.getPrototypeOf(held));
+      expect([copy.title, copy.tags]).toEqual(["Draft", ["a"]]);
+      await store.updateOneByQuery({ id }, { rank: 2 });
+      await copy.set({ score: 5 }).save();
+      const stored = await store.pickById(id);
+      expect([stored.title, stored.score, stored.rank, stored.tags]).toEqual(["Draft", 5, 2, ["a"]]);
+
+      const vault = await storeOf(driver, vaultConstant, vaultDatabase);
+      const { id: vaultId } = await vault.create({ label: "Draft", token: "s3cret" });
+      await vault
+        .rehydrate(await vault.pickById(vaultId))
+        .set({ label: "Published" })
+        .save();
+      const [vaulted] = await vault.find({ id: vaultId }, { select: { label: true, token: true } });
+      expect([vaulted.label, vaulted.token]).toEqual(["Published", "s3cret"]);
+
+      await store.remove(id);
+      const removed = store.rehydrate(await store.findOne({ id }, { withRemoved: true }));
+      await expect(removed.set({ note: "edited" }).save()).rejects.toThrow("read-only: a removed dialectConf");
     });
   });
 

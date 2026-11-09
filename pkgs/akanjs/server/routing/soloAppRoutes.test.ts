@@ -11,6 +11,7 @@ const running: SoloAppStatus = {
   running: true,
   status: "running",
   port: 8282,
+  rscWorker: "ready",
   metrics: { rssBytes: 1_024, role: "all" },
 };
 
@@ -97,6 +98,41 @@ describe("solo app routes", () => {
       expect(metrics.status).toBe(401);
       expect(metrics.headers.get("www-authenticate")).toBe("Bearer");
     }
+  });
+
+  test("is ready only while the server runs and its RSC worker renders, and health stays 200 meanwhile", async () => {
+    let status: SoloAppStatus = { ...running, running: false, status: "starting", port: null, rscWorker: "starting" };
+    const routes = routesOf(() => status);
+    const ready = () => routes["/_akan/app/ready"].GET(signedIn());
+    expect(ready().status).toBe(503);
+    status = { ...running, rscWorker: "starting" };
+    expect(ready().status).toBe(503);
+    expect(routes["/_akan/app/health"].GET(signedIn()).status).toBe(200);
+    status = running;
+    const serving = ready();
+    expect(serving.status).toBe(200);
+    expect(await serving.json()).toEqual({
+      status: "ready",
+      ready: true,
+      pid: process.pid,
+      solo: true,
+      children: [{ idx: 0, role: "all", status: "running", ready: true, rscWorker: "ready" }],
+    });
+    status = { ...running, rscWorker: "restarting" };
+    expect(ready().status).toBe(503);
+    status = { ...running, rscWorker: null };
+    expect(ready().status).toBe(200);
+  });
+
+  test("tells a caller without the token whether it is ready, and nothing else", async () => {
+    const restarting = { ...running, rscWorker: "restarting" as const };
+    for (const routes of [routesOf(restarting), routesOf(restarting, new StatusAccess({ tokens: [] }))]) {
+      const ready = routes["/_akan/app/ready"].GET(anonymous());
+      expect(ready.status).toBe(503);
+      expect(ready.headers.get("cache-control")).toBe("no-store");
+      expect(await ready.json()).toEqual({ status: "unavailable" });
+    }
+    expect(await routesOf(running)["/_akan/app/ready"].GET(anonymous()).json()).toEqual({ status: "ready" });
   });
 
   test("answers the bench ping the gateway serves without touching a replica or asking for the token", async () => {

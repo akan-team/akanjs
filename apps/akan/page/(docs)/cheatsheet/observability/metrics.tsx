@@ -426,8 +426,8 @@ export default page()
         href: "/cheatsheet/dev/k8s#scale",
         title: l.trans({ en: "Kubernetes Probes", ko: "Kubernetes probe" }),
         desc: l.trans({
-          en: "How the pod's probes call `/_akan/app/health`.",
-          ko: "pod의 probe가 `/_akan/app/health`를 어떻게 부르는지 봅니다.",
+          en: "Which route each of the pod's probes calls.",
+          ko: "pod의 probe가 각각 어느 경로를 부르는지 봅니다.",
         }),
       },
     ];
@@ -587,16 +587,17 @@ curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/h
               {l.trans({
                 en: (
                   <span>
-                    <strong>A 200 does not mean ready.</strong> With a gateway in front, health answers 200 even while a
-                    replica is <code>starting</code> or restarting. Read <code>children[].ready</code>, not the status
-                    code.
+                    <strong>A 200 does not mean ready.</strong> Health answers 200 while the process is up, even while a
+                    replica is <code>starting</code> or restarting. For readiness, call <code>/_akan/app/ready</code>,
+                    which answers 503 until the app can serve, and takes the same token for the detail.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>200이 곧 준비 완료는 아닙니다.</strong> gateway가 있으면 replica가 <code>starting</code>
-                    이거나 재시작 중이어도 health는 200으로 답합니다. 상태 코드가 아니라 <code>children[].ready</code>를
-                    보세요.
+                    <strong>200이 곧 준비 완료는 아닙니다.</strong> health는 프로세스가 떠 있으면 replica가{" "}
+                    <code>starting</code>이거나 재시작 중이어도 200으로 답합니다. 준비 여부는{" "}
+                    <code>/_akan/app/ready</code>로 확인하세요. 앱이 요청을 처리할 수 있을 때까지 503으로 답하며, 같은
+                    토큰을 주면 자세한 내용도 보여 줍니다.
                   </span>
                 ),
               })}

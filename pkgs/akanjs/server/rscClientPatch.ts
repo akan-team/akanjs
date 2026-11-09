@@ -1,3 +1,4 @@
+import { mapFlightLineRows } from "./flightRowReader";
 import { type AkanHeadSnapshotV1, type AkanRscPatchMetadata, readAkanRouterStateResponseHeader } from "./routeState";
 import { getRscPayloadStream } from "./rscHttp";
 import {
@@ -27,14 +28,7 @@ function guardRscPatchControlRows(
   onControl: (reason: Extract<AkanSegmentPatchFailureReason, "redirect-in-patch" | "error-in-patch">) => void,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  let buffered = new Uint8Array(new ArrayBuffer(0));
 
-  const concat = (left: Uint8Array, right: Uint8Array): Uint8Array<ArrayBuffer> => {
-    const combined = new Uint8Array(new ArrayBuffer(left.byteLength + right.byteLength));
-    combined.set(left, 0);
-    combined.set(right, left.byteLength);
-    return combined;
-  };
   const inspectRow = (row: Uint8Array): void => {
     try {
       const text = decoder.decode(row);
@@ -45,28 +39,10 @@ function guardRscPatchControlRows(
     }
   };
 
-  return stream.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        buffered = concat(buffered, chunk);
-        let rowStart = 0;
-        for (let index = 0; index < buffered.byteLength; index += 1) {
-          if (buffered[index] !== 10) continue;
-          const row = buffered.slice(rowStart, index + 1);
-          inspectRow(row);
-          controller.enqueue(row);
-          rowStart = index + 1;
-        }
-        buffered = rowStart === 0 ? buffered : buffered.slice(rowStart);
-      },
-      flush(controller) {
-        if (buffered.byteLength === 0) return;
-        inspectRow(buffered);
-        controller.enqueue(buffered);
-        buffered = new Uint8Array(new ArrayBuffer(0));
-      },
-    }),
-  );
+  return mapFlightLineRows(stream, (row, tag) => {
+    if (tag === "E") inspectRow(row);
+    return row;
+  });
 }
 
 export async function validateRscPatchAndRequestFullFallback<T extends PromiseLike<unknown>>(

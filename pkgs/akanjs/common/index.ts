@@ -102,6 +102,7 @@ export {
   resolveFileUploadCapability,
 } from "./fileUpload";
 export { formatNumber } from "./formatNumber";
+export { hasErrKey } from "./hasErrKey";
 export { type AkanHmrPhase, getAkanHmrPhase, isAkanHmrApplying } from "./hmrPhase";
 export { IpLiteral } from "./IpLiteral";
 export { interpolateTranslation } from "./interpolateTranslation";

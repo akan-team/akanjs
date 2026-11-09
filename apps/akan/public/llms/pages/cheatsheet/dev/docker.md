@@ -196,7 +196,7 @@ no · AKAN_SOLO=false · akan start
 
 **Bringing the gateway back.** Set `AKAN_SOLO=false` (or `0`); `true` does nothing. `akan start` and a `replica` passed to `new AkanApp(...)` keep it too.
 
-**Solo answers probes itself.** `/_akan/app/health`, `/_akan/app/metrics` and `/_akan/bench/ping` come back in the gateway's shape.
+**Solo answers probes itself.** `/_akan/app/health`, `/_akan/app/ready`, `/_akan/app/metrics` and `/_akan/bench/ping` come back in the gateway's shape.
 
 **Nothing supervises a solo process** but the orchestrator's probes.
 

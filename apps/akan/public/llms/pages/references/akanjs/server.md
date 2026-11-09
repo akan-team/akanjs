@@ -138,7 +138,7 @@ Stops Cleanly
 
 On SIGINT or SIGTERM it asks each replica to stop, then kills what is left after 30s.
 
-**Solo answers the same routes.** A solo process serves `/_akan/app/health` and `/_akan/app/metrics` in the gateway's shape, so a probe reads one contract either way.
+**Solo answers the same routes.** A solo process serves `/_akan/app/health`, `/_akan/app/ready` and `/_akan/app/metrics` in the gateway's shape, so a probe reads one contract either way.
 
 **The detail takes a token.** Outside `local`, health answers only `{ status }` and metrics 401 unless the caller sends `Authorization: Bearer $AKAN_STATUS_TOKEN`, which unlocks nothing else; the log stream token works too.
 

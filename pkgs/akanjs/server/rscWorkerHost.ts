@@ -379,7 +379,7 @@ export interface RscReloadFailure extends Error {
   failed: RscAdoptedBundle;
 }
 
-type WorkerStatus = "starting" | "ready" | "restarting" | "stopped";
+export type RscWorkerStatus = "starting" | "ready" | "restarting" | "stopped";
 type RscProcess = Bun.Subprocess;
 
 export class RscWorker {
@@ -418,7 +418,7 @@ export class RscWorker {
   /** What the worker runs: a respawn falls back to it when the bundle a reload named failed to import. */
   #adopted: RscAdoptedBundle;
 
-  #status: WorkerStatus = "starting";
+  #status: RscWorkerStatus = "starting";
   #killed = false;
   #queuedSends: { requestId: string; send: () => void }[] = [];
   #restartAttempts = 0;
@@ -566,6 +566,10 @@ export class RscWorker {
     } catch {
       // The worker is gone; the `ready` of its replacement re-sends the level.
     }
+  }
+
+  get status(): RscWorkerStatus {
+    return this.#status;
   }
 
   getMetrics(): AkanMetricsReport {
