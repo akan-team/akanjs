@@ -9,6 +9,74 @@ import { RouteClientBuilder } from "./routeClientBuilder";
 
 const makeTempRoot = tempDirs("akan-client-entry-");
 
+const fixtureBarrels = ["@apps/demo/client", "@libs/kit/client"];
+
+const writeBarrelFixture = async () => {
+  const root = await makeTempRoot();
+  const appDir = path.join(root, "apps/demo");
+  const libDir = path.join(root, "libs/kit");
+  const paths = { "@apps/*": ["./apps/*"], "@libs/*": ["./libs/*"] };
+  await write(path.join(root, "tsconfig.json"), JSON.stringify({ compilerOptions: { baseUrl: ".", paths } }));
+  const writeSys = async (dir: string, prefix: string, modules: string[]) => {
+    await write(
+      path.join(dir, "client.ts"),
+      [
+        'export { msg } from "./lib/useClient";',
+        'export { st, RootStore } from "./lib/st";',
+        ...modules.map((name) => `export { ${name} } from "./lib/${name.toLowerCase()}";`),
+        "",
+      ].join("\n"),
+    );
+    await write(
+      path.join(dir, "lib/useClient.ts"),
+      `export const msg = Object.freeze({ mark: "${prefix}runtime-marker" });\n`,
+    );
+    for (const name of modules)
+      await write(
+        path.join(dir, `lib/${name.toLowerCase()}/index.ts`),
+        `import * as Zone from "./${name}.Zone";\nexport const ${name} = { Zone };\n`,
+      );
+  };
+  await writeSys(libDir, "lib-", ["Widget"]);
+  await write(
+    path.join(libDir, "lib/st.ts"),
+    'export class RootStore {}\nexport const st = Object.freeze({ mark: "lib-store-marker" });\n',
+  );
+  await write(
+    path.join(libDir, "lib/widget/Widget.Zone.tsx"),
+    '"use client";\nexport const Card = Object.freeze({ mark: "lib-ui-marker" });\n',
+  );
+  await writeSys(appDir, "", ["Memo", "Other"]);
+  await write(
+    path.join(appDir, "lib/st.ts"),
+    'import { RootStore as kit } from "@libs/kit/client";\nexport class RootStore {}\nexport const st = Object.freeze({ mark: "store-marker", kit });\n',
+  );
+  await write(
+    path.join(appDir, "lib/memo/Memo.Zone.tsx"),
+    '"use client";\nimport { st } from "@apps/demo/client";\nexport const Card = () => [st, "memo-ui-marker"];\n',
+  );
+  await write(
+    path.join(appDir, "lib/other/Other.Zone.tsx"),
+    '"use client";\nexport const Card = Object.freeze({ mark: "other-ui-marker" });\n',
+  );
+  await write(path.join(appDir, "ui/A.tsx"), '"use client";\nexport const A = () => "a";\n');
+  const app = {
+    name: "demo",
+    cwdPath: appDir,
+    dist: { cwdPath: path.join(root, "dist/apps/demo") },
+    workspace: { workspaceRoot: root },
+    getConfig: async () => ({ barrelImports: fixtureBarrels, optimizeImports: [] }),
+    getTsConfig: async () => ({ compilerOptions: { paths } }),
+    getPublicEnv: () => ({}),
+  } as never;
+  return { appDir, app };
+};
+
+const bundledText = async (dir: string) =>
+  (
+    await Promise.all([...new Bun.Glob("**/*.js").scanSync(dir)].map((file) => Bun.file(path.join(dir, file)).text()))
+  ).join("\n");
+
 describe("route client store bootstrap", () => {
   test("wraps client entries with the client runtime and store bootstrap before re-exporting components", () => {
     const original = path.resolve("/repo/pkgs/akanjs/ui/Model/NewWrapper_Client.tsx");
@@ -184,59 +252,52 @@ describe("route client store bootstrap", () => {
     expect(carriers.filter(Boolean)).toHaveLength(1);
   });
 
-  test("bootstraps the store without bundling module UI the route never imports", async () => {
-    const root = await makeTempRoot();
-    const appDir = path.join(root, "apps/demo");
-    const entry = path.join(appDir, "ui/A.tsx");
-    await write(
-      path.join(root, "tsconfig.json"),
-      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@apps/*": ["./apps/*"] } } }),
-    );
-    await write(
-      path.join(appDir, "client.ts"),
-      'export { msg } from "./lib/useClient";\nexport { st } from "./lib/st";\nexport { Memo } from "./lib/memo";\n',
-    );
-    await write(
-      path.join(appDir, "lib/useClient.ts"),
-      'export const msg = Object.freeze({ mark: "runtime-marker" });\n',
-    );
-    await write(path.join(appDir, "lib/st.ts"), 'export const st = Object.freeze({ mark: "store-marker" });\n');
-    await write(
-      path.join(appDir, "lib/memo/index.ts"),
-      'import * as Zone from "./Memo.Zone";\nexport const Memo = { Zone };\n',
-    );
-    await write(
-      path.join(appDir, "lib/memo/Memo.Zone.tsx"),
-      'export const Card = Object.freeze({ mark: "module-ui-marker" });\n',
-    );
-    await write(entry, '"use client";\nexport const A = () => "a";\n');
-    const app = {
-      name: "demo",
-      cwdPath: appDir,
-      dist: { cwdPath: path.join(root, "dist/apps/demo") },
-      workspace: { workspaceRoot: root },
-      getConfig: async () => ({ barrelImports: [], optimizeImports: [] }),
-      getTsConfig: async () => ({ compilerOptions: { paths: {} } }),
-      getPublicEnv: () => ({}),
-    } as never;
+  test("a route carries the client runtime and stores, but no module UI it never imports", async () => {
+    const { appDir, app } = await writeBarrelFixture();
 
     await new RouteClientBuilder({
       app,
       seeds: [],
-      entries: [entry],
+      entries: [path.join(appDir, "ui/A.tsx")],
       artifact: {} as never,
       browser: "chunks",
     }).build();
 
-    const clientOut = path.join(appDir, ".akan/artifact/client");
-    const bundled = (
-      await Promise.all(
-        [...new Bun.Glob("**/*.js").scanSync(clientOut)].map((file) => Bun.file(path.join(clientOut, file)).text()),
-      )
-    ).join("\n");
-    expect(bundled).toContain("runtime-marker");
+    const bundled = await bundledText(path.join(appDir, ".akan/artifact/client"));
+    for (const marker of ["runtime-marker", "store-marker", "lib-runtime-marker", "lib-store-marker"])
+      expect(bundled).toContain(marker);
+    for (const marker of ["memo-ui-marker", "other-ui-marker", "lib-ui-marker"]) expect(bundled).not.toContain(marker);
+  });
+
+  test("a route rendering one module's UI carries no other module's or lib's UI", async () => {
+    const { appDir, app } = await writeBarrelFixture();
+
+    await new RouteClientBuilder({
+      app,
+      seeds: [],
+      entries: [path.join(appDir, "lib/memo/Memo.Zone.tsx")],
+      artifact: {} as never,
+      browser: "chunks",
+    }).build();
+
+    const bundled = await bundledText(path.join(appDir, ".akan/artifact/client"));
+    expect(bundled).toContain("memo-ui-marker");
     expect(bundled).toContain("store-marker");
-    expect(bundled).not.toContain("module-ui-marker");
+    expect(bundled).not.toContain("other-ui-marker");
+    expect(bundled).not.toContain("lib-ui-marker");
+  });
+
+  test("an import of the store through a client barrel discovers no module UI as a client entry", async () => {
+    const { appDir, app } = await writeBarrelFixture();
+    const seed = path.join(appDir, "page/_index.tsx");
+    await write(seed, 'import { st } from "@apps/demo/client";\nexport default function Page() { return st; }\n');
+
+    const discovery = new GraphClientEntryDiscovery(
+      { barrelImports: fixtureBarrels },
+      await createTsconfigPackageResolver(app),
+    );
+
+    expect(await discovery.discover([seed])).toEqual([]);
   });
 
   test("discovers client entries from installed akanjs package sources", async () => {

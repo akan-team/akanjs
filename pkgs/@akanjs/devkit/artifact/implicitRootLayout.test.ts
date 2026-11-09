@@ -125,6 +125,24 @@ describe("resolveSsrPageEntries", () => {
     }
   });
 
+  test("imports no store bootstrap for an app without a store", async () => {
+    const appRoot = await makeTempRoot();
+    await write(path.join(appRoot, "env", "env.client.ts"), "export const env = {};\n");
+    await write(path.join(appRoot, "page", "_layout.tsx"), 'export const theme = "dark";\n');
+
+    const entries = await resolveSsrPageEntries({
+      appCwdPath: appRoot,
+      appName: "demo",
+      pageKeys: ["./_layout.tsx", "./_index.tsx"],
+    });
+
+    const root = entries.find((entry) => entry.key === "./__root_layout.tsx");
+    const generatedSource = await Bun.file(root?.moduleAbsPath ?? "").text();
+    expect(generatedSource).toContain("<System.Provider");
+    expect(generatedSource).not.toContain("@apps/demo/lib/");
+    expect(generatedSource).not.toContain("@apps/demo/client");
+  });
+
   test("awaits an async grouped root layout in the CSR bundle instead of mounting it as JSX", async () => {
     const appRoot = await makeTempRoot();
     const pageRoot = path.join(appRoot, "page");

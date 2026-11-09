@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { BunPlugin } from "bun";
 import ts from "typescript";
+import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap, type PackageEntry } from "./barrelAnalyzer";
 import { loaderFor, type NamedItem, parseNamedList } from "./moduleSyntax";
@@ -356,8 +357,8 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
 
   if (rewrites.size === 0) return null;
 
-  const lines: string[] = [];
-  if (shouldPreserveBarrelSideEffects(stmt.specifier)) lines.push(`import "${stmt.specifier}";`);
+  //? An app or lib client barrel's import-time side effects are its client runtime and store, not its module UI.
+  const lines: string[] = [...(StoreBootstrap.ofClientBarrel(stmt.specifier) ?? [])];
 
   if (clause.defaultImport || remaining.length > 0) {
     const parts: string[] = [];
@@ -372,8 +373,6 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
 
   return lines.join("\n");
 };
-
-const shouldPreserveBarrelSideEffects = (specifier: string): boolean => /^@(apps|libs)\/[^/]+\/client$/.test(specifier);
 
 const serializeNamedItem = (item: NamedItem): string => {
   const prefix = item.isType ? "type " : "";

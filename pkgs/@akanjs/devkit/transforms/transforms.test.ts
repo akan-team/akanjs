@@ -284,17 +284,41 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(await rewriteBarrelImports('import { A } from "@other/pkg";', ["@scope/pkg"], analyzer)).toBeNull();
   });
 
-  test("preserves generated client barrel side effects when flattening app client imports", async () => {
-    const analyzer = fakeAnalyzer([["st", { subpath: "@apps/demo/lib/st", originalName: "st" }]]);
+  test("keeps a client barrel's runtime and store, never its module UI, when flattening an app or lib import", async () => {
+    const analyzer = fakeAnalyzer([
+      ["st", { subpath: "@apps/demo/lib/st", originalName: "st" }],
+      ["Memo", { subpath: "@apps/demo/lib/memo", originalName: "Memo" }],
+      ["RootStore", { subpath: "@libs/kit/lib/st", originalName: "RootStore" }],
+    ]);
 
-    const rewritten = await rewriteBarrelImports(
-      'import { st } from "@apps/demo/client";\nvoid st;\n',
-      ["@apps/demo/client"],
-      analyzer,
+    expect(
+      await rewriteBarrelImports(
+        'import { Memo, st } from "@apps/demo/client";\nvoid [Memo, st];\n',
+        ["@apps/demo/client"],
+        analyzer,
+      ),
+    ).toBe(
+      [
+        'import "@apps/demo/lib/useClient";',
+        'import "@apps/demo/lib/st";',
+        'import { Memo } from "@apps/demo/lib/memo";',
+        'import { st } from "@apps/demo/lib/st";',
+        "void [Memo, st];\n",
+      ].join("\n"),
     );
-
-    expect(rewritten).toBe(
-      ['import "@apps/demo/client";', 'import { st } from "@apps/demo/lib/st";', "void st;\n"].join("\n"),
+    expect(
+      await rewriteBarrelImports(
+        'import { RootStore as kit } from "@libs/kit/client";\nvoid kit;\n',
+        ["@libs/kit/client"],
+        analyzer,
+      ),
+    ).toBe(
+      [
+        'import "@libs/kit/lib/useClient";',
+        'import "@libs/kit/lib/st";',
+        'import { RootStore as kit } from "@libs/kit/lib/st";',
+        "void kit;\n",
+      ].join("\n"),
     );
   });
 
