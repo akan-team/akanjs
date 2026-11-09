@@ -129,14 +129,22 @@ export class GlobalConfig {
       testTargets: { ...akanConfig.testTargets, ...testTargets },
     }));
   }
+  static readonly #refreshMarginMs = 60 * 60_000;
   static needRefreshToken(accessToken: AccessToken): boolean {
-    return !!accessToken?.expiresAt?.isBefore(dayjs().add(1, "hour"));
+    const { expiresAt, issuedAt } = accessToken;
+    if (!expiresAt) return false;
+    const lifetimeMs = issuedAt ? expiresAt.diff(issuedAt) : Number.POSITIVE_INFINITY;
+    return expiresAt.isBefore(dayjs().add(Math.min(GlobalConfig.#refreshMarginMs, lifetimeMs / 2), "ms"));
+  }
+  static isExpired(accessToken: AccessToken): boolean {
+    return !!accessToken.expiresAt && !accessToken.expiresAt.isAfter(dayjs());
   }
   static toAccessToken(accessToken: AccessTokenDto): AccessToken {
     return {
       jwt: accessToken.jwt,
       refreshToken: accessToken.refreshToken ?? null,
       expiresAt: accessToken.expiresAt ? dayjs(accessToken.expiresAt) : null,
+      issuedAt: accessToken.issuedAt ? dayjs(accessToken.issuedAt) : null,
     };
   }
   static toAccessTokenDto(accessToken: AccessToken): AccessTokenDto {
@@ -144,6 +152,7 @@ export class GlobalConfig {
       jwt: accessToken.jwt,
       refreshToken: accessToken.refreshToken ?? null,
       expiresAt: accessToken.expiresAt?.toString() ?? null,
+      issuedAt: accessToken.issuedAt?.toString() ?? null,
     };
   }
   static toHostConfigDto(hostConfig: HostConfig): HostConfigDto {

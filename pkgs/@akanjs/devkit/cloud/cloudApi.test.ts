@@ -11,6 +11,7 @@ class FakeCloud {
   readonly refreshes: string[] = [];
   reused = false;
   delayMs = 0;
+  lifetimeMs = 7 * 86_400_000;
   hang: boolean = false;
   readonly remoteAuthPolls: string[] = [];
   remoteAuthAnswers: (Response | { jwt: string; refreshToken?: string } | null)[] = [];
@@ -53,7 +54,7 @@ class FakeCloud {
     this.#jwts.add(next.jwt);
     if (this.hang) await new Promise(() => undefined);
     await Bun.sleep(this.delayMs);
-    return Response.json({ ...next, expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString() });
+    return Response.json({ ...next, expiresAt: new Date(Date.now() + this.lifetimeMs).toISOString() });
   }
 }
 
@@ -100,13 +101,21 @@ await GlobalConfig.setTestTargets({ linux: { cpus: 2 } });
   return { code: await proc.exited, stderr: await new Response(proc.stderr).text() };
 };
 
-const storeSession = async (home: string, { expiresInMs = 30 * 60_000, refreshToken = "refresh-0" } = {}) =>
+const storeSession = async (
+  home: string,
+  { expiresInMs = 30 * 60_000, refreshToken = "refresh-0", issuedAgoMs = null as number | null } = {},
+) =>
   await writeJson(path.join(home, ".akan", "config.json"), {
     cloudHost: {
       [cloud.host]: {
         host: cloud.host,
         auth: {
-          accessToken: { jwt: "jwt-0", refreshToken, expiresAt: new Date(Date.now() + expiresInMs).toISOString() },
+          accessToken: {
+            jwt: "jwt-0",
+            refreshToken,
+            expiresAt: new Date(Date.now() + expiresInMs).toISOString(),
+            issuedAt: issuedAgoMs === null ? null : new Date(Date.now() - issuedAgoMs).toISOString(),
+          },
           self: { id: "u1", nickname: "akan" },
         },
       },
@@ -114,7 +123,11 @@ const storeSession = async (home: string, { expiresInMs = 30 * 60_000, refreshTo
   });
 const storedToken = async (home: string) => {
   const config = JSON.parse(await readFile(path.join(home, ".akan", "config.json"), "utf8"));
-  return config.cloudHost[cloud.host].auth.accessToken as { jwt: string; refreshToken: string | null };
+  return config.cloudHost[cloud.host].auth.accessToken as {
+    jwt: string;
+    refreshToken: string | null;
+    issuedAt?: string | null;
+  };
 };
 
 describe("CloudApi.fromHost token refresh", () => {
@@ -165,11 +178,36 @@ describe("CloudApi.fromHost token refresh", () => {
     cloud.hang = false;
 
     const started = Date.now();
-    expect(await output(await cliRun(home))).toEqual([null]);
+    expect(await output(await cliRun(home))).toEqual(["akan"]);
     expect(Date.now() - started).toBeLessThan(10_000);
     expect(cloud.refreshes).toEqual(["refresh-0"]);
     expect(cloud.reused).toBe(false);
     expect((await storedToken(home)).refreshToken).toBeNull();
+  }, 30_000);
+
+  test("a cloud that issues one-hour tokens is refreshed once, and every command signs in with its token", async () => {
+    cloud = new FakeCloud();
+    cloud.lifetimeMs = 60 * 60_000;
+    const home = await makeHome();
+    await storeSession(home);
+
+    expect(await output(await cliRun(home))).toEqual(["akan"]);
+    expect(await output(await cliRun(home))).toEqual(["akan"]);
+    expect(cloud.refreshes).toEqual(["refresh-0"]);
+    expect(await storedToken(home)).toMatchObject({ jwt: "jwt-1", refreshToken: "refresh-1" });
+    expect((await storedToken(home)).issuedAt).toBeString();
+  }, 30_000);
+
+  test("a one-hour token in the second half of its life is refreshed, and one in the first half is not", async () => {
+    cloud = new FakeCloud();
+    const home = await makeHome();
+    await storeSession(home, { expiresInMs: 35 * 60_000, issuedAgoMs: 25 * 60_000 });
+    expect(await output(await cliRun(home))).toEqual(["akan"]);
+    expect(cloud.refreshes).toEqual([]);
+
+    await storeSession(home, { expiresInMs: 25 * 60_000, issuedAgoMs: 35 * 60_000 });
+    expect(await output(await cliRun(home))).toEqual(["akan"]);
+    expect(cloud.refreshes).toEqual(["refresh-0"]);
   }, 30_000);
 
   test("a refresh the cloud refuses is not presented again", async () => {
@@ -177,8 +215,8 @@ describe("CloudApi.fromHost token refresh", () => {
     const home = await makeHome();
     await storeSession(home, { refreshToken: "refresh-unknown" });
 
-    expect(await output(await cliRun(home))).toEqual([null]);
-    expect(await output(await cliRun(home))).toEqual([null]);
+    expect(await output(await cliRun(home))).toEqual(["akan"]);
+    expect(await output(await cliRun(home))).toEqual(["akan"]);
     expect(cloud.refreshes).toEqual(["refresh-unknown"]);
     expect((await storedToken(home)).refreshToken).toBeNull();
   }, 30_000);
