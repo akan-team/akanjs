@@ -77,7 +77,13 @@ import {
   AKAN_RSC_PATCH_START_SEGMENT_HEADER,
   AKAN_RSC_RESPONSE_STATE_HEADER,
 } from "./routeState";
-import { type RscRedirectMethod, type RscRedirectStatus, type RscRenderResult, RscWorker } from "./rscWorkerHost";
+import {
+  type RscRedirectMethod,
+  type RscRedirectStatus,
+  type RscRenderResult,
+  RscWorker,
+  type RscWorkerStatus,
+} from "./rscWorkerHost";
 import { SessionRefresh } from "./sessionRefresh";
 import { createDefaultSitemapXml, getSitemapBasePath } from "./sitemap";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
@@ -879,6 +885,10 @@ export class WebRouter {
 
   onLogRecords(listener: (records: LogRecord[], dropped: number) => void) {
     this.#rsc.onLogRecords = listener;
+  }
+
+  get rscWorkerStatus(): RscWorkerStatus {
+    return this.#rsc.status;
   }
 
   getMetrics(): AkanMetricsReport {

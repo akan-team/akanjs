@@ -3,6 +3,7 @@ import { SignalContext } from "akanjs/signal";
 import { AppInfo } from "../ops/appInfo";
 import type { OpsRoute } from "../ops/opsRoute";
 import { StatusAccess } from "../ops/statusAccess";
+import type { RscWorkerStatus } from "../rscWorkerHost";
 import type { HttpRoutes } from "../types";
 
 export interface SoloAppStatus {
@@ -10,6 +11,8 @@ export interface SoloAppStatus {
   running: boolean;
   status: string;
   port: number | null;
+  /** `null` for a process that renders no pages. */
+  rscWorker: RscWorkerStatus | null;
   metrics: AkanMetricsReport;
 }
 
@@ -31,6 +34,11 @@ export const createSoloAppRoutes = (
       upstream: { type: "tcp" as const, host: "127.0.0.1", port },
     };
   };
+  const readiness = () => {
+    const { role, running, status, rscWorker } = read();
+    const ready = running && (rscWorker === null || rscWorker === "ready");
+    return { ready, pid: process.pid, solo: true, children: [{ idx: 0, role, status, ready, rscWorker }] };
+  };
   return {
     "/_akan/app/health": {
       GET: (req: Request) =>
@@ -39,6 +47,9 @@ export const createSoloAppRoutes = (
           () => ({ status: read().status, pid: process.pid, solo: true, children: [child()] }),
           SignalContext.clientIpOf(req),
         ),
+    },
+    "/_akan/app/ready": {
+      GET: (req: Request) => access.ready(req, readiness, SignalContext.clientIpOf(req)),
     },
     "/_akan/app/metrics": {
       GET: (req: Request) =>

@@ -97,7 +97,7 @@ Meaning
 
 - crashed — `akan start` only: boot failed three times in a row, so it waits for your next save.
 
-**A 200 does not mean ready.** With a gateway in front, health answers 200 even while a replica is `starting` or restarting. Read `children[].ready`, not the status code.
+**A 200 does not mean ready.** Health answers 200 while the process is up, even while a replica is `starting` or restarting. For readiness, call `/_akan/app/ready`, which answers 503 until the app can serve, and takes the same token for the detail.
 
 Check Metrics
 
@@ -219,7 +219,7 @@ Read next
 
 - Scale With AKAN_REPLICA — Replica slots, and exactly when a gateway appears.
 
-- Kubernetes Probes — How the pod's probes call `/_akan/app/health`.
+- Kubernetes Probes — Which route each of the pod's probes calls.
 
 ## Code Examples
 

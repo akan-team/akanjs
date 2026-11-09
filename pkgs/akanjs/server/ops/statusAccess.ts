@@ -74,6 +74,15 @@ export class StatusAccess {
     return Response.json(this.allows(req, client) ? body : { status: body.status }, { headers: StatusAccess.#noStore });
   }
 
+  ready(req: Request, detail: () => { ready: boolean }, client?: string | null): Response {
+    const body = detail();
+    const status = body.ready ? "ready" : "unavailable";
+    return Response.json(this.allows(req, client) ? { status, ...body } : { status }, {
+      status: body.ready ? 200 : 503,
+      headers: StatusAccess.#noStore,
+    });
+  }
+
   metrics(req: Request, detail: () => unknown, client?: string | null): Response {
     if (!this.allows(req, client))
       return new Response("Unauthorized", { status: 401, headers: { "www-authenticate": "Bearer" } });

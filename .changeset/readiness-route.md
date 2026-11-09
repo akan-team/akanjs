@@ -1,0 +1,7 @@
+---
+"akanjs": patch
+---
+
+A server now answers `/_akan/app/ready`, a readiness route that returns 503 while it cannot serve and 200 once it can. A gateway is ready while at least one replica that takes traffic is ready, and a gateway that runs only batch replicas once one of them is; it turns unready again when the last one exits or stops answering. A solo server, the desktop server included, is ready once it runs and its RSC worker can render, so it answers 503 while the pages bundle loads at boot and while the worker restarts; a server with no pages waits for nothing else. The route follows the access rules of `/_akan/app/health`: a caller without `AKAN_STATUS_TOKEN` or `AKAN_LOG_STREAM_TOKEN` gets `{ "status": "ready" }` or `{ "status": "unavailable" }` alone, and the token holder also gets each replica's state. `/_akan/app/health` is unchanged and stays the liveness check, answering 200 while the process is up.
+
+The `infra/app` chart's readiness probe calls a new `readinessPath` value, `/_akan/app/health` unless set, because an image built with an earlier akanjs answers `/_akan/app/ready` with 404 and its pod would never become Ready. Set `readinessPath: /_akan/app/ready` once every image the chart deploys carries this release. The repository's own values set it, since its pipeline builds the image from the same commit as the chart. The startup and liveness probes stay on `/_akan/app/health`.

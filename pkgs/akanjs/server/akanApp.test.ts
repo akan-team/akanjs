@@ -1381,6 +1381,104 @@ describe("AkanApp", () => {
     }
   }, 20_000);
 
+  test("answers ready 503 until a replica is ready and again once the last one dies, while health stays 200", async () => {
+    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-ready-");
+    const goPath = path.join(root, "go");
+    const counterPath = path.join(root, "counter.txt");
+    await Bun.write(
+      serverPath,
+      `
+        const counterPath = ${JSON.stringify(counterPath)};
+        export const server = {
+          async start() {
+            const file = Bun.file(counterPath);
+            const boot = (await file.exists() ? Number(await file.text()) : 0) + 1;
+            await Bun.write(counterPath, String(boot));
+            Bun.serve({
+              unix: process.env.AKAN_CHILD_SOCKET,
+              fetch(req) {
+                if (new URL(req.url).pathname === "/die") setTimeout(() => process.exit(1), 10);
+                return new Response("ok");
+              },
+            });
+            process.on("message", (message) => {
+              if (!message || typeof message !== "object") return;
+              ${answerHealthPing}
+              if (message.type === "shutdown") process.exit(0);
+            });
+            if (boot > 1) return;
+            while (!(await Bun.file(${JSON.stringify(goPath)}).exists())) await Bun.sleep(20);
+            ${sendReady()}
+          },
+        };
+      `,
+    );
+    const statusOf = (pathname: string, headers: Record<string, string> = {}) =>
+      fetch(`http://127.0.0.1:${port}/_akan/app/${pathname}`, { headers }).catch(() => null);
+    const readyAnswering = (code: number, headers: Record<string, string> = {}) =>
+      waitFor(async () => {
+        const res = await statusOf("ready", headers);
+        return res?.status === code ? res : null;
+      });
+    const saved = process.env.AKAN_PUBLIC_ENV;
+    process.env.AKAN_PUBLIC_ENV = "debug";
+
+    try {
+      await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+        const booting = await readyAnswering(503, statusAuth);
+        expect(await booting.json()).toMatchObject({
+          status: "unavailable",
+          ready: false,
+          children: [{ ready: false }],
+        });
+        expect((await statusOf("health"))?.status).toBe(200);
+
+        await Bun.write(goPath, "");
+        const serving = await readyAnswering(200, statusAuth);
+        expect(await serving.json()).toMatchObject({ status: "ready", ready: true, children: [{ ready: true }] });
+        expect(await (await readyAnswering(200)).json()).toEqual({ status: "ready" });
+
+        expect(await (await fetch(`http://127.0.0.1:${port}/die`)).text()).toBe("ok");
+        const dead = await readyAnswering(503);
+        expect(dead.headers.get("cache-control")).toBe("no-store");
+        expect(await dead.json()).toEqual({ status: "unavailable" });
+        const health = await statusOf("health");
+        expect(health?.status).toBe(200);
+        expect(await health?.json()).toEqual({ status: "running" });
+      });
+    } finally {
+      if (saved === undefined) delete process.env.AKAN_PUBLIC_ENV;
+      else process.env.AKAN_PUBLIC_ENV = saved;
+    }
+  }, 20_000);
+
+  test("is ready on a batch-only gateway once a batch replica is, since it serves no traffic to wait for", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-ready-batch-");
+    await Bun.write(
+      serverPath,
+      `
+        export const server = {
+          async start() {
+            process.on("message", (message) => {
+              if (!message || typeof message !== "object") return;
+              ${answerHealthPing}
+              if (message.type === "shutdown") process.exit(0);
+            });
+            process.send?.({ type: "ready", pid: process.pid, replicaIdx: 0, role: "batch" });
+          },
+        };
+      `,
+    );
+
+    await withApp(serverPath, { replica: "0,1,0", runtimeDir, port }, async () => {
+      const ready = await waitFor(async () => {
+        const res = await fetch(`http://127.0.0.1:${port}/_akan/app/ready`, { headers: statusAuth }).catch(() => null);
+        return res?.status === 200 ? res : null;
+      });
+      expect(await ready.json()).toMatchObject({ ready: true, children: [{ role: "batch", ready: true }] });
+    });
+  }, 15_000);
+
   test("compresses a replica's JSON for the client, and relays one past 4 MiB as it came", async () => {
     const { serverPath, runtimeDir, port } = await makeRoot("akan-app-json-");
 

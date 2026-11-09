@@ -82,9 +82,10 @@ spec:
             periodSeconds: 15
             timeoutSeconds: 3
             failureThreshold: 3
+          # An image whose akanjs predates `/_akan/app/ready` answers it 404 and never turns Ready, so it is opt-in.
           readinessProbe:
             httpGet:
-              path: /_akan/app/health
+              path: {{ default "/_akan/app/health" .Values.readinessPath }}
               port: 8282
             periodSeconds: 10
             timeoutSeconds: 3
