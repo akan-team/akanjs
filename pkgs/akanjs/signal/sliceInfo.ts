@@ -9,6 +9,7 @@ import type {
   PlainTypeToFieldType,
   PurifiedModel,
   QueryOf,
+  ServerArgModel,
   UploadableClientArg,
 } from "akanjs/constant";
 import type { FilterCls, FilterInstance } from "akanjs/document";
@@ -91,7 +92,7 @@ export class SliceInfo<
     ArgName extends string,
     Arg extends ParamFieldType,
     _ClientArg = FieldToValue<Arg>,
-    _ServerArg = DocumentModel<_ClientArg>,
+    _ServerArg = ServerArgModel<_ClientArg>,
   >(name: ArgName, arg: Arg, option?: Omit<EndpointArgProps, "nullable">) {
     if (this.execFn) throw new Error("Query function is already set");
     else if (this.args.at(-1)?.option?.nullable) throw new Error("Last argument is nullable");
@@ -119,7 +120,7 @@ export class SliceInfo<
     Optional extends boolean = false,
     _ArgType = unknown extends ExplicitType ? FieldToValue<Arg> : ExplicitType,
     _ClientArg = UploadableClientArg<PurifiedModel<_ArgType>>,
-    _ServerArg = DocumentModel<_ArgType>,
+    _ServerArg = ServerArgModel<_ArgType>,
   >(name: ArgName, arg: Arg, option?: EndpointArgProps<Optional>) {
     if (this.execFn) throw new Error("Query function is already set");
     else if (this.args.at(-1)?.option?.nullable) throw new Error("Last argument is nullable");
@@ -145,7 +146,7 @@ export class SliceInfo<
     Arg extends ConstantFieldTypeInput = PlainTypeToFieldType<ExplicitType>,
     _ArgType = unknown extends ExplicitType ? FieldToValue<Arg> : ExplicitType,
     _ClientArg = PurifiedModel<_ArgType>,
-    _ServerArg = DocumentModel<_ArgType>,
+    _ServerArg = ServerArgModel<_ArgType>,
   >(name: ArgName, arg: Arg, option?: Omit<EndpointArgProps, "nullable">) {
     if (this.execFn) throw new Error("Query function is already set");
     this.argNames.push(name);

@@ -2012,6 +2012,20 @@ describe("SignalContext byte returns", () => {
     expect(Binary.parseValue(body as string)).toEqual(new Uint8Array([1, 2, 3]));
   });
 
+  test("hands a Binary body to exec as bytes over their own ArrayBuffer, and takes any Uint8Array back", async () => {
+    const lengthOf = (frame: Uint8Array<ArrayBuffer>) => frame.byteLength;
+    const reply: Uint8Array = new Uint8Array([9]);
+    const endpointInfo = buildEndpoint
+      .mutation(Binary, { guards: [Public] })
+      .body("frame", Binary)
+      .exec((frame) => (lengthOf(frame) === 3 && frame instanceof Uint8Array ? reply : frame));
+    const context = makeSignalContext({ endpointInfo, request: makeHttpRequest({ body: { frame: "AQID" } }) });
+
+    await context.init();
+
+    expect(await ((await context.exec()) as Response).json()).toBe("CQ==");
+  });
+
   test("refuses bytes returned through Any instead of sending an empty object", async () => {
     for (const bytes of [new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3]).buffer]) {
       const context = makeSignalContext({
