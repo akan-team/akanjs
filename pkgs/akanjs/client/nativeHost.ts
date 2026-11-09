@@ -1,15 +1,44 @@
-import { isNative, platform } from "@akanjs/native/core";
+import type { Platform } from "@akanjs/native/core";
+import { Logger } from "akanjs/common";
+
+type ShellPlatform = Exclude<Platform, "web">;
+
+const shellPlatforms = { macos: true, windows: true, linux: true, ios: true, android: true } satisfies Record<
+  ShellPlatform,
+  true
+>;
+
+const isShellPlatform = (value: unknown): value is ShellPlatform =>
+  typeof value === "string" && Object.hasOwn(shellPlatforms, value);
+
+//* Core reads the same field, which a shell's init.js writes before the bundle runs; a web page then never loads core.
+const shellPlatform = (): ShellPlatform | null => {
+  const platform = (globalThis as { __AKAN_NATIVE__?: { platform?: unknown } }).__AKAN_NATIVE__?.platform;
+  return isShellPlatform(platform) ? platform : null;
+};
 
 /** Inside an iOS or Android shell of the native runtime; a mobile target opened in a browser is not. */
-export const isNativeApp = () => isNative && (platform === "ios" || platform === "android");
+export const isNativeApp = () => nativePlatform() !== null;
 
 /** Inside any shell of the native runtime, desktop included. */
-export const isNativeShell = () => isNative;
+export const isNativeShell = () => shellPlatform() !== null;
 
-export const nativePlatform = () => (isNativeApp() ? (platform as "ios" | "android") : null);
+export const nativePlatform = () => {
+  const platform = shellPlatform();
+  return platform === "ios" || platform === "android" ? platform : null;
+};
 
-export const desktopPlatform = () =>
-  isNative && (platform === "macos" || platform === "windows" || platform === "linux") ? platform : null;
+export const desktopPlatform = () => {
+  const platform = shellPlatform();
+  return platform === "macos" || platform === "windows" || platform === "linux" ? platform : null;
+};
+
+//* Loading core connects the bridge, hands macOS printing to the shell and forwards a dev console, so a shell starts it.
+//? Through a file of its own: `import()` of core itself keeps every export, even where the page imports it statically.
+if (shellPlatform())
+  import("./nativeBoot").catch((error: unknown) => {
+    Logger.error(`@akanjs/native/core did not load, so this shell's native bridge is not connected: ${String(error)}`);
+  });
 
 /** http(s) in the in-app browser, anything else (mailto:, tel:) in the app the system picks. */
 export const openExternalUrl = async (url: string) => {

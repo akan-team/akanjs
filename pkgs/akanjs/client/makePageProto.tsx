@@ -11,6 +11,7 @@ type TransMessage<Locale extends Record<string, unknown>> = {
 
 interface ErrRestoreOption {
   statusCode?: number;
+  code?: string;
   details?: unknown;
   path?: string;
   timestamp?: string;
@@ -87,6 +88,7 @@ export const makePageProto = <
   class Err extends Error {
     readonly error: string;
     readonly statusCode: number;
+    readonly code?: string;
     readonly details?: unknown;
     readonly data?: Record<string, unknown>;
     readonly path?: string;
@@ -97,6 +99,7 @@ export const makePageProto = <
       this.name = this.constructor.name;
       this.error = key;
       this.statusCode = option.statusCode ?? 400;
+      this.code = option.code;
       this.details = option.details;
       this.data = data;
       this.path = option.path;
@@ -107,6 +110,7 @@ export const makePageProto = <
       return {
         error: this.message,
         statusCode: this.statusCode,
+        ...(this.code !== undefined ? { code: this.code } : {}),
         ...(this.details !== undefined ? { details: this.details } : {}),
         ...(this.data !== undefined ? { data: this.data } : {}),
         ...(this.path !== undefined ? { path: this.path } : {}),

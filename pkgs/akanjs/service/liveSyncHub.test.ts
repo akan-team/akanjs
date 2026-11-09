@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { dayjs } from "akanjs/base";
-import { createDocumentQueryHelper } from "akanjs/document";
+import { createDocumentQueryHelper, type DocumentQuery, DocumentQueryEvaluator } from "akanjs/document";
 import { LiveSyncHub } from "./liveSyncHub";
 
 const q = createDocumentQueryHelper();
@@ -153,7 +153,7 @@ describe("LiveSyncHub membership", () => {
     expect(hub.route("task", doc({ org: "o2" }))).toEqual([]);
   });
 
-  test("a base column or an array field is never taken into the index", () => {
+  test("a base column routes by its stored encoding, and an array field's bare value by membership", () => {
     const byId = hubWith([{ roomId: "byId", query: { id: "a".repeat(24) } }]);
     expect(byId.route("task", doc())).toEqual([{ roomId: "byId", op: "enter", invalidate: false, payload: "light" }]);
     const byCreatedAt = hubWith([{ roomId: "byCreatedAt", query: { createdAt: dayjs(1000) } }]);
@@ -177,5 +177,124 @@ describe("LiveSyncHub membership", () => {
     expect(indexed.route("task", doc({ status: "open" }), doc())).toEqual([
       { roomId: "inOrg-o1", op: "leave", invalidate: false, payload: "light" },
     ]);
+  });
+});
+
+const seeded = (seed: number) => () => {
+  seed = (seed + 0x6d2b79f5) | 0;
+  let mixed = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+  return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+};
+
+describe("LiveSyncHub index", () => {
+  const roomsOf = (count: number) =>
+    Array.from({ length: count }, (_, idx) => ({
+      roomId: `r${idx}`,
+      query: { org: `o${idx % 100}`, status: q.oneOf(["draft", "open"]) },
+    }));
+
+  test("a write evaluates the rooms its values are filed under, not every room of the model", () => {
+    const hub = hubWith(roomsOf(1_000));
+    const evaluate = spyOn(DocumentQueryEvaluator.prototype, "evaluate");
+    try {
+      expect(hub.route("task", doc({ org: "o7", status: "open" }), doc({ org: "o7" }))).toHaveLength(10);
+      expect(evaluate.mock.calls.length).toBeLessThan(100);
+    } finally {
+      evaluate.mockRestore();
+    }
+  });
+
+  test("a value matches across the stored encoding: a date, a boolean, a nested path", () => {
+    const hub = hubWith([
+      { roomId: "since", query: { createdAt: dayjs(1000) } },
+      { roomId: "flagged", query: q.all({ flagged: true }, { org: "o1" }) },
+      { roomId: "kind", query: { "meta.kind": q.eq("a") } },
+      { roomId: "numeric", query: { priority: 2 } },
+    ]);
+    const routed = hub.route("task", doc({ flagged: true, meta: { kind: "a" }, priority: "2" }));
+    expect(routed.map(({ roomId }) => roomId)).toEqual(["since", "flagged", "kind"]);
+  });
+
+  test("a room is found again through the bucket it was filed under after others leave", () => {
+    const hub = hubWith(roomsOf(300));
+    for (let idx = 0; idx < 300; idx += 1) if (idx % 3) hub.leave(`r${idx}`);
+    expect(hub.roomCountOf("task")).toBe(100);
+    expect(hub.route("task", doc({ org: "o3" })).map(({ roomId }) => roomId)).toEqual(["r3"]);
+    hub.join({ refName: "task", roomId: "late", query: { org: "o3" }, fallback: null, fields });
+    expect(hub.route("task", doc({ org: "o3" })).map(({ roomId }) => roomId)).toEqual(["r3", "late"]);
+  });
+
+  test("routes exactly as evaluating every room would, over random rooms and writes", () => {
+    const random = seeded(348);
+    const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)];
+    const values: Record<string, readonly unknown[]> = {
+      org: ["o1", "o2", "o3"],
+      status: ["draft", "open", "closed", null],
+      priority: [1, 2, "2", 3, 0],
+      flagged: [true, false, 1, 0],
+      "meta.kind": ["a", "b", 1],
+    };
+    const leaf = (): DocumentQuery => {
+      const path = pick(Object.keys(values));
+      const value = pick(values[path]);
+      return pick<() => DocumentQuery>([
+        () => ({ [path]: value }),
+        () => ({ [path]: q.eq(value) }),
+        () => ({ [path]: { eq: value, ne: pick(values[path]) } }),
+        () => ({ [path]: q.oneOf(values[path].filter(() => random() < 0.5)) }),
+        () => ({ [path]: { oneOf: [value, pick(values[path])] } }),
+        () => ({ [path]: q.gte(value) }),
+        () => ({ [path]: q.ne(value) }),
+        () => ({ tags: pick([q.has("t1"), "t2", q.oneOf(["t1", "t3"])]) }),
+        () => ({ id: pick(["a".repeat(24), "b".repeat(24)]) }),
+        () => ({ createdAt: dayjs(pick([1000, 1500])) }),
+        () => ({}),
+      ])();
+    };
+    const queryOf = (depth: number): DocumentQuery => {
+      if (depth === 0 || random() < 0.4) return leaf();
+      return pick<() => DocumentQuery>([
+        () => q.all(queryOf(depth - 1), queryOf(depth - 1)),
+        () => q.any(queryOf(depth - 1), queryOf(depth - 1)),
+        () => q.not(queryOf(depth - 1)),
+        () => ({ ...leaf(), ...leaf() }),
+      ])();
+    };
+    const randomDoc = () => {
+      const patch: Record<string, unknown> = {
+        id: pick(["a".repeat(24), "b".repeat(24)]),
+        createdAt: dayjs(pick([1000, 1500])),
+        tags: ["t1", "t2", "t3"].filter(() => random() < 0.5),
+        meta: random() < 0.8 ? { kind: pick(values["meta.kind"]) } : undefined,
+        removedAt: random() < 0.15 ? dayjs(3000) : undefined,
+      };
+      for (const path of ["org", "status", "priority", "flagged"]) if (random() < 0.9) patch[path] = pick(values[path]);
+      return doc(patch);
+    };
+
+    const rooms = Array.from({ length: 80 }, (_, idx) => ({ roomId: `r${idx}`, query: queryOf(3) }));
+    const hub = hubWith(rooms);
+    for (const { roomId } of rooms.filter(() => random() < 0.25)) hub.leave(roomId);
+    const held = rooms.filter(({ roomId }) => hub.roomIds().includes(roomId));
+    const evaluator = new DocumentQueryEvaluator(fields);
+    const expected = (next: Record<string, unknown>, previous?: Record<string, unknown>) =>
+      held.flatMap(({ roomId, query }) => {
+        const routed = q.all(q.empty("removedAt"), query);
+        const inNext = evaluator.evaluate(routed, DocumentQueryEvaluator.rowViewOf(next));
+        const inPrevious = previous ? evaluator.evaluate(routed, DocumentQueryEvaluator.rowViewOf(previous)) : false;
+        if (!inNext && !inPrevious) return [];
+        const op = inNext ? (inPrevious ? "update" : "enter") : "leave";
+        return [{ roomId, op, invalidate: false, payload: "light" }];
+      });
+    let reached = 0;
+    for (let write = 0; write < 1_500; write += 1) {
+      const next = randomDoc();
+      const previous = random() < 0.3 ? undefined : randomDoc();
+      const routed = hub.route("task", next, previous);
+      expect(routed).toEqual(expected(next, previous) as never);
+      reached += routed.length;
+    }
+    expect(reached).toBeGreaterThan(1_000);
   });
 });
