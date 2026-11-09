@@ -36,6 +36,7 @@ import {
 import type { GetSliceMetaObjFromDatabaseSignals } from "../types";
 import { FetchHandle } from "./fetchHandle";
 import { HttpClient } from "./httpClient";
+import { InflightQueries } from "./inflightQueries";
 import { type ErrorConstructor, type RestoredError, restoreRemoteError } from "./remoteError";
 import { SliceInitHandle } from "./sliceInitHandle";
 import { expandQueryArgs, normalizeQueryArgs } from "./sliceQueryArgs";
@@ -119,6 +120,7 @@ export class FetchClient {
   readonly sortValueMap = new Map<string, { [key: string]: { [path: string]: 1 | -1 } }>();
   readonly filterQueryMap = new Map<string, { [queryKey: string]: SerializedArg[] }>();
   readonly #originWs = new Map<string, WsClient>();
+  readonly #inflight = new InflightQueries();
   #wsOptions: WsClientOptions = {};
   readonly #handlerStore: Record<string, FetchHandler> = {};
   readonly #handlerFactory = new Map<string, FetchHandlerFactory>();
@@ -488,7 +490,11 @@ export class FetchClient {
           // the request, and a parsed model can hold references into it.
           const claim = baseUrl
             ? { value: requestQuery(signal), owned: true }
-            : this.#claimQuery(FetchClient.#makeRequestQueryCacheKey(this.origin, url, headers), requestQuery, signal);
+            : this.#claimQuery(FetchClient.#makeRequestQueryCacheKey(this.origin, url, headers), requestQuery, {
+                signal,
+                timeout,
+                retry: option?.retry,
+              });
           recordRequestQuery({ key, args: Object.fromEntries(argMap), returns: endpoint.returns, value: claim.value });
           const response = await AbortSignals.race(claim.value, signal);
           const payload = claim.owned ? response : FetchClient.#deepCopy(response);
@@ -523,10 +529,20 @@ export class FetchClient {
         throw new Error(`Unsupported endpoint type: ${endpoint.type}`);
     }
   }
-  //? A request memoizes its queries for the whole render, so no caller's abort may reach the shared one.
-  #claimQuery(cacheKey: string, requestQuery: (signal?: AbortSignal) => Promise<unknown>, signal?: AbortSignal) {
+  //* A request memoizes its queries for the whole render, so no caller's abort reaches the shared one; a tab shares
+  //* only what is in flight; a server outside a request shares nothing, since a test firing one query twice means it.
+  #claimQuery(
+    cacheKey: string,
+    requestQuery: (signal?: AbortSignal) => Promise<unknown>,
+    { signal, timeout, retry }: { signal?: AbortSignal; timeout?: number | false; retry?: RetryPolicy | false },
+  ) {
     if (getRequestStore()) return claimRequestQuery(cacheKey, () => requestQuery());
-    return { value: requestQuery(signal), owned: true };
+    if (typeof window === "undefined") return { value: requestQuery(signal), owned: true };
+    return this.#inflight.claim(
+      `${cacheKey}\n${JSON.stringify([timeout ?? null, retry ?? null])}`,
+      requestQuery,
+      signal,
+    );
   }
   #registerEndpoint(key: string, endpoint: SerializedEndpoint, prefix?: string) {
     switch (endpoint.type) {

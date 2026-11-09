@@ -1633,6 +1633,67 @@ describe("FetchClient HTTP generation", () => {
     ]);
   });
 
+  test("shares one request between identical queries a tab has in flight, and none once it settled", async () => {
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const ask = () => client.handler.getThing("1234567890abcdef12345678", [], null) as Promise<string>;
+
+    const serverPair = [ask(), ask()];
+    expect(requests).toHaveLength(2);
+    for (const request of requests.splice(0)) request.answer("server");
+    expect(await Promise.all(serverPair)).toEqual(["server", "server"]);
+
+    Object.assign(globalThis, { window: {} });
+    try {
+      const tabPair = [ask(), ask()];
+      const otherArgs = client.handler.getThing("1234567890abcdef12345678", ["x"], null) as Promise<string>;
+      expect(requests).toHaveLength(2);
+      requests[0]?.answer("shared");
+      requests[1]?.answer("other");
+      expect(await Promise.all([...tabPair, otherArgs])).toEqual(["shared", "shared", "other"]);
+
+      const later = ask();
+      expect(requests).toHaveLength(3);
+      requests[2]?.answer("fresh");
+      expect(await later).toBe("fresh");
+    } finally {
+      Reflect.deleteProperty(globalThis, "window");
+    }
+  });
+
+  test("keeps a shared query running while a caller still waits on it, and stops it when the last one aborts", async () => {
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const ask = (signal?: AbortSignal) =>
+      client.handler.getThing("1234567890abcdef12345678", [], null, { signal }) as Promise<string>;
+    Object.assign(globalThis, { window: {} });
+    try {
+      const first = new AbortController();
+      const firstAnswer = ask(first.signal).catch((error: unknown) => error);
+      const secondAnswer = ask();
+      first.abort();
+      expect(AbortSignals.isAbort(await firstAnswer)).toBe(true);
+      expect(requests[0]?.signal?.aborted).toBe(false);
+      requests[0]?.answer("kept");
+      expect(await secondAnswer).toBe("kept");
+
+      const [a, b] = [new AbortController(), new AbortController()];
+      const answers = [ask(a.signal), ask(b.signal)].map((answer) => answer.catch((error: unknown) => error));
+      a.abort();
+      expect(requests[1]?.signal?.aborted).toBe(false);
+      b.abort();
+      expect(requests[1]?.signal?.aborted).toBe(true);
+      expect((await Promise.all(answers)).every(AbortSignals.isAbort)).toBe(true);
+
+      const again = ask();
+      expect(requests).toHaveLength(3);
+      requests[2]?.answer("again");
+      expect(await again).toBe("again");
+    } finally {
+      Reflect.deleteProperty(globalThis, "window");
+    }
+  });
+
   test("never hands a mutation its caller's signal, since one already sent may have run", async () => {
     const requests = setGatedFetch();
     const client = new FetchClient("https://api.example", {}, { service: serviceSignal });

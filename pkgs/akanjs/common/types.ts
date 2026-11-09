@@ -7,11 +7,13 @@ export interface RetryPolicy extends BackoffPolicy {
 }
 
 export interface FetchPolicy<_Returns = unknown> {
+  /** @deprecated Read by nothing; an endpoint reuses its answer with `query(T, { cache })`. */
   cache?: boolean | number;
   crystalize?: boolean;
   origin?: string;
   onError?: (error: string) => void;
   token?: string;
+  /** @deprecated Read by nothing; a query always answers its whole return. */
   partial?: string[];
   /** Milliseconds, or `false` to wait as long as the runtime will; overrides the endpoint's declared `timeout`. */
   timeout?: number | false;
