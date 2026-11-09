@@ -3,6 +3,7 @@ import type { BuildChangesPayload, BuildGraphPayload } from "../../artifact";
 import { StudioActions } from "./studioActions";
 import { type StudioBox, StudioLayout, type StudioScene, type StudioView } from "./studioLayout";
 import { studioRuntime } from "./studioRuntime";
+import { StudioRuntimeGraph, type StudioRuntimePayload } from "./studioRuntimeGraph";
 import { studioStyle } from "./studioStyle";
 
 export type StudioEditor = "vscode" | "cursor";
@@ -17,18 +18,28 @@ export interface StudioQuery {
 export interface StudioDocumentProps {
   basePath: string;
   appName: string;
-  payload: BuildGraphPayload | BuildChangesPayload;
+  payload: BuildGraphPayload | BuildChangesPayload | StudioRuntimePayload;
   query: StudioQuery;
 }
 
 const editorLabels: { [editor in StudioEditor]: string } = { vscode: "VS Code", cursor: "Cursor" };
-const viewLabels: { [view in StudioView]: string } = { erd: "ERD", signals: "Signals", changes: "Changes" };
+const views = ["erd", "signals", "changes", "runtime"] as const;
+const viewLabels: { [view in StudioView]: string } = {
+  erd: "ERD",
+  signals: "Signals",
+  changes: "Changes",
+  runtime: "Runtime (live)",
+};
+const viewTitles: { [view in StudioView]?: string } = {
+  runtime: "Read from the running server's DI container, not from source: it needs a running server",
+};
 const changeSigns: { [change in AkanGraphChange]: string } = { added: "+", removed: "−", changed: "~" };
 const charWidth = 7.3;
 const kindShownIn: { [view in StudioView]: Set<string> } = {
   erd: new Set(["model", "scalar", "enum"]),
   signals: new Set(["endpoint", "slice", "query", "model"]),
   changes: new Set(["endpoint", "slice", "query", "model", "scalar", "enum", "guard"]),
+  runtime: new Set(["service", "adaptor", "internal"]),
 };
 const emptyGraph: AkanGraph = { version: 1, nodes: [], edges: [] };
 const clip = (text: string, max: number) => {
@@ -38,21 +49,34 @@ const clip = (text: string, max: number) => {
 
 export class StudioDocument {
   static render({ basePath, appName, payload, query }: StudioDocumentProps) {
+    const live = "deps" in payload ? payload : null;
+    const runtime = live ? StudioRuntimeGraph.of(live) : null;
     const changes = "changes" in payload ? payload.changes : null;
     const changeMap = changes && "nodes" in changes ? changes : null;
+    const failure =
+      changes && "error" in changes
+        ? changes.error
+        : live && "error" in live.deps
+          ? `The running server's DI graph could not be read: ${live.deps.error}`
+          : null;
     const graph = "graph" in payload ? payload.graph : (changeMap ?? emptyGraph);
-    const listed = StudioLayout.modulesOf(graph);
+    const listed = runtime ? runtime.modules : StudioLayout.modulesOf(graph);
     const modules = query.module && !listed.includes(query.module) ? [query.module, ...listed] : listed;
-    const scene =
-      query.view === "erd"
+    const scene = runtime
+      ? StudioLayout.runtime(runtime, query.module)
+      : query.view === "erd"
         ? StudioLayout.erd(graph, query.module)
         : query.view === "signals"
           ? StudioLayout.signals(graph, query.module ?? modules[0] ?? null)
           : StudioLayout.changes(graph, query.module);
     const hrefOf = (next: Partial<StudioQuery>) => StudioDocument.href(basePath, { ...query, ...next });
+    const workspaceRoot = "workspaceRoot" in payload ? payload.workspaceRoot : null;
     const openOf = (at: AkanGraphLocation | null) =>
-      at ? StudioDocument.editorHref(query.editor, payload.workspaceRoot, at) : undefined;
-    const graphHref = query.view === "changes" ? StudioDocument.href(`${basePath}/graph`, query) : `${basePath}/graph`;
+      at && workspaceRoot !== null ? StudioDocument.editorHref(query.editor, workspaceRoot, at) : undefined;
+    const graphHref =
+      query.view === "changes" || query.view === "runtime"
+        ? StudioDocument.href(`${basePath}/graph`, query)
+        : `${basePath}/graph`;
     const unmapped = changeMap ? StudioLayout.unmappedIn(changeMap.unmapped, query.module) : [];
     return (
       <html lang="en">
@@ -67,8 +91,13 @@ export class StudioDocument {
             <strong>Akan Studio</strong>
             <span className="muted">{appName}</span>
             <nav>
-              {(["erd", "signals", "changes"] as const).map((view) => (
-                <a key={view} href={hrefOf({ view })} aria-current={view === query.view ? "page" : undefined}>
+              {views.map((view) => (
+                <a
+                  key={view}
+                  href={hrefOf({ view })}
+                  title={viewTitles[view]}
+                  aria-current={view === query.view ? "page" : undefined}
+                >
                   {viewLabels[view]}
                 </a>
               ))}
@@ -101,6 +130,11 @@ export class StudioDocument {
             </form>
             <input type="search" placeholder="Filter by name" data-studio-filter="" />
             {changeMap ? <span className="muted">{StudioDocument.#summary(changeMap)}</span> : null}
+            {live ? (
+              <span className="live" title={viewTitles.runtime}>
+                {StudioDocument.#liveSummary(live)}
+              </span>
+            ) : null}
             <span className="muted">{`${scene.boxes.length} nodes · ${scene.links.length} edges`}</span>
             <div
               className="actions"
@@ -118,8 +152,8 @@ export class StudioDocument {
             </nav>
           </header>
           <main>
-            {changes && "error" in changes ? (
-              <p className="empty">{changes.error}</p>
+            {failure ? (
+              <p className="empty">{failure}</p>
             ) : scene.boxes.length ? (
               StudioDocument.#svg(scene, query.view, openOf)
             ) : (
@@ -129,6 +163,19 @@ export class StudioDocument {
                   : "Nothing to draw here. Pick another module or view."}
               </p>
             )}
+            {live && "error" in live.signal && runtime ? (
+              <p className="notice">{`Jobs are not drawn: the signal serializer failed (${live.signal.error}).`}</p>
+            ) : null}
+            {live && !("error" in live.deps) && live.deps.disabledModules.length ? (
+              <section className="unmapped">
+                <h2>Modules this server left out</h2>
+                <ul>
+                  {live.deps.disabledModules.map(({ refName, reason }) => (
+                    <li key={refName}>{`${refName}: ${reason}`}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
             {unmapped.length ? (
               <section className="unmapped">
                 <h2>Changed files no node covers</h2>
@@ -181,6 +228,10 @@ export class StudioDocument {
 
   static #summary({ since, summary }: AkanChangeMap): string {
     return `since ${since} · +${summary.added} −${summary.removed} ~${summary.changed}`;
+  }
+
+  static #liveSummary({ app }: StudioRuntimePayload): string {
+    return `live from pid ${app.pid} · ${app.serverMode} replica ${app.replicaIdx}`;
   }
 
   static editorHref(editor: StudioEditor, workspaceRoot: string, at: AkanGraphLocation): string {
@@ -259,7 +310,8 @@ export class StudioDocument {
         </text>
         {rows.map((row, idx) => (
           <a key={idx} href={openOf(row.at)}>
-            <text className={row.change} x={x + 12} y={row.y + 4}>
+            {row.skipped ? <title>{row.skipped}</title> : null}
+            <text className={row.skipped ? "skipped" : row.change} x={x + 12} y={row.y + 4}>
               {clip(
                 row.change ? `${changeSigns[row.change]} ${row.text}` : row.text,
                 row.hint ? chars - row.hint.length - 1 : chars,
