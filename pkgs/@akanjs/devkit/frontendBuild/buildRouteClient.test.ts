@@ -21,15 +21,21 @@ const writeBarrelFixture = async () => {
     await write(
       path.join(dir, "client.ts"),
       [
-        'export { msg } from "./lib/useClient";',
+        'export * as cnst from "./lib/cnst";',
+        'export { msg, Err, usePage, fetch, sig } from "./lib/useClient";',
         'export { st, RootStore } from "./lib/st";',
+        'export * as store from "./lib/st";',
         ...modules.map((name) => `export { ${name} } from "./lib/${name.toLowerCase()}";`),
         "",
       ].join("\n"),
     );
     await write(
       path.join(dir, "lib/useClient.ts"),
-      `export const msg = Object.freeze({ mark: "${prefix}runtime-marker" });\n`,
+      `const runtime = Object.freeze({ mark: "${prefix}runtime-marker", msg: 1, Err: 2, usePage: 3, fetch: 4, sig: 5 });\nexport const { msg, Err, usePage, fetch, sig } = runtime;\n`,
+    );
+    await write(
+      path.join(dir, "lib/cnst.ts"),
+      `export const Sample = Object.freeze({ mark: "${prefix}cnst-marker" });\n`,
     );
     for (const name of modules)
       await write(
@@ -46,6 +52,10 @@ const writeBarrelFixture = async () => {
     path.join(libDir, "lib/widget/Widget.Zone.tsx"),
     '"use client";\nexport const Card = Object.freeze({ mark: "lib-ui-marker" });\n',
   );
+  await write(
+    path.join(libDir, "ui/Field.tsx"),
+    '"use client";\nimport { cnst as kitCnst } from "@libs/kit/client";\nexport const Field = () => [kitCnst.Sample, "field-marker"];\n',
+  );
   await writeSys(appDir, "", ["Memo", "Other"]);
   await write(
     path.join(appDir, "lib/st.ts"),
@@ -53,7 +63,7 @@ const writeBarrelFixture = async () => {
   );
   await write(
     path.join(appDir, "lib/memo/Memo.Zone.tsx"),
-    '"use client";\nimport { st } from "@apps/demo/client";\nexport const Card = () => [st, "memo-ui-marker"];\n',
+    '"use client";\nimport { type cnst, Memo, st } from "@apps/demo/client";\nexport const Card = (props: { sample?: typeof cnst.Sample }) => [st, Memo, props, "memo-ui-marker"];\n',
   );
   await write(
     path.join(appDir, "lib/other/Other.Zone.tsx"),
@@ -69,7 +79,7 @@ const writeBarrelFixture = async () => {
     getTsConfig: async () => ({ compilerOptions: { paths } }),
     getPublicEnv: () => ({}),
   } as never;
-  return { appDir, app };
+  return { root, appDir, app };
 };
 
 const bundledText = async (dir: string) =>
@@ -285,6 +295,23 @@ describe("route client store bootstrap", () => {
     expect(bundled).toContain("store-marker");
     expect(bundled).not.toContain("other-ui-marker");
     expect(bundled).not.toContain("lib-ui-marker");
+  });
+
+  test("a route reaching a lib's cnst through its client barrel carries no module UI", async () => {
+    const { root, appDir, app } = await writeBarrelFixture();
+
+    await new RouteClientBuilder({
+      app,
+      seeds: [],
+      entries: [path.join(root, "libs/kit/ui/Field.tsx")],
+      artifact: {} as never,
+      browser: "chunks",
+    }).build();
+
+    const bundled = await bundledText(path.join(appDir, ".akan/artifact/client"));
+    expect(bundled).toContain("field-marker");
+    expect(bundled).toContain("lib-cnst-marker");
+    for (const marker of ["memo-ui-marker", "other-ui-marker", "lib-ui-marker"]) expect(bundled).not.toContain(marker);
   });
 
   test("an import of the store through a client barrel discovers no module UI as a client entry", async () => {

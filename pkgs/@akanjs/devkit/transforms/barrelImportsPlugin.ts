@@ -340,6 +340,7 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
 
   const remaining: NamedItem[] = [];
   const rewrites = new Map<string, NamedItem[]>();
+  const namespaceLines: string[] = [];
   for (const item of clause.named) {
     if (item.isType) {
       remaining.push(item);
@@ -350,15 +351,19 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
       remaining.push(item);
       continue;
     }
+    if (target.namespace) {
+      namespaceLines.push(`import * as ${item.local} from "${target.subpath}";`);
+      continue;
+    }
     const list = rewrites.get(target.subpath) ?? [];
     list.push({ imported: target.originalName, local: item.local, isType: false });
     rewrites.set(target.subpath, list);
   }
 
-  if (rewrites.size === 0) return null;
+  if (rewrites.size === 0 && namespaceLines.length === 0) return null;
 
   //? An app or lib client barrel's import-time side effects are its client runtime and store, not its module UI.
-  const lines: string[] = [...(StoreBootstrap.ofClientBarrel(stmt.specifier) ?? [])];
+  const lines: string[] = [...(StoreBootstrap.ofClientBarrel(stmt.specifier, map) ?? [])];
 
   if (clause.defaultImport || remaining.length > 0) {
     const parts: string[] = [];
@@ -370,6 +375,7 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
   for (const [subpath, items] of rewrites) {
     lines.push(`import { ${items.map(serializeNamedItem).join(", ")} } from "${subpath}";`);
   }
+  lines.push(...namespaceLines);
 
   return lines.join("\n");
 };
