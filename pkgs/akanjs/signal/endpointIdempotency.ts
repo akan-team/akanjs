@@ -140,9 +140,9 @@ export class EndpointIdempotency {
     }
   }
 
-  //? As the caller read it: a domain error with its key and data, anything else as the generalized 500.
+  //? As the caller read it: a domain error with its key and data, anything else generalized as SignalFailure does.
   static #failureOf(error: unknown): ErrPayload {
-    return isExceptionLike(error) ? (error.toJSON() as ErrPayload) : { error: SignalFailure.message, statusCode: 500 };
+    return isExceptionLike(error) ? (error.toJSON() as ErrPayload) : SignalFailure.generalized(error);
   }
 
   static #callerOf(context: SignalContext, req: Request) {

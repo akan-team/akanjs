@@ -5,6 +5,8 @@ import { parseNamedList } from "./moduleSyntax";
 export interface BarrelExportTarget {
   subpath: string;
   originalName: string;
+  /** `export * as name from`: an import of the name binds the whole module at `subpath`. */
+  namespace?: boolean;
 }
 
 export type BarrelExportMap = Map<string, BarrelExportTarget>;
@@ -100,9 +102,14 @@ export class BarrelAnalyzer {
       if (!isRelative(spec)) continue;
 
       if (star) {
-        // A namespace re-export cannot be flattened into subpath imports, nor is it a local declaration.
-        if (nsAs) authoritative.delete(nsAs);
-        else starSpecs.push(spec);
+        if (!nsAs) starSpecs.push(spec);
+        else if (authoritative.has(nsAs)) {
+          attributed.add(nsAs);
+          const targetAbs = await this.#resolveRel(absFile, spec);
+          const targetSubpath = targetAbs ? this.#subpathFor(pkg, targetAbs) : null;
+          if (targetSubpath && !map.has(nsAs))
+            map.set(nsAs, { subpath: targetSubpath, originalName: nsAs, namespace: true });
+        }
         continue;
       }
 

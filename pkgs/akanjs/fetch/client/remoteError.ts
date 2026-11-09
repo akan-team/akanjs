@@ -1,6 +1,7 @@
 export interface ErrorResponsePayload {
   error: string;
   statusCode?: number;
+  code?: string;
   data?: Record<string, unknown>;
   details?: unknown;
   path?: string;
@@ -10,6 +11,7 @@ export interface ErrorResponsePayload {
 export interface RestoredError extends Error {
   error?: string;
   statusCode?: number;
+  code?: string;
   data?: unknown;
   details?: unknown;
   path?: string;
@@ -41,6 +43,7 @@ export const restoreRemoteError = (
   const json: ErrorResponsePayload = {
     error: payload.error,
     statusCode: payload.statusCode ?? fallbackStatusCode,
+    ...(payload.code !== undefined ? { code: payload.code } : {}),
     ...(payload.details !== undefined ? { details: payload.details } : {}),
     ...(payload.data !== undefined ? { data: payload.data } : {}),
     ...(payload.path !== undefined ? { path: payload.path } : {}),

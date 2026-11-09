@@ -101,3 +101,21 @@ describe("WorkspaceGraph.answer", () => {
     expect(scoped.nodes).toHaveLength(602);
   });
 });
+
+describe("WorkspaceGraph.scope", () => {
+  it("keeps a lib's guard without pulling in every app endpoint that uses it", () => {
+    const guard = "guard:libs/shared:Admin";
+    const own = "endpoint:libs/shared:file.touch";
+    const other = "endpoint:apps/demo:memo.pin";
+    const scoped = WorkspaceGraph.scope(
+      {
+        version: 1,
+        nodes: [node(guard, "libs/shared"), node(own, "libs/shared"), node(other, "apps/demo")],
+        edges: [edge(own, guard), edge(other, guard)],
+      },
+      { app: "shared" },
+    );
+    expect(scoped.nodes.map(({ id }) => id)).toEqual([guard, own]);
+    expect(scoped.edges).toEqual([edge(own, guard)]);
+  });
+});

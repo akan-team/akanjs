@@ -1,0 +1,327 @@
+@import "tailwindcss";
+@import "akanjs/ui/styles.css";
+
+/* The jelly star palette. akanjs/ui/styles.css owns the theme system (token mapping, dark variant, runtime
+   data-theme switching), so a rebrand only overrides the token values below. The star red (--jelly) is a fill
+   color; --primary carries white text, so it is one step darker to keep 4.5:1 contrast. */
+:root,
+[data-theme="light"] {
+  --background: #f1f1ee;
+  --foreground: #0d0d0e;
+  --primary: #e02d27;
+  --primary-foreground: #ffffff;
+  --secondary: #0d0d0e;
+  --secondary-foreground: #f6f6f3;
+  --accent: #7650d8;
+  --accent-foreground: #ffffff;
+  --neutral: #26262a;
+  --neutral-foreground: #f6f6f3;
+  --info: #1f6fe0;
+  --info-foreground: #ffffff;
+  --success: #3f8f1f;
+  --success-foreground: #ffffff;
+  --warning: #f2b51c;
+  --warning-foreground: #0d0d0e;
+  --destructive: #c4161c;
+  --destructive-foreground: #ffffff;
+  --open: #5aa82a;
+  --open-foreground: #0d0d0e;
+  --muted: #e6e6e1;
+  --muted-foreground: #66666b;
+  --card: #fbfbf9;
+  --card-foreground: #0d0d0e;
+  --popover: #ffffff;
+  --popover-foreground: #0d0d0e;
+  --border: #dcdcd6;
+  --input: #d4d4ce;
+  --ring: #e02d27;
+  --jelly: #ef3a2d;
+  --studio-shadow: color-mix(in oklab, #3a2a20 16%, transparent);
+  --sky-top: #dfe5f7;
+  --sky-bottom: #f6eadf;
+}
+
+[data-theme="dark"] {
+  --background: #0f1129;
+  --foreground: #f3f1fb;
+  --primary: #e02d27;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f1fb;
+  --secondary-foreground: #0f1129;
+  --accent: #a585e0;
+  --accent-foreground: #0f1129;
+  --neutral: #262a4d;
+  --neutral-foreground: #f3f1fb;
+  --info: #4b8ef0;
+  --info-foreground: #0f1129;
+  --success: #7cc23a;
+  --success-foreground: #0f1129;
+  --warning: #f6c437;
+  --warning-foreground: #0f1129;
+  --destructive: #e5383b;
+  --destructive-foreground: #ffffff;
+  --open: #7cc23a;
+  --open-foreground: #0f1129;
+  --muted: #1a1d3b;
+  --muted-foreground: #a6a8c9;
+  --card: #161935;
+  --card-foreground: #f3f1fb;
+  --popover: #1b1e40;
+  --popover-foreground: #f3f1fb;
+  --border: #2b2f57;
+  --input: #33376a;
+  --ring: #f0392e;
+  --jelly: #f2402f;
+  --studio-shadow: color-mix(in oklab, #02030f 65%, transparent);
+  --sky-top: #25215f;
+  --sky-bottom: #2d1749;
+}
+
+:root {
+  --planet: #1f6fe0;
+  --rocket: #82c43c;
+  --moon: #f6e27a;
+  --cloud: #a585e0;
+  --comet: #e3228e;
+}
+
+@theme inline {
+  --color-jelly: var(--jelly);
+  --color-planet: var(--planet);
+  --color-rocket: var(--rocket);
+  --color-moon: var(--moon);
+  --color-cloud: var(--cloud);
+  --color-comet: var(--comet);
+  --radius-box: 1.5rem;
+  --radius-field: 0.875rem;
+}
+
+/* A sampled damped spring: overshoots the target by 18%, wobbles twice and settles. */
+@theme {
+  --ease-jelly: linear(0, 0.42 6%, 0.86 13%, 1.12 21%, 1.18 26%, 1.13 32%, 1 41%, 0.95 48%, 0.97 56%, 1.01 66%, 1.005 78%, 1);
+}
+
+/* html and body both paint a background color, so body's background is not propagated to the canvas: the sky
+   sits on body, and isolation keeps the grain layer above body's own background. */
+@layer base {
+  body {
+    isolation: isolate;
+    background-image:
+      radial-gradient(120% 60% at 50% -14%, var(--sky-top), transparent 64%),
+      radial-gradient(110% 55% at 50% 114%, var(--sky-bottom), transparent 68%);
+    background-attachment: fixed;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.06;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  }
+
+  [data-theme="dark"] body::before {
+    opacity: 0.1;
+    mix-blend-mode: overlay;
+  }
+
+  h1,
+  h2 {
+    letter-spacing: -0.035em;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--jelly) 24%, transparent);
+  }
+}
+
+@keyframes jelly-intro {
+  from {
+    opacity: 0;
+    translate: 0 1.25rem;
+    filter: blur(6px);
+  }
+}
+
+@keyframes jelly-breathe {
+  0%,
+  100% {
+    scale: 1 1;
+  }
+  50% {
+    scale: 1.035 0.965;
+  }
+}
+
+@keyframes jelly-wobble {
+  0% {
+    scale: 1 1;
+  }
+  16% {
+    scale: 1.16 0.86;
+  }
+  32% {
+    scale: 0.9 1.1;
+  }
+  48% {
+    scale: 1.06 0.95;
+  }
+  64% {
+    scale: 0.97 1.03;
+  }
+  82% {
+    scale: 1.01 0.99;
+  }
+  100% {
+    scale: 1 1;
+  }
+}
+
+@keyframes jelly-float {
+  0%,
+  100% {
+    translate: 0 0;
+    rotate: calc(var(--float-tilt, 4deg) * -1);
+  }
+  50% {
+    translate: 0 calc(var(--float-rise, 0.9rem) * -1);
+    rotate: var(--float-tilt, 4deg);
+  }
+}
+
+@utility intro-rise {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: jelly-intro 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: var(--intro-delay, 0ms);
+  }
+}
+
+@utility jelly-breathe {
+  transform-origin: 50% 100%;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: jelly-breathe 3.2s ease-in-out infinite;
+  }
+}
+
+@utility jelly-wobble {
+  transform-origin: 50% 100%;
+  @media (prefers-reduced-motion: no-preference) {
+    animation: jelly-wobble 0.9s ease-out both;
+  }
+}
+
+@utility jelly-float {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: jelly-float var(--float-duration, 6s) ease-in-out var(--float-delay, 0s) infinite;
+  }
+}
+
+@utility squish {
+  transition:
+    scale 700ms var(--ease-jelly),
+    translate 700ms var(--ease-jelly);
+  &:hover {
+    scale: 1.04 0.97;
+  }
+  &:active {
+    scale: 1.08 0.9;
+    transition-duration: 90ms;
+  }
+}
+
+@utility tint-* {
+  --tint: --value(--color-*);
+}
+
+/* A gummy surface. public/jelly/sugar.webp is a high-pass of the logo star's sugar coating (128 gray = no change),
+   laid on in hard-light so every tint gets the same sugar grain. */
+@utility jelly {
+  --jelly-tint: var(--tint, var(--primary));
+  --jelly-deep: color-mix(in oklab, var(--jelly-tint) 70%, black);
+  --jelly-haze: color-mix(in oklab, var(--jelly-tint) 55%, white);
+  background-color: var(--jelly-tint);
+  background-image:
+    url("/jelly/sugar.webp"),
+    radial-gradient(120% 95% at 26% -8%, color-mix(in oklab, white 26%, transparent), transparent 58%),
+    radial-gradient(110% 90% at 60% 125%, color-mix(in oklab, var(--jelly-deep) 30%, transparent), transparent 60%);
+  background-size:
+    100px 100px,
+    100% 100%,
+    100% 100%;
+  background-repeat: repeat, no-repeat, no-repeat;
+  background-blend-mode: hard-light, normal, normal;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--jelly-haze) 40%, transparent),
+    inset 0 0 8px 1px color-mix(in oklab, white 20%, transparent),
+    inset 0 -3px 6px color-mix(in oklab, var(--jelly-deep) 28%, transparent),
+    0 6px 10px -6px color-mix(in oklab, var(--jelly-deep) 65%, transparent),
+    0 1px 2px color-mix(in oklab, black 12%, transparent);
+}
+
+@utility jelly-glass {
+  --jelly-tint: var(--tint, var(--card));
+  background-color: color-mix(in oklab, var(--card) 95%, var(--jelly-tint));
+  background-image:
+    radial-gradient(120% 70% at 20% -20%, color-mix(in oklab, white 55%, transparent), transparent 60%),
+    radial-gradient(90% 60% at 100% 120%, color-mix(in oklab, var(--jelly-tint) 9%, transparent), transparent 70%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, white 70%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, var(--jelly-tint) 14%, transparent),
+    0 22px 44px -28px var(--studio-shadow),
+    0 2px 6px -3px var(--studio-shadow);
+  @variant dark {
+    background-color: color-mix(in oklab, var(--card) 92%, var(--jelly-tint));
+    background-image:
+      radial-gradient(120% 70% at 20% -20%, color-mix(in oklab, white 7%, transparent), transparent 60%),
+      radial-gradient(90% 60% at 100% 120%, color-mix(in oklab, var(--jelly-tint) 14%, transparent), transparent 70%);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 11%, transparent),
+      inset 0 -1px 0 color-mix(in oklab, var(--jelly-tint) 18%, transparent),
+      0 22px 44px -28px var(--studio-shadow),
+      0 2px 6px -3px var(--studio-shadow);
+  }
+}
+
+/* The same sugar, clipped to the glyphs of plain text-primary text. Clipping replaces the element's background, so
+   elements with a surface of their own (bg-*, jelly, glass) and currentColor drawings are skipped, and icons inside
+   get their color back. */
+.text-primary:not(svg, [class*="bg-"], [class*="jelly"], [class*="glass"], [class*="-current"]) {
+  background-color: var(--primary);
+  background-image:
+    url("/jelly/sugar.webp"),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, black 8%, var(--primary)),
+      color-mix(in oklab, white 14%, var(--primary)) 22%,
+      var(--primary) 60%,
+      color-mix(in oklab, black 8%, var(--primary))
+    );
+  background-size:
+    100px 100px,
+    100% 1lh;
+  background-origin: content-box;
+  background-blend-mode: hard-light, normal;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-decoration-color: var(--primary);
+  & :is(svg, [class*="-current"]) {
+    color: var(--primary);
+  }
+  /* A heading's tight leading pushes descenders out of the box, where a text-clipped background is never painted. */
+  :is(h1, h2, h3, h4, h5, h6) & {
+    padding-block: 0.15em;
+    margin-block: -0.15em;
+  }
+}
+
+/* A descendant with a surface of its own covers the clipped sugar, so the transparent color it inherits would leave
+   it blank. It takes the primary color back; layered under utilities, a text-* class of its own still wins. */
+@layer base {
+  .text-primary:not(svg, [class*="bg-"], [class*="jelly"], [class*="glass"], [class*="-current"]) [class*="bg-"]:not([class*="bg-clip"]) {
+    color: var(--primary);
+  }
+}

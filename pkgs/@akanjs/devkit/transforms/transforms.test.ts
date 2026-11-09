@@ -3,7 +3,7 @@ import path from "node:path";
 import { ApplicationBuildReporter } from "../applicationBuildReporter";
 import { tempDirs, writeText as write } from "../testHelpers";
 import { BarrelAnalyzer, type BarrelExportTarget } from "./barrelAnalyzer";
-import { rewriteBarrelImports } from "./barrelImportsPlugin";
+import { createTsconfigPackageResolver, rewriteBarrelImports } from "./barrelImportsPlugin";
 import {
   hasUseClientDirective,
   scanUseClientExports,
@@ -140,7 +140,7 @@ describe('export * in a "use client" module', () => {
 });
 
 describe("BarrelAnalyzer and rewriteBarrelImports", () => {
-  test("analyzes local, named, aliased, and star re-exports while skipping type and namespace exports", async () => {
+  test("analyzes local, named, aliased, star and namespace re-exports while skipping type exports", async () => {
     const root = await makeTempRoot();
     const pkgDir = path.join(root, "pkg");
     await write(
@@ -149,6 +149,7 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
         'export { A, B as Bee, type TypeOnly } from "./leaf";',
         'export * from "./star";',
         'export * as ns from "./namespace";',
+        'export type * as typeNs from "./namespace";',
         "export const Local = 1;",
         "export type LocalType = string;",
         "",
@@ -171,7 +172,9 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(map?.get("Star")).toEqual({ subpath: "@scope/pkg/star", originalName: "Star" });
     expect(map?.get("Local")).toEqual({ subpath: "@scope/pkg", originalName: "Local" });
     expect(map?.has("TypeOnly")).toBe(false);
-    expect(map?.has("ns")).toBe(false);
+    expect(map?.get("ns")).toEqual({ subpath: "@scope/pkg/namespace", originalName: "ns", namespace: true });
+    expect(map?.has("typeNs")).toBe(false);
+    expect(map?.has("Hidden")).toBe(false);
   });
 
   test("a name a module exports itself wins over the same name its star re-exports bring, as ES decides", async () => {
@@ -284,17 +287,66 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(await rewriteBarrelImports('import { A } from "@other/pkg";', ["@scope/pkg"], analyzer)).toBeNull();
   });
 
-  test("preserves generated client barrel side effects when flattening app client imports", async () => {
-    const analyzer = fakeAnalyzer([["st", { subpath: "@apps/demo/lib/st", originalName: "st" }]]);
+  test("keeps a client barrel's runtime and store, never its module UI, when flattening an app or lib import", async () => {
+    const root = await makeTempRoot();
+    for (const sys of ["apps/demo", "libs/kit"]) {
+      await write(
+        path.join(root, sys, "client.ts"),
+        [
+          'export * as cnst from "./lib/cnst";',
+          'export { msg, Err, usePage, fetch, sig } from "./lib/useClient";',
+          'export { st, RootStore } from "./lib/st";',
+          'export * as store from "./lib/st";',
+          'export { Memo } from "./lib/memo";',
+          "",
+        ].join("\n"),
+      );
+      await write(path.join(root, sys, "lib/cnst.ts"), "export const Sample = 1;\n");
+      await write(path.join(root, sys, "lib/useClient.ts"), "export const { msg, Err, usePage, fetch, sig } = {};\n");
+      await write(path.join(root, sys, "lib/st.ts"), "export class RootStore {}\nexport const st = {};\n");
+      await write(path.join(root, sys, "lib/memo/index.ts"), "export const Memo = {};\n");
+    }
+    await write(path.join(root, "libs/hand/client.ts"), 'export { thing } from "./lib/thing";\n');
+    await write(path.join(root, "libs/hand/lib/thing.ts"), "export const thing = 1;\n");
+    const analyzer = new BarrelAnalyzer({
+      resolvePackage: await createTsconfigPackageResolver({
+        workspace: { workspaceRoot: root },
+        getTsConfig: async () => ({ compilerOptions: { paths: { "@apps/*": ["./apps/*"], "@libs/*": ["./libs/*"] } } }),
+      } as never),
+    });
+    const barrels = ["@apps/demo/client", "@libs/kit/client", "@libs/hand/client"];
+    const rewrite = async (source: string) => await rewriteBarrelImports(source, barrels, analyzer);
 
-    const rewritten = await rewriteBarrelImports(
-      'import { st } from "@apps/demo/client";\nvoid st;\n',
-      ["@apps/demo/client"],
-      analyzer,
+    expect(await rewrite('import { Memo, st } from "@apps/demo/client";\n')).toBe(
+      [
+        'import "@apps/demo/lib/useClient";',
+        'import "@apps/demo/lib/st";',
+        'import { Memo } from "@apps/demo/lib/memo";',
+        'import { st } from "@apps/demo/lib/st";',
+        "",
+      ].join("\n"),
     );
-
-    expect(rewritten).toBe(
-      ['import "@apps/demo/client";', 'import { st } from "@apps/demo/lib/st";', "void st;\n"].join("\n"),
+    expect(await rewrite('import { cnst as c, st, store, type cnst as T } from "@apps/demo/client";\n')).toBe(
+      [
+        'import "@apps/demo/lib/useClient";',
+        'import "@apps/demo/lib/st";',
+        'import { type cnst as T } from "@apps/demo/client";',
+        'import { st } from "@apps/demo/lib/st";',
+        'import * as c from "@apps/demo/lib/cnst";',
+        'import * as store from "@apps/demo/lib/st";',
+        "",
+      ].join("\n"),
+    );
+    expect(await rewrite('import { RootStore as kit } from "@libs/kit/client";\n')).toBe(
+      [
+        'import "@libs/kit/lib/useClient";',
+        'import "@libs/kit/lib/st";',
+        'import { RootStore as kit } from "@libs/kit/lib/st";',
+        "",
+      ].join("\n"),
+    );
+    expect(await rewrite('import { thing } from "@libs/hand/client";\n')).toBe(
+      ['import "@libs/hand/client";', 'import { thing } from "@libs/hand/lib/thing";', ""].join("\n"),
     );
   });
 

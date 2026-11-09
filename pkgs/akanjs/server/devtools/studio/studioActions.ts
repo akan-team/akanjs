@@ -1,4 +1,4 @@
-import type { AkanGraphNode, AkanGraphNodeKind } from "akanjs/common";
+import type { StudioNode, StudioNodeKind } from "./studioLayout";
 
 export type StudioWorkflow =
   | "create-module"
@@ -28,7 +28,7 @@ const askedInputs: { [workflow in StudioWorkflow]: string[] } = {
 };
 
 //? Scalars get none: the workflows read `lib/<module>/` and never `lib/__scalar/<module>/`, so apply would refuse.
-const actionsByKind: { [kind in AkanGraphNodeKind]?: [StudioWorkflow, string][] } = {
+const actionsByKind: { [kind in StudioNodeKind]?: [StudioWorkflow, string][] } = {
   model: [
     ["add-field", "Add field"],
     ["add-enum-field", "Add enum field"],
@@ -39,13 +39,13 @@ const actionsByKind: { [kind in AkanGraphNodeKind]?: [StudioWorkflow, string][] 
 };
 const identifier = /^[A-Za-z_$][\w$-]{0,63}$/;
 
-const keyInputs: { [kind in AkanGraphNodeKind]?: { input: string; label: string } } = {
+const keyInputs: { [kind in StudioNodeKind]?: { input: string; label: string } } = {
   slice: { input: "slice", label: "Rename slice key" },
   query: { input: "query", label: "Rename query" },
 };
 
 export class StudioActions {
-  static of(node: AkanGraphNode): StudioAction[] {
+  static of(node: StudioNode): StudioAction[] {
     const app = node.owner?.split("/").at(-1);
     const { module } = node;
     if (!app || !module || module.startsWith("__") || node.change === "removed") return [];
@@ -55,7 +55,7 @@ export class StudioActions {
     return [open, ...StudioActions.#workflowsOf(node, target)];
   }
 
-  static #workflowsOf(node: AkanGraphNode, target: StudioAction["inputs"]): StudioAction[] {
+  static #workflowsOf(node: StudioNode, target: StudioAction["inputs"]): StudioAction[] {
     const keyed = keyInputs[node.kind];
     if (!keyed)
       return (actionsByKind[node.kind] ?? []).map(([workflow, label]) =>

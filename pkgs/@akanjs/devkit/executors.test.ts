@@ -304,8 +304,8 @@ describe("Executor filesystem helpers", () => {
 
     await exec.applyTemplate({ basePath: "app", template: "app", dict: { appName: "demo" }, options: { libs: [] } });
     const templateRoot = path.resolve(import.meta.dir, "../cli/templates/app/public");
-    await expect(readFile(path.join(root, "app/public/logo.png"))).resolves.toEqual(
-      await readFile(path.join(templateRoot, "logo.png")),
+    await expect(readFile(path.join(root, "app/public/apple-touch-icon.png"))).resolves.toEqual(
+      await readFile(path.join(templateRoot, "apple-touch-icon.png")),
     );
     await expect(readFile(path.join(root, "app/public/favicon.ico"))).resolves.toEqual(
       await readFile(path.join(templateRoot, "favicon.ico")),
@@ -315,17 +315,17 @@ describe("Executor filesystem helpers", () => {
   test("keeps a static file already there when overwrite is false, and reports it unwritten", async () => {
     const root = await makeTempRoot();
     const exec = new Executor("fixture", root);
-    await writeText(path.join(root, "app/public/logo.png"), "the app's own logo");
+    await writeText(path.join(root, "app/public/favicon.ico"), "the app's own icon");
 
     const applied = await exec.applyTemplate({
       basePath: "app/public",
-      template: "app/public/logo.png",
+      template: "app/public/favicon.ico",
       overwrite: false,
     });
 
-    expect(await readFile(path.join(root, "app/public/logo.png"), "utf8")).toBe("the app's own logo");
+    expect(await readFile(path.join(root, "app/public/favicon.ico"), "utf8")).toBe("the app's own icon");
     expect(applied).toEqual([
-      expect.objectContaining({ filePath: path.join(root, "app/public/logo.png"), written: false }),
+      expect.objectContaining({ filePath: path.join(root, "app/public/favicon.ico"), written: false }),
     ]);
   });
 });

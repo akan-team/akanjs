@@ -39,6 +39,8 @@ export interface TransMessageOption {
 
 export interface ErrRestoreOption {
   statusCode?: number;
+  /** A generalized failure's `AkanError` code, which a restored copy keeps so its caller can branch on it. */
+  code?: string;
   details?: unknown;
   path?: string;
   timestamp?: string;
@@ -52,6 +54,7 @@ export interface ErrPayload extends ErrRestoreOption {
 export type ErrInstance = Error & {
   readonly error: string;
   readonly statusCode: number;
+  readonly code?: string;
   readonly details?: unknown;
   readonly data?: TranslationData;
   readonly path?: string;
@@ -117,6 +120,7 @@ export const makeTrans = <
     declare static status?: number;
     readonly error: string;
     readonly statusCode: number;
+    readonly code?: string;
     readonly details?: unknown;
     readonly data?: TranslationData;
     readonly path?: string;
@@ -127,6 +131,7 @@ export const makeTrans = <
       this.name = this.constructor.name;
       this.error = key as string;
       this.statusCode = new.target.status ?? option.statusCode ?? 400;
+      this.code = option.code;
       this.details = option.details;
       this.data = data;
       this.path = option.path;
@@ -144,6 +149,7 @@ export const makeTrans = <
       return {
         error: this.message,
         statusCode: this.statusCode,
+        ...(this.code !== undefined ? { code: this.code } : {}),
         ...(this.details !== undefined ? { details: this.details } : {}),
         ...(this.data !== undefined ? { data: this.data } : {}),
         ...(this.path !== undefined ? { path: this.path } : {}),

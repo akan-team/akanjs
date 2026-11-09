@@ -1,5 +1,9 @@
 import type { App } from "../commandDecorators";
 
+//? A package's `default` export can pick its build by NODE_ENV at run time (Lexical), which keeps every export of that
+//? build; its `production` export is the build itself, so what a page leaves unused is dropped.
+export const bundleConditions = (command: "build" | "start") => (command === "build" ? ["production"] : []);
+
 export const bundleDefine = (app: App, command: "build" | "start", renderEnv: "ssr" | "csr") => {
   const nodeEnv = command === "build" ? "production" : (process.env.NODE_ENV ?? "development");
   return {

@@ -152,8 +152,10 @@ export type AkanIpcMessage =
   | { type: "pubsub.subscribe"; roomId: string; socketId?: string; pid?: number }
   | { type: "pubsub.unsubscribe"; roomId: string; socketId?: string; pid?: number }
   | { type: "pubsub.snapshot.request" }
-  | { type: "pubsub.snapshot"; rooms: string[]; pid?: number }
+  | { type: "pubsub.snapshot"; rooms: string[]; liveModels?: string[]; pid?: number }
   | { type: "live.change"; change: LiveChange; origin?: string }
+  /** Child → gateway: every model the child holds live rooms for. */
+  | { type: "live.models"; models: string[]; pid?: number }
   | { type: "queue.enqueued"; queue: string; name: string; jobId: string }
   | { type: "queue.wake"; queue?: string; name?: string }
   | { type: "health.ping"; nonce: string; sentAt: number }
