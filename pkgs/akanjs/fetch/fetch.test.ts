@@ -652,7 +652,7 @@ describe("HttpClient", () => {
     expect(fetchCalls).toHaveLength(1);
   });
 
-  test("retries a gateway's own JSON 503 and a Retry-After of 0 at once, but not an error the app keyed", async () => {
+  test("retries a gateway's own JSON 503 and a Retry-After of 0 at once, but not an error the app keyed or coded", async () => {
     setMockFetch();
     const fast = { min: 1, jitter: 0 };
     const client = new HttpClient("https://api.example", { ErrorCls: TestErr });
@@ -673,6 +673,20 @@ describe("HttpClient", () => {
     rawResponses.push(Response.json({ error: "thing.error.maintenance", statusCode: 503 }, { status: 503 }));
     const keyed = (await client.get("/items", { retry: fast }).catch((error) => error)) as TestErr;
     expect(keyed.message).toBe("thing.error.maintenance");
+    expect(fetchCalls).toHaveLength(1);
+
+    fetchCalls.length = 0;
+    rawResponses.push(
+      Response.json({ error: "Service Unavailable", code: "queueFull", statusCode: 503 }, { status: 503 }),
+    );
+    const coded = (await new HttpClient("https://api.example")
+      .get("/items", { retry: fast })
+      .catch((error) => error)) as {
+      message: string;
+      code?: string;
+      statusCode?: number;
+    };
+    expect(coded).toMatchObject({ message: "Service Unavailable", code: "queueFull", statusCode: 503 });
     expect(fetchCalls).toHaveLength(1);
   });
 
