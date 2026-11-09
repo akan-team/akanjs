@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   AKAN_RSC_CURRENT_STATE_HEADER,
+  AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_PATCH_SEGMENT_PATH_HEADER,
   AKAN_RSC_PATCH_START_INDEX_HEADER,
@@ -9,7 +10,7 @@ import {
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
 import { fetchRscNavigationResponse } from "./rscClientFetch";
-import { RSC_CONTENT_TYPE } from "./rscHttp";
+import { getRscPayloadStream, RSC_CONTENT_TYPE } from "./rscHttp";
 import { makeRouterState } from "./rscNavigation.fixture";
 
 const originalFetch = globalThis.fetch;
@@ -196,5 +197,25 @@ describe("fetchRscNavigationResponse", () => {
     expect(result).toMatchObject({ type: "response", notFound: true });
     expect(bodyCancelled).toBe(false);
     expect(requests).toHaveLength(1);
+  });
+
+  test("names its document's import map, router state or not, and hands back a refusal no decoder reads", async () => {
+    const sent: (string | null)[] = [];
+    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      sent.push(new Headers(init?.headers).get(AKAN_RSC_IMPORT_MAP_HEADER));
+      return new Response("Conflict", { status: 409 });
+    }) as typeof fetch;
+    Object.assign(globalThis, { __AKAN_IMPORT_MAP_KEY__: "k1" });
+    try {
+      const result = await fetchRscNavigationResponse("https://example.test/docs", {
+        currentRouterState: null,
+        sendRouterState: false,
+      });
+
+      expect(sent).toEqual(["k1"]);
+      expect(result.type === "response" && getRscPayloadStream(result.response)).toBeNull();
+    } finally {
+      Reflect.deleteProperty(globalThis, "__AKAN_IMPORT_MAP_KEY__");
+    }
   });
 });
