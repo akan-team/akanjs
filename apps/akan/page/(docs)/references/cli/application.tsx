@@ -1366,7 +1366,7 @@ akan test util`,
       {
         name: "build",
         signature:
-          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>]",
+          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--update-budget <boolean>]",
         desc: l.trans({
           en: "Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.",
           ko: "배포용 빌드를 `dist/apps/<app>`에 만듭니다. 타입을 검사한 뒤 백엔드, SSR 라우트, CSR 번들을 차례로 만듭니다.",
@@ -1405,6 +1405,15 @@ akan test util`,
               ko: "서버가 실행될 환경입니다. 주지 않으면 워크스페이스 `.env`의 `AKAN_PUBLIC_ENV`를 따르며, 이 값이 셸보다 우선합니다.",
             }),
           },
+          {
+            name: "--update-budget",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "Write the app's `akan.budget.json`: add each route that has no entry at what it measures now, lower an entry its route now fits under, and drop the routes that are gone. It never raises an entry.",
+              ko: "앱의 `akan.budget.json`을 씁니다. 항목이 없는 라우트는 지금 잰 크기로 더하고, 줄어든 라우트의 항목은 낮추며, 사라진 라우트는 지웁니다. 항목을 올리지는 않습니다.",
+            }),
+          },
         ],
         notes: [
           aliasNote("b"),
@@ -1422,10 +1431,18 @@ akan test util`,
               ko: "SSR과 CSR 단계는 `akan.config.ts`의 `web` 설정을 따르며, 꺼 둔 쪽은 건너뜁니다.",
             }),
           },
+          {
+            name: l.trans({ en: "route JS budget", ko: "라우트 JS 예산" }),
+            desc: l.trans({
+              en: "The build measures the JavaScript each server route can load before it hydrates: the runtime, every client component its page and layouts import, and the vendors those import. It counts the brotli bytes served and prints the largest routes. When the app has an `akan.budget.json`, a route over its `routeJsBrotliKB` entry fails the build. A route with no entry is only reported. Record the file with `--update-budget` and commit it. To raise an entry, edit it by hand in the change that grows the route.",
+              ko: "빌드는 서버 라우트마다 하이드레이션 전에 불러올 수 있는 JavaScript를 잽니다. 런타임, 그 페이지와 레이아웃이 가져오는 모든 클라이언트 컴포넌트, 그리고 그것들이 가져오는 벤더가 대상입니다. 실제로 내려보내는 brotli 바이트를 세고, 가장 큰 라우트들을 보여 줍니다. 앱에 `akan.budget.json`이 있으면, `routeJsBrotliKB` 항목을 넘는 라우트가 빌드를 실패시킵니다. 항목이 없는 라우트는 보고만 합니다. 파일은 `--update-budget`으로 기록해 커밋합니다. 항목을 올리려면, 라우트를 키우는 변경에서 직접 고칩니다.",
+            }),
+          },
         ],
         examples: `akan build myapp
 akan build myapp --write true --fast false --quiet false
-akan build myapp --profile edge`,
+akan build myapp --profile edge
+akan build myapp --update-budget`,
       },
       {
         name: "start-ios",

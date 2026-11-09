@@ -17,6 +17,7 @@ import {
   precompressArtifacts,
   SsrBaseArtifactBuilder,
 } from "./frontendBuild";
+import { RouteJsBudget, type RouteJsSize } from "./routeJsBudget";
 import { Spinner } from "./spinner";
 import { createServerEnvPlugin } from "./transforms/serverEnvPlugin";
 import { ServerEnvProfile } from "./transforms/serverEnvProfile";
@@ -31,7 +32,16 @@ export interface TypecheckOptions {
   report?: "pretty" | "records";
 }
 
-export type BuildPhaseId = "prepare" | "typecheck" | "backend" | "ssr" | "csr" | "assets" | "compress" | "metadata";
+export type BuildPhaseId =
+  | "prepare"
+  | "typecheck"
+  | "backend"
+  | "ssr"
+  | "csr"
+  | "assets"
+  | "compress"
+  | "budget"
+  | "metadata";
 
 export type BuildPhaseResult = ApplicationBuildPhaseResult & { id: BuildPhaseId };
 export type BuildResult = ApplicationBuildResult;
@@ -43,6 +53,8 @@ export interface ApplicationBuildRunnerOptions {
   environment?: string;
   /** Bundles `env/env.server.<environment>.<profile>.ts`, which may hold no secret, in place of the environment's file. */
   profile?: string;
+  /** Writes akan.budget.json: adds each new route and lowers an entry its route now fits under. */
+  updateBudget?: boolean;
 }
 export interface BuildOptions {
   spinner?: boolean;
@@ -59,6 +71,7 @@ const BUILD_PHASE_EMOJIS: Record<BuildPhaseId, string> = {
   csr: "🎨",
   assets: "✂️",
   compress: "🗜️",
+  budget: "📏",
   metadata: "📝",
 };
 
@@ -86,16 +99,22 @@ export class ApplicationBuildRunner {
   #reporter?: BuildProgressReporter;
   #environment?: string;
   #profile?: string;
+  #updateBudget: boolean;
+  #modulesByRoute?: Record<string, string[]>;
   #spinner?: boolean;
   #startedAt = Date.now();
   #phases: BuildPhaseResult[] = [];
 
-  constructor(app: App, { fast = false, reporter, environment, profile }: ApplicationBuildRunnerOptions = {}) {
+  constructor(
+    app: App,
+    { fast = false, reporter, environment, profile, updateBudget = false }: ApplicationBuildRunnerOptions = {},
+  ) {
     this.#app = app;
     this.#fast = fast;
     this.#reporter = reporter;
     this.#environment = environment;
     this.#profile = profile;
+    this.#updateBudget = updateBudget;
   }
 
   get #envDir() {
@@ -176,9 +195,16 @@ export class ApplicationBuildRunner {
           ? `${result.files} files, ${ApplicationBuildRunner.formatBytes(result.inputBytes)} -> gzip ${ApplicationBuildRunner.formatBytes(result.outputBytes)} / br ${ApplicationBuildRunner.formatBytes(result.brotliBytes)}`
           : "no files",
     );
+    const routeJs = await this.#runPhase(
+      "budget",
+      "Measuring route JS",
+      () => this.#measureRouteJs(),
+      (result) => result?.summary ?? "no server pages",
+    );
     await this.#runPhase("metadata", "Writing production metadata", () => this.buildAppMeta());
     return {
       phases: this.#phases,
+      ...(routeJs ? { routeJs: routeJs.sizes } : {}),
       durationMs: Date.now() - this.#startedAt,
       outputDir: this.#app.dist.cwdPath,
       artifactDir: path.join(this.#app.dist.cwdPath, ".akan/artifact"),
@@ -408,7 +434,38 @@ void run().catch((error) => {
     const allRoutes = await new AllRoutesBuilder(this.#app, base.artifact, "build", {
       runtimeChunks: base.runtimeChunks,
     }).build();
+    this.#modulesByRoute = allRoutes.modulesByRoute;
     return { base, allRoutes };
+  }
+
+  //? After `compress`: a route is measured by the brotli bytes it is served as, read from the `.br` sidecars.
+  async #measureRouteJs(): Promise<{ sizes: RouteJsSize[]; summary: string } | null> {
+    if (!this.#modulesByRoute) return null;
+    const sizes = await RouteJsBudget.measure(
+      path.join(this.#app.dist.cwdPath, ".akan/artifact"),
+      this.#modulesByRoute,
+    );
+    const budgetPath = path.join(this.#app.cwdPath, RouteJsBudget.fileName);
+    const budgetLabel = path.relative(this.#app.workspace.workspaceRoot, budgetPath);
+    const committed = await RouteJsBudget.load(budgetPath);
+    const budget = this.#updateBudget ? (committed ?? new RouteJsBudget()).tightenedBy(sizes) : committed;
+    if (this.#updateBudget && budget) await Bun.write(budgetPath, budget.stringify());
+    const overages = budget?.overages(sizes) ?? [];
+    if (overages.length) throw new Error(RouteJsBudget.formatOverages(overages, budgetLabel));
+    const largest = sizes[0];
+    const unbudgeted = budget?.unbudgeted(sizes).length ?? 0;
+    const status = !budget
+      ? `no ${RouteJsBudget.fileName}`
+      : this.#updateBudget
+        ? `${budgetLabel} updated`
+        : `within ${budgetLabel}${unbudgeted ? `, ${unbudgeted} route(s) without an entry` : ""}`;
+    const { formatBytes } = ApplicationBuildRunner;
+    return {
+      sizes,
+      summary: largest
+        ? `${sizes.length} routes, largest ${largest.routeId} ${formatBytes(largest.brotliBytes)} brotli (${formatBytes(largest.rawBytes)} raw); ${status}`
+        : status,
+    };
   }
 
   //? Opt-in and outside `dist/`: a metafile is the size of the module graph, and `dist/` is what the image copies.
