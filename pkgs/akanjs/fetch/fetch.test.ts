@@ -3121,6 +3121,73 @@ describe("FetchClient websocket generation", () => {
     expect(JSON.parse(ws.sent[2] ?? "{}")).toEqual({ key: "roomThing", data: ["room-1"], subscribe: false });
   });
 
+  test("leaves only the disposed room when one handler serves two rooms", () => {
+    setFakeWebSocket();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const subscribe = client.handler.subscribeRoomThing as (...args: unknown[]) => () => void;
+    const titles: string[] = [];
+    const handle = (data: unknown) => titles.push((data as InstanceType<typeof FetchTestLight>).title);
+
+    const disposeFirst = subscribe("room-1", handle);
+    subscribe("room-2", handle);
+    disposeFirst();
+
+    expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({ key: "roomThing", data: ["room-1"], subscribe: false });
+    expect(client.ws.hasListeners("roomThing-room-1")).toBe(false);
+    ws.receive({ type: "pub", roomId: "roomThing-room-1", data: { title: "First" } });
+    ws.receive({ type: "pub", roomId: "roomThing-room-2", data: { title: "Second" } });
+    expect(titles).toEqual(["Second"]);
+  });
+
+  test("removes one listener per dispose when one handler subscribes to a room twice", () => {
+    setFakeWebSocket();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const subscribe = client.handler.subscribeRoomThing as (...args: unknown[]) => () => void;
+    const titles: string[] = [];
+    const handle = (data: unknown) => titles.push((data as InstanceType<typeof FetchTestLight>).title);
+    const unsubscribeFrame = { key: "roomThing", data: ["room-1"], subscribe: false };
+
+    const disposeFirst = subscribe("room-1", handle);
+    const disposeSecond = subscribe("room-1", handle);
+    ws.receive({ type: "pub", roomId: "roomThing-room-1", data: { title: "Both" } });
+    disposeFirst();
+    ws.receive({ type: "pub", roomId: "roomThing-room-1", data: { title: "One" } });
+    expect(ws.sent.map((frame) => JSON.parse(frame))).not.toContainEqual(unsubscribeFrame);
+    disposeSecond();
+    ws.receive({ type: "pub", roomId: "roomThing-room-1", data: { title: "None" } });
+
+    expect(titles).toEqual(["Both", "Both", "One"]);
+    expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual(unsubscribeFrame);
+    expect(client.ws.hasListeners("roomThing-room-1")).toBe(false);
+  });
+
+  test("removes one message listener per dispose when one handler listens twice", () => {
+    setFakeWebSocket();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const listen = client.handler.listenSendThing as (handle: (data: unknown) => void) => () => void;
+    const received: unknown[] = [];
+    const handle = (data: unknown) => received.push(data);
+
+    const disposeFirst = listen(handle);
+    const disposeSecond = listen(handle);
+    disposeFirst();
+    ws.receive({ type: "msg", key: "sendThing", data: "one" });
+    disposeSecond();
+    ws.receive({ type: "msg", key: "sendThing", data: "none" });
+
+    expect(received).toEqual(["one"]);
+    expect(client.ws.hasListeners("sendThing")).toBe(false);
+  });
+
   test("hands a subscriber a falsy value or a nullable null as it was published", async () => {
     setFakeWebSocket();
     const feed = (returns: SerializedEndpoint["returns"]): SerializedEndpoint => ({
