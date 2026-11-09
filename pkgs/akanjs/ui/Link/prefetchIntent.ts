@@ -1,3 +1,4 @@
+"use client";
 import { Href, router } from "akanjs/client";
 import { type FocusEvent, type PointerEvent, useEffect, useRef } from "react";
 
