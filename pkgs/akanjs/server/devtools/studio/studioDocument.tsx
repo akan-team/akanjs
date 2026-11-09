@@ -243,7 +243,11 @@ export class StudioDocument {
         data-label={node.label}
         data-actions={actions.length ? JSON.stringify(actions) : undefined}
       >
-        <title>{node.at ? `${node.label}\n${node.at.file}:${node.at.line}` : node.label}</title>
+        <title>
+          {[node.label, node.at ? `${node.at.file}:${node.at.line}` : null, node.doc ?? null]
+            .filter(Boolean)
+            .join("\n")}
+        </title>
         <rect x={x} y={y} width={width} height={height} rx={6} />
         <rect className="bar" x={x} y={y} width={4} height={height} rx={2} />
         <a href={openOf(node.change === "removed" ? null : node.at)}>
