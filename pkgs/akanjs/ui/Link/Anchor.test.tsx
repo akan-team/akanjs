@@ -21,8 +21,8 @@ const fakeRouter = {
   },
   back: () => undefined,
   refresh: () => undefined,
-  prefetch: (href: string) => {
-    prefetches.push(href);
+  prefetch: (href: string, priority?: string) => {
+    prefetches.push(priority ? `${href} ${priority}` : href);
   },
 };
 const externalHrefs = [
@@ -310,13 +310,87 @@ describe("SsrLink prefetch", () => {
       unmount();
     }));
 
-  test("loads the page at once when the link takes focus", () =>
+  test("asks nothing when the link is pressed before the pointer rests", () =>
     inProduction(async () => {
-      const { container, unmount } = mount(<SsrLink href="/guide">Guide</SsrLink>);
-      act(() => container.querySelector("a")?.focus());
+      const { container, unmount } = mount(<SsrLink href="/docs">Docs</SsrLink>);
+      const anchor = container.querySelector("a");
+      hover(anchor);
+      act(() => {
+        anchor?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }));
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+
+      expect(prefetches).toEqual([]);
+      unmount();
+    }));
+
+  test("loads the page once the link has held keyboard focus a moment, and not when focus moves on first", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(
+        <>
+          <SsrLink href="/guide">Guide</SsrLink>
+          <SsrLink href="/passed">Passed</SsrLink>
+        </>,
+      );
+      const [guide, passed] = container.querySelectorAll("a");
+      act(() => passed?.focus());
+      act(() => passed?.blur());
+      act(() => guide?.focus());
+      expect(prefetches).toEqual([]);
+      await act(async () => {
+        await sleep(100);
+      });
 
       expect(prefetches).toEqual(["/en/guide"]);
       unmount();
+    }));
+
+  test("leaves a touch to the click", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(<SsrLink href="/docs">Docs</SsrLink>);
+      const anchor = container.querySelector("a");
+      act(() => {
+        anchor?.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "touch" }));
+        anchor?.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+
+      expect(prefetches).toEqual([]);
+      unmount();
+    }));
+
+  test("loads a viewport link once it shows, behind every link pointed at", () =>
+    inProduction(async () => {
+      const observed: Array<(entries: Array<{ isIntersecting: boolean; target: Element }>) => void> = [];
+      const targets: Element[] = [];
+      const previous = globalThis.IntersectionObserver;
+      globalThis.IntersectionObserver = class {
+        constructor(callback: (entries: Array<{ isIntersecting: boolean; target: Element }>) => void) {
+          observed.push(callback);
+        }
+        observe(target: Element) {
+          targets.push(target);
+        }
+        unobserve() {}
+        disconnect() {}
+      } as unknown as typeof IntersectionObserver;
+      try {
+        const { unmount } = mount(
+          <SsrLink href="/far" prefetch="viewport">
+            Far
+          </SsrLink>,
+        );
+        act(() => observed[0]?.(targets.map((target) => ({ isIntersecting: true, target }))));
+
+        expect(prefetches).toEqual(["/en/far low"]);
+        unmount();
+      } finally {
+        globalThis.IntersectionObserver = previous;
+      }
     }));
 
   test("loads nothing with prefetch={false}, for an external href, or outside production", async () => {
@@ -329,12 +403,18 @@ describe("SsrLink prefetch", () => {
           <SsrLink href="https://example.com/x">X</SsrLink>
         </>,
       );
-      for (const anchor of container.querySelectorAll("a")) act(() => anchor.focus());
+      for (const anchor of container.querySelectorAll("a")) hover(anchor);
+      await act(async () => {
+        await sleep(100);
+      });
+      expect(prefetches).toEqual([]);
       unmount();
     });
-    prefetches.length = 0;
     const { container, unmount } = mount(<SsrLink href="/b">B</SsrLink>);
-    act(() => container.querySelector("a")?.focus());
+    hover(container.querySelector("a"));
+    await act(async () => {
+      await sleep(100);
+    });
 
     expect(prefetches).toEqual([]);
     unmount();

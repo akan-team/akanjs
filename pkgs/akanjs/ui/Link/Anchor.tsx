@@ -21,7 +21,7 @@ export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "hre
   activeMatch?: string[];
   /** @deprecated Has no effect: neither renderer reads it. */
   noCache?: boolean;
-  /** `"hover"` (the default, or `true`) loads the page on hover, touch or focus, `"viewport"` also once it shows. */
+  /** `"hover"` (the default, or `true`) loads the page on hover or keyboard focus, `"viewport"` also once it shows. */
   prefetch?: LinkPrefetch;
 };
 type AnchorProps = Omit<CommonLinkProps, "href" | "disabled"> & { href: string };

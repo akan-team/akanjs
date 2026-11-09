@@ -13,6 +13,7 @@ import { CsrLocation, csrLocation } from "./csrLocation";
 import { Href } from "./href";
 import { isMcpView } from "./mcpView";
 import { type NavigationAttempt, type NavigationGuard, NavigationGuards, NavigationRefused } from "./navigationGuards";
+import type { PrefetchPriority } from "./rscNavigation";
 
 export interface RouteOptions {
   scrollToTop?: boolean;
@@ -43,7 +44,7 @@ export interface RouterInstance {
   refresh: () => void;
   /** Whether `back` has a page to return to; left out, the router reads the index stamped on the history entry. */
   canGoBack?: () => boolean;
-  prefetch?: (href: string) => void;
+  prefetch?: (href: string, priority?: PrefetchPriority) => void;
 }
 interface RouterOptions {
   prefix?: string;
@@ -266,7 +267,7 @@ class Router {
     this.#instance = {
       push: navigate("push"),
       replace: navigate("replace"),
-      prefetch: (href) => options.router.prefetch?.(this.#getNavigationPathInfo(href).href),
+      prefetch: (href, priority) => options.router.prefetch?.(this.#getNavigationPathInfo(href).href, priority),
       back: () => {
         this.#postPathAfterBack();
         options.router.back();
@@ -548,9 +549,10 @@ class Router {
     this.#guarded("replace", href, () => this.#move("replace", href, routeOptions));
     return undefined as never;
   }
-  prefetch(href: string) {
-    if (!this.isInitialized || this.#leavesOrigin(href)) return;
-    this.#instance.prefetch?.(href);
+  //? Production only: a dev server compiles each route on its first request, so a prefetch would compile pages unasked.
+  prefetch(href: string, { priority }: { priority?: PrefetchPriority } = {}) {
+    if (process.env.NODE_ENV !== "production" || !this.isInitialized || this.#leavesOrigin(href)) return;
+    this.#instance.prefetch?.(href, priority);
   }
   #move(kind: "push" | "replace", href: string, routeOptions?: RouteOptions) {
     this.#navigations += 1;

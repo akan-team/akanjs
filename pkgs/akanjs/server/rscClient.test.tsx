@@ -10,6 +10,7 @@ import {
   AKAN_RSC_CURRENT_ROUTE_HEADER,
   AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
+  AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_RESPONSE_STATE_HEADER,
   encodeAkanRouterState,
 } from "./routeState";
@@ -42,7 +43,7 @@ const back = async (expected: string) => {
   await waitFor(() => shown() === expected);
 };
 const served = new Map<string, () => Response | Promise<Response>>();
-const fetched: { pathname: string; sentRouterState: boolean; signal?: AbortSignal }[] = [];
+const fetched: { pathname: string; sentRouterState: boolean; prefetch: boolean; signal?: AbortSignal }[] = [];
 const fetchCountOf = (pathname: string) => fetched.filter((request) => request.pathname === pathname).length;
 const signalOf = (pathname: string) => fetched.findLast((request) => request.pathname === pathname)?.signal;
 const sentRouterStateFor = (pathname: string) =>
@@ -116,9 +117,11 @@ beforeAll(async () => {
     __RSC_CLOSED__: true,
     fetch: async (input: string | URL, init?: RequestInit) => {
       const target = new URL(new URL(String(input)).searchParams.get("url") ?? "/", origin);
-      const sentRouterState = new Headers(init?.headers).has(AKAN_RSC_CURRENT_ROUTE_HEADER);
+      const headers = new Headers(init?.headers);
+      const sentRouterState = headers.has(AKAN_RSC_CURRENT_ROUTE_HEADER);
+      const prefetch = headers.get(AKAN_RSC_PREFETCH_HEADER) === "1";
       const signal = init?.signal ?? undefined;
-      fetched.push({ pathname: target.pathname, sentRouterState, signal });
+      fetched.push({ pathname: target.pathname, sentRouterState, prefetch, signal });
       const response = served.get(target.pathname)?.() ?? responseOf(`${target.pathname}${target.search}`);
       if (!signal) return response;
       signal.throwIfAborted();
@@ -196,7 +199,7 @@ describe("rscClient overtaken navigation", () => {
     expect(shown()).toBe("/thread/2");
   });
 
-  test("a navigation overtaken before its page commits has its request aborted", async () => {
+  test("a navigation overtaken before its page commits has its request cut once its headers are in", async () => {
     await navigate("/street");
     const { held, respond } = heldUntilReleased("/street/slow");
     served.set("/street/slow", respond);
@@ -207,11 +210,12 @@ describe("rscClient overtaken navigation", () => {
     });
     await navigate("/street/fast");
 
-    expect(signalOf("/street/slow")?.aborted).toBe(true);
+    expect(signalOf("/street/slow")?.aborted).toBe(false);
     await act(async () => {
       held.release();
       await pending;
     });
+    expect(signalOf("/street/slow")?.aborted).toBe(true);
     expect(window.location.pathname).toBe("/street/fast");
     expect(shown()).toBe("/street/fast");
   });
@@ -227,11 +231,11 @@ describe("rscClient overtaken navigation", () => {
     });
     await refresh();
 
-    expect(signalOf("/desk/next")?.aborted).toBe(true);
     await act(async () => {
       held.release();
       await pending;
     });
+    expect(signalOf("/desk/next")?.aborted).toBe(true);
     expect(window.location.pathname).toBe("/desk");
   });
 
@@ -282,12 +286,12 @@ describe("rscClient overtaken navigation", () => {
       await sleep(10);
     });
     await navigate("/catalog?peek=1", { shallow: true });
-    expect(signalOf("/catalog/next")?.aborted).toBe(true);
 
     await act(async () => {
       held.release();
       await pending;
     });
+    expect(signalOf("/catalog/next")?.aborted).toBe(true);
 
     expect(`${window.location.pathname}${window.location.search}`).toBe("/catalog?peek=1");
     expect(shown()).toBe("/catalog");
@@ -565,17 +569,116 @@ describe("rscClient prefetch", () => {
       await sleep(10);
     });
   };
+  const later = async (ms: number, run: () => Promise<void>) => {
+    const now = Date.now();
+    const clock = spyOn(Date, "now").mockImplementation(() => now + ms);
+    try {
+      await run();
+    } finally {
+      clock.mockRestore();
+    }
+  };
 
-  test("a prefetched page commits on the click without asking the server again, as a replay", async () => {
+  test("a page prefetched moments before the click commits as current, without asking the server again", async () => {
     await navigate("/store");
     await prefetch("/store/item");
-    expect(fetchCountOf("/store/item")).toBe(1);
+    expect(fetched.findLast((request) => request.pathname === "/store/item")?.prefetch).toBe(true);
 
     await navigate("/store/item");
 
     expect(fetchCountOf("/store/item")).toBe(1);
     expect(shown()).toBe("/store/item");
+    expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(false);
+  });
+
+  test("a page prefetched a while before the click commits as a replay its data readers refetch", async () => {
+    await navigate("/shelf");
+    await prefetch("/shelf/item");
+
+    await later(6_000, () => navigate("/shelf/item"));
+
+    expect(fetchCountOf("/shelf/item")).toBe(1);
+    expect(shown()).toBe("/shelf/item");
     expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
+  });
+
+  test("a page prefetched past its lifetime is asked for again", async () => {
+    await navigate("/attic");
+    await prefetch("/attic/item");
+
+    await later(16_000, () => navigate("/attic/item"));
+
+    expect(fetchCountOf("/attic/item")).toBe(2);
+    expect(fetched.findLast((request) => request.pathname === "/attic/item")?.prefetch).toBe(false);
+  });
+
+  test("a prefetch the server turned away is asked for again on the click", async () => {
+    await navigate("/gate");
+    served.set("/gate/busy", () => new Response("Too Many Requests", { status: 429 }));
+    await prefetch("/gate/busy");
+    served.set("/gate/busy", () => responseOf("/gate/busy"));
+
+    await navigate("/gate/busy");
+
+    expect(fetchCountOf("/gate/busy")).toBe(2);
+    expect(shown()).toBe("/gate/busy");
+  });
+
+  test("a page the navigation in flight is loading is not prefetched beside it", async () => {
+    await navigate("/dock");
+    let release = () => {};
+    served.set(
+      "/dock/ship",
+      () => new Promise<Response>((resolve) => (release = () => resolve(responseOf("/dock/ship")))),
+    );
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/dock/ship");
+      await sleep(10);
+    });
+
+    await prefetch("/dock/ship#deck");
+    await act(async () => {
+      release();
+      await pending;
+    });
+
+    expect(fetchCountOf("/dock/ship")).toBe(1);
+    expect(shown()).toBe("/dock/ship");
+  });
+
+  test("a click overtaken while it waits on its prefetch sends no request of its own", async () => {
+    await navigate("/yard");
+    let release = () => {};
+    served.set(
+      "/yard/slow",
+      () => new Promise<Response>((resolve) => (release = () => resolve(responseOf("/yard/slow")))),
+    );
+    await prefetch("/yard/slow");
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/yard/slow");
+      await sleep(10);
+    });
+    await navigate("/yard/fast");
+
+    await act(async () => {
+      release();
+      await pending;
+    });
+
+    expect(fetchCountOf("/yard/slow")).toBe(1);
+    expect(shown()).toBe("/yard/fast");
+  });
+
+  test("a prefetch of one fragment serves a click on another of the same page", async () => {
+    await navigate("/manual");
+    await prefetch("/manual/ch1#intro");
+
+    await navigate("/manual/ch1#usage");
+
+    expect(fetchCountOf("/manual/ch1")).toBe(1);
+    expect(shown()).toBe("/manual/ch1");
   });
 
   test("a click while the prefetch is loading waits on it instead of asking twice", async () => {

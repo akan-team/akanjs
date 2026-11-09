@@ -75,6 +75,7 @@ import {
   AKAN_RSC_PATCH_SEGMENT_PATH_HEADER,
   AKAN_RSC_PATCH_START_INDEX_HEADER,
   AKAN_RSC_PATCH_START_SEGMENT_HEADER,
+  AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_RESPONSE_STATE_HEADER,
 } from "./routeState";
 import {
@@ -332,6 +333,7 @@ export class WebRouter {
   readonly #requestStats = {
     fullSsr: 0,
     rscNavigation: 0,
+    rscPrefetch: 0,
     staticAsset: 0,
     csr: 0,
     image: 0,
@@ -536,7 +538,8 @@ export class WebRouter {
           }
         : {}),
       "/__rsc": SessionRefresh.answering(async (req) => {
-        this.#requestStats.rscNavigation += 1;
+        if (req.headers.get(AKAN_RSC_PREFETCH_HEADER) === "1") this.#requestStats.rscPrefetch += 1;
+        else this.#requestStats.rscNavigation += 1;
         try {
           const reqUrl = new URL(req.url);
           // Behind proxies req.url is internal; forwarded headers give the browser's origin for the same-origin check.
@@ -906,6 +909,7 @@ export class WebRouter {
       ssrChunkEvictionCount: ssrStats.ssrChunkEvictionCount,
       httpFullSsrCount: this.#requestStats.fullSsr,
       httpRscNavigationCount: this.#requestStats.rscNavigation,
+      httpRscPrefetchCount: this.#requestStats.rscPrefetch,
       httpStaticAssetCount: this.#requestStats.staticAsset,
       httpCsrCount: this.#requestStats.csr,
       httpImageCount: this.#requestStats.image,

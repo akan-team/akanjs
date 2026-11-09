@@ -6,9 +6,17 @@ interface RscPrefetchEntry {
   release: () => void;
 }
 
+export type RscPrefetchPriority = "high" | "low";
+
+export interface RscPrefetched {
+  response: Promise<Response | null>;
+  fresh: boolean;
+}
+
 export interface RscPrefetchCacheOptions {
   fetchResponse: (href: string, signal: AbortSignal) => Promise<Response>;
   ttlMs?: number;
+  freshMs?: number;
   maxConcurrent?: number;
   maxEntries?: number;
   maxQueued?: number;
@@ -16,7 +24,9 @@ export interface RscPrefetchCacheOptions {
 }
 
 export class RscPrefetchCache {
-  static readonly defaultTtlMs = 30_000;
+  static readonly defaultTtlMs = 15_000;
+  //? Hover to click falls well inside it, and a slow render's own data is as old by its commit; older is a replay.
+  static readonly defaultFreshMs = 5_000;
   //? Two, so an HTTP/1.1 origin's six connections keep room for the navigation and the page's own queries.
   static readonly defaultMaxConcurrent = 2;
   static readonly defaultMaxEntries = 16;
@@ -24,21 +34,24 @@ export class RscPrefetchCache {
 
   #fetchResponse: RscPrefetchCacheOptions["fetchResponse"];
   #ttlMs: number;
+  #freshMs: number;
   #maxConcurrent: number;
   #maxEntries: number;
   #maxQueued: number;
   #now: () => number;
   #entries = new Map<string, RscPrefetchEntry>();
-  #queue = new Map<string, string>();
+  #high = new Map<string, string>();
+  #low = new Map<string, string>();
   #active = 0;
 
   constructor(options: RscPrefetchCacheOptions) {
     this.#fetchResponse = options.fetchResponse;
     this.#ttlMs = options.ttlMs ?? RscPrefetchCache.defaultTtlMs;
+    this.#freshMs = options.freshMs ?? RscPrefetchCache.defaultFreshMs;
     this.#maxConcurrent = options.maxConcurrent ?? RscPrefetchCache.defaultMaxConcurrent;
     this.#maxEntries = options.maxEntries ?? RscPrefetchCache.defaultMaxEntries;
     this.#maxQueued = options.maxQueued ?? RscPrefetchCache.defaultMaxQueued;
-    this.#now = options.now ?? Date.now;
+    this.#now = options.now ?? (() => Date.now());
   }
 
   get activeCount() {
@@ -46,7 +59,7 @@ export class RscPrefetchCache {
   }
 
   get queuedCount() {
-    return this.#queue.size;
+    return this.#high.size + this.#low.size;
   }
 
   has(href: string, account: string) {
@@ -54,20 +67,25 @@ export class RscPrefetchCache {
     return !!entry && entry.account === account && !this.#isStale(entry);
   }
 
-  request(href: string, account: string): void {
+  //? Newest pointed-at link first, the likeliest click; a link that merely came into view waits behind all of them.
+  request(href: string, account: string, priority: RscPrefetchPriority = "high"): void {
     this.#sweep();
     if (this.has(href, account)) return;
-    this.#queue.delete(href);
-    this.#queue.set(href, account);
-    for (const oldest of this.#queue.keys()) {
-      if (this.#queue.size <= this.#maxQueued) break;
-      this.#queue.delete(oldest);
+    if (priority === "low" && this.#high.has(href)) return;
+    this.#high.delete(href);
+    this.#low.delete(href);
+    const queue = priority === "high" ? this.#high : this.#low;
+    queue.set(href, account);
+    for (const oldest of queue.keys()) {
+      if (queue.size <= this.#maxQueued) break;
+      queue.delete(oldest);
     }
     this.#pump();
   }
 
-  take(href: string, account: string, signal?: AbortSignal): Promise<Response | null> | null {
-    this.#queue.delete(href);
+  take(href: string, account: string, signal?: AbortSignal): RscPrefetched | null {
+    this.#high.delete(href);
+    this.#low.delete(href);
     const entry = this.#entries.get(href);
     if (!entry) return null;
     this.#entries.delete(href);
@@ -76,25 +94,39 @@ export class RscPrefetchCache {
       return null;
     }
     signal?.addEventListener("abort", () => entry.controller.abort(), { once: true });
-    return entry.response;
+    return { response: entry.response, fresh: this.#now() - entry.startedAt <= this.#freshMs };
   }
 
-  dropQueued(): void {
-    this.#queue.clear();
+  prune(): void {
+    this.#high.clear();
+    this.#low.clear();
+    this.#sweep();
   }
 
   clear(): void {
-    this.#queue.clear();
+    this.#high.clear();
+    this.#low.clear();
     for (const entry of this.#entries.values()) RscPrefetchCache.#drop(entry);
     this.#entries.clear();
   }
 
   #pump(): void {
-    for (const [href, account] of this.#queue) {
-      if (this.#active >= this.#maxConcurrent) return;
-      this.#queue.delete(href);
-      this.#start(href, account);
+    while (this.#active < this.#maxConcurrent) {
+      const next = this.#dequeue();
+      if (!next) return;
+      this.#start(...next);
     }
+  }
+
+  #dequeue(): [string, string] | undefined {
+    const newest = [...this.#high].at(-1);
+    if (newest) {
+      this.#high.delete(newest[0]);
+      return newest;
+    }
+    const oldest = this.#low.entries().next().value;
+    if (oldest) this.#low.delete(oldest[0]);
+    return oldest;
   }
 
   #start(href: string, account: string): void {
@@ -122,8 +154,9 @@ export class RscPrefetchCache {
       controller,
       response: this.#fetchResponse(href, controller.signal).then(
         (response) => {
-          //? A server error may be gone by the click, so the navigation asks again rather than replaying it.
-          if (controller.signal.aborted || response.status >= 500 || !response.body) {
+          //? Only what the click would take as its own answer: a 429, 408 or 5xx may be gone by then, so it asks again.
+          const usable = response.ok || response.status === 404;
+          if (controller.signal.aborted || !usable || !response.body) {
             void response.body?.cancel().catch(() => undefined);
             forget();
             settle();

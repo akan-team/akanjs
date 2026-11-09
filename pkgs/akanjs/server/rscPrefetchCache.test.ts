@@ -3,7 +3,9 @@ import { RscPrefetchCache } from "./rscPrefetchCache";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const harness = (options: { ttlMs?: number; maxConcurrent?: number; maxEntries?: number; maxQueued?: number } = {}) => {
+const harness = (
+  options: { ttlMs?: number; freshMs?: number; maxConcurrent?: number; maxEntries?: number; maxQueued?: number } = {},
+) => {
   let clock = 0;
   const requests: { href: string; signal: AbortSignal; finish: (body?: string, status?: number) => void }[] = [];
   const cache = new RscPrefetchCache({
@@ -36,7 +38,7 @@ describe("RscPrefetchCache", () => {
     requests[0]?.finish("payload of a");
     await sleep(0);
 
-    const response = await cache.take("/a", "acct");
+    const response = await cache.take("/a", "acct")?.response;
 
     expect(await response?.text()).toBe("payload of a");
     expect(cache.take("/a", "acct")).toBeNull();
@@ -48,7 +50,7 @@ describe("RscPrefetchCache", () => {
     const taken = cache.take("/a", "acct");
     requests[0]?.finish("late payload");
 
-    expect(await (await taken)?.text()).toBe("late payload");
+    expect(await (await taken?.response)?.text()).toBe("late payload");
   });
 
   test("never serves a page prefetched for another account", async () => {
@@ -133,20 +135,73 @@ describe("RscPrefetchCache", () => {
     expect(cache.queuedCount).toBe(2);
   });
 
-  test("drops a server error so the click asks the server again", async () => {
-    const { cache, requests } = harness();
-    cache.request("/a", "acct");
-    requests[0]?.finish("boom", 503);
+  test("drops a refusal or a server error, either of which may be gone by the click", async () => {
+    const { cache, requests } = harness({ maxConcurrent: 3 });
+    const answers = ["/busy", "/slow", "/down"].map((href) => {
+      cache.request(href, "acct");
+      return cache.take(href, "acct")?.response;
+    });
+    requests[0]?.finish("Too Many Requests", 429);
+    requests[1]?.finish("Request Timeout", 408);
+    requests[2]?.finish("boom", 503);
 
-    expect(await cache.take("/a", "acct")).toBeNull();
+    expect(await Promise.all(answers)).toEqual([null, null, null]);
   });
 
-  test("keeps a redirect or a not-found, which the navigation acts on as if it had asked", async () => {
+  test("keeps a not-found, which the navigation acts on as if it had asked", async () => {
     const { cache, requests } = harness();
     cache.request("/a", "acct");
     requests[0]?.finish("0:null\n", 404);
 
-    expect((await cache.take("/a", "acct"))?.status).toBe(404);
+    expect((await cache.take("/a", "acct")?.response)?.status).toBe(404);
+  });
+
+  test("names a prefetch fresh only while it is younger than its fresh window", async () => {
+    const { cache, requests, advance } = harness({ freshMs: 1000, ttlMs: 5000 });
+    cache.request("/young", "acct");
+    cache.request("/old", "acct");
+    for (const request of requests) request.finish();
+    await sleep(0);
+
+    advance(1000);
+    expect(cache.take("/young", "acct")?.fresh).toBe(true);
+    advance(1);
+    expect(cache.take("/old", "acct")?.fresh).toBe(false);
+  });
+
+  test("starts the link last pointed at first, and a link that merely showed after every pointed one", async () => {
+    const { cache, requests, hrefs } = harness({ maxConcurrent: 1 });
+    cache.request("/busy", "acct");
+    cache.request("/shown", "acct", "low");
+    cache.request("/hovered", "acct");
+    cache.request("/focused", "acct");
+    cache.request("/hovered", "acct", "low");
+
+    for (let i = 0; i < 4; i += 1) {
+      requests[i]?.finish();
+      await sleep(0);
+    }
+
+    expect(hrefs()).toEqual(["/busy", "/focused", "/hovered", "/shown"]);
+  });
+
+  test("prune forgets what is queued and what has expired, and keeps a page still fresh", async () => {
+    const { cache, requests, hrefs, advance } = harness({ ttlMs: 1000, maxConcurrent: 2 });
+    cache.request("/old", "acct");
+    advance(600);
+    cache.request("/new", "acct");
+    cache.request("/queued", "acct");
+    requests[0]?.finish();
+    requests[1]?.finish();
+    advance(500);
+
+    cache.prune();
+    await sleep(0);
+
+    expect(requests[0]?.signal.aborted).toBe(true);
+    expect(cache.has("/new", "acct")).toBe(true);
+    expect(cache.queuedCount).toBe(0);
+    expect(hrefs()).toEqual(["/old", "/new"]);
   });
 
   test("aborts a taken prefetch when the navigation that took it is overtaken", async () => {
@@ -158,7 +213,7 @@ describe("RscPrefetchCache", () => {
     navigation.abort();
 
     expect(requests[0]?.signal.aborted).toBe(true);
-    expect(await taken).toBeNull();
+    expect(await taken?.response).toBeNull();
   });
 
   test("clear aborts what is loading and forgets what is queued", async () => {

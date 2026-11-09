@@ -1,17 +1,18 @@
 import { Href, router } from "akanjs/client";
-import { type FocusEvent, type PointerEvent, type TouchEvent, useEffect, useRef } from "react";
+import { type FocusEvent, type PointerEvent, useEffect, useRef } from "react";
 
 export type LinkPrefetch = boolean | "hover" | "viewport";
 
 interface PrefetchIntentHandlers {
   onPointerEnter?: (event: PointerEvent<HTMLAnchorElement>) => void;
   onPointerLeave?: (event: PointerEvent<HTMLAnchorElement>) => void;
+  onPointerDown?: (event: PointerEvent<HTMLAnchorElement>) => void;
   onFocus?: (event: FocusEvent<HTMLAnchorElement>) => void;
-  onTouchStart?: (event: TouchEvent<HTMLAnchorElement>) => void;
+  onBlur?: (event: FocusEvent<HTMLAnchorElement>) => void;
 }
 
-//? Long enough that a pointer crossing a menu on its way elsewhere asks for nothing.
-const hoverDelayMs = 65;
+//? Long enough that a pointer crossing a menu, or a Tab passing through a nav bar, asks for nothing.
+const intentDelayMs = 65;
 
 class ViewportPrefetch {
   static #observer: IntersectionObserver | null = null;
@@ -37,38 +38,43 @@ class ViewportPrefetch {
   }
 }
 
-//? Production only, as a dev server compiles each route on its first request, and a hover would compile pages unasked.
+//? No touchstart intent: a scroll that starts on a link touches it too, and a tap reaches its click ~100 ms later.
 export const usePrefetchIntent = (href: string, mode: LinkPrefetch, handlers: PrefetchIntentHandlers) => {
   const ref = useRef<HTMLAnchorElement>(null);
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const enabled =
-    mode !== false && process.env.NODE_ENV === "production" && !href.startsWith("#") && !Href.isExternal(href);
+  const intentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const enabled = mode !== false && !href.startsWith("#") && !Href.isExternal(href);
   useEffect(() => {
     if (!enabled || mode !== "viewport" || !ref.current) return;
-    return ViewportPrefetch.observe(ref.current, () => router.prefetch(href));
+    return ViewportPrefetch.observe(ref.current, () => router.prefetch(href, { priority: "low" }));
   }, [enabled, mode, href]);
-  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+  useEffect(() => () => clearTimeout(intentTimer.current), []);
   if (!enabled) return { ref };
-  const prefetch = () => router.prefetch(href);
+  const intend = () => {
+    clearTimeout(intentTimer.current);
+    intentTimer.current = setTimeout(() => router.prefetch(href), intentDelayMs);
+  };
+  const forgo = () => clearTimeout(intentTimer.current);
   return {
     ref,
     onPointerEnter: (event: PointerEvent<HTMLAnchorElement>) => {
       handlers.onPointerEnter?.(event);
-      if (event.pointerType === "touch") return;
-      clearTimeout(hoverTimer.current);
-      hoverTimer.current = setTimeout(prefetch, hoverDelayMs);
+      if (event.pointerType !== "touch") intend();
     },
     onPointerLeave: (event: PointerEvent<HTMLAnchorElement>) => {
       handlers.onPointerLeave?.(event);
-      clearTimeout(hoverTimer.current);
+      forgo();
+    },
+    onPointerDown: (event: PointerEvent<HTMLAnchorElement>) => {
+      handlers.onPointerDown?.(event);
+      forgo();
     },
     onFocus: (event: FocusEvent<HTMLAnchorElement>) => {
       handlers.onFocus?.(event);
-      prefetch();
+      intend();
     },
-    onTouchStart: (event: TouchEvent<HTMLAnchorElement>) => {
-      handlers.onTouchStart?.(event);
-      prefetch();
+    onBlur: (event: FocusEvent<HTMLAnchorElement>) => {
+      handlers.onBlur?.(event);
+      forgo();
     },
   };
 };

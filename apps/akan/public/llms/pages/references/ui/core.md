@@ -71,7 +71,7 @@ Navigates between internal routes. Use it for every internal link, and keep a ba
 
 - replace (boolean): Replaces the current history entry instead of adding one.
 
-- prefetch ("hover" | "viewport" | boolean, default "hover"): Built SSR pages load the target on hover, touch or focus, and on view with `"viewport"`. `false` turns it off.
+- prefetch ("hover" | "viewport" | boolean, default "hover"): Built SSR pages load the target on hover or keyboard focus, and on view with `"viewport"`. `false` turns it off.
 
 - noCache (boolean): Deprecated: it has no effect, so leave it out.
 

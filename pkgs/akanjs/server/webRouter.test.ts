@@ -17,6 +17,7 @@ import {
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
+  AKAN_RSC_PREFETCH_HEADER,
   encodeAkanRouterState,
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
@@ -990,6 +991,21 @@ describe("WebRouter public files and the web manifest", () => {
     expect(served.status).toBe(200);
     expect(served.headers.get("Content-Type")).toContain("application/manifest+json");
     await expect(served.json()).resolves.toEqual({ name: "Fixture" });
+  });
+});
+
+describe("WebRouter RSC request counts", () => {
+  test("counts a Link prefetch apart from a navigation, so navigation traffic stays what users clicked", async () => {
+    const metrics = await withFullSsrCacheHarness(async ({ renderEnvRoutes, router }) => {
+      await renderEnvRoutes["/__rsc"](new Request("https://example.test/__rsc?url=%2Fen%2Fdocs"));
+      await renderEnvRoutes["/__rsc"](
+        new Request("https://example.test/__rsc?url=%2Fen%2Fdocs", { headers: { [AKAN_RSC_PREFETCH_HEADER]: "1" } }),
+      );
+      return router.getMetrics();
+    });
+
+    expect(metrics.httpRscNavigationCount).toBe(1);
+    expect(metrics.httpRscPrefetchCount).toBe(1);
   });
 });
 

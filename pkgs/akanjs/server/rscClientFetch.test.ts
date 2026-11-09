@@ -5,10 +5,11 @@ import {
   AKAN_RSC_PATCH_SEGMENT_PATH_HEADER,
   AKAN_RSC_PATCH_START_INDEX_HEADER,
   AKAN_RSC_PATCH_START_SEGMENT_HEADER,
+  AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_STATE_VERSION_HEADER,
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
-import { fetchRscNavigationResponse } from "./rscClientFetch";
+import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
 import { RSC_CONTENT_TYPE } from "./rscHttp";
 import { makeRouterState } from "./rscNavigation.fixture";
 
@@ -196,5 +197,65 @@ describe("fetchRscNavigationResponse", () => {
     expect(result).toMatchObject({ type: "response", notFound: true });
     expect(bodyCancelled).toBe(false);
     expect(requests).toHaveLength(1);
+  });
+});
+
+describe("an overtaken RSC request", () => {
+  const heldFetch = () => {
+    const requests: { headers: Headers; signal: AbortSignal; answer: (response: Response) => void }[] = [];
+    globalThis.fetch = ((_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        requests.push({ headers: new Headers(init?.headers), signal, answer: resolve });
+      })) as unknown as typeof fetch;
+    return requests;
+  };
+  const sessionAnswer = () =>
+    new Response('0:"page"\n', {
+      headers: { "Content-Type": RSC_CONTENT_TYPE, "Set-Cookie": "session=rotated; Path=/; HttpOnly" },
+    });
+
+  test("keeps its request open until the headers that may rotate the session are in, then cuts it", async () => {
+    const requests = heldFetch();
+    const navigation = new AbortController();
+    const pending = fetchRscNavigationResponse("https://example.test/next", {
+      currentRouterState: null,
+      signal: navigation.signal,
+    });
+
+    navigation.abort();
+    await Promise.resolve();
+    expect(requests[0]?.signal.aborted).toBe(false);
+    requests[0]?.answer(sessionAnswer());
+
+    await expect(pending).rejects.toThrow();
+    expect(requests[0]?.signal.aborted).toBe(true);
+  });
+
+  test("sends nothing for a navigation overtaken before it asked", async () => {
+    const requests = heldFetch();
+    const navigation = new AbortController();
+    navigation.abort();
+
+    await expect(
+      fetchRscNavigationResponse("https://example.test/next", { currentRouterState: null, signal: navigation.signal }),
+    ).rejects.toThrow();
+    expect(requests).toHaveLength(0);
+  });
+
+  test("names a prefetch to the server, and holds it open for its headers the same way", async () => {
+    const requests = heldFetch();
+    const prefetch = new AbortController();
+    const pending = fetchRscPrefetchResponse("https://example.test/next", prefetch.signal);
+
+    prefetch.abort();
+    await Promise.resolve();
+    expect(requests[0]?.headers.get(AKAN_RSC_PREFETCH_HEADER)).toBe("1");
+    expect(requests[0]?.signal.aborted).toBe(false);
+    requests[0]?.answer(sessionAnswer());
+
+    await expect(pending).rejects.toThrow();
+    expect(requests[0]?.signal.aborted).toBe(true);
   });
 });

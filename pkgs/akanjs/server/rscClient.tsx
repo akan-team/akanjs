@@ -212,6 +212,7 @@ let renderedHref = normalizeHref(window.location.href);
 const scrollRestoration = new RscScrollRestoration();
 const pathnameOf = (href: string) => new URL(href).pathname;
 const withoutHash = (href: string | undefined) => href?.split("#", 1)[0];
+const pageKeyOf = (href: string) => withoutHash(href) ?? href;
 
 function commitHistory(target: string, replace: boolean | undefined) {
   if (replace) csrLocation.replace(akanHistoryState(true), target);
@@ -338,7 +339,7 @@ let currentFullNode: RscCacheNode | null = initialNode;
 let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
-let pendingRequest: { navId: number; controller: AbortController } | null = null;
+let pendingRequest: { navId: number; controller: AbortController; target: string } | null = null;
 let cachedAuthCookies = readAuthCookies();
 
 //? Only a request whose page has not committed is cut: a committed one may still stream the Suspense content on screen.
@@ -348,9 +349,9 @@ function supersedeNavigation(): number {
   return ++navigationSeq;
 }
 
-function requestSignalOf(navId: number): AbortSignal {
+function requestSignalOf(navId: number, target: string): AbortSignal {
   const controller = new AbortController();
-  pendingRequest = { navId, controller };
+  pendingRequest = { navId, controller, target: pageKeyOf(target) };
   return controller.signal;
 }
 
@@ -403,13 +404,14 @@ const isConstrainedNetwork = () => {
   return connection?.saveData === true || /2g$/.test(connection?.effectiveType ?? "");
 };
 
-globalThis.__AKAN_RSC_PREFETCH__ = (href) => {
+globalThis.__AKAN_RSC_PREFETCH__ = (href, priority) => {
   if (isConstrainedNetwork()) return;
   const target = normalizeHref(href);
-  if (new URL(target).origin !== window.location.origin) return;
+  const key = pageKeyOf(target);
+  if (new URL(target).origin !== window.location.origin || pendingRequest?.target === key) return;
   forgetPagesOfAnotherAccount();
   if (rscCache.has(target)) return;
-  rscPrefetchCache.request(target, cachedAuthCookies);
+  rscPrefetchCache.request(key, cachedAuthCookies, priority);
 };
 
 function Root(): ReactNode {
@@ -457,7 +459,7 @@ function Root(): ReactNode {
         sendRouterState: false,
         navId,
         shouldApplyNavigation: () => navId === navigationSeq,
-        signal: requestSignalOf(navId),
+        signal: requestSignalOf(navId, target),
       });
       if (next.type === "redirected") return;
       if (next.type === "not-found") {
@@ -507,10 +509,10 @@ function Root(): ReactNode {
       return;
     }
     forgetPagesOfAnotherAccount();
-    rscPrefetchCache.dropQueued();
+    rscPrefetchCache.prune();
     const navId = supersedeNavigation();
-    const signal = requestSignalOf(navId);
     const target = normalizeHref(href);
+    const signal = requestSignalOf(navId, target);
     //? A redirect replaces the entry this navigation is on, which a push does not write until its page commits.
     let ownsEntry = !!options.replace;
     const replaceOnRedirect = () => ownsEntry;
@@ -556,9 +558,10 @@ function Root(): ReactNode {
           }
           rscPatchCache.delete(target);
         }
-        const prefetched = (await rscPrefetchCache.take(target, cachedAuthCookies, signal)) ?? undefined;
-        //? Rendered before the click, so the data on it is replayed as a cached page's is, and refetched by what reads it.
-        servedFromCache = !!prefetched;
+        const taken = rscPrefetchCache.take(pageKeyOf(target), cachedAuthCookies, signal);
+        const prefetched = (await taken?.response) ?? undefined;
+        if (signal.aborted) return;
+        servedFromCache = !!prefetched && !taken?.fresh;
         const fetched = await fetchRsc(target, {
           replaceOnRedirect,
           navId,

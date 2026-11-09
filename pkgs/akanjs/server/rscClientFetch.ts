@@ -1,5 +1,6 @@
 import {
   AKAN_RSC_NOT_FOUND_HEADER,
+  AKAN_RSC_PREFETCH_HEADER,
   type AkanRouterStateV1,
   type AkanRscPatchMetadata,
   appendAkanRouterStateRequestHeaders,
@@ -21,10 +22,27 @@ const rscEndpointOf = (href: string, buildId?: number) => {
 
 const rscRequestHeaders = () => new Headers({ Accept: "text/x-component", "Cache-Control": "no-cache" });
 
+//? Cut only after the headers: a rotated single-use refresh token in their Set-Cookie must still reach the browser.
+const fetchKeepingHeaders = async (endpoint: URL, init: RequestInit, signal: AbortSignal | undefined) => {
+  signal?.throwIfAborted();
+  const controller = new AbortController();
+  const response = await fetch(endpoint, { ...init, signal: controller.signal });
+  const cut = () => controller.abort(signal?.reason);
+  if (signal?.aborted) {
+    cut();
+    signal.throwIfAborted();
+  }
+  signal?.addEventListener("abort", cut, { once: true });
+  return response;
+};
+
 //? Without the router state: the page the prefetch leaves from may not be the one the click leaves from, so only a
 //? whole payload is valid for both.
-export const fetchRscPrefetchResponse = (href: string, signal: AbortSignal) =>
-  fetch(rscEndpointOf(href), { headers: rscRequestHeaders(), credentials: "same-origin", cache: "no-store", signal });
+export const fetchRscPrefetchResponse = (href: string, signal: AbortSignal) => {
+  const headers = rscRequestHeaders();
+  headers.set(AKAN_RSC_PREFETCH_HEADER, "1");
+  return fetchKeepingHeaders(rscEndpointOf(href), { headers, credentials: "same-origin", cache: "no-store" }, signal);
+};
 
 export async function fetchRscNavigationResponse(
   href: string,
@@ -44,12 +62,11 @@ export async function fetchRscNavigationResponse(
   if (options.sendRouterState !== false) appendAkanRouterStateRequestHeaders(headers, options.currentRouterState);
   const response =
     options.prefetched ??
-    (await fetch(rscEndpointOf(href, options.buildId), {
-      headers,
-      credentials: "same-origin",
-      cache: "no-store",
-      signal: options.signal,
-    }));
+    (await fetchKeepingHeaders(
+      rscEndpointOf(href, options.buildId),
+      { headers, credentials: "same-origin", cache: "no-store" },
+      options.signal,
+    ));
   const redirect = response.headers.get("X-Akan-Redirect");
   if (redirect) {
     const method = response.headers.get("X-Akan-Redirect-Method");
