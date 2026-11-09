@@ -8,6 +8,11 @@ description: "Add or change a route under page/: the one page()/layout() chain, 
 A route file exports one chain and nothing else. Every setting is a stage of it.
 
 ```tsx
+import { fetch, Task, usePage } from "@apps/<app>/client";
+import { signedIn } from "@libs/shared/webkit";
+import { ID } from "akanjs/base";
+import { page } from "akanjs/client";
+
 export default page()
   .param("orgId", ID)
   .guard(() => signedIn())
@@ -37,7 +42,8 @@ export default page()
 ## API at a glance
 
 `page`, `layout` and `router` come from `akanjs/client`, `Link` from `akanjs/ui`, `usePageLocation` from
-`akanjs/webkit`. A stage receives the declared params and search keys plus `lang`.
+`akanjs/webkit`, and `fetch`, `usePage` and the model namespaces from `@apps/<app>/client`. A stage receives the
+declared params and search keys plus `lang`.
 
 - Data-driven title: `.head(async ({ name }) => <title>{(await fetch.pokemon(name))?.label}</title>)`.
 - Async page: `.render(async ({ name }) => { const pokemon = await fetch.pokemon(name); if (!pokemon) router.notFound(); … })`;
@@ -60,4 +66,5 @@ export default page()
 - `useState`, `useEffect`, comments, a named export beside the chain, or the legacy `export default async function`.
 - Editing a lib page through its link in `page/(libs)/` — edit the lib's own `page/` source.
 
-Full detail: `get_guideline` with `pageRule`, or `ssrRule` for what may render on the server.
+Full detail: `get_guideline` with `pageRule`, or `ssrRule` for what may render on the server; every stage's
+signature, the router's methods, Link's props and every import path: `akanApi`.
