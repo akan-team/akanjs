@@ -76,9 +76,11 @@ export class OpenlibraryService extends serve("openlibrary" as const, ({ plug })
 
 // lib/_openlibrary/openlibrary.signal.ts — Any answers plain JSON; nullable lets it answer null for "not found"
 import { Any } from "akanjs/base";
-import { endpoint, Public } from "akanjs/signal";
+import { endpoint, internal, Public } from "akanjs/signal";
 
 import * as srv from "../srv";
+
+export class OpenlibraryInternal extends internal(srv.openlibrary, () => ({})) {}
 
 export class OpenlibraryEndpoint extends endpoint(srv.openlibrary, ({ query }) => ({
   book: query(Any, { guards: [Public], nullable: true })
@@ -99,8 +101,8 @@ export const dictionary = serviceDictionary(["en", "ko"])
   .translate({});
 ```
 
-The page calls it as `await fetch.book(id)` (`fetch` from `@apps/<app>/client`) and answers
-`router.notFound()` on `null`. An `Any` return reaches the page as `unknown`: type it with an interface in
+The page calls it as `await fetch.book(id)` (`fetch` from `@apps/<app>/client`) and ends with
+`return router.notFound()` on `null`. An `Any` return reaches the page as `unknown`: type it with an interface in
 `common/`, or return a scalar (`akan create-scalar`) for a typed wire shape. A query that answers `null` without
 `nullable: true` fails the render, naming the endpoint.
 
