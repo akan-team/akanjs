@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { BaseBuildArtifact, ClientManifest, ClientManifestEntry, SsrManifest } from "akanjs/server";
 import { SSR_DEV_CHUNK, SSR_DEV_ID_PREFIX } from "akanjs/server/hmr/csrDevManifest";
+import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { loaderFor } from "../transforms/moduleSyntax";
@@ -317,7 +318,7 @@ export class RouteClientBuilder {
     const originalEntry = JSON.stringify(path.resolve(args.originalEntry));
     const namedExports = args.exportNames.filter((name) => name !== "default");
     const lines = [
-      `import ${JSON.stringify(`@apps/${args.appName}/client`)};`,
+      ...StoreBootstrap.importLines(args.appName),
       ...(namedExports.length > 0 ? [`export { ${namedExports.join(", ")} } from ${originalEntry};`] : []),
     ];
     if (args.exportNames.includes("default")) lines.push(`export { default } from ${originalEntry};`);
