@@ -199,7 +199,7 @@ describe("WorkspaceScript", () => {
       expect(recorder.calls.find((call) => call.name === "createApplication")?.args).toEqual([
         "demo",
         workspace,
-        { libs: ["util", "shared"], sample: true },
+        { libs: ["util", "shared"] },
       ]);
       expect(recorder.calls.find((call) => call.name === "agent")?.args).toEqual([
         workspace,
@@ -288,7 +288,7 @@ describe("WorkspaceScript", () => {
     expect(recorder.calls.find((call) => call.name === "createApplication")?.args).toEqual([
       "demo",
       workspace,
-      { libs: [], sample: false },
+      { libs: [] },
     ]);
     expect(recorder.names()).not.toContain("applyTemplate");
   });
