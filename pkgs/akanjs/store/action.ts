@@ -968,9 +968,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       load: (signal: AbortSignal) => Promise<T>,
       commit: (loaded: T, requestedAt: Date) => object,
     ) => {
+      if (callerSignal?.aborted) return;
       self.set({ [namesOfSlice.modelListLoading]: true });
       const { ticket, signal: ownSignal } = requests.claim();
-      const signal = AbortSignals.any([ownSignal, callerSignal]) ?? ownSignal;
+      const joined = AbortSignals.join([ownSignal, callerSignal]);
+      const signal = joined.signal ?? ownSignal;
       try {
         for (let round = 0; round < 2; round += 1) {
           // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
@@ -987,6 +989,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         if (signal.aborted) return;
         throw error;
       } finally {
+        joined.dispose();
         if (requests.isCurrent(ticket)) self.set({ [namesOfSlice.modelListLoading]: false });
       }
     };
@@ -1129,18 +1132,22 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         const pageOfModel = currentState[namesOfSlice.pageOfModel] as number;
         const limitOfModel = (currentState[namesOfSlice.limitOfModel] as number) || 20;
         const sortOfModel = currentState[namesOfSlice.sortOfModel] as Sort;
+        if (options?.signal?.aborted) return;
         const { ticket, signal: ownSignal } = requests.claim();
-        const signal = AbortSignals.any([ownSignal, options?.signal]) ?? ownSignal;
+        const joined = AbortSignals.join([ownSignal, options?.signal]);
+        const signal = joined.signal ?? ownSignal;
         const modelDataList = await fetchList(
           queryArgsOfModel,
           (pageOfModel - 1) * limitOfModel + modelList.length,
           limitOfModel,
           sortOfModel,
           { ...options, signal },
-        ).catch((error: unknown) => {
-          if (signal.aborted) return null;
-          throw error;
-        });
+        )
+          .catch((error: unknown) => {
+            if (signal.aborted) return null;
+            throw error;
+          })
+          .finally(joined.dispose);
         if (!modelDataList || !requests.isCurrent(ticket) || queryArgsIn(this) !== queryArgsOfModel) return;
         // Re-read: a live event may have placed a row meanwhile, and `DataList` collapses the shifted duplicate.
         const currentModelList = (this.get() as { [key: string]: any })[namesOfSlice.modelList] as DataList<Light>;

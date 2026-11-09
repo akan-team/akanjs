@@ -6,13 +6,24 @@ interface InflightQuery {
 
 export class InflightQueries {
   readonly #entries = new Map<string, InflightQuery>();
+  readonly #copy: (value: unknown) => unknown;
 
+  constructor(copy: (value: unknown) => unknown) {
+    this.#copy = copy;
+  }
+
+  //? A joiner's copy is taken as the answer lands, before the caller that started it can change what it was handed.
   claim<T>(key: string, start: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal) {
-    if (signal?.aborted) return { value: Promise.reject(signal.reason), owned: true };
+    if (signal?.aborted) return Promise.reject(signal.reason) as Promise<T>;
     const existing = this.#entries.get(key);
     const entry = existing ?? this.#start(key, start);
     entry.waiters += 1;
-    return { value: this.#follow(key, entry, signal) as Promise<T>, owned: !existing };
+    const value = existing ? entry.value.then(this.#copy) : entry.value;
+    return this.#follow(key, entry, value, signal) as Promise<T>;
+  }
+
+  detach() {
+    this.#entries.clear();
   }
 
   #start(key: string, start: (signal: AbortSignal) => Promise<unknown>): InflightQuery {
@@ -27,8 +38,8 @@ export class InflightQueries {
     return entry;
   }
 
-  #follow(key: string, entry: InflightQuery, signal?: AbortSignal) {
-    if (!signal) return entry.value;
+  #follow(key: string, entry: InflightQuery, value: Promise<unknown>, signal?: AbortSignal) {
+    if (!signal) return value;
     return new Promise<unknown>((resolve, reject) => {
       const leave = () => {
         reject(signal.reason);
@@ -38,7 +49,7 @@ export class InflightQueries {
         entry.controller.abort(signal.reason);
       };
       signal.addEventListener("abort", leave, { once: true });
-      entry.value.then(resolve, reject).finally(() => signal.removeEventListener("abort", leave));
+      value.then(resolve, reject).finally(() => signal.removeEventListener("abort", leave));
     });
   }
 }

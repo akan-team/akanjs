@@ -1,14 +1,40 @@
 import { describe, expect, test } from "bun:test";
 import { AbortSignals } from "./abortSignals";
 
+const withoutNativeAny = (run: () => void) => {
+  const any = AbortSignal.any;
+  Reflect.deleteProperty(AbortSignal, "any");
+  try {
+    run();
+  } finally {
+    Object.assign(AbortSignal, { any });
+  }
+};
+
+const countListeners = (signal: AbortSignal) => {
+  const counter = { added: 0, live: 0 };
+  const add = signal.addEventListener.bind(signal);
+  const remove = signal.removeEventListener.bind(signal);
+  signal.addEventListener = ((...args: Parameters<AbortSignal["addEventListener"]>) => {
+    counter.added += 1;
+    counter.live += 1;
+    add(...args);
+  }) as AbortSignal["addEventListener"];
+  signal.removeEventListener = ((...args: Parameters<AbortSignal["removeEventListener"]>) => {
+    counter.live -= 1;
+    remove(...args);
+  }) as AbortSignal["removeEventListener"];
+  return counter;
+};
+
 describe("AbortSignals", () => {
   test("joins signals into one that aborts with the first reason, and passes a lone one through", () => {
     const single = new AbortController();
-    expect(AbortSignals.any([undefined, single.signal, null])).toBe(single.signal);
-    expect(AbortSignals.any([])).toBeUndefined();
+    expect(AbortSignals.join([undefined, single.signal, null]).signal).toBe(single.signal);
+    expect(AbortSignals.join([]).signal).toBeUndefined();
 
     const [a, b] = [new AbortController(), new AbortController()];
-    const joined = AbortSignals.any([a.signal, b.signal]);
+    const joined = AbortSignals.join([a.signal, b.signal]).signal;
     b.abort("b first");
     a.abort("a later");
     expect(joined?.aborted).toBe(true);
@@ -16,21 +42,38 @@ describe("AbortSignals", () => {
   });
 
   test("joins them by hand where AbortSignal.any is missing, as in an iOS 16 WebView", () => {
-    const any = AbortSignal.any;
-    Reflect.deleteProperty(AbortSignal, "any");
-    try {
+    withoutNativeAny(() => {
       const [a, b] = [new AbortController(), new AbortController()];
-      const joined = AbortSignals.any([a.signal, b.signal]);
+      const joined = AbortSignals.join([a.signal, b.signal]).signal;
       expect(joined?.aborted).toBe(false);
       a.abort("a");
       expect(joined?.reason).toBe("a");
+    });
+  });
 
+  test("leaves no listener on a long-lived input once the work is disposed or the join aborts", () => {
+    withoutNativeAny(() => {
+      const long = new AbortController();
+      const counter = countListeners(long.signal);
+      for (let idx = 0; idx < 50; idx += 1) AbortSignals.join([long.signal, new AbortController().signal]).dispose();
+      expect(counter.live).toBe(0);
+
+      const other = new AbortController();
+      AbortSignals.join([long.signal, other.signal]);
+      other.abort("other");
+      expect(counter.live).toBe(0);
+    });
+  });
+
+  test("adds no listener when a later input is already aborted, and takes its reason", () => {
+    withoutNativeAny(() => {
+      const long = new AbortController();
+      const counter = countListeners(long.signal);
       const done = new AbortController();
       done.abort("already");
-      expect(AbortSignals.any([new AbortController().signal, done.signal])?.reason).toBe("already");
-    } finally {
-      Object.assign(AbortSignal, { any });
-    }
+      expect(AbortSignals.join([long.signal, done.signal]).signal?.reason).toBe("already");
+      expect(counter.added).toBe(0);
+    });
   });
 
   test("races a promise against a signal without stopping the work behind it", async () => {

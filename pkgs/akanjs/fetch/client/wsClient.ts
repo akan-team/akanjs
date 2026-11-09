@@ -535,7 +535,11 @@ export class WsClient {
     return this;
   }
   #enqueue(frame: string) {
-    const limit = Math.max(0, this.#options.outboxLimit ?? WsClient.defaultOutboxLimit);
+    const { outboxLimit } = this.#options;
+    const limit =
+      outboxLimit !== undefined && Number.isFinite(outboxLimit)
+        ? Math.max(0, Math.floor(outboxLimit))
+        : WsClient.defaultOutboxLimit;
     this.#outbox.push(frame);
     const overflow = this.#outbox.length - limit;
     if (overflow <= 0) return;

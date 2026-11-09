@@ -120,7 +120,7 @@ export class FetchClient {
   readonly sortValueMap = new Map<string, { [key: string]: { [path: string]: 1 | -1 } }>();
   readonly filterQueryMap = new Map<string, { [queryKey: string]: SerializedArg[] }>();
   readonly #originWs = new Map<string, WsClient>();
-  readonly #inflight = new InflightQueries();
+  readonly #inflight = new InflightQueries((value) => FetchClient.#deepCopy(value));
   #wsOptions: WsClientOptions = {};
   readonly #handlerStore: Record<string, FetchHandler> = {};
   readonly #handlerFactory = new Map<string, FetchHandlerFactory>();
@@ -396,6 +396,7 @@ export class FetchClient {
   setJwt(jwt: string | null) {
     this.jwt = jwt;
     this.ws.setJwt(jwt);
+    this.#inflight.detach();
   }
   // A socket's URL is fixed, so `FetchPolicy.origin` gets a socket of its own, connected on first use.
   #resolveWs(origin?: string) {
@@ -478,7 +479,7 @@ export class FetchClient {
           const bridge = this.#bridgeOf(option?.origin);
           if (bridge) {
             const call = this.#viaBridge(bridge, { key, type: "query", endpoint, option, argMap });
-            return parseReturn(await AbortSignals.race(call, signal), { crystalize: option?.crystalize ?? true });
+            return parseReturn(await this.#untilAborted(call, signal), { crystalize: option?.crystalize ?? true });
           }
           const headers = this.#makeRequestHeaders(option);
           const baseUrl = this.#baseUrlOf(endpoint, option?.origin);
@@ -496,7 +497,7 @@ export class FetchClient {
                 retry: option?.retry,
               });
           recordRequestQuery({ key, args: Object.fromEntries(argMap), returns: endpoint.returns, value: claim.value });
-          const response = await AbortSignals.race(claim.value, signal);
+          const response = await this.#untilAborted(claim.value, signal);
           const payload = claim.owned ? response : FetchClient.#deepCopy(response);
           return parseReturn(payload, { crystalize: option?.crystalize ?? true });
         };
@@ -522,7 +523,7 @@ export class FetchClient {
         return (...argData: unknown[]) => {
           this.#refuseInApp(key);
           this.#refuseInRender(key, argData[argLength] as FetchPolicy | undefined);
-          return send(...argData);
+          return this.#writing(() => send(...argData));
         };
       }
       default:
@@ -538,11 +539,22 @@ export class FetchClient {
   ) {
     if (getRequestStore()) return claimRequestQuery(cacheKey, () => requestQuery());
     if (typeof window === "undefined") return { value: requestQuery(signal), owned: true };
-    return this.#inflight.claim(
-      `${cacheKey}\n${JSON.stringify([timeout ?? null, retry ?? null])}`,
-      requestQuery,
-      signal,
-    );
+    const inflightKey = `${cacheKey}\n${JSON.stringify([timeout ?? null, retry ?? null])}`;
+    return { value: this.#inflight.claim(inflightKey, requestQuery, signal), owned: true };
+  }
+  //? A query sent before a write or a credential change may answer what no longer holds, so later calls send their own.
+  async #writing<T>(write: () => Promise<T>) {
+    this.#inflight.detach();
+    try {
+      return await write();
+    } finally {
+      this.#inflight.detach();
+    }
+  }
+  #untilAborted<T>(promise: Promise<T>, signal?: AbortSignal) {
+    return AbortSignals.race(promise, signal).catch((error: unknown) => {
+      throw signal?.aborted ? this.http.abortError(signal) : error;
+    });
   }
   #registerEndpoint(key: string, endpoint: SerializedEndpoint, prefix?: string) {
     switch (endpoint.type) {
@@ -588,6 +600,7 @@ export class FetchClient {
             if (FetchClient.bridged) return;
             const args = argData.slice(0, msgArgLength);
             const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
+            this.#inflight.detach();
             this.#resolveWs(fetchPolicy?.origin).emit(key, data);
           };
         });
@@ -848,7 +861,7 @@ export class FetchClient {
       return ((fileList: FileList | File[], parentId?: string, option?: FetchPolicy) => {
         this.#refuseInApp(names.addModelFiles);
         this.#refuseInRender(names.addModelFiles, option);
-        return upload(fileList, parentId, option);
+        return this.#writing(() => upload(fileList, parentId, option));
       }) as FetchHandler;
     });
   }

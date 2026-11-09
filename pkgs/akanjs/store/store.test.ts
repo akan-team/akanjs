@@ -574,6 +574,44 @@ describe("signal generated store contract", () => {
     expect(instance.get().messages).toEqual([]);
   });
 
+  test("a load called with a signal already aborted sends nothing and leaves the live load running", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class SpentSignalStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(SpentSignalStore);
+    const instance = new StoreInstance(makeRoot("spentSignalRoot", SpentSignalStore));
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 1 });
+    const requests: { signal: AbortSignal; answer: () => void }[] = [];
+    signal.calls.storeTestItemListByTitle = mock(
+      async (_title: string, skip: number, _limit: number, _sort: string, option: { signal: AbortSignal }) =>
+        await new Promise<InstanceType<typeof StoreTestLight>[]>((resolve) => {
+          requests.push({
+            signal: option.signal,
+            answer: () => resolve([new StoreTestLight({ id: "aaaaaaaaaaaaaaaaaaaaaaaa", title: `skip${skip}` })]),
+          });
+        }),
+    );
+    const spent = new AbortController();
+    spent.abort();
+
+    const toPage2 = instance.do.setPageOfStoreTestItemByTitle(2);
+    await instance.do.setPageOfStoreTestItemByTitle(3, { signal: spent.signal });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.signal.aborted).toBe(false);
+    requests[0]?.answer();
+    await toPage2;
+    expect(instance.get().pageOfStoreTestItemByTitle).toBe(2);
+    expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
+
+    const more = instance.do.loadMoreOfStoreTestItemByTitle();
+    await instance.do.loadMoreOfStoreTestItemByTitle({ signal: spent.signal });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.signal.aborted).toBe(false);
+    requests[1]?.answer();
+    await more;
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
+  });
+
   test.each(["refetch", "load-more"] as const)(
     "drops a %s that answers after the slice was seeded with other arguments",
     async (request) => {

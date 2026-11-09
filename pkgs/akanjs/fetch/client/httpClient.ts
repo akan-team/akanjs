@@ -150,12 +150,33 @@ export class HttpClient {
       try {
         return await this.#requestOnce<Returns>(url, sent, deadline, signal);
       } catch (error) {
-        if (signal?.aborted) throw signal.reason;
+        if (signal?.aborted) throw this.abortError(signal);
         const wait = policy ? HttpClient.retryWait(error, attempt, policy) : null;
         if (wait === null || Date.now() + wait >= deadline) throw error;
-        await AbortSignals.race(new Promise((resolve) => setTimeout(resolve, wait)), signal);
+        await this.#wait(wait, signal);
       }
     }
+  }
+
+  #wait(ms: number, signal?: AbortSignal) {
+    return new Promise<void>((resolve, reject) => {
+      const abort = () => {
+        clearTimeout(timer);
+        if (signal) reject(this.abortError(signal));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      }, ms);
+      signal?.addEventListener("abort", abort, { once: true });
+    });
+  }
+
+  abortError(signal: AbortSignal): unknown {
+    const reason: unknown = signal.reason;
+    if (reason instanceof Error && reason.name === "TimeoutError")
+      return this.#restoreError({ error: transportErrorKeyMap[408], data: { status: 408 } }, 408);
+    return reason;
   }
 
   //? `crypto.randomUUID` exists only in a secure context, which a dev server at http://192.168.x.x is not.
@@ -178,14 +199,19 @@ export class HttpClient {
   }
 
   async #requestOnce<Returns>(url: string, init: RequestInit, deadline: number, signal?: AbortSignal) {
-    if (signal?.aborted) throw signal.reason;
-    const res = await this.#fetch(url, this.#withDeadline(init, deadline, signal), signal);
-    const body = await this.#readBody(url, res, signal);
-    if (res.ok) return body as Returns;
-    //? A gateway's own JSON (Kong's `{"message":…}`) names no key of ours: it is restored like its HTML page.
-    if (res.status in transportErrorKeyMap && !HttpClient.#namesErrorKey(body))
-      throw this.#transportError(url, res, JSON.stringify(body));
-    throw this.#restoreError(body, res.status);
+    if (signal?.aborted) throw this.abortError(signal);
+    const joined = this.#withDeadline(init, deadline, signal);
+    try {
+      const res = await this.#fetch(url, joined.init, signal);
+      const body = await this.#readBody(url, res, signal);
+      if (res.ok) return body as Returns;
+      //? A gateway's own JSON (Kong's `{"message":…}`) names no key of ours: it is restored like its HTML page.
+      if (res.status in transportErrorKeyMap && !HttpClient.#namesErrorKey(body))
+        throw this.#transportError(url, res, JSON.stringify(body));
+      throw this.#restoreError(body, res.status);
+    } finally {
+      joined.dispose();
+    }
   }
 
   static #namesErrorKey(body: unknown) {
@@ -199,11 +225,11 @@ export class HttpClient {
     return Date.now() + timeout;
   }
 
-  #withDeadline(init: RequestInit, deadline: number, signal?: AbortSignal): RequestInit {
+  #withDeadline(init: RequestInit, deadline: number, signal?: AbortSignal) {
     const timeout =
       deadline === Number.POSITIVE_INFINITY ? undefined : AbortSignal.timeout(Math.max(1, deadline - Date.now()));
-    const joined = AbortSignals.any([signal, timeout]);
-    return joined ? { ...init, signal: joined } : init;
+    const joined = AbortSignals.join([signal, timeout]);
+    return { init: joined.signal ? { ...init, signal: joined.signal } : init, dispose: joined.dispose };
   }
 
   //* `fetch` rejects only when no response arrived: the server is unreachable, not `TypeError: Failed to fetch`.
@@ -211,7 +237,7 @@ export class HttpClient {
     try {
       return await fetch(url, init);
     } catch (error) {
-      if (signal?.aborted) throw signal.reason;
+      if (signal?.aborted) throw this.abortError(signal);
       // A caller's own abort stays an `AbortError`; `AbortSignal.timeout`'s `TimeoutError` is this client giving up.
       if (error instanceof Error && error.name === "TimeoutError")
         throw this.#restoreError({ error: transportErrorKeyMap[408], data: { status: 408 } }, 408);
@@ -226,7 +252,7 @@ export class HttpClient {
       try {
         return (await res.json()) as unknown;
       } catch (error) {
-        if (signal?.aborted) throw signal.reason;
+        if (signal?.aborted) throw this.abortError(signal);
         throw this.#transportError(url, res, String(error));
       }
     }
