@@ -325,10 +325,10 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     return operator === ts.SyntaxKind.SlashToken && right ? left / right : null;
   };
 
-  const durationOf = (expression: TS.Expression | undefined) => {
+  const durationOf = (expression: TS.Expression | undefined, source: TS.SourceFile) => {
     if (!expression) return null;
     const ms = numberOf(expression);
-    if (ms === null) return expression.getText();
+    if (ms === null) return expression.getText(source);
     const [size, unit] = intervalUnits.find(([size]) => ms >= size && ms % size === 0) ?? [1, "ms"];
     return `${ms / size}${unit}`;
   };
@@ -369,7 +369,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
             ? first.text
             : first.getText(source)
           : type === "interval" || type === "timeout"
-            ? durationOf(first)
+            ? durationOf(first, source)
             : null;
       const option = type === "initialize" || type === "destroy" ? first : second;
       return [
