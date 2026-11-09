@@ -44,6 +44,7 @@ interface BufferedMessage {
   roomId: string;
   message: Buffer;
   coalesce: boolean;
+  seq: number;
 }
 
 export class WebSocketRedisAdaptor
@@ -75,6 +76,11 @@ export class WebSocketRedisAdaptor
   #changeHandler: LiveChangeHandler | null = null;
   #recoveryHandler: (() => void) | null = null;
   #publisherReady = false;
+  #draining = false;
+  #drained: Promise<void> = Promise.resolve();
+  #retryTimer: ReturnType<typeof setTimeout> | null = null;
+  #retries = 0;
+  #sent = 0;
   #subscriberReady = false;
   /** Whether the subscriber has ever been up, so the first `ready` is a start rather than a recovery. */
   #subscriberStarted = false;
@@ -85,9 +91,12 @@ export class WebSocketRedisAdaptor
   }
 
   override async onInit() {
-    this.publisher.on("connect", () => {
+    //* Not `connect`: ioredis writes a PUBLISH during the handshake and loses it if the handshake fails. It resends what
+    //* a dropped connection left unanswered just before `ready`, so a drain started here goes out behind those.
+    this.publisher.on("ready", () => {
       this.#publisherReady = true;
       this.logger.verbose("Publisher connected");
+      this.#cancelRetry();
       void this.#flushBuffer();
     });
     this.publisher.on("close", () => {
@@ -133,7 +142,10 @@ export class WebSocketRedisAdaptor
       this.subscriber.disconnect();
     }
     if (this.publisher) {
-      await this.#flushBuffer();
+      this.#cancelRetry();
+      //? A batch the publisher was cut off under waits in ioredis for Redis to return, which a shutdown must not.
+      if (this.#publisherReady) await Promise.race([this.#flushBuffer(), this.#closed()]);
+      this.#cancelRetry();
       this.publisher.disconnect();
     }
     this.#eventHandler = null;
@@ -153,25 +165,33 @@ export class WebSocketRedisAdaptor
       this.logger.warn(`Nothing to publish to ${roomId}: the payload has no JSON form`);
       return;
     }
-    this.#send({ roomId, message: this.#pack(bytes ? "bytes" : "json", roomId, payload), coalesce });
+    this.#send({ roomId, message: this.#pack(bytes ? "bytes" : "json", roomId, payload), coalesce, seq: this.#sent++ });
   }
 
   publishChange(change: LiveChange): void {
-    this.#send({ roomId: "", message: this.#pack("change", "", JSON.stringify(change)), coalesce: false });
+    this.#send({
+      roomId: "",
+      message: this.#pack("change", "", JSON.stringify(change)),
+      coalesce: false,
+      seq: this.#sent++,
+    });
   }
 
   onChange(handler: LiveChangeHandler): void {
     this.#changeHandler = handler;
   }
 
+  //? Behind a non-empty buffer a message waits its turn: published now, it would overtake the ones still draining.
   #send(buffered: BufferedMessage) {
-    if (!this.#publisherReady) {
+    if (!this.#publisherReady || this.#draining || this.#buffer.length) {
       this.#addToBuffer(buffered);
+      void this.#flushBuffer();
       return;
     }
     this.publisher.publish(this.#channel, buffered.message).catch((err: Error) => {
       this.logger.warn(`Publish failed, buffering: ${err.message}`);
-      this.#addToBuffer(buffered);
+      this.#requeue([buffered]);
+      void this.#flushBuffer();
     });
   }
 
@@ -303,19 +323,68 @@ export class WebSocketRedisAdaptor
     this.#buffer.push(buffered);
   }
 
-  async #flushBuffer(): Promise<void> {
-    if (!this.#publisherReady || !this.publisher || this.#buffer.length === 0) return;
+  #requeue(failed: BufferedMessage[]) {
+    const current = failed.filter(
+      (item) => !item.coalesce || !this.#buffer.some((later) => later.coalesce && later.roomId === item.roomId),
+    );
+    this.#buffer.push(...current);
+    this.#buffer.sort((a, b) => a.seq - b.seq);
+    const over = this.#buffer.length - this.#maxBufferSize;
+    if (over <= 0) return;
+    this.#buffer.splice(0, over);
+    this.logger.warn(`Buffer full, dropping the oldest ${over} messages`);
+  }
 
-    this.logger.verbose(`Flushing ${this.#buffer.length} buffered messages`);
-    const messages = this.#buffer.splice(0);
-    for (const [idx, buffered] of messages.entries()) {
-      try {
-        await this.publisher.publish(this.#channel, buffered.message);
-      } catch {
-        this.#buffer.unshift(...messages.slice(idx));
+  #flushBuffer(): Promise<void> {
+    if (!this.#draining && !this.#retryTimer && this.#publisherReady && this.publisher && this.#buffer.length) {
+      this.#draining = true;
+      this.#drained = this.#drain();
+    }
+    return this.#drained;
+  }
+
+  //? Not awaited one by one: ioredis writes commands to its one connection in the order they were issued.
+  async #drain(): Promise<void> {
+    try {
+      while (this.#publisherReady && this.#buffer.length) {
+        this.logger.verbose(`Flushing ${this.#buffer.length} buffered messages`);
+        const batch = this.#buffer.splice(0);
+        const results = await Promise.allSettled(
+          batch.map((buffered) => this.publisher.publish(this.#channel, buffered.message)),
+        );
+        const failed = batch.filter((_, idx) => results[idx].status === "rejected");
+        if (!failed.length) {
+          this.#retries = 0;
+          continue;
+        }
+        this.#requeue(failed);
         this.logger.warn(`Flush failed, ${this.#buffer.length} messages remain buffered`);
+        if (this.#publisherReady) this.#retryLater();
         break;
       }
+    } finally {
+      this.#draining = false;
     }
+  }
+
+  //? An error reply leaves the publisher connected, and a flush on the next send would fail the same way.
+  #retryLater() {
+    this.#retries += 1;
+    this.#retryTimer = setTimeout(
+      () => {
+        this.#retryTimer = null;
+        void this.#flushBuffer();
+      },
+      Math.min(this.#retries * 200, 5000),
+    );
+  }
+
+  #cancelRetry() {
+    if (this.#retryTimer) clearTimeout(this.#retryTimer);
+    this.#retryTimer = null;
+  }
+
+  #closed() {
+    return new Promise<void>((resolve) => this.publisher.once("close", () => resolve()));
   }
 }
