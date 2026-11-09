@@ -6,7 +6,7 @@ import type { App } from "../commandDecorators";
 import { type BarrelImportsPluginOptions, createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { createBrowserDirnamePlugin } from "../transforms/browserDirnamePlugin";
 import { SideEffectImportOrder } from "../transforms/sideEffectImportOrder";
-import { bundleDefine } from "./bundleDefine";
+import { bundleConditions, bundleDefine } from "./bundleDefine";
 import { CsrEntryFiles } from "./csrEntryFiles";
 import { type McpAppView, McpAppViewBuilder } from "./mcpAppViewBuilder";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
@@ -114,6 +114,7 @@ export class CsrArtifactBuilder {
       splitting: false,
       minify: true,
       define: bundleDefine(app, command, "csr"),
+      conditions: bundleConditions(command),
       optimizeImports,
       // A raw `.css` in the route graph is Tailwind source; the base artifact's compiled sheet is the only stylesheet.
       plugins: [PagesBundleBuilder.createCssStubPlugin(), createBrowserDirnamePlugin(), SideEffectImportOrder.plugin()],
