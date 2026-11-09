@@ -1068,4 +1068,31 @@ describe("data loaders", () => {
     expect(result[0]).toBe("value:ok");
     expect(result[1]).toBeInstanceOf(Error);
   });
+
+  test("DataLoader with copy gives every caller after the first its own value, in a batch and from its cache", async () => {
+    const shared = { key: "a" };
+    const copy = (value: { key: string } | null) => (value ? { ...value } : value);
+    const batched = new DataLoader<string, { key: string } | null>(
+      async (keys) => keys.map((key) => (key === "missing" ? null : shared)),
+      { copy },
+    );
+    const [first, second, missing, missingAgain] = await batched.loadMany(["a", "a", "missing", "missing"]);
+    expect(first).toBe(shared);
+    expect(second).toEqual(shared);
+    expect(second).not.toBe(shared);
+    expect([missing, missingAgain]).toEqual([null, null]);
+
+    let calls = 0;
+    const cached = new DataLoader<string, { key: string } | null>(
+      async (keys) => {
+        calls++;
+        return keys.map(() => ({ key: "a" }));
+      },
+      { cache: true, copy },
+    );
+    const [loaded, again] = await Promise.all([cached.load("a"), cached.load("a")]);
+    const later = await cached.load("a");
+    expect(calls).toBe(1);
+    expect(new Set([loaded, again, later]).size).toBe(3);
+  });
 });

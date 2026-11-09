@@ -11,10 +11,12 @@ type BatchLoadFn<Key, Value> = (
   keys: readonly Key[],
 ) => PromiseLike<ReadonlyArray<Value | Error>> | ReadonlyArray<Value | Error>;
 
-interface DataLoaderOptions<Key, CacheKey> {
+interface DataLoaderOptions<Key, Value, CacheKey> {
   /** `false` (default) keeps nothing past its batch, a number keeps a key that many ms, `true` for its whole life. */
   cache?: boolean | number;
   cacheKeyFn?: (key: Key) => CacheKey;
+  /** What a caller gets in place of a value another caller already holds: a repeated key's, or a kept key's. */
+  copy?: (value: Value) => Value;
   batch?: boolean;
   batchScheduleFn?: (callback: () => void) => void;
   maxBatchSize?: number;
@@ -36,12 +38,13 @@ export class DataLoader<Key, Value, CacheKey = Key> {
   readonly #batch: boolean;
   readonly #batchScheduleFn: (callback: () => void) => void;
   readonly #maxBatchSize: number;
+  readonly #copy: ((value: Value) => Value) | null;
   readonly #promiseCache = new Map<CacheKey, { promise: Promise<Value>; expiresAt: number }>();
   #sweepAt = DataLoader.#minSweepSize;
   #queue: BatchItem<Key, Value>[] = [];
   #scheduled = false;
 
-  constructor(batchLoadFn: BatchLoadFn<Key, Value>, options: DataLoaderOptions<Key, CacheKey> = {}) {
+  constructor(batchLoadFn: BatchLoadFn<Key, Value>, options: DataLoaderOptions<Key, Value, CacheKey> = {}) {
     this.#batchLoadFn = batchLoadFn;
     this.#ttl =
       options.cache === true
@@ -53,13 +56,14 @@ export class DataLoader<Key, Value, CacheKey = Key> {
     this.#batch = options.batch !== false;
     this.#batchScheduleFn = options.batchScheduleFn ?? ((callback) => queueMicrotask(callback));
     this.#maxBatchSize = options.maxBatchSize ?? Number.POSITIVE_INFINITY;
+    this.#copy = options.copy ?? null;
     this.name = options.name;
   }
 
   load(key: Key): Promise<Value> {
     const cacheKey = this.#cacheKeyFn(key);
     const cached = this.#cached(cacheKey);
-    if (cached) return cached;
+    if (cached) return this.#copy ? cached.then(this.#copy) : cached;
 
     const promise = new Promise<Value>((resolve, reject) => {
       this.#queue.push({ key, resolve, reject });
@@ -136,9 +140,20 @@ export class DataLoader<Key, Value, CacheKey = Key> {
           for (const { reject } of batch) reject(error);
           return;
         }
+        const handedOut = new Set<Value | Error>();
         values.forEach((value, index) => {
-          if (value instanceof Error) batch[index]?.reject(value);
-          else batch[index]?.resolve(value as Value);
+          const item = batch[index];
+          if (value instanceof Error) item?.reject(value);
+          else if (this.#copy && handedOut.has(value)) {
+            try {
+              item?.resolve(this.#copy(value as Value));
+            } catch (error) {
+              item?.reject(error);
+            }
+          } else {
+            handedOut.add(value);
+            item?.resolve(value as Value);
+          }
         });
       },
       (error) => {

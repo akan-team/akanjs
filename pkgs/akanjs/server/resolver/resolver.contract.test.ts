@@ -94,6 +94,36 @@ const bootModel = async <Model>(database = new FakeSqliteDatabase()) => {
   return { instance, schema };
 };
 
+interface LoadedItem {
+  id: string;
+  title: string;
+  count: number;
+  set: (patch: Record<string, unknown>) => LoadedItem;
+  save: () => Promise<LoadedItem>;
+}
+interface ItemLoader<Key> {
+  loadMany: (keys: Key[]) => Promise<(LoadedItem | null)[]>;
+}
+interface SqliteItemModel {
+  __store: { find: (query: unknown, options?: unknown) => Promise<Record<string, unknown>[]> };
+  __create: (data: Record<string, unknown>) => Promise<LoadedItem>;
+  getServerResolverTestItem: (id: string) => Promise<LoadedItem>;
+  loadServerResolverTestItemMany: (ids: string[]) => Promise<(LoadedItem | null)[]>;
+  byOwner: ItemLoader<string>;
+  byTag: ItemLoader<string>;
+  byOwnerCategory: ItemLoader<Record<string, string>>;
+}
+const sqliteRow = { ownerId: validId, category: "news", nested: { label: "n" }, secret: "s", resolvedLabel: "r" };
+const withSqliteModel = async (run: (instance: SqliteItemModel) => Promise<void>) => {
+  const driver = await ConformanceEnv.openSqlDriver("sqlite", { memory: true });
+  try {
+    const { instance } = await bootModel<SqliteItemModel>(driver.database as unknown as FakeSqliteDatabase);
+    await run(instance);
+  } finally {
+    await driver.close();
+  }
+};
+
 type FindChain<Result> = Promise<Result> & {
   sort: (sort: unknown) => FindChain<Result>;
   skip: (skip: number) => FindChain<Result>;
@@ -294,6 +324,48 @@ describe("DatabaseResolver declaration contracts", () => {
         { ownerId: "xy", category: "z" },
       ]),
     ).toEqual([first, second]);
+  });
+
+  test("gives two concurrent gets of one id their own documents from one query, so an unsaved edit stays out of the other's save", async () => {
+    await withSqliteModel(async (instance) => {
+      const { id } = await instance.__create({ ...sqliteRow, title: "Draft" });
+      const find = spyOn(instance.__store, "find");
+      const [first, second] = await Promise.all([
+        instance.getServerResolverTestItem(id),
+        instance.getServerResolverTestItem(id),
+      ]);
+      expect(find).toHaveBeenCalledTimes(1);
+      expect(first).not.toBe(second);
+      first.set({ title: "Refused, never saved" });
+      expect(second.title).toBe("Draft");
+      await second.set({ count: 2 }).save();
+      const [stored] = await instance.__store.find({ id }, { select: { title: true, count: true, secret: true } });
+      expect([stored?.title, stored?.count, stored?.secret]).toEqual(["Draft", 2, "s"]);
+    });
+  });
+
+  test("gives a key repeated in one batch its own document, from load<Model>Many and from every declared loader", async () => {
+    await withSqliteModel(async (instance) => {
+      const { id } = await instance.__create({ ...sqliteRow, title: "Draft", tags: ["a", "b"] });
+      const find = spyOn(instance.__store, "find");
+      const [first, second] = await instance.loadServerResolverTestItemMany([id, id]);
+      expect(find).toHaveBeenCalledTimes(1);
+      expect(first).not.toBe(second);
+      second?.set({ title: "Refused, never saved" });
+      await first?.set({ count: 3 }).save();
+      const [stored] = await instance.__store.find({ id });
+      expect([stored?.title, stored?.count]).toEqual(["Draft", 3]);
+
+      const ownerKey = { ownerId: validId, category: "news" };
+      for (const [loaded, again] of [
+        await instance.byOwner.loadMany([validId, validId]),
+        await instance.byTag.loadMany(["a", "b"]),
+        await instance.byOwnerCategory.loadMany([ownerKey, ownerKey]),
+      ]) {
+        expect(again?.id).toBe(id);
+        expect(again).not.toBe(loaded);
+      }
+    });
   });
 
   test("hands the facade projection to the store", async () => {

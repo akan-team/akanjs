@@ -1513,6 +1513,32 @@ const describeDriver = (kind: SqlDriverKind) => {
       const stored = await store.pickById(id);
       expect([stored.title, stored.score, stored.rank]).toEqual(["Published", 5, 3]);
     });
+
+    test("[D4] a rehydrated document is the one read, not the one held, and saves only what it changed", async () => {
+      const { id } = await store.create({ title: "Draft", score: 1, tags: ["a"] });
+      const held = await store.pickById(id);
+      held.set({ title: "Refused, never saved" }).tags.push("b");
+      const copy = store.rehydrate(held);
+      expect(Object.getPrototypeOf(copy)).toBe(Object.getPrototypeOf(held));
+      expect([copy.title, copy.tags]).toEqual(["Draft", ["a"]]);
+      await store.updateOneByQuery({ id }, { rank: 2 });
+      await copy.set({ score: 5 }).save();
+      const stored = await store.pickById(id);
+      expect([stored.title, stored.score, stored.rank, stored.tags]).toEqual(["Draft", 5, 2, ["a"]]);
+
+      const vault = await storeOf(driver, vaultConstant, vaultDatabase);
+      const { id: vaultId } = await vault.create({ label: "Draft", token: "s3cret" });
+      await vault
+        .rehydrate(await vault.pickById(vaultId))
+        .set({ label: "Published" })
+        .save();
+      const [vaulted] = await vault.find({ id: vaultId }, { select: { label: true, token: true } });
+      expect([vaulted.label, vaulted.token]).toEqual(["Published", "s3cret"]);
+
+      await store.remove(id);
+      const removed = store.rehydrate(await store.findOne({ id }, { withRemoved: true }));
+      await expect(removed.set({ note: "edited" }).save()).rejects.toThrow("read-only: a removed dialectConf");
+    });
   });
 
   describe(`sql removed rows (${kind})`, () => {
