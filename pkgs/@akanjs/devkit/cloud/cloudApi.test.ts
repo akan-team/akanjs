@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
+import dayjs from "dayjs";
 import type { Workspace } from "../commandDecorators";
 import { tempDirs, writeJson, writeText } from "../testHelpers";
 import { CloudApi } from "./cloudApi";
@@ -9,6 +10,7 @@ import { CloudApi } from "./cloudApi";
 class FakeCloud {
   readonly server: ReturnType<typeof Bun.serve>;
   readonly refreshes: string[] = [];
+  readonly refreshBearers: (string | null)[] = [];
   reused = false;
   delayMs = 0;
   lifetimeMs = 7 * 86_400_000;
@@ -45,6 +47,7 @@ class FakeCloud {
     if (url.pathname !== "/api/refreshAuthToken") return new Response("not found", { status: 404 });
     const { refreshToken } = (await request.json()) as { refreshToken: string };
     this.refreshes.push(refreshToken);
+    this.refreshBearers.push(request.headers.get("authorization"));
     if (this.#spent.has(refreshToken)) this.reused = true;
     if (!this.#refreshTokens.delete(refreshToken)) return Response.json({ error: "invalid" }, { status: 401 });
     this.#spent.add(refreshToken);
@@ -130,6 +133,27 @@ const storedToken = async (home: string) => {
   };
 };
 
+describe("CloudApi.needsSignIn", () => {
+  const apiWith = (accessToken: { refreshToken: string | null; expiresInMs: number }) =>
+    new CloudApi({ workspaceRoot: "/nowhere" } as unknown as Workspace, {
+      host: cloud.host,
+      auth: {
+        accessToken: {
+          jwt: "jwt-0",
+          refreshToken: accessToken.refreshToken,
+          expiresAt: dayjs().add(accessToken.expiresInMs, "ms"),
+        },
+      },
+    });
+
+  test("asks for a sign-in only when a session due for refresh has no refresh token left", () => {
+    cloud = new FakeCloud();
+    expect(apiWith({ refreshToken: null, expiresInMs: 30 * 60_000 }).needsSignIn).toBe(true);
+    expect(apiWith({ refreshToken: "refresh-0", expiresInMs: 30 * 60_000 }).needsSignIn).toBe(false);
+    expect(apiWith({ refreshToken: null, expiresInMs: 3 * 3_600_000 }).needsSignIn).toBe(false);
+  });
+});
+
 describe("CloudApi.fromHost token refresh", () => {
   test("two CLI processes with a session in its last hour make exactly one refresh, and both use its result", async () => {
     cloud = new FakeCloud();
@@ -194,6 +218,7 @@ describe("CloudApi.fromHost token refresh", () => {
     expect(await output(await cliRun(home))).toEqual(["akan"]);
     expect(await output(await cliRun(home))).toEqual(["akan"]);
     expect(cloud.refreshes).toEqual(["refresh-0"]);
+    expect(cloud.refreshBearers).toEqual([null]);
     expect(await storedToken(home)).toMatchObject({ jwt: "jwt-1", refreshToken: "refresh-1" });
     expect((await storedToken(home)).issuedAt).toBeString();
   }, 30_000);

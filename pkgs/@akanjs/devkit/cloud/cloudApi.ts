@@ -146,7 +146,7 @@ export class CloudApi {
     const accessToken = hostConfig.auth?.accessToken;
     // No refresh token on a session due for refresh can be another process's refresh in flight: wait on its lock.
     if (!accessToken || !GlobalConfig.needRefreshToken(accessToken)) return new CloudApi(workspace, hostConfig);
-    const tokenless = new CloudApi(workspace, hostConfig);
+    const tokenless = new CloudApi(workspace, { host: hostConfig.host });
     const refreshed = await GlobalConfig.refreshHostAuth(hostConfig.host, (refreshToken) =>
       tokenless.refreshAuthToken(refreshToken),
     );
@@ -160,6 +160,12 @@ export class CloudApi {
     this.#api = new HttpClient(this.url);
     if (this.#accessToken && !GlobalConfig.isExpired(this.#accessToken))
       this.#api.setHeaders({ Authorization: `Bearer ${this.#accessToken.jwt}` });
+  }
+
+  //? With no refresh token left, a session due for refresh ends at its expiry and only a new sign-in renews it.
+  get needsSignIn(): boolean {
+    const accessToken = this.#accessToken;
+    return !!accessToken && !accessToken.refreshToken && GlobalConfig.needRefreshToken(accessToken);
   }
 
   #authorize(accessTokenDto: AccessTokenDto) {

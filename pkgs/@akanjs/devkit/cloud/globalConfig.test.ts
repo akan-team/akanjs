@@ -41,6 +41,21 @@ describe("GlobalConfig", () => {
     expect(GlobalConfig.needRefreshToken(token(null, 59))).toBe(true);
     expect(GlobalConfig.isExpired(token(59, 1))).toBe(false);
     expect(GlobalConfig.isExpired(token(61, -1))).toBe(true);
+    expect(GlobalConfig.needRefreshToken({ ...token(0, 59), issuedAt: dayjs("not a date") })).toBe(true);
+  });
+
+  test("keeps a token's issuedAt through config.json, and leaves the key out when there is none", () => {
+    const issuedAt = dayjs().subtract(10, "minute");
+    const token = { jwt: "jwt", refreshToken: "refresh", expiresAt: dayjs().add(50, "minute"), issuedAt };
+    const read = GlobalConfig.toAccessToken(
+      JSON.parse(JSON.stringify(GlobalConfig.toAccessTokenDto(token))) as ReturnType<
+        typeof GlobalConfig.toAccessTokenDto
+      >,
+    );
+    expect(Math.abs(read.issuedAt?.diff(issuedAt) ?? Number.NaN)).toBeLessThan(1_000);
+    expect(GlobalConfig.needRefreshToken(read)).toBe(false);
+    const legacy = { jwt: "jwt", refreshToken: "refresh", expiresAt: null };
+    expect(GlobalConfig.toAccessTokenDto(GlobalConfig.toAccessToken(legacy))).toEqual(legacy);
   });
 
   test("hostFor spells --host the way the workspace's cloud.host is spelled, so one login serves both", async () => {
