@@ -97,6 +97,7 @@ export interface DocumentStore {
   /** A document as text that another process turns back into the same document. */
   serialize(doc: DocumentRecord): string;
   deserialize(text: string): any;
+  rehydrate<Doc extends DocumentRecord>(doc: Doc): Doc;
 }
 
 export interface SqlResultRows<Row = Record<string, unknown>> {

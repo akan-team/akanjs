@@ -1113,19 +1113,21 @@ export class SqlDocumentStore {
       return doc;
     }
     // Round-tripped so read-filled defaults and nested models rebuilt in declared order compare equal to themselves.
-    const reread = this.hydrate(
-      "fields" in stored
-        ? this.fromProjectedRow(stored.row, stored.fields)
-        : this.fromRow({ ...stored, id: String(doc.id) }),
-      undefined,
-      { track: false },
-    );
+    const reread = this.#hydrateStored(stored, String(doc.id));
     const read = SqlDocumentStore.#encodedFields(this.toRow(reread));
     const held = SqlDocumentStore.#encodedFields(this.toRow(doc));
     const changes: DocumentRecord = {};
     for (const field of new Set([...read.keys(), ...held.keys()]))
       if (read.get(field) !== held.get(field)) changes[field] = doc[field];
     return changes;
+  }
+
+  #hydrateStored(stored: StoredRead, id: string) {
+    return this.hydrate(
+      "fields" in stored ? this.fromProjectedRow(stored.row, stored.fields) : this.fromRow({ ...stored, id }),
+      undefined,
+      { track: false },
+    );
   }
 
   // Key order is left out of the comparison: jsonb stores an object's keys in an order of its own.
@@ -1312,6 +1314,14 @@ export class SqlDocumentStore {
 
   deserialize(text: string) {
     return this.hydrate(this.fromRow(JSON.parse(text) as SqliteDocumentRow), undefined, { track: false });
+  }
+
+  /** Another instance of a read document, built from the row it was read as, so what either is set to stays its own. */
+  rehydrate(doc: DocumentRecord) {
+    const stored = (doc as Record<symbol, StoredRead | undefined>)[SqlDocumentStore.#storedRow];
+    if (!stored) return this.deserialize(this.serialize(doc));
+    const copy = this.#withStoredRow(this.#hydrateStored(stored, String(doc.id)), stored);
+    return this.#readAs(copy, { removedAt: (doc as Record<symbol, unknown>)[SqlDocumentStore.#readRemoved] });
   }
 
   //* One prototype per store, extending the model's own so chain methods and `instanceof` hold; methods non-enumerable.
