@@ -1777,6 +1777,30 @@ describe("FetchClient HTTP generation", () => {
     }
   });
 
+  test("sends a query of its own after a server push, never joining one sent before", async () => {
+    setFakeWebSocket();
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const ask = () => client.handler.getThing("1234567890abcdef12345678", [], null) as Promise<string>;
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    client.handler.subscribeRoomThing("room-1", () => undefined);
+    Object.assign(globalThis, { window: {} });
+    try {
+      const beforePush = ask();
+      ws.receive({ type: "pub", roomId: "roomThing-room-1", data: { title: "Published" } });
+      const afterPush = ask();
+      expect(requests).toHaveLength(2);
+      requests[0]?.answer("before");
+      requests[1]?.answer("after");
+      expect(await Promise.all([beforePush, afterPush])).toEqual(["before", "after"]);
+    } finally {
+      Reflect.deleteProperty(globalThis, "window");
+      client.disconnect();
+    }
+  });
+
   test("hands a joiner its copy as the answer lands, before the starter's caller can change it", async () => {
     const requests = setGatedFetch();
     const blobSignal: SerializedSignal = {

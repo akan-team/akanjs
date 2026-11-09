@@ -530,8 +530,7 @@ export class FetchClient {
         throw new Error(`Unsupported endpoint type: ${endpoint.type}`);
     }
   }
-  //* A request memoizes its queries for the whole render, so no caller's abort reaches the shared one; a tab shares
-  //* only what is in flight; a server outside a request shares nothing, since a test firing one query twice means it.
+  //* A server outside a request shares nothing: a signal test firing one query twice means it.
   #claimQuery(
     cacheKey: string,
     requestQuery: (signal?: AbortSignal) => Promise<unknown>,
@@ -577,11 +576,18 @@ export class FetchClient {
             const fetchPolicy = argData[roomArgLength + 1] as FetchPolicy | undefined;
             const data = roomArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
             const wrapped = (data: unknown) => {
+              this.#inflight.detach();
               const parsedReturn = parseReturn(data, { crystalize: fetchPolicy?.crystalize ?? true });
               handleEvent(parsedReturn);
             };
             const ws = this.#resolveWs(fetchPolicy?.origin);
-            const handleResync = fetchPolicy?.onResync;
+            const onResync = fetchPolicy?.onResync;
+            const handleResync =
+              onResync &&
+              (() => {
+                this.#inflight.detach();
+                onResync();
+              });
             ws.subscribe({ key, data, handleEvent: wrapped, handleResync });
             return () => ws.unsubscribe({ key, data, handleEvent: wrapped, handleResync });
           };
@@ -608,6 +614,7 @@ export class FetchClient {
           const parseReturn = this.#makeReturnParser(endpoint.returns);
           return ((handleEvent: (data: unknown) => void, fetchPolicy: FetchPolicy = {}) => {
             const wrapped = (data: unknown) => {
+              this.#inflight.detach();
               const parsedReturn = parseReturn(data, { crystalize: fetchPolicy?.crystalize ?? true });
               handleEvent(parsedReturn);
             };
