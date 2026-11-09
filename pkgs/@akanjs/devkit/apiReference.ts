@@ -113,7 +113,7 @@ const conventionImports = [
   'import * as cnst from "../cnst"; // inside lib/<module>/, beside srv and Err',
   'import { Err } from "../dict";',
   'import * as srv from "../srv";',
-  'import { PokeApi } from "@apps/<app>/srvkit"; // a layer barrel: common, srvkit, ui, webkit',
+  'import { BookApi } from "@apps/<app>/srvkit"; // a layer barrel: common, srvkit, ui, webkit',
   'import { signedIn } from "@libs/shared/webkit"; // a workspace created with --libs true',
 ];
 
