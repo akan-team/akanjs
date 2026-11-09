@@ -47,8 +47,9 @@ export default page()
 `akanjs/webkit`, and `fetch`, `usePage` and the model namespaces from `@apps/<app>/client`. A stage receives the
 declared params and search keys plus `lang`.
 
-- Data-driven title: `.head(async ({ id }) => <title>{(await fetch.book(id))?.label}</title>)`.
-- Async page: `.render(async ({ id }) => { const book = await fetch.book(id); if (!book) router.notFound(); … })`;
+- Data-driven title: `.head(async ({ id }) => <title>{((await fetch.book(id)) as Book | null)?.title}</title>)`,
+  where `Book` is the `common/` interface for the query's `Any` return (`akan-service`).
+- Async page: `.render(async ({ id }) => { const book = (await fetch.book(id)) as Book | null; if (!book) router.notFound(); … })`;
   the same query in `.head()` and `.render()` is one request.
 - `router.notFound()` from `.guard()`, `.head()` or `.render()` answers 404 with the nearest layout's `.notFound()`
   above it (an unmatched URL: the deepest layout covering it), else the built-in 404.
