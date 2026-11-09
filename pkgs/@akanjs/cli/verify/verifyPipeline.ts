@@ -174,7 +174,7 @@ export class VerifyPipeline {
       const report = parseBiomeReport(stdout);
       const diagnostics = await VerifyStyleClasses.dropDefined(this.#root, report.diagnostics ?? [], cssDirs);
       return {
-        diagnostics: VerifyDiagnostics.fromBiome({ ...report, diagnostics }),
+        diagnostics: VerifyDiagnostics.fromBiome({ ...report, diagnostics }, this.#root),
         fixed: report.summary?.changed ?? 0,
       };
     } catch {

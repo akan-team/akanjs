@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { BiomeSeverity } from "@akanjs/devkit/linter";
 import { VerifyDiagnostics } from "./verifyDiagnostics";
 
@@ -109,6 +112,43 @@ describe("VerifyDiagnostics", () => {
       },
       { message: "Do not throw a raw `Error`: it carries no translatable key or status.", fix: undefined },
     ]);
+  });
+
+  test("names the layer barrel a module file's two-parent import should come from", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akan-deep-import-"));
+    try {
+      const file = "apps/pokedex/lib/_pokedex/pokedex.service.ts";
+      const lines = [
+        'import { humanize } from "../../common/humanize";',
+        'import { PokeApi } from "../../srvkit/pokeApi"; import { Card } from "../../ui/Card";',
+        'import { Storage } from "../../../../libs/shared/srvkit/storage";',
+        'import { env } from "../../env/env.server";',
+      ];
+      await mkdir(path.join(root, path.dirname(file)), { recursive: true });
+      await writeFile(path.join(root, file), `${lines.join("\n")}\n`);
+      const deepImport = (line: number, column: number) => ({
+        severity: "error" as const,
+        message: "Module files should not import from two or more parent directories.",
+        category: "plugin",
+        location: { path: file, start: { line, column } },
+      });
+      const fixes = VerifyDiagnostics.fromBiome(
+        {
+          diagnostics: [deepImport(1, 26), deepImport(2, 25), deepImport(2, 70), deepImport(3, 25), deepImport(4, 21)],
+        },
+        root,
+      ).map(({ fix }) => fix);
+
+      expect(fixes).toEqual([
+        'import from "@apps/pokedex/common"',
+        'import from "@apps/pokedex/srvkit"',
+        'import from "@apps/pokedex/ui"',
+        'import from "@libs/shared/srvkit"',
+        undefined,
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("lists SSR warnings only for the changed files, never as errors", () => {
