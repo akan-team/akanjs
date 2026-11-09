@@ -13,12 +13,15 @@ Studio's Framework view (`/_akan/studio?view=framework` under `akan start`) draw
 | --- | --- | --- | --- |
 | Dev host | `AkanAppHost` | `akan start` | file watching, the builder, restarting the gateway after a server change, relaying the builder's messages |
 | Builder | `IncrementalBuilder` | `IncrementalBuilderHost`, in the dev host | bundles and CSS, route builds on demand, the Akan Graph and this map for Studio |
-| Gateway | `AkanApp` | the dev host (`apps/<app>/main.ts`), or the container in production | the public port, proxying to the children, pubsub and live-change fan-out between them, health, metrics and logs |
+| Gateway | `AkanApp` | the dev host (`apps/<app>/main.ts`), or the container of a deployment with several replicas or a batch replica | the public port, proxying to the children, pubsub and live-change fan-out between them, health, metrics and logs |
 | Child | `AkanServer` | `AkanApp`, one per replica | dependency injection, the API, websocket rooms, page rendering |
 | RSC worker | `RscRenderer` | `RscWorker`, in the child | rendering route modules to a Flight stream |
 | Browser tab | — | — | hydration, and in dev the updates `HmrWsHub` pushes over its socket |
 
-A deployment has no dev host and no builder: the container runs the gateway, and the gateway runs the children.
+A deployment has no dev host and no builder. With several replicas or a batch replica, the container runs the gateway,
+and the gateway runs the children. With one replica and no batch replica, the default, `AkanApp` runs solo: one
+`AkanServer` in the container's own process, with no gateway, binding the port and answering `/_akan/app/health`
+itself, so step 1 below does not happen.
 
 ## A request, end to end
 
@@ -181,10 +184,10 @@ Declared in [server/hmr/wsHub.ts](server/hmr/wsHub.ts).
 | Message | Sent by | Handled by |
 | --- | --- | --- |
 | `hello` | `ApiRouter` | — |
-| `reload` | `DevHmrController` | `HmrWsHub` |
-| `csr-update` | `DevHmrController` | `HmrWsHub` |
-| `ssr-update` | `SsrUpdateQueue` | `HmrWsHub` |
-| `rsc-refresh` | `DevHmrController` | `HmrWsHub` |
+| `reload` | `DevHmrController` | — |
+| `csr-update` | `DevHmrController` | — |
+| `ssr-update` | `SsrUpdateQueue` | — |
+| `rsc-refresh` | `DevHmrController` | — |
 | `css-update` | `DevHmrController` | — |
 | `sync-navigation` | — | `isSyncNavigationMessage` |
 | `ok` | — | — |

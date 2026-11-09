@@ -180,6 +180,15 @@ describe("FrameworkMapBuilder", () => {
     expect(channel.at).toEqual({ file: "pkgs/akanjs/server/ipcTypes.ts", line: 1, column: 13 });
   });
 
+  it("leaves a relay's checks on `type` out of a channel's handlers", () => {
+    const [channel] = build([
+      { file: "pkgs/akanjs/server/ipcTypes.ts", union: "Ipc", label: "gateway ⇄ child", relays: ["Hub"] },
+    ]).channels;
+    expect(channel.messages.find(({ type }) => type === "ready")?.handlers.map(({ owner }) => owner)).toEqual([
+      "Gateway",
+    ]);
+  });
+
   it("reports a channel whose union is gone", () => {
     expect(build([{ file: "pkgs/akanjs/server/ipcTypes.ts", union: "Gone", label: "" }]).missing).toEqual([
       "Gone in pkgs/akanjs/server/ipcTypes.ts",

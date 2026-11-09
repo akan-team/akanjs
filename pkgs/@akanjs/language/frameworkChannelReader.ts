@@ -7,6 +7,8 @@ export interface FrameworkChannelSpec {
   file: string;
   union: string;
   label: string;
+  /** Classes that route the channel's messages by `type` on their way to the handlers, who sit beyond the reader. */
+  relays?: string[];
 }
 
 interface MemberShape {
@@ -220,7 +222,8 @@ export class FrameworkChannelReader {
   #record(channel: ChannelState, { role, literal, source, node }: Site) {
     const sites = channel[role];
     const site = { owner: this.#ownerOf(source, node), count: 1, at: this.#location(source, node) };
-    sites.set(literal, [...(sites.get(literal) ?? []), site]);
+    const relayed = role === "handlers" && !!site.owner && !!channel.spec.relays?.includes(site.owner);
+    if (!relayed) sites.set(literal, [...(sites.get(literal) ?? []), site]);
     const spoken = this.#spoken.get(source.fileName) ?? new Set();
     spoken.add(channel);
     this.#spoken.set(source.fileName, spoken);

@@ -18,7 +18,7 @@ const channelSpecs: FrameworkChannelSpec[] = [
   { file: "server/artifact/ipcTypes.ts", union: "BuilderMessage", label: "dev host ⇄ builder, relayed to the child" },
   { file: "server/rscWorker.tsx", union: "InMsg", label: "server → RSC worker" },
   { file: "server/rscWorkerHost.ts", union: "RscInMsg", label: "RSC worker → server" },
-  { file: "server/hmr/wsHub.ts", union: "HmrMessage", label: "dev server → browser tab" },
+  { file: "server/hmr/wsHub.ts", union: "HmrMessage", label: "dev server → browser tab", relays: ["HmrWsHub"] },
 ];
 //? A published akanjs bundles use-agentic and @akanjs/native under `vendor/` and its declarations under `types/`;
 //? devkit's `integration`, `csrE2e` and `platformTest` are test harnesses that run in no framework process.
