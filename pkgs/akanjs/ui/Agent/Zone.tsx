@@ -1,6 +1,6 @@
 "use client";
 import { usePage } from "akanjs/client";
-import type { AgentVisualOption } from "akanjs/store";
+import type { AgentVisualOption } from "akanjs/store/agent";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import {
   AgenticSurface,

@@ -2,6 +2,7 @@ import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { App } from "../commandDecorators";
 import { AsyncDefaultExportDetector } from "../transforms/asyncDefaultExportDetector";
+import { StoreBootstrap } from "./storeBootstrap";
 
 export interface PageEntry {
   key: string;
@@ -148,7 +149,7 @@ async function writeGeneratedRootLayoutFile(opts: {
   appName: string;
   boundary: RootBoundary;
   rootSourceAbsPath: string | null;
-  includeStInit: boolean;
+  includeStoreBootstrap: boolean;
   includeSystemProvider: boolean;
 }): Promise<string> {
   await assertEnvClientConvention(opts.appCwdPath, opts.appName);
@@ -161,9 +162,7 @@ async function writeGeneratedRootLayoutFile(opts: {
   const inheritedSourceAbsPath =
     opts.rootSourceAbsPath && opts.rootSourceAbsPath !== opts.boundary.sourceAbsPath ? opts.rootSourceAbsPath : null;
   const inheritedSourceSpecifier = inheritedSourceAbsPath ? importSpecifier(absPath, inheritedSourceAbsPath) : null;
-  const clientImport = opts.includeStInit
-    ? `import { st } from "@apps/${opts.appName}/client";\nvoid st;\n`
-    : `import "@apps/${opts.appName}/client";\n`;
+  const storeImport = opts.includeStoreBootstrap ? StoreBootstrap.source(opts.appName) : "";
   //? resolveRouteModule reads a rootLayout() chain and the legacy named exports alike.
   const inheritedLabel = inheritedSourceAbsPath ? posixRelative(opts.appCwdPath, inheritedSourceAbsPath) : "";
   const inheritedImport = inheritedSourceSpecifier
@@ -223,7 +222,7 @@ import { System } from "akanjs/ui/System/index.tsx";
 import type { McpAppRootProps } from "akanjs/webkit";
 import { env } from "@apps/${opts.appName}/env/env.client";
 import { allDictionary } from ${JSON.stringify(dictMacroSpecifier)};
-${clientImport}${inheritedImport}${userImport}
+${storeImport}${inheritedImport}${userImport}
 const userFonts = userLayout.fonts ?? inheritedLayout.fonts ?? [];
 const defaultFonts = userFonts.filter((font) => font.default);
 if (defaultFonts.length > 1) throw new Error("[route-convention] only one default font is allowed per root layout");
@@ -323,7 +322,7 @@ export async function resolveSsrPageEntries(opts: {
         appName: opts.appName,
         boundary,
         rootSourceAbsPath,
-        includeStInit: hasSt && boundary.segments.length === 0,
+        includeStoreBootstrap: hasSt,
         includeSystemProvider: !hasAncestorRootBoundary(boundary, rootBoundaries),
       }),
       seedAbsPaths: [...new Set([boundary.sourceAbsPath, rootSourceAbsPath].filter((absPath) => absPath !== null))],

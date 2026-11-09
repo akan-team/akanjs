@@ -69,6 +69,7 @@ import { normalizeHost, resolveArtifactDir, warnIgnoredSubRouteBasePaths } from 
 import { createDefaultRobotsTxt } from "./robots";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
+  AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_PATCH_HEAD_SAFE_HEADER,
   AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER,
@@ -316,6 +317,7 @@ export class WebRouter {
   #logger = new Logger("WebRouter");
   #artifactDir = resolveArtifactDir();
   #artifact: BaseBuildArtifact;
+  #importMapKey: string;
   #subRoutes: Record<string, string[]>;
   #rsc: RscWorker;
   #hub: HmrWsHub | null = null;
@@ -361,6 +363,7 @@ export class WebRouter {
     if (process.env.NODE_ENV === "production" && !this.#prodMode)
       this.#logger.warn("[SSR] NODE_ENV=production ignored under `akan start`; serving in dev mode");
     this.#artifact = artifact;
+    this.#importMapKey = Bun.hash(JSON.stringify(artifact.vendorMap)).toString(36);
     const { subRoutes, ignoredBasePaths } = resolveSubRouteHosts({
       subRoutes: artifact.subRoutes,
       basePaths: artifact.basePaths,
@@ -541,6 +544,14 @@ export class WebRouter {
         if (req.headers.get(AKAN_RSC_PREFETCH_HEADER) === "1") this.#requestStats.rscPrefetch += 1;
         else this.#requestStats.rscNavigation += 1;
         try {
+          //? A tab imports through its document's import map, whose narrowed vendors lack names another build imports;
+          //? the client loads a target it cannot fetch as a document, which brings this build's import map.
+          const importMap = req.headers.get(AKAN_RSC_IMPORT_MAP_HEADER);
+          if (importMap && importMap !== this.#importMapKey)
+            return new Response("Conflict", {
+              status: 409,
+              headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+            });
           const reqUrl = new URL(req.url);
           // Behind proxies req.url is internal; forwarded headers give the browser's origin for the same-origin check.
           const clientOrigin = getClientFacingOrigin(req);
@@ -726,6 +737,7 @@ export class WebRouter {
               ? `self.__AKAN_RSC_INITIAL_STATE__=${JSON.stringify(rscResult.trace.routeState)};`
               : "",
             dictionaryUrl ? `self.__AKAN_DICT_URL__=${JSON.stringify(dictionaryUrl)};` : "",
+            `self.__AKAN_IMPORT_MAP_KEY__=${JSON.stringify(this.#importMapKey)};`,
             this.#ssrDevShell
               ? SsrDevShim.script(await this.#ssrDevShell.readManifest(), Object.keys(this.#artifact.vendorMap))
               : "",

@@ -1,3 +1,5 @@
+// Re-exported because an app may not import `use-agentic` directly (`no-import-external-library`).
+export { AgentAbort, AgentProgress, type AgentProgressStep, ToolReturn } from "use-agentic";
 export * from "./AgentConfirm";
 export * from "./AgentValue";
 export * from "./attachAgentic";

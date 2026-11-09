@@ -28,6 +28,7 @@ export class SolidPubSub
   readonly #socketRooms = new Map<string, Set<string>>();
   #eventHandler: WsRedisEventHandler | null = null;
   #changeHandler: LiveChangeHandler | null = null;
+  #liveModels: string[] = [];
   readonly #messageHandler = (message: unknown) => {
     if (!message || typeof message !== "object") return;
     const data = message as { type?: string; roomId?: string; data?: unknown; origin?: string; change?: LiveChange };
@@ -43,6 +44,7 @@ export class SolidPubSub
       sendAkanIpc({
         type: "pubsub.snapshot",
         rooms: [...new Set([...this.#socketRooms.values()].flatMap((rooms) => [...rooms]))],
+        liveModels: this.#liveModels,
         pid: process.pid,
       });
     }
@@ -56,6 +58,7 @@ export class SolidPubSub
     process.off("message", this.#messageHandler);
     this.#eventHandler = null;
     this.#changeHandler = null;
+    this.#liveModels = [];
     this.#socketRooms.clear();
   }
 
@@ -69,6 +72,11 @@ export class SolidPubSub
 
   onChange(handler: LiveChangeHandler): void {
     this.#changeHandler = handler;
+  }
+
+  reportLiveModels(models: string[]): void {
+    this.#liveModels = models;
+    sendAkanIpc({ type: "live.models", models, pid: process.pid });
   }
 
   setEventHandler(handler: WsRedisEventHandler): void {

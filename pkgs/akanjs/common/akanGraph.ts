@@ -43,6 +43,7 @@ export interface AkanGraphNode {
   at: AkanGraphLocation | null;
   fields?: AkanGraphField[];
   values?: string[];
+  doc?: string;
   digest?: string;
   change?: AkanGraphChange;
 }

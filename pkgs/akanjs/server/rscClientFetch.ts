@@ -1,4 +1,5 @@
 import {
+  AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_PREFETCH_HEADER,
   type AkanRouterStateV1,
@@ -20,7 +21,12 @@ const rscEndpointOf = (href: string, buildId?: number) => {
   return endpoint;
 };
 
-const rscRequestHeaders = () => new Headers({ Accept: "text/x-component", "Cache-Control": "no-cache" });
+const rscRequestHeaders = () => {
+  const headers = new Headers({ Accept: "text/x-component", "Cache-Control": "no-cache" });
+  const importMapKey = (globalThis as { __AKAN_IMPORT_MAP_KEY__?: string }).__AKAN_IMPORT_MAP_KEY__;
+  if (importMapKey) headers.set(AKAN_RSC_IMPORT_MAP_HEADER, importMapKey);
+  return headers;
+};
 
 //? Cut only after the headers: a rotated single-use refresh token in their Set-Cookie must still reach the browser.
 const fetchKeepingHeaders = async (endpoint: URL, init: RequestInit, signal: AbortSignal | undefined) => {

@@ -9,6 +9,7 @@ export const AKAN_RSC_NOT_FOUND_HEADER = "X-Akan-Rsc-Not-Found";
 export const AKAN_RSC_DICTIONARY_HEADER = "X-Akan-Dict";
 //? Not `Sec-Purpose: prefetch`: fetch() drops a `Sec-` request header, so a page's own prefetch names itself this way.
 export const AKAN_RSC_PREFETCH_HEADER = "X-Akan-Rsc-Prefetch";
+export const AKAN_RSC_IMPORT_MAP_HEADER = "X-Akan-Rsc-Import-Map";
 export const AKAN_RSC_PATCH_START_INDEX_HEADER = "X-Akan-Rsc-Patch-Start-Index";
 export const AKAN_RSC_PATCH_SEGMENT_PATH_HEADER = "X-Akan-Rsc-Patch-Segment-Path";
 export const AKAN_RSC_PATCH_START_SEGMENT_HEADER = "X-Akan-Rsc-Patch-Start-Segment";
