@@ -1843,7 +1843,7 @@ describe("WebRouter full SSR cache orchestration", () => {
       async ({ fullSsr }) => {
         const response = await fullSsr(new Request("https://example.test/docs/redirect"));
         expect(response.status).toBe(307);
-        expect(response.headers.get("Location")).toBe("https://example.test/login");
+        expect(response.headers.get("Location")).toBe("/login");
         expect(response.headers.get("Cache-Control")).toBe("no-store");
       },
       { worker: fakeWorker },
@@ -1886,6 +1886,36 @@ describe("WebRouter full SSR cache orchestration", () => {
     );
   });
 
+  test("sends a same-origin redirect relative and any other target absolute", async () => {
+    const fakeWorker = createFakeRscWorker();
+    const locations: Record<string, string> = {
+      "/a": "/login?next=%2Fa#top",
+      "/b": "http://localhost:4200/login",
+      "/c": "https://other.test/login",
+      "/d": "//other.test/login",
+      "/e": "http://localhost:4200//other.test/login",
+    };
+    fakeWorker.renderWithMeta = async (req: Request) => ({
+      type: "redirect",
+      location: locations[new URL(req.url).pathname.replace("/docs", "")] ?? "/",
+      method: "replace",
+      status: 307,
+    });
+
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const locationOf = async (path: string) =>
+          (await fullSsr(new Request(`http://localhost:4200/docs${path}`))).headers.get("Location");
+        expect(await locationOf("/a")).toBe("/login?next=%2Fa#top");
+        expect(await locationOf("/b")).toBe("/login");
+        expect(await locationOf("/c")).toBe("https://other.test/login");
+        expect(await locationOf("/d")).toBe("http://other.test/login");
+        expect(await locationOf("/e")).toBe("http://localhost:4200//other.test/login");
+      },
+      { worker: fakeWorker },
+    );
+  });
+
   test("answers a redirect the render raised before streaming with one no cache keeps", async () => {
     const fakeWorker = createFakeRscWorker();
     fakeWorker.renderWithMeta = async () => ({ type: "redirect", location: "/login", method: "replace", status: 308 });
@@ -1894,7 +1924,7 @@ describe("WebRouter full SSR cache orchestration", () => {
       async ({ fullSsr }) => {
         const response = await fullSsr(new Request("https://example.test/docs/members"));
         expect(response.status).toBe(308);
-        expect(response.headers.get("Location")).toBe("https://example.test/login");
+        expect(response.headers.get("Location")).toBe("/login");
         expect(response.headers.get("Cache-Control")).toBe("no-store");
       },
       { worker: fakeWorker },
