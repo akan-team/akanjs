@@ -67,7 +67,7 @@ export class WorkspaceScript extends script("workspace", [
       await this.libraryScript.installLibrary(workspace, "util");
       await this.libraryScript.installLibrary(workspace, "shared");
     }
-    await this.applicationScript.createApplication(appName, workspace, { libs, sample });
+    await this.applicationScript.createApplication(appName, workspace, { libs });
     if (sample)
       await workspace.applyTemplate({
         basePath: `apps/${appName}`,

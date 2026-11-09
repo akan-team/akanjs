@@ -414,7 +414,12 @@ export class RscWorker {
   //? Sends a booting replacement could not take: a worker the host falls back to gets them again.
   #droppedWhileBooting = false;
   #reloadState = 0;
-  #init: RscAdoptedBundle & { reloadState: number } = { pagesBundlePath: "", buildId: 0, reloadState: 0 };
+  #init: RscAdoptedBundle & { reloadState: number; cssAssets: Record<string, CssAsset> } = {
+    pagesBundlePath: "",
+    buildId: 0,
+    reloadState: 0,
+    cssAssets: {},
+  };
   /** What the worker runs: a respawn falls back to it when the bundle a reload named failed to import. */
   #adopted: RscAdoptedBundle;
 
@@ -775,6 +780,7 @@ export class RscWorker {
           pagesBundlePath: this.#pagesBundlePath,
           buildId: this.#pagesBundleBuildId,
           reloadState: this.#reloadState,
+          cssAssets: this.#cssAssets,
         };
         this.#proc.send({
           type: "init",
@@ -794,6 +800,8 @@ export class RscWorker {
         this.#restartAttempts = 0;
         this.#resolveReady();
         this.#finishRollingRecycle();
+        //? A stylesheet update sent after its hello was held while it booted, and queued renders must not see the old one.
+        if (this.#cssAssets !== this.#init.cssAssets) this.updateCssAssets(this.#cssAssets);
         this.#flushQueuedSends();
         if (this.#logLevel !== null) this.#sendLogLevel();
         //? A worker that booted from the init reply runs the reload state of its hello: a reload the crashed or recycled

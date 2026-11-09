@@ -432,7 +432,7 @@ export class SignalContext<
       } catch (error) {
         if (isExceptionLike(error))
           EndpointErrorContract.checkThrown(endpoint, endpointInfo, key, SignalContext.#wireKey(error));
-        else {
+        else if (SignalFailure.generalized(error).statusCode >= 500) {
           const message = error instanceof Error ? error.message : String(error);
           const stack = error instanceof Error ? error.stack : undefined;
           endpoint.logger.error(`Error ${endpointInfo.type}-${key}:\n${stack ?? message}`);
