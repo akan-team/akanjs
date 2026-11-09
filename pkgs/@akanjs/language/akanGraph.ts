@@ -360,7 +360,7 @@ export class GraphBuilder {
           [];
         const factory =
           candidates.find((other) => other.owner === from) ??
-          candidates.find((other) => this.#visible(other.owner, from ?? owner));
+          this.#soleVisible(candidates, from ?? owner);
         if (factory)
           declare(
             { name, owner, span, scope: factory.fact.scope, doc, parts: madeBy(factory, fileName, extent) },
@@ -388,7 +388,6 @@ export class GraphBuilder {
     return node.id;
   }
 
-  //? A name `from` does not declare is a re-export or a default import, so any guard of that name it can see stands.
   #findGuard(local: string, site: GuardSite, depth: number): GuardLookup {
     const [head = local, member] = local.split(".");
     const imported = site.imports.find((item) => item.name === head);
@@ -415,11 +414,10 @@ export class GraphBuilder {
         ? (declared.find((other) => other.owner === site.owner) ??
           declared.find((other) => this.#visible(other.owner, site.owner)))
         : (declared.find((other) => other.owner === from) ??
-          (from === frameworkOwner ? undefined : declared.find((other) => this.#visible(other.owner, from))));
+          (from === frameworkOwner ? undefined : this.#soleVisible(declared, from)));
     return guard ? { guard } : { name, from };
   }
 
-  //? `guards: [SSO.Kakao]` reads a guard out of an object map (`export const SSO = { Kakao: SSOKakao }`).
   #mapEntriesOf(objectName: string, member: string, fileName: string | null, owner: string | null) {
     const key = `${objectName}\n${member}\n${fileName ?? ""}\n${owner ?? ""}`;
     const cached = this.#mapEntries.get(key);
@@ -538,6 +536,12 @@ export class GraphBuilder {
 
   #visible(target: string | null, from: string | null) {
     return !from || !target || target === from || target.startsWith("libs/");
+  }
+
+  //? Re-exports are not followed, so of two libs declaring a name neither is known to be the one re-exported.
+  #soleVisible<Declared extends { owner: string | null }>(declared: Declared[], from: string | null) {
+    const visible = declared.filter((other) => this.#visible(other.owner, from));
+    return visible.length === 1 ? visible[0] : undefined;
   }
 
   #targetNodeOf({ family, owner, refName, sourceKey }: AkanTarget) {

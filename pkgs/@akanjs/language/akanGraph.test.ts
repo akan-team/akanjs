@@ -321,6 +321,38 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
     expect(guards.every((node) => node.at === null || /^[0-9a-f]{8}$/.test(node.digest ?? ""))).toBe(true);
   });
 
+  it("names the lib an import points at when two other libs declare the re-exported guard", () => {
+    const admin = `import type { Guard } from "akanjs/signal";
+export class Admin implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`;
+    const given: Record<string, string> = {
+      "libs/billing/srvkit/admin.ts": admin,
+      "libs/util/srvkit/admin.ts": admin,
+      "libs/shared/srvkit/admin.ts": `export { Admin } from "@libs/util/srvkit";
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { Admin } from "@libs/shared/srvkit";
+import { endpoint } from "akanjs/signal";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, { guards: [Admin] }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+    };
+    const index = new AkanIndex({ ts, root });
+    for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+    const graph = index.graph((fileName) => given[fileName.slice(root.length + 1)], { digests: true });
+    expect(graph.edges.filter((edge) => edge.to.startsWith("guard:")).map((edge) => edge.to)).toEqual([
+      "guard:libs/shared:Admin",
+    ]);
+    expect(graph.nodes.find((node) => node.id === "guard:libs/shared:Admin")?.at).toBeNull();
+  });
+
   it("follows a guard through a map's own imports, a re-export, and a factory a file imports or wraps", () => {
     const guarded = (resourceBody: string, pinField: string): Record<string, string> => ({
       "libs/util/srvkit/guards.ts": `import type { Guard, GuardScope } from "akanjs/signal";
