@@ -85,6 +85,7 @@ export class WorkspaceRunner extends runner("workspace") {
       registryUrl,
       owner = "",
       libs = [],
+      bunDependency,
     }: {
       dirname?: string;
       inPlace?: boolean;
@@ -93,6 +94,7 @@ export class WorkspaceRunner extends runner("workspace") {
       registryUrl?: string;
       owner?: string;
       libs?: string[];
+      bunDependency?: string;
     },
   ) {
     const cwdPath = process.cwd();
@@ -132,10 +134,20 @@ export class WorkspaceRunner extends runner("workspace") {
     const { typescript, ...dependencies } = peerDependencies;
     const packageJson: PackageJson = {
       ...rootPackageJson,
+      ...(bunDependency
+        ? {
+            scripts: {
+              ...rootPackageJson.scripts,
+              build: `akan build ${appName}`,
+              start: `cd dist/apps/${appName} && bun main.js`,
+            },
+          }
+        : {}),
       dependencies: {
         ...rootPackageJson.dependencies,
         ...dependencies,
         akanjs: akanVersion,
+        ...(bunDependency ? { bun: bunDependency } : {}),
       },
       devDependencies: {
         ...rootPackageJson.devDependencies,

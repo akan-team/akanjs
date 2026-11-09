@@ -15,6 +15,7 @@ import type { DatabaseService, DatabaseServiceForModel } from "./types";
 
 interface ServiceOptions {
   enabled?: boolean | (() => boolean);
+  /** The `SERVER_MODE` process that mounts the module, endpoints included; `all` mounts every mode and an unset mode mounts everywhere. */
   serverMode?: "batch" | "federation";
   /** The operation modes the module mounts in; `modules: ["@edge"]` selects every module that lists `edge`. */
   operationMode?: BaseEnv["operationMode"][];

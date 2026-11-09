@@ -3,7 +3,7 @@ import path from "node:path";
 import type { SsrManifest, SsrManifestEntry } from "akanjs/server";
 import type { BunPlugin } from "bun";
 import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUseClientTransform";
-import { bundleDefine } from "./bundleDefine";
+import { bundleConditions, bundleDefine } from "./bundleDefine";
 import {
   type BundleClientEntriesInternalOptions,
   type BundleClientEntriesResult,
@@ -67,6 +67,7 @@ export class ClientEntriesBundler {
       naming: CLIENT_BUNDLE_NAMING,
       metafile: true,
       define: bundleDefine(this.#app, this.#command, "ssr"),
+      conditions: bundleConditions(this.#command),
       minify: this.#command === "build",
       optimizeImports: akanConfig.optimizeImports,
       reactFastRefresh: this.#command === "start" && this.#outputSubdir === "client" && this.#reactFastRefresh,

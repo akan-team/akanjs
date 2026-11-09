@@ -396,6 +396,15 @@ export default page()
               ko: "첫 앱에 샘플 `task` 모듈, 페이지, 헬퍼를 만듭니다. `false`면 빈 앱에서 시작합니다.",
             }),
           },
+          {
+            name: "--bun-dependency",
+            type: "String",
+            defaultValue: "-",
+            desc: l.trans({
+              en: "Put `bun` at this version in `dependencies`, plus `build` and `start` scripts. Passed when Bun is not on `PATH`.",
+              ko: "`dependencies`에 이 버전의 `bun`과 `build`·`start` script를 넣습니다. Bun이 `PATH`에 없을 때 넘깁니다.",
+            }),
+          },
         ],
         notes: [
           {
