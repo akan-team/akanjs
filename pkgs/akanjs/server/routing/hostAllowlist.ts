@@ -23,7 +23,7 @@ export class HostAllowlist {
     if (allowlist.#hosts.size) return allowlist;
     const devHosted =
       env.AKAN_COMMAND_TYPE === "start" ||
-      isLocalDevRuntime({ environment: env.AKAN_PUBLIC_ENV, operationMode: env.AKAN_PUBLIC_OPERATION_MODE });
+      isLocalDevRuntime({ environment: env.AKAN_PUBLIC_ENV ?? "", operationMode: env.AKAN_PUBLIC_OPERATION_MODE });
     return devHosted ? new HostAllowlist([], { devDefault: true }) : null;
   }
 
