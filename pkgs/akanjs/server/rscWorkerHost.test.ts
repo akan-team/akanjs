@@ -978,6 +978,50 @@ export const pages = {
     });
   }, 20_000);
 
+  const cssAssetsNamed = (name: string) => ({
+    "": { cssUrl: `/_akan/styles/root-${name}.css`, cssRelPath: `styles/root-${name}.css` },
+  });
+  const stylesheetsOf = async (rsc: RscWorker) => {
+    const result = await rsc.renderWithMeta(new Request("http://localhost/en/x"));
+    if (result.type !== "stream") return [result.type];
+    const text = decoder.decode(await new Response(result.stream).arrayBuffer());
+    return [...new Set(text.match(/\/_akan\/styles\/root-\w+\.css/g))];
+  };
+
+  test("a stylesheet update sent while a reload imports its bundle outlives that reload", async () => {
+    await withBundles(async (rsc, { b }) => {
+      const pages = rsc.reload({
+        clientManifest: {},
+        cssAssets: cssAssetsNamed("old"),
+        buildId: 2,
+        pagesBundlePath: b,
+      });
+      await Bun.sleep(40);
+      rsc.updateCssAssets(cssAssetsNamed("new"));
+      await pages;
+      expect(await stylesheetsOf(rsc)).toEqual(["/_akan/styles/root-new.css"]);
+    });
+  }, 20_000);
+
+  test("a stylesheet update sent while a recycled worker boots reaches that worker", async () => {
+    await withBundles(
+      async (rsc, { a }) => {
+        const slow = path.join(path.dirname(a), "pages-slow.ts");
+        fs.writeFileSync(slow, bundleSource("body C", "await Bun.sleep(1500);"));
+        const old = cssAssetsNamed("old");
+        expect(await rsc.reload({ clientManifest: {}, cssAssets: old, buildId: 2, pagesBundlePath: a })).toMatchObject({
+          buildId: 2,
+        });
+        const recycled = rsc.reload({ clientManifest: {}, cssAssets: old, buildId: 3, pagesBundlePath: slow });
+        await Bun.sleep(700);
+        rsc.updateCssAssets(cssAssetsNamed("new"));
+        await recycled;
+        expect(await stylesheetsOf(rsc)).toEqual(["/_akan/styles/root-new.css"]);
+      },
+      { maxReloads: 1, minRecycleIntervalMs: 1 },
+    );
+  }, 30_000);
+
   test("a bundle that throws on import rejects its reload and leaves the worker, and the next reload, on the one it ran", async () => {
     await withBundles(async (rsc, { a, broken }, body) => {
       //? Caught, not `expect(...).rejects`: on Windows bun:test's matcher waits without reading the worker's ipc channel.

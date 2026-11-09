@@ -1,3 +1,5 @@
+import { AkanError } from "akanjs/base";
+
 // Anything but an `Exception` is generalized: a stack names server paths and a driver message quotes the statement.
 export class SignalFailure {
   static readonly message = "Internal Server Error";
@@ -18,14 +20,21 @@ export class SignalFailure {
     SignalFailure.#detailed = null;
   }
 
+  static generalized(error: unknown): { error: string; statusCode: number; code?: string } {
+    if (!AkanError.is(error)) return { error: SignalFailure.message, statusCode: 500 };
+    const statusCode = error.statusCode >= 400 && error.statusCode <= 599 ? error.statusCode : 500;
+    return { error: AkanError.reasonOf(statusCode), statusCode, code: error.code };
+  }
+
   static body<Extra extends Record<string, unknown> = Record<string, never>>(
     error: unknown,
     extra: Extra = {} as Extra,
-  ): Extra & { error: string; statusCode: number; timestamp: string; stack?: string } {
+  ): Extra & { error: string; statusCode: number; code?: string; timestamp: string; stack?: string } {
     const detailed = SignalFailure.detailed;
+    const generalized = SignalFailure.generalized(error);
     return {
-      error: detailed ? (error instanceof Error ? error.message : String(error)) : SignalFailure.message,
-      statusCode: 500,
+      ...generalized,
+      ...(detailed ? { error: error instanceof Error ? error.message : String(error) } : {}),
       ...extra,
       timestamp: new Date().toISOString(),
       ...(detailed && error instanceof Error && error.stack ? { stack: error.stack } : {}),
@@ -33,8 +42,9 @@ export class SignalFailure {
   }
 
   static response(error: unknown, extra: Record<string, unknown> = {}): Response {
-    return new Response(JSON.stringify(SignalFailure.body(error, extra)), {
-      status: 500,
+    const body = SignalFailure.body(error, extra);
+    return new Response(JSON.stringify(body), {
+      status: body.statusCode,
       headers: { "Content-Type": "application/json" },
     });
   }

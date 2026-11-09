@@ -43,6 +43,11 @@ export interface WsClientOptions {
    * credential's expiry: renew the session cookie, or call `setJwt`, so the new handshake carries a live credential.
    */
   onCredentialExpired?: () => unknown;
+  /**
+   * Messages kept while the socket is down, the oldest dropped past it; 100 unless named, `0` keeps none. Subscribes
+   * never queue here: every room is sent again on open.
+   */
+  outboxLimit?: number;
 }
 
 interface SubscribeOption {
@@ -75,6 +80,7 @@ export class WsClient {
   }
   static readonly stableMs = 5_000;
   static renewTimeoutMs = 10_000;
+  static readonly defaultOutboxLimit = 100;
 
   readonly logger = new Logger("WsClient");
   readonly url: string;
@@ -96,6 +102,7 @@ export class WsClient {
   /** Whether this client has been connected before, so the first open is a start rather than a recovery. */
   #hadConnection = false;
   #outbox: string[] = [];
+  #outboxDropped = 0;
   #unconnectedWarnTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #jwt: string | null = null;
   #renewing: Promise<unknown> | null = null;
@@ -196,6 +203,9 @@ export class WsClient {
       });
       const queued = this.#outbox;
       this.#outbox = [];
+      if (this.#outboxDropped > 0)
+        this.logger.warn(`WebSocket dropped ${this.#outboxDropped} oldest queued message(s) while disconnected`);
+      this.#outboxDropped = 0;
       for (const frame of queued) this.#ws?.send(frame);
       this.#handleMessage("connect", undefined);
     };
@@ -456,6 +466,7 @@ export class WsClient {
     for (const timer of this.#unconnectedWarnTimers.values()) clearTimeout(timer);
     this.#unconnectedWarnTimers.clear();
     this.#outbox = [];
+    this.#outboxDropped = 0;
     this.#roomAliasMap.clear();
     this.#ws?.close();
     this.#ws = null;
@@ -516,12 +527,24 @@ export class WsClient {
     const frame = JSON.stringify(payload);
     // Queued: a socket opened on demand is still handshaking when the call that opened it emits.
     if (this.#ws?.readyState !== WebSocket.OPEN) {
-      this.#outbox.push(frame);
+      this.#enqueue(frame);
       this.#requireConnection("emit", key);
       return this;
     }
     this.#ws.send(frame);
     return this;
+  }
+  #enqueue(frame: string) {
+    const { outboxLimit } = this.#options;
+    const limit =
+      outboxLimit !== undefined && Number.isFinite(outboxLimit)
+        ? Math.max(0, Math.floor(outboxLimit))
+        : WsClient.defaultOutboxLimit;
+    this.#outbox.push(frame);
+    const overflow = this.#outbox.length - limit;
+    if (overflow <= 0) return;
+    this.#outbox.splice(0, overflow);
+    this.#outboxDropped += overflow;
   }
   subscribe(option: RoomSubscription) {
     const roomId = WsClient.makeRoomId(option.key, option.data);

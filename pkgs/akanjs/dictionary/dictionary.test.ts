@@ -558,6 +558,14 @@ describe("makeTrans", () => {
       ["ja", "dictionaryTestService.error.unavailable", "サービスを利用できません"],
     ]);
   });
+
+  test("keeps a generalized failure's code when it restores one", () => {
+    const restored = trans.Err.fromJSON({ error: "Service Unavailable", statusCode: 503, code: "queueFull" });
+
+    expect(restored.code).toBe("queueFull");
+    expect(restored.toJSON()).toEqual({ error: "Service Unavailable", statusCode: 503, code: "queueFull" });
+    expect("code" in new trans.Err("dictionaryTestItem.error.notFound" as never).toJSON()).toBe(false);
+  });
 });
 
 describe("modelDictionary extension", () => {
