@@ -100,6 +100,8 @@ Method
 
 - addNavigationGuard(guard): Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover. A page uses `useNavigationGuard`.
 
+- prefetch(href, { priority }): Loads a route's page before the click. Built SSR pages only; `priority: "low"` waits behind hovered links.
+
 A store action that opens the record it just created:
 
 **Paths are app-internal.** Write `/profile`, not `/en/profile`. A path that already starts with the locale is accepted too.
@@ -470,11 +472,11 @@ A script that loads one route file the way the server does:
 
 Font / createFont
 
-`Font` is the type of one entry in `rootLayout().fonts([...])`. The build subsets each font, serves it from `/_akan/fonts`, and preloads it.
+`Font` is the type of one entry in `rootLayout().fonts([...])`. The build subsets each font, serves it from `/_akan/fonts`, and preloads its regular weight.
 
 - name (string): Family name. It also names the `--font-<name>` variable and the `font-<name>` class.
 
-- paths ({ src, weight, style?, preload? }[]): One file per weight and style. `src` starts with `/` and is read from `public/`. `preload: false` leaves a weight the first screen does not show to load when text first uses it.
+- paths ({ src, weight, style?, preload? }[]): One file per weight and style. `src` starts with `/` and is read from `public/`. Only the regular face is preloaded: 400, or the weight a browser draws regular text with when there is no 400. The rest load when text first uses them. `preload: true` also preloads a weight the first screen shows; `preload: false` never preloads one.
 
 - default (boolean): Applies this font to the whole app. One font per root layout at most.
 
@@ -484,7 +486,7 @@ Font / createFont
 
 - optimize (boolean, default true): `false` serves the file from `src` as is, with no build step and no preload.
 
-- preload (boolean, default true): Adds a preload link for each optimized file.
+- preload (boolean, default true): Adds a preload link for the regular face and for each path set to `preload: true`. `false` preloads none of this font's files.
 
 - display ("auto" | "block" | "swap" | "fallback" | "optional", default "swap"): The CSS `font-display` value.
 

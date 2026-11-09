@@ -2074,6 +2074,36 @@ describe("SignalResolver declaration contracts", () => {
     expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(0);
   });
 
+  test("reports the models it holds live rooms for when a model gains its first room or loses its last", async () => {
+    class LiveModelsSlice extends slice(
+      serverResolverTestServiceModel,
+      { guards: { root: Public, get: Public, cru: Public } },
+      (init) => ({
+        inCategory: init({ guards: [Public] })
+          .search("category", String)
+          .live()
+          .exec(function (category) {
+            return this.serverResolverTestItemService.queryInCategory(category ?? "all");
+          }),
+      }),
+    ) {}
+    const SliceEndpoint = SignalResolver.resolveSlice(LiveModelsSlice);
+    const sliceEndpoint = new SliceEndpoint() as InstanceType<typeof SliceEndpoint> & Record<string, unknown>;
+    sliceEndpoint.serverResolverTestItemService = { queryInCategory: (category: string) => ({ category }) };
+    const { registry, websocket } = withFakeWebsocket();
+    const reported: string[][] = [];
+    Object.assign(websocket.instance, { reportLiveModels: (models: string[]) => void reported.push(models) });
+    const live = getDefaultLiveRegistry();
+    live.sliceCls.set(LiveModelsSlice.baseName, LiveModelsSlice as never);
+    SignalResolver.setLocalPublish(() => undefined, websocket.instance, live);
+
+    const resolved = resolveWith(SliceEndpoint, sliceEndpoint as never, { registry, live });
+    const ws = makeWs();
+    await resolved.wsRoutes?.serverResolverTestItemLiveInCategory?.(ws, ["news"], "subscribe");
+    await SignalResolver.handleWsClose(ws, registry, live);
+    expect(reported).toEqual([[], ["serverResolverTestItem"], []]);
+  });
+
   test("takes a live slice with two optional arguments, which a URL could not", () => {
     class TwoSearchLiveSlice extends slice(
       serverResolverTestServiceModel,

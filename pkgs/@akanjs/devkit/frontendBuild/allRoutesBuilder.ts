@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { BaseBuildArtifact, BuildRouteClientResult, RoutesManifest } from "akanjs/server";
+import type { BuildRouteClientResult, RoutesManifest } from "akanjs/server";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex, type RouteSeedIndex } from "../artifact/routeSeedIndex";
 import type { App } from "../commandDecorators";
@@ -16,7 +16,6 @@ export interface BuildAllRoutesResult {
 
 export class AllRoutesBuilder {
   #app: App;
-  #artifact: BaseBuildArtifact;
   #command: "build" | "start";
   #artifactDir: string;
   #merged: Pick<RoutesManifest, "clientManifest" | "ssrManifest" | "knownEntries"> = {
@@ -28,9 +27,8 @@ export class AllRoutesBuilder {
   #routeIds: string[] = [];
   #discovery: ClientEntryDiscovery | null = null;
 
-  constructor(app: App, artifact: BaseBuildArtifact, command: "build" | "start" = "start") {
+  constructor(app: App, command: "build" | "start" = "start") {
     this.#app = app;
-    this.#artifact = artifact;
     this.#command = command;
     this.#artifactDir = `${command === "build" ? app.dist.cwdPath : app.cwdPath}/.akan/artifact`;
   }
@@ -91,7 +89,6 @@ export class AllRoutesBuilder {
       app: this.#app,
       seeds: [],
       entries,
-      artifact: this.#artifact,
       knownEntries: this.#knownSet,
       discovery: this.#discovery,
       command: this.#command,

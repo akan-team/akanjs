@@ -3,13 +3,26 @@ import type {
   AkanGraph,
   AkanGraphChange,
   AkanGraphEdge,
+  AkanGraphEdgeKind,
   AkanGraphField,
   AkanGraphLocation,
   AkanGraphNode,
   AkanGraphNodeKind,
 } from "akanjs/common";
+import type { DepEdgeKind } from "../types";
+import type { StudioRuntimeGraph } from "./studioRuntimeGraph";
 
-export type StudioView = "erd" | "signals" | "changes";
+export type StudioView = "erd" | "signals" | "changes" | "runtime";
+
+export type StudioNodeKind = AkanGraphNodeKind | "service" | "adaptor" | "internal";
+
+export interface StudioNode extends Omit<AkanGraphNode, "kind"> {
+  kind: StudioNodeKind;
+}
+
+export interface StudioEdge extends Omit<AkanGraphEdge, "kind"> {
+  kind: AkanGraphEdgeKind | DepEdgeKind;
+}
 
 export interface StudioRow {
   text: string;
@@ -17,10 +30,11 @@ export interface StudioRow {
   y: number;
   at: AkanGraphLocation | null;
   change?: AkanGraphChange;
+  skipped?: string;
 }
 
 export interface StudioBox {
-  node: AkanGraphNode;
+  node: StudioNode;
   x: number;
   y: number;
   width: number;
@@ -29,7 +43,7 @@ export interface StudioBox {
 }
 
 export interface StudioLink {
-  edge: AkanGraphEdge;
+  edge: StudioEdge;
   path: string;
 }
 
@@ -113,12 +127,30 @@ export class StudioLayout {
     });
   }
 
+  static runtime(graph: StudioRuntimeGraph, module: string | null): StudioScene {
+    const { nodes, edges } = StudioLayout.#around(
+      graph.columns.flatMap((column) => column.nodes),
+      graph.edges,
+      module,
+    );
+    const kept = new Set(nodes.map((node) => node.id));
+    return StudioLayout.#place(
+      graph.columns.map((column) => column.nodes.filter((node) => kept.has(node.id))),
+      edges,
+      { width: 264, labels: graph.columns.map(({ label }) => label), rowsOf: (node) => graph.rowsOf(node) },
+    );
+  }
+
   static unmappedIn(files: AkanChangedFile[], module: string | null): AkanChangedFile[] {
     if (!module) return files;
     return files.filter(({ file }) => file.includes(`/lib/${module}/`) || file.includes(`/lib/_${module}/`));
   }
 
-  static #around(nodes: AkanGraphNode[], edges: AkanGraphEdge[], module: string | null) {
+  static #around<Node extends StudioNode, Edge extends StudioEdge>(
+    nodes: Node[],
+    edges: Edge[],
+    module: string | null,
+  ) {
     const byId = new Map(nodes.map((node) => [node.id, node]));
     const linked = edges.filter((edge) => byId.has(edge.from) && byId.has(edge.to));
     if (!module) return { nodes, edges: linked };
@@ -177,14 +209,14 @@ export class StudioLayout {
     return node.detail.length ? [{ text: node.detail.join(" · "), hint: "", at: null }] : [];
   }
 
-  static #place(
-    groups: AkanGraphNode[][],
-    edges: AkanGraphEdge[],
+  static #place<Node extends StudioNode>(
+    groups: Node[][],
+    edges: StudioEdge[],
     {
       width,
       labels,
       rowsOf,
-    }: { width: number; labels: string[] | null; rowsOf: (node: AkanGraphNode) => Omit<StudioRow, "y">[] },
+    }: { width: number; labels: string[] | null; rowsOf: (node: Node) => Omit<StudioRow, "y">[] },
   ): StudioScene {
     const ordered = StudioLayout.#order(groups, edges);
     const boxes: StudioBox[] = [];
@@ -221,8 +253,8 @@ export class StudioLayout {
     return { boxes, links, columns, width: x - columnGap + padding, height: height + padding };
   }
 
-  static #order(groups: AkanGraphNode[][], edges: AkanGraphEdge[]): AkanGraphNode[][] {
-    const byLabel = (a: AkanGraphNode, b: AkanGraphNode) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0);
+  static #order<Node extends StudioNode>(groups: Node[][], edges: StudioEdge[]): Node[][] {
+    const byLabel = (a: Node, b: Node) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0);
     const ordered = groups.map((group) => [...group].sort(byLabel));
     const neighbors = new Map<string, string[]>();
     for (const { from, to } of edges) {
@@ -232,7 +264,7 @@ export class StudioLayout {
     const sweep = (indices: number[]) => {
       const position = new Map(ordered.flatMap((group) => group.map((node, idx) => [node.id, idx] as const)));
       for (const idx of indices) {
-        const center = (node: AkanGraphNode) => {
+        const center = (node: Node) => {
           const around = (neighbors.get(node.id) ?? []).flatMap((id) => {
             const at = position.get(id);
             return at === undefined ? [] : [at];
@@ -250,7 +282,7 @@ export class StudioLayout {
     return ordered;
   }
 
-  static #path(from: StudioBox, to: StudioBox, edge: AkanGraphEdge): string {
+  static #path(from: StudioBox, to: StudioBox, edge: StudioEdge): string {
     const row =
       edge.kind === "field"
         ? from.rows.find(({ text }) => edge.label === text || edge.label === `${text}[]`)

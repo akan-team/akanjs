@@ -104,7 +104,10 @@ export class WorkspaceGraph {
         .filter((node) => (!owners || owners.has(node.owner ?? "")) && (!module || node.module === module))
         .map((node) => node.id),
     );
-    const edges = graph.edges.filter((edge) => seeds.has(edge.from) || seeds.has(edge.to));
+    //? A lib's guard is linked from every app's endpoints; through it, a scope would reach all of them.
+    const guards = new Set(graph.nodes.filter((node) => node.kind === "guard").map((node) => node.id));
+    const reaches = (id: string) => seeds.has(id) && !guards.has(id);
+    const edges = graph.edges.filter((edge) => reaches(edge.from) || reaches(edge.to));
     const ids = new Set([...seeds, ...edges.flatMap((edge) => [edge.from, edge.to])]);
     return { version: 1, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges };
   }

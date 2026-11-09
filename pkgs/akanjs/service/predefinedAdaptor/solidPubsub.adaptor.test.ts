@@ -38,4 +38,13 @@ describe("SolidPubSub", () => {
     process.emit("message", { type: "pubsub.deliver", roomId: "room-1", data: { n: 1 }, origin: "replica-1" });
     expect(delivered).toEqual([["room-1", { n: 1 }]]);
   });
+
+  test("reports its live models to the gateway, and again in every room snapshot", () => {
+    pubsub.reportLiveModels(["ticket"]);
+    process.emit("message", { type: "pubsub.snapshot.request" });
+    expect(sent).toEqual([
+      { type: "live.models", models: ["ticket"], pid: process.pid },
+      { type: "pubsub.snapshot", rooms: [], liveModels: ["ticket"], pid: process.pid },
+    ]);
+  });
 });

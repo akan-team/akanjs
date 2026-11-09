@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   AKAN_RSC_CURRENT_STATE_HEADER,
+  AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_PATCH_SEGMENT_PATH_HEADER,
   AKAN_RSC_PATCH_START_INDEX_HEADER,
   AKAN_RSC_PATCH_START_SEGMENT_HEADER,
+  AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_STATE_VERSION_HEADER,
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
-import { fetchRscNavigationResponse } from "./rscClientFetch";
-import { RSC_CONTENT_TYPE } from "./rscHttp";
+import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
+import { getRscPayloadStream, RSC_CONTENT_TYPE } from "./rscHttp";
 import { makeRouterState } from "./rscNavigation.fixture";
 
 const originalFetch = globalThis.fetch;
@@ -196,5 +198,85 @@ describe("fetchRscNavigationResponse", () => {
     expect(result).toMatchObject({ type: "response", notFound: true });
     expect(bodyCancelled).toBe(false);
     expect(requests).toHaveLength(1);
+  });
+
+  test("names its document's import map, router state or not, and hands back a refusal no decoder reads", async () => {
+    const sent: (string | null)[] = [];
+    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      sent.push(new Headers(init?.headers).get(AKAN_RSC_IMPORT_MAP_HEADER));
+      return new Response("Conflict", { status: 409 });
+    }) as typeof fetch;
+    Object.assign(globalThis, { __AKAN_IMPORT_MAP_KEY__: "k1" });
+    try {
+      const result = await fetchRscNavigationResponse("https://example.test/docs", {
+        currentRouterState: null,
+        sendRouterState: false,
+      });
+
+      expect(sent).toEqual(["k1"]);
+      expect(result.type === "response" && getRscPayloadStream(result.response)).toBeNull();
+    } finally {
+      Reflect.deleteProperty(globalThis, "__AKAN_IMPORT_MAP_KEY__");
+    }
+  });
+});
+
+describe("an overtaken RSC request", () => {
+  const heldFetch = () => {
+    const requests: { headers: Headers; signal: AbortSignal; answer: (response: Response) => void }[] = [];
+    globalThis.fetch = ((_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        requests.push({ headers: new Headers(init?.headers), signal, answer: resolve });
+      })) as unknown as typeof fetch;
+    return requests;
+  };
+  const sessionAnswer = () =>
+    new Response('0:"page"\n', {
+      headers: { "Content-Type": RSC_CONTENT_TYPE, "Set-Cookie": "session=rotated; Path=/; HttpOnly" },
+    });
+
+  test("keeps its request open until the headers that may rotate the session are in, then cuts it", async () => {
+    const requests = heldFetch();
+    const navigation = new AbortController();
+    const pending = fetchRscNavigationResponse("https://example.test/next", {
+      currentRouterState: null,
+      signal: navigation.signal,
+    });
+
+    navigation.abort();
+    await Promise.resolve();
+    expect(requests[0]?.signal.aborted).toBe(false);
+    requests[0]?.answer(sessionAnswer());
+
+    await expect(pending).rejects.toThrow();
+    expect(requests[0]?.signal.aborted).toBe(true);
+  });
+
+  test("sends nothing for a navigation overtaken before it asked", async () => {
+    const requests = heldFetch();
+    const navigation = new AbortController();
+    navigation.abort();
+
+    await expect(
+      fetchRscNavigationResponse("https://example.test/next", { currentRouterState: null, signal: navigation.signal }),
+    ).rejects.toThrow();
+    expect(requests).toHaveLength(0);
+  });
+
+  test("names a prefetch to the server, and holds it open for its headers the same way", async () => {
+    const requests = heldFetch();
+    const prefetch = new AbortController();
+    const pending = fetchRscPrefetchResponse("https://example.test/next", prefetch.signal);
+
+    prefetch.abort();
+    await Promise.resolve();
+    expect(requests[0]?.headers.get(AKAN_RSC_PREFETCH_HEADER)).toBe("1");
+    expect(requests[0]?.signal.aborted).toBe(false);
+    requests[0]?.answer(sessionAnswer());
+
+    await expect(pending).rejects.toThrow();
+    expect(requests[0]?.signal.aborted).toBe(true);
   });
 });

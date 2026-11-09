@@ -59,6 +59,8 @@ export interface BundleClientEntriesInternalOptions extends BundleClientEntriesO
   externalSubpaths?: readonly string[];
   externalAliases?: Partial<Record<string, string>>;
   command?: "build" | "start";
+  /** Per absolute entry, the only names its alias re-exports, in place of every name the entry declares. */
+  entryExports?: Partial<Record<string, readonly string[]>>;
 }
 
 export interface BundleClientEntriesResult {
