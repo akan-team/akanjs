@@ -21,6 +21,7 @@ export class ClientEntriesBundler {
   #external: readonly string[];
   #externalSubpaths: readonly string[];
   #externalAliases: Partial<Record<string, string>>;
+  #entryExports: Partial<Record<string, readonly string[]>>;
   #command: "build" | "start";
   #target: ClientBundleTarget;
   #outputSubdir: string;
@@ -43,6 +44,7 @@ export class ClientEntriesBundler {
     this.#external = options.external ?? [];
     this.#externalSubpaths = options.externalSubpaths ?? [];
     this.#externalAliases = options.externalAliases ?? {};
+    this.#entryExports = options.entryExports ?? {};
     this.#command = options.command ?? "start";
     this.#target = options.target ?? "browser";
     this.#outputSubdir = options.outputSubdir ?? "client";
@@ -104,9 +106,12 @@ export class ClientEntriesBundler {
         const absEntry = path.resolve(entry);
         const hash = Bun.hash(`${this.#app.name}\n${this.#outputSubdir}\n${absEntry}`).toString(36);
         const aliasPath = path.join(aliasDir, `${hash}.tsx`);
+        const narrowed = this.#entryExports[absEntry];
         await Bun.write(
           aliasPath,
-          this.#createOpaqueEntryAliasSource(absEntry, await this.#scanEntryExportNames(absEntry)),
+          narrowed
+            ? ClientEntriesBundler.narrowedAliasSource(absEntry, narrowed)
+            : this.#createOpaqueEntryAliasSource(absEntry, await this.#scanEntryExportNames(absEntry)),
         );
         originalByAlias.set(path.resolve(aliasPath), absEntry);
         return aliasPath;
@@ -122,6 +127,12 @@ export class ClientEntriesBundler {
     const lines = namedExports.length > 0 ? [`export { ${namedExports.join(", ")} } from ${entryLit};`] : [];
     if (exportNames.includes("default")) lines.push(`export { default } from ${entryLit};`);
     return `${lines.join("\n")}\n`;
+  }
+
+  //? `export {} from` still loads the entry, so a module only ever imported for its side effects keeps them.
+  static narrowedAliasSource(absEntry: string, names: readonly string[]): string {
+    const list = names.length > 0 ? `{ ${names.join(", ")} }` : "{}";
+    return `export ${list} from ${JSON.stringify(path.resolve(absEntry))};\n`;
   }
 
   async #scanEntryExportNames(absEntry: string): Promise<string[]> {

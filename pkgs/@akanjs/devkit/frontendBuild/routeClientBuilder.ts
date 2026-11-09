@@ -26,7 +26,7 @@ export interface BuildRouteClientOptions {
   seeds: string[];
   /** Every route's seeds: a build that runs at all bundles the whole app, since two builds each copy shared modules. */
   graphSeeds?: string[];
-  artifact: BaseBuildArtifact;
+  artifact?: BaseBuildArtifact;
   knownEntries?: Set<string>;
   routeId?: string;
   command?: "build" | "start";

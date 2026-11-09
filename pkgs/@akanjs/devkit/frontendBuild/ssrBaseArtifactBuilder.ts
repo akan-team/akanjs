@@ -12,6 +12,7 @@ import { DictionaryAssetBuilder } from "./dictionaryAssetBuilder";
 import { FontOptimizer } from "./fontOptimizer";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
 import { RouteClientBuilder } from "./routeClientBuilder";
+import { VendorNarrowing } from "./vendorNarrowing";
 import { VENDOR_SPECIFIERS, type VendorSpecifier } from "./vendorSpecifiers";
 
 export interface BuildSsrBaseArtifactResult {
@@ -32,12 +33,24 @@ export class SsrBaseArtifactBuilder {
   #absArtifactDir: string;
   #started = Date.now();
   #serverEnv: BunPlugin | undefined;
+  #vendorExports: Partial<Record<VendorSpecifier, readonly string[]>>;
 
-  /** `serverEnv`: the build's server env plugin, so the route bundle carries the env files the backend does and no more. */
-  constructor(app: App, command: "build" | "start" = "start", { serverEnv }: { serverEnv?: BunPlugin } = {}) {
+  /**
+   * `serverEnv`: the build's server env plugin, so the route bundle carries the env files the backend does and no more.
+   * `vendorExports`: the only names a vendor entry exports, for a build whose every client module is already bundled.
+   */
+  constructor(
+    app: App,
+    command: "build" | "start" = "start",
+    {
+      serverEnv,
+      vendorExports = {},
+    }: { serverEnv?: BunPlugin; vendorExports?: Partial<Record<VendorSpecifier, readonly string[]>> } = {},
+  ) {
     this.#app = app;
     this.#command = command;
     this.#serverEnv = serverEnv;
+    this.#vendorExports = vendorExports;
     this.#artifactDir = `${command === "build" ? app.dist.cwdPath : app.cwdPath}/.akan/artifact`;
     this.#absArtifactDir = path.resolve(this.#artifactDir);
   }
@@ -122,7 +135,14 @@ export class SsrBaseArtifactBuilder {
       absPath: path.resolve(akanServerPath, "vendor", `${specifier.replaceAll("/", "-").replaceAll(".", "-")}.ts`),
     }));
     const entries = [rscClientEntry, rscSegmentOutletEntry, ...vendorEntries.map((v) => v.absPath)];
-    const clientBundle = await new ClientEntriesBundler({ app: this.#app, entries, command: this.#command }).bundle();
+    const narrowing = new VendorNarrowing(path.dirname(akanServerPath), this.#vendorExports);
+    const clientBundle = await new ClientEntriesBundler({
+      app: this.#app,
+      entries,
+      command: this.#command,
+      entryExports: narrowing.entryExports(vendorEntries),
+      plugins: await narrowing.plugins(),
+    }).bundle();
     const ssrBundle = await new ClientEntriesBundler({
       app: this.#app,
       entries: [rscSegmentOutletEntry],
