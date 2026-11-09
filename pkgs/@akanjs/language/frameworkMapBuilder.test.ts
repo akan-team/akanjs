@@ -100,7 +100,9 @@ export class Host {}
 };
 
 const build = (
-  channels: FrameworkChannelSpec[] = [{ file: "pkgs/akanjs/server/ipcTypes.ts", union: "Ipc", label: "gateway ⇄ child" }],
+  channels: FrameworkChannelSpec[] = [
+    { file: "pkgs/akanjs/server/ipcTypes.ts", union: "Ipc", label: "gateway ⇄ child" },
+  ],
 ) =>
   new FrameworkMapBuilder({
     ts,
