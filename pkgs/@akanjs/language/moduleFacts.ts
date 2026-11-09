@@ -70,8 +70,29 @@ export interface EndpointClassFact extends ModuleClassFact {
   keys: EndpointKeyFact[];
 }
 
+export interface PlugFact extends NamedFact {
+  target: string;
+}
+
 export interface ServiceClassFact extends ModuleClassFact {
   methods: MemberFact[];
+  plugs: PlugFact[];
+}
+
+export interface InternalKeyFact extends MemberFact {
+  type: string | null;
+  schedule: string | null;
+  modes: string[];
+}
+
+export interface InternalClassFact extends ModuleClassFact {
+  keys: InternalKeyFact[];
+}
+
+export interface AdaptorFact extends MemberFact {
+  refName: string | null;
+  plugs: PlugFact[];
+  doc: string | null;
 }
 
 export interface StoreClassFact extends ModuleClassFact {
@@ -116,11 +137,31 @@ export interface FileFacts {
   services: ServiceClassFact[];
   slices: SliceClassFact[];
   endpoints: EndpointClassFact[];
+  internals: InternalClassFact[];
+  adaptors: AdaptorFact[];
   stores: StoreClassFact[];
 }
 
 export const testFilePattern = /\.(?:test|spec)\.tsx?$/;
-const moduleCallees = new Set(["via", "from", "into", "serve", "slice", "endpoint", "store", "enumOf"]);
+const moduleCallees = new Set([
+  "via",
+  "from",
+  "into",
+  "serve",
+  "slice",
+  "endpoint",
+  "internal",
+  "store",
+  "enumOf",
+  "adapt",
+  "dangerouslyAdapt",
+]);
+const intervalUnits = [
+  [86_400_000, "d"],
+  [3_600_000, "h"],
+  [60_000, "m"],
+  [1000, "s"],
+] as const;
 const argMethods = new Set(["param", "body", "search", "room", "msg"]);
 
 export const ownerOf = (relativePath: string) => {
@@ -269,6 +310,91 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         return callee.name.text;
       return null;
     };
+  };
+
+  const numberOf = (expression: TS.Expression): number | null => {
+    const value = unwrap(expression);
+    if (ts.isNumericLiteral(value)) return Number(value.text.replace(/_/g, ""));
+    if (!ts.isBinaryExpression(value)) return null;
+    const [left, right] = [numberOf(value.left), numberOf(value.right)];
+    if (left === null || right === null) return null;
+    const operator = value.operatorToken.kind;
+    if (operator === ts.SyntaxKind.AsteriskToken) return left * right;
+    if (operator === ts.SyntaxKind.PlusToken) return left + right;
+    if (operator === ts.SyntaxKind.MinusToken) return left - right;
+    return operator === ts.SyntaxKind.SlashToken && right ? left / right : null;
+  };
+
+  const durationOf = (expression: TS.Expression | undefined) => {
+    if (!expression) return null;
+    const ms = numberOf(expression);
+    if (ms === null) return expression.getText();
+    const [size, unit] = intervalUnits.find(([size]) => ms >= size && ms % size === 0) ?? [1, "ms"];
+    return `${ms / size}${unit}`;
+  };
+
+  const modesOf = (option: TS.Expression | undefined) => {
+    const object = option && unwrap(option);
+    if (!object || !ts.isObjectLiteralExpression(object)) return [];
+    return object.properties.filter(ts.isPropertyAssignment).flatMap((property) => {
+      const name = ast.nodeName(property.name);
+      const value = unwrap(property.initializer);
+      if (name === "enabled") return value.kind === ts.SyntaxKind.FalseKeyword ? ["disabled"] : [];
+      if (name === "once") return value.kind === ts.SyntaxKind.TrueKeyword ? ["once"] : [];
+      if (name === "lock") return value.kind === ts.SyntaxKind.FalseKeyword ? ["unlocked"] : [];
+      if (name !== "serverMode" && name !== "operationMode") return [];
+      const values = ts.isArrayLiteralExpression(value) ? [...value.elements] : [value];
+      return values.flatMap((element) =>
+        ts.isStringLiteralLike(element)
+          ? [element.text]
+          : ts.isPropertyAccessExpression(element)
+            ? [element.name.text]
+            : [],
+      );
+    });
+  };
+
+  const internalKeysOf = (source: TS.SourceFile, builder: TS.ArrowFunction | TS.FunctionExpression | undefined) => {
+    const verbOf = verbReaderOf(builder?.parameters[0]);
+    return (returnedObject(builder)?.properties ?? []).flatMap((property): InternalKeyFact[] => {
+      if (!ts.isPropertyAssignment(property)) return [];
+      const name = ast.nodeName(property.name);
+      if (!name) return [];
+      const { root } = chainOf(property.initializer);
+      const type = root ? verbOf(root.expression) : null;
+      const [first, second] = root?.arguments ?? [];
+      const schedule =
+        type === "cron" && first
+          ? ts.isStringLiteralLike(first)
+            ? first.text
+            : first.getText(source)
+          : type === "interval" || type === "timeout"
+            ? durationOf(first)
+            : null;
+      const option = type === "initialize" || type === "destroy" ? first : second;
+      return [
+        {
+          name,
+          span: spanOf(source, property.name),
+          extent: extentOf(source, property),
+          type,
+          schedule,
+          modes: modesOf(option),
+        },
+      ];
+    });
+  };
+
+  const plugsOf = (source: TS.SourceFile, builder: TS.ArrowFunction | TS.FunctionExpression | undefined) => {
+    const verbOf = verbReaderOf(builder?.parameters[0]);
+    return (returnedObject(builder)?.properties ?? []).flatMap((property): PlugFact[] => {
+      if (!ts.isPropertyAssignment(property)) return [];
+      const name = ast.nodeName(property.name);
+      const { root } = chainOf(property.initializer);
+      const [target] = root && verbOf(root.expression) === "plug" ? root.arguments : [];
+      const targetName = target && guardNameOf(target);
+      return name && targetName ? [{ name, span: spanOf(source, property.name), target: targetName }] : [];
+    });
   };
 
   const endpointKeysOf = (source: TS.SourceFile, builder: TS.ArrowFunction | TS.FunctionExpression | undefined) => {
@@ -528,6 +654,8 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       services: [],
       slices: [],
       endpoints: [],
+      internals: [],
+      adaptors: [],
       stores: [],
     };
     for (const statement of source.statements) {
@@ -547,6 +675,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           ...name,
           model: moduleRefOf(call.arguments[0], "db"),
           methods: methodsOf(source, statement),
+          plugs: plugsOf(source, builder),
         });
       else if (callee === "slice")
         facts.slices.push({
@@ -555,7 +684,22 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           guards: guardsIn(call.arguments.find(ts.isObjectLiteralExpression)),
           keys: sliceKeysOf(source, builder),
         });
-      else if (callee === "endpoint")
+      else if (callee === "internal")
+        facts.internals.push({
+          ...name,
+          model: moduleRefOf(call.arguments[0], "srv"),
+          keys: internalKeysOf(source, builder),
+        });
+      else if (callee === "adapt" || callee === "dangerouslyAdapt") {
+        const refName = call.arguments[0] && unwrap(call.arguments[0]);
+        facts.adaptors.push({
+          ...name,
+          extent: extentOf(source, statement),
+          refName: refName && ts.isStringLiteralLike(refName) ? refName.text : null,
+          plugs: plugsOf(source, builder),
+          doc: docOf(source, statement),
+        });
+      } else if (callee === "endpoint")
         facts.endpoints.push({
           ...name,
           model: moduleRefOf(call.arguments[0], "srv"),

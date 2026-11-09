@@ -76,6 +76,8 @@ const graph: AkanGraph = {
     }),
     node("method:apps/demo:folder.open", { label: "FolderService.open" }),
     node("route:apps/demo:/memo/:memoId", { module: null, label: "/memo/:memoId" }),
+    node("internal:apps/demo:memo.sweep", { label: "MemoInternal.sweep", detail: ["cron", "0 * * * *"] }),
+    node("adaptor:apps/demo:MemoMailer", { module: null, label: "MemoMailer" }),
     node("guard:Public", { owner: null, module: null }),
   ],
   edges: [
@@ -89,6 +91,8 @@ const graph: AkanGraph = {
     edge("endpoint:apps/demo:memo.shareMemo", "calls", "method:apps/demo:memo.share", "share"),
     edge("method:apps/demo:memo.share", "calls", "method:apps/demo:memo.touch", "touch"),
     edge("method:apps/demo:memo.touch", "calls", "model:apps/demo:memo", "getMemo"),
+    edge("internal:apps/demo:memo.sweep", "calls", "method:apps/demo:memo.touch", "touch"),
+    edge("method:apps/demo:memo.share", "calls", "adaptor:apps/demo:MemoMailer", "send"),
   ],
 };
 
@@ -141,9 +145,9 @@ describe("StudioLayout", () => {
     expect(scene.columns.map(({ label }) => label)).toEqual([
       "Pages & components",
       "Store actions",
-      "Endpoints & slices",
+      "Endpoints, slices & jobs",
       "Service methods",
-      "Queries & models",
+      "Queries, models & adaptors",
     ]);
     const columnOf = (id: string) => scene.columns.findIndex(({ x }) => x === boxesOf(scene)[id]?.x);
     expect(columnOf("component:apps/demo/lib/memo/Memo.Util.tsx#Share")).toBe(0);
@@ -152,6 +156,8 @@ describe("StudioLayout", () => {
     expect(columnOf("slice:apps/demo:memo.inPublic")).toBe(2);
     expect(columnOf("method:apps/demo:memo.touch")).toBe(3);
     expect(columnOf("model:apps/demo:memo")).toBe(4);
+    expect(columnOf("internal:apps/demo:memo.sweep")).toBe(2);
+    expect(columnOf("adaptor:apps/demo:MemoMailer")).toBe(4);
     expect(boxesOf(scene)["slice:apps/demo:memo.inPublic"].rows.map(({ text }) => text)).toEqual(["Public · live"]);
     expect(scene.boxes.some((box) => box.node.kind === "guard")).toBe(false);
     expect(scene.boxes.some((box) => box.node.id === "method:apps/demo:folder.open")).toBe(false);
@@ -193,9 +199,9 @@ describe("StudioLayout", () => {
     };
     const scene = StudioLayout.changes(changes, null);
     expect(scene.columns.map(({ label }) => label)).toEqual([
-      "Endpoints & slices",
+      "Endpoints, slices & jobs",
       "Service methods",
-      "Queries & models",
+      "Queries, models & adaptors",
       "Scalars, enums & guards",
     ]);
     const boxes = boxesOf(scene);

@@ -42,6 +42,7 @@ svg a:hover text { text-decoration: underline; }
 .box.query { color: var(--query); } .box.slice { color: var(--slice); } .box.endpoint { color: var(--endpoint); }
 .box.method { color: var(--method); } .box.action { color: var(--action); } .box.component { color: var(--component); }
 .box.route, .box.layout { color: var(--component); }
+.box.internal { color: var(--endpoint); } .box.adaptor { color: var(--query); }
 .link { fill: none; stroke: var(--line); stroke-width: 1.25; }
 .link.fetches { stroke-dasharray: 5 3; }
 .link.uses { stroke-dasharray: 2 3; }

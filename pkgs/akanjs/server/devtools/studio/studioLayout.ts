@@ -57,9 +57,9 @@ const typeKinds = new Set<AkanGraphNodeKind>(["model", "scalar", "enum"]);
 const flowColumns: { label: string; kinds: AkanGraphNodeKind[] }[] = [
   { label: "Pages & components", kinds: ["route", "layout", "component"] },
   { label: "Store actions", kinds: ["action"] },
-  { label: "Endpoints & slices", kinds: ["endpoint", "slice"] },
+  { label: "Endpoints, slices & jobs", kinds: ["endpoint", "slice", "internal"] },
   { label: "Service methods", kinds: ["method"] },
-  { label: "Queries & models", kinds: ["query", "model"] },
+  { label: "Queries, models & adaptors", kinds: ["query", "model", "adaptor"] },
 ];
 const changeColumns: { label: string; kinds: AkanGraphNodeKind[] }[] = [
   ...flowColumns,
