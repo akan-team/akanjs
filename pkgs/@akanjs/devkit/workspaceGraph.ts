@@ -14,6 +14,7 @@ export interface GraphScope {
 const indexedPath = /^(apps|libs)\/(?!(?:.*\/)?(?:node_modules|dist|\.akan|env)\/).*\.tsx?$/;
 const hiddenPath = /(?:^|\/)(?:node_modules|dist|\.akan|env)\//;
 const unscopedNodeLimit = 600;
+const pageKinds = new Set<AkanGraphNode["kind"]>(["route", "layout"]);
 const cachedBaseLimit = 4;
 const slashed = (fileName: string) => fileName.replace(/\\/g, "/");
 
@@ -111,6 +112,28 @@ export class WorkspaceGraph {
     return { version: 1, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges };
   }
 
+  //? Pages are many and most only wrap one another, so a graph too large to answer whole drops the pages that neither
+  //? changed nor use a change first, and the route-only guards they leave unlinked.
+  static #withoutPages(graph: AkanGraph): AkanGraph {
+    const changed = new Set(graph.nodes.filter((node) => node.change).map((node) => node.id));
+    const touching = new Set(
+      graph.edges
+        .filter((edge) => edge.kind !== "wraps" && (changed.has(edge.from) || changed.has(edge.to)))
+        .flatMap((edge) => [edge.from, edge.to]),
+    );
+    const dropped = new Set(
+      graph.nodes
+        .filter((node) => pageKinds.has(node.kind) && !node.change && !touching.has(node.id))
+        .map((node) => node.id),
+    );
+    const edges = graph.edges.filter((edge) => !dropped.has(edge.from) && !dropped.has(edge.to));
+    const linked = new Set(edges.flatMap((edge) => [edge.from, edge.to]));
+    const isRouteOnly = (node: AkanGraphNode) =>
+      node.kind === "guard" && node.detail.includes("route") && !node.change && !linked.has(node.id);
+    const nodes = graph.nodes.filter((node) => !dropped.has(node.id) && !isRouteOnly(node));
+    return { version: 1, nodes, edges };
+  }
+
   static visibleTo(graph: AkanGraph, app: string): AkanGraph {
     const appOwner = `apps/${app}`;
     const isVisible = ({ owner }: AkanGraphNode) => !owner || owner === appOwner || owner.startsWith("libs/");
@@ -163,14 +186,17 @@ export class WorkspaceGraph {
 
   static answer(graph: AkanGraph, scope: GraphScope, counted = graph.nodes) {
     if (scope.app || scope.module || graph.nodes.length <= unscopedNodeLimit) return WorkspaceGraph.scope(graph, scope);
+    const unscoped = WorkspaceGraph.#withoutPages(graph);
+    if (unscoped.nodes.length <= unscopedNodeLimit) return unscoped;
     const owners = new Map<string, number>();
-    for (const node of counted) if (node.owner) owners.set(node.owner, (owners.get(node.owner) ?? 0) + 1);
+    for (const node of counted)
+      if (node.owner && !pageKinds.has(node.kind)) owners.set(node.owner, (owners.get(node.owner) ?? 0) + 1);
     return {
       diagnostics: [
         {
           severity: "error",
           code: "graph-scope-required",
-          message: `The graph has ${graph.nodes.length} nodes. Pass app, module or both to scope it.`,
+          message: `The graph has ${unscoped.nodes.length} nodes besides its pages. Pass app, module or both to scope it.`,
           input: "app",
         },
       ],

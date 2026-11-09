@@ -21,6 +21,7 @@ import {
   testFilePattern,
 } from "./moduleFacts";
 import type { AkanTarget } from "./nameTable";
+import { type RouteFact, RouteFactReader, type RouteGuardCall } from "./routeFacts";
 
 export interface AkanGraphSource {
   ts: Ts;
@@ -76,6 +77,12 @@ interface MapEntry {
 
 type GuardLookup = { guard: DeclaredGuard } | { name: string; from: string | undefined };
 
+interface Declaration {
+  source: TS.SourceFile;
+  statement: TS.Statement;
+  declared: TS.Node;
+}
+
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 const memberSourcePattern = /\.(signal|service|store)\.ts$/;
@@ -103,9 +110,13 @@ export class GraphBuilder {
   readonly #members = new Map<string, AkanGraphNode[]>();
   readonly #guards = new Map<string, DeclaredGuard[]>();
   readonly #mapEntries = new Map<string, MapEntry[]>();
+  readonly #routeFiles = new Map<string, { id: string; alias: string | null }>();
+  readonly #declarations = new Map<string, Declaration | null>();
+  readonly #routes: RouteFactReader;
 
   constructor(source: AkanGraphSource) {
     this.#source = source;
+    this.#routes = new RouteFactReader(source.ts, source.reader, source.parse);
   }
 
   build(): AkanGraph {
@@ -224,6 +235,7 @@ export class GraphBuilder {
         if (field.ref) this.#addEdge(node.id, field.ref, "field", `${field.name}${field.array ? "[]" : ""}`, field.at);
       }
 
+    this.#addRoutes();
     for (const [fileName, words] of this.#source.files) this.#walk(fileName, words);
 
     return {
@@ -469,6 +481,140 @@ export class GraphBuilder {
     return entries;
   }
 
+  //? The import path is searched first, so `isAdmin` from `@libs/shared/webkit` is not another folder's `isAdmin`.
+  #declarationOf(owner: string, name: string, near: string | null) {
+    const key = `${owner}\n${name}\n${near ?? ""}`;
+    const cached = this.#declarations.get(key);
+    if (cached !== undefined) return cached;
+    const isNear = (fileName: string) => {
+      const relative = this.#source.relative(fileName);
+      return !!near && (relative.startsWith(`${near}/`) || relative.replace(/\.tsx?$/, "") === near);
+    };
+    const candidates = this.#source.files
+      .filter(
+        ([fileName, words]) =>
+          !testFilePattern.test(fileName) && words.includes(`\n${name}\n`) && this.#source.ownerOf(fileName) === owner,
+      )
+      .map(([fileName]) => fileName);
+    let found: Declaration | null = null;
+    for (const fileName of [...candidates.filter(isNear), ...candidates.filter((other) => !isNear(other))]) {
+      const text = this.#source.readText(fileName);
+      if (text === undefined) continue;
+      const source = this.#source.parse(fileName, text);
+      const declared = this.#routes.declarationIn(source, name);
+      if (!declared) continue;
+      found = { source, statement: declared.statement, declared: declared.declared };
+      break;
+    }
+    this.#declarations.set(key, found);
+    return found;
+  }
+
+  #addRoutes() {
+    const routes: { fact: RouteFact; node: AkanGraphNode }[] = [];
+    const layouts = new Map<string, AkanGraphNode>();
+    for (const [fileName, words] of this.#source.files) {
+      const relative = this.#source.relative(fileName);
+      const info = RouteFactReader.fileOf(relative);
+      const text = info ? this.#source.readText(fileName) : undefined;
+      const fact = info && text !== undefined ? this.#routes.read(fileName, info, text, words) : null;
+      if (!fact || text === undefined) continue;
+      const span = {
+        fileName,
+        start: 0,
+        end: 0,
+        line: fact.line,
+        character: fact.character,
+        endLine: 0,
+        endCharacter: 0,
+      };
+      const dir = `/${fact.dir.join("/")}`;
+      const guard = fact.guard ? ["guard"] : [];
+      const node =
+        fact.kind === "layout"
+          ? this.#addNode(
+              this.#key("layout", fact.owner, dir),
+              "layout",
+              fact.owner,
+              null,
+              dir,
+              span,
+              [...(fact.isRoot ? ["root"] : []), ...guard],
+              `${dir === "/" ? "" : dir}/_layout`,
+            )
+          : this.#addNode(
+              this.#key("route", fact.owner, fact.pattern),
+              "route",
+              fact.owner,
+              null,
+              fact.pattern,
+              span,
+              guard,
+            );
+      this.#digest(node, text, { start: 0, end: text.length });
+      this.#routeFiles.set(relative, { id: node.id, alias: fact.alias });
+      if (fact.kind === "layout") layouts.set(`${fact.owner}\n${dir}`, node);
+      routes.push({ fact, node });
+      for (const call of fact.guard?.calls ?? []) {
+        const id = this.#routeGuardIdOf(call, fact, text);
+        if (id && fact.guard) this.#addEdge(node.id, id, "guard", null, this.#location(fact.guard.span));
+      }
+    }
+    const parentOf = ({ owner, dir, kind }: RouteFact) => {
+      for (let depth = kind === "layout" ? dir.length - 1 : dir.length; depth >= 0; depth--) {
+        const layout = layouts.get(`${owner}\n/${dir.slice(0, depth).join("/")}`);
+        if (layout) return layout;
+      }
+      return null;
+    };
+    for (const { fact, node } of routes) {
+      const parent = parentOf(fact);
+      if (parent) this.#addEdge(parent.id, node.id, "wraps", null, node.at);
+    }
+  }
+
+  //? A function declared in the route file is keyed by that file, so two pages' own `isOwn` stay two nodes.
+  #routeGuardIdOf({ name: local, local: declared }: RouteGuardCall, fact: RouteFact, text: string) {
+    if (declared) {
+      const file = this.#source.relative(fact.fileName).slice(fact.owner.length + 1);
+      const id = this.#key("guard", fact.owner, `${file}#${local}`);
+      return this.#routeGuardNodeOf(id, fact.owner, local, declared.span, declared.doc, text, declared.extent);
+    }
+    const imported = fact.imports.find((item) => item.name === local);
+    if (!imported) return null;
+    const name = imported.imported !== "default" && imported.imported !== "*" ? imported.imported : local;
+    const from = this.#ownerOfSpecifier(fact.fileName, imported.from);
+    if (!from || from === frameworkOwner) return null;
+    const found = this.#declarationOf(from, name, this.#pathOfSpecifier(fact.fileName, imported.from));
+    if (!found) return null;
+    const { reader } = this.#source;
+    return this.#routeGuardNodeOf(
+      this.#key("guard", from, name),
+      from,
+      name,
+      reader.spanOf(found.source, found.declared),
+      reader.docOf(found.source, found.statement),
+      found.source.text,
+      reader.extentOf(found.source, found.statement),
+    );
+  }
+
+  #routeGuardNodeOf(
+    id: string,
+    owner: string,
+    name: string,
+    span: AkanSpan,
+    doc: string | null,
+    text: string,
+    extent: Extent,
+  ) {
+    const isNew = !this.#nodes.has(id);
+    const node = this.#addNode(id, "guard", owner, null, name, span, ["route"]);
+    if (isNew && doc) node.doc = doc;
+    this.#digest(node, text, extent);
+    return node.id;
+  }
+
   #guardNodeOf({ name, owner, span, scope, doc, parts }: DeclaredGuard) {
     const node = this.#addNode(this.#key("guard", owner, name), "guard", owner, null, name, span, scope ? [scope] : []);
     if (doc && !node.doc) node.doc = doc;
@@ -486,14 +632,19 @@ export class GraphBuilder {
 
   #ownerOfSpecifier(fileName: string, specifier: string) {
     if (frameworkPattern.test(specifier)) return frameworkOwner;
+    const path = this.#pathOfSpecifier(fileName, specifier);
+    return path === null ? undefined : (ownerOf(path) ?? undefined);
+  }
+
+  #pathOfSpecifier(fileName: string, specifier: string) {
     const alias = specifier.match(aliasPattern);
-    if (alias) return `${alias[1]}/${alias[2]}`;
-    if (!specifier.startsWith(".")) return undefined;
+    if (alias) return `${alias[1]}/${alias[2]}${specifier.slice(alias[0].length)}`;
+    if (!specifier.startsWith(".")) return null;
     const segments = this.#source.relative(fileName).split("/").slice(0, -1);
     for (const segment of specifier.split("/"))
       if (segment === "..") segments.pop();
       else if (segment !== ".") segments.push(segment);
-    return ownerOf(segments.join("/")) ?? undefined;
+    return segments.join("/");
   }
 
   //? `lib/_<service>/` holds the `<service>` module, as its methods and actions already read; `__scalar` stays whole.
@@ -659,14 +810,12 @@ export class GraphBuilder {
     const name = declared && ts.isIdentifier(declared) && !isDefaultExport ? declared.text : "default";
     const relative = this.#source.relative(source.fileName);
     const owner = this.#source.ownerOf(source.fileName);
+    const extent = { start: top.getStart(source), end: top.getEnd() };
+    const routeFile = this.#routeFiles.get(relative);
+    const routeId = routeFile && (name === "default" || name === routeFile.alias) ? routeFile.id : undefined;
+    if (routeId) return { id: routeId, kind: "component", owner, module: null, extent };
     const id = `component:${relative}#${name}`;
-    const context: Context = {
-      id,
-      kind: "component",
-      owner,
-      module: null,
-      extent: { start: top.getStart(source), end: top.getEnd() },
-    };
+    const context: Context = { id, kind: "component", owner, module: null, extent };
     if (this.#nodes.has(id)) return context;
     const pagePrefix = owner ? `${owner}/page/` : null;
     const route =

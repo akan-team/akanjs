@@ -44,6 +44,7 @@ svg a:hover text { text-decoration: underline; }
 .box.model { color: var(--model); } .box.scalar { color: var(--scalar); } .box.enum { color: var(--enum); }
 .box.query { color: var(--query); } .box.slice { color: var(--slice); } .box.endpoint { color: var(--endpoint); }
 .box.method { color: var(--method); } .box.action { color: var(--action); } .box.component { color: var(--component); }
+.box.route, .box.layout { color: var(--component); }
 .box.service { color: var(--service); } .box.adaptor { color: var(--adaptor); } .box.internal { color: var(--internal); }
 .box text.skipped { fill: var(--muted); font-style: italic; }
 .link { fill: none; stroke: var(--line); stroke-width: 1.25; }
