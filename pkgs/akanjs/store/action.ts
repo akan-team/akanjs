@@ -686,7 +686,6 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       data: GetStateObject<Input>,
       { path, modal, sliceName = names.model, onError, onSuccess }: CreateOption<Full> = {},
     ) {
-      const currentState = this.get() as { [key: string]: any };
       const modelInput = (cnst.input.purify as (data: any) => Input | null)(data);
       if (!modelInput) return;
       this.set({ [names.modelLoading]: true });
