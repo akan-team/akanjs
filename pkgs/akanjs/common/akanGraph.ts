@@ -8,9 +8,11 @@ export type AkanGraphNodeKind =
   | "guard"
   | "method"
   | "action"
-  | "component";
+  | "component"
+  | "route"
+  | "layout";
 
-export type AkanGraphEdgeKind = "field" | "guard" | "calls" | "fetches" | "uses";
+export type AkanGraphEdgeKind = "field" | "guard" | "calls" | "fetches" | "uses" | "wraps";
 
 export type AkanGraphChange = "added" | "removed" | "changed";
 

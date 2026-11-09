@@ -75,6 +75,7 @@ const graph: AkanGraph = {
       label: "Memo.Util.Share",
     }),
     node("method:apps/demo:folder.open", { label: "FolderService.open" }),
+    node("route:apps/demo:/memo/:memoId", { module: null, label: "/memo/:memoId" }),
     node("guard:Public", { owner: null, module: null }),
   ],
   edges: [
@@ -83,6 +84,7 @@ const graph: AkanGraph = {
     edge("model:apps/demo:memo", "field", "enum:apps/demo:MemoStatus", "status"),
     edge("slice:apps/demo:memo.inPublic", "guard", "guard:Public"),
     edge("component:apps/demo/lib/memo/Memo.Util.tsx#Share", "uses", "action:apps/demo:memo.shareMemo", "shareMemo"),
+    edge("route:apps/demo:/memo/:memoId", "uses", "slice:apps/demo:memo.inPublic", "initMemoInPublic"),
     edge("action:apps/demo:memo.shareMemo", "fetches", "endpoint:apps/demo:memo.shareMemo", "shareMemo"),
     edge("endpoint:apps/demo:memo.shareMemo", "calls", "method:apps/demo:memo.share", "share"),
     edge("method:apps/demo:memo.share", "calls", "method:apps/demo:memo.touch", "touch"),
@@ -137,7 +139,7 @@ describe("StudioLayout", () => {
   test("lays a module's signals out from component to model, with guards as chips and no guard boxes", () => {
     const scene = StudioLayout.signals(graph, "memo");
     expect(scene.columns.map(({ label }) => label)).toEqual([
-      "Components",
+      "Pages & components",
       "Store actions",
       "Endpoints & slices",
       "Service methods",
@@ -145,6 +147,7 @@ describe("StudioLayout", () => {
     ]);
     const columnOf = (id: string) => scene.columns.findIndex(({ x }) => x === boxesOf(scene)[id]?.x);
     expect(columnOf("component:apps/demo/lib/memo/Memo.Util.tsx#Share")).toBe(0);
+    expect(columnOf("route:apps/demo:/memo/:memoId")).toBe(0);
     expect(columnOf("action:apps/demo:memo.shareMemo")).toBe(1);
     expect(columnOf("slice:apps/demo:memo.inPublic")).toBe(2);
     expect(columnOf("method:apps/demo:memo.touch")).toBe(3);

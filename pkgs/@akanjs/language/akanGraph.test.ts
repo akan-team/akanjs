@@ -163,13 +163,12 @@ describe("AkanIndex.graph", () => {
     expect(edgesOf(graph, "uses")).toEqual([
       "component:apps/demo/lib/memo/Memo.Util.tsx#Rename -setNameOnMemo-> model:apps/demo:memo",
       "component:apps/demo/lib/memo/Memo.Util.tsx#Share -shareMemo-> action:apps/demo:memo.shareMemo",
-      "component:apps/demo/page/memo.tsx#default -initMemoInPublic-> slice:apps/demo:memo.inPublic",
+      "route:apps/demo:/memo -initMemoInPublic-> slice:apps/demo:memo.inPublic",
     ]);
     const components = graph.nodes.filter((node) => node.kind === "component");
     expect(components.map(({ label, detail }) => [label, detail])).toEqual([
       ["Memo.Util.Rename", []],
       ["Memo.Util.Share", []],
-      ["memo", ["page"]],
     ]);
   });
 
@@ -443,6 +442,119 @@ export class Admin implements Guard {
     expect(index.graph(() => declared).nodes.map((node) => node.id)).toEqual(["guard:libs/shared:Admin"]);
     index.setFile(`${root}/${guardFile}`, "export const admin = 1;\n");
     expect(index.graph(() => "export const admin = 1;\n").nodes).toEqual([]);
+  });
+
+  it("maps page/ to routes and layouts, which layout wraps which, and the guards that gate them", () => {
+    const index = new AkanIndex({ ts, root });
+    const paged: Record<string, string> = {
+      "libs/shared/webkit/signedIn.ts": `import { getSelf } from "./cookie";
+
+// Sends a guest to the sign-in page.
+export const signedIn = (unauthorize = "/signin") => {
+  getSelf({ unauthorize });
+};
+`,
+      "apps/demo/page/_layout.tsx": `import { rootLayout } from "akanjs/client";
+export default rootLayout().render(({ children }) => children);
+`,
+      "apps/demo/page/_index.tsx": `import { page } from "akanjs/client";
+export default page().render(() => null);
+`,
+      "apps/demo/page/_overrides.tsx": `export default override({});
+`,
+      "apps/demo/page/(app)/_layout.tsx": `import { signedIn } from "@libs/shared/webkit";
+import { layout } from "akanjs/client";
+export default layout()
+  .guard(() => {
+    signedIn();
+    String(1);
+  })
+  .render(({ children }) => children);
+`,
+      "apps/demo/page/(app)/memo/[memoId].tsx": `import { fetch } from "@apps/demo/client";
+import { page } from "akanjs/client";
+import { ID } from "akanjs/base";
+const isOwn = (memoId: string) => !!memoId;
+const isId = (memoId: string) => memoId;
+export default page()
+  .param("memoId", ID)
+  .guard(({ memoId }) => {
+    Boolean(isOwn(isId(memoId)));
+  })
+  .render(({ memoId }) => fetch.memo(memoId));
+`,
+      "apps/demo/lib/memo/memo.store.ts": files["apps/demo/lib/memo/memo.store.ts"],
+      "libs/shared/common/signedIn.ts": `export const signedIn = () => false;
+`,
+      "apps/demo/page/(app)/pin.tsx": `import { st } from "@apps/demo/client";
+import { page, redirect } from "akanjs/client";
+// Pins are the caller's own.
+const isOwn = () => true;
+const route = page()
+  .guard(() => isOwn() || redirect("/signin"))
+  .render(() => st.do.shareMemo("x"));
+export default route;
+`,
+      "apps/demo/page/docs.tsx": `const sample = \`
+export default layout()
+  .render(() => null)
+\`;
+
+export default page().render(() => sample);
+`,
+      "apps/demo/page/(libs)/consent.tsx": `export default page().render(() => null);
+`,
+      "libs/shared/page/oauth/consent/_index.tsx": `export default page().render(() => null);
+`,
+    };
+    for (const [rel, text] of Object.entries(paged)) index.setFile(`${root}/${rel}`, text);
+    const graph = index.graph((fileName) => paged[fileName.slice(root.length + 1)], { digests: true });
+    const routes = graph.nodes.filter((node) => node.kind === "route" || node.kind === "layout");
+    expect(
+      routes.map(({ id, label, detail, at }) => [id, label, detail, at && `${at.file}:${at.line}:${at.column}`]),
+    ).toEqual([
+      ["layout:apps/demo:/", "/_layout", ["root"], "apps/demo/page/_layout.tsx:2:1"],
+      ["layout:apps/demo:/(app)", "/(app)/_layout", ["guard"], "apps/demo/page/(app)/_layout.tsx:3:1"],
+      ["route:apps/demo:/", "/", [], "apps/demo/page/_index.tsx:2:1"],
+      ["route:apps/demo:/docs", "/docs", [], "apps/demo/page/docs.tsx:6:1"],
+      ["route:apps/demo:/memo/:memoId", "/memo/:memoId", ["guard"], "apps/demo/page/(app)/memo/[memoId].tsx:6:1"],
+      ["route:apps/demo:/pin", "/pin", ["guard"], "apps/demo/page/(app)/pin.tsx:8:1"],
+      ["route:libs/shared:/oauth/consent", "/oauth/consent", [], "libs/shared/page/oauth/consent/_index.tsx:1:1"],
+    ]);
+    expect(edgesOf(graph, "wraps")).toEqual([
+      "layout:apps/demo:/ --> layout:apps/demo:/(app)",
+      "layout:apps/demo:/ --> route:apps/demo:/",
+      "layout:apps/demo:/ --> route:apps/demo:/docs",
+      "layout:apps/demo:/(app) --> route:apps/demo:/memo/:memoId",
+      "layout:apps/demo:/(app) --> route:apps/demo:/pin",
+    ]);
+    expect(graph.edges.find((edge) => edge.kind === "wraps" && edge.to === "route:apps/demo:/pin")?.at).toEqual({
+      file: "apps/demo/page/(app)/pin.tsx",
+      line: 8,
+      column: 1,
+    });
+    expect(edgesOf(graph, "uses")).toContain("route:apps/demo:/pin -shareMemo-> action:apps/demo:memo.shareMemo");
+    expect(graph.nodes.some((node) => node.id.startsWith("component:apps/demo/page/"))).toBe(false);
+    expect(edgesOf(graph, "guard")).toEqual([
+      "layout:apps/demo:/(app) --> guard:libs/shared:signedIn",
+      "route:apps/demo:/memo/:memoId --> guard:apps/demo:page/(app)/memo/[memoId].tsx#isOwn",
+      "route:apps/demo:/pin --> guard:apps/demo:page/(app)/pin.tsx#isOwn",
+    ]);
+    expect(
+      graph.nodes
+        .filter((node) => node.kind === "guard" && node.name === "isOwn")
+        .map(({ at, doc }) => [at && `${at.file}:${at.line}`, doc ?? null]),
+    ).toEqual([
+      ["apps/demo/page/(app)/memo/[memoId].tsx:4", null],
+      ["apps/demo/page/(app)/pin.tsx:4", "Pins are the caller's own."],
+    ]);
+    const signedIn = graph.nodes.find((node) => node.id === "guard:libs/shared:signedIn");
+    expect([signedIn?.detail, signedIn?.at?.line, signedIn?.doc]).toEqual([
+      ["route"],
+      4,
+      "Sends a guest to the sign-in page.",
+    ]);
+    expect(routes.every((node) => /^[0-9a-f]{8}$/.test(node.digest ?? ""))).toBe(true);
   });
 
   it("draws the same graph whatever order the files were read in", () => {

@@ -61,3 +61,43 @@ describe("WorkspaceGraph.changesVisibleTo", () => {
     expect(visible.since).toBe("0123456789ab");
   });
 });
+
+describe("WorkspaceGraph.answer", () => {
+  it("answers a small graph whole, and drops untouched pages and their route-only guards from one past the limit", () => {
+    const fillers = Array.from({ length: 597 }, (_, idx) => node(`method:apps/demo:memo.m${idx}`, "apps/demo"));
+    const guard = { ...node("guard:libs/shared:signedIn", "libs/shared"), detail: ["route"] };
+    const graph = {
+      version: 1 as const,
+      nodes: [
+        node("layout:apps/demo:/", "apps/demo"),
+        node("route:apps/demo:/memo", "apps/demo"),
+        node("route:apps/demo:/peek", "apps/demo"),
+        node("endpoint:apps/demo:memo.pin", "apps/demo", "changed"),
+        guard,
+        ...fillers,
+      ],
+      edges: [
+        edge("layout:apps/demo:/", "route:apps/demo:/memo"),
+        edge("layout:apps/demo:/", "route:apps/demo:/peek"),
+        edge("layout:apps/demo:/", "guard:libs/shared:signedIn"),
+        edge("route:apps/demo:/peek", "endpoint:apps/demo:memo.pin"),
+      ],
+    };
+    const small = WorkspaceGraph.answer({ ...graph, nodes: graph.nodes.slice(0, 5) }, {});
+    if ("diagnostics" in small) throw new Error("expected an answer");
+    expect(small.nodes).toHaveLength(5);
+    const unscoped = WorkspaceGraph.answer(graph, {});
+    if ("diagnostics" in unscoped) throw new Error("expected an answer");
+    expect(unscoped.nodes.slice(0, 2).map(({ id }) => id)).toEqual([
+      "route:apps/demo:/peek",
+      "endpoint:apps/demo:memo.pin",
+    ]);
+    expect(unscoped.nodes).toHaveLength(599);
+    expect(unscoped.edges.map(({ from, to }) => `${from} -> ${to}`)).toEqual([
+      "route:apps/demo:/peek -> endpoint:apps/demo:memo.pin",
+    ]);
+    const scoped = WorkspaceGraph.answer(graph, { app: "demo" });
+    if ("diagnostics" in scoped) throw new Error("expected an answer");
+    expect(scoped.nodes).toHaveLength(602);
+  });
+});

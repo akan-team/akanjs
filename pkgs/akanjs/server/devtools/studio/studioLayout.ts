@@ -55,7 +55,7 @@ const columnTop = 40;
 const maxColumnHeight = 1800;
 const typeKinds = new Set<AkanGraphNodeKind>(["model", "scalar", "enum"]);
 const flowColumns: { label: string; kinds: AkanGraphNodeKind[] }[] = [
-  { label: "Components", kinds: ["component"] },
+  { label: "Pages & components", kinds: ["route", "layout", "component"] },
   { label: "Store actions", kinds: ["action"] },
   { label: "Endpoints & slices", kinds: ["endpoint", "slice"] },
   { label: "Service methods", kinds: ["method"] },

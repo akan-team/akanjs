@@ -12,8 +12,8 @@ const fail = (message: unknown) => {
 
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
-//? Both formats bundle `akanjs/common/akanNames.ts`, so the published core depends on nothing at runtime: the editor
-//? extension requires the CommonJS copy and devkit imports the ES module.
+//? Both formats bundle the `akanjs/common/*.ts` files they import, so the published core depends on nothing at runtime:
+//? the editor extension requires the CommonJS copy and devkit imports the ES module.
 for (const [format, naming] of [
   ["esm", "index.js"],
   ["cjs", "index.cjs"],
