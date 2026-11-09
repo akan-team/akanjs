@@ -94,7 +94,11 @@ export class VerifyDiagnostics {
     const target = path.posix.join(path.posix.dirname(file), specifier);
     const [, kind, name, layer] = target.match(VerifyDiagnostics.#layerOf) ?? [];
     if (!kind || !name || !layer) return null;
-    return { message: diagnostic.message, fix: `import from "@${kind}/${name}/${layer}"` };
+    const barrel = `@${kind}/${name}/${layer}`;
+    return {
+      message: `Module files should not reach ${barrel} through two or more parent directories.`,
+      fix: `import from "${barrel}"`,
+    };
   }
 
   static readonly #rawError = /^Do not (throw|construct) a raw `Error`/;

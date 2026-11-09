@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { BiomeSeverity } from "@akanjs/devkit/linter";
 import { VerifyDiagnostics } from "./verifyDiagnostics";
+import { VerifyReport } from "./verifyReport";
 
 describe("VerifyDiagnostics", () => {
   test("keeps the head of a TypeScript message chain", () => {
@@ -128,24 +129,29 @@ describe("VerifyDiagnostics", () => {
       await writeFile(path.join(root, file), `${lines.join("\n")}\n`);
       const deepImport = (line: number, column: number) => ({
         severity: "error" as const,
-        message: "Module files should not import from two or more parent directories.",
+        message:
+          "Module files should not import from two or more parent directories. Import from the layer barrel instead: @apps/<app>/<layer> or @libs/<lib>/<layer>.",
         category: "plugin",
         location: { path: file, start: { line, column } },
       });
-      const fixes = VerifyDiagnostics.fromBiome(
+      const diagnostics = VerifyDiagnostics.fromBiome(
         {
           diagnostics: [deepImport(1, 26), deepImport(2, 25), deepImport(2, 70), deepImport(3, 25), deepImport(4, 21)],
         },
         root,
-      ).map(({ fix }) => fix);
+      );
 
-      expect(fixes).toEqual([
+      expect(diagnostics.map(({ fix }) => fix)).toEqual([
         'import from "@apps/pokedex/common"',
         'import from "@apps/pokedex/srvkit"',
         'import from "@apps/pokedex/ui"',
         'import from "@libs/shared/srvkit"',
         undefined,
       ]);
+
+      const report = VerifyReport.text({ ok: false, targets: ["pokedex"], ms: 0, steps: [], diagnostics });
+      for (const barrel of ["@apps/pokedex/common", "@apps/pokedex/srvkit", "@apps/pokedex/ui", "@libs/shared/srvkit"])
+        expect(report).toContain(`fix: import from "${barrel}"`);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
