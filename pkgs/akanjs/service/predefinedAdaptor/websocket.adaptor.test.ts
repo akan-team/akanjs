@@ -119,6 +119,22 @@ describe("WebSocketRedisAdaptor buffer", () => {
     expect(publisher.published).toEqual([1, 2, 3, 4]);
   });
 
+  test("keeps a room's newest coalesced frame when frames for it fail together", async () => {
+    const { adaptor, publisher, send } = await openAdaptor();
+    publisher.emit("ready");
+    publisher.held = true;
+    send(1);
+    adaptor.publish("live", { n: 2 }, { coalesce: true });
+    adaptor.publish("live", { n: 3 }, { coalesce: true });
+    publisher.held = false;
+    publisher.failing = true;
+    publisher.release();
+    await Bun.sleep(5);
+    publisher.failing = false;
+    await until(() => publisher.published.includes(1) && publisher.published.length >= 2);
+    expect(publisher.published).toEqual([1, 3]);
+  });
+
   test("buffers until the publisher is ready, not merely connected", async () => {
     const { publisher, send } = await openAdaptor();
     send(1);

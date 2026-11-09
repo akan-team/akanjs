@@ -324,15 +324,14 @@ export class WebSocketRedisAdaptor
   }
 
   #requeue(failed: BufferedMessage[]) {
-    const current = failed.filter(
-      (item) => !item.coalesce || !this.#buffer.some((later) => later.coalesce && later.roomId === item.roomId),
-    );
-    this.#buffer.push(...current);
+    this.#buffer.push(...failed);
     this.#buffer.sort((a, b) => a.seq - b.seq);
-    const over = this.#buffer.length - this.#maxBufferSize;
-    if (over <= 0) return;
-    this.#buffer.splice(0, over);
-    this.logger.warn(`Buffer full, dropping the oldest ${over} messages`);
+    const newest = new Map<string, number>();
+    for (const { coalesce, roomId, seq } of this.#buffer) if (coalesce) newest.set(roomId, seq);
+    const kept = this.#buffer.filter(({ coalesce, roomId, seq }) => !coalesce || newest.get(roomId) === seq);
+    const over = Math.max(0, kept.length - this.#maxBufferSize);
+    this.#buffer.splice(0, this.#buffer.length, ...kept.slice(over));
+    if (over) this.logger.warn(`Buffer full, dropping the oldest ${over} messages`);
   }
 
   #flushBuffer(): Promise<void> {
