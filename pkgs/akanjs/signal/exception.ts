@@ -1,3 +1,5 @@
+import { AkanError } from "akanjs/base";
+
 // An `Exception` travels to the caller with its message intact, so it may say nothing the caller may not know; a
 // plain `Error` is generalized to a 500 by `SignalFailure`. User-facing domain rules throw a dictionary `Err`.
 // Deletion caution: naming this type breaks the `.d.ts` cycle of `static X = class extends Exception` (TS7056).
@@ -5,18 +7,22 @@ export interface StatusException {
   new (message?: string, details?: unknown): Exception;
 }
 
-export class Exception extends Error {
+export class Exception extends AkanError {
   constructor(
-    public readonly statusCode: number,
+    statusCode: number,
     message: string,
     public readonly details?: unknown,
-    public readonly data?: unknown,
+    data?: unknown,
   ) {
-    super(message);
+    super(AkanError.codeOfStatus(statusCode), message, { statusCode, data });
     this.name = this.constructor.name;
   }
 
-  toJSON() {
+  override get forwarded() {
+    return true;
+  }
+
+  override toJSON() {
     return {
       error: this.message,
       statusCode: this.statusCode,
@@ -63,7 +69,7 @@ export class Exception extends Error {
 
 /**
  * Forwarded to the caller instead of generalized: an `Exception`, a dictionary `Err`, a `NoDocumentError`, or a restored
- * remote one.
+ * remote one. Any other `AkanError` is answered by `SignalFailure` with its code and status only.
  */
 export interface ExceptionLike {
   statusCode: number;
@@ -71,8 +77,9 @@ export interface ExceptionLike {
 }
 
 export const isExceptionLike = (error: unknown): error is ExceptionLike =>
-  error instanceof Exception ||
-  (error instanceof Error &&
-    "statusCode" in error &&
-    typeof (error as { statusCode?: unknown }).statusCode === "number" &&
-    typeof (error as { toJSON?: unknown }).toJSON === "function");
+  AkanError.is(error)
+    ? error.forwarded
+    : error instanceof Error &&
+      "statusCode" in error &&
+      typeof (error as { statusCode?: unknown }).statusCode === "number" &&
+      typeof (error as { toJSON?: unknown }).toJSON === "function";

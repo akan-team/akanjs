@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import type { LogRecord } from "akanjs/common";
 import { type LogControlRequest, type LogControlResponse, LogControlSocket } from "./logControlSocket";
 import type { LogHubCoverage, LogHubEntry } from "./logHub";
@@ -9,10 +10,14 @@ export interface LogTailHandlers {
 }
 
 /** Says the app is not running at all, as opposed to a request that failed once connected. */
-export class LogControlUnavailableError extends Error {
+export class LogControlUnavailableError extends AkanError<"logControlUnavailable"> {
   readonly socketPath: string;
   constructor(socketPath: string, cause: unknown) {
-    super(`no log control socket at ${socketPath}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    super(
+      "logControlUnavailable",
+      `no log control socket at ${socketPath}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { statusCode: 503, cause },
+    );
     this.name = "LogControlUnavailableError";
     this.socketPath = socketPath;
   }
