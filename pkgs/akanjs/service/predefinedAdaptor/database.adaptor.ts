@@ -106,13 +106,14 @@ export class SqliteDatabase
 {
   readonly dialect = new SqliteDialect();
   #db!: Database;
+  #reader: Database | null = null;
   #client!: BunSqliteClient;
   #stores = new Map<string, SqlDocumentStore>();
   #transaction = new AsyncLocalStorage<TransactionContext>();
   #ensures = new PendingStoreEnsures();
   #searchIndex!: SearchIndex;
-  // One connection serves every request; a second would wait for the lock synchronously and park the event loop the
-  // holder needs to commit. So other contexts' writes queue behind `#open` — reads do not, so no mixed load deadlocks.
+  // A second writer would wait on the lock synchronously and park the event loop the holder needs to commit, so other
+  // contexts' writes queue behind `#open`. Their reads use `#reader` instead: queued reads would deadlock mixed load.
   #open: { context: TransactionContext; done: Promise<void> } | null = null;
   #queue: Promise<void> = Promise.resolve();
 
@@ -120,13 +121,18 @@ export class SqliteDatabase
     // Resolved first: Bun on Windows fails a recursive mkdir of "." (":memory:", a bare file name) with EEXIST.
     await mkdir(path.dirname(path.resolve(this.config.filePath)), { recursive: true });
     this.#db = new Database(this.config.filePath, { strict: true, create: true });
-    this.#client = new BunSqliteClient(this.#db, () => this.#writeTurn());
+    this.#client = new BunSqliteClient(
+      this.#db,
+      () => this.#writeTurn(),
+      () => this.#readerOf(),
+    );
     this.#db.run(`PRAGMA journal_mode = ${this.config.journalMode ?? "WAL"}`);
     this.#db.run(`PRAGMA busy_timeout = ${this.config.busyTimeoutMs ?? 5000}`);
     this.#db.run(`PRAGMA synchronous = ${this.config.synchronous ?? "NORMAL"}`);
     this.#db.run(`PRAGMA foreign_keys = ${this.config.foreignKeys === false ? "OFF" : "ON"}`);
     if (this.config.cacheSize) this.#db.run(`PRAGMA cache_size = ${this.config.cacheSize}`);
     if (this.config.tempStore) this.#db.run(`PRAGMA temp_store = ${this.config.tempStore}`);
+    this.#reader = this.#openReader();
     this.#db.run(
       `CREATE TABLE IF NOT EXISTS "_akan_meta" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL, "updatedAt" INTEGER NOT NULL)`,
     );
@@ -145,8 +151,27 @@ export class SqliteDatabase
     this.scheduler.unregisterCron(OPTIMIZE_CRON_KEY);
     this.scheduler.unregisterInterval(RETRY_INTERVAL_KEY);
     await this.#ensures.settle();
+    this.#reader?.close();
     this.#db?.run("PRAGMA wal_checkpoint(TRUNCATE)");
     await this.#client?.close();
+  }
+
+  // Only WAL lets a second connection read the last commit without waiting on the writer; `:memory:` is never WAL.
+  #openReader() {
+    const file = this.#mainFile();
+    if (!file || this.#db.query("PRAGMA journal_mode").values().at(0)?.at(0) !== "wal") return null;
+    const reader = new Database(file, { readonly: true, strict: true });
+    reader.run(`PRAGMA busy_timeout = ${this.config.busyTimeoutMs ?? 5000}`);
+    if (this.config.cacheSize) reader.run(`PRAGMA cache_size = ${this.config.cacheSize}`);
+    if (this.config.tempStore) reader.run(`PRAGMA temp_store = ${this.config.tempStore}`);
+    return reader;
+  }
+
+  #mainFile() {
+    const main = this.#db.query(`SELECT "file" FROM pragma_database_list WHERE "name" = 'main'`).get() as {
+      file: string;
+    } | null;
+    return main?.file;
   }
 
   getConnection() {
@@ -158,12 +183,8 @@ export class SqliteDatabase
   }
 
   async openInsight(): Promise<InsightSession> {
-    const main = this.#db.query(`SELECT "file" FROM pragma_database_list WHERE "name" = 'main'`).get() as {
-      file: string;
-    } | null;
-    return main?.file
-      ? SqliteInsightSession.open(main.file)
-      : await SqliteInsightSession.openSnapshot(this.#db.serialize());
+    const file = this.#mainFile();
+    return file ? SqliteInsightSession.open(file) : await SqliteInsightSession.openSnapshot(this.#db.serialize());
   }
 
   stores() {
@@ -180,8 +201,8 @@ export class SqliteDatabase
   }
 
   getMeta(key: string) {
-    return (this.#db.query(`SELECT "value" FROM "_akan_meta" WHERE "key" = ?`).get(key) as { value: string } | null)
-      ?.value;
+    const row = (this.#readerOf() ?? this.#db).query(`SELECT "value" FROM "_akan_meta" WHERE "key" = ?`).get(key);
+    return (row as { value: string } | null)?.value;
   }
 
   async setMeta(key: string, value: string) {
@@ -193,7 +214,7 @@ export class SqliteDatabase
   }
 
   listMeta(prefix: string) {
-    return this.#db
+    return (this.#readerOf() ?? this.#db)
       .query(`SELECT "key", "value" FROM "_akan_meta" WHERE substr("key", 1, ?) = ?`)
       .all(prefix.length, prefix) as { key: string; value: string }[];
   }
@@ -239,6 +260,10 @@ export class SqliteDatabase
     const open = this.#open;
     if (!open || this.#transaction.getStore() === open.context) return null;
     return open.done;
+  }
+
+  #readerOf() {
+    return this.#writeTurn() ? this.#reader : null;
   }
 
   async afterCommit(fn: () => PromiseOrObject<void>) {
