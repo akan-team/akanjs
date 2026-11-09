@@ -1,5 +1,5 @@
 import type { GetStateObject, ObjectAssign, Prettify } from "akanjs/base";
-import { interpolateTranslation, Logger, parseAkanI18nEnv, pathGetLoose } from "akanjs/common";
+import { hasErrKey, interpolateTranslation, Logger, parseAkanI18nEnv, pathGetLoose } from "akanjs/common";
 
 import { DictionaryRegistry } from "./dictionaryRegistry";
 import type { DictModule } from "./locale";
@@ -157,9 +157,7 @@ export const makeTrans = <
 
     /** An Akan error, and one of `keys` when any are named; read off `error`, so a restored remote one passes too. */
     static is<Key extends _ErrorKey>(error: unknown, ...keys: Key[]): error is ErrInstance & { readonly error: Key } {
-      if (typeof error !== "object" || error === null) return false;
-      const key = (error as { error?: unknown }).error;
-      return typeof key === "string" && (!keys.length || (keys as string[]).includes(key));
+      return hasErrKey(error, keys);
     }
 
     static BadRequest = class BadRequestErr extends Err {

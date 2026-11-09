@@ -1,9 +1,13 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { hasErrKey } from "../common/hasErrKey";
 import { interpolateTranslation } from "../common/interpolateTranslation";
 import { pathGetLoose } from "../common/objectPath";
 import { RequestLocale } from "../common/requestLocale";
 
 type EnvMode = "browser" | "server";
+type Equal<Left, Right> =
+  (<Type>() => Type extends Left ? 1 : 2) extends <Type>() => Type extends Right ? 1 : 2 ? true : false;
+type Expect<Type extends true> = Type;
 
 const envState = {
   mode: "browser" as EnvMode,
@@ -49,6 +53,7 @@ beforeAll(() => {
         if (!acc || typeof acc !== "object") return fallback;
         return (acc as Record<string, unknown>)[key] ?? fallback;
       }, obj),
+    hasErrKey,
     interpolateTranslation,
     pathGetLoose,
     RequestLocale,
@@ -221,6 +226,42 @@ describe("makePageProto", () => {
       path: "/users",
       timestamp: "2026-05-25T00:00:00.000Z",
     });
+  });
+
+  test("tells an Akan error, and which key it carries, from anything else thrown", async () => {
+    const { makePageProto } = await import("./makePageProto");
+    const { Err } = makePageProto<{
+      __Dict_Key__: "user.hello";
+      __Error_Key__: "user.error.failure" | "user.error.other";
+    }>(dictionary);
+    const conflict = new Err.Conflict("user.error.failure");
+    const restored = Err.fromJSON({ error: "user.error.failure", statusCode: 404, data: { id: "1" } });
+    const remote = Object.assign(new Error("user.error.failure"), { error: "user.error.failure", statusCode: 404 });
+
+    expect(Err.is(conflict)).toBe(true);
+    expect(Err.is(conflict, "user.error.failure")).toBe(true);
+    expect(Err.is(conflict, "user.error.other")).toBe(false);
+    expect(Err.is(restored, "user.error.other", "user.error.failure")).toBe(true);
+    expect(Err.is(restored, "user.error.other")).toBe(false);
+    expect(Err.is(remote, "user.error.failure")).toBe(true);
+    expect(Err.is(new Error("user.error.failure"))).toBe(false);
+    expect(Err.is({ error: 404 })).toBe(false);
+    expect(Err.is("user.error.failure")).toBe(false);
+    expect(Err.is(null)).toBe(false);
+
+    const failureOf = (error: unknown) => (Err.is(error, "user.error.failure") ? error : undefined);
+    type _Narrowed = [
+      Expect<
+        Equal<
+          Exclude<ReturnType<typeof failureOf>, undefined>,
+          InstanceType<typeof Err> & { readonly error: "user.error.failure" }
+        >
+      >,
+    ];
+    expect(failureOf(restored)?.statusCode).toBe(404);
+    expect(failureOf(restored)?.data).toEqual({ id: "1" });
+    // @ts-expect-error a key outside the app's error keys
+    Err.is(restored, "user.error.unknown");
   });
 });
 
