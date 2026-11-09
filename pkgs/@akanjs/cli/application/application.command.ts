@@ -224,8 +224,19 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       desc: "server env profile: bundle env/env.server.<env>.<profile>.ts in place of the environment's own file",
       nullable: true,
     })
-    .exec(async function (app, write, fast, quiet, profile) {
-      await this.applicationScript.build(app, { write, fast, quiet, profile: profile ?? undefined });
+    .option("env", String, {
+      enum: devEnvs,
+      desc: "environment the server runs in (default: AKAN_PUBLIC_ENV of the workspace .env)",
+      nullable: true,
+    })
+    .exec(async function (app, write, fast, quiet, profile, env) {
+      await this.applicationScript.build(app, {
+        write,
+        fast,
+        quiet,
+        profile: profile ?? undefined,
+        env: env ?? undefined,
+      });
     }),
   typecheck: target({ short: true, desc: "Typecheck an app or a library, its tests and specs included" })
     .with(SysOrOnlyApp)

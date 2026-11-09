@@ -119,6 +119,24 @@ describe("ApplicationCommand", () => {
     expect(calls).toEqual([["my-app", { name: "workspace" }, { start: true }]]);
   });
 
+  test("build takes --env for the environment its server runs in, and leaves it to the workspace .env without one", async () => {
+    const env = getArgMetas(ApplicationCommand, "build")[1].find((meta) => meta.name === "env");
+    expect(env?.argsOption).toMatchObject({ enum: ["local", "debug", "develop", "main"], nullable: true });
+
+    const command = CommandContainer.get(ApplicationCommand);
+    const calls: unknown[] = [];
+    command.applicationScript.build = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "build")?.handler;
+    await handler?.call(command, { name: "demo" }, true, false, false, null, "main");
+    await handler?.call(command, { name: "demo" }, true, false, false, null, null);
+    expect(calls).toEqual([
+      [{ name: "demo" }, { write: true, fast: false, quiet: false, env: "main" }],
+      [{ name: "demo" }, { write: true, fast: false, quiet: false }],
+    ]);
+  });
+
   test("the Capacitor-era commands and flags are gone", () => {
     const keys = getTargetMetas(ApplicationCommand).map((meta) => meta.key);
     for (const removed of ["codepush", "configureApp", "releaseSource"]) expect(keys).not.toContain(removed);
@@ -243,6 +261,21 @@ describe("ApplicationScript", () => {
 
     await expect(script.test(app, { files: ["libs/shared/lib/x.test.ts"] })).rejects.toThrow("is outside apps/demo");
     expect(scanSync).not.toHaveBeenCalled();
+  });
+
+  test("build hands its --env to the build runner", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app } = track(await createTempApp("demo"));
+    app.scanSync = mock(async () => undefined) as never;
+    const build = spyOn(script.applicationRunner, "build").mockImplementation(async () => {
+      throw new Error("stopped");
+    });
+    try {
+      await expect(script.build(app, { quiet: true, env: "main" })).rejects.toThrow("stopped");
+      expect(build.mock.calls[0]?.[1]).toMatchObject({ environment: "main" });
+    } finally {
+      build.mockRestore();
+    }
   });
 
   test("startOne skips dependency install for single database mode", async () => {
