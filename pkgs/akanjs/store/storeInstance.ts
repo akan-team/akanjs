@@ -60,6 +60,7 @@ export class StoreInstance {
   #listeners = new Set<() => void>();
   #derivedMeta: StateDerivedMeta = { drafts: {}, persistSession: {}, search: {}, computed: {}, derivedKeys: new Set() };
   #computedByDep = new Map<string, string[]>();
+  #computedOrder = new Map<string, number>();
   #draftByKey = new Map<string, DraftMeta>();
   #draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #draftFlushBound = false;
@@ -73,7 +74,7 @@ export class StoreInstance {
       typeof stateOrUpdater === "function"
         ? StoreInstance.#produce(prev, stateOrUpdater)
         : this.#patch(prev, stateOrUpdater);
-    this.#deriveChanged(next, changedKeys);
+    this.#derive(next, changedKeys);
     this.#state = next;
     this.#syncPersistSession(next, changedKeys);
     this.#syncDrafts(prev, next, changedKeys);
@@ -508,8 +509,11 @@ export class StoreInstance {
     Object.assign(this.#derivedMeta.computed, meta.computed);
     for (const key of meta.derivedKeys) this.#derivedMeta.derivedKeys.add(key);
     this.#computedByDep.clear();
-    for (const { key, deps } of Object.values(this.#derivedMeta.computed))
+    this.#computedOrder.clear();
+    for (const [order, { key, deps }] of Object.values(this.#derivedMeta.computed).entries()) {
+      this.#computedOrder.set(key, order);
       for (const dep of deps) this.#computedByDep.set(dep, [...(this.#computedByDep.get(dep) ?? []), key]);
+    }
     this.#draftByKey.clear();
     for (const draft of Object.values(this.#derivedMeta.drafts)) {
       this.#draftByKey.set(draft.formKey, draft);
@@ -649,30 +653,44 @@ export class StoreInstance {
   #materializeDerived(next: StoreStateRecord, prev: StoreStateRecord, server = typeof window === "undefined") {
     const materialized = { ...next };
     const changedKeys = new Set(Object.keys(materialized).filter((key) => !Object.is(materialized[key], prev[key])));
-    for (const key of Object.keys(this.#derivedMeta.search)) this.#writeSearch(materialized, key, changedKeys, server);
-    for (const [key, meta] of Object.entries(this.#derivedMeta.computed)) {
-      if (key in materialized && !meta.deps.some((dep) => changedKeys.has(dep))) continue;
-      this.#writeComputed(materialized, key, changedKeys);
-    }
+    this.#derive(materialized, changedKeys, { server, initial: true });
     return materialized;
   }
 
-  //? Search values read only `searchParams` and computed deps are writable keys, so the patch's keys bound the work.
-  #deriveChanged(next: StoreStateRecord, changedKeys: Set<string>) {
+  //? Search values read only `searchParams`, and a computed key reads only its deps, so the changed keys bound the work.
+  #derive(
+    state: StoreStateRecord,
+    changedKeys: Set<string>,
+    { server = typeof window === "undefined", initial = false }: { server?: boolean; initial?: boolean } = {},
+  ) {
     const { search, computed } = this.#derivedMeta;
-    const searchKeys = changedKeys.has("searchParams")
-      ? Object.keys(search)
-      : [...changedKeys].filter((key) => Object.hasOwn(search, key));
-    for (const key of searchKeys) this.#writeSearch(next, key, changedKeys);
-    const computedKeys = new Set<string>();
+    const searchKeys =
+      initial || changedKeys.has("searchParams")
+        ? Object.keys(search)
+        : [...changedKeys].filter((key) => Object.hasOwn(search, key));
+    for (const key of searchKeys) this.#writeSearch(state, key, changedKeys, server);
+    const pending = new Set(initial ? Object.keys(computed).filter((key) => !(key in state)) : []);
     for (const key of changedKeys) {
-      if (Object.hasOwn(computed, key)) computedKeys.add(key);
-      for (const dependent of this.#computedByDep.get(key) ?? []) computedKeys.add(dependent);
+      if (Object.hasOwn(computed, key)) pending.add(key);
+      for (const dependent of this.#computedByDep.get(key) ?? []) pending.add(dependent);
     }
-    for (const key of computedKeys) this.#writeComputed(next, key, changedKeys);
+    //? Declaration order, as a lib store's computed key comes before an app's computed key that reads it.
+    while (pending.size) {
+      const key = this.#firstDeclared(pending);
+      pending.delete(key);
+      if (!this.#writeComputed(state, key, changedKeys)) continue;
+      for (const dependent of this.#computedByDep.get(key) ?? []) pending.add(dependent);
+    }
   }
 
-  #writeSearch(state: StoreStateRecord, key: string, changedKeys: Set<string>, server = typeof window === "undefined") {
+  #firstDeclared(keys: Set<string>) {
+    const orderOf = (key: string) => this.#computedOrder.get(key) ?? 0;
+    let first = keys.values().next().value as string;
+    for (const key of keys) if (orderOf(key) < orderOf(first)) first = key;
+    return first;
+  }
+
+  #writeSearch(state: StoreStateRecord, key: string, changedKeys: Set<string>, server: boolean) {
     const meta = this.#derivedMeta.search[key];
     const value = server ? meta.getDefault() : meta.parseSearch((state.searchParams ?? {}) as SearchParamsState);
     if (Object.is(state[key], value)) return;
@@ -683,9 +701,10 @@ export class StoreInstance {
   #writeComputed(state: StoreStateRecord, key: string, changedKeys: Set<string>) {
     const meta = this.#derivedMeta.computed[key];
     const value = meta.selector(...meta.deps.map((dep) => state[dep]));
-    if (key in state && meta.equals(state[key], value)) return;
+    if (key in state && meta.equals(state[key], value)) return false;
     state[key] = value;
     changedKeys.add(key);
+    return true;
   }
 
   #assertNoDerivedMutation(stateOrUpdater: unknown) {

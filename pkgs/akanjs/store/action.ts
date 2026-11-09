@@ -596,8 +596,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   const isLiveSlice = (sliceName: string) => !!slices.find((entry) => entry.sliceName === sliceName)?.slice.live;
   // A live slice places the row through `applyLive`, so the server's echo of this create is not counted twice.
   const createdListPatchOf = (sliceName: string, model: Full, seen: { [key: string]: unknown }) => {
-    if (isLiveSlice(sliceName) || seen[sliceName.replace(names.model, names.modelListLoading)]) return {};
     const listKey = sliceName.replace(names.model, names.modelList);
+    if (isLiveSlice(sliceName) || seen[sliceName.replace(names.model, names.modelListLoading)] || !seen[listKey])
+      return {};
     const insightKey = sliceName.replace(names.model, names.modelInsight);
     const modelInsight = seen[insightKey] as Insight & BaseInsight;
     return {

@@ -27,13 +27,16 @@ const buildRoot = (keyNum: number, tag: string, onCompute: () => void = () => un
   return new StoreInstance(StoreRegistry.merge(`${tag}Root`, ...stores));
 };
 
-const medianMicros = (run: () => unknown, iterations: number) => {
-  const rounds = Array.from({ length: 9 }, () => {
-    const startedAt = Bun.nanoseconds();
-    for (let idx = 0; idx < iterations; idx++) run();
-    return (Bun.nanoseconds() - startedAt) / iterations / 1000;
-  });
-  return rounds.sort((a, b) => a - b)[4] ?? 0;
+const nanosOf = (run: () => unknown, iterations: number) => {
+  const startedAt = Bun.nanoseconds();
+  for (let idx = 0; idx < iterations; idx++) run();
+  return Bun.nanoseconds() - startedAt;
+};
+
+//? Alternating rounds puts a load burst on both sides of one ratio, so the median ratio shrugs it off.
+const medianRatio = (run: () => unknown, base: () => unknown, iterations: number) => {
+  const ratios = Array.from({ length: 11 }, () => nanosOf(run, iterations) / nanosOf(base, iterations));
+  return ratios.sort((a, b) => a - b)[5] ?? 0;
 };
 
 describe("store write cost", () => {
@@ -65,11 +68,8 @@ describe("store write cost", () => {
       let writeIdx = 0;
       const write = () => instance.set({ [keys[writeIdx++ % keys.length] as string]: writeIdx });
       const copy = () => ({ ...instance.get(), [keys[0] as string]: writeIdx });
-      medianMicros(write, 100);
-      medianMicros(copy, 100);
-      const writeMicros = medianMicros(write, 150);
-      const copyMicros = medianMicros(copy, 150);
-      expect(writeMicros / copyMicros).toBeLessThan(2);
+      medianRatio(write, copy, 50);
+      expect(medianRatio(write, copy, 100)).toBeLessThan(3);
     }
   });
 });

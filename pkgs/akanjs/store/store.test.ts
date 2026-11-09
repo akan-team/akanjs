@@ -261,6 +261,30 @@ describe("StoreInstance runtime", () => {
     expect(() => instance.set({ label: "manual" })).toThrow("Cannot set derived state directly: label");
   });
 
+  test("a computed key that reads a lib store's computed key follows it on every write", () => {
+    setupEnv();
+    class ChainLibStore extends store(
+      "chainLib" as const,
+      () => ({ base: 1 }),
+      ({ computed }) => ({ doubled: computed(["base"], (base) => base * 2) }),
+    ) {}
+    class ChainStore extends store(
+      "chainApp" as const,
+      () => ({ other: 0 }),
+      ({ computed }) => ({ quadrupled: computed(["doubled"] as never, (doubled: number) => doubled * 2) }),
+      ChainLibStore,
+    ) {}
+    const instance = new StoreInstance(makeRoot("chainRoot", ChainStore));
+
+    expect(instance.get()).toMatchObject({ doubled: 2, quadrupled: 4 });
+    instance.set({ base: 3 });
+    expect(instance.get()).toMatchObject({ doubled: 6, quadrupled: 12 });
+    instance.set((state) => {
+      state.base = 5;
+    });
+    expect(instance.get()).toMatchObject({ doubled: 10, quadrupled: 20 });
+  });
+
   test("shows translated error messages when actions reject", async () => {
     setupEnv();
     Translator.seed("en", {
@@ -804,6 +828,12 @@ describe("signal generated store contract", () => {
     expect(await setsDuring(() => instance.do.removeStoreTestItem(id))).toBe(1);
     expect(listsOf().map((list) => list.has(id))).toEqual([false, false]);
     expect(instance.get().storeTestItemListByTags).toBe(untouched);
+
+    await instance.do.createStoreTestItem(
+      { title: "created", count: 0, tags: [] },
+      { sliceName: "storeTestItemNowhere" },
+    );
+    expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { title: "created" } });
   });
 });
 
