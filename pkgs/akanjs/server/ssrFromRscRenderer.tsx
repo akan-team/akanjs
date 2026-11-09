@@ -133,7 +133,11 @@ export function createSoftRedirectScript(redirect: SsrLateRedirect): string {
 
 function sanitizeFlightRows(
   stream: ReadableStream<Uint8Array>,
-  options: { rewriteStylesheetHints?: boolean; dropDebugInfoRows?: boolean; onRow?: (row: Uint8Array) => void } = {},
+  options: {
+    rewriteStylesheetHints?: boolean;
+    dropDebugInfoRows?: boolean;
+    onRow?: (row: Uint8Array, tag: string) => void;
+  } = {},
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const encoder = new TextEncoder();
@@ -153,7 +157,7 @@ function sanitizeFlightRows(
 
   return mapFlightLineRows(stream, (row, tag) => {
     if (tag === "D") return options.dropDebugInfoRows ? null : row;
-    options.onRow?.(row);
+    options.onRow?.(row, tag);
     if (tag === "E") return rewriteRow(row, redirectErrorRowRe, "$1:null$3");
     if (tag === "H" && options.rewriteStylesheetHints) return rewriteRow(row, hlStylesheetRe, `$1"style"$2`);
     return row;
@@ -168,7 +172,7 @@ export function sanitizeFlightForClientStream(stream: ReadableStream<Uint8Array>
 
 export function sanitizeFlightForSsrStream(
   stream: ReadableStream<Uint8Array>,
-  onRow?: (row: Uint8Array) => void,
+  onRow?: (row: Uint8Array, tag: string) => void,
 ): ReadableStream<Uint8Array> {
   return sanitizeFlightRows(stream, { dropDebugInfoRows: true, onRow });
 }
@@ -578,7 +582,10 @@ export class SsrFromRscRenderer {
 
     const chunkPreloads = input.modulePreloadPlan ? new FlightModulePreloads(input.modulePreloadPlan) : null;
     const ssrNodeStream = Readable.fromWeb(
-      sanitizeFlightForSsrStream(rscForSsr, chunkPreloads ? (row) => chunkPreloads.observe(row) : undefined) as never,
+      sanitizeFlightForSsrStream(
+        rscForSsr,
+        chunkPreloads ? (row, tag) => chunkPreloads.observe(row, tag) : undefined,
+      ) as never,
     );
     const stderrSuppressor = ExpectedLateRedirectStderrSuppressor.start(input.lateControl);
     //? The Flight client wakes what Fizz suspended on from its stream's data handler, so it reads in the request scope.

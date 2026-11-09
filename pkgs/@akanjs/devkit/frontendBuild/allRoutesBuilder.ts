@@ -115,12 +115,12 @@ export class AllRoutesBuilder {
   }
 
   #modulePreloadsOf({ externalsByChunkUrl }: BuildRouteClientResult): RouteModulePreloads | null {
-    if (!this.#runtimeChunks || !externalsByChunkUrl) return null;
+    if (!this.#runtimeChunks) return null;
     return new RouteModulePreloads({
       runtimeChunks: this.#runtimeChunks,
       entriesByRoute: this.#entriesByRoute,
       clientManifest: this.#merged.clientManifest,
-      externalsByChunkUrl,
+      externalsByChunkUrl: externalsByChunkUrl ?? {},
       workspaceRoot: this.#app.workspace.workspaceRoot,
     });
   }

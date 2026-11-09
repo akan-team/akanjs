@@ -229,6 +229,7 @@ export class ClientEntriesBundler {
   //? Bun's metafile lists an external import on the input that wrote it, never on the output chunk.
   #collectExternalsByChunkUrl(): Map<string, string[]> {
     const externalsByChunkUrl = new Map<string, string[]>();
+    if (this.#command !== "build" || this.#target !== "browser") return externalsByChunkUrl;
     for (const [absOut, info] of this.#metafileOutputsByAbs) {
       if (!absOut.endsWith(".js")) continue;
       const externals = new Set<string>();
