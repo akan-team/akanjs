@@ -205,8 +205,8 @@ export class HttpClient {
       const res = await this.#fetch(url, joined.init, signal);
       const body = await this.#readBody(url, res, signal);
       if (res.ok) return body as Returns;
-      //? A gateway's own JSON (Kong's `{"message":…}`) names no key of ours: it is restored like its HTML page.
-      if (res.status in transportErrorKeyMap && !HttpClient.#namesErrorKey(body))
+      //? A gateway's own JSON (Kong's `{"message":…}`) names no key or code of ours: it is restored like its HTML page.
+      if (res.status in transportErrorKeyMap && !HttpClient.#isServerAnswer(body, res.status))
         throw this.#transportError(url, res, JSON.stringify(body));
       throw this.#restoreError(body, res.status);
     } finally {
@@ -214,8 +214,9 @@ export class HttpClient {
     }
   }
 
-  static #namesErrorKey(body: unknown) {
-    return isRecord(body) && typeof body.error === "string" && dictionaryErrorKey.test(body.error);
+  static #isServerAnswer(body: unknown, status: number) {
+    if (!isRecord(body) || typeof body.error !== "string") return false;
+    return dictionaryErrorKey.test(body.error) || (typeof body.code === "string" && body.statusCode === status);
   }
 
   //* An upload gets no deadline: a large file on a slow uplink is a long request that is still working.

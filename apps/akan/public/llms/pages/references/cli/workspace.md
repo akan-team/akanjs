@@ -89,6 +89,8 @@ Create a new workspace and its first app in one go. It runs these steps in order
 
 - --sample (Boolean, default true): Generate the sample `task` module, pages and helpers in the first app. `false` starts from an empty app.
 
+- --bun-dependency (String): Put `bun` at this version in `dependencies`, plus `build` and `start` scripts. Passed when Bun is not on `PATH`.
+
 - where to run: Any folder works, because this command creates the workspace root.
 
 - MCP config files: Cursor reads `.cursor/mcp.json`, Claude Code `.mcp.json`, and Codex `.codex/config.toml`.

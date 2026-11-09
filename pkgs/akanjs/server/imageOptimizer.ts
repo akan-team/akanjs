@@ -126,7 +126,7 @@ export class ImageOptimizer {
       return this.#imageResponse(req, await this.#loadOptimizedImage(parsed));
     } catch (error) {
       const message = error instanceof ImageOptimizerError ? error.message : "Unable to optimize image";
-      const status = error instanceof ImageOptimizerError ? error.status : 500;
+      const status = error instanceof ImageOptimizerError ? error.statusCode : 500;
       return new Response(message, { status, headers: status === 503 ? { "retry-after": "1" } : undefined });
     }
   }

@@ -7,6 +7,7 @@ import {
   type ReactFont,
   type ReactFontDeclaration,
   type ReactFontFace,
+  type ReactFontStyle,
 } from "akanjs/client";
 
 export interface FontPreload {
@@ -14,14 +15,19 @@ export interface FontPreload {
   type: string;
 }
 
+const REGULAR_STYLE_ORDER: ReactFontStyle[] = ["normal", "oblique", "italic"];
+
 export class FontCss {
   static getPreloads(fonts: ReactFont[]): FontPreload[] {
     const seen = new Set<string>();
     const preloads: FontPreload[] = [];
     for (const font of fonts) {
       if (!isFontOptimizationEnabled(font) || !isFontPreloadEnabled(font)) continue;
-      for (const face of getFontFaces(font)) {
-        if (face.path.preload === false || seen.has(face.optimizedSrc)) continue;
+      const faces = getFontFaces(font);
+      const regularFace = FontCss.#findRegularFace(faces);
+      for (const face of faces) {
+        const isPreloaded = face.path.preload ?? face === regularFace;
+        if (!isPreloaded || seen.has(face.optimizedSrc)) continue;
         seen.add(face.optimizedSrc);
         preloads.push({ href: face.optimizedSrc, type: "font/woff2" });
       }
@@ -55,6 +61,26 @@ export class FontCss {
       hash = Math.imul(hash, 0x01000193);
     }
     return `akan-fonts-${(hash >>> 0).toString(36)}`;
+  }
+
+  static #findRegularFace(faces: ReactFontFace[]) {
+    const rankOf = (face: ReactFontFace) =>
+      REGULAR_STYLE_ORDER.indexOf(face.style) * 10_000 + FontCss.#regularWeightRank(face.weight);
+    return [...faces].sort((a, b) => rankOf(a) - rankOf(b))[0];
+  }
+
+  //? CSS Fonts 4 §5.2 matches weight 400 by trying 400–500 upward, then lighter downward, then heavier upward.
+  static #regularWeightRank(weight: number | string) {
+    const [min, max] = FontCss.#parseWeightRange(weight);
+    const nearest = Math.min(Math.max(400, min), max);
+    if (nearest >= 400 && nearest <= 500) return nearest - 400;
+    return nearest < 400 ? 500 - nearest : 1000 + nearest;
+  }
+
+  static #parseWeightRange(weight: number | string): [number, number] {
+    if (weight === "bold") return [700, 700];
+    const values = String(weight).trim().split(/\s+/).filter(Boolean).map(Number).filter(Number.isFinite);
+    return values.length ? [Math.min(...values), Math.max(...values)] : [400, 400];
   }
 
   static #buildFontFaceRule(face: ReactFontFace, src: string) {

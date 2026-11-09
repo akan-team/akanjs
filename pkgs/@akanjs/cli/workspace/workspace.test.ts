@@ -60,6 +60,7 @@ describe("WorkspaceCommand", () => {
       ["Option", 7],
       ["Option", 8],
       ["Option", 9],
+      ["Option", 10],
     ]);
 
     const command = CommandContainer.get(WorkspaceCommand);
@@ -116,6 +117,18 @@ describe("WorkspaceCommand", () => {
     await handler?.call(command, "My Repo", undefined, ".", false, false);
 
     expect(calls).toEqual([["my-repo", "app", { dirname: ".", inPlace: false, installLibs: false, init: false }]]);
+  });
+
+  test("forwards --bun-dependency to the script", async () => {
+    const command = CommandContainer.get(WorkspaceCommand);
+    const calls: unknown[][] = [];
+    command.workspaceScript.createWorkspace = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(WorkspaceCommand).find((meta) => meta.key === "createWorkspace")?.handler;
+    await handler?.call(command, "repo", "demo", ".", false, true, null, null, true, true, false, "1.4.4");
+
+    expect(calls[0]?.[2]).toMatchObject({ bunDependency: "1.4.4" });
   });
 
   test("delegates generateAgentRules with overwrite options", async () => {
@@ -199,7 +212,7 @@ describe("WorkspaceScript", () => {
       expect(recorder.calls.find((call) => call.name === "createApplication")?.args).toEqual([
         "demo",
         workspace,
-        { libs: ["util", "shared"], sample: true },
+        { libs: ["util", "shared"] },
       ]);
       expect(recorder.calls.find((call) => call.name === "agent")?.args).toEqual([
         workspace,
@@ -220,6 +233,40 @@ describe("WorkspaceScript", () => {
       if (previousUseAkanjsPkgs === undefined) delete process.env.USE_AKANJS_PKGS;
       else process.env.USE_AKANJS_PKGS = previousUseAkanjsPkgs;
     }
+  });
+
+  test("tells a host whose Bun is not on PATH to run akan through npm", async () => {
+    const script = CommandContainer.get(WorkspaceScript);
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor(
+      "workspace",
+      { applyTemplate: async (...args: unknown[]) => recorder.record("applyTemplate", ...args) },
+      recorder,
+    );
+    script.workspaceRunner.createWorkspace = async (...args: unknown[]) => {
+      recorder.record("createWorkspace", ...args);
+      return workspace as never;
+    };
+    script.applicationScript.createApplication = async () => {};
+    script.packageScript.version = async () => "2.0.0-beta.0";
+    script.agentScript.agent = async () => {};
+    script.contextScript.mcpInstall = async () => {};
+    script.workspaceRunner.commitWorkspace = async () => ({
+      committed: true,
+      repository: "/workspace",
+      identity: null,
+    });
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await script.createWorkspace("repo", "demo", { dirname: "local", sample: false, bunDependency: "1.4.4" });
+
+    const output = printed.mock.calls.map(([line]) => String(line)).join("\n");
+    expect(output).toContain("Run `cd /workspace && npx akan start demo`");
+    expect(output).toContain("`npm run build`");
+    expect(output).not.toContain("&& akan start");
+    expect(recorder.calls.find((call) => call.name === "createWorkspace")?.args.at(2)).toMatchObject({
+      bunDependency: "1.4.4",
+    });
   });
 
   test("skips agent and mcp install when opted out", async () => {
@@ -288,7 +335,7 @@ describe("WorkspaceScript", () => {
     expect(recorder.calls.find((call) => call.name === "createApplication")?.args).toEqual([
       "demo",
       workspace,
-      { libs: [], sample: false },
+      { libs: [] },
     ]);
     expect(recorder.names()).not.toContain("applyTemplate");
   });
@@ -430,16 +477,6 @@ describe("WorkspaceRunner", () => {
       "setup:agent": "akan agent install all --force",
       "agent:doctor": "akan doctor --strict --format json",
       "agent:mcp:plan": "akan mcp-install all --mode plan --force",
-      "agent:sample:service": "akan create-service billing demo --format json",
-      "agent:sample:module": "akan create-module project demo --page=true --format json",
-      "agent:sample:field":
-        "akan add-field --app demo --module project --field budget --type Int --default 0 --format json",
-      "agent:sample:status":
-        "akan add-enum-field --app demo --module project --field status --values draft,active,archived --default draft --format json",
-      "agent:sample:workflow:plan":
-        "akan workflow plan add-field --app demo --module task --field priority --type enum --values low,medium,high --default medium --format json --out .akan/workflows/plans/task-priority.json",
-      "agent:sample:workflow:dry-run":
-        "akan workflow apply .akan/workflows/plans/task-priority.json --dry-run --format json",
     });
     expect(workspacePackageJson.dependencies.akanjs).toBe("2.0.0-beta.0");
     expect(workspacePackageJson.dependencies).toMatchObject({
@@ -474,6 +511,30 @@ describe("WorkspaceRunner", () => {
     expect(workspacePackageJson.dependencies).not.toHaveProperty("@playwright/test");
     expect(workspacePackageJson.dependencies).not.toHaveProperty("cordova-plugin-purchase");
     expect(workspacePackageJson.dependencies).not.toHaveProperty("capacitor-plugin-safe-area");
+  });
+
+  test("lists bun and the app's build and start scripts only for a host whose Bun is not on PATH", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    process.chdir(root);
+    await runner.createWorkspace("repo", "demo", {
+      dirname: "nodeOnly",
+      init: false,
+      akanVersion: "2.0.0-beta.0",
+      bunDependency: "1.4.4",
+    });
+    await runner.createWorkspace("repo", "demo", { dirname: "withBun", init: false, akanVersion: "2.0.0-beta.0" });
+
+    const nodeOnly = (await Bun.file(`${root}/nodeOnly/repo/package.json`).json()) as PackageJson;
+    expect(nodeOnly.dependencies?.bun).toBe("1.4.4");
+    expect(nodeOnly.scripts?.build).toBe("akan build demo");
+    expect(nodeOnly.scripts?.start).toBe("cd dist/apps/demo && bun main.js");
+    expect(nodeOnly.scripts?.sync).toBe("akan sync");
+    const withBun = (await Bun.file(`${root}/withBun/repo/package.json`).json()) as PackageJson;
+    expect(withBun.dependencies).not.toHaveProperty("bun");
+    expect(withBun.scripts?.build).toBe("akan build");
+    expect(withBun.scripts).not.toHaveProperty("start");
   });
 
   test("pins @akanjs/cli at the akan version, so `akan` in the new workspace runs its own bin", async () => {
