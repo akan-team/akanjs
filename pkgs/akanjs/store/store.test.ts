@@ -835,6 +835,28 @@ describe("signal generated store contract", () => {
     );
     expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { title: "created" } });
   });
+
+  test("overlapping creates each add their row and count to the list", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class OverlappingCreateStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(OverlappingCreateStore);
+    const instance = new StoreInstance(makeRoot("overlappingCreateRoot", OverlappingCreateStore));
+    await instance.do.initStoreTestItem();
+    const answers: ((model: unknown) => void)[] = [];
+    signal.calls.createStoreTestItem = mock(() => new Promise((resolve) => answers.push(resolve)));
+
+    const first = instance.do.createStoreTestItem({ title: "one", count: 0, tags: [] });
+    const second = instance.do.createStoreTestItem({ title: "two", count: 0, tags: [] });
+    answers[0]?.(new StoreTestFull({ id: "cccccccccccccccccccccccc", title: "one" } as never));
+    await first;
+    answers[1]?.(new StoreTestFull({ id: "dddddddddddddddddddddddd", title: "two" } as never));
+    await second;
+
+    const rows = [...(instance.get().storeTestItemList as DataList<InstanceType<typeof StoreTestLight>>)];
+    expect(rows.map((row) => row.title)).toEqual(["two", "one", "Ada", "Ben"]);
+    expect((instance.get().storeTestItemInsight as { count: number }).count).toBe(4);
+  });
 });
 
 describe("StoreRegistry and root assembly", () => {

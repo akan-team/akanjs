@@ -556,7 +556,6 @@ export class StoreInstance {
   // The debounce lives in the store, not a component, so an editor unmounting mid-window still lands its last write.
   #syncDrafts(prev: StoreStateRecord, next: StoreStateRecord, changedKeys: ReadonlySet<string>) {
     if (typeof window === "undefined") return;
-    //? A form whose form and draft slots are both unchanged has no timer to arm, cancel or flush.
     const metas = new Set<DraftMeta>();
     for (const key of changedKeys) {
       const meta = this.#draftByKey.get(key);
@@ -657,7 +656,6 @@ export class StoreInstance {
     return materialized;
   }
 
-  //? Search values read only `searchParams`, and a computed key reads only its deps, so the changed keys bound the work.
   #derive(
     state: StoreStateRecord,
     changedKeys: Set<string>,
@@ -674,7 +672,6 @@ export class StoreInstance {
       if (Object.hasOwn(computed, key)) pending.add(key);
       for (const dependent of this.#computedByDep.get(key) ?? []) pending.add(dependent);
     }
-    //? Declaration order, as a lib store's computed key comes before an app's computed key that reads it.
     while (pending.size) {
       const key = this.#firstDeclared(pending);
       pending.delete(key);

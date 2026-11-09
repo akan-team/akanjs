@@ -651,7 +651,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.modelModal]: modal ?? null,
         ...staleAtOfSlices(),
         ...(typeof path === "string" && path ? { [path]: model } : {}),
-        ...createdListPatchOf(sliceName, model, currentState),
+        ...createdListPatchOf(sliceName, model, this.get()),
       });
       applyLiveCreate.call(this, sliceName, model);
       await onSuccess?.(model);
@@ -698,7 +698,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.modelModal]: modal ?? null,
         ...staleAtOfSlices(),
         ...(typeof path === "string" && path ? { [path]: model } : {}),
-        ...createdListPatchOf(sliceName, model, currentState),
+        ...createdListPatchOf(sliceName, model, this.get()),
       });
       applyLiveCreate.call(this, sliceName, model);
       await onSuccess?.(model);
