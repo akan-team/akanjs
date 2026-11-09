@@ -14,7 +14,7 @@ import type { RootStoreCls } from "./rootStore";
 import { sliceKeysOf } from "./sliceKeys";
 import type { SliceActionKey, SliceActionRole, SliceStateRole } from "./sliceRole";
 import type { DraftState, SliceStateKey } from "./state";
-import { evaluateInitializers, type SearchParamsState, type StateDerivedMeta } from "./stateBuilder";
+import { type DraftMeta, evaluateInitializers, type SearchParamsState, type StateDerivedMeta } from "./stateBuilder";
 import type { StoreUseOptions } from "./types";
 
 enableMapSet();
@@ -59,24 +59,49 @@ export class StoreInstance {
   #serverState: StoreStateRecord = {};
   #listeners = new Set<() => void>();
   #derivedMeta: StateDerivedMeta = { drafts: {}, persistSession: {}, search: {}, computed: {}, derivedKeys: new Set() };
+  #computedByDep = new Map<string, string[]>();
+  #draftByKey = new Map<string, DraftMeta>();
   #draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #draftFlushBound = false;
 
   get = (): StoreStateRecord => this.#state;
 
   set = (stateOrUpdater: StoreStateRecord | ((state: StoreStateRecord) => void)) => {
-    const prev = this.#state;
-    if (typeof stateOrUpdater === "function") {
-      this.#state = produce(this.#state, stateOrUpdater);
-    } else {
-      this.#state = this.#dropReplacedUploads({ ...this.#state, ...stateOrUpdater }, stateOrUpdater);
-    }
     this.#assertNoDerivedMutation(stateOrUpdater);
-    this.#state = this.#materializeDerived(this.#state, prev);
-    this.#syncPersistSession(prev, this.#state);
-    this.#syncDrafts(prev, this.#state);
+    const prev = this.#state;
+    const [next, changedKeys] =
+      typeof stateOrUpdater === "function"
+        ? StoreInstance.#produce(prev, stateOrUpdater)
+        : this.#patch(prev, stateOrUpdater);
+    this.#deriveChanged(next, changedKeys);
+    this.#state = next;
+    this.#syncPersistSession(next, changedKeys);
+    this.#syncDrafts(prev, next, changedKeys);
     this.#notify();
   };
+
+  static #produce(prev: StoreStateRecord, updater: (state: StoreStateRecord) => void) {
+    const produced = produce(prev, updater);
+    const changedKeys = new Set<string>();
+    for (const key of Object.keys(produced)) if (!Object.is(produced[key], prev[key])) changedKeys.add(key);
+    for (const key of Object.keys(prev)) if (!(key in produced)) changedKeys.add(key);
+    return [{ ...produced }, changedKeys] as const;
+  }
+
+  #patch(prev: StoreStateRecord, patch: StoreStateRecord) {
+    const next = { ...prev, ...patch };
+    const changedKeys = new Set<string>();
+    for (const key of Object.keys(patch)) {
+      if (!Object.is(prev[key], patch[key])) changedKeys.add(key);
+      const draft = this.#draftByKey.get(key);
+      if (draft?.formKey !== key || draft.uploadingKey in patch) continue;
+      const uploading = prev[draft.uploadingKey] as object | undefined;
+      if (!uploading || !Object.keys(uploading).length) continue;
+      next[draft.uploadingKey] = {};
+      changedKeys.add(draft.uploadingKey);
+    }
+    return [next, changedKeys] as const;
+  }
 
   #pick = (...fields: string[]) => {
     const ret = {} as StoreStateRecord;
@@ -482,6 +507,14 @@ export class StoreInstance {
     Object.assign(this.#derivedMeta.search, meta.search);
     Object.assign(this.#derivedMeta.computed, meta.computed);
     for (const key of meta.derivedKeys) this.#derivedMeta.derivedKeys.add(key);
+    this.#computedByDep.clear();
+    for (const { key, deps } of Object.values(this.#derivedMeta.computed))
+      for (const dep of deps) this.#computedByDep.set(dep, [...(this.#computedByDep.get(dep) ?? []), key]);
+    this.#draftByKey.clear();
+    for (const draft of Object.values(this.#derivedMeta.drafts)) {
+      this.#draftByKey.set(draft.formKey, draft);
+      this.#draftByKey.set(draft.draftKey, draft);
+    }
   }
 
   #hydratePersistSession(state: StoreStateRecord) {
@@ -502,9 +535,10 @@ export class StoreInstance {
     return next;
   }
 
-  #syncPersistSession(prev: StoreStateRecord, next: StoreStateRecord) {
-    for (const [key, meta] of Object.entries(this.#derivedMeta.persistSession)) {
-      if (Object.is(prev[key], next[key])) continue;
+  #syncPersistSession(next: StoreStateRecord, changedKeys: ReadonlySet<string>) {
+    for (const key of changedKeys) {
+      if (!Object.hasOwn(this.#derivedMeta.persistSession, key)) continue;
+      const meta = this.#derivedMeta.persistSession[key];
       const storage = this.#getStorage(meta.kind);
       if (!storage) continue;
       try {
@@ -515,19 +549,16 @@ export class StoreInstance {
     }
   }
 
-  #dropReplacedUploads(state: StoreStateRecord, patch: StoreStateRecord) {
-    for (const meta of Object.values(this.#derivedMeta.drafts)) {
-      if (!(meta.formKey in patch) || meta.uploadingKey in patch) continue;
-      const uploading = state[meta.uploadingKey] as object | undefined;
-      if (uploading && Object.keys(uploading).length) state = { ...state, [meta.uploadingKey]: {} };
-    }
-    return state;
-  }
-
   // The debounce lives in the store, not a component, so an editor unmounting mid-window still lands its last write.
-  #syncDrafts(prev: StoreStateRecord, next: StoreStateRecord) {
+  #syncDrafts(prev: StoreStateRecord, next: StoreStateRecord, changedKeys: ReadonlySet<string>) {
     if (typeof window === "undefined") return;
-    for (const meta of Object.values(this.#derivedMeta.drafts)) {
+    //? A form whose form and draft slots are both unchanged has no timer to arm, cancel or flush.
+    const metas = new Set<DraftMeta>();
+    for (const key of changedKeys) {
+      const meta = this.#draftByKey.get(key);
+      if (meta) metas.add(meta);
+    }
+    for (const meta of metas) {
       const draft = next[meta.draftKey] as DraftState | null;
       if (!draft?.key) {
         this.#cancelDraftTimer(meta.formKey);
@@ -618,23 +649,43 @@ export class StoreInstance {
   #materializeDerived(next: StoreStateRecord, prev: StoreStateRecord, server = typeof window === "undefined") {
     const materialized = { ...next };
     const changedKeys = new Set(Object.keys(materialized).filter((key) => !Object.is(materialized[key], prev[key])));
-    const searchParams = (materialized.searchParams ?? {}) as SearchParamsState;
-    for (const [key, meta] of Object.entries(this.#derivedMeta.search)) {
-      const value = server ? meta.getDefault() : meta.parseSearch(searchParams);
-      if (!Object.is(materialized[key], value)) {
-        materialized[key] = value;
-        changedKeys.add(key);
-      }
-    }
+    for (const key of Object.keys(this.#derivedMeta.search)) this.#writeSearch(materialized, key, changedKeys, server);
     for (const [key, meta] of Object.entries(this.#derivedMeta.computed)) {
       if (key in materialized && !meta.deps.some((dep) => changedKeys.has(dep))) continue;
-      const value = meta.selector(...meta.deps.map((dep) => materialized[dep]));
-      if (!(key in materialized) || !meta.equals(materialized[key], value)) {
-        materialized[key] = value;
-        changedKeys.add(key);
-      }
+      this.#writeComputed(materialized, key, changedKeys);
     }
     return materialized;
+  }
+
+  //? Search values read only `searchParams` and computed deps are writable keys, so the patch's keys bound the work.
+  #deriveChanged(next: StoreStateRecord, changedKeys: Set<string>) {
+    const { search, computed } = this.#derivedMeta;
+    const searchKeys = changedKeys.has("searchParams")
+      ? Object.keys(search)
+      : [...changedKeys].filter((key) => Object.hasOwn(search, key));
+    for (const key of searchKeys) this.#writeSearch(next, key, changedKeys);
+    const computedKeys = new Set<string>();
+    for (const key of changedKeys) {
+      if (Object.hasOwn(computed, key)) computedKeys.add(key);
+      for (const dependent of this.#computedByDep.get(key) ?? []) computedKeys.add(dependent);
+    }
+    for (const key of computedKeys) this.#writeComputed(next, key, changedKeys);
+  }
+
+  #writeSearch(state: StoreStateRecord, key: string, changedKeys: Set<string>, server = typeof window === "undefined") {
+    const meta = this.#derivedMeta.search[key];
+    const value = server ? meta.getDefault() : meta.parseSearch((state.searchParams ?? {}) as SearchParamsState);
+    if (Object.is(state[key], value)) return;
+    state[key] = value;
+    changedKeys.add(key);
+  }
+
+  #writeComputed(state: StoreStateRecord, key: string, changedKeys: Set<string>) {
+    const meta = this.#derivedMeta.computed[key];
+    const value = meta.selector(...meta.deps.map((dep) => state[dep]));
+    if (key in state && meta.equals(state[key], value)) return;
+    state[key] = value;
+    changedKeys.add(key);
   }
 
   #assertNoDerivedMutation(stateOrUpdater: unknown) {

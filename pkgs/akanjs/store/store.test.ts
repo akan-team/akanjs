@@ -764,6 +764,47 @@ describe("signal generated store contract", () => {
       expect(call).not.toHaveBeenCalled();
     });
   });
+
+  test("a model write lands in one set across every slice holding the row, and leaves the old lists as they were", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class OneWriteStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(OneWriteStore);
+    const instance = new StoreInstance(makeRoot("oneWriteRoot", OneWriteStore));
+    await instance.do.initStoreTestItem();
+    await instance.do.initStoreTestItemByTitle("Ada");
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    type Rows = DataList<InstanceType<typeof StoreTestLight>>;
+    const listsOf = () => [instance.get().storeTestItemList as Rows, instance.get().storeTestItemListByTitle as Rows];
+    const setsDuring = async (write: () => unknown) => {
+      let setNum = 0;
+      const unsubscribe = instance.subscribe(() => {
+        setNum++;
+      });
+      await write();
+      unsubscribe();
+      return setNum;
+    };
+
+    const untouched = instance.get().storeTestItemListByTags;
+    const loaded = listsOf();
+    expect(await setsDuring(() => instance.do.updateStoreTestItem(id, { title: "updated", count: 0, tags: [] }))).toBe(
+      1,
+    );
+    expect(listsOf().map((list) => list.get(id)?.title)).toEqual(["updated", "updated"]);
+    expect(loaded.map((list) => list.get(id)?.title)).toEqual(["Ada", "Ada"]);
+
+    const updated = listsOf();
+    expect(
+      await setsDuring(() => instance.do.setStoreTestItem(new StoreTestLight({ id, title: "pushed" }) as never)),
+    ).toBe(1);
+    expect(listsOf().map((list) => list.get(id)?.title)).toEqual(["pushed", "pushed"]);
+    expect(updated.map((list) => list.get(id)?.title)).toEqual(["updated", "updated"]);
+
+    expect(await setsDuring(() => instance.do.removeStoreTestItem(id))).toBe(1);
+    expect(listsOf().map((list) => list.has(id))).toEqual([false, false]);
+    expect(instance.get().storeTestItemListByTags).toBe(untouched);
+  });
 });
 
 describe("StoreRegistry and root assembly", () => {
