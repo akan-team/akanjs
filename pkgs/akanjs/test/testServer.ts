@@ -100,6 +100,7 @@ export class TestServer {
     process.env.AKAN_PUBLIC_OPERATION_MODE = env.operationMode;
     process.env.AKAN_PUBLIC_SERVER_PORT = String(resolvedPort);
     process.env.SERVER_HTTP_PROTOCOL = "http:";
+    resetEnvCache();
   }
   constructor(env: TestEnv, libs: AkanLib | AkanLib[], options: TestServerOptions = {}) {
     this.workerId = resolveWorkerId(options.workerId);
