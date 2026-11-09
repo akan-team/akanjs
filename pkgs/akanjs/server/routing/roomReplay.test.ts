@@ -93,6 +93,74 @@ describe("RoomReplay", () => {
     expect(JSON.parse(replay.frameOf(pub("held", 4), true, 21))).toMatchObject({ seq: 4 });
   });
 
+  test("past the room cap, evicts only rooms no socket here holds, and keeps numbering every held one", () => {
+    const held = new Set(["a", "b", "c"]);
+    const replay = new RoomReplay({ vouches: true, rooms: 2, subscribed: (roomId) => held.has(roomId) });
+    for (const roomId of ["a", "b", "c"]) replay.watch(roomId, 0);
+    for (const roomId of ["a", "b", "c"]) replay.frameOf(pub(roomId, 1), true, 1);
+    replay.watch("gone", 2);
+    replay.left("gone", 3);
+    replay.watch("next", 4);
+    expect(replay.cursor("gone")).toBeNull();
+    for (const roomId of ["a", "b", "c"])
+      expect(JSON.parse(replay.frameOf(pub(roomId, 2), true, 5))).toMatchObject({ seq: 2 });
+  });
+
+  test("keeps the room it is watching past the cap, since the socket subscribes only after the watch", () => {
+    const subscribed = new Set<string>();
+    const replay = new RoomReplay({ vouches: true, rooms: 1, subscribed: (roomId) => subscribed.has(roomId) });
+    replay.watch("first", 0);
+    subscribed.add("first");
+    replay.watch("second", 1);
+    subscribed.add("second");
+    replay.frameOf(pub("first", 1), false, 2);
+    expect(replay.cursor("first")).not.toBeNull();
+    expect(replay.cursor("second")).not.toBeNull();
+  });
+
+  test("over the byte budget, the room that published least recently loses its frames first", () => {
+    const frameBytes = Buffer.byteLength(JSON.stringify({ ...pub("old", 1), seq: 1 }));
+    const replay = new RoomReplay({ vouches: true, bytes: frameBytes * 3, subscribed: () => true });
+    replay.watch("old", 0);
+    replay.watch("new", 0);
+    const [oldCursor, newCursor] = [replay.cursor("old"), replay.cursor("new")];
+    if (!oldCursor || !newCursor) throw new Error("watched rooms have no cursor");
+    replay.frameOf(pub("old", 1), true, 1);
+    replay.frameOf(pub("old", 2), true, 2);
+    replay.frameOf(pub("new", 1), true, 3);
+    expect(replay.since("old", oldCursor)).toHaveLength(2);
+    replay.frameOf(pub("new", 2), true, 4);
+    expect(replay.since("old", oldCursor)).toBeNull();
+    expect(replay.since("new", newCursor)).toHaveLength(2);
+    expect(JSON.parse(replay.frameOf(pub("old", 3), true, 5))).toMatchObject({ seq: 3 });
+  });
+
+  test("over the byte budget on its own, a room keeps its newest frames for a cursor that is one behind", () => {
+    const frameBytes = Buffer.byteLength(JSON.stringify({ ...pub("solo", 1), seq: 1 }));
+    const replay = new RoomReplay({ vouches: true, bytes: frameBytes * 2, subscribed: () => true });
+    replay.watch("solo", 0);
+    const cursor = replay.cursor("solo");
+    if (!cursor) throw new Error("watched room has no cursor");
+    for (const n of [1, 2, 3, 4]) replay.frameOf(pub("solo", n), true, n);
+    expect(replay.since("solo", { epoch: cursor.epoch, seq: 3 })?.map((frame) => JSON.parse(frame).seq)).toEqual([4]);
+    expect(replay.since("solo", { epoch: cursor.epoch, seq: 2 })).toHaveLength(2);
+    expect(replay.since("solo", { epoch: cursor.epoch, seq: 1 })).toBeNull();
+  });
+
+  test("drops a held room's frames once they are older than retainMs, with no publish to it to notice", () => {
+    const replay = new RoomReplay({ vouches: true, retainMs: 1_000, subscribed: () => true });
+    replay.watch("quiet", 0);
+    replay.watch("busy", 0);
+    const cursor = replay.cursor("quiet");
+    if (!cursor) throw new Error("watched room has no cursor");
+    replay.frameOf(pub("quiet", 1), true, 10);
+    replay.frameOf(pub("busy", 1), true, 900);
+    expect(replay.since("quiet", cursor)).toHaveLength(1);
+    replay.frameOf(pub("busy", 2), true, 1_500);
+    expect(replay.since("quiet", cursor)).toBeNull();
+    expect(replay.cursor("quiet")).toMatchObject({ seq: 1 });
+  });
+
   test("vouches for no cursor taken before a frame that went out unnumbered", () => {
     const replay = new RoomReplay({ vouches: true });
     replay.watch("room");
