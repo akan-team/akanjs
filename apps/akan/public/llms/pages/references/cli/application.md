@@ -350,7 +350,7 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 - web surfaces: The SSR and CSR steps follow `web` in `akan.config.ts`; a surface turned off is skipped.
 
-- route JS budget: The build measures the JavaScript each server route can load before it hydrates: the runtime, every client component its page and layouts import, and the vendors those import. It counts the brotli bytes served and prints the largest routes. When the app has an `akan.budget.json`, a route over its `routeJsBrotliKB` entry fails the build. A route with no entry is only reported. Record the file with `--update-budget` and commit it. To raise an entry, edit it by hand in the change that grows the route.
+- route JS budget: The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors. It counts the brotli bytes served and prints the largest routes. When the app has an `akan.budget.json`, a route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry fails the build; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A route with no entry is only reported. Record the file with `--update-budget` and commit it. To raise an entry, edit it by hand in the change that grows the route. `akan verify` only reports the budget, and a mobile or desktop build skips it.
 
 `akan start-ios <app> [--target <target>] [--env <env>] [--release <boolean>] [--device <device>] [--team <team>] [--write <boolean>]`
 

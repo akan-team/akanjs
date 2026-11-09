@@ -292,7 +292,7 @@ describe("ApplicationScript", () => {
     }
   });
 
-  test("build hands its --update-budget to the build runner", async () => {
+  test("build enforces the route JS budget, and writes it on --update-budget", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const { app } = track(await createTempApp("demo"));
     app.scanSync = mock(async () => undefined) as never;
@@ -300,8 +300,9 @@ describe("ApplicationScript", () => {
       throw new Error("stopped");
     });
     try {
+      await expect(script.build(app, { quiet: true })).rejects.toThrow("stopped");
       await expect(script.build(app, { quiet: true, updateBudget: true })).rejects.toThrow("stopped");
-      expect(build.mock.calls[0]?.[1]).toMatchObject({ updateBudget: true });
+      expect(build.mock.calls.map(([, options]) => options?.budget)).toEqual(["enforce", "update"]);
     } finally {
       build.mockRestore();
     }
