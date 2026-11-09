@@ -718,6 +718,35 @@ describe("rscClient prefetch", () => {
     expect(shown()).toBe("visitor notes");
   });
 
+  test("a hover after the account changes leaves the old account's page in flight uncached for the new one", async () => {
+    signIn("owner");
+    await navigate("/hall");
+    let release = () => {};
+    served.set(
+      "/secret",
+      () => new Promise<Response>((resolve) => (release = () => resolve(responseOf("owner secret")))),
+    );
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/secret");
+      await sleep(10);
+    });
+
+    signIn("visitor");
+    served.set("/elsewhere", () => responseOf("elsewhere"));
+    await prefetch("/elsewhere");
+    await act(async () => {
+      release();
+      await pending;
+    });
+
+    served.set("/secret", () => responseOf("visitor secret"));
+    await navigate("/secret");
+
+    expect(fetchCountOf("/secret")).toBe(2);
+    expect(shown()).toBe("visitor secret");
+  });
+
   test("a page the navigation cache holds is not prefetched", async () => {
     await navigate("/rack");
     await navigate("/rack/next");

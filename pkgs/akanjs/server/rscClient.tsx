@@ -409,9 +409,11 @@ globalThis.__AKAN_RSC_PREFETCH__ = (href, priority) => {
   const target = normalizeHref(href);
   const key = pageKeyOf(target);
   if (new URL(target).origin !== window.location.origin || pendingRequest?.target === key) return;
-  forgetPagesOfAnotherAccount();
-  if (rscCache.has(target)) return;
-  rscPrefetchCache.request(key, cachedAuthCookies, priority);
+  //? Not forgetPagesOfAnotherAccount: only a navigation may record the change, or a page of the old account still in
+  //? flight commits into the cache as the new account's.
+  const authCookies = readAuthCookies();
+  if (authCookies === cachedAuthCookies && rscCache.has(target)) return;
+  rscPrefetchCache.request(key, authCookies, priority);
 };
 
 function Root(): ReactNode {
