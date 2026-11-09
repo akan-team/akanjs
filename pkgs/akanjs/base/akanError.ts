@@ -11,7 +11,6 @@ export interface AkanErrorPayload {
   data?: unknown;
 }
 
-//* `statusCode` is the status the request path answers with when this error reaches it.
 export class AkanError<Code extends string = string, Data = unknown> extends Error {
   //* Interned: a server bundle and main.js each carry a copy of this class, and either one's errors must be known.
   static readonly #marker = Symbol.for("akan.error");

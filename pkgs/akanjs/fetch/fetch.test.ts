@@ -688,6 +688,14 @@ describe("HttpClient", () => {
     };
     expect(coded).toMatchObject({ message: "Service Unavailable", code: "queueFull", statusCode: 503 });
     expect(fetchCalls).toHaveLength(1);
+
+    fetchCalls.length = 0;
+    rawResponses.push(
+      Response.json({ code: "UPSTREAM_DOWN", message: "no healthy upstream" }, { status: 503 }),
+      Response.json({ ok: true }),
+    );
+    expect(await client.get<{ ok: boolean }>("/items", { retry: fast })).toEqual({ ok: true });
+    expect(fetchCalls).toHaveLength(2);
   });
 
   test("mints an Idempotency-Key where crypto.randomUUID is missing, as on a dev server reached over plain http", async () => {
