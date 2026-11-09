@@ -101,8 +101,9 @@ export interface TunnelOpenFrame {
   /** `http` and `websocket`: path plus query, already percent-encoded. */
   path?: string;
   /**
-   * `http` and `websocket`, replayed verbatim: the gateway strips every `forwardedHeaderNames` entry the caller sent
-   * (else Host header injection) and writes `x-forwarded-host` as the tunnel hostname (else CSRF refuses mutations).
+   * `http` and `websocket`, replayed verbatim but for `host`, which the agent dials as the origin's own: the gateway
+   * strips every `forwardedHeaderNames` entry the caller sent (else Host header injection) and writes
+   * `x-forwarded-host` as the tunnel hostname (else CSRF refuses mutations).
    */
   headers?: TunnelHeaderList;
   /** `tcp`: the port on the local origin to dial. */

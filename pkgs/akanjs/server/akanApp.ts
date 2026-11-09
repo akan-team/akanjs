@@ -26,6 +26,7 @@ import type { OpsRoute } from "./ops/opsRoute";
 import { StatusAccess } from "./ops/statusAccess";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { HostAllowlist } from "./routing/hostAllowlist";
+import { RouteHosts } from "./routing/routeHosts";
 import { ServerLimits } from "./routing/serverLimits";
 import { WsUpgrade } from "./routing/wsUpgrade";
 import { SelfExec } from "./selfExec";
@@ -625,6 +626,8 @@ export class AkanApp {
   }
 
   #listen() {
+    //? Replicas declare the route hosts in their own processes, and here, ahead of them, is where Host is checked.
+    if (this.#hostAllowlist?.devDefault) RouteHosts.declare(this.#artifactDir);
     this.#server = Bun.serve({
       idleTimeout: this.#limits.idleTimeout,
       maxRequestBodySize: this.#limits.uploadBodyBytes,

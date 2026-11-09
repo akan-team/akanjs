@@ -194,7 +194,7 @@ class GatewayStub {
     };
   }
 
-  async websocket(path: string) {
+  async websocket(path: string, headers: TunnelHeaderList = []) {
     const socket = await this.#take();
     this.#streamNum += 1;
     const streamId = `stream-${this.#streamNum}`;
@@ -220,7 +220,7 @@ class GatewayStub {
         hostname: "code.tunnel.akanjs.com",
         method: "GET",
         path,
-        headers: [["x-forwarded-host", "code.tunnel.akanjs.com"]],
+        headers: [["x-forwarded-host", "code.tunnel.akanjs.com"], ...headers],
       } satisfies TunnelOpenFrame),
     );
     return {
@@ -338,6 +338,7 @@ describe("tunnel agent against a gateway", () => {
   let gateway: GatewayStub;
   let origin: Bun.Server<undefined>;
   let agent: TunnelAgent;
+  let upgradeHost: string | null = null;
 
   beforeAll(async () => {
     origin = Bun.serve({
@@ -346,6 +347,7 @@ describe("tunnel agent against a gateway", () => {
       fetch: async (request, server) => {
         const { pathname } = new URL(request.url);
         if (pathname === "/ws") {
+          upgradeHost = request.headers.get("host");
           if (server.upgrade(request)) return undefined;
           return new Response("expected a websocket", { status: 400 });
         }
@@ -356,6 +358,7 @@ describe("tunnel agent against a gateway", () => {
           return new Response("ok", { headers });
         }
         if (pathname === "/seen") return Response.json({ host: request.headers.get("x-forwarded-host") });
+        if (pathname === "/host") return new Response(request.headers.get("host"));
         if (pathname === "/redirect") return new Response(null, { status: 302, headers: { location: "/elsewhere" } });
         if (pathname === "/gzip") {
           const gz = Bun.gzipSync(new TextEncoder().encode("z".repeat(4096)));
@@ -420,6 +423,11 @@ describe("tunnel agent against a gateway", () => {
   test("hands the app the tunnel hostname, not localhost", async () => {
     const answer = await gateway.request({ path: "/seen" });
     expect(JSON.parse(textOf(answer.body))).toEqual({ host: "code.tunnel.akanjs.com" });
+  });
+
+  test("dials the origin under its own host, the public one riding x-forwarded-host", async () => {
+    const answer = await gateway.request({ path: "/host", headers: [["host", "code.tunnel.akanjs.com"]] });
+    expect(textOf(answer.body)).toBe(`localhost:${origin.port}`);
   });
 
   test("carries every set-cookie back", async () => {
@@ -490,6 +498,12 @@ describe("tunnel agent against a gateway", () => {
     socket.send("ping");
     expect(await until(() => socket.inbound.length > 0)).toBe(true);
     expect(socket.inbound[0]).toBe("echo:ping");
+  });
+
+  test("opens a websocket on the origin under its own host", async () => {
+    const socket = await gateway.websocket("/ws", [["host", "code.tunnel.akanjs.com"]]);
+    expect(await until(() => socket.head()?.status === 101)).toBe(true);
+    expect(upgradeHost).toBe(`localhost:${origin.port}`);
   });
 
   test("replaces each data socket a finished websocket takes with it", async () => {

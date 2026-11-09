@@ -292,8 +292,8 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
                   key: "AKAN_ALLOWED_HOSTS",
                   type: "host:port, …",
                   desc: l.trans({
-                    en: "The Host headers it answers; any other request, socket upgrade and preflight included, gets 403.",
-                    ko: "응답할 Host 헤더입니다. 다른 요청은 소켓 업그레이드와 preflight까지 403을 받습니다.",
+                    en: "The Host headers it answers; any other request, socket upgrade and preflight included, gets 403. Unset, a dev server answers localhost, IP addresses and the app's own hosts, and a deployed one every Host; set, the list replaces either.",
+                    ko: "응답할 Host 헤더입니다. 다른 요청은 소켓 업그레이드와 preflight까지 403을 받습니다. 설정하지 않으면 개발 서버는 localhost, IP 주소, 앱 자신의 호스트에, 배포된 서버는 모든 Host에 응답하며, 설정하면 이 목록이 둘 다를 대신합니다.",
                   }),
                 },
               ]}

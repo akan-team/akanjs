@@ -32,10 +32,13 @@ export class TunnelHttpStream implements TunnelStream {
       this.#link.sendFrame({ type: "reset", streamId, code: "protocol", message: "path leaves the shared origin" });
       return;
     }
+    const dialHeaders = tunnelWireContract.headersOf(headers);
+    //? A dev server answers only local Hosts, so the origin is dialed as itself; x-forwarded-host names the public one.
+    dialHeaders.delete("host");
     try {
       const response = await fetch(target, {
         method,
-        headers: tunnelWireContract.headersOf(headers),
+        headers: dialHeaders,
         body: this.#bodyStream,
         signal: this.#aborter.signal,
         // The public caller follows its own redirects; a tunnel that followed them would rewrite the URL bar.

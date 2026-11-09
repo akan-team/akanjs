@@ -237,6 +237,33 @@ const connectRawWebSocket = (port: number): Promise<Socket> =>
     "timed out waiting for raw websocket upgrade",
   );
 
+const upgradeStatusOf = (port: number, pathname: string, host: string): Promise<number> =>
+  withTimeout(
+    new Promise((resolve, reject) => {
+      const socket = createConnection({ host: "127.0.0.1", port });
+      let response = "";
+      socket.once("error", reject);
+      socket.on("data", (chunk) => {
+        response += chunk.toString("latin1");
+        const statusLine = /^HTTP\/1\.1 (\d{3})/.exec(response);
+        if (!statusLine) return;
+        socket.destroy();
+        resolve(Number(statusLine[1]));
+      });
+      socket.once("connect", () => {
+        socket.write(
+          `GET ${pathname} HTTP/1.1\r\n` +
+            `Host: ${host}\r\n` +
+            "Upgrade: websocket\r\n" +
+            "Connection: Upgrade\r\n" +
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+            "Sec-WebSocket-Version: 13\r\n\r\n",
+        );
+      });
+    }),
+    `timed out waiting for the ${pathname} upgrade answer`,
+  );
+
 const sendRawText = (socket: Socket, text: string) => {
   const payload = Buffer.from(text);
   const mask = Buffer.from([1, 2, 3, 4]);
@@ -1378,6 +1405,48 @@ describe("AkanApp", () => {
       else process.env.AKAN_PUBLIC_ENV = saved.env;
       if (saved.logToken === undefined) delete process.env.AKAN_LOG_STREAM_TOKEN;
       else process.env.AKAN_LOG_STREAM_TOKEN = saved.logToken;
+    }
+  }, 20_000);
+
+  test("under akan start answers loopback names, IP literals and the app's own hosts, and refuses any other Host", async () => {
+    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-dev-hosts-");
+    await writeOkChild(serverPath, "page");
+    await Bun.write(
+      path.join(root, ".akan", "artifact", "base-artifact.json"),
+      JSON.stringify({ domains: ["shop.example.com"] }),
+    );
+    const identity = {
+      AKAN_PUBLIC_APP_NAME: "alpha",
+      AKAN_PUBLIC_REPO_NAME: "akanjs",
+      AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
+    };
+    const saved = Object.fromEntries(Object.keys(identity).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, identity);
+    const app = withEnvSet(
+      { AKAN_COMMAND_TYPE: "start" },
+      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port }),
+    );
+    const running = app.start();
+    const at = (pathname: string, host: string) => fetch(`http://127.0.0.1:${port}${pathname}`, { headers: { host } });
+    try {
+      await waitForReady(port);
+      for (const pathname of ["/", "/_akan/studio", "/_akan/devtools"]) {
+        const refused = await at(pathname, `evil.test:${port}`);
+        expect(refused.status).toBe(403);
+        expect(await refused.text()).toContain("AKAN_ALLOWED_HOSTS");
+      }
+      expect(await upgradeStatusOf(port, "/_akan/hmr", `evil.test:${port}`)).toBe(403);
+
+      for (const host of ["localhost", "127.0.0.1", "[::1]", "192.168.0.12", "shop.example.com"])
+        expect([host, await (await at("/", `${host}:${port}`)).text()]).toEqual([host, "page"]);
+      expect(await upgradeStatusOf(port, "/_akan/hmr", `localhost:${port}`)).toBe(101);
+    } finally {
+      await app.stop();
+      await Promise.race([running, wait(1_000)]);
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
     }
   }, 20_000);
 
