@@ -1,13 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import {
+  joinBytes,
+  mixedFlight,
+  mixedFlightRows,
+  offsetsWhereOutputDiffers,
+  readBytes,
+  rowShapedText,
+  streamOfChunks,
+  textRow,
+} from "./flightRows.fixture";
+import {
   encodeAkanRedirectDigest,
   getRscPayloadStream,
   guardRscRedirectRows,
   isRscPayloadResponse,
   RSC_CONTENT_TYPE,
+  type RscRedirectRow,
 } from "./rscHttp";
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 const respond = (body: string, status: number, contentType: string) =>
   new Response(body, { status, headers: { "Content-Type": contentType } });
@@ -96,6 +108,32 @@ describe("RSC HTTP helpers", () => {
     await expect(new Response(stream).text()).resolves.toBe("b:null\n");
     expect(redirects).toEqual([
       { rowId: "b", location: "/login?next=%2Fdashboard&label=한글", method: "push", status: 308 },
+    ]);
+  });
+
+  test("leaves redirect-shaped lines inside a long text row to the text", async () => {
+    const flight = joinBytes(textRow("1", rowShapedText), '0:"$1"\n');
+    const redirects: RscRedirectRow[] = [];
+    const output = await readBytes(
+      guardRscRedirectRows(streamOfChunks([flight]), { onRedirect: (redirect) => redirects.push(redirect) }),
+    );
+
+    expect(decoder.decode(output)).toBe(decoder.decode(flight));
+    expect(redirects).toEqual([]);
+  });
+
+  test("finds the one real redirect row wherever a chunk boundary falls", async () => {
+    const rows = mixedFlightRows;
+    const expected = joinBytes(rows.hint, rows.debug, rows.text, rows.bytes, rows.empty, "c7:null\n", rows.model);
+    const redirects: RscRedirectRow[] = [];
+    const differing = await offsetsWhereOutputDiffers(mixedFlight, expected, (stream) =>
+      guardRscRedirectRows(stream, { onRedirect: (redirect) => redirects.push(redirect) }),
+    );
+
+    expect(differing).toEqual([]);
+    expect(redirects).toHaveLength(mixedFlight.byteLength + 2);
+    expect([...new Map(redirects.map((redirect) => [JSON.stringify(redirect), redirect])).values()]).toEqual([
+      { rowId: "c7", location: "/target", method: "replace", status: 307 },
     ]);
   });
 });
