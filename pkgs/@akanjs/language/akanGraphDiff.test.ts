@@ -78,7 +78,7 @@ describe("AkanGraphDiff", () => {
         .filter((edge) => edge.change)
         .map((edge) => `${edge.change} ${edge.from} -${edge.label}-> ${edge.to}`),
     ).toEqual([
-      "added endpoint:apps/demo:memo.pinMemo -null-> guard:Owner",
+      "added endpoint:apps/demo:memo.pinMemo -null-> guard::Owner",
       "added method:apps/demo:memo.touch -getMemo-> model:apps/demo:memo",
       "added endpoint:apps/demo:memo.pinMemo -pin-> method:apps/demo:memo.pin",
       "removed model:apps/demo:memo -place-> scalar:libs/shared:geo",

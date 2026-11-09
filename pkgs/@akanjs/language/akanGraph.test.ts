@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import ts from "typescript";
+import { AkanGraphDiff } from "./akanGraphDiff";
 import { AkanIndex } from "./akanIndex";
 
 const root = "/ws";
@@ -138,10 +139,10 @@ describe("AkanIndex.graph", () => {
   it("follows a request from the page through the slice, guard and service to the query", () => {
     const graph = graphOf();
     expect(edgesOf(graph, "guard")).toEqual([
-      "endpoint:apps/demo:memo.shareMemo --> guard:Owner",
-      "slice:apps/demo:memo -get-> guard:Public",
-      "slice:apps/demo:memo -root-> guard:Admin",
-      "slice:apps/demo:memo.inPublic --> guard:Public",
+      "endpoint:apps/demo:memo.shareMemo --> guard::Owner",
+      "slice:apps/demo:memo -get-> guard::Public",
+      "slice:apps/demo:memo -root-> guard::Admin",
+      "slice:apps/demo:memo.inPublic --> guard::Public",
     ]);
     expect(edgesOf(graph, "calls")).toEqual([
       "action:apps/demo:memo.shareMemo -refreshAll-> action:apps/demo:memo.refreshAll",
@@ -205,6 +206,245 @@ export class MemoService extends serve(db.memo, () => ({})) {}
     expect(edgesOf(graph).filter((edge) => edge.includes("model:libs/shared:memo"))).toEqual([]);
   });
 
+  it("keys each guard by the owner that declares it, through the import that names it", () => {
+    const index = new AkanIndex({ ts, root });
+    const guarded: Record<string, string> = {
+      ...files,
+      "libs/shared/srvkit/guards.ts": `import type { Guard, GuardScope, SignalContext } from "akanjs/signal";
+
+//? Every guard keeps \`static name\`.
+
+// Without it, anyone runs console operations.
+export class Admin implements Guard {
+  static name = "Admin";
+  static scope: GuardScope = "account";
+  canPass(context: SignalContext) {
+    return !!context;
+  }
+}
+`,
+      "libs/shared/srvkit/sso.ts": `import type { Guard, GuardScope } from "akanjs/signal";
+
+// Without it, a sign-in starts against a provider with no credentials.
+const ssoGuardOf = (type: string, name: string) =>
+  class implements Guard {
+    static name = name;
+    static scope: GuardScope = "account";
+    canPass() {
+      return !!type;
+    }
+  };
+
+export const SSOKakao = ssoGuardOf("kakao", "SSOKakao");
+`,
+      "libs/shared/srvkit/ssoMap.ts": `import { SSOKakao } from "./sso";
+export const SSO = { Kakao: SSOKakao } as const;
+`,
+      "libs/billing/srvkit/guards.ts": `import type { Guard } from "akanjs/signal";
+export class Admin implements Guard {
+  static name = "Admin";
+  canPass() {
+    return true;
+  }
+}
+`,
+      "apps/demo/srvkit/guards.ts": `import type { Guard, GuardScope } from "akanjs/signal";
+/**
+ * The caller wrote the memo.
+ */
+export class Owner implements Guard {
+  static name = "Owner";
+  static scope: GuardScope = "resource";
+  canPass() {
+    return true;
+  }
+}
+`,
+      "apps/demo/srvkit/guards.test.ts": `import type { Guard } from "akanjs/signal";
+export class Fake implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { Admin as AdminGuard, SSO } from "@libs/shared/srvkit";
+import * as srvkit from "@libs/shared/srvkit";
+import { endpoint, Public, slice } from "akanjs/signal";
+import { Owner } from "../../srvkit/guards";
+import * as srv from "../srv";
+export class MemoSlice extends slice(srv.memo, { guards: { root: AdminGuard, get: Public, cru: [Owner, None] } }, (init) => ({
+  inPublic: init({ guards: [Public] }).exec(function () {
+    return this.memoService.queryByName("");
+  }),
+})) {}
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, { guards: [Owner, SSO.Kakao] }).exec(async function (id) {
+    return await this.memoService.share(id);
+  }),
+  pinMemo: mutation(cnst.Memo, { guards: [srvkit.Admin] }).exec(async function (id) {
+    return await this.memoService.share(id);
+  }),
+})) {}
+`,
+    };
+    for (const [rel, text] of Object.entries(guarded)) index.setFile(`${root}/${rel}`, text);
+    const graph = index.graph((fileName) => guarded[fileName.slice(root.length + 1)], { digests: true });
+    expect(edgesOf(graph, "guard")).toEqual([
+      "endpoint:apps/demo:memo.pinMemo --> guard:libs/shared:Admin",
+      "endpoint:apps/demo:memo.shareMemo --> guard:apps/demo:Owner",
+      "endpoint:apps/demo:memo.shareMemo --> guard:libs/shared:SSOKakao",
+      "slice:apps/demo:memo -cru-> guard::None",
+      "slice:apps/demo:memo -cru-> guard:apps/demo:Owner",
+      "slice:apps/demo:memo -get-> guard::Public",
+      "slice:apps/demo:memo -root-> guard:libs/shared:Admin",
+      "slice:apps/demo:memo.inPublic --> guard::Public",
+    ]);
+    const guards = graph.nodes.filter((node) => node.kind === "guard");
+    expect(guards.map(({ id, detail, at, doc }) => [id, detail, at && `${at.file}:${at.line}`, doc ?? null])).toEqual([
+      ["guard::None", ["account", "akanjs"], null, "Refuses every caller."],
+      ["guard::Public", ["account", "akanjs"], null, "Passes every caller, signed in or not."],
+      ["guard:apps/demo:Owner", ["resource"], "apps/demo/srvkit/guards.ts:5", "The caller wrote the memo."],
+      ["guard:libs/billing:Admin", [], "libs/billing/srvkit/guards.ts:2", null],
+      [
+        "guard:libs/shared:Admin",
+        ["account"],
+        "libs/shared/srvkit/guards.ts:6",
+        "Without it, anyone runs console operations.",
+      ],
+      [
+        "guard:libs/shared:SSOKakao",
+        ["account"],
+        "libs/shared/srvkit/sso.ts:13",
+        "Without it, a sign-in starts against a provider with no credentials.",
+      ],
+    ]);
+    expect(guards.every((node) => node.at === null || /^[0-9a-f]{8}$/.test(node.digest ?? ""))).toBe(true);
+  });
+
+  it("follows a guard through a map's own imports, a re-export, and a factory a file imports or wraps", () => {
+    const guarded = (resourceBody: string, pinField: string): Record<string, string> => ({
+      "libs/util/srvkit/guards.ts": `import type { Guard, GuardScope } from "akanjs/signal";
+export class Admin implements Guard {
+  static scope: GuardScope = "account";
+  canPass() {
+    return true;
+  }
+}
+`,
+      "libs/shared/srvkit/admin.ts": `export { Admin } from "@libs/util/srvkit";
+`,
+      "libs/shared/srvkit/resource.ts": `import type { Guard as SignalGuard } from "akanjs/signal";
+export const resourceGuard = (field: string) =>
+  class implements SignalGuard {
+    static scope = "resource" as const;
+    canPass() {
+      return ${resourceBody};
+    }
+  };
+/** Passes the caller who created it, through {@link resourceGuard}. */
+export const createdBySelf = (field: string) => resourceGuard(field);
+export const OwnsPin = createdBySelf("${pinField}");
+`,
+      "libs/shared/srvkit/sso.ts": `import type { Guard, GuardScope } from "akanjs/signal";
+const ssoGuardOf = (type: string) =>
+  class implements Guard {
+    static scope: GuardScope = "account";
+    canPass() {
+      return !!type;
+    }
+  };
+export const SSOKakao = ssoGuardOf("kakao");
+`,
+      "libs/shared/srvkit/config.ts": `const kakaoConfig = { id: "" };
+const SSO = { Kakao: kakaoConfig };
+`,
+      "libs/shared/srvkit/ssoMap.ts": `import { SSOKakao as Kakao } from "./sso";
+export const SSO = { Kakao };
+`,
+      "libs/shared/srvkit/guards.spec.ts": `import type { Guard } from "akanjs/signal";
+export class Fake implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`,
+      "apps/demo/srvkit/guards.ts": `import { resourceGuard } from "@libs/shared/srvkit";
+/** The caller is a member of the project. */
+export const ProjectMember = resourceGuard("project");
+export const CanCreatePin = resourceGuard("pin");
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { Admin, OwnsPin, SSO } from "@libs/shared/srvkit";
+import { endpoint } from "akanjs/signal";
+import { CanCreatePin, ProjectMember } from "../../srvkit/guards";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, { guards: [Admin, SSO.Kakao, OwnsPin, ProjectMember, CanCreatePin] }).exec(
+    async function (id) {
+      return await this.memoService.share(id);
+    },
+  ),
+})) {}
+`,
+    });
+    const graphOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return index.graph((fileName) => given[fileName.slice(root.length + 1)], { digests: true });
+    };
+    const graph = graphOf(guarded("!!field", "pin"));
+    expect(edgesOf(graph, "guard")).toEqual([
+      "endpoint:apps/demo:memo.shareMemo --> guard:apps/demo:CanCreatePin",
+      "endpoint:apps/demo:memo.shareMemo --> guard:apps/demo:ProjectMember",
+      "endpoint:apps/demo:memo.shareMemo --> guard:libs/shared:OwnsPin",
+      "endpoint:apps/demo:memo.shareMemo --> guard:libs/shared:SSOKakao",
+      "endpoint:apps/demo:memo.shareMemo --> guard:libs/util:Admin",
+    ]);
+    const guards = graph.nodes.filter((node) => node.kind === "guard");
+    expect(guards.map(({ id, detail, at, doc }) => [id, detail, at && `${at.file}:${at.line}`, doc ?? null])).toEqual([
+      ["guard:apps/demo:CanCreatePin", ["resource"], "apps/demo/srvkit/guards.ts:4", null],
+      [
+        "guard:apps/demo:ProjectMember",
+        ["resource"],
+        "apps/demo/srvkit/guards.ts:3",
+        "The caller is a member of the project.",
+      ],
+      [
+        "guard:libs/shared:OwnsPin",
+        ["resource"],
+        "libs/shared/srvkit/resource.ts:11",
+        "Passes the caller who created it, through resourceGuard.",
+      ],
+      ["guard:libs/shared:SSOKakao", ["account"], "libs/shared/srvkit/sso.ts:9", null],
+      ["guard:libs/util:Admin", ["account"], "libs/util/srvkit/guards.ts:2", null],
+    ]);
+    const changedOf = (resourceBody: string, pinField: string) =>
+      AkanGraphDiff.between(graph, graphOf(guarded(resourceBody, pinField)))
+        .nodes.filter((node) => node.kind === "guard" && node.change === "changed")
+        .map((node) => node.id);
+    expect(changedOf("!!field", "board")).toEqual(["guard:libs/shared:OwnsPin"]);
+    expect(changedOf("field.length > 0", "pin")).toEqual([
+      "guard:apps/demo:CanCreatePin",
+      "guard:apps/demo:ProjectMember",
+      "guard:libs/shared:OwnsPin",
+    ]);
+  });
+
+  it("drops a file's guards once it no longer declares one", () => {
+    const index = new AkanIndex({ ts, root });
+    const guardFile = "libs/shared/srvkit/guards.ts";
+    const declared = `import type { Guard } from "akanjs/signal";
+export class Admin implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`;
+    index.setFile(`${root}/${guardFile}`, declared);
+    expect(index.graph(() => declared).nodes.map((node) => node.id)).toEqual(["guard:libs/shared:Admin"]);
+    index.setFile(`${root}/${guardFile}`, "export const admin = 1;\n");
+    expect(index.graph(() => "export const admin = 1;\n").nodes).toEqual([]);
+  });
+
   it("draws the same graph whatever order the files were read in", () => {
     const withFolder: Record<string, string> = {
       ...files,
@@ -212,12 +452,30 @@ export class MemoService extends serve(db.memo, () => ({})) {}
 import * as srv from "../srv";
 export class FolderSlice extends slice(srv.folder, { guards: { root: Admin, get: Public } }, (init) => ({})) {}
 `,
+      "libs/shared/srvkit/resource.ts": `import type { Guard } from "akanjs/signal";
+export const resourceGuard = (field: string) =>
+  class implements Guard {
+    canPass() {
+      return !!field;
+    }
+  };
+export class Admin implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`,
+      "apps/demo/srvkit/guards.ts": `import { resourceGuard } from "@libs/shared/srvkit";
+export const Admin = resourceGuard("admin");
+`,
     };
     const graphIn = (order: [string, string][]) => {
       const index = new AkanIndex({ ts, root });
       for (const [rel, text] of order) index.setFile(`${root}/${rel}`, text);
-      return JSON.stringify(index.graph((fileName) => withFolder[fileName.slice(root.length + 1)]));
+      return JSON.stringify(index.graph((fileName) => withFolder[fileName.slice(root.length + 1)], { digests: true }));
     };
-    expect(graphIn(Object.entries(withFolder).reverse())).toBe(graphIn(Object.entries(withFolder)));
+    const graph = graphIn(Object.entries(withFolder));
+    expect(graph).toContain('"from":"slice:apps/demo:folder","to":"guard:apps/demo:Admin"');
+    expect(graphIn(Object.entries(withFolder).reverse())).toBe(graph);
   });
 });
