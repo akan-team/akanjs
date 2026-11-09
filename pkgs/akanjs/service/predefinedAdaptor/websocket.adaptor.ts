@@ -33,6 +33,8 @@ export interface WebsocketAdaptor {
   /** To every other server of the app: the writer only knows its own rooms, and a batch process holds none. */
   publishChange?(change: LiveChange): void;
   onChange?(handler: LiveChangeHandler): void;
+  /** The models this server holds live rooms for, each time that changes, so changes to the rest pass it by. */
+  reportLiveModels?(models: string[]): void;
   joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
   leaveRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
   leaveAllRooms(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
