@@ -131,7 +131,7 @@ export class PackageRunner extends runner("package") {
       });
     } else {
       await pkg.dist.cp(pkg.cwdPath, pkg.dist.cwdPath);
-      await $`rm -rf ${pkg.dist.cwdPath}/local`;
+      await $`rm -rf ${pkg.dist.cwdPath}/local ${pkg.dist.cwdPath}/akan.baseline.json`;
       await Promise.all([
         pkg.generateDistPackageJson(packageRuntimeDeps, packageRuntimeDevDeps),
         pkg.generateTsconfigJson(),

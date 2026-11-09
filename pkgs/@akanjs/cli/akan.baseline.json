@@ -1,0 +1,16 @@
+{
+  "akan.size.file": {
+    "application/application.runner.ts": 868,
+    "code/CodeTui.tsx": 1089
+  },
+  "akan.size.function": {
+    "application/application.command.ts#ApplicationCommand.command()": 536,
+    "cloud/cloud.command.ts#CloudCommand.command()": 248,
+    "context/context.runner.ts#ContextRunner.callMcpTool": 155,
+    "primitive/primitive.script.ts#PrimitiveScript.addFieldToSources": 219,
+    "templates/appSample/page/_index.tsx#getContent": 276
+  },
+  "akan.size.class": {
+    "code/CodeTui.tsx#CodeTui": 117
+  }
+}

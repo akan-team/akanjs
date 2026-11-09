@@ -498,6 +498,8 @@ describe("MaintainabilityContract rules", () => {
     expect(MaintainabilityContract.ruleIds).toEqual([
       "akan.size.file",
       "akan.size.component",
+      "akan.size.function",
+      "akan.size.class",
       "akan.store.multi-write",
       "akan.store.root-write-chain",
       "akan.component.write-chain",
@@ -842,5 +844,104 @@ export class CourtEndpoint extends endpoint(srv.court, ({ mutation }) => ({
     });
 
     expect(await contractOf(root).enforce({ fix: false })).toEqual([]);
+  });
+});
+
+describe("MaintainabilityContract packages", () => {
+  const packageOf = (root: string) => new MaintainabilityContract(root, { type: "pkg", name: "@demo/core" });
+  const functionOf = (name: string, lineNum: number) => `export function ${name}() {\n${linesOf(lineNum - 2)}\n}\n`;
+  const classOf = (name: string, memberNum: number) =>
+    `export class ${name} {\n${Array.from({ length: memberNum }, (_, idx) => `  field${idx} = ${idx};`).join("\n")}\n}\n`;
+
+  test("holds a package file to 800 lines, a function to 150 and a class to 60 members, tests and barrels aside", async () => {
+    const root = await makeWorkspace({
+      "pkgs/@demo/core/server/host.ts": `${classOf("Host", 61)}${functionOf("boot", 151)}${linesOf(600)}`,
+      "pkgs/@demo/core/server/atLimit.ts": `${classOf("Small", 60)}${functionOf("fits", 150)}${linesOf(800 - 212)}`,
+      "pkgs/@demo/core/server/host.test.ts": `${functionOf("suite", 900)}`,
+      "pkgs/@demo/core/types.d.ts": linesOf(900),
+      "pkgs/@demo/core/index.ts": Array.from({ length: 801 }, (_, idx) => `export * from "./m${idx}";`).join("\n"),
+    });
+
+    expect(await packageOf(root).measure()).toEqual([
+      {
+        kind: "size",
+        rule: "akan.size.file",
+        key: "server/host.ts",
+        file: "server/host.ts",
+        line: 1,
+        lineCount: 814,
+        maxLines: 800,
+      },
+      {
+        kind: "size",
+        rule: "akan.size.function",
+        key: "server/host.ts#boot",
+        file: "server/host.ts",
+        line: 64,
+        lineCount: 151,
+        maxLines: 150,
+        function: "boot",
+      },
+      {
+        kind: "classSize",
+        rule: "akan.size.class",
+        key: "server/host.ts#Host",
+        file: "server/host.ts",
+        line: 1,
+        owner: "Host",
+        memberCount: 61,
+        maxMembers: 60,
+      },
+    ]);
+  });
+
+  test("reads a package in a repository through git, so ignored output is never measured", async () => {
+    const root = await makeWorkspace({
+      ".gitignore": "**/dist\n",
+      "pkgs/@demo/core/dist/bundle.ts": linesOf(900),
+      "pkgs/@demo/core/server/committed.ts": linesOf(801),
+    });
+    await commitAll(root);
+    await writeText(path.join(root, "pkgs/@demo/core/server/untracked.ts"), linesOf(802));
+
+    expect((await packageOf(root).measure()).map(({ key }) => key)).toEqual([
+      "server/committed.ts",
+      "server/untracked.ts",
+    ]);
+  });
+
+  test("measures nothing in a package git ignores whole, and leaves a package's examples out", async () => {
+    const root = await makeWorkspace({
+      ".gitignore": "pkgs/gen/\n",
+      "pkgs/gen/package.json": "{}\n",
+      "pkgs/gen/big.ts": functionOf("generated", 162),
+      "pkgs/@demo/core/examples/sample/src/selftest.ts": functionOf("runSelftest", 900),
+    });
+    await commitAll(root);
+
+    expect(await new MaintainabilityContract(root, { type: "pkg", name: "gen" }).measure()).toEqual([]);
+    expect(await packageOf(root).measure()).toEqual([]);
+  });
+
+  test("records a package's breaches in its own baseline, which only shrinks from the default branch", async () => {
+    const root = await makeWorkspace({ "pkgs/@demo/core/server/host.ts": functionOf("boot", 200) });
+
+    expect((await packageOf(root).seed()).result).toBe("written");
+    expect(await readFile(path.join(root, "pkgs/@demo/core/akan.baseline.json"), "utf8")).toBe(
+      '{\n  "akan.size.function": {\n    "server/host.ts#boot": 200\n  }\n}\n',
+    );
+    await commitAll(root);
+    await writeText(path.join(root, "pkgs/@demo/core/server/host.ts"), functionOf("boot", 210));
+
+    const contract = packageOf(root);
+    const failures = await contract.enforce({ fix: false });
+
+    expect(failures).toMatchObject([{ rule: "akan.size.function", key: "server/host.ts#boot", recorded: 200 }]);
+    expect(contract.describe(failures)).toBe(
+      "[maintainability] 1 violation(s) in pkgs/@demo/core:\n" +
+        "  pkgs/@demo/core/server/host.ts:1  akan.size.function  function boot has 210 lines, over the 150-line limit, up from 200\n" +
+        "How to fix:\n" +
+        "  function: Split it by family into named functions or a collaborator class, each under the limit, keeping its signature for callers.",
+    );
   });
 });

@@ -84,9 +84,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: bun run buildAkan
-      - run: bun run runAkan test "$PACKAGE"
+      - run: bun run runAkan test "$PACKAGE" --coverage
         env:
           PACKAGE: ${{ matrix.package }}
+      - name: Name the coverage artifact
+        id: coverage
+        if: ${{ !cancelled() }}
+        run: |
+          name="${PACKAGE#@}"
+          echo "name=coverage-${name//\//-}" >> "$GITHUB_OUTPUT"
+        env:
+          PACKAGE: ${{ matrix.package }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: ${{ steps.coverage.outputs.name }}
+          path: local/coverage/
+          if-no-files-found: warn
 
   sync:
     name: Sync is clean

@@ -9,6 +9,7 @@ import {
   createCallRecorder,
   createFakeExecutor,
   createTempApp,
+  createTempPackage,
   tempRoots,
   writeJson,
   writeText,
@@ -816,6 +817,22 @@ describe("WorkspaceRunner", () => {
     await expect(runner.lint(app, workspace as never, { fix: false })).rejects.toThrow(
       "[agentsIndex] The recipe index in apps/stale/AGENTS.md is stale: it differs from the recipe sources. Run `akan sync stale` to regenerate it.",
     );
+  });
+
+  test("holds a package to its structure budget, and reports the breach to verify as an entry", async () => {
+    const runner = new WorkspaceRunner();
+    const { root, pkg } = track(await createTempPackage());
+    const workspace = createFakeExecutor("workspace");
+    workspace.spawn = mock(async () => "");
+    const body = Array.from({ length: 160 }, (_, idx) => `  // line ${idx}`).join("\n");
+    await writeText(`${root}/pkgs/@sample/tool/boot.ts`, `export function boot() {\n${body}\n}\n`);
+
+    await expect(runner.lint(pkg, workspace as never, { fix: false })).rejects.toThrow(
+      "[maintainability] 1 violation(s) in pkgs/@sample/tool:\n  pkgs/@sample/tool/boot.ts:1  akan.size.function  function boot has 162 lines, over the 150-line limit",
+    );
+    expect((await runner.lintGateFailures(pkg, false)).maintainability).toMatchObject([
+      { file: "pkgs/@sample/tool/boot.ts", rule: "akan.size.function", path: null },
+    ]);
   });
 
   test("discovers apps/libs/packages through workspace executors", async () => {

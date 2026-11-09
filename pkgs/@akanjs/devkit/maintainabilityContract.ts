@@ -13,11 +13,12 @@ import { ServiceLoopCallScanner } from "./serviceLoopCallScanner";
 import { SignalMutationIndex } from "./signalMutationIndex";
 import { StoreAccessScanner } from "./storeAccessScanner";
 import { StoreWriteScanner } from "./storeWriteScanner";
+import { StructureScanner } from "./structureScanner";
 import { WritePlacementScanner } from "./writePlacementScanner";
 import { WritingActionIndex } from "./writingActionIndex";
 
 export interface MaintainabilityScope {
-  type: "app" | "lib";
+  type: "app" | "lib" | "pkg";
   name: string;
 }
 
@@ -27,13 +28,26 @@ export type MaintainabilityCommands = { [rule in MaintainabilityRuleId]?: readon
 
 export interface SizeViolation {
   kind: "size";
-  rule: "akan.size.file" | "akan.size.component";
+  rule: "akan.size.file" | "akan.size.component" | "akan.size.function";
   key: string;
   file: string;
   line: number;
   lineCount: number;
   maxLines: number;
   component?: string;
+  function?: string;
+  recorded?: number;
+}
+
+export interface ClassSizeViolation {
+  kind: "classSize";
+  rule: "akan.size.class";
+  key: string;
+  file: string;
+  line: number;
+  owner: string;
+  memberCount: number;
+  maxMembers: number;
   recorded?: number;
 }
 
@@ -96,6 +110,7 @@ export interface BaselineGrowth {
 
 export type MaintainabilityViolation =
   | SizeViolation
+  | ClassSizeViolation
   | MultiWriteViolation
   | StoreAccessViolation
   | WritePlacementViolation
@@ -108,6 +123,8 @@ export class MaintainabilityContract {
   static readonly ruleIds = [
     "akan.size.file",
     "akan.size.component",
+    "akan.size.function",
+    "akan.size.class",
     "akan.store.multi-write",
     "akan.store.root-write-chain",
     "akan.component.write-chain",
@@ -137,6 +154,7 @@ export class MaintainabilityContract {
   }
 
   async measure(): Promise<MaintainabilityViolation[]> {
+    if (this.#scope.type === "pkg") return await this.#measurePackage();
     const [signalFiles, storeFiles, serviceFiles] = await Promise.all([
       this.#reachedSources("lib/**/*.signal.ts"),
       this.#reachedSources("lib/**/*.store.ts"),
@@ -204,6 +222,66 @@ export class MaintainabilityContract {
 
   describe(failures: MaintainabilityFailure[], commands?: MaintainabilityCommands) {
     return MaintainabilityReport.describe(this.sysPath, failures, commands);
+  }
+
+  async #measurePackage() {
+    const files = (await this.#packageFiles()).filter(MaintainabilityLimits.isPackageSource);
+    const violations = await Promise.all(
+      files.map(async (file) => {
+        const workspaceFile = `${this.sysPath}/${file}`;
+        const content = await readFile(path.join(this.#workspaceRoot, workspaceFile), "utf8");
+        return MaintainabilityContract.#measurePackageFile(file, this.#sourceOf(workspaceFile, content).sourceFile);
+      }),
+    );
+    return violations.flat();
+  }
+
+  static #measurePackageFile(file: string, sourceFile: ts.SourceFile) {
+    const violations: MaintainabilityViolation[] = [];
+    const maxLines = MaintainabilityLimits.packageFileMaxLines;
+    const lineCount = MaintainabilityLimits.lineCountOf(sourceFile.text);
+    if (lineCount > maxLines && !MaintainabilityLimits.isReexportBarrel(file, sourceFile.text))
+      violations.push({ kind: "size", rule: "akan.size.file", key: file, file, line: 1, lineCount, maxLines });
+    const { functions, classes } = new StructureScanner().measure(sourceFile);
+    for (const { name, line, lineCount } of functions)
+      if (lineCount > MaintainabilityLimits.functionMaxLines)
+        violations.push({
+          kind: "size",
+          rule: "akan.size.function",
+          key: `${file}#${name}`,
+          file,
+          line,
+          lineCount,
+          maxLines: MaintainabilityLimits.functionMaxLines,
+          function: name,
+        });
+    for (const { name, line, memberCount } of classes)
+      if (memberCount > MaintainabilityLimits.classMaxMembers)
+        violations.push({
+          kind: "classSize",
+          rule: "akan.size.class",
+          key: `${file}#${name}`,
+          file,
+          line,
+          owner: name,
+          memberCount,
+          maxMembers: MaintainabilityLimits.classMaxMembers,
+        });
+    return violations;
+  }
+
+  //? Git lists what the package holds without its ignored build output, caches and sample artifacts.
+  async #packageFiles() {
+    const listed = await this.#git(["ls-files", "-z", "-co", "--exclude-standard", "--", `./${this.sysPath}`]);
+    if (listed === null)
+      return await MaintainabilityContract.#filesUnder(path.join(this.#workspaceRoot, this.sysPath), "**/*.{ts,tsx}");
+    const prefix = `${this.sysPath}/`;
+    return listed
+      .split("\0")
+      .filter((file) => file.startsWith(prefix) && existsSync(path.join(this.#workspaceRoot, file)))
+      .map((file) => file.slice(prefix.length))
+      .filter((file) => !file.includes("node_modules/"))
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
 
   async #measureFile(

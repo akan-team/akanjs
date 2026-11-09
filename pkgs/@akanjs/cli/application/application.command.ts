@@ -255,12 +255,13 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       nullable: true,
     })
     .option("write", Boolean, writeOption)
-    .exec(async function (exec, files, write) {
+    .option("coverage", Boolean, { desc: "measure coverage; lcov goes under local/coverage/<target>", default: false })
+    .exec(async function (exec, files, write, coverage) {
       const testFiles = (files ?? "")
         .split(",")
         .map((file) => file.trim())
         .filter(Boolean);
-      await this.applicationScript.test(exec, { write, files: testFiles });
+      await this.applicationScript.test(exec, { write, files: testFiles, coverage });
     }),
   buildIos: target({ short: true, desc: "Build the iOS app on the native runtime" })
     .with(App)

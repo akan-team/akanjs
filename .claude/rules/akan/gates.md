@@ -26,6 +26,8 @@ paths:
   - `akan.size.file`: a `Zone` / `Util` / `Template` / `Unit` / `View`, a `*.store.ts`, or a `ui/` / `webkit/` file
     over 400 lines; a service or document over 500; an abstract over 300. `akan.size.component`: a component or hook
     over 250. `akan.component.store-access`: a component or hook reaching `st` more than 16 times (form setters aside).
+  - A workspace package (`pkgs/<pkg>`): a file over 800 lines, a function over 150 (`akan.size.function`), a class
+    over 60 members (`akan.size.class`), against the package's own `akan.baseline.json`.
   - `akan.write.placement`: a server write leaves the browser only through a store action, started by a module
     component — no `fetch.<mutation>` outside a `*.store.ts`, and no writing `st.do.*` in `ui/` or `webkit/`, which
     take the write as an `onX` prop or hook argument.

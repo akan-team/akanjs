@@ -247,13 +247,16 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     }
   }
 
-  async test(exec: Exec, { write = true, files = [] }: { write?: boolean; files?: string[] } = {}) {
+  async test(
+    exec: Exec,
+    { write = true, files = [], coverage = false }: { write?: boolean; files?: string[]; coverage?: boolean } = {},
+  ) {
     const testPaths = this.applicationRunner.resolveTestPaths(exec, files);
     if (exec instanceof LibExecutor) {
       if (write) await this.libraryScript.syncLibrary(exec);
       else await exec.scan({ write: false });
       exec.spinning(`Preparing ${exec.name}...`).succeed(`${exec.name} prepared`);
-      await this.applicationRunner.test(exec, testPaths);
+      await this.applicationRunner.test(exec, testPaths, { coverage });
       return;
     }
 
@@ -266,7 +269,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       spinner.fail(`${exec.name} prepare failed`);
       throw error;
     }
-    await this.applicationRunner.test(exec, testPaths);
+    await this.applicationRunner.test(exec, testPaths, { coverage });
   }
 
   async start(

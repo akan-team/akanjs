@@ -4,7 +4,7 @@ import path from "node:path";
 import { collectScopeRecipeSources, extractAgentBlock, renderScopeAgentBlock } from "@akanjs/devkit/agentsIndex";
 import { biomeVersion } from "@akanjs/devkit/biomeBase";
 import { type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { LibExecutor, SysExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { LibExecutor, PkgExecutor, SysExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { FileSys } from "@akanjs/devkit/fileSys";
 import {
   countBlocking,
@@ -321,18 +321,20 @@ export class WorkspaceRunner extends runner("workspace") {
       () => this.#enforceAgentsIndex(exec),
     ])
       await gate().catch((error: unknown) => messages.push(error instanceof Error ? error.message : String(error)));
-    if (!(exec instanceof SysExecutor)) return { messages, maintainability: [] };
+    if (!(exec instanceof SysExecutor) && !(exec instanceof PkgExecutor)) return { messages, maintainability: [] };
     const contract = await this.maintainabilityContractOf(exec);
     const failures = await contract.enforce({ fix });
     const maintainability = MaintainabilityReport.entriesOf(
       contract.sysPath,
       failures,
-      new MaintainabilityPaths().commandsOf(exec.name),
+      WorkspaceRunner.#maintainabilityCommandsOf(exec),
     );
     return { messages, maintainability };
   }
 
-  async maintainabilityContractOf(exec: SysExecutor) {
+  async maintainabilityContractOf(exec: SysExecutor | PkgExecutor) {
+    if (exec instanceof PkgExecutor)
+      return new MaintainabilityContract(exec.workspace.workspaceRoot, { type: "pkg", name: exec.name });
     const libNames = new Set<string>();
     const visit = async (sys: SysExecutor) => {
       for (const libName of (await sys.scan({ write: false })).getScanResult().libDeps) {
@@ -378,10 +380,15 @@ export class WorkspaceRunner extends runner("workspace") {
 
   // A breach fails unless akan.baseline.json records it, and that file only shrinks from the default branch's copy.
   async #enforceMaintainability(exec: Exec, fix: boolean) {
-    if (!(exec instanceof SysExecutor)) return;
+    if (!(exec instanceof SysExecutor) && !(exec instanceof PkgExecutor)) return;
     const contract = await this.maintainabilityContractOf(exec);
     const failures = await contract.enforce({ fix });
-    if (failures.length) throw new Error(contract.describe(failures, new MaintainabilityPaths().commandsOf(exec.name)));
+    if (failures.length) throw new Error(contract.describe(failures, WorkspaceRunner.#maintainabilityCommandsOf(exec)));
+  }
+
+  //? The workflows that replace a breach scaffold app and lib modules; none splits a package's code.
+  static #maintainabilityCommandsOf(exec: SysExecutor | PkgExecutor) {
+    return exec instanceof PkgExecutor ? {} : new MaintainabilityPaths().commandsOf(exec.name);
   }
 
   // A look with nothing to pick (no 2+ value axis, no boolean flag) is not a recipe, only an indirection.

@@ -185,6 +185,7 @@ describe("ApplicationCommand", () => {
       [0, "Exec"],
       [1, "Argument"],
       [2, "Option"],
+      [3, "Option"],
     ]);
 
     const command = CommandContainer.get(ApplicationCommand);
@@ -193,11 +194,11 @@ describe("ApplicationCommand", () => {
       calls.push(args);
     };
     const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "test")?.handler;
-    await handler?.call(command, { name: "demo" }, "lib/a/a.test.ts, lib/b/b.test.ts,", false);
-    await handler?.call(command, { name: "demo" }, null, true);
+    await handler?.call(command, { name: "demo" }, "lib/a/a.test.ts, lib/b/b.test.ts,", false, false);
+    await handler?.call(command, { name: "demo" }, null, true, true);
     expect(calls).toEqual([
-      [{ name: "demo" }, { write: false, files: ["lib/a/a.test.ts", "lib/b/b.test.ts"] }],
-      [{ name: "demo" }, { write: true, files: [] }],
+      [{ name: "demo" }, { write: false, files: ["lib/a/a.test.ts", "lib/b/b.test.ts"], coverage: false }],
+      [{ name: "demo" }, { write: true, files: [], coverage: true }],
     ]);
   });
 
@@ -1293,6 +1294,29 @@ describe("ApplicationRunner", () => {
 
   test("runs bun test through the resolved executor", runsPackageTests);
   test("runs signal target tests with preload resolved from installed akanjs", runsSignalTargetTests);
+
+  test("with coverage, writes lcov under local/coverage at the target's own path, before the named files", async () => {
+    const { root, pkg } = track(await createTempPackage());
+    const runner = new ApplicationRunner();
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+
+    await runner.test(pkg, ["./tool.test.ts"], { coverage: true });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "bun",
+      [
+        "test",
+        "--isolate",
+        "--coverage",
+        "--coverage-reporter=text",
+        "--coverage-reporter=lcov",
+        `--coverage-dir=${path.join(root, "local", "coverage", "pkgs", "@sample", "tool")}`,
+        "./tool.test.ts",
+      ],
+      { stdio: "inherit" },
+    );
+  });
 
   test("names test files to bun as paths inside the target, from the target or the workspace root", async () => {
     const { root, app } = track(await createTempApp("demo"));
