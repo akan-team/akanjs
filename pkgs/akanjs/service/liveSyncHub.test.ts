@@ -143,6 +143,19 @@ describe("LiveSyncHub membership", () => {
     expect(hub.roomCount).toBe(0);
   });
 
+  test("announces the models it holds rooms for when one gains its first room or loses its last", () => {
+    const hub = new LiveSyncHub();
+    const announced: string[][] = [];
+    hub.onModelsChange((models) => announced.push(models));
+    hub.join({ refName: "task", roomId: "a", query: { org: "o1" }, fallback: null });
+    hub.join({ refName: "task", roomId: "b", query: { org: "o2" }, fallback: null });
+    hub.join({ refName: "story", roomId: "c", query: {}, fallback: null });
+    hub.leave("a");
+    hub.leave("b");
+    hub.leave("c");
+    expect(announced).toEqual([["task"], ["task", "story"], ["story"], []]);
+  });
+
   test("a room is shared only with a subscriber of the same query, whatever its key order", () => {
     const hub = new LiveSyncHub();
     hub.join({ refName: "task", roomId: "inOrg", query: { org: "o1", status: "draft" }, fallback: null });

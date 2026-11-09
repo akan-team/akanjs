@@ -62,6 +62,7 @@ export class LiveSyncHub {
   readonly #rooms = new Map<string, LiveRoom>();
   readonly #models = new Map<string, ModelRooms>();
   #joins = 0;
+  #onModels: ((models: string[]) => void) | null = null;
 
   get roomCount() {
     return this.#rooms.size;
@@ -69,6 +70,14 @@ export class LiveSyncHub {
 
   roomCountOf(refName: string) {
     return this.#models.get(refName)?.rooms.size ?? 0;
+  }
+
+  models(): string[] {
+    return [...this.#models.keys()];
+  }
+
+  onModelsChange(listener: (models: string[]) => void) {
+    this.#onModels = listener;
   }
 
   /** Idempotent: a second socket subscribing to the same room shares the one evaluation. */
@@ -90,7 +99,8 @@ export class LiveSyncHub {
             `Declare .live({ fallback: "invalidate" }) on the slice to fall back to refetching.`,
         );
     }
-    const model = this.#models.get(refName) ?? {
+    const known = this.#models.get(refName);
+    const model = known ?? {
       rooms: new Set<LiveRoom>(),
       invalidating: new Set<LiveRoom>(),
       scanned: new Set<LiveRoom>(),
@@ -119,6 +129,7 @@ export class LiveSyncHub {
       model.index.set(room.filed.path, byKey);
       for (const key of room.filed.keys) byKey.set(key, (byKey.get(key) ?? new Set<LiveRoom>()).add(room));
     }
+    if (!known) this.#onModels?.(this.models());
     return room;
   }
 
@@ -144,7 +155,9 @@ export class LiveSyncHub {
       if (!filed?.size) byKey?.delete(key);
     }
     if (room.filed && !byKey?.size) model.index.delete(room.filed.path);
-    if (!model.rooms.size) this.#models.delete(room.refName);
+    if (model.rooms.size) return;
+    this.#models.delete(room.refName);
+    this.#onModels?.(this.models());
   }
 
   /** `previous` is absent on a create — no room held the document before. */
