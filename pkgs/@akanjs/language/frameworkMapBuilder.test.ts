@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import ts from "typescript";
+import type { FrameworkChannelSpec } from "./frameworkChannelReader";
 import { FrameworkMapBuilder } from "./frameworkMapBuilder";
 
 const files: Record<string, string> = {
@@ -98,7 +99,9 @@ export class Host {}
 `,
 };
 
-const build = (channels = [{ file: "pkgs/akanjs/server/ipcTypes.ts", union: "Ipc", label: "gateway ⇄ child" }]) =>
+const build = (
+  channels: FrameworkChannelSpec[] = [{ file: "pkgs/akanjs/server/ipcTypes.ts", union: "Ipc", label: "gateway ⇄ child" }],
+) =>
   new FrameworkMapBuilder({
     ts,
     packages: [
