@@ -531,7 +531,6 @@ export class FetchClient {
           const roomArgLength = roomArgs.length;
           const serializerMap = this.#makeArgSerializer(endpoint.args);
           const parseReturn = this.#makeReturnParser(endpoint.returns);
-          const wrappedListeners = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
           return (...argData: unknown[]) => {
             this.#refuseInApp(key);
             //? A bridged tab has no socket to subscribe on: the room never fires, and a queued frame would never leave.
@@ -544,17 +543,10 @@ export class FetchClient {
               const parsedReturn = parseReturn(data, { crystalize: fetchPolicy?.crystalize ?? true });
               handleEvent(parsedReturn);
             };
-            wrappedListeners.set(handleEvent, wrapped);
             const ws = this.#resolveWs(fetchPolicy?.origin);
             const handleResync = fetchPolicy?.onResync;
             ws.subscribe({ key, data, handleEvent: wrapped, handleResync });
-            return () =>
-              ws.unsubscribe({
-                key,
-                data,
-                handleEvent: wrappedListeners.get(handleEvent) ?? handleEvent,
-                handleResync,
-              });
+            return () => ws.unsubscribe({ key, data, handleEvent: wrapped, handleResync });
           };
         });
         return;
@@ -576,16 +568,14 @@ export class FetchClient {
         });
         this.#setHandlerFactory(endpointNames(key).listen, () => {
           const parseReturn = this.#makeReturnParser(endpoint.returns);
-          const wrappedListeners = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
           return ((handleEvent: (data: unknown) => void, fetchPolicy: FetchPolicy = {}) => {
             const wrapped = (data: unknown) => {
               const parsedReturn = parseReturn(data, { crystalize: fetchPolicy?.crystalize ?? true });
               handleEvent(parsedReturn);
             };
-            wrappedListeners.set(handleEvent, wrapped);
             const ws = this.#resolveWs(fetchPolicy.origin);
             ws.on(key, wrapped);
-            return () => ws.off(key, wrappedListeners.get(handleEvent) ?? handleEvent);
+            return () => ws.off(key, wrapped);
           }) as FetchHandler;
         });
         return;
