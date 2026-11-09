@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Binary, type Dayjs, dayjs, INTERNAL_META, Int } from "akanjs/base";
+import { AkanError, Binary, type Dayjs, dayjs, INTERNAL_META, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { Err } from "akanjs/dictionary";
 import { NoDocumentError } from "akanjs/document";
@@ -83,6 +83,8 @@ class IdempotencyTestAccountInternal {
           field: "memberSince",
         });
       if (account.name === "vanished") throw new NoDocumentError("No Document (idempotencyTestAccount): referrer");
+      if (account.name === "queued")
+        throw new AkanError("queueFull", "queue jobs:tenant-7 is full", { statusCode: 503 });
       return `${account.greeting()}, member since ${account.joinedAt.format("YYYY-MM-DD")}`;
     }),
   };
@@ -482,6 +484,23 @@ describe("EndpointIdempotency", () => {
     expect(await repeat.json()).toMatchObject({ error: "base.error.documentNotFound", statusCode: 404 });
     expect(runs).toBe(1);
     expect(Err.is(new NoDocumentError("No Document (item): x"), "base.error.documentNotFound")).toBe(true);
+  });
+
+  test("replays a coded failure the first run answered after its handler ran with its status and code", async () => {
+    let runs = 0;
+    const info = buildEndpoint.mutation(IdempotencyTestAccount, { guards: [Public] }).exec(() => {
+      runs++;
+      return accountOf("queued");
+    });
+    const cache = new ExpiringCache();
+
+    const first = await callWith(info, cache, { headers: device, live: accountLive });
+    const repeat = await callWith(info, cache, { headers: device, live: accountLive });
+    expect([first.status, repeat.status]).toEqual([503, 503]);
+    expect(await first.json()).toMatchObject({ code: "queueFull", statusCode: 503 });
+    expect(await repeat.json()).toMatchObject({ error: "Service Unavailable", code: "queueFull", statusCode: 503 });
+    expect(runs).toBe(1);
+    expect(cache.values.join("\n")).not.toContain("tenant-7");
   });
 
   test("never deduplicates a call through MCP, whose headers belong to the JSON-RPC request", async () => {

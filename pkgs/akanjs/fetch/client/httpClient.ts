@@ -1,4 +1,4 @@
-import { Backoff, isRecord, Logger, type RetryPolicy } from "akanjs/common";
+import { AbortSignals, Backoff, isRecord, Logger, type RetryPolicy } from "akanjs/common";
 import type { HttpMutationMethod, SerializedArg } from "akanjs/signal";
 import {
   type ErrorConstructor,
@@ -19,6 +19,7 @@ interface FetchOptions extends Pick<HttpClientOptions, "headers" | "timeout"> {
   /** Over the client's default; `false` sends once. */
   retry?: RetryPolicy | false;
   idempotencyKey?: string;
+  signal?: AbortSignal;
 }
 
 const jsonContentType = /^application\/(?:[\w.+-]+\+)?json\b/i;
@@ -144,15 +145,38 @@ export class HttpClient {
     const policy = retry && !(init.body instanceof FormData) ? retry : null;
     //? The budget is the call's, not each try's: every try and every wait between them share one deadline.
     const deadline = this.#deadlineOf(init, options);
+    const { signal } = options;
     for (let attempt = 1; ; attempt++) {
       try {
-        return await this.#requestOnce<Returns>(url, sent, deadline);
+        return await this.#requestOnce<Returns>(url, sent, deadline, signal);
       } catch (error) {
+        if (signal?.aborted) throw this.abortError(signal);
         const wait = policy ? HttpClient.retryWait(error, attempt, policy) : null;
         if (wait === null || Date.now() + wait >= deadline) throw error;
-        await new Promise((resolve) => setTimeout(resolve, wait));
+        await this.#wait(wait, signal);
       }
     }
+  }
+
+  #wait(ms: number, signal?: AbortSignal) {
+    return new Promise<void>((resolve, reject) => {
+      const abort = () => {
+        clearTimeout(timer);
+        if (signal) reject(this.abortError(signal));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      }, ms);
+      signal?.addEventListener("abort", abort, { once: true });
+    });
+  }
+
+  abortError(signal: AbortSignal): unknown {
+    const reason: unknown = signal.reason;
+    if (reason instanceof Error && reason.name === "TimeoutError")
+      return this.#restoreError({ error: transportErrorKeyMap[408], data: { status: 408 } }, 408);
+    return reason;
   }
 
   //? `crypto.randomUUID` exists only in a secure context, which a dev server at http://192.168.x.x is not.
@@ -174,18 +198,25 @@ export class HttpClient {
     return typeof seconds === "number" && seconds > 0 ? Math.max(wait, seconds * 1000) : wait;
   }
 
-  async #requestOnce<Returns>(url: string, init: RequestInit, deadline: number): Promise<Returns> {
-    const res = await this.#fetch(url, this.#withDeadline(init, deadline));
-    const body = await this.#readBody(url, res);
-    if (res.ok) return body as Returns;
-    //? A gateway's own JSON (Kong's `{"message":…}`) names no key of ours: it is restored like its HTML page.
-    if (res.status in transportErrorKeyMap && !HttpClient.#namesErrorKey(body))
-      throw this.#transportError(url, res, JSON.stringify(body));
-    throw this.#restoreError(body, res.status);
+  async #requestOnce<Returns>(url: string, init: RequestInit, deadline: number, signal?: AbortSignal) {
+    if (signal?.aborted) throw this.abortError(signal);
+    const joined = this.#withDeadline(init, deadline, signal);
+    try {
+      const res = await this.#fetch(url, joined.init, signal);
+      const body = await this.#readBody(url, res, signal);
+      if (res.ok) return body as Returns;
+      //? A gateway's own JSON (Kong's `{"message":…}`) names no key or code of ours: it is restored like its HTML page.
+      if (res.status in transportErrorKeyMap && !HttpClient.#isServerAnswer(body, res.status))
+        throw this.#transportError(url, res, JSON.stringify(body));
+      throw this.#restoreError(body, res.status);
+    } finally {
+      joined.dispose();
+    }
   }
 
-  static #namesErrorKey(body: unknown) {
-    return isRecord(body) && typeof body.error === "string" && dictionaryErrorKey.test(body.error);
+  static #isServerAnswer(body: unknown, status: number) {
+    if (!isRecord(body) || typeof body.error !== "string") return false;
+    return dictionaryErrorKey.test(body.error) || (typeof body.code === "string" && body.statusCode === status);
   }
 
   //* An upload gets no deadline: a large file on a slow uplink is a long request that is still working.
@@ -195,16 +226,19 @@ export class HttpClient {
     return Date.now() + timeout;
   }
 
-  #withDeadline(init: RequestInit, deadline: number): RequestInit {
-    if (deadline === Number.POSITIVE_INFINITY) return init;
-    return { ...init, signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) };
+  #withDeadline(init: RequestInit, deadline: number, signal?: AbortSignal) {
+    const timeout =
+      deadline === Number.POSITIVE_INFINITY ? undefined : AbortSignal.timeout(Math.max(1, deadline - Date.now()));
+    const joined = AbortSignals.join([signal, timeout]);
+    return { init: joined.signal ? { ...init, signal: joined.signal } : init, dispose: joined.dispose };
   }
 
   //* `fetch` rejects only when no response arrived: the server is unreachable, not `TypeError: Failed to fetch`.
-  async #fetch(url: string, init: RequestInit) {
+  async #fetch(url: string, init: RequestInit, signal?: AbortSignal) {
     try {
       return await fetch(url, init);
     } catch (error) {
+      if (signal?.aborted) throw this.abortError(signal);
       // A caller's own abort stays an `AbortError`; `AbortSignal.timeout`'s `TimeoutError` is this client giving up.
       if (error instanceof Error && error.name === "TimeoutError")
         throw this.#restoreError({ error: transportErrorKeyMap[408], data: { status: 408 } }, 408);
@@ -214,11 +248,12 @@ export class HttpClient {
   }
 
   //* A proxy answers a restarting upstream with its own page (nginx HTML, the gateway's plain-text 503), not our JSON.
-  async #readBody(url: string, res: Response) {
+  async #readBody(url: string, res: Response, signal?: AbortSignal) {
     if (jsonContentType.test(res.headers.get("content-type") ?? "")) {
       try {
         return (await res.json()) as unknown;
       } catch (error) {
+        if (signal?.aborted) throw this.abortError(signal);
         throw this.#transportError(url, res, String(error));
       }
     }

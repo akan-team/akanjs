@@ -1,6 +1,6 @@
 import { ACTION_META, ACTION_OWNER_META, STATE_DERIVED_META, STATE_INIT_META } from "akanjs/base";
 import { isNativeApp, Translator } from "akanjs/client";
-import { type DynamicRecord, isRecord, Logger, parseAkanI18nEnv, stateSetterName } from "akanjs/common";
+import { AbortSignals, type DynamicRecord, isRecord, Logger, parseAkanI18nEnv, stateSetterName } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import type { SerializedArg } from "akanjs/signal";
 import { enableMapSet, produce } from "immer";
@@ -14,7 +14,7 @@ import type { RootStoreCls } from "./rootStore";
 import { sliceKeysOf } from "./sliceKeys";
 import type { SliceActionKey, SliceActionRole, SliceStateRole } from "./sliceRole";
 import type { DraftState, SliceStateKey } from "./state";
-import { evaluateInitializers, type SearchParamsState, type StateDerivedMeta } from "./stateBuilder";
+import { type DraftMeta, evaluateInitializers, type SearchParamsState, type StateDerivedMeta } from "./stateBuilder";
 import type { StoreUseOptions } from "./types";
 
 enableMapSet();
@@ -59,24 +59,50 @@ export class StoreInstance {
   #serverState: StoreStateRecord = {};
   #listeners = new Set<() => void>();
   #derivedMeta: StateDerivedMeta = { drafts: {}, persistSession: {}, search: {}, computed: {}, derivedKeys: new Set() };
+  #computedByDep = new Map<string, string[]>();
+  #computedOrder = new Map<string, number>();
+  #draftByKey = new Map<string, DraftMeta>();
   #draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #draftFlushBound = false;
 
   get = (): StoreStateRecord => this.#state;
 
   set = (stateOrUpdater: StoreStateRecord | ((state: StoreStateRecord) => void)) => {
-    const prev = this.#state;
-    if (typeof stateOrUpdater === "function") {
-      this.#state = produce(this.#state, stateOrUpdater);
-    } else {
-      this.#state = this.#dropReplacedUploads({ ...this.#state, ...stateOrUpdater }, stateOrUpdater);
-    }
     this.#assertNoDerivedMutation(stateOrUpdater);
-    this.#state = this.#materializeDerived(this.#state, prev);
-    this.#syncPersistSession(prev, this.#state);
-    this.#syncDrafts(prev, this.#state);
+    const prev = this.#state;
+    const [next, changedKeys] =
+      typeof stateOrUpdater === "function"
+        ? StoreInstance.#produce(prev, stateOrUpdater)
+        : this.#patch(prev, stateOrUpdater);
+    this.#derive(next, changedKeys);
+    this.#state = next;
+    this.#syncPersistSession(next, changedKeys);
+    this.#syncDrafts(prev, next, changedKeys);
     this.#notify();
   };
+
+  static #produce(prev: StoreStateRecord, updater: (state: StoreStateRecord) => void) {
+    const produced = produce(prev, updater);
+    const changedKeys = new Set<string>();
+    for (const key of Object.keys(produced)) if (!Object.is(produced[key], prev[key])) changedKeys.add(key);
+    for (const key of Object.keys(prev)) if (!(key in produced)) changedKeys.add(key);
+    return [{ ...produced }, changedKeys] as const;
+  }
+
+  #patch(prev: StoreStateRecord, patch: StoreStateRecord) {
+    const next = { ...prev, ...patch };
+    const changedKeys = new Set<string>();
+    for (const key of Object.keys(patch)) {
+      if (!Object.is(prev[key], patch[key])) changedKeys.add(key);
+      const draft = this.#draftByKey.get(key);
+      if (draft?.formKey !== key || draft.uploadingKey in patch) continue;
+      const uploading = prev[draft.uploadingKey] as object | undefined;
+      if (!uploading || !Object.keys(uploading).length) continue;
+      next[draft.uploadingKey] = {};
+      changedKeys.add(draft.uploadingKey);
+    }
+    return [next, changedKeys] as const;
+  }
 
   #pick = (...fields: string[]) => {
     const ret = {} as StoreStateRecord;
@@ -382,7 +408,7 @@ export class StoreInstance {
           Logger.verbose(`=> ${k} action dispatched (${Date.now() - start}ms)`);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          if (silent) Logger.verbose(`${k} action failed silently: ${message}`);
+          if (silent || AbortSignals.isAbort(error)) Logger.verbose(`${k} action failed silently: ${message}`);
           else {
             this.#showActionErrorMessage(k, error);
             Logger.error(`${k} action error return: ${message}`);
@@ -482,6 +508,17 @@ export class StoreInstance {
     Object.assign(this.#derivedMeta.search, meta.search);
     Object.assign(this.#derivedMeta.computed, meta.computed);
     for (const key of meta.derivedKeys) this.#derivedMeta.derivedKeys.add(key);
+    this.#computedByDep.clear();
+    this.#computedOrder.clear();
+    for (const [order, { key, deps }] of Object.values(this.#derivedMeta.computed).entries()) {
+      this.#computedOrder.set(key, order);
+      for (const dep of deps) this.#computedByDep.set(dep, [...(this.#computedByDep.get(dep) ?? []), key]);
+    }
+    this.#draftByKey.clear();
+    for (const draft of Object.values(this.#derivedMeta.drafts)) {
+      this.#draftByKey.set(draft.formKey, draft);
+      this.#draftByKey.set(draft.draftKey, draft);
+    }
   }
 
   #hydratePersistSession(state: StoreStateRecord) {
@@ -502,9 +539,10 @@ export class StoreInstance {
     return next;
   }
 
-  #syncPersistSession(prev: StoreStateRecord, next: StoreStateRecord) {
-    for (const [key, meta] of Object.entries(this.#derivedMeta.persistSession)) {
-      if (Object.is(prev[key], next[key])) continue;
+  #syncPersistSession(next: StoreStateRecord, changedKeys: ReadonlySet<string>) {
+    for (const key of changedKeys) {
+      if (!Object.hasOwn(this.#derivedMeta.persistSession, key)) continue;
+      const meta = this.#derivedMeta.persistSession[key];
       const storage = this.#getStorage(meta.kind);
       if (!storage) continue;
       try {
@@ -515,19 +553,15 @@ export class StoreInstance {
     }
   }
 
-  #dropReplacedUploads(state: StoreStateRecord, patch: StoreStateRecord) {
-    for (const meta of Object.values(this.#derivedMeta.drafts)) {
-      if (!(meta.formKey in patch) || meta.uploadingKey in patch) continue;
-      const uploading = state[meta.uploadingKey] as object | undefined;
-      if (uploading && Object.keys(uploading).length) state = { ...state, [meta.uploadingKey]: {} };
-    }
-    return state;
-  }
-
   // The debounce lives in the store, not a component, so an editor unmounting mid-window still lands its last write.
-  #syncDrafts(prev: StoreStateRecord, next: StoreStateRecord) {
+  #syncDrafts(prev: StoreStateRecord, next: StoreStateRecord, changedKeys: ReadonlySet<string>) {
     if (typeof window === "undefined") return;
-    for (const meta of Object.values(this.#derivedMeta.drafts)) {
+    const metas = new Set<DraftMeta>();
+    for (const key of changedKeys) {
+      const meta = this.#draftByKey.get(key);
+      if (meta) metas.add(meta);
+    }
+    for (const meta of metas) {
       const draft = next[meta.draftKey] as DraftState | null;
       if (!draft?.key) {
         this.#cancelDraftTimer(meta.formKey);
@@ -618,23 +652,56 @@ export class StoreInstance {
   #materializeDerived(next: StoreStateRecord, prev: StoreStateRecord, server = typeof window === "undefined") {
     const materialized = { ...next };
     const changedKeys = new Set(Object.keys(materialized).filter((key) => !Object.is(materialized[key], prev[key])));
-    const searchParams = (materialized.searchParams ?? {}) as SearchParamsState;
-    for (const [key, meta] of Object.entries(this.#derivedMeta.search)) {
-      const value = server ? meta.getDefault() : meta.parseSearch(searchParams);
-      if (!Object.is(materialized[key], value)) {
-        materialized[key] = value;
-        changedKeys.add(key);
-      }
-    }
-    for (const [key, meta] of Object.entries(this.#derivedMeta.computed)) {
-      if (key in materialized && !meta.deps.some((dep) => changedKeys.has(dep))) continue;
-      const value = meta.selector(...meta.deps.map((dep) => materialized[dep]));
-      if (!(key in materialized) || !meta.equals(materialized[key], value)) {
-        materialized[key] = value;
-        changedKeys.add(key);
-      }
-    }
+    this.#derive(materialized, changedKeys, { server, initial: true });
     return materialized;
+  }
+
+  #derive(
+    state: StoreStateRecord,
+    changedKeys: Set<string>,
+    { server = typeof window === "undefined", initial = false }: { server?: boolean; initial?: boolean } = {},
+  ) {
+    const { search, computed } = this.#derivedMeta;
+    const searchKeys =
+      initial || changedKeys.has("searchParams")
+        ? Object.keys(search)
+        : [...changedKeys].filter((key) => Object.hasOwn(search, key));
+    for (const key of searchKeys) this.#writeSearch(state, key, changedKeys, server);
+    const pending = new Set(initial ? Object.keys(computed).filter((key) => !(key in state)) : []);
+    for (const key of changedKeys) {
+      if (Object.hasOwn(computed, key)) pending.add(key);
+      for (const dependent of this.#computedByDep.get(key) ?? []) pending.add(dependent);
+    }
+    while (pending.size) {
+      const key = this.#firstDeclared(pending);
+      pending.delete(key);
+      if (!this.#writeComputed(state, key, changedKeys)) continue;
+      for (const dependent of this.#computedByDep.get(key) ?? []) pending.add(dependent);
+    }
+  }
+
+  #firstDeclared(keys: Set<string>) {
+    const orderOf = (key: string) => this.#computedOrder.get(key) ?? 0;
+    let first = keys.values().next().value as string;
+    for (const key of keys) if (orderOf(key) < orderOf(first)) first = key;
+    return first;
+  }
+
+  #writeSearch(state: StoreStateRecord, key: string, changedKeys: Set<string>, server: boolean) {
+    const meta = this.#derivedMeta.search[key];
+    const value = server ? meta.getDefault() : meta.parseSearch((state.searchParams ?? {}) as SearchParamsState);
+    if (Object.is(state[key], value)) return;
+    state[key] = value;
+    changedKeys.add(key);
+  }
+
+  #writeComputed(state: StoreStateRecord, key: string, changedKeys: Set<string>) {
+    const meta = this.#derivedMeta.computed[key];
+    const value = meta.selector(...meta.deps.map((dep) => state[dep]));
+    if (key in state && meta.equals(state[key], value)) return false;
+    state[key] = value;
+    changedKeys.add(key);
+    return true;
   }
 
   #assertNoDerivedMutation(stateOrUpdater: unknown) {
