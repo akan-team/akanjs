@@ -82,7 +82,7 @@ Two more narrow who reaches the server, for one only its own computer calls, suc
 
 - AKAN_LISTEN_HOST (string, default every interface): The one address the server binds, such as 127.0.0.1.
 
-- AKAN_ALLOWED_HOSTS (host:port, …): The Host headers it answers; any other request, socket upgrade and preflight included, gets 403.
+- AKAN_ALLOWED_HOSTS (host:port, …): The Host headers it answers; any other request, socket upgrade and preflight included, gets 403. Unset, a dev server answers localhost, IP addresses and the app's own hosts, and a deployed one every Host; set, the list replaces either.
 
 A server that renders pages calls itself at localhost:<PORT>, so list that in AKAN_ALLOWED_HOSTS too, and keep AKAN_LISTEN_HOST on an address localhost reaches.
 

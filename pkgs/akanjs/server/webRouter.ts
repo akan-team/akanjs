@@ -118,8 +118,13 @@ export function createRscRedirectResponse(
 }
 
 // A render's redirect follows the request's cookies, so no cache between here and the browser may keep it.
-function createDocumentRedirectResponse(location: URL, status: RscRedirectStatus): Response {
-  return new Response(null, { status, headers: { Location: location.href, "Cache-Control": "no-store" } });
+//? `req.url` names the host this server was dialed as, not the one a tunnel or proxy caller used, so a same-origin
+//? target goes out relative. A path starting `//` stays absolute: relative, a browser would read it as a host.
+function createDocumentRedirectResponse(location: string, requestUrl: URL, status: RscRedirectStatus): Response {
+  const target = new URL(location, requestUrl.origin);
+  const sameOrigin = target.origin === requestUrl.origin && !target.pathname.startsWith("//");
+  const href = sameOrigin ? `${target.pathname}${target.search}${target.hash}` : target.href;
+  return new Response(null, { status, headers: { Location: href, "Cache-Control": "no-store" } });
 }
 
 export function createRscStreamResponse(stream: BodyInit, status = 200): Response {
@@ -707,7 +712,7 @@ export class WebRouter {
             clientIp: SignalContext.clientIpOf(req),
           });
           if (rscResult.type === "redirect")
-            return createDocumentRedirectResponse(new URL(rscResult.location, url.origin), rscResult.status);
+            return createDocumentRedirectResponse(rscResult.location, url, rscResult.status);
           if (rscResult.type === "not-found") return this.#renderSystemNotFoundFallbackResponse(req, url);
           // First-paint data-theme: cookie is no longer a React <html> prop (RSC cache would replay it).
           const cookieTheme = WebRouter.#cookieValue(req, "theme");
@@ -750,7 +755,7 @@ export class WebRouter {
           const lateControl = await Promise.race([rscResult.lateControl, Promise.resolve(null)]);
           if (lateControl?.type === "redirect") {
             cancelStreamForHeadResponse(htmlStream, "redirected before the response started");
-            return createDocumentRedirectResponse(new URL(lateControl.location, url.origin), lateControl.status);
+            return createDocumentRedirectResponse(lateControl.location, url, lateControl.status);
           }
           const responseStatus = lateControl?.type === "not-found" ? 404 : (rscResult.status ?? 200);
           const responseHeaders = this.#htmlResponseHeaders(responseStatus, req);

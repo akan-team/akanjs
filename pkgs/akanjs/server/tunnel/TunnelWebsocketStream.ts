@@ -38,7 +38,9 @@ export class TunnelWebsocketStream implements TunnelStream {
     const protocols = headers.find(([name]) => name.toLowerCase() === "sec-websocket-protocol")?.[1];
     const dialHeaders: Record<string, string> = {};
     for (const [name, value] of headers) {
-      if (!handshakeHeaders.has(name.toLowerCase())) dialHeaders[name] = value;
+      const lower = name.toLowerCase();
+      //? Dialed as the origin itself, as `TunnelHttpStream` does: a dev server answers only local Hosts.
+      if (lower !== "host" && !handshakeHeaders.has(lower)) dialHeaders[name] = value;
     }
     await new Promise<void>((resolve) => {
       this.#settle = resolve;

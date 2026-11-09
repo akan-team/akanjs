@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PromiseOrObject } from "akanjs/base";
-import { AppHosts, bearerTokenOf, decodeJwtPayload, IpLiteral } from "akanjs/common";
+import { AppHosts, bearerTokenOf, decodeJwtPayload } from "akanjs/common";
 import { SignalContext } from "../../signal/signalContext";
 import type { HttpRoutes } from "../types";
 
@@ -159,13 +159,10 @@ export class McpAuth {
     return McpAuth.origin(req);
   }
 
-  //? A rebound name is never an IP literal or localhost, so any other host must be one the app declares.
   answersTo(req: Request): boolean {
     if (this.#props.resource) return true;
     const host = URL.parse(McpAuth.origin(req))?.host;
-    const name = host ? AppHosts.nameOf(host) : null;
-    if (!host || !name) return false;
-    return !!IpLiteral.parse(host) || name === "localhost" || name.endsWith(".localhost") || AppHosts.allows(host);
+    return !!host && AppHosts.isRebindSafe(host);
   }
 
   // Behind a proxy `req.url` is the internal host, while `aud` names the URL the client used. `x-forwarded-host` is

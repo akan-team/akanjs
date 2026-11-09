@@ -1,4 +1,5 @@
 import { getEnv } from "akanjs/base";
+import { IpLiteral } from "./IpLiteral";
 
 export class AppHosts {
   static readonly #declared = new Set<string>();
@@ -23,6 +24,13 @@ export class AppHosts {
       return true;
     const listed = [...(process.env.AKAN_ALLOWED_HOSTS ?? "").split(","), ...extra];
     return listed.some((entry) => AppHosts.nameOf(entry) === name);
+  }
+
+  //? A rebound name is never an IP literal or localhost, so any other host must be one the app declares.
+  static isRebindSafe(host: string): boolean {
+    const name = AppHosts.nameOf(host);
+    if (!name) return false;
+    return !!IpLiteral.parse(host) || name === "localhost" || name.endsWith(".localhost") || AppHosts.allows(host);
   }
 
   static nameOf(host: string): string | null {
