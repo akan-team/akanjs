@@ -359,8 +359,7 @@ export class GraphBuilder {
           factories.get(imported.imported === "default" || imported.imported === "*" ? callee : imported.imported) ??
           [];
         const factory =
-          candidates.find((other) => other.owner === from) ??
-          this.#soleVisible(candidates, from ?? owner);
+          candidates.find((other) => other.owner === from) ?? this.#soleVisible(candidates, from ?? owner);
         if (factory)
           declare(
             { name, owner, span, scope: factory.fact.scope, doc, parts: madeBy(factory, fileName, extent) },
