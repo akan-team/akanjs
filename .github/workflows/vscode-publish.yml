@@ -7,6 +7,7 @@ on:
       - pkgs/@akanjs/vscode/**
       - pkgs/@akanjs/language/**
       - bun.lock
+      - apps/akan/public/icon-512x512.png
       - .github/workflows/vscode-publish.yml
   workflow_dispatch:
 
@@ -65,6 +66,11 @@ jobs:
             echo "::error::Release $version has an odd minor, which pre-releases from rc use. Bump @akanjs/vscode to an even minor."
             exit 1
           fi
+      - name: Test the packages the extension bundles
+        if: steps.check.outputs.published != 'true'
+        run: |
+          bun run buildAkan
+          for p in @akanjs/language @akanjs/vscode; do bun run runAkan test "$p"; done
       - if: steps.check.outputs.published != 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -74,7 +80,7 @@ jobs:
           retention-days: 30
 
   publish:
-    name: Publish (${{ github.ref_name == 'rc' && 'pre-release' || 'release' }})
+    name: Publish
     needs: build
     if: needs.build.outputs.published != 'true'
     runs-on: ubuntu-latest
