@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { tempDirs, writeText as write } from "../testHelpers";
 import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
@@ -181,6 +182,51 @@ describe("route client store bootstrap", () => {
       outputs.map(async (file) => (await Bun.file(path.join(clientOut, file)).text()).includes("shared-module-marker")),
     );
     expect(carriers.filter(Boolean)).toHaveLength(1);
+  });
+
+  test("names each entry's static chunks and the importmap specifiers every chunk imports", async () => {
+    const root = await realpath(await makeTempRoot());
+    const appDir = path.join(root, "apps/demo");
+    const entryA = path.join(appDir, "ui/A.tsx");
+    const entryB = path.join(appDir, "ui/B.tsx");
+    await write(
+      entryA,
+      '"use client";\nimport { useState } from "react";\nimport { mark } from "../common/shared";\nexport const A = () => [useState, mark];\n',
+    );
+    await write(
+      entryB,
+      '"use client";\nimport { mark } from "../common/shared";\nexport const B = () => import("../common/lazy").then(() => mark);\n',
+    );
+    await write(
+      path.join(appDir, "common/shared.ts"),
+      'import { tag } from "akanjs/base";\nexport const mark = tag;\n',
+    );
+    await write(path.join(appDir, "common/lazy.ts"), 'import "tailwind-merge";\nexport const lazy = 1;\n');
+    const app = {
+      name: "demo",
+      cwdPath: appDir,
+      dist: { cwdPath: path.join(root, "dist/apps/demo") },
+      workspace: { workspaceRoot: root },
+      getConfig: async () => ({ barrelImports: [], optimizeImports: [] }),
+      getPublicEnv: () => ({}),
+    } as never;
+
+    const bundle = await new ClientEntriesBundler({
+      app,
+      entries: [entryA, entryB],
+      external: ["react", "akanjs/base", "tailwind-merge"],
+      command: "build",
+    }).bundle();
+
+    const [urlA, sharedA] = bundle.entryChunkUrlsByAbsPath.get(entryA) ?? [];
+    const [urlB, sharedB] = bundle.entryChunkUrlsByAbsPath.get(entryB) ?? [];
+    expect(bundle.entryChunkUrlsByAbsPath.get(entryA)).toHaveLength(2);
+    expect(bundle.entryChunkUrlsByAbsPath.get(entryB)).toHaveLength(2);
+    expect(sharedA).toBe(sharedB);
+    expect(bundle.externalsByChunkUrl.get(urlA ?? "")).toEqual(["react"]);
+    expect(bundle.externalsByChunkUrl.get(urlB ?? "")).toEqual([]);
+    expect(bundle.externalsByChunkUrl.get(sharedA ?? "")).toEqual(["akanjs/base"]);
+    expect([...bundle.externalsByChunkUrl.values()].flat()).toContain("tailwind-merge");
   });
 
   test("discovers client entries from installed akanjs package sources", async () => {

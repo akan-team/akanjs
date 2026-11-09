@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { renderToReadableStream } from "react-dom/server.edge";
 import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { parsePositiveInt } from "./cachePolicy";
+import { FlightModulePreloads } from "./flightModulePreloads";
 import { mapFlightLineRows } from "./flightRowReader";
 import type {
   SsrChunkRegistryStats,
@@ -132,7 +133,7 @@ export function createSoftRedirectScript(redirect: SsrLateRedirect): string {
 
 function sanitizeFlightRows(
   stream: ReadableStream<Uint8Array>,
-  options: { rewriteStylesheetHints?: boolean; dropDebugInfoRows?: boolean } = {},
+  options: { rewriteStylesheetHints?: boolean; dropDebugInfoRows?: boolean; onRow?: (row: Uint8Array) => void } = {},
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const encoder = new TextEncoder();
@@ -152,6 +153,7 @@ function sanitizeFlightRows(
 
   return mapFlightLineRows(stream, (row, tag) => {
     if (tag === "D") return options.dropDebugInfoRows ? null : row;
+    options.onRow?.(row);
     if (tag === "E") return rewriteRow(row, redirectErrorRowRe, "$1:null$3");
     if (tag === "H" && options.rewriteStylesheetHints) return rewriteRow(row, hlStylesheetRe, `$1"style"$2`);
     return row;
@@ -164,8 +166,11 @@ export function sanitizeFlightForClientStream(stream: ReadableStream<Uint8Array>
   return sanitizeFlightRows(stream, { rewriteStylesheetHints: true });
 }
 
-export function sanitizeFlightForSsrStream(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
-  return sanitizeFlightRows(stream, { dropDebugInfoRows: true });
+export function sanitizeFlightForSsrStream(
+  stream: ReadableStream<Uint8Array>,
+  onRow?: (row: Uint8Array) => void,
+): ReadableStream<Uint8Array> {
+  return sanitizeFlightRows(stream, { dropDebugInfoRows: true, onRow });
 }
 
 type StderrWrite = typeof process.stderr.write;
@@ -571,7 +576,10 @@ export class SsrFromRscRenderer {
         ? requestStorage.run(requestStore, () => RenderScope.run(fn))
         : RenderScope.run(fn);
 
-    const ssrNodeStream = Readable.fromWeb(sanitizeFlightForSsrStream(rscForSsr) as never);
+    const chunkPreloads = input.modulePreloadPlan ? new FlightModulePreloads(input.modulePreloadPlan) : null;
+    const ssrNodeStream = Readable.fromWeb(
+      sanitizeFlightForSsrStream(rscForSsr, chunkPreloads ? (row) => chunkPreloads.observe(row) : undefined) as never,
+    );
     const stderrSuppressor = ExpectedLateRedirectStderrSuppressor.start(input.lateControl);
     //? The Flight client wakes what Fizz suspended on from its stream's data handler, so it reads in the request scope.
     const thenable = SsrFromRscRenderer.#suppressExpectedLateRedirectError(
@@ -600,7 +608,14 @@ export class SsrFromRscRenderer {
 
     const withHeadScripts = SsrFromRscRenderer.#injectHeadScriptsIntoHead(htmlStream, {
       importmap: input.importmap,
-      modulePreloads: [...(input.bootstrapModules ?? []), ...(input.modulePreloads ?? [])],
+      //? The shell has rendered by now, so its client references have arrived; a later boundary's chunks load unpreloaded.
+      modulePreloads: [
+        ...new Set([
+          ...(input.bootstrapModules ?? []),
+          ...(chunkPreloads?.urls ?? []),
+          ...(input.modulePreloads ?? []),
+        ]),
+      ],
       theme: input.theme,
       injectThemeInitScript: input.injectThemeInitScript,
     });

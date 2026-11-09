@@ -405,7 +405,9 @@ void run().catch((error) => {
     const base = await new SsrBaseArtifactBuilder(this.#app, "build", {
       serverEnv: this.#serverEnvPlugin(baseDevEnv.env, branches),
     }).build();
-    const allRoutes = await new AllRoutesBuilder(this.#app, base.artifact, "build").build();
+    const allRoutes = await new AllRoutesBuilder(this.#app, base.artifact, "build", {
+      runtimeChunks: base.runtimeChunks,
+    }).build();
     return { base, allRoutes };
   }
 

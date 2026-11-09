@@ -10,6 +10,7 @@ import {
   CLIENT_BUNDLE_NAMING,
   type ClientBundleTarget,
   type ClientManifest,
+  type MetafileInput,
   type MetafileOutput,
   type OpaqueEntryAliases,
 } from "./clientBuildTypes";
@@ -32,9 +33,11 @@ export class ClientEntriesBundler {
   #entryUrlsByAbsPath = new Map<string, string>();
   #entryOutputAbsByAbsPath = new Map<string, string>();
   #entryDepsByAbsPath = new Map<string, string[]>();
+  #entryChunkUrlsByAbsPath = new Map<string, string[]>();
   #clientReferenceIdByAbsPath = new Map<string, string>();
   #opaqueEntries: OpaqueEntryAliases | null = null;
   #metafileOutputsByAbs = new Map<string, MetafileOutput>();
+  #metafileInputs: Record<string, MetafileInput> = {};
 
   constructor(options: BundleClientEntriesInternalOptions) {
     this.#app = options.app;
@@ -81,6 +84,7 @@ export class ClientEntriesBundler {
     this.#metafileOutputsByAbs = new Map<string, MetafileOutput>(
       Object.entries(metafile.outputs).map(([k, v]) => [this.#absFromOutdir(k), v as MetafileOutput]),
     );
+    this.#metafileInputs = metafile.inputs as Record<string, MetafileInput>;
 
     for (const artifact of result.outputs.filter((a) => a.kind === "entry-point"))
       this.#addEntryArtifact(artifact.path);
@@ -91,6 +95,8 @@ export class ClientEntriesBundler {
       entryUrlsByAbsPath: this.#entryUrlsByAbsPath,
       entryOutputAbsByAbsPath: this.#entryOutputAbsByAbsPath,
       entryDepsByAbsPath: this.#entryDepsByAbsPath,
+      entryChunkUrlsByAbsPath: this.#entryChunkUrlsByAbsPath,
+      externalsByChunkUrl: this.#collectExternalsByChunkUrl(),
       clientReferenceIdByAbsPath: this.#clientReferenceIdByAbsPath,
     };
   }
@@ -220,6 +226,20 @@ export class ClientEntriesBundler {
     return urls;
   }
 
+  //? Bun's metafile lists an external import on the input that wrote it, never on the output chunk.
+  #collectExternalsByChunkUrl(): Map<string, string[]> {
+    const externalsByChunkUrl = new Map<string, string[]>();
+    for (const [absOut, info] of this.#metafileOutputsByAbs) {
+      if (!absOut.endsWith(".js")) continue;
+      const externals = new Set<string>();
+      for (const input of Object.keys(info.inputs ?? {}))
+        for (const imp of this.#metafileInputs[input]?.imports ?? [])
+          if (imp.external && imp.kind !== "dynamic-import" && !/^[./]/.test(imp.path)) externals.add(imp.path);
+      externalsByChunkUrl.set(this.#toServeUrl(absOut), [...externals].sort());
+    }
+    return externalsByChunkUrl;
+  }
+
   #collectClientDeps(absOutPath: string, visited = new Set<string>()): Set<string> {
     if (visited.has(absOutPath)) return new Set();
     visited.add(absOutPath);
@@ -256,6 +276,7 @@ export class ClientEntriesBundler {
     this.#entryUrlsByAbsPath.set(entryPointAbs, entryUrl);
     this.#entryOutputAbsByAbsPath.set(entryPointAbs, absOut);
     this.#entryDepsByAbsPath.set(entryPointAbs, [...this.#collectClientDeps(absOut)].sort());
+    this.#entryChunkUrlsByAbsPath.set(entryPointAbs, chunkUrls);
     const clientReferenceId = toClientReferencePath(entryPointAbs, this.#app.workspace.workspaceRoot);
     this.#clientReferenceIdByAbsPath.set(entryPointAbs, clientReferenceId);
 
