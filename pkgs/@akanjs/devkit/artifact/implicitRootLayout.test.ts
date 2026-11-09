@@ -101,6 +101,30 @@ describe("resolveSsrPageEntries", () => {
     expect(generatedDictMacro).toContain("export const allDictionary = getAllDictionary();");
   });
 
+  test("bootstraps the client runtime and store, not the client barrel, at every root boundary", async () => {
+    const appRoot = await makeTempRoot();
+    const pageRoot = path.join(appRoot, "page");
+
+    await write(path.join(appRoot, "env", "env.client.ts"), "export const env = {};\n");
+    await write(path.join(appRoot, "lib", "st.ts"), "export const st = {};\n");
+    await write(path.join(pageRoot, "(home)", "_layout.tsx"), 'export const theme = "dark";\n');
+    await write(path.join(pageRoot, "(admin)", "_layout.tsx"), 'export const theme = "light";\n');
+
+    const entries = await resolveSsrPageEntries({
+      appCwdPath: appRoot,
+      appName: "demo",
+      pageKeys: ["./(home)/_layout.tsx", "./(home)/_index.tsx", "./(admin)/_layout.tsx", "./(admin)/users.tsx"],
+    });
+
+    const roots = entries.filter((entry) => entry.key.endsWith("__root_layout.tsx"));
+    expect(roots.map((entry) => entry.key)).toEqual(["./(admin)/__root_layout.tsx", "./(home)/__root_layout.tsx"]);
+    for (const root of roots) {
+      const generatedSource = await Bun.file(root.moduleAbsPath).text();
+      expect(generatedSource).toContain('import "@apps/demo/lib/useClient";\nimport "@apps/demo/lib/st";\n');
+      expect(generatedSource).not.toContain("@apps/demo/client");
+    }
+  });
+
   test("awaits an async grouped root layout in the CSR bundle instead of mounting it as JSX", async () => {
     const appRoot = await makeTempRoot();
     const pageRoot = path.join(appRoot, "page");
