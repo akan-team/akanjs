@@ -103,6 +103,33 @@ describe("appSample", () => {
       expect(css).not.toMatch(/@(utility|keyframes|theme)\b/);
     });
 
+    test("is left out of the workspace scripts too: none names a module the app lacks, or runs a scaffold or workflow", async () => {
+      const { root, workspace } = track(await makeCliTempWorkspace());
+      const dict = { repoName: "repo", appName: "myapp", serveDomain: "localhost", owner: "" };
+      await workspace.applyTemplate({ basePath: ".", template: "workspaceRoot", dict });
+      await workspace.applyTemplate({ basePath: "apps/myapp", template: "app", dict, options: { libs: [] } });
+      const { scripts } = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as {
+        scripts: Record<string, string>;
+      };
+      const lib = path.join(root, "apps/myapp/lib");
+      const hasModule = (module: string) =>
+        existsSync(path.join(lib, module)) || existsSync(path.join(lib, `_${module}`));
+      const scriptsWhere = (broken: (command: string) => boolean) =>
+        Object.entries(scripts)
+          .filter(([, command]) => broken(command))
+          .map(([name]) => name);
+
+      expect(scripts).toHaveProperty("dev", "akan start");
+      expect(
+        scriptsWhere((command) =>
+          [...command.matchAll(/--module[= ](\w+)/g)].some(([, module = ""]) => !hasModule(module)),
+        ),
+      ).toEqual([]);
+      expect(
+        scriptsWhere((command) => /\bakan (create-[\w-]+|add-[\w-]+|workflow (plan|apply))\b/.test(command)),
+      ).toEqual([]);
+    });
+
     test("brings the demo home, its jelly theme and button, and every font face its layout declares", async () => {
       const { files, read } = await scaffold({ sample: true });
       const fontFiles = [...(await read("page/_layout.tsx")).matchAll(/src: "\/(fonts\/[\w-]+\.woff2)"/g)].map(
