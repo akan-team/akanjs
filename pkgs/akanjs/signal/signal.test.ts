@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import {
+  AkanError,
   Any,
   Binary,
   type Dayjs,
@@ -1741,6 +1742,22 @@ describe("SignalContext execution", () => {
 
     expect(response?.status).toBe(400);
     expect(errors).not.toHaveBeenCalled();
+  });
+
+  test("logs a coded failure as a crash only from 500 up", async () => {
+    const info = buildEndpoint.query(String, { guards: [Public] }).exec(() => "unused");
+    const adaptor = new (adapt("signalTestCodedFailureAdaptor"))();
+    const errors = spyOn(adaptor.logger, "error");
+    const run = async (statusCode: number) =>
+      await SignalContext.run(adaptor, info, "coded", "http", async () => {
+        throw new AkanError("taken", "held by tenant-7", { statusCode });
+      }).catch((error) => error);
+
+    expect(SignalContext.wasReported(await run(409))).toBe(false);
+    expect(errors).not.toHaveBeenCalled();
+
+    expect(SignalContext.wasReported(await run(503))).toBe(true);
+    expect(errors).toHaveBeenCalledTimes(1);
   });
 
   test("reports guard and internal argument failures through HTTP responses", async () => {

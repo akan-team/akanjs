@@ -130,7 +130,7 @@ describe("VerifyComments", () => {
       const crud = { model: "photo", appName: "myapp", clientPath: "@apps/myapp/client" };
       const files = [
         ...(await scaffold(".", "workspaceRoot", { repoName: "repo", appName: "myapp", serveDomain: "x", owner: "" })),
-        ...(await scaffold("apps/myapp", "app", { appName: "myapp" }, { libs: [], sample: true })),
+        ...(await scaffold("apps/myapp", "app", { appName: "myapp" }, { libs: [] })),
         ...(await scaffold("apps/myapp", "appSample", { appName: "myapp" }, { libs: [] })),
         ...(await scaffold(
           "apps/myapp/lib/photo",

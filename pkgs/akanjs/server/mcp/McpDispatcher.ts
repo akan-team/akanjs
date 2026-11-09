@@ -1,4 +1,11 @@
-import { type BackendEnv, ENDPOINT_META, ImageResult, type ImageResultValue, PrimitiveRegistry } from "akanjs/base";
+import {
+  AkanError,
+  type BackendEnv,
+  ENDPOINT_META,
+  ImageResult,
+  type ImageResultValue,
+  PrimitiveRegistry,
+} from "akanjs/base";
 import { interpolateTranslation, Logger } from "akanjs/common";
 import { agentRead, ConstantRegistry, mask } from "akanjs/constant";
 import { DictionaryLookup } from "akanjs/dictionary";
@@ -10,11 +17,16 @@ import { Exception, isExceptionLike } from "../../signal/exception";
 import type { GuardCls } from "../../signal/guard";
 import { MCP_APP_META, McpDocument, type McpExposedEndpoint, type McpToolResult } from "../../signal/mcp";
 import type { MiddlewareCls } from "../../signal/middleware";
+import { SignalFailure } from "../../signal/SignalFailure";
 import { SignalContext } from "../../signal/signalContext";
 import { McpArgumentError, McpExecutionContext } from "./McpExecutionContext";
 
 // The caller presented no credential at all, so the client must be told to authenticate.
-export class McpAuthRequiredError extends Error {}
+export class McpAuthRequiredError extends AkanError<"authRequired"> {
+  constructor() {
+    super("authRequired", "", { statusCode: 401 });
+  }
+}
 
 interface McpDispatcherProps {
   registry: InjectRegistry;
@@ -166,6 +178,9 @@ export class McpDispatcher {
     if (status && status < 500) {
       // Security: every refusal reads the same — a guard's own message names the authorization structure.
       if (status === 401 || status === 403) return "You are not permitted to perform this action.";
+      //? HTTP sends such an error's code and status only; an McpArgumentError is written for the agent to read.
+      if (AkanError.is(error) && !error.forwarded && !(error instanceof McpArgumentError))
+        return `${AkanError.reasonOf(status)}: ${error.code}`;
       const raw = error instanceof Error ? error.message : String(error);
       // A domain `Err` carries its dictionary key as the message; anything else is already prose.
       this.#lookup ??= new DictionaryLookup(this.#props.language);
@@ -179,11 +194,11 @@ export class McpDispatcher {
     return "The server failed to complete this request.";
   }
 
-  // No status reads as a crash, so an agent-triggerable McpArgumentError carries one (a NoDocumentError is
-  // exception-like).
-  // Security: only what HTTP forwards keeps its status — a vendor client's own 4xx error is generalized there too.
+  // No status reads as a crash. Security: the status HTTP answers with, so a vendor client's own 4xx error, which is
+  // no AkanError, is generalized here as it is there.
   static #statusOf(error: unknown): number | undefined {
-    if (isExceptionLike(error) || error instanceof McpArgumentError) return error.statusCode;
+    if (isExceptionLike(error)) return error.statusCode;
+    if (AkanError.is(error)) return SignalFailure.generalized(error).statusCode;
     return undefined;
   }
 

@@ -1,4 +1,4 @@
-import { type Cls, PrimitiveRegistry, type PrimitiveScalar } from "akanjs/base";
+import { AkanError, type Cls, PrimitiveRegistry, type PrimitiveScalar } from "akanjs/base";
 import { isMcpDescribableArg } from "akanjs/common";
 import { InputParser, InvalidInputError, serialize } from "akanjs/constant";
 import type { EndpointInfo } from "../../signal/endpointInfo";
@@ -7,8 +7,10 @@ import { HttpExecutionContext } from "../../signal/signalContext";
 type McpArg = EndpointInfo["args"][number];
 
 // Carries a 400 so it reports as a tool error: argument parsers throw bare Errors, indistinguishable from a crash.
-export class McpArgumentError extends Error {
-  readonly statusCode = 400;
+export class McpArgumentError extends AkanError<"invalidArgument"> {
+  constructor(message = "", options?: ErrorOptions) {
+    super("invalidArgument", message, { statusCode: 400, cause: options?.cause });
+  }
 }
 
 // An HTTP context on purpose: AccountMiddleware, Self/Me and every guard read the request through it.

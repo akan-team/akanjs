@@ -878,8 +878,8 @@ export default page()
         type: "{ src, weight, style?, preload? }[]",
         tags: [l.trans({ en: "required", ko: "필수" })],
         desc: l.trans({
-          en: "One file per weight and style. `src` starts with `/` and is read from `public/`. `preload: false` leaves a weight the first screen does not show to load when text first uses it.",
-          ko: "굵기·스타일마다 파일 하나입니다. `src`는 `/`로 시작하고 `public/`에서 읽습니다. 첫 화면에 없는 굵기는 `preload: false`로 두면 그 굵기를 처음 쓸 때 받습니다.",
+          en: "One file per weight and style. `src` starts with `/` and is read from `public/`. Only the regular face is preloaded: 400, or the weight a browser draws regular text with when there is no 400. The rest load when text first uses them. `preload: true` also preloads a weight the first screen shows; `preload: false` never preloads one.",
+          ko: "굵기·스타일마다 파일 하나입니다. `src`는 `/`로 시작하고 `public/`에서 읽습니다. preload는 regular 굵기 하나만 합니다. 400이고, 400이 없으면 브라우저가 보통 글자에 대신 쓰는 굵기입니다. 나머지는 글자가 처음 쓸 때 받습니다. 첫 화면에 나오는 굵기는 `preload: true`로 더하고, `preload: false`인 굵기는 preload하지 않습니다.",
         }),
       },
       {
@@ -921,8 +921,8 @@ export default page()
         type: "boolean",
         default: "true",
         desc: l.trans({
-          en: "Adds a preload link for each optimized file.",
-          ko: "최적화된 파일마다 preload 링크를 답니다.",
+          en: "Adds a preload link for the regular face and for each path set to `preload: true`. `false` preloads none of this font's files.",
+          ko: "regular 굵기와 `preload: true`인 path마다 preload 링크를 답니다. `false`면 이 폰트의 파일을 하나도 preload하지 않습니다.",
         }),
       },
       {
@@ -2500,8 +2500,8 @@ module.default; // the render every loader reads`}
           <Docs.Description>
             <div>
               {l.trans({
-                en: "`Font` is the type of one entry in `rootLayout().fonts([...])`. The build subsets each font, serves it from `/_akan/fonts`, and preloads it.",
-                ko: "`Font`는 `rootLayout().fonts([...])`에 넣는 항목 하나의 타입입니다. 빌드가 폰트마다 subset을 만들고, `/_akan/fonts`에서 제공하며, preload합니다.",
+                en: "`Font` is the type of one entry in `rootLayout().fonts([...])`. The build subsets each font, serves it from `/_akan/fonts`, and preloads its regular weight.",
+                ko: "`Font`는 `rootLayout().fonts([...])`에 넣는 항목 하나의 타입입니다. 빌드가 폰트마다 subset을 만들고, `/_akan/fonts`에서 제공하며, regular 굵기를 preload합니다.",
               })}
             </div>
             <Docs.OptionTable items={fontRows} />

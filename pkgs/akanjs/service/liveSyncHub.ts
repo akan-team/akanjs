@@ -1,10 +1,8 @@
 import {
-  baseDocumentColumns,
   type DocumentQuery,
   DocumentQueryEvaluator,
-  type DocumentRowView,
   documentQueryHelper,
-  isDocumentQueryNode,
+  type EqualityConjunct,
   type QueryFieldMap,
 } from "akanjs/document";
 import { canonicalJson } from "../common/websocketContract";
@@ -37,14 +35,23 @@ export interface LiveRoomRegistration {
 interface LiveRoom {
   refName: string;
   roomId: string;
-  query: DocumentQuery | undefined;
   queryKey: string;
+  routed: DocumentQuery;
   invalidate: boolean;
   evaluator: DocumentQueryEvaluator;
   payload: "light" | "id";
   subscribers: number;
-  /** The query's top-level `eq` conditions when it is a plain conjunction; a document disagreeing skips the room. */
-  index: Map<string, unknown> | null;
+  joinedAt: number;
+  /** Its condition in the model's index; an evaluated room without one is scanned on every write. */
+  filed: EqualityConjunct | null;
+}
+
+interface ModelRooms {
+  rooms: Set<LiveRoom>;
+  invalidating: Set<LiveRoom>;
+  scanned: Set<LiveRoom>;
+  /** path → `keyAt` key → the rooms a document holding that key there may belong to. */
+  index: Map<string, Map<string, Set<LiveRoom>>>;
 }
 
 /**
@@ -53,14 +60,15 @@ interface LiveRoom {
  */
 export class LiveSyncHub {
   readonly #rooms = new Map<string, LiveRoom>();
-  readonly #roomsByModel = new Map<string, Set<LiveRoom>>();
+  readonly #models = new Map<string, ModelRooms>();
+  #joins = 0;
 
   get roomCount() {
     return this.#rooms.size;
   }
 
   roomCountOf(refName: string) {
-    return this.#roomsByModel.get(refName)?.size ?? 0;
+    return this.#models.get(refName)?.rooms.size ?? 0;
   }
 
   /** Idempotent: a second socket subscribing to the same room shares the one evaluation. */
@@ -82,21 +90,35 @@ export class LiveSyncHub {
             `Declare .live({ fallback: "invalidate" }) on the slice to fall back to refetching.`,
         );
     }
+    const model = this.#models.get(refName) ?? {
+      rooms: new Set<LiveRoom>(),
+      invalidating: new Set<LiveRoom>(),
+      scanned: new Set<LiveRoom>(),
+      index: new Map<string, Map<string, Set<LiveRoom>>>(),
+    };
+    this.#models.set(refName, model);
+    const evaluator = new DocumentQueryEvaluator(fields ?? {});
     const room: LiveRoom = {
       refName,
       roomId,
-      query,
       queryKey,
+      routed: documentQueryHelper.all(documentQueryHelper.empty("removedAt"), query ?? {}),
       invalidate,
-      evaluator: new DocumentQueryEvaluator(fields ?? {}),
+      evaluator,
       payload,
       subscribers: 1,
-      index: invalidate ? null : LiveSyncHub.#indexOf(query, fields ?? {}),
+      joinedAt: this.#joins++,
+      filed: invalidate ? null : LiveSyncHub.#leastCrowded(model, evaluator.equalityConjuncts(query)),
     };
     this.#rooms.set(roomId, room);
-    const forModel = this.#roomsByModel.get(refName) ?? new Set<LiveRoom>();
-    forModel.add(room);
-    this.#roomsByModel.set(refName, forModel);
+    model.rooms.add(room);
+    if (invalidate) model.invalidating.add(room);
+    else if (!room.filed) model.scanned.add(room);
+    else {
+      const byKey = model.index.get(room.filed.path) ?? new Map<string, Set<LiveRoom>>();
+      model.index.set(room.filed.path, byKey);
+      for (const key of room.filed.keys) byKey.set(key, (byKey.get(key) ?? new Set<LiveRoom>()).add(room));
+    }
     return room;
   }
 
@@ -110,54 +132,56 @@ export class LiveSyncHub {
     room.subscribers -= 1;
     if (room.subscribers > 0) return;
     this.#rooms.delete(roomId);
-    const forModel = this.#roomsByModel.get(room.refName);
-    forModel?.delete(room);
-    if (forModel && !forModel.size) this.#roomsByModel.delete(room.refName);
+    const model = this.#models.get(room.refName);
+    if (!model) return;
+    model.rooms.delete(room);
+    model.invalidating.delete(room);
+    model.scanned.delete(room);
+    const byKey = room.filed ? model.index.get(room.filed.path) : undefined;
+    for (const key of byKey ? (room.filed?.keys ?? []) : []) {
+      const filed = byKey?.get(key);
+      filed?.delete(room);
+      if (!filed?.size) byKey?.delete(key);
+    }
+    if (room.filed && !byKey?.size) model.index.delete(room.filed.path);
+    if (!model.rooms.size) this.#models.delete(room.refName);
   }
 
   /** `previous` is absent on a create — no room held the document before. */
   route(refName: string, next: Record<string, unknown>, previous?: Record<string, unknown>): LiveRoomTarget[] {
-    const rooms = this.#roomsByModel.get(refName);
-    if (!rooms?.size) return [];
+    const model = this.#models.get(refName);
+    if (!model) return [];
     const nextRow = DocumentQueryEvaluator.rowViewOf(next);
     const previousRow = previous ? DocumentQueryEvaluator.rowViewOf(previous) : null;
-    const targets: LiveRoomTarget[] = [];
-    for (const room of rooms) {
-      if (room.invalidate) {
-        targets.push({ roomId: room.roomId, op: "update", invalidate: true, payload: room.payload });
-        continue;
-      }
-      if (!LiveSyncHub.#mayMatch(room, nextRow) && !(previousRow && LiveSyncHub.#mayMatch(room, previousRow))) continue;
-      const wrapped = documentQueryHelper.all(documentQueryHelper.empty("removedAt"), room.query ?? {});
-      const inNext = room.evaluator.evaluate(wrapped, nextRow);
-      const inPrevious = previousRow ? room.evaluator.evaluate(wrapped, previousRow) : false;
-      if (!inNext && !inPrevious) continue;
-      const op: LiveOp = inNext ? (inPrevious ? "update" : "enter") : "leave";
-      targets.push({ roomId: room.roomId, op, invalidate: false, payload: room.payload });
+    const matched: { room: LiveRoom; op: LiveOp }[] = [];
+    const visit = (room: LiveRoom) => {
+      const inNext = room.evaluator.evaluate(room.routed, nextRow);
+      const inPrevious = previousRow ? room.evaluator.evaluate(room.routed, previousRow) : false;
+      if (inNext || inPrevious) matched.push({ room, op: inNext ? (inPrevious ? "update" : "enter") : "leave" });
+    };
+    for (const room of model.invalidating) matched.push({ room, op: "update" });
+    for (const room of model.scanned) visit(room);
+    for (const [path, byKey] of model.index) {
+      const nextKey = DocumentQueryEvaluator.keyAt(path, nextRow);
+      const previousKey = previousRow ? DocumentQueryEvaluator.keyAt(path, previousRow) : null;
+      const nextRooms = nextKey === null ? undefined : byKey.get(nextKey);
+      for (const room of nextRooms ?? []) visit(room);
+      if (previousKey === null || previousKey === nextKey) continue;
+      for (const room of byKey.get(previousKey) ?? []) if (!nextRooms?.has(room)) visit(room);
     }
-    return targets;
+    return matched
+      .sort((a, b) => a.room.joinedAt - b.room.joinedAt)
+      .map(({ room, op }) => ({ roomId: room.roomId, op, invalidate: room.invalidate, payload: room.payload }));
   }
 
-  static #mayMatch(room: LiveRoom, row: DocumentRowView): boolean {
-    if (!room.index) return true;
-    for (const [path, value] of room.index) {
-      const actual = (row.doc as Record<string, unknown>)[path];
-      if (actual !== value) return false;
+  //? Greedy: the condition whose buckets hold the fewest rooms now, so one unselective path does not collect them all.
+  static #leastCrowded(model: ModelRooms, conjuncts: EqualityConjunct[]): EqualityConjunct | null {
+    let best: { conjunct: EqualityConjunct; crowd: number } | null = null;
+    for (const conjunct of conjuncts) {
+      const byKey = model.index.get(conjunct.path);
+      const crowd = conjunct.keys.reduce((sum, key) => sum + (byKey?.get(key)?.size ?? 0) + 1, byKey ? 0 : 1);
+      if (!best || crowd < best.crowd) best = { conjunct, crowd };
     }
-    return true;
-  }
-
-  //* A base column is stored encoded and an array field's bare value means membership; indexing either skips a match.
-  static #indexOf(query: DocumentQuery | undefined, fields: QueryFieldMap): Map<string, unknown> | null {
-    if (!query || typeof query !== "object" || isDocumentQueryNode(query)) return null;
-    const index = new Map<string, unknown>();
-    for (const [path, value] of Object.entries(query)) {
-      if (path.includes(".") || baseDocumentColumns.has(path)) return null;
-      if (value === null || typeof value === "object") return null;
-      const field = fields[path];
-      if ((field?.getProps?.() ?? field)?.isArray) return null;
-      index.set(path, value);
-    }
-    return index.size ? index : null;
+    return best?.conjunct ?? null;
   }
 }
