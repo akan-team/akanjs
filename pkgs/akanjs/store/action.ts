@@ -1,5 +1,6 @@
 import { DataList, type Dayjs, FIELD_META, type GetStateObject } from "akanjs/base";
 import {
+  AbortSignals,
   capitalize,
   type DynamicRecord,
   deepObjectify,
@@ -963,23 +964,28 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     // A row stamped stale while the request ran may be missing from its rows, so they are read once more, and only once.
     const loadList = async <T>(
       self: SetGet,
-      load: () => Promise<T>,
+      callerSignal: AbortSignal | undefined,
+      load: (signal: AbortSignal) => Promise<T>,
       commit: (loaded: T, requestedAt: Date) => object,
     ) => {
       self.set({ [namesOfSlice.modelListLoading]: true });
-      const ticket = requests.claim();
+      const { ticket, signal: ownSignal } = requests.claim();
+      const signal = AbortSignals.any([ownSignal, callerSignal]) ?? ownSignal;
       try {
         for (let round = 0; round < 2; round += 1) {
           // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
           const requestedAt = new Date();
           const queryArgs = queryArgsIn(self);
-          const loaded = await load();
+          const loaded = await load(signal);
           // Arguments seeded meanwhile, as by a `Load.Units` of another page, own the slice now.
           if (!requests.isCurrent(ticket) || queryArgsIn(self) !== queryArgs) return;
           self.set(commit(loaded, requestedAt));
           const staleAt = (self.get() as { [key: string]: any })[namesOfSlice.modelStaleAt] as Date;
           if (staleAt.getTime() <= requestedAt.getTime()) return;
         }
+      } catch (error) {
+        if (signal.aborted) return;
+        throw error;
       } finally {
         if (requests.isCurrent(ticket)) self.set({ [namesOfSlice.modelListLoading]: false });
       }
@@ -1048,10 +1054,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           return;
         await loadList(
           this,
-          () =>
+          fetchPolicy.signal,
+          (signal) =>
             Promise.all([
-              fetchList(queryArgs, (page - 1) * limit, fetchLimit, sort, { ...fetchPolicy, onError: initForm.onError }),
-              insight === false ? null : fetchInsight(queryArgs, { ...fetchPolicy, onError: initForm.onError }),
+              fetchList(queryArgs, (page - 1) * limit, fetchLimit, sort, { ...fetchPolicy, signal }),
+              insight === false ? null : fetchInsight(queryArgs, { ...fetchPolicy, signal }),
             ]),
           ([modelDataList, modelObjInsight], requestedAt) => {
             const modelList = new DataList(modelDataList);
@@ -1099,7 +1106,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         if (pageOfModel === page) return;
         await loadList(
           this,
-          () => fetchList(queryArgsOfModel, (page - 1) * limitOfModel, limitOfModel, sortOfModel, options),
+          options?.signal,
+          (signal) =>
+            fetchList(queryArgsOfModel, (page - 1) * limitOfModel, limitOfModel, sortOfModel, { ...options, signal }),
           (modelDataList) => ({
             [namesOfSlice.modelList]: new DataList(modelDataList),
             [namesOfSlice.pageOfModel]: page,
@@ -1120,15 +1129,19 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         const pageOfModel = currentState[namesOfSlice.pageOfModel] as number;
         const limitOfModel = (currentState[namesOfSlice.limitOfModel] as number) || 20;
         const sortOfModel = currentState[namesOfSlice.sortOfModel] as Sort;
-        const ticket = requests.claim();
+        const { ticket, signal: ownSignal } = requests.claim();
+        const signal = AbortSignals.any([ownSignal, options?.signal]) ?? ownSignal;
         const modelDataList = await fetchList(
           queryArgsOfModel,
           (pageOfModel - 1) * limitOfModel + modelList.length,
           limitOfModel,
           sortOfModel,
-          options,
-        );
-        if (!requests.isCurrent(ticket) || queryArgsIn(this) !== queryArgsOfModel) return;
+          { ...options, signal },
+        ).catch((error: unknown) => {
+          if (signal.aborted) return null;
+          throw error;
+        });
+        if (!modelDataList || !requests.isCurrent(ticket) || queryArgsIn(this) !== queryArgsOfModel) return;
         // Re-read: a live event may have placed a row meanwhile, and `DataList` collapses the shifted duplicate.
         const currentModelList = (this.get() as { [key: string]: any })[namesOfSlice.modelList] as DataList<Light>;
         this.set({
@@ -1149,7 +1162,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         const page = limit > 0 ? Math.max(Math.floor((skip - 1) / limit) + 1, 1) : 1;
         await loadList(
           this,
-          () => fetchList(queryArgsOfModel, (page - 1) * limit, limit, sortOfModel, options),
+          options?.signal,
+          (signal) => fetchList(queryArgsOfModel, (page - 1) * limit, limit, sortOfModel, { ...options, signal }),
           (modelDataList) => ({
             [namesOfSlice.modelList]: new DataList(modelDataList),
             ...lastPageFrom(modelInsight.count, limit),
@@ -1185,10 +1199,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         }
         await loadList(
           this,
-          () =>
+          options?.signal,
+          (signal) =>
             Promise.all([
-              fetchList(queryArgs, 0, limitOfModel, sortOfModel, options),
-              hasInsightOfModel === false ? null : fetchInsight(queryArgs, options),
+              fetchList(queryArgs, 0, limitOfModel, sortOfModel, { ...options, signal }),
+              hasInsightOfModel === false ? null : fetchInsight(queryArgs, { ...options, signal }),
             ]),
           ([modelDataList, modelObjInsight]) => {
             const modelInsight = insightOf(modelObjInsight, modelDataList);
@@ -1213,7 +1228,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         if (sortOfModel === sort) return;
         await loadList(
           this,
-          () => fetchList(queryArgsOfModel, 0, limitOfModel, sort, options),
+          options?.signal,
+          (signal) => fetchList(queryArgsOfModel, 0, limitOfModel, sort, { ...options, signal }),
           (modelDataList) => ({
             [namesOfSlice.modelList]: new DataList(modelDataList),
             [namesOfSlice.sortOfModel]: sort,

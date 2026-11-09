@@ -1,5 +1,6 @@
 import { getApiPrefix, getEnv, getWsPrefix, PrimitiveRegistry, type PromiseOrObject } from "akanjs/base";
 import {
+  AbortSignals,
   endpointNames,
   type FetchPolicy,
   fileUploadContract,
@@ -27,6 +28,7 @@ import type { ClientSignal, FetchClientType, FetchSignalInput, MergeAllFetchType
 import { RenderScope } from "../renderScope";
 import {
   claimRequestQuery,
+  getRequestStore,
   recordRequestQuery,
   cookieJar as requestCookieJar,
   headers as requestHeaders,
@@ -470,23 +472,25 @@ export class FetchClient {
       case "query":
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
+          const signal = option?.signal;
           const bridge = this.#bridgeOf(option?.origin);
-          if (bridge)
-            return parseReturn(await this.#viaBridge(bridge, { key, type: "query", endpoint, option, argMap }), {
-              crystalize: option?.crystalize ?? true,
-            });
+          if (bridge) {
+            const call = this.#viaBridge(bridge, { key, type: "query", endpoint, option, argMap });
+            return parseReturn(await AbortSignals.race(call, signal), { crystalize: option?.crystalize ?? true });
+          }
           const headers = this.#makeRequestHeaders(option);
           const baseUrl = this.#baseUrlOf(endpoint, option?.origin);
           const timeout = option?.timeout ?? endpoint.timeout;
           // An origin override targets another server, so it bypasses the request-query cache keyed by this origin.
-          const requestQuery = () => this.http.get(url, { headers, baseUrl, timeout, retry: option?.retry });
+          const requestQuery = (requestSignal?: AbortSignal) =>
+            this.http.get(url, { headers, baseUrl, timeout, retry: option?.retry, signal: requestSignal });
           // A caller that did not start the request parses a copy: the memo hands one response to every caller in
           // the request, and a parsed model can hold references into it.
           const claim = baseUrl
-            ? { value: requestQuery(), owned: true }
-            : claimRequestQuery(FetchClient.#makeRequestQueryCacheKey(this.origin, url, headers), requestQuery);
+            ? { value: requestQuery(signal), owned: true }
+            : this.#claimQuery(FetchClient.#makeRequestQueryCacheKey(this.origin, url, headers), requestQuery, signal);
           recordRequestQuery({ key, args: Object.fromEntries(argMap), returns: endpoint.returns, value: claim.value });
-          const response = await claim.value;
+          const response = await AbortSignals.race(claim.value, signal);
           const payload = claim.owned ? response : FetchClient.#deepCopy(response);
           return parseReturn(payload, { crystalize: option?.crystalize ?? true });
         };
@@ -518,6 +522,11 @@ export class FetchClient {
       default:
         throw new Error(`Unsupported endpoint type: ${endpoint.type}`);
     }
+  }
+  //? A request memoizes its queries for the whole render, so no caller's abort may reach the shared one.
+  #claimQuery(cacheKey: string, requestQuery: (signal?: AbortSignal) => Promise<unknown>, signal?: AbortSignal) {
+    if (getRequestStore()) return claimRequestQuery(cacheKey, () => requestQuery());
+    return { value: requestQuery(signal), owned: true };
   }
   #registerEndpoint(key: string, endpoint: SerializedEndpoint, prefix?: string) {
     switch (endpoint.type) {

@@ -15,6 +15,11 @@ export interface FetchPolicy<_Returns = unknown> {
   partial?: string[];
   /** Milliseconds, or `false` to wait as long as the runtime will; overrides the endpoint's declared `timeout`. */
   timeout?: number | false;
+  /**
+   * Cancels a query, which then rejects with the signal's reason; its request stops once no other caller waits on it.
+   * A mutation ignores it, since one already sent may have run.
+   */
+  signal?: AbortSignal;
   /** `pubsub` only: called after a resubscribe, since whatever was published while the socket was down is gone. */
   onResync?: () => void;
   /**

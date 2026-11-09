@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Any, DataList, getEnv, ID, Int, Upload } from "akanjs/base";
-import { Logger, websocketBinaryFrameContract, websocketCredentialContract } from "akanjs/common";
+import { AbortSignals, Logger, websocketBinaryFrameContract, websocketCredentialContract } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import {
   buildEndpoint,
@@ -185,6 +185,15 @@ const setAnsweringFetch = () => {
     return Promise.resolve(new Response("{}", { headers: { "content-type": "application/json" } }));
   }) as typeof globalThis.fetch;
   return signals;
+};
+const setGatedFetch = () => {
+  const requests: { url: string; signal?: AbortSignal | null; answer: (value: unknown) => void }[] = [];
+  globalThis.fetch = ((url: string, init?: RequestInit) =>
+    new Promise((resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject((init.signal as AbortSignal).reason));
+      requests.push({ url: String(url), signal: init?.signal, answer: (value) => resolve(Response.json(value)) });
+    })) as typeof globalThis.fetch;
+  return requests;
 };
 //? A fixed delay loses to a stalled event loop: the timers it outwaits fire in its pass and schedule theirs after it.
 const waitUntil = async (done: () => boolean) => {
@@ -938,6 +947,38 @@ describe("HttpClient", () => {
     }
   });
 
+  test("rejects with the caller's own reason once its signal aborts, and the deadline still stands", async () => {
+    const client = new HttpClient("http://127.0.0.1:1");
+    const signals = setHangingFetch();
+    const controller = new AbortController();
+    const reason = new Error("superseded");
+    const pending = client.get("/slow", { signal: controller.signal }).catch((error: unknown) => error);
+    controller.abort(reason);
+    expect(await pending).toBe(reason);
+
+    const timedOut = await client
+      .get("/slow", { signal: new AbortController().signal, timeout: 10 })
+      .catch((error: unknown) => error);
+    expect((timedOut as RestoredError).statusCode).toBe(408);
+    expect(signals).toHaveLength(2);
+    expect(await client.get("/never", { signal: controller.signal }).catch((error: unknown) => error)).toBe(reason);
+    expect(signals).toHaveLength(2);
+  });
+
+  test("stops retrying once its caller aborts, in the wait between tries", async () => {
+    setMockFetch();
+    rawResponses.push(new Response("down", { status: 503 }), new Response("down", { status: 503 }));
+    const client = new HttpClient("https://api.example");
+    const controller = new AbortController();
+    const pending = client
+      .get("/items", { signal: controller.signal, retry: { min: 60_000, jitter: 0 } })
+      .catch((error: unknown) => error);
+    await waitUntil(() => fetchCalls.length === 1);
+    controller.abort();
+    expect(AbortSignals.isAbort(await pending)).toBe(true);
+    expect(fetchCalls).toHaveLength(1);
+  });
+
   test("leaves a caller-side abort untouched", async () => {
     setMockFetch();
     const abort = new Error("The operation was aborted.");
@@ -1590,6 +1631,17 @@ describe("FetchClient HTTP generation", () => {
       "https://akan-debug.akanjs.com/custom/1234567890abcdef12345678",
       "https://akan-debug.akanjs.com/custom/1234567890abcdef12345678",
     ]);
+  });
+
+  test("never hands a mutation its caller's signal, since one already sent may have run", async () => {
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const controller = new AbortController();
+    const created = client.handler.createThing("Created", 2, { signal: controller.signal });
+    controller.abort();
+    expect(requests[0]?.signal?.aborted).toBe(false);
+    requests[0]?.answer({ title: "Created", count: 2, nested: { label: "N" } });
+    expect(((await created) as InstanceType<typeof FetchTestFull>).title).toBe("Created");
   });
 
   test("clone targets the new origin for queries and mutations while leaving the original intact", async () => {

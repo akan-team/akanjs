@@ -1,6 +1,6 @@
 import { ACTION_META, ACTION_OWNER_META, STATE_DERIVED_META, STATE_INIT_META } from "akanjs/base";
 import { isNativeApp, Translator } from "akanjs/client";
-import { type DynamicRecord, isRecord, Logger, parseAkanI18nEnv, stateSetterName } from "akanjs/common";
+import { AbortSignals, type DynamicRecord, isRecord, Logger, parseAkanI18nEnv, stateSetterName } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import type { SerializedArg } from "akanjs/signal";
 import { enableMapSet, produce } from "immer";
@@ -382,7 +382,7 @@ export class StoreInstance {
           Logger.verbose(`=> ${k} action dispatched (${Date.now() - start}ms)`);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          if (silent) Logger.verbose(`${k} action failed silently: ${message}`);
+          if (silent || AbortSignals.isAbort(error)) Logger.verbose(`${k} action failed silently: ${message}`);
           else {
             this.#showActionErrorMessage(k, error);
             Logger.error(`${k} action error return: ${message}`);
