@@ -774,6 +774,7 @@ export class AkanServer {
             running: this.status === "running",
             status: this.status,
             port: this.#server?.port ?? null,
+            rscWorker: webRouter?.rscWorkerStatus ?? null,
             metrics: this.#lastMetrics,
           }),
           this.#logStream,

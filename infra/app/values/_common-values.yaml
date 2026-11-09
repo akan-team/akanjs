@@ -1,3 +1,5 @@
+# Jenkins builds the image from the same commit as this chart, so it serves the readiness route.
+readinessPath: /_akan/app/ready
 debug: 
   domains: []
   app:

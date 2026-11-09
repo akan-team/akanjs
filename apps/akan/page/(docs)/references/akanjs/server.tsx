@@ -921,15 +921,15 @@ void run();`}
                   en: (
                     <span>
                       <strong>Solo answers the same routes.</strong> A solo process serves{" "}
-                      <code>/_akan/app/health</code> and <code>/_akan/app/metrics</code> in the gateway's shape, so a
-                      probe reads one contract either way.
+                      <code>/_akan/app/health</code>, <code>/_akan/app/ready</code> and <code>/_akan/app/metrics</code>{" "}
+                      in the gateway's shape, so a probe reads one contract either way.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>solo도 같은 경로에 답합니다.</strong> solo 프로세스도 <code>/_akan/app/health</code>와{" "}
-                      <code>/_akan/app/metrics</code>를 gateway와 같은 모양으로 제공하므로, probe는 어느 쪽이든 똑같이
-                      읽습니다.
+                      <strong>solo도 같은 경로에 답합니다.</strong> solo 프로세스도 <code>/_akan/app/health</code>,{" "}
+                      <code>/_akan/app/ready</code>, <code>/_akan/app/metrics</code>를 gateway와 같은 모양으로
+                      제공하므로, probe는 어느 쪽이든 똑같이 읽습니다.
                     </span>
                   ),
                 })}

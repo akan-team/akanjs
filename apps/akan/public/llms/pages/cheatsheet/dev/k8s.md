@@ -115,6 +115,8 @@ A key tagged `_common-secret.yaml` is set there once for every app.
 
 - image.tag (string, default <branch>-live): Write it only to pin one specific build.
 
+- readinessPath (string, default /_akan/app/health): The readiness probe's path. Set `/_akan/app/ready` once the image's akanjs serves it; an older image answers it 404.
+
 Per-branch keys
 
 Written under a branch block such as `main:`. The defaults come from `_common-values.yaml`.
@@ -131,7 +133,7 @@ Written under a branch block such as `main:`. The defaults come from `_common-va
 
 - <branch>.app.resources.storage (string, default 2Gi (main: 5Gi)): The size of the `ReadWriteOnce` PVC mounted at `/workspace/sqlite`.
 
-**Some settings are not values.** Port 8282, `replicas: 1`, the 40-second termination grace period and the three probes are fixed in `templates/app.yaml`. Changing them means editing the chart.
+**Some settings are not values.** Port 8282, `replicas: 1`, the 40-second termination grace period and the probes, apart from `readinessPath`, are fixed in `templates/app.yaml`. Changing them means editing the chart.
 
 Scale
 
@@ -169,7 +171,7 @@ No
 
 Health probes
 
-With a single process there is no gateway to restart it, so the kubelet does. The chart points three probes at `/_akan/app/health`, which a solo process answers itself.
+With a single process there is no gateway to restart it, so the kubelet does. The startup and liveness probes call `/_akan/app/health`, which answers 200 while the process is up. The readiness probe calls `readinessPath`; `/_akan/app/ready` answers 503 while the pod cannot serve: no replica is ready, or a solo server's page renderer is not.
 
 Period
 

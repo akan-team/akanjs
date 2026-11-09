@@ -933,15 +933,15 @@ export default page()
                   en: (
                     <span>
                       <strong>Solo answers probes itself.</strong> <code>/_akan/app/health</code>,{" "}
-                      <code>/_akan/app/metrics</code> and <code>/_akan/bench/ping</code> come back in the gateway's
-                      shape.
+                      <code>/_akan/app/ready</code>, <code>/_akan/app/metrics</code> and <code>/_akan/bench/ping</code>{" "}
+                      come back in the gateway's shape.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>solo는 probe에 직접 응답합니다.</strong> <code>/_akan/app/health</code>,{" "}
-                      <code>/_akan/app/metrics</code>, <code>/_akan/bench/ping</code>이 gateway와 같은 형태로
-                      돌아옵니다.
+                      <code>/_akan/app/ready</code>, <code>/_akan/app/metrics</code>, <code>/_akan/bench/ping</code>이
+                      gateway와 같은 형태로 돌아옵니다.
                     </span>
                   ),
                 })}

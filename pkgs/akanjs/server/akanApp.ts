@@ -653,6 +653,8 @@ export class AkanApp {
     const url = new URL(req.url);
     if (url.pathname === "/_akan/app/health")
       return this.#statusAccess.health(req, () => this.#getHealthStatus(), AkanApp.#clientOf(req, server));
+    if (url.pathname === "/_akan/app/ready")
+      return this.#statusAccess.ready(req, () => this.#getReadyStatus(), AkanApp.#clientOf(req, server));
     if (url.pathname === "/_akan/app/metrics")
       return this.#statusAccess.metrics(req, () => this.#getMetricsStatus(), AkanApp.#clientOf(req, server));
     if (url.pathname === LogStreamRoute.path && this.#logStream)
@@ -824,6 +826,21 @@ export class AkanApp {
         lastErrorMessage: child.lastErrorMessage,
       })),
     };
+  }
+
+  #getReadyStatus() {
+    return {
+      ready: this.#isReady(),
+      pid: process.pid,
+      children: [...this.#children.values()].map(({ idx, role, status, ready }) => ({ idx, role, status, ready })),
+    };
+  }
+
+  //? A batch-only gateway serves no traffic, so its batch replicas are what it waits on, or its rollout never ends.
+  #isReady() {
+    if (this.#stopping) return false;
+    if (this.#replica.federation + this.#replica.all > 0) return this.#federationCandidates().length > 0;
+    return [...this.#children.values()].some((child) => child.ready && !this.#isChildUnavailable(child));
   }
 
   #getMetricsStatus() {
@@ -1092,17 +1109,19 @@ export class AkanApp {
     return await encodedFileResponse(req, filePath, options.contentType, assetHeaders(options));
   }
 
+  #federationCandidates() {
+    this.#federationChildCache ??= [...this.#children.values()].filter(
+      (child) =>
+        (child.role === "federation" || child.role === "all") &&
+        child.ready &&
+        child.status !== "unhealthy" &&
+        !this.#isChildUnavailable(child),
+    );
+    return this.#federationChildCache;
+  }
+
   #pickFederationChild() {
-    const candidates =
-      this.#federationChildCache ??
-      [...this.#children.values()].filter(
-        (child) =>
-          (child.role === "federation" || child.role === "all") &&
-          child.ready &&
-          child.status !== "unhealthy" &&
-          !this.#isChildUnavailable(child),
-      );
-    this.#federationChildCache = candidates;
+    const candidates = this.#federationCandidates();
     if (candidates.length === 0) return null;
     const child = candidates[this.#rrIdx % candidates.length];
     this.#rrIdx++;
