@@ -44,7 +44,8 @@ export interface RouterInstance {
   refresh: () => void;
   /** Whether `back` has a page to return to; left out, the router reads the index stamped on the history entry. */
   canGoBack?: () => boolean;
-  prefetch?: (href: string, priority?: PrefetchPriority) => (() => void) | undefined;
+  // biome-ignore lint/suspicious/noConfusingVoidType: a router written before a prefetch could be withdrawn returns nothing
+  prefetch?: (href: string, priority?: PrefetchPriority) => (() => void) | void;
 }
 interface RouterOptions {
   prefix?: string;
@@ -554,7 +555,8 @@ class Router {
   prefetch(href: string, { priority }: { priority?: PrefetchPriority } = {}): () => void {
     if (process.env.NODE_ENV !== "production" || !this.isInitialized || this.#leavesOrigin(href))
       return () => undefined;
-    return this.#instance.prefetch?.(href, priority) ?? (() => undefined);
+    const withdraw = this.#instance.prefetch?.(href, priority);
+    return typeof withdraw === "function" ? withdraw : () => undefined;
   }
   #move(kind: "push" | "replace", href: string, routeOptions?: RouteOptions) {
     this.#navigations += 1;
