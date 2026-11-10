@@ -274,8 +274,8 @@ akan create-ui --app koyo --module icecreamOrder --surface unit --format json`,
         signature:
           "akan add-field --app <name> --module <name> --field <name> --type <type> [--default <value>] [--format <markdown|json>]",
         desc: l.trans({
-          en: "Add one field to a module's constant and dictionary.\nThe field goes into `<Module>Input` in `<module>.constant.ts`, and its label and description into `.model<Module>` in `<module>.dictionary.ts`.\nFor `Int` and `Float` it also adds the `akanjs/base` import.",
-          ko: "모듈의 constant와 dictionary에 필드 하나를 더합니다.\n필드는 `<module>.constant.ts`의 `<Module>Input`에, 라벨과 설명은 `<module>.dictionary.ts`의 `.model<Module>`에 들어갑니다.\n타입이 `Int`나 `Float`이면 `akanjs/base` import도 더합니다.",
+          en: "Add one field to a module's constant and dictionary.\nThe field goes into `<Module>Input` in `<module>.constant.ts`, and its label and description into `.model<Module>` in `<module>.dictionary.ts`.\nIt also imports the type: an `akanjs/base` type from there, a scalar or model of the target from its constant file.",
+          ko: "모듈의 constant와 dictionary에 필드 하나를 더합니다.\n필드는 `<module>.constant.ts`의 `<Module>Input`에, 라벨과 설명은 `<module>.dictionary.ts`의 `.model<Module>`에 들어갑니다.\n타입 import도 더합니다. `akanjs/base` 타입은 거기서, 대상의 스칼라나 모델은 그 constant 파일에서 가져옵니다.",
         }),
         options: [
           appOption,
@@ -305,8 +305,8 @@ akan create-ui --app koyo --module icecreamOrder --surface unit --format json`,
             required: "yes",
             enumOrFlag: "-t",
             desc: l.trans({
-              en: "Field type or scalar name; lowercase aliases such as `int` are normalized as listed in Notes.",
-              ko: "필드 타입이나 스칼라 이름으로, `int` 같은 소문자 별칭은 아래 참고 표대로 바로잡습니다.",
+              en: "Field type, scalar or model class name; lowercase aliases such as `int` are normalized as in Notes.",
+              ko: "필드 타입이나 스칼라·모델 클래스 이름으로, `int` 같은 소문자 별칭은 아래 참고 표대로 바로잡습니다.",
             }),
           },
           {
@@ -343,10 +343,10 @@ akan create-ui --app koyo --module icecreamOrder --surface unit --format json`,
             }),
           },
           {
-            name: l.trans({ en: "other imports", ko: "그 밖의 import" }),
+            name: l.trans({ en: "type imports", ko: "타입 import" }),
             desc: l.trans({
-              en: "Only `Int` and `Float` get an import; add the one for `ID` or a scalar yourself.",
-              ko: "import를 더해 주는 것은 `Int`와 `Float`뿐이라, `ID`나 스칼라 타입은 직접 import합니다.",
+              en: "`ID` and other base types come from `akanjs/base`, a scalar or model from its constant; others are refused.",
+              ko: "`ID` 같은 기본 타입은 `akanjs/base`에서, 스칼라나 모델은 그 constant에서 가져오고, 그 밖의 타입은 거부합니다.",
             }),
           },
           {

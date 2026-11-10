@@ -1,5 +1,6 @@
 export * from "./artifacts";
 export * from "./executor";
+export * from "./fieldType";
 export * from "./guardCatalog";
 export * from "./interactionScaffold";
 export * from "./keyRename";

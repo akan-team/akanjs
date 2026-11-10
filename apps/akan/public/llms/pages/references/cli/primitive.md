@@ -87,7 +87,7 @@ Write one UI file into `lib/<module>/` of an existing module: a View, a Unit or 
 
 `akan add-field --app <name> --module <name> --field <name> --type <type> [--default <value>] [--format <markdown|json>]`
 
-Add one field to a module's constant and dictionary. The field goes into `<Module>Input` in `<module>.constant.ts`, and its label and description into `.model<Module>` in `<module>.dictionary.ts`. For `Int` and `Float` it also adds the `akanjs/base` import.
+Add one field to a module's constant and dictionary. The field goes into `<Module>Input` in `<module>.constant.ts`, and its label and description into `.model<Module>` in `<module>.dictionary.ts`. It also imports the type: an `akanjs/base` type from there, a scalar or model of the target from its constant file.
 
 - --app (String, -a, required): Target app or library name.
 
@@ -95,7 +95,7 @@ Add one field to a module's constant and dictionary. The field goes into `<Modul
 
 - --field (String, -f, required): Field name; a name already in the Input class is refused.
 
-- --type (String, -t, required): Field type or scalar name; lowercase aliases such as `int` are normalized as listed in Notes.
+- --type (String, -t, required): Field type, scalar or model class name; lowercase aliases such as `int` are normalized as in Notes.
 
 - --default (String, -d): Optional default, converted to the type; a value the type rejects writes nothing.
 
@@ -107,7 +107,7 @@ Add one field to a module's constant and dictionary. The field goes into `<Modul
 
 - Int · Float: `number` and `numeric` are refused: use `Int` for whole numbers and `Float` for decimals.
 
-- other imports: Only `Int` and `Float` get an import; add the one for `ID` or a scalar yourself.
+- type imports: `ID` and other base types come from `akanjs/base`, a scalar or model from its constant; others are refused.
 
 - file fields: `Upload` is refused, since it belongs only in a file-upload body; relate the field to `File`.
 

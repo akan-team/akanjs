@@ -958,6 +958,45 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     });
   });
 
+  test("imports a scalar field type it writes, and refuses at plan time a type it cannot find", async () => {
+    const { root, workspace, module, planPath, runner } = await planTaskWorkflow({
+      field: "location",
+      type: "Address",
+    });
+    const refused = JSON.parse(
+      await runner.plan(
+        "add-field",
+        { app: "demo", module: "task", field: "location", type: "Address" },
+        { format: "json", workspace },
+      ),
+    ) as WorkflowPlan;
+    await writeText(path.join(root, "apps/demo/lib/__scalar/address/address.constant.ts"), "export class Address {}\n");
+    await runner.plan(
+      "add-field",
+      { app: "demo", module: "task", field: "location", type: "Address" },
+      { format: "json", out: planPath, workspace },
+    );
+
+    const report = JSON.parse(
+      await runner.apply(planPath, { format: "json", workspace, registry: WorkflowRunner.stepRegistry(workspace) }),
+    ) as WorkflowApplyReport;
+
+    expect(refused.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        code: "primitive-field-type-unknown",
+        input: "type",
+        message: expect.stringContaining(
+          'Field type "Address" names Address, which is not a built-in or akanjs/base type, not imported by apps/demo/lib/task/task.constant.ts, and not a scalar or model in apps/demo. It has no scalars. Its models are Task.',
+        ),
+      }),
+    ]);
+    expect(report.status).toBe("passed");
+    const constant = await module.readFile("task.constant.ts");
+    expect(constant).toContain('import { Address } from "../__scalar/address/address.constant";');
+    expect(constant).toContain("location: field(Address),");
+  });
+
   describe("a service module", () => {
     const planTaskAndService = async () => {
       const planned = await planTaskWorkflow({ field: "nickname", type: "String" });

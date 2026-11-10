@@ -152,6 +152,8 @@ With `--format json`, explain also carries the predicted changes and the complet
 
 **Numbers are Int or Float.** A plan with `--type Number` carries an error, and a plan with an error applies nothing.
 
+**A scalar or model type is imported.** `--type Address` names a scalar or model of the target by its class name, and apply imports it into the constant, as it imports `Int` or `ID` from `akanjs/base`. A plan with a type it cannot find, and the constant does not import, carries an error.
+
 **Defaults follow the type.** `--default` is converted to match `--type`, and an enum default must be one of `--values`.
 
 **add-field can also reach the form and the Light model.** `--surfaces template` writes the field into a simple Template form and `--include-in-light` adds it to the Light model. Through `plan_workflow` they are `surfaces: ["template"]` and `includeInLight: true`.

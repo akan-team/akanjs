@@ -2,11 +2,12 @@ import { capitalize } from "akanjs/common";
 import type { Sys, Workspace } from "../commandDecorators";
 import { withoutApplyHints, workflowPlanApproval } from "./artifacts";
 import { resolveWorkflowSys } from "./executor";
+import { fieldTypeSource } from "./fieldType";
 import { InteractionScaffold } from "./interactionScaffold";
 import { KeyRename } from "./keyRename";
 import { MutationScaffold } from "./mutationScaffold";
 import { identifierPattern, sysNamePattern } from "./plainName";
-import { coerceFieldDefault, getSysRoot, moduleSourcePaths } from "./source";
+import { coerceFieldDefault, getSysRoot, moduleSourcePaths, normalizeFieldType } from "./source";
 import type {
   WorkflowDiagnostic,
   WorkflowInputSpec,
@@ -541,6 +542,13 @@ const moduleNotDatabase = async (sys: Sys, spec: WorkflowSpec, module: string): 
   };
 };
 
+const fieldTypeUnknown = async (sys: Sys, spec: WorkflowSpec, module: string, type: string | null) => {
+  if (spec.name !== "add-field" || !type || ["enum", "number", "numeric", "upload"].includes(type.toLowerCase()))
+    return null;
+  const constant = await sys.readFile(moduleSourcePaths(module).constant);
+  return (await fieldTypeSource(sys, module, normalizeFieldType(type), constant)).diagnostic ?? null;
+};
+
 export const workflowTargetDiagnostics = async (
   workspace: Workspace,
   spec: WorkflowSpec,
@@ -563,7 +571,10 @@ export const workflowTargetDiagnostics = async (
   const module = planString(inputs, "module");
   const moduleSpec: WorkflowInputSpec | undefined = spec.inputs.module;
   if (!module || !moduleSpec?.mustExist) return [];
-  const refused = (await moduleMissing(workspace, sys, module)) ?? (await moduleNotDatabase(sys, spec, module));
+  const refused =
+    (await moduleMissing(workspace, sys, module)) ??
+    (await moduleNotDatabase(sys, spec, module)) ??
+    (await fieldTypeUnknown(sys, spec, module, planString(inputs, "type")));
   return refused ? [refused] : [];
 };
 

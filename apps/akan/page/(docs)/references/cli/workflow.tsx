@@ -220,6 +220,23 @@ export default page()
       l.trans({
         en: (
           <>
+            <strong>A scalar or model type is imported.</strong> <code>--type Address</code> names a scalar or model of
+            the target by its class name, and apply imports it into the constant, as it imports <code>Int</code> or{" "}
+            <code>ID</code> from <code>akanjs/base</code>. A plan with a type it cannot find, and the constant does not
+            import, carries an error.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>스칼라·모델 타입은 import됩니다.</strong> <code>--type Address</code>처럼 대상의 스칼라나 모델을
+            클래스 이름으로 주면, <code>Int</code>나 <code>ID</code>를 <code>akanjs/base</code>에서 가져오듯 적용이 상수
+            파일에 import를 넣습니다. 찾을 수 없고 상수 파일이 import하지도 않은 타입으로 만든 플랜에는 오류가 붙습니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
             <strong>Defaults follow the type.</strong> <code>--default</code> is converted to match <code>--type</code>,
             and an enum default must be one of <code>--values</code>.
           </>
