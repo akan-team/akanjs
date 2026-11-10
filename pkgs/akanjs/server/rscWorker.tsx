@@ -208,6 +208,12 @@ interface RscRendererStats {
   pagesBundleBuildId: number;
 }
 
+interface AdmittedNotFoundFallback {
+  route: LayoutFallbackRoute;
+  params: Record<string, string>;
+  searchParams: Record<string, string | string[]>;
+}
+
 interface RouteRenderStats {
   routeId: string;
   count: number;
@@ -508,12 +514,23 @@ export class RscRenderer {
             `render[${requestId}] matched route pathname=${urlObj.pathname} params=${JSON.stringify(match.params)}`,
           );
         else this.#logger.verbose(`render[${requestId}] no route matched pathname=${urlObj.pathname} — rendering 404`);
-        if (match && msg.prefetch && (await RouteElementComposer.refusesPrefetch(match.pathRoute))) {
-          this.#send({ type: "meta", requestId, status: 204 });
-          this.#send({ type: "end", requestId });
-          return;
-        }
         const beforeLoadedKeys = RouteTreeBuilder.getCacheStats().loadedModuleKeys;
+        const searchParams = parseSearchParams(urlObj.search);
+        const notFoundFallback = match ? null : await this.#admitNotFoundFallback(urlObj, searchParams);
+        let admitted = false;
+        if (msg.prefetch) {
+          const verdict = match
+            ? await RouteElementComposer.prefetchVerdict({ ...match, searchParams })
+            : notFoundFallback && (await RouteElementComposer.layoutsRefusePrefetch(notFoundFallback.route))
+              ? "refused"
+              : "unchecked";
+          if (verdict === "refused") {
+            this.#send({ type: "meta", requestId, status: 204 });
+            this.#send({ type: "end", requestId });
+            return;
+          }
+          admitted = verdict === "admitted";
+        }
         const cacheDecision = match ? this.#getResultCacheEntry(request, urlObj) : { entry: null };
         const cacheEntry = cacheDecision.entry;
         const targetRouterState = match
@@ -523,7 +540,6 @@ export class RscRenderer {
               buildId: this.#pagesBundleBuildId,
             })
           : null;
-        const searchParams = parseSearchParams(urlObj.search);
         const currentRouterState = readAkanRouterStateRequest(request.headers);
         const partialDecision = targetRouterState
           ? resolveAkanRscPartialDecision({
@@ -542,10 +558,10 @@ export class RscRenderer {
             : { status: "full" as const, reason: partialDecision.reason, commonPrefixLength: 0 };
         //? Security: a head-safe patch reads the page's head before its suffix renders, so the route's guards run
         //? first (a refusal there keeps only the layouts above it), and the suffix does not run them again.
-        let admitted = false;
         const safePatchDecision = match
           ? await this.#resolveHeadSafePatchDecision(match.pathRoute, patchDecision, async () => {
-              await RouteElementComposer.admit({ pathRoute: match.pathRoute, params: match.params, searchParams });
+              if (!admitted)
+                await RouteElementComposer.admit({ pathRoute: match.pathRoute, params: match.params, searchParams });
               admitted = true;
               return await this.#resolveRouteHeadSnapshot(urlObj, match, searchParams);
             })
@@ -654,7 +670,7 @@ export class RscRenderer {
           } else element = suffixElement;
         } else if (match)
           element = await this.#renderMatched(urlObj, match, searchParams, notFound, { guarded: admitted, gate });
-        else element = await this.#renderNotFound(urlObj, gate);
+        else element = await this.#renderNotFound(urlObj, notFoundFallback, gate);
         const traceCacheKey =
           effectivePatchDecision.status === "patch" ? (patchCacheEntry?.key ?? cacheEntry?.key) : cacheEntry?.key;
         const ssrBlocking = getRequestFrameState<PageState>()?.ssr === "block";
@@ -1517,19 +1533,28 @@ export class RscRenderer {
     });
   }
 
-  async #renderNotFound(url: URL, gate?: RouteShellGate): Promise<ReactNode> {
+  async #admitNotFoundFallback(
+    url: URL,
+    searchParams: Record<string, string | string[]>,
+  ): Promise<AdmittedNotFoundFallback | null> {
     const matchedFallback = RouteTreeBuilder.matchFallback(url.pathname, this.#fallbackRoutes);
-    if (matchedFallback) {
-      const searchParams = parseSearchParams(url.search);
-      const route = await RouteElementComposer.admittedFallbackOf(matchedFallback.fallbackRoute, {
-        params: matchedFallback.params,
-        searchParams,
-      });
+    if (!matchedFallback) return null;
+    const props = { params: matchedFallback.params, searchParams };
+    return { ...props, route: await RouteElementComposer.admittedFallbackOf(matchedFallback.fallbackRoute, props) };
+  }
+
+  async #renderNotFound(
+    url: URL,
+    notFoundFallback: AdmittedNotFoundFallback | null,
+    gate?: RouteShellGate,
+  ): Promise<ReactNode> {
+    if (notFoundFallback) {
+      const { route, params, searchParams } = notFoundFallback;
       try {
         const fallback = await this.#renderFallbackDocument({
           kind: "not-found",
           route,
-          params: matchedFallback.params,
+          params,
           searchParams,
           pathname: url.pathname,
           url,

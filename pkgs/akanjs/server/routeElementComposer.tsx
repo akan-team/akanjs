@@ -116,8 +116,32 @@ export class RouteElementComposer {
     await Promise.all(renders.map((routeRender) => routeRender?.checkArgs?.({ params, searchParams })));
   }
 
-  static async refusesPrefetch(pathRoute: PathRoute): Promise<boolean> {
-    return mergePageConfigs(await RouteElementComposer.#resolvePageConfigChain(pathRoute)).prefetch === false;
+  //? Security: a prefetch answers as its click would up to the body: the guards still run and redirect, and a refusal is
+  //? judged by the fallback the click would draw, so a path behind a guard reads the same whether or not it exists.
+  static async prefetchVerdict({
+    pathRoute,
+    params,
+    searchParams,
+  }: {
+    pathRoute: PathRoute;
+    params: Record<string, string>;
+    searchParams: Record<string, string | string[]>;
+  }): Promise<"refused" | "admitted" | "unchecked"> {
+    const configChain = await RouteElementComposer.#resolvePageConfigChain(pathRoute);
+    if (!configChain.some((config) => config.prefetch === false)) return "unchecked";
+    try {
+      await RouteElementComposer.admit({ pathRoute, params, searchParams });
+    } catch (error) {
+      if (RouteElementComposer.#isRedirect(error)) throw error;
+      const fallbackRoute = RouteElementComposer.fallbackRouteOf(pathRoute, error);
+      if (await RouteElementComposer.layoutsRefusePrefetch(fallbackRoute)) return "refused";
+      throw error;
+    }
+    return mergePageConfigs(configChain).prefetch === false ? "refused" : "admitted";
+  }
+
+  static async layoutsRefusePrefetch(route: PathRoute | LayoutFallbackRoute): Promise<boolean> {
+    return mergePageConfigs(await RouteElementComposer.#resolveLayoutPageConfigChain(route)).prefetch === false;
   }
 
   //? Security: a guard refused everything from its render down, so a fallback drawn after it keeps only the layouts above
@@ -143,9 +167,13 @@ export class RouteElementComposer {
       await RouteGuards.run([...route.renderRootLayouts, ...route.renderLayouts], props);
       return route;
     } catch (error) {
-      if ((error as { digest?: unknown } | null)?.digest === "AKAN_REDIRECT") throw error;
+      if (RouteElementComposer.#isRedirect(error)) throw error;
       return RouteElementComposer.fallbackRouteOf(route, error);
     }
+  }
+
+  static #isRedirect(error: unknown): boolean {
+    return (error as { digest?: unknown } | null)?.digest === "AKAN_REDIRECT";
   }
 
   static composeSuffix({

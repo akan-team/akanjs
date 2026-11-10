@@ -3,12 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { AKAN_RSC_PREFETCH_HEADER } from "./routeState";
-import { RscWorker } from "./rscWorkerHost";
+import { type RscRenderResult, RscWorker } from "./rscWorkerHost";
 import type { BaseBuildArtifact } from "./types";
 import { createRscNavigationStreamResponse } from "./webRouter";
 
 interface PrefetchWorker {
   answer: (url: string, prefetch: boolean, headers?: Record<string, string>) => Promise<Response>;
+  result: (url: string, prefetch: boolean, headers?: Record<string, string>) => Promise<RscRenderResult>;
   renders: (name: string) => number;
 }
 
@@ -40,6 +41,8 @@ const withPrefetchWorker = async (run: (worker: PrefetchWorker) => Promise<void>
         if (result.type !== "stream") throw new Error(`expected a stream, got ${result.type}`);
         return await createRscNavigationStreamResponse(result);
       },
+      result: async (url, prefetch, headers = {}) =>
+        await rsc.renderWithMeta(new Request(url, { headers }), { prefetch }),
       renders: (name) =>
         (fs.existsSync(renderLog) ? fs.readFileSync(renderLog, "utf8").split("\n") : []).filter((line) => line === name)
           .length,
@@ -92,4 +95,29 @@ describe("RscWorker prefetch opt-out", () => {
       expect(await reopened.text()).toContain("counted open body");
     });
   }, 20_000);
+
+  test("runs the guards before refusing, so a path behind one answers the same whether or not it exists", async () => {
+    await withPrefetchWorker(async ({ answer, result, renders }) => {
+      const signedIn = { "x-signed-in": "yes" };
+      for (const pathname of ["/en/vault/item", "/en/vault/missing"]) {
+        expect(await result(`http://localhost${pathname}`, true)).toMatchObject({
+          type: "redirect",
+          location: "/en/signin",
+        });
+        expect((await answer(`http://localhost${pathname}`, true, signedIn)).status).toBe(204);
+      }
+      for (const pathname of ["/en/sealed/item", "/en/sealed/missing"]) {
+        expect((await answer(`http://localhost${pathname}`, true)).status).toBe(404);
+        expect((await answer(`http://localhost${pathname}`, true, signedIn)).status).toBe(204);
+      }
+      for (const pathname of ["/en/records/r1", "/en/records/r1/missing"]) {
+        expect((await answer(`http://localhost${pathname}`, true)).status).toBe(204);
+        expect((await answer(`http://localhost${pathname}`, true, signedIn)).status).toBe(204);
+      }
+      expect(renders("vault item") + renders("sealed item") + renders("record")).toBe(0);
+
+      const clicked = await answer("http://localhost/en/sealed/item", false, signedIn);
+      expect(await clicked.text()).toContain("sealed item body");
+    });
+  }, 30_000);
 });
