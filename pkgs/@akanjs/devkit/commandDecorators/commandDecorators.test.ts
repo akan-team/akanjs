@@ -490,6 +490,7 @@ describe("a Sys that defaults to the only app", () => {
       await writeText(path.join(root, sys, "akan.config.ts"), "export default {};\n");
       await writeText(path.join(root, sys, "lib", name, `${name}.constant.ts`), "export {};\n");
     }
+    await writeText(path.join(root, "apps/web/lib/_billing/billing.service.ts"), "export {};\n");
     return workspace;
   };
 
@@ -645,6 +646,27 @@ describe("a Sys that defaults to the only app", () => {
     expect(asked).toEqual([]);
     const photo = await getInternalArgumentValue({ key: "", idx: 0, type: "Module" }, "util:photo", workspace);
     expect(photo instanceof ModuleExecutor ? `${photo.sys.name}:${photo.name}` : null).toBe("util:photo");
+  });
+
+  test("a service module is taken by its exact name where the target opts in, as remove-module does", async () => {
+    setTTY(true);
+    const workspace = await moduleWorkspace();
+    const services = { key: "", idx: 0, type: "Module", option: { services: true } } as const;
+    const billing = await getInternalArgumentValue(services, "web:_billing", workspace, undefined, {
+      destructive: true,
+    });
+    expect(billing instanceof ModuleExecutor ? `${billing.sys.name}:${billing.name}` : null).toBe("web:_billing");
+    await expect(
+      getInternalArgumentValue(services, undefined, workspace, rerunCommandOf(["remove-module"], [undefined], 0), {
+        destructive: true,
+      }),
+    ).rejects.toThrow(
+      "so rerun it as `akan remove-module <sys:module>` (choices: web:card, web:_billing, util:photo).",
+    );
+    await expect(
+      getInternalArgumentValue({ key: "", idx: 0, type: "Module" }, "web:_billing", workspace),
+    ).rejects.toThrow("Unknown module 'web:_billing': web has no such module");
+    expect(asked).toEqual([]);
   });
 });
 

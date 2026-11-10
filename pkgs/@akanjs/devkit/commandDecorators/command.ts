@@ -9,7 +9,15 @@ import { Logger } from "akanjs/common";
 import chalk from "chalk";
 import { type Command, program } from "commander";
 import { AppSelectionMemory } from "../appSelectionMemory";
-import { AppExecutor, Executor, LibExecutor, ModuleExecutor, PkgExecutor, WorkspaceExecutor } from "../executors";
+import {
+  AppExecutor,
+  Executor,
+  LibExecutor,
+  ModuleExecutor,
+  PkgExecutor,
+  type SysExecutor,
+  WorkspaceExecutor,
+} from "../executors";
 // Never the root barrel: it drags ink, ssh2 and the cloud stack into every command process.
 import { FileSys, getDirname } from "../fileSys";
 import type { PackageJson } from "../types";
@@ -367,14 +375,18 @@ export const getInternalArgumentValue = async (
       ...appNames.map((name) => AppExecutor.from(workspace, name)),
       ...libNames.map((name) => LibExecutor.from(workspace, name)),
     ];
+    const modulesOf = async (sys: SysExecutor) => [
+      ...(await sys.getModules()),
+      ...(argMeta.option?.services ? await sys.getServiceModules() : []),
+    ];
     const listModules = async () =>
-      (await Promise.all(systems.map(async (sys) => (await sys.getModules()).map((m) => `${sys.name}:${m}`)))).flat();
+      (await Promise.all(systems.map(async (sys) => (await modulesOf(sys)).map((m) => `${sys.name}:${m}`)))).flat();
     if (value) {
       const [sysName, moduleName] = value.split(":");
       if (!sysName || !moduleName) throw new Error(`Invalid module name: ${value}`);
       const sys = systems.find((each) => each.name === sysName);
       if (!sys) throw new Error(`Invalid system name: ${sysName}`);
-      if ((await sys.getModules()).includes(moduleName)) return ModuleExecutor.from(sys, moduleName);
+      if ((await modulesOf(sys)).includes(moduleName)) return ModuleExecutor.from(sys, moduleName);
       throw refusalOf(problemOf("module"), `${sysName} has no such module`, {
         choices: await listModules(),
         ...rerunRemedyOf(rerun, "<sys:module>"),
@@ -390,7 +402,7 @@ export const getInternalArgumentValue = async (
       ],
     });
     const executor = type === "app" ? AppExecutor.from(workspace, name) : LibExecutor.from(workspace, name);
-    const modules = await executor.getModules();
+    const modules = await modulesOf(executor);
     const moduleName = await select<string>({
       message: `Select the module name`,
       choices: modules.map((name) => ({ name: `${executor.name}:${name}`, value: name })),
