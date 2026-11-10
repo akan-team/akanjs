@@ -47,11 +47,15 @@ const fetchKeepingHeaders = async (endpoint: URL, init: RequestInit, signal: Abo
   return response;
 };
 
-//? Without the router state: the page the prefetch leaves from may not be the one the click leaves from, so only a
-//? whole payload is valid for both.
-export const fetchRscPrefetchResponse = (href: string, signal: AbortSignal) => {
+//? The click may leave from another page than this one, so RscPrefetchCache hands a patch over only under its own base.
+export const fetchRscPrefetchResponse = (
+  href: string,
+  signal: AbortSignal,
+  currentRouterState: AkanRouterStateV1 | null = null,
+) => {
   const headers = rscRequestHeaders();
   headers.set(AKAN_RSC_PREFETCH_HEADER, "1");
+  if (isAkanRscPartialCommitEnabled()) appendAkanRouterStateRequestHeaders(headers, currentRouterState);
   return fetchKeepingHeaders(rscEndpointOf(href), { headers, credentials: "same-origin", cache: "no-store" }, signal);
 };
 

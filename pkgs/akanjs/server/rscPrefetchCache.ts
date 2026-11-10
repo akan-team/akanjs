@@ -1,7 +1,8 @@
 import type { PrefetchPriority } from "../client/rscNavigation";
 
-interface RscPrefetchEntry {
+interface RscPrefetchEntry<B> {
   account: string;
+  base: B | undefined;
   startedAt: number;
   controller: AbortController;
   response: Promise<Response | null>;
@@ -18,8 +19,9 @@ export interface RscPrefetched {
   fresh: boolean;
 }
 
-export interface RscPrefetchCacheOptions {
+export interface RscPrefetchCacheOptions<B = undefined> {
   fetchResponse: (href: string, signal: AbortSignal) => Promise<Response>;
+  baseOf?: () => B;
   ttlMs?: number;
   freshMs?: number;
   maxConcurrent?: number;
@@ -28,7 +30,7 @@ export interface RscPrefetchCacheOptions {
   now?: () => number;
 }
 
-export class RscPrefetchCache {
+export class RscPrefetchCache<B = undefined> {
   static readonly defaultTtlMs = 15_000;
   //? Hover to click falls well inside it, and a slow render's own data is as old by its commit; older is a replay.
   static readonly defaultFreshMs = 5_000;
@@ -38,20 +40,22 @@ export class RscPrefetchCache {
   static readonly defaultMaxQueued = 16;
   static readonly #none = () => undefined;
 
-  #fetchResponse: RscPrefetchCacheOptions["fetchResponse"];
+  #fetchResponse: RscPrefetchCacheOptions<B>["fetchResponse"];
+  #baseOf: RscPrefetchCacheOptions<B>["baseOf"];
   #ttlMs: number;
   #freshMs: number;
   #maxConcurrent: number;
   #maxEntries: number;
   #maxQueued: number;
   #now: () => number;
-  #entries = new Map<string, RscPrefetchEntry>();
+  #entries = new Map<string, RscPrefetchEntry<B>>();
   #high = new Map<string, RscPrefetchQueued>();
   #low = new Map<string, RscPrefetchQueued>();
   #active = 0;
 
-  constructor(options: RscPrefetchCacheOptions) {
+  constructor(options: RscPrefetchCacheOptions<B>) {
     this.#fetchResponse = options.fetchResponse;
+    this.#baseOf = options.baseOf;
     this.#ttlMs = options.ttlMs ?? RscPrefetchCache.defaultTtlMs;
     this.#freshMs = options.freshMs ?? RscPrefetchCache.defaultFreshMs;
     this.#maxConcurrent = options.maxConcurrent ?? RscPrefetchCache.defaultMaxConcurrent;
@@ -68,16 +72,16 @@ export class RscPrefetchCache {
     return this.#high.size + this.#low.size;
   }
 
-  has(href: string, account: string) {
+  has(href: string, account: string, base?: B) {
     const entry = this.#entries.get(href);
-    return !!entry && entry.account === account && !this.#isStale(entry);
+    return !!entry && entry.account === account && entry.base === base && !this.#isStale(entry);
   }
 
   //? Newest pointed-at link first, the likeliest click; a link that merely came into view waits behind all of them, and a
   //? full queue of those keeps the first to come into view, as a page lists its links top down.
-  request(href: string, account: string, priority: PrefetchPriority = "high"): () => void {
+  request(href: string, account: string, priority: PrefetchPriority = "high", base?: B): () => void {
     this.#sweep();
-    if (this.has(href, account)) return RscPrefetchCache.#none;
+    if (this.has(href, account, base)) return RscPrefetchCache.#none;
     if (priority === "low" && this.#high.has(href)) return RscPrefetchCache.#none;
     const queue = priority === "high" ? this.#high : this.#low;
     const held = queue.get(href);
@@ -103,7 +107,7 @@ export class RscPrefetchCache {
     };
   }
 
-  take(href: string, account: string, signal?: AbortSignal): RscPrefetched | null {
+  take(href: string, account: string, signal?: AbortSignal, base?: B): RscPrefetched | null {
     this.#high.delete(href);
     this.#low.delete(href);
     const entry = this.#entries.get(href);
@@ -114,7 +118,8 @@ export class RscPrefetchCache {
       return null;
     }
     signal?.addEventListener("abort", () => entry.controller.abort(), { once: true });
-    return { response: entry.response, fresh: this.#now() - entry.startedAt <= this.#freshMs };
+    const response = entry.base === base ? entry.response : entry.response.then(RscPrefetchCache.#wholeOnly);
+    return { response, fresh: this.#now() - entry.startedAt <= this.#freshMs };
   }
 
   prune(): void {
@@ -169,8 +174,9 @@ export class RscPrefetchCache {
       if (this.#entries.get(href) === entry) this.#entries.delete(href);
     };
     this.#active += 1;
-    const entry: RscPrefetchEntry = {
+    const entry: RscPrefetchEntry<B> = {
       account,
+      base: this.#baseOf?.(),
       startedAt: this.#now(),
       controller,
       response: this.#fetchResponse(href, controller.signal).then(
@@ -224,7 +230,7 @@ export class RscPrefetchCache {
     }
   }
 
-  #isStale(entry: RscPrefetchEntry): boolean {
+  #isStale(entry: RscPrefetchEntry<B>): boolean {
     return this.#now() - entry.startedAt > this.#ttlMs;
   }
 
@@ -233,7 +239,14 @@ export class RscPrefetchCache {
     while (!(await reader.read()).done);
   }
 
-  static #drop(entry: RscPrefetchEntry): void {
+  //? A patch keeps the layouts on screen when it was sent, so under another base it would keep the wrong ones.
+  static #wholeOnly(response: Response | null): Response | null {
+    if (response?.headers.get("X-Akan-Rsc-Partial") !== "patch") return response;
+    void response.body?.cancel().catch(() => undefined);
+    return null;
+  }
+
+  static #drop<B>(entry: RscPrefetchEntry<B>): void {
     entry.controller.abort();
     entry.release();
   }

@@ -1460,4 +1460,81 @@ describe("rscClient patch cache", () => {
     expect(shown()).toBe("/mill/new patched");
     expect(document.title).toBe("/mill/new patched");
   });
+
+  describe("with a prefetch", () => {
+    const prefetch = async (href: string) => {
+      await act(async () => {
+        globalThis.__AKAN_RSC_PREFETCH__?.(href);
+        await sleep(10);
+      });
+    };
+    const prefetchCountOf = (pathname: string) =>
+      fetched.filter((request) => request.pathname === pathname && request.prefetch).length;
+    const navigationCountOf = (pathname: string) =>
+      fetched.filter((request) => request.pathname === pathname && !request.prefetch).length;
+
+    test("a sibling prefetched under the page on screen commits as a patch, asking nothing more", async () => {
+      framed("/den/a", "den");
+      framed("/den/b", "den");
+      await navigate("/den/a");
+      await prefetch("/den/b");
+
+      await navigate("/den/b");
+
+      expect(prefetchCountOf("/den/b")).toBe(1);
+      expect(navigationCountOf("/den/b")).toBe(0);
+      expect(shown()).toBe("/den/b patched");
+      expect(frameShown()).toBe("den");
+      expect(document.title).toBe("/den/b patched");
+    });
+
+    test("a prefetched patch is never laid under the page a full navigation put on screen since", async () => {
+      framed("/inn/en/a", "en");
+      framed("/inn/en/b", "en");
+      framed("/inn/ko/a", "ko");
+      await navigate("/inn/en/a");
+      await prefetch("/inn/en/b");
+      await navigate("/inn/ko/a");
+
+      await navigate("/inn/en/b");
+
+      expect(navigationCountOf("/inn/en/b")).toBe(1);
+      expect(shown()).toBe("/inn/en/b");
+      expect(frameShown()).toBe("en");
+    });
+
+    test("a sibling prefetched again after a full navigation is asked for under the page now on screen", async () => {
+      framed("/pub/a", "pub");
+      framed("/pub/b", "pub");
+      framed("/pier", "pier");
+      await navigate("/pub/a");
+      await prefetch("/pub/b");
+      await navigate("/pier");
+      await prefetch("/pub/b");
+
+      await navigate("/pub/b");
+
+      expect(prefetchCountOf("/pub/b")).toBe(2);
+      expect(navigationCountOf("/pub/b")).toBe(0);
+      expect(shown()).toBe("/pub/b");
+      expect(frameShown()).toBe("pub");
+    });
+
+    test("a page the patch cache would replay is not prefetched", async () => {
+      framed("/cab/a", "cab");
+      framed("/cab/b", "cab");
+      framed("/lot", "lot");
+      await navigate("/cab/a");
+      await navigate("/cab/b");
+      await navigate("/lot");
+      await navigate("/cab/a");
+      await prefetch("/cab/b");
+
+      await navigate("/cab/b");
+
+      expect(prefetchCountOf("/cab/b")).toBe(0);
+      expect(navigationCountOf("/cab/b")).toBe(1);
+      expect(shown()).toBe("/cab/b patched");
+    });
+  });
 });

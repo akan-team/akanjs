@@ -358,7 +358,12 @@ const readAuthCookies = () =>
     .join("; ");
 const rscCache = new Map<string, RscCacheNode>();
 const rscPatchCache = new Map<string, RscPatchNavigationCacheNode<RscThenable>>();
-const rscPrefetchCache = new RscPrefetchCache({ fetchResponse: fetchRscPrefetchResponse });
+//? With partial commit off every prefetch is a whole page, good under any page on screen, so none is tied to one.
+const prefetchBase = () => (isAkanRscPartialCommitEnabled() ? currentFullNode : null);
+const rscPrefetchCache = new RscPrefetchCache<RscCacheNode | null>({
+  fetchResponse: (href, signal) => fetchRscPrefetchResponse(href, signal, currentRouterState),
+  baseOf: prefetchBase,
+});
 //? A page prefetched before this tab's own write would commit as current, showing what the write changed as it was.
 StaleReads.subscribe(() => rscPrefetchCache.clear());
 const initialThenable = createRscThenable(createInitialRscStream());
@@ -543,8 +548,9 @@ globalThis.__AKAN_RSC_PREFETCH__ = (href, priority) => {
   //? Not forgetPagesOfAnotherAccount: only a navigation may record the change, or a page of the old account still in
   //? flight commits into the cache as the new account's.
   const authCookies = readAuthCookies();
-  if (authCookies === cachedAuthCookies && cachedPageOf(target)) return none;
-  return rscPrefetchCache.request(key, authCookies, priority);
+  const replayable = cachedPageOf(target) || rscPatchCache.get(target)?.base === currentFullNode;
+  if (authCookies === cachedAuthCookies && replayable) return none;
+  return rscPrefetchCache.request(key, authCookies, priority, prefetchBase());
 };
 
 function Root(): ReactNode {
@@ -659,7 +665,7 @@ function Root(): ReactNode {
       let servedFromCache = !!nextNode;
       if (!nextNode) {
         if (replayCachedPatch(target, navId, options.replace, requestScroll)) return;
-        const taken = rscPrefetchCache.take(pageKeyOf(target), cachedAuthCookies, signal);
+        const taken = rscPrefetchCache.take(pageKeyOf(target), cachedAuthCookies, signal, prefetchBase());
         const prefetched = (await taken?.response) ?? undefined;
         if (signal.aborted) return;
         servedFromCache = !!prefetched && !taken?.fresh;

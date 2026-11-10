@@ -8,6 +8,7 @@ import {
   AKAN_RSC_PATCH_START_SEGMENT_HEADER,
   AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_STATE_VERSION_HEADER,
+  type AkanRouterStateV1,
   decodeAkanRouterState,
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
@@ -304,5 +305,34 @@ describe("an overtaken RSC request", () => {
 
     await expect(pending).rejects.toThrow();
     expect(requests[0]?.signal.aborted).toBe(true);
+  });
+});
+
+describe("fetchRscPrefetchResponse", () => {
+  test("names the page on screen, its layouts head included, only from a client built with partial commit", async () => {
+    const enabled = process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+    const fetchOf = globalThis.fetch;
+    const sent: (AkanRouterStateV1 | null)[] = [];
+    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      sent.push(decodeAkanRouterState(new Headers(init?.headers).get(AKAN_RSC_CURRENT_STATE_HEADER)));
+      return new Response("0:null\n", { headers: { "Content-Type": RSC_CONTENT_TYPE } });
+    }) as typeof fetch;
+    const currentRouterState = { ...makeRouterState("https://example.test/docs/intro", "/docs/intro"), headKey: "k1" };
+    try {
+      for (const flag of ["1", "0"]) {
+        process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = flag;
+        await fetchRscPrefetchResponse(
+          "https://example.test/docs/api",
+          new AbortController().signal,
+          currentRouterState,
+        );
+      }
+
+      expect(sent).toEqual([currentRouterState, null]);
+    } finally {
+      globalThis.fetch = fetchOf;
+      if (enabled === undefined) delete process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+      else process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = enabled;
+    }
   });
 });
