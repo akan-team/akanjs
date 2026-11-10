@@ -5,6 +5,7 @@ import { resolveWorkflowSys } from "./executor";
 import { InteractionScaffold } from "./interactionScaffold";
 import { KeyRename } from "./keyRename";
 import { MutationScaffold } from "./mutationScaffold";
+import { identifierPattern, sysNamePattern } from "./plainName";
 import { coerceFieldDefault, getSysRoot, moduleSourcePaths } from "./source";
 import type {
   WorkflowDiagnostic,
@@ -21,8 +22,6 @@ import { workflowStatus } from "./utils";
 
 const surfaceModes = new Set<WorkflowSurfaceMode>(["infer", "include", "skip"]);
 
-const sysNamePattern = /^[a-z0-9][a-zA-Z0-9_-]*$/;
-const identifierPattern = /^_{0,2}[a-zA-Z][a-zA-Z0-9_-]*$/;
 //? These inputs become path segments, identifiers and command arguments, so none may carry a separator or a dot.
 const nameInputPatterns: Record<string, RegExp> = {
   app: sysNamePattern,
@@ -35,11 +34,6 @@ const nameInputPatterns: Record<string, RegExp> = {
   mutation: identifierPattern,
   interaction: identifierPattern,
 };
-
-export const isWorkflowSysName = (value: unknown): value is string =>
-  typeof value === "string" && sysNamePattern.test(value);
-export const isWorkflowModuleName = (value: unknown): value is string =>
-  typeof value === "string" && identifierPattern.test(value);
 
 const parseStringList = (value: unknown) => {
   if (Array.isArray(value)) {
