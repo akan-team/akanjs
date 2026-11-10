@@ -1,4 +1,4 @@
-import type { AkanChangeMap, AkanGraph, AkanGraphChange, AkanGraphLocation } from "akanjs/common";
+import type { AkanChangedFile, AkanChangeMap, AkanGraph, AkanGraphChange, AkanGraphLocation } from "akanjs/common";
 import type { BuildChangesPayload, BuildFrameworkPayload, BuildGraphPayload } from "../../artifact";
 import { StudioActions } from "./studioActions";
 import { StudioFramework } from "./studioFramework";
@@ -184,36 +184,49 @@ export class StudioDocument {
                   : "Nothing to draw here. Pick another module or view."}
               </p>
             )}
-            {live && "error" in live.signal && runtime ? (
-              <p className="notice">{`Jobs are not drawn: the signal serializer failed (${live.signal.error}).`}</p>
-            ) : null}
-            {live && !("error" in live.deps) && live.deps.disabledModules.length ? (
-              <section className="unmapped">
-                <h2>Modules this server left out</h2>
-                <ul>
-                  {live.deps.disabledModules.map(({ refName, reason }) => (
-                    <li key={refName}>{`${refName}: ${reason}`}</li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-            {unmapped.length ? (
-              <section className="unmapped">
-                <h2>Changed files no node covers</h2>
-                <ul>
-                  {unmapped.map(({ file, change }) => (
-                    <li key={file} className={change}>
-                      {`${changeSigns[change]} `}
-                      {change === "removed" ? file : <a href={openOf({ file, line: 1, column: 1 })}>{file}</a>}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
+            {StudioDocument.#notes(live, runtime !== null, unmapped, openOf)}
           </main>
           {StudioDocument.#runtime()}
         </body>
       </html>
+    );
+  }
+
+  static #notes(
+    live: StudioRuntimePayload | null,
+    isDrawn: boolean,
+    unmapped: AkanChangedFile[],
+    openOf: (at: AkanGraphLocation | null) => string | undefined,
+  ) {
+    return (
+      <>
+        {live && "error" in live.signal && isDrawn ? (
+          <p className="notice">{`Jobs are not drawn: the signal serializer failed (${live.signal.error}).`}</p>
+        ) : null}
+        {live && !("error" in live.deps) && live.deps.disabledModules.length ? (
+          <section className="unmapped">
+            <h2>Modules this server left out</h2>
+            <ul>
+              {live.deps.disabledModules.map(({ refName, reason }) => (
+                <li key={refName}>{`${refName}: ${reason}`}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {unmapped.length ? (
+          <section className="unmapped">
+            <h2>Changed files no node covers</h2>
+            <ul>
+              {unmapped.map(({ file, change }) => (
+                <li key={file} className={change}>
+                  {`${changeSigns[change]} `}
+                  {change === "removed" ? file : <a href={openOf({ file, line: 1, column: 1 })}>{file}</a>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </>
     );
   }
 

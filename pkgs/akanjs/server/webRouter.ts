@@ -22,10 +22,7 @@ import { getWebManifestBasePath } from "../client/webManifest";
 import type { PagePromptSource } from "../signal/mcp/pagePrompt";
 import { SignalContext } from "../signal/signalContext";
 import {
-  type BuildChangesPayload,
   type BuilderRpc,
-  type BuildFrameworkPayload,
-  type BuildGraphPayload,
   type MergedManifest,
   ModulePreloadPlan,
   RouteClientCache,
@@ -854,14 +851,8 @@ export class WebRouter {
     };
     return { renderEnvRoutes, hmrHub: this.#hub, builderRpc: this.#builderRpc };
   }
-  async buildGraph(): Promise<BuildGraphPayload | null> {
-    return this.#builderRpc ? await this.#builderRpc.buildGraph() : null;
-  }
-  async buildChanges(since: string | null): Promise<BuildChangesPayload | null> {
-    return this.#builderRpc ? await this.#builderRpc.buildChanges(since) : null;
-  }
-  async buildFramework(): Promise<BuildFrameworkPayload | null> {
-    return this.#builderRpc ? await this.#builderRpc.buildFramework() : null;
+  get builderRpc(): BuilderRpc | null {
+    return this.#builderRpc;
   }
   refreshHmrState(): void {
     this.#devHmr?.refreshRegistryState();

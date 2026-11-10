@@ -2,7 +2,7 @@ import type { BaseEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { DictionaryRegistry, type RootDictionary } from "akanjs/dictionary";
 import { isLocalDevRuntime } from "../../signal/trace";
-import type { BuildChangesPayload, BuildFrameworkPayload, BuildGraphPayload } from "../artifact";
+import type { BuildChangesPayload, BuilderRpc, BuildFrameworkPayload, BuildGraphPayload } from "../artifact";
 import type { DiLifecycle } from "../di/diLifecycle";
 import type { HttpRoutes } from "../types";
 import { ConstantSerializer } from "./constantSerializer";
@@ -36,6 +36,16 @@ export class DevtoolsRouter {
     if (override === "false" || override === "0") return false;
     if (override === "true" || override === "1") return true;
     return isLocalDevRuntime(env);
+  }
+
+  static buildsFrom(
+    builderRpc: () => BuilderRpc | null,
+  ): Pick<DevtoolsRouterContext, "buildGraph" | "buildChanges" | "buildFramework"> {
+    return {
+      buildGraph: async () => (await builderRpc()?.buildGraph()) ?? null,
+      buildChanges: async (since) => (await builderRpc()?.buildChanges(since)) ?? null,
+      buildFramework: async () => (await builderRpc()?.buildFramework()) ?? null,
+    };
   }
 
   readonly #context: DevtoolsRouterContext;
