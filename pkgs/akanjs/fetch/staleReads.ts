@@ -10,8 +10,15 @@ export class StaleReads {
     return () => StaleReads.#listeners.delete(listener);
   }
 
+  //? Each listener on its own: one that throws must neither keep the others stale nor fail the write that marked them.
   static mark(): void {
-    for (const listener of StaleReads.#listeners) listener();
+    for (const listener of StaleReads.#listeners) {
+      try {
+        listener();
+      } catch (error) {
+        console.error(`[StaleReads] a listener failed: ${String(error)}`);
+      }
+    }
   }
 
   //? Interned: the RSC runtime and the fetch vendor each may carry a copy of this module, and must share one set.

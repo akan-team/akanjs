@@ -527,9 +527,10 @@ export class FetchClient {
         };
         //? Refused as the call is made, not in its promise: a `void fetch.markRead(id)` in a load would drop it unseen.
         return (...argData: unknown[]) => {
+          const option = argData[argLength] as FetchPolicy | undefined;
           this.#refuseInApp(key);
-          this.#refuseInRender(key, argData[argLength] as FetchPolicy | undefined);
-          return this.#writing(() => send(...argData));
+          this.#refuseInRender(key, option);
+          return this.#writing(() => send(...argData), option);
         };
       }
       default:
@@ -548,7 +549,8 @@ export class FetchClient {
     return { value: this.#inflight.claim(inflightKey, requestQuery, signal), owned: true };
   }
   //? A query sent before a write or a credential change may answer what no longer holds, so later calls send their own.
-  async #writing<T>(write: () => Promise<T>) {
+  async #writing<T>(write: () => Promise<T>, option?: FetchPolicy) {
+    if (option?.keepsReads) return await write();
     this.#forgetReads();
     try {
       return await write();
@@ -616,7 +618,7 @@ export class FetchClient {
             if (FetchClient.bridged) return;
             const args = argData.slice(0, msgArgLength);
             const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
-            this.#forgetReads();
+            if (!fetchPolicy?.keepsReads) this.#forgetReads();
             this.#resolveWs(fetchPolicy?.origin).emit(key, data);
           };
         });
@@ -878,7 +880,7 @@ export class FetchClient {
       return ((fileList: FileList | File[], parentId?: string, option?: FetchPolicy) => {
         this.#refuseInApp(names.addModelFiles);
         this.#refuseInRender(names.addModelFiles, option);
-        return this.#writing(() => upload(fileList, parentId, option));
+        return this.#writing(() => upload(fileList, parentId, option), option);
       }) as FetchHandler;
     });
   }
