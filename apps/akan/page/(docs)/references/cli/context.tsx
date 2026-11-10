@@ -863,15 +863,15 @@ akan mcp-call plan_workflow --mode plan --args '{"workflow":"add-field","inputs"
               {l.trans({
                 en: (
                   <span>
-                    <strong>doctor never fails the process.</strong> It exits with code 0 even when the status is{" "}
-                    <code>failed</code>, so a CI gate must read <code>status</code> from <code>--format json</code>.
+                    <strong>Warnings never fail the process.</strong> doctor exits with code 1 only when the status is{" "}
+                    <code>failed</code>; run it with <code>--strict</code> so a CI gate also fails on recommended
+                    conventions.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>doctor는 프로세스를 실패로 끝내지 않습니다.</strong> 상태가 <code>failed</code>여도 종료
-                    코드는 0이므로, CI에서 막으려면 <code>--format json</code> 결과의 <code>status</code>를 읽어야
-                    합니다.
+                    <strong>경고는 프로세스를 실패로 끝내지 않습니다.</strong> doctor는 상태가 <code>failed</code>일
+                    때만 종료 코드 1로 끝납니다. 권장 규칙까지 CI에서 막으려면 <code>--strict</code>로 실행하세요.
                   </span>
                 ),
               })}

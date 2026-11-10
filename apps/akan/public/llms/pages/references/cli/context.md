@@ -182,7 +182,7 @@ Meaning
 
 - `mobile-appid-placeholder` — warning (`--ios` only) — A native target still uses a placeholder bundle id.
 
-**doctor never fails the process.** It exits with code 0 even when the status is `failed`, so a CI gate must read `status` from `--format json`.
+**Warnings never fail the process.** doctor exits with code 1 only when the status is `failed`; run it with `--strict` so a CI gate also fails on recommended conventions.
 
 MCP Tools And Resources
 
