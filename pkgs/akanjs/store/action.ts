@@ -54,6 +54,7 @@ import type { DraftState } from "./state";
 import type { SetGet, StoreSliceArgs, StoreSliceMap, StoreSliceSuffixCap } from "./types";
 
 type _SliceMap<S extends SliceCls> = StoreSliceMap<S>;
+type StateRecord = { [key: string]: unknown };
 type _ActionRefName<S extends SliceCls> = SlceCnstRefName<S>;
 type _ActionCap<S extends SliceCls> = SlceCnstCapitalizedRefName<S>;
 type _ActionInput<S extends SliceCls> = SlceCnstInput<S>;
@@ -314,8 +315,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
 
   const names = modelNames(refName);
   type Uploading = { [field: string]: string[] };
-  type FormState = { [key: string]: any };
-  type StateRecord = { [key: string]: any };
+  type FormState = { [key: string]: unknown };
   let uploadSeq = 0;
   const releasedUpload = (uploading: Uploading, field: string, ticket?: string): Uploading => {
     const pending = uploading[field];
@@ -327,7 +327,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
   const formPatchOf = (
     state: StateRecord,
     recipe: (form: FormState) => void,
-    uploading: Uploading = state[names.modelFormUploading],
+    uploading = state[names.modelFormUploading] as Uploading,
   ) => ({
     [names.modelForm]: produce(state[names.modelForm] as FormState, recipe),
     // `set` reads a form patch without the upload slot as a whole-form replace and drops every upload in flight.
@@ -352,17 +352,14 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
         const setValue =
           value === null ? null : field.isClass ? immerify<object>(field.modelRef, value as object) : (value as object);
         // An explicit write wins over a single field's upload in flight; an array keeps its uploads.
-        const uploading: Uploading =
-          isFileField && !field.isArray
-            ? releasedUpload(state[names.modelFormUploading], namesOfField.field)
-            : state[names.modelFormUploading];
+        const uploading = state[names.modelFormUploading] as Uploading;
         this.set(
           formPatchOf(
             state,
             (form) => {
               form[namesOfField.field] = setValue;
             },
-            uploading,
+            isFileField && !field.isArray ? releasedUpload(uploading, namesOfField.field) : uploading,
           ),
         );
         // After the write, so a hook that reads the field sees the new value.
@@ -440,7 +437,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
                 },
               });
               const releasedIn = (state: StateRecord) =>
-                releasedUpload(state[names.modelFormUploading], namesOfField.field, ticket);
+                releasedUpload(state[names.modelFormUploading] as Uploading, namesOfField.field, ticket);
               let files: ProtoFile[];
               try {
                 files = await (fetch[names.addModelFiles] as (...args: any) => Promise<ProtoFile[]>)(fileList, formId);
@@ -573,26 +570,51 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     if (fn) return fn;
     throw restoreRemoteError({ error: "base.error.endpointClosed", data: { endpoint: key } }, 404);
   };
-  const withModelLoading = async <T>(ctx: SetGet, loadingId: string | null, request: () => Promise<T>) => {
-    if (loadingId) ctx.set({ [names.modelLoading]: loadingId });
+  const flagOwners = new WeakMap<SetGet, Map<string, object>>();
+  const openSeqs = new WeakMap<SetGet, number>();
+  const openSeqOf = (ctx: SetGet) => openSeqs.get(ctx) ?? 0;
+  const markOpened = (ctx: SetGet) => {
+    const openSeq = openSeqOf(ctx) + 1;
+    openSeqs.set(ctx, openSeq);
+    return openSeq;
+  };
+  // A view, edit or new form opened during a write's request owns the modal and the form when the write lands.
+  const isOvertaken = (ctx: SetGet, openSeq: number) => openSeqOf(ctx) !== openSeq;
+  // A write owns its loading flag while the flag holds its value and no later write has set the flag since.
+  const withFlag = async <T>(
+    ctx: SetGet,
+    {
+      flag,
+      opening = {},
+      request,
+      land,
+    }: {
+      flag: { key: string; value: string | true } | null;
+      opening?: StateRecord;
+      request: () => Promise<T>;
+      land: (answer: T, ownsFlag: boolean) => void;
+    },
+  ) => {
+    const owner = {};
+    const ownsFlag = () =>
+      !!flag && flagOwners.get(ctx)?.get(flag.key) === owner && (ctx.get() as StateRecord)[flag.key] === flag.value;
     try {
-      return await request();
+      if (flag) {
+        const owners = flagOwners.get(ctx) ?? new Map<string, object>();
+        flagOwners.set(ctx, owners.set(flag.key, owner));
+      }
+      if (flag || Object.keys(opening).length) ctx.set({ ...opening, ...(flag ? { [flag.key]: flag.value } : {}) });
+      const answer = await request();
+      land(answer, ownsFlag());
+      return answer;
     } catch (error) {
-      // Left alone when a view<Model> of another record took the flag over during the request.
-      if (loadingId && (ctx.get() as { [key: string]: unknown })[names.modelLoading] === loadingId)
-        ctx.set({ [names.modelLoading]: false });
+      if (flag && ownsFlag()) ctx.set({ [flag.key]: false });
       throw error;
     }
   };
-  // Read after the request: a view<Model> that started meanwhile owns the open model and the flag.
-  const openModelPatchOf = (
-    latest: { [key: string]: any },
-    updatedModel: Full,
-    loadingId: string | null,
-    opened: { [key: string]: unknown } = {},
-  ) => ({
+  const openModelPatchOf = (latest: StateRecord, updatedModel: Full, ownsFlag: boolean, opened: StateRecord = {}) => ({
     ...((latest[names.model] as Full | null)?.id === updatedModel.id ? { [names.model]: updatedModel, ...opened } : {}),
-    ...(loadingId && latest[names.modelLoading] === loadingId ? { [names.modelLoading]: false } : {}),
+    ...(ownsFlag ? { [names.modelLoading]: false } : {}),
   });
   function armDraft(this: SetGet, draftScope: string | undefined, form: object, baseUpdatedAt: string | null) {
     openFormBase = draftScope ? form : null;
@@ -694,18 +716,27 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
 
       if (!modelInput || isUploadingIn(currentState)) return;
-      this.set({ [names.modelLoading]: true });
-      const model = await servedFetch<Full>(names.createModel)(modelInput, { onError });
-      this.set({
-        [names.modelForm]: immerify(modelRef, defaultModel),
-        [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
-        [names.model]: model,
-        [names.modelLoading]: false,
-        [names.modelViewAt]: new Date(),
-        [names.modelModal]: modal ?? null,
-        ...staleAtOfSlices(),
-        ...(typeof path === "string" && path ? { [path]: model } : {}),
-        ...createdListPatchOf(sliceName, model, this.get()),
+      const openSeq = openSeqOf(this);
+      const model = await withFlag(this, {
+        flag: { key: names.modelLoading, value: true },
+        request: () => servedFetch<Full>(names.createModel)(modelInput, { onError }),
+        land: (model, ownsFlag) => {
+          this.set({
+            ...(isOvertaken(this, openSeq)
+              ? {}
+              : {
+                  [names.modelForm]: immerify(modelRef, defaultModel),
+                  [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
+                  [names.model]: model,
+                  [names.modelViewAt]: new Date(),
+                  [names.modelModal]: modal ?? null,
+                }),
+            ...(ownsFlag ? { [names.modelLoading]: false } : {}),
+            ...staleAtOfSlices(),
+            ...(typeof path === "string" && path ? { [path]: model } : {}),
+            ...createdListPatchOf(sliceName, model, this.get()),
+          });
+        },
       });
       applyLiveCreate.call(this, sliceName, model);
       await onSuccess?.(model);
@@ -720,19 +751,28 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const defaultModel = currentState[defaultKeyOf(sliceName)] as Full;
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
       if (!modelInput || isUploadingIn(currentState)) return;
-      const loadingId = model?.id === modelForm.id ? modelForm.id : null;
-      const updatedModel = await withModelLoading(this, loadingId, () =>
-        servedFetch<Full>(names.updateModel)(modelForm.id, modelInput, { onError }),
-      );
-      const latest = this.get() as { [key: string]: any };
-      this.set({
-        ...openModelPatchOf(latest, updatedModel, loadingId, { [names.modelViewAt]: new Date() }),
-        [names.modelForm]: immerify(modelRef, defaultModel),
-        [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
-        [names.modelModal]: modal ?? null,
-        ...staleAtOfSlices(),
-        ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
-        ...updatedListPatchOf(latest, updatedModel),
+      const openSeq = openSeqOf(this);
+      const updatedModel = await withFlag(this, {
+        flag: model?.id === modelForm.id ? { key: names.modelLoading, value: modelForm.id } : null,
+        request: () => servedFetch<Full>(names.updateModel)(modelForm.id, modelInput, { onError }),
+        land: (updatedModel, ownsFlag) => {
+          const latest = this.get() as StateRecord;
+          const overtaken = isOvertaken(this, openSeq);
+          const isSavedForm = !overtaken && (latest[names.modelForm] as { id?: string }).id === modelForm.id;
+          this.set({
+            ...openModelPatchOf(latest, updatedModel, ownsFlag, { [names.modelViewAt]: new Date() }),
+            ...(isSavedForm
+              ? {
+                  [names.modelForm]: immerify(modelRef, defaultModel),
+                  [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
+                }
+              : {}),
+            ...(overtaken ? {} : { [names.modelModal]: modal ?? null }),
+            ...staleAtOfSlices(),
+            ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
+            ...updatedListPatchOf(latest, updatedModel),
+          });
+        },
       });
       await onSuccess?.(updatedModel);
     },
@@ -743,16 +783,21 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     ) {
       const modelInput = (cnst.input.purify as (data: any) => Input | null)(data);
       if (!modelInput) return;
-      this.set({ [names.modelLoading]: true });
-      const model = await servedFetch<Full>(names.createModel)(modelInput, { onError });
-      this.set({
-        [names.model]: model,
-        [names.modelLoading]: false,
-        [names.modelViewAt]: new Date(),
-        [names.modelModal]: modal ?? null,
-        ...staleAtOfSlices(),
-        ...(typeof path === "string" && path ? { [path]: model } : {}),
-        ...createdListPatchOf(sliceName, model, this.get()),
+      const openSeq = openSeqOf(this);
+      const model = await withFlag(this, {
+        flag: { key: names.modelLoading, value: true },
+        request: () => servedFetch<Full>(names.createModel)(modelInput, { onError }),
+        land: (model, ownsFlag) => {
+          this.set({
+            ...(isOvertaken(this, openSeq)
+              ? {}
+              : { [names.model]: model, [names.modelViewAt]: new Date(), [names.modelModal]: modal ?? null }),
+            ...(ownsFlag ? { [names.modelLoading]: false } : {}),
+            ...staleAtOfSlices(),
+            ...(typeof path === "string" && path ? { [path]: model } : {}),
+            ...createdListPatchOf(sliceName, model, this.get()),
+          });
+        },
       });
       applyLiveCreate.call(this, sliceName, model);
       await onSuccess?.(model);
@@ -767,17 +812,20 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const model = currentState[names.model] as Full | null;
       const modelInput = (cnst.input.purify as (data: any) => DefaultOf<Input> | null)(data);
       if (!modelInput) return;
-      const loadingId = model?.id === id ? id : null;
-      const updatedModel = await withModelLoading(this, loadingId, () =>
-        servedFetch<Full>(names.updateModel)(id, modelInput, { onError }),
-      );
-      const latest = this.get() as { [key: string]: any };
-      this.set({
-        ...openModelPatchOf(latest, updatedModel, loadingId, { [names.modelViewAt]: new Date() }),
-        [names.modelModal]: modal ?? null,
-        ...staleAtOfSlices(),
-        ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
-        ...updatedListPatchOf(latest, updatedModel),
+      const openSeq = openSeqOf(this);
+      const updatedModel = await withFlag(this, {
+        flag: model?.id === id ? { key: names.modelLoading, value: id } : null,
+        request: () => servedFetch<Full>(names.updateModel)(id, modelInput, { onError }),
+        land: (updatedModel, ownsFlag) => {
+          const latest = this.get() as StateRecord;
+          this.set({
+            ...openModelPatchOf(latest, updatedModel, ownsFlag, { [names.modelViewAt]: new Date() }),
+            ...(isOvertaken(this, openSeq) ? {} : { [names.modelModal]: modal ?? null }),
+            ...staleAtOfSlices(),
+            ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
+            ...updatedListPatchOf(latest, updatedModel),
+          });
+        },
       });
       await onSuccess?.(updatedModel);
     },
@@ -840,6 +888,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       partial: Partial<Full> = {},
       { modal, setDefault, sliceName = names.model, draftScope }: NewOption = {},
     ) {
+      markOpened(this);
       const defaultModelKey = defaultKeyOf(sliceName);
       const currentState = this.get() as { [key: string]: any };
       const defaultModel = currentState[defaultModelKey] as Full;
@@ -862,18 +911,29 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       { modal, onError, draftScope }: EditOption & FetchPolicy = {},
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-      this.set({ [names.modelFormLoading]: id, [names.modelModal]: modal ?? "edit" });
-      const model = await servedFetch<Full>(names.model)(id, { onError });
-      const modelForm = immerify(modelRef, deepObjectify<Input>(model as unknown as Input) as object) as Input;
-      this.set({
-        [names.model]: model,
-        [names.modelFormLoading]: false,
-        [names.modelViewAt]: new Date(),
-        [names.modelForm]: modelForm,
-        [names.modelDraft]: armDraft.call(this, draftScope, modelForm, updatedAtOf(model)),
+      const openSeq = markOpened(this);
+      await withFlag(this, {
+        flag: { key: names.modelFormLoading, value: id },
+        opening: { [names.modelModal]: modal ?? "edit" },
+        request: () => servedFetch<Full>(names.model)(id, { onError }),
+        land: (model, ownsFlag) => {
+          const released = ownsFlag ? { [names.modelFormLoading]: false } : {};
+          if (isOvertaken(this, openSeq)) {
+            if (ownsFlag) this.set(released);
+            return;
+          }
+          const modelForm = immerify(modelRef, deepObjectify<Input>(model as unknown as Input) as object) as Input;
+          this.set({
+            ...released,
+            [names.model]: model,
+            [names.modelViewAt]: new Date(),
+            [names.modelForm]: modelForm,
+            [names.modelDraft]: armDraft.call(this, draftScope, modelForm, updatedAtOf(model)),
+          });
+          // A record that moved keeps the draft pending: overwriting a server value the user sees is not recoverable.
+          if (draftScope) void applyDraft.call(this, { auto: false });
+        },
       });
-      // A record that moved keeps the draft pending: overwriting a server value the user sees is not recoverable.
-      if (draftScope) void applyDraft.call(this, { auto: false });
     },
     [names.mergeModel]: async function (
       this: SetGet,
@@ -882,16 +942,18 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       options?: FetchPolicy,
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-      const model = (this.get() as { [key: string]: any })[names.model] as Full | null;
-      const loadingId = id === model?.id ? id : null;
-      const updatedModel = await withModelLoading(this, loadingId, () =>
-        servedFetch<Full>(names.mergeModel)(modelOrId, data, options),
-      );
-      const latest = this.get() as { [key: string]: any };
-      this.set({
-        ...openModelPatchOf(latest, updatedModel, loadingId),
-        ...staleAtOfSlices(),
-        ...updatedListPatchOf(latest, updatedModel),
+      const model = (this.get() as StateRecord)[names.model] as Full | null;
+      await withFlag(this, {
+        flag: id === model?.id ? { key: names.modelLoading, value: id } : null,
+        request: () => servedFetch<Full>(names.mergeModel)(modelOrId, data, options),
+        land: (updatedModel, ownsFlag) => {
+          const latest = this.get() as StateRecord;
+          this.set({
+            ...openModelPatchOf(latest, updatedModel, ownsFlag),
+            ...staleAtOfSlices(),
+            ...updatedListPatchOf(latest, updatedModel),
+          });
+        },
       });
     },
     [names.viewModel]: async function (
@@ -900,9 +962,18 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       { modal, onError }: { modal?: string | null } & FetchPolicy = {},
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-      this.set({ [names.modelModal]: modal ?? "view", [names.modelLoading]: id });
-      const model = await servedFetch<Full>(names.model)(id, { onError });
-      this.set({ [names.model]: model, [names.modelViewAt]: new Date(), [names.modelLoading]: false });
+      const openSeq = markOpened(this);
+      await withFlag(this, {
+        flag: { key: names.modelLoading, value: id },
+        opening: { [names.modelModal]: modal ?? "view" },
+        request: () => servedFetch<Full>(names.model)(id, { onError }),
+        land: (model, ownsFlag) => {
+          this.set({
+            ...(isOvertaken(this, openSeq) ? {} : { [names.model]: model, [names.modelViewAt]: new Date() }),
+            ...(ownsFlag ? { [names.modelLoading]: false } : {}),
+          });
+        },
+      });
     },
     [names.setModel]: function (this: SetGet, ...fullOrLightModels: Full[]) {
       const currentState = this.get() as { [key: string]: any };

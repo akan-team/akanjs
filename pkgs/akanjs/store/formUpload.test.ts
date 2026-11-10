@@ -445,6 +445,7 @@ describe("upload status poll", () => {
     await flush();
     expect(state().upPostForm.images[0].status).toBe("active");
   });
+
   test("a poll write keeps another field's upload in flight", async () => {
     jest.useFakeTimers();
     const { instance, uploads, fileStatus, state } = makeInstance();
