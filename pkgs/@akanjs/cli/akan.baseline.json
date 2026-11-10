@@ -6,7 +6,6 @@
   "akan.size.function": {
     "application/application.command.ts#ApplicationCommand.command()": 530,
     "cloud/cloud.command.ts#CloudCommand.command()": 261,
-    "context/context.runner.ts#ContextRunner.callMcpTool": 153,
     "primitive/primitive.script.ts#PrimitiveScript.addFieldToSources": 219,
     "templates/appSample/page/_index.tsx#getContent": 276
   },

@@ -124,7 +124,7 @@ export class McpToolPack {
             const result = await this.#call(server, tool.name, params ?? {});
             return {
               content: [{ type: "text", text: codeAgentClip(result.text, codeAgentOutputChars) }],
-              details: undefined,
+              details: result.code === undefined ? undefined : { code: result.code },
               isError: result.isError,
             };
           },

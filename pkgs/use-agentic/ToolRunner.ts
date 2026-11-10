@@ -107,6 +107,8 @@ export class ToolRunner {
    * the user is not work, and holding the lock across it would let one agent's unanswered card freeze the other's.
    */
   static #queue: Promise<void> = Promise.resolve();
+  static readonly #errKey = /^[A-Za-z][\w$-]{0,63}\.error\.[\w$.-]{1,120}$/;
+  static readonly #token = /^[a-z][A-Za-z0-9]{0,63}$/;
 
   readonly #surface: SurfaceView;
   readonly #host: ToolRunnerHost;
@@ -124,9 +126,10 @@ export class ToolRunner {
   async run(call: ToolCallRequest, signal: AbortSignal): Promise<ToolCallResult> {
     const source = this.#surface.tool(call.name)?.taint === "source";
     // Bounded here, at the one place a tool's answer is produced, because from here on it rides every later turn.
-    const answered = ToolOutput.clipped(await this.#answer(call, signal));
-    if (!source) return answered;
+    const { code, ...answered } = ToolOutput.clipped(await this.#answer(call, signal));
+    if (!source) return ToolRunner.#isCode(code) ? { ...answered, code } : answered;
     this.#untrusted = true;
+    //? Security: no code from a source tool; what it read may have named its failure, and only the fence marks that.
     return ToolRunner.#framed(answered);
   }
 
@@ -229,7 +232,8 @@ export class ToolRunner {
       return ToolRunner.#answered(base, returned, this.#surface.diffSince(before));
     } catch (error) {
       failed = error instanceof Error ? error.message : String(error);
-      return { ...base, error: failed };
+      const code = ToolRunner.#codeOf(error);
+      return { ...base, error: failed, ...(code ? { code } : {}) };
     } finally {
       this.#host.progress?.({ callId: call.id, report: null });
       this.#host.activity?.({
@@ -240,6 +244,19 @@ export class ToolRunner {
         ...(failed ? { error: failed } : {}),
       });
     }
+  }
+
+  //? Duck-typed, as this package imports no framework: a dictionary `Err`'s key (`<module>.error.<key>`), else an
+  //? `AkanError`'s `code`. Security: bounded and prose-free, since `code` rides outside the page-content fence.
+  static #codeOf(error: unknown): string | undefined {
+    if (typeof error !== "object" || error === null) return undefined;
+    const { code, error: key } = error as { code?: unknown; error?: unknown };
+    if (typeof key === "string" && ToolRunner.#errKey.test(key)) return key;
+    return typeof code === "string" && ToolRunner.#token.test(code) ? code : undefined;
+  }
+
+  static #isCode(code: unknown): code is string {
+    return typeof code === "string" && (ToolRunner.#errKey.test(code) || ToolRunner.#token.test(code));
   }
 
   /**

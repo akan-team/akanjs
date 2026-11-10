@@ -1,4 +1,5 @@
-import type { Logger } from "akanjs/common";
+import { AkanError } from "akanjs/base";
+import { type Logger, MCP_FAILURE_META, type McpFailure } from "akanjs/common";
 import {
   MCP_APP_META,
   MCP_META_CLIENT_CAPABILITIES,
@@ -8,7 +9,7 @@ import {
 } from "../../signal/mcp";
 import type { PromptMessage } from "../../signal/mcp/Msg";
 import type { McpPrompt } from "../../signal/mcp/mcpProtocol";
-import type { PagePromptEntry, PagePromptRun, PagePromptSource } from "../../signal/mcp/pagePrompt";
+import type { PagePromptEntry, PagePromptRefusal, PagePromptRun, PagePromptSource } from "../../signal/mcp/pagePrompt";
 import { McpApps } from "./McpApps";
 import { McpAuthRequiredError, type McpDispatcher } from "./McpDispatcher";
 import type { McpUiSession } from "./McpUiSession";
@@ -35,7 +36,7 @@ interface McpPageCall {
 
 export type McpPageRun =
   | { badArguments: true }
-  | { refusal: string }
+  | { refusal: string; failure: McpFailure }
   | { run: Extract<PagePromptRun, { ok: true }> | null; messages: PromptMessage[] };
 
 export class McpPages {
@@ -107,7 +108,14 @@ export class McpPages {
     const apps = this.#props.apps;
     const page = await this.run(call, document, entry, args);
     if ("badArguments" in page) return page;
-    if ("refusal" in page) return { result: { content: [{ type: "text", text: page.refusal }], isError: true } };
+    if ("refusal" in page)
+      return {
+        result: {
+          content: [{ type: "text", text: page.refusal }],
+          isError: true,
+          _meta: { [MCP_FAILURE_META]: page.failure },
+        },
+      };
     if (!page.run || !apps) return { result: { content: page.messages.map((message) => message.content) } };
     const origin = this.#props.publicOrigin(call.req);
     const forView = call.ui ? { account: McpApps.accountOf(call.req) } : null;
@@ -122,7 +130,7 @@ export class McpPages {
   ): Promise<McpPageRun> {
     const source = this.#props.source;
     const { name } = entry;
-    if (!source) return { refusal: `Unknown prompt: ${name}.` };
+    if (!source) return { refusal: `Unknown prompt: ${name}.`, failure: McpPages.#failureOf("unknown") };
     const strings = args ? McpPages.#pageArguments(args) : null;
     if (!strings) return { badArguments: true };
     const composer = new PagePromptComposer({
@@ -160,9 +168,16 @@ export class McpPages {
             : run.reason === "not-found"
               ? MCP_SCREEN_REFUSAL.notFound
               : MCP_SCREEN_REFUSAL.failed;
-      return { refusal: message };
+      return { refusal: message, failure: McpPages.#failureOf(gated ? "forbidden" : run.reason) };
     }
     return { run, messages: await composer.compose(entry, run) };
+  }
+
+  static #failureOf(reason: PagePromptRefusal): McpFailure {
+    if (reason === "argument") return { code: "invalidArgument", statusCode: 400 };
+    if (reason === "unknown") return { code: "unknownPrompt", statusCode: 404 };
+    const statusCode = reason === "forbidden" ? 403 : reason === "error" ? 500 : 404;
+    return { code: AkanError.codeOfStatus(statusCode), statusCode };
   }
 
   // Security: a list failure reads as an unknown tool, as a hidden endpoint's name does; an error for this name alone

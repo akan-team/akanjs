@@ -1,6 +1,7 @@
 import { Logger } from "akanjs/common";
 import { type ConstantModel, textFieldRoles } from "akanjs/constant";
 import { type DatabaseModel, type SearchColumn, searchColumns } from "akanjs/document";
+import { DocumentStoreError } from "../../../documentStoreError";
 import { PostgresDialect } from "../dialect/postgres";
 import type { SqlFrag } from "../types";
 import { likePattern, quoteIdent } from "../values";
@@ -102,7 +103,8 @@ export class PostgresSearchEngine implements SearchEngine {
     if (diacritics) return { kind: "word", unaccent: diacritics !== "0" };
     const caseSensitive = name === "trigram" ? only("case_sensitive", ["0", "1"], "0") : null;
     if (caseSensitive) return { kind: "trigram", caseSensitive: caseSensitive === "1" };
-    throw new Error(
+    throw new DocumentStoreError(
+      "searchMisconfigured",
       `Postgres text search reads AKAN_SEARCH_TOKENIZER as "unicode61 [remove_diacritics 0|1|2]" or "trigram [case_sensitive 0|1]", and "${tokenizer}" is neither. Fix AKAN_SEARCH_TOKENIZER, or set AKAN_SEARCH_ENABLED=0 to run without text search.`,
     );
   }
@@ -390,8 +392,10 @@ $akan$`;
       await conn.execute(`CREATE EXTENSION IF NOT EXISTS ${name}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
+      throw new DocumentStoreError(
+        "searchMisconfigured",
         `Text search with tokenizer "${this.#tokenizer}" needs the Postgres extension ${name}, which this role could not create: ${message}. Run CREATE EXTENSION ${name} as a role that may, or set AKAN_SEARCH_ENABLED=0 to run without text search.`,
+        { cause: error },
       );
     }
     return await schemaOf();

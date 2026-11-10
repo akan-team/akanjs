@@ -17,6 +17,7 @@ import type {
   SliceCls,
 } from "akanjs/signal";
 import type { Adaptor, AdaptorCls, Service, ServiceCls } from ".";
+import { InjectError } from "./injectError";
 import { LiveSyncHub } from "./liveSyncHub";
 import type { CacheAdaptor, CacheSetOptions, CacheValue } from "./predefinedAdaptor";
 
@@ -159,14 +160,14 @@ export class InjectInfo<
               [...registry.adaptorRole.entries()].find(([role]) => role.refName === "cacheAdaptorRole")?.[1] ??
               registry.adaptorCls.get("solidCache") ??
               registry.adaptorCls.get("redisCache");
-            if (!cacheAdaptorCls) throw new Error("Cache adaptor role is not registered");
+            if (!cacheAdaptorCls) throw new InjectError("notRegistered", "Cache adaptor role is not registered");
             const cacheAdaptor = registry.adaptor.get(cacheAdaptorCls) as unknown as CacheAdaptor;
-            if (!cacheAdaptor) throw new Error("Cache adaptor is not initialized");
+            if (!cacheAdaptor) throw new InjectError("notInitialized", "Cache adaptor is not initialized");
             await InjectInfo.#injectMemory(instance, propKey, injectInfo as InjectInfo<"memory">, cacheAdaptor);
             break;
           }
           default:
-            throw new Error(`Unknown inject type: ${injectInfo.type}`);
+            throw new InjectError("invalidInject", `Unknown inject type: ${injectInfo.type}`);
         }
       }),
     );
@@ -188,9 +189,11 @@ export class InjectInfo<
   ) {
     const databaseAdaptorRefName = modelNames(injectInfo.parentRefName).modelModel;
     const databaseAdaptorCls = adaptorClsRegistry.get(databaseAdaptorRefName);
-    if (!databaseAdaptorCls) throw new Error(`Database adaptor "${databaseAdaptorRefName}" is not registered`);
+    if (!databaseAdaptorCls)
+      throw new InjectError("notRegistered", `Database adaptor "${databaseAdaptorRefName}" is not registered`);
     const databaseAdaptor = adaptorRegistry.get(databaseAdaptorCls);
-    if (!databaseAdaptor) throw new Error(`Database adaptor "${databaseAdaptorRefName}" is not initialized`);
+    if (!databaseAdaptor)
+      throw new InjectError("notInitialized", `Database adaptor "${databaseAdaptorRefName}" is not initialized`);
     Object.defineProperty(instance, propKey, { value: databaseAdaptor, writable: false, enumerable: true });
   }
   static async #injectService(
@@ -200,19 +203,22 @@ export class InjectInfo<
     registry: InjectRegistry,
   ) {
     if (!propKey.endsWith("Service"))
-      throw new Error(
+      throw new InjectError(
+        "invalidInject",
         `Service inject key must end with "***Service", current key is "${propKey} on ${injectInfo.parentRefName}"`,
       );
     const injectServiceRefName = propKey.slice(0, -7);
     const injectServiceCls = registry.serviceCls.get(injectServiceRefName);
-    if (!injectServiceCls) throw new Error(`Service "${injectServiceRefName}" is not registered`);
+    if (!injectServiceCls)
+      throw new InjectError("notRegistered", `Service "${injectServiceRefName}" is not registered`);
     const injectService = registry.service.get(injectServiceCls);
-    if (!injectService) throw new Error(`Service "${injectServiceRefName}" is not initialized`);
+    if (!injectService) throw new InjectError("notInitialized", `Service "${injectServiceRefName}" is not initialized`);
     Object.defineProperty(instance, propKey, { value: injectService, writable: false, enumerable: true });
   }
   static async #injectUse(instance: Adaptor | Service, propKey: string, uses: Map<string, unknown>) {
     if (!uses.has(propKey))
-      throw new Error(
+      throw new InjectError(
+        "notInitialized",
         `Cannot inject "${propKey}" into adaptor "${(instance.constructor as AdaptorCls).refName}": ` +
           `use "${propKey}" has not been initialized yet.`,
       );
@@ -226,14 +232,17 @@ export class InjectInfo<
     registry: InjectRegistry,
   ) {
     if (!propKey.endsWith("Signal"))
-      throw new Error(
+      throw new InjectError(
+        "invalidInject",
         `Signal inject key must end with "***Signal", current key is "${propKey} on ${injectInfo.parentRefName}"`,
       );
     const injectSignalRefName = propKey;
     const serverSignalCls = registry.serverSignalCls.get(injectSignalRefName);
-    if (!serverSignalCls) throw new Error(`Server signal "${injectSignalRefName}" is not registered`);
+    if (!serverSignalCls)
+      throw new InjectError("notRegistered", `Server signal "${injectSignalRefName}" is not registered`);
     const serverSignal = registry.serverSignal.get(serverSignalCls);
-    if (!serverSignal) throw new Error(`Server signal "${injectSignalRefName}" is not initialized`);
+    if (!serverSignal)
+      throw new InjectError("notInitialized", `Server signal "${injectSignalRefName}" is not initialized`);
     Object.defineProperty(instance, propKey, { value: serverSignal, writable: false, enumerable: true });
   }
   static async #injectPlug(
@@ -242,11 +251,13 @@ export class InjectInfo<
     injectInfo: InjectInfo<"plug">,
     registry: InjectRegistry,
   ) {
-    if (!injectInfo.adaptor) throw new Error("InjectInfo is not a plug or adaptor is not provided");
+    if (!injectInfo.adaptor)
+      throw new InjectError("invalidInject", "InjectInfo is not a plug or adaptor is not provided");
     const adaptorCls = registry.adaptorRole.get(injectInfo.adaptor) ?? injectInfo.adaptor;
     const depInstance = registry.adaptor.get(adaptorCls);
     if (!depInstance)
-      throw new Error(
+      throw new InjectError(
+        "notInitialized",
         `Cannot inject "${propKey}" into adaptor "${adaptorCls.refName}": ` +
           `dependency "${injectInfo.adaptor.refName}" has not been initialized yet.`,
       );
@@ -406,11 +417,11 @@ export const injectionBuilder = (parentRefName: string) => ({
     } = {},
   ) => {
     if (opts.local && (!!opts.get || !!opts.set))
-      throw new Error("get and set should not be provided when local is true");
+      throw new InjectError("invalidInject", "get and set should not be provided when local is true");
     if ((opts.get && !opts.set) || (!opts.get && opts.set))
-      throw new Error("get and set should be both provided or not provided");
+      throw new InjectError("invalidInject", "get and set should be both provided or not provided");
     const isMap = modelRef === Map;
-    if (isMap && !opts.of) throw new Error("of should be provided when modelRef is Map");
+    if (isMap && !opts.of) throw new InjectError("invalidInject", "of should be provided when modelRef is Map");
     const valueRef = (isMap ? opts.of : modelRef) as Cls;
     // A model or scalar class is stored as JSON text, the shape entries from before typed cache values already have.
     const isStructured = Array.isArray(valueRef) || !PrimitiveRegistry.has(valueRef);

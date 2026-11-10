@@ -21,8 +21,11 @@ import {
   claimChunkReload,
   isBuildBundle,
   isLinkFailure,
+  lazyLinkFailureKeyOf,
   navigationOfChunk,
+  noteChunkLoadFailure,
   recordChunksOf,
+  reportingRootErrors,
 } from "./rscClientChunks";
 import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
 import { validateRscPatchForGuardedCommit } from "./rscClientPatch";
@@ -33,6 +36,7 @@ import {
   rollbackPreparedAkanHeadSnapshotPatch,
 } from "./rscHeadPatch";
 import { getRscPayloadStream, guardRscRedirectRows, type RscRedirectRow } from "./rscHttp";
+import { createInitialRscStream } from "./rscInlineStream";
 import {
   type AkanSegmentCacheNode,
   commitLatestRscNavigation,
@@ -40,6 +44,7 @@ import {
   createRscNavigationCacheNode,
   createRscPatchNavigationCacheNode,
   deleteRscCacheEntryIfCurrent,
+  forgetRscPatchesOfLostBases,
   observeRscNavigationNode,
   type RscNavigationCacheNode,
   type RscPatchNavigationCacheNode,
@@ -51,24 +56,10 @@ import { RscPrefetchCache } from "./rscPrefetchCache";
 import { RscScrollRestoration } from "./rscScrollRestoration";
 import { commitAkanSegmentOutletPatch, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
-type InlineRscChunk = [1, string] | [3, string];
-
 declare global {
-  var __RSC_CHUNKS__: InlineRscChunk[] | undefined;
-  var __RSC_CLOSED__: boolean | undefined;
-  var __RSC_PUSH__: ((type: InlineRscChunk[0], data: string) => void) | undefined;
-  var __RSC_CLOSE__: (() => void) | undefined;
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
   var __AKAN_DICT_URL__: string | undefined;
   var __webpack_chunk_load__: ((chunkId: string) => Promise<unknown>) | undefined;
-}
-
-function decodeInlineRscChunk([type, data]: InlineRscChunk): Uint8Array {
-  if (type === 1) return new TextEncoder().encode(data);
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 type RscThenable = Promise<ReactNode> & {
@@ -107,24 +98,6 @@ class RscRouteNotFound extends Error {
     super(`[rscClient] no route at ${href}`);
     this.name = "RscRouteNotFound";
   }
-}
-
-function createInitialRscStream(): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      const queued = globalThis.__RSC_CHUNKS__ ?? [];
-      for (const chunk of queued) controller.enqueue(decodeInlineRscChunk(chunk));
-      globalThis.__RSC_CHUNKS__ = [];
-
-      if (globalThis.__RSC_CLOSED__) {
-        controller.close();
-        return;
-      }
-
-      globalThis.__RSC_PUSH__ = (type, data) => controller.enqueue(decodeInlineRscChunk([type, data]));
-      globalThis.__RSC_CLOSE__ = () => controller.close();
-    },
-  });
 }
 
 function normalizeHref(href: string): string {
@@ -432,6 +405,7 @@ if (loadChunk)
   globalThis.__webpack_chunk_load__ = (chunkId) => {
     const loading = loadChunk(chunkId);
     const navigation = navigationOfChunk(chunkId);
+    loading.catch(noteChunkLoadFailure);
     if (navigation) loading.catch((error: unknown) => loadDocumentForChunkFailure(chunkId, navigation, error));
     return loading;
   };
@@ -447,23 +421,32 @@ function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigatio
   else hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
 }
 
+//? A rejected `import()` names neither the module that asked nor the one that failed to link, so a lazy chunk counts
+//? as the page on screen's; only a page a navigation's response rendered can hold another build's modules.
+function loadDocumentForLazyChunkFailure(error: unknown): void {
+  const leaving =
+    !!pendingRequest && pendingRequest.navId !== refreshNavId && pendingRequest.target !== pageKeyOf(renderedHref);
+  if (shownNode === initialNode || leaving || documentNavigationFallbackInFlight || !isBuildBundle()) return;
+  const key = lazyLinkFailureKeyOf(error);
+  if (key && navigator.onLine && claimChunkReload(key))
+    hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
+}
+
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
 globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
 
 function rememberCommittedRouteState(node: RscCacheNode): void {
-  rscPatchCache.clear();
+  currentFullNode = node;
   shownNode = node;
   parkedRedirect.clear();
-  if (!node.routerState) return;
+  forgetRscPatchesOfLostBases(rscPatchCache, rscCache, node);
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
-  currentFullNode = node;
   currentCommitKind = "full";
 }
 
 //? A not-found view is never replayed or patched onto, so the page after it is rendered whole.
 function forgetCommittedRouteState(): void {
-  rscPatchCache.clear();
   shownNode = null;
   parkedRedirect.clear();
   currentRouterState = null;
@@ -500,6 +483,31 @@ function replayedPageOf(target: string): RscCacheNode | undefined {
   const node = cachedPageOf(target);
   if (node) rememberRscCacheNode(rscCache, node, MAX_RSC_CACHE_ENTRIES);
   return node;
+}
+
+function replayCachedPatch(target: string, navId: number, replace?: boolean, requestScroll?: () => void): boolean {
+  const cachedPatch = rscPatchCache.get(target);
+  if (!cachedPatch) return false;
+  const patchResult = resolveCachedRscPatchNavigation({
+    currentTree: currentSegmentTree,
+    currentBase: currentFullNode,
+    node: cachedPatch,
+    partialCommitEnabled: isAkanRscPartialCommitEnabled(),
+    navId,
+    getCurrentNavId: () => navigationSeq,
+  });
+  if (patchResult.status === "patched") {
+    const { tree, patchedNode, outletKey, headSnapshot } = patchResult;
+    const patch = { type: "patched" as const, tree, patchedNode, patch: cachedPatch.patch, outletKey, headSnapshot };
+    if (commitRscPatchNavigation({ target, patch, replace, requestScroll })) {
+      currentCommitFromCache = true;
+      rememberPatchedRouteState(tree, patchedNode);
+      rememberRscCacheNode(rscPatchCache, cachedPatch, MAX_RSC_CACHE_ENTRIES);
+      return true;
+    }
+  }
+  rscPatchCache.delete(target);
+  return false;
 }
 
 const isConstrainedNetwork = () => {
@@ -632,40 +640,7 @@ function Root(): ReactNode {
       let notFound = false;
       let servedFromCache = !!nextNode;
       if (!nextNode) {
-        const cachedPatch = rscPatchCache.get(target);
-        if (cachedPatch) {
-          const patchResult = resolveCachedRscPatchNavigation({
-            currentTree: currentSegmentTree,
-            node: cachedPatch,
-            partialCommitEnabled: isAkanRscPartialCommitEnabled(),
-            navId,
-            getCurrentNavId: () => navigationSeq,
-          });
-          if (patchResult.status === "patched") {
-            const replayedPatch = {
-              type: "patched" as const,
-              tree: patchResult.tree,
-              patchedNode: patchResult.patchedNode,
-              patch: cachedPatch.patch,
-              outletKey: patchResult.outletKey,
-              headSnapshot: patchResult.headSnapshot,
-            };
-            if (
-              commitRscPatchNavigation({
-                target,
-                patch: replayedPatch,
-                replace: options.replace,
-                requestScroll,
-              })
-            ) {
-              currentCommitFromCache = true;
-              rememberPatchedRouteState(patchResult.tree, patchResult.patchedNode);
-              rememberRscCacheNode(rscPatchCache, cachedPatch, MAX_RSC_CACHE_ENTRIES);
-              return;
-            }
-          }
-          rscPatchCache.delete(target);
-        }
+        if (replayCachedPatch(target, navId, options.replace, requestScroll)) return;
         const taken = rscPrefetchCache.take(pageKeyOf(target), cachedAuthCookies, signal);
         const prefetched = (await taken?.response) ?? undefined;
         if (signal.aborted) return;
@@ -697,6 +672,7 @@ function Root(): ReactNode {
               patchedNode: fetched.patchedNode,
               outletKey: fetched.outletKey,
               headSnapshot: fetched.headSnapshot,
+              base: currentFullNode,
             });
             if (patchCacheNode) rememberRscCacheNode(rscPatchCache, patchCacheNode, MAX_RSC_CACHE_ENTRIES);
             return;
@@ -788,8 +764,10 @@ window.addEventListener("popstate", (event) => {
   }, 0);
 });
 
+window.addEventListener("unhandledrejection", (event) => loadDocumentForLazyChunkFailure(event.reason));
+const rootOptions = isBuildBundle() ? reportingRootErrors(loadDocumentForLazyChunkFailure) : undefined;
 const hydrate = () => {
-  hydrateRoot(document, createElement(Root));
+  hydrateRoot(document, createElement(Root), rootOptions);
   scrollRestoration.restoreDocumentLoad();
 };
 //? Hydrating without the dictionary still beats a dead page: client components show their keys until a navigation

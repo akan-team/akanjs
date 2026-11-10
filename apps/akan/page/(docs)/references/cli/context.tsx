@@ -695,8 +695,8 @@ akan mcp-call plan_workflow --mode plan --args '{"workflow":"add-field","inputs"
           {
             name: "apply_workflow",
             desc: l.trans({
-              en: "Carries out a stored plan and, unless it failed, names what to validate next.",
-              ko: "저장된 플랜을 실행하고, 실패하지 않았으면 다음에 검증할 대상을 알려 줍니다.",
+              en: "Carries out a stored plan and, unless it failed, names what to validate next, or after a dry run the apply.",
+              ko: "저장된 플랜을 실행하고, 실패하지 않았으면 다음에 검증할 대상을, 드라이런 뒤에는 실제 적용을 알려 줍니다.",
             }),
             marks: applyModes,
           },

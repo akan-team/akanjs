@@ -2,6 +2,7 @@ import type { Adaptor } from "akanjs/service";
 
 import type { EndpointInfo } from "./endpointInfo";
 import type { ExceptionLike } from "./exception";
+import { SignalDeclarationError } from "./signalDeclarationError";
 import type { EndpointErrors } from "./types";
 
 // What an endpoint's `errors` declaration promises, checked where it is declared and where it is broken.
@@ -14,10 +15,16 @@ export class EndpointErrorContract {
     for (const [status, keys] of Object.entries(errors) as [string, EndpointErrors[number]][]) {
       const code = Number(status);
       if (!Number.isInteger(code) || code < 400 || code > 599)
-        throw new Error(`errors declares status ${status}: an error answers with a 400–599 status`);
+        throw new SignalDeclarationError(
+          "invalidErrors",
+          `errors declares status ${status}: an error answers with a 400–599 status`,
+        );
       for (const key of keys)
         if (!/^[^.]+\.error\.[^.]+$/.test(key))
-          throw new Error(`errors declares "${key}" under ${status}: an error key reads <module>.error.<key>`);
+          throw new SignalDeclarationError(
+            "invalidErrors",
+            `errors declares "${key}" under ${status}: an error key reads <module>.error.<key>`,
+          );
     }
   }
 

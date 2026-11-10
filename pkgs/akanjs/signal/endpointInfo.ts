@@ -22,6 +22,7 @@ import type {
 import type { ServiceModel } from "akanjs/service";
 import { EndpointErrorContract } from "./endpointErrorContract";
 import type { InternalArgCls } from "./internalArg";
+import { SignalDeclarationError } from "./signalDeclarationError";
 import type { ArgType, SignalOption, SrvMap } from "./types";
 
 export type EndpointType = "query" | "mutation" | "pubsub" | "message";
@@ -112,9 +113,9 @@ export class EndpointInfo<
     this.signalOption = signalOption;
   }
   #addArg(type: ArgType, name: string, arg: ConstantFieldTypeInput, option?: EndpointArgProps<boolean>) {
-    if (this.execFn) throw new Error("Query function is already set");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
     if (type !== "body" && type !== "search" && this.args.at(-1)?.option?.nullable)
-      throw new Error("Last argument is nullable");
+      throw new SignalDeclarationError("nullableLastArg", "Last argument is nullable");
     this.argNames.push(name);
     this.args.push(EndpointInfo.getArgInfo(type, name, arg, option));
   }
@@ -249,7 +250,7 @@ export class EndpointInfo<
           this.msg(arg.name, argRef, arg.option);
           break;
         default:
-          throw new Error(`Invalid argument type: ${arg.type}`);
+          throw new SignalDeclarationError("invalidArgType", `Invalid argument type: ${arg.type}`);
       }
     }
     return this;
@@ -258,7 +259,7 @@ export class EndpointInfo<
     argRef: InternalArgCls<ArgType>,
     option?: InternalArgProps<Optional>,
   ) {
-    if (this.execFn) throw new Error("Query function is already set");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
     this.internalArgs.push({ argRef, option });
     return this as unknown as EndpointInfo<
       ReqType,
@@ -307,7 +308,7 @@ export class EndpointInfo<
     ReturnType<ExecFn>,
     Nullable
   > {
-    if (this.execFn) throw new Error("Query function is already set");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
     this.execFn = execFn;
     return this as unknown as EndpointInfo<
       ReqType,

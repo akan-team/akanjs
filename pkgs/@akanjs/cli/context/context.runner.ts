@@ -25,12 +25,14 @@ import {
   workflowArtifactPath,
   workflowInputsArg,
 } from "@akanjs/devkit/akanMcpContract";
+import { AkanMcpToolError } from "@akanjs/devkit/akanMcpToolError";
 import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
 import { appIdsOf, getMobileTargets, isPlaceholderAppId, NativeApp } from "@akanjs/devkit/mobile";
 import { Prompter } from "@akanjs/devkit/prompter";
 import { createWorkflowBaselineSummary, jsonText, type WorkflowPlan, workflowStatus } from "@akanjs/devkit/workflow";
 import { WorkspaceGraph } from "@akanjs/devkit/workspaceGraph";
+import { MCP_FAILURE_META } from "akanjs/common";
 import { RepairRunner } from "../repair/repair.runner";
 import { WorkflowRunner } from "../workflow/workflow.runner";
 
@@ -38,6 +40,20 @@ import { WorkflowRunner } from "../workflow/workflow.runner";
 const toolErrorText = (error: unknown): string => {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(/\/(?:[^\s"'/]+\/)*(?=(?:pkgs|apps|libs|infra)\/)/g, "<workspace>/");
+};
+
+const assertMcpToolListed = (name: string, mode: AkanMcpMode) => {
+  const isListed = (tools: { name: string }[]) => tools.some((tool) => tool.name === name);
+  if (!isListed(listAkanMcpTools("apply"))) throw new AkanMcpToolError("unknownTool", `Unknown tool: ${name}`);
+  if (!isListed(listAkanMcpTools(mode)))
+    throw new AkanMcpToolError("toolUnavailable", `MCP tool "${name}" is not available in ${mode} mode.`);
+};
+
+const guidelineOf = async (name: string) => {
+  const guidelines = await Prompter.listGuidelines();
+  if (!guidelines.includes(name))
+    throw new AkanMcpToolError("invalidArgument", `Unknown guideline "${name}". Available: ${guidelines.join(", ")}`);
+  return await Prompter.getInstruction(name);
 };
 
 const compactDoctorWorkspaceResult = (
@@ -190,10 +206,7 @@ export class ContextRunner extends runner("context") {
     args: Record<string, unknown> = {},
     { mode = "readonly" }: { mode?: AkanMcpMode } = {},
   ) {
-    const availableTools = this.listMcpTools(mode);
-    if (!availableTools.some((tool) => tool.name === name)) {
-      throw new Error(`MCP tool "${name}" is not available in ${mode} mode.`);
-    }
+    assertMcpToolListed(name, mode);
 
     if (name === "inspect_akan_context") return await inspectAkanContext(workspace, args);
 
@@ -244,7 +257,7 @@ export class ContextRunner extends runner("context") {
         ? WorkspaceGraph.answerChanges(await WorkspaceGraph.changes(workspace, args.since), scope)
         : WorkspaceGraph.answer(await WorkspaceGraph.build(workspace), scope);
     }
-    if (name === "get_guideline") return await Prompter.getInstruction(stringArg(args, "name"));
+    if (name === "get_guideline") return await guidelineOf(stringArg(args, "name"));
     if (name === "doctor_workspace")
       return compactDoctorWorkspaceResult(
         await AkanContextAnalyzer.doctor(workspace, {
@@ -279,30 +292,7 @@ export class ContextRunner extends runner("context") {
         policy: applyFirstPolicy,
       };
     }
-    if (name === "apply_workflow") {
-      const report = parseJsonOutput(
-        await new WorkflowRunner().apply(workflowArtifactPath(workspace, stringArg(args, "planPath")), {
-          format: "json",
-          dryRun: !!args.dryRun,
-          workspace,
-          registry: WorkflowRunner.stepRegistry(workspace),
-        }),
-      ) as Record<string, unknown>;
-      const validationTarget =
-        typeof report.validationTarget === "string"
-          ? report.validationTarget
-          : typeof report.applyReportPath === "string"
-            ? report.applyReportPath
-            : stringArg(args, "planPath");
-      return {
-        ...report,
-        validationTarget,
-        ...(report.status === "failed"
-          ? {}
-          : { next: { tool: "run_validation", args: { runIdOrPlan: validationTarget } } }),
-        policy: applyFirstPolicy,
-      };
-    }
+    if (name === "apply_workflow") return await this.#applyWorkflow(workspace, args);
     if (name === "run_validation")
       return parseJsonOutput(
         await new WorkflowRunner().validate(workflowArtifactPath(workspace, stringArg(args, "runIdOrPlan")), {
@@ -335,7 +325,55 @@ export class ContextRunner extends runner("context") {
         }),
       );
 
-    throw new Error(`Unknown tool: ${name}`);
+    throw new AkanMcpToolError("unknownTool", `Unknown tool: ${name}`);
+  }
+
+  //? `isError` in the result, not a JSON-RPC error: a protocol error never reaches the model, which then retries.
+  async answerMcpTool(
+    workspace: Workspace,
+    name: string,
+    args: Record<string, unknown>,
+    { mode = "readonly" }: { mode?: AkanMcpMode } = {},
+  ) {
+    try {
+      const result = await this.callMcpTool(workspace, name, args, { mode });
+      const text = typeof result === "string" ? result : jsonText(result, { trailingNewline: false });
+      return { content: [{ type: "text", text }] };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: toolErrorText(error) }],
+        isError: true,
+        _meta: { [MCP_FAILURE_META]: AkanMcpToolError.failureOf(error) },
+      };
+    }
+  }
+
+  async #applyWorkflow(workspace: Workspace, args: Record<string, unknown>) {
+    const planPath = stringArg(args, "planPath");
+    const report = parseJsonOutput(
+      await new WorkflowRunner().apply(workflowArtifactPath(workspace, planPath), {
+        format: "json",
+        dryRun: !!args.dryRun,
+        workspace,
+        registry: WorkflowRunner.stepRegistry(workspace),
+      }),
+    ) as Record<string, unknown>;
+    const validationTarget =
+      typeof report.validationTarget === "string"
+        ? report.validationTarget
+        : typeof report.applyReportPath === "string"
+          ? report.applyReportPath
+          : planPath;
+    return {
+      ...report,
+      validationTarget,
+      ...(report.status === "failed"
+        ? {}
+        : args.dryRun
+          ? { next: { tool: "apply_workflow", args: { planPath } } }
+          : { next: { tool: "run_validation", args: { runIdOrPlan: validationTarget } } }),
+      policy: applyFirstPolicy,
+    };
   }
 
   async runMcp(workspace: Workspace, { mode = "readonly" }: { mode?: AkanMcpMode } = {}) {
@@ -400,14 +438,7 @@ export class ContextRunner extends runner("context") {
       } else if (request.method === "tools/call") {
         const name = params.name as string;
         const args = (params.arguments ?? {}) as Record<string, unknown>;
-        try {
-          const result = await this.callMcpTool(workspace, name, args, { mode });
-          const text = typeof result === "string" ? result : jsonText(result, { trailingNewline: false });
-          respond(request.id, { content: [{ type: "text", text }] }, framing);
-        } catch (error) {
-          // `isError` in the result, not a JSON-RPC error: a protocol error never reaches the model, which then retries.
-          respond(request.id, { content: [{ type: "text", text: toolErrorText(error) }], isError: true }, framing);
-        }
+        respond(request.id, await this.answerMcpTool(workspace, name, args, { mode }), framing);
       } else if (request.method === "resources/list") {
         respond(request.id, { resources }, framing);
       } else if (request.method === "resources/read") {

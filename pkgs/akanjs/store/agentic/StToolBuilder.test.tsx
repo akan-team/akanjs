@@ -1,6 +1,7 @@
 import "../../test/registerDom";
 import { describe, expect, test } from "bun:test";
 import { dayjs, enumOf, Float, ID, Int } from "akanjs/base";
+import { Err } from "akanjs/dictionary";
 import { act, useState } from "react";
 import { AgenticSurface, AgentProvider, type ToolEntry, ToolRunner } from "use-agentic";
 import { actionTagOf } from "../actionTag";
@@ -219,6 +220,27 @@ describe("StToolBuilder.exec", () => {
     await expect(surface.call("switchTab", { menu: "three" })).rejects.toThrow(
       'Argument "menu" of switchTab must be one of: one, two.',
     );
+    unmount();
+  });
+
+  test("a tool whose exec threw a domain error answers the model its key as the code", async () => {
+    const surface = new AgenticSurface();
+    const Held = () => {
+      new StToolDraft("holdTask").desc("Hold the task.").exec(() => {
+        throw new Err.Conflict("base.error.idempotencyInFlight");
+      });
+      return null;
+    };
+    const unmount = mount(
+      <AgentProvider surface={surface}>
+        <Held />
+      </AgentProvider>,
+    );
+    const answered = await new ToolRunner(surface).run(
+      { id: "c1", name: "holdTask", args: {} },
+      new AbortController().signal,
+    );
+    expect(answered).toMatchObject({ error: "base.error.idempotencyInFlight", code: "base.error.idempotencyInFlight" });
     unmount();
   });
 

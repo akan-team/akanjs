@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { FIELD_META } from "akanjs/base";
 import { Msg } from "./Msg";
+import { PromptError } from "./promptError";
 
 /** A model that declares a field masking must strip, stamped the way `via()` stamps a real one. */
 class Leaky {
@@ -125,6 +126,14 @@ describe("Msg", () => {
     expect(() => Msg.normalize([{ role: "system", content: { type: "text", text: "x" } }])).toThrow('role "system"');
     expect(() => Msg.normalize([{ role: "user", content: { type: "video" } }])).toThrow('content type "video"');
     expect(() => Msg.normalize([null])).toThrow("role");
+    expect(() => Msg.normalize(42)).toThrow(PromptError);
+    let refused: unknown;
+    try {
+      Msg.normalize(42);
+    } catch (error) {
+      refused = error;
+    }
+    expect(PromptError.is(refused, "invalidPrompt")).toBe(true);
   });
 
   test("checks the fields inside a block, not just its type", () => {

@@ -11,7 +11,6 @@ import {
   compactDiagnostics,
   createPrimitiveWriteReport,
   ensureBaseImport,
-  ensureBaseTypeImport,
   ensureConstantTypeImport,
   ensureEnumImport,
   ensureNamedImport,
@@ -50,6 +49,7 @@ import {
   validationCommandsForTarget,
   viaBuilderParameterName,
   type WorkflowDiagnostic,
+  withFieldTypeImport,
   workflowStatus,
 } from "@akanjs/devkit/workflow";
 import { capitalize, lowerlize } from "akanjs/common";
@@ -169,7 +169,7 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
       input.type = normalizedType;
       const defaultCoercion = coerceFieldDefault(input.type, input.defaultValue);
       if (defaultCoercion.diagnostic) diagnostics.push(defaultCoercion.diagnostic);
-      constantContent = ensureBaseTypeImport(constantContent, input.type);
+      constantContent = await withFieldTypeImport(sys, input.module, input.type, constantContent, diagnostics);
       if (input.type === "Date" && defaultCoercion.expression)
         constantContent = ensureBaseImport(constantContent, "dayjs");
     }
@@ -536,13 +536,14 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
   }
 
   static #report(command: string, sys: Sys, changedFiles: PrimitiveChangedFile[], diagnostics: WorkflowDiagnostic[]) {
+    const failed = workflowStatus(diagnostics) === "failed";
     return createPrimitiveWriteReport({
       command,
       changedFiles,
-      generatedFiles: generatedFilesForSync(sys),
-      validationCommands: validationCommandsForTarget(sys.name),
+      generatedFiles: failed ? [] : generatedFilesForSync(sys),
+      validationCommands: failed ? [] : validationCommandsForTarget(sys.name),
       diagnostics,
-      nextActions: nextActionsForTarget(sys.name),
+      nextActions: failed ? [] : nextActionsForTarget(sys.name),
     });
   }
 

@@ -91,6 +91,7 @@ export interface AgentWireToolResult {
     result?: unknown;
     changes?: unknown[];
     error?: string;
+    code?: string;
     attachments?: AgentWireAttachment[];
 }
 
@@ -710,6 +711,14 @@ export interface DocumentStore {
     rehydrate<Doc extends DocumentRecord>(doc: Doc): Doc;
 }
 
+export declare class DocumentStoreError extends AkanError<DocumentStoreErrorCode> {
+    constructor(code: DocumentStoreErrorCode, message: string, options?: {
+        cause?: unknown;
+    });
+}
+
+export type DocumentStoreErrorCode = "invalidDocument" | "invalidQuery" | "invalidSchema" | "searchMisconfigured" | "searchUnavailable" | "tableMissing" | "unstorableValue";
+
 export declare class DocumentTransfer {
     constructor(database: DatabaseAdaptor);
     exportTo(dir: string): Promise<TransferReport[]>;
@@ -778,6 +787,11 @@ export type InjectBuilder<BuildType extends InjectType = InjectType> = (builder:
     [key: string]: InjectInfo;
 };
 
+export declare class InjectError extends AkanError<InjectErrorCode> {
+}
+
+export type InjectErrorCode = "invalidInject" | "notInitialized" | "notRegistered";
+
 export declare class InjectInfo<Type extends InjectType = any, ReturnType = any, _Env extends {
     [key: string]: any;
 } = never, _FieldValue = never> {
@@ -827,6 +841,15 @@ export declare class InsightQuery {
         truncated: boolean;
     }>;
 }
+
+export declare class InsightQueryError extends AkanError<InsightQueryErrorCode> {
+    constructor(code: InsightQueryErrorCode, message: string, options?: {
+        cause?: unknown;
+    });
+    get forwarded(): boolean;
+}
+
+export type InsightQueryErrorCode = "insightTimeout" | "insightUnavailable" | "invalidInsightQuery";
 
 export interface InsightQueryOptions {
     limit?: number;

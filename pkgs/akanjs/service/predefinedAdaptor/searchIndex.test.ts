@@ -807,6 +807,7 @@ describe("search query", () => {
     const failure = store.find(q.search("Kenny"));
     await expect(failure).rejects.toThrow(TABLE);
     await expect(failure).rejects.toThrow("AKAN_SEARCH_ENABLED");
+    await expect(failure).rejects.toMatchObject({ code: "searchUnavailable", statusCode: 500 });
   });
 });
 

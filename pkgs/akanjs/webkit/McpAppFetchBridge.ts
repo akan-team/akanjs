@@ -1,5 +1,5 @@
 "use client";
-import { AbortSignals } from "akanjs/common";
+import { AbortSignals, MCP_FAILURE_META, type McpFailure } from "akanjs/common";
 import {
   type ErrorResponsePayload,
   type FetchBridge,
@@ -68,10 +68,14 @@ export class McpAppFetchBridge implements FetchBridge {
   // A view call carries the browser's value in `_meta`; the masked text is the fallback for a host that strips it.
   static #valueOf({ key, returns }: FetchBridgeCall, result: Partial<McpToolResult>) {
     const text = result.content?.find((block) => block.type === "text")?.text ?? "";
-    const failure = result._meta?.[MCP_APP_META.error] as Partial<ErrorResponsePayload> | undefined;
-    if (result.isError && failure?.error) throw restoreRemoteError(failure, failure.statusCode ?? 400);
-    if (result.isError && failure?.statusCode) throw restoreRemoteError(text || `${key} failed`, failure.statusCode);
-    if (result.isError) throw new Error(text || `${key} failed`);
+    const restorable = result._meta?.[MCP_APP_META.error] as Partial<ErrorResponsePayload> | undefined;
+    if (result.isError && restorable?.error) throw restoreRemoteError(restorable, restorable.statusCode ?? 400);
+    const failure = result._meta?.[MCP_FAILURE_META] as Partial<McpFailure> | undefined;
+    const statusCode = restorable?.statusCode ?? failure?.statusCode;
+    const error = text || `${key} failed`;
+    if (result.isError && statusCode)
+      throw restoreRemoteError({ error, statusCode, ...(failure?.code ? { code: failure.code } : {}) }, statusCode);
+    if (result.isError) throw new Error(error);
     if (result._meta && MCP_APP_META.value in result._meta) return result._meta[MCP_APP_META.value];
     const structured = result.structuredContent as Record<string, unknown> | undefined;
     if (structured !== undefined) return returns.arrDepth ? structured.items : structured;

@@ -35,6 +35,11 @@ tools, and the loop stay in the client; the server serves exactly one stateless 
   the request carries.** The client holds that invariant (`Transcript.sanitize`) because provider dialects refuse
   a transcript that breaks it; a backend can map calls to results by id without checking for holes. A call the
   client stopped before running arrives answered with an `error`, not missing.
+- A `toolResults` entry whose call threw may carry `code` beside `error`: a dictionary `Err`'s key
+  (`<module>.error.<key>`), else the thrown error's own `code` (an `AkanError`'s). It is a bounded token, never
+  prose, and never on a `taint: "source"` tool's result. **Send it to the model with `error`**, so the model can tell
+  a refusal it can fix from one it cannot by more than the wording. A client that sends no `code` sends what it
+  always did.
 - A message may carry `error` — a turn that failed, recorded where every other failure is recorded. No provider
   format has a field for it, so **fold it into the text you send**: an assistant turn that reaches the model
   saying nothing is one the model repeats.

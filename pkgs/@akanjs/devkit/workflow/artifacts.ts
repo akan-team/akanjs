@@ -95,11 +95,11 @@ export const createWorkflowApplyReport = ({
   postApplyChecks?: WorkflowApplyReport["postApplyChecks"];
   recommendations?: WorkflowApplyReport["recommendations"];
 }): WorkflowApplyReport => {
-  const validationCommands = recommendedValidationCommands ?? commands;
-  const nextActionsWithIntent = nextActions.map((action) => ({
-    ...action,
-    action: inferNextActionCode(action, diagnostics),
-  }));
+  const status = workflowStatus(diagnostics);
+  const validationCommands = status === "failed" ? [] : (recommendedValidationCommands ?? commands);
+  const nextActionsWithIntent = nextActions
+    .map((action) => ({ ...action, action: inferNextActionCode(action, diagnostics) }))
+    .filter((action) => status !== "failed" || action.action !== "validate");
   if (sourceChangeBlocked(diagnostics) && !nextActionsWithIntent.some((action) => action.action === "blocked")) {
     nextActionsWithIntent.unshift({
       command: `akan workflow explain ${workflow}`,
@@ -111,12 +111,13 @@ export const createWorkflowApplyReport = ({
     (left, right) => nextActionPriority(left, diagnostics) - nextActionPriority(right, diagnostics),
   );
   const sourceFilesChanged = uniqueBy(changedFiles, (file) => `${file.action}:${file.path}:${file.reason}`);
-  const generatedFilesSynced = uniqueBy(generatedFiles, (file) => `${file.action}:${file.path}:${file.reason}`);
+  const generatedFilesSynced =
+    status === "failed" ? [] : uniqueBy(generatedFiles, (file) => `${file.action}:${file.path}:${file.reason}`);
   return {
     schemaVersion: 1,
     workflow,
     mode,
-    status: workflowStatus(diagnostics),
+    status,
     summary: {
       sourceFilesChanged,
       generatedFilesSynced,

@@ -11,6 +11,7 @@ import type {
 import type { AkanJob, ServiceModel } from "akanjs/service";
 import { type ArgInfo, EndpointInfo, type InternalArgInfo, type ReturnInfo } from "./endpointInfo";
 import type { InternalArgCls } from "./internalArg";
+import { SignalDeclarationError } from "./signalDeclarationError";
 import type { CnstOf, DbDoc, SignalOption, SrvMap } from "./types";
 
 type InternalType = "resolveField" | "interval" | "cron" | "timeout" | "init" | "destroy" | "process";
@@ -51,8 +52,9 @@ export class InternalInfo<
     Nullable extends boolean = false,
     _FieldToValue = FieldToValue<Arg>,
   >(name: string, arg: Arg, option?: InternalArgProps<Nullable>) {
-    if (this.execFn) throw new Error("Query function is already set");
-    else if (this.args.at(-1)?.option?.nullable) throw new Error("Last argument is nullable");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
+    else if (this.args.at(-1)?.option?.nullable)
+      throw new SignalDeclarationError("nullableLastArg", "Last argument is nullable");
     this.args.push(EndpointInfo.getArgInfo("msg", name, arg, option));
     return this as unknown as InternalInfo<
       ReqType,
@@ -69,7 +71,7 @@ export class InternalInfo<
     argRef: InternalArgCls<ArgType>,
     option?: InternalArgProps<Optional>,
   ) {
-    if (this.execFn) throw new Error("Query function is already set");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
     this.internalArgs.push({
       argRef,
       option: { ...option, ...(this.type === "resolveField" ? { nullable: true } : {}) },
@@ -93,7 +95,7 @@ export class InternalInfo<
       ? PromiseOrObject<DocumentModel<FieldToValue<Returns>> | (Nullable extends true ? null : never)>
       : PromiseOrObject<void>,
   >(execFn: (this: Srvs, ...args: [...Args, ...DefaultArgs, ...InternalArgs]) => ExecReturn) {
-    if (this.execFn) throw new Error("Query function is already set");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
     this.execFn = execFn as unknown as (...args: [...Args, ...DefaultArgs, ...InternalArgs]) => ServerReturns;
     return this as unknown as InternalInfo<
       ReqType,

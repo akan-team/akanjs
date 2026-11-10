@@ -45,7 +45,16 @@ export class SignalFailure {
     const body = SignalFailure.body(error, extra);
     return new Response(JSON.stringify(body), {
       status: body.statusCode,
-      headers: { "Content-Type": "application/json" },
+      headers: SignalFailure.headersOf(error, body.statusCode),
     });
+  }
+
+  //? A 429 names its wait in `data.seconds`, as `EndpointRateLimit` throws it. A generalized body leaves `data` out,
+  //? so the header is the only place a caller reads it.
+  static headersOf(error: unknown, statusCode: number): Record<string, string> {
+    const seconds = (error as { data?: { seconds?: unknown } } | null)?.data?.seconds;
+    if (statusCode !== 429 || typeof seconds !== "number" || !Number.isFinite(seconds))
+      return { "Content-Type": "application/json" };
+    return { "Content-Type": "application/json", "Retry-After": String(Math.max(1, Math.ceil(seconds))) };
   }
 }

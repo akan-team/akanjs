@@ -35,6 +35,7 @@ import { type GuardCls, type GuardScope, guardOf } from "./guard";
 import { MiddlewareChain } from "./middlewareChain";
 import { RoomKey } from "./roomKey";
 import { SignalFailure } from "./SignalFailure";
+import { SignalContractError } from "./signalContractError";
 import { getCurrentTrace, runTraced, SignalTrace, type TraceOrigin, traceSpan } from "./trace";
 
 export type SignalTransportType = "http" | "websocket";
@@ -400,7 +401,8 @@ export class SignalContext<
   #refuseBytesThroughAny(resolved: unknown) {
     if (this.endpointInfo.returns.returnRef !== Any) return;
     if (!(resolved instanceof ArrayBuffer) && !ArrayBuffer.isView(resolved)) return;
-    throw new Error(
+    throw new SignalContractError(
+      "bytesThroughAny",
       `${this.endpointInfo.type} ${this.key} returns bytes through Any, which JSON cannot carry: declare Binary as its return`,
     );
   }
@@ -410,7 +412,8 @@ export class SignalContext<
     if (resolved !== undefined) return resolved;
     const { nullable, returnRef } = this.endpointInfo.returns;
     if (nullable || returnRef === Any) return null;
-    throw new Error(
+    throw new SignalContractError(
+      "undefinedReturn",
       `${this.endpointInfo.type} ${this.key} returned undefined, but its return is not nullable: return a value, or declare { nullable: true } and return null`,
     );
   }
@@ -459,16 +462,11 @@ export class SignalContext<
             path: endpointInfo.getPath(key),
             timestamp: new Date().toISOString(),
           }),
-          { status: error.statusCode, headers: SignalContext.#exceptionHeaders(error) },
+          { status: error.statusCode, headers: SignalFailure.headersOf(error, error.statusCode) },
         );
       }
       return SignalFailure.response(error, { path: endpointInfo.getPath(key) });
     }
-  }
-  static #exceptionHeaders(error: { statusCode: number }): Record<string, string> {
-    const seconds = (error as { data?: { seconds?: unknown } }).data?.seconds;
-    if (error.statusCode !== 429 || typeof seconds !== "number") return { "Content-Type": "application/json" };
-    return { "Content-Type": "application/json", "Retry-After": String(Math.max(1, Math.ceil(seconds))) };
   }
   static async resolveReturn(
     value: unknown,
@@ -614,10 +612,10 @@ export class SignalContext<
   ): Promise<unknown> {
     const refName = ConstantRegistry.getRefName(returnRef as ConstantCls);
     const internal = live.internal.get(`${refName}Internal`);
-    if (!internal) throw new Error(`Internal ${refName} is not registered`);
+    if (!internal) throw new SignalContractError("notRegistered", `Internal ${refName} is not registered`);
     const internalCls = internal.constructor as InternalCls;
     const internalInfo = internalCls[INTERNAL_META][key] as InternalInfo<"resolveField"> | undefined;
-    if (!internalInfo) throw new Error(`Internal info ${key} is not found`);
+    if (!internalInfo) throw new SignalContractError("notRegistered", `Internal info ${key} is not found`);
     const resolveFieldContext = new ResolveFieldContext(valueRecord, { signalContext, internalInfo, internal });
     const resolved = await resolveFieldContext.exec();
     return await SignalContext.resolveReturn(resolved, {
@@ -674,7 +672,7 @@ export class SignalContext<
     const refName = ConstantRegistry.getRefName(modelRef as ConstantCls);
     const isEmpty = value === null || value === undefined;
     const service = isEmpty ? null : (live.service.get(refName) as unknown as DatabaseService | undefined);
-    if (!isEmpty && !service) throw new Error(`Service ${refName} is not registered`);
+    if (!isEmpty && !service) throw new SignalContractError("notRegistered", `Service ${refName} is not registered`);
     // Cached as nullable so one entry serves every reference to the document; the refusal below is each field's own.
     const resolved =
       isEmpty || !service
@@ -731,11 +729,11 @@ export class SignalContext<
     return items.filter((item) => item !== null);
   }
   getHttpContext<Appended = unknown>() {
-    if (this.transport !== "http") throw new Error("Transport is not http");
+    if (this.transport !== "http") throw new SignalContractError("wrongTransport", "Transport is not http");
     return this.ctx as HttpExecutionContext<Appended>;
   }
   getWebSocketContext<Appended = unknown>() {
-    if (this.transport !== "websocket") throw new Error("Transport is not websocket");
+    if (this.transport !== "websocket") throw new SignalContractError("wrongTransport", "Transport is not websocket");
     return this.ctx as WebSocketExecutionContext<Appended>;
   }
   get<T = unknown>(key: string): T | null {
@@ -803,8 +801,9 @@ export class SignalContext<
     return RoomKey.liveIdOf(this.getRoomId(key), this.internalArgs, query);
   }
   #assertPubsub() {
-    if (this.transport !== "websocket") throw new Error("Transport is not websocket");
-    else if (this.endpointInfo.type !== "pubsub") throw new Error("Endpoint is not pubsub");
+    if (this.transport !== "websocket") throw new SignalContractError("wrongTransport", "Transport is not websocket");
+    else if (this.endpointInfo.type !== "pubsub")
+      throw new SignalContractError("wrongTransport", "Endpoint is not pubsub");
   }
   getEnv() {
     return this.#env;
@@ -999,7 +998,7 @@ export class ResolveFieldContext {
     this.parent = parent;
   }
   async exec() {
-    if (!this.internalInfo.execFn) throw new Error("Exec function is not set");
+    if (!this.internalInfo.execFn) throw new SignalContractError("noHandler", "Exec function is not set");
     const internalArgs = await Promise.all(
       this.internalInfo.internalArgs.map((arg) =>
         this.signalContext ? (new arg.argRef().getArg(this.signalContext) ?? null) : null,
