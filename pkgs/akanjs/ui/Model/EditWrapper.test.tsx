@@ -55,7 +55,7 @@ describe("Model row wrappers", () => {
       await act(async () => {
         await surface.call("editRowTestItem", { modelId: rowIds[1] });
       });
-      expect(calls.rowTestItem).toHaveBeenCalledWith(rowIds[1]);
+      expect(calls.rowTestItem).toHaveBeenCalledWith(rowIds[1], expect.any(Object));
       unmount();
     } finally {
       console.warn = warn;

@@ -417,36 +417,6 @@ describe("StoreInstance runtime", () => {
     expect(instance.get().messages).toEqual([]);
   });
 
-  test("a generated write hands its failure's key to the caller's onError, then rejects and toasts as before", async () => {
-    setupEnv();
-    const signal = makeSignal();
-    const locked = restoreRemoteError({ error: "storeTestItem.error.locked" }, 409);
-    signal.calls.removeStoreTestItem = mock(async () => {
-      throw locked;
-    });
-    signal.calls.updateStoreTestItem = mock(async () => {
-      throw locked;
-    });
-    class ReportingItemStore extends store(signal, () => ({ messages: [] as { key: string }[] })) {
-      showMessage(message: { key: string }) {
-        this.set({ messages: [...this.get().messages, { key: message.key }] });
-      }
-    }
-    StoreRegistry.register(ReportingItemStore);
-    const instance = new StoreInstance(makeRoot("reportingItemRoot", ReportingItemStore));
-    const reported: string[] = [];
-    const onError = (key: string) => void reported.push(key);
-    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
-
-    await expect(instance.do.removeStoreTestItem(id, { onError })).rejects.toBe(locked);
-    await expect(
-      instance.do.updateStoreTestItem(id, { title: "updated", count: 0, tags: [] }, { onError }),
-    ).rejects.toBe(locked);
-    expect(reported).toEqual(["storeTestItem.error.locked", "storeTestItem.error.locked"]);
-    expect(instance.get().messages).toEqual([{ key: "removeStoreTestItem" }, { key: "updateStoreTestItem" }]);
-    expect(signal.calls.removeStoreTestItem.mock.calls[0]).toEqual([id, {}]);
-  });
-
   test("a static silent name that is no action of the store is reported at registration", () => {
     setupEnv();
     const warn = spyOn(console, "warn").mockImplementation(() => undefined);

@@ -472,7 +472,7 @@ describe("Model.AdminPanel view modal", () => {
       viewing("Grace"),
     );
 
-    expect(calls.adminTestItem).toHaveBeenCalledWith(offPageId);
+    expect(calls.adminTestItem).toHaveBeenCalledWith(offPageId, expect.anything());
     expect(dialog()?.getAttribute("aria-labelledby")).toBeNull();
     expect(dialog()?.querySelector(".border-t")).toBeNull();
     expect(dialog()?.querySelector('[aria-label="Close"]')).not.toBeNull();
@@ -607,7 +607,7 @@ describe("Model.AdminPanel view modal", () => {
     await waitFor(() => !!buttonOf("base.updateModel") && !buttonOf("base.updateModel")?.disabled);
     await click(buttonOf("base.updateModel"));
     await waitFor(viewing("Hopper"));
-    expect(calls.updateAdminTestItem).toHaveBeenCalledWith(offPageId, expect.anything());
+    expect(calls.updateAdminTestItem).toHaveBeenCalledWith(offPageId, expect.anything(), expect.anything());
     expect(replaces).toEqual([]);
 
     await act(() => storeDo.resetAdminTestItem());
@@ -671,7 +671,7 @@ describe("Model.AdminPanel view modal", () => {
         viewing("Grace"),
       );
 
-      expect(calls.adminTestItem).toHaveBeenCalledWith(offPageId);
+      expect(calls.adminTestItem).toHaveBeenCalledWith(offPageId, expect.anything());
       await act(() => storeDo.resetAdminTestItem());
       await waitFor(() => replaces.length === 1);
       expect(paramsOf(replaces[0]?.href)).toEqual({ topMenu: "account", subMenu: "user" });
