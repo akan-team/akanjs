@@ -193,17 +193,30 @@ describe("Akan Studio", () => {
     expect(html).toContain("akan-studio:open");
   });
 
-  test("says where to open it when no dev builder can draw the graph", async () => {
-    const response = await studioRoutes()["/_akan/studio"].GET(new Request("http://localhost/_akan/studio"));
+  test("lands on the live view when no dev builder can draw the graph, and says where to open the others", async () => {
+    const routes = studioRoutes();
+    const landing = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio"));
+    expect(landing.status).toBe(200);
+    expect(await landing.text()).toContain('aria-current="page">Runtime (live)</a>');
+    const response = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=erd"));
     expect(response.status).toBe(503);
     const html = await response.text();
-    expect(html).toContain("akan start");
+    expect(html).toContain("open it under `akan start`. Runtime (live) reads this running server");
+    expect(html).toContain('href="/_akan/studio?view=runtime&amp;editor=vscode"');
+    expect(html).toContain('aria-current="page">ERD</a>');
     expect(html).toContain("akan-studio:ready");
     const failing = await studioRoutes(async () => {
       throw new Error("[builder] build-graph failed: boom");
     })["/_akan/studio/graph"].GET(new Request("http://localhost/_akan/studio/graph"));
     expect(failing.status).toBe(503);
     expect(await failing.json()).toEqual({ error: "[builder] build-graph failed: boom" });
+    const broken = await studioRoutes(async () => {
+      throw new Error("[builder] build-graph failed: boom");
+    })["/_akan/studio"].GET(new Request("http://localhost/_akan/studio"));
+    expect(broken.status).toBe(503);
+    const brokenHtml = await broken.text();
+    expect(brokenHtml).toContain("[builder] build-graph failed: boom");
+    expect(brokenHtml).toContain('aria-current="page">ERD</a>');
   });
 
   test("draws the Change Map since the revision asked for, with the changed files no node covers", async () => {
