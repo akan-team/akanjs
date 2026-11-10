@@ -1,6 +1,9 @@
 "use client";
 
-import { type ReactNode, use, useSyncExternalStore } from "react";
+import { type ReactNode, use, useCallback } from "react";
+import { readRscRoutePatch, subscribeRscRoutePatch, writeRscRoutePatch } from "../client/rscNavigation";
+import { useTransitionStore } from "../webkit/useTransitionStore";
+import type { AkanHeadSnapshotV1 } from "./routeState";
 
 type RscSegmentThenable = PromiseLike<ReactNode>;
 
@@ -53,13 +56,30 @@ export function resetAkanSegmentOutletPatches(): void {
   for (const listeners of store.listeners.values()) {
     for (const listener of listeners) listener();
   }
+  writeRscRoutePatch(null);
 }
 
 export function AkanSegmentOutlet({ segmentKey, children }: { segmentKey: string; children: ReactNode }): ReactNode {
-  const patchedThenable = useSyncExternalStore(
-    (listener) => subscribeSegment(segmentKey, listener),
-    () => getStore().entries.get(segmentKey) ?? null,
-    () => null,
+  const patchedThenable = useTransitionStore(
+    useCallback((listener: () => void) => subscribeSegment(segmentKey, listener), [segmentKey]),
+    useCallback(() => getStore().entries.get(segmentKey) ?? null, [segmentKey]),
   );
   return patchedThenable ? use(patchedThenable) : children;
+}
+
+const subscribeRouteHead = (listener: () => void) => subscribeRscRoutePatch(listener, { head: true });
+
+const renderHeadSnapshot = (snapshot: AkanHeadSnapshotV1): ReactNode =>
+  snapshot.nodes.map((node, index) => {
+    const key = `${node.tag}:${index}`;
+    if (node.tag === "title") return <title key={key}>{node.text ?? ""}</title>;
+    if (node.tag === "meta") return <meta key={key} {...node.attrs} />;
+    return <link key={key} {...node.attrs} />;
+  });
+
+//? Rendered by React rather than written into the DOM: React owns these hoisted tags, so a node swapped behind its
+//? back is one the next full commit updates or removes while detached, leaving the old page's head on screen.
+export function AkanRouteHead({ snapshot }: { snapshot: AkanHeadSnapshotV1 }): ReactNode {
+  const patch = useTransitionStore(subscribeRouteHead, readRscRoutePatch);
+  return renderHeadSnapshot(patch?.head ?? snapshot);
 }

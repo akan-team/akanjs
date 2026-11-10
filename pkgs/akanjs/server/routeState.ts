@@ -15,6 +15,7 @@ export const AKAN_RSC_PATCH_SEGMENT_PATH_HEADER = "X-Akan-Rsc-Patch-Segment-Path
 export const AKAN_RSC_PATCH_START_SEGMENT_HEADER = "X-Akan-Rsc-Patch-Start-Segment";
 export const AKAN_RSC_PATCH_HEAD_SAFE_HEADER = "X-Akan-Rsc-Patch-Head-Safe";
 export const AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER = "X-Akan-Rsc-Patch-Head-Snapshot";
+export const AKAN_RSC_ROUTE_HEAD_HEADER = "X-Akan-Rsc-Route-Head";
 export const AKAN_RSC_HEAD_SNAPSHOT_VERSION = 1;
 export const AKAN_RSC_HEAD_SNAPSHOT_MAX_HEADER_BYTES = 12 * 1024;
 

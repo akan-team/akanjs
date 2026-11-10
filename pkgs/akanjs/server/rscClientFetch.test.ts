@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { subscribeRscRoutePatch } from "../client/rscNavigation";
 import {
   AKAN_RSC_CURRENT_STATE_HEADER,
   AKAN_RSC_IMPORT_MAP_HEADER,
@@ -7,6 +8,7 @@ import {
   AKAN_RSC_PATCH_START_INDEX_HEADER,
   AKAN_RSC_PATCH_START_SEGMENT_HEADER,
   AKAN_RSC_PREFETCH_HEADER,
+  AKAN_RSC_ROUTE_HEAD_HEADER,
   AKAN_RSC_STATE_VERSION_HEADER,
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
@@ -217,6 +219,31 @@ describe("fetchRscNavigationResponse", () => {
       expect(result.type === "response" && getRscPayloadStream(result.response)).toBeNull();
     } finally {
       Reflect.deleteProperty(globalThis, "__AKAN_IMPORT_MAP_KEY__");
+    }
+  });
+
+  test("says a route head is mounted only alongside the router state a patch is decided from", async () => {
+    const sent: (string | null)[] = [];
+    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      sent.push(new Headers(init?.headers).get(AKAN_RSC_ROUTE_HEAD_HEADER));
+      return new Response("Conflict", { status: 409 });
+    }) as typeof fetch;
+    const navigate = (sendRouterState: boolean) =>
+      fetchRscNavigationResponse("https://example.test/docs", {
+        currentRouterState: makeRouterState("https://example.test/docs/intro", "/docs/intro"),
+        sendRouterState,
+      });
+    try {
+      await navigate(true);
+      const unmount = subscribeRscRoutePatch(() => undefined, { head: true });
+      await navigate(true);
+      await navigate(false);
+      unmount();
+      await navigate(true);
+
+      expect(sent).toEqual([null, "1", null, null]);
+    } finally {
+      Reflect.deleteProperty(globalThis, "__AKAN_RSC_ROUTE_PATCH__");
     }
   });
 });

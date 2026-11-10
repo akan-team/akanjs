@@ -37,6 +37,14 @@ export class RouteHead {
     return RouteHead.merge([RouteHead.#withoutPageIdentity(layouts), page]);
   }
 
+  /** `head` as the title, meta and link data a navigation swaps in, or `undefined` if any tag it holds has no such form. */
+  static snapshotOf(head: ResolveHeadResult): AkanHeadSnapshotV1 | undefined {
+    const snapshot = RouteHead.#snapshotOf(head);
+    if (snapshot) return snapshot;
+    const nodes = RouteHead.#snapshotNodesOf(RouteHead.#nodeOf(head));
+    return nodes ? { version: 1, nodes } : undefined;
+  }
+
   /** The tags at the top of `node` that a head merges by identity, apart from the rest, which is `node` if none. */
   static split(node: ReactNode): { tags: ReactNode[]; rest: ReactNode } {
     const children = RouteHead.#flatten(node);

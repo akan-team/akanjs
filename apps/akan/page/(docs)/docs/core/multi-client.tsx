@@ -53,7 +53,7 @@ const situations = [
 ];
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title = lang === "ko" ? "핵심 개념: 다중 클라이언트 | Akan.js" : "Core Concepts: Multi Client | Akan.js";
     const description =

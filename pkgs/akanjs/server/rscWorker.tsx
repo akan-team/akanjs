@@ -50,17 +50,14 @@ import {
   shouldStoreRouteCache,
 } from "./cachePolicy";
 import { FallbackHead } from "./fallbackHead";
-import {
-  createAkanLocaleAlternateHeadSnapshot,
-  mergeAkanHeadSnapshots,
-  renderAkanHeadSnapshot,
-  resolveHeadResult,
-} from "./head";
+import { createAkanLocaleAlternateHeadSnapshot, mergeAkanHeadSnapshots, resolveHeadResult } from "./head";
 import { LogForwarder } from "./logging/logForwarder";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
 import { RouteShellGate } from "./routeShellGate";
 import {
+  AKAN_RSC_ROUTE_HEAD_HEADER,
+  type AkanRouterStateV1,
   type AkanRscPatchDecision,
   createAkanRouterState,
   encodeAkanHeadSnapshot,
@@ -74,6 +71,7 @@ import {
 import { type PagesContext, RouteTreeBuilder } from "./routeTreeBuilder";
 import { concatBytes, encodeAkanRedirectDigest } from "./rscHttp";
 import { RscPagePrompts } from "./rscPagePrompts";
+import { AkanRouteHeadReference } from "./rscSegmentOutletReference";
 import {
   type CachedRscResult,
   createCachedRscPatchMetadata,
@@ -538,10 +536,14 @@ export class RscRenderer {
         //? first (a refusal there keeps only the layouts above it), and the suffix does not run them again.
         let admitted = false;
         const safePatchDecision = match
-          ? await this.#resolveHeadSafePatchDecision(match.pathRoute, patchDecision, async () => {
-              await RouteElementComposer.admit({ pathRoute: match.pathRoute, params: match.params, searchParams });
-              admitted = true;
-              return await this.#resolveRouteHeadSnapshot(urlObj, match, searchParams);
+          ? await this.#resolveHeadSafePatchDecision(match.pathRoute, patchDecision, {
+              routeHeadMounted: request.headers.get(AKAN_RSC_ROUTE_HEAD_HEADER) === "1",
+              frameChangeOf: () => this.#frameChangeOf(urlObj, match, currentRouterState.state),
+              resolveHeadSnapshot: async () => {
+                await RouteElementComposer.admit({ pathRoute: match.pathRoute, params: match.params, searchParams });
+                admitted = true;
+                return await this.#resolveRouteHeadSnapshot(urlObj, match, searchParams);
+              },
             })
           : patchDecision;
         const patchCacheEntry = resolveRscWorkerPatchCacheEntry({
@@ -1231,7 +1233,15 @@ export class RscRenderer {
   async #resolveHeadSafePatchDecision(
     pathRoute: PathRoute,
     patchDecision: AkanRscPatchDecision,
-    resolveHeadSnapshot: () => Promise<ResolvedHead["headSnapshot"]>,
+    {
+      routeHeadMounted,
+      frameChangeOf,
+      resolveHeadSnapshot,
+    }: {
+      routeHeadMounted: boolean;
+      frameChangeOf: () => Promise<Parameters<typeof resolveAkanRscHeadSafePatchDecision>[0]["frameChange"]>;
+      resolveHeadSnapshot: () => Promise<ResolvedHead["headSnapshot"]>;
+    },
   ): Promise<AkanRscPatchDecision> {
     if (patchDecision.status !== "patch" || !patchDecision.patch) {
       return patchDecision;
@@ -1240,12 +1250,36 @@ export class RscRenderer {
       return { status: "full", reason: "guard-disabled", commonPrefixLength: patchDecision.commonPrefixLength };
     }
     const pageConfig = await pathRoute.renderPage.getPageConfig?.();
+    const frameChange = pageConfig?.rscPatchHeadSafe === true && routeHeadMounted ? await frameChangeOf() : undefined;
+    const patchable = pageConfig?.rscPatchHeadSafe === true && routeHeadMounted && !frameChange;
     return resolveAkanRscHeadSafePatchDecision({
       partialCommitEnabled: true,
       patchDecision,
       pageConfig,
-      headSnapshot: pageConfig?.rscPatchHeadSafe === true ? await resolveHeadSnapshot() : undefined,
+      routeHeadMounted,
+      frameChange,
+      headSnapshot: patchable ? await resolveHeadSnapshot() : undefined,
     });
+  }
+
+  //? A patch keeps every layout above it as the page left from rendered it, and the SSR wrapper with them: a param or
+  //? frame setting those read must be the same for the target, or the kept layouts show the old page's.
+  async #frameChangeOf(
+    url: URL,
+    match: { pathRoute: PathRoute; params: Record<string, string> },
+    current: AkanRouterStateV1 | null,
+  ): Promise<"params-changed" | "page-state-changed" | "frame-unknown" | undefined> {
+    const currentUrl = current && URL.canParse(current.href) ? new URL(current.href) : null;
+    const currentMatch = currentUrl ? RouteTreeBuilder.match(currentUrl.pathname, this.#pathRoutes) : null;
+    if (!currentMatch) return "frame-unknown";
+    const paramNames = new Set([...Object.keys(currentMatch.params), ...Object.keys(match.params)]);
+    if ([...paramNames].some((name) => currentMatch.params[name] !== match.params[name])) return "params-changed";
+    const basePath = this.#getBasePath(url);
+    const [from, to] = await Promise.all([
+      RouteElementComposer.resolveSsrFramePathRoute({ pathRoute: currentMatch.pathRoute, basePath }),
+      RouteElementComposer.resolveSsrFramePathRoute({ pathRoute: match.pathRoute, basePath }),
+    ]);
+    return JSON.stringify(from.pageState) === JSON.stringify(to.pageState) ? undefined : "page-state-changed";
   }
 
   #recordRouteStats(routeId: string, flightBytes: number, durationMs: number): void {
@@ -1607,14 +1641,23 @@ export class RscRenderer {
       tags = null,
     }: { manifestLink: ReactNode; routeHead: ResolvedHead; noindex?: boolean; tags?: ReactNode[] | null },
   ): ReactNode {
-    const routeHeadSnapshot = this.#createRouteHeadSnapshot(url, routeHead);
-    const head = routeHeadSnapshot
-      ? renderAkanHeadSnapshot(routeHeadSnapshot)
-      : (routeHead.node ?? this.#renderDefaultHead());
+    const routeHeadSnapshot = noindex || tags ? undefined : this.#createRouteHeadSnapshot(url, routeHead);
+    if (routeHeadSnapshot) {
+      const ownsManifest = routeHeadSnapshot.nodes.some(
+        (node) => RouteHead.keyOf(node.tag, node.attrs ?? {}) === "link:manifest",
+      );
+      return (
+        <>
+          {ownsManifest ? null : manifestLink}
+          <AkanRouteHeadReference snapshot={routeHeadSnapshot} />
+        </>
+      );
+    }
+    const head = routeHead.node ?? this.#renderDefaultHead();
     return (
       <>
         {RouteHead.mergeNodes([manifestLink, head, noindex ? RouteHead.noindexOver(head) : null, tags])}
-        {routeHeadSnapshot ? null : this.#renderLocaleAlternates(url)}
+        {this.#renderLocaleAlternates(url)}
       </>
     );
   }
@@ -1644,10 +1687,15 @@ export class RscRenderer {
     return this.#createRouteHeadSnapshot(url, routeHead);
   }
 
+  //? Taken from any head that is plain title, meta and link while partial commit is on, so every page it renders can be
+  //? the one a patch leaves from, not only the opted-in pages a patch lands on.
   #createRouteHeadSnapshot(url: URL, routeHead: ResolvedHead): ResolvedHead["headSnapshot"] {
-    if (!routeHead.headSnapshot) return undefined;
+    const snapshot =
+      routeHead.headSnapshot ??
+      (isAkanRscPartialCommitEnabled() ? RouteHead.snapshotOf(routeHead.node ?? this.#renderDefaultHead()) : undefined);
+    if (!snapshot) return undefined;
     return mergeAkanHeadSnapshots(
-      routeHead.headSnapshot,
+      snapshot,
       createAkanLocaleAlternateHeadSnapshot(this.#getLocaleAlternateLanguages(url)),
     );
   }

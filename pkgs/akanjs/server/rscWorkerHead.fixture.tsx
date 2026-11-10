@@ -1,9 +1,7 @@
 import { appendFileSync } from "node:fs";
 import type { ReactNode } from "react";
-import type { Head } from "../client/csrTypes";
 import { layout, page } from "../client/route/routeBuilders";
 import { AkanRedirectError } from "../client/router";
-import type { AkanHeadSnapshotV1 } from "./routeState";
 import type { PagesContext } from "./routeTreeBuilder";
 
 const log = (name: string) => {
@@ -13,8 +11,6 @@ const headOf = (name: string) => () => {
   log(name);
   return <title>{name}</title>;
 };
-
-const safeSnapshot: AkanHeadSnapshotV1 = { version: 1, nodes: [{ tag: "title", text: "safe" }] };
 
 export const pages: PagesContext = {
   "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
@@ -26,9 +22,14 @@ export const pages: PagesContext = {
   "./safe.tsx": async () => ({
     default: page()
       .config({ rscPatchHeadSafe: true })
-      // No route stage produces a head snapshot today, and without one a patch always falls back to a full render.
-      .head((() => ({ node: headOf("safe")(), headSnapshot: safeSnapshot })) as unknown as () => Head)
+      .head(headOf("safe"))
       .render(() => <p>safe body</p>),
+  }),
+  "./faded.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true, transition: "fade" })
+      .head(headOf("faded"))
+      .render(() => <p>faded body</p>),
   }),
   "./vault/_layout.tsx": async () => ({
     default: layout()
@@ -46,13 +47,21 @@ export const pages: PagesContext = {
   "./open/plain.tsx": async () => ({
     default: page()
       .config({ rscPatchHeadSafe: true })
-      .head(headOf("plain"))
+      .head(() => {
+        log("plain");
+        return (
+          <>
+            <title>plain</title>
+            <script type="application/ld+json">{"{}"}</script>
+          </>
+        );
+      })
       .render(() => <p>plain body</p>),
   }),
   "./vault/sealed.tsx": async () => ({
     default: page()
       .config({ rscPatchHeadSafe: true })
-      .head((() => ({ node: headOf("sealed")(), headSnapshot: safeSnapshot })) as unknown as () => Head)
+      .head(headOf("sealed"))
       .render(() => <p>sealed body</p>),
   }),
 };

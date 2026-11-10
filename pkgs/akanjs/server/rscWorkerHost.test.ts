@@ -5,6 +5,7 @@ import path from "node:path";
 import type { AkanMetricsReport } from "akanjs/service";
 import { LruTtlCache } from "./cachePolicy";
 import {
+  AKAN_RSC_ROUTE_HEAD_HEADER,
   type AkanRouterStateV1,
   type AkanRscPatchMetadata,
   appendAkanRouterStateRequestHeaders,
@@ -775,6 +776,7 @@ describe("RscWorker route head", () => {
       pagesBundleBuildId: 1,
       rscRuntimeClientManifest: {
         [`${segmentOutlet}#AkanSegmentOutlet`]: { id: segmentOutlet, chunks: [], name: "AkanSegmentOutlet" },
+        [`${segmentOutlet}#AkanRouteHead`]: { id: segmentOutlet, chunks: [], name: "AkanRouteHead" },
       },
     } as unknown as BaseBuildArtifact);
     try {
@@ -820,15 +822,17 @@ describe("RscWorker route head", () => {
     );
   }, 20_000);
 
+  const headRoutes = new RouteTreeBuilder(headFixturePages).build();
+  const stateOf = (name: string, href: string, { routeHead = true } = {}) => {
+    const pathRoute = headRoutes.find((route) => route.path.endsWith(`/${name}`));
+    if (!pathRoute) throw new Error(`no route for ${name}`);
+    const headers = new Headers();
+    appendAkanRouterStateRequestHeaders(headers, createAkanRouterState({ pathRoute, href, buildId: 1 }));
+    if (routeHead) headers.set(AKAN_RSC_ROUTE_HEAD_HEADER, "1");
+    return headers;
+  };
+
   test("resolves the head for a patch decision only when the page declares its head patch-safe", async () => {
-    const routes = new RouteTreeBuilder(headFixturePages).build();
-    const stateOf = (name: string, href: string) => {
-      const pathRoute = routes.find((route) => route.path.endsWith(`/${name}`));
-      if (!pathRoute) throw new Error(`no route for ${name}`);
-      const headers = new Headers();
-      appendAkanRouterStateRequestHeaders(headers, createAkanRouterState({ pathRoute, href, buildId: 1 }));
-      return headers;
-    };
     await withHeadWorker(
       { AKAN_PUBLIC_RSC_PARTIAL_COMMIT: "1", AKAN_RSC_RESULT_CACHE: "0" },
       async ({ render, headRuns }) => {
@@ -847,13 +851,45 @@ describe("RscWorker route head", () => {
     );
   }, 20_000);
 
+  test("falls back to a full render when the page left from has no route head, or the kept layouts would differ", async () => {
+    await withHeadWorker(
+      { AKAN_PUBLIC_RSC_PARTIAL_COMMIT: "1", AKAN_RSC_RESULT_CACHE: "0" },
+      async ({ render, headRuns }) => {
+        const unmounted = await render(
+          "http://localhost/en/safe?tab=2",
+          stateOf("safe", "http://localhost/en/safe?tab=1", { routeHead: false }),
+        );
+        expect(unmounted.trace).toMatchObject({ partial: "full", partialReason: "head-unmounted" });
+
+        const otherLang = await render("http://localhost/en/safe?tab=2", stateOf("safe", "http://localhost/ko/safe"));
+        expect(otherLang.trace).toMatchObject({ partial: "full", partialReason: "params-changed" });
+
+        const otherFrame = await render("http://localhost/en/faded", stateOf("safe", "http://localhost/en/safe"));
+        expect(otherFrame.trace).toMatchObject({ partial: "full", partialReason: "page-state-changed" });
+        expect(otherFrame.body).toContain("faded body");
+        expect(headRuns("faded")).toBe(1);
+      },
+    );
+  }, 20_000);
+
+  test("renders a plain head through AkanRouteHead only while partial commit is on", async () => {
+    for (const enabled of ["1", "0"]) {
+      await withHeadWorker(
+        { AKAN_PUBLIC_RSC_PARTIAL_COMMIT: enabled, AKAN_RSC_RESULT_CACHE: "0" },
+        async ({ render }) => {
+          const safe = await render("http://localhost/en/safe");
+          expect(safe.body).toContain("safe body");
+          expect(safe.body.includes('"AkanRouteHead"')).toBe(enabled === "1");
+          const plain = await render("http://localhost/en/open/plain");
+          expect(plain.body).toContain("application/ld+json");
+          expect(plain.body).not.toContain('"AkanRouteHead"');
+        },
+      );
+    }
+  }, 20_000);
+
   test("runs a guarded page's guards before the head a patch decision reads, and only once", async () => {
-    const routes = new RouteTreeBuilder(headFixturePages).build();
-    const pathRoute = routes.find((route) => route.path.endsWith("/vault/sealed"));
-    if (!pathRoute) throw new Error("no route for vault/sealed");
-    const headers = new Headers();
-    const from = "http://localhost/en/vault/sealed?tab=1";
-    appendAkanRouterStateRequestHeaders(headers, createAkanRouterState({ pathRoute, href: from, buildId: 1 }));
+    const headers = stateOf("vault/sealed", "http://localhost/en/vault/sealed?tab=1");
     await withHeadWorker(
       { AKAN_PUBLIC_RSC_PARTIAL_COMMIT: "1", AKAN_RSC_RESULT_CACHE: "0" },
       async ({ redirectOf, headRuns }) => {
@@ -865,17 +901,12 @@ describe("RscWorker route head", () => {
   }, 20_000);
 
   test("runs a guarded page's guards once when its head-safe patch falls back to a full render", async () => {
-    const routes = new RouteTreeBuilder(headFixturePages).build();
-    const pathRoute = routes.find((route) => route.path.endsWith("/open/plain"));
-    if (!pathRoute) throw new Error("no route for open/plain");
-    const headers = new Headers();
-    const from = "http://localhost/en/open/plain?tab=1";
-    appendAkanRouterStateRequestHeaders(headers, createAkanRouterState({ pathRoute, href: from, buildId: 1 }));
+    const headers = stateOf("open/plain", "http://localhost/en/open/plain?tab=1");
     await withHeadWorker(
       { AKAN_PUBLIC_RSC_PARTIAL_COMMIT: "1", AKAN_RSC_RESULT_CACHE: "0" },
       async ({ render, headRuns }) => {
         const plain = await render("http://localhost/en/open/plain?tab=2", headers);
-        expect(plain.trace).toMatchObject({ partial: "full" });
+        expect(plain.trace).toMatchObject({ partial: "full", partialReason: "head-missing" });
         expect(plain.body).toContain("plain body");
         expect(headRuns("open guard")).toBe(1);
       },

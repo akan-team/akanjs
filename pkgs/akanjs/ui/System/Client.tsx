@@ -23,9 +23,11 @@ import {
   pathContext,
   prefetchRsc,
   type RouteViewport,
+  readRscRoutePatch,
   refreshRsc,
   router,
   setCookie,
+  subscribeRscRoutePatch,
   type TransitionStyle,
   Translator,
   useCsr,
@@ -51,6 +53,7 @@ import {
 } from "react";
 import { AgentActivity } from "use-agentic";
 import { FrameRootVars } from "../../webkit/FrameRootVars";
+import { useTransitionStore } from "../../webkit/useTransitionStore";
 import { getFrameCssVars, isResponsiveFrame } from "./Common";
 import { Messages } from "./Messages";
 import { Reconnect } from "./Reconnect";
@@ -126,6 +129,12 @@ interface ClientPathWrapperProps extends Omit<HTMLAttributes<HTMLDivElement>, "s
   children?: ReactNode;
   layoutStyle?: "web" | "mobile";
 }
+//? No prefix stripped: `initialPath` is the locale proxy's x-path, which keeps a base path, so a patched path does too.
+const patchedPathInfo = (href: string, lang: string) => {
+  const url = new URL(href, "http://localhost");
+  return getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, "");
+};
+
 export const ClientPathWrapper = ({
   className,
   frame: Frame = "div",
@@ -149,17 +158,30 @@ export const ClientPathWrapper = ({
   layoutStyle = "web",
   ...props
 }: ClientPathWrapperProps) => {
-  const href = location?.href ?? initialHref ?? (typeof window !== "undefined" ? window.location.href : "");
-  const hash = location?.hash ?? initialHash ?? (typeof window !== "undefined" ? window.location.hash : "");
-  const pathname = location?.pathname ?? initialPathname ?? "/"; // ?? usePathname();
+  const routePatch = useTransitionStore(subscribeRscRoutePatch, readRscRoutePatch);
+  //? A partial commit puts another page under the layouts this render belongs to without rendering them again.
+  const patched = !location && routePatch ? patchedPathInfo(routePatch.href, initialParams?.lang ?? "") : null;
+  const href =
+    location?.href ?? patched?.href ?? initialHref ?? (typeof window !== "undefined" ? window.location.href : "");
+  const hash =
+    location?.hash ?? patched?.hash ?? initialHash ?? (typeof window !== "undefined" ? window.location.hash : "");
+  const pathname = location?.pathname ?? patched?.pathname ?? initialPathname ?? "/"; // ?? usePathname();
   const params = location?.params ?? initialParams ?? {}; // ?? (useParams() as unknown as Record<string, string>);
-  const search = location?.search ?? initialSearch ?? (typeof window !== "undefined" ? window.location.search : "");
-  const searchParams = location?.searchParams ?? initialSearchParams ?? parseSearchParams(search);
+  const search =
+    location?.search ??
+    patched?.search ??
+    initialSearch ??
+    (typeof window !== "undefined" ? window.location.search : "");
+  const searchParams =
+    location?.searchParams ??
+    (patched ? parseSearchParams(patched.search) : initialSearchParams) ??
+    parseSearchParams(search);
   const lang = params.lang;
   const firstPath = pathname.split("/")[2];
+  const initialRoutePath = patched?.path ?? initialPath;
   const pathRoute: PathRoute = location?.pathRoute ?? {
-    path: initialPath ?? `/${pathname.split("/").slice(2).join("/")}`,
-    pathSegments: (initialPath ?? `/${pathname.split("/").slice(2).join("/")}`).split("/").filter(Boolean),
+    path: initialRoutePath ?? `/${pathname.split("/").slice(2).join("/")}`,
+    pathSegments: (initialRoutePath ?? `/${pathname.split("/").slice(2).join("/")}`).split("/").filter(Boolean),
     renderPage: { render: () => <></> },
     pageState: initialPageState ?? defaultPageState,
     renderRootLayouts: [],
@@ -371,7 +393,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
   useEffect(() => {
     const visiblePrefix = getEnv().operationMode === "local" ? prefix : "";
     globalThis.__AKAN_GET_SYNC_ROUTE_HREF__ = (href: string) => {
-      const url = new URL(href, window.location.origin);
+      const url = new URL(href, "http://localhost");
       const pathInfo = getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, visiblePrefix);
       return `${pathInfo.path}${pathInfo.search ? `?${pathInfo.search}` : ""}${pathInfo.hash ? `#${pathInfo.hash}` : ""}`;
     };
@@ -398,7 +420,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
       });
     };
     const syncHref = (href: string) => {
-      const url = new URL(href, window.location.origin);
+      const url = new URL(href, "http://localhost");
       const { path } = getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, visiblePrefix);
       const searchParams = parseSearchParams(url.search);
       st.set({

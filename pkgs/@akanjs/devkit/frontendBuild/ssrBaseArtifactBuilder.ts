@@ -148,29 +148,17 @@ export class SsrBaseArtifactBuilder {
       command: this.#command,
     }).bundle();
     const rscClientUrl = clientBundle.entryUrlsByAbsPath.get(rscClientEntry) ?? "";
-    const rscRuntimeSsrManifest = {
-      moduleLoading: null,
-      moduleMap: Object.fromEntries(
-        Object.entries(clientBundle.manifest)
-          .map(([key, row]) => {
-            const ssrOutput = ssrBundle.entryOutputAbsByAbsPath.get(rscSegmentOutletEntry);
-            if (
-              !ssrOutput ||
-              key !== `${clientBundle.clientReferenceIdByAbsPath.get(rscSegmentOutletEntry)}#${row.name}`
-            ) {
-              return null;
-            }
-            return [
-              row.id,
-              { [row.name]: { id: ssrOutput, chunks: [ssrOutput, ssrOutput], name: row.name, async: true } },
-            ];
-          })
-          .filter(
-            (entry): entry is [string, Record<string, { id: string; chunks: string[]; name: string; async: true }>] =>
-              Boolean(entry),
-          ),
-      ),
-    };
+    const ssrOutput = ssrBundle.entryOutputAbsByAbsPath.get(rscSegmentOutletEntry);
+    const outletReferenceId = clientBundle.clientReferenceIdByAbsPath.get(rscSegmentOutletEntry);
+    const moduleMap: Record<string, Record<string, { id: string; chunks: string[]; name: string; async: true }>> = {};
+    for (const [key, row] of Object.entries(clientBundle.manifest)) {
+      if (!ssrOutput || key !== `${outletReferenceId}#${row.name}`) continue;
+      moduleMap[row.id] = {
+        ...moduleMap[row.id],
+        [row.name]: { id: ssrOutput, chunks: [ssrOutput, ssrOutput], name: row.name, async: true },
+      };
+    }
+    const rscRuntimeSsrManifest = { moduleLoading: null, moduleMap };
     const vendorMap = Object.fromEntries(
       vendorEntries.map(({ specifier, absPath }) => [specifier, clientBundle.entryUrlsByAbsPath.get(absPath) ?? ""]),
     ) as Record<VendorSpecifier, string>;

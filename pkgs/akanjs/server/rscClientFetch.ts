@@ -1,7 +1,9 @@
+import { hasRscRouteHead } from "../client/rscNavigation";
 import {
   AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_PREFETCH_HEADER,
+  AKAN_RSC_ROUTE_HEAD_HEADER,
   type AkanRouterStateV1,
   type AkanRscPatchMetadata,
   appendAkanRouterStateRequestHeaders,
@@ -65,7 +67,10 @@ export async function fetchRscNavigationResponse(
 ): Promise<RscClientFetchResponseResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
   const headers = rscRequestHeaders();
-  if (options.sendRouterState !== false) appendAkanRouterStateRequestHeaders(headers, options.currentRouterState);
+  if (options.sendRouterState !== false) {
+    appendAkanRouterStateRequestHeaders(headers, options.currentRouterState);
+    if (hasRscRouteHead()) headers.set(AKAN_RSC_ROUTE_HEAD_HEADER, "1");
+  }
   const response =
     options.prefetched ??
     (await fetchKeepingHeaders(

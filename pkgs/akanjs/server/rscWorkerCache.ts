@@ -226,15 +226,22 @@ export function resolveAkanRscHeadSafePatchDecision({
   partialCommitEnabled,
   patchDecision,
   pageConfig,
+  routeHeadMounted = true,
+  frameChange,
   headSnapshot,
 }: {
   partialCommitEnabled: boolean;
   patchDecision: AkanRscPatchDecision;
   pageConfig?: PageConfig;
+  /** Whether the page the patch leaves from shows its head through `AkanRouteHead`, the only head a patch can swap. */
+  routeHeadMounted?: boolean;
+  frameChange?: "params-changed" | "page-state-changed" | "frame-unknown";
   headSnapshot?: AkanHeadSnapshotV1;
 }): AkanRscPatchDecision {
   if (!partialCommitEnabled || patchDecision.status !== "patch" || !patchDecision.patch) return patchDecision;
   if (pageConfig?.rscPatchHeadSafe !== true) return fullDecision("head-unsafe", patchDecision);
+  if (!routeHeadMounted) return fullDecision("head-unmounted", patchDecision);
+  if (frameChange) return fullDecision(frameChange, patchDecision);
   if (!headSnapshot) return fullDecision("head-missing", patchDecision);
   if (!isAkanHeadSnapshotV1(headSnapshot)) return fullDecision("head-invalid", patchDecision);
   if (!encodeAkanHeadSnapshot(headSnapshot)) return fullDecision("head-too-large", patchDecision);

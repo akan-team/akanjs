@@ -7,6 +7,8 @@ import { mountAsync, setTestEnv } from "../ui/testHelpers.fixture";
 let ClientPathWrapper: typeof import("../ui/System/Client").ClientPathWrapper;
 let usePageLocation: typeof import("./usePageLocation").usePageLocation;
 let setState: (state: Record<string, unknown>) => void;
+let usePathCtx: typeof import("akanjs/client").usePathCtx;
+let writeRscRoutePatch: typeof import("akanjs/client").writeRscRoutePatch;
 
 beforeAll(async () => {
   setTestEnv("pagelocationtest");
@@ -14,6 +16,7 @@ beforeAll(async () => {
   setState = (state) => (st as unknown as { set: (state: Record<string, unknown>) => void }).set(state);
   ({ ClientPathWrapper } = await import("../ui/System/Client"));
   ({ usePageLocation } = await import("./usePageLocation"));
+  ({ usePathCtx, writeRscRoutePatch } = await import("akanjs/client"));
 });
 
 const Probe = () => {
@@ -79,5 +82,31 @@ describe("usePageLocation", () => {
     });
     unmount();
     setState({ pathname: "/", searchParams: {} });
+  });
+
+  test("an SSR page's layouts read the page a partial commit put under them, until the next full commit", async () => {
+    const RouteProbe = () => {
+      const { location } = usePathCtx();
+      return (
+        <p>{JSON.stringify({ path: location.pathRoute.path, pathname: location.pathname, search: location.search })}</p>
+      );
+    };
+    const { container, unmount } = await mountAsync(
+      <ClientPathWrapper initialPathname="/en/docs/intro" initialPath="/docs/intro" initialParams={{ lang: "en" }}>
+        <RouteProbe />
+      </ClientPathWrapper>,
+    );
+    expect(shown(container)).toEqual({ path: "/docs/intro", pathname: "/en/docs/intro", search: "" });
+
+    await act(async () => {
+      writeRscRoutePatch({ href: "/en/docs/routing?tab=2", head: { version: 1, nodes: [] } });
+    });
+    expect(shown(container)).toEqual({ path: "/docs/routing", pathname: "/en/docs/routing", search: "tab=2" });
+
+    await act(async () => {
+      writeRscRoutePatch(null);
+    });
+    expect(shown(container).path).toBe("/docs/intro");
+    unmount();
   });
 });

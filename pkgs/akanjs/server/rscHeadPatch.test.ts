@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { readRscRoutePatch, subscribeRscRoutePatch, writeRscRoutePatch } from "../client/rscNavigation";
 import type { AkanHeadSnapshotV1 } from "./routeState";
 import {
   applyAkanHeadSnapshotPatch,
@@ -9,206 +10,70 @@ import {
   rollbackPreparedAkanHeadSnapshotPatch,
 } from "./rscHeadPatch";
 
-class FakeElement {
-  readonly attrs = new Map<string, string>();
-  textContent = "";
-  parentNode?: FakeHead;
-  throwOnSetAttribute = false;
+const api: AkanHeadSnapshotV1 = {
+  version: 1,
+  nodes: [
+    { tag: "title", text: "API" },
+    { tag: "meta", attrs: { name: "description", content: "Docs API" } },
+  ],
+};
 
-  constructor(readonly tagName: string) {}
-
-  setAttribute(key: string, value: string): void {
-    if (this.throwOnSetAttribute) throw new Error("setAttribute failed");
-    this.attrs.set(key, value);
-  }
-
-  getAttribute(key: string): string | null {
-    return this.attrs.get(key) ?? null;
-  }
-
-  remove(): void {
-    this.parentNode?.remove(this);
-  }
-}
-
-class FakeFragment {
-  readonly children: FakeElement[] = [];
-
-  appendChild(element: FakeElement): void {
-    this.children.push(element);
-  }
-}
-
-class ThrowingFakeDocument {
-  constructor(readonly head: FakeHead) {}
-
-  createElement(tag: string): FakeElement {
-    const element = new FakeElement(tag);
-    element.throwOnSetAttribute = true;
-    return element;
-  }
-
-  createDocumentFragment(): FakeFragment {
-    return new FakeFragment();
-  }
-}
-
-class FakeHead {
-  readonly nodes: FakeElement[] = [];
-
-  querySelector(selector: string): FakeElement | null {
-    return this.querySelectorAll(selector)[0] ?? null;
-  }
-
-  querySelectorAll(selector: string): FakeElement[] {
-    if (selector !== '[data-akan-head="route"]') return [];
-    return this.nodes.filter((node) => node.getAttribute("data-akan-head") === "route");
-  }
-
-  insertBefore(fragment: FakeFragment, anchor: FakeElement): void {
-    const index = this.nodes.indexOf(anchor);
-    if (index < 0) throw new Error("NotFoundError: the anchor is not a child of this node");
-    for (const child of fragment.children) child.parentNode = this;
-    this.nodes.splice(index, 0, ...fragment.children);
-  }
-
-  append(element: FakeElement): void {
-    element.parentNode = this;
-    this.nodes.push(element);
-  }
-
-  remove(element: FakeElement): void {
-    const index = this.nodes.indexOf(element);
-    if (index >= 0) this.nodes.splice(index, 1);
-    element.parentNode = undefined;
-  }
-}
-
-function installFakeDocument(head: FakeHead): void {
-  (globalThis as typeof globalThis & { document?: Document }).document = {
-    head,
-    createElement: (tag: string) => new FakeElement(tag),
-    createDocumentFragment: () => new FakeFragment(),
-  } as unknown as Document;
-}
+const mountHead = () => subscribeRscRoutePatch(() => undefined, { head: true });
 
 afterEach(() => {
-  Reflect.deleteProperty(globalThis, "document");
+  Reflect.deleteProperty(globalThis, "__AKAN_RSC_ROUTE_PATCH__");
 });
 
 describe("RSC head snapshot patch", () => {
-  test("replaces route-owned head nodes without touching framework-owned nodes", () => {
-    const head = new FakeHead();
-    const oldTitle = new FakeElement("title");
-    oldTitle.setAttribute("data-akan-head", "route");
-    const stylesheet = new FakeElement("link");
-    stylesheet.setAttribute("rel", "stylesheet");
-    head.append(oldTitle);
-    head.append(stylesheet);
-    installFakeDocument(head);
-    const snapshot: AkanHeadSnapshotV1 = {
-      version: 1,
-      nodes: [
-        { tag: "title", text: "API" },
-        { tag: "meta", attrs: { name: "description", content: "Docs API" } },
-      ],
-    };
+  test("hands the snapshot and its href to the mounted route head and every route listener", () => {
+    const unmount = mountHead();
+    const heard: string[] = [];
+    subscribeRscRoutePatch(() => heard.push(readRscRoutePatch()?.href ?? "none"));
 
-    expect(getAkanHeadSnapshotPatchFailureReason(snapshot)).toBeNull();
-    expect(canApplyAkanHeadSnapshotPatch(snapshot)).toBe(true);
-    expect(applyAkanHeadSnapshotPatch(snapshot)).toBe(true);
-    expect(head.nodes.map((node) => node.tagName)).toEqual(["title", "meta", "link"]);
-    expect(head.nodes[0]?.textContent).toBe("API");
-    expect(head.nodes[1]?.getAttribute("name")).toBe("description");
-    expect(head.nodes[2]).toBe(stylesheet);
+    expect(getAkanHeadSnapshotPatchFailureReason(api)).toBeNull();
+    expect(canApplyAkanHeadSnapshotPatch(api)).toBe(true);
+    expect(applyAkanHeadSnapshotPatch(api, "/en/docs/api")).toBe(true);
+    expect(readRscRoutePatch()).toEqual({ href: "/en/docs/api", head: api });
+    expect(heard).toEqual(["/en/docs/api"]);
+    unmount();
   });
 
-  test("rejects patches when no route-owned head marker is mounted", () => {
-    const head = new FakeHead();
-    head.append(new FakeElement("link"));
-    installFakeDocument(head);
+  test("refuses a patch while no route head is mounted to render it", () => {
+    expect(getAkanHeadSnapshotPatchFailureReason(api)).toBe("head-missing");
+    expect(prepareAkanHeadSnapshotPatch(api, "/en/docs/api")).toBeNull();
+    expect(applyAkanHeadSnapshotPatch(api, "/en/docs/api")).toBe(false);
 
-    expect(getAkanHeadSnapshotPatchFailureReason({ version: 1, nodes: [] })).toBe("head-missing");
-    expect(canApplyAkanHeadSnapshotPatch({ version: 1, nodes: [] })).toBe(false);
-    expect(applyAkanHeadSnapshotPatch({ version: 1, nodes: [] })).toBe(false);
+    const unmount = mountHead();
+    unmount();
+    expect(canApplyAkanHeadSnapshotPatch(api)).toBe(false);
+    expect(readRscRoutePatch()).toBeNull();
   });
 
-  test("can rollback a prepared head patch when a later commit step fails", () => {
-    const head = new FakeHead();
-    const oldTitle = new FakeElement("title");
-    oldTitle.setAttribute("data-akan-head", "route");
-    oldTitle.textContent = "Intro";
-    head.append(oldTitle);
-    installFakeDocument(head);
-    const prepared = prepareAkanHeadSnapshotPatch({
-      version: 1,
-      nodes: [{ tag: "title", text: "API" }],
-    });
+  test("refuses a snapshot without a node list", () => {
+    mountHead();
+    expect(getAkanHeadSnapshotPatchFailureReason({ version: 1 } as unknown as AkanHeadSnapshotV1)).toBe("head-invalid");
+  });
+
+  test("a rollback puts back the patch that was showing when the navigation was prepared", () => {
+    mountHead();
+    const intro: AkanHeadSnapshotV1 = { version: 1, nodes: [{ tag: "title", text: "Intro" }] };
+    writeRscRoutePatch({ href: "/en/docs/intro", head: intro });
+    const prepared = prepareAkanHeadSnapshotPatch(api, "/en/docs/api");
     if (!prepared) throw new Error("head patch was not prepared");
 
     expect(commitPreparedAkanHeadSnapshotPatch(prepared)).toBe(true);
-    expect(head.nodes[0]?.textContent).toBe("API");
+    expect(readRscRoutePatch()?.href).toBe("/en/docs/api");
     rollbackPreparedAkanHeadSnapshotPatch(prepared);
-    expect(head.nodes).toEqual([oldTitle]);
-    expect(head.nodes[0]?.textContent).toBe("Intro");
+    expect(readRscRoutePatch()).toEqual({ href: "/en/docs/intro", head: intro });
   });
 
-  test("returns false without mutating existing head when DOM creation throws", () => {
-    const head = new FakeHead();
-    const oldTitle = new FakeElement("title");
-    oldTitle.setAttribute("data-akan-head", "route");
-    head.append(oldTitle);
-    (globalThis as typeof globalThis & { document?: Document }).document = new ThrowingFakeDocument(
-      head,
-    ) as unknown as Document;
-
-    expect(
-      applyAkanHeadSnapshotPatch({
-        version: 1,
-        nodes: [{ tag: "title", text: "API" }],
-      }),
-    ).toBe(false);
-    expect(head.nodes).toEqual([oldTitle]);
-  });
-
-  test("anchors on a route node still in the head when the first one has gone", () => {
-    const head = new FakeHead();
-    const oldTitle = new FakeElement("title");
-    oldTitle.setAttribute("data-akan-head", "route");
-    const oldMeta = new FakeElement("meta");
-    oldMeta.setAttribute("data-akan-head", "route");
-    head.append(oldTitle);
-    head.append(oldMeta);
-    installFakeDocument(head);
-    const prepared = prepareAkanHeadSnapshotPatch({ version: 1, nodes: [{ tag: "title", text: "API" }] });
+  test("a commit after the route head unmounted writes nothing", () => {
+    const unmount = mountHead();
+    const prepared = prepareAkanHeadSnapshotPatch(api, "/en/docs/api");
     if (!prepared) throw new Error("head patch was not prepared");
-    oldTitle.remove();
+    unmount();
 
-    expect(commitPreparedAkanHeadSnapshotPatch(prepared)).toBe(true);
-    expect(head.nodes.map((node) => node.textContent)).toEqual(["API"]);
-  });
-
-  test("leaves a route node that has moved out of the head where it is now", () => {
-    const head = new FakeHead();
-    const elsewhere = new FakeHead();
-    const oldTitle = new FakeElement("title");
-    oldTitle.setAttribute("data-akan-head", "route");
-    const oldMeta = new FakeElement("meta");
-    oldMeta.setAttribute("data-akan-head", "route");
-    head.append(oldTitle);
-    head.append(oldMeta);
-    installFakeDocument(head);
-    const prepared = prepareAkanHeadSnapshotPatch({ version: 1, nodes: [{ tag: "title", text: "API" }] });
-    if (!prepared) throw new Error("head patch was not prepared");
-    oldMeta.remove();
-    elsewhere.append(oldMeta);
-
-    expect(commitPreparedAkanHeadSnapshotPatch(prepared)).toBe(true);
-    expect(head.nodes.map((node) => node.textContent)).toEqual(["API"]);
-    expect(elsewhere.nodes).toEqual([oldMeta]);
-
-    rollbackPreparedAkanHeadSnapshotPatch(prepared);
-    expect(head.nodes).toEqual([oldTitle]);
-    expect(elsewhere.nodes).toEqual([oldMeta]);
+    expect(commitPreparedAkanHeadSnapshotPatch(prepared)).toBe(false);
+    expect(readRscRoutePatch()).toBeNull();
   });
 });
