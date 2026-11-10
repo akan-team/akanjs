@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import type {
   BuildChangesPayload,
@@ -46,7 +47,10 @@ export class BuilderRpc {
 
   constructor(handlers: BuilderRpcEventHandlers = {}) {
     if (!process.send)
-      throw new Error("[builder] process.send unavailable — backend must be spawned by the CLI with ipc enabled");
+      throw new AkanError(
+        "ipcRequired",
+        "[builder] process.send unavailable — backend must be spawned by the CLI with ipc enabled",
+      );
     this.#send = process.send.bind(process);
     this.#offMessage = this.#listen((msg) => {
       if (msg.type === "build-route-res" || msg.type === "build-csr-res" || msg.type === "build-graph-res") {
@@ -158,7 +162,7 @@ export class BuilderRpc {
 
   // Must time out: a builder recycled mid-request never answers, and the dev host only reports failed sends.
   async #request<T>(label: string, send: (id: number) => void): Promise<T> {
-    if (this.#disposed) throw new Error("[builder] rpc is disposed");
+    if (this.#disposed) throw new AkanError("rpcDisposed", "[builder] rpc is disposed");
     const id = this.#nextId++;
     const timeoutMs = BuilderRpc.#timeoutMs();
     return await new Promise<T>((resolve, reject) => {

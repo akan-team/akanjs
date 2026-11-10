@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import type {
   LayoutFallbackRoute,
   LayoutModule,
@@ -73,7 +74,7 @@ export class RouteTreeBuilder {
     assertUniqueRoutePatterns(this.#pagePatterns);
 
     const rootRoute = this.#routeMap.get("/");
-    if (!rootRoute) throw new Error("No root route");
+    if (!rootRoute) throw new AkanError("invalidRoute", "No root route");
     return this.#getPathRoutes(rootRoute).sort((a, b) => compareRouteSpecificity(a.path, b.path));
   }
 
@@ -139,7 +140,7 @@ export class RouteTreeBuilder {
     const targetRouteMap = pathSegments.slice(0, -1).reduce((rMap: Map<string, Route>, p: string) => {
       if (!rMap.has(p)) rMap.set(p, { path: p, children: new Map() });
       const children = rMap.get(p)?.children;
-      if (!children) throw new Error("No children");
+      if (!children) throw new AkanError("invalidRoute", "No children");
       return children;
     }, this.#routeMap);
 
@@ -238,19 +239,23 @@ export class RouteTreeBuilder {
 
   static #validateRouteModuleExports(key: string, kind: RouteModuleKindWithOverrides, mod: RouteModule) {
     if (kind === "overrides") {
-      if (!mod.default) throw new Error(`[route-convention] ${key} generated override wrapper has no default export`);
+      if (!mod.default)
+        throw new AkanError(
+          "invalidRoute",
+          `[route-convention] ${key} generated override wrapper has no default export`,
+        );
       return;
     }
     const parsed = parseRouteModuleKey(key);
     const allowed = getRouteExports(kind, { rootLayout: parsed.isInternalRootLayout });
     for (const exportName of Object.keys(mod)) {
       if (!allowed.has(exportName)) {
-        throw new Error(`[route-convention] unsupported export "${exportName}" in ${key}`);
+        throw new AkanError("invalidRoute", `[route-convention] unsupported export "${exportName}" in ${key}`);
       }
     }
-    if (!mod.default) throw new Error(`[route-convention] ${key} has no default export`);
+    if (!mod.default) throw new AkanError("invalidRoute", `[route-convention] ${key} has no default export`);
     if ("head" in mod && "generateHead" in mod) {
-      throw new Error(`[route-convention] head and generateHead cannot both be exported in ${key}`);
+      throw new AkanError("invalidRoute", `[route-convention] head and generateHead cannot both be exported in ${key}`);
     }
   }
 
@@ -279,7 +284,7 @@ export class RouteTreeBuilder {
       },
       render: async (props: LayoutProps | PageProps) => {
         const mod = await loadSynced();
-        if (!mod.default) throw new Error(`[route-convention] ${key} has no default export`);
+        if (!mod.default) throw new AkanError("invalidRoute", `[route-convention] ${key} has no default export`);
         return mod.default(props as never);
       },
       resolveHead: async (props: PageProps) => {
@@ -324,7 +329,11 @@ export class RouteTreeBuilder {
       isAsync: true,
       render: (async ({ children }: LayoutProps) => {
         const { module: mod } = await loadModule();
-        if (!mod.default) throw new Error(`[route-convention] ${key} generated override wrapper has no default export`);
+        if (!mod.default)
+          throw new AkanError(
+            "invalidRoute",
+            `[route-convention] ${key} generated override wrapper has no default export`,
+          );
         return createElement(mod.default as never, { children } as never);
       }) as RouteRender["render"],
     };

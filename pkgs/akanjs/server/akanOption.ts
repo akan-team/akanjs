@@ -1,4 +1,4 @@
-import type { BackendEnv, PromiseOrObject } from "akanjs/base";
+import { AkanError, type BackendEnv, type PromiseOrObject } from "akanjs/base";
 import type { Adaptor, AdaptorCls, LlmOption } from "akanjs/service";
 import type {
   AgentQuotaHook,
@@ -122,7 +122,8 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
     return this.#envTransforms.reduce((current, fn) => {
       const next = fn(current);
       if (!next || typeof next !== "object")
-        throw new Error(
+        throw new AkanError(
+          "invalidConfig",
           `transformEnv must return the env object, and one returned ${next === null ? "null" : typeof next}`,
         );
       return next;

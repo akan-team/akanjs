@@ -652,9 +652,17 @@ describe("AkanServer env transform", () => {
       expect((server.env as SecretEnv).security).toBe(imported.security);
 
       const forgot = createLib(new AkanOption().transformEnv(() => undefined as never));
-      expect(() => new AkanServer("serverGet", imported, "all", forgot)).toThrow(
-        "transformEnv must return the env object, and one returned undefined",
-      );
+      const refusal = (() => {
+        try {
+          new AkanServer("serverGet", imported, "all", forgot);
+        } catch (error) {
+          return error;
+        }
+      })();
+      expect(refusal).toMatchObject({
+        code: "invalidConfig",
+        message: "transformEnv must return the env object, and one returned undefined",
+      });
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
