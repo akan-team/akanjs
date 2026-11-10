@@ -135,7 +135,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       });
     }),
   studio: target({
-    desc: "Print the Akan Studio URL of the app's running dev server: its ERD, each module's signals, the Change Map and the live DI graph and jobs",
+    desc: "Print the Akan Studio URL of the app's running dev server: its ERD, each module's signals, the Change Map, the live DI graph and jobs, and the framework map",
   })
     .with(App)
     .option("module", String, { desc: "the module to show", nullable: true })
@@ -143,7 +143,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       flag: "w",
       desc: "the view to open",
       default: "erd",
-      enum: ["erd", "signals", "changes", "runtime"],
+      enum: ["erd", "signals", "changes", "runtime", "framework"],
     })
     .option("since", String, {
       desc: "the git revision the Change Map compares with (default: where HEAD forked from the default branch)",
@@ -159,7 +159,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (app, module, view, since, editor, open, format) {
       await this.applicationScript.studio(app, {
         module,
-        view: view === "signals" || view === "changes" || view === "runtime" ? view : "erd",
+        view: view === "signals" || view === "changes" || view === "runtime" || view === "framework" ? view : "erd",
         since,
         editor: editor === "cursor" ? "cursor" : "vscode",
         open,

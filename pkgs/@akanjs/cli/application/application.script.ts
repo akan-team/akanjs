@@ -174,7 +174,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       format,
     }: {
       module: string | null;
-      view: "erd" | "signals" | "changes" | "runtime";
+      view: "erd" | "signals" | "changes" | "runtime" | "framework";
       since?: string | null;
       editor: "vscode" | "cursor";
       open: boolean;

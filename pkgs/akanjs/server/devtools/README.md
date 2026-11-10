@@ -674,7 +674,7 @@ for it to be added.
 ## 10. Akan Studio's runtime view
 
 `/_akan/studio?view=runtime` draws `/_akan/deps` and `/_akan/signal` as one picture, next to Studio's
-source-built views (ERD, Signals, Changes). It calls the same serializers in process, so it reads the
+source-built views (ERD, Signals, Changes, Framework). It calls the same serializers in process, so it reads the
 container of the process that answered and needs that server running; the header says which (`pid`,
 `serverMode`, `replicaIdx`).
 

@@ -114,6 +114,9 @@ Akan 프레임워크 패키지는 `dist/pkgs/*`에서만 배포합니다. `verif
 `npm-publish` environment는 `rc`만 허용하므로 `rc`에 push할 수 있는 사람은 rc를 배포할 수 있습니다. 저장소 규칙에서
 `rc` push 권한을 제한하세요.
 
+`akan sync-architecture`는 `pkgs/akanjs/ARCHITECTURE.md`의 패싯 레이어와 프로세스 메시지 표를 프레임워크 소스에서
+다시 만들고, 손으로 쓴 부분이 소스에 더는 없는 클래스를 가리키면 실패합니다.
+
 ## 패키지 경계
 
 - 애플리케이션과 런타임 코드에서는 `akanjs`를 사용합니다.

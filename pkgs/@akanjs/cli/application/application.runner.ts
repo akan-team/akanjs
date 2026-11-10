@@ -5,7 +5,7 @@ import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
 import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
 import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPreload";
 import { type App, assertPromptable, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, CommandExecutionError, LibExecutor, PkgExecutor, SysExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, CommandExecutionError, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import {
   DesktopServerStage,
@@ -27,6 +27,7 @@ import type { ServerPolicy } from "@akanjs/native/api";
 import { Logger, type LogRecord, toError } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
 import type { InterruptTeardown } from "./interruptTeardown";
+import { reportsNoTestFile, testTargetOf } from "./testTarget";
 
 export interface LogsOptions {
   level?: string | null;
@@ -330,9 +331,7 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
   }
   // Bun takes an argument as a path only behind `./` or `/`; a bare one is a substring filter over every test file.
   resolveTestPaths(exec: Exec, files: string[]) {
-    const root =
-      exec instanceof SysExecutor || exec instanceof PkgExecutor ? exec.workspace.workspaceRoot : process.cwd();
-    const target = path.relative(root, exec.cwdPath).split(path.sep).join("/");
+    const { root, target } = testTargetOf(exec);
     const isInside = (relative: string) =>
       relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
     return files.map((file) => {
@@ -352,6 +351,7 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
   }
   async test(exec: Exec, testPaths: string[] = [], flags: string[] = []) {
     const isSignalTarget = exec instanceof AppExecutor || exec instanceof LibExecutor;
+    if (!testPaths.length && reportsNoTestFile(exec)) return;
     const preloadPath = isSignalTarget ? await resolveSignalTestPreloadPath(exec) : null;
     const env = isSignalTarget
       ? {

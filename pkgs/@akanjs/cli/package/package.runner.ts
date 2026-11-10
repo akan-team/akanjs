@@ -3,6 +3,7 @@ import { type Pkg, runner, type Workspace } from "@akanjs/devkit/commandDecorato
 import { TypeScriptDependencyScanner } from "@akanjs/devkit/dependencyScanner";
 import { PkgExecutor } from "@akanjs/devkit/executors";
 import { FileSys } from "@akanjs/devkit/fileSys";
+import { FrameworkGraph } from "@akanjs/devkit/frameworkGraph";
 import { MaintainabilityBaseline } from "@akanjs/devkit/maintainabilityBaseline";
 import { PackageExportsMap } from "@akanjs/devkit/packageExportsMap";
 import type { PackageJson } from "@akanjs/devkit/types";
@@ -278,6 +279,20 @@ export class PackageRunner extends runner("package") {
       files: packResult?.files?.length ?? 0,
       size: packResult?.size ?? 0,
     };
+  }
+
+  async syncArchitecture(workspace: Workspace) {
+    const architecture = await FrameworkGraph.architecture(workspace.workspaceRoot);
+    if (!architecture) throw new Error(`${FrameworkGraph.architectureFile} is only kept in the akanjs repository`);
+    const { file, current, next, unknownClasses, map } = architecture;
+    if (next !== current) await Bun.write(file, next);
+    const problems = [
+      ...unknownClasses.map((name) => `\`${name}\` is cited outside the generated part but is no framework class`),
+      ...map.missing.map((channel) => `channel ${channel} was not found`),
+      ...map.cycles.map((cycle) => `facets ${cycle.join(", ")} load values from each other`),
+    ];
+    if (problems.length) throw new Error(`${FrameworkGraph.architectureFile}:\n${problems.join("\n")}`);
+    return { file: FrameworkGraph.architectureFile, changed: next !== current };
   }
 
   async verifyAkanPublishPackages(workspace: Workspace) {

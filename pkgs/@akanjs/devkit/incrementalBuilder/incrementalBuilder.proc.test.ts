@@ -231,6 +231,66 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
     expect(answerTo(7)).toEqual(changes);
   }, 30_000);
 
+  test("maps the framework on request, and maps it again after a save under pkgs/akanjs", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `const { generation } = JSON.parse(process.argv[2]);
+process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+`,
+    );
+    await writeText(path.join(appDir, "page/_index.tsx"), "export default () => null;\n");
+    await writeText(
+      path.join(appDir, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { target: "ESNext", paths: { "akanjs/*": ["./pkgs/akanjs/*"] } } }),
+    );
+    await writeText(path.join(root, "pkgs/akanjs/base/scalar.ts"), "export class Scalar {}\n");
+    const messages: BuilderMessage[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+      serialization: "advanced",
+      ipc: (message: BuilderMessage) => {
+        messages.push(message);
+      },
+    });
+    const classesAnsweredTo = async (id: number) => {
+      proc.send({ type: "build-graph", id, framework: true } satisfies BuilderMessage);
+      await until(proc, `build-graph-res ${id}`, () =>
+        messages.some((message) => message.type === "build-graph-res" && message.id === id),
+      );
+      const answer = messages.find((message) => message.type === "build-graph-res" && message.id === id);
+      if (answer?.type !== "build-graph-res" || !answer.ok || !("framework" in answer.data))
+        throw new Error(`no framework map: ${JSON.stringify(answer)}`);
+      expect(answer.data.workspaceRoot).toBe(root);
+      return answer.data.framework?.facets.flatMap(({ classes }) => classes.map(({ name }) => name));
+    };
+    try {
+      await until(proc, "builder-ready", () => messages.some((message) => message.type === "builder-ready"));
+      expect(await classesAnsweredTo(1)).toEqual(["Scalar"]);
+      await writeText(path.join(root, "pkgs/akanjs/base/scalar.ts"), "export class Scalar {}\nexport class Unit {}\n");
+      const deadline = Date.now() + 15_000;
+      let id = 2;
+      while (Date.now() < deadline) {
+        if ((await classesAnsweredTo(id++))?.includes("Unit")) break;
+        await wait(200);
+      }
+      expect(await classesAnsweredTo(id)).toEqual(["Scalar", "Unit"]);
+    } finally {
+      proc.kill();
+      await proc.exited;
+    }
+  }, 40_000);
+
   test("answers a second shell request in the same generation without building again", async () => {
     const { root } = track(await createTempApp("demo"));
     const appDir = path.join(root, "apps/demo");

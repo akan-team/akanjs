@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
@@ -23,6 +23,7 @@ import {
   writeText,
 } from "@akanjs/devkit/testHelpers";
 import { DatabaseModes } from "akanjs/base";
+import { Logger } from "akanjs/common";
 import { ApplicationCommand } from "./application.command";
 import { ApplicationRunner } from "./application.runner";
 import { ApplicationScript } from "./application.script";
@@ -1209,6 +1210,7 @@ describe("ApplicationRunner mobile", () => {
 
 const runsPackageTests = async () => {
   const { pkg } = track(await createTempPackage());
+  await writeText(path.join(pkg.cwdPath, "src", "a.test.ts"), "");
   const runner = new ApplicationRunner();
   const spawn = mock(async () => "");
   pkg.spawn = spawn as never;
@@ -1230,6 +1232,7 @@ const runsSignalTargetTests = async () => {
     }),
   );
   await writeText(`${root}/node_modules/akanjs/test/signalTest.preload.ts`, "export {};\n");
+  await writeText(path.join(lib.cwdPath, "lib", "user", "user.signal.test.ts"), "");
   const runner = new ApplicationRunner();
   const spawn = mock(async () => "");
   lib.spawn = spawn as never;
@@ -1399,6 +1402,91 @@ describe("ApplicationRunner", () => {
     expect(() => runner.resolveTestPaths(app, ["lib/user/missing.test.ts"])).toThrow(
       "lib/user/missing.test.ts names no file or folder in apps/demo",
     );
+  });
+
+  test("an app with no test file says so and runs nothing, instead of failing in bun", async () => {
+    const { app } = track(await createTempApp("demo"));
+    await writeText(path.join(app.cwdPath, "lib", "user", "user.signal.ts"), "");
+    await writeText(path.join(app.cwdPath, "node_modules", "dep", "dep.test.ts"), "");
+    await writeText(path.join(app.cwdPath, ".cache", "x.test.ts"), "");
+    const spawn = mock(async () => "");
+    app.spawn = spawn as never;
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await new ApplicationRunner().test(app);
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(printed).toHaveBeenCalledWith(
+      "No *.test.ts or *.spec.ts file in apps/demo, so no test ran. A signal test goes beside its module, as lib/<model>/<model>.signal.test.ts.",
+    );
+  });
+
+  test("a package with no test file says so without the signal test hint", async () => {
+    const { pkg } = track(await createTempPackage());
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await new ApplicationRunner().test(pkg);
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(printed).toHaveBeenCalledWith("No *.test.ts or *.spec.ts file in pkgs/@sample/tool, so no test ran.");
+  });
+
+  test("a test file under any of bun's suffixes still runs bun", async () => {
+    for (const name of ["a.spec.tsx", "a_test.js", "a_spec.mts"]) {
+      const { pkg } = track(await createTempPackage());
+      await writeText(path.join(pkg.cwdPath, "src", "deep", name), "");
+      const spawn = mock(async () => "");
+      pkg.spawn = spawn as never;
+
+      await new ApplicationRunner().test(pkg);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test("a test file bun runs in a linked folder, under an upper-case suffix or a dot name still runs bun", async () => {
+    const layouts: ((root: string, cwd: string) => Promise<void>)[] = [
+      async (root, cwd) => {
+        await writeText(path.join(root, "libs", "shared", "page", "route.test.ts"), "");
+        await mkdir(path.join(cwd, "page"), { recursive: true });
+        await symlink(path.join(root, "libs", "shared", "page"), path.join(cwd, "page", "shared"));
+      },
+      async (_root, cwd) => await writeText(path.join(cwd, "src", "User.Test.TS"), ""),
+      async (_root, cwd) => await writeText(path.join(cwd, "src", ".user.test.ts"), ""),
+    ];
+    for (const layout of layouts) {
+      const { root, pkg } = track(await createTempPackage());
+      await layout(root, pkg.cwdPath);
+      const spawn = mock(async () => "");
+      pkg.spawn = spawn as never;
+
+      await new ApplicationRunner().test(pkg);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test("a linked folder that loops back is read once", async () => {
+    const { pkg } = track(await createTempPackage());
+    await mkdir(path.join(pkg.cwdPath, "src"), { recursive: true });
+    await symlink(pkg.cwdPath, path.join(pkg.cwdPath, "src", "loop"));
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+    spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await new ApplicationRunner().test(pkg);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  test("named paths reach bun even when the target has no test file, so bun still fails on them", async () => {
+    const { pkg } = track(await createTempPackage());
+    await writeText(path.join(pkg.cwdPath, "src", "a.ts"), "");
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+    const runner = new ApplicationRunner();
+
+    await runner.test(pkg, runner.resolveTestPaths(pkg, ["src"]));
+    expect(spawn).toHaveBeenCalledWith("bun", ["test", "--isolate", "./src"], { stdio: "inherit" });
   });
 
   test("passes the resolved test paths to bun after its own flags", async () => {
