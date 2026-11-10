@@ -46,6 +46,7 @@ import { produce } from "immer";
 import { expandQueryArgs, normalizeQueryArgs } from "../fetch/client/sliceQueryArgs";
 import { actionErrorKey } from "./actionErrorKey";
 import { tagAction } from "./actionTag";
+import { type DraftFlushing, flushDraftsKey } from "./draftFlush";
 import { DraftStore } from "./draftStore";
 import { type LiveSortableRow, livePlacementIndex } from "./liveInsert";
 import { SliceRequest } from "./SliceRequest";
@@ -59,6 +60,9 @@ type StateRecord = { [key: string]: unknown };
 interface OpenSeq {
   open: number;
   form: number;
+}
+interface DraftSave {
+  restore: boolean;
 }
 type _ActionRefName<S extends SliceCls> = SlceCnstRefName<S>;
 type _ActionCap<S extends SliceCls> = SlceCnstCapitalizedRefName<S>;
@@ -144,7 +148,7 @@ type BaseAction<
   [K in `merge${_CapitalizedRefName}`]: (
     model: Full | string,
     data: Partial<Full>,
-    options?: FetchPolicy,
+    options?: ReportingFetchPolicy,
   ) => Promise<void>;
 } & {
   [K in `view${_CapitalizedRefName}`]: (
@@ -558,7 +562,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   const modelRef = cnst.full;
   // Deliberately not store state: a secret field in the opened form must not reach a subscribed component.
   let openFormBase: object | null = null;
-  const savingDraftKeys = new Map<string, number>();
+  const draftSaves = new WeakMap<SetGet, Map<string, Set<DraftSave>>>();
   const slices = Object.entries(slice).map(([suffix, serializedSlice]) => {
     const keys = sliceKeysOf(refName, suffix);
     return { sliceName: keys.slice, keys, slice: serializedSlice };
@@ -618,6 +622,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     },
   ) => {
     const owner = {};
+    let answered = false;
     const ownsFlag = () =>
       !!flag && flagOwners.get(ctx)?.get(flag.key) === owner && (ctx.get() as StateRecord)[flag.key] === flag.value;
     try {
@@ -627,12 +632,14 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       }
       if (flag || Object.keys(opening).length) ctx.set({ ...opening, ...(flag ? { [flag.key]: flag.value } : {}) });
       const answer = await request();
+      answered = true;
       land(answer, ownsFlag());
       return answer;
     } catch (error) {
       const released = { ...(flag && ownsFlag() ? { [flag.key]: false } : {}), ...failed?.() };
       if (Object.keys(released).length) ctx.set(released);
-      if (!AbortSignals.isAbort(error)) onError?.(actionErrorKey(error));
+      // A landing that throws after the server took the write is not the caller's failed request to report.
+      if (!answered && !AbortSignals.isAbort(error)) onError?.(actionErrorKey(error));
       throw error;
     }
   };
@@ -661,7 +668,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   async function applyDraft(this: SetGet, { auto }: { auto: boolean }) {
     const draft = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
     // While a form under this key saves, the record holds the form being saved.
-    if (!draft || savingDraftKeys.has(draft.key)) return;
+    if (!draft || draftSaves.get(this)?.has(draft.key)) return;
     const record = await DraftStore.read(draft.key);
     if (!record) return;
     // The editor moved on while the read was in flight.
@@ -694,11 +701,18 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     }
     this.set({ [names.modelDraft]: { ...draft, pending: { savedAt, form } } });
   }
-  const clearDraft = (draft: DraftState | null) => {
+  // A discard or reset during a save wins over that save's restore when it fails.
+  const forgetDraft = (ctx: SetGet, key: string) => {
+    for (const save of draftSaves.get(ctx)?.get(key) ?? []) save.restore = false;
+    void DraftStore.remove(key);
+  };
+  const clearDraft = (ctx: SetGet, draft: DraftState | null) => {
     openFormBase = null;
-    if (draft) void DraftStore.remove(draft.key);
+    if (draft) forgetDraft(ctx, draft.key);
     return null;
   };
+  const holdsSavedForm = (record: { form: Record<string, unknown> }, form: object) =>
+    DraftStore.contentHash(record.form) === DraftStore.contentHash(DraftStore.encodeForm(refName, form));
   const restoreSavedDraft = async (draft: DraftState, form: object) => {
     // A record still there is the saved form's or one a form opened meanwhile wrote; an unchanged form never had one.
     if ((await DraftStore.read(draft.key)) || DraftStore.formHash(refName, form) === draft.baseHash) return;
@@ -713,21 +727,28 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   const savingDraft = async <T>(ctx: SetGet, draft: DraftState | null, form: object, save: () => Promise<T>) => {
     if (!draft) return await save();
     // A debounce left pending past submit fires on whatever form is open by then, and drops the record if it is blank.
-    (ctx as SetGet & { flushDrafts?: () => void }).flushDrafts?.();
-    savingDraftKeys.set(draft.key, (savingDraftKeys.get(draft.key) ?? 0) + 1);
+    (ctx as SetGet & Partial<DraftFlushing>)[flushDraftsKey]?.();
+    const saves = draftSaves.get(ctx) ?? new Map<string, Set<DraftSave>>();
+    draftSaves.set(ctx, saves);
+    const keySaves = saves.get(draft.key) ?? new Set<DraftSave>();
+    saves.set(draft.key, keySaves);
+    const thisSave: DraftSave = { restore: true };
+    keySaves.add(thisSave);
     try {
       const answer = await save();
-      void DraftStore.remove(draft.key);
+      // A form opened under the key during the save may have written its own record since.
+      const record = await DraftStore.read(draft.key);
+      if (record && holdsSavedForm(record, form)) await DraftStore.remove(draft.key);
       return answer;
     } catch (error) {
-      await restoreSavedDraft(draft, form).catch((restoreError: unknown) => {
-        Logger.warn(`Failed to restore the ${refName} form draft: ${String(restoreError)}`);
-      });
+      if (thisSave.restore)
+        await restoreSavedDraft(draft, form).catch((restoreError: unknown) => {
+          Logger.warn(`Failed to restore the ${refName} form draft: ${String(restoreError)}`);
+        });
       throw error;
     } finally {
-      const saving = (savingDraftKeys.get(draft.key) ?? 1) - 1;
-      if (saving > 0) savingDraftKeys.set(draft.key, saving);
-      else savingDraftKeys.delete(draft.key);
+      keySaves.delete(thisSave);
+      if (!keySaves.size) saves.delete(draft.key);
     }
   };
   const isLiveSlice = (sliceName: string) => !!slices.find((entry) => entry.sliceName === sliceName)?.slice.live;
@@ -786,7 +807,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         land: (model, ownsFlag) => {
           this.set({
             ...(isSavedFormOpen(this, openSeq, modelForm)
-              ? { [names.modelForm]: immerify(modelRef, defaultModel), [names.modelDraft]: clearDraft(draft) }
+              ? { [names.modelForm]: immerify(modelRef, defaultModel), [names.modelDraft]: clearDraft(this, draft) }
               : {}),
             ...(isOvertaken(this, openSeq)
               ? {}
@@ -823,7 +844,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           this.set({
             ...openModelPatchOf(latest, updatedModel, ownsFlag, { [names.modelViewAt]: new Date() }),
             ...(isSavedFormOpen(this, openSeq, modelForm)
-              ? { [names.modelForm]: immerify(modelRef, defaultModel), [names.modelDraft]: clearDraft(draft) }
+              ? { [names.modelForm]: immerify(modelRef, defaultModel), [names.modelDraft]: clearDraft(this, draft) }
               : {}),
             ...(isOvertaken(this, openSeq) ? {} : { [names.modelModal]: modal ?? null }),
             ...staleAtOfSlices(),
@@ -1011,13 +1032,15 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       this: SetGet,
       modelOrId: Full | string,
       data: Partial<Full>,
-      options?: FetchPolicy,
+      options?: ReportingFetchPolicy,
     ) {
+      const { onError, ...fetchPolicyOptions } = options ?? {};
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
       const model = (this.get() as StateRecord)[names.model] as Full | null;
       await withFlag(this, {
         flag: id === model?.id ? { key: names.modelLoading, value: id } : null,
-        request: () => servedFetch<Full>(names.mergeModel)(modelOrId, data, options),
+        onError,
+        request: () => servedFetch<Full>(names.mergeModel)(modelOrId, data, fetchPolicyOptions),
         land: (updatedModel, ownsFlag) => {
           const latest = this.get() as StateRecord;
           this.set({
@@ -1074,7 +1097,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.modelViewAt]: new Date(0),
         [names.modelForm]: immerify(modelRef, defaultModel),
         [names.modelModal]: null,
-        [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
+        [names.modelDraft]: clearDraft(this, currentState[names.modelDraft] as DraftState | null),
       });
       return model ?? null;
     },
@@ -1102,7 +1125,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     [names.discardModelFormDraft]: function (this: SetGet) {
       const draft = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
       if (!draft) return;
-      void DraftStore.remove(draft.key);
+      forgetDraft(this, draft.key);
       // Saving stays armed; dropping an applied draft puts back the form as the editor opened it.
       this.set({
         ...(draft.appliedAt && openFormBase ? { [names.modelForm]: openFormBase } : {}),

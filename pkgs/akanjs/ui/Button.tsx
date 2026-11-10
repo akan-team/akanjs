@@ -91,6 +91,7 @@ const DefaultButton = <Result = unknown>({
                 onSuccess?.(awaited);
               }, successDwellMs);
             } catch {
+              if (errored) return;
               // The thrower already surfaced the error; `shown` stays "loading" so a failure never flashes a check.
               setState((s) => ({ ...s, mode: "idle", error: null }));
             }

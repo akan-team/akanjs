@@ -149,7 +149,8 @@ describe("form draft lifecycle", () => {
       instance.do.newDraftNote({}, { draftScope: "new:scope-bg" });
       await settle();
       instance.do.setTitleOnDraftNote("typed before the app left");
-      await settle();
+      // The store subscribes to the app state through a dynamic import, which can land after a couple of ticks.
+      for (let tick = 0; tick < 200 && !host.subscriptions("app-state", "change"); tick += 1) await settle();
       expect(draftCount()).toBe(0);
 
       host.emit("app-state", "change", { state: "inactive" });
@@ -448,6 +449,47 @@ describe("a form save that another open overtakes", () => {
     reloaded.do.newDraftNote({}, { draftScope: "new:scope-a" });
     await settle();
     expect(reloaded.get().draftNoteForm.title).toBe("about to submit");
+  });
+
+  test("a successful save leaves a record that a form opened under its key meanwhile wrote", async () => {
+    const signal = makeSignal();
+    const instance = makeInstance(signal);
+    const create = deferred();
+    signal.calls.createDraftNote = create.call;
+    await typedNew(instance);
+    instance.flushDrafts();
+    await settle();
+
+    const creating = instance.do.createDraftNoteInForm();
+    instance.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    await settle();
+    instance.do.setTitleOnDraftNote("second");
+    instance.flushDrafts();
+    await settle();
+    expect(recordTitle()).toBe("second");
+    create.answer(new NoteFull({ id: NOTE_ID, title: "about to submit" } as never));
+    await creating;
+    await settle();
+    expect(recordTitle()).toBe("second");
+    expect(instance.get().draftNoteForm.title).toBe("second");
+  });
+
+  test("a draft discarded during a save stays discarded when the save fails", async () => {
+    const signal = makeSignal();
+    const instance = makeInstance(signal);
+    const create = deferred();
+    signal.calls.createDraftNote = create.call;
+    await typedNew(instance);
+    instance.flushDrafts();
+    await settle();
+
+    const creating = instance.do.createDraftNoteInForm();
+    instance.do.discardDraftNoteFormDraft();
+    expect(draftCount()).toBe(0);
+    create.refuse(new Error("network gone"));
+    await expect(creating).rejects.toThrow("network gone");
+    await settle();
+    expect(draftCount()).toBe(0);
   });
 
   test("a failed save keeps its draft for the next open, without refilling the form opened meanwhile", async () => {

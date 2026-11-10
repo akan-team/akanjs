@@ -429,6 +429,33 @@ describe("StoreInstance runtime", () => {
     expect(reported).toHaveLength(2);
   });
 
+  test("merge<Model> hands its failure's key to onError too, and a write whose landing throws after the server took it reports none", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const locked = restoreRemoteError({ error: "storeTestItem.error.locked" }, 409);
+    signal.calls.mergeStoreTestItem = mock(async () => {
+      throw locked;
+    });
+    class ReportingMergeStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(ReportingMergeStore);
+    const instance = new StoreInstance(makeRoot("reportingMergeRoot", ReportingMergeStore));
+    const reported: string[] = [];
+    const onError = (key: string) => void reported.push(key);
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+
+    await expect(instance.do.mergeStoreTestItem(id, { title: "merged" }, { onError })).rejects.toBe(locked);
+    expect(reported).toEqual(["storeTestItem.error.locked"]);
+    expect(signal.calls.mergeStoreTestItem.mock.calls[0]).toEqual([id, { title: "merged" }, {}]);
+
+    signal.calls.mergeStoreTestItem = mock(async () => null);
+    signal.calls.updateStoreTestItem = mock(async () => null);
+    await expect(instance.do.mergeStoreTestItem(id, { title: "merged" }, { onError })).rejects.toThrow();
+    await expect(
+      instance.do.updateStoreTestItem(id, { title: "updated", count: 0, tags: [] }, { onError }),
+    ).rejects.toThrow();
+    expect(reported).toHaveLength(1);
+  });
+
   test("a static silent name that is no action of the store is reported at registration", () => {
     setupEnv();
     const warn = spyOn(console, "warn").mockImplementation(() => undefined);

@@ -9,6 +9,7 @@ import { type AgentGate, useAgentGate, useScopePath } from "use-agentic";
 import { actionErrorKey } from "./actionErrorKey";
 import { type ActionOwner, actionTagOf, tagAction } from "./actionTag";
 import { useFormTools } from "./agentic/useFormTools";
+import { type DraftFlushing, flushDraftsKey } from "./draftFlush";
 import { DraftStore } from "./draftStore";
 import { useEffect, useRef, useSyncExternalStore } from "./hooks";
 import type { RootStoreCls } from "./rootStore";
@@ -107,11 +108,11 @@ export class StoreInstance {
     return ret;
   };
 
-  #ctx: Record<string, unknown> = {
+  #ctx: Record<string, unknown> & DraftFlushing = {
     set: this.set,
     get: this.get,
     pick: this.#pick,
-    flushDrafts: () => this.flushDrafts(),
+    [flushDraftsKey]: () => this.flushDrafts(),
   };
 
   subscribe = (listener: () => void) => {
