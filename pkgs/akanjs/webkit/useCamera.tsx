@@ -95,13 +95,10 @@ export const useCamera = ({ promptLabels = {} }: { promptLabels?: CameraPromptLa
   };
 
   useEffect(() => {
-    //? Fetched at mount: on the web takePhoto clicks a file input, which the browser allows only shortly after a tap.
-    void loadForPhotos()
-      .then(async ({ camera }) => {
-        if (!isNativeApp()) return;
-        const { camera: state } = await camera.checkPermission();
-        setPermissions({ camera: state });
-      })
+    if (!isNativeApp()) return;
+    void loadCamera()
+      .then(({ camera }) => camera.checkPermission())
+      .then(({ camera: state }) => setPermissions({ camera: state }))
       .catch(() => undefined);
   }, []);
   return { permissions, getPhoto, pickImage, checkPermission };
