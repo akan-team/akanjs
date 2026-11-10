@@ -4,7 +4,7 @@
     "code/CodeTui.tsx": 1088
   },
   "akan.size.function": {
-    "application/application.command.ts#ApplicationCommand.command()": 534,
+    "application/application.command.ts#ApplicationCommand.command()": 533,
     "cloud/cloud.command.ts#CloudCommand.command()": 265,
     "context/context.runner.ts#ContextRunner.callMcpTool": 153,
     "primitive/primitive.script.ts#PrimitiveScript.addFieldToSources": 219,

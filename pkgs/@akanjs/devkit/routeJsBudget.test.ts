@@ -96,30 +96,50 @@ describe("RouteJsBudget", () => {
     const setup = async (text?: string) => {
       const budgetPath = path.join(await makeTempRoot(), "akan.budget.json");
       if (text !== undefined) await write(budgetPath, text);
-      return { budgetPath, source: "apps/shop/akan.budget.json", environment: "local" };
+      return { app: "shop", budgetPath, source: "apps/shop/akan.budget.json", environment: "local" };
     };
 
-    test("enforce fails a route over its limit and a file it cannot read", async () => {
+    test("enforce fails a route over its limit, a route with no entry, a file it cannot read, and an app with no file", async () => {
       const over = await setup(JSON.stringify({ env: "main", routeJsBrotliKB: { "/:lang/memo": 120 } }));
       await expect(RouteJsBudget.check(sizes, { ...over, mode: "enforce" })).rejects.toThrow(
         "1 route over the JS budget in apps/shop/akan.budget.json (recorded for main, built for local):",
       );
+      await expect(RouteJsBudget.check(sizes, { ...over, mode: "enforce" })).rejects.toThrow(
+        "in apps/shop/akan.budget.json by hand.\n1 route with no entry in apps/shop/akan.budget.json",
+      );
+      const missing = await setup(JSON.stringify({ routeJsBrotliKB: { "/:lang/memo": 130 } }));
+      await expect(RouteJsBudget.check(sizes, { ...missing, mode: "enforce" })).rejects.toThrow(
+        [
+          "1 route with no entry in apps/shop/akan.budget.json, which --check-budget checks every route against:",
+          "  /:lang/new",
+          "Record it in the same change: `akan build shop --update-budget` adds each new route at its measured size.",
+        ].join("\n"),
+      );
       const broken = await setup("{");
       await expect(RouteJsBudget.check(sizes, { ...broken, mode: "enforce" })).rejects.toThrow("is not valid JSON");
+      await expect(RouteJsBudget.check(sizes, { ...(await setup()), mode: "enforce" })).rejects.toThrow(
+        "--check-budget found no apps/shop/akan.budget.json: record one with `akan build shop --update-budget`.",
+      );
     });
 
-    test("report warns of an overage and a file it cannot read, and fails neither", async () => {
+    test("report warns of an overage, a route with no entry and a file it cannot read, and fails none", async () => {
+      const unbudgetedWarning = {
+        file: "apps/shop/akan.budget.json",
+        message: "/:lang/new has no entry; akan build --check-budget fails on it",
+        fix: "record it with akan build shop --update-budget",
+      };
       const over = await setup(JSON.stringify({ env: "main", routeJsBrotliKB: { "/:lang/memo": 120 } }));
       expect(await RouteJsBudget.check(sizes, { ...over, mode: "report" })).toEqual({
         summary:
-          "1 route(s) over apps/shop/akan.budget.json (recorded for main, built for local), reported only: /:lang/memo",
+          "1 route(s) over apps/shop/akan.budget.json (recorded for main, built for local), reported only: /:lang/memo; 1 route(s) without an entry",
         warnings: [
           {
             file: "apps/shop/akan.budget.json",
             message:
-              "/:lang/memo loads 133,120 bytes brotli, over its limit of 126,976 (recorded for main, built for local); akan build fails on it",
-            fix: "shrink what the route loads, or raise its entry by hand in the same change",
+              "/:lang/memo loads 133,120 bytes brotli, over its limit of 126,976 (recorded for main, built for local); akan build --check-budget fails on it",
+            fix: "shrink what the route loads, or raise its entry with akan build shop --raise-budget",
           },
+          unbudgetedWarning,
         ],
       });
       const broken = await setup("{");
@@ -128,8 +148,8 @@ describe("RouteJsBudget", () => {
         warnings: [
           {
             file: "apps/shop/akan.budget.json",
-            message: "apps/shop/akan.budget.json is not valid JSON; akan build fails on it",
-            fix: "correct it, or rewrite it with akan build <app> --update-budget",
+            message: "apps/shop/akan.budget.json is not valid JSON; akan build --check-budget fails on it",
+            fix: "correct it, or rewrite it with akan build shop --update-budget",
           },
         ],
       });
@@ -138,7 +158,8 @@ describe("RouteJsBudget", () => {
       });
       const within = await setup(JSON.stringify({ routeJsBrotliKB: { "/:lang/memo": 130 } }));
       expect(await RouteJsBudget.check(sizes, { ...within, mode: "report" })).toEqual({
-        summary: "within apps/shop/akan.budget.json, 1 route(s) without an entry",
+        summary: "within apps/shop/akan.budget.json; 1 route(s) without an entry",
+        warnings: [unbudgetedWarning],
       });
     });
 
@@ -157,20 +178,35 @@ describe("RouteJsBudget", () => {
       await expect(RouteJsBudget.check(sizes, { ...over, mode: "update" })).rejects.toThrow("/:lang/memo");
       expect(RouteJsBudget.parse(await Bun.file(over.budgetPath).text()).kbByRoute.get("/:lang/memo")).toBe(120);
     });
+
+    test("raise re-records every route at its measured size and names the entries it raised", async () => {
+      const over = await setup(
+        JSON.stringify({ env: "main", routeJsBrotliKB: { "/:lang/memo": 120, "/:lang/new": 90 } }),
+      );
+      expect(await RouteJsBudget.check(sizes, { ...over, mode: "raise" })).toEqual({
+        summary: "apps/shop/akan.budget.json re-recorded at each route's measured size, raised: /:lang/memo",
+      });
+      const written = RouteJsBudget.parse(await Bun.file(over.budgetPath).text());
+      expect(written.env).toBe("local");
+      expect(Object.fromEntries(written.kbByRoute)).toEqual({ "/:lang/memo": 130, "/:lang/new": 70 });
+      expect(await RouteJsBudget.check(sizes, { ...over, mode: "enforce" })).toEqual({
+        summary: "within apps/shop/akan.budget.json",
+      });
+    });
   });
 
   test("names each route over budget, its limit, and how to resolve it", () => {
     expect(
       RouteJsBudget.formatOverages(
         [{ routeId: "/:lang/memo", brotliBytes: 128_000, budgetKB: 120, limitBytes: 126_976 }],
-        "apps/shop/akan.budget.json",
+        { app: "shop", source: "apps/shop/akan.budget.json" },
         " (recorded for main, built for local)",
       ),
     ).toBe(
       [
         "1 route over the JS budget in apps/shop/akan.budget.json (recorded for main, built for local):",
         "  /:lang/memo: 128,000 bytes brotli, over its limit of 126,976 (120KB + the larger of 1% and 4KB)",
-        "Shrink what the route loads. If the growth is intended, raise its entry by hand in the same change.",
+        'Shrink what the route loads. If the growth is intended, record it in the same change: `akan build shop --raise-budget` re-records every route at its measured size, or raise the route\'s entry under "routeJsBrotliKB" in apps/shop/akan.budget.json by hand.',
       ].join("\n"),
     );
   });

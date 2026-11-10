@@ -4,7 +4,7 @@ import { SOURCE_EXTS } from "../akanApp/devHostPolicy";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
-import type { AkanConfig, ClientEntryDiscovery, ScannedImport } from "./clientBuildTypes";
+import type { AkanConfig, ClientEntryDiscovery, DiscoverOptions, ScannedImport } from "./clientBuildTypes";
 
 const USE_CLIENT_RE = /^\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
 const NODE_MODULES_RE = /[\\/]node_modules[\\/]/;
@@ -31,6 +31,8 @@ interface DiscoveryWalk {
   //? Every file's result within this walk, partial ones included: the file the cycle went back to is an ancestor here
   //? and brings the rest itself, and re-walking each path through a dense cycle grows exponentially.
   memo: Map<string, Set<string>>;
+  importsAs?: DiscoverOptions["importsAs"];
+  reachable: Map<string, Set<string>>;
 }
 
 const exportsKeyOf = (map: BarrelExportMap | null): string =>
@@ -50,6 +52,8 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   #resolvedFileCache = new Map<string, Lookup<string | null>>();
   #resolvedSpecifierCache = new Map<string, Lookup<string | null>>();
   #reachableEntriesCache = new Map<string, Set<string>>();
+  //? Keyed by a walk's `importsAs`: a file's answer under swapped imports holds only for walks swapping the same ones.
+  #swappedEntriesCaches = new WeakMap<object, Map<string, Set<string>>>();
   #readFiles = new Set<string>();
   #barrelImporters = new Map<string, Set<string>>();
   //? Barrels a save went beside, by the analysis before it: a save of any component re-reads its barrel, and only an
@@ -70,15 +74,27 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     return new GraphClientEntryDiscovery(await app.getConfig(), await createTsconfigPackageResolver(app));
   }
 
-  async discover(seeds: string[]): Promise<string[]> {
+  async discover(seeds: string[], { importsAs }: DiscoverOptions = {}): Promise<string[]> {
     this.#settled = this.#settled.then(() => this.#dropRenarrowed());
     await this.#settled;
     const entries = new Set<string>();
+    const reachable = importsAs ? this.#swappedEntriesCache(importsAs) : this.#reachableEntriesCache;
     for (const seed of seeds) {
-      const walk: DiscoveryWalk = { visiting: new Set(), partial: new Set(), memo: new Map() };
+      const walk: DiscoveryWalk = { visiting: new Set(), partial: new Set(), memo: new Map(), importsAs, reachable };
       for (const entry of await this.#discoverFromFile(seed, walk)) entries.add(entry);
     }
     return Array.from(entries).sort();
+  }
+
+  async resolveImport(spec: string, importerDir: string): Promise<string | null> {
+    const resolved = await this.#resolveSpecifier(spec, importerDir);
+    return resolved ? path.resolve(resolved) : null;
+  }
+
+  #swappedEntriesCache(importsAs: object): Map<string, Set<string>> {
+    const cache = this.#swappedEntriesCaches.get(importsAs) ?? new Map<string, Set<string>>();
+    this.#swappedEntriesCaches.set(importsAs, cache);
+    return cache;
   }
 
   invalidate(files: string[]): void {
@@ -95,6 +111,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     this.#epoch += 1;
     // Reachable-entry results are transitive, so a changed child invalidates every ancestor.
     this.#reachableEntriesCache.clear();
+    this.#swappedEntriesCaches = new WeakMap();
     for (const [barrel, before] of this.#analyzer.forget(files))
       if (!this.#reread.has(barrel)) this.#reread.set(barrel, before);
     //? A file gone, or one never read, can leave a found resolution on its old target (`Chart.tsx` to
@@ -223,7 +240,8 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   async #discoverFromFile(file: string, walk: DiscoveryWalk): Promise<Set<string>> {
     const epoch = this.#epoch;
     const absPath = path.resolve(file);
-    const cached = this.#reachableEntriesCache.get(absPath);
+    const importsAs = walk.importsAs?.get(absPath);
+    const cached = walk.reachable.get(absPath);
     if (cached) return new Set(cached);
     const memo = walk.memo.get(absPath);
     if (memo) {
@@ -253,7 +271,8 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
 
     const importerDir = path.dirname(absPath);
     for (const imp of facts.imports) {
-      const spec = imp.path;
+      const swapped = importsAs?.get(imp.path);
+      const spec = swapped === undefined ? imp.path : swapped;
       if (!spec) continue;
       if (NON_SOURCE_EXT_RE.test(spec)) continue;
       const resolved = await this.#resolveSpecifier(spec, importerDir);
@@ -268,7 +287,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   #finishDiscovery(absPath: string, walk: DiscoveryWalk, entries: Set<string>, epoch: number): Set<string> {
     walk.visiting.delete(absPath);
     walk.memo.set(absPath, entries);
-    if (epoch === this.#epoch && !walk.partial.has(absPath)) this.#reachableEntriesCache.set(absPath, entries);
+    if (epoch === this.#epoch && !walk.partial.has(absPath)) walk.reachable.set(absPath, entries);
     return new Set(entries);
   }
 }
