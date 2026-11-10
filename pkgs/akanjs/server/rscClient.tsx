@@ -456,7 +456,6 @@ function rememberCommittedRouteState(node: RscCacheNode): void {
   shownNode = node;
   parkedRedirect.clear();
   forgetRscPatchesOfLostBases(rscPatchCache, rscCache, node);
-  if (!node.routerState) return;
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
   currentCommitKind = "full";
@@ -523,8 +522,7 @@ function replayCachedPatch(target: string, navId: number, replace?: boolean, req
       return true;
     }
   }
-  //? Kept for its base, which a later full commit replayed from the full cache brings back on screen.
-  if (patchResult.status === "patched" || patchResult.reason !== "base-changed") rscPatchCache.delete(target);
+  rscPatchCache.delete(target);
   return false;
 }
 
