@@ -153,7 +153,7 @@ describe("appSample", () => {
       expect(await read("page/styles.css")).toContain("@utility jelly {");
     });
 
-    test("gives doctor no missing label for a field its constants suggest only in a comment, and still one for a real field", async () => {
+    test("gives doctor no missing label for a field its constants suggest only in a comment, and one for a real field whose label is commented out", async () => {
       const { workspace, appRoot, read } = await scaffold({ sample: true });
       const missingLabels = async () =>
         (await AkanContextAnalyzer.doctor(workspace, { strict: true })).diagnostics
@@ -164,7 +164,10 @@ describe("appSample", () => {
       expect(await missingLabels()).toEqual([]);
 
       const dictionary = await read("lib/task/task.dictionary.ts");
-      await writeText(path.join(appRoot, "lib/task/task.dictionary.ts"), dictionary.replace(/^ {4}due: .*\n/m, ""));
+      await writeText(
+        path.join(appRoot, "lib/task/task.dictionary.ts"),
+        dictionary.replace(/^ {4}due: /m, "    // due: "),
+      );
       expect(await missingLabels()).toEqual(["Dictionary labels for myapp:task.due were not found."]);
     });
   });

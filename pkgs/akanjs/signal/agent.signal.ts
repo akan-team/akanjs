@@ -26,6 +26,8 @@ export class AgentEndpoint extends endpoint(srv.agent, ({ mutation }) => ({
     .with(CallerAccount, { nullable: true })
     .with(Ip, { nullable: true })
     .exec(async function (messages, tools, context, instructions, request, account, ip) {
+      const http = request as Bun.BunRequest;
+      const scope = AgentMeter.turnOf(account, { headers: http.headers, ip });
       // Before the stream opens, so a refusal answers with its own status rather than as an error event.
       const turn = await AgentRelayPolicy.apply(
         {
@@ -34,13 +36,28 @@ export class AgentEndpoint extends endpoint(srv.agent, ({ mutation }) => ({
           context: context as unknown as AgentWireContext[],
           ...(instructions ? { instructions } : {}),
         },
-        { account, ip },
+        scope,
       );
-      if (AgentTurnStream.wants(request as Bun.BunRequest))
-        return AgentTurnStream.response((onDelta) =>
-          AgentMeter.run(account, () => this.agentService.runTurn(turn, onDelta)),
+      if (AgentTurnStream.wants(http))
+        return AgentTurnStream.response((onDelta, signal) =>
+          AgentMeter.run(account, () => this.agentService.runTurn(turn, { onDelta, signal }), {
+            turn: scope,
+            request: turn,
+            signal,
+          }),
         ) as unknown as AgentTurn;
-      return await AgentMeter.run(account, () => this.agentService.runTurn(turn));
+      try {
+        return await AgentMeter.run(account, () => this.agentService.runTurn(turn, { signal: http.signal }), {
+          turn: scope,
+          request: turn,
+          signal: http.signal,
+        });
+      } catch (error) {
+        //? The client left, so nobody reads this answer; rethrown, its abort would be logged as a server error.
+        if (http.signal.aborted)
+          return new Response(null, { status: 499, headers: { "cache-control": "no-store" } }) as unknown as AgentTurn;
+        throw error;
+      }
     }),
 })) {}
 

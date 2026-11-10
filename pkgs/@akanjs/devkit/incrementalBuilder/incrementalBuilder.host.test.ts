@@ -123,18 +123,21 @@ describe("IncrementalBuilderHost", () => {
         id: 1,
         ok: false,
         error: "builder exited to release bundler memory before answering; reload to retry",
+        kind: "unavailable",
       },
       {
         type: "build-csr-res",
         id: 2,
         ok: false,
         error: "builder exited to release bundler memory before answering; reload to retry",
+        kind: "unavailable",
       },
       {
         type: "build-graph-res",
         id: 4,
         ok: false,
         error: "builder exited to release bundler memory before answering; reload to retry",
+        kind: "unavailable",
       },
     ]);
 
@@ -159,6 +162,7 @@ describe("IncrementalBuilderHost", () => {
         id: 1,
         ok: false,
         error: "builder exited unexpectedly before answering; reload once it is back",
+        kind: "unavailable",
       },
     ]);
 
@@ -168,7 +172,7 @@ describe("IncrementalBuilderHost", () => {
     expect(host.send({ type: "build-route", id: 2, routeId: "b", seeds: [], knownEntries: [] })).toBe(true);
     host.stop();
     expect(messages).toEqual([
-      { type: "build-route-res", id: 2, ok: false, error: "builder was stopped before answering" },
+      { type: "build-route-res", id: 2, ok: false, error: "builder was stopped before answering", kind: "unavailable" },
     ]);
   });
 

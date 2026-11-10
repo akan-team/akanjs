@@ -13,6 +13,8 @@ import {
   type AkanRscPatchDecision,
   type AkanRscPatchMetadata,
   encodeAkanHeadSnapshot,
+  encodeAkanRouterState,
+  encodeAkanRscPatchSegmentPath,
   isAkanHeadSnapshotV1,
 } from "./routeState";
 import type { RscTraceMetadata } from "./ssrTypes";
@@ -29,6 +31,8 @@ export interface CachedRscResult {
   ssrBlocking?: boolean;
   cacheState: RouteCacheRenderState;
   patch?: CachedRscPatchMetadata;
+  /** Key of the layouts' head the page renders in its route head, named in the router state a replay sends. */
+  routeHeadKey?: string;
 }
 
 export interface CachedRscPatchMetadata {
@@ -40,6 +44,47 @@ export interface RscPatchCacheKeyInput {
   baseEntry: RouteCacheEntry;
   targetRouterState: AkanRouterStateV1;
   patch: AkanRscPatchMetadata;
+}
+
+export interface RscWorkerTraceContext {
+  navId: string;
+  pathname: string;
+  routeId: string;
+  routerStateReason?: string;
+  cacheKey?: string;
+  cacheReason?: string;
+  routeState: AkanRouterStateV1 | null;
+}
+
+function hashRscTraceCacheKey(cacheKey: string): string {
+  let hash = 5381;
+  for (let index = 0; index < cacheKey.length; index += 1) hash = (hash * 33) ^ cacheKey.charCodeAt(index);
+  return (hash >>> 0).toString(36);
+}
+
+export function rscWorkerTraceBaseOf(context: RscWorkerTraceContext) {
+  return (decision: AkanRscPatchDecision, cacheKey = context.cacheKey, routeState = context.routeState) => ({
+    navId: context.navId,
+    pathname: context.pathname,
+    routeId: context.routeId,
+    partial: decision.status,
+    partialReason: decision.reason ?? context.routerStateReason,
+    partialCommonPrefixLength: decision.commonPrefixLength,
+    ...(decision.patch
+      ? {
+          patchStartIndex: decision.patch.patchStartIndex,
+          patchSegmentPath: encodeAkanRscPatchSegmentPath(decision.patch.segmentPath),
+          patchStartSegment: decision.patch.patchStartSegmentKey,
+          patchHeadSafe: decision.patch.headSafe,
+          patchHeadSnapshot: decision.patch.headSnapshot
+            ? (encodeAkanHeadSnapshot(decision.patch.headSnapshot) ?? undefined)
+            : undefined,
+        }
+      : {}),
+    ...(routeState ? { routeState: encodeAkanRouterState(routeState) } : {}),
+    ...(cacheKey ? { cacheKeyHash: hashRscTraceCacheKey(cacheKey) } : {}),
+    ...(context.cacheReason ? { cacheReason: context.cacheReason } : {}),
+  });
 }
 
 export function createRscPatchCacheEntry({ baseEntry, targetRouterState, patch }: RscPatchCacheKeyInput) {
@@ -226,16 +271,27 @@ export function resolveAkanRscHeadSafePatchDecision({
   partialCommitEnabled,
   patchDecision,
   pageConfig,
+  routeHeadMounted = true,
+  frameChange,
   headSnapshot,
+  layoutsHeadChanged = false,
 }: {
   partialCommitEnabled: boolean;
   patchDecision: AkanRscPatchDecision;
   pageConfig?: PageConfig;
+  /** Whether the page the patch leaves from shows its head through `AkanRouteHead`, the only head a patch can swap. */
+  routeHeadMounted?: boolean;
+  frameChange?: "params-changed" | "layouts-changed" | "page-state-changed" | "frame-unknown";
   headSnapshot?: AkanHeadSnapshotV1;
+  /** Whether the target's layouts head differs from the one the page left from shows, which a patch would keep. */
+  layoutsHeadChanged?: boolean;
 }): AkanRscPatchDecision {
   if (!partialCommitEnabled || patchDecision.status !== "patch" || !patchDecision.patch) return patchDecision;
   if (pageConfig?.rscPatchHeadSafe !== true) return fullDecision("head-unsafe", patchDecision);
+  if (!routeHeadMounted) return fullDecision("head-unmounted", patchDecision);
+  if (frameChange) return fullDecision(frameChange, patchDecision);
   if (!headSnapshot) return fullDecision("head-missing", patchDecision);
+  if (layoutsHeadChanged) return fullDecision("layouts-head-changed", patchDecision);
   if (!isAkanHeadSnapshotV1(headSnapshot)) return fullDecision("head-invalid", patchDecision);
   if (!encodeAkanHeadSnapshot(headSnapshot)) return fullDecision("head-too-large", patchDecision);
   return { ...patchDecision, patch: { ...patchDecision.patch, headSafe: true, headSnapshot } };

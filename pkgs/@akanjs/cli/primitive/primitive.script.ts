@@ -42,6 +42,7 @@ import {
   type PrimitiveChangedFile,
   type PrimitiveTargetInput,
   parseValues,
+  plainNameProblem,
   type RenameKeyInput,
   type ScaffoldFile,
   sourceFile,
@@ -65,13 +66,11 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
 
   async createUi(workspace: Workspace, input: PrimitiveTargetInput & { surface: UiSurface }) {
     const sys = await this.resolveSys(workspace, input.app);
-    if (!sys || !input.module)
+    const moduleProblem = PrimitiveScript.#moduleProblem(input.module);
+    if (!sys || !input.module || moduleProblem)
       return PrimitiveScript.#refuse(
         "create-ui",
-        compactDiagnostics([
-          !sys && PrimitiveScript.#targetMissing(),
-          !input.module && PrimitiveScript.#inputMissing("module"),
-        ]),
+        compactDiagnostics([!sys && PrimitiveScript.#targetMissing(), moduleProblem]),
       );
     const mod = ModuleExecutor.from(sys, input.module);
     if (input.surface === "view") return await this.moduleScript.createView(mod);
@@ -99,7 +98,7 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
     const normalizedType = input.type ? normalizeFieldType(input.type) : null;
     const diagnostics = compactDiagnostics([
       !sys && PrimitiveScript.#targetMissing(),
-      !input.module && PrimitiveScript.#inputMissing("module"),
+      PrimitiveScript.#moduleProblem(input.module),
       !input.field && PrimitiveScript.#inputMissing("field"),
       !input.type && PrimitiveScript.#inputMissing("type"),
       enumValues?.length === 0 && PrimitiveScript.#inputMissing("values", "Enum values are required."),
@@ -553,6 +552,12 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
 
   static #inputMissing(input: string, message = `${capitalize(input)} is required.`): WorkflowDiagnostic {
     return { severity: "error", code: "primitive-input-missing", message, input };
+  }
+
+  static #moduleProblem(module: string | null): WorkflowDiagnostic | null {
+    if (!module) return PrimitiveScript.#inputMissing("module");
+    const message = plainNameProblem("module", module);
+    return message ? { severity: "error", code: "primitive-input-invalid", message, input: "module" } : null;
   }
 
   static #sourceMissing(kind: string, path: string): WorkflowDiagnostic {

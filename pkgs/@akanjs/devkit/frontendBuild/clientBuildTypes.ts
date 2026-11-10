@@ -38,8 +38,12 @@ export const CLIENT_BUNDLE_NAMING = {
   asset: "assets/[hash].[ext]",
 } as const;
 
+export interface DiscoverOptions {
+  importsAs?: ReadonlyMap<string, ReadonlyMap<string, string | null>>;
+}
+
 export interface ClientEntryDiscovery {
-  discover(seeds: string[]): Promise<string[]>;
+  discover(seeds: string[], options?: DiscoverOptions): Promise<string[]>;
   invalidate?(files: string[]): void;
 }
 
@@ -59,7 +63,6 @@ export interface BundleClientEntriesInternalOptions extends BundleClientEntriesO
   externalSubpaths?: readonly string[];
   externalAliases?: Partial<Record<string, string>>;
   command?: "build" | "start";
-  /** Per absolute entry, the only names its alias re-exports, in place of every name the entry declares. */
   entryExports?: Partial<Record<string, readonly string[]>>;
 }
 

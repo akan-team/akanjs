@@ -1,6 +1,7 @@
-import { mkdir, realpath, rm, stat } from "node:fs/promises";
+import { realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { $ } from "bun";
+import { CliBuildLock } from "./cliBuildLock";
 
 interface PackageManifest {
   name?: string;
@@ -13,9 +14,6 @@ interface PackageManifest {
 // executing: an input stamp makes an up-to-date build a no-op, and a lock lets one of several cold starts build.
 export class CliDistBuilder {
   static readonly #stampFile = ".build-stamp";
-  /** Covers a cold build on a loaded machine; short enough that a lock leaked by `kill -9` cannot wedge the CLI. */
-  static readonly #lockTimeoutMs = 120_000;
-  static readonly #lockPollMs = 100;
 
   readonly #cliDir: string;
   readonly #devkitDir: string;
@@ -32,15 +30,16 @@ export class CliDistBuilder {
     const stamp = await this.inputStamp();
     const force = process.env.AKAN_CLI_FORCE_BUILD === "1";
     if (!force && (await this.#stampMatches(stamp))) return "up-to-date";
-    const lockRequestedAt = Date.now();
-    const releaseLock = await this.#acquireLock();
+    const recordedBefore = await this.#recordedStamp();
+    const releaseLock = await CliBuildLock.acquire(`${this.#outDir}.lock`);
     try {
       // A forced build yields to one that finished during the wait: that build's process is running from `dist/`.
-      if ((await this.#stampMatches(stamp)) && (!force || (await this.#stampWrittenSince(lockRequestedAt))))
+      if ((await this.#stampMatches(stamp)) && (!force || (await this.#recordedStamp()) !== recordedBefore))
         return "built-by-other";
       await this.#bundle();
-      // Written last, so a build killed halfway leaves no stamp to trust a partial bundle by.
-      await Bun.write(path.join(this.#outDir, CliDistBuilder.#stampFile), stamp);
+      // Written last, so a build killed halfway leaves no stamp to trust a partial bundle by. The nonce, not the
+      // file's mtime, tells a waiting forced build that this one finished: kernel timestamps can trail its clock.
+      await Bun.write(path.join(this.#outDir, CliDistBuilder.#stampFile), `${stamp}\n${crypto.randomUUID()}\n`);
       return "built";
     } finally {
       await releaseLock();
@@ -74,14 +73,14 @@ export class CliDistBuilder {
       : new Map<string, string>();
     const dirs = new Set(await Promise.all([this.#cliDir, this.#devkitDir].map((dir) => realpath(dir))));
     for (const dir of dirs) {
-      const manifest = await CliDistBuilder.#manifestOf(dir);
+      const manifest: PackageManifest = await CliDistBuilder.#manifestOf(dir).catch(() => ({}));
       for (const [name, spec] of Object.entries({ ...manifest.dependencies, ...manifest.peerDependencies })) {
         if (externals.has(name)) continue;
         const target = CliDistBuilder.#aliasTargetOf(spec);
         const packageDir =
           (target && workspaces.get(target)) ??
           workspaces.get(name) ??
-          (await CliDistBuilder.#resolvedPackageDirOf(name, dir, workspaceRoot));
+          (await CliDistBuilder.#bundledDirOf(name, dir, workspaceRoot));
         if (packageDir) dirs.add(packageDir);
       }
     }
@@ -124,16 +123,10 @@ export class CliDistBuilder {
     return target === spec ? null : target;
   }
 
-  static async #resolvedPackageDirOf(name: string, fromDir: string, workspaceRoot: string | null) {
-    const entry =
-      (await CliDistBuilder.#resolve(`${name}/package.json`, fromDir)) ??
-      (await CliDistBuilder.#resolve(name, fromDir));
-    if (!entry || entry.split(path.sep).includes("node_modules")) return null;
-    for (let dir = path.dirname(entry); dir !== path.dirname(dir) && dir !== workspaceRoot; dir = path.dirname(dir)) {
-      const manifest = await CliDistBuilder.#manifestOf(dir).catch(() => null);
-      if (manifest?.name) return dir;
-    }
-    return path.dirname(entry) === workspaceRoot ? null : path.dirname(entry);
+  static async #bundledDirOf(name: string, fromDir: string, workspaceRoot: string | null): Promise<string | null> {
+    const entry = await CliDistBuilder.#resolve(name, fromDir);
+    if (entry && !CliDistBuilder.#isInstalled(entry)) return await CliDistBuilder.#ownerDirOf(entry, workspaceRoot);
+    return await CliDistBuilder.#linkedDirOf(name, fromDir);
   }
 
   static async #resolve(name: string, fromDir: string): Promise<string | null> {
@@ -144,57 +137,40 @@ export class CliDistBuilder {
     }
   }
 
-  async #stampMatches(stamp: string): Promise<boolean> {
-    const recorded = await Bun.file(path.join(this.#outDir, CliDistBuilder.#stampFile))
+  static #isInstalled(file: string) {
+    return file.split(path.sep).includes("node_modules");
+  }
+
+  static async #ownerDirOf(entry: string, workspaceRoot: string | null): Promise<string | null> {
+    for (let dir = path.dirname(entry); dir !== path.dirname(dir) && dir !== workspaceRoot; dir = path.dirname(dir)) {
+      const manifest = await CliDistBuilder.#manifestOf(dir).catch(() => null);
+      if (manifest?.name) return dir;
+    }
+    return path.dirname(entry) === workspaceRoot ? null : path.dirname(entry);
+  }
+
+  //? Resolving fails for a package whose `exports` has no `.`, so the bundle's copy is found by its link instead.
+  static async #linkedDirOf(name: string, fromDir: string): Promise<string | null> {
+    for (let dir = fromDir; dir !== path.dirname(dir); dir = path.dirname(dir)) {
+      const linked = path.join(dir, "node_modules", name);
+      if (!(await Bun.file(path.join(linked, "package.json")).exists())) continue;
+      const packageDir = await realpath(linked);
+      return CliDistBuilder.#isInstalled(packageDir) ? null : packageDir;
+    }
+    return null;
+  }
+
+  async #recordedStamp(): Promise<string | null> {
+    return await Bun.file(path.join(this.#outDir, CliDistBuilder.#stampFile))
       .text()
       .catch(() => null);
+  }
+
+  async #stampMatches(stamp: string): Promise<boolean> {
+    const [recorded] = (await this.#recordedStamp())?.split("\n") ?? [];
     if (recorded?.trim() !== stamp) return false;
     // A stamp with no entrypoint beside it means someone removed part of `dist/` by hand.
     return await Bun.file(path.join(this.#outDir, "index.js")).exists();
-  }
-
-  async #stampWrittenSince(at: number): Promise<boolean> {
-    const info = await stat(path.join(this.#outDir, CliDistBuilder.#stampFile)).catch(() => null);
-    return !!info && info.mtimeMs >= at;
-  }
-
-  async #acquireLock(): Promise<() => Promise<void>> {
-    const lockDir = `${this.#outDir}.lock`;
-    await mkdir(path.dirname(lockDir), { recursive: true });
-    const waitingSince = Date.now();
-    for (;;) {
-      const acquired = await mkdir(lockDir)
-        .then(() => true)
-        .catch(() => false);
-      if (acquired) {
-        await Bun.write(path.join(lockDir, "owner"), `${process.pid}`);
-        return () => rm(lockDir, { recursive: true, force: true });
-      }
-      if (await CliDistBuilder.#lockIsAbandoned(lockDir, waitingSince))
-        await rm(lockDir, { recursive: true, force: true });
-      else await Bun.sleep(CliDistBuilder.#lockPollMs);
-    }
-  }
-
-  static async #lockIsAbandoned(lockDir: string, waitingSince: number): Promise<boolean> {
-    if (Date.now() - waitingSince > CliDistBuilder.#lockTimeoutMs) {
-      console.warn(`[cli-build] taking over ${lockDir} after waiting ${CliDistBuilder.#lockTimeoutMs}ms`);
-      return true;
-    }
-    const owner = Number(
-      await Bun.file(path.join(lockDir, "owner"))
-        .text()
-        .catch(() => ""),
-    );
-    // Not yet written: the holder is between its `mkdir` and its owner write, which is not abandoned.
-    if (!Number.isFinite(owner) || owner <= 0) return false;
-    try {
-      process.kill(owner, 0);
-      return false;
-    } catch (error) {
-      // ESRCH is the only code that means gone — EPERM is a live process owned by someone else.
-      return (error as { code?: string }).code === "ESRCH";
-    }
   }
 
   async #bundle(): Promise<void> {

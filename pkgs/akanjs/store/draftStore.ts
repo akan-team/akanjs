@@ -58,7 +58,9 @@ export class DraftStore {
     if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
     if (Array.isArray(value)) return `[${value.map((item) => DraftStore.#stableStringify(item)).join(",")}]`;
     const source = value as Record<string, unknown>;
+    // Dropped as JSON.stringify drops them, so a form hashes like the record it was stored as and read back from.
     const entries = Object.keys(source)
+      .filter((key) => !["undefined", "function", "symbol"].includes(typeof source[key]))
       .sort()
       .map((key) => `${JSON.stringify(key)}:${DraftStore.#stableStringify(source[key])}`);
     return `{${entries.join(",")}}`;

@@ -17,9 +17,32 @@ interface ErrRestoreOption {
   timestamp?: string;
 }
 
-interface ErrPayload extends ErrRestoreOption {
+export interface ErrPayload extends ErrRestoreOption {
   error: string;
   data?: Record<string, unknown>;
+}
+
+export interface PageErrInstance extends Error {
+  readonly error: string;
+  readonly statusCode: number;
+  readonly code?: string;
+  readonly details?: unknown;
+  readonly data?: Record<string, unknown>;
+  readonly path?: string;
+  readonly timestamp?: string;
+  toJSON(): ErrPayload & { statusCode: number };
+}
+
+export interface PageErrConstructor<ErrorKey extends string> {
+  new (key: ErrorKey, data?: Record<string, unknown>, option?: ErrRestoreOption): PageErrInstance;
+  prototype: PageErrInstance;
+  fromJSON(payload: ErrPayload): PageErrInstance;
+  is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is PageErrInstance & { readonly error: Key };
+  BadRequest: PageErrConstructor<ErrorKey>;
+  Unauthorized: PageErrConstructor<ErrorKey>;
+  Forbidden: PageErrConstructor<ErrorKey>;
+  NotFound: PageErrConstructor<ErrorKey>;
+  Conflict: PageErrConstructor<ErrorKey>;
 }
 
 const htmlEntities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -156,8 +179,9 @@ export const makePageProto = <
       }
     };
   }
+  const PageErr: PageErrConstructor<ErrorKey> = Err;
   return {
-    Err,
+    Err: PageErr,
     msg: msg as {
       info: (key: DictKey, option?: TransMessageOption) => void;
       success: (key: DictKey, option?: TransMessageOption) => void;

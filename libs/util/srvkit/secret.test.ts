@@ -1,6 +1,7 @@
-import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import * as base from "akanjs/base";
 import { Logger, type LoggerSinkEntry } from "akanjs/common";
+import { type ModulesOptions, option } from "../lib/option";
 import { jwtSign } from "./jwt";
 import {
   assertJwtSecretConfigured,
@@ -37,6 +38,49 @@ describe("assertJwtSecretConfigured", () => {
     expect(() => assertJwtSecretConfigured({ operationMode: "cloud", configuredSecret: "from-config" })).not.toThrow();
     process.env.AKAN_ALLOW_DERIVED_JWT_SECRET = "1";
     expect(() => assertJwtSecretConfigured({ operationMode: "cloud" })).not.toThrow();
+  });
+});
+
+describe("an env file that sets nothing", () => {
+  //? What `akan sync` seeds into each env file a fresh clone lacks; `akan typecheck util` holds it to the type.
+  const seeded: ModulesOptions = {};
+  const local = {
+    operationMode: "local",
+    appName: "sceny",
+    environment: "local",
+    repoName: "akanjs",
+    serveDomain: "localhost",
+  } as ReturnType<typeof base.getEnv>;
+  const originalEnv = {
+    JWT_SECRET: process.env.JWT_SECRET,
+    AKAN_ALLOW_DERIVED_JWT_SECRET: process.env.AKAN_ALLOW_DERIVED_JWT_SECRET,
+    HOST_NAME: process.env.HOST_NAME,
+  };
+
+  beforeEach(() => {
+    for (const key of Object.keys(originalEnv)) delete process.env[key];
+  });
+
+  afterEach(() => {
+    mock.restore();
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  test("boots locally on the derived secret and localhost", () => {
+    spyOn(base, "getEnv").mockReturnValue(local);
+    expect(Object.fromEntries(option.getUses(seeded))).toEqual({
+      jwtSecret: generateJwtSecret("sceny", "local", "akanjs"),
+      host: "localhost",
+      hosts: ["localhost"],
+    });
+  });
+
+  test("is refused at boot outside local", () => {
+    spyOn(base, "getEnv").mockReturnValue({ ...local, operationMode: "cloud", environment: "main" });
+    expect(() => option.getUses(seeded)).toThrow("util.error.jwtSecretRequired");
   });
 });
 

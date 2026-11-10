@@ -50,6 +50,11 @@ body shape — this is the full contract behind them. Before changing route beha
   that is harmless to repeat and safe for anyone to trigger (a warm-up) passes `{ duringRender: true }` as the option
   after the endpoint's own arguments (`fetch.updateX(id, data, { duringRender: true })`). `akan quality` flags the call,
   same-file helpers included, as `akan.ssr.render-mutation`.
+- **A `Link` renders its page ahead of the click** — on hover, on keyboard focus, or as it shows with
+  `prefetch="viewport"` (production only). A page whose render has an effect one visit should cause once — a view
+  counted through `duringRender`, an expensive report — refuses with `.config({ prefetch: false })`; on a `_layout.tsx`
+  it covers every page below, and a page there opts back in with `prefetch: true`. Its guards still run for the
+  prefetch, so a redirect answers as one, and the click renders the page as usual.
 
 ## Route Guards — `.guard()`
 

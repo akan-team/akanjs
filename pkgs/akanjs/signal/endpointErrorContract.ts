@@ -1,6 +1,7 @@
 import type { Adaptor } from "akanjs/service";
 
 import type { EndpointInfo } from "./endpointInfo";
+import type { ExceptionLike } from "./exception";
 import type { EndpointErrors } from "./types";
 
 // What an endpoint's `errors` declaration promises, checked where it is declared and where it is broken.
@@ -36,5 +37,17 @@ export class EndpointErrorContract {
     endpoint.logger.warn(
       `"${key}" threw ${thrownKey}, which its \`errors\` declaration leaves out: OpenAPI and the MCP catalogue do not publish it.`,
     );
+  }
+
+  //? Under 500 only: a declared 503 is still the server failing, so it stays an error in the log.
+  static promised(endpointInfo: EndpointInfo, error: ExceptionLike) {
+    const keys: readonly string[] | undefined = endpointInfo.signalOption.errors?.[error.statusCode];
+    return error.statusCode < 500 && keys?.includes(EndpointErrorContract.wireKey(error)) === true;
+  }
+
+  // The key the caller receives: a `NoDocumentError`'s message names the table, while its wire key is a base key.
+  static wireKey(error: ExceptionLike): string {
+    const wire = (error.toJSON() as { error?: unknown }).error;
+    return typeof wire === "string" ? wire : (error as unknown as Error).message;
   }
 }

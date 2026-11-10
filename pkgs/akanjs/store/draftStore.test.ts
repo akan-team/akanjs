@@ -176,6 +176,12 @@ describe("DraftStore form codec", () => {
     expect(decoded.image.filename).toBe("a.png");
   });
 
+  test("a form hashes like the record it was stored as, an undefined member included", () => {
+    const encoded = DraftStore.encodeForm("draftTestItem", { ...form, title: undefined });
+    const stored = JSON.parse(JSON.stringify(encoded)) as Record<string, unknown>;
+    expect(DraftStore.contentHash(stored)).toBe(DraftStore.contentHash(encoded));
+  });
+
   test("a form hash tracks a field change and ignores a secret one", () => {
     const before = DraftStore.formHash("draftTestItem", form);
     expect(DraftStore.formHash("draftTestItem", { ...form, password: "changed" })).toBe(before);

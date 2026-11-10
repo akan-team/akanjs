@@ -1131,8 +1131,8 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
             name: "paths",
             type: "String",
             desc: l.trans({
-              en: "Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. A `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a signal route or a file such as `/robots.txt` opens as written, without a locale.",
-              ko: "쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다. Studio(`/_akan/studio?view=runtime`) 같은 `/_akan` 경로, 시그널 경로, `/robots.txt` 같은 파일은 로케일 없이 적은 그대로 엽니다.",
+              en: "Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, the default `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`. A full URL (`http://localhost:<port>/oauth/token`) opens exactly as written, for an endpoint mounted outside the API prefix or a custom MCP path. A page `--changed` finds always gets the locale.",
+              ko: "쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다. 서버가 로케일 밖에서 답하는 경로는 로케일 없이 적은 그대로 엽니다. Studio(`/_akan/studio?view=runtime`) 같은 `/_akan` 경로, API prefix 아래 경로, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, 기본 `/mcp`, 서버가 직접 내주는 파일(`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`), `public/`의 파일이 그렇습니다. 전체 URL(`http://localhost:<port>/oauth/token`)은 적은 그대로 엽니다. API prefix 밖에 마운트된 엔드포인트나 바꾼 MCP 경로에 쓰세요. `--changed`가 찾은 페이지에는 항상 로케일을 붙입니다.",
             }),
           },
           {
@@ -1367,7 +1367,7 @@ akan test util`,
       {
         name: "build",
         signature:
-          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--update-budget <boolean>]",
+          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--check-budget <boolean>] [--update-budget <boolean>] [--raise-budget <boolean>]",
         desc: l.trans({
           en: "Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.",
           ko: "배포용 빌드를 `dist/apps/<app>`에 만듭니다. 타입을 검사한 뒤 백엔드, SSR 라우트, CSR 번들을 차례로 만듭니다.",
@@ -1407,12 +1407,30 @@ akan test util`,
             }),
           },
           {
+            name: "--check-budget",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "Fail the build when a route's JS is over its `akan.budget.json` entry, when a route has no entry, when the file cannot be read, or when the app has none. Without it the build only reports these. CI runs it.",
+              ko: "라우트의 JS가 `akan.budget.json` 항목을 넘거나, 항목이 없는 라우트가 있거나, 파일을 읽을 수 없거나, 앱에 파일이 없으면 빌드를 실패시킵니다. 주지 않으면 빌드는 이를 알리기만 합니다. CI가 이 옵션으로 빌드합니다.",
+            }),
+          },
+          {
             name: "--update-budget",
             type: "Boolean",
             defaultValue: "false",
             desc: l.trans({
-              en: "Write the app's `akan.budget.json`: add each route that has no entry at what it measures now, lower an entry its route now fits under, and drop the routes that are gone. It never raises an entry.",
-              ko: "앱의 `akan.budget.json`을 씁니다. 항목이 없는 라우트는 지금 잰 크기로 더하고, 줄어든 라우트의 항목은 낮추며, 사라진 라우트는 지웁니다. 항목을 올리지는 않습니다.",
+              en: "Write the app's `akan.budget.json`: add each route that has no entry at what it measures now, lower an entry its route now fits under, and drop the routes that are gone. It never raises an entry, and fails a route still over one.",
+              ko: "앱의 `akan.budget.json`을 씁니다. 항목이 없는 라우트는 지금 잰 크기로 더하고, 줄어든 라우트의 항목은 낮추며, 사라진 라우트는 지웁니다. 항목을 올리지는 않으며, 여전히 항목을 넘는 라우트는 실패시킵니다.",
+            }),
+          },
+          {
+            name: "--raise-budget",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "Rewrite the app's `akan.budget.json` at what every route measures now, raising the entries of the routes that grew, and name them. Run it in the change that grows a route on purpose, and commit the file with it. Pass one of the three budget flags at most.",
+              ko: "앱의 `akan.budget.json`을 모든 라우트의 지금 잰 크기로 다시 쓰고, 커진 라우트의 항목을 올리며 그 라우트들을 알려 줍니다. 라우트를 일부러 키우는 변경에서 실행하고, 그 파일을 함께 커밋합니다. 세 예산 옵션은 하나만 줄 수 있습니다.",
             }),
           },
         ],
@@ -1435,15 +1453,17 @@ akan test util`,
           {
             name: l.trans({ en: "route JS budget", ko: "라우트 JS 예산" }),
             desc: l.trans({
-              en: "The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors. It counts the brotli bytes served and prints the largest routes. When the app has an `akan.budget.json`, a route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry fails the build; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A route with no entry is only reported. Record the file with `--update-budget` and commit it. To raise an entry, edit it by hand in the change that grows the route. `akan verify` warns of a route over its entry or an unreadable file but never fails on either, and a mobile or desktop build skips the step.",
-              ko: "빌드는 서버 라우트마다 불러오는 JavaScript를 잽니다. 런타임, 그 페이지와 레이아웃에서 정적으로 닿는 모든 클라이언트 모듈, 그리고 그 벤더가 대상입니다. 실제로 내려보내는 brotli 바이트를 세고, 가장 큰 라우트들을 보여 줍니다. 앱에 `akan.budget.json`이 있으면, `routeJsBrotliKB` 항목을 1%와 4KB 중 큰 값보다 더 넘는 라우트가 빌드를 실패시킵니다. 이 여유분은 빌드가 박아 넣는 공개 env 값을 흡수하므로, 한 `--env`로 기록한 예산이 다른 환경에서도 맞습니다. 항목이 없는 라우트는 보고만 합니다. 파일은 `--update-budget`으로 기록해 커밋합니다. 항목을 올리려면, 라우트를 키우는 변경에서 직접 고칩니다. `akan verify`는 항목을 넘은 라우트나 읽을 수 없는 파일을 경고만 하고 실패시키지 않으며, 모바일과 데스크톱 빌드는 이 단계를 건너뜁니다.",
+              en: "The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors; the root layout's `System` counts as the SSR shell a server page renders, not the CSR or MCP App shells. It counts the brotli bytes served and prints the largest routes. A route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry in `akan.budget.json` is an overage; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A plain build, `--quiet` included, and `akan verify` warn of an overage, a route with no entry or an unreadable file and never fail on one; `--check-budget` fails on them, naming them all at once, and on an app with no file. Record the file with `--update-budget`, which also adds a new route, and commit it. To raise an entry, run `--raise-budget`, or edit the entry by hand, in the change that grows the route. A mobile or desktop build skips the step.",
+              ko: "빌드는 서버 라우트마다 불러오는 JavaScript를 잽니다. 런타임, 그 페이지와 레이아웃에서 정적으로 닿는 모든 클라이언트 모듈, 그리고 그 벤더가 대상이며, 루트 레이아웃의 `System`은 서버 페이지가 그리는 SSR 셸만 셉니다(CSR과 MCP App 셸은 빼고). 실제로 내려보내는 brotli 바이트를 세고, 가장 큰 라우트들을 보여 줍니다. `akan.budget.json`의 `routeJsBrotliKB` 항목을 1%와 4KB 중 큰 값보다 더 넘는 라우트는 초과입니다. 이 여유분은 빌드가 박아 넣는 공개 env 값을 흡수하므로, 한 `--env`로 기록한 예산이 다른 환경에서도 맞습니다. 일반 빌드(`--quiet` 포함)와 `akan verify`는 초과, 항목이 없는 라우트, 읽을 수 없는 파일을 경고만 하고 실패시키지 않으며, `--check-budget`을 주면 이를 한꺼번에 모두 알리며 실패시키고, 앱에 파일이 없어도 실패시킵니다. 파일은 `--update-budget`으로 기록해 커밋하며, 새 라우트의 항목도 이것으로 더합니다. 항목을 올리려면, 라우트를 키우는 변경에서 `--raise-budget`을 실행하거나 항목을 직접 고칩니다. 모바일과 데스크톱 빌드는 이 단계를 건너뜁니다.",
             }),
           },
         ],
         examples: `akan build myapp
 akan build myapp --write true --fast false --quiet false
 akan build myapp --profile edge
-akan build myapp --update-budget`,
+akan build myapp --check-budget
+akan build myapp --update-budget
+akan build myapp --raise-budget`,
       },
       {
         name: "start-ios",

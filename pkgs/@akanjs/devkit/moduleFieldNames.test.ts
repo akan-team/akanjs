@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { constantFieldNames } from "./constantFieldNames";
+import { constantFieldNames, unlabeledFieldNames } from "./moduleFieldNames";
 
-describe("constantFieldNames", () => {
+describe("moduleFieldNames", () => {
   test("names each field the code declares, chained or not", () => {
     const content = `export class TaskInput extends via((field) => ({
   title: field(String),
@@ -30,5 +30,27 @@ export const example = \`previousStatus: field(TaskStatus)\`;
 `;
 
     expect(constantFieldNames(content)).toEqual(["title", "note"]);
+  });
+
+  test("unlabeledFieldNames finds a real label and reports one that is only commented out or inside a string", () => {
+    const constant = `export class TaskInput extends via((field) => ({
+  title: field(String),
+  content: field(String),
+  status: field(TaskStatus),
+  due: field(Date).optional(),
+})) {}
+`;
+    const dictionary = `export const dictionary = modelDictionary(["en", "ko"])
+  .model<Task>((t) => ({
+    title: t(["Title", "제목"]).desc(["Task title", "할 일 제목"]),
+    // content: t(["Content", "내용"]),
+    /* status: t(["Status", "상태"]), */
+  }))
+  .translate({
+    taskDueHint: ["due: pick a date", "마감: 날짜를 고르세요"],
+  });
+`;
+
+    expect(unlabeledFieldNames(constant, dictionary)).toEqual(["content", "status", "due"]);
   });
 });

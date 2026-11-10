@@ -1,9 +1,7 @@
 import { appendFileSync } from "node:fs";
 import type { ReactNode } from "react";
-import type { Head } from "../client/csrTypes";
 import { layout, page } from "../client/route/routeBuilders";
 import { AkanRedirectError } from "../client/router";
-import type { AkanHeadSnapshotV1 } from "./routeState";
 import type { PagesContext } from "./routeTreeBuilder";
 
 const log = (name: string) => {
@@ -13,8 +11,6 @@ const headOf = (name: string) => () => {
   log(name);
   return <title>{name}</title>;
 };
-
-const safeSnapshot: AkanHeadSnapshotV1 = { version: 1, nodes: [{ tag: "title", text: "safe" }] };
 
 export const pages: PagesContext = {
   "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
@@ -26,9 +22,72 @@ export const pages: PagesContext = {
   "./safe.tsx": async () => ({
     default: page()
       .config({ rscPatchHeadSafe: true })
-      // No route stage produces a head snapshot today, and without one a patch always falls back to a full render.
-      .head((() => ({ node: headOf("safe")(), headSnapshot: safeSnapshot })) as unknown as () => Head)
+      .head(headOf("safe"))
       .render(() => <p>safe body</p>),
+  }),
+  "./faded.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true, transition: "fade" })
+      .head(headOf("faded"))
+      .render(() => <p>faded body</p>),
+  }),
+  "./wordy.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(() => {
+        log("wordy");
+        return (
+          <>
+            <title>wordy</title>
+            <meta name="description" content={"설명".repeat(400)} />
+          </>
+        );
+      })
+      .render(() => <p>wordy body</p>),
+  }),
+  "./query/_layout.tsx": async () => ({
+    default: layout()
+      .search("tab", String)
+      .head(({ tab }) => <meta name="section" content={tab ?? "none"} />)
+      .render(({ children }) => children),
+  }),
+  "./query/list.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("list"))
+      .render(() => <p>list body</p>),
+  }),
+  "./quiet/_layout.tsx": async () => ({
+    default: layout()
+      .head(() => <>{false}</>)
+      .render(({ children }) => children),
+  }),
+  "./quiet/bare.tsx": async () => ({
+    default: page().render(() => <p>bare body</p>),
+  }),
+  "./(guest)/_layout.tsx": async () => ({
+    default: layout().render(({ children }) => <div data-group="guest">{children}</div>),
+  }),
+  "./(guest)/account/login.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("login"))
+      .render(() => <p>login body</p>),
+  }),
+  "./(guest)/account/signup.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("signup"))
+      .render(() => <p>signup body</p>),
+  }),
+  "./(member)/_layout.tsx": async () => ({
+    default: layout().render(({ children }) => <div data-group="member">{children}</div>),
+  }),
+  "./(member)/account/settings.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("settings"))
+      .render(() => <p>settings body</p>),
   }),
   "./vault/_layout.tsx": async () => ({
     default: layout()
@@ -46,13 +105,24 @@ export const pages: PagesContext = {
   "./open/plain.tsx": async () => ({
     default: page()
       .config({ rscPatchHeadSafe: true })
-      .head(headOf("plain"))
+      .head(() => {
+        log("plain");
+        return (
+          <>
+            <title>plain</title>
+            <script type="application/ld+json">{"{}"}</script>
+          </>
+        );
+      })
       .render(() => <p>plain body</p>),
+  }),
+  "./open/headless.tsx": async () => ({
+    default: page().render(() => <p>headless body</p>),
   }),
   "./vault/sealed.tsx": async () => ({
     default: page()
       .config({ rscPatchHeadSafe: true })
-      .head((() => ({ node: headOf("sealed")(), headSnapshot: safeSnapshot })) as unknown as () => Head)
+      .head(headOf("sealed"))
       .render(() => <p>sealed body</p>),
   }),
 };

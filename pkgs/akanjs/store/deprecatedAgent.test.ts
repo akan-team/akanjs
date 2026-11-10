@@ -15,7 +15,7 @@ describe("akanjs/store/agent", () => {
     const runtime = Object.entries(agent);
     expect(runtime.length).toBeGreaterThan(10);
     const reexported = store as unknown as Record<string, unknown>;
-    for (const [name, value] of runtime) expect([name, reexported[name]]).toEqual([name, value]);
+    expect(runtime.filter(([name, value]) => reexported[name] !== value).map(([name]) => name)).toEqual([]);
   });
 
   test("the tool authoring API stays in akanjs/store, outside the agent runtime", () => {

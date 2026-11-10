@@ -922,11 +922,11 @@ export class AkanAppHost {
   }
   #failBuilderRequest(message: BuilderMessage, error: string): boolean {
     if (message.type === "build-route")
-      this.#sendToBackend({ type: "build-route-res", id: message.id, ok: false, error });
+      this.#sendToBackend({ type: "build-route-res", id: message.id, ok: false, error, kind: "unavailable" });
     else if (message.type === "build-csr")
-      this.#sendToBackend({ type: "build-csr-res", id: message.id, ok: false, error });
+      this.#sendToBackend({ type: "build-csr-res", id: message.id, ok: false, error, kind: "unavailable" });
     else if (message.type === "build-graph")
-      this.#sendToBackend({ type: "build-graph-res", id: message.id, ok: false, error });
+      this.#sendToBackend({ type: "build-graph-res", id: message.id, ok: false, error, kind: "unavailable" });
     else return false;
     return true;
   }

@@ -1760,6 +1760,43 @@ describe("SignalContext execution", () => {
     expect(errors).toHaveBeenCalledTimes(1);
   });
 
+  test("logs an error the endpoint declared under 500 at debug, and an undeclared or 5xx one as an error", async () => {
+    const adaptor = new (adapt("signalTestDeclaredErrorAdaptor"))();
+    const errors = spyOn(adaptor.logger, "error");
+    const debugs = spyOn(adaptor.logger, "debug");
+    const debugOn = spyOn(Logger, "shouldLog").mockReturnValue(true);
+    const statusOf = async (statusCode: number, errorKey: string) => {
+      const endpointInfo = buildEndpoint
+        .query(String, { guards: [Public], errors: { 404: ["item.error.notFound"], 503: ["item.error.down"] } })
+        .exec(() => {
+          throw new Exception(statusCode, errorKey);
+        });
+      const response = await SignalContext.try(adaptor, endpointInfo, "declaredCall", async () => {
+        const context = makeSignalContext({
+          endpointInfo,
+          adaptor,
+          middlewareMap: new Map([["logging", Logging]]) as never,
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      });
+      return response?.status;
+    };
+
+    try {
+      expect(await statusOf(404, "item.error.notFound")).toBe(404);
+      expect(errors).not.toHaveBeenCalled();
+      expect(debugs.mock.calls.some(([line]) => String(line).includes("item.error.notFound"))).toBe(true);
+
+      await statusOf(404, "item.error.gone");
+      await statusOf(400, "item.error.notFound");
+      await statusOf(503, "item.error.down");
+      expect(errors).toHaveBeenCalledTimes(3);
+    } finally {
+      debugOn.mockRestore();
+    }
+  });
+
   test("reports guard and internal argument failures through HTTP responses", async () => {
     const denyInfo = buildEndpoint.query(String, { guards: [TestDeny] }).exec(() => "blocked");
     const missingInternalInfo = buildEndpoint

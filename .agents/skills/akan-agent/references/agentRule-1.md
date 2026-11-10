@@ -34,9 +34,10 @@ pages declaring one name never clash, and a registry kept outside the surface re
   warning. A product with accounts names it in its `option.ts`, `option.setAgentAccess(SignedIn)`, taking the same
   guard classes every endpoint takes (an array is ANDed, `null` clears what a library set); without one the chat
   cannot spend the LLM key. **The guard decides who, not what** — the browser writes the instructions, tools and
-  transcript — so `option.setAgentRequestPolicy((request, { account, ip }) => request)` sees each turn after the
-  guard, before the quota and the model (tool names as the page published them), and returns what is sent, or
-  throws an `Err` (`agent.error.requestRefused`) to refuse it. With no policy set, a turn past
+  transcript — so `option.setAgentRequestPolicy((request, { id, headers, account, ip }) => request)` sees each turn
+  after the guard, before the quota and the model (tool names as the page published them), and returns what is
+  sent, or throws an `Err` (`agent.error.requestRefused`) to refuse it. `setAgentQuota` and `setAgentUsage` get that
+  same `turn`, and usage comes once per turn the quota passed, `failed` and `aborted` ones too. With no policy set, a turn past
   `AgentRelayPolicy.defaultLimits` (5,000 messages, 512 tools, 256 context entries, 8M characters, 64 MiB of
   attachments) is refused with 413; a policy of the app's own keeps them by returning
   `AgentRelayPolicy.capped(request, limits)`, and `(request) => request` lifts them. An error that is not an `Err`

@@ -11,7 +11,7 @@ interface StreamedTurn {
   limits?: LlmLimits;
 }
 
-type RunTurn = (onDelta: (delta: string) => void) => Promise<StreamedTurn>;
+type RunTurn = (onDelta: (delta: string) => void, signal: AbortSignal) => Promise<StreamedTurn>;
 
 // use-agentic WIRE.md: one RunnerEvent JSON per SSE `data:` line, ending with `done`. The signal layer passes a raw
 // `Response` through untouched, which is what lets one mutation serve both shapes.
@@ -43,21 +43,22 @@ export class AgentTurnStream {
     return { message, ...(data ? { data } : {}), ...(overflow ? { overflow } : {}) };
   }
 
+  /** A reader that goes away aborts `run`'s signal, so the provider stops spending on an answer nobody will read. */
   static response(run: RunTurn): Response {
-    // Nothing to cancel: `run` takes no signal, so a turn whose reader went away finishes with nobody holding it.
-    const stream = new EventStream(() => undefined);
-    void AgentTurnStream.#deliver(stream, run);
+    const abort = new AbortController();
+    const stream = new EventStream(() => abort.abort());
+    void AgentTurnStream.#deliver(stream, run, abort.signal);
     return stream.response();
   }
 
-  static async #deliver(stream: EventStream, run: RunTurn) {
+  static async #deliver(stream: EventStream, run: RunTurn, signal: AbortSignal) {
     try {
       let streamed = 0;
       const turn = await run((delta) => {
         if (!delta) return;
         streamed += delta.length;
         stream.write({ type: "text", delta });
-      });
+      }, signal);
       // An adapter that ignores onDelta still resolves the whole text; deliver it as one late delta.
       if (!streamed && turn.text) stream.write({ type: "text", delta: turn.text });
       const toolCalls = turn.toolCalls ?? [];
@@ -67,6 +68,7 @@ export class AgentTurnStream {
       const limits = turn.limits && (turn.limits.window || turn.limits.output) ? turn.limits : null;
       stream.write({ type: "done", stop, ...(usage ? { usage } : {}), ...(limits ? { limits } : {}) });
     } catch (error) {
+      if (signal.aborted) return;
       if (!isExceptionLike(error))
         AgentTurnStream.#logger.error(`agent turn failed after its stream opened: ${String(error)}`);
       // The status line is long gone once the stream is open.
