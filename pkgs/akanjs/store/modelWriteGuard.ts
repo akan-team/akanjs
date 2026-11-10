@@ -1,12 +1,9 @@
 import { AbortSignals } from "akanjs/common";
 import { actionErrorKey } from "./actionErrorKey";
+import { markOpenedIn, type OpenSeq, openSeqIn } from "./openSeq";
 import type { SetGet } from "./types";
 
 type StateRecord = { [key: string]: unknown };
-export interface OpenSeq {
-  open: number;
-  form: number;
-}
 interface WriteGuardNames {
   model: string;
   modelForm: string;
@@ -16,14 +13,8 @@ interface WriteGuardNames {
 
 export const makeModelWriteGuard = (names: WriteGuardNames) => {
   const flagOwners = new WeakMap<SetGet, Map<string, object>>();
-  const openSeqs = new WeakMap<SetGet, OpenSeq>();
-  const openSeqOf = (ctx: SetGet): OpenSeq => openSeqs.get(ctx) ?? { open: 0, form: 0 };
-  const markOpened = (ctx: SetGet, { form }: { form: boolean }) => {
-    const seen = openSeqOf(ctx);
-    const opened = { open: seen.open + 1, form: form ? seen.form + 1 : seen.form };
-    openSeqs.set(ctx, opened);
-    return opened;
-  };
+  const openSeqOf = (ctx: SetGet) => openSeqIn(ctx, names.model);
+  const markOpened = (ctx: SetGet, opens: { form: boolean }) => markOpenedIn(ctx, names.model, opens);
   // A view, edit or new form opened during a write's request owns the modal and the open model when the write lands.
   const isOvertaken = (ctx: SetGet, seen: OpenSeq) => openSeqOf(ctx).open !== seen.open;
   // Only an edit or new form takes the form over: a save that a view overtook still resets the form it saved.
