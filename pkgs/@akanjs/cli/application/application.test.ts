@@ -133,14 +133,15 @@ describe("ApplicationCommand", () => {
     await handler?.call(command, { name: "demo" }, true, false, false, null, "main");
     await handler?.call(command, { name: "demo" }, true, false, false, null, null);
     expect(calls).toEqual([
-      [{ name: "demo" }, { write: true, fast: false, quiet: false, env: "main" }],
-      [{ name: "demo" }, { write: true, fast: false, quiet: false }],
+      [{ name: "demo" }, { write: true, fast: false, quiet: false, env: "main", budget: "report" }],
+      [{ name: "demo" }, { write: true, fast: false, quiet: false, budget: "report" }],
     ]);
   });
 
-  test("build takes --update-budget, off unless given, and hands it to the script", async () => {
-    const updateBudget = getArgMetas(ApplicationCommand, "build")[1].find((meta) => meta.name === "updateBudget");
-    expect(updateBudget?.argsOption).toMatchObject({ default: false });
+  test("build takes --check-budget, --update-budget or --raise-budget, off unless given, as one budget mode", async () => {
+    const options = getArgMetas(ApplicationCommand, "build")[1];
+    for (const name of ["checkBudget", "updateBudget", "raiseBudget"])
+      expect(options.find((meta) => meta.name === name)?.argsOption).toMatchObject({ default: false });
 
     const command = CommandContainer.get(ApplicationCommand);
     const calls: unknown[] = [];
@@ -148,8 +149,18 @@ describe("ApplicationCommand", () => {
       calls.push(args);
     };
     const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "build")?.handler;
-    await handler?.call(command, { name: "demo" }, true, false, false, null, null, true);
-    expect(calls).toEqual([[{ name: "demo" }, { write: true, fast: false, quiet: false, updateBudget: true }]]);
+    await handler?.call(command, { name: "demo" }, true, false, false, null, null, true, false, false);
+    await handler?.call(command, { name: "demo" }, true, false, false, null, null, false, true, false);
+    await handler?.call(command, { name: "demo" }, true, false, false, null, null, false, false, true);
+    expect(calls.map((args) => (args as [unknown, { budget?: string }])[1].budget)).toEqual([
+      "enforce",
+      "update",
+      "raise",
+    ]);
+    await expect(
+      handler?.call(command, { name: "demo" }, true, false, false, null, null, true, false, true),
+    ).rejects.toThrow("Pass at most one of --check-budget, --update-budget and --raise-budget.");
+    expect(calls).toHaveLength(3);
   });
 
   test("studio passes the runtime and framework views through, and opens the ERD for anything else", async () => {
@@ -353,7 +364,34 @@ describe("ApplicationScript", () => {
     }
   });
 
-  test("build enforces the route JS budget, and writes it on --update-budget", async () => {
+  test("build prints the route JS budget warnings of a --quiet build, and nothing else of its summary", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app } = track(await createTempApp("demo"));
+    app.scanSync = mock(async () => undefined) as never;
+    const warning = { file: "apps/demo/akan.budget.json", message: "/:lang loads 9 bytes brotli", fix: "shrink it" };
+    const build = spyOn(script.applicationRunner, "build").mockImplementation(async () => ({
+      phases: [],
+      durationMs: 1,
+      outputDir: "dist/apps/demo",
+      artifactDir: "dist/apps/demo/.akan/artifact",
+      environment: "main",
+      routeJs: [{ routeId: "/:lang", files: 1, rawBytes: 27, brotliBytes: 9 }],
+      routeJsWarnings: [warning],
+    }));
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+    try {
+      await script.build(app, { quiet: true });
+      expect(printed.mock.calls.map(([line]) => line)).toEqual([
+        "demo built in dist/apps/demo",
+        "Warning: apps/demo/akan.budget.json: /:lang loads 9 bytes brotli (shrink it)",
+      ]);
+    } finally {
+      build.mockRestore();
+      printed.mockRestore();
+    }
+  });
+
+  test("build reports the route JS budget unless handed another budget mode", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const { app } = track(await createTempApp("demo"));
     app.scanSync = mock(async () => undefined) as never;
@@ -362,8 +400,9 @@ describe("ApplicationScript", () => {
     });
     try {
       await expect(script.build(app, { quiet: true })).rejects.toThrow("stopped");
-      await expect(script.build(app, { quiet: true, updateBudget: true })).rejects.toThrow("stopped");
-      expect(build.mock.calls.map(([, options]) => options?.budget)).toEqual(["enforce", "update"]);
+      for (const budget of ["enforce", "update", "raise"] as const)
+        await expect(script.build(app, { quiet: true, budget })).rejects.toThrow("stopped");
+      expect(build.mock.calls.map(([, options]) => options?.budget)).toEqual(["report", "enforce", "update", "raise"]);
     } finally {
       build.mockRestore();
     }

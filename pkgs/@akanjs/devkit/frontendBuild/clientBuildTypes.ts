@@ -38,8 +38,12 @@ export const CLIENT_BUNDLE_NAMING = {
   asset: "assets/[hash].[ext]",
 } as const;
 
+export interface DiscoverOptions {
+  importsAs?: ReadonlyMap<string, ReadonlyMap<string, string | null>>;
+}
+
 export interface ClientEntryDiscovery {
-  discover(seeds: string[]): Promise<string[]>;
+  discover(seeds: string[], options?: DiscoverOptions): Promise<string[]>;
   invalidate?(files: string[]): void;
 }
 

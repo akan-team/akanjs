@@ -38,6 +38,7 @@ describe("LLM usage", () => {
       inputTokens: 100,
       outputTokens: 5,
       cachedTokens: 70,
+      cacheWriteTokens: 10,
     });
     const streamed = await AnthropicLlm.consumeStream(
       streamOf([
@@ -47,6 +48,6 @@ describe("LLM usage", () => {
       ]),
       () => {},
     );
-    expect(streamed.usage).toEqual({ inputTokens: 90, outputTokens: 9, cachedTokens: 70 });
+    expect(streamed.usage).toEqual({ inputTokens: 90, outputTokens: 9, cachedTokens: 70, cacheWriteTokens: 0 });
   });
 });

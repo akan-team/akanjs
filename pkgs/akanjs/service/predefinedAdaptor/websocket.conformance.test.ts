@@ -30,11 +30,17 @@ const openServer = async (serverId: string, app: string) => {
   const changes: LiveChange[] = [];
   adaptor.onChange((change) => changes.push(change));
   const socket = { data: {} } as Bun.ServerWebSocket<unknown>;
+  let heard = 0;
+  adaptor.subscriber.on("messageBuffer", () => {
+    heard += 1;
+  });
   return {
     adaptor,
     received,
     changes,
+    heard: () => heard,
     join: async (roomId: string) => await adaptor.joinRoom(socket, roomId),
+    joinLive: async (roomId: string, refName: string) => await adaptor.joinRoom(socket, roomId, { live: refName }),
     leave: async (roomId: string) => await adaptor.leaveRoom(socket, roomId),
     close: async () => {
       await adaptor.onDestroy();
@@ -138,13 +144,17 @@ describe.skipIf(!ConformanceEnv.has("pubsub conformance", "redis"))("pubsub conf
     expect(JSON.stringify(event)).toBe(JSON.stringify(sent));
   });
 
-  // A live room is routed by its socket's server, so a write reaches every server, room held or not.
-  test("[L-1] a committed write reaches every other server of the app, and not the writer or another app", async () => {
+  // A live room is routed by its socket's server, so a write reaches every server holding a live room of its model.
+  test("[L-1] a committed write reaches every other server holding a live room of its model, and only those", async () => {
     const change: LiveChange = {
       refName: ConformanceEnv.uniqueName("model"),
       next: `{"id":"a"}`,
       previous: `{"id":"a"}`,
     };
+    const bystander = await openServer("server-d", "alpha");
+    await publisher.joinLive(`${envelope}-writer::1`, change.refName);
+    await subscriber.joinLive(`${envelope}-reader::1`, change.refName);
+    await otherApp.joinLive(`${envelope}-reader::1`, change.refName);
     publisher.adaptor.publishChange(change);
     await until(() => subscriber.changes.some(({ refName }) => refName === change.refName));
     await Bun.sleep(50);
@@ -153,6 +163,41 @@ describe.skipIf(!ConformanceEnv.has("pubsub conformance", "redis"))("pubsub conf
     expect(named(subscriber)).toEqual([change]);
     expect(named(publisher)).toEqual([]);
     expect(named(otherApp)).toEqual([]);
+    expect(bystander.heard()).toBe(0);
+    await bystander.close();
+  });
+
+  test("[L-2] a server stops hearing a model's changes once its last live room of it goes", async () => {
+    const refName = ConformanceEnv.uniqueName("model");
+    const reader = await openServer("server-d", "alpha");
+    await reader.joinLive(`${envelope}-first::1`, refName);
+    await reader.joinLive(`${envelope}-second::2`, refName);
+    publisher.adaptor.publishChange({ refName, next: `{"id":"a"}` });
+    await until(() => reader.changes.length === 1);
+    await reader.leave(`${envelope}-first::1`);
+    publisher.adaptor.publishChange({ refName, next: `{"id":"b"}` });
+    await until(() => reader.changes.length === 2);
+    await reader.leave(`${envelope}-second::2`);
+    //? A leave does not wait for the UNSUBSCRIBE: a change heard after it is only routed to no room.
+    await Bun.sleep(50);
+    publisher.adaptor.publishChange({ refName, next: `{"id":"c"}` });
+    await Bun.sleep(50);
+    expect(reader.changes.map(({ next }) => next)).toEqual([`{"id":"a"}`, `{"id":"b"}`]);
+    expect(reader.heard()).toBe(2);
+    await reader.close();
+  });
+
+  test("[P-9] Redis hands a room's events only to a server holding a room on its shard, from the moment its join resolves", async () => {
+    const roomId = `${pulse}-sharded`;
+    const reader = await openServer("server-d", "alpha");
+    publisher.adaptor.publish(roomId, { label: "unheld", count: 1, ratio: 1 });
+    await Bun.sleep(50);
+    expect(reader.heard()).toBe(0);
+    await reader.join(roomId);
+    publisher.adaptor.publish(roomId, { label: "held", count: 2, ratio: 1 });
+    expect(await deliveredTo(reader, roomId)).toEqual([{ label: "held", count: 2, ratio: 1 }]);
+    expect(reader.heard()).toBe(1);
+    await reader.close();
   });
 
   test("[P-8] a live room keyed only by internal arguments crosses servers", async () => {
