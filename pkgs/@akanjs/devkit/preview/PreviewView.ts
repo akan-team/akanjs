@@ -48,7 +48,7 @@ interface PageRead {
 export class PreviewView {
   /** A view's first navigation includes the browser's start, which took ~35 s on a cold CI runner. */
   static readonly startTimeoutMs = 120_000;
-  static readonly #unstarted = new Map<PreviewEngine, Error>();
+  static readonly #stalled = new Set<PreviewEngine>();
 
   static get available() {
     return PreviewView.isAvailable();
@@ -76,16 +76,16 @@ export class PreviewView {
       settleMs = 0,
     }: PreviewProbeOptions = {},
   ): Promise<PreviewProbeResult> {
-    //? Bun spawns the browser once per process, so one that did not start will not start for a later page either.
-    const unstarted = PreviewView.#unstarted.get(engine);
-    if (unstarted) throw unstarted;
     const logs: string[] = [];
     const view = PreviewView.#open({ width, height, engine, onConsole: (line) => logs.push(line) });
     try {
-      const stalled = new Error(`Timed out starting the ${engine} browser after ${startTimeoutMs / 1_000} s.`);
-      await PreviewView.#within(view.navigate("about:blank"), Date.now() + startTimeoutMs, stalled).catch(
+      //? A browser that missed its start bound may still come up, so a later page retries it within only its own bound.
+      const startMs = PreviewView.#stalled.has(engine) ? Math.min(startTimeoutMs, timeoutMs) : startTimeoutMs;
+      const stalled = new Error(`Timed out starting the ${engine} browser after ${startMs / 1_000} s.`);
+      await PreviewView.#within(view.navigate("about:blank"), Date.now() + startMs, stalled).then(
+        () => PreviewView.#stalled.delete(engine),
         (error: unknown) => {
-          if (error === stalled) PreviewView.#unstarted.set(engine, stalled);
+          if (error === stalled) PreviewView.#stalled.add(engine);
           throw error;
         },
       );
