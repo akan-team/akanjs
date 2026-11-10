@@ -288,7 +288,7 @@ console.info(new SampleService().name);
     }
   });
 
-  test("bundles the routes before the vendor entries, which export only the names the route chunks import", async () => {
+  const buildSsrUntilVendors = async (routeChunkWritten: boolean) => {
     const { root, workspace } = await createTempApp("portal");
     const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
     const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
@@ -304,7 +304,11 @@ console.info(new SampleService().name);
     );
     const routes = spyOn(AllRoutesBuilder.prototype, "build").mockImplementation(async () => {
       order.push("routes");
-      await Bun.write(path.join(app.dist.cwdPath, ".akan/artifact/client/page-a1.js"), 'import{st}from"akanjs/store";');
+      if (routeChunkWritten)
+        await Bun.write(
+          path.join(app.dist.cwdPath, ".akan/artifact/client/page-a1.js"),
+          'import{st}from"akanjs/store";',
+        );
       const clientManifest = { "page#default": { id: "/_akan/client/page-a1.js", chunks: [], name: "default" } };
       return { manifest: { routeIds: ["/"], clientManifest } } as unknown as BuildAllRoutesResult;
     });
@@ -317,11 +321,11 @@ console.info(new SampleService().name);
       throw new Error("stopped at the vendor build");
     });
     try {
-      await expect(new ApplicationBuildRunner(app, { fast: true }).build()).rejects.toThrow(
-        "stopped at the vendor build",
+      const failure = await new ApplicationBuildRunner(app, { fast: true }).build().then(
+        () => "built",
+        (error: unknown) => (error instanceof Error ? error.message : String(error)),
       );
-      expect(order).toEqual(["routes", "vendors"]);
-      expect(Object.entries(narrowed).find(([entry]) => entry.endsWith("akanjs-store.ts"))?.[1]).toEqual(["st"]);
+      return { failure, order, narrowed };
     } finally {
       bundle.mockRestore();
       routes.mockRestore();
@@ -332,6 +336,22 @@ console.info(new SampleService().name);
       }
       await rm(root, { recursive: true, force: true });
     }
+  };
+
+  test("bundles the routes before the vendor entries, which export only the names the route chunks import", async () => {
+    const { failure, order, narrowed } = await buildSsrUntilVendors(true);
+
+    expect(failure).toBe("stopped at the vendor build");
+    expect(order).toEqual(["routes", "vendors"]);
+    expect(Object.entries(narrowed).find(([entry]) => entry.endsWith("akanjs-store.ts"))?.[1]).toEqual(["st"]);
+  });
+
+  test("stops before the vendor entries when a route's client entry is not where the scan reads", async () => {
+    const { failure, order } = await buildSsrUntilVendors(false);
+
+    expect(failure).toContain("no file under");
+    expect(failure).toContain("/_akan/client/page-a1.js");
+    expect(order).toEqual(["routes"]);
   });
 
   test("akan typecheck names the script/ files nothing imports, and a build's typecheck leaves them out", async () => {

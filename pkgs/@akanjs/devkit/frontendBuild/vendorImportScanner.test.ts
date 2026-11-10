@@ -72,7 +72,7 @@ describe("VendorImportScanner", () => {
   test("reads a client output directory a build never wrote as importing nothing when the routes have no client entry", async () => {
     const dir = await makeTempRoot();
 
-    expect(await VendorImportScanner.exportsUsedIn(path.join(dir, "client"), ["akanjs/store"])).toEqual({
+    expect(await VendorImportScanner.exportsUsedIn(path.join(dir, "client"), ["akanjs/store"], [])).toEqual({
       "akanjs/store": [],
     });
   });

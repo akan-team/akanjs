@@ -15,7 +15,7 @@ export class VendorImportScanner {
   static async exportsUsedIn(
     dir: string,
     specifiers: readonly string[],
-    entryUrls: readonly string[] = [],
+    entryUrls: readonly string[],
   ): Promise<Record<string, string[]>> {
     const scanner = new VendorImportScanner(specifiers);
     const scanned: string[] = [];
