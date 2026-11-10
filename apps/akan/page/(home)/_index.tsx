@@ -232,6 +232,8 @@ export default page()
             <Duet.Recording
               className="reveal-rise mt-12"
               src={l.trans({ en: "/in-page-agent-demo-en.mp4", ko: "/in-page-agent-demo-ko.mp4" })}
+              compactSrc={l.trans({ en: "/in-page-agent-demo-en-720.mp4", ko: "/in-page-agent-demo-ko-720.mp4" })}
+              poster={l.trans({ en: "/in-page-agent-demo-en-poster.webp", ko: "/in-page-agent-demo-ko-poster.webp" })}
             />
           </section>
           <section
@@ -253,6 +255,8 @@ export default page()
             <Duet.Recording
               className="reveal-rise mt-12"
               src={l.trans({ en: "/mcp-demo-en.mp4", ko: "/mcp-demo-ko.mp4" })}
+              compactSrc={l.trans({ en: "/mcp-demo-en-720.mp4", ko: "/mcp-demo-ko-720.mp4" })}
+              poster={l.trans({ en: "/mcp-demo-en-poster.webp", ko: "/mcp-demo-ko-poster.webp" })}
             />
           </section>
           <section
@@ -276,6 +280,8 @@ export default page()
             <Duet.Recording
               className="reveal-rise mt-12"
               src="/multi-platform-demo.mp4"
+              compactSrc="/multi-platform-demo-720.mp4"
+              poster="/multi-platform-demo-poster.webp"
               isRealtime={false}
               cues={platformCues}
             />

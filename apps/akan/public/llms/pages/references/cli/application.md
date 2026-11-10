@@ -140,7 +140,7 @@ Run the dev server, SSR frontend and backend together. Name apps space- or comma
 
 - memory budget: `AKAN_MEMORY_LIMIT` lowers the memory `--concurrency` is derived from.
 
-- Akan Studio: `/_akan/studio` on the dev URL draws the ERD, request paths and Change Map, linked to source. `--share` hides it.
+- Akan Studio: `/_akan/studio` on the dev URL draws the ERD, request paths and Change Map, linked to source, and the running server's DI graph and jobs. `--share` hides it.
 
 `akan dbup [--mode <mode>]`
 
@@ -290,13 +290,13 @@ Open pages of the app's dev server in a headless browser and print one verdict l
 
 - native shells: `--csr` checks the bundle a shell loads, not the shell. A simulator page's errors reach `akan logs`, tagged.
 
-`akan studio <app> [--module <module>] [--view <erd|signals|changes>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]`
+`akan studio <app> [--module <module>] [--view <erd|signals|changes|runtime>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]`
 
-Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, or the Change Map of what changed since a git revision, and links each name to its source. A clicked node lists the workflows it can start: in a browser a button copies the `akan workflow plan` command, and in the editor panel it runs the workflow. It exits 1 when no dev server answers.
+Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, the Change Map of what changed since a git revision, or the running server's DI graph and jobs. In the views built from source, each name links to its source and a clicked node lists the workflows it can start: in a browser a button copies the `akan workflow plan` command, and in the editor panel it runs the workflow. It exits 1 when no dev server answers.
 
-- --module (String): The module to show. Without it, the ERD and the Change Map show every module.
+- --module (String): The module to show. Without it, the ERD, the Change Map and the runtime view show every module.
 
-- --view (String, default erd, erd | signals | changes): `signals` lays one module out from component to model; `changes` draws the Change Map.
+- --view (String, default erd, erd | signals | changes | runtime): `signals` lays one module out from component to model; `changes` draws the Change Map; `runtime` draws the services, adaptors and jobs the running server booted, by boot stage.
 
 - --since (String): With `--view changes`, map what changed since HEAD forked from this git revision. Without it, the default branch.
 
@@ -328,7 +328,7 @@ Prepare an app, library or package, then run its tests with `bun test --isolate`
 
 - --write (Boolean, default true): Sync an app target first. Libraries and packages are always prepared.
 
-`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>]`
+`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>]`
 
 Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.
 
@@ -339,6 +339,8 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 - --quiet (Boolean, default false): Hide the progress output and the build summary.
 
 - --profile (String): A server env profile: the build bundles `env/env.server.<env>.<profile>.ts` in place of the environment's own file, and each lib's `env.server.testing.<profile>.ts` in place of its defaults. The app's profile file must exist, and a profile file whose secret-named key holds a value stops the build.
+
+- --env (String, local | debug | develop | main): The environment the server runs in. Without it, the build takes `AKAN_PUBLIC_ENV` from the workspace `.env`, which outranks the shell.
 
 - alias: `akan b` runs this command.
 
@@ -822,6 +824,7 @@ akan preview myapp /admin --desktop --format json
 akan studio myapp --open
 akan studio myapp --view signals --module memo --editor cursor
 akan studio myapp --view changes --since main
+akan studio myapp --view runtime
 ```
 
 ### typecheck

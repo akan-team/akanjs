@@ -174,6 +174,15 @@ export default page()
         }),
       },
       {
+        key: "prefetch",
+        type: '"hover" | "viewport" | boolean',
+        default: '"hover"',
+        desc: l.trans({
+          en: 'Built SSR pages load the target on hover or keyboard focus, and on view with `"viewport"`. `false` turns it off.',
+          ko: '빌드된 SSR 페이지는 hover나 키보드 포커스에, `"viewport"`면 보일 때도 미리 불러옵니다. `false`면 끕니다.',
+        }),
+      },
+      {
         key: "noCache",
         type: "boolean",
         desc: l.trans({

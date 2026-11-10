@@ -8,9 +8,13 @@ export type AkanGraphNodeKind =
   | "guard"
   | "method"
   | "action"
-  | "component";
+  | "component"
+  | "route"
+  | "layout"
+  | "internal"
+  | "adaptor";
 
-export type AkanGraphEdgeKind = "field" | "guard" | "calls" | "fetches" | "uses";
+export type AkanGraphEdgeKind = "field" | "guard" | "calls" | "fetches" | "uses" | "wraps" | "plugs";
 
 export type AkanGraphChange = "added" | "removed" | "changed";
 
@@ -43,6 +47,7 @@ export interface AkanGraphNode {
   at: AkanGraphLocation | null;
   fields?: AkanGraphField[];
   values?: string[];
+  doc?: string;
   digest?: string;
   change?: AkanGraphChange;
 }

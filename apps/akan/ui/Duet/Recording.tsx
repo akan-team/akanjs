@@ -12,12 +12,16 @@ interface RecordingCue {
 interface RecordingProps {
   className?: string;
   src: string;
+  compactSrc?: string;
+  poster?: string;
   isRealtime?: boolean;
   cues?: RecordingCue[];
 }
-export const Recording = ({ className, src, isRealtime = true, cues }: RecordingProps) => {
+export const Recording = ({ className, src, compactSrc, poster, isRealtime = true, cues }: RecordingProps) => {
   const { l } = usePage();
-  const video = <InViewVideo className="aspect-video w-full object-cover" src={src} />;
+  const video = (
+    <InViewVideo className="aspect-video w-full object-cover" compactSrc={compactSrc} poster={poster} src={src} />
+  );
   return (
     <figure
       className={cn(
@@ -34,7 +38,7 @@ export const Recording = ({ className, src, isRealtime = true, cues }: Recording
                 key={start}
                 data-cue-start={start}
                 data-cue-end={end}
-                className="rounded-full bg-background/85 px-3 py-1 font-bold text-[11px] text-foreground opacity-0 backdrop-blur transition-opacity duration-300 [grid-area:1/1] data-active:opacity-100 sm:px-4 sm:py-1.5 sm:text-sm"
+                className="hidden rounded-full bg-background/90 px-3 py-1 font-bold text-[11px] text-foreground starting:opacity-0 transition-opacity duration-300 [grid-area:1/1] data-active:block sm:px-4 sm:py-1.5 sm:text-sm"
               >
                 {text}
               </li>
@@ -45,7 +49,7 @@ export const Recording = ({ className, src, isRealtime = true, cues }: Recording
         video
       )}
       {isRealtime ? (
-        <figcaption className="absolute top-3 left-3 flex items-center gap-2 rounded-full bg-background/85 px-3 py-1.5 font-mono text-[11px] text-foreground/80 tracking-[0.12em] backdrop-blur">
+        <figcaption className="absolute top-3 left-3 flex items-center gap-2 rounded-full bg-background/90 px-3 py-1.5 font-mono text-[11px] text-foreground/80 tracking-[0.12em]">
           <span className="size-1.5 animate-pulse rounded-full bg-primary" />
           {l.trans({ en: "1× · real time, not sped up", ko: "1× · 실제 속도, 배속 없음" })}
         </figcaption>

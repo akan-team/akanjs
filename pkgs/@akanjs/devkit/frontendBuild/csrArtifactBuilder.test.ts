@@ -62,6 +62,29 @@ console.info(await result.outputs[0].text());
     expect(firstOutput).not.toContain(path.basename(first));
   });
 
+  test("takes a package's production build in a build and its default one under start", async () => {
+    const root = await makeTempRoot();
+    const app = { getPublicEnv: () => ({ AKAN_PUBLIC_ENV: "main" }) };
+    await writeText(
+      path.join(root, "node_modules/twobuild/package.json"),
+      '{ "name": "twobuild", "exports": { ".": { "production": "./prod.js", "default": "./switch.js" } } }\n',
+    );
+    await writeText(path.join(root, "node_modules/twobuild/prod.js"), 'export const mark = "prod-build";\n');
+    await writeText(path.join(root, "node_modules/twobuild/switch.js"), 'export const mark = "switch-build";\n');
+    await writeText(path.join(root, "entry.ts"), 'import { mark } from "twobuild";\nconsole.info(mark);\n');
+    const bundle = async (command: "build" | "start") => {
+      const result = await Bun.build({
+        ...CsrArtifactBuilder.bundleOptions(app as never, command),
+        entrypoints: [path.join(root, "entry.ts")],
+      });
+      expect(result.success).toBe(true);
+      return (await result.outputs[0]?.text()) ?? "";
+    };
+
+    expect(await bundle("build")).toContain("prod-build");
+    expect(await bundle("start")).toContain("switch-build");
+  });
+
   //? The shape of `@lexical/code-prism` under a `lazy()` editor, which threw in every view and CSR shell carrying it.
   test("runs a lazily imported module's CommonJS side-effect import before the imports after it", async () => {
     const root = await makeTempRoot();

@@ -409,14 +409,15 @@ export class RscRenderer {
   async #handleReload(msg: ReloadMsg): Promise<void> {
     const startedAt = Date.now();
     const seq = ++this.#reloadSeq;
+    //? Taken in message order: an `updateCssAssets` that arrives while the bundle imports is newer than this one.
+    if (msg.cssAssets) this.#cssAssets = msg.cssAssets;
     try {
-      const nextCssAssets = msg.cssAssets ?? this.#cssAssets;
       const nextPagesBundlePath =
         msg.pagesBundlePath && msg.pagesBundlePath !== this.#pagesBundlePath
           ? msg.pagesBundlePath
           : this.#pagesBundlePath;
       this.#logger.verbose(
-        `reload state buildId=${msg.buildId} bundlePath=${nextPagesBundlePath} cssAssets=${Object.keys(nextCssAssets).length} clientEntries=${Object.keys(msg.clientManifest).length}`,
+        `reload state buildId=${msg.buildId} bundlePath=${nextPagesBundlePath} cssAssets=${Object.keys(this.#cssAssets).length} clientEntries=${Object.keys(msg.clientManifest).length}`,
       );
       const routes = await this.#importPages(nextPagesBundlePath, msg.buildId);
       if (seq !== this.#reloadSeq) {
@@ -424,7 +425,6 @@ export class RscRenderer {
         return;
       }
       this.#clientManifest = msg.clientManifest;
-      this.#cssAssets = nextCssAssets;
       this.#pagesBundlePath = nextPagesBundlePath;
       this.#pagesBundleBuildId = msg.buildId;
       this.#stats.pagesBundleBuildId = msg.buildId;

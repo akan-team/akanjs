@@ -141,7 +141,9 @@ export class FriendDirector {
   #onIntersect = (entries: IntersectionObserverEntry[]) => {
     for (const entry of entries) {
       const rig = this.#rigs.get(entry.target as HTMLElement);
-      if (rig) rig.visible = entry.isIntersecting;
+      if (!rig) continue;
+      rig.visible = entry.isIntersecting;
+      FriendDirector.#flag(rig.el, "data-offscreen", !entry.isIntersecting);
     }
     this.#queueFrame();
   };

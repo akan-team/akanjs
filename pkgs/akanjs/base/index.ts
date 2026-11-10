@@ -1,3 +1,4 @@
+export * from "./akanError";
 export * from "./base";
 export * from "./baseEnv";
 export * from "./databaseModes";

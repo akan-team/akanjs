@@ -49,7 +49,11 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
       desc: "Generate the sample task module, pages and helpers in the first app?",
       default: true,
     })
-    .exec(async function (workspaceName, app, dir, libs, init, registry, owner, mcpInstall, agentInstall, sample) {
+    .option("bunDependency", String, {
+      desc: "Bun version to list in the workspace's dependencies, for a host whose Bun is not on PATH",
+      nullable: true,
+    })
+    .exec(async function (workspaceName, app, dir, libs, init, registry, owner, mcpInstall, agentInstall, sample, bun) {
       warnIgnoredNpmRegistry();
       const appName = app || "app";
       const inPlace = workspaceName === ".";
@@ -67,6 +71,7 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
           mcpInstall,
           agentInstall,
           ...(registry ? { registryUrl: registry } : {}),
+          ...(bun ? { bunDependency: bun } : {}),
         },
       );
     }),

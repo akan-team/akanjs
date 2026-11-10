@@ -37,6 +37,7 @@ export class WorkspaceScript extends script("workspace", [
       owner,
       mcpInstall = true,
       agentInstall = true,
+      bunDependency,
     }: {
       dirname?: string;
       inPlace?: boolean;
@@ -47,6 +48,7 @@ export class WorkspaceScript extends script("workspace", [
       owner?: string | null;
       mcpInstall?: boolean;
       agentInstall?: boolean;
+      bunDependency?: string;
     },
   ) {
     const akanVersion = await this.packageScript.version(null, { log: false });
@@ -59,12 +61,13 @@ export class WorkspaceScript extends script("workspace", [
       libs,
       ...(registryUrl ? { registryUrl } : {}),
       ...(owner ? { owner } : {}),
+      ...(bunDependency ? { bunDependency } : {}),
     });
     if (installLibs) {
       await this.libraryScript.installLibrary(workspace, "util");
       await this.libraryScript.installLibrary(workspace, "shared");
     }
-    await this.applicationScript.createApplication(appName, workspace, { libs, sample });
+    await this.applicationScript.createApplication(appName, workspace, { libs });
     if (sample)
       await workspace.applyTemplate({
         basePath: `apps/${appName}`,
@@ -89,7 +92,14 @@ export class WorkspaceScript extends script("workspace", [
       gitSpinner.fail("Git repository initialization failed. It's not fatal, you can commit manually");
     }
     Logger.rawLog(`\n🎉 Welcome aboard! Workspace created in ${workspace.workspaceRoot}`);
-    Logger.rawLog(`🚀 Run \`cd ${workspace.workspaceRoot} && akan start ${appName}\` to start the development server.`);
+    if (bunDependency)
+      Logger.rawLog(
+        `🚀 Run \`cd ${workspace.workspaceRoot} && ${init ? "" : "npm install && "}npx akan start ${appName}\` to start the development server. Bun is not on your PATH, so the workspace runs bun ${bunDependency} from its dependencies: \`npm run build\` builds the app, \`npm start\` runs the build and \`npx akan <command>\` runs any other command.`,
+      );
+    else
+      Logger.rawLog(
+        `🚀 Run \`cd ${workspace.workspaceRoot} && akan start ${appName}\` to start the development server.`,
+      );
     Logger.rawLog(`\n👋 Happy coding!`);
   }
   async generateAgentRules(

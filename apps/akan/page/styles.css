@@ -166,7 +166,8 @@ html:has([data-akanjs-notice]) {
 }
 
 /* 홈의 스크롤 연출. 모션 축소 설정이나 scroll-driven animation 미지원 브라우저에서는 애니메이션 없이
-   완성된 화면이 그대로 남는다. */
+   완성된 화면이 그대로 남는다. 터치 기기에서도 끈다 — WebKit 은 스크롤 타임라인이 끝난 뒤에도 요소마다 합성 레이어를
+   붙들어, 4GB 아이폰에서 화면당 10–20 MB 의 GPU 메모리를 더 쓴다. */
 @keyframes akan-rise {
   from {
     opacity: 0;
@@ -186,7 +187,7 @@ html:has([data-akanjs-notice]) {
 /* backdrop-blur 카드의 조상에 opacity 애니메이션을 걸면 그 조상이 backdrop root 가 되어 카드가 뒤의
    배경을 흐리지 못한다. 그래서 reveal 은 유리 카드 자신이나 그 형제에만 건다. */
 @utility reveal-rise {
-  @media (prefers-reduced-motion: no-preference) {
+  @media (prefers-reduced-motion: no-preference) and (pointer: fine) {
     @supports (animation-timeline: view()) {
       animation: akan-rise linear both;
       animation-timeline: view();
@@ -196,7 +197,7 @@ html:has([data-akanjs-notice]) {
 }
 
 @utility reveal-cascade {
-  @media (prefers-reduced-motion: no-preference) {
+  @media (prefers-reduced-motion: no-preference) and (pointer: fine) {
     @supports (animation-timeline: view()) {
       & > * {
         animation: akan-rise linear both;
@@ -2467,6 +2468,25 @@ html:has([data-akanjs-notice]) {
     .friend-blush,
     .moon-zzz {
       display: none;
+    }
+  }
+}
+
+/* 화면 밖 친구(FriendDirector 가 data-offscreen 을 단다)와 터치 기기의 작은 친구는 반복 애니메이션을 멈춘다. 도는
+   조각마다 합성 레이어가 남아 GPU 메모리를 잡는다. 친구 규칙들의 명시도를 이기려고 레이어 밖에 둔다. */
+.friend[data-offscreen],
+.friend[data-offscreen] *,
+.friend[data-offscreen] *::before,
+.friend[data-offscreen] *::after {
+  animation: none;
+}
+
+@media (pointer: coarse) {
+  @container (width < 40px) {
+    .friend *,
+    .friend *::before,
+    .friend *::after {
+      animation: none;
     }
   }
 }

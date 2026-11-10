@@ -102,10 +102,10 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   async createApplication(
     appName: string,
     workspace: Workspace,
-    { start = false, libs = [], sample = false }: { start?: boolean; libs?: string[]; sample?: boolean } = {},
+    { start = false, libs = [] }: { start?: boolean; libs?: string[] } = {},
   ) {
     const spinner = workspace.spinning("Creating application...");
-    const app = await this.applicationRunner.createApplication(appName, workspace, libs, { sample });
+    const app = await this.applicationRunner.createApplication(appName, workspace, libs);
     spinner.succeed(`Application created in apps/${app.name}`);
     await app.scanSync();
     if (start) await this.startOne(app, { open: true });
@@ -173,7 +173,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       format,
     }: {
       module: string | null;
-      view: "erd" | "signals" | "changes";
+      view: "erd" | "signals" | "changes" | "runtime";
       since?: string | null;
       editor: "vscode" | "cursor";
       open: boolean;
@@ -200,12 +200,18 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       fast = false,
       quiet = false,
       profile,
-    }: { write?: boolean; fast?: boolean; quiet?: boolean; profile?: string } = {},
+      env,
+    }: { write?: boolean; fast?: boolean; quiet?: boolean; profile?: string; env?: string } = {},
   ) {
     await app.scanSync({ write });
     if (!quiet) Logger.rawLog(`Creating an optimized production build for ${app.name}...`);
     try {
-      const result = await this.applicationRunner.build(app, { fast, spinner: !quiet, envProfile: profile });
+      const result = await this.applicationRunner.build(app, {
+        fast,
+        spinner: !quiet,
+        envProfile: profile,
+        environment: env,
+      });
       Logger.rawLog(`${app.name} built in dist/apps/${app.name}`);
       if (!quiet) ApplicationBuildReporter.printSummary(result);
     } catch (error) {

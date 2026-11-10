@@ -15,7 +15,7 @@ import {
   isAkanRscPartialCommitEnabled,
   readAkanRouterStateResponseHeader,
 } from "./routeState";
-import { fetchRscNavigationResponse } from "./rscClientFetch";
+import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
 import { validateRscPatchForGuardedCommit } from "./rscClientPatch";
 import {
   commitPreparedAkanHeadSnapshotPatch,
@@ -37,6 +37,7 @@ import {
   rememberRscCacheNode,
   resolveCachedRscPatchNavigation,
 } from "./rscNavigationState";
+import { RscPrefetchCache } from "./rscPrefetchCache";
 import { RscScrollRestoration } from "./rscScrollRestoration";
 import { commitAkanSegmentOutletPatch, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
@@ -211,6 +212,7 @@ let renderedHref = normalizeHref(window.location.href);
 const scrollRestoration = new RscScrollRestoration();
 const pathnameOf = (href: string) => new URL(href).pathname;
 const withoutHash = (href: string | undefined) => href?.split("#", 1)[0];
+const pageKeyOf = (href: string) => withoutHash(href) ?? href;
 
 function commitHistory(target: string, replace: boolean | undefined) {
   if (replace) csrLocation.replace(akanHistoryState(true), target);
@@ -234,6 +236,8 @@ async function fetchRsc(
     shouldApplyNavigation?: () => boolean;
     sendRouterState?: boolean;
     navId?: number;
+    signal?: AbortSignal;
+    prefetched?: Response;
   } = {},
 ): Promise<RscFetchResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
@@ -244,6 +248,8 @@ async function fetchRsc(
     replaceOnRedirect: options.replaceOnRedirect,
     sendRouterState: options.sendRouterState,
     shouldApplyNavigation,
+    signal: options.signal,
+    prefetched: options.prefetched,
   });
   if (responseResult.type === "redirected" || responseResult.type === "not-found") return responseResult;
   //? Awaited before the result is returned, so no caller commits a page whose locale the Translator lacks.
@@ -276,6 +282,7 @@ async function fetchRsc(
     }
     return fetchRsc(href, {
       ...options,
+      prefetched: undefined,
       sendRouterState: false,
     });
   }
@@ -317,6 +324,7 @@ const readAuthCookies = () =>
     .join("; ");
 const rscCache = new Map<string, RscCacheNode>();
 const rscPatchCache = new Map<string, RscPatchNavigationCacheNode<RscThenable>>();
+const rscPrefetchCache = new RscPrefetchCache({ fetchResponse: fetchRscPrefetchResponse });
 const initialThenable = createRscThenable(createInitialRscStream());
 const initialRouterState = decodeAkanRouterState(globalThis.__AKAN_RSC_INITIAL_STATE__);
 const initialNode = createRscNavigationCacheNode({
@@ -331,7 +339,25 @@ let currentFullNode: RscCacheNode | null = initialNode;
 let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
+let pendingRequest: { navId: number; controller: AbortController; target: string } | null = null;
 let cachedAuthCookies = readAuthCookies();
+
+//? Only a request whose page has not committed is cut: a committed one may still stream the Suspense content on screen.
+function supersedeNavigation(): number {
+  pendingRequest?.controller.abort();
+  pendingRequest = null;
+  return ++navigationSeq;
+}
+
+function requestSignalOf(navId: number, target: string): AbortSignal {
+  const controller = new AbortController();
+  pendingRequest = { navId, controller, target: pageKeyOf(target) };
+  return controller.signal;
+}
+
+function settleRequestOf(navId: number): void {
+  if (pendingRequest?.navId === navId) pendingRequest = null;
+}
 
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
 globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
@@ -366,10 +392,29 @@ function forgetPagesOfAnotherAccount(): void {
   cachedAuthCookies = authCookies;
   rscCache.clear();
   rscPatchCache.clear();
+  rscPrefetchCache.clear();
   //? The layouts on screen were rendered for the other account too, so the next page is not patched onto them.
   currentRouterState = null;
   currentSegmentTree = null;
 }
+
+const isConstrainedNetwork = () => {
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
+    .connection;
+  return connection?.saveData === true || /2g$/.test(connection?.effectiveType ?? "");
+};
+
+globalThis.__AKAN_RSC_PREFETCH__ = (href, priority) => {
+  if (isConstrainedNetwork()) return;
+  const target = normalizeHref(href);
+  const key = pageKeyOf(target);
+  if (new URL(target).origin !== window.location.origin || pendingRequest?.target === key) return;
+  //? Not forgetPagesOfAnotherAccount: only a navigation may record the change, or a page of the old account still in
+  //? flight commits into the cache as the new account's.
+  const authCookies = readAuthCookies();
+  if (authCookies === cachedAuthCookies && rscCache.has(target)) return;
+  rscPrefetchCache.request(key, authCookies, priority);
+};
 
 function Root(): ReactNode {
   const [thenable, setThenable] = useState<RscThenable>(initialThenable);
@@ -383,6 +428,7 @@ function Root(): ReactNode {
   globalThis.__AKAN_RSC_CLEAR_CACHE__ = () => {
     rscCache.clear();
     rscPatchCache.clear();
+    rscPrefetchCache.clear();
     if (currentCommitKind === "patch") {
       void globalThis.__AKAN_RSC_REFRESH__?.();
       return;
@@ -403,10 +449,11 @@ function Root(): ReactNode {
   };
 
   globalThis.__AKAN_RSC_REFRESH__ = async (options = {}) => {
-    const navId = ++navigationSeq;
+    const navId = supersedeNavigation();
     const target = normalizeHref(window.location.href);
     rscCache.clear();
     rscPatchCache.clear();
+    rscPrefetchCache.clear();
     try {
       const next = await fetchRsc(target, {
         ...options,
@@ -414,6 +461,7 @@ function Root(): ReactNode {
         sendRouterState: false,
         navId,
         shouldApplyNavigation: () => navId === navigationSeq,
+        signal: requestSignalOf(navId, target),
       });
       if (next.type === "redirected") return;
       if (next.type === "not-found") {
@@ -452,17 +500,21 @@ function Root(): ReactNode {
     } catch (error) {
       if (error instanceof RscRedirectNavigationStarted) return;
       if (navId === navigationSeq) hardNavigateAfterRscFailure(target, true, error);
+    } finally {
+      settleRequestOf(navId);
     }
   };
 
   globalThis.__AKAN_RSC_NAVIGATE__ = async (href, options = {}) => {
     if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) {
-      navigationSeq += 1;
+      supersedeNavigation();
       return;
     }
     forgetPagesOfAnotherAccount();
-    const navId = ++navigationSeq;
+    rscPrefetchCache.prune();
+    const navId = supersedeNavigation();
     const target = normalizeHref(href);
+    const signal = requestSignalOf(navId, target);
     //? A redirect replaces the entry this navigation is on, which a push does not write until its page commits.
     let ownsEntry = !!options.replace;
     const replaceOnRedirect = () => ownsEntry;
@@ -472,7 +524,7 @@ function Root(): ReactNode {
     try {
       let nextNode = rscCache.get(target);
       let notFound = false;
-      const servedFromCache = !!nextNode;
+      let servedFromCache = !!nextNode;
       if (!nextNode) {
         const cachedPatch = rscPatchCache.get(target);
         if (cachedPatch) {
@@ -508,10 +560,16 @@ function Root(): ReactNode {
           }
           rscPatchCache.delete(target);
         }
+        const taken = rscPrefetchCache.take(pageKeyOf(target), cachedAuthCookies, signal);
+        const prefetched = (await taken?.response) ?? undefined;
+        if (signal.aborted) return;
+        servedFromCache = !!prefetched && !taken?.fresh;
         const fetched = await fetchRsc(target, {
           replaceOnRedirect,
           navId,
           shouldApplyNavigation: () => navId === navigationSeq,
+          signal,
+          prefetched,
         });
         if (fetched.type === "redirected") return;
         if (fetched.type === "not-found") throw new RscRouteNotFound(target);
@@ -543,6 +601,7 @@ function Root(): ReactNode {
             sendRouterState: false,
             navId,
             shouldApplyNavigation: () => navId === navigationSeq,
+            signal,
           });
           if (fallback.type === "redirected") return;
           if (fallback.type === "not-found") throw new RscRouteNotFound(target);
@@ -593,6 +652,8 @@ function Root(): ReactNode {
       // Rethrown before the fallback: a document navigation would land on the very 404 this refusal exists to avoid.
       if (error instanceof RscRouteNotFound) throw error;
       if (navId === navigationSeq) hardNavigateAfterRscFailure(target, options.replace, error);
+    } finally {
+      settleRequestOf(navId);
     }
   };
 
@@ -612,7 +673,7 @@ window.addEventListener("popstate", (event) => {
       ?.catch((error: unknown) => hardNavigateAfterRscFailure(window.location.href, true, error));
   else {
     //? Still a navigation: one in flight would otherwise commit its page onto the entry this move landed on.
-    navigationSeq += 1;
+    supersedeNavigation();
     if (scrollY !== undefined) scrollRestoration.scrollTo(scrollY);
   }
   window.setTimeout(() => {

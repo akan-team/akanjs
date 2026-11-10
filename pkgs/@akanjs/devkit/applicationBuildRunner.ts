@@ -14,8 +14,10 @@ import {
   AllRoutesBuilder,
   CsrArtifactBuilder,
   FontPruner,
+  NARROWABLE_VENDOR_SPECIFIERS,
   precompressArtifacts,
   SsrBaseArtifactBuilder,
+  VendorImportScanner,
 } from "./frontendBuild";
 import { Spinner } from "./spinner";
 import { createServerEnvPlugin } from "./transforms/serverEnvPlugin";
@@ -118,7 +120,7 @@ export class ApplicationBuildRunner {
       this.#app.logger.warn(
         `The workspace .env outranks this process's environment: the bundles and the image take ${outranked
           .map(([key, value]) => `${key}=${value} (not ${process.env[key]})`)
-          .join(", ")}.`,
+          .join(", ")}. Pick the environment with \`akan build --env\`, and set the rest in the workspace .env.`,
       );
     Object.assign(process.env, imageEnv);
   }
@@ -402,10 +404,16 @@ void run().catch((error) => {
       return null;
     }
     const { baseDevEnv, branches } = await this.#app.getConfig();
+    //? Routes first: the vendor entries export only the names the route bundles import.
+    const allRoutes = await new AllRoutesBuilder(this.#app, "build").build();
+    const vendorExports = await VendorImportScanner.exportsUsedIn(
+      path.join(this.#app.dist.cwdPath, ".akan/artifact/client"),
+      NARROWABLE_VENDOR_SPECIFIERS,
+    );
     const base = await new SsrBaseArtifactBuilder(this.#app, "build", {
       serverEnv: this.#serverEnvPlugin(baseDevEnv.env, branches),
+      vendorExports,
     }).build();
-    const allRoutes = await new AllRoutesBuilder(this.#app, base.artifact, "build").build();
     return { base, allRoutes };
   }
 

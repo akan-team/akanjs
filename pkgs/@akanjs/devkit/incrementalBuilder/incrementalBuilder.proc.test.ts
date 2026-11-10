@@ -218,7 +218,11 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
     const graph = answerTo(5);
     if (!("graph" in graph)) throw new Error("build-graph answered with changes");
     expect(graph.workspaceRoot).toBe(root);
-    expect(graph.graph.nodes.map((node) => node.id).sort()).toEqual(["model:apps/demo:memo", "model:libs/shared:file"]);
+    expect(graph.graph.nodes.map((node) => node.id).sort()).toEqual([
+      "model:apps/demo:memo",
+      "model:libs/shared:file",
+      "route:apps/demo:/",
+    ]);
     const changes = answerTo(6);
     if (!("changes" in changes) || "error" in changes.changes)
       throw new Error(`no changes: ${JSON.stringify(changes)}`);

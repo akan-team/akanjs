@@ -104,17 +104,12 @@ const loadBuildRunner = async () => (await import("@akanjs/devkit/applicationBui
 const loadPrompts = async () => await import("@inquirer/prompts");
 
 export class ApplicationRunner extends runner("application") {
-  async createApplication(
-    appName: string,
-    workspace: Workspace,
-    libs: string[] = [],
-    { sample = false }: { sample?: boolean } = {},
-  ) {
+  async createApplication(appName: string, workspace: Workspace, libs: string[] = []) {
     await workspace.applyTemplate({
       basePath: `apps/${appName}`,
       template: "app",
       dict: { appName },
-      options: { libs, sample },
+      options: { libs },
     });
     return AppExecutor.from(workspace, appName);
   }
@@ -380,9 +375,16 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       reporter,
       spinner = false,
       envProfile,
-    }: { fast?: boolean; reporter?: BuildProgressReporter; spinner?: boolean; envProfile?: string } = {},
+      environment,
+    }: {
+      fast?: boolean;
+      reporter?: BuildProgressReporter;
+      spinner?: boolean;
+      envProfile?: string;
+      environment?: string;
+    } = {},
   ): Promise<BuildResult> {
-    return new (await loadBuildRunner())(app, { fast, reporter, profile: envProfile }).build({ spinner });
+    return new (await loadBuildRunner())(app, { fast, reporter, profile: envProfile, environment }).build({ spinner });
   }
   async start(
     app: App,
