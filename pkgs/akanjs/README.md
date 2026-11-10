@@ -74,10 +74,11 @@ Node and npm, or URLs given by a spec, a coding agent needs these, and nothing h
 
   A fresh clone builds as is: the env files stay gitignored and `akan` writes the ones it lacks, so commit none. The
   build carries the env it needs, and a variable set at start overrides it.
-- **Build for where it runs.** `akan build` builds for the `AKAN_PUBLIC_ENV` of the workspace `.env`, `local` in a new
-  workspace. That suits your own machine or a test runner, but the server runs without endpoint rate limits and on local
-  defaults. For a host others can reach, set `AKAN_PUBLIC_REPO_NAME` and `AKAN_PUBLIC_SERVE_DOMAIN` (the domain it
-  serves) in the workspace `.env`, and run `akan build <app> --env main`.
+- **Build for where it runs.** A variable set in the shell, or in a `.env.local` Bun loads, outranks the workspace `.env`
+  (an empty one counts as unset, and the build names each one it took), and `--env` outranks both for `AKAN_PUBLIC_ENV`. A new workspace's `.env` says `local`, which suits your own machine or a test runner, but the
+  server runs without endpoint rate limits and on local defaults. For a host others can reach, run
+  `akan build <app> --env main` with `AKAN_PUBLIC_REPO_NAME` and `AKAN_PUBLIC_SERVE_DOMAIN` (the domain it serves) set
+  in the shell or the workspace `.env`.
 
 ## All Of It Is One Line
 
