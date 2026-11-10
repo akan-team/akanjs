@@ -226,7 +226,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     })
     .option("env", String, {
       enum: devEnvs,
-      desc: "environment the server runs in (default: AKAN_PUBLIC_ENV of the workspace .env)",
+      desc: "environment the server runs in (default: AKAN_PUBLIC_ENV of the shell, else of the workspace .env)",
       nullable: true,
     })
     .exec(async function (app, write, fast, quiet, profile, env) {

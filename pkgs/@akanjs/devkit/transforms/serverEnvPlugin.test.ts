@@ -86,7 +86,7 @@ describe("createServerEnvPlugin", () => {
       "env/env.server.develop.ts is not in this build: `akan build` bundles the server env of AKAN_PUBLIC_ENV=main alone",
     );
     expect(proc.stderr.toString()).toContain(
-      "To run develop, build for it with `--env develop` (`akan build` or a desktop or mobile build), or AKAN_PUBLIC_ENV=develop in the workspace's .env, which outranks the shell.",
+      "To run develop, build for it with `--env develop` (`akan build` or a desktop or mobile build), or AKAN_PUBLIC_ENV=develop in the shell or the workspace's .env.",
     );
   });
 
