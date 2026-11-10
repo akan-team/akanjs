@@ -1350,6 +1350,36 @@ describe("rscClient patch cache", () => {
     expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
   });
 
+  test("a patch laid on a patch is replayed straight under its base, and the next request names it", async () => {
+    framed("/ch/a", "ch");
+    framed("/ch/b", "ch");
+    framed("/ch/c", "ch");
+    framed("/ch/d", "ch");
+    framed("/cho", "cho");
+    await navigate("/ch/a");
+    await navigate("/ch/b");
+    await navigate("/ch/c");
+    await navigate("/cho");
+    await navigate("/ch/a");
+    await navigate("/ch/c");
+    expect(fetchCountOf("/ch/c")).toBe(1);
+    expect(shown()).toBe("/ch/c patched");
+    expect(frameShown()).toBe("ch");
+    let sentFrom: AkanRouterStateV1 | null = null;
+    const inner = served.get("/ch/d");
+    served.set("/ch/d", (headers) => {
+      sentFrom = decodeAkanRouterState(headers.get(AKAN_RSC_CURRENT_STATE_HEADER));
+      return inner?.(headers) ?? responseOf("x");
+    });
+
+    await navigate("/ch/d");
+
+    expect((sentFrom as AkanRouterStateV1 | null)?.href).toBe(`${origin}/ch/c`);
+    expect((sentFrom as AkanRouterStateV1 | null)?.headKey).toBe("ch layouts");
+    expect(shown()).toBe("/ch/d patched");
+    expect(document.head.querySelectorAll("title").length).toBe(1);
+  });
+
   test("a not-found view in between keeps the patches of the page before it", async () => {
     framed("/shed/a", "shed");
     framed("/shed/b", "shed");
@@ -1440,6 +1470,23 @@ describe("rscClient patch cache", () => {
     expect(shown()).toBe("/loft/b patched");
   });
 
+  test("clearing the navigation cache with the base on screen drops the patches laid under it", async () => {
+    framed("/p1/a", "p1");
+    framed("/p1/b", "p1");
+    framed("/p1o", "p1o");
+    await navigate("/p1/a");
+    await navigate("/p1/b");
+    await navigate("/p1o");
+    await navigate("/p1/a");
+
+    await act(async () => {
+      globalThis.__AKAN_RSC_CLEAR_CACHE__?.();
+    });
+    await navigate("/p1/b");
+
+    expect(fetchCountOf("/p1/b")).toBe(2);
+  });
+
   test("a patch reached through a redirect is replayed for the page it landed on, and the redirect asked again", async () => {
     framed("/mill/a", "mill");
     framed("/mill/new", "mill");
@@ -1459,6 +1506,56 @@ describe("rscClient patch cache", () => {
     expect(fetchCountOf("/mill/new")).toBe(1);
     expect(shown()).toBe("/mill/new patched");
     expect(document.title).toBe("/mill/new patched");
+  });
+
+  test("a page the server now redirects is asked again, never replayed from the patch it had", async () => {
+    framed("/rv/a", "rv");
+    framed("/rv/b", "rv");
+    framed("/rvo", "rvo");
+    framed("/rv/login", "rvo");
+    await navigate("/rv/a");
+    await navigate("/rv/b");
+    await navigate("/rvo");
+    served.set("/rv/b", preStreamRedirectTo("/rv/login"));
+    await navigate("/rv/b");
+    await waitFor(() => window.location.pathname === "/rv/login");
+    await navigate("/rv/a");
+
+    await navigate("/rv/b");
+
+    expect(fetchCountOf("/rv/b")).toBe(3);
+  });
+
+  test("a page the server now answers not-found is asked again, never replayed from the patch it had", async () => {
+    framed("/nf/a", "nf");
+    framed("/nf/b", "nf");
+    framed("/nfo", "nfo");
+    await navigate("/nf/a");
+    await navigate("/nf/b");
+    await navigate("/nfo");
+    served.set("/nf/b", notFoundViewOf("nf gone"));
+    await navigate("/nf/b");
+    await navigate("/nf/a");
+
+    await navigate("/nf/b");
+
+    expect(fetchCountOf("/nf/b")).toBe(3);
+    expect(shown()).toBe("nf gone");
+  });
+
+  test("a page committed without router state names none for the next request, which renders whole at once", async () => {
+    framed("/bare/a", "bare");
+    framed("/bare/b", "bare");
+    served.set("/plain", () => responseOf("plain"));
+    await navigate("/bare/a");
+    await navigate("/plain");
+
+    await navigate("/bare/b");
+
+    expect(fetchCountOf("/bare/b")).toBe(1);
+    expect(sentRouterStateFor("/bare/b")).toBe(false);
+    expect(shown()).toBe("/bare/b");
+    expect(frameShown()).toBe("bare");
   });
 
   describe("with a prefetch", () => {
