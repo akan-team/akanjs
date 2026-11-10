@@ -482,7 +482,10 @@ export class CloudRunner extends runner("cloud") {
   async downloadEnv(cloudApi: CloudApi, workspace: Workspace, workspaceId: string) {
     await workspace.mkdir("local");
     const localPath = (await cloudApi.downloadEnv(workspaceId).catch((error: unknown) => {
-      throw CloudApi.refusal(error, "downloading its env archive takes the project owner's own `akan login`");
+      throw CloudApi.refusal(
+        error,
+        "only the repository owner, or an owner or operator they allowed on the project's settings page, can download its env archive; sign in as one of them with `akan login`",
+      );
     })) as string;
     await EnvArchive.extract(workspace, localPath);
     await workspace.remove(localPath);
