@@ -584,6 +584,16 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       throw error;
     }
   };
+  // Read after the request: a view<Model> that started meanwhile owns the open model and the flag.
+  const openModelPatchOf = (
+    latest: { [key: string]: any },
+    updatedModel: Full,
+    loadingId: string | null,
+    opened: { [key: string]: unknown } = {},
+  ) => ({
+    ...((latest[names.model] as Full | null)?.id === updatedModel.id ? { [names.model]: updatedModel, ...opened } : {}),
+    ...(loadingId && latest[names.modelLoading] === loadingId ? { [names.modelLoading]: false } : {}),
+  });
   function armDraft(this: SetGet, draftScope: string | undefined, form: object, baseUpdatedAt: string | null) {
     openFormBase = draftScope ? form : null;
     if (!draftScope) return null;
@@ -710,19 +720,19 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const defaultModel = currentState[defaultKeyOf(sliceName)] as Full;
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
       if (!modelInput || isUploadingIn(currentState)) return;
-      const updatedModel = await withModelLoading(this, model?.id === modelForm.id ? modelForm.id : null, () =>
+      const loadingId = model?.id === modelForm.id ? modelForm.id : null;
+      const updatedModel = await withModelLoading(this, loadingId, () =>
         servedFetch<Full>(names.updateModel)(modelForm.id, modelInput, { onError }),
       );
+      const latest = this.get() as { [key: string]: any };
       this.set({
-        ...(model?.id === updatedModel.id
-          ? { [names.model]: updatedModel, [names.modelLoading]: false, [names.modelViewAt]: new Date() }
-          : {}),
+        ...openModelPatchOf(latest, updatedModel, loadingId, { [names.modelViewAt]: new Date() }),
         [names.modelForm]: immerify(modelRef, defaultModel),
         [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
         [names.modelModal]: modal ?? null,
         ...staleAtOfSlices(),
         ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
-        ...updatedListPatchOf(this.get(), updatedModel),
+        ...updatedListPatchOf(latest, updatedModel),
       });
       await onSuccess?.(updatedModel);
     },
@@ -757,17 +767,17 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const model = currentState[names.model] as Full | null;
       const modelInput = (cnst.input.purify as (data: any) => DefaultOf<Input> | null)(data);
       if (!modelInput) return;
-      const updatedModel = await withModelLoading(this, model?.id === id ? id : null, () =>
+      const loadingId = model?.id === id ? id : null;
+      const updatedModel = await withModelLoading(this, loadingId, () =>
         servedFetch<Full>(names.updateModel)(id, modelInput, { onError }),
       );
+      const latest = this.get() as { [key: string]: any };
       this.set({
-        ...(model?.id === updatedModel.id
-          ? { [names.model]: updatedModel, [names.modelLoading]: false, [names.modelViewAt]: new Date() }
-          : {}),
+        ...openModelPatchOf(latest, updatedModel, loadingId, { [names.modelViewAt]: new Date() }),
         [names.modelModal]: modal ?? null,
         ...staleAtOfSlices(),
         ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
-        ...updatedListPatchOf(this.get(), updatedModel),
+        ...updatedListPatchOf(latest, updatedModel),
       });
       await onSuccess?.(updatedModel);
     },
@@ -877,11 +887,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const updatedModel = await withModelLoading(this, loadingId, () =>
         servedFetch<Full>(names.mergeModel)(modelOrId, data, options),
       );
-      // Read after the request: a view<Model> that started meanwhile owns the open model and the flag.
       const latest = this.get() as { [key: string]: any };
       this.set({
-        ...((latest[names.model] as Full | null)?.id === id ? { [names.model]: updatedModel } : {}),
-        ...(loadingId && latest[names.modelLoading] === loadingId ? { [names.modelLoading]: false } : {}),
+        ...openModelPatchOf(latest, updatedModel, loadingId),
         ...staleAtOfSlices(),
         ...updatedListPatchOf(latest, updatedModel),
       });

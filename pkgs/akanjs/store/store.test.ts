@@ -1084,35 +1084,75 @@ describe("signal generated store contract", () => {
       expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { title: "loaded" } });
     });
 
-  test("merge<Model> leaves the open model and its loading flag to a view<Model> that started during the request", async () => {
-    setupEnv();
-    const signal = makeSignal();
-    class MergeViewStore extends store(signal, () => ({})) {}
-    StoreRegistry.register(MergeViewStore);
-    const instance = new StoreInstance(makeRoot("mergeViewRoot", MergeViewStore));
-    const [first, second] = ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"];
-    const merge = deferredCall();
-    const view = deferredCall();
+  const viewRaces: [
+    string,
+    "mergeStoreTestItem" | "updateStoreTestItem",
+    (instance: StoreInstance, id: string) => Promise<unknown>,
+    (instance: StoreInstance, id: string) => Promise<unknown>,
+  ][] = [
+    [
+      "merge<Model>",
+      "mergeStoreTestItem",
+      (instance, id) => instance.do.viewStoreTestItem(id) as Promise<unknown>,
+      (instance, id) => instance.do.mergeStoreTestItem(id, { title: "written" }) as Promise<unknown>,
+    ],
+    [
+      "update<Model>",
+      "updateStoreTestItem",
+      (instance, id) => instance.do.viewStoreTestItem(id) as Promise<unknown>,
+      (instance, id) =>
+        instance.do.updateStoreTestItem(id, { title: "written", count: 0, tags: [] }) as Promise<unknown>,
+    ],
+    [
+      "update<Model>InForm",
+      "updateStoreTestItem",
+      (instance, id) => instance.do.editStoreTestItem(id) as Promise<unknown>,
+      (instance) => instance.do.updateStoreTestItemInForm() as Promise<unknown>,
+    ],
+  ];
+  for (const [action, endpoint, open, write] of viewRaces)
+    test(`${action} leaves the open model and its loading flag to a view<Model> that started during the request`, async () => {
+      setupEnv();
+      const signal = makeSignal();
+      class ViewRaceStore extends store(signal, () => ({})) {}
+      StoreRegistry.register(ViewRaceStore);
+      const instance = new StoreInstance(makeRoot(`viewRaceRoot${action}`, ViewRaceStore));
+      const [first, second] = ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"];
+      const loaded = signal.calls.storeTestItem;
+      const written = deferredCall();
+      const view = deferredCall();
+      signal.calls[endpoint] = written.call;
+      const openWithoutWaiting = async (id: string) => {
+        signal.calls.storeTestItem = loaded;
+        await open(instance, id);
+        signal.calls.storeTestItem = view.call;
+      };
 
-    await instance.do.viewStoreTestItem(first);
-    signal.calls.mergeStoreTestItem = merge.call;
-    signal.calls.storeTestItem = view.call;
-    const merging = instance.do.mergeStoreTestItem(first, { title: "merged" });
-    const viewing = instance.do.viewStoreTestItem(second);
-    merge.answer(new StoreTestFull({ id: first, title: "merged" } as never));
-    await merging;
-    expect(instance.get()).toMatchObject({ storeTestItemLoading: second, storeTestItem: { title: "merged" } });
-    view.answer(new StoreTestFull({ id: second, title: "second" } as never));
-    await viewing;
+      await openWithoutWaiting(first);
+      const writing = write(instance, first);
+      const viewing = instance.do.viewStoreTestItem(second);
+      written.answer(new StoreTestFull({ id: first, title: "written" } as never));
+      await writing;
+      expect(instance.get()).toMatchObject({
+        storeTestItemLoading: second,
+        storeTestItem: { id: first, title: "written" },
+      });
+      view.answer(new StoreTestFull({ id: second, title: "second" } as never));
+      await viewing;
+      expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { id: second } });
 
-    const remerging = instance.do.mergeStoreTestItem(second, { title: "merged again" });
-    const reviewing = instance.do.viewStoreTestItem(first);
-    view.answer(new StoreTestFull({ id: first, title: "first" } as never));
-    await reviewing;
-    merge.answer(new StoreTestFull({ id: second, title: "merged again" } as never));
-    await remerging;
-    expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { id: first, title: "first" } });
-  });
+      await openWithoutWaiting(second);
+      const rewriting = write(instance, second);
+      const reviewing = instance.do.viewStoreTestItem(first);
+      view.answer(new StoreTestFull({ id: first, title: "first" } as never));
+      await reviewing;
+      written.answer(new StoreTestFull({ id: second, title: "written again" } as never));
+      await rewriting;
+      expect(instance.get()).toMatchObject({
+        storeTestItemLoading: false,
+        storeTestItem: { id: first, title: "first" },
+      });
+    });
 
   test("update<Model>InForm lands the answer, the lists and the form reset in one set", async () => {
     setupEnv();
