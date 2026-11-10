@@ -19,6 +19,7 @@ export interface DevtoolsRouterContext {
   prefix: string;
   websocketPrefix: string;
   openapi: boolean;
+  web?: boolean;
   getStatus: () => string;
   buildGraph?: () => Promise<BuildGraphPayload | null>;
   buildChanges?: (since: string | null) => Promise<BuildChangesPayload | null>;
@@ -39,12 +40,14 @@ export class DevtoolsRouter {
   }
 
   static buildsFrom(
-    builderRpc: () => BuilderRpc | null,
-  ): Pick<DevtoolsRouterContext, "buildGraph" | "buildChanges" | "buildFramework"> {
+    webRouter: { readonly builderRpc: BuilderRpc | null } | null,
+  ): Pick<DevtoolsRouterContext, "web" | "buildGraph" | "buildChanges" | "buildFramework"> {
+    if (!webRouter) return { web: false };
     return {
-      buildGraph: async () => (await builderRpc()?.buildGraph()) ?? null,
-      buildChanges: async (since) => (await builderRpc()?.buildChanges(since)) ?? null,
-      buildFramework: async () => (await builderRpc()?.buildFramework()) ?? null,
+      web: true,
+      buildGraph: async () => (await webRouter.builderRpc?.buildGraph()) ?? null,
+      buildChanges: async (since) => (await webRouter.builderRpc?.buildChanges(since)) ?? null,
+      buildFramework: async () => (await webRouter.builderRpc?.buildFramework()) ?? null,
     };
   }
 
@@ -59,6 +62,7 @@ export class DevtoolsRouter {
     const studio = new StudioRoute({
       basePath: `${DevtoolsRouter.basePath}/studio`,
       appName: this.#context.env.appName,
+      web: this.#context.web ?? true,
       buildGraph: this.#context.buildGraph ?? null,
       buildChanges: this.#context.buildChanges ?? null,
       buildFramework: this.#context.buildFramework ?? null,

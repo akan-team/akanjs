@@ -15,7 +15,7 @@ export class ModuleCommand extends command("module", [ModuleScript], ({ public: 
       const report = await this.moduleScript.createModuleTemplate(sys, name, { page });
       Logger.rawLog(renderPrimitiveReport(report, format as PrimitiveFormat));
     }),
-  removeModule: target({ desc: "Remove a module from an app or library" })
+  removeModule: target({ desc: "Remove a module from an app or library", destructive: true })
     .with(Module)
     .exec(async function (module) {
       await this.moduleScript.removeModule(module);

@@ -329,12 +329,17 @@ export class WorkflowRunner extends runner("workflow") {
   async plan(
     workflow: string,
     inputs: WorkflowPlanInputs,
-    {
-      format = "markdown",
-      out = null,
-      workspace,
-    }: { format?: WorkflowFormat; out?: string | null; workspace?: Workspace } = {},
+    { format = "markdown", ...options }: { format?: WorkflowFormat; out?: string | null; workspace?: Workspace } = {},
   ) {
+    const plan = await this.planReport(workflow, inputs, options);
+    return format === "json" ? jsonText(plan) : renderWorkflowPlan(plan);
+  }
+
+  async planReport(
+    workflow: string,
+    inputs: WorkflowPlanInputs,
+    { out = null, workspace }: { out?: string | null; workspace?: Workspace } = {},
+  ): Promise<WorkflowPlan> {
     const spec = getWorkflowSpec(workflowSpecs, workflow);
     if (!spec) throw new Error(`Unknown workflow: ${workflow}. Run \`akan workflow list\` to see available workflows.`);
     const plan = await inspectWorkflowPlan(
@@ -347,67 +352,74 @@ export class WorkflowRunner extends runner("workflow") {
       await mkdir(path.dirname(outPath), { recursive: true });
       await writeFile(outPath, jsonText(plan));
     }
-    return format === "json" ? jsonText(plan) : renderWorkflowPlan(plan);
+    return plan;
   }
 
   async apply(
     planPath: string,
     {
-      dryRun = false,
       format = "markdown",
-      registry,
-      workspace,
+      ...options
     }: { dryRun?: boolean; format?: WorkflowFormat; registry?: WorkflowStepRegistry; workspace?: Workspace } = {},
   ) {
-    const renderApplyReport = async (report: WorkflowApplyReport) => {
-      if (!workspace) return renderWorkflowApply(report, format);
+    return renderWorkflowApply(await this.applyReport(planPath, options), format);
+  }
+
+  async applyReport(
+    planPath: string,
+    {
+      dryRun = false,
+      registry,
+      workspace,
+    }: { dryRun?: boolean; registry?: WorkflowStepRegistry; workspace?: Workspace } = {},
+  ): Promise<WorkflowApplyReport> {
+    const recordApplyReport = async (report: WorkflowApplyReport) => {
+      if (!workspace) return report;
       const { artifact } = await writeWorkflowRunArtifact(workspace, report);
-      return renderWorkflowApply(artifact as WorkflowApplyReport, format);
+      return artifact as WorkflowApplyReport;
     };
     let plan: WorkflowPlan;
     try {
       const parsed = await readJsonFile(planPath);
       if (!isWorkflowPlan(parsed))
-        return await renderApplyReport(
+        return await recordApplyReport(
           failedApplyReport("unknown", "workflow-plan-invalid", `Workflow plan file is invalid: ${planPath}.`),
         );
       plan = parsed;
     } catch (error) {
       const message = `Could not read workflow plan file: ${planPath}. ${error instanceof Error ? error.message : ""}`;
-      return await renderApplyReport(failedApplyReport("unknown", "workflow-plan-read-failed", message.trim()));
+      return await recordApplyReport(failedApplyReport("unknown", "workflow-plan-read-failed", message.trim()));
     }
 
     const spec = getWorkflowSpec(workflowSpecs, plan.workflow);
     if (!spec) {
       const message = `Unknown workflow in plan: ${plan.workflow}.`;
-      return await renderApplyReport(failedApplyReport(plan.workflow, "workflow-unknown", message, plan));
+      return await recordApplyReport(failedApplyReport(plan.workflow, "workflow-unknown", message, plan));
     }
     const inputErrors = inputErrorsOf(spec, plan);
     if (inputErrors.length) {
       const message = inputErrors.map((diagnostic) => diagnostic.message).join(" ");
-      return await renderApplyReport(failedApplyReport(plan.workflow, "workflow-plan-inputs-invalid", message, plan));
+      return await recordApplyReport(failedApplyReport(plan.workflow, "workflow-plan-inputs-invalid", message, plan));
     }
     const targetErrors = await workflowTargetDiagnostics(workspace ?? WorkspaceExecutor.fromRoot(), spec, plan.inputs);
     if (targetErrors.length)
-      return await renderApplyReport(
+      return await recordApplyReport(
         refusedApplyReport(plan.workflow, targetErrors, { plan, mode: dryRun ? "dry-run" : "apply" }),
       );
     plan = { ...plan, steps: spec.steps, validation: spec.validation };
-    if (dryRun) return await renderApplyReport(createDryRunWorkflowApplyReport(plan));
+    if (dryRun) return await recordApplyReport(createDryRunWorkflowApplyReport(plan));
     if (!registry) {
       const message = "Workflow apply requires a step runner registry.";
-      return await renderApplyReport(failedApplyReport(plan.workflow, "workflow-registry-missing", message, plan));
+      return await recordApplyReport(failedApplyReport(plan.workflow, "workflow-registry-missing", message, plan));
     }
-    return await renderApplyReport(await new WorkflowExecutor(registry, workspace).apply(plan));
+    return await recordApplyReport(await new WorkflowExecutor(registry, workspace).apply(plan));
   }
 
   async validate(
     runIdOrPlan: string,
     {
       format = "markdown",
-      workspace,
-      execute,
-      includeBaselineDetails = false,
+      ...options
     }: {
       format?: WorkflowFormat;
       workspace: Workspace;
@@ -415,6 +427,17 @@ export class WorkflowRunner extends runner("workflow") {
       includeBaselineDetails?: boolean;
     },
   ) {
+    return renderWorkflowValidation(await this.validateReport(runIdOrPlan, options), format);
+  }
+
+  async validateReport(
+    runIdOrPlan: string,
+    {
+      workspace,
+      execute,
+      includeBaselineDetails = false,
+    }: { workspace: Workspace; execute?: WorkflowValidationCommandExecutor; includeBaselineDetails?: boolean },
+  ): Promise<WorkflowValidationRunReport> {
     const loaded = await this.loadValidationTarget(runIdOrPlan, workspace);
     const trusted = await specValidationOf(workspace, loaded.plan);
     const doctor = await AkanContextAnalyzer.doctor(workspace, {
@@ -444,7 +467,7 @@ export class WorkflowRunner extends runner("workflow") {
       includeBaselineDetails,
     );
     await writeWorkflowRunArtifact(workspace, report);
-    return renderWorkflowValidation(report, format);
+    return report;
   }
 
   async report(runId: string, { format = "markdown", workspace }: { format?: WorkflowFormat; workspace: Workspace }) {

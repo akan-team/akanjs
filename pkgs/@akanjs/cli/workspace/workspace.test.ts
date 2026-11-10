@@ -236,6 +236,22 @@ describe("WorkspaceScript", () => {
     }
   });
 
+  test("refuses a first app name that is not one plain path segment before creating anything", async () => {
+    const script = CommandContainer.get(WorkspaceScript);
+    const recorder = createCallRecorder();
+    script.packageScript.version = async (...args: unknown[]) => {
+      recorder.record("version", ...args);
+      return "2.0.0-beta.0";
+    };
+    script.workspaceRunner.createWorkspace = async (...args: unknown[]) => {
+      recorder.record("createWorkspace", ...args);
+      throw new Error("stopped");
+    };
+
+    await expect(script.createWorkspace("repo", "../x", { init: false })).rejects.toThrow('"../x" is no app name');
+    expect(recorder.names()).toEqual([]);
+  });
+
   test("tells a host whose Bun is not on PATH to run akan through npm", async () => {
     const script = CommandContainer.get(WorkspaceScript);
     const recorder = createCallRecorder();

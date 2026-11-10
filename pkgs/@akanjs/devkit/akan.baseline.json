@@ -2,7 +2,7 @@
   "akan.size.file": {
     "akanApp/akanApp.host.ts": 1337,
     "akanConfig/akanConfig.ts": 907,
-    "akanContext.ts": 1086,
+    "akanContext.ts": 1084,
     "executors.ts": 1749,
     "incrementalBuilder/incrementalBuilder.proc.ts": 1152,
     "qualityScanner.ts": 983,

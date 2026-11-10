@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
 import type { SysExecutor } from "@akanjs/devkit/executors";
 import { ThemeValidator } from "@akanjs/devkit/frontendBuild/themeValidator";
 import { isolateEnv, makeCliTempWorkspace, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
@@ -77,7 +78,7 @@ describe("appSample", () => {
       if (sample) await workspace.applyTemplate({ ...app, template: "appSample" });
       const appRoot = path.join(root, "apps/myapp");
       const files = [...new Glob("**/*").scanSync({ cwd: appRoot })].sort();
-      return { files, read: (file: string) => readFile(path.join(appRoot, file), "utf8") };
+      return { workspace, appRoot, files, read: (file: string) => readFile(path.join(appRoot, file), "utf8") };
     };
     const tokenNamesOf = (css: string) =>
       Object.fromEntries(
@@ -150,6 +151,21 @@ describe("appSample", () => {
       );
       expect(await read("page/_index.tsx")).toContain('href="/task"');
       expect(await read("page/styles.css")).toContain("@utility jelly {");
+    });
+
+    test("gives doctor no missing label for a field its constants suggest only in a comment, and still one for a real field", async () => {
+      const { workspace, appRoot, read } = await scaffold({ sample: true });
+      const missingLabels = async () =>
+        (await AkanContextAnalyzer.doctor(workspace, { strict: true })).diagnostics
+          .filter((diagnostic) => diagnostic.code === "dictionary-label-missing")
+          .map((diagnostic) => diagnostic.message);
+
+      expect(await read("lib/task/task.constant.ts")).toContain("//  - priority: field(TaskPriority");
+      expect(await missingLabels()).toEqual([]);
+
+      const dictionary = await read("lib/task/task.dictionary.ts");
+      await writeText(path.join(appRoot, "lib/task/task.dictionary.ts"), dictionary.replace(/^ {4}due: .*\n/m, ""));
+      expect(await missingLabels()).toEqual(["Dictionary labels for myapp:task.due were not found."]);
     });
   });
 });

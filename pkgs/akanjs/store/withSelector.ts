@@ -7,10 +7,12 @@ import type { SliceStateAction, StoreUseOptions, VoidActions } from "./types";
 
 type SetKey<Key extends string> = `set${Capitalize<Key>}`;
 
-export type WithSelectors<RtStoreCls extends RootStoreCls> =
-  RtStoreCls extends RootStoreCls<any, infer WritableState, infer Action, infer InternalSliceObj, any, any, infer State>
-    ? WithSelectorsOf<State, WritableState, Action, InternalSliceObj>
-    : never;
+export type WithSelectors<RtStoreCls extends RootStoreCls> = WithSelectorsOf<
+  RtStoreCls["_root"]["state"],
+  RtStoreCls["_root"]["writable"],
+  RtStoreCls["_root"]["action"],
+  RtStoreCls["_root"]["slice"]
+>;
 
 type WithSelectorsOf<State, WritableState, Action, InternalSliceObj> = StAgentic & {
   sub: {

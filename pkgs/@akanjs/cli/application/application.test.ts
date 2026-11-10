@@ -305,6 +305,23 @@ describe("ApplicationScript", () => {
     expect(scanSync).not.toHaveBeenCalled();
   });
 
+  test("createApplication refuses an app name that is not one plain path segment before writing", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace", {}, recorder);
+    script.applicationRunner.createApplication = async (...args) => {
+      recorder.record("createApplication", ...args);
+      return createFakeExecutor("app", { scanSync: async () => undefined }, recorder) as never;
+    };
+
+    for (const name of ["..", "../x", "a/b", "/tmp/x", ""])
+      await expect(script.createApplication(name, workspace as never)).rejects.toThrow(
+        `${JSON.stringify(name)} is no app name; use letters, digits, - and _, starting with a lowercase letter or digit`,
+      );
+
+    expect(recorder.names()).toEqual([]);
+  });
+
   test("studio prints the URL of the view asked for on the app's running dev server", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const { app } = track(await createTempApp("demo"));

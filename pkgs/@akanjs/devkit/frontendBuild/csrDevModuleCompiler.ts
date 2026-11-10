@@ -1,10 +1,18 @@
 import path from "node:path";
 import type { BunPlugin } from "bun";
 import type { App } from "../commandDecorators";
+import { loaderFor } from "../transforms/moduleSyntax";
 import { CsrDevFactoryCheck } from "./csrDevFactoryCheck";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
-import type { CsrDevCompiledModule, CsrDevContext, CsrDevSharedHelpers } from "./csrDevTypes";
+import type {
+  CsrDevBarrelStamp,
+  CsrDevCompiledModule,
+  CsrDevContext,
+  CsrDevNarrowedImport,
+  CsrDevSharedHelpers,
+} from "./csrDevTypes";
+import { DevBarrelImports } from "./devBarrelImports";
 import { RouteClientBuilder } from "./routeClientBuilder";
 
 interface OutputMetafile {
@@ -38,6 +46,7 @@ export interface CsrDevCompileResult {
   modules: CsrDevCompiledModule[];
   refusedVendors: string[];
   unresolved: string[];
+  barrels?: Record<string, CsrDevBarrelStamp>;
 }
 
 //* Every module becomes its own CJS factory: one Bun.build with each import external, so a save re-runs only the
@@ -58,6 +67,8 @@ export class CsrDevModuleCompiler {
   readonly #outDir: string;
   readonly #routePrefix: string;
   readonly #assets = new Set<string>();
+  #barrels: Promise<DevBarrelImports | null> | null = null;
+  readonly #narrowed = new Map<string, Record<string, CsrDevNarrowedImport>>();
 
   constructor({ app, paths, resolver, context, outDir, routePrefix }: CsrDevModuleCompilerOptions) {
     this.#app = app;
@@ -109,7 +120,14 @@ export class CsrDevModuleCompiler {
       this.#app.verbose(
         `[csr-dev] ${fallbacks.size} import(s) outside the browser build's graph resolved with Bun's runtime resolver: ${[...fallbacks].slice(0, 5).join(", ")}${fallbacks.size > 5 ? ", ..." : ""}`,
       );
-    return { modules: [...compiled.values()], refusedVendors: [], unresolved: [] };
+    const modules = [...compiled.values()];
+    return { modules, refusedVendors: [], unresolved: [], barrels: await this.#barrelStamps(modules) };
+  }
+
+  async #barrelStamps(modules: CsrDevCompiledModule[]): Promise<Record<string, CsrDevBarrelStamp>> {
+    const barrels = new Set(modules.flatMap((module) => Object.keys(module.narrowed ?? {})));
+    const barrelImports = barrels.size > 0 ? await this.#barrelImports() : null;
+    return barrelImports ? await barrelImports.stamps(barrels, (file) => this.#paths.idOf(file)) : {};
   }
 
   async #compileRound(files: string[]): Promise<Omit<BuildRound, "tangled">> {
@@ -197,6 +215,7 @@ export class CsrDevModuleCompiler {
         continue;
       }
       const sourceMap = sourceMaps.get(`${artifact.path}.map`);
+      const narrowed = this.#narrowed.get(file);
       modules.push({
         id,
         file,
@@ -206,6 +225,7 @@ export class CsrDevModuleCompiler {
         deps: this.#emittedDeps(code),
         mtimeMs: mtimes.get(file) ?? CsrDevPaths.mtimeOf(file),
         hash: hashes.get(file) ?? "",
+        ...(narrowed && Object.keys(narrowed).length > 0 ? { narrowed } : {}),
       });
     }
     return { modules, misses, tangled };
@@ -302,13 +322,17 @@ export class CsrDevModuleCompiler {
           });
         }
         if (!vendor)
-          build.onLoad({ filter: /\.tsx$/ }, async (args) => {
+          build.onLoad({ filter: /\.(?:tsx?|jsx?)$/ }, async (args) => {
             if (CsrDevPaths.isVendorFile(args.path)) return undefined;
-            const normalized = RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh(
-              await Bun.file(args.path).text(),
-              { path: args.path },
-            );
-            return normalized ? { contents: normalized, loader: "tsx" } : undefined;
+            const source = await Bun.file(args.path).text();
+            const rewrite = await (await this.#barrelImports())?.rewrite(source, args.path);
+            if (rewrite) this.#narrowed.set(CsrDevPaths.realpath(args.path), rewrite.narrowed);
+            const narrowed = rewrite?.contents ?? source;
+            const normalized = args.path.endsWith(".tsx")
+              ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh(narrowed, { path: args.path })
+              : null;
+            const contents = normalized ?? narrowed;
+            return contents === source ? undefined : { contents, loader: loaderFor(args.path) };
           });
         build.onResolve({ filter: /.*/ }, (args) => {
           if (args.kind === "entry-point-build" || !args.importer) return undefined;
@@ -332,6 +356,11 @@ export class CsrDevModuleCompiler {
         });
       },
     };
+  }
+
+  #barrelImports(): Promise<DevBarrelImports | null> {
+    this.#barrels ??= DevBarrelImports.create(this.#app, this.#context.barrelImports ?? []);
+    return this.#barrels;
   }
 
   //? Bun writes sources relative to the working directory; the page shows them by workspace path instead. A package

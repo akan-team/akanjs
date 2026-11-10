@@ -39,7 +39,8 @@ Then pick the workflow that matches the intent:
 
 ## The chain
 
-Each result names the next call in `next.tool`. Follow it; do not improvise.
+Each result names the next call in `next.tool`. Follow it; do not improvise. A result with an error diagnostic, or
+an apply that failed, names none: do what the diagnostic says, then plan again.
 
 1. `plan_workflow({ workflow: "create-module", inputs: { app: "<app>", module: "comment" } })` — read-only.
    Returns `planPath` and `next.tool=apply_workflow`. (`list_workflows` / `explain_workflow` give the names

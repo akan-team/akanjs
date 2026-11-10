@@ -1,6 +1,5 @@
 import { DataList, type Dayjs, FIELD_META, type GetStateObject } from "akanjs/base";
 import {
-  AbortSignals,
   capitalize,
   type DynamicRecord,
   deepObjectify,
@@ -913,7 +912,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   };
   const sliceAction = slices.reduce((acc, { keys, slice }) => {
     // One ticket per slice: every action below writes the same list.
-    const requests = new SliceRequest();
+    const requests = new SliceRequest(() => fetch.instance?.http);
     // One room per slice, not per component: a second room would apply every event to the one list twice.
     let liveWatch: { signature: string; dispose: () => void } | null = null;
     let liveWatchers = 0;
@@ -953,6 +952,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       modelObjInsight ?? (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
     const queryArgsIn = (self: SetGet) =>
       (self.get() as { [key: string]: any })[namesOfSlice.queryArgsOfModel] as object[];
+    const freshLoad = Symbol("freshLoad");
     // A row stamped stale while the request ran may be missing from its rows, so they are read once more, and only once.
     const loadList = async <T>(
       self: SetGet,
@@ -960,11 +960,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       load: (signal: AbortSignal) => Promise<T>,
       commit: (loaded: T, requestedAt: Date) => object,
     ) => {
-      if (callerSignal?.aborted) return;
+      if (callerSignal?.aborted) return requests.endSpent(callerSignal);
       self.set({ [namesOfSlice.modelListLoading]: true });
-      const { ticket, signal: ownSignal } = requests.claim();
-      const joined = AbortSignals.join([ownSignal, callerSignal]);
-      const signal = joined.signal ?? ownSignal;
+      const { ticket, signal, dispose, endsQuietly } = requests.claim(callerSignal);
       try {
         for (let round = 0; round < 2; round += 1) {
           // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
@@ -978,10 +976,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           if (staleAt.getTime() <= requestedAt.getTime()) return;
         }
       } catch (error) {
-        if (signal.aborted) return;
+        if (endsQuietly()) return;
         throw error;
       } finally {
-        joined.dispose();
+        dispose();
         if (requests.isCurrent(ticket)) self.set({ [namesOfSlice.modelListLoading]: false });
       }
     };
@@ -998,15 +996,16 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         } as FetchInitForm<Input, Filter> & FetchPolicy;
         const queryArgs = new Array(initArgLength).fill(null).map((_, i) => args[i] as object);
         const defaultModel = new cnst.full().set(initForm.default ?? {}) as unknown as Full;
-        this.set({ [names.defaultModel]: defaultModel, [namesOfSlice.isCumulativeOfModel]: false });
+        if (!initForm.signal?.aborted) this.set({ [names.defaultModel]: defaultModel });
         await ((this as unknown as DynamicRecord)[namesOfSlice.refreshModel] as (...args: any[]) => Promise<void>)({
           ...initForm,
           queryArgs,
+          [freshLoad]: true,
         });
       },
       [namesOfSlice.refreshModel]: async function (
         this: SetGet,
-        initForm: FetchInitForm<Input, Filter> & FetchPolicy & { queryArgs?: any[] } = {},
+        initForm: FetchInitForm<Input, Filter> & FetchPolicy & { queryArgs?: any[]; [freshLoad]?: boolean } = {},
       ) {
         const args = initForm.queryArgs ?? [];
         const refreshArgLength = Math.min(args.length, slice.args.length);
@@ -1027,10 +1026,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           sort = currentState[namesOfSlice.sortOfModel] as Sort,
           invalidate = true,
           queryArgs: queryArgsFromInitForm,
+          [freshLoad]: fresh = false,
           ...fetchPolicy
         } = initForm;
         const modelOperation = currentState[names.modelOperation] as string;
-        const isCumulative = currentState[namesOfSlice.isCumulativeOfModel] as boolean;
+        const isCumulative = !fresh && (currentState[namesOfSlice.isCumulativeOfModel] as boolean);
         const loadedLength = (currentState[namesOfSlice.modelList] as DataList<Light>).length;
         // A cumulative list refetches every loaded row, or it would collapse back to the first page.
         const fetchLimit = isCumulative ? Math.max(limit, loadedLength) : limit;
@@ -1071,6 +1071,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
               [namesOfSlice.sortOfModel]: sort,
               [namesOfSlice.pageOfModel]: page,
               [names.modelOperation]: "idle",
+              ...(fresh ? { [namesOfSlice.isCumulativeOfModel]: false } : {}),
             };
           },
         );
@@ -1124,10 +1125,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         const pageOfModel = currentState[namesOfSlice.pageOfModel] as number;
         const limitOfModel = (currentState[namesOfSlice.limitOfModel] as number) || 20;
         const sortOfModel = currentState[namesOfSlice.sortOfModel] as Sort;
-        if (options?.signal?.aborted) return;
-        const { ticket, signal: ownSignal } = requests.claim();
-        const joined = AbortSignals.join([ownSignal, options?.signal]);
-        const signal = joined.signal ?? ownSignal;
+        if (options?.signal?.aborted) return requests.endSpent(options.signal);
+        const { ticket, signal, dispose, endsQuietly } = requests.claim(options?.signal);
         const modelDataList = await fetchList(
           queryArgsOfModel,
           (pageOfModel - 1) * limitOfModel + modelList.length,
@@ -1136,10 +1135,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           { ...options, signal },
         )
           .catch((error: unknown) => {
-            if (signal.aborted) return null;
+            if (endsQuietly()) return null;
             throw error;
           })
-          .finally(joined.dispose);
+          .finally(dispose);
         if (!modelDataList || !requests.isCurrent(ticket) || queryArgsIn(this) !== queryArgsOfModel) return;
         // Re-read: a live event may have placed a row meanwhile, and `DataList` collapses the shifted duplicate.
         const currentModelList = (this.get() as { [key: string]: any })[namesOfSlice.modelList] as DataList<Light>;
