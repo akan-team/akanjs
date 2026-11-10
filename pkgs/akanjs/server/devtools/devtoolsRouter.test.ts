@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { BaseEnv } from "akanjs/base";
 import { getDefaultInjectRegistry, getDefaultLiveRegistry } from "akanjs/service";
-import type { BuildChangesPayload, BuildFrameworkPayload, BuildGraphPayload } from "../artifact";
+import { type BuildChangesPayload, BuilderRpc, type BuildFrameworkPayload, type BuildGraphPayload } from "../artifact";
 import type { DiLifecycle } from "../di/diLifecycle";
 import { DevtoolsFixture, fixtureRefName } from "./devtools.fixture";
 import { DevtoolsRouter, type DevtoolsRouterContext } from "./devtoolsRouter";
@@ -38,6 +38,7 @@ const makeContext = (environment: string, di: DiLifecycle = emptyDi()): Devtools
   prefix: "/api",
   websocketPrefix: "/ws",
   openapi: false,
+  web: true,
   getStatus: () => "running",
 });
 
@@ -193,11 +194,22 @@ describe("Akan Studio", () => {
     expect(html).toContain("akan-studio:open");
   });
 
+  test("stays on the ERD when no view, an empty one or an unknown one is asked for while the builder answers", async () => {
+    const routes = studioRoutes(async () => studioPayload);
+    for (const search of ["", "?view=", "?view=bogus"]) {
+      const response = await routes["/_akan/studio"].GET(new Request(`http://localhost/_akan/studio${search}`));
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain('aria-current="page">ERD</a>');
+    }
+  });
+
   test("lands on the live view when no dev builder can draw the graph, and says where to open the others", async () => {
     const routes = studioRoutes();
-    const landing = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio"));
-    expect(landing.status).toBe(200);
-    expect(await landing.text()).toContain('aria-current="page">Runtime (live)</a>');
+    for (const search of ["", "?view=", "?view=bogus"]) {
+      const landing = await routes["/_akan/studio"].GET(new Request(`http://localhost/_akan/studio${search}`));
+      expect(landing.status).toBe(200);
+      expect(await landing.text()).toContain('aria-current="page">Runtime (live)</a>');
+    }
     const response = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=erd"));
     expect(response.status).toBe(503);
     const html = await response.text();
@@ -217,6 +229,42 @@ describe("Akan Studio", () => {
     const brokenHtml = await broken.text();
     expect(brokenHtml).toContain("[builder] build-graph failed: boom");
     expect(brokenHtml).toContain('aria-current="page">ERD</a>');
+  });
+
+  test("lands on the live view when the dev builder never answers, and says so on a view that needs it", async () => {
+    const saved = { send: process.send, timeout: process.env.AKAN_BUILDER_RPC_TIMEOUT_MS };
+    process.send = (() => true) as unknown as typeof process.send;
+    process.env.AKAN_BUILDER_RPC_TIMEOUT_MS = "10";
+    const rpc = new BuilderRpc();
+    try {
+      const routes = new DevtoolsRouter({
+        ...makeContext("local"),
+        ...DevtoolsRouter.buildsFrom({ builderRpc: rpc }),
+      }).createRoutes() as AsyncRoutes;
+      const landing = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio"));
+      expect(landing.status).toBe(200);
+      expect(await landing.text()).toContain('aria-current="page">Runtime (live)</a>');
+      const asked = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=erd"));
+      expect(asked.status).toBe(503);
+      const html = await asked.text();
+      expect(html).toContain("[builder] build-graph got no answer in 10ms");
+      expect(html).toContain('aria-current="page">ERD</a>');
+    } finally {
+      rpc.dispose();
+      process.send = saved.send;
+      if (saved.timeout === undefined) delete process.env.AKAN_BUILDER_RPC_TIMEOUT_MS;
+      else process.env.AKAN_BUILDER_RPC_TIMEOUT_MS = saved.timeout;
+    }
+  });
+
+  test("says the web surface is off, not to run `akan start`, when this server serves the API only", async () => {
+    const routes = new DevtoolsRouter({ ...makeContext("local"), web: false }).createRoutes() as AsyncRoutes;
+    const response = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=erd"));
+    expect(response.status).toBe(503);
+    const html = await response.text();
+    expect(html).toContain("only with its web surface on");
+    expect(html).not.toContain("akan start");
+    expect(html).toContain("Runtime (live) reads this running server and needs no builder.");
   });
 
   test("draws the Change Map since the revision asked for, with the changed files no node covers", async () => {
