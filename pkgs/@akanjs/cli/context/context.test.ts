@@ -8,8 +8,17 @@ import {
 } from "@akanjs/devkit/akanContext";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, ModuleExecutor } from "@akanjs/devkit/executors";
-import { createTempApp, createTempModule, tempRoots, writeJson, writeText } from "@akanjs/devkit/testHelpers";
+import {
+  createTempApp,
+  createTempModule,
+  makeCliTempWorkspace,
+  tempRoots,
+  writeJson,
+  writeText,
+} from "@akanjs/devkit/testHelpers";
 import { AgentRunner } from "../agent/agent.runner";
+import { ApplicationRunner } from "../application/application.runner";
+import { LibraryRunner } from "../library/library.runner";
 import { ModuleRunner } from "../module/module.runner";
 import { ContextRunner } from "./context.runner";
 
@@ -90,6 +99,17 @@ describe("ContextRunner", () => {
     expect(strict.repairActions.map((action) => action.command)).toContain(
       "akan repair module-shape --app demo --module post",
     );
+  });
+
+  test("passes strict on a new app and library, whose own service modules come with an abstract", async () => {
+    const { workspace } = track(await makeCliTempWorkspace());
+    await new ApplicationRunner().createApplication("demo", workspace);
+    await new LibraryRunner().createLibrary("mylib", workspace);
+
+    const strict = await AkanContextAnalyzer.doctor(workspace, { strict: true });
+
+    expect(strict.diagnostics).toEqual([]);
+    expect(strict.status).toBe("passed");
   });
 
   test("doctor ignores a malformed workflow artifact instead of throwing", async () => {

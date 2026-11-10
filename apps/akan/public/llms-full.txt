@@ -2861,11 +2861,11 @@ Scan every app and library for code quality warnings, or measure the server/clie
 
 - --force (Boolean, default false, -F): `baseline` only: rewrite an `akan.baseline.json` that already exists.
 
-- baseline: Records, per rule, the breaches `akan lint` refuses, once, when a workspace adopts that gate; lint then compares the file with its copy at the fork point of the default branch, and fails in a clone without that history, so CI checks out with `fetch-depth: 0`.
+- baseline: Records, per rule, the breaches `akan lint` refuses in each app, lib and package, once, when a workspace adopts that gate. Lint then compares the file with its copy at the fork point of the default branch, or, where that commit has none, with the breaches its code already had, and fails in a clone without that history, so CI checks out with `fetch-depth: 0`.
 
 - where to run: The workspace root, the folder holding `package.json`, `tsconfig.json` and an `apps/`, `libs/` or `pkgs/` folder.
 
-- what is read: `.ts` and `.tsx` under `apps/` and `libs/` except `.d.ts`, plus every `*.abstract.md`.
+- what is read: `.ts` and `.tsx` under `apps/` and `libs/` except `.d.ts`, plus every `*.abstract.md` and each app, lib and package's `akan.baseline.json`.
 
 - what is skipped: Paths matched by the root `.gitignore`, plus `node_modules` and `.git`.
 

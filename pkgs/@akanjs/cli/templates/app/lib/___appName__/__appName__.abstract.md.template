@@ -1,0 +1,6 @@
+# <%= appName %> Service Abstract
+The app's own service module. It owns no endpoint, job or state yet.
+
+## Rules
+- `serverMode: "batch"` mounts it only in a `batch` or `all` process, so it suits cron and queue work; an endpoint a
+  page calls belongs in a module from `akan create-service`.
