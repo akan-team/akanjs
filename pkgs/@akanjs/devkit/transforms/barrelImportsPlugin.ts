@@ -237,6 +237,8 @@ export interface RewriteBarrelImportsOptions {
   /** Each replacement takes one line plus the newlines the statement spanned, so later lines keep their numbers. */
   keepLines?: boolean;
   specifierOf?: (subpath: string) => string;
+  /** Called for each import of a listed barrel with the value names whose rewrite reads its export map. */
+  onImport?: (barrel: string, names: string[]) => void;
 }
 
 export const workspaceBarrels = (barrels: readonly string[]): string[] =>
@@ -246,7 +248,7 @@ export const rewriteBarrelImports = async (
   source: string,
   barrels: string[],
   analyzer: BarrelAnalyzer,
-  { keepLines = false, specifierOf = (subpath: string) => subpath }: RewriteBarrelImportsOptions = {},
+  { keepLines = false, specifierOf = (subpath: string) => subpath, onImport }: RewriteBarrelImportsOptions = {},
 ): Promise<string | null> => {
   // Sound pre-filter before the costly parse: a static import cannot name a specifier absent from the text.
   if (!barrels.some((barrel) => source.includes(barrel))) return null;
@@ -260,6 +262,8 @@ export const rewriteBarrelImports = async (
     const stmt = statements[i];
     if (!stmt) continue;
     if (!barrels.includes(stmt.specifier)) continue;
+    const names = valueNamesOf(stmt.clause);
+    if (names.length > 0) onImport?.(stmt.specifier, names);
     const map = await analyzer.analyze(stmt.specifier);
     if (!map || map.size === 0) continue;
     const lines = rewriteSingleStatement(stmt, map, specifierOf);
@@ -328,6 +332,11 @@ const clauseOf = (importClause: ts.ImportClause): ParsedClause | null => {
     });
   }
   return { ...parsed, named };
+};
+
+const valueNamesOf = (clause: ParsedClause | null): string[] => {
+  if (!clause || clause.namespaceImport || clause.typeOnly) return [];
+  return (clause.named ?? []).filter((item) => !item.isType).map((item) => item.imported);
 };
 
 const rewriteSingleStatement = (

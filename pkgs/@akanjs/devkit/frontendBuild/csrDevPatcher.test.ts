@@ -119,12 +119,14 @@ describe("CsrDevPatcher", () => {
         workspace: { workspaceRoot: root },
         cwdPath: path.join(root, "apps/demo"),
         verbose: () => undefined,
+        getTsConfig: async () => ({ compilerOptions: { paths: tsPaths } }),
       };
       super(app as unknown as App, { dirName: "registry", routePrefix: "/_akan/registry/", library: true });
       this.#entry = entry;
     }
+    barrels: string[] = [];
     async context() {
-      return context;
+      return { ...context, barrelImports: this.barrels };
     }
     async writeEntries() {
       return { files: { "": this.#entry }, changed: [] };
@@ -145,13 +147,22 @@ describe("CsrDevPatcher", () => {
     }
   }
 
-  const movedRegistry = async (files: Record<string, string>, { roots = [] }: { roots?: string[] } = {}) => {
+  const tsPaths = { "@apps/*": ["./apps/*"] };
+  const movedRegistry = async (
+    files: Record<string, string>,
+    { roots = [], barrels = [] }: { roots?: string[]; barrels?: string[] } = {},
+  ) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "akan-csr-dev-move-"));
     dirs.push(root);
     const file = (relative: string) => path.join(CsrDevPaths.realpath(root), "apps/demo", relative);
     for (const [relative, text] of Object.entries(files)) await Bun.write(file(relative), text);
+    await Bun.write(
+      path.join(root, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: tsPaths } }),
+    );
     const bundler = new MovedRegistry(root, file("entry.ts"));
     bundler.extraRoots = roots.map((relative) => file(relative));
+    bundler.barrels = barrels;
     expect(await bundler.update([])).toMatchObject({ generation: 1, reload: true, first: true });
     const patcher = new CsrDevPatcher(bundler, { resident: true });
     expect(await patcher.update([])).toEqual({ kind: "unchanged" });
@@ -560,6 +571,43 @@ describe("CsrDevPatcher", () => {
       "apps/demo/ui/Page.tsx",
     ]);
     expect(await app()).toContain('__akan.define("apps/demo/ui/Foo.tsx"');
+  });
+
+  test("an export moved to another file of a narrowed barrel compiles the importers of that name, also after a restart", async () => {
+    const { bundler, patcher, file, app, changedIds } = await movedRegistry(
+      {
+        "ui/index.ts": 'export * from "./Foo";\n',
+        "ui/Foo.tsx": 'export const Foo = () => "foo";\nexport const Bar = () => "bar";\n',
+        "page.ts": 'import { Foo } from "@apps/demo/ui";\nexport const page = Foo;\n',
+        "entry.ts":
+          'import { Bar } from "@apps/demo/ui";\nimport { page } from "./page";\nexport const run = () => Bar() + page();\n',
+      },
+      { barrels: ["@apps/demo/ui"] },
+    );
+    const factoryOf = (text: string, id: string) =>
+      text.slice(text.indexOf(`__akan.define("${id}"`)).split("__akan.define(")[1];
+
+    await Bun.write(file("ui/Foo.tsx"), 'export const Foo = () => "foo v2";\nexport const Bar = () => "bar";\n');
+    expect(changedIds(await patcher.update([file("ui/Foo.tsx")]))).toEqual(["apps/demo/ui/Foo.tsx"]);
+
+    await Bun.write(file("ui/Foo.tsx"), 'export const Foo = () => "foo";\n');
+    await Bun.write(file("ui/Bar.tsx"), 'export const Bar = () => "bar moved";\n');
+    await Bun.write(file("ui/index.ts"), 'export * from "./Bar";\nexport * from "./Foo";\n');
+    const moved = await patcher.update([file("ui/Foo.tsx"), file("ui/Bar.tsx"), file("ui/index.ts")]);
+    expect(changedIds(moved)).toEqual(["apps/demo/entry.ts", "apps/demo/ui/Bar.tsx", "apps/demo/ui/Foo.tsx"]);
+    expect(factoryOf(await app(), "apps/demo/entry.ts")).toContain('require("akan-module:apps/demo/ui/Bar.tsx")');
+
+    patcher.forget();
+    await Bun.write(file("ui/Foo.tsx"), 'export const Foo = () => "foo";\nexport const Bar = () => "bar back";\n');
+    await Bun.write(file("ui/Bar.tsx"), "export const Gone = 1;\n");
+    const restarted = await bundler.update([]);
+    expect(restarted?.changedIds.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "apps/demo/entry.ts",
+      "apps/demo/ui/Bar.tsx",
+      "apps/demo/ui/Foo.tsx",
+    ]);
+    expect(factoryOf(await app(), "apps/demo/entry.ts")).toContain('require("akan-module:apps/demo/ui/Foo.tsx")');
+    expect(await new CsrDevPatcher(bundler).update([])).toEqual({ kind: "unchanged" });
   });
 
   test("a registry with no manifest is a first build, which no tab holds a module of", async () => {

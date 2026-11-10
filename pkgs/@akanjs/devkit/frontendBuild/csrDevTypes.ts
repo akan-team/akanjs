@@ -1,11 +1,18 @@
 import type { PageEntry } from "../artifact/implicitRootLayout";
 
+/** The names a module imports from one barrel, and a hash of the files narrowing them resolved to. */
+export interface CsrDevNarrowedImport {
+  names: string[];
+  hash: string;
+}
+
 export interface CsrDevGraphModule {
   vendor: boolean;
   mtimeMs: number;
   hash: string;
   deps: string[];
   helpers?: string;
+  narrowed?: Record<string, CsrDevNarrowedImport>;
 }
 
 export interface CsrDevGraph {
@@ -22,6 +29,8 @@ export interface CsrDevGraph {
   failed?: { roots: string[]; files: Record<string, string> };
   /** The stamp of the signal and dictionary sources the last whole build inlined; see `RegistryMetadataFingerprint`. */
   metadata?: string;
+  /** Per narrowed barrel, the mtime of each file and directory its analysis read, by id. */
+  barrels?: Record<string, Record<string, number>>;
 }
 
 export interface CsrDevContext {
@@ -53,6 +62,7 @@ export interface CsrDevCompiledModule {
   deps: string[];
   mtimeMs: number;
   hash: string;
+  narrowed?: Record<string, CsrDevNarrowedImport>;
 }
 
 /** Module factories by id and helper definitions by hash, kept in memory so app.js is written without a pass over the disk. */

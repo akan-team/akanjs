@@ -108,7 +108,7 @@ export class CsrDevPatcher {
     const entryIds = this.#bundler.entryIds(entries.files);
     const present = CsrDevPatcher.#presence(changedFiles);
     const forgotten = this.#forgetDeletedModules(state, present);
-    const changed = onlyRoots ? new Set<string>() : await this.#changedModules(graph, changedFiles, present);
+    const changed = onlyRoots ? new Set<string>() : await this.#changedModules(context, graph, changedFiles, present);
     for (const id of this.#withoutFactory(state, present)) changed.add(id);
     for (const file of entries.changed) changed.add(paths.idOf(file));
     const rootFiles = [...Object.values(entries.files), ...roots.filter((file) => fs.existsSync(file))];
@@ -188,7 +188,7 @@ export class CsrDevPatcher {
       forgotten.push(id);
     }
     graph.pending = graph.pending.filter((id) => !orphans.includes(id));
-    this.#bundler.merge(graph, resolver, compiled);
+    this.#bundler.merge(graph, resolver, compiled, result.barrels);
     if (!this.#resident) delete graph.failed;
     for (const module of compiled) this.#delegated.delete(module.id);
     graph.entries = entryIds;
@@ -359,6 +359,7 @@ export class CsrDevPatcher {
       modules: [...result.modules, ...more.modules],
       refusedVendors: [...result.refusedVendors, ...more.refusedVendors],
       unresolved: [...result.unresolved, ...more.unresolved],
+      barrels: { ...result.barrels, ...more.barrels },
     };
   }
 
@@ -471,6 +472,7 @@ export class CsrDevPatcher {
   }
 
   async #changedModules(
+    context: CsrDevContext,
     graph: CsrDevGraph,
     changedFiles: string[],
     present: (file: string) => boolean,
@@ -482,6 +484,7 @@ export class CsrDevPatcher {
       if (graph.modules[id]) changed.add(id);
     }
     for (const id of this.#shadowedImporters(graph, changedFiles)) changed.add(id);
+    for (const id of await this.#renarrowedImporters(context, graph, changedFiles)) changed.add(id);
     // Stat, not trust: a save made while CSR was unarmed, or a build that failed, never reached this graph. The hash
     // settles it because route discovery rewrites the generated layout wrappers, touching them on every call.
     for (const [id, module] of Object.entries(graph.modules)) {
@@ -506,6 +509,35 @@ export class CsrDevPatcher {
       }
     }
     return changed;
+  }
+
+  //? A narrowed import names the file its export lived in when the importer compiled, and an export moved to another
+  //? file leaves the importer's text as it was: a barrel whose files changed (stat'ed as modules are, so a restart sees
+  //? an edit made meanwhile) is analyzed again, and an importer whose names now narrow elsewhere compiles again.
+  async #renarrowedImporters(context: CsrDevContext, graph: CsrDevGraph, changedFiles: string[]): Promise<string[]> {
+    const { paths } = this.#bundler;
+    const saved = new Set(changedFiles.map((file) => paths.idOf(file)));
+    const stale = Object.entries(graph.barrels ?? {})
+      .filter(([, read]) =>
+        Object.entries(read).some(
+          ([id, mtimeMs]) => saved.has(id) || CsrDevPaths.mtimeOf(paths.fileOf(id)) !== mtimeMs,
+        ),
+      )
+      .map(([barrel]) => barrel);
+    if (stale.length === 0) return [];
+    const barrels = await this.#bundler.barrelImports(context);
+    if (!barrels) return [];
+    const importers: string[] = [];
+    for (const [id, module] of Object.entries(graph.modules)) {
+      for (const barrel of stale) {
+        const narrowed = module.narrowed?.[barrel];
+        if (!narrowed || (await barrels.fingerprint(barrel, narrowed.names)) === narrowed.hash) continue;
+        importers.push(id);
+        break;
+      }
+    }
+    graph.barrels = { ...graph.barrels, ...(await barrels.stamps(stale, (file) => paths.idOf(file))) };
+    return importers;
   }
 
   //? A new file can take over a relative import another module already resolved (`Foo.tsx` created beside
