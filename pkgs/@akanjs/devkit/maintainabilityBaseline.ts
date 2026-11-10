@@ -16,14 +16,16 @@ export interface BaselineEntry {
 
 type Counts = ReadonlyMap<string, number>;
 
-//* One section per rule, each key holding what the gate measured: lines, store accesses, writes or calls. A count
-//* only falls, so a recorded entry cannot take on more of the debt it records.
+//* One section per rule, each key holding what the gate measured: lines, members, store accesses, writes or calls.
+//* A count only falls, so a recorded entry cannot take on more of the debt it records.
 export class MaintainabilityBaseline {
   static readonly fileName = "akan.baseline.json";
   static readonly reasonMinChars = 10;
   static readonly debtRules = [
     "akan.size.file",
     "akan.size.component",
+    "akan.size.function",
+    "akan.size.class",
     "akan.component.store-access",
     "akan.store.multi-write",
     "akan.store.root-write-chain",
@@ -34,12 +36,15 @@ export class MaintainabilityBaseline {
   static readonly reasonedRules: ReadonlySet<DebtRuleId> = new Set([
     "akan.size.file",
     "akan.size.component",
+    "akan.size.function",
+    "akan.size.class",
     "akan.component.store-access",
     "akan.service.call-in-loop",
   ]);
 
   static countOf(violation: MaintainabilityViolation) {
     if (violation.kind === "size") return violation.lineCount;
+    if (violation.kind === "classSize") return violation.memberCount;
     if (violation.kind === "storeAccess") return violation.accessCount;
     if (violation.kind === "multiWrite") return violation.writeCount;
     if (violation.kind === "writePlacement") return violation.writes.length;

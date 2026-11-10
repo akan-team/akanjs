@@ -1,0 +1,10 @@
+{
+  "akan.size.file": {
+    "akanGraph.ts": 928
+  },
+  "akan.size.function": {
+    "akanGraph.ts#GraphBuilder.build": 156,
+    "moduleFacts.ts#createFactReader": 549,
+    "nameTable.ts#NameTable.#addGroup": 176
+  }
+}

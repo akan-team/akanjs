@@ -13,6 +13,9 @@ by `akan agent install`; edit anything outside the markers freely.
   pattern. `pkgs/@akanjs/cli` and `pkgs/@akanjs/devkit` hold the CLI and build tooling; `infra/` holds Helm,
   deployment templates, edge configs and the Jenkins env/secret scripts.
 - The grit lint plugins scope `apps/` and `libs/` only; `pkgs/` still follows the house style, comments included.
+- `akan lint` and `akan verify` hold a package to a structure budget: a file ≤ 800 lines, a function ≤ 150
+  (`akan.size.function`), a class ≤ 60 members (`akan.size.class`). `pkgs/<pkg>/akan.baseline.json` records the debt
+  it started with and only shrinks; split the code rather than raise an entry.
 - `akan verify @akanjs/cli` lints and typechecks one package. Tests run with `bun run akan test <pkg> [files]` from
   the root or `cd <pkg> && bun test --isolate ./<file>`, never plain `bun test` from the root.
 - The managed block below, `.claude/rules/akan/`, `.cursor/rules/akan-*.mdc`, `.claude/skills/` and
@@ -147,7 +150,7 @@ agent reads it before editing a match.
 | `{apps,libs}/**/*.signal.ts`, `{apps,libs}/**/srvkit/**` | `.claude/rules/akan/auth.md` |
 | `{apps,libs}/*/akan.config.ts`, `{apps,libs}/*/main.ts`, `{apps,libs}/*/env/**` | `.claude/rules/akan/config.md` |
 | `{apps,libs}/**/*.constant.ts` | `.claude/rules/akan/constant.md` |
-| `{apps,libs}/**/*.tsx`, `{apps,libs}/**/*.{store,service,document}.ts`, `{apps,libs}/*/{ui,webkit}/**`, `{apps,libs}/*/akan.baseline.json` | `.claude/rules/akan/gates.md` |
+| `{apps,libs}/**/*.tsx`, `{apps,libs}/**/*.{store,service,document}.ts`, `{apps,libs}/*/{ui,webkit}/**`, `{apps,libs}/*/akan.baseline.json`, `pkgs/**/*.{ts,tsx}`, `pkgs/**/akan.baseline.json` | `.claude/rules/akan/gates.md` |
 | `{apps,libs}/*/{common,webkit,srvkit,ui,plugin,native}/**` | `.claude/rules/akan/layer.md` |
 | `{apps,libs}/*/script/migration/**` | `.claude/rules/akan/migration.md` |
 | `{apps,libs}/**/lib/**` | `.claude/rules/akan/module.md` |
