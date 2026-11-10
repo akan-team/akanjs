@@ -70,9 +70,13 @@ describe("AppPreview.pagePaths", () => {
         "/backend/memo",
         "/favicon.ico",
         "/robots.txt",
-        "/shop/sitemap.xml",
+        "/sitemap.xml",
+        "/shop/manifest.webmanifest",
+        "/openapi.json",
+        "/mcp",
         "/images/logo.png",
         "/images/missing.png",
+        "/shop/sitemap.xml",
         "/_akanish",
         "/board",
       ];
@@ -85,9 +89,13 @@ describe("AppPreview.pagePaths", () => {
         "/backend/memo",
         "/favicon.ico",
         "/robots.txt",
-        "/shop/sitemap.xml",
+        "/sitemap.xml",
+        "/shop/manifest.webmanifest",
+        "/openapi.json",
+        "/mcp",
         "/images/logo.png",
         "/en/images/missing.png?csr=true&akanMobileTarget=preview",
+        "/en/shop/sitemap.xml?csr=true&akanMobileTarget=preview",
         "/en/_akanish?csr=true&akanMobileTarget=preview",
         "/en/board?csr=true&akanMobileTarget=preview",
       ]);
@@ -107,9 +115,31 @@ describe("AppPreview.pagePaths", () => {
     ]);
   });
 
-  test("names a screenshot after the page and its boot", () => {
+  test("names a screenshot after the page, its query and its boot", () => {
     expect(AppPreview.screenshotName("/en/")).toBe("en.png");
     expect(AppPreview.screenshotName("/en/board/[id]?csr=true")).toBe("en-board-_id_.csr.png");
+    expect(AppPreview.screenshotName("/_akan/studio?view=runtime")).toBe("_akan-studio.view-runtime.png");
+    expect(AppPreview.screenshotName("/_akan/studio?view=signals")).toBe("_akan-studio.view-signals.png");
+    expect(AppPreview.screenshotName("/en/board?tab=a/b&csr=true&akanMobileTarget=preview")).toBe(
+      "en-board.tab-a_b.csr.png",
+    );
+  });
+});
+
+describe("AppPreview.pathsOf", () => {
+  test("reads the app's API prefix and public/ for the paths it opens as written", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-preview-app-"));
+    try {
+      await Bun.write(path.join(root, "public/logo.png"), "png");
+      const app = { cwdPath: root, getConfig: async () => ({ i18n, api: { prefix: "/backend" } }) } as unknown as App;
+      expect(await AppPreview.pathsOf(app, ["/backend/memo", "/logo.png", "/board"], false)).toEqual([
+        "/backend/memo",
+        "/logo.png",
+        "/en/board",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

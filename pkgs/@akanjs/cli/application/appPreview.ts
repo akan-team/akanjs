@@ -83,17 +83,12 @@ export class AppPreview {
     const engine = options.engine ?? PreviewChrome.backend;
     const unavailable = PreviewView.unavailableReason(engine);
     if (unavailable) throw new Error(unavailable);
-    const { i18n, api } = await app.getConfig();
     const changed = options.changed ? await AppPreview.#changedPages(app) : { paths: [], skipped: [] };
     if (options.changed && !changed.paths.length && !options.paths?.length)
       throw new Error(
         `No page to open: ${changed.skipped.join("; ")}. Pass a concrete path, e.g. \`akan preview ${app.name} /memo/1\`.`,
       );
-    const paths = AppPreview.pagePaths([...(options.paths ?? []), ...changed.paths], i18n, {
-      csr: !!options.csr,
-      apiPrefix: api.prefix,
-      publicDir: path.join(app.cwdPath, "public"),
-    });
+    const paths = await AppPreview.pathsOf(app, [...(options.paths ?? []), ...changed.paths], !!options.csr);
     const port = await app.getDevPort();
     const origin = `http://localhost:${port}`;
     const root = app.workspace.workspaceRoot;
@@ -143,6 +138,15 @@ export class AppPreview {
     }
   }
 
+  static async pathsOf(app: Pick<App, "getConfig" | "cwdPath">, paths: string[], csr: boolean) {
+    const { i18n, api } = await app.getConfig();
+    return AppPreview.pagePaths(paths, i18n, {
+      csr,
+      apiPrefix: api.prefix,
+      publicDir: path.join(app.cwdPath, "public"),
+    });
+  }
+
   /** An unprefixed path answers with a redirect or a 503 where it does not name the default locale itself: under
    * `"always"`, and in a CSR boot, whose routes match on the locale segment. */
   static pagePaths(
@@ -166,8 +170,14 @@ export class AppPreview {
     return [...new Set(pages)];
   }
 
-  static readonly #serverFiles = new Set(["/favicon.ico", "/robots.txt", "/sitemap.xml", "/manifest.webmanifest"]);
-  static readonly #basePathFiles = new Set(["sitemap.xml", "manifest.webmanifest"]);
+  static readonly #serverFiles = new Set([
+    "/favicon.ico",
+    "/robots.txt",
+    "/sitemap.xml",
+    "/manifest.webmanifest",
+    "/openapi.json",
+    "/mcp",
+  ]);
 
   //? The server routes these outside `/:lang` and the locale proxy skips them, so a locale prefix 404s them.
   static #isPagePath(
@@ -181,7 +191,7 @@ export class AppPreview {
     const prefixes = ["/_akan", "/__csr", "/__rsc", "/.well-known", apiPrefix.replace(/\/+$/, "")].filter(Boolean);
     if (prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return false;
     if (AppPreview.#serverFiles.has(pathname)) return false;
-    if (segments.length === 2 && AppPreview.#basePathFiles.has(segments[1] ?? "")) return false;
+    if (segments.length === 2 && segments[1] === "manifest.webmanifest") return false;
     return !(publicDir && AppPreview.#isPublicFile(publicDir, pathname));
   }
 
@@ -245,7 +255,11 @@ export class AppPreview {
         .filter(Boolean)
         .join("-")
         .replace(/[^\w-]/g, "_") || "index";
-    return `${slug}${url.searchParams.get("csr") === "true" ? ".csr" : ""}.png`;
+    const query = [...url.searchParams]
+      .filter(([key]) => key !== "csr" && key !== "akanMobileTarget")
+      .map(([key, value]) => `${key}-${value}`.replace(/[^\w-]/g, "_"))
+      .join("-");
+    return `${slug}${query ? `.${query}` : ""}${url.searchParams.get("csr") === "true" ? ".csr" : ""}.png`;
   }
 
   static attribute(page: AppPreviewPage, records: LogRecord[]) {
