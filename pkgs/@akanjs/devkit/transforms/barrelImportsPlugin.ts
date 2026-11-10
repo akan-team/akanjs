@@ -4,7 +4,7 @@ import ts from "typescript";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap, type PackageEntry } from "./barrelAnalyzer";
-import { loaderFor, type NamedItem, parseNamedList } from "./moduleSyntax";
+import { loaderFor, type NamedItem } from "./moduleSyntax";
 
 export interface BarrelImportsPluginOptions {
   /** Absolute paths whose content is returned unchanged (e.g. node_modules). */
@@ -273,10 +273,17 @@ export const rewriteBarrelImports = async (
   return changed ? out : null;
 };
 
+interface ParsedClause {
+  defaultImport?: string;
+  namespaceImport?: string;
+  named?: NamedItem[];
+  typeOnly: boolean;
+}
+
 interface ImportStatement {
   start: number;
   end: number;
-  clause: string;
+  clause: ParsedClause | null;
   specifier: string;
 }
 
@@ -298,48 +305,29 @@ const findImportStatements = (source: string): ImportStatement[] => {
     statements.push({
       start: statement.getStart(sourceFile),
       end: statement.end,
-      clause: source.slice(importClause.getStart(sourceFile), importClause.end).trim(),
+      clause: clauseOf(importClause),
       specifier: statement.moduleSpecifier.text,
     });
   }
   return statements;
 };
 
-interface ParsedClause {
-  defaultImport?: string;
-  namespaceImport?: string;
-  named?: NamedItem[];
-  typeOnly: boolean;
-}
-
-const parseImportClause = (clause: string): ParsedClause | null => {
-  let rest = clause.trim();
-  let typeOnly = false;
-  if (rest.startsWith("type ")) {
-    typeOnly = true;
-    rest = rest.slice(5).trim();
+const clauseOf = (importClause: ts.ImportClause): ParsedClause | null => {
+  const parsed: ParsedClause = { typeOnly: importClause.phaseModifier === ts.SyntaxKind.TypeKeyword };
+  if (importClause.name) parsed.defaultImport = importClause.name.text;
+  const bindings = importClause.namedBindings;
+  if (!bindings) return parsed;
+  if (ts.isNamespaceImport(bindings)) return { ...parsed, namespaceImport: bindings.name.text };
+  const named: NamedItem[] = [];
+  for (const element of bindings.elements) {
+    if (element.propertyName && !ts.isIdentifier(element.propertyName)) return null;
+    named.push({
+      imported: (element.propertyName ?? element.name).text,
+      local: element.name.text,
+      isType: element.isTypeOnly,
+    });
   }
-  const parsed: ParsedClause = { typeOnly };
-  const commaMatch = /^(\w+)\s*,\s*(.+)$/.exec(rest);
-  if (commaMatch) {
-    parsed.defaultImport = commaMatch[1];
-    rest = commaMatch[2] ?? "";
-  } else if (/^\w+$/.test(rest)) {
-    parsed.defaultImport = rest;
-    return parsed;
-  }
-  if (rest.startsWith("*")) {
-    const ns = /^\*\s+as\s+(\w+)$/.exec(rest);
-    if (!ns) return null;
-    parsed.namespaceImport = ns[1];
-    return parsed;
-  }
-  if (rest.startsWith("{")) {
-    const close = rest.indexOf("}");
-    if (close === -1) return null;
-    parsed.named = parseNamedList(rest.slice(1, close));
-  }
-  return parsed;
+  return { ...parsed, named };
 };
 
 const rewriteSingleStatement = (
@@ -347,7 +335,7 @@ const rewriteSingleStatement = (
   map: BarrelExportMap,
   specifierOf: (subpath: string) => string,
 ): string[] | null => {
-  const clause = parseImportClause(stmt.clause);
+  const { clause } = stmt;
   if (!clause) return null;
   // Namespace imports need the whole barrel — cannot rewrite safely.
   if (clause.namespaceImport) return null;

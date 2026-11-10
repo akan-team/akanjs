@@ -287,6 +287,27 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(await rewriteBarrelImports('import { A } from "@other/pkg";', ["@scope/pkg"], analyzer)).toBeNull();
   });
 
+  test("reads every name of an import whose braces hold comments, aliases and type-only names", async () => {
+    const analyzer = fakeAnalyzer([
+      ["A", { subpath: "@scope/pkg/leaf", originalName: "A" }],
+      ["st", { subpath: "@scope/pkg/store", originalName: "st" }],
+    ]);
+    const rewrite = async (source: string) => await rewriteBarrelImports(source, ["@scope/pkg"], analyzer);
+    const narrowed = 'import { A } from "@scope/pkg/leaf";\nimport { st } from "@scope/pkg/store";\n';
+
+    expect(await rewrite('import {\n  A, // the leaf\n  st,\n} from "@scope/pkg";\n')).toBe(narrowed);
+    expect(await rewrite('import { A, /* the store */ st } from "@scope/pkg";\n')).toBe(narrowed);
+    expect(await rewrite('import { type Shape, A as Leaf, st as store } from "@scope/pkg";\n')).toBe(
+      [
+        'import { type Shape } from "@scope/pkg";',
+        'import { A as Leaf } from "@scope/pkg/leaf";',
+        'import { st as store } from "@scope/pkg/store";',
+        "",
+      ].join("\n"),
+    );
+    expect(await rewrite('import { "A" as quoted } from "@scope/pkg";\n')).toBeNull();
+  });
+
   test("keeps a client barrel's runtime and store, never its module UI, when flattening an app or lib import", async () => {
     const root = await makeTempRoot();
     for (const sys of ["apps/demo", "libs/kit"]) {
