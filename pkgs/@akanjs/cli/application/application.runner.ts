@@ -1,11 +1,11 @@
-import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
 import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
 import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPreload";
 import { type App, assertPromptable, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, CommandExecutionError, LibExecutor, PkgExecutor, SysExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, CommandExecutionError, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import {
   DesktopServerStage,
@@ -27,6 +27,7 @@ import type { ServerPolicy } from "@akanjs/native/api";
 import { Logger, type LogRecord, toError } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
 import type { InterruptTeardown } from "./interruptTeardown";
+import { reportsNoTestFile, testTargetOf } from "./testTarget";
 
 export interface LogsOptions {
   level?: string | null;
@@ -103,20 +104,6 @@ export interface IosReleaseOptions extends MobileTargetOptions, MobilePublicEnvO
 // Lazy, so the `akan start` hot path never loads the build, mobile and prompt stacks.
 const loadBuildRunner = async () => (await import("@akanjs/devkit/applicationBuildRunner")).ApplicationBuildRunner;
 const loadPrompts = async () => await import("@inquirer/prompts");
-const testFileName = /[._](test|spec)\.[cm]?[jt]sx?$/i;
-//? `bun test` skips a dot folder and node_modules but follows a linked folder, such as a synced `page/(libs)` link.
-const hasTestFile = (dir: string, seen = new Set<string>()): boolean => {
-  const real = realpathSync(dir);
-  if (seen.has(real)) return false;
-  seen.add(real);
-  return readdirSync(dir, { withFileTypes: true }).some((entry) => {
-    const entryPath = path.join(dir, entry.name);
-    const isDir =
-      entry.isDirectory() || (entry.isSymbolicLink() && statSync(entryPath, { throwIfNoEntry: false })?.isDirectory());
-    if (!isDir) return testFileName.test(entry.name);
-    return !entry.name.startsWith(".") && entry.name !== "node_modules" && hasTestFile(entryPath, seen);
-  });
-};
 
 export class ApplicationRunner extends runner("application") {
   async createApplication(appName: string, workspace: Workspace, libs: string[] = []) {
@@ -342,16 +329,9 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       options,
     );
   }
-  #workspaceRootOf(exec: Exec) {
-    return exec instanceof SysExecutor || exec instanceof PkgExecutor ? exec.workspace.workspaceRoot : process.cwd();
-  }
-  #targetOf(exec: Exec) {
-    return path.relative(this.#workspaceRootOf(exec), exec.cwdPath).split(path.sep).join("/");
-  }
   // Bun takes an argument as a path only behind `./` or `/`; a bare one is a substring filter over every test file.
   resolveTestPaths(exec: Exec, files: string[]) {
-    const root = this.#workspaceRootOf(exec);
-    const target = this.#targetOf(exec);
+    const { root, target } = testTargetOf(exec);
     const isInside = (relative: string) =>
       relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
     return files.map((file) => {
@@ -371,13 +351,7 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
   }
   async test(exec: Exec, testPaths: string[] = [], flags: string[] = []) {
     const isSignalTarget = exec instanceof AppExecutor || exec instanceof LibExecutor;
-    if (!testPaths.length && !hasTestFile(exec.cwdPath)) {
-      const hint = isSignalTarget
-        ? " A signal test goes beside its module, as lib/<model>/<model>.signal.test.ts."
-        : "";
-      Logger.rawLog(`No *.test.ts or *.spec.ts file in ${this.#targetOf(exec)}, so no test ran.${hint}`);
-      return;
-    }
+    if (!testPaths.length && reportsNoTestFile(exec)) return;
     const preloadPath = isSignalTarget ? await resolveSignalTestPreloadPath(exec) : null;
     const env = isSignalTarget
       ? {
