@@ -108,6 +108,12 @@ Akan 프레임워크 패키지는 `dist/pkgs/*`에서만 배포합니다. `verif
 확인합니다. 저장소 릴리스에서는 `bun run release:build-packages && bun run release:verify-packages`를 쓰세요. CLI
 패키지 결과물이 마지막에 빌드되어 루트 `akan` 부트스트랩 스크립트가 덮어쓰지 않습니다.
 
+릴리스 후보(rc)는 CI가 배포합니다. `rc` 브랜치에 push될 때마다 CI 전체를 돌린 뒤, 대기 중인 changeset이
+릴리스할 버전의 다음 `<version>-rc.N`을 npm provenance와 함께 배포하고 그 커밋에 `v<version>-rc.N` 태그를 붙입니다.
+정식 릴리스는 지금처럼 수동입니다: `bun run changeset:version` 후 `akan deploy-akan --registry npm`.
+`npm-publish` environment는 `rc`만 허용하므로 `rc`에 push할 수 있는 사람은 rc를 배포할 수 있습니다. 저장소 규칙에서
+`rc` push 권한을 제한하세요.
+
 `akan sync-architecture`는 `pkgs/akanjs/ARCHITECTURE.md`의 패싯 레이어와 프로세스 메시지 표를 프레임워크 소스에서
 다시 만들고, 손으로 쓴 부분이 소스에 더는 없는 클래스를 가리키면 실패합니다.
 
