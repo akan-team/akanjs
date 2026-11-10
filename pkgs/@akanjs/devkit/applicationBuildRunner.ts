@@ -19,7 +19,7 @@ import {
   SsrBaseArtifactBuilder,
   VendorImportScanner,
 } from "./frontendBuild";
-import { RouteJsBudget, type RouteJsBudgetMode, type RouteJsSize } from "./routeJsBudget";
+import { RouteJsBudget, type RouteJsBudgetMode, type RouteJsBudgetStatus, type RouteJsSize } from "./routeJsBudget";
 import { Spinner } from "./spinner";
 import { createServerEnvPlugin } from "./transforms/serverEnvPlugin";
 import { ServerEnvProfile } from "./transforms/serverEnvProfile";
@@ -207,6 +207,7 @@ export class ApplicationBuildRunner {
     return {
       phases: this.#phases,
       ...(routeJs ? { routeJs: routeJs.sizes } : {}),
+      ...(routeJs?.warnings ? { routeJsWarnings: routeJs.warnings } : {}),
       durationMs: Date.now() - this.#startedAt,
       outputDir: this.#app.dist.cwdPath,
       artifactDir: path.join(this.#app.dist.cwdPath, ".akan/artifact"),
@@ -446,14 +447,14 @@ void run().catch((error) => {
   }
 
   //? After `compress`: a route is measured by the brotli bytes it is served as, read from the `.br` sidecars.
-  async #measureRouteJs(environment: string): Promise<{ sizes: RouteJsSize[]; summary: string } | null> {
+  async #measureRouteJs(environment: string): Promise<(RouteJsBudgetStatus & { sizes: RouteJsSize[] }) | null> {
     if (this.#budget === "off" || !this.#modulesByRoute) return null;
     const sizes = await RouteJsBudget.measure(
       path.join(this.#app.dist.cwdPath, ".akan/artifact"),
       this.#modulesByRoute,
     );
     const budgetPath = path.join(this.#app.cwdPath, RouteJsBudget.fileName);
-    const status = await RouteJsBudget.check(sizes, {
+    const { summary: status, warnings } = await RouteJsBudget.check(sizes, {
       mode: this.#budget,
       budgetPath,
       source: path.relative(this.#app.workspace.workspaceRoot, budgetPath),
@@ -466,6 +467,7 @@ void run().catch((error) => {
       summary: largest
         ? `${sizes.length} routes, largest ${largest.routeId} ${formatBytes(largest.brotliBytes)} brotli (${formatBytes(largest.rawBytes)} raw); ${status}`
         : status,
+      ...(warnings ? { warnings } : {}),
     };
   }
 

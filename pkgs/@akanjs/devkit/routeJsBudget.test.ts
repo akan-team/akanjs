@@ -108,23 +108,45 @@ describe("RouteJsBudget", () => {
       await expect(RouteJsBudget.check(sizes, { ...broken, mode: "enforce" })).rejects.toThrow("is not valid JSON");
     });
 
-    test("report names an overage and a file it cannot read, and fails neither", async () => {
-      const over = await setup(JSON.stringify({ routeJsBrotliKB: { "/:lang/memo": 120 } }));
-      expect(await RouteJsBudget.check(sizes, { ...over, mode: "report" })).toBe(
-        "1 route(s) over apps/shop/akan.budget.json, reported only: /:lang/memo",
-      );
+    test("report warns of an overage and a file it cannot read, and fails neither", async () => {
+      const over = await setup(JSON.stringify({ env: "main", routeJsBrotliKB: { "/:lang/memo": 120 } }));
+      expect(await RouteJsBudget.check(sizes, { ...over, mode: "report" })).toEqual({
+        summary:
+          "1 route(s) over apps/shop/akan.budget.json (recorded for main, built for local), reported only: /:lang/memo",
+        warnings: [
+          {
+            file: "apps/shop/akan.budget.json",
+            message:
+              "/:lang/memo loads 133,120 bytes brotli, over its limit of 126,976 (recorded for main, built for local); akan build fails on it",
+            fix: "shrink what the route loads, or raise its entry by hand in the same change",
+          },
+        ],
+      });
       const broken = await setup("{");
-      expect(await RouteJsBudget.check(sizes, { ...broken, mode: "report" })).toBe(
-        "apps/shop/akan.budget.json is not valid JSON, not checked",
-      );
-      expect(await RouteJsBudget.check(sizes, { ...(await setup()), mode: "report" })).toBe("no akan.budget.json");
+      expect(await RouteJsBudget.check(sizes, { ...broken, mode: "report" })).toEqual({
+        summary: "apps/shop/akan.budget.json is not valid JSON, not checked",
+        warnings: [
+          {
+            file: "apps/shop/akan.budget.json",
+            message: "apps/shop/akan.budget.json is not valid JSON; akan build fails on it",
+            fix: "correct it, or rewrite it with akan build <app> --update-budget",
+          },
+        ],
+      });
+      expect(await RouteJsBudget.check(sizes, { ...(await setup()), mode: "report" })).toEqual({
+        summary: "no akan.budget.json",
+      });
+      const within = await setup(JSON.stringify({ routeJsBrotliKB: { "/:lang/memo": 130 } }));
+      expect(await RouteJsBudget.check(sizes, { ...within, mode: "report" })).toEqual({
+        summary: "within apps/shop/akan.budget.json, 1 route(s) without an entry",
+      });
     });
 
     test("update writes the file for this build's environment, rewriting one it cannot read", async () => {
       const broken = await setup("{");
-      expect(await RouteJsBudget.check(sizes, { ...broken, mode: "update" })).toBe(
-        "apps/shop/akan.budget.json rewritten (apps/shop/akan.budget.json is not valid JSON)",
-      );
+      expect(await RouteJsBudget.check(sizes, { ...broken, mode: "update" })).toEqual({
+        summary: "apps/shop/akan.budget.json rewritten (apps/shop/akan.budget.json is not valid JSON)",
+      });
       const written = RouteJsBudget.parse(await Bun.file(broken.budgetPath).text());
       expect(written.env).toBe("local");
       expect(Object.fromEntries(written.kbByRoute)).toEqual({ "/:lang/memo": 130, "/:lang/new": 70 });

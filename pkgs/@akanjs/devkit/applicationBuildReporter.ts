@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
-import { RouteJsBudget, type RouteJsSize } from "./routeJsBudget";
+import { RouteJsBudget, type RouteJsBudgetWarning, type RouteJsSize } from "./routeJsBudget";
 
 export interface ApplicationBuildPhaseResult {
   id: string;
@@ -18,6 +18,7 @@ export interface ApplicationBuildResult {
   artifactDir: string;
   environment: string;
   routeJs?: RouteJsSize[];
+  routeJsWarnings?: RouteJsBudgetWarning[];
 }
 
 export interface ApplicationBuildProgressReporter {

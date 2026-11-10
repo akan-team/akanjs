@@ -19,6 +19,17 @@ export interface RouteJsOverage {
 
 export type RouteJsBudgetMode = "enforce" | "update" | "report" | "off";
 
+export interface RouteJsBudgetWarning {
+  file: string;
+  message: string;
+  fix: string;
+}
+
+export interface RouteJsBudgetStatus {
+  summary: string;
+  warnings?: RouteJsBudgetWarning[];
+}
+
 export interface RouteJsBudgetCheck {
   mode: Exclude<RouteJsBudgetMode, "off">;
   budgetPath: string;
@@ -26,14 +37,11 @@ export interface RouteJsBudgetCheck {
   environment: string;
 }
 
-//* Each entry is the brotli KB of every client module statically reachable from a route's page and layouts, plus
-//* their vendors. `--update-budget` adds a new route and lowers an entry its route now fits under; only a hand edit
-//* raises one. The check allows the larger of 1% and 4KB over an entry, as BundleSizeGate does: the bundles inline
-//* `AKAN_PUBLIC_*`, so a budget recorded on a local build can measure over a kilobyte off a `--env main` one.
 export class RouteJsBudget {
   static readonly fileName = "akan.budget.json";
   static readonly section = "routeJsBrotliKB";
   static readonly tableRows = 10;
+  //? BundleSizeGate's slack: bundles inline `AKAN_PUBLIC_*`, so a local build measures over 1KB off a `--env main` one.
   static readonly #relativeSlack = 0.01;
   static readonly #absoluteSlack = 4096;
 
@@ -64,7 +72,10 @@ export class RouteJsBudget {
   }
 
   //? `report` runs inside `akan verify`, where an overage or a broken file is no code error to fix in the edit loop.
-  static async check(sizes: RouteJsSize[], { mode, budgetPath, source, environment }: RouteJsBudgetCheck) {
+  static async check(
+    sizes: RouteJsSize[],
+    { mode, budgetPath, source, environment }: RouteJsBudgetCheck,
+  ): Promise<RouteJsBudgetStatus> {
     const { committed, unreadable } = await RouteJsBudget.#loadFor(mode, budgetPath, source);
     const budget = mode === "update" ? (committed ?? new RouteJsBudget()).tightenedBy(sizes, environment) : committed;
     if (mode === "update" && budget) await Bun.write(budgetPath, budget.stringify());
@@ -72,11 +83,29 @@ export class RouteJsBudget {
     const envNote = committed?.envNote(environment) ?? "";
     if (overages.length && mode !== "report") throw new Error(RouteJsBudget.formatOverages(overages, source, envNote));
     const unbudgeted = budget?.unbudgeted(sizes).length ?? 0;
-    if (mode === "update") return `${source} ${unreadable ? `rewritten (${unreadable})` : "updated"}`;
-    if (!budget) return unreadable ? `${unreadable}, not checked` : `no ${RouteJsBudget.fileName}`;
+    if (mode === "update") return { summary: `${source} ${unreadable ? `rewritten (${unreadable})` : "updated"}` };
+    if (unreadable)
+      return {
+        summary: `${unreadable}, not checked`,
+        warnings: [
+          {
+            file: source,
+            message: `${unreadable}; akan build fails on it`,
+            fix: "correct it, or rewrite it with akan build <app> --update-budget",
+          },
+        ],
+      };
+    if (!budget) return { summary: `no ${RouteJsBudget.fileName}` };
     if (overages.length)
-      return `${overages.length} route(s) over ${source}${envNote}, reported only: ${overages.map(({ routeId }) => routeId).join(", ")}`;
-    return `within ${source}${envNote}${unbudgeted ? `, ${unbudgeted} route(s) without an entry` : ""}`;
+      return {
+        summary: `${overages.length} route(s) over ${source}${envNote}, reported only: ${overages.map(({ routeId }) => routeId).join(", ")}`,
+        warnings: overages.map(({ routeId, brotliBytes, limitBytes }) => ({
+          file: source,
+          message: `${routeId} loads ${RouteJsBudget.#bytes(brotliBytes)} bytes brotli, over its limit of ${RouteJsBudget.#bytes(limitBytes)}${envNote}; akan build fails on it`,
+          fix: "shrink what the route loads, or raise its entry by hand in the same change",
+        })),
+      };
+    return { summary: `within ${source}${envNote}${unbudgeted ? `, ${unbudgeted} route(s) without an entry` : ""}` };
   }
 
   static async #loadFor(mode: RouteJsBudgetCheck["mode"], budgetPath: string, source: string) {
@@ -130,7 +159,7 @@ export class RouteJsBudget {
   }
 
   static formatOverages(overages: RouteJsOverage[], source: string, envNote = ""): string {
-    const bytes = (value: number) => value.toLocaleString("en-US");
+    const bytes = RouteJsBudget.#bytes;
     return [
       `${overages.length} route${overages.length === 1 ? "" : "s"} over the JS budget in ${source}${envNote}:`,
       ...overages.map(
@@ -139,6 +168,10 @@ export class RouteJsBudget {
       ),
       "Shrink what the route loads. If the growth is intended, raise its entry by hand in the same change.",
     ].join("\n");
+  }
+
+  static #bytes(value: number) {
+    return value.toLocaleString("en-US");
   }
 
   static #byCodeUnit(a: string, b: string) {

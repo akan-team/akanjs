@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { rm, symlink } from "node:fs/promises";
 import path from "node:path";
+import { RouteJsBudget } from "@akanjs/devkit/routeJsBudget";
 import { createTempApp, createTempPackage, writeJson, writeText } from "@akanjs/devkit/testHelpers";
 import { ApplicationRunner } from "../application/application.runner";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
@@ -88,5 +89,37 @@ describe("VerifyPipeline", () => {
       "export class PostService {\n  private load() {\n    return 1;\n  }\n  run() {\n    return this.load();\n  }\n}\n",
     );
     expect(result.steps.find((step) => step.name === "lint")?.fixed).toBe(1);
+  }, 60_000);
+
+  test("warns of a route over its JS budget, which only akan build fails on", async () => {
+    const { root, workspace } = await createTempApp("demo");
+    roots.push(root);
+    await symlink(path.join(repoRoot, "node_modules"), path.join(root, "node_modules"));
+    const changed = "apps/demo/common/value.ts";
+    await writeText(path.join(root, changed), "export const value = 1;\n");
+    const budgetPath = path.join(root, "apps/demo", RouteJsBudget.fileName);
+    await writeJson(budgetPath, { routeJsBrotliKB: { "/:lang": 120 } });
+    const { warnings } = await RouteJsBudget.check(
+      [{ routeId: "/:lang", files: 1, rawBytes: 300_000, brotliBytes: 128_000 }],
+      { mode: "report", budgetPath, source: "apps/demo/akan.budget.json", environment: "local" },
+    );
+    const builds: unknown[] = [];
+    const applicationRunner = {
+      typecheck: async () => undefined,
+      build: async (_app: unknown, options: unknown) => {
+        builds.push(options);
+        return { routeJsWarnings: warnings };
+      },
+    } as unknown as ApplicationRunner;
+    const scope = VerifyScope.resolve([{ code: "??", file: changed }], { apps: ["demo"], libs: [], pkgs: [] });
+
+    const result = await new VerifyPipeline(workspace, new WorkspaceRunner(), applicationRunner).run(scope);
+
+    expect(builds).toEqual([{ fast: true }]);
+    expect(result.ok).toBe(true);
+    expect(result.steps.find((step) => step.name === "build")?.status).toBe("pass");
+    expect(VerifyReport.text(result).split("\n").slice(1)).toEqual([
+      "apps/demo/akan.budget.json warning akan.budget /:lang loads 128,000 bytes brotli, over its limit of 126,976; akan build fails on it fix: shrink what the route loads, or raise its entry by hand in the same change",
+    ]);
   }, 60_000);
 });
