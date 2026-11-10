@@ -282,6 +282,7 @@ describe("SsrLink prefetch", () => {
     act(() => {
       anchor?.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
     });
+  const tab = () => document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Tab" }));
   const inProduction = async (run: () => Promise<void>) => {
     const previous = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
@@ -353,9 +354,15 @@ describe("SsrLink prefetch", () => {
         </>,
       );
       const [guide, passed] = container.querySelectorAll("a");
-      act(() => passed?.focus());
+      act(() => {
+        tab();
+        passed?.focus();
+      });
       act(() => passed?.blur());
-      act(() => guide?.focus());
+      act(() => {
+        tab();
+        guide?.focus();
+      });
       expect(prefetches).toEqual([]);
       await act(async () => {
         await sleep(100);
@@ -391,7 +398,10 @@ describe("SsrLink prefetch", () => {
       expect(prefetches).toEqual([]);
 
       act(() => tapped?.blur());
-      act(() => tapped?.focus());
+      act(() => {
+        tab();
+        tapped?.focus();
+      });
       await act(async () => {
         await sleep(100);
       });
@@ -408,12 +418,40 @@ describe("SsrLink prefetch", () => {
         anchor?.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerType: "touch" }));
         anchor?.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "touch" }));
       });
-      act(() => anchor?.focus());
+      act(() => {
+        tab();
+        anchor?.focus();
+      });
       await act(async () => {
         await sleep(100);
       });
 
       expect(prefetches).toEqual(["/en/scrolled"]);
+      unmount();
+    }));
+
+  test("reads a Tab onto a link as intent after a press that never focused it, as in Safari", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(<SsrLink href="/pressed">Pressed</SsrLink>);
+      const anchor = container.querySelector("a");
+      hover(anchor);
+      act(() => {
+        anchor?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }));
+        anchor?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse" }));
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+      expect(prefetches).toEqual([]);
+
+      act(() => {
+        tab();
+        anchor?.focus();
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+      expect(prefetches).toEqual(["/en/pressed"]);
       unmount();
     }));
 
