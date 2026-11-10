@@ -1,6 +1,5 @@
 import { DataList, type Dayjs, FIELD_META, type GetStateObject } from "akanjs/base";
 import {
-  AbortSignals,
   capitalize,
   type DynamicRecord,
   deepObjectify,
@@ -24,7 +23,6 @@ import {
   MAX_PAGE_SIZE,
   type ProtoFile,
   type ProtoLightFile,
-  withSharedInstances,
 } from "akanjs/constant";
 import type { BaseFilterSortKey, ExtractSort, FilterInstance } from "akanjs/document";
 import { type FetchInitForm, type FetchProxy, restoreRemoteError } from "akanjs/fetch";
@@ -44,26 +42,20 @@ import type {
 } from "akanjs/signal";
 import { produce } from "immer";
 import { expandQueryArgs, normalizeQueryArgs } from "../fetch/client/sliceQueryArgs";
-import { actionErrorKey } from "./actionErrorKey";
 import { tagAction } from "./actionTag";
-import { type DraftFlushing, flushDraftsKey } from "./draftFlush";
-import { DraftStore } from "./draftStore";
+import { makeFormDrafts } from "./formDrafts";
 import { type LiveSortableRow, livePlacementIndex } from "./liveInsert";
+import { makeModelListPatches } from "./modelListPatch";
+import { makeModelWriteGuard } from "./modelWriteGuard";
 import { SliceRequest } from "./SliceRequest";
 import { servedEndpointOf } from "./servedEndpointOf";
 import { sliceKeysOf } from "./sliceKeys";
 import type { DraftState } from "./state";
 import type { SetGet, StoreSliceArgs, StoreSliceMap, StoreSliceSuffixCap } from "./types";
+import { pollUploadedFiles, releasedUpload, type Uploading } from "./uploadPoll";
 
 type _SliceMap<S extends SliceCls> = StoreSliceMap<S>;
 type StateRecord = { [key: string]: unknown };
-interface OpenSeq {
-  open: number;
-  form: number;
-}
-interface DraftSave {
-  restore: boolean;
-}
 type _ActionRefName<S extends SliceCls> = SlceCnstRefName<S>;
 type _ActionCap<S extends SliceCls> = SlceCnstCapitalizedRefName<S>;
 type _ActionInput<S extends SliceCls> = SlceCnstInput<S>;
@@ -77,9 +69,6 @@ type SliceInitForm<S extends SliceCls> = FetchInitForm<_ActionInput<S>, _ActionF
 type SliceRefreshForm<S extends SliceCls, Suffix extends keyof _SliceMap<S>> = SliceInitForm<S> & {
   queryArgs?: StoreSliceArgs<S, Suffix>;
 };
-
-const UPLOAD_POLL_INTERVAL_MS = 3000;
-const UPLOAD_POLL_ATTEMPTS = 40;
 
 export interface ErrorReportOption {
   /** Called with the failed request's dictionary key, as a `Button`'s `onError` takes it; the action still rejects. */
@@ -330,16 +319,8 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
   const fileUploadRefName = resolveFileUploadCapability(fetch.serializedSignal)?.refName;
 
   const names = modelNames(refName);
-  type Uploading = { [field: string]: string[] };
   type FormState = { [key: string]: unknown };
   let uploadSeq = 0;
-  const releasedUpload = (uploading: Uploading, field: string, ticket?: string): Uploading => {
-    const pending = uploading[field];
-    if (!pending || (ticket && !pending.includes(ticket))) return uploading;
-    const { [field]: tickets = [], ...rest } = uploading;
-    const left = ticket ? tickets.filter((pending) => pending !== ticket) : [];
-    return left.length ? { ...rest, [field]: left } : rest;
-  };
   const formPatchOf = (
     state: StateRecord,
     recipe: (form: FormState) => void,
@@ -498,42 +479,20 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
                 ] as ProtoLightFile | ProtoLightFile[] | null;
                 return Array.isArray(value) ? value.some((heldFile) => heldFile.id === id) : value?.id === id;
               };
-              files.forEach((file) => {
-                let attemptsLeft = UPLOAD_POLL_ATTEMPTS;
-                const intervalKey = setInterval(() => {
-                  void (async () => {
-                    if (!holdsFile(file.id)) {
-                      clearInterval(intervalKey);
-                      return;
-                    }
-                    attemptsLeft -= 1;
-                    try {
-                      const currentFile = await (
-                        (fetch as { [key: string]: any })[fileReadName] as (id: string) => Promise<ProtoLightFile>
-                      )(file.id);
-                      if (!holdsFile(currentFile.id)) {
-                        clearInterval(intervalKey);
-                        return;
-                      }
-                      this.set(
-                        formPatchOf(this.get(), (form) => {
-                          const value = form[namesOfField.field] as ProtoLightFile[] | ProtoLightFile | null;
-                          form[namesOfField.field] = Array.isArray(value)
-                            ? value.map((heldFile) => (heldFile.id === currentFile.id ? currentFile : heldFile))
-                            : currentFile;
-                        }),
-                      );
-                      if (currentFile.status !== "uploading" || attemptsLeft <= 0) clearInterval(intervalKey);
-                    } catch (error) {
-                      clearInterval(intervalKey);
-                      Logger.warn(
-                        `Upload poll for ${fileReadName} ${file.id} stopped: ${
-                          error instanceof Error ? error.message : String(error)
-                        }`,
-                      );
-                    }
-                  })();
-                }, UPLOAD_POLL_INTERVAL_MS);
+              pollUploadedFiles({
+                files,
+                readName: fileReadName,
+                read: (fetch as { [key: string]: any })[fileReadName] as (id: string) => Promise<ProtoLightFile>,
+                holds: holdsFile,
+                land: (currentFile) =>
+                  this.set(
+                    formPatchOf(this.get(), (form) => {
+                      const value = form[namesOfField.field] as ProtoLightFile[] | ProtoLightFile | null;
+                      form[namesOfField.field] = Array.isArray(value)
+                        ? value.map((heldFile) => (heldFile.id === currentFile.id ? currentFile : heldFile))
+                        : currentFile;
+                    }),
+                  ),
               });
             },
           }
@@ -560,9 +519,6 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   const className = capitalize(refName);
   const cnst = ConstantRegistry.getDatabase(refName);
   const modelRef = cnst.full;
-  // Deliberately not store state: a secret field in the opened form must not reach a subscribed component.
-  let openFormBase: object | null = null;
-  const draftSaves = new WeakMap<SetGet, Map<string, Set<DraftSave>>>();
   const slices = Object.entries(slice).map(([suffix, serializedSlice]) => {
     const keys = sliceKeysOf(refName, suffix);
     return { sliceName: keys.slice, keys, slice: serializedSlice };
@@ -587,206 +543,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     if (fn) return fn;
     throw restoreRemoteError({ error: "base.error.endpointClosed", data: { endpoint: key } }, 404);
   };
-  const flagOwners = new WeakMap<SetGet, Map<string, object>>();
-  const openSeqs = new WeakMap<SetGet, OpenSeq>();
-  const openSeqOf = (ctx: SetGet): OpenSeq => openSeqs.get(ctx) ?? { open: 0, form: 0 };
-  const markOpened = (ctx: SetGet, { form }: { form: boolean }) => {
-    const seen = openSeqOf(ctx);
-    const opened = { open: seen.open + 1, form: form ? seen.form + 1 : seen.form };
-    openSeqs.set(ctx, opened);
-    return opened;
-  };
-  // A view, edit or new form opened during a write's request owns the modal and the open model when the write lands.
-  const isOvertaken = (ctx: SetGet, seen: OpenSeq) => openSeqOf(ctx).open !== seen.open;
-  // Only an edit or new form takes the form over: a save that a view overtook still resets the form it saved.
-  const isSavedFormOpen = (ctx: SetGet, seen: OpenSeq, savedForm: { id?: string }) =>
-    openSeqOf(ctx).form === seen.form &&
-    ((ctx.get() as StateRecord)[names.modelForm] as { id?: string }).id === savedForm.id;
-  // A write owns its loading flag while the flag holds its value and no later write has set the flag since.
-  const withFlag = async <T>(
-    ctx: SetGet,
-    {
-      flag,
-      opening = {},
-      failed,
-      onError,
-      request,
-      land,
-    }: {
-      flag: { key: string; value: string | true } | null;
-      opening?: StateRecord;
-      failed?: () => StateRecord;
-      onError?: ErrorReportOption["onError"];
-      request: () => Promise<T>;
-      land: (answer: T, ownsFlag: boolean) => void;
-    },
-  ) => {
-    const owner = {};
-    let answered = false;
-    const ownsFlag = () =>
-      !!flag && flagOwners.get(ctx)?.get(flag.key) === owner && (ctx.get() as StateRecord)[flag.key] === flag.value;
-    try {
-      if (flag) {
-        const owners = flagOwners.get(ctx) ?? new Map<string, object>();
-        flagOwners.set(ctx, owners.set(flag.key, owner));
-      }
-      if (flag || Object.keys(opening).length) ctx.set({ ...opening, ...(flag ? { [flag.key]: flag.value } : {}) });
-      const answer = await request();
-      answered = true;
-      land(answer, ownsFlag());
-      return answer;
-    } catch (error) {
-      const released = { ...(flag && ownsFlag() ? { [flag.key]: false } : {}), ...failed?.() };
-      if (Object.keys(released).length) ctx.set(released);
-      // A landing that throws after the server took the write is not the caller's failed request to report.
-      if (!answered && !AbortSignals.isAbort(error)) onError?.(actionErrorKey(error));
-      throw error;
-    }
-  };
-  // A failed latest open would leave its modal over another record; a payload-seeded one already shows the right record.
-  const closedUnlessShown = (ctx: SetGet, seen: OpenSeq, shownKey: string, id: string): StateRecord =>
-    isOvertaken(ctx, seen) || ((ctx.get() as StateRecord)[shownKey] as { id?: string } | null)?.id === id
-      ? {}
-      : { [names.modelModal]: null };
-  const openModelPatchOf = (latest: StateRecord, updatedModel: Full, ownsFlag: boolean, opened: StateRecord = {}) => ({
-    ...((latest[names.model] as Full | null)?.id === updatedModel.id ? { [names.model]: updatedModel, ...opened } : {}),
-    ...(ownsFlag ? { [names.modelLoading]: false } : {}),
-  });
-  function armDraft(this: SetGet, draftScope: string | undefined, form: object, baseUpdatedAt: string | null) {
-    openFormBase = draftScope ? form : null;
-    if (!draftScope) return null;
-    // Catches a sign-out and sign-in that happened without a reload.
-    void DraftStore.reconcileIdentity();
-    return {
-      key: DraftStore.keyOf(refName, draftScope),
-      baseHash: DraftStore.formHash(refName, form),
-      baseUpdatedAt,
-      pending: null,
-      appliedAt: null,
-    };
-  }
-  async function applyDraft(this: SetGet, { auto }: { auto: boolean }) {
-    const draft = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
-    // While a form under this key saves, the record holds the form being saved.
-    if (!draft || draftSaves.get(this)?.has(draft.key)) return;
-    const record = await DraftStore.read(draft.key);
-    if (!record) return;
-    // The editor moved on while the read was in flight.
-    const current = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
-    if (current?.key !== draft.key) return;
-    // Same content is not offered back: an autosaving form moves `updatedAt`, so its draft always reads as stale.
-    const openedForm = (this.get() as { [key: string]: any })[names.modelForm] as object;
-    if (DraftStore.contentHash(record.form) === DraftStore.contentHash(DraftStore.encodeForm(refName, openedForm))) {
-      await DraftStore.remove(draft.key);
-      return;
-    }
-    // Earlier releases could save another record's form under this key, which must never fill this one's.
-    const draftedId = record.form.id;
-    if (typeof draftedId === "string" && draftedId && draftedId !== (openedForm as { id?: unknown }).id) {
-      await DraftStore.remove(draft.key);
-      return;
-    }
-    let form: object;
-    try {
-      form = DraftStore.decodeForm(refName, record.form);
-    } catch {
-      // The model changed shape under the draft; keeping it would fail again on every open.
-      await DraftStore.remove(draft.key);
-      return;
-    }
-    const savedAt = new Date(record.savedAt);
-    if (auto || record.baseUpdatedAt === draft.baseUpdatedAt) {
-      this.set({ [names.modelForm]: form, [names.modelDraft]: { ...draft, appliedAt: savedAt } });
-      return;
-    }
-    this.set({ [names.modelDraft]: { ...draft, pending: { savedAt, form } } });
-  }
-  // A discard or reset during a save wins over that save's restore when it fails.
-  const forgetDraft = (ctx: SetGet, key: string) => {
-    for (const save of draftSaves.get(ctx)?.get(key) ?? []) save.restore = false;
-    void DraftStore.remove(key);
-  };
-  const clearDraft = (ctx: SetGet, draft: DraftState | null) => {
-    openFormBase = null;
-    if (draft) forgetDraft(ctx, draft.key);
-    return null;
-  };
-  const holdsSavedForm = (record: { form: Record<string, unknown> }, form: object) =>
-    DraftStore.contentHash(record.form) === DraftStore.contentHash(DraftStore.encodeForm(refName, form));
-  const restoreSavedDraft = async (draft: DraftState, form: object) => {
-    // A record still there is the saved form's or one a form opened meanwhile wrote; an unchanged form never had one.
-    if ((await DraftStore.read(draft.key)) || DraftStore.formHash(refName, form) === draft.baseHash) return;
-    await DraftStore.write(draft.key, {
-      v: 1,
-      savedAt: new Date().toISOString(),
-      baseUpdatedAt: draft.baseUpdatedAt,
-      form: DraftStore.encodeForm(refName, form),
-    });
-  };
-  // The record stays in storage until the request succeeds, so a reload mid-save that never reached the server keeps it.
-  const savingDraft = async <T>(ctx: SetGet, draft: DraftState | null, form: object, save: () => Promise<T>) => {
-    if (!draft) return await save();
-    // A debounce left pending past submit fires on whatever form is open by then, and drops the record if it is blank.
-    (ctx as SetGet & Partial<DraftFlushing>)[flushDraftsKey]?.();
-    const saves = draftSaves.get(ctx) ?? new Map<string, Set<DraftSave>>();
-    draftSaves.set(ctx, saves);
-    const keySaves = saves.get(draft.key) ?? new Set<DraftSave>();
-    saves.set(draft.key, keySaves);
-    const thisSave: DraftSave = { restore: true };
-    keySaves.add(thisSave);
-    try {
-      const answer = await save();
-      // A form opened under the key during the save may have written its own record since.
-      const record = await DraftStore.read(draft.key);
-      if (record && holdsSavedForm(record, form)) await DraftStore.remove(draft.key);
-      return answer;
-    } catch (error) {
-      if (thisSave.restore)
-        await restoreSavedDraft(draft, form).catch((restoreError: unknown) => {
-          Logger.warn(`Failed to restore the ${refName} form draft: ${String(restoreError)}`);
-        });
-      throw error;
-    } finally {
-      keySaves.delete(thisSave);
-      if (!keySaves.size) saves.delete(draft.key);
-    }
-  };
-  const isLiveSlice = (sliceName: string) => !!slices.find((entry) => entry.sliceName === sliceName)?.slice.live;
-  // A live slice places the row through `applyLive`, so the server's echo of this create is not counted twice.
-  const createdListPatchOf = (sliceName: string, model: Full, seen: { [key: string]: unknown }) => {
-    const listKey = sliceName.replace(names.model, names.modelList);
-    if (isLiveSlice(sliceName) || seen[sliceName.replace(names.model, names.modelListLoading)] || !seen[listKey])
-      return {};
-    const insightKey = sliceName.replace(names.model, names.modelInsight);
-    const modelInsight = seen[insightKey] as Insight & BaseInsight;
-    return {
-      [listKey]: new DataList([model, ...(seen[listKey] as DataList<Light>)]),
-      [insightKey]: new cnst.insight().set({ ...modelInsight, count: modelInsight.count + 1 }),
-    };
-  };
-  function applyLiveCreate(this: SetGet, sliceName: string, model: Full) {
-    const target = slices.find((entry) => entry.sliceName === sliceName);
-    if (!target?.slice.live) return;
-    const applyLive = (this as unknown as DynamicRecord)[target.keys.action.applyLiveModel] as
-      | ((event: LiveEventPayload) => void)
-      | undefined;
-    applyLive?.({ op: "enter", id: model.id, light: new cnst.light().set(model) as unknown as object });
-  }
-  const updatedListPatchOf = (state: { [key: string]: unknown }, ...updatedModels: Full[]) => {
-    const lightModels = withSharedInstances(() =>
-      updatedModels.map((updatedModel) => new cnst.light().set(updatedModel) as unknown as Light),
-    );
-    const patch: { [key: string]: DataList<Light> } = {};
-    for (const { keys } of slices) {
-      const namesOfSlice = keys.state;
-      const modelList = state[namesOfSlice.modelList] as DataList<Light>;
-      if (state[namesOfSlice.modelListLoading] || !lightModels.some(({ id }) => modelList.has(id))) continue;
-      const nextList = new DataList(modelList);
-      for (const lightModel of lightModels) if (nextList.has(lightModel.id)) nextList.set(lightModel);
-      patch[namesOfSlice.modelList] = nextList;
-    }
-    return patch;
-  };
+  const { openSeqOf, markOpened, isOvertaken, isSavedFormOpen, withFlag, closedUnlessShown, openModelPatchOf } =
+    makeModelWriteGuard(names);
+  const { formBase, armDraft, applyDraft, forgetDraft, clearDraft, savingDraft } = makeFormDrafts(refName, names);
+  const { createdListPatchOf, applyLiveCreate, updatedListPatchOf } = makeModelListPatches({ cnst, names, slices });
   const baseAction = {
     [names.createModelInForm]: async function (
       this: SetGet,
@@ -1128,7 +888,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       forgetDraft(this, draft.key);
       // Saving stays armed; dropping an applied draft puts back the form as the editor opened it.
       this.set({
-        ...(draft.appliedAt && openFormBase ? { [names.modelForm]: openFormBase } : {}),
+        ...(draft.appliedAt && formBase() ? { [names.modelForm]: formBase() } : {}),
         [names.modelDraft]: { ...draft, pending: null, appliedAt: null },
       });
     },

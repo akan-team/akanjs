@@ -1,6 +1,6 @@
 {
   "akan.size.file": {
-    "fetch/client/fetchClient.ts": 1169,
+    "fetch/client/fetchClient.ts": 1168,
     "server/akanApp.ts": 1509,
     "server/akanServer.ts": 1045,
     "server/di/diLifecycle.ts": 834,
@@ -11,7 +11,7 @@
     "server/webRouter.ts": 1482,
     "service/predefinedAdaptor/sql/SqlDocumentStore.ts": 1433,
     "signal/signalContext.ts": 1016,
-    "store/action.ts": 1343,
+    "store/action.ts": 1325,
     "ui/Constant/Doc.tsx": 812,
     "webkit/useCsrValues.ts": 1410
   },
@@ -29,10 +29,10 @@
     "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 158,
     "server/webRouter.ts#WebRouter.initializeRoute": 439,
     "server/webRouter.ts#WebRouter.initializeRoute.renderEnvRoutes./*": 218,
-    "store/action.ts#makeActions": 838,
+    "store/action.ts#makeActions": 816,
     "store/action.ts#makeActions.sliceAction": 428,
-    "store/action.ts#makeFormSetter": 198,
-    "store/action.ts#makeFormSetter.fieldSetAction": 173,
+    "store/action.ts#makeFormSetter": 195,
+    "store/action.ts#makeFormSetter.fieldSetAction": 166,
     "ui/Agent/Chat.tsx#DefaultChat": 429,
     "ui/BottomSheet.tsx#BottomSheet": 154,
     "ui/Data/ListContainer.tsx#ListContainer": 341,
