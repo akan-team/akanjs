@@ -2,7 +2,7 @@ import type { BaseEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { DictionaryRegistry, type RootDictionary } from "akanjs/dictionary";
 import { isLocalDevRuntime } from "../../signal/trace";
-import type { BuildChangesPayload, BuildGraphPayload } from "../artifact";
+import type { BuildChangesPayload, BuilderRpc, BuildFrameworkPayload, BuildGraphPayload } from "../artifact";
 import type { DiLifecycle } from "../di/diLifecycle";
 import type { HttpRoutes } from "../types";
 import { ConstantSerializer } from "./constantSerializer";
@@ -22,6 +22,7 @@ export interface DevtoolsRouterContext {
   getStatus: () => string;
   buildGraph?: () => Promise<BuildGraphPayload | null>;
   buildChanges?: (since: string | null) => Promise<BuildChangesPayload | null>;
+  buildFramework?: () => Promise<BuildFrameworkPayload | null>;
 }
 
 /** Builtin routes, not signals: off `/api` and guards, and never in the `serializedSignal` payload sent to clients. */
@@ -37,6 +38,16 @@ export class DevtoolsRouter {
     return isLocalDevRuntime(env);
   }
 
+  static buildsFrom(
+    builderRpc: () => BuilderRpc | null,
+  ): Pick<DevtoolsRouterContext, "buildGraph" | "buildChanges" | "buildFramework"> {
+    return {
+      buildGraph: async () => (await builderRpc()?.buildGraph()) ?? null,
+      buildChanges: async (since) => (await builderRpc()?.buildChanges(since)) ?? null,
+      buildFramework: async () => (await builderRpc()?.buildFramework()) ?? null,
+    };
+  }
+
   readonly #context: DevtoolsRouterContext;
 
   constructor(context: DevtoolsRouterContext) {
@@ -50,6 +61,7 @@ export class DevtoolsRouter {
       appName: this.#context.env.appName,
       buildGraph: this.#context.buildGraph ?? null,
       buildChanges: this.#context.buildChanges ?? null,
+      buildFramework: this.#context.buildFramework ?? null,
       runtime: () => ({
         app: this.#app(),
         deps: DevtoolsRouter.#attempt("studio runtime (deps)", () => this.#deps()),

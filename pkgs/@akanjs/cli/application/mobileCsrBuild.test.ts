@@ -4,17 +4,21 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AppExecutor } from "@akanjs/devkit/executors";
 
-const built: { environment?: string; publicEnv?: string }[] = [];
+const built: { environment?: string; budget?: string; publicEnv?: string }[] = [];
 let buildFails = true;
 let afterBuild: (() => Promise<void>) | null = null;
 mock.module("@akanjs/devkit/applicationBuildRunner", () => ({
   ApplicationBuildRunner: class {
     constructor(
       _app: unknown,
-      readonly options: { environment?: string } = {},
+      readonly options: { environment?: string; budget?: string } = {},
     ) {}
     async build() {
-      built.push({ environment: this.options.environment, publicEnv: process.env.AKAN_PUBLIC_ENV });
+      built.push({
+        environment: this.options.environment,
+        budget: this.options.budget,
+        publicEnv: process.env.AKAN_PUBLIC_ENV,
+      });
       if (buildFails) throw new Error("built");
       await afterBuild?.();
     }
@@ -42,7 +46,7 @@ const app = {
 
 describe("ApplicationRunner mobile builds", () => {
   //? Without `environment` the build reads the root .env's AKAN_PUBLIC_ENV, and a carried server ships only that env.
-  test("the backend of a mobile or desktop build is built for the command's --env", async () => {
+  test("the backend of a mobile or desktop build is built for the command's --env, with no route JS budget", async () => {
     const runner = new ApplicationRunner();
     const shellEnv = process.env.AKAN_PUBLIC_ENV;
     await expect(runner.buildDesktop(app, { env: "develop" })).rejects.toThrow("built");
@@ -50,10 +54,10 @@ describe("ApplicationRunner mobile builds", () => {
     await expect(runner.releaseIos(app, { env: "debug" })).rejects.toThrow("built");
     await expect(runner.startDesktop(app, { operation: "release", env: "local" })).rejects.toThrow("built");
     expect(built).toEqual([
-      { environment: "develop", publicEnv: "develop" },
-      { environment: "main", publicEnv: "main" },
-      { environment: "debug", publicEnv: "debug" },
-      { environment: "local", publicEnv: "local" },
+      { environment: "develop", budget: "off", publicEnv: "develop" },
+      { environment: "main", budget: "off", publicEnv: "main" },
+      { environment: "debug", budget: "off", publicEnv: "debug" },
+      { environment: "local", budget: "off", publicEnv: "local" },
     ]);
     expect(process.env.AKAN_PUBLIC_ENV).toBe(shellEnv);
   });

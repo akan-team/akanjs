@@ -20,10 +20,20 @@ const publicBlobOf = (publicKey: string) => {
   return parsed.getPublicSSH();
 };
 
+//? ssh2 1.17's keygen strips a leading zero byte off an ed25519 public key, so 1 pair in 256 cannot be read back.
+const ed25519Pair = () => {
+  for (let tries = 1; ; tries++) {
+    const pair = utils.generateKeyPairSync("ed25519");
+    const parsed = utils.parseKey(pair.private);
+    if (!(parsed instanceof Error)) return pair;
+    if (tries === 8) throw parsed;
+  }
+};
+
 const sshServers: { server: Server; clients: Set<Connection> }[] = [];
 
 const startSshServer = async () => {
-  const hostKey = utils.generateKeyPairSync("ed25519");
+  const hostKey = ed25519Pair();
   const methods: string[] = [];
   const clients = new Set<Connection>();
   const server = new Server({ hostKeys: [hostKey.private] }, (client) => {
@@ -136,7 +146,7 @@ describe("createTunnel", () => {
     const ssh = await startSshServer();
     const knownHosts = path.join(root, "known_hosts.json");
     const keyPath = path.join(root, "id_tunnel");
-    await writeFile(keyPath, utils.generateKeyPairSync("ed25519").private);
+    await writeFile(keyPath, ed25519Pair().private);
     Object.assign(process.env, {
       SSH_TUNNEL_PORT: String(ssh.port),
       SSH_TUNNEL_KNOWN_HOSTS: knownHosts,

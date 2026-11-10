@@ -5,7 +5,7 @@ import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
 import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
 import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPreload";
 import { type App, assertPromptable, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, CommandExecutionError, LibExecutor, PkgExecutor, SysExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, CommandExecutionError, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import {
   DesktopServerStage,
@@ -20,12 +20,14 @@ import {
   UpdatePackFolder,
   UpdateUploader,
 } from "@akanjs/devkit/mobile";
+import type { RouteJsBudgetMode } from "@akanjs/devkit/routeJsBudget";
 import { AppInfo } from "@akanjs/devkit/scanInfo";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
 import type { ServerPolicy } from "@akanjs/native/api";
 import { Logger, type LogRecord, toError } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
 import type { InterruptTeardown } from "./interruptTeardown";
+import { reportsNoTestFile, testTargetOf } from "./testTarget";
 
 export interface LogsOptions {
   level?: string | null;
@@ -329,9 +331,7 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
   }
   // Bun takes an argument as a path only behind `./` or `/`; a bare one is a substring filter over every test file.
   resolveTestPaths(exec: Exec, files: string[]) {
-    const root =
-      exec instanceof SysExecutor || exec instanceof PkgExecutor ? exec.workspace.workspaceRoot : process.cwd();
-    const target = path.relative(root, exec.cwdPath).split(path.sep).join("/");
+    const { root, target } = testTargetOf(exec);
     const isInside = (relative: string) =>
       relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
     return files.map((file) => {
@@ -349,8 +349,9 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       return `./${found.split(path.sep).join("/")}`;
     });
   }
-  async test(exec: Exec, testPaths: string[] = []) {
+  async test(exec: Exec, testPaths: string[] = [], flags: string[] = []) {
     const isSignalTarget = exec instanceof AppExecutor || exec instanceof LibExecutor;
+    if (!testPaths.length && reportsNoTestFile(exec)) return;
     const preloadPath = isSignalTarget ? await resolveSignalTestPreloadPath(exec) : null;
     const env = isSignalTarget
       ? {
@@ -362,7 +363,7 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
           AKAN_RUNTIME_DIR: path.join(exec.workspace.workspaceRoot, "local", `${exec.type}s`, exec.name, "runtime"),
         }
       : {};
-    const args = ["test", "--isolate", ...(preloadPath ? ["--preload", preloadPath] : []), ...testPaths];
+    const args = ["test", "--isolate", ...flags, ...(preloadPath ? ["--preload", preloadPath] : []), ...testPaths];
     await exec.spawn("bun", args, {
       ...(isSignalTarget ? { env: { ...process.env, ...env } } : {}),
       stdio: "inherit",
@@ -376,15 +377,19 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       spinner = false,
       envProfile,
       environment,
+      budget,
     }: {
       fast?: boolean;
       reporter?: BuildProgressReporter;
       spinner?: boolean;
       envProfile?: string;
       environment?: string;
+      budget?: RouteJsBudgetMode;
     } = {},
   ): Promise<BuildResult> {
-    return new (await loadBuildRunner())(app, { fast, reporter, profile: envProfile, environment }).build({ spinner });
+    return new (await loadBuildRunner())(app, { fast, reporter, profile: envProfile, environment, budget }).build({
+      spinner,
+    });
   }
   async start(
     app: App,
@@ -765,7 +770,9 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       APP_OPERATION_MODE: "release",
     });
     try {
-      await new (await loadBuildRunner())(app, { environment: env, profile: envProfile }).build({ spinner: true });
+      await new (await loadBuildRunner())(app, { environment: env, profile: envProfile, budget: "off" }).build({
+        spinner: true,
+      });
     } finally {
       for (const [key, value] of Object.entries(prevEnv)) {
         if (value === undefined) delete process.env[key];

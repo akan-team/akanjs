@@ -147,7 +147,6 @@ export type AkanIpcMessage =
       healthPath?: string;
       crossSite?: { allowedOrigins: string[]; enabled: boolean };
     }
-  | { type: "backend-ready"; pid: number }
   | { type: "pubsub.publish"; roomId: string; data: object | object[]; origin?: string }
   | { type: "pubsub.deliver"; roomId: string; data: object | object[]; origin?: string }
   | { type: "pubsub.subscribe"; roomId: string; socketId?: string; pid?: number }

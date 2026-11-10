@@ -498,6 +498,8 @@ describe("MaintainabilityContract rules", () => {
     expect(MaintainabilityContract.ruleIds).toEqual([
       "akan.size.file",
       "akan.size.component",
+      "akan.size.function",
+      "akan.size.class",
       "akan.store.multi-write",
       "akan.store.root-write-chain",
       "akan.component.write-chain",
@@ -842,5 +844,186 @@ export class CourtEndpoint extends endpoint(srv.court, ({ mutation }) => ({
     });
 
     expect(await contractOf(root).enforce({ fix: false })).toEqual([]);
+  });
+});
+
+describe("MaintainabilityContract packages", () => {
+  const packageOf = (root: string) => new MaintainabilityContract(root, { type: "pkg", name: "@demo/core" });
+  const functionOf = (name: string, lineNum: number) => `export function ${name}() {\n${linesOf(lineNum - 2)}\n}\n`;
+  const classOf = (name: string, memberNum: number) =>
+    `export class ${name} {\n${Array.from({ length: memberNum }, (_, idx) => `  field${idx} = ${idx};`).join("\n")}\n}\n`;
+
+  test("holds a package file to 800 lines, a function to 150 and a class to 60 members, tests and barrels aside", async () => {
+    const root = await makeWorkspace({
+      "pkgs/@demo/core/server/host.ts": `${classOf("Host", 61)}${functionOf("boot", 151)}${linesOf(600)}`,
+      "pkgs/@demo/core/server/atLimit.ts": `${classOf("Small", 60)}${functionOf("fits", 150)}${linesOf(800 - 212)}\n`,
+      "pkgs/@demo/core/server/host.test.ts": `${functionOf("suite", 900)}`,
+      "pkgs/@demo/core/server/host.fixture.ts": `${functionOf("fixture", 900)}`,
+      "pkgs/@demo/core/server/host.instance.ts": `${functionOf("instance", 900)}`,
+      "pkgs/@demo/core/test/helpers.ts": `${functionOf("helper", 900)}`,
+      "pkgs/@demo/core/types.d.ts": linesOf(900),
+      "pkgs/@demo/core/index.ts": Array.from({ length: 801 }, (_, idx) => `export * from "./m${idx}";`).join("\n"),
+    });
+
+    expect(await packageOf(root).measure()).toEqual([
+      {
+        kind: "size",
+        rule: "akan.size.file",
+        key: "server/host.ts",
+        file: "server/host.ts",
+        line: 1,
+        lineCount: 814,
+        maxLines: 800,
+      },
+      {
+        kind: "size",
+        rule: "akan.size.function",
+        key: "server/host.ts#boot",
+        file: "server/host.ts",
+        line: 64,
+        lineCount: 151,
+        maxLines: 150,
+        function: "boot",
+      },
+      {
+        kind: "classSize",
+        rule: "akan.size.class",
+        key: "server/host.ts#Host",
+        file: "server/host.ts",
+        line: 1,
+        owner: "Host",
+        memberCount: 61,
+        maxMembers: 60,
+      },
+    ]);
+  });
+
+  test("reads a package in a repository through git, so ignored output is never measured", async () => {
+    const root = await makeWorkspace({
+      ".gitignore": "**/dist\n",
+      "pkgs/@demo/core/dist/bundle.ts": linesOf(900),
+      "pkgs/@demo/core/server/committed.ts": linesOf(801),
+    });
+    await commitAll(root);
+    await writeText(path.join(root, "pkgs/@demo/core/server/untracked.ts"), linesOf(802));
+
+    expect((await packageOf(root).measure()).map(({ key }) => key)).toEqual([
+      "server/committed.ts",
+      "server/untracked.ts",
+    ]);
+  });
+
+  test("measures nothing in a package git ignores whole, and leaves a package's examples out", async () => {
+    const root = await makeWorkspace({
+      ".gitignore": "pkgs/gen/\n",
+      "pkgs/gen/package.json": "{}\n",
+      "pkgs/gen/big.ts": functionOf("generated", 162),
+      "pkgs/@demo/core/examples/sample/src/selftest.ts": functionOf("runSelftest", 900),
+    });
+    await commitAll(root);
+
+    expect(await new MaintainabilityContract(root, { type: "pkg", name: "gen" }).measure()).toEqual([]);
+    expect(await packageOf(root).measure()).toEqual([]);
+  });
+
+  test("numbers only the breaches sharing a name, so a short function above leaves a recorded key in place", async () => {
+    const callbackOf = (receiver: string, lineNum: number) => `${receiver}.map(() => {\n${linesOf(lineNum - 2)}\n});\n`;
+    const root = await makeWorkspace({
+      "pkgs/@demo/core/run.ts": `ys.map(() => 1);\n${callbackOf("xs", 160)}${callbackOf("zs", 170)}`,
+    });
+
+    expect((await packageOf(root).measure()).map(({ key }) => key)).toEqual(["run.ts#map()", "run.ts#map()[2]"]);
+  });
+
+  test("records a package's breaches in its own baseline, which only shrinks from the default branch", async () => {
+    const root = await makeWorkspace({ "pkgs/@demo/core/server/host.ts": functionOf("boot", 200) });
+
+    expect((await packageOf(root).seed()).result).toBe("written");
+    expect(await readFile(path.join(root, "pkgs/@demo/core/akan.baseline.json"), "utf8")).toBe(
+      '{\n  "akan.size.function": {\n    "server/host.ts#boot": 200\n  }\n}\n',
+    );
+    await commitAll(root);
+    await writeText(path.join(root, "pkgs/@demo/core/server/host.ts"), functionOf("boot", 210));
+
+    const contract = packageOf(root);
+    const failures = await contract.enforce({ fix: false });
+
+    expect(failures).toMatchObject([{ rule: "akan.size.function", key: "server/host.ts#boot", recorded: 200 }]);
+    expect(contract.describe(failures)).toBe(
+      "[maintainability] 1 violation(s) in pkgs/@demo/core:\n" +
+        "  pkgs/@demo/core/server/host.ts:1  akan.size.function  function boot has 210 lines, over the 150-line limit, up from 200\n" +
+        "How to fix:\n" +
+        "  function: Split it by family into named functions or a collaborator class, each under the limit, keeping its signature for callers.",
+    );
+  });
+});
+
+describe("MaintainabilityContract reference without a baseline", () => {
+  const packageOf = (root: string) => new MaintainabilityContract(root, { type: "pkg", name: "@demo/core" });
+  const functionOf = (name: string, lineNum: number) => `export function ${name}() {\n${linesOf(lineNum - 2)}\n}\n`;
+  const host = "pkgs/@demo/core/server/host.ts";
+  const writePackageBaseline = async (root: string, json: object) =>
+    await writeText(path.join(root, "pkgs/@demo/core/akan.baseline.json"), `${JSON.stringify(json, null, 2)}\n`);
+
+  test("refuses an entry for debt the fork point's code did not hold, unless a person gave it a reason", async () => {
+    const root = await makeWorkspace({ [host]: functionOf("boot", 100) });
+    await commitAll(root);
+    await writeText(path.join(root, host), functionOf("boot", 200));
+    await writePackageBaseline(root, { "akan.size.function": { "server/host.ts#boot": 200 } });
+
+    const contract = packageOf(root);
+    const failures = await contract.enforce({ fix: false });
+
+    expect(failures).toMatchObject([
+      { kind: "baselineGrowth", key: "server/host.ts#boot", count: 200, committed: undefined, measured: true, line: 3 },
+    ]);
+    expect(contract.describe(failures)).toMatch(
+      /pkgs\/@demo\/core\/akan\.baseline\.json:3 {2}akan\.baseline\.growth {2}entry "server\/host\.ts#boot" under akan\.size\.function is debt the code at [0-9a-f]{12} does not hold/,
+    );
+
+    await writePackageBaseline(root, {
+      "akan.size.function": { "server/host.ts#boot": 200 },
+      reasons: { "server/host.ts#boot": "One state machine a person chose to keep whole." },
+    });
+    expect(await packageOf(root).enforce({ fix: false })).toEqual([]);
+  });
+
+  test("lets a scope adopt the gate with the debt its code held at the fork point, and no more", async () => {
+    const root = await makeWorkspace({ [host]: functionOf("boot", 200) });
+    await commitAll(root);
+
+    expect((await packageOf(root).seed()).result).toBe("written");
+    expect(await packageOf(root).enforce({ fix: false })).toEqual([]);
+
+    await writeText(path.join(root, host), functionOf("boot", 210));
+    await packageOf(root).seed({ force: true });
+
+    expect(await packageOf(root).enforce({ fix: false })).toMatchObject([
+      { kind: "baselineGrowth", key: "server/host.ts#boot", count: 210, committed: 200, measured: true },
+    ]);
+  });
+
+  test("holds an app new to the branch, or one whose paid-off baseline was removed, to none", async () => {
+    const zone = "apps/demo/lib/court/Court.Zone.tsx";
+    const root = await makeWorkspace({ "apps/other/lib/court/Court.Zone.tsx": linesOf(10) });
+    await commitAll(root);
+    await writeText(path.join(root, zone), linesOf(450));
+    await writeBaseline(root, { "akan.size.file": { "lib/court/Court.Zone.tsx": 450 } });
+
+    expect(await contractOf(root).enforce({ fix: false })).toMatchObject([
+      { kind: "baselineGrowth", key: "lib/court/Court.Zone.tsx", count: 450, committed: undefined, measured: true },
+    ]);
+
+    await writeText(path.join(root, zone), linesOf(400));
+    await contractOf(root).enforce({ fix: true });
+    expect(existsSync(path.join(root, "apps/demo/akan.baseline.json"))).toBe(false);
+    await git(root, "add", "-A");
+    await git(root, "commit", "-q", "-m", "paid off");
+    await writeText(path.join(root, zone), linesOf(450));
+    await writeBaseline(root, { "akan.size.file": { "lib/court/Court.Zone.tsx": 450 } });
+
+    expect(await contractOf(root).enforce({ fix: false })).toMatchObject([
+      { kind: "baselineGrowth", key: "lib/court/Court.Zone.tsx", committed: undefined, measured: true },
+    ]);
   });
 });

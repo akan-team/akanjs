@@ -102,8 +102,9 @@ export const createTsconfigPackageResolver = async (
         if (!repl) continue;
         const replPath = repl.endsWith("/*") ? repl.slice(0, -1) : repl;
         const candidate = path.resolve(app.workspace.workspaceRoot, replPath + suffix);
-        // A sibling file (`apps/minimal/client.ts`) is a facet barrel too: parent specifier, as above.
-        for (const ext of CANDIDATE_EXTS) {
+        // A sibling file (`apps/minimal/client.ts`), or the file a specifier names with its extension
+        // (`akanjs/ui/System/index.tsx`), is a facet barrel too: parent specifier, as above.
+        for (const ext of CANDIDATE_EXTS.includes(path.extname(candidate)) ? ["", ...CANDIDATE_EXTS] : CANDIDATE_EXTS) {
           const file = `${candidate}${ext}`;
           if (await Bun.file(file).exists()) {
             const lastSlash = pkgName.lastIndexOf("/");
