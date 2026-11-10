@@ -1,5 +1,5 @@
 import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import { MaintainabilityBaseline } from "@akanjs/devkit/maintainabilityBaseline";
 import { AkanQualityScanner, formatQualityScanResult, formatSsrScanResult } from "@akanjs/devkit/qualityScanner";
 import { Logger } from "akanjs/common";
@@ -23,10 +23,11 @@ export class QualityScript extends script("quality", [WorkspaceRunner]) {
 
   //* A one-time step when a workspace adopts the maintainability gate; `akan lint` only ever lowers what it records.
   async baseline(workspace: Workspace, { force = false }: { force?: boolean } = {}) {
-    const [appNames, libNames] = await workspace.getExecs();
+    const [appNames, libNames, pkgNames] = await workspace.getExecs();
     const execs = [
       ...appNames.map((appName) => AppExecutor.from(workspace, appName)),
       ...libNames.map((libName) => LibExecutor.from(workspace, libName)),
+      ...pkgNames.map((pkgName) => PkgExecutor.from(workspace, pkgName)),
     ];
     const { fileName } = MaintainabilityBaseline;
     for (const exec of execs) {

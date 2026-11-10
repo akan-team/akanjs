@@ -12,6 +12,9 @@ if (bunRefusal) {
   process.exit(1);
 }
 
+//? Only `build.ts` reads it; a nested `bun run akan` that inherited it would rebuild the `dist/` this process runs from.
+delete process.env.AKAN_CLI_FORCE_BUILD;
+
 // Only the module that owns `argv[2]` is imported: every command module carries its own heavy stack.
 const ids: CommandModuleId[] = CommandManifest.resolve(await CommandManifest.read(), process.argv) ?? commandModuleIds;
 const commands = await Promise.all(ids.map(async (id) => await commandModules[id]()));
