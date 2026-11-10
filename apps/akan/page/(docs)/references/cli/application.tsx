@@ -1131,8 +1131,8 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
             name: "paths",
             type: "String",
             desc: l.trans({
-              en: "Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/.well-known`, `/openapi.json`, `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`.",
-              ko: "쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다. 서버가 로케일 밖에서 답하는 경로는 로케일 없이 적은 그대로 엽니다. Studio(`/_akan/studio?view=runtime`) 같은 `/_akan` 경로, API prefix 아래 경로, `/.well-known`, `/openapi.json`, `/mcp`, 서버가 직접 내주는 파일(`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`), `public/`의 파일이 그렇습니다.",
+              en: "Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, the default `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`. A full URL (`http://localhost:<port>/oauth/token`) opens exactly as written, for an endpoint mounted outside the API prefix or a custom MCP path. A page `--changed` finds always gets the locale.",
+              ko: "쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다. 서버가 로케일 밖에서 답하는 경로는 로케일 없이 적은 그대로 엽니다. Studio(`/_akan/studio?view=runtime`) 같은 `/_akan` 경로, API prefix 아래 경로, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, 기본 `/mcp`, 서버가 직접 내주는 파일(`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`), `public/`의 파일이 그렇습니다. 전체 URL(`http://localhost:<port>/oauth/token`)은 적은 그대로 엽니다. API prefix 밖에 마운트된 엔드포인트나 바꾼 MCP 경로에 쓰세요. `--changed`가 찾은 페이지에는 항상 로케일을 붙입니다.",
             }),
           },
           {

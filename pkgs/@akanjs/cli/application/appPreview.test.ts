@@ -52,9 +52,19 @@ describe("AppPreview.pagePaths", () => {
     ]);
   });
 
-  test("takes a full URL by its path, and opens the CSR boot when asked", () => {
-    expect(AppPreview.pagePaths(["http://localhost:8282/en/board"], i18n, { csr: true })).toEqual([
-      "/en/board?csr=true&akanMobileTarget=preview",
+  test("opens a full URL's path exactly as written, the way to reach a route the rules do not know", () => {
+    expect(
+      AppPreview.pagePaths(["http://localhost:8282/oauth/authorize?client_id=a", "http://localhost:8282/board"], i18n, {
+        csr: true,
+      }),
+    ).toEqual(["/oauth/authorize?client_id=a", "/board"]);
+  });
+
+  test("gives every route-derived page the locale, even one that shares a server route's path", () => {
+    expect(AppPreview.pagePaths([], i18n, { csr: false, pages: ["/mcp", "/board"] })).toEqual(["/en/mcp", "/en/board"]);
+    expect(AppPreview.pagePaths(["/mcp"], i18n, { csr: true, pages: ["/mcp"] })).toEqual([
+      "/mcp",
+      "/en/mcp?csr=true&akanMobileTarget=preview",
     ]);
   });
 
@@ -115,14 +125,22 @@ describe("AppPreview.pagePaths", () => {
     ]);
   });
 
-  test("names a screenshot after the page, its query and its boot", () => {
+  test("names a screenshot after the page, its query and its boot, one name per page", () => {
     expect(AppPreview.screenshotName("/en/")).toBe("en.png");
     expect(AppPreview.screenshotName("/en/board/[id]?csr=true")).toBe("en-board-_id_.csr.png");
-    expect(AppPreview.screenshotName("/_akan/studio?view=runtime")).toBe("_akan-studio.view-runtime.png");
-    expect(AppPreview.screenshotName("/_akan/studio?view=signals")).toBe("_akan-studio.view-signals.png");
-    expect(AppPreview.screenshotName("/en/board?tab=a/b&csr=true&akanMobileTarget=preview")).toBe(
-      "en-board.tab-a_b.csr.png",
+    expect(AppPreview.screenshotName("/_akan/studio?view=runtime")).toMatch(
+      /^_akan-studio\.view-runtime-\w{1,6}\.png$/,
     );
+    expect(AppPreview.screenshotName("/en/board?tab=a/b&csr=true&akanMobileTarget=preview")).toMatch(
+      /^en-board\.tab-a_b-\w{1,6}\.csr\.png$/,
+    );
+    const names = ["?view=runtime", "?view=signals", "?a=b&c=d", "?a=b-c-d", "?a-b=c-d", "?q=사과", "?q=포도"].map(
+      (query) => AppPreview.screenshotName(`/x${query}`),
+    );
+    expect(new Set(names).size).toBe(names.length);
+    const long = AppPreview.screenshotName(`/${"p".repeat(300)}?q=${"v".repeat(300)}&csr=true`);
+    expect(long.length).toBeLessThan(160);
+    expect(long).not.toBe(AppPreview.screenshotName(`/${"p".repeat(299)}?q=${"v".repeat(300)}&csr=true`));
   });
 });
 
@@ -132,10 +150,11 @@ describe("AppPreview.pathsOf", () => {
     try {
       await Bun.write(path.join(root, "public/logo.png"), "png");
       const app = { cwdPath: root, getConfig: async () => ({ i18n, api: { prefix: "/backend" } }) } as unknown as App;
-      expect(await AppPreview.pathsOf(app, ["/backend/memo", "/logo.png", "/board"], false)).toEqual([
+      expect(await AppPreview.pathsOf(app, ["/backend/memo", "/logo.png", "/board"], false, ["/mcp"])).toEqual([
         "/backend/memo",
         "/logo.png",
         "/en/board",
+        "/en/mcp",
       ]);
     } finally {
       await rm(root, { recursive: true, force: true });

@@ -88,7 +88,7 @@ export class AppPreview {
       throw new Error(
         `No page to open: ${changed.skipped.join("; ")}. Pass a concrete path, e.g. \`akan preview ${app.name} /memo/1\`.`,
       );
-    const paths = await AppPreview.pathsOf(app, [...(options.paths ?? []), ...changed.paths], !!options.csr);
+    const paths = await AppPreview.pathsOf(app, options.paths ?? [], !!options.csr, changed.paths);
     const port = await app.getDevPort();
     const origin = `http://localhost:${port}`;
     const root = app.workspace.workspaceRoot;
@@ -138,12 +138,13 @@ export class AppPreview {
     }
   }
 
-  static async pathsOf(app: Pick<App, "getConfig" | "cwdPath">, paths: string[], csr: boolean) {
+  static async pathsOf(app: Pick<App, "getConfig" | "cwdPath">, paths: string[], csr: boolean, pages: string[] = []) {
     const { i18n, api } = await app.getConfig();
     return AppPreview.pagePaths(paths, i18n, {
       csr,
       apiPrefix: api.prefix,
       publicDir: path.join(app.cwdPath, "public"),
+      pages,
     });
   }
 
@@ -152,12 +153,15 @@ export class AppPreview {
   static pagePaths(
     paths: string[],
     i18n: I18nLike,
-    { csr, apiPrefix = "/api", publicDir = null }: { csr: boolean; apiPrefix?: string; publicDir?: string | null },
+    {
+      csr,
+      apiPrefix = "/api",
+      publicDir = null,
+      pages = [],
+    }: { csr: boolean; apiPrefix?: string; publicDir?: string | null; pages?: string[] },
   ) {
     const keepsUnprefixed = i18n.localePrefix === "as-needed" && !csr;
-    const pages = (paths.length ? paths : ["/"]).map((raw) => {
-      const url = new URL(/^https?:\/\//.test(raw) ? raw : `http://localhost${raw.startsWith("/") ? "" : "/"}${raw}`);
-      if (!AppPreview.#isPagePath(url.pathname, i18n, { apiPrefix, publicDir })) return `${url.pathname}${url.search}`;
+    const asPage = (url: URL) => {
       const [first] = url.pathname.split("/").filter(Boolean);
       if (!keepsUnprefixed && (!first || !i18n.locales.includes(first)))
         url.pathname = `/${i18n.defaultLocale}${url.pathname === "/" ? "/" : url.pathname}`;
@@ -166,8 +170,19 @@ export class AppPreview {
         url.searchParams.set("akanMobileTarget", AppPreview.csrTarget);
       }
       return `${url.pathname}${url.search}`;
+    };
+    const urlOf = (raw: string) => new URL(`http://localhost${raw.startsWith("/") ? "" : "/"}${raw}`);
+    const typed = (paths.length || pages.length ? paths : ["/"]).map((raw) => {
+      if (/^https?:\/\//.test(raw)) {
+        const url = new URL(raw);
+        return `${url.pathname}${url.search}`;
+      }
+      const url = urlOf(raw);
+      return AppPreview.#isPagePath(url.pathname, i18n, { apiPrefix, publicDir })
+        ? asPage(url)
+        : `${url.pathname}${url.search}`;
     });
-    return [...new Set(pages)];
+    return [...new Set([...typed, ...pages.map((page) => asPage(urlOf(page)))])];
   }
 
   static readonly #serverFiles = new Set([
@@ -249,17 +264,14 @@ export class AppPreview {
 
   static screenshotName(pagePath: string) {
     const url = new URL(pagePath, "http://localhost");
-    const slug =
-      url.pathname
-        .split("/")
-        .filter(Boolean)
-        .join("-")
-        .replace(/[^\w-]/g, "_") || "index";
-    const query = [...url.searchParams]
-      .filter(([key]) => key !== "csr" && key !== "akanMobileTarget")
-      .map(([key, value]) => `${key}-${value}`.replace(/[^\w-]/g, "_"))
-      .join("-");
-    return `${slug}${query ? `.${query}` : ""}${url.searchParams.get("csr") === "true" ? ".csr" : ""}.png`;
+    const slugOf = (text: string) => text.replace(/[^\w-]/g, "_");
+    const hashOf = (text: string) => Bun.hash(text).toString(36).slice(0, 6);
+    const pathSlug = slugOf(url.pathname.split("/").filter(Boolean).join("-")) || "index";
+    const page = pathSlug.length > 80 ? `${pathSlug.slice(0, 80)}-${hashOf(url.pathname)}` : pathSlug;
+    const params = [...url.searchParams].filter(([key]) => key !== "csr" && key !== "akanMobileTarget");
+    const readable = slugOf(params.map(([key, value]) => `${key}-${value}`).join("-")).slice(0, 40);
+    const query = params.length ? `.${readable}-${hashOf(new URLSearchParams(params).toString())}` : "";
+    return `${page}${query}${url.searchParams.get("csr") === "true" ? ".csr" : ""}.png`;
   }
 
   static attribute(page: AppPreviewPage, records: LogRecord[]) {

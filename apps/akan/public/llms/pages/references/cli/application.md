@@ -270,7 +270,7 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 
 Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.
 
-- paths (String): Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/.well-known`, `/openapi.json`, `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`.
+- paths (String): Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, the default `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`. A full URL (`http://localhost:<port>/oauth/token`) opens exactly as written, for an endpoint mounted outside the API prefix or a custom MCP path. A page `--changed` finds always gets the locale.
 
 - --changed (Boolean, default false, -C): Also open the pages that uncommitted page and layout changes reach, `/` when no route changed.
 
