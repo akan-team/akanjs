@@ -3,7 +3,7 @@ import { type EnumInstance, isEnum } from "akanjs/base";
 import { cn, usePage } from "akanjs/client";
 import { useFieldTool } from "akanjs/store";
 import { agentAttrs } from "../agentAttrs";
-import { Switch as UiSwitch, type SwitchProps as UiSwitchProps } from "../Switch";
+import { Switch as UiSwitch } from "../Switch";
 import { ToggleSelect as UtilToggleSelect } from "../ToggleSelect";
 import { Label } from "./Label";
 
@@ -18,7 +18,7 @@ export interface SwitchProps {
   onDesc?: string;
   offDesc?: string;
   disabled?: boolean;
-  variant?: UiSwitchProps["variant"];
+  variant?: "primary" | "accent" | "success";
 }
 export const Switch = ({
   label,

@@ -2977,7 +2977,7 @@ interface SwitchProps {
     onDesc?: string;
     offDesc?: string;
     disabled?: boolean;
-    variant?: UiSwitchProps["variant"];
+    variant?: "accent" | "primary" | "success";
 }
 
 interface TabType {
