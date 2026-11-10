@@ -11,6 +11,7 @@ export interface FetchPolicy<_Returns = unknown> {
   cache?: boolean | number;
   crystalize?: boolean;
   origin?: string;
+  /** @deprecated Read by nothing; catch the call's rejection instead. */
   onError?: (error: string) => void;
   token?: string;
   /** @deprecated Read by nothing; a query always answers its whole return. */
