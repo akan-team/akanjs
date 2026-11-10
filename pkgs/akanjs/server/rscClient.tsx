@@ -38,6 +38,7 @@ import {
   rememberRscCacheNode,
   resolveCachedRscPatchNavigation,
 } from "./rscNavigationState";
+import { RscParkedRedirect } from "./rscParkedRedirect";
 import { RscPrefetchCache } from "./rscPrefetchCache";
 import { RscScrollRestoration } from "./rscScrollRestoration";
 import { commitAkanSegmentOutletPatch, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
@@ -192,6 +193,7 @@ function commitRscPatchNavigation({
       }
       commitHistory(target, replace);
       shownNode = null;
+      parkedRedirect.clear();
       requestScroll?.();
     } catch {
       if (headApplied) rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
@@ -253,6 +255,8 @@ async function fetchRsc(
     signal: options.signal,
     prefetched: options.prefetched,
   });
+  if (responseResult.type === "not-found" && shouldApplyNavigation())
+    parkedRedirect.resume(stillOnItsEntry, navigateAfterRscRedirect);
   if (responseResult.type === "redirected" || responseResult.type === "not-found") return responseResult;
   //? Awaited before the result is returned, so no caller commits a page whose locale the Translator lacks.
   const dictionaryReady = DictionaryAsset.load(responseResult.response.headers.get(AKAN_RSC_DICTIONARY_HEADER));
@@ -293,12 +297,15 @@ async function fetchRsc(
   if (!stream) throw new Error(`[rscClient] RSC fetch failed ${res.status} ${res.statusText}`);
   const nodeRef: { current?: RscCacheNode } = {};
   const handleRedirect = (redirect: RscRedirectRow) => {
-    if (nodeRef.current) deleteRscCacheEntryIfCurrent(rscCache, href, nodeRef.current);
-    //? A later navigation may have replayed this page, under another fragment or back from elsewhere, and still show it;
-    //? one still loading is leaving it, and owns the history entry the redirect would replace.
-    if (!shouldApplyNavigation() && (nodeRef.current !== shownNode || pendingRequest)) return;
+    const node = nodeRef.current;
+    if (node) deleteRscCacheEntryIfCurrent(rscCache, href, node);
+    const applies = shouldApplyNavigation();
+    //? A later navigation may have replayed this page, under another fragment or back from elsewhere, and still show it.
+    if (!applies && node !== shownNode) return;
     const location = redirect.location ? normalizeHref(redirect.location) : href;
-    navigateAfterRscRedirect(location, redirect.method !== "push" && (options.replaceOnRedirect?.() ?? true));
+    const replace = redirect.method !== "push" && (options.replaceOnRedirect?.() ?? true);
+    if (!applies && node && pendingRequest) parkedRedirect.park({ node, location, replace });
+    else navigateAfterRscRedirect(location, replace);
   };
   const guardedStream = guardRscRedirectRows(stream, {
     onRedirect: handleRedirect,
@@ -343,11 +350,16 @@ let currentRouterState: AkanRouterStateV1 | null = initialRouterState;
 let currentSegmentTree: RscSegmentCacheNode | null = createAkanSegmentCacheTree(initialNode);
 let currentFullNode: RscCacheNode | null = initialNode;
 let shownNode: RscCacheNode | null = initialNode;
+const parkedRedirect = new RscParkedRedirect<RscCacheNode>();
 let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
 let pendingRequest: { navId: number; controller: AbortController; target: string } | null = null;
 let cachedAuthCookies = readAuthCookies();
+
+//? Back or Forward moves the URL before its page loads, and a redirect then would replace the entry it moved to.
+const stillOnItsEntry = (node: RscCacheNode) =>
+  node === shownNode && pageKeyOf(node.href) === pageKeyOf(normalizeHref(window.location.href));
 
 //? Only a request whose page has not committed is cut: a committed one may still stream the Suspense content on screen.
 function supersedeNavigation(): number {
@@ -372,6 +384,7 @@ globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
 function rememberCommittedRouteState(node: RscCacheNode): void {
   rscPatchCache.clear();
   shownNode = node;
+  parkedRedirect.clear();
   if (!node.routerState) return;
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
@@ -383,6 +396,7 @@ function rememberCommittedRouteState(node: RscCacheNode): void {
 function forgetCommittedRouteState(): void {
   rscPatchCache.clear();
   shownNode = null;
+  parkedRedirect.clear();
   currentRouterState = null;
   currentSegmentTree = null;
   currentFullNode = null;

@@ -538,6 +538,75 @@ describe("rscClient redirect", () => {
     expect(window.location.pathname).toBe("/vestibule");
     expect(shown()).toBe("/vestibule");
   });
+
+  const heldNotFound = () => {
+    let release = () => undefined as unknown;
+    const respond = () =>
+      new Promise<Response>((resolve) => {
+        release = () => resolve(bareNotFound());
+      });
+    return { respond, release: () => release() };
+  };
+
+  test("a redirect the page on screen raises while the next navigation loads runs once that one is refused as a bare 404", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/probe2", leaving.serve);
+    await navigate("/probe2");
+    const entries = window.history.length;
+    const refused = heldNotFound();
+    served.set("/nowhere2", refused.respond);
+    let refusal: unknown;
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/nowhere2")?.catch((error: unknown) => {
+        refusal = error;
+      });
+      await sleep(10);
+    });
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+    expect(window.location.pathname).toBe("/probe2");
+
+    await act(async () => {
+      refused.release();
+      await pending;
+    });
+    await waitFor(() => shown() === "/exit");
+    served.delete("/nowhere2");
+
+    expect((refusal as Error | undefined)?.name).toBe("RscRouteNotFound");
+    expect(window.location.pathname).toBe("/exit");
+    expect(window.history.length).toBe(entries);
+  });
+
+  test("a redirect the page on screen raises while its refresh loads runs once the refresh finds no page", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/lantern", leaving.serve);
+    await navigate("/lantern");
+    const refused = heldNotFound();
+    served.set("/lantern", refused.respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_REFRESH__?.();
+      await sleep(10);
+    });
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+    expect(window.location.pathname).toBe("/lantern");
+
+    await act(async () => {
+      refused.release();
+      await pending;
+    });
+    await waitFor(() => shown() === "/exit");
+    served.delete("/lantern");
+
+    expect(window.location.pathname).toBe("/exit");
+  });
 });
 
 describe("rscClient account change", () => {

@@ -8,7 +8,8 @@ A page prefetched before this tab's own write is no longer shown as current: a m
 
 Link prefetch fixes:
 
-- A press no longer prefetches through the focus it gives the link, by mouse or by tap; keyboard focus still does.
+- A link's focus prefetches it after a key press, and until the first pointer press on the page, so focus moved by a screen reader's cursor, switch access or voice control still does; the focus a mouse press, a tap or a pen tap gives a link does not, until the next key press.
+- A late redirect from the page on screen, raised while another navigation loads, now runs once that navigation ends keeping the page (a bare 404 refusal, or a refresh that finds no page) instead of being dropped; a navigation that replaces the page still drops it.
 - A page the navigation cache holds under another `#fragment` is neither prefetched again nor fetched on the click: the fragment never reaches the server, so the cached payload serves it.
 - When more `prefetch="viewport"` links come into view than the queue holds, the first to show are kept, as a page lists its links top down, instead of the last. A link stays watched: one still queued is withdrawn as it leaves the view, and asks again when it comes back.
 - `router.prefetch(href)` returns a call that withdraws the request while it still waits.

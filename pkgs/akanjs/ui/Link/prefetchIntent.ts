@@ -52,7 +52,7 @@ export const usePrefetchIntent = (href: string, mode: LinkPrefetch, handlers: Pr
     },
     onFocus: (event: FocusEvent<HTMLAnchorElement>) => {
       handlers.onFocus?.(event);
-      //? A press focuses the link it lands on, mouse before the click and touch after the lift: only a Tab is intent.
+      //? A press focuses the link it lands on, mouse before the click and touch after the lift: that focus is no intent.
       if (InputModality.usesKeyboard()) intend();
     },
     onBlur: (event: FocusEvent<HTMLAnchorElement>) => {
