@@ -472,6 +472,72 @@ describe("rscClient redirect", () => {
     expect(window.history.length).toBe(entries + 1);
     await back("/foyer");
   });
+
+  const heldPage = (text: string) => {
+    let release = () => undefined as unknown;
+    const respond = () =>
+      new Promise<Response>((resolve) => {
+        release = () => resolve(responseOf(text));
+      });
+    return { respond, release: () => release() };
+  };
+
+  test("a redirect the page being left raises while the next page loads leaves that navigation alone", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/probe", leaving.serve);
+    await navigate("/probe");
+    const next = heldPage("/probeother");
+    served.set("/probeother", next.respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/probeother");
+      await sleep(10);
+    });
+
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+    await act(async () => {
+      next.release();
+      await pending;
+    });
+    served.delete("/probeother");
+
+    expect(signalOf("/probeother")?.aborted).toBe(false);
+    expect(window.location.pathname).toBe("/probeother");
+    expect(shown()).toBe("/probeother");
+  });
+
+  test("a redirect the page left by Back raises while the entry it returned to loads keeps that entry", async () => {
+    await navigate("/vestibule");
+    const leaving = heldRedirectTo("/exit");
+    served.set("/sideroom", leaving.serve);
+    await navigate("/sideroom");
+    await act(async () => {
+      globalThis.__AKAN_RSC_CLEAR_CACHE__?.();
+    });
+    const vestibule = heldPage("/vestibule");
+    served.set("/vestibule", vestibule.respond);
+    await act(async () => window.history.back());
+    await act(async () => {
+      await sleep(10);
+    });
+
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+    await act(async () => {
+      vestibule.release();
+      await sleep(30);
+    });
+    served.delete("/vestibule");
+
+    expect(signalOf("/vestibule")?.aborted).toBe(false);
+    expect(window.location.pathname).toBe("/vestibule");
+    expect(shown()).toBe("/vestibule");
+  });
 });
 
 describe("rscClient account change", () => {

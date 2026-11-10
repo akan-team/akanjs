@@ -294,8 +294,9 @@ async function fetchRsc(
   const nodeRef: { current?: RscCacheNode } = {};
   const handleRedirect = (redirect: RscRedirectRow) => {
     if (nodeRef.current) deleteRscCacheEntryIfCurrent(rscCache, href, nodeRef.current);
-    //? A later navigation may have replayed this page, under another fragment or back from elsewhere, and still show it.
-    if (!shouldApplyNavigation() && nodeRef.current !== shownNode) return;
+    //? A later navigation may have replayed this page, under another fragment or back from elsewhere, and still show it;
+    //? one still loading is leaving it, and owns the history entry the redirect would replace.
+    if (!shouldApplyNavigation() && (nodeRef.current !== shownNode || pendingRequest)) return;
     const location = redirect.location ? normalizeHref(redirect.location) : href;
     navigateAfterRscRedirect(location, redirect.method !== "push" && (options.replaceOnRedirect?.() ?? true));
   };
