@@ -9,6 +9,7 @@ import {
   createRscNavigationCacheNode,
   createRscPatchNavigationCacheNode,
   deleteRscCacheEntryIfCurrent,
+  forgetRscPatchesOfLostBases,
   observeRscNavigation,
   observeRscNavigationNode,
   type RscNavigationCacheNode,
@@ -557,12 +558,18 @@ describe("RSC navigation state helpers", () => {
     expect(patchResult.status).toBe("patched");
     if (patchResult.status !== "patched") return;
     const headSnapshot = { version: 1 as const, nodes: [{ tag: "title" as const, text: "API" }] };
+    const base = createRscNavigationCacheNode({
+      href: currentState.href,
+      thenable: Promise.resolve("intro"),
+      routerState: currentState,
+    });
     const node = createRscPatchNavigationCacheNode({
       href: targetState.href,
       patch,
       patchedNode: patchResult.patchedNode,
       outletKey: patchResult.outletKey,
       headSnapshot,
+      base,
     });
     const cache = new Map();
 
@@ -575,6 +582,17 @@ describe("RSC navigation state helpers", () => {
     expect(cache.get(targetState.href)?.routerState).toBe(targetState);
     expect(cache.get(targetState.href)?.patch).toBe(patch);
     expect(cache.get(targetState.href)?.headSnapshot).toBe(headSnapshot);
+    expect(cache.get(targetState.href)?.base).toBe(base);
+    expect(
+      createRscPatchNavigationCacheNode({
+        href: targetState.href,
+        patch,
+        patchedNode: patchResult.patchedNode,
+        outletKey: patchResult.outletKey,
+        headSnapshot,
+        base: null,
+      }),
+    ).toBeNull();
   });
 
   test("evicts the oldest patch navigation cache node", () => {
@@ -608,6 +626,11 @@ describe("RSC navigation state helpers", () => {
     const patchThenable = Promise.resolve("api");
     const patch = makePatch("/docs/api");
     const headSnapshot = { version: 1 as const, nodes: [{ tag: "title" as const, text: "API" }] };
+    const base = createRscNavigationCacheNode({
+      href: currentState.href,
+      thenable: Promise.resolve("intro"),
+      routerState: currentState,
+    });
     const node = {
       href: targetState.href,
       thenable: patchThenable,
@@ -615,10 +638,12 @@ describe("RSC navigation state helpers", () => {
       patch,
       outletKey: "slot:layout:/docs:1:2",
       headSnapshot,
+      base,
     };
 
     const resolved = resolveCachedRscPatchNavigation({
       currentTree,
+      currentBase: base,
       node,
       partialCommitEnabled: true,
     });
@@ -647,10 +672,76 @@ describe("RSC navigation state helpers", () => {
     expect(
       resolveCachedRscPatchNavigation({
         currentTree: mismatchTree,
+        currentBase: base,
         node,
         partialCommitEnabled: true,
       }),
     ).toEqual({ status: "rejected", reason: "segment-path-mismatch" });
+  });
+
+  test("refuses a cached patch under any full commit but the one it went under, even one with the same keys", () => {
+    const fromState = makeRouterState("https://example.test/docs/intro", "/docs/intro");
+    const targetState = makeRouterState("https://example.test/docs/api", "/docs/api");
+    const fullNodeOf = (state: AkanRouterStateV1) =>
+      createRscNavigationCacheNode({ href: state.href, thenable: Promise.resolve(state.routeId), routerState: state });
+    const base = fullNodeOf(fromState);
+    const node = {
+      href: targetState.href,
+      thenable: Promise.resolve("api"),
+      routerState: targetState,
+      patch: makePatch("/docs/api"),
+      outletKey: "slot:layout:/docs:1:2",
+      headSnapshot: { version: 1 as const, nodes: [{ tag: "title" as const, text: "API" }] },
+      base,
+    };
+    const resolveUnder = (currentBase: TestCacheNode | null) =>
+      resolveCachedRscPatchNavigation({
+        currentTree: createAkanSegmentCacheTree(currentBase ?? base),
+        currentBase,
+        node,
+        partialCommitEnabled: true,
+      });
+
+    expect(resolveUnder(base).status).toBe("patched");
+    expect(resolveUnder(fullNodeOf({ ...fromState }))).toEqual({ status: "rejected", reason: "base-changed" });
+    expect(resolveUnder(fullNodeOf({ ...fromState, href: "https://example.test/ko/docs/intro" }))).toEqual({
+      status: "rejected",
+      reason: "base-changed",
+    });
+    expect(resolveUnder(null)).toEqual({ status: "rejected", reason: "base-changed" });
+  });
+
+  test("forgets cached patches whose base is neither on screen nor in the full cache", () => {
+    const fullNodeOf = (routeId: string) => {
+      const state = makeRouterState(`https://example.test${routeId}`, routeId);
+      return createRscNavigationCacheNode({ href: state.href, thenable: Promise.resolve(routeId), routerState: state });
+    };
+    const patchOf = (routeId: string, base: TestCacheNode) => {
+      const state = makeRouterState(`https://example.test${routeId}`, routeId);
+      return {
+        href: state.href,
+        thenable: Promise.resolve(routeId),
+        routerState: state,
+        patch: makePatch(routeId),
+        outletKey: "slot:layout:/docs:1:2",
+        headSnapshot: { version: 1 as const, nodes: [{ tag: "title" as const, text: routeId }] },
+        base,
+      };
+    };
+    const [kept, onScreen, evicted] = [fullNodeOf("/docs/a"), fullNodeOf("/blog/a"), fullNodeOf("/news/a")];
+    const fullCache = new Map<string, TestCacheNode>([
+      [kept.href, kept],
+      [evicted.href, fullNodeOf("/news/a")],
+    ]);
+    const patchCache = new Map([
+      ["https://example.test/docs/b", patchOf("/docs/b", kept)],
+      ["https://example.test/blog/b", patchOf("/blog/b", onScreen)],
+      ["https://example.test/news/b", patchOf("/news/b", evicted)],
+    ]);
+
+    forgetRscPatchesOfLostBases(patchCache, fullCache, onScreen);
+
+    expect([...patchCache.keys()]).toEqual(["https://example.test/docs/b", "https://example.test/blog/b"]);
   });
 
   test("rejects cached patch navigation when the partial commit guard is disabled", () => {
@@ -662,11 +753,17 @@ describe("RSC navigation state helpers", () => {
       patch: makePatch("/docs/api"),
       outletKey: "slot:layout:/docs:1:2",
       headSnapshot: { version: 1 as const, nodes: [{ tag: "title" as const, text: "API" }] },
+      base: createRscNavigationCacheNode({
+        href: targetState.href,
+        thenable: Promise.resolve("api"),
+        routerState: null,
+      }),
     };
 
     expect(
       resolveCachedRscPatchNavigation({
         currentTree: null,
+        currentBase: node.base,
         node,
         partialCommitEnabled: false,
       }),

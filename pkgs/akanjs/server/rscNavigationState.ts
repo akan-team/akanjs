@@ -27,6 +27,8 @@ export interface RscPatchNavigationCacheNode<T> {
   patch: AkanRscPatchMetadata;
   outletKey: string;
   headSnapshot: AkanHeadSnapshotV1;
+  /** The full commit whose layouts the patch went under; it keeps them, so it applies under that very commit only. */
+  base: RscNavigationCacheNode<T>;
 }
 
 export interface AkanSegmentCacheNode<T> {
@@ -39,6 +41,7 @@ export interface AkanSegmentCacheNode<T> {
 
 export type AkanSegmentPatchFailureReason =
   | "missing-current-tree"
+  | "base-changed"
   | "segment-path-mismatch"
   | "stale"
   | "unsupported-suffix"
@@ -92,14 +95,16 @@ export function createRscPatchNavigationCacheNode<T>({
   patchedNode,
   outletKey,
   headSnapshot,
+  base,
 }: {
   href: string;
   patch: AkanRscPatchMetadata;
   patchedNode: AkanSegmentCacheNode<T>;
   outletKey: string;
   headSnapshot: AkanHeadSnapshotV1;
+  base: RscNavigationCacheNode<T> | null;
 }): RscPatchNavigationCacheNode<T> | null {
-  if (!patchedNode.thenable) return null;
+  if (!patchedNode.thenable || !base) return null;
   return {
     href,
     thenable: patchedNode.thenable,
@@ -107,7 +112,20 @@ export function createRscPatchNavigationCacheNode<T>({
     patch,
     outletKey,
     headSnapshot,
+    base,
   };
+}
+
+//? A full render of the same URL is a new node, so a patch whose base left the full cache can never apply again.
+export function forgetRscPatchesOfLostBases<T>(
+  patchCache: RscNavigationCache<RscPatchNavigationCacheNode<T>>,
+  fullCache: RscNavigationCache<RscNavigationCacheNode<T>>,
+  currentBase: RscNavigationCacheNode<T> | null,
+): void {
+  for (const href of [...patchCache.keys()]) {
+    const base = patchCache.get(href)?.base;
+    if (base && base !== currentBase && fullCache.get(base.href) !== base) patchCache.delete(href);
+  }
 }
 
 export function createAkanSegmentCacheTree<T>(node: RscNavigationCacheNode<T>): AkanSegmentCacheNode<T> | null {
@@ -219,20 +237,24 @@ export function rememberRscCacheNode<N extends { href: string }>(
   rememberRscCacheEntry(cache, node.href, node, maxEntries);
 }
 
+//? Segment keys name URL prefixes only: `/en` and `/ko`, or two route groups at one prefix, differ only in their base.
 export function resolveCachedRscPatchNavigation<T>({
   currentTree,
+  currentBase,
   node,
   partialCommitEnabled,
   navId,
   getCurrentNavId,
 }: {
   currentTree: AkanSegmentCacheNode<T> | null;
+  currentBase: RscNavigationCacheNode<T> | null;
   node: RscPatchNavigationCacheNode<T>;
   partialCommitEnabled: boolean;
   navId?: number;
   getCurrentNavId?: () => number;
 }): RscPatchNavigationCacheResult<T> {
   if (!partialCommitEnabled) return { status: "rejected", reason: "guard-disabled" };
+  if (node.base !== currentBase) return { status: "rejected", reason: "base-changed" };
   const patchResult = applyAkanSegmentCachePatch({
     currentTree,
     targetRouterState: node.routerState,

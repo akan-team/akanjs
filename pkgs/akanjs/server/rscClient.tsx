@@ -31,6 +31,7 @@ import {
   createRscNavigationCacheNode,
   createRscPatchNavigationCacheNode,
   deleteRscCacheEntryIfCurrent,
+  forgetRscPatchesOfLostBases,
   observeRscNavigationNode,
   type RscNavigationCacheNode,
   type RscPatchNavigationCacheNode,
@@ -363,17 +364,16 @@ function settleRequestOf(navId: number): void {
 globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
 
 function rememberCommittedRouteState(node: RscCacheNode): void {
-  rscPatchCache.clear();
+  currentFullNode = node;
+  forgetRscPatchesOfLostBases(rscPatchCache, rscCache, node);
   if (!node.routerState) return;
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
-  currentFullNode = node;
   currentCommitKind = "full";
 }
 
 //? A not-found view is never replayed or patched onto, so the page after it is rendered whole.
 function forgetCommittedRouteState(): void {
-  rscPatchCache.clear();
   currentRouterState = null;
   currentSegmentTree = null;
   currentFullNode = null;
@@ -396,6 +396,32 @@ function forgetPagesOfAnotherAccount(): void {
   //? The layouts on screen were rendered for the other account too, so the next page is not patched onto them.
   currentRouterState = null;
   currentSegmentTree = null;
+}
+
+function replayCachedPatch(target: string, navId: number, replace?: boolean, requestScroll?: () => void): boolean {
+  const cachedPatch = rscPatchCache.get(target);
+  if (!cachedPatch) return false;
+  const patchResult = resolveCachedRscPatchNavigation({
+    currentTree: currentSegmentTree,
+    currentBase: currentFullNode,
+    node: cachedPatch,
+    partialCommitEnabled: isAkanRscPartialCommitEnabled(),
+    navId,
+    getCurrentNavId: () => navigationSeq,
+  });
+  if (patchResult.status === "patched") {
+    const { tree, patchedNode, outletKey, headSnapshot } = patchResult;
+    const patch = { type: "patched" as const, tree, patchedNode, patch: cachedPatch.patch, outletKey, headSnapshot };
+    if (commitRscPatchNavigation({ target, patch, replace, requestScroll })) {
+      currentCommitFromCache = true;
+      rememberPatchedRouteState(tree, patchedNode);
+      rememberRscCacheNode(rscPatchCache, cachedPatch, MAX_RSC_CACHE_ENTRIES);
+      return true;
+    }
+  }
+  //? Kept for its base, which a later full commit replayed from the full cache brings back on screen.
+  if (patchResult.status === "patched" || patchResult.reason !== "base-changed") rscPatchCache.delete(target);
+  return false;
 }
 
 const isConstrainedNetwork = () => {
@@ -526,40 +552,7 @@ function Root(): ReactNode {
       let notFound = false;
       let servedFromCache = !!nextNode;
       if (!nextNode) {
-        const cachedPatch = rscPatchCache.get(target);
-        if (cachedPatch) {
-          const patchResult = resolveCachedRscPatchNavigation({
-            currentTree: currentSegmentTree,
-            node: cachedPatch,
-            partialCommitEnabled: isAkanRscPartialCommitEnabled(),
-            navId,
-            getCurrentNavId: () => navigationSeq,
-          });
-          if (patchResult.status === "patched") {
-            const replayedPatch = {
-              type: "patched" as const,
-              tree: patchResult.tree,
-              patchedNode: patchResult.patchedNode,
-              patch: cachedPatch.patch,
-              outletKey: patchResult.outletKey,
-              headSnapshot: patchResult.headSnapshot,
-            };
-            if (
-              commitRscPatchNavigation({
-                target,
-                patch: replayedPatch,
-                replace: options.replace,
-                requestScroll,
-              })
-            ) {
-              currentCommitFromCache = true;
-              rememberPatchedRouteState(patchResult.tree, patchResult.patchedNode);
-              rememberRscCacheNode(rscPatchCache, cachedPatch, MAX_RSC_CACHE_ENTRIES);
-              return;
-            }
-          }
-          rscPatchCache.delete(target);
-        }
+        if (replayCachedPatch(target, navId, options.replace, requestScroll)) return;
         const taken = rscPrefetchCache.take(pageKeyOf(target), cachedAuthCookies, signal);
         const prefetched = (await taken?.response) ?? undefined;
         if (signal.aborted) return;
@@ -591,6 +584,7 @@ function Root(): ReactNode {
               patchedNode: fetched.patchedNode,
               outletKey: fetched.outletKey,
               headSnapshot: fetched.headSnapshot,
+              base: currentFullNode,
             });
             if (patchCacheNode) rememberRscCacheNode(rscPatchCache, patchCacheNode, MAX_RSC_CACHE_ENTRIES);
             return;
