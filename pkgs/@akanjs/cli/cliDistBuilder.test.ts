@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { CliDistBuilder } from "./cliDistBuilder";
@@ -33,7 +33,7 @@ const workspace = async () => {
   await pkg("pkgs/@sample/lang", { name: "@sample/lang", dependencies: { akanjs: "1.0.0" } });
   await pkg("pkgs/@sample/subpaths", { name: "@sample/subpaths", exports: { "./x": "./x.ts" } });
   await pkg("pkgs/akanjs", { name: "akanjs" });
-  await pkg("vendor/vendored", { name: "@sample/vendored", main: "./dist/index.ts" });
+  await pkg("vendor/vendored", { name: "@sample/vendored", exports: { "./x": "./dist/index.ts" } });
   await write(path.join(root, "vendor/vendored/dist/package.json"), JSON.stringify({ type: "module" }));
   for (const file of [
     "pkgs/@akanjs/cli/index.ts",
@@ -88,11 +88,14 @@ describe("CliDistBuilder", () => {
   describe("AKAN_CLI_FORCE_BUILD", () => {
     const holdLock = async (root: string, { buildMeanwhile }: { buildMeanwhile: boolean }) => {
       const outDir = path.join(root, "dist/pkgs/@akanjs/cli");
+      const stampFile = path.join(outDir, ".build-stamp");
+      const before = await Bun.file(stampFile).stat();
       await write(path.join(`${outDir}.lock`, "owner"), `${process.pid}`);
       return Bun.sleep(300).then(async () => {
         if (buildMeanwhile) {
-          const stampFile = path.join(outDir, ".build-stamp");
-          await Bun.write(stampFile, await Bun.file(stampFile).text());
+          const [stamp] = (await Bun.file(stampFile).text()).split("\n");
+          await Bun.write(stampFile, `${stamp}\nanother-build\n`);
+          await utimes(stampFile, before.mtime, before.mtime);
         }
         await rm(`${outDir}.lock`, { recursive: true, force: true });
       });
@@ -109,7 +112,7 @@ describe("CliDistBuilder", () => {
       await released;
     }, 60_000);
 
-    test("leaves the dist a build finished while it waited for the lock", async () => {
+    test("leaves the dist a build finished while it waited for the lock, whatever the stamp's mtime says", async () => {
       const { root, builder } = await workspace();
       expect(await builder.build()).toBe("built");
       process.env.AKAN_CLI_FORCE_BUILD = "1";

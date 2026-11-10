@@ -32,15 +32,16 @@ export class CliDistBuilder {
     const stamp = await this.inputStamp();
     const force = process.env.AKAN_CLI_FORCE_BUILD === "1";
     if (!force && (await this.#stampMatches(stamp))) return "up-to-date";
-    const lockRequestedAt = Date.now();
+    const recordedBefore = await this.#recordedStamp();
     const releaseLock = await this.#acquireLock();
     try {
       // A forced build yields to one that finished during the wait: that build's process is running from `dist/`.
-      if ((await this.#stampMatches(stamp)) && (!force || (await this.#stampWrittenSince(lockRequestedAt))))
+      if ((await this.#stampMatches(stamp)) && (!force || (await this.#recordedStamp()) !== recordedBefore))
         return "built-by-other";
       await this.#bundle();
-      // Written last, so a build killed halfway leaves no stamp to trust a partial bundle by.
-      await Bun.write(path.join(this.#outDir, CliDistBuilder.#stampFile), stamp);
+      // Written last, so a build killed halfway leaves no stamp to trust a partial bundle by. The nonce, not the
+      // file's mtime, tells a waiting forced build that this one finished: kernel timestamps can trail its clock.
+      await Bun.write(path.join(this.#outDir, CliDistBuilder.#stampFile), `${stamp}\n${crypto.randomUUID()}\n`);
       return "built";
     } finally {
       await releaseLock();
@@ -81,7 +82,7 @@ export class CliDistBuilder {
         const packageDir =
           (target && workspaces.get(target)) ??
           workspaces.get(name) ??
-          (await CliDistBuilder.#resolvedPackageDirOf(name, dir, workspaceRoot));
+          (await CliDistBuilder.#linkedPackageDirOf(name, dir));
         if (packageDir) dirs.add(packageDir);
       }
     }
@@ -124,38 +125,28 @@ export class CliDistBuilder {
     return target === spec ? null : target;
   }
 
-  static async #resolvedPackageDirOf(name: string, fromDir: string, workspaceRoot: string | null) {
-    const entry =
-      (await CliDistBuilder.#resolve(`${name}/package.json`, fromDir)) ??
-      (await CliDistBuilder.#resolve(name, fromDir));
-    if (!entry || entry.split(path.sep).includes("node_modules")) return null;
-    for (let dir = path.dirname(entry); dir !== path.dirname(dir) && dir !== workspaceRoot; dir = path.dirname(dir)) {
-      const manifest = await CliDistBuilder.#manifestOf(dir).catch(() => null);
-      if (manifest?.name) return dir;
+  //? Looked up in `node_modules` rather than resolved: a package's `exports` may not list its `package.json` or `.`.
+  static async #linkedPackageDirOf(name: string, fromDir: string): Promise<string | null> {
+    for (let dir = fromDir; dir !== path.dirname(dir); dir = path.dirname(dir)) {
+      const linked = path.join(dir, "node_modules", name);
+      if (!(await Bun.file(path.join(linked, "package.json")).exists())) continue;
+      const packageDir = await realpath(linked);
+      return packageDir.split(path.sep).includes("node_modules") ? null : packageDir;
     }
-    return path.dirname(entry) === workspaceRoot ? null : path.dirname(entry);
+    return null;
   }
 
-  static async #resolve(name: string, fromDir: string): Promise<string | null> {
-    try {
-      return await realpath(Bun.resolveSync(name, fromDir));
-    } catch {
-      return null;
-    }
+  async #recordedStamp(): Promise<string | null> {
+    return await Bun.file(path.join(this.#outDir, CliDistBuilder.#stampFile))
+      .text()
+      .catch(() => null);
   }
 
   async #stampMatches(stamp: string): Promise<boolean> {
-    const recorded = await Bun.file(path.join(this.#outDir, CliDistBuilder.#stampFile))
-      .text()
-      .catch(() => null);
+    const [recorded] = (await this.#recordedStamp())?.split("\n") ?? [];
     if (recorded?.trim() !== stamp) return false;
     // A stamp with no entrypoint beside it means someone removed part of `dist/` by hand.
     return await Bun.file(path.join(this.#outDir, "index.js")).exists();
-  }
-
-  async #stampWrittenSince(at: number): Promise<boolean> {
-    const info = await stat(path.join(this.#outDir, CliDistBuilder.#stampFile)).catch(() => null);
-    return !!info && info.mtimeMs >= at;
   }
 
   async #acquireLock(): Promise<() => Promise<void>> {
