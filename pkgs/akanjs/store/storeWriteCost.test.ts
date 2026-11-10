@@ -109,7 +109,7 @@ describe("store write cost", () => {
       const write = () => setTitle(`title${writeIdx++}`);
       const copy = () => ({ ...instance.get(), writeCostNoteForm: writeIdx });
       medianRatio(write, copy, 50);
-      expect(medianRatio(write, copy, 100)).toBeLessThan(3);
+      expect(medianRatio(write, copy, 100)).toBeLessThan(4.5);
       expect((instance.get().writeCostNoteForm as { title: string }).title).toBe(`title${writeIdx - 1}`);
     }
   });

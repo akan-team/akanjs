@@ -1049,6 +1049,71 @@ describe("signal generated store contract", () => {
     expect(lists.map((list) => list.get(id)?.title)).toEqual(["merged", "merged"]);
   });
 
+  const failedWrites: [string, (instance: StoreInstance, id: string) => Promise<unknown>][] = [
+    ["merge<Model>", (instance, id) => instance.do.mergeStoreTestItem(id, { title: "merged" }) as Promise<unknown>],
+    [
+      "update<Model>",
+      (instance, id) =>
+        instance.do.updateStoreTestItem(id, { title: "updated", count: 0, tags: [] }) as Promise<unknown>,
+    ],
+    [
+      "update<Model>InForm",
+      async (instance, id) => {
+        await instance.do.editStoreTestItem(id);
+        return instance.do.updateStoreTestItemInForm();
+      },
+    ],
+  ];
+  for (const [action, write] of failedWrites)
+    test(`a failed ${action} ends the loading it started on the open model`, async () => {
+      setupEnv();
+      const signal = makeSignal();
+      class FailedWriteStore extends store(signal, () => ({})) {}
+      StoreRegistry.register(FailedWriteStore);
+      const instance = new StoreInstance(makeRoot(`failedWriteRoot${action}`, FailedWriteStore));
+      const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+      await instance.do.viewStoreTestItem(id);
+      const refuse = mock(async () => {
+        throw new Error("network gone");
+      });
+      signal.calls.mergeStoreTestItem = refuse;
+      signal.calls.updateStoreTestItem = refuse;
+
+      await expect(write(instance, id)).rejects.toThrow("network gone");
+      expect(refuse).toHaveBeenCalledTimes(1);
+      expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { title: "loaded" } });
+    });
+
+  test("merge<Model> leaves the open model and its loading flag to a view<Model> that started during the request", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class MergeViewStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(MergeViewStore);
+    const instance = new StoreInstance(makeRoot("mergeViewRoot", MergeViewStore));
+    const [first, second] = ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"];
+    const merge = deferredCall();
+    const view = deferredCall();
+
+    await instance.do.viewStoreTestItem(first);
+    signal.calls.mergeStoreTestItem = merge.call;
+    signal.calls.storeTestItem = view.call;
+    const merging = instance.do.mergeStoreTestItem(first, { title: "merged" });
+    const viewing = instance.do.viewStoreTestItem(second);
+    merge.answer(new StoreTestFull({ id: first, title: "merged" } as never));
+    await merging;
+    expect(instance.get()).toMatchObject({ storeTestItemLoading: second, storeTestItem: { title: "merged" } });
+    view.answer(new StoreTestFull({ id: second, title: "second" } as never));
+    await viewing;
+
+    const remerging = instance.do.mergeStoreTestItem(second, { title: "merged again" });
+    const reviewing = instance.do.viewStoreTestItem(first);
+    view.answer(new StoreTestFull({ id: first, title: "first" } as never));
+    await reviewing;
+    merge.answer(new StoreTestFull({ id: second, title: "merged again" } as never));
+    await remerging;
+    expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { id: first, title: "first" } });
+  });
+
   test("update<Model>InForm lands the answer, the lists and the form reset in one set", async () => {
     setupEnv();
     const signal = makeSignal();

@@ -315,6 +315,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
   const names = modelNames(refName);
   type Uploading = { [field: string]: string[] };
   type FormState = { [key: string]: any };
+  type StateRecord = { [key: string]: any };
   let uploadSeq = 0;
   const releasedUpload = (uploading: Uploading, field: string, ticket?: string): Uploading => {
     const pending = uploading[field];
@@ -324,7 +325,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
     return left.length ? { ...rest, [field]: left } : rest;
   };
   const formPatchOf = (
-    state: FormState,
+    state: StateRecord,
     recipe: (form: FormState) => void,
     uploading: Uploading = state[names.modelFormUploading],
   ) => ({
@@ -347,7 +348,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
       field.isClass && !!fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName;
     const singleFieldSetAction = {
       [namesOfField.setFieldOnModel]: function (this: SetGet, value: any | null) {
-        const state = this.get() as FormState;
+        const state = this.get() as StateRecord;
         const setValue =
           value === null ? null : field.isClass ? immerify<object>(field.modelRef, value as object) : (value as object);
         // An explicit write wins over a single field's upload in flight; an array keeps its uploads.
@@ -430,7 +431,7 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
               if (!fileList.length) return;
               // A whole-form set clears all tickets and a single field keeps only the newest; a missing one is stale.
               const ticket = `${++uploadSeq}`;
-              const uploading = (this.get() as FormState)[names.modelFormUploading] as Uploading;
+              const uploading = (this.get() as StateRecord)[names.modelFormUploading] as Uploading;
               const tickets = uploading[namesOfField.field] ?? [];
               this.set({
                 [names.modelFormUploading]: {
@@ -438,16 +439,16 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
                   [namesOfField.field]: field.isArray ? [...tickets, ticket] : [ticket],
                 },
               });
-              const releasedIn = (state: FormState) =>
+              const releasedIn = (state: StateRecord) =>
                 releasedUpload(state[names.modelFormUploading], namesOfField.field, ticket);
               let files: ProtoFile[];
               try {
                 files = await (fetch[names.addModelFiles] as (...args: any) => Promise<ProtoFile[]>)(fileList, formId);
               } catch (error) {
-                this.set({ [names.modelFormUploading]: releasedIn(this.get() as FormState) });
+                this.set({ [names.modelFormUploading]: releasedIn(this.get() as StateRecord) });
                 throw error;
               }
-              const state = this.get() as FormState;
+              const state = this.get() as StateRecord;
               const isWritten =
                 !!(state[names.modelFormUploading] as Uploading)[namesOfField.field]?.includes(ticket) &&
                 (state[names.modelForm] as { id?: string }).id === formId;
@@ -571,6 +572,17 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     const fn = servedEndpointOf<(...args: any[]) => Promise<T>>(fetch, key);
     if (fn) return fn;
     throw restoreRemoteError({ error: "base.error.endpointClosed", data: { endpoint: key } }, 404);
+  };
+  const withModelLoading = async <T>(ctx: SetGet, loadingId: string | null, request: () => Promise<T>) => {
+    if (loadingId) ctx.set({ [names.modelLoading]: loadingId });
+    try {
+      return await request();
+    } catch (error) {
+      // Left alone when a view<Model> of another record took the flag over during the request.
+      if (loadingId && (ctx.get() as { [key: string]: unknown })[names.modelLoading] === loadingId)
+        ctx.set({ [names.modelLoading]: false });
+      throw error;
+    }
   };
   function armDraft(this: SetGet, draftScope: string | undefined, form: object, baseUpdatedAt: string | null) {
     openFormBase = draftScope ? form : null;
@@ -698,8 +710,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const defaultModel = currentState[defaultKeyOf(sliceName)] as Full;
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
       if (!modelInput || isUploadingIn(currentState)) return;
-      if (model?.id === modelForm.id) this.set({ [names.modelLoading]: modelForm.id });
-      const updatedModel = await servedFetch<Full>(names.updateModel)(modelForm.id, modelInput, { onError });
+      const updatedModel = await withModelLoading(this, model?.id === modelForm.id ? modelForm.id : null, () =>
+        servedFetch<Full>(names.updateModel)(modelForm.id, modelInput, { onError }),
+      );
       this.set({
         ...(model?.id === updatedModel.id
           ? { [names.model]: updatedModel, [names.modelLoading]: false, [names.modelViewAt]: new Date() }
@@ -744,10 +757,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const model = currentState[names.model] as Full | null;
       const modelInput = (cnst.input.purify as (data: any) => DefaultOf<Input> | null)(data);
       if (!modelInput) return;
-      if (model?.id === id) this.set({ [names.modelLoading]: id });
-      const updatedModel = await servedFetch<Full>(names.updateModel)(id, modelInput, {
-        onError,
-      });
+      const updatedModel = await withModelLoading(this, model?.id === id ? id : null, () =>
+        servedFetch<Full>(names.updateModel)(id, modelInput, { onError }),
+      );
       this.set({
         ...(model?.id === updatedModel.id
           ? { [names.model]: updatedModel, [names.modelLoading]: false, [names.modelViewAt]: new Date() }
@@ -860,15 +872,18 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       options?: FetchPolicy,
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-      const currentState = this.get() as { [key: string]: any };
-      const model = currentState[names.model] as Full | null;
-      if (id === model?.id) this.set({ [names.modelLoading]: id });
-      const updatedModel = await servedFetch<Full>(names.mergeModel)(modelOrId, data, options);
+      const model = (this.get() as { [key: string]: any })[names.model] as Full | null;
+      const loadingId = id === model?.id ? id : null;
+      const updatedModel = await withModelLoading(this, loadingId, () =>
+        servedFetch<Full>(names.mergeModel)(modelOrId, data, options),
+      );
+      // Read after the request: a view<Model> that started meanwhile owns the open model and the flag.
+      const latest = this.get() as { [key: string]: any };
       this.set({
-        [names.model]: id === model?.id ? updatedModel : model,
-        [names.modelLoading]: false,
+        ...((latest[names.model] as Full | null)?.id === id ? { [names.model]: updatedModel } : {}),
+        ...(loadingId && latest[names.modelLoading] === loadingId ? { [names.modelLoading]: false } : {}),
         ...staleAtOfSlices(),
-        ...updatedListPatchOf(this.get(), updatedModel),
+        ...updatedListPatchOf(latest, updatedModel),
       });
     },
     [names.viewModel]: async function (

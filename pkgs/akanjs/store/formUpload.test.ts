@@ -212,6 +212,17 @@ describe("upload<Field>On<Model> scoping", () => {
     expect(state().upPostFormUploading).toEqual({});
   });
 
+  test("a write to another field keeps the upload in flight, which lands in the form", async () => {
+    const { instance, uploads, state } = makeInstance();
+    const done = instance.do.uploadImageOnUpPost(picked);
+    await instance.do.setTitleOnUpPost("x");
+    expect(state().upPostFormUploading.image).toHaveLength(1);
+    uploads[0]?.resolve([fileOf("f1")]);
+    await done;
+    expect(state().upPostForm).toMatchObject({ title: "x", image: { id: "f1" } });
+    expect(state().upPostFormUploading).toEqual({});
+  });
+
   test("an explicit set of a single field wins over an upload still in flight", async () => {
     const { instance, uploads, state } = makeInstance();
     const done = instance.do.uploadImageOnUpPost(picked);
@@ -433,5 +444,22 @@ describe("upload status poll", () => {
     jest.advanceTimersByTime(3000);
     await flush();
     expect(state().upPostForm.images[0].status).toBe("active");
+  });
+  test("a poll write keeps another field's upload in flight", async () => {
+    jest.useFakeTimers();
+    const { instance, uploads, fileStatus, state } = makeInstance();
+    fileStatus.set("f1", "active");
+    const first = instance.do.uploadImagesOnUpPost(picked);
+    uploads[0]?.resolve([fileOf("f1", "uploading")]);
+    await first;
+    const second = instance.do.uploadImageOnUpPost(picked);
+    jest.advanceTimersByTime(3000);
+    await flush();
+    expect(state().upPostForm.images[0].status).toBe("active");
+    expect(state().upPostFormUploading.image).toHaveLength(1);
+    uploads[1]?.resolve([fileOf("f2")]);
+    await second;
+    expect(state().upPostForm.image.id).toBe("f2");
+    expect(state().upPostFormUploading).toEqual({});
   });
 });
