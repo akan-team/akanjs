@@ -77,6 +77,7 @@ export interface PlugFact extends NamedFact {
 export interface ServiceClassFact extends ModuleClassFact {
   methods: MemberFact[];
   plugs: PlugFact[];
+  fields: string[];
 }
 
 export interface InternalKeyFact extends MemberFact {
@@ -391,7 +392,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     return `${ms / size}${unit}`;
   };
 
-  //? `SignalResolver.resolveSchedule` hands `once` only to init jobs and `lock` only to interval and cron jobs.
+  //? Only an init job reads `once`, and only an interval job `lock`: `Bun.cron` never overlaps a cron job anyway.
   const modesOf = (option: TS.Expression | undefined, type: string | null) => {
     const object = option && unwrap(option);
     if (!object || !ts.isObjectLiteralExpression(object)) return [];
@@ -400,10 +401,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       const value = unwrap(property.initializer);
       if (name === "enabled") return value.kind === ts.SyntaxKind.FalseKeyword ? ["disabled"] : [];
       if (name === "once") return type === "initialize" && value.kind === ts.SyntaxKind.TrueKeyword ? ["once"] : [];
-      if (name === "lock")
-        return (type === "interval" || type === "cron") && value.kind === ts.SyntaxKind.FalseKeyword
-          ? ["unlocked"]
-          : [];
+      if (name === "lock") return type === "interval" && value.kind === ts.SyntaxKind.FalseKeyword ? ["unlocked"] : [];
       if (name !== "serverMode" && name !== "operationMode") return [];
       const values = ts.isArrayLiteralExpression(value) ? [...value.elements] : [value];
       return values.flatMap((element) =>
@@ -825,6 +823,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           model: moduleRefOf(call.arguments[0], "db"),
           methods: methodsOf(source, statement),
           plugs: plugsOf(source, builder),
+          fields: objectKeys(source, returnedObject(builder)).map(({ name }) => name),
         });
       else if (callee === "slice") {
         const model = moduleRefOf(call.arguments[0], "srv");

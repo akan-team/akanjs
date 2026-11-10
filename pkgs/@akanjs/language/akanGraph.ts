@@ -161,6 +161,7 @@ export class GraphBuilder {
   readonly #routes: RouteFactReader;
   readonly #adaptors = new Map<string, DeclaredAdaptor[]>();
   readonly #plugs = new Map<string, DeclaredPlug[]>();
+  readonly #serviceFields = new Set<string>();
 
   constructor(source: AkanGraphSource) {
     this.#source = source;
@@ -184,9 +185,8 @@ export class GraphBuilder {
         const key = this.#key("adaptor", file.owner, fact.name);
         adaptorCounts.set(key, (adaptorCounts.get(key) ?? 0) + 1);
       }
-    const adaptorIds = new Map<AdaptorFact, string>();
-    for (const file of facts)
-      for (const fact of file.adaptors) {
+    const declaredAdaptors = facts.flatMap((file) =>
+      file.adaptors.map((fact) => {
         const key = this.#key("adaptor", file.owner, fact.name);
         const id =
           (adaptorCounts.get(key) ?? 0) > 1
@@ -194,18 +194,14 @@ export class GraphBuilder {
             : key;
         const declared = { fact, owner: file.owner, fileName: file.fileName, id };
         this.#adaptors.set(fact.name, [...(this.#adaptors.get(fact.name) ?? []), declared]);
-        adaptorIds.set(fact, this.#adaptorNodeOf(declared));
-      }
-    for (const file of facts) {
-      for (const fact of file.adaptors)
-        for (const plug of fact.plugs)
-          this.#addEdge(
-            adaptorIds.get(fact) ?? this.#key("adaptor", file.owner, fact.name),
-            this.#adaptorIdOf(plug.target, file),
-            "plugs",
-            plug.name,
-            this.#location(plug.span),
-          );
+        this.#adaptorNodeOf(declared);
+        return { declared, file };
+      }),
+    );
+    for (const { declared, file } of declaredAdaptors)
+      for (const plug of declared.fact.plugs)
+        this.#addEdge(declared.id, this.#adaptorIdOf(plug.target, file), "plugs", plug.name, this.#location(plug.span));
+    for (const file of facts)
       for (const binding of file.adaptorBindings)
         this.#addEdge(
           this.#adaptorIdOf(binding.role, file),
@@ -214,7 +210,6 @@ export class GraphBuilder {
           file.owner,
           this.#location(binding.span),
         );
-    }
 
     this.#declareGuards(facts);
 
@@ -255,6 +250,7 @@ export class GraphBuilder {
             { owner, target: this.#adaptorIdOf(plug.target, file) },
           ]);
         }
+        for (const field of service.fields) this.#serviceFields.add(`${owner ?? ""}\n${refName}\n${field}`);
       }
       for (const filter of file.filters) {
         if (!filter.name.endsWith("Filter")) continue;
@@ -895,7 +891,7 @@ export class GraphBuilder {
       member ?? (imported && imported.imported !== "default" && imported.imported !== "*" ? imported.imported : head);
     const path = imported ? this.#pathOfSpecifier(file.fileName, imported.from) : null;
     if (imported && path === null && !frameworkPattern.test(imported.from))
-      return this.#addNode(this.#key("adaptor", null, name), "adaptor", null, null, name, null, [imported.from]).id;
+      return this.#packageAdaptorOf(name, imported.from);
     const from = imported ? this.#ownerOfSpecifier(file.fileName, imported.from) : undefined;
     const declared = this.#adaptors.get(name) ?? [];
     const found =
@@ -905,6 +901,8 @@ export class GraphBuilder {
         : (this.#adaptorIn(declared, from, path, file.fileName) ??
           (from === frameworkOwner ? undefined : declared.find((adaptor) => this.#visible(adaptor.owner, from))));
     if (found) return found.id;
+    const reexported = from && from !== frameworkOwner ? this.#packageShimOf(from, name, path) : null;
+    if (reexported) return this.#packageAdaptorOf(reexported.name, reexported.from);
     const owner = from === frameworkOwner ? null : imported ? (from ?? null) : file.owner;
     const detail = from === frameworkOwner ? [frameworkOwner] : [];
     return this.#addNode(this.#key("adaptor", owner, name), "adaptor", owner, null, name, null, detail).id;
@@ -931,8 +929,27 @@ export class GraphBuilder {
   #pluggedOf({ owner, module }: Context, field: string) {
     const plugs = this.#plugs.get(`${module}\n${field}`) ?? [];
     const own = plugs.filter((plug) => plug.owner === owner);
+    if (!own.length && this.#serviceFields.has(`${owner ?? ""}\n${module}\n${field}`)) return [];
     const inherited = own.length ? own : plugs.filter((plug) => this.#visible(plug.owner, owner));
     return [...new Set(inherited.map(({ target }) => target))];
+  }
+
+  #packageAdaptorOf(name: string, specifier: string) {
+    if (frameworkPattern.test(specifier))
+      return this.#addNode(this.#key("adaptor", null, name), "adaptor", null, null, name, null, [frameworkOwner]).id;
+    const pkg = specifier
+      .split("/")
+      .slice(0, specifier.startsWith("@") ? 2 : 1)
+      .join("/");
+    return this.#addNode(this.#key("adaptor", pkg, name), "adaptor", null, null, name, null, [pkg]).id;
+  }
+
+  //? A lib reaches a third-party class only through a one-line re-export, so the class is the package's, not the lib's.
+  #packageShimOf(owner: string, name: string, near: string | null) {
+    const reexport = this.#reexportOf(owner, name, near);
+    const [shim] = reexport?.site.imports ?? [];
+    if (!reexport || !shim || this.#pathOfSpecifier(reexport.site.fileName, shim.from) !== null) return null;
+    return { name: reexport.local, from: shim.from };
   }
 
   #adaptorNodeOf({ fact, owner, fileName, id }: DeclaredAdaptor) {

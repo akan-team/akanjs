@@ -186,6 +186,49 @@ describe("WorkspaceGraph.scope", () => {
     expect(scoped.nodes.map(({ id }) => id)).toEqual([guard, own]);
     expect(scoped.edges).toEqual([edge(own, guard)]);
   });
+
+  it("follows a role the scope's method calls to the implementation its app binds", () => {
+    const role = "adaptor::LlmAdaptorRole";
+    const binds = (to: string, label: string): AkanGraphEdge => ({ ...edge(role, to), kind: "binds", label });
+    const graph = {
+      version: 1 as const,
+      nodes: [
+        { ...node("method:apps/sceny:plan.draft", "apps/sceny"), module: "plan" },
+        { ...node("method:apps/angelo:chat.reply", "apps/angelo"), module: "chat" },
+        { ...node("method:libs/genai:prompt.run", "libs/genai"), module: "prompt" },
+        node(role, null),
+        node("adaptor::AnthropicLlm", null),
+        node("adaptor:apps/angelo:ChatCompletionsLlm", "apps/angelo"),
+        node("adaptor:libs/genai:GenaiLlm", "libs/genai"),
+      ],
+      edges: [
+        edge("method:apps/sceny:plan.draft", role),
+        edge("method:apps/angelo:chat.reply", role),
+        edge("method:libs/genai:prompt.run", role),
+        binds("adaptor::AnthropicLlm", "apps/sceny"),
+        binds("adaptor:apps/angelo:ChatCompletionsLlm", "apps/angelo"),
+        binds("adaptor:libs/genai:GenaiLlm", "libs/genai"),
+      ],
+    };
+    const bound = (scope: { app?: string; module?: string }) =>
+      WorkspaceGraph.scope(graph, scope)
+        .edges.filter(({ kind }) => kind === "binds")
+        .map(({ to, label }) => `${label} ${to}`);
+    expect(bound({ app: "sceny" })).toEqual(["apps/sceny adaptor::AnthropicLlm"]);
+    expect(WorkspaceGraph.scope(graph, { app: "sceny" }).nodes.map(({ id }) => id)).toContain("adaptor::AnthropicLlm");
+    expect(bound({ app: "angelo" })).toEqual(["apps/angelo adaptor:apps/angelo:ChatCompletionsLlm"]);
+    expect(bound({ app: "genai" })).toEqual([
+      "apps/sceny adaptor::AnthropicLlm",
+      "apps/angelo adaptor:apps/angelo:ChatCompletionsLlm",
+      "libs/genai adaptor:libs/genai:GenaiLlm",
+    ]);
+    expect(bound({ module: "plan" })).toHaveLength(3);
+    expect(
+      WorkspaceGraph.visibleTo(graph, "sceny")
+        .edges.filter(({ kind }) => kind === "binds")
+        .map(({ label }) => label),
+    ).toEqual(["apps/sceny", "libs/genai"]);
+  });
 });
 
 describe("WorkspaceGraph.changesAt", () => {

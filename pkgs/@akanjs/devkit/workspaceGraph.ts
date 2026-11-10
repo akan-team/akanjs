@@ -1,6 +1,13 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { type AkanChangeMap, type AkanGraph, AkanGraphDiff, type AkanGraphNode, AkanIndex } from "@akanjs/language";
+import {
+  type AkanChangeMap,
+  type AkanGraph,
+  AkanGraphDiff,
+  type AkanGraphEdge,
+  type AkanGraphNode,
+  AkanIndex,
+} from "@akanjs/language";
 import ts from "typescript";
 import type { Workspace } from "./commandDecorators";
 import { GitRevision } from "./gitRevision";
@@ -109,9 +116,20 @@ export class WorkspaceGraph {
     //? A lib's guard is linked from every app's endpoints; through it, a scope would reach all of them.
     const guards = new Set(graph.nodes.filter((node) => node.kind === "guard").map((node) => node.id));
     const reaches = (id: string) => seeds.has(id) && !guards.has(id);
-    const edges = graph.edges.filter((edge) => reaches(edge.from) || reaches(edge.to));
-    const ids = new Set([...seeds, ...edges.flatMap((edge) => [edge.from, edge.to])]);
-    return { version: 1, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges };
+    const edges = graph.edges.filter((edge) => edge.kind !== "binds" && (reaches(edge.from) || reaches(edge.to)));
+    const kept = new Set([...seeds, ...edges.flatMap((edge) => [edge.from, edge.to])]);
+    const bindings = WorkspaceGraph.#bindingsFor(graph, app).filter((edge) => kept.has(edge.from) || reaches(edge.to));
+    const ids = new Set([...kept, ...bindings.flatMap((edge) => [edge.from, edge.to])]);
+    return { version: 1, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges: [...edges, ...bindings] };
+  }
+
+  //? An app runs a role as its own `applyAdaptor` binds it, else as a lib's does; a lib's code runs under every app's.
+  static #bindingsFor(graph: AkanGraph, app: string | null | undefined) {
+    const binds = graph.edges.filter((edge) => edge.kind === "binds");
+    const appOwner = `apps/${app}`;
+    if (!app || !graph.nodes.some((node) => node.owner === appOwner)) return binds;
+    const own = new Set(binds.filter((edge) => edge.label === appOwner).map((edge) => edge.from));
+    return binds.filter((edge) => edge.label === appOwner || (!edge.label?.startsWith("apps/") && !own.has(edge.from)));
   }
 
   //? Pages are many and most only wrap one another, so a graph too large to answer whole drops the pages that neither
@@ -141,7 +159,13 @@ export class WorkspaceGraph {
     const isVisible = ({ owner }: AkanGraphNode) => !owner || owner === appOwner || owner.startsWith("libs/");
     const nodes = graph.nodes.filter(isVisible);
     const ids = new Set(nodes.map((node) => node.id));
-    return { version: 1, nodes, edges: graph.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to)) };
+    const isOtherApps = ({ kind, label }: AkanGraphEdge) =>
+      kind === "binds" && !!label?.startsWith("apps/") && label !== appOwner;
+    return {
+      version: 1,
+      nodes,
+      edges: graph.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to) && !isOtherApps(edge)),
+    };
   }
 
   static changesVisibleTo(changes: AkanChangeMap, app: string): AkanChangeMap {
