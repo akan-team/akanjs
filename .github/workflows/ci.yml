@@ -103,6 +103,18 @@ jobs:
           path: local/coverage/
           if-no-files-found: warn
 
+  route-js-budget:
+    name: Route JS budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: bun run buildAkan
+      # --fast skips the typecheck, which fails on the empty env files a fresh checkout seeds; the budget reads only bundles.
+      - run: bun run runAkan build minimal --fast --check-budget
+      - run: bun run runAkan build akan --fast --check-budget
+
   sync:
     name: Sync is clean
     runs-on: ubuntu-latest
