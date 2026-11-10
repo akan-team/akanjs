@@ -423,7 +423,7 @@ export default page()
       },
       {
         key: "Load.View",
-        type: "{ view, renderView, loading?, empty?, noDiv?, className? }",
+        type: "{ view, renderView, loading?, empty?, error?, noDiv?, className? }",
         desc: l.trans({
           en: "Hydrates one full model and draws it with `renderView`; `noDiv` drops the wrapper element.",
           ko: "model 하나를 hydrate하고 `renderView`로 그립니다. `noDiv`면 감싸는 요소를 그리지 않습니다.",
@@ -431,7 +431,7 @@ export default page()
       },
       {
         key: "Load.Edit",
-        type: "{ edit, slice, type?, modal?, loading?, draft?, onSubmit?, onCancel?, submitText?, renderSubmit?, … }",
+        type: "{ edit, slice, type?, modal?, loading?, error?, draft?, onSubmit?, onCancel?, submitText?, renderSubmit?, … }",
         default: 'type "modal"',
         desc: l.trans({
           en: "`edit` takes an edit payload, its promise, or a new-record seed. `type`: `modal`, `form`, `empty`.",
@@ -440,18 +440,18 @@ export default page()
       },
       {
         key: "Load.Pagination",
-        type: "{ init, className?, scrollToTop? }",
+        type: "{ init, className?, scrollToTop?, error? }",
         desc: l.trans({
-          en: "A standalone pager on a list's `init`. It draws nothing while every row fits on one page.",
-          ko: "목록의 `init`을 받는 독립 pager입니다. 한 페이지에 다 들어가면 아무것도 그리지 않습니다.",
+          en: "A standalone pager on a list's `init`. It draws nothing while every row fits on one page, or when `init` fails.",
+          ko: "목록의 `init`을 받는 독립 pager입니다. 한 페이지에 다 들어가거나 `init`이 실패하면 아무것도 그리지 않습니다.",
         }),
       },
       {
         key: "Load.Stream",
         type: "{ of, fallback?, error?, children }",
         desc: l.trans({
-          en: "Awaits one promise behind its own Suspense boundary and hands the value to `children`. A rejection renders `error` (a short notice by default) in its place, and the rest of the page stays.",
-          ko: "promise 하나를 자기 Suspense 경계 안에서 기다렸다가 그 값을 `children`에 넘깁니다. promise가 실패하면 그 자리에 `error`(기본은 짧은 안내문)를 그리고, 나머지 화면은 그대로 둡니다.",
+          en: "Awaits one promise behind its own Suspense boundary and hands the value to `children`. A rejection renders `error` in its place, and the rest of the page stays. By default that is a short notice with a retry button.",
+          ko: "promise 하나를 자기 Suspense 경계 안에서 기다렸다가 그 값을 `children`에 넘깁니다. promise가 실패하면 그 자리에 `error`를 그리고, 나머지 화면은 그대로 둡니다. 기본은 다시 시도 버튼이 있는 짧은 안내문입니다.",
         }),
       },
       {
@@ -487,6 +487,14 @@ export default page()
         desc: l.trans({
           en: "Fallback while `init` is pending and while a refetch runs.",
           ko: "`init`을 기다리는 동안과 다시 불러오는 동안 보여 줍니다.",
+        }),
+      },
+      {
+        key: "error",
+        type: "ReactNode | (error, retry) => ReactNode",
+        desc: l.trans({
+          en: "Shown in place of the list when `init` fails. The rejection stops here, so a boundary above never sees it.",
+          ko: "`init`이 실패하면 목록 대신 보여 줍니다. 실패는 여기서 멈추므로 위쪽 error boundary에는 닿지 않습니다.",
         }),
       },
       {

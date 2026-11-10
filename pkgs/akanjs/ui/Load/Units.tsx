@@ -14,6 +14,7 @@ import { Loading } from "../Loading";
 import { More } from "../More";
 import { sliceNamesOf } from "../sliceNamesOf";
 import Stream from "./Stream";
+import type { StreamError } from "./StreamBoundary";
 import { SliceClaim } from "./sliceClaim";
 
 interface DefaultProps<L extends { id: string }> {
@@ -24,6 +25,7 @@ interface DefaultProps<L extends { id: string }> {
   from?: number;
   to?: number;
   loading?: ReactNode;
+  error?: StreamError;
   filter?: (item: L, idx: number) => boolean;
   sort?: (a: L, b: L) => number;
   /** Placeholder for a slice with no rows. Takes precedence over `renderEmpty`. */
@@ -276,6 +278,7 @@ export default function Units<RefName extends string, Light extends { id: string
   return (
     <Stream
       of={props.init}
+      error={props.error}
       fallback={
         props.loading === undefined ? (
           <div className="flex size-full items-center justify-center">
