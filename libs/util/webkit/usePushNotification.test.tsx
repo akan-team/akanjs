@@ -206,6 +206,58 @@ describe("usePushNotification", () => {
     expect(shell.tokenListeners).toHaveLength(1);
   });
 
+  test("hands a token to the listener that replaced its own before the device id resolved", async () => {
+    installWindow();
+    shell.native = true;
+    const push = await hookOf();
+    const { deviceId } = (await push.getToken()) ?? {};
+    const remounted: unknown[] = [];
+    const rerun: unknown[] = [];
+
+    push.onTokenChange(() => undefined)();
+    await tick();
+    rotate("fcm-held");
+    push.onTokenChange(() => undefined)();
+    const stopRemounted = push.onTokenChange((pushToken) => remounted.push(pushToken));
+    await tick();
+    stopRemounted();
+    const stopFirstRun = push.onTokenChange(() => undefined);
+    await tick();
+    rotate("fcm-live");
+    stopFirstRun();
+    const stopRerun = push.onTokenChange((pushToken) => rerun.push(pushToken));
+    await tick();
+    stopRerun();
+
+    expect(remounted).toEqual([{ token: "fcm-held", provider: "fcm", platform: "android", deviceId }]);
+    expect(rerun).toEqual([{ token: "fcm-live", provider: "fcm", platform: "android", deviceId }]);
+  });
+
+  test("holds the newest token whose listeners all left before the device id resolved", async () => {
+    installWindow();
+    shell.native = true;
+    const push = await hookOf();
+    const { deviceId } = (await push.getToken()) ?? {};
+    const later: unknown[] = [];
+
+    const stop = push.onTokenChange(() => undefined);
+    await tick();
+    rotate("fcm-1");
+    rotate("fcm-2");
+    stop();
+    await tick();
+    rotate("fcm-3");
+    const stopAgain = push.onTokenChange(() => undefined);
+    rotate("fcm-4");
+    stopAgain();
+    await tick();
+    const stopLater = push.onTokenChange((pushToken) => later.push(pushToken));
+    await tick();
+    stopLater();
+
+    expect(later).toEqual([{ token: "fcm-4", provider: "fcm", platform: "android", deviceId }]);
+  });
+
   test("leaves a native shell's taps to the framework and watches no service worker", async () => {
     installWindow();
     shell.native = true;

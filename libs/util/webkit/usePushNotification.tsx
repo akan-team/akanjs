@@ -110,12 +110,15 @@ type TokenListener = (pushToken: PushToken) => void;
 const tokenListeners = new Set<TokenListener>();
 //? The shell keeps the latest token no page heard for the next listener; with the subscription kept, the page must.
 let heldToken: NativePushToken | null = null;
+let latestToken: NativePushToken | null = null;
 let tokenSubscription: Promise<void> | null = null;
 
-const handOn = (nativeToken: NativePushToken, listeners: TokenListener[]) =>
+//? Listeners are read at delivery, not arrival: a remount or effect re-run while the device id resolves swaps them.
+const handOn = (nativeToken: NativePushToken) =>
   void withDeviceId(nativeToken)
     .then((pushToken) => {
-      for (const listener of listeners) if (tokenListeners.has(listener)) listener(pushToken);
+      if (tokenListeners.size) for (const listener of [...tokenListeners]) listener(pushToken);
+      else if (nativeToken === latestToken) heldToken = nativeToken;
     })
     .catch((error: unknown) => Logger.warn(`A rotated push token was not handed on: ${String(error)}`));
 
@@ -127,7 +130,8 @@ const subscribeTokens = () =>
     }
     try {
       push.listen("token", (nativeToken) => {
-        if (tokenListeners.size) handOn(nativeToken, [...tokenListeners]);
+        latestToken = nativeToken;
+        if (tokenListeners.size) handOn(nativeToken);
         else heldToken = nativeToken;
       });
     } catch (error) {
@@ -306,7 +310,7 @@ export const usePushNotification = () => {
     if (!isNativeApp()) return () => undefined;
     const each: TokenListener = (pushToken) => listener(pushToken);
     tokenListeners.add(each);
-    if (heldToken) handOn(heldToken, [each]);
+    if (heldToken) handOn(heldToken);
     heldToken = null;
     void subscribeTokens();
     return () => {
