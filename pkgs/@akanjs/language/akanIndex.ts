@@ -189,7 +189,12 @@ export class AkanIndex {
     if (testFilePattern.test(fileName)) return false;
     if (srvkitPattern.test(fileName)) return true;
     const holdsGuards = words.includes("\nGuard\n") && words.includes("\ncanPass\n");
-    return holdsGuards || words.includes("\nadapt\n") || words.includes("\ndangerouslyAdapt\n");
+    return (
+      holdsGuards ||
+      words.includes("\nadapt\n") ||
+      words.includes("\ndangerouslyAdapt\n") ||
+      words.includes("\napplyAdaptor\n")
+    );
   }
 
   static #sourceKeyOf({ family, sourceKey, label, detail, span }: AkanEntry): AkanSourceKey {

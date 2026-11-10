@@ -95,6 +95,12 @@ export interface AdaptorFact extends MemberFact {
   doc: string | null;
 }
 
+export interface AdaptorBindingFact {
+  role: string;
+  adaptor: string;
+  span: AkanSpan;
+}
+
 export interface StoreClassFact extends ModuleClassFact {
   stateKeys: NamedFact[];
   actions: MemberFact[];
@@ -154,6 +160,7 @@ export interface FileFacts {
   endpoints: EndpointClassFact[];
   internals: InternalClassFact[];
   adaptors: AdaptorFact[];
+  adaptorBindings: AdaptorBindingFact[];
   stores: StoreClassFact[];
 }
 
@@ -384,15 +391,19 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     return `${ms / size}${unit}`;
   };
 
-  const modesOf = (option: TS.Expression | undefined) => {
+  //? `SignalResolver.resolveSchedule` hands `once` only to init jobs and `lock` only to interval and cron jobs.
+  const modesOf = (option: TS.Expression | undefined, type: string | null) => {
     const object = option && unwrap(option);
     if (!object || !ts.isObjectLiteralExpression(object)) return [];
     return object.properties.filter(ts.isPropertyAssignment).flatMap((property) => {
       const name = ast.nodeName(property.name);
       const value = unwrap(property.initializer);
       if (name === "enabled") return value.kind === ts.SyntaxKind.FalseKeyword ? ["disabled"] : [];
-      if (name === "once") return value.kind === ts.SyntaxKind.TrueKeyword ? ["once"] : [];
-      if (name === "lock") return value.kind === ts.SyntaxKind.FalseKeyword ? ["unlocked"] : [];
+      if (name === "once") return type === "initialize" && value.kind === ts.SyntaxKind.TrueKeyword ? ["once"] : [];
+      if (name === "lock")
+        return (type === "interval" || type === "cron") && value.kind === ts.SyntaxKind.FalseKeyword
+          ? ["unlocked"]
+          : [];
       if (name !== "serverMode" && name !== "operationMode") return [];
       const values = ts.isArrayLiteralExpression(value) ? [...value.elements] : [value];
       return values.flatMap((element) =>
@@ -414,14 +425,14 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       const { root } = chainOf(property.initializer);
       const type = root ? verbOf(root.expression) : null;
       const [first, second] = root?.arguments ?? [];
-      const schedule =
-        type === "cron" && first
-          ? ts.isStringLiteralLike(first)
-            ? first.text
-            : first.getText(source)
-          : type === "interval" || type === "timeout"
-            ? durationOf(first, source)
-            : null;
+      const cron = type === "cron" && first ? unwrap(first) : null;
+      const schedule = cron
+        ? ts.isStringLiteralLike(cron)
+          ? cron.text
+          : cron.getText(source)
+        : type === "interval" || type === "timeout"
+          ? durationOf(first, source)
+          : null;
       const option = type === "initialize" || type === "destroy" ? first : second;
       return [
         {
@@ -430,7 +441,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           extent: extentOf(source, property),
           type,
           schedule,
-          modes: modesOf(option),
+          modes: modesOf(option, type),
         },
       ];
     });
@@ -446,6 +457,23 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       const targetName = target && guardNameOf(target);
       return name && targetName ? [{ name, span: spanOf(source, property.name), target: targetName }] : [];
     });
+  };
+
+  const adaptorBindingsIn = (source: TS.SourceFile) => {
+    const bindings: AdaptorBindingFact[] = [];
+    const visit = (node: TS.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "applyAdaptor"
+      ) {
+        const [role, adaptor] = node.arguments.map(guardNameOf);
+        if (role && adaptor) bindings.push({ role, adaptor, span: spanOf(source, node.expression.name) });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    return bindings;
   };
 
   const endpointKeysOf = (
@@ -776,6 +804,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       endpoints: [],
       internals: [],
       adaptors: [],
+      adaptorBindings: source.text.includes("applyAdaptor") ? adaptorBindingsIn(source) : [],
       stores: [],
     };
     for (const statement of source.statements) {

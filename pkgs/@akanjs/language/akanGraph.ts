@@ -62,6 +62,12 @@ interface DeclaredAdaptor {
   fact: AdaptorFact;
   owner: string | null;
   fileName: string;
+  id: string;
+}
+
+interface DeclaredPlug {
+  owner: string | null;
+  target: string;
 }
 
 interface DeclaredGuard {
@@ -154,7 +160,7 @@ export class GraphBuilder {
   #modules: Map<string, string[]> | null = null;
   readonly #routes: RouteFactReader;
   readonly #adaptors = new Map<string, DeclaredAdaptor[]>();
-  readonly #plugs = new Map<string, string>();
+  readonly #plugs = new Map<string, DeclaredPlug[]>();
 
   constructor(source: AkanGraphSource) {
     this.#source = source;
@@ -172,22 +178,43 @@ export class GraphBuilder {
     ];
     const typed: AkanGraphNode[] = [];
 
+    const adaptorCounts = new Map<string, number>();
     for (const file of facts)
       for (const fact of file.adaptors) {
-        const declared = { fact, owner: file.owner, fileName: file.fileName };
-        this.#adaptors.set(fact.name, [...(this.#adaptors.get(fact.name) ?? []), declared]);
-        this.#adaptorNodeOf(declared);
+        const key = this.#key("adaptor", file.owner, fact.name);
+        adaptorCounts.set(key, (adaptorCounts.get(key) ?? 0) + 1);
       }
+    const adaptorIds = new Map<AdaptorFact, string>();
     for (const file of facts)
+      for (const fact of file.adaptors) {
+        const key = this.#key("adaptor", file.owner, fact.name);
+        const id =
+          (adaptorCounts.get(key) ?? 0) > 1
+            ? this.#key("adaptor", file.owner, `${this.#ownPathOf(file)}#${fact.name}`)
+            : key;
+        const declared = { fact, owner: file.owner, fileName: file.fileName, id };
+        this.#adaptors.set(fact.name, [...(this.#adaptors.get(fact.name) ?? []), declared]);
+        adaptorIds.set(fact, this.#adaptorNodeOf(declared));
+      }
+    for (const file of facts) {
       for (const fact of file.adaptors)
         for (const plug of fact.plugs)
           this.#addEdge(
-            this.#key("adaptor", file.owner, fact.name),
+            adaptorIds.get(fact) ?? this.#key("adaptor", file.owner, fact.name),
             this.#adaptorIdOf(plug.target, file),
             "plugs",
             plug.name,
             this.#location(plug.span),
           );
+      for (const binding of file.adaptorBindings)
+        this.#addEdge(
+          this.#adaptorIdOf(binding.role, file),
+          this.#adaptorIdOf(binding.adaptor, file),
+          "binds",
+          file.owner,
+          this.#location(binding.span),
+        );
+    }
 
     this.#declareGuards(facts);
 
@@ -221,8 +248,13 @@ export class GraphBuilder {
         }
         for (const method of service.methods)
           this.#addMember("method", owner, refName, method, `${service.name}.${method.name}`, file.fileName);
-        for (const plug of service.plugs)
-          this.#plugs.set(`${owner ?? ""}\n${refName}\n${plug.name}`, this.#adaptorIdOf(plug.target, file));
+        for (const plug of service.plugs) {
+          const key = `${refName}\n${plug.name}`;
+          this.#plugs.set(key, [
+            ...(this.#plugs.get(key) ?? []),
+            { owner, target: this.#adaptorIdOf(plug.target, file) },
+          ]);
+        }
       }
       for (const filter of file.filters) {
         if (!filter.name.endsWith("Filter")) continue;
@@ -859,24 +891,51 @@ export class GraphBuilder {
   #adaptorIdOf(local: string, file: GuardSite) {
     const [head, member] = local.split(".");
     const imported = file.imports.find((item) => item.name === head);
-    const from = imported ? this.#ownerOfSpecifier(file.fileName, imported.from) : undefined;
     const name =
       member ?? (imported && imported.imported !== "default" && imported.imported !== "*" ? imported.imported : head);
+    const path = imported ? this.#pathOfSpecifier(file.fileName, imported.from) : null;
+    if (imported && path === null && !frameworkPattern.test(imported.from))
+      return this.#addNode(this.#key("adaptor", null, name), "adaptor", null, null, name, null, [imported.from]).id;
+    const from = imported ? this.#ownerOfSpecifier(file.fileName, imported.from) : undefined;
     const declared = this.#adaptors.get(name) ?? [];
     const found =
       from === undefined
-        ? (declared.find((adaptor) => adaptor.owner === file.owner) ??
+        ? (this.#adaptorIn(declared, file.owner, path, file.fileName) ??
           declared.find((adaptor) => this.#visible(adaptor.owner, file.owner)))
-        : (declared.find((adaptor) => adaptor.owner === from) ??
+        : (this.#adaptorIn(declared, from, path, file.fileName) ??
           (from === frameworkOwner ? undefined : declared.find((adaptor) => this.#visible(adaptor.owner, from))));
-    if (found) return this.#adaptorNodeOf(found);
+    if (found) return found.id;
     const owner = from === frameworkOwner ? null : imported ? (from ?? null) : file.owner;
     const detail = from === frameworkOwner ? [frameworkOwner] : [];
     return this.#addNode(this.#key("adaptor", owner, name), "adaptor", owner, null, name, null, detail).id;
   }
 
-  #adaptorNodeOf({ fact, owner, fileName }: DeclaredAdaptor) {
-    const id = this.#key("adaptor", owner, fact.name);
+  #adaptorIn(declared: DeclaredAdaptor[], owner: string | null, path: string | null, fileName: string) {
+    const own = declared.filter((adaptor) => adaptor.owner === owner);
+    if (own.length < 2) return own.at(0);
+    const pathOf = (adaptor: DeclaredAdaptor) => this.#source.relative(adaptor.fileName).replace(/\.tsx?$/, "");
+    const named =
+      path === null
+        ? own.find((adaptor) => adaptor.fileName === fileName)
+        : (own.find((adaptor) => pathOf(adaptor) === path || pathOf(adaptor) === `${path}/index`) ??
+          own.find((adaptor) => pathOf(adaptor).startsWith(`${path}/`)));
+    return named ?? own.at(0);
+  }
+
+  #ownPathOf({ owner, fileName }: { owner: string | null; fileName: string }) {
+    const relative = this.#source.relative(fileName);
+    return owner ? relative.slice(owner.length + 1) : relative;
+  }
+
+  //? An app service spreads its module's lib services (`...user.services`), so it holds the fields they plug.
+  #pluggedOf({ owner, module }: Context, field: string) {
+    const plugs = this.#plugs.get(`${module}\n${field}`) ?? [];
+    const own = plugs.filter((plug) => plug.owner === owner);
+    const inherited = own.length ? own : plugs.filter((plug) => this.#visible(plug.owner, owner));
+    return [...new Set(inherited.map(({ target }) => target))];
+  }
+
+  #adaptorNodeOf({ fact, owner, fileName, id }: DeclaredAdaptor) {
     const detail = fact.refName ? [fact.refName] : [];
     const node = this.#addNode(id, "adaptor", owner, null, fact.name, fact.span, detail);
     if (fact.doc && !node.doc) node.doc = fact.doc;
@@ -1095,10 +1154,10 @@ export class GraphBuilder {
   ) {
     const plugged =
       chain?.length === 2 && chain[0] === "this" && context.kind === "method" && this.#isServiceThis(identifier)
-        ? this.#plugs.get(`${context.owner ?? ""}\n${context.module}\n${chain[1]}`)
-        : undefined;
-    const resolved = plugged
-      ? [plugged]
+        ? this.#pluggedOf(context, chain[1])
+        : [];
+    const resolved = plugged.length
+      ? plugged
       : this.#source
           .resolve(fileName, identifier)
           .map((target) => this.#targetNodeOf(target))
