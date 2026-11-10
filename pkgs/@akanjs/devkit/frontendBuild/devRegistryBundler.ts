@@ -7,7 +7,7 @@ import { CsrDevModuleCompiler } from "./csrDevModuleCompiler";
 import { CsrDevPatcher } from "./csrDevPatcher";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
-import type { CsrDevCompiledModule, CsrDevContext, CsrDevGraph } from "./csrDevTypes";
+import type { CsrDevBarrelStamp, CsrDevCompiledModule, CsrDevContext, CsrDevGraph } from "./csrDevTypes";
 import { DevBarrelImports } from "./devBarrelImports";
 import { RegistryMetadataFingerprint } from "./registryMetadataFingerprint";
 import { WatchRootResolver } from "./watchRootResolver";
@@ -179,7 +179,7 @@ export abstract class DevRegistryBundler {
     graph: CsrDevGraph,
     resolver: CsrDevResolver,
     compiled: CsrDevCompiledModule[],
-    barrels: Record<string, Record<string, number>> = {},
+    barrels: Record<string, CsrDevBarrelStamp> = {},
   ): void {
     for (const module of compiled)
       graph.modules[module.id] = {

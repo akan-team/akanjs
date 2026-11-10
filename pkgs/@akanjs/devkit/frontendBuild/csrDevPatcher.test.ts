@@ -128,6 +128,17 @@ describe("CsrDevPatcher", () => {
     async context() {
       return { ...context, barrelImports: this.barrels };
     }
+    fingerprints = 0;
+    override async barrelImports(barrelContext: CsrDevContext) {
+      const barrelImports = await super.barrelImports(barrelContext);
+      if (!barrelImports) return null;
+      const fingerprint = barrelImports.fingerprint.bind(barrelImports);
+      barrelImports.fingerprint = async (barrel, names) => {
+        this.fingerprints += 1;
+        return await fingerprint(barrel, names);
+      };
+      return barrelImports;
+    }
     async writeEntries() {
       return { files: { "": this.#entry }, changed: [] };
     }
@@ -589,12 +600,14 @@ describe("CsrDevPatcher", () => {
 
     await Bun.write(file("ui/Foo.tsx"), 'export const Foo = () => "foo v2";\nexport const Bar = () => "bar";\n');
     expect(changedIds(await patcher.update([file("ui/Foo.tsx")]))).toEqual(["apps/demo/ui/Foo.tsx"]);
+    expect(bundler.fingerprints).toBe(0);
 
     await Bun.write(file("ui/Foo.tsx"), 'export const Foo = () => "foo";\n');
     await Bun.write(file("ui/Bar.tsx"), 'export const Bar = () => "bar moved";\n');
     await Bun.write(file("ui/index.ts"), 'export * from "./Bar";\nexport * from "./Foo";\n');
     const moved = await patcher.update([file("ui/Foo.tsx"), file("ui/Bar.tsx"), file("ui/index.ts")]);
     expect(changedIds(moved)).toEqual(["apps/demo/entry.ts", "apps/demo/ui/Bar.tsx", "apps/demo/ui/Foo.tsx"]);
+    expect(bundler.fingerprints).toBe(2);
     expect(factoryOf(await app(), "apps/demo/entry.ts")).toContain('require("akan-module:apps/demo/ui/Bar.tsx")');
 
     patcher.forget();
@@ -608,6 +621,32 @@ describe("CsrDevPatcher", () => {
     ]);
     expect(factoryOf(await app(), "apps/demo/entry.ts")).toContain('require("akan-module:apps/demo/ui/Foo.tsx")');
     expect(await new CsrDevPatcher(bundler).update([])).toEqual({ kind: "unchanged" });
+  });
+
+  test("a move whose compile fails leaves the barrel's stamps on disk, so the next save reads it again", async () => {
+    const { bundler, file, app, changedIds } = await movedRegistry(
+      {
+        "ui/index.ts": 'export * from "./Foo";\n',
+        "ui/Foo.tsx": 'export const Foo = () => "foo";\nexport const Bar = () => "bar";\n',
+        "entry.ts": 'import { Bar } from "@apps/demo/ui";\nexport const run = Bar;\n',
+      },
+      { barrels: ["@apps/demo/ui"] },
+    );
+    const barrelsOnDisk = async () => (await bundler.writer.readJson<CsrDevGraph>("graph.json"))?.barrels;
+    const before = await barrelsOnDisk();
+
+    await Bun.write(file("ui/Foo.tsx"), 'export const Foo = () => "foo";\n');
+    await Bun.write(file("ui/Bar.tsx"), 'import "./Missing";\nexport const Bar = () => "bar moved";\n');
+    await Bun.write(file("ui/index.ts"), 'export * from "./Bar";\nexport * from "./Foo";\n');
+    const saved = [file("ui/Foo.tsx"), file("ui/Bar.tsx"), file("ui/index.ts")];
+    await expect(new CsrDevPatcher(bundler).update(saved)).rejects.toThrow();
+    expect(await barrelsOnDisk()).toEqual(before);
+
+    await Bun.write(file("ui/Bar.tsx"), 'export const Bar = () => "bar moved";\n');
+    const fixed = await new CsrDevPatcher(bundler).update([file("ui/Bar.tsx")]);
+    expect(changedIds(fixed)).toEqual(["apps/demo/entry.ts", "apps/demo/ui/Bar.tsx", "apps/demo/ui/Foo.tsx"]);
+    expect(await app()).toContain('"bar moved"');
+    expect(await barrelsOnDisk()).not.toEqual(before);
   });
 
   test("a registry with no manifest is a first build, which no tab holds a module of", async () => {

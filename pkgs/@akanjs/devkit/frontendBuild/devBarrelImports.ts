@@ -3,7 +3,7 @@ import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type PackageEntry } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
 import { CsrDevPaths } from "./csrDevPaths";
-import type { CsrDevNarrowedImport } from "./csrDevTypes";
+import type { CsrDevBarrelStamp, CsrDevNarrowedImport } from "./csrDevTypes";
 
 export interface DevBarrelRewrite {
   contents: string | null;
@@ -64,18 +64,39 @@ export class DevBarrelImports {
     return Bun.hash(narrowed ?? "").toString(36);
   }
 
-  async stamps(
-    barrels: Iterable<string>,
-    idOf: (file: string) => string,
-  ): Promise<Record<string, Record<string, number>>> {
+  async stamps(barrels: Iterable<string>, idOf: (file: string) => string): Promise<Record<string, CsrDevBarrelStamp>> {
     const stamped = await Promise.all(
       [...barrels].map(async (barrel) => {
         const files = await this.#analyzer.filesOf(barrel);
         const read = [...new Set([...files, ...files.map((file) => path.dirname(file))])];
-        return [barrel, Object.fromEntries(read.map((file) => [idOf(file), CsrDevPaths.mtimeOf(file)]))] as const;
+        const stamp: CsrDevBarrelStamp = {
+          read: Object.fromEntries(read.map((file) => [idOf(file), CsrDevPaths.mtimeOf(file)])),
+          digest: await this.#digest(barrel),
+        };
+        return [barrel, stamp] as const;
       }),
     );
     return Object.fromEntries(stamped);
+  }
+
+  //? Every input of an importer's fingerprint: an importer is hashed again only once this moves, so a save that
+  //? changes a component's body costs one analysis of its barrel, whatever the number of importers.
+  async #digest(barrel: string): Promise<string> {
+    const map = await this.#analyzer.analyze(barrel);
+    const packages = await this.#packagesOf([barrel]);
+    const files = new Map<string, string>();
+    const fileOf = (subpath: string) => {
+      let file = files.get(subpath);
+      if (file === undefined) {
+        file = DevBarrelImports.#fileOf(subpath, packages) ?? subpath;
+        files.set(subpath, file);
+      }
+      return file;
+    };
+    const exports = [...(map ?? [])]
+      .map(([name, target]) => [name, target.originalName, !!target.namespace, fileOf(target.subpath)] as const)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return Bun.hash(JSON.stringify([fileOf(barrel), map === null, exports])).toString(36);
   }
 
   async #packagesOf(barrels: string[]): Promise<PackageEntry[]> {

@@ -6,6 +6,13 @@ export interface CsrDevNarrowedImport {
   hash: string;
 }
 
+export interface CsrDevBarrelStamp {
+  /** The mtime of each file and directory the barrel's analysis read, by id. */
+  read: Record<string, number>;
+  /** Each export name with the file it resolves to, hashed: what every importer's narrowing reads. */
+  digest: string;
+}
+
 export interface CsrDevGraphModule {
   vendor: boolean;
   mtimeMs: number;
@@ -29,8 +36,7 @@ export interface CsrDevGraph {
   failed?: { roots: string[]; files: Record<string, string> };
   /** The stamp of the signal and dictionary sources the last whole build inlined; see `RegistryMetadataFingerprint`. */
   metadata?: string;
-  /** Per narrowed barrel, the mtime of each file and directory its analysis read, by id. */
-  barrels?: Record<string, Record<string, number>>;
+  barrels?: Record<string, CsrDevBarrelStamp>;
 }
 
 export interface CsrDevContext {

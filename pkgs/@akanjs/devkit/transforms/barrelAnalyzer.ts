@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import { parseNamedList } from "./moduleSyntax";
@@ -42,6 +43,7 @@ export class BarrelAnalyzer {
   readonly #opts: BarrelAnalyzerOptions;
   readonly #cache = new Map<string, Promise<BarrelExportMap | null>>();
   readonly #read = new Map<string, Set<string>>();
+  readonly #realDirs = new Map<string, string>();
   readonly #tsTranspiler = new Bun.Transpiler({ loader: "ts" });
   readonly #tsxTranspiler = new Bun.Transpiler({ loader: "tsx" });
 
@@ -63,18 +65,28 @@ export class BarrelAnalyzer {
   }
 
   //? A file beside one the analysis read counts too: created, it can take over a star export's specifier (`Foo.tsx`
-  //? beside `Foo/index.tsx`) with no read file changed.
+  //? beside `Foo/index.tsx`) with no read file changed. Both sides by realpath: a watcher names a symlinked lib's
+  //? files by their real path, where the walk went through the link.
   forget(files: string[]): Map<string, Promise<BarrelExportMap | null>> {
-    const dirs = new Set(files.map((file) => path.dirname(path.resolve(file))));
+    const dirs = new Set(files.map((file) => realDirOf(file)));
     const forgotten = new Map<string, Promise<BarrelExportMap | null>>();
     for (const [pkgName, read] of this.#read) {
       const analysis = this.#cache.get(pkgName);
-      if (!analysis || ![...read].some((file) => dirs.has(path.dirname(file)))) continue;
+      if (!analysis || ![...read].some((file) => dirs.has(this.#realDirOf(file)))) continue;
       forgotten.set(pkgName, analysis);
       this.#cache.delete(pkgName);
       this.#read.delete(pkgName);
     }
     return forgotten;
+  }
+
+  #realDirOf(file: string): string {
+    let dir = this.#realDirs.get(file);
+    if (dir === undefined) {
+      dir = realDirOf(file);
+      this.#realDirs.set(file, dir);
+    }
+    return dir;
   }
 
   async #analyzeSafe(pkgName: string): Promise<BarrelExportMap | null> {
@@ -192,6 +204,16 @@ export class BarrelAnalyzer {
     return defaultResolveRelative(fromFile, relSpec);
   }
 }
+
+const realDirOf = (file: string): string => {
+  const dir = path.dirname(path.resolve(file));
+  try {
+    return fs.realpathSync.native(dir);
+  } catch {
+    // A directory removed with the file keeps its own path.
+    return dir;
+  }
+};
 
 const isRelative = (spec: string): boolean => {
   return spec.startsWith("./") || spec.startsWith("../") || spec === "." || spec === "..";

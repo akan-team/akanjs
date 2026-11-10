@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import fs from "node:fs";
 import path from "node:path";
 import { ApplicationBuildReporter } from "../applicationBuildReporter";
 import { tempDirs, writeText as write } from "../testHelpers";
@@ -260,6 +261,27 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(await analyzer.analyze("@libs/util/common")).toEqual(new Map());
     const source = 'import { pad } from "@libs/util/common";\n';
     expect(await rewriteBarrelImports(source, ["@libs/util/common"], analyzer)).toBeNull();
+  });
+
+  test("forgets an analysis when a file beside one it read changes, under the link or the real path", async () => {
+    const root = await makeTempRoot();
+    await write(path.join(root, "real/ui/index.ts"), 'export * from "./Foo";\n');
+    await write(path.join(root, "real/ui/Foo.ts"), "export const Foo = 1;\n");
+    await write(path.join(root, "real/other/Bar.ts"), "export const Bar = 1;\n");
+    fs.symlinkSync(path.join(root, "real"), path.join(root, "linked"));
+    const pkgDir = path.join(root, "linked/ui");
+    const analyzer = new BarrelAnalyzer({
+      resolvePackage: async () => ({ pkgName: "@scope/ui", entryFile: path.join(pkgDir, "index.ts"), pkgDir }),
+    });
+    const analyzed = async () => {
+      await analyzer.analyze("@scope/ui");
+      return analyzer;
+    };
+
+    expect([...(await analyzed()).forget([path.join(root, "real/other/Bar.ts")]).keys()]).toEqual([]);
+    expect([...(await analyzed()).forget([path.join(root, "real/ui/Foo.ts")]).keys()]).toEqual(["@scope/ui"]);
+    expect([...(await analyzed()).forget([path.join(pkgDir, "Created.ts")]).keys()]).toEqual(["@scope/ui"]);
+    expect([...analyzer.forget([path.join(pkgDir, "Foo.ts")]).keys()]).toEqual([]);
   });
 
   test("rewrites flattenable named imports and preserves default, type, and unknown imports", async () => {

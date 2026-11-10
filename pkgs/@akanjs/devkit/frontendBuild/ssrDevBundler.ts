@@ -18,7 +18,7 @@ import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
 //* (the app's client runtime) and every `"use client"` entry; React and the akanjs vendor facets stay the import map's,
 //* so the page keeps one React and one store registry.
 export class SsrDevBundler extends DevRegistryBundler {
-  static readonly #formatVersion = 3;
+  static readonly #formatVersion = 4;
   static readonly bootstrapKey = "";
   readonly reloadsOnEntryChange = false;
   #discovery: ClientEntryDiscovery | null = null;

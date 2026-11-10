@@ -5,7 +5,13 @@ import { loaderFor } from "../transforms/moduleSyntax";
 import { CsrDevFactoryCheck } from "./csrDevFactoryCheck";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
-import type { CsrDevCompiledModule, CsrDevContext, CsrDevNarrowedImport, CsrDevSharedHelpers } from "./csrDevTypes";
+import type {
+  CsrDevBarrelStamp,
+  CsrDevCompiledModule,
+  CsrDevContext,
+  CsrDevNarrowedImport,
+  CsrDevSharedHelpers,
+} from "./csrDevTypes";
 import { DevBarrelImports } from "./devBarrelImports";
 import { RouteClientBuilder } from "./routeClientBuilder";
 
@@ -40,7 +46,7 @@ export interface CsrDevCompileResult {
   modules: CsrDevCompiledModule[];
   refusedVendors: string[];
   unresolved: string[];
-  barrels?: Record<string, Record<string, number>>;
+  barrels?: Record<string, CsrDevBarrelStamp>;
 }
 
 //* Every module becomes its own CJS factory: one Bun.build with each import external, so a save re-runs only the
@@ -118,7 +124,7 @@ export class CsrDevModuleCompiler {
     return { modules, refusedVendors: [], unresolved: [], barrels: await this.#barrelStamps(modules) };
   }
 
-  async #barrelStamps(modules: CsrDevCompiledModule[]): Promise<Record<string, Record<string, number>>> {
+  async #barrelStamps(modules: CsrDevCompiledModule[]): Promise<Record<string, CsrDevBarrelStamp>> {
     const barrels = new Set(modules.flatMap((module) => Object.keys(module.narrowed ?? {})));
     const barrelImports = barrels.size > 0 ? await this.#barrelImports() : null;
     return barrelImports ? await barrelImports.stamps(barrels, (file) => this.#paths.idOf(file)) : {};
