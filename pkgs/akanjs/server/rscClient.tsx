@@ -50,6 +50,7 @@ declare global {
   var __RSC_CLOSE__: (() => void) | undefined;
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
   var __AKAN_DICT_URL__: string | undefined;
+  var __webpack_chunk_load__: ((chunkId: string) => Promise<unknown>) | undefined;
 }
 
 function decodeInlineRscChunk([type, data]: InlineRscChunk): Uint8Array {
@@ -358,6 +359,22 @@ function requestSignalOf(navId: number, target: string): AbortSignal {
 function settleRequestOf(navId: number): void {
   if (pendingRequest?.navId === navId) pendingRequest = null;
 }
+
+//? A chunk from a replica a rolling deploy has not reached can import a name this document's vendors lack; RSDW keeps
+//? the failed load. Chunks load after their navigation commits, and one loaded before any is the document's own.
+const loadChunk = globalThis.__webpack_chunk_load__;
+if (loadChunk)
+  globalThis.__webpack_chunk_load__ = (chunkId) => {
+    const loading = loadChunk(chunkId);
+    if (navigationSeq > 0)
+      loading.catch((error: unknown) => {
+        if (process.env.NODE_ENV !== "production") return;
+        const here = normalizeHref(window.location.href);
+        const target = pendingRequest?.target ?? here;
+        hardNavigateAfterRscFailure(target, pageKeyOf(here) === pageKeyOf(target), error);
+      });
+    return loading;
+  };
 
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
 globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
