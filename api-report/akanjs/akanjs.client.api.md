@@ -1233,6 +1233,8 @@ export declare const isNativeTarget: () => boolean;
 
 export declare const isResponsiveInset: (inset: PageConfig["topInset"]) => inset is ResponsiveInset;
 
+export declare const isRouteControl: (error: unknown) => boolean;
+
 export declare const isRouteDefinition: (value: unknown) => value is RouteDefinition;
 
 export declare const isRscNavigationFromCache: () => boolean;

@@ -1,5 +1,5 @@
 "use client";
-import { isMcpView, router, Translator } from "akanjs/client";
+import { isMcpView, isRouteControl, router, Translator } from "akanjs/client";
 import { parseAkanI18nEnv } from "akanjs/common";
 import { Component, type ReactNode } from "react";
 
@@ -41,12 +41,6 @@ export class StreamBoundary extends Component<StreamBoundaryProps, StreamBoundar
 }
 
 const retry = () => router.refresh();
-
-//? Raised below a route after the first byte, a not-found or redirect is the host's to answer; its subtree draws nothing.
-export const isRouteControl = (error: unknown) => {
-  const digest = (error as { digest?: unknown } | null)?.digest;
-  return digest === "AKAN_NOT_FOUND" || (typeof digest === "string" && digest.startsWith("AKAN_REDIRECT"));
-};
 
 const LoadFailed = ({ error }: { error: unknown }) => {
   const lang = Translator.getActiveLocale() ?? parseAkanI18nEnv().defaultLocale;

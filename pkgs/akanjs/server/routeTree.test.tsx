@@ -556,10 +556,10 @@ describe("RouteElementComposer level boundary", () => {
     return { ...pageInput(matched), pathRoute: await RouteElementComposer.resolveSsrFramePathRoute(matched) };
   };
 
-  test("renders every level inside the root layout's boundary, with the same server markup", async () => {
+  test("bounds each level below the root layout that exports the boundary, with the same markup", async () => {
     const bounded = await resolved({ LevelBoundary: RouteLevelBoundary });
     const full = RouteElementComposer.compose(bounded);
-    expect(levelsInside(full, RouteLevelBoundary)).toEqual([true, true, true]);
+    expect(levelsInside(full, RouteLevelBoundary)).toEqual([false, true, true]);
     expect(await renderToText(full)).toBe(await renderToText(RouteElementComposer.compose(await resolved())));
   });
 
@@ -572,7 +572,7 @@ describe("RouteElementComposer level boundary", () => {
       const suffix = RouteElementComposer.composeSuffix({ ...bounded, patchStartIndex: 2 });
 
       expect(findElementProp(full, AkanSegmentOutletReference, "segmentKey")).toBe("slot:layout:/:lang:1:2");
-      expect(levelsInside(full, RouteLevelBoundary)).toEqual([true, true, true]);
+      expect(levelsInside(full, RouteLevelBoundary)).toEqual([false, true, true]);
       expect(containsElementType(suffix, AkanSegmentOutletReference)).toBe(false);
       expect(levelsInside(suffix, RouteLevelBoundary)).toEqual([true]);
     } finally {

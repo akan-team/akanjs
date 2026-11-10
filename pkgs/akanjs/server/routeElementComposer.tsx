@@ -53,8 +53,12 @@ export type LevelBoundary = ComponentType<{ children?: ReactNode }>;
 export interface LevelBoundaryOwner {
   getLevelBoundary?: () => Promise<LevelBoundary | undefined>;
 }
+export interface OwnedLevelBoundary {
+  Boundary: LevelBoundary;
+  owner: RouteRender;
+}
 export interface SsrPathRoute extends PathRoute {
-  levelBoundary?: LevelBoundary;
+  levelBoundary?: OwnedLevelBoundary;
 }
 
 export class RouteElementComposer {
@@ -83,10 +87,10 @@ export class RouteElementComposer {
     };
   }
 
-  static async #levelBoundaryOf(route: PathRoute | LayoutFallbackRoute): Promise<LevelBoundary | undefined> {
+  static async #levelBoundaryOf(route: PathRoute | LayoutFallbackRoute): Promise<OwnedLevelBoundary | undefined> {
     for (const render of route.renderRootLayouts) {
-      const levelBoundary = await (render as RouteRender & LevelBoundaryOwner).getLevelBoundary?.();
-      if (levelBoundary) return levelBoundary;
+      const Boundary = await (render as RouteRender & LevelBoundaryOwner).getLevelBoundary?.();
+      if (Boundary) return { Boundary, owner: render };
     }
     return undefined;
   }
@@ -357,7 +361,7 @@ export class RouteElementComposer {
     renders,
     owners = [],
     segments,
-    levelBoundary: Boundary,
+    levelBoundary,
     params,
     searchParams,
     navKey,
@@ -368,9 +372,9 @@ export class RouteElementComposer {
     /** Layouts above `renders` that this element leaves out (a patch) but whose `.notFound()` still applies. */
     owners?: RouteRender[];
     segments?: AkanRouteSegmentState[];
-    /** Around each level: a client component the server never runs, so a level failing before the first byte still
-     * takes its `.error()`. */
-    levelBoundary?: LevelBoundary;
+    /** Around each level: the Flight server only references it and React's server renderer runs no error boundary,
+     * so a level failing before the first byte still takes its `.error()`. */
+    levelBoundary?: OwnedLevelBoundary;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     navKey?: string;
@@ -387,6 +391,8 @@ export class RouteElementComposer {
       const suspenseKey =
         navKey && loadingFallback != null && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
       const levelGate = levelGates[i];
+      //? The owner renders System.Provider, which starts the router: a notice around it would have no router to retry.
+      const Boundary = levelBoundary?.owner === routeRender ? undefined : levelBoundary?.Boundary;
       const level = (
         <RouteElementComposer.AsyncRender
           routeRender={routeRender}

@@ -1,7 +1,6 @@
 "use client";
-import { router } from "akanjs/client";
+import { isRouteControl, router } from "akanjs/client";
 import { Component, type ReactNode } from "react";
-import { isRouteControl } from "../ui/Load/StreamBoundary";
 import { RenderFailure } from "./RenderFailure";
 
 interface RouteLevelBoundaryProps {
