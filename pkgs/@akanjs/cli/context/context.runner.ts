@@ -267,6 +267,7 @@ export class ContextRunner extends runner("context") {
         await new WorkflowRunner().plan(workflow, inputs, {
           format: "json",
           out: workflowArtifactPath(workspace, planPath),
+          workspace,
         }),
       );
       return {

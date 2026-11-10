@@ -1,11 +1,11 @@
 import { capitalize } from "akanjs/common";
-import type { Workspace } from "../commandDecorators";
+import type { Sys, Workspace } from "../commandDecorators";
 import { workflowPlanApproval } from "./artifacts";
 import { resolveWorkflowSys } from "./executor";
 import { InteractionScaffold } from "./interactionScaffold";
 import { KeyRename } from "./keyRename";
 import { MutationScaffold } from "./mutationScaffold";
-import { coerceFieldDefault, moduleSourcePaths } from "./source";
+import { coerceFieldDefault, getSysRoot, moduleSourcePaths } from "./source";
 import type {
   WorkflowDiagnostic,
   WorkflowInputSpec,
@@ -479,25 +479,68 @@ const inspectRenameKeyPlan = async (workspace: Workspace, plan: WorkflowPlan): P
   };
 };
 
-export const inspectWorkflowPlan = async (workspace: Workspace, plan: WorkflowPlan): Promise<WorkflowPlan> => {
-  if (plan.workflow === "rename-key") return await inspectRenameKeyPlan(workspace, plan);
-  if (plan.workflow !== "add-mutation" && plan.workflow !== "create-interaction") return plan;
-  const app = planString(plan.inputs, "app");
-  if (!app) return plan;
+const moduleMissing = async (sys: Sys, module: string): Promise<WorkflowDiagnostic | null> => {
+  if ((await sys.readdir("lib")).includes(module)) return null;
+  const root = getSysRoot(sys);
+  const modules = [...(await sys.getDatabaseModules()), ...(await sys.getServiceModules())];
+  const sameName = modules.find((name) => name.toLowerCase() === module.toLowerCase());
+  return {
+    severity: "error",
+    code: "workflow-module-missing",
+    input: "module",
+    message: [
+      `No module named ${module} in ${root}: ${root}/lib/${module} does not exist.`,
+      modules.length ? `Its modules are ${modules.join(", ")}.` : `${root} has no modules yet.`,
+      sameName
+        ? `Did you mean ${sameName}?`
+        : `If ${module} is a new model, create it with the create-module workflow first, then plan this again.`,
+    ].join(" "),
+  };
+};
+
+export const workflowTargetDiagnostics = async (
+  workspace: Workspace,
+  spec: WorkflowSpec,
+  inputs: Record<string, WorkflowInputValue>,
+): Promise<WorkflowDiagnostic[]> => {
+  const app = planString(inputs, "app");
+  if (!app) return [];
   const sys = await resolveWorkflowSys(workspace, app).catch(() => null);
-  if (!sys)
+  if (!sys) {
+    const [apps, libs] = await workspace.getSyss();
+    return [
+      {
+        severity: "error",
+        code: "workflow-target-missing",
+        input: "app",
+        message: `No app or library named ${app}. Apps: ${apps.join(", ") || "none"}. Libraries: ${libs.join(", ") || "none"}.`,
+      },
+    ];
+  }
+  const module = planString(inputs, "module");
+  const moduleSpec: WorkflowInputSpec | undefined = spec.inputs.module;
+  if (!module || !moduleSpec?.mustExist) return [];
+  const missing = await moduleMissing(sys, module);
+  return missing ? [missing] : [];
+};
+
+export const inspectWorkflowPlan = async (
+  workspace: Workspace,
+  spec: WorkflowSpec,
+  plan: WorkflowPlan,
+): Promise<WorkflowPlan> => {
+  const targetDiagnostics = await workflowTargetDiagnostics(workspace, spec, plan.inputs);
+  if (targetDiagnostics.length)
     return {
       ...plan,
-      diagnostics: [
-        ...plan.diagnostics,
-        {
-          severity: "error",
-          code: "workflow-target-missing",
-          input: "app",
-          message: `No app or library named ${app}.`,
-        },
-      ],
+      predictedChanges: [],
+      diagnostics: [...plan.diagnostics, ...targetDiagnostics],
+      recommendations: [],
     };
+  if (plan.workflow === "rename-key") return await inspectRenameKeyPlan(workspace, plan);
+  if (plan.workflow !== "add-mutation" && plan.workflow !== "create-interaction") return plan;
+  const sys = await resolveWorkflowSys(workspace, planString(plan.inputs, "app")).catch(() => null);
+  if (!sys) return plan;
   const inspected =
     plan.workflow === "add-mutation"
       ? await MutationScaffold.build(

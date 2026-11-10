@@ -12,6 +12,7 @@ export const moduleInput = {
     type: "string",
     required: true,
     description: "Target domain, service, or scalar module name.",
+    mustExist: true,
   },
 } satisfies Record<string, WorkflowInputSpec>;
 
