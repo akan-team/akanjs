@@ -235,6 +235,35 @@ describe("rscClient chunk that fails to load", () => {
     expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [`${origin}/refreshing`] });
   });
 
+  test("a refresh after a shallow query change still leaves the page in place for a failed fetch", async () => {
+    const [fetchChunk, linkChunk] = ["shallow-fetch", "shallow-link"].map((name) => `/_akan/client/${name}-a1.js`);
+    const held = heldStep();
+    const responses: Step[][] = [
+      [documentOf("/tabbed")],
+      [chunkRowOf(1, fetchChunk), chunkRowOf(2, linkChunk), held.step, documentOf("/tabbed")],
+    ];
+    served.set("/tabbed", () => responses.shift() ?? [documentOf("/tabbed")]);
+    await navigate("/tabbed");
+    await navigate("/tabbed?tab=2", { shallow: true });
+    let refreshed: Promise<void> | undefined;
+    await act(async () => {
+      refreshed = globalThis.__AKAN_RSC_REFRESH__?.();
+      await sleep(5);
+    });
+    await fail(
+      fetchChunk,
+      new TypeError("Failed to fetch dynamically imported module: /_akan/client/shallow-fetch-a1.js"),
+    );
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [] });
+    await fail(linkChunk, linkError());
+    await act(async () => {
+      held.release();
+      await refreshed;
+    });
+
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [`${origin}/tabbed?tab=2`] });
+  });
+
   test("a chunk a page's text only mentions stays the document's own", async () => {
     const chunk = "/_akan/client/mentioned-a1.js";
     served.set("/mentions", () => [documentOf(chunk), `2a:${JSON.stringify(chunk)}\n`]);

@@ -4,6 +4,7 @@ export interface ChunkNavigation {
   navId: number;
   href: string;
   replace: () => boolean;
+  refresh?: boolean;
 }
 
 //? RSDW asks the global loader for a chunk without naming the response that wants it, so a navigation's `I` rows

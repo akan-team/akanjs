@@ -254,13 +254,14 @@ async function fetchRsc(
     navId?: number;
     signal?: AbortSignal;
     prefetched?: Response;
+    refresh?: boolean;
   } = {},
 ): Promise<RscFetchResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
   const navigation =
     options.navId === undefined
       ? undefined
-      : { navId: options.navId, href, replace: options.replaceOnRedirect ?? (() => true) };
+      : { navId: options.navId, href, replace: options.replaceOnRedirect ?? (() => true), refresh: options.refresh };
   const thenableOf = (stream: ReadableStream<Uint8Array>) =>
     createRscThenable(navigation ? recordChunksOf(stream, navigation) : stream);
   const responseResult = await fetchRscNavigationResponse(href, {
@@ -403,7 +404,8 @@ if (loadChunk)
 
 function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigation, error: unknown): void {
   if (documentNavigationFallbackInFlight || !isBuildBundle()) return;
-  const showsItsPage = pageKeyOf(renderedHref) === pageKeyOf(navigation.href);
+  //? A refresh re-renders the page on screen even when a shallow entry moved the URL's query off its rendered href.
+  const showsItsPage = !!navigation.refresh || pageKeyOf(renderedHref) === pageKeyOf(navigation.href);
   const pending = pendingRequest?.navId === navigation.navId && !showsItsPage;
   const onScreen = navigation.navId === latestPageNavId && showsItsPage;
   if (!pending && !(onScreen && navigator.onLine && isLinkFailure(error))) return;
@@ -515,6 +517,7 @@ function Root(): ReactNode {
         navId,
         shouldApplyNavigation: () => navId === navigationSeq,
         signal: requestSignalOf(navId, target),
+        refresh: true,
       });
       if (next.type === "redirected") return;
       if (next.type === "not-found") {
