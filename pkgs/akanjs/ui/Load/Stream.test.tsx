@@ -187,6 +187,21 @@ describe("Load.Stream", () => {
     await unmount();
   });
 
+  test("leaves the retry out of the notice in an MCP App view, whose host owns the frame and refreshes nothing", async () => {
+    globalThis.__AKAN_EMBED__ = { kind: "mcp-app" };
+    try {
+      const { container, flush, unmount } = await mountAsync(
+        <Stream of={Promise.reject(new Error("load failed"))}>{() => <span>never</span>}</Stream>,
+      );
+      await flush();
+      expect(container.querySelector('[role="alert"]')).not.toBeNull();
+      expect(container.querySelector("button")).toBeNull();
+      await unmount();
+    } finally {
+      globalThis.__AKAN_EMBED__ = undefined;
+    }
+  });
+
   test("hands a function `error` the rejection and a retry", async () => {
     const failing = Promise.reject(new Error("load failed"));
     const seen: { message?: string; retry?: unknown } = {};
@@ -210,7 +225,7 @@ describe("Load.Stream", () => {
   });
 
   test("draws nothing for a not-found or redirect the server raised below the route, which the host answers", async () => {
-    for (const digest of ["AKAN_NOT_FOUND", "AKAN_REDIRECT;/en/target;replace;307"]) {
+    for (const digest of ["AKAN_NOT_FOUND", "AKAN_REDIRECT;replace;307;%2Fen%2Ftarget"]) {
       const failing = Promise.reject(Object.assign(new Error("route control"), { digest }));
       const { container, flush, unmount } = await mountAsync(
         <div>

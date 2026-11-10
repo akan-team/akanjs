@@ -1,5 +1,5 @@
 "use client";
-import { router, Translator } from "akanjs/client";
+import { isMcpView, router, Translator } from "akanjs/client";
 import { parseAkanI18nEnv } from "akanjs/common";
 import { Component, type ReactNode } from "react";
 
@@ -58,13 +58,15 @@ const LoadFailed = ({ error }: { error: unknown }) => {
           {error instanceof Error ? error.message : String(error)}
         </p>
       )}
-      <button
-        type="button"
-        onClick={retry}
-        className="rounded-field border border-border px-3 py-1.5 font-medium text-foreground/70 text-xs"
-      >
-        {Translator.translateByLocale(lang, "base.retry")}
-      </button>
+      {isMcpView() ? null : (
+        <button
+          type="button"
+          onClick={retry}
+          className="rounded-field border border-border px-3 py-1.5 font-medium text-foreground/70 text-xs"
+        >
+          {Translator.translateByLocale(lang, "base.retry")}
+        </button>
+      )}
     </div>
   );
 };
