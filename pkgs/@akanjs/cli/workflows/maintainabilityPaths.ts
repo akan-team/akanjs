@@ -12,6 +12,8 @@ export class MaintainabilityPaths {
   static readonly pathless: ReadonlySet<MaintainabilityRuleId> = new Set([
     "akan.size.file",
     "akan.size.component",
+    "akan.size.function",
+    "akan.size.class",
     "akan.service.call-in-loop",
     "akan.baseline.growth",
   ]);

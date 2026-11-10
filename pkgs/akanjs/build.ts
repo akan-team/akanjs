@@ -22,13 +22,21 @@ const EMBEDDED_PACKAGES = (
   [
     {
       name: "use-agentic",
-      nonSourceEntries: ["bunfig.toml", "package.json", "test", "tsconfig.json"],
+      nonSourceEntries: ["akan.baseline.json", "bunfig.toml", "package.json", "test", "tsconfig.json"],
       nestedTests: false,
       viaExports: false,
     },
     {
       name: "@akanjs/native",
-      nonSourceEntries: ["bunfig.toml", "docs", "examples", "package.json", "scripts", "tsconfig.json"],
+      nonSourceEntries: [
+        "akan.baseline.json",
+        "bunfig.toml",
+        "docs",
+        "examples",
+        "package.json",
+        "scripts",
+        "tsconfig.json",
+      ],
       nestedTests: true,
       viaExports: true,
     },
@@ -362,7 +370,7 @@ const build = async () => {
     await $`mkdir -p ${OUT_DIR}`;
     await $`cp -R ${PACKAGE_DIR}/. ${OUT_DIR}`;
     //* `local/` is where test runs leave their databases and logs; gitignored, but `cp -R` would ship it.
-    for (const entry of ["build.ts", "build", "tsconfig.json", "local"])
+    for (const entry of ["akan.baseline.json", "build.ts", "build", "tsconfig.json", "local"])
       await rm(`${OUT_DIR}/${entry}`, { recursive: true, force: true });
     for (const embedded of EMBEDDED_PACKAGES) await embedPackageSource(embedded);
     await removeTestFiles();

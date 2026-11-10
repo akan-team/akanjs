@@ -14,7 +14,7 @@ export class AbstractDoc {
     return filePath.endsWith(AbstractDoc.suffix);
   }
   static lineCountOf(content: string) {
-    return content.split(/\r?\n/).length;
+    return content.split(/\r?\n/).length - (content.endsWith("\n") ? 1 : 0);
   }
   static kindOf(filePath: string): AbstractKind {
     const [root, folder, ...rest] = filePath.split("/");
