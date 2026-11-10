@@ -12,6 +12,7 @@ import { StoreRegistry } from "./storeRegistry";
 
 const NoteInput = via((f) => ({
   title: f(String),
+  memo: f(String).optional(),
   count: f(Int, { default: 0 }),
   token: f.secret(String).optional(),
 }));
@@ -472,6 +473,28 @@ describe("a form save that another open overtakes", () => {
     await settle();
     expect(recordTitle()).toBe("second");
     expect(instance.get().draftNoteForm.title).toBe("second");
+  });
+
+  test("a successful save drops its own draft though the form holds an undefined value", async () => {
+    const signal = makeSignal();
+    const instance = makeInstance(signal);
+    const create = deferred();
+    signal.calls.createDraftNote = create.call;
+    const blankTitle = await typedNew(instance);
+    instance.do.setMemoOnDraftNote(undefined);
+    instance.flushDrafts();
+    await settle();
+
+    const creating = instance.do.createDraftNoteInForm();
+    instance.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    await settle();
+    create.answer(new NoteFull({ id: NOTE_ID, title: "about to submit" } as never));
+    await creating;
+    await settle();
+    expect(draftCount()).toBe(0);
+    instance.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    await settle();
+    expect(instance.get().draftNoteForm.title).toBe(blankTitle);
   });
 
   test("a draft discarded during a save stays discarded when the save fails", async () => {
