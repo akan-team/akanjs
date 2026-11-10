@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AkanMetricsReport } from "akanjs/service";
 import { LruTtlCache } from "./cachePolicy";
+import { akanHeadSnapshotKey } from "./head";
 import {
   AKAN_RSC_ROUTE_HEAD_HEADER,
   type AkanRouterStateV1,
@@ -823,12 +824,13 @@ describe("RscWorker route head", () => {
   }, 20_000);
 
   const headRoutes = new RouteTreeBuilder(headFixturePages).build();
-  const stateOf = (name: string, href: string, { routeHead = true } = {}) => {
+  const noLayoutsHead = akanHeadSnapshotKey({ version: 1, nodes: [] });
+  const stateOf = (name: string, href: string, { routeHead = noLayoutsHead as string | null } = {}) => {
     const pathRoute = headRoutes.find((route) => route.path.endsWith(`/${name}`));
     if (!pathRoute) throw new Error(`no route for ${name}`);
     const headers = new Headers();
     appendAkanRouterStateRequestHeaders(headers, createAkanRouterState({ pathRoute, href, buildId: 1 }));
-    if (routeHead) headers.set(AKAN_RSC_ROUTE_HEAD_HEADER, "1");
+    if (routeHead) headers.set(AKAN_RSC_ROUTE_HEAD_HEADER, routeHead);
     return headers;
   };
 
@@ -857,7 +859,7 @@ describe("RscWorker route head", () => {
       async ({ render, headRuns }) => {
         const unmounted = await render(
           "http://localhost/en/safe?tab=2",
-          stateOf("safe", "http://localhost/en/safe?tab=1", { routeHead: false }),
+          stateOf("safe", "http://localhost/en/safe?tab=1", { routeHead: null }),
         );
         expect(unmounted.trace).toMatchObject({ partial: "full", partialReason: "head-unmounted" });
 
@@ -890,6 +892,39 @@ describe("RscWorker route head", () => {
       expect(otherGroup.trace).toMatchObject({ partial: "full", partialReason: "layouts-changed" });
       expect(otherGroup.body).toContain('"data-group":"member"');
     });
+  }, 20_000);
+
+  test("renders whole when the layouts head a patch would keep is not the target's", async () => {
+    const sectionHead = (tab: string) =>
+      akanHeadSnapshotKey({ version: 1, nodes: [{ tag: "meta", attrs: { name: "section", content: tab } }] });
+    await withHeadWorker({ AKAN_PUBLIC_RSC_PARTIAL_COMMIT: "1", AKAN_RSC_RESULT_CACHE: "0" }, async ({ render }) => {
+      const sameSection = await render(
+        "http://localhost/en/query/list?tab=a&page=2",
+        stateOf("query/list", "http://localhost/en/query/list?tab=a", { routeHead: sectionHead("a") }),
+      );
+      expect(sameSection.trace).toMatchObject({ partial: "patch" });
+
+      const otherSection = await render(
+        "http://localhost/en/query/list?tab=b",
+        stateOf("query/list", "http://localhost/en/query/list?tab=a", { routeHead: sectionHead("a") }),
+      );
+      expect(otherSection.trace).toMatchObject({ partial: "full", partialReason: "layouts-head-changed" });
+    });
+  }, 20_000);
+
+  test("gives a page the app's default title only when no head resolves at all, partial commit on or off", async () => {
+    for (const enabled of ["1", "0"]) {
+      await withHeadWorker(
+        { AKAN_PUBLIC_RSC_PARTIAL_COMMIT: enabled, AKAN_RSC_RESULT_CACHE: "0", AKAN_PUBLIC_APP_NAME: "Fixture App" },
+        async ({ render }) => {
+          const quiet = await render("http://localhost/en/quiet/bare");
+          expect(quiet.body).toContain("bare body");
+          expect(quiet.body).not.toContain("Fixture App");
+          const headless = await render("http://localhost/en/open/headless");
+          expect(headless.body).toContain("Fixture App");
+        },
+      );
+    }
   }, 20_000);
 
   test("renders a plain head through AkanRouteHead only while partial commit is on", async () => {

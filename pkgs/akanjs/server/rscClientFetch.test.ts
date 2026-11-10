@@ -222,7 +222,7 @@ describe("fetchRscNavigationResponse", () => {
     }
   });
 
-  test("says a route head is mounted only with router state, and only from a client built with partial commit", async () => {
+  test("names the mounted route head's layouts head only with router state, and only from a client built with partial commit", async () => {
     const enabled = process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
     process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = "1";
     const sent: (string | null)[] = [];
@@ -237,7 +237,7 @@ describe("fetchRscNavigationResponse", () => {
       });
     try {
       await navigate(true);
-      const unmount = subscribeRscRoutePatch(() => undefined, { head: true });
+      const unmount = subscribeRscRoutePatch(() => undefined, { head: "k1" });
       await navigate(true);
       await navigate(false);
       process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = "0";
@@ -245,7 +245,7 @@ describe("fetchRscNavigationResponse", () => {
       unmount();
       await navigate(true);
 
-      expect(sent).toEqual([null, "1", null, null, null]);
+      expect(sent).toEqual([null, "k1", null, null, null]);
     } finally {
       Reflect.deleteProperty(globalThis, "__AKAN_RSC_ROUTE_PATCH__");
       if (enabled === undefined) delete process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;

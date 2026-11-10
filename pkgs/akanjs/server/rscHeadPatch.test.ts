@@ -18,7 +18,7 @@ const api: AkanHeadSnapshotV1 = {
   ],
 };
 
-const mountHead = () => subscribeRscRoutePatch(() => undefined, { head: true });
+const mountHead = () => subscribeRscRoutePatch(() => undefined, { head: "layouts" });
 
 afterEach(() => {
   Reflect.deleteProperty(globalThis, "__AKAN_RSC_ROUTE_PATCH__");

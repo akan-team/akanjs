@@ -68,8 +68,6 @@ export function AkanSegmentOutlet({ segmentKey, children }: { segmentKey: string
   return patchedThenable ? use(patchedThenable) : children;
 }
 
-const subscribeRouteHead = (listener: () => void) => subscribeRscRoutePatch(listener, { head: true });
-
 const renderHeadSnapshot = (snapshot: AkanHeadSnapshotV1): ReactNode =>
   snapshot.nodes.map((node, index) => {
     const key = `${node.tag}:${index}`;
@@ -80,7 +78,18 @@ const renderHeadSnapshot = (snapshot: AkanHeadSnapshotV1): ReactNode =>
 
 //? Rendered by React rather than written into the DOM: React owns these hoisted tags, so a node swapped behind its
 //? back is one the next full commit updates or removes while detached, leaving the old page's head on screen.
-export function AkanRouteHead({ layouts, page }: { layouts: AkanHeadSnapshotV1; page: AkanHeadSnapshotV1 }): ReactNode {
-  const patch = useTransitionStore(subscribeRouteHead, readRscRoutePatch);
+export function AkanRouteHead({
+  layouts,
+  layoutsKey,
+  page,
+}: {
+  layouts: AkanHeadSnapshotV1;
+  layoutsKey: string;
+  page: AkanHeadSnapshotV1;
+}): ReactNode {
+  const patch = useTransitionStore(
+    useCallback((listener: () => void) => subscribeRscRoutePatch(listener, { head: layoutsKey }), [layoutsKey]),
+    readRscRoutePatch,
+  );
   return renderHeadSnapshot(RouteHead.mergeSnapshots([layouts.nodes, (patch?.head ?? page).nodes]));
 }

@@ -50,12 +50,18 @@ import {
   shouldStoreRouteCache,
 } from "./cachePolicy";
 import { FallbackHead } from "./fallbackHead";
-import { createAkanLocaleAlternateHeadSnapshot, mergeAkanHeadSnapshots, resolveHeadResult } from "./head";
+import {
+  akanHeadSnapshotKey,
+  createAkanLocaleAlternateHeadSnapshot,
+  mergeAkanHeadSnapshots,
+  resolveHeadResult,
+} from "./head";
 import { LogForwarder } from "./logging/logForwarder";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
 import { RouteShellGate } from "./routeShellGate";
 import {
+  AKAN_RSC_HEAD_SNAPSHOT_MAX_HEADER_BYTES,
   AKAN_RSC_ROUTE_HEAD_HEADER,
   type AkanHeadSnapshotV1,
   type AkanRouterStateV1,
@@ -207,6 +213,11 @@ interface RscRendererStats {
 }
 
 type RouteHeadLayers = Awaited<ReturnType<typeof RouteElementComposer.resolveHeadLayers>>;
+interface RouteHeadSnapshots {
+  layouts: AkanHeadSnapshotV1;
+  layoutsKey: string;
+  page: AkanHeadSnapshotV1;
+}
 
 interface RouteRenderStats {
   routeId: string;
@@ -239,6 +250,7 @@ export function isAkanNotFoundError(error: unknown): error is AkanNotFoundError 
 
 export class RscRenderer {
   readonly #logger = new Logger("RscWorker");
+  readonly #headTooLargeRoutes = new Set<string>();
   readonly #logForwarder: LogForwarder;
   #clientManifest: ClientManifest = {};
   #pathRoutes: PathRoute[] = [];
@@ -540,7 +552,7 @@ export class RscRenderer {
         let admitted = false;
         const safePatchDecision = match
           ? await this.#resolveHeadSafePatchDecision(match.pathRoute, patchDecision, {
-              routeHeadMounted: request.headers.get(AKAN_RSC_ROUTE_HEAD_HEADER) === "1",
+              routeHeadKey: request.headers.get(AKAN_RSC_ROUTE_HEAD_HEADER) || null,
               frameChangeOf: (patchStartIndex) =>
                 this.#frameChangeOf(urlObj, match, currentRouterState.state, patchStartIndex),
               resolveHeadSnapshot: async () => {
@@ -1238,15 +1250,15 @@ export class RscRenderer {
     pathRoute: PathRoute,
     patchDecision: AkanRscPatchDecision,
     {
-      routeHeadMounted,
+      routeHeadKey,
       frameChangeOf,
       resolveHeadSnapshot,
     }: {
-      routeHeadMounted: boolean;
+      routeHeadKey: string | null;
       frameChangeOf: (
         patchStartIndex: number,
       ) => Promise<Parameters<typeof resolveAkanRscHeadSafePatchDecision>[0]["frameChange"]>;
-      resolveHeadSnapshot: () => Promise<ResolvedHead["headSnapshot"]>;
+      resolveHeadSnapshot: () => Promise<RouteHeadSnapshots | undefined>;
     },
   ): Promise<AkanRscPatchDecision> {
     if (patchDecision.status !== "patch" || !patchDecision.patch) {
@@ -1256,19 +1268,29 @@ export class RscRenderer {
       return { status: "full", reason: "guard-disabled", commonPrefixLength: patchDecision.commonPrefixLength };
     }
     const pageConfig = await pathRoute.renderPage.getPageConfig?.();
+    const routeHeadMounted = routeHeadKey !== null;
     const frameChange =
       pageConfig?.rscPatchHeadSafe === true && routeHeadMounted
         ? await frameChangeOf(patchDecision.patch.patchStartIndex)
         : undefined;
     const patchable = pageConfig?.rscPatchHeadSafe === true && routeHeadMounted && !frameChange;
-    return resolveAkanRscHeadSafePatchDecision({
+    const snapshots = patchable ? await resolveHeadSnapshot() : undefined;
+    const decision = resolveAkanRscHeadSafePatchDecision({
       partialCommitEnabled: true,
       patchDecision,
       pageConfig,
       routeHeadMounted,
       frameChange,
-      headSnapshot: patchable ? await resolveHeadSnapshot() : undefined,
+      headSnapshot: snapshots?.page,
+      layoutsHeadChanged: !!snapshots && snapshots.layoutsKey !== routeHeadKey,
     });
+    if (decision.reason === "head-too-large" && !this.#headTooLargeRoutes.has(pathRoute.path)) {
+      this.#headTooLargeRoutes.add(pathRoute.path);
+      this.#logger.warn(
+        `[rsc] ${pathRoute.path} renders whole on sibling navigations: its page head is over the ${AKAN_RSC_HEAD_SNAPSHOT_MAX_HEADER_BYTES}-byte patch header limit`,
+      );
+    }
+    return decision;
   }
 
   //? A patch keeps every layout above it as the page left from rendered it, and the SSR wrapper with them: the same
@@ -1687,7 +1709,7 @@ export class RscRenderer {
       return (
         <>
           {ownsManifest ? null : manifestLink}
-          <AkanRouteHeadReference layouts={snapshots.layouts} page={snapshots.page} />
+          <AkanRouteHeadReference layouts={snapshots.layouts} layoutsKey={snapshots.layoutsKey} page={snapshots.page} />
         </>
       );
     }
@@ -1716,30 +1738,29 @@ export class RscRenderer {
     url: URL,
     match: { pathRoute: PathRoute; params: Record<string, string> },
     searchParams: Record<string, string | string[]>,
-  ): Promise<ResolvedHead["headSnapshot"]> {
+  ): Promise<RouteHeadSnapshots | undefined> {
     const layers = await RouteElementComposer.resolveHeadLayers({
       pathRoute: match.pathRoute,
       params: match.params,
       searchParams,
     });
-    return this.#createRouteHeadSnapshots(url, layers)?.page;
+    return this.#createRouteHeadSnapshots(url, layers);
   }
 
   //? Taken from any head that is plain title, meta and link while partial commit is on, so every page it renders can be
   //? the one a patch leaves from, not only the opted-in pages a patch lands on. The layouts' part stays on the client
   //? under the layouts a patch keeps, so a patch's header carries only the page's part and its locale alternates.
-  #createRouteHeadSnapshots(
-    url: URL,
-    { layouts, page }: RouteHeadLayers,
-  ): { layouts: AkanHeadSnapshotV1; page: AkanHeadSnapshotV1 } | undefined {
+  #createRouteHeadSnapshots(url: URL, { head, layouts, page }: RouteHeadLayers): RouteHeadSnapshots | undefined {
     if (!isAkanRscPartialCommitEnabled()) return undefined;
     const layoutsSnapshot = RouteHead.snapshotOf(RouteHead.mergePage(layouts, undefined));
-    const pageSnapshot = RouteHead.snapshotOf(
-      page ?? (layoutsSnapshot?.nodes.length ? undefined : this.#renderDefaultHead()),
-    );
+    const pageSnapshot = RouteHead.snapshotOf(page ?? (head.node == null ? this.#renderDefaultHead() : undefined));
     if (!layoutsSnapshot || !pageSnapshot) return undefined;
     const alternates = createAkanLocaleAlternateHeadSnapshot(this.#getLocaleAlternateLanguages(url));
-    return { layouts: layoutsSnapshot, page: mergeAkanHeadSnapshots(pageSnapshot, alternates) ?? pageSnapshot };
+    return {
+      layouts: layoutsSnapshot,
+      layoutsKey: akanHeadSnapshotKey(layoutsSnapshot),
+      page: mergeAkanHeadSnapshots(pageSnapshot, alternates) ?? pageSnapshot,
+    };
   }
 
   #getLocaleAlternateLanguages(url: URL): Record<string, string> {

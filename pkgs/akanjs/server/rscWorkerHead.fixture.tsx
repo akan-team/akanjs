@@ -42,6 +42,26 @@ export const pages: PagesContext = {
       ))
       .render(() => <p>wordy body</p>),
   }),
+  "./query/_layout.tsx": async () => ({
+    default: layout()
+      .search("tab", String)
+      .head(({ tab }) => <meta name="section" content={tab ?? "none"} />)
+      .render(({ children }) => children),
+  }),
+  "./query/list.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("list"))
+      .render(() => <p>list body</p>),
+  }),
+  "./quiet/_layout.tsx": async () => ({
+    default: layout()
+      .head(() => <>{false}</>)
+      .render(({ children }) => children),
+  }),
+  "./quiet/bare.tsx": async () => ({
+    default: page().render(() => <p>bare body</p>),
+  }),
   "./(guest)/_layout.tsx": async () => ({
     default: layout().render(({ children }) => <div data-group="guest">{children}</div>),
   }),
@@ -92,6 +112,9 @@ export const pages: PagesContext = {
         );
       })
       .render(() => <p>plain body</p>),
+  }),
+  "./open/headless.tsx": async () => ({
+    default: page().render(() => <p>headless body</p>),
   }),
   "./vault/sealed.tsx": async () => ({
     default: page()

@@ -229,6 +229,7 @@ export function resolveAkanRscHeadSafePatchDecision({
   routeHeadMounted = true,
   frameChange,
   headSnapshot,
+  layoutsHeadChanged = false,
 }: {
   partialCommitEnabled: boolean;
   patchDecision: AkanRscPatchDecision;
@@ -237,12 +238,15 @@ export function resolveAkanRscHeadSafePatchDecision({
   routeHeadMounted?: boolean;
   frameChange?: "params-changed" | "layouts-changed" | "page-state-changed" | "frame-unknown";
   headSnapshot?: AkanHeadSnapshotV1;
+  /** Whether the target's layouts head differs from the one the page left from shows, which a patch would keep. */
+  layoutsHeadChanged?: boolean;
 }): AkanRscPatchDecision {
   if (!partialCommitEnabled || patchDecision.status !== "patch" || !patchDecision.patch) return patchDecision;
   if (pageConfig?.rscPatchHeadSafe !== true) return fullDecision("head-unsafe", patchDecision);
   if (!routeHeadMounted) return fullDecision("head-unmounted", patchDecision);
   if (frameChange) return fullDecision(frameChange, patchDecision);
   if (!headSnapshot) return fullDecision("head-missing", patchDecision);
+  if (layoutsHeadChanged) return fullDecision("layouts-head-changed", patchDecision);
   if (!isAkanHeadSnapshotV1(headSnapshot)) return fullDecision("head-invalid", patchDecision);
   if (!encodeAkanHeadSnapshot(headSnapshot)) return fullDecision("head-too-large", patchDecision);
   return { ...patchDecision, patch: { ...patchDecision.patch, headSafe: true, headSnapshot } };

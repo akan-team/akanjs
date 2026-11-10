@@ -10,7 +10,7 @@ export interface RscRoutePatch {
 interface RscRoutePatchStore {
   current: RscRoutePatch | null;
   listeners: Set<() => void>;
-  heads: Set<() => void>;
+  heads: Map<() => void, string>;
 }
 
 declare global {
@@ -18,7 +18,7 @@ declare global {
 }
 
 const routePatchStore = () => {
-  globalThis.__AKAN_RSC_ROUTE_PATCH__ ??= { current: null, listeners: new Set(), heads: new Set() };
+  globalThis.__AKAN_RSC_ROUTE_PATCH__ ??= { current: null, listeners: new Set(), heads: new Map() };
   return globalThis.__AKAN_RSC_ROUTE_PATCH__;
 };
 
@@ -28,16 +28,23 @@ export const writeRscRoutePatch = (patch: RscRoutePatch | null) => {
   const store = routePatchStore();
   if (store.current === patch) return;
   store.current = patch;
-  for (const listener of [...store.listeners, ...store.heads]) listener();
+  for (const listener of [...store.listeners, ...store.heads.keys()]) listener();
 };
 
-/** `head` counts the listener as a mounted route head, the only head a partial commit can swap. */
-export const subscribeRscRoutePatch = (listener: () => void, { head = false }: { head?: boolean } = {}) => {
-  const listeners = head ? routePatchStore().heads : routePatchStore().listeners;
-  listeners.add(listener);
+/**
+ * `head` counts the listener as a mounted route head, the only head a partial commit can swap, showing the layouts'
+ * head the server keyed so.
+ */
+export const subscribeRscRoutePatch = (listener: () => void, { head }: { head?: string } = {}) => {
+  const store = routePatchStore();
+  if (head === undefined) store.listeners.add(listener);
+  else store.heads.set(listener, head);
   return () => {
-    listeners.delete(listener);
+    store.listeners.delete(listener);
+    store.heads.delete(listener);
   };
 };
 
 export const hasRscRouteHead = () => routePatchStore().heads.size > 0;
+
+export const rscRouteHeadKey = () => [...routePatchStore().heads.values()].at(-1) ?? null;

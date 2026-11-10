@@ -404,7 +404,10 @@ export interface PathRoute {
   renderRootLayouts: RouteRender[];
   renderLayouts: RouteRender[];
   resolveHead?: ResolveHead;
-  /** The layouts' part of `resolveHead`, which a partial commit keeps on screen while it swaps the page's part. */
+  /**
+   * The layouts' part of `resolveHead`, which a partial commit keeps on screen while it swaps the page's part;
+   * `resolveHead` must equal this merged with the page's own head by `RouteHead.mergePage`.
+   */
   resolveLayoutsHead?: ResolveHead;
 }
 
