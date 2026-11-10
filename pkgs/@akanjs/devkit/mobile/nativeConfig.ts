@@ -46,8 +46,8 @@ export interface NativeConfigResult {
 type NativeIos = NonNullable<NonNullable<AkanNativeConfig["native"]>["ios"]>;
 
 export class NativeConfig {
-  //* What every akanjs page may call: routing, lifecycle, links, storage, the device facts the runtime reads, and the
-  //* system sheet useCamera asks camera-or-library with.
+  //* What every akanjs page may call: routing, lifecycle, links, storage, the device facts the runtime reads, the
+  //* system sheet useCamera asks camera-or-library with, and the status bar icons that follow the page's theme color.
   static readonly basePlugins = [
     "app",
     "app-state",
@@ -60,6 +60,7 @@ export class NativeConfig {
     "preferences",
     "secure-storage",
     "haptics",
+    "appearance",
   ] as const;
   //? Only scripts stay strict ('self', inline ones by hash): injected script must not reach the native bridge.
   static readonly defaultCsp: Readonly<Record<string, readonly string[]>> = {

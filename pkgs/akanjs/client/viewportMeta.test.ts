@@ -100,6 +100,74 @@ describe("ViewportMeta", () => {
   });
 });
 
+describe("--akan-theme-color", () => {
+  const root = document.documentElement;
+  const reset = () => {
+    document.head.innerHTML = "";
+    root.removeAttribute("style");
+    root.removeAttribute("data-theme");
+  };
+
+  test("outranks the layout's themeColor for the theme data-theme names, and hands back to it when unset", () => {
+    reset();
+    const style = document.createElement("style");
+    style.textContent = '[data-theme="dark"] { --akan-theme-color: #0c1e3e; }';
+    document.head.appendChild(style);
+    const viewport = { themeColor: { light: "#fff", dark: "#000" } };
+
+    root.setAttribute("data-theme", "dark");
+    expect(ViewportMeta.applyThemeColor(viewport, "dark")).toBe("#0c1e3e");
+    expect(themeColorTags()).toEqual([["#0c1e3e", null]]);
+
+    root.style.setProperty("--akan-theme-color", "#336699");
+    expect(ViewportMeta.applyThemeColor(viewport, "dark")).toBe("#336699");
+    expect(themeColorTags()).toEqual([["#336699", null]]);
+
+    root.style.removeProperty("--akan-theme-color");
+    root.setAttribute("data-theme", "light");
+    expect(ViewportMeta.applyThemeColor(viewport, "light")).toBe("#fff");
+    expect(themeColorTags()).toEqual([["#fff", null]]);
+  });
+
+  test("leaves no tag of its own behind once the variable goes and the layout names no color", () => {
+    reset();
+    root.style.setProperty("--akan-theme-color", "#336699");
+    expect(ViewportMeta.applyThemeColor(undefined)).toBe("#336699");
+    root.style.removeProperty("--akan-theme-color");
+    expect(ViewportMeta.applyThemeColor(undefined)).toBeNull();
+    expect(themeColorTags()).toEqual([]);
+  });
+
+  test("names the color the OS scheme picks when only the scheme decides", () => {
+    reset();
+    const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    expect(ViewportMeta.applyThemeColor({ themeColor: { light: "#fff", dark: "#000" } }, "system")).toBe(
+      dark ? "#000" : "#fff",
+    );
+  });
+
+  test("applies again once a frame after the root's style or data-theme changes, until stopped", async () => {
+    reset();
+    let applied = 0;
+    const stop = ViewportMeta.watchThemeColor(() => applied++);
+    root.style.setProperty("--akan-theme-color", "#336699");
+    root.setAttribute("data-theme", "dark");
+    await nextFrame();
+    expect(applied).toBe(1);
+
+    root.setAttribute("data-other", "x");
+    await nextFrame();
+    expect(applied).toBe(1);
+
+    stop();
+    root.style.setProperty("--akan-theme-color", "#000000");
+    await nextFrame();
+    expect(applied).toBe(1);
+  });
+});
+
+const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 50));
+
 const themeColorTags = () =>
   [...document.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((meta) => [
     meta.content,

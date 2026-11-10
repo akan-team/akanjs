@@ -294,6 +294,7 @@ class AkanNativePluginContext internal constructor(
         fun onKeyboardTransition(listener: (AkanNativeKeyboardTransition) -> Unit)
         fun hideSplash(fadeOutMs: Long)
         fun serveBundle(root: File?)
+        fun setThemeColor(color: Int?)
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -370,6 +371,9 @@ class AkanNativePluginContext internal constructor(
 
     /** Lets the system splash screen go (SH-6), fading out over [fadeOutMs]. Nothing happens once it is gone. */
     fun hideSplash(fadeOutMs: Long = 200) = runOnMain { host.hideSplash(fadeOutMs) }
+
+    /** The color the page paints under the status bar: the bar's icons follow it instead of the background color; null goes back. */
+    fun setThemeColor(color: Int?) = runOnMain { host.setThemeColor(color) }
 
     fun runOnMain(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block)

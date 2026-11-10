@@ -144,6 +144,8 @@ By name — native.plugins
 
   - dialog · haptics: System alerts and action sheets, and haptic feedback.
 
+  - appearance: Light or dark for the whole app, and status bar icons that follow the page's theme color.
+
 - Per feature
 
   - camera: Camera and photo picker. Brought by `camera`.

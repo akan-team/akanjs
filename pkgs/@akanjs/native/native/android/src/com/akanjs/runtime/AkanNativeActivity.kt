@@ -179,9 +179,8 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         Log.e(TAG, "Android System WebView $chromium is older than $minimum (android.minWebViewVersion): not loading the app")
         val pkg = WebView.getCurrentWebViewPackage()?.packageName ?: "com.google.android.webview"
         // Below API 31 the theme's window background is the splash (color and icon): paint over it.
-        val color = backgroundColor()
-        window.setBackgroundDrawable(ColorDrawable(color))
-        lightBars(Color.luminance(color) > 0.5f)
+        window.setBackgroundDrawable(ColorDrawable(backgroundColor()))
+        applyBars()
         val pad = (24 * resources.displayMetrics.density).toInt()
         val layout = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
@@ -277,10 +276,24 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         val color = backgroundColor()
         window.setBackgroundDrawable(ColorDrawable(color))
         webView.setBackgroundColor(color)
-        // S1: dark bar icons on a light background, light ones on a dark background. The framework
-        // DayNight theme keeps them light in day mode, where they vanish on a light page. Following the
-        // painted color (not night mode) also fits an app that is dark in day mode.
-        lightBars(Color.luminance(color) > 0.5f)
+        applyBars()
+    }
+
+    /** appearance.setThemeColor: the color the page paints under the status bar, or null. */
+    private var themeColor: Int? = null
+
+    override fun setThemeColor(color: Int?) {
+        themeColor = color
+        applyBars()
+    }
+
+    // S1: dark bar icons on a light background, light ones on a dark background. The framework
+    // DayNight theme keeps them light in day mode, where they vanish on a light page. Following the
+    // painted color (not night mode) also fits an app that is dark in day mode; the status bar follows
+    // the page's theme color once it names one.
+    private fun applyBars() {
+        val background = Color.luminance(backgroundColor()) > 0.5f
+        lightBars(status = themeColor?.let { Color.luminance(it) > 0.5f } ?: background, navigation = background)
     }
 
     /**
@@ -290,11 +303,12 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
      * whole would drop the layout and immersive flags.
      */
     @Suppress("DEPRECATION")
-    private fun lightBars(light: Boolean) {
-        if (Build.VERSION.SDK_INT > 30) return Api30.lightBars(window, light)
+    private fun lightBars(status: Boolean, navigation: Boolean) {
+        if (Build.VERSION.SDK_INT > 30) return Api30.lightBars(window, status, navigation)
         val decor = window.decorView
         val bits = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-        decor.systemUiVisibility = if (light) decor.systemUiVisibility or bits else decor.systemUiVisibility and bits.inv()
+        val light = (if (status) View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else 0) or (if (navigation) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
+        decor.systemUiVisibility = (decor.systemUiVisibility and bits.inv()) or light
     }
 
     /**
@@ -909,9 +923,11 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         @Suppress("DEPRECATION") // deprecated in 35, where edge-to-edge is enforced and this is a no-op
         fun decorFitsSystemWindows(window: Window, fits: Boolean) = window.setDecorFitsSystemWindows(fits)
 
-        fun lightBars(window: Window, light: Boolean) {
+        fun lightBars(window: Window, status: Boolean, navigation: Boolean) {
             val bits = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            window.insetsController?.setSystemBarsAppearance(if (light) bits else 0, bits)
+            val light = (if (status) WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS else 0) or
+                (if (navigation) WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS else 0)
+            window.insetsController?.setSystemBarsAppearance(light, bits)
         }
 
         fun systemBars(window: Window, visible: Boolean) {

@@ -1,11 +1,11 @@
 {
   "id": "appearance",
   "apiVersion": 1,
-  "methods": ["get", "set"],
+  "methods": ["get", "set", "setThemeColor"],
   "events": ["change"],
   "codegen": true,
   "web": "./src/web.ts",
-  "desktop": "./src/desktop.ts",
+  "desktop": { "module": "./src/desktop.ts", "methods": ["get", "set"] },
   "ios": {
     "sources": ["ios/*.swift"],
     "class": "AppearancePlugin",
