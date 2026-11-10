@@ -41,7 +41,7 @@ interface DeclaredPlug {
   target: string;
 }
 
-const maxBarrelDepth = 4;
+const maxModules = 64;
 
 export class AdaptorResolver {
   readonly #source: AkanGraphSource;
@@ -128,7 +128,7 @@ export class AdaptorResolver {
     const from = imported ? this.#resolver.ownerOfSpecifier(file.fileName, imported.from) : undefined;
     const declared = this.#adaptors.get(name) ?? [];
     const holder = from === undefined ? file.owner : from;
-    const own = this.#adaptorIn(declared, holder, path, file.fileName);
+    const own = this.#adaptorIn(name, declared, holder, path, file.fileName);
     const found =
       own === undefined && from !== frameworkOwner
         ? declared.find((adaptor) => this.#resolver.visible(adaptor.owner, holder))
@@ -142,43 +142,40 @@ export class AdaptorResolver {
     return this.#sink.addNode(this.#sink.key("adaptor", owner, name), "adaptor", owner, name, null, detail).id;
   }
 
-  //? `null`: the import reaches several same-name adaptors, and TypeScript drops a name two `export *` share.
+  //? `null`: the import's module exports none, or more than one, of several same-name adaptors.
   #adaptorIn(
+    name: string,
     declared: DeclaredAdaptor[],
     owner: string | null,
     path: string | null,
     fileName: string,
-    depth = 0,
   ): DeclaredAdaptor | null | undefined {
     const own = declared.filter((adaptor) => adaptor.owner === owner);
     const [first] = own;
-    if (!first || own.length < 2) return first;
     if (path === null) return own.find((adaptor) => adaptor.fileName === fileName) ?? first;
-    const isAt = (adaptor: DeclaredAdaptor, target: string) =>
-      this.#moduleOf(adaptor) === target || this.#moduleOf(adaptor) === `${target}/index`;
-    const exact = own.find((adaptor) => isAt(adaptor, path));
-    if (exact) return exact;
-    const reexport = owner && depth < maxBarrelDepth ? this.#resolver.reexportOf(owner, first.fact.name, path) : null;
-    const [named] = reexport?.site.imports ?? [];
-    const target =
-      reexport && named && this.#isUnder(reexport.site.fileName, path)
-        ? this.#resolver.pathOfSpecifier(reexport.site.fileName, named.from)
-        : null;
-    if (target) return this.#adaptorIn(declared, owner, target, fileName, depth + 1);
-    const { paths } = owner ? this.#resolver.starExportsOf(owner, path) : { paths: [] };
-    const reached = own.filter((adaptor) => paths.some((reachable) => isAt(adaptor, reachable)));
-    if (reached.length) return reached.length === 1 ? reached[0] : null;
-    const under = own.filter((adaptor) => this.#moduleOf(adaptor).startsWith(`${path}/`));
-    return under.length === 1 ? under[0] : null;
+    if (own.length === 1) return first;
+    const exported = this.#exportedAt(name, path, new Set());
+    const [only] = exported;
+    if (only) return exported.length === 1 ? only : null;
+    return first ? null : undefined;
   }
 
-  #moduleOf(adaptor: DeclaredAdaptor) {
-    return this.#source.relative(adaptor.fileName).replace(/\.tsx?$/, "");
-  }
-
-  #isUnder(fileName: string, path: string) {
-    const module = this.#source.relative(fileName).replace(/\.tsx?$/, "");
-    return module === path || module.startsWith(`${path}/`);
+  //? TypeScript prefers a module's own `export { Clock }` to its `export *`s, and drops a name two `export *` share.
+  #exportedAt(name: string, path: string, seen: Set<string>): DeclaredAdaptor[] {
+    const key = `${path}\n${name}`;
+    if (seen.has(key) || seen.size >= maxModules) return [];
+    seen.add(key);
+    const here = (this.#adaptors.get(name) ?? []).filter((adaptor) => {
+      const module = this.#source.relative(adaptor.fileName).replace(/\.tsx?$/, "");
+      return module === path || module === `${path}/index`;
+    });
+    if (here.length) return here;
+    const { named, stars } = this.#resolver.exportsAt(path, name);
+    if (named) {
+      const target = named.from === null ? path : this.#resolver.pathOfSpecifier(named.fileName, named.from);
+      return target === null ? [] : this.#exportedAt(named.name, target, seen);
+    }
+    return [...new Set(stars.flatMap((star) => this.#exportedAt(name, star, seen)))];
   }
 
   #packageAdaptorOf(name: string, specifier: string) {
@@ -199,9 +196,10 @@ export class AdaptorResolver {
     if (reexport && shim && this.#resolver.pathOfSpecifier(reexport.site.fileName, shim.from) === null)
       return { name: reexport.local === "default" ? name : reexport.local, from: shim.from };
     if (reexport || !near) return null;
-    const { packages } = this.#resolver.starExportsOf(owner, near);
+    const { packages, owners } = this.#resolver.starExportsOf(owner, near);
     const [only] = packages;
-    return packages.length === 1 && only && !this.#resolver.declares(owner, name) ? { name, from: only } : null;
+    const isDeclared = [owner, ...owners].some((other) => this.#resolver.declares(other, name));
+    return packages.length === 1 && only && !isDeclared ? { name, from: only } : null;
   }
 
   #nodeOf({ fact, owner, fileName, id }: DeclaredAdaptor) {

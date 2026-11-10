@@ -30,7 +30,8 @@ interface DeclaredFactory {
   made: DeclaredGuard[];
   isReal: boolean;
   scope: string | null;
-  targets: DeclaredFactory[];
+  layers: number;
+  targets: { target: DeclaredFactory; layers: number }[];
 }
 
 interface MapEntry {
@@ -52,6 +53,11 @@ interface StarExports {
   isOpaque: boolean;
 }
 
+interface ModuleExports {
+  named: (Reexport & { fileName: string }) | null;
+  stars: string[];
+}
+
 interface Declaration {
   source: TS.SourceFile;
   statement: TS.Statement;
@@ -67,6 +73,9 @@ const maxMapDepth = 4;
 //? ES2022 lets an import name be any string (`import { "is(admin" as IsAdmin }`), which no declaration can carry.
 const identifierPattern = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200c\u200d]*$/u;
 const starExportPattern = /export\s*\*\s*from\s*["']([^"']+)["']/g;
+
+const exportingPatternOf = (name: string) =>
+  new RegExp(`export\\s*\\{(?:[^}]*?[\\s,])?${escapeRegExp(name)}(?![\\w$])`);
 
 const declaringPatternOf = (name: string, isAnyBinding: boolean) => {
   const escaped = escapeRegExp(name);
@@ -89,6 +98,7 @@ export class GuardResolver {
   readonly #reexports = new Map<string, { local: string; site: GuardSite } | null>();
   readonly #declarations = new Map<string, Declaration | null>();
   readonly #starExports = new Map<string, StarExports>();
+  readonly #moduleExports = new Map<string, ModuleExports>();
   #ownerFiles: Map<string, [fileName: string, words: string][]> | null = null;
   #modules: Map<string, string[]> | null = null;
 
@@ -117,22 +127,26 @@ export class GuardResolver {
           made: [],
           isReal: fact.direct,
           scope: fact.scope,
+          layers: fact.layers,
           targets: [],
         };
         factories.set(fact.name, [...(factories.get(fact.name) ?? []), factory]);
         declaredFactories.push(factory);
       }
     for (const factory of declaredFactories)
-      factory.targets = factory.fact.via
-        .map((callee) => this.#factoryAt(factories, callee, factory.site))
-        .filter((target): target is DeclaredFactory => target?.fact.layers === 0);
+      factory.targets = factory.fact.via.flatMap(({ callee, layers }) => {
+        const target = this.#factoryAt(factories, callee, factory.site);
+        return target ? [{ target, layers }] : [];
+      });
+    //? A wrapper returns its target's guard after its own layers and whatever the target's call leaves uncalled.
     for (let isGrowing = true; isGrowing; ) {
       isGrowing = false;
       for (const factory of declaredFactories) {
-        const target = factory.targets.find((other) => other.isReal);
-        if (factory.isReal || !target) continue;
+        const via = factory.targets.find(({ target, layers }) => target.isReal && target.layers >= layers);
+        if (factory.isReal || !via) continue;
         factory.isReal = true;
-        factory.scope ??= target.scope;
+        factory.layers = factory.fact.layers + via.target.layers - via.layers;
+        factory.scope ??= via.target.scope;
         isGrowing = true;
       }
     }
@@ -141,7 +155,7 @@ export class GuardResolver {
       seen.add(factory);
       return [
         { fileName: factory.site.fileName, extent: factory.fact.extent },
-        ...factory.targets.filter((target) => target.isReal).flatMap((target) => partsOf(target, seen)),
+        ...factory.targets.filter(({ target }) => target.isReal).flatMap(({ target }) => partsOf(target, seen)),
       ];
     };
     const declare = (file: FileFacts, made: GuardFact | GuardCallFact, scope: string | null, parts: GuardPart[]) => {
@@ -160,7 +174,8 @@ export class GuardResolver {
           ? factories.get(made.factory)?.find((other) => other.site.fileName === file.fileName)
           : undefined;
         if (!made.factory) declare(file, made, made.scope, []);
-        else if (factory?.isReal) factory.made.push(declare(file, made, factory.scope, partsOf(factory)));
+        else if (factory?.isReal && factory.layers === made.layers)
+          factory.made.push(declare(file, made, factory.scope, partsOf(factory)));
       }
       for (const made of file.guardCalls) {
         if (made.kind === "extends") {
@@ -168,7 +183,7 @@ export class GuardResolver {
           continue;
         }
         const factory = this.#factoryAt(factories, made.callee, file);
-        if (factory?.isReal && factory.fact.layers === made.layers)
+        if (factory?.isReal && factory.layers === made.layers)
           factory.made.push(declare(file, made, factory.scope, partsOf(factory)));
       }
     }
@@ -270,7 +285,7 @@ export class GuardResolver {
     const cached = this.#reexports.get(key);
     if (cached !== undefined) return cached;
     let found: { local: string; site: GuardSite } | null = null;
-    const exporting = new RegExp(`export\\s*\\{(?:[^}]*?[\\s,])?${escapeRegExp(name)}(?![\\w$])`);
+    const exporting = exportingPatternOf(name);
     for (const fileName of this.#filesOf(owner, name, near)) {
       const text = this.#source.readText(fileName);
       if (text === undefined || !exporting.test(text)) continue;
@@ -431,6 +446,33 @@ export class GuardResolver {
           if (target && target !== frameworkOwner && target !== owner && !found.owners.includes(target))
             found.owners.push(target);
         }
+    return found;
+  }
+
+  exportsAt(path: string, name: string) {
+    const key = `${path}\n${name}`;
+    const cached = this.#moduleExports.get(key);
+    if (cached) return cached;
+    const found: ModuleExports = { named: null, stars: [] };
+    const exporting = exportingPatternOf(name);
+    for (const fileName of this.#modulesAt(path)) {
+      const text = this.#source.readText(fileName);
+      if (text === undefined) continue;
+      const named =
+        identifierPattern.test(name) && exporting.test(text)
+          ? this.#reexportIn(this.#source.parse(fileName, text), name)
+          : null;
+      if (named) {
+        found.named = { ...named, fileName };
+        found.stars = [];
+        break;
+      }
+      for (const [, specifier = ""] of text.matchAll(starExportPattern)) {
+        const target = this.pathOfSpecifier(fileName, specifier);
+        if (target !== null && !found.stars.includes(target)) found.stars.push(target);
+      }
+    }
+    this.#moduleExports.set(key, found);
     return found;
   }
 

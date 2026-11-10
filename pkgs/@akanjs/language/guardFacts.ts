@@ -6,13 +6,19 @@ export interface GuardFact extends MemberFact {
   scope: string | null;
   doc: string | null;
   factory: string | null;
+  layers: number;
+}
+
+export interface GuardVia {
+  callee: string;
+  layers: number;
 }
 
 export interface GuardFactoryFact extends MemberFact {
   scope: string | null;
   doc: string | null;
   direct: boolean;
-  via: string[];
+  via: GuardVia[];
   //? Calls past the first before a guard comes back: 1 for `(role) => (field) => class implements Guard {…}`.
   layers: number;
 }
@@ -111,6 +117,7 @@ const guardFactoryReaderOf = (
   ast: AkanAst,
   { spanOf, extentOf, unwrap, docOf }: GuardReaderBase,
   pathOf: (expression: TS.Expression) => string | null,
+  layersOf: (call: TS.CallExpression) => { root: TS.CallExpression; layers: number },
 ) => {
   const implementsGuard = (node: TS.ClassLikeDeclaration, guardNames: ReadonlySet<string>) =>
     !!node.heritageClauses?.some(
@@ -153,7 +160,7 @@ const guardFactoryReaderOf = (
     body: TS.Node,
     guardNames: ReadonlySet<string>,
     depth = 0,
-  ): { guard: TS.ClassLikeDeclaration | null; calls: string[]; layers: number } => {
+  ): { guard: TS.ClassLikeDeclaration | null; calls: GuardVia[]; layers: number } => {
     const locals = new Map<string, TS.Node>();
     const pending: TS.Node[] = [];
     const visit = (node: TS.Node) => {
@@ -166,7 +173,7 @@ const guardFactoryReaderOf = (
     if (ts.isBlock(body)) ts.forEachChild(body, visit);
     else pending.push(body);
     let guard: TS.ClassLikeDeclaration | null = null;
-    const calls: string[] = [];
+    const calls: GuardVia[] = [];
     const seen = new Set<TS.Node>();
     const passed = new Set<TS.Node>();
     const returned: TS.Node[] = [];
@@ -184,10 +191,14 @@ const guardFactoryReaderOf = (
         const local = locals.get(value.text);
         if (local) pending.push(local);
       } else if (ts.isCallExpression(value)) {
-        const callee = pathOf(unwrap(value.expression));
-        if (callee && !passed.has(node) && !calls.includes(callee)) calls.push(callee);
-        for (const arg of value.arguments) passed.add(arg);
-        pending.push(...value.arguments);
+        const { root, layers } = layersOf(value);
+        const callee = pathOf(unwrap(root.expression));
+        if (callee && !passed.has(node) && !calls.some((call) => call.callee === callee))
+          calls.push({ callee, layers });
+        for (let call: TS.Expression = value; ts.isCallExpression(call); call = unwrap(call.expression)) {
+          for (const arg of call.arguments) passed.add(arg);
+          pending.push(...call.arguments);
+        }
       }
     }
     const [inner] = returned;
@@ -209,7 +220,7 @@ const guardFactoryReaderOf = (
     for (let isGrowing = true; isGrowing; ) {
       isGrowing = false;
       for (const [name, { guard, calls }] of returned) {
-        if (members.has(name) || (!guard && !calls.some(isFactoryCall))) continue;
+        if (members.has(name) || (!guard && !calls.some(({ callee }) => isFactoryCall(callee)))) continue;
         members.add(name);
         isGrowing = true;
       }
@@ -226,7 +237,7 @@ const guardFactoryReaderOf = (
         scope: made.guard ? scopeOf(made.guard) : null,
         doc: docOf(source, found.statement),
         direct: !!made.guard,
-        via: made.calls.filter(isFactoryCall),
+        via: made.calls.filter(({ callee }) => isFactoryCall(callee)),
         layers: made.layers,
       });
     }
@@ -239,7 +250,7 @@ const guardFactoryReaderOf = (
 export const createGuardFactReader = (ts: Ts, ast: AkanAst, base: GuardReaderBase) => {
   const { spanOf, extentOf, unwrap, docOf } = base;
   const { pathOf, layersOf, labelOf, guardsIn } = guardRefReaderOf(ts, ast, unwrap);
-  const { implementsGuard, scopeOf, guardFactoriesOf } = guardFactoryReaderOf(ts, ast, base, pathOf);
+  const { implementsGuard, scopeOf, guardFactoriesOf } = guardFactoryReaderOf(ts, ast, base, pathOf, layersOf);
 
   const guardsOf = (source: TS.SourceFile, imports: ImportFact[], madeInPlace: InPlaceGuard[]) => {
     const guardNames = new Set([
@@ -253,13 +264,13 @@ export const createGuardFactReader = (ts: Ts, ast: AkanAst, base: GuardReaderBas
     const calls: GuardCallFact[] = [];
     const makeOf = (made: MemberFact & { doc: string | null }, value: TS.Expression, isInPlace = false) => {
       if (ts.isClassExpression(value) && implementsGuard(value, guardNames)) {
-        guards.push({ ...made, scope: scopeOf(value), factory: null });
+        guards.push({ ...made, scope: scopeOf(value), factory: null, layers: 0 });
         return;
       }
       const { root, layers } = ts.isCallExpression(value) ? layersOf(value) : { root: null, layers: 0 };
       const callee = root && pathOf(unwrap(root.expression));
       const factory = callee && factories.get(callee);
-      if (factory && factory.layers === layers) guards.push({ ...made, scope: factory.scope, factory: factory.name });
+      if (factory) guards.push({ ...made, scope: factory.scope, factory: factory.name, layers });
       else if (callee && (isImported(callee) || isInPlace))
         calls.push({ ...made, callee, kind: "call", scope: null, layers });
     };
@@ -274,7 +285,7 @@ export const createGuardFactReader = (ts: Ts, ast: AkanAst, base: GuardReaderBas
         };
         const base = statement.heritageClauses?.find(({ token }) => token === ts.SyntaxKind.ExtendsKeyword)?.types[0];
         const callee = base && pathOf(base.expression);
-        if (implementsGuard(statement, guardNames)) guards.push({ ...declared, factory: null });
+        if (implementsGuard(statement, guardNames)) guards.push({ ...declared, factory: null, layers: 0 });
         else if (callee) calls.push({ ...declared, callee, kind: "extends", layers: 0 });
       }
       if (!ts.isVariableStatement(statement)) continue;

@@ -853,10 +853,17 @@ export const curried = (role: string) => (field: string) =>
 export function staged(role: string) {
   return (field: string) => resourceGuard(\`\${role}:\${field}\`);
 }
+export const wrap = (role: string) => curried(role);
+export const half = (role: string) => (field: string) => curried(role)(field);
+export const both = (role: string, field: string) => curried(role)(field);
 `,
-      "apps/demo/srvkit/guards.ts": `import { curried } from "@libs/util/srvkit";
+      "apps/demo/srvkit/guards.ts": `import { both, curried, half, wrap } from "@libs/util/srvkit";
 export const Editor = curried("e")("f");
 export const Partial = curried("e");
+export const Wrapped = wrap("e")("f");
+export const Half = half("e")("f");
+export const Both = both("e", "f");
+export const Over = curried("e")("f")("g");
 `,
       "apps/demo/lib/memo/memo.signal.ts": `import { curried, staged } from "@libs/util/srvkit";
 import { endpoint } from "akanjs/signal";
@@ -888,8 +895,11 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
         .filter((node) => node.kind === "guard")
         .map(({ id, label, detail, at }) => [id, label, detail, at && `${at.file}:${at.line}`]),
     ).toEqual([
+      ["guard:apps/demo:Both", "Both", ["account"], "apps/demo/srvkit/guards.ts:6"],
       ["guard:apps/demo:Editor", "Editor", ["account"], "apps/demo/srvkit/guards.ts:2"],
+      ["guard:apps/demo:Half", "Half", ["account"], "apps/demo/srvkit/guards.ts:5"],
       ["guard:apps/demo:Partial", "Partial", [], null],
+      ["guard:apps/demo:Wrapped", "Wrapped", ["account"], "apps/demo/srvkit/guards.ts:4"],
       [`${inPlace}curried@1`, 'curried("e")("f")', ["account"], "apps/demo/lib/memo/memo.signal.ts:7"],
       [`${inPlace}curried@2`, 'curried("e")', [], null],
       [`${inPlace}staged@1`, 'staged("s")("t")', ["resource"], "apps/demo/lib/memo/memo.signal.ts:7"],
@@ -1515,6 +1525,8 @@ export class Clock extends adapt("${name}") {}
       "apps/demo/srvkit/clockA.ts": clock("clockA"),
       "apps/demo/srvkit/clockB.ts": clock("clockB"),
       "apps/demo/srvkit/index.ts": barrel,
+      "apps/demo/srvkit/compat/index.ts": `export { Clock } from "../clockB";
+`,
       "libs/shared/srvkit/index.ts": `export * from "./square";
 `,
       "libs/shared/srvkit/square.ts": `export * from "square-sdk";
@@ -1523,23 +1535,35 @@ export class Clock extends adapt("${name}") {}
 `,
       "libs/util/srvkit/index.ts": `export * from "./storage";
 `,
+      "libs/social/srvkit/index.ts": `export * from "@libs/billing/srvkit";
+`,
+      "libs/billing/srvkit/index.ts": `export * from "bill-sdk";
+export * from "./bill";
+`,
+      "libs/billing/srvkit/bill.ts": `export class Bill {}
+`,
       "libs/util/srvkit/storage.ts": `export const storage = 1;
 `,
       "libs/util/srvkit/legacy/foo.ts": `export * from "foo-sdk";
 `,
       "apps/demo/lib/memo/memo.service.ts": `import { Square } from "@libs/shared/srvkit";
+import { Bill } from "@libs/social/srvkit";
 import { Foo } from "@libs/util/srvkit";
 import { serve } from "akanjs/service";
-import { Clock } from "../../srvkit";
+import { Clock, WallClock } from "../../srvkit";
 import * as db from "../db";
 export class MemoService extends serve(db.memo, ({ plug }) => ({
   clock: plug(Clock),
+  wall: plug(WallClock),
   square: plug(Square),
   foo: plug(Foo),
+  bill: plug(Bill),
 })) {
   async stamp() {
     await this.square.charge();
     await this.foo.run();
+    await this.bill.send();
+    await this.wall.tick();
     return this.clock.now();
   }
 }
@@ -1554,13 +1578,23 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({
         "calls",
       );
     };
-    const reached = (clockId: string) => [
-      `method:apps/demo:memo.stamp -charge-> adaptor:square-sdk:Square`,
+    const clockA = "adaptor:apps/demo:srvkit/clockA.ts#Clock";
+    const clockB = "adaptor:apps/demo:srvkit/clockB.ts#Clock";
+    const reached = (clockId: string, wallId = "adaptor:apps/demo:WallClock") => [
+      "method:apps/demo:memo.stamp -charge-> adaptor:square-sdk:Square",
       `method:apps/demo:memo.stamp -now-> ${clockId}`,
-      `method:apps/demo:memo.stamp -run-> adaptor:libs/util:Foo`,
+      "method:apps/demo:memo.stamp -run-> adaptor:libs/util:Foo",
+      "method:apps/demo:memo.stamp -send-> adaptor:libs/social:Bill",
+      `method:apps/demo:memo.stamp -tick-> ${wallId}`,
     ];
-    expect(callsOf(`export { Clock } from "./clockB";\n`)).toEqual(reached("adaptor:apps/demo:srvkit/clockB.ts#Clock"));
-    expect(callsOf(`export * from "./clockB";\n`)).toEqual(reached("adaptor:apps/demo:srvkit/clockB.ts#Clock"));
+    expect(callsOf(`export { Clock } from "./clockB";\n`)).toEqual(reached(clockB));
+    expect(callsOf(`export * from "./clockB";\n`)).toEqual(reached(clockB));
+    expect(callsOf(`export * from "./clockA";\n`)).toEqual(reached(clockA));
+    expect(callsOf(`export { Clock } from "./clockB";\nexport * from "./clockA";\n`)).toEqual(reached(clockB));
+    expect(callsOf(`export * from "./compat";\n`)).toEqual(reached(clockB));
+    expect(callsOf(`export { Clock as WallClock } from "./clockA";\nexport { Clock } from "./clockB";\n`)).toEqual(
+      reached(clockB, clockA),
+    );
     expect(callsOf(`export * from "./clockA";\nexport * from "./clockB";\n`)).toEqual(
       reached("adaptor:apps/demo:Clock"),
     );
