@@ -104,7 +104,6 @@ export interface GuardFact extends MemberFact {
   scope: string | null;
   doc: string | null;
   factory: string | null;
-  label?: string;
 }
 
 export interface GuardFactoryFact extends MemberFact {
@@ -119,7 +118,6 @@ export interface GuardCallFact extends MemberFact {
   kind: "call" | "extends";
   scope: string | null;
   doc: string | null;
-  label?: string;
 }
 
 export interface ImportFact {
@@ -128,6 +126,17 @@ export interface ImportFact {
   from: string;
 }
 
+interface InPlaceGuard {
+  call: TS.CallExpression;
+  name: string;
+}
+
+export const guardLabelOf = (guard: string, labels: Record<string, string>) => {
+  const [, role = null, local = guard] = guard.match(/^([\w$]+) (.+)$/) ?? [];
+  const label = labels[local];
+  return label === undefined ? guard : role ? `${role} ${label}` : label;
+};
+
 export interface FileFacts {
   fileName: string;
   owner: string | null;
@@ -135,6 +144,7 @@ export interface FileFacts {
   guards: GuardFact[];
   guardFactories: GuardFactoryFact[];
   guardCalls: GuardCallFact[];
+  guardLabels: Record<string, string>;
   constants: ConstantClassFact[];
   enums: EnumClassFact[];
   filters: FilterClassFact[];
@@ -244,31 +254,28 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     return `${calleeOf(call)}(${args.length <= maxLabelArgs && !args.includes("\n") ? args : "…"})`;
   };
 
-  //? An in-place guard is named by its callee and ordinal in the file, so editing a lambda argument keeps its id.
-  const inPlaceNameOf = (made: TS.CallExpression[], call: TS.CallExpression) => {
-    const callee = calleeOf(call);
-    const ordinal = made.slice(0, made.indexOf(call) + 1).filter((other) => calleeOf(other) === callee).length;
-    return `${callee}@${ordinal}`;
-  };
-
-  const guardRefOf = (expression: TS.Expression, made: TS.CallExpression[]) => {
+  //? Editing a lambda argument, or a guard on another member, keeps the id.
+  const guardRefOf = (expression: TS.Expression, made: InPlaceGuard[], member: string) => {
     const value = unwrap(expression);
     if (!ts.isCallExpression(value)) return pathOf(value) ?? ast.expressionName(value);
-    made.push(value);
-    return inPlaceNameOf(made, value);
+    const prefix = `${member}:${calleeOf(value)}@`;
+    const name = `${prefix}${made.filter((other) => other.name.startsWith(prefix)).length + 1}`;
+    made.push({ call: value, name });
+    return name;
   };
 
   const guardsIn = (
     source: TS.SourceFile,
     object: TS.ObjectLiteralExpression | undefined,
-    made: TS.CallExpression[],
+    made: InPlaceGuard[],
+    member: string,
   ) => {
     const guards = object?.properties.find(
       (property): property is TS.PropertyAssignment =>
         ts.isPropertyAssignment(property) && ast.nodeName(property.name) === "guards",
     )?.initializer;
     if (!guards) return [];
-    const refOf = (expression: TS.Expression) => guardRefOf(expression, made);
+    const refOf = (expression: TS.Expression) => guardRefOf(expression, made, member);
     if (ts.isArrayLiteralExpression(guards)) return guards.elements.map(refOf).filter((name) => name !== null);
     if (ts.isObjectLiteralExpression(guards))
       return guards.properties.filter(ts.isPropertyAssignment).flatMap((property) => {
@@ -315,7 +322,8 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
   const sliceKeysOf = (
     source: TS.SourceFile,
     builder: TS.ArrowFunction | TS.FunctionExpression | undefined,
-    made: TS.CallExpression[],
+    made: InPlaceGuard[],
+    model: string,
   ) =>
     (returnedObject(builder)?.properties ?? []).flatMap((property): SliceKeyFact[] => {
       if (!ts.isPropertyAssignment(property)) return [];
@@ -327,7 +335,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           name,
           span: spanOf(source, property.name),
           extent: extentOf(source, property),
-          guards: root ? guardsIn(source, optionObjectOf(root), made) : [],
+          guards: root ? guardsIn(source, optionObjectOf(root), made, `${model}.${name}`) : [],
           live: methods.includes("live"),
           argCount: methods.filter((method) => argMethods.has(method)).length,
         },
@@ -443,7 +451,8 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
   const endpointKeysOf = (
     source: TS.SourceFile,
     builder: TS.ArrowFunction | TS.FunctionExpression | undefined,
-    made: TS.CallExpression[],
+    made: InPlaceGuard[],
+    model: string,
   ) => {
     const verbOf = verbReaderOf(builder?.parameters[0]);
     return (returnedObject(builder)?.properties ?? []).flatMap((property): EndpointKeyFact[] => {
@@ -457,7 +466,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           span: spanOf(source, property.name),
           extent: extentOf(source, property),
           verb: root ? verbOf(root.expression) : null,
-          guards: root ? guardsIn(source, optionObjectOf(root), made) : [],
+          guards: root ? guardsIn(source, optionObjectOf(root), made, `${model}.${name}`) : [],
           argCount: methods.filter((method) => argMethods.has(method)).length,
         },
       ];
@@ -673,7 +682,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     return factories;
   };
 
-  const guardsOf = (source: TS.SourceFile, imports: ImportFact[], madeInPlace: TS.CallExpression[]) => {
+  const guardsOf = (source: TS.SourceFile, imports: ImportFact[], madeInPlace: InPlaceGuard[]) => {
     const guardNames = new Set([
       "Guard",
       ...imports.filter(({ imported }) => imported === "Guard").map(({ name }) => name),
@@ -683,7 +692,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     const factories = guardFactoriesOf(source, guardNames, isImported);
     const guards: GuardFact[] = [];
     const calls: GuardCallFact[] = [];
-    const makeOf = (made: MemberFact & { doc: string | null; label?: string }, value: TS.Expression) => {
+    const makeOf = (made: MemberFact & { doc: string | null }, value: TS.Expression, isInPlace = false) => {
       if (ts.isClassExpression(value) && implementsGuard(value, guardNames)) {
         guards.push({ ...made, scope: scopeOf(value), factory: null });
         return;
@@ -691,7 +700,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       const callee = ts.isCallExpression(value) ? pathOf(unwrap(value.expression)) : null;
       const factory = callee && factories.get(callee);
       if (factory) guards.push({ ...made, scope: factory.scope, factory: factory.name });
-      else if (callee && (isImported(callee) || made.label)) calls.push({ ...made, callee, kind: "call", scope: null });
+      else if (callee && (isImported(callee) || isInPlace)) calls.push({ ...made, callee, kind: "call", scope: null });
     };
     for (const statement of source.statements) {
       if (ts.isClassDeclaration(statement) && statement.name) {
@@ -737,18 +746,10 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         }
       }
     }
-    for (const call of madeInPlace)
-      makeOf(
-        {
-          name: inPlaceNameOf(madeInPlace, call),
-          label: labelOf(source, call),
-          span: spanOf(source, call),
-          extent: extentOf(source, call),
-          doc: null,
-        },
-        call,
-      );
-    return { guards, guardFactories: [...factories.values()], guardCalls: calls };
+    for (const { call, name } of madeInPlace)
+      makeOf({ name, span: spanOf(source, call), extent: extentOf(source, call), doc: null }, call, true);
+    const guardLabels = Object.fromEntries(madeInPlace.map(({ call, name }) => [name, labelOf(source, call)]));
+    return { guards, guardFactories: [...factories.values()], guardCalls: calls, guardLabels };
   };
 
   const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
@@ -757,7 +758,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
 
   const read = (source: TS.SourceFile, owner: string | null): FileFacts => {
     const imports = importsIn(source);
-    const madeInPlace: TS.CallExpression[] = [];
+    const madeInPlace: InPlaceGuard[] = [];
     const facts: FileFacts = {
       fileName: source.fileName,
       owner,
@@ -765,6 +766,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       guards: [],
       guardFactories: [],
       guardCalls: [],
+      guardLabels: {},
       constants: [],
       enums: [],
       filters: [],
@@ -795,14 +797,16 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           methods: methodsOf(source, statement),
           plugs: plugsOf(source, builder),
         });
-      else if (callee === "slice")
+      else if (callee === "slice") {
+        const model = moduleRefOf(call.arguments[0], "srv");
+        const member = model ?? name.name;
         facts.slices.push({
           ...name,
-          model: moduleRefOf(call.arguments[0], "srv"),
-          guards: guardsIn(source, call.arguments.find(ts.isObjectLiteralExpression), madeInPlace),
-          keys: sliceKeysOf(source, builder, madeInPlace),
+          model,
+          guards: guardsIn(source, call.arguments.find(ts.isObjectLiteralExpression), madeInPlace, member),
+          keys: sliceKeysOf(source, builder, madeInPlace, member),
         });
-      else if (callee === "internal")
+      } else if (callee === "internal")
         facts.internals.push({
           ...name,
           model: moduleRefOf(call.arguments[0], "srv"),
@@ -817,13 +821,14 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           plugs: plugsOf(source, builder),
           doc: docOf(source, statement),
         });
-      } else if (callee === "endpoint")
+      } else if (callee === "endpoint") {
+        const model = moduleRefOf(call.arguments[0], "srv");
         facts.endpoints.push({
           ...name,
-          model: moduleRefOf(call.arguments[0], "srv"),
-          keys: endpointKeysOf(source, builder, madeInPlace),
+          model,
+          keys: endpointKeysOf(source, builder, madeInPlace, model ?? name.name),
         });
-      else if (callee === "store")
+      } else if (callee === "store")
         facts.stores.push({
           ...name,
           model: moduleRefOf(call.arguments[0], "sig"),

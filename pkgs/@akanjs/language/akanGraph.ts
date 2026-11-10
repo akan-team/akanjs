@@ -19,6 +19,7 @@ import {
   type GuardCallFact,
   type GuardFact,
   type GuardFactoryFact,
+  guardLabelOf,
   type MemberFact,
   ownerOf,
   testFilePattern,
@@ -124,11 +125,16 @@ const aliasPattern = /^@(apps|libs)\/([^/]+)/;
 const maxMapDepth = 4;
 const starExportPattern = /export\s*\*\s*from\s*["']([^"']+)["']/g;
 
-const declaringPatternOf = (name: string, isReexporting: boolean) => {
+const declaringPatternOf = (name: string, isAnyBinding: boolean) => {
   const escaped = name.replace(/\$/g, "\\$");
-  const lead = isReexporting ? "export\\s*\\{(?:[^}]*?[\\s,])?" : "class\\s+";
-  const declared = `(?:function\\s*\\*?\\s*|(?:const|let|var)\\s+|${lead})${escaped}(?![\\w$])`;
-  return new RegExp(`${declared}|,\\s*${escaped}\\s*(?::[^=;,]+)?=(?![=>])`);
+  const braced = "\\{(?:[^}]*?[\\s,])?";
+  const leads = [
+    "function\\s*\\*?\\s*",
+    "(?:const|let|var)\\s+",
+    `export\\s*${braced}`,
+    ...(isAnyBinding ? ["class\\s+", `(?:const|let|var)\\s*${braced}`] : []),
+  ];
+  return new RegExp(`(?:${leads.join("|")})${escaped}(?![\\w$])|,\\s*${escaped}\\s*(?::[^=;,]+)?=(?![=>])`);
 };
 
 export class GraphBuilder {
@@ -145,6 +151,7 @@ export class GraphBuilder {
   readonly #declarations = new Map<string, Declaration | null>();
   readonly #starExports = new Map<string, { owners: string[]; isOpaque: boolean }>();
   #ownerFiles: Map<string, [fileName: string, words: string][]> | null = null;
+  #modules: Map<string, string[]> | null = null;
   readonly #routes: RouteFactReader;
   readonly #adaptors = new Map<string, DeclaredAdaptor[]>();
   readonly #plugs = new Map<string, string>();
@@ -245,11 +252,14 @@ export class GraphBuilder {
           refName,
           "",
           slice.span,
-          slice.guards.map((guard) => this.#guardLabelOf(guard, file)),
+          slice.guards.map((guard) => guardLabelOf(guard, file.guardLabels)),
         );
         for (const guard of slice.guards) this.#guard(fallback, guard, file);
         for (const key of slice.keys) {
-          const detail = [...key.guards.map((guard) => this.#guardLabelOf(guard, file)), ...(key.live ? ["live"] : [])];
+          const detail = [
+            ...key.guards.map((guard) => guardLabelOf(guard, file.guardLabels)),
+            ...(key.live ? ["live"] : []),
+          ];
           const node = this.#addMember("slice", owner, refName, key, `${refName}.${key.name}`, file.fileName, detail);
           for (const guard of key.guards) this.#guard(node, guard, file);
         }
@@ -260,7 +270,7 @@ export class GraphBuilder {
         for (const key of endpoint.keys) {
           const detail = [
             ...(key.verb ? [key.verb] : []),
-            ...key.guards.map((guard) => this.#guardLabelOf(guard, file)),
+            ...key.guards.map((guard) => guardLabelOf(guard, file.guardLabels)),
           ];
           const node = this.#addMember(
             "endpoint",
@@ -405,13 +415,6 @@ export class GraphBuilder {
     if (id) this.#addEdge(node.id, id, "guard", role, node.at);
   }
 
-  #guardLabelOf(guard: string, file: FileFacts) {
-    const [, role = null, local = guard] = guard.match(/^([\w$]+) (.+)$/) ?? [];
-    if (!local.includes("@")) return guard;
-    const label = [...file.guards, ...file.guardCalls].find((made) => made.name === local)?.label ?? local;
-    return role ? `${role} ${label}` : label;
-  }
-
   #declareGuards(facts: FileFacts[]) {
     const factories = new Map<string, DeclaredFactory[]>();
     const declaredFactories: DeclaredFactory[] = [];
@@ -452,7 +455,8 @@ export class GraphBuilder {
       ];
     };
     const declare = (file: FileFacts, made: GuardFact | GuardCallFact, scope: string | null, parts: GuardPart[]) => {
-      const { name, span, extent, doc, label } = made;
+      const { name, span, extent, doc } = made;
+      const label = file.guardLabels[name];
       const own = { fileName: file.fileName, extent };
       const guard = { name, owner: file.owner, span, scope, doc, parts: [own, ...parts], file: null, label };
       if (name.includes("@")) this.#madeInPlace.set(`${file.fileName}\n${name}`, guard);
@@ -524,7 +528,7 @@ export class GraphBuilder {
     if (own) return own;
     const reexport = from && depth < maxMapDepth ? this.#reexportOf(from, name, near) : null;
     if (reexport) return this.#factoryAt(factories, reexport.local, reexport.site, depth + 1);
-    return from ? this.#throughStar(candidates, from, name) : undefined;
+    return from && near ? this.#throughStar(candidates, from, name, near) : undefined;
   }
 
   #nearest<Item>(items: Item[], fileOf: (item: Item) => string, near: string | null) {
@@ -563,12 +567,11 @@ export class GraphBuilder {
     const from = imported ? this.#ownerOfSpecifier(file.fileName, imported.from) : file.owner;
     if (from === undefined || from === frameworkOwner) return null;
     const scope = `${this.#inOwner(file.fileName, file.owner)}#${name}`;
-    const label = this.#guardLabelOf(name, file);
+    const label = guardLabelOf(name, file.guardLabels);
     return this.#addNode(this.#key("guard", file.owner, scope), "guard", file.owner, null, name, null, [], label).id;
   }
 
-  //? `strict` is for `extends`: an unimported base its owner declares as no guard is an ordinary class, not a lib's.
-  #findGuard(local: string, site: GuardSite, depth: number, strict = false): GuardLookup {
+  #findGuard(local: string, site: GuardSite, depth: number, isBase = false): GuardLookup {
     const segments = local.split(".");
     const head = segments[0] ?? local;
     const imported = site.imports.find((item) => item.name === head);
@@ -589,7 +592,7 @@ export class GraphBuilder {
       );
       if (made) return { guard: made };
       for (const entry of this.#mapEntriesOf(objectName, member, imported ? null : site.fileName, holder)) {
-        const found = this.#findGuard(entry.name, entry.site, depth + 1, strict);
+        const found = this.#findGuard(entry.name, entry.site, depth + 1, isBase);
         if ("guard" in found) return found;
       }
     }
@@ -603,12 +606,12 @@ export class GraphBuilder {
     );
     if (own) return { guard: own };
     if (!imported) {
-      const visible = strict ? undefined : declared.find((other) => this.#visible(other.owner, site.owner));
+      const visible = isBase ? undefined : declared.find((other) => this.#visible(other.owner, site.owner));
       return visible ? { guard: visible } : { name, from };
     }
     const reexport = from && depth < maxMapDepth ? this.#reexportOf(from, name, near) : null;
-    if (reexport) return this.#findGuard(reexport.local, reexport.site, depth + 1, strict);
-    const reached = from ? this.#throughStar(declared, from, name) : undefined;
+    if (reexport) return this.#findGuard(reexport.local, reexport.site, depth + 1, isBase);
+    const reached = from && near ? this.#throughStar(declared, from, name, near) : undefined;
     return reached ? { guard: reached } : { name, from };
   }
 
@@ -720,7 +723,7 @@ export class GraphBuilder {
     const cached = this.#declarations.get(key);
     if (cached !== undefined) return cached;
     this.#declarations.set(key, null);
-    const declaring = declaringPatternOf(name, true);
+    const declaring = declaringPatternOf(name, false);
     let found: Declaration | null = null;
     for (const fileName of this.#filesOf(owner, name, near)) {
       const text = this.#source.readText(fileName);
@@ -957,9 +960,14 @@ export class GraphBuilder {
   }
 
   //? `export *` is the one re-export not followed by name, and one from a package may bring the name itself.
-  #throughStar<Declared extends { owner: string | null }>(declared: Declared[], owner: string, name: string) {
+  #throughStar<Declared extends { owner: string | null }>(
+    declared: Declared[],
+    owner: string,
+    name: string,
+    near: string,
+  ) {
     if (!declared.length) return undefined;
-    const { owners, isOpaque } = this.#starExportsOf(owner);
+    const { owners, isOpaque } = this.#starExportsOf(owner, near);
     const reached = declared.filter((other) => other.owner !== null && owners.includes(other.owner));
     return reached.length === 1 && !isOpaque && !this.#declares(owner, name) ? reached[0] : undefined;
   }
@@ -977,28 +985,40 @@ export class GraphBuilder {
     return this.#ownerFiles.get(owner) ?? [];
   }
 
-  #starExportsOf(owner: string) {
-    const cached = this.#starExports.get(owner);
+  #starExportsOf(owner: string, near: string) {
+    const cached = this.#starExports.get(near);
     if (cached) return cached;
-    const found = { owners: [owner], isOpaque: false };
-    this.#starExports.set(owner, found);
-    for (let idx = 0; idx < found.owners.length && !found.isOpaque; idx++) {
-      const current = found.owners[idx];
-      for (const [fileName, words] of current ? this.#filesIn(current) : []) {
-        if (!words.includes("\nexport\n")) continue;
+    const found = { owners: [] as string[], isOpaque: false };
+    this.#starExports.set(near, found);
+    const paths = [near];
+    for (let idx = 0; idx < paths.length && !found.isOpaque; idx++)
+      for (const fileName of this.#modulesAt(paths[idx] ?? "")) {
         for (const [, specifier = ""] of this.#source.readText(fileName)?.matchAll(starExportPattern) ?? []) {
           const target = this.#ownerOfSpecifier(fileName, specifier);
-          if (target === undefined || target === frameworkOwner) found.isOpaque = true;
-          else if (target && !found.owners.includes(target)) found.owners.push(target);
+          const path = this.#pathOfSpecifier(fileName, specifier);
+          if (target === undefined || target === frameworkOwner || path === null) found.isOpaque = true;
+          else if (!paths.includes(path)) paths.push(path);
+          if (target && target !== frameworkOwner && target !== owner && !found.owners.includes(target))
+            found.owners.push(target);
         }
       }
-    }
-    found.owners = found.owners.slice(1);
     return found;
   }
 
+  #modulesAt(path: string) {
+    if (!this.#modules) {
+      this.#modules = new Map();
+      for (const [fileName] of this.#source.files) {
+        const module = this.#source.relative(fileName).replace(/\.tsx?$/, "");
+        for (const key of module.endsWith("/index") ? [module, module.slice(0, -6)] : [module])
+          this.#modules.set(key, [...(this.#modules.get(key) ?? []), fileName]);
+      }
+    }
+    return this.#modules.get(path) ?? [];
+  }
+
   #declares(owner: string, name: string) {
-    const declaring = declaringPatternOf(name, false);
+    const declaring = declaringPatternOf(name, true);
     return this.#filesOf(owner, name, null).some((fileName) => declaring.test(this.#source.readText(fileName) ?? ""));
   }
 

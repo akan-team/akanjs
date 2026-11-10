@@ -328,11 +328,12 @@ export class Admin implements Guard {
   }
 }
 `;
-    const graphOf = (reexport: string) => {
+    const graphOf = (reexport: string, extra: Record<string, string> = {}) => {
       const given: Record<string, string> = {
+        ...extra,
         "libs/billing/srvkit/admin.ts": admin,
         "libs/util/srvkit/admin.ts": admin,
-        "libs/shared/srvkit/admin.ts": reexport,
+        "libs/shared/srvkit/index.ts": reexport,
         "apps/demo/lib/memo/memo.signal.ts": `import { Admin } from "@libs/shared/srvkit";
 import { endpoint } from "akanjs/signal";
 import * as srv from "../srv";
@@ -353,11 +354,18 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
     ]);
     const guardsOf = (graph: ReturnType<typeof graphOf>) =>
       graph.edges.filter((edge) => edge.kind === "guard").map((edge) => edge.to);
-    expect(guardsOf(graphOf(`export * from "@libs/util/srvkit";\n`))).toEqual(["guard:libs/util:Admin"]);
+    const starred = `export * from "@libs/util/srvkit";\n`;
+    expect(guardsOf(graphOf(starred))).toEqual(["guard:libs/util:Admin"]);
+    expect(guardsOf(graphOf(starred, { "libs/shared/ui/index.ts": `export * from "@vendor/ui";\n` }))).toEqual([
+      "guard:libs/util:Admin",
+    ]);
     for (const ambiguous of [
-      `export * from "@libs/util/srvkit";\nexport * from "@libs/billing/srvkit";\n`,
+      `${starred}export * from "@libs/billing/srvkit";\n`,
       `export * from "@vendor/admin";\n`,
-      `export * from "@libs/util/srvkit";\nexport const Admin = "admin";\n`,
+      `${starred}export * from "@vendor/admin";\n`,
+      `${starred}export const Admin = "admin";\n`,
+      `${starred}import Admin from "@vendor/auth";\nexport { Admin };\n`,
+      `${starred}export const { Admin } = makeGuards();\n`,
     ]) {
       const graph = graphOf(ambiguous);
       expect(guardsOf(graph)).toEqual(["guard:libs/shared:Admin"]);
@@ -590,7 +598,7 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
       return index.graph((fileName) => given[fileName.slice(root.length + 1)], { digests: true });
     };
     const graph = graphOf(guarded("true"));
-    const inPlace = "guard:apps/demo:lib/memo/memo.signal.ts#resourceGuard@1";
+    const inPlace = "guard:apps/demo:lib/memo/memo.signal.ts#memo.shareMemo:resourceGuard@1";
     expect(edgesOf(graph, "guard")).toEqual([
       "endpoint:apps/demo:memo.shareMemo --> guard::Public",
       "endpoint:apps/demo:memo.shareMemo --> guard:apps/demo:DemoAdmin",
@@ -651,8 +659,8 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
     expect(changed).toEqual(["guard:apps/demo:ProjectMember"]);
   });
 
-  it("names a guard made in place by callee and ordinal, takes a class handed to a wrapper, and skips a plain base", () => {
-    const made = (check: string): Record<string, string> => ({
+  it("names a guard made in place by member, callee and ordinal, takes a class handed to a wrapper, and skips a plain base", () => {
+    const made = (check: string, sibling = ""): Record<string, string> => ({
       "libs/util/srvkit/guards.ts": `import type { Guard } from "akanjs/signal";
 const withName = <T>(guard: T, name: string) => Object.assign(guard as object, { guardName: name }) as T;
 export const resourceGuard = (field: string) =>
@@ -687,11 +695,14 @@ import { rg } from "@libs/util/srvkit";
 export const Pin = rg("pin");
 export class Thing extends Base {}
 `,
+      "apps/demo/srvkit/local.ts": `class Base {}
+export class Local extends Base {}
+`,
       "apps/demo/lib/memo/memo.signal.ts": `import { allow, resourceGuard } from "@libs/util/srvkit";
 import { endpoint } from "akanjs/signal";
 import { Pin } from "../../srvkit/guards";
 import * as srv from "../srv";
-export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({${sibling}
   shareMemo: mutation(cnst.Memo, {
     guards: [
       Pin,
@@ -713,7 +724,7 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
       return index.graph((fileName) => given[fileName.slice(root.length + 1)], { digests: true });
     };
     const graph = graphOf(made("!!user"));
-    const inPlace = "guard:apps/demo:lib/memo/memo.signal.ts#";
+    const inPlace = "guard:apps/demo:lib/memo/memo.signal.ts#memo.shareMemo:";
     expect(edgesOf(graph, "guard")).toEqual([
       "endpoint:apps/demo:memo.shareMemo --> guard:apps/demo:Pin",
       `endpoint:apps/demo:memo.shareMemo --> ${inPlace}allow@1`,
@@ -742,6 +753,29 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
       .nodes.filter((node) => node.change)
       .map(({ id, change }) => `${change} ${id}`);
     expect(changed).toEqual(["changed endpoint:apps/demo:memo.shareMemo", `changed ${inPlace}allow@2`]);
+    const sibling = `
+  zeta: mutation(cnst.Memo, { guards: [resourceGuard("zeta")] }).exec(async function () {
+    return null;
+  }),`;
+    const changesOf = (before: ReturnType<typeof graphOf>, after: ReturnType<typeof graphOf>) => {
+      const changes = AkanGraphDiff.between(before, after);
+      return [
+        ...changes.nodes.filter((node) => node.change).map(({ id, change }) => `${change} ${id}`),
+        ...changes.edges.filter((edge) => edge.change).map(({ from, to, change }) => `${change} ${from} --> ${to}`),
+      ];
+    };
+    const zeta = "guard:apps/demo:lib/memo/memo.signal.ts#memo.zeta:resourceGuard@1";
+    const withSibling = graphOf(made("!!user", sibling));
+    expect(changesOf(graph, withSibling)).toEqual([
+      "added endpoint:apps/demo:memo.zeta",
+      `added ${zeta}`,
+      `added endpoint:apps/demo:memo.zeta --> ${zeta}`,
+    ]);
+    expect(changesOf(withSibling, graph)).toEqual([
+      "removed endpoint:apps/demo:memo.zeta",
+      `removed ${zeta}`,
+      `removed endpoint:apps/demo:memo.zeta --> ${zeta}`,
+    ]);
   });
 
   it("keys a name two files of one owner declare by file, and follows each import to its own", () => {
