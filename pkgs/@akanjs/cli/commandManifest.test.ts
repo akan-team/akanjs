@@ -36,6 +36,26 @@ describe("CommandManifest", () => {
     expect(collisions).toEqual([]);
   });
 
+  test("every remove command that takes an app, lib, pkg or module is destructive, so none picks it", async () => {
+    const targetTypes = new Set(["App", "Lib", "Sys", "Pkg", "Module", "Exec"]);
+    const removes: string[] = [];
+    for (const id of commandModuleIds) {
+      const command = await commandModules[id]();
+      for (const targetMeta of getTargetMetas(command)) {
+        if (!targetMeta.key.startsWith("remove")) continue;
+        if (!targetMeta.args.some((arg) => targetTypes.has(arg.type))) continue;
+        removes.push(`${targetMeta.key}: ${targetMeta.targetOption.destructive === true}`);
+      }
+    }
+    expect(removes.toSorted((a, b) => a.localeCompare(b))).toEqual([
+      "removeApplication: true",
+      "removeLibrary: true",
+      "removeModule: true",
+      "removePackage: true",
+      "removeScalar: true",
+    ]);
+  });
+
   test("falls back to loading every module when it cannot narrow argv", async () => {
     const manifest = await CommandManifest.generate();
     expect(CommandManifest.resolve(manifest, ["bun", "akan"])).toBeNull();

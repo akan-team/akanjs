@@ -29,12 +29,20 @@ export class RouteHead {
       if (!nodes) return node;
       snapshotLevels.push(nodes);
     }
-    return { node, headSnapshot: RouteHead.#mergeSnapshots(snapshotLevels) } satisfies ResolvedHead;
+    return { node, headSnapshot: RouteHead.mergeSnapshots(snapshotLevels) } satisfies ResolvedHead;
   }
 
   /** `merge` of a page's head over its layouts': a canonical or `og:url` comes from the page or not at all. */
   static mergePage(layouts: ResolveHeadResult, page: ResolveHeadResult): ResolveHeadResult {
     return RouteHead.merge([RouteHead.#withoutPageIdentity(layouts), page]);
+  }
+
+  /** `head` as the title, meta and link data a navigation swaps in, or `undefined` if any tag it holds has no such form. */
+  static snapshotOf(head: ResolveHeadResult): AkanHeadSnapshotV1 | undefined {
+    const snapshot = RouteHead.#snapshotOf(head);
+    if (snapshot) return snapshot;
+    const nodes = RouteHead.#snapshotNodesOf(RouteHead.#nodeOf(head));
+    return nodes ? { version: 1, nodes } : undefined;
   }
 
   /** The tags at the top of `node` that a head merges by identity, apart from the rest, which is `node` if none. */
@@ -123,7 +131,8 @@ export class RouteHead {
     return { node: keptNode, headSnapshot: { ...snapshot, nodes } };
   }
 
-  static #mergeSnapshots(levels: AkanHeadSnapshotNode[][]): AkanHeadSnapshotV1 {
+  /** `merge` for snapshot nodes, root first. */
+  static mergeSnapshots(levels: AkanHeadSnapshotNode[][]): AkanHeadSnapshotV1 {
     const kept = RouteHead.#keepDeepest(levels, (node: AkanHeadSnapshotNode) =>
       RouteHead.keyOf(node.tag, node.attrs ?? {}),
     );

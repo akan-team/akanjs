@@ -1,4 +1,4 @@
-import { closeSync, openSync, realpathSync } from "node:fs";
+import { closeSync, openSync, realpathSync, statSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { DevHostEvent } from "@akanjs/devkit/akanApp";
@@ -83,13 +83,12 @@ export class AppPreview {
     const engine = options.engine ?? PreviewChrome.backend;
     const unavailable = PreviewView.unavailableReason(engine);
     if (unavailable) throw new Error(unavailable);
-    const { i18n } = await app.getConfig();
     const changed = options.changed ? await AppPreview.#changedPages(app) : { paths: [], skipped: [] };
     if (options.changed && !changed.paths.length && !options.paths?.length)
       throw new Error(
         `No page to open: ${changed.skipped.join("; ")}. Pass a concrete path, e.g. \`akan preview ${app.name} /memo/1\`.`,
       );
-    const paths = AppPreview.pagePaths([...(options.paths ?? []), ...changed.paths], i18n, { csr: !!options.csr });
+    const paths = await AppPreview.pathsOf(app, options.paths ?? [], !!options.csr, changed.paths);
     const port = await app.getDevPort();
     const origin = `http://localhost:${port}`;
     const root = app.workspace.workspaceRoot;
@@ -139,12 +138,30 @@ export class AppPreview {
     }
   }
 
+  static async pathsOf(app: Pick<App, "getConfig" | "cwdPath">, paths: string[], csr: boolean, pages: string[] = []) {
+    const { i18n, api } = await app.getConfig();
+    return AppPreview.pagePaths(paths, i18n, {
+      csr,
+      apiPrefix: api.prefix,
+      publicDir: path.join(app.cwdPath, "public"),
+      pages,
+    });
+  }
+
   /** An unprefixed path answers with a redirect or a 503 where it does not name the default locale itself: under
    * `"always"`, and in a CSR boot, whose routes match on the locale segment. */
-  static pagePaths(paths: string[], i18n: I18nLike, { csr }: { csr: boolean }) {
+  static pagePaths(
+    paths: string[],
+    i18n: I18nLike,
+    {
+      csr,
+      apiPrefix = "/api",
+      publicDir = null,
+      pages = [],
+    }: { csr: boolean; apiPrefix?: string; publicDir?: string | null; pages?: string[] },
+  ) {
     const keepsUnprefixed = i18n.localePrefix === "as-needed" && !csr;
-    const pages = (paths.length ? paths : ["/"]).map((raw) => {
-      const url = new URL(/^https?:\/\//.test(raw) ? raw : `http://localhost${raw.startsWith("/") ? "" : "/"}${raw}`);
+    const asPage = (url: URL) => {
       const [first] = url.pathname.split("/").filter(Boolean);
       if (!keepsUnprefixed && (!first || !i18n.locales.includes(first)))
         url.pathname = `/${i18n.defaultLocale}${url.pathname === "/" ? "/" : url.pathname}`;
@@ -153,8 +170,54 @@ export class AppPreview {
         url.searchParams.set("akanMobileTarget", AppPreview.csrTarget);
       }
       return `${url.pathname}${url.search}`;
+    };
+    const urlOf = (raw: string) => new URL(`http://localhost${raw.startsWith("/") ? "" : "/"}${raw}`);
+    const typed = (paths.length || pages.length ? paths : ["/"]).map((raw) => {
+      if (/^https?:\/\//.test(raw)) {
+        const url = new URL(raw);
+        return `${url.pathname}${url.search}`;
+      }
+      const url = urlOf(raw);
+      return AppPreview.#isPagePath(url.pathname, i18n, { apiPrefix, publicDir })
+        ? asPage(url)
+        : `${url.pathname}${url.search}`;
     });
-    return [...new Set(pages)];
+    return [...new Set([...typed, ...pages.map((page) => asPage(urlOf(page)))])];
+  }
+
+  static readonly #serverFiles = new Set([
+    "/favicon.ico",
+    "/robots.txt",
+    "/sitemap.xml",
+    "/manifest.webmanifest",
+    "/openapi.json",
+    "/mcp",
+  ]);
+
+  //? The server routes these outside `/:lang` and the locale proxy skips them, so a locale prefix 404s them.
+  static #isPagePath(
+    pathname: string,
+    i18n: I18nLike,
+    { apiPrefix, publicDir }: { apiPrefix: string; publicDir: string | null },
+  ) {
+    const segments = pathname.split("/").filter(Boolean);
+    const [first] = segments;
+    if (first && i18n.locales.includes(first)) return true;
+    const prefixes = ["/_akan", "/__csr", "/__rsc", "/.well-known", apiPrefix.replace(/\/+$/, "")].filter(Boolean);
+    if (prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return false;
+    if (AppPreview.#serverFiles.has(pathname)) return false;
+    if (segments.length === 2 && segments[1] === "manifest.webmanifest") return false;
+    return !(publicDir && AppPreview.#isPublicFile(publicDir, pathname));
+  }
+
+  static #isPublicFile(publicDir: string, pathname: string) {
+    try {
+      const root = path.resolve(publicDir);
+      const filePath = path.resolve(root, `.${decodeURIComponent(pathname)}`);
+      return filePath.startsWith(`${root}${path.sep}`) && statSync(filePath).isFile();
+    } catch {
+      return false;
+    }
   }
 
   static readonly changedPageLimit = 8;
@@ -201,13 +264,14 @@ export class AppPreview {
 
   static screenshotName(pagePath: string) {
     const url = new URL(pagePath, "http://localhost");
-    const slug =
-      url.pathname
-        .split("/")
-        .filter(Boolean)
-        .join("-")
-        .replace(/[^\w-]/g, "_") || "index";
-    return `${slug}${url.searchParams.get("csr") === "true" ? ".csr" : ""}.png`;
+    const slugOf = (text: string) => text.replace(/[^\w-]/g, "_");
+    const hashOf = (text: string) => Bun.hash(text).toString(36).slice(0, 6);
+    const pathSlug = slugOf(url.pathname.split("/").filter(Boolean).join("-")) || "index";
+    const page = pathSlug.length > 80 ? `${pathSlug.slice(0, 80)}-${hashOf(url.pathname)}` : pathSlug;
+    const params = [...url.searchParams].filter(([key]) => key !== "csr" && key !== "akanMobileTarget");
+    const readable = slugOf(params.map(([key, value]) => `${key}-${value}`).join("-")).slice(0, 40);
+    const query = params.length ? `.${readable}-${hashOf(new URLSearchParams(params).toString())}` : "";
+    return `${page}${query}${url.searchParams.get("csr") === "true" ? ".csr" : ""}.png`;
   }
 
   static attribute(page: AppPreviewPage, records: LogRecord[]) {

@@ -59,7 +59,6 @@ export interface BundleClientEntriesInternalOptions extends BundleClientEntriesO
   externalSubpaths?: readonly string[];
   externalAliases?: Partial<Record<string, string>>;
   command?: "build" | "start";
-  /** Per absolute entry, the only names its alias re-exports, in place of every name the entry declares. */
   entryExports?: Partial<Record<string, readonly string[]>>;
 }
 
@@ -69,12 +68,16 @@ export interface BundleClientEntriesResult {
   entryUrlsByAbsPath: Map<string, string>;
   entryOutputAbsByAbsPath: Map<string, string>;
   entryDepsByAbsPath: Map<string, string[]>;
+  /** Each entry's served URL and the chunks it imports statically, the entry first. */
+  entryChunkUrlsByAbsPath: Map<string, string[]>;
+  externalsByChunkUrl: Map<string, string[]>;
   /** Workspace-relative client reference id per absolute source entry. */
   clientReferenceIdByAbsPath: Map<string, string>;
 }
 
 export type AkanConfig = Awaited<ReturnType<App["getConfig"]>>;
-export type ScannedImport = { path: string; kind?: string };
+export type ScannedImport = { path: string; kind?: string; external?: boolean };
+export type MetafileInput = { imports?: ScannedImport[] };
 export type MetafileOutput = {
   imports: ScannedImport[];
   entryPoint?: string;

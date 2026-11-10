@@ -894,7 +894,7 @@ const ciEnvRows = [
 ];
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title = lang === "ko" ? "핵심 개념: 앱 설정 | Akan.js" : "Core Concepts: App Config | Akan.js";
     const description =

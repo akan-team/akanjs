@@ -1,6 +1,7 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
+import { RouteJsBudget, type RouteJsBudgetWarning, type RouteJsSize } from "./routeJsBudget";
 
 export interface ApplicationBuildPhaseResult {
   id: string;
@@ -16,6 +17,8 @@ export interface ApplicationBuildResult {
   outputDir: string;
   artifactDir: string;
   environment: string;
+  routeJs?: RouteJsSize[];
+  routeJsWarnings?: RouteJsBudgetWarning[];
 }
 
 export interface ApplicationBuildProgressReporter {
@@ -33,6 +36,10 @@ export class ApplicationBuildReporter {
 
   static printSummary(result: ApplicationBuildResult) {
     Logger.rawLog("");
+    if (result.routeJs?.length) {
+      for (const line of RouteJsBudget.formatTable(result.routeJs)) Logger.rawLog(line);
+      Logger.rawLog("");
+    }
     Logger.rawLog(`Route artifacts: ${result.artifactDir}`);
     Logger.rawLog(`Server output: ${result.outputDir}`);
     Logger.rawLog(`Done in ${ApplicationBuildReporter.formatDuration(result.durationMs)}`);
@@ -40,7 +47,7 @@ export class ApplicationBuildReporter {
   }
 
   static readonly localBuildNotice =
-    "Built for local: the server runs without endpoint rate limits, and boots on local defaults (Redis on localhost, the first database mode) where a deployment would stop to ask. For a host others can reach, run `akan build <app> --env main` with AKAN_PUBLIC_REPO_NAME and AKAN_PUBLIC_SERVE_DOMAIN set in the workspace .env.";
+    "Built for local: the server runs without endpoint rate limits, and boots on local defaults (Redis on localhost, the first database mode) where a deployment would stop to ask. For a host others can reach, run `akan build <app> --env main` with AKAN_PUBLIC_REPO_NAME and AKAN_PUBLIC_SERVE_DOMAIN set in the shell or the workspace .env.";
 
   static formatError(error: unknown, workspaceRoot = process.cwd()): string {
     if (error instanceof AggregateError) {

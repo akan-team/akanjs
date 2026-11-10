@@ -1,6 +1,5 @@
 import { DataList, type Dayjs, FIELD_META, type GetStateObject } from "akanjs/base";
 import {
-  AbortSignals,
   capitalize,
   type DynamicRecord,
   deepObjectify,
@@ -24,7 +23,6 @@ import {
   MAX_PAGE_SIZE,
   type ProtoFile,
   type ProtoLightFile,
-  withSharedInstances,
 } from "akanjs/constant";
 import type { BaseFilterSortKey, ExtractSort, FilterInstance } from "akanjs/document";
 import { type FetchInitForm, type FetchProxy, restoreRemoteError } from "akanjs/fetch";
@@ -42,17 +40,22 @@ import type {
   SlceDbSort,
   SliceCls,
 } from "akanjs/signal";
+import { produce } from "immer";
 import { expandQueryArgs, normalizeQueryArgs } from "../fetch/client/sliceQueryArgs";
 import { tagAction } from "./actionTag";
-import { DraftStore } from "./draftStore";
+import { makeFormDrafts } from "./formDrafts";
 import { type LiveSortableRow, livePlacementIndex } from "./liveInsert";
+import { makeModelListPatches } from "./modelListPatch";
+import { makeModelWriteGuard } from "./modelWriteGuard";
 import { SliceRequest } from "./SliceRequest";
 import { servedEndpointOf } from "./servedEndpointOf";
 import { sliceKeysOf } from "./sliceKeys";
 import type { DraftState } from "./state";
 import type { SetGet, StoreSliceArgs, StoreSliceMap, StoreSliceSuffixCap } from "./types";
+import { pollUploadedFiles, releasedUpload, type Uploading } from "./uploadPoll";
 
 type _SliceMap<S extends SliceCls> = StoreSliceMap<S>;
+type StateRecord = { [key: string]: unknown };
 type _ActionRefName<S extends SliceCls> = SlceCnstRefName<S>;
 type _ActionCap<S extends SliceCls> = SlceCnstCapitalizedRefName<S>;
 type _ActionInput<S extends SliceCls> = SlceCnstInput<S>;
@@ -67,14 +70,15 @@ type SliceRefreshForm<S extends SliceCls, Suffix extends keyof _SliceMap<S>> = S
   queryArgs?: StoreSliceArgs<S, Suffix>;
 };
 
-const UPLOAD_POLL_INTERVAL_MS = 3000;
-const UPLOAD_POLL_ATTEMPTS = 40;
-
-export interface CreateOption<Full extends { id: string }> {
+export interface ErrorReportOption {
+  /** Called with the failed request's dictionary key, as a `Button`'s `onError` takes it; the action still rejects. */
+  onError?: (key: string) => void;
+}
+type ReportingFetchPolicy = Omit<FetchPolicy, "onError"> & ErrorReportOption;
+export interface CreateOption<Full extends { id: string }> extends ErrorReportOption {
   path?: string;
   modal?: string;
   sliceName?: string;
-  onError?: (e: string) => void;
   onSuccess?: (model: Full) => void | Promise<void>;
 }
 export interface NewOption {
@@ -110,7 +114,7 @@ type BaseAction<
 } & {
   [K in `remove${_CapitalizedRefName}`]: (
     id: string,
-    options?: FetchPolicy & { modal?: string | null },
+    options?: ReportingFetchPolicy & { modal?: string | null },
   ) => Promise<void>;
 } & {
   [K in `check${_CapitalizedRefName}Submitable`]: (disabled?: boolean) => Promise<void>;
@@ -119,7 +123,10 @@ type BaseAction<
 } & {
   [K in `new${_CapitalizedRefName}`]: (partial?: PartialOrNull<Full>, options?: NewOption) => void;
 } & {
-  [K in `edit${_CapitalizedRefName}`]: (model: Full | string, options?: EditOption & FetchPolicy) => Promise<void>;
+  [K in `edit${_CapitalizedRefName}`]: (
+    model: Full | string,
+    options?: EditOption & ReportingFetchPolicy,
+  ) => Promise<void>;
 } & {
   [K in `load${_CapitalizedRefName}FormDraft`]: (draftScope?: string) => Promise<void>;
 } & {
@@ -130,12 +137,12 @@ type BaseAction<
   [K in `merge${_CapitalizedRefName}`]: (
     model: Full | string,
     data: Partial<Full>,
-    options?: FetchPolicy,
+    options?: ReportingFetchPolicy,
   ) => Promise<void>;
 } & {
   [K in `view${_CapitalizedRefName}`]: (
     model: Full | string,
-    options?: { modal?: string | null } & FetchPolicy,
+    options?: { modal?: string | null } & ReportingFetchPolicy,
   ) => Promise<void>;
 } & { [K in `set${_CapitalizedRefName}`]: (...models: (Full | Light)[]) => void } & {
   [K in `reset${_CapitalizedRefName}`]: (model?: Full) => void;
@@ -312,20 +319,24 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
   const fileUploadRefName = resolveFileUploadCapability(fetch.serializedSignal)?.refName;
 
   const names = modelNames(refName);
-  type UploadState = { [key: string]: { [field: string]: string[] } };
+  type FormState = { [key: string]: unknown };
   let uploadSeq = 0;
-  const releaseUpload = (state: UploadState, field: string, ticket?: string) => {
-    const pending = state[names.modelFormUploading][field];
-    if (!pending || (ticket && !pending.includes(ticket))) return;
-    const { [field]: tickets = [], ...rest } = state[names.modelFormUploading];
-    const left = ticket ? tickets.filter((pending) => pending !== ticket) : [];
-    state[names.modelFormUploading] = left.length ? { ...rest, [field]: left } : rest;
-  };
+  const formPatchOf = (
+    state: StateRecord,
+    recipe: (form: FormState) => void,
+    uploading = state[names.modelFormUploading] as Uploading,
+  ) => ({
+    [names.modelForm]: produce(state[names.modelForm] as FormState, recipe),
+    // `set` reads a form patch without the upload slot as a whole-form replace and drops every upload in flight.
+    [names.modelFormUploading]: uploading,
+  });
   const baseSetAction = {
     [names.writeOnModel]: function (this: SetGet, path: string | (string | number)[], value: any) {
-      this.set((state: { [key: string]: any }) => {
-        pathSet(state[names.modelForm], path, value);
-      });
+      this.set(
+        formPatchOf(this.get(), (form) => {
+          pathSet(form, path, value);
+        }),
+      );
     },
   };
   const fieldSetAction = Object.entries(modelRef[FIELD_META]).reduce((acc, [key, field]) => {
@@ -334,17 +345,20 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
       field.isClass && !!fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName;
     const singleFieldSetAction = {
       [namesOfField.setFieldOnModel]: function (this: SetGet, value: any | null) {
-        this.set((state: { [key: string]: any }) => {
-          // An explicit write wins over a single field's upload in flight; an array keeps its uploads.
-          if (isFileField && !field.isArray) releaseUpload(state as UploadState, namesOfField.field);
-          const setValue =
-            value === null
-              ? null
-              : field.isClass
-                ? immerify<object>(field.modelRef, value as object)
-                : (value as object);
-          (state[names.modelForm] as { [key: string]: any })[namesOfField.field] = setValue;
-        });
+        const state = this.get() as StateRecord;
+        const setValue =
+          value === null ? null : field.isClass ? immerify<object>(field.modelRef, value as object) : (value as object);
+        // An explicit write wins over a single field's upload in flight; an array keeps its uploads.
+        const uploading = state[names.modelFormUploading] as Uploading;
+        this.set(
+          formPatchOf(
+            state,
+            (form) => {
+              form[namesOfField.field] = setValue;
+            },
+            isFileField && !field.isArray ? releasedUpload(uploading, namesOfField.field) : uploading,
+          ),
+        );
         // After the write, so a hook that reads the field sees the new value.
         const postSet = (this as unknown as { [key: string]: ((value: unknown) => unknown) | undefined })[
           namesOfField.postSetField
@@ -363,22 +377,26 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
               if (options.limit && options.limit <= length) return;
               const idx = options.idx ?? length;
               const setValue = field.isClass ? immerify<Light | Light[]>(field.modelRef, value) : value;
-              this.set((state: { [key: string]: any }) => {
-                (state[names.modelForm] as { [key: string]: any })[namesOfField.field] = [
-                  ...(form[namesOfField.field] as object[]).slice(0, idx),
-                  ...(Array.isArray(setValue) ? setValue : [setValue]),
-                  ...(form[namesOfField.field] as object[]).slice(idx),
-                ];
-              });
+              this.set(
+                formPatchOf(this.get(), (draft) => {
+                  draft[namesOfField.field] = [
+                    ...(form[namesOfField.field] as object[]).slice(0, idx),
+                    ...(Array.isArray(setValue) ? setValue : [setValue]),
+                    ...(form[namesOfField.field] as object[]).slice(idx),
+                  ];
+                }),
+              );
             },
             [namesOfField.subFieldOnModel]: function (this: SetGet, idx: number | number[]) {
               const form = (this.get() as { [key: string]: any })[names.modelForm] as { [key: string]: object[] };
-              this.set((state: { [key: string]: any }) => {
-                (state[names.modelForm] as { [key: string]: any })[namesOfField.field] =
-                  typeof idx === "number"
-                    ? form[namesOfField.field].filter((_, i) => i !== idx)
-                    : form[namesOfField.field].filter((_, i) => !idx.includes(i));
-              });
+              this.set(
+                formPatchOf(this.get(), (draft) => {
+                  draft[namesOfField.field] =
+                    typeof idx === "number"
+                      ? form[namesOfField.field].filter((_, i) => i !== idx)
+                      : form[namesOfField.field].filter((_, i) => !idx.includes(i));
+                }),
+              );
             },
             [namesOfField.addOrSubFieldOnModel]: function (
               this: SetGet,
@@ -407,37 +425,45 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
               if (!fileList.length) return;
               // A whole-form set clears all tickets and a single field keeps only the newest; a missing one is stale.
               const ticket = `${++uploadSeq}`;
-              this.set((state: UploadState) => {
-                const tickets = state[names.modelFormUploading][namesOfField.field] ?? [];
-                state[names.modelFormUploading] = {
-                  ...state[names.modelFormUploading],
+              const uploading = (this.get() as StateRecord)[names.modelFormUploading] as Uploading;
+              const tickets = uploading[namesOfField.field] ?? [];
+              this.set({
+                [names.modelFormUploading]: {
+                  ...uploading,
                   [namesOfField.field]: field.isArray ? [...tickets, ticket] : [ticket],
-                };
+                },
               });
-              const held = (state: { [key: string]: any }) =>
-                !!(state as UploadState)[names.modelFormUploading][namesOfField.field]?.includes(ticket) &&
-                (state[names.modelForm] as { id?: string }).id === formId;
+              const releasedIn = (state: StateRecord) =>
+                releasedUpload(state[names.modelFormUploading] as Uploading, namesOfField.field, ticket);
               let files: ProtoFile[];
               try {
                 files = await (fetch[names.addModelFiles] as (...args: any) => Promise<ProtoFile[]>)(fileList, formId);
               } catch (error) {
-                this.set((state: UploadState) => releaseUpload(state, namesOfField.field, ticket));
+                this.set({ [names.modelFormUploading]: releasedIn(this.get() as StateRecord) });
                 throw error;
               }
-              let isWritten = false;
+              const state = this.get() as StateRecord;
+              const isWritten =
+                !!(state[names.modelFormUploading] as Uploading)[namesOfField.field]?.includes(ticket) &&
+                (state[names.modelForm] as { id?: string }).id === formId;
+              if (!isWritten) {
+                this.set({ [names.modelFormUploading]: releasedIn(state) });
+                return;
+              }
               // One update, so no subscriber sees the field idle before the file it waited for is in the form.
-              this.set((state: { [key: string]: any }) => {
-                isWritten = held(state);
-                releaseUpload(state as UploadState, namesOfField.field, ticket);
-                if (!isWritten) return;
-                const form = state[names.modelForm] as { [key: string]: ProtoLightFile[] | ProtoLightFile | null };
-                if (field.isArray) {
-                  const current = (form[namesOfField.field] as ProtoLightFile[] | null) ?? [];
-                  const idx = Math.min(index ?? current.length, current.length);
-                  form[namesOfField.field] = [...current.slice(0, idx), ...files, ...current.slice(idx)];
-                } else form[namesOfField.field] = files[0] ?? null;
-              });
-              if (!isWritten) return;
+              this.set(
+                formPatchOf(
+                  state,
+                  (form) => {
+                    if (field.isArray) {
+                      const current = (form[namesOfField.field] as ProtoLightFile[] | null) ?? [];
+                      const idx = Math.min(index ?? current.length, current.length);
+                      form[namesOfField.field] = [...current.slice(0, idx), ...files, ...current.slice(idx)];
+                    } else form[namesOfField.field] = files[0] ?? null;
+                  },
+                  releasedIn(state),
+                ),
+              );
               const postSet = (this as unknown as { [key: string]: ((value: unknown) => unknown) | undefined })[
                 namesOfField.postSetField
               ];
@@ -453,42 +479,20 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
                 ] as ProtoLightFile | ProtoLightFile[] | null;
                 return Array.isArray(value) ? value.some((heldFile) => heldFile.id === id) : value?.id === id;
               };
-              files.forEach((file) => {
-                let attemptsLeft = UPLOAD_POLL_ATTEMPTS;
-                const intervalKey = setInterval(() => {
-                  void (async () => {
-                    if (!holdsFile(file.id)) {
-                      clearInterval(intervalKey);
-                      return;
-                    }
-                    attemptsLeft -= 1;
-                    try {
-                      const currentFile = await (
-                        (fetch as { [key: string]: any })[fileReadName] as (id: string) => Promise<ProtoLightFile>
-                      )(file.id);
-                      if (!holdsFile(currentFile.id)) {
-                        clearInterval(intervalKey);
-                        return;
-                      }
-                      this.set(
-                        (state: { [key: string]: { [key: string]: ProtoLightFile[] | ProtoLightFile | null } }) => {
-                          const value = state[names.modelForm][namesOfField.field];
-                          state[names.modelForm][namesOfField.field] = Array.isArray(value)
-                            ? value.map((heldFile) => (heldFile.id === currentFile.id ? currentFile : heldFile))
-                            : currentFile;
-                        },
-                      );
-                      if (currentFile.status !== "uploading" || attemptsLeft <= 0) clearInterval(intervalKey);
-                    } catch (error) {
-                      clearInterval(intervalKey);
-                      Logger.warn(
-                        `Upload poll for ${fileReadName} ${file.id} stopped: ${
-                          error instanceof Error ? error.message : String(error)
-                        }`,
-                      );
-                    }
-                  })();
-                }, UPLOAD_POLL_INTERVAL_MS);
+              pollUploadedFiles({
+                files,
+                readName: fileReadName,
+                read: (fetch as { [key: string]: any })[fileReadName] as (id: string) => Promise<ProtoLightFile>,
+                holds: holdsFile,
+                land: (currentFile) =>
+                  this.set(
+                    formPatchOf(this.get(), (form) => {
+                      const value = form[namesOfField.field] as ProtoLightFile[] | ProtoLightFile | null;
+                      form[namesOfField.field] = Array.isArray(value)
+                        ? value.map((heldFile) => (heldFile.id === currentFile.id ? currentFile : heldFile))
+                        : currentFile;
+                    }),
+                  ),
               });
             },
           }
@@ -515,8 +519,6 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   const className = capitalize(refName);
   const cnst = ConstantRegistry.getDatabase(refName);
   const modelRef = cnst.full;
-  // Deliberately not store state: a secret field in the opened form must not reach a subscribed component.
-  let openFormBase: object | null = null;
   const slices = Object.entries(slice).map(([suffix, serializedSlice]) => {
     const keys = sliceKeysOf(refName, suffix);
     return { sliceName: keys.slice, keys, slice: serializedSlice };
@@ -541,95 +543,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     if (fn) return fn;
     throw restoreRemoteError({ error: "base.error.endpointClosed", data: { endpoint: key } }, 404);
   };
-  function armDraft(this: SetGet, draftScope: string | undefined, form: object, baseUpdatedAt: string | null) {
-    openFormBase = draftScope ? form : null;
-    if (!draftScope) return null;
-    // Catches a sign-out and sign-in that happened without a reload.
-    void DraftStore.reconcileIdentity();
-    return {
-      key: DraftStore.keyOf(refName, draftScope),
-      baseHash: DraftStore.formHash(refName, form),
-      baseUpdatedAt,
-      pending: null,
-      appliedAt: null,
-    };
-  }
-  async function applyDraft(this: SetGet, { auto }: { auto: boolean }) {
-    const draft = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
-    if (!draft) return;
-    const record = await DraftStore.read(draft.key);
-    if (!record) return;
-    // The editor moved on while the read was in flight.
-    const current = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
-    if (current?.key !== draft.key) return;
-    // Same content is not offered back: an autosaving form moves `updatedAt`, so its draft always reads as stale.
-    const openedForm = (this.get() as { [key: string]: any })[names.modelForm] as object;
-    if (DraftStore.contentHash(record.form) === DraftStore.contentHash(DraftStore.encodeForm(refName, openedForm))) {
-      await DraftStore.remove(draft.key);
-      return;
-    }
-    // Earlier releases could save another record's form under this key, which must never fill this one's.
-    const draftedId = record.form.id;
-    if (typeof draftedId === "string" && draftedId && draftedId !== (openedForm as { id?: unknown }).id) {
-      await DraftStore.remove(draft.key);
-      return;
-    }
-    let form: object;
-    try {
-      form = DraftStore.decodeForm(refName, record.form);
-    } catch {
-      // The model changed shape under the draft; keeping it would fail again on every open.
-      await DraftStore.remove(draft.key);
-      return;
-    }
-    const savedAt = new Date(record.savedAt);
-    if (auto || record.baseUpdatedAt === draft.baseUpdatedAt) {
-      this.set({ [names.modelForm]: form, [names.modelDraft]: { ...draft, appliedAt: savedAt } });
-      return;
-    }
-    this.set({ [names.modelDraft]: { ...draft, pending: { savedAt, form } } });
-  }
-  const clearDraft = (draft: DraftState | null) => {
-    openFormBase = null;
-    if (draft) void DraftStore.remove(draft.key);
-    return null;
-  };
-  const isLiveSlice = (sliceName: string) => !!slices.find((entry) => entry.sliceName === sliceName)?.slice.live;
-  // A live slice places the row through `applyLive`, so the server's echo of this create is not counted twice.
-  const createdListPatchOf = (sliceName: string, model: Full, seen: { [key: string]: unknown }) => {
-    const listKey = sliceName.replace(names.model, names.modelList);
-    if (isLiveSlice(sliceName) || seen[sliceName.replace(names.model, names.modelListLoading)] || !seen[listKey])
-      return {};
-    const insightKey = sliceName.replace(names.model, names.modelInsight);
-    const modelInsight = seen[insightKey] as Insight & BaseInsight;
-    return {
-      [listKey]: new DataList([model, ...(seen[listKey] as DataList<Light>)]),
-      [insightKey]: new cnst.insight().set({ ...modelInsight, count: modelInsight.count + 1 }),
-    };
-  };
-  function applyLiveCreate(this: SetGet, sliceName: string, model: Full) {
-    const target = slices.find((entry) => entry.sliceName === sliceName);
-    if (!target?.slice.live) return;
-    const applyLive = (this as unknown as DynamicRecord)[target.keys.action.applyLiveModel] as
-      | ((event: LiveEventPayload) => void)
-      | undefined;
-    applyLive?.({ op: "enter", id: model.id, light: new cnst.light().set(model) as unknown as object });
-  }
-  const updatedListPatchOf = (state: { [key: string]: unknown }, ...updatedModels: Full[]) => {
-    const lightModels = withSharedInstances(() =>
-      updatedModels.map((updatedModel) => new cnst.light().set(updatedModel) as unknown as Light),
-    );
-    const patch: { [key: string]: DataList<Light> } = {};
-    for (const { keys } of slices) {
-      const namesOfSlice = keys.state;
-      const modelList = state[namesOfSlice.modelList] as DataList<Light>;
-      if (state[namesOfSlice.modelListLoading] || !lightModels.some(({ id }) => modelList.has(id))) continue;
-      const nextList = new DataList(modelList);
-      for (const lightModel of lightModels) if (nextList.has(lightModel.id)) nextList.set(lightModel);
-      patch[namesOfSlice.modelList] = nextList;
-    }
-    return patch;
-  };
+  const { openSeqOf, markOpened, isOvertaken, isSavedFormOpen, withFlag, closedUnlessShown, openModelPatchOf } =
+    makeModelWriteGuard(names);
+  const { formBase, armDraft, applyDraft, forgetDraft, clearDraft, savingDraft } = makeFormDrafts(refName, names);
+  const { createdListPatchOf, applyLiveCreate, updatedListPatchOf } = makeModelListPatches({ cnst, names, slices });
   const baseAction = {
     [names.createModelInForm]: async function (
       this: SetGet,
@@ -641,18 +558,26 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
 
       if (!modelInput || isUploadingIn(currentState)) return;
-      this.set({ [names.modelLoading]: true });
-      const model = await servedFetch<Full>(names.createModel)(modelInput, { onError });
-      this.set({
-        [names.modelForm]: immerify(modelRef, defaultModel),
-        [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
-        [names.model]: model,
-        [names.modelLoading]: false,
-        [names.modelViewAt]: new Date(),
-        [names.modelModal]: modal ?? null,
-        ...staleAtOfSlices(),
-        ...(typeof path === "string" && path ? { [path]: model } : {}),
-        ...createdListPatchOf(sliceName, model, this.get()),
+      const openSeq = openSeqOf(this);
+      const draft = currentState[names.modelDraft] as DraftState | null;
+      const model = await withFlag(this, {
+        flag: { key: names.modelLoading, value: true },
+        onError,
+        request: () => savingDraft(this, draft, modelForm, () => servedFetch<Full>(names.createModel)(modelInput)),
+        land: (model, ownsFlag) => {
+          this.set({
+            ...(isSavedFormOpen(this, openSeq, modelForm)
+              ? { [names.modelForm]: immerify(modelRef, defaultModel), [names.modelDraft]: clearDraft(this, draft) }
+              : {}),
+            ...(isOvertaken(this, openSeq)
+              ? {}
+              : { [names.model]: model, [names.modelViewAt]: new Date(), [names.modelModal]: modal ?? null }),
+            ...(ownsFlag ? { [names.modelLoading]: false } : {}),
+            ...staleAtOfSlices(),
+            ...(typeof path === "string" && path ? { [path]: model } : {}),
+            ...createdListPatchOf(sliceName, model, this.get()),
+          });
+        },
       });
       applyLiveCreate.call(this, sliceName, model);
       await onSuccess?.(model);
@@ -667,18 +592,26 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const defaultModel = currentState[defaultKeyOf(sliceName)] as Full;
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
       if (!modelInput || isUploadingIn(currentState)) return;
-      if (model?.id === modelForm.id) this.set({ [names.modelLoading]: modelForm.id });
-      const updatedModel = await servedFetch<Full>(names.updateModel)(modelForm.id, modelInput, { onError });
-      this.set({
-        ...(model?.id === updatedModel.id
-          ? { [names.model]: updatedModel, [names.modelLoading]: false, [names.modelViewAt]: new Date() }
-          : {}),
-        [names.modelForm]: immerify(modelRef, defaultModel),
-        [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
-        [names.modelModal]: modal ?? null,
-        ...staleAtOfSlices(),
-        ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
-        ...updatedListPatchOf(this.get(), updatedModel),
+      const openSeq = openSeqOf(this);
+      const draft = currentState[names.modelDraft] as DraftState | null;
+      const updatedModel = await withFlag(this, {
+        flag: model?.id === modelForm.id ? { key: names.modelLoading, value: modelForm.id } : null,
+        onError,
+        request: () =>
+          savingDraft(this, draft, modelForm, () => servedFetch<Full>(names.updateModel)(modelForm.id, modelInput)),
+        land: (updatedModel, ownsFlag) => {
+          const latest = this.get() as StateRecord;
+          this.set({
+            ...openModelPatchOf(latest, updatedModel, ownsFlag, { [names.modelViewAt]: new Date() }),
+            ...(isSavedFormOpen(this, openSeq, modelForm)
+              ? { [names.modelForm]: immerify(modelRef, defaultModel), [names.modelDraft]: clearDraft(this, draft) }
+              : {}),
+            ...(isOvertaken(this, openSeq) ? {} : { [names.modelModal]: modal ?? null }),
+            ...staleAtOfSlices(),
+            ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
+            ...updatedListPatchOf(latest, updatedModel),
+          });
+        },
       });
       await onSuccess?.(updatedModel);
     },
@@ -689,16 +622,22 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     ) {
       const modelInput = (cnst.input.purify as (data: any) => Input | null)(data);
       if (!modelInput) return;
-      this.set({ [names.modelLoading]: true });
-      const model = await servedFetch<Full>(names.createModel)(modelInput, { onError });
-      this.set({
-        [names.model]: model,
-        [names.modelLoading]: false,
-        [names.modelViewAt]: new Date(),
-        [names.modelModal]: modal ?? null,
-        ...staleAtOfSlices(),
-        ...(typeof path === "string" && path ? { [path]: model } : {}),
-        ...createdListPatchOf(sliceName, model, this.get()),
+      const openSeq = openSeqOf(this);
+      const model = await withFlag(this, {
+        flag: { key: names.modelLoading, value: true },
+        onError,
+        request: () => servedFetch<Full>(names.createModel)(modelInput),
+        land: (model, ownsFlag) => {
+          this.set({
+            ...(isOvertaken(this, openSeq)
+              ? {}
+              : { [names.model]: model, [names.modelViewAt]: new Date(), [names.modelModal]: modal ?? null }),
+            ...(ownsFlag ? { [names.modelLoading]: false } : {}),
+            ...staleAtOfSlices(),
+            ...(typeof path === "string" && path ? { [path]: model } : {}),
+            ...createdListPatchOf(sliceName, model, this.get()),
+          });
+        },
       });
       applyLiveCreate.call(this, sliceName, model);
       await onSuccess?.(model);
@@ -713,51 +652,64 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const model = currentState[names.model] as Full | null;
       const modelInput = (cnst.input.purify as (data: any) => DefaultOf<Input> | null)(data);
       if (!modelInput) return;
-      if (model?.id === id) this.set({ [names.modelLoading]: id });
-      const updatedModel = await servedFetch<Full>(names.updateModel)(id, modelInput, {
+      const openSeq = openSeqOf(this);
+      const updatedModel = await withFlag(this, {
+        flag: model?.id === id ? { key: names.modelLoading, value: id } : null,
         onError,
-      });
-      this.set({
-        ...(model?.id === updatedModel.id
-          ? { [names.model]: updatedModel, [names.modelLoading]: false, [names.modelViewAt]: new Date() }
-          : {}),
-        [names.modelModal]: modal ?? null,
-        ...staleAtOfSlices(),
-        ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
-        ...updatedListPatchOf(this.get(), updatedModel),
+        request: () => servedFetch<Full>(names.updateModel)(id, modelInput),
+        land: (updatedModel, ownsFlag) => {
+          const latest = this.get() as StateRecord;
+          this.set({
+            ...openModelPatchOf(latest, updatedModel, ownsFlag, { [names.modelViewAt]: new Date() }),
+            ...(isOvertaken(this, openSeq) ? {} : { [names.modelModal]: modal ?? null }),
+            ...staleAtOfSlices(),
+            ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
+            ...updatedListPatchOf(latest, updatedModel),
+          });
+        },
       });
       await onSuccess?.(updatedModel);
     },
-    [names.removeModel]: async function (this: SetGet, id: string, options?: FetchPolicy & { modal?: string | null }) {
-      const { modal, ...fetchPolicyOptions } = options ?? {};
-      const model = await servedFetch<Full & { removedAt: Dayjs | null }>(names.removeModel)(id, fetchPolicyOptions);
-      const currentState = this.get() as { [key: string]: unknown };
-      if (!model.removedAt) {
-        const listPatch = updatedListPatchOf(currentState, model);
-        this.set({
-          ...listPatch,
-          ...(modal !== undefined && Object.keys(listPatch).length ? { [names.modelModal]: modal } : {}),
-          ...staleAtOfSlices(),
-        });
-        return;
-      }
-      const removedPatch: { [key: string]: unknown } = {};
-      for (const { keys } of slices) {
-        const namesOfSlice = keys.state;
-        const modelList = currentState[namesOfSlice.modelList] as DataList<Light>;
-        const modelSelection = currentState[namesOfSlice.modelSelection] as DataList<Light>;
-        const modelInsight = currentState[namesOfSlice.modelInsight] as Insight & BaseInsight;
-        if (currentState[namesOfSlice.modelListLoading] || !modelList.has(model.id)) continue;
-        removedPatch[namesOfSlice.modelList] = new DataList(modelList).delete(id);
-        removedPatch[namesOfSlice.modelInsight] = new cnst.insight().set({
-          ...modelInsight,
-          count: modelInsight.count - 1,
-        });
-        if (modelSelection.has(model.id))
-          removedPatch[namesOfSlice.modelSelection] = new DataList(modelSelection).delete(id);
-        if (modal !== undefined) removedPatch[names.modelModal] = modal;
-      }
-      this.set({ ...removedPatch, ...staleAtOfSlices() });
+    [names.removeModel]: async function (
+      this: SetGet,
+      id: string,
+      options?: ReportingFetchPolicy & { modal?: string | null },
+    ) {
+      const { modal, onError, ...fetchPolicyOptions } = options ?? {};
+      await withFlag(this, {
+        flag: null,
+        onError,
+        request: () => servedFetch<Full & { removedAt: Dayjs | null }>(names.removeModel)(id, fetchPolicyOptions),
+        land: (model) => {
+          const currentState = this.get() as { [key: string]: unknown };
+          if (!model.removedAt) {
+            const listPatch = updatedListPatchOf(currentState, model);
+            this.set({
+              ...listPatch,
+              ...(modal !== undefined && Object.keys(listPatch).length ? { [names.modelModal]: modal } : {}),
+              ...staleAtOfSlices(),
+            });
+            return;
+          }
+          const removedPatch: { [key: string]: unknown } = {};
+          for (const { keys } of slices) {
+            const namesOfSlice = keys.state;
+            const modelList = currentState[namesOfSlice.modelList] as DataList<Light>;
+            const modelSelection = currentState[namesOfSlice.modelSelection] as DataList<Light>;
+            const modelInsight = currentState[namesOfSlice.modelInsight] as Insight & BaseInsight;
+            if (currentState[namesOfSlice.modelListLoading] || !modelList.has(model.id)) continue;
+            removedPatch[namesOfSlice.modelList] = new DataList(modelList).delete(id);
+            removedPatch[namesOfSlice.modelInsight] = new cnst.insight().set({
+              ...modelInsight,
+              count: modelInsight.count - 1,
+            });
+            if (modelSelection.has(model.id))
+              removedPatch[namesOfSlice.modelSelection] = new DataList(modelSelection).delete(id);
+            if (modal !== undefined) removedPatch[names.modelModal] = modal;
+          }
+          this.set({ ...removedPatch, ...staleAtOfSlices() });
+        },
+      });
     },
     [names.checkModelSubmitable]: function (this: SetGet, disabled?: boolean) {
       const currentState = this.get() as { [key: string]: any };
@@ -787,6 +739,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       partial: Partial<Full> = {},
       { modal, setDefault, sliceName = names.model, draftScope }: NewOption = {},
     ) {
+      markOpened(this, { form: true });
       const defaultModelKey = defaultKeyOf(sliceName);
       const currentState = this.get() as { [key: string]: any };
       const defaultModel = currentState[defaultModelKey] as Full;
@@ -806,49 +759,78 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     [names.editModel]: async function (
       this: SetGet,
       modelOrId: Full | string,
-      { modal, onError, draftScope }: EditOption & FetchPolicy = {},
+      { modal, onError, draftScope }: EditOption & ReportingFetchPolicy = {},
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-      this.set({ [names.modelFormLoading]: id, [names.modelModal]: modal ?? "edit" });
-      const model = await servedFetch<Full>(names.model)(id, { onError });
-      const modelForm = immerify(modelRef, deepObjectify<Input>(model as unknown as Input) as object) as Input;
-      this.set({
-        [names.model]: model,
-        [names.modelFormLoading]: false,
-        [names.modelViewAt]: new Date(),
-        [names.modelForm]: modelForm,
-        [names.modelDraft]: armDraft.call(this, draftScope, modelForm, updatedAtOf(model)),
+      const openSeq = markOpened(this, { form: true });
+      await withFlag(this, {
+        flag: { key: names.modelFormLoading, value: id },
+        opening: { [names.modelModal]: modal ?? "edit" },
+        failed: () => closedUnlessShown(this, openSeq, names.modelForm, id),
+        onError,
+        request: () => servedFetch<Full>(names.model)(id),
+        land: (model, ownsFlag) => {
+          const released = ownsFlag ? { [names.modelFormLoading]: false } : {};
+          if (isOvertaken(this, openSeq)) {
+            if (ownsFlag) this.set(released);
+            return;
+          }
+          const modelForm = immerify(modelRef, deepObjectify<Input>(model as unknown as Input) as object) as Input;
+          this.set({
+            ...released,
+            [names.model]: model,
+            [names.modelViewAt]: new Date(),
+            [names.modelForm]: modelForm,
+            [names.modelDraft]: armDraft.call(this, draftScope, modelForm, updatedAtOf(model)),
+          });
+          // A record that moved keeps the draft pending: overwriting a server value the user sees is not recoverable.
+          if (draftScope) void applyDraft.call(this, { auto: false });
+        },
       });
-      // A record that moved keeps the draft pending: overwriting a server value the user sees is not recoverable.
-      if (draftScope) void applyDraft.call(this, { auto: false });
     },
     [names.mergeModel]: async function (
       this: SetGet,
       modelOrId: Full | string,
       data: Partial<Full>,
-      options?: FetchPolicy,
+      options?: ReportingFetchPolicy,
     ) {
+      const { onError, ...fetchPolicyOptions } = options ?? {};
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-      const currentState = this.get() as { [key: string]: any };
-      const model = currentState[names.model] as Full | null;
-      if (id === model?.id) this.set({ modelLoading: id });
-      const updatedModel = await servedFetch<Full>(names.mergeModel)(modelOrId, data, options);
-      this.set({
-        [names.model]: id === model?.id ? updatedModel : model,
-        [names.modelLoading]: false,
-        ...staleAtOfSlices(),
-        ...updatedListPatchOf(this.get(), updatedModel),
+      const model = (this.get() as StateRecord)[names.model] as Full | null;
+      await withFlag(this, {
+        flag: id === model?.id ? { key: names.modelLoading, value: id } : null,
+        onError,
+        request: () => servedFetch<Full>(names.mergeModel)(modelOrId, data, fetchPolicyOptions),
+        land: (updatedModel, ownsFlag) => {
+          const latest = this.get() as StateRecord;
+          this.set({
+            ...openModelPatchOf(latest, updatedModel, ownsFlag),
+            ...staleAtOfSlices(),
+            ...updatedListPatchOf(latest, updatedModel),
+          });
+        },
       });
     },
     [names.viewModel]: async function (
       this: SetGet,
       modelOrId: Full | string,
-      { modal, onError }: { modal?: string | null } & FetchPolicy = {},
+      { modal, onError }: { modal?: string | null } & ReportingFetchPolicy = {},
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-      this.set({ [names.modelModal]: modal ?? "view", [names.modelLoading]: id });
-      const model = await servedFetch<Full>(names.model)(id, { onError });
-      this.set({ [names.model]: model, [names.modelViewAt]: new Date(), [names.modelLoading]: false });
+      const openSeq = markOpened(this, { form: false });
+      await withFlag(this, {
+        flag: { key: names.modelLoading, value: id },
+        opening: { [names.modelModal]: modal ?? "view" },
+        failed: () => closedUnlessShown(this, openSeq, names.model, id),
+        onError,
+        request: () => servedFetch<Full>(names.model)(id),
+        land: (model, ownsFlag) => {
+          this.set({
+            ...(isOvertaken(this, openSeq) ? {} : { [names.model]: model, [names.modelViewAt]: new Date() }),
+            ...(ownsFlag ? { [names.modelLoading]: false } : {}),
+          });
+        },
+      });
     },
     [names.setModel]: function (this: SetGet, ...fullOrLightModels: Full[]) {
       const currentState = this.get() as { [key: string]: any };
@@ -875,7 +857,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         [names.modelViewAt]: new Date(0),
         [names.modelForm]: immerify(modelRef, defaultModel),
         [names.modelModal]: null,
-        [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
+        [names.modelDraft]: clearDraft(this, currentState[names.modelDraft] as DraftState | null),
       });
       return model ?? null;
     },
@@ -903,17 +885,17 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     [names.discardModelFormDraft]: function (this: SetGet) {
       const draft = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
       if (!draft) return;
-      void DraftStore.remove(draft.key);
+      forgetDraft(this, draft.key);
       // Saving stays armed; dropping an applied draft puts back the form as the editor opened it.
       this.set({
-        ...(draft.appliedAt && openFormBase ? { [names.modelForm]: openFormBase } : {}),
+        ...(draft.appliedAt && formBase() ? { [names.modelForm]: formBase() } : {}),
         [names.modelDraft]: { ...draft, pending: null, appliedAt: null },
       });
     },
   };
   const sliceAction = slices.reduce((acc, { keys, slice }) => {
     // One ticket per slice: every action below writes the same list.
-    const requests = new SliceRequest();
+    const requests = new SliceRequest(() => fetch.instance?.http);
     // One room per slice, not per component: a second room would apply every event to the one list twice.
     let liveWatch: { signature: string; dispose: () => void } | null = null;
     let liveWatchers = 0;
@@ -953,6 +935,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       modelObjInsight ?? (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
     const queryArgsIn = (self: SetGet) =>
       (self.get() as { [key: string]: any })[namesOfSlice.queryArgsOfModel] as object[];
+    const freshLoad = Symbol("freshLoad");
     // A row stamped stale while the request ran may be missing from its rows, so they are read once more, and only once.
     const loadList = async <T>(
       self: SetGet,
@@ -960,11 +943,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       load: (signal: AbortSignal) => Promise<T>,
       commit: (loaded: T, requestedAt: Date) => object,
     ) => {
-      if (callerSignal?.aborted) return;
+      if (callerSignal?.aborted) return requests.endSpent(callerSignal);
       self.set({ [namesOfSlice.modelListLoading]: true });
-      const { ticket, signal: ownSignal } = requests.claim();
-      const joined = AbortSignals.join([ownSignal, callerSignal]);
-      const signal = joined.signal ?? ownSignal;
+      const { ticket, signal, dispose, endsQuietly } = requests.claim(callerSignal);
       try {
         for (let round = 0; round < 2; round += 1) {
           // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
@@ -978,10 +959,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           if (staleAt.getTime() <= requestedAt.getTime()) return;
         }
       } catch (error) {
-        if (signal.aborted) return;
+        if (endsQuietly()) return;
         throw error;
       } finally {
-        joined.dispose();
+        dispose();
         if (requests.isCurrent(ticket)) self.set({ [namesOfSlice.modelListLoading]: false });
       }
     };
@@ -998,15 +979,16 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         } as FetchInitForm<Input, Filter> & FetchPolicy;
         const queryArgs = new Array(initArgLength).fill(null).map((_, i) => args[i] as object);
         const defaultModel = new cnst.full().set(initForm.default ?? {}) as unknown as Full;
-        this.set({ [names.defaultModel]: defaultModel, [namesOfSlice.isCumulativeOfModel]: false });
+        if (!initForm.signal?.aborted) this.set({ [names.defaultModel]: defaultModel });
         await ((this as unknown as DynamicRecord)[namesOfSlice.refreshModel] as (...args: any[]) => Promise<void>)({
           ...initForm,
           queryArgs,
+          [freshLoad]: true,
         });
       },
       [namesOfSlice.refreshModel]: async function (
         this: SetGet,
-        initForm: FetchInitForm<Input, Filter> & FetchPolicy & { queryArgs?: any[] } = {},
+        initForm: FetchInitForm<Input, Filter> & FetchPolicy & { queryArgs?: any[]; [freshLoad]?: boolean } = {},
       ) {
         const args = initForm.queryArgs ?? [];
         const refreshArgLength = Math.min(args.length, slice.args.length);
@@ -1027,10 +1009,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           sort = currentState[namesOfSlice.sortOfModel] as Sort,
           invalidate = true,
           queryArgs: queryArgsFromInitForm,
+          [freshLoad]: fresh = false,
           ...fetchPolicy
         } = initForm;
         const modelOperation = currentState[names.modelOperation] as string;
-        const isCumulative = currentState[namesOfSlice.isCumulativeOfModel] as boolean;
+        const isCumulative = !fresh && (currentState[namesOfSlice.isCumulativeOfModel] as boolean);
         const loadedLength = (currentState[namesOfSlice.modelList] as DataList<Light>).length;
         // A cumulative list refetches every loaded row, or it would collapse back to the first page.
         const fetchLimit = isCumulative ? Math.max(limit, loadedLength) : limit;
@@ -1071,6 +1054,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
               [namesOfSlice.sortOfModel]: sort,
               [namesOfSlice.pageOfModel]: page,
               [names.modelOperation]: "idle",
+              ...(fresh ? { [namesOfSlice.isCumulativeOfModel]: false } : {}),
             };
           },
         );
@@ -1124,10 +1108,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         const pageOfModel = currentState[namesOfSlice.pageOfModel] as number;
         const limitOfModel = (currentState[namesOfSlice.limitOfModel] as number) || 20;
         const sortOfModel = currentState[namesOfSlice.sortOfModel] as Sort;
-        if (options?.signal?.aborted) return;
-        const { ticket, signal: ownSignal } = requests.claim();
-        const joined = AbortSignals.join([ownSignal, options?.signal]);
-        const signal = joined.signal ?? ownSignal;
+        if (options?.signal?.aborted) return requests.endSpent(options.signal);
+        const { ticket, signal, dispose, endsQuietly } = requests.claim(options?.signal);
         const modelDataList = await fetchList(
           queryArgsOfModel,
           (pageOfModel - 1) * limitOfModel + modelList.length,
@@ -1136,10 +1118,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           { ...options, signal },
         )
           .catch((error: unknown) => {
-            if (signal.aborted) return null;
+            if (endsQuietly()) return null;
             throw error;
           })
-          .finally(joined.dispose);
+          .finally(dispose);
         if (!modelDataList || !requests.isCurrent(ticket) || queryArgsIn(this) !== queryArgsOfModel) return;
         // Re-read: a live event may have placed a row meanwhile, and `DataList` collapses the shifted duplicate.
         const currentModelList = (this.get() as { [key: string]: any })[namesOfSlice.modelList] as DataList<Light>;

@@ -5,7 +5,7 @@ import { page } from "akanjs/client";
 import { Link } from "akanjs/ui";
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title = lang === "ko" ? "아키텍처: CSS와 스타일링 | Akan.js" : "Architecture: CSS And Styling | Akan.js";
     const description =

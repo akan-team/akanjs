@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import path from "node:path";
-import { AppExecutor, LibExecutor, WorkspaceExecutor } from "../executors";
+import { AppExecutor, LibExecutor, ModuleExecutor, PkgExecutor, WorkspaceExecutor } from "../executors";
 import { makeCliTempWorkspace, tempRoots, writeText } from "../testHelpers";
 import {
   App,
@@ -15,7 +15,13 @@ import {
   SysOrOnlyApp,
   Workspace,
 } from "./argMeta";
-import { getAppsArgumentValue, getArgumentValue, getInternalArgumentValue, getOptionValue } from "./command";
+import {
+  getAppsArgumentValue,
+  getArgumentValue,
+  getInternalArgumentValue,
+  getOptionValue,
+  rerunCommandOf,
+} from "./command";
 import { command } from "./commandBuilder";
 import {
   assertUniqueDependencies,
@@ -434,6 +440,7 @@ describe("enum arg type inference", () => {
 
 describe("a Sys that defaults to the only app", () => {
   const ownIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  const ownCwd = process.cwd();
   const asked: unknown[] = [];
   let answer = "";
   const setTTY = (isTTY: boolean | undefined) =>
@@ -449,6 +456,7 @@ describe("a Sys that defaults to the only app", () => {
   });
   afterEach(() => {
     CommandContainer.clear();
+    process.chdir(ownCwd);
     if (ownIsTTY) Object.defineProperty(process.stdin, "isTTY", ownIsTTY);
     else Reflect.deleteProperty(process.stdin, "isTTY");
   });
@@ -469,6 +477,21 @@ describe("a Sys that defaults to the only app", () => {
     const meta = getArgMetas(OnlyAppCommand, key)[0].find((arg): arg is InternalArgMeta => arg.type === "Sys");
     if (!meta) throw new Error(`no Sys meta on ${key}`);
     return meta;
+  };
+  const track = tempRoots();
+  //? From the workspace root, as the CLI runs: getDirInModule stats its entries relative to the process directory.
+  const moduleWorkspace = async () => {
+    const { root, workspace } = track(await makeCliTempWorkspace());
+    process.chdir(root);
+    for (const [sys, name] of [
+      ["apps/web", "card"],
+      ["libs/util", "photo"],
+    ] as const) {
+      await writeText(path.join(root, sys, "akan.config.ts"), "export default {};\n");
+      await writeText(path.join(root, sys, "lib", name, `${name}.constant.ts`), "export {};\n");
+    }
+    await writeText(path.join(root, "apps/web/lib/_billing/billing.service.ts"), "export {};\n");
+    return workspace;
   };
 
   test("the opted-in command takes a one-app workspace's app without asking, even on a piped stdin", async () => {
@@ -499,6 +522,249 @@ describe("a Sys that defaults to the only app", () => {
     expect(app instanceof AppExecutor ? app.name : null).toBe("admin");
     expect(asked).toEqual([["web", "admin", "util"]]);
   });
+
+  test("a terminal is still asked when the workspace holds a single app or lib", async () => {
+    setTTY(true);
+    answer = "web";
+    const workspace = workspaceWith([]);
+    workspace.getExecs = async () => [["web"], [], []];
+    const app = await getInternalArgumentValue(sysMetaOf("sync"), undefined, workspace);
+    expect(app instanceof AppExecutor ? app.name : null).toBe("web");
+    expect(asked).toEqual([["web"]]);
+  });
+
+  test("without a terminal, an Exec takes the workspace's only app, lib or pkg", async () => {
+    setTTY(undefined);
+    const workspace = workspaceWith([]);
+    workspace.getExecs = async () => [[], [], ["tools"]];
+    const pkg = await getInternalArgumentValue({ key: "", idx: 0, type: "Exec" }, undefined, workspace);
+    expect(pkg instanceof PkgExecutor ? pkg.name : null).toBe("tools");
+    expect(asked).toEqual([]);
+  });
+
+  test("without a terminal, a command that deletes nothing takes the only lib, pkg or module; a terminal is asked", async () => {
+    setTTY(undefined);
+    const workspace = workspaceWith([]);
+    workspace.getExecs = async () => [[], ["util"], []];
+    workspace.getPkgs = async () => ["tools"];
+    workspace.getDirInModule = async (basePath) => (basePath === "libs/util/lib" ? ["photo"] : []);
+    const lib = await getInternalArgumentValue({ key: "", idx: 0, type: "Lib" }, undefined, workspace);
+    expect(lib instanceof LibExecutor ? lib.name : null).toBe("util");
+    const pkg = await getInternalArgumentValue({ key: "", idx: 0, type: "Pkg" }, undefined, workspace);
+    expect(pkg instanceof PkgExecutor ? pkg.name : null).toBe("tools");
+    const mod = await getInternalArgumentValue({ key: "", idx: 0, type: "Module" }, undefined, workspace);
+    expect(mod instanceof ModuleExecutor ? `${mod.sys.name}:${mod.name}` : null).toBe("util:photo");
+    expect(asked).toEqual([]);
+
+    setTTY(true);
+    answer = "util";
+    await getInternalArgumentValue({ key: "", idx: 0, type: "Lib" }, undefined, workspace);
+    expect(asked).toEqual([["util"]]);
+  });
+
+  test("without a terminal, a named target the workspace lacks is refused, not swapped for the only one", async () => {
+    setTTY(undefined);
+    const workspace = workspaceWith([]);
+    workspace.getExecs = async () => [["web"], [], []];
+    await expect(
+      getInternalArgumentValue(sysMetaOf("sync"), "webb", workspace, rerunCommandOf(["sync", "webb"], ["webb"], 0)),
+    ).rejects.toThrow(
+      "Unknown app or lib 'webb': stdin is not a terminal to prompt on, so rerun it as `akan sync <app-or-lib>` (choices: web).",
+    );
+    expect(asked).toEqual([]);
+  });
+
+  test("a destructive command never takes the only app, lib, pkg or module, nor asks, terminal or not", async () => {
+    const workspace = workspaceWith([]);
+    workspace.getExecs = async () => [["web"], ["util"], []];
+    workspace.getPkgs = async () => ["tools"];
+    workspace.getDirInModule = async (basePath) => (basePath === "apps/web/lib" ? ["pokemon"] : []);
+    const refusedAs = (rerun: string, choices: string) =>
+      `: this command deletes files and never picks its target, so rerun it as \`${rerun}\` (choices: ${choices}).`;
+    const resolve = (type: InternalArgMeta["type"], commandName: string, operands: (string | undefined)[]) =>
+      getInternalArgumentValue(
+        { key: "", idx: operands.length - 1, type },
+        operands.at(-1),
+        workspace,
+        rerunCommandOf(
+          [commandName, ...operands.filter((operand): operand is string => operand !== undefined)],
+          operands,
+          operands.length - 1,
+        ),
+        { destructive: true },
+      );
+    for (const isTTY of [true, undefined]) {
+      setTTY(isTTY);
+      answer = "web";
+      await expect(resolve("App", "remove-application", [undefined])).rejects.toThrow(
+        `Missing app${refusedAs("akan remove-application <app>", "web")}`,
+      );
+      await expect(resolve("Lib", "remove-library", [undefined])).rejects.toThrow(
+        `Missing lib${refusedAs("akan remove-library <lib>", "util")}`,
+      );
+      await expect(resolve("Pkg", "remove-package", [undefined])).rejects.toThrow(
+        `Missing pkg${refusedAs("akan remove-package <pkg>", "tools")}`,
+      );
+      await expect(resolve("Module", "remove-module", [undefined])).rejects.toThrow(
+        `Missing module${refusedAs("akan remove-module <sys:module>", "web:pokemon")}`,
+      );
+      await expect(resolve("Sys", "remove-scalar", ["place", undefined])).rejects.toThrow(
+        `Missing app or lib${refusedAs("akan remove-scalar place <app-or-lib>", "web, util")}`,
+      );
+      await expect(resolve("App", "remove-application", ["webb"])).rejects.toThrow(
+        `Unknown app 'webb'${refusedAs("akan remove-application <app>", "web")}`,
+      );
+    }
+    expect(asked).toEqual([]);
+  });
+
+  test("a destructive command takes the target it is named, while another still takes the only app", async () => {
+    setTTY(undefined);
+    const workspace = workspaceWith([]);
+    workspace.getExecs = async () => [["web"], [], []];
+    const named = await getInternalArgumentValue({ key: "", idx: 0, type: "App" }, "web", workspace, undefined, {
+      destructive: true,
+    });
+    expect(named instanceof AppExecutor ? named.name : null).toBe("web");
+    const taken = await getInternalArgumentValue(sysMetaOf("typecheck"), undefined, workspace);
+    expect(taken instanceof AppExecutor ? taken.name : null).toBe("web");
+    expect(asked).toEqual([]);
+  });
+
+  test("a module an app or a lib lacks is refused with the modules there are, in a terminal too", async () => {
+    setTTY(true);
+    answer = "util";
+    const workspace = await moduleWorkspace();
+    for (const value of ["util:nope", "web:nope"]) {
+      const sysName = value.split(":")[0];
+      await expect(
+        getInternalArgumentValue(
+          { key: "", idx: 0, type: "Module" },
+          value,
+          workspace,
+          rerunCommandOf(["create-view", value], [value], 0),
+        ),
+      ).rejects.toThrow(
+        `Unknown module '${value}': ${sysName} has no such module, so rerun it as \`akan create-view <sys:module>\` (choices: web:card, util:photo).`,
+      );
+    }
+    expect(asked).toEqual([]);
+    const photo = await getInternalArgumentValue({ key: "", idx: 0, type: "Module" }, "util:photo", workspace);
+    expect(photo instanceof ModuleExecutor ? `${photo.sys.name}:${photo.name}` : null).toBe("util:photo");
+  });
+
+  test("a service module is taken by its exact name where the target opts in, as remove-module does", async () => {
+    setTTY(true);
+    const workspace = await moduleWorkspace();
+    const services = { key: "", idx: 0, type: "Module", option: { services: true } } as const;
+    const billing = await getInternalArgumentValue(services, "web:_billing", workspace, undefined, {
+      destructive: true,
+    });
+    expect(billing instanceof ModuleExecutor ? `${billing.sys.name}:${billing.name}` : null).toBe("web:_billing");
+    await expect(
+      getInternalArgumentValue(services, undefined, workspace, rerunCommandOf(["remove-module"], [undefined], 0), {
+        destructive: true,
+      }),
+    ).rejects.toThrow(
+      "so rerun it as `akan remove-module <sys:module>` (choices: web:card, web:_billing, util:photo).",
+    );
+    await expect(
+      getInternalArgumentValue({ key: "", idx: 0, type: "Module" }, "web:_billing", workspace),
+    ).rejects.toThrow("Unknown module 'web:_billing': web has no such module");
+    expect(asked).toEqual([]);
+  });
+});
+
+describe("the line a refused target is rerun with", () => {
+  test("puts the target in its operand slot, after the operands before it, keeping every option", () => {
+    expect(rerunCommandOf(["test", "--write", "false"], [undefined, undefined], 0)("<t>")).toBe(
+      "akan test <t> --write false",
+    );
+    expect(rerunCommandOf(["create-module", "--page", "true", "photo"], ["photo", undefined], 1)("web")).toBe(
+      "akan create-module --page true photo web",
+    );
+    expect(rerunCommandOf(["build", "--env", "it's main"], [undefined], 0)("web")).toBe(
+      "akan build web --env 'it'\\''s main'",
+    );
+  });
+
+  test("takes the place of a target that was given but is not in the workspace", () => {
+    expect(rerunCommandOf(["sync", "nope"], ["nope"], 0)("<app-or-lib>")).toBe("akan sync <app-or-lib>");
+  });
+});
+
+describe("a target left out where no terminal can ask for it", () => {
+  const track = tempRoots();
+  const run = async (apps: string[], args = ["create-thing", "photo", "--force"]) => {
+    const { root } = track(await makeCliTempWorkspace());
+    await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
+    await writeText(path.join(root, "tsconfig.json"), "{}\n");
+    for (const app of apps) await writeText(path.join(root, "apps", app, "akan.config.ts"), "export default {};\n");
+    const entry = path.join(root, "cli.ts");
+    await writeText(
+      entry,
+      [
+        `import { App, command, runCommands, Sys } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
+        'class ThingCommand extends command("thing", ({ public: target }) => ({',
+        '  createThing: target({ desc: "creates a thing" })',
+        '    .arg("thing", String, { desc: "name of the thing" })',
+        "    .with(Sys)",
+        '    .option("force", Boolean, { default: false })',
+        "    .exec(async function (thing, sys, force) {",
+        '      process.stdout.write(thing + " in " + sys.name + ", force " + force + "\\n");',
+        "    }),",
+        '  removeThing: target({ desc: "removes an app", destructive: true })',
+        "    .with(App)",
+        "    .exec(async function (app) {",
+        '      process.stdout.write("removed " + app.name + "\\n");',
+        "    }),",
+        "})) {}",
+        "await runCommands(ThingCommand);",
+        "",
+      ].join("\n"),
+    );
+    const proc = Bun.spawn(["bun", entry, ...args], {
+      cwd: root,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { stdout, stderr, code };
+  };
+
+  test("runs on the workspace's only app or lib, naming it on stderr", async () => {
+    const ran = await run(["web"]);
+    expect(ran.code).toBe(0);
+    expect(ran.stdout).toContain("photo in web, force true\n");
+    expect(ran.stderr).toContain(
+      "No app or lib named, so this runs on 'web', the only one in this workspace: akan create-thing photo web --force",
+    );
+  }, 30_000);
+
+  test("exits at once with the choices and the line to rerun when there are several", async () => {
+    const refused = await run(["web", "admin"]);
+    expect(refused.code).toBe(1);
+    expect(refused.stdout).toContain(
+      "Missing app or lib: stdin is not a terminal to prompt on, so rerun it as `akan create-thing photo <app-or-lib> --force`",
+    );
+    expect(refused.stdout).toMatch(/\(choices: (web, admin|admin, web)\)\./);
+    expect(refused.stdout).not.toContain("photo in");
+  }, 30_000);
+
+  test("a destructive command exits with the line to rerun even when the workspace has one app", async () => {
+    const refused = await run(["web"], ["remove-thing"]);
+    expect(refused.code).toBe(1);
+    expect(refused.stdout).toContain(
+      "Missing app: this command deletes files and never picks its target, so rerun it as `akan remove-thing <app>` (choices: web).",
+    );
+    expect(refused.stdout).not.toContain("removed");
+    expect((await run(["web"], ["remove-thing", "web"])).stdout).toContain("removed web\n");
+  }, 30_000);
 });
 
 describe("the exit code of a command that failed", () => {

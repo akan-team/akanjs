@@ -14,7 +14,7 @@ import type { ClientManifest } from "./artifact";
 import type { RouteCacheInvalidation, RouteCacheRenderState } from "./cachePolicy";
 import { ChildOutputReader } from "./logging/childOutputReader";
 import { MemoryLimit } from "./memoryLimit";
-import type { RscTraceMetadata, SsrLateControl } from "./ssrTypes";
+import type { RscRenderOptions, RscTraceMetadata, SsrLateControl } from "./ssrTypes";
 import type { BaseBuildArtifact, CssAsset } from "./types";
 
 // A bounded queue guard, not backpressure: a host that cannot drain IPC chunks fails the render instead of buffering.
@@ -469,15 +469,12 @@ export class RscWorker {
     this.#proc = this.#spawn();
   }
 
-  renderWithMeta(
-    req: Request,
-    options: { clientManifest?: ClientManifest; signal?: AbortSignal; clientIp?: string | null } = {},
-  ): Promise<RscRenderResult> {
+  renderWithMeta(req: Request, options: RscRenderOptions = {}): Promise<RscRenderResult> {
     const requestId = crypto.randomUUID();
     return createRscHostRenderStream({
       setPending: (pending) => this.#pending.set(requestId, pending),
       deletePending: () => this.#pending.delete(requestId),
-      sendRenderOrQueue: () => this.#sendRenderOrQueue(requestId, req, options.clientManifest, options.clientIp),
+      sendRenderOrQueue: () => this.#sendRenderOrQueue(requestId, req, options),
       cancelRender: () => this.#cancelRender(requestId),
       signal: options.signal,
       onPendingChunkOverflow: () => {
@@ -915,12 +912,13 @@ export class RscWorker {
     return headers;
   }
 
-  #sendRenderOrQueue(requestId: string, req: Request, clientManifest?: ClientManifest, clientIp?: string | null): void {
+  #sendRenderOrQueue(requestId: string, req: Request, { clientManifest, clientIp, prefetch }: RscRenderOptions): void {
     const send = () => {
       if (!this.#pending.has(requestId)) return;
       try {
         const headers = RscWorker.workerHeaders(req, clientIp);
-        this.#proc.send({ type: "render", requestId, url: req.url, method: req.method, headers, clientManifest });
+        const { url, method } = req;
+        this.#proc.send({ type: "render", requestId, url, method, headers, clientManifest, prefetch });
       } catch (err) {
         this.#resolvePending(requestId, (p) =>
           p.onError(`rsc worker send failed: ${err instanceof Error ? err.message : String(err)}`),

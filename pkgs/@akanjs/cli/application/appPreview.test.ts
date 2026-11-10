@@ -52,15 +52,113 @@ describe("AppPreview.pagePaths", () => {
     ]);
   });
 
-  test("takes a full URL by its path, and opens the CSR boot when asked", () => {
-    expect(AppPreview.pagePaths(["http://localhost:8282/en/board"], i18n, { csr: true })).toEqual([
-      "/en/board?csr=true&akanMobileTarget=preview",
+  test("opens a full URL's path exactly as written, the way to reach a route the rules do not know", () => {
+    expect(
+      AppPreview.pagePaths(["http://localhost:8282/oauth/authorize?client_id=a", "http://localhost:8282/board"], i18n, {
+        csr: true,
+      }),
+    ).toEqual(["/oauth/authorize?client_id=a", "/board"]);
+  });
+
+  test("gives every route-derived page the locale, even one that shares a server route's path", () => {
+    expect(AppPreview.pagePaths([], i18n, { csr: false, pages: ["/mcp", "/board"] })).toEqual(["/en/mcp", "/en/board"]);
+    expect(AppPreview.pagePaths(["/mcp"], i18n, { csr: true, pages: ["/mcp"] })).toEqual([
+      "/mcp",
+      "/en/mcp?csr=true&akanMobileTarget=preview",
     ]);
   });
 
-  test("names a screenshot after the page and its boot", () => {
+  test("opens Studio, the other framework routes and served files as written, without a locale or the CSR boot", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-preview-public-"));
+    try {
+      await Bun.write(path.join(root, "public/images/logo.png"), "png");
+      const paths = [
+        "/_akan/studio",
+        "/_akan/studio?view=runtime",
+        "/__rsc/board",
+        "/.well-known/assetlinks.json",
+        "/backend/memo",
+        "/favicon.ico",
+        "/robots.txt",
+        "/sitemap.xml",
+        "/shop/manifest.webmanifest",
+        "/openapi.json",
+        "/mcp",
+        "/images/logo.png",
+        "/images/missing.png",
+        "/shop/sitemap.xml",
+        "/_akanish",
+        "/board",
+      ];
+      const opts = { csr: true, apiPrefix: "/backend", publicDir: path.join(root, "public") };
+      expect(AppPreview.pagePaths(paths, i18n, opts)).toEqual([
+        "/_akan/studio",
+        "/_akan/studio?view=runtime",
+        "/__rsc/board",
+        "/.well-known/assetlinks.json",
+        "/backend/memo",
+        "/favicon.ico",
+        "/robots.txt",
+        "/sitemap.xml",
+        "/shop/manifest.webmanifest",
+        "/openapi.json",
+        "/mcp",
+        "/images/logo.png",
+        "/en/images/missing.png?csr=true&akanMobileTarget=preview",
+        "/en/shop/sitemap.xml?csr=true&akanMobileTarget=preview",
+        "/en/_akanish?csr=true&akanMobileTarget=preview",
+        "/en/board?csr=true&akanMobileTarget=preview",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+    expect(AppPreview.pagePaths(["/api/memo", "/apidocs"], i18n, { csr: false })).toEqual(["/api/memo", "/en/apidocs"]);
+  });
+
+  test("keeps a page whose last segment has a dot a page", () => {
+    expect(AppPreview.pagePaths(["/release/1.2.3", "/user/a@b.com", "/docs/robots.txt"], i18n, { csr: false })).toEqual(
+      ["/en/release/1.2.3", "/en/user/a@b.com", "/en/docs/robots.txt"],
+    );
+    expect(AppPreview.pagePaths(["/en/release/1.2.3", "/en/favicon.ico"], i18n, { csr: true })).toEqual([
+      "/en/release/1.2.3?csr=true&akanMobileTarget=preview",
+      "/en/favicon.ico?csr=true&akanMobileTarget=preview",
+    ]);
+  });
+
+  test("names a screenshot after the page, its query and its boot, one name per page", () => {
     expect(AppPreview.screenshotName("/en/")).toBe("en.png");
     expect(AppPreview.screenshotName("/en/board/[id]?csr=true")).toBe("en-board-_id_.csr.png");
+    expect(AppPreview.screenshotName("/_akan/studio?view=runtime")).toMatch(
+      /^_akan-studio\.view-runtime-\w{1,6}\.png$/,
+    );
+    expect(AppPreview.screenshotName("/en/board?tab=a/b&csr=true&akanMobileTarget=preview")).toMatch(
+      /^en-board\.tab-a_b-\w{1,6}\.csr\.png$/,
+    );
+    const names = ["?view=runtime", "?view=signals", "?a=b&c=d", "?a=b-c-d", "?a-b=c-d", "?q=사과", "?q=포도"].map(
+      (query) => AppPreview.screenshotName(`/x${query}`),
+    );
+    expect(new Set(names).size).toBe(names.length);
+    const long = AppPreview.screenshotName(`/${"p".repeat(300)}?q=${"v".repeat(300)}&csr=true`);
+    expect(long.length).toBeLessThan(160);
+    expect(long).not.toBe(AppPreview.screenshotName(`/${"p".repeat(299)}?q=${"v".repeat(300)}&csr=true`));
+  });
+});
+
+describe("AppPreview.pathsOf", () => {
+  test("reads the app's API prefix and public/ for the paths it opens as written", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-preview-app-"));
+    try {
+      await Bun.write(path.join(root, "public/logo.png"), "png");
+      const app = { cwdPath: root, getConfig: async () => ({ i18n, api: { prefix: "/backend" } }) } as unknown as App;
+      expect(await AppPreview.pathsOf(app, ["/backend/memo", "/logo.png", "/board"], false, ["/mcp"])).toEqual([
+        "/backend/memo",
+        "/logo.png",
+        "/en/board",
+        "/en/mcp",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -163,6 +261,10 @@ describe("AppPreview.run", () => {
             return new Response("<!doctype html><title>Board</title><body><h1>Board</h1></body>", {
               headers: { "content-type": "text/html" },
             });
+          if (pathname === "/_akan/studio")
+            return new Response("<!doctype html><title>Akan Studio</title><body><h1>Studio</h1></body>", {
+              headers: { "content-type": "text/html" },
+            });
           return new Response("<!doctype html><title>Missing</title><body>missing</body>", {
             status: 404,
             headers: { "content-type": "text/html" },
@@ -171,23 +273,25 @@ describe("AppPreview.run", () => {
       });
       const app = {
         name: "demo",
+        cwdPath: root,
         workspace: { workspaceRoot: root },
         getDevPort: async () => server.port,
-        getConfig: async () => ({ i18n }),
+        getConfig: async () => ({ i18n, api: { prefix: "/api" } }),
       } as unknown as App;
       try {
-        const report = await AppPreview.run(app, { paths: ["/board", "/gone"], timeoutMs: 20_000 });
+        const report = await AppPreview.run(app, { paths: ["/board", "/gone", "/_akan/studio"], timeoutMs: 20_000 });
         expect(report.server).toBe("running");
         expect(report.logsRead).toBe(false);
         expect(report.pages.map((page) => [page.path, page.status, page.failed, page.text])).toEqual([
           ["/en/board", 200, false, "Board"],
           ["/en/gone", 404, true, "missing"],
+          ["/_akan/studio", 200, false, "Studio"],
         ]);
       } finally {
         server.stop(true);
         await rm(root, { recursive: true, force: true });
       }
     },
-    60_000,
+    PreviewView.startTimeoutMs + 60_000,
   );
 });

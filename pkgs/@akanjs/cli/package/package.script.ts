@@ -1,4 +1,5 @@
 import { type Pkg, script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { assertPackageName } from "@akanjs/devkit/workflow/plainName";
 import { PackageRunner } from "./package.runner";
 
 export class PackageScript extends script("package", [PackageRunner]) {
@@ -6,6 +7,7 @@ export class PackageScript extends script("package", [PackageRunner]) {
     return await this.packageRunner.version(workspace, { log });
   }
   async createPackage(workspace: Workspace, pkgName: string) {
+    assertPackageName(pkgName);
     const spinner = workspace.spinning(`Creating package in pkgs/${pkgName}...`);
     await this.packageRunner.createPackage(workspace, pkgName);
     spinner.succeed(`Package in pkgs/${pkgName} is created`);
@@ -32,6 +34,11 @@ export class PackageScript extends script("package", [PackageRunner]) {
     const result = await this.packageRunner.verifyDistPackage(pkg);
     spinner.succeed(`Package verified (${result.files} files, ${result.size} bytes packed)`);
     return result;
+  }
+  async syncArchitecture(workspace: Workspace) {
+    const spinner = workspace.spinning("Mapping the framework...");
+    const { file, changed } = await this.packageRunner.syncArchitecture(workspace);
+    spinner.succeed(changed ? `${file} regenerated` : `${file} is current`);
   }
   async verifyAkanPublishPackages(workspace: Workspace) {
     const spinner = workspace.spinning("Verifying Akan publish packages...");

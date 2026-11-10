@@ -144,7 +144,7 @@ describe("native hooks", () => {
   });
 
   test("useCamera treats a cancelled capture as no photo and a denied one as a trip to the settings", async () => {
-    installNativeHost();
+    const nativeHost = installNativeHost();
     const { useCamera } = await import("./useCamera");
     const hook = renderHook(() => useCamera());
 
@@ -156,13 +156,28 @@ describe("native hooks", () => {
     expect(await hook.current.getPhoto("camera")).toBeUndefined();
     expect(state.settingsOpened).toBe(1);
 
+    state.photoError = new AkanNativeError("INTERNAL", "boom");
+    await expect(hook.current.getPhoto("camera")).rejects.toMatchObject({ code: "INTERNAL" });
+    expect(state.settingsOpened).toBe(1);
+
     state.photoError = null;
     state.permission = "denied";
     expect(await hook.current.checkPermission()).toBe("denied");
     expect(state.settingsOpened).toBe(2);
 
     expect(await hook.current.pickImage()).toEqual([{ dataUrl: photoUrl }]);
+    expect(nativeHost.releases).toEqual([photoUrl]);
     hook.unmount();
+  });
+
+  test("useCamera reads the camera permission when it mounts in a shell", async () => {
+    installNativeHost();
+    state.permission = "denied";
+    const { useCamera } = await import("./useCamera");
+    renderHook(() => useCamera());
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(hooks.states[0]).toEqual({ camera: "denied" });
   });
 
   test("useGeoLocation answers the position or opens the settings when location is denied", async () => {

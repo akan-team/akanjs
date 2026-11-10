@@ -96,14 +96,21 @@ export class RouteFactReader {
 
   declarationIn(source: TS.SourceFile, name: string) {
     const ts = this.#ts;
+    const overloads = source.statements.filter(
+      (statement): statement is TS.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === name,
+    );
+    const [first] = overloads;
+    const last = overloads.at(-1);
+    if (first?.name && last)
+      return { statement: first, declared: first.name, extent: { start: first.getStart(source), end: last.getEnd() } };
     for (const statement of source.statements) {
-      if (ts.isFunctionDeclaration(statement) && statement.name?.text === name)
-        return { statement, declared: statement.name, initializer: null };
       if (!ts.isVariableStatement(statement)) continue;
       const declaration = statement.declarationList.declarations.find(
         (item) => ts.isIdentifier(item.name) && item.name.text === name,
       );
-      if (declaration) return { statement, declared: declaration.name, initializer: declaration.initializer ?? null };
+      if (declaration)
+        return { statement, declared: declaration.name, extent: this.#reader.extentOf(source, statement) };
     }
     return null;
   }
@@ -111,10 +118,6 @@ export class RouteFactReader {
   #guardOf(source: TS.SourceFile, exported: TS.Statement): RouteGuardFact | null {
     const ts = this.#ts;
     let current = ts.isExportAssignment(exported) ? this.#reader.unwrap(exported.expression) : null;
-    if (current && ts.isIdentifier(current)) {
-      const initializer = this.declarationIn(source, current.text)?.initializer;
-      current = initializer ? this.#reader.unwrap(initializer) : null;
-    }
     while (current && ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression)) {
       const { name, expression } = current.expression;
       const [stage] = current.arguments;
@@ -129,14 +132,23 @@ export class RouteFactReader {
   //? through to its arguments; a known one is the guard, and the helpers it is handed (`isId(id)`) are not.
   #callsIn(source: TS.SourceFile, stage: TS.Expression): RouteGuardCall[] {
     const ts = this.#ts;
-    const imported = new Set(
-      this.#reader
-        .importsIn(source)
-        .filter(({ from }) => RouteFactReader.#workspacePattern.test(from))
-        .map(({ name }) => name),
-    );
+    const imports = this.#reader.importsIn(source).filter(({ from }) => RouteFactReader.#workspacePattern.test(from));
+    const imported = new Set(imports.filter(({ imported }) => imported !== "*").map(({ name }) => name));
+    const namespaces = new Set(imports.filter(({ imported }) => imported === "*").map(({ name }) => name));
     const calls = new Map<string, RouteGuardCall>();
-    const callOf = (name: string) => {
+    const callOf = (callee: TS.Expression, shadowed: ReadonlySet<string>) => {
+      if (
+        ts.isPropertyAccessExpression(callee) &&
+        ts.isIdentifier(callee.expression) &&
+        namespaces.has(callee.expression.text) &&
+        !shadowed.has(callee.expression.text)
+      ) {
+        const name = `${callee.expression.text}.${callee.name.text}`;
+        if (!calls.has(name)) calls.set(name, { name, local: null });
+        return true;
+      }
+      if (!ts.isIdentifier(callee) || shadowed.has(callee.text)) return false;
+      const name = callee.text;
       if (calls.has(name)) return true;
       const declared = this.declarationIn(source, name);
       if (!declared && !imported.has(name)) return false;
@@ -144,18 +156,55 @@ export class RouteFactReader {
         name,
         local: declared && {
           span: this.#reader.spanOf(source, declared.declared),
-          extent: this.#reader.extentOf(source, declared.statement),
+          extent: declared.extent,
           doc: this.#reader.docOf(source, declared.statement),
         },
       });
       return true;
     };
-    const visit = (node: TS.Node): void => {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && callOf(node.expression.text)) return;
-      ts.forEachChild(node, visit);
+    const visit = (node: TS.Node, outer: ReadonlySet<string>): void => {
+      const shadowed = this.#scopeOf(node, outer);
+      if (ts.isCallExpression(node) && callOf(node.expression, shadowed)) return;
+      ts.forEachChild(node, (child) => visit(child, shadowed));
     };
-    if (ts.isIdentifier(stage)) callOf(stage.text);
-    else visit(stage);
+    if (ts.isIdentifier(stage)) callOf(stage, new Set());
+    else visit(stage, new Set());
     return [...calls.values()];
+  }
+
+  #scopeOf(node: TS.Node, outer: ReadonlySet<string>): ReadonlySet<string> {
+    const ts = this.#ts;
+    const names: string[] = [];
+    const bind = (name: TS.BindingName) => {
+      if (ts.isIdentifier(name)) names.push(name.text);
+      else for (const element of name.elements) if (!ts.isOmittedExpression(element)) bind(element.name);
+    };
+    const declare = (statement: TS.Statement) => {
+      if (ts.isVariableStatement(statement))
+        for (const declaration of statement.declarationList.declarations) bind(declaration.name);
+      else if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) && statement.name)
+        names.push(statement.name.text);
+    };
+    const hoist = (child: TS.Node): void => {
+      if (ts.isFunctionLike(child) || ts.isClassLike(child)) return;
+      if (ts.isVariableDeclarationList(child) && !(child.flags & ts.NodeFlags.BlockScoped))
+        for (const declaration of child.declarations) bind(declaration.name);
+      ts.forEachChild(child, hoist);
+    };
+    if (ts.isFunctionLike(node)) {
+      for (const parameter of node.parameters) bind(parameter.name);
+      if (ts.isFunctionExpression(node) && node.name) names.push(node.name.text);
+      if ("body" in node && node.body) ts.forEachChild(node.body, hoist);
+    } else if (ts.isClassExpression(node) && node.name) names.push(node.name.text);
+    else if (ts.isBlock(node)) node.statements.forEach(declare);
+    else if (ts.isCaseBlock(node)) for (const clause of node.clauses) clause.statements.forEach(declare);
+    else if (ts.isCatchClause(node) && node.variableDeclaration) bind(node.variableDeclaration.name);
+    else if (
+      (ts.isForStatement(node) || ts.isForInStatement(node) || ts.isForOfStatement(node)) &&
+      node.initializer &&
+      ts.isVariableDeclarationList(node.initializer)
+    )
+      for (const declaration of node.initializer.declarations) bind(declaration.name);
+    return names.length ? new Set([...outer, ...names]) : outer;
   }
 }

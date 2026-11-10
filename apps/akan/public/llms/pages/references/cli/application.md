@@ -140,7 +140,7 @@ Run the dev server, SSR frontend and backend together. Name apps space- or comma
 
 - memory budget: `AKAN_MEMORY_LIMIT` lowers the memory `--concurrency` is derived from.
 
-- Akan Studio: `/_akan/studio` on the dev URL draws the ERD, request paths and Change Map, linked to source, and the running server's DI graph and jobs. `--share` hides it.
+- Akan Studio: `/_akan/studio` on the dev URL draws the ERD, request paths, Change Map and framework map, linked to source, and the running server's DI graph and jobs. `--share` hides it.
 
 `akan dbup [--mode <mode>]`
 
@@ -270,7 +270,7 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 
 Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.
 
-- paths (String): Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`.
+- paths (String): Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, the default `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`. A full URL (`http://localhost:<port>/oauth/token`) opens exactly as written, for an endpoint mounted outside the API prefix or a custom MCP path. A page `--changed` finds always gets the locale.
 
 - --changed (Boolean, default false, -C): Also open the pages that uncommitted page and layout changes reach, `/` when no route changed.
 
@@ -290,13 +290,13 @@ Open pages of the app's dev server in a headless browser and print one verdict l
 
 - native shells: `--csr` checks the bundle a shell loads, not the shell. A simulator page's errors reach `akan logs`, tagged.
 
-`akan studio <app> [--module <module>] [--view <erd|signals|changes|runtime>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]`
+`akan studio <app> [--module <module>] [--view <erd|signals|changes|runtime|framework>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]`
 
-Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, the Change Map of what changed since a git revision, or the running server's DI graph and jobs. In the views built from source, each name links to its source and a clicked node lists the workflows it can start: in a browser a button copies the `akan workflow plan` command, and in the editor panel it runs the workflow. It exits 1 when no dev server answers.
+Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, the Change Map of what changed since a git revision, the running server's DI graph and jobs, or the framework's own facets and the messages its processes exchange. In the views built from source, each name links to its source and a clicked node lists the workflows it can start: in a browser a button copies the `akan workflow plan` command, and in the editor panel it runs the workflow. It exits 1 when no dev server answers.
 
 - --module (String): The module to show. Without it, the ERD, the Change Map and the runtime view show every module.
 
-- --view (String, default erd, erd | signals | changes | runtime): `signals` lays one module out from component to model; `changes` draws the Change Map; `runtime` draws the services, adaptors and jobs the running server booted, by boot stage.
+- --view (String, default erd, erd | signals | changes | runtime | framework): `signals` lays one module out from component to model; `changes` draws the Change Map; `runtime` draws the services, adaptors and jobs the running server booted, by boot stage; `framework` maps the framework's facets and process messages.
 
 - --since (String): With `--view changes`, map what changed since HEAD forked from this git revision. Without it, the default branch.
 
@@ -328,7 +328,7 @@ Prepare an app, library or package, then run its tests with `bun test --isolate`
 
 - --write (Boolean, default true): Sync an app target first. Libraries and packages are always prepared.
 
-`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>]`
+`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--update-budget <boolean>]`
 
 Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.
 
@@ -340,13 +340,17 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 - --profile (String): A server env profile: the build bundles `env/env.server.<env>.<profile>.ts` in place of the environment's own file, and each lib's `env.server.testing.<profile>.ts` in place of its defaults. The app's profile file must exist, and a profile file whose secret-named key holds a value stops the build.
 
-- --env (String, local | debug | develop | main): The environment the server runs in. Without it, the build takes `AKAN_PUBLIC_ENV` from the workspace `.env`, which outranks the shell.
+- --env (String, local | debug | develop | main): The environment the server runs in. Without it, the build takes `AKAN_PUBLIC_ENV` from the shell, or from the workspace `.env` when the shell does not set it.
+
+- --update-budget (Boolean, default false): Write the app's `akan.budget.json`: add each route that has no entry at what it measures now, lower an entry its route now fits under, and drop the routes that are gone. It never raises an entry.
 
 - alias: `akan b` runs this command.
 
 - lib defaults: With `--profile`, a lib that has no profile file of its own ships its defaults with every secret-named value left out, and the build names what it left out.
 
 - web surfaces: The SSR and CSR steps follow `web` in `akan.config.ts`; a surface turned off is skipped.
+
+- route JS budget: The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors. It counts the brotli bytes served and prints the largest routes. When the app has an `akan.budget.json`, a route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry fails the build; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A route with no entry is only reported. Record the file with `--update-budget` and commit it. To raise an entry, edit it by hand in the change that grows the route. `akan verify` warns of a route over its entry or an unreadable file but never fails on either, and a mobile or desktop build skips the step.
 
 `akan start-ios <app> [--target <target>] [--env <env>] [--release <boolean>] [--device <device>] [--team <team>] [--write <boolean>]`
 
@@ -410,7 +414,7 @@ Run a native target as a desktop app on this computer: macOS, Windows or Linux, 
 
 - dev server: Without `--release` the app loads its pages from `akan start <app>` through the dev gateway, so every save shows up; keep the dev server running, or the command stops and says so.
 
-- a server without --release: For a target that carries its server, a dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.
+- a server without --release: For a target that carries its server, a dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the shell, then the workspace `.env`.
 
 - desktop.server: With `native: { desktop: { server: true } }` in `akan.config.ts`, or `desktop.server` in one target, the desktop app carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.
 
@@ -851,6 +855,7 @@ akan test util
 akan build myapp
 akan build myapp --write true --fast false --quiet false
 akan build myapp --profile edge
+akan build myapp --update-budget
 ```
 
 ### start-ios

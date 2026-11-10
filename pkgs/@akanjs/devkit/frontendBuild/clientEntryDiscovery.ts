@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { SOURCE_EXTS } from "../akanApp/devHostPolicy";
 import type { App } from "../commandDecorators";
-import { BarrelAnalyzer } from "../transforms/barrelAnalyzer";
+import { BarrelAnalyzer, type BarrelExportMap } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
 import type { AkanConfig, ClientEntryDiscovery, ScannedImport } from "./clientBuildTypes";
 
@@ -33,6 +33,9 @@ interface DiscoveryWalk {
   memo: Map<string, Set<string>>;
 }
 
+const exportsKeyOf = (map: BarrelExportMap | null): string =>
+  JSON.stringify(map ? [...map].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)) : null);
+
 const shouldSkipNodeModule = (absPath: string) => NODE_MODULES_RE.test(absPath) && !AKANJS_NODE_MODULE_RE.test(absPath);
 
 /** `"use client"` discovery over the import graph (dynamic imports included), flattening barrels as the bundler does. */
@@ -48,6 +51,11 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   #resolvedSpecifierCache = new Map<string, Lookup<string | null>>();
   #reachableEntriesCache = new Map<string, Set<string>>();
   #readFiles = new Set<string>();
+  #barrelImporters = new Map<string, Set<string>>();
+  //? Barrels a save went beside, by the analysis before it: a save of any component re-reads its barrel, and only an
+  //? export that moved sends that barrel's importers back to the disk.
+  #reread = new Map<string, Promise<BarrelExportMap | null>>();
+  #settled: Promise<void> = Promise.resolve();
   //? Bumped by every invalidation: a walk that began before one computed from facts it may have read stale, so it
   //? answers its caller but caches nothing (a registry check walks this instance beside the slow lane's route builds).
   #epoch = 0;
@@ -63,6 +71,8 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   }
 
   async discover(seeds: string[]): Promise<string[]> {
+    this.#settled = this.#settled.then(() => this.#dropRenarrowed());
+    await this.#settled;
     const entries = new Set<string>();
     for (const seed of seeds) {
       const walk: DiscoveryWalk = { visiting: new Set(), partial: new Set(), memo: new Map() };
@@ -85,6 +95,8 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     this.#epoch += 1;
     // Reachable-entry results are transitive, so a changed child invalidates every ancestor.
     this.#reachableEntriesCache.clear();
+    for (const [barrel, before] of this.#analyzer.forget(files))
+      if (!this.#reread.has(barrel)) this.#reread.set(barrel, before);
     //? A file gone, or one never read, can leave a found resolution on its old target (`Chart.tsx` to
     //? `Chart/index.tsx`), so a move drops them all; a save of a file already read keeps them (a walk re-resolving
     //? every package cost 3x). Misses lapse with the epoch on their own (#lookup).
@@ -92,6 +104,17 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     this.#fileExistsCache.clear();
     this.#resolvedFileCache.clear();
     this.#resolvedSpecifierCache.clear();
+  }
+
+  //? An importer's facts hold the files its barrel imports narrowed to, which an export moved between them changes.
+  async #dropRenarrowed(): Promise<void> {
+    const reread = [...this.#reread];
+    this.#reread.clear();
+    for (const [barrel, before] of reread) {
+      const [was, now] = await Promise.all([before, this.#analyzer.analyze(barrel)]);
+      if (exportsKeyOf(was) === exportsKeyOf(now)) continue;
+      for (const importer of this.#barrelImporters.get(barrel) ?? []) this.#factsCache.delete(importer);
+    }
   }
 
   //? A found answer outlives later epochs; a miss, or a lookup still in flight, answers only walks of its own epoch, so
@@ -133,15 +156,17 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
         if (content === null) return null;
         this.#readFiles.add(absPath);
         if (USE_CLIENT_RE.test(content)) return { isClientEntry: true, imports: [] };
-        return { isClientEntry: false, imports: this.#scanImports(await this.#rewrite(content)) };
+        return { isClientEntry: false, imports: this.#scanImports(await this.#rewrite(content, absPath)) };
       })();
       this.#factsCache.set(absPath, cached);
     }
     return cached;
   }
 
-  async #rewrite(content: string): Promise<string> {
+  async #rewrite(content: string, absPath: string): Promise<string> {
     if (this.#akanConfig.barrelImports.length === 0) return content;
+    for (const barrel of this.#akanConfig.barrelImports.filter((barrel) => content.includes(barrel)))
+      this.#barrelImporters.set(barrel, (this.#barrelImporters.get(barrel) ?? new Set()).add(absPath));
     try {
       return (await rewriteBarrelImports(content, this.#akanConfig.barrelImports, this.#analyzer)) ?? content;
     } catch {

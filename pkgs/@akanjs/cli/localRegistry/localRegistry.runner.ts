@@ -1,6 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { parseEnvFile } from "@akanjs/devkit/executors";
 import { Logger } from "akanjs/common";
 import { getNpmRegistryUrl, npmRegistryFromEnv } from "../npmRegistry";
 
@@ -91,7 +92,13 @@ export class LocalRegistryRunner extends runner("localRegistry") {
     const registry = this.getRegistryUrl(registryUrl);
     const smokeRoot = path.join(workspace.workspaceRoot, ".akan/e2e");
     await rm(path.join(smokeRoot, smokeRepoName), { recursive: true, force: true });
-    const env = { ...process.env, AKAN_NPM_REGISTRY: registry, NPM_CONFIG_REGISTRY: registry };
+    //? Bun loaded this repo's .env into process.env, where it would outrank the smoke workspace's own .env.
+    const repoDotenv = parseEnvFile(path.join(workspace.workspaceRoot, ".env"));
+    const env = {
+      ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !(key in repoDotenv))),
+      AKAN_NPM_REGISTRY: registry,
+      NPM_CONFIG_REGISTRY: registry,
+    };
     await workspace.spawn(
       process.execPath,
       [

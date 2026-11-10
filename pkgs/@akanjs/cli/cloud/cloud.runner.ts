@@ -27,7 +27,7 @@ import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
 import { confirm, input, select } from "@inquirer/prompts";
 import { Logger } from "akanjs/common";
 import chalk from "chalk";
-import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
+import { getLatestPackageVersion, getNpmRegistryUrl, getPublishedVersions } from "../npmRegistry";
 import { EnvArchive } from "./envArchive";
 import { RemoteLogin } from "./remoteLogin";
 
@@ -40,7 +40,10 @@ interface SettlePlatformTestsOptions {
 interface RegistryOptions {
   registryUrl?: string;
   confirmPublish?: boolean;
+  npmLogin?: boolean;
   tag?: string;
+  prerelease?: string | null;
+  packTo?: string | null;
 }
 
 /** The apps and libraries an env archive covers, when it carries a slice of the workspace rather than all of it. */
@@ -309,23 +312,45 @@ export class CloudRunner extends runner("cloud") {
   async deployAkan(
     workspace: Workspace,
     akanPkgs: string[],
-    { registryUrl, confirmPublish = true, tag: distTag }: RegistryOptions = {},
+    { registryUrl, confirmPublish = true, npmLogin = true, tag: distTag, prerelease, packTo }: RegistryOptions = {},
   ) {
+    if (prerelease != null && (prerelease === "latest" || !/^[a-z][a-z0-9-]*$/.test(prerelease)))
+      throw new Error(`--prerelease takes a lowercase identifier other than latest, such as rc, not "${prerelease}"`);
     const registry = registryUrl ? getNpmRegistryUrl(registryUrl) : undefined;
     const akanPackageJson = (await workspace.readJson("pkgs/akanjs/package.json")) as { version: string };
     const [majorVersion, minorVersion, patchVersion, devPatchVersion] = akanPackageJson.version.split(".");
-    const isOfficialRelease = !devPatchVersion;
-    const targetVersionPrefix = isOfficialRelease
-      ? `${majorVersion}.${minorVersion}`
+    const releaseVersion = `${majorVersion}.${minorVersion}.${patchVersion.split("-")[0]}`;
+    const isOfficialRelease = !devPatchVersion && !prerelease;
+    const prereleasePrefix = prerelease
+      ? `${releaseVersion}-${prerelease}`
       : `${majorVersion}.${minorVersion}.${patchVersion}`;
-    const tag = distTag ?? (isOfficialRelease ? "latest" : (patchVersion.split("-").at(1) ?? "dev"));
-    const latestPublishedVersion = await getLatestPackageVersion("akanjs", tag, registry).catch(() => null);
-    const latestPatch = latestPublishedVersion?.startsWith(targetVersionPrefix)
-      ? parseInt(latestPublishedVersion.split(".").at(-1) ?? "-1")
-      : -1;
+    const targetVersionPrefix = isOfficialRelease ? `${majorVersion}.${minorVersion}` : prereleasePrefix;
+    const tag = distTag ?? (isOfficialRelease ? "latest" : (prerelease ?? patchVersion.split("-").at(1) ?? "dev"));
+    const published = await Promise.all(akanPkgs.map((library) => getPublishedVersions(library, registry)));
+    if (prerelease) {
+      const released = published
+        .flatMap((entry) => entry?.tags.latest ?? [])
+        .sort(Bun.semver.order)
+        .at(-1);
+      if (released && Bun.semver.order(releaseVersion, released) <= 0)
+        throw new Error(
+          `akanjs ${released} is already released, so ${targetVersionPrefix}.N would sort below it; run \`changeset version\` first so the packages carry the next release`,
+        );
+    }
+    //* N is the highest across every package and version, so a publish that stopped partway moves on to a fresh N.
+    const latestPatch = Math.max(
+      -1,
+      ...published
+        .flatMap((entry) => (entry ? [...entry.versions, ...Object.values(entry.tags)] : []))
+        .filter((version) => version.startsWith(`${targetVersionPrefix}.`))
+        .map((version) => version.slice(targetVersionPrefix.length + 1))
+        .filter((patch) => /^\d+$/.test(patch))
+        .map(Number),
+    );
     const nextVersion = `${targetVersionPrefix}.${latestPatch + 1}`;
-    Logger.info(`Latest published version of akanjs: ${latestPublishedVersion ?? "none"}`);
+    Logger.info(`Highest published ${targetVersionPrefix}.N: ${latestPatch < 0 ? "none" : latestPatch}`);
     Logger.info(`Next version of akanjs: ${nextVersion}`);
+    const internalDependencies = new Map<string, string[]>();
     for (const library of akanPkgs) {
       const packageJson = (await workspace.readJson(`pkgs/${library}/package.json`)) as { version: string };
       const newPackageJson = this.#normalizeAkanPackageJson(packageJson, library, nextVersion);
@@ -333,9 +358,21 @@ export class CloudRunner extends runner("cloud") {
       const distPackageJson = (await workspace.readJson(`dist/pkgs/${library}/package.json`)) as {
         version: string;
         dependencies?: Record<string, string>;
+        peerDependencies?: Record<string, string>;
       };
       const newDistPackageJson = this.#normalizeAkanPackageJson(distPackageJson, library, nextVersion);
       await workspace.writeJson(`dist/pkgs/${library}/package.json`, newDistPackageJson);
+      internalDependencies.set(
+        library,
+        Object.keys({ ...newDistPackageJson.dependencies, ...newDistPackageJson.peerDependencies }).filter(
+          (dep) => dep !== library && akanPkgs.includes(dep),
+        ),
+      );
+    }
+    const publishOrder = this.#dependenciesFirst(akanPkgs, internalDependencies);
+    if (packTo) {
+      await this.#packForPublish(workspace, publishOrder, { packTo, tag, version: nextVersion });
+      return;
     }
     if (confirmPublish)
       assertPromptable(`Publishing ${akanPkgs.join(", ")}@${nextVersion} asks for a confirmation`, {
@@ -346,12 +383,12 @@ export class CloudRunner extends runner("cloud") {
       return;
     }
     // No `npm login` for a local registry: it takes no registry argument and would prompt for npmjs.org credentials.
-    if (!registry) {
+    if (!registry && npmLogin) {
       Logger.info("Logging in to npm...");
       await workspace.spawn("npm", ["login"], { stdio: "inherit" });
       Logger.info("Logged in to npm");
     }
-    for (const library of akanPkgs) {
+    for (const library of publishOrder) {
       Logger.info(`Publishing ${library}@${nextVersion} to ${registry ?? "npm"}...`);
       await workspace.spawn(
         "npm",
@@ -365,6 +402,36 @@ export class CloudRunner extends runner("cloud") {
       Logger.info(`${library}@${nextVersion} is published to ${registry ?? "npm"}`);
     }
     Logger.info(`All libraries are published to ${registry ?? "npm"}`);
+  }
+  #dependenciesFirst(libraries: string[], dependencies: Map<string, string[]>) {
+    const ordered: string[] = [];
+    const visiting = new Set<string>();
+    const visit = (library: string) => {
+      if (ordered.includes(library) || visiting.has(library)) return;
+      visiting.add(library);
+      for (const dependency of dependencies.get(library) ?? []) visit(dependency);
+      ordered.push(library);
+    };
+    for (const library of libraries) visit(library);
+    return ordered;
+  }
+  async #packForPublish(
+    workspace: Workspace,
+    libraries: string[],
+    { packTo, tag, version }: { packTo: string; tag: string; version: string },
+  ) {
+    const packDir = path.resolve(workspace.workspaceRoot, packTo);
+    await workspace.mkdir(packDir);
+    const tarballs: string[] = [];
+    for (const library of libraries) {
+      const output = await workspace.spawn("npm", ["pack", "--json", "--pack-destination", packDir], {
+        cwd: path.join(workspace.workspaceRoot, "dist/pkgs", library),
+      });
+      const [{ filename }] = JSON.parse(output) as [{ filename: string }];
+      tarballs.push(filename);
+    }
+    await workspace.writeJson(path.join(packDir, "publish.json"), { version, tag, tarballs });
+    Logger.info(`Packed ${libraries.join(", ")}@${version} for \`npm publish --tag ${tag}\` into ${packDir}`);
   }
   async update(workspace: Workspace, tag: string = "latest", { registryUrl }: RegistryOptions = {}) {
     const registry = registryUrl ? getNpmRegistryUrl(registryUrl) : undefined;
@@ -415,7 +482,10 @@ export class CloudRunner extends runner("cloud") {
   async downloadEnv(cloudApi: CloudApi, workspace: Workspace, workspaceId: string) {
     await workspace.mkdir("local");
     const localPath = (await cloudApi.downloadEnv(workspaceId).catch((error: unknown) => {
-      throw CloudApi.refusal(error, "downloading its env archive takes the project owner's own `akan login`");
+      throw CloudApi.refusal(
+        error,
+        "only the repository owner, or an owner or operator they allowed on the project's settings page, can download its env archive; sign in as one of them with `akan login`",
+      );
     })) as string;
     await EnvArchive.extract(workspace, localPath);
     await workspace.remove(localPath);

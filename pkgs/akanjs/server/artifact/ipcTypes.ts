@@ -1,4 +1,4 @@
-import type { AkanChangeMap, AkanGraph } from "akanjs/common";
+import type { AkanChangeMap, AkanGraph, FrameworkMap } from "akanjs/common";
 import type { SsrManifest } from "../ssrTypes";
 
 export interface BuildRouteResultPayload {
@@ -67,9 +67,15 @@ export type BuilderReq = {
   generation?: number;
 };
 
+/**
+ * Only the dev host writes it, on a reply no builder answered (stopped, not started, gone mid-request); a builder's own
+ * failure has none. Optional, so a dev host and a server released before it still talk to ones released after.
+ */
+export type BuilderFailureKind = "unavailable";
+
 export type BuilderRes =
   | { type: "build-route-res"; id: number; ok: true; data: BuildRouteResultPayload }
-  | { type: "build-route-res"; id: number; ok: false; error: string };
+  | { type: "build-route-res"; id: number; ok: false; error: string; kind?: BuilderFailureKind };
 
 /**
  * Sent by the first `/__csr` or `?csr=true` request (a device WebView in mobile dev) to arm the lazy dev CSR build.
@@ -79,7 +85,7 @@ export type BuilderCsrReq = { type: "build-csr"; id: number; reason: string; she
 
 export type BuilderCsrRes =
   | { type: "build-csr-res"; id: number; ok: true }
-  | { type: "build-csr-res"; id: number; ok: false; error: string };
+  | { type: "build-csr-res"; id: number; ok: false; error: string; kind?: BuilderFailureKind };
 
 export interface BuildGraphPayload {
   workspaceRoot: string;
@@ -91,12 +97,28 @@ export interface BuildChangesPayload {
   changes: AkanChangeMap | { error: string };
 }
 
+/** `framework` is null when the workspace holds no framework source: neither `pkgs/akanjs` nor `node_modules/akanjs`. */
+export interface BuildFrameworkPayload {
+  workspaceRoot: string;
+  framework: FrameworkMap | null;
+}
+
 /** `changes` asks for the Change Map since `since`, or since HEAD forked from the default branch when it is null. */
-export type BuilderGraphReq = { type: "build-graph"; id: number; changes?: { since: string | null } };
+export type BuilderGraphReq = {
+  type: "build-graph";
+  id: number;
+  changes?: { since: string | null };
+  framework?: boolean;
+};
 
 export type BuilderGraphRes =
-  | { type: "build-graph-res"; id: number; ok: true; data: BuildGraphPayload | BuildChangesPayload }
-  | { type: "build-graph-res"; id: number; ok: false; error: string };
+  | {
+      type: "build-graph-res";
+      id: number;
+      ok: true;
+      data: BuildGraphPayload | BuildChangesPayload | BuildFrameworkPayload;
+    }
+  | { type: "build-graph-res"; id: number; ok: false; error: string; kind?: BuilderFailureKind };
 
 /** Drain and exit (the only way bundler memory returns to the OS); draining, not killing, keeps a rebuild whole. */
 export type BuilderControl = { type: "builder-shutdown"; reason: string };

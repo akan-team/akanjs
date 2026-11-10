@@ -5,6 +5,7 @@ import {
   type AkanRouterStateV1,
   type AkanRscPatchMetadata,
   appendAkanRouterStateRequestHeaders,
+  isAkanRscPartialCommitEnabled,
   readAkanRscPatchMetadataResponseHeaders,
 } from "./routeState";
 
@@ -20,6 +21,10 @@ const rscEndpointOf = (href: string, buildId?: number) => {
   if (buildId !== undefined) endpoint.searchParams.set("buildId", String(buildId));
   return endpoint;
 };
+
+//? Only a client built with partial commit applies a patch; one built without would refetch the page whole.
+const sentRouterStateOf = (state: AkanRouterStateV1 | null) =>
+  state?.headKey && !isAkanRscPartialCommitEnabled() ? { ...state, headKey: undefined } : state;
 
 const rscRequestHeaders = () => {
   const headers = new Headers({ Accept: "text/x-component", "Cache-Control": "no-cache" });
@@ -65,7 +70,8 @@ export async function fetchRscNavigationResponse(
 ): Promise<RscClientFetchResponseResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
   const headers = rscRequestHeaders();
-  if (options.sendRouterState !== false) appendAkanRouterStateRequestHeaders(headers, options.currentRouterState);
+  if (options.sendRouterState !== false)
+    appendAkanRouterStateRequestHeaders(headers, sentRouterStateOf(options.currentRouterState));
   const response =
     options.prefetched ??
     (await fetchKeepingHeaders(

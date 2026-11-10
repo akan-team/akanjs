@@ -642,8 +642,8 @@ akan plan-slice myapp --format json`,
           {
             name: l.trans({ en: "Akan Studio", ko: "Akan Studio" }),
             desc: l.trans({
-              en: "`/_akan/studio` on the dev URL draws the ERD, request paths and Change Map, linked to source, and the running server's DI graph and jobs. `--share` hides it.",
-              ko: "개발 URL의 `/_akan/studio`가 ERD, 요청 경로, Change Map을 소스 링크와 함께 그리고, 실행 중인 서버의 DI 그래프와 job도 그립니다. `--share`로는 열리지 않습니다.",
+              en: "`/_akan/studio` on the dev URL draws the ERD, request paths, Change Map and framework map, linked to source, and the running server's DI graph and jobs. `--share` hides it.",
+              ko: "개발 URL의 `/_akan/studio`가 ERD, 요청 경로, Change Map, 프레임워크 지도를 소스 링크와 함께 그리고, 실행 중인 서버의 DI 그래프와 job도 그립니다. `--share`로는 열리지 않습니다.",
             }),
           },
         ],
@@ -1131,8 +1131,8 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
             name: "paths",
             type: "String",
             desc: l.trans({
-              en: "Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`.",
-              ko: "쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다.",
+              en: "Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, the default `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`. A full URL (`http://localhost:<port>/oauth/token`) opens exactly as written, for an endpoint mounted outside the API prefix or a custom MCP path. A page `--changed` finds always gets the locale.",
+              ko: "쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다. 서버가 로케일 밖에서 답하는 경로는 로케일 없이 적은 그대로 엽니다. Studio(`/_akan/studio?view=runtime`) 같은 `/_akan` 경로, API prefix 아래 경로, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, 기본 `/mcp`, 서버가 직접 내주는 파일(`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`), `public/`의 파일이 그렇습니다. 전체 URL(`http://localhost:<port>/oauth/token`)은 적은 그대로 엽니다. API prefix 밖에 마운트된 엔드포인트나 바꾼 MCP 경로에 쓰세요. `--changed`가 찾은 페이지에는 항상 로케일을 붙입니다.",
             }),
           },
           {
@@ -1224,10 +1224,10 @@ akan preview myapp /admin --desktop --format json`,
       {
         name: "studio",
         signature:
-          "akan studio <app> [--module <module>] [--view <erd|signals|changes|runtime>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]",
+          "akan studio <app> [--module <module>] [--view <erd|signals|changes|runtime|framework>] [--since <rev>] [--editor <vscode|cursor>] [--open] [--format <format>]",
         desc: l.trans({
-          en: "Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, the Change Map of what changed since a git revision, or the running server's DI graph and jobs. In the views built from source, each name links to its source and a clicked node lists the workflows it can start: in a browser a button copies the `akan workflow plan` command, and in the editor panel it runs the workflow. It exits 1 when no dev server answers.",
-          ko: "실행 중인 `akan start`의 Akan Studio URL을 출력합니다. Studio는 모델 ERD, 한 모듈의 컴포넌트에서 모델까지 이어지는 경로, git 리비전 이후 바뀐 것을 담은 Change Map, 실행 중인 서버의 DI 그래프와 job을 그립니다. 소스로 만든 뷰에서는 이름마다 소스 링크가 걸리고, 노드를 클릭하면 시작할 수 있는 워크플로가 나옵니다. 브라우저에서는 버튼이 `akan workflow plan` 명령을 복사하고, 에디터 패널에서는 워크플로를 실행합니다. 응답하는 개발 서버가 없으면 1로 끝납니다.",
+          en: "Print the URL of Akan Studio on the app's running `akan start`. It draws the ERD of the app's models, one module's path from component to model, the Change Map of what changed since a git revision, the running server's DI graph and jobs, or the framework's own facets and the messages its processes exchange. In the views built from source, each name links to its source and a clicked node lists the workflows it can start: in a browser a button copies the `akan workflow plan` command, and in the editor panel it runs the workflow. It exits 1 when no dev server answers.",
+          ko: "실행 중인 `akan start`의 Akan Studio URL을 출력합니다. Studio는 모델 ERD, 한 모듈의 컴포넌트에서 모델까지 이어지는 경로, git 리비전 이후 바뀐 것을 담은 Change Map, 실행 중인 서버의 DI 그래프와 job, 프레임워크 자체의 패싯과 프로세스끼리 주고받는 메시지를 그립니다. 소스로 만든 뷰에서는 이름마다 소스 링크가 걸리고, 노드를 클릭하면 시작할 수 있는 워크플로가 나옵니다. 브라우저에서는 버튼이 `akan workflow plan` 명령을 복사하고, 에디터 패널에서는 워크플로를 실행합니다. 응답하는 개발 서버가 없으면 1로 끝납니다.",
         }),
         options: [
           {
@@ -1242,10 +1242,10 @@ akan preview myapp /admin --desktop --format json`,
             name: "--view",
             type: "String",
             defaultValue: "erd",
-            enumOrFlag: "erd | signals | changes | runtime",
+            enumOrFlag: "erd | signals | changes | runtime | framework",
             desc: l.trans({
-              en: "`signals` lays one module out from component to model; `changes` draws the Change Map; `runtime` draws the services, adaptors and jobs the running server booted, by boot stage.",
-              ko: "`signals`는 한 모듈을 컴포넌트에서 모델까지 펼치고, `changes`는 Change Map을, `runtime`은 실행 중인 서버가 띄운 서비스, 어댑터, job을 부팅 단계별로 그립니다.",
+              en: "`signals` lays one module out from component to model; `changes` draws the Change Map; `runtime` draws the services, adaptors and jobs the running server booted, by boot stage; `framework` maps the framework's facets and process messages.",
+              ko: "`signals`는 한 모듈을 컴포넌트에서 모델까지 펼치고, `changes`는 Change Map을, `runtime`은 실행 중인 서버가 띄운 서비스, 어댑터, job을 부팅 단계별로, `framework`는 프레임워크의 패싯과 프로세스 메시지 지도를 그립니다.",
             }),
           },
           {
@@ -1367,7 +1367,7 @@ akan test util`,
       {
         name: "build",
         signature:
-          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>]",
+          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--update-budget <boolean>]",
         desc: l.trans({
           en: "Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.",
           ko: "배포용 빌드를 `dist/apps/<app>`에 만듭니다. 타입을 검사한 뒤 백엔드, SSR 라우트, CSR 번들을 차례로 만듭니다.",
@@ -1402,8 +1402,17 @@ akan test util`,
             type: "String",
             enumOrFlag: "local | debug | develop | main",
             desc: l.trans({
-              en: "The environment the server runs in. Without it, the build takes `AKAN_PUBLIC_ENV` from the workspace `.env`, which outranks the shell.",
-              ko: "서버가 실행될 환경입니다. 주지 않으면 워크스페이스 `.env`의 `AKAN_PUBLIC_ENV`를 따르며, 이 값이 셸보다 우선합니다.",
+              en: "The environment the server runs in. Without it, the build takes `AKAN_PUBLIC_ENV` from the shell, or from the workspace `.env` when the shell does not set it.",
+              ko: "서버가 실행될 환경입니다. 주지 않으면 셸의 `AKAN_PUBLIC_ENV`를 따르고, 셸에 없으면 워크스페이스 `.env`의 값을 따릅니다.",
+            }),
+          },
+          {
+            name: "--update-budget",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "Write the app's `akan.budget.json`: add each route that has no entry at what it measures now, lower an entry its route now fits under, and drop the routes that are gone. It never raises an entry.",
+              ko: "앱의 `akan.budget.json`을 씁니다. 항목이 없는 라우트는 지금 잰 크기로 더하고, 줄어든 라우트의 항목은 낮추며, 사라진 라우트는 지웁니다. 항목을 올리지는 않습니다.",
             }),
           },
         ],
@@ -1423,10 +1432,18 @@ akan test util`,
               ko: "SSR과 CSR 단계는 `akan.config.ts`의 `web` 설정을 따르며, 꺼 둔 쪽은 건너뜁니다.",
             }),
           },
+          {
+            name: l.trans({ en: "route JS budget", ko: "라우트 JS 예산" }),
+            desc: l.trans({
+              en: "The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors. It counts the brotli bytes served and prints the largest routes. When the app has an `akan.budget.json`, a route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry fails the build; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A route with no entry is only reported. Record the file with `--update-budget` and commit it. To raise an entry, edit it by hand in the change that grows the route. `akan verify` warns of a route over its entry or an unreadable file but never fails on either, and a mobile or desktop build skips the step.",
+              ko: "빌드는 서버 라우트마다 불러오는 JavaScript를 잽니다. 런타임, 그 페이지와 레이아웃에서 정적으로 닿는 모든 클라이언트 모듈, 그리고 그 벤더가 대상입니다. 실제로 내려보내는 brotli 바이트를 세고, 가장 큰 라우트들을 보여 줍니다. 앱에 `akan.budget.json`이 있으면, `routeJsBrotliKB` 항목을 1%와 4KB 중 큰 값보다 더 넘는 라우트가 빌드를 실패시킵니다. 이 여유분은 빌드가 박아 넣는 공개 env 값을 흡수하므로, 한 `--env`로 기록한 예산이 다른 환경에서도 맞습니다. 항목이 없는 라우트는 보고만 합니다. 파일은 `--update-budget`으로 기록해 커밋합니다. 항목을 올리려면, 라우트를 키우는 변경에서 직접 고칩니다. `akan verify`는 항목을 넘은 라우트나 읽을 수 없는 파일을 경고만 하고 실패시키지 않으며, 모바일과 데스크톱 빌드는 이 단계를 건너뜁니다.",
+            }),
+          },
         ],
         examples: `akan build myapp
 akan build myapp --write true --fast false --quiet false
-akan build myapp --profile edge`,
+akan build myapp --profile edge
+akan build myapp --update-budget`,
       },
       {
         name: "start-ios",
@@ -1470,8 +1487,8 @@ akan start-android myapp --device Pixel_10`,
           {
             name: l.trans({ en: "a server without --release", ko: "--release 없이 서버를 싣는 타깃" }),
             desc: l.trans({
-              en: "For a target that carries its server, a dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.",
-              ko: "서버를 싣는 타깃이면, 앱의 개발 포트에서 이미 응답하는 개발 서버가 있을 때 그대로 씁니다. 없으면 같은 명령에서 `akan start <app>`을 띄우고, 서버가 응답하면 앱을 엽니다. Ctrl+C를 누르거나 앱을 닫으면 둘 다 멈춥니다. `--env`는 개발 서버에 영향을 주지 않고, 개발 서버는 워크스페이스 `.env`를 따릅니다.",
+              en: "For a target that carries its server, a dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the shell, then the workspace `.env`.",
+              ko: "서버를 싣는 타깃이면, 앱의 개발 포트에서 이미 응답하는 개발 서버가 있을 때 그대로 씁니다. 없으면 같은 명령에서 `akan start <app>`을 띄우고, 서버가 응답하면 앱을 엽니다. Ctrl+C를 누르거나 앱을 닫으면 둘 다 멈춥니다. `--env`는 개발 서버에 영향을 주지 않고, 개발 서버는 셸 값을, 없으면 워크스페이스 `.env`를 따릅니다.",
             }),
           },
           serverSwitchNote,
