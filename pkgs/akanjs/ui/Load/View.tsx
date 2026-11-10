@@ -10,6 +10,7 @@ import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import { Empty } from "../Empty";
 import { Loading } from "../Loading";
 import Stream from "./Stream";
+import type { StreamError } from "./StreamBoundary";
 
 interface DefaultProps<_T extends string, M> {
   className?: string;
@@ -17,6 +18,7 @@ interface DefaultProps<_T extends string, M> {
   noDiv?: boolean;
   loading?: ReactNode;
   empty?: ReactNode;
+  error?: StreamError;
   renderView: (model: M) => ReactNode;
 }
 
@@ -104,6 +106,7 @@ export default function View<T extends string, Full extends { id: string }>({
   return (
     <Stream
       of={view}
+      error={props.error}
       fallback={
         props.loading === undefined ? (
           <div className="size-full">

@@ -39,6 +39,7 @@ import {
   untrackedRequest,
   updateRequestPolicy,
 } from "./requestStorage";
+import { StreamedRead } from "./streamedRead";
 
 type Equal<Left, Right> =
   (<Type>() => Type extends Left ? 1 : 2) extends <Type>() => Type extends Right ? 1 : 2 ? true : false;
@@ -2678,6 +2679,45 @@ describe("FetchClient database signal helpers", () => {
     >;
 
     await expect(Promise.resolve(handle)).rejects.toThrow();
+  });
+
+  test("marks a field's failure as a streamed read that keeps its render out of the cache, and an awaited one's not", async () => {
+    setMockFetch();
+    setAkanPublicEnv();
+    if (!requestStorage) return;
+    rawResponses.push(
+      new Error("list down"),
+      new Error("insight down"),
+      new Error("list down"),
+      new Error("insight down"),
+    );
+    const client = new FetchClient("https://api.example", {}, { fetchTestItem: databaseSignal });
+    const ownerId = "abcdefabcdefabcdefabcdef";
+
+    const streamed = await requestStorage.run(new Request("https://example.test/streamed"), async () => {
+      const handle = client.handler.initFetchTestItemByOwner(ownerId) as unknown as {
+        fetchTestItemInitByOwner: Promise<unknown>;
+      };
+      const reason = await handle.fetchTestItemInitByOwner.then(
+        () => null,
+        (error: unknown) => error,
+      );
+      return { reason, cacheable: getRequestPolicy()?.cacheable };
+    });
+    expect(streamed.reason).toBeInstanceOf(Error);
+    expect(StreamedRead.is(streamed.reason)).toBe(true);
+    expect(streamed.cacheable).toBe(false);
+
+    const awaited = await requestStorage.run(new Request("https://example.test/awaited"), async () => {
+      const reason = await (client.handler.getFetchTestItemInitByOwner(ownerId) as Promise<unknown>).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      return { reason, cacheable: getRequestPolicy()?.cacheable };
+    });
+    expect(awaited.reason).toBeInstanceOf(Error);
+    expect(StreamedRead.is(awaited.reason)).toBe(false);
+    expect(awaited.cacheable).not.toBe(false);
   });
 });
 

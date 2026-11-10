@@ -997,7 +997,7 @@ export class FetchClient {
         names.init,
         names.getInit,
       );
-      return await initFn(...args)[names.initResult];
+      return (await initFn(...args))[names.initResult];
     });
   }
   #makeArgSerializer(args: SerializedArg[]) {

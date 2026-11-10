@@ -925,7 +925,7 @@ export class RscRenderer {
           controlRef.current = { type: "not-found" };
           return error.digest;
         }
-        controlRef.current = { type: "error", error };
+        if (!RouteElementComposer.streamed(error)) controlRef.current = { type: "error", error };
         return this.#reportRenderError(error, options.trace?.pathname);
       },
     });

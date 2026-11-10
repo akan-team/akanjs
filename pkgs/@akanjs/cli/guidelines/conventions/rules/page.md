@@ -43,6 +43,10 @@ export default page()
 - `.render()` gets the declared args flat and typed (no `PageProps`, no `loader=` prop). Order: `usePage()`, fetch,
   return; auth is the chain's `.guard()`, which runs before anything renders. Hand `fetch.init*` / `view*` / `edit*` fields to sections unawaited; await only what the shell reads
   (title, redirect, link id) in one `Promise.all`.
+- **A field's refusal belongs to its `Load.*`**, which draws a notice while the page answers 200. So a field reaches
+  only a `Load.*`, directly or through a Zone. Awaiting one in a component below the page, rendering it as a child or
+  `use()`-ing it outside `Load.*` blanks the page when the server refuses it. Await the handle (`await fetch.initX()`)
+  instead, so a refusal takes the layout's `.error()`.
 - **A route never writes while it renders**: a `fetch.<mutation>()` in a stage or a component it renders throws
   `base.error.mutationInRender`, since opening a link would perform it. Send it from a user action;
   `{ duringRender: true }` only for a write harmless to repeat and safe for anyone to trigger (`ssrRule`).
