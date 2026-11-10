@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { LlmOption, LlmTurnRequest } from "akanjs/service";
 import { AnthropicLlm } from "./anthropicLlm";
+import { LlmSpend } from "./llmSpend";
 
 const request: LlmTurnRequest = {
   instructions: "Help edit the project.",
@@ -393,5 +394,54 @@ describe("AnthropicLlm turn model", () => {
     expect((await llm.chat(turn))?.model).toBe("model-a");
     expect((await llm.chat({ ...turn, model: "" }))?.model).toBe("model-a");
     expect(sent).toEqual(["model-a", "model-a"]);
+  });
+});
+
+describe("AnthropicLlm spend on a turn that does not finish", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const turn: LlmTurnRequest = { context: [], tools: [], messages: [{ role: "user", text: "hi" }] };
+
+  test("a stream cut after the prompt was counted fails carrying those counts and the model", async () => {
+    const usage = { input_tokens: 20, cache_read_input_tokens: 70, cache_creation_input_tokens: 10, output_tokens: 1 };
+    let pulled = 0;
+    globalThis.fetch = (async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (pulled++) return controller.error(new Error("socket closed"));
+            controller.enqueue(
+              new TextEncoder().encode(`data: ${JSON.stringify({ type: "message_start", message: { usage } })}\n\n`),
+            );
+          },
+        }),
+      )) as unknown as typeof fetch;
+    const llm = Object.assign(new AnthropicLlm(), { llmOption: { apiKey: "k", model: "model-a" } });
+    const failure = await llm.chat(turn, () => undefined).catch((error: unknown) => error);
+    expect(LlmSpend.of(failure)).toEqual({
+      usage: { inputTokens: 100, outputTokens: 1, cachedTokens: 70, cacheWriteTokens: 10 },
+      model: "model-a",
+    });
+  });
+
+  test("an abort reaches the provider call, streamed or not, and the failure names the model with no counts", async () => {
+    const seen: AbortSignal[] = [];
+    for (const onDelta of [undefined, () => undefined]) {
+      globalThis.fetch = ((_url: string, init: { signal: AbortSignal }) => {
+        seen.push(init.signal);
+        return new Promise((_resolve, reject) =>
+          init.signal.addEventListener("abort", () => reject(init.signal.reason)),
+        );
+      }) as unknown as typeof fetch;
+      const llm = Object.assign(new AnthropicLlm(), { llmOption: { apiKey: "k", model: "model-a" } });
+      const abort = new AbortController();
+      const pending = llm.chat(turn, onDelta, abort.signal).catch((error: unknown) => error);
+      abort.abort();
+      const failure = await pending;
+      expect(LlmSpend.of(failure)).toEqual({ model: "model-a" });
+    }
+    expect(seen.map(({ aborted }) => aborted)).toEqual([true, true]);
   });
 });

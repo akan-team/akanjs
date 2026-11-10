@@ -17,6 +17,7 @@ import {
   SolidQueue,
   serve,
   type WebsocketAdaptor,
+  type WebsocketJoinOption,
 } from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
 import { Public } from "../../signal/guards";
@@ -1934,6 +1935,103 @@ describe("SignalResolver declaration contracts", () => {
     expect(cleaned).toEqual([`unsubscribe:${validId}`, `unsubscribe:${validId}`]);
   });
 
+  test("acks a subscribe once the adaptor has joined, and answers one left meanwhile as unsubscribed", async () => {
+    class HeldJoinEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
+      heldRoom: builder
+        .pubsub(ServerResolverTestLight, { guards: [Public] })
+        .room("roomId", ID)
+        .exec(() => undefined),
+    })) {}
+    const { registry, websocket } = withFakeWebsocket();
+    const resolved = resolveWith(HeldJoinEndpoint, new HeldJoinEndpoint(), { registry });
+    const joinAll = holdJoins(websocket.instance);
+    const roomId = `heldRoom-${validId}`;
+
+    const ws = makeWs();
+    let acked: unknown = null;
+    const subscribing = (async () => {
+      acked = await resolved.wsRoutes.heldRoom(ws, [validId], "subscribe");
+    })();
+    await Bun.sleep(5);
+    expect(ws.subscribed).toEqual([]);
+    expect(acked).toBeNull();
+    joinAll();
+    await subscribing;
+    expect(acked).toMatchObject({ type: "sub", roomId, subscribe: true });
+    expect(ws.subscribed).toEqual([roomId]);
+
+    const leaving = makeWs();
+    const leftSubscribing = resolved.wsRoutes.heldRoom(leaving, [validId], "subscribe");
+    await Bun.sleep(5);
+    expect(await resolved.wsRoutes.heldRoom(leaving, [validId], "unsubscribe")).toMatchObject({ subscribe: false });
+    joinAll();
+    expect(await leftSubscribing).toEqual({ type: "sub", roomId, requestRoomId: roomId, subscribe: false });
+    expect(leaving.subscribed).toEqual([]);
+
+    const again = makeWs();
+    const superseded = resolved.wsRoutes.heldRoom(again, [validId], "subscribe");
+    await Bun.sleep(5);
+    await resolved.wsRoutes.heldRoom(again, [validId], "unsubscribe");
+    const resubscribing = resolved.wsRoutes.heldRoom(again, [validId], "subscribe");
+    await Bun.sleep(5);
+    joinAll();
+    expect(await superseded).toMatchObject({ subscribe: false });
+    expect(await resubscribing).toMatchObject({ roomId, subscribe: true });
+    expect(again.subscribed).toEqual([roomId]);
+  });
+
+  test("names a room revoked while its join waits by the client's own label, and never subscribes its socket", async () => {
+    resetResolverOrder();
+    const { registry, websocket } = withFakeWebsocket();
+    const resolved = resolveWith(ServerResolverTestEndpoint, makeTestEndpoint(), { registry });
+    const joinAll = holdJoins(websocket.instance);
+    const member = makeWs();
+    member.data.account = { role: "member" };
+    const subscribing = resolved.wsRoutes.guardedRoomFeed(member, [validId], "subscribe");
+    await Bun.sleep(5);
+    member.data.account = { role: "guest" };
+    expect(await SignalResolver.revalidateWsRooms(member, registry)).toEqual([`guardedRoomFeed-${validId}`]);
+    joinAll();
+    expect(await subscribing).toMatchObject({ subscribe: false });
+    expect(member.subscribed).toEqual([]);
+  });
+
+  test("names a live room revoked while its join waits by the label the client keys it by", async () => {
+    class GuardedLiveSlice extends slice(
+      serverResolverTestServiceModel,
+      { guards: { root: Public, get: Public, cru: Public } },
+      (init) => ({
+        inCategory: init({ guards: [ServerResolverTestRoomGuard] })
+          .search("category", String)
+          .live()
+          .exec(function (category) {
+            return this.serverResolverTestItemService.queryInCategory(category ?? "all");
+          }),
+      }),
+    ) {}
+    const SliceEndpoint = SignalResolver.resolveSlice(GuardedLiveSlice);
+    const sliceEndpoint = new SliceEndpoint() as InstanceType<typeof SliceEndpoint> & Record<string, unknown>;
+    sliceEndpoint.serverResolverTestItemService = { queryInCategory: (category: string) => ({ category }) };
+    const { registry, websocket } = withFakeWebsocket();
+    const live = getDefaultLiveRegistry();
+    const resolved = resolveWith(SliceEndpoint, sliceEndpoint as never, { registry, live });
+    const joinAll = holdJoins(websocket.instance);
+    const rooms = live.syncHub.roomCountOf("serverResolverTestItem");
+    const member = makeWs();
+    member.data.account = { role: "member" };
+    const subscribing = resolved.wsRoutes.serverResolverTestItemLiveInCategory(member, ["news"], "subscribe");
+    await Bun.sleep(5);
+    expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(rooms + 1);
+    member.data.account = { role: "guest" };
+    expect(await SignalResolver.revalidateWsRooms(member, registry, live)).toEqual([
+      "serverResolverTestItemLiveInCategory-news",
+    ]);
+    joinAll();
+    expect(await subscribing).toMatchObject({ subscribe: false });
+    expect(member.subscribed).toEqual([]);
+    expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(rooms);
+  });
+
   test("runs a cleanup registered for both endings once when the socket closes subscribed", async () => {
     const cleaned: string[] = [];
     class SharedCleanupEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
@@ -2040,6 +2138,7 @@ describe("SignalResolver declaration contracts", () => {
     expect(ack.roomId).toMatch(/^serverResolverTestItemLiveInCategory-news::[0-9a-f]{32}$/);
     const liveRoomId = ack.roomId;
     expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(1);
+    expect(websocket.instance.joinOptions).toEqual([{ live: "serverResolverTestItem" }]);
 
     const inRoom = { id: validId, category: "news", title: "Alpha", createdAt: dayjs(1000), updatedAt: dayjs(1000) };
     await listeners[0](inRoom, "create", undefined);
@@ -3061,21 +3160,41 @@ const makeFakeWebsocket = () => {
   class FakeWebsocket extends adapt("solidPubsub") {}
   let changeHandler: ((change: LiveChange) => void) | null = null;
   const calls: { method: string; args: unknown[] }[] = [];
+  const joinOptions: (WebsocketJoinOption | undefined)[] = [];
   const rec = (method: string, args: unknown[]) => void calls.push({ method, args });
   const instance = Object.assign(new FakeWebsocket(), {
     calls,
+    joinOptions,
     publish: (roomId: string, data: unknown) => rec("publish", [roomId, data]),
     publishChange: (change: LiveChange) => rec("publishChange", [change]),
     onChange(handler: (change: LiveChange) => void) {
       changeHandler = handler;
     },
     setEventHandler: (handler: unknown) => rec("setEventHandler", [handler]),
-    joinRoom: (ws: unknown, roomId: string) => rec("joinRoom", [ws, roomId]),
+    joinRoom: (ws: unknown, roomId: string, option?: WebsocketJoinOption) => {
+      joinOptions.push(option);
+      rec("joinRoom", [ws, roomId]);
+    },
     leaveRoom: (ws: unknown, roomId: string) => rec("leaveRoom", [ws, roomId]),
     registerSocket: (ws: unknown) => rec("registerSocket", [ws]),
     unregisterSocket: (ws: unknown) => rec("unregisterSocket", [ws]),
-  }) as InstanceType<typeof FakeWebsocket> & WebsocketAdaptor & { calls: { method: string; args: unknown[] }[] };
+  }) as InstanceType<typeof FakeWebsocket> &
+    WebsocketAdaptor & {
+      calls: { method: string; args: unknown[] }[];
+      joinOptions: (WebsocketJoinOption | undefined)[];
+    };
   return { cls: FakeWebsocket, instance, receiveChange: (change: LiveChange) => changeHandler?.(change) };
+};
+
+const holdJoins = (websocket: WebsocketAdaptor) => {
+  const pending: (() => void)[] = [];
+  websocket.joinRoom = () =>
+    new Promise<void>((resolve) => {
+      pending.push(resolve);
+    });
+  return () => {
+    for (const resolve of pending.splice(0)) resolve();
+  };
 };
 
 const makeWs = () => {

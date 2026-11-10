@@ -71,7 +71,7 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
     this.#agentRequestPolicy = policy;
     return this;
   }
-  /** Called once per relayed turn with the provider's token counts, after the answer is sent; `null` clears a lib's. */
+  /** Called once per relayed turn the quota passed, failed and aborted ones included; `null` clears a lib's. */
   setAgentUsage(hook: AgentUsageHook | null) {
     this.#agentUsage = hook;
     return this;
