@@ -1,6 +1,6 @@
 import "../../test/registerDom";
 import { describe, expect, test } from "bun:test";
-import { act, Component, type ErrorInfo, type ReactNode } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToReadableStream } from "react-dom/server.browser";
 import { mount } from "../testHelpers.fixture";
@@ -16,6 +16,11 @@ const mountAsync = async (node: ReactNode) => {
   });
   return {
     container,
+    rerender: async (next: ReactNode) => {
+      await act(async () => {
+        root.render(next);
+      });
+    },
     flush: async () => {
       await act(async () => {});
     },
@@ -33,20 +38,6 @@ const renderHtml = async (node: ReactNode) => {
   await stream.allReady;
   return await new Response(stream).text();
 };
-
-interface CatchProps {
-  children: ReactNode;
-}
-class Catch extends Component<CatchProps, { message: string | null }> {
-  override state = { message: null as string | null };
-  static getDerivedStateFromError(error: unknown) {
-    return { message: error instanceof Error ? error.message : String(error) };
-  }
-  override componentDidCatch(_error: unknown, _info: ErrorInfo) {}
-  override render() {
-    return this.state.message ? <span>{`caught: ${this.state.message}`}</span> : this.props.children;
-  }
-}
 
 describe("Load.Stream", () => {
   test("renders a resolved value inline, with no fallback in the first commit", () => {
@@ -176,17 +167,47 @@ describe("Load.Stream", () => {
     }
   });
 
-  test("a rejected thenable reaches the nearest error boundary", async () => {
+  test("a rejected thenable renders a notice in its place and leaves the rest of the page", async () => {
     const failing = Promise.reject(new Error("load failed"));
     const { container, flush, unmount } = await mountAsync(
-      <Catch>
+      <div>
+        <span>sibling</span>
         <Stream of={failing} fallback={<span>pending</span>}>
           {() => <span>never</span>}
         </Stream>
-      </Catch>,
+      </div>,
     );
     await flush();
-    expect(container.textContent).toBe("caught: load failed");
+    expect(container.querySelector("span")?.textContent).toBe("sibling");
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("base.loadFailed");
+    expect(container.textContent).not.toContain("never");
+    await unmount();
+  });
+
+  test("renders `error` in place of a rejected thenable", async () => {
+    const failing = Promise.reject(new Error("load failed"));
+    const { container, flush, unmount } = await mountAsync(
+      <Stream of={failing} fallback={<span>pending</span>} error={<span>custom failure</span>}>
+        {() => <span>never</span>}
+      </Stream>,
+    );
+    await flush();
+    expect(container.textContent).toBe("custom failure");
+    await unmount();
+  });
+
+  test("a new thenable after a failure renders its value", async () => {
+    const view = (of: Promise<{ label: string }>) => (
+      <Stream of={of} fallback={<span>pending</span>}>
+        {(value) => <span>{value.label}</span>}
+      </Stream>
+    );
+    const { container, rerender, flush, unmount } = await mountAsync(view(Promise.reject(new Error("load failed"))));
+    await flush();
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    await rerender(view(Promise.resolve({ label: "reloaded" })));
+    await flush();
+    expect(container.textContent).toBe("reloaded");
     await unmount();
   });
 });

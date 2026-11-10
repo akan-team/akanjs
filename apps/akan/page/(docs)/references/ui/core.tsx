@@ -448,10 +448,10 @@ export default page()
       },
       {
         key: "Load.Stream",
-        type: "{ of, fallback?, children }",
+        type: "{ of, fallback?, error?, children }",
         desc: l.trans({
-          en: "Awaits one promise behind its own Suspense boundary and hands the value to `children`.",
-          ko: "promise 하나를 자기 Suspense 경계 안에서 기다렸다가 그 값을 `children`에 넘깁니다.",
+          en: "Awaits one promise behind its own Suspense boundary and hands the value to `children`. A rejection renders `error` (a short notice by default) in its place, and the rest of the page stays.",
+          ko: "promise 하나를 자기 Suspense 경계 안에서 기다렸다가 그 값을 `children`에 넘깁니다. promise가 실패하면 그 자리에 `error`(기본은 짧은 안내문)를 그리고, 나머지 화면은 그대로 둡니다.",
         }),
       },
       {
