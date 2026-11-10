@@ -254,14 +254,13 @@ async function fetchRsc(
     navId?: number;
     signal?: AbortSignal;
     prefetched?: Response;
-    refresh?: boolean;
   } = {},
 ): Promise<RscFetchResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
   const navigation =
     options.navId === undefined
       ? undefined
-      : { navId: options.navId, href, replace: options.replaceOnRedirect ?? (() => true), refresh: options.refresh };
+      : { navId: options.navId, href, replace: options.replaceOnRedirect ?? (() => true) };
   const thenableOf = (stream: ReadableStream<Uint8Array>) =>
     createRscThenable(navigation ? recordChunksOf(stream, navigation) : stream);
   const responseResult = await fetchRscNavigationResponse(href, {
@@ -380,6 +379,12 @@ function supersedeForPageNavigation(): number {
   return supersedeNavigation();
 }
 
+let refreshNavId: number | undefined;
+function supersedeForRefresh(): number {
+  refreshNavId = supersedeNavigation();
+  return refreshNavId;
+}
+
 function requestSignalOf(navId: number, target: string): AbortSignal {
   latestPageNavId = navId;
   const controller = new AbortController();
@@ -405,7 +410,7 @@ if (loadChunk)
 function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigation, error: unknown): void {
   if (documentNavigationFallbackInFlight || !isBuildBundle()) return;
   //? A refresh re-renders the page on screen even when a shallow entry moved the URL's query off its rendered href.
-  const showsItsPage = !!navigation.refresh || pageKeyOf(renderedHref) === pageKeyOf(navigation.href);
+  const showsItsPage = navigation.navId === refreshNavId || pageKeyOf(renderedHref) === pageKeyOf(navigation.href);
   const pending = pendingRequest?.navId === navigation.navId && !showsItsPage;
   const onScreen = navigation.navId === latestPageNavId && showsItsPage;
   if (!pending && !(onScreen && navigator.onLine && isLinkFailure(error))) return;
@@ -504,7 +509,7 @@ function Root(): ReactNode {
   };
 
   globalThis.__AKAN_RSC_REFRESH__ = async (options = {}) => {
-    const navId = supersedeNavigation();
+    const navId = supersedeForRefresh();
     const target = normalizeHref(window.location.href);
     rscCache.clear();
     rscPatchCache.clear();
@@ -517,7 +522,6 @@ function Root(): ReactNode {
         navId,
         shouldApplyNavigation: () => navId === navigationSeq,
         signal: requestSignalOf(navId, target),
-        refresh: true,
       });
       if (next.type === "redirected") return;
       if (next.type === "not-found") {
