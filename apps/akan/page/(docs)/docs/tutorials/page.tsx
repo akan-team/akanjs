@@ -4,7 +4,7 @@ import { Scroll } from "@libs/util/ui";
 import { page } from "akanjs/client";
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title = lang === "ko" ? "튜토리얼: 페이지를 통한 UX | Akan.js" : "Tutorials: UX with Pages | Akan.js";
     const description =

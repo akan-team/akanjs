@@ -6,8 +6,10 @@ import type {
   PageConfig,
   PathRoute,
   ResolvedHead,
+  ResolveHeadResult,
   RouteRender,
 } from "akanjs/client";
+import { StreamedRead } from "akanjs/fetch";
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
 import { getExplicitPageConfigKeys, mergePageConfigs, resolvePageState } from "../client/frameConfig";
 import { RouteGuards } from "../client/route/RouteGuards";
@@ -40,6 +42,14 @@ export interface AdmittedNotFoundFallback {
 }
 
 export class RouteElementComposer {
+  static readonly #levelErrors = new WeakSet<object>();
+
+  //? A read handed to a `Load.*` unawaited fails inside that stream's boundary in the browser, so it leaves the
+  //? page's status alone; a level that also awaited it threw the read's own reason, and keeps its `.error()`.
+  static streamed(error: unknown): boolean {
+    return StreamedRead.is(error) && !RouteElementComposer.#levelErrors.has(error as object);
+  }
+
   static async resolveSsrFramePathRoute({
     pathRoute,
     basePath,
@@ -258,6 +268,26 @@ export class RouteElementComposer {
     return resolveHeadResult(await pathRoute.resolveHead?.({ params, searchParams }));
   }
 
+  static async resolveHeadLayers({
+    pathRoute,
+    params,
+    searchParams,
+  }: {
+    pathRoute: PathRoute;
+    params: Record<string, string>;
+    searchParams: Record<string, string[] | string>;
+  }): Promise<{ head: ResolvedHead; layouts: ResolveHeadResult; page: ResolveHeadResult }> {
+    if (!pathRoute.resolveLayoutsHead) {
+      const page = await pathRoute.resolveHead?.({ params, searchParams });
+      return { head: resolveHeadResult(page), layouts: undefined, page };
+    }
+    const [layouts, page] = await Promise.all([
+      pathRoute.resolveLayoutsHead({ params, searchParams }),
+      pathRoute.renderPage.resolveHead?.({ params, searchParams }),
+    ]);
+    return { head: resolveHeadResult(RouteHead.mergePage(layouts, page)), layouts, page };
+  }
+
   static async composeFallback({
     kind,
     route,
@@ -377,13 +407,23 @@ export class RouteElementComposer {
         await routeRender.render({ children, params, searchParams } as never),
       );
     } catch (error) {
+      RouteElementComposer.#recordLevelError(error);
       if (!notFound || (error as { digest?: unknown } | null)?.digest !== "AKAN_NOT_FOUND") throw error;
       notFound.onNotFound();
-      return await RouteElementComposer.#renderNotFoundInPlace(notFound, params, searchParams);
+      try {
+        return await RouteElementComposer.#renderNotFoundInPlace(notFound, params, searchParams);
+      } catch (viewError) {
+        RouteElementComposer.#recordLevelError(viewError);
+        throw viewError;
+      }
     } finally {
       gate?.leave();
     }
   };
+
+  static #recordLevelError(error: unknown): void {
+    if (typeof error === "object" && error !== null) RouteElementComposer.#levelErrors.add(error);
+  }
 
   static async #renderNotFoundInPlace(
     { owners, pathname, systemFallback, head }: RouteNotFoundInPlace & { owners: RouteRender[] },

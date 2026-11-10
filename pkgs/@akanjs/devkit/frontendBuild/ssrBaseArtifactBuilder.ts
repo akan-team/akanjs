@@ -153,25 +153,10 @@ export class SsrBaseArtifactBuilder {
     const rscClientUrl = clientBundle.entryUrlsByAbsPath.get(rscClientEntry) ?? "";
     const rscRuntimeSsrManifest = {
       moduleLoading: null,
-      moduleMap: Object.fromEntries(
-        Object.entries(clientBundle.manifest)
-          .map(([key, row]) => {
-            const ssrOutput = ssrBundle.entryOutputAbsByAbsPath.get(rscSegmentOutletEntry);
-            if (
-              !ssrOutput ||
-              key !== `${clientBundle.clientReferenceIdByAbsPath.get(rscSegmentOutletEntry)}#${row.name}`
-            ) {
-              return null;
-            }
-            return [
-              row.id,
-              { [row.name]: { id: ssrOutput, chunks: [ssrOutput, ssrOutput], name: row.name, async: true } },
-            ];
-          })
-          .filter(
-            (entry): entry is [string, Record<string, { id: string; chunks: string[]; name: string; async: true }>] =>
-              Boolean(entry),
-          ),
+      moduleMap: SsrBaseArtifactBuilder.outletModuleMap(
+        clientBundle.manifest,
+        clientBundle.clientReferenceIdByAbsPath.get(rscSegmentOutletEntry),
+        ssrBundle.entryOutputAbsByAbsPath.get(rscSegmentOutletEntry),
       ),
     };
     const vendorMap = Object.fromEntries(
@@ -190,6 +175,25 @@ export class SsrBaseArtifactBuilder {
       },
     };
   }
+
+  /** Every export of the outlet module shares one client id, so each joins that id's row instead of replacing it. */
+  static outletModuleMap(
+    manifest: NonNullable<BaseBuildArtifact["rscRuntimeClientManifest"]>,
+    outletReferenceId: string | undefined,
+    ssrOutput: string | undefined,
+  ) {
+    const moduleMap: Record<string, Record<string, { id: string; chunks: string[]; name: string; async: true }>> = {};
+    if (!ssrOutput || !outletReferenceId) return moduleMap;
+    for (const [key, row] of Object.entries(manifest)) {
+      if (key !== `${outletReferenceId}#${row.name}`) continue;
+      moduleMap[row.id] = {
+        ...moduleMap[row.id],
+        [row.name]: { id: ssrOutput, chunks: [ssrOutput, ssrOutput], name: row.name, async: true },
+      };
+    }
+    return moduleMap;
+  }
+
   async #resolveAkanServerPath() {
     const candidates: string[] = [];
     try {

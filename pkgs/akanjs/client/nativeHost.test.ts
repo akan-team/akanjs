@@ -60,6 +60,40 @@ console.info(typeof globalThis.__AKAN_NATIVE__?.receive);`,
     expect(await receiverIn("")).toEqual({ receiver: "undefined", exitCode: 0, stderr: "" });
   });
 
+  test("logs a shell whose @akanjs/native/core fails to load, and keeps the page running", async () => {
+    const nativeHost = JSON.stringify(path.join(import.meta.dir, "nativeHost.ts"));
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        `Bun.plugin({ name: "no-core", setup(build) { build.onLoad({ filter: /nativeBoot\\.ts$/ }, () => { throw new Error("chunk 404"); }); } });
+let logged = false;
+for (const stream of [process.stdout, process.stderr]) {
+  const write = stream.write.bind(stream);
+  stream.write = (chunk, ...rest) => {
+    if (String(chunk).includes("did not load")) logged = true;
+    return write(chunk, ...rest);
+  };
+}
+globalThis.__AKAN_NATIVE__ = { platform: "android" };
+await import(${nativeHost});
+for (let i = 0; i < 40 && !logged; i++) await Bun.sleep(25);
+console.info("still running");`,
+      ],
+      { stdout: "pipe", stderr: "pipe", timeout: 10_000 },
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(Bun.stripANSI(`${stdout}${stderr}`)).toContain(
+      "@akanjs/native/core did not load, so this shell's native bridge is not connected: Error: chunk 404",
+    );
+    expect(stdout).toContain("still running");
+  });
+
   test("leaves @akanjs/native/core out of what a web page loads", async () => {
     const result = await Bun.build({
       entrypoints: [path.join(import.meta.dir, "index.ts")],

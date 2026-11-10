@@ -11,6 +11,34 @@ afterEach(() => CommandContainer.clear());
 const track = tempRoots();
 
 describe("PrimitiveScript", () => {
+  test("refuses a --module that is not a module name, and touches no file", async () => {
+    const { root, workspace, module } = track(await createTempModule("post"));
+    await new ModuleRunner().createModuleTemplate(module);
+    const script = CommandContainer.get(PrimitiveScript);
+    const filesOf = async () => (await Array.fromAsync(new Bun.Glob("**").scan({ cwd: root, dot: true }))).sort();
+    const before = await filesOf();
+
+    for (const name of ["..", "../x", "post/..", "a/b", "/tmp/x"]) {
+      const reports = [
+        await script.createUi(workspace, { app: "demo", module: name, surface: "view" }),
+        await script.addField(workspace, { app: "demo", module: name, field: "priority", type: "String" }),
+        await script.addEnumField(workspace, { app: "demo", module: name, field: "stage", values: "draft,done" }),
+      ];
+      for (const report of reports) {
+        expect(report.status).toBe("failed");
+        expect(report.changedFiles).toEqual([]);
+        expect(report.diagnostics).toContainEqual({
+          severity: "error",
+          code: "primitive-input-invalid",
+          message: `${JSON.stringify(name)} is no module name; use letters, digits, - and _, starting with a letter`,
+          input: "module",
+        });
+      }
+    }
+
+    expect(await filesOf()).toEqual(before);
+  });
+
   test("adds a source-limited field to module constant and dictionary files", async () => {
     const { workspace, module } = track(await createTempModule("post"));
     await new ModuleRunner().createModuleTemplate(module);

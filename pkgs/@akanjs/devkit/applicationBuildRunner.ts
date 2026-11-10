@@ -437,6 +437,7 @@ void run().catch((error) => {
     const vendorExports = await VendorImportScanner.exportsUsedIn(
       path.join(this.#app.dist.cwdPath, ".akan/artifact/client"),
       NARROWABLE_VENDOR_SPECIFIERS,
+      Object.values(allRoutes.manifest.clientManifest).map(({ id }) => id),
     );
     const base = await new SsrBaseArtifactBuilder(this.#app, "build", {
       serverEnv: this.#serverEnvPlugin(baseDevEnv.env, branches),

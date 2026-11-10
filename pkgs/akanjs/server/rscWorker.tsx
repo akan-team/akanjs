@@ -50,27 +50,17 @@ import {
   shouldStoreRouteCache,
 } from "./cachePolicy";
 import { FallbackHead } from "./fallbackHead";
-import {
-  createAkanLocaleAlternateHeadSnapshot,
-  mergeAkanHeadSnapshots,
-  renderAkanHeadSnapshot,
-  resolveHeadResult,
-} from "./head";
+import { resolveHeadResult } from "./head";
 import { LogForwarder } from "./logging/logForwarder";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { type AdmittedNotFoundFallback, RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
 import { RouteShellGate } from "./routeShellGate";
-import {
-  type AkanRscPatchDecision,
-  createAkanRouterState,
-  isAkanRscPartialCommitEnabled,
-  readAkanRouterStateRequest,
-  resolveAkanRscPartialDecision,
-  resolveAkanRscPatchDecision,
-} from "./routeState";
+import { encodeAkanRouterState, isAkanRscPartialCommitEnabled } from "./routeState";
 import { type PagesContext, RouteTreeBuilder } from "./routeTreeBuilder";
 import { concatBytes, encodeAkanRedirectDigest } from "./rscHttp";
 import { RscPagePrompts } from "./rscPagePrompts";
+import { type ResolvedRouteHead, type RouteHeadSnapshots, RscPatchPlanner } from "./rscPatchPlanner";
+import { AkanRouteHeadReference } from "./rscSegmentOutletReference";
 import {
   type CachedRscResult,
   createCachedRscPatchMetadata,
@@ -78,7 +68,6 @@ import {
   invalidateCachedRscResults,
   isCachedRscPatchMetadataCompatible,
   replayCachedRscResult,
-  resolveAkanRscHeadSafePatchDecision,
   resolveRscWorkerPatchCacheEntry,
   rscWorkerTraceBaseOf,
   shouldCollectRscWorkerRenderChunks,
@@ -273,6 +262,14 @@ export class RscRenderer {
     routes: () => this.#pathRoutes,
     run: (request, routeId, fn) => this.#runWithRequest(request, routeId, fn),
     defaultLocale: () => this.#i18n.defaultLocale,
+  });
+  readonly #patchPlanner = new RscPatchPlanner({
+    logger: this.#logger,
+    routes: () => this.#pathRoutes,
+    buildId: () => this.#pagesBundleBuildId,
+    basePathOf: (url) => this.#getBasePath(url),
+    localeAlternatesOf: (url) => this.#getLocaleAlternateLanguages(url),
+    defaultHead: () => this.#renderDefaultHead(),
   });
 
   constructor() {
@@ -511,41 +508,15 @@ export class RscRenderer {
           this.#send({ type: "end", requestId });
           return;
         }
-        let admitted = verdict === "admitted";
+        const admitted = verdict === "admitted";
         const cacheDecision = match ? this.#getResultCacheEntry(request, urlObj) : { entry: null };
         const cacheEntry = cacheDecision.entry;
-        const targetRouterState = match
-          ? createAkanRouterState({
-              pathRoute: match.pathRoute,
-              href: urlObj.href,
-              buildId: this.#pagesBundleBuildId,
-            })
-          : null;
-        const currentRouterState = readAkanRouterStateRequest(request.headers);
-        const partialDecision = targetRouterState
-          ? resolveAkanRscPartialDecision({
-              currentState: currentRouterState.state,
-              currentRoute: currentRouterState.currentRoute,
-              targetState: targetRouterState,
-            })
-          : { status: "full" as const, reason: "missing-route", commonPrefixLength: 0 };
-        const patchDecision: AkanRscPatchDecision =
-          targetRouterState && match
-            ? resolveAkanRscPatchDecision({
-                currentState: currentRouterState.state,
-                targetState: targetRouterState,
-                partialDecision,
-              })
-            : { status: "full" as const, reason: partialDecision.reason, commonPrefixLength: 0 };
-        //? Security: a head-safe patch reads the page's head before its suffix renders, so the route's guards run
-        //? first (a refusal there keeps only the layouts above it), and the suffix does not run them again.
-        const safePatchDecision = match
-          ? await this.#resolveHeadSafePatchDecision(match.pathRoute, patchDecision, async () => {
-              if (!admitted) await RouteElementComposer.admit({ ...match, searchParams });
-              admitted = true;
-              return await this.#resolveRouteHeadSnapshot(urlObj, match, searchParams);
-            })
-          : patchDecision;
+        const {
+          targetRouterState,
+          currentRouterState,
+          decision: safePatchDecision,
+          admittedHead,
+        } = await this.#patchPlanner.plan({ request, url: urlObj, match, searchParams, admitted });
         const patchCacheEntry = resolveRscWorkerPatchCacheEntry({
           cacheEntry,
           targetRouterState,
@@ -561,7 +532,6 @@ export class RscRenderer {
           cacheReason: cacheDecision.reason,
           routeState: targetRouterState,
         });
-        const traceBase = createTraceBase(safePatchDecision, patchCacheEntry?.key ?? cacheEntry?.key);
         const cachedPatch = patchCacheEntry ? this.#getCached(this.#patchResultCache, patchCacheEntry.key) : null;
         if (
           cachedPatch?.patch &&
@@ -579,7 +549,7 @@ export class RscRenderer {
           const cachedTraceBase = createTraceBase(
             cachedPatchDecision,
             patchCacheEntry.key,
-            cachedPatch.patch.targetRouterState,
+            RscPatchPlanner.routeStateWith(cachedPatch.patch.targetRouterState, admittedHead?.snapshots?.layoutsKey),
           );
           await this.#replayCached(requestId, routeId, startedAt, cachedPatch, {
             ...cachedTraceBase,
@@ -594,6 +564,11 @@ export class RscRenderer {
             ? this.#getCached(this.#resultCache, cacheEntry.key)
             : null;
         if (cached) {
+          const traceBase = createTraceBase(
+            safePatchDecision,
+            patchCacheEntry?.key ?? cacheEntry?.key,
+            RscPatchPlanner.routeStateWith(targetRouterState, cached.routeHeadKey),
+          );
           await this.#replayCached(requestId, routeId, startedAt, cached, {
             ...traceBase,
             cache: "hit",
@@ -610,6 +585,7 @@ export class RscRenderer {
           return;
         }
         let element: ReactNode;
+        let routeHead: ResolvedRouteHead | undefined;
         let effectivePatchDecision = safePatchDecision;
         const notFoundProbe = { hit: false };
         const notFound = this.#notFoundInPlace(urlObj, notFoundProbe);
@@ -621,7 +597,7 @@ export class RscRenderer {
             safePatchDecision.patch.patchStartIndex,
             searchParams,
             notFound,
-            { guarded: admitted },
+            { guarded: admitted || !!admittedHead },
           );
           if (suffixElement === null) {
             effectivePatchDecision = {
@@ -629,11 +605,23 @@ export class RscRenderer {
               reason: "suffix-compose-fallback",
               commonPrefixLength: safePatchDecision.commonPrefixLength,
             };
-            element = await this.#renderMatched(urlObj, match, searchParams, notFound, { guarded: true, gate });
-          } else element = suffixElement;
+            ({ element, head: routeHead } = await this.#renderMatched(urlObj, match, searchParams, notFound, {
+              guarded: true,
+              head: admittedHead,
+              gate,
+            }));
+          } else {
+            element = suffixElement;
+            routeHead = admittedHead;
+          }
         } else if (match)
-          element = await this.#renderMatched(urlObj, match, searchParams, notFound, { guarded: admitted, gate });
+          ({ element, head: routeHead } = await this.#renderMatched(urlObj, match, searchParams, notFound, {
+            guarded: admitted || !!admittedHead,
+            head: admittedHead,
+            gate,
+          }));
         else element = await this.#renderNotFound(urlObj, notFoundFallback, gate);
+        const routeHeadKey = routeHead?.snapshots?.layoutsKey;
         const traceCacheKey =
           effectivePatchDecision.status === "patch" ? (patchCacheEntry?.key ?? cacheEntry?.key) : cacheEntry?.key;
         const ssrBlocking = getRequestFrameState<PageState>()?.ssr === "block";
@@ -642,6 +630,11 @@ export class RscRenderer {
           cache: cacheEntry ? "miss" : "bypass",
           ssrBlocking,
         };
+        //? Only the matched render shows the route head; an error or not-found render sent in its place has none.
+        const renderedRouteState = RscPatchPlanner.routeStateWith(targetRouterState, routeHeadKey);
+        const renderedTrace = renderedRouteState
+          ? { ...trace, routeState: encodeAkanRouterState(renderedRouteState) }
+          : trace;
         this.#logger.verbose(`render[${requestId}] starting Flight stream`);
         const result = await this.#renderFlightElement(element, msg.clientManifest ?? this.#clientManifest, {
           requestId,
@@ -651,7 +644,7 @@ export class RscRenderer {
             patchCacheEntry,
           }),
           status: match ? undefined : 404,
-          trace,
+          trace: renderedTrace,
           notFoundProbe,
           gate,
           onComplete: ({ chunks, bytes, chunksCount, control, lateControlSent }) => {
@@ -672,6 +665,7 @@ export class RscRenderer {
               theme: getRequestTheme(),
               ssrBlocking,
               cacheState,
+              routeHeadKey,
             });
             if (
               shouldStoreRscWorkerPatchResult({
@@ -910,7 +904,7 @@ export class RscRenderer {
           controlRef.current = { type: "not-found" };
           return error.digest;
         }
-        controlRef.current = { type: "error", error };
+        if (!RouteElementComposer.streamed(error)) controlRef.current = { type: "error", error };
         return this.#reportRenderError(error, options.trace?.pathname);
       },
     });
@@ -1212,27 +1206,6 @@ export class RscRenderer {
     this.#send({ type: "not-found", requestId });
   }
 
-  // Runs the head only when a patch hinges on it, so a cached replay skips it along with its notFound()/redirect().
-  async #resolveHeadSafePatchDecision(
-    pathRoute: PathRoute,
-    patchDecision: AkanRscPatchDecision,
-    resolveHeadSnapshot: () => Promise<ResolvedHead["headSnapshot"]>,
-  ): Promise<AkanRscPatchDecision> {
-    if (patchDecision.status !== "patch" || !patchDecision.patch) {
-      return patchDecision;
-    }
-    if (!isAkanRscPartialCommitEnabled()) {
-      return { status: "full", reason: "guard-disabled", commonPrefixLength: patchDecision.commonPrefixLength };
-    }
-    const pageConfig = await pathRoute.renderPage.getPageConfig?.();
-    return resolveAkanRscHeadSafePatchDecision({
-      partialCommitEnabled: true,
-      patchDecision,
-      pageConfig,
-      headSnapshot: pageConfig?.rscPatchHeadSafe === true ? await resolveHeadSnapshot() : undefined,
-    });
-  }
-
   #recordRouteStats(routeId: string, flightBytes: number, durationMs: number): void {
     const current = this.#routeStats.get(routeId) ?? { routeId, count: 0, flightBytes: 0, totalDurationMs: 0 };
     current.count += 1;
@@ -1403,8 +1376,8 @@ export class RscRenderer {
     match: { pathRoute: PathRoute; params: Record<string, string> },
     searchParams: Record<string, string | string[]>,
     notFound: RouteNotFoundInPlace,
-    { guarded = false, gate }: { guarded?: boolean; gate?: RouteShellGate } = {},
-  ): Promise<ReactNode> {
+    { guarded = false, head, gate }: { guarded?: boolean; head?: ResolvedRouteHead; gate?: RouteShellGate } = {},
+  ): Promise<{ element: ReactNode; head: ResolvedRouteHead }> {
     this.#logger.verbose(
       `composing route element pathname=${url.pathname} search=${url.search || "(none)"} params=${JSON.stringify(match.params)}`,
     );
@@ -1422,11 +1395,7 @@ export class RscRenderer {
     //? The result cache keys on the theme cookie, so this color is never replayed to a visitor on another theme.
     const themeColorTheme = untrackedCookies().get("theme")?.value ?? rootTheme;
     const manifestLink = await this.#renderManifestLink(url, rootLayouts);
-    const routeHead = await RouteElementComposer.resolveHeadWithSnapshot({
-      pathRoute,
-      params: match.params,
-      searchParams,
-    });
+    const routeHead = head ?? (await this.#patchPlanner.resolveHead(url, pathRoute, match.params, searchParams));
     const fallbackHead = new FallbackHead();
     const body = RouteElementComposer.compose({
       pathRoute,
@@ -1437,7 +1406,12 @@ export class RscRenderer {
       gate,
     });
     const renderHead = async (tags: ReactNode[] | null) => {
-      if (!tags) return this.#renderHeadTags(url, { manifestLink, routeHead });
+      if (!tags)
+        return this.#renderHeadTags(url, {
+          manifestLink,
+          routeHead: routeHead.layers.head,
+          snapshots: routeHead.snapshots,
+        });
       const layoutsHead = await RscRenderer.#resolveFallbackHead({
         kind: "not-found",
         route: pathRoute,
@@ -1447,7 +1421,7 @@ export class RscRenderer {
       return this.#renderHeadTags(url, { manifestLink, routeHead: layoutsHead, noindex: true, tags });
     };
     // Cookie theme is applied on the HTML stream and by the client so RSC cache cannot replay a stale data-theme.
-    return (
+    const element = (
       <html lang={match.params.lang ?? this.#i18n.defaultLocale} suppressHydrationWarning>
         <head key="head">
           <meta key="charset" charSet="utf-8" />
@@ -1466,6 +1440,7 @@ export class RscRenderer {
         </body>
       </html>
     );
+    return { element, head: routeHead };
   }
 
   async #renderMatchedSuffix(
@@ -1587,18 +1562,33 @@ export class RscRenderer {
     {
       manifestLink,
       routeHead,
+      snapshots,
       noindex = false,
       tags = null,
-    }: { manifestLink: ReactNode; routeHead: ResolvedHead; noindex?: boolean; tags?: ReactNode[] | null },
+    }: {
+      manifestLink: ReactNode;
+      routeHead: ResolvedHead;
+      snapshots?: RouteHeadSnapshots;
+      noindex?: boolean;
+      tags?: ReactNode[] | null;
+    },
   ): ReactNode {
-    const routeHeadSnapshot = this.#createRouteHeadSnapshot(url, routeHead);
-    const head = routeHeadSnapshot
-      ? renderAkanHeadSnapshot(routeHeadSnapshot)
-      : (routeHead.node ?? this.#renderDefaultHead());
+    if (snapshots) {
+      const ownsManifest = [...snapshots.layouts.nodes, ...snapshots.page.nodes].some(
+        (node) => RouteHead.keyOf(node.tag, node.attrs ?? {}) === "link:manifest",
+      );
+      return (
+        <>
+          {ownsManifest ? null : manifestLink}
+          <AkanRouteHeadReference layouts={snapshots.layouts} page={snapshots.page} />
+        </>
+      );
+    }
+    const head = routeHead.node ?? this.#renderDefaultHead();
     return (
       <>
         {RouteHead.mergeNodes([manifestLink, head, noindex ? RouteHead.noindexOver(head) : null, tags])}
-        {routeHeadSnapshot ? null : this.#renderLocaleAlternates(url)}
+        {this.#renderLocaleAlternates(url)}
       </>
     );
   }
@@ -1613,27 +1603,6 @@ export class RscRenderer {
       i18n: this.#i18n,
       headerBasePath: untrackedRequest()?.headers.get("x-base-path"),
     });
-  }
-
-  async #resolveRouteHeadSnapshot(
-    url: URL,
-    match: { pathRoute: PathRoute; params: Record<string, string> },
-    searchParams: Record<string, string | string[]>,
-  ): Promise<ResolvedHead["headSnapshot"]> {
-    const routeHead = await RouteElementComposer.resolveHeadWithSnapshot({
-      pathRoute: match.pathRoute,
-      params: match.params,
-      searchParams,
-    });
-    return this.#createRouteHeadSnapshot(url, routeHead);
-  }
-
-  #createRouteHeadSnapshot(url: URL, routeHead: ResolvedHead): ResolvedHead["headSnapshot"] {
-    if (!routeHead.headSnapshot) return undefined;
-    return mergeAkanHeadSnapshots(
-      routeHead.headSnapshot,
-      createAkanLocaleAlternateHeadSnapshot(this.#getLocaleAlternateLanguages(url)),
-    );
   }
 
   #getLocaleAlternateLanguages(url: URL): Record<string, string> {

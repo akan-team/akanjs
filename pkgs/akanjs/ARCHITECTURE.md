@@ -66,11 +66,11 @@ A facet loads values only from facets in lower layers. A type-only import loads 
 | 4 | `service` | `base`, `common`, `constant`, `dictionary`, `document` | `signal` |
 | 5 | `signal` | `base`, `common`, `constant`, `dictionary`, `document`, `fetch`, `service` | — |
 | 5 | `store` | `base`, `client`, `common`, `constant`, `fetch` | `document`, `signal` |
-| 6 | `server` | `base`, `client`, `common`, `constant`, `dictionary`, `document`, `fetch`, `service`, `signal`, `store` | — |
 | 6 | `webkit` | `base`, `client`, `common`, `fetch`, `signal`, `store` | `ui` |
-| 7 | `@akanjs/devkit` | `base`, `client`, `common`, `server` | `native` |
-| 7 | `test` | `base`, `common`, `constant`, `fetch`, `server`, `service` | `signal` |
+| 7 | `server` | `base`, `client`, `common`, `constant`, `dictionary`, `document`, `fetch`, `service`, `signal`, `store`, `webkit` | — |
 | 7 | `ui` | `base`, `client`, `common`, `constant`, `fetch`, `store`, `webkit` | `document`, `signal` |
+| 8 | `@akanjs/devkit` | `base`, `client`, `common`, `server` | `native` |
+| 8 | `test` | `base`, `common`, `constant`, `fetch`, `server`, `service` | `signal` |
 
 ## Process messages
 
