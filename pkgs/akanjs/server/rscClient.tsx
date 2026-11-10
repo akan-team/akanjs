@@ -371,6 +371,7 @@ globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
 
 function rememberCommittedRouteState(node: RscCacheNode): void {
   rscPatchCache.clear();
+  shownNode = node;
   if (!node.routerState) return;
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
@@ -381,6 +382,7 @@ function rememberCommittedRouteState(node: RscCacheNode): void {
 //? A not-found view is never replayed or patched onto, so the page after it is rendered whole.
 function forgetCommittedRouteState(): void {
   rscPatchCache.clear();
+  shownNode = null;
   currentRouterState = null;
   currentSegmentTree = null;
   currentFullNode = null;
@@ -409,6 +411,12 @@ function forgetPagesOfAnotherAccount(): void {
 function cachedPageOf(target: string): RscCacheNode | undefined {
   const key = pageKeyOf(target);
   return rscCache.get(target) ?? [...rscCache.values()].findLast((node) => pageKeyOf(node.href) === key);
+}
+
+function replayedPageOf(target: string): RscCacheNode | undefined {
+  const node = cachedPageOf(target);
+  if (node) rememberRscCacheNode(rscCache, node, MAX_RSC_CACHE_ENTRIES);
+  return node;
 }
 
 const isConstrainedNetwork = () => {
@@ -502,7 +510,6 @@ function Root(): ReactNode {
         commitThenable: (node) => {
           currentCommitFromCache = false;
           resetAkanSegmentOutletPatches();
-          shownNode = node;
           setThenable(node.thenable);
           renderedHref = target;
         },
@@ -537,7 +544,7 @@ function Root(): ReactNode {
     const hash = options.scrollY === undefined ? new URL(target).hash : "";
     const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY, hash });
     try {
-      const replayed = cachedPageOf(target);
+      const replayed = replayedPageOf(target);
       let nextNode = replayed;
       let notFound = false;
       let servedFromCache = !!nextNode;
@@ -628,8 +635,6 @@ function Root(): ReactNode {
           nextNode = fetched.node;
           notFound = !!fetched.notFound;
         }
-      } else {
-        rememberRscCacheNode(rscCache, nextNode, MAX_RSC_CACHE_ENTRIES);
       }
       observeRscNavigationNode({
         cache: rscCache,
@@ -651,7 +656,6 @@ function Root(): ReactNode {
         commitThenable: (node) => {
           currentCommitFromCache = servedFromCache;
           resetAkanSegmentOutletPatches();
-          shownNode = node;
           setThenable(node.thenable);
         },
         updateHistory: () => {

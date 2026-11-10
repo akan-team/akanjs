@@ -58,14 +58,11 @@ import {
 } from "./head";
 import { LogForwarder } from "./logging/logForwarder";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
-import { RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
+import { type AdmittedNotFoundFallback, RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
 import { RouteShellGate } from "./routeShellGate";
 import {
   type AkanRscPatchDecision,
   createAkanRouterState,
-  encodeAkanHeadSnapshot,
-  encodeAkanRouterState,
-  encodeAkanRscPatchSegmentPath,
   isAkanRscPartialCommitEnabled,
   readAkanRouterStateRequest,
   resolveAkanRscPartialDecision,
@@ -83,6 +80,7 @@ import {
   replayCachedRscResult,
   resolveAkanRscHeadSafePatchDecision,
   resolveRscWorkerPatchCacheEntry,
+  rscWorkerTraceBaseOf,
   shouldCollectRscWorkerRenderChunks,
   shouldStoreRscWorkerPatchResult,
   shouldUseRscWorkerFullResultCache,
@@ -186,12 +184,6 @@ interface FlightRenderResult {
 /** Well above any sensible TTL: this reclaims a cache nobody is reading, not tracks expiry closely. */
 const RESULT_CACHE_SWEEP_INTERVAL_MS = 60_000;
 
-function hashRscTraceCacheKey(cacheKey: string): string {
-  let hash = 5381;
-  for (let index = 0; index < cacheKey.length; index += 1) hash = (hash * 33) ^ cacheKey.charCodeAt(index);
-  return (hash >>> 0).toString(36);
-}
-
 interface RscRendererStats {
   renderCount: number;
   inFlightRenderCount: number;
@@ -206,12 +198,6 @@ interface RscRendererStats {
   totalFlightBytes: number;
   totalFlightChunks: number;
   pagesBundleBuildId: number;
-}
-
-interface AdmittedNotFoundFallback {
-  route: LayoutFallbackRoute;
-  params: Record<string, string>;
-  searchParams: Record<string, string | string[]>;
 }
 
 interface RouteRenderStats {
@@ -516,21 +502,16 @@ export class RscRenderer {
         else this.#logger.verbose(`render[${requestId}] no route matched pathname=${urlObj.pathname} — rendering 404`);
         const beforeLoadedKeys = RouteTreeBuilder.getCacheStats().loadedModuleKeys;
         const searchParams = parseSearchParams(urlObj.search);
-        const notFoundFallback = match ? null : await this.#admitNotFoundFallback(urlObj, searchParams);
-        let admitted = false;
-        if (msg.prefetch) {
-          const verdict = match
-            ? await RouteElementComposer.prefetchVerdict({ ...match, searchParams })
-            : notFoundFallback && (await RouteElementComposer.layoutsRefusePrefetch(notFoundFallback.route))
-              ? "refused"
-              : "unchecked";
-          if (verdict === "refused") {
-            this.#send({ type: "meta", requestId, status: 204 });
-            this.#send({ type: "end", requestId });
-            return;
-          }
-          admitted = verdict === "admitted";
+        const fallbackMatch = match ? null : RouteTreeBuilder.matchFallback(urlObj.pathname, this.#fallbackRoutes);
+        const notFoundFallback = await RouteElementComposer.admitNotFoundFallback(fallbackMatch, searchParams);
+        const verdict =
+          msg.prefetch && (await RouteElementComposer.prefetchVerdict(match, notFoundFallback, searchParams));
+        if (verdict === "refused") {
+          this.#send({ type: "meta", requestId, status: 204 });
+          this.#send({ type: "end", requestId });
+          return;
         }
+        let admitted = verdict === "admitted";
         const cacheDecision = match ? this.#getResultCacheEntry(request, urlObj) : { entry: null };
         const cacheEntry = cacheDecision.entry;
         const targetRouterState = match
@@ -560,8 +541,7 @@ export class RscRenderer {
         //? first (a refusal there keeps only the layouts above it), and the suffix does not run them again.
         const safePatchDecision = match
           ? await this.#resolveHeadSafePatchDecision(match.pathRoute, patchDecision, async () => {
-              if (!admitted)
-                await RouteElementComposer.admit({ pathRoute: match.pathRoute, params: match.params, searchParams });
+              if (!admitted) await RouteElementComposer.admit({ ...match, searchParams });
               admitted = true;
               return await this.#resolveRouteHeadSnapshot(urlObj, match, searchParams);
             })
@@ -572,31 +552,14 @@ export class RscRenderer {
           safePatchDecision,
           partialCommitEnabled: isAkanRscPartialCommitEnabled(),
         });
-        const createTraceBase = (
-          decision: AkanRscPatchDecision,
-          cacheKey = cacheEntry?.key,
-          routeState = targetRouterState,
-        ) => ({
+        const createTraceBase = rscWorkerTraceBaseOf({
           navId: requestId,
           pathname: urlObj.pathname,
           routeId,
-          partial: decision.status,
-          partialReason: decision.reason ?? currentRouterState.reason,
-          partialCommonPrefixLength: decision.commonPrefixLength,
-          ...(decision.patch
-            ? {
-                patchStartIndex: decision.patch.patchStartIndex,
-                patchSegmentPath: encodeAkanRscPatchSegmentPath(decision.patch.segmentPath),
-                patchStartSegment: decision.patch.patchStartSegmentKey,
-                patchHeadSafe: decision.patch.headSafe,
-                patchHeadSnapshot: decision.patch.headSnapshot
-                  ? (encodeAkanHeadSnapshot(decision.patch.headSnapshot) ?? undefined)
-                  : undefined,
-              }
-            : {}),
-          ...(routeState ? { routeState: encodeAkanRouterState(routeState) } : {}),
-          ...(cacheKey ? { cacheKeyHash: hashRscTraceCacheKey(cacheKey) } : {}),
-          ...(cacheDecision.reason ? { cacheReason: cacheDecision.reason } : {}),
+          routerStateReason: currentRouterState.reason,
+          cacheKey: cacheEntry?.key,
+          cacheReason: cacheDecision.reason,
+          routeState: targetRouterState,
         });
         const traceBase = createTraceBase(safePatchDecision, patchCacheEntry?.key ?? cacheEntry?.key);
         const cachedPatch = patchCacheEntry ? this.#getCached(this.#patchResultCache, patchCacheEntry.key) : null;
@@ -1531,16 +1494,6 @@ export class RscRenderer {
       navKey: url.pathname + url.search,
       notFound,
     });
-  }
-
-  async #admitNotFoundFallback(
-    url: URL,
-    searchParams: Record<string, string | string[]>,
-  ): Promise<AdmittedNotFoundFallback | null> {
-    const matchedFallback = RouteTreeBuilder.matchFallback(url.pathname, this.#fallbackRoutes);
-    if (!matchedFallback) return null;
-    const props = { params: matchedFallback.params, searchParams };
-    return { ...props, route: await RouteElementComposer.admittedFallbackOf(matchedFallback.fallbackRoute, props) };
   }
 
   async #renderNotFound(

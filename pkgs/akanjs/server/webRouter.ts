@@ -66,29 +66,17 @@ import { ImageOptimizer } from "./imageOptimizer";
 import type { McpAppShellSource } from "./mcp/McpApps";
 import { normalizeHost, resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
 import { createDefaultRobotsTxt } from "./robots";
+import { AKAN_RSC_DICTIONARY_HEADER, AKAN_RSC_IMPORT_MAP_HEADER, AKAN_RSC_PREFETCH_HEADER } from "./routeState";
 import {
-  AKAN_RSC_DICTIONARY_HEADER,
-  AKAN_RSC_IMPORT_MAP_HEADER,
-  AKAN_RSC_NOT_FOUND_HEADER,
-  AKAN_RSC_PATCH_HEAD_SAFE_HEADER,
-  AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER,
-  AKAN_RSC_PATCH_SEGMENT_PATH_HEADER,
-  AKAN_RSC_PATCH_START_INDEX_HEADER,
-  AKAN_RSC_PATCH_START_SEGMENT_HEADER,
-  AKAN_RSC_PREFETCH_HEADER,
-  AKAN_RSC_RESPONSE_STATE_HEADER,
-} from "./routeState";
-import {
-  type RscRedirectMethod,
-  type RscRedirectStatus,
-  type RscRenderResult,
-  RscWorker,
-  type RscWorkerStatus,
-} from "./rscWorkerHost";
+  createRscNavigationStreamResponse,
+  createRscNotFoundFallbackResponse,
+  createRscRedirectResponse,
+} from "./rscResponse";
+import { type RscRedirectStatus, RscWorker, type RscWorkerStatus } from "./rscWorkerHost";
 import { SessionRefresh } from "./sessionRefresh";
 import { createDefaultSitemapXml, getSitemapBasePath } from "./sitemap";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
-import type { RscTraceMetadata, SsrManifest } from "./ssrTypes";
+import type { SsrManifest } from "./ssrTypes";
 import { resolveStaticPath, staysInTree } from "./staticPath";
 import { getPathnameLocale } from "./systemPageDocument";
 import { createSubRouteIndexResponse, createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
@@ -101,23 +89,6 @@ const ROUTE_CACHE_SWEEP_INTERVAL_MS = 60_000;
 const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
 const ANDROID_ASSET_LINKS_PATH = "/.well-known/assetlinks.json";
 
-export function createRscRedirectResponse(
-  location: string,
-  method: RscRedirectMethod,
-  status: RscRedirectStatus = 307,
-): Response {
-  return new Response(JSON.stringify({ type: "redirect", location, method, status }), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-      "X-Akan-Redirect": location,
-      "X-Akan-Redirect-Method": method,
-      "X-Akan-Redirect-Status": String(status),
-    },
-  });
-}
-
 // A render's redirect follows the request's cookies, so no cache between here and the browser may keep it.
 //? `req.url` names the host this server was dialed as, not the one a tunnel or proxy caller used, so a same-origin
 //? target goes out relative. A path starting `//` stays absolute: relative, a browser would read it as a host.
@@ -126,45 +97,6 @@ function createDocumentRedirectResponse(location: string, requestUrl: URL, statu
   const sameOrigin = target.origin === requestUrl.origin && !target.pathname.startsWith("//");
   const href = sameOrigin ? `${target.pathname}${target.search}${target.hash}` : target.href;
   return new Response(null, { status, headers: { Location: href, "Cache-Control": "no-store" } });
-}
-
-export function createRscStreamResponse(stream: BodyInit, status = 200): Response {
-  return new Response(stream, {
-    status,
-    headers: {
-      "Content-Type": "text/x-component; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  });
-}
-
-export function createRscNotFoundFallbackResponse(): Response {
-  return createRscStreamResponse("0:null\n", 404);
-}
-
-//? Security: the route, pathname and cache headers only explain a render to its developer. In production a missing
-//? path would carry them where one a guard refused does not, telling a visitor which paths exist behind the guard.
-function appendRscTraceHeaders(headers: Headers, trace: RscTraceMetadata | undefined, explain: boolean): void {
-  if (!trace) return;
-  if (explain) {
-    if (trace.navId) headers.set("X-Akan-Rsc-Nav-Id", trace.navId);
-    headers.set("X-Akan-Rsc-Pathname", trace.pathname);
-    headers.set("X-Akan-Rsc-Route", trace.routeId);
-    headers.set("X-Akan-Rsc-Cache", trace.cache);
-    if (trace.cacheReason) headers.set("X-Akan-Rsc-Cache-Reason", trace.cacheReason);
-    if (trace.cacheKeyHash) headers.set("X-Akan-Rsc-Cache-Key", trace.cacheKeyHash);
-    if (trace.partialReason) headers.set("X-Akan-Rsc-Partial-Reason", trace.partialReason);
-    if (trace.partialCommonPrefixLength !== undefined)
-      headers.set("X-Akan-Rsc-Partial-Common-Prefix", String(trace.partialCommonPrefixLength));
-  }
-  if (trace.partial && (explain || trace.partial === "patch")) headers.set("X-Akan-Rsc-Partial", trace.partial);
-  if (trace.patchStartIndex !== undefined)
-    headers.set(AKAN_RSC_PATCH_START_INDEX_HEADER, String(trace.patchStartIndex));
-  if (trace.patchSegmentPath) headers.set(AKAN_RSC_PATCH_SEGMENT_PATH_HEADER, trace.patchSegmentPath);
-  if (trace.patchStartSegment) headers.set(AKAN_RSC_PATCH_START_SEGMENT_HEADER, trace.patchStartSegment);
-  if (trace.patchHeadSafe) headers.set(AKAN_RSC_PATCH_HEAD_SAFE_HEADER, "1");
-  if (trace.patchHeadSnapshot) headers.set(AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER, trace.patchHeadSnapshot);
-  if (trace.routeState) headers.set(AKAN_RSC_RESPONSE_STATE_HEADER, trace.routeState);
 }
 
 export function cacheHtmlWhileStreaming(
@@ -242,19 +174,6 @@ export function resolveHtmlRouteCacheStoreTtl(input: {
     dynamicUsage: input.hostRequestStore.dynamicUsage,
   });
   return resolveRouteCacheStoreTtl(workerTtl, hostCacheState);
-}
-
-export async function createRscNavigationStreamResponse(
-  result: Extract<RscRenderResult, { type: "stream" }>,
-  { explain = false }: { explain?: boolean } = {},
-): Promise<Response> {
-  //? The worker's answer to a prefetch of a page that refuses them, with nothing rendered; a 204 may carry no body.
-  if (result.status === 204) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
-  // A redirect found after Flight bytes left the worker stays in-stream: an Akan digest the client strips before RSDW.
-  const response = createRscStreamResponse(result.stream, result.status ?? 200);
-  appendRscTraceHeaders(response.headers, result.trace, explain);
-  if (result.status === 404) response.headers.set(AKAN_RSC_NOT_FOUND_HEADER, "view");
-  return response;
 }
 
 export function normalizeRscTargetUrlForHostBasePath(
@@ -551,8 +470,7 @@ export class WebRouter {
         : {}),
       "/__rsc": SessionRefresh.answering(async (req) => {
         const prefetch = req.headers.get(AKAN_RSC_PREFETCH_HEADER) === "1";
-        if (prefetch) this.#requestStats.rscPrefetch += 1;
-        else this.#requestStats.rscNavigation += 1;
+        this.#requestStats[prefetch ? "rscPrefetch" : "rscNavigation"] += 1;
         try {
           //? A tab imports through its document's import map, whose narrowed vendors lack names another build imports;
           //? the client loads a target it cannot fetch as a document, which brings this build's import map.
@@ -590,10 +508,7 @@ export class WebRouter {
             rscHeaders.set("x-locale", targetLocale);
             rscHeaders.set("x-path", targetPath);
           }
-          const rscReq = new Request(targetUrl, {
-            method: "GET",
-            headers: rscHeaders,
-          });
+          const rscReq = new Request(targetUrl, { method: "GET", headers: rscHeaders });
           const result = await this.#rsc.renderWithMeta(rscReq, {
             clientManifest: manifest.clientManifest,
             signal: req.signal,

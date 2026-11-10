@@ -33,6 +33,12 @@ export interface RouteNotFoundInPlace {
   head?: FallbackHead;
 }
 
+export interface AdmittedNotFoundFallback {
+  route: LayoutFallbackRoute;
+  params: Record<string, string>;
+  searchParams: Record<string, string | string[]>;
+}
+
 export class RouteElementComposer {
   static async resolveSsrFramePathRoute({
     pathRoute,
@@ -118,29 +124,29 @@ export class RouteElementComposer {
 
   //? Security: a prefetch answers as its click would up to the body: the guards still run and redirect, and a refusal is
   //? judged by the fallback the click would draw, so a path behind a guard reads the same whether or not it exists.
-  static async prefetchVerdict({
-    pathRoute,
-    params,
-    searchParams,
-  }: {
-    pathRoute: PathRoute;
-    params: Record<string, string>;
-    searchParams: Record<string, string | string[]>;
-  }): Promise<"refused" | "admitted" | "unchecked"> {
-    const configChain = await RouteElementComposer.#resolvePageConfigChain(pathRoute);
+  static async prefetchVerdict(
+    match: { pathRoute: PathRoute; params: Record<string, string> } | null,
+    notFoundFallback: AdmittedNotFoundFallback | null,
+    searchParams: Record<string, string | string[]>,
+  ): Promise<"refused" | "admitted" | "unchecked"> {
+    if (!match) {
+      const refused = notFoundFallback && (await RouteElementComposer.#layoutsRefusePrefetch(notFoundFallback.route));
+      return refused ? "refused" : "unchecked";
+    }
+    const configChain = await RouteElementComposer.#resolvePageConfigChain(match.pathRoute);
     if (!configChain.some((config) => config.prefetch === false)) return "unchecked";
     try {
-      await RouteElementComposer.admit({ pathRoute, params, searchParams });
+      await RouteElementComposer.admit({ ...match, searchParams });
     } catch (error) {
       if (RouteElementComposer.#isRedirect(error)) throw error;
-      const fallbackRoute = RouteElementComposer.fallbackRouteOf(pathRoute, error);
-      if (await RouteElementComposer.layoutsRefusePrefetch(fallbackRoute)) return "refused";
+      const fallbackRoute = RouteElementComposer.fallbackRouteOf(match.pathRoute, error);
+      if (await RouteElementComposer.#layoutsRefusePrefetch(fallbackRoute)) return "refused";
       throw error;
     }
     return mergePageConfigs(configChain).prefetch === false ? "refused" : "admitted";
   }
 
-  static async layoutsRefusePrefetch(route: PathRoute | LayoutFallbackRoute): Promise<boolean> {
+  static async #layoutsRefusePrefetch(route: PathRoute | LayoutFallbackRoute): Promise<boolean> {
     return mergePageConfigs(await RouteElementComposer.#resolveLayoutPageConfigChain(route)).prefetch === false;
   }
 
@@ -170,6 +176,15 @@ export class RouteElementComposer {
       if (RouteElementComposer.#isRedirect(error)) throw error;
       return RouteElementComposer.fallbackRouteOf(route, error);
     }
+  }
+
+  static async admitNotFoundFallback(
+    matched: { fallbackRoute: LayoutFallbackRoute; params: Record<string, string> } | null,
+    searchParams: Record<string, string | string[]>,
+  ): Promise<AdmittedNotFoundFallback | null> {
+    if (!matched) return null;
+    const props = { params: matched.params, searchParams };
+    return { ...props, route: await RouteElementComposer.admittedFallbackOf(matched.fallbackRoute, props) };
   }
 
   static #isRedirect(error: unknown): boolean {

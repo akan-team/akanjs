@@ -13,6 +13,8 @@ import {
   type AkanRscPatchDecision,
   type AkanRscPatchMetadata,
   encodeAkanHeadSnapshot,
+  encodeAkanRouterState,
+  encodeAkanRscPatchSegmentPath,
   isAkanHeadSnapshotV1,
 } from "./routeState";
 import type { RscTraceMetadata } from "./ssrTypes";
@@ -40,6 +42,47 @@ export interface RscPatchCacheKeyInput {
   baseEntry: RouteCacheEntry;
   targetRouterState: AkanRouterStateV1;
   patch: AkanRscPatchMetadata;
+}
+
+export interface RscWorkerTraceContext {
+  navId: string;
+  pathname: string;
+  routeId: string;
+  routerStateReason?: string;
+  cacheKey?: string;
+  cacheReason?: string;
+  routeState: AkanRouterStateV1 | null;
+}
+
+function hashRscTraceCacheKey(cacheKey: string): string {
+  let hash = 5381;
+  for (let index = 0; index < cacheKey.length; index += 1) hash = (hash * 33) ^ cacheKey.charCodeAt(index);
+  return (hash >>> 0).toString(36);
+}
+
+export function rscWorkerTraceBaseOf(context: RscWorkerTraceContext) {
+  return (decision: AkanRscPatchDecision, cacheKey = context.cacheKey, routeState = context.routeState) => ({
+    navId: context.navId,
+    pathname: context.pathname,
+    routeId: context.routeId,
+    partial: decision.status,
+    partialReason: decision.reason ?? context.routerStateReason,
+    partialCommonPrefixLength: decision.commonPrefixLength,
+    ...(decision.patch
+      ? {
+          patchStartIndex: decision.patch.patchStartIndex,
+          patchSegmentPath: encodeAkanRscPatchSegmentPath(decision.patch.segmentPath),
+          patchStartSegment: decision.patch.patchStartSegmentKey,
+          patchHeadSafe: decision.patch.headSafe,
+          patchHeadSnapshot: decision.patch.headSnapshot
+            ? (encodeAkanHeadSnapshot(decision.patch.headSnapshot) ?? undefined)
+            : undefined,
+        }
+      : {}),
+    ...(routeState ? { routeState: encodeAkanRouterState(routeState) } : {}),
+    ...(cacheKey ? { cacheKeyHash: hashRscTraceCacheKey(cacheKey) } : {}),
+    ...(context.cacheReason ? { cacheReason: context.cacheReason } : {}),
+  });
 }
 
 export function createRscPatchCacheEntry({ baseEntry, targetRouterState, patch }: RscPatchCacheKeyInput) {

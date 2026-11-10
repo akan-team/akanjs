@@ -3,9 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { AKAN_RSC_PREFETCH_HEADER } from "./routeState";
+import { createRscNavigationStreamResponse } from "./rscResponse";
 import { type RscRenderResult, RscWorker } from "./rscWorkerHost";
 import type { BaseBuildArtifact } from "./types";
-import { createRscNavigationStreamResponse } from "./webRouter";
 
 interface PrefetchWorker {
   answer: (url: string, prefetch: boolean, headers?: Record<string, string>) => Promise<Response>;

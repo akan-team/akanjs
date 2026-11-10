@@ -33,7 +33,6 @@ import {
   cookieJar as requestCookieJar,
   headers as requestHeaders,
 } from "../requestStorage";
-import { StaleReads } from "../staleReads";
 import type { GetSliceMetaObjFromDatabaseSignals } from "../types";
 import { FetchHandle } from "./fetchHandle";
 import { HttpClient } from "./httpClient";
@@ -384,7 +383,8 @@ export class FetchClient {
     Object.entries(this.handler).forEach(([key, handler]) => {
       if (!(key in instance.handler)) instance.handler[key] = handler;
     });
-    instance.#useJwt(jwt ?? (FetchClient.#sameOrigin(instance.origin, this.origin) ? this.jwt : null));
+    instance.jwt = jwt ?? (FetchClient.#sameOrigin(instance.origin, this.origin) ? this.jwt : null);
+    instance.ws.setJwt(instance.jwt);
     if (connect) instance.connect();
     return FetchClient.#makeProxy(instance);
   }
@@ -396,13 +396,10 @@ export class FetchClient {
   }
   setJwt(jwt: string | null) {
     const changed = jwt !== this.jwt;
-    this.#useJwt(jwt);
-    if (changed) StaleReads.mark();
-  }
-  #useJwt(jwt: string | null) {
     this.jwt = jwt;
     this.ws.setJwt(jwt);
-    this.#inflight.detach();
+    if (changed) this.#inflight.forget();
+    else this.#inflight.detach();
   }
   // A socket's URL is fixed, so `FetchPolicy.origin` gets a socket of its own, connected on first use.
   #resolveWs(origin?: string) {
@@ -530,7 +527,7 @@ export class FetchClient {
           const option = argData[argLength] as FetchPolicy | undefined;
           this.#refuseInApp(key);
           this.#refuseInRender(key, option);
-          return this.#writing(() => send(...argData), option);
+          return this.#inflight.writing(() => send(...argData), option?.keepsReads);
         };
       }
       default:
@@ -547,20 +544,6 @@ export class FetchClient {
     if (typeof window === "undefined") return { value: requestQuery(signal), owned: true };
     const inflightKey = `${cacheKey}\n${JSON.stringify([timeout ?? null, retry ?? null])}`;
     return { value: this.#inflight.claim(inflightKey, requestQuery, signal), owned: true };
-  }
-  //? A query sent before a write or a credential change may answer what no longer holds, so later calls send their own.
-  async #writing<T>(write: () => Promise<T>, option?: FetchPolicy) {
-    if (option?.keepsReads) return await write();
-    this.#forgetReads();
-    try {
-      return await write();
-    } finally {
-      this.#forgetReads();
-    }
-  }
-  #forgetReads() {
-    this.#inflight.detach();
-    StaleReads.mark();
   }
   #untilAborted<T>(promise: Promise<T>, signal?: AbortSignal) {
     return AbortSignals.race(promise, signal).catch((error: unknown) => {
@@ -618,7 +601,7 @@ export class FetchClient {
             if (FetchClient.bridged) return;
             const args = argData.slice(0, msgArgLength);
             const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
-            if (!fetchPolicy?.keepsReads) this.#forgetReads();
+            if (!fetchPolicy?.keepsReads) this.#inflight.forget();
             this.#resolveWs(fetchPolicy?.origin).emit(key, data);
           };
         });
@@ -880,7 +863,7 @@ export class FetchClient {
       return ((fileList: FileList | File[], parentId?: string, option?: FetchPolicy) => {
         this.#refuseInApp(names.addModelFiles);
         this.#refuseInRender(names.addModelFiles, option);
-        return this.#writing(() => upload(fileList, parentId, option), option);
+        return this.#inflight.writing(() => upload(fileList, parentId, option), option?.keepsReads);
       }) as FetchHandler;
     });
   }
