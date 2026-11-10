@@ -263,12 +263,9 @@ export class ContextRunner extends runner("context") {
       const workflow = stringArg(args, "workflow");
       const inputs = workflowInputsArg(args);
       const planPath = typeof args.out === "string" && args.out ? args.out : defaultWorkflowPlanPath(workflow, inputs);
+      const out = workflowArtifactPath(workspace, planPath);
       const plan = parseJsonOutput(
-        await new WorkflowRunner().plan(workflow, inputs, {
-          format: "json",
-          out: workflowArtifactPath(workspace, planPath),
-          workspace,
-        }),
+        await new WorkflowRunner().plan(workflow, inputs, { format: "json", out, workspace }),
       );
       return {
         ...(plan as Record<string, unknown>),
