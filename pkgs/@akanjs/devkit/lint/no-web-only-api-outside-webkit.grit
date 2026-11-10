@@ -13,7 +13,7 @@ or {
     $access <: or { `navigator.share`, `navigator.canShare` },
     register_diagnostic(
       span = $access,
-      message = "Android's WebView has no Web Share, so this does nothing in the app. Move it into a `webkit/` hook that branches on `isNativeApp()` from `akanjs/client/native`; the runtime's `share` plugin is the app side.",
+      message = "Android's WebView has no Web Share, so this does nothing in the app. Move it into a `webkit/` hook that branches on `isNativeApp()` from `akanjs/client`; the runtime's `share` plugin is the app side.",
       severity = "warn"
     )
   },
@@ -21,7 +21,7 @@ or {
     $access <: or { `navigator.serviceWorker`, `Notification.requestPermission`, `Notification.permission` },
     register_diagnostic(
       span = $access,
-      message = "A native app page has no service worker or Notification API. Keep this in a `webkit/` hook behind `isNativeApp()`; native push is `push` from `akanjs/client/native`, and `usePushNotification` in libs/util wraps both.",
+      message = "A native app page has no service worker or Notification API. Keep this in a `webkit/` hook behind `isNativeApp()`; native push is `push` from `akanjs/client/native/push`, and `usePushNotification` in libs/util wraps both.",
       severity = "warn"
     )
   },
@@ -37,7 +37,7 @@ or {
     $access <: `navigator.vibrate`,
     register_diagnostic(
       span = $access,
-      message = "iOS has no `navigator.vibrate`. Use `haptics` from `akanjs/client/native` in a `webkit/` hook.",
+      message = "iOS has no `navigator.vibrate`. Use `haptics` from `akanjs/client/native/haptics` in a `webkit/` hook.",
       severity = "warn"
     )
   }
