@@ -42,7 +42,7 @@ Reports where the workspace drifts from Akan conventions, such as stray files or
 
 - --ios (Boolean, default false): Checks only the native config instead, for a placeholder bundle id Apple has likely claimed.
 
-- Status: `failed` when any diagnostic is an error, `passed` otherwise.
+- Status: `failed` when any diagnostic is an error, `passed` otherwise. A `failed` run exits with code 1, so a script or CI step fails on it; warnings never change the exit code.
 
 - Also printed: Generated-file freshness, a repair command per problem, and the validation commands.
 
@@ -182,7 +182,7 @@ Meaning
 
 - `mobile-appid-placeholder` — warning (`--ios` only) — A native target still uses a placeholder bundle id.
 
-**doctor never fails the process.** It exits with code 0 even when the status is `failed`, so a CI gate must read `status` from `--format json`.
+**Warnings never fail the process.** doctor exits with code 1 only when the status is `failed`; run it with `--strict` so a CI gate also fails on recommended conventions.
 
 MCP Tools And Resources
 

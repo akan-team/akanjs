@@ -13,7 +13,7 @@ export class PackageCommand extends command("package", [PackageScript], ({ publi
     .exec(async function (name, workspace) {
       await this.packageScript.createPackage(workspace, name.toLowerCase().replace(/ /g, "-"));
     }),
-  removePackage: target({ desc: "Remove a package from the workspace" })
+  removePackage: target({ desc: "Remove a package from the workspace", destructive: true })
     .with(Pkg)
     .exec(async function (pkg) {
       await this.packageScript.removePackage(pkg);
