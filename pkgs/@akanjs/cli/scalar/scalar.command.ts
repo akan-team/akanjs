@@ -14,7 +14,7 @@ export class ScalarCommand extends command("scalar", [ScalarScript], ({ public: 
       const report = await this.scalarScript.createScalar(sys, name);
       Logger.rawLog(renderPrimitiveReport(report, format as PrimitiveFormat));
     }),
-  removeScalar: target({ desc: "Remove a scalar type from an app or library" })
+  removeScalar: target({ desc: "Remove a scalar type from an app or library", destructive: true })
     .arg("scalarName", String, { desc: "name of scalar" })
     .with(Sys)
     .exec(async function (scalarName, sys) {
