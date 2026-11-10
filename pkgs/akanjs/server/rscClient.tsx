@@ -15,6 +15,14 @@ import {
   isAkanRscPartialCommitEnabled,
   readAkanRouterStateResponseHeader,
 } from "./routeState";
+import {
+  type ChunkNavigation,
+  claimChunkReload,
+  isBuildBundle,
+  isLinkFailure,
+  navigationOfChunk,
+  recordChunksOf,
+} from "./rscClientChunks";
 import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
 import { validateRscPatchForGuardedCommit } from "./rscClientPatch";
 import {
@@ -50,6 +58,7 @@ declare global {
   var __RSC_CLOSE__: (() => void) | undefined;
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
   var __AKAN_DICT_URL__: string | undefined;
+  var __webpack_chunk_load__: ((chunkId: string) => Promise<unknown>) | undefined;
 }
 
 function decodeInlineRscChunk([type, data]: InlineRscChunk): Uint8Array {
@@ -142,11 +151,18 @@ function createRscThenable(stream: ReadableStream<Uint8Array>): RscThenable {
   return trackRscThenable(createFromReadableStream<ReactNode>(stream) as RscThenable);
 }
 
+//? A page restored from the back-forward cache outlived the document load its fallback started.
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) documentNavigationFallbackInFlight = false;
+});
+
 function hardNavigateAfterRscFailure(target: string, replace = false, error?: unknown): void {
   if (documentNavigationFallbackInFlight) return;
   documentNavigationFallbackInFlight = true;
   console.warn(`[rscClient] RSC navigation failed, falling back to document navigation: ${String(error)}`);
-  if (replace) window.location.replace(target);
+  //? `replace` or `assign` to the address the tab already shows with a `#fragment` only scrolls; it loads nothing.
+  if (normalizeHref(target) === normalizeHref(window.location.href)) window.location.reload();
+  else if (replace) window.location.replace(target);
   else window.location.assign(target);
 }
 
@@ -241,6 +257,12 @@ async function fetchRsc(
   } = {},
 ): Promise<RscFetchResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
+  const navigation =
+    options.navId === undefined
+      ? undefined
+      : { navId: options.navId, href, replace: options.replaceOnRedirect ?? (() => true) };
+  const thenableOf = (stream: ReadableStream<Uint8Array>) =>
+    createRscThenable(navigation ? recordChunksOf(stream, navigation) : stream);
   const responseResult = await fetchRscNavigationResponse(href, {
     buildId: options.buildId,
     currentRouterState,
@@ -262,7 +284,7 @@ async function fetchRsc(
         response: responseResult.response,
         patch: responseResult.patch,
         href,
-        createThenable: createRscThenable,
+        createThenable: thenableOf,
         navId: options.navId,
         getCurrentNavId: () => navigationSeq,
         getHeadSnapshotPatchFailureReason: getAkanHeadSnapshotPatchFailureReason,
@@ -299,7 +321,7 @@ async function fetchRsc(
   const guardedStream = guardRscRedirectRows(stream, {
     onRedirect: handleRedirect,
   });
-  const thenable = createRscThenable(guardedStream);
+  const thenable = thenableOf(guardedStream);
   const node = createRscNavigationCacheNode({
     href,
     thenable,
@@ -340,6 +362,7 @@ let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
 let pendingRequest: { navId: number; controller: AbortController; target: string } | null = null;
+let latestPageNavId = 0;
 let cachedAuthCookies = readAuthCookies();
 
 //? Only a request whose page has not committed is cut: a committed one may still stream the Suspense content on screen.
@@ -349,7 +372,21 @@ function supersedeNavigation(): number {
   return ++navigationSeq;
 }
 
+//? A page navigation started after a fallback supersedes its document load, or follows a `beforeunload` that kept the
+//? page; a refresh does not, since a timer can start one while that document is still loading.
+function supersedeForPageNavigation(): number {
+  documentNavigationFallbackInFlight = false;
+  return supersedeNavigation();
+}
+
+let refreshNavId: number | undefined;
+function supersedeForRefresh(): number {
+  refreshNavId = supersedeNavigation();
+  return refreshNavId;
+}
+
 function requestSignalOf(navId: number, target: string): AbortSignal {
+  latestPageNavId = navId;
   const controller = new AbortController();
   pendingRequest = { navId, controller, target: pageKeyOf(target) };
   return controller.signal;
@@ -357,6 +394,29 @@ function requestSignalOf(navId: number, target: string): AbortSignal {
 
 function settleRequestOf(navId: number): void {
   if (pendingRequest?.navId === navId) pendingRequest = null;
+}
+
+//? A replica a rolling deploy has not reached can send a page whose chunks import a name this document's narrowed
+//? vendors lack, and RSDW keeps the failed load; one reload per chunk keeps a chunk that always fails from looping.
+const loadChunk = globalThis.__webpack_chunk_load__;
+if (loadChunk)
+  globalThis.__webpack_chunk_load__ = (chunkId) => {
+    const loading = loadChunk(chunkId);
+    const navigation = navigationOfChunk(chunkId);
+    if (navigation) loading.catch((error: unknown) => loadDocumentForChunkFailure(chunkId, navigation, error));
+    return loading;
+  };
+
+function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigation, error: unknown): void {
+  if (documentNavigationFallbackInFlight || !isBuildBundle()) return;
+  //? A refresh re-renders the page on screen even when a shallow entry moved the URL's query off its rendered href.
+  const showsItsPage = navigation.navId === refreshNavId || pageKeyOf(renderedHref) === pageKeyOf(navigation.href);
+  const pending = pendingRequest?.navId === navigation.navId && !showsItsPage;
+  const onScreen = navigation.navId === latestPageNavId && showsItsPage;
+  if (!pending && !(onScreen && navigator.onLine && isLinkFailure(error))) return;
+  if (!claimChunkReload(chunkId)) return;
+  if (pending) hardNavigateAfterRscFailure(navigation.href, navigation.replace(), error);
+  else hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
 }
 
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
@@ -449,7 +509,7 @@ function Root(): ReactNode {
   };
 
   globalThis.__AKAN_RSC_REFRESH__ = async (options = {}) => {
-    const navId = supersedeNavigation();
+    const navId = supersedeForRefresh();
     const target = normalizeHref(window.location.href);
     rscCache.clear();
     rscPatchCache.clear();
@@ -512,7 +572,7 @@ function Root(): ReactNode {
     }
     forgetPagesOfAnotherAccount();
     rscPrefetchCache.prune();
-    const navId = supersedeNavigation();
+    const navId = supersedeForPageNavigation();
     const target = normalizeHref(href);
     const signal = requestSignalOf(navId, target);
     //? A redirect replaces the entry this navigation is on, which a push does not write until its page commits.

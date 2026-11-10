@@ -9,6 +9,8 @@ export const bundleDefine = (app: App, command: "build" | "start", renderEnv: "s
   return {
     "process.env.NODE_ENV": JSON.stringify(nodeEnv),
     "process.env.AKAN_PUBLIC_RENDER_ENV": JSON.stringify(renderEnv),
+    //? NODE_ENV is production under `NODE_ENV=production akan start` too; this says the page's vendors were narrowed.
+    "process.env.AKAN_BUNDLE_COMMAND": JSON.stringify(command),
     //? Sorted: Windows hands a child its environment sorted, while keys the config sets at runtime trail the parent's,
     //? and the dev registries hash this object to tell a worker's build from the builder's.
     ...Object.fromEntries(
