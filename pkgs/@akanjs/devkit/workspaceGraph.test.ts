@@ -1,6 +1,15 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { AkanChangeMap, AkanGraphEdge, AkanGraphNode } from "@akanjs/language";
+import type { Workspace } from "./commandDecorators";
 import { WorkspaceGraph } from "./workspaceGraph";
+
+const roots: string[] = [];
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
 
 const node = (id: string, owner: string | null, change?: AkanGraphNode["change"]): AkanGraphNode => ({
   id,
@@ -13,10 +22,15 @@ const node = (id: string, owner: string | null, change?: AkanGraphNode["change"]
   at: null,
   ...(change ? { change } : {}),
 });
-const edge = (from: string, to: string, change?: AkanGraphEdge["change"]): AkanGraphEdge => ({
+const edge = (
+  from: string,
+  to: string,
+  change?: AkanGraphEdge["change"],
+  kind: AkanGraphEdge["kind"] = "calls",
+): AkanGraphEdge => ({
   from,
   to,
-  kind: "calls",
+  kind,
   label: null,
   count: 1,
   at: null,
@@ -102,6 +116,60 @@ describe("WorkspaceGraph.answer", () => {
   });
 });
 
+describe("WorkspaceGraph.answer past the node limit", () => {
+  const changeMapOf = (nodes: AkanGraphNode[], edges: AkanGraphEdge[]): AkanChangeMap => ({
+    version: 1,
+    nodes,
+    edges,
+    since: "0123456789ab",
+    summary: { added: 0, removed: 0, changed: nodes.filter((item) => item.change).length },
+    unmapped: [],
+  });
+
+  it("drops the layout that only wraps a changed route, and keeps the route", () => {
+    const fillers = Array.from({ length: 599 }, (_, idx) => node(`method:apps/demo:memo.m${idx}`, "apps/demo"));
+    const answer = WorkspaceGraph.answer(
+      {
+        version: 1,
+        nodes: [
+          node("layout:apps/demo:/", "apps/demo"),
+          node("route:apps/demo:/memo", "apps/demo", "changed"),
+          ...fillers,
+        ],
+        edges: [edge("layout:apps/demo:/", "route:apps/demo:/memo", undefined, "wraps")],
+      },
+      {},
+    );
+    if ("diagnostics" in answer) throw new Error("expected an answer");
+    expect(answer.nodes.filter((item) => item.kind !== "method").map(({ id }) => id)).toEqual([
+      "route:apps/demo:/memo",
+    ]);
+    expect(answer.edges).toEqual([]);
+  });
+
+  it("answers a Change Map whole once its unchanged pages are set aside", () => {
+    const routes = Array.from({ length: 10 }, (_, idx) => node(`route:apps/demo:/r${idx}`, "apps/demo"));
+    const changed = Array.from({ length: 595 }, (_, idx) =>
+      node(`method:apps/demo:memo.m${idx}`, "apps/demo", "changed"),
+    );
+    const answer = WorkspaceGraph.answerChanges(changeMapOf([...routes, ...changed], []), {});
+    if ("diagnostics" in answer) throw new Error("expected an answer");
+    expect(answer.nodes).toHaveLength(595);
+    expect(answer.summary).toEqual({ added: 0, removed: 0, changed: 595 });
+  });
+
+  it("counts the changed pages it keeps when it names the owners to scope to", () => {
+    const routes = Array.from({ length: 650 }, (_, idx) => node(`route:apps/demo:/r${idx}`, "apps/demo", "changed"));
+    const answer = WorkspaceGraph.answerChanges(
+      changeMapOf([...routes, node("method:libs/shared:file.touch", "libs/shared", "changed")], []),
+      {},
+    );
+    if (!("owners" in answer)) throw new Error("expected a scope request");
+    expect(answer.diagnostics.map(({ message }) => message).join("\n")).toContain("651 nodes");
+    expect(answer.owners).toEqual({ "apps/demo": 650, "libs/shared": 1 });
+  });
+});
+
 describe("WorkspaceGraph.scope", () => {
   it("keeps a lib's guard without pulling in every app endpoint that uses it", () => {
     const guard = "guard:libs/shared:Admin";
@@ -117,5 +185,50 @@ describe("WorkspaceGraph.scope", () => {
     );
     expect(scoped.nodes.map(({ id }) => id)).toEqual([guard, own]);
     expect(scoped.edges).toEqual([edge(own, guard)]);
+  });
+});
+
+describe("WorkspaceGraph.changesAt", () => {
+  it("maps an edit to a factory in one lib onto the guards it makes in another, and lists no file as unmapped", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-graph-"));
+    roots.push(root);
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(
+        ["git", "-c", "user.name=akan", "-c", "user.email=akan@example.com", "-c", "commit.gpgsign=false", ...args],
+        { cwd: root, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } },
+      );
+      expect(result.exitCode).toBe(0);
+      return result.stdout.toString().trim();
+    };
+    const write = async (file: string, text: string) => {
+      await mkdir(path.dirname(path.join(root, file)), { recursive: true });
+      await writeFile(path.join(root, file), text);
+    };
+    const factory = (body: string) => `import type { Guard } from "akanjs/signal";
+export const resourceGuard = (field: string) =>
+  class implements Guard {
+    canPass() {
+      return ${body};
+    }
+  };
+`;
+    git("init", "-q", "-b", "main");
+    await write("libs/util/srvkit/resource.ts", factory("!!field"));
+    await write(
+      "apps/demo/srvkit/guards.ts",
+      `import { resourceGuard } from "@libs/util/srvkit";\nexport const Member = resourceGuard("member");\n`,
+    );
+    git("add", "-A");
+    git("commit", "-q", "--no-verify", "-m", "base");
+    await write("libs/util/srvkit/resource.ts", factory("field.length > 0"));
+    const changes = await WorkspaceGraph.changesAt(
+      { workspaceRoot: root } as unknown as Workspace,
+      git("rev-parse", "HEAD"),
+    );
+    expect(changes.nodes.filter((node) => node.change).map(({ id, change }) => `${change} ${id}`)).toEqual([
+      "changed guard:apps/demo:Member",
+    ]);
+    expect(changes.unmapped).toEqual([]);
+    expect(changes.nodes.some((node) => "sources" in node)).toBe(false);
   });
 });
