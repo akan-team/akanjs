@@ -656,6 +656,78 @@ describe("CloudRunner", () => {
     expect(recorder.names()).not.toContain("workspace.spawn");
   });
 
+  const releaseSha = "0123456789abcdef0123456789abcdef01234567";
+  const gitStatus =
+    "git status --porcelain -- pkgs/@akanjs/vscode pkgs/@akanjs/language :(exclude)pkgs/@akanjs/language/package.json :(exclude)pkgs/@akanjs/language/CHANGELOG.md pkgs/akanjs/common/akanNames.ts pkgs/akanjs/common/akanGraph.ts pkgs/akanjs/common/capitalize.ts apps/akan/public/icon-512x512.png bun.lock";
+  const later =
+    "Commit and push the release to main, then run from that commit `gh workflow run vscode-publish.yml --repo akan-team/akanjs --ref main -f sha=$(git rev-parse HEAD)`";
+  const releaseTo = async (answers: Record<string, string | Error>) => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = registryOf({
+      akanjs: { tags: { latest: "3.1.1" }, versions: ["3.1.1"] },
+      "@akanjs/cli": { tags: { latest: "3.1.1" }, versions: ["3.1.1"] },
+    });
+    const recorder = createCallRecorder();
+    const spawn = async (command: string, args: string[], ...rest: unknown[]) => {
+      recorder.record("workspace.spawn", command, args, ...rest);
+      const answer = answers[`${command} ${args[0]}`] ?? "";
+      if (answer instanceof Error) throw answer;
+      return answer;
+    };
+    const { workspace } = createVersionedWorkspace("3.1.2", recorder, { spawn });
+    const warn = spyOn(Logger, "warn").mockImplementation(() => undefined);
+    try {
+      await new CloudRunner().deployAkan(workspace as never, ["akanjs", "@akanjs/cli"], {
+        confirmPublish: false,
+        npmLogin: false,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const spawned = recorder.calls
+      .filter((call) => call.name === "workspace.spawn" && call.args[0] !== "npm")
+      .map((call) => [call.args[0], ...(call.args[1] as string[])].join(" "));
+    return { spawned, warnings: warn.mock.calls.map(([message]) => message) };
+  };
+
+  test("an npm release asks CI to publish the editor extension from the commit it shipped", async () => {
+    const { spawned, warnings } = await releaseTo({ "git rev-parse": `${releaseSha}\n`, "gh api": "ahead\n" });
+
+    expect(spawned).toEqual([
+      gitStatus,
+      "git rev-parse HEAD",
+      `gh api repos/akan-team/akanjs/compare/${releaseSha}...main --jq .status`,
+      `gh workflow run vscode-publish.yml --repo akan-team/akanjs --ref main -f sha=${releaseSha}`,
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  test("an npm release leaves the editor extension to a later dispatch when its commit is not on main", async () => {
+    const { spawned, warnings } = await releaseTo({ "git rev-parse": `${releaseSha}\n`, "gh api": "behind\n" });
+
+    expect(spawned.some((line) => line.startsWith("gh workflow run"))).toBe(false);
+    expect(warnings).toEqual([`The editor extension was not released: 012345678 is not on main. ${later}`]);
+  });
+
+  test("an npm release only warns about the editor extension when gh cannot reach GitHub", async () => {
+    const { spawned, warnings } = await releaseTo({
+      "git rev-parse": `${releaseSha}\n`,
+      "gh api": new Error("gh: Not Found (HTTP 404)"),
+    });
+
+    expect(spawned.some((line) => line.startsWith("gh workflow run"))).toBe(false);
+    expect(warnings).toEqual([`The editor extension was not released: gh: Not Found (HTTP 404). ${later}`]);
+  });
+
+  test("an npm release does not release the editor extension while what it bundles is uncommitted", async () => {
+    const { spawned, warnings } = await releaseTo({ "git status": " M pkgs/@akanjs/vscode/package.json\n" });
+
+    expect(spawned).toEqual([gitStatus]);
+    expect(warnings).toEqual([
+      `The editor extension was not released: files the extension bundles have uncommitted changes, such as the version \`changeset version\` wrote. ${later}`,
+    ]);
+  });
+
   test("--prerelease takes only a lowercase identifier other than latest", async () => {
     const originalFetch = globalThis.fetch;
     const fetchMock = mock(async () => new Response("{}"));
