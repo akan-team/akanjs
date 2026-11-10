@@ -66,6 +66,11 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
 - **A subscribe the client leaves before it finishes joins nothing.** When an `unsubscribe` for the room, or the
   socket's close, arrives while the subscribe is still running, the subscribe answers `subscribe: false` and runs its
   `unsubscribe` cleanup (and its `disconnect` one when the socket closed) instead of joining the room.
+- **A send from the browser drops the reads it may have made stale.** A mutation, an upload or a `message` sent
+  through `fetch` ends the sharing of queries already in flight and drops the pages a `Link` prefetched, so the next
+  read asks again; only this tab's own sends count. A send that changes nothing anyone reads back — typing status, a
+  cursor move — passes `{ keepsReads: true }` after its arguments (`fetch.typing(chatId, { keepsReads: true })`), or
+  a chatty endpoint keeps every prefetch from surviving. A read receipt changes an unread count and passes nothing.
 
 ## Writing A Guard
 

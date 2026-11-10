@@ -100,7 +100,7 @@ Method
 
 - addNavigationGuard(guard): Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover. A page uses `useNavigationGuard`.
 
-- prefetch(href, { priority }): Loads a route's page before the click. Built SSR pages only; `priority: "low"` waits behind hovered links. Returns a call that withdraws it while it still waits.
+- prefetch(href, { priority }): Loads a route's page before the click. Built SSR pages only; `priority: "low"` waits behind hovered links. Returns a call that withdraws it while it still waits. A write this tab sends through `fetch` drops what was prefetched, unless it passes `{ keepsReads: true }`.
 
 A store action that opens the record it just created:
 
