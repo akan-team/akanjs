@@ -6,6 +6,8 @@ A page whose render has a side effect, such as counting a view, can now refuse e
 
 A page prefetched before this tab's own write is no longer shown as current: a mutation, a file upload, a socket message sent or a changed credential drops every prefetched page, as it already ended in-flight query sharing. Only this tab's own writes through `fetch` count: a write from another tab or device, or a server push, leaves a prefetched page as it is for the rest of its 15-second lifetime, and a socket message drops them as it is sent, not once the server has acted on it. A write that changes nothing a page reads, such as a typing notice, passes `{ keepsReads: true }` to keep both its in-flight queries and its prefetched pages.
 
+In production, an RSC navigation's answer no longer carries the headers that explain a render to its developer (`X-Akan-Rsc-Route`, `-Pathname`, `-Nav-Id`, `-Cache`, `-Cache-Reason`, `-Cache-Key`, `-Partial-Reason`, `-Partial-Common-Prefix`, and `X-Akan-Rsc-Partial` other than a patch's): a missing path carried them where one a guard refused did not, telling a visitor which paths exist behind the guard. `akan start` still sends them.
+
 Link prefetch fixes:
 
 - A link's focus prefetches it after a key press, and until the first pointer press on the page, so focus moved by a screen reader's cursor, switch access or voice control still does; the focus a mouse press, a tap or a pen tap gives a link does not, until the next key press.

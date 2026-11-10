@@ -620,6 +620,41 @@ describe("WebRouter dev mode selection", () => {
   test("stays in production mode when no command claims otherwise", async () => {
     await expect(devRoutes()).resolves.not.toContain("/_akan/hmr");
   });
+
+  test("names an RSC navigation's route in its headers under `akan start` only", async () => {
+    const tracingWorker = (): FakeRscWorker => ({
+      ...createFakeRscWorker(),
+      async renderWithMeta(req) {
+        this.renderCalls.push(req);
+        return {
+          type: "stream",
+          stream: streamOf("0:null\n"),
+          trace: { pathname: "/en/docs", routeId: "/:lang/docs", cache: "miss", partial: "full" },
+          lateControl: Promise.resolve(null),
+          cacheState: Promise.resolve({ cacheable: false }),
+          cancel: () => {},
+        };
+      },
+    });
+    const routeHeaderOf = async (commandType?: string) => {
+      const originalSend = process.send;
+      process.send = ((): boolean => true) as typeof process.send;
+      try {
+        return await withFullSsrCacheHarness(
+          async ({ renderEnvRoutes }) => {
+            const res = await renderEnvRoutes["/__rsc"](new Request("https://example.test/__rsc?url=%2Fen%2Fdocs"));
+            return [res.headers.get("X-Akan-Rsc-Route"), res.headers.get("X-Akan-Rsc-Partial")];
+          },
+          { nodeEnv: "production", commandType, worker: tracingWorker() },
+        );
+      } finally {
+        process.send = originalSend;
+      }
+    };
+
+    expect(await routeHeaderOf("start")).toEqual(["/:lang/docs", "full"]);
+    expect(await routeHeaderOf()).toEqual([null, null]);
+  });
 });
 
 describe("WebRouter dev route builds", () => {
