@@ -5,12 +5,14 @@ import { getOrSetupSignalTestFetch } from "akanjs/test";
 import type { fetch as minimalFetch } from "../lib/useServer";
 import type memoPageDefinition from "../page/(home)/memo";
 import type memoViewPageDefinition from "../page/(home)/memo/[memoId]";
+import type tripsPageDefinition from "../page/(tab)/trips";
 import { LocalOrEdge } from "./guards";
 
 describe("LocalOrEdge", () => {
   let fetch: typeof minimalFetch;
   let memoPage: typeof memoPageDefinition;
   let memoViewPage: typeof memoViewPageDefinition;
+  let tripsPage: typeof tripsPageDefinition;
   let memoId: string;
 
   const guardsOf = (page: typeof memoPage | typeof memoViewPage, params: Record<string, string>) => {
@@ -21,11 +23,23 @@ describe("LocalOrEdge", () => {
     });
   };
 
+  const linksOf = (node: unknown): string[] => {
+    if (Array.isArray(node)) return node.flatMap(linksOf);
+    if (typeof node !== "object" || node === null || !("props" in node)) return [];
+    const { href, children } = node.props as { href?: string; children?: unknown };
+    return [...(href ? [href] : []), ...linksOf(children)];
+  };
+  const tripsLinks = async () => {
+    const { default: render } = tripsPage.toRouteModule();
+    return linksOf(await render?.({ params: { lang: "en" }, searchParams: {} }));
+  };
+
   beforeAll(async () => {
     fetch = await getOrSetupSignalTestFetch<typeof minimalFetch>();
     //? Not a top-level import: the client barrel builds its fetch on import, and getEnv() throws before the harness runs.
     memoPage = (await import("../page/(home)/memo")).default;
     memoViewPage = (await import("../page/(home)/memo/[memoId]")).default;
+    tripsPage = (await import("../page/(tab)/trips")).default;
     memoId = (await fetch.createMemo({ name: "Check-in at 3pm" })).id;
   });
 
@@ -44,5 +58,13 @@ describe("LocalOrEdge", () => {
     await expect(fetch.memoInsightInPublic()).rejects.toThrow();
     await expect(guardsOf(memoPage, {})).rejects.toBeInstanceOf(AkanNotFoundError);
     await expect(guardsOf(memoViewPage, { memoId })).rejects.toBeInstanceOf(AkanNotFoundError);
+  });
+
+  it("links the trips page to the trip notes only on a server it admits, without being refused", async () => {
+    expect(await fetch.isMemoOpen()).toBe(true);
+    expect(await tripsLinks()).toContain("/memo");
+    spyOn(LocalOrEdge.prototype, "canPass").mockReturnValue(false);
+    expect(await fetch.isMemoOpen()).toBe(false);
+    expect(await tripsLinks()).toEqual(["/trips/detail"]);
   });
 });

@@ -19,6 +19,10 @@ export const dictionary = modelDictionary(["en", "ko"])
       .arg((t) => ({})),
   }))
   .endpoint<MemoEndpoint>((fn) => ({
+    isMemoOpen: fn(["Is Memo Open", "메모 사용 가능 여부"]).desc([
+      "Whether this server answers the memo endpoints",
+      "이 서버가 메모 엔드포인트에 응답하는지 여부",
+    ]),
     attachMemoImage: fn(["Attach Memo Image", "메모 이미지 붙이기"])
       .desc(["Stores an image and attaches it to the memo", "이미지를 저장하고 메모에 붙입니다"])
       .arg((t) => ({
