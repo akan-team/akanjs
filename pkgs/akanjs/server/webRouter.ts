@@ -1,29 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { AkanWebConfig } from "akanjs";
-import {
-  type AkanI18nConfig,
-  AppHosts,
-  CookieJar,
-  DEFAULT_AKAN_I18N,
-  getBasePathFromPathname,
-  LocalePath,
-  Logger,
-  type LogRecord,
-  parseAkanI18nEnv,
-  RequestLocale,
-  resolveSubRouteHosts,
-} from "akanjs/common";
-import { type AkanRequestStore, createRequestStore } from "akanjs/fetch";
+import { AppHosts, Logger, type LogRecord, resolveSubRouteHosts } from "akanjs/common";
 import type { AkanMetricsReport } from "akanjs/service";
 import { PageDefinition } from "../client/route/PageDefinition";
-import { type Dictionary, TranslatorState } from "../client/translatorState";
-import { getWebManifestBasePath } from "../client/webManifest";
 import type { PagePromptSource } from "../signal/mcp/pagePrompt";
-import { SignalContext } from "../signal/signalContext";
 import {
   type BuilderRpc,
-  type MergedManifest,
   ModulePreloadPlan,
   RouteClientCache,
   type RouteSeedIndex,
@@ -31,186 +14,27 @@ import {
   type RoutesManifest,
   RoutesManifestStore,
 } from "./artifact";
-import { type AssetHeaderOptions, applySecurityHeaders, assetHeaders, strictTransportSecurity } from "./assetHeaders";
-import {
-  getClientFacingOrigin,
-  hasRouteCacheInvalidationScope,
-  LruTtlCache,
-  parsePositiveInt,
-  type RouteCacheEntry,
-  type RouteCacheInvalidation,
-  type RouteCacheRenderState,
-  resolveHtmlCacheControl,
-  resolvePublicRouteCacheEntryDecision,
-  resolveRouteCacheStoreTtl,
-  shouldInvalidateRouteCacheEntry,
-  shouldStoreRouteCache,
-} from "./cachePolicy";
-import {
-  type EncodedBody,
-  encodeBody,
-  encodedBodyResponse,
-  encodedFileResponse,
-  isCompressibleContentType,
-  matchesIfNoneMatch,
-  varyOnEncoding,
-} from "./contentEncoding";
-import { isCrawlerUserAgent } from "./crawler";
-import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
-import { CSR_DEV_ROUTE_PREFIX, resolveDevCsrMode, SSR_DEV_DIRNAME, SSR_DEV_ROUTE_PREFIX } from "./hmr/csrDevManifest";
+import type { RouteCacheInvalidation } from "./cachePolicy";
+import { resolveDevCsrMode, SSR_DEV_DIRNAME, SSR_DEV_ROUTE_PREFIX } from "./hmr/csrDevManifest";
 import { CsrDevShell } from "./hmr/csrDevShell";
 import { DevHmrController } from "./hmr/devHmrController";
-import { SsrDevShim } from "./hmr/ssrDevShim";
 import type { HmrWsData, HmrWsHub } from "./hmr/wsHub";
+import { HtmlResultCache } from "./htmlResultCache";
 import { ImageOptimizer } from "./imageOptimizer";
 import type { McpAppShellSource } from "./mcp/McpApps";
-import { normalizeHost, resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
-import { createDefaultRobotsTxt } from "./robots";
-import { AKAN_RSC_DICTIONARY_HEADER, AKAN_RSC_IMPORT_MAP_HEADER, AKAN_RSC_PREFETCH_HEADER } from "./routeState";
-import {
-  createRscNavigationStreamResponse,
-  createRscNotFoundFallbackResponse,
-  createRscRedirectResponse,
-} from "./rscResponse";
-import { type RscRedirectStatus, RscWorker, type RscWorkerStatus } from "./rscWorkerHost";
+import { resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
+import { RscWorker, type RscWorkerStatus } from "./rscWorkerHost";
 import { SessionRefresh } from "./sessionRefresh";
-import { createDefaultSitemapXml, getSitemapBasePath } from "./sitemap";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
-import type { SsrManifest } from "./ssrTypes";
-import { resolveStaticPath, staysInTree } from "./staticPath";
-import { getPathnameLocale } from "./systemPageDocument";
-import { createSubRouteIndexResponse, createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
 import { type BaseBuildArtifact, type HttpRoutes, type RenderState, resolveWebConfig } from "./types";
-
-const CLIENT_CLOSED_REQUEST_STATUS = 499;
-export const DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES = 2 * 1024 * 1024;
-/** Well above any sensible TTL: this only has to reclaim a cache nobody is reading, not track expiry closely. */
-const ROUTE_CACHE_SWEEP_INTERVAL_MS = 60_000;
-const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
-const ANDROID_ASSET_LINKS_PATH = "/.well-known/assetlinks.json";
-
-// A render's redirect follows the request's cookies, so no cache between here and the browser may keep it.
-//? `req.url` names the host this server was dialed as, not the one a tunnel or proxy caller used, so a same-origin
-//? target goes out relative. A path starting `//` stays absolute: relative, a browser would read it as a host.
-function createDocumentRedirectResponse(location: string, requestUrl: URL, status: RscRedirectStatus): Response {
-  const target = new URL(location, requestUrl.origin);
-  const sameOrigin = target.origin === requestUrl.origin && !target.pathname.startsWith("//");
-  const href = sameOrigin ? `${target.pathname}${target.search}${target.hash}` : target.href;
-  return new Response(null, { status, headers: { Location: href, "Cache-Control": "no-store" } });
-}
-
-export function cacheHtmlWhileStreaming(
-  stream: ReadableStream<Uint8Array>,
-  onComplete: (html: string) => void,
-  options: {
-    shouldCache?: () => boolean | Promise<boolean>;
-    maxBodyBytes?: number | null;
-    onSkip?: (reason: "body-too-large" | "store-skip") => void;
-  } = {},
-): ReadableStream<Uint8Array> {
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  let exceededMaxBodyBytes = false;
-  const decoder = new TextDecoder();
-
-  return stream.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        if (!exceededMaxBodyBytes) {
-          byteLength += chunk.byteLength;
-          if (options.maxBodyBytes && byteLength > options.maxBodyBytes) {
-            exceededMaxBodyBytes = true;
-            chunks.length = 0;
-          } else {
-            chunks.push(chunk.slice());
-          }
-        }
-        controller.enqueue(chunk);
-      },
-      async flush() {
-        if (exceededMaxBodyBytes) {
-          options.onSkip?.("body-too-large");
-          return;
-        }
-        const body = new Uint8Array(byteLength);
-        let offset = 0;
-        for (const chunk of chunks) {
-          body.set(chunk, offset);
-          offset += chunk.byteLength;
-        }
-        try {
-          if (options.shouldCache && !(await options.shouldCache())) {
-            options.onSkip?.("store-skip");
-            return;
-          }
-          onComplete(decoder.decode(body));
-        } catch {
-          // Cache writes must not fail the already completed response stream.
-        }
-      },
-    }),
-  );
-}
-
-//? React reports a cancel's reason as an error of every boundary still pending; an AbortError is the one the renderer
-//? does not log as a failed render.
-export function cancelStreamForHeadResponse(stream: ReadableStream<Uint8Array>, message: string): void {
-  void stream.cancel(new DOMException(message, "AbortError")).catch(() => {
-    // Best-effort: upstream may already be closed by the time HEAD handling runs.
-  });
-}
-
-export function resolveHtmlRouteCacheStoreTtl(input: {
-  baseTtl: number;
-  workerCacheState: RouteCacheRenderState;
-  hostRequestStore: AkanRequestStore;
-  lateControl?: { type: "redirect" | "not-found" } | null;
-}): number | null {
-  if (input.lateControl) return null;
-  const workerTtl = resolveRouteCacheStoreTtl(input.baseTtl, input.workerCacheState);
-  if (workerTtl === null) return null;
-  const hostCacheState = shouldStoreRouteCache({
-    policy: input.hostRequestStore.policy,
-    dynamicUsage: input.hostRequestStore.dynamicUsage,
-  });
-  return resolveRouteCacheStoreTtl(workerTtl, hostCacheState);
-}
-
-export function normalizeRscTargetUrlForHostBasePath(
-  targetUrl: URL,
-  options: {
-    basePath: string | null;
-    basePaths?: readonly string[];
-    i18n: AkanI18nConfig;
-    seedEntries?: RouteSeedIndex["entries"];
-  },
-): { url: URL; basePath: string | null } {
-  const { basePath, basePaths = [], i18n, seedEntries } = options;
-  const routeMatches = (url: URL) => !seedEntries || Boolean(RouteSeedIndexStore.match(url.pathname, seedEntries));
-
-  const segments = targetUrl.pathname.split("/").filter(Boolean);
-  const [locale, firstPath] = segments;
-  if (!locale || !i18n.locales.includes(locale)) return { url: targetUrl, basePath: null };
-  // A host mapped to a basePath serves nothing else, the way HostBasePathWebProxy rewrites a page load there.
-  if (basePath) {
-    if (firstPath === basePath) return { url: targetUrl, basePath };
-    const normalized = new URL(targetUrl);
-    normalized.pathname = `/${[locale, basePath, ...segments.slice(1)].join("/")}`;
-    return { url: normalized, basePath };
-  }
-
-  const targetBasePath = firstPath && basePaths.includes(firstPath) ? firstPath : null;
-  if (seedEntries && routeMatches(targetUrl)) return { url: targetUrl, basePath: targetBasePath ?? basePath };
-  const candidates = [...new Set([basePath, ...basePaths].filter((bp): bp is string => Boolean(bp)))];
-  for (const candidate of candidates) {
-    if (firstPath === candidate) continue;
-    const normalized = new URL(targetUrl);
-    normalized.pathname = `/${[locale, candidate, ...segments.slice(1)].join("/")}`;
-    if (routeMatches(normalized)) return { url: normalized, basePath: candidate };
-  }
-
-  return { url: targetUrl, basePath: targetBasePath };
-}
+import { WebArtifact } from "./webArtifact";
+import { WebAssetRoutes } from "./webAssetRoutes";
+import { WebCsrSurface } from "./webCsrSurface";
+import { WebDocumentRoute } from "./webDocumentRoute";
+import { WebRouteContext } from "./webRouteContext";
+import { WebRscRoute } from "./webRscRoute";
+import { WebSiteFiles } from "./webSiteFiles";
+import { WellKnownRoutes } from "./wellKnownRoutes";
 
 export interface SsrRoutesInputs {
   web: AkanWebConfig;
@@ -228,89 +52,54 @@ interface WebRouterOptions {
   prebuilt?: RoutesManifest | null;
 }
 
-interface CachedHtmlResult {
-  body: EncodedBody;
-  pathname: string;
-  routeId?: string;
-  tags?: string[];
-}
-
 export class WebRouter {
   /** Where the build writes each `.app()`'s view, beside `csr/`: a native app packs `csr/`, which needs none of them. */
   static readonly mcpAppViewDir = "mcp-apps";
   #logger = new Logger("WebRouter");
   #artifactDir = resolveArtifactDir();
-  #artifact: BaseBuildArtifact;
-  #importMapKey: string;
-  #subRoutes: Record<string, string[]>;
   #rsc: RscWorker;
   #hub: HmrWsHub | null = null;
   // `akan start` outranks a stray NODE_ENV=production (a Bun-loaded `.env`, a CI default): its artifact has no
   // routes manifest, so production mode would throw on every request.
-  #prodMode = process.env.NODE_ENV === "production" && process.env.AKAN_COMMAND_TYPE !== "start";
+  readonly #prodMode = process.env.NODE_ENV === "production" && process.env.AKAN_COMMAND_TYPE !== "start";
   #builderRpc: BuilderRpc | null;
-  #routeCache: RouteClientCache;
   #devHmr: DevHmrController | null = null;
-  #csrDevShell: CsrDevShell | null = null;
   /** Dev only: SSR pages load their client code from the dev module registry it serves. */
   #ssrDevShell: CsrDevShell | null = null;
-  #csrArmed = false;
-  readonly #builds = new Map<string, Promise<unknown>>();
-  readonly #requestStats = {
-    fullSsr: 0,
-    rscNavigation: 0,
-    rscPrefetch: 0,
-    staticAsset: 0,
-    csr: 0,
-    image: 0,
-  };
-  readonly #htmlCache = new LruTtlCache<CachedHtmlResult>(
-    parsePositiveInt(process.env.AKAN_HTML_RESULT_CACHE_MAX_ENTRIES) ?? 100,
-    {
-      sizeOf: (result) => result.body.byteLength,
-      maxBytes: LruTtlCache.parseByteCeiling(process.env.AKAN_HTML_RESULT_CACHE_MAX_BYTES),
-      sweepIntervalMs: ROUTE_CACHE_SWEEP_INTERVAL_MS,
-    },
-  );
-  #htmlCacheHits = 0;
-  #htmlCacheMisses = 0;
-  #htmlCacheBypass = 0;
-  #runtimeManifest: { revision: number; manifest: MergedManifest } | null = null;
-  renderState: RenderState;
+  readonly #context: WebRouteContext;
+  readonly #csr: WebCsrSurface;
+  readonly #htmlCache: HtmlResultCache;
+  readonly #rscRoute: WebRscRoute;
+  readonly #document: WebDocumentRoute;
+  readonly renderState: RenderState;
   /** What this router actually mounts, already intersected with what the artifact carries. */
   readonly web: AkanWebConfig;
-  #seedIndex: RouteSeedIndex;
   readonly #prebuilt: RoutesManifest | null;
-  //? Only a production build lists chunks: a dev page loads its client code from the SSR dev registry.
-  readonly #modulePreloadPlan?: ModulePreloadPlan;
   constructor({ artifact, web, cssBytesByUrl, rsc, seedIndex, upgradeHmrWs, prebuilt = null }: WebRouterOptions) {
     this.#logger.verbose(`[SSR] loaded ${Object.keys(cssBytesByUrl).length} CSS assets`);
     this.web = web;
     if (process.env.NODE_ENV === "production" && !this.#prodMode)
       this.#logger.warn("[SSR] NODE_ENV=production ignored under `akan start`; serving in dev mode");
-    this.#artifact = artifact;
-    this.#importMapKey = Bun.hash(JSON.stringify(artifact.vendorMap)).toString(36);
+    const importMapKey = Bun.hash(JSON.stringify(artifact.vendorMap)).toString(36);
     const { subRoutes, ignoredBasePaths } = resolveSubRouteHosts({
       subRoutes: artifact.subRoutes,
       basePaths: artifact.basePaths,
       env: process.env.AKAN_SUB_ROUTE_HOSTS,
     });
-    this.#subRoutes = subRoutes;
     AppHosts.declare([...artifact.domains, ...Object.values(subRoutes).flat()]);
     warnIgnoredSubRouteBasePaths(this.#logger, ignoredBasePaths);
     this.#rsc = rsc;
     this.renderState = {
       buildId: 0,
-      cssAssets: this.#artifact.cssAssets ?? {},
+      cssAssets: artifact.cssAssets ?? {},
       cssBytesByUrl,
     };
-    this.#seedIndex = seedIndex;
     this.#prebuilt = prebuilt;
-    if (prebuilt?.modulePreloads)
-      this.#modulePreloadPlan = new ModulePreloadPlan(prebuilt.modulePreloads, prebuilt.clientManifest);
+    let routeCache: RouteClientCache;
+    let csrDevShell: CsrDevShell | null = null;
     if (this.#prodMode) {
       this.#builderRpc = null;
-      this.#routeCache = new RouteClientCache({
+      routeCache = new RouteClientCache({
         buildRoute: async (routeId) => {
           throw new Error(
             `[SSR] route ${routeId} missing from production artifact — rebuild with \`akan build\` to include it`,
@@ -322,454 +111,90 @@ export class WebRouter {
         artifactDir: this.#artifactDir,
         renderState: this.renderState,
         rsc: this.#rsc,
-        seedIndex: this.#seedIndex,
+        seedIndex,
         upgradeHmrWs,
-        pagesBundlePath: this.#artifact.pagesBundlePath,
+        pagesBundlePath: artifact.pagesBundlePath,
       });
       this.#builderRpc = this.#devHmr.builderRpc;
-      this.#routeCache = this.#devHmr.routeCache;
+      routeCache = this.#devHmr.routeCache;
       this.#hub = this.#devHmr.hub;
-      if (resolveDevCsrMode() === "registry") this.#csrDevShell = new CsrDevShell(this.#artifactDir);
+      if (resolveDevCsrMode() === "registry") csrDevShell = new CsrDevShell(this.#artifactDir);
       this.#ssrDevShell = new CsrDevShell(this.#artifactDir, {
         dirName: SSR_DEV_DIRNAME,
         routePrefix: SSR_DEV_ROUTE_PREFIX,
       });
     }
+    this.#context = new WebRouteContext({
+      artifact,
+      prodMode: this.#prodMode,
+      renderState: this.renderState,
+      subRoutes,
+      seedIndex,
+      routeCache,
+      hub: () => this.#hub,
+    });
+    this.#csr = new WebCsrSurface(this.#context, { devShell: csrDevShell, builderRpc: () => this.#builderRpc });
+    this.#htmlCache = new HtmlResultCache({ prodMode: this.#prodMode, devRegistry: this.#ssrDevShell !== null });
+    this.#rscRoute = new WebRscRoute(this.#context, { rsc, importMapKey });
+    this.#document = new WebDocumentRoute(this.#context, {
+      rsc,
+      importMapKey,
+      ssrDevShell: this.#ssrDevShell,
+      htmlCache: this.#htmlCache,
+      //? Only a production build lists chunks: a dev page loads its client code from the SSR dev registry.
+      modulePreloadPlan: prebuilt?.modulePreloads
+        ? new ModulePreloadPlan(prebuilt.modulePreloads, prebuilt.clientManifest)
+        : undefined,
+    });
   }
 
   async initializeRoute() {
-    if (this.#prebuilt) this.#routeCache.seed(this.#prebuilt);
+    const context = this.#context;
+    if (this.#prebuilt) context.routeCache.seed(this.#prebuilt);
 
-    const clientServePrefix = `/_akan/client`;
-    const clientOutputDir = `${this.#artifactDir}/client`;
-    const dictServePrefix = "/_akan/dict";
-    const dictOutputDir = `${this.#artifactDir}/dict`;
-    const stylesServePrefix = "/_akan/styles";
-    const stylesOutputDir = `${this.#artifactDir}/styles`;
-    const fontsServePrefix = "/_akan/fonts";
-    const fontsOutputDir = `${this.#artifactDir}/fonts`;
     const localCsrDir = path.join(process.cwd(), "csr");
     const csrOutputDir = fs.existsSync(localCsrDir) ? localCsrDir : path.join(this.#artifactDir, "csr");
     const publicDir = path.join(process.env.AKAN_APP_DIR ?? path.dirname(Bun.main), "public");
-    const shippedPublicFiles = this.#prodMode ? WebRouter.#shippedFiles(publicDir) : null;
-    const imageCacheDir = path.join(this.#artifactDir, "image-cache");
+    const siteFiles = new WebSiteFiles(context, { rsc: this.#rsc, publicDir });
     const imageOptimizer = new ImageOptimizer({
       publicDir,
-      cacheDir: imageCacheDir,
+      cacheDir: path.join(this.#artifactDir, "image-cache"),
       prodMode: this.#prodMode,
-      config: this.#artifact.imageConfig,
+      config: context.artifact.imageConfig,
     });
 
     const renderEnvRoutes: HttpRoutes = {
-      ...(this.web.csr
-        ? {
-            "/__csr": async (req) => {
-              this.#requestStats.csr += 1;
-              if (this.#csrDevShell) return await this.#serveCsrDevShell(req, "/", this.#csrDevShell);
-              const csrHtml = await this.#resolveCsrHtml(csrOutputDir, "/");
-              const csrFile = csrHtml ? Bun.file(csrHtml) : null;
-              const htmlText =
-                csrFile && (await csrFile.exists())
-                  ? await csrFile.text()
-                  : `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Minimal</title>
-    <base href="/" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/csr.js"></script>
-  </body>
-</html>`;
-              return new Response(this.#withCsrHmr(htmlText), { headers: this.#htmlResponseHeaders(200, req) });
-            },
-            ...(this.#csrDevShell
-              ? {
-                  [`${CSR_DEV_ROUTE_PREFIX}*`]: async (req: Request) => {
-                    this.#requestStats.staticAsset += 1;
-                    return (await this.#csrDevShell?.serve(req)) ?? new Response("Not Found", { status: 404 });
-                  },
-                }
-              : {}),
-          }
-        : {}),
+      ...(this.web.csr ? this.#csr.routes(csrOutputDir) : {}),
       ...(this.#ssrDevShell
         ? {
             [`${SSR_DEV_ROUTE_PREFIX}*`]: async (req: Request) => {
-              this.#requestStats.staticAsset += 1;
+              context.stats.staticAsset += 1;
               return (await this.#ssrDevShell?.serve(req)) ?? new Response("Not Found", { status: 404 });
             },
           }
         : {}),
-      [`${clientServePrefix}/*`]: async (req) => {
-        this.#requestStats.staticAsset += 1;
-        const url = new URL(req.url);
-        const filePath = resolveStaticPath(clientOutputDir, url.pathname.slice(clientServePrefix.length + 1));
-        if (!filePath) return new Response("Not Found", { status: 404 });
-        return WebRouter.#fileResponse(req, filePath, {
-          contentType: Bun.file(filePath).type || "application/javascript",
-          cacheControl: this.#prodMode ? "public, max-age=31536000, immutable" : "no-store",
-        });
-      },
-      [`${stylesServePrefix}/*`]: (req) => {
-        this.#requestStats.staticAsset += 1;
-        const url = new URL(req.url);
-        if (this.#prodMode) {
-          const filePath = resolveStaticPath(stylesOutputDir, url.pathname.slice(`${stylesServePrefix}/`.length));
-          if (filePath) {
-            return WebRouter.#fileResponse(req, filePath, {
-              contentType: "text/css; charset=utf-8",
-              cacheControl: "public, max-age=31536000, immutable",
-            });
-          }
-        }
-        const cssBytes = this.renderState.cssBytesByUrl[url.pathname];
-        if (!cssBytes) return new Response("Not Found", { status: 404 });
-        const headers = assetHeaders({
-          contentType: "text/css; charset=utf-8",
-          cacheControl: "no-store",
-        });
-        return new Response(
-          cssBytes.buffer.slice(cssBytes.byteOffset, cssBytes.byteOffset + cssBytes.byteLength) as ArrayBuffer,
-          { headers },
-        );
-      },
-      [`${fontsServePrefix}/*`]: (req) => {
-        this.#requestStats.staticAsset += 1;
-        const url = new URL(req.url);
-        const filePath = resolveStaticPath(fontsOutputDir, url.pathname.slice(`${fontsServePrefix}/`.length));
-        if (!filePath) return new Response("Not Found", { status: 404 });
-        return WebRouter.#fileResponse(req, filePath, {
-          contentType: Bun.file(filePath).type || "font/woff2",
-          cacheControl: this.#prodMode ? "public, max-age=31536000, immutable" : "no-store",
-          anyOrigin: true,
-        });
-      },
-      [`${dictServePrefix}/*`]: (req) => {
-        this.#requestStats.staticAsset += 1;
-        const url = new URL(req.url);
-        const filePath = resolveStaticPath(dictOutputDir, url.pathname.slice(`${dictServePrefix}/`.length));
-        if (!filePath) return new Response("Not Found", { status: 404 });
-        return WebRouter.#fileResponse(req, filePath, {
-          contentType: "text/javascript; charset=utf-8",
-          cacheControl: this.#prodMode ? "public, max-age=31536000, immutable" : "no-store",
-        });
-      },
-      "/_akan/image": (req) => {
-        this.#requestStats.image += 1;
-        return imageOptimizer.handle(req);
-      },
+      ...WebAssetRoutes.build(context, { artifactDir: this.#artifactDir, imageOptimizer }),
       ...(!this.#prodMode
         ? {
             "/_akan/hmr": (req: Request) =>
               this.#devHmr?.handleWs(req) ?? new Response("HMR unavailable", { status: 404 }),
           }
         : {}),
-      "/__rsc": SessionRefresh.answering(async (req) => {
-        const prefetch = req.headers.get(AKAN_RSC_PREFETCH_HEADER) === "1";
-        this.#requestStats[prefetch ? "rscPrefetch" : "rscNavigation"] += 1;
-        try {
-          //? A tab imports through its document's import map, whose narrowed vendors lack names another build imports;
-          //? the client loads a target it cannot fetch as a document, which brings this build's import map.
-          const importMap = req.headers.get(AKAN_RSC_IMPORT_MAP_HEADER);
-          if (importMap && importMap !== this.#importMapKey)
-            return new Response("Conflict", {
-              status: 409,
-              headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
-            });
-          const reqUrl = new URL(req.url);
-          // Behind proxies req.url is internal; forwarded headers give the browser's origin for the same-origin check.
-          const clientOrigin = getClientFacingOrigin(req);
-          const target = reqUrl.searchParams.get("url");
-          const rawTargetUrl = target ? new URL(target, clientOrigin) : reqUrl;
-          const i18n = this.#artifact.i18n;
-          const { locale: targetLocale, path: targetPath, isPrefixed } = LocalePath.split(rawTargetUrl.pathname, i18n);
-          const localizedTargetUrl = new URL(rawTargetUrl);
-          if (targetLocale && !isPrefixed) localizedTargetUrl.pathname = `/${targetLocale}${rawTargetUrl.pathname}`;
-          const requestBasePath = this.#requestBasePath(req);
-          const normalizedTarget = normalizeRscTargetUrlForHostBasePath(localizedTargetUrl, {
-            basePath: requestBasePath,
-            basePaths: this.#artifact.basePaths,
-            i18n,
-            seedEntries: this.#seedIndex.entries,
-          });
-          const targetUrl = normalizedTarget.url;
-          if (!WebRouter.#isTrustedRscTarget(clientOrigin, targetUrl))
-            return new Response("Bad Request", { status: 400 });
-          await SessionRefresh.apply(req);
-          const manifest = await this.#ensureRoute(targetUrl);
-          const rscHeaders = new Headers(req.headers);
-          if (normalizedTarget.basePath) rscHeaders.set("x-base-path", normalizedTarget.basePath);
-          // No WebProxy runs on /__rsc: these are the headers LocaleWebProxy gives a page load of this URL.
-          if (targetLocale) {
-            rscHeaders.set("x-locale", targetLocale);
-            rscHeaders.set("x-path", targetPath);
-          }
-          const rscReq = new Request(targetUrl, { method: "GET", headers: rscHeaders });
-          const result = await this.#rsc.renderWithMeta(rscReq, {
-            clientManifest: manifest.clientManifest,
-            signal: req.signal,
-            clientIp: SignalContext.clientIpOf(req),
-            prefetch,
-          });
-          if (result.type === "redirect")
-            return createRscRedirectResponse(result.location, result.method, result.status);
-          if (result.type === "not-found") return createRscNotFoundFallbackResponse();
-          if (result.status && result.status >= 500)
-            return this.#renderRscErrorResponse("__rsc", "Internal Server Error");
-          const response = await createRscNavigationStreamResponse(result, { explain: !this.#prodMode });
-          const dictionaryUrl = this.#dictionaryUrlOf(rscHeaders, targetUrl.pathname);
-          if (dictionaryUrl) response.headers.set(AKAN_RSC_DICTIONARY_HEADER, dictionaryUrl);
-          return response;
-        } catch (err) {
-          return this.#renderRscErrorResponse("__rsc", err);
-        }
-      }),
-      ...(!this.#prodMode || process.env.AKAN_EXPOSE_RSC_MANIFEST === "1"
-        ? {
-            "/__rsc/manifest": () =>
-              new Response(JSON.stringify(this.#routeCache.merged.clientManifest, null, 2), {
-                headers: applySecurityHeaders(
-                  new Headers({ "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }),
-                ),
-              }),
-          }
-        : {}),
-      [APPLE_APP_SITE_ASSOCIATION_PATH]: () =>
-        WebRouter.#deepLinkAssociationResponse(APPLE_APP_SITE_ASSOCIATION_PATH, this.#artifact, {
-          cacheControl: this.#prodMode ? "public, max-age=3600" : "no-store",
-        }) ?? new Response("Not Found", { status: 404 }),
-      [ANDROID_ASSET_LINKS_PATH]: () =>
-        WebRouter.#deepLinkAssociationResponse(ANDROID_ASSET_LINKS_PATH, this.#artifact, {
-          cacheControl: this.#prodMode ? "public, max-age=3600" : "no-store",
-        }) ?? new Response("Not Found", { status: 404 }),
-      // Machines fetch these (Chrome asks for com.chrome.devtools.json on every DevTools load): no SSR 404 render.
-      // Exact well-known routes (deep links, MCP OAuth metadata) still win — Bun matches static before wildcard.
-      "/.well-known/*": () =>
-        new Response("Not Found", {
-          status: 404,
-          headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
-        }),
+      ...this.#rscRoute.routes(),
+      ...WellKnownRoutes.build(context.artifact, this.#prodMode),
       "/*": SessionRefresh.answering(async (req) => {
         const url = new URL(req.url);
         if (url.pathname.endsWith("/_akan/image")) {
-          this.#requestStats.image += 1;
+          context.stats.image += 1;
           return imageOptimizer.handle(req);
         }
-
         if (this.web.csr) {
-          const isCsr = url.searchParams.get("csr") === "true";
-          if (isCsr) {
-            this.#requestStats.csr += 1;
-            if (this.#csrDevShell) return await this.#serveCsrDevShell(req, url.pathname, this.#csrDevShell);
-            const csrHtml = await this.#resolveCsrHtml(csrOutputDir, url.pathname);
-            if (!csrHtml) return this.#csrUnavailableResponse(url.pathname);
-            const html = await Bun.file(csrHtml).text();
-            return new Response(this.#withCsrHmr(html), { headers: this.#htmlResponseHeaders(200, req) });
-          }
-
-          const csrAssetPath = path.extname(url.pathname) ? resolveStaticPath(csrOutputDir, url.pathname) : null;
-          if (csrAssetPath && (await Bun.file(csrAssetPath).exists())) {
-            this.#requestStats.staticAsset += 1;
-            return WebRouter.#fileResponse(req, csrAssetPath, {
-              contentType: Bun.file(csrAssetPath).type || "application/octet-stream",
-              cacheControl: this.#prodMode ? "public, max-age=31536000, immutable" : undefined,
-            });
-          }
+          const csrResponse = await this.#csr.answer(req, url, csrOutputDir);
+          if (csrResponse) return csrResponse;
         }
-
-        const filePath = resolveStaticPath(publicDir, url.pathname);
-        if (filePath && (await WebRouter.#isPublicFile(filePath, url.pathname, shippedPublicFiles))) {
-          this.#requestStats.staticAsset += 1;
-          const contentType = Bun.file(filePath).type || "application/octet-stream";
-          return WebRouter.#fileResponse(req, filePath, {
-            contentType,
-            //? Unversioned paths: a short max-age lets a replaced file show, SWR keeps repeat views off the network.
-            cacheControl: this.#prodMode ? "public, max-age=300, stale-while-revalidate=86400" : "no-store",
-            anyOrigin: contentType.startsWith("font/"),
-          });
-        }
-
-        if (url.pathname === "/robots.txt") {
-          return new Response(createDefaultRobotsTxt(), {
-            headers: {
-              "Content-Type": "text/plain; charset=utf-8",
-              "Cache-Control": this.#prodMode ? "public, max-age=3600" : "no-store",
-            },
-          });
-        }
-
-        const manifestBasePath = getWebManifestBasePath(
-          url.pathname,
-          this.#artifact.basePaths,
-          this.#requestBasePath(req),
-        );
-        if (manifestBasePath !== undefined) {
-          const manifestResponse = await this.#webManifestResponse(manifestBasePath);
-          if (manifestResponse) return manifestResponse;
-        }
-
-        const sitemapBasePath = getSitemapBasePath(url.pathname, this.#artifact.basePaths, this.#requestBasePath(req));
-        if (sitemapBasePath !== undefined) {
-          return new Response(
-            createDefaultSitemapXml({
-              origin: getClientFacingOrigin(req),
-              basePath: sitemapBasePath,
-              entries: this.#seedIndex.entries,
-              i18n: parseAkanI18nEnv(),
-            }),
-            {
-              headers: {
-                "Content-Type": "application/xml; charset=utf-8",
-                "Cache-Control": this.#prodMode ? "public, max-age=3600" : "no-store",
-              },
-            },
-          );
-        }
-
-        const subRouteIndex = this.#localSubRouteIndexResponse(req, url);
-        if (subRouteIndex) return await subRouteIndex;
-
-        try {
-          this.#requestStats.fullSsr += 1;
-          await SessionRefresh.apply(req);
-          const manifest = await this.#ensureRoute(url);
-          const isCrawler = isCrawlerUserAgent(req.headers.get("user-agent"));
-          const htmlCacheDecision = this.#getHtmlCacheEntry(req, url, isCrawler);
-          const htmlCacheEntry = htmlCacheDecision.entry;
-          const cachedHtml = htmlCacheEntry ? this.#getCachedHtml(htmlCacheEntry.key) : null;
-          if (cachedHtml) {
-            const cachedHeaders = this.#htmlResponseHeaders(200, req);
-            cachedHeaders.set("X-Akan-Cache", "HIT");
-            return encodedBodyResponse(req, cachedHtml, { headers: cachedHeaders });
-          }
-          const rscResult = await this.#rsc.renderWithMeta(req, {
-            clientManifest: manifest.clientManifest,
-            signal: req.signal,
-            clientIp: SignalContext.clientIpOf(req),
-          });
-          if (rscResult.type === "redirect")
-            return createDocumentRedirectResponse(rscResult.location, url, rscResult.status);
-          if (rscResult.type === "not-found") return this.#renderSystemNotFoundFallbackResponse(req, url);
-          // First-paint data-theme: cookie is no longer a React <html> prop (RSC cache would replay it).
-          const cookieTheme = WebRouter.#cookieValue(req, "theme");
-          const hostRequestStore = createRequestStore(req);
-          const dictionaryUrl = this.#dictionaryUrlOf(req.headers, url.pathname);
-          const extraBootstrapInline = [
-            rscResult.trace?.routeState
-              ? `self.__AKAN_RSC_INITIAL_STATE__=${JSON.stringify(rscResult.trace.routeState)};`
-              : "",
-            dictionaryUrl ? `self.__AKAN_DICT_URL__=${JSON.stringify(dictionaryUrl)};` : "",
-            `self.__AKAN_IMPORT_MAP_KEY__=${JSON.stringify(this.#importMapKey)};`,
-            this.#ssrDevShell
-              ? SsrDevShim.script(await this.#ssrDevShell.readManifest(), Object.keys(this.#artifact.vendorMap))
-              : "",
-            !this.#prodMode ? HMR_CLIENT_SCRIPT : "",
-          ]
-            .filter(Boolean)
-            .join("\n");
-          const htmlStream = await new SsrFromRscRenderer().render({
-            request: req,
-            requestStore: hostRequestStore,
-            rscStream: rscResult.stream,
-            ssrManifest: manifest.ssrManifest,
-            bootstrapModules: [this.#artifact.rscClientUrl],
-            modulePreloads: dictionaryUrl ? [dictionaryUrl] : undefined,
-            modulePreloadPlan: this.#modulePreloadPlan,
-            extraBootstrapInline: extraBootstrapInline || undefined,
-            importmap: this.#artifact.vendorMap,
-            //? Read once the shell has rendered: the root layout's theme arrives after the stream starts.
-            get theme() {
-              return cookieTheme ?? rscResult.theme ?? "system";
-            },
-            lateControl: rscResult.lateControl,
-            waitForAllReady: rscResult.trace?.ssrBlocking ?? false,
-            inlineBoundaries: isCrawler,
-            onCancel: (reason: unknown) => {
-              rscResult.cancel(reason);
-            },
-          });
-          //? A not-found or redirect the page raised after the stream started is known here only if the host still held the
-          //? response (a blocking or crawler render, or one raised before the shell was ready); then it is a real one.
-          const lateControl = await Promise.race([rscResult.lateControl, Promise.resolve(null)]);
-          if (lateControl?.type === "redirect") {
-            cancelStreamForHeadResponse(htmlStream, "redirected before the response started");
-            return createDocumentRedirectResponse(lateControl.location, url, lateControl.status);
-          }
-          const responseStatus = lateControl?.type === "not-found" ? 404 : (rscResult.status ?? 200);
-          const responseHeaders = this.#htmlResponseHeaders(responseStatus, req);
-          if (req.method === "HEAD") {
-            const headers = new Headers(responseHeaders);
-            if (htmlCacheEntry && responseStatus === 200) headers.set("X-Akan-Cache", "MISS");
-            else if (htmlCacheDecision.reason) {
-              headers.set("X-Akan-Cache", "BYPASS");
-              headers.set("X-Akan-Cache-Reason", htmlCacheDecision.reason);
-            }
-            cancelStreamForHeadResponse(htmlStream, "HEAD response does not consume body");
-            return new Response(null, { status: responseStatus, headers });
-          }
-          if (htmlCacheEntry && responseStatus === 200) {
-            const headers = new Headers(responseHeaders);
-            headers.set("X-Akan-Cache", "MISS");
-            let htmlStoreTtl = htmlCacheEntry.ttl;
-            let htmlCacheMetadata: Omit<CachedHtmlResult, "body"> = { pathname: url.pathname };
-            const shouldCacheHtml = Promise.all([rscResult.lateControl, rscResult.cacheState]).then(
-              ([control, cacheState]) => {
-                const storeTtl = resolveHtmlRouteCacheStoreTtl({
-                  baseTtl: htmlCacheEntry.ttl,
-                  workerCacheState: cacheState,
-                  hostRequestStore,
-                  lateControl: control,
-                });
-                if (storeTtl === null) return false;
-                htmlStoreTtl = storeTtl;
-                htmlCacheMetadata = {
-                  pathname: url.pathname,
-                  routeId: cacheState.routeId,
-                  tags: cacheState.tags,
-                };
-                return true;
-              },
-            );
-            return new Response(
-              cacheHtmlWhileStreaming(
-                htmlStream,
-                (html) => {
-                  void encodeBody(html).then((body) =>
-                    this.#htmlCache.set(htmlCacheEntry.key, { body, ...htmlCacheMetadata }, htmlStoreTtl),
-                  );
-                },
-                {
-                  shouldCache: () => shouldCacheHtml,
-                  maxBodyBytes:
-                    parsePositiveInt(process.env.AKAN_HTML_RESULT_CACHE_MAX_BODY_BYTES) ??
-                    DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES,
-                  onSkip: (reason) => {
-                    this.#logger.verbose(`html cache store skipped pathname=${url.pathname} reason=${reason}`);
-                  },
-                },
-              ),
-              {
-                status: responseStatus,
-                headers,
-              },
-            );
-          }
-          const headers = new Headers(responseHeaders);
-          if (htmlCacheDecision.reason) {
-            headers.set("X-Akan-Cache", "BYPASS");
-            headers.set("X-Akan-Cache-Reason", htmlCacheDecision.reason);
-          }
-          return new Response(htmlStream, {
-            status: responseStatus,
-            headers,
-          });
-        } catch (err) {
-          return this.#renderErrorResponse(req, url.pathname, err);
-        }
+        const siteFile = await siteFiles.answer(req, url);
+        if (siteFile) return siteFile;
+        return await this.#document.render(req, url);
       }),
     };
     return { renderEnvRoutes, hmrHub: this.#hub, builderRpc: this.#builderRpc };
@@ -814,8 +239,8 @@ export class WebRouter {
       read: async (app) => {
         if (!PageDefinition.promptName.test(app)) return null;
         const viewPath = path.join(viewDir, `${app}.html`);
-        if (this.#csrDevShell) await this.#buildMcpAppViews();
-        else if (!fs.existsSync(viewPath)) await this.#armCsrArtifact("mcp app view");
+        if (this.#csr.devShell) await this.#csr.buildMcpAppViews();
+        else if (!fs.existsSync(viewPath)) await this.#csr.armArtifact("mcp app view");
         const file = Bun.file(viewPath);
         if (!(await file.exists())) return null;
         const cached = views.get(app);
@@ -837,364 +262,26 @@ export class WebRouter {
 
   getMetrics(): AkanMetricsReport {
     const ssrStats = SsrFromRscRenderer.getChunkRegistryStats();
+    const stats = this.#context.stats;
     return {
       ...this.#rsc.getMetrics(),
       ssrChunkRegistrySize: ssrStats.ssrChunkRegistrySize,
       ssrChunkLoadCount: ssrStats.ssrChunkLoadCount,
       ssrChunkCacheHitCount: ssrStats.ssrChunkCacheHitCount,
       ssrChunkEvictionCount: ssrStats.ssrChunkEvictionCount,
-      httpFullSsrCount: this.#requestStats.fullSsr,
-      httpRscNavigationCount: this.#requestStats.rscNavigation,
-      httpRscPrefetchCount: this.#requestStats.rscPrefetch,
-      httpStaticAssetCount: this.#requestStats.staticAsset,
-      httpCsrCount: this.#requestStats.csr,
-      httpImageCount: this.#requestStats.image,
-      httpHtmlCacheEntries: this.#htmlCache.size,
-      httpHtmlCacheBytes: this.#htmlCache.byteSize,
-      httpHtmlCacheHits: this.#htmlCacheHits,
-      httpHtmlCacheMisses: this.#htmlCacheMisses,
-      httpHtmlCacheBypass: this.#htmlCacheBypass,
+      httpFullSsrCount: stats.fullSsr,
+      httpRscNavigationCount: stats.rscNavigation,
+      httpRscPrefetchCount: stats.rscPrefetch,
+      httpStaticAssetCount: stats.staticAsset,
+      httpCsrCount: stats.csr,
+      httpImageCount: stats.image,
+      ...this.#htmlCache.metrics(),
     };
   }
 
   invalidateRouteCaches(invalidation?: string | RouteCacheInvalidation): void {
-    const payload = typeof invalidation === "string" ? { reason: invalidation } : invalidation;
-    if (!hasRouteCacheInvalidationScope(payload)) {
-      this.#htmlCache.clear();
-    } else if (payload) {
-      this.#htmlCache.invalidate((_key, value) =>
-        shouldInvalidateRouteCacheEntry(
-          {
-            pathname: value.pathname,
-            routeId: value.routeId,
-            tags: value.tags,
-          },
-          payload,
-        ),
-      );
-    }
+    this.#htmlCache.invalidate(invalidation);
     this.#rsc.invalidateRouteResultCache(invalidation);
-  }
-
-  // `x-base-path` can arrive from the wire, not just HostBasePathWebProxy: trust only a basePath this build serves.
-  #requestBasePath(req: Request): string | null {
-    const headerBasePath = req.headers.get("x-base-path");
-    if (headerBasePath && this.#artifact.basePaths.includes(headerBasePath)) return headerBasePath;
-    return WebRouter.#basePathForRequestHost(req, this.#subRoutes);
-  }
-
-  static #basePathForRequestHost(req: Request, subRoutes: Record<string, string[]>): string | null {
-    const host = normalizeHost(req.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ?? req.headers.get("host"));
-    if (!host) return null;
-    for (const [basePath, domains] of Object.entries(subRoutes)) {
-      if (domains.some((domain) => normalizeHost(domain) === host)) return basePath;
-    }
-    return null;
-  }
-
-  static #isTrustedRscTarget(clientOrigin: string, targetUrl: URL): boolean {
-    try {
-      if (targetUrl.origin === clientOrigin) return true;
-      // TLS termination + missing/partial forwarded headers may skew scheme while hostname matches the public host.
-      return targetUrl.hostname === new URL(clientOrigin).hostname;
-    } catch {
-      return false;
-    }
-  }
-
-  #getHtmlCacheEntry(req: Request, url: URL, isCrawler: boolean): { entry: RouteCacheEntry | null; reason?: string } {
-    //? The dev registry's shim config is part of the HTML: a cached page would boot every reload beside the vendor file
-    //? it was rendered with, and a tab that reloads onto the current pair would reload again until the entry expired.
-    if (this.#ssrDevShell) {
-      this.#htmlCacheBypass += 1;
-      return { entry: null, reason: "dev-registry" };
-    }
-    const decision = resolvePublicRouteCacheEntryDecision({
-      request: req,
-      url,
-      theme: WebRouter.#cookieValue(req, "theme"),
-      variant: isCrawler ? "crawler" : undefined,
-      defaultEnabled: this.#prodMode,
-      defaultAllow: this.#prodMode,
-      env: {
-        enabled: process.env.AKAN_HTML_RESULT_CACHE,
-        ttl: process.env.AKAN_HTML_RESULT_CACHE_TTL,
-        allow: process.env.AKAN_HTML_RESULT_CACHE_PATHS,
-        deny: process.env.AKAN_HTML_RESULT_CACHE_EXCLUDE_PATHS,
-      },
-    });
-    if (!decision.entry) this.#htmlCacheBypass += 1;
-    return decision;
-  }
-
-  #getCachedHtml(cacheKey: string): EncodedBody | null {
-    const cached = this.#htmlCache.get(cacheKey);
-    if (!cached) {
-      this.#htmlCacheMisses += 1;
-      return null;
-    }
-    this.#htmlCacheHits += 1;
-    return cached.body;
-  }
-
-  static #cookieValue(req: Request, name: string): string | undefined {
-    return CookieJar.parse(req.headers.get("cookie")).read(name).value;
-  }
-
-  async #ensureRoute(url: URL) {
-    const started = Date.now();
-    const matched =
-      RouteSeedIndexStore.match(url.pathname, this.#seedIndex.entries) ??
-      RouteSeedIndexStore.matchPrefix(url.pathname, this.#seedIndex.entries);
-    if (matched) await this.#routeCache.ensure(matched.entry.routeId, matched.entry.seeds);
-    this.#logger.verbose(
-      `[route-cache] ensure pathname=${url.pathname} routeId=${matched?.entry.routeId ?? "(none)"} in ${Date.now() - started}ms`,
-    );
-    return this.#mergeRuntimeManifest();
-  }
-
-  // Still a copy, so an in-flight request keeps a stable manifest across an invalidate.
-  #mergeRuntimeManifest(): MergedManifest {
-    const revision = this.#routeCache.revision;
-    if (this.#runtimeManifest?.revision === revision) return this.#runtimeManifest.manifest;
-    const snapshot = this.#routeCache.snapshot();
-    const manifest: MergedManifest = {
-      ...snapshot,
-      clientManifest: Object.assign({}, this.#artifact.rscRuntimeClientManifest, snapshot.clientManifest),
-      ssrManifest: {
-        moduleLoading: null,
-        moduleMap: Object.assign({}, this.#artifact.rscRuntimeSsrManifest?.moduleMap, snapshot.ssrManifest.moduleMap),
-      },
-    };
-    this.#runtimeManifest = { revision, manifest };
-    return manifest;
-  }
-  #renderSystemNotFoundFallbackResponse(req: Request, url: URL): Promise<Response> {
-    return createSystemPageResponse({
-      kind: "not-found",
-      method: req.method,
-      pathname: url.pathname,
-      lang: getPathnameLocale(url.pathname, this.#artifact.i18n),
-      homeHref: this.#getSystemPageHomeHref(req, url.pathname),
-      stylesheetHref: this.#getStylesheetHref(req, url.pathname),
-    });
-  }
-
-  async #webManifestResponse(basePath: string | null): Promise<Response | null> {
-    try {
-      const manifest = await this.#rsc.webManifest(basePath);
-      if (!manifest) return null;
-      return new Response(JSON.stringify(manifest), {
-        headers: {
-          "Content-Type": "application/manifest+json; charset=utf-8",
-          "Cache-Control": this.#prodMode ? "public, max-age=3600" : "no-store",
-        },
-      });
-    } catch (err) {
-      this.#logger.warn(
-        `web manifest unavailable basePath=${basePath ?? "(root)"}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return new Response("Service Unavailable", {
-        status: 503,
-        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
-      });
-    }
-  }
-
-  // A subRoutes build has no root page (routes live under `page/<basePath>`), so local dev serves a basePath picker;
-  // deployed hosts never get here, HostBasePathWebProxy rewrites the root first.
-  #localSubRouteIndexResponse(req: Request, url: URL): Promise<Response> | null {
-    if (process.env.AKAN_PUBLIC_ENV !== "local" || !this.#artifact.basePaths.length) return null;
-    if (!WebRouter.#isSiteRootPathname(url.pathname, this.#artifact.i18n)) return null;
-    return createSubRouteIndexResponse({
-      method: req.method,
-      locale: getPathnameLocale(url.pathname, this.#artifact.i18n),
-      basePaths: this.#artifact.basePaths,
-      subRoutes: this.#subRoutes,
-    });
-  }
-
-  static #isSiteRootPathname(pathname: string, i18n: AkanI18nConfig): boolean {
-    const segments = pathname.split("/").filter(Boolean);
-    if (!segments.length) return true;
-    return segments.length === 1 && i18n.locales.includes(segments[0] ?? "");
-  }
-
-  #renderErrorResponse(req: Request, scope: string, err: unknown): Promise<Response> {
-    if (WebRouter.#isExpectedRequestAbort(err)) return Promise.resolve(WebRouter.#clientClosedResponse());
-    const message = err instanceof Error ? err.message : String(err);
-    this.#logger.error(`[SSR] render failed scope=${scope}: ${message}`);
-    this.#hub?.broadcast({ type: "error", message });
-    return createSystemPageResponse({
-      kind: "error",
-      method: req.method,
-      pathname: scope,
-      lang: getPathnameLocale(new URL(req.url).pathname, this.#artifact.i18n),
-      homeHref: this.#getSystemPageHomeHref(req, new URL(req.url).pathname),
-      stylesheetHref: this.#getStylesheetHref(req, new URL(req.url).pathname),
-      showDetails: !this.#prodMode,
-      error: err,
-      ...(this.#prodMode ? {} : { script: `self.__AKAN_HMR_SYSTEM_PAGE__=true;${HMR_CLIENT_SCRIPT}` }),
-    });
-  }
-
-  //? The locale the RSC worker's `usePage()` resolves from the same request, so the page and its dictionary agree.
-  #dictionaryUrlOf(headers: Headers, pathname: string): string | undefined {
-    const i18n = parseAkanI18nEnv();
-    const { locale } = RequestLocale.resolve(
-      { localeHeader: headers.get("x-locale"), pathHeader: headers.get("x-path"), pathname },
-      i18n,
-    );
-    const assets = this.#artifact.dictAssets ?? {};
-    return (assets[locale] ?? assets[i18n.defaultLocale])?.url;
-  }
-
-  #renderRscErrorResponse(scope: string, err: unknown): Response {
-    if (WebRouter.#isExpectedRequestAbort(err)) return WebRouter.#clientClosedResponse();
-    const message = err instanceof Error ? err.message : String(err);
-    this.#logger.error(`[SSR] render failed scope=${scope}: ${message}`);
-    this.#hub?.broadcast({ type: "error", message });
-    return new Response("Internal Server Error", {
-      status: 500,
-      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
-    });
-  }
-
-  static #clientClosedResponse(): Response {
-    return new Response(null, {
-      status: CLIENT_CLOSED_REQUEST_STATUS,
-      headers: { "Cache-Control": "no-store" },
-    });
-  }
-
-  static #isExpectedRequestAbort(error: unknown): boolean {
-    if (!(error instanceof Error)) return false;
-    return (
-      error.name === "AbortError" ||
-      error.message === "The connection was closed." ||
-      error.message === "Connection closed." ||
-      error.message.includes("The connection was closed")
-    );
-  }
-
-  #getSystemPageHomeHref(req: Request, pathname: string): string {
-    return getSystemPageHomeHref({
-      pathname,
-      i18n: this.#artifact.i18n,
-      basePaths: this.#artifact.basePaths,
-      headerBasePath: this.#requestBasePath(req),
-    });
-  }
-
-  #getStylesheetHref(req: Request, pathname: string): string | null {
-    const basePath = getBasePathFromPathname(pathname, {
-      basePaths: Object.keys(this.renderState.cssAssets),
-      i18n: this.#artifact.i18n,
-      headerBasePath: this.#requestBasePath(req),
-    });
-    return this.renderState.cssAssets[basePath ?? ""]?.cssUrl ?? null;
-  }
-
-  //? Dev: a back/forward navigation replays a document from the HTTP cache without asking, which would boot a tab onto
-  //? the RSC payload and registry config of a build the server no longer runs.
-  #htmlResponseHeaders(status: number, req: Request): Headers {
-    const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
-    if (status >= 400 || !this.#prodMode) headers.set("Cache-Control", "no-store");
-    else {
-      const cacheControl = resolveHtmlCacheControl(req);
-      if (cacheControl) headers.set("Cache-Control", cacheControl);
-    }
-    const hsts = this.#prodMode ? strictTransportSecurity() : null;
-    if (hsts && getClientFacingOrigin(req).startsWith("https:")) headers.set("Strict-Transport-Security", hsts);
-    return applySecurityHeaders(headers, { html: true });
-  }
-  #withCsrHmr(html: string): string {
-    if (this.#prodMode) return html;
-    const csrGeneration = this.renderState.csrGeneration ?? null;
-    const flags = `self.__AKAN_HMR_CLIENT__="csr";self.__AKAN_CSR_GENERATION__=${csrGeneration};`;
-    return WebRouter.#injectBeforeBodyEnd(html, `<script>${flags}${HMR_CLIENT_SCRIPT}</script>`);
-  }
-  // Armed before the first render: the builder keeps the registry bundle current only after something asked for it.
-  async #serveCsrDevShell(req: Request, pathname: string, shell: CsrDevShell): Promise<Response> {
-    await this.#armCsrArtifact(pathname);
-    const basePath =
-      getBasePathFromPathname(pathname, { basePaths: this.#artifact.basePaths, i18n: this.#artifact.i18n }) ?? "";
-    const html = await shell.render({
-      basePath,
-      lang: "en",
-      title: process.env.AKAN_PUBLIC_APP_NAME ?? "akan",
-      cssHref: this.#getStylesheetHref(req, pathname),
-    });
-    if (!html) return this.#csrUnavailableResponse(pathname);
-    return new Response(this.#withCsrHmr(html), { headers: this.#htmlResponseHeaders(200, req) });
-  }
-  async #resolveCsrHtml(csrOutputDir: string, pathname: string): Promise<string | null> {
-    const resolved = WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
-    if (resolved) return resolved;
-    await this.#armCsrArtifact(pathname);
-    return WebRouter.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#artifact);
-  }
-  #armCsrArtifact(reason: string): Promise<unknown> {
-    const rpc = this.#builderRpc;
-    // Arm once: after a build the builder keeps CSR current, so a still-missing file means an unknown basePath.
-    if (this.#csrArmed || !rpc) return Promise.resolve();
-    return this.#singleFlight("csr", () =>
-      rpc
-        .buildCsr(reason)
-        .then(() => {
-          this.#csrArmed = true;
-          this.#logger.info(`[csr] dev CSR artifact built on demand (${reason})`);
-        })
-        .catch((err: unknown) => {
-          this.#logger.error(`[csr] on-demand build failed: ${err instanceof Error ? err.message : String(err)}`);
-        }),
-    );
-  }
-  //? Awaited on every read: the builder answers at once unless a save moved its generation since its last view build.
-  //? Never the dev registry shell, which loads its modules from this server: a sandboxed view cannot reach it.
-  async #buildMcpAppViews(): Promise<void> {
-    const rpc = this.#builderRpc;
-    if (!rpc) return;
-    await this.#singleFlight("mcpShell", () =>
-      rpc.buildCsr("mcp app view", { shell: true }).catch((err: unknown) => {
-        this.#logger.error(`[mcp] view build failed: ${err instanceof Error ? err.message : String(err)}`);
-      }),
-    );
-  }
-  #singleFlight(kind: string, run: () => Promise<unknown>): Promise<unknown> {
-    const pending = this.#builds.get(kind) ?? run().finally(() => this.#builds.delete(kind));
-    this.#builds.set(kind, pending);
-    return pending;
-  }
-  #csrUnavailableResponse(pathname: string): Response {
-    if (this.#prodMode) return new Response("Not Found", { status: 404 });
-    const message = `No CSR artifact for ${pathname}. Dev CSR is built on demand; check the dev server log for a csr-build failure and verify the basePath in the URL.`;
-    this.#logger.warn(`[csr] ${message}`);
-    return new Response(message, { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
-  }
-  //? A production `public/` is what the build shipped, so an extensionless path, which is a page, is answered from the
-  //? list made at boot; a path with an extension is still checked on disk, so a file written there at runtime is served.
-  static async #isPublicFile(filePath: string, pathname: string, shipped: Set<string> | null) {
-    if (shipped && !path.extname(pathname)) return shipped.has(filePath);
-    return await Bun.file(filePath).exists();
-  }
-
-  static #shippedFiles(dir: string): Set<string> {
-    const files = new Set<string>();
-    if (!fs.existsSync(dir)) return files;
-    const scan = new Bun.Glob("**/*").scanSync({ cwd: dir, onlyFiles: true, dot: true, followSymlinks: true });
-    for (const relative of scan) {
-      const filePath = path.resolve(dir, relative);
-      if (staysInTree(dir, filePath)) files.add(filePath);
-    }
-    return files;
-  }
-
-  static #injectBeforeBodyEnd(html: string, snippet: string): string {
-    const matches = [...html.matchAll(/<\/body\s*>/gi)];
-    const last = matches.at(-1);
-    if (!last || last.index === undefined) return `${html}\n${snippet}`;
-    return `${html.slice(0, last.index)}${snippet}\n${html.slice(last.index)}`;
   }
 
   /** `null` when the build has no web artifact (an api-only build, or no `page/`): boot without a web surface. */
@@ -1202,11 +289,11 @@ export class WebRouter {
     const artifactDir = resolveArtifactDir();
     const artifactFile = Bun.file(path.join(artifactDir, "base-artifact.json"));
     if (!(await artifactFile.exists())) return null;
-    const artifact = WebRouter.#normalizeArtifact((await artifactFile.json()) as BaseBuildArtifact, artifactDir);
+    const artifact = WebArtifact.normalize((await artifactFile.json()) as BaseBuildArtifact, artifactDir);
     const builtWeb = resolveWebConfig(artifact.web);
     if (!builtWeb.ssr) return null;
-    const cssBytesByUrl = await WebRouter.#loadCssBytesByUrl(artifact, artifactDir);
-    await WebRouter.#seedDictionaries(artifact, artifactDir);
+    const cssBytesByUrl = await WebArtifact.loadCssBytesByUrl(artifact, artifactDir);
+    await WebArtifact.seedDictionaries(artifact, artifactDir);
     const prodMode = process.env.NODE_ENV === "production" && process.env.AKAN_COMMAND_TYPE !== "start";
     //* Production listens before the bundle loads (renders queue until `ready`) and exits if it cannot load rather
     //* than restart-loop behind a healthy API; dev awaits, as the next rebuild hands the worker a fixed bundle.
@@ -1238,168 +325,5 @@ export class WebRouter {
       upgradeHmrWs,
       prebuilt,
     });
-  }
-
-  static #normalizeArtifact(artifact: BaseBuildArtifact, artifactDir: string): BaseBuildArtifact {
-    const normalizedArtifactDir = path.resolve(artifactDir);
-    const pagesBundlePath = WebRouter.#resolveArtifactPath(artifact.pagesBundlePath, normalizedArtifactDir);
-    return {
-      ...artifact,
-      cssAssets: artifact.cssAssets ?? {},
-      dictAssets: artifact.dictAssets ?? {},
-      pagesBundlePath,
-      rscRuntimeSsrManifest: artifact.rscRuntimeSsrManifest
-        ? WebRouter.#normalizeSsrManifest(artifact.rscRuntimeSsrManifest, normalizedArtifactDir)
-        : undefined,
-      i18n: artifact.i18n ?? DEFAULT_AKAN_I18N,
-    };
-  }
-
-  static #normalizeSsrManifest(ssrManifest: SsrManifest, artifactDir: string): SsrManifest {
-    return {
-      ...ssrManifest,
-      moduleMap: Object.fromEntries(
-        Object.entries(ssrManifest.moduleMap).map(([entryUrl, byName]) => [
-          entryUrl,
-          Object.fromEntries(
-            Object.entries(byName).map(([name, entry]) => [
-              name,
-              {
-                ...entry,
-                id: WebRouter.#resolveArtifactPath(entry.id, artifactDir),
-                chunks: entry.chunks.map((chunk) => WebRouter.#resolveArtifactPath(chunk, artifactDir)),
-              },
-            ]),
-          ),
-        ]),
-      ),
-    };
-  }
-
-  static async #loadCssBytesByUrl(
-    artifact: BaseBuildArtifact,
-    artifactDir: string,
-  ): Promise<Record<string, Uint8Array>> {
-    const normalizedArtifactDir = path.resolve(artifactDir);
-    return Object.fromEntries(
-      await Promise.all(
-        Object.values(artifact.cssAssets ?? {}).map(async (asset) => [
-          asset.cssUrl,
-          await Bun.file(path.join(normalizedArtifactDir, asset.cssRelPath)).bytes(),
-        ]),
-      ),
-    );
-  }
-
-  //? Fizz renders client components in this process, and no flight prop carries their dictionary.
-  static async #seedDictionaries(artifact: BaseBuildArtifact, artifactDir: string): Promise<void> {
-    const normalizedArtifactDir = path.resolve(artifactDir);
-    await Promise.all(
-      Object.values(artifact.dictAssets ?? {}).map(async (asset) => {
-        const { lang, default: dictionary } = (await import(path.join(normalizedArtifactDir, asset.relPath))) as {
-          lang: string;
-          default: Dictionary;
-        };
-        TranslatorState.replace(lang, dictionary);
-      }),
-    );
-  }
-
-  static #resolveArtifactPath(artifactPath: string, artifactDir: string): string {
-    if (!path.isAbsolute(artifactPath)) return path.resolve(artifactDir, artifactPath);
-    if (fs.existsSync(artifactPath)) return artifactPath;
-
-    const marker = `${path.sep}.akan${path.sep}artifact${path.sep}`;
-    const markerIndex = artifactPath.lastIndexOf(marker);
-    if (markerIndex >= 0) {
-      const rel = artifactPath.slice(markerIndex + marker.length);
-      return path.resolve(artifactDir, rel);
-    }
-
-    return path.resolve(artifactDir, "server", path.basename(artifactPath));
-  }
-
-  static #resolveCsrHtmlPath(csrOutputDir: string, pathname: string, artifact: BaseBuildArtifact): string | null {
-    const basePath = getBasePathFromPathname(pathname, {
-      basePaths: artifact.basePaths,
-      i18n: artifact.i18n,
-    });
-    const filename = basePath ? `${basePath}.html` : "index.html";
-    const filePath = resolveStaticPath(csrOutputDir, filename);
-    return filePath && fs.existsSync(filePath) ? filePath : null;
-  }
-
-  static async #fileResponse(req: Request, filePath: string, options: AssetHeaderOptions): Promise<Response> {
-    const headers = assetHeaders(options);
-    const file = Bun.file(filePath);
-    if (!(await file.exists())) return new Response("Not Found", { status: 404 });
-    const stat = fs.statSync(filePath);
-    const lastModifiedMs = Math.floor(stat.mtimeMs / 1000) * 1000;
-    const etag = `W/"${stat.size.toString(16)}-${lastModifiedMs.toString(16)}"`;
-    headers.set("ETag", etag);
-    headers.set("Last-Modified", new Date(lastModifiedMs).toUTCString());
-    if (isCompressibleContentType(options.contentType)) varyOnEncoding(headers);
-    if (WebRouter.#isNotModified(req, etag, lastModifiedMs)) return new Response(null, { status: 304, headers });
-
-    return await encodedFileResponse(req, filePath, options.contentType, headers);
-  }
-
-  static #deepLinkAssociationResponse(
-    pathname: string,
-    artifact: BaseBuildArtifact,
-    { cacheControl }: { cacheControl: string },
-  ) {
-    const associations = artifact.deepLinkAssociations ?? [];
-    if (pathname === APPLE_APP_SITE_ASSOCIATION_PATH) {
-      const details = associations
-        .filter((association) => association.domains.length > 0 && association.iosTeamId && association.iosAppId)
-        .map((association) => ({
-          appIDs: [`${association.iosTeamId}.${association.iosAppId}`],
-          components: [{ "/": "/*" }],
-        }));
-      if (details.length === 0) return null;
-      return WebRouter.#jsonResponse({ applinks: { apps: [], details } }, cacheControl);
-    }
-    //? The Android debug buildType appends applicationIdSuffix ".debug"; only a non-main server vouches for it.
-    const packageSuffixes = process.env.AKAN_PUBLIC_ENV === "main" ? [""] : ["", ".debug"];
-    const assetLinks = associations
-      .filter(
-        (association) =>
-          association.domains.length > 0 &&
-          !!association.androidAppId &&
-          (association.androidSha256CertFingerprints?.length ?? 0) > 0,
-      )
-      .flatMap((association) =>
-        packageSuffixes.map((suffix) => ({
-          relation: ["delegate_permission/common.handle_all_urls"],
-          target: {
-            namespace: "android_app",
-            package_name: `${association.androidAppId}${suffix}`,
-            sha256_cert_fingerprints: association.androidSha256CertFingerprints,
-          },
-        })),
-      );
-    if (assetLinks.length === 0) return null;
-    return WebRouter.#jsonResponse(assetLinks, cacheControl);
-  }
-
-  static #jsonResponse(body: unknown, cacheControl: string) {
-    return new Response(JSON.stringify(body, null, 2), {
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": cacheControl,
-      },
-    });
-  }
-
-  static #isNotModified(req: Request, etag: string, lastModifiedMs: number): boolean {
-    if (req.method !== "GET" && req.method !== "HEAD") return false;
-    const ifNoneMatch = req.headers.get("if-none-match");
-    if (ifNoneMatch) return matchesIfNoneMatch(ifNoneMatch, etag);
-
-    const ifModifiedSince = req.headers.get("if-modified-since");
-    if (!ifModifiedSince) return false;
-    const sinceMs = Date.parse(ifModifiedSince);
-    return Number.isFinite(sinceMs) && sinceMs >= lastModifiedMs;
   }
 }

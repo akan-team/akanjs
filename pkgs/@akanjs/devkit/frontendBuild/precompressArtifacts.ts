@@ -22,7 +22,7 @@ export interface PrecompressArtifactsResult {
 }
 
 export async function precompressArtifacts(app: App): Promise<PrecompressArtifactsResult> {
-  //* WebRouter serves client/, styles/ and dict/ through the same sidecar-aware #fileResponse.
+  //* WebRouter serves client/, styles/ and dict/ through the same sidecar-aware WebRouteContext.fileResponse.
   const artifactDir = path.join(app.dist.cwdPath, ".akan/artifact");
   const roots = [
     { root: path.join(artifactDir, "client") },

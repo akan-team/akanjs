@@ -15,6 +15,11 @@ import {
   shouldStoreRouteCache,
 } from "./cachePolicy";
 import {
+  cacheHtmlWhileStreaming,
+  DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES,
+  resolveHtmlRouteCacheStoreTtl,
+} from "./htmlResultCache";
+import {
   AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
@@ -33,14 +38,9 @@ import { SessionRefresh } from "./sessionRefresh";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { RscTraceMetadata, SsrLateRedirect } from "./ssrTypes";
 import { type BaseBuildArtifact, defaultAkanImageConfig } from "./types";
-import {
-  cacheHtmlWhileStreaming,
-  cancelStreamForHeadResponse,
-  DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES,
-  normalizeRscTargetUrlForHostBasePath,
-  resolveHtmlRouteCacheStoreTtl,
-  WebRouter,
-} from "./webRouter";
+import { cancelStreamForHeadResponse } from "./webDocumentRoute";
+import { WebRouter } from "./webRouter";
+import { normalizeRscTargetUrlForHostBasePath } from "./webRscRoute";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -713,6 +713,84 @@ describe("WebRouter csr surface", () => {
   test("mounts /__csr only while the csr surface is on", async () => {
     await expect(routeKeys()).resolves.toContain("/__csr");
     await expect(routeKeys({ ssr: true, csr: false })).resolves.not.toContain("/__csr");
+  });
+
+  const prodRouteTable = [
+    "/__csr",
+    "/_akan/client/*",
+    "/_akan/styles/*",
+    "/_akan/fonts/*",
+    "/_akan/dict/*",
+    "/_akan/image",
+    "/__rsc",
+    "/.well-known/apple-app-site-association",
+    "/.well-known/assetlinks.json",
+    "/.well-known/*",
+    "/*",
+  ];
+  const devRouteKeys = async (devCsr: string | undefined) => {
+    const originalSend = process.send;
+    process.send = ((): boolean => true) as typeof process.send;
+    try {
+      return await withEnv("AKAN_DEV_CSR", devCsr, () =>
+        withFullSsrCacheHarness(async ({ renderEnvRoutes }) => Object.keys(renderEnvRoutes), {
+          nodeEnv: "development",
+        }),
+      );
+    } finally {
+      process.send = originalSend;
+    }
+  };
+
+  test("registers the production route table in its order", async () => {
+    await expect(withEnv("AKAN_EXPOSE_RSC_MANIFEST", undefined, () => routeKeys())).resolves.toEqual(prodRouteTable);
+  });
+
+  test("adds the RSC manifest after /__rsc in production only when it is exposed", async () => {
+    await expect(withEnv("AKAN_EXPOSE_RSC_MANIFEST", "1", () => routeKeys())).resolves.toEqual([
+      ...prodRouteTable.slice(0, prodRouteTable.indexOf("/__rsc") + 1),
+      "/__rsc/manifest",
+      ...prodRouteTable.slice(prodRouteTable.indexOf("/__rsc") + 1),
+    ]);
+  });
+
+  test("registers the dev route table in its order, the registry shells and HMR included", async () => {
+    await expect(devRouteKeys(undefined)).resolves.toEqual([
+      "/__csr",
+      "/_akan/csr-dev/*",
+      "/_akan/ssr-dev/*",
+      "/_akan/client/*",
+      "/_akan/styles/*",
+      "/_akan/fonts/*",
+      "/_akan/dict/*",
+      "/_akan/image",
+      "/_akan/hmr",
+      "/__rsc",
+      "/__rsc/manifest",
+      "/.well-known/apple-app-site-association",
+      "/.well-known/assetlinks.json",
+      "/.well-known/*",
+      "/*",
+    ]);
+  });
+
+  test("drops only the CSR registry shell from the dev route table when dev CSR is built as an artifact", async () => {
+    await expect(devRouteKeys("artifact")).resolves.toEqual([
+      "/__csr",
+      "/_akan/ssr-dev/*",
+      "/_akan/client/*",
+      "/_akan/styles/*",
+      "/_akan/fonts/*",
+      "/_akan/dict/*",
+      "/_akan/image",
+      "/_akan/hmr",
+      "/__rsc",
+      "/__rsc/manifest",
+      "/.well-known/apple-app-site-association",
+      "/.well-known/assetlinks.json",
+      "/.well-known/*",
+      "/*",
+    ]);
   });
 
   test("stops answering ?csr=true once the csr surface is off", async () => {

@@ -8,7 +8,6 @@
     "server/rscWorker.tsx": 1669,
     "server/rscWorkerHost.ts": 1116,
     "server/ssrFromRscRenderer.tsx": 839,
-    "server/webRouter.ts": 1405,
     "service/predefinedAdaptor/sql/SqlDocumentStore.ts": 1384,
     "signal/signalContext.ts": 1010,
     "ui/Constant/Doc.tsx": 812
@@ -24,8 +23,6 @@
     "server/rscWorker.tsx#RscRenderer.#renderFlightElement": 186,
     "server/rscWorkerHost.ts#createRscHostRenderStream": 164,
     "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 158,
-    "server/webRouter.ts#WebRouter.initializeRoute": 437,
-    "server/webRouter.ts#WebRouter.initializeRoute.renderEnvRoutes./*": 218,
     "ui/Agent/Chat.tsx#DefaultChat": 429,
     "ui/BottomSheet.tsx#BottomSheet": 154,
     "ui/Data/ListContainer.tsx#ListContainer": 341,
@@ -46,7 +43,6 @@
     "server/akanServer.ts#AkanServer": 99,
     "server/rscWorker.tsx#RscRenderer": 72,
     "server/rscWorkerHost.ts#RscWorker": 80,
-    "server/webRouter.ts#WebRouter": 81,
     "service/predefinedAdaptor/sql/SqlDocumentStore.ts#SqlDocumentStore": 99,
     "signal/signalContext.ts#SignalContext": 73,
     "store/storeInstance.ts#StoreInstance": 68

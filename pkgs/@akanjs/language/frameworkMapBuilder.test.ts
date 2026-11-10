@@ -223,6 +223,33 @@ export class Router {
     ]);
   });
 
+  it("follows a call on a field that hands out the receiver", () => {
+    const [channel] = build([{ file: "pkgs/akanjs/server/tabHub.ts", union: "Tab", label: "server → tab" }], {
+      "pkgs/akanjs/server/tabHub.ts": `export type Tab = { type: "reload" } | { type: "error"; message: string };
+export class TabHub {
+  broadcast(msg: Tab) {
+    return msg;
+  }
+}
+`,
+      "pkgs/akanjs/server/routeContext.ts": `import type { TabHub } from "./tabHub";
+export class RouteContext {
+  readonly #hub: () => TabHub | null;
+  constructor(hub: () => TabHub | null) {
+    this.#hub = hub;
+  }
+  fail(message: string) {
+    this.#hub()?.broadcast({ type: "error", message });
+  }
+}
+`,
+    }).channels;
+    expect(channel.messages.map(({ type, senders }) => `${type} ${senders.map(({ owner }) => owner)}`)).toEqual([
+      "reload ",
+      "error RouteContext",
+    ]);
+  });
+
   it("credits each literal a caller passes to a helper that sends `{ type }` from its parameter", () => {
     const [channel] = build([{ file: "pkgs/akanjs/server/reply.ts", union: "Reply", label: "worker → host" }], {
       "pkgs/akanjs/server/reply.ts": `export type Reply =
