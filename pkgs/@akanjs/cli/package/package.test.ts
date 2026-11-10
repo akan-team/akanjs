@@ -60,7 +60,51 @@ describe("PackageScript", () => {
   });
 });
 
+const frameworkFiles = {
+  "pkgs/akanjs/base/scalar.ts": "export class Scalar {}\n",
+  "pkgs/akanjs/service/ipcTypes.ts": 'export type AkanIpcMessage = { type: "ready" } | { type: "shutdown" };\n',
+  "pkgs/akanjs/server/artifact/ipcTypes.ts": 'export type BuilderMessage = { type: "build" } | { type: "built" };\n',
+  "pkgs/akanjs/server/rscWorker.tsx": 'export type InMsg = { type: "render" } | { type: "cancel" };\n',
+  "pkgs/akanjs/server/rscWorkerHost.ts": 'export type RscInMsg = { type: "chunk" } | { type: "end" };\n',
+  "pkgs/akanjs/server/hmr/wsHub.ts": 'export type HmrMessage = { type: "reload" } | { type: "ok" };\n',
+};
+
+const withFramework = async (architecture: string | null) => {
+  const { root, workspace } = track(await createTempPackage("@sample/tool"));
+  for (const [file, text] of Object.entries(frameworkFiles)) await writeText(`${root}/${file}`, text);
+  if (architecture !== null) await writeText(`${root}/pkgs/akanjs/ARCHITECTURE.md`, architecture);
+  return { root, workspace };
+};
+
 describe("PackageRunner", () => {
+  test("regenerates the framework's ARCHITECTURE.md, and says when it was already current", async () => {
+    const { root, workspace } = await withFramework("# Akan\n\nStart at `Scalar`.\n");
+    const runner = new PackageRunner();
+
+    expect(await runner.syncArchitecture(workspace)).toEqual({ file: "pkgs/akanjs/ARCHITECTURE.md", changed: true });
+    const written = await Bun.file(`${root}/pkgs/akanjs/ARCHITECTURE.md`).text();
+    expect(written).toStartWith("# Akan\n\nStart at `Scalar`.\n\n<!-- akan:framework-map:start -->");
+    expect(written).toContain("| `ready` | — | — |");
+    expect(await runner.syncArchitecture(workspace)).toEqual({ file: "pkgs/akanjs/ARCHITECTURE.md", changed: false });
+  });
+
+  test("refuses a workspace without the framework's own ARCHITECTURE.md", async () => {
+    const { workspace } = await withFramework(null);
+
+    await expect(new PackageRunner().syncArchitecture(workspace)).rejects.toThrow(
+      "pkgs/akanjs/ARCHITECTURE.md is only kept in the akanjs repository",
+    );
+  });
+
+  test("writes the document but fails on a name it cites that the framework does not declare", async () => {
+    const { root, workspace } = await withFramework("# Akan\n\nStart at `Ghost`.\n");
+
+    await expect(new PackageRunner().syncArchitecture(workspace)).rejects.toThrow(
+      "`Ghost` is cited outside the generated part but is no framework class",
+    );
+    expect(await Bun.file(`${root}/pkgs/akanjs/ARCHITECTURE.md`).text()).toContain("<!-- akan:framework-map:end -->");
+  });
+
   test("builds package without build.ts by copying source and generating package metadata", async () => {
     const { root, pkg } = track(await createTempPackage("@sample/tool"));
     await writeJson(`${root}/package.json`, {

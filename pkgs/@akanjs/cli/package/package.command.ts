@@ -38,4 +38,12 @@ export class PackageCommand extends command("package", [PackageScript], ({ publi
     .exec(async function (workspace) {
       await this.packageScript.verifyAkanPublishPackages(workspace);
     }),
+  syncArchitecture: target({
+    devOnly: true,
+    desc: "Regenerate the generated part of pkgs/akanjs/ARCHITECTURE.md from the framework source",
+  })
+    .with(Workspace)
+    .exec(async function (workspace) {
+      await this.packageScript.syncArchitecture(workspace);
+    }),
 })) {}

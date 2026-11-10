@@ -10,7 +10,7 @@ body { margin: 0; font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-s
 header { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
   padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
 header nav { display: flex; gap: 4px; }
-header form { display: flex; gap: 8px; }
+header form { display: flex; gap: 8px; } header form[hidden] { display: none; }
 header input[name="since"] { width: 22ch; }
 header nav.end { margin-left: auto; }
 header a { color: inherit; text-decoration: none; padding: 4px 8px; border-radius: 6px; }
@@ -47,11 +47,20 @@ svg a:hover text { text-decoration: underline; }
 .box.route, .box.layout { color: var(--component); }
 .box.service { color: var(--service); } .box.adaptor { color: var(--adaptor); } .box.internal { color: var(--internal); }
 .box text.skipped { fill: var(--muted); font-style: italic; }
+.box.facet { color: var(--model); } .box.package { color: var(--method); }
 .link { fill: none; stroke: var(--line); stroke-width: 1.25; }
 .link.fetches { stroke-dasharray: 5 3; }
 .link.uses { stroke-dasharray: 2 3; }
 .link.plug { stroke-dasharray: 5 3; }
 .link.memory { stroke-dasharray: 2 3; }
+.link.lazy { stroke-dasharray: 6 3; }
+.link.type { stroke-dasharray: 2 4; opacity: 0.5; }
+.channels { padding: 0 24px 24px; }
+.channels h2 { font-size: 13px; margin: 20px 0 6px; }
+.channels table { border-collapse: collapse; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.channels th { text-align: left; color: var(--muted); font-weight: 600; }
+.channels th, .channels td { padding: 3px 16px 3px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.channels a { color: inherit; }
 .arrow { fill: var(--muted); }
 .box.added rect:not(.bar) { stroke: var(--added); stroke-width: 2; }
 .box.changed rect:not(.bar) { stroke: var(--changed); stroke-width: 2; }

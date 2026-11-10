@@ -113,6 +113,9 @@ Release candidates publish from CI: each push to the `rc` branch runs the CI sui
 The `npm-publish` environment admits only `rc`, so whoever can push to `rc` can publish an rc: restrict pushes to
 `rc` in the repository's rules.
 
+`akan sync-architecture` regenerates the facet layers and process-message tables of `pkgs/akanjs/ARCHITECTURE.md`
+from the framework source, and fails when the hand-kept part names a class the source no longer has.
+
 ## Package Boundary
 
 - Use `akanjs` from application and runtime code.

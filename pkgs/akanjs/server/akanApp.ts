@@ -1244,7 +1244,7 @@ export class AkanApp {
     const trafficChildren = [...this.#children.values()].filter((item) => item.role !== "batch");
     //? A gateway that lost its port stops only after its replicas exit, and one may boot in that wait.
     if (!this.#stopping && child.role !== "batch" && trafficChildren.every((item) => item.ready)) {
-      process.send?.({ type: "backend-ready", pid: process.pid } satisfies AkanIpcMessage);
+      process.send?.({ type: "backend-ready", pid: process.pid } satisfies BuilderMessage);
     }
     if ([...this.#children.values()].every((item) => item.ready)) {
       this.logger.verbose(`All ${this.#children.size} child process(es) are ready`);

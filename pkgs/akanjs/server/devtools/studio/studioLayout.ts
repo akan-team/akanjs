@@ -12,7 +12,7 @@ import type {
 import type { DepEdgeKind } from "../types";
 import type { StudioRuntimeGraph } from "./studioRuntimeGraph";
 
-export type StudioView = "erd" | "signals" | "changes" | "runtime";
+export type StudioView = "erd" | "signals" | "changes" | "runtime" | "framework";
 
 export type StudioNodeKind = AkanGraphNodeKind | "service" | "adaptor" | "internal";
 

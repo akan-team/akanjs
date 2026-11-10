@@ -4,7 +4,7 @@
     "akanConfig/akanConfig.ts": 907,
     "akanContext.ts": 1086,
     "executors.ts": 1749,
-    "incrementalBuilder/incrementalBuilder.proc.ts": 1183,
+    "incrementalBuilder/incrementalBuilder.proc.ts": 1152,
     "qualityScanner.ts": 983,
     "workflow/source.ts": 1105
   },
@@ -18,6 +18,6 @@
     "akanApp/akanApp.host.ts#AkanAppHost": 127,
     "akanConfig/akanConfig.ts#AkanAppConfig": 66,
     "codeAgent/agent/CodeAgent.ts#CodeAgent": 67,
-    "incrementalBuilder/incrementalBuilder.proc.ts#IncrementalBuilder": 93
+    "incrementalBuilder/incrementalBuilder.proc.ts#IncrementalBuilder": 90
   }
 }
