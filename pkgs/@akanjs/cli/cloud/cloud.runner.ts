@@ -407,9 +407,22 @@ export class CloudRunner extends runner("cloud") {
   //? The VS Marketplace and Open VSX trust only the vscode-publish workflow's GitHub OIDC token, so a release asks CI to publish the commit it shipped.
   async releaseEditorExtension(workspace: Workspace) {
     const repo = "akan-team/akanjs";
+    const bundled = [
+      "pkgs/@akanjs/vscode",
+      "pkgs/@akanjs/language",
+      ":(exclude)pkgs/@akanjs/language/package.json",
+      ":(exclude)pkgs/@akanjs/language/CHANGELOG.md",
+      "pkgs/akanjs/common/akanNames.ts",
+      "pkgs/akanjs/common/akanGraph.ts",
+      "pkgs/akanjs/common/capitalize.ts",
+      "apps/akan/public/icon-512x512.png",
+      "bun.lock",
+    ];
     try {
-      if ((await workspace.spawn("git", ["status", "--porcelain", "--", "pkgs/@akanjs/vscode"])).trim())
-        throw new Error("pkgs/@akanjs/vscode has uncommitted changes, such as the version `changeset version` wrote");
+      if ((await workspace.spawn("git", ["status", "--porcelain", "--", ...bundled])).trim())
+        throw new Error(
+          "files the extension bundles have uncommitted changes, such as the version `changeset version` wrote",
+        );
       const sha = (await workspace.spawn("git", ["rev-parse", "HEAD"])).trim();
       const onMain = (
         await workspace.spawn("gh", ["api", `repos/${repo}/compare/${sha}...main`, "--jq", ".status"])
@@ -431,7 +444,7 @@ export class CloudRunner extends runner("cloud") {
       );
     } catch (error) {
       Logger.warn(
-        `The editor extension was not released: ${error instanceof Error ? error.message : String(error)}. Push the release commit to main, then run \`gh workflow run vscode-publish.yml --repo ${repo} --ref main\``,
+        `The editor extension was not released: ${error instanceof Error ? error.message : String(error)}. Commit and push the release to main, then run from that commit \`gh workflow run vscode-publish.yml --repo ${repo} --ref main -f sha=$(git rev-parse HEAD)\``,
       );
     }
   }

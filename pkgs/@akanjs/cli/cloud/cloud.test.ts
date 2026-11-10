@@ -657,7 +657,11 @@ describe("CloudRunner", () => {
   });
 
   const releaseSha = "0123456789abcdef0123456789abcdef01234567";
-  const releaseTo = async (answers: Record<string, string>) => {
+  const gitStatus =
+    "git status --porcelain -- pkgs/@akanjs/vscode pkgs/@akanjs/language :(exclude)pkgs/@akanjs/language/package.json :(exclude)pkgs/@akanjs/language/CHANGELOG.md pkgs/akanjs/common/akanNames.ts pkgs/akanjs/common/akanGraph.ts pkgs/akanjs/common/capitalize.ts apps/akan/public/icon-512x512.png bun.lock";
+  const later =
+    "Commit and push the release to main, then run from that commit `gh workflow run vscode-publish.yml --repo akan-team/akanjs --ref main -f sha=$(git rev-parse HEAD)`";
+  const releaseTo = async (answers: Record<string, string | Error>) => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = registryOf({
       akanjs: { tags: { latest: "3.1.1" }, versions: ["3.1.1"] },
@@ -666,7 +670,9 @@ describe("CloudRunner", () => {
     const recorder = createCallRecorder();
     const spawn = async (command: string, args: string[], ...rest: unknown[]) => {
       recorder.record("workspace.spawn", command, args, ...rest);
-      return answers[`${command} ${args[0]}`] ?? "";
+      const answer = answers[`${command} ${args[0]}`] ?? "";
+      if (answer instanceof Error) throw answer;
+      return answer;
     };
     const { workspace } = createVersionedWorkspace("3.1.2", recorder, { spawn });
     const warn = spyOn(Logger, "warn").mockImplementation(() => undefined);
@@ -688,7 +694,7 @@ describe("CloudRunner", () => {
     const { spawned, warnings } = await releaseTo({ "git rev-parse": `${releaseSha}\n`, "gh api": "ahead\n" });
 
     expect(spawned).toEqual([
-      "git status --porcelain -- pkgs/@akanjs/vscode",
+      gitStatus,
       "git rev-parse HEAD",
       `gh api repos/akan-team/akanjs/compare/${releaseSha}...main --jq .status`,
       `gh workflow run vscode-publish.yml --repo akan-team/akanjs --ref main -f sha=${releaseSha}`,
@@ -700,18 +706,26 @@ describe("CloudRunner", () => {
     const { spawned, warnings } = await releaseTo({ "git rev-parse": `${releaseSha}\n`, "gh api": "behind\n" });
 
     expect(spawned.some((line) => line.startsWith("gh workflow run"))).toBe(false);
-    expect(warnings).toEqual([
-      "The editor extension was not released: 012345678 is not on main. Push the release commit to main, then run `gh workflow run vscode-publish.yml --repo akan-team/akanjs --ref main`",
-    ]);
+    expect(warnings).toEqual([`The editor extension was not released: 012345678 is not on main. ${later}`]);
   });
 
-  test("an npm release does not release the editor extension while its version bump is uncommitted", async () => {
+  test("an npm release only warns about the editor extension when gh cannot reach GitHub", async () => {
+    const { spawned, warnings } = await releaseTo({
+      "git rev-parse": `${releaseSha}\n`,
+      "gh api": new Error("gh: Not Found (HTTP 404)"),
+    });
+
+    expect(spawned.some((line) => line.startsWith("gh workflow run"))).toBe(false);
+    expect(warnings).toEqual([`The editor extension was not released: gh: Not Found (HTTP 404). ${later}`]);
+  });
+
+  test("an npm release does not release the editor extension while what it bundles is uncommitted", async () => {
     const { spawned, warnings } = await releaseTo({ "git status": " M pkgs/@akanjs/vscode/package.json\n" });
 
-    expect(spawned).toEqual(["git status --porcelain -- pkgs/@akanjs/vscode"]);
-    expect(warnings[0]).toStartWith(
-      "The editor extension was not released: pkgs/@akanjs/vscode has uncommitted changes",
-    );
+    expect(spawned).toEqual([gitStatus]);
+    expect(warnings).toEqual([
+      `The editor extension was not released: files the extension bundles have uncommitted changes, such as the version \`changeset version\` wrote. ${later}`,
+    ]);
   });
 
   test("--prerelease takes only a lowercase identifier other than latest", async () => {

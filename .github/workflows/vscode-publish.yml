@@ -88,12 +88,27 @@ jobs:
             echo "::notice::akanjs.akan $version is already on the VS Marketplace and Open VSX."
             exit 0
           fi
-          previous=$(jq -r --arg v "$version" '($v | split(".") | map(tonumber)) as $mine
-            | map(split(".") | map(tonumber) | select(. < $mine and .[1] % 2 == $mine[1] % 2))
-            | max // empty | map(tostring) | join(".")' <<< "$versions")
+          openvsx_versions=$(curl -fsS --retry 3 https://open-vsx.org/api/akanjs/akan \
+            | jq -c '[.allVersions | keys[] | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))]') || {
+            echo "::warning::Could not list the Open VSX versions, so $version is published without comparing it to the last one."
+            exit 0
+          }
+          previous=$(jq -rn --arg v "$version" --argjson mp "$versions" --argjson ovsx "$openvsx_versions" '
+            ($v | split(".") | map(tonumber)) as $mine
+            | $mp + $ovsx | map(split(".") | map(tonumber) | select(. < $mine and .[1] % 2 == $mine[1] % 2))
+            | max // empty | map(tostring) | join(".")')
           [ -n "$previous" ] || exit 0
-          curl -fsSL --compressed -o "$RUNNER_TEMP/previous.vsix" \
-            "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/akanjs/vsextensions/akan/$previous/vspackage"
+          for list in "$versions" "$openvsx_versions"; do
+            if ! jq -e --arg p "$previous" 'any(.[]; . == $p)' <<< "$list" > /dev/null; then
+              echo "::notice::$previous is not on both registries, so $version is published to bring them level."
+              exit 0
+            fi
+          done
+          curl -fsSL --compressed --retry 3 -o "$RUNNER_TEMP/previous.vsix" \
+            "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/akanjs/vsextensions/akan/$previous/vspackage" || {
+            echo "::warning::Could not download $previous, so $version is published without comparing it to the last one."
+            exit 0
+          }
           unzip -q "$RUNNER_TEMP/previous.vsix" 'extension/*' -d "$RUNNER_TEMP/previous"
           unzip -q "$RUNNER_TEMP/akan-$version.vsix" 'extension/*' -d "$RUNNER_TEMP/current"
           for side in previous current; do
