@@ -44,6 +44,7 @@ import type {
 } from "akanjs/signal";
 import { produce } from "immer";
 import { expandQueryArgs, normalizeQueryArgs } from "../fetch/client/sliceQueryArgs";
+import { actionErrorKey } from "./actionErrorKey";
 import { tagAction } from "./actionTag";
 import { DraftStore } from "./draftStore";
 import { type LiveSortableRow, livePlacementIndex } from "./liveInsert";
@@ -72,11 +73,15 @@ type SliceRefreshForm<S extends SliceCls, Suffix extends keyof _SliceMap<S>> = S
 const UPLOAD_POLL_INTERVAL_MS = 3000;
 const UPLOAD_POLL_ATTEMPTS = 40;
 
-export interface CreateOption<Full extends { id: string }> {
+export interface ErrorReportOption {
+  /** Called with the failed request's dictionary key, as a `Button`'s `onError` takes it; the action still rejects. */
+  onError?: (key: string) => void;
+}
+type ReportingFetchPolicy = Omit<FetchPolicy, "onError"> & ErrorReportOption;
+export interface CreateOption<Full extends { id: string }> extends ErrorReportOption {
   path?: string;
   modal?: string;
   sliceName?: string;
-  onError?: (e: string) => void;
   onSuccess?: (model: Full) => void | Promise<void>;
 }
 export interface NewOption {
@@ -112,7 +117,7 @@ type BaseAction<
 } & {
   [K in `remove${_CapitalizedRefName}`]: (
     id: string,
-    options?: FetchPolicy & { modal?: string | null },
+    options?: ReportingFetchPolicy & { modal?: string | null },
   ) => Promise<void>;
 } & {
   [K in `check${_CapitalizedRefName}Submitable`]: (disabled?: boolean) => Promise<void>;
@@ -121,7 +126,10 @@ type BaseAction<
 } & {
   [K in `new${_CapitalizedRefName}`]: (partial?: PartialOrNull<Full>, options?: NewOption) => void;
 } & {
-  [K in `edit${_CapitalizedRefName}`]: (model: Full | string, options?: EditOption & FetchPolicy) => Promise<void>;
+  [K in `edit${_CapitalizedRefName}`]: (
+    model: Full | string,
+    options?: EditOption & ReportingFetchPolicy,
+  ) => Promise<void>;
 } & {
   [K in `load${_CapitalizedRefName}FormDraft`]: (draftScope?: string) => Promise<void>;
 } & {
@@ -137,7 +145,7 @@ type BaseAction<
 } & {
   [K in `view${_CapitalizedRefName}`]: (
     model: Full | string,
-    options?: { modal?: string | null } & FetchPolicy,
+    options?: { modal?: string | null } & ReportingFetchPolicy,
   ) => Promise<void>;
 } & { [K in `set${_CapitalizedRefName}`]: (...models: (Full | Light)[]) => void } & {
   [K in `reset${_CapitalizedRefName}`]: (model?: Full) => void;
@@ -586,11 +594,13 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     {
       flag,
       opening = {},
+      onError,
       request,
       land,
     }: {
       flag: { key: string; value: string | true } | null;
       opening?: StateRecord;
+      onError?: ErrorReportOption["onError"];
       request: () => Promise<T>;
       land: (answer: T, ownsFlag: boolean) => void;
     },
@@ -609,6 +619,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       return answer;
     } catch (error) {
       if (flag && ownsFlag()) ctx.set({ [flag.key]: false });
+      if (!AbortSignals.isAbort(error)) onError?.(actionErrorKey(error));
       throw error;
     }
   };
@@ -719,7 +730,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const openSeq = openSeqOf(this);
       const model = await withFlag(this, {
         flag: { key: names.modelLoading, value: true },
-        request: () => servedFetch<Full>(names.createModel)(modelInput, { onError }),
+        onError,
+        request: () => servedFetch<Full>(names.createModel)(modelInput),
         land: (model, ownsFlag) => {
           this.set({
             ...(isOvertaken(this, openSeq)
@@ -754,7 +766,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const openSeq = openSeqOf(this);
       const updatedModel = await withFlag(this, {
         flag: model?.id === modelForm.id ? { key: names.modelLoading, value: modelForm.id } : null,
-        request: () => servedFetch<Full>(names.updateModel)(modelForm.id, modelInput, { onError }),
+        onError,
+        request: () => servedFetch<Full>(names.updateModel)(modelForm.id, modelInput),
         land: (updatedModel, ownsFlag) => {
           const latest = this.get() as StateRecord;
           const overtaken = isOvertaken(this, openSeq);
@@ -786,7 +799,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const openSeq = openSeqOf(this);
       const model = await withFlag(this, {
         flag: { key: names.modelLoading, value: true },
-        request: () => servedFetch<Full>(names.createModel)(modelInput, { onError }),
+        onError,
+        request: () => servedFetch<Full>(names.createModel)(modelInput),
         land: (model, ownsFlag) => {
           this.set({
             ...(isOvertaken(this, openSeq)
@@ -815,7 +829,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const openSeq = openSeqOf(this);
       const updatedModel = await withFlag(this, {
         flag: model?.id === id ? { key: names.modelLoading, value: id } : null,
-        request: () => servedFetch<Full>(names.updateModel)(id, modelInput, { onError }),
+        onError,
+        request: () => servedFetch<Full>(names.updateModel)(id, modelInput),
         land: (updatedModel, ownsFlag) => {
           const latest = this.get() as StateRecord;
           this.set({
@@ -829,36 +844,46 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       });
       await onSuccess?.(updatedModel);
     },
-    [names.removeModel]: async function (this: SetGet, id: string, options?: FetchPolicy & { modal?: string | null }) {
-      const { modal, ...fetchPolicyOptions } = options ?? {};
-      const model = await servedFetch<Full & { removedAt: Dayjs | null }>(names.removeModel)(id, fetchPolicyOptions);
-      const currentState = this.get() as { [key: string]: unknown };
-      if (!model.removedAt) {
-        const listPatch = updatedListPatchOf(currentState, model);
-        this.set({
-          ...listPatch,
-          ...(modal !== undefined && Object.keys(listPatch).length ? { [names.modelModal]: modal } : {}),
-          ...staleAtOfSlices(),
-        });
-        return;
-      }
-      const removedPatch: { [key: string]: unknown } = {};
-      for (const { keys } of slices) {
-        const namesOfSlice = keys.state;
-        const modelList = currentState[namesOfSlice.modelList] as DataList<Light>;
-        const modelSelection = currentState[namesOfSlice.modelSelection] as DataList<Light>;
-        const modelInsight = currentState[namesOfSlice.modelInsight] as Insight & BaseInsight;
-        if (currentState[namesOfSlice.modelListLoading] || !modelList.has(model.id)) continue;
-        removedPatch[namesOfSlice.modelList] = new DataList(modelList).delete(id);
-        removedPatch[namesOfSlice.modelInsight] = new cnst.insight().set({
-          ...modelInsight,
-          count: modelInsight.count - 1,
-        });
-        if (modelSelection.has(model.id))
-          removedPatch[namesOfSlice.modelSelection] = new DataList(modelSelection).delete(id);
-        if (modal !== undefined) removedPatch[names.modelModal] = modal;
-      }
-      this.set({ ...removedPatch, ...staleAtOfSlices() });
+    [names.removeModel]: async function (
+      this: SetGet,
+      id: string,
+      options?: ReportingFetchPolicy & { modal?: string | null },
+    ) {
+      const { modal, onError, ...fetchPolicyOptions } = options ?? {};
+      await withFlag(this, {
+        flag: null,
+        onError,
+        request: () => servedFetch<Full & { removedAt: Dayjs | null }>(names.removeModel)(id, fetchPolicyOptions),
+        land: (model) => {
+          const currentState = this.get() as { [key: string]: unknown };
+          if (!model.removedAt) {
+            const listPatch = updatedListPatchOf(currentState, model);
+            this.set({
+              ...listPatch,
+              ...(modal !== undefined && Object.keys(listPatch).length ? { [names.modelModal]: modal } : {}),
+              ...staleAtOfSlices(),
+            });
+            return;
+          }
+          const removedPatch: { [key: string]: unknown } = {};
+          for (const { keys } of slices) {
+            const namesOfSlice = keys.state;
+            const modelList = currentState[namesOfSlice.modelList] as DataList<Light>;
+            const modelSelection = currentState[namesOfSlice.modelSelection] as DataList<Light>;
+            const modelInsight = currentState[namesOfSlice.modelInsight] as Insight & BaseInsight;
+            if (currentState[namesOfSlice.modelListLoading] || !modelList.has(model.id)) continue;
+            removedPatch[namesOfSlice.modelList] = new DataList(modelList).delete(id);
+            removedPatch[namesOfSlice.modelInsight] = new cnst.insight().set({
+              ...modelInsight,
+              count: modelInsight.count - 1,
+            });
+            if (modelSelection.has(model.id))
+              removedPatch[namesOfSlice.modelSelection] = new DataList(modelSelection).delete(id);
+            if (modal !== undefined) removedPatch[names.modelModal] = modal;
+          }
+          this.set({ ...removedPatch, ...staleAtOfSlices() });
+        },
+      });
     },
     [names.checkModelSubmitable]: function (this: SetGet, disabled?: boolean) {
       const currentState = this.get() as { [key: string]: any };
@@ -908,14 +933,15 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     [names.editModel]: async function (
       this: SetGet,
       modelOrId: Full | string,
-      { modal, onError, draftScope }: EditOption & FetchPolicy = {},
+      { modal, onError, draftScope }: EditOption & ReportingFetchPolicy = {},
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
       const openSeq = markOpened(this);
       await withFlag(this, {
         flag: { key: names.modelFormLoading, value: id },
         opening: { [names.modelModal]: modal ?? "edit" },
-        request: () => servedFetch<Full>(names.model)(id, { onError }),
+        onError,
+        request: () => servedFetch<Full>(names.model)(id),
         land: (model, ownsFlag) => {
           const released = ownsFlag ? { [names.modelFormLoading]: false } : {};
           if (isOvertaken(this, openSeq)) {
@@ -959,14 +985,15 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     [names.viewModel]: async function (
       this: SetGet,
       modelOrId: Full | string,
-      { modal, onError }: { modal?: string | null } & FetchPolicy = {},
+      { modal, onError }: { modal?: string | null } & ReportingFetchPolicy = {},
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
       const openSeq = markOpened(this);
       await withFlag(this, {
         flag: { key: names.modelLoading, value: id },
         opening: { [names.modelModal]: modal ?? "view" },
-        request: () => servedFetch<Full>(names.model)(id, { onError }),
+        onError,
+        request: () => servedFetch<Full>(names.model)(id),
         land: (model, ownsFlag) => {
           this.set({
             ...(isOvertaken(this, openSeq) ? {} : { [names.model]: model, [names.modelViewAt]: new Date() }),

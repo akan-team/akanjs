@@ -2,7 +2,7 @@ import { describe, expect, mock, spyOn, test } from "bun:test";
 import { ACTION_META, DataList, Int, SLICE_META, STATE_DERIVED_META, STATE_INIT_META, STATE_META } from "akanjs/base";
 import { Translator } from "akanjs/client/translator";
 import { ConstantRegistry, MAX_PAGE_SIZE, via } from "akanjs/constant";
-import type { ClientSignal } from "akanjs/fetch";
+import { type ClientSignal, restoreRemoteError } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
 import type { RootStoreCls } from "./rootStore";
 import { type StoreCls, store } from "./store";
@@ -390,6 +390,43 @@ describe("StoreInstance runtime", () => {
 
     await expect(instance.do.removeStoreTestItem("aaaaaaaaaaaaaaaaaaaaaaaa")).rejects.toBe(refused);
     expect(instance.get().messages).toEqual([]);
+  });
+
+  test("a generated write hands its failure's key to the caller's onError, then rejects and toasts as before", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const locked = restoreRemoteError({ error: "storeTestItem.error.locked" }, 409);
+    signal.calls.removeStoreTestItem = mock(async () => {
+      throw locked;
+    });
+    signal.calls.updateStoreTestItem = mock(async () => {
+      throw locked;
+    });
+    class ReportingItemStore extends store(signal, () => ({ messages: [] as { key: string }[] })) {
+      showMessage(message: { key: string }) {
+        this.set({ messages: [...this.get().messages, { key: message.key }] });
+      }
+    }
+    StoreRegistry.register(ReportingItemStore);
+    const instance = new StoreInstance(makeRoot("reportingItemRoot", ReportingItemStore));
+    const reported: string[] = [];
+    const onError = (key: string) => void reported.push(key);
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+
+    await expect(instance.do.removeStoreTestItem(id, { onError })).rejects.toBe(locked);
+    await expect(
+      instance.do.updateStoreTestItem(id, { title: "updated", count: 0, tags: [] }, { onError }),
+    ).rejects.toBe(locked);
+    expect(reported).toEqual(["storeTestItem.error.locked", "storeTestItem.error.locked"]);
+    expect(instance.get().messages).toEqual([{ key: "removeStoreTestItem" }, { key: "updateStoreTestItem" }]);
+    expect(signal.calls.removeStoreTestItem.mock.calls[0]).toEqual([id, {}]);
+
+    const aborted = new DOMException("The operation was aborted.", "AbortError");
+    signal.calls.removeStoreTestItem = mock(async () => {
+      throw aborted;
+    });
+    await expect(instance.do.removeStoreTestItem(id, { onError })).rejects.toBe(aborted);
+    expect(reported).toHaveLength(2);
   });
 
   test("a static silent name that is no action of the store is reported at registration", () => {
