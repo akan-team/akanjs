@@ -7,6 +7,7 @@ import { ProductionLockfile } from "./akanConfig/productionLockfile";
 import { AKAN_BACKEND_MINIFY, AKAN_OPTIONAL_BACKEND_EXTERNALS, ApplicationBuildRunner } from "./applicationBuildRunner";
 import type { App } from "./commandDecorators";
 import { AppExecutor, Executor } from "./executors";
+import { AllRoutesBuilder, type BuildAllRoutesResult, VendorNarrowing } from "./frontendBuild";
 import { bundleDefine } from "./frontendBuild/bundleDefine";
 import { createTempApp } from "./testHelpers";
 import { ProjectTypecheck } from "./typecheck/projectTypecheck";
@@ -279,6 +280,52 @@ console.info(new SampleService().name);
       expect(asked).toEqual({ "1": true, "0": false, false: false, "": false });
     } finally {
       bundle.mockRestore();
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("bundles the routes before the vendor entries, which export only the names the route chunks import", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    await Promise.all(["main.ts", "server.ts"].map((file) => writeFile(path.join(root, "apps", "portal", file), "")));
+    const app = AppExecutor.from(workspace, "portal");
+    app.prepareCommand = async () => ({ env: {} });
+    app.getPageKeys = async () => ["_index.tsx"];
+    const order: string[] = [];
+    let narrowed: Record<string, readonly string[]> = {};
+    const entryExports = VendorNarrowing.prototype.entryExports;
+    const bundle = spyOn(Bun, "build").mockImplementation(
+      async () => ({ success: true, outputs: [], logs: [] }) as unknown as Bun.BuildOutput,
+    );
+    const routes = spyOn(AllRoutesBuilder.prototype, "build").mockImplementation(async () => {
+      order.push("routes");
+      await Bun.write(path.join(app.dist.cwdPath, ".akan/artifact/client/page-a1.js"), 'import{st}from"akanjs/store";');
+      const clientManifest = { "page#default": { id: "/_akan/client/page-a1.js", chunks: [], name: "default" } };
+      return { manifest: { routeIds: ["/"], clientManifest } } as unknown as BuildAllRoutesResult;
+    });
+    const vendors = spyOn(VendorNarrowing.prototype, "entryExports").mockImplementation(function (
+      this: VendorNarrowing,
+      entries,
+    ) {
+      order.push("vendors");
+      narrowed = entryExports.call(this, entries);
+      throw new Error("stopped at the vendor build");
+    });
+    try {
+      await expect(new ApplicationBuildRunner(app, { fast: true }).build()).rejects.toThrow(
+        "stopped at the vendor build",
+      );
+      expect(order).toEqual(["routes", "vendors"]);
+      expect(Object.entries(narrowed).find(([entry]) => entry.endsWith("akanjs-store.ts"))?.[1]).toEqual(["st"]);
+    } finally {
+      bundle.mockRestore();
+      routes.mockRestore();
+      vendors.mockRestore();
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];
         else process.env[key] = shellEnv[key];

@@ -12,25 +12,40 @@ export class VendorImportScanner {
     for (const specifier of specifiers) this.#names.set(specifier, new Set());
   }
 
-  /** The names each specifier's importers read across a directory's `.js` files; a specifier read whole is left out. */
-  static async exportsUsedIn(dir: string, specifiers: readonly string[]): Promise<Record<string, string[]>> {
+  static async exportsUsedIn(
+    dir: string,
+    specifiers: readonly string[],
+    entryUrls: readonly string[] = [],
+  ): Promise<Record<string, string[]>> {
     const scanner = new VendorImportScanner(specifiers);
-    if (!fs.existsSync(dir)) return scanner.usedExports();
-    for await (const relative of new Bun.Glob("**/*.js").scan({ cwd: dir }))
-      scanner.scan(await Bun.file(path.join(dir, relative)).text(), relative);
+    const scanned: string[] = [];
+    if (fs.existsSync(dir))
+      for await (const relative of new Bun.Glob("**/*.js").scan({ cwd: dir })) {
+        scanner.scan(await Bun.file(path.join(dir, relative)).text(), relative);
+        scanned.push(`/${relative.split(path.sep).join("/")}`);
+      }
+    const unread = [...new Set(entryUrls)].filter((url) => !scanned.some((relative) => url.endsWith(relative)));
+    if (unread.length > 0) {
+      const named = `${unread.slice(0, 3).join(", ")}${unread.length > 3 ? `, and ${unread.length - 3} more` : ""}`;
+      throw new Error(
+        `[VendorImportScanner] no file under ${dir} for the route client entries ${named}; narrowing the vendor entries without them would drop names those pages import`,
+      );
+    }
     return scanner.usedExports();
   }
 
   scan(source: string, fileName = "chunk.js"): this {
     if (![...this.#specifiers].some((specifier) => source.includes(specifier))) return this;
-    const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, ts.ScriptKind.JS);
-    const visit = (node: ts.Node): void => {
+    //? A stack, not recursion: minified code folds a long body into one comma chain, deeper than the call stack.
+    const stack: ts.Node[] = [ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, ts.ScriptKind.JS)];
+    for (let node = stack.pop(); node; node = stack.pop()) {
       if (ts.isImportDeclaration(node)) this.#readImport(node);
       else if (ts.isExportDeclaration(node)) this.#readExport(node);
       else if (ts.isCallExpression(node)) this.#readCall(node);
-      ts.forEachChild(node, visit);
-    };
-    visit(file);
+      ts.forEachChild(node, (child) => {
+        stack.push(child);
+      });
+    }
     return this;
   }
 
