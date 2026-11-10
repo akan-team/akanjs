@@ -1,0 +1,96 @@
+name: Publish rc packages to npm
+
+on:
+  push:
+    branches: [rc]
+  workflow_dispatch:
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ci:
+    name: CI
+    if: github.ref_name == 'rc'
+    uses: ./.github/workflows/ci.yml
+
+  pack:
+    name: Pack the next rc
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.pack.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Version the packages as the pending changesets will release them
+        id: release
+        run: |
+          current=$(jq -r .version pkgs/akanjs/package.json)
+          bun run changeset:version
+          release=$(jq -r .version pkgs/akanjs/package.json)
+          if [ "$release" = "$current" ]; then
+            echo "::notice::No pending changeset moves akanjs past $current, so there is no rc to publish."
+          else
+            echo "release=$release" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Pack the next rc of that release
+        id: pack
+        if: steps.release.outputs.release
+        run: |
+          bun run akan deploy-akan --registry npm --test false --prerelease rc --pack-to "$RUNNER_TEMP/npm-packs"
+          echo "version=$(jq -r .version "$RUNNER_TEMP/npm-packs/publish.json")" >> "$GITHUB_OUTPUT"
+      - if: steps.pack.outputs.version
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-packs
+          path: ${{ runner.temp }}/npm-packs
+          if-no-files-found: error
+          retention-days: 30
+
+  # The job that can mint an npm token installs and builds nothing, so no dependency's code runs beside it.
+  publish:
+    name: Publish the next rc
+    needs: pack
+    if: needs.pack.outputs.version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: npm-publish
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-packs
+      # npm trusted publishing needs npm 11.5.1 or later.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Publish the tarballs, each after the packages it depends on
+        run: |
+          tag=$(jq -r .tag publish.json)
+          for tarball in $(jq -r '.tarballs[]' publish.json); do
+            npm publish "$tarball" --tag "$tag" --provenance
+          done
+
+  tag:
+    name: Tag the published commit
+    needs: [pack, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$GITHUB_SHA"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.pack.outputs.version }}
