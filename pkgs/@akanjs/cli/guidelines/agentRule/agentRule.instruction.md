@@ -637,6 +637,11 @@ pages declaring one name never clash, and a registry kept outside the surface re
 - **A turn that failed says so on the wire.** `error` is a field only this wire has, so a provider mapping reads
   `text` and drops it; `AgentService.explained` folds it into the text before any adaptor sees it, because an
   assistant turn that says nothing is one the model repeats.
+- **A failed turn keeps its code for the host.** The relay's `error` event carries `code`: the `Err`'s key, else
+  an `AkanError`'s own code, else the status's name, and always the status's name for a refusal (401/403). A
+  refusal the guard answers before the stream opens is named by its body's code, else its status. The chat keeps it
+  on that assistant message as `errorCode` after translating the text, so a host branches on `message.errorCode`,
+  never on the sentence. It is never sent back to the relay.
 - **↑ and ↓ in the composer walk what was sent**, seeded from the transcript so a persisted chat does not lose
   only what was just typed. A single-line input has nothing of its own on the vertical arrows, and the
   half-written draft they were walked away from comes back at the bottom of the walk. **The `/` menu takes those

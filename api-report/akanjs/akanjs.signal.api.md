@@ -145,6 +145,7 @@ export declare class AgentTurnStream {
     static wants(request: Bun.BunRequest): boolean;
     static failure(error: unknown): {
         message: string;
+        code: string;
         data?: Record<string, number | string>;
         overflow?: {
             limit?: number;
@@ -1481,6 +1482,7 @@ export declare class SignalFailure {
         statusCode: number;
         code?: string;
     };
+    static codeOf(error: unknown, status: number | undefined): string;
     static body<Extra extends Record<string, unknown> = Record<string, never>>(error: unknown, extra?: Extra): Extra & {
         error: string;
         statusCode: number;

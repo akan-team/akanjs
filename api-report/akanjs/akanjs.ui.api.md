@@ -279,6 +279,7 @@ export interface ChatMessage {
     toolCalls?: ToolCallRequest[];
     toolResults?: ToolCallResult[];
     error?: string;
+    errorCode?: string;
     local?: boolean;
     summary?: boolean;
     usage?: TurnUsage;
@@ -795,6 +796,7 @@ export type RunnerEvent = {
 } | {
     type: "error";
     message: string;
+    code?: string;
     data?: Record<string, number | string>;
     overflow?: {
         limit?: number;

@@ -1,4 +1,6 @@
 import { AkanError } from "akanjs/base";
+import { FailureCode, isGuardRefusal } from "akanjs/common";
+import { type ExceptionLike, isExceptionLike } from "./exception";
 
 // Anything but an `Exception` is generalized: a stack names server paths and a driver message quotes the statement.
 export class SignalFailure {
@@ -24,6 +26,30 @@ export class SignalFailure {
     if (!AkanError.is(error)) return { error: SignalFailure.message, statusCode: 500 };
     const statusCode = error.statusCode >= 400 && error.statusCode <= 599 ? error.statusCode : 500;
     return { error: AkanError.reasonOf(statusCode), statusCode, code: error.code };
+  }
+
+  //? Named as its HTTP body names it: a forwarded error by its dictionary key, else by its code. A guard's refusal by
+  //? its status alone, since a guard's own code names the authorization structure as its message would. Security: a
+  //? 5xx's text is redacted, so its code is a dictionary key or this server's own `AkanError` code, never a duck-typed
+  //? body's `code`.
+  static codeOf(error: unknown, status: number | undefined): string {
+    if (!status) return AkanError.codeOfStatus(500);
+    const byStatus = AkanError.codeOfStatus(status);
+    if (isGuardRefusal(error)) return byStatus;
+    const wire = isExceptionLike(error) ? SignalFailure.#wireOf(error) : {};
+    if (FailureCode.isKey(wire.error)) return wire.error;
+    if (AkanError.is(error) && FailureCode.isToken(error.code)) return error.code;
+    if (status < 500 && FailureCode.isToken(wire.code)) return wire.code;
+    return byStatus;
+  }
+
+  //? Read while a failure is already being answered: a `toJSON()` that throws names it by its status instead.
+  static #wireOf(error: ExceptionLike): { error?: unknown; code?: unknown } {
+    try {
+      return error.toJSON() as { error?: unknown; code?: unknown };
+    } catch {
+      return {};
+    }
   }
 
   static body<Extra extends Record<string, unknown> = Record<string, never>>(

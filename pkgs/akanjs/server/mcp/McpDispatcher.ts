@@ -6,14 +6,7 @@ import {
   type ImageResultValue,
   PrimitiveRegistry,
 } from "akanjs/base";
-import {
-  FailureCode,
-  interpolateTranslation,
-  isGuardRefusal,
-  Logger,
-  MCP_FAILURE_META,
-  type McpFailure,
-} from "akanjs/common";
+import { interpolateTranslation, isGuardRefusal, Logger, MCP_FAILURE_META, type McpFailure } from "akanjs/common";
 import { agentRead, ConstantRegistry, mask } from "akanjs/constant";
 import { DictionaryLookup } from "akanjs/dictionary";
 import { NoDocumentError } from "akanjs/document";
@@ -92,10 +85,10 @@ export class McpDispatcher {
       // the server does not forward (a denied file grant), or a vendor SDK's 403 that HTTP answers 500, is a tool error.
       const refusal = (status === 401 || status === 403) && isGuardRefusal(error);
       if (refusal && !req.headers.get("authorization")) throw new McpAuthRequiredError();
-      const failure = McpDispatcher.#failure(
-        this.#message(error, status, exposed.refName),
-        McpDispatcher.#codeOf(error, status),
-      );
+      const failure = McpDispatcher.#failure(this.#message(error, status, exposed.refName), {
+        code: SignalFailure.codeOf(error, status),
+        statusCode: status || 500,
+      });
       const restorable = forView ? McpDispatcher.#restorable(error, status) : null;
       return restorable ? { ...failure, _meta: { ...failure._meta, [MCP_APP_META.error]: restorable } } : failure;
     }
@@ -115,7 +108,7 @@ export class McpDispatcher {
       return images ? { images } : { error: "The server failed to complete this request.", code: crashed };
     } catch (error) {
       const status = McpDispatcher.#statusOf(error);
-      return { error: this.#message(error, status, exposed.refName), code: McpDispatcher.#codeOf(error, status).code };
+      return { error: this.#message(error, status, exposed.refName), code: SignalFailure.codeOf(error, status) };
     }
   }
 
@@ -226,21 +219,6 @@ export class McpDispatcher {
     if (!SignalContext.wasReported(error))
       McpDispatcher.logger.error(`MCP call failed: ${error instanceof Error ? (error.stack ?? error.message) : error}`);
     return "The server failed to complete this request.";
-  }
-
-  // Named as its HTTP body names it: a forwarded error by its dictionary key, else by its code. A forwarded refusal by
-  // its status alone, since a guard's own code names the authorization structure as its message would. Security: a
-  // 5xx's text is redacted, so its code is a dictionary key or this server's own `AkanError` code, never a duck-typed
-  // body's `code`.
-  static #codeOf(error: unknown, status: number | undefined): McpFailure {
-    if (!status) return McpDispatcher.#crashed;
-    const byStatus = { code: AkanError.codeOfStatus(status), statusCode: status };
-    if (isGuardRefusal(error)) return byStatus;
-    const wire = isExceptionLike(error) ? (error.toJSON() as { error?: unknown; code?: unknown }) : {};
-    if (FailureCode.isKey(wire.error)) return { code: wire.error, statusCode: status };
-    if (AkanError.is(error) && FailureCode.isToken(error.code)) return { code: error.code, statusCode: status };
-    if (status < 500 && FailureCode.isToken(wire.code)) return { code: wire.code, statusCode: status };
-    return byStatus;
   }
 
   // No status reads as a crash. Security: the status HTTP answers with, so a vendor client's own 4xx error, which is

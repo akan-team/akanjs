@@ -384,6 +384,29 @@ describe("AgentSession", () => {
     expect(session.isRunning).toBe(false);
   });
 
+  test("a runner error's code lands on the draft for the host, and is not sent on the next turn", async () => {
+    const surface = new AgenticSurface();
+    const { runner, requests } = scripted(
+      [{ type: "error", message: "Your plan is out of turns.", code: "agent.error.quotaExceeded" }],
+      [
+        { type: "text", delta: "ok" },
+        { type: "done", stop: "end" },
+      ],
+    );
+    const session = new AgentSession(surface, runner);
+    await session.send("hi");
+    const failed = session.messages[session.messages.length - 1];
+    expect(failed).toMatchObject({
+      role: "assistant",
+      error: "Your plan is out of turns.",
+      errorCode: "agent.error.quotaExceeded",
+    });
+    await session.send("again");
+    const sent = requests[1].messages.find((message) => message.error);
+    expect(sent?.error).toBe("Your plan is out of turns.");
+    expect(JSON.parse(JSON.stringify(sent))).not.toHaveProperty("errorCode");
+  });
+
   test("surface guides fold into the turn's instructions after the session's own", async () => {
     const surface = new AgenticSurface();
     surface.registerGuide([], "This screen edits the draft.");

@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { Err } from "akanjs/dictionary";
 import { AgentTurnStream } from "./agentTurnStream";
@@ -77,7 +78,7 @@ describe("AgentTurnStream", () => {
     });
     expect(await framesOf(response)).toEqual([
       { type: "text", delta: "par" },
-      { type: "error", message: "agent.error.llmUnavailable" },
+      { type: "error", message: "agent.error.llmUnavailable", code: "agent.error.llmUnavailable" },
     ]);
   });
 
@@ -89,9 +90,49 @@ describe("AgentTurnStream", () => {
       {
         type: "error",
         message: "agent.error.llmRequestFailed",
+        code: "agent.error.llmRequestFailed",
         data: { status: "400", reason: "context length exceeded" },
       },
     ]);
+  });
+
+  test("a framework error is named by its own code, and a guard's refusal by its status alone", () => {
+    expect(AgentTurnStream.failure(new AkanError("liveRoomTaken", "room r1 is held")).code).toBe("liveRoomTaken");
+    expect(AgentTurnStream.failure(new Err.Forbidden("agent.error.requestRefused")).code).toBe("forbidden");
+    expect(AgentTurnStream.failure(new AkanError("grantDenied", "no grant", { statusCode: 403 })).code).toBe(
+      "grantDenied",
+    );
+    expect(AgentTurnStream.failure(new Err.Conflict("base.error.idempotencyInFlight")).code).toBe(
+      "base.error.idempotencyInFlight",
+    );
+  });
+
+  test("an error with no status is named as a crash, and one whose toJSON() throws by its status", async () => {
+    const statusless = Object.assign(new Error("no status"), {
+      statusCode: 0,
+      toJSON: () => ({ code: "vendorQuota" }),
+    });
+    expect(AgentTurnStream.failure(statusless).code).toBe("internalError");
+    const unreadable = Object.assign(new Error("unreadable"), {
+      statusCode: 409,
+      toJSON: () => {
+        throw new Error("toJSON failed");
+      },
+    });
+    const response = AgentTurnStream.response(async () => {
+      throw unreadable;
+    });
+    expect(await framesOf(response)).toEqual([{ type: "error", message: "unreadable", code: "conflict" }]);
+  });
+
+  test("a duck-typed body's code names a 4xx but never a 5xx", () => {
+    const failing = (statusCode: number) =>
+      Object.assign(new Error("vendor said: secret detail"), {
+        statusCode,
+        toJSON: () => ({ error: "vendor said: secret detail", code: "vendorQuota", statusCode }),
+      });
+    expect(AgentTurnStream.failure(failing(429)).code).toBe("vendorQuota");
+    expect(AgentTurnStream.failure(failing(502)).code).toBe("badGateway");
   });
 
   test("done carries the provider's count and the model's limits in the wire's own shape", async () => {
@@ -117,6 +158,7 @@ describe("AgentTurnStream", () => {
       {
         type: "error",
         message: "agent.error.contextOverflow",
+        code: "agent.error.contextOverflow",
         data: { provider: "api.deepseek.com", limit: 65_536 },
         overflow: { limit: 65_536 },
       },
@@ -134,7 +176,9 @@ describe("AgentTurnStream", () => {
       const response = AgentTurnStream.response(async () => {
         throw new Error("upstream 401: invalid key for https://llm.internal/v1");
       });
-      expect(await framesOf(response)).toEqual([{ type: "error", message: "Internal Server Error" }]);
+      expect(await framesOf(response)).toEqual([
+        { type: "error", message: "Internal Server Error", code: "internalError" },
+      ]);
       expect(logged.mock.calls.map(([line]) => String(line))).toEqual([
         "agent turn failed after its stream opened: Error: upstream 401: invalid key for https://llm.internal/v1",
       ]);

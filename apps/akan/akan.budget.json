@@ -153,7 +153,7 @@
     "/:lang/references/ui/overview": 549,
     "/:lang/references/ui/system": 549,
     "/:lang/roadmap": 542,
-    "/:lang/sample": 282,
+    "/:lang/sample": 283,
     "/:lang/schema": 319,
     "/:lang/signal": 334,
     "/:lang/test": 442,
@@ -192,6 +192,6 @@
     "/:lang/v1/docs/tutorials/slice": 547,
     "/:lang/v1/docs/tutorials/util": 547,
     "/:lang/v1/docs/tutorials/view": 547,
-    "/:lang/websites": 270
+    "/:lang/websites": 271
   }
 }

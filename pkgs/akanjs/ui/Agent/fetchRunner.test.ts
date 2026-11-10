@@ -87,7 +87,7 @@ describe("fetchRunner", () => {
         status: 500,
       })) as unknown as typeof fetch;
     const events = await collect(request(), fetcher);
-    expect(events).toEqual([{ type: "error", message: "the relay is down" }]);
+    expect(events).toEqual([{ type: "error", message: "the relay is down", code: "internalError" }]);
   });
 
   test("a domain Err arrives as its key and is resolved against the dictionary, values interpolated", async () => {
@@ -105,11 +105,11 @@ describe("fetchRunner", () => {
         { status: 400 },
       )) as unknown as typeof fetch;
     expect(await collect(request(), fetcher)).toEqual([
-      { type: "error", message: "api.deepseek.com가 거절했습니다 (status 400)." },
+      { type: "error", message: "api.deepseek.com가 거절했습니다 (status 400).", code: "agent.error.llmRequestFailed" },
     ]);
   });
 
-  test("a translated overflow keeps the flag the session compacts on", async () => {
+  test("a translated overflow keeps the flag the session compacts on, and its key as the code", async () => {
     Translator.seed("en", {
       agent: { error: { contextOverflow: { t: "No longer fits at {provider}." } } },
     });
@@ -126,7 +126,12 @@ describe("fetchRunner", () => {
         { headers: { "content-type": "text/event-stream" } },
       )) as unknown as typeof fetch;
     expect(await collect(request(), fetcher)).toEqual([
-      { type: "error", message: "No longer fits at api.deepseek.com.", overflow: { limit: 65_536 } },
+      {
+        type: "error",
+        message: "No longer fits at api.deepseek.com.",
+        code: "agent.error.contextOverflow",
+        overflow: { limit: 65_536 },
+      },
     ]);
   });
 
@@ -137,6 +142,8 @@ describe("fetchRunner", () => {
       new Response(JSON.stringify({ error: "agent.error.notInAnyDictionary" }), {
         status: 400,
       })) as unknown as typeof fetch;
-    expect(await collect(request(), fetcher)).toEqual([{ type: "error", message: "agent.error.notInAnyDictionary" }]);
+    expect(await collect(request(), fetcher)).toEqual([
+      { type: "error", message: "agent.error.notInAnyDictionary", code: "agent.error.notInAnyDictionary" },
+    ]);
   });
 });

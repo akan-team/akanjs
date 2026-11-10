@@ -115,6 +115,15 @@ message that is a code rather than a sentence may be accompanied by a flat `data
 the values whoever resolves the code interpolates into its text; a host that does not know the code shows the
 message as it stands.
 
+The event also carries `code`: the body's `error` when that is a dictionary key (`<module>.error.<key>`), else
+its `code` when that is one camelCase token, else the status's name (`unauthorized`, `forbidden`,
+`tooManyRequests`, `internalError`, or `http<status>` for a status with no name). A guard's refusal arrives this
+way, before any stream opens. A body's `code` shaped otherwise is dropped rather than passed on. This path takes a
+5xx body's `code` as well, since that body is the akan server's own answer; a streamed `error` event is named by
+the server, which never names a 5xx by a duck-typed `code`. The code is what a host branches on, since the message
+may reach it already translated. The session keeps it on the failed assistant message as `errorCode`, which is
+never sent back.
+
 **A refusal because the prompt no longer fits the window carries `"overflow": { "limit": 128000 }`** (`limit` only
 when the provider named it). It is the one refusal a session can answer by itself: it summarizes the transcript and
 asks again, once, and remembers the window for the rest of the conversation. Flag nothing else with it — a rate
@@ -125,6 +134,6 @@ limit flagged as overflow compacts a conversation that fit.
 The same endpoint may answer `text/event-stream` instead when the request's `accept` names it: one `RunnerEvent`
 (`types.ts`) JSON object per SSE `data:` line, ending with the `done` event. A failure after the stream opened
 travels as one `error` event — the status line is already gone by then. `usage` and `limits` ride the `done` event
-and `overflow` the `error` event, in the same shapes as above. `httpRunner` sends
+and `overflow` and `code` the `error` event, in the same shapes and bounds as above. `httpRunner` sends
 `accept: text/event-stream, application/json` and branches on the response's content type, so a server that never
 streams keeps answering the single JSON object above unchanged.
