@@ -251,8 +251,8 @@ akan context --module user`,
         {
           name: l.trans({ en: "Status", ko: "상태" }),
           desc: l.trans({
-            en: "`failed` when any diagnostic is an error, `passed` otherwise.",
-            ko: "진단 중 하나라도 오류면 `failed`, 아니면 `passed`입니다.",
+            en: "`failed` when any diagnostic is an error, `passed` otherwise. A `failed` run exits with code 1, so a script or CI step fails on it; warnings never change the exit code.",
+            ko: "진단 중 하나라도 오류면 `failed`, 아니면 `passed`입니다. `failed`면 종료 코드 1로 끝나므로 스크립트나 CI 단계가 실패로 받습니다. 경고는 종료 코드를 바꾸지 않습니다.",
           }),
         },
         {
