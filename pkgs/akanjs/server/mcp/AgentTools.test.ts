@@ -5,7 +5,20 @@ import { join } from "node:path";
 import { type BackendEnv, dayjs, getEnv, ID, ImageResult } from "akanjs/base";
 import { MCP_FAILURE_META, type McpFailure } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
-import { type AgentToolsAdaptor, AgentToolsRole, adapt, InjectError, ServiceModel, serve } from "akanjs/service";
+import {
+  type AgentLoopEvent,
+  type AgentService,
+  type AgentToolsAdaptor,
+  AgentToolsRole,
+  adapt,
+  InjectError,
+  type LlmAdaptor,
+  LlmAdaptorRole,
+  type LlmTurnAnswer,
+  type LlmTurnRequest,
+  ServiceModel,
+  serve,
+} from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
 import { Exception } from "../../signal/exception";
 import type { Guard, GuardScope } from "../../signal/guard";
@@ -156,6 +169,16 @@ class AgentRunService extends serve("agentRun" as const, ({ plug }) => ({
     ]);
   }
 }
+
+const llmScript: LlmTurnAnswer[] = [];
+const llmSeen: LlmTurnRequest[] = [];
+class ScriptedLlm extends adapt("scriptedLlm" as const, () => ({})) implements LlmAdaptor {
+  async chat(request: LlmTurnRequest) {
+    llmSeen.push(request);
+    return llmScript.shift() ?? { text: "out of script", stop: "end" as const };
+  }
+}
+
 const agentRunService = ServiceModel.from(AgentRunService);
 class AgentRunEndpoint extends endpoint(agentRunService, () => ({})) {}
 class AgentRunInternal extends internal(agentRunService, () => ({})) {}
@@ -207,7 +230,7 @@ beforeAll(async () => {
       { service: agentRunService, signal: new ServiceSignal(AgentRunInternal, AgentRunEndpoint, AgentRunSignal) },
     ],
     scalars: [],
-    option: new AkanOption().applyMiddleware(BearerAccount),
+    option: new AkanOption().applyMiddleware(BearerAccount).applyAdaptor(LlmAdaptorRole, ScriptedLlm),
   });
   di = new DiLifecycle({ env }, lib);
   AgentTools.provide(di, { env, mcpOption: {}, mcpReadOnly: false });
@@ -397,5 +420,33 @@ describe("AgentTools", () => {
     expect((await narrowed.callAs(ann, { id: "c", name: "renameTitle", args: {} })).error).toBe(
       "Unknown tool: renameTitle.",
     );
+  });
+});
+
+describe("AgentService.loop", () => {
+  test("runs the model over the account's /mcp tools in-process, and hands their results back to it", async () => {
+    llmScript.push(
+      {
+        stop: "toolUse",
+        toolCalls: [
+          { id: "c1", name: "whoAmI", args: {} },
+          { id: "c2", name: "quietTitle", args: {} },
+        ],
+      },
+      { text: "You are ann.", stop: "end" },
+    );
+    const agent = di.getService<AgentService>("agent");
+    expect(agent.agentTools).toBe(tools as never);
+    const events: AgentLoopEvent[] = [];
+    const allow = ["whoAmI", "quietTitle", "echoTitle"];
+    for await (const event of agent.loop({ account: ann, allow, messages: [{ role: "user", text: "who am I?" }] }))
+      events.push(event);
+    expect(llmSeen[0]?.tools.map((tool) => tool.name).sort()).toEqual(["echoTitle", "whoAmI"]);
+    expect(events.flatMap((event) => (event.type === "toolResult" ? [event.result] : []))).toEqual([
+      { id: "c1", name: "whoAmI", result: "ann" },
+      { id: "c2", name: "quietTitle", error: "Unknown tool: quietTitle." },
+    ]);
+    expect(llmSeen[1]?.messages.at(-1)?.role).toBe("tool");
+    expect(events.at(-1)).toEqual({ type: "done", stop: "end", rounds: 2 });
   });
 });

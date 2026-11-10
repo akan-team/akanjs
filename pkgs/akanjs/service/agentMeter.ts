@@ -1,8 +1,9 @@
 import type { PromiseOrObject } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { Err } from "akanjs/dictionary";
-import { LlmSpend, type LlmTurnRequest, type LlmUsage } from "akanjs/service";
 import type { AgentTurnContext } from "./agentRelayPolicy";
+import type { LlmTurnRequest, LlmUsage } from "./predefinedAdaptor/llm.adaptor";
+import { LlmSpend } from "./predefinedAdaptor/llmSpend";
 
 export type AgentTurnOutcome = "ok" | "failed" | "aborted";
 

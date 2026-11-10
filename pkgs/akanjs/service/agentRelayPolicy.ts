@@ -1,7 +1,7 @@
 import type { PromiseOrObject } from "akanjs/base";
 import { Err } from "akanjs/dictionary";
-import type { LlmTurnRequest } from "akanjs/service";
 import { AgentMeter } from "./agentMeter";
+import type { LlmTurnRequest } from "./predefinedAdaptor/llm.adaptor";
 
 /** One relayed turn, the same object from the request policy through the quota to the usage report. */
 export interface AgentTurnContext {
@@ -12,6 +12,10 @@ export interface AgentTurnContext {
   /** What the account middleware resolved for this call, as the access guard saw it; `null` for an anonymous one. */
   account: unknown;
   ip: string | null;
+  /** Set on an `agentService.loop` round: `id` is one per run, `round` counts its model calls from 1. */
+  loop?: { id: string; round: number };
+  /** The loop request's `meta`, copied as given; only server code sets it, so it may key billing. */
+  meta?: Record<string, string>;
 }
 
 /** @deprecated Use `AgentTurnContext`; `apply` still takes this shape and gives it a fresh `id` and empty `headers`. */
@@ -47,7 +51,10 @@ export class AgentRelayPolicy {
   };
   static #policy: AgentRequestPolicy | null = null;
 
-  /** `null` restores the default, `capped(defaultLimits)`; `(request) => request` relays every request untouched. */
+  /**
+   * `null` restores the default, `capped(defaultLimits)` on relayed turns only; `(request) => request` relays every
+   * request untouched.
+   */
   static use(policy: AgentRequestPolicy | null) {
     AgentRelayPolicy.#policy = policy;
   }
@@ -60,7 +67,9 @@ export class AgentRelayPolicy {
     return await policy(request, "id" in context ? context : AgentMeter.turnOf(context.account, { ip: context.ip }));
   }
 
-  static readonly #defaultPolicy: AgentRequestPolicy = (request) => AgentRelayPolicy.capped(request);
+  //? The caps bound what a browser may write; a loop round is assembled by server code from its own tool results.
+  static readonly #defaultPolicy: AgentRequestPolicy = (request, context) =>
+    context.loop ? request : AgentRelayPolicy.capped(request);
 
   static capped(request: LlmTurnRequest, limits: Partial<AgentRequestLimits> = {}): LlmTurnRequest {
     const limit = { ...AgentRelayPolicy.defaultLimits, ...limits };

@@ -14,7 +14,148 @@ export type AdaptorCls<Methods = any, InjectMap extends Record<string, InjectInf
     readonly refName: string;
 }>;
 
+export type AgentAccountResolver = (principal: string) => PromiseOrObject<unknown>;
+
+export declare class AgentAccounts {
+    static use(resolver: AgentAccountResolver | null): void;
+    static resolve(principal: string): Promise<unknown>;
+}
+
+export type AgentLoopApproval = "allow" | "defer" | {
+    deny: string;
+};
+
+export type AgentLoopApprove = (call: AgentWireToolCall, state: {
+    tainted: boolean;
+    tool: AgentTool;
+}) => PromiseOrObject<AgentLoopApproval>;
+
+export interface AgentLoopBudget {
+    tokens?: number;
+    toolCalls?: number;
+    wallMs?: number;
+}
+
+export type AgentLoopEvent = {
+    type: "awaiting";
+    call: AgentWireToolCall;
+} | {
+    type: "compacted";
+    replaced: number;
+    summary: AgentWireMessage;
+} | {
+    type: "done";
+    stop: AgentLoopStop;
+    rounds: number;
+} | {
+    type: "error";
+    message: string;
+    error: unknown;
+} | {
+    type: "text";
+    delta: string;
+    round: number;
+} | {
+    type: "toolCall";
+    call: AgentWireToolCall;
+    round: number;
+} | {
+    type: "toolResult";
+    result: AgentWireToolResult;
+    round: number;
+} | {
+    type: "usage";
+    usage: LlmUsage;
+    model?: string;
+    round: number;
+};
+
+export interface AgentLoopOptions {
+    allow: readonly string[];
+    messages: AgentWireMessage[];
+    instructions?: string;
+    preamble?: string;
+    context?: AgentWireContext[];
+    model?: string;
+    maxRounds?: number;
+    budget?: AgentLoopBudget;
+    compact?: {
+        at: number;
+        keep?: number;
+    };
+    approve?: AgentLoopApprove;
+    untrusted?: (result: AgentWireToolResult) => boolean;
+    meta?: Record<string, string>;
+    signal?: AbortSignal;
+    onMessage?: (message: AgentWireMessage) => PromiseOrObject<void>;
+}
+
+export type AgentLoopRequest = AgentLoopOptions & ({
+    account: unknown;
+    principal?: undefined;
+} | {
+    principal: string;
+    account?: undefined;
+});
+
+export type AgentLoopStop = "aborted" | "awaiting" | "budget" | "end" | "length" | "maxRounds" | "quota" | "unauthorized";
+
+export declare class AgentMeter {
+    static usageTimeoutMs: number;
+    static use({ usage, quota, serial, }: {
+        usage?: AgentUsageHook | null;
+        quota?: AgentQuotaHook | null;
+        serial?: boolean;
+    }): void;
+    static turnOf(account: unknown, { headers, ip }?: {
+        headers?: Headers;
+        ip?: null | string;
+    }): AgentTurnContext;
+    static run<T extends null | {
+        usage?: LlmUsage;
+        model?: string;
+    }>(account: unknown, turn: () => Promise<T>, scope?: AgentMeterScope): Promise<T>;
+}
+
+export interface AgentMeterScope {
+    turn?: AgentTurnContext;
+    request?: LlmTurnRequest;
+    signal?: AbortSignal;
+}
+
+export interface AgentQuotaCheck {
+    account: unknown;
+    turn: AgentTurnContext;
+    request?: LlmTurnRequest;
+}
+
+export type AgentQuotaHook = (check: AgentQuotaCheck) => PromiseOrObject<boolean>;
+
+export declare class AgentRelayPolicy {
+    static readonly defaultLimits: Readonly<AgentRequestLimits>;
+    static use(policy: AgentRequestPolicy | null): void;
+    static apply(request: LlmTurnRequest, context: AgentRequestContext | AgentTurnContext): Promise<LlmTurnRequest>;
+    static capped(request: LlmTurnRequest, limits?: Partial<AgentRequestLimits>): LlmTurnRequest;
+}
+
+/** @deprecated */
+export interface AgentRequestContext {
+    account: unknown;
+    ip: null | string;
+}
+
+export interface AgentRequestLimits {
+    messages: number;
+    tools: number;
+    context: number;
+    chars: number;
+    attachmentChars: number;
+}
+
+export type AgentRequestPolicy = (request: LlmTurnRequest, context: AgentTurnContext) => PromiseOrObject<LlmTurnRequest>;
+
 export declare class AgentService extends AgentService_base {
+    loop(request: AgentLoopRequest): AsyncIterable<AgentLoopEvent>;
     runTurn(request: LlmTurnRequest, options?: ((delta: string) => void) | AgentTurnOptions): Promise<{
         limits?: import("./predefinedAdaptor").LlmLimits | undefined;
         model?: string | undefined;
@@ -49,10 +190,35 @@ export interface AgentToolsCaller {
 
 export declare const AgentToolsRole: AdaptorCls<AgentToolsAdaptor>;
 
+export interface AgentTurnContext {
+    id: string;
+    headers: Headers;
+    account: unknown;
+    ip: null | string;
+    loop?: {
+        id: string;
+        round: number;
+    };
+    meta?: Record<string, string>;
+}
+
 export interface AgentTurnOptions {
     onDelta?: (delta: string) => void;
     preamble?: false | string;
     signal?: AbortSignal;
+}
+
+export type AgentTurnOutcome = "aborted" | "failed" | "ok";
+
+export type AgentUsageHook = (report: AgentUsageReport) => PromiseOrObject<void>;
+
+export interface AgentUsageReport {
+    account: unknown;
+    turn: AgentTurnContext;
+    model: null | string;
+    usage: LlmUsage;
+    estimated?: boolean;
+    outcome: AgentTurnOutcome;
 }
 
 export interface AgentWireAttachment {
@@ -2114,6 +2280,7 @@ The declarations above name these, and no entry point exports them.
 ```ts
 declare const AgentService_base: import("./serve").ServiceCls<"agent", {}, {
     llm: import("./injectInfo").InjectInfo<"plug", LlmAdaptor, never, never>;
+    agentTools: import("./injectInfo").InjectInfo<"plug", import("./predefinedAdaptor").AgentToolsAdaptor, never, never>;
 }>;
 
 interface AnthropicAnswer {

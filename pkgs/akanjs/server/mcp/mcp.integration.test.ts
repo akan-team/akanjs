@@ -48,6 +48,7 @@ import {
 import { RouteTreeBuilder } from "../routeTreeBuilder";
 import { RscPagePrompts } from "../rscPagePrompts";
 import type { SignalRoutes } from "../types";
+import { AgentTools } from "./AgentTools";
 import { McpRouter, type McpRouterProps } from "./McpRouter";
 
 // Signals and models live here, not in the shared resolver fixture: changing it alters every other test's output.
@@ -359,6 +360,7 @@ beforeAll(async () => {
     option: new AkanOption().applyMiddleware(McpAccountMiddleware),
   });
   di = new DiLifecycle({ env }, lib);
+  AgentTools.provide(di, { env, mcpOption: {}, mcpReadOnly: false });
   httpRoutes = (await di.initializeAll()).routes ?? {};
   // The container's cache shares the limiter's count, so every anonymous call in this file would draw on one budget.
   mcpRouter = (props: Partial<McpRouterProps> = {}) =>

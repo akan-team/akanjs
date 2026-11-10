@@ -514,6 +514,34 @@ are left out: `/mcp` `tools/list` shows them, `listAs` does not, and `callAs` an
 - **`headers` are forwarded without `authorization`, `cookie` and `origin`**; `ip` is what `getClientIp()` and an
   ip-scoped `rateLimit` read, unknown by default.
 
+## A Server Agent Loop — `agentService.loop`
+
+`this.agentService.loop(request)` runs a model over that catalogue until it answers, with no browser — a queued
+task, a scheduled run, a reply to a mention. It is an async iterable of `text`, `toolCall`, `toolResult`, `usage`,
+`compacted` and `awaiting` events that ends in exactly one `done { stop }` or `error`, and it waits for the consumer
+at every event.
+
+- **Who it acts as.** `account` is a snapshot the server resolved; `principal` is a stored id that
+  `option.setAgentAccountResolver((principal) => account | null)` resolves at the start and before every round, so
+  a revoked one ends the run as `"unauthorized"`. Neither is ever client input. The model is offered `allow` ∩ what
+  the account sees on `/mcp`.
+- **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
+  reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
+  wrote it before reading its results. Without `approve`, a `needsConfirm` tool is refused, and so is every write
+  once tainted. `"defer"` holds the whole batch, emits `awaiting` and ends the run as `"awaiting"`.
+- **Resuming.** Store each message `onMessage` hands over — it is awaited, and a retried run may hand one over twice —
+  and call `loop` again with them. Trailing calls nothing answered go to `approve` again before any model call, and
+  the taint is rebuilt by re-applying `untrusted`, so it must judge a result by what it holds. `compacted` says the
+  first `replaced` messages are now `summary`.
+- **Metering.** Each model call, compactions included, is its own turn for the request policy, the quota and the
+  usage hook. It gets a fresh `id`, `loop { id, round }`, a copy of the request's `meta` — server-set, so it may key
+  billing — empty headers and no ip. The relay's default size caps skip loop rounds; a refused quota ends the run as
+  `"quota"`.
+- **Limits.** `maxRounds` (12), `budget { tokens, toolCalls, wallMs }` (`"budget"`), `signal` (`"aborted"`) and a
+  provider cut (`"length"`). There is no preamble unless `preamble` gives one, `compact { at, keep }` summarizes the
+  head, and a tool result is capped at 20,000 characters as the browser caps it. Its calls carry no ip, so an
+  ip-scoped `rateLimit` counts them under one unknown address.
+
 ## Rolling MCP Out To An App
 
 The goal of exposing a service over MCP is that a person uses it through an agent instead of through the page:

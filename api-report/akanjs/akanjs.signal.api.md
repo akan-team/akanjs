@@ -129,6 +129,11 @@ export interface AgentTurnContext {
     headers: Headers;
     account: unknown;
     ip: null | string;
+    loop?: {
+        id: string;
+        round: number;
+    };
+    meta?: Record<string, string>;
 }
 
 export declare class AgentTurnDocument extends AgentTurnDocument_base {
