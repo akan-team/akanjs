@@ -61,8 +61,8 @@ export class MaintainabilityLimits {
     return (
       /\.tsx?$/.test(pkgRelativePath) &&
       !pkgRelativePath.endsWith(".d.ts") &&
-      !/(^|\/)examples\//.test(pkgRelativePath) &&
-      !MaintainabilityLimits.#isTest(pkgRelativePath)
+      !/(^|\/)(examples|test|tests|__tests__|__fixtures__|__mocks__)\//.test(pkgRelativePath) &&
+      !/\.(test|spec|fixture|instance|bench)\.tsx?$/.test(pkgRelativePath)
     );
   }
 

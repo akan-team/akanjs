@@ -1,19 +1,19 @@
 {
   "akan.size.file": {
-    "fetch/client/fetchClient.ts": 1170,
-    "server/akanApp.ts": 1510,
-    "server/akanServer.ts": 1047,
-    "server/di/diLifecycle.ts": 835,
-    "server/resolver/signal.resolver.ts": 960,
-    "server/rscWorker.tsx": 1717,
-    "server/rscWorkerHost.ts": 1123,
-    "server/ssrFromRscRenderer.tsx": 818,
-    "server/webRouter.ts": 1482,
-    "service/predefinedAdaptor/sql/SqlDocumentStore.ts": 1434,
-    "signal/signalContext.ts": 1017,
-    "store/action.ts": 1344,
-    "ui/Constant/Doc.tsx": 813,
-    "webkit/useCsrValues.ts": 1411
+    "fetch/client/fetchClient.ts": 1169,
+    "server/akanApp.ts": 1509,
+    "server/akanServer.ts": 1046,
+    "server/di/diLifecycle.ts": 834,
+    "server/resolver/signal.resolver.ts": 959,
+    "server/rscWorker.tsx": 1716,
+    "server/rscWorkerHost.ts": 1122,
+    "server/ssrFromRscRenderer.tsx": 817,
+    "server/webRouter.ts": 1481,
+    "service/predefinedAdaptor/sql/SqlDocumentStore.ts": 1433,
+    "signal/signalContext.ts": 1016,
+    "store/action.ts": 1343,
+    "ui/Constant/Doc.tsx": 812,
+    "webkit/useCsrValues.ts": 1410
   },
   "akan.size.function": {
     "server/hmr/csrDevRuntime.ts#installCsrDevRuntime": 612,

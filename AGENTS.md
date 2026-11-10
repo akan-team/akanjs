@@ -150,7 +150,7 @@ agent reads it before editing a match.
 | `{apps,libs}/**/*.signal.ts`, `{apps,libs}/**/srvkit/**` | `.claude/rules/akan/auth.md` |
 | `{apps,libs}/*/akan.config.ts`, `{apps,libs}/*/main.ts`, `{apps,libs}/*/env/**` | `.claude/rules/akan/config.md` |
 | `{apps,libs}/**/*.constant.ts` | `.claude/rules/akan/constant.md` |
-| `{apps,libs}/**/*.tsx`, `{apps,libs}/**/*.{store,service,document}.ts`, `{apps,libs}/*/{ui,webkit}/**`, `{apps,libs}/*/akan.baseline.json` | `.claude/rules/akan/gates.md` |
+| `{apps,libs}/**/*.tsx`, `{apps,libs}/**/*.{store,service,document}.ts`, `{apps,libs}/*/{ui,webkit}/**`, `{apps,libs}/*/akan.baseline.json`, `pkgs/**/*.{ts,tsx}`, `pkgs/**/akan.baseline.json` | `.claude/rules/akan/gates.md` |
 | `{apps,libs}/*/{common,webkit,srvkit,ui,plugin,native}/**` | `.claude/rules/akan/layer.md` |
 | `{apps,libs}/*/script/migration/**` | `.claude/rules/akan/migration.md` |
 | `{apps,libs}/**/lib/**` | `.claude/rules/akan/module.md` |

@@ -20,6 +20,11 @@ const startEnvOption = {
   desc: "backend environment of a --release build; a dev build follows `akan start`, which keeps its own",
   default: "local",
 } as const;
+const listOf = (value: string | null) =>
+  (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 
 export class ApplicationCommand extends command("application", [ApplicationScript], ({ public: target }) => ({
   createApplication: target({ desc: "Create a new application in the workspace" })
@@ -118,10 +123,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
     .exec(async function (app, paths, changed, csr, engine, screenshot, desktop, keep, timeout, format) {
       await this.applicationScript.preview(app, {
-        paths: (paths ?? "")
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter(Boolean),
+        paths: listOf(paths),
         changed,
         csr,
         engine: engine === "webkit" || engine === "chrome" ? engine : null,
@@ -257,11 +259,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("write", Boolean, writeOption)
     .option("coverage", Boolean, { desc: "measure coverage; lcov goes under local/coverage/<target>", default: false })
     .exec(async function (exec, files, write, coverage) {
-      const testFiles = (files ?? "")
-        .split(",")
-        .map((file) => file.trim())
-        .filter(Boolean);
-      await this.applicationScript.test(exec, { write, files: testFiles, coverage });
+      await this.applicationScript.test(exec, { write, files: listOf(files), coverage });
     }),
   buildIos: target({ short: true, desc: "Build the iOS app on the native runtime" })
     .with(App)

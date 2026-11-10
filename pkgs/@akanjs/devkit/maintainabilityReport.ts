@@ -120,9 +120,14 @@ export class MaintainabilityReport {
   static #problemOf(failure: MaintainabilityFailure) {
     if (failure.kind === "baselineGrowth") {
       const entry = `entry "${failure.key}" under ${failure.debtRule}`;
+      const units = MaintainabilityReport.#units[failure.debtRule];
+      if (failure.measured)
+        return failure.committed === undefined
+          ? `${entry} is debt the code at ${failure.reference} does not hold, and with no baseline there the baseline may only shrink from that code`
+          : `${entry} allows ${failure.count} ${units}, above the ${failure.committed} the code at ${failure.reference} holds with no baseline there; the baseline may only shrink`;
       return failure.committed === undefined
         ? `${entry} is not in the baseline at ${failure.reference}, which may only shrink`
-        : `${entry} allows ${failure.count} ${MaintainabilityReport.#units[failure.debtRule]}, above the ${failure.committed} at ${failure.reference}; the baseline may only shrink`;
+        : `${entry} allows ${failure.count} ${units}, above the ${failure.committed} at ${failure.reference}; the baseline may only shrink`;
     }
     const grown = failure.recorded === undefined ? "" : `, more than the ${failure.recorded} recorded`;
     if (failure.kind === "multiWrite") {

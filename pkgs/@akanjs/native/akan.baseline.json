@@ -1,10 +1,10 @@
 {
   "akan.size.file": {
-    "packages/cli/src/api.ts": 859,
-    "packages/cli/src/lib/codegen.ts": 1147,
-    "packages/cli/src/platforms/android.ts": 1351,
-    "packages/cli/src/platforms/ios.ts": 821,
-    "plugins/updates/src/desktop.ts": 1448
+    "packages/cli/src/api.ts": 858,
+    "packages/cli/src/lib/codegen.ts": 1146,
+    "packages/cli/src/platforms/android.ts": 1350,
+    "packages/cli/src/platforms/ios.ts": 820,
+    "plugins/updates/src/desktop.ts": 1447
   },
   "akan.size.function": {
     "packages/cli/src/lib/codegen.ts#buildModel": 261,

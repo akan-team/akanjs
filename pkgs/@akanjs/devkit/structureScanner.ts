@@ -21,23 +21,16 @@ type FunctionNode =
   | ts.FunctionExpression
   | ts.ArrowFunction;
 
-//? A function is measured with the functions nested in it, so moving an inner one out shrinks its parent too.
 export class StructureScanner {
   measure(sourceFile: ts.SourceFile): { functions: FunctionSize[]; classes: ClassSize[] } {
     const functions: FunctionSize[] = [];
     const classes: ClassSize[] = [];
-    const seen = new Map<string, number>();
-    const unique = (name: string) => {
-      const count = (seen.get(name) ?? 0) + 1;
-      seen.set(name, count);
-      return count === 1 ? name : `${name}[${count}]`;
-    };
     const lineOf = (pos: number) => sourceFile.getLineAndCharacterOfPosition(pos).line + 1;
     const visit = (node: ts.Node, owners: string[]) => {
       if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
         const name = StructureScanner.#classNameOf(node);
         classes.push({
-          name: unique([...owners, name].join(".")),
+          name: [...owners, name].join("."),
           line: lineOf(node.getStart(sourceFile)),
           memberCount: StructureScanner.#memberCountOf(node),
         });
@@ -48,7 +41,7 @@ export class StructureScanner {
         const name = StructureScanner.#functionNameOf(node);
         const line = lineOf(node.getStart(sourceFile));
         functions.push({
-          name: unique([...owners, name].join(".")),
+          name: [...owners, name].join("."),
           line,
           lineCount: lineOf(node.getEnd()) - line + 1,
         });
@@ -66,7 +59,6 @@ export class StructureScanner {
     return { functions, classes };
   }
 
-  //? An overload signature is one method with its implementation; an index signature or a static block names none.
   static #memberCountOf(node: ts.ClassDeclaration | ts.ClassExpression) {
     const methods = new Set<string>();
     return node.members.filter((member) => {

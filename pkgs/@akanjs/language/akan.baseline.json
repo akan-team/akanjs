@@ -1,6 +1,6 @@
 {
   "akan.size.file": {
-    "akanGraph.ts": 929
+    "akanGraph.ts": 928
   },
   "akan.size.function": {
     "akanGraph.ts#GraphBuilder.build": 156,

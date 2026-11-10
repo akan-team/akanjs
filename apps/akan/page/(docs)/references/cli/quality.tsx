@@ -178,8 +178,8 @@ export default page()
           {
             name: "baseline",
             desc: l.trans({
-              en: "Records, per rule, the breaches `akan lint` refuses, once, when a workspace adopts that gate; lint then compares the file with its copy at the fork point of the default branch, and fails in a clone without that history, so CI checks out with `fetch-depth: 0`.",
-              ko: "`akan lint`가 막는 위반을 규칙별로, 워크스페이스가 이 검사를 처음 들일 때 한 번 기록합니다. 이후 lint는 이 파일을 기본 브랜치에서 갈라진 시점의 사본과 비교하고, 그 히스토리가 없는 클론에서는 실패하므로 CI는 `fetch-depth: 0`으로 체크아웃합니다.",
+              en: "Records, per rule, the breaches `akan lint` refuses in each app, lib and package, once, when a workspace adopts that gate. Lint then compares the file with its copy at the fork point of the default branch, or, where that commit has none, with the breaches its code already had, and fails in a clone without that history, so CI checks out with `fetch-depth: 0`.",
+              ko: "`akan lint`가 막는 위반을 앱, 라이브러리, 패키지마다 규칙별로, 워크스페이스가 이 검사를 처음 들일 때 한 번 기록합니다. 이후 lint는 이 파일을 기본 브랜치에서 갈라진 시점의 사본과, 그 커밋에 사본이 없으면 그 코드에 이미 있던 위반과 비교하고, 그 히스토리가 없는 클론에서는 실패하므로 CI는 `fetch-depth: 0`으로 체크아웃합니다.",
             }),
           },
           {
@@ -192,8 +192,8 @@ export default page()
           {
             name: l.trans({ en: "what is read", ko: "읽는 대상" }),
             desc: l.trans({
-              en: "`.ts` and `.tsx` under `apps/` and `libs/` except `.d.ts`, plus every `*.abstract.md`.",
-              ko: "`apps/`와 `libs/` 아래의 `.ts`, `.tsx`(`.d.ts` 제외)와 모든 `*.abstract.md`를 읽습니다.",
+              en: "`.ts` and `.tsx` under `apps/` and `libs/` except `.d.ts`, plus every `*.abstract.md` and each app, lib and package's `akan.baseline.json`.",
+              ko: "`apps/`와 `libs/` 아래의 `.ts`, `.tsx`(`.d.ts` 제외)와 모든 `*.abstract.md`, 그리고 앱, 라이브러리, 패키지마다의 `akan.baseline.json`을 읽습니다.",
             }),
           },
           {

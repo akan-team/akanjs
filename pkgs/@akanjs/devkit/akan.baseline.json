@@ -1,13 +1,12 @@
 {
   "akan.size.file": {
-    "akanApp/akanApp.host.ts": 1338,
-    "akanConfig/akanConfig.ts": 908,
-    "akanContext.ts": 1087,
-    "executors.ts": 1748,
-    "incrementalBuilder/incrementalBuilder.proc.ts": 1184,
-    "integration/devStabilityHarness.ts": 855,
-    "qualityScanner.ts": 984,
-    "workflow/source.ts": 1106
+    "akanApp/akanApp.host.ts": 1337,
+    "akanConfig/akanConfig.ts": 907,
+    "akanContext.ts": 1086,
+    "executors.ts": 1747,
+    "incrementalBuilder/incrementalBuilder.proc.ts": 1183,
+    "qualityScanner.ts": 983,
+    "workflow/source.ts": 1105
   },
   "akan.size.function": {
     "akanContext.ts#AkanContextAnalyzer.doctor": 270,
@@ -19,7 +18,6 @@
     "akanApp/akanApp.host.ts#AkanAppHost": 127,
     "akanConfig/akanConfig.ts#AkanAppConfig": 66,
     "codeAgent/agent/CodeAgent.ts#CodeAgent": 67,
-    "incrementalBuilder/incrementalBuilder.proc.ts#IncrementalBuilder": 93,
-    "integration/devStabilityHarness.ts#DevStabilityHarness": 68
+    "incrementalBuilder/incrementalBuilder.proc.ts#IncrementalBuilder": 93
   }
 }

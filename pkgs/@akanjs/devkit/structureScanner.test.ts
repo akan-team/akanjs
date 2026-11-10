@@ -74,11 +74,11 @@ export default () => {};
     ]);
   });
 
-  test("keys the n-th repeat of a name in a file as name[n]", () => {
+  test("names a repeat like the first, whatever stands before it", () => {
     expect(namesOf("test('a', () => {});\ntest('b', () => {});\ntest('c', () => {});\n")).toEqual([
       "test()",
-      "test()[2]",
-      "test()[3]",
+      "test()",
+      "test()",
     ]);
   });
 

@@ -446,6 +446,44 @@ describe("ApplicationScript", () => {
     ]);
   });
 
+  test("with coverage, has bun write lcov under local/coverage at the target's own path", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const { root, pkg } = track(await createTempPackage());
+    pkg.scan = (async () => undefined) as never;
+    const workspace = { workspaceRoot: root };
+    const app = Object.setPrototypeOf(
+      createFakeExecutor("demo", { type: "app", workspace, cwdPath: path.join(root, "apps", "demo") }, recorder),
+      AppExecutor.prototype,
+    ) as AppExecutor;
+    const lib = Object.setPrototypeOf(
+      createFakeExecutor("shared", { type: "lib", workspace, cwdPath: path.join(root, "libs", "shared") }, recorder),
+      LibExecutor.prototype,
+    ) as LibExecutor;
+    script.applicationRunner.resolveTestPaths = () => [];
+    script.applicationRunner.test = async (target: { name: string }, _paths?: string[], flags?: string[]) => {
+      recorder.record("runner.test", target.name, flags);
+    };
+    const coverageOf = (...dirs: string[]) => [
+      "--coverage",
+      "--coverage-reporter=text",
+      "--coverage-reporter=lcov",
+      `--coverage-dir=${path.join(root, "local", "coverage", ...dirs)}`,
+    ];
+
+    await script.test(app, { write: false, coverage: true });
+    await script.test(lib, { write: false, coverage: true });
+    await script.test(pkg, { write: false, coverage: true });
+    await script.test(pkg, { write: false });
+
+    expect(recorder.calls.filter(({ name }) => name === "runner.test").map(({ args }) => args)).toEqual([
+      ["demo", coverageOf("apps", "demo")],
+      ["shared", coverageOf("libs", "shared")],
+      ["@sample/tool", coverageOf("pkgs", "@sample", "tool")],
+      ["@sample/tool", []],
+    ]);
+  });
+
   test("tests a library with --write false by scanning it, not syncing it", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const recorder = createCallRecorder();
@@ -1295,27 +1333,17 @@ describe("ApplicationRunner", () => {
   test("runs bun test through the resolved executor", runsPackageTests);
   test("runs signal target tests with preload resolved from installed akanjs", runsSignalTargetTests);
 
-  test("with coverage, writes lcov under local/coverage at the target's own path, before the named files", async () => {
-    const { root, pkg } = track(await createTempPackage());
+  test("passes the flags it is given to bun test, before the named files", async () => {
+    const { pkg } = track(await createTempPackage());
     const runner = new ApplicationRunner();
     const spawn = mock(async () => "");
     pkg.spawn = spawn as never;
 
-    await runner.test(pkg, ["./tool.test.ts"], { coverage: true });
+    await runner.test(pkg, ["./tool.test.ts"], ["--coverage"]);
 
-    expect(spawn).toHaveBeenCalledWith(
-      "bun",
-      [
-        "test",
-        "--isolate",
-        "--coverage",
-        "--coverage-reporter=text",
-        "--coverage-reporter=lcov",
-        `--coverage-dir=${path.join(root, "local", "coverage", "pkgs", "@sample", "tool")}`,
-        "./tool.test.ts",
-      ],
-      { stdio: "inherit" },
-    );
+    expect(spawn).toHaveBeenCalledWith("bun", ["test", "--isolate", "--coverage", "./tool.test.ts"], {
+      stdio: "inherit",
+    });
   });
 
   test("names test files to bun as paths inside the target, from the target or the workspace root", async () => {
