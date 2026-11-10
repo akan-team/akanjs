@@ -1,3 +1,4 @@
+import { InsightQueryError } from "../insightQueryError";
 import type { DatabaseAdaptor } from "./database.adaptor";
 import { PostgresAkanClient } from "./sql/driver/postgres";
 
@@ -41,7 +42,10 @@ export class InsightQuery {
     // `rows + 1` detects truncation; the newline ends a trailing `--` comment before it can swallow the `)`.
     const wrapped = `SELECT * FROM (${statement}\n) AS "akanInsight" LIMIT ${rows + 1}`;
     if (!this.#database.openInsight)
-      throw new Error("This database adaptor opens no insight connection, so it cannot run an insight query.");
+      throw new InsightQueryError(
+        "insightUnavailable",
+        "This database adaptor opens no insight connection, so it cannot run an insight query.",
+      );
     const session = await this.#database.openInsight();
     let found: Record<string, unknown>[];
     try {
@@ -61,7 +65,10 @@ export class InsightQuery {
   static async #raced<T>(work: Promise<T[]>, timeoutMs: number): Promise<T[]> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const expiry = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`Insight query exceeded ${timeoutMs}ms.`)), timeoutMs);
+      timer = setTimeout(
+        () => reject(new InsightQueryError("insightTimeout", `Insight query exceeded ${timeoutMs}ms.`)),
+        timeoutMs,
+      );
     });
     try {
       return await Promise.race([work, expiry]);
@@ -72,18 +79,25 @@ export class InsightQuery {
 
   static #assertReadable(sql: string, postgres: boolean) {
     const statement = sql.trim().replace(/;\s*$/, "");
-    if (!statement) throw new Error("An insight query needs a statement.");
+    if (!statement) throw new InsightQueryError("invalidInsightQuery", "An insight query needs a statement.");
     const bare = InsightQuery.#stripLiterals(statement, postgres);
-    if (bare.includes(";")) throw new Error("An insight query is one statement. Remove the `;`.");
+    if (bare.includes(";"))
+      throw new InsightQueryError("invalidInsightQuery", "An insight query is one statement. Remove the `;`.");
     const first = /[a-z]+/.exec(bare.toLowerCase())?.[0];
     if (!first || !InsightQuery.#allowedFirstKeywords.has(first))
-      throw new Error(
+      throw new InsightQueryError(
+        "invalidInsightQuery",
         `An insight query reads: it starts with SELECT or WITH, not ${first ? first.toUpperCase() : "that"}.`,
       );
     const forbidden = InsightQuery.#forbidden.exec(bare)?.[0];
-    if (forbidden) throw new Error(`An insight query reads: ${forbidden.toUpperCase()} has no place in one.`);
+    if (forbidden)
+      throw new InsightQueryError(
+        "invalidInsightQuery",
+        `An insight query reads: ${forbidden.toUpperCase()} has no place in one.`,
+      );
     if (new RegExp(`\\b${InsightQuery.#documentColumn}\\b`).test(bare))
-      throw new Error(
+      throw new InsightQueryError(
+        "invalidInsightQuery",
         `An insight query cannot read \`${InsightQuery.#documentColumn}\`: every field a model marks hidden or secret is inside it, and an arbitrary statement names no model to mask it by. Read base columns, or use the model's own endpoint.`,
       );
     return statement;
@@ -119,9 +133,15 @@ export class InsightQuery {
       } else if (char === "'") {
         const end = InsightQuery.#closing(sql, at, "'");
         if (postgres && InsightQuery.#escapeStringPrefix(sql, at))
-          throw new Error("An insight query takes plain '…' strings: E'…' is refused.");
+          throw new InsightQueryError(
+            "invalidInsightQuery",
+            "An insight query takes plain '…' strings: E'…' is refused.",
+          );
         if (postgres && sql.slice(at, end).includes("\\"))
-          throw new Error("An insight query takes no backslash inside a string literal.");
+          throw new InsightQueryError(
+            "invalidInsightQuery",
+            "An insight query takes no backslash inside a string literal.",
+          );
         blankTo(end);
       } else if (char === '"') {
         unquoteTo(InsightQuery.#closing(sql, at, '"'));
@@ -131,7 +151,10 @@ export class InsightQuery {
         const end = sql.indexOf("]", at + 1);
         unquoteTo(end === -1 ? sql.length : end + 1);
       } else if (postgres && char === "$" && !joined && InsightQuery.#dollarQuote.test(sql.slice(at))) {
-        throw new Error("An insight query takes plain '…' strings: a $$-quoted string is refused.");
+        throw new InsightQueryError(
+          "invalidInsightQuery",
+          "An insight query takes plain '…' strings: a $$-quoted string is refused.",
+        );
       } else {
         bare.push(char);
         at += 1;
@@ -169,7 +192,8 @@ export class InsightQuery {
     for (const [key, value] of Object.entries(row)) {
       if (key === InsightQuery.#documentColumn) continue;
       if (InsightQuery.#isDocumentShaped(value))
-        throw new Error(
+        throw new InsightQueryError(
+          "invalidInsightQuery",
           `Column "${key}" of the insight query holds an object, which may be a document with its hidden or secret fields intact. Select the values you need instead.`,
         );
       readable[key] = value;

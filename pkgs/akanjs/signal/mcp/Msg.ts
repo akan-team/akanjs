@@ -1,5 +1,6 @@
 import { leakingFieldsOf, type MaskModel, mask } from "akanjs/constant";
 import type { JsonSchema } from "../schema";
+import { PromptError } from "./promptError";
 
 export type PromptRole = "user" | "assistant";
 
@@ -185,7 +186,7 @@ export class Msg {
   /** Fetched as this process, so a file behind a caller-scoped signed URL needs its bytes passed to `Msg.image`. */
   static async imageOf(file: PromptFileSource, annotations?: PromptAnnotations): Promise<PromptMessage> {
     const response = await fetch(file.url, { signal: AbortSignal.timeout(20_000) });
-    if (!response.ok) throw new Error(`Failed to inline ${file.url}: ${response.status}`);
+    if (!response.ok) throw new PromptError("inlineFailed", `Failed to inline ${file.url}: ${response.status}`);
     const mimeType = file.mimetype ?? response.headers.get("content-type") ?? "application/octet-stream";
     return Msg.image(Buffer.from(await response.arrayBuffer()).toString("base64"), mimeType, annotations);
   }
@@ -212,7 +213,8 @@ export class Msg {
     const model = sample.constructor as PromptModel | undefined;
     const leaking = model ? leakingFieldsOf(model, sample) : [];
     if (!leaking.length) return;
-    throw new Error(
+    throw new PromptError(
+      "unmaskedResource",
       `Msg.resource("${uri}") embeds ${model?.name} with its hidden/secret fields populated: ${leaking.join(", ")}. Name the model so they are stripped — Msg.resource(uri, value, { model: cnst.${model?.name} }), or Msg.mask(cnst.${model?.name}, value) for one piece of an assembled payload.`,
     );
   }
@@ -223,14 +225,15 @@ export class Msg {
     if (!annotations || !Object.keys(annotations).length) return content;
     const { priority } = annotations;
     if (priority !== undefined && (priority < 0 || priority > 1))
-      throw new Error(`Prompt annotation priority must be between 0 and 1, got ${priority}`);
+      throw new PromptError("invalidPrompt", `Prompt annotation priority must be between 0 and 1, got ${priority}`);
     return { ...content, annotations };
   }
 
   /** The only runtime check on a prompt's value: `prompt()` carries `Any`, so nothing upstream inspects it. */
   static normalize(value: unknown): PromptMessage[] {
     if (typeof value === "string") return [Msg.user(value)];
-    if (!Array.isArray(value)) throw new Error(`A prompt must return a string or PromptMessage[], got ${typeof value}`);
+    if (!Array.isArray(value))
+      throw new PromptError("invalidPrompt", `A prompt must return a string or PromptMessage[], got ${typeof value}`);
     value.forEach((message, idx) => {
       Msg.#assertMessage(message, idx);
     });
@@ -239,12 +242,15 @@ export class Msg {
 
   static #assertMessage(message: unknown, idx: number) {
     const { role, content } = (message ?? {}) as { role?: unknown; content?: unknown };
-    if (role !== "user" && role !== "assistant") throw new Error(`Prompt message ${idx} has role "${String(role)}"`);
+    if (role !== "user" && role !== "assistant")
+      throw new PromptError("invalidPrompt", `Prompt message ${idx} has role "${String(role)}"`);
     const block = (content ?? {}) as Record<string, unknown>;
     const fields = typeof block.type === "string" ? contentFields.get(block.type) : undefined;
-    if (!fields) throw new Error(`Prompt message ${idx} has content type "${String(block.type)}"`);
+    if (!fields)
+      throw new PromptError("invalidPrompt", `Prompt message ${idx} has content type "${String(block.type)}"`);
     const missing = fields.filter((field) => typeof block[field] !== "string" || !block[field]);
-    if (missing.length) throw new Error(`Prompt message ${idx} (${block.type}) is missing ${missing.join(", ")}`);
+    if (missing.length)
+      throw new PromptError("invalidPrompt", `Prompt message ${idx} (${block.type}) is missing ${missing.join(", ")}`);
     if (block.type === "resource") Msg.#assertResource(block.resource, idx);
     Msg.#assertPriority(block.annotations, idx);
   }
@@ -252,15 +258,22 @@ export class Msg {
   // The spec lets a resource carry its payload as `text` or as a base64 `blob`.
   static #assertResource(resource: unknown, idx: number) {
     const { uri, text, blob } = (resource ?? {}) as Record<string, unknown>;
-    if (typeof uri !== "string" || !uri) throw new Error(`Prompt message ${idx} (resource) is missing resource.uri`);
+    if (typeof uri !== "string" || !uri)
+      throw new PromptError("invalidPrompt", `Prompt message ${idx} (resource) is missing resource.uri`);
     if (typeof text !== "string" && typeof blob !== "string")
-      throw new Error(`Prompt message ${idx} (resource) has neither resource.text nor resource.blob`);
+      throw new PromptError(
+        "invalidPrompt",
+        `Prompt message ${idx} (resource) has neither resource.text nor resource.blob`,
+      );
   }
 
   static #assertPriority(annotations: unknown, idx: number) {
     const priority = (annotations as { priority?: unknown } | null)?.priority;
     if (priority === undefined) return;
     if (typeof priority !== "number" || priority < 0 || priority > 1)
-      throw new Error(`Prompt message ${idx} has annotations.priority "${String(priority)}", not between 0 and 1`);
+      throw new PromptError(
+        "invalidPrompt",
+        `Prompt message ${idx} has annotations.priority "${String(priority)}", not between 0 and 1`,
+      );
   }
 }

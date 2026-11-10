@@ -43,6 +43,7 @@ import { Logging, middleware, Timeout } from "./middleware";
 import { FetchSerializer } from "./serializer";
 import { serverSignal } from "./serverSignal";
 import { SignalContext } from "./signalContext";
+import { SignalDeclarationError } from "./signalDeclarationError";
 import { SignalRegistry } from "./signalRegistry";
 import { slice } from "./slice";
 import { buildSlice } from "./sliceInfo";
@@ -394,6 +395,7 @@ describe("signal metadata builders", () => {
         .param("id", ID),
     ).toThrow("Last argument is nullable");
     expect(() => endpointInfo.param("late", String)).toThrow("Query function is already set");
+    expect(() => endpointInfo.param("late", String)).toThrow(SignalDeclarationError);
     expect(() =>
       buildEndpoint
         .query(String, { guards: [Public] })
@@ -1797,6 +1799,38 @@ describe("SignalContext execution", () => {
     }
   });
 
+  test("writes no error line for a refused 429, forwarded or not, and names a logged failure's cause", async () => {
+    const adaptor = new (adapt("signalTestRefusedFloodAdaptor"))();
+    const errors = spyOn(adaptor.logger, "error");
+    const respond = async (thrown: Error) => {
+      const info = buildEndpoint.query(String, { guards: [Public] }).exec(() => {
+        throw thrown;
+      });
+      return await SignalContext.try(adaptor, info, "flood", async () => {
+        const context = makeSignalContext({
+          endpointInfo: info,
+          adaptor,
+          middlewareMap: new Map([["logging", Logging]]) as never,
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      });
+    };
+
+    const generalized = await respond(
+      new AkanError("busy", "tenant-7 is over its budget", { statusCode: 429, data: { seconds: 2 } }),
+    );
+    expect(generalized?.status).toBe(429);
+    expect(generalized?.headers.get("retry-after")).toBe("2");
+    const forwarded = await respond(new Exception(429, "base.error.tooManyRequests", undefined, { seconds: 2 }));
+    expect(forwarded?.headers.get("retry-after")).toBe("2");
+    expect(errors).not.toHaveBeenCalled();
+
+    await respond(new AkanError("taken", "held", { statusCode: 409, cause: new Error("driver said x") }));
+    expect(errors).toHaveBeenCalledTimes(1);
+    expect(String(errors.mock.calls[0]?.[0])).toContain("(cause: Error: driver said x)");
+  });
+
   test("reports guard and internal argument failures through HTTP responses", async () => {
     const denyInfo = buildEndpoint.query(String, { guards: [TestDeny] }).exec(() => "blocked");
     const missingInternalInfo = buildEndpoint
@@ -2098,6 +2132,7 @@ describe("SignalContext byte returns", () => {
       });
       await context.init();
       await expect(context.exec()).rejects.toThrow("returns bytes through Any");
+      await expect(context.exec()).rejects.toMatchObject({ code: "bytesThroughAny", statusCode: 500 });
     }
   });
 });
@@ -2226,6 +2261,7 @@ describe("SignalContext argument parsing", () => {
 
     expect(declare({ 302: ["item.error.moved"] })).toThrow("400–599");
     expect(declare({ 409: ["locked"] })).toThrow("<module>.error.<key>");
+    expect(declare({ 409: ["locked"] })).toThrow(SignalDeclarationError);
     const endpointInfo = declare({ 409: ["item.error.locked"] })();
     expect(endpointInfo.signalOption.errors).toEqual({ 409: ["item.error.locked"] });
   });

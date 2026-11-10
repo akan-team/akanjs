@@ -4,6 +4,7 @@ import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, getFilterInfoByKey, into } from "akanjs/document";
 import type { ServerSignal, ServerSignalCls } from "akanjs/signal";
 import { type Adaptor, type AdaptorCls, adapt, dangerouslyAdapt } from "./adapt";
+import { InjectError } from "./injectError";
 import { getDefaultInjectRegistry, InjectInfo, injectionBuilder } from "./injectInfo";
 import { type CacheAdaptor, type CacheSetOptions, DatabaseAdaptorRole } from "./predefinedAdaptor";
 import { type Service, serve } from "./serve";
@@ -1002,6 +1003,8 @@ describe("dependency injection resolution", () => {
     InjectInfo.bindDatabase(lone, getDefaultInjectRegistry());
     await expect(lone.transaction(async () => 1)).rejects.toThrow("LoneService.transaction() has no database");
     await expect(lone.afterCommit(() => undefined)).rejects.toThrow("LoneService.afterCommit() has no database");
+    await expect(lone.transaction(async () => 1)).rejects.toThrow(InjectError);
+    await expect(lone.transaction(async () => 1)).rejects.toMatchObject({ code: "notInitialized" });
   });
 });
 

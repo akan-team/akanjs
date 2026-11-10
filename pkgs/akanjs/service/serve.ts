@@ -1,7 +1,7 @@
 import { type BaseEnv, type Cls, INJECT_META, LIBS_REMOVE_HOOK, type PromiseOrObject } from "akanjs/base";
 import { applyMixins, Logger, lowerlize, modelNames, moduleNames } from "akanjs/common";
 import type { DatabaseModel } from "akanjs/document";
-
+import { InjectError } from "./injectError";
 import {
   type ExtractInjectInfoObject,
   type InjectBuilder,
@@ -49,7 +49,8 @@ const avoidKeys = new Set([
 
 const databaseOf = (service: { __database?: DatabaseAdaptor }, method: string) => {
   if (!service.__database)
-    throw new Error(
+    throw new InjectError(
+      "notInitialized",
       `${service.constructor.name}.${method}() has no database: only a service the server booted has one`,
     );
   return service.__database;

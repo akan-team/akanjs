@@ -1,6 +1,6 @@
-import { DEFAULT_VALUE, dayjs, FIELD_META } from "akanjs/base";
+import { dayjs, FIELD_META } from "akanjs/base";
 import { Logger } from "akanjs/common";
-import { type ConstantModel, freshPrimitiveValue, getDefault } from "akanjs/constant";
+import { type ConstantModel, getDefault } from "akanjs/constant";
 import { Err } from "akanjs/dictionary";
 import {
   createDocumentId,
@@ -23,7 +23,9 @@ import {
   resolveDocumentUpdate,
   sanitizeJson,
 } from "akanjs/document";
+import { DocumentStoreError } from "../../documentStoreError";
 import { SqliteDialect } from "./dialect/sqlite";
+import { decodeFieldValue, normalizeWriteValue, primitiveDefault } from "./fieldValues";
 import { QueryCompiler } from "./QueryCompiler";
 import {
   type AkanSqlClient,
@@ -248,7 +250,7 @@ export class SqlDocumentStore {
         shared &&
         candidates.some((other) => other.named && other.base === base && other.definition !== definition)
       )
-        throw new Error(`Two different indexes on ${this.table} are both named ${base}`);
+        throw new DocumentStoreError("invalidSchema", `Two different indexes on ${this.table} are both named ${base}`);
       const declared = named || !shared ? base : `${base}_${suffix}`;
       this.assertValidRefName(declared);
       const naming = this.#indexNamed(declared);
@@ -350,10 +352,14 @@ export class SqlDocumentStore {
   #indexPredicate(where: DocumentQuery, name: string) {
     const { where: sql, params, joins, memberTests } = this.compiler.compile(where);
     if (joins.length)
-      throw new Error(`Index ${name} on ${this.table} filters with q.search(), which an index predicate cannot hold`);
+      throw new DocumentStoreError(
+        "invalidSchema",
+        `Index ${name} on ${this.table} filters with q.search(), which an index predicate cannot hold`,
+      );
     // SQLite holds no subquery in an index predicate, so every mode refuses a member test: one app boots in each.
     if (memberTests.length)
-      throw new Error(
+      throw new DocumentStoreError(
+        "invalidSchema",
         `Index ${name} on ${this.table} tests ${memberTests.join(", ")} for a member (q.has()), which an index predicate cannot hold`,
       );
     return sql === "1 = 1" ? undefined : inlineParams(sql, params);
@@ -419,7 +425,7 @@ export class SqlDocumentStore {
 
   #newDocument(data: DocumentRecord, now: number) {
     const id = data.id ?? createDocumentId(now);
-    if (!isDocumentId(id)) throw new Error(`Invalid ID value: ${id}`);
+    if (!isDocumentId(id)) throw new DocumentStoreError("invalidDocument", `Invalid ID value: ${id}`);
     return this.hydrate(
       this.prepareDocument({
         ...data,
@@ -440,7 +446,7 @@ export class SqlDocumentStore {
     data: DocumentRecord & { id: string },
     { preserveTimestamps = false, where, withRemoved }: UpsertByIdOptions = {},
   ) {
-    if (!isDocumentId(data.id)) throw new Error(`Invalid ID value: ${data.id}`);
+    if (!isDocumentId(data.id)) throw new DocumentStoreError("invalidDocument", `Invalid ID value: ${data.id}`);
     const now = dayjs();
     const keepsCreatedAt = preserveTimestamps && data.createdAt != null;
     const prepared = this.prepareDocument({
@@ -541,7 +547,8 @@ export class SqlDocumentStore {
   // hooks need `create`/`update(id)`/`remove(id)`/`.save()`.
   async updateOneByQuery(query: DocumentQuery, update: DocumentUpdateInput, options: DocumentUpdateOptions = {}) {
     if (options.upsert && options.withRemoved)
-      throw new Error(
+      throw new DocumentStoreError(
+        "invalidQuery",
         `updateOneByQuery on "${this.table}" takes upsert or { withRemoved: true }, not both: a match would stay removed while a miss inserts a live row`,
       );
     return await this.#updateOne(query, update, options, "updateOneByQuery");
@@ -616,12 +623,14 @@ export class SqlDocumentStore {
   async purgeManyByQuery(query: DocumentQuery) {
     // A filter whose arguments all fell through `q.when` builds `{}`, and a purge has no undo.
     if (SqlDocumentStore.#matchesEveryRow(query))
-      throw new Error(
+      throw new DocumentStoreError(
+        "invalidQuery",
         `purgeManyByQuery on "${this.table}" matches every row; a purge cannot be undone, so name a condition`,
       );
     const { where, params, joins } = this.compiler.compile(query);
     if (joins.length)
-      throw new Error(
+      throw new DocumentStoreError(
+        "invalidQuery",
         `q.search() cannot be used in purgeManyByQuery on "${this.table}"; query-level writes take no join.`,
       );
     const table = quoteIdent(this.table);
@@ -754,7 +763,8 @@ export class SqlDocumentStore {
 
   /** The stored numbers at `path` added up over the live rows the query matches; 0 when none. */
   async sum(path: string, query?: DocumentQuery) {
-    if (BASE_COLUMNS.has(path) || path.startsWith("_")) throw new Error(`sum reads a model field, not "${path}"`);
+    if (BASE_COLUMNS.has(path) || path.startsWith("_"))
+      throw new DocumentStoreError("invalidQuery", `sum reads a model field, not "${path}"`);
     this.compiler.fieldExpr(path);
     const { where, params, joins } = this.safeQuery(query, "sum", {});
     const row = await this.prepareStmt(
@@ -797,12 +807,14 @@ export class SqlDocumentStore {
     if (withRemoved) {
       const compiled = this.compiler.compile(query ?? {});
       // The search mirror drops a row when it is removed, so the join would silently leave every removed row out.
-      if (compiled.joins.length) throw new Error(`q.search() cannot see removed rows on "${this.table}"`);
+      if (compiled.joins.length)
+        throw new DocumentStoreError("invalidQuery", `q.search() cannot see removed rows on "${this.table}"`);
       return compiled;
     }
     const conflict = LiveRowScope.conflictOf(query);
     if (conflict)
-      throw new Error(
+      throw new DocumentStoreError(
+        "invalidQuery",
         `${operation} on "${this.table}" can never match (${conflict}); ${operation.startsWith("remove") ? "a remove reaches live rows only" : "pass { withRemoved: true }"}`,
       );
     return this.compiler.compile(documentQueryHelper.all(documentQueryHelper.empty("removedAt"), query ?? {}));
@@ -812,7 +824,10 @@ export class SqlDocumentStore {
   private writeQuery(query: DocumentQuery | undefined, operation: string, options: DocumentScopeOptions) {
     const compiled = this.safeQuery(query, operation, options);
     if (compiled.joins.length)
-      throw new Error(`q.search() cannot be used in ${operation} on "${this.table}"; query-level writes take no join.`);
+      throw new DocumentStoreError(
+        "invalidQuery",
+        `q.search() cannot be used in ${operation} on "${this.table}"; query-level writes take no join.`,
+      );
     return compiled;
   }
 
@@ -847,15 +862,15 @@ export class SqlDocumentStore {
           doc[key] = getDefault((props.modelRef as { [FIELD_META]: FieldMap })[FIELD_META] as never);
         } else if (!props.nullable && !["removedAt"].includes(key)) {
           if (["id", "createdAt", "updatedAt"].includes(key)) continue;
-          throw new Error(`Missing required field: ${key}`);
+          throw new DocumentStoreError("invalidDocument", `Missing required field: ${key}`);
         }
       } else if (value === null && !props.nullable) {
-        throw new Error(`Field is not nullable: ${key}`);
+        throw new DocumentStoreError("invalidDocument", `Field is not nullable: ${key}`);
       } else {
         doc[key] = value;
       }
       if (doc[key] !== undefined && doc[key] !== null) {
-        doc[key] = this.normalizeWriteValue(doc[key], props);
+        doc[key] = normalizeWriteValue(doc[key], props);
       }
       if (props.enum && doc[key] !== undefined && doc[key] !== null) {
         const values = Array.isArray(doc[key]) ? doc[key] : [doc[key]];
@@ -1023,10 +1038,10 @@ export class SqlDocumentStore {
         } else if (props?.isClass && props.isScalar) {
           doc[field] = getDefault((props.modelRef as { [FIELD_META]: FieldMap })[FIELD_META] as never);
         } else {
-          doc[field] = SqlDocumentStore.#primitiveDefault(props as Record<string, unknown>);
+          doc[field] = primitiveDefault(props as Record<string, unknown>);
         }
       } else {
-        doc[field] = props ? this.decodeFieldValue(value, props) : value;
+        doc[field] = props ? decodeFieldValue(value, props) : value;
       }
     }
     return doc;
@@ -1165,7 +1180,8 @@ export class SqlDocumentStore {
   // A removed row is outside the write path's scope, where `update` would answer a misleading NoDocumentError.
   #assertLiveRow(doc: DocumentRecord) {
     if (!(doc as Record<symbol, unknown>)[SqlDocumentStore.#readRemoved]) return;
-    throw new Error(
+    throw new DocumentStoreError(
+      "invalidDocument",
       `read-only: a removed ${this.table} is revived with updateById(id, { removedAt: null }, { withRemoved: true })`,
     );
   }
@@ -1209,85 +1225,16 @@ export class SqlDocumentStore {
           // A row from before the field was declared: `null` would fail the next save's own not-null check.
           result[key] = getDefault((props.modelRef as { [FIELD_META]: FieldMap })[FIELD_META] as never);
         } else {
-          result[key] = SqlDocumentStore.#primitiveDefault(props);
+          result[key] = primitiveDefault(props);
         }
       } else {
-        result[key] = this.decodeFieldValue(value, props);
+        result[key] = decodeFieldValue(value, props);
       }
     }
     for (const [key, value] of Object.entries(payload)) {
       if (key in result || BASE_COLUMNS.has(key)) continue;
       const props = fields[key]?.getProps?.();
-      result[key] = props ? this.decodeFieldValue(value, props) : value;
-    }
-    return result;
-  }
-
-  static #primitiveDefault(props: Record<string, unknown>) {
-    return freshPrimitiveValue((props.modelRef as { [DEFAULT_VALUE]?: unknown } | undefined)?.[DEFAULT_VALUE]) ?? null;
-  }
-
-  private decodeFieldValue(value: unknown, props: Record<string, unknown>): unknown {
-    if (value === undefined || value === null) return value;
-    if (props.isMap) {
-      const entries = value instanceof Map ? [...value.entries()] : Object.entries(value as Record<string, unknown>);
-      return new Map(entries.map(([key, item]) => [key, this.decodeMapValue(item, props)]));
-    }
-    if (props.modelRef === Date) {
-      if (Array.isArray(value)) return value.map((item) => (item === null ? item : decodeDateValue(item)));
-      return decodeDateValue(value);
-    }
-    if (Array.isArray(value)) return value.map((item) => this.decodeNestedValue(item, props));
-    return this.decodeNestedValue(value, props);
-  }
-
-  private decodeMapValue(value: unknown, props: Record<string, unknown>) {
-    if (value === undefined || value === null) return value;
-    if (props.of === Date) return decodeDateValue(value);
-    return value;
-  }
-
-  private decodeNestedValue(value: unknown, props: Record<string, unknown>): unknown {
-    if (!value || typeof value !== "object") return value;
-    if (!props.isClass || !props.isScalar) return value;
-    const scalarFields = (props.modelRef as { [FIELD_META]?: FieldMap } | undefined)?.[FIELD_META];
-    if (!scalarFields) return value;
-    const source = value as Record<string, unknown>;
-    const defaults = getDefault(scalarFields as never) as Record<string, unknown>;
-    const result: Record<string, unknown> = {};
-    for (const [key, fieldMeta] of Object.entries(scalarFields)) {
-      const nestedProps = fieldMeta.getProps();
-      const nested = source[key];
-      result[key] = nested === undefined ? defaults[key] : this.decodeFieldValue(nested, nestedProps);
-    }
-    for (const [key, nested] of Object.entries(source)) {
-      if (!(key in result)) result[key] = nested;
-    }
-    return result;
-  }
-
-  private normalizeWriteValue(value: unknown, props: Record<string, unknown>): unknown {
-    if (value === undefined || value === null) return value;
-    if (props.modelRef === Date) {
-      if (Array.isArray(value))
-        return value.map((item) => (item === null || item === undefined ? item : dayjs(item as never)));
-      return dayjs(value as never);
-    }
-    if (!props.isClass || !props.isScalar) return value;
-    if (Array.isArray(value)) return value.map((item) => this.fillScalarDefaults(item, props));
-    return this.fillScalarDefaults(value, props);
-  }
-
-  private fillScalarDefaults(value: unknown, props: Record<string, unknown>): unknown {
-    if (!value || typeof value !== "object") return value;
-    const scalarFields = (props.modelRef as { [FIELD_META]?: FieldMap } | undefined)?.[FIELD_META];
-    if (!scalarFields) return value;
-    const defaults = getDefault(scalarFields as never) as Record<string, unknown>;
-    const result = { ...(value as Record<string, unknown>) };
-    for (const [key, fieldMeta] of Object.entries(scalarFields)) {
-      const nestedProps = fieldMeta.getProps();
-      if (result[key] === undefined) result[key] = defaults[key];
-      else result[key] = this.normalizeWriteValue(result[key], nestedProps);
+      result[key] = props ? decodeFieldValue(value, props) : value;
     }
     return result;
   }
@@ -1353,7 +1300,11 @@ export class SqlDocumentStore {
       isModified: {
         value(this: DocumentRecord & { [MODIFICATION_STATE]?: ModificationState }, field?: string) {
           const state = this[MODIFICATION_STATE];
-          if (!state) throw new Error(SqlDocumentStore.#untrackedModificationMessage(store.table));
+          if (!state)
+            throw new DocumentStoreError(
+              "invalidDocument",
+              SqlDocumentStore.#untrackedModificationMessage(store.table),
+            );
           if (state.isNew) return true;
           if (!field) return JSON.stringify(sanitizeJson(this)) !== JSON.stringify(state.original);
           return JSON.stringify(sanitizeJson(this[field])) !== JSON.stringify(state.original[field]);
@@ -1428,6 +1379,6 @@ export class SqlDocumentStore {
 
   private assertValidRefName(refName: string) {
     if (!REF_NAME_RE.test(refName) || RESERVED_RE.test(refName))
-      throw new Error(`Invalid database identifier: ${refName}`);
+      throw new DocumentStoreError("invalidSchema", `Invalid database identifier: ${refName}`);
   }
 }

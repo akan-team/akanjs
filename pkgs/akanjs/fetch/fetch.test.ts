@@ -889,6 +889,27 @@ describe("HttpClient", () => {
     expect(immediate).toMatchObject({ statusCode: 429, data: { status: 429, seconds: 0 } });
   });
 
+  test("restores a 429 the server generalized as the rate limit, keeping its code and the wait Retry-After names", async () => {
+    setMockFetch();
+    const generalized = (retryAfter: string) =>
+      Response.json(
+        { error: "Too Many Requests", code: "busy", statusCode: 429 },
+        { status: 429, headers: { "retry-after": retryAfter } },
+      );
+    rawResponses.push(generalized("7"));
+    const client = new HttpClient("https://api.example");
+
+    const limited = (await client.get("/items").catch((error: unknown) => error)) as RestoredError & { code?: string };
+    expect(limited.message).toBe("base.error.tooManyRequests");
+    expect(limited).toMatchObject({ statusCode: 429, code: "busy", data: { seconds: 7 } });
+    expect(HttpClient.retryWait(limited, 1, { min: 10, jitter: 0 })).toBe(7_000);
+
+    fetchCalls.length = 0;
+    rawResponses.push(generalized("0"), Response.json({ ok: true }));
+    expect(await client.get<{ ok: boolean }>("/items", { retry: { min: 1, jitter: 0 } })).toEqual({ ok: true });
+    expect(fetchCalls).toHaveLength(2);
+  });
+
   test("restores a 413 as a request too large, and does not send it again", async () => {
     setMockFetch();
     rawResponses.push(new Response("Payload Too Large", { status: 413, headers: { "content-type": "text/plain" } }));

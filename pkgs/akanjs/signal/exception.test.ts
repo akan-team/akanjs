@@ -14,6 +14,16 @@ describe("Exception", () => {
     expect(error.toJSON()).toEqual({ error: "base.error.tooManyRequests", statusCode: 429, data: { seconds: 3 } });
   });
 
+  test("narrows through each status class's own `is`", () => {
+    const error: unknown = new Exception.BadRequest("item.error.invalid");
+
+    if (!Exception.BadRequest.is(error, "badRequest")) throw new Error("expected a BadRequestException");
+    const narrowed: Exception = error;
+    expect([narrowed.statusCode, narrowed.code]).toEqual([400, "badRequest"]);
+    expect(Exception.NotFound.is(error)).toBe(false);
+    expect(Exception.is(error)).toBe(true);
+  });
+
   test("keeps each status class's name and default message", () => {
     const error = new Exception.NotFound();
 

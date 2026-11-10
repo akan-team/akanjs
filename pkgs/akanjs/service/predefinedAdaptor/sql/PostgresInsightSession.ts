@@ -1,4 +1,5 @@
 import type { Options, PostgresType, Sql, UnsafeQueryOptions } from "postgres";
+import { InsightQueryError } from "../../insightQueryError";
 import type { InsightSession } from "./types";
 import { quoteIdent } from "./values";
 
@@ -63,7 +64,8 @@ export class PostgresInsightSession implements InsightSession {
             ? `logs in as "${role.role}", which can read \`_doc\` of ${role.reads.join(", ")}`
             : null;
     if (refusal)
-      throw new Error(
+      throw new InsightQueryError(
+        "insightUnavailable",
         `The insight connection ${refusal}. It must be a login role of its own that can read base columns and nothing else.`,
       );
   }
@@ -101,10 +103,18 @@ export class PostgresInsightSession implements InsightSession {
         return [...rows] as Record<string, unknown>[];
       });
     } catch (error) {
-      if ((error as { code?: string }).code !== "42501") throw error;
-      throw new Error(
-        `An insight query reads base columns, and the role it runs as may read nothing else: ${(error as Error).message}.`,
-      );
+      const code = (error as { code?: string }).code;
+      //? Security: the driver's text names the table, schema or function the statement reached for; it stays the cause.
+      if (code === "42501")
+        throw new InsightQueryError(
+          "invalidInsightQuery",
+          "An insight query reads base columns, and the role it runs as may read nothing else.",
+          { cause: error },
+        );
+      //? 57014 is the `statement_timeout` above cancelling it: the deadline `InsightQuery` races, reached here first.
+      if (code === "57014")
+        throw new InsightQueryError("insightTimeout", `Insight query exceeded ${timeoutMs}ms.`, { cause: error });
+      throw error;
     }
   }
 

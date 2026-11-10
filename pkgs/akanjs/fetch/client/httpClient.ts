@@ -211,10 +211,17 @@ export class HttpClient {
       //? A gateway's own JSON (Kong's `{"message":…}`) names no key or code of ours: it is restored like its HTML page.
       if (res.status in transportErrorKeyMap && !HttpClient.#isServerAnswer(body, res.status))
         throw this.#transportError(url, res, JSON.stringify(body));
-      throw this.#restoreError(body, res.status);
+      throw this.#restoreError(HttpClient.#asRateLimit(body, res), res.status);
     } finally {
       joined.dispose();
     }
+  }
+
+  //? A 429 the server generalized carries its reason and code, and its wait only in Retry-After. It is restored under
+  //? the rate limit's own key and wait, so it is retried and worded as a forwarded one is.
+  static #asRateLimit(body: unknown, res: Response) {
+    if (res.status !== 429 || !isRecord(body) || dictionaryErrorKey.test(String(body.error))) return body;
+    return { ...body, error: transportErrorKeyMap[429], data: { seconds: HttpClient.#retryAfterSeconds(res) } };
   }
 
   static #isServerAnswer(body: unknown, status: number) {
