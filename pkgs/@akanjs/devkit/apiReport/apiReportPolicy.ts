@@ -43,9 +43,10 @@ export class ApiReportPolicy {
     const breaks = ApiReportDiff.breaks(before, await this.readReports());
     if (!breaks.length) return { breaks, bumped: false };
     const added = [
-      ...((await this.#git(["diff", "--name-only", "--diff-filter=A", mergeBase, "--", ".changeset"])) ?? "").split(
-        "\n",
-      ),
+      ...(
+        (await this.#git(["diff", "--name-only", "--no-renames", "--diff-filter=A", mergeBase, "--", ".changeset"])) ??
+        ""
+      ).split("\n"),
       ...((await this.#git(["ls-files", "--others", "--exclude-standard", "--", ".changeset"])) ?? "").split("\n"),
     ].filter((file) => file.endsWith(".md") && !file.endsWith("README.md"));
     const bumps = await Promise.all(
