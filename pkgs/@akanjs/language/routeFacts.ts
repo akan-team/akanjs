@@ -135,9 +135,8 @@ export class RouteFactReader {
     const imports = this.#reader.importsIn(source).filter(({ from }) => RouteFactReader.#workspacePattern.test(from));
     const imported = new Set(imports.filter(({ imported }) => imported !== "*").map(({ name }) => name));
     const namespaces = new Set(imports.filter(({ imported }) => imported === "*").map(({ name }) => name));
-    const shadowed = this.#namesDeclaredIn(stage);
     const calls = new Map<string, RouteGuardCall>();
-    const callOf = (callee: TS.Expression) => {
+    const callOf = (callee: TS.Expression, shadowed: ReadonlySet<string>) => {
       if (
         ts.isPropertyAccessExpression(callee) &&
         ts.isIdentifier(callee.expression) &&
@@ -163,28 +162,49 @@ export class RouteFactReader {
       });
       return true;
     };
-    const visit = (node: TS.Node): void => {
-      if (ts.isCallExpression(node) && callOf(node.expression)) return;
-      ts.forEachChild(node, visit);
+    const visit = (node: TS.Node, outer: ReadonlySet<string>): void => {
+      const shadowed = this.#scopeOf(node, outer);
+      if (ts.isCallExpression(node) && callOf(node.expression, shadowed)) return;
+      ts.forEachChild(node, (child) => visit(child, shadowed));
     };
-    if (ts.isIdentifier(stage)) callOf(stage);
-    else visit(stage);
+    if (ts.isIdentifier(stage)) callOf(stage, new Set());
+    else visit(stage, new Set());
     return [...calls.values()];
   }
 
-  #namesDeclaredIn(stage: TS.Expression) {
+  #scopeOf(node: TS.Node, outer: ReadonlySet<string>): ReadonlySet<string> {
     const ts = this.#ts;
-    const names = new Set<string>();
+    const names: string[] = [];
     const bind = (name: TS.BindingName) => {
-      if (ts.isIdentifier(name)) names.add(name.text);
+      if (ts.isIdentifier(name)) names.push(name.text);
       else for (const element of name.elements) if (!ts.isOmittedExpression(element)) bind(element.name);
     };
-    const visit = (node: TS.Node): void => {
-      if (ts.isVariableDeclaration(node) || ts.isParameter(node)) bind(node.name);
-      if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) names.add(node.name.text);
-      ts.forEachChild(node, visit);
+    const declare = (statement: TS.Statement) => {
+      if (ts.isVariableStatement(statement))
+        for (const declaration of statement.declarationList.declarations) bind(declaration.name);
+      else if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) && statement.name)
+        names.push(statement.name.text);
     };
-    visit(stage);
-    return names;
+    const hoist = (child: TS.Node): void => {
+      if (ts.isFunctionLike(child) || ts.isClassLike(child)) return;
+      if (ts.isVariableDeclarationList(child) && !(child.flags & ts.NodeFlags.BlockScoped))
+        for (const declaration of child.declarations) bind(declaration.name);
+      ts.forEachChild(child, hoist);
+    };
+    if (ts.isFunctionLike(node)) {
+      for (const parameter of node.parameters) bind(parameter.name);
+      if (ts.isFunctionExpression(node) && node.name) names.push(node.name.text);
+      if ("body" in node && node.body) ts.forEachChild(node.body, hoist);
+    } else if (ts.isClassExpression(node) && node.name) names.push(node.name.text);
+    else if (ts.isBlock(node)) node.statements.forEach(declare);
+    else if (ts.isCaseBlock(node)) for (const clause of node.clauses) clause.statements.forEach(declare);
+    else if (ts.isCatchClause(node) && node.variableDeclaration) bind(node.variableDeclaration.name);
+    else if (
+      (ts.isForStatement(node) || ts.isForInStatement(node) || ts.isForOfStatement(node)) &&
+      node.initializer &&
+      ts.isVariableDeclarationList(node.initializer)
+    )
+      for (const declaration of node.initializer.declarations) bind(declaration.name);
+    return names.length ? new Set([...outer, ...names]) : outer;
   }
 }

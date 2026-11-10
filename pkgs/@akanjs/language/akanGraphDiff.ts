@@ -18,7 +18,8 @@ const isEdited = (before: { digest?: string }, after: { digest?: string }) =>
 const byId = (a: AkanGraphNode, b: AkanGraphNode) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 export class AkanGraphDiff {
-  static between(base: AkanGraph, head: AkanGraph): AkanGraphChanges {
+  static between(given: AkanGraph, head: AkanGraph): AkanGraphChanges {
+    const base = AkanGraphDiff.#renamed(given, head);
     const baseNodes = new Map(base.nodes.map((node) => [node.id, node]));
     const headNodes = new Map(head.nodes.map((node) => [node.id, node]));
     const marked = new Map<string, AkanGraphNode>();
@@ -57,6 +58,43 @@ export class AkanGraphDiff {
     const summary = { added: 0, removed: 0, changed: 0 };
     for (const node of marked.values()) if (node.change) summary[node.change] += 1;
     return { version: 1, nodes, edges, summary };
+  }
+
+  //? A name is keyed by file only while its owner declares it twice, so adding or removing one re-keys the other.
+  static #renamed(base: AkanGraph, head: AkanGraph): AkanGraph {
+    const baseIds = new Set(base.nodes.map((node) => node.id));
+    const headIds = new Set(head.nodes.map((node) => node.id));
+    const pairKeyOf = ({ kind, owner, name, at }: AkanGraphNode) =>
+      at ? `${kind}\n${owner ?? ""}\n${name}\n${at.file}` : null;
+    const shortIdOf = ({ kind, owner, name }: AkanGraphNode) => `${kind}:${owner ?? ""}:${name}`;
+    const isFileKeyed = (node: AkanGraphNode) =>
+      node.id !== shortIdOf(node) &&
+      node.id.startsWith(`${node.kind}:${node.owner ?? ""}:`) &&
+      node.id.endsWith(`#${node.name}`);
+    const fromBase = new Map(
+      base.nodes.flatMap((node) => {
+        const key = headIds.has(node.id) ? null : pairKeyOf(node);
+        return key ? [[key, node] as const] : [];
+      }),
+    );
+    const renames = new Map<string, string>();
+    for (const node of head.nodes) {
+      if (baseIds.has(node.id)) continue;
+      const key = pairKeyOf(node);
+      const before = key ? fromBase.get(key) : undefined;
+      if (!before) continue;
+      const isPair = isFileKeyed(node)
+        ? before.id === shortIdOf(node)
+        : isFileKeyed(before) && node.id === shortIdOf(before);
+      if (isPair) renames.set(before.id, node.id);
+    }
+    if (!renames.size) return base;
+    const rename = (id: string) => renames.get(id) ?? id;
+    return {
+      ...base,
+      nodes: base.nodes.map((node) => (renames.has(node.id) ? { ...node, id: rename(node.id) } : node)),
+      edges: base.edges.map((edge) => ({ ...edge, from: rename(edge.from), to: rename(edge.to) })),
+    };
   }
 
   static #mark(node: AkanGraphNode, change: AkanGraphChange): AkanGraphNode {

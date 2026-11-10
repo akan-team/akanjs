@@ -104,6 +104,7 @@ export interface GuardFact extends MemberFact {
   scope: string | null;
   doc: string | null;
   factory: string | null;
+  label?: string;
 }
 
 export interface GuardFactoryFact extends MemberFact {
@@ -118,6 +119,7 @@ export interface GuardCallFact extends MemberFact {
   kind: "call" | "extends";
   scope: string | null;
   doc: string | null;
+  label?: string;
 }
 
 export interface ImportFact {
@@ -166,6 +168,7 @@ const intervalUnits = [
   [1000, "s"],
 ] as const;
 const argMethods = new Set(["param", "body", "search", "room", "msg"]);
+const maxLabelArgs = 32;
 
 export const ownerOf = (relativePath: string) => {
   const [root, name] = relativePath.split("/");
@@ -234,13 +237,25 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     return head && `${head}.${expression.name.text}`;
   };
 
-  const callTextOf = (source: TS.SourceFile, call: TS.CallExpression) => call.getText(source).replace(/\s*\n\s*/g, " ");
+  const calleeOf = (call: TS.CallExpression) => pathOf(unwrap(call.expression)) ?? "?";
 
-  const guardRefOf = (source: TS.SourceFile, expression: TS.Expression, made: TS.CallExpression[]) => {
+  const labelOf = (source: TS.SourceFile, call: TS.CallExpression) => {
+    const args = call.arguments.map((arg) => arg.getText(source)).join(", ");
+    return `${calleeOf(call)}(${args.length <= maxLabelArgs && !args.includes("\n") ? args : "…"})`;
+  };
+
+  //? An in-place guard is named by its callee and ordinal in the file, so editing a lambda argument keeps its id.
+  const inPlaceNameOf = (made: TS.CallExpression[], call: TS.CallExpression) => {
+    const callee = calleeOf(call);
+    const ordinal = made.slice(0, made.indexOf(call) + 1).filter((other) => calleeOf(other) === callee).length;
+    return `${callee}@${ordinal}`;
+  };
+
+  const guardRefOf = (expression: TS.Expression, made: TS.CallExpression[]) => {
     const value = unwrap(expression);
     if (!ts.isCallExpression(value)) return pathOf(value) ?? ast.expressionName(value);
     made.push(value);
-    return callTextOf(source, value);
+    return inPlaceNameOf(made, value);
   };
 
   const guardsIn = (
@@ -253,7 +268,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         ts.isPropertyAssignment(property) && ast.nodeName(property.name) === "guards",
     )?.initializer;
     if (!guards) return [];
-    const refOf = (expression: TS.Expression) => guardRefOf(source, expression, made);
+    const refOf = (expression: TS.Expression) => guardRefOf(expression, made);
     if (ts.isArrayLiteralExpression(guards)) return guards.elements.map(refOf).filter((name) => name !== null);
     if (ts.isObjectLiteralExpression(guards))
       return guards.properties.filter(ts.isPropertyAssignment).flatMap((property) => {
@@ -600,6 +615,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     let guard: TS.ClassLikeDeclaration | null = null;
     const calls: string[] = [];
     const seen = new Set<TS.Node>();
+    const passed = new Set<TS.Node>();
     for (let node = pending.pop(); node; node = pending.pop()) {
       if (seen.has(node)) continue;
       seen.add(node);
@@ -613,7 +629,9 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         if (local) pending.push(local);
       } else if (ts.isCallExpression(value)) {
         const callee = pathOf(unwrap(value.expression));
-        if (callee && !calls.includes(callee)) calls.push(callee);
+        if (callee && !passed.has(node) && !calls.includes(callee)) calls.push(callee);
+        for (const arg of value.arguments) passed.add(arg);
+        pending.push(...value.arguments);
       }
     }
     return { guard, calls };
@@ -665,7 +683,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     const factories = guardFactoriesOf(source, guardNames, isImported);
     const guards: GuardFact[] = [];
     const calls: GuardCallFact[] = [];
-    const makeOf = (made: MemberFact & { doc: string | null }, value: TS.Expression) => {
+    const makeOf = (made: MemberFact & { doc: string | null; label?: string }, value: TS.Expression) => {
       if (ts.isClassExpression(value) && implementsGuard(value, guardNames)) {
         guards.push({ ...made, scope: scopeOf(value), factory: null });
         return;
@@ -673,7 +691,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       const callee = ts.isCallExpression(value) ? pathOf(unwrap(value.expression)) : null;
       const factory = callee && factories.get(callee);
       if (factory) guards.push({ ...made, scope: factory.scope, factory: factory.name });
-      else if (callee && isImported(callee)) calls.push({ ...made, callee, kind: "call", scope: null });
+      else if (callee && (isImported(callee) || made.label)) calls.push({ ...made, callee, kind: "call", scope: null });
     };
     for (const statement of source.statements) {
       if (ts.isClassDeclaration(statement) && statement.name) {
@@ -721,7 +739,13 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     }
     for (const call of madeInPlace)
       makeOf(
-        { name: callTextOf(source, call), span: spanOf(source, call), extent: extentOf(source, call), doc: null },
+        {
+          name: inPlaceNameOf(madeInPlace, call),
+          label: labelOf(source, call),
+          span: spanOf(source, call),
+          extent: extentOf(source, call),
+          doc: null,
+        },
         call,
       );
     return { guards, guardFactories: [...factories.values()], guardCalls: calls };

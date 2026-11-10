@@ -71,6 +71,7 @@ interface DeclaredGuard {
   doc: string | null;
   parts: GuardPart[];
   file: string | null;
+  label?: string;
 }
 
 interface DeclaredFactory {
@@ -121,6 +122,14 @@ const frameworkOwner = "akanjs";
 const frameworkPattern = /^akanjs(?:\/|$)/;
 const aliasPattern = /^@(apps|libs)\/([^/]+)/;
 const maxMapDepth = 4;
+const starExportPattern = /export\s*\*\s*from\s*["']([^"']+)["']/g;
+
+const declaringPatternOf = (name: string, isReexporting: boolean) => {
+  const escaped = name.replace(/\$/g, "\\$");
+  const lead = isReexporting ? "export\\s*\\{(?:[^}]*?[\\s,])?" : "class\\s+";
+  const declared = `(?:function\\s*\\*?\\s*|(?:const|let|var)\\s+|${lead})${escaped}(?![\\w$])`;
+  return new RegExp(`${declared}|,\\s*${escaped}\\s*(?::[^=;,]+)?=(?![=>])`);
+};
 
 export class GraphBuilder {
   readonly #source: AkanGraphSource;
@@ -134,6 +143,8 @@ export class GraphBuilder {
   readonly #reexports = new Map<string, { local: string; site: GuardSite } | null>();
   readonly #routeFiles = new Map<string, { id: string; alias: string | null }>();
   readonly #declarations = new Map<string, Declaration | null>();
+  readonly #starExports = new Map<string, { owners: string[]; isOpaque: boolean }>();
+  #ownerFiles: Map<string, [fileName: string, words: string][]> | null = null;
   readonly #routes: RouteFactReader;
   readonly #adaptors = new Map<string, DeclaredAdaptor[]>();
   readonly #plugs = new Map<string, string>();
@@ -234,11 +245,11 @@ export class GraphBuilder {
           refName,
           "",
           slice.span,
-          slice.guards,
+          slice.guards.map((guard) => this.#guardLabelOf(guard, file)),
         );
         for (const guard of slice.guards) this.#guard(fallback, guard, file);
         for (const key of slice.keys) {
-          const detail = [...key.guards, ...(key.live ? ["live"] : [])];
+          const detail = [...key.guards.map((guard) => this.#guardLabelOf(guard, file)), ...(key.live ? ["live"] : [])];
           const node = this.#addMember("slice", owner, refName, key, `${refName}.${key.name}`, file.fileName, detail);
           for (const guard of key.guards) this.#guard(node, guard, file);
         }
@@ -247,7 +258,10 @@ export class GraphBuilder {
         const refName = endpoint.model;
         if (!refName) continue;
         for (const key of endpoint.keys) {
-          const detail = [...(key.verb ? [key.verb] : []), ...key.guards];
+          const detail = [
+            ...(key.verb ? [key.verb] : []),
+            ...key.guards.map((guard) => this.#guardLabelOf(guard, file)),
+          ];
           const node = this.#addMember(
             "endpoint",
             owner,
@@ -387,8 +401,15 @@ export class GraphBuilder {
   #guard(node: AkanGraphNode, guard: string, file: FileFacts) {
     const [, role = null, local = guard] = guard.match(/^([\w$]+) (.+)$/) ?? [];
     if (!local || local === "?") return;
-    const id = local.includes("(") ? this.#madeInPlaceIdOf(local, file) : this.#guardIdOf(local, file);
+    const id = local.includes("@") ? this.#madeInPlaceIdOf(local, file) : this.#guardIdOf(local, file);
     if (id) this.#addEdge(node.id, id, "guard", role, node.at);
+  }
+
+  #guardLabelOf(guard: string, file: FileFacts) {
+    const [, role = null, local = guard] = guard.match(/^([\w$]+) (.+)$/) ?? [];
+    if (!local.includes("@")) return guard;
+    const label = [...file.guards, ...file.guardCalls].find((made) => made.name === local)?.label ?? local;
+    return role ? `${role} ${label}` : label;
   }
 
   #declareGuards(facts: FileFacts[]) {
@@ -431,10 +452,10 @@ export class GraphBuilder {
       ];
     };
     const declare = (file: FileFacts, made: GuardFact | GuardCallFact, scope: string | null, parts: GuardPart[]) => {
-      const { name, span, extent, doc } = made;
+      const { name, span, extent, doc, label } = made;
       const own = { fileName: file.fileName, extent };
-      const guard = { name, owner: file.owner, span, scope, doc, parts: [own, ...parts], file: null };
-      if (name.includes("(")) this.#madeInPlace.set(`${file.fileName}\n${name}`, guard);
+      const guard = { name, owner: file.owner, span, scope, doc, parts: [own, ...parts], file: null, label };
+      if (name.includes("@")) this.#madeInPlace.set(`${file.fileName}\n${name}`, guard);
       else this.#guards.set(name, [...(this.#guards.get(name) ?? []), guard]);
       return guard;
     };
@@ -460,7 +481,7 @@ export class GraphBuilder {
       isGrowing = false;
       for (const [idx, entry] of extending.entries()) {
         const [file, made] = entry;
-        const found = this.#findGuard(made.callee, file, 0);
+        const found = this.#findGuard(made.callee, file, 0, true);
         if (!("guard" in found)) continue;
         declare(file, made, made.scope ?? found.guard.scope, found.guard.parts);
         extending.splice(idx, 1);
@@ -479,7 +500,12 @@ export class GraphBuilder {
     for (const guard of this.#madeInPlace.values()) this.#guardNodeOf(guard);
   }
 
-  #factoryAt(factories: Map<string, DeclaredFactory[]>, callee: string, site: GuardSite) {
+  #factoryAt(
+    factories: Map<string, DeclaredFactory[]>,
+    callee: string,
+    site: GuardSite,
+    depth = 0,
+  ): DeclaredFactory | undefined {
     const [head = callee, member] = callee.split(".");
     const imported = site.imports.find((item) => item.name === head);
     if (!imported)
@@ -490,13 +516,15 @@ export class GraphBuilder {
     const name = member ?? (imported.imported === "default" || imported.imported === "*" ? head : imported.imported);
     const candidates = factories.get(name) ?? [];
     const near = this.#pathOfSpecifier(site.fileName, imported.from);
-    return (
-      this.#nearest(
-        candidates.filter((other) => other.owner === from),
-        ({ site }) => site.fileName,
-        near,
-      ) ?? this.#soleVisible(candidates, from)
+    const own = this.#nearest(
+      candidates.filter((other) => other.owner === from),
+      ({ site }) => site.fileName,
+      near,
     );
+    if (own) return own;
+    const reexport = from && depth < maxMapDepth ? this.#reexportOf(from, name, near) : null;
+    if (reexport) return this.#factoryAt(factories, reexport.local, reexport.site, depth + 1);
+    return from ? this.#throughStar(candidates, from, name) : undefined;
   }
 
   #nearest<Item>(items: Item[], fileOf: (item: Item) => string, near: string | null) {
@@ -527,18 +555,20 @@ export class GraphBuilder {
     return node.id;
   }
 
-  #madeInPlaceIdOf(text: string, file: FileFacts) {
-    const made = this.#madeInPlace.get(`${file.fileName}\n${text}`);
+  #madeInPlaceIdOf(name: string, file: FileFacts) {
+    const made = this.#madeInPlace.get(`${file.fileName}\n${name}`);
     if (made) return this.#guardNodeOf(made);
-    const head = text.slice(0, text.indexOf("(")).split(".")[0] ?? text;
+    const head = name.slice(0, name.indexOf("@")).split(".")[0] ?? name;
     const imported = file.imports.find((item) => item.name === head);
     const from = imported ? this.#ownerOfSpecifier(file.fileName, imported.from) : file.owner;
     if (from === undefined || from === frameworkOwner) return null;
-    const scope = `${this.#inOwner(file.fileName, file.owner)}#${text}`;
-    return this.#addNode(this.#key("guard", file.owner, scope), "guard", file.owner, null, text, null).id;
+    const scope = `${this.#inOwner(file.fileName, file.owner)}#${name}`;
+    const label = this.#guardLabelOf(name, file);
+    return this.#addNode(this.#key("guard", file.owner, scope), "guard", file.owner, null, name, null, [], label).id;
   }
 
-  #findGuard(local: string, site: GuardSite, depth: number): GuardLookup {
+  //? `strict` is for `extends`: an unimported base its owner declares as no guard is an ordinary class, not a lib's.
+  #findGuard(local: string, site: GuardSite, depth: number, strict = false): GuardLookup {
     const segments = local.split(".");
     const head = segments[0] ?? local;
     const imported = site.imports.find((item) => item.name === head);
@@ -559,7 +589,7 @@ export class GraphBuilder {
       );
       if (made) return { guard: made };
       for (const entry of this.#mapEntriesOf(objectName, member, imported ? null : site.fileName, holder)) {
-        const found = this.#findGuard(entry.name, entry.site, depth + 1);
+        const found = this.#findGuard(entry.name, entry.site, depth + 1, strict);
         if ("guard" in found) return found;
       }
     }
@@ -573,13 +603,13 @@ export class GraphBuilder {
     );
     if (own) return { guard: own };
     if (!imported) {
-      const visible = declared.find((other) => this.#visible(other.owner, site.owner));
+      const visible = strict ? undefined : declared.find((other) => this.#visible(other.owner, site.owner));
       return visible ? { guard: visible } : { name, from };
     }
     const reexport = from && depth < maxMapDepth ? this.#reexportOf(from, name, near) : null;
-    if (reexport) return this.#findGuard(reexport.local, reexport.site, depth + 1);
-    const sole = this.#soleVisible(declared, from ?? null);
-    return sole ? { guard: sole } : { name, from };
+    if (reexport) return this.#findGuard(reexport.local, reexport.site, depth + 1, strict);
+    const reached = from ? this.#throughStar(declared, from, name) : undefined;
+    return reached ? { guard: reached } : { name, from };
   }
 
   #reexportOf(owner: string, name: string, near: string | null) {
@@ -631,11 +661,8 @@ export class GraphBuilder {
       const relative = this.#source.relative(fileName);
       return !!near && (relative.startsWith(`${near}/`) || relative.replace(/\.tsx?$/, "") === near);
     };
-    const candidates = this.#source.files
-      .filter(
-        ([fileName, words]) =>
-          !testFilePattern.test(fileName) && words.includes(`\n${name}\n`) && this.#source.ownerOf(fileName) === owner,
-      )
+    const candidates = this.#filesIn(owner)
+      .filter(([, words]) => words.includes(`\n${name}\n`))
       .map(([fileName]) => fileName);
     return [...candidates.filter(isNear), ...candidates.filter((other) => !isNear(other))];
   }
@@ -648,15 +675,10 @@ export class GraphBuilder {
     const entries: MapEntry[] = [];
     const fileNames = [
       ...(fileName ? [fileName] : []),
-      ...this.#source.files
+      ...(owner === null ? [] : this.#filesIn(owner))
         .filter(
           ([other, words]) =>
-            other !== fileName &&
-            owner !== null &&
-            !testFilePattern.test(other) &&
-            words.includes(`\n${objectName}\n`) &&
-            words.includes(`\n${member}\n`) &&
-            this.#source.ownerOf(other) === owner,
+            other !== fileName && words.includes(`\n${objectName}\n`) && words.includes(`\n${member}\n`),
         )
         .map(([other]) => other),
     ];
@@ -692,17 +714,13 @@ export class GraphBuilder {
     return entries;
   }
 
-  //? Only a file whose text declares or re-exports the name is parsed: every page names `usePage`, which the generated
-  //? client hands out without a plain declaration.
+  //? Every page names `usePage`, which the generated client hands out undeclared, so a text prefilter skips the parse.
   #declarationOf(owner: string, name: string, near: string | null, depth = 0): Declaration | null {
     const key = `${owner}\n${name}\n${near ?? ""}`;
     const cached = this.#declarations.get(key);
     if (cached !== undefined) return cached;
     this.#declarations.set(key, null);
-    const escaped = name.replace(/\$/g, "\\$");
-    const declaring = new RegExp(
-      `(?:function\\s*\\*?\\s*|(?:const|let|var)\\s+|export\\s*\\{(?:[^}]*?[\\s,])?)${escaped}(?![\\w$])`,
-    );
+    const declaring = declaringPatternOf(name, true);
     let found: Declaration | null = null;
     for (const fileName of this.#filesOf(owner, name, near)) {
       const text = this.#source.readText(fileName);
@@ -792,8 +810,7 @@ export class GraphBuilder {
     }
   }
 
-  //? A guard function is keyed by the file that declares it, so two pages' own `isOwn` stay two nodes, and so do a
-  //? `canEdit` in `webkit/` and one in `common/`.
+  //? A guard function is keyed by the file that declares it, so two pages' own `isOwn` stay two nodes.
   #routeGuardIdOf({ name: local, local: declared }: RouteGuardCall, fact: RouteFact, text: string) {
     if (declared) {
       const id = this.#key("guard", fact.owner, `${this.#inOwner(fact.fileName, fact.owner)}#${local}`);
@@ -864,9 +881,9 @@ export class GraphBuilder {
     return node.id;
   }
 
-  #guardNodeOf({ name, owner, span, scope, doc, parts, file }: DeclaredGuard) {
+  #guardNodeOf({ name, owner, span, scope, doc, parts, file, label }: DeclaredGuard) {
     const id = this.#key("guard", owner, file ? `${file}#${name}` : name);
-    const node = this.#addNode(id, "guard", owner, null, name, span, scope ? [scope] : []);
+    const node = this.#addNode(id, "guard", owner, null, name, span, scope ? [scope] : [], label ?? name);
     if (doc && !node.doc) node.doc = doc;
     if (node.digest) return node.id;
     const digest = this.#hashOf(
@@ -939,10 +956,50 @@ export class GraphBuilder {
     return !from || !target || target === from || target.startsWith("libs/");
   }
 
-  //? Re-exports are not followed, so of two libs declaring a name neither is known to be the one re-exported.
-  #soleVisible<Declared extends { owner: string | null }>(declared: Declared[], from: string | null) {
-    const visible = declared.filter((other) => this.#visible(other.owner, from));
-    return visible.length === 1 ? visible[0] : undefined;
+  //? `export *` is the one re-export not followed by name, and one from a package may bring the name itself.
+  #throughStar<Declared extends { owner: string | null }>(declared: Declared[], owner: string, name: string) {
+    if (!declared.length) return undefined;
+    const { owners, isOpaque } = this.#starExportsOf(owner);
+    const reached = declared.filter((other) => other.owner !== null && owners.includes(other.owner));
+    return reached.length === 1 && !isOpaque && !this.#declares(owner, name) ? reached[0] : undefined;
+  }
+
+  #filesIn(owner: string) {
+    if (!this.#ownerFiles) {
+      this.#ownerFiles = new Map();
+      for (const entry of this.#source.files) {
+        const fileOwner = testFilePattern.test(entry[0]) ? null : this.#source.ownerOf(entry[0]);
+        const files = fileOwner === null ? null : this.#ownerFiles.get(fileOwner);
+        if (files) files.push(entry);
+        else if (fileOwner !== null) this.#ownerFiles.set(fileOwner, [entry]);
+      }
+    }
+    return this.#ownerFiles.get(owner) ?? [];
+  }
+
+  #starExportsOf(owner: string) {
+    const cached = this.#starExports.get(owner);
+    if (cached) return cached;
+    const found = { owners: [owner], isOpaque: false };
+    this.#starExports.set(owner, found);
+    for (let idx = 0; idx < found.owners.length && !found.isOpaque; idx++) {
+      const current = found.owners[idx];
+      for (const [fileName, words] of current ? this.#filesIn(current) : []) {
+        if (!words.includes("\nexport\n")) continue;
+        for (const [, specifier = ""] of this.#source.readText(fileName)?.matchAll(starExportPattern) ?? []) {
+          const target = this.#ownerOfSpecifier(fileName, specifier);
+          if (target === undefined || target === frameworkOwner) found.isOpaque = true;
+          else if (target && !found.owners.includes(target)) found.owners.push(target);
+        }
+      }
+    }
+    found.owners = found.owners.slice(1);
+    return found;
+  }
+
+  #declares(owner: string, name: string) {
+    const declaring = declaringPatternOf(name, false);
+    return this.#filesOf(owner, name, null).some((fileName) => declaring.test(this.#source.readText(fileName) ?? ""));
   }
 
   #targetNodeOf({ family, owner, refName, sourceKey }: AkanTarget) {
