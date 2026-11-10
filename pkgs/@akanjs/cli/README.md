@@ -110,6 +110,8 @@ artifact is built last and is not overwritten by the root `akan` bootstrap scrip
 Release candidates publish from CI: each push to the `rc` branch runs the CI suite, then publishes the next
 `<version>-rc.N` of the version the pending changesets will release, with npm provenance, and tags that commit
 `v<version>-rc.N`. Stable releases stay manual: `bun run changeset:version`, then `akan deploy-akan --registry npm`.
+The `npm-publish` environment admits only `rc`, so whoever can push to `rc` can publish an rc: restrict pushes to
+`rc` in the repository's rules.
 
 ## Package Boundary
 

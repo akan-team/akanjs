@@ -55,14 +55,20 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
       desc: "publish without the confirmation and `npm login`, with the credentials npm already has",
       default: false,
     })
+    .option("packTo", String, {
+      flag: "o",
+      desc: "pack the versioned tarballs and a publish.json (version, dist-tag, publish order) into this directory instead of publishing",
+      nullable: true,
+    })
     .with(Workspace)
-    .exec(async function (test, registry, platforms, prerelease, yes, workspace) {
+    .exec(async function (test, registry, platforms, prerelease, yes, packTo, workspace) {
       await this.cloudScript.deployAkan(workspace, {
         test,
         registryUrl: resolveRegistryUrl(registry),
         platforms: PlatformTestRun.parsePlatforms(platforms),
         prerelease,
         yes,
+        packTo,
       });
     }),
   testPlatforms: target({

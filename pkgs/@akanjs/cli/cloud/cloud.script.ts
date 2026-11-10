@@ -291,12 +291,14 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
       platforms = [],
       prerelease = null,
       yes = false,
+      packTo = null,
     }: {
       test?: boolean;
       registryUrl?: string;
       platforms?: RemoteTestPlatform[];
       prerelease?: string | null;
       yes?: boolean;
+      packTo?: string | null;
     } = {},
   ) {
     const akanPkgs = await this.cloudRunner.getAkanPkgs(workspace);
@@ -326,6 +328,7 @@ export class CloudScript extends script("cloud", [CloudRunner, ApplicationScript
     await this.cloudRunner.deployAkan(workspace, akanPkgs, {
       registryUrl,
       prerelease,
+      packTo,
       confirmPublish: !yes,
       npmLogin: !yes,
     });

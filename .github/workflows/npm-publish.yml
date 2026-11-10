@@ -22,24 +22,16 @@ jobs:
     if: github.ref_name == 'rc'
     uses: ./.github/workflows/ci.yml
 
-  publish:
-    name: Publish the next rc
+  pack:
+    name: Pack the next rc
     needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: npm-publish
-    permissions:
-      contents: read
-      id-token: write
     outputs:
-      version: ${{ steps.publish.outputs.version }}
+      version: ${{ steps.pack.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      # npm trusted publishing needs npm 11.5.1 or later.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
       - name: Version the packages as the pending changesets will release them
         id: release
         run: |
@@ -51,17 +43,48 @@ jobs:
           else
             echo "release=$release" >> "$GITHUB_OUTPUT"
           fi
-      - name: Publish the next rc of that release
-        id: publish
+      - name: Pack the next rc of that release
+        id: pack
         if: steps.release.outputs.release
         run: |
-          bun run akan deploy-akan --registry npm --test false --prerelease rc --yes
-          echo "version=$(jq -r .version pkgs/akanjs/package.json)" >> "$GITHUB_OUTPUT"
+          bun run akan deploy-akan --registry npm --test false --prerelease rc --pack-to "$RUNNER_TEMP/npm-packs"
+          echo "version=$(jq -r .version "$RUNNER_TEMP/npm-packs/publish.json")" >> "$GITHUB_OUTPUT"
+      - if: steps.pack.outputs.version
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-packs
+          path: ${{ runner.temp }}/npm-packs
+          if-no-files-found: error
+          retention-days: 30
+
+  # The job that can mint an npm token installs and builds nothing, so no dependency's code runs beside it.
+  publish:
+    name: Publish the next rc
+    needs: pack
+    if: needs.pack.outputs.version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: npm-publish
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-packs
+      # npm trusted publishing needs npm 11.5.1 or later.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Publish the tarballs, each after the packages it depends on
+        run: |
+          tag=$(jq -r .tag publish.json)
+          for tarball in $(jq -r '.tarballs[]' publish.json); do
+            npm publish "$tarball" --tag "$tag" --provenance
+          done
 
   tag:
     name: Tag the published commit
-    needs: publish
-    if: needs.publish.outputs.version
+    needs: [pack, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -70,4 +93,4 @@ jobs:
       - run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$GITHUB_SHA"
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.publish.outputs.version }}
+          VERSION: ${{ needs.pack.outputs.version }}

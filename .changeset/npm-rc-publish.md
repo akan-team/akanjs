@@ -6,3 +6,5 @@ Release candidates now publish from CI with npm provenance. Each push to the `rc
 
 - **`akan deploy-akan --prerelease <id>`** publishes the next `<version>-<id>.N` under the `<id>` dist-tag, even when the packages carry a stable version. It refuses a version npm has already released, because its prerelease would sort below it.
 - **`akan deploy-akan --yes`** publishes without the confirmation and without `npm login`, with the credentials npm already has.
+- **`akan deploy-akan --pack-to <dir>`** versions and packs the tarballs into `<dir>` with a `publish.json` (version, dist-tag, publish order) instead of publishing, so the CI job that holds the npm credential installs and builds nothing.
+- `deploy-akan` takes N from every package's published versions, not one dist-tag, so a publish that stopped partway goes on at a fresh N. It publishes each package after the ones it depends on, and stops when the registry can't be read.
