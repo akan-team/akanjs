@@ -88,6 +88,9 @@ CI fails when the reports no longer match the source, and on a pull request it c
 - Use Biome formatting conventions used by the repository.
 - Keep code readable six months from now: clear declarations beat clever shortcuts.
 - Add comments only when they explain non-obvious behavior or decisions.
+- Under `server/`, `service/` and `signal/`, fail with an `AkanError` subclass carrying a code a caller can branch on,
+  never a bare `Error`. `akan lint` fails when the package's total of bare `Error`s, held in `akan.baseline.json`,
+  grows, and `bun run error:codes` regenerates the error-code reference a code change touches.
 
 ## Reporting Issues
 

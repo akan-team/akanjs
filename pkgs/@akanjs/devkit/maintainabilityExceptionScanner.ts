@@ -11,6 +11,8 @@ export class MaintainabilityExceptionScanner {
     "Many reasoned exceptions under one rule mean its threshold is wrong: fix the limit in MaintainabilityLimits rather than record another. Otherwise shrink the code, and `akan lint` lowers each entry and drops it once it passes.";
   static readonly #correctnessFix =
     "A write rule takes no exception: send the writes through one store action and one endpoint (`akan workflow plan add-mutation`), and `akan lint` drops the entry.";
+  static readonly #bareErrorFix =
+    "A bare Error takes no exception: construct an `AkanError` subclass with a code, and `akan lint` lowers the entries as they go.";
 
   async scan(workspaceRoot: string): Promise<QualityWarning[]> {
     const sysPaths = await Promise.all(
@@ -81,7 +83,9 @@ export class MaintainabilityExceptionScanner {
       locations,
       fix: MaintainabilityBaseline.reasonedRules.has(rule)
         ? MaintainabilityExceptionScanner.#shapeFix
-        : MaintainabilityExceptionScanner.#correctnessFix,
+        : rule === "akan.error.bare-error"
+          ? MaintainabilityExceptionScanner.#bareErrorFix
+          : MaintainabilityExceptionScanner.#correctnessFix,
     };
   }
 

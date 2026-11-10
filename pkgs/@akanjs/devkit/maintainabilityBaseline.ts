@@ -16,7 +16,7 @@ export interface BaselineEntry {
 
 type Counts = ReadonlyMap<string, number>;
 
-//* One section per rule, each key holding what the gate measured: lines, members, store accesses, writes or calls.
+//* One section per rule, each key holding what the gate measured: lines, members, accesses, writes, calls or throws.
 //* A count only falls, so a recorded entry cannot take on more of the debt it records.
 export class MaintainabilityBaseline {
   static readonly fileName = "akan.baseline.json";
@@ -32,7 +32,13 @@ export class MaintainabilityBaseline {
     "akan.component.write-chain",
     "akan.write.placement",
     "akan.service.call-in-loop",
+    "akan.error.bare-error",
   ] as const satisfies readonly DebtRuleId[];
+  //* Added after baselines were committed: where the reference holds no section for one, its code there is the floor.
+  static readonly lateRules: ReadonlySet<DebtRuleId> = new Set(["akan.error.bare-error"]);
+  //* Held to the package's sum, so a moved or split file keeps its count; the per-file entries name the file that rose.
+  static readonly totalRules: ReadonlySet<DebtRuleId> = new Set(["akan.error.bare-error"]);
+  static readonly totalKey = "(total)";
   static readonly reasonedRules: ReadonlySet<DebtRuleId> = new Set([
     "akan.size.file",
     "akan.size.component",
@@ -48,6 +54,7 @@ export class MaintainabilityBaseline {
     if (violation.kind === "storeAccess") return violation.accessCount;
     if (violation.kind === "multiWrite") return violation.writeCount;
     if (violation.kind === "writePlacement") return violation.writes.length;
+    if (violation.kind === "bareError") return violation.lines.length;
     return violation.calls.length;
   }
 
@@ -116,6 +123,21 @@ export class MaintainabilityBaseline {
     return recorded !== undefined && MaintainabilityBaseline.countOf(violation) <= recorded;
   }
 
+  unallowed(violations: MaintainabilityViolation[]) {
+    const measured = MaintainabilityBaseline.of(violations);
+    return violations.filter(
+      (violation) =>
+        !(
+          MaintainabilityBaseline.totalRules.has(violation.rule) &&
+          measured.totalOf(violation.rule) <= this.totalOf(violation.rule)
+        ) && !this.allows(violation),
+    );
+  }
+
+  totalOf(rule: DebtRuleId) {
+    return [...(this.sections.get(rule)?.values() ?? [])].reduce((sum, count) => sum + count, 0);
+  }
+
   recordedOf(violation: MaintainabilityViolation) {
     return this.sections.get(violation.rule)?.get(violation.key);
   }
@@ -140,13 +162,30 @@ export class MaintainabilityBaseline {
     );
   }
 
+  rulesOutside(other: MaintainabilityBaseline | null): DebtRuleId[] {
+    return [...this.sections]
+      .filter(
+        ([rule, counts]) =>
+          counts.size && (other === null || (MaintainabilityBaseline.lateRules.has(rule) && !other.sections.has(rule))),
+      )
+      .map(([rule]) => rule);
+  }
+
+  withSectionsOf(other: MaintainabilityBaseline | null, rules: ReadonlySet<DebtRuleId>) {
+    if (!other) return this;
+    const sections = new Map(this.sections);
+    for (const rule of rules) sections.set(rule, other.sections.get(rule) ?? new Map());
+    return new MaintainabilityBaseline(sections, this.reasons);
+  }
+
   tightenedBy(violations: MaintainabilityViolation[]) {
     const current = MaintainabilityBaseline.of(violations);
     const sections = new Map(
-      [...this.sections].map(([rule, counts]) => [
-        rule,
-        MaintainabilityBaseline.#lowered(counts, current.sections.get(rule) ?? new Map()),
-      ]),
+      [...this.sections].map(([rule, counts]) => {
+        const measured = current.sections.get(rule) ?? new Map<string, number>();
+        const carried = MaintainabilityBaseline.totalRules.has(rule) && current.totalOf(rule) <= this.totalOf(rule);
+        return [rule, carried ? measured : MaintainabilityBaseline.#lowered(counts, measured)];
+      }),
     );
     return new MaintainabilityBaseline(sections).#withReasonsOf(this.reasons);
   }
@@ -161,10 +200,18 @@ export class MaintainabilityBaseline {
   //* Only a shape entry grows with a reason: a write rule guards correctness, whatever the reason.
   grownFrom(committed: MaintainabilityBaseline): BaselineEntryGrowth[] {
     return [...this.sections].flatMap(([rule, counts]) =>
-      MaintainabilityBaseline.#raised(counts, committed.sections.get(rule) ?? new Map())
-        .filter(([key]) => !(MaintainabilityBaseline.reasonedRules.has(rule) && this.reasonOf(key)))
-        .map(([key, count, recorded]) => ({ rule, key, count, committed: recorded })),
+      MaintainabilityBaseline.totalRules.has(rule)
+        ? this.#totalGrownFrom(committed, rule)
+        : MaintainabilityBaseline.#raised(counts, committed.sections.get(rule) ?? new Map())
+            .filter(([key]) => !(MaintainabilityBaseline.reasonedRules.has(rule) && this.reasonOf(key)))
+            .map(([key, count, recorded]) => ({ rule, key, count, committed: recorded })),
     );
+  }
+
+  #totalGrownFrom(committed: MaintainabilityBaseline, rule: DebtRuleId): BaselineEntryGrowth[] {
+    const count = this.totalOf(rule);
+    const recorded = committed.sections.has(rule) ? committed.totalOf(rule) : undefined;
+    return count > (recorded ?? 0) ? [{ rule, key: MaintainabilityBaseline.totalKey, count, committed: recorded }] : [];
   }
 
   stringify() {

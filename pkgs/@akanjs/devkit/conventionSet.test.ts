@@ -3,6 +3,7 @@ import fsPromise from "node:fs/promises";
 import path from "node:path";
 import { ConventionSet } from "./conventionSet";
 import { MaintainabilityContract } from "./maintainabilityContract";
+import { MaintainabilityLimits } from "./maintainabilityLimits";
 import { Prompter } from "./prompter";
 
 describe("ConventionSet", () => {
@@ -49,7 +50,7 @@ describe("ConventionSet", () => {
     }
   });
 
-  test("names only checks that exist, and names every lint plugin and maintainability gate somewhere", async () => {
+  test("names only checks that exist, and names every lint plugin and maintainability gate a workspace runs", async () => {
     const set = await Prompter.getConventionSet();
     const named = new Set(
       [set.core, ...set.rules.map((rule) => rule.body)].flatMap((text) =>
@@ -59,7 +60,9 @@ describe("ConventionSet", () => {
     const plugins = (await fsPromise.readdir(path.join(import.meta.dir, "lint")))
       .filter((file) => file.endsWith(".grit"))
       .map((file) => file.slice(0, -".grit".length));
-    const gates: readonly string[] = MaintainabilityContract.ruleIds;
+    const gates: readonly string[] = MaintainabilityContract.ruleIds.filter(
+      (id) => !MaintainabilityLimits.repoOnlyRules.has(id),
+    );
     const gateAreas = new Set(gates.map((id) => id.split(".").slice(0, 2).join(".")));
     const isPluginName = (name: string) => /^non?-[a-z]+(-[a-z]+)+$/.test(name);
     const isGateName = (name: string) =>

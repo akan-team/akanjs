@@ -25,6 +25,18 @@ export class MaintainabilityLimits {
   static readonly packageFileMaxLines = 800;
   static readonly functionMaxLines = 150;
   static readonly classMaxMembers = 60;
+  //? The request-path facets: a failure there reaches a caller, who branches on its code rather than its message.
+  static readonly bareErrorRoots: ReadonlyMap<string, readonly string[]> = new Map([
+    ["akanjs", ["server/", "service/", "signal/"]],
+  ]);
+
+  //? Rules this repository holds its own framework to: no workspace has a package they measure, so none is told of them.
+  static readonly repoOnlyRules: ReadonlySet<string> = new Set(["akan.error.bare-error"]);
+
+  static holdsBareErrors(pkgName: string | null, pkgRelativePath: string) {
+    const roots = pkgName === null ? undefined : MaintainabilityLimits.bareErrorRoots.get(pkgName);
+    return (roots ?? []).some((root) => pkgRelativePath.startsWith(root));
+  }
 
   static fileKindOf(sysRelativePath: string): FileKind | null {
     const kinds = Object.keys(MaintainabilityLimits.#maxLinesByKind) as FileKind[];
