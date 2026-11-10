@@ -367,11 +367,43 @@ describe("RscPrefetchCache", () => {
     await sleep(0);
 
     const here = await cache.take("/patch-here", "acct", undefined, "a")?.response;
-    const there = await cache.take("/patch-there", "acct", undefined, "c")?.response;
+    const there = cache.take("/patch-there", "acct", undefined, "c");
     const whole = await cache.take("/whole", "acct", undefined, "c")?.response;
 
     expect(await here?.text()).toBe("patch of here");
     expect(there).toBeNull();
     expect(await whole?.text()).toBe("whole page");
+  });
+
+  test("cuts a patch refused under another base, and hands its slot to the next prefetch in the queue", async () => {
+    const { cache, requests } = harness({ baseOf: () => "a", maxConcurrent: 1 });
+    cache.request("/p", "acct", "high", "a");
+    cache.request("/q", "acct", "high", "a");
+    let release = () => {};
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(new TextEncoder().encode("0:1\n"));
+        await new Promise<void>((resolve) => (release = resolve));
+        controller.close();
+      },
+    });
+    requests[0]?.finish(body as unknown as string, 200, { "X-Akan-Rsc-Partial": "patch" });
+    await sleep(0);
+
+    expect(cache.take("/p", "acct", undefined, "c")).toBeNull();
+    await sleep(5);
+
+    const state = { aborted: requests[0]?.signal.aborted, active: cache.activeCount, started: requests.length };
+    release();
+    expect(state).toEqual({ aborted: true, active: 1, started: 2 });
+    expect(requests[1]?.href).toBe("/q");
+  });
+
+  test("cuts a prefetch taken under another base before its answer is known, rather than waiting on it", async () => {
+    const { cache, requests } = harness({ baseOf: () => "a" });
+    cache.request("/p", "acct", "high", "a");
+
+    expect(cache.take("/p", "acct", undefined, "c")).toBeNull();
+    expect(requests[0]?.signal.aborted).toBe(true);
   });
 });

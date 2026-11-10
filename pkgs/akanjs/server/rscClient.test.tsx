@@ -848,6 +848,21 @@ describe("rscClient prefetch", () => {
     expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
   });
 
+  test("without partial commit a prefetch names no page and stays held across a full navigation", async () => {
+    for (const pathname of ["/foff/a", "/foff/b", "/foff/c"]) served.set(pathname, () => routedResponseOf(pathname));
+    await navigate("/foff/a");
+    await prefetch("/foff/b");
+    await navigate("/foff/c");
+    await prefetch("/foff/b");
+
+    await navigate("/foff/b");
+
+    const prefetches = fetched.filter((request) => request.pathname === "/foff/b" && request.prefetch);
+    expect(prefetches.map((request) => request.sentRouterState)).toEqual([false]);
+    expect(fetchCountOf("/foff/b")).toBe(1);
+    expect(shown()).toBe("/foff/b");
+  });
+
   test("a page prefetched past its lifetime is asked for again", async () => {
     await navigate("/attic");
     await prefetch("/attic/item");
@@ -1264,23 +1279,24 @@ describe("rscClient patch cache", () => {
     else process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = enabled;
   });
   const frameShown = () => document.querySelector("nav")?.textContent;
-  const stateOf = (pathname: string, headKey: string): AkanRouterStateV1 => ({
+  const stateOf = (pathname: string, headKey: string, layouts: string[] = []): AkanRouterStateV1 => ({
     version: 1,
     href: `${origin}${pathname}`,
     routeId: pathname,
     segments: [
       { key: "root", path: "/", kind: "root-layout" },
+      ...layouts.map((layout) => ({ key: `layout:${layout}`, path: layout, kind: "layout" as const })),
       { key: `page:${pathname}`, path: pathname, kind: "page" },
     ],
     headKey,
   });
   const flight = (value: unknown) => `0:${JSON.stringify(value)}\n`;
-  const wholeResponseOf = (pathname: string, frame: string, state: AkanRouterStateV1) => {
+  const wholeResponseOf = (pathname: string, frame: string, state: AkanRouterStateV1, page: unknown = pathname) => {
     const head = {
       layouts: { version: 1, nodes: [] },
       page: { version: 1, nodes: [{ tag: "title", text: pathname }] },
     };
-    const outlet = ["$", "$L1", null, { segmentKey: "slot:root:1", children: pathname }];
+    const outlet = ["$", "$L1", null, { segmentKey: "slot:root:1", children: page }];
     const body = {
       children: [
         ["$", "nav", "n", { children: frame }],
@@ -1303,9 +1319,9 @@ describe("rscClient patch cache", () => {
       headers: {
         "Content-Type": "text/x-component",
         "X-Akan-Rsc-Partial": "patch",
-        [AKAN_RSC_PATCH_START_INDEX_HEADER]: "1",
+        [AKAN_RSC_PATCH_START_INDEX_HEADER]: String(state.segments.length - 1),
         [AKAN_RSC_PATCH_START_SEGMENT_HEADER]: `page:${pathname}`,
-        [AKAN_RSC_PATCH_SEGMENT_PATH_HEADER]: encodeAkanRscPatchSegmentPath(["root", `page:${pathname}`]),
+        [AKAN_RSC_PATCH_SEGMENT_PATH_HEADER]: encodeAkanRscPatchSegmentPath(state.segments.map(({ key }) => key)),
         [AKAN_RSC_PATCH_HEAD_SAFE_HEADER]: "1",
         [AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER]:
           encodeAkanHeadSnapshot({ version: 1, nodes: [{ tag: "title", text: `${pathname} patched` }] }) ?? "",
@@ -1583,6 +1599,26 @@ describe("rscClient patch cache", () => {
       expect(shown()).toBe("/den/b patched");
       expect(frameShown()).toBe("den");
       expect(document.title).toBe("/den/b patched");
+      expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(false);
+    });
+
+    test("a sibling prefetched a while before the click commits as a replay its data readers refetch", async () => {
+      framed("/frs/a", "frs");
+      framed("/frs/b", "frs");
+      await navigate("/frs/a");
+      await prefetch("/frs/b");
+
+      const now = Date.now();
+      const clock = spyOn(Date, "now").mockImplementation(() => now + 6_000);
+      try {
+        await navigate("/frs/b");
+      } finally {
+        clock.mockRestore();
+      }
+
+      expect(navigationCountOf("/frs/b")).toBe(0);
+      expect(shown()).toBe("/frs/b patched");
+      expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
     });
 
     test("a prefetched patch is never laid under the page a full navigation put on screen since", async () => {
@@ -1598,6 +1634,52 @@ describe("rscClient patch cache", () => {
       expect(navigationCountOf("/inn/en/b")).toBe(1);
       expect(shown()).toBe("/inn/en/b");
       expect(frameShown()).toBe("en");
+    });
+
+    test("a whole page prefetched before a full navigation is still taken by the click", async () => {
+      framed("/hw/a", "hw");
+      framed("/hw/b", "hwb");
+      framed("/hw/x", "hwx");
+      await navigate("/hw/a");
+      await prefetch("/hw/b");
+      await navigate("/hw/x");
+
+      await navigate("/hw/b");
+
+      expect(prefetchCountOf("/hw/b")).toBe(1);
+      expect(navigationCountOf("/hw/b")).toBe(0);
+      expect(shown()).toBe("/hw/b");
+      expect(frameShown()).toBe("hwb");
+    });
+
+    test("a patch still loading when a full navigation changes the page under it is cut, and the click asks again", async () => {
+      framed("/fl/a", "fl");
+      framed("/fl/x", "flx");
+      frames.set("/fl/b", { frame: "fl", headKey: "fl layouts" });
+      let release = () => {};
+      served.set("/fl/b", (headers) => {
+        const state = stateOf("/fl/b", "fl layouts");
+        if (headers.get(AKAN_RSC_PREFETCH_HEADER) !== "1") return wholeResponseOf("/fl/b", "fl", state);
+        const body = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            controller.enqueue(new TextEncoder().encode(flight("/fl/b patched")));
+            await new Promise<void>((resolve) => (release = resolve));
+            controller.close();
+          },
+        });
+        return new Response(body, { headers: patchResponseOf("/fl/b", state).headers });
+      });
+      await navigate("/fl/a");
+      await prefetch("/fl/b");
+      await navigate("/fl/x");
+
+      await navigate("/fl/b");
+
+      const prefetchSignal = fetched.find((request) => request.pathname === "/fl/b" && request.prefetch)?.signal;
+      expect(prefetchSignal?.aborted).toBe(true);
+      expect(navigationCountOf("/fl/b")).toBe(1);
+      expect(shown()).toBe("/fl/b");
+      release();
     });
 
     test("a sibling prefetched again after a full navigation is asked for under the page now on screen", async () => {
@@ -1632,6 +1714,45 @@ describe("rscClient patch cache", () => {
       expect(prefetchCountOf("/cab/b")).toBe(0);
       expect(navigationCountOf("/cab/b")).toBe(1);
       expect(shown()).toBe("/cab/b patched");
+    });
+
+    test("a page whose cached patch went under another full commit is still prefetched", async () => {
+      framed("/oth/a", "oth");
+      framed("/oth/b", "oth");
+      framed("/oth/x", "othx");
+      await navigate("/oth/a");
+      await navigate("/oth/b");
+      await navigate("/oth/x");
+
+      await prefetch("/oth/b");
+
+      expect(prefetchCountOf("/oth/b")).toBe(1);
+    });
+
+    test("a page whose cached patch keeps a layout the page on screen lacks is still prefetched", async () => {
+      const deep = (pathname: string) => stateOf(pathname, "gd layouts", ["/gd"]);
+      const nested = (pathname: string) => ["$", "$L1", null, { segmentKey: "slot:layout:/gd:2", children: pathname }];
+      const fromGuide = (headers: Headers) =>
+        decodeAkanRouterState(headers.get(AKAN_RSC_CURRENT_STATE_HEADER))?.segments[1]?.key === "layout:/gd";
+      served.set("/gd/x", () => wholeResponseOf("/gd/x", "gd", deep("/gd/x"), nested("/gd/x")));
+      served.set("/gd/y", (headers) =>
+        fromGuide(headers)
+          ? patchResponseOf("/gd/y", deep("/gd/y"))
+          : wholeResponseOf("/gd/y", "gd", deep("/gd/y"), nested("/gd/y")),
+      );
+      served.set("/gd-other", () => patchResponseOf("/gd-other", stateOf("/gd-other", "gd layouts")));
+      await navigate("/gd/x");
+      await navigate("/gd/y");
+      expect(shown()).toBe("/gd/y patched");
+      await navigate("/gd-other");
+      expect(shown()).toBe("/gd-other patched");
+
+      await prefetch("/gd/y");
+      await navigate("/gd/y");
+
+      expect(prefetchCountOf("/gd/y")).toBe(1);
+      expect(navigationCountOf("/gd/y")).toBe(1);
+      expect(shown()).toBe("/gd/y");
     });
   });
 });

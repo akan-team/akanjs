@@ -3,6 +3,7 @@ import type { PrefetchPriority } from "../client/rscNavigation";
 interface RscPrefetchEntry<B> {
   account: string;
   base: B | undefined;
+  whole: boolean;
   startedAt: number;
   controller: AbortController;
   response: Promise<Response | null>;
@@ -113,13 +114,13 @@ export class RscPrefetchCache<B = undefined> {
     const entry = this.#entries.get(href);
     if (!entry) return null;
     this.#entries.delete(href);
-    if (entry.account !== account || this.#isStale(entry)) {
+    //? A patch keeps the layouts on screen when it was sent, so under another base only a page known whole will do.
+    if (entry.account !== account || this.#isStale(entry) || (entry.base !== base && !entry.whole)) {
       RscPrefetchCache.#drop(entry);
       return null;
     }
     signal?.addEventListener("abort", () => entry.controller.abort(), { once: true });
-    const response = entry.base === base ? entry.response : entry.response.then(RscPrefetchCache.#wholeOnly);
-    return { response, fresh: this.#now() - entry.startedAt <= this.#freshMs };
+    return { response: entry.response, fresh: this.#now() - entry.startedAt <= this.#freshMs };
   }
 
   prune(): void {
@@ -177,10 +178,12 @@ export class RscPrefetchCache<B = undefined> {
     const entry: RscPrefetchEntry<B> = {
       account,
       base: this.#baseOf?.(),
+      whole: false,
       startedAt: this.#now(),
       controller,
       response: this.#fetchResponse(href, controller.signal).then(
         (response) => {
+          entry.whole = response.headers.get("X-Akan-Rsc-Partial") !== "patch";
           //? A 204 is a page that opts out of prefetching, kept as nothing for the TTL so hovering again asks no more.
           const optedOut = response.status === 204;
           //? Only what the click would take as its own answer: a 429, 408 or 5xx may be gone by then, so it asks again.
@@ -194,7 +197,7 @@ export class RscPrefetchCache<B = undefined> {
           //? Drained to its end, so an unread body never holds a connection; the other branch keeps the bytes.
           const [drain, branch] = response.body.tee();
           kept = branch;
-          void RscPrefetchCache.#readToEnd(drain).then(settle, () => {
+          void RscPrefetchCache.#readToEnd(drain, controller.signal).then(settle, () => {
             forget();
             settle();
           });
@@ -234,16 +237,10 @@ export class RscPrefetchCache<B = undefined> {
     return this.#now() - entry.startedAt > this.#ttlMs;
   }
 
-  static async #readToEnd(stream: ReadableStream<Uint8Array>): Promise<void> {
+  static async #readToEnd(stream: ReadableStream<Uint8Array>, signal: AbortSignal): Promise<void> {
     const reader = stream.getReader();
+    signal.addEventListener("abort", () => void reader.cancel().catch(() => undefined), { once: true });
     while (!(await reader.read()).done);
-  }
-
-  //? A patch keeps the layouts on screen when it was sent, so under another base it would keep the wrong ones.
-  static #wholeOnly(response: Response | null): Response | null {
-    if (response?.headers.get("X-Akan-Rsc-Partial") !== "patch") return response;
-    void response.body?.cancel().catch(() => undefined);
-    return null;
   }
 
   static #drop<B>(entry: RscPrefetchEntry<B>): void {

@@ -490,17 +490,20 @@ function replayedPageOf(target: string): RscCacheNode | undefined {
   return node;
 }
 
-function replayCachedPatch(target: string, navId: number, replace?: boolean, requestScroll?: () => void): boolean {
-  const cachedPatch = rscPatchCache.get(target);
-  if (!cachedPatch) return false;
-  const patchResult = resolveCachedRscPatchNavigation({
+const cachedPatchReplayOf = (node: RscPatchNavigationCacheNode<RscThenable>, navId?: number) =>
+  resolveCachedRscPatchNavigation({
     currentTree: currentSegmentTree,
     currentBase: currentFullNode,
-    node: cachedPatch,
+    node,
     partialCommitEnabled: isAkanRscPartialCommitEnabled(),
     navId,
     getCurrentNavId: () => navigationSeq,
   });
+
+function replayCachedPatch(target: string, navId: number, replace?: boolean, requestScroll?: () => void): boolean {
+  const cachedPatch = rscPatchCache.get(target);
+  if (!cachedPatch) return false;
+  const patchResult = cachedPatchReplayOf(cachedPatch, navId);
   if (patchResult.status === "patched") {
     const { tree, patchedNode, outletKey, headSnapshot } = patchResult;
     const patch = { type: "patched" as const, tree, patchedNode, patch: cachedPatch.patch, outletKey, headSnapshot };
@@ -530,7 +533,8 @@ globalThis.__AKAN_RSC_PREFETCH__ = (href, priority) => {
   //? Not forgetPagesOfAnotherAccount: only a navigation may record the change, or a page of the old account still in
   //? flight commits into the cache as the new account's.
   const authCookies = readAuthCookies();
-  const replayable = cachedPageOf(target) || rscPatchCache.get(target)?.base === currentFullNode;
+  const cachedPatch = rscPatchCache.get(target);
+  const replayable = cachedPageOf(target) || (!!cachedPatch && cachedPatchReplayOf(cachedPatch).status === "patched");
   if (authCookies === cachedAuthCookies && replayable) return none;
   return rscPrefetchCache.request(key, authCookies, priority, prefetchBase());
 };
@@ -670,7 +674,7 @@ function Root(): ReactNode {
               requestScroll,
             })
           ) {
-            currentCommitFromCache = false;
+            currentCommitFromCache = servedFromCache;
             rememberPatchedRouteState(fetched.tree, fetched.patchedNode);
             const patchCacheNode = createRscPatchNavigationCacheNode({
               href: target,
