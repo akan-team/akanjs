@@ -6,7 +6,6 @@ import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
 import { isAuthTokenKey } from "../common/authCookie";
 import { CookieJar } from "../common/cookieJar";
-import { mapFlightLineRows } from "./flightRowReader";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   type AkanHeadSnapshotV1,
@@ -16,6 +15,14 @@ import {
   isAkanRscPartialCommitEnabled,
   readAkanRouterStateResponseHeader,
 } from "./routeState";
+import {
+  type ChunkNavigation,
+  claimChunkReload,
+  isBuildBundle,
+  isLinkFailure,
+  navigationOfChunk,
+  recordChunksOf,
+} from "./rscClientChunks";
 import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
 import { validateRscPatchForGuardedCommit } from "./rscClientPatch";
 import {
@@ -143,68 +150,6 @@ function trackRscThenable(thenable: RscThenable): RscThenable {
 function createRscThenable(stream: ReadableStream<Uint8Array>): RscThenable {
   return trackRscThenable(createFromReadableStream<ReactNode>(stream) as RscThenable);
 }
-
-interface ChunkNavigation {
-  navId: number;
-  href: string;
-  replace: () => boolean;
-}
-
-//? RSDW asks the global loader for a chunk without naming the response that wants it, so a navigation's `I` rows
-//? record the chunks they name; a chunk no navigation named is the document's own.
-const chunkNavigations = new Map<string, ChunkNavigation>();
-const quotedString = /"([^"\\]*)"/g;
-const maxScriptRowBytes = 1024;
-const rowDecoder = new TextDecoder();
-
-function recordChunksOf(stream: ReadableStream<Uint8Array>, navigation: ChunkNavigation): ReadableStream<Uint8Array> {
-  //? RSDW outlines a chunk path of 16+ characters into a string row the `I` row names as `$<row id>`, until 32,768
-  //? characters per response; shorter paths and those past the budget stay inline.
-  const scriptRows = new Map<string, string>();
-  return mapFlightLineRows(stream, (row, tag) => {
-    if (tag !== "I" && (tag !== "" || row.byteLength > maxScriptRowBytes)) return row;
-    const text = rowDecoder.decode(row);
-    const colon = text.indexOf(":");
-    const value = text.slice(colon + 1 + tag.length).trimEnd();
-    if (tag === "") {
-      if (value.startsWith('"') && value.endsWith('.js"')) scriptRows.set(text.slice(0, colon), value.slice(1, -1));
-      return row;
-    }
-    for (const [, named] of value.matchAll(quotedString)) {
-      const chunkId = (named.startsWith("$") ? scriptRows.get(named.slice(1)) : undefined) ?? named;
-      if (chunkId.endsWith(".js")) chunkNavigations.set(chunkId, navigation);
-    }
-    return row;
-  });
-}
-
-//? How Chromium, Firefox and WebKit word a failed link or bare specifier; a fetch or evaluation error is not skew.
-const linkFailure =
-  /does not provide an export named|doesn't provide an export named|import not found|Importing binding name|Failed to resolve module specifier|was a bare specifier|does not resolve to a valid URL/;
-const isLinkFailure = (error: unknown) =>
-  (error instanceof SyntaxError || error instanceof TypeError) && linkFailure.test(error.message);
-
-//? Per tab and synchronous, which akanjs/client `storage` (localStorage, async) is not; unrecorded, it never reloads.
-const chunkReloadsKey = "akan.rsc.chunkReloads";
-function claimChunkReload(chunkId: string): boolean {
-  try {
-    const reloaded = JSON.parse(sessionStorage.getItem(chunkReloadsKey) ?? "[]") as string[];
-    if (reloaded.includes(chunkId)) return false;
-    sessionStorage.setItem(chunkReloadsKey, JSON.stringify([...reloaded, chunkId].slice(-32)));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-//? Not `typeof process`: the define replaces only this member read, and a browser has no `process` to test.
-const isBuildBundle = () => {
-  try {
-    return process.env.AKAN_BUNDLE_COMMAND === "build";
-  } catch {
-    return false;
-  }
-};
 
 //? A page restored from the back-forward cache outlived the document load its fallback started.
 window.addEventListener("pageshow", (event) => {
@@ -427,6 +372,13 @@ function supersedeNavigation(): number {
   return ++navigationSeq;
 }
 
+//? A page navigation started after a fallback supersedes its document load, or follows a `beforeunload` that kept the
+//? page; a refresh does not, since a timer can start one while that document is still loading.
+function supersedeForPageNavigation(): number {
+  documentNavigationFallbackInFlight = false;
+  return supersedeNavigation();
+}
+
 function requestSignalOf(navId: number, target: string): AbortSignal {
   latestPageNavId = navId;
   const controller = new AbortController();
@@ -444,7 +396,7 @@ const loadChunk = globalThis.__webpack_chunk_load__;
 if (loadChunk)
   globalThis.__webpack_chunk_load__ = (chunkId) => {
     const loading = loadChunk(chunkId);
-    const navigation = chunkNavigations.get(chunkId);
+    const navigation = navigationOfChunk(chunkId);
     if (navigation) loading.catch((error: unknown) => loadDocumentForChunkFailure(chunkId, navigation, error));
     return loading;
   };
@@ -613,10 +565,7 @@ function Root(): ReactNode {
     }
     forgetPagesOfAnotherAccount();
     rscPrefetchCache.prune();
-    //? A page navigation started after a fallback supersedes its document load, or follows a `beforeunload` that kept
-    //? the page; a refresh does not, since a timer can start one while that document is still loading.
-    documentNavigationFallbackInFlight = false;
-    const navId = supersedeNavigation();
+    const navId = supersedeForPageNavigation();
     const target = normalizeHref(href);
     const signal = requestSignalOf(navId, target);
     //? A redirect replaces the entry this navigation is on, which a push does not write until its page commits.
