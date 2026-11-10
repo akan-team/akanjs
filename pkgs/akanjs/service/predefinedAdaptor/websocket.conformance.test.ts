@@ -36,6 +36,7 @@ const openServer = async (serverId: string, app: string) => {
   });
   return {
     adaptor,
+    client,
     received,
     changes,
     heard: () => heard,
@@ -225,5 +226,22 @@ describe.skipIf(!ConformanceEnv.has("pubsub conformance", "redis"))("pubsub conf
       subscriber.received.filter((item) => item.roomId === roomId).map(({ data }) => [...(data as Uint8Array)]);
     expect(framesOf(coalesced)).toEqual([[3]]);
     expect(framesOf(queued)).toEqual([[1], [2], [3]]);
+  });
+
+  test("[P-10] a reconnect subscribes again the channels a server holds, and none it has left", async () => {
+    const roomId = `${pulse}-returning`;
+    const stray = `alpha:testing:ws:change:${ConformanceEnv.uniqueName("left")}`;
+    const reader = await openServer("server-d", "alpha");
+    await reader.join(roomId);
+    await reader.adaptor.subscriber.subscribe(stray);
+    const returned = new Promise((resolve) => reader.adaptor.subscriber.once("ready", resolve));
+    reader.adaptor.subscriber.disconnect(true);
+    await returned;
+    await reader.join(roomId);
+    await reader.adaptor.subscriber.ping();
+    publisher.adaptor.publish(roomId, { label: "returned", count: 1, ratio: 1 });
+    expect(await deliveredTo(reader, roomId)).toEqual([{ label: "returned", count: 1, ratio: 1 }]);
+    expect(await reader.client.pubsub("NUMSUB", stray)).toEqual([stray, 0]);
+    await reader.close();
   });
 });

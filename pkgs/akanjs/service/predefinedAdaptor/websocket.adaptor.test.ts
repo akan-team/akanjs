@@ -1,3 +1,4 @@
+import { heapStats } from "bun:jsc";
 import { describe, expect, jest, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { WebSocketRedisAdaptor } from "./websocket.adaptor";
@@ -324,5 +325,27 @@ describe("WebSocketRedisAdaptor channels", () => {
     subscriber.holdReplies = false;
     await adaptor.joinRoom(newSocket(), "task-b::2", { live: "task" });
     expect(subscriber.subscribed).toEqual(["app:ws:change:task", "app:ws:change:task"]);
+  });
+
+  test("keeps nothing per join once it resolves, though the subscriber stays up", async () => {
+    const { adaptor, subscriber } = await openAdaptor();
+    subscriber.emit("ready");
+    const socket = newSocket();
+    const cycle = async (times: number) => {
+      for (let n = 0; n < times; n += 1) {
+        await adaptor.joinRoom(socket, "chat-1");
+        await adaptor.leaveRoom(socket, "chat-1");
+      }
+      subscriber.subscribed.length = 0;
+      subscriber.unsubscribed.length = 0;
+    };
+    const promises = () => {
+      Bun.gc(true);
+      return heapStats().objectTypeCounts.Promise ?? 0;
+    };
+    await cycle(100);
+    const before = promises();
+    await cycle(10_000);
+    expect(promises() - before).toBeLessThan(1_000);
   });
 });
