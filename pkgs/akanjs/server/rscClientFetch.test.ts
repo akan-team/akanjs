@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { subscribeRscRoutePatch } from "../client/rscNavigation";
+import { subscribeRscRoutePatch } from "../client/rscRoutePatch";
 import {
   AKAN_RSC_CURRENT_STATE_HEADER,
   AKAN_RSC_IMPORT_MAP_HEADER,
@@ -222,7 +222,9 @@ describe("fetchRscNavigationResponse", () => {
     }
   });
 
-  test("says a route head is mounted only alongside the router state a patch is decided from", async () => {
+  test("says a route head is mounted only with router state, and only from a client built with partial commit", async () => {
+    const enabled = process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+    process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = "1";
     const sent: (string | null)[] = [];
     globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
       sent.push(new Headers(init?.headers).get(AKAN_RSC_ROUTE_HEAD_HEADER));
@@ -238,12 +240,16 @@ describe("fetchRscNavigationResponse", () => {
       const unmount = subscribeRscRoutePatch(() => undefined, { head: true });
       await navigate(true);
       await navigate(false);
+      process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = "0";
+      await navigate(true);
       unmount();
       await navigate(true);
 
-      expect(sent).toEqual([null, "1", null, null]);
+      expect(sent).toEqual([null, "1", null, null, null]);
     } finally {
       Reflect.deleteProperty(globalThis, "__AKAN_RSC_ROUTE_PATCH__");
+      if (enabled === undefined) delete process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+      else process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = enabled;
     }
   });
 });

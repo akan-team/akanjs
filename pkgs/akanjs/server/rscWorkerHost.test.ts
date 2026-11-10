@@ -864,12 +864,32 @@ describe("RscWorker route head", () => {
         const otherLang = await render("http://localhost/en/safe?tab=2", stateOf("safe", "http://localhost/ko/safe"));
         expect(otherLang.trace).toMatchObject({ partial: "full", partialReason: "params-changed" });
 
+        const wordy = await render("http://localhost/en/wordy", stateOf("safe", "http://localhost/en/safe"));
+        expect(wordy.trace).toMatchObject({ partial: "full", partialReason: "head-too-large" });
+
         const otherFrame = await render("http://localhost/en/faded", stateOf("safe", "http://localhost/en/safe"));
         expect(otherFrame.trace).toMatchObject({ partial: "full", partialReason: "page-state-changed" });
         expect(otherFrame.body).toContain("faded body");
         expect(headRuns("faded")).toBe(1);
       },
     );
+  }, 20_000);
+
+  test("never keeps one route group's layout around another group's page at the same URL prefix", async () => {
+    await withHeadWorker({ AKAN_PUBLIC_RSC_PARTIAL_COMMIT: "1", AKAN_RSC_RESULT_CACHE: "0" }, async ({ render }) => {
+      const sameGroup = await render(
+        "http://localhost/en/account/signup",
+        stateOf("account/login", "http://localhost/en/account/login"),
+      );
+      expect(sameGroup.trace).toMatchObject({ partial: "patch" });
+
+      const otherGroup = await render(
+        "http://localhost/en/account/settings",
+        stateOf("account/login", "http://localhost/en/account/login"),
+      );
+      expect(otherGroup.trace).toMatchObject({ partial: "full", partialReason: "layouts-changed" });
+      expect(otherGroup.body).toContain('"data-group":"member"');
+    });
   }, 20_000);
 
   test("renders a plain head through AkanRouteHead only while partial commit is on", async () => {

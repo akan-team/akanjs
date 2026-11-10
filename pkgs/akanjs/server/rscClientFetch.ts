@@ -1,4 +1,4 @@
-import { hasRscRouteHead } from "../client/rscNavigation";
+import { hasRscRouteHead } from "../client/rscRoutePatch";
 import {
   AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
@@ -7,6 +7,7 @@ import {
   type AkanRouterStateV1,
   type AkanRscPatchMetadata,
   appendAkanRouterStateRequestHeaders,
+  isAkanRscPartialCommitEnabled,
   readAkanRscPatchMetadataResponseHeaders,
 } from "./routeState";
 
@@ -69,7 +70,8 @@ export async function fetchRscNavigationResponse(
   const headers = rscRequestHeaders();
   if (options.sendRouterState !== false) {
     appendAkanRouterStateRequestHeaders(headers, options.currentRouterState);
-    if (hasRscRouteHead()) headers.set(AKAN_RSC_ROUTE_HEAD_HEADER, "1");
+    //? Only a client built with partial commit applies a patch; one built without would refetch the page whole.
+    if (isAkanRscPartialCommitEnabled() && hasRscRouteHead()) headers.set(AKAN_RSC_ROUTE_HEAD_HEADER, "1");
   }
   const response =
     options.prefetched ??

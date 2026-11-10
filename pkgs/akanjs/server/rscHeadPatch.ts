@@ -1,4 +1,4 @@
-import { hasRscRouteHead, type RscRoutePatch, readRscRoutePatch, writeRscRoutePatch } from "../client/rscNavigation";
+import { hasRscRouteHead, type RscRoutePatch, readRscRoutePatch, writeRscRoutePatch } from "../client/rscRoutePatch";
 import type { AkanHeadSnapshotV1 } from "./routeState";
 import type { AkanSegmentPatchFailureReason } from "./rscNavigationState";
 

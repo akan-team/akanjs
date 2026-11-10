@@ -404,6 +404,8 @@ export interface PathRoute {
   renderRootLayouts: RouteRender[];
   renderLayouts: RouteRender[];
   resolveHead?: ResolveHead;
+  /** The layouts' part of `resolveHead`, which a partial commit keeps on screen while it swaps the page's part. */
+  resolveLayoutsHead?: ResolveHead;
 }
 
 export type FrameSlotScope = "page" | "layout";

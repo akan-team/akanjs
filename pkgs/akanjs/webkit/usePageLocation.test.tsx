@@ -2,13 +2,13 @@ import "../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { Location } from "akanjs/client";
 import { act } from "react";
+import { writeRscRoutePatch } from "../client/rscRoutePatch";
 import { mountAsync, setTestEnv } from "../ui/testHelpers.fixture";
 
 let ClientPathWrapper: typeof import("../ui/System/Client").ClientPathWrapper;
 let usePageLocation: typeof import("./usePageLocation").usePageLocation;
 let setState: (state: Record<string, unknown>) => void;
 let usePathCtx: typeof import("akanjs/client").usePathCtx;
-let writeRscRoutePatch: typeof import("akanjs/client").writeRscRoutePatch;
 
 beforeAll(async () => {
   setTestEnv("pagelocationtest");
@@ -16,7 +16,7 @@ beforeAll(async () => {
   setState = (state) => (st as unknown as { set: (state: Record<string, unknown>) => void }).set(state);
   ({ ClientPathWrapper } = await import("../ui/System/Client"));
   ({ usePageLocation } = await import("./usePageLocation"));
-  ({ usePathCtx, writeRscRoutePatch } = await import("akanjs/client"));
+  ({ usePathCtx } = await import("akanjs/client"));
 });
 
 const Probe = () => {

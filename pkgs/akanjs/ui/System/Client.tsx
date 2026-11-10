@@ -23,11 +23,9 @@ import {
   pathContext,
   prefetchRsc,
   type RouteViewport,
-  readRscRoutePatch,
   refreshRsc,
   router,
   setCookie,
-  subscribeRscRoutePatch,
   type TransitionStyle,
   Translator,
   useCsr,
@@ -52,6 +50,7 @@ import {
   useState,
 } from "react";
 import { AgentActivity } from "use-agentic";
+import { readRscRoutePatch, subscribeRscRoutePatch } from "../../client/rscRoutePatch";
 import { FrameRootVars } from "../../webkit/FrameRootVars";
 import { useTransitionStore } from "../../webkit/useTransitionStore";
 import { getFrameCssVars, isResponsiveFrame } from "./Common";
@@ -393,7 +392,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
   useEffect(() => {
     const visiblePrefix = getEnv().operationMode === "local" ? prefix : "";
     globalThis.__AKAN_GET_SYNC_ROUTE_HREF__ = (href: string) => {
-      const url = new URL(href, "http://localhost");
+      const url = new URL(href, window.location.origin);
       const pathInfo = getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, visiblePrefix);
       return `${pathInfo.path}${pathInfo.search ? `?${pathInfo.search}` : ""}${pathInfo.hash ? `#${pathInfo.hash}` : ""}`;
     };
@@ -420,7 +419,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
       });
     };
     const syncHref = (href: string) => {
-      const url = new URL(href, "http://localhost");
+      const url = new URL(href, window.location.origin);
       const { path } = getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, visiblePrefix);
       const searchParams = parseSearchParams(url.search);
       st.set({

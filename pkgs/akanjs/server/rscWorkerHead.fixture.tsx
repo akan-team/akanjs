@@ -31,6 +31,41 @@ export const pages: PagesContext = {
       .head(headOf("faded"))
       .render(() => <p>faded body</p>),
   }),
+  "./wordy.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(() => (
+        <>
+          <title>wordy</title>
+          <meta name="description" content={"설명".repeat(400)} />
+        </>
+      ))
+      .render(() => <p>wordy body</p>),
+  }),
+  "./(guest)/_layout.tsx": async () => ({
+    default: layout().render(({ children }) => <div data-group="guest">{children}</div>),
+  }),
+  "./(guest)/account/login.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("login"))
+      .render(() => <p>login body</p>),
+  }),
+  "./(guest)/account/signup.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("signup"))
+      .render(() => <p>signup body</p>),
+  }),
+  "./(member)/_layout.tsx": async () => ({
+    default: layout().render(({ children }) => <div data-group="member">{children}</div>),
+  }),
+  "./(member)/account/settings.tsx": async () => ({
+    default: page()
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("settings"))
+      .render(() => <p>settings body</p>),
+  }),
   "./vault/_layout.tsx": async () => ({
     default: layout()
       .guard(() => {

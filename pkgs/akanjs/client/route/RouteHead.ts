@@ -29,7 +29,7 @@ export class RouteHead {
       if (!nodes) return node;
       snapshotLevels.push(nodes);
     }
-    return { node, headSnapshot: RouteHead.#mergeSnapshots(snapshotLevels) } satisfies ResolvedHead;
+    return { node, headSnapshot: RouteHead.mergeSnapshots(snapshotLevels) } satisfies ResolvedHead;
   }
 
   /** `merge` of a page's head over its layouts': a canonical or `og:url` comes from the page or not at all. */
@@ -131,7 +131,8 @@ export class RouteHead {
     return { node: keptNode, headSnapshot: { ...snapshot, nodes } };
   }
 
-  static #mergeSnapshots(levels: AkanHeadSnapshotNode[][]): AkanHeadSnapshotV1 {
+  /** `merge` for snapshot nodes, root first. */
+  static mergeSnapshots(levels: AkanHeadSnapshotNode[][]): AkanHeadSnapshotV1 {
     const kept = RouteHead.#keepDeepest(levels, (node: AkanHeadSnapshotNode) =>
       RouteHead.keyOf(node.tag, node.attrs ?? {}),
     );

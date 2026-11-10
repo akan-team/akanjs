@@ -148,17 +148,14 @@ export class SsrBaseArtifactBuilder {
       command: this.#command,
     }).bundle();
     const rscClientUrl = clientBundle.entryUrlsByAbsPath.get(rscClientEntry) ?? "";
-    const ssrOutput = ssrBundle.entryOutputAbsByAbsPath.get(rscSegmentOutletEntry);
-    const outletReferenceId = clientBundle.clientReferenceIdByAbsPath.get(rscSegmentOutletEntry);
-    const moduleMap: Record<string, Record<string, { id: string; chunks: string[]; name: string; async: true }>> = {};
-    for (const [key, row] of Object.entries(clientBundle.manifest)) {
-      if (!ssrOutput || key !== `${outletReferenceId}#${row.name}`) continue;
-      moduleMap[row.id] = {
-        ...moduleMap[row.id],
-        [row.name]: { id: ssrOutput, chunks: [ssrOutput, ssrOutput], name: row.name, async: true },
-      };
-    }
-    const rscRuntimeSsrManifest = { moduleLoading: null, moduleMap };
+    const rscRuntimeSsrManifest = {
+      moduleLoading: null,
+      moduleMap: SsrBaseArtifactBuilder.outletModuleMap(
+        clientBundle.manifest,
+        clientBundle.clientReferenceIdByAbsPath.get(rscSegmentOutletEntry),
+        ssrBundle.entryOutputAbsByAbsPath.get(rscSegmentOutletEntry),
+      ),
+    };
     const vendorMap = Object.fromEntries(
       vendorEntries.map(({ specifier, absPath }) => [specifier, clientBundle.entryUrlsByAbsPath.get(absPath) ?? ""]),
     ) as Record<VendorSpecifier, string>;
@@ -170,6 +167,24 @@ export class SsrBaseArtifactBuilder {
       vendorMap,
     };
   }
+  /** The SSR consumer's rows for every client export of the segment outlet module, all served by its SSR build. */
+  static outletModuleMap(
+    manifest: NonNullable<BaseBuildArtifact["rscRuntimeClientManifest"]>,
+    outletReferenceId: string | undefined,
+    ssrOutput: string | undefined,
+  ) {
+    const moduleMap: Record<string, Record<string, { id: string; chunks: string[]; name: string; async: true }>> = {};
+    if (!ssrOutput || !outletReferenceId) return moduleMap;
+    for (const [key, row] of Object.entries(manifest)) {
+      if (key !== `${outletReferenceId}#${row.name}`) continue;
+      moduleMap[row.id] = {
+        ...moduleMap[row.id],
+        [row.name]: { id: ssrOutput, chunks: [ssrOutput, ssrOutput], name: row.name, async: true },
+      };
+    }
+    return moduleMap;
+  }
+
   async #resolveAkanServerPath() {
     const candidates: string[] = [];
     try {

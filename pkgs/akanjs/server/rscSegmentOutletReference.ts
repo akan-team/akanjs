@@ -3,7 +3,8 @@ import type { AkanRouteHead, AkanSegmentOutlet } from "./rscSegmentOutlet";
 const AKAN_SEGMENT_OUTLET_REFERENCE_ID = "pkgs/akanjs/server/rscSegmentOutlet.tsx";
 
 function resolveAkanSegmentOutletReference<T>(exportName: string): T {
-  //? registerClientReference stamps $$id onto the function it is given, so each export needs its own.
+  //? registerClientReference defines a non-configurable $$id on the function it is given: registering a second export
+  //? on one function throws, and the catch below would hand back that function, still the first export's reference.
   const serverReference = (): never => {
     throw new Error(`[rscSegmentOutlet] ${exportName} is a client component and cannot run on the server`);
   };

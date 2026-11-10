@@ -1,7 +1,8 @@
 "use client";
 
 import { type ReactNode, use, useCallback } from "react";
-import { readRscRoutePatch, subscribeRscRoutePatch, writeRscRoutePatch } from "../client/rscNavigation";
+import { RouteHead } from "../client/route/RouteHead";
+import { readRscRoutePatch, subscribeRscRoutePatch, writeRscRoutePatch } from "../client/rscRoutePatch";
 import { useTransitionStore } from "../webkit/useTransitionStore";
 import type { AkanHeadSnapshotV1 } from "./routeState";
 
@@ -79,7 +80,7 @@ const renderHeadSnapshot = (snapshot: AkanHeadSnapshotV1): ReactNode =>
 
 //? Rendered by React rather than written into the DOM: React owns these hoisted tags, so a node swapped behind its
 //? back is one the next full commit updates or removes while detached, leaving the old page's head on screen.
-export function AkanRouteHead({ snapshot }: { snapshot: AkanHeadSnapshotV1 }): ReactNode {
+export function AkanRouteHead({ layouts, page }: { layouts: AkanHeadSnapshotV1; page: AkanHeadSnapshotV1 }): ReactNode {
   const patch = useTransitionStore(subscribeRouteHead, readRscRoutePatch);
-  return renderHeadSnapshot(patch?.head ?? snapshot);
+  return renderHeadSnapshot(RouteHead.mergeSnapshots([layouts.nodes, (patch?.head ?? page).nodes]));
 }

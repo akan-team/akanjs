@@ -235,7 +235,7 @@ export function resolveAkanRscHeadSafePatchDecision({
   pageConfig?: PageConfig;
   /** Whether the page the patch leaves from shows its head through `AkanRouteHead`, the only head a patch can swap. */
   routeHeadMounted?: boolean;
-  frameChange?: "params-changed" | "page-state-changed" | "frame-unknown";
+  frameChange?: "params-changed" | "layouts-changed" | "page-state-changed" | "frame-unknown";
   headSnapshot?: AkanHeadSnapshotV1;
 }): AkanRscPatchDecision {
   if (!partialCommitEnabled || patchDecision.status !== "patch" || !patchDecision.patch) return patchDecision;

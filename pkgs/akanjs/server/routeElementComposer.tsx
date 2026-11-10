@@ -6,6 +6,7 @@ import type {
   PageConfig,
   PathRoute,
   ResolvedHead,
+  ResolveHeadResult,
   RouteRender,
 } from "akanjs/client";
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
@@ -209,6 +210,26 @@ export class RouteElementComposer {
     searchParams: Record<string, string[] | string>;
   }): Promise<ResolvedHead> {
     return resolveHeadResult(await pathRoute.resolveHead?.({ params, searchParams }));
+  }
+
+  static async resolveHeadLayers({
+    pathRoute,
+    params,
+    searchParams,
+  }: {
+    pathRoute: PathRoute;
+    params: Record<string, string>;
+    searchParams: Record<string, string[] | string>;
+  }): Promise<{ head: ResolvedHead; layouts: ResolveHeadResult; page: ResolveHeadResult }> {
+    if (!pathRoute.resolveLayoutsHead) {
+      const page = await pathRoute.resolveHead?.({ params, searchParams });
+      return { head: resolveHeadResult(page), layouts: undefined, page };
+    }
+    const [layouts, page] = await Promise.all([
+      pathRoute.resolveLayoutsHead({ params, searchParams }),
+      pathRoute.renderPage.resolveHead?.({ params, searchParams }),
+    ]);
+    return { head: resolveHeadResult(RouteHead.mergePage(layouts, page)), layouts, page };
   }
 
   static async composeFallback({

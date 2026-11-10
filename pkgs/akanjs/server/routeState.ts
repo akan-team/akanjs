@@ -17,7 +17,9 @@ export const AKAN_RSC_PATCH_HEAD_SAFE_HEADER = "X-Akan-Rsc-Patch-Head-Safe";
 export const AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER = "X-Akan-Rsc-Patch-Head-Snapshot";
 export const AKAN_RSC_ROUTE_HEAD_HEADER = "X-Akan-Rsc-Route-Head";
 export const AKAN_RSC_HEAD_SNAPSHOT_VERSION = 1;
-export const AKAN_RSC_HEAD_SNAPSHOT_MAX_HEADER_BYTES = 12 * 1024;
+//? Kept to 2 KB so a patch's response headers fit a proxy's header buffer: nginx's default `proxy_buffer_size` is one
+//? memory page (4 KB on most hosts) and a response over it fails as a 502. A larger page head renders whole instead.
+export const AKAN_RSC_HEAD_SNAPSHOT_MAX_HEADER_BYTES = 2 * 1024;
 
 export type AkanRscPartialStatus = "full" | "candidate" | "patch" | "fallback";
 

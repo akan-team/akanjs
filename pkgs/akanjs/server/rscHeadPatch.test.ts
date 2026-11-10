@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { readRscRoutePatch, subscribeRscRoutePatch, writeRscRoutePatch } from "../client/rscNavigation";
+import { readRscRoutePatch, subscribeRscRoutePatch, writeRscRoutePatch } from "../client/rscRoutePatch";
 import type { AkanHeadSnapshotV1 } from "./routeState";
 import {
   applyAkanHeadSnapshotPatch,
