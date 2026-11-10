@@ -1,6 +1,11 @@
 import path from "node:path";
 import type { RoutesManifest } from "akanjs/server";
-import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
+import {
+  isImplicitRootLayoutKey,
+  type PageEntry,
+  ROOT_LAYOUT_SYSTEM,
+  resolveSsrPageEntriesForApp,
+} from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex, type RouteSeedIndex } from "../artifact/routeSeedIndex";
 import type { App } from "../commandDecorators";
 import type { ClientEntryDiscovery } from "./clientBuildTypes";
@@ -26,7 +31,7 @@ export class AllRoutesBuilder {
   };
   #knownSet = new Set<string>();
   #routeIds: string[] = [];
-  #entriesByRoute = new Map<string, string[]>();
+  #ssrEntriesByRoute = new Map<string, string[]>();
   #externalsByChunkUrl: Record<string, string[]> = {};
   #discovery: ClientEntryDiscovery | null = null;
 
@@ -41,15 +46,17 @@ export class AllRoutesBuilder {
     const pageEntries = await resolveSsrPageEntriesForApp(this.#app, pageKeys);
     const seedIndex = computeRouteSeedIndex(pageEntries);
     this.#app.verbose(`[build-all] discovered ${seedIndex.entries.length} routes`);
-    this.#discovery = await GraphClientEntryDiscovery.create(this.#app);
+    const discovery = await GraphClientEntryDiscovery.create(this.#app);
+    this.#discovery = discovery;
+    const importsAs = await this.#ssrImportsAs(discovery, pageEntries);
 
     // Every route's entries go into one Bun.build: chunk splitting only dedupes within a single build.
     const allEntries = new Set<string>();
     for (const entry of seedIndex.entries) {
       const seeds = Array.from(new Set([...seedIndex.globalLayoutFiles, ...entry.seeds]));
-      const routeEntries = await this.#discovery.discover(seeds);
+      const routeEntries = await discovery.discover(seeds);
       for (const discovered of routeEntries) allEntries.add(discovered);
-      this.#entriesByRoute.set(entry.routeId, routeEntries);
+      this.#ssrEntriesByRoute.set(entry.routeId, await discovery.discover(seeds, { importsAs }));
       this.#routeIds.push(entry.routeId);
     }
     this.#app.verbose(`[build-all] ${allEntries.size} client entries across ${this.#routeIds.length} routes`);
@@ -71,10 +78,21 @@ export class AllRoutesBuilder {
     return { manifest, manifestPath, seedIndex };
   }
 
+  async #ssrImportsAs(discovery: GraphClientEntryDiscovery, pageEntries: PageEntry[]) {
+    const { specifier, ssrShell, importsNoSsrPageRenders } = ROOT_LAYOUT_SYSTEM;
+    const importsAs = new Map<string, ReadonlyMap<string, string | null>>();
+    const toShell = new Map([[specifier, ssrShell]]);
+    for (const { key, moduleAbsPath } of pageEntries)
+      if (isImplicitRootLayoutKey(key)) importsAs.set(path.resolve(moduleAbsPath), toShell);
+    const system = await discovery.resolveImport(specifier, this.#app.cwdPath);
+    if (system) importsAs.set(system, new Map(importsNoSsrPageRenders.map((spec) => [spec, null])));
+    return importsAs;
+  }
+
   async writeModulePreloads(runtimeChunks: RuntimeChunks): Promise<RouteModulePreloads> {
     const preloads = new RouteModulePreloads({
       runtimeChunks,
-      entriesByRoute: this.#entriesByRoute,
+      entriesByRoute: this.#ssrEntriesByRoute,
       clientManifest: this.#merged.clientManifest,
       externalsByChunkUrl: this.#externalsByChunkUrl,
       workspaceRoot: this.#app.workspace.workspaceRoot,

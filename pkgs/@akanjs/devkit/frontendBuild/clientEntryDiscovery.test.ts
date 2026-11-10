@@ -109,4 +109,32 @@ describe("GraphClientEntryDiscovery", () => {
     expect(await discovery.discover([file("A.tsx")])).toEqual([file("C.tsx")]);
     expect(await discovery.discover([file("B.tsx")])).toEqual([file("C.tsx")]);
   });
+
+  test("a file walked with its imports swapped or dropped keeps that walk's answer out of every other walk", async () => {
+    const file = await tempDir();
+    await Bun.write(file("Layout.tsx"), 'import "./Both";\n');
+    await Bun.write(file("Page.tsx"), 'import "./Layout";\n');
+    await Bun.write(file("Both.tsx"), 'import "./Server";\nimport "./Browser";\n');
+    await Bun.write(file("Server.tsx"), 'import "./S";\n');
+    await Bun.write(file("Browser.tsx"), '"use client";\nexport const Browser = () => null;\n');
+    await Bun.write(file("S.tsx"), '"use client";\nexport const S = () => null;\n');
+    const discovery = new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never);
+    const importsAs = new Map([[file("Layout.tsx"), new Map([["./Both", "./Server"]])]]);
+
+    expect(await discovery.discover([file("Page.tsx")])).toEqual([file("Browser.tsx"), file("S.tsx")]);
+    expect(await discovery.discover([file("Page.tsx")], { importsAs })).toEqual([file("S.tsx")]);
+    expect(await discovery.discover([file("Layout.tsx")], { importsAs })).toEqual([file("S.tsx")]);
+    expect(await discovery.discover([file("Page.tsx")])).toEqual([file("Browser.tsx"), file("S.tsx")]);
+    const dropped = new Map([[file("Both.tsx"), new Map([["./Browser", null]])]]);
+    expect(await discovery.discover([file("Page.tsx")], { importsAs: dropped })).toEqual([file("S.tsx")]);
+
+    const fresh = new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never);
+    expect(await fresh.discover([file("Page.tsx")], { importsAs })).toEqual([file("S.tsx")]);
+    expect(await fresh.discover([file("Page.tsx")])).toEqual([file("Browser.tsx"), file("S.tsx")]);
+    expect(await fresh.discover([file("Layout.tsx")])).toEqual([file("Browser.tsx"), file("S.tsx")]);
+
+    await Bun.write(file("Server.tsx"), "export const server = 1;\n");
+    fresh.invalidate([file("Server.tsx")]);
+    expect(await fresh.discover([file("Page.tsx")], { importsAs })).toEqual([]);
+  });
 });

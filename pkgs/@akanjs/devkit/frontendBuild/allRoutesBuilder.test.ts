@@ -32,7 +32,7 @@ const writeApp = async () => {
   );
   await write(
     path.join(appDir, "page/memo.tsx"),
-    'import { Memo } from "../ui/Memo";\nexport default function Page() {\n  return <Memo />;\n}\n',
+    'import { System } from "akanjs/ui/System";\nimport { Memo } from "../ui/Memo";\nexport default function Page() {\n  return <><Memo /><System.ThemeToggle /></>;\n}\n',
   );
   const app = {
     name: "demo",
@@ -51,7 +51,7 @@ const writeApp = async () => {
 };
 
 describe("AllRoutesBuilder", () => {
-  test("writes the route manifest, then the preload table once the runtime chunks are known, and each route's modules", async () => {
+  test("writes the route manifest, then the preload table once the runtime chunks are known, and each route's modules without System's CSR and MCP App providers", async () => {
     const app = await writeApp();
     const routes = new AllRoutesBuilder(app as never, "build");
     const { manifest, manifestPath } = await routes.build();
@@ -70,8 +70,13 @@ describe("AllRoutesBuilder", () => {
     const [home] = chunksOf("apps/demo/ui/Home.tsx#Home");
     const [memo] = chunksOf("apps/demo/ui/Memo.tsx#Memo");
     const shell = chunksOf("akanjs/ui/System/Client.tsx#Client");
+    const [csrShell] = chunksOf("akanjs/ui/System/CSR.tsx#CSR");
+    const [mcpAppShell] = chunksOf("akanjs/ui/System/App.tsx#AppProvider");
+    const [themeToggle] = chunksOf("akanjs/ui/System/ThemeToggle.tsx#ThemeToggle");
     const modules = preloads.modulesByRoute();
     expect(shell.length).toBeGreaterThan(0);
+    expect([csrShell, mcpAppShell, themeToggle]).not.toContain(undefined);
+    expect(modules["/:lang/memo"]).toContain(themeToggle);
     for (const [routeId, own, other] of [
       ["/:lang", home, memo],
       ["/:lang/memo", memo, home],
@@ -79,6 +84,8 @@ describe("AllRoutesBuilder", () => {
       expect(modules[routeId]?.slice(0, 2)).toEqual(["/_akan/client/rsc.js", "/_akan/client/react.js"]);
       expect(modules[routeId]).toEqual(expect.arrayContaining([own, ...shell]));
       expect(modules[routeId]).not.toContain(other);
+      expect(modules[routeId]).not.toContain(csrShell);
+      expect(modules[routeId]).not.toContain(mcpAppShell);
     }
   }, 30_000);
 });
