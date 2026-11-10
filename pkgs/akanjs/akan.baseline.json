@@ -2,7 +2,7 @@
   "akan.size.file": {
     "fetch/client/fetchClient.ts": 1163,
     "server/akanApp.ts": 1509,
-    "server/akanServer.ts": 1045,
+    "server/akanServer.ts": 1032,
     "server/di/diLifecycle.ts": 834,
     "server/resolver/signal.resolver.ts": 958,
     "server/rscWorker.tsx": 1669,
@@ -50,7 +50,7 @@
     "fetch/client/fetchClient.ts#FetchClient": 92,
     "fetch/client/wsClient.ts#WsClient": 65,
     "server/akanApp.ts#AkanApp": 155,
-    "server/akanServer.ts#AkanServer": 99,
+    "server/akanServer.ts#AkanServer": 98,
     "server/rscWorker.tsx#RscRenderer": 72,
     "server/rscWorkerHost.ts#RscWorker": 80,
     "server/webRouter.ts#WebRouter": 81,

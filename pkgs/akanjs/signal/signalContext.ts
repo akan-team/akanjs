@@ -757,6 +757,10 @@ export class SignalContext<
     const carried = { ip: SignalContext.clientIpOf(source), trustedHop: SignalContext.isTrustedHop(source) };
     SignalContext.#carried.set(target, carried);
   }
+  /** For a request built in-process: no socket stands behind it, and no proxy wrote its forwarding headers. */
+  static pinClientIp(target: Request, ip: string | null) {
+    SignalContext.#carried.set(target, { ip, trustedHop: false });
+  }
   /** `getClientIp` for a request no context wraps, as the MCP router and the page renderer hold one. */
   static clientIpOf(req: Request): string | null {
     const carried = SignalContext.#carried.get(req);

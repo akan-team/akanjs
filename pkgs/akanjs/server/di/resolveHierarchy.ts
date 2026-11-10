@@ -1,5 +1,5 @@
 import { INJECT_META } from "akanjs/base";
-import { type AdaptorCls, CacheAdaptorRole, type InjectInfo, type ServiceCls } from "akanjs/service";
+import { type AdaptorCls, AgentToolsRole, CacheAdaptorRole, type InjectInfo, type ServiceCls } from "akanjs/service";
 
 export interface DependencyNode {
   key: string;
@@ -129,6 +129,8 @@ export function collectAdaptors(sources: { [INJECT_META]: Record<string, InjectI
 
   function scan(injectMap: Record<string, InjectInfo>) {
     for (const injectInfo of Object.values(injectMap)) {
+      //? The server provides this role before the stages run; a stage would build the role's empty class over it.
+      if (injectInfo.adaptor === AgentToolsRole) continue;
       if (injectInfo.type === "plug" && injectInfo.adaptor && !discovered.has(injectInfo.adaptor)) {
         discovered.add(injectInfo.adaptor);
         scan(injectInfo.adaptor[INJECT_META] ?? {});

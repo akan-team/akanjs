@@ -32,6 +32,23 @@ export declare class AgentService extends AgentService_base {
     static readable(request: LlmTurnRequest, accepts: LlmAccepts | undefined): LlmTurnRequest;
 }
 
+export interface AgentTool extends AgentWireTool {
+    readOnly: boolean;
+}
+
+export interface AgentToolsAdaptor {
+    listAs(account: unknown, caller?: AgentToolsCaller): Promise<AgentTool[]>;
+    callAs(account: unknown, call: AgentWireToolCall, caller?: AgentToolsCaller): Promise<AgentWireToolResult>;
+}
+
+export interface AgentToolsCaller {
+    allow?: readonly string[];
+    headers?: HeadersInit;
+    ip?: null | string;
+}
+
+export declare const AgentToolsRole: AdaptorCls<AgentToolsAdaptor>;
+
 export interface AgentTurnOptions {
     onDelta?: (delta: string) => void;
     preamble?: false | string;

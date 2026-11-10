@@ -34,6 +34,11 @@ an endpoint with a real guard is published, one with none is refused, and so is 
 - `page().app(name, description, load)` publishes one component a host draws in the chat, as a read-only tool
   whose `load` may only query.
 
+## Calling it from the server
+
+- `plug(AgentToolsRole)` gives a service `listAs(account, { allow })` / `callAs(account, call)`: the same catalogue
+  and refusals in-process, batch servers included. Pass only an account the server resolved, never client input.
+
 ## Verify
 
 - One exposure test per app in `srvkit/mcpExposure.signal.test.ts`: list the tools with a user token, pin the names
@@ -47,5 +52,5 @@ Full detail: `get_guideline` with `mcpRule`, or `transportRule` for guards and r
 The full guidelines, split where each part fits one read; `akan guideline show <name>` prints the same text.
 
 - `.agents/skills/akan-mcp/references/mcpRule-1.md` — Purpose · Exposure Rule · Keeping An Endpoint Off The Shelf — `mcp: false` · Configuration · Declaring Endpoints · …
-- `.agents/skills/akan-mcp/references/mcpRule-2.md` — Authentication — The Authorization Server Is The Same Process · Page Prompts — `page().prompt()` · MCP Apps — One Component Of A Page, Drawn In The Chat · Progress Reporting · Rolling MCP Out To An App · …
+- `.agents/skills/akan-mcp/references/mcpRule-2.md` — Authentication — The Authorization Server Is The Same Process · Page Prompts — `page().prompt()` · MCP Apps — One Component Of A Page, Drawn In The Chat · Progress Reporting · Calling The Catalogue In-Process — `AgentToolsRole` · …
 - `.agents/skills/akan-mcp/references/mcpRule-3.md` — Writing `instructions` · Verifying An App
