@@ -1131,8 +1131,8 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
             name: "paths",
             type: "String",
             desc: l.trans({
-              en: "Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`.",
-              ko: "쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다.",
+              en: "Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. A `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a signal route or a file such as `/robots.txt` opens as written, without a locale.",
+              ko: "쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다. Studio(`/_akan/studio?view=runtime`) 같은 `/_akan` 경로, 시그널 경로, `/robots.txt` 같은 파일은 로케일 없이 적은 그대로 엽니다.",
             }),
           },
           {

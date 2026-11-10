@@ -58,6 +58,30 @@ describe("AppPreview.pagePaths", () => {
     ]);
   });
 
+  test("opens Studio, the other framework routes and files as written, without a locale or the CSR boot", () => {
+    const paths = [
+      "/_akan/studio",
+      "/_akan/studio?view=runtime",
+      "/__rsc/board",
+      "/.well-known/assetlinks.json",
+      "/backend/memo",
+      "/favicon.ico",
+      "/_akanish",
+      "/board",
+    ];
+    expect(AppPreview.pagePaths(paths, i18n, { csr: true, apiPrefix: "/backend" })).toEqual([
+      "/_akan/studio",
+      "/_akan/studio?view=runtime",
+      "/__rsc/board",
+      "/.well-known/assetlinks.json",
+      "/backend/memo",
+      "/favicon.ico",
+      "/en/_akanish?csr=true&akanMobileTarget=preview",
+      "/en/board?csr=true&akanMobileTarget=preview",
+    ]);
+    expect(AppPreview.pagePaths(["/api/memo", "/apidocs"], i18n, { csr: false })).toEqual(["/api/memo", "/en/apidocs"]);
+  });
+
   test("names a screenshot after the page and its boot", () => {
     expect(AppPreview.screenshotName("/en/")).toBe("en.png");
     expect(AppPreview.screenshotName("/en/board/[id]?csr=true")).toBe("en-board-_id_.csr.png");
@@ -163,6 +187,10 @@ describe("AppPreview.run", () => {
             return new Response("<!doctype html><title>Board</title><body><h1>Board</h1></body>", {
               headers: { "content-type": "text/html" },
             });
+          if (pathname === "/_akan/studio")
+            return new Response("<!doctype html><title>Akan Studio</title><body><h1>Studio</h1></body>", {
+              headers: { "content-type": "text/html" },
+            });
           return new Response("<!doctype html><title>Missing</title><body>missing</body>", {
             status: 404,
             headers: { "content-type": "text/html" },
@@ -173,15 +201,16 @@ describe("AppPreview.run", () => {
         name: "demo",
         workspace: { workspaceRoot: root },
         getDevPort: async () => server.port,
-        getConfig: async () => ({ i18n }),
+        getConfig: async () => ({ i18n, api: { prefix: "/api" } }),
       } as unknown as App;
       try {
-        const report = await AppPreview.run(app, { paths: ["/board", "/gone"], timeoutMs: 20_000 });
+        const report = await AppPreview.run(app, { paths: ["/board", "/gone", "/_akan/studio"], timeoutMs: 20_000 });
         expect(report.server).toBe("running");
         expect(report.logsRead).toBe(false);
         expect(report.pages.map((page) => [page.path, page.status, page.failed, page.text])).toEqual([
           ["/en/board", 200, false, "Board"],
           ["/en/gone", 404, true, "missing"],
+          ["/_akan/studio", 200, false, "Studio"],
         ]);
       } finally {
         server.stop(true);

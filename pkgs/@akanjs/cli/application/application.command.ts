@@ -93,7 +93,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
   })
     .with(App)
     .arg("paths", String, {
-      desc: "page paths, comma-separated; the default locale is added when missing (default: /)",
+      desc: "page paths, comma-separated; the default locale is added when missing, but not to /_akan routes such as Studio or to files (default: /)",
       example: "/board,/board/new",
       nullable: true,
     })

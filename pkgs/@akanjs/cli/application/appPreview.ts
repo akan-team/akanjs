@@ -83,13 +83,16 @@ export class AppPreview {
     const engine = options.engine ?? PreviewChrome.backend;
     const unavailable = PreviewView.unavailableReason(engine);
     if (unavailable) throw new Error(unavailable);
-    const { i18n } = await app.getConfig();
+    const { i18n, api } = await app.getConfig();
     const changed = options.changed ? await AppPreview.#changedPages(app) : { paths: [], skipped: [] };
     if (options.changed && !changed.paths.length && !options.paths?.length)
       throw new Error(
         `No page to open: ${changed.skipped.join("; ")}. Pass a concrete path, e.g. \`akan preview ${app.name} /memo/1\`.`,
       );
-    const paths = AppPreview.pagePaths([...(options.paths ?? []), ...changed.paths], i18n, { csr: !!options.csr });
+    const paths = AppPreview.pagePaths([...(options.paths ?? []), ...changed.paths], i18n, {
+      csr: !!options.csr,
+      apiPrefix: api.prefix,
+    });
     const port = await app.getDevPort();
     const origin = `http://localhost:${port}`;
     const root = app.workspace.workspaceRoot;
@@ -141,10 +144,11 @@ export class AppPreview {
 
   /** An unprefixed path answers with a redirect or a 503 where it does not name the default locale itself: under
    * `"always"`, and in a CSR boot, whose routes match on the locale segment. */
-  static pagePaths(paths: string[], i18n: I18nLike, { csr }: { csr: boolean }) {
+  static pagePaths(paths: string[], i18n: I18nLike, { csr, apiPrefix = "/api" }: { csr: boolean; apiPrefix?: string }) {
     const keepsUnprefixed = i18n.localePrefix === "as-needed" && !csr;
     const pages = (paths.length ? paths : ["/"]).map((raw) => {
       const url = new URL(/^https?:\/\//.test(raw) ? raw : `http://localhost${raw.startsWith("/") ? "" : "/"}${raw}`);
+      if (!AppPreview.#isPagePath(url.pathname, apiPrefix)) return `${url.pathname}${url.search}`;
       const [first] = url.pathname.split("/").filter(Boolean);
       if (!keepsUnprefixed && (!first || !i18n.locales.includes(first)))
         url.pathname = `/${i18n.defaultLocale}${url.pathname === "/" ? "/" : url.pathname}`;
@@ -155,6 +159,13 @@ export class AppPreview {
       return `${url.pathname}${url.search}`;
     });
     return [...new Set(pages)];
+  }
+
+  //? The server routes these outside `/:lang` and the locale proxy skips them, so a locale prefix 404s them.
+  static #isPagePath(pathname: string, apiPrefix: string) {
+    const prefixes = ["/_akan", "/__csr", "/__rsc", "/.well-known", apiPrefix.replace(/\/+$/, "")].filter(Boolean);
+    if (prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return false;
+    return !/\.[a-z0-9]+$/i.test(pathname);
   }
 
   static readonly changedPageLimit = 8;
