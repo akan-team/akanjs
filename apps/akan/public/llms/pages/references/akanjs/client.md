@@ -100,7 +100,7 @@ Method
 
 - addNavigationGuard(guard): Asks `guard({ kind, from, to })` before each in-app move; `false` keeps the page. Returns the remover. A page uses `useNavigationGuard`.
 
-- prefetch(href, { priority }): Loads a route's page before the click. Built SSR pages only; `priority: "low"` waits behind hovered links.
+- prefetch(href, { priority }): Loads a route's page before the click. Built SSR pages only; `priority: "low"` waits behind hovered links. Returns a call that withdraws it while it still waits.
 
 A store action that opens the record it just created:
 
@@ -321,6 +321,8 @@ PageConfig
 - topSafeAreaColor (string, default background color): Color painted behind the top safe area.
 
 - bottomSafeAreaColor (string, default background color): Color painted behind the bottom safe area.
+
+- prefetch (boolean, default true): `false` answers a Link's prefetch of the page without rendering it; the click renders it. On a layout, it covers every page below.
 
 - devOnly (boolean, default false): Keeps the route out of `akan build`. It still serves under `akan start`.
 

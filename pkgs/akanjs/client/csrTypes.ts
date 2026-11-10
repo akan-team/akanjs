@@ -40,6 +40,9 @@ export interface PageConfig {
   ssr?: SsrRenderMode;
   /** Opt-in suffix-only RSC commits, for a page needing no head update under a layout head its siblings share. */
   rscPatchHeadSafe?: boolean;
+  /** `false` answers a `Link` prefetch of the page (on a layout, of every page under it) without rendering it, for a
+   * render with a side effect such as counting a view; the click renders it as usual. */
+  prefetch?: boolean;
   topSafeAreaColor?: string;
   bottomSafeAreaColor?: string;
   /** Keeps the route (on a `_layout`, its whole directory) out of `akan build` while `akan start` serves it. Write a

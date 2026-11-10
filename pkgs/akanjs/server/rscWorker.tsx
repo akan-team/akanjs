@@ -111,6 +111,7 @@ interface RenderMsg {
   method?: string;
   headers?: Record<string, string>;
   clientManifest?: ClientManifest;
+  prefetch?: boolean;
 }
 interface CancelMsg {
   type: "cancel";
@@ -507,6 +508,11 @@ export class RscRenderer {
             `render[${requestId}] matched route pathname=${urlObj.pathname} params=${JSON.stringify(match.params)}`,
           );
         else this.#logger.verbose(`render[${requestId}] no route matched pathname=${urlObj.pathname} — rendering 404`);
+        if (match && msg.prefetch && (await RouteElementComposer.refusesPrefetch(match.pathRoute))) {
+          this.#send({ type: "meta", requestId, status: 204 });
+          this.#send({ type: "end", requestId });
+          return;
+        }
         const beforeLoadedKeys = RouteTreeBuilder.getCacheStats().loadedModuleKeys;
         const cacheDecision = match ? this.#getResultCacheEntry(request, urlObj) : { entry: null };
         const cacheEntry = cacheDecision.entry;

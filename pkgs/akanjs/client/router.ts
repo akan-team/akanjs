@@ -44,7 +44,7 @@ export interface RouterInstance {
   refresh: () => void;
   /** Whether `back` has a page to return to; left out, the router reads the index stamped on the history entry. */
   canGoBack?: () => boolean;
-  prefetch?: (href: string, priority?: PrefetchPriority) => void;
+  prefetch?: (href: string, priority?: PrefetchPriority) => (() => void) | undefined;
 }
 interface RouterOptions {
   prefix?: string;
@@ -550,9 +550,11 @@ class Router {
     return undefined as never;
   }
   //? Production only: a dev server compiles each route on its first request, so a prefetch would compile pages unasked.
-  prefetch(href: string, { priority }: { priority?: PrefetchPriority } = {}) {
-    if (process.env.NODE_ENV !== "production" || !this.isInitialized || this.#leavesOrigin(href)) return;
-    this.#instance.prefetch?.(href, priority);
+  /** Returns the call that withdraws the request while it still waits behind others. */
+  prefetch(href: string, { priority }: { priority?: PrefetchPriority } = {}): () => void {
+    if (process.env.NODE_ENV !== "production" || !this.isInitialized || this.#leavesOrigin(href))
+      return () => undefined;
+    return this.#instance.prefetch?.(href, priority) ?? (() => undefined);
   }
   #move(kind: "push" | "replace", href: string, routeOptions?: RouteOptions) {
     this.#navigations += 1;

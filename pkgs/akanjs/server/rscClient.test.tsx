@@ -6,6 +6,7 @@ import path from "node:path";
 import { TransformStream } from "node:stream/web";
 import { act } from "react";
 import { Translator } from "../client/translator";
+import { StaleReads } from "../fetch/staleReads";
 import {
   AKAN_RSC_CURRENT_ROUTE_HEADER,
   AKAN_RSC_DICTIONARY_HEADER,
@@ -745,6 +746,45 @@ describe("rscClient prefetch", () => {
 
     expect(fetchCountOf("/secret")).toBe(2);
     expect(shown()).toBe("visitor secret");
+  });
+
+  test("a page prefetched before this tab's own write is asked for again on the click", async () => {
+    await navigate("/cart");
+    await prefetch("/cart/total");
+
+    StaleReads.mark();
+    await navigate("/cart/total");
+
+    expect(fetchCountOf("/cart/total")).toBe(2);
+    expect(fetched.findLast((request) => request.pathname === "/cart/total")?.prefetch).toBe(false);
+  });
+
+  test("a page that opts out of prefetching is asked once ahead of the click, then rendered on it", async () => {
+    await navigate("/stats");
+    served.set("/stats/views", () =>
+      fetched.at(-1)?.prefetch ? new Response(null, { status: 204 }) : responseOf("/stats/views"),
+    );
+    await prefetch("/stats/views");
+    await prefetch("/stats/views");
+
+    await navigate("/stats/views");
+
+    expect(fetched.filter((request) => request.pathname === "/stats/views").map((request) => request.prefetch)).toEqual(
+      [true, false],
+    );
+    expect(shown()).toBe("/stats/views");
+    expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(false);
+  });
+
+  test("a page the navigation cache holds under another fragment is not prefetched, and serves the click", async () => {
+    await navigate("/atlas");
+    await navigate("/atlas/next");
+
+    await prefetch("/atlas#legend");
+    await navigate("/atlas#legend");
+
+    expect(fetchCountOf("/atlas")).toBe(1);
+    expect(shown()).toBe("/atlas");
   });
 
   test("a page the navigation cache holds is not prefetched", async () => {

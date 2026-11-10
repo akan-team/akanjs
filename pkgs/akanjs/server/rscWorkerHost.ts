@@ -471,13 +471,19 @@ export class RscWorker {
 
   renderWithMeta(
     req: Request,
-    options: { clientManifest?: ClientManifest; signal?: AbortSignal; clientIp?: string | null } = {},
+    options: {
+      clientManifest?: ClientManifest;
+      signal?: AbortSignal;
+      clientIp?: string | null;
+      /** A Link prefetch through `/__rsc`, never taken from a header a document request could carry. */
+      prefetch?: boolean;
+    } = {},
   ): Promise<RscRenderResult> {
     const requestId = crypto.randomUUID();
     return createRscHostRenderStream({
       setPending: (pending) => this.#pending.set(requestId, pending),
       deletePending: () => this.#pending.delete(requestId),
-      sendRenderOrQueue: () => this.#sendRenderOrQueue(requestId, req, options.clientManifest, options.clientIp),
+      sendRenderOrQueue: () => this.#sendRenderOrQueue(requestId, req, options),
       cancelRender: () => this.#cancelRender(requestId),
       signal: options.signal,
       onPendingChunkOverflow: () => {
@@ -915,12 +921,28 @@ export class RscWorker {
     return headers;
   }
 
-  #sendRenderOrQueue(requestId: string, req: Request, clientManifest?: ClientManifest, clientIp?: string | null): void {
+  #sendRenderOrQueue(
+    requestId: string,
+    req: Request,
+    {
+      clientManifest,
+      clientIp,
+      prefetch,
+    }: { clientManifest?: ClientManifest; clientIp?: string | null; prefetch?: boolean },
+  ): void {
     const send = () => {
       if (!this.#pending.has(requestId)) return;
       try {
         const headers = RscWorker.workerHeaders(req, clientIp);
-        this.#proc.send({ type: "render", requestId, url: req.url, method: req.method, headers, clientManifest });
+        this.#proc.send({
+          type: "render",
+          requestId,
+          url: req.url,
+          method: req.method,
+          headers,
+          clientManifest,
+          prefetch,
+        });
       } catch (err) {
         this.#resolvePending(requestId, (p) =>
           p.onError(`rsc worker send failed: ${err instanceof Error ? err.message : String(err)}`),

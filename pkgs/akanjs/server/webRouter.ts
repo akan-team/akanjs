@@ -245,6 +245,8 @@ export function resolveHtmlRouteCacheStoreTtl(input: {
 export async function createRscNavigationStreamResponse(
   result: Extract<RscRenderResult, { type: "stream" }>,
 ): Promise<Response> {
+  //? The worker's answer to a prefetch of a page that refuses them, with nothing rendered; a 204 may carry no body.
+  if (result.status === 204) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   // A redirect found after Flight bytes left the worker stays in-stream: an Akan digest the client strips before RSDW.
   const response = createRscStreamResponse(result.stream, result.status ?? 200);
   appendRscTraceHeaders(response.headers, result.trace);
@@ -541,7 +543,8 @@ export class WebRouter {
           }
         : {}),
       "/__rsc": SessionRefresh.answering(async (req) => {
-        if (req.headers.get(AKAN_RSC_PREFETCH_HEADER) === "1") this.#requestStats.rscPrefetch += 1;
+        const prefetch = req.headers.get(AKAN_RSC_PREFETCH_HEADER) === "1";
+        if (prefetch) this.#requestStats.rscPrefetch += 1;
         else this.#requestStats.rscNavigation += 1;
         try {
           //? A tab imports through its document's import map, whose narrowed vendors lack names another build imports;
@@ -588,6 +591,7 @@ export class WebRouter {
             clientManifest: manifest.clientManifest,
             signal: req.signal,
             clientIp: SignalContext.clientIpOf(req),
+            prefetch,
           });
           if (result.type === "redirect")
             return createRscRedirectResponse(result.location, result.method, result.status);

@@ -6,6 +6,7 @@ import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
 import { isAuthTokenKey } from "../common/authCookie";
 import { CookieJar } from "../common/cookieJar";
+import { StaleReads } from "../fetch/staleReads";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   type AkanHeadSnapshotV1,
@@ -325,6 +326,8 @@ const readAuthCookies = () =>
 const rscCache = new Map<string, RscCacheNode>();
 const rscPatchCache = new Map<string, RscPatchNavigationCacheNode<RscThenable>>();
 const rscPrefetchCache = new RscPrefetchCache({ fetchResponse: fetchRscPrefetchResponse });
+//? A page prefetched before this tab's own write would commit as current, showing what the write changed as it was.
+StaleReads.subscribe(() => rscPrefetchCache.clear());
 const initialThenable = createRscThenable(createInitialRscStream());
 const initialRouterState = decodeAkanRouterState(globalThis.__AKAN_RSC_INITIAL_STATE__);
 const initialNode = createRscNavigationCacheNode({
@@ -398,6 +401,12 @@ function forgetPagesOfAnotherAccount(): void {
   currentSegmentTree = null;
 }
 
+//? The fragment never reaches the server, so a page cached under one fragment is the payload of every other.
+function cachedPageOf(target: string): RscCacheNode | undefined {
+  const key = pageKeyOf(target);
+  return rscCache.get(target) ?? [...rscCache.values()].findLast((node) => pageKeyOf(node.href) === key);
+}
+
 const isConstrainedNetwork = () => {
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
     .connection;
@@ -405,15 +414,16 @@ const isConstrainedNetwork = () => {
 };
 
 globalThis.__AKAN_RSC_PREFETCH__ = (href, priority) => {
-  if (isConstrainedNetwork()) return;
+  const none = () => undefined;
+  if (isConstrainedNetwork()) return none;
   const target = normalizeHref(href);
   const key = pageKeyOf(target);
-  if (new URL(target).origin !== window.location.origin || pendingRequest?.target === key) return;
+  if (new URL(target).origin !== window.location.origin || pendingRequest?.target === key) return none;
   //? Not forgetPagesOfAnotherAccount: only a navigation may record the change, or a page of the old account still in
   //? flight commits into the cache as the new account's.
   const authCookies = readAuthCookies();
-  if (authCookies === cachedAuthCookies && rscCache.has(target)) return;
-  rscPrefetchCache.request(key, authCookies, priority);
+  if (authCookies === cachedAuthCookies && cachedPageOf(target)) return none;
+  return rscPrefetchCache.request(key, authCookies, priority);
 };
 
 function Root(): ReactNode {
@@ -522,7 +532,7 @@ function Root(): ReactNode {
     const hash = options.scrollY === undefined ? new URL(target).hash : "";
     const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY, hash });
     try {
-      let nextNode = rscCache.get(target);
+      let nextNode = cachedPageOf(target);
       let notFound = false;
       let servedFromCache = !!nextNode;
       if (!nextNode) {

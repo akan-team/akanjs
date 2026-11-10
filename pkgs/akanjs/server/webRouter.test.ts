@@ -77,7 +77,10 @@ interface FakeRscWorker {
   renderCalls: Request[];
   invalidations: Array<string | RouteCacheInvalidation | undefined>;
   ready: Promise<void>;
-  renderWithMeta(req: Request, input?: { clientManifest?: Record<string, unknown> }): Promise<RscRenderResult>;
+  renderWithMeta(
+    req: Request,
+    input?: { clientManifest?: Record<string, unknown>; prefetch?: boolean },
+  ): Promise<RscRenderResult>;
   invalidateRouteResultCache(invalidation?: string | RouteCacheInvalidation): void;
   kill(): void;
   reload(): Promise<unknown>;
@@ -1048,6 +1051,32 @@ describe("WebRouter RSC request counts", () => {
 
     expect(metrics.httpRscNavigationCount).toBe(1);
     expect(metrics.httpRscPrefetchCount).toBe(1);
+  });
+
+  test("asks the worker for a prefetch only through /__rsc, and answers a page that opts out with an empty 204", async () => {
+    const worker = createFakeRscWorker((_req, callIndex) => ({ status: callIndex === 1 ? 204 : 200 }));
+    const prefetches: Array<boolean | undefined> = [];
+    const render = worker.renderWithMeta.bind(worker);
+    worker.renderWithMeta = async (req, input) => {
+      prefetches.push(input?.prefetch);
+      return await render(req);
+    };
+    const prefetchHeaders = { [AKAN_RSC_PREFETCH_HEADER]: "1" };
+    const optedOut = await withFullSsrCacheHarness(
+      async ({ fullSsr, renderEnvRoutes }) => {
+        const response = await renderEnvRoutes["/__rsc"](
+          new Request("https://example.test/__rsc?url=%2Fen%2Fdocs", { headers: prefetchHeaders }),
+        );
+        await fullSsr(new Request("https://example.test/en/docs", { headers: prefetchHeaders }));
+        return response;
+      },
+      { worker },
+    );
+
+    expect(prefetches).toEqual([true, undefined]);
+    expect(optedOut.status).toBe(204);
+    expect(optedOut.headers.get("Cache-Control")).toBe("no-store");
+    expect(await optedOut.text()).toBe("");
   });
 });
 

@@ -39,6 +39,7 @@ import {
   untrackedRequest,
   updateRequestPolicy,
 } from "./requestStorage";
+import { StaleReads } from "./staleReads";
 
 type Equal<Left, Right> =
   (<Type>() => Type extends Left ? 1 : 2) extends <Type>() => Type extends Right ? 1 : 2 ? true : false;
@@ -1819,6 +1820,41 @@ describe("FetchClient HTTP generation", () => {
       expect(await Promise.all([beforePush, afterPush])).toEqual(["before", "after"]);
     } finally {
       Reflect.deleteProperty(globalThis, "window");
+      client.disconnect();
+    }
+  });
+
+  test("tells the page its reads may be stale on a write, a message sent and a new credential, not on a push", async () => {
+    setFakeWebSocket();
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    client.handler.subscribeRoomThing("room-1", () => undefined);
+    let marks = 0;
+    const unsubscribe = StaleReads.subscribe(() => {
+      marks += 1;
+    });
+    try {
+      const created = client.handler.createThing("Created", 2);
+      expect(marks).toBe(1);
+      requests[0]?.answer({ title: "Created", count: 2, nested: { label: "N" } });
+      await created;
+      expect(marks).toBe(2);
+
+      client.handler.sendThing("hello");
+      expect(marks).toBe(3);
+
+      client.setJwt("alice");
+      client.setJwt("alice");
+      client.clone({ connect: false, jwt: "bob" });
+      expect(marks).toBe(4);
+
+      ws.receive({ type: "pub", roomId: "roomThing-room-1", data: { title: "Published" } });
+      expect(marks).toBe(4);
+    } finally {
+      unsubscribe();
       client.disconnect();
     }
   });

@@ -33,6 +33,7 @@ import {
   cookieJar as requestCookieJar,
   headers as requestHeaders,
 } from "../requestStorage";
+import { StaleReads } from "../staleReads";
 import type { GetSliceMetaObjFromDatabaseSignals } from "../types";
 import { FetchHandle } from "./fetchHandle";
 import { HttpClient } from "./httpClient";
@@ -383,7 +384,7 @@ export class FetchClient {
     Object.entries(this.handler).forEach(([key, handler]) => {
       if (!(key in instance.handler)) instance.handler[key] = handler;
     });
-    instance.setJwt(jwt ?? (FetchClient.#sameOrigin(instance.origin, this.origin) ? this.jwt : null));
+    instance.#useJwt(jwt ?? (FetchClient.#sameOrigin(instance.origin, this.origin) ? this.jwt : null));
     if (connect) instance.connect();
     return FetchClient.#makeProxy(instance);
   }
@@ -394,6 +395,11 @@ export class FetchClient {
     for (const ws of this.#originWs.values()) ws.configure(options);
   }
   setJwt(jwt: string | null) {
+    const changed = jwt !== this.jwt;
+    this.#useJwt(jwt);
+    if (changed) StaleReads.mark();
+  }
+  #useJwt(jwt: string | null) {
     this.jwt = jwt;
     this.ws.setJwt(jwt);
     this.#inflight.detach();
@@ -543,12 +549,16 @@ export class FetchClient {
   }
   //? A query sent before a write or a credential change may answer what no longer holds, so later calls send their own.
   async #writing<T>(write: () => Promise<T>) {
-    this.#inflight.detach();
+    this.#forgetReads();
     try {
       return await write();
     } finally {
-      this.#inflight.detach();
+      this.#forgetReads();
     }
+  }
+  #forgetReads() {
+    this.#inflight.detach();
+    StaleReads.mark();
   }
   #untilAborted<T>(promise: Promise<T>, signal?: AbortSignal) {
     return AbortSignals.race(promise, signal).catch((error: unknown) => {
@@ -606,7 +616,7 @@ export class FetchClient {
             if (FetchClient.bridged) return;
             const args = argData.slice(0, msgArgLength);
             const data = msgArgs.map((arg, idx) => serializerMap.get(arg.name)?.(args[idx]) ?? null);
-            this.#inflight.detach();
+            this.#forgetReads();
             this.#resolveWs(fetchPolicy?.origin).emit(key, data);
           };
         });

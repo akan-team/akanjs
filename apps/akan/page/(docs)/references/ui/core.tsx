@@ -178,8 +178,8 @@ export default page()
         type: '"hover" | "viewport" | boolean',
         default: '"hover"',
         desc: l.trans({
-          en: 'Built SSR pages load the target on hover or keyboard focus, and on view with `"viewport"`. `false` turns it off.',
-          ko: '빌드된 SSR 페이지는 hover나 키보드 포커스에, `"viewport"`면 보일 때도 미리 불러옵니다. `false`면 끕니다.',
+          en: 'Built SSR pages load the target on hover or keyboard focus, and on view with `"viewport"`. `false` turns it off; a page whose render has a side effect sets `.config({ prefetch: false })` instead.',
+          ko: '빌드된 SSR 페이지는 hover나 키보드 포커스에, `"viewport"`면 보일 때도 미리 불러옵니다. `false`면 끕니다. 렌더에 부작용이 있는 페이지는 대신 `.config({ prefetch: false })`를 둡니다.',
         }),
       },
       {

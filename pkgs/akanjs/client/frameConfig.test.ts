@@ -181,6 +181,14 @@ describe("frameConfig", () => {
     );
     expect(mergePageConfigs([{ devOnly: true }, { cache: true }])).toEqual({ cache: true });
   });
+
+  test("takes pageConfig.prefetch as a boolean that a layout hands down and its page may override", () => {
+    expect(() => validatePageConfig("bad.tsx", { prefetch: "no" as never })).toThrow(
+      "pageConfig.prefetch in bad.tsx must be a boolean.",
+    );
+    expect(mergePageConfigs([{ prefetch: false }, { cache: true }]).prefetch).toBe(false);
+    expect(mergePageConfigs([{ prefetch: false }, { prefetch: true }]).prefetch).toBe(true);
+  });
 });
 
 describe("responsive insets and the web safe area", () => {

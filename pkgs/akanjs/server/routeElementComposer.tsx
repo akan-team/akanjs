@@ -9,7 +9,7 @@ import type {
   RouteRender,
 } from "akanjs/client";
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
-import { getExplicitPageConfigKeys, resolvePageState } from "../client/frameConfig";
+import { getExplicitPageConfigKeys, mergePageConfigs, resolvePageState } from "../client/frameConfig";
 import { RouteGuards } from "../client/route/RouteGuards";
 import { RouteHead } from "../client/route/RouteHead";
 import type { FallbackHead } from "./fallbackHead";
@@ -114,6 +114,10 @@ export class RouteElementComposer {
     const renders = RouteElementComposer.#getRenderStack(pathRoute);
     await RouteGuards.run(renders, { params, searchParams });
     await Promise.all(renders.map((routeRender) => routeRender?.checkArgs?.({ params, searchParams })));
+  }
+
+  static async refusesPrefetch(pathRoute: PathRoute): Promise<boolean> {
+    return mergePageConfigs(await RouteElementComposer.#resolvePageConfigChain(pathRoute)).prefetch === false;
   }
 
   //? Security: a guard refused everything from its render down, so a fallback drawn after it keeps only the layouts above

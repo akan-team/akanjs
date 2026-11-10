@@ -1,3 +1,5 @@
+import type { PrefetchPriority } from "../client/rscNavigation";
+
 interface RscPrefetchEntry {
   account: string;
   startedAt: number;
@@ -6,7 +8,9 @@ interface RscPrefetchEntry {
   release: () => void;
 }
 
-export type RscPrefetchPriority = "high" | "low";
+interface RscPrefetchQueued {
+  account: string;
+}
 
 export interface RscPrefetched {
   response: Promise<Response | null>;
@@ -31,6 +35,7 @@ export class RscPrefetchCache {
   static readonly defaultMaxConcurrent = 2;
   static readonly defaultMaxEntries = 16;
   static readonly defaultMaxQueued = 16;
+  static readonly #none = () => undefined;
 
   #fetchResponse: RscPrefetchCacheOptions["fetchResponse"];
   #ttlMs: number;
@@ -40,8 +45,8 @@ export class RscPrefetchCache {
   #maxQueued: number;
   #now: () => number;
   #entries = new Map<string, RscPrefetchEntry>();
-  #high = new Map<string, string>();
-  #low = new Map<string, string>();
+  #high = new Map<string, RscPrefetchQueued>();
+  #low = new Map<string, RscPrefetchQueued>();
   #active = 0;
 
   constructor(options: RscPrefetchCacheOptions) {
@@ -67,20 +72,26 @@ export class RscPrefetchCache {
     return !!entry && entry.account === account && !this.#isStale(entry);
   }
 
-  //? Newest pointed-at link first, the likeliest click; a link that merely came into view waits behind all of them.
-  request(href: string, account: string, priority: RscPrefetchPriority = "high"): void {
+  //? Newest pointed-at link first, the likeliest click; a link that merely came into view waits behind all of them, and a
+  //? full queue of those keeps the first to come into view, as a page lists its links top down.
+  request(href: string, account: string, priority: PrefetchPriority = "high"): () => void {
     this.#sweep();
-    if (this.has(href, account)) return;
-    if (priority === "low" && this.#high.has(href)) return;
+    if (this.has(href, account)) return RscPrefetchCache.#none;
+    if (priority === "low" && this.#high.has(href)) return RscPrefetchCache.#none;
     this.#high.delete(href);
     this.#low.delete(href);
     const queue = priority === "high" ? this.#high : this.#low;
-    queue.set(href, account);
+    if (priority === "low" && queue.size >= this.#maxQueued) return RscPrefetchCache.#none;
+    const queued: RscPrefetchQueued = { account };
+    queue.set(href, queued);
     for (const oldest of queue.keys()) {
       if (queue.size <= this.#maxQueued) break;
       queue.delete(oldest);
     }
     this.#pump();
+    return () => {
+      if (queue.get(href) === queued) queue.delete(href);
+    };
   }
 
   take(href: string, account: string, signal?: AbortSignal): RscPrefetched | null {
@@ -122,11 +133,12 @@ export class RscPrefetchCache {
     const newest = [...this.#high].at(-1);
     if (newest) {
       this.#high.delete(newest[0]);
-      return newest;
+      return [newest[0], newest[1].account];
     }
     const oldest = this.#low.entries().next().value;
-    if (oldest) this.#low.delete(oldest[0]);
-    return oldest;
+    if (!oldest) return undefined;
+    this.#low.delete(oldest[0]);
+    return [oldest[0], oldest[1].account];
   }
 
   #start(href: string, account: string): void {
@@ -154,11 +166,13 @@ export class RscPrefetchCache {
       controller,
       response: this.#fetchResponse(href, controller.signal).then(
         (response) => {
+          //? A 204 is a page that opts out of prefetching, kept as nothing for the TTL so hovering again asks no more.
+          const optedOut = response.status === 204;
           //? Only what the click would take as its own answer: a 429, 408 or 5xx may be gone by then, so it asks again.
           const usable = response.ok || response.status === 404;
-          if (controller.signal.aborted || !usable || !response.body) {
+          if (controller.signal.aborted || optedOut || !usable || !response.body) {
             void response.body?.cancel().catch(() => undefined);
-            forget();
+            if (!optedOut) forget();
             settle();
             return null;
           }
