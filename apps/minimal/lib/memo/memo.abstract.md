@@ -9,9 +9,10 @@ stored through the util lib's blob storage.
   not-found instead of failing the render in the browser; the guard asks the server, not `getEnv()`, because a
   desktop app's client is built as `cloud` while its carried server runs as `edge`. An MCP listing runs that guard
   too: the list page's `showTripNotes` app is listed only where memo answers, at the cost of one insight query per
-  listing; the detail page's guard reads `memoId`, so `showTripNote` stays listed and its call decides. The trips
-  page's `showTrips` load asks the same query and draws its Trip notes link only where it answers, so a server that
-  refuses memo never links to that not-found page, on the web, in a CSR shell or in the MCP App view.
+  listing; the detail page's guard reads `memoId`, so `showTripNote` stays listed and its call decides. The one
+  `Public` memo endpoint is `isMemoOpen`, which answers `LocalOrEdge`'s verdict as a boolean, so a screen can leave
+  out a link to memo without a refused call: the trips page's `showTrips` load hides its Trip notes link only on
+  `false` (a failed call shows it). It is `mcp: false`, yet a `showTrips` call's briefing attaches its answer.
 - `imageUrl` is written only by `attachMemoImage`, as a URL relative to the server that stored the image; a page on
   another origin resolves it against the server (`resolveServerUrl`).
 - An attached image is a PNG, JPEG, WebP or GIF of at most 5 MB, stored under a name made from that type; the uploaded

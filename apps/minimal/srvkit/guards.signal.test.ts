@@ -23,11 +23,12 @@ describe("LocalOrEdge", () => {
     });
   };
 
-  const linksOf = (node: unknown): string[] => {
-    if (Array.isArray(node)) return node.flatMap(linksOf);
+  const linksOf = async (node: unknown): Promise<string[]> => {
+    if (Array.isArray(node)) return (await Promise.all(node.map(linksOf))).flat();
     if (typeof node !== "object" || node === null || !("props" in node)) return [];
-    const { href, children } = node.props as { href?: string; children?: unknown };
-    return [...(href ? [href] : []), ...linksOf(children)];
+    const { href, of, children } = node.props as { href?: string; of?: unknown; children?: unknown };
+    const drawn = typeof children === "function" ? (children as (value: unknown) => unknown)(await of) : children;
+    return [...(href ? [href] : []), ...(await linksOf(drawn))];
   };
   const tripsLinks = async () => {
     const { default: render } = tripsPage.toRouteModule();
@@ -60,9 +61,11 @@ describe("LocalOrEdge", () => {
     await expect(guardsOf(memoViewPage, { memoId })).rejects.toBeInstanceOf(AkanNotFoundError);
   });
 
-  it("links the trips page to the trip notes only on a server it admits", async () => {
+  it("links the trips page to the trip notes only on a server it admits, without being refused", async () => {
+    expect(await fetch.isMemoOpen()).toBe(true);
     expect(await tripsLinks()).toContain("/memo");
     spyOn(LocalOrEdge.prototype, "canPass").mockReturnValue(false);
+    expect(await fetch.isMemoOpen()).toBe(false);
     expect(await tripsLinks()).toEqual(["/trips/detail"]);
   });
 });
