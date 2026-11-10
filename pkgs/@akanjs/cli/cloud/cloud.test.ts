@@ -1982,7 +1982,7 @@ describe("register-binary", () => {
 });
 
 describe("upload-secret on a piped stdin", () => {
-  test("names the missing NAME and exits 1 at once, never printing the piped value", async () => {
+  test("names the missing NAME and exits 2 at once, never printing the piped value", async () => {
     const root = await makeTempRoot();
     await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
     await writeText(path.join(root, "tsconfig.json"), "{}\n");
@@ -2015,7 +2015,7 @@ describe("upload-secret on a piped stdin", () => {
 
     expect(`${stdout}${stderr}`).not.toContain(secret);
     expect(stdout).toContain("Missing argument 'name': stdin is not a terminal to prompt on");
-    expect(code).toBe(1);
+    expect(code).toBe(2);
   }, 60_000);
 });
 

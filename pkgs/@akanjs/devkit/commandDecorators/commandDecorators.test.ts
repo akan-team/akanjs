@@ -748,7 +748,7 @@ describe("a target left out where no terminal can ask for it", () => {
 
   test("exits at once with the choices and the line to rerun when there are several", async () => {
     const refused = await run(["web", "admin"]);
-    expect(refused.code).toBe(1);
+    expect(refused.code).toBe(2);
     expect(refused.stdout).toContain(
       "Missing app or lib: stdin is not a terminal to prompt on, so rerun it as `akan create-thing photo <app-or-lib> --force`",
     );
@@ -758,7 +758,7 @@ describe("a target left out where no terminal can ask for it", () => {
 
   test("a destructive command exits with the line to rerun even when the workspace has one app", async () => {
     const refused = await run(["web"], ["remove-thing"]);
-    expect(refused.code).toBe(1);
+    expect(refused.code).toBe(2);
     expect(refused.stdout).toContain(
       "Missing app: this command deletes files and never picks its target, so rerun it as `akan remove-thing <app>` (choices: web).",
     );
@@ -769,7 +769,10 @@ describe("a target left out where no terminal can ask for it", () => {
 
 describe("the exit code of a command that failed", () => {
   const track = tempRoots();
-  const run = async (failure: string, { option = "", args = [] as string[] } = {}) => {
+  const run = async (
+    failure: string,
+    { option = "", args = [], argv = ["verdict", ...args] }: { option?: string; args?: string[]; argv?: string[] } = {},
+  ) => {
     const { root } = track(await makeCliTempWorkspace());
     await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
     await writeText(path.join(root, "tsconfig.json"), "{}\n");
@@ -777,7 +780,8 @@ describe("the exit code of a command that failed", () => {
     await writeText(
       entry,
       [
-        `import { command, ExitCodeError, markCliErrorPrinted, runCommands, runner, script } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
+        `import { AkanError } from ${JSON.stringify(Bun.resolveSync("akanjs/base", import.meta.dir))};`,
+        `import { CliError, command, ExitCodeError, markCliErrorPrinted, runCommands, runner, script } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
         'class VerdictRunner extends runner("verdict") {}',
         'class VerdictScript extends script("verdict", [VerdictRunner]) {}',
         'class VerdictCommand extends command("verdict", [VerdictScript], ({ public: target }) => ({',
@@ -789,7 +793,7 @@ describe("the exit code of a command that failed", () => {
         "",
       ].join("\n"),
     );
-    const proc = Bun.spawn(["bun", entry, "verdict", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+    const proc = Bun.spawn(["bun", entry, ...argv], { cwd: root, stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, code] = await Promise.all([
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
@@ -803,6 +807,28 @@ describe("the exit code of a command that failed", () => {
     expect(verdict.stdout).toContain("needs a new store build");
     expect(verdict.code).toBe(2);
     expect((await run('new Error("broke")')).code).toBe(1);
+  }, 30_000);
+
+  test("is the table's for a CliError's code, and 1 for an AkanError of any other code", async () => {
+    const [checked, unknown, gone] = await Promise.all([
+      run('new CliError("checkFailed", "found problems")'),
+      run('new CliError("unknownTarget", "no app shop")'),
+      run('new AkanError("documentNotFound", "gone")'),
+    ]);
+    expect([checked.code, unknown.code, gone.code]).toEqual([3, 2, 1]);
+    expect(checked.stdout).toContain("found problems");
+  }, 30_000);
+
+  test("is 2 for a flag commander refuses, a value outside the choices and an unknown command", async () => {
+    const choice = ' }).option("mode", String, { enum: ["a", "b"]';
+    const [flag, outside, unknownCommand] = await Promise.all([
+      run('new Error("broke")', { args: ["--nope"] }),
+      run('new Error("broke")', { option: choice, args: ["--mode", "c"] }),
+      run('new Error("broke")', { argv: ["verdikt"] }),
+    ]);
+    expect([flag.code, outside.code, unknownCommand.code]).toEqual([2, 2, 2]);
+    expect(outside.stdout).toContain("option '--mode' argument 'c' is invalid");
+    expect(unknownCommand.stderr).toContain("unknown command 'verdikt'");
   }, 30_000);
 
   test("is usageExitCode for a flag commander refuses before the command runs, failureExitCode after", async () => {
@@ -832,12 +858,72 @@ describe("the exit code of a command that failed", () => {
 
     const thrown = await run('new Error("broke")', { option, args: ["--json"] });
     expect(thrown.code).toBe(1);
-    expect(thrown.stdout).toContain("broke\n");
+    expect(thrown.stderr).toContain("broke\n");
     expect(lastOf(thrown.stdout)).toEqual({ message: "broke", usage: false, given: { json: true } });
 
     const help = await run('new Error("broke")', { option, args: ["--help"] });
     expect(help.code).toBe(0);
     expect(help.stdout).not.toContain('"usage"');
+  }, 60_000);
+
+  test("with JSON asked for, ends stdout with ok, error and code, and prints the message to stderr", async () => {
+    const json = ' }).option("json", Boolean, { default: false';
+    const format = ' }).option("format", String, { default: "text", enum: ["text", "json"]';
+    const marked =
+      '(() => { const error = new CliError("checkFailed", "verify failed"); markCliErrorPrinted(error); return error; })()';
+    const [unknown, plain, refused, answered, text] = await Promise.all([
+      run('new CliError("unknownTarget", "no app shop")', { option: json, args: ["--json"] }),
+      run('new Error("broke")', { option: format, args: ["--format", "json"] }),
+      run('new Error("broke")', { option: json, args: ["--json", "--nope"] }),
+      run(marked, { option: format, args: ["--format", "json"] }),
+      run('new Error("broke")', { option: format }),
+    ]);
+    expect(unknown.code).toBe(2);
+    expect(JSON.parse(unknown.stdout)).toEqual({ ok: false, error: "no app shop", code: "unknownTarget" });
+    expect(unknown.stderr).toContain("no app shop");
+    expect(plain.code).toBe(1);
+    expect(JSON.parse(plain.stdout)).toEqual({ ok: false, error: "broke", code: "failed" });
+    expect(refused.code).toBe(2);
+    expect(JSON.parse(refused.stdout)).toEqual({ ok: false, error: "unknown option '--nope'", code: "usage" });
+    expect(answered.code).toBe(3);
+    expect(answered.stdout.trim()).toBe("");
+    expect(text.stdout).toContain("broke\n");
+    expect(text.stdout).not.toContain('"code"');
+  }, 60_000);
+
+  test("is usageExitCode for a usage or unknown-target failure where 2 answers something else", async () => {
+    const option = ", usageExitCode: 1";
+    const [flag, unknown, verdict] = await Promise.all([
+      run('new Error("broke")', { option, args: ["--nope"] }),
+      run('new CliError("unknownTarget", "Unknown app \'shop\'")', { option }),
+      run('new ExitCodeError("needs a new store build", 2)', { option }),
+    ]);
+    expect([flag.code, unknown.code, verdict.code]).toEqual([1, 1, 2]);
+  }, 30_000);
+
+  test("is 130 for a prompt closed with Ctrl+C", async () => {
+    const closed = await run(
+      'Object.assign(new Error("User force closed the prompt with SIGINT"), { name: "ExitPromptError" })',
+    );
+    expect(closed.code).toBe(130);
+  }, 30_000);
+
+  test("answers JSON for an ExitCodeError, a thrown object and an unhandled rejection", async () => {
+    const json = ' }).option("json", Boolean, { default: false';
+    const late = 'await (void Promise.reject(new CliError("refused", "late")), new Promise(() => {}))';
+    const [verdict, checked, thrown, rejected] = await Promise.all([
+      run('new ExitCodeError("needs a new store build", 2)', { option: json, args: ["--json"] }),
+      run('new ExitCodeError("found problems", 3)', { option: json, args: ["--json"] }),
+      run('{ reason: "an object" }', { option: json, args: ["--json"] }),
+      run(late, { option: json, args: ["--json"] }),
+    ]);
+    expect(JSON.parse(verdict.stdout)).toEqual({ ok: false, error: "needs a new store build", code: "refused" });
+    expect(verdict.code).toBe(2);
+    expect(JSON.parse(checked.stdout)).toEqual({ ok: false, error: "found problems", code: "checkFailed" });
+    expect(checked.code).toBe(3);
+    expect(JSON.parse(thrown.stdout)).toEqual({ ok: false, error: '{"reason":"an object"}', code: "failed" });
+    expect(JSON.parse(rejected.stdout)).toEqual({ ok: false, error: "late", code: "refused" });
+    expect(rejected.code).toBe(2);
   }, 60_000);
 
   test("prints nothing more for an error the command marked as printed", async () => {

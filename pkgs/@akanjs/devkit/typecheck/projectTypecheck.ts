@@ -1,5 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
+import { CliError } from "../commandDecorators/cliError";
 import type { TypecheckRecord } from "../typeChecker";
 import { TypecheckFailure } from "./typecheckFailure";
 
@@ -69,7 +70,10 @@ export class ProjectTypecheck {
     if (exitCode === 0) return;
     const records = report === "records" ? ProjectTypecheck.#parseRecords(stdout) : null;
     if (records?.length) throw new TypecheckFailure(records);
-    throw new Error((stderr || stdout).trim() || `Typecheck failed with exit code ${exitCode}`);
+    const output = (stderr || stdout).trim();
+    if (exitCode === TypecheckFailure.workerExitCode && report === "pretty")
+      throw new CliError("checkFailed", output || "Typecheck failed");
+    throw new Error(output || `Typecheck failed with exit code ${exitCode}`);
   }
 
   static #parseRecords(stdout: string): TypecheckRecord[] | null {

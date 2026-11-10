@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ExitCodeError, markCliErrorPrinted, script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { CliError, markCliErrorPrinted, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { Logger } from "akanjs/common";
 import { ApplicationRunner } from "../application/application.runner";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
@@ -35,7 +35,7 @@ export class VerifyScript extends script("verify", [WorkspaceRunner, Application
       options.format === "json" ? VerifyReport.json(result) : VerifyReport.text(result, { max: options.max }),
     );
     if (result.ok) return;
-    const failure = new ExitCodeError("verify failed", 1);
+    const failure = new CliError("checkFailed", "verify failed");
     markCliErrorPrinted(failure);
     throw failure;
   }

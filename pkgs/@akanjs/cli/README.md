@@ -81,6 +81,29 @@ plans workflows in `plan` mode, and in `apply` mode — the mode `mcp-install` r
 validation and the repair tools. An agent changes code through the workflows, so it follows the workspace's rules
 instead of routing around them. `akan code` is a terminal agent built on the same rules, workflows and skills.
 
+## Exit Codes
+
+| Exit | `code` | Meaning |
+| --- | --- | --- |
+| 0 | | done |
+| 1 | `failed`, or the error's own code | the command broke |
+| 2 | `usage`, `unknownTarget` | fix the command line or what it names: an unknown flag or command, a value outside the choices, an argument with no terminal to ask it on, an app, lib, package or module the workspace does not have |
+| 2 | `refused` | the answer is no: a pack that needs a new store build (`akan pack-update --against`, `akan push-update`, `akan register-binary`), a release the Akan Cloud project rejected |
+| 3 | `checkFailed` | a check ran and found problems: `akan verify`, `akan typecheck` and the typecheck of `akan build`, `akan preview`, `akan agent install --check` |
+| 130 | `interrupted` | interrupted, a prompt closed with Ctrl+C included |
+
+Some commands pin a family. `akan pack-update`, `akan push-update` and `akan register-binary` exit 1 for a usage
+or unknown-target failure, so their 2 only ever means a store build or a refusal. `akan agent` exits 1 for one
+too, since Claude Code reads a hook's exit 2 as a block, and `akan agent hook` never exits 2. `akan doctor
+--strict`, `akan workflow` and `akan subspace` exit 1 when their report says it failed or was refused.
+
+With `--json` or `--format json`, stdout holds only JSON: a failure ends it with one line,
+`{"ok":false,"error":"<message>","code":"<code>"}`, and the message goes to stderr. An NDJSON stream
+(`akan code --json`, `akan logs --json`) ends with that line too. A command whose own JSON report says it failed,
+as `akan verify`'s does, adds no line. Two commands keep codes of their own: `akan pipeline` exits 1 for a plan
+with errors and 2 when it could not plan, and `akan migrate` answers its own JSON line, exiting 2 for a `usage`,
+`invalidParam` or `notFound` code and 3 for `verifyFailed`.
+
 ## Akan Cloud
 
 ```bash

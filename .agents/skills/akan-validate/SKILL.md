@@ -22,6 +22,7 @@ three times the output. Narrow the one command instead:
 - `akan verify --no-build` — leave the app build out.
 - `akan verify --max 0` — every line, when the report ends in `+N more`.
 - `fixed N files` in the header means lint rewrote them on disk: re-read before editing them again.
+- It exits 3 when it found problems, 2 for a target the workspace does not have, 1 when the run itself broke.
 
 Raw `tsc` misses the generated barrels and reports false errors. Do not reach for it.
 

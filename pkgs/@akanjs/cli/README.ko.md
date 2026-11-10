@@ -82,6 +82,29 @@ akan repair generated
 실행합니다. 에이전트는 워크플로를 거쳐 코드를 고치므로 워크스페이스 규칙을 우회하지 않고 따릅니다. `akan code`는
 같은 규칙, 워크플로, 스킬 위에서 일하는 터미널 에이전트입니다.
 
+## 종료 코드
+
+| 종료 코드 | `code` | 뜻 |
+| --- | --- | --- |
+| 0 | | 끝남 |
+| 1 | `failed`, 또는 에러 자체의 코드 | 명령이 실패함 |
+| 2 | `usage`, `unknownTarget` | 명령줄이나 그것이 가리키는 대상을 고쳐야 함: 모르는 플래그나 명령, 선택지 밖의 값, 물어볼 터미널이 없는 인자, 워크스페이스에 없는 앱·라이브러리·패키지·모듈 |
+| 2 | `refused` | 거절됨: 새 스토어 빌드가 필요한 팩(`akan pack-update --against`, `akan push-update`, `akan register-binary`), Akan Cloud 프로젝트가 거절한 릴리스 |
+| 3 | `checkFailed` | 검사가 돌았고 문제를 찾음: `akan verify`, `akan typecheck`와 `akan build`의 타입 검사, `akan preview`, `akan agent install --check` |
+| 130 | `interrupted` | 중단됨, Ctrl+C로 닫은 프롬프트 포함 |
+
+일부 명령은 한 계열의 코드를 고정합니다. `akan pack-update`, `akan push-update`, `akan register-binary`는 usage나
+unknown-target 실패에 1로 끝나므로, 이 명령의 2는 늘 스토어 빌드나 거절만 뜻합니다. `akan agent`도 같은 실패에
+1로 끝납니다. Claude Code가 훅의 종료 코드 2를 차단으로 읽기 때문에, `akan agent hook`은 2로 끝나지 않습니다.
+`akan doctor --strict`, `akan workflow`, `akan subspace`는 보고서가 실패나 거절을 말할 때 1로 끝납니다.
+
+`--json`이나 `--format json`을 주면 stdout에는 JSON만 나옵니다. 실패하면 마지막 줄이
+`{"ok":false,"error":"<메시지>","code":"<코드>"}`이고, 메시지는 stderr로 갑니다. NDJSON 스트림(`akan code --json`,
+`akan logs --json`)도 그 줄로 끝납니다. `akan verify`처럼 자체 JSON 보고서가 실패를 말하는 명령은 이 줄을
+덧붙이지 않습니다. 고유 코드를 쓰는 명령이 둘 있습니다. `akan pipeline`은 오류가 있는 계획이면 1, 계획을 세우지
+못하면 2로 끝나고, `akan migrate`는 자체 JSON 줄로 답하며 `usage`, `invalidParam`, `notFound` 코드면 2,
+`verifyFailed`면 3으로 끝납니다.
+
 ## Akan Cloud
 
 ```bash

@@ -1,5 +1,6 @@
 import { Logger } from "akanjs/common";
 import { TypeChecker } from "../typeChecker";
+import { TypecheckFailure } from "./typecheckFailure";
 
 try {
   const filePath = process.env.AKAN_TYPECHECK_FILE;
@@ -28,11 +29,11 @@ try {
     //? Not process.cwd(): that is the realpath (/private/var on macOS) while TypeScript keeps the spelling it was given.
     const root = process.env.AKAN_TYPECHECK_ROOT ?? process.cwd();
     process.stdout.write(JSON.stringify(TypeChecker.toRecords(result.errors, root)));
-    process.exit(result.errors.length > 0 ? 1 : 0);
+    process.exit(result.errors.length > 0 ? TypecheckFailure.workerExitCode : 0);
   }
   if (result.errors.length > 0) {
     console.error(result.message);
-    process.exit(1);
+    process.exit(TypecheckFailure.workerExitCode);
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

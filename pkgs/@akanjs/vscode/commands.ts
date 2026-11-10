@@ -41,6 +41,22 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const errorsOf = (diagnostics: WorkflowDiagnostic[]) =>
   diagnostics.filter((diagnostic) => diagnostic.severity === "error").map((diagnostic) => diagnostic.message);
 
+const reporterOf = (log: vscode.OutputChannel) => (result: AkanRun | null, command: string) => {
+  if (!result) return null;
+  const report = AkanCli.jsonOf(result.stdout);
+  const failure = AkanCli.failureOf(report);
+  if (failure) {
+    log.appendLine(`[akan] ${command} ${failure.code}: ${failure.error}`);
+    void vscode.window.showErrorMessage(vscode.l10n.t("akan {0} failed: {1}", command, failure.error));
+    return null;
+  }
+  if (isRecord(report)) return report;
+  log.appendLine(result.stdout.trimEnd());
+  log.show(true);
+  void vscode.window.showErrorMessage(vscode.l10n.t("akan {0} printed no report. See the Akan.js output.", command));
+  return null;
+};
+
 export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[] => {
   const problems = vscode.languages.createDiagnosticCollection("akan");
 
@@ -92,15 +108,7 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
       },
     );
 
-  const reportOf = (result: AkanRun | null, command: string) => {
-    if (!result) return null;
-    const report = AkanCli.jsonOf(result.stdout);
-    if (isRecord(report)) return report;
-    log.appendLine(result.stdout.trimEnd());
-    log.show(true);
-    void vscode.window.showErrorMessage(vscode.l10n.t("akan {0} printed no report. See the Akan.js output.", command));
-    return null;
-  };
+  const reportOf = reporterOf(log);
 
   const verify = async (target?: string, root?: string) => {
     const cli = await cliOf(root);
@@ -342,7 +350,9 @@ export const registerCommands = (log: vscode.OutputChannel): vscode.Disposable[]
         openModule: (target, revealStudio) => openModule({ ...target, root: cli.root }, revealStudio),
       });
     log.appendLine(result.stdout.trimEnd());
-    const reason = result.stdout.trim().split("\n").at(-1) || vscode.l10n.t("akan studio failed.");
+    const reason =
+      AkanCli.failureOf(report)?.error ??
+      (result.stdout.trim().split("\n").at(-1) || vscode.l10n.t("akan studio failed."));
     if (!result.stdout.includes("No dev server answers")) {
       void vscode.window.showErrorMessage(reason);
       return false;

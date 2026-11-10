@@ -44,6 +44,7 @@ export interface TargetOption {
   runsOnWorkspaceRoot?: boolean;
   stdio?: boolean;
   failureExitCode?: number;
+  /** The exit of a `usage` or `unknownTarget` failure, for a command whose 2 already answers something else. */
   usageExitCode?: number;
   /** It deletes files in its app, lib, pkg or module, so one left out or unknown is refused, never picked or asked. */
   destructive?: boolean;

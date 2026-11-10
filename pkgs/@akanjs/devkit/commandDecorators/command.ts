@@ -7,7 +7,7 @@ import type {
 } from "@inquirer/prompts";
 import { Logger } from "akanjs/common";
 import chalk from "chalk";
-import { type Command, program } from "commander";
+import { type Command, type CommanderError, program } from "commander";
 import { AppSelectionMemory } from "../appSelectionMemory";
 import {
   AppExecutor,
@@ -30,41 +30,68 @@ import {
   type InternalArgMeta,
 } from "./argMeta";
 import { camelToKebabCase } from "./camelToKebabCase";
+import { CliError, type CliErrorCode } from "./cliError";
 import { CommandContainer } from "./dependencyBuilder";
-import { ExitCodeError } from "./exitCodeError";
 import { formatCommandHelp, formatHelp } from "./helpFormatter";
-import { type CommandCls, getTargetCommandNames, getTargetMetas, type TargetFailure } from "./targetMeta";
+import {
+  type CommandCls,
+  getTargetCommandNames,
+  getTargetMetas,
+  type TargetFailure,
+  type TargetOption,
+} from "./targetMeta";
 import { WorkspaceVersionCheck } from "./workspaceVersionCheck";
 
 const loggedCliErrorObjects = new WeakSet<object>();
+const answeredCliErrors = new WeakSet<object>();
 const loggedCliErrorMessages = new Set<string>();
 
 export const markCliErrorPrinted = (error: unknown) => {
-  if (typeof error === "object" && error !== null) loggedCliErrorObjects.add(error);
+  if (typeof error !== "object" || error === null) return;
+  loggedCliErrorObjects.add(error);
+  answeredCliErrors.add(error);
 };
 
-const formatCliError = (error: unknown): string => {
-  if (error instanceof Error) return error.message || error.name;
-  if (typeof error === "string") return error.trim() || "Unknown error";
-  if (error === null || error === undefined) return "Unknown error";
-  try {
-    const json = JSON.stringify(error);
-    if (json) return json;
-  } catch {
-    return String(error);
-  }
-  return String(error) || "Unknown error";
-};
-
-const printCliError = (error: unknown) => {
+const printCliError = (error: unknown, stream: "log" | "error" = "log") => {
   if (typeof error === "object" && error !== null) {
     if (loggedCliErrorObjects.has(error)) return;
     loggedCliErrorObjects.add(error);
   }
-  const message = formatCliError(error);
+  const message = CliError.messageOf(error);
   if (loggedCliErrorMessages.has(message)) return;
   loggedCliErrorMessages.add(message);
-  Logger.rawLog(`\n${chalk.red(message)}`);
+  Logger.rawLog(`\n${chalk.red(message)}`, undefined, stream);
+};
+
+//? The default counts: `akan mcp-call` answers JSON only.
+const asksJson = (argMetas: (ArgMeta | InternalArgMeta)[], opt: Record<string, unknown>) =>
+  argMetas.some((argMeta) => {
+    if (argMeta.type !== "Option") return false;
+    const value = opt[argMeta.name] ?? argMeta.argsOption.default;
+    if (argMeta.name === "json") return value === true || value === "true";
+    return argMeta.name === "format" && value === "json";
+  });
+
+//* Waits for stdout to take the line: the CLI exits right after, and an exit drops what a pipe still buffers.
+const writeJsonFailure = async (error: unknown) => {
+  if (typeof error === "object" && error !== null && answeredCliErrors.has(error)) return;
+  const line = `${JSON.stringify(CliError.failureOf(error))}\n`;
+  await new Promise<void>((resolve) => process.stdout.write(line, () => resolve()));
+};
+
+const failureReporterOf =
+  (json: boolean, onFailure: TargetOption["onFailure"], failure: TargetFailure) => async (error: unknown) => {
+    if (onFailure) await onFailure(error, failure);
+    else if (json) await writeJsonFailure(error);
+  };
+
+//? commander refuses a flag, an argument or a command before any action runs, having printed why to stderr.
+//? Thrown, not exited: the failure path awaits onFailure, and an exit drops what a pipe still buffers.
+const usageRefusalOf = (error: CommanderError) => {
+  if (error.exitCode === 0) process.exit(0);
+  const refused = new CliError("usage", error.message.replace(/^error: /, ""));
+  loggedCliErrorObjects.add(refused);
+  return refused;
 };
 
 const handleOption = (programCommand: Command, argMeta: ArgMeta) => {
@@ -140,7 +167,8 @@ const assertEnumChoice = (argMeta: ArgMeta, value: unknown) => {
   if (!enumChoices || typeof enumChoices === "function") return;
   const choices = normalizeEnumChoices(enumChoices);
   if (choices.some((choice) => String(choice.value) === String(value))) return;
-  throw new Error(
+  throw new CliError(
+    "usage",
     `${argLabelOf(argMeta)} argument '${String(value)}' is invalid. Allowed choices are ${choices.map((choice) => choice.name).join(", ")}.`,
   );
 };
@@ -154,13 +182,18 @@ export const assertPromptable = (problem: string, refusal: Refusal = {}) => {
 interface Refusal {
   choices?: readonly unknown[];
   remedy?: string;
+  code?: CliErrorCode;
 }
 
 const refusalOf = (
   problem: string,
   reason: string,
-  { choices = [], remedy = "pass it on the command line" }: Refusal,
-) => new Error(`${problem}: ${reason}, so ${remedy}${choices.length ? ` (choices: ${choices.join(", ")})` : ""}.`);
+  { choices = [], remedy = "pass it on the command line", code = "usage" }: Refusal,
+) =>
+  new CliError(
+    code,
+    `${problem}: ${reason}, so ${remedy}${choices.length ? ` (choices: ${choices.join(", ")})` : ""}.`,
+  );
 
 const inputMessageOf = ({ name, argsOption: { desc, example, ask } }: ArgMeta) =>
   ask ? `${ask}: ` : desc ? `${desc}: ` : `Enter the ${name} value${example ? ` (example: ${example})` : ""}: `;
@@ -234,7 +267,8 @@ const assertCurrentDirectoryIsWorkspaceRoot = async () => {
   ]);
   if (hasPackageJson && hasTsConfig && hasMemberDirs.some(Boolean)) return;
 
-  throw new Error(
+  throw new CliError(
+    "usage",
     [
       "Akan CLI commands must be run from the workspace root.",
       `Current directory: ${cwd}`,
@@ -284,7 +318,8 @@ export const getAppsArgumentValue = async (
   if (requested.length) {
     const unknown = requested.filter((name) => !appNames.includes(name));
     if (unknown.length)
-      throw new Error(
+      throw new CliError(
+        "unknownTarget",
         `Unknown app${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}. Available: ${appNames.join(", ")}, all`,
       );
     return [...new Set(requested)].map((name) => AppExecutor.from(workspace, name));
@@ -315,7 +350,7 @@ export const getInternalArgumentValue = async (
   const problemOf = (kind: string) => (value ? `Unknown ${kind} '${value}'` : `Missing ${kind}`);
   //? Refused in a terminal too: a select deletes on a stray Enter, its cursor resting on the first choice.
   const assertAskable = (kind: string, choices: readonly unknown[], placeholder: string) => {
-    const refusal = { choices, ...rerunRemedyOf(rerun, placeholder) };
+    const refusal: Refusal = { choices, code: value ? "unknownTarget" : "usage", ...rerunRemedyOf(rerun, placeholder) };
     if (destructive) throw refusalOf(problemOf(kind), "this command deletes files and never picks its target", refusal);
     assertPromptable(problemOf(kind), refusal);
   };
@@ -353,7 +388,7 @@ export const getInternalArgumentValue = async (
       choices,
     });
     const picked = execOf(name);
-    if (!picked) throw new Error(`Invalid system name: ${name}`);
+    if (!picked) throw new CliError("unknownTarget", `Invalid system name: ${name}`);
     return picked;
   } else if (sysType === "app") {
     if (value && appNames.includes(value)) return AppExecutor.from(workspace, value);
@@ -389,11 +424,12 @@ export const getInternalArgumentValue = async (
       (await Promise.all(systems.map(async (sys) => (await modulesOf(sys)).map((m) => `${sys.name}:${m}`)))).flat();
     if (value) {
       const [sysName, moduleName] = value.split(":");
-      if (!sysName || !moduleName) throw new Error(`Invalid module name: ${value}`);
+      if (!sysName || !moduleName) throw new CliError("usage", `Invalid module name: ${value}`);
       const sys = systems.find((each) => each.name === sysName);
-      if (!sys) throw new Error(`Invalid system name: ${sysName}`);
+      if (!sys) throw new CliError("unknownTarget", `Invalid system name: ${sysName}`);
       if ((await modulesOf(sys)).includes(moduleName)) return ModuleExecutor.from(sys, moduleName);
       throw refusalOf(problemOf("module"), `${sysName} has no such module`, {
+        code: "unknownTarget",
         choices: await listModules(),
         ...rerunRemedyOf(rerun, "<sys:module>"),
       });
@@ -423,13 +459,33 @@ export const getInternalArgumentValue = async (
   } else throw new Error(`Invalid system type: ${argMeta.type}`);
 };
 
+const cliFailureOf = () => {
+  let failing = false;
+  const failure = {
+    exitCode: 1,
+    usageExitCode: undefined as number | undefined,
+    stream: "log" as "log" | "error",
+    report: async (_error: unknown) => {},
+    exitCodeOf: (error: unknown) => {
+      const { usageExitCode } = failure;
+      if (usageExitCode !== undefined && error instanceof CliError && CliError.usageCodes.includes(error.code))
+        return usageExitCode;
+      return CliError.exitCodeOf(error) ?? failure.exitCode;
+    },
+    fail: async (error: unknown) => {
+      if (failing) return;
+      failing = true;
+      printCliError(error, failure.stream);
+      await failure.report(error).catch((reportError: unknown) => printCliError(reportError, "error"));
+      process.exit(failure.exitCodeOf(error));
+    },
+  };
+  return failure;
+};
+
 export const runCommands = async (...commands: CommandCls[]) => {
-  let failureExitCode = 1;
-  let reportFailure = async (_error: unknown) => {};
-  process.on("unhandledRejection", (error) => {
-    printCliError(error);
-    process.exit(ExitCodeError.codeOf(error) ?? failureExitCode);
-  });
+  const failure = cliFailureOf();
+  process.on("unhandledRejection", (error) => void failure.fail(error));
   const __dirname = getDirname(import.meta.url);
   const packageJsonCandidates = [`${path.dirname(Bun.main)}/package.json`, `${__dirname}/../package.json`];
   let cliPackageJson: PackageJson | null = null;
@@ -463,21 +519,16 @@ export const runCommands = async (...commands: CommandCls[]) => {
         let programCommand = program.command(commandName, {
           hidden: targetMeta.targetOption.devOnly,
         });
-        const targetFailureExitCode = targetMeta.targetOption.failureExitCode;
-        const usageExitCode = targetMeta.targetOption.usageExitCode ?? targetFailureExitCode;
+        const { failureExitCode: targetFailureExitCode, usageExitCode: targetUsageExitCode } = targetMeta.targetOption;
         const { onFailure } = targetMeta.targetOption;
         const [allArgMetas] = getArgMetas(command, targetMeta.key);
-        //? commander exits 1 on a flag or argument it refuses, before any action runs, having printed why.
-        //? Thrown, not exited: the failure path below awaits onFailure, and an exit drops what a pipe still buffers.
-        if (usageExitCode !== undefined || onFailure)
-          programCommand.exitOverride((error) => {
-            if (error.exitCode === 0) process.exit(0);
-            const refused = new ExitCodeError(error.message.replace(/^error: /, ""), usageExitCode ?? error.exitCode);
-            markCliErrorPrinted(refused);
-            const given = givenOptionsOf(allArgMetas, programCommand.opts());
-            reportFailure = async (failure) => await onFailure?.(failure, { usage: true, given });
-            throw refused;
-          });
+        programCommand.exitOverride((error) => {
+          const refused = usageRefusalOf(error);
+          failure.usageExitCode = targetUsageExitCode;
+          const given = givenOptionsOf(allArgMetas, programCommand.opts());
+          failure.report = failureReporterOf(asksJson(allArgMetas, given), onFailure, { usage: true, given });
+          throw refused;
+        });
         for (const argMeta of allArgMetas) {
           if (argMeta.type === "Option") programCommand = handleOption(programCommand, argMeta);
           else if (argMeta.type === "Argument") programCommand = handleArgument(programCommand, argMeta);
@@ -506,12 +557,17 @@ export const runCommands = async (...commands: CommandCls[]) => {
         };
 
         programCommand.action(async (...args: unknown[]) => {
-          failureExitCode = targetFailureExitCode ?? 1;
+          failure.exitCode = targetFailureExitCode ?? 1;
+          failure.usageExitCode = targetUsageExitCode;
           if (!targetMeta.targetOption.stdio) Logger.rawLog();
           const cmdArgs = args.slice(0, args.length - 2);
           const opt = args[args.length - 2] as Record<string, unknown>;
-          reportFailure = async (failure) =>
-            await onFailure?.(failure, { usage: false, given: givenOptionsOf(allArgMetas, opt) });
+          const json = asksJson(allArgMetas, opt);
+          failure.stream = json ? "error" : "log";
+          failure.report = failureReporterOf(json, onFailure, {
+            usage: false,
+            given: givenOptionsOf(allArgMetas, opt),
+          });
           const commandArgs = [] as unknown[];
           if (targetMeta.targetOption.runsOnWorkspaceRoot) {
             await assertCurrentDirectoryIsWorkspaceRoot();
@@ -555,17 +611,16 @@ export const runCommands = async (...commands: CommandCls[]) => {
             await targetMeta.handler.call(cmd, ...commandArgs);
             if (!targetMeta.targetOption.stdio) Logger.rawLog();
           } catch (e) {
-            printCliError(e);
+            printCliError(e, failure.stream);
             throw e;
           }
         });
       }
     }
   }
-  // Handled here, not by the handler above: a rejection reaching the entry's top-level await prints Bun's own trace.
-  await program.parseAsync(process.argv).catch(async (error: unknown) => {
-    printCliError(error);
-    await reportFailure(error).catch(printCliError);
-    process.exit(ExitCodeError.codeOf(error) ?? failureExitCode);
+  program.exitOverride((error) => {
+    throw usageRefusalOf(error);
   });
+  // Handled here, not by the handler above: a rejection reaching the entry's top-level await prints Bun's own trace.
+  await program.parseAsync(process.argv).catch(failure.fail);
 };
