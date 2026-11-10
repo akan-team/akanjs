@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ModulePreloadPlan } from "./artifact/modulePreloadPlan";
 import { FlightModulePreloads } from "./flightModulePreloads";
+import { sanitizeFlightForSsrStream } from "./ssrFromRscRenderer";
 
 const row = (text: string) => new TextEncoder().encode(text);
 
@@ -68,4 +69,55 @@ describe("FlightModulePreloads", () => {
     expect(urls).toEqual(["/_akan/client/rsc.js", "/_akan/client/a.js"]);
     expect(preloads.urls).toEqual(urls);
   });
+});
+
+describe("FlightModulePreloads on the flight React renders", () => {
+  const entry = (id: string, name: string, chunks: string[]) => ({
+    id,
+    chunks: chunks.flatMap((chunk) => [chunk, chunk]),
+    name,
+    async: true,
+  });
+  const clientManifest = {
+    "apps/demo/ui/Card.tsx#Card": entry("/_akan/client/card-a1.js", "Card", [
+      "/_akan/client/card-a1.js",
+      "/_akan/client/chunks/shared.js",
+    ]),
+    "apps/demo/ui/Badge.tsx#Badge": entry("/_akan/client/badge-b2.js", "Badge", [
+      "/_akan/client/badge-b2.js",
+      "/_akan/client/chunks/shared.js",
+    ]),
+    "apps/demo/ui/Menu.tsx#Menu": entry("/_akan/client/menu-c3.js", "Menu", ["/_akan/client/menu-c3.js"]),
+  };
+  const renderFlight = (nodeEnv: string) =>
+    Bun.spawn(
+      [
+        process.execPath,
+        "--conditions",
+        "react-server",
+        `${import.meta.dir}/flightModulePreloads.fixture.tsx`,
+        JSON.stringify(clientManifest),
+      ],
+      { env: { ...process.env, NODE_ENV: nodeEnv }, stdio: ["ignore", "pipe", "inherit"] },
+    ).stdout;
+
+  test("preloads each rendered client reference's chunks once, and not a client URL the page's text carries", async () => {
+    for (const nodeEnv of ["production", "development"]) {
+      const preloads = new FlightModulePreloads(
+        new ModulePreloadPlan({ runtime: ["/_akan/client/rsc.js"], vendors: {}, chunkVendors: {} }, clientManifest),
+      );
+      const flight = sanitizeFlightForSsrStream(renderFlight(nodeEnv), (row, tag) => preloads.observe(row, tag));
+      await new Response(flight).arrayBuffer();
+
+      expect({ nodeEnv, urls: preloads.urls }).toEqual({
+        nodeEnv,
+        urls: [
+          "/_akan/client/rsc.js",
+          "/_akan/client/card-a1.js",
+          "/_akan/client/chunks/shared.js",
+          "/_akan/client/badge-b2.js",
+        ],
+      });
+    }
+  }, 20_000);
 });
