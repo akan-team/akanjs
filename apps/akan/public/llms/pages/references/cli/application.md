@@ -140,7 +140,7 @@ Run the dev server, SSR frontend and backend together. Name apps space- or comma
 
 - memory budget: `AKAN_MEMORY_LIMIT` lowers the memory `--concurrency` is derived from.
 
-- Akan Studio: `/_akan/studio` on the dev URL draws the ERD, request paths and Change Map, linked to source, and the running server's DI graph and jobs. `--share` hides it.
+- Akan Studio: `/_akan/studio` on the dev URL draws the ERD, request paths, Change Map and framework map, linked to source, and the running server's DI graph and jobs. `--share` hides it.
 
 `akan dbup [--mode <mode>]`
 

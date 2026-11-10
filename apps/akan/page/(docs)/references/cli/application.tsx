@@ -642,8 +642,8 @@ akan plan-slice myapp --format json`,
           {
             name: l.trans({ en: "Akan Studio", ko: "Akan Studio" }),
             desc: l.trans({
-              en: "`/_akan/studio` on the dev URL draws the ERD, request paths and Change Map, linked to source, and the running server's DI graph and jobs. `--share` hides it.",
-              ko: "개발 URL의 `/_akan/studio`가 ERD, 요청 경로, Change Map을 소스 링크와 함께 그리고, 실행 중인 서버의 DI 그래프와 job도 그립니다. `--share`로는 열리지 않습니다.",
+              en: "`/_akan/studio` on the dev URL draws the ERD, request paths, Change Map and framework map, linked to source, and the running server's DI graph and jobs. `--share` hides it.",
+              ko: "개발 URL의 `/_akan/studio`가 ERD, 요청 경로, Change Map, 프레임워크 지도를 소스 링크와 함께 그리고, 실행 중인 서버의 DI 그래프와 job도 그립니다. `--share`로는 열리지 않습니다.",
             }),
           },
         ],
