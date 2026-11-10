@@ -1,6 +1,8 @@
 "use client";
 import { Href, router } from "akanjs/client";
 import { type FocusEvent, type PointerEvent, useEffect, useRef } from "react";
+import { InputModality } from "./inputModality";
+import { ViewportPrefetch } from "./viewportPrefetch";
 
 export type LinkPrefetch = boolean | "hover" | "viewport";
 
@@ -15,30 +17,6 @@ interface PrefetchIntentHandlers {
 //? Long enough that a pointer crossing a menu, or a Tab passing through a nav bar, asks for nothing.
 const intentDelayMs = 65;
 
-class ViewportPrefetch {
-  static #observer: IntersectionObserver | null = null;
-  static #prefetchOf = new Map<Element, () => void>();
-
-  static observe(element: Element, prefetch: () => void) {
-    if (typeof IntersectionObserver === "undefined") return () => undefined;
-    ViewportPrefetch.#observer ??= new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        ViewportPrefetch.#prefetchOf.get(entry.target)?.();
-        ViewportPrefetch.#unobserve(entry.target);
-      }
-    });
-    ViewportPrefetch.#prefetchOf.set(element, prefetch);
-    ViewportPrefetch.#observer.observe(element);
-    return () => ViewportPrefetch.#unobserve(element);
-  }
-
-  static #unobserve(element: Element) {
-    ViewportPrefetch.#prefetchOf.delete(element);
-    ViewportPrefetch.#observer?.unobserve(element);
-  }
-}
-
 //? No touchstart intent: a scroll that starts on a link touches it too, and a tap reaches its click ~100 ms later.
 export const usePrefetchIntent = (href: string, mode: LinkPrefetch, handlers: PrefetchIntentHandlers) => {
   const ref = useRef<HTMLAnchorElement>(null);
@@ -48,6 +26,9 @@ export const usePrefetchIntent = (href: string, mode: LinkPrefetch, handlers: Pr
     if (!enabled || mode !== "viewport" || !ref.current) return;
     return ViewportPrefetch.observe(ref.current, () => router.prefetch(href, { priority: "low" }));
   }, [enabled, mode, href]);
+  useEffect(() => {
+    if (enabled) InputModality.watch();
+  }, [enabled]);
   useEffect(() => () => clearTimeout(intentTimer.current), []);
   if (!enabled) return { ref };
   const intend = () => {
@@ -71,7 +52,8 @@ export const usePrefetchIntent = (href: string, mode: LinkPrefetch, handlers: Pr
     },
     onFocus: (event: FocusEvent<HTMLAnchorElement>) => {
       handlers.onFocus?.(event);
-      intend();
+      //? A press focuses the link it lands on, mouse before the click and touch after the lift: that focus is no intent.
+      if (InputModality.usesKeyboard()) intend();
     },
     onBlur: (event: FocusEvent<HTMLAnchorElement>) => {
       handlers.onBlur?.(event);

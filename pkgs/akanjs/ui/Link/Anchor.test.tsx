@@ -10,6 +10,7 @@ let router: typeof import("akanjs/client").router;
 
 const pushes: string[] = [];
 const prefetches: string[] = [];
+const withdrawals: string[] = [];
 const opens: Array<[string, string | undefined, string | undefined]> = [];
 let originalOpen: typeof window.open;
 const fakeRouter = {
@@ -22,7 +23,11 @@ const fakeRouter = {
   back: () => undefined,
   refresh: () => undefined,
   prefetch: (href: string, priority?: string) => {
-    prefetches.push(priority ? `${href} ${priority}` : href);
+    const asked = priority ? `${href} ${priority}` : href;
+    prefetches.push(asked);
+    return () => {
+      withdrawals.push(asked);
+    };
   },
 };
 const externalHrefs = [
@@ -260,10 +265,24 @@ describe("SsrLink prefetch", () => {
     router.init({ type: "ssr", side: "client", lang: "en", router: fakeRouter });
   });
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  //? Kept across tests: the links share one observer, made by the first viewport link.
+  const observed: Array<(entries: Array<{ isIntersecting: boolean; target: Element }>) => void> = [];
+  const targets: Element[] = [];
+  const FakeIntersectionObserver = class {
+    constructor(callback: (entries: Array<{ isIntersecting: boolean; target: Element }>) => void) {
+      observed.push(callback);
+    }
+    observe(target: Element) {
+      targets.push(target);
+    }
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof IntersectionObserver;
   const hover = (anchor: HTMLAnchorElement | null) =>
     act(() => {
       anchor?.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
     });
+  const tab = () => document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Tab" }));
   const inProduction = async (run: () => Promise<void>) => {
     const previous = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
@@ -335,15 +354,122 @@ describe("SsrLink prefetch", () => {
         </>,
       );
       const [guide, passed] = container.querySelectorAll("a");
-      act(() => passed?.focus());
+      act(() => {
+        tab();
+        passed?.focus();
+      });
       act(() => passed?.blur());
-      act(() => guide?.focus());
+      act(() => {
+        tab();
+        guide?.focus();
+      });
       expect(prefetches).toEqual([]);
       await act(async () => {
         await sleep(100);
       });
 
       expect(prefetches).toEqual(["/en/guide"]);
+      unmount();
+    }));
+
+  test("takes the focus a press gives the link for no keyboard intent, mouse or touch", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(
+        <>
+          <SsrLink href="/clicked">Clicked</SsrLink>
+          <SsrLink href="/tapped">Tapped</SsrLink>
+        </>,
+      );
+      const [clicked, tapped] = container.querySelectorAll("a");
+      hover(clicked);
+      act(() => {
+        clicked?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }));
+        clicked?.focus();
+      });
+      act(() => {
+        tapped?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));
+        tapped?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "touch" }));
+        tapped?.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "touch" }));
+        tapped?.focus();
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+      expect(prefetches).toEqual([]);
+
+      act(() => tapped?.blur());
+      act(() => {
+        tab();
+        tapped?.focus();
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+      expect(prefetches).toEqual(["/en/tapped"]);
+      unmount();
+    }));
+
+  test("reads a Tab onto a link as intent after a touch there turned into a scroll", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(<SsrLink href="/scrolled">Scrolled</SsrLink>);
+      const anchor = container.querySelector("a");
+      act(() => {
+        anchor?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));
+        anchor?.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerType: "touch" }));
+        anchor?.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "touch" }));
+      });
+      act(() => {
+        tab();
+        anchor?.focus();
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+
+      expect(prefetches).toEqual(["/en/scrolled"]);
+      unmount();
+    }));
+
+  test("reads a Tab onto a link as intent after a press that never focused it, as in Safari", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(<SsrLink href="/pressed">Pressed</SsrLink>);
+      const anchor = container.querySelector("a");
+      hover(anchor);
+      act(() => {
+        anchor?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }));
+        anchor?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse" }));
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+      expect(prefetches).toEqual([]);
+
+      act(() => {
+        tab();
+        anchor?.focus();
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+      expect(prefetches).toEqual(["/en/pressed"]);
+      unmount();
+    }));
+
+  test("takes the focus a pen tap gives the link for no keyboard intent, though the pen left as it lifted", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(<SsrLink href="/penned">Penned</SsrLink>);
+      const anchor = container.querySelector("a");
+      act(() => {
+        anchor?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "pen" }));
+        anchor?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "pen" }));
+        anchor?.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "pen" }));
+        anchor?.focus();
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+
+      expect(prefetches).toEqual([]);
       unmount();
     }));
 
@@ -365,29 +491,45 @@ describe("SsrLink prefetch", () => {
 
   test("loads a viewport link once it shows, behind every link pointed at", () =>
     inProduction(async () => {
-      const observed: Array<(entries: Array<{ isIntersecting: boolean; target: Element }>) => void> = [];
-      const targets: Element[] = [];
       const previous = globalThis.IntersectionObserver;
-      globalThis.IntersectionObserver = class {
-        constructor(callback: (entries: Array<{ isIntersecting: boolean; target: Element }>) => void) {
-          observed.push(callback);
-        }
-        observe(target: Element) {
-          targets.push(target);
-        }
-        unobserve() {}
-        disconnect() {}
-      } as unknown as typeof IntersectionObserver;
+      globalThis.IntersectionObserver = FakeIntersectionObserver;
       try {
         const { unmount } = mount(
           <SsrLink href="/far" prefetch="viewport">
             Far
           </SsrLink>,
         );
-        act(() => observed[0]?.(targets.map((target) => ({ isIntersecting: true, target }))));
+        act(() => observed[0]?.([{ isIntersecting: true, target: targets.at(-1) as Element }]));
 
         expect(prefetches).toEqual(["/en/far low"]);
         unmount();
+      } finally {
+        globalThis.IntersectionObserver = previous;
+      }
+    }));
+
+  test("withdraws a viewport link as it leaves the view, and asks again when it comes back", () =>
+    inProduction(async () => {
+      const previous = globalThis.IntersectionObserver;
+      globalThis.IntersectionObserver = FakeIntersectionObserver;
+      withdrawals.length = 0;
+      try {
+        const { unmount } = mount(
+          <SsrLink href="/scrolled" prefetch="viewport">
+            Scrolled
+          </SsrLink>,
+        );
+        const notify = observed[0];
+        const target = targets.at(-1);
+        if (!notify || !target) throw new Error("the link was never observed");
+        act(() => notify([{ isIntersecting: true, target }]));
+        act(() => notify([{ isIntersecting: false, target }]));
+        act(() => notify([{ isIntersecting: true, target }]));
+
+        expect(prefetches).toEqual(["/en/scrolled low", "/en/scrolled low"]);
+        expect(withdrawals).toEqual(["/en/scrolled low"]);
+        unmount();
+        expect(withdrawals).toEqual(["/en/scrolled low", "/en/scrolled low"]);
       } finally {
         globalThis.IntersectionObserver = previous;
       }

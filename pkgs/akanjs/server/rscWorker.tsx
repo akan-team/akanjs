@@ -53,15 +53,9 @@ import { FallbackHead } from "./fallbackHead";
 import { resolveHeadResult } from "./head";
 import { LogForwarder } from "./logging/logForwarder";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
-import { RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
+import { type AdmittedNotFoundFallback, RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
 import { RouteShellGate } from "./routeShellGate";
-import {
-  type AkanRscPatchDecision,
-  encodeAkanHeadSnapshot,
-  encodeAkanRouterState,
-  encodeAkanRscPatchSegmentPath,
-  isAkanRscPartialCommitEnabled,
-} from "./routeState";
+import { encodeAkanRouterState, isAkanRscPartialCommitEnabled } from "./routeState";
 import { type PagesContext, RouteTreeBuilder } from "./routeTreeBuilder";
 import { concatBytes, encodeAkanRedirectDigest } from "./rscHttp";
 import { RscPagePrompts } from "./rscPagePrompts";
@@ -75,6 +69,7 @@ import {
   isCachedRscPatchMetadataCompatible,
   replayCachedRscResult,
   resolveRscWorkerPatchCacheEntry,
+  rscWorkerTraceBaseOf,
   shouldCollectRscWorkerRenderChunks,
   shouldStoreRscWorkerPatchResult,
   shouldUseRscWorkerFullResultCache,
@@ -103,6 +98,7 @@ interface RenderMsg {
   method?: string;
   headers?: Record<string, string>;
   clientManifest?: ClientManifest;
+  prefetch?: boolean;
 }
 interface CancelMsg {
   type: "cancel";
@@ -176,12 +172,6 @@ interface FlightRenderResult {
 
 /** Well above any sensible TTL: this reclaims a cache nobody is reading, not tracks expiry closely. */
 const RESULT_CACHE_SWEEP_INTERVAL_MS = 60_000;
-
-function hashRscTraceCacheKey(cacheKey: string): string {
-  let hash = 5381;
-  for (let index = 0; index < cacheKey.length; index += 1) hash = (hash * 33) ^ cacheKey.charCodeAt(index);
-  return (hash >>> 0).toString(36);
-}
 
 interface RscRendererStats {
   renderCount: number;
@@ -508,46 +498,39 @@ export class RscRenderer {
           );
         else this.#logger.verbose(`render[${requestId}] no route matched pathname=${urlObj.pathname} — rendering 404`);
         const beforeLoadedKeys = RouteTreeBuilder.getCacheStats().loadedModuleKeys;
+        const searchParams = parseSearchParams(urlObj.search);
+        const fallbackMatch = match ? null : RouteTreeBuilder.matchFallback(urlObj.pathname, this.#fallbackRoutes);
+        const notFoundFallback = await RouteElementComposer.admitNotFoundFallback(fallbackMatch, searchParams);
+        const verdict =
+          msg.prefetch && (await RouteElementComposer.prefetchVerdict(match, notFoundFallback, searchParams));
+        if (verdict === "refused") {
+          this.#send({ type: "meta", requestId, status: 204 });
+          this.#send({ type: "end", requestId });
+          return;
+        }
+        const admitted = verdict === "admitted";
         const cacheDecision = match ? this.#getResultCacheEntry(request, urlObj) : { entry: null };
         const cacheEntry = cacheDecision.entry;
-        const searchParams = parseSearchParams(urlObj.search);
         const {
           targetRouterState,
           currentRouterState,
           decision: safePatchDecision,
           admittedHead,
-        } = await this.#patchPlanner.plan({ request, url: urlObj, match, searchParams });
+        } = await this.#patchPlanner.plan({ request, url: urlObj, match, searchParams, admitted });
         const patchCacheEntry = resolveRscWorkerPatchCacheEntry({
           cacheEntry,
           targetRouterState,
           safePatchDecision,
           partialCommitEnabled: isAkanRscPartialCommitEnabled(),
         });
-        const createTraceBase = (
-          decision: AkanRscPatchDecision,
-          cacheKey = cacheEntry?.key,
-          routeState = targetRouterState,
-        ) => ({
+        const createTraceBase = rscWorkerTraceBaseOf({
           navId: requestId,
           pathname: urlObj.pathname,
           routeId,
-          partial: decision.status,
-          partialReason: decision.reason ?? currentRouterState.reason,
-          partialCommonPrefixLength: decision.commonPrefixLength,
-          ...(decision.patch
-            ? {
-                patchStartIndex: decision.patch.patchStartIndex,
-                patchSegmentPath: encodeAkanRscPatchSegmentPath(decision.patch.segmentPath),
-                patchStartSegment: decision.patch.patchStartSegmentKey,
-                patchHeadSafe: decision.patch.headSafe,
-                patchHeadSnapshot: decision.patch.headSnapshot
-                  ? (encodeAkanHeadSnapshot(decision.patch.headSnapshot) ?? undefined)
-                  : undefined,
-              }
-            : {}),
-          ...(routeState ? { routeState: encodeAkanRouterState(routeState) } : {}),
-          ...(cacheKey ? { cacheKeyHash: hashRscTraceCacheKey(cacheKey) } : {}),
-          ...(cacheDecision.reason ? { cacheReason: cacheDecision.reason } : {}),
+          routerStateReason: currentRouterState.reason,
+          cacheKey: cacheEntry?.key,
+          cacheReason: cacheDecision.reason,
+          routeState: targetRouterState,
         });
         const cachedPatch = patchCacheEntry ? this.#getCached(this.#patchResultCache, patchCacheEntry.key) : null;
         if (
@@ -614,7 +597,7 @@ export class RscRenderer {
             safePatchDecision.patch.patchStartIndex,
             searchParams,
             notFound,
-            { guarded: !!admittedHead },
+            { guarded: admitted || !!admittedHead },
           );
           if (suffixElement === null) {
             effectivePatchDecision = {
@@ -633,11 +616,11 @@ export class RscRenderer {
           }
         } else if (match)
           ({ element, head: routeHead } = await this.#renderMatched(urlObj, match, searchParams, notFound, {
-            guarded: !!admittedHead,
+            guarded: admitted || !!admittedHead,
             head: admittedHead,
             gate,
           }));
-        else element = await this.#renderNotFound(urlObj, gate);
+        else element = await this.#renderNotFound(urlObj, notFoundFallback, gate);
         const routeHeadKey = routeHead?.snapshots?.layoutsKey;
         const traceCacheKey =
           effectivePatchDecision.status === "patch" ? (patchCacheEntry?.key ?? cacheEntry?.key) : cacheEntry?.key;
@@ -1488,19 +1471,18 @@ export class RscRenderer {
     });
   }
 
-  async #renderNotFound(url: URL, gate?: RouteShellGate): Promise<ReactNode> {
-    const matchedFallback = RouteTreeBuilder.matchFallback(url.pathname, this.#fallbackRoutes);
-    if (matchedFallback) {
-      const searchParams = parseSearchParams(url.search);
-      const route = await RouteElementComposer.admittedFallbackOf(matchedFallback.fallbackRoute, {
-        params: matchedFallback.params,
-        searchParams,
-      });
+  async #renderNotFound(
+    url: URL,
+    notFoundFallback: AdmittedNotFoundFallback | null,
+    gate?: RouteShellGate,
+  ): Promise<ReactNode> {
+    if (notFoundFallback) {
+      const { route, params, searchParams } = notFoundFallback;
       try {
         const fallback = await this.#renderFallbackDocument({
           kind: "not-found",
           route,
-          params: matchedFallback.params,
+          params,
           searchParams,
           pathname: url.pathname,
           url,

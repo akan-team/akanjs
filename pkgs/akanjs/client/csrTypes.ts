@@ -44,6 +44,9 @@ export interface PageConfig {
    * read through `usePathCtx()`.
    */
   rscPatchHeadSafe?: boolean;
+  /** `false` answers a `Link` prefetch of the page (on a layout, of every page under it) without rendering it, for a
+   * render with a side effect such as counting a view; the click renders it as usual. */
+  prefetch?: boolean;
   topSafeAreaColor?: string;
   bottomSafeAreaColor?: string;
   /** Keeps the route (on a `_layout`, its whole directory) out of `akan build` while `akan start` serves it. Write a

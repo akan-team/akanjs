@@ -7,7 +7,7 @@ const harness = (
   options: { ttlMs?: number; freshMs?: number; maxConcurrent?: number; maxEntries?: number; maxQueued?: number } = {},
 ) => {
   let clock = 0;
-  const requests: { href: string; signal: AbortSignal; finish: (body?: string, status?: number) => void }[] = [];
+  const requests: { href: string; signal: AbortSignal; finish: (body?: string | null, status?: number) => void }[] = [];
   const cache = new RscPrefetchCache({
     ...options,
     now: () => clock,
@@ -148,6 +148,24 @@ describe("RscPrefetchCache", () => {
     expect(await Promise.all(answers)).toEqual([null, null, null]);
   });
 
+  test("keeps a page that opts out of prefetching as nothing, and asks it again only past the TTL", async () => {
+    const { cache, requests, hrefs, advance } = harness({ ttlMs: 1000 });
+    cache.request("/counted", "acct");
+    requests[0]?.finish(null, 204);
+    await sleep(0);
+
+    cache.request("/counted", "acct");
+    expect(hrefs()).toEqual(["/counted"]);
+    expect(await cache.take("/counted", "acct")?.response).toBeNull();
+
+    cache.request("/counted", "acct");
+    requests[1]?.finish(null, 204);
+    await sleep(0);
+    advance(1001);
+    cache.request("/counted", "acct");
+    expect(hrefs()).toEqual(["/counted", "/counted", "/counted"]);
+  });
+
   test("keeps a not-found, which the navigation acts on as if it had asked", async () => {
     const { cache, requests } = harness();
     cache.request("/a", "acct");
@@ -183,6 +201,60 @@ describe("RscPrefetchCache", () => {
     }
 
     expect(hrefs()).toEqual(["/busy", "/focused", "/hovered", "/shown"]);
+  });
+
+  test("keeps the links that came into view first when more show than the queue holds", async () => {
+    const { cache, requests, hrefs } = harness({ maxConcurrent: 1, maxQueued: 2 });
+    cache.request("/busy", "acct");
+    for (const href of ["/top", "/middle", "/bottom"]) cache.request(href, "acct", "low");
+
+    for (let i = 0; i < 3; i += 1) {
+      requests[i]?.finish();
+      await sleep(0);
+    }
+
+    expect(hrefs()).toEqual(["/busy", "/top", "/middle"]);
+  });
+
+  test("withdraws a link still waiting in the queue, never the same page asked for again since", async () => {
+    const { cache, requests, hrefs } = harness({ maxConcurrent: 1 });
+    cache.request("/busy", "acct");
+    const withdrawLeft = cache.request("/left", "acct", "low");
+    const withdrawHovered = cache.request("/hovered", "acct", "low");
+    cache.request("/hovered", "acct");
+
+    withdrawLeft();
+    withdrawHovered();
+    requests[0]?.finish();
+    await sleep(0);
+
+    expect(hrefs()).toEqual(["/busy", "/hovered"]);
+    expect(cache.queuedCount).toBe(0);
+  });
+
+  test("keeps a page two links wait on queued until both have withdrawn, each only once", async () => {
+    const { cache, requests, hrefs } = harness({ maxConcurrent: 1 });
+    cache.request("/busy", "acct");
+    const withdrawFirst = cache.request("/shared", "acct", "low");
+    const withdrawSecond = cache.request("/shared", "acct", "low");
+    cache.request("/after", "acct", "low");
+
+    withdrawSecond();
+    withdrawSecond();
+    expect(cache.queuedCount).toBe(2);
+    requests[0]?.finish();
+    await sleep(0);
+    expect(hrefs()).toEqual(["/busy", "/shared"]);
+
+    const withdrawThird = cache.request("/queued", "acct", "low");
+    const withdrawFourth = cache.request("/queued", "acct", "low");
+    withdrawThird();
+    withdrawFourth();
+    withdrawFirst();
+    requests[1]?.finish();
+    await sleep(0);
+    expect(hrefs()).toEqual(["/busy", "/shared", "/after"]);
+    expect(cache.queuedCount).toBe(0);
   });
 
   test("prune forgets what is queued and what has expired, and keeps a page still fresh", async () => {

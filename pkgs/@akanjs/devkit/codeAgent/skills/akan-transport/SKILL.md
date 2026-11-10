@@ -27,6 +27,8 @@ description: "Guard and tune endpoints on the wire: writing a Can<Verb><Model> g
 - `{ rateLimit: { calls, windowMs?, by? } }` per endpoint, `option.setRateLimit` per app, `plug(RateLimit)` for a
   business key.
 - A mutation repeated under one `Idempotency-Key` header runs once and replays its first answer.
+- A browser send that changes nothing read back (typing status, a cursor move) passes `{ keepsReads: true }`, so it
+  neither ends in-flight query sharing nor drops prefetched pages.
 - `{ method: "PATCH" | "PUT" | "DELETE" }` moves a mutation off `POST` — only when a foreign protocol forces it.
 - `errors: { 409: ["ticket.error.locked"] }` names the errors an endpoint throws on purpose.
 

@@ -11,7 +11,7 @@ import type {
 } from "akanjs/client";
 import { StreamedRead } from "akanjs/fetch";
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
-import { getExplicitPageConfigKeys, resolvePageState } from "../client/frameConfig";
+import { getExplicitPageConfigKeys, mergePageConfigs, resolvePageState } from "../client/frameConfig";
 import { RouteGuards } from "../client/route/RouteGuards";
 import { RouteHead } from "../client/route/RouteHead";
 import type { FallbackHead } from "./fallbackHead";
@@ -33,6 +33,12 @@ export interface RouteNotFoundInPlace {
   onNotFound: () => void;
   /** The document head still to be written, which then carries the not-found view's head tags and `noindex`. */
   head?: FallbackHead;
+}
+
+export interface AdmittedNotFoundFallback {
+  route: LayoutFallbackRoute;
+  params: Record<string, string>;
+  searchParams: Record<string, string | string[]>;
 }
 
 export class RouteElementComposer {
@@ -126,6 +132,34 @@ export class RouteElementComposer {
     await Promise.all(renders.map((routeRender) => routeRender?.checkArgs?.({ params, searchParams })));
   }
 
+  //? Security: a prefetch answers as its click would up to the body: the guards still run and redirect, and a refusal is
+  //? judged by the fallback the click would draw, so a path behind a guard reads the same whether or not it exists.
+  static async prefetchVerdict(
+    match: { pathRoute: PathRoute; params: Record<string, string> } | null,
+    notFoundFallback: AdmittedNotFoundFallback | null,
+    searchParams: Record<string, string | string[]>,
+  ): Promise<"refused" | "admitted" | "unchecked"> {
+    if (!match) {
+      const refused = notFoundFallback && (await RouteElementComposer.#layoutsRefusePrefetch(notFoundFallback.route));
+      return refused ? "refused" : "unchecked";
+    }
+    const configChain = await RouteElementComposer.#resolvePageConfigChain(match.pathRoute);
+    if (!configChain.some((config) => config.prefetch === false)) return "unchecked";
+    try {
+      await RouteElementComposer.admit({ ...match, searchParams });
+    } catch (error) {
+      if (RouteElementComposer.#isRedirect(error)) throw error;
+      const fallbackRoute = RouteElementComposer.fallbackRouteOf(match.pathRoute, error);
+      if (await RouteElementComposer.#layoutsRefusePrefetch(fallbackRoute)) return "refused";
+      throw error;
+    }
+    return mergePageConfigs(configChain).prefetch === false ? "refused" : "admitted";
+  }
+
+  static async #layoutsRefusePrefetch(route: PathRoute | LayoutFallbackRoute): Promise<boolean> {
+    return mergePageConfigs(await RouteElementComposer.#resolveLayoutPageConfigChain(route)).prefetch === false;
+  }
+
   //? Security: a guard refused everything from its render down, so a fallback drawn after it keeps only the layouts above
   //? it, and no head: those bodies and heads read what the refused visitor may not.
   static fallbackRouteOf<Route extends LayoutFallbackRoute>(route: Route, error: unknown): Route | LayoutFallbackRoute {
@@ -149,9 +183,22 @@ export class RouteElementComposer {
       await RouteGuards.run([...route.renderRootLayouts, ...route.renderLayouts], props);
       return route;
     } catch (error) {
-      if ((error as { digest?: unknown } | null)?.digest === "AKAN_REDIRECT") throw error;
+      if (RouteElementComposer.#isRedirect(error)) throw error;
       return RouteElementComposer.fallbackRouteOf(route, error);
     }
+  }
+
+  static async admitNotFoundFallback(
+    matched: { fallbackRoute: LayoutFallbackRoute; params: Record<string, string> } | null,
+    searchParams: Record<string, string | string[]>,
+  ): Promise<AdmittedNotFoundFallback | null> {
+    if (!matched) return null;
+    const props = { params: matched.params, searchParams };
+    return { ...props, route: await RouteElementComposer.admittedFallbackOf(matched.fallbackRoute, props) };
+  }
+
+  static #isRedirect(error: unknown): boolean {
+    return (error as { digest?: unknown } | null)?.digest === "AKAN_REDIRECT";
   }
 
   static composeSuffix({
