@@ -30,6 +30,7 @@ import {
   resolveRouteModule,
 } from "../client/route/resolveRouteModule";
 import { matchRoutePrefix } from "../common/routeConvention";
+import type { LevelBoundary, LevelBoundaryOwner } from "./routeElementComposer";
 
 type RouteModuleKindWithOverrides = "page" | "layout" | "overrides";
 
@@ -271,7 +272,7 @@ export class RouteTreeBuilder {
       const { module: mod } = await loadModule();
       return "pageConfig" in mod ? mod.pageConfig : undefined;
     };
-    const routeRender: RouteRender = {
+    const routeRender: RouteRender & LevelBoundaryOwner = {
       isAsync: true,
       resolveLoading: async () => {
         const { module: mod } = await loadModule();
@@ -311,7 +312,8 @@ export class RouteTreeBuilder {
       routeRender.getLayoutTheme = async () => (await layoutModule()).theme;
       routeRender.getLayoutViewport = async () => (await layoutModule()).viewport;
       routeRender.getLayoutManifest = async () => (await layoutModule()).manifest;
-      routeRender.getLevelBoundary = async () => (await layoutModule()).LevelBoundary;
+      routeRender.getLevelBoundary = async () =>
+        ((await layoutModule()) as { LevelBoundary?: LevelBoundary }).LevelBoundary;
       routeRender.resolveNotFound = async () => syncFallbacks(await layoutModule()).NotFound;
       routeRender.resolveError = async () => syncFallbacks(await layoutModule()).Error;
     }

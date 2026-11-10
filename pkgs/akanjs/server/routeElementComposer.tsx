@@ -3,7 +3,6 @@ import type {
   LayoutErrorRender,
   LayoutFallbackRoute,
   LayoutNotFoundRender,
-  LevelBoundary,
   PageConfig,
   PathRoute,
   ResolvedHead,
@@ -11,7 +10,15 @@ import type {
   RouteRender,
 } from "akanjs/client";
 import { StreamedRead } from "akanjs/fetch";
-import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
+import {
+  Children,
+  type ComponentType,
+  cloneElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+  Suspense,
+} from "react";
 import { getExplicitPageConfigKeys, mergePageConfigs, resolvePageState } from "../client/frameConfig";
 import { RouteGuards } from "../client/route/RouteGuards";
 import { RouteHead } from "../client/route/RouteHead";
@@ -42,6 +49,14 @@ export interface AdmittedNotFoundFallback {
   searchParams: Record<string, string | string[]>;
 }
 
+export type LevelBoundary = ComponentType<{ children?: ReactNode }>;
+export interface LevelBoundaryOwner {
+  getLevelBoundary?: () => Promise<LevelBoundary | undefined>;
+}
+export interface SsrPathRoute extends PathRoute {
+  levelBoundary?: LevelBoundary;
+}
+
 export class RouteElementComposer {
   static readonly #levelErrors = new WeakSet<object>();
 
@@ -57,7 +72,7 @@ export class RouteElementComposer {
   }: {
     pathRoute: PathRoute;
     basePath?: string | null;
-  }): Promise<PathRoute> {
+  }): Promise<SsrPathRoute> {
     const pageConfigChain = await RouteElementComposer.#resolvePageConfigChain(pathRoute);
     return {
       ...pathRoute,
@@ -70,7 +85,7 @@ export class RouteElementComposer {
 
   static async #levelBoundaryOf(route: PathRoute | LayoutFallbackRoute): Promise<LevelBoundary | undefined> {
     for (const render of route.renderRootLayouts) {
-      const levelBoundary = await render.getLevelBoundary?.();
+      const levelBoundary = await (render as RouteRender & LevelBoundaryOwner).getLevelBoundary?.();
       if (levelBoundary) return levelBoundary;
     }
     return undefined;
@@ -106,7 +121,7 @@ export class RouteElementComposer {
     notFound,
     gate,
   }: {
-    pathRoute: PathRoute;
+    pathRoute: SsrPathRoute;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     navKey?: string;
@@ -220,7 +235,7 @@ export class RouteElementComposer {
     navKey,
     notFound,
   }: {
-    pathRoute: PathRoute;
+    pathRoute: SsrPathRoute;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     patchStartIndex: number;
