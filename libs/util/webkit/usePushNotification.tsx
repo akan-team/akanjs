@@ -104,9 +104,21 @@ const withDeviceId = async ({ token, provider, platform }: NativePushToken): Pro
   deviceId: await getPushDeviceId(),
 });
 
+type TokenListener = (pushToken: PushToken) => void;
+
 //? One native subscription per page, kept: an effect re-run swaps the listener without a $unlisten/$listen round trip.
-const tokenListeners = new Set<(pushToken: PushToken) => void>();
+const tokenListeners = new Set<TokenListener>();
+//? The shell keeps the latest token no page heard for the next listener; with the subscription kept, the page must.
+let heldToken: NativePushToken | null = null;
 let tokenSubscription: Promise<void> | null = null;
+
+const handOn = (nativeToken: NativePushToken, listeners: TokenListener[]) =>
+  void withDeviceId(nativeToken)
+    .then((pushToken) => {
+      for (const listener of listeners) if (tokenListeners.has(listener)) listener(pushToken);
+    })
+    .catch((error: unknown) => Logger.warn(`A rotated push token was not handed on: ${String(error)}`));
+
 const subscribeTokens = () =>
   (tokenSubscription ??= loadPush().then((push) => {
     if (!push) {
@@ -115,12 +127,8 @@ const subscribeTokens = () =>
     }
     try {
       push.listen("token", (nativeToken) => {
-        if (!tokenListeners.size) return;
-        void withDeviceId(nativeToken)
-          .then((pushToken) => {
-            for (const listener of tokenListeners) listener(pushToken);
-          })
-          .catch((error: unknown) => Logger.warn(`A rotated push token was not handed on: ${String(error)}`));
+        if (tokenListeners.size) handOn(nativeToken, [...tokenListeners]);
+        else heldToken = nativeToken;
       });
     } catch (error) {
       tokenSubscription = null;
@@ -296,8 +304,10 @@ export const usePushNotification = () => {
   /** A native shell's token rotates on its own (FCM refreshes, APNs after a restore); hand each new one to the server. */
   const onTokenChange = (listener: (pushToken: PushToken) => void) => {
     if (!isNativeApp()) return () => undefined;
-    const each = (pushToken: PushToken) => listener(pushToken);
+    const each: TokenListener = (pushToken) => listener(pushToken);
     tokenListeners.add(each);
+    if (heldToken) handOn(heldToken, [each]);
+    heldToken = null;
     void subscribeTokens();
     return () => {
       tokenListeners.delete(each);

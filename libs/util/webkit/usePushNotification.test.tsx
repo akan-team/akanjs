@@ -97,12 +97,17 @@ const installWindow = () => {
   });
 };
 
+//? A fresh module per test: the hook keeps one native token subscription per page in module state.
+let instance = 0;
 const hookOf = async () => {
-  const { usePushNotification } = await import("./usePushNotification");
+  const { usePushNotification } = (await import(
+    `./usePushNotification?instance=${instance}`
+  )) as typeof import("./usePushNotification");
   return usePushNotification();
 };
 
 afterEach(() => {
+  instance += 1;
   Object.defineProperty(globalThis, "window", { value: originalWindow, configurable: true });
   Object.assign(shell, { native: false, display: "granted", requested: 0, registered: 0, tokenListeners: [] });
   stored.clear();
@@ -116,6 +121,9 @@ afterEach(() => {
     cleanup();
   });
 });
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+const rotate = (token: string) => shell.tokenListeners[0]?.({ token, provider: "fcm", platform: "android" });
 
 describe("usePushNotification", () => {
   test("registers a native shell with its provider and one installation id, and never loads firebase", async () => {
@@ -151,7 +159,6 @@ describe("usePushNotification", () => {
     shell.native = true;
     const push = await hookOf();
     const { deviceId } = (await push.getToken()) ?? {};
-    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
     const early: unknown[] = [];
     const received: unknown[] = [];
     const later: unknown[] = [];
@@ -159,20 +166,43 @@ describe("usePushNotification", () => {
     push.onTokenChange((pushToken) => early.push(pushToken))();
     const stop = push.onTokenChange((pushToken) => received.push(pushToken));
     await tick();
-    shell.tokenListeners[0]?.({ token: "fcm-1", provider: "fcm", platform: "android" });
+    rotate("fcm-1");
     await tick();
     stop();
-    shell.tokenListeners[0]?.({ token: "fcm-2", provider: "fcm", platform: "android" });
-    await tick();
     const stopLater = push.onTokenChange((pushToken) => later.push(pushToken));
     await tick();
-    shell.tokenListeners[0]?.({ token: "fcm-3", provider: "fcm", platform: "android" });
+    rotate("fcm-2");
     await tick();
     stopLater();
 
     expect(early).toEqual([]);
     expect(received).toEqual([{ token: "fcm-1", provider: "fcm", platform: "android", deviceId }]);
-    expect(later).toEqual([{ token: "fcm-3", provider: "fcm", platform: "android", deviceId }]);
+    expect(later).toEqual([{ token: "fcm-2", provider: "fcm", platform: "android", deviceId }]);
+    expect(shell.tokenListeners).toHaveLength(1);
+  });
+
+  test("keeps the latest token rotated while no listener is mounted for the next listener", async () => {
+    installWindow();
+    shell.native = true;
+    const push = await hookOf();
+    const { deviceId } = (await push.getToken()) ?? {};
+    const later: unknown[] = [];
+
+    push.onTokenChange(() => undefined)();
+    await tick();
+    rotate("fcm-1");
+    rotate("fcm-2");
+    await tick();
+    const stopLater = push.onTokenChange((pushToken) => later.push(pushToken));
+    await tick();
+    rotate("fcm-3");
+    await tick();
+    stopLater();
+
+    expect(later).toEqual([
+      { token: "fcm-2", provider: "fcm", platform: "android", deviceId },
+      { token: "fcm-3", provider: "fcm", platform: "android", deviceId },
+    ]);
     expect(shell.tokenListeners).toHaveLength(1);
   });
 
