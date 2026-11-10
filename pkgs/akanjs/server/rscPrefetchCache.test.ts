@@ -4,10 +4,21 @@ import { RscPrefetchCache } from "./rscPrefetchCache";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const harness = (
-  options: { ttlMs?: number; freshMs?: number; maxConcurrent?: number; maxEntries?: number; maxQueued?: number } = {},
+  options: {
+    ttlMs?: number;
+    freshMs?: number;
+    maxConcurrent?: number;
+    maxEntries?: number;
+    maxQueued?: number;
+    baseOf?: () => string;
+  } = {},
 ) => {
   let clock = 0;
-  const requests: { href: string; signal: AbortSignal; finish: (body?: string | null, status?: number) => void }[] = [];
+  const requests: {
+    href: string;
+    signal: AbortSignal;
+    finish: (body?: string | null, status?: number, headers?: Record<string, string>) => void;
+  }[] = [];
   const cache = new RscPrefetchCache({
     ...options,
     now: () => clock,
@@ -17,7 +28,8 @@ const harness = (
         requests.push({
           href,
           signal,
-          finish: (body = `page ${href}`, status = 200) => resolve(new Response(body, { status })),
+          finish: (body = `page ${href}`, status = 200, headers = {}) =>
+            resolve(new Response(body, { status, headers })),
         });
       }),
   });
@@ -310,5 +322,88 @@ describe("RscPrefetchCache", () => {
     expect(cache.has("/a", "acct")).toBe(false);
     expect(cache.has("/b", "acct")).toBe(true);
     expect(cache.has("/c", "acct")).toBe(true);
+  });
+
+  test("asks again for a page prefetched under another base, and not under the same one", async () => {
+    let base = "a";
+    const { cache, requests } = harness({ baseOf: () => base });
+    cache.request("/b", "acct", "high", base);
+    requests[0]?.finish();
+    await sleep(0);
+
+    cache.request("/b", "acct", "high", "a");
+    expect(requests).toHaveLength(1);
+    base = "c";
+    cache.request("/b", "acct", "high", base);
+
+    expect(requests).toHaveLength(2);
+    expect(cache.has("/b", "acct", "c")).toBe(true);
+    expect(cache.has("/b", "acct", "a")).toBe(false);
+  });
+
+  test("names a prefetch by the base it started under, not the one it was queued under", async () => {
+    let base = "a";
+    const { cache, requests } = harness({ baseOf: () => base, maxConcurrent: 1 });
+    cache.request("/x", "acct", "high", base);
+    cache.request("/y", "acct", "high", base);
+    base = "c";
+    requests[0]?.finish();
+    await sleep(0);
+    requests[1]?.finish();
+    await sleep(0);
+
+    expect(cache.has("/y", "acct", "c")).toBe(true);
+    expect(cache.has("/y", "acct", "a")).toBe(false);
+  });
+
+  test("hands over a patch only under its own base, and a whole page under any", async () => {
+    const base = "a";
+    const { cache, requests } = harness({ baseOf: () => base, maxConcurrent: 3 });
+    const patch = { "X-Akan-Rsc-Partial": "patch" };
+    for (const href of ["/patch-here", "/patch-there", "/whole"]) cache.request(href, "acct", "high", base);
+    requests[0]?.finish("patch of here", 200, patch);
+    requests[1]?.finish("patch of there", 200, patch);
+    requests[2]?.finish("whole page");
+    await sleep(0);
+
+    const here = await cache.take("/patch-here", "acct", undefined, "a")?.response;
+    const there = cache.take("/patch-there", "acct", undefined, "c");
+    const whole = await cache.take("/whole", "acct", undefined, "c")?.response;
+
+    expect(await here?.text()).toBe("patch of here");
+    expect(there).toBeNull();
+    expect(await whole?.text()).toBe("whole page");
+  });
+
+  test("cuts a patch refused under another base, and hands its slot to the next prefetch in the queue", async () => {
+    const { cache, requests } = harness({ baseOf: () => "a", maxConcurrent: 1 });
+    cache.request("/p", "acct", "high", "a");
+    cache.request("/q", "acct", "high", "a");
+    let release = () => {};
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(new TextEncoder().encode("0:1\n"));
+        await new Promise<void>((resolve) => (release = resolve));
+        controller.close();
+      },
+    });
+    requests[0]?.finish(body as unknown as string, 200, { "X-Akan-Rsc-Partial": "patch" });
+    await sleep(0);
+
+    expect(cache.take("/p", "acct", undefined, "c")).toBeNull();
+    await sleep(5);
+
+    const state = { aborted: requests[0]?.signal.aborted, active: cache.activeCount, started: requests.length };
+    release();
+    expect(state).toEqual({ aborted: true, active: 1, started: 2 });
+    expect(requests[1]?.href).toBe("/q");
+  });
+
+  test("cuts a prefetch taken under another base before its answer is known, rather than waiting on it", async () => {
+    const { cache, requests } = harness({ baseOf: () => "a" });
+    cache.request("/p", "acct", "high", "a");
+
+    expect(cache.take("/p", "acct", undefined, "c")).toBeNull();
+    expect(requests[0]?.signal.aborted).toBe(true);
   });
 });
