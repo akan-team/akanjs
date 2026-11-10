@@ -99,6 +99,18 @@ describe("createTsconfigPackageResolver — wildcard tsconfig mapping", () => {
     });
   });
 
+  test("resolves a specifier that names its file with an extension, as the generated root layout imports System", async () => {
+    const root = await makeTempRoot();
+    const entryFile = await write(root, "pkgs/akanjs/ui/System/index.tsx");
+    const resolve = await resolverFor(root, { "akanjs/ui/*": ["./pkgs/akanjs/ui/*"] });
+
+    expect(await resolve("akanjs/ui/System/index.tsx")).toEqual({
+      pkgName: "akanjs/ui/System",
+      entryFile,
+      pkgDir: path.join(root, "pkgs/akanjs/ui/System"),
+    });
+  });
+
   test("resolves a directory barrel and keeps the specifier", async () => {
     const root = await makeTempRoot();
     const entryFile = await write(root, "apps/minimal/index.tsx");

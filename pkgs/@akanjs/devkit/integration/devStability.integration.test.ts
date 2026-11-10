@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { AkanAppHost } from "../akanApp";
 import { DevGeneratedIndexSync } from "../frontendBuild";
-import { DevStabilityHarness, type DevStabilityHmrProbe } from "./devStabilityHarness";
+import { DevStabilityHarness, type DevStabilityHmrProbe } from "./devStabilityHarness.fixture";
 
 const integrationEnabled = process.env.AKAN_DEV_STABILITY_INTEGRATION === "1";
 // Contention pushes a cold dev-server boot from ~3s to nearly a minute; 120s ran out mid-restart.

@@ -127,4 +127,39 @@ describe("MaintainabilityReport", () => {
       "  *.service.ts: Move state transitions into document chain methods, and split an unrelated responsibility into its own module.",
     ]);
   });
+
+  test("gives a package file, whatever its folder, a long function and a large class the package fixes", () => {
+    const message = MaintainabilityReport.describe("pkgs/akanjs", [
+      { ...fileOf("ui/Constant/Doc.tsx", 813), maxLines: 800 },
+      {
+        ...fileOf("store/action.ts", 824),
+        rule: "akan.size.function",
+        key: "store/action.ts#makeActions",
+        maxLines: 150,
+        function: "makeActions",
+      },
+      {
+        kind: "classSize",
+        rule: "akan.size.class",
+        key: "server/akanApp.ts#AkanApp",
+        file: "server/akanApp.ts",
+        line: 90,
+        owner: "AkanApp",
+        memberCount: 154,
+        maxMembers: 60,
+        recorded: 150,
+      },
+    ]);
+
+    expect(message).toContain(
+      "pkgs/akanjs/ui/Constant/Doc.tsx:1  akan.size.file  file has 813 lines, over the 800-line limit",
+    );
+    expect(message).toContain(
+      "pkgs/akanjs/store/action.ts:1  akan.size.function  function makeActions has 824 lines, over the 150-line limit",
+    );
+    expect(message).toContain(
+      "pkgs/akanjs/server/akanApp.ts:90  akan.size.class  class AkanApp has 154 members, over the 60-member limit, up from 150",
+    );
+    expect(fixLinesOf(message).map((line) => line.split(":")[0])).toEqual(["  package file", "  function", "  class"]);
+  });
 });

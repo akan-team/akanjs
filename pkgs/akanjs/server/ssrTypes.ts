@@ -1,4 +1,5 @@
 import type { AkanRequestStore, AkanTheme } from "akanjs/fetch";
+import type { ModulePreloadPlan } from "./artifact/modulePreloadPlan";
 
 export interface SsrManifestEntry {
   id: string;
@@ -56,6 +57,8 @@ export interface SsrFromRscInput {
   bootstrapModules?: string[];
   /** Modules a bootstrap module imports at load: preloaded in the head, never run as scripts. */
   modulePreloads?: string[];
+  /** Preloads the chunks of each client reference the shell's flight names, with the runtime and their vendors. */
+  modulePreloadPlan?: ModulePreloadPlan;
   extraBootstrapInline?: string;
   // One React across route chunks: their externalized specifiers resolve to the base build's vendor entries.
   // Injected by a stream transform, not React children: the spec needs the import map before any module fetch.

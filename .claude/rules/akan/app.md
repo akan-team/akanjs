@@ -44,11 +44,11 @@ each plugin's header and diagnostic carry its full reasoning.
 
 ## Akan Sync Conventions
 
-- App root files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.baseline.json`, `akan.config.ts`, `client.ts`,
-  `main.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.tsbuildinfo`; folders: `.akan`, `common`, `env`,
-  `lib`, `native`, `page`, `plugin`, `private`, `public`, `script`, `secrets`, `srvkit`, `ui`, `webkit`. A Capacitor-era
-  `ios` / `android` / `mobile` folder or `capacitor.config.*` in an app root is refused as a leftover (native
-  projects live under `dist/native/<app>/<target>`).
+- App root files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.baseline.json`, `akan.budget.json`,
+  `akan.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.tsbuildinfo`;
+  folders: `.akan`, `common`, `env`, `lib`, `native`, `page`, `plugin`, `private`, `public`, `script`, `secrets`,
+  `srvkit`, `ui`, `webkit`. A Capacitor-era `ios` / `android` / `mobile` folder or `capacitor.config.*` in an app root
+  is refused as a leftover (native projects live under `dist/native/<app>/<target>`).
 - Lib root files: `AGENTS.md`, `CLAUDE.md`, `README.md`, `akan.baseline.json`, `akan.config.ts`, `akan.lib.json`,
   `client.ts`, `index.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.spec.json`, `tsconfig.tsbuildinfo`;
   folders: the app's minus `.akan`, `script`, `secrets` (no `main.ts` either — a lib is never booted).
