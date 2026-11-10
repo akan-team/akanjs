@@ -43,8 +43,12 @@ export class GitRevision {
     };
   }
 
-  async filesAt(sha: string, isWanted: (file: string) => boolean): Promise<Map<string, string>> {
-    const listed = await this.#git(["ls-tree", "-r", "-z", "--name-only", sha, "--", ...systemPaths]);
+  async filesAt(
+    sha: string,
+    isWanted: (file: string) => boolean,
+    paths: string[] = systemPaths,
+  ): Promise<Map<string, string>> {
+    const listed = await this.#git(["ls-tree", "-r", "-z", "--name-only", sha, "--", ...paths]);
     if (listed === null) throw new Error(`git ls-tree failed for ${sha}`);
     const files = listed.split("\0").filter((file) => file && isWanted(file));
     const texts = new Map<string, string>();

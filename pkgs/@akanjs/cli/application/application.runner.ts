@@ -369,7 +369,7 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       return `./${found.split(path.sep).join("/")}`;
     });
   }
-  async test(exec: Exec, testPaths: string[] = []) {
+  async test(exec: Exec, testPaths: string[] = [], flags: string[] = []) {
     const isSignalTarget = exec instanceof AppExecutor || exec instanceof LibExecutor;
     if (!testPaths.length && !hasTestFile(exec.cwdPath)) {
       const hint = isSignalTarget
@@ -389,7 +389,7 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
           AKAN_RUNTIME_DIR: path.join(exec.workspace.workspaceRoot, "local", `${exec.type}s`, exec.name, "runtime"),
         }
       : {};
-    const args = ["test", "--isolate", ...(preloadPath ? ["--preload", preloadPath] : []), ...testPaths];
+    const args = ["test", "--isolate", ...flags, ...(preloadPath ? ["--preload", preloadPath] : []), ...testPaths];
     await exec.spawn("bun", args, {
       ...(isSignalTarget ? { env: { ...process.env, ...env } } : {}),
       stdio: "inherit",
