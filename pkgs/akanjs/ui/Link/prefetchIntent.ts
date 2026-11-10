@@ -9,6 +9,7 @@ interface PrefetchIntentHandlers {
   onPointerEnter?: (event: PointerEvent<HTMLAnchorElement>) => void;
   onPointerLeave?: (event: PointerEvent<HTMLAnchorElement>) => void;
   onPointerDown?: (event: PointerEvent<HTMLAnchorElement>) => void;
+  onPointerCancel?: (event: PointerEvent<HTMLAnchorElement>) => void;
   onFocus?: (event: FocusEvent<HTMLAnchorElement>) => void;
   onBlur?: (event: FocusEvent<HTMLAnchorElement>) => void;
 }
@@ -41,13 +42,19 @@ export const usePrefetchIntent = (href: string, mode: LinkPrefetch, handlers: Pr
     },
     onPointerLeave: (event: PointerEvent<HTMLAnchorElement>) => {
       handlers.onPointerLeave?.(event);
-      //? A touch pointer leaves as it lifts, before the tap's focus arrives.
-      if (event.pointerType !== "touch") pressed.current = false;
+      //? A touch, or a pen out of hover range, leaves as it lifts, before the tap's focus arrives.
+      if (event.pointerType === "mouse") pressed.current = false;
       forgo();
     },
     onPointerDown: (event: PointerEvent<HTMLAnchorElement>) => {
       handlers.onPointerDown?.(event);
       pressed.current = true;
+      forgo();
+    },
+    //? A press the browser takes over for a scroll ends here, with no click and no focus to follow it.
+    onPointerCancel: (event: PointerEvent<HTMLAnchorElement>) => {
+      handlers.onPointerCancel?.(event);
+      pressed.current = false;
       forgo();
     },
     onFocus: (event: FocusEvent<HTMLAnchorElement>) => {

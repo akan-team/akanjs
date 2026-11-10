@@ -399,6 +399,42 @@ describe("SsrLink prefetch", () => {
       unmount();
     }));
 
+  test("reads a Tab onto a link as intent after a touch there turned into a scroll", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(<SsrLink href="/scrolled">Scrolled</SsrLink>);
+      const anchor = container.querySelector("a");
+      act(() => {
+        anchor?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));
+        anchor?.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerType: "touch" }));
+        anchor?.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "touch" }));
+      });
+      act(() => anchor?.focus());
+      await act(async () => {
+        await sleep(100);
+      });
+
+      expect(prefetches).toEqual(["/en/scrolled"]);
+      unmount();
+    }));
+
+  test("takes the focus a pen tap gives the link for no keyboard intent, though the pen left as it lifted", () =>
+    inProduction(async () => {
+      const { container, unmount } = mount(<SsrLink href="/penned">Penned</SsrLink>);
+      const anchor = container.querySelector("a");
+      act(() => {
+        anchor?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "pen" }));
+        anchor?.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "pen" }));
+        anchor?.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "pen" }));
+        anchor?.focus();
+      });
+      await act(async () => {
+        await sleep(100);
+      });
+
+      expect(prefetches).toEqual([]);
+      unmount();
+    }));
+
   test("leaves a touch to the click", () =>
     inProduction(async () => {
       const { container, unmount } = mount(<SsrLink href="/docs">Docs</SsrLink>);
