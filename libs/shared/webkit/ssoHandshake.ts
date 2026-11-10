@@ -22,7 +22,7 @@ export class SsoHandshake {
   //* A native page (app://localhost) keeps no session cookie: the provider runs in the system browser instead.
   async runNative(): Promise<NativeSsoCallback | null> {
     //? Loaded here: a static import puts @akanjs/native/core on every web page whose store merges this lib.
-    const { AkanNativeError, authSession } = await import("akanjs/client/native");
+    const { authSession } = await import("akanjs/client/native/auth-session");
     const callbackScheme = getEnv().appName;
     const { verifier, challenge } = await pkcePair();
     const start = new URL(`${getServerOrigin()}${getApiPrefix()}/user/${this.#ssoType}`);
@@ -37,7 +37,7 @@ export class SsoHandshake {
       .start({ url: start.href, callbackScheme })
       .then(({ url }) => new URL(url).searchParams)
       .catch((error: unknown) => {
-        if (error instanceof AkanNativeError && error.code === "CANCELLED") return null;
+        if ((error as { code?: unknown } | null)?.code === "CANCELLED") return null;
         throw error;
       });
     return callback ? { code: callback.get("code"), verifier } : null;

@@ -146,33 +146,34 @@ describe("usePushNotification", () => {
     expect(shell.requested).toBe(1);
   });
 
-  test("passes each rotated native token on with the same installation id", async () => {
+  test("hands each rotated native token to the listeners subscribed now, over one native subscription", async () => {
     installWindow();
     shell.native = true;
     const push = await hookOf();
     const { deviceId } = (await push.getToken()) ?? {};
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const early: unknown[] = [];
     const received: unknown[] = [];
+    const later: unknown[] = [];
 
+    push.onTokenChange((pushToken) => early.push(pushToken))();
     const stop = push.onTokenChange((pushToken) => received.push(pushToken));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    shell.tokenListeners[0]?.({ token: "fcm-token", provider: "fcm", platform: "android" });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await tick();
+    shell.tokenListeners[0]?.({ token: "fcm-1", provider: "fcm", platform: "android" });
+    await tick();
     stop();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    shell.tokenListeners[0]?.({ token: "fcm-2", provider: "fcm", platform: "android" });
+    await tick();
+    const stopLater = push.onTokenChange((pushToken) => later.push(pushToken));
+    await tick();
+    shell.tokenListeners[0]?.({ token: "fcm-3", provider: "fcm", platform: "android" });
+    await tick();
+    stopLater();
 
-    expect(received).toEqual([{ token: "fcm-token", provider: "fcm", platform: "android", deviceId }]);
-    expect(shell.tokenListeners).toHaveLength(0);
-  });
-
-  test("never subscribes a listener stopped before the native push plugin loaded", async () => {
-    installWindow();
-    shell.native = true;
-    const push = await hookOf();
-
-    push.onTokenChange(() => undefined)();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(shell.tokenListeners).toHaveLength(0);
+    expect(early).toEqual([]);
+    expect(received).toEqual([{ token: "fcm-1", provider: "fcm", platform: "android", deviceId }]);
+    expect(later).toEqual([{ token: "fcm-3", provider: "fcm", platform: "android", deviceId }]);
+    expect(shell.tokenListeners).toHaveLength(1);
   });
 
   test("leaves a native shell's taps to the framework and watches no service worker", async () => {

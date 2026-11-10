@@ -2,6 +2,7 @@
 
 import { isNativeApp, router } from "akanjs/client";
 import type { NativePushToken } from "akanjs/client/native";
+import { Logger } from "akanjs/common";
 import type { Messaging } from "firebase/messaging";
 import { useEffect } from "react";
 import { pushColdOpenParam } from "../common/pushColdOpenParam";
@@ -62,7 +63,14 @@ let firebaseLoad: Promise<[typeof import("firebase/app"), typeof import("firebas
 const loadFirebase = () => (firebaseLoad ??= Promise.all([import("firebase/app"), import("firebase/messaging")]));
 
 //? Loaded on first use too: a static import puts @akanjs/native/core on every web page that renders this hook.
-const loadPush = async () => (await import("akanjs/client/native/push")).push;
+const loadPush = async () => {
+  try {
+    return (await import("akanjs/client/native/push")).push;
+  } catch (error) {
+    Logger.warn(`The native push plugin did not load, so push is off on this page: ${String(error)}`);
+    return null;
+  }
+};
 
 const isInternalDeepLink = (url: string) => {
   if (url.startsWith("/") && !url.startsWith("//")) return true;
@@ -95,6 +103,30 @@ const withDeviceId = async ({ token, provider, platform }: NativePushToken): Pro
   platform,
   deviceId: await getPushDeviceId(),
 });
+
+//? One native subscription per page, kept: an effect re-run swaps the listener without a $unlisten/$listen round trip.
+const tokenListeners = new Set<(pushToken: PushToken) => void>();
+let tokenSubscription: Promise<void> | null = null;
+const subscribeTokens = () =>
+  (tokenSubscription ??= loadPush().then((push) => {
+    if (!push) {
+      tokenSubscription = null;
+      return;
+    }
+    try {
+      push.listen("token", (nativeToken) => {
+        if (!tokenListeners.size) return;
+        void withDeviceId(nativeToken)
+          .then((pushToken) => {
+            for (const listener of tokenListeners) listener(pushToken);
+          })
+          .catch((error: unknown) => Logger.warn(`A rotated push token was not handed on: ${String(error)}`));
+      });
+    } catch (error) {
+      tokenSubscription = null;
+      Logger.warn(`The native push token subscription failed: ${String(error)}`);
+    }
+  }));
 
 //* FCM SDK 는 보이는 window client 가 하나라도 있으면 워커에서 그리지 않고 페이지로 payload 를 넘긴다.
 //* 이 경로가 없으면 앱 창을 보고 있는 동안 푸시가 통째로 사라진다 — FCM 응답은 성공이라 서버 쪽은 정상으로 보인다.
@@ -215,14 +247,14 @@ export const usePushNotification = () => {
 
   const isSupported = async () => {
     if (!isWebRuntime()) return false;
-    if (isNativeApp()) return (await loadPush()).isSupported("register");
+    if (isNativeApp()) return (await loadPush())?.isSupported("register") ?? false;
     return Boolean(getFirebaseConfig()?.apiKey && "Notification" in window && "serviceWorker" in navigator);
   };
 
   const getPermission = async (): Promise<PushNotificationPermission> => {
     if (isNativeApp()) {
       const push = await loadPush();
-      if (!push.isSupported("checkPermission")) return "denied";
+      if (!push?.isSupported("checkPermission")) return "denied";
       return (await push.checkPermission()).display;
     }
     if (!isWebRuntime() || !("Notification" in window)) return "denied";
@@ -232,7 +264,7 @@ export const usePushNotification = () => {
   const requestPermission = async (): Promise<PushNotificationPermission> => {
     if (isNativeApp()) {
       const push = await loadPush();
-      if (!push.isSupported("requestPermission")) return "denied";
+      if (!push?.isSupported("requestPermission")) return "denied";
       return (await push.requestPermission()).display;
     }
     if (!isWebRuntime() || !("Notification" in window)) return "denied";
@@ -242,7 +274,10 @@ export const usePushNotification = () => {
   //? Asks for nothing: registering with APNs or FCM shows no prompt, so callers check the permission first.
   const getToken = async () => {
     try {
-      if (isNativeApp()) return await withDeviceId(await (await loadPush()).register());
+      if (isNativeApp()) {
+        const push = await loadPush();
+        return push ? await withDeviceId(await push.register()) : undefined;
+      }
       return await getWebToken();
     } catch {
       return undefined;
@@ -261,17 +296,11 @@ export const usePushNotification = () => {
   /** A native shell's token rotates on its own (FCM refreshes, APNs after a restore); hand each new one to the server. */
   const onTokenChange = (listener: (pushToken: PushToken) => void) => {
     if (!isNativeApp()) return () => undefined;
-    let stopped = false;
-    const unlisten = loadPush().then((push) =>
-      stopped
-        ? undefined
-        : push.listen("token", (nativeToken) => {
-            void withDeviceId(nativeToken).then(listener);
-          }),
-    );
+    const each = (pushToken: PushToken) => listener(pushToken);
+    tokenListeners.add(each);
+    void subscribeTokens();
     return () => {
-      stopped = true;
-      void unlisten.then((stop) => stop?.());
+      tokenListeners.delete(each);
     };
   };
 
