@@ -204,7 +204,7 @@ List, explain, plan, apply, or validate a workflow, or print an earlier run's re
 
 - workflow (String): Needed by every action but `list`. What it names depends on the action; see Notes.
 
-- --format (String, default markdown, markdown | json · -o): `markdown` is for a person; `json` is the report an MCP client receives.
+- --format (String, default markdown, markdown | json · -o): `markdown` is for a person; `json` is the report an MCP client receives, alone on stdout, logs on stderr.
 
 - --out (String, -w): `plan` only. Writes the plan JSON here; without it the plan is only printed and cannot be applied.
 

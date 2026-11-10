@@ -312,8 +312,8 @@ export default page()
             defaultValue: "markdown",
             enumOrFlag: "markdown | json · -o",
             desc: l.trans({
-              en: "`markdown` is for a person; `json` is the report an MCP client receives.",
-              ko: "`markdown`은 사람이 읽는 형식이고, `json`은 MCP 클라이언트가 받는 것과 같은 리포트입니다.",
+              en: "`markdown` is for a person; `json` is the report an MCP client receives, alone on stdout, logs on stderr.",
+              ko: "`markdown`은 사람이 읽는 형식이고, `json`은 MCP 클라이언트가 받는 리포트로, stdout에는 리포트만, 로그는 stderr로 나갑니다.",
             }),
           },
           {

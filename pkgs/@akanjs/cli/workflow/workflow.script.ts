@@ -33,7 +33,9 @@ export class WorkflowScript extends script("workflow", [WorkflowRunner]) {
       return;
     }
     if (action === "plan") {
-      const plan = await this.workflowRunner.planReport(workflow, inputs, { out, workspace });
+      const plan = await WorkflowScript.#reportOnly(format, () =>
+        this.workflowRunner.planReport(workflow, inputs, { out, workspace }),
+      );
       Logger.rawLog(format === "json" ? jsonText(plan) : renderWorkflowPlan(plan));
       if (workflowStatus(plan.diagnostics) === "failed") process.exitCode = 1;
       return;
@@ -41,23 +43,42 @@ export class WorkflowScript extends script("workflow", [WorkflowRunner]) {
     if (action === "apply") {
       if (!workspace) throw new Error("Workspace is required for workflow apply.");
       const registry = WorkflowRunner.stepRegistry(workspace);
-      const report = await this.workflowRunner.applyReport(workflow, { dryRun, workspace, registry });
+      const report = await WorkflowScript.#reportOnly(format, () =>
+        this.workflowRunner.applyReport(workflow, { dryRun, workspace, registry }),
+      );
       Logger.rawLog(renderWorkflowApply(report, format));
       if (report.status === "failed") process.exitCode = 1;
       return;
     }
     if (action === "validate") {
       if (!workspace) throw new Error("Workspace is required for workflow validate.");
-      const report = await this.workflowRunner.validateReport(workflow, { workspace });
+      const report = await WorkflowScript.#reportOnly(format, () =>
+        this.workflowRunner.validateReport(workflow, { workspace }),
+      );
       Logger.rawLog(renderWorkflowValidation(report, format));
       if (report.status === "failed" && report.overallStatus !== "passed-with-baseline-blockers") process.exitCode = 1;
       return;
     }
     if (action === "report") {
       if (!workspace) throw new Error("Workspace is required for workflow report.");
-      Logger.rawLog(await this.workflowRunner.report(workflow, { format, workspace }));
+      Logger.rawLog(
+        await WorkflowScript.#reportOnly(format, () => this.workflowRunner.report(workflow, { format, workspace })),
+      );
       return;
     }
     throw new Error(`Unknown workflow action: ${action}. Use list, explain, plan, apply, validate, or report.`);
+  }
+
+  static async #reportOnly<T>(format: WorkflowFormat, run: () => Promise<T>) {
+    if (format !== "json") return await run();
+    const consoleOutput = Logger.consoleOutput;
+    Logger.consoleOutput = false;
+    const removeSink = Logger.addSink((entry) => void process.stderr.write(entry.message), { minLevel: Logger.level });
+    try {
+      return await run();
+    } finally {
+      removeSink();
+      Logger.consoleOutput = consoleOutput;
+    }
   }
 }

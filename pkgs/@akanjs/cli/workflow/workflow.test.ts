@@ -1362,6 +1362,26 @@ describe("akan workflow", () => {
     });
   }, 120_000);
 
+  test("prints only the report on stdout with --format json, and keeps the text mode's log lines", async () => {
+    const { root } = track(await createTempModule("task"));
+    const applyModule = async (module: string, format: string[]) => {
+      const planPath = path.join(root, `.akan/workflows/plans/${module}.json`);
+      await workflowCli(root, ["plan", "create-module", "--app", "demo", "--module", module, "--out", planPath]);
+      return await workflowCli(root, ["apply", planPath, ...format]);
+    };
+
+    const json = await applyModule("note", ["--format", "json"]);
+    const report = JSON.parse(json.stdout) as WorkflowApplyReport;
+    const validated = await workflowCli(root, ["validate", report.applyReportPath ?? "", "--format", "json"]);
+    const text = await applyModule("memo", []);
+
+    expect(report).toMatchObject({ workflow: "create-module", status: "passed" });
+    expect(json.stderr).toContain("File Create:");
+    expect(JSON.parse(validated.stdout)).toMatchObject({ mode: "validate" });
+    expect(text.stdout).toContain("File Create:");
+    expect(text.stdout).toContain("# Workflow Apply: create-module");
+  }, 120_000);
+
   test("exits 1 when validate fails, and 0 when it passes or only baseline blockers remain", async () => {
     const { root, workspace } = track(await createTempModule("task"));
     const missingRun = await workflowCli(root, ["validate", "validation-missing", "--format", "json"]);
