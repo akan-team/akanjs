@@ -25,7 +25,7 @@ import {
 import type { RscRenderResult } from "./rscWorkerHost";
 import { SessionRefresh } from "./sessionRefresh";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
-import type { SsrLateRedirect } from "./ssrTypes";
+import type { RscTraceMetadata, SsrLateRedirect } from "./ssrTypes";
 import { type BaseBuildArtifact, defaultAkanImageConfig } from "./types";
 import {
   cacheHtmlWhileStreaming,
@@ -1131,36 +1131,39 @@ describe("WebRouter RSC stream response", () => {
     await expect(response.text()).resolves.toBe('0:E{"digest":"AKAN_REDIRECT"}\n');
   });
 
-  test("exposes RSC navigation trace metadata on response headers", async () => {
-    const response = await createRscNavigationStreamResponse({
-      type: "stream",
-      stream: streamOf("0:null\n"),
-      trace: {
-        navId: "7",
-        pathname: "/en/docs",
-        routeId: "/:lang/docs",
-        cache: "hit",
-        cacheReason: "env-opt-out",
-        cacheKeyHash: "abc123",
-        partial: "patch",
-        partialReason: "sibling-page",
-        partialCommonPrefixLength: 2,
-        patchStartIndex: 2,
-        patchSegmentPath: encodeAkanRscPatchSegmentPath(["root:/:0", "layout:/docs:1", "page:/:lang/docs:2"]),
-        patchStartSegment: "page:/:lang/docs:2",
-        patchHeadSafe: true,
-        routeState: encodeAkanRouterState({
-          version: 1,
-          buildId: 9,
-          href: "https://example.test/en/docs",
+  test("explains a render in its trace headers when asked, as a dev server does", async () => {
+    const response = await createRscNavigationStreamResponse(
+      {
+        type: "stream",
+        stream: streamOf("0:null\n"),
+        trace: {
+          navId: "7",
+          pathname: "/en/docs",
           routeId: "/:lang/docs",
-          segments: [{ kind: "page", path: "/:lang/docs", key: "page:/:lang/docs:0" }],
-        }),
+          cache: "hit",
+          cacheReason: "env-opt-out",
+          cacheKeyHash: "abc123",
+          partial: "patch",
+          partialReason: "sibling-page",
+          partialCommonPrefixLength: 2,
+          patchStartIndex: 2,
+          patchSegmentPath: encodeAkanRscPatchSegmentPath(["root:/:0", "layout:/docs:1", "page:/:lang/docs:2"]),
+          patchStartSegment: "page:/:lang/docs:2",
+          patchHeadSafe: true,
+          routeState: encodeAkanRouterState({
+            version: 1,
+            buildId: 9,
+            href: "https://example.test/en/docs",
+            routeId: "/:lang/docs",
+            segments: [{ kind: "page", path: "/:lang/docs", key: "page:/:lang/docs:0" }],
+          }),
+        },
+        lateControl: Promise.resolve(null),
+        cacheState: Promise.resolve({ cacheable: true }),
+        cancel: () => {},
       },
-      lateControl: Promise.resolve(null),
-      cacheState: Promise.resolve({ cacheable: true }),
-      cancel: () => {},
-    });
+      { explain: true },
+    );
 
     expect(response.headers.get("X-Akan-Rsc-Nav-Id")).toBe("7");
     expect(response.headers.get("X-Akan-Rsc-Pathname")).toBe("/en/docs");
@@ -1178,38 +1181,80 @@ describe("WebRouter RSC stream response", () => {
     expect(response.headers.get("X-Akan-Rsc-State")).toBeTruthy();
   });
 
-  test("exposes same-route searchParams patch trace metadata on response headers", async () => {
-    const response = await createRscNavigationStreamResponse({
-      type: "stream",
-      stream: streamOf("0:null\n"),
-      trace: {
-        navId: "8",
-        pathname: "/en/docs",
-        routeId: "/:lang/docs",
-        cache: "miss" as const,
-        partial: "patch",
-        partialReason: "same-route-search-params",
-        partialCommonPrefixLength: 3,
-        patchStartIndex: 2,
-        patchSegmentPath: encodeAkanRscPatchSegmentPath(["root:/:0", "layout:/docs:1", "page:/:lang/docs:2"]),
-        patchStartSegment: "page:/:lang/docs:2",
-        patchHeadSafe: true,
-        routeState: encodeAkanRouterState({
-          version: 1,
-          buildId: 9,
-          href: "https://example.test/en/docs?page=2",
-          routeId: "/:lang/docs",
-          segments: [
-            { kind: "root-layout", path: "/", key: "root:/:0" },
-            { kind: "layout", path: "/docs", key: "layout:/docs:1" },
-            { kind: "page", path: "/:lang/docs", key: "page:/:lang/docs:2" },
-          ],
-        }),
-      },
-      lateControl: Promise.resolve(null),
-      cacheState: Promise.resolve({ cacheable: true }),
-      cancel: () => {},
+  test("sends a production client only the headers it reads: a patch's, and the route state", async () => {
+    const answer = async (trace: RscTraceMetadata) =>
+      (
+        await createRscNavigationStreamResponse({
+          type: "stream",
+          stream: streamOf("0:null\n"),
+          status: 404,
+          trace,
+          lateControl: Promise.resolve(null),
+          cacheState: Promise.resolve({ cacheable: false }),
+          cancel: () => {},
+        })
+      ).headers;
+    const missing = await answer({
+      navId: "9",
+      pathname: "/en/vault/missing",
+      routeId: "__not_found__",
+      cache: "bypass",
+      partial: "full",
+      partialReason: "missing-route",
+      partialCommonPrefixLength: 0,
     });
+    expect([...missing.keys()].sort()).toEqual(["cache-control", "content-type", "x-akan-rsc-not-found"]);
+
+    const patched = await answer({
+      pathname: "/en/docs",
+      routeId: "/:lang/docs",
+      cache: "miss",
+      partial: "patch",
+      partialReason: "sibling-page",
+      patchStartIndex: 2,
+      patchStartSegment: "page:/:lang/docs:2",
+    });
+    expect(patched.get("X-Akan-Rsc-Partial")).toBe("patch");
+    expect(patched.get("X-Akan-Rsc-Patch-Start-Index")).toBe("2");
+    expect(patched.get("X-Akan-Rsc-Route")).toBeNull();
+    expect(patched.get("X-Akan-Rsc-Partial-Reason")).toBeNull();
+  });
+
+  test("exposes same-route searchParams patch trace metadata on response headers", async () => {
+    const response = await createRscNavigationStreamResponse(
+      {
+        type: "stream",
+        stream: streamOf("0:null\n"),
+        trace: {
+          navId: "8",
+          pathname: "/en/docs",
+          routeId: "/:lang/docs",
+          cache: "miss" as const,
+          partial: "patch",
+          partialReason: "same-route-search-params",
+          partialCommonPrefixLength: 3,
+          patchStartIndex: 2,
+          patchSegmentPath: encodeAkanRscPatchSegmentPath(["root:/:0", "layout:/docs:1", "page:/:lang/docs:2"]),
+          patchStartSegment: "page:/:lang/docs:2",
+          patchHeadSafe: true,
+          routeState: encodeAkanRouterState({
+            version: 1,
+            buildId: 9,
+            href: "https://example.test/en/docs?page=2",
+            routeId: "/:lang/docs",
+            segments: [
+              { kind: "root-layout", path: "/", key: "root:/:0" },
+              { kind: "layout", path: "/docs", key: "layout:/docs:1" },
+              { kind: "page", path: "/:lang/docs", key: "page:/:lang/docs:2" },
+            ],
+          }),
+        },
+        lateControl: Promise.resolve(null),
+        cacheState: Promise.resolve({ cacheable: true }),
+        cancel: () => {},
+      },
+      { explain: true },
+    );
 
     expect(response.headers.get("X-Akan-Rsc-Partial")).toBe("patch");
     expect(response.headers.get("X-Akan-Rsc-Partial-Reason")).toBe("same-route-search-params");

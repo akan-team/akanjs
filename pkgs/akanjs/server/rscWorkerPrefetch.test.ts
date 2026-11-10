@@ -120,4 +120,13 @@ describe("RscWorker prefetch opt-out", () => {
       expect(await clicked.text()).toContain("sealed item body");
     });
   }, 30_000);
+
+  test("answers a click behind a refusing guard with the same headers whether or not the path exists", async () => {
+    await withPrefetchWorker(async ({ answer }) => {
+      const existing = await answer("http://localhost/en/sealed/item", false);
+      const missing = await answer("http://localhost/en/sealed/missing", false);
+      expect([existing.status, missing.status]).toEqual([404, 404]);
+      expect([...existing.headers.entries()].sort()).toEqual([...missing.headers.entries()].sort());
+    });
+  }, 20_000);
 });
