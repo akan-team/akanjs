@@ -44,8 +44,9 @@ export interface WsClientOptions {
    */
   onCredentialExpired?: () => unknown;
   /**
-   * Messages kept while the socket is down, the oldest dropped past it; 100 unless named, `0` keeps none. Subscribes
-   * never queue here: every room is sent again on open.
+   * Messages kept while the socket is down, the oldest dropped past it; 100 unless named, `0` keeps none and says so
+   * once, and a negative limit or `Infinity` keeps every one. Subscribes never queue here: every room is sent again
+   * on open.
    */
   outboxLimit?: number;
 }
@@ -102,7 +103,7 @@ export class WsClient {
   /** Whether this client has been connected before, so the first open is a start rather than a recovery. */
   #hadConnection = false;
   #outbox: string[] = [];
-  #outboxDropped = 0;
+  #outboxDrops = { count: 0, noneWarned: false };
   #unconnectedWarnTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #jwt: string | null = null;
   #renewing: Promise<unknown> | null = null;
@@ -203,9 +204,12 @@ export class WsClient {
       });
       const queued = this.#outbox;
       this.#outbox = [];
-      if (this.#outboxDropped > 0)
-        this.logger.warn(`WebSocket dropped ${this.#outboxDropped} oldest queued message(s) while disconnected`);
-      this.#outboxDropped = 0;
+      const keepsNone = outboxLimitOf(this.#options.outboxLimit) === 0;
+      if (this.#outboxDrops.count > 0 && !(keepsNone && this.#outboxDrops.noneWarned)) {
+        this.logger.warn(`WebSocket dropped ${this.#outboxDrops.count} oldest queued message(s) while disconnected`);
+        this.#outboxDrops.noneWarned ||= keepsNone;
+      }
+      this.#outboxDrops.count = 0;
       for (const frame of queued) this.#ws?.send(frame);
       this.#handleMessage("connect", undefined);
     };
@@ -466,7 +470,7 @@ export class WsClient {
     for (const timer of this.#unconnectedWarnTimers.values()) clearTimeout(timer);
     this.#unconnectedWarnTimers.clear();
     this.#outbox = [];
-    this.#outboxDropped = 0;
+    this.#outboxDrops.count = 0;
     this.#roomAliasMap.clear();
     this.#ws?.close();
     this.#ws = null;
@@ -535,16 +539,11 @@ export class WsClient {
     return this;
   }
   #enqueue(frame: string) {
-    const { outboxLimit } = this.#options;
-    const limit =
-      outboxLimit !== undefined && Number.isFinite(outboxLimit)
-        ? Math.max(0, Math.floor(outboxLimit))
-        : WsClient.defaultOutboxLimit;
     this.#outbox.push(frame);
-    const overflow = this.#outbox.length - limit;
+    const overflow = this.#outbox.length - outboxLimitOf(this.#options.outboxLimit);
     if (overflow <= 0) return;
     this.#outbox.splice(0, overflow);
-    this.#outboxDropped += overflow;
+    this.#outboxDrops.count += overflow;
   }
   subscribe(option: RoomSubscription) {
     const roomId = WsClient.makeRoomId(option.key, option.data);
@@ -588,3 +587,8 @@ export class WsClient {
     this.#ws?.send(JSON.stringify(payload));
   }
 }
+
+const outboxLimitOf = (outboxLimit: number | undefined) => {
+  if (outboxLimit === undefined || Number.isNaN(outboxLimit)) return WsClient.defaultOutboxLimit;
+  return outboxLimit < 0 ? Number.POSITIVE_INFINITY : Math.floor(outboxLimit);
+};

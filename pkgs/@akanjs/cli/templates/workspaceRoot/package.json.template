@@ -10,7 +10,6 @@
     "test": "akan test",
     "build": "akan build",
     "setup:agent": "akan agent install all --force",
-    "agent:setup": "akan agent install all --force",
     "agent:doctor": "akan doctor --strict --format json",
     "agent:context": "akan context --format json",
     "agent:mcp:readonly": "akan mcp-install all --mode readonly --force",

@@ -14,17 +14,27 @@ export class MaintainabilityExceptionScanner {
 
   async scan(workspaceRoot: string): Promise<QualityWarning[]> {
     const sysPaths = await Promise.all(
-      ["apps", "libs"].map(async (sysRoot) => {
-        const absoluteRoot = path.join(workspaceRoot, sysRoot);
-        if (!existsSync(absoluteRoot)) return [];
-        const entries = await readdir(absoluteRoot, { withFileTypes: true });
-        return entries.filter((entry) => entry.isDirectory()).map((entry) => `${sysRoot}/${entry.name}`);
-      }),
+      ["apps", "libs", "pkgs"].map((sysRoot) => MaintainabilityExceptionScanner.#dirsIn(workspaceRoot, sysRoot)),
     );
     const warnings = await Promise.all(
       sysPaths.flat().map((sysPath) => MaintainabilityExceptionScanner.#scanSys(workspaceRoot, sysPath)),
     );
     return warnings.flat();
+  }
+
+  static async #dirsIn(workspaceRoot: string, root: string): Promise<string[]> {
+    const absoluteRoot = path.join(workspaceRoot, root);
+    if (!existsSync(absoluteRoot)) return [];
+    const entries = await readdir(absoluteRoot, { withFileTypes: true });
+    const dirs = entries.filter((entry) => entry.isDirectory()).map((entry) => `${root}/${entry.name}`);
+    const nested = await Promise.all(
+      dirs.map(async (dir) =>
+        root === "pkgs" && path.posix.basename(dir).startsWith("@")
+          ? await MaintainabilityExceptionScanner.#dirsIn(workspaceRoot, dir)
+          : [dir],
+      ),
+    );
+    return nested.flat();
   }
 
   static async #scanSys(workspaceRoot: string, sysPath: string): Promise<QualityWarning[]> {

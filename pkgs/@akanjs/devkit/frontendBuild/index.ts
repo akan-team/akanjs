@@ -18,6 +18,7 @@ export * from "./pagesBundleBuilder";
 export * from "./pagesEntrySourceGenerator";
 export * from "./precompressArtifacts";
 export * from "./routeClientBuilder";
+export * from "./routeModulePreloads";
 export * from "./routesManifestArtifactSerializer";
 export * from "./serverGraphFile";
 export * from "./sourceMtimeIndex";

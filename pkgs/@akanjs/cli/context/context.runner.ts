@@ -29,7 +29,7 @@ import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
 import { appIdsOf, getMobileTargets, isPlaceholderAppId, NativeApp } from "@akanjs/devkit/mobile";
 import { Prompter } from "@akanjs/devkit/prompter";
-import { createWorkflowBaselineSummary, jsonText } from "@akanjs/devkit/workflow";
+import { createWorkflowBaselineSummary, jsonText, type WorkflowPlan, workflowStatus } from "@akanjs/devkit/workflow";
 import { WorkspaceGraph } from "@akanjs/devkit/workspaceGraph";
 import { RepairRunner } from "../repair/repair.runner";
 import { WorkflowRunner } from "../workflow/workflow.runner";
@@ -89,11 +89,14 @@ export class ContextRunner extends runner("context") {
   ) {
     if (ios) return await this.#doctorIos(workspace, format);
     const result = await AkanContextAnalyzer.doctor(workspace, { strict });
-    return format === "json" ? jsonText(result) : renderDoctorText(result);
+    return { status: result.status, output: format === "json" ? jsonText(result) : renderDoctorText(result) };
   }
 
   // Placeholder bundle ids otherwise surface only as an opaque device-signing failure.
-  async #doctorIos(workspace: Workspace, format: "text" | "json") {
+  async #doctorIos(
+    workspace: Workspace,
+    format: "text" | "json",
+  ): Promise<{ status: "passed" | "failed"; output: string }> {
     const appNames = await workspace.getApps();
     const diagnostics: { severity: "warning" | "error"; code: string; path: string; message: string }[] = [];
     let toolchainChecked = false;
@@ -124,7 +127,7 @@ export class ContextRunner extends runner("context") {
       }
     }
     const status = diagnostics.some((diagnostic) => diagnostic.severity === "error") ? "failed" : "passed";
-    if (format === "json") return jsonText({ schemaVersion: 1, kind: "ios", status, diagnostics });
+    if (format === "json") return { status, output: jsonText({ schemaVersion: 1, kind: "ios", status, diagnostics }) };
     const lines = [`Akan iOS diagnostics for ${workspace.repoName}`];
     if (diagnostics.length === 0) lines.push("  No native configuration issues found.");
     else
@@ -132,7 +135,7 @@ export class ContextRunner extends runner("context") {
         lines.push(`  [${diagnostic.severity}] ${diagnostic.code}: ${diagnostic.message}`);
         lines.push(`    ${diagnostic.path}`);
       }
-    return lines.join("\n");
+    return { status, output: lines.join("\n") };
   }
 
   async getGuidelineResource(name: string) {
@@ -263,20 +266,16 @@ export class ContextRunner extends runner("context") {
       const workflow = stringArg(args, "workflow");
       const inputs = workflowInputsArg(args);
       const planPath = typeof args.out === "string" && args.out ? args.out : defaultWorkflowPlanPath(workflow, inputs);
+      const out = workflowArtifactPath(workspace, planPath);
       const plan = parseJsonOutput(
-        await new WorkflowRunner().plan(workflow, inputs, {
-          format: "json",
-          out: workflowArtifactPath(workspace, planPath),
-        }),
-      );
+        await new WorkflowRunner().plan(workflow, inputs, { format: "json", out, workspace }),
+      ) as WorkflowPlan;
+      const applicable = workflowStatus(plan.diagnostics) === "passed";
       return {
-        ...(plan as Record<string, unknown>),
+        ...plan,
         planPath,
-        approval:
-          typeof plan === "object" && plan && "approval" in plan
-            ? { ...(plan.approval as Record<string, unknown>), canApplyWith: { planPath } }
-            : undefined,
-        next: { tool: "apply_workflow", args: { planPath } },
+        approval: plan.approval && applicable ? { ...plan.approval, canApplyWith: { planPath } } : plan.approval,
+        ...(applicable ? { next: { tool: "apply_workflow", args: { planPath } } } : {}),
         policy: applyFirstPolicy,
       };
     }
@@ -298,7 +297,9 @@ export class ContextRunner extends runner("context") {
       return {
         ...report,
         validationTarget,
-        next: { tool: "run_validation", args: { runIdOrPlan: validationTarget } },
+        ...(report.status === "failed"
+          ? {}
+          : { next: { tool: "run_validation", args: { runIdOrPlan: validationTarget } } }),
         policy: applyFirstPolicy,
       };
     }

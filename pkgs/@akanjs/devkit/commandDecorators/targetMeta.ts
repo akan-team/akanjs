@@ -45,6 +45,8 @@ export interface TargetOption {
   stdio?: boolean;
   failureExitCode?: number;
   usageExitCode?: number;
+  /** It deletes files in its app, lib, pkg or module, so one left out or unknown is refused, never picked or asked. */
+  destructive?: boolean;
   /** Runs after the CLI printed a failure and before it exits, so what it writes ends the output. */
   onFailure?: (error: unknown, failure: TargetFailure) => void | Promise<void>;
 }

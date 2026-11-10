@@ -16,6 +16,7 @@ import type {
   WorkflowNextActionCode,
   WorkflowOverallStatus,
   WorkflowPlan,
+  WorkflowRecommendation,
   WorkflowRunArtifact,
   WorkflowRunSource,
   WorkflowValidationCommandResult,
@@ -132,6 +133,11 @@ export const createWorkflowApplyReport = ({
     plan,
   };
 };
+
+export const withoutApplyHints = (recommendations: readonly WorkflowRecommendation[]) =>
+  recommendations.filter(
+    (recommendation) => recommendation.kind !== "auto-apply" && recommendation.kind !== "validation",
+  );
 
 export const resolveWorkflowCommand = (command: string, plan: WorkflowPlan) => {
   const target = typeof plan.inputs.app === "string" ? plan.inputs.app : "<app-or-lib>";
@@ -526,6 +532,17 @@ export const createWorkflowValidationRunReport = async ({
 };
 
 export const createDryRunWorkflowApplyReport = (plan: WorkflowPlan) => {
+  if (workflowStatus(plan.diagnostics) === "failed")
+    return createWorkflowApplyReport({
+      workflow: plan.workflow,
+      mode: "dry-run",
+      changedFiles: [],
+      generatedFiles: [],
+      diagnostics: [...plan.diagnostics],
+      recommendations: withoutApplyHints(plan.recommendations),
+      nextActions: [],
+      plan,
+    });
   const changedFiles: PrimitiveChangedFile[] = plan.predictedChanges.flatMap((change) => {
     if (change.action !== "create" && change.action !== "modify") return [];
     return [

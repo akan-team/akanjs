@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import path from "node:path";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { createCallRecorder, createFakeExecutor, makeCliTempWorkspace, tempRoots } from "@akanjs/devkit/testHelpers";
 import { Logger } from "akanjs/common";
@@ -72,6 +73,38 @@ describe("LocalRegistryScript", () => {
 });
 
 describe("LocalRegistryRunner", () => {
+  test("smoke hands the generated workspace an env without this repo's .env keys, so its own .env decides", async () => {
+    const { root } = track(await makeCliTempWorkspace());
+    await Bun.write(path.join(root, ".env"), "AKAN_PUBLIC_ENV=debug\nAKAN_PUBLIC_REPO_NAME=akanjs\n");
+    const saved = { env: process.env.AKAN_PUBLIC_ENV, repo: process.env.AKAN_PUBLIC_REPO_NAME };
+    Object.assign(process.env, { AKAN_PUBLIC_ENV: "debug", AKAN_PUBLIC_REPO_NAME: "akanjs" });
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace", { workspaceRoot: root }, recorder);
+    try {
+      await new LocalRegistryRunner().smoke(workspace as never, { registryUrl: "http://127.0.0.1:4873" });
+    } finally {
+      for (const [key, value] of [
+        ["AKAN_PUBLIC_ENV", saved.env],
+        ["AKAN_PUBLIC_REPO_NAME", saved.repo],
+      ] as const)
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+
+    const spawns = recorder.calls.filter((call) => call.name === "workspace.spawn");
+    expect(spawns.map((call) => (call.args[1] as string[])[0])).toEqual([
+      "dist/pkgs/create-akan-workspace/index.js",
+      "typecheck",
+      "build",
+    ]);
+    for (const call of spawns) {
+      const { env } = call.args[2] as { env: Record<string, string | undefined> };
+      expect(env).not.toHaveProperty("AKAN_PUBLIC_ENV");
+      expect(env).not.toHaveProperty("AKAN_PUBLIC_REPO_NAME");
+      expect(env.AKAN_NPM_REGISTRY).toBe("http://127.0.0.1:4873");
+    }
+  });
+
   test("normalizes the default local registry URL", () => {
     expect(new LocalRegistryRunner().getRegistryUrl("http://127.0.0.1:4873/")).toBe("http://127.0.0.1:4873");
   });

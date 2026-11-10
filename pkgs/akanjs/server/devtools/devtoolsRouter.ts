@@ -2,7 +2,7 @@ import type { BaseEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { DictionaryRegistry, type RootDictionary } from "akanjs/dictionary";
 import { isLocalDevRuntime } from "../../signal/trace";
-import type { BuildChangesPayload, BuildGraphPayload } from "../artifact";
+import type { BuildChangesPayload, BuilderRpc, BuildFrameworkPayload, BuildGraphPayload } from "../artifact";
 import type { DiLifecycle } from "../di/diLifecycle";
 import type { HttpRoutes } from "../types";
 import { ConstantSerializer } from "./constantSerializer";
@@ -19,9 +19,11 @@ export interface DevtoolsRouterContext {
   prefix: string;
   websocketPrefix: string;
   openapi: boolean;
+  web?: boolean;
   getStatus: () => string;
   buildGraph?: () => Promise<BuildGraphPayload | null>;
   buildChanges?: (since: string | null) => Promise<BuildChangesPayload | null>;
+  buildFramework?: () => Promise<BuildFrameworkPayload | null>;
 }
 
 /** Builtin routes, not signals: off `/api` and guards, and never in the `serializedSignal` payload sent to clients. */
@@ -37,6 +39,18 @@ export class DevtoolsRouter {
     return isLocalDevRuntime(env);
   }
 
+  static buildsFrom(
+    webRouter: { readonly builderRpc: BuilderRpc | null } | null,
+  ): Pick<DevtoolsRouterContext, "web" | "buildGraph" | "buildChanges" | "buildFramework"> {
+    if (!webRouter) return { web: false };
+    return {
+      web: true,
+      buildGraph: async () => (await webRouter.builderRpc?.buildGraph()) ?? null,
+      buildChanges: async (since) => (await webRouter.builderRpc?.buildChanges(since)) ?? null,
+      buildFramework: async () => (await webRouter.builderRpc?.buildFramework()) ?? null,
+    };
+  }
+
   readonly #context: DevtoolsRouterContext;
 
   constructor(context: DevtoolsRouterContext) {
@@ -48,8 +62,10 @@ export class DevtoolsRouter {
     const studio = new StudioRoute({
       basePath: `${DevtoolsRouter.basePath}/studio`,
       appName: this.#context.env.appName,
+      web: this.#context.web ?? true,
       buildGraph: this.#context.buildGraph ?? null,
       buildChanges: this.#context.buildChanges ?? null,
+      buildFramework: this.#context.buildFramework ?? null,
       runtime: () => ({
         app: this.#app(),
         deps: DevtoolsRouter.#attempt("studio runtime (deps)", () => this.#deps()),

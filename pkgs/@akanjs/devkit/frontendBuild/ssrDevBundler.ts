@@ -5,6 +5,7 @@ import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex } from "../artifact/routeSeedIndex";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
+import { workspaceBarrels } from "../transforms/barrelImportsPlugin";
 import { bundleDefine } from "./bundleDefine";
 import type { ClientEntryDiscovery } from "./clientBuildTypes";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
@@ -17,7 +18,7 @@ import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
 //* (the app's client runtime) and every `"use client"` entry; React and the akanjs vendor facets stay the import map's,
 //* so the page keeps one React and one store registry.
 export class SsrDevBundler extends DevRegistryBundler {
-  static readonly #formatVersion = 2;
+  static readonly #formatVersion = 4;
   static readonly bootstrapKey = "";
   readonly reloadsOnEntryChange = false;
   #discovery: ClientEntryDiscovery | null = null;
@@ -33,8 +34,17 @@ export class SsrDevBundler extends DevRegistryBundler {
     const akanConfig = await this.app.getConfig();
     const define = bundleDefine(this.app, "start", "ssr");
     const optimizeImports = [...akanConfig.optimizeImports];
+    const barrelImports = workspaceBarrels(akanConfig.barrelImports);
     const configKey = Bun.hash(
-      JSON.stringify(["ssr", SsrDevBundler.#formatVersion, Bun.version, define, optimizeImports, VENDOR_SPECIFIERS]),
+      JSON.stringify([
+        "ssr",
+        SsrDevBundler.#formatVersion,
+        Bun.version,
+        define,
+        optimizeImports,
+        VENDOR_SPECIFIERS,
+        barrelImports,
+      ]),
     ).toString(36);
     return {
       pageEntries: [],
@@ -45,6 +55,7 @@ export class SsrDevBundler extends DevRegistryBundler {
       configKey,
       refreshFile: null,
       externals: VENDOR_SPECIFIERS,
+      barrelImports,
     };
   }
 

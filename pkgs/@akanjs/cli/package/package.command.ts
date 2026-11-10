@@ -13,7 +13,7 @@ export class PackageCommand extends command("package", [PackageScript], ({ publi
     .exec(async function (name, workspace) {
       await this.packageScript.createPackage(workspace, name.toLowerCase().replace(/ /g, "-"));
     }),
-  removePackage: target({ desc: "Remove a package from the workspace" })
+  removePackage: target({ desc: "Remove a package from the workspace", destructive: true })
     .with(Pkg)
     .exec(async function (pkg) {
       await this.packageScript.removePackage(pkg);
@@ -37,5 +37,13 @@ export class PackageCommand extends command("package", [PackageScript], ({ publi
     .with(Workspace)
     .exec(async function (workspace) {
       await this.packageScript.verifyAkanPublishPackages(workspace);
+    }),
+  syncArchitecture: target({
+    devOnly: true,
+    desc: "Regenerate the generated part of pkgs/akanjs/ARCHITECTURE.md from the framework source",
+  })
+    .with(Workspace)
+    .exec(async function (workspace) {
+      await this.packageScript.syncArchitecture(workspace);
     }),
 })) {}

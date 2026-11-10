@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { DepsData, SignalData, SignalNode } from "../types";
+import { renderToStaticMarkup } from "react-dom/server";
+import type { DepsData, InternalNode, SignalData, SignalNode } from "../types";
+import { StudioDocument } from "./studioDocument";
 import { StudioLayout } from "./studioLayout";
-import { StudioRuntimeGraph } from "./studioRuntimeGraph";
+import { StudioRuntimeGraph, type StudioRuntimePayload } from "./studioRuntimeGraph";
 
 const deps: DepsData = {
   app: { name: "demo", status: "running", serverMode: "all", prefix: "/api", websocketPrefix: "/ws", openapi: false },
@@ -45,6 +47,27 @@ const signalOf = (refName: string, internal: SignalNode["internal"]): SignalNode
   slice: {},
   endpoint: {},
   generated: { crud: {}, slice: {} },
+});
+
+const app: StudioRuntimePayload["app"] = {
+  name: "demo",
+  repoName: "akan",
+  serveDomain: "example.com",
+  environment: "local",
+  operationMode: "local",
+  serverMode: "all",
+  pid: 1,
+  replicaIdx: 0,
+};
+
+const job = (key: string, type: InternalNode["type"], schedule: InternalNode["schedule"]): InternalNode => ({
+  key,
+  type,
+  enabled: true,
+  schedule,
+  args: [],
+  internalArgs: [],
+  scheduledHere: true,
 });
 
 const signal: SignalData = {
@@ -116,14 +139,65 @@ describe("StudioRuntimeGraph", () => {
     const [internal] = graph.columns[0].nodes;
     expect(internal.module).toBe("memo");
     expect(graph.rowsOf(internal)).toEqual([
-      { text: "cron sweep", hint: "0 * * * *", at: null },
+      { text: "cron sweep", hint: "0 * * * *", title: "cron sweep · 0 * * * *", at: null },
       {
         text: "interval poll",
         hint: "every 5 min",
+        title: "interval poll · every 5 min",
         at: null,
         skipped: 'serverMode is "federation" but the internal declares "batch"',
       },
     ]);
+  });
+
+  test("says a timeout runs after its delay, and keeps a delay no unit divides in milliseconds", () => {
+    const graph = new StudioRuntimeGraph(deps, {
+      ...signal,
+      signals: {
+        memo: signalOf("memo", {
+          expire: job("expire", "timeout", { everyMs: 90_000 }),
+          tick: job("tick", "interval", { everyMs: 1_500 }),
+          daily: job("daily", "interval", { everyMs: 86_400_000 }),
+          boot: job("boot", "init", undefined),
+        }),
+      },
+    });
+    expect(graph.rowsOf(graph.columns[0].nodes[0]).map(({ text, hint, title }) => [text, hint, title])).toEqual([
+      ["timeout expire", "after 90 s", "timeout expire · after 90 s"],
+      ["interval tick", "every 1500 ms", "interval tick · every 1500 ms"],
+      ["interval daily", "every 1 d", "interval daily · every 1 d"],
+      ["init boot", "", "init boot"],
+    ]);
+  });
+
+  test("greys a job this server does not run, and names every job in full with its schedule on hover", () => {
+    const longName = "syncAccountBalancesWithTheLedgerEveryHour";
+    const html = renderToStaticMarkup(
+      StudioDocument.render({
+        basePath: "/_akan/studio",
+        appName: "demo",
+        payload: {
+          app,
+          deps,
+          signal: {
+            ...signal,
+            signals: {
+              ...signal.signals,
+              memo: signalOf("memo", {
+                ...signal.signals.memo.internal,
+                [longName]: job(longName, "cron", { cron: "0 * * * *" }),
+              }),
+            },
+          },
+        },
+        query: { view: "runtime", module: null, editor: "vscode", since: null },
+      }),
+    );
+    expect(html).toContain(
+      '<title>interval poll · every 5 min\nserverMode is &quot;federation&quot; but the internal declares &quot;batch&quot;</title><text class="skipped"',
+    );
+    expect(html).toContain(`<title>cron ${longName} · 0 * * * *</title>`);
+    expect(html).not.toContain(`>cron ${longName}<`);
   });
 
   test("leaves resolveField internals out, and gives a class with nothing else no box", () => {
