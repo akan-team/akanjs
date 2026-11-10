@@ -1,6 +1,12 @@
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { $ } from "bun";
+
+interface PackageManifest {
+  name?: string;
+  dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+}
 
 // Every `akan` invocation runs this against a shared `dist/`, and a rebuild's `rm -rf` deletes chunks another one is
 // executing: an input stamp makes an up-to-date build a no-op, and a lock lets one of several cold starts build.
@@ -23,10 +29,11 @@ export class CliDistBuilder {
 
   async build(): Promise<"up-to-date" | "built" | "built-by-other"> {
     const stamp = await this.inputStamp();
-    if (process.env.AKAN_CLI_FORCE_BUILD !== "1" && (await this.#stampMatches(stamp))) return "up-to-date";
+    const force = process.env.AKAN_CLI_FORCE_BUILD === "1";
+    if (!force && (await this.#stampMatches(stamp))) return "up-to-date";
     const releaseLock = await this.#acquireLock();
     try {
-      if (await this.#stampMatches(stamp)) return "built-by-other";
+      if (!force && (await this.#stampMatches(stamp))) return "built-by-other";
       await this.#bundle();
       // Written last, so a build killed halfway leaves no stamp to trust a partial bundle by.
       await Bun.write(path.join(this.#outDir, CliDistBuilder.#stampFile), stamp);
@@ -43,7 +50,7 @@ export class CliDistBuilder {
   async inputStamp(): Promise<string> {
     const hasher = new Bun.CryptoHasher("sha256");
     hasher.update(`bun:${Bun.version}\n`);
-    for (const dir of [this.#cliDir, this.#devkitDir]) {
+    for (const dir of await this.bundledPackageDirs()) {
       const relativePaths: string[] = [];
       for await (const relativePath of new Bun.Glob("**/*").scan({ cwd: dir, onlyFiles: true, dot: true }))
         if (!CliDistBuilder.#ignoredInputs.test(relativePath)) relativePaths.push(relativePath);
@@ -53,6 +60,48 @@ export class CliDistBuilder {
       }
     }
     return hasher.digest("hex");
+  }
+
+  async bundledPackageDirs(): Promise<string[]> {
+    const externals = new Set(CliDistBuilder.#externalsOf(await CliDistBuilder.#manifestOf(this.#cliDir)));
+    const dirs = new Set([this.#cliDir, this.#devkitDir]);
+    for (const dir of dirs) {
+      const manifest = await CliDistBuilder.#manifestOf(dir);
+      for (const name of Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies })) {
+        if (externals.has(name)) continue;
+        const workspaceDir = await CliDistBuilder.#workspaceDirOf(name, dir);
+        if (workspaceDir) dirs.add(workspaceDir);
+      }
+    }
+    return [...dirs];
+  }
+
+  static async #manifestOf(dir: string): Promise<PackageManifest> {
+    return (await Bun.file(path.join(dir, "package.json")).json()) as PackageManifest;
+  }
+
+  static #externalsOf(manifest: PackageManifest): string[] {
+    return Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies });
+  }
+
+  static async #workspaceDirOf(name: string, fromDir: string): Promise<string | null> {
+    const entry = await CliDistBuilder.#resolve(name, fromDir);
+    if (!entry || entry.split(path.sep).includes("node_modules")) return null;
+    for (let dir = path.dirname(entry); dir !== path.dirname(dir); dir = path.dirname(dir)) {
+      const manifest = await Bun.file(path.join(dir, "package.json"))
+        .json()
+        .catch(() => null);
+      if (manifest) return (manifest as PackageManifest).name === name ? dir : null;
+    }
+    return null;
+  }
+
+  static async #resolve(name: string, fromDir: string): Promise<string | null> {
+    try {
+      return await realpath(Bun.resolveSync(name, fromDir));
+    } catch {
+      return null;
+    }
   }
 
   async #stampMatches(stamp: string): Promise<boolean> {
@@ -104,7 +153,7 @@ export class CliDistBuilder {
   }
 
   async #bundle(): Promise<void> {
-    const packageJson = await Bun.file(`${this.#cliDir}/package.json`).json();
+    const packageJson = await CliDistBuilder.#manifestOf(this.#cliDir);
     await rm(this.#outDir, { recursive: true, force: true });
     const buildResult = await Bun.build({
       entrypoints: [
@@ -122,7 +171,7 @@ export class CliDistBuilder {
       // Chunks sit next to the entry, or `import.meta.dir` lookups of `templates/` and `guidelines/` miss.
       naming: { entry: "[name].js", chunk: "[name]-[hash].js" },
       // devkit is bundled in rather than resolved at runtime, which it already is by being absent here.
-      external: Object.keys({ ...packageJson.dependencies, ...packageJson.peerDependencies }),
+      external: CliDistBuilder.#externalsOf(packageJson),
       plugins: [],
     });
     if (!buildResult.success) throw new AggregateError(buildResult.logs, "CLI build failed");
