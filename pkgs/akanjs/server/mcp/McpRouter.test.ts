@@ -296,6 +296,7 @@ describe("McpRouter rate limit", () => {
     expect(third.res.status).toBe(429);
     expect(third.res.headers.get("retry-after")).toMatch(/^\d+$/);
     expect(third.json.error?.code).toBe(-32010);
+    expect(third.json.error?.data).toEqual({ code: "tooManyRequests" });
     expect(third.json.error?.message).toContain("2 calls per 60s");
     expect((await post(call(4), bearer("b"), handlers)).res.status).toBe(200);
   });

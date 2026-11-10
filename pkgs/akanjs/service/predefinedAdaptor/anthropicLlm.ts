@@ -1,3 +1,4 @@
+import { FailureCode } from "akanjs/common";
 import { adapt } from "../adapt";
 import {
   type AgentWireAttachment,
@@ -266,6 +267,7 @@ export class AnthropicLlm
       ...(result.result !== undefined ? { result: result.result } : {}),
       ...(result.changes?.length ? { changes: result.changes } : {}),
       ...(result.error ? { error: result.error } : {}),
+      ...(result.error && FailureCode.is(result.code) ? { code: result.code } : {}),
     });
     if (!result.attachments?.length) return { type: "tool_result", tool_use_id: result.id, content: payload };
     const notes: string[] = [];

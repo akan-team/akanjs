@@ -170,6 +170,11 @@ export interface ToolCallResult {
   changes?: ResourceDiff[];
   error?: string;
   /**
+   * The failure's code, when what the tool threw named one, so the model can branch on it rather than on `error`.
+   * Never on a `taint: "source"` tool's result, whose text is fenced as page content.
+   */
+  code?: string;
+  /**
    * Files the call handed the model — a picture it looked at — in the shape a user's attachment takes. A `result`
    * cannot carry one: it reaches the model as JSON text, so a URL is read as letters and base64 as a wall of them.
    * Outside the `ToolOutput` ceiling, and only the latest turn's ride the wire as bytes (`Transcript.wire`).

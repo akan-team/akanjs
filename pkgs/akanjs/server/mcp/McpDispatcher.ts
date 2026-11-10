@@ -6,7 +6,7 @@ import {
   type ImageResultValue,
   PrimitiveRegistry,
 } from "akanjs/base";
-import { interpolateTranslation, Logger } from "akanjs/common";
+import { FailureCode, interpolateTranslation, Logger, MCP_FAILURE_META, type McpFailure } from "akanjs/common";
 import { agentRead, ConstantRegistry, mask } from "akanjs/constant";
 import { DictionaryLookup } from "akanjs/dictionary";
 import { NoDocumentError } from "akanjs/document";
@@ -41,6 +41,7 @@ export class McpDispatcher {
   static readonly logger = new Logger("McpDispatcher");
 
   static readonly structuredNote = "The result is in this call's structuredContent.";
+  static readonly #crashed: McpFailure = { code: AkanError.codeOfStatus(500), statusCode: 500 };
 
   readonly #props: McpDispatcherProps;
   #endpoints: Map<string, { endpointInfo: EndpointInfo; endpoint: Endpoint }> | null = null;
@@ -80,9 +81,12 @@ export class McpDispatcher {
       const status = McpDispatcher.#statusOf(error);
       // No credential: a 401 challenge, as only the client can fix it. A refused one: a tool error the model acts on.
       if ((status === 401 || status === 403) && !req.headers.get("authorization")) throw new McpAuthRequiredError();
-      const failure = McpDispatcher.#failure(this.#message(error, status, exposed.refName));
+      const failure = McpDispatcher.#failure(
+        this.#message(error, status, exposed.refName),
+        McpDispatcher.#codeOf(error, status),
+      );
       const restorable = forView ? McpDispatcher.#restorable(error, status) : null;
-      return restorable ? { ...failure, _meta: { [MCP_APP_META.error]: restorable } } : failure;
+      return restorable ? { ...failure, _meta: { ...failure._meta, [MCP_APP_META.error]: restorable } } : failure;
     }
   }
 
@@ -194,6 +198,20 @@ export class McpDispatcher {
     return "The server failed to complete this request.";
   }
 
+  // Named as its HTTP body names it: a forwarded error by its dictionary key, else by its code. A refusal by its status
+  // alone, since a guard's own code names the authorization structure as its message would. Security: a 5xx's text is
+  // redacted, so its code is a dictionary key or this server's own `AkanError` code, never a duck-typed body's `code`.
+  static #codeOf(error: unknown, status: number | undefined): McpFailure {
+    if (!status) return McpDispatcher.#crashed;
+    const byStatus = { code: AkanError.codeOfStatus(status), statusCode: status };
+    if (status === 401 || status === 403) return byStatus;
+    const wire = isExceptionLike(error) ? (error.toJSON() as { error?: unknown; code?: unknown }) : {};
+    if (FailureCode.isKey(wire.error)) return { code: wire.error, statusCode: status };
+    if (AkanError.is(error) && FailureCode.isToken(error.code)) return { code: error.code, statusCode: status };
+    if (status < 500 && FailureCode.isToken(wire.code)) return { code: wire.code, statusCode: status };
+    return byStatus;
+  }
+
   // No status reads as a crash. Security: the status HTTP answers with, so a vendor client's own 4xx error, which is
   // no AkanError, is generalized here as it is there.
   static #statusOf(error: unknown): number | undefined {
@@ -253,7 +271,7 @@ export class McpDispatcher {
     return { content, isError: false };
   }
 
-  static #failure(message: string): McpToolResult {
-    return { content: [{ type: "text", text: message }], isError: true };
+  static #failure(message: string, failure = McpDispatcher.#crashed): McpToolResult {
+    return { content: [{ type: "text", text: message }], isError: true, _meta: { [MCP_FAILURE_META]: failure } };
   }
 }

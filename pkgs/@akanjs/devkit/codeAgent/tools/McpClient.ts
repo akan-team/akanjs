@@ -1,4 +1,4 @@
-import type { CodeAgentMcpServerRef } from "akanjs/common";
+import { type CodeAgentMcpServerRef, FailureCode, MCP_FAILURE_META } from "akanjs/common";
 
 export interface McpToolInfo {
   name: string;
@@ -8,8 +8,21 @@ export interface McpToolInfo {
 
 interface JsonRpcResponse {
   id?: number;
-  result?: { tools?: McpToolInfo[]; nextCursor?: string; content?: unknown; isError?: boolean };
-  error?: { code: number; message: string };
+  result?: {
+    tools?: McpToolInfo[];
+    nextCursor?: string;
+    content?: unknown;
+    isError?: boolean;
+    _meta?: Record<string, unknown>;
+  };
+  error?: { code: number; message: string; data?: unknown };
+}
+
+export interface McpToolCallResult {
+  text: string;
+  isError: boolean;
+  /** What the server named the failure by: `_meta["akanjs/failure"].code`, or a JSON-RPC error's `data.code`. */
+  code?: string;
 }
 
 const protocolVersion = "2025-06-18";
@@ -71,10 +84,19 @@ export class McpClient {
     return tools;
   }
 
-  async callTool(name: string, args: Record<string, unknown>) {
+  async callTool(name: string, args: Record<string, unknown>): Promise<McpToolCallResult> {
     const response = await this.#call("tools/call", { name, arguments: args });
-    if (response.error) return { text: response.error.message, isError: true };
-    return { text: McpClient.#renderContent(response.result?.content), isError: !!response.result?.isError };
+    if (response.error)
+      return { text: response.error.message, isError: true, ...McpClient.#coded(response.error.data) };
+    const isError = !!response.result?.isError;
+    const failure = isError ? response.result?._meta?.[MCP_FAILURE_META] : undefined;
+    return { text: McpClient.#renderContent(response.result?.content), isError, ...McpClient.#coded(failure) };
+  }
+
+  // Only a code shaped as an akan server names one: the server is a third party, and its value reaches the transcript.
+  static #coded(carrier: unknown): { code?: string } {
+    const code = carrier && typeof carrier === "object" ? (carrier as { code?: unknown }).code : undefined;
+    return FailureCode.is(code) ? { code } : {};
   }
 
   close() {

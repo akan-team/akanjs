@@ -614,6 +614,12 @@ export interface EventStreamOptions {
     keepAliveChunk?: string;
 }
 
+export declare class FailureCode {
+    static isKey(value: unknown): value is string;
+    static isToken(value: unknown): value is string;
+    static is(value: unknown): value is string;
+}
+
 export interface FetchPolicy<_Returns = unknown> {
     cache?: boolean | number;
     crystalize?: boolean;
@@ -829,6 +835,8 @@ export interface LoggerSinkOptions {
     minLevel?: LogLevelInput;
 }
 
+export declare const MCP_FAILURE_META = "akanjs/failure";
+
 export type MarkdownBlock = TableBlock | {
     kind: "code";
     lang?: string;
@@ -922,6 +930,11 @@ export interface McpExposureOption {
     key: string;
     readOnly?: boolean;
     view?: boolean;
+}
+
+export interface McpFailure {
+    code: string;
+    statusCode?: number;
 }
 
 export declare const PAGE_ROUTE_EXPORTS: ReadonlySet<string>;

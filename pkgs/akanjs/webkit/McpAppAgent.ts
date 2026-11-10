@@ -1,7 +1,7 @@
 "use client";
 import { ImageResult } from "akanjs/base";
 import { csrLocation } from "akanjs/client";
-import { Logger } from "akanjs/common";
+import { Logger, MCP_FAILURE_META } from "akanjs/common";
 import { AgentConfirm, StoreRegistry } from "akanjs/store";
 import { AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle } from "akanjs/store/agent";
 import {
@@ -154,8 +154,13 @@ export class McpAppAgent {
     return JSON.stringify(tools);
   }
 
-  static #resultOf({ result, changes, error, attachments = [] }: ToolCallResult): McpToolResult {
-    if (error !== undefined) return { content: [{ type: "text", text: error }], isError: true };
+  static #resultOf({ result, changes, error, code, attachments = [] }: ToolCallResult): McpToolResult {
+    if (error !== undefined)
+      return {
+        content: [{ type: "text", text: error }],
+        isError: true,
+        ...(code === undefined ? {} : { _meta: { [MCP_FAILURE_META]: { code } } }),
+      };
     const text = changes?.length
       ? JSON.stringify({ ...(result !== undefined ? { result } : {}), changes })
       : result === undefined
