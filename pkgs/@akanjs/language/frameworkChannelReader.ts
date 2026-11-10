@@ -69,6 +69,8 @@ export class FrameworkChannelReader {
   readonly #spoken = new Map<string, Set<ChannelState>>();
   readonly #sendParameters = new Set<TS.ParameterDeclaration>();
   readonly #classes = new Map<string, TS.ClassDeclaration[]>();
+  readonly #injectedSends: (Site & { owner: string })[] = [];
+  readonly #constructed = new Map<string, Set<string>>();
 
   constructor(ts: Ts, specs: FrameworkChannelSpec[], sources: Map<string, TS.SourceFile>) {
     this.#ts = ts;
@@ -101,6 +103,10 @@ export class FrameworkChannelReader {
       const spoken = this.#spoken.get(site.source.fileName);
       for (const channel of channels) if (spoken?.has(channel)) this.#record(channel, site);
     }
+    for (const { owner, ...site } of this.#injectedSends)
+      for (const file of this.#constructed.get(owner) ?? [])
+        for (const channel of [...(this.#spoken.get(file) ?? [])])
+          if (channel.union.members.has(site.literal) && !this.#holds(channel, site)) this.#record(channel, site);
   }
 
   get missing() {
@@ -310,8 +316,14 @@ export class FrameworkChannelReader {
         const template = this.#readSend(source, node);
         if (template) templates.push(template);
       } else if (ts.isCallExpression(node)) calls.push(node);
-      else if (ts.isNewExpression(node)) this.#readRouteSet(source, node);
-      else if (ts.isSwitchStatement(node)) {
+      else if (ts.isNewExpression(node)) {
+        this.#readRouteSet(source, node);
+        if (ts.isIdentifier(node.expression)) {
+          const files = this.#constructed.get(node.expression.text) ?? new Set();
+          files.add(source.fileName);
+          this.#constructed.set(node.expression.text, files);
+        }
+      } else if (ts.isSwitchStatement(node)) {
         const chain = this.#switchChain(node);
         if (chain) switches.push(chain);
       } else if (ts.isBinaryExpression(node)) {
@@ -367,10 +379,45 @@ export class FrameworkChannelReader {
     const context = this.#sendContextOf(object, forwarded ? null : literal);
     if (!context) return;
     const site: Site = { role: "senders", literal, source, node };
+    const injector = this.#injectorOf(object);
+    if (injector) this.#injectedSends.push({ ...site, owner: injector });
     const hinted = this.#hinted(context.names).filter((union) => union.members.has(literal));
     const candidates = hinted.length ? hinted : this.#fitting(object, literal);
     if (context.parameter && candidates.some(({ channel }) => channel)) this.#sendParameters.add(context.parameter);
     this.#settle(candidates, site);
+  }
+
+  #injectorOf(object: TS.ObjectLiteralExpression): string | null {
+    const ts = this.#ts;
+    const call = object.parent;
+    if (!ts.isCallExpression(call) || !call.arguments.includes(object)) return null;
+    const callee = call.expression;
+    if (!ts.isPropertyAccessExpression(callee) || callee.expression.kind !== ts.SyntaxKind.ThisKeyword) return null;
+    const owner = this.#classOf(call);
+    const constructor = owner?.members.find(ts.isConstructorDeclaration);
+    const parameters = new Set(
+      constructor?.parameters.flatMap(({ name }) => (ts.isIdentifier(name) ? [name.text] : [])) ?? [],
+    );
+    const isInjected = !!constructor?.body?.statements.some((statement) => {
+      if (!ts.isExpressionStatement(statement) || !ts.isBinaryExpression(statement.expression)) return false;
+      const { left, operatorToken, right } = statement.expression;
+      return (
+        operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isPropertyAccessExpression(left) &&
+        left.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        this.#memberName(left.name) === callee.name.text &&
+        ts.isIdentifier(right) &&
+        parameters.has(right.text)
+      );
+    });
+    return isInjected && owner?.name ? owner.name.text : null;
+  }
+
+  #holds(channel: ChannelState, site: Site) {
+    const { file, line, column } = this.#location(site.source, site.node);
+    return (channel[site.role].get(site.literal) ?? []).some(
+      ({ at }) => at.file === file && at.line === line && at.column === column,
+    );
   }
 
   #fitting(object: TS.ObjectLiteralExpression, literal: string) {

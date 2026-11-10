@@ -246,6 +246,56 @@ export class Router {
     ).toEqual(["list.result Renderer:4", "count.result Renderer:5"]);
   });
 
+  it("credits a send through a constructor's callback to each channel a file constructing it speaks", () => {
+    const channels = build(
+      [
+        { file: "pkgs/akanjs/server/up.ts", union: "Up", label: "child → gateway" },
+        { file: "pkgs/akanjs/server/down.ts", union: "Down", label: "worker → server" },
+      ],
+      {
+        "pkgs/akanjs/server/up.ts": `export type Up = { type: "log"; lines: string[] } | { type: "ready" };\n`,
+        "pkgs/akanjs/server/down.ts": `export type Down = { type: "log"; lines: string[] } | { type: "done" };\n`,
+        "pkgs/akanjs/server/forwarder.ts": `export class Forwarder {
+  readonly #send: (message: unknown) => void;
+  constructor(send: (message: unknown) => void) {
+    this.#send = send;
+  }
+  flush(lines: string[]) {
+    this.#send({ type: "log", lines });
+  }
+}
+`,
+        "pkgs/akanjs/server/child.ts": `import type { Up } from "./up";
+import { Forwarder } from "./forwarder";
+export class Child {
+  start() {
+    process.send?.({ type: "ready" } satisfies Up);
+    return new Forwarder((message) => process.send?.(message));
+  }
+}
+`,
+        "pkgs/akanjs/server/worker.ts": `import type { Down } from "./down";
+import { Forwarder } from "./forwarder";
+export class Worker {
+  start(post: (message: unknown) => void) {
+    post({ type: "done" } satisfies Down);
+    return new Forwarder(post);
+  }
+}
+`,
+      },
+    ).channels;
+    expect(
+      channels.map(({ name, messages }) => [
+        name,
+        messages.find(({ type }) => type === "log")?.senders.map(({ owner, count }) => `${owner}×${count}`),
+      ]),
+    ).toEqual([
+      ["Up", ["Forwarder×1"]],
+      ["Down", ["Forwarder×1"]],
+    ]);
+  });
+
   it("reports a channel whose union is gone", () => {
     expect(build([{ file: "pkgs/akanjs/server/ipcTypes.ts", union: "Gone", label: "" }]).missing).toEqual([
       "Gone in pkgs/akanjs/server/ipcTypes.ts",
