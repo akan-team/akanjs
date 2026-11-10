@@ -22,6 +22,9 @@ export class MaintainabilityLimits {
   static readonly #maxLinesByKind = { ...MaintainabilityLimits.fileMaxLines, ...MaintainabilityLimits.folderMaxLines };
   static readonly componentMaxLines = 250;
   static readonly componentMaxStoreAccesses = 16;
+  static readonly packageFileMaxLines = 800;
+  static readonly functionMaxLines = 150;
+  static readonly classMaxMembers = 60;
 
   static fileKindOf(sysRelativePath: string): FileKind | null {
     const kinds = Object.keys(MaintainabilityLimits.#maxLinesByKind) as FileKind[];
@@ -52,6 +55,15 @@ export class MaintainabilityLimits {
     if (MaintainabilityLimits.#isTest(sysRelativePath)) return false;
     if (sysRelativePath.startsWith("lib/")) return sysRelativePath.endsWith(".tsx");
     return /^(ui|webkit)\/.+\.tsx?$/.test(sysRelativePath) && !sysRelativePath.endsWith(".d.ts");
+  }
+
+  static isPackageSource(pkgRelativePath: string) {
+    return (
+      /\.tsx?$/.test(pkgRelativePath) &&
+      !pkgRelativePath.endsWith(".d.ts") &&
+      !/(^|\/)(examples|test|tests|__tests__|__fixtures__|__mocks__)\//.test(pkgRelativePath) &&
+      !/\.(test|spec|fixture|instance|bench)\.tsx?$/.test(pkgRelativePath)
+    );
   }
 
   static #isTest(sysRelativePath: string) {

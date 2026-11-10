@@ -1,6 +1,6 @@
 ---
 description: The akan lint gates on size, store reach, where writes start and per-item calls, and the baseline.
-globs: apps/**/*.tsx,libs/**/*.tsx,apps/**/*.store.ts,apps/**/*.service.ts,apps/**/*.document.ts,libs/**/*.store.ts,libs/**/*.service.ts,libs/**/*.document.ts,apps/*/ui/**,apps/*/webkit/**,libs/*/ui/**,libs/*/webkit/**,apps/*/akan.baseline.json,libs/*/akan.baseline.json
+globs: apps/**/*.tsx,libs/**/*.tsx,apps/**/*.store.ts,apps/**/*.service.ts,apps/**/*.document.ts,libs/**/*.store.ts,libs/**/*.service.ts,libs/**/*.document.ts,apps/*/ui/**,apps/*/webkit/**,libs/*/ui/**,libs/*/webkit/**,apps/*/akan.baseline.json,libs/*/akan.baseline.json,pkgs/**/*.ts,pkgs/**/*.tsx,pkgs/**/akan.baseline.json
 alwaysApply: false
 ---
 

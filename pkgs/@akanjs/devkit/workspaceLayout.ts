@@ -8,6 +8,7 @@ export const appRootAllowedFiles = new Set([
   "CLAUDE.md",
   "akan.app.json",
   "akan.baseline.json",
+  "akan.budget.json",
   "akan.config.ts",
   "client.ts",
   "main.ts",

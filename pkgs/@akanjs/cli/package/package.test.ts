@@ -60,7 +60,51 @@ describe("PackageScript", () => {
   });
 });
 
+const frameworkFiles = {
+  "pkgs/akanjs/base/scalar.ts": "export class Scalar {}\n",
+  "pkgs/akanjs/service/ipcTypes.ts": 'export type AkanIpcMessage = { type: "ready" } | { type: "shutdown" };\n',
+  "pkgs/akanjs/server/artifact/ipcTypes.ts": 'export type BuilderMessage = { type: "build" } | { type: "built" };\n',
+  "pkgs/akanjs/server/rscWorker.tsx": 'export type InMsg = { type: "render" } | { type: "cancel" };\n',
+  "pkgs/akanjs/server/rscWorkerHost.ts": 'export type RscInMsg = { type: "chunk" } | { type: "end" };\n',
+  "pkgs/akanjs/server/hmr/wsHub.ts": 'export type HmrMessage = { type: "reload" } | { type: "ok" };\n',
+};
+
+const withFramework = async (architecture: string | null) => {
+  const { root, workspace } = track(await createTempPackage("@sample/tool"));
+  for (const [file, text] of Object.entries(frameworkFiles)) await writeText(`${root}/${file}`, text);
+  if (architecture !== null) await writeText(`${root}/pkgs/akanjs/ARCHITECTURE.md`, architecture);
+  return { root, workspace };
+};
+
 describe("PackageRunner", () => {
+  test("regenerates the framework's ARCHITECTURE.md, and says when it was already current", async () => {
+    const { root, workspace } = await withFramework("# Akan\n\nStart at `Scalar`.\n");
+    const runner = new PackageRunner();
+
+    expect(await runner.syncArchitecture(workspace)).toEqual({ file: "pkgs/akanjs/ARCHITECTURE.md", changed: true });
+    const written = await Bun.file(`${root}/pkgs/akanjs/ARCHITECTURE.md`).text();
+    expect(written).toStartWith("# Akan\n\nStart at `Scalar`.\n\n<!-- akan:framework-map:start -->");
+    expect(written).toContain("| `ready` | — | — |");
+    expect(await runner.syncArchitecture(workspace)).toEqual({ file: "pkgs/akanjs/ARCHITECTURE.md", changed: false });
+  });
+
+  test("refuses a workspace without the framework's own ARCHITECTURE.md", async () => {
+    const { workspace } = await withFramework(null);
+
+    await expect(new PackageRunner().syncArchitecture(workspace)).rejects.toThrow(
+      "pkgs/akanjs/ARCHITECTURE.md is only kept in the akanjs repository",
+    );
+  });
+
+  test("writes the document but fails on a name it cites that the framework does not declare", async () => {
+    const { root, workspace } = await withFramework("# Akan\n\nStart at `Ghost`.\n");
+
+    await expect(new PackageRunner().syncArchitecture(workspace)).rejects.toThrow(
+      "`Ghost` is cited outside the generated part but is no framework class",
+    );
+    expect(await Bun.file(`${root}/pkgs/akanjs/ARCHITECTURE.md`).text()).toContain("<!-- akan:framework-map:end -->");
+  });
+
   test("builds package without build.ts by copying source and generating package metadata", async () => {
     const { root, pkg } = track(await createTempPackage("@sample/tool"));
     await writeJson(`${root}/package.json`, {
@@ -254,16 +298,21 @@ describe("PackageRunner", () => {
     );
   });
 
-  test("leaves a package's local/ run artifacts out of the dist it builds", async () => {
+  test("leaves a package's local/ run artifacts and its lint baseline out of the dist it builds", async () => {
     const { root, pkg } = track(await createTempPackage("@sample/tool"));
     await writeJson(`${root}/package.json`, { name: "repo", version: "1.0.0", description: "repo" });
     await writeText(`${root}/pkgs/@sample/tool/index.ts`, "export const value = 1;\n");
     await writeText(`${root}/pkgs/@sample/tool/local/testing.sqlite`, "db\n");
+    await writeText(
+      `${root}/pkgs/@sample/tool/akan.baseline.json`,
+      '{\n  "akan.size.file": {\n    "index.ts": 900\n  }\n}\n',
+    );
 
     await new PackageRunner().buildPackage(pkg);
 
     expect(await Bun.file(`${root}/dist/pkgs/@sample/tool/index.ts`).exists()).toBe(true);
     expect(await Bun.file(`${root}/dist/pkgs/@sample/tool/local/testing.sqlite`).exists()).toBe(false);
+    expect(await Bun.file(`${root}/dist/pkgs/@sample/tool/akan.baseline.json`).exists()).toBe(false);
   });
 
   test("rejects a dist package that would publish local/ run artifacts", async () => {
@@ -281,6 +330,25 @@ describe("PackageRunner", () => {
       ])) as never;
 
     await expect(new PackageRunner().verifyDistPackage(pkg)).rejects.toThrow("local/");
+  });
+
+  test("rejects a dist package that would publish a lint baseline, an embedded package's included", async () => {
+    const { root, pkg } = track(await createTempPackage("@sample/tool"));
+    await writeJson(`${root}/dist/pkgs/@sample/tool/package.json`, {
+      name: "@sample/tool",
+      version: "1.2.3",
+      publishConfig: { access: "public" },
+    });
+    await writeText(`${root}/dist/pkgs/@sample/tool/README.md`, "# Tool\n");
+    await writeText(`${root}/dist/pkgs/@sample/tool/README.ko.md`, "# Tool KO\n");
+    pkg.workspace.spawn = (async () =>
+      JSON.stringify([
+        { files: [{ path: "package.json" }, { path: "vendor/use-agentic/akan.baseline.json" }], size: 9 },
+      ])) as never;
+
+    await expect(new PackageRunner().verifyDistPackage(pkg)).rejects.toThrow(
+      "@sample/tool would publish its workspace's lint baseline: vendor/use-agentic/akan.baseline.json",
+    );
   });
 
   test("verifies dist package metadata with npm pack dry-run", async () => {

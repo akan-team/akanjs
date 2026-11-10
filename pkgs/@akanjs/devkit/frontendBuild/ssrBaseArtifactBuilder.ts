@@ -12,6 +12,7 @@ import { DictionaryAssetBuilder } from "./dictionaryAssetBuilder";
 import { FontOptimizer } from "./fontOptimizer";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
 import { RouteClientBuilder } from "./routeClientBuilder";
+import type { RuntimeChunks } from "./routeModulePreloads";
 import { VendorNarrowing } from "./vendorNarrowing";
 import type { VendorSpecifier } from "./vendorSpecifiers";
 
@@ -20,6 +21,7 @@ export interface BuildSsrBaseArtifactResult {
   seedIndex: RouteSeedIndex;
   cssCompiler: CssCompiler;
   optimizedFonts: Awaited<ReturnType<FontOptimizer["optimize"]>>;
+  runtimeChunks: RuntimeChunks;
 }
 
 export function prepareCssAsset(command: "build" | "start", basePath: string, cssText: string): string {
@@ -63,7 +65,7 @@ export class SsrBaseArtifactBuilder {
 
   async build(): Promise<BuildSsrBaseArtifactResult> {
     const akanConfig = await this.#app.getConfig();
-    const { rscClientUrl, rscRuntimeClientManifest, rscRuntimeSsrManifest, vendorMap } =
+    const { rscClientUrl, rscRuntimeClientManifest, rscRuntimeSsrManifest, vendorMap, runtimeChunks } =
       await this.#buildRuntimeClientEntries();
     const pageKeys = await this.#app.getPageKeys();
     this.#app.verbose(`[base-artifact] discovered ${pageKeys.length} route files under ${this.#app.cwdPath}/page`);
@@ -119,12 +121,13 @@ export class SsrBaseArtifactBuilder {
     await Bun.write(path.join(this.#absArtifactDir, "base-artifact.json"), `${JSON.stringify(artifact, null, 2)}\n`);
     this.#app.verbose(`[base-artifact] complete in ${Date.now() - this.#started}ms`);
 
-    return { artifact, seedIndex, cssCompiler, optimizedFonts };
+    return { artifact, seedIndex, cssCompiler, optimizedFonts, runtimeChunks };
   }
 
   async #buildRuntimeClientEntries(): Promise<
     Pick<BaseBuildArtifact, "rscClientUrl" | "rscRuntimeClientManifest" | "rscRuntimeSsrManifest"> & {
       vendorMap: Record<VendorSpecifier, string>;
+      runtimeChunks: RuntimeChunks;
     }
   > {
     const akanServerPath = await this.#resolveAkanServerPath();
@@ -160,11 +163,16 @@ export class SsrBaseArtifactBuilder {
       vendorEntries.map(({ specifier, absPath }) => [specifier, clientBundle.entryUrlsByAbsPath.get(absPath) ?? ""]),
     ) as Record<VendorSpecifier, string>;
     this.#app.verbose(`[base-artifact] rscClientUrl=${rscClientUrl} vendors=${Object.keys(vendorMap).length}`);
+    const chunksOf = (absPath: string) => clientBundle.entryChunkUrlsByAbsPath.get(absPath) ?? [];
     return {
       rscClientUrl,
       rscRuntimeClientManifest: clientBundle.manifest,
       rscRuntimeSsrManifest,
       vendorMap,
+      runtimeChunks: {
+        runtime: [...new Set([...chunksOf(rscClientEntry), ...chunksOf(rscSegmentOutletEntry)])],
+        vendors: Object.fromEntries(vendorEntries.map(({ specifier, absPath }) => [specifier, chunksOf(absPath)])),
+      },
     };
   }
 

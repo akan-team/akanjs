@@ -12,12 +12,12 @@ export class PreviewChrome {
   /** Set this to drive Chrome on macOS too, e.g. to reproduce what a pod sees. */
   static readonly backendEnvKey = "AKAN_CODE_WEBVIEW_BACKEND";
 
-  /** The executables Bun looks for on PATH before giving up. */
+  /** The executables Bun looks for on PATH before giving up, in its order: the first found is the one it starts. */
   static readonly executables = [
-    "chromium",
-    "chromium-browser",
     "google-chrome-stable",
     "google-chrome",
+    "chromium-browser",
+    "chromium",
     "brave-browser",
     "microsoft-edge",
     "chrome",

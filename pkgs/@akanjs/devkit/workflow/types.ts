@@ -74,6 +74,7 @@ export interface WorkflowInputSpec {
   required?: boolean;
   description: string;
   allowedValues?: readonly string[];
+  mustExist?: boolean;
 }
 
 export interface WorkflowStep {

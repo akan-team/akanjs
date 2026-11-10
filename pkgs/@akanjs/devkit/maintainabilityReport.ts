@@ -7,7 +7,7 @@ import type {
 } from "./maintainabilityContract";
 import { type FileKind, MaintainabilityLimits } from "./maintainabilityLimits";
 
-type FixKey = FileKind | Exclude<MaintainabilityRuleId, "akan.size.file">;
+type FixKey = FileKind | "package" | Exclude<MaintainabilityRuleId, "akan.size.file">;
 
 export class MaintainabilityReport {
   static readonly #clientSplitFix =
@@ -30,9 +30,15 @@ export class MaintainabilityReport {
       "Move display and predicate logic onto Light<Model>, and split an unrelated concept into its own module.",
     ".service.ts":
       "Move state transitions into document chain methods, and split an unrelated responsibility into its own module.",
+    package:
+      "Split it by responsibility: one class per file, and each family of helpers in a file of its own behind the package's existing exports.",
     [AbstractDoc.suffix]:
       "Trim the abstract to a title, one sentence naming what the module owns, and a `## Rules` list of the invariants the code cannot show.",
     "akan.size.component": MaintainabilityReport.#clientSplitFix,
+    "akan.size.function":
+      "Split it by family into named functions or a collaborator class, each under the limit, keeping its signature for callers.",
+    "akan.size.class":
+      "Move each family of members into a collaborator the class holds, and keep the public members on the class as its facade.",
     "akan.store.multi-write": MaintainabilityReport.#oneEndpointFix,
     "akan.store.root-write-chain": `A store may call another through \`RootStore\`, but that does not make the writes one. ${MaintainabilityReport.#oneEndpointFix}`,
     "akan.component.write-chain":
@@ -49,7 +55,10 @@ export class MaintainabilityReport {
   static readonly #labels: { [key in FixKey]?: string } = {
     "ui/": "ui/**",
     "webkit/": "webkit/**",
+    package: "package file",
     "akan.size.component": "component or hook",
+    "akan.size.function": "function",
+    "akan.size.class": "class",
     "akan.store.multi-write": "store action with several writes",
     "akan.store.root-write-chain": "store method chaining other stores' writes",
     "akan.component.write-chain": "handler with several writes",
@@ -62,6 +71,8 @@ export class MaintainabilityReport {
   static readonly #units: { [rule in DebtRuleId]: string } = {
     "akan.size.file": "lines",
     "akan.size.component": "lines",
+    "akan.size.function": "lines",
+    "akan.size.class": "members",
     "akan.component.store-access": "store accesses",
     "akan.store.multi-write": "writes",
     "akan.store.root-write-chain": "writes",
@@ -73,7 +84,7 @@ export class MaintainabilityReport {
   static describe(sysPath: string, failures: MaintainabilityFailure[], commands: MaintainabilityCommands = {}) {
     const groups = new Map<string, { labels: string[]; rules: Set<MaintainabilityRuleId> }>();
     for (const failure of failures) {
-      const fixKey = MaintainabilityReport.#fixKeyOf(failure);
+      const fixKey = MaintainabilityReport.#fixKeyOf(sysPath, failure);
       const fix = MaintainabilityReport.#fixes[fixKey];
       const group = groups.get(fix) ?? { labels: [], rules: new Set() };
       const label = MaintainabilityReport.#labelOf(fixKey);
@@ -101,7 +112,7 @@ export class MaintainabilityReport {
       line: failure.line,
       rule: failure.rule,
       problem: MaintainabilityReport.#problemOf(failure),
-      fix: MaintainabilityReport.#fixes[MaintainabilityReport.#fixKeyOf(failure)],
+      fix: MaintainabilityReport.#fixes[MaintainabilityReport.#fixKeyOf(sysPath, failure)],
       path: commands[failure.rule]?.[0] ?? null,
     }));
   }
@@ -109,9 +120,14 @@ export class MaintainabilityReport {
   static #problemOf(failure: MaintainabilityFailure) {
     if (failure.kind === "baselineGrowth") {
       const entry = `entry "${failure.key}" under ${failure.debtRule}`;
+      const units = MaintainabilityReport.#units[failure.debtRule];
+      if (failure.measured)
+        return failure.committed === undefined
+          ? `${entry} is debt the code at ${failure.reference} does not hold, and with no baseline there the baseline may only shrink from that code`
+          : `${entry} allows ${failure.count} ${units}, above the ${failure.committed} the code at ${failure.reference} holds with no baseline there; the baseline may only shrink`;
       return failure.committed === undefined
         ? `${entry} is not in the baseline at ${failure.reference}, which may only shrink`
-        : `${entry} allows ${failure.count} ${MaintainabilityReport.#units[failure.debtRule]}, above the ${failure.committed} at ${failure.reference}; the baseline may only shrink`;
+        : `${entry} allows ${failure.count} ${units}, above the ${failure.committed} at ${failure.reference}; the baseline may only shrink`;
     }
     const grown = failure.recorded === undefined ? "" : `, more than the ${failure.recorded} recorded`;
     if (failure.kind === "multiWrite") {
@@ -129,11 +145,15 @@ export class MaintainabilityReport {
       return `sends ${failure.writes.length} server write(s) from outside a store action or a module component: ${failure.writes.join(", ")}${grown}`;
     if (failure.kind === "loopCall")
       return `service method ${failure.owner} calls once per item: ${failure.calls.join(", ")}${grown}`;
+    if (failure.kind === "classSize")
+      return `class ${failure.owner} has ${failure.memberCount} members, over the ${failure.maxMembers}-member limit${failure.recorded === undefined ? "" : `, up from ${failure.recorded}`}`;
     if (failure.kind === "storeAccess")
       return `${MaintainabilityReport.#unitOf(failure.component)} ${failure.component} reaches the store ${failure.accessCount} times, over the ${failure.maxAccesses}-access limit${failure.recorded === undefined ? "" : `, up from ${failure.recorded}`}`;
-    const subject = failure.component
-      ? `${MaintainabilityReport.#unitOf(failure.component)} ${failure.component} has`
-      : "file has";
+    const subject = failure.function
+      ? `function ${failure.function} has`
+      : failure.component
+        ? `${MaintainabilityReport.#unitOf(failure.component)} ${failure.component} has`
+        : "file has";
     const up = failure.recorded === undefined ? "" : `, up from ${failure.recorded}`;
     return `${subject} ${failure.lineCount} lines, over the ${failure.maxLines}-line limit${up}`;
   }
@@ -142,8 +162,9 @@ export class MaintainabilityReport {
     return /^use[A-Z]/.test(name) ? "hook" : "component";
   }
 
-  static #fixKeyOf(failure: MaintainabilityFailure): FixKey {
+  static #fixKeyOf(sysPath: string, failure: MaintainabilityFailure): FixKey {
     if (failure.rule !== "akan.size.file") return failure.rule;
+    if (sysPath.startsWith("pkgs/")) return "package";
     return MaintainabilityLimits.fileKindOf(failure.file) ?? "akan.size.component";
   }
 

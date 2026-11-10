@@ -47,6 +47,29 @@ describe("LibraryScript", () => {
     expect(recorder.names()).toContain("installLibrary");
     expect(recorder.names()).toContain("mergeLibraryDependencies");
   });
+
+  test("refuses a library name that is not one plain path segment before writing", async () => {
+    const script = CommandContainer.get(LibraryScript);
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace", {}, recorder);
+    script.libraryRunner.createLibrary = async (...args) => {
+      recorder.record("createLibrary", ...args);
+      return createFakeExecutor("lib", {}, recorder) as never;
+    };
+    script.libraryRunner.installLibrary = async (...args) => {
+      recorder.record("installLibrary", ...args);
+      return createFakeExecutor("lib", {}, recorder) as never;
+    };
+
+    for (const name of ["..", "../x", "a/b", "/tmp/x", ""]) {
+      await expect(script.createLibrary(name, workspace as never)).rejects.toThrow(
+        `${JSON.stringify(name)} is no lib name; use letters, digits, - and _, starting with a lowercase letter or digit`,
+      );
+      await expect(script.installLibrary(workspace as never, name)).rejects.toThrow("is no lib name");
+    }
+
+    expect(recorder.names()).toEqual([]);
+  });
 });
 
 describe("LibraryRunner", () => {

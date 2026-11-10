@@ -98,4 +98,47 @@ describe("AbortSignals", () => {
     expect(AbortSignals.isAbort("AbortError")).toBe(false);
     expect(AbortSignals.isAbort(null)).toBe(false);
   });
+
+  test("knows a timeout by its reason, and an abort by its name or by the reason a call rejected with", () => {
+    expect(AbortSignals.isTimeout(AbortSignal.abort(new DOMException("timed out", "TimeoutError")))).toBe(true);
+    expect(AbortSignals.isTimeout(AbortSignal.abort())).toBe(false);
+    expect(AbortSignals.isTimeout(new AbortController().signal)).toBe(false);
+
+    const custom = new Error("superseded");
+    expect(AbortSignals.isAbort(custom)).toBe(false);
+    const leaving = new AbortController();
+    leaving.abort(custom);
+    expect(AbortSignals.reasonOf(leaving.signal)).toBe(custom);
+    expect(AbortSignals.isAbort(custom)).toBe(true);
+    expect(AbortSignals.isAbort(new DOMException("stopped", "AbortError"))).toBe(true);
+    expect(AbortSignals.isAbort(new Error("real"))).toBe(false);
+
+    const slow = new DOMException("timed out", "TimeoutError");
+    const deadline = AbortSignal.abort(slow);
+    expect(AbortSignals.reasonOf(deadline)).toBe(slow);
+    expect(AbortSignals.isAbort(slow)).toBe(false);
+    expect(AbortSignals.isAbortOf(slow, [{ signal: deadline }])).toBe(false);
+  });
+
+  test("matches a primitive reason only against an aborted signal the call was given", () => {
+    const left = new AbortController();
+    left.abort("left");
+    expect(AbortSignals.isAbort("left")).toBe(false);
+    expect(AbortSignals.isAbortOf("left", [1, { signal: left.signal }])).toBe(true);
+    expect(AbortSignals.isAbortOf("left", [left.signal])).toBe(true);
+    expect(AbortSignals.isAbortOf("other", [left.signal])).toBe(false);
+    expect(AbortSignals.isAbortOf("left", [{ signal: new AbortController().signal }, null, "left"])).toBe(false);
+  });
+
+  test("never takes an app or restored error for an abort, though it aborted a call", () => {
+    const keyed = Object.assign(new Error("Forbidden"), { error: "memo.error.forbidden" });
+    const restored = Object.assign(new Error("Forbidden"), { statusCode: 403 });
+    for (const failure of [keyed, restored]) {
+      const ctrl = new AbortController();
+      ctrl.abort(failure);
+      expect(AbortSignals.reasonOf(ctrl.signal)).toBe(failure);
+      expect(AbortSignals.isAbort(failure)).toBe(false);
+      expect(AbortSignals.isAbortOf(failure, [ctrl.signal])).toBe(false);
+    }
+  });
 });

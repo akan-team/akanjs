@@ -24,5 +24,7 @@ export type RootStoreCls<
     [ACTION_OWNER_META]: { [key: string]: ActionOwner };
     slice: { [key: string]: { [key: string]: SerializedSlice } };
     _slice: SliceInfoObj;
+    //? Type-only, read by `WithSelectors`: inferring these back out of a merged class grows quadratically with its stores.
+    _root: { writable: WritableState; action: Action; slice: InternalSliceObj; state: State };
   }
 >;
