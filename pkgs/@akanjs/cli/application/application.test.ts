@@ -137,6 +137,20 @@ describe("ApplicationCommand", () => {
     ]);
   });
 
+  test("build takes --update-budget, off unless given, and hands it to the script", async () => {
+    const updateBudget = getArgMetas(ApplicationCommand, "build")[1].find((meta) => meta.name === "updateBudget");
+    expect(updateBudget?.argsOption).toMatchObject({ default: false });
+
+    const command = CommandContainer.get(ApplicationCommand);
+    const calls: unknown[] = [];
+    command.applicationScript.build = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "build")?.handler;
+    await handler?.call(command, { name: "demo" }, true, false, false, null, null, true);
+    expect(calls).toEqual([[{ name: "demo" }, { write: true, fast: false, quiet: false, updateBudget: true }]]);
+  });
+
   test("the Capacitor-era commands and flags are gone", () => {
     const keys = getTargetMetas(ApplicationCommand).map((meta) => meta.key);
     for (const removed of ["codepush", "configureApp", "releaseSource"]) expect(keys).not.toContain(removed);
@@ -273,6 +287,22 @@ describe("ApplicationScript", () => {
     try {
       await expect(script.build(app, { quiet: true, env: "main" })).rejects.toThrow("stopped");
       expect(build.mock.calls[0]?.[1]).toMatchObject({ environment: "main" });
+    } finally {
+      build.mockRestore();
+    }
+  });
+
+  test("build enforces the route JS budget, and writes it on --update-budget", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app } = track(await createTempApp("demo"));
+    app.scanSync = mock(async () => undefined) as never;
+    const build = spyOn(script.applicationRunner, "build").mockImplementation(async () => {
+      throw new Error("stopped");
+    });
+    try {
+      await expect(script.build(app, { quiet: true })).rejects.toThrow("stopped");
+      await expect(script.build(app, { quiet: true, updateBudget: true })).rejects.toThrow("stopped");
+      expect(build.mock.calls.map(([, options]) => options?.budget)).toEqual(["enforce", "update"]);
     } finally {
       build.mockRestore();
     }

@@ -58,6 +58,18 @@ const chainFontList = (extra = "") => `[\n    ${chainFontEntry(extra)},\n  ]`;
 
 const optimize = (app: App) => new FontOptimizer(app, "start").optimize();
 
+const sizeAdjusts = (css: string) => [...css.matchAll(/size-adjust: ([^;]+);/g)].map((match) => match[1]);
+
+const renameSfntTable = (bytes: Uint8Array, from: string, to: string) => {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let index = 0; index < view.getUint16(4); index++) {
+    const offset = 12 + index * 16;
+    if (new TextDecoder().decode(bytes.subarray(offset, offset + 4)) === from)
+      bytes.set(new TextEncoder().encode(to), offset);
+  }
+  return bytes;
+};
+
 describe("FontOptimizer cache", () => {
   test("reuses subset output instead of resubsetting an unchanged font", async () => {
     const { app } = await makeApp(layoutWith());
@@ -118,6 +130,48 @@ describe("FontOptimizer cache", () => {
     const result = await optimize(app);
     expect(result.fonts).toEqual([]);
     expect(result.files).toEqual([]);
+  });
+});
+
+describe("FontOptimizer fallback", () => {
+  test("writes a metric-adjusted fallback face next to the optimized face", async () => {
+    const { app } = await makeApp(layoutWith());
+
+    const { css } = await optimize(app);
+
+    expect(css).toContain('font-family: "Assistant fallback"');
+    expect(sizeAdjusts(css).length).toBeGreaterThan(0);
+    expect(css).toMatch(/ascent-override: [\d.]+%/);
+    expect(css).toMatch(/descent-override: [\d.]+%/);
+  });
+
+  test("sizes the fallback from the source font, so a subset without Latin letters keeps the same size", async () => {
+    const { app: latinApp } = await makeApp(layoutWith());
+    const { app: digitsApp } = await makeApp(layoutWith(`\n    subsets: [],\n    subsetText: "0123456789",`));
+
+    const latin = sizeAdjusts((await optimize(latinApp)).css);
+    const digits = sizeAdjusts((await optimize(digitsApp)).css);
+
+    expect(latin.length).toBeGreaterThan(0);
+    expect(digits).toEqual(latin);
+  });
+
+  test("still writes the face, with no fallback, when the source font's metrics cannot be read", async () => {
+    const { app, cwdPath } = await makeApp(`
+export const fonts = [{ name: "Gilda", paths: [{ src: "/fonts/Gilda.ttf", weight: 400 }] }];
+export default function Layout() {
+  return null;
+}
+`);
+    const source = await Bun.file(path.resolve(path.dirname(SOURCE_FONT), "GildaDisplay-Regular.ttf")).bytes();
+    // capsize reads the average width from the OS/2 table, so without one the metrics read throws.
+    await Bun.write(path.join(cwdPath, "public/fonts/Gilda.ttf"), renameSfntTable(source, "OS/2", "XS/2"));
+
+    const result = await optimize(app);
+
+    expect(result.files).toHaveLength(1);
+    expect(result.css).toContain('font-family: "Gilda"');
+    expect(result.css).not.toContain('font-family: "Gilda fallback"');
   });
 });
 
