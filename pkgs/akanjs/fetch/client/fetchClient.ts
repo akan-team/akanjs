@@ -82,6 +82,8 @@ export interface FetchBridgeCall {
   args: UnknownRecord;
   returns: SerializedReturns;
   timeout?: number | false;
+  /** A query's; the call rejects on abort whether or not the bridge stops what it relayed. */
+  signal?: AbortSignal;
 }
 
 /** A transport that is not HTTP: a view inside an MCP host has no network, and reaches the server through the host. */
@@ -479,9 +481,10 @@ export class FetchClient {
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
           const signal = option?.signal;
+          if (signal?.aborted) throw this.http.abortError(signal);
           const bridge = this.#bridgeOf(option?.origin);
           if (bridge) {
-            const call = this.#viaBridge(bridge, { key, type: "query", endpoint, option, argMap });
+            const call = this.#viaBridge(bridge, { key, type: "query", endpoint, option, argMap, signal });
             return parseReturn(await this.#untilAborted(call, signal), { crystalize: option?.crystalize ?? true });
           }
           const headers = this.#makeRequestHeaders(option);
@@ -643,14 +646,11 @@ export class FetchClient {
   async #viaBridge(
     bridge: FetchBridge,
     {
-      key,
-      type,
       endpoint,
       option,
       argMap,
-    }: {
-      key: string;
-      type: FetchBridgeCall["type"];
+      ...call
+    }: Pick<FetchBridgeCall, "key" | "type" | "signal"> & {
       endpoint: SerializedEndpoint;
       option?: FetchPolicy;
       argMap: Map<string, unknown>;
@@ -658,8 +658,7 @@ export class FetchClient {
   ) {
     try {
       return await bridge.call({
-        key,
-        type,
+        ...call,
         args: Object.fromEntries(argMap),
         returns: endpoint.returns,
         timeout: option?.timeout ?? endpoint.timeout ?? this.http.timeout,

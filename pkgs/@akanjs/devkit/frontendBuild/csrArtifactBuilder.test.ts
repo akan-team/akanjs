@@ -125,3 +125,51 @@ console.info(await result.outputs[0].text());
     expect(stdout.trim()).toBe("a");
   });
 });
+
+describe("CsrArtifactBuilder.barrelImportsPlugin", () => {
+  test("narrows an app's client barrel to the runtime, the store and the modules a page names", async () => {
+    const root = await makeTempRoot();
+    const appDir = path.join(root, "apps/demo");
+    const paths = { "@apps/*": ["./apps/*"] };
+    await writeText(path.join(root, "tsconfig.json"), JSON.stringify({ compilerOptions: { baseUrl: ".", paths } }));
+    await writeText(
+      path.join(appDir, "client.ts"),
+      [
+        'export { usePage } from "./lib/useClient";',
+        'export { st } from "./lib/st";',
+        'export { Memo } from "./lib/memo";',
+        'export { Other } from "./lib/other";',
+        "",
+      ].join("\n"),
+    );
+    await writeText(path.join(appDir, "lib/useClient.ts"), 'console.info("runtime");\nexport const usePage = 1;\n');
+    await writeText(path.join(appDir, "lib/st.ts"), 'console.info("store");\nexport const st = 2;\n');
+    await writeText(path.join(appDir, "lib/memo/index.ts"), 'console.info("memo-ui");\nexport const Memo = 3;\n');
+    await writeText(path.join(appDir, "lib/other/index.ts"), 'console.info("other-ui");\nexport const Other = 4;\n');
+    await writeText(path.join(appDir, "page.ts"), 'import { Memo } from "@apps/demo/client";\nconsole.info(Memo);\n');
+    const app = {
+      workspace: { workspaceRoot: root },
+      getConfig: async () => ({ barrelImports: ["akanjs/ui", "@apps/demo/client"] }),
+      getTsConfig: async () => ({ compilerOptions: { paths } }),
+      getPublicEnv: () => ({}),
+    };
+
+    const options = CsrArtifactBuilder.bundleOptions(app as never, "build");
+    const result = await Bun.build({
+      ...options,
+      plugins: [...options.plugins, await CsrArtifactBuilder.barrelImportsPlugin(app as never)],
+      entrypoints: [path.join(appDir, "page.ts")],
+    });
+    expect(result.success).toBe(true);
+    await Bun.write(path.join(root, "out.js"), (await result.outputs[0]?.text()) ?? "");
+    const proc = Bun.spawn([process.execPath, "out.js"], { cwd: root, stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(stderr).toBe("");
+    expect(stdout.trim().split("\n")).toEqual(["runtime", "store", "memo-ui", "3"]);
+  });
+});

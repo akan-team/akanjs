@@ -34,7 +34,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (appName, start, workspace) {
       await this.applicationScript.createApplication(appName.toLowerCase().replace(/ /g, "-"), workspace, { start });
     }),
-  removeApplication: target({ desc: "Remove an application from the workspace" })
+  removeApplication: target({ desc: "Remove an application from the workspace", destructive: true })
     .with(App)
     .exec(async function (app) {
       await this.applicationScript.removeApplication(app);

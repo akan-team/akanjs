@@ -1,5 +1,6 @@
 import { type Exec, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
+import { assertPlainName } from "@akanjs/devkit/workflow/plainName";
 import { Logger } from "akanjs/common";
 
 import { AgentScript } from "../agent/agent.script";
@@ -51,6 +52,7 @@ export class WorkspaceScript extends script("workspace", [
       bunDependency?: string;
     },
   ) {
+    assertPlainName("app", appName);
     const akanVersion = await this.packageScript.version(null, { log: false });
     const libs = installLibs ? ["util", "shared"] : [];
     const workspace = await this.workspaceRunner.createWorkspace(repoName, appName, {

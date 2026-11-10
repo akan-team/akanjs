@@ -80,12 +80,14 @@ export class PreviewView {
     const view = PreviewView.#open({ width, height, engine, onConsole: (line) => logs.push(line) });
     try {
       //? A browser that missed its start bound may still come up, so a later page retries it within only its own bound.
+      //? One that died or was closed instead is spawned afresh by the next view, which gets the full bound.
       const startMs = PreviewView.#stalled.has(engine) ? Math.min(startTimeoutMs, timeoutMs) : startTimeoutMs;
       const stalled = new Error(`Timed out starting the ${engine} browser after ${startMs / 1_000} s.`);
       await PreviewView.#within(view.navigate("about:blank"), Date.now() + startMs, stalled).then(
         () => PreviewView.#stalled.delete(engine),
         (error: unknown) => {
           if (error === stalled) PreviewView.#stalled.add(engine);
+          else PreviewView.#stalled.delete(engine);
           throw error;
         },
       );

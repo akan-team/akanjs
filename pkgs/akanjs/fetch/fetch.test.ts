@@ -15,7 +15,7 @@ import {
   type SliceCls,
 } from "akanjs/signal";
 import { AppScope } from "./appScope";
-import { FetchClient, type FetchProxy } from "./client/fetchClient";
+import { type FetchBridgeCall, FetchClient, type FetchProxy } from "./client/fetchClient";
 import { HttpClient } from "./client/httpClient";
 import { type ErrorResponsePayload, type RestoredError, restoreRemoteError } from "./client/remoteError";
 import { WsClient } from "./client/wsClient";
@@ -1392,6 +1392,42 @@ describe("FetchClient over a bridge", () => {
     expect(fetchCalls.map((call) => call.url)).toEqual(["https://api.example/addFiles"]);
   });
 
+  test("hands the bridge a query's signal, sends nothing once it is spent, and rejects on abort regardless", async () => {
+    const calls: FetchBridgeCall[] = [];
+    FetchClient.setBridge({
+      call: (request) => {
+        calls.push(request);
+        if (request.type === "mutation") return Promise.resolve({ title: "Made", count: 1, nested: { label: "N" } });
+        return new Promise<never>(() => undefined);
+      },
+    });
+    try {
+      const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
+      const ask = (signal: AbortSignal) =>
+        client.handler.getThing("1234567890abcdef12345678", [], null, { signal }) as Promise<string>;
+      const spent = new AbortController();
+      spent.abort("gone");
+      expect(await ask(spent.signal).catch((error: unknown) => error)).toBe("gone");
+      const timedOut = (await ask(AbortSignal.abort(new DOMException("timed out", "TimeoutError"))).catch(
+        (error: unknown) => error,
+      )) as TestErr;
+      expect(timedOut.error).toBe("base.error.gatewayTimeout");
+      expect(calls).toEqual([]);
+
+      const leaving = new AbortController();
+      const asked = ask(leaving.signal).catch((error: unknown) => error);
+      expect(calls[0]?.signal).toBe(leaving.signal);
+      leaving.abort("left the page");
+      expect(await asked).toBe("left the page");
+
+      await client.handler.createThing("Made", 1, { signal: new AbortController().signal });
+      expect(calls[1]?.type).toBe("mutation");
+      expect(calls[1] && "signal" in calls[1]).toBe(false);
+    } finally {
+      FetchClient.setBridge(null);
+    }
+  });
+
   test("restores a refusal the bridge carried as the app's own error", async () => {
     FetchClient.setBridge({
       call: async () => {
@@ -1900,6 +1936,89 @@ describe("FetchClient HTTP generation", () => {
       Reflect.deleteProperty(globalThis, "window");
       client.disconnect();
     }
+  });
+
+  test("sends a query of its own after a file upload or a socket message, never joining one sent before", async () => {
+    setFakeWebSocket();
+    const requests = setGatedFetch();
+    const uploadSignal: SerializedSignal = {
+      endpoint: {
+        addFiles: {
+          type: "mutation",
+          fileUpload: true,
+          args: [arg("body", "files", { refName: "Upload", arrDepth: 1 }), arg("body", "metas"), arg("body", "type")],
+          returns: { refName: "String" },
+        },
+      },
+    };
+    const client = new FetchClient(
+      "https://api.example",
+      {},
+      { service: serviceSignal, fetchTestItem: databaseSignal, file: uploadSignal },
+    );
+    const ask = () => client.handler.getThing("1234567890abcdef12345678", [], null) as Promise<string>;
+    Object.assign(globalThis, { window: {} });
+    try {
+      const beforeUpload = ask();
+      const uploaded = (client.handler.addFetchTestItemFiles([new File(["x"], "x.txt")]) as Promise<unknown>).catch(
+        () => undefined,
+      );
+      const afterUpload = ask();
+      client.handler.sendThing("hello");
+      const afterMessage = ask();
+      expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+        "/custom/1234567890abcdef12345678",
+        "/addFiles",
+        "/custom/1234567890abcdef12345678",
+        "/custom/1234567890abcdef12345678",
+      ]);
+      requests[0]?.answer("before upload");
+      requests[1]?.answer([]);
+      requests[2]?.answer("after upload");
+      requests[3]?.answer("after message");
+      await uploaded;
+      expect(await Promise.all([beforeUpload, afterUpload, afterMessage])).toEqual([
+        "before upload",
+        "after upload",
+        "after message",
+      ]);
+    } finally {
+      Reflect.deleteProperty(globalThis, "window");
+      client.disconnect();
+    }
+  });
+
+  test("in a request, a caller's abort rejects that caller alone and leaves the memoized query to the rest", async () => {
+    if (!requestStorage) return;
+    const memo = requestStorage;
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
+    const ask = (signal?: AbortSignal, id = "1234567890abcdef12345678") =>
+      client.handler.getThing(id, [], null, { signal }) as Promise<string>;
+    await memo.run(new Request("https://example.test"), async () => {
+      const leaving = new AbortController();
+      const left = ask(leaving.signal).catch((error: unknown) => error);
+      const staying = ask();
+      const reason = new Error("left the page");
+      leaving.abort(reason);
+      expect(await left).toBe(reason);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.signal?.aborted).toBe(false);
+      requests[0]?.answer("kept");
+      expect(await staying).toBe("kept");
+
+      const spent = new AbortController();
+      spent.abort("gone");
+      expect(await ask(spent.signal).catch((error: unknown) => error)).toBe("gone");
+      expect(await ask(spent.signal, "abcdefabcdefabcdef123456").catch((error: unknown) => error)).toBe("gone");
+      const timedOut = (await ask(AbortSignal.abort(new DOMException("timed out", "TimeoutError"))).catch(
+        (error: unknown) => error,
+      )) as TestErr;
+      expect(timedOut).toBeInstanceOf(TestErr);
+      expect(timedOut.error).toBe("base.error.gatewayTimeout");
+      expect(await ask()).toBe("kept");
+      expect(requests).toHaveLength(1);
+    });
   });
 
   test("hands a joiner its copy as the answer lands, before the starter's caller can change it", async () => {
@@ -2919,9 +3038,36 @@ describe("WsClient", () => {
         return socket?.sent.length;
       };
       expect(sentAfter(Number.NaN)).toBe(WsClient.defaultOutboxLimit);
-      expect(sentAfter(Number.POSITIVE_INFINITY)).toBe(WsClient.defaultOutboxLimit);
+      expect(sentAfter(0)).toBe(0);
+      expect(warnings.at(-1)).toBe("WebSocket dropped 120 oldest queued message(s) while disconnected");
+      const warned = warnings.length;
+      expect(sentAfter(Number.POSITIVE_INFINITY)).toBe(120);
+      expect(sentAfter(-1)).toBe(120);
+      expect(warnings).toHaveLength(warned);
       expect(sentAfter(2.5)).toBe(2);
       expect(warnings.at(-1)).toBe("WebSocket dropped 118 oldest queued message(s) while disconnected");
+
+      const keepsNone = new WsClient("ws://example/ws").configure({ outboxLimit: 0 });
+      const warnedBefore = warnings.length;
+      for (const round of [1, 2, 3]) {
+        keepsNone.connect();
+        keepsNone.emit("send", [round]);
+        const socket = FakeWebSocket.instances.at(-1);
+        socket?.open();
+        expect(socket?.sent).toEqual([]);
+        socket?.close(1006, "gone");
+      }
+      expect(warnings).toHaveLength(warnedBefore + 1);
+      keepsNone.configure({ outboxLimit: 1 });
+      keepsNone.connect();
+      for (const idx of [1, 2, 3]) keepsNone.emit("send", [`late${idx}`]);
+      const reconfigured = FakeWebSocket.instances.at(-1);
+      reconfigured?.open();
+      expect(reconfigured?.sent.map((frame) => JSON.parse(frame))).toEqual([{ key: "send", data: ["late3"] }]);
+      expect(warnings.slice(warnedBefore + 1)).toEqual([
+        "WebSocket dropped 2 oldest queued message(s) while disconnected",
+      ]);
+      keepsNone.destroy();
     } finally {
       Logger.prototype.warn = warn;
     }

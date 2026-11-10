@@ -4,6 +4,7 @@ import { CSR_DEV_DIRNAME, CSR_DEV_ROUTE_PREFIX } from "akanjs/server/hmr/csrDevM
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
 import { AsyncDefaultExportDetector } from "../transforms/asyncDefaultExportDetector";
+import { workspaceBarrels } from "../transforms/barrelImportsPlugin";
 import { bundleDefine } from "./bundleDefine";
 import { CsrDevPaths } from "./csrDevPaths";
 import type { CsrDevContext } from "./csrDevTypes";
@@ -13,7 +14,7 @@ import { PagesEntrySourceGenerator } from "./pagesEntrySourceGenerator";
 
 //* Dev-only CSR as a module registry, under `.akan/artifact/csr-dev`: one entry per basePath boots every page.
 export class CsrDevBundler extends DevRegistryBundler {
-  static readonly #formatVersion = 4;
+  static readonly #formatVersion = 6;
   readonly reloadsOnEntryChange = true;
   //? Detecting a page's async default parses it with TypeScript: on apps/akan every page each save cost ~100ms.
   readonly #asyncDefaults = new Map<string, { mtimeMs: number; detected: Promise<boolean> }>();
@@ -30,8 +31,16 @@ export class CsrDevBundler extends DevRegistryBundler {
     const htmlBasePaths = basePaths.length > 0 ? basePaths : [""];
     const define = bundleDefine(this.app, "start", "csr");
     const optimizeImports = [...akanConfig.optimizeImports];
+    const barrelImports = workspaceBarrels(akanConfig.barrelImports);
     const configKey = Bun.hash(
-      JSON.stringify([CsrDevBundler.#formatVersion, Bun.version, define, optimizeImports, htmlBasePaths]),
+      JSON.stringify([
+        CsrDevBundler.#formatVersion,
+        Bun.version,
+        define,
+        optimizeImports,
+        htmlBasePaths,
+        barrelImports,
+      ]),
     ).toString(36);
     return {
       pageEntries,
@@ -41,6 +50,7 @@ export class CsrDevBundler extends DevRegistryBundler {
       optimizeImports,
       configKey,
       refreshFile: this.#resolveRefreshRuntime(),
+      barrelImports,
     };
   }
 

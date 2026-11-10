@@ -42,7 +42,7 @@ Reports where the workspace drifts from Akan conventions, such as stray files or
 
 - --ios (Boolean, default false): Checks only the native config instead, for a placeholder bundle id Apple has likely claimed.
 
-- Status: `failed` when any diagnostic is an error, `passed` otherwise.
+- Status: `failed` when any diagnostic is an error, `passed` otherwise. A `failed` run exits with code 1, so a script or CI step fails on it; warnings never change the exit code.
 
 - Also printed: Generated-file freshness, a repair command per problem, and the validation commands.
 
@@ -182,7 +182,7 @@ Meaning
 
 - `mobile-appid-placeholder` — warning (`--ios` only) — A native target still uses a placeholder bundle id.
 
-**doctor never fails the process.** It exits with code 0 even when the status is `failed`, so a CI gate must read `status` from `--format json`.
+**Warnings never fail the process.** doctor exits with code 1 only when the status is `failed`; run it with `--strict` so a CI gate also fails on recommended conventions.
 
 MCP Tools And Resources
 
@@ -218,11 +218,11 @@ Tool
 
   - explain_workflow: One workflow's inputs, predicted changes and checks.
 
-  - plan_workflow: Writes a plan file and returns its `planPath` for `apply_workflow`.
+  - plan_workflow: Writes a plan file and returns its `planPath` for `apply_workflow`, which it names next unless the plan has an error.
 
 - Apply and repair
 
-  - apply_workflow: Carries out a stored plan and names what to validate next.
+  - apply_workflow: Carries out a stored plan and, unless it failed, names what to validate next.
 
   - run_validation: Runs the validation commands for a plan or an apply report.
 
