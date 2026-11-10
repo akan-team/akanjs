@@ -13,7 +13,7 @@ or {
     $access <: or { `navigator.share`, `navigator.canShare` },
     register_diagnostic(
       span = $access,
-      message = "Android's WebView has no Web Share, so this does nothing in the app. Move it into a `webkit/` hook that branches on `isNativeApp()` from `akanjs/client/native`; the runtime's `share` plugin is the app side.",
+      message = "Android's WebView has no Web Share, so this does nothing in the app. Move it into a `webkit/` hook that branches on `isNativeApp()` from `akanjs/client`; the runtime's `share` plugin is the app side.",
       severity = "warn"
     )
   },

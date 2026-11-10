@@ -1,8 +1,7 @@
 import { msg } from "@libs/shared/client";
 import { safeRedirectPath, withRedirectQuery } from "@libs/shared/common";
 import { SsoHandshake, type SsoRedirects, saveRefreshToken, saveSignupToken } from "@libs/shared/webkit";
-import { router, setAuth } from "akanjs/client";
-import { isNativeShell } from "akanjs/client/native";
+import { isNativeShell, router, setAuth } from "akanjs/client";
 import { store } from "akanjs/store";
 
 import type * as cnst from "../cnst";

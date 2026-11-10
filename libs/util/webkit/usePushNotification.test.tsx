@@ -32,6 +32,7 @@ beforeAll(() => {
     },
   }));
   mock.module("akanjs/client", () => ({
+    isNativeApp: () => shell.native,
     router: {
       enterDeepLink: (href: string) => {
         deepLinks.push(href);
@@ -45,8 +46,7 @@ beforeAll(() => {
       },
     },
   }));
-  mock.module("akanjs/client/native", () => ({
-    isNativeApp: () => shell.native,
+  mock.module("akanjs/client/native/push", () => ({
     push: {
       isSupported: () => shell.native,
       checkPermission: async () => ({ display: shell.display }),
@@ -154,11 +154,24 @@ describe("usePushNotification", () => {
     const received: unknown[] = [];
 
     const stop = push.onTokenChange((pushToken) => received.push(pushToken));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     shell.tokenListeners[0]?.({ token: "fcm-token", provider: "fcm", platform: "android" });
     await new Promise((resolve) => setTimeout(resolve, 0));
     stop();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(received).toEqual([{ token: "fcm-token", provider: "fcm", platform: "android", deviceId }]);
+    expect(shell.tokenListeners).toHaveLength(0);
+  });
+
+  test("never subscribes a listener stopped before the native push plugin loaded", async () => {
+    installWindow();
+    shell.native = true;
+    const push = await hookOf();
+
+    push.onTokenChange(() => undefined)();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     expect(shell.tokenListeners).toHaveLength(0);
   });
 

@@ -1,11 +1,12 @@
 "use client";
 
-import { router, storage } from "akanjs/client";
-import { isNativeApp, type NativePushToken, push } from "akanjs/client/native";
+import { isNativeApp, router } from "akanjs/client";
+import type { NativePushToken } from "akanjs/client/native";
 import type { Messaging } from "firebase/messaging";
 import { useEffect } from "react";
 import { pushColdOpenParam } from "../common/pushColdOpenParam";
 import { pushNavigateMessage } from "../common/pushNavigateMessage";
+import { getPushDeviceId } from "./pushDeviceId";
 
 export type PushNotificationPlatform = "web" | "ios" | "android";
 export type PushNotificationProvider = "apns" | "fcm";
@@ -60,26 +61,8 @@ const isWebRuntime = () => typeof window !== "undefined" && typeof navigator !==
 let firebaseLoad: Promise<[typeof import("firebase/app"), typeof import("firebase/messaging")]> | null = null;
 const loadFirebase = () => (firebaseLoad ??= Promise.all([import("firebase/app"), import("firebase/messaging")]));
 
-const pushDeviceIdKey = "akan:pushDeviceId";
-let deviceIdLoad: Promise<string> | null = null;
-
-//? Kept in the app's own storage, so a reinstall or cleared site data starts a new installation along with its token.
-export const getPushDeviceId = () =>
-  (deviceIdLoad ??= (async () => {
-    const stored = await storage.getItem(pushDeviceIdKey);
-    if (stored) return stored;
-    const created = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
-      byte.toString(16).padStart(2, "0"),
-    ).join("");
-    await storage.setItem(pushDeviceIdKey, created);
-    return created;
-  })().catch((error: unknown) => {
-    deviceIdLoad = null;
-    throw error;
-  }));
-
-/** The installation id if this device ever registered for push, without making one. */
-export const loadPushDeviceId = async () => (await storage.getItem(pushDeviceIdKey)) ?? null;
+//? Loaded on first use too: a static import puts @akanjs/native/core on every web page that renders this hook.
+const loadPush = async () => (await import("akanjs/client/native/push")).push;
 
 const isInternalDeepLink = (url: string) => {
   if (url.startsWith("/") && !url.startsWith("//")) return true;
@@ -232,12 +215,13 @@ export const usePushNotification = () => {
 
   const isSupported = async () => {
     if (!isWebRuntime()) return false;
-    if (isNativeApp()) return push.isSupported("register");
+    if (isNativeApp()) return (await loadPush()).isSupported("register");
     return Boolean(getFirebaseConfig()?.apiKey && "Notification" in window && "serviceWorker" in navigator);
   };
 
   const getPermission = async (): Promise<PushNotificationPermission> => {
     if (isNativeApp()) {
+      const push = await loadPush();
       if (!push.isSupported("checkPermission")) return "denied";
       return (await push.checkPermission()).display;
     }
@@ -247,6 +231,7 @@ export const usePushNotification = () => {
 
   const requestPermission = async (): Promise<PushNotificationPermission> => {
     if (isNativeApp()) {
+      const push = await loadPush();
       if (!push.isSupported("requestPermission")) return "denied";
       return (await push.requestPermission()).display;
     }
@@ -257,7 +242,7 @@ export const usePushNotification = () => {
   //? Asks for nothing: registering with APNs or FCM shows no prompt, so callers check the permission first.
   const getToken = async () => {
     try {
-      if (isNativeApp()) return await withDeviceId(await push.register());
+      if (isNativeApp()) return await withDeviceId(await (await loadPush()).register());
       return await getWebToken();
     } catch {
       return undefined;
@@ -276,9 +261,18 @@ export const usePushNotification = () => {
   /** A native shell's token rotates on its own (FCM refreshes, APNs after a restore); hand each new one to the server. */
   const onTokenChange = (listener: (pushToken: PushToken) => void) => {
     if (!isNativeApp()) return () => undefined;
-    return push.listen("token", (nativeToken) => {
-      void withDeviceId(nativeToken).then(listener);
-    });
+    let stopped = false;
+    const unlisten = loadPush().then((push) =>
+      stopped
+        ? undefined
+        : push.listen("token", (nativeToken) => {
+            void withDeviceId(nativeToken).then(listener);
+          }),
+    );
+    return () => {
+      stopped = true;
+      void unlisten.then((stop) => stop?.());
+    };
   };
 
   return {

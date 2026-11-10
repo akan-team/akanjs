@@ -276,6 +276,10 @@ page API is
 `akanjs/client/native/<id>` (`akanjs/client/native/window`, `…/screen`, `…/global-shortcut`), imported in a `webkit/`
 hook; `volume` and `filePicker` also come from `akanjs/client/native` itself. A capability the shell
 lacks is added there: an app's own plugin runs as Bun code in the plugin host and cannot add a native shell op.
+`isNativeApp()`, `isNativeShell()`, `nativePlatform()` and `desktopPlatform()` come from `akanjs/client` and load no
+native runtime. A static import of `akanjs/client/native` loads `@akanjs/native/core` on every web page that reaches
+the file, so a store, or a hook a web page also renders, loads the plugin on first use behind the check:
+`if (isNativeApp()) await (await import("akanjs/client/native/push")).push.register()`.
 
 **A plugin the app or lib owns lives in `native/<id>/`**, the folder named after the plugin id: `native-plugin.json`
 beside its page API (`src/index.ts`, `definePlugin` from `akanjs/client/native`), its desktop part (`src/desktop.ts`,
@@ -295,7 +299,7 @@ uses `getCookie` / `setCookie` / `removeCookie`, `storage`, and `secretStorage` 
 names — pass `sameSite: "none"` only for a cookie a cross-site POST must carry back. `getCookie` reads a name sent
 twice as unset, since a sibling subdomain can plant a second copy; server code reads `cookieJar()` from
 `akanjs/fetch`, or `CookieJar.parse(req.headers.get("cookie"))`, never `req.cookies`. Browser APIs an app WebView lacks
-stay in a `webkit/` hook that branches on `isNativeApp()` from `akanjs/client/native`, which is where the app side goes
+stay in a `webkit/` hook that branches on `isNativeApp()` from `akanjs/client`, which is where the app side goes
 too (`no-web-only-api-outside-webkit`, a warning): `navigator.share` / `canShare` (Android's WebView has none),
 `navigator.serviceWorker` and `Notification.requestPermission` / `.permission` (no app page has them),
 `navigator.geolocation` (use `useGeoLocation` from `akanjs/webkit`) and `navigator.vibrate` (iOS has none; use
