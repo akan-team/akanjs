@@ -1,6 +1,7 @@
 import type { PromiseOrObject } from "akanjs/base";
 import { Err } from "akanjs/dictionary";
 import type { LlmTurnRequest } from "akanjs/service";
+import { AgentMeter } from "./agentMeter";
 
 /** One relayed turn, the same object from the request policy through the quota to the usage report. */
 export interface AgentTurnContext {
@@ -13,8 +14,11 @@ export interface AgentTurnContext {
   ip: string | null;
 }
 
-/** @deprecated Use `AgentTurnContext`, which also carries the turn's `id` and `headers`. */
-export type AgentRequestContext = AgentTurnContext;
+/** @deprecated Use `AgentTurnContext`; `apply` still takes this shape and gives it a fresh `id` and empty `headers`. */
+export interface AgentRequestContext {
+  account: unknown;
+  ip: string | null;
+}
 
 export type AgentRequestPolicy = (
   request: LlmTurnRequest,
@@ -48,9 +52,12 @@ export class AgentRelayPolicy {
     AgentRelayPolicy.#policy = policy;
   }
 
-  static async apply(request: LlmTurnRequest, context: AgentTurnContext): Promise<LlmTurnRequest> {
+  static async apply(
+    request: LlmTurnRequest,
+    context: AgentTurnContext | AgentRequestContext,
+  ): Promise<LlmTurnRequest> {
     const policy = AgentRelayPolicy.#policy ?? AgentRelayPolicy.#defaultPolicy;
-    return await policy(request, context);
+    return await policy(request, "id" in context ? context : AgentMeter.turnOf(context.account, { ip: context.ip }));
   }
 
   static readonly #defaultPolicy: AgentRequestPolicy = (request) => AgentRelayPolicy.capped(request);

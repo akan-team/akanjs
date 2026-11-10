@@ -5,9 +5,11 @@ import {
   type AgentWireReference,
   type AgentWireToolResult,
   type LlmAccepts,
+  type LlmAdaptor,
   type LlmTurnRequest,
   pageContentInstruction,
 } from "./predefinedAdaptor/llm.adaptor";
+import { LlmSpend } from "./predefinedAdaptor/llmSpend";
 import { LlmAdaptorRole } from "./predefinedAdaptor/role.adaptor";
 import { serve } from "./serve";
 import { ToolNames } from "./toolNames";
@@ -23,6 +25,7 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
 })) {
   async runTurn(request: LlmTurnRequest, options: AgentTurnOptions | ((delta: string) => void) = {}) {
     const { onDelta, preamble, signal } = typeof options === "function" ? { onDelta: options } : options;
+    signal?.throwIfAborted();
     const names = ToolNames.of(request);
     const prepared = names.encode(
       AgentService.instructed(
@@ -30,7 +33,7 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
         preamble,
       ),
     );
-    const answer = await this.llm.chat(prepared, onDelta, signal);
+    const answer = await AgentService.answered(this.llm, prepared, onDelta, signal);
     if (!answer) throw new Err("agent.error.llmUnavailable");
     return {
       text: answer.text ?? "",
@@ -56,6 +59,36 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
     "Call a tool only by a name listed to you — never compose or guess one.",
     pageContentInstruction,
   ].join(" ");
+
+  //? A stream cut on `signal` stops the provider, so the counts it never sent are estimated from what was sent and
+  //? streamed. A plain answer shows nothing before its end to estimate from, so it runs on to the provider's counts.
+  private static async answered(
+    llm: LlmAdaptor,
+    prepared: LlmTurnRequest,
+    onDelta: ((delta: string) => void) | undefined,
+    signal: AbortSignal | undefined,
+  ) {
+    if (signal && !onDelta)
+      return await LlmSpend.outlast(llm.chat(prepared), signal, (answer) => ({
+        ...(answer?.usage ? { usage: answer.usage } : {}),
+        ...(answer?.model ? { model: answer.model } : {}),
+      }));
+    let streamed = "";
+    const forward =
+      onDelta &&
+      ((delta: string) => {
+        streamed += delta;
+        onDelta(delta);
+      });
+    try {
+      return await llm.chat(prepared, forward, signal);
+    } catch (error) {
+      const spent = LlmSpend.of(error);
+      if (!signal?.aborted && !spent?.usage) throw error;
+      const own = spent?.usage ? "" : streamed;
+      throw LlmSpend.attach(error, LlmSpend.estimate(spent?.usage, { prompt: prepared, streamed: own }));
+    }
+  }
 
   static instructed(request: LlmTurnRequest, preamble: string | false = AgentService.preamble): LlmTurnRequest {
     const instructions = [preamble, request.instructions].filter(Boolean).join("\n\n");

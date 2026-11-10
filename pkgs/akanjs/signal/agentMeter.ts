@@ -10,8 +10,13 @@ export interface AgentUsageReport {
   account: unknown;
   turn: AgentTurnContext;
   model: string | null;
-  /** On a failed or aborted turn, what the provider counted before it ended; zero where it counted nothing. */
+  /** On a failed or aborted turn, what the provider spent before it ended; zero where it spent nothing. */
   usage: LlmUsage;
+  /**
+   * Some of `usage` is the framework's estimate, not the provider's count: a stream cut short sends no counts of its
+   * own, so what was sent and streamed stands in for them, erring high.
+   */
+  estimated?: boolean;
   /** `aborted` is a turn whose caller went away before the answer, `failed` one the provider or the network ended. */
   outcome: AgentTurnOutcome;
 }
@@ -108,16 +113,19 @@ export class AgentMeter {
     try {
       result = await turn();
     } catch (error) {
-      const spent = LlmSpend.of(error);
-      AgentMeter.#report(
-        {
-          account,
-          turn: context,
-          model: spent?.model ?? null,
-          usage: spent?.usage ?? AgentMeter.#unspent(),
-          outcome: signal?.aborted ? "aborted" : "failed",
-        },
-        settled,
+      const outcome = signal?.aborted ? "aborted" : "failed";
+      void LlmSpend.settled(error).then((spent) =>
+        AgentMeter.#report(
+          {
+            account,
+            turn: context,
+            model: spent?.model ?? null,
+            usage: spent?.usage ?? AgentMeter.#unspent(),
+            ...(spent?.estimated ? { estimated: true } : {}),
+            outcome,
+          },
+          settled,
+        ),
       );
       throw error;
     }

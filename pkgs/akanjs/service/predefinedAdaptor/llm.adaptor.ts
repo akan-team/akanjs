@@ -104,7 +104,8 @@ export interface LlmUsage {
 export interface LlmAdaptor {
   /**
    * `onDelta` opts into streaming and the full answer still resolves; an adaptor may ignore it. `signal` is aborted
-   * once nobody waits for the answer, so the provider call should take it.
+   * once nobody reads the answer, so the provider call should take it. The relay sends it with `onDelta` only: a
+   * plain call runs to its end, where the provider's counts arrive.
    */
   chat(request: LlmTurnRequest, onDelta?: (delta: string) => void, signal?: AbortSignal): Promise<LlmTurnAnswer | null>;
   /** Omitted means text only. */

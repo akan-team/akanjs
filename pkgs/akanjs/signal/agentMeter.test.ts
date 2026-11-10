@@ -83,6 +83,59 @@ describe("AgentMeter", () => {
     expect(reports.map(({ outcome, usage }) => ({ outcome, usage }))).toEqual([{ outcome: "aborted", usage }]);
   });
 
+  test("a turn cut short reports its estimate as one", async () => {
+    const reports: AgentUsageReport[] = [];
+    AgentMeter.use({ usage: (report) => void reports.push(report) });
+    const abort = new AbortController();
+    const run = AgentMeter.run(
+      { id: "u1" },
+      async () => {
+        abort.abort();
+        throw LlmSpend.attach(new Error("aborted"), { usage, model: "m1", estimated: true });
+      },
+      { signal: abort.signal },
+    );
+    await expect(run).rejects.toThrow("aborted");
+    await Bun.sleep(0);
+    expect(reports.map(({ outcome, usage, estimated }) => ({ outcome, usage, estimated }))).toEqual([
+      { outcome: "aborted", usage, estimated: true },
+    ]);
+  });
+
+  test("a plain turn left running past its abort holds the caller's lane until the provider's counts settle it", async () => {
+    const order: string[] = [];
+    const reports: AgentUsageReport[] = [];
+    AgentMeter.use({
+      quota: () => {
+        order.push("check");
+        return true;
+      },
+      usage: (report) => {
+        order.push(`reported:${report.outcome}`);
+        reports.push(report);
+      },
+    });
+    const provider = Promise.withResolvers<{ usage: typeof usage; model: string }>();
+    const abort = new AbortController();
+    const left = AgentMeter.run(
+      { id: "u1" },
+      () => LlmSpend.outlast(provider.promise, abort.signal, (answer) => ({ ...answer })),
+      { signal: abort.signal },
+    );
+    await Bun.sleep(0);
+    abort.abort();
+    await expect(left).rejects.toThrow();
+    const next = AgentMeter.run({ id: "u1" }, async () => ({ usage, text: "next" }));
+    await Bun.sleep(5);
+    expect(order).toEqual(["check"]);
+    provider.resolve({ usage, model: "m1" });
+    await expect(next).resolves.toMatchObject({ text: "next" });
+    await Bun.sleep(0);
+    expect(order).toEqual(["check", "reported:aborted", "check", "reported:ok"]);
+    expect(reports[0]).toMatchObject({ outcome: "aborted", usage, model: "m1" });
+    expect(reports[0]?.estimated).toBeUndefined();
+  });
+
   test("a failed turn holds the caller's next one until its report settles, as a billed one does", async () => {
     const order: string[] = [];
     AgentMeter.use({

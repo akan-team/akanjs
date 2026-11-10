@@ -97,12 +97,15 @@ export declare class AgentRelayAccess implements Guard {
 export declare class AgentRelayPolicy {
     static readonly defaultLimits: Readonly<AgentRequestLimits>;
     static use(policy: AgentRequestPolicy | null): void;
-    static apply(request: LlmTurnRequest, context: AgentTurnContext): Promise<LlmTurnRequest>;
+    static apply(request: LlmTurnRequest, context: AgentRequestContext | AgentTurnContext): Promise<LlmTurnRequest>;
     static capped(request: LlmTurnRequest, limits?: Partial<AgentRequestLimits>): LlmTurnRequest;
 }
 
 /** @deprecated */
-export type AgentRequestContext = AgentTurnContext;
+export interface AgentRequestContext {
+    account: unknown;
+    ip: null | string;
+}
 
 export interface AgentRequestLimits {
     messages: number;
@@ -157,6 +160,7 @@ export interface AgentUsageReport {
     turn: AgentTurnContext;
     model: null | string;
     usage: LlmUsage;
+    estimated?: boolean;
     outcome: AgentTurnOutcome;
 }
 

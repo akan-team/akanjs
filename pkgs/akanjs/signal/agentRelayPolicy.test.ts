@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { ENDPOINT_META } from "akanjs/base";
 import { Err } from "akanjs/dictionary";
-import type { LlmTurnRequest } from "akanjs/service";
+import { AgentService, type LlmTurnRequest, OpenaiLlm } from "akanjs/service";
 import { AgentEndpoint } from "./agent.signal";
 import { AgentMeter, type AgentQuotaCheck, type AgentUsageReport } from "./agentMeter";
 import { AgentRelayPolicy, type AgentTurnContext } from "./agentRelayPolicy";
@@ -92,6 +92,22 @@ describe("AgentRelayPolicy", () => {
     expect(Err.is(refusal, "agent.error.requestRefused")).toBe(true);
     const within = await AgentRelayPolicy.apply({ ...request(), tools: [] }, anonymous());
     expect(within.instructions).toBe("Server scope.");
+  });
+
+  test("still takes the context's old shape, and hands the policy a turn of its own", async () => {
+    const seen: AgentTurnContext[] = [];
+    AgentRelayPolicy.use((sent, context) => {
+      seen.push(context);
+      return sent;
+    });
+    await AgentRelayPolicy.apply(request(), { account: { id: "u1" }, ip: "198.18.0.1" });
+    await AgentRelayPolicy.apply(request(), { account: { id: "u1" }, ip: "198.18.0.1" });
+    expect(seen).toMatchObject([
+      { account: { id: "u1" }, ip: "198.18.0.1" },
+      { account: { id: "u1" }, ip: "198.18.0.1" },
+    ]);
+    expect(seen[0]?.headers).toBeInstanceOf(Headers);
+    expect(new Set(seen.map(({ id }) => id)).size).toBe(2);
   });
 
   test("sends what the policy returns, and null clears it", async () => {
@@ -207,5 +223,89 @@ describe("runAgentTurn under a request policy", () => {
     expect(signal?.aborted).toBe(true);
     expect(answered instanceof Response ? answered.status : answered).toBe(499);
     expect(reports.map(({ outcome }) => outcome)).toEqual(["aborted"]);
+  });
+
+  describe("billing a turn its caller stops, against an OpenAI-compatible provider", () => {
+    const originalFetch = globalThis.fetch;
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+    const service = () =>
+      Object.assign(new AgentService(), {
+        llm: Object.assign(new OpenaiLlm(), { llmOption: { apiKey: "k", model: "model-a" } }),
+      });
+    const viaService: RunTurn = (turn, options) => service().runTurn(turn, options) as ReturnType<RunTurn>;
+
+    test("a reader that leaves after three of five deltas is billed at an estimate, not zero", async () => {
+      const reports: AgentUsageReport[] = [];
+      AgentMeter.use({ usage: (report) => void reports.push(report) });
+      const provider: AbortSignal[] = [];
+      globalThis.fetch = ((_url: string, init: { signal: AbortSignal }) => {
+        provider.push(init.signal);
+        const frames = ["One ", "two ", "three "]
+          .map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`)
+          .join("");
+        return Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode(frames));
+                init.signal.addEventListener("abort", () => controller.error(init.signal.reason));
+              },
+            }),
+          ),
+        );
+      }) as unknown as typeof fetch;
+      const { run } = relay(request(), "text/event-stream", { id: "u1" }, null, { runTurn: viaService });
+      const reader = ((await run) as Response).body?.getReader();
+      let read = "";
+      while ((read.match(/"type":"text"/g) ?? []).length < 3) {
+        const chunk = await reader?.read();
+        if (!chunk || chunk.done) break;
+        read += new TextDecoder().decode(chunk.value);
+      }
+      await reader?.cancel();
+      await Bun.sleep(5);
+      expect(provider[0]?.aborted).toBe(true);
+      expect(reports).toHaveLength(1);
+      expect(reports[0]).toMatchObject({ outcome: "aborted", model: "model-a", estimated: true });
+      expect(reports[0]?.usage.inputTokens).toBeGreaterThan(0);
+      expect(reports[0]?.usage.outputTokens).toBeGreaterThanOrEqual(3);
+    });
+
+    test("a plain client that leaves gets its 499 at once, and the turn is billed the provider's own counts", async () => {
+      const reports: AgentUsageReport[] = [];
+      AgentMeter.use({ usage: (report) => void reports.push(report) });
+      const answered = Promise.withResolvers<Response>();
+      const provider: AbortSignal[] = [];
+      globalThis.fetch = ((_url: string, init: { signal: AbortSignal }) => {
+        provider.push(init.signal);
+        return answered.promise;
+      }) as unknown as typeof fetch;
+      const client = new AbortController();
+      const { run } = relay(request(), "application/json", { id: "u1" }, null, {
+        signal: client.signal,
+        runTurn: viaService,
+      });
+      await Bun.sleep(0);
+      client.abort();
+      expect(((await run) as Response).status).toBe(499);
+      expect(provider[0]?.aborted).toBe(false);
+      expect(reports).toEqual([]);
+      answered.resolve(
+        Response.json({
+          choices: [{ message: { content: "done" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 50_000, completion_tokens: 900 },
+        }),
+      );
+      await Bun.sleep(5);
+      expect(reports.map(({ outcome, usage, estimated }) => ({ outcome, usage, estimated }))).toEqual([
+        {
+          outcome: "aborted",
+          usage: { inputTokens: 50_000, outputTokens: 900, cachedTokens: 0 },
+          estimated: undefined,
+        },
+      ]);
+    });
   });
 });
