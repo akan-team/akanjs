@@ -382,7 +382,7 @@ Adaptor
 
 Writing your own adaptor
 
-An adaptor implements one method, chat(request, onDelta?): the whole transcript goes in and one assistant answer comes out. Install it with applyAdaptor; as with applyMiddleware, the last writer wins.
+An adaptor implements one method, chat(request, onDelta?, signal?): the whole transcript goes in and one assistant answer comes out. Pass signal to the provider call, which then stops once nobody waits for the answer. Install it with applyAdaptor; as with applyMiddleware, the last writer wins.
 
 ## Code Examples
 
@@ -485,7 +485,11 @@ export const option = new AkanOption<ModulesOptions>()
 
 ```ts
 export interface LlmAdaptor {
-  chat(request: LlmTurnRequest, onDelta?: (delta: string) => void): Promise<LlmTurnAnswer | null>;
+  chat(
+    request: LlmTurnRequest,
+    onDelta?: (delta: string) => void,
+    signal?: AbortSignal,
+  ): Promise<LlmTurnAnswer | null>;
 }
 ```
 

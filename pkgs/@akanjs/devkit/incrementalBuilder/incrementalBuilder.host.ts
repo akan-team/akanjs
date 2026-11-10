@@ -287,7 +287,8 @@ export class IncrementalBuilderHost {
     const lost = [...this.#inFlight];
     this.#inFlight.clear();
     this.logger.warn(`failing ${lost.length} unanswered builder request(s): ${reason}`);
-    for (const [id, type] of lost) this.#onMessage({ type: `${type}-res`, id, ok: false, error: reason });
+    for (const [id, type] of lost)
+      this.#onMessage({ type: `${type}-res`, id, ok: false, error: reason, kind: "unavailable" });
   }
   stop() {
     this.#manualStop = true;

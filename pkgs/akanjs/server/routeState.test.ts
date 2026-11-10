@@ -3,6 +3,7 @@ import type { PathRoute } from "akanjs/client";
 import {
   AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER,
   type AkanHeadSnapshotV1,
+  type AkanRouterStateV1,
   appendAkanRouterStateRequestHeaders,
   createAkanRouterState,
   decodeAkanHeadSnapshot,
@@ -86,6 +87,18 @@ describe("RSC route state helpers", () => {
     const headers = new Headers();
     appendAkanRouterStateRequestHeaders(headers, state);
     expect(readAkanRouterStateRequest(headers)).toEqual({ state, currentRoute: "/docs" });
+  });
+
+  test("keeps a route head key only as a string", () => {
+    const state = createAkanRouterState({
+      pathRoute: makeRoute("/docs", ["/", "/docs"]),
+      href: "https://example.test/docs",
+    });
+
+    expect(decodeAkanRouterState(encodeAkanRouterState({ ...state, headKey: "k1" }))?.headKey).toBe("k1");
+    expect(
+      decodeAkanRouterState(encodeAkanRouterState({ ...state, headKey: 1 } as unknown as AkanRouterStateV1)),
+    ).toBeNull();
   });
 
   test("falls back quietly for malformed request state headers", () => {

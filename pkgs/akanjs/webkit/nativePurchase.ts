@@ -1,5 +1,9 @@
 "use client";
-import { app, type IapTransaction, loadIap } from "akanjs/client/native";
+import type { IapTransaction } from "akanjs/client/native";
+
+//? Loaded on first use: a static import puts @akanjs/native/core on every web page that renders `usePurchase`.
+export const loadIap = () => import("akanjs/client/native/iap");
+const appInfo = async () => await (await import("akanjs/client/native/app")).app.getInfo();
 
 export type PurchaseProductType = "consumable" | "nonConsumable" | "subscription";
 
@@ -52,7 +56,7 @@ export class NativePurchase {
     if (verification.jws)
       return {
         platform: "apple",
-        packageName: (await app.getInfo()).id,
+        packageName: (await appInfo()).id,
         productId,
         receipt: verification.jws,
         transactionId: id,
@@ -60,7 +64,7 @@ export class NativePurchase {
     if (verification.purchaseToken)
       return {
         platform: "google",
-        packageName: verification.packageName ?? (await app.getInfo()).id,
+        packageName: verification.packageName ?? (await appInfo()).id,
         productId,
         receipt: verification.purchaseToken,
         transactionId: verification.orderId ?? id,

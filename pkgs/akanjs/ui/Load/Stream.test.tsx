@@ -1,7 +1,7 @@
 import "../../test/registerDom";
 import { describe, expect, test } from "bun:test";
-import { act, Component, type ErrorInfo, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { act, type ReactNode } from "react";
+import { createRoot, hydrateRoot } from "react-dom/client";
 import { renderToReadableStream } from "react-dom/server.browser";
 import { mount } from "../testHelpers.fixture";
 import Stream from "./Stream";
@@ -16,6 +16,11 @@ const mountAsync = async (node: ReactNode) => {
   });
   return {
     container,
+    rerender: async (next: ReactNode) => {
+      await act(async () => {
+        root.render(next);
+      });
+    },
     flush: async () => {
       await act(async () => {});
     },
@@ -33,20 +38,6 @@ const renderHtml = async (node: ReactNode) => {
   await stream.allReady;
   return await new Response(stream).text();
 };
-
-interface CatchProps {
-  children: ReactNode;
-}
-class Catch extends Component<CatchProps, { message: string | null }> {
-  override state = { message: null as string | null };
-  static getDerivedStateFromError(error: unknown) {
-    return { message: error instanceof Error ? error.message : String(error) };
-  }
-  override componentDidCatch(_error: unknown, _info: ErrorInfo) {}
-  override render() {
-    return this.state.message ? <span>{`caught: ${this.state.message}`}</span> : this.props.children;
-  }
-}
 
 describe("Load.Stream", () => {
   test("renders a resolved value inline, with no fallback in the first commit", () => {
@@ -176,17 +167,139 @@ describe("Load.Stream", () => {
     }
   });
 
-  test("a rejected thenable reaches the nearest error boundary", async () => {
+  test("a rejected thenable renders a notice in its place and leaves the rest of the page", async () => {
     const failing = Promise.reject(new Error("load failed"));
     const { container, flush, unmount } = await mountAsync(
-      <Catch>
+      <div>
+        <span>sibling</span>
         <Stream of={failing} fallback={<span>pending</span>}>
           {() => <span>never</span>}
         </Stream>
-      </Catch>,
+      </div>,
     );
     await flush();
-    expect(container.textContent).toBe("caught: load failed");
+    expect(container.querySelector("span")?.textContent).toBe("sibling");
+    const notice = container.querySelector('[role="alert"]');
+    expect(notice?.querySelector("p")?.textContent).toBe("base.loadFailed");
+    expect(notice?.textContent).toContain("load failed");
+    expect(notice?.querySelector("button")?.textContent).toBe("base.retry");
+    expect(container.textContent).not.toContain("never");
     await unmount();
+  });
+
+  test("leaves the retry out of the notice in an MCP App view, whose host owns the frame and refreshes nothing", async () => {
+    globalThis.__AKAN_EMBED__ = { kind: "mcp-app" };
+    try {
+      const { container, flush, unmount } = await mountAsync(
+        <Stream of={Promise.reject(new Error("load failed"))}>{() => <span>never</span>}</Stream>,
+      );
+      await flush();
+      expect(container.querySelector('[role="alert"]')).not.toBeNull();
+      expect(container.querySelector("button")).toBeNull();
+      await unmount();
+    } finally {
+      globalThis.__AKAN_EMBED__ = undefined;
+    }
+  });
+
+  test("hands a function `error` the rejection and a retry", async () => {
+    const failing = Promise.reject(new Error("load failed"));
+    const seen: { message?: string; retry?: unknown } = {};
+    const { container, flush, unmount } = await mountAsync(
+      <Stream
+        of={failing}
+        error={(error, retry) => {
+          seen.message = (error as Error).message;
+          seen.retry = retry;
+          return <span>custom failure</span>;
+        }}
+      >
+        {() => <span>never</span>}
+      </Stream>,
+    );
+    await flush();
+    expect(container.textContent).toBe("custom failure");
+    expect(seen.message).toBe("load failed");
+    expect(typeof seen.retry).toBe("function");
+    await unmount();
+  });
+
+  test("draws nothing for a not-found or redirect the server raised below the route, which the host answers", async () => {
+    for (const digest of ["AKAN_NOT_FOUND", "AKAN_REDIRECT;replace;307;%2Fen%2Ftarget"]) {
+      const failing = Promise.reject(Object.assign(new Error("route control"), { digest }));
+      const { container, flush, unmount } = await mountAsync(
+        <div>
+          <span>sibling</span>
+          <Stream of={failing}>{() => <span>never</span>}</Stream>
+        </div>,
+      );
+      await flush();
+      expect(container.textContent).toBe("sibling");
+      await unmount();
+    }
+  });
+
+  test("renders `error` in place of a rejected thenable", async () => {
+    const failing = Promise.reject(new Error("load failed"));
+    const { container, flush, unmount } = await mountAsync(
+      <Stream of={failing} fallback={<span>pending</span>} error={<span>custom failure</span>}>
+        {() => <span>never</span>}
+      </Stream>,
+    );
+    await flush();
+    expect(container.textContent).toBe("custom failure");
+    await unmount();
+  });
+
+  test("a new thenable after a failure renders its value", async () => {
+    const view = (of: Promise<{ label: string }>) => (
+      <Stream of={of} fallback={<span>pending</span>}>
+        {(value) => <span>{value.label}</span>}
+      </Stream>
+    );
+    const { container, rerender, flush, unmount } = await mountAsync(view(Promise.reject(new Error("load failed"))));
+    await flush();
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    await rerender(view(Promise.resolve({ label: "reloaded" })));
+    await flush();
+    expect(container.textContent).toBe("reloaded");
+    await unmount();
+  });
+
+  test("hydrates a server-rendered page whose stream rejected, keeping its sibling's node and drawing the notice", async () => {
+    const page = (of: Promise<{ label: string }>) => (
+      <div>
+        <span id="sibling">sibling</span>
+        <Stream of={of} fallback={<span>pending</span>}>
+          {(value) => <span>{value.label}</span>}
+        </Stream>
+      </div>
+    );
+    const refused = () => {
+      const promise = Promise.reject(new Error("refused"));
+      promise.catch(() => undefined);
+      return promise;
+    };
+    const container = document.createElement("div");
+    container.innerHTML = await renderHtml(page(refused()));
+    document.body.appendChild(container);
+    const sibling = container.querySelector("#sibling");
+    const uncaught: unknown[] = [];
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    await act(async () => {
+      root = hydrateRoot(container, page(refused()), {
+        onUncaughtError: (error) => void uncaught.push(error),
+        onCaughtError: () => undefined,
+        onRecoverableError: () => undefined,
+      });
+    });
+    await act(async () => {});
+    expect(container.querySelector("#sibling")).toBe(sibling);
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    expect(uncaught).toEqual([]);
+    await act(async () => {
+      root?.unmount();
+    });
+    container.remove();
   });
 });

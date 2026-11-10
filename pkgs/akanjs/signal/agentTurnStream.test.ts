@@ -47,6 +47,21 @@ describe("AgentTurnStream", () => {
     ]);
   });
 
+  test("a reader that goes away aborts the turn's signal", async () => {
+    const started = Promise.withResolvers<AbortSignal>();
+    const response = AgentTurnStream.response(
+      (_onDelta, signal) =>
+        new Promise((_resolve, reject) => {
+          started.resolve(signal);
+          signal.addEventListener("abort", () => reject(signal.reason));
+        }),
+    );
+    const signal = await started.promise;
+    expect(signal.aborted).toBe(false);
+    await response.body?.cancel();
+    expect(signal.aborted).toBe(true);
+  });
+
   test("an adapter that ignores onDelta still delivers its text as one late delta", async () => {
     const response = AgentTurnStream.response(async () => ({ text: "whole answer", stop: "end" }));
     expect(await framesOf(response)).toEqual([

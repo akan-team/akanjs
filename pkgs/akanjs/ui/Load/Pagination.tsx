@@ -11,11 +11,14 @@ import { Empty } from "../Empty";
 import { Pagination as Pagn } from "../Pagination";
 import { sliceNamesOf } from "../sliceNamesOf";
 import Stream from "./Stream";
+import type { StreamError } from "./StreamBoundary";
 
 interface PaginationProps<RefName extends string, Light> {
   className?: string;
   init: ClientInit<RefName, Light>;
   scrollToTop?: boolean;
+  /** Rendered when `init` rejects; nothing by default, since the list sharing that `init` shows the notice. */
+  error?: StreamError;
 }
 
 interface RenderProps<RefName extends string, Light> {
@@ -68,9 +71,14 @@ function Render<RefName extends string, Light>({ className, init, scrollToTop }:
   );
 }
 
-export default function Pagination<T extends string, L>({ className, init, scrollToTop }: PaginationProps<T, L>) {
+export default function Pagination<T extends string, L>({
+  className,
+  init,
+  scrollToTop,
+  error = null,
+}: PaginationProps<T, L>) {
   return (
-    <Stream of={init} fallback={null}>
+    <Stream of={init} fallback={null} error={error}>
       {(serverInit) =>
         serverInit ? <Render className={className} init={serverInit} scrollToTop={scrollToTop} /> : <Empty />
       }

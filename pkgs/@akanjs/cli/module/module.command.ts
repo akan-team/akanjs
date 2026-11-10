@@ -1,4 +1,4 @@
-import { command, Module, Sys } from "@akanjs/devkit/commandDecorators";
+import { command, Module, ModuleOrService, Sys } from "@akanjs/devkit/commandDecorators";
 import { type PrimitiveFormat, renderPrimitiveReport } from "@akanjs/devkit/workflow";
 import { Logger, lowerlize } from "akanjs/common";
 
@@ -15,8 +15,11 @@ export class ModuleCommand extends command("module", [ModuleScript], ({ public: 
       const report = await this.moduleScript.createModuleTemplate(sys, name, { page });
       Logger.rawLog(renderPrimitiveReport(report, format as PrimitiveFormat));
     }),
-  removeModule: target({ desc: "Remove a module from an app or library", destructive: true })
-    .with(Module)
+  removeModule: target({
+    desc: "Remove a module, or a service module as <sys>:_<name>, from an app or library",
+    destructive: true,
+  })
+    .with(ModuleOrService)
     .exec(async function (module) {
       await this.moduleScript.removeModule(module);
     }),

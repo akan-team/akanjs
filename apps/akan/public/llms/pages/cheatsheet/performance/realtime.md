@@ -49,6 +49,8 @@ Use `message` for small actions the browser sends to the server: a read receipt,
 
 **Name the guards yourself.** A `message` is checked only by the `guards` in its own option; here `User` requires a signed-in user.
 
+**A send that changes nothing read back passes `{ keepsReads: true }`.** Every `message` drops the pages a `Link` prefetched and ends sharing for the queries still loading, since a write may change what they read. Typing status or a cursor move changes nothing, so `fetch.typing(chatId, { keepsReads: true })` keeps them; a read receipt changes an unread count and passes nothing.
+
 Broadcast With pubsub
 
 Use `pubsub` when the server sends one event to everyone in a room. A new chat message is the simplest example. The signal names the room and what each subscription sets up:

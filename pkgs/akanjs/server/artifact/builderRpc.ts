@@ -31,6 +31,10 @@ export interface BuilderRpcTimeout extends Error {
   timeoutMs: number;
 }
 
+export interface BuilderRpcUnavailable extends Error {
+  kind: "unavailable";
+}
+
 /** One per backend process: subscribes to the IPC channel on construction and unsubscribes on `dispose()`. */
 export class BuilderRpc {
   readonly #logger = new Logger("BuilderRpc");
@@ -50,8 +54,10 @@ export class BuilderRpc {
         const waiter = this.#pending.get(res.id);
         if (!waiter) return;
         this.#pending.delete(res.id);
-        if (!res.ok) waiter.reject(new Error(`[builder] ${res.type} failed: ${res.error}`));
-        else waiter.resolve(res.type === "build-csr-res" ? undefined : res.data);
+        if (!res.ok) {
+          const error = new Error(`[builder] ${res.type} failed: ${res.error}`);
+          waiter.reject(res.kind === "unavailable" ? Object.assign(error, { kind: res.kind }) : error);
+        } else waiter.resolve(res.type === "build-csr-res" ? undefined : res.data);
         return;
       }
       const ev = msg as BuilderEvent;
@@ -137,6 +143,10 @@ export class BuilderRpc {
 
   static isTimeout(error: unknown): error is BuilderRpcTimeout {
     return error instanceof Error && "timeoutMs" in error;
+  }
+
+  static isUnavailable(error: unknown): error is BuilderRpcUnavailable {
+    return error instanceof Error && "kind" in error && error.kind === "unavailable";
   }
 
   // Generous on purpose: a cold CSR build of every page takes tens of seconds; the point is only to be finite.

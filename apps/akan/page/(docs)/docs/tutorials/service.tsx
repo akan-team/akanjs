@@ -4,7 +4,7 @@ import { Scroll } from "@libs/util/ui";
 import { page } from "akanjs/client";
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title =
       lang === "ko" ? "튜토리얼: 서비스 내에서 상호작용 | Akan.js" : "Tutorials: Interact in Service | Akan.js";

@@ -7,6 +7,9 @@ import { Layout } from "akanjs/ui";
 export default page()
   .param("memoId", ID)
   .config({ topInset: 48, transition: "stack" })
+  .guard(async ({ memoId }) => {
+    await fetch.memo(memoId);
+  })
   .app("showTripNote", "Show one trip note with its images.", ({ memoId }) => {
     const { memoView } = fetch.viewMemo(memoId);
     return <Memo.Zone.View view={memoView} />;
