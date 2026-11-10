@@ -34,7 +34,7 @@ let host: MockHost | null = null;
 const originalFetch = globalThis.fetch;
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 
-beforeAll(() => {
+beforeAll(async () => {
   mock.module("react", () =>
     fakeReact({
       useEffect: (fn: () => (() => undefined) | undefined) => {
@@ -44,6 +44,8 @@ beforeAll(() => {
       lazy: (loader: unknown) => ({ loader }),
     }),
   );
+  //? The hook imports its plugins on first use; a first, uncached import can outlast settle() on a loaded machine.
+  await Promise.all([import("akanjs/client/native/iap"), import("akanjs/client/native/app")]);
 });
 
 const installShell = () => {
