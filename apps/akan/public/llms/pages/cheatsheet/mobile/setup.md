@@ -144,8 +144,6 @@ By name — native.plugins
 
   - dialog · haptics: System alerts and action sheets, and haptic feedback.
 
-  - appearance: Light or dark for the whole app, and status bar icons that follow the page's theme color.
-
 - Per feature
 
   - camera: Camera and photo picker. Brought by `camera`.
@@ -155,6 +153,8 @@ By name — native.plugins
   - push: APNs on iOS, FCM on Android. Brought by `push`.
 
   - iap: In-app purchase: StoreKit 2 and Play Billing.
+
+  - appearance: Light or dark for the whole app, and status bar icons that follow the page's theme color.
 
   - share · biometric · …: The runtime's other plugins, by id, or a plugin folder by its absolute path.
 

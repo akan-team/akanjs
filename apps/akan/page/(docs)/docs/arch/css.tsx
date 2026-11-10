@@ -355,8 +355,8 @@ export default page()
             </Docs.Alert>
             <div>
               {l.trans({
-                en: "The browser's theme-color and a native app's status bar icons follow --akan-theme-color once the root defines it, so set it per theme beside the tokens, for example --akan-theme-color: var(--background). It outranks the root layout's .viewport({ themeColor }), and a change of data-theme or of the root's inline style applies at once.",
-                ko: "루트에 --akan-theme-color가 있으면 브라우저의 theme-color와 네이티브 앱 상태 표시줄 아이콘이 그 색을 따릅니다. 토큰 옆에 테마별로 두면 됩니다(예: --akan-theme-color: var(--background)). root layout의 .viewport({ themeColor })보다 우선하며, data-theme이나 루트의 인라인 스타일이 바뀌면 바로 반영됩니다.",
+                en: "The browser's theme-color follows --akan-theme-color once the root defines it, and so do a native app's status bar icons when the app names the appearance plugin. Set it per theme beside the tokens, for example --akan-theme-color: var(--background). It outranks the root layout's .viewport({ themeColor }), and a change of data-theme or of the root's inline style applies at once.",
+                ko: "루트에 --akan-theme-color가 있으면 브라우저의 theme-color가 그 색을 따르고, appearance 플러그인을 적은 네이티브 앱은 상태 표시줄 아이콘도 따릅니다. 토큰 옆에 테마별로 두면 됩니다(예: --akan-theme-color: var(--background)). root layout의 .viewport({ themeColor })보다 우선하며, data-theme이나 루트의 인라인 스타일이 바뀌면 바로 반영됩니다.",
               })}
             </div>
           </Docs.Description>

@@ -96,7 +96,7 @@ A color that text sits on comes with a -foreground partner for that text: bg-pri
 
 Because @theme inline references var(), the same class (bg-primary, text-foreground …) resolves to a different color per data-theme. One app can define light, dark, brand or admin themes without changing any component class.
 
-The browser's theme-color and a native app's status bar icons follow --akan-theme-color once the root defines it, so set it per theme beside the tokens, for example --akan-theme-color: var(--background). It outranks the root layout's .viewport({ themeColor }), and a change of data-theme or of the root's inline style applies at once.
+The browser's theme-color follows --akan-theme-color once the root defines it, and so do a native app's status bar icons when the app names the appearance plugin. Set it per theme beside the tokens, for example --akan-theme-color: var(--background). It outranks the root layout's .viewport({ themeColor }), and a change of data-theme or of the root's inline style applies at once.
 
 Lib-Owned Tokens
 

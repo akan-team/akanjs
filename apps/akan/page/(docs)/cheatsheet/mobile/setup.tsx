@@ -385,14 +385,6 @@ export default page()
             }),
             marks: base,
           },
-          {
-            name: "appearance",
-            desc: l.trans({
-              en: "Light or dark for the whole app, and status bar icons that follow the page's theme color.",
-              ko: "앱 전체의 라이트·다크 설정과, 페이지 테마 색을 따르는 상태 표시줄 아이콘입니다.",
-            }),
-            marks: base,
-          },
         ],
       },
       {
@@ -427,6 +419,14 @@ export default page()
             desc: l.trans({
               en: "In-app purchase: StoreKit 2 and Play Billing.",
               ko: "인앱 결제입니다. StoreKit 2와 Play Billing을 씁니다.",
+            }),
+            marks: byName,
+          },
+          {
+            name: "appearance",
+            desc: l.trans({
+              en: "Light or dark for the whole app, and status bar icons that follow the page's theme color.",
+              ko: "앱 전체의 라이트·다크 설정과, 페이지 테마 색을 따르는 상태 표시줄 아이콘입니다.",
             }),
             marks: byName,
           },
