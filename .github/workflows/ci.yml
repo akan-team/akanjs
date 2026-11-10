@@ -120,3 +120,8 @@ jobs:
             echo "::error::akan sync changed tracked files. Run it locally and commit the result."
             exit 1
           fi
+      - name: Keep native core off a page drawing the synced shared lib
+        working-directory: pkgs/@akanjs/devkit
+        run: bun test --isolate ./frontendBuild/nativeCore.test.ts
+        env:
+          REQUIRE_SYNCED_LIBS: "1"

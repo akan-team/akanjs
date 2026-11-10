@@ -482,6 +482,36 @@ describe("router", () => {
     expect(calls).toEqual([["replace", "/en/org?peek=ticket-1", { shallow: true }]]);
   });
 
+  test("hands back the app router's withdraw for a prefetch, and a no-op from a router that returns none", async () => {
+    const { router } = await import("./router");
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const asked: unknown[] = [];
+      const withdraw = mock(() => undefined);
+      const prefetch: RouterInstance["prefetch"] = (href, priority) => {
+        asked.push([href, priority]);
+        return withdraw;
+      };
+      router.init({ type: "ssr", side: "client", lang: "en", router: { ...recordingRouter([]), prefetch } });
+      router.prefetch("/docs", { priority: "low" })();
+      expect(asked).toEqual([["/en/docs", "low"]]);
+      expect(withdraw).toHaveBeenCalledTimes(1);
+
+      const silent: RouterInstance["prefetch"] = (href) => {
+        asked.push([href]);
+      };
+      const pending = (async () => undefined) as unknown as RouterInstance["prefetch"];
+      for (const legacy of [silent, pending]) {
+        router.init({ type: "ssr", side: "client", lang: "en", router: { ...recordingRouter([]), prefetch: legacy } });
+        expect(() => router.prefetch("/guide")()).not.toThrow();
+      }
+      expect(asked).toEqual([["/en/docs", "low"], ["/en/guide"]]);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
   test("client router init wraps push, replace, back, refresh, and path helpers", async () => {
     envState.side = "client";
     installClientWindow();

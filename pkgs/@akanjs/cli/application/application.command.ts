@@ -34,7 +34,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (appName, start, workspace) {
       await this.applicationScript.createApplication(appName.toLowerCase().replace(/ /g, "-"), workspace, { start });
     }),
-  removeApplication: target({ desc: "Remove an application from the workspace" })
+  removeApplication: target({ desc: "Remove an application from the workspace", destructive: true })
     .with(App)
     .exec(async function (app) {
       await this.applicationScript.removeApplication(app);
@@ -98,7 +98,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
   })
     .with(App)
     .arg("paths", String, {
-      desc: "page paths, comma-separated; the default locale is added when missing, but not to /_akan routes such as Studio or to files (default: /)",
+      desc: "page paths, comma-separated; the default locale is added when missing, except to a path the server answers outside a locale (/_akan, the API prefix, /__csr, /__rsc, /.well-known, /openapi.json, the default /mcp, the server's own files, public/ files) or a full URL, which opens as written (default: /)",
       example: "/board,/board/new",
       nullable: true,
     })

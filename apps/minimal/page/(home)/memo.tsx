@@ -5,6 +5,9 @@ import { Layout, Model } from "akanjs/ui";
 
 export default page()
   .config({ topInset: 48, transition: "stack" })
+  .guard(async () => {
+    await fetch.memoInsightInPublic();
+  })
   .app("showTripNotes", "Show the notes shared with everyone on this trip.", () => {
     const { memoInitInPublic } = fetch.initMemoInPublic();
     return <Memo.Zone.Card className="flex flex-col gap-3" init={memoInitInPublic} />;

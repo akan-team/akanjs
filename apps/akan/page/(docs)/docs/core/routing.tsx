@@ -287,7 +287,7 @@ const chainStages = [
 ];
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title =
       lang === "ko" ? "핵심 개념: 파일 기반 라우팅 | Akan.js" : "Core Concepts: File Based Routing | Akan.js";

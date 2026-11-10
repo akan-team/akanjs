@@ -14,7 +14,12 @@ const slowChromeRuns = PreviewView.isAvailable("chrome") && process.platform !==
 const withSlowChrome = async (body: string, startSeconds = 3) => {
   const dir = await mkdtemp(path.join(tmpdir(), "akan-slow-chrome-"));
   const chrome = path.join(dir, "chrome");
-  await writeFile(chrome, `#!/bin/sh\nsleep ${startSeconds}\nexec "${PreviewChrome.executable()}" "$@"\n`);
+  const chromeLog = path.join(dir, "chrome.log");
+  //? Bun.WebView sends the browser's stderr to /dev/null, which would hide why it died.
+  await writeFile(
+    chrome,
+    `#!/bin/sh\nexec 2>>"${chromeLog}"\nsleep ${startSeconds}\nexec "${PreviewChrome.executable()}" "$@"\n`,
+  );
   await chmod(chrome, 0o755);
   const script = `const { PreviewView } = await import(${JSON.stringify(path.join(import.meta.dir, "PreviewView.ts"))});\n${body}`;
   //? Chrome is spawned once per process, so only a fresh process takes the slow executable.
@@ -30,7 +35,10 @@ const withSlowChrome = async (body: string, startSeconds = 3) => {
       new Response(child.stderr).text(),
       child.exited,
     ]);
-    return { code, out: out.trim(), err };
+    const chromeErr = await Bun.file(chromeLog)
+      .text()
+      .catch(() => "");
+    return { code, out: out.trim(), log: `${err}\nChrome's stderr:\n${chromeErr}` };
   } finally {
     child.kill();
     await rm(dir, { recursive: true, force: true });
@@ -112,12 +120,12 @@ describe("PreviewView", () => {
     async () => {
       const server = serve("<!doctype html><title>Up</title><body>up</body>");
       try {
-        const { code, out, err } = await withSlowChrome(
+        const { code, out, log } = await withSlowChrome(
           `const probe = await PreviewView.probe("http://localhost:${server.port}/", { engine: "chrome", timeoutMs: 1_500 });
 console.log(probe.text);`,
         );
-        expect(out || err).toBe("up");
-        expect(code).toBe(0);
+        expect(out, log).toBe("up");
+        expect(code, log).toBe(0);
       } finally {
         server.stop(true);
       }
@@ -128,7 +136,7 @@ console.log(probe.text);`,
   test.skipIf(!slowChromeRuns)(
     "gives a later page only its own bound for a browser that missed its start, and recovers once it is up",
     async () => {
-      const { code, out, err } = await withSlowChrome(
+      const { code, out, log } = await withSlowChrome(
         `const open = () =>
   PreviewView.probe("about:blank", { engine: "chrome", startTimeoutMs: 1_500, timeoutMs: 1_000 }).then(
     () => "opened",
@@ -137,7 +145,7 @@ console.log(probe.text);`,
 console.log(await open());
 console.log(await open());
 let late = await open();
-for (let tries = 0; late !== "opened" && tries < 100; tries++) late = await open();
+for (let tries = 0; late.startsWith("Timed out starting") && tries < 100; tries++) late = await open();
 console.log(late);
 Bun.WebView.closeAll();
 await Bun.sleep(500);
@@ -145,7 +153,7 @@ console.log(await open());
 Bun.WebView.closeAll();`,
         6,
       );
-      expect(out || err).toBe(
+      expect(out, log).toBe(
         [
           "Timed out starting the chrome browser after 1.5 s.",
           "Timed out starting the chrome browser after 1 s.",
@@ -153,7 +161,66 @@ Bun.WebView.closeAll();`,
           "Timed out starting the chrome browser after 1.5 s.",
         ].join("\n"),
       );
-      expect(code).toBe(0);
+      expect(code, log).toBe(0);
+    },
+    browserTestMs,
+  );
+
+  test.skipIf(!slowChromeRuns)(
+    "gives a browser killed after it missed its start the full bound for its next start",
+    async () => {
+      const { code, out, log } = await withSlowChrome(
+        `const open = () =>
+  PreviewView.probe("about:blank", { engine: "chrome", startTimeoutMs: 1_500, timeoutMs: 1_000 }).then(
+    () => "opened",
+    (error) => error.message,
+  );
+console.log(await open());
+const killed = open();
+Bun.WebView.closeAll();
+console.log(await killed);
+Bun.WebView.closeAll();`,
+        6,
+      );
+      expect(out, log).toBe(
+        [
+          "Timed out starting the chrome browser after 1.5 s.",
+          "Timed out starting the chrome browser after 1.5 s.",
+        ].join("\n"),
+      );
+      expect(code, log).toBe(0);
+    },
+    browserTestMs,
+  );
+
+  test.skipIf(!slowChromeRuns)(
+    "starts a new browser for the page right after one that the browser died on",
+    async () => {
+      const { code, out, log } = await withSlowChrome(
+        `const { promise: loading, resolve } = Promise.withResolvers();
+const server = Bun.serve({
+  port: 0,
+  fetch: (req) =>
+    new URL(req.url).pathname === "/hang"
+      ? (resolve(), new Promise(() => undefined))
+      : new Response("<!doctype html><body>up</body>", { headers: { "content-type": "text/html" } }),
+});
+const open = (path) =>
+  PreviewView.probe(\`http://localhost:\${server.port}\${path}\`, { engine: "chrome" }).then(
+    (probe) => probe.text,
+    (error) => error.message,
+  );
+const killed = open("/hang");
+await loading;
+Bun.WebView.closeAll();
+console.error(await killed);
+console.log(await open("/"));
+server.stop(true);
+Bun.WebView.closeAll();`,
+        0,
+      );
+      expect(out, log).toBe("up");
+      expect(code, log).toBe(0);
     },
     browserTestMs,
   );

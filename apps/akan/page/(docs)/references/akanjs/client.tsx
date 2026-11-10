@@ -226,8 +226,8 @@ export default page()
       {
         name: "prefetch(href, { priority })",
         desc: l.trans({
-          en: 'Loads a route\'s page before the click. Built SSR pages only; `priority: "low"` waits behind hovered links.',
-          ko: '클릭 전에 route의 페이지를 미리 불러옵니다. 빌드된 SSR 페이지에서만 되며, `priority: "low"`는 hover된 링크 뒤에 줄을 섭니다.',
+          en: 'Loads a route\'s page before the click. Built SSR pages only; `priority: "low"` waits behind hovered links. Returns a call that withdraws it while it still waits. A write this tab sends through `fetch` drops what was prefetched, unless it passes `{ keepsReads: true }`.',
+          ko: '클릭 전에 route의 페이지를 미리 불러옵니다. 빌드된 SSR 페이지에서만 되며, `priority: "low"`는 hover된 링크 뒤에 줄을 섭니다. 아직 기다리는 요청을 거두는 함수를 돌려줍니다. 이 탭이 `fetch`로 보낸 쓰기는 미리 불러 둔 페이지를 버리며, `{ keepsReads: true }`를 넘긴 쓰기는 그대로 둡니다.',
         }),
       },
     ];
@@ -664,6 +664,15 @@ export default page()
         type: "string",
         default: l.trans({ en: "background color", ko: "배경색" }),
         desc: l.trans({ en: "Color painted behind the bottom safe area.", ko: "하단 safe area 뒤에 칠할 색입니다." }),
+      },
+      {
+        key: "prefetch",
+        type: "boolean",
+        default: "true",
+        desc: l.trans({
+          en: "`false` answers a Link's prefetch of the page without rendering it; the click renders it. On a layout, it covers every page below.",
+          ko: "`false`면 Link의 prefetch에 페이지를 렌더하지 않고 답하며, 클릭하면 렌더합니다. layout에 두면 그 아래 모든 페이지에 적용됩니다.",
+        }),
       },
       {
         key: "devOnly",

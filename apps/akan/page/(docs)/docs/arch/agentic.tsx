@@ -5,7 +5,7 @@ import { page } from "akanjs/client";
 import { Link } from "akanjs/ui";
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title = lang === "ko" ? "아키텍처: 인페이지 에이전트 | Akan.js" : "Architecture: In-Page Agent | Akan.js";
     const description =

@@ -126,6 +126,30 @@ export default page()
           </span>
         ),
       }),
+      l.trans({
+        en: (
+          <span>
+            <strong>
+              A send that changes nothing read back passes <code>{"{ keepsReads: true }"}</code>.
+            </strong>{" "}
+            Every <code>message</code> drops the pages a <code>Link</code> prefetched and ends sharing for the queries
+            still loading, since a write may change what they read. Typing status or a cursor move changes nothing, so{" "}
+            <code>{"fetch.typing(chatId, { keepsReads: true })"}</code> keeps them; a read receipt changes an unread
+            count and passes nothing.
+          </span>
+        ),
+        ko: (
+          <span>
+            <strong>
+              읽어 가는 값을 바꾸지 않는 전송에는 <code>{"{ keepsReads: true }"}</code>를 넘깁니다.
+            </strong>{" "}
+            <code>message</code>를 보낼 때마다 <code>Link</code>가 미리 불러 둔 페이지를 버리고, 아직 불러오는 query의
+            공유도 끝냅니다. 쓰기가 그 값을 바꿀 수 있기 때문입니다. 입력 중 표시나 커서 이동은 아무것도 바꾸지 않으므로{" "}
+            <code>{"fetch.typing(chatId, { keepsReads: true })"}</code>로 그대로 둡니다. 읽음 처리는 안 읽은 수를
+            바꾸므로 넘기지 않습니다.
+          </span>
+        ),
+      }),
     ];
 
     const pubsubNotes = [

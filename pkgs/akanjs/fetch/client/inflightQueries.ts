@@ -1,3 +1,5 @@
+import { StaleReads } from "../staleReads";
+
 interface InflightQuery {
   value: Promise<unknown>;
   controller: AbortController;
@@ -24,6 +26,22 @@ export class InflightQueries {
 
   detach() {
     this.#entries.clear();
+  }
+
+  //? A query sent before a write or a credential change may answer what no longer holds, so later calls send their own.
+  forget() {
+    this.detach();
+    StaleReads.mark();
+  }
+
+  async writing<T>(write: () => Promise<T>, keepsReads?: boolean): Promise<T> {
+    if (keepsReads) return await write();
+    this.forget();
+    try {
+      return await write();
+    } finally {
+      this.forget();
+    }
   }
 
   #start(key: string, start: (signal: AbortSignal) => Promise<unknown>): InflightQuery {

@@ -4,6 +4,7 @@ import { capitalize, isRecord, parseRouteModuleKey } from "akanjs/common";
 import { extractBlockVersion, readDevkitVersion } from "./agentsIndex";
 import { AppExecutor, LibExecutor, type SysExecutor, type WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
+import { unlabeledFieldNames } from "./moduleFieldNames";
 import { collectRecipeSources, findInlineRecipeDuplicates, scanRecipes } from "./recipeScanner";
 import type { PackageJson } from "./types";
 import {
@@ -336,9 +337,6 @@ const moduleShapeFiles = (module: AkanModuleContext) => {
     `${module.name}.signal.ts`,
   ];
 };
-
-const constantFieldNames = (content: string) =>
-  [...content.matchAll(/\b([A-Za-z_$][\w$]*)\s*:\s*field\(/g)].map((match) => match[1]).filter(Boolean);
 
 const safeReadDir = async (dirPath: string) =>
   (await readdir(dirPath, { withFileTypes: true }).catch(() => [])).sort((a, b) => a.name.localeCompare(b.name));
@@ -853,8 +851,7 @@ export class AkanContextAnalyzer {
             safeReadText(dictionaryPath),
           ]);
           if (constantContent && dictionaryContent) {
-            for (const fieldName of constantFieldNames(constantContent)) {
-              if (new RegExp(`\\b${fieldName}\\s*:`).test(dictionaryContent)) continue;
+            for (const fieldName of unlabeledFieldNames(constantContent, dictionaryContent)) {
               report(
                 {
                   severity: "warning",

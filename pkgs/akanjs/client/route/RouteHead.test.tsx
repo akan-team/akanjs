@@ -116,6 +116,47 @@ describe("RouteHead", () => {
     expect(text).toContain("Leaf</title>");
   });
 
+  test("snapshotOf reads a plain JSX head as the data a navigation swaps in", () => {
+    const merged = RouteHead.mergePage(
+      <>
+        <title>Root</title>
+        <link rel="icon" href="/icon.png" sizes="32x32" />
+      </>,
+      <>
+        <title>{`Routing | Docs`}</title>
+        <meta name="description" content="routes" />
+      </>,
+    );
+
+    expect(RouteHead.snapshotOf(merged)).toEqual({
+      version: 1,
+      nodes: [
+        { tag: "link", attrs: { rel: "icon", href: "/icon.png", sizes: "32x32" } },
+        { tag: "title", text: "Routing | Docs" },
+        { tag: "meta", attrs: { name: "description", content: "routes" } },
+      ],
+    });
+  });
+
+  test("snapshotOf has no snapshot for a head holding a tag it cannot carry", () => {
+    const title = "Docs";
+    expect(
+      RouteHead.snapshotOf(
+        <>
+          <title>Docs</title>
+          <script type="application/ld+json">{"{}"}</script>
+        </>,
+      ),
+    ).toBeUndefined();
+    expect(RouteHead.snapshotOf(<title>{title} | Akan</title>)).toBeUndefined();
+    expect(RouteHead.snapshotOf(<link rel="preload" href="/a.js" onLoad={() => undefined} />)).toBeUndefined();
+  });
+
+  test("snapshotOf keeps a snapshot a level resolved itself", () => {
+    const headSnapshot = { version: 1 as const, nodes: [{ tag: "title" as const, text: "Own" }] };
+    expect(RouteHead.snapshotOf({ node: <title>Other</title>, headSnapshot })).toBe(headSnapshot);
+  });
+
   test("a page names its own URL: a layout's canonical and og:url never reach it", async () => {
     const layouts = (
       <>

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { registerClientReference } from "react-server-dom-webpack/server.node";
 import { layout, page } from "../client/route/routeBuilders";
 import { router } from "../client/router";
+import { FetchHandle } from "../fetch/client/fetchHandle";
 import type { PagesContext } from "./routeTreeBuilder";
 
 const ReadsWindow = registerClientReference(
@@ -11,6 +12,23 @@ const ReadsWindow = registerClientReference(
   "routecontent/readsWindow",
   "ReadsWindow",
 );
+
+const StreamedLabel = registerClientReference(
+  (_: { of: Promise<string> }): ReactNode => {
+    throw new Error("StreamedLabel is a client component");
+  },
+  "routecontent/streamedLabel",
+  "StreamedLabel",
+);
+
+const refusedRead = () => {
+  const request = Promise.reject(new Error("read refused"));
+  return FetchHandle.of<{ label: string }, { label: Promise<string> }>(
+    [request],
+    async () => ({ label: await request }),
+    { label: () => request },
+  );
+};
 
 export const pages: PagesContext = {
   "./__root_layout.tsx": async () => ({
@@ -85,4 +103,26 @@ export const pages: PagesContext = {
       throw new Error("inner broke");
     }),
   }),
+  "./failing/streamed.tsx": async () => ({
+    default: page().render(() => {
+      const { label } = refusedRead();
+      return (
+        <p id="beside">
+          beside <StreamedLabel of={label} />
+        </p>
+      );
+    }),
+  }),
+  "./failing/awaited.tsx": async () => ({
+    default: page().render(async () => {
+      const { label } = refusedRead();
+      return <p>{await label}</p>;
+    }),
+  }),
+  "./failing/lost/_layout.tsx": async () => ({
+    default: layout()
+      .notFound(async () => <p>{await refusedRead().label}</p>)
+      .render(({ children }) => <div>lost:{children}</div>),
+  }),
+  "./failing/lost/_index.tsx": async () => ({ default: page().render(() => router.notFound()) }),
 };

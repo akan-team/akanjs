@@ -6,7 +6,7 @@ import { badgeRecipe, buttonRecipe, Link } from "akanjs/ui";
 import { BiLinkExternal } from "react-icons/bi";
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title = lang === "ko" ? "소개: 기본 개념 | Akan.js" : "Introduction: Fundamentals | Akan.js";
     const description =
