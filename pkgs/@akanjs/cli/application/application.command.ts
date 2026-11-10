@@ -229,13 +229,18 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       desc: "environment the server runs in (default: AKAN_PUBLIC_ENV of the shell, else of the workspace .env)",
       nullable: true,
     })
-    .exec(async function (app, write, fast, quiet, profile, env) {
+    .option("updateBudget", Boolean, {
+      desc: "write akan.budget.json: add each new route's JS and lower an entry a route now fits under, never raise one",
+      default: false,
+    })
+    .exec(async function (app, write, fast, quiet, profile, env, updateBudget) {
       await this.applicationScript.build(app, {
         write,
         fast,
         quiet,
         profile: profile ?? undefined,
         env: env ?? undefined,
+        updateBudget,
       });
     }),
   typecheck: target({ short: true, desc: "Typecheck an app or a library, its tests and specs included" })

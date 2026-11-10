@@ -19,6 +19,7 @@ import {
   SsrBaseArtifactBuilder,
   VendorImportScanner,
 } from "./frontendBuild";
+import { RouteJsBudget, type RouteJsBudgetMode, type RouteJsBudgetStatus, type RouteJsSize } from "./routeJsBudget";
 import { Spinner } from "./spinner";
 import { createServerEnvPlugin } from "./transforms/serverEnvPlugin";
 import { ServerEnvProfile } from "./transforms/serverEnvProfile";
@@ -33,7 +34,16 @@ export interface TypecheckOptions {
   report?: "pretty" | "records";
 }
 
-export type BuildPhaseId = "prepare" | "typecheck" | "backend" | "ssr" | "csr" | "assets" | "compress" | "metadata";
+export type BuildPhaseId =
+  | "prepare"
+  | "typecheck"
+  | "backend"
+  | "ssr"
+  | "csr"
+  | "assets"
+  | "compress"
+  | "budget"
+  | "metadata";
 
 export type BuildPhaseResult = ApplicationBuildPhaseResult & { id: BuildPhaseId };
 export type BuildResult = ApplicationBuildResult;
@@ -45,6 +55,8 @@ export interface ApplicationBuildRunnerOptions {
   environment?: string;
   /** Bundles `env/env.server.<environment>.<profile>.ts`, which may hold no secret, in place of the environment's file. */
   profile?: string;
+  /** `update` writes akan.budget.json, then enforces it; `report` names an overage without failing the build. */
+  budget?: RouteJsBudgetMode;
 }
 export interface BuildOptions {
   spinner?: boolean;
@@ -61,6 +73,7 @@ const BUILD_PHASE_EMOJIS: Record<BuildPhaseId, string> = {
   csr: "🎨",
   assets: "✂️",
   compress: "🗜️",
+  budget: "📏",
   metadata: "📝",
 };
 
@@ -88,16 +101,22 @@ export class ApplicationBuildRunner {
   #reporter?: BuildProgressReporter;
   #environment?: string;
   #profile?: string;
+  #budget: RouteJsBudgetMode;
+  #modulesByRoute?: Record<string, string[]>;
   #spinner?: boolean;
   #startedAt = Date.now();
   #phases: BuildPhaseResult[] = [];
 
-  constructor(app: App, { fast = false, reporter, environment, profile }: ApplicationBuildRunnerOptions = {}) {
+  constructor(
+    app: App,
+    { fast = false, reporter, environment, profile, budget = "report" }: ApplicationBuildRunnerOptions = {},
+  ) {
     this.#app = app;
     this.#fast = fast;
     this.#reporter = reporter;
     this.#environment = environment;
     this.#profile = profile;
+    this.#budget = budget;
   }
 
   get #envDir() {
@@ -179,9 +198,17 @@ export class ApplicationBuildRunner {
           ? `${result.files} files, ${ApplicationBuildRunner.formatBytes(result.inputBytes)} -> gzip ${ApplicationBuildRunner.formatBytes(result.outputBytes)} / br ${ApplicationBuildRunner.formatBytes(result.brotliBytes)}`
           : "no files",
     );
+    const routeJs = await this.#runPhase(
+      "budget",
+      "Measuring route JS",
+      () => this.#measureRouteJs(environment),
+      (result) => result?.summary ?? (this.#budget === "off" ? "off for this build" : "no server pages"),
+    );
     await this.#runPhase("metadata", "Writing production metadata", () => this.buildAppMeta());
     return {
       phases: this.#phases,
+      ...(routeJs ? { routeJs: routeJs.sizes } : {}),
+      ...(routeJs?.warnings ? { routeJsWarnings: routeJs.warnings } : {}),
       durationMs: Date.now() - this.#startedAt,
       outputDir: this.#app.dist.cwdPath,
       artifactDir: path.join(this.#app.dist.cwdPath, ".akan/artifact"),
@@ -405,7 +432,8 @@ void run().catch((error) => {
     }
     const { baseDevEnv, branches } = await this.#app.getConfig();
     //? Routes first: the vendor entries export only the names the route bundles import.
-    const allRoutes = await new AllRoutesBuilder(this.#app, "build").build();
+    const routes = new AllRoutesBuilder(this.#app, "build");
+    const allRoutes = await routes.build();
     const vendorExports = await VendorImportScanner.exportsUsedIn(
       path.join(this.#app.dist.cwdPath, ".akan/artifact/client"),
       NARROWABLE_VENDOR_SPECIFIERS,
@@ -414,7 +442,33 @@ void run().catch((error) => {
       serverEnv: this.#serverEnvPlugin(baseDevEnv.env, branches),
       vendorExports,
     }).build();
+    this.#modulesByRoute = (await routes.writeModulePreloads(base.runtimeChunks)).modulesByRoute();
     return { base, allRoutes };
+  }
+
+  //? After `compress`: a route is measured by the brotli bytes it is served as, read from the `.br` sidecars.
+  async #measureRouteJs(environment: string): Promise<(RouteJsBudgetStatus & { sizes: RouteJsSize[] }) | null> {
+    if (this.#budget === "off" || !this.#modulesByRoute) return null;
+    const sizes = await RouteJsBudget.measure(
+      path.join(this.#app.dist.cwdPath, ".akan/artifact"),
+      this.#modulesByRoute,
+    );
+    const budgetPath = path.join(this.#app.cwdPath, RouteJsBudget.fileName);
+    const { summary: status, warnings } = await RouteJsBudget.check(sizes, {
+      mode: this.#budget,
+      budgetPath,
+      source: path.relative(this.#app.workspace.workspaceRoot, budgetPath),
+      environment,
+    });
+    const largest = sizes[0];
+    const { formatBytes } = ApplicationBuildRunner;
+    return {
+      sizes,
+      summary: largest
+        ? `${sizes.length} routes, largest ${largest.routeId} ${formatBytes(largest.brotliBytes)} brotli (${formatBytes(largest.rawBytes)} raw); ${status}`
+        : status,
+      ...(warnings ? { warnings } : {}),
+    };
   }
 
   //? Opt-in and outside `dist/`: a metafile is the size of the module graph, and `dist/` is what the image copies.
