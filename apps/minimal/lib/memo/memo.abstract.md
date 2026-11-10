@@ -5,7 +5,9 @@ stored through the util lib's blob storage.
 ## Rules
 - minimal has no accounts, so every memo endpoint is anonymous and guarded by `LocalOrEdge`: it answers on a developer's
   server (`local`) and on a desktop app's carried server (`edge`), never in any other operation mode, and never over
-  MCP.
+  MCP. The memo pages run a memo query in `.guard()`, so a built server (which runs as `cloud`) answers them
+  not-found instead of failing the render in the browser; the guard asks the server, not `getEnv()`, because a
+  desktop app's client is built as `cloud` while its carried server runs as `edge`.
 - `imageUrl` is written only by `attachMemoImage`, as a URL relative to the server that stored the image; a page on
   another origin resolves it against the server (`resolveServerUrl`).
 - An attached image is a PNG, JPEG, WebP or GIF of at most 5 MB, stored under a name made from that type; the uploaded
