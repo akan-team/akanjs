@@ -64,12 +64,14 @@ export class WorkspaceGraph {
         .filter((node) => node.change)
         .flatMap((node) => [
           node.at?.file,
+          ...(node.sources ?? []),
           ...(node.fields ?? []).filter((field) => field.change).map(({ at }) => at.file),
         ]),
       ...changes.edges.filter((edge) => edge.change).map((edge) => edge.at?.file),
     ]);
     const unmapped = files.filter(({ file }) => !mapped.has(file) && !hiddenPath.test(file));
-    return { ...changes, since: sha.slice(0, 12), unmapped };
+    const nodes = changes.nodes.map(({ sources: _sources, ...node }) => node);
+    return { ...changes, nodes, since: sha.slice(0, 12), unmapped };
   }
 
   static #baseAt(root: string, sha: string) {
@@ -188,15 +190,16 @@ export class WorkspaceGraph {
     if (scope.app || scope.module || graph.nodes.length <= unscopedNodeLimit) return WorkspaceGraph.scope(graph, scope);
     const unscoped = WorkspaceGraph.#withoutPages(graph);
     if (unscoped.nodes.length <= unscopedNodeLimit) return unscoped;
+    const kept = new Set(unscoped.nodes.map((node) => node.id));
     const owners = new Map<string, number>();
     for (const node of counted)
-      if (node.owner && !pageKinds.has(node.kind)) owners.set(node.owner, (owners.get(node.owner) ?? 0) + 1);
+      if (node.owner && kept.has(node.id)) owners.set(node.owner, (owners.get(node.owner) ?? 0) + 1);
     return {
       diagnostics: [
         {
           severity: "error",
           code: "graph-scope-required",
-          message: `The graph has ${unscoped.nodes.length} nodes besides its pages. Pass app, module or both to scope it.`,
+          message: `The graph has ${unscoped.nodes.length} nodes once unchanged pages are set aside. Pass app, module or both to scope it.`,
           input: "app",
         },
       ],

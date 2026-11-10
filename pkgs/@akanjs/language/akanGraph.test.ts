@@ -320,7 +320,7 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
     expect(guards.every((node) => node.at === null || /^[0-9a-f]{8}$/.test(node.digest ?? ""))).toBe(true);
   });
 
-  it("names the lib an import points at when two other libs declare the re-exported guard", () => {
+  it("follows a lib's re-export to the guard it names, and `export *` only when it reaches one workspace candidate", () => {
     const admin = `import type { Guard } from "akanjs/signal";
 export class Admin implements Guard {
   canPass() {
@@ -328,12 +328,13 @@ export class Admin implements Guard {
   }
 }
 `;
-    const given: Record<string, string> = {
-      "libs/billing/srvkit/admin.ts": admin,
-      "libs/util/srvkit/admin.ts": admin,
-      "libs/shared/srvkit/admin.ts": `export { Admin } from "@libs/util/srvkit";
-`,
-      "apps/demo/lib/memo/memo.signal.ts": `import { Admin } from "@libs/shared/srvkit";
+    const graphOf = (reexport: string, extra: Record<string, string> = {}) => {
+      const given: Record<string, string> = {
+        ...extra,
+        "libs/billing/srvkit/admin.ts": admin,
+        "libs/util/srvkit/admin.ts": admin,
+        "libs/shared/srvkit/index.ts": reexport,
+        "apps/demo/lib/memo/memo.signal.ts": `import { Admin } from "@libs/shared/srvkit";
 import { endpoint } from "akanjs/signal";
 import * as srv from "../srv";
 export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
@@ -342,14 +343,34 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
   }),
 })) {}
 `,
+      };
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return index.graph((fileName) => given[fileName.slice(root.length + 1)], { digests: true });
     };
-    const index = new AkanIndex({ ts, root });
-    for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
-    const graph = index.graph((fileName) => given[fileName.slice(root.length + 1)], { digests: true });
-    expect(graph.edges.filter((edge) => edge.to.startsWith("guard:")).map((edge) => edge.to)).toEqual([
-      "guard:libs/shared:Admin",
+    const named = graphOf(`export { Admin } from "@libs/util/srvkit";\n`);
+    expect(named.edges.filter((edge) => edge.kind === "guard").map((edge) => edge.to)).toEqual([
+      "guard:libs/util:Admin",
     ]);
-    expect(graph.nodes.find((node) => node.id === "guard:libs/shared:Admin")?.at).toBeNull();
+    const guardsOf = (graph: ReturnType<typeof graphOf>) =>
+      graph.edges.filter((edge) => edge.kind === "guard").map((edge) => edge.to);
+    const starred = `export * from "@libs/util/srvkit";\n`;
+    expect(guardsOf(graphOf(starred))).toEqual(["guard:libs/util:Admin"]);
+    expect(guardsOf(graphOf(starred, { "libs/shared/ui/index.ts": `export * from "@vendor/ui";\n` }))).toEqual([
+      "guard:libs/util:Admin",
+    ]);
+    for (const ambiguous of [
+      `${starred}export * from "@libs/billing/srvkit";\n`,
+      `export * from "@vendor/admin";\n`,
+      `${starred}export * from "@vendor/admin";\n`,
+      `${starred}export const Admin = "admin";\n`,
+      `${starred}import Admin from "@vendor/auth";\nexport { Admin };\n`,
+      `${starred}export const { Admin } = makeGuards();\n`,
+    ]) {
+      const graph = graphOf(ambiguous);
+      expect(guardsOf(graph)).toEqual(["guard:libs/shared:Admin"]);
+      expect(graph.nodes.find((node) => node.id === "guard:libs/shared:Admin")?.at).toBeNull();
+    }
   });
 
   it("follows a guard through a map's own imports, a re-export, and a factory a file imports or wraps", () => {
@@ -460,6 +481,372 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
     ]);
   });
 
+  it("takes a function as a factory only when it returns a guard, and an import from a package or akanjs as none", () => {
+    const given: Record<string, string> = {
+      "libs/shared/srvkit/resource.ts": `import type { Guard } from "akanjs/signal";
+export const resourceGuard = (field: string) =>
+  class implements Guard {
+    canPass() {
+      return !!field;
+    }
+  };
+export class Admin implements Guard {
+  canPass() {
+    return true;
+  }
+}
+export const countGuards = () => [Admin, resourceGuard("a")].length;
+export const guardCount = countGuards();
+`,
+      "libs/util/srvkit/made.ts": `import { resourceGuard as fromAkan } from "akanjs/signal";
+import { resourceGuard } from "@vendor/auth";
+export const VendorMade = resourceGuard("vendor");
+export const AkanMade = fromAkan("akan");
+`,
+      "apps/demo/srvkit/guards.ts": `import type { Guard } from "akanjs/signal";
+export class Owner implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { Owner, Public, roleGuard } from "@vendor/auth";
+import { endpoint } from "akanjs/signal";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, { guards: [Owner, Public, roleGuard("admin")] }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+    };
+    const index = new AkanIndex({ ts, root });
+    for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+    const graph = index.graph((fileName) => given[fileName.slice(root.length + 1)]);
+    expect(graph.nodes.filter((node) => node.kind === "guard").map((node) => node.id)).toEqual([
+      "guard:apps/demo:Owner",
+      "guard:libs/shared:Admin",
+    ]);
+    expect(edgesOf(graph, "guard")).toEqual([]);
+    expect(graph.nodes.find((node) => node.id === "endpoint:apps/demo:memo.shareMemo")?.detail).toEqual([
+      "mutation",
+      "Owner",
+      "Public",
+      'roleGuard("admin")',
+    ]);
+  });
+
+  it("locates a guard behind a renamed or akanjs re-export, a namespace's map, a wrapper, a subclass or a call in place", () => {
+    const guarded = (ownerBody: string): Record<string, string> => ({
+      "libs/util/srvkit/guards.ts": `import type { Guard, GuardScope } from "akanjs/signal";
+export class Admin implements Guard {
+  static scope: GuardScope = "account";
+  canPass() {
+    return true;
+  }
+}
+export const resourceGuard = (field: string) =>
+  class implements Guard {
+    static scope = "resource" as const;
+    canPass() {
+      return !!field;
+    }
+  };
+export const ownerGuard = () =>
+  class implements Guard {
+    static scope = "resource" as const;
+    canPass() {
+      return ${ownerBody};
+    }
+  };
+`,
+      "libs/shared/srvkit/reexports.ts": `export { Admin as AdminGuard } from "@libs/util/srvkit";
+export { Public } from "akanjs/signal";
+`,
+      "libs/shared/srvkit/sso.ts": `import { resourceGuard } from "@libs/util/srvkit";
+export const SSO = {
+  // Signs in through Kakao.
+  Kakao: resourceGuard("kakao"),
+};
+`,
+      "apps/demo/srvkit/guards.ts": `import { Admin, ownerGuard, resourceGuard } from "@libs/util/srvkit";
+import * as utilkit from "@libs/util/srvkit";
+/** The caller belongs to the project, or owns it. */
+const memberOf = (field: string) => (field ? resourceGuard(field) : ownerGuard());
+export const ProjectMember = memberOf("project");
+export const PinOwner = utilkit.resourceGuard("pin");
+// Admins of the demo app only.
+export class DemoAdmin extends Admin {}
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { AdminGuard, Public } from "@libs/shared/srvkit";
+import * as srvkit from "@libs/shared/srvkit";
+import { resourceGuard } from "@libs/util/srvkit";
+import { endpoint } from "akanjs/signal";
+import { DemoAdmin, PinOwner, ProjectMember } from "../../srvkit/guards";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, {
+    guards: [AdminGuard, Public, srvkit.SSO.Kakao, ProjectMember, PinOwner, DemoAdmin, resourceGuard("memo")],
+  }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+    });
+    const graphOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return index.graph((fileName) => given[fileName.slice(root.length + 1)], { digests: true });
+    };
+    const graph = graphOf(guarded("true"));
+    const inPlace = "guard:apps/demo:lib/memo/memo.signal.ts#memo.shareMemo:resourceGuard@1";
+    expect(edgesOf(graph, "guard")).toEqual([
+      "endpoint:apps/demo:memo.shareMemo --> guard::Public",
+      "endpoint:apps/demo:memo.shareMemo --> guard:apps/demo:DemoAdmin",
+      "endpoint:apps/demo:memo.shareMemo --> guard:apps/demo:PinOwner",
+      "endpoint:apps/demo:memo.shareMemo --> guard:apps/demo:ProjectMember",
+      `endpoint:apps/demo:memo.shareMemo --> ${inPlace}`,
+      "endpoint:apps/demo:memo.shareMemo --> guard:libs/shared:SSO.Kakao",
+      "endpoint:apps/demo:memo.shareMemo --> guard:libs/util:Admin",
+    ]);
+    expect(graph.nodes.find((node) => node.id === "endpoint:apps/demo:memo.shareMemo")?.detail).toEqual([
+      "mutation",
+      "AdminGuard",
+      "Public",
+      "srvkit.SSO.Kakao",
+      "ProjectMember",
+      "PinOwner",
+      "DemoAdmin",
+      'resourceGuard("memo")',
+    ]);
+    const guards = graph.nodes.filter((node) => node.kind === "guard" && node.at);
+    expect(
+      guards.map(({ id, detail, at, doc, sources }) => [
+        id,
+        detail,
+        `${at?.file}:${at?.line}`,
+        doc ?? null,
+        sources ?? [],
+      ]),
+    ).toEqual([
+      [
+        "guard:apps/demo:DemoAdmin",
+        ["account"],
+        "apps/demo/srvkit/guards.ts:8",
+        "Admins of the demo app only.",
+        ["libs/util/srvkit/guards.ts"],
+      ],
+      ["guard:apps/demo:PinOwner", ["resource"], "apps/demo/srvkit/guards.ts:6", null, ["libs/util/srvkit/guards.ts"]],
+      [
+        "guard:apps/demo:ProjectMember",
+        ["resource"],
+        "apps/demo/srvkit/guards.ts:5",
+        "The caller belongs to the project, or owns it.",
+        ["libs/util/srvkit/guards.ts"],
+      ],
+      [inPlace, ["resource"], "apps/demo/lib/memo/memo.signal.ts:9", null, ["libs/util/srvkit/guards.ts"]],
+      [
+        "guard:libs/shared:SSO.Kakao",
+        ["resource"],
+        "libs/shared/srvkit/sso.ts:4",
+        "Signs in through Kakao.",
+        ["libs/util/srvkit/guards.ts"],
+      ],
+      ["guard:libs/util:Admin", ["account"], "libs/util/srvkit/guards.ts:2", null, []],
+    ]);
+    const changed = AkanGraphDiff.between(graph, graphOf(guarded("false")))
+      .nodes.filter((node) => node.kind === "guard" && node.change === "changed")
+      .map((node) => node.id);
+    expect(changed).toEqual(["guard:apps/demo:ProjectMember"]);
+  });
+
+  it("names a guard made in place by member, callee and ordinal, takes a class handed to a wrapper, and skips a plain base", () => {
+    const made = (check: string, sibling = ""): Record<string, string> => ({
+      "libs/util/srvkit/guards.ts": `import type { Guard } from "akanjs/signal";
+const withName = <T>(guard: T, name: string) => Object.assign(guard as object, { guardName: name }) as T;
+export const resourceGuard = (field: string) =>
+  withName(
+    class implements Guard {
+      static scope = "resource" as const;
+      canPass() {
+        return !!field;
+      }
+    },
+    field,
+  );
+export { resourceGuard as rg };
+export const allow = (check: (user: unknown) => boolean) =>
+  class implements Guard {
+    canPass() {
+      return check(null);
+    }
+  };
+`,
+      "libs/util/common/base.ts": `export class Base {}
+`,
+      "libs/shared/srvkit/base.ts": `import type { Guard } from "akanjs/signal";
+export class Base implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`,
+      "apps/demo/srvkit/guards.ts": `import { Base } from "@libs/util/common";
+import { rg } from "@libs/util/srvkit";
+export const Pin = rg("pin");
+export class Thing extends Base {}
+`,
+      "apps/demo/srvkit/local.ts": `class Base {}
+export class Local extends Base {}
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { allow, resourceGuard } from "@libs/util/srvkit";
+import { endpoint } from "akanjs/signal";
+import { Pin } from "../../srvkit/guards";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({${sibling}
+  shareMemo: mutation(cnst.Memo, {
+    guards: [
+      Pin,
+      resourceGuard("memo"),
+      allow((user) => !!user),
+      allow((user) => {
+        return ${check};
+      }),
+    ],
+  }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+    });
+    const graphOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return index.graph((fileName) => given[fileName.slice(root.length + 1)], { digests: true });
+    };
+    const graph = graphOf(made("!!user"));
+    const inPlace = "guard:apps/demo:lib/memo/memo.signal.ts#memo.shareMemo:";
+    expect(edgesOf(graph, "guard")).toEqual([
+      "endpoint:apps/demo:memo.shareMemo --> guard:apps/demo:Pin",
+      `endpoint:apps/demo:memo.shareMemo --> ${inPlace}allow@1`,
+      `endpoint:apps/demo:memo.shareMemo --> ${inPlace}allow@2`,
+      `endpoint:apps/demo:memo.shareMemo --> ${inPlace}resourceGuard@1`,
+    ]);
+    expect(graph.nodes.find((node) => node.id === "endpoint:apps/demo:memo.shareMemo")?.detail).toEqual([
+      "mutation",
+      "Pin",
+      'resourceGuard("memo")',
+      "allow((user) => !!user)",
+      "allow(…)",
+    ]);
+    expect(
+      graph.nodes
+        .filter((node) => node.kind === "guard")
+        .map(({ id, label, detail, at }) => [id, label, detail, at && `${at.file}:${at.line}`]),
+    ).toEqual([
+      ["guard:apps/demo:Pin", "Pin", ["resource"], "apps/demo/srvkit/guards.ts:3"],
+      [`${inPlace}allow@1`, "allow((user) => !!user)", [], "apps/demo/lib/memo/memo.signal.ts:10"],
+      [`${inPlace}allow@2`, "allow(…)", [], "apps/demo/lib/memo/memo.signal.ts:11"],
+      [`${inPlace}resourceGuard@1`, 'resourceGuard("memo")', ["resource"], "apps/demo/lib/memo/memo.signal.ts:9"],
+      ["guard:libs/shared:Base", "Base", [], "libs/shared/srvkit/base.ts:2"],
+    ]);
+    const changed = AkanGraphDiff.between(graph, graphOf(made("user !== null")))
+      .nodes.filter((node) => node.change)
+      .map(({ id, change }) => `${change} ${id}`);
+    expect(changed).toEqual(["changed endpoint:apps/demo:memo.shareMemo", `changed ${inPlace}allow@2`]);
+    const sibling = `
+  zeta: mutation(cnst.Memo, { guards: [resourceGuard("zeta")] }).exec(async function () {
+    return null;
+  }),`;
+    const changesOf = (before: ReturnType<typeof graphOf>, after: ReturnType<typeof graphOf>) => {
+      const changes = AkanGraphDiff.between(before, after);
+      return [
+        ...changes.nodes.filter((node) => node.change).map(({ id, change }) => `${change} ${id}`),
+        ...changes.edges.filter((edge) => edge.change).map(({ from, to, change }) => `${change} ${from} --> ${to}`),
+      ];
+    };
+    const zeta = "guard:apps/demo:lib/memo/memo.signal.ts#memo.zeta:resourceGuard@1";
+    const withSibling = graphOf(made("!!user", sibling));
+    expect(changesOf(graph, withSibling)).toEqual([
+      "added endpoint:apps/demo:memo.zeta",
+      `added ${zeta}`,
+      `added endpoint:apps/demo:memo.zeta --> ${zeta}`,
+    ]);
+    expect(changesOf(withSibling, graph)).toEqual([
+      "removed endpoint:apps/demo:memo.zeta",
+      `removed ${zeta}`,
+      `removed endpoint:apps/demo:memo.zeta --> ${zeta}`,
+    ]);
+  });
+
+  it("keys a name two files of one owner declare by file, and follows each import to its own", () => {
+    const admin = (doc: string) => `import type { Guard } from "akanjs/signal";
+// ${doc}
+export class Admin implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`;
+    const given: Record<string, string> = {
+      "apps/demo/srvkit/admin.ts": admin("Runs the console."),
+      "apps/demo/lib/_auth/admin.ts": admin("Runs sign-in."),
+      "apps/demo/lib/memo/memo.signal.ts": `import { endpoint } from "akanjs/signal";
+import { Admin } from "../../srvkit/admin";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, { guards: [Admin] }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+      "apps/demo/lib/user/user.signal.ts": `import { endpoint } from "akanjs/signal";
+import { Admin } from "../_auth/admin";
+import * as srv from "../srv";
+export class UserEndpoint extends endpoint(srv.user, ({ mutation }) => ({
+  signIn: mutation(cnst.User, { guards: [Admin] }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+    };
+    const graphOf = (files: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(files)) index.setFile(`${root}/${rel}`, text);
+      return index.graph((fileName) => files[fileName.slice(root.length + 1)], { digests: true });
+    };
+    const graph = graphOf(given);
+    expect(edgesOf(graph, "guard")).toEqual([
+      "endpoint:apps/demo:memo.shareMemo --> guard:apps/demo:srvkit/admin.ts#Admin",
+      "endpoint:apps/demo:user.signIn --> guard:apps/demo:lib/_auth/admin.ts#Admin",
+    ]);
+    const single = graphOf(
+      Object.fromEntries(Object.entries(given).filter(([rel]) => !/_auth\/admin|user\.signal/.test(rel))),
+    );
+    const guardChangesOf = (changes: ReturnType<typeof AkanGraphDiff.between>) => [
+      ...changes.nodes
+        .filter((node) => node.kind === "guard" && node.change)
+        .map(({ id, change }) => `${change} ${id}`),
+      ...changes.edges
+        .filter((edge) => edge.kind === "guard" && edge.change)
+        .map(({ from, to, change }) => `${change} ${from} --> ${to}`),
+    ];
+    expect(guardChangesOf(AkanGraphDiff.between(single, graph))).toEqual([
+      "added guard:apps/demo:lib/_auth/admin.ts#Admin",
+      "added endpoint:apps/demo:user.signIn --> guard:apps/demo:lib/_auth/admin.ts#Admin",
+    ]);
+    expect(guardChangesOf(AkanGraphDiff.between(graph, single))).toEqual([
+      "removed guard:apps/demo:lib/_auth/admin.ts#Admin",
+      "removed endpoint:apps/demo:user.signIn --> guard:apps/demo:lib/_auth/admin.ts#Admin",
+    ]);
+    expect(
+      graph.nodes.filter((node) => node.kind === "guard").map(({ at, doc }) => [`${at?.file}:${at?.line}`, doc]),
+    ).toEqual([
+      ["apps/demo/lib/_auth/admin.ts:3", "Runs sign-in."],
+      ["apps/demo/srvkit/admin.ts:3", "Runs the console."],
+    ]);
+  });
+
   it("drops a file's guards once it no longer declares one", () => {
     const index = new AkanIndex({ ts, root });
     const guardFile = "libs/shared/srvkit/guards.ts";
@@ -522,10 +909,13 @@ export default page()
 import { page, redirect } from "akanjs/client";
 // Pins are the caller's own.
 const isOwn = () => true;
-const route = page()
+export default page()
   .guard(() => isOwn() || redirect("/signin"))
   .render(() => st.do.shareMemo("x"));
-export default route;
+`,
+      "apps/demo/page/about.tsx": `import { st } from "@apps/demo/client";
+const About = () => st.do.shareMemo("about");
+export default About;
 `,
       "apps/demo/page/docs.tsx": `const sample = \`
 export default layout()
@@ -548,27 +938,30 @@ export default page().render(() => sample);
       ["layout:apps/demo:/", "/_layout", ["root"], "apps/demo/page/_layout.tsx:2:1"],
       ["layout:apps/demo:/(app)", "/(app)/_layout", ["guard"], "apps/demo/page/(app)/_layout.tsx:3:1"],
       ["route:apps/demo:/", "/", [], "apps/demo/page/_index.tsx:2:1"],
+      ["route:apps/demo:/about", "/about", [], "apps/demo/page/about.tsx:3:1"],
       ["route:apps/demo:/docs", "/docs", [], "apps/demo/page/docs.tsx:6:1"],
       ["route:apps/demo:/memo/:memoId", "/memo/:memoId", ["guard"], "apps/demo/page/(app)/memo/[memoId].tsx:6:1"],
-      ["route:apps/demo:/pin", "/pin", ["guard"], "apps/demo/page/(app)/pin.tsx:8:1"],
+      ["route:apps/demo:/pin", "/pin", ["guard"], "apps/demo/page/(app)/pin.tsx:5:1"],
       ["route:libs/shared:/oauth/consent", "/oauth/consent", [], "libs/shared/page/oauth/consent/_index.tsx:1:1"],
     ]);
     expect(edgesOf(graph, "wraps")).toEqual([
       "layout:apps/demo:/ --> layout:apps/demo:/(app)",
       "layout:apps/demo:/ --> route:apps/demo:/",
+      "layout:apps/demo:/ --> route:apps/demo:/about",
       "layout:apps/demo:/ --> route:apps/demo:/docs",
       "layout:apps/demo:/(app) --> route:apps/demo:/memo/:memoId",
       "layout:apps/demo:/(app) --> route:apps/demo:/pin",
     ]);
     expect(graph.edges.find((edge) => edge.kind === "wraps" && edge.to === "route:apps/demo:/pin")?.at).toEqual({
       file: "apps/demo/page/(app)/pin.tsx",
-      line: 8,
+      line: 5,
       column: 1,
     });
     expect(edgesOf(graph, "uses")).toContain("route:apps/demo:/pin -shareMemo-> action:apps/demo:memo.shareMemo");
+    expect(edgesOf(graph, "uses")).toContain("route:apps/demo:/about -shareMemo-> action:apps/demo:memo.shareMemo");
     expect(graph.nodes.some((node) => node.id.startsWith("component:apps/demo/page/"))).toBe(false);
     expect(edgesOf(graph, "guard")).toEqual([
-      "layout:apps/demo:/(app) --> guard:libs/shared:signedIn",
+      "layout:apps/demo:/(app) --> guard:libs/shared:webkit/signedIn.ts#signedIn",
       "route:apps/demo:/memo/:memoId --> guard:apps/demo:page/(app)/memo/[memoId].tsx#isOwn",
       "route:apps/demo:/pin --> guard:apps/demo:page/(app)/pin.tsx#isOwn",
     ]);
@@ -580,13 +973,129 @@ export default page().render(() => sample);
       ["apps/demo/page/(app)/memo/[memoId].tsx:4", null],
       ["apps/demo/page/(app)/pin.tsx:4", "Pins are the caller's own."],
     ]);
-    const signedIn = graph.nodes.find((node) => node.id === "guard:libs/shared:signedIn");
+    const signedIn = graph.nodes.find((node) => node.id === "guard:libs/shared:webkit/signedIn.ts#signedIn");
     expect([signedIn?.detail, signedIn?.at?.line, signedIn?.doc]).toEqual([
       ["route"],
       4,
       "Sends a guest to the sign-in page.",
     ]);
     expect(routes.every((node) => /^[0-9a-f]{8}$/.test(node.digest ?? ""))).toBe(true);
+  });
+
+  it("keys an imported guard function by its file, through a namespace or a re-export, past a binding that shadows it", () => {
+    const paged = (overload: string): Record<string, string> => ({
+      "apps/demo/webkit/canEdit.ts": `// Checks the caller may edit in the browser.
+export const canEdit = () => true;
+`,
+      "apps/demo/common/canEdit.ts": `// Checks the id names an editable record.
+export function canEdit(id: string): boolean;
+export function canEdit(id: ${overload}): boolean;
+export function canEdit(id: unknown) {
+  return !!id;
+}
+`,
+      "libs/shared/webkit/auth.ts": `export const ready = true, signedIn = () => ready;
+`,
+      "libs/shared/webkit/session.ts": `export { signedIn as hasSession } from "./auth";
+`,
+      "apps/demo/client.ts": `export const { usePage } = makePageProto();
+`,
+      "apps/demo/page/a.tsx": `import { page } from "akanjs/client";
+import { canEdit } from "../webkit/canEdit";
+export default page()
+  .guard(() => canEdit())
+  .render(() => null);
+`,
+      "apps/demo/page/b.tsx": `import { page } from "akanjs/client";
+import { canEdit } from "../common/canEdit";
+export default page()
+  .guard(() => canEdit("b"))
+  .render(() => null);
+`,
+      "apps/demo/page/c.tsx": `import * as auth from "@libs/shared/webkit";
+import { page } from "akanjs/client";
+import { canEdit } from "../webkit/canEdit";
+export default page()
+  .guard(() => {
+    const canEdit = () => false;
+    auth.signedIn();
+    canEdit();
+  })
+  .render(() => null);
+`,
+      "apps/demo/page/d.tsx": `import { usePage } from "@apps/demo/client";
+import { hasSession } from "@libs/shared/webkit";
+import { page } from "akanjs/client";
+export default page()
+  .guard(() => {
+    usePage();
+    hasSession();
+  })
+  .render(() => null);
+`,
+      "apps/demo/page/e.tsx": `import { page } from "akanjs/client";
+import { canEdit } from "../webkit/canEdit";
+export default page()
+  .guard(() => [() => false].every((canEdit) => canEdit()) || canEdit())
+  .render(() => null);
+`,
+      ...Object.fromEntries(
+        [1, 2, 3].map((idx) => [
+          `apps/demo/page/plain${idx}.tsx`,
+          `import { usePage } from "@apps/demo/client";
+import { page } from "akanjs/client";
+export default page().render(() => {
+  usePage();
+  return null;
+});
+`,
+        ]),
+      ),
+    });
+    const parsed: string[] = [];
+    const spied = {
+      ...ts,
+      createSourceFile: (...args: Parameters<typeof ts.createSourceFile>) => {
+        parsed.push(args[0]);
+        return ts.createSourceFile(...args);
+      },
+    };
+    const graphOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts: spied, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      parsed.length = 0;
+      return index.graph((fileName) => given[fileName.slice(root.length + 1)], { digests: true });
+    };
+    const graph = graphOf(paged("number"));
+    expect(parsed.filter((fileName) => fileName.includes("/page/plain"))).toEqual([]);
+    expect(edgesOf(graph, "guard")).toEqual([
+      "route:apps/demo:/a --> guard:apps/demo:webkit/canEdit.ts#canEdit",
+      "route:apps/demo:/b --> guard:apps/demo:common/canEdit.ts#canEdit",
+      "route:apps/demo:/c --> guard:libs/shared:webkit/auth.ts#signedIn",
+      "route:apps/demo:/d --> guard:libs/shared:webkit/auth.ts#signedIn",
+      "route:apps/demo:/e --> guard:apps/demo:webkit/canEdit.ts#canEdit",
+    ]);
+    expect(
+      graph.nodes
+        .filter((node) => node.kind === "guard")
+        .map(({ id, at, doc }) => [id, `${at?.file}:${at?.line}`, doc ?? null]),
+    ).toEqual([
+      [
+        "guard:apps/demo:common/canEdit.ts#canEdit",
+        "apps/demo/common/canEdit.ts:2",
+        "Checks the id names an editable record.",
+      ],
+      [
+        "guard:apps/demo:webkit/canEdit.ts#canEdit",
+        "apps/demo/webkit/canEdit.ts:2",
+        "Checks the caller may edit in the browser.",
+      ],
+      ["guard:libs/shared:webkit/auth.ts#signedIn", "libs/shared/webkit/auth.ts:1", null],
+    ]);
+    const changed = AkanGraphDiff.between(graph, graphOf(paged("bigint")))
+      .nodes.filter((node) => node.change)
+      .map(({ id, change }) => `${change} ${id}`);
+    expect(changed).toEqual(["changed guard:apps/demo:common/canEdit.ts#canEdit"]);
   });
 
   it("draws a module's jobs and the adaptors its service plugs, down to the adaptor a method calls", () => {
