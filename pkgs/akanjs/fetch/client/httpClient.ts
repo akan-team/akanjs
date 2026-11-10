@@ -211,10 +211,19 @@ export class HttpClient {
       //? A gateway's own JSON (Kong's `{"message":…}`) names no key or code of ours: it is restored like its HTML page.
       if (res.status in transportErrorKeyMap && !HttpClient.#isServerAnswer(body, res.status))
         throw this.#transportError(url, res, JSON.stringify(body));
-      throw this.#restoreError(body, res.status);
+      throw this.#restoreError(HttpClient.#asRateLimit(body, res), res.status);
     } finally {
       joined.dispose();
     }
+  }
+
+  //? A 429 the server generalized carries its reason and code, and its wait only in Retry-After. It is restored under
+  //? the rate limit's own key and wait, so it is retried and worded as a forwarded one is; with no wait to read (none
+  //? sent, or a cross-origin caller not exposed to the header) it stays a refusal, never a guessed minute's retry.
+  static #asRateLimit(body: unknown, res: Response) {
+    if (res.status !== 429 || !isRecord(body) || dictionaryErrorKey.test(String(body.error))) return body;
+    const seconds = HttpClient.#namedWaitOf(res);
+    return seconds === null ? body : { ...body, error: transportErrorKeyMap[429], data: { seconds } };
   }
 
   static #isServerAnswer(body: unknown, status: number) {
@@ -308,9 +317,13 @@ export class HttpClient {
 
   // A proxy's own 429 may name no wait at all; a minute is what the message then promises.
   static #retryAfterSeconds(res: Response): number {
+    return HttpClient.#namedWaitOf(res) ?? 60;
+  }
+
+  static #namedWaitOf(res: Response): number | null {
     const header = res.headers.get("retry-after")?.trim() ?? "";
     const seconds = /^\d+$/.test(header) ? Number(header) : Math.ceil((Date.parse(header) - Date.now()) / 1000);
-    return Number.isFinite(seconds) ? Math.max(0, seconds) : 60;
+    return Number.isFinite(seconds) ? Math.max(0, seconds) : null;
   }
 
   #restoreError(body: unknown, fallbackStatusCode: number): RestoredError {

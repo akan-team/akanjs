@@ -20,6 +20,7 @@ import type {
   SliceInfo,
 } from "akanjs/signal";
 import { type GuardCls, refusesAgents } from "../guard";
+import { SignalDeclarationError } from "../signalDeclarationError";
 
 export class FetchSerializer {
   static logger = new Logger("FetchSerializer");
@@ -222,7 +223,7 @@ export class FetchSerializer {
       const cnst = endpoint.srv.cnst;
       if (cnst) {
         const slice = sliceCls.get(baseName);
-        if (!slice) throw new Error(`No slice found for service signal "${baseName}"`);
+        if (!slice) throw new SignalDeclarationError("missingSlice", `No slice found for service signal "${baseName}"`);
         serializedSignals[baseName] = FetchSerializer.serializeDatabaseSignal(slice, endpoint);
       } else {
         serializedSignals[baseName] = FetchSerializer.serializeServiceSignal(endpoint);

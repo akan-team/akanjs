@@ -1,3 +1,4 @@
+import { FailureCode } from "akanjs/common";
 import { adapt } from "../adapt";
 import {
   type AgentWireAttachment,
@@ -266,6 +267,7 @@ export class AnthropicLlm
       ...(result.result !== undefined ? { result: result.result } : {}),
       ...(result.changes?.length ? { changes: result.changes } : {}),
       ...(result.error ? { error: result.error } : {}),
+      ...(result.error && FailureCode.is(result.code) ? { code: result.code } : {}),
     });
     if (!result.attachments?.length) return { type: "tool_result", tool_use_id: result.id, content: payload };
     const notes: string[] = [];
@@ -360,6 +362,7 @@ export class AnthropicLlm
     let text = "";
     let stopReason: string | null = null;
     let usage: AnthropicUsage = {};
+    let finalCount = false;
     const read = eachSseData(body, (payload) => {
       const event = JSON.parse(payload) as AnthropicStreamEvent;
       const index = event.index ?? 0;
@@ -379,10 +382,18 @@ export class AnthropicLlm
       if (event.type === "message_delta" && event.delta?.stop_reason) stopReason = event.delta.stop_reason;
       //* `message_start` carries the prompt side and `message_delta` the running output count.
       if (event.type === "message_start" && event.message?.usage) usage = { ...usage, ...event.message.usage };
-      if (event.type === "message_delta" && event.usage) usage = { ...usage, ...event.usage };
+      if (event.type === "message_delta" && event.usage) {
+        usage = { ...usage, ...event.usage };
+        finalCount = true;
+      }
     });
     await read.catch((error: unknown) => {
-      throw Object.keys(usage).length ? LlmSpend.attach(error, { usage: AnthropicLlm.usageOf(usage) }) : error;
+      const partial = Object.keys(usage).length ? AnthropicLlm.usageOf(usage) : undefined;
+      const streamed = text + [...calls.values()].map(({ args }) => args).join("");
+      throw LlmSpend.attach(
+        error,
+        partial && finalCount ? { usage: partial } : LlmSpend.estimate(partial, { streamed }),
+      );
     });
     const toolCalls = [...calls.entries()]
       .sort(([a], [b]) => a - b)

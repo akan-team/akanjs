@@ -1,4 +1,4 @@
-import type { MergeAllKeyOfObjects, UnCls } from "akanjs/base";
+import { AkanError, type MergeAllKeyOfObjects, type UnCls } from "akanjs/base";
 import { lowerlize, modelNames, moduleNames, queryNames } from "akanjs/common";
 import type { ConstantModel, QueryOf } from "akanjs/constant";
 import {
@@ -157,7 +157,7 @@ export class ServiceModel<
   }
   static getFilterServiceMethods(queryKey: string, filterInfo: FilterInfo) {
     const queryFn = filterInfo.queryFn;
-    if (!queryFn) throw new Error(`No query function for key: ${queryKey}`);
+    if (!queryFn) throw new AkanError("missingFilterQuery", `No query function for key: ${queryKey}`);
     const queryOf = (args: any): QueryOf<any> =>
       queryFn(...splitFilterArgs(filterInfo, args).queryArgs, documentQueryHelper);
     const dataOf = (args: any) => {

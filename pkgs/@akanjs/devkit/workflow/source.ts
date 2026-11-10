@@ -238,11 +238,6 @@ export const ensureImportDeclaration = (content: string, moduleSpecifier: string
 
 export const ensureBaseImport = (content: string, name: string) => ensureNamedImport(content, "akanjs/base", name);
 
-export const ensureBaseTypeImport = (content: string, typeName: string) => {
-  if (typeName !== "Int" && typeName !== "Float") return content;
-  return ensureBaseImport(content, typeName);
-};
-
 export type FieldDefaultValue = string | number | boolean | null;
 
 const numericDefault = (typeName: "Int" | "Float", rawDefault: FieldDefaultValue): string | null => {

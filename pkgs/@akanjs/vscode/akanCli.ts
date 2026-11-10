@@ -10,6 +10,11 @@ export interface AkanRun {
   stderr: string;
 }
 
+export interface AkanFailure {
+  error: string;
+  code: string;
+}
+
 export interface VerifyDiagnostic {
   step: string;
   file: string | null;
@@ -106,6 +111,13 @@ export class AkanCli {
       } catch {}
     }
     return null;
+  }
+
+  //? The CLI's own failure line; a verify report says `ok: false` too, beside its diagnostics.
+  static failureOf(report: unknown): AkanFailure | null {
+    if (!isRecord(report) || report.ok !== false || "diagnostics" in report) return null;
+    const { error, code } = report;
+    return typeof error === "string" && typeof code === "string" ? { error, code } : null;
   }
 
   get command() {

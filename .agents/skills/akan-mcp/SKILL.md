@@ -25,7 +25,8 @@ an endpoint with a real guard is published, one with none is refused, and so is 
 - `option.setMcp({ … })` in the app's `lib/option.ts`, never `main.ts`; `AKAN_MCP=false` takes the surface off.
 - `JWT_SECRET` is required outside `local`.
 - Every published entry needs a `.desc()`; model-facing text is English.
-- Never make a refusal message more helpful.
+- Never make a refusal message more helpful. A client branches on the code a failure carries
+  (`_meta["akanjs/failure"]`, or a JSON-RPC error's `data.code`), never on its text.
 
 ## Pages for the host
 

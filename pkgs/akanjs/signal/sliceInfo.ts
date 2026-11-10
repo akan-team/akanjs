@@ -22,6 +22,7 @@ import {
   type InternalArgProps,
 } from "./endpointInfo";
 import type { InternalArgCls } from "./internalArg";
+import { SignalDeclarationError } from "./signalDeclarationError";
 import type { CnstFull, CnstInput, CnstInsight, CnstLight, DbFilter, SignalOption, SrvMap, SrvRefName } from "./types";
 
 export interface LiveSliceOption<ArgName extends string = string> {
@@ -94,8 +95,9 @@ export class SliceInfo<
     _ClientArg = FieldToValue<Arg>,
     _ServerArg = ServerArgModel<_ClientArg>,
   >(name: ArgName, arg: Arg, option?: Omit<EndpointArgProps, "nullable">) {
-    if (this.execFn) throw new Error("Query function is already set");
-    else if (this.args.at(-1)?.option?.nullable) throw new Error("Last argument is nullable");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
+    else if (this.args.at(-1)?.option?.nullable)
+      throw new SignalDeclarationError("nullableLastArg", "Last argument is nullable");
     this.argNames.push(name);
     this.args.push(EndpointInfo.getArgInfo("param", name, arg, option));
     return this as unknown as SliceInfo<
@@ -122,8 +124,9 @@ export class SliceInfo<
     _ClientArg = UploadableClientArg<PurifiedModel<_ArgType>>,
     _ServerArg = ServerArgModel<_ArgType>,
   >(name: ArgName, arg: Arg, option?: EndpointArgProps<Optional>) {
-    if (this.execFn) throw new Error("Query function is already set");
-    else if (this.args.at(-1)?.option?.nullable) throw new Error("Last argument is nullable");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
+    else if (this.args.at(-1)?.option?.nullable)
+      throw new SignalDeclarationError("nullableLastArg", "Last argument is nullable");
     this.argNames.push(name);
     this.args.push(EndpointInfo.getArgInfo("body", name, arg, option));
     return this as unknown as SliceInfo<
@@ -148,7 +151,7 @@ export class SliceInfo<
     _ClientArg = PurifiedModel<_ArgType>,
     _ServerArg = ServerArgModel<_ArgType>,
   >(name: ArgName, arg: Arg, option?: Omit<EndpointArgProps, "nullable">) {
-    if (this.execFn) throw new Error("Query function is already set");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
     this.argNames.push(name);
     this.args.push(EndpointInfo.getArgInfo("search", name, arg, { ...option, nullable: true }));
     return this as unknown as SliceInfo<
@@ -169,7 +172,7 @@ export class SliceInfo<
     argRef: InternalArgCls<ArgType>,
     option?: InternalArgProps<Optional>,
   ) {
-    if (this.execFn) throw new Error("Query function is already set");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
     this.internalArgs.push({ argRef, option });
     return this as unknown as SliceInfo<
       RefName,
@@ -186,8 +189,8 @@ export class SliceInfo<
     >;
   }
   live(option: LiveSliceOption<ArgNames[number]> = {}) {
-    if (this.execFn) throw new Error("Query function is already set");
-    if (this.liveOption) throw new Error("Live option is already set");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
+    if (this.liveOption) throw new SignalDeclarationError("liveAlreadySet", "Live option is already set");
     this.liveOption = {
       sort: option.sort ?? ["latest"],
       fallback: option.fallback ?? null,
@@ -204,7 +207,7 @@ export class SliceInfo<
       ...args: [...ServerArgs, ...InternalArgs]
     ) => PromiseOrObject<QueryOf<DocumentModel<Full>>>,
   ) {
-    if (this.execFn) throw new Error("Query function is already set");
+    if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");
     this.execFn = query;
     return this;
   }

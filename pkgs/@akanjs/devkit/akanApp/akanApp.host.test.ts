@@ -194,3 +194,79 @@ describe("a builder request while no builder is running", () => {
     }
   });
 });
+
+describe("a stop while the builder is starting", () => {
+  isolateEnv({ AKAN_PUBLIC_REPO_NAME: "repo", AKAN_PUBLIC_SERVE_DOMAIN: "localhost", AKAN_PUBLIC_ENV: "local" });
+  const track = tempRoots();
+  const fakeBuilder = (onStart: (options: { onReady?: () => void; onExit?: () => void }) => void = () => undefined) => {
+    const builder = {
+      status: "starting",
+      patcherOff: false,
+      started: 0,
+      stopped: 0,
+      start: (options: { onReady?: () => void; onExit?: () => void }) => {
+        builder.started += 1;
+        onStart(options);
+      },
+      send: () => false,
+      stop: () => {
+        builder.stopped += 1;
+      },
+    };
+    return builder;
+  };
+
+  test("stops a builder created after the stop, and never starts it", async () => {
+    const { app } = track(await createTempApp("demo"));
+    const builder = fakeBuilder();
+    const created = Promise.withResolvers<IncrementalBuilderHost>();
+    const create = IncrementalBuilderHost.create;
+    let creates = 0;
+    IncrementalBuilderHost.create = async () => {
+      creates += 1;
+      return await created.promise;
+    };
+    const host = new AkanAppHost(app, { env: { ...process.env } as Record<string, string> });
+    try {
+      const starting = host.start();
+      await Bun.sleep(50);
+      await host.stop();
+      created.resolve(builder as unknown as IncrementalBuilderHost);
+      await expect(starting).rejects.toThrow("dev server stopped before the builder started");
+      expect({ creates, started: builder.started, stopped: builder.stopped }).toEqual({
+        creates: 1,
+        started: 0,
+        stopped: 1,
+      });
+    } finally {
+      IncrementalBuilderHost.create = create;
+    }
+  });
+
+  test("gives up a builder still booting at once instead of retrying after its ready timeout", async () => {
+    const { app } = track(await createTempApp("demo"));
+    let exitLate: (() => void) | undefined;
+    const builder = fakeBuilder(({ onExit }) => {
+      exitLate = onExit;
+    });
+    const create = IncrementalBuilderHost.create;
+    let creates = 0;
+    IncrementalBuilderHost.create = async () => {
+      creates += 1;
+      return builder as unknown as IncrementalBuilderHost;
+    };
+    const host = new AkanAppHost(app, { env: { ...process.env } as Record<string, string> });
+    try {
+      const starting = host.start();
+      await Bun.sleep(50);
+      expect(builder.started).toBe(1);
+      await host.stop();
+      await expect(starting).rejects.toThrow("dev server stopped before the builder was ready");
+      exitLate?.();
+      await Bun.sleep(50);
+      expect({ creates, stopped: builder.stopped }).toEqual({ creates: 1, stopped: 1 });
+    } finally {
+      IncrementalBuilderHost.create = create;
+    }
+  });
+});

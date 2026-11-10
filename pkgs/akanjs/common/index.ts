@@ -97,6 +97,7 @@ export {
 } from "./codeAgentWire";
 export { type CookieEntry, CookieJar, type CookieRead } from "./cookieJar";
 export { EventStream, type EventStreamOptions } from "./eventStream";
+export { FailureCode } from "./failureCode";
 export {
   type FileUploadCapability,
   fileUploadContract,
@@ -168,6 +169,7 @@ export {
   mcpHintsOf,
   mcpRefusalOf,
 } from "./mcpExposure";
+export { MCP_FAILURE_META, type McpFailure } from "./mcpFailure";
 export { deepObjectify, objectify, plainFieldsOf } from "./objectify";
 export { pathGet, pathGetLoose, pathSet, toPathSegments } from "./objectPath";
 export { PipelineNames } from "./PipelineNames";
@@ -213,6 +215,7 @@ export { randomPick, randomPicks } from "./randomPick";
 export { RemoteAuthCode } from "./remoteAuthCode";
 export { RequestLocale, type RequestLocaleInput } from "./requestLocale";
 export { hostFromRequest, isJsonContentType, originFromRequest } from "./requestOrigin";
+export { type RestartPolicy, RestartSchedule } from "./restartSchedule";
 export { RestClient, type RestClientOptions, type RestRequestOptions } from "./restClient";
 export { round } from "./round";
 export {

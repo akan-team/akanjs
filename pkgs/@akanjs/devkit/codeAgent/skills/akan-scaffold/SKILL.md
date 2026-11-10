@@ -44,7 +44,7 @@ an apply that failed, names none: do what the diagnostic says, then plan again.
    Returns `planPath` and `next.tool=apply_workflow`. (`list_workflows` / `explain_workflow` give the names
    and each workflow's inputs.)
 2. `apply_workflow({ planPath })` — writes the scaffold and syncs the generated barrels. Returns
-   `validationTarget`.
+   `validationTarget`. With `dryRun: true` it writes nothing and names this apply next.
 3. `run_validation({ runIdOrPlan: <validationTarget> })`, or run `akan verify` (`akan_verify` in akan code);
    both are the whole chain in one process.
 4. **Read each scaffolded file before editing it.** They are a few lines each and they extend base classes

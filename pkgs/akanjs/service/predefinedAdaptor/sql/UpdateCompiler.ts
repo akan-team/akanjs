@@ -4,6 +4,7 @@ import {
   type DocumentUpdateOperator,
   isDocumentUpdateNode,
 } from "akanjs/document";
+import { DocumentStoreError } from "../../documentStoreError";
 import { BASE_COLUMNS, type FieldMap, type SqlDialect } from "./types";
 import { encodeSqlValue, quoteIdent } from "./values";
 
@@ -33,7 +34,10 @@ export class UpdateCompiler {
         } else if (node.op === "unset") {
           baseAssignments.push(`${quoteIdent(path)} = NULL`);
         } else {
-          throw new Error(`Unsupported update operator '${node.op}' on base column: ${path}`);
+          throw new DocumentStoreError(
+            "invalidQuery",
+            `Unsupported update operator '${node.op}' on base column: ${path}`,
+          );
         }
         continue;
       }
@@ -56,6 +60,6 @@ export class UpdateCompiler {
   #assertPath(path: string) {
     const root = path.split(".")[0];
     if (BASE_COLUMNS.has(root)) return;
-    if (!this.fields[root]) throw new Error(`Unknown document field path: ${path}`);
+    if (!this.fields[root]) throw new DocumentStoreError("invalidQuery", `Unknown document field path: ${path}`);
   }
 }

@@ -1,6 +1,6 @@
 import { renameSync } from "node:fs";
 import { isAbsolute, parse, relative, resolve, sep } from "node:path";
-import { getApiPrefix, getEnv } from "akanjs/base";
+import { AkanError, getApiPrefix, getEnv } from "akanjs/base";
 import { adapt } from "../adapt";
 
 export interface DownloadRequest {
@@ -86,7 +86,8 @@ export class BlobStorage
     const { databaseMode, environment, operationMode } = getEnv();
     if (!databaseMode || databaseMode === "single" || environment === "local" || operationMode === "local") return;
     if (["1", "true"].includes(process.env.AKAN_STORAGE_SHARED ?? "")) return;
-    throw new Error(
+    throw new AkanError(
+      "storageNotShared",
       `${storage} keeps files on this instance's own disk, which the other instances of a ${databaseMode} deployment cannot read. Configure object storage, or mount one volume on every instance and set AKAN_STORAGE_SHARED=true.`,
     );
   }
@@ -95,7 +96,10 @@ export class BlobStorage
   }
   #filePathOf(path: string, access?: "public" | "private") {
     const filePath = this.resolveLocalPath(path, access);
-    if (!filePath) throw new Error(`Storage key is outside the storage root: ${JSON.stringify(path)}`);
+    if (!filePath)
+      throw new AkanError("invalidStorageKey", `Storage key is outside the storage root: ${JSON.stringify(path)}`, {
+        statusCode: 400,
+      });
     return filePath;
   }
   resolveLocalPath(path: string, access?: "public" | "private") {

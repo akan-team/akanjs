@@ -68,6 +68,31 @@ describe("IncrementalBuilderHost", () => {
     host.stop();
   });
 
+  test("a stop while a restart is pending leaves the builder down once the delay passes", async () => {
+    const { spawns, host } = startRecordingHost();
+    spawns[0]?.options.onExit?.();
+    expect(host.status).toBe("restarting");
+
+    host.stop();
+    await wait(1_050);
+    expect(spawns).toHaveLength(1);
+    expect(host.status).toBe("stopped");
+  });
+
+  test("a builder that crashes again after coming back ready waits the first delay again", async () => {
+    const { spawns, host } = startRecordingHost();
+    spawns[0]?.options.onExit?.();
+    await wait(1_050);
+    expect(spawns).toHaveLength(2);
+
+    spawns[1]?.options.ipc?.({ type: "builder-ready" });
+    spawns[1]?.options.onExit?.();
+    await wait(1_050);
+    expect(spawns).toHaveLength(3);
+
+    host.stop();
+  });
+
   test("recycles a ready builder gracefully and replaces it immediately", async () => {
     const spawns = mockSpawns();
     const onRestartReady = mock();

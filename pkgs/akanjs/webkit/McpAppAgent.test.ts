@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import { csrLocation } from "akanjs/client";
+import { MCP_FAILURE_META } from "akanjs/common";
 import { AgenticSurface, ToolReturn } from "use-agentic";
 import { McpAppApprovals } from "./McpAppApprovals";
 import type { McpAppBridge, McpAppToolServer } from "./McpAppBridge";
@@ -136,6 +137,20 @@ describe("McpAppAgent", () => {
     });
     expect(approvals.current()).toBeNull();
     expect(titleOf()).toBe("Trip");
+  });
+
+  test("names a failed call by the code its tool threw, beside the reason the host's model reads", async () => {
+    const surface = new AgenticSurface();
+    const locked = Object.assign(new Error("memo.error.locked"), { error: "memo.error.locked", statusCode: 409 });
+    surface.registerTool([], { name: "lockMemo", settle: false, run: () => Promise.reject(locked) });
+    surface.registerTool([], { name: "failMemo", settle: false, run: () => Promise.reject(new Error("no")) });
+    const agent = new McpAppAgent(fakeBridge().bridge, surface, new McpAppApprovals());
+    expect(await agent.call("lockMemo", {}, never)).toEqual({
+      content: [{ type: "text", text: "memo.error.locked" }],
+      isError: true,
+      _meta: { [MCP_FAILURE_META]: { code: "memo.error.locked" } },
+    });
+    expect(await agent.call("failMemo", {}, never)).toEqual({ content: [{ type: "text", text: "no" }], isError: true });
   });
 
   test("tells the host only when the tool list moved, and hands it the screen's context once per change", () => {

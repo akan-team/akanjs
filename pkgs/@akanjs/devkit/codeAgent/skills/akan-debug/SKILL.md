@@ -9,7 +9,7 @@ description: "Check and debug a running Akan app: akan preview for what a page s
 
 `akan preview <app> [paths]` opens pages of the app's dev server in a headless browser and prints, per page,
 the HTTP status, the title, a slice of the visible text, the uncaught errors and rejections the page reported,
-the server errors logged meanwhile, console errors and warnings, and layout smells. It exits 1 when a page failed.
+the server errors logged meanwhile, console errors and warnings, and layout smells. It exits 3 when a page failed.
 
 - It uses the dev server that answers for this app and checkout. With none, it starts one for the run and
   stops it after; `--keep` leaves it up for the next preview. It never starts a second server beside a

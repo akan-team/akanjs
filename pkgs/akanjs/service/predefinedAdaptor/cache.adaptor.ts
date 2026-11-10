@@ -1,4 +1,4 @@
-import { type BaseEnv, type Dayjs, getEnv } from "akanjs/base";
+import { AkanError, type BaseEnv, type Dayjs, getEnv } from "akanjs/base";
 import type { Redis } from "ioredis";
 import { adapt } from "../adapt";
 
@@ -74,7 +74,8 @@ export class RedisCache
     if (environment === "local") return "redis://localhost:6379";
     // `akan start` against a remote environment tunnels its Redis and names the local end here.
     if (operationMode === "local") return `redis://${process.env.REDIS_HOST ?? "localhost"}`;
-    throw new Error(
+    throw new AkanError(
+      "redisUriMissing",
       `REDIS_URI is not set. The ${databaseMode ?? "multiple"} database mode keeps its cache, queue and pubsub in Redis, and every instance has to reach the same one.`,
     );
   }

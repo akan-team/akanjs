@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import {
   type DocumentQuery,
   DocumentQueryEvaluator,
@@ -86,7 +87,8 @@ export class LiveSyncHub {
     const existing = this.#rooms.get(roomId);
     if (existing) {
       //? A room is routed by the query it was created with, so a subscriber holding another one would read its matches.
-      if (existing.queryKey !== queryKey) throw new Error(`Live room "${roomId}" is already held for another query`);
+      if (existing.queryKey !== queryKey)
+        throw new AkanError("liveRoomTaken", `Live room "${roomId}" is already held for another query`);
       existing.subscribers += 1;
       return existing;
     }
@@ -94,7 +96,8 @@ export class LiveSyncHub {
     if (!invalidate) {
       const reason = DocumentQueryEvaluator.unevaluableReason(query);
       if (reason)
-        throw new Error(
+        throw new AkanError(
+          "unroutableLiveQuery",
           `Live slice "${roomId}" resolved to a query that cannot be routed in memory (${reason}). ` +
             `Declare .live({ fallback: "invalidate" }) on the slice to fall back to refetching.`,
         );

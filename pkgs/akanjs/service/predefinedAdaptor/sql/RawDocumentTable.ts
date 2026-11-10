@@ -1,3 +1,4 @@
+import { DocumentStoreError } from "../../documentStoreError";
 import {
   type AkanSqlClient,
   type QueryLeafOps,
@@ -47,7 +48,8 @@ export class RawDocumentTable {
   #exists: boolean | undefined;
 
   constructor(name: string, connection: () => AkanSqlClient, dialect: SqlDialect) {
-    if (!REF_NAME_RE.test(name) || RESERVED_RE.test(name)) throw new Error(`"${name}" names no model table`);
+    if (!REF_NAME_RE.test(name) || RESERVED_RE.test(name))
+      throw new DocumentStoreError("invalidSchema", `"${name}" names no model table`);
     this.name = name;
     this.#connection = connection;
     this.#dialect = dialect;
@@ -130,7 +132,7 @@ export class RawDocumentTable {
   }
 
   async #assertExists() {
-    if (!(await this.exists())) throw new Error(`Table "${this.name}" does not exist`);
+    if (!(await this.exists())) throw new DocumentStoreError("tableMissing", `Table "${this.name}" does not exist`);
   }
 
   #json(doc: Record<string, unknown>) {
@@ -147,23 +149,30 @@ export class RawDocumentTable {
 
   #leaves(path: string, value: unknown): SqlFrag[] {
     RawDocumentTable.#assertPath(path);
-    if (value === undefined) throw new Error(`Filter value for "${path}" is undefined`);
+    if (value === undefined) throw new DocumentStoreError("invalidQuery", `Filter value for "${path}" is undefined`);
     const leaf: QueryLeafOps = RawDocumentTable.#baseColumns.has(path) ? BASE_COLUMN_LEAF : this.#dialect;
     if (!isPlainObject(value)) {
       if (Array.isArray(value))
-        throw new Error(`Filter "${path}" compares an array; match it with $in or by its items`);
+        throw new DocumentStoreError(
+          "invalidQuery",
+          `Filter "${path}" compares an array; match it with $in or by its items`,
+        );
       return [leaf.eq(path, value)];
     }
     const operators = Object.entries(value);
     if (!operators.length || operators.some(([key]) => !key.startsWith("$")))
-      throw new Error(`Filter "${path}" compares an object; match its leaves by their own paths`);
+      throw new DocumentStoreError(
+        "invalidQuery",
+        `Filter "${path}" compares an object; match its leaves by their own paths`,
+      );
     return operators.map(([operator, operand]) => {
       switch (operator) {
         case "$ne":
           return leaf.ne(path, operand);
         case "$in":
         case "$nin": {
-          if (!Array.isArray(operand)) throw new Error(`Filter "${path}" ${operator} takes an array`);
+          if (!Array.isArray(operand))
+            throw new DocumentStoreError("invalidQuery", `Filter "${path}" ${operator} takes an array`);
           if (!operand.length) return { sql: operator === "$in" ? "0 = 1" : "1 = 1", params: [] };
           return operator === "$in" ? leaf.inList(path, operand) : leaf.notInList(path, operand);
         }
@@ -175,7 +184,7 @@ export class RawDocumentTable {
         case "$lte":
           return leaf.compare(path, operator.slice(1) as "gt" | "gte" | "lt" | "lte", operand);
         default:
-          throw new Error(`Unknown filter operator "${operator}" on "${path}"`);
+          throw new DocumentStoreError("invalidQuery", `Unknown filter operator "${operator}" on "${path}"`);
       }
     });
   }
@@ -185,7 +194,10 @@ export class RawDocumentTable {
     const segments = path.split(".");
     // Postgres reads `-1` as the last item of an array, SQLite as a key, so a negative index is refused as well.
     if (segments.some((segment) => !/^[\w$-]+$/.test(segment) || /^-?\d+$/.test(segment)))
-      throw new Error(`Filter path "${path}" must be dot-separated names, without array indexes`);
+      throw new DocumentStoreError(
+        "invalidQuery",
+        `Filter path "${path}" must be dot-separated names, without array indexes`,
+      );
   }
 
   static #toRow(row: SqliteDocumentRow): TransferRow {

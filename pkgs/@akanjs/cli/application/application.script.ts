@@ -7,8 +7,8 @@ import {
   type App,
   type Apps,
   assertPromptable,
+  CliError,
   type Exec,
-  ExitCodeError,
   type Lib,
   markCliErrorPrinted,
   type Sys,
@@ -75,6 +75,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   readonly #interrupt = new InterruptTeardown();
   async confirmDatabaseModeDependencyInstall(databaseMode: DatabaseMode, installSpecs: string[]) {
     assertPromptable(`Database mode '${databaseMode}' requires missing dependencies: ${installSpecs.join(", ")}`, {
+      code: "failed",
       remedy: `install them first with \`bun add ${installSpecs.join(" ")}\``,
     });
     return await confirm({
@@ -161,7 +162,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     const report = await AppPreview.run(app, options);
     Logger.rawLog(format === "json" ? JSON.stringify(report, null, 2) : AppPreview.render(report));
     if (!report.pages.some((page) => page.failed)) return;
-    const failure = new ExitCodeError("preview found broken pages", 1);
+    const failure = new CliError("checkFailed", "preview found broken pages");
     markCliErrorPrinted(failure);
     throw failure;
   }

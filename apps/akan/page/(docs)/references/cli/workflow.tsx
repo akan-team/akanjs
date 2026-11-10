@@ -220,6 +220,23 @@ export default page()
       l.trans({
         en: (
           <>
+            <strong>A scalar or model type is imported.</strong> <code>--type Address</code> names a scalar or model of
+            the target by its class name, and apply imports it into the constant, as it imports <code>Int</code> or{" "}
+            <code>ID</code> from <code>akanjs/base</code>. A plan with a type it cannot find, and the constant does not
+            import, carries an error.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>스칼라·모델 타입은 import됩니다.</strong> <code>--type Address</code>처럼 대상의 스칼라나 모델을
+            클래스 이름으로 주면, <code>Int</code>나 <code>ID</code>를 <code>akanjs/base</code>에서 가져오듯 적용이 상수
+            파일에 import를 넣습니다. 찾을 수 없고 상수 파일이 import하지도 않은 타입으로 만든 플랜에는 오류가 붙습니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
             <strong>Defaults follow the type.</strong> <code>--default</code> is converted to match <code>--type</code>,
             and an enum default must be one of <code>--values</code>.
           </>
@@ -312,8 +329,8 @@ export default page()
             defaultValue: "markdown",
             enumOrFlag: "markdown | json · -o",
             desc: l.trans({
-              en: "`markdown` is for a person; `json` is the report an MCP client receives.",
-              ko: "`markdown`은 사람이 읽는 형식이고, `json`은 MCP 클라이언트가 받는 것과 같은 리포트입니다.",
+              en: "`markdown` is for a person; `json` is the report an MCP client receives, alone on stdout, logs on stderr.",
+              ko: "`markdown`은 사람이 읽는 형식이고, `json`은 MCP 클라이언트가 받는 리포트로, stdout에는 리포트만, 로그는 stderr로 나갑니다.",
             }),
           },
           {
@@ -747,14 +764,17 @@ akan repair dictionary --app koyo --module icecreamOrder --format json`,
                     <span>
                       Runs the checks the plan asked for — <code>sync</code>, <code>lint</code>, <code>typecheck</code>{" "}
                       or <code>build</code> — and sorts each failure by cause. It exits 1 when the status is{" "}
-                      <code>failed</code>.
+                      <code>failed</code>, but 0 when every failure left is a known baseline blocker (
+                      <code>passed-with-baseline-blockers</code>).
                     </span>
                   ),
                   ko: (
                     <span>
                       플랜이 요구한 검증(<code>sync</code>, <code>lint</code>, <code>typecheck</code>,{" "}
                       <code>build</code>
-                      )을 돌리고, 실패를 원인별로 분류합니다. 상태가 <code>failed</code>이면 종료 코드 1로 끝납니다.
+                      )을 돌리고, 실패를 원인별로 분류합니다. 상태가 <code>failed</code>이면 종료 코드 1로 끝나지만,
+                      남은 실패가 모두 알려진 기준선 문제(<code>passed-with-baseline-blockers</code>)라면 0으로
+                      끝납니다.
                     </span>
                   ),
                 })}

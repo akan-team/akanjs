@@ -1,5 +1,5 @@
-import { type BackendEnv, getEnv } from "akanjs/base";
-import { Logger } from "akanjs/common";
+import { AkanError, type BackendEnv, getEnv } from "akanjs/base";
+import { Logger, MCP_FAILURE_META, type McpFailure } from "akanjs/common";
 import { DictionaryLookup } from "akanjs/dictionary";
 import { CacheAdaptorRole, type InjectRegistry, type LiveRegistry } from "akanjs/service";
 import {
@@ -296,7 +296,7 @@ export class McpRouter {
       McpRouter.logger.error(
         `MCP ${method} failed: ${error instanceof Error ? (error.stack ?? error.message) : error}`,
       );
-      return McpRouter.#error(id, McpErrorCode.internal, "Internal server error.");
+      return McpRouter.#error(id, McpErrorCode.internal, "Internal server error.", McpRouter.#coded("internalError"));
     }
   }
 
@@ -450,6 +450,7 @@ export class McpRouter {
         : `Too many calls in flight: at most ${this.#limiter.concurrent} at once. Retry in ${seconds}s.`;
     return {
       refused: McpRouter.#error(call.id, McpErrorCode.rateLimited, message, {
+        ...McpRouter.#coded(AkanError.codeOfStatus(429)),
         status: 429,
         headers: { "retry-after": String(seconds) },
       }),
@@ -460,13 +461,20 @@ export class McpRouter {
     let streaming = false;
     try {
       const name = call.params.name;
-      if (typeof name !== "string") return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Missing tool name.");
+      if (typeof name !== "string")
+        return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Missing tool name.", McpRouter.#invalid);
       // An app-only tool is part of the surface only for a client that renders views; to any other it does not exist.
       const exposed = document.isAppOnly(name) && !call.ui ? undefined : document.findTool(name);
       // Security: not-exposed must read like nonexistent, or the error itself enumerates the private surface.
-      if (!exposed) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown tool: ${name}.`);
+      if (!exposed)
+        return McpRouter.#error(
+          call.id,
+          McpErrorCode.invalidParams,
+          `Unknown tool: ${name}.`,
+          McpRouter.#coded("unknownTool"),
+        );
       const args = McpRouter.#arguments(call.params);
-      if (!args) return McpRouter.#error(call.id, McpErrorCode.invalidParams, McpRouter.#badArguments);
+      if (!args) return McpRouter.#badArgumentsError(call.id);
       const progressToken = McpRouter.#progressToken(call);
       const option = { forView: this.#pages.forView(call.ui, McpRouter.#meta(call.params)) };
       if (progressToken === undefined)
@@ -525,7 +533,7 @@ export class McpRouter {
       // Should be unreachable (guards throw before any progress); kept so a client is never left hanging.
       stream.write(
         "error" in outcome
-          ? McpRouter.#errorBody(call.id, McpErrorCode.internal, "Internal server error.")
+          ? McpRouter.#errorBody(call.id, McpErrorCode.internal, "Internal server error.", { code: "internalError" })
           : this.#envelope(call, outcome.result),
       );
     } finally {
@@ -534,6 +542,17 @@ export class McpRouter {
   }
 
   static readonly #badArguments = "`arguments` must be an object of named values.";
+
+  //? `data.code` tells apart the failures JSON-RPC files under one number, `-32602` above all.
+  static #coded(code: string) {
+    return { data: { code } };
+  }
+
+  static readonly #invalid = McpRouter.#coded("invalidArgument");
+
+  static #badArgumentsError(id: string | number | null) {
+    return McpRouter.#error(id, McpErrorCode.invalidParams, McpRouter.#badArguments, McpRouter.#invalid);
+  }
 
   // Not coerced to `{}`: that ran the call with every argument missing. An array would read as properties "0", "1".
   static #arguments(params: Record<string, unknown>) {
@@ -564,37 +583,45 @@ export class McpRouter {
 
   async #pageToolCall(call: McpCall, document: McpDocument, entry: PagePromptEntry) {
     const outcome = await this.#pages.toolCall(call, document, entry, McpRouter.#arguments(call.params));
-    if ("badArguments" in outcome)
-      return McpRouter.#error(call.id, McpErrorCode.invalidParams, McpRouter.#badArguments);
+    if ("badArguments" in outcome) return McpRouter.#badArgumentsError(call.id);
     return this.#result(call, outcome.result);
   }
 
   async #promptsGet(call: McpCall, document: McpDocument) {
     const name = call.params.name;
-    if (typeof name !== "string") return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Missing prompt name.");
+    if (typeof name !== "string")
+      return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Missing prompt name.", McpRouter.#invalid);
+    const unknown = McpRouter.#coded("unknownPrompt");
     const entry = await this.#pages.prompt(name);
-    if (!entry) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown prompt: ${name}.`);
+    if (!entry) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown prompt: ${name}.`, unknown);
     const page = await this.#pages.run(call, document, entry, McpRouter.#arguments(call.params));
-    if ("badArguments" in page) return McpRouter.#error(call.id, McpErrorCode.invalidParams, McpRouter.#badArguments);
-    if ("refusal" in page) return McpRouter.#error(call.id, McpErrorCode.invalidParams, page.refusal);
+    if ("badArguments" in page) return McpRouter.#badArgumentsError(call.id);
+    if ("refusal" in page)
+      return McpRouter.#error(call.id, McpErrorCode.invalidParams, page.refusal, McpRouter.#coded(page.failure.code));
     return this.#result(call, { description: entry.description, messages: page.messages });
   }
 
   async #resourcesRead(call: McpCall, document: McpDocument) {
     const uri = call.params.uri;
-    if (typeof uri !== "string") return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Missing resource uri.");
+    if (typeof uri !== "string")
+      return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Missing resource uri.", McpRouter.#invalid);
+    const unknown = McpRouter.#coded("unknownResource");
     if (this.#apps && uri.startsWith(McpApps.scheme)) {
       const contents = await this.#apps.read(uri, this.#auth.publicOrigin(call.req));
-      if (!contents) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown resource: ${uri}.`);
+      if (!contents) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown resource: ${uri}.`, unknown);
       return this.#result(call, { contents: [contents] });
     }
     const resolved = document.resolveResource(uri);
-    if (!resolved) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown resource: ${uri}.`);
+    if (!resolved) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown resource: ${uri}.`, unknown);
     const result = await this.#dispatcher.call(resolved.exposed, resolved.args, call.req);
     const [first] = result.content;
     const firstText = first?.type === "text" ? first.text : undefined;
     // An explicit error: a client reads an empty `contents` array as "this exists and is empty".
-    if (result.isError) return McpRouter.#error(call.id, McpErrorCode.invalidParams, firstText ?? "Read failed.");
+    if (result.isError) {
+      const failure = result._meta?.[MCP_FAILURE_META] as McpFailure | undefined;
+      const code = failure?.code ?? AkanError.codeOfStatus(500);
+      return McpRouter.#error(call.id, McpErrorCode.invalidParams, firstText ?? "Read failed.", McpRouter.#coded(code));
+    }
     // `ReadResourceResult` has no `structuredContent`, so the text is the resource's only channel.
     const text =
       result.structuredContent === undefined ? (firstText ?? "null") : JSON.stringify(result.structuredContent);
@@ -654,11 +681,14 @@ export class McpRouter {
 
   #envelope(call: McpCall, result: object, cache?: McpCacheHint) {
     // `resultType`, server-info `_meta` and cache hints are modern-era only; `nextCursor` (both eras) is in `result`.
-    const meta =
-      call.era === "modern"
-        ? { resultType: "complete", _meta: { [MCP_META_SERVER_INFO]: this.#serverInfo() }, ...cache }
-        : {};
-    return { jsonrpc: "2.0", id: call.id, result: { ...meta, ...result } } satisfies McpJsonRpcResponse;
+    const own = (result as { _meta?: Record<string, unknown> })._meta;
+    if (call.era !== "modern") return { jsonrpc: "2.0", id: call.id, result } satisfies McpJsonRpcResponse;
+    const _meta = { [MCP_META_SERVER_INFO]: this.#serverInfo(), ...own };
+    return {
+      jsonrpc: "2.0",
+      id: call.id,
+      result: { resultType: "complete", ...cache, ...result, _meta },
+    } satisfies McpJsonRpcResponse;
   }
 
   // An out-of-range cursor (minted by an earlier process) is refused, not clamped: a short page reads as the end.

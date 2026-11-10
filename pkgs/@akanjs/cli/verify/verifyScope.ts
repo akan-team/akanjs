@@ -1,4 +1,4 @@
-import { ExitCodeError } from "@akanjs/devkit/commandDecorators";
+import { CliError } from "@akanjs/devkit/commandDecorators";
 
 export type VerifyTargetType = "app" | "lib" | "pkg";
 
@@ -63,7 +63,7 @@ export class VerifyScope {
     if (requested.length) {
       const targets = requested.map((name) => {
         const target = known.find((candidate) => candidate.name === name);
-        if (!target) throw new ExitCodeError(`${name} is not an app, library or package of this workspace`, 2);
+        if (!target) throw new CliError("unknownTarget", `${name} is not an app, library or package of this workspace`);
         return { ...target, files: changedFilesOf(target.dir) };
       });
       return new VerifyScope(targets);

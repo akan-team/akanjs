@@ -250,6 +250,15 @@ export default page()
   `base.error.documentNotFound`, so a tool reads its dictionary sentence (`The requested item does not exist.`) and an
   MCP App view receives that `Err`; a prompt whose page reads it is `No screen exists for these arguments.`
   Only a real failure logs a stack; an agent can drive the rest at will.
+- **Every failed call carries a code** beside the text, which reads as it always did. A tool error holds
+  `_meta["akanjs/failure"]: { code, statusCode }` — in `_meta`, because a client checks `structuredContent` against
+  the tool's `outputSchema` even on a failure — and a JSON-RPC error holds `data.code`, which tells apart what
+  `-32602` files together: `unknownTool`, `invalidArgument`, `unknownPrompt`, `unknownResource` and a screen's
+  refusal, beside `tooManyRequests` and `internalError`. The code is the one an HTTP caller gets: a domain `Err`'s
+  dictionary key (what `Err.is` matches), else the `AkanError`'s own code; a 401 or a 403 by its status alone
+  (`unauthorized`, `forbidden`), since a guard's own code names its rule as its message does; a crash, or a 5xx whose
+  code this server did not name, by its status (`internalError`). A code is a bounded key or camelCase token, never
+  prose. No host hands `_meta` to the model, so what the model must act on belongs in the dictionary sentence.
 - **Three revisions are spoken**: the modern `2026-07-28` and the legacy `2025-11-25` / `2025-06-18`, which are
   wire-identical over the POST-only surface this implements — a client whose proposal is not listed is told to
   disconnect. An unknown proposal is answered at whichever end of that list it is closer to, and an unimplemented

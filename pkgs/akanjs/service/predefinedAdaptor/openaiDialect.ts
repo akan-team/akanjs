@@ -1,3 +1,4 @@
+import { FailureCode } from "akanjs/common";
 import {
   type AgentWireAttachment,
   type AgentWireMessage,
@@ -7,6 +8,7 @@ import {
   type LlmUsage,
   pageContentInstruction,
 } from "./llm.adaptor";
+import { LlmSpend } from "./llmSpend";
 import { eachSseData } from "./sseData";
 
 export interface OpenaiToolCall {
@@ -137,6 +139,7 @@ export class OpenaiDialect {
         ...(result.result !== undefined ? { result: result.result } : {}),
         ...(result.changes?.length ? { changes: result.changes } : {}),
         ...(result.error ? { error: result.error } : {}),
+        ...(result.error && FailureCode.is(result.code) ? { code: result.code } : {}),
       });
       const notes: string[] = [];
       const { blocks, images } = OpenaiDialect.attachmentParts(result.attachments ?? [], accepts, notes);
@@ -191,7 +194,7 @@ export class OpenaiDialect {
     let text = "";
     let finish: string | null = null;
     let usage: LlmUsage | undefined;
-    await eachSseData(body, (payload) => {
+    const read = eachSseData(body, (payload) => {
       if (payload === "[DONE]") return;
       const chunk = JSON.parse(payload) as OpenaiStreamChunk;
       if (chunk.usage) usage = OpenaiDialect.usageOf(chunk.usage);
@@ -210,6 +213,10 @@ export class OpenaiDialect {
         calls.set(index, call);
       }
       if (choice.finish_reason) finish = choice.finish_reason;
+    });
+    await read.catch((error: unknown) => {
+      const streamed = text + [...calls.values()].map(({ args }) => args).join("");
+      throw LlmSpend.attach(error, usage ? { usage } : LlmSpend.estimate(undefined, { streamed }));
     });
     const toolCalls = [...calls.entries()]
       .sort(([a], [b]) => a - b)

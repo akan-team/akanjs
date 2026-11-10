@@ -91,6 +91,7 @@ export interface AgentWireToolResult {
     result?: unknown;
     changes?: unknown[];
     error?: string;
+    code?: string;
     attachments?: AgentWireAttachment[];
 }
 
@@ -710,6 +711,14 @@ export interface DocumentStore {
     rehydrate<Doc extends DocumentRecord>(doc: Doc): Doc;
 }
 
+export declare class DocumentStoreError extends AkanError<DocumentStoreErrorCode> {
+    constructor(code: DocumentStoreErrorCode, message: string, options?: {
+        cause?: unknown;
+    });
+}
+
+export type DocumentStoreErrorCode = "invalidDocument" | "invalidQuery" | "invalidSchema" | "searchMisconfigured" | "searchUnavailable" | "tableMissing" | "unstorableValue";
+
 export declare class DocumentTransfer {
     constructor(database: DatabaseAdaptor);
     exportTo(dir: string): Promise<TransferReport[]>;
@@ -778,6 +787,11 @@ export type InjectBuilder<BuildType extends InjectType = InjectType> = (builder:
     [key: string]: InjectInfo;
 };
 
+export declare class InjectError extends AkanError<InjectErrorCode> {
+}
+
+export type InjectErrorCode = "invalidInject" | "notInitialized" | "notRegistered";
+
 export declare class InjectInfo<Type extends InjectType = any, ReturnType = any, _Env extends {
     [key: string]: any;
 } = never, _FieldValue = never> {
@@ -827,6 +841,15 @@ export declare class InsightQuery {
         truncated: boolean;
     }>;
 }
+
+export declare class InsightQueryError extends AkanError<InsightQueryErrorCode> {
+    constructor(code: InsightQueryErrorCode, message: string, options?: {
+        cause?: unknown;
+    });
+    get forwarded(): boolean;
+}
+
+export type InsightQueryErrorCode = "insightTimeout" | "insightUnavailable" | "invalidInsightQuery";
 
 export interface InsightQueryOptions {
     limit?: number;
@@ -943,13 +966,24 @@ export interface LlmOverflowFacts {
 }
 
 export declare class LlmSpend {
+    static readonly bytesPerToken = 3;
+    static readonly imageTokens = 1600;
     static attach<E>(error: E, spent: LlmSpent): E;
     static of(error: unknown): LlmSpent | null;
+    static settled(error: unknown): Promise<LlmSpent | null>;
+    static outlast<T>(call: Promise<T>, signal: AbortSignal, spentOf: (answer: T) => LlmSpent): Promise<T>;
+    static estimate(counted: LlmUsage | undefined, { prompt, streamed }: {
+        prompt?: unknown;
+        streamed?: string;
+    }): LlmSpent;
+    static tokensOf(text: string): number;
+    static promptOf(request: unknown): number;
 }
 
 export interface LlmSpent {
     usage?: LlmUsage;
     model?: string;
+    estimated?: boolean;
 }
 
 export interface LlmTurnAnswer {
@@ -2062,7 +2096,7 @@ The declarations above name these, and no entry point exports them.
 
 ```ts
 declare const AgentService_base: import("./serve").ServiceCls<"agent", {}, {
-    llm: import("./injectInfo").InjectInfo<"plug", import("./predefinedAdaptor").LlmAdaptor, never, never>;
+    llm: import("./injectInfo").InjectInfo<"plug", LlmAdaptor, never, never>;
 }>;
 
 interface AnthropicAnswer {

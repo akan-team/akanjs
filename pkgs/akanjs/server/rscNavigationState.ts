@@ -116,7 +116,6 @@ export function createRscPatchNavigationCacheNode<T>({
   };
 }
 
-//? A full render of the same URL is a new node, so a patch whose base left the full cache can never apply again.
 export function forgetRscPatchesOfLostBases<T>(
   patchCache: RscNavigationCache<RscPatchNavigationCacheNode<T>>,
   fullCache: RscNavigationCache<RscNavigationCacheNode<T>>,
@@ -237,7 +236,6 @@ export function rememberRscCacheNode<N extends { href: string }>(
   rememberRscCacheEntry(cache, node.href, node, maxEntries);
 }
 
-//? Segment keys name URL prefixes only: `/en` and `/ko`, or two route groups at one prefix, differ only in their base.
 export function resolveCachedRscPatchNavigation<T>({
   currentTree,
   currentBase,

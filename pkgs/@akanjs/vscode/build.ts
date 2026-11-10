@@ -4,9 +4,16 @@ import path from "node:path";
 const pkgDir = import.meta.dir;
 const workspaceRoot = path.resolve(pkgDir, "../../..");
 const outdir = process.env.DIST_DIR ?? `${workspaceRoot}/dist/pkgs/@akanjs/vscode`;
-const preRelease = process.argv.find((arg) => arg.startsWith("--pre-release="))?.slice("--pre-release=".length);
-if (preRelease !== undefined && !/^[1-9]\d*$/.test(preRelease)) {
-  console.error(`--pre-release takes a positive number, such as the CI run number; got "${preRelease}"`);
+const valueOf = (name: string) => process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
+const release = valueOf("release");
+const preRelease = valueOf("pre-release");
+const patch = preRelease ?? release;
+if (release !== undefined && preRelease !== undefined) {
+  console.error("Pass --release or --pre-release, not both");
+  process.exit(1);
+}
+if (patch !== undefined && !/^[1-9]\d*$/.test(patch)) {
+  console.error(`--release and --pre-release take a positive number, such as the CI run number; got "${patch}"`);
   process.exit(1);
 }
 
@@ -31,9 +38,9 @@ const {
   ...manifest
 } = await Bun.file(`${pkgDir}/package.json`).json();
 const [major = 0, minor = 0] = String(manifest.version).split(".").map(Number);
-//? The Marketplace takes no semver pre-release tag and gives pre-release users whichever channel is higher, so a pre-release takes the next odd minor and a release keeps an even one.
-const version =
-  preRelease === undefined ? manifest.version : `${major}.${minor + (minor % 2 === 0 ? 1 : 2)}.${preRelease}`;
+//? The Marketplace takes no semver pre-release tag and gives pre-release users whichever channel is higher, so a release rounds the minor up to even and a pre-release takes the odd one above it.
+const channelMinor = minor + (minor % 2) + (preRelease === undefined ? 0 : 1);
+const version = patch === undefined ? manifest.version : `${major}.${channelMinor}.${patch}`;
 //? A Marketplace extension name is unscoped; `@akanjs/vscode` stays the workspace package name only.
 await Bun.write(`${outdir}/package.json`, `${JSON.stringify({ ...manifest, name: "akan", version }, null, 2)}\n`);
 await Promise.all([

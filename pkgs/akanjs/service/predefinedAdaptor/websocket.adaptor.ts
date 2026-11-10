@@ -93,6 +93,9 @@ export class WebSocketRedisAdaptor
   static readonly #shards = 16_384;
   //? A link that stalls without closing would otherwise hold a subscribe's ack for as long as it stalls.
   static readonly #subscribeTimeoutMs = 3_000;
+  //? TODO(#458): earlier releases use only `ws:broadcast` and match an origin only to their own id, so they read a
+  //? copy whose origin carries this mark, and a server of this release skips it, having heard the original.
+  static readonly #legacyMark = "\0sharded";
   readonly #buffer: BufferedMessage[] = [];
   readonly #maxBufferSize = 10000;
   readonly #rooms = new Map<string, HeldRoom>();
@@ -112,6 +115,10 @@ export class WebSocketRedisAdaptor
   #subscriberStarted = false;
   readonly #lossWaiters = new Set<() => void>();
   #warnedVersion = false;
+
+  get #legacyChannel() {
+    return `${this.channelPrefix}ws:broadcast`;
+  }
 
   #roomChannel(roomId: string) {
     return `${this.channelPrefix}ws:room:${Bun.hash.crc32(roomId) % WebSocketRedisAdaptor.#shards}`;
@@ -152,6 +159,7 @@ export class WebSocketRedisAdaptor
       this.logger.warn("Subscriber disconnected; cross-server events are being missed until it returns");
     });
     this.subscriber.on("ready", () => {
+      this.#listenToLegacy();
       //* A SUBSCRIBE ioredis rejected in an outage included. `ready` fires before Redis answers what ioredis resent, so
       //* no earlier reply vouches for the new connection.
       for (const [channel, hold] of this.#channels) this.#subscribe(channel, hold);
@@ -197,22 +205,39 @@ export class WebSocketRedisAdaptor
       this.logger.warn(`Nothing to publish to ${roomId}: the payload has no JSON form`);
       return;
     }
+    const kind = bytes ? "bytes" : "json";
     this.#send({
       channel: this.#roomChannel(roomId),
       roomId,
-      message: this.#pack(bytes ? "bytes" : "json", roomId, payload),
+      message: this.#pack(kind, roomId, payload),
       coalesce,
       seq: this.#sent++,
     });
+    this.#sendLegacy(kind, roomId, payload, coalesce);
   }
 
   publishChange(change: LiveChange): void {
+    const payload = JSON.stringify(change);
     this.#send({
       channel: this.#changeChannel(change.refName),
       roomId: "",
-      message: this.#pack("change", "", JSON.stringify(change)),
+      message: this.#pack("change", "", payload),
       coalesce: false,
       seq: this.#sent++,
+    });
+    this.#sendLegacy("change", "", payload, false);
+  }
+
+  //? TODO(#458): a separate entry, so a PUBLISH refused on one channel is retried without repeating the other.
+  #sendLegacy(kind: "json" | "bytes" | "change", roomId: string, payload: string | Uint8Array, coalesce: boolean) {
+    const origin = `${this.serverId}${WebSocketRedisAdaptor.#legacyMark}`;
+    const message = this.#pack(kind, roomId, payload, origin);
+    this.#send({ channel: this.#legacyChannel, roomId, message, coalesce, seq: this.#sent++ });
+  }
+
+  #listenToLegacy() {
+    this.subscriber.subscribe(this.#legacyChannel).catch((err: Error) => {
+      this.logger.warn(`Subscribe to ${this.#legacyChannel} failed: ${err.message}`);
     });
   }
 
@@ -359,6 +384,7 @@ export class WebSocketRedisAdaptor
     try {
       const unpacked = this.#unpack(message);
       if (!unpacked || unpacked.origin === this.serverId) return;
+      if (unpacked.origin.endsWith(WebSocketRedisAdaptor.#legacyMark)) return;
       if (unpacked.kind === WebSocketRedisAdaptor.#kind.change) {
         this.#changeHandler?.(JSON.parse(unpacked.payload.toString()) as LiveChange);
         return;
@@ -375,8 +401,8 @@ export class WebSocketRedisAdaptor
     }
   }
 
-  #pack(kind: "json" | "bytes" | "change", roomId: string, payload: string | Uint8Array): Buffer {
-    const origin = Buffer.from(this.serverId, "utf-8");
+  #pack(kind: "json" | "bytes" | "change", roomId: string, payload: string | Uint8Array, from = this.serverId): Buffer {
+    const origin = Buffer.from(from, "utf-8");
     const room = Buffer.from(roomId, "utf-8");
     const header = Buffer.alloc(2 + 2 + origin.length + 2 + room.length);
     let offset = header.writeUInt8(WebSocketRedisAdaptor.#version, 0);
@@ -416,7 +442,9 @@ export class WebSocketRedisAdaptor
 
   #addToBuffer(buffered: BufferedMessage): void {
     if (buffered.coalesce) {
-      const stale = this.#buffer.findIndex((item) => item.coalesce && item.roomId === buffered.roomId);
+      const stale = this.#buffer.findIndex(
+        (item) => item.coalesce && item.roomId === buffered.roomId && item.channel === buffered.channel,
+      );
       if (stale >= 0) this.#buffer.splice(stale, 1);
     }
     if (this.#buffer.length >= this.#maxBufferSize) {
@@ -430,8 +458,11 @@ export class WebSocketRedisAdaptor
     this.#buffer.push(...failed);
     this.#buffer.sort((a, b) => a.seq - b.seq);
     const newest = new Map<string, number>();
-    for (const { coalesce, roomId, seq } of this.#buffer) if (coalesce) newest.set(roomId, seq);
-    const kept = this.#buffer.filter(({ coalesce, roomId, seq }) => !coalesce || newest.get(roomId) === seq);
+    for (const { coalesce, channel, roomId, seq } of this.#buffer)
+      if (coalesce) newest.set(`${channel}\0${roomId}`, seq);
+    const kept = this.#buffer.filter(
+      ({ coalesce, channel, roomId, seq }) => !coalesce || newest.get(`${channel}\0${roomId}`) === seq,
+    );
     const over = Math.max(0, kept.length - this.#maxBufferSize);
     this.#buffer.splice(0, this.#buffer.length, ...kept.slice(over));
     if (over) this.logger.warn(`Buffer full, dropping the oldest ${over} messages`);

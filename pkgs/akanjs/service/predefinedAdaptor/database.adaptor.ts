@@ -7,6 +7,7 @@ import type { ConstantModel } from "akanjs/constant";
 import type { DatabaseModel, DocumentSchema, SchemaOf } from "akanjs/document";
 import type { ReservedSql, Sql, TransactionSql } from "postgres";
 import { adapt } from "../adapt";
+import { InsightQueryError } from "../insightQueryError";
 import { ScheduleAdaptorRole } from "./role.adaptor";
 import {
   DEFAULT_SEARCH_MAX_LENGTH,
@@ -430,7 +431,8 @@ export class PostgresDatabase
 
   async openInsight(): Promise<InsightSession> {
     if (!this.config.insightUrl)
-      throw new Error(
+      throw new InsightQueryError(
+        "insightUnavailable",
         "An insight query on Postgres reads as a login role that can read base columns and nothing else. Create one (`CREATE ROLE <name> LOGIN PASSWORD '…'`, with no other role granted to it) and set POSTGRES_INSIGHT_URL to log in as it; each model table grants it its base columns at boot.",
       );
     return await PostgresInsightSession.open({

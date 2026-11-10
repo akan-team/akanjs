@@ -1,5 +1,6 @@
 import { dayjs } from "akanjs/base";
 import { encodeDocumentValue, sanitizeJson } from "akanjs/document";
+import { DocumentStoreError } from "../../documentStoreError";
 import type { QueryLeafOps } from "./types";
 
 export const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -37,7 +38,8 @@ const nulEscape = /(?<!\\)(?:\\\\)*\\u0000/;
 /** Postgres refuses U+0000 inside jsonb, so every mode refuses it — one app stores the same thing in each. */
 export const assertStorableJson = (json: string, table: string) => {
   if (nulEscape.test(json))
-    throw new Error(
+    throw new DocumentStoreError(
+      "unstorableValue",
       `Cannot store a string holding U+0000 (NUL) in "${table}": Postgres refuses it inside jsonb, so no database mode stores one`,
     );
   return json;
@@ -88,7 +90,7 @@ const sqlLiteral = (value: unknown) => {
   if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
   if (typeof value === "bigint" || (typeof value === "number" && Number.isFinite(value))) return String(value);
   if (typeof value === "string") return `'${value.replaceAll("'", "''")}'`;
-  throw new Error(`Cannot write ${String(value)} into SQL as a literal`);
+  throw new DocumentStoreError("invalidQuery", `Cannot write ${String(value)} into SQL as a literal`);
 };
 
 // DDL binds no parameter on either dialect, so each `?` outside a quoted span becomes its value's literal.
@@ -96,10 +98,12 @@ export const inlineParams = (sql: string, params: unknown[]) => {
   let next = 0;
   const text = sql.replace(/'(?:[^']|'')*'|"(?:[^"]|"")*"|\?/g, (token) => {
     if (token !== "?") return token;
-    if (next >= params.length) throw new Error(`More placeholders than the ${params.length} values in: ${sql}`);
+    if (next >= params.length)
+      throw new DocumentStoreError("invalidQuery", `More placeholders than the ${params.length} values in: ${sql}`);
     return sqlLiteral(params[next++]);
   });
-  if (next !== params.length) throw new Error(`${params.length} values for ${next} placeholders in: ${sql}`);
+  if (next !== params.length)
+    throw new DocumentStoreError("invalidQuery", `${params.length} values for ${next} placeholders in: ${sql}`);
   return text;
 };
 

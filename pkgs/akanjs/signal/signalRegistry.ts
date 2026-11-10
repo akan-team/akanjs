@@ -2,6 +2,7 @@ import type { EndpointCls } from "./endpoint";
 import type { InternalCls } from "./internal";
 import { FetchSerializer } from "./serializer";
 import type { ServerSignalCls } from "./serverSignal";
+import { SignalDeclarationError } from "./signalDeclarationError";
 import type { SliceCls } from "./slice";
 import type { SerializedSignal } from "./types";
 
@@ -11,7 +12,8 @@ type SignalWithBase<RefName extends string, SigCls> = SignalBaseRef<SigCls> exte
 function assertSignalBase(refName: string, signalKind: string, signalCls: { srv?: { srv?: { refName?: unknown } } }) {
   const signalRefName = signalCls.srv?.srv?.refName;
   if (signalRefName !== refName) {
-    throw new Error(
+    throw new SignalDeclarationError(
+      "baseMismatch",
       `Signal base mismatch: ${signalKind} uses "${String(signalRefName)}", but registry expected "${refName}". Use srv.${refName}.with(...) when the signal needs another service.`,
     );
   }

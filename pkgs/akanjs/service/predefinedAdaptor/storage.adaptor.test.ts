@@ -25,6 +25,15 @@ const useEnv = (env: Partial<Record<(typeof envKeys)[number], string>>) => {
   resetEnvCache();
 };
 
+const thrownBy = (run: () => unknown) => {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  return null;
+};
+
 afterEach(() => {
   for (const key of envKeys) {
     if (saved[key] === undefined) delete process.env[key];
@@ -85,6 +94,7 @@ describe("BlobStorage.resolveLocalPath", () => {
     const escape = "../outside.txt";
 
     await expect(storage.readData(escape)).rejects.toThrow("outside the storage root");
+    await expect(storage.readData(escape)).rejects.toMatchObject({ code: "invalidStorageKey", statusCode: 400 });
     await expect(storage.readDataAsJson(escape)).rejects.toThrow("outside the storage root");
     await expect(storage.getDataList("../")).rejects.toThrow("outside the storage root");
     await expect(storage.uploadDataFromLocal({ path: escape, localPath: outside })).rejects.toThrow(
@@ -112,6 +122,10 @@ describe("BlobStorage.assertShared", () => {
     for (const mode of ["multiple", "cluster"]) {
       useEnv({ AKAN_DATABASE_MODE: mode, AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_OPERATION_MODE: "cloud" });
       expect(() => BlobStorage.assertShared("uploads")).toThrow("AKAN_STORAGE_SHARED");
+      expect(thrownBy(() => BlobStorage.assertShared("uploads"))).toMatchObject({
+        code: "storageNotShared",
+        statusCode: 500,
+      });
     }
   });
 

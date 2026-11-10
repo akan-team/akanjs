@@ -1,5 +1,6 @@
 import { type ConstantModel, textFieldRoles } from "akanjs/constant";
 import { type DatabaseModel, type SearchColumn, searchColumns } from "akanjs/document";
+import { DocumentStoreError } from "../../../documentStoreError";
 import type { SqlFrag } from "../types";
 import { descriptorHash, jsonPath, quoteIdent } from "../values";
 import { type MirrorSegment, SearchMirror } from "./mirror";
@@ -80,8 +81,10 @@ export class Fts5SearchEngine implements SearchEngine {
     } catch (error) {
       // An unknown tokenizer or a SQLite without fts5 stays fatal: `q.search()` would otherwise raise per request.
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
+      throw new DocumentStoreError(
+        "searchMisconfigured",
         `Failed to create the search index with tokenizer "${this.#tokenizer}": ${message}. Fix AKAN_SEARCH_TOKENIZER, or set AKAN_SEARCH_ENABLED=0 to run without text search.`,
+        { cause: error },
       );
     }
     await this.#ensureMirrorTriggers({ resync: false });
