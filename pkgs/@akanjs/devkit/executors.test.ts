@@ -48,6 +48,27 @@ const rootPackageJson = (extra: Partial<PackageJson> = {}): PackageJson => ({
   ...extra,
 });
 
+describe("executors module graph", () => {
+  test("executors.ts and each file under executors/ load first in a fresh process", async () => {
+    const entries = ["executors.ts"];
+    for await (const file of new Bun.Glob("executors/*.ts").scan({ cwd: import.meta.dir }))
+      if (!file.endsWith(".test.ts")) entries.push(file);
+    const failures = await Promise.all(
+      entries.map(async (entry) => {
+        const proc = Bun.spawn([process.execPath, "-e", `await import(${JSON.stringify(`./${entry}`)})`], {
+          cwd: import.meta.dir,
+          stdout: "ignore",
+          stderr: "pipe",
+        });
+        const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+        return code === 0 ? null : `${entry}: ${stderr.split("\n").find((line) => line.includes("error:")) ?? stderr}`;
+      }),
+    );
+    expect(entries.length).toBeGreaterThan(8);
+    expect(failures.filter((failure) => failure !== null)).toEqual([]);
+  });
+});
+
 describe("Executor filesystem helpers", () => {
   test("reports command failures with command context and captured output", async () => {
     const root = await makeTempRoot();

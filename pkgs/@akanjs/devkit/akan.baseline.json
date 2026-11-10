@@ -3,7 +3,6 @@
     "akanApp/akanApp.host.ts": 1331,
     "akanConfig/akanConfig.ts": 907,
     "akanContext.ts": 1083,
-    "executors.ts": 1749,
     "incrementalBuilder/incrementalBuilder.proc.ts": 1152,
     "qualityScanner.ts": 983,
     "workflow/source.ts": 1100

@@ -10,7 +10,8 @@ import type {
   ScanResult,
 } from "./akanConfig";
 import { AkanAppConfig } from "./akanConfig";
-import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "./executors";
+import type { AppExecutor, LibExecutor, PkgExecutor } from "./executors";
+import { WorkspaceExecutor } from "./executors/workspaceExecutor";
 import {
   barrelFacetDirs,
   facetIndexShadowOf,
@@ -22,6 +23,9 @@ import {
   rootAllowedFiles,
   rootEntryHintOf,
 } from "./workspaceLayout";
+
+//? Imported on use: sysExecutor.ts imports this file, so a static import would load a SysExecutor subclass first.
+const loadLibExecutor = () => import("./executors/libExecutor");
 
 const scalarFileTypes = ["constant", "dictionary", "document", "template", "unit", "util", "view", "zone"] as const;
 type ScalarFileType = (typeof scalarFileTypes)[number];
@@ -315,11 +319,11 @@ export class AppInfo extends ScanInfo {
     const existingAppInfo = AppInfo.appInfos.get(exec.name);
     if (existingAppInfo && !options.refresh) return existingAppInfo;
     const scanResult = await ScanInfo.getScanResult(exec);
-
+    const libModule = await loadLibExecutor();
     await Promise.all(
       scanResult.libDeps.map(async (libName) => {
         LibInfo.loadedLibs.add(libName);
-        const libExecutor = LibExecutor.from(exec, libName);
+        const libExecutor = libModule.LibExecutor.from(exec, libName);
         LibInfo.libInfos.set(libName, await LibInfo.fromExecutor(libExecutor));
       }),
     );
@@ -368,11 +372,12 @@ export class AppInfo extends ScanInfo {
   }
 
   static async #getAllLibDeps(exec: AppExecutor, libDeps: string[], libSet = new Set<string>()) {
+    const libModule = await loadLibExecutor();
     await Promise.all(
       libDeps.map(async (libName) => {
         if (libSet.has(libName)) return;
         libSet.add(libName);
-        const libExecutor = LibExecutor.from(exec, libName);
+        const libExecutor = libModule.LibExecutor.from(exec, libName);
         const libInfo = await LibInfo.fromExecutor(libExecutor);
         const libScanResult = libInfo.getScanResult();
         if (libScanResult.libDeps.length > 0) await AppInfo.#getAllLibDeps(exec, libScanResult.libDeps, libSet);
@@ -412,12 +417,13 @@ export class LibInfo extends ScanInfo {
     if (existingLibInfo && !refresh) return existingLibInfo;
 
     const scanResult = await ScanInfo.getScanResult(exec);
+    const libModule = await loadLibExecutor();
     await Promise.all(
       scanResult.libDeps
         .filter((libName) => !LibInfo.loadedLibs.has(libName))
         .map(async (libName) => {
           LibInfo.loadedLibs.add(libName);
-          const libExecutor = LibExecutor.from(exec, libName);
+          const libExecutor = libModule.LibExecutor.from(exec, libName);
           LibInfo.libInfos.set(libName, await LibInfo.fromExecutor(libExecutor));
         }),
     );
@@ -512,11 +518,16 @@ export class WorkspaceInfo {
     if (existingWorkspaceInfo && !options.refresh) return existingWorkspaceInfo;
 
     const [appNames, libNames, pkgNames] = await Promise.all([exec.getApps(), exec.getLibs(), exec.getPkgs()]);
+    const [appModule, libModule, pkgModule] = await Promise.all([
+      import("./executors/appExecutor"),
+      loadLibExecutor(),
+      import("./executors/pkgExecutor"),
+    ]);
     // TODO: prevent duplicate scan by resolving the dependency graph
     const [appInfos, libInfos, pkgInfos] = await Promise.all([
-      Promise.all(appNames.map(async (appName) => await AppExecutor.from(exec, appName).scan())),
-      Promise.all(libNames.map(async (libName) => await LibExecutor.from(exec, libName).scan())),
-      Promise.all(pkgNames.map(async (pkgName) => await PkgExecutor.from(exec, pkgName).scan())),
+      Promise.all(appNames.map(async (appName) => await appModule.AppExecutor.from(exec, appName).scan())),
+      Promise.all(libNames.map(async (libName) => await libModule.LibExecutor.from(exec, libName).scan())),
+      Promise.all(pkgNames.map(async (pkgName) => await pkgModule.PkgExecutor.from(exec, pkgName).scan())),
     ]);
     const workspaceInfo = new WorkspaceInfo(
       new Map(appInfos.map((app) => [app.exec.name, app as AppInfo])),
