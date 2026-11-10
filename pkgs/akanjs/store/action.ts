@@ -1,6 +1,5 @@
 import { DataList, type Dayjs, FIELD_META, type GetStateObject } from "akanjs/base";
 import {
-  AbortSignals,
   capitalize,
   type DynamicRecord,
   deepObjectify,
@@ -27,7 +26,7 @@ import {
   withSharedInstances,
 } from "akanjs/constant";
 import type { BaseFilterSortKey, ExtractSort, FilterInstance } from "akanjs/document";
-import { type FetchInitForm, type FetchProxy, HttpClient, restoreRemoteError } from "akanjs/fetch";
+import { type FetchInitForm, type FetchProxy, restoreRemoteError } from "akanjs/fetch";
 import type {
   LiveEventPayload,
   SerializedSlice,
@@ -913,7 +912,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   };
   const sliceAction = slices.reduce((acc, { keys, slice }) => {
     // One ticket per slice: every action below writes the same list.
-    const requests = new SliceRequest();
+    const requests = new SliceRequest(() => fetch.instance?.http);
     // One room per slice, not per component: a second room would apply every event to the one list twice.
     let liveWatch: { signature: string; dispose: () => void } | null = null;
     let liveWatchers = 0;
@@ -953,13 +952,6 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       modelObjInsight ?? (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
     const queryArgsIn = (self: SetGet) =>
       (self.get() as { [key: string]: any })[namesOfSlice.queryArgsOfModel] as object[];
-    //? A caller's timeout fails its load as a query's own deadline does; any other abort ends it with no write.
-    const endsQuietly = (ownSignal: AbortSignal, callerSignal?: AbortSignal) =>
-      ownSignal.aborted || (!!callerSignal?.aborted && !AbortSignals.isTimeout(callerSignal));
-    const endSpent = (callerSignal: AbortSignal) => {
-      if (!AbortSignals.isTimeout(callerSignal)) return;
-      throw fetch.instance?.http?.abortError(callerSignal) ?? HttpClient.abortErrorOf(callerSignal);
-    };
     const freshLoad = Symbol("freshLoad");
     // A row stamped stale while the request ran may be missing from its rows, so they are read once more, and only once.
     const loadList = async <T>(
@@ -968,11 +960,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       load: (signal: AbortSignal) => Promise<T>,
       commit: (loaded: T, requestedAt: Date) => object,
     ) => {
-      if (callerSignal?.aborted) return endSpent(callerSignal);
+      if (callerSignal?.aborted) return requests.endSpent(callerSignal);
       self.set({ [namesOfSlice.modelListLoading]: true });
-      const { ticket, signal: ownSignal } = requests.claim();
-      const joined = AbortSignals.join([ownSignal, callerSignal]);
-      const signal = joined.signal ?? ownSignal;
+      const { ticket, signal, dispose, endsQuietly } = requests.claim(callerSignal);
       try {
         for (let round = 0; round < 2; round += 1) {
           // Taken before the request: a write stamped while it runs may be missing from the rows it returns.
@@ -986,10 +976,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           if (staleAt.getTime() <= requestedAt.getTime()) return;
         }
       } catch (error) {
-        if (endsQuietly(ownSignal, callerSignal)) return;
+        if (endsQuietly()) return;
         throw error;
       } finally {
-        joined.dispose();
+        dispose();
         if (requests.isCurrent(ticket)) self.set({ [namesOfSlice.modelListLoading]: false });
       }
     };
@@ -1135,10 +1125,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         const pageOfModel = currentState[namesOfSlice.pageOfModel] as number;
         const limitOfModel = (currentState[namesOfSlice.limitOfModel] as number) || 20;
         const sortOfModel = currentState[namesOfSlice.sortOfModel] as Sort;
-        if (options?.signal?.aborted) return endSpent(options.signal);
-        const { ticket, signal: ownSignal } = requests.claim();
-        const joined = AbortSignals.join([ownSignal, options?.signal]);
-        const signal = joined.signal ?? ownSignal;
+        if (options?.signal?.aborted) return requests.endSpent(options.signal);
+        const { ticket, signal, dispose, endsQuietly } = requests.claim(options?.signal);
         const modelDataList = await fetchList(
           queryArgsOfModel,
           (pageOfModel - 1) * limitOfModel + modelList.length,
@@ -1147,10 +1135,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           { ...options, signal },
         )
           .catch((error: unknown) => {
-            if (endsQuietly(ownSignal, options?.signal)) return null;
+            if (endsQuietly()) return null;
             throw error;
           })
-          .finally(joined.dispose);
+          .finally(dispose);
         if (!modelDataList || !requests.isCurrent(ticket) || queryArgsIn(this) !== queryArgsOfModel) return;
         // Re-read: a live event may have placed a row meanwhile, and `DataList` collapses the shifted duplicate.
         const currentModelList = (this.get() as { [key: string]: any })[namesOfSlice.modelList] as DataList<Light>;

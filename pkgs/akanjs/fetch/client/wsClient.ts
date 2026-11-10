@@ -103,8 +103,7 @@ export class WsClient {
   /** Whether this client has been connected before, so the first open is a start rather than a recovery. */
   #hadConnection = false;
   #outbox: string[] = [];
-  #outboxDropped = 0;
-  #outboxNoneWarned = false;
+  #outboxDrops = { count: 0, noneWarned: false };
   #unconnectedWarnTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #jwt: string | null = null;
   #renewing: Promise<unknown> | null = null;
@@ -205,12 +204,12 @@ export class WsClient {
       });
       const queued = this.#outbox;
       this.#outbox = [];
-      const keepsNone = this.#outboxLimit === 0;
-      if (this.#outboxDropped > 0 && !(keepsNone && this.#outboxNoneWarned)) {
-        this.logger.warn(`WebSocket dropped ${this.#outboxDropped} oldest queued message(s) while disconnected`);
-        this.#outboxNoneWarned ||= keepsNone;
+      const keepsNone = outboxLimitOf(this.#options.outboxLimit) === 0;
+      if (this.#outboxDrops.count > 0 && !(keepsNone && this.#outboxDrops.noneWarned)) {
+        this.logger.warn(`WebSocket dropped ${this.#outboxDrops.count} oldest queued message(s) while disconnected`);
+        this.#outboxDrops.noneWarned ||= keepsNone;
       }
-      this.#outboxDropped = 0;
+      this.#outboxDrops.count = 0;
       for (const frame of queued) this.#ws?.send(frame);
       this.#handleMessage("connect", undefined);
     };
@@ -471,7 +470,7 @@ export class WsClient {
     for (const timer of this.#unconnectedWarnTimers.values()) clearTimeout(timer);
     this.#unconnectedWarnTimers.clear();
     this.#outbox = [];
-    this.#outboxDropped = 0;
+    this.#outboxDrops.count = 0;
     this.#roomAliasMap.clear();
     this.#ws?.close();
     this.#ws = null;
@@ -539,17 +538,12 @@ export class WsClient {
     this.#ws.send(frame);
     return this;
   }
-  get #outboxLimit() {
-    const { outboxLimit } = this.#options;
-    if (outboxLimit === undefined || Number.isNaN(outboxLimit)) return WsClient.defaultOutboxLimit;
-    return outboxLimit < 0 ? Number.POSITIVE_INFINITY : Math.floor(outboxLimit);
-  }
   #enqueue(frame: string) {
     this.#outbox.push(frame);
-    const overflow = this.#outbox.length - this.#outboxLimit;
+    const overflow = this.#outbox.length - outboxLimitOf(this.#options.outboxLimit);
     if (overflow <= 0) return;
     this.#outbox.splice(0, overflow);
-    this.#outboxDropped += overflow;
+    this.#outboxDrops.count += overflow;
   }
   subscribe(option: RoomSubscription) {
     const roomId = WsClient.makeRoomId(option.key, option.data);
@@ -593,3 +587,8 @@ export class WsClient {
     this.#ws?.send(JSON.stringify(payload));
   }
 }
+
+const outboxLimitOf = (outboxLimit: number | undefined) => {
+  if (outboxLimit === undefined || Number.isNaN(outboxLimit)) return WsClient.defaultOutboxLimit;
+  return outboxLimit < 0 ? Number.POSITIVE_INFINITY : Math.floor(outboxLimit);
+};

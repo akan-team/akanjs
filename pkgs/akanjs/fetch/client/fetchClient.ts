@@ -651,29 +651,22 @@ export class FetchClient {
   async #viaBridge(
     bridge: FetchBridge,
     {
-      key,
-      type,
       endpoint,
       option,
       argMap,
-      signal,
-    }: {
-      key: string;
-      type: FetchBridgeCall["type"];
+      ...call
+    }: Pick<FetchBridgeCall, "key" | "type" | "signal"> & {
       endpoint: SerializedEndpoint;
       option?: FetchPolicy;
       argMap: Map<string, unknown>;
-      signal?: AbortSignal;
     },
   ) {
     try {
       return await bridge.call({
-        key,
-        type,
+        ...call,
         args: Object.fromEntries(argMap),
         returns: endpoint.returns,
         timeout: option?.timeout ?? endpoint.timeout ?? this.http.timeout,
-        ...(signal ? { signal } : {}),
       });
     } catch (error) {
       const payload = (error as RestoredError | null)?.toJSON?.();
