@@ -2,12 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SsrManifest, SsrManifestEntry } from "../ssrTypes";
 import type { ClientManifest } from "./ipcTypes";
+import type { ModulePreloadTable } from "./modulePreloadPlan";
 
 export interface RoutesManifest {
   routeIds: string[];
   clientManifest: ClientManifest;
   ssrManifest: SsrManifest;
   knownEntries: string[];
+  /** What a page preloads for the client references it renders; absent in a dev artifact. */
+  modulePreloads?: ModulePreloadTable;
 }
 
 type SerializedRoutesManifest = Omit<RoutesManifest, "knownEntries"> & Partial<Pick<RoutesManifest, "knownEntries">>;

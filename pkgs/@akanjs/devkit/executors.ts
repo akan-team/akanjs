@@ -156,7 +156,7 @@ const parseEnvValue = (value: string) => {
   return inner.replace(/\\(.)/g, (pair, char: string) => (char === "n" ? "\n" : char === "r" ? "\r" : pair));
 };
 
-const parseEnvFile = (envPath: string): Record<string, string> => {
+export const parseEnvFile = (envPath: string): Record<string, string> => {
   const env: Record<string, string> = {};
   const content = (() => {
     try {
@@ -683,13 +683,15 @@ export class WorkspaceExecutor extends Executor {
   } = {}) {
     return new WorkspaceExecutor({ workspaceRoot, repoName });
   }
-  /** The public env a native build was told to reproduce (`--public-env`): it outranks `.env`, which outranks the rest. */
+  /** The public env a native build was told to reproduce (`--public-env`): it outranks the shell, which outranks `.env`. */
   static publicEnvPin: Record<string, string> | null = null;
   static readonly localServeDomain = "localhost";
   static getBaseDevEnv(envPath?: string) {
     // Bun auto-loads .env, so we use process.env directly
     const sourceEnv = {
-      ...(envPath ? { ...process.env, ...parseEnvFile(envPath) } : process.env),
+      ...(envPath ? parseEnvFile(envPath) : {}),
+      //? An empty export reads as unset, unlike in dotenv, so it can't blank a key the .env sets.
+      ...Object.fromEntries(Object.entries(process.env).filter(([, value]) => value)),
       ...WorkspaceExecutor.publicEnvPin,
     };
 

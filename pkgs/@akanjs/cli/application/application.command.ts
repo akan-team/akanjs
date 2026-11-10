@@ -20,6 +20,11 @@ const startEnvOption = {
   desc: "backend environment of a --release build; a dev build follows `akan start`, which keeps its own",
   default: "local",
 } as const;
+const listOf = (value: string | null) =>
+  (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 
 export class ApplicationCommand extends command("application", [ApplicationScript], ({ public: target }) => ({
   createApplication: target({ desc: "Create a new application in the workspace" })
@@ -93,7 +98,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
   })
     .with(App)
     .arg("paths", String, {
-      desc: "page paths, comma-separated; the default locale is added when missing (default: /)",
+      desc: "page paths, comma-separated; the default locale is added when missing, but not to /_akan routes such as Studio or to files (default: /)",
       example: "/board,/board/new",
       nullable: true,
     })
@@ -118,10 +123,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
     .exec(async function (app, paths, changed, csr, engine, screenshot, desktop, keep, timeout, format) {
       await this.applicationScript.preview(app, {
-        paths: (paths ?? "")
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter(Boolean),
+        paths: listOf(paths),
         changed,
         csr,
         engine: engine === "webkit" || engine === "chrome" ? engine : null,
@@ -226,16 +228,21 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     })
     .option("env", String, {
       enum: devEnvs,
-      desc: "environment the server runs in (default: AKAN_PUBLIC_ENV of the workspace .env)",
+      desc: "environment the server runs in (default: AKAN_PUBLIC_ENV of the shell, else of the workspace .env)",
       nullable: true,
     })
-    .exec(async function (app, write, fast, quiet, profile, env) {
+    .option("updateBudget", Boolean, {
+      desc: "write akan.budget.json: add each new route's JS and lower an entry a route now fits under, never raise one",
+      default: false,
+    })
+    .exec(async function (app, write, fast, quiet, profile, env, updateBudget) {
       await this.applicationScript.build(app, {
         write,
         fast,
         quiet,
         profile: profile ?? undefined,
         env: env ?? undefined,
+        updateBudget,
       });
     }),
   typecheck: target({ short: true, desc: "Typecheck an app or a library, its tests and specs included" })
@@ -255,12 +262,9 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       nullable: true,
     })
     .option("write", Boolean, writeOption)
-    .exec(async function (exec, files, write) {
-      const testFiles = (files ?? "")
-        .split(",")
-        .map((file) => file.trim())
-        .filter(Boolean);
-      await this.applicationScript.test(exec, { write, files: testFiles });
+    .option("coverage", Boolean, { desc: "measure coverage; lcov goes under local/coverage/<target>", default: false })
+    .exec(async function (exec, files, write, coverage) {
+      await this.applicationScript.test(exec, { write, files: listOf(files), coverage });
     }),
   buildIos: target({ short: true, desc: "Build the iOS app on the native runtime" })
     .with(App)

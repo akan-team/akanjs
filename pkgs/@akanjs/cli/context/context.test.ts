@@ -8,8 +8,17 @@ import {
 } from "@akanjs/devkit/akanContext";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, ModuleExecutor } from "@akanjs/devkit/executors";
-import { createTempApp, createTempModule, tempRoots, writeJson, writeText } from "@akanjs/devkit/testHelpers";
+import {
+  createTempApp,
+  createTempModule,
+  makeCliTempWorkspace,
+  tempRoots,
+  writeJson,
+  writeText,
+} from "@akanjs/devkit/testHelpers";
 import { AgentRunner } from "../agent/agent.runner";
+import { ApplicationRunner } from "../application/application.runner";
+import { LibraryRunner } from "../library/library.runner";
 import { ModuleRunner } from "../module/module.runner";
 import { ContextRunner } from "./context.runner";
 
@@ -90,6 +99,17 @@ describe("ContextRunner", () => {
     expect(strict.repairActions.map((action) => action.command)).toContain(
       "akan repair module-shape --app demo --module post",
     );
+  });
+
+  test("passes strict on a new app and library, whose own service modules come with an abstract", async () => {
+    const { workspace } = track(await makeCliTempWorkspace());
+    await new ApplicationRunner().createApplication("demo", workspace);
+    await new LibraryRunner().createLibrary("mylib", workspace);
+
+    const strict = await AkanContextAnalyzer.doctor(workspace, { strict: true });
+
+    expect(strict.diagnostics).toEqual([]);
+    expect(strict.status).toBe("passed");
   });
 
   test("doctor ignores a malformed workflow artifact instead of throwing", async () => {
@@ -567,7 +587,8 @@ describe("ContextRunner", () => {
   });
 
   test("runs workflow read tools through MCP plan mode", async () => {
-    const { root, workspace } = track(await createTempApp("demo"));
+    const { root, workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
     const runner = new ContextRunner();
     const planPath = `${root}/.akan/workflows/plans/task-priority.json`;
 
@@ -614,7 +635,8 @@ describe("ContextRunner", () => {
   });
 
   test("writes a default plan artifact from MCP plan_workflow", async () => {
-    const { root, workspace } = track(await createTempApp("demo"));
+    const { root, workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
 
     const plan = (await new ContextRunner().callMcpTool(
       workspace,
@@ -634,6 +656,26 @@ describe("ContextRunner", () => {
     );
     expect(plan.recommendations.map((recommendation) => recommendation.code)).toContain("add-field-component");
     expect(await Bun.file(`${root}/${plan.planPath}`).exists()).toBe(true);
+  });
+
+  test("refuses an MCP plan_workflow for a module the target lacks, in the MCP server's workspace", async () => {
+    const { workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
+
+    const plan = (await new ContextRunner().callMcpTool(
+      workspace,
+      "plan_workflow",
+      { workflow: "add-field", inputs: { app: "demo", module: "pokemon", field: "nickname", type: "String" } },
+      { mode: "plan" },
+    )) as { diagnostics: { severity: string; code: string; message: string }[] };
+
+    expect(plan.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        code: "workflow-module-missing",
+        message: expect.stringContaining("Its modules are task."),
+      }),
+    ]);
   });
 
   test("splits doctor diagnostics by workflow context paths", async () => {

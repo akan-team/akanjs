@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
 import { ApplicationBuildReporter } from "@akanjs/devkit/applicationBuildReporter";
@@ -14,7 +15,7 @@ import {
   script,
   type Workspace,
 } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, LibExecutor, PkgExecutor, SysExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import { DesktopServerStage } from "@akanjs/devkit/mobile";
 import { formatSlicePlan } from "@akanjs/devkit/slicePlanner";
@@ -201,7 +202,15 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       quiet = false,
       profile,
       env,
-    }: { write?: boolean; fast?: boolean; quiet?: boolean; profile?: string; env?: string } = {},
+      updateBudget = false,
+    }: {
+      write?: boolean;
+      fast?: boolean;
+      quiet?: boolean;
+      profile?: string;
+      env?: string;
+      updateBudget?: boolean;
+    } = {},
   ) {
     await app.scanSync({ write });
     if (!quiet) Logger.rawLog(`Creating an optimized production build for ${app.name}...`);
@@ -211,6 +220,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
         spinner: !quiet,
         envProfile: profile,
         environment: env,
+        budget: updateBudget ? "update" : "enforce",
       });
       Logger.rawLog(`${app.name} built in dist/apps/${app.name}`);
       if (!quiet) ApplicationBuildReporter.printSummary(result);
@@ -247,13 +257,17 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     }
   }
 
-  async test(exec: Exec, { write = true, files = [] }: { write?: boolean; files?: string[] } = {}) {
+  async test(
+    exec: Exec,
+    { write = true, files = [], coverage = false }: { write?: boolean; files?: string[]; coverage?: boolean } = {},
+  ) {
     const testPaths = this.applicationRunner.resolveTestPaths(exec, files);
+    const flags = coverage ? ApplicationScript.#coverageFlagsOf(exec) : [];
     if (exec instanceof LibExecutor) {
       if (write) await this.libraryScript.syncLibrary(exec);
       else await exec.scan({ write: false });
       exec.spinning(`Preparing ${exec.name}...`).succeed(`${exec.name} prepared`);
-      await this.applicationRunner.test(exec, testPaths);
+      await this.applicationRunner.test(exec, testPaths, flags);
       return;
     }
 
@@ -266,7 +280,13 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       spinner.fail(`${exec.name} prepare failed`);
       throw error;
     }
-    await this.applicationRunner.test(exec, testPaths);
+    await this.applicationRunner.test(exec, testPaths, flags);
+  }
+
+  static #coverageFlagsOf(exec: Exec) {
+    const root = exec instanceof SysExecutor || exec instanceof PkgExecutor ? exec.workspace.workspaceRoot : null;
+    const dir = root ? path.join(root, "local", "coverage", path.relative(root, exec.cwdPath)) : "local/coverage";
+    return ["--coverage", "--coverage-reporter=text", "--coverage-reporter=lcov", `--coverage-dir=${dir}`];
   }
 
   async start(

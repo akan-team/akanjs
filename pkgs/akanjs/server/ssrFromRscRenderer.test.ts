@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import { Logger } from "akanjs/common";
 import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { createRequestStore, getRequestStore, headers } from "../fetch/requestStorage";
+import { ModulePreloadPlan } from "./artifact/modulePreloadPlan";
 import {
   joinBytes,
   mixedFlight,
@@ -716,6 +717,65 @@ describe("SsrFromRscRenderer head", () => {
     );
     expect(html).toContain('<script type="module" src="/_akan/rsc-client.js"></script>');
     expect(html).not.toContain('<script type="module" src="/_akan/dict/en-abc.js">');
+  });
+});
+
+describe("SsrFromRscRenderer chunk preloads", () => {
+  test("preloads the chunks the shell's import rows name, with the runtime and the vendors those chunks import", async () => {
+    const plan = new ModulePreloadPlan(
+      {
+        runtime: ["/_akan/client/rsc.js", "/_akan/client/chunks/react.js"],
+        vendors: { "akanjs/store": ["/_akan/client/store.js", "/_akan/client/chunks/store-core.js"] },
+        chunkVendors: { "/_akan/client/chunks/page.js": ["akanjs/store"] },
+      },
+      {
+        "apps/demo/ui/Page.tsx#default": {
+          id: "/_akan/client/page.js",
+          chunks: [
+            "/_akan/client/page.js",
+            "/_akan/client/page.js",
+            "/_akan/client/chunks/page.js",
+            "/_akan/client/chunks/page.js",
+          ],
+          name: "default",
+        },
+        "apps/demo/ui/Other.tsx#default": {
+          id: "/_akan/client/other.js",
+          chunks: ["/_akan/client/other.js", "/_akan/client/other.js"],
+          name: "default",
+        },
+      },
+    );
+    const flight = [
+      `1:"/_akan/client/page.js"\n`,
+      `2:"/_akan/client/chunks/page.js"\n`,
+      `3:"/_akan/client/chunks/stale.js"\n`,
+      `4:I["$1",["$1","$1","$2","$2","$3","$3"],"default"]\n`,
+      `5:"/_akan/client/other.js"\n`,
+      `0:["$","html",null,{"children":[["$","head","head",{}],["$","body","body",{"children":["$5"]}]]}]\n`,
+    ].join("");
+    const stream = await new SsrFromRscRenderer().render({
+      rscStream: textStream([{ text: flight }]),
+      ssrManifest: {
+        moduleLoading: null,
+        moduleMap: { "/_akan/client/page.js": { default: { id: "page", chunks: [], name: "default" } } },
+      },
+      bootstrapModules: ["/_akan/client/rsc.js"],
+      modulePreloads: ["/_akan/dict/en-abc.js"],
+      modulePreloadPlan: plan,
+    });
+    const html = await new Response(stream).text();
+    const head = html.slice(html.indexOf("<head>"), html.indexOf("</head>"));
+
+    expect([...head.matchAll(/<link rel="modulepreload" href="([^"]+)">/g)].map(([, href]) => href)).toEqual([
+      "/_akan/client/rsc.js",
+      "/_akan/client/chunks/react.js",
+      "/_akan/client/store.js",
+      "/_akan/client/chunks/store-core.js",
+      "/_akan/client/page.js",
+      "/_akan/client/chunks/page.js",
+      "/_akan/dict/en-abc.js",
+    ]);
   });
 });
 

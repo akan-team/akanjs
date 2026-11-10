@@ -40,6 +40,7 @@ import {
   workflowCommandsForPlan,
   workflowPathsForPlan,
   workflowPlanApproval,
+  workflowTargetDiagnostics,
   writeWorkflowRunArtifact,
 } from "@akanjs/devkit/workflow";
 import { isRecord } from "akanjs/common";
@@ -83,11 +84,14 @@ const failedPlan = (workflow: string, diagnostics: WorkflowApplyReport["diagnost
   approval: workflowPlanApproval,
 });
 
-const failedApplyReport = (workflow: string, code: string, message: string, plan?: WorkflowPlan) => {
-  const diagnostics: WorkflowDiagnostic[] = [{ severity: "error", code, message }];
-  return createWorkflowApplyReport({
+const refusedApplyReport = (
+  workflow: string,
+  diagnostics: WorkflowDiagnostic[],
+  { plan, mode = "apply" }: { plan?: WorkflowPlan; mode?: WorkflowApplyReport["mode"] } = {},
+) =>
+  createWorkflowApplyReport({
     workflow,
-    mode: "apply",
+    mode,
     changedFiles: [],
     generatedFiles: [],
     commands: [],
@@ -95,7 +99,9 @@ const failedApplyReport = (workflow: string, code: string, message: string, plan
     nextActions: [],
     plan: plan ?? failedPlan(workflow, diagnostics),
   });
-};
+
+const failedApplyReport = (workflow: string, code: string, message: string, plan?: WorkflowPlan) =>
+  refusedApplyReport(workflow, [{ severity: "error", code, message }], { plan });
 
 const inferValidationKind = (command: WorkflowApplyCommand): WorkflowValidationKind => {
   if (command.kind) return command.kind;
@@ -333,6 +339,7 @@ export class WorkflowRunner extends runner("workflow") {
     if (!spec) throw new Error(`Unknown workflow: ${workflow}. Run \`akan workflow list\` to see available workflows.`);
     const plan = await inspectWorkflowPlan(
       workspace ?? WorkspaceExecutor.fromRoot(),
+      spec,
       createWorkflowPlan(spec, compactWorkflowInputs(inputs)),
     );
     if (out) {
@@ -380,6 +387,11 @@ export class WorkflowRunner extends runner("workflow") {
       const message = inputErrors.map((diagnostic) => diagnostic.message).join(" ");
       return await renderApplyReport(failedApplyReport(plan.workflow, "workflow-plan-inputs-invalid", message, plan));
     }
+    const targetErrors = await workflowTargetDiagnostics(workspace ?? WorkspaceExecutor.fromRoot(), spec, plan.inputs);
+    if (targetErrors.length)
+      return await renderApplyReport(
+        refusedApplyReport(plan.workflow, targetErrors, { plan, mode: dryRun ? "dry-run" : "apply" }),
+      );
     plan = { ...plan, steps: spec.steps, validation: spec.validation };
     if (dryRun) return await renderApplyReport(createDryRunWorkflowApplyReport(plan));
     if (!registry) {

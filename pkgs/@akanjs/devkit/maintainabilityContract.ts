@@ -5,6 +5,7 @@ import ts from "typescript";
 import { ComponentSizeScanner } from "./componentSizeScanner";
 import { ComponentWriteChainScanner } from "./componentWriteChainScanner";
 import { EndpointReach } from "./endpointReach";
+import { GitRevision } from "./gitRevision";
 import { MaintainabilityBaseline } from "./maintainabilityBaseline";
 import { MaintainabilityLimits } from "./maintainabilityLimits";
 import { MaintainabilityReport } from "./maintainabilityReport";
@@ -13,11 +14,12 @@ import { ServiceLoopCallScanner } from "./serviceLoopCallScanner";
 import { SignalMutationIndex } from "./signalMutationIndex";
 import { StoreAccessScanner } from "./storeAccessScanner";
 import { StoreWriteScanner } from "./storeWriteScanner";
+import { StructureScanner } from "./structureScanner";
 import { WritePlacementScanner } from "./writePlacementScanner";
 import { WritingActionIndex } from "./writingActionIndex";
 
 export interface MaintainabilityScope {
-  type: "app" | "lib";
+  type: "app" | "lib" | "pkg";
   name: string;
 }
 
@@ -27,13 +29,26 @@ export type MaintainabilityCommands = { [rule in MaintainabilityRuleId]?: readon
 
 export interface SizeViolation {
   kind: "size";
-  rule: "akan.size.file" | "akan.size.component";
+  rule: "akan.size.file" | "akan.size.component" | "akan.size.function";
   key: string;
   file: string;
   line: number;
   lineCount: number;
   maxLines: number;
   component?: string;
+  function?: string;
+  recorded?: number;
+}
+
+export interface ClassSizeViolation {
+  kind: "classSize";
+  rule: "akan.size.class";
+  key: string;
+  file: string;
+  line: number;
+  owner: string;
+  memberCount: number;
+  maxMembers: number;
   recorded?: number;
 }
 
@@ -92,10 +107,12 @@ export interface BaselineGrowth {
   count: number;
   committed?: number;
   reference: string;
+  measured?: boolean;
 }
 
 export type MaintainabilityViolation =
   | SizeViolation
+  | ClassSizeViolation
   | MultiWriteViolation
   | StoreAccessViolation
   | WritePlacementViolation
@@ -108,6 +125,8 @@ export class MaintainabilityContract {
   static readonly ruleIds = [
     "akan.size.file",
     "akan.size.component",
+    "akan.size.function",
+    "akan.size.class",
     "akan.store.multi-write",
     "akan.store.root-write-chain",
     "akan.component.write-chain",
@@ -121,6 +140,7 @@ export class MaintainabilityContract {
   readonly #workspaceRoot: string;
   readonly #scope: MaintainabilityScope;
   readonly #libNames: string[];
+  #tree: ReadonlyMap<string, string> | null = null;
 
   constructor(workspaceRoot: string, scope: MaintainabilityScope, libNames: string[] = []) {
     this.#workspaceRoot = workspaceRoot;
@@ -137,6 +157,7 @@ export class MaintainabilityContract {
   }
 
   async measure(): Promise<MaintainabilityViolation[]> {
+    if (this.#scope.type === "pkg") return await this.#measurePackage();
     const [signalFiles, storeFiles, serviceFiles] = await Promise.all([
       this.#reachedSources("lib/**/*.signal.ts"),
       this.#reachedSources("lib/**/*.store.ts"),
@@ -144,10 +165,7 @@ export class MaintainabilityContract {
     ]);
     const index = new WritingActionIndex(new SignalMutationIndex(signalFiles), storeFiles);
     const reach = new EndpointReach(signalFiles, serviceFiles);
-    const files = await MaintainabilityContract.#filesUnder(
-      path.join(this.#workspaceRoot, this.sysPath),
-      MaintainabilityContract.#measuredFiles,
-    );
+    const files = await this.#filesIn(this.sysPath, MaintainabilityContract.#measuredFiles);
     const violations = await Promise.all(files.map((file) => this.#measureFile(file, index, reach)));
     return violations.flat().sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line));
   }
@@ -168,12 +186,19 @@ export class MaintainabilityContract {
         const recorded = baseline.recordedOf(violation);
         return recorded === undefined ? violation : { ...violation, recorded };
       });
-    if (reference === null) return failures;
-    const lines = ((await this.#readBaseline()) ?? "").split(/\r?\n/);
-    const label = `${reference.ref}:${this.sysPath}/${MaintainabilityBaseline.fileName}`;
     //? Without fix the file on disk is what merges, so an entry it holds above the measured count is checked as written.
-    const growths = (fix ? tightened : baseline)
-      .grownFrom(MaintainabilityBaseline.parse(reference.text, label, { lenient: true }))
+    const working = fix ? tightened : baseline;
+    const source = `${reference.label}:${this.sysPath}/${MaintainabilityBaseline.fileName}`;
+    const committed =
+      reference.text !== null
+        ? MaintainabilityBaseline.parse(reference.text, source, { lenient: true })
+        : working.isEmpty
+          ? null
+          : await this.#measuredAt(reference.ref);
+    if (committed === null) return failures;
+    const lines = ((await this.#readBaseline()) ?? "").split(/\r?\n/);
+    const growths = working
+      .grownFrom(committed)
       .map(
         ({ rule, ...growth }): BaselineGrowth => ({
           kind: "baselineGrowth",
@@ -181,7 +206,8 @@ export class MaintainabilityContract {
           file: MaintainabilityBaseline.fileName,
           line: MaintainabilityContract.#lineOf(lines, rule, growth.key),
           debtRule: rule,
-          reference: reference.ref,
+          reference: reference.label,
+          ...(reference.text === null ? { measured: true } : {}),
           ...growth,
         }),
       )
@@ -206,6 +232,77 @@ export class MaintainabilityContract {
     return MaintainabilityReport.describe(this.sysPath, failures, commands);
   }
 
+  async #measurePackage() {
+    const files = (await this.#packageFiles()).filter(MaintainabilityLimits.isPackageSource);
+    const violations = await Promise.all(
+      files.map(async (file) => {
+        const workspaceFile = `${this.sysPath}/${file}`;
+        const content = await this.#read(workspaceFile);
+        return MaintainabilityContract.#measurePackageFile(file, this.#sourceOf(workspaceFile, content).sourceFile);
+      }),
+    );
+    return violations.flat();
+  }
+
+  static #measurePackageFile(file: string, sourceFile: ts.SourceFile) {
+    const violations: MaintainabilityViolation[] = [];
+    const maxLines = MaintainabilityLimits.packageFileMaxLines;
+    const lineCount = MaintainabilityLimits.lineCountOf(sourceFile.text);
+    if (lineCount > maxLines && !MaintainabilityLimits.isReexportBarrel(file, sourceFile.text))
+      violations.push({ kind: "size", rule: "akan.size.file", key: file, file, line: 1, lineCount, maxLines });
+    const { functions, classes } = new StructureScanner().measure(sourceFile);
+    const longFunctions = functions.filter(({ lineCount }) => lineCount > MaintainabilityLimits.functionMaxLines);
+    for (const { name, line, lineCount } of MaintainabilityContract.#numbered(longFunctions))
+      violations.push({
+        kind: "size",
+        rule: "akan.size.function",
+        key: `${file}#${name}`,
+        file,
+        line,
+        lineCount,
+        maxLines: MaintainabilityLimits.functionMaxLines,
+        function: name,
+      });
+    const largeClasses = classes.filter(({ memberCount }) => memberCount > MaintainabilityLimits.classMaxMembers);
+    for (const { name, line, memberCount } of MaintainabilityContract.#numbered(largeClasses))
+      violations.push({
+        kind: "classSize",
+        rule: "akan.size.class",
+        key: `${file}#${name}`,
+        file,
+        line,
+        owner: name,
+        memberCount,
+        maxMembers: MaintainabilityLimits.classMaxMembers,
+      });
+    return violations;
+  }
+
+  //? Only breaches are numbered: a short function sharing a recorded one's name never moves the recorded key.
+  static #numbered<Item extends { name: string }>(items: Item[]) {
+    const seen = new Map<string, number>();
+    return items.map((item) => {
+      const count = (seen.get(item.name) ?? 0) + 1;
+      seen.set(item.name, count);
+      return count === 1 ? item : { ...item, name: `${item.name}[${count}]` };
+    });
+  }
+
+  //? Git lists what the package holds without its ignored build output, caches and sample artifacts.
+  async #packageFiles() {
+    const listed = this.#tree
+      ? null
+      : await this.#git(["ls-files", "-z", "-co", "--exclude-standard", "--", `./${this.sysPath}`]);
+    if (listed === null) return await this.#filesIn(this.sysPath, "**/*.{ts,tsx}");
+    const prefix = `${this.sysPath}/`;
+    return listed
+      .split("\0")
+      .filter((file) => file.startsWith(prefix) && existsSync(path.join(this.#workspaceRoot, file)))
+      .map((file) => file.slice(prefix.length))
+      .filter((file) => !file.includes("node_modules/"))
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+
   async #measureFile(
     file: string,
     index: WritingActionIndex,
@@ -217,7 +314,7 @@ export class MaintainabilityContract {
     const isClientCode = MaintainabilityLimits.isClientCode(file);
     if (!maxLines && !isStore && !isClientCode) return [];
     const workspaceFile = `${this.sysPath}/${file}`;
-    const content = await readFile(path.join(this.#workspaceRoot, workspaceFile), "utf8");
+    const content = await this.#read(workspaceFile);
     const violations: MaintainabilityViolation[] = [];
     const lineCount = MaintainabilityLimits.lineCountOf(content);
     if (maxLines && lineCount > maxLines && !MaintainabilityLimits.isReexportBarrel(file, content))
@@ -303,17 +400,9 @@ export class MaintainabilityContract {
   async #reachedSources(pattern: string) {
     const roots = [this.sysPath, ...this.#libNames.map((libName) => `libs/${libName}`)];
     const files = await Promise.all(
-      roots.map(async (root) =>
-        (await MaintainabilityContract.#filesUnder(path.join(this.#workspaceRoot, root), pattern)).map(
-          (file) => `${root}/${file}`,
-        ),
-      ),
+      roots.map(async (root) => (await this.#filesIn(root, pattern)).map((file) => `${root}/${file}`)),
     );
-    return await Promise.all(
-      files
-        .flat()
-        .map(async (file) => this.#sourceOf(file, await readFile(path.join(this.#workspaceRoot, file), "utf8"))),
-    );
+    return await Promise.all(files.flat().map(async (file) => this.#sourceOf(file, await this.#read(file))));
   }
 
   #sourceOf(file: string, content: string): SourceFileInfo {
@@ -334,7 +423,21 @@ export class MaintainabilityContract {
   async #readReferenceBaseline() {
     const ref = await this.#referenceRef();
     const text = await this.#git(["show", `${ref}:./${this.sysPath}/${MaintainabilityBaseline.fileName}`]);
-    return text === null ? null : { ref: ref === "HEAD" ? ref : ref.slice(0, 12), text };
+    return { ref, label: ref === "HEAD" ? ref : ref.slice(0, 12), text };
+  }
+
+  //* With no baseline file at the reference, the debt its code already holds is the floor: none for a scope new to the
+  //* branch or one whose paid-off file was removed, and the breaches it had for a scope that adopts the gate here.
+  async #measuredAt(ref: string) {
+    if ((await this.#git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`])) === null) return null;
+    const roots = [this.sysPath, ...this.#libNames.map((libName) => `libs/${libName}`)];
+    const contract = new MaintainabilityContract(this.#workspaceRoot, this.#scope, this.#libNames);
+    contract.#tree = await new GitRevision(this.#workspaceRoot).filesAt(
+      ref,
+      (file) => /\.(tsx?|md)$/.test(file),
+      roots,
+    );
+    return MaintainabilityBaseline.of(await contract.measure());
   }
 
   //* A branch's own commits cannot be the reference: one that raises an entry would make the raise the new floor.
@@ -393,12 +496,24 @@ export class MaintainabilityContract {
     return Math.max(idx + 1, 1);
   }
 
-  static async #filesUnder(root: string, pattern: string) {
+  async #filesIn(root: string, pattern: string) {
+    const glob = new Bun.Glob(pattern);
+    const files = this.#tree
+      ? [...this.#tree.keys()]
+          .filter((file) => file.startsWith(`${root}/`))
+          .map((file) => file.slice(root.length + 1))
+          .filter((file) => glob.match(file))
+      : await MaintainabilityContract.#filesOnDisk(path.join(this.#workspaceRoot, root), glob);
+    return files.filter((file) => !file.includes("node_modules/")).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+
+  static async #filesOnDisk(root: string, glob: Bun.Glob) {
     if (!existsSync(root)) return [];
-    const files = await Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: root, onlyFiles: true }));
-    return files
-      .map((file) => file.split(path.sep).join("/"))
-      .filter((file) => !file.includes("node_modules/"))
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const files = await Array.fromAsync(glob.scan({ cwd: root, onlyFiles: true }));
+    return files.map((file) => file.split(path.sep).join("/"));
+  }
+
+  async #read(file: string) {
+    return this.#tree ? (this.#tree.get(file) ?? "") : await readFile(path.join(this.#workspaceRoot, file), "utf8");
   }
 }
