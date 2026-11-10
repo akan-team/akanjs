@@ -23,12 +23,11 @@ describe("LocalOrEdge", () => {
     });
   };
 
-  const linksOf = async (node: unknown): Promise<string[]> => {
-    if (Array.isArray(node)) return (await Promise.all(node.map(linksOf))).flat();
+  const linksOf = (node: unknown): string[] => {
+    if (Array.isArray(node)) return node.flatMap(linksOf);
     if (typeof node !== "object" || node === null || !("props" in node)) return [];
-    const { href, of, children } = node.props as { href?: string; of?: unknown; children?: unknown };
-    const drawn = typeof children === "function" ? (children as (value: unknown) => unknown)(await of) : children;
-    return [...(href ? [href] : []), ...(await linksOf(drawn))];
+    const { href, children } = node.props as { href?: string; children?: unknown };
+    return [...(href ? [href] : []), ...linksOf(children)];
   };
   const tripsLinks = async () => {
     const { default: render } = tripsPage.toRouteModule();
