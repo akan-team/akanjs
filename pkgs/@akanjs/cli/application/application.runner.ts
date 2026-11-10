@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
@@ -102,6 +102,13 @@ export interface IosReleaseOptions extends MobileTargetOptions, MobilePublicEnvO
 // Lazy, so the `akan start` hot path never loads the build, mobile and prompt stacks.
 const loadBuildRunner = async () => (await import("@akanjs/devkit/applicationBuildRunner")).ApplicationBuildRunner;
 const loadPrompts = async () => await import("@inquirer/prompts");
+const testFileName = /[._](test|spec)\.[cm]?[jt]sx?$/;
+//? `bun test` never scans a dot folder or node_modules, so a test file there does not count.
+const hasTestFile = (dir: string): boolean =>
+  readdirSync(dir, { withFileTypes: true }).some((entry) => {
+    if (entry.name.startsWith(".") || entry.name === "node_modules") return false;
+    return entry.isDirectory() ? hasTestFile(path.join(dir, entry.name)) : testFileName.test(entry.name);
+  });
 
 export class ApplicationRunner extends runner("application") {
   async createApplication(appName: string, workspace: Workspace, libs: string[] = []) {
@@ -327,11 +334,16 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       options,
     );
   }
+  #workspaceRootOf(exec: Exec) {
+    return exec instanceof SysExecutor || exec instanceof PkgExecutor ? exec.workspace.workspaceRoot : process.cwd();
+  }
+  #targetOf(exec: Exec) {
+    return path.relative(this.#workspaceRootOf(exec), exec.cwdPath).split(path.sep).join("/");
+  }
   // Bun takes an argument as a path only behind `./` or `/`; a bare one is a substring filter over every test file.
   resolveTestPaths(exec: Exec, files: string[]) {
-    const root =
-      exec instanceof SysExecutor || exec instanceof PkgExecutor ? exec.workspace.workspaceRoot : process.cwd();
-    const target = path.relative(root, exec.cwdPath).split(path.sep).join("/");
+    const root = this.#workspaceRootOf(exec);
+    const target = this.#targetOf(exec);
     const isInside = (relative: string) =>
       relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
     return files.map((file) => {
@@ -351,6 +363,13 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
   }
   async test(exec: Exec, testPaths: string[] = []) {
     const isSignalTarget = exec instanceof AppExecutor || exec instanceof LibExecutor;
+    if (!testPaths.length && !hasTestFile(exec.cwdPath)) {
+      const hint = isSignalTarget
+        ? " A signal test goes beside its module, as lib/<model>/<model>.signal.test.ts."
+        : "";
+      Logger.rawLog(`No *.test.ts or *.spec.ts file in ${this.#targetOf(exec)}, so no test ran.${hint}`);
+      return;
+    }
     const preloadPath = isSignalTarget ? await resolveSignalTestPreloadPath(exec) : null;
     const env = isSignalTarget
       ? {

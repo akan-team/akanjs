@@ -23,6 +23,7 @@ import {
   writeText,
 } from "@akanjs/devkit/testHelpers";
 import { DatabaseModes } from "akanjs/base";
+import { Logger } from "akanjs/common";
 import { ApplicationCommand } from "./application.command";
 import { ApplicationRunner } from "./application.runner";
 import { ApplicationScript } from "./application.script";
@@ -1140,6 +1141,7 @@ describe("ApplicationRunner mobile", () => {
 
 const runsPackageTests = async () => {
   const { pkg } = track(await createTempPackage());
+  await writeText(path.join(pkg.cwdPath, "src", "a.test.ts"), "");
   const runner = new ApplicationRunner();
   const spawn = mock(async () => "");
   pkg.spawn = spawn as never;
@@ -1161,6 +1163,7 @@ const runsSignalTargetTests = async () => {
     }),
   );
   await writeText(`${root}/node_modules/akanjs/test/signalTest.preload.ts`, "export {};\n");
+  await writeText(path.join(lib.cwdPath, "lib", "user", "user.signal.test.ts"), "");
   const runner = new ApplicationRunner();
   const spawn = mock(async () => "");
   lib.spawn = spawn as never;
@@ -1317,6 +1320,58 @@ describe("ApplicationRunner", () => {
     expect(() => runner.resolveTestPaths(app, ["lib/user/missing.test.ts"])).toThrow(
       "lib/user/missing.test.ts names no file or folder in apps/demo",
     );
+  });
+
+  test("an app with no test file says so and runs nothing, instead of failing in bun", async () => {
+    const { app } = track(await createTempApp("demo"));
+    await writeText(path.join(app.cwdPath, "lib", "user", "user.signal.ts"), "");
+    await writeText(path.join(app.cwdPath, "node_modules", "dep", "dep.test.ts"), "");
+    await writeText(path.join(app.cwdPath, ".cache", "x.test.ts"), "");
+    const spawn = mock(async () => "");
+    app.spawn = spawn as never;
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await new ApplicationRunner().test(app);
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(printed).toHaveBeenCalledWith(
+      "No *.test.ts or *.spec.ts file in apps/demo, so no test ran. A signal test goes beside its module, as lib/<model>/<model>.signal.test.ts.",
+    );
+  });
+
+  test("a package with no test file says so without the signal test hint", async () => {
+    const { pkg } = track(await createTempPackage());
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await new ApplicationRunner().test(pkg);
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(printed).toHaveBeenCalledWith("No *.test.ts or *.spec.ts file in pkgs/@sample/tool, so no test ran.");
+  });
+
+  test("a test file under any of bun's suffixes still runs bun", async () => {
+    for (const name of ["a.spec.tsx", "a_test.js", "a_spec.mts"]) {
+      const { pkg } = track(await createTempPackage());
+      await writeText(path.join(pkg.cwdPath, "src", "deep", name), "");
+      const spawn = mock(async () => "");
+      pkg.spawn = spawn as never;
+
+      await new ApplicationRunner().test(pkg);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test("named paths reach bun even when the target has no test file, so bun still fails on them", async () => {
+    const { pkg } = track(await createTempPackage());
+    await writeText(path.join(pkg.cwdPath, "src", "a.ts"), "");
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+    const runner = new ApplicationRunner();
+
+    await runner.test(pkg, runner.resolveTestPaths(pkg, ["src"]));
+    expect(spawn).toHaveBeenCalledWith("bun", ["test", "--isolate", "./src"], { stdio: "inherit" });
   });
 
   test("passes the resolved test paths to bun after its own flags", async () => {
