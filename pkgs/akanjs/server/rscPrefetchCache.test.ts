@@ -232,6 +232,31 @@ describe("RscPrefetchCache", () => {
     expect(cache.queuedCount).toBe(0);
   });
 
+  test("keeps a page two links wait on queued until both have withdrawn, each only once", async () => {
+    const { cache, requests, hrefs } = harness({ maxConcurrent: 1 });
+    cache.request("/busy", "acct");
+    const withdrawFirst = cache.request("/shared", "acct", "low");
+    const withdrawSecond = cache.request("/shared", "acct", "low");
+    cache.request("/after", "acct", "low");
+
+    withdrawSecond();
+    withdrawSecond();
+    expect(cache.queuedCount).toBe(2);
+    requests[0]?.finish();
+    await sleep(0);
+    expect(hrefs()).toEqual(["/busy", "/shared"]);
+
+    const withdrawThird = cache.request("/queued", "acct", "low");
+    const withdrawFourth = cache.request("/queued", "acct", "low");
+    withdrawThird();
+    withdrawFourth();
+    withdrawFirst();
+    requests[1]?.finish();
+    await sleep(0);
+    expect(hrefs()).toEqual(["/busy", "/shared", "/after"]);
+    expect(cache.queuedCount).toBe(0);
+  });
+
   test("prune forgets what is queued and what has expired, and keeps a page still fresh", async () => {
     const { cache, requests, hrefs, advance } = harness({ ttlMs: 1000, maxConcurrent: 2 });
     cache.request("/old", "acct");

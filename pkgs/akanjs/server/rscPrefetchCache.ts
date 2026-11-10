@@ -10,6 +10,7 @@ interface RscPrefetchEntry {
 
 interface RscPrefetchQueued {
   account: string;
+  holders: number;
 }
 
 export interface RscPrefetched {
@@ -78,19 +79,27 @@ export class RscPrefetchCache {
     this.#sweep();
     if (this.has(href, account)) return RscPrefetchCache.#none;
     if (priority === "low" && this.#high.has(href)) return RscPrefetchCache.#none;
-    this.#high.delete(href);
-    this.#low.delete(href);
     const queue = priority === "high" ? this.#high : this.#low;
-    if (priority === "low" && queue.size >= this.#maxQueued) return RscPrefetchCache.#none;
-    const queued: RscPrefetchQueued = { account };
-    queue.set(href, queued);
-    for (const oldest of queue.keys()) {
-      if (queue.size <= this.#maxQueued) break;
-      queue.delete(oldest);
+    const held = queue.get(href);
+    const queued: RscPrefetchQueued = held?.account === account ? held : { account, holders: 0 };
+    if (priority === "high" || queued !== held) {
+      this.#high.delete(href);
+      this.#low.delete(href);
+      if (priority === "low" && queue.size >= this.#maxQueued) return RscPrefetchCache.#none;
+      queue.set(href, queued);
+      for (const oldest of queue.keys()) {
+        if (queue.size <= this.#maxQueued) break;
+        queue.delete(oldest);
+      }
     }
+    queued.holders += 1;
     this.#pump();
+    let withdrawn = false;
     return () => {
-      if (queue.get(href) === queued) queue.delete(href);
+      if (withdrawn) return;
+      withdrawn = true;
+      queued.holders -= 1;
+      if (queued.holders === 0 && queue.get(href) === queued) queue.delete(href);
     };
   }
 
