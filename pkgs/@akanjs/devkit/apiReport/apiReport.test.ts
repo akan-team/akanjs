@@ -476,6 +476,20 @@ describe("ApiReportPolicy", () => {
     expect((await policy.check("main"))?.bumped).toBe(false);
   });
 
+  test("counts a changeset added in place of a similar one from the base", async () => {
+    const note = "Every app's client declaration names the Err type instead of spelling out its class.\n".repeat(4);
+    const { root, policy } = await makeRepo(
+      { "demo.api.md": reportOf("export declare const a: number;", "export declare const b: number;") },
+      { ".changeset/older.md": `---\n"akanjs": patch\n---\n\n${note}` },
+    );
+    await writeText(path.join(root, "api-report/demo/demo.api.md"), reportOf("export declare const a: number;"));
+    await rm(path.join(root, ".changeset/older.md"));
+    await writeText(path.join(root, ".changeset/newer.md"), `---\n"akanjs": minor\n---\n\n${note}`);
+    git(root, "add", "-A");
+    git(root, "commit", "-q", "-m", "drop b");
+    expect((await policy.check("main"))?.bumped).toBe(true);
+  });
+
   test("answers null for a ref that names no commit", async () => {
     const { policy } = await makeRepo({});
     expect(await policy.check("origin/missing")).toBeNull();
