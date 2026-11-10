@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Logger, type LogRecord } from "akanjs/common";
 import { grantFile } from "../../@akanjs/native/packages/desktop/src/grants.ts";
 import { createDesktopServer } from "../../@akanjs/native/packages/desktop/src/server.ts";
 import type { AkanIpcMessage } from "../service/ipcTypes";
@@ -10,14 +11,25 @@ import { NativeFile } from "./nativeFile";
 const home = mkdtempSync(path.join(tmpdir(), "akan-native-file-"));
 const realSend = process.send;
 const realMode = NativeFile.operationMode;
+const realTimeout = NativeFile.timeoutMs;
+const warnings: LogRecord[] = [];
+const removeSink = Logger.addSink(
+  ({ record }) => {
+    if (record.name === "NativeFile") warnings.push(record);
+  },
+  { minLevel: "warn" },
+);
 beforeAll(() => {
   process.env.AKAN_NATIVE_DEV_GRANT_KEY = path.join(home, "dev-file-grant.key");
 });
 afterEach(() => {
   process.send = realSend;
   NativeFile.operationMode = realMode;
+  NativeFile.timeoutMs = realTimeout;
+  warnings.length = 0;
 });
 afterAll(() => {
+  removeSink();
   delete process.env.AKAN_NATIVE_DEV_GRANT_KEY;
   rmSync(home, { recursive: true, force: true });
 });
@@ -49,12 +61,24 @@ describe("NativeFile", () => {
     expect(asked).toEqual(["g1"]);
     await expect(NativeFile.resolve("g1", "write")).rejects.toThrow("granted to read, not to write");
     await expect(NativeFile.resolve("forged", "read")).rejects.toThrow("no file was granted under this id");
+    await expect(NativeFile.resolve("g1", "write")).rejects.toMatchObject({
+      code: "fileGrantRefused",
+      statusCode: 403,
+    });
+    await expect(NativeFile.resolve("forged", "read")).rejects.toMatchObject({ code: "fileGrantRefused" });
+    expect(warnings.map((record) => record.message)).toContain(
+      "File grant refused: The file was granted to read, not to write.",
+    );
   });
 
   test("keeps a caller inside a folder grant", async () => {
     shell({ f1: { path: "/Users/me/Footage", mode: "folder" } });
     expect(await NativeFile.resolveIn("f1", "day1/a.mp4")).toBe(path.resolve("/Users/me/Footage", "day1/a.mp4"));
     await expect(NativeFile.resolveIn("f1", "../../.ssh/id_ed25519")).rejects.toThrow("outside the folder");
+    await expect(NativeFile.resolveIn("f1", "../../.ssh/id_ed25519")).rejects.toMatchObject({
+      code: "fileGrantRefused",
+      statusCode: 403,
+    });
   });
 
   test("a name that starts with two dots is inside, and a link in the folder cannot reach out of it", async () => {
@@ -73,11 +97,40 @@ describe("NativeFile", () => {
     await expect(NativeFile.resolveIn("f2", "link/secret.txt")).rejects.toThrow("outside the folder");
     await expect(NativeFile.resolveIn("f2", "link/new/file.txt")).rejects.toThrow("outside the folder");
     await expect(NativeFile.resolveIn("f2", "dangling")).rejects.toThrow("a link to nothing");
+    await expect(NativeFile.resolveIn("f2", "dangling")).rejects.toMatchObject({
+      code: "fileGrantRefused",
+      statusCode: 403,
+    });
+    expect(warnings.some((record) => record.message.includes("outside the folder the user granted"))).toBe(true);
+  });
+
+  test("refuses a path the folder cannot be followed through as it refuses one outside it, not as a crash", async () => {
+    const granted = path.join(home, "plain");
+    mkdirSync(granted, { recursive: true });
+    writeFileSync(path.join(granted, "notes.txt"), "notes");
+    shell({ f3: { path: granted, mode: "folder" } });
+
+    const refusal = await NativeFile.resolveIn("f3", "notes.txt/x").catch((error: unknown) => error);
+    expect(refusal).toMatchObject({ code: "fileGrantRefused", statusCode: 403 });
+    expect((refusal as Error).cause).toMatchObject({ code: "ENOTDIR" });
+  });
+
+  test("answers 503 while the desktop app does not answer for a grant", async () => {
+    process.send = (() => true) as typeof process.send;
+    NativeFile.timeoutMs = 20;
+    await expect(NativeFile.resolve("g1", "read")).rejects.toMatchObject({
+      code: "fileGrantUnavailable",
+      statusCode: 503,
+    });
   });
 
   test("resolves nothing outside a desktop app", async () => {
     process.send = undefined;
     await expect(NativeFile.resolve("g1", "read")).rejects.toThrow("only inside the desktop app that gave it");
+    await expect(NativeFile.resolve("g1", "read")).rejects.toMatchObject({
+      code: "desktopAppRequired",
+      statusCode: 500,
+    });
   });
 
   test("the carried server gets the path from the real shell over its IPC channel", async () => {
@@ -123,10 +176,21 @@ process.send({ type: "ready", pid: process.pid });`,
     const [head, mode, encoded] = grant.split(":");
     const elsewhere = `${head}:${mode}:${Buffer.from("/etc/passwd").toString("base64url")}:${grant.split(":")[3]}`;
     await expect(NativeFile.resolve(elsewhere, "read")).rejects.toThrow("not signed by this computer's dev build");
+    await expect(NativeFile.resolve(elsewhere, "read")).rejects.toMatchObject({ code: "fileGrantRefused" });
+    await expect(NativeFile.resolve(`${head}:copy:${encoded}:x`, "read")).rejects.toMatchObject({
+      code: "invalidFileGrant",
+      statusCode: 400,
+    });
     await expect(NativeFile.resolve(`${head}:write:${encoded}:${grant.split(":")[3]}`, "write")).rejects.toThrow(
       "not signed",
     );
     NativeFile.operationMode = () => "edge";
     await expect(NativeFile.resolve(grant, "read")).rejects.toThrow("only on akan start");
+    await expect(NativeFile.resolve(grant, "read")).rejects.toMatchObject({
+      code: "fileGrantRefused",
+      statusCode: 403,
+    });
+    expect(warnings.some((record) => record.message.includes("not signed by this computer's dev build"))).toBe(true);
+    expect(warnings.every((record) => !record.message.includes(grant.split(":")[3] ?? "-"))).toBe(true);
   });
 });

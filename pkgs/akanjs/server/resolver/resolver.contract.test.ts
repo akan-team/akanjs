@@ -716,6 +716,15 @@ describe("DatabaseResolver declaration contracts", () => {
   });
 });
 
+const thrownBy = (run: () => unknown): unknown => {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  return null;
+};
+
 const cascadeChildInput = via((f) => ({ label: f(String) }));
 const cascadeChildObject = via(cascadeChildInput, () => ({}));
 const cascadeChildLight = via(cascadeChildObject, ["label"] as const, () => ({}));
@@ -1556,6 +1565,9 @@ describe("SignalResolver declaration contracts", () => {
     expect(() =>
       SignalResolver.mergeHttpRoutes(table, { "/rest/v1/item": { POST: () => new Response("write") } }),
     ).toThrow("Route conflict: POST /rest/v1/item is declared more than once");
+    expect(
+      thrownBy(() => SignalResolver.mergeHttpRoutes(table, { "/rest/v1/item": { POST: () => new Response("write") } })),
+    ).toMatchObject({ code: "routeConflict", statusCode: 500 });
   });
 
   test("guards a pubsub subscribe and revokes the room once the socket loses access", async () => {
@@ -2524,6 +2536,7 @@ describe("SignalResolver declaration contracts", () => {
     const member = makeWs();
     member.data.account = { role: "member" };
     await expect(route(member, ["news"], "subscribe")).rejects.toThrow(/paused while "category" carries a value/);
+    await expect(route(member, ["news"], "subscribe")).rejects.toMatchObject({ code: "livePaused", statusCode: 409 });
     expect(queried).toEqual([]);
   });
 
@@ -2570,6 +2583,7 @@ describe("SignalResolver declaration contracts", () => {
       })) {};
 
     expect(() => SignalResolver.resolveSlice(build(["nope"]))).toThrow(/not one of its arguments/);
+    expect(thrownBy(() => SignalResolver.resolveSlice(build(["nope"])))).toMatchObject({ code: "invalidSignal" });
     expect(() => SignalResolver.resolveSlice(build(["category"]))).toThrow(/always present/);
     expect(() => SignalResolver.resolveSlice(build(["text"]))).not.toThrow();
   });
@@ -2703,6 +2717,9 @@ describe("SignalResolver declaration contracts", () => {
       delete process.env.AKAN_PUBLIC_ENV;
       delete process.env.AKAN_PUBLIC_OPERATION_MODE;
       expect(() => resolveWith(OpenEndpoint, new OpenEndpoint())).toThrow("openRead declares no guards");
+      expect(thrownBy(() => resolveWith(OpenEndpoint, new OpenEndpoint()))).toMatchObject({
+        code: "unguardedEndpoint",
+      });
       process.env.AKAN_UNGUARDED_ENDPOINTS = "open";
       expect(() => resolveWith(OpenEndpoint, new OpenEndpoint())).not.toThrow();
     } finally {

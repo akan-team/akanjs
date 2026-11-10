@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { getEnv } from "../../base/baseEnv";
 import { Ed25519Key } from "../ed25519Key";
@@ -69,7 +70,10 @@ export class OpsRoute {
       //* A shared key would let whoever holds the machine signing key mint ops tokens as well.
       const machineKey = OpsRoute.#machinePublicKey();
       if (machineKey && Ed25519Key.rawPublic(machineKey) === Ed25519Key.rawPublic(key))
-        throw new Error("AKAN_OPS_PUBLIC_KEY is also the machine token key; give the ops channel a key of its own");
+        throw new AkanError(
+          "invalidConfig",
+          "AKAN_OPS_PUBLIC_KEY is also the machine token key; give the ops channel a key of its own",
+        );
       verifier = new OpsTokenVerifier(key, OpsTokenVerifier.audienceOf(appName, environment));
     } catch (error) {
       //* An edge keeps serving its residents with the ops channel off rather than crash-looping over a bad key.

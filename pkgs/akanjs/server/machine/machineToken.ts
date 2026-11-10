@@ -1,5 +1,5 @@
 import { createPublicKey, type KeyObject } from "node:crypto";
-import { getEnv } from "akanjs/base";
+import { AkanError, getEnv } from "akanjs/base";
 import { bearerTokenOf, Logger } from "akanjs/common";
 import type { MachineIdentity } from "akanjs/signal";
 import { Ed25519Key } from "../ed25519Key";
@@ -79,7 +79,11 @@ export class MachineToken {
 
   static issue(identity: MachineIdentity, { expiresAt, audience }: MachineTokenIssueOptions = {}): string {
     const { privateKey } = MachineToken.#keyPair();
-    if (!privateKey) throw new Error("MachineToken.issue needs AKAN_MACHINE_PRIVATE_KEY on the server that issues it");
+    if (!privateKey)
+      throw new AkanError(
+        "invalidConfig",
+        "MachineToken.issue needs AKAN_MACHINE_PRIVATE_KEY on the server that issues it",
+      );
     MachineToken.#assertIdentity(identity);
     const iat = Math.floor(Date.now() / 1000);
     const expiry = expiresAt ? ("toDate" in expiresAt ? expiresAt.toDate() : expiresAt) : null;
@@ -148,6 +152,9 @@ export class MachineToken {
 
   static #assertIdentity(identity: MachineIdentity) {
     if (!MachineToken.#isIdentity(identity))
-      throw new Error("A machine identity is { kind, id } as non-empty strings and version as an integer from 0");
+      throw new AkanError(
+        "invalidIdentity",
+        "A machine identity is { kind, id } as non-empty strings and version as an integer from 0",
+      );
   }
 }

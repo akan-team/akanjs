@@ -1,4 +1,5 @@
 import {
+  AkanError,
   Any,
   type BackendEnv,
   Binary,
@@ -55,6 +56,8 @@ import type {
 import { MachineToken } from "../machine/machineToken";
 import type { RoomReplay } from "../routing/roomReplay";
 import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "../types";
+import { invalidSignal as invalid } from "./invalidSignal";
+import { LivePause } from "./livePause";
 import { PendingSubscribes } from "./PendingSubscribes";
 import { websocketOf } from "./websocketOf";
 
@@ -64,6 +67,7 @@ interface LiveDelivery {
   roomId: string;
   payload: LiveEventPayload;
 }
+
 type HttpMethodRoutes = Record<string, (req: Bun.BunRequest) => Response | Promise<Response | undefined> | undefined>;
 
 export class SignalResolver {
@@ -122,7 +126,7 @@ export class SignalResolver {
     const internalMeta = serverSignalCls[INTERNAL_META] as { [key: string]: InternalInfo };
     const websocket = websocketOf(registry);
     Object.entries(endpointMeta).forEach(([key, endpointInfo]) => {
-      if (endpointInfo.type !== "pubsub") throw new Error(`Endpoint ${key} is not a pubsub endpoint`);
+      if (endpointInfo.type !== "pubsub") throw invalid(`Endpoint ${key} is not a pubsub endpoint`);
       const isBinaryFrame = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
       if (isBinaryFrame && endpointInfo.signalOption.backpressure !== "queue") SignalResolver.#coalescingRooms.add(key);
       let warnedRawBytes = false;
@@ -150,7 +154,7 @@ export class SignalResolver {
           }
           if (resolvedData === null || resolvedData === undefined) {
             if (!endpointInfo.returns.nullable && endpointInfo.returns.returnRef !== Any)
-              throw new Error(
+              throw invalid(
                 `pubsub ${key} published ${resolvedData}, but its return is not nullable: publish a value, or declare { nullable: true } and publish null`,
               );
             websocket.publish(roomId, null);
@@ -172,7 +176,7 @@ export class SignalResolver {
       });
     });
     Object.entries(internalMeta).forEach(([key, internalInfo]) => {
-      if (internalInfo.type !== "process") throw new Error(`Internal ${key} is not a process internal`);
+      if (internalInfo.type !== "process") throw invalid(`Internal ${key} is not a process internal`);
       const argLength = internalInfo.args.length;
       Object.assign(serverSignalCls.prototype, {
         [key]: async function (this: ServerSignal, ...args: [...args: any, jobOptions?: AkanJobOptions]) {
@@ -204,7 +208,7 @@ export class SignalResolver {
           __databaseModel: { __store: DocumentStore };
         }
       | undefined;
-    if (!service) throw new Error(`Live slice on "${refName}" has no service to listen to`);
+    if (!service) throw new AkanError("notRegistered", `Live slice on "${refName}" has no service to listen to`);
     const store = service.__databaseModel.__store;
     const websocket = websocketOf(registry);
     const route: LiveRoute = async (next, previous) => {
@@ -263,7 +267,7 @@ export class SignalResolver {
       }
       switch (internalInfo.type) {
         case "process": {
-          if (!internalInfo.execFn) throw new Error(`Exec function is not set for ${key}`);
+          if (!internalInfo.execFn) throw invalid(`Exec function is not set for ${key}`);
           const execFn = internalInfo.execFn.bind(internal);
           // Queue adaptors pass only the job; spread `job.data` back onto the msg args so exec(...msgArgs, job) holds.
           const { onFailed } = internalInfo.signalOption;
@@ -291,8 +295,8 @@ export class SignalResolver {
           );
           break;
         case "interval":
-          if (!internalInfo.signalOption.scheduleTime) throw new Error(`Schedule time is not set for ${key}`);
-          if (!internalInfo.execFn) throw new Error(`Exec function is not set for ${key}`);
+          if (!internalInfo.signalOption.scheduleTime) throw invalid(`Schedule time is not set for ${key}`);
+          if (!internalInfo.execFn) throw invalid(`Exec function is not set for ${key}`);
           internal.schedule.registerInterval(
             key,
             internalInfo.signalOption.scheduleTime,
@@ -301,8 +305,8 @@ export class SignalResolver {
           );
           break;
         case "timeout":
-          if (!internalInfo.signalOption.scheduleTime) throw new Error(`Schedule time is not set for ${key}`);
-          if (!internalInfo.execFn) throw new Error(`Exec function is not set for ${key}`);
+          if (!internalInfo.signalOption.scheduleTime) throw invalid(`Schedule time is not set for ${key}`);
+          if (!internalInfo.execFn) throw invalid(`Exec function is not set for ${key}`);
           internal.schedule.registerTimeout(
             key,
             internalInfo.signalOption.scheduleTime,
@@ -310,8 +314,8 @@ export class SignalResolver {
           );
           break;
         case "cron":
-          if (!internalInfo.signalOption.scheduleCron) throw new Error(`Schedule cron is not set for ${key}`);
-          if (!internalInfo.execFn) throw new Error(`Exec function is not set for ${key}`);
+          if (!internalInfo.signalOption.scheduleCron) throw invalid(`Schedule cron is not set for ${key}`);
+          if (!internalInfo.execFn) throw invalid(`Exec function is not set for ${key}`);
           internal.schedule.registerCron(
             key,
             internalInfo.signalOption.scheduleCron,
@@ -386,7 +390,7 @@ export class SignalResolver {
   static resolveSlice(sliceCls: SliceCls): EndpointCls {
     const sliceMeta = sliceCls[SLICE_META] as { [key: string]: SliceInfo };
     const cnst = sliceCls.srv.cnst;
-    if (!cnst) throw new Error("Constant is not set for slice");
+    if (!cnst) throw invalid("Constant is not set for slice");
     const refName = cnst.refName;
     const serviceName = moduleNames(refName).service;
     const names = modelNames(refName);
@@ -394,7 +398,7 @@ export class SignalResolver {
     // Unchecked, an array fails deep in query compilation as the opaque "Unknown document field path: 0".
     const assertSliceQuery = (query: unknown, key: string) => {
       if (Array.isArray(query))
-        throw new Error(
+        throw invalid(
           `Slice "${refName}.${key}" exec returned an array instead of a query descriptor. ` +
             `Return a query from the slice's service (e.g. this.${refName}Service.queryBy...(...)), ` +
             `not an executed list (listBy.../findMany...), which resolves to an array.`,
@@ -439,12 +443,12 @@ export class SignalResolver {
         // The live exec returns the query itself: the router tests each write against it for room membership.
         if (sliceInfo.liveOption) {
           if (!key)
-            throw new Error(
+            throw invalid(
               `The root slice of "${refName}" cannot declare .live(): it is the admin CRUD API, guarded by Admin, ` +
                 `and opening it would put every model on a live socket by default.`,
             );
           SignalResolver.#assertLiveSort(refName, key, sliceInfo);
-          SignalResolver.#assertLivePauseOn(refName, key, sliceInfo);
+          LivePause.assertDeclared(refName, key, sliceInfo);
           const liveKey = namesOfSlice.live;
           // The list's own guards (a room delivers its rows); `getGuards` would fail closed: rooms carry no doc id.
           const liveBuilder = (builder as any).pubsub(Any, {
@@ -465,7 +469,7 @@ export class SignalResolver {
             .exec(async function (this: any, ...requestArgs: any) {
               const args = requestArgs.slice(0, argLength);
               // Checked here too: a client bundle older than the pauseOn declaration would still subscribe.
-              SignalResolver.#assertNotPaused(liveKey, sliceInfo, args);
+              LivePause.assertNotPaused(liveKey, sliceInfo, args);
               const internalArgs = requestArgs.slice(argLength);
               return assertSliceQuery(
                 await sliceInfo.execFn?.apply(this, [...args, ...internalArgs, documentQueryHelper]),
@@ -543,11 +547,11 @@ export class SignalResolver {
     for (const sortKey of sliceInfo.liveOption?.sort ?? []) {
       const sort = getFilterSortByKey(sliceInfo.filter, sortKey);
       if (!sort)
-        throw new Error(`Live slice "${refName}.${key}" declares sort "${sortKey}", which the model does not have.`);
+        throw invalid(`Live slice "${refName}.${key}" declares sort "${sortKey}", which the model does not have.`);
       for (const path of Object.keys(sort)) {
         if (baseDocumentColumns.has(path)) continue;
         if (!(path in lightFields))
-          throw new Error(
+          throw invalid(
             `Live slice "${refName}.${key}" declares sort "${sortKey}" on "${path}", which is not in ` +
               `Light${capitalize(refName)}. A subscriber cannot order by a field it never receives.`,
           );
@@ -559,31 +563,6 @@ export class SignalResolver {
             `those, or leave "${sortKey}" out of .live({ sort }) so the list refetches when a row arrives.`,
         );
       }
-    }
-  }
-  static #assertNotPaused(key: string, sliceInfo: SliceInfo, args: unknown[]) {
-    for (const name of sliceInfo.liveOption?.pauseOn ?? []) {
-      const idx = sliceInfo.args.findIndex((arg) => arg.name === name);
-      if (idx < 0 || args[idx] == null) continue;
-      throw new Error(
-        `Live room "${key}" is paused while "${name}" carries a value: the slice declared it in ` +
-          `.live({ pauseOn }), so this window updates by refetching instead of subscribing.`,
-      );
-    }
-  }
-  static #assertLivePauseOn(refName: string, key: string, sliceInfo: SliceInfo) {
-    for (const name of sliceInfo.liveOption?.pauseOn ?? []) {
-      const arg = sliceInfo.args.find((candidate) => candidate.name === name);
-      if (!arg)
-        throw new Error(
-          `Live slice "${refName}.${key}" declares pauseOn "${name}", which is not one of its arguments ` +
-            `(${sliceInfo.args.map((candidate) => candidate.name).join(", ") || "none"}).`,
-        );
-      if (!arg.option?.nullable)
-        throw new Error(
-          `Live slice "${refName}.${key}" declares pauseOn "${name}", which is a required ${arg.type} and is ` +
-            `therefore always present — the room would never open. Only a nullable argument can pause live sync.`,
-        );
     }
   }
   // Routing reads it only for array paths: a bare value on an array field means membership, not equality.
@@ -635,7 +614,8 @@ export class SignalResolver {
     const existing = table[path];
     const conflict = Object.keys(handlers).find((method) => !!existing?.[method]);
     if (conflict)
-      throw new Error(
+      throw new AkanError(
+        "routeConflict",
         `Route conflict: ${conflict} ${path} is declared more than once${owner ? ` (by "${owner}")` : ""}.`,
       );
     table[path] = { ...existing, ...handlers };
@@ -803,7 +783,7 @@ export class SignalResolver {
             });
           break;
         default:
-          throw new Error(`Endpoint ${key} is not a valid endpoint type`);
+          throw invalid(`Endpoint ${key} is not a valid endpoint type`);
       }
       SignalResolver.logger.verbose(`Resolved endpoint ${endpointInfo.type} ${path} for ${key}`);
     });
@@ -826,7 +806,8 @@ export class SignalResolver {
       SignalResolver.logger.warn(`${names}, so every call to them is refused. ${fix}`);
       return;
     }
-    throw new Error(
+    throw new AkanError(
+      "unguardedEndpoint",
       `${names}, so every call to them would be refused. ${fix} AKAN_UNGUARDED_ENDPOINTS=open answers them as before.`,
     );
   }

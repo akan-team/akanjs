@@ -6,7 +6,14 @@ import {
   type ImageResultValue,
   PrimitiveRegistry,
 } from "akanjs/base";
-import { FailureCode, interpolateTranslation, Logger, MCP_FAILURE_META, type McpFailure } from "akanjs/common";
+import {
+  FailureCode,
+  interpolateTranslation,
+  isGuardRefusal,
+  Logger,
+  MCP_FAILURE_META,
+  type McpFailure,
+} from "akanjs/common";
 import { agentRead, ConstantRegistry, mask } from "akanjs/constant";
 import { DictionaryLookup } from "akanjs/dictionary";
 import { NoDocumentError } from "akanjs/document";
@@ -79,8 +86,10 @@ export class McpDispatcher {
       };
     } catch (error) {
       const status = McpDispatcher.#statusOf(error);
-      // No credential: a 401 challenge, as only the client can fix it. A refused one: a tool error the model acts on.
-      if ((status === 401 || status === 403) && !req.headers.get("authorization")) throw new McpAuthRequiredError();
+      // No credential: a guard's 401/403 is a challenge, as only the client can fix it. A refused credential, a 403
+      // the server does not forward (a denied file grant), or a vendor SDK's 403 that HTTP answers 500, is a tool error.
+      const refusal = (status === 401 || status === 403) && isGuardRefusal(error);
+      if (refusal && !req.headers.get("authorization")) throw new McpAuthRequiredError();
       const failure = McpDispatcher.#failure(
         this.#message(error, status, exposed.refName),
         McpDispatcher.#codeOf(error, status),
@@ -92,11 +101,12 @@ export class McpDispatcher {
 
   // The `Err` a browser's own call would have answered with, in the shape its own `toJSON()` gives the HTTP path, so
   // the view toasts it in the user's language. A refusal keeps only its status, which picks the view's wording: its
-  // message names the guard structure. Nothing that is not an `Err`: the HTTP path generalizes the rest too.
+  // message names the guard structure. Any other coded failure as the HTTP path generalizes it, with its code.
   static #restorable(error: unknown, status: number | undefined) {
     if (!status || status >= 500) return null;
-    if (status === 401 || status === 403) return { statusCode: status };
-    return isExceptionLike(error) ? error.toJSON() : null;
+    if (isGuardRefusal(error)) return { statusCode: status };
+    if (isExceptionLike(error)) return error.toJSON();
+    return AkanError.is(error) && !(error instanceof McpArgumentError) ? SignalFailure.generalized(error) : null;
   }
 
   // A UX filter, never the access decision: entries without an account guard stay listed and are stopped at call time.
@@ -180,11 +190,11 @@ export class McpDispatcher {
     // Restated here, not at the throw site: internal callers match on its `No Document (x): <id>` wording.
     if (error instanceof NoDocumentError) return `No ${refName} found for the arguments given.`;
     if (status && status < 500) {
-      // Security: every refusal reads the same — a guard's own message names the authorization structure.
-      if (status === 401 || status === 403) return "You are not permitted to perform this action.";
       //? HTTP sends such an error's code and status only; an McpArgumentError is written for the agent to read.
       if (AkanError.is(error) && !error.forwarded && !(error instanceof McpArgumentError))
         return `${AkanError.reasonOf(status)}: ${error.code}`;
+      // Security: every refusal reads the same — a guard's own message names the authorization structure.
+      if (status === 401 || status === 403) return "You are not permitted to perform this action.";
       const raw = error instanceof Error ? error.message : String(error);
       // A domain `Err` carries its dictionary key as the message; anything else is already prose.
       this.#lookup ??= new DictionaryLookup(this.#props.language);
@@ -198,13 +208,13 @@ export class McpDispatcher {
     return "The server failed to complete this request.";
   }
 
-  // Named as its HTTP body names it: a forwarded error by its dictionary key, else by its code. A refusal by its status
-  // alone, since a guard's own code names the authorization structure as its message would. Security: a 5xx's text is
+  // Named as its HTTP body names it: a forwarded error by its dictionary key, else by its code. A forwarded refusal by
+  // its status alone, since a guard's own code names the authorization structure as its message would. Security: a 5xx's text is
   // redacted, so its code is a dictionary key or this server's own `AkanError` code, never a duck-typed body's `code`.
   static #codeOf(error: unknown, status: number | undefined): McpFailure {
     if (!status) return McpDispatcher.#crashed;
     const byStatus = { code: AkanError.codeOfStatus(status), statusCode: status };
-    if (status === 401 || status === 403) return byStatus;
+    if (isGuardRefusal(error)) return byStatus;
     const wire = isExceptionLike(error) ? (error.toJSON() as { error?: unknown; code?: unknown }) : {};
     if (FailureCode.isKey(wire.error)) return { code: wire.error, statusCode: status };
     if (AkanError.is(error) && FailureCode.isToken(error.code)) return { code: error.code, statusCode: status };

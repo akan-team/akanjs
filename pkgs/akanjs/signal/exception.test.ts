@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { AkanError } from "akanjs/base";
+import { isGuardRefusal } from "akanjs/common";
 import { InvalidInputError } from "akanjs/constant";
 import { FilterQueryError, NoDocumentError } from "akanjs/document";
+import { restoreRemoteError } from "../fetch/client/remoteError";
 import { Exception, isExceptionLike } from "./exception";
 
 describe("Exception", () => {
@@ -51,5 +53,30 @@ describe("isExceptionLike", () => {
 
     expect(isExceptionLike(restored)).toBe(true);
     expect(isExceptionLike(new Error("SQLITE_ERROR: no such column"))).toBe(false);
+  });
+});
+
+describe("isGuardRefusal", () => {
+  test("reads a 401/403 as a guard's refusal unless it is known to be one the server kept", () => {
+    expect(isGuardRefusal(new Exception.Forbidden("Access denied"))).toBe(true);
+    expect(isGuardRefusal(new Exception.Unauthorized("Sign in"))).toBe(true);
+    expect(isGuardRefusal(restoreRemoteError({ error: "Access denied", statusCode: 403 }, 403))).toBe(true);
+    expect(isGuardRefusal(Object.assign(new Error("Access denied"), { statusCode: 403 }))).toBe(true);
+    expect(isGuardRefusal({ statusCode: 401 })).toBe(true);
+    const unreadable = Object.assign(new Error("Access denied"), {
+      statusCode: 403,
+      toJSON: () => {
+        throw new Error("circular");
+      },
+    });
+    expect(isGuardRefusal(unreadable)).toBe(true);
+
+    const kept = new AkanError("fileGrantRefused", "day1 is outside the folder the user granted.", { statusCode: 403 });
+    expect(isGuardRefusal(kept)).toBe(false);
+    const restored = restoreRemoteError({ error: "Forbidden", code: "fileGrantRefused", statusCode: 403 }, 403);
+    expect(isGuardRefusal(restored)).toBe(false);
+    expect(isGuardRefusal(new Exception.NotFound("No item"))).toBe(false);
+    expect(isGuardRefusal(new Error("broken"))).toBe(false);
+    expect(isGuardRefusal(null)).toBe(false);
   });
 });

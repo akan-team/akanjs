@@ -1,4 +1,4 @@
-import type { BaseEnv } from "akanjs/base";
+import { AkanError, type BaseEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import type { Adaptor, Service } from "akanjs/service";
 import type { ServerSignal } from "akanjs/signal";
@@ -134,7 +134,8 @@ export const assertAkanConsoleAllowed = (env: Partial<Pick<BaseEnv, "environment
     process.env.NODE_ENV === "production";
   if (!isProductionLike || process.env.AKAN_CONSOLE === "1") return;
 
-  throw new Error(
+  throw new AkanError(
+    "consoleDisabled",
     [
       "Akan console is disabled for production-like environments.",
       "Run with AKAN_CONSOLE=1 only for the exec command that opens the console.",

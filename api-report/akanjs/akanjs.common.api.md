@@ -1581,6 +1581,10 @@ export declare const isDayjs: typeof dayjs.isDayjs;
 
 export declare const isEmail: (email?: null | string) => boolean;
 
+export declare const isGuardRefusal: (error: unknown) => error is {
+    statusCode: 401 | 403;
+};
+
 export declare const isJsonContentType: (contentType: null | string) => boolean;
 
 export declare const isMcpDescribableArg: (arg: {

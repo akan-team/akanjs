@@ -1,6 +1,7 @@
 import "../test/registerDom";
 import { describe, expect, test } from "bun:test";
 import type { PathRoute, RouteGuard, RouteRender } from "akanjs/client";
+import { restoreRemoteError } from "../fetch/client/remoteError";
 
 process.env.AKAN_PUBLIC_APP_NAME = "test";
 process.env.AKAN_PUBLIC_REPO_NAME = "akanjs";
@@ -161,7 +162,7 @@ describe("CsrGuards", () => {
   test("sends a leaked 403 or 404 to the not-found page and rethrows anything else for the layer to show", async () => {
     replaced.length = 0;
     const leaked = locationOf(undefined, async () => {
-      throw Object.assign(new Error("Access denied"), { statusCode: 403 });
+      throw restoreRemoteError({ error: "Access denied", statusCode: 403 }, 403);
     });
     expect(await CsrGuards.of(leaked)).toBe(false);
     await settle();

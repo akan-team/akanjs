@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { ID } from "akanjs/base";
+import { AkanError, ID } from "akanjs/base";
 import type { ReactNode } from "react";
 import { layout, page } from "../client/route/routeBuilders";
 import { AppScope } from "../fetch/appScope";
 import { FetchClient } from "../fetch/client/fetchClient";
+import { restoreRemoteError } from "../fetch/client/remoteError";
 import {
   createRequestStore,
   memoizeRequestQuery,
@@ -51,7 +52,7 @@ const routes = new RouteTreeBuilder({
     default: page()
       .prompt("owned", "Somebody else's.")
       .render(() => {
-        throw Object.assign(new Error("Access denied by guard"), { statusCode: 403 });
+        throw restoreRemoteError({ error: "Access denied by guard", statusCode: 403 }, 403);
       }),
   }),
 }).build();
@@ -136,6 +137,53 @@ describe("RscPagePrompts", () => {
     });
   });
 
+  test("reads only a forwarded 403 as the caller refused: a 403 the server kept is the screen failing", async () => {
+    const thrower = (name: string, error: Error) => async () => ({
+      default: page()
+        .prompt(name, `Throws ${name}.`)
+        .render(() => {
+          throw error;
+        }),
+    });
+    const refusals = new RscPagePrompts({
+      routes: () =>
+        new RouteTreeBuilder({
+          "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
+          "./forwarded.tsx": thrower("forwarded", restoreRemoteError({ error: "Access denied", statusCode: 403 }, 403)),
+          "./plain.tsx": thrower("plain", Object.assign(new Error("Access denied"), { statusCode: 403 })),
+          "./kept.tsx": thrower(
+            "kept",
+            new AkanError("fileGrantRefused", "day1 is outside the folder the user granted.", { statusCode: 403 }),
+          ),
+          "./restored.tsx": thrower(
+            "restored",
+            restoreRemoteError({ error: "Forbidden", code: "fileGrantRefused", statusCode: 403 }, 403),
+          ),
+        }).build(),
+      run: (request, _routeId, fn) => {
+        if (!requestStorage) throw new Error("no request storage");
+        return requestStorage.run(createRequestStore(request), fn);
+      },
+      defaultLocale: () => "en",
+    });
+    expect(await refusals.run({ name: "forwarded", arguments: {}, headers: [] })).toMatchObject({
+      ok: false,
+      reason: "forbidden",
+    });
+    expect(await refusals.run({ name: "plain", arguments: {}, headers: [] })).toMatchObject({
+      ok: false,
+      reason: "forbidden",
+    });
+    expect(await refusals.run({ name: "kept", arguments: {}, headers: [] })).toMatchObject({
+      ok: false,
+      reason: "error",
+    });
+    expect(await refusals.run({ name: "restored", arguments: {}, headers: [] })).toMatchObject({
+      ok: false,
+      reason: "error",
+    });
+  });
+
   test("names two pages that claim one prompt", async () => {
     const twice = new RouteTreeBuilder({
       "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
@@ -179,7 +227,8 @@ describe("RscPagePrompts route guards", () => {
         .prompt("briefDesk", "Brief a desk item.")
         .guard(({ itemId }) => {
           trail.push("item guard");
-          if (itemId !== deskItemId) throw Object.assign(new Error("Access denied by guard"), { statusCode: 403 });
+          if (itemId !== deskItemId)
+            throw restoreRemoteError({ error: "Access denied by guard", statusCode: 403 }, 403);
         })
         .render(() => {
           trail.push("item");

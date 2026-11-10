@@ -1,3 +1,4 @@
+import { isGuardRefusal } from "akanjs/common";
 import type { RouteGuard, RouteGuardProps, RouteRender } from "../csrTypes";
 import { AkanNotFoundError } from "../router";
 import { routeArgsMarker } from "./RouteDefinition";
@@ -41,10 +42,11 @@ export class RouteGuards {
   }
 
   // Security: a signal answers another account's record with 403 or 404, and both read as not-found here so that a
-  // screen never tells a visitor which records exist.
+  // screen never tells a visitor which records exist. A 403 the server kept, such as a denied file grant, is no such
+  // refusal.
   static refusalOf(error: unknown): unknown {
     const status = (error as { statusCode?: unknown } | null)?.statusCode;
-    return status === 403 || status === 404 ? new AkanNotFoundError() : error;
+    return status === 404 || (status === 403 && isGuardRefusal(error)) ? new AkanNotFoundError() : error;
   }
 
   // By digest: the pages bundle carries its own copy of the error classes.

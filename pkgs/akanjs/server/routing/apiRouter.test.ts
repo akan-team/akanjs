@@ -36,7 +36,7 @@ const buildWebsocketHandlers = async (props: Partial<Parameters<typeof ApiRouter
     registry: getDefaultInjectRegistry(),
     hmrHub: null,
     hmrState: null,
-    logger: { error: () => undefined } as never,
+    logger: { error: () => undefined, warn: () => undefined } as never,
     ...props,
   });
 
@@ -225,12 +225,19 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
   test("dispatches app websocket messages and returns route errors", async () => {
     const sent: string[] = [];
     const loggerErrors: string[] = [];
+    const loggerWarns: string[] = [];
     const ws = fakeWs({}, (message) => sent.push(message));
     const handlers = await buildWebsocketHandlers({
       wsRoutes: {
         echo: async (_ws, data, event) => ({ event, data }),
+        broken: async () => {
+          throw new Error("SQLITE_ERROR: no such column: item.secret");
+        },
       } as WebsocketRoutes,
-      logger: { error: (message: string) => loggerErrors.push(message) } as never,
+      logger: {
+        error: (message: string) => loggerErrors.push(message),
+        warn: (message: string) => loggerWarns.push(message),
+      } as never,
     });
 
     await handlers.message?.(ws, JSON.stringify({ key: "echo", data: ["hello"] }));
@@ -238,15 +245,55 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
     console.error = () => undefined;
     try {
       await handlers.message?.(ws, JSON.stringify({ key: "missing", data: [] }));
+      await handlers.message?.(ws, JSON.stringify({ key: "broken", data: [] }));
     } finally {
       console.error = originalConsoleError;
     }
 
     expect(JSON.parse(sent[0] ?? "{}")).toEqual({ event: "message", data: ["hello"] });
-    // Detailed outside production, generalized inside (SignalFailure owns the split); the log keeps the stack.
-    expect(JSON.parse(sent[1] ?? "{}").error).toBe('WebSocket route "missing" is not registered');
+    expect(JSON.parse(sent[1] ?? "{}")).toMatchObject({
+      error: 'WebSocket route "missing" is not registered',
+      statusCode: 404,
+      code: "routeNotFound",
+      key: "missing",
+    });
+    expect(loggerWarns).toEqual(['WebSocket route "missing" is not registered']);
+    expect(JSON.parse(sent[2] ?? "{}")).toMatchObject({ statusCode: 500, key: "broken" });
     expect(loggerErrors).toHaveLength(1);
-    expect(loggerErrors[0]).toContain('WebSocket route "missing" is not registered');
+    expect(loggerErrors[0]).toContain("SQLITE_ERROR: no such column: item.secret");
+  });
+
+  test("answers a frame it cannot read 400 with its code, and only the reason outside development", async () => {
+    const { SignalFailure } = await import("akanjs/signal");
+    const sent: string[] = [];
+    const loggerErrors: string[] = [];
+    const ws = fakeWs({}, (message) => sent.push(message));
+    const handlers = await buildWebsocketHandlers({
+      logger: { error: (message: string) => loggerErrors.push(message), warn: () => undefined } as never,
+    });
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    SignalFailure.reset();
+    try {
+      await handlers.message?.(ws, JSON.stringify({ data: [] }));
+      await handlers.message?.(ws, new Uint8Array([1, 2]) as unknown as string);
+      await handlers.message?.(ws, "{");
+      await handlers.message?.(ws, "null");
+      await handlers.message?.(ws, JSON.stringify({ key: "missing", data: [] }));
+    } finally {
+      process.env.NODE_ENV = previous;
+      SignalFailure.reset();
+    }
+
+    const frames = sent.map((message) => JSON.parse(message) as Record<string, unknown>);
+    expect(frames.map(({ error, statusCode, code }) => ({ error, statusCode, code }))).toEqual([
+      { error: "Bad Request", statusCode: 400, code: "invalidMessage" },
+      { error: "Bad Request", statusCode: 400, code: "invalidMessage" },
+      { error: "Bad Request", statusCode: 400, code: "invalidMessage" },
+      { error: "Bad Request", statusCode: 400, code: "invalidMessage" },
+      { error: "Not Found", statusCode: 404, code: "routeNotFound" },
+    ]);
+    expect(loggerErrors).toEqual([]);
   });
 
   test("answers a missing document over the socket as a 404 frame with its key, and logs no crash", async () => {
@@ -260,7 +307,7 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
           throw new NoDocumentError("No Document (item): 507f1f77bcf86cd799439011");
         },
       } as WebsocketRoutes,
-      logger: { error: (message: string) => loggerErrors.push(message) } as never,
+      logger: { error: (message: string) => loggerErrors.push(message), warn: () => undefined } as never,
     });
 
     await handlers.message?.(ws, JSON.stringify({ key: "item", data: [] }));

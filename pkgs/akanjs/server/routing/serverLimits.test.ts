@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Logger } from "akanjs/common";
+import { SignalFailure } from "akanjs/signal";
 import { ServerLimits } from "./serverLimits";
 
 const roots: string[] = [];
@@ -184,6 +185,11 @@ describe("ServerLimits bodies", () => {
     });
     const failure = await drain(over).catch((error: unknown) => error);
     expect(ServerLimits.isPayloadTooLarge(failure)).toBe(true);
+    expect(SignalFailure.generalized(failure)).toEqual({
+      error: "Payload Too Large",
+      statusCode: 413,
+      code: "payloadTooLarge",
+    });
     expect(exceeded).toBe(true);
     expect(await drain(ServerLimits.limitBody(new Blob([bytes]).stream(), 1500))).toBe(1024);
   });

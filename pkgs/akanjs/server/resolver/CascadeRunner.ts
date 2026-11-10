@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { LIBS_REMOVE_HOOK } from "akanjs/base";
+import { AkanError, LIBS_REMOVE_HOOK } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { type CascadeWithPath, type ConstantModel, ConstantRegistry } from "akanjs/constant";
 import { type DocumentSchema, documentQueryHelper } from "akanjs/document";
@@ -138,7 +138,10 @@ export class CascadeRunner {
     return [...mod.constant.full.cascade.removeRef].map(([key, modelRef]) => {
       const target = ConstantRegistry.getRefName(modelRef);
       if (!this.#modules.has(target)) {
-        throw new Error(`Cascade field "${refName}.${key}" removes "${target}", which this app does not mount`);
+        throw new AkanError(
+          "invalidCascade",
+          `Cascade field "${refName}.${key}" removes "${target}", which this app does not mount`,
+        );
       }
       return { key, refName: target };
     });
@@ -168,7 +171,10 @@ export class CascadeRunner {
     }
     const owner = path.refName ?? ConstantRegistry.getRefName(path.modelRef as never);
     if (!this.#modules.has(owner)) {
-      throw new Error(`Cascade field "${childRef}.${key}" is owned by "${owner}", which this app does not mount`);
+      throw new AkanError(
+        "invalidCascade",
+        `Cascade field "${childRef}.${key}" is owned by "${owner}", which this app does not mount`,
+      );
     }
     return [owner];
   }
@@ -216,7 +222,7 @@ export class CascadeRunner {
   }
 
   #service(refName: string) {
-    if (!this.#getService) throw new Error(`Cascade ran before the plan was sealed: ${refName}`);
+    if (!this.#getService) throw new AkanError("notInitialized", `Cascade ran before the plan was sealed: ${refName}`);
     return this.#getService(refName);
   }
 }

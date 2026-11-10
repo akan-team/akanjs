@@ -120,6 +120,7 @@ export { IpLiteral } from "./IpLiteral";
 export { interpolateTranslation } from "./interpolateTranslation";
 export { isDayjs } from "./isDayjs";
 export { isEmail } from "./isEmail";
+export { isGuardRefusal } from "./isGuardRefusal";
 export { isQueryEqual } from "./isQueryEqual";
 export { isRecord } from "./isRecord";
 export { isThenable } from "./isThenable";

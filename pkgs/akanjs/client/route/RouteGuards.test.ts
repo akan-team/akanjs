@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { AkanError } from "akanjs/base";
+import { NoDocumentError } from "akanjs/document";
+import { restoreRemoteError } from "../../fetch/client/remoteError";
+import { Exception } from "../../signal/exception";
 import type { RouteGuardProps, RouteRender } from "../csrTypes";
 import { AkanNotFoundError, AkanRedirectError } from "../router";
 import { RouteDefinition, routeArgsMarker } from "./RouteDefinition";
@@ -32,13 +36,26 @@ describe("RouteGuards.run", () => {
 
   test("reads a leaked 403 or 404 as not-found and leaves any other error as it is", async () => {
     for (const statusCode of [403, 404]) {
-      const leaked = Object.assign(new Error("Access denied"), { statusCode });
+      const leaked = restoreRemoteError({ error: "Access denied", statusCode }, statusCode);
       await expect(RouteGuards.run([guarded([], "page", leaked)], props)).rejects.toBeInstanceOf(AkanNotFoundError);
     }
+    const plain = Object.assign(new Error("Access denied"), { statusCode: 403 });
+    await expect(RouteGuards.run([guarded([], "page", plain)], props)).rejects.toBeInstanceOf(AkanNotFoundError);
     const unauthorized = Object.assign(new Error("Sign in"), { statusCode: 401 });
     await expect(RouteGuards.run([guarded([], "page", unauthorized)], props)).rejects.toBe(unauthorized);
     const broken = new Error("broken");
     await expect(RouteGuards.run([guarded([], "page", broken)], props)).rejects.toBe(broken);
+  });
+
+  test("reads only a forwarded 403 as not-found: a 403 the server keeps is shown as it is", async () => {
+    const missing = new NoDocumentError("No Document (item): 507f1f77bcf86cd799439011");
+    await expect(RouteGuards.run([guarded([], "page", missing)], props)).rejects.toBeInstanceOf(AkanNotFoundError);
+    const refused = new Exception.Forbidden("Access denied");
+    await expect(RouteGuards.run([guarded([], "page", refused)], props)).rejects.toBeInstanceOf(AkanNotFoundError);
+    const kept = new AkanError("fileGrantRefused", "day1 is outside the folder the user granted.", { statusCode: 403 });
+    await expect(RouteGuards.run([guarded([], "page", kept)], props)).rejects.toBe(kept);
+    const restored = restoreRemoteError({ error: "Forbidden", code: "fileGrantRefused", statusCode: 403 }, 403);
+    await expect(RouteGuards.run([guarded([], "page", restored)], props)).rejects.toBe(restored);
   });
 
   test("names the index of the guard that refused, a thrown string wrapped so it can still be named", async () => {

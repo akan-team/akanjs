@@ -3,6 +3,7 @@ import { type ReactNode, Suspense } from "react";
 import { layout, page } from "../client/route/routeBuilders";
 import { router } from "../client/router";
 import { untrackedCookies, untrackedHeaders } from "../fetch";
+import { restoreRemoteError } from "../fetch/client/remoteError";
 import type { PagesContext } from "./routeTreeBuilder";
 
 const requestTag = () =>
@@ -78,7 +79,7 @@ export const pages: PagesContext = {
       .param("itemId", String)
       .guard(async ({ itemId }) => {
         await Bun.sleep(10);
-        if (itemId === "other") throw Object.assign(new Error("Access denied by guard"), { statusCode: 403 });
+        if (itemId === "other") throw restoreRemoteError({ error: "Access denied by guard", statusCode: 403 }, 403);
       })
       .render(({ itemId }) => <p>{`item ${itemId}`}</p>),
   }),
