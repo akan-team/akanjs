@@ -9,7 +9,7 @@ import type {
   ApplicationBuildResult,
 } from "./applicationBuildReporter";
 import type { App } from "./commandDecorators";
-import { WorkspaceExecutor } from "./executors";
+import { parseEnvFile, WorkspaceExecutor } from "./executors";
 import {
   AllRoutesBuilder,
   CsrArtifactBuilder,
@@ -19,6 +19,7 @@ import {
   SsrBaseArtifactBuilder,
   VendorImportScanner,
 } from "./frontendBuild";
+import { RouteJsBudget, type RouteJsBudgetMode, type RouteJsBudgetStatus, type RouteJsSize } from "./routeJsBudget";
 import { Spinner } from "./spinner";
 import { createServerEnvPlugin } from "./transforms/serverEnvPlugin";
 import { ServerEnvProfile } from "./transforms/serverEnvProfile";
@@ -33,7 +34,16 @@ export interface TypecheckOptions {
   report?: "pretty" | "records";
 }
 
-export type BuildPhaseId = "prepare" | "typecheck" | "backend" | "ssr" | "csr" | "assets" | "compress" | "metadata";
+export type BuildPhaseId =
+  | "prepare"
+  | "typecheck"
+  | "backend"
+  | "ssr"
+  | "csr"
+  | "assets"
+  | "compress"
+  | "budget"
+  | "metadata";
 
 export type BuildPhaseResult = ApplicationBuildPhaseResult & { id: BuildPhaseId };
 export type BuildResult = ApplicationBuildResult;
@@ -45,6 +55,8 @@ export interface ApplicationBuildRunnerOptions {
   environment?: string;
   /** Bundles `env/env.server.<environment>.<profile>.ts`, which may hold no secret, in place of the environment's file. */
   profile?: string;
+  /** `update` writes akan.budget.json, then enforces it; `report` names an overage without failing the build. */
+  budget?: RouteJsBudgetMode;
 }
 export interface BuildOptions {
   spinner?: boolean;
@@ -61,6 +73,7 @@ const BUILD_PHASE_EMOJIS: Record<BuildPhaseId, string> = {
   csr: "🎨",
   assets: "✂️",
   compress: "🗜️",
+  budget: "📏",
   metadata: "📝",
 };
 
@@ -88,39 +101,46 @@ export class ApplicationBuildRunner {
   #reporter?: BuildProgressReporter;
   #environment?: string;
   #profile?: string;
+  #budget: RouteJsBudgetMode;
+  #modulesByRoute?: Record<string, string[]>;
   #spinner?: boolean;
   #startedAt = Date.now();
   #phases: BuildPhaseResult[] = [];
 
-  constructor(app: App, { fast = false, reporter, environment, profile }: ApplicationBuildRunnerOptions = {}) {
+  constructor(
+    app: App,
+    { fast = false, reporter, environment, profile, budget = "report" }: ApplicationBuildRunnerOptions = {},
+  ) {
     this.#app = app;
     this.#fast = fast;
     this.#reporter = reporter;
     this.#environment = environment;
     this.#profile = profile;
+    this.#budget = budget;
   }
 
   get #envDir() {
     return path.join(this.#app.cwdPath, "env");
   }
 
-  //? Bundles bake AKAN_PUBLIC_* from process.env, where the shell outranks the .env that the server env and the
-  //? Dockerfile read: a page built otherwise drops the image's tokens as foreign or dials another serve domain.
+  //? Bundles bake AKAN_PUBLIC_* from process.env, which lacks `--env` and the defaults an unset repo name or serve
+  //? domain takes: a page built otherwise drops the image's tokens as foreign or dials another serve domain.
   #pinImageEnv(baseDevEnv: BaseDevEnv, environment: string) {
     const imageEnv = {
       AKAN_PUBLIC_ENV: environment,
       AKAN_PUBLIC_REPO_NAME: baseDevEnv.repoName,
       AKAN_PUBLIC_SERVE_DOMAIN: baseDevEnv.serveDomain,
     };
-    const outranked = Object.entries(imageEnv).filter(([key, value]) => {
-      const given = process.env[key];
-      return !!given && given !== value && !(key === "AKAN_PUBLIC_ENV" && this.#environment);
+    const dotenv = parseEnvFile(path.join(this.#app.workspace.workspaceRoot, ".env"));
+    const overridden = Object.entries(imageEnv).filter(([key, value]) => {
+      if (!dotenv[key] || dotenv[key] === value || WorkspaceExecutor.publicEnvPin?.[key]) return false;
+      return !(key === "AKAN_PUBLIC_ENV" && this.#environment);
     });
-    if (outranked.length)
+    if (overridden.length)
       this.#app.logger.warn(
-        `The workspace .env outranks this process's environment: the bundles and the image take ${outranked
-          .map(([key, value]) => `${key}=${value} (not ${process.env[key]})`)
-          .join(", ")}. Pick the environment with \`akan build --env\`, and set the rest in the workspace .env.`,
+        `The shell (or a .env.local) outranks the workspace .env: the bundles and the image take ${overridden
+          .map(([key, value]) => `${key}=${value} (.env: ${dotenv[key]})`)
+          .join(", ")}. Unset it there to build what the .env says.`,
       );
     Object.assign(process.env, imageEnv);
   }
@@ -178,9 +198,17 @@ export class ApplicationBuildRunner {
           ? `${result.files} files, ${ApplicationBuildRunner.formatBytes(result.inputBytes)} -> gzip ${ApplicationBuildRunner.formatBytes(result.outputBytes)} / br ${ApplicationBuildRunner.formatBytes(result.brotliBytes)}`
           : "no files",
     );
+    const routeJs = await this.#runPhase(
+      "budget",
+      "Measuring route JS",
+      () => this.#measureRouteJs(environment),
+      (result) => result?.summary ?? (this.#budget === "off" ? "off for this build" : "no server pages"),
+    );
     await this.#runPhase("metadata", "Writing production metadata", () => this.buildAppMeta());
     return {
       phases: this.#phases,
+      ...(routeJs ? { routeJs: routeJs.sizes } : {}),
+      ...(routeJs?.warnings ? { routeJsWarnings: routeJs.warnings } : {}),
       durationMs: Date.now() - this.#startedAt,
       outputDir: this.#app.dist.cwdPath,
       artifactDir: path.join(this.#app.dist.cwdPath, ".akan/artifact"),
@@ -295,7 +323,6 @@ export class ApplicationBuildRunner {
   #serverEnvPlugin(baseEnv: string, branches: Iterable<string>): BunPlugin {
     this.#serverEnv ??= createServerEnvPlugin({
       envDir: this.#envDir,
-      //? The root .env wins over the shell in baseDevEnv, so a `--env` build names its own; a desktop app runs it.
       environment: this.#environment ?? baseEnv,
       environments: ["local", "testing", ...branches],
       profile: this.#profile,
@@ -405,7 +432,8 @@ void run().catch((error) => {
     }
     const { baseDevEnv, branches } = await this.#app.getConfig();
     //? Routes first: the vendor entries export only the names the route bundles import.
-    const allRoutes = await new AllRoutesBuilder(this.#app, "build").build();
+    const routes = new AllRoutesBuilder(this.#app, "build");
+    const allRoutes = await routes.build();
     const vendorExports = await VendorImportScanner.exportsUsedIn(
       path.join(this.#app.dist.cwdPath, ".akan/artifact/client"),
       NARROWABLE_VENDOR_SPECIFIERS,
@@ -414,7 +442,33 @@ void run().catch((error) => {
       serverEnv: this.#serverEnvPlugin(baseDevEnv.env, branches),
       vendorExports,
     }).build();
+    this.#modulesByRoute = (await routes.writeModulePreloads(base.runtimeChunks)).modulesByRoute();
     return { base, allRoutes };
+  }
+
+  //? After `compress`: a route is measured by the brotli bytes it is served as, read from the `.br` sidecars.
+  async #measureRouteJs(environment: string): Promise<(RouteJsBudgetStatus & { sizes: RouteJsSize[] }) | null> {
+    if (this.#budget === "off" || !this.#modulesByRoute) return null;
+    const sizes = await RouteJsBudget.measure(
+      path.join(this.#app.dist.cwdPath, ".akan/artifact"),
+      this.#modulesByRoute,
+    );
+    const budgetPath = path.join(this.#app.cwdPath, RouteJsBudget.fileName);
+    const { summary: status, warnings } = await RouteJsBudget.check(sizes, {
+      mode: this.#budget,
+      budgetPath,
+      source: path.relative(this.#app.workspace.workspaceRoot, budgetPath),
+      environment,
+    });
+    const largest = sizes[0];
+    const { formatBytes } = ApplicationBuildRunner;
+    return {
+      sizes,
+      summary: largest
+        ? `${sizes.length} routes, largest ${largest.routeId} ${formatBytes(largest.brotliBytes)} brotli (${formatBytes(largest.rawBytes)} raw); ${status}`
+        : status,
+      ...(warnings ? { warnings } : {}),
+    };
   }
 
   //? Opt-in and outside `dist/`: a metafile is the size of the module graph, and `dist/` is what the image copies.

@@ -20,6 +20,7 @@ import {
   UpdatePackFolder,
   UpdateUploader,
 } from "@akanjs/devkit/mobile";
+import type { RouteJsBudgetMode } from "@akanjs/devkit/routeJsBudget";
 import { AppInfo } from "@akanjs/devkit/scanInfo";
 import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
 import type { ServerPolicy } from "@akanjs/native/api";
@@ -402,15 +403,19 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       spinner = false,
       envProfile,
       environment,
+      budget,
     }: {
       fast?: boolean;
       reporter?: BuildProgressReporter;
       spinner?: boolean;
       envProfile?: string;
       environment?: string;
+      budget?: RouteJsBudgetMode;
     } = {},
   ): Promise<BuildResult> {
-    return new (await loadBuildRunner())(app, { fast, reporter, profile: envProfile, environment }).build({ spinner });
+    return new (await loadBuildRunner())(app, { fast, reporter, profile: envProfile, environment, budget }).build({
+      spinner,
+    });
   }
   async start(
     app: App,
@@ -791,7 +796,9 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       APP_OPERATION_MODE: "release",
     });
     try {
-      await new (await loadBuildRunner())(app, { environment: env, profile: envProfile }).build({ spinner: true });
+      await new (await loadBuildRunner())(app, { environment: env, profile: envProfile, budget: "off" }).build({
+        spinner: true,
+      });
     } finally {
       for (const [key, value] of Object.entries(prevEnv)) {
         if (value === undefined) delete process.env[key];
