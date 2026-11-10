@@ -333,6 +333,36 @@ export const taskDictionary = modelDictionary("task")
       }),
     );
     expect(report.nextActions.map((action) => action.action)).toContain("blocked");
+    expect(report).toMatchObject({ generatedFiles: [], recommendedValidationCommands: [], commands: [] });
+    expect(report.nextActions.map((action) => action.command)).not.toContain("akan verify demo");
+  });
+
+  test("queues no sync and names no validation for an apply that fails after its plan passed", async () => {
+    const { workspace, planPath, runner } = await planTaskWorkflow({ field: "priority", type: "String" });
+    const registry = WorkflowRunner.stepRegistry(workspace);
+    const first = JSON.parse(
+      await runner.apply(planPath, { format: "json", workspace, registry }),
+    ) as WorkflowApplyReport;
+
+    const output = await runner.apply(planPath, { workspace, registry });
+    const report = JSON.parse(
+      await runner.apply(planPath, { format: "json", workspace, registry }),
+    ) as WorkflowApplyReport;
+
+    expect(first).toMatchObject({ status: "passed", recommendedValidationCommands: [{ command: "akan verify demo" }] });
+    expect(first.generatedFiles.length).toBeGreaterThan(0);
+
+    expect(report).toMatchObject({
+      status: "failed",
+      changedFiles: [],
+      generatedFiles: [],
+      recommendedValidationCommands: [],
+      commands: [],
+    });
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "primitive-field-exists" }));
+    expect(report.nextActions.map((action) => action.command)).toEqual(["akan workflow explain add-field"]);
+    expect(output).toContain("- Generated files queued for sync: 0");
+    expect(output).not.toContain("akan verify demo");
   });
 
   test("fails workflow apply when numeric base import is missing after apply", async () => {

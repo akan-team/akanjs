@@ -536,13 +536,14 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
   }
 
   static #report(command: string, sys: Sys, changedFiles: PrimitiveChangedFile[], diagnostics: WorkflowDiagnostic[]) {
+    const failed = workflowStatus(diagnostics) === "failed";
     return createPrimitiveWriteReport({
       command,
       changedFiles,
-      generatedFiles: generatedFilesForSync(sys),
-      validationCommands: validationCommandsForTarget(sys.name),
+      generatedFiles: failed ? [] : generatedFilesForSync(sys),
+      validationCommands: failed ? [] : validationCommandsForTarget(sys.name),
       diagnostics,
-      nextActions: nextActionsForTarget(sys.name),
+      nextActions: failed ? [] : nextActionsForTarget(sys.name),
     });
   }
 

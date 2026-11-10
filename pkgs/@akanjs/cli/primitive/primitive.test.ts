@@ -303,6 +303,24 @@ export const dictionary = modelDictionary(["en", "ko"])
     expect(await module.readFile("post.constant.ts")).toBe(originalConstant);
   });
 
+  test("lists no generated file, validation command or next action for a field write that fails", async () => {
+    const { workspace, module } = track(await createTempModule("post"));
+    await new ModuleRunner().createModuleTemplate(module);
+    const script = CommandContainer.get(PrimitiveScript);
+    await script.addField(workspace, { app: "demo", module: "post", field: "priority", type: "String" });
+
+    const report = await script.addField(workspace, { app: "demo", module: "post", field: "priority", type: "String" });
+
+    expect(report).toMatchObject({
+      status: "failed",
+      changedFiles: [],
+      generatedFiles: [],
+      validationCommands: [],
+      nextActions: [],
+    });
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "primitive-field-exists" }));
+  });
+
   test("adds an enum field and enum dictionary without syncing generated files", async () => {
     const { workspace, module } = track(await createTempModule("task"));
     await new ModuleRunner().createModuleTemplate(module);
