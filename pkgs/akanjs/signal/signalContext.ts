@@ -30,7 +30,7 @@ import { EndpointErrorContract } from "./endpointErrorContract";
 import { EndpointIdempotency } from "./endpointIdempotency";
 import type { ArgInfo, EndpointInfo, EndpointType } from "./endpointInfo";
 import { EndpointRateLimit } from "./endpointRateLimit";
-import { Exception, type ExceptionLike, isExceptionLike } from "./exception";
+import { Exception, isExceptionLike } from "./exception";
 import { type GuardCls, type GuardScope, guardOf } from "./guard";
 import { MiddlewareChain } from "./middlewareChain";
 import { RoomKey } from "./roomKey";
@@ -431,7 +431,7 @@ export class SignalContext<
         return await fn();
       } catch (error) {
         if (isExceptionLike(error))
-          EndpointErrorContract.checkThrown(endpoint, endpointInfo, key, SignalContext.#wireKey(error));
+          EndpointErrorContract.checkThrown(endpoint, endpointInfo, key, EndpointErrorContract.wireKey(error));
         else if (SignalFailure.generalized(error).statusCode >= 500) {
           const message = error instanceof Error ? error.message : String(error);
           const stack = error instanceof Error ? error.stack : undefined;
@@ -464,11 +464,6 @@ export class SignalContext<
       }
       return SignalFailure.response(error, { path: endpointInfo.getPath(key) });
     }
-  }
-  // The key the caller receives: a `NoDocumentError`'s message names the table, while its wire key is a base key.
-  static #wireKey(error: ExceptionLike): string {
-    const wire = (error.toJSON() as { error?: unknown }).error;
-    return typeof wire === "string" ? wire : (error as unknown as Error).message;
   }
   static #exceptionHeaders(error: { statusCode: number }): Record<string, string> {
     const seconds = (error as { data?: { seconds?: unknown } }).data?.seconds;
