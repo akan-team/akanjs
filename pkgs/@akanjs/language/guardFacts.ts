@@ -42,7 +42,7 @@ interface GuardReaderBase {
 
 const maxLabelArgs = 32;
 
-export const createGuardFactReader = (ts: Ts, ast: AkanAst, { spanOf, extentOf, unwrap, docOf }: GuardReaderBase) => {
+const guardRefReaderOf = (ts: Ts, ast: AkanAst, unwrap: GuardReaderBase["unwrap"]) => {
   const pathOf = (expression: TS.Expression): string | null => {
     if (ts.isIdentifier(expression)) return expression.text;
     if (!ts.isPropertyAccessExpression(expression)) return null;
@@ -90,6 +90,15 @@ export const createGuardFactReader = (ts: Ts, ast: AkanAst, { spanOf, extentOf, 
     return single ? [single] : [];
   };
 
+  return { pathOf, labelOf, guardsIn };
+};
+
+const guardFactoryReaderOf = (
+  ts: Ts,
+  ast: AkanAst,
+  { spanOf, extentOf, unwrap, docOf }: GuardReaderBase,
+  pathOf: (expression: TS.Expression) => string | null,
+) => {
   const implementsGuard = (node: TS.ClassLikeDeclaration, guardNames: ReadonlySet<string>) =>
     !!node.heritageClauses?.some(
       (clause) =>
@@ -199,6 +208,14 @@ export const createGuardFactReader = (ts: Ts, ast: AkanAst, { spanOf, extentOf, 
     }
     return factories;
   };
+
+  return { implementsGuard, scopeOf, guardFactoriesOf };
+};
+
+export const createGuardFactReader = (ts: Ts, ast: AkanAst, base: GuardReaderBase) => {
+  const { spanOf, extentOf, unwrap, docOf } = base;
+  const { pathOf, labelOf, guardsIn } = guardRefReaderOf(ts, ast, unwrap);
+  const { implementsGuard, scopeOf, guardFactoriesOf } = guardFactoryReaderOf(ts, ast, base, pathOf);
 
   const guardsOf = (source: TS.SourceFile, imports: ImportFact[], madeInPlace: InPlaceGuard[]) => {
     const guardNames = new Set([
