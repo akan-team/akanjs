@@ -43,7 +43,6 @@ export class AgentTurnStream {
     return { message, ...(data ? { data } : {}), ...(overflow ? { overflow } : {}) };
   }
 
-  /** A reader that goes away aborts `run`'s signal, so the provider stops spending on an answer nobody will read. */
   static response(run: RunTurn): Response {
     const abort = new AbortController();
     const stream = new EventStream(() => abort.abort());

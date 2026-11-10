@@ -943,13 +943,24 @@ export interface LlmOverflowFacts {
 }
 
 export declare class LlmSpend {
+    static readonly bytesPerToken = 3;
+    static readonly imageTokens = 1600;
     static attach<E>(error: E, spent: LlmSpent): E;
     static of(error: unknown): LlmSpent | null;
+    static settled(error: unknown): Promise<LlmSpent | null>;
+    static outlast<T>(call: Promise<T>, signal: AbortSignal, spentOf: (answer: T) => LlmSpent): Promise<T>;
+    static estimate(counted: LlmUsage | undefined, { prompt, streamed }: {
+        prompt?: unknown;
+        streamed?: string;
+    }): LlmSpent;
+    static tokensOf(text: string): number;
+    static promptOf(request: unknown): number;
 }
 
 export interface LlmSpent {
     usage?: LlmUsage;
     model?: string;
+    estimated?: boolean;
 }
 
 export interface LlmTurnAnswer {
@@ -2062,7 +2073,7 @@ The declarations above name these, and no entry point exports them.
 
 ```ts
 declare const AgentService_base: import("./serve").ServiceCls<"agent", {}, {
-    llm: import("./injectInfo").InjectInfo<"plug", import("./predefinedAdaptor").LlmAdaptor, never, never>;
+    llm: import("./injectInfo").InjectInfo<"plug", LlmAdaptor, never, never>;
 }>;
 
 interface AnthropicAnswer {
