@@ -276,10 +276,10 @@ page API is
 `akanjs/client/native/<id>` (`akanjs/client/native/window`, `…/screen`, `…/global-shortcut`), imported in a `webkit/`
 hook; `volume` and `filePicker` also come from `akanjs/client/native` itself. A capability the shell
 lacks is added there: an app's own plugin runs as Bun code in the plugin host and cannot add a native shell op.
-`isNativeApp()`, `isNativeShell()`, `nativePlatform()` and `desktopPlatform()` come from `akanjs/client` and load no
-native runtime. A static import of `akanjs/client/native` loads `@akanjs/native/core` on every web page that reaches
-the file, so a store, or a hook a web page also renders, loads the plugin on first use behind the check:
-`if (isNativeApp()) await (await import("akanjs/client/native/push")).push.register()`.
+`isNativeApp()`, `isNativeShell()`, `nativePlatform()` and `desktopPlatform()` come from `akanjs/client`, which starts
+the native runtime only inside a shell. A static import of `akanjs/client/native` loads `@akanjs/native/core` on every
+web page that reaches the file, so an app's store, or its own hook a web page also renders, loads the plugin on first
+use behind the check: `if (isNativeApp()) await (await import("akanjs/client/native/push")).push.register()`.
 
 **A plugin the app or lib owns lives in `native/<id>/`**, the folder named after the plugin id: `native-plugin.json`
 beside its page API (`src/index.ts`, `definePlugin` from `akanjs/client/native`), its desktop part (`src/desktop.ts`,

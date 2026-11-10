@@ -67,9 +67,17 @@ console.info(typeof globalThis.__AKAN_NATIVE__?.receive);`,
         process.execPath,
         "-e",
         `Bun.plugin({ name: "no-core", setup(build) { build.onLoad({ filter: /nativeBoot\\.ts$/ }, () => { throw new Error("chunk 404"); }); } });
+let logged = false;
+for (const stream of [process.stdout, process.stderr]) {
+  const write = stream.write.bind(stream);
+  stream.write = (chunk, ...rest) => {
+    if (String(chunk).includes("did not load")) logged = true;
+    return write(chunk, ...rest);
+  };
+}
 globalThis.__AKAN_NATIVE__ = { platform: "android" };
 await import(${nativeHost});
-await Bun.sleep(50);
+for (let i = 0; i < 40 && !logged; i++) await Bun.sleep(25);
 console.info("still running");`,
       ],
       { stdout: "pipe", stderr: "pipe", timeout: 10_000 },
