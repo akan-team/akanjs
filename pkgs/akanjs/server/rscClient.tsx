@@ -191,6 +191,7 @@ function commitRscPatchNavigation({
         return;
       }
       commitHistory(target, replace);
+      shownNode = null;
       requestScroll?.();
     } catch {
       if (headApplied) rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
@@ -292,9 +293,10 @@ async function fetchRsc(
   if (!stream) throw new Error(`[rscClient] RSC fetch failed ${res.status} ${res.statusText}`);
   const nodeRef: { current?: RscCacheNode } = {};
   const handleRedirect = (redirect: RscRedirectRow) => {
-    if (!shouldApplyNavigation()) return;
-    const location = redirect.location ? normalizeHref(redirect.location) : href;
     if (nodeRef.current) deleteRscCacheEntryIfCurrent(rscCache, href, nodeRef.current);
+    //? A later navigation may have replayed this page, under another fragment or back from elsewhere, and still show it.
+    if (!shouldApplyNavigation() && nodeRef.current !== shownNode) return;
+    const location = redirect.location ? normalizeHref(redirect.location) : href;
     navigateAfterRscRedirect(location, redirect.method !== "push" && (options.replaceOnRedirect?.() ?? true));
   };
   const guardedStream = guardRscRedirectRows(stream, {
@@ -339,6 +341,7 @@ rscCache.set(initialNode.href, initialNode);
 let currentRouterState: AkanRouterStateV1 | null = initialRouterState;
 let currentSegmentTree: RscSegmentCacheNode | null = createAkanSegmentCacheTree(initialNode);
 let currentFullNode: RscCacheNode | null = initialNode;
+let shownNode: RscCacheNode | null = initialNode;
 let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
@@ -447,14 +450,14 @@ function Root(): ReactNode {
     if (!currentFullNode) return;
     const currentFullState = currentFullNode.routerState;
     const canRestoreFullNode =
-      currentFullNode.href === href &&
+      pageKeyOf(currentFullNode.href) === pageKeyOf(href) &&
       ((!currentFullState && !currentRouterState) ||
         (currentFullState !== null &&
           currentRouterState !== null &&
           currentFullState.routeId === currentRouterState.routeId));
     if (canRestoreFullNode) {
       resetAkanSegmentOutletPatches();
-      rscCache.set(href, currentFullNode);
+      rscCache.set(currentFullNode.href, currentFullNode);
     }
   };
 
@@ -498,6 +501,7 @@ function Root(): ReactNode {
         commitThenable: (node) => {
           currentCommitFromCache = false;
           resetAkanSegmentOutletPatches();
+          shownNode = node;
           setThenable(node.thenable);
           renderedHref = target;
         },
@@ -532,7 +536,8 @@ function Root(): ReactNode {
     const hash = options.scrollY === undefined ? new URL(target).hash : "";
     const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY, hash });
     try {
-      let nextNode = cachedPageOf(target);
+      const replayed = cachedPageOf(target);
+      let nextNode = replayed;
       let notFound = false;
       let servedFromCache = !!nextNode;
       if (!nextNode) {
@@ -635,8 +640,9 @@ function Root(): ReactNode {
       });
       // Awaited before committing so use() never suspends the root transition (see trackRscThenable).
       await nextNode.thenable;
+      //? A replay stays keyed by its own href alone, where a redirect or a failure deletes it, never by the fragment it serves.
       const committed = commitLatestRscNavigation({
-        cache: notFound ? undefined : rscCache,
+        cache: notFound || replayed ? undefined : rscCache,
         href: target,
         thenable: nextNode,
         maxEntries: MAX_RSC_CACHE_ENTRIES,
@@ -644,6 +650,7 @@ function Root(): ReactNode {
         commitThenable: (node) => {
           currentCommitFromCache = servedFromCache;
           resetAkanSegmentOutletPatches();
+          shownNode = node;
           setThenable(node.thenable);
         },
         updateHistory: () => {

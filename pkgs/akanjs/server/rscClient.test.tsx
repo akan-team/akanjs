@@ -86,6 +86,26 @@ const lateRedirectTo = (location: string) => () => {
   });
   return new Response(stream, { headers: { "Content-Type": "text/x-component" } });
 };
+const heldRedirectTo = (location: string) => {
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const serve = () => {
+    const encoder = new TextEncoder();
+    const digest = `AKAN_REDIRECT;replace;307;${encodeURIComponent(location)}`;
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(encoder.encode(rowOf("$L1")));
+        await held;
+        controller.enqueue(encoder.encode(`1:E${JSON.stringify({ digest, message: `Redirect to ${location}` })}\n`));
+        controller.close();
+      },
+    });
+    return new Response(stream, { headers: { "Content-Type": "text/x-component" } });
+  };
+  return { serve, release: () => release() };
+};
 const redirectInFirstChunkTo = (location: string) => () => {
   const digest = `AKAN_REDIRECT;replace;307;${encodeURIComponent(location)}`;
   const rows = `${rowOf("$L1")}1:E${JSON.stringify({ digest, message: `Redirect to ${location}` })}\n`;
@@ -785,6 +805,42 @@ describe("rscClient prefetch", () => {
 
     expect(fetchCountOf("/atlas")).toBe(1);
     expect(shown()).toBe("/atlas");
+  });
+
+  test("a redirect the page raises after a push to its own fragment still moves it, and is not replayed", async () => {
+    const ledger = heldRedirectTo("/exit");
+    served.set("/ledger", ledger.serve);
+    await navigate("/ledger");
+    await navigate("/ledger#total");
+    expect(fetchCountOf("/ledger")).toBe(1);
+
+    ledger.release();
+    await waitFor(() => shown() === "/exit");
+    expect(shown()).toBe("/exit");
+
+    served.delete("/ledger");
+    await navigate("/ledger#total");
+    expect(fetchCountOf("/ledger")).toBe(2);
+    expect(shown()).toBe("/ledger");
+  });
+
+  test("a cache clear on a page replayed under another fragment keeps that page for the next visit", async () => {
+    served.set("/chart", () => routedResponseOf("/chart"));
+    served.set("/chart/next", () => routedResponseOf("/chart/next"));
+    await navigate("/chart");
+    await navigate("/chart/next");
+    await navigate("/chart#legend");
+    expect(fetchCountOf("/chart")).toBe(1);
+
+    await act(async () => {
+      globalThis.__AKAN_RSC_CLEAR_CACHE__?.();
+    });
+    await navigate("/chart/next");
+    await navigate("/chart");
+
+    expect(fetchCountOf("/chart/next")).toBe(2);
+    expect(fetchCountOf("/chart")).toBe(1);
+    expect(shown()).toBe("/chart");
   });
 
   test("a page the navigation cache holds is not prefetched", async () => {
