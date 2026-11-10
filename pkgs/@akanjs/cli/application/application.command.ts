@@ -1,5 +1,6 @@
 import type { DatabaseMode } from "@akanjs/devkit/akanConfig";
 import { App, Apps, command, Exec, Sys, SysOrOnlyApp, Workspace } from "@akanjs/devkit/commandDecorators";
+import { RouteJsBudget } from "@akanjs/devkit/routeJsBudget";
 import { MigrationCommand } from "akanjs/server/migration/migrationCommand";
 import { MigrationError } from "akanjs/server/migration/migrationError";
 import { ApplicationScript } from "./application.script";
@@ -231,18 +232,17 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       desc: "environment the server runs in (default: AKAN_PUBLIC_ENV of the shell, else of the workspace .env)",
       nullable: true,
     })
-    .option("updateBudget", Boolean, {
-      desc: "write akan.budget.json: add each new route's JS and lower an entry a route now fits under, never raise one",
-      default: false,
-    })
-    .exec(async function (app, write, fast, quiet, profile, env, updateBudget) {
+    .option("checkBudget", Boolean, { desc: "fail on a route over its akan.budget.json entry", default: false })
+    .option("updateBudget", Boolean, { desc: "write akan.budget.json, never raising an entry", default: false })
+    .option("raiseBudget", Boolean, { desc: "rewrite akan.budget.json at each route's measured JS", default: false })
+    .exec(async function (app, write, fast, quiet, profile, env, checkBudget, updateBudget, raiseBudget) {
       await this.applicationScript.build(app, {
         write,
         fast,
         quiet,
         profile: profile ?? undefined,
         env: env ?? undefined,
-        updateBudget,
+        budget: RouteJsBudget.modeOf({ checkBudget, updateBudget, raiseBudget }),
       });
     }),
   typecheck: target({ short: true, desc: "Typecheck an app or a library, its tests and specs included" })

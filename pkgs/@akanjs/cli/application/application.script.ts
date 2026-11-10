@@ -18,6 +18,7 @@ import {
 import { AppExecutor, LibExecutor, PkgExecutor, SysExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import { DesktopServerStage } from "@akanjs/devkit/mobile";
+import type { RouteJsBudgetMode } from "@akanjs/devkit/routeJsBudget";
 import { formatSlicePlan } from "@akanjs/devkit/slicePlanner";
 import { confirm } from "@inquirer/prompts";
 import { Logger, toError } from "akanjs/common";
@@ -202,14 +203,14 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       quiet = false,
       profile,
       env,
-      updateBudget = false,
+      budget = "report",
     }: {
       write?: boolean;
       fast?: boolean;
       quiet?: boolean;
       profile?: string;
       env?: string;
-      updateBudget?: boolean;
+      budget?: Exclude<RouteJsBudgetMode, "off">;
     } = {},
   ) {
     await app.scanSync({ write });
@@ -220,7 +221,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
         spinner: !quiet,
         envProfile: profile,
         environment: env,
-        budget: updateBudget ? "update" : "enforce",
+        budget,
       });
       Logger.rawLog(`${app.name} built in dist/apps/${app.name}`);
       if (!quiet) ApplicationBuildReporter.printSummary(result);

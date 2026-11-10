@@ -17,7 +17,7 @@ export interface RouteJsOverage {
   limitBytes: number;
 }
 
-export type RouteJsBudgetMode = "enforce" | "update" | "report" | "off";
+export type RouteJsBudgetMode = "enforce" | "update" | "raise" | "report" | "off";
 
 export interface RouteJsBudgetWarning {
   file: string;
@@ -30,8 +30,20 @@ export interface RouteJsBudgetStatus {
   warnings?: RouteJsBudgetWarning[];
 }
 
+export interface RouteJsBudgetFlags {
+  checkBudget?: boolean;
+  updateBudget?: boolean;
+  raiseBudget?: boolean;
+}
+
+interface BudgetTarget {
+  app: string;
+  source: string;
+}
+
 export interface RouteJsBudgetCheck {
   mode: Exclude<RouteJsBudgetMode, "off">;
+  app: string;
   budgetPath: string;
   source: string;
   environment: string;
@@ -65,33 +77,46 @@ export class RouteJsBudget {
       .sort((a, b) => b.brotliBytes - a.brotliBytes || RouteJsBudget.#byCodeUnit(a.routeId, b.routeId));
   }
 
+  static modeOf({ checkBudget = false, updateBudget = false, raiseBudget = false }: RouteJsBudgetFlags) {
+    if ([checkBudget, updateBudget, raiseBudget].filter(Boolean).length > 1)
+      throw new Error("Pass at most one of --check-budget, --update-budget and --raise-budget.");
+    return checkBudget ? "enforce" : updateBudget ? "update" : raiseBudget ? "raise" : "report";
+  }
+
   static async load(filePath: string, source = filePath): Promise<RouteJsBudget | null> {
     const file = Bun.file(filePath);
     if (!(await file.exists())) return null;
     return RouteJsBudget.parse(await file.text(), source);
   }
 
-  //? `report` runs inside `akan verify`, where an overage or a broken file is no code error to fix in the edit loop.
-  static async check(
-    sizes: RouteJsSize[],
-    { mode, budgetPath, source, environment }: RouteJsBudgetCheck,
-  ): Promise<RouteJsBudgetStatus> {
+  //? Only `enforce` (`--check-budget`, run by CI) fails a build: a deploy build and `akan verify`'s edit loop report.
+  static async check(sizes: RouteJsSize[], check: RouteJsBudgetCheck): Promise<RouteJsBudgetStatus> {
+    const { mode, app, budgetPath, source, environment } = check;
     const { committed, unreadable } = await RouteJsBudget.#loadFor(mode, budgetPath, source);
-    const budget = mode === "update" ? (committed ?? new RouteJsBudget()).tightenedBy(sizes, environment) : committed;
-    if (mode === "update" && budget) await Bun.write(budgetPath, budget.stringify());
+    if (mode === "enforce" && !committed)
+      throw new Error(`--check-budget found no ${source}: record one with \`akan build ${app} --update-budget\`.`);
+    const budget =
+      mode === "raise"
+        ? new RouteJsBudget().tightenedBy(sizes, environment)
+        : mode === "update"
+          ? (committed ?? new RouteJsBudget()).tightenedBy(sizes, environment)
+          : committed;
+    if ((mode === "update" || mode === "raise") && budget) await Bun.write(budgetPath, budget.stringify());
     const overages = budget?.overages(sizes) ?? [];
     const envNote = committed?.envNote(environment) ?? "";
-    if (overages.length && mode !== "report") throw new Error(RouteJsBudget.formatOverages(overages, source, envNote));
+    if (overages.length && mode !== "report")
+      throw new Error(RouteJsBudget.formatOverages(overages, { app, source }, envNote));
     const unbudgeted = budget?.unbudgeted(sizes).length ?? 0;
-    if (mode === "update") return { summary: `${source} ${unreadable ? `rewritten (${unreadable})` : "updated"}` };
+    if (mode === "update" || mode === "raise")
+      return { summary: RouteJsBudget.#writtenSummary(check, unreadable, committed, budget) };
     if (unreadable)
       return {
         summary: `${unreadable}, not checked`,
         warnings: [
           {
             file: source,
-            message: `${unreadable}; akan build fails on it`,
-            fix: "correct it, or rewrite it with akan build <app> --update-budget",
+            message: `${unreadable}; akan build --check-budget fails on it`,
+            fix: `correct it, or rewrite it with akan build ${app} --update-budget`,
           },
         ],
       };
@@ -101,11 +126,25 @@ export class RouteJsBudget {
         summary: `${overages.length} route(s) over ${source}${envNote}, reported only: ${overages.map(({ routeId }) => routeId).join(", ")}`,
         warnings: overages.map(({ routeId, brotliBytes, limitBytes }) => ({
           file: source,
-          message: `${routeId} loads ${RouteJsBudget.#bytes(brotliBytes)} bytes brotli, over its limit of ${RouteJsBudget.#bytes(limitBytes)}${envNote}; akan build fails on it`,
-          fix: "shrink what the route loads, or raise its entry by hand in the same change",
+          message: `${routeId} loads ${RouteJsBudget.#bytes(brotliBytes)} bytes brotli, over its limit of ${RouteJsBudget.#bytes(limitBytes)}${envNote}; akan build --check-budget fails on it`,
+          fix: `shrink what the route loads, or raise its entry with akan build ${app} --raise-budget`,
         })),
       };
     return { summary: `within ${source}${envNote}${unbudgeted ? `, ${unbudgeted} route(s) without an entry` : ""}` };
+  }
+
+  static #writtenSummary(
+    { mode, source }: RouteJsBudgetCheck,
+    unreadable: string | null,
+    committed: RouteJsBudget | null,
+    written: RouteJsBudget | null,
+  ) {
+    if (unreadable) return `${source} rewritten (${unreadable})`;
+    if (mode === "update") return `${source} updated`;
+    const raised = [...(written?.kbByRoute ?? [])].filter(
+      ([routeId, kb]) => kb > (committed?.kbByRoute.get(routeId) ?? kb),
+    );
+    return `${source} re-recorded at each route's measured size${raised.length ? `, raised: ${raised.map(([routeId]) => routeId).join(", ")}` : ""}`;
   }
 
   static async #loadFor(mode: RouteJsBudgetCheck["mode"], budgetPath: string, source: string) {
@@ -158,16 +197,21 @@ export class RouteJsBudget {
     ];
   }
 
-  static formatOverages(overages: RouteJsOverage[], source: string, envNote = ""): string {
+  static formatOverages(overages: RouteJsOverage[], target: BudgetTarget, envNote = ""): string {
     const bytes = RouteJsBudget.#bytes;
+    const { source } = target;
     return [
       `${overages.length} route${overages.length === 1 ? "" : "s"} over the JS budget in ${source}${envNote}:`,
       ...overages.map(
         ({ routeId, brotliBytes, budgetKB, limitBytes }) =>
           `  ${routeId}: ${bytes(brotliBytes)} bytes brotli, over its limit of ${bytes(limitBytes)} (${budgetKB}KB + the larger of 1% and 4KB)`,
       ),
-      "Shrink what the route loads. If the growth is intended, raise its entry by hand in the same change.",
+      RouteJsBudget.#overageFix(target),
     ].join("\n");
+  }
+
+  static #overageFix({ app, source }: BudgetTarget) {
+    return `Shrink what the route loads. If the growth is intended, record it in the same change: \`akan build ${app} --raise-budget\` re-records every route at its measured size, or raise the route's entry under "${RouteJsBudget.section}" in ${source} by hand.`;
   }
 
   static #bytes(value: number) {

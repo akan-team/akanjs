@@ -55,7 +55,7 @@ export interface ApplicationBuildRunnerOptions {
   environment?: string;
   /** Bundles `env/env.server.<environment>.<profile>.ts`, which may hold no secret, in place of the environment's file. */
   profile?: string;
-  /** `update` writes akan.budget.json, then enforces it; `report` names an overage without failing the build. */
+  /** `enforce` fails on an overage; `update` and `raise` rewrite akan.budget.json first; `report` only names one. */
   budget?: RouteJsBudgetMode;
 }
 export interface BuildOptions {
@@ -456,6 +456,7 @@ void run().catch((error) => {
     const budgetPath = path.join(this.#app.cwdPath, RouteJsBudget.fileName);
     const { summary: status, warnings } = await RouteJsBudget.check(sizes, {
       mode: this.#budget,
+      app: this.#app.name,
       budgetPath,
       source: path.relative(this.#app.workspace.workspaceRoot, budgetPath),
       environment,

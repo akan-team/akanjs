@@ -51,4 +51,15 @@ describe("ApplicationBuildReporter.printSummary", () => {
       lines.indexOf("Route artifacts: dist/apps/shop/.akan/artifact"),
     );
   });
+
+  test("prints each route JS budget warning of a build that only reports it", () => {
+    const routeJsWarnings = [
+      { file: "apps/shop/akan.budget.json", message: "/:lang/memo loads 133,120 bytes brotli", fix: "shrink it" },
+    ];
+    ApplicationBuildReporter.printSummary({ ...resultFor("main"), routeJsWarnings });
+
+    expect(rawLog.mock.calls.map(([line]) => line)).toContain(
+      "Warning: apps/shop/akan.budget.json: /:lang/memo loads 133,120 bytes brotli (shrink it)",
+    );
+  });
 });

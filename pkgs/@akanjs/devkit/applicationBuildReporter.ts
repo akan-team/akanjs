@@ -40,6 +40,11 @@ export class ApplicationBuildReporter {
       for (const line of RouteJsBudget.formatTable(result.routeJs)) Logger.rawLog(line);
       Logger.rawLog("");
     }
+    if (result.routeJsWarnings?.length) {
+      for (const { file, message, fix } of result.routeJsWarnings)
+        Logger.rawLog(`Warning: ${file}: ${message} (${fix})`);
+      Logger.rawLog("");
+    }
     Logger.rawLog(`Route artifacts: ${result.artifactDir}`);
     Logger.rawLog(`Server output: ${result.outputDir}`);
     Logger.rawLog(`Done in ${ApplicationBuildReporter.formatDuration(result.durationMs)}`);
