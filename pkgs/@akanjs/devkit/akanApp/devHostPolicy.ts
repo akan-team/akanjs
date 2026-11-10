@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { RestartPolicy } from "akanjs/common/restartSchedule";
 import type {
   BuilderMessage,
   BuildPhase,
@@ -20,7 +21,7 @@ export const redisTunnelPolicy = ({
 }): "none" | "optional" | "required" =>
   environment === "local" ? "none" : databaseMode === "single" ? "optional" : "required";
 
-const BACKEND_RECOVERY_MAX_ATTEMPTS = 5;
+export const backendRecoveryPolicy: RestartPolicy = { min: 1_000, max: 30_000, maxAttempts: 5 };
 
 // A page load asks for several routes, but a builder that never returns must not grow the hold queue unbounded.
 const HELD_BUILDER_REQUEST_LIMIT = 64;
@@ -56,9 +57,6 @@ export const shouldRestartBackendByDevPlan = (
 
 export const shouldRestartBuilderByDevPlan = (message: Extract<BuilderMessage, { type: "invalidate" }>): boolean =>
   message.devPlan?.actions.includes("restart-builder") ?? false;
-
-export const shouldAbandonBackendRecovery = (attempts: number, maxAttempts = BACKEND_RECOVERY_MAX_ATTEMPTS): boolean =>
-  attempts >= maxAttempts;
 
 /** The gateway reports backend failures with `generation: -1`; the host assigns its own counter then. */
 export const normalizeBackendReportedGeneration = (generation: number): number | undefined =>

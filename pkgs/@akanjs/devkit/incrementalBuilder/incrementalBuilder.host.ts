@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
+import { RestartSchedule } from "akanjs/common/restartSchedule";
 import type { BuilderMessage, BuilderRequest } from "akanjs/server";
 import { CSR_DEV_DIRNAME, CSR_DEV_PATCHING_MARKER, SSR_DEV_DIRNAME } from "akanjs/server/hmr/csrDevManifest";
 import { MemoryLimit } from "akanjs/server/memoryLimit";
@@ -49,8 +50,6 @@ interface IncrementalBuilderStartOptions {
 }
 
 export class IncrementalBuilderHost {
-  static readonly #restartBaseDelayMs = 1_000;
-  static readonly #restartMaxDelayMs = 30_000;
   static readonly #recycleDrainTimeoutMs = 30_000;
   // apps/akan's builder peaks near 950MB holding the SSR registry's patcher through a route build, and arming CSR adds
   // a second patcher: this recycles only a builder grown well past both.
@@ -65,8 +64,7 @@ export class IncrementalBuilderHost {
   readonly #onOutput: ((kind: "stdout" | "stderr", text: string) => void) | null;
   #proc: Bun.Subprocess<"ignore", "inherit" | "pipe", "inherit" | "pipe"> | null = null;
   #status: IncrementalBuilderStatus = "stopped";
-  #restartAttempts = 0;
-  #restartTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly #restart = new RestartSchedule({ min: 1_000, max: 30_000 });
   #recycleTimer: ReturnType<typeof setTimeout> | null = null;
   #recycleRequested: boolean = false;
   #spawnAfterRecycle: boolean = false;
@@ -136,7 +134,7 @@ export class IncrementalBuilderHost {
         if (msg.type === "builder-ready" && !this.ready) {
           this.ready = true;
           this.#status = "ready";
-          this.#restartAttempts = 0;
+          this.#restart.reset();
           if (isRestart) this.#startOptions.onRestartReady?.();
           else this.#startOptions.onReady?.();
         }
@@ -210,20 +208,13 @@ export class IncrementalBuilderHost {
     }
   }
   #scheduleRestart() {
-    if (this.#manualStop || this.#restartTimer) return;
+    if (this.#manualStop || this.#restart.pending) return;
     this.#status = "restarting";
-    const attempt = this.#restartAttempts;
-    const delay = Math.min(
-      IncrementalBuilderHost.#restartBaseDelayMs * 2 ** attempt,
-      IncrementalBuilderHost.#restartMaxDelayMs,
-    );
-    this.#restartAttempts = attempt + 1;
-    this.logger.warn(`builder exited after ready; restarting in ${delay}ms (attempt ${this.#restartAttempts})`);
-    this.#restartTimer = setTimeout(() => {
-      this.#restartTimer = null;
+    const delay = this.#restart.schedule(() => {
       if (this.#manualStop) return;
       this.#spawn(true);
-    }, delay);
+    });
+    this.logger.warn(`builder exited after ready; restarting in ${delay}ms (attempt ${this.#restart.attempts})`);
   }
   /** Drain-and-exit rather than `kill()`, so no rebuild is truncated; false when the request was not sent. */
   recycle(reason: string): boolean {
@@ -294,10 +285,7 @@ export class IncrementalBuilderHost {
     this.#manualStop = true;
     this.#clearRecycle();
     this.#failInFlight("builder was stopped before answering");
-    if (this.#restartTimer) {
-      clearTimeout(this.#restartTimer);
-      this.#restartTimer = null;
-    }
+    this.#restart.cancel();
     if (this.#proc) this.#proc.kill();
     this.#proc = null;
     this.ready = false;
