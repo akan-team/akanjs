@@ -15,10 +15,11 @@ Partial RSC commit can now patch a real page, and it patches cleanly. It is stil
 - **A full commit after a patch goes straight to the new page's head, path and body.** It no longer shows the last full page for a frame first.
 - **A patch falls back to a full render when the kept layouts would be wrong:**
   - another route group's layout sits at the same URL prefix (`(guest)/account/login` to `(member)/account/settings`);
-  - the layouts' head would be different for the target, for example a layout `.head()` that reads a search arg. The client sends a key of the layouts head it shows, and the server compares it with the target's;
+  - the layouts' head would be different for the target, for example a layout `.head()` that reads a search arg. The router state carries a key of the layouts head its page rendered (`headKey`), and the server compares it with the target's. The key changes together with the rest of the router state, so a navigation started while the previous page is still committing sends that page's key;
   - a route param differs (`/en` to `/ko`);
   - a frame setting differs, such as `transition`;
   - the page navigated from has no patchable head;
   - its frame cannot be resolved.
-- **A client built without the flag no longer asks for patches it cannot apply.** Before, a server running with the flag answered such a client with patches, and every sibling navigation made a second request.
+- **A client built without the flag no longer asks for patches it cannot apply.** Before, a server running with the flag answered such a client with patches, and every sibling navigation made a second request. Such a client leaves the head key out of the router state it sends.
+- **A refused head-safe patch runs each `.head()` once.** When a patch is refused after its head resolved, the full render reuses that head. Before, it ran every `.head()` a second time.
 - **`@akanjs/devkit`: the SSR runtime manifest keeps every client export of the segment outlet module.** Before, it kept only one.

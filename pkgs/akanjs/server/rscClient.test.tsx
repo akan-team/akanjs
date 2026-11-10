@@ -918,12 +918,16 @@ describe("rscClient route head key", () => {
     }) as typeof fetch;
     served.set("/atlas", () => keyed(routedResponseOf("/atlas"), "atlas layouts"));
     served.set("/atlas/map", () => routedResponseOf("/atlas/map"));
+    const enabled = process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+    process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = "1";
     try {
       await navigate("/atlas");
       await navigate("/atlas/map");
       await navigate("/atlas/legend");
     } finally {
       globalThis.fetch = fetchOf;
+      if (enabled === undefined) delete process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+      else process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = enabled;
     }
 
     expect(sent.get("/atlas/map")).toMatchObject({ routeId: "/atlas", headKey: "atlas layouts" });

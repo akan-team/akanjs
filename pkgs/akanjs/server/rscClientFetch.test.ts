@@ -8,6 +8,7 @@ import {
   AKAN_RSC_PATCH_START_SEGMENT_HEADER,
   AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_STATE_VERSION_HEADER,
+  decodeAkanRouterState,
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
 import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
@@ -217,6 +218,31 @@ describe("fetchRscNavigationResponse", () => {
       expect(result.type === "response" && getRscPayloadStream(result.response)).toBeNull();
     } finally {
       Reflect.deleteProperty(globalThis, "__AKAN_IMPORT_MAP_KEY__");
+    }
+  });
+
+  test("names the layouts head its page rendered only from a client built with partial commit", async () => {
+    const enabled = process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+    const sent: (string | undefined)[] = [];
+    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      sent.push(decodeAkanRouterState(new Headers(init?.headers).get(AKAN_RSC_CURRENT_STATE_HEADER))?.headKey);
+      return new Response("Conflict", { status: 409 });
+    }) as typeof fetch;
+    const currentRouterState = {
+      ...makeRouterState("https://example.test/docs/intro", "/docs/intro"),
+      headKey: "k1",
+    };
+    try {
+      for (const flag of ["1", "0"]) {
+        process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = flag;
+        await fetchRscNavigationResponse("https://example.test/docs", { currentRouterState });
+      }
+
+      expect(sent).toEqual(["k1", undefined]);
+      expect(currentRouterState.headKey).toBe("k1");
+    } finally {
+      if (enabled === undefined) delete process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+      else process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = enabled;
     }
   });
 });
