@@ -676,9 +676,9 @@ for it to be added.
 `/_akan/studio?view=runtime` draws `/_akan/deps` and `/_akan/signal` as one picture, next to Studio's
 source-built views (ERD, Signals, Changes, Framework). It calls the same serializers in process, so it reads the
 container of the process that answered and needs that server running; the header says which (`pid`,
-`serverMode`, `replicaIdx`). It needs no dev builder, so `/_akan/studio` with no `view` lands on it when no
-builder answers; a source-built view asked for then answers 503 inside Studio's nav, saying to open it under
-`akan start`.
+`serverMode`, `replicaIdx`). It needs no dev builder, so `/_akan/studio` without a known `view` lands on it when
+the server has no builder or the builder RPC times out (`AKAN_BUILDER_RPC_TIMEOUT_MS`, 120 s by default); a
+source-built view asked for then, like a failed build, answers 503 inside Studio's nav with the reason.
 
 - **Columns.** Jobs, then services by boot stage, then adaptors by boot stage. An injection always targets
   an earlier stage, so the latest stage stands leftmost and every arrow points from what injects to what it
