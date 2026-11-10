@@ -177,6 +177,7 @@ describe("McpAppViewBuilder.build", () => {
       dist: { cwdPath: file("dist/apps/demo") },
       workspace: { workspaceRoot: root },
       getTsConfig: async () => ({ compilerOptions: {} }),
+      getConfig: async () => ({ barrelImports: [] }),
       getPublicEnv: () => ({}),
       logger: { warn: () => undefined },
     };

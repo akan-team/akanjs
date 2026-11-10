@@ -308,13 +308,15 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     }
     await write(path.join(root, "libs/hand/client.ts"), 'export { thing } from "./lib/thing";\n');
     await write(path.join(root, "libs/hand/lib/thing.ts"), "export const thing = 1;\n");
+    await write(path.join(root, "libs/half/client.ts"), 'export { st } from "./lib/st";\n');
+    await write(path.join(root, "libs/half/lib/st.ts"), "export const st = {};\n");
     const analyzer = new BarrelAnalyzer({
       resolvePackage: await createTsconfigPackageResolver({
         workspace: { workspaceRoot: root },
         getTsConfig: async () => ({ compilerOptions: { paths: { "@apps/*": ["./apps/*"], "@libs/*": ["./libs/*"] } } }),
       } as never),
     });
-    const barrels = ["@apps/demo/client", "@libs/kit/client", "@libs/hand/client"];
+    const barrels = ["@apps/demo/client", "@libs/kit/client", "@libs/hand/client", "@libs/half/client"];
     const rewrite = async (source: string) => await rewriteBarrelImports(source, barrels, analyzer);
 
     expect(await rewrite('import { Memo, st } from "@apps/demo/client";\n')).toBe(
@@ -348,6 +350,27 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(await rewrite('import { thing } from "@libs/hand/client";\n')).toBe(
       ['import "@libs/hand/client";', 'import { thing } from "@libs/hand/lib/thing";', ""].join("\n"),
     );
+    expect(await rewrite('import { st } from "@libs/half/client";\n')).toBe(
+      ['import "@libs/half/client";', 'import { st } from "@libs/half/lib/st";', ""].join("\n"),
+    );
+  });
+
+  test("keeps each statement's line count and writes the specifier specifierOf gives a target", async () => {
+    const analyzer = fakeAnalyzer([
+      ["A", { subpath: "@scope/pkg/leaf", originalName: "A" }],
+      ["ns", { subpath: "@scope/pkg/namespace", originalName: "ns", namespace: true }],
+    ]);
+    const source = 'import {\n  A,\n  ns,\n} from "@scope/pkg";\nconsole.log(A, ns);\n';
+
+    const rewritten = await rewriteBarrelImports(source, ["@scope/pkg"], analyzer, {
+      keepLines: true,
+      specifierOf: (subpath) => `./${subpath.slice("@scope/pkg/".length)}.ts`,
+    });
+
+    expect(rewritten).toBe(
+      'import { A } from "./leaf.ts"; import * as ns from "./namespace.ts";\n\n\n\nconsole.log(A, ns);\n',
+    );
+    expect(rewritten?.split("\n")).toHaveLength(source.split("\n").length);
   });
 
   test("does not rewrite import-looking code inside template literals", async () => {

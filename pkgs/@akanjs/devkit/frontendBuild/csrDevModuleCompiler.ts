@@ -1,10 +1,12 @@
 import path from "node:path";
 import type { BunPlugin } from "bun";
 import type { App } from "../commandDecorators";
+import { loaderFor } from "../transforms/moduleSyntax";
 import { CsrDevFactoryCheck } from "./csrDevFactoryCheck";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
 import type { CsrDevCompiledModule, CsrDevContext, CsrDevSharedHelpers } from "./csrDevTypes";
+import { DevBarrelImports } from "./devBarrelImports";
 import { RouteClientBuilder } from "./routeClientBuilder";
 
 interface OutputMetafile {
@@ -58,6 +60,7 @@ export class CsrDevModuleCompiler {
   readonly #outDir: string;
   readonly #routePrefix: string;
   readonly #assets = new Set<string>();
+  #barrels: Promise<DevBarrelImports | null> | null = null;
 
   constructor({ app, paths, resolver, context, outDir, routePrefix }: CsrDevModuleCompilerOptions) {
     this.#app = app;
@@ -302,13 +305,15 @@ export class CsrDevModuleCompiler {
           });
         }
         if (!vendor)
-          build.onLoad({ filter: /\.tsx$/ }, async (args) => {
+          build.onLoad({ filter: /\.(?:tsx?|jsx?)$/ }, async (args) => {
             if (CsrDevPaths.isVendorFile(args.path)) return undefined;
-            const normalized = RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh(
-              await Bun.file(args.path).text(),
-              { path: args.path },
-            );
-            return normalized ? { contents: normalized, loader: "tsx" } : undefined;
+            const source = await Bun.file(args.path).text();
+            const narrowed = (await (await this.#barrelImports())?.rewrite(source, args.path)) ?? source;
+            const normalized = args.path.endsWith(".tsx")
+              ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh(narrowed, { path: args.path })
+              : null;
+            const contents = normalized ?? narrowed;
+            return contents === source ? undefined : { contents, loader: loaderFor(args.path) };
           });
         build.onResolve({ filter: /.*/ }, (args) => {
           if (args.kind === "entry-point-build" || !args.importer) return undefined;
@@ -332,6 +337,11 @@ export class CsrDevModuleCompiler {
         });
       },
     };
+  }
+
+  #barrelImports(): Promise<DevBarrelImports | null> {
+    this.#barrels ??= DevBarrelImports.create(this.#app, this.#context.barrelImports ?? []);
+    return this.#barrels;
   }
 
   //? Bun writes sources relative to the working directory; the page shows them by workspace path instead. A package

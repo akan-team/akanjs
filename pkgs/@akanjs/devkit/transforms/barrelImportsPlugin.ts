@@ -233,10 +233,20 @@ const resolveFileCandidate = async (candidate: string): Promise<string | null> =
 
 const MACRO_ATTR_RE = /with\s*\{\s*type\s*:\s*["']macro["']\s*\}/;
 
+export interface RewriteBarrelImportsOptions {
+  /** Each replacement takes one line plus the newlines the statement spanned, so later lines keep their numbers. */
+  keepLines?: boolean;
+  specifierOf?: (subpath: string) => string;
+}
+
+export const workspaceBarrels = (barrels: readonly string[]): string[] =>
+  barrels.filter((barrel) => /^@(?:apps|libs)\//.test(barrel));
+
 export const rewriteBarrelImports = async (
   source: string,
   barrels: string[],
   analyzer: BarrelAnalyzer,
+  { keepLines = false, specifierOf = (subpath: string) => subpath }: RewriteBarrelImportsOptions = {},
 ): Promise<string | null> => {
   // Sound pre-filter before the costly parse: a static import cannot name a specifier absent from the text.
   if (!barrels.some((barrel) => source.includes(barrel))) return null;
@@ -252,8 +262,11 @@ export const rewriteBarrelImports = async (
     if (!barrels.includes(stmt.specifier)) continue;
     const map = await analyzer.analyze(stmt.specifier);
     if (!map || map.size === 0) continue;
-    const replacement = rewriteSingleStatement(stmt, map);
-    if (replacement === null) continue;
+    const lines = rewriteSingleStatement(stmt, map, specifierOf);
+    if (lines === null) continue;
+    const replacement = keepLines
+      ? `${lines.join(" ")}${"\n".repeat(source.slice(stmt.start, stmt.end).split("\n").length - 1)}`
+      : lines.join("\n");
     out = out.slice(0, stmt.start) + replacement + out.slice(stmt.end);
     changed = true;
   }
@@ -329,7 +342,11 @@ const parseImportClause = (clause: string): ParsedClause | null => {
   return parsed;
 };
 
-const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): string | null => {
+const rewriteSingleStatement = (
+  stmt: ImportStatement,
+  map: BarrelExportMap,
+  specifierOf: (subpath: string) => string,
+): string[] | null => {
   const clause = parseImportClause(stmt.clause);
   if (!clause) return null;
   // Namespace imports need the whole barrel — cannot rewrite safely.
@@ -352,7 +369,7 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
       continue;
     }
     if (target.namespace) {
-      namespaceLines.push(`import * as ${item.local} from "${target.subpath}";`);
+      namespaceLines.push(`import * as ${item.local} from ${JSON.stringify(specifierOf(target.subpath))};`);
       continue;
     }
     const list = rewrites.get(target.subpath) ?? [];
@@ -363,7 +380,9 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
   if (rewrites.size === 0 && namespaceLines.length === 0) return null;
 
   //? An app or lib client barrel's import-time side effects are its client runtime and store, not its module UI.
-  const lines: string[] = [...(StoreBootstrap.ofClientBarrel(stmt.specifier, map) ?? [])];
+  const lines = (StoreBootstrap.ofClientBarrel(stmt.specifier, map) ?? []).map(
+    (specifier) => `import ${JSON.stringify(specifierOf(specifier))};`,
+  );
 
   if (clause.defaultImport || remaining.length > 0) {
     const parts: string[] = [];
@@ -373,11 +392,11 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
   }
 
   for (const [subpath, items] of rewrites) {
-    lines.push(`import { ${items.map(serializeNamedItem).join(", ")} } from "${subpath}";`);
+    lines.push(`import { ${items.map(serializeNamedItem).join(", ")} } from ${JSON.stringify(specifierOf(subpath))};`);
   }
   lines.push(...namespaceLines);
 
-  return lines.join("\n");
+  return lines;
 };
 
 const serializeNamedItem = (item: NamedItem): string => {

@@ -291,3 +291,99 @@ describe("CsrDevModuleCompiler", () => {
     expect(String((failure as AggregateError).errors[0])).toContain('"await" can only be used');
   });
 });
+
+describe("CsrDevModuleCompiler barrel narrowing", () => {
+  let root: string;
+  const file = (relative: string) => path.join(root, relative);
+  const paths = { "@apps/*": ["./apps/*"], "@libs/*": ["./libs/*"] };
+  const compile = async (relative: string, { prepass }: { prepass: boolean }) => {
+    const narrowing = { ...context, barrelImports: ["@apps/demo/client"] };
+    const devPaths = new CsrDevPaths(root);
+    const resolver = new CsrDevResolver({ paths: devPaths, context: narrowing, entryFiles: [file(relative)] });
+    if (prepass) await resolver.prepass();
+    const compiler = new CsrDevModuleCompiler({
+      app: {
+        verbose: () => undefined,
+        logger: { error: () => undefined },
+        workspace: { workspaceRoot: root },
+        getTsConfig: async () => ({ compilerOptions: { paths } }),
+      } as unknown as App,
+      paths: devPaths,
+      resolver,
+      context: narrowing,
+      outDir: file("out"),
+      routePrefix: "/_akan/registry/",
+    });
+    return await compiler.compile([file(relative)], new Set(), { refusePrepass: !prepass });
+  };
+
+  beforeAll(async () => {
+    root = CsrDevPaths.realpath(await mkdtemp(path.join(os.tmpdir(), "akan-csr-dev-barrels-")));
+    await Bun.write(file("tsconfig.json"), JSON.stringify({ compilerOptions: { baseUrl: ".", paths } }));
+    await Bun.write(
+      file("apps/demo/client.ts"),
+      [
+        'export * as cnst from "./lib/cnst";',
+        'export { msg, usePage } from "./lib/useClient";',
+        'export { st, RootStore } from "./lib/st";',
+        'export { Memo } from "./lib/memo";',
+        'export { Other } from "./lib/other";',
+        "",
+      ].join("\n"),
+    );
+    await Bun.write(file("apps/demo/lib/cnst.ts"), "export const Sample = 1;\n");
+    await Bun.write(file("apps/demo/lib/useClient.ts"), "export const msg = 1;\nexport const usePage = () => msg;\n");
+    await Bun.write(file("apps/demo/lib/st.ts"), "export class RootStore {}\nexport const st = new RootStore();\n");
+    for (const name of ["Memo", "Other"]) {
+      await Bun.write(
+        file(`apps/demo/lib/${name.toLowerCase()}/index.ts`),
+        `import * as Zone from "./${name}.Zone";\nexport const ${name} = { Zone };\n`,
+      );
+      await Bun.write(
+        file(`apps/demo/lib/${name.toLowerCase()}/${name}.Zone.tsx`),
+        `export const Card = () => "${name}";\n`,
+      );
+    }
+    await Bun.write(
+      file("apps/demo/page/home.tsx"),
+      'import {\n  Memo,\n  st,\n} from "@apps/demo/client";\nexport const Page = () => [Memo.Zone.Card, st];\n',
+    );
+    await Bun.write(
+      file("apps/demo/page/added.tsx"),
+      'import { Other } from "@apps/demo/client";\nexport const Page = () => Other.Zone.Card;\n',
+    );
+  });
+
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("a page compiles the client runtime, the store and the modules it names, never the barrel or another module", async () => {
+    const { modules } = await compile("apps/demo/page/home.tsx", { prepass: true });
+    const ids = modules.map((module) => module.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+    expect(ids).toEqual([
+      "apps/demo/lib/memo/Memo.Zone.tsx",
+      "apps/demo/lib/memo/index.ts",
+      "apps/demo/lib/st.ts",
+      "apps/demo/lib/useClient.ts",
+      "apps/demo/page/home.tsx",
+    ]);
+    const page = modules.find((module) => module.id === "apps/demo/page/home.tsx");
+    const [sourceContent] = (JSON.parse(page?.sourceMap ?? "{}") as { sourcesContent?: string[] }).sourcesContent ?? [];
+    expect(sourceContent?.split("\n")).toHaveLength(6);
+  });
+
+  test("a save that adds a barrel import compiles without the resolution build a new bare import needs", async () => {
+    const { modules, unresolved } = await compile("apps/demo/page/added.tsx", { prepass: false });
+
+    expect(unresolved).toEqual([]);
+    expect(modules.map((module) => module.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "apps/demo/lib/other/Other.Zone.tsx",
+      "apps/demo/lib/other/index.ts",
+      "apps/demo/lib/st.ts",
+      "apps/demo/lib/useClient.ts",
+      "apps/demo/page/added.tsx",
+    ]);
+  });
+});

@@ -35,6 +35,7 @@ export interface CsrDevContext {
   refreshFile: string | null;
   /** Bare specifiers the page already loads (an SSR page's import map): required as `vendor:<specifier>`, not compiled. */
   externals?: readonly string[];
+  barrelImports?: readonly string[];
 }
 
 export interface CsrDevSharedHelpers {
