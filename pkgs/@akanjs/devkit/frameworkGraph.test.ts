@@ -5,7 +5,23 @@ import path from "node:path";
 import { FrameworkGraph } from "./frameworkGraph";
 
 const workspaceRoot = path.resolve(import.meta.dir, "../../..");
-const unrecognised = ["AkanIpcMessage ws.opened", "AkanIpcMessage ws.closed", "HmrMessage ok"];
+//? The other end of these lies outside the source read here: @akanjs/native's desktop shell answers file and secret
+//? requests, AkanApp's child reports a boot error from a code string, and the browser tab sends `sync-navigation` and
+//? handles every HmrMessage in a script string. `ws.*` and HMR `ok` have no site.
+const unrecognised = [
+  "AkanIpcMessage ws.opened sender",
+  "AkanIpcMessage ws.opened handler",
+  "AkanIpcMessage ws.closed sender",
+  "AkanIpcMessage ws.closed handler",
+  "AkanIpcMessage file.resolve handler",
+  "AkanIpcMessage file.resolved sender",
+  "AkanIpcMessage secret.request handler",
+  "AkanIpcMessage secret.answer sender",
+  "AkanIpcMessage error sender",
+  "HmrMessage sync-navigation sender",
+  "HmrMessage ok sender",
+];
+const handledInBrowser = new Set(["HmrMessage"]);
 
 const withWorkspace = async (files: Record<string, string>, run: (root: string) => Promise<void>) => {
   const root = await mkdtemp(path.join(tmpdir(), "akan-framework-"));
@@ -44,9 +60,10 @@ describe("FrameworkGraph", () => {
     expect(map.cycles).toEqual([]);
     expect(architecture.unknownClasses).toEqual([]);
     const unmatched = map.channels.flatMap(({ name, messages }) =>
-      messages
-        .filter(({ senders, handlers }) => !senders.length && !handlers.length)
-        .map(({ type }) => `${name} ${type}`),
+      messages.flatMap(({ type, senders, handlers }) => [
+        ...(senders.length ? [] : [`${name} ${type} sender`]),
+        ...(handlers.length || handledInBrowser.has(name) ? [] : [`${name} ${type} handler`]),
+      ]),
     );
     expect(unmatched).toEqual(unrecognised);
     if (architecture.next !== architecture.current)
