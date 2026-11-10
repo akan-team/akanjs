@@ -59,6 +59,7 @@ beforeAll(async () => {
 
 let assign: Mock<(href: string | URL) => void>;
 let replace: Mock<(href: string | URL) => void>;
+let reloadedAt: string[] = [];
 const restorers: (() => void)[] = [];
 const restoreFromBackForwardCache = () =>
   window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
@@ -69,8 +70,12 @@ beforeEach(() => {
   process.env.AKAN_BUNDLE_COMMAND = "build";
   assign = spyOn(window.location, "assign").mockImplementation(() => undefined);
   replace = spyOn(window.location, "replace").mockImplementation(() => undefined);
+  reloadedAt = [];
+  const reload = spyOn(window.location, "reload").mockImplementation(() => {
+    reloadedAt.push(window.location.href);
+  });
   const quiet = [spyOn(console, "warn"), spyOn(console, "error")].map((spy) => spy.mockImplementation(() => undefined));
-  restorers.push(...[assign, replace, ...quiet].map((spy) => () => spy.mockRestore()));
+  restorers.push(...[assign, replace, reload, ...quiet].map((spy) => () => spy.mockRestore()));
 });
 
 afterEach(() => {
@@ -82,6 +87,7 @@ afterEach(() => {
 const documentLoads = () => ({
   assigned: assign.mock.calls.map(([href]) => String(href)),
   replaced: replace.mock.calls.map(([href]) => String(href)),
+  reloaded: [...reloadedAt],
 });
 const flush = async (ms = 5) => {
   await act(async () => {
@@ -169,17 +175,35 @@ describe("rscClient chunk that fails to load", () => {
     expect(documentLoads()).toEqual({
       assigned: [`${origin}/pending-push#reviews`],
       replaced: [`${origin}/pending-replace#top`],
+      reloaded: [],
     });
   });
 
-  test("a committed page whose chunk fails to link reloads its entry as it stands, once per chunk in a tab", async () => {
+  test("a back or forward move to a fragment whose page fails to link before it commits reloads that address", async () => {
+    const chunk = "/_akan/client/history-a1.js";
+    const held = servePendingPage("/history", chunk);
+    await act(async () => {
+      window.history.pushState(null, "", "/history#reviews");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      await sleep(5);
+    });
+    await fail(chunk, linkError());
+    await act(async () => {
+      held.release();
+      await sleep(5);
+    });
+
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [`${origin}/history#reviews`] });
+  });
+
+  test("a committed page whose chunk fails to link reloads the address it now shows, once per chunk in a tab", async () => {
     const chunk = "/_akan/client/agent-a1.js";
     served.set("/agent", () => [documentOf("/agent"), sleep(20), outlinedChunkRowsOf("1a", "1b", chunk)]);
     await navigate("/agent#chat");
     await navigate("/agent?tab=2#chat", { shallow: true, replace: true });
     await fail(chunk, linkError());
 
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [`${origin}/agent?tab=2#chat`] });
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [`${origin}/agent?tab=2#chat`] });
     expect(reloadedChunks()).toEqual([chunk]);
   });
 
@@ -201,14 +225,14 @@ describe("rscClient chunk that fails to load", () => {
       fetchChunk,
       new TypeError("Failed to fetch dynamically imported module: /_akan/client/refresh-fetch-a1.js"),
     );
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [] });
     await fail(linkChunk, linkError());
     await act(async () => {
       held.release();
       await refreshed;
     });
 
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [`${origin}/refreshing`] });
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [`${origin}/refreshing`] });
   });
 
   test("a chunk a page's text only mentions stays the document's own", async () => {
@@ -221,7 +245,7 @@ describe("rscClient chunk that fails to load", () => {
     });
     await fail(chunk, linkError());
 
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [] });
   });
 
   test("a chunk that already reloaded this tab shows its error instead of reloading again", async () => {
@@ -231,7 +255,7 @@ describe("rscClient chunk that fails to load", () => {
     await navigate("/again");
     await fail(chunk, linkError());
 
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [] });
   });
 
   test("offline, a failed fetch or a chunk's own error leaves the committed page in place", async () => {
@@ -250,7 +274,7 @@ describe("rscClient chunk that fails to load", () => {
     }
     expect(navigator.onLine).toBe(true);
 
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [] });
   });
 
   test("an overtaken navigation's chunk leaves the page that overtook it in place", async () => {
@@ -264,7 +288,7 @@ describe("rscClient chunk that fails to load", () => {
     await overtaken.settled(held);
 
     expect(window.location.pathname).toBe("/winner");
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [] });
   });
 
   test("a replaced response's late chunk leaves the refresh that replaced it in place", async () => {
@@ -277,7 +301,7 @@ describe("rscClient chunk that fails to load", () => {
     held.release();
     await fail(chunk, linkError());
 
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [] });
   });
 
   test("the document's own late chunk leaves it in place after a shallow update or a refresh", async () => {
@@ -296,7 +320,7 @@ describe("rscClient chunk that fails to load", () => {
     });
     await fail("/_akan/client/own-after-refresh-a1.js", linkError());
 
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [] });
   });
 
   test("a development bundle keeps the failure in the page", async () => {
@@ -306,7 +330,7 @@ describe("rscClient chunk that fails to load", () => {
     await navigate("/dev");
     await fail(chunk, linkError());
 
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [] });
   });
 
   test("a refresh during a fallback's document load leaves it alone, and the page's next navigation may fall back", async () => {
@@ -320,14 +344,14 @@ describe("rscClient chunk that fails to load", () => {
     await fail(first, linkError());
     await refresh();
     await fail(during, linkError());
-    expect(documentLoads().replaced).toEqual([`${origin}/first`]);
+    expect(documentLoads().reloaded).toEqual([`${origin}/first`]);
     expect(reloadedChunks()).toEqual([first]);
 
     serveCommittedPage("/later", [later]);
     await navigate("/later");
     await fail(later, linkError());
 
-    expect(documentLoads().replaced).toEqual([`${origin}/first`, `${origin}/later`]);
+    expect(documentLoads().reloaded).toEqual([`${origin}/first`, `${origin}/later`]);
     expect(reloadedChunks()).toEqual([first, later]);
   });
 
@@ -344,6 +368,6 @@ describe("rscClient chunk that fails to load", () => {
     await refresh();
     await fail(restored, linkError());
 
-    expect(documentLoads().replaced).toEqual([`${origin}/left`, `${origin}/left`]);
+    expect(documentLoads().reloaded).toEqual([`${origin}/left`, `${origin}/left`]);
   });
 });

@@ -158,7 +158,8 @@ const maxScriptRowBytes = 1024;
 const rowDecoder = new TextDecoder();
 
 function recordChunksOf(stream: ReadableStream<Uint8Array>, navigation: ChunkNavigation): ReadableStream<Uint8Array> {
-  //? The server writes each chunk path once as a string row, and an `I` row names it as `$<that row's id>`.
+  //? RSDW outlines a chunk path of 16+ characters into a string row the `I` row names as `$<row id>`, until 32,768
+  //? characters per response; shorter paths and those past the budget stay inline.
   const scriptRows = new Map<string, string>();
   return mapFlightLineRows(stream, (row, tag) => {
     if (tag !== "I" && (tag !== "" || row.byteLength > maxScriptRowBytes)) return row;
@@ -214,7 +215,9 @@ function hardNavigateAfterRscFailure(target: string, replace = false, error?: un
   if (documentNavigationFallbackInFlight) return;
   documentNavigationFallbackInFlight = true;
   console.warn(`[rscClient] RSC navigation failed, falling back to document navigation: ${String(error)}`);
-  if (replace) window.location.replace(target);
+  //? `replace` or `assign` to the address the tab already shows with a `#fragment` only scrolls; it loads nothing.
+  if (normalizeHref(target) === normalizeHref(window.location.href)) window.location.reload();
+  else if (replace) window.location.replace(target);
   else window.location.assign(target);
 }
 
