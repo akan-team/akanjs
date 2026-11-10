@@ -103,6 +103,7 @@ const build = (
   channels: FrameworkChannelSpec[] = [
     { file: "pkgs/akanjs/server/ipcTypes.ts", union: "Ipc", label: "gateway ⇄ child" },
   ],
+  extra: Record<string, string> = {},
 ) =>
   new FrameworkMapBuilder({
     ts,
@@ -110,7 +111,7 @@ const build = (
       { name: "akanjs", root: "pkgs/akanjs", split: true },
       { name: "@akanjs/devkit", root: "pkgs/@akanjs/devkit", split: false },
     ],
-    files: Object.entries(files).filter(([file]) => FrameworkMapBuilder.isSourcePath(file)),
+    files: Object.entries({ ...files, ...extra }).filter(([file]) => FrameworkMapBuilder.isSourcePath(file)),
     channels,
   }).build();
 
@@ -192,6 +193,57 @@ describe("FrameworkMapBuilder", () => {
     expect(channel.messages.find(({ type }) => type === "ready")?.handlers.map(({ owner }) => owner)).toEqual([
       "Gateway",
     ]);
+  });
+
+  it("follows a call on a typed field or parameter to the class that declares the method", () => {
+    const [channel] = build([{ file: "pkgs/akanjs/server/tabHub.ts", union: "Tab", label: "server → tab" }], {
+      "pkgs/akanjs/server/tabHub.ts": `export type Tab = { type: "reload" } | { type: "error"; message: string };
+export class TabHub {
+  broadcast(msg: Tab) {
+    return msg;
+  }
+}
+`,
+      "pkgs/akanjs/server/job.ts": `export type Job = { type: "reload" } | { type: "error"; message: string };\n`,
+      "pkgs/akanjs/server/router.ts": `import type { TabHub } from "./tabHub";
+export class Router {
+  #hub: TabHub | null = null;
+  fail(message: string) {
+    this.#hub?.broadcast({ type: "error", message });
+  }
+  reload(hub: TabHub) {
+    hub.broadcast({ type: "reload" });
+  }
+}
+`,
+    }).channels;
+    expect(channel.messages.map(({ type, senders }) => `${type} ${senders.map(({ owner }) => owner)}`)).toEqual([
+      "reload Router",
+      "error Router",
+    ]);
+  });
+
+  it("credits each literal a caller passes to a helper that sends `{ type }` from its parameter", () => {
+    const [channel] = build([{ file: "pkgs/akanjs/server/reply.ts", union: "Reply", label: "worker → host" }], {
+      "pkgs/akanjs/server/reply.ts": `export type Reply =
+  | { type: "list.result"; requestId: string; result: unknown }
+  | { type: "count.result"; requestId: string; result: unknown };
+`,
+      "pkgs/akanjs/server/renderer.ts": `export class Renderer {
+  readonly #send: (message: unknown) => void = () => undefined;
+  onAsk(requestId: string, kind: string) {
+    if (kind === "list") void this.#answer(requestId, "list.result", async () => []);
+    else void this.#answer(requestId, "count.result", async () => 0);
+  }
+  async #answer(requestId: string, type: string, fn: () => Promise<unknown>) {
+    this.#send({ type, requestId, result: await fn() });
+  }
+}
+`,
+    }).channels;
+    expect(
+      channel.messages.map(({ type, senders }) => `${type} ${senders.map(({ owner, at }) => `${owner}:${at.line}`)}`),
+    ).toEqual(["list.result Renderer:4", "count.result Renderer:5"]);
   });
 
   it("reports a channel whose union is gone", () => {

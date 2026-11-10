@@ -5,7 +5,7 @@ import path from "node:path";
 import { FrameworkGraph } from "./frameworkGraph";
 
 const workspaceRoot = path.resolve(import.meta.dir, "../../..");
-const unrecognised = ["AkanIpcMessage ws.opened", "AkanIpcMessage ws.closed", "HmrMessage ok", "HmrMessage error"];
+const unrecognised = ["AkanIpcMessage ws.opened", "AkanIpcMessage ws.closed", "HmrMessage ok"];
 
 const withWorkspace = async (files: Record<string, string>, run: (root: string) => Promise<void>) => {
   const root = await mkdtemp(path.join(tmpdir(), "akan-framework-"));

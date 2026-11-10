@@ -96,7 +96,6 @@ export class FrameworkMapBuilder {
     };
   }
 
-  //? A facet's layer is one above the highest it loads a value from; type-only imports load nothing at run time.
   static #layersOf(imports: FrameworkImport[]) {
     const deps = new Map<string, string[]>();
     for (const { from, to, value, dynamic } of imports)

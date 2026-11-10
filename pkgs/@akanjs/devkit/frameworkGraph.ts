@@ -95,7 +95,7 @@ export class FrameworkGraph {
       FrameworkGraph.#edits.set(workspaceRoot, (FrameworkGraph.#edits.get(workspaceRoot) ?? 0) + 1);
   }
 
-  //? An installed framework changes only with its version; one in `pkgs/` changes with every save under it.
+  //? Only an install rewrites `node_modules/akanjs`, and an install changes its version.
   static async cached(workspaceRoot: string): Promise<FrameworkMap | null> {
     const packages = await FrameworkGraph.packagesOf(workspaceRoot);
     const stamps = await Promise.all(

@@ -53,6 +53,12 @@ interface Chain {
   parameter: TS.ParameterDeclaration | null;
 }
 
+interface Template {
+  object: TS.ObjectLiteralExpression;
+  fn: TS.SignatureDeclaration;
+  index: number;
+}
+
 //? "ready", "error" and "redirect" also sit in non-channel unions, so a site is weighed against every union.
 export class FrameworkChannelReader {
   readonly #ts: Ts;
@@ -62,9 +68,14 @@ export class FrameworkChannelReader {
   readonly #deferred: (Site & { channels: ChannelState[] })[] = [];
   readonly #spoken = new Map<string, Set<ChannelState>>();
   readonly #sendParameters = new Set<TS.ParameterDeclaration>();
+  readonly #classes = new Map<string, TS.ClassDeclaration[]>();
 
   constructor(ts: Ts, specs: FrameworkChannelSpec[], sources: Map<string, TS.SourceFile>) {
     this.#ts = ts;
+    for (const source of sources.values())
+      for (const statement of source.statements)
+        if (ts.isClassDeclaration(statement) && statement.name)
+          this.#classes.set(statement.name.text, [...(this.#classes.get(statement.name.text) ?? []), statement]);
     for (const source of sources.values()) this.#unions.push(...this.#unionsIn(source));
     const parts = new Set(
       this.#unions.flatMap((union) =>
@@ -292,8 +303,13 @@ export class FrameworkChannelReader {
     const ts = this.#ts;
     const comparisons = new Map<string, Chain>();
     const switches: Chain[] = [];
+    const templates: Template[] = [];
+    const calls: TS.CallExpression[] = [];
     const visit = (node: TS.Node) => {
-      if (ts.isObjectLiteralExpression(node)) this.#readSend(source, node);
+      if (ts.isObjectLiteralExpression(node)) {
+        const template = this.#readSend(source, node);
+        if (template) templates.push(template);
+      } else if (ts.isCallExpression(node)) calls.push(node);
       else if (ts.isNewExpression(node)) this.#readRouteSet(source, node);
       else if (ts.isSwitchStatement(node)) {
         const chain = this.#switchChain(node);
@@ -314,21 +330,43 @@ export class FrameworkChannelReader {
       ts.forEachChild(node, visit);
     };
     visit(source);
+    for (const { object, fn, index } of templates)
+      for (const call of calls) {
+        const argument = call.arguments[index];
+        const literal = this.#literalOf(argument);
+        if (literal !== null && this.#calleeOf(call) === fn) this.#sendSite(source, object, literal, argument, true);
+      }
     for (const chain of [...switches, ...comparisons.values()])
       if (!chain.parameter || !this.#sendParameters.has(chain.parameter)) this.#readChain(source, chain);
   }
 
-  #readSend(source: TS.SourceFile, object: TS.ObjectLiteralExpression) {
+  #readSend(source: TS.SourceFile, object: TS.ObjectLiteralExpression): Template | null {
     const ts = this.#ts;
     const typeProperty = object.properties.find(
-      (property): property is TS.PropertyAssignment =>
-        ts.isPropertyAssignment(property) && this.#nameOf(property.name) === "type",
+      (property): property is TS.PropertyAssignment | TS.ShorthandPropertyAssignment =>
+        (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) &&
+        this.#nameOf(property.name) === "type",
     );
-    const literal = this.#literalOf(typeProperty?.initializer);
-    if (!typeProperty || literal === null) return;
-    const context = this.#sendContextOf(object, literal);
+    if (!typeProperty) return null;
+    const value = ts.isPropertyAssignment(typeProperty) ? typeProperty.initializer : typeProperty.name;
+    const literal = this.#literalOf(value);
+    if (literal !== null) this.#sendSite(source, object, literal, typeProperty, false);
+    if (literal !== null || !ts.isIdentifier(value)) return null;
+    const fn = this.#scopeOf(object);
+    const index = fn?.parameters.findIndex(({ name }) => ts.isIdentifier(name) && name.text === value.text) ?? -1;
+    return fn && index >= 0 ? { object, fn, index } : null;
+  }
+
+  #sendSite(
+    source: TS.SourceFile,
+    object: TS.ObjectLiteralExpression,
+    literal: string,
+    node: TS.Node,
+    forwarded: boolean,
+  ) {
+    const context = this.#sendContextOf(object, forwarded ? null : literal);
     if (!context) return;
-    const site: Site = { role: "senders", literal, source, node: typeProperty };
+    const site: Site = { role: "senders", literal, source, node };
     const hinted = this.#hinted(context.names).filter((union) => union.members.has(literal));
     const candidates = hinted.length ? hinted : this.#fitting(object, literal);
     if (context.parameter && candidates.some(({ channel }) => channel)) this.#sendParameters.add(context.parameter);
@@ -420,12 +458,18 @@ export class FrameworkChannelReader {
     const isFunction = (node: TS.Node | undefined): node is TS.ArrowFunction | TS.FunctionExpression =>
       !!node && (ts.isArrowFunction(node) || ts.isFunctionExpression(node));
     if (ts.isPropertyAccessExpression(callee) && callee.expression.kind === ts.SyntaxKind.ThisKeyword) {
-      let owner: TS.Node | undefined = call.parent;
-      while (owner && !ts.isClassLike(owner)) owner = owner.parent;
-      const member = owner?.members.find(({ name }) => name && this.#memberName(name) === callee.name.text);
+      const member = this.#memberOf(this.#classOf(call), callee.name.text);
       if (!member) return null;
       if (ts.isMethodDeclaration(member)) return member;
       return ts.isPropertyDeclaration(member) && isFunction(member.initializer) ? member.initializer : null;
+    }
+    if (ts.isPropertyAccessExpression(callee)) {
+      for (const name of this.#receiverTypeNames(callee.expression))
+        for (const declaration of this.#classes.get(name) ?? []) {
+          const member = this.#memberOf(declaration, callee.name.text);
+          if (member && ts.isMethodDeclaration(member)) return member;
+        }
+      return null;
     }
     if (!ts.isIdentifier(callee)) return null;
     for (const statement of call.getSourceFile().statements) {
@@ -436,6 +480,25 @@ export class FrameworkChannelReader {
           return isFunction(declaration.initializer) ? declaration.initializer : null;
     }
     return null;
+  }
+
+  #classOf(node: TS.Node): TS.ClassLikeDeclaration | null {
+    let owner: TS.Node | undefined = node.parent;
+    while (owner && !this.#ts.isClassLike(owner)) owner = owner.parent;
+    return owner ?? null;
+  }
+
+  #memberOf(owner: TS.ClassLikeDeclaration | null, name: string) {
+    return owner?.members.find((member) => member.name && this.#memberName(member.name) === name) ?? null;
+  }
+
+  #receiverTypeNames(receiver: TS.Expression): Set<string> {
+    const ts = this.#ts;
+    if (ts.isPropertyAccessExpression(receiver) && receiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      const field = this.#memberOf(this.#classOf(receiver), receiver.name.text);
+      return field && ts.isPropertyDeclaration(field) ? this.#namesIn(field.type) : new Set();
+    }
+    return this.#declaredTypeNames(receiver) ?? new Set();
   }
 
   #memberName(name: TS.PropertyName) {

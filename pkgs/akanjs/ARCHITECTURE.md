@@ -85,7 +85,6 @@ Declared in [service/ipcTypes.ts](service/ipcTypes.ts).
 | Message | Sent by | Handled by |
 | --- | --- | --- |
 | `ready` | `AkanServer` | `AkanApp` |
-| `backend-ready` | `AkanApp` | — |
 | `pubsub.publish` | `SolidPubSub` | `AkanApp` |
 | `pubsub.deliver` | `AkanApp` | `SolidPubSub` |
 | `pubsub.subscribe` | `SolidPubSub` | `AkanApp` |
@@ -124,7 +123,7 @@ Declared in [server/artifact/ipcTypes.ts](server/artifact/ipcTypes.ts).
 | `build-graph-res` | `AkanAppHost`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `builder-shutdown` | `IncrementalBuilderHost` | `IncrementalBuilder` |
 | `builder-ready` | `IncrementalBuilder` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
-| `backend-ready` | — | `AkanAppHost` |
+| `backend-ready` | `AkanApp` | `AkanAppHost` |
 | `invalidate` | `AkanAppHost`, `prepareDevWatchBatch` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `css-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost`, `shouldRelayRecycledFrontendState` |
 | `pages-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost`, `shouldRelayRecycledFrontendState` |
@@ -172,10 +171,10 @@ Declared in [server/rscWorkerHost.ts](server/rscWorkerHost.ts).
 | `not-found` | `RscRenderer` | `RscWorker` |
 | `metrics` | `RscRenderer` | `RscWorker` |
 | `log.records` | — | `RscWorker` |
-| `page-prompts.result` | — | `RscWorker` |
-| `page-prompt.result` | — | `RscWorker` |
-| `page-prompts.visible.result` | — | `RscWorker` |
-| `web-manifest.result` | — | `RscWorker` |
+| `page-prompts.result` | `RscRenderer` | `RscWorker` |
+| `page-prompt.result` | `RscRenderer` | `RscWorker` |
+| `page-prompts.visible.result` | `RscRenderer` | `RscWorker` |
+| `web-manifest.result` | `RscRenderer` | `RscWorker` |
 | `error` | `RscRenderer` | `RscWorker` |
 
 ### `HmrMessage`: dev server → browser tab
@@ -193,5 +192,5 @@ Declared in [server/hmr/wsHub.ts](server/hmr/wsHub.ts).
 | `sync-navigation` | — | `isSyncNavigationMessage` |
 | `ok` | — | — |
 | `build-status` | `devBuildStatusToHmrMessage` | — |
-| `error` | — | — |
+| `error` | `WebRouter` | — |
 <!-- akan:framework-map:end -->
