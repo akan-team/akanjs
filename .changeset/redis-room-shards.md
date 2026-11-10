@@ -9,4 +9,9 @@ On the Redis WebSocket adaptor, Redis now hands a server only the events of the 
 - **A subscribe is acknowledged once Redis has confirmed the SUBSCRIBE** for its channel, so an event another server publishes after the ack still arrives. While the subscriber is disconnected, the ack does not wait.
 - **`WebsocketAdaptor.joinRoom`** takes an optional third argument, `{ live: refName }`, for a live room.
 
-Servers of this release and of earlier ones do not hear each other. During a rolling deploy, an event published on one side does not reach clients on the other until they reconnect to a new server. A Redis ACL that names the old channel must allow `<prefix>ws:*` instead.
+Servers of this release and of earlier ones do not hear each other until the last old server is gone:
+
+- A pubsub event published on one side never reaches clients on the other.
+- A live list misses the writes made on the other side. A client on an old server resynchronizes when it reconnects to a new one. A client already on a new server stays stale until a later write reaches it or the page reloads, as nothing tells it to resynchronize.
+
+Replacing every server at once, rather than rolling, avoids that window. A Redis ACL that names the old channel must allow `<prefix>ws:*` instead.

@@ -872,9 +872,8 @@ export class SignalResolver {
     return select;
   }
 
-  //? The ack vouches for what other servers publish after it, so the socket subscribes only after the join: the client
-  //? keys a live room's frames by the ack. The numbering starts before it, so a frame sent meanwhile leaves a gap that
-  //? resyncs. `null` when an unsubscribe, a close, a revoke or a second subscribe took the room meanwhile.
+  //? The ack vouches for what other servers publish after it, so the socket subscribes after the join: the client keys
+  //? a live room's frames by the ack. Numbering starts first, so a frame sent meanwhile leaves a gap that resyncs.
   static async #awaitJoin(
     ws: Bun.ServerWebSocket<unknown>,
     roomId: string,

@@ -110,8 +110,7 @@ export class WebSocketRedisAdaptor
   #subscriberReady = false;
   /** Whether the subscriber has ever been up, so the first `ready` is a start rather than a recovery. */
   #subscriberStarted = false;
-  #subscriberLost: Promise<void> = Promise.resolve();
-  #loseSubscriber = () => {};
+  readonly #lossWaiters = new Set<() => void>();
   #warnedVersion = false;
 
   #roomChannel(roomId: string) {
@@ -139,7 +138,10 @@ export class WebSocketRedisAdaptor
       this.logger.warn(`Publisher error: ${err.message}`);
     });
 
-    // ioredis resubscribes on its own, but what was published in between is lost while every socket stays open.
+    //* Off, so the `ready` loop below alone decides what is subscribed: ioredis would also restore a channel whose
+    //* UNSUBSCRIBE it dropped in an outage, and that channel would stay subscribed with no room on it.
+    this.subscriber.options.autoResubscribe = false;
+    // What other servers published while the subscriber was down is lost, while every socket here stays open.
     this.subscriber.on("error", (err: Error) => {
       this.logger.warn(`Subscriber error: ${err.message}`);
     });
@@ -150,11 +152,8 @@ export class WebSocketRedisAdaptor
       this.logger.warn("Subscriber disconnected; cross-server events are being missed until it returns");
     });
     this.subscriber.on("ready", () => {
-      this.#subscriberLost = new Promise((resolve) => {
-        this.#loseSubscriber = resolve;
-      });
-      //* ioredis resubscribes only the channels Redis had confirmed, and rejects a SUBSCRIBE queued through a long
-      //* outage; its `ready` also fires before Redis answers what it resent, so no earlier reply vouches for now.
+      //* A SUBSCRIBE ioredis rejected in an outage included. `ready` fires before Redis answers what ioredis resent, so
+      //* no earlier reply vouches for the new connection.
       for (const [channel, hold] of this.#channels) this.#subscribe(channel, hold);
       const recovering = !this.#subscriberReady && this.#subscriberStarted;
       this.#subscriberReady = true;
@@ -320,15 +319,25 @@ export class WebSocketRedisAdaptor
     const hold = this.#channels.get(channel);
     if (!hold || hold.confirmed) return;
     const reply = hold.reply ?? this.#subscribe(channel, hold);
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timedOut = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, WebSocketRedisAdaptor.#subscribeTimeoutMs);
+    if (!this.#subscriberReady) return;
+    //? Per wait, not one promise held until the next close: every race would leave a reaction on it until then.
+    let wake = () => {};
+    const woken = new Promise<void>((resolve) => {
+      wake = resolve;
     });
+    this.#lossWaiters.add(wake);
+    const timer = setTimeout(wake, WebSocketRedisAdaptor.#subscribeTimeoutMs);
     try {
-      await Promise.race([reply, this.#subscriberLost, timedOut]);
+      await Promise.race([reply, woken]);
     } finally {
       clearTimeout(timer);
+      this.#lossWaiters.delete(wake);
     }
+  }
+
+  #loseSubscriber() {
+    for (const wake of this.#lossWaiters) wake();
+    this.#lossWaiters.clear();
   }
 
   #subscribe(channel: string, hold: ChannelHold): Promise<void> {

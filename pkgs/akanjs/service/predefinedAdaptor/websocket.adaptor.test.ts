@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { WebSocketRedisAdaptor } from "./websocket.adaptor";
 
 class FakeRedis extends EventEmitter {
+  readonly options: { autoResubscribe?: boolean } = {};
   readonly published: number[] = [];
   readonly channels: string[] = [];
   readonly pending: { settle: () => void }[] = [];
@@ -262,6 +263,24 @@ describe("WebSocketRedisAdaptor channels", () => {
     await until(() => waiting.settled);
   });
 
+  test("stops waiting for a SUBSCRIBE reply after 3 s on a link that stalls without closing", async () => {
+    const { adaptor, subscriber } = await openAdaptor();
+    subscriber.emit("ready");
+    subscriber.holdReplies = true;
+    jest.useFakeTimers();
+    try {
+      const waiting = settledFlag(adaptor.joinRoom(newSocket(), "task-a::1", { live: "task" }));
+      jest.advanceTimersByTime(2_999);
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      expect(waiting.settled).toBe(false);
+      jest.advanceTimersByTime(1);
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      expect(waiting.settled).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test("subscribes every held channel again when the subscriber returns, and a join then waits for that reply", async () => {
     const { adaptor, subscriber } = await openAdaptor();
     subscriber.emit("ready");
@@ -286,6 +305,11 @@ describe("WebSocketRedisAdaptor channels", () => {
     subscriber.holdReplies = false;
     subscriber.emit("ready");
     expect(subscriber.subscribed).toEqual(["app:ws:change:task", "app:ws:change:task"]);
+  });
+
+  test("leaves resubscribing to its own loop, so ioredis cannot bring back a channel whose UNSUBSCRIBE an outage dropped", async () => {
+    const { subscriber } = await openAdaptor();
+    expect(subscriber.options.autoResubscribe).toBe(false);
   });
 
   test("asks again for a channel whose SUBSCRIBE Redis refused, on the next join to it", async () => {
