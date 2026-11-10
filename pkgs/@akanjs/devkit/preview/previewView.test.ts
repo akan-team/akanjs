@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { PreviewChrome } from "./PreviewChrome";
 import { PreviewView } from "./PreviewView";
 
 const serve = (html: string, status = 200) =>
@@ -72,5 +76,40 @@ describe("PreviewView", () => {
       }
     },
     30_000,
+  );
+
+  test.skipIf(!PreviewView.isAvailable("chrome") || process.platform === "win32")(
+    "starts the page's bound once the browser is up, however long Chrome takes to spawn",
+    async () => {
+      const server = serve("<!doctype html><title>Up</title><body>up</body>");
+      const dir = await mkdtemp(path.join(tmpdir(), "akan-slow-chrome-"));
+      const chrome = path.join(dir, "chrome");
+      await writeFile(chrome, `#!/bin/sh\nsleep 3\nexec "${PreviewChrome.executable()}" "$@"\n`);
+      await chmod(chrome, 0o755);
+      const script = [
+        `const { PreviewView } = await import(${JSON.stringify(path.join(import.meta.dir, "PreviewView.ts"))});`,
+        `const probe = await PreviewView.probe("http://localhost:${server.port}/", { engine: "chrome", timeoutMs: 1_500 });`,
+        "console.log(probe.text);",
+      ].join("\n");
+      try {
+        //? Chrome is spawned once per process, so only a fresh process takes the slow executable.
+        const child = Bun.spawn([process.execPath, "-e", script], {
+          env: { ...process.env, [PreviewChrome.pathEnvKey]: chrome },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [out, err, code] = await Promise.all([
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+          child.exited,
+        ]);
+        expect(out.trim() || err).toBe("up");
+        expect(code).toBe(0);
+      } finally {
+        server.stop(true);
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    120_000,
   );
 });
