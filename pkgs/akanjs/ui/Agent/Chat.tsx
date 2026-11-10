@@ -1,6 +1,6 @@
 "use client";
 import { cn, isMcpView, isMobileDevice, usePage } from "akanjs/client";
-import { AgentPrompts, type AgentVisualOption } from "akanjs/store";
+import { AgentPrompts, type AgentVisualOption } from "akanjs/store/agent";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,

@@ -104,6 +104,9 @@ export class SignalResolver {
         SignalResolver.logger.warn(`Live routing failed for ${change.refName}: ${String(error)}`),
       );
     });
+    if (!live || !websocket.reportLiveModels) return;
+    live.syncHub.onModelsChange((models) => websocket.reportLiveModels?.(models));
+    websocket.reportLiveModels(live.syncHub.models());
   }
   static async #routeChange({ refName, next, previous }: LiveChange, live?: LiveRegistry) {
     const target = SignalResolver.#liveRoutes.get(refName);

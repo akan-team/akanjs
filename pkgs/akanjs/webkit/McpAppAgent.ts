@@ -2,7 +2,8 @@
 import { ImageResult } from "akanjs/base";
 import { csrLocation } from "akanjs/client";
 import { Logger } from "akanjs/common";
-import { AgentConfirm, AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle, StoreRegistry } from "akanjs/store";
+import { AgentConfirm, StoreRegistry } from "akanjs/store";
+import { AgentContext, AgentVisual, ensureStoreSurface, ScreenSettle } from "akanjs/store/agent";
 import {
   type AgenticSurface,
   type MessageAttachment,

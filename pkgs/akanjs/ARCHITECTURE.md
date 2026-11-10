@@ -93,6 +93,7 @@ Declared in [service/ipcTypes.ts](service/ipcTypes.ts).
 | `pubsub.snapshot.request` | `AkanApp` | `SolidPubSub` |
 | `pubsub.snapshot` | `SolidPubSub` | `AkanApp` |
 | `live.change` | `SolidPubSub` | `AkanApp`, `SolidPubSub` |
+| `live.models` | `SolidPubSub` | `AkanApp` |
 | `queue.enqueued` | `SolidQueue` | `AkanApp` |
 | `queue.wake` | `AkanApp` | `SolidQueue` |
 | `health.ping` | `AkanApp` | `AkanServer` |

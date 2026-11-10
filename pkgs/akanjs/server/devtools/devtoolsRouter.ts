@@ -9,7 +9,7 @@ import { ConstantSerializer } from "./constantSerializer";
 import { DepsSerializer } from "./depsSerializer";
 import { SignalSerializer } from "./signalSerializer";
 import { StudioRoute } from "./studio/studioRoute";
-import type { DevtoolsApp, DevtoolsEnvelope, DevtoolsIndex, DictionaryData } from "./types";
+import type { DepsData, DevtoolsApp, DevtoolsEnvelope, DevtoolsIndex, DictionaryData, SignalData } from "./types";
 
 export interface DevtoolsRouterContext {
   di: DiLifecycle;
@@ -52,6 +52,11 @@ export class DevtoolsRouter {
       buildGraph: this.#context.buildGraph ?? null,
       buildChanges: this.#context.buildChanges ?? null,
       buildFramework: this.#context.buildFramework ?? null,
+      runtime: () => ({
+        app: this.#app(),
+        deps: DevtoolsRouter.#attempt("studio runtime (deps)", () => this.#deps()),
+        signal: DevtoolsRouter.#attempt("studio runtime (signal)", () => this.#signal()),
+      }),
     });
     return {
       [`${DevtoolsRouter.basePath}/studio`]: { GET: (req: Request) => this.#gated(() => studio.page(req)) },
@@ -60,36 +65,31 @@ export class DevtoolsRouter {
       [`${DevtoolsRouter.basePath}/constant`]: {
         GET: () => this.#respond("constant", () => ConstantSerializer.serialize()),
       },
-      [`${DevtoolsRouter.basePath}/signal`]: {
-        GET: () =>
-          this.#respond("signal", () =>
-            SignalSerializer.serialize({
-              di: this.#context.di,
-              serverMode: this.#context.serverMode,
-              prefix: this.#context.prefix,
-              websocketPrefix: this.#context.websocketPrefix,
-            }),
-          ),
-      },
+      [`${DevtoolsRouter.basePath}/signal`]: { GET: () => this.#respond("signal", () => this.#signal()) },
       [`${DevtoolsRouter.basePath}/dictionary`]: {
         GET: (req: Request) => this.#respond("dictionary", () => DevtoolsRouter.#dictionary(req)),
       },
-      [`${DevtoolsRouter.basePath}/deps`]: {
-        GET: () =>
-          this.#respond("deps", () =>
-            new DepsSerializer({
-              di: this.#context.di,
-              env: this.#context.env,
-              name: this.#context.name,
-              status: this.#context.getStatus(),
-              serverMode: this.#context.serverMode,
-              prefix: this.#context.prefix,
-              websocketPrefix: this.#context.websocketPrefix,
-              openapi: this.#context.openapi,
-            }).build(),
-          ),
-      },
+      [`${DevtoolsRouter.basePath}/deps`]: { GET: () => this.#respond("deps", () => this.#deps()) },
     };
+  }
+
+  #signal(): SignalData {
+    const { di, serverMode, prefix, websocketPrefix } = this.#context;
+    return SignalSerializer.serialize({ di, serverMode, prefix, websocketPrefix });
+  }
+
+  #deps(): DepsData {
+    const { di, env, name, getStatus, serverMode, prefix, websocketPrefix, openapi } = this.#context;
+    return new DepsSerializer({
+      di,
+      env,
+      name,
+      status: getStatus(),
+      serverMode,
+      prefix,
+      websocketPrefix,
+      openapi,
+    }).build();
   }
 
   #index(): DevtoolsIndex {
@@ -108,10 +108,22 @@ export class DevtoolsRouter {
     try {
       return DevtoolsRouter.#json(this.#envelope(kind, build()));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      DevtoolsRouter.logger.warn(`Failed to serialize /_akan/${kind}: ${message}`);
-      return DevtoolsRouter.#json({ kind, error: message }, 500);
+      return DevtoolsRouter.#json({ kind, error: DevtoolsRouter.#failure(`/_akan/${kind}`, error) }, 500);
     }
+  }
+
+  static #attempt<Data>(label: string, build: () => Data): Data | { error: string } {
+    try {
+      return build();
+    } catch (error) {
+      return { error: DevtoolsRouter.#failure(label, error) };
+    }
+  }
+
+  static #failure(label: string, error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    DevtoolsRouter.logger.warn(`Failed to serialize ${label}: ${message}`);
+    return message;
   }
 
   async #gated(respond: () => Promise<Response>): Promise<Response> {

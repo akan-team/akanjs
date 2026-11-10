@@ -10,6 +10,7 @@ import {
   AKAN_RSC_CURRENT_ROUTE_HEADER,
   AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
+  AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_RESPONSE_STATE_HEADER,
   encodeAkanRouterState,
 } from "./routeState";
@@ -42,8 +43,9 @@ const back = async (expected: string) => {
   await waitFor(() => shown() === expected);
 };
 const served = new Map<string, () => Response | Promise<Response>>();
-const fetched: { pathname: string; sentRouterState: boolean }[] = [];
+const fetched: { pathname: string; sentRouterState: boolean; prefetch: boolean; signal?: AbortSignal }[] = [];
 const fetchCountOf = (pathname: string) => fetched.filter((request) => request.pathname === pathname).length;
+const signalOf = (pathname: string) => fetched.findLast((request) => request.pathname === pathname)?.signal;
 const sentRouterStateFor = (pathname: string) =>
   fetched.findLast((request) => request.pathname === pathname)?.sentRouterState;
 const routedResponseOf = (text: string) =>
@@ -115,9 +117,18 @@ beforeAll(async () => {
     __RSC_CLOSED__: true,
     fetch: async (input: string | URL, init?: RequestInit) => {
       const target = new URL(new URL(String(input)).searchParams.get("url") ?? "/", origin);
-      const sentRouterState = new Headers(init?.headers).has(AKAN_RSC_CURRENT_ROUTE_HEADER);
-      fetched.push({ pathname: target.pathname, sentRouterState });
-      return served.get(target.pathname)?.() ?? responseOf(`${target.pathname}${target.search}`);
+      const headers = new Headers(init?.headers);
+      const sentRouterState = headers.has(AKAN_RSC_CURRENT_ROUTE_HEADER);
+      const prefetch = headers.get(AKAN_RSC_PREFETCH_HEADER) === "1";
+      const signal = init?.signal ?? undefined;
+      fetched.push({ pathname: target.pathname, sentRouterState, prefetch, signal });
+      const response = served.get(target.pathname)?.() ?? responseOf(`${target.pathname}${target.search}`);
+      if (!signal) return response;
+      signal.throwIfAborted();
+      return new Promise<Response>((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        void Promise.resolve(response).then(resolve, reject);
+      });
     },
   });
   document.documentElement.innerHTML = "<head></head><body><main>/list</main></body>";
@@ -188,6 +199,83 @@ describe("rscClient overtaken navigation", () => {
     expect(shown()).toBe("/thread/2");
   });
 
+  test("a navigation overtaken before its page commits has its request cut once its headers are in", async () => {
+    await navigate("/street");
+    const { held, respond } = heldUntilReleased("/street/slow");
+    served.set("/street/slow", respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/street/slow");
+      await sleep(10);
+    });
+    await navigate("/street/fast");
+
+    expect(signalOf("/street/slow")?.aborted).toBe(false);
+    await act(async () => {
+      held.release();
+      await pending;
+    });
+    expect(signalOf("/street/slow")?.aborted).toBe(true);
+    expect(window.location.pathname).toBe("/street/fast");
+    expect(shown()).toBe("/street/fast");
+  });
+
+  test("a refresh aborts the navigation it overtakes", async () => {
+    await navigate("/desk");
+    const { held, respond } = heldUntilReleased("/desk/next");
+    served.set("/desk/next", respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/desk/next");
+      await sleep(10);
+    });
+    await refresh();
+
+    await act(async () => {
+      held.release();
+      await pending;
+    });
+    expect(signalOf("/desk/next")?.aborted).toBe(true);
+    expect(window.location.pathname).toBe("/desk");
+  });
+
+  test("a committed page still streaming is not cut by the navigation after it", async () => {
+    const encoder = new TextEncoder();
+    const rest = { send: () => {} };
+    served.set(
+      "/live",
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode(rowOf("$L1")));
+              rest.send = () => {
+                controller.enqueue(encoder.encode('1:"late"\n'));
+                controller.close();
+              };
+            },
+          }),
+          { headers: { "Content-Type": "text/x-component" } },
+        ),
+    );
+    await navigate("/live");
+    const { held, respond } = heldUntilReleased("/live/next");
+    served.set("/live/next", respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/live/next");
+      await sleep(10);
+    });
+
+    expect(signalOf("/live")?.aborted).toBe(false);
+    await act(async () => {
+      rest.send();
+      held.release();
+      await pending;
+    });
+    expect(shown()).toBe("/live/next");
+  });
+
   test("a shallow push made while a navigation is loading is not overtaken by it", async () => {
     await navigate("/catalog");
     const { held, respond } = heldUntilReleased("/catalog/next");
@@ -203,6 +291,7 @@ describe("rscClient overtaken navigation", () => {
       held.release();
       await pending;
     });
+    expect(signalOf("/catalog/next")?.aborted).toBe(true);
 
     expect(`${window.location.pathname}${window.location.search}`).toBe("/catalog?peek=1");
     expect(shown()).toBe("/catalog");
@@ -470,6 +559,235 @@ describe("rscClient account change", () => {
     await navigate("/team/plan");
 
     expect(sentRouterStateFor("/team/plan")).toBe(false);
+  });
+});
+
+describe("rscClient prefetch", () => {
+  const prefetch = async (href: string) => {
+    await act(async () => {
+      globalThis.__AKAN_RSC_PREFETCH__?.(href);
+      await sleep(10);
+    });
+  };
+  const later = async (ms: number, run: () => Promise<void>) => {
+    const now = Date.now();
+    const clock = spyOn(Date, "now").mockImplementation(() => now + ms);
+    try {
+      await run();
+    } finally {
+      clock.mockRestore();
+    }
+  };
+
+  test("a page prefetched moments before the click commits as current, without asking the server again", async () => {
+    await navigate("/store");
+    await prefetch("/store/item");
+    expect(fetched.findLast((request) => request.pathname === "/store/item")?.prefetch).toBe(true);
+
+    await navigate("/store/item");
+
+    expect(fetchCountOf("/store/item")).toBe(1);
+    expect(shown()).toBe("/store/item");
+    expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(false);
+  });
+
+  test("a page prefetched a while before the click commits as a replay its data readers refetch", async () => {
+    await navigate("/shelf");
+    await prefetch("/shelf/item");
+
+    await later(6_000, () => navigate("/shelf/item"));
+
+    expect(fetchCountOf("/shelf/item")).toBe(1);
+    expect(shown()).toBe("/shelf/item");
+    expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
+  });
+
+  test("a page prefetched past its lifetime is asked for again", async () => {
+    await navigate("/attic");
+    await prefetch("/attic/item");
+
+    await later(16_000, () => navigate("/attic/item"));
+
+    expect(fetchCountOf("/attic/item")).toBe(2);
+    expect(fetched.findLast((request) => request.pathname === "/attic/item")?.prefetch).toBe(false);
+  });
+
+  test("a prefetch the server turned away is asked for again on the click", async () => {
+    await navigate("/gate");
+    served.set("/gate/busy", () => new Response("Too Many Requests", { status: 429 }));
+    await prefetch("/gate/busy");
+    served.set("/gate/busy", () => responseOf("/gate/busy"));
+
+    await navigate("/gate/busy");
+
+    expect(fetchCountOf("/gate/busy")).toBe(2);
+    expect(shown()).toBe("/gate/busy");
+  });
+
+  test("a page the navigation in flight is loading is not prefetched beside it", async () => {
+    await navigate("/dock");
+    let release = () => {};
+    served.set(
+      "/dock/ship",
+      () => new Promise<Response>((resolve) => (release = () => resolve(responseOf("/dock/ship")))),
+    );
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/dock/ship");
+      await sleep(10);
+    });
+
+    await prefetch("/dock/ship#deck");
+    await act(async () => {
+      release();
+      await pending;
+    });
+
+    expect(fetchCountOf("/dock/ship")).toBe(1);
+    expect(shown()).toBe("/dock/ship");
+  });
+
+  test("a click overtaken while it waits on its prefetch sends no request of its own", async () => {
+    await navigate("/yard");
+    let release = () => {};
+    served.set(
+      "/yard/slow",
+      () => new Promise<Response>((resolve) => (release = () => resolve(responseOf("/yard/slow")))),
+    );
+    await prefetch("/yard/slow");
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/yard/slow");
+      await sleep(10);
+    });
+    await navigate("/yard/fast");
+
+    await act(async () => {
+      release();
+      await pending;
+    });
+
+    expect(fetchCountOf("/yard/slow")).toBe(1);
+    expect(shown()).toBe("/yard/fast");
+  });
+
+  test("a prefetch of one fragment serves a click on another of the same page", async () => {
+    await navigate("/manual");
+    await prefetch("/manual/ch1#intro");
+
+    await navigate("/manual/ch1#usage");
+
+    expect(fetchCountOf("/manual/ch1")).toBe(1);
+    expect(shown()).toBe("/manual/ch1");
+  });
+
+  test("a click while the prefetch is loading waits on it instead of asking twice", async () => {
+    await navigate("/menu");
+    let release = () => {};
+    served.set(
+      "/menu/dish",
+      () => new Promise<Response>((resolve) => (release = () => resolve(responseOf("/menu/dish")))),
+    );
+    await prefetch("/menu/dish");
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/menu/dish");
+      await sleep(10);
+    });
+
+    await act(async () => {
+      release();
+      await pending;
+    });
+
+    expect(fetchCountOf("/menu/dish")).toBe(1);
+    expect(shown()).toBe("/menu/dish");
+  });
+
+  test("a page prefetched for one account is asked for again after the account changes", async () => {
+    signIn("owner");
+    await navigate("/hall");
+    served.set("/notes", () => responseOf("owner notes"));
+    await prefetch("/notes");
+
+    signIn("visitor");
+    served.set("/notes", () => responseOf("visitor notes"));
+    await navigate("/notes");
+
+    expect(fetchCountOf("/notes")).toBe(2);
+    expect(shown()).toBe("visitor notes");
+  });
+
+  test("a hover after the account changes leaves the old account's page in flight uncached for the new one", async () => {
+    signIn("owner");
+    await navigate("/hall");
+    let release = () => {};
+    served.set(
+      "/secret",
+      () => new Promise<Response>((resolve) => (release = () => resolve(responseOf("owner secret")))),
+    );
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/secret");
+      await sleep(10);
+    });
+
+    signIn("visitor");
+    served.set("/elsewhere", () => responseOf("elsewhere"));
+    await prefetch("/elsewhere");
+    await act(async () => {
+      release();
+      await pending;
+    });
+
+    served.set("/secret", () => responseOf("visitor secret"));
+    await navigate("/secret");
+
+    expect(fetchCountOf("/secret")).toBe(2);
+    expect(shown()).toBe("visitor secret");
+  });
+
+  test("a page the navigation cache holds is not prefetched", async () => {
+    await navigate("/rack");
+    await navigate("/rack/next");
+
+    await prefetch("/rack");
+
+    expect(fetchCountOf("/rack")).toBe(1);
+  });
+
+  test("a visitor saving data is sent nothing ahead of the click", async () => {
+    Object.defineProperty(navigator, "connection", { value: { saveData: true }, configurable: true });
+    try {
+      await prefetch("/heavy");
+    } finally {
+      Reflect.deleteProperty(navigator, "connection");
+    }
+
+    expect(fetchCountOf("/heavy")).toBe(0);
+  });
+
+  test("a refresh drops what was prefetched", async () => {
+    await navigate("/board");
+    await prefetch("/board/2");
+    await refresh();
+
+    await navigate("/board/2");
+
+    expect(fetchCountOf("/board/2")).toBe(2);
+  });
+
+  test("a prefetch answered with a redirect moves nothing until the click", async () => {
+    await navigate("/porch2");
+    served.set("/members2", preStreamRedirectTo("/door2"));
+    await prefetch("/members2");
+    expect(window.location.pathname).toBe("/porch2");
+
+    await navigate("/members2");
+    await waitFor(() => shown() === "/door2");
+
+    expect(window.location.pathname).toBe("/door2");
+    expect(fetchCountOf("/members2")).toBe(1);
   });
 });
 

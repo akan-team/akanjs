@@ -2,7 +2,14 @@ import type { AkanGraph } from "akanjs/common/akanGraph.ts";
 import type * as TS from "typescript";
 import { GraphBuilder } from "./akanGraph";
 import { type AkanAst, createAst, type Ts } from "./ast";
-import { type AkanFactReader, type AkanSpan, createFactReader, type FileFacts, ownerOf } from "./moduleFacts";
+import {
+  type AkanFactReader,
+  type AkanSpan,
+  createFactReader,
+  type FileFacts,
+  ownerOf,
+  testFilePattern,
+} from "./moduleFacts";
 import { type AkanEntry, type AkanFamily, type AkanTarget, NameTable } from "./nameTable";
 
 export interface AkanIndexOptions {
@@ -37,6 +44,7 @@ interface UseSite {
 
 const sourcePattern = /\.(constant|document|service|signal|store)\.ts$/;
 const dictionaryPattern = /\.dictionary\.ts$/;
+const srvkitPattern = /\/srvkit\//;
 const wordPattern = /[A-Za-z_$][\w$]*/g;
 const identifierPattern = /^[A-Za-z_$][\w$]*$/;
 const regExpSpecials = /[\\^$.*+?()[\]{}|]/g;
@@ -78,19 +86,24 @@ export class AkanIndex {
 
   setFile(givenName: string, text: string) {
     const fileName = pathOf(givenName);
-    this.#fileWords.set(fileName, `\n${[...new Set(text.match(wordPattern))].join("\n")}\n`);
-    if (!AkanIndex.isSourcePath(fileName)) return;
+    const words = `\n${[...new Set(text.match(wordPattern))].join("\n")}\n`;
+    this.#fileWords.set(fileName, words);
+    const isSource = AkanIndex.isSourcePath(fileName);
+    if (!isSource && !AkanIndex.#holdsFacts(fileName, words)) {
+      this.#facts.delete(fileName);
+      return;
+    }
     const source =
       this.#parsed.get(fileName)?.text === text ? this.#parse(fileName, text) : this.#parseUncached(fileName, text);
     this.#facts.set(fileName, this.#reader.read(source, this.#ownerOf(fileName)));
-    this.#table = null;
+    if (isSource) this.#table = null;
   }
 
   removeFile(givenName: string) {
     const fileName = pathOf(givenName);
     this.#fileWords.delete(fileName);
     this.#parsed.delete(fileName);
-    if (this.#facts.delete(fileName)) this.#table = null;
+    if (this.#facts.delete(fileName) && AkanIndex.isSourcePath(fileName)) this.#table = null;
   }
 
   definitionAt(givenName: string, text: string, offset: number): AkanTarget[] {
@@ -141,6 +154,7 @@ export class AkanIndex {
       },
       relative: (fileName) => this.#relative(fileName),
       ownerOf: (fileName) => this.#ownerOf(fileName),
+      reader: this.#reader,
     }).build();
   }
 
@@ -168,6 +182,14 @@ export class AkanIndex {
         newText: `${quote}${newKey}${quote}`,
       })),
     ];
+  }
+
+  //? Guards live in `srvkit/`, often made by a factory imported from another lib, so that file names no `Guard`.
+  static #holdsFacts(fileName: string, words: string) {
+    if (testFilePattern.test(fileName)) return false;
+    if (srvkitPattern.test(fileName)) return true;
+    const holdsGuards = words.includes("\nGuard\n") && words.includes("\ncanPass\n");
+    return holdsGuards || words.includes("\nadapt\n") || words.includes("\ndangerouslyAdapt\n");
   }
 
   static #sourceKeyOf({ family, sourceKey, label, detail, span }: AkanEntry): AkanSourceKey {
@@ -275,7 +297,7 @@ export class AkanIndex {
   }
 
   #nameTable() {
-    this.#table ??= new NameTable(this.#facts.values());
+    this.#table ??= new NameTable([...this.#facts.values()].filter(({ fileName }) => AkanIndex.isSourcePath(fileName)));
     return this.#table;
   }
 

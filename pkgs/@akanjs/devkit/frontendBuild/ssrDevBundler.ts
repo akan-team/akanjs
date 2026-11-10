@@ -3,6 +3,7 @@ import path from "node:path";
 import { SSR_DEV_DIRNAME, SSR_DEV_ROUTE_PREFIX } from "akanjs/server/hmr/csrDevManifest";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex } from "../artifact/routeSeedIndex";
+import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { bundleDefine } from "./bundleDefine";
 import type { ClientEntryDiscovery } from "./clientBuildTypes";
@@ -58,7 +59,7 @@ export class SsrDevBundler extends DevRegistryBundler {
     await mkdir(this.entryDir, { recursive: true });
     const file = path.join(this.entryDir, "bootstrap.ts");
     const hasStore = await Bun.file(path.join(this.app.cwdPath, "lib", "st.ts")).exists();
-    const source = hasStore ? `import ${JSON.stringify(`@apps/${this.app.name}/client`)};\n` : "export {};\n";
+    const source = hasStore ? StoreBootstrap.source(this.app.name) : "export {};\n";
     const unchanged = (await Bun.file(file).exists()) && (await Bun.file(file).text()) === source;
     if (!unchanged) await Bun.write(file, source);
     const entryFile = CsrDevPaths.realpath(file);

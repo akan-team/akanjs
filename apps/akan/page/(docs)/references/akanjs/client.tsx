@@ -223,6 +223,13 @@ export default page()
           ko: "앱 안의 이동마다 먼저 `guard({ kind, from, to })`를 묻고, `false`면 페이지에 머뭅니다. 해제 함수를 돌려줍니다. 페이지에서는 `useNavigationGuard`를 씁니다.",
         }),
       },
+      {
+        name: "prefetch(href, { priority })",
+        desc: l.trans({
+          en: 'Loads a route\'s page before the click. Built SSR pages only; `priority: "low"` waits behind hovered links.',
+          ko: '클릭 전에 route의 페이지를 미리 불러옵니다. 빌드된 SSR 페이지에서만 되며, `priority: "low"`는 hover된 링크 뒤에 줄을 섭니다.',
+        }),
+      },
     ];
 
     const modelPropRows = [

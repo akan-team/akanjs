@@ -1,7 +1,11 @@
+/** `"low"` waits behind every `"high"` request, as a link that merely came into view does behind one pointed at. */
+export type PrefetchPriority = "high" | "low";
+
 declare global {
   var __AKAN_RSC_CLEAR_CACHE__: (() => void) | undefined;
   var __AKAN_RSC_IS_FROM_CACHE__: (() => boolean) | undefined;
   var __AKAN_RSC_REFRESH__: ((options?: { buildId?: number }) => Promise<void>) | undefined;
+  var __AKAN_RSC_PREFETCH__: ((href: string, priority?: PrefetchPriority) => void) | undefined;
   var __AKAN_RSC_NAVIGATE__:
     | ((
         href: string,
@@ -25,6 +29,10 @@ export const navigateRsc = (
   options?: { replace?: boolean; scrollToTop?: boolean; shallow?: boolean },
 ) => {
   return globalThis.__AKAN_RSC_NAVIGATE__?.(href, options);
+};
+
+export const prefetchRsc = (href: string, priority?: PrefetchPriority) => {
+  globalThis.__AKAN_RSC_PREFETCH__?.(href, priority);
 };
 
 export const refreshRsc = () => {

@@ -4,6 +4,7 @@ import type { BuildChangesPayload, BuildFrameworkPayload, BuildGraphPayload } fr
 import { createSystemPageHeaders } from "../../systemPages";
 import { StudioDocument, type StudioEditor, type StudioPayload, type StudioQuery } from "./studioDocument";
 import type { StudioView } from "./studioLayout";
+import type { StudioRuntimePayload } from "./studioRuntimeGraph";
 
 export interface StudioRouteContext {
   basePath: string;
@@ -11,10 +12,11 @@ export interface StudioRouteContext {
   buildGraph: (() => Promise<BuildGraphPayload | null>) | null;
   buildChanges: ((since: string | null) => Promise<BuildChangesPayload | null>) | null;
   buildFramework: (() => Promise<BuildFrameworkPayload | null>) | null;
+  runtime: () => StudioRuntimePayload;
 }
 
 const editors = new Set<StudioEditor>(["vscode", "cursor"]);
-const views = new Set<StudioView>(["erd", "signals", "changes", "framework"]);
+const views = new Set<StudioView>(["erd", "signals", "changes", "runtime", "framework"]);
 
 export class StudioRoute {
   static readonly logger = new Logger("StudioRoute");
@@ -58,6 +60,7 @@ export class StudioRoute {
   }
 
   async #load(query: StudioQuery): Promise<{ payload: StudioPayload } | { error: string }> {
+    if (query.view === "runtime") return { payload: this.#context.runtime() };
     try {
       const payload = await this.#payloadOf(query);
       return payload

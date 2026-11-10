@@ -71,6 +71,8 @@ Navigates between internal routes. Use it for every internal link, and keep a ba
 
 - replace (boolean): Replaces the current history entry instead of adding one.
 
+- prefetch ("hover" | "viewport" | boolean, default "hover"): Built SSR pages load the target on hover or keyboard focus, and on view with `"viewport"`. `false` turns it off.
+
 - noCache (boolean): Deprecated: it has no effect, so leave it out.
 
 - target / rel / aria-* (AnchorHTMLAttributes): Pass through to `<a>` on server-rendered pages. The CSR bundle drops them.

@@ -70,12 +70,14 @@ import { normalizeHost, resolveArtifactDir, warnIgnoredSubRouteBasePaths } from 
 import { createDefaultRobotsTxt } from "./robots";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
+  AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_PATCH_HEAD_SAFE_HEADER,
   AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER,
   AKAN_RSC_PATCH_SEGMENT_PATH_HEADER,
   AKAN_RSC_PATCH_START_INDEX_HEADER,
   AKAN_RSC_PATCH_START_SEGMENT_HEADER,
+  AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_RESPONSE_STATE_HEADER,
 } from "./routeState";
 import {
@@ -316,6 +318,7 @@ export class WebRouter {
   #logger = new Logger("WebRouter");
   #artifactDir = resolveArtifactDir();
   #artifact: BaseBuildArtifact;
+  #importMapKey: string;
   #subRoutes: Record<string, string[]>;
   #rsc: RscWorker;
   #hub: HmrWsHub | null = null;
@@ -333,6 +336,7 @@ export class WebRouter {
   readonly #requestStats = {
     fullSsr: 0,
     rscNavigation: 0,
+    rscPrefetch: 0,
     staticAsset: 0,
     csr: 0,
     image: 0,
@@ -360,6 +364,7 @@ export class WebRouter {
     if (process.env.NODE_ENV === "production" && !this.#prodMode)
       this.#logger.warn("[SSR] NODE_ENV=production ignored under `akan start`; serving in dev mode");
     this.#artifact = artifact;
+    this.#importMapKey = Bun.hash(JSON.stringify(artifact.vendorMap)).toString(36);
     const { subRoutes, ignoredBasePaths } = resolveSubRouteHosts({
       subRoutes: artifact.subRoutes,
       basePaths: artifact.basePaths,
@@ -537,8 +542,17 @@ export class WebRouter {
           }
         : {}),
       "/__rsc": SessionRefresh.answering(async (req) => {
-        this.#requestStats.rscNavigation += 1;
+        if (req.headers.get(AKAN_RSC_PREFETCH_HEADER) === "1") this.#requestStats.rscPrefetch += 1;
+        else this.#requestStats.rscNavigation += 1;
         try {
+          //? A tab imports through its document's import map, whose narrowed vendors lack names another build imports;
+          //? the client loads a target it cannot fetch as a document, which brings this build's import map.
+          const importMap = req.headers.get(AKAN_RSC_IMPORT_MAP_HEADER);
+          if (importMap && importMap !== this.#importMapKey)
+            return new Response("Conflict", {
+              status: 409,
+              headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+            });
           const reqUrl = new URL(req.url);
           // Behind proxies req.url is internal; forwarded headers give the browser's origin for the same-origin check.
           const clientOrigin = getClientFacingOrigin(req);
@@ -724,6 +738,7 @@ export class WebRouter {
               ? `self.__AKAN_RSC_INITIAL_STATE__=${JSON.stringify(rscResult.trace.routeState)};`
               : "",
             dictionaryUrl ? `self.__AKAN_DICT_URL__=${JSON.stringify(dictionaryUrl)};` : "",
+            `self.__AKAN_IMPORT_MAP_KEY__=${JSON.stringify(this.#importMapKey)};`,
             this.#ssrDevShell
               ? SsrDevShim.script(await this.#ssrDevShell.readManifest(), Object.keys(this.#artifact.vendorMap))
               : "",
@@ -910,6 +925,7 @@ export class WebRouter {
       ssrChunkEvictionCount: ssrStats.ssrChunkEvictionCount,
       httpFullSsrCount: this.#requestStats.fullSsr,
       httpRscNavigationCount: this.#requestStats.rscNavigation,
+      httpRscPrefetchCount: this.#requestStats.rscPrefetch,
       httpStaticAssetCount: this.#requestStats.staticAsset,
       httpCsrCount: this.#requestStats.csr,
       httpImageCount: this.#requestStats.image,

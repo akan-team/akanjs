@@ -3,7 +3,9 @@ import type { BaseEnv } from "akanjs/base";
 import { getDefaultInjectRegistry, getDefaultLiveRegistry } from "akanjs/service";
 import type { BuildChangesPayload, BuildFrameworkPayload, BuildGraphPayload } from "../artifact";
 import type { DiLifecycle } from "../di/diLifecycle";
+import { DevtoolsFixture, fixtureRefName } from "./devtools.fixture";
 import { DevtoolsRouter, type DevtoolsRouterContext } from "./devtoolsRouter";
+import type { StudioRuntimePayload } from "./studio/studioRuntimeGraph";
 
 const makeEnv = (environment: string): BaseEnv =>
   ({
@@ -115,6 +117,9 @@ describe("DevtoolsRouter gating", () => {
     const response = routes["/_akan/signal"].GET(new Request("http://localhost/_akan/signal"));
     expect(response.status).toBe(500);
     expect((await response.json()) as { kind: string }).toMatchObject({ kind: "signal" });
+    const deps = routes["/_akan/deps"].GET(new Request("http://localhost/_akan/deps"));
+    expect(deps.status).toBe(500);
+    expect(await deps.json()).toEqual({ kind: "deps", error: expect.any(String) });
   });
 });
 
@@ -322,6 +327,82 @@ describe("Akan Studio", () => {
     const none = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=framework"));
     expect(none.status).toBe(200);
     expect(await none.text()).toContain("this workspace has neither");
+  });
+
+  test("draws the running server's DI graph and jobs live, with no dev builder", async () => {
+    const fixture = await DevtoolsFixture.boot("federation");
+    try {
+      const routes = new DevtoolsRouter({
+        ...makeContext("local", fixture.lifecycle),
+        serverMode: "federation",
+      }).createRoutes() as AsyncRoutes;
+      const response = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=runtime"));
+      expect(response.status).toBe(200);
+      const html = await response.text();
+      expect(html).toContain('aria-current="page">Runtime (live)</a>');
+      expect(html).toContain(`live from pid ${process.pid} · federation replica 0`);
+      expect(html).toContain(`data-node="service:${fixtureRefName}"`);
+      expect(html).toContain(`data-node="internal:${fixtureRefName}Internal"`);
+      expect(html).toContain("process processItem");
+      expect(html).toContain('href="/_akan/studio/graph?view=runtime&amp;editor=vscode"');
+      expect(html).not.toContain("vscode://file");
+      const graph = await routes["/_akan/studio/graph"].GET(
+        new Request("http://localhost/_akan/studio/graph?view=runtime"),
+      );
+      const json = (await graph.json()) as StudioRuntimePayload;
+      expect(json.app.serverMode).toBe("federation");
+      expect("nodes" in json.deps && json.deps.nodes.some((node) => node.id === `service:${fixtureRefName}`)).toBe(
+        true,
+      );
+      expect("signals" in json.signal && Object.keys(json.signal.signals)).toContain(fixtureRefName);
+    } finally {
+      await fixture.destroy();
+    }
+  });
+
+  test("says why the runtime view is empty when a serializer fails, and still answers", async () => {
+    const routes = new DevtoolsRouter(makeContext("local", {} as DiLifecycle)).createRoutes() as AsyncRoutes;
+    const response = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=runtime"));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("The running server&#x27;s DI graph could not be read");
+    const graph = await routes["/_akan/studio/graph"].GET(
+      new Request("http://localhost/_akan/studio/graph?view=runtime"),
+    );
+    const json = (await graph.json()) as StudioRuntimePayload;
+    expect(json.deps).toHaveProperty("error");
+    expect(json.signal).toHaveProperty("error");
+  });
+
+  test("draws the DI graph without jobs when only the signal serializer fails, and lists the modules left out", async () => {
+    const di = {
+      ...emptyDi(),
+      modules: {
+        ...emptyDi().modules,
+        service: {
+          entries: () => {
+            throw new Error("signal boom");
+          },
+        },
+      },
+      disabledModules: new Map([["memo", 'depends on disabled module "file"']]),
+      webProxies: [],
+    } as unknown as DiLifecycle;
+    const routes = new DevtoolsRouter(makeContext("local", di)).createRoutes() as AsyncRoutes;
+    const response = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=runtime"));
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).not.toContain("DI graph could not be read");
+    expect(html).toContain("Jobs are not drawn: the signal serializer failed (signal boom).");
+    expect(html).toContain("Modules this server left out");
+    expect(html).toContain("memo: depends on disabled module &quot;file&quot;");
+    const graph = await routes["/_akan/studio/graph"].GET(
+      new Request("http://localhost/_akan/studio/graph?view=runtime"),
+    );
+    const json = (await graph.json()) as StudioRuntimePayload;
+    expect(json.signal).toEqual({ error: "signal boom" });
+    expect("disabledModules" in json.deps && json.deps.disabledModules).toEqual([
+      { refName: "memo", reason: 'depends on disabled module "file"' },
+    ]);
   });
 
   test("serves the graph it draws as JSON", async () => {
