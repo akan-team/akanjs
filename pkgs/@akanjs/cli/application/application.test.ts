@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
@@ -23,6 +23,7 @@ import {
   writeText,
 } from "@akanjs/devkit/testHelpers";
 import { DatabaseModes } from "akanjs/base";
+import { Logger } from "akanjs/common";
 import { ApplicationCommand } from "./application.command";
 import { ApplicationRunner } from "./application.runner";
 import { ApplicationScript } from "./application.script";
@@ -137,6 +138,35 @@ describe("ApplicationCommand", () => {
     ]);
   });
 
+  test("build takes --update-budget, off unless given, and hands it to the script", async () => {
+    const updateBudget = getArgMetas(ApplicationCommand, "build")[1].find((meta) => meta.name === "updateBudget");
+    expect(updateBudget?.argsOption).toMatchObject({ default: false });
+
+    const command = CommandContainer.get(ApplicationCommand);
+    const calls: unknown[] = [];
+    command.applicationScript.build = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "build")?.handler;
+    await handler?.call(command, { name: "demo" }, true, false, false, null, null, true);
+    expect(calls).toEqual([[{ name: "demo" }, { write: true, fast: false, quiet: false, updateBudget: true }]]);
+  });
+
+  test("studio passes the runtime and framework views through, and opens the ERD for anything else", async () => {
+    const view = getArgMetas(ApplicationCommand, "studio")[1].find((meta) => meta.name === "view");
+    expect(view?.argsOption).toMatchObject({ enum: ["erd", "signals", "changes", "runtime", "framework"] });
+
+    const command = CommandContainer.get(ApplicationCommand);
+    const calls: unknown[] = [];
+    command.applicationScript.studio = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "studio")?.handler;
+    for (const asked of ["runtime", "framework", "nope"])
+      await handler?.call(command, { name: "demo" }, null, asked, null, "vscode", false, "text");
+    expect(calls.map((call) => (call as [unknown, { view: string }])[1].view)).toEqual(["runtime", "framework", "erd"]);
+  });
+
   test("the Capacitor-era commands and flags are gone", () => {
     const keys = getTargetMetas(ApplicationCommand).map((meta) => meta.key);
     for (const removed of ["codepush", "configureApp", "releaseSource"]) expect(keys).not.toContain(removed);
@@ -185,6 +215,7 @@ describe("ApplicationCommand", () => {
       [0, "Exec"],
       [1, "Argument"],
       [2, "Option"],
+      [3, "Option"],
     ]);
 
     const command = CommandContainer.get(ApplicationCommand);
@@ -193,11 +224,11 @@ describe("ApplicationCommand", () => {
       calls.push(args);
     };
     const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "test")?.handler;
-    await handler?.call(command, { name: "demo" }, "lib/a/a.test.ts, lib/b/b.test.ts,", false);
-    await handler?.call(command, { name: "demo" }, null, true);
+    await handler?.call(command, { name: "demo" }, "lib/a/a.test.ts, lib/b/b.test.ts,", false, false);
+    await handler?.call(command, { name: "demo" }, null, true, true);
     expect(calls).toEqual([
-      [{ name: "demo" }, { write: false, files: ["lib/a/a.test.ts", "lib/b/b.test.ts"] }],
-      [{ name: "demo" }, { write: true, files: [] }],
+      [{ name: "demo" }, { write: false, files: ["lib/a/a.test.ts", "lib/b/b.test.ts"], coverage: false }],
+      [{ name: "demo" }, { write: true, files: [], coverage: true }],
     ]);
   });
 
@@ -263,6 +294,33 @@ describe("ApplicationScript", () => {
     expect(scanSync).not.toHaveBeenCalled();
   });
 
+  test("studio prints the URL of the view asked for on the app's running dev server", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app } = track(await createTempApp("demo"));
+    app.getDevPort = mock(async () => 8654) as never;
+    const answers = spyOn(ApplicationRunner, "answers").mockImplementation(async () => true);
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+    try {
+      await script.studio(app, { module: null, view: "runtime", editor: "cursor", open: false, format: "json" });
+      expect(printed.mock.calls[0]?.[0]).toBe(
+        JSON.stringify({ url: "http://localhost:8654/_akan/studio?view=runtime&editor=cursor" }),
+      );
+      await expect(
+        script.studio(app, {
+          module: null,
+          view: "runtime",
+          since: "main",
+          editor: "vscode",
+          open: false,
+          format: "text",
+        }),
+      ).rejects.toThrow("pass `--view changes` with it");
+    } finally {
+      answers.mockRestore();
+      printed.mockRestore();
+    }
+  });
+
   test("build hands its --env to the build runner", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const { app } = track(await createTempApp("demo"));
@@ -273,6 +331,22 @@ describe("ApplicationScript", () => {
     try {
       await expect(script.build(app, { quiet: true, env: "main" })).rejects.toThrow("stopped");
       expect(build.mock.calls[0]?.[1]).toMatchObject({ environment: "main" });
+    } finally {
+      build.mockRestore();
+    }
+  });
+
+  test("build enforces the route JS budget, and writes it on --update-budget", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app } = track(await createTempApp("demo"));
+    app.scanSync = mock(async () => undefined) as never;
+    const build = spyOn(script.applicationRunner, "build").mockImplementation(async () => {
+      throw new Error("stopped");
+    });
+    try {
+      await expect(script.build(app, { quiet: true })).rejects.toThrow("stopped");
+      await expect(script.build(app, { quiet: true, updateBudget: true })).rejects.toThrow("stopped");
+      expect(build.mock.calls.map(([, options]) => options?.budget)).toEqual(["enforce", "update"]);
     } finally {
       build.mockRestore();
     }
@@ -442,6 +516,44 @@ describe("ApplicationScript", () => {
       "pkg.scan",
       "spinner.succeed",
       "runner.test",
+    ]);
+  });
+
+  test("with coverage, has bun write lcov under local/coverage at the target's own path", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const { root, pkg } = track(await createTempPackage());
+    pkg.scan = (async () => undefined) as never;
+    const workspace = { workspaceRoot: root };
+    const app = Object.setPrototypeOf(
+      createFakeExecutor("demo", { type: "app", workspace, cwdPath: path.join(root, "apps", "demo") }, recorder),
+      AppExecutor.prototype,
+    ) as AppExecutor;
+    const lib = Object.setPrototypeOf(
+      createFakeExecutor("shared", { type: "lib", workspace, cwdPath: path.join(root, "libs", "shared") }, recorder),
+      LibExecutor.prototype,
+    ) as LibExecutor;
+    script.applicationRunner.resolveTestPaths = () => [];
+    script.applicationRunner.test = async (target: { name: string }, _paths?: string[], flags?: string[]) => {
+      recorder.record("runner.test", target.name, flags);
+    };
+    const coverageOf = (...dirs: string[]) => [
+      "--coverage",
+      "--coverage-reporter=text",
+      "--coverage-reporter=lcov",
+      `--coverage-dir=${path.join(root, "local", "coverage", ...dirs)}`,
+    ];
+
+    await script.test(app, { write: false, coverage: true });
+    await script.test(lib, { write: false, coverage: true });
+    await script.test(pkg, { write: false, coverage: true });
+    await script.test(pkg, { write: false });
+
+    expect(recorder.calls.filter(({ name }) => name === "runner.test").map(({ args }) => args)).toEqual([
+      ["demo", coverageOf("apps", "demo")],
+      ["shared", coverageOf("libs", "shared")],
+      ["@sample/tool", coverageOf("pkgs", "@sample", "tool")],
+      ["@sample/tool", []],
     ]);
   });
 
@@ -1140,6 +1252,7 @@ describe("ApplicationRunner mobile", () => {
 
 const runsPackageTests = async () => {
   const { pkg } = track(await createTempPackage());
+  await writeText(path.join(pkg.cwdPath, "src", "a.test.ts"), "");
   const runner = new ApplicationRunner();
   const spawn = mock(async () => "");
   pkg.spawn = spawn as never;
@@ -1161,6 +1274,7 @@ const runsSignalTargetTests = async () => {
     }),
   );
   await writeText(`${root}/node_modules/akanjs/test/signalTest.preload.ts`, "export {};\n");
+  await writeText(path.join(lib.cwdPath, "lib", "user", "user.signal.test.ts"), "");
   const runner = new ApplicationRunner();
   const spawn = mock(async () => "");
   lib.spawn = spawn as never;
@@ -1294,6 +1408,19 @@ describe("ApplicationRunner", () => {
   test("runs bun test through the resolved executor", runsPackageTests);
   test("runs signal target tests with preload resolved from installed akanjs", runsSignalTargetTests);
 
+  test("passes the flags it is given to bun test, before the named files", async () => {
+    const { pkg } = track(await createTempPackage());
+    const runner = new ApplicationRunner();
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+
+    await runner.test(pkg, ["./tool.test.ts"], ["--coverage"]);
+
+    expect(spawn).toHaveBeenCalledWith("bun", ["test", "--isolate", "--coverage", "./tool.test.ts"], {
+      stdio: "inherit",
+    });
+  });
+
   test("names test files to bun as paths inside the target, from the target or the workspace root", async () => {
     const { root, app } = track(await createTempApp("demo"));
     await writeText(path.join(app.cwdPath, "lib", "user", "user.signal.test.ts"), "");
@@ -1317,6 +1444,91 @@ describe("ApplicationRunner", () => {
     expect(() => runner.resolveTestPaths(app, ["lib/user/missing.test.ts"])).toThrow(
       "lib/user/missing.test.ts names no file or folder in apps/demo",
     );
+  });
+
+  test("an app with no test file says so and runs nothing, instead of failing in bun", async () => {
+    const { app } = track(await createTempApp("demo"));
+    await writeText(path.join(app.cwdPath, "lib", "user", "user.signal.ts"), "");
+    await writeText(path.join(app.cwdPath, "node_modules", "dep", "dep.test.ts"), "");
+    await writeText(path.join(app.cwdPath, ".cache", "x.test.ts"), "");
+    const spawn = mock(async () => "");
+    app.spawn = spawn as never;
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await new ApplicationRunner().test(app);
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(printed).toHaveBeenCalledWith(
+      "No *.test.ts or *.spec.ts file in apps/demo, so no test ran. A signal test goes beside its module, as lib/<model>/<model>.signal.test.ts.",
+    );
+  });
+
+  test("a package with no test file says so without the signal test hint", async () => {
+    const { pkg } = track(await createTempPackage());
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await new ApplicationRunner().test(pkg);
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(printed).toHaveBeenCalledWith("No *.test.ts or *.spec.ts file in pkgs/@sample/tool, so no test ran.");
+  });
+
+  test("a test file under any of bun's suffixes still runs bun", async () => {
+    for (const name of ["a.spec.tsx", "a_test.js", "a_spec.mts"]) {
+      const { pkg } = track(await createTempPackage());
+      await writeText(path.join(pkg.cwdPath, "src", "deep", name), "");
+      const spawn = mock(async () => "");
+      pkg.spawn = spawn as never;
+
+      await new ApplicationRunner().test(pkg);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test("a test file bun runs in a linked folder, under an upper-case suffix or a dot name still runs bun", async () => {
+    const layouts: ((root: string, cwd: string) => Promise<void>)[] = [
+      async (root, cwd) => {
+        await writeText(path.join(root, "libs", "shared", "page", "route.test.ts"), "");
+        await mkdir(path.join(cwd, "page"), { recursive: true });
+        await symlink(path.join(root, "libs", "shared", "page"), path.join(cwd, "page", "shared"));
+      },
+      async (_root, cwd) => await writeText(path.join(cwd, "src", "User.Test.TS"), ""),
+      async (_root, cwd) => await writeText(path.join(cwd, "src", ".user.test.ts"), ""),
+    ];
+    for (const layout of layouts) {
+      const { root, pkg } = track(await createTempPackage());
+      await layout(root, pkg.cwdPath);
+      const spawn = mock(async () => "");
+      pkg.spawn = spawn as never;
+
+      await new ApplicationRunner().test(pkg);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test("a linked folder that loops back is read once", async () => {
+    const { pkg } = track(await createTempPackage());
+    await mkdir(path.join(pkg.cwdPath, "src"), { recursive: true });
+    await symlink(pkg.cwdPath, path.join(pkg.cwdPath, "src", "loop"));
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+    spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await new ApplicationRunner().test(pkg);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  test("named paths reach bun even when the target has no test file, so bun still fails on them", async () => {
+    const { pkg } = track(await createTempPackage());
+    await writeText(path.join(pkg.cwdPath, "src", "a.ts"), "");
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+    const runner = new ApplicationRunner();
+
+    await runner.test(pkg, runner.resolveTestPaths(pkg, ["src"]));
+    expect(spawn).toHaveBeenCalledWith("bun", ["test", "--isolate", "./src"], { stdio: "inherit" });
   });
 
   test("passes the resolved test paths to bun after its own flags", async () => {

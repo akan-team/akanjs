@@ -38,10 +38,7 @@ export class StudioRuntimeGraph {
     this.columns = [
       { label: "Jobs", nodes: internals },
       ...StudioRuntimeGraph.#byStage(services, deps.stages.service.length, "Services", (node) =>
-        StudioRuntimeGraph.#node(node, node.refName, [
-          ...(node.serviceType === "database" ? ["database"] : []),
-          ...(node.enabled === false ? ["disabled"] : []),
-        ]),
+        StudioRuntimeGraph.#node(node, node.refName, node.serviceType === "database" ? ["database"] : []),
       ),
       ...StudioRuntimeGraph.#byStage(adaptors, deps.stages.adaptor.length, "Adaptors", (node) =>
         StudioRuntimeGraph.#node(node, moduleOf.get(node.id) ?? null, node.role ? [node.role] : []),
@@ -71,12 +68,17 @@ export class StudioRuntimeGraph {
   rowsOf(node: StudioNode): Omit<StudioRow, "y">[] {
     const jobs = this.#jobs.get(node.id);
     if (!jobs) return node.detail.length ? [{ text: node.detail.join(" · "), hint: "", at: null }] : [];
-    return jobs.map((job) => ({
-      text: `${job.type} ${job.key}`,
-      hint: StudioRuntimeGraph.#scheduleOf(job),
-      at: null,
-      ...(job.scheduledHere ? {} : { skipped: job.skipReason ?? "not scheduled on this server" }),
-    }));
+    return jobs.map((job) => {
+      const text = `${job.type} ${job.key}`;
+      const hint = StudioRuntimeGraph.#scheduleOf(job);
+      return {
+        text,
+        hint,
+        title: hint ? `${text} · ${hint}` : text,
+        at: null,
+        ...(job.scheduledHere ? {} : { skipped: job.skipReason ?? "not scheduled on this server" }),
+      };
+    });
   }
 
   static #jobsOf(signal: SignalData | null) {

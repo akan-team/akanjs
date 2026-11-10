@@ -39,7 +39,7 @@ export class FontOptimizer {
   #woff2Ready: Promise<void> | null = null;
 
   static #ksX1001Text: string | null = null;
-  static readonly #cacheVersion = 2;
+  static readonly #cacheVersion = 3;
 
   constructor(app: App, command: FontOptimizerCommand = "start") {
     this.#app = app;
@@ -163,7 +163,7 @@ export class FontOptimizer {
       this.#files.push(outputPath);
 
       faceCss.push(this.#buildOptimizedFontFaceRule(font, face));
-      const fallbackCss = await this.#buildFontaineFallbackCss(font, face, outputPath);
+      const fallbackCss = await this.#buildFontaineFallbackCss(font, face, sourcePath);
       if (fallbackCss) faceCss.push(fallbackCss);
     }
 
@@ -468,10 +468,11 @@ export class FontOptimizer {
     return `@font-face {\n${declarations.map(([prop, value]) => `  ${prop}: ${value};`).join("\n")}\n}`;
   }
 
-  async #buildFontaineFallbackCss(font: ReactFont, face: ReactFontFace, outputPath: string) {
+  async #buildFontaineFallbackCss(font: ReactFont, face: ReactFontFace, sourcePath: string) {
     if (font.adjustFontFallback === false) return "";
     const { generateFontFace, getMetricsForFamily, readMetrics, resolveCategoryFallbacks } = await import("fontaine");
-    const metrics = await readMetrics(outputPath).catch(() => null);
+    // The source, not the subset: without Latin glyphs a subset measures .notdef, so xWidthAvg reads as a full em.
+    const metrics = await readMetrics(Bun.pathToFileURL(sourcePath)).catch(() => null);
     if (!metrics) return "";
     const fallbacks = resolveCategoryFallbacks({
       fontFamily: font.name,

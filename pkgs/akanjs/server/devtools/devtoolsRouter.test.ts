@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { BaseEnv } from "akanjs/base";
 import { getDefaultInjectRegistry, getDefaultLiveRegistry } from "akanjs/service";
-import type { BuildChangesPayload, BuildGraphPayload } from "../artifact";
+import type { BuildChangesPayload, BuildFrameworkPayload, BuildGraphPayload } from "../artifact";
 import type { DiLifecycle } from "../di/diLifecycle";
 import { DevtoolsFixture, fixtureRefName } from "./devtools.fixture";
 import { DevtoolsRouter, type DevtoolsRouterContext } from "./devtoolsRouter";
@@ -193,17 +193,30 @@ describe("Akan Studio", () => {
     expect(html).toContain("akan-studio:open");
   });
 
-  test("says where to open it when no dev builder can draw the graph", async () => {
-    const response = await studioRoutes()["/_akan/studio"].GET(new Request("http://localhost/_akan/studio"));
+  test("lands on the live view when no dev builder can draw the graph, and says where to open the others", async () => {
+    const routes = studioRoutes();
+    const landing = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio"));
+    expect(landing.status).toBe(200);
+    expect(await landing.text()).toContain('aria-current="page">Runtime (live)</a>');
+    const response = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=erd"));
     expect(response.status).toBe(503);
     const html = await response.text();
-    expect(html).toContain("akan start");
+    expect(html).toContain("open it under `akan start`. Runtime (live) reads this running server");
+    expect(html).toContain('href="/_akan/studio?view=runtime&amp;editor=vscode"');
+    expect(html).toContain('aria-current="page">ERD</a>');
     expect(html).toContain("akan-studio:ready");
     const failing = await studioRoutes(async () => {
       throw new Error("[builder] build-graph failed: boom");
     })["/_akan/studio/graph"].GET(new Request("http://localhost/_akan/studio/graph"));
     expect(failing.status).toBe(503);
     expect(await failing.json()).toEqual({ error: "[builder] build-graph failed: boom" });
+    const broken = await studioRoutes(async () => {
+      throw new Error("[builder] build-graph failed: boom");
+    })["/_akan/studio"].GET(new Request("http://localhost/_akan/studio"));
+    expect(broken.status).toBe(503);
+    const brokenHtml = await broken.text();
+    expect(brokenHtml).toContain("[builder] build-graph failed: boom");
+    expect(brokenHtml).toContain('aria-current="page">ERD</a>');
   });
 
   test("draws the Change Map since the revision asked for, with the changed files no node covers", async () => {
@@ -260,6 +273,73 @@ describe("Akan Studio", () => {
     );
     expect(await scoped.text()).toContain('<option value="ghost" selected="">ghost</option>');
     expect(asked).toEqual(["main", null, "nope", null]);
+  });
+
+  test("maps the framework's facets and process messages, and says when the workspace has no framework source", async () => {
+    const at = (file: string, line = 1) => ({ file, line, column: 1 });
+    const frameworkPayload: BuildFrameworkPayload = {
+      workspaceRoot: "/ws",
+      framework: {
+        version: 1,
+        packages: [{ name: "akanjs", root: "pkgs/akanjs" }],
+        facets: [
+          { id: "akanjs/base", name: "base", packageName: "akanjs", layer: 0, files: 4, classes: [] },
+          {
+            id: "akanjs/server",
+            name: "server",
+            packageName: "akanjs",
+            layer: 1,
+            files: 9,
+            classes: [{ name: "AkanServer", members: 12, at: at("pkgs/akanjs/server/akanServer.ts", 40) }],
+          },
+        ],
+        imports: [{ from: "akanjs/server", to: "akanjs/base", value: 3, type: 0, dynamic: 0, at: at("x") }],
+        channels: [
+          {
+            name: "AkanIpcMessage",
+            label: "gateway ⇄ child",
+            at: at("pkgs/akanjs/service/ipcTypes.ts", 3),
+            messages: [
+              {
+                type: "ready",
+                at: at("pkgs/akanjs/service/ipcTypes.ts", 4),
+                senders: [{ owner: "AkanServer", count: 2, at: at("pkgs/akanjs/server/akanServer.ts", 90) }],
+                handlers: [],
+              },
+            ],
+          },
+        ],
+        missing: [],
+        cycles: [["akanjs/base", "akanjs/server"]],
+      },
+    };
+    let framework: BuildFrameworkPayload = frameworkPayload;
+    const routes = new DevtoolsRouter({
+      ...makeContext("local"),
+      buildGraph: async () => studioPayload,
+      buildFramework: async () => framework,
+    }).createRoutes() as AsyncRoutes;
+    const html = await (
+      await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=framework"))
+    ).text();
+    expect(html).toContain('data-node="akanjs/server"');
+    expect(html).toContain('data-from="akanjs/server"');
+    expect(html).toContain('class="link value"');
+    expect(html).toContain('href="vscode://file/ws/pkgs/akanjs/server/akanServer.ts:40:1"');
+    expect(html).toContain('href="vscode://file/ws/pkgs/akanjs/service/ipcTypes.ts:3:1"');
+    expect(html).toContain("gateway ⇄ child");
+    expect(html).toContain("2 facets · 1 imports · 1 channels");
+    expect(html).toContain("Facets that load values from each other: akanjs/base ⇄ akanjs/server");
+    expect(html).not.toContain("memo.inPublic");
+    expect(html).toContain('href="/_akan/studio/graph?view=framework&amp;editor=vscode"');
+    const json = await routes["/_akan/studio/graph"].GET(
+      new Request("http://localhost/_akan/studio/graph?view=framework"),
+    );
+    expect(await json.json()).toEqual(frameworkPayload);
+    framework = { workspaceRoot: "/ws", framework: null };
+    const none = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=framework"));
+    expect(none.status).toBe(200);
+    expect(await none.text()).toContain("this workspace has neither");
   });
 
   test("draws the running server's DI graph and jobs live, with no dev builder", async () => {

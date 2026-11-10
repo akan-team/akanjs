@@ -10,9 +10,22 @@ export type {
   AkanGraphNode,
   AkanGraphNodeKind,
 } from "akanjs/common/akanGraph.ts";
+export type {
+  FrameworkChannel,
+  FrameworkClass,
+  FrameworkFacet,
+  FrameworkImport,
+  FrameworkMap,
+  FrameworkMessage,
+  FrameworkPackage,
+  FrameworkSite,
+} from "akanjs/common/frameworkMap.ts";
 export { type AkanGraphChanges, AkanGraphDiff } from "./akanGraphDiff";
 export { type AkanHover, AkanIndex, type AkanIndexOptions, type AkanRenameEdit, type AkanSourceKey } from "./akanIndex";
 export { type AkanAst, createAst, type Ts } from "./ast";
+export { FrameworkChannelReader, type FrameworkChannelSpec } from "./frameworkChannelReader";
+export { FrameworkMapBuilder, type FrameworkMapSource, type FrameworkSourcePackage } from "./frameworkMapBuilder";
+export { FrameworkMapDoc } from "./frameworkMapDoc";
 export {
   type AkanFactReader,
   type AkanSpan,

@@ -47,6 +47,8 @@ export interface BuildRouteClientResult {
   clientDepsByEntry?: Record<string, string[]>;
   /** Registry mode: the entries the manifest rows name, which the SSR dev registry must hold before they are served. */
   registryEntries?: string[];
+  /** Chunks mode: the importmap specifiers each browser chunk imports statically. */
+  externalsByChunkUrl?: Record<string, string[]>;
 }
 
 interface BootstrapEntries {
@@ -134,6 +136,7 @@ export class RouteClientBuilder {
       clientDeps: [...clientDeps].sort(),
       clientDepsByEntry,
       ...(registry ? { registryEntries: [...acceptedEntries].sort() } : {}),
+      ...(browserBundle ? { externalsByChunkUrl: Object.fromEntries(browserBundle.externalsByChunkUrl) } : {}),
     };
   }
 
