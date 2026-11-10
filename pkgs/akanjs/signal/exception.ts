@@ -5,6 +5,7 @@ import { AkanError } from "akanjs/base";
 // Deletion caution: naming this type breaks the `.d.ts` cycle of `static X = class extends Exception` (TS7056).
 export interface StatusException {
   new (message?: string, details?: unknown): Exception;
+  is(error: unknown, ...codes: string[]): error is Exception;
 }
 
 export class Exception extends AkanError {

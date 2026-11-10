@@ -1,5 +1,6 @@
 import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
+import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { type MigrationLedgerTable, MigrationTables } from "./sql/MigrationTables";
 import type { DatabaseAdaptor, TransferRow } from "./sql/types";
@@ -122,7 +123,7 @@ export class DocumentTransfer {
 
   #stores() {
     const stores = this.#database.stores?.();
-    if (!stores) throw new Error("This database adaptor keeps no model stores to transfer.");
+    if (!stores) throw new AkanError("transferUnsupported", "This database adaptor keeps no model stores to transfer.");
     return stores;
   }
 

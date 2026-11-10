@@ -4,6 +4,7 @@ import { type FilterInstance, FilterQueryError, resolveFilterQuery } from "akanj
 import { type Adaptor, type AdaptorCls, dangerouslyAdapt, type ServiceModel } from "akanjs/service";
 import { Exception } from "./exception";
 import type { GuardCls } from "./guard";
+import { SignalDeclarationError } from "./signalDeclarationError";
 import {
   buildSlice,
   type SliceBuilder,
@@ -160,7 +161,7 @@ export function slice<
         Assign<ReturnType<BuildSlice>, RootSliceInfoObj<SrvModule, _Input, _Full, _Light, _Insight, _Filter, _QueryKey>>
       >
 > {
-  if (!srv.cnst || !srv.db) throw new Error("cnst and db are required");
+  if (!srv.cnst || !srv.db) throw new SignalDeclarationError("missingModel", "cnst and db are required");
   const filterRef = srv.db.filter;
   const init = buildSlice(srv.srv.refName, srv.cnst.input, srv.cnst.full, srv.cnst.light, srv.cnst.insight, filterRef);
   const toGuards = (guard?: GuardCls | GuardCls[] | false) => (guard ? (Array.isArray(guard) ? guard : [guard]) : []);

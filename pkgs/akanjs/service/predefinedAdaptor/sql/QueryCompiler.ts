@@ -7,6 +7,7 @@ import {
   queryNodeProblem,
   searchColumns,
 } from "akanjs/document";
+import { DocumentStoreError } from "../../documentStoreError";
 import { DEFAULT_SEARCH_WEIGHTS, type SearchIndex } from "../searchIndex";
 import {
   BASE_COLUMNS,
@@ -91,10 +92,11 @@ export class QueryCompiler {
   private compileNode(query: DocumentQuery, ctx: CompileContext): { sql: string; params: unknown[] } {
     if (isDocumentQueryNode(query)) {
       const problem = queryNodeProblem(query);
-      if (problem) throw new Error(`${problem} (on "${this.ref}")`);
+      if (problem) throw new DocumentStoreError("invalidQuery", `${problem} (on "${this.ref}")`);
       if (query.kind === "search") {
         if (!ctx.conjunctive)
-          throw new Error(
+          throw new DocumentStoreError(
+            "invalidQuery",
             `Text search on "${this.ref}" must sit at an AND position; q.search() cannot be nested under q.any() or q.not().`,
           );
         const join = this.#searchJoin(query, ctx.joins.length);
@@ -116,13 +118,15 @@ export class QueryCompiler {
         return { sql: `NOT (${part.sql})`, params: part.params };
       }
       if (query.kind === "raw") {
-        if (/[;]/.test(query.sql)) throw new Error("Raw SQL query fragments must be a single statement fragment");
+        if (/[;]/.test(query.sql))
+          throw new DocumentStoreError("invalidQuery", "Raw SQL query fragments must be a single statement fragment");
         return { sql: `(${query.sql})`, params: query.params };
       }
-      throw new Error("Operator nodes must be attached to a document path");
+      throw new DocumentStoreError("invalidQuery", "Operator nodes must be attached to a document path");
     }
     const parts = Object.entries(query).flatMap(([path, value]) => {
-      if (value === undefined) throw new Error(`Undefined query value is not allowed: ${path}`);
+      if (value === undefined)
+        throw new DocumentStoreError("invalidQuery", `Undefined query value is not allowed: ${path}`);
       return [this.compileField(path, value, ctx)];
     });
     if (!parts.length) return { sql: "1 = 1", params: [] };
@@ -135,18 +139,26 @@ export class QueryCompiler {
   #searchJoin(node: Extract<DocumentQueryNode, { kind: "search" }>, index: number): SearchJoin | null {
     const search = this.searchIndex();
     if (!search)
-      throw new Error(`Text search on "${this.ref}" is unavailable: this database adaptor keeps no search index.`);
+      throw new DocumentStoreError(
+        "searchUnavailable",
+        `Text search on "${this.ref}" is unavailable: this database adaptor keeps no search index.`,
+      );
     if (!search.enabled)
-      throw new Error(
+      throw new DocumentStoreError(
+        "searchUnavailable",
         `Text search on "${this.ref}" is unavailable because the search index is switched off (AKAN_SEARCH_ENABLED).`,
       );
     const columns = node.columns?.filter((column) => searchColumns.includes(column));
     if (node.columns?.length && !columns?.length)
-      throw new Error(`Unknown search column on "${this.ref}": ${node.columns.join(", ")}`);
+      throw new DocumentStoreError(
+        "invalidQuery",
+        `Unknown search column on "${this.ref}": ${node.columns.join(", ")}`,
+      );
     const weights = node.weights ?? DEFAULT_SEARCH_WEIGHTS;
     // Interpolated (bm25 takes no bind parameters), so proven numeric; a negative means nothing to a Postgres rank.
     if (weights.length !== searchColumns.length || weights.some((weight) => !Number.isFinite(weight) || weight < 0))
-      throw new Error(
+      throw new DocumentStoreError(
+        "invalidQuery",
         `Search weights on "${this.ref}" must be ${searchColumns.length} finite, non-negative numbers: ${JSON.stringify(node.weights)}`,
       );
     const subquery = search.join({ ref: this.ref, text: node.text, prefix: !!node.prefix, columns, weights });
@@ -168,7 +180,7 @@ export class QueryCompiler {
     const leaf = this.#leaf(path);
     const kind = this.pathKind(path);
     const problem = fieldValueProblem(path, value);
-    if (problem) throw new Error(`${problem} (on "${this.ref}")`);
+    if (problem) throw new DocumentStoreError("invalidQuery", `${problem} (on "${this.ref}")`);
     if (isDocumentQueryNode(value) && value.kind === "op") {
       switch (value.op) {
         case "eq":
@@ -241,7 +253,10 @@ export class QueryCompiler {
       }
     }
     if (isPlainRecord(value) && this.#holdsSingleValue(path, field))
-      throw new Error(`Query value at "${path}" on "${this.ref}" is an object, but the field holds a single value`);
+      throw new DocumentStoreError(
+        "invalidQuery",
+        `Query value at "${path}" on "${this.ref}" is an object, but the field holds a single value`,
+      );
     if (field?.isArray && !Array.isArray(value)) return this.#arrayHas(leaf, path, value, ctx);
     return leaf.eq(path, value, kind);
   }
@@ -266,11 +281,12 @@ export class QueryCompiler {
     if (!this.fields[root]) {
       // A numeric root means an executed list (a slice `exec` returning `listBy…`) was passed as a query.
       if (/^\d+$/.test(root))
-        throw new Error(
+        throw new DocumentStoreError(
+          "invalidQuery",
           `Query received an array instead of a query object (field path "${path}"). ` +
             `A query must be a descriptor object; a slice exec must return queryBy...(...), not an executed list.`,
         );
-      throw new Error(`Unknown document field path: ${path}`);
+      throw new DocumentStoreError("invalidQuery", `Unknown document field path: ${path}`);
     }
   }
 }

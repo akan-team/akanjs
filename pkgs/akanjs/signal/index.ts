@@ -25,6 +25,8 @@ export * from "./schema";
 export * from "./serializer";
 export * from "./serverSignal";
 export * from "./signalContext";
+export * from "./signalContractError";
+export * from "./signalDeclarationError";
 export * from "./signalRegistry";
 export * from "./slice";
 export * from "./sliceInfo";

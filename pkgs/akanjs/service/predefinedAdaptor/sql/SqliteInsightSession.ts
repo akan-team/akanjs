@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { InsightQueryError } from "../../insightQueryError";
 import { MigrationTables } from "./MigrationTables";
 import type { InsightSession } from "./types";
 import { quoteIdent } from "./values";
@@ -77,7 +78,7 @@ export class SqliteInsightSession implements InsightSession {
   async read(statement: string) {
     const lowered = statement.toLowerCase();
     const named = this.#hidden.find((name) => lowered.includes(name));
-    if (named) throw new Error(`An insight query cannot name \`${named}\`.`);
+    if (named) throw new InsightQueryError("invalidInsightQuery", `An insight query cannot name \`${named}\`.`);
     return this.#db.query(statement).all() as Record<string, unknown>[];
   }
 

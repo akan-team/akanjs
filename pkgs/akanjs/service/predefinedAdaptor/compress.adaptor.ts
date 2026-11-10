@@ -1,4 +1,5 @@
 import {
+  AkanError,
   Any,
   applyFnToArrayObjects,
   Binary,
@@ -93,7 +94,10 @@ export class ProtobufCompressor extends adapt("protobufCompressor", () => ({})) 
 
   #getProtobuf() {
     if (!this.#proto) {
-      throw new Error("ProtobufCompressor is not initialized. Call onInit() before encode/decode.");
+      throw new AkanError(
+        "compressorNotInitialized",
+        "ProtobufCompressor is not initialized. Call onInit() before encode/decode.",
+      );
     }
     return this.#proto;
   }

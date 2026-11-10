@@ -510,6 +510,10 @@ const describeDriver = (kind: SqlDriverKind) => {
 
     test("[DI-9] a string holding U+0000 is refused before it is stored", async () => {
       await expect(store.create({ title: "nul\u0000byte" })).rejects.toThrow("NUL");
+      await expect(store.create({ title: "nul\u0000byte" })).rejects.toMatchObject({
+        code: "unstorableValue",
+        statusCode: 400,
+      });
       expect(await store.find({})).toHaveLength(0);
     });
 

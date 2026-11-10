@@ -2,6 +2,7 @@ import { Logger } from "akanjs/common";
 import type { ConstantModel } from "akanjs/constant";
 import { Err } from "akanjs/dictionary";
 import type { DatabaseModel } from "akanjs/document";
+import { DocumentStoreError } from "../documentStoreError";
 import { Fts5SearchEngine } from "./sql/search/fts5";
 import { SearchMirror } from "./sql/search/mirror";
 import {
@@ -52,7 +53,10 @@ export const parseSearchEnabled = (value: string | undefined) => {
   const normalized = value.trim().toLowerCase();
   if (normalized === "1" || normalized === "true") return true;
   if (normalized === "0" || normalized === "false") return false;
-  throw new Error(`Invalid AKAN_SEARCH_ENABLED value: "${value}". Use 1/true or 0/false.`);
+  throw new DocumentStoreError(
+    "searchMisconfigured",
+    `Invalid AKAN_SEARCH_ENABLED value: "${value}". Use 1/true or 0/false.`,
+  );
 };
 
 /** The `search_doc` mirror is trigger-maintained, not hook-maintained: `updateOneByQuery` and friends fire no hooks. */

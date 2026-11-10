@@ -1183,6 +1183,12 @@ export interface PromptEmbeddedResourceContent {
     annotations?: PromptAnnotations;
 }
 
+export declare class PromptError extends AkanError<PromptErrorCode> {
+    constructor(code: PromptErrorCode, message: string);
+}
+
+export type PromptErrorCode = "inlineFailed" | "invalidPrompt" | "unmaskedResource";
+
 export interface PromptFileSource {
     url: string;
     filename?: string;
@@ -1450,6 +1456,16 @@ export declare class SignalContext<Ctx extends HttpExecutionContext | WebSocketE
     getArg<T = unknown>(argName: string): T | undefined;
 }
 
+export declare class SignalContractError extends AkanError<SignalContractErrorCode> {
+}
+
+export type SignalContractErrorCode = "bytesThroughAny" | "noHandler" | "notRegistered" | "undefinedReturn" | "wrongTransport";
+
+export declare class SignalDeclarationError extends AkanError<SignalDeclarationErrorCode> {
+}
+
+export type SignalDeclarationErrorCode = "baseMismatch" | "handlerAlreadySet" | "invalidArgType" | "invalidErrors" | "liveAlreadySet" | "missingModel" | "missingSlice" | "nullableLastArg";
+
 export declare class SignalFailure {
     static readonly message = "Internal Server Error";
     static get detailed(): boolean;
@@ -1467,6 +1483,7 @@ export declare class SignalFailure {
         stack?: string;
     };
     static response(error: unknown, extra?: Record<string, unknown>): Response;
+    static headersOf(error: unknown, statusCode: number): Record<string, string>;
 }
 
 export interface SignalOption<Response = any, Nullable extends boolean = false, _Key = keyof UnCls<Response>> extends InitOption, TimerOption {
@@ -1733,6 +1750,7 @@ export type SrvRefName<S extends ServiceModel> = SrvOf<S>["refName"];
 
 export interface StatusException {
     new (message?: string, details?: unknown): Exception;
+    is(error: unknown, ...codes: string[]): error is Exception;
 }
 
 export declare class Timeout extends Timeout_base {

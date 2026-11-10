@@ -3,6 +3,8 @@ import { Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, DocumentSchema, from, into } from "akanjs/document";
 import { ConformanceEnv, type SqlDriver, type SqlDriverKind } from "../../test/conformance";
+import { InsightQueryError } from "../insightQueryError";
+import type { DatabaseAdaptor } from "./database.adaptor";
 import { SqlDocumentStore } from "./database.adaptor";
 import { InsightQuery } from "./insightQuery";
 
@@ -54,6 +56,40 @@ const openMembers = async (kind: SqlDriverKind, options: { insight?: boolean; me
   for (const [id, at, doc] of rows) await insert.run(id, at, at, doc);
   return driver;
 };
+
+describe("InsightQuery timeout", () => {
+  test("forwards a read that outran its timeout as a 504 insightTimeout, and closes the session", async () => {
+    let closed = false;
+    const hanging = {
+      getConnection: () => ({}),
+      openInsight: async () => ({
+        read: () => new Promise<never>(() => undefined),
+        close: async () => {
+          closed = true;
+        },
+      }),
+    } as unknown as DatabaseAdaptor;
+
+    const slow = await new InsightQuery(hanging).run(`SELECT 1 AS one`, { timeoutMs: 5 }).catch((error) => error);
+
+    expect(slow).toBeInstanceOf(InsightQueryError);
+    expect(slow).toMatchObject({ code: "insightTimeout", statusCode: 504, forwarded: true });
+    expect((slow as InsightQueryError).toJSON()).toEqual({
+      error: "Insight query exceeded 5ms.",
+      code: "insightTimeout",
+      statusCode: 504,
+    });
+    expect(closed).toBe(true);
+  });
+
+  test("answers an adaptor with no insight connection as a 500 that is not forwarded", async () => {
+    const bare = { getConnection: () => ({}) } as unknown as DatabaseAdaptor;
+
+    const refused = await new InsightQuery(bare).run(`SELECT 1 AS one`).catch((error) => error);
+
+    expect(refused).toMatchObject({ code: "insightUnavailable", statusCode: 500, forwarded: false });
+  });
+});
 
 // Ids are from `local/database-modes/02-cluster-postgres.md` §2; an id on a plain `test` is a fixed defect.
 const kinds = ConformanceEnv.has("insight query", "postgres")
@@ -123,6 +159,11 @@ for (const kind of kinds) {
       test("refuses anything that is not a read, before it reaches the engine", async () => {
         await expect(insight.run(`DELETE FROM "insightMember"`)).rejects.toThrow("it starts with SELECT or WITH");
         await expect(insight.run(`PRAGMA table_list`)).rejects.toThrow("it starts with SELECT or WITH");
+        await expect(insight.run(`PRAGMA table_list`)).rejects.toMatchObject({
+          code: "invalidInsightQuery",
+          statusCode: 400,
+          forwarded: true,
+        });
         expect(await countOf("insightMember")).toBe(3);
       });
 
@@ -310,6 +351,30 @@ for (const kind of kinds) {
               `SELECT set_config('role', 'none', true) AS reset, query_to_xml('select _doc ->> ''password'' AS p from "${schema}"."insightMember"', true, false, '') AS leaked`,
             ),
           ).rejects.toThrow("may read nothing else");
+        });
+
+        test("forwards the role's refusal as a fixed sentence, and keeps the driver's text as its cause", async () => {
+          const refused = await insight
+            .run(`SELECT to_jsonb(m) -> '_doc' ->> 'password' AS leaked FROM "${schema}"."insightMember" m`)
+            .catch((error: unknown) => error);
+
+          expect(refused).toBeInstanceOf(InsightQueryError);
+          const { forwarded, cause } = refused as InsightQueryError;
+          expect(forwarded).toBe(true);
+          expect((refused as InsightQueryError).toJSON()).toEqual({
+            error: "An insight query reads base columns, and the role it runs as may read nothing else.",
+            code: "invalidInsightQuery",
+            statusCode: 400,
+          });
+          expect(cause).toMatchObject({ code: "42501" });
+          expect(String((cause as Error).message)).toContain("permission denied");
+        });
+
+        test("answers a statement that outruns its timeout as insightTimeout, whichever side stops it", async () => {
+          const slow = await insight.run(`SELECT pg_sleep(2) AS slept`, { timeoutMs: 50 }).catch((error) => error);
+
+          expect(slow).toMatchObject({ code: "insightTimeout", statusCode: 504, forwarded: true });
+          expect((slow as InsightQueryError).message).toBe("Insight query exceeded 50ms.");
         });
 
         test("[X-8] refuses the table named in full to a star", async () => {
