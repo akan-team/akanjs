@@ -723,8 +723,8 @@ akan repair dictionary --app koyo --module icecreamOrder --format json`,
               <code className={chip}>{"akan workflow plan <workflow> … --out <path>"}</code>
               <div className="mt-2 text-foreground/70 text-sm">
                 {l.trans({
-                  en: "Checks your inputs against the target's source and writes the plan JSON: the steps, the files it expects to change, and the checks to run. It reads source but never writes it.",
-                  ko: "입력값을 대상의 소스와 대조해 확인하고 플랜 JSON을 씁니다. 단계, 바뀔 파일 예상, 이후 돌릴 검증이 담기며, 소스를 읽기만 하고 쓰지는 않습니다.",
+                  en: "Checks your inputs against the target's source and writes the plan JSON: the steps, the files it expects to change, and the checks to run. It reads source but never writes it, and exits 1 when the plan has an error.",
+                  ko: "입력값을 대상의 소스와 대조해 확인하고 플랜 JSON을 씁니다. 단계, 바뀔 파일 예상, 이후 돌릴 검증이 담기며, 소스를 읽기만 하고 쓰지는 않습니다. 플랜에 오류가 있으면 종료 코드 1로 끝납니다.",
                 })}
               </div>
             </div>
@@ -746,14 +746,15 @@ akan repair dictionary --app koyo --module icecreamOrder --format json`,
                   en: (
                     <span>
                       Runs the checks the plan asked for — <code>sync</code>, <code>lint</code>, <code>typecheck</code>{" "}
-                      or <code>build</code> — and sorts each failure by cause.
+                      or <code>build</code> — and sorts each failure by cause. It exits 1 when the status is{" "}
+                      <code>failed</code>.
                     </span>
                   ),
                   ko: (
                     <span>
                       플랜이 요구한 검증(<code>sync</code>, <code>lint</code>, <code>typecheck</code>,{" "}
                       <code>build</code>
-                      )을 돌리고, 실패를 원인별로 분류합니다.
+                      )을 돌리고, 실패를 원인별로 분류합니다. 상태가 <code>failed</code>이면 종료 코드 1로 끝납니다.
                     </span>
                   ),
                 })}

@@ -329,12 +329,17 @@ export class WorkflowRunner extends runner("workflow") {
   async plan(
     workflow: string,
     inputs: WorkflowPlanInputs,
-    {
-      format = "markdown",
-      out = null,
-      workspace,
-    }: { format?: WorkflowFormat; out?: string | null; workspace?: Workspace } = {},
+    { format = "markdown", ...options }: { format?: WorkflowFormat; out?: string | null; workspace?: Workspace } = {},
   ) {
+    const plan = await this.planReport(workflow, inputs, options);
+    return format === "json" ? jsonText(plan) : renderWorkflowPlan(plan);
+  }
+
+  async planReport(
+    workflow: string,
+    inputs: WorkflowPlanInputs,
+    { out = null, workspace }: { out?: string | null; workspace?: Workspace } = {},
+  ): Promise<WorkflowPlan> {
     const spec = getWorkflowSpec(workflowSpecs, workflow);
     if (!spec) throw new Error(`Unknown workflow: ${workflow}. Run \`akan workflow list\` to see available workflows.`);
     const plan = await inspectWorkflowPlan(
@@ -347,7 +352,7 @@ export class WorkflowRunner extends runner("workflow") {
       await mkdir(path.dirname(outPath), { recursive: true });
       await writeFile(outPath, jsonText(plan));
     }
-    return format === "json" ? jsonText(plan) : renderWorkflowPlan(plan);
+    return plan;
   }
 
   async apply(
@@ -414,9 +419,7 @@ export class WorkflowRunner extends runner("workflow") {
     runIdOrPlan: string,
     {
       format = "markdown",
-      workspace,
-      execute,
-      includeBaselineDetails = false,
+      ...options
     }: {
       format?: WorkflowFormat;
       workspace: Workspace;
@@ -424,6 +427,17 @@ export class WorkflowRunner extends runner("workflow") {
       includeBaselineDetails?: boolean;
     },
   ) {
+    return renderWorkflowValidation(await this.validateReport(runIdOrPlan, options), format);
+  }
+
+  async validateReport(
+    runIdOrPlan: string,
+    {
+      workspace,
+      execute,
+      includeBaselineDetails = false,
+    }: { workspace: Workspace; execute?: WorkflowValidationCommandExecutor; includeBaselineDetails?: boolean },
+  ): Promise<WorkflowValidationRunReport> {
     const loaded = await this.loadValidationTarget(runIdOrPlan, workspace);
     const trusted = await specValidationOf(workspace, loaded.plan);
     const doctor = await AkanContextAnalyzer.doctor(workspace, {
@@ -453,7 +467,7 @@ export class WorkflowRunner extends runner("workflow") {
       includeBaselineDetails,
     );
     await writeWorkflowRunArtifact(workspace, report);
-    return renderWorkflowValidation(report, format);
+    return report;
   }
 
   async report(runId: string, { format = "markdown", workspace }: { format?: WorkflowFormat; workspace: Workspace }) {

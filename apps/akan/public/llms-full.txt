@@ -3085,7 +3085,7 @@ on failure
 
 1. Plan
 
-Checks your inputs against the target's source and writes the plan JSON: the steps, the files it expects to change, and the checks to run. It reads source but never writes it.
+Checks your inputs against the target's source and writes the plan JSON: the steps, the files it expects to change, and the checks to run. It reads source but never writes it, and exits 1 when the plan has an error.
 
 2. Apply
 

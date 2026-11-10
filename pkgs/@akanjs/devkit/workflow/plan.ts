@@ -488,7 +488,7 @@ const syssHolding = async (workspace: Workspace, module: string, except: Sys) =>
       .map(async (name) => await resolveWorkflowSys(workspace, name)),
   );
   const holding = await Promise.all(
-    others.map(async (other) => (other && (await other.readdir("lib")).includes(module) ? other : null)),
+    others.map(async (other) => (other && (await other.getDatabaseModules()).includes(module) ? other : null)),
   );
   return holding.filter((other): other is Sys => other !== null);
 };
@@ -496,24 +496,29 @@ const syssHolding = async (workspace: Workspace, module: string, except: Sys) =>
 const moduleMissing = async (workspace: Workspace, sys: Sys, module: string): Promise<WorkflowDiagnostic | null> => {
   if ((await sys.readdir("lib")).includes(module)) return null;
   const root = getSysRoot(sys);
-  const modules = [...(await sys.getDatabaseModules()), ...(await sys.getServiceModules())];
-  const sameName = modules.find((name) => name.replace(/^_/, "").toLowerCase() === module.toLowerCase());
+  const modules = await sys.getDatabaseModules();
+  const sameName = modules.find((name) => name.toLowerCase() === module.toLowerCase());
+  const service = (await sys.getServiceModules()).find(
+    (name) => name.replace(/^_/, "").toLowerCase() === module.replace(/^_/, "").toLowerCase(),
+  );
   const isScalar = (await sys.getScalarModules()).includes(module);
-  const [holder] = sameName || isScalar ? [] : await syssHolding(workspace, module, sys);
+  const [holder] = sameName || service || isScalar ? [] : await syssHolding(workspace, module, sys);
   return {
     severity: "error",
     code: "workflow-module-missing",
     input: "module",
     message: [
       `No module named ${module} in ${root}: ${root}/lib/${module} does not exist.`,
-      modules.length ? `Its modules are ${modules.join(", ")}.` : `${root} has no modules yet.`,
+      modules.length ? `Its database modules are ${modules.join(", ")}.` : `${root} has no database modules yet.`,
       sameName
         ? `Did you mean ${sameName}?`
-        : isScalar
-          ? `${root}/lib/__scalar/${module} is a scalar, and this workflow writes only into a module under ${root}/lib.`
-          : holder
-            ? `${module} is in ${getSysRoot(holder)}, so plan this with --app ${holder.name}.`
-            : `If ${module} is a new model, create it with the create-module workflow first, then plan this again.`,
+        : service
+          ? `${root}/lib/${service} is a service module, which stores no model, and this workflow writes only into a database module.`
+          : isScalar
+            ? `${root}/lib/__scalar/${module} is a scalar, and this workflow writes only into a module under ${root}/lib.`
+            : holder
+              ? `${module} is in ${getSysRoot(holder)}, so plan this with --app ${holder.name}.`
+              : `If ${module} is a new model, create it with the create-module workflow first, then plan this again.`,
     ].join(" "),
   };
 };

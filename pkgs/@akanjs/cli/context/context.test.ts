@@ -714,7 +714,7 @@ describe("ContextRunner", () => {
       expect.objectContaining({
         severity: "error",
         code: "workflow-module-missing",
-        message: expect.stringContaining("Its modules are task."),
+        message: expect.stringContaining("Its database modules are task."),
       }),
     ]);
   });

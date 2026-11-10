@@ -66,7 +66,7 @@ on failure
 
 1. Plan
 
-Checks your inputs against the target's source and writes the plan JSON: the steps, the files it expects to change, and the checks to run. It reads source but never writes it.
+Checks your inputs against the target's source and writes the plan JSON: the steps, the files it expects to change, and the checks to run. It reads source but never writes it, and exits 1 when the plan has an error.
 
 2. Apply
 
@@ -74,7 +74,7 @@ Takes the plan file, not a workflow name, and writes the source changes. A plan 
 
 3. Validate
 
-Runs the checks the plan asked for — `sync`, `lint`, `typecheck` or `build` — and sorts each failure by cause.
+Runs the checks the plan asked for — `sync`, `lint`, `typecheck` or `build` — and sorts each failure by cause. It exits 1 when the status is `failed`.
 
 4. Repair
 
