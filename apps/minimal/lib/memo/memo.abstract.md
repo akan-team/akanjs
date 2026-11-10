@@ -7,7 +7,9 @@ stored through the util lib's blob storage.
   server (`local`) and on a desktop app's carried server (`edge`), never in any other operation mode, and never over
   MCP. The memo pages run a memo query in `.guard()`, so a built server (which runs as `cloud`) answers them
   not-found instead of failing the render in the browser; the guard asks the server, not `getEnv()`, because a
-  desktop app's client is built as `cloud` while its carried server runs as `edge`.
+  desktop app's client is built as `cloud` while its carried server runs as `edge`. An MCP listing runs that guard
+  too: the list page's `showTripNotes` app is listed only where memo answers, at the cost of one insight query per
+  listing; the detail page's guard reads `memoId`, so `showTripNote` stays listed and its call decides.
 - `imageUrl` is written only by `attachMemoImage`, as a URL relative to the server that stored the image; a page on
   another origin resolves it against the server (`resolveServerUrl`).
 - An attached image is a PNG, JPEG, WebP or GIF of at most 5 MB, stored under a name made from that type; the uploaded
