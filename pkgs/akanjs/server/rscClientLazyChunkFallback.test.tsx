@@ -9,10 +9,12 @@ const encoder = new TextEncoder();
 const htmlOf = (main: unknown) =>
   `["$","html",null,{"children":[["$","head","h",{}],["$","body","b",{"children":["$","main",null,{"children":${JSON.stringify(main)}}]}]]}]`;
 const importRowOf = (row: number, chunk: string, name: string) =>
-  `${row}:I${JSON.stringify([chunk, [chunk, chunk], name])}\n`;
+  `${row}:I${JSON.stringify([chunk, [chunk, chunk], name, 1])}\n`;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const linkError = () =>
   new SyntaxError("The requested module 'akanjs/store/agent' does not provide an export named 'AgentChatLog'");
+const otherLinkError = () =>
+  new SyntaxError("The requested module 'akanjs/store' does not provide an export named 'storeOfAnotherBuild'");
 
 class Boundary extends Component<{ children?: ReactNode }, { failed: boolean }> {
   override state: { failed: boolean } = { failed: false };
@@ -70,6 +72,10 @@ beforeAll(async () => {
   });
   const quiet = spyOn(console, "warn").mockImplementation(() => undefined);
   await rejectImport(linkError());
+  //? Here, not in a test: a refresh clears the page cache, and with it the document's own page to replay.
+  await navigate("/before-replay");
+  await navigate("/home");
+  await rejectImport(linkError());
   for (const spy of [reload, quiet]) spy.mockRestore();
 });
 
@@ -124,29 +130,34 @@ const serveLazyPage = (pathname: string, failure: () => unknown) => {
 };
 
 describe("rscClient lazy chunk that fails to link", () => {
-  test("on a page a navigation rendered, it reloads the address the tab shows, once per page and failure", async () => {
+  test("on a page a navigation rendered, it reloads the address the tab shows, once per failure", async () => {
     serveLazyPage("/lazy", linkError);
-    serveLazyPage("/lazy-sibling", linkError);
     await navigate("/lazy#notes");
-    await rejectImport(new SyntaxError("The requested module 'akanjs/store' does not provide an export named 'st2'"));
+    await rejectImport(otherLinkError());
     expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [`${origin}/lazy#notes`] });
-    expect(reloadedKeys()).toEqual([`/lazy ${linkError().message}`]);
+    expect(reloadedKeys()).toEqual([`import() ${linkError().message}`]);
     expect(consoleError.mock.calls.filter(([logged]) => logged instanceof SyntaxError)).toHaveLength(1);
 
     await navigate("/away");
     await navigate("/lazy");
     expect(documentLoads().reloaded).toEqual([`${origin}/lazy#notes`]);
+  });
 
-    await navigate("/lazy-sibling");
-    expect(documentLoads().reloaded).toEqual([`${origin}/lazy#notes`, `${origin}/lazy-sibling`]);
+  test("a second page with the same failure does not reload again, and another failure does", async () => {
+    serveLazyPage("/product/1", linkError);
+    serveLazyPage("/product/2", linkError);
+    serveLazyPage("/product/3", otherLinkError);
+    await navigate("/product/1");
+    await navigate("/product/2");
+    expect(documentLoads().reloaded).toEqual([`${origin}/product/1`]);
+
+    await navigate("/product/3");
+    expect(documentLoads().reloaded).toEqual([`${origin}/product/1`, `${origin}/product/3`]);
+    expect(reloadedKeys()).toEqual([`import() ${linkError().message}`, `import() ${otherLinkError().message}`]);
   });
 
   test("an import() rejected outside React reloads too, but not on the document's own page, even replayed", async () => {
     expect(ownPageLoads).toEqual([]);
-    await navigate("/home");
-    await rejectImport(linkError());
-    expect(documentLoads().reloaded).toEqual([]);
-
     await navigate("/plain");
     await navigate("/plain?tab=2#chat", { shallow: true, replace: true });
     await rejectImport(linkError());
@@ -197,6 +208,31 @@ describe("rscClient lazy chunk that fails to link", () => {
 
     await rejectImport(linkError());
     expect(documentLoads().reloaded).toEqual([`${origin}/next`]);
+  });
+
+  test("a refresh of the page on screen after a shallow update does not count as leaving it", async () => {
+    await navigate("/tabbed");
+    await navigate("/tabbed?tab=2", { shallow: true, replace: true });
+    const held = { release: () => {} };
+    heldFetch = new Promise<void>((resolve) => {
+      held.release = resolve;
+    });
+    let refreshing: Promise<void> | undefined;
+    try {
+      await act(async () => {
+        refreshing = globalThis.__AKAN_RSC_REFRESH__?.();
+        await sleep(5);
+      });
+      await rejectImport(linkError());
+    } finally {
+      heldFetch = undefined;
+      await act(async () => {
+        held.release();
+        await refreshing;
+      });
+    }
+
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [], reloaded: [`${origin}/tabbed?tab=2`] });
   });
 
   test("a chunk the Flight client loaded is left to the chunk fallback, even when its element throws", async () => {

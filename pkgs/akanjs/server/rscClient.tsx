@@ -20,8 +20,8 @@ import {
   type ChunkNavigation,
   claimChunkReload,
   isBuildBundle,
-  isLazyLinkFailure,
   isLinkFailure,
+  lazyLinkFailureKeyOf,
   navigationOfChunk,
   noteChunkLoadFailure,
   recordChunksOf,
@@ -423,10 +423,11 @@ function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigatio
 //? A rejected `import()` names neither the module that asked nor the one that failed to link, so a lazy chunk counts
 //? as the page on screen's; only a page a navigation's response rendered can hold another build's modules.
 function loadDocumentForLazyChunkFailure(error: unknown): void {
-  const leaving = pendingRequest !== null && pendingRequest.target !== pageKeyOf(renderedHref);
+  const leaving =
+    !!pendingRequest && pendingRequest.navId !== refreshNavId && pendingRequest.target !== pageKeyOf(renderedHref);
   if (shownNode === initialNode || leaving || documentNavigationFallbackInFlight || !isBuildBundle()) return;
-  if (!navigator.onLine || !isLazyLinkFailure(error)) return;
-  if (claimChunkReload(`${pathnameOf(renderedHref)} ${error.message}`))
+  const key = lazyLinkFailureKeyOf(error);
+  if (key && navigator.onLine && claimChunkReload(key))
     hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
 }
 

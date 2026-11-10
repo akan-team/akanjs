@@ -26,7 +26,7 @@ beforeAll(async () => {
     __RSC_CHUNKS__: [[1, `0:${htmlOf("/home")}\n`]],
     __RSC_CLOSED__: true,
     fetch: async () =>
-      new Response(`1:I${JSON.stringify([host, [host, host], "Host"])}\n0:${htmlOf(["$", "$L1", null, {}])}\n`, {
+      new Response(`1:I${JSON.stringify([host, [host, host], "Host", 1])}\n0:${htmlOf(["$", "$L1", null, {}])}\n`, {
         headers: { "Content-Type": "text/x-component" },
       }),
   });
