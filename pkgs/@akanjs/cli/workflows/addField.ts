@@ -14,7 +14,7 @@ export const addFieldWorkflowSpec: WorkflowSpec = {
       type: "string",
       required: true,
       description:
-        "Field type or scalar name. Use Int for integer fields or Float for decimal fields; do not use Number.",
+        "Field type: a built-in or akanjs/base type, or a scalar or model of the target by class name, which apply imports. Use Int for integer fields or Float for decimal fields; do not use Number.",
     },
     values: { type: "string-list", description: "Comma-separated enum values when type is enum." },
     default: {

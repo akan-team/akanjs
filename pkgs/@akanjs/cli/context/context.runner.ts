@@ -292,30 +292,7 @@ export class ContextRunner extends runner("context") {
         policy: applyFirstPolicy,
       };
     }
-    if (name === "apply_workflow") {
-      const report = parseJsonOutput(
-        await new WorkflowRunner().apply(workflowArtifactPath(workspace, stringArg(args, "planPath")), {
-          format: "json",
-          dryRun: !!args.dryRun,
-          workspace,
-          registry: WorkflowRunner.stepRegistry(workspace),
-        }),
-      ) as Record<string, unknown>;
-      const validationTarget =
-        typeof report.validationTarget === "string"
-          ? report.validationTarget
-          : typeof report.applyReportPath === "string"
-            ? report.applyReportPath
-            : stringArg(args, "planPath");
-      return {
-        ...report,
-        validationTarget,
-        ...(report.status === "failed"
-          ? {}
-          : { next: { tool: "run_validation", args: { runIdOrPlan: validationTarget } } }),
-        policy: applyFirstPolicy,
-      };
-    }
+    if (name === "apply_workflow") return await this.#applyWorkflow(workspace, args);
     if (name === "run_validation")
       return parseJsonOutput(
         await new WorkflowRunner().validate(workflowArtifactPath(workspace, stringArg(args, "runIdOrPlan")), {
@@ -369,6 +346,34 @@ export class ContextRunner extends runner("context") {
         _meta: { [MCP_FAILURE_META]: AkanMcpToolError.failureOf(error) },
       };
     }
+  }
+
+  async #applyWorkflow(workspace: Workspace, args: Record<string, unknown>) {
+    const planPath = stringArg(args, "planPath");
+    const report = parseJsonOutput(
+      await new WorkflowRunner().apply(workflowArtifactPath(workspace, planPath), {
+        format: "json",
+        dryRun: !!args.dryRun,
+        workspace,
+        registry: WorkflowRunner.stepRegistry(workspace),
+      }),
+    ) as Record<string, unknown>;
+    const validationTarget =
+      typeof report.validationTarget === "string"
+        ? report.validationTarget
+        : typeof report.applyReportPath === "string"
+          ? report.applyReportPath
+          : planPath;
+    return {
+      ...report,
+      validationTarget,
+      ...(report.status === "failed"
+        ? {}
+        : args.dryRun
+          ? { next: { tool: "apply_workflow", args: { planPath } } }
+          : { next: { tool: "run_validation", args: { runIdOrPlan: validationTarget } } }),
+      policy: applyFirstPolicy,
+    };
   }
 
   async runMcp(workspace: Workspace, { mode = "readonly" }: { mode?: AkanMcpMode } = {}) {

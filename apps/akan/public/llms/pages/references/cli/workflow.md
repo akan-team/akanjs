@@ -74,7 +74,7 @@ Takes the plan file, not a workflow name, and writes the source changes. A plan 
 
 3. Validate
 
-Runs the checks the plan asked for — `sync`, `lint`, `typecheck` or `build` — and sorts each failure by cause. It exits 1 when the status is `failed`.
+Runs the checks the plan asked for — `sync`, `lint`, `typecheck` or `build` — and sorts each failure by cause. It exits 1 when the status is `failed`, but 0 when every failure left is a known baseline blocker (`passed-with-baseline-blockers`).
 
 4. Repair
 
@@ -152,6 +152,8 @@ With `--format json`, explain also carries the predicted changes and the complet
 
 **Numbers are Int or Float.** A plan with `--type Number` carries an error, and a plan with an error applies nothing.
 
+**A scalar or model type is imported.** `--type Address` names a scalar or model of the target by its class name, and apply imports it into the constant, as it imports `Int` or `ID` from `akanjs/base`. A plan with a type it cannot find, and the constant does not import, carries an error.
+
 **Defaults follow the type.** `--default` is converted to match `--type`, and an enum default must be one of `--values`.
 
 **add-field can also reach the form and the Light model.** `--surfaces template` writes the field into a simple Template form and `--include-in-light` adds it to the Light model. Through `plan_workflow` they are `surfaces: ["template"]` and `includeInLight: true`.
@@ -204,7 +206,7 @@ List, explain, plan, apply, or validate a workflow, or print an earlier run's re
 
 - workflow (String): Needed by every action but `list`. What it names depends on the action; see Notes.
 
-- --format (String, default markdown, markdown | json · -o): `markdown` is for a person; `json` is the report an MCP client receives.
+- --format (String, default markdown, markdown | json · -o): `markdown` is for a person; `json` is the report an MCP client receives, alone on stdout, logs on stderr.
 
 - --out (String, -w): `plan` only. Writes the plan JSON here; without it the plan is only printed and cannot be applied.
 

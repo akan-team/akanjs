@@ -333,6 +333,36 @@ export const taskDictionary = modelDictionary("task")
       }),
     );
     expect(report.nextActions.map((action) => action.action)).toContain("blocked");
+    expect(report).toMatchObject({ generatedFiles: [], recommendedValidationCommands: [], commands: [] });
+    expect(report.nextActions.map((action) => action.command)).not.toContain("akan verify demo");
+  });
+
+  test("queues no sync and names no validation for an apply that fails after its plan passed", async () => {
+    const { workspace, planPath, runner } = await planTaskWorkflow({ field: "priority", type: "String" });
+    const registry = WorkflowRunner.stepRegistry(workspace);
+    const first = JSON.parse(
+      await runner.apply(planPath, { format: "json", workspace, registry }),
+    ) as WorkflowApplyReport;
+
+    const output = await runner.apply(planPath, { workspace, registry });
+    const report = JSON.parse(
+      await runner.apply(planPath, { format: "json", workspace, registry }),
+    ) as WorkflowApplyReport;
+
+    expect(first).toMatchObject({ status: "passed", recommendedValidationCommands: [{ command: "akan verify demo" }] });
+    expect(first.generatedFiles.length).toBeGreaterThan(0);
+
+    expect(report).toMatchObject({
+      status: "failed",
+      changedFiles: [],
+      generatedFiles: [],
+      recommendedValidationCommands: [],
+      commands: [],
+    });
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "primitive-field-exists" }));
+    expect(report.nextActions.map((action) => action.command)).toEqual(["akan workflow explain add-field"]);
+    expect(output).toContain("- Generated files queued for sync: 0");
+    expect(output).not.toContain("akan verify demo");
   });
 
   test("fails workflow apply when numeric base import is missing after apply", async () => {
@@ -928,6 +958,45 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     });
   });
 
+  test("imports a scalar field type it writes, and refuses at plan time a type it cannot find", async () => {
+    const { root, workspace, module, planPath, runner } = await planTaskWorkflow({
+      field: "location",
+      type: "Address",
+    });
+    const refused = JSON.parse(
+      await runner.plan(
+        "add-field",
+        { app: "demo", module: "task", field: "location", type: "Address" },
+        { format: "json", workspace },
+      ),
+    ) as WorkflowPlan;
+    await writeText(path.join(root, "apps/demo/lib/__scalar/address/address.constant.ts"), "export class Address {}\n");
+    await runner.plan(
+      "add-field",
+      { app: "demo", module: "task", field: "location", type: "Address" },
+      { format: "json", out: planPath, workspace },
+    );
+
+    const report = JSON.parse(
+      await runner.apply(planPath, { format: "json", workspace, registry: WorkflowRunner.stepRegistry(workspace) }),
+    ) as WorkflowApplyReport;
+
+    expect(refused.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        code: "primitive-field-type-unknown",
+        input: "type",
+        message: expect.stringContaining(
+          'Field type "Address" names Address, which is not a built-in or akanjs/base type, not imported by apps/demo/lib/task/task.constant.ts, and not a scalar or model in apps/demo. It has no scalars. Its models are Task.',
+        ),
+      }),
+    ]);
+    expect(report.status).toBe("passed");
+    const constant = await module.readFile("task.constant.ts");
+    expect(constant).toContain('import { Address } from "../__scalar/address/address.constant";');
+    expect(constant).toContain("location: field(Address),");
+  });
+
   describe("a service module", () => {
     const planTaskAndService = async () => {
       const planned = await planTaskWorkflow({ field: "nickname", type: "String" });
@@ -1332,7 +1401,27 @@ describe("akan workflow", () => {
     });
   }, 120_000);
 
-  test("exits 1 when validate fails, and 0 when it passes", async () => {
+  test("prints only the report on stdout with --format json, and keeps the text mode's log lines", async () => {
+    const { root } = track(await createTempModule("task"));
+    const applyModule = async (module: string, format: string[]) => {
+      const planPath = path.join(root, `.akan/workflows/plans/${module}.json`);
+      await workflowCli(root, ["plan", "create-module", "--app", "demo", "--module", module, "--out", planPath]);
+      return await workflowCli(root, ["apply", planPath, ...format]);
+    };
+
+    const json = await applyModule("note", ["--format", "json"]);
+    const report = JSON.parse(json.stdout) as WorkflowApplyReport;
+    const validated = await workflowCli(root, ["validate", report.applyReportPath ?? "", "--format", "json"]);
+    const text = await applyModule("memo", []);
+
+    expect(report).toMatchObject({ workflow: "create-module", status: "passed" });
+    expect(json.stderr).toContain("File Create:");
+    expect(JSON.parse(validated.stdout)).toMatchObject({ mode: "validate" });
+    expect(text.stdout).toContain("File Create:");
+    expect(text.stdout).toContain("# Workflow Apply: create-module");
+  }, 120_000);
+
+  test("exits 1 when validate fails, and 0 when it passes or only baseline blockers remain", async () => {
     const { root, workspace } = track(await createTempModule("task"));
     const missingRun = await workflowCli(root, ["validate", "validation-missing", "--format", "json"]);
     expect(missingRun.code).toBe(1);
@@ -1342,12 +1431,27 @@ describe("akan workflow", () => {
     const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
     const exitCode = process.exitCode;
     try {
-      for (const status of ["failed", "passed"] as const) {
+      const exits: Record<string, number | string | undefined> = {};
+      for (const overallStatus of [
+        "failed",
+        "blocked-by-workspace-config",
+        "blocked-by-environment",
+        "passed-with-baseline-blockers",
+        "passed",
+      ] as const) {
         process.exitCode = 0;
-        validateReport.mockResolvedValue({ status } as WorkflowValidationRunReport);
+        const status = overallStatus === "passed" ? "passed" : "failed";
+        validateReport.mockResolvedValue({ status, overallStatus } as WorkflowValidationRunReport);
         await CommandContainer.get(WorkflowScript).workflow("validate", "run-1", {}, { format: "json", workspace });
-        expect([status, process.exitCode]).toEqual([status, status === "failed" ? 1 : 0]);
+        exits[overallStatus] = process.exitCode;
       }
+      expect(exits).toEqual({
+        failed: 1,
+        "blocked-by-workspace-config": 1,
+        "blocked-by-environment": 1,
+        "passed-with-baseline-blockers": 0,
+        passed: 0,
+      });
     } finally {
       validateReport.mockRestore();
       printed.mockRestore();

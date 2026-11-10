@@ -590,7 +590,7 @@ describe("ContextRunner", () => {
     await expect(runner.installMcp(workspace, "codex", { force: true })).resolves.toBe(".codex/config.toml");
   });
 
-  test("runs workflow read tools through MCP plan mode", async () => {
+  test("runs workflow read tools through MCP plan mode, and names the apply after a dry run", async () => {
     const { root, workspace, module } = track(await createTempModule("task"));
     await new ModuleRunner().createModuleTemplate(module);
     const runner = new ContextRunner();
@@ -623,8 +623,14 @@ describe("ContextRunner", () => {
       status: string;
       applyReportPath: string;
       validationTarget: string;
-      next: { tool: string; args: { runIdOrPlan: string } };
+      next: { tool: string; args: { planPath: string } };
       policy: { mode: string; directSourceEdits: string };
+    };
+    const applied = (await runner.callMcpTool(workspace, "apply_workflow", dryRun.next.args, { mode: "apply" })) as {
+      mode: string;
+      status: string;
+      validationTarget: string;
+      next: { tool: string; args: { runIdOrPlan: string } };
     };
 
     expect(plan).toMatchObject({ mode: "plan", workflow: "add-field", planPath });
@@ -633,9 +639,12 @@ describe("ContextRunner", () => {
     expect(plan.policy).toMatchObject({ mode: "apply-first", directSourceEdits: "fallback-only" });
     expect(await Bun.file(planPath).exists()).toBe(true);
     expect(dryRun).toMatchObject({ mode: "dry-run", status: "passed" });
-    expect(dryRun.next).toEqual({ tool: "run_validation", args: { runIdOrPlan: dryRun.validationTarget } });
+    expect(dryRun.next).toEqual({ tool: "apply_workflow", args: { planPath } });
     expect(dryRun.policy).toMatchObject({ mode: "apply-first", directSourceEdits: "fallback-only" });
     expect(await Bun.file(`${root}/${dryRun.applyReportPath}`).exists()).toBe(true);
+    expect(applied).toMatchObject({ mode: "apply", status: "passed" });
+    expect(applied.next).toEqual({ tool: "run_validation", args: { runIdOrPlan: applied.validationTarget } });
+    expect(await module.readFile("task.constant.ts")).toContain("priority: field(String),");
   });
 
   test("writes a default plan artifact from MCP plan_workflow", async () => {

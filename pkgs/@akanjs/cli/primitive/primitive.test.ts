@@ -303,6 +303,63 @@ export const dictionary = modelDictionary(["en", "ko"])
     expect(await module.readFile("post.constant.ts")).toBe(originalConstant);
   });
 
+  test("imports a scalar, a model or an akanjs/base type it writes, and refuses a type it cannot find", async () => {
+    const { workspace, app, module } = track(await createTempModule("post"));
+    await new ModuleRunner().createModuleTemplate(module);
+    await app.writeFile("lib/__scalar/address/address.constant.ts", "export class Address {}\n");
+    await app.writeFile("lib/owner/owner.constant.ts", "export class Owner {}\n");
+    const script = CommandContainer.get(PrimitiveScript);
+    const addField = async (field: string, type: string) =>
+      await script.addField(workspace, { app: "demo", module: "post", field, type });
+
+    const reports = [
+      await addField("location", "Address"),
+      await addField("owner", "Owner"),
+      await addField("refId", "ID"),
+      await addField("stops", "[Address]"),
+    ];
+    const written = await module.readFile("post.constant.ts");
+    const unknown = await addField("tag", "Adress");
+    const unparsed = [await addField("label", "Adress | null"), await addField("tags", "Adress[]")];
+
+    expect(reports.map((report) => report.status)).toEqual(["passed", "passed", "passed", "passed"]);
+    expect(written).toContain('import { Address } from "../__scalar/address/address.constant";');
+    expect(written).toContain('import { Owner } from "../owner/owner.constant";');
+    expect(written).toMatch(/import \{[^}]*\bID\b[^}]*\} from "akanjs\/base";/);
+    expect(written.match(/import \{ Address \}/g)).toHaveLength(1);
+    expect(written).toContain("stops: field([Address]),");
+    expect(unknown).toMatchObject({ status: "failed", changedFiles: [] });
+    expect(unknown.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "primitive-field-type-unknown",
+        message: expect.stringContaining("Its scalars are Address. Its models are Owner, Post."),
+      }),
+    );
+    for (const report of unparsed) {
+      expect(report).toMatchObject({ status: "failed", changedFiles: [] });
+      expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "primitive-field-type-unknown" }));
+    }
+    expect(await module.readFile("post.constant.ts")).toBe(written);
+  });
+
+  test("lists no generated file, validation command or next action for a field write that fails", async () => {
+    const { workspace, module } = track(await createTempModule("post"));
+    await new ModuleRunner().createModuleTemplate(module);
+    const script = CommandContainer.get(PrimitiveScript);
+    await script.addField(workspace, { app: "demo", module: "post", field: "priority", type: "String" });
+
+    const report = await script.addField(workspace, { app: "demo", module: "post", field: "priority", type: "String" });
+
+    expect(report).toMatchObject({
+      status: "failed",
+      changedFiles: [],
+      generatedFiles: [],
+      validationCommands: [],
+      nextActions: [],
+    });
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "primitive-field-exists" }));
+  });
+
   test("adds an enum field and enum dictionary without syncing generated files", async () => {
     const { workspace, module } = track(await createTempModule("task"));
     await new ModuleRunner().createModuleTemplate(module);
