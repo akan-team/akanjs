@@ -218,11 +218,11 @@ Tool
 
   - explain_workflow: One workflow's inputs, predicted changes and checks.
 
-  - plan_workflow: Writes a plan file and returns its `planPath` for `apply_workflow`.
+  - plan_workflow: Writes a plan file and returns its `planPath` for `apply_workflow`, which it names next unless the plan has an error.
 
 - Apply and repair
 
-  - apply_workflow: Carries out a stored plan and names what to validate next.
+  - apply_workflow: Carries out a stored plan and, unless it failed, names what to validate next.
 
   - run_validation: Runs the validation commands for a plan or an apply report.
 

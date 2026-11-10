@@ -29,7 +29,7 @@ import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
 import { appIdsOf, getMobileTargets, isPlaceholderAppId, NativeApp } from "@akanjs/devkit/mobile";
 import { Prompter } from "@akanjs/devkit/prompter";
-import { createWorkflowBaselineSummary, jsonText } from "@akanjs/devkit/workflow";
+import { createWorkflowBaselineSummary, jsonText, type WorkflowPlan, workflowStatus } from "@akanjs/devkit/workflow";
 import { WorkspaceGraph } from "@akanjs/devkit/workspaceGraph";
 import { RepairRunner } from "../repair/repair.runner";
 import { WorkflowRunner } from "../workflow/workflow.runner";
@@ -269,15 +269,13 @@ export class ContextRunner extends runner("context") {
       const out = workflowArtifactPath(workspace, planPath);
       const plan = parseJsonOutput(
         await new WorkflowRunner().plan(workflow, inputs, { format: "json", out, workspace }),
-      );
+      ) as WorkflowPlan;
+      const applicable = workflowStatus(plan.diagnostics) === "passed";
       return {
-        ...(plan as Record<string, unknown>),
+        ...plan,
         planPath,
-        approval:
-          typeof plan === "object" && plan && "approval" in plan
-            ? { ...(plan.approval as Record<string, unknown>), canApplyWith: { planPath } }
-            : undefined,
-        next: { tool: "apply_workflow", args: { planPath } },
+        approval: plan.approval && applicable ? { ...plan.approval, canApplyWith: { planPath } } : plan.approval,
+        ...(applicable ? { next: { tool: "apply_workflow", args: { planPath } } } : {}),
         policy: applyFirstPolicy,
       };
     }
@@ -299,7 +297,9 @@ export class ContextRunner extends runner("context") {
       return {
         ...report,
         validationTarget,
-        next: { tool: "run_validation", args: { runIdOrPlan: validationTarget } },
+        ...(report.status === "failed"
+          ? {}
+          : { next: { tool: "run_validation", args: { runIdOrPlan: validationTarget } } }),
         policy: applyFirstPolicy,
       };
     }
