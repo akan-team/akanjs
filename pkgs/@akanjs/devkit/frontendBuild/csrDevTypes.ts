@@ -1,11 +1,24 @@
 import type { PageEntry } from "../artifact/implicitRootLayout";
 
+export interface CsrDevNarrowedImport {
+  names: string[];
+  hash: string;
+}
+
+export interface CsrDevBarrelStamp {
+  /** The mtime of each file and directory the barrel's analysis read, by id. */
+  read: Record<string, number>;
+  /** Each export name with the file it resolves to, hashed: what every importer's narrowing reads. */
+  digest: string;
+}
+
 export interface CsrDevGraphModule {
   vendor: boolean;
   mtimeMs: number;
   hash: string;
   deps: string[];
   helpers?: string;
+  narrowed?: Record<string, CsrDevNarrowedImport>;
 }
 
 export interface CsrDevGraph {
@@ -22,6 +35,7 @@ export interface CsrDevGraph {
   failed?: { roots: string[]; files: Record<string, string> };
   /** The stamp of the signal and dictionary sources the last whole build inlined; see `RegistryMetadataFingerprint`. */
   metadata?: string;
+  barrels?: Record<string, CsrDevBarrelStamp>;
 }
 
 export interface CsrDevContext {
@@ -35,6 +49,7 @@ export interface CsrDevContext {
   refreshFile: string | null;
   /** Bare specifiers the page already loads (an SSR page's import map): required as `vendor:<specifier>`, not compiled. */
   externals?: readonly string[];
+  barrelImports?: readonly string[];
 }
 
 export interface CsrDevSharedHelpers {
@@ -52,6 +67,7 @@ export interface CsrDevCompiledModule {
   deps: string[];
   mtimeMs: number;
   hash: string;
+  narrowed?: Record<string, CsrDevNarrowedImport>;
 }
 
 /** Module factories by id and helper definitions by hash, kept in memory so app.js is written without a pass over the disk. */

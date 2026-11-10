@@ -57,6 +57,28 @@ describe("GraphClientEntryDiscovery", () => {
     expect(await discovery.discover([file("S.tsx")])).toEqual([file("ui/Card.ts"), file("ui/Chart/index.tsx")]);
   });
 
+  test("an export moved into a client file of a barrel is found through the importer that names it", async () => {
+    const file = await tempDir();
+    await Bun.write(file("ui/index.ts"), 'export * from "./Foo";\nexport * from "./Other";\n');
+    await Bun.write(file("ui/Foo.tsx"), "export const Foo = 1;\nexport const Bar = () => null;\n");
+    await Bun.write(file("ui/Other.tsx"), '"use client";\nexport const Other = () => null;\n');
+    await Bun.write(file("S.tsx"), 'import { Bar } from "@demo/ui";\nexport const s = Bar;\n');
+    const resolvePackage = async (pkgName: string) => {
+      const leaf = pkgName === "@demo/ui" ? "index.ts" : `${pkgName.slice("@demo/ui/".length)}.tsx`;
+      return { pkgName, entryFile: file(`ui/${leaf}`), pkgDir: file("ui") };
+    };
+    const discovery = new GraphClientEntryDiscovery({ barrelImports: ["@demo/ui"] }, resolvePackage as never);
+    expect(await discovery.discover([file("S.tsx")])).toEqual([]);
+
+    await Bun.write(file("ui/Foo.tsx"), "export const Foo = 1;\n");
+    await Bun.write(
+      file("ui/Other.tsx"),
+      '"use client";\nexport const Other = () => null;\nexport const Bar = () => null;\n',
+    );
+    discovery.invalidate([file("ui/Foo.tsx"), file("ui/Other.tsx")]);
+    expect(await discovery.discover([file("S.tsx")])).toEqual([file("ui/Other.tsx")]);
+  });
+
   test("a resolution still in flight when its target appears is not what the next walk reads", async () => {
     const file = await tempDir();
     await Bun.write(file("S.tsx"), 'import "./B";\n');
