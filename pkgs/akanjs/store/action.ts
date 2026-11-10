@@ -1055,10 +1055,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           page === pageOfModel &&
           limit === limitOfModel &&
           isQueryEqual(sort as unknown as object, sortOfModel as unknown as object)
-        ) {
-          if (fresh && !fetchPolicy.signal?.aborted) this.set({ [namesOfSlice.isCumulativeOfModel]: false });
+        )
           return;
-        }
         await loadList(
           this,
           fetchPolicy.signal,

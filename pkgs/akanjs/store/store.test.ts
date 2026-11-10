@@ -791,7 +791,7 @@ describe("signal generated store contract", () => {
     expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
   });
 
-  test("an init abandoned mid-flight keeps a loaded-more list whole, and one that lands starts it over", async () => {
+  test("an init abandoned mid-flight, or one with nothing to change, keeps a loaded-more list whole, and one that lands starts it over", async () => {
     setupEnv();
     const signal = makeSignal();
     const listed = mock(
@@ -820,6 +820,13 @@ describe("signal generated store contract", () => {
     expect(listed).toHaveBeenCalledTimes(3);
     leaving.abort();
     await abandoned;
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
+    await instance.do.refreshStoreTestItemByTitle({ invalidate: true });
+    expect(listed).toHaveBeenLastCalledWith("Ada", 0, 4, "latest", expect.any(Object));
+
+    listed.mockClear();
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 2 });
+    expect(listed).not.toHaveBeenCalled();
     expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
     await instance.do.refreshStoreTestItemByTitle({ invalidate: true });
     expect(listed).toHaveBeenLastCalledWith("Ada", 0, 4, "latest", expect.any(Object));

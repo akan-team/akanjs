@@ -2978,8 +2978,17 @@ describe("WsClient", () => {
         expect(socket?.sent).toEqual([]);
         socket?.close(1006, "gone");
       }
-      keepsNone.destroy();
       expect(warnings).toHaveLength(warnedBefore + 1);
+      keepsNone.configure({ outboxLimit: 1 });
+      keepsNone.connect();
+      for (const idx of [1, 2, 3]) keepsNone.emit("send", [`late${idx}`]);
+      const reconfigured = FakeWebSocket.instances.at(-1);
+      reconfigured?.open();
+      expect(reconfigured?.sent.map((frame) => JSON.parse(frame))).toEqual([{ key: "send", data: ["late3"] }]);
+      expect(warnings.slice(warnedBefore + 1)).toEqual([
+        "WebSocket dropped 2 oldest queued message(s) while disconnected",
+      ]);
+      keepsNone.destroy();
     } finally {
       Logger.prototype.warn = warn;
     }

@@ -205,9 +205,10 @@ export class WsClient {
       });
       const queued = this.#outbox;
       this.#outbox = [];
-      if (this.#outboxDropped > 0 && !this.#outboxNoneWarned) {
+      const keepsNone = this.#outboxLimit === 0;
+      if (this.#outboxDropped > 0 && !(keepsNone && this.#outboxNoneWarned)) {
         this.logger.warn(`WebSocket dropped ${this.#outboxDropped} oldest queued message(s) while disconnected`);
-        this.#outboxNoneWarned = this.#outboxLimit === 0;
+        this.#outboxNoneWarned ||= keepsNone;
       }
       this.#outboxDropped = 0;
       for (const frame of queued) this.#ws?.send(frame);
