@@ -1,6 +1,6 @@
 {
   "akan.size.file": {
-    "fetch/client/fetchClient.ts": 1164,
+    "fetch/client/fetchClient.ts": 1163,
     "server/akanApp.ts": 1509,
     "server/akanServer.ts": 1045,
     "server/di/diLifecycle.ts": 834,
@@ -11,7 +11,7 @@
     "server/webRouter.ts": 1405,
     "service/predefinedAdaptor/sql/SqlDocumentStore.ts": 1433,
     "signal/signalContext.ts": 1016,
-    "store/action.ts": 1343,
+    "store/action.ts": 1342,
     "ui/Constant/Doc.tsx": 812,
     "webkit/useCsrValues.ts": 1410
   },
