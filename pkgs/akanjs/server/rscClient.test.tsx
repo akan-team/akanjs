@@ -607,6 +607,84 @@ describe("rscClient redirect", () => {
 
     expect(window.location.pathname).toBe("/exit");
   });
+
+  const startNavigation = async (href: string) => {
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.(href)?.catch(() => undefined);
+      await sleep(10);
+    });
+    return () => pending;
+  };
+
+  test("a parked redirect runs on a bare 404 after a shallow change of the page's query", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/terrace", leaving.serve);
+    await navigate("/terrace");
+    await navigate("/terrace?tab=2", { shallow: true });
+    const refused = heldNotFound();
+    served.set("/nowhere3", refused.respond);
+    const pending = await startNavigation("/nowhere3");
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+
+    await act(async () => {
+      refused.release();
+      await pending();
+    });
+    await waitFor(() => shown() === "/exit");
+    served.delete("/nowhere3");
+
+    expect(window.location.pathname).toBe("/exit");
+  });
+
+  test("a parked redirect runs once a shallow change cancels the navigation it waited for", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/balcony", leaving.serve);
+    await navigate("/balcony");
+    const refused = heldNotFound();
+    served.set("/nowhere4", refused.respond);
+    const pending = await startNavigation("/nowhere4");
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+
+    await navigate("/balcony?tab=3", { shallow: true });
+    await waitFor(() => shown() === "/exit");
+    await act(async () => {
+      refused.release();
+      await pending();
+    });
+    served.delete("/nowhere4");
+
+    expect(window.location.pathname).toBe("/exit");
+  });
+
+  test("a parked redirect runs once Back between the page's shallow entries cancels the navigation it waited for", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/atelier", leaving.serve);
+    await navigate("/atelier");
+    await navigate("/atelier?tab=1", { shallow: true });
+    const refused = heldNotFound();
+    served.set("/nowhere5", refused.respond);
+    const pending = await startNavigation("/nowhere5");
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+
+    await back("/exit");
+    await act(async () => {
+      refused.release();
+      await pending();
+    });
+    served.delete("/nowhere5");
+
+    expect(window.location.pathname).toBe("/exit");
+  });
 });
 
 describe("rscClient account change", () => {

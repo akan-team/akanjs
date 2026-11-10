@@ -357,15 +357,25 @@ let navigationSeq = 0;
 let pendingRequest: { navId: number; controller: AbortController; target: string } | null = null;
 let cachedAuthCookies = readAuthCookies();
 
-//? Back or Forward moves the URL before its page loads, and a redirect then would replace the entry it moved to.
-const stillOnItsEntry = (node: RscCacheNode) =>
-  node === shownNode && pageKeyOf(node.href) === pageKeyOf(normalizeHref(window.location.href));
+//? Back or Forward moves the URL before its page loads, and a redirect then would replace the entry it moved to; a
+//? shallow entry, its query or fragment changed in place, still shows the page it was written over.
+const stillOnItsEntry = (node: RscCacheNode) => {
+  const entry = (window.history.state as { __akanRouter?: { shallow?: boolean; rendered?: string } } | null)
+    ?.__akanRouter;
+  const here = normalizeHref(window.location.href);
+  return node === shownNode && pageKeyOf(node.href) === withoutHash(entry?.shallow ? entry.rendered : here);
+};
 
 //? Only a request whose page has not committed is cut: a committed one may still stream the Suspense content on screen.
 function supersedeNavigation(): number {
   pendingRequest?.controller.abort();
   pendingRequest = null;
   return ++navigationSeq;
+}
+
+function supersedeKeepingPage(): void {
+  supersedeNavigation();
+  parkedRedirect.resume(stillOnItsEntry, navigateAfterRscRedirect);
 }
 
 function requestSignalOf(navId: number, target: string): AbortSignal {
@@ -543,7 +553,7 @@ function Root(): ReactNode {
 
   globalThis.__AKAN_RSC_NAVIGATE__ = async (href, options = {}) => {
     if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) {
-      supersedeNavigation();
+      supersedeKeepingPage();
       return;
     }
     forgetPagesOfAnotherAccount();
@@ -709,7 +719,7 @@ window.addEventListener("popstate", (event) => {
       ?.catch((error: unknown) => hardNavigateAfterRscFailure(window.location.href, true, error));
   else {
     //? Still a navigation: one in flight would otherwise commit its page onto the entry this move landed on.
-    supersedeNavigation();
+    supersedeKeepingPage();
     if (scrollY !== undefined) scrollRestoration.scrollTo(scrollY);
   }
   window.setTimeout(() => {
