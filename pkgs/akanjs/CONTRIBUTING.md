@@ -58,6 +58,29 @@ A good pull request should include:
 Reviewers should be able to understand the change from the pull request description and the diff without
 reverse-engineering unrelated context.
 
+## Public API
+
+`api-report/akanjs/` at the repository root records the public API of `akanjs`, one report per entry point, as its
+declaration emit states it. Each report also lists, under "Referenced, not exported", the declarations its exports
+name that no entry point exports, such as the `X_base` const of a mixin class. After changing an export or anything
+it names, rewrite the reports and commit them with the change:
+
+```bash
+bun run api:report
+```
+
+CI fails when the reports no longer match the source, and on a pull request it compares them with the base branch:
+
+- Adding an export or an entry point needs nothing more.
+- Removing an export, or changing its declaration or a referenced one, needs a changeset that bumps `akanjs` by
+  `minor` (or `major`) and says how to upgrade. CI prints the old and the new text of each change.
+- A change that only adds to a declaration, such as a new optional property or union member, counts too: the check
+  cannot tell it is compatible. Add the `minor` changeset anyway and say that no upgrade step is needed.
+- Mark an export `/** @deprecated <what instead> */` and release that before removing it. The report shows the tag,
+  and adding or removing it is not a change.
+- The wildcard subpaths (`akanjs/server/*` and the others in `akanjs.wildcards.api.md`) are listed, but the files
+  under them are not reported one by one.
+
 ## Coding Style
 
 - Use TypeScript and Bun-first workflows.

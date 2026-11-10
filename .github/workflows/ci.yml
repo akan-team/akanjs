@@ -46,6 +46,22 @@ jobs:
       - uses: ./.github/actions/setup
       - run: bun run typecheckPkgs
 
+  api-report:
+    name: API report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Full history: a removed or changed export is checked against the report where the branch left the base.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: bun run api:report --check
+      - if: github.event_name == 'pull_request'
+        run: bun run api:report --base "origin/$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+
   typecheck-libs:
     name: Typecheck libs
     runs-on: ubuntu-latest
