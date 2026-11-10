@@ -539,6 +539,18 @@ describe("a Sys that defaults to the only app", () => {
     ).rejects.toThrow("so rerun it as `akan remove-package <pkg>` (choices: tools).");
     expect(asked).toEqual([]);
   });
+
+  test("without a terminal, a named target the workspace lacks is refused, not swapped for the only one", async () => {
+    setTTY(undefined);
+    const workspace = workspaceWith([]);
+    workspace.getExecs = async () => [["web"], [], []];
+    await expect(
+      getInternalArgumentValue(sysMetaOf("sync"), "webb", workspace, rerunCommandOf(["sync", "webb"], ["webb"], 0)),
+    ).rejects.toThrow(
+      "Unknown app or lib 'webb': stdin is not a terminal to prompt on, so rerun it as `akan sync <app-or-lib>` (choices: web).",
+    );
+    expect(asked).toEqual([]);
+  });
 });
 
 describe("the line a refused target is rerun with", () => {
