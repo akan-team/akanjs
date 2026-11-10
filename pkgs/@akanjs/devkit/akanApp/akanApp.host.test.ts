@@ -143,3 +143,54 @@ describe("a gateway whose replica crash-loops", () => {
     ]);
   });
 });
+
+describe("a builder request while no builder is running", () => {
+  isolateEnv({ AKAN_PUBLIC_REPO_NAME: "repo", AKAN_PUBLIC_SERVE_DOMAIN: "localhost", AKAN_PUBLIC_ENV: "local" });
+  const track = tempRoots();
+  const stoppedBuilder = {
+    status: "stopped",
+    patcherOff: false,
+    start: ({ onReady }: { onReady?: () => void }) => onReady?.(),
+    send: () => false,
+    stop: () => undefined,
+  } as unknown as IncrementalBuilderHost;
+
+  test("is answered at once and marked unavailable, so the backend can tell it from a failed build", async () => {
+    const { root, app } = track(await createTempApp("demo"));
+    const replyPath = path.join(root, "reply.json");
+    await writeText(
+      path.join(root, "apps/demo/main.ts"),
+      [
+        'import fs from "node:fs";',
+        `const replyPath = ${JSON.stringify(replyPath)};`,
+        'process.on("message", (message) => {',
+        '  if (message?.type !== "build-graph-res") return;',
+        '  fs.writeFileSync(replyPath + ".tmp", JSON.stringify(message));',
+        '  fs.renameSync(replyPath + ".tmp", replyPath);',
+        "});",
+        'process.send?.({ type: "backend-ready", pid: process.pid });',
+        'process.send?.({ type: "build-graph", id: 7 });',
+        "setInterval(() => undefined, 1_000);",
+        "",
+      ].join("\n"),
+    );
+    const create = IncrementalBuilderHost.create;
+    IncrementalBuilderHost.create = async () => stoppedBuilder;
+    const host = new AkanAppHost(app, { env: { ...process.env } as Record<string, string> });
+    try {
+      await host.start();
+      const deadline = performance.now() + 5_000;
+      while (!(await Bun.file(replyPath).exists()) && performance.now() < deadline) await Bun.sleep(25);
+      expect(await Bun.file(replyPath).json()).toEqual({
+        type: "build-graph-res",
+        id: 7,
+        ok: false,
+        error: "builder is stopped; reload after the builder is ready",
+        kind: "unavailable",
+      });
+    } finally {
+      await host.stop();
+      IncrementalBuilderHost.create = create;
+    }
+  });
+});
