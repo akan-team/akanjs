@@ -19,8 +19,10 @@ import {
   type ChunkNavigation,
   claimChunkReload,
   isBuildBundle,
+  isLazyLinkFailure,
   isLinkFailure,
   navigationOfChunk,
+  noteChunkLoadFailure,
   recordChunksOf,
 } from "./rscClientChunks";
 import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
@@ -225,6 +227,7 @@ function akanHistoryState(replace: boolean, shallow = false) {
 
 // The href the page on screen was rendered for; a shallow entry changes the query without rendering anything.
 let renderedHref = normalizeHref(window.location.href);
+let renderedFromResponse = false;
 const scrollRestoration = new RscScrollRestoration();
 const pathnameOf = (href: string) => new URL(href).pathname;
 const withoutHash = (href: string | undefined) => href?.split("#", 1)[0];
@@ -397,7 +400,10 @@ if (loadChunk)
   globalThis.__webpack_chunk_load__ = (chunkId) => {
     const loading = loadChunk(chunkId);
     const navigation = navigationOfChunk(chunkId);
-    if (navigation) loading.catch((error: unknown) => loadDocumentForChunkFailure(chunkId, navigation, error));
+    loading.catch((error: unknown) => {
+      noteChunkLoadFailure(error);
+      if (navigation) loadDocumentForChunkFailure(chunkId, navigation, error);
+    });
     return loading;
   };
 
@@ -412,11 +418,22 @@ function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigatio
   else hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
 }
 
+//? A rejected `import()` names neither the module that asked nor the one that failed to link, so a lazy chunk counts
+//? as the page on screen's; only a page a navigation's response rendered can hold another build's modules.
+function loadDocumentForLazyChunkFailure(error: unknown): void {
+  const leaving = pendingRequest !== null && pendingRequest.target !== pageKeyOf(renderedHref);
+  if (!renderedFromResponse || leaving || documentNavigationFallbackInFlight || !isBuildBundle()) return;
+  if (!navigator.onLine || !isLazyLinkFailure(error)) return;
+  if (claimChunkReload(`${pathnameOf(renderedHref)} ${error.message}`))
+    hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
+}
+
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
 globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
 
 function rememberCommittedRouteState(node: RscCacheNode): void {
   rscPatchCache.clear();
+  renderedFromResponse = node !== initialNode;
   if (!node.routerState) return;
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
@@ -427,6 +444,7 @@ function rememberCommittedRouteState(node: RscCacheNode): void {
 //? A not-found view is never replayed or patched onto, so the page after it is rendered whole.
 function forgetCommittedRouteState(): void {
   rscPatchCache.clear();
+  renderedFromResponse = true;
   currentRouterState = null;
   currentSegmentTree = null;
   currentFullNode = null;
@@ -434,6 +452,7 @@ function forgetCommittedRouteState(): void {
 }
 
 function rememberPatchedRouteState(tree: RscSegmentCacheNode, patchedNode: RscSegmentCacheNode): void {
+  renderedFromResponse = true;
   currentRouterState = patchedNode.routerState;
   currentSegmentTree = tree;
   currentCommitKind = "patch";
@@ -736,8 +755,22 @@ window.addEventListener("popstate", (event) => {
   }, 0);
 });
 
+//? Passing these drops React's production defaults, so they repeat them; `akan start` keeps its development ones.
+const reportingLazyChunkFailures = {
+  onCaughtError: (error: unknown) => {
+    console.error(error);
+    loadDocumentForLazyChunkFailure(error);
+  },
+  onUncaughtError: (error: unknown) => {
+    if (typeof reportError === "function") reportError(error);
+    else console.error(error);
+    loadDocumentForLazyChunkFailure(error);
+  },
+};
+window.addEventListener("unhandledrejection", (event) => loadDocumentForLazyChunkFailure(event.reason));
+
 const hydrate = () => {
-  hydrateRoot(document, createElement(Root));
+  hydrateRoot(document, createElement(Root), isBuildBundle() ? reportingLazyChunkFailures : undefined);
   scrollRestoration.restoreDocumentLoad();
 };
 //? Hydrating without the dictionary still beats a dead page: client components show their keys until a navigation

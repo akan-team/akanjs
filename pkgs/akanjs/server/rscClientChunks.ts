@@ -42,8 +42,16 @@ export const navigationOfChunk = (chunkId: string): ChunkNavigation | undefined 
 //? How Chromium, Firefox and WebKit word a failed link or bare specifier; a fetch or evaluation error is not skew.
 const linkFailure =
   /does not provide an export named|doesn't provide an export named|import not found|Importing binding name|Failed to resolve module specifier|was a bare specifier|does not resolve to a valid URL/;
-export const isLinkFailure = (error: unknown): boolean =>
+export const isLinkFailure = (error: unknown): error is SyntaxError | TypeError =>
   (error instanceof SyntaxError || error instanceof TypeError) && linkFailure.test(error.message);
+
+//? RSDW rethrows a chunk's rejection from the element that renders it, so React reports a failure the loader decided.
+const chunkLoadFailures = new WeakSet<object>();
+export const noteChunkLoadFailure = (error: unknown): void => {
+  if (typeof error === "object" && error !== null) chunkLoadFailures.add(error);
+};
+export const isLazyLinkFailure = (error: unknown): error is SyntaxError | TypeError =>
+  isLinkFailure(error) && !chunkLoadFailures.has(error);
 
 //? Per tab and synchronous, which akanjs/client `storage` (localStorage, async) is not; unrecorded, it never reloads.
 const chunkReloadsKey = "akan.rsc.chunkReloads";
