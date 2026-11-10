@@ -14,6 +14,8 @@ interface Rendered {
 
 const readsWindowId = "routecontent/readsWindow";
 const readsWindowModule = path.join(import.meta.dir, "ssrRouteContentClient.fixture.tsx");
+const streamedLabelId = "routecontent/streamedLabel";
+const streamedLabelModule = path.join(import.meta.dir, "ssrStreamedReadClient.fixture.tsx");
 
 const withRouteContentWorker = async (
   run: (render: (route: string) => Promise<Rendered>) => Promise<void>,
@@ -30,7 +32,10 @@ const withRouteContentWorker = async (
   const rsc = new RscWorker({
     pagesBundlePath: path.join(import.meta.dir, fixture),
     pagesBundleBuildId: 1,
-    rscRuntimeClientManifest: { [readsWindowId]: { id: readsWindowId, chunks: [], name: "ReadsWindow" } },
+    rscRuntimeClientManifest: {
+      [readsWindowId]: { id: readsWindowId, chunks: [], name: "ReadsWindow" },
+      [streamedLabelId]: { id: streamedLabelId, chunks: [], name: "StreamedLabel" },
+    },
   } as unknown as BaseBuildArtifact);
   try {
     await rsc.ready;
@@ -49,6 +54,13 @@ const withRouteContentWorker = async (
                 id: readsWindowModule,
                 chunks: [readsWindowModule, readsWindowModule],
                 name: "ReadsWindow",
+              },
+            },
+            [streamedLabelId]: {
+              StreamedLabel: {
+                id: streamedLabelModule,
+                chunks: [streamedLabelModule, streamedLabelModule],
+                name: "StreamedLabel",
               },
             },
           },
@@ -127,6 +139,32 @@ describe("SSR of a route with no .loading()", () => {
         expect(page.html).toContain("<main>root:<!--$!-->");
         expect(page.html).not.toContain("<b>");
         expect(page.html).not.toContain('<div hidden id="S:');
+      });
+    });
+  }, 20_000);
+});
+
+describe("SSR of a fetch handle's field read refused before the first byte", () => {
+  test("answers 200 with the page, leaving the field's Load.Stream for the browser to fill with its notice", async () => {
+    await withLoggedErrors(async () => {
+      await withRouteContentWorker(async (render) => {
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const page = await render("failing/streamed");
+          expect(page.status).toBe(200);
+          expect(page.html).toContain('<p id="beside">beside <!--$!-->');
+          expect(page.html).toContain("<i>label loading</i>");
+          expect(page.html).not.toContain("failing error");
+        }
+      });
+    });
+  }, 20_000);
+
+  test("still answers a level that awaits the field with its layout's .error() view and a 500", async () => {
+    await withLoggedErrors(async () => {
+      await withRouteContentWorker(async (render) => {
+        const failed = await render("failing/awaited");
+        expect(failed.status).toBe(500);
+        expect(failed.html).toContain('<p id="failing-error">failing error <!-- -->AKAN_RENDER_ERROR</p>');
       });
     });
   }, 20_000);
