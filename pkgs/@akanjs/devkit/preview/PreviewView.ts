@@ -77,20 +77,12 @@ export class PreviewView {
     }: PreviewProbeOptions = {},
   ): Promise<PreviewProbeResult> {
     const logs: string[] = [];
-    const view = PreviewView.#open({ width, height, engine, onConsole: (line) => logs.push(line) });
+    const view = await PreviewView.#start(
+      () => PreviewView.#open({ width, height, engine, onConsole: (line) => logs.push(line) }),
+      engine,
+      { startTimeoutMs, timeoutMs },
+    );
     try {
-      //? A browser that missed its start bound may still come up, so a later page retries it within only its own bound.
-      //? One that died or was closed instead is spawned afresh by the next view, which gets the full bound.
-      const startMs = PreviewView.#stalled.has(engine) ? Math.min(startTimeoutMs, timeoutMs) : startTimeoutMs;
-      const stalled = new Error(`Timed out starting the ${engine} browser after ${startMs / 1_000} s.`);
-      await PreviewView.#within(view.navigate("about:blank"), Date.now() + startMs, stalled).then(
-        () => PreviewView.#stalled.delete(engine),
-        (error: unknown) => {
-          if (error === stalled) PreviewView.#stalled.add(engine);
-          else PreviewView.#stalled.delete(engine);
-          throw error;
-        },
-      );
       const deadline = Date.now() + timeoutMs;
       const within = <T>(work: Promise<T>, what: string) =>
         PreviewView.#within(
@@ -119,6 +111,33 @@ export class PreviewView {
       return result;
     } finally {
       await view.close();
+    }
+  }
+
+  static async #start(
+    open: () => WebViewLike,
+    engine: PreviewEngine,
+    { startTimeoutMs, timeoutMs }: { startTimeoutMs: number; timeoutMs: number },
+  ) {
+    for (let attempt = 1; ; attempt++) {
+      //? A browser that missed its start bound may still come up, so a later page retries it within only its own bound.
+      //? One that died or was closed instead is spawned afresh by the next view, which gets the full bound.
+      const startMs = PreviewView.#stalled.has(engine) ? Math.min(startTimeoutMs, timeoutMs) : startTimeoutMs;
+      const stalled = new Error(`Timed out starting the ${engine} browser after ${startMs / 1_000} s.`);
+      let view: WebViewLike | undefined;
+      try {
+        view = open();
+        await PreviewView.#within(view.navigate("about:blank"), Date.now() + startMs, stalled);
+        PreviewView.#stalled.delete(engine);
+        return view;
+      } catch (error) {
+        await view?.close();
+        if (error === stalled) PreviewView.#stalled.add(engine);
+        else PreviewView.#stalled.delete(engine);
+        if (error === stalled || attempt > 1) throw error;
+        //? Bun reaps a browser that died only on a later timer turn; until then `new Bun.WebView()` throws "Failed to spawn Chrome".
+        await Bun.sleep(100);
+      }
     }
   }
 

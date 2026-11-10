@@ -4,7 +4,7 @@ import { Scroll } from "@libs/util/ui";
 import { page } from "akanjs/client";
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title =
       lang === "ko" ? "튜토리얼: 슬라이스로 표시하기 | Akan.js" : "Tutorials: Displaying with Slice | Akan.js";

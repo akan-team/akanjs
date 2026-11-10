@@ -9,6 +9,7 @@ import { Loading } from "../Loading";
 import { Model } from "../Model";
 import type { DraftProp } from "../Model/draftScope";
 import Stream from "./Stream";
+import type { StreamError } from "./StreamBoundary";
 
 interface DefaultProps {
   type?: "modal" | "form" | "empty";
@@ -19,6 +20,7 @@ interface DefaultProps {
   modal?: string;
   /** Custom fallback shown while an unawaited `edit` is pending. */
   loading?: ReactNode;
+  error?: StreamError;
   children?: ReactNode;
   onSubmit?: string;
   onCancel?: string;
@@ -93,7 +95,11 @@ function Render<T extends string, Full extends { id: string }>({
 
 export default function Edit_Client<T extends string, Full extends { id: string }>(props: EditProps<T, Full>) {
   return (
-    <Stream of={props.edit} fallback={props.loading === undefined ? <Loading.Skeleton active /> : props.loading}>
+    <Stream
+      of={props.edit}
+      fallback={props.loading === undefined ? <Loading.Skeleton active /> : props.loading}
+      error={props.error}
+    >
       {(serverEdit) => (serverEdit ? <Render {...props} edit={serverEdit} /> : <Empty />)}
     </Stream>
   );

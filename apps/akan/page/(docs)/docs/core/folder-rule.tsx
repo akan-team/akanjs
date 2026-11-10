@@ -87,7 +87,7 @@ const sideVariant: { [key in Side]: NonNullable<BadgeVariants["variant"]> } = {
 } as const;
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title = lang === "ko" ? "핵심 개념: 폴더 규칙 | Akan.js" : "Core Concepts: Folder Rule | Akan.js";
     const description =

@@ -178,9 +178,7 @@ Bun.WebView.closeAll();`,
 console.log(await open());
 const killed = open();
 Bun.WebView.closeAll();
-console.error(await killed);
-await Bun.sleep(500);
-console.log(await open());
+console.log(await killed);
 Bun.WebView.closeAll();`,
         6,
       );
@@ -190,6 +188,38 @@ Bun.WebView.closeAll();`,
           "Timed out starting the chrome browser after 1.5 s.",
         ].join("\n"),
       );
+      expect(code, log).toBe(0);
+    },
+    browserTestMs,
+  );
+
+  test.skipIf(!slowChromeRuns)(
+    "starts a new browser for the page right after one that the browser died on",
+    async () => {
+      const { code, out, log } = await withSlowChrome(
+        `const { promise: loading, resolve } = Promise.withResolvers();
+const server = Bun.serve({
+  port: 0,
+  fetch: (req) =>
+    new URL(req.url).pathname === "/hang"
+      ? (resolve(), new Promise(() => undefined))
+      : new Response("<!doctype html><body>up</body>", { headers: { "content-type": "text/html" } }),
+});
+const open = (path) =>
+  PreviewView.probe(\`http://localhost:\${server.port}\${path}\`, { engine: "chrome" }).then(
+    (probe) => probe.text,
+    (error) => error.message,
+  );
+const killed = open("/hang");
+await loading;
+Bun.WebView.closeAll();
+console.error(await killed);
+console.log(await open("/"));
+server.stop(true);
+Bun.WebView.closeAll();`,
+        0,
+      );
+      expect(out, log).toBe("up");
       expect(code, log).toBe(0);
     },
     browserTestMs,

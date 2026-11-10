@@ -109,6 +109,7 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
     retry: ["Try again", "다시 시도"],
     copy: ["Copy", "복사"],
     pageLoadFailed: ["This page could not be loaded.", "이 화면을 불러오지 못했습니다."],
+    loadFailed: ["This could not be loaded.", "불러오지 못했습니다."],
     pageNotFound: ["This page does not exist.", "없는 화면입니다."],
     goBack: ["Go back", "돌아가기"],
     unauthorized: ["Unauthorized", "권한 없음"],

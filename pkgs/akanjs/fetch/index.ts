@@ -5,4 +5,5 @@ export * from "./fetchType";
 export * from "./renderScope";
 export * from "./requestStorage";
 export * from "./sessionCookie";
+export * from "./streamedRead";
 export * from "./types";

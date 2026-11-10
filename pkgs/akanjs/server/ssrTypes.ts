@@ -1,4 +1,5 @@
 import type { AkanRequestStore, AkanTheme } from "akanjs/fetch";
+import type { ClientManifest } from "./artifact";
 import type { ModulePreloadPlan } from "./artifact/modulePreloadPlan";
 
 export interface SsrManifestEntry {
@@ -47,6 +48,14 @@ export interface RscTraceMetadata {
   routeState?: string;
   /** The route's `pageConfig.ssr === "block"`, carried here because the host never resolves pageConfig itself. */
   ssrBlocking?: boolean;
+}
+
+export interface RscRenderOptions {
+  clientManifest?: ClientManifest;
+  signal?: AbortSignal;
+  clientIp?: string | null;
+  /** A Link prefetch through `/__rsc`, never taken from a header a document request could carry. */
+  prefetch?: boolean;
 }
 
 export interface SsrFromRscInput {

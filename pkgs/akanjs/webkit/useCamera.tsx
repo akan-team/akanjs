@@ -1,16 +1,7 @@
 "use client";
 import { Binary } from "akanjs/base";
-import { Translator } from "akanjs/client";
-import {
-  AkanNativeError,
-  dialog,
-  fileBlob,
-  isNativeApp,
-  loadCamera,
-  opener,
-  type Photo,
-  releaseFile,
-} from "akanjs/client/native";
+import { isNativeApp, Translator } from "akanjs/client";
+import type { Photo } from "akanjs/client/native";
 import { parseAkanI18nEnv } from "akanjs/common";
 import { useEffect, useState } from "react";
 
@@ -28,8 +19,18 @@ export interface CameraPromptLabels {
 const promptLabel = (key: string, override?: string) =>
   override ?? Translator.translateByLocale(Translator.getActiveLocale() ?? parseAkanI18nEnv().defaultLocale, key);
 
+//? Each imported dynamically: a static import puts @akanjs/native/core on every web page that renders this hook.
+const loadCamera = () => import("akanjs/client/native/camera");
+const loadCore = () => import("./nativeCore");
+const openSettings = async () => await (await import("akanjs/client/native/opener")).opener.openSettings();
+type NativeCore = Awaited<ReturnType<typeof loadCore>>;
+const loadForPhotos = async () => {
+  const [{ camera }, core] = await Promise.all([loadCamera(), loadCore()]);
+  return { camera, core };
+};
+
 //* The runtime serves a photo from memory until it is released, so it is read once and let go.
-const toDataUrl = async (photo: Photo) => {
+const toDataUrl = async ({ fileBlob, releaseFile }: NativeCore, photo: Photo) => {
   try {
     const bytes = new Uint8Array(await (await fileBlob(photo)).arrayBuffer());
     return { dataUrl: `data:${photo.mime};base64,${Binary.toBase64(bytes)}` };
@@ -42,12 +43,12 @@ const toDataUrl = async (photo: Photo) => {
 export const useCamera = ({ promptLabels = {} }: { promptLabels?: CameraPromptLabels } = {}) => {
   const [permissions, setPermissions] = useState<{ camera: PermissionState }>({ camera: "prompt" });
 
-  const openSettingsWhenDenied = async (error: unknown) => {
+  const openSettingsWhenDenied = async ({ AkanNativeError }: NativeCore, error: unknown) => {
     const code = AkanNativeError.from(error).code;
     if (code === "CANCELLED") return;
     if (code !== "PERMISSION_DENIED") throw error;
     setPermissions({ camera: "denied" });
-    await opener.openSettings();
+    await openSettings();
   };
 
   const checkPermission = async () => {
@@ -55,11 +56,12 @@ export const useCamera = ({ promptLabels = {} }: { promptLabels?: CameraPromptLa
     const { camera } = await loadCamera();
     const { camera: state } = await camera.requestPermission();
     setPermissions({ camera: state });
-    if (state === "denied") await opener.openSettings();
+    if (state === "denied") await openSettings();
     return state;
   };
 
   const chooseSource = async (): Promise<"camera" | "library" | null> => {
+    const { dialog } = await import("akanjs/client/native/dialog");
     const { index } = await dialog.actionSheet({
       title: promptLabel("base.cameraPromptHeader", promptLabels.header),
       options: [
@@ -74,21 +76,21 @@ export const useCamera = ({ promptLabels = {} }: { promptLabels?: CameraPromptLa
   const getPhoto = async (src: "prompt" | "camera" | "photos" = "prompt") => {
     const source = !isNativeApp() || src === "photos" ? "library" : src === "camera" ? "camera" : await chooseSource();
     if (!source) return;
-    const { camera } = await loadCamera();
+    const { camera, core } = await loadForPhotos();
     try {
-      return await toDataUrl(await camera.takePhoto({ source }));
+      return await toDataUrl(core, await camera.takePhoto({ source }));
     } catch (error) {
-      await openSettingsWhenDenied(error);
+      await openSettingsWhenDenied(core, error);
     }
   };
 
   const pickImage = async ({ limit }: { limit?: number } = {}) => {
-    const { camera } = await loadCamera();
+    const { camera, core } = await loadForPhotos();
     try {
       const { photos } = await camera.pickImages(limit ? { limit } : {});
-      return await Promise.all(photos.map(toDataUrl));
+      return await Promise.all(photos.map((photo) => toDataUrl(core, photo)));
     } catch (error) {
-      await openSettingsWhenDenied(error);
+      await openSettingsWhenDenied(core, error);
     }
   };
 
