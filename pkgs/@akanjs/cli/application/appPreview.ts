@@ -1,4 +1,4 @@
-import { closeSync, openSync, realpathSync } from "node:fs";
+import { closeSync, openSync, realpathSync, statSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { DevHostEvent } from "@akanjs/devkit/akanApp";
@@ -92,6 +92,7 @@ export class AppPreview {
     const paths = AppPreview.pagePaths([...(options.paths ?? []), ...changed.paths], i18n, {
       csr: !!options.csr,
       apiPrefix: api.prefix,
+      publicDir: path.join(app.cwdPath, "public"),
     });
     const port = await app.getDevPort();
     const origin = `http://localhost:${port}`;
@@ -144,11 +145,15 @@ export class AppPreview {
 
   /** An unprefixed path answers with a redirect or a 503 where it does not name the default locale itself: under
    * `"always"`, and in a CSR boot, whose routes match on the locale segment. */
-  static pagePaths(paths: string[], i18n: I18nLike, { csr, apiPrefix = "/api" }: { csr: boolean; apiPrefix?: string }) {
+  static pagePaths(
+    paths: string[],
+    i18n: I18nLike,
+    { csr, apiPrefix = "/api", publicDir = null }: { csr: boolean; apiPrefix?: string; publicDir?: string | null },
+  ) {
     const keepsUnprefixed = i18n.localePrefix === "as-needed" && !csr;
     const pages = (paths.length ? paths : ["/"]).map((raw) => {
       const url = new URL(/^https?:\/\//.test(raw) ? raw : `http://localhost${raw.startsWith("/") ? "" : "/"}${raw}`);
-      if (!AppPreview.#isPagePath(url.pathname, apiPrefix)) return `${url.pathname}${url.search}`;
+      if (!AppPreview.#isPagePath(url.pathname, i18n, { apiPrefix, publicDir })) return `${url.pathname}${url.search}`;
       const [first] = url.pathname.split("/").filter(Boolean);
       if (!keepsUnprefixed && (!first || !i18n.locales.includes(first)))
         url.pathname = `/${i18n.defaultLocale}${url.pathname === "/" ? "/" : url.pathname}`;
@@ -161,11 +166,33 @@ export class AppPreview {
     return [...new Set(pages)];
   }
 
+  static readonly #serverFiles = new Set(["/favicon.ico", "/robots.txt", "/sitemap.xml", "/manifest.webmanifest"]);
+  static readonly #basePathFiles = new Set(["sitemap.xml", "manifest.webmanifest"]);
+
   //? The server routes these outside `/:lang` and the locale proxy skips them, so a locale prefix 404s them.
-  static #isPagePath(pathname: string, apiPrefix: string) {
+  static #isPagePath(
+    pathname: string,
+    i18n: I18nLike,
+    { apiPrefix, publicDir }: { apiPrefix: string; publicDir: string | null },
+  ) {
+    const segments = pathname.split("/").filter(Boolean);
+    const [first] = segments;
+    if (first && i18n.locales.includes(first)) return true;
     const prefixes = ["/_akan", "/__csr", "/__rsc", "/.well-known", apiPrefix.replace(/\/+$/, "")].filter(Boolean);
     if (prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return false;
-    return !/\.[a-z0-9]+$/i.test(pathname);
+    if (AppPreview.#serverFiles.has(pathname)) return false;
+    if (segments.length === 2 && AppPreview.#basePathFiles.has(segments[1] ?? "")) return false;
+    return !(publicDir && AppPreview.#isPublicFile(publicDir, pathname));
+  }
+
+  static #isPublicFile(publicDir: string, pathname: string) {
+    try {
+      const root = path.resolve(publicDir);
+      const filePath = path.resolve(root, `.${decodeURIComponent(pathname)}`);
+      return filePath.startsWith(`${root}${path.sep}`) && statSync(filePath).isFile();
+    } catch {
+      return false;
+    }
   }
 
   static readonly changedPageLimit = 8;

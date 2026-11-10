@@ -58,28 +58,53 @@ describe("AppPreview.pagePaths", () => {
     ]);
   });
 
-  test("opens Studio, the other framework routes and files as written, without a locale or the CSR boot", () => {
-    const paths = [
-      "/_akan/studio",
-      "/_akan/studio?view=runtime",
-      "/__rsc/board",
-      "/.well-known/assetlinks.json",
-      "/backend/memo",
-      "/favicon.ico",
-      "/_akanish",
-      "/board",
-    ];
-    expect(AppPreview.pagePaths(paths, i18n, { csr: true, apiPrefix: "/backend" })).toEqual([
-      "/_akan/studio",
-      "/_akan/studio?view=runtime",
-      "/__rsc/board",
-      "/.well-known/assetlinks.json",
-      "/backend/memo",
-      "/favicon.ico",
-      "/en/_akanish?csr=true&akanMobileTarget=preview",
-      "/en/board?csr=true&akanMobileTarget=preview",
-    ]);
+  test("opens Studio, the other framework routes and served files as written, without a locale or the CSR boot", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-preview-public-"));
+    try {
+      await Bun.write(path.join(root, "public/images/logo.png"), "png");
+      const paths = [
+        "/_akan/studio",
+        "/_akan/studio?view=runtime",
+        "/__rsc/board",
+        "/.well-known/assetlinks.json",
+        "/backend/memo",
+        "/favicon.ico",
+        "/robots.txt",
+        "/shop/sitemap.xml",
+        "/images/logo.png",
+        "/images/missing.png",
+        "/_akanish",
+        "/board",
+      ];
+      const opts = { csr: true, apiPrefix: "/backend", publicDir: path.join(root, "public") };
+      expect(AppPreview.pagePaths(paths, i18n, opts)).toEqual([
+        "/_akan/studio",
+        "/_akan/studio?view=runtime",
+        "/__rsc/board",
+        "/.well-known/assetlinks.json",
+        "/backend/memo",
+        "/favicon.ico",
+        "/robots.txt",
+        "/shop/sitemap.xml",
+        "/images/logo.png",
+        "/en/images/missing.png?csr=true&akanMobileTarget=preview",
+        "/en/_akanish?csr=true&akanMobileTarget=preview",
+        "/en/board?csr=true&akanMobileTarget=preview",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
     expect(AppPreview.pagePaths(["/api/memo", "/apidocs"], i18n, { csr: false })).toEqual(["/api/memo", "/en/apidocs"]);
+  });
+
+  test("keeps a page whose last segment has a dot a page", () => {
+    expect(AppPreview.pagePaths(["/release/1.2.3", "/user/a@b.com", "/docs/robots.txt"], i18n, { csr: false })).toEqual(
+      ["/en/release/1.2.3", "/en/user/a@b.com", "/en/docs/robots.txt"],
+    );
+    expect(AppPreview.pagePaths(["/en/release/1.2.3", "/en/favicon.ico"], i18n, { csr: true })).toEqual([
+      "/en/release/1.2.3?csr=true&akanMobileTarget=preview",
+      "/en/favicon.ico?csr=true&akanMobileTarget=preview",
+    ]);
   });
 
   test("names a screenshot after the page and its boot", () => {
@@ -199,6 +224,7 @@ describe("AppPreview.run", () => {
       });
       const app = {
         name: "demo",
+        cwdPath: root,
         workspace: { workspaceRoot: root },
         getDevPort: async () => server.port,
         getConfig: async () => ({ i18n, api: { prefix: "/api" } }),
