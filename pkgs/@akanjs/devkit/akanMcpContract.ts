@@ -2,6 +2,7 @@ import { lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { isRecord } from "akanjs/common";
 import { AkanContextAnalyzer, type AkanDiagnostic, type AkanModuleContext } from "./akanContext";
+import { AkanMcpToolError } from "./akanMcpToolError";
 import type { Workspace } from "./commandDecorators";
 import type {
   AkanContextEvidence,
@@ -172,7 +173,8 @@ export const workflowArtifactPath = (workspace: Workspace, filePath: string) => 
       ? path.join(root, "runs", `${filePath}.json`)
       : path.resolve(workspace.workspaceRoot, filePath);
   if (!isInside(root, resolved) || !staysInside(workspace.workspaceRoot, root, resolved))
-    throw new Error(
+    throw new AkanMcpToolError(
+      "invalidArgument",
       `MCP workflow files live under ${workflowArtifactDir}/ of the workspace, not ${JSON.stringify(filePath)}.`,
     );
   return resolved;
@@ -213,7 +215,8 @@ export const applyFirstPolicy = {
 
 export const stringArg = (args: Record<string, unknown>, key: string) => {
   const value = args[key];
-  if (typeof value !== "string" || !value) throw new Error(`MCP tool argument "${key}" is required.`);
+  if (typeof value !== "string" || !value)
+    throw new AkanMcpToolError("invalidArgument", `MCP tool argument "${key}" is required.`);
   return value;
 };
 
@@ -226,13 +229,20 @@ export const workflowInputsArg = (args: Record<string, unknown>) => {
 export const inspectAkanContextPropsArg = (args: Record<string, unknown>): InspectAkanContextProps => {
   const question = stringArg(args, "question");
   const review = stringArg(args, "review");
-  if (!isRecord(args.draft)) throw new Error('MCP tool argument "draft" is required.');
-  if (!isRecord(args.request)) throw new Error('MCP tool argument "request" is required.');
+  if (!isRecord(args.draft)) throw new AkanMcpToolError("invalidArgument", 'MCP tool argument "draft" is required.');
+  if (!isRecord(args.request))
+    throw new AkanMcpToolError("invalidArgument", 'MCP tool argument "request" is required.');
   if (!isInspectAkanContextRequestType(args.draft.type)) {
-    throw new Error('MCP tool argument "draft.type" must be a supported inspect_akan_context request type.');
+    throw new AkanMcpToolError(
+      "invalidArgument",
+      'MCP tool argument "draft.type" must be a supported inspect_akan_context request type.',
+    );
   }
   if (!isInspectAkanContextRequestType(args.request.type)) {
-    throw new Error('MCP tool argument "request.type" must be a supported inspect_akan_context request type.');
+    throw new AkanMcpToolError(
+      "invalidArgument",
+      'MCP tool argument "request.type" must be a supported inspect_akan_context request type.',
+    );
   }
   const base = { question, draft: { reason: stringArg(args.draft, "reason"), type: args.draft.type }, review };
   const request = args.request;

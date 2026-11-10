@@ -3190,6 +3190,7 @@ interface ToolCallResult {
     result?: unknown;
     changes?: ResourceDiff[];
     error?: string;
+    code?: string;
     attachments?: MessageAttachment[];
 }
 

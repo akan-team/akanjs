@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from "bun:test";
+import { MCP_FAILURE_META } from "akanjs/common";
 import type { FetchBridgeCall, RestoredError } from "akanjs/fetch";
 import { MCP_APP_META } from "../signal/mcp/mcpProtocol";
 import { McpAppBridge } from "./McpAppBridge";
@@ -303,6 +304,32 @@ describe("McpAppBridge", () => {
     const error = (await asked.catch((caught: unknown) => caught)) as RestoredError;
     expect(error.statusCode).toBe(403);
     expect(error.toJSON?.()).toEqual({ error: "You are not permitted to perform this action.", statusCode: 403 });
+  });
+
+  test("restores a failure the server named by its code alone, at the status and code the server sent", async () => {
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
+    const answered = async (result: object) => {
+      const asked = bridge.fetchBridge([]).call(call({ refName: "String" }));
+      fromHost({ id: lastRequest("tools/call")?.id, result });
+      return (await asked.catch((caught: unknown) => caught)) as RestoredError;
+    };
+    const text = [{ type: "text", text: "The server failed to complete this request." }];
+    const crashed = await answered({
+      content: text,
+      isError: true,
+      _meta: { [MCP_FAILURE_META]: { code: "internalError", statusCode: 500 } },
+    });
+    expect(crashed.statusCode).toBe(500);
+    expect(crashed.toJSON?.()).toEqual({ error: text[0].text, statusCode: 500, code: "internalError" });
+    const refused = await answered({
+      content: [{ type: "text", text: "You are not permitted to perform this action." }],
+      isError: true,
+      _meta: { [MCP_APP_META.error]: { statusCode: 403 }, [MCP_FAILURE_META]: { code: "forbidden", statusCode: 403 } },
+    });
+    expect(refused.toJSON?.()).toMatchObject({ statusCode: 403, code: "forbidden" });
+    const bare = await answered({ content: text, isError: true });
+    expect(bare.statusCode).toBeUndefined();
+    expect(bare.message).toBe(text[0].text);
   });
 
   test("serves the screen's own tools to the host, holding an early list, and answers no call it cancelled", async () => {

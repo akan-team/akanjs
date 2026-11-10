@@ -91,6 +91,7 @@ export interface AgentWireToolResult {
     result?: unknown;
     changes?: unknown[];
     error?: string;
+    code?: string;
     attachments?: AgentWireAttachment[];
 }
 

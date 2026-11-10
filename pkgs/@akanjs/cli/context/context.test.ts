@@ -6,6 +6,7 @@ import {
   createAkanCodexMcpServerBlock,
   createAkanCursorMcpServer,
 } from "@akanjs/devkit/akanContext";
+import { AkanMcpToolError } from "@akanjs/devkit/akanMcpToolError";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, ModuleExecutor } from "@akanjs/devkit/executors";
 import {
@@ -16,6 +17,7 @@ import {
   writeJson,
   writeText,
 } from "@akanjs/devkit/testHelpers";
+import { MCP_FAILURE_META } from "akanjs/common";
 import { AgentRunner } from "../agent/agent.runner";
 import { ApplicationRunner } from "../application/application.runner";
 import { LibraryRunner } from "../library/library.runner";
@@ -805,6 +807,38 @@ describe("ContextRunner", () => {
         { mode: "readonly" },
       ),
     ).rejects.toThrow('MCP tool "apply_workflow" is not available in readonly mode');
+  });
+
+  test("answers a refused or failed tool call with a code beside the text the model reads", async () => {
+    const { workspace } = track(await createTempApp("demo"));
+    const runner = new ContextRunner();
+    const failureOf = (answer: { _meta?: Record<string, unknown> }) => answer._meta?.[MCP_FAILURE_META];
+    const unavailable = await runner.answerMcpTool(workspace, "apply_workflow", { planPath: "plan", dryRun: true });
+    expect(unavailable).toMatchObject({
+      content: [{ type: "text", text: 'MCP tool "apply_workflow" is not available in readonly mode.' }],
+      isError: true,
+    });
+    expect(failureOf(unavailable)).toEqual({ code: "toolUnavailable", statusCode: 400 });
+    expect(failureOf(await runner.answerMcpTool(workspace, "get_guideline", {}))).toEqual({
+      code: "invalidArgument",
+      statusCode: 400,
+    });
+    const outside = await runner.answerMcpTool(workspace, "doctor_workspace", { runIdOrPlan: "/tmp/plan.json" });
+    expect(failureOf(outside)).toEqual({ code: "invalidArgument", statusCode: 400 });
+    const unlisted = await runner.answerMcpTool(workspace, "get_guideline", { name: "no-such-guideline" });
+    expect(unlisted.content[0].text).toStartWith('Unknown guideline "no-such-guideline". Available: ');
+    expect(failureOf(unlisted)).toEqual({ code: "invalidArgument", statusCode: 400 });
+    const nope = await runner.answerMcpTool(workspace, "nope", {}, { mode: "apply" });
+    expect(nope.content[0].text).toBe("Unknown tool: nope");
+    expect(failureOf(nope)).toEqual({ code: "unknownTool", statusCode: 400 });
+    expect(failureOf(await runner.answerMcpTool(workspace, "nope", {}))).toEqual({
+      code: "unknownTool",
+      statusCode: 400,
+    });
+    expect(AkanMcpToolError.failureOf(new Error("disk full"))).toEqual({ code: "toolFailed", statusCode: 500 });
+    const answered = await runner.answerMcpTool(workspace, "get_validation_contract", {});
+    expect(answered).not.toHaveProperty("isError");
+    expect(answered).not.toHaveProperty("_meta");
   });
 
   test("keeps MCP workflow paths inside .akan/workflows and repairs only workspace targets", async () => {
