@@ -21,8 +21,11 @@ import {
   claimChunkReload,
   isBuildBundle,
   isLinkFailure,
+  lazyLinkFailureKeyOf,
   navigationOfChunk,
+  noteChunkLoadFailure,
   recordChunksOf,
+  reportingRootErrors,
 } from "./rscClientChunks";
 import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
 import { validateRscPatchForGuardedCommit } from "./rscClientPatch";
@@ -33,6 +36,7 @@ import {
   rollbackPreparedAkanHeadSnapshotPatch,
 } from "./rscHeadPatch";
 import { getRscPayloadStream, guardRscRedirectRows, type RscRedirectRow } from "./rscHttp";
+import { createInitialRscStream } from "./rscInlineStream";
 import {
   type AkanSegmentCacheNode,
   commitLatestRscNavigation,
@@ -51,24 +55,10 @@ import { RscPrefetchCache } from "./rscPrefetchCache";
 import { RscScrollRestoration } from "./rscScrollRestoration";
 import { commitAkanSegmentOutletPatch, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
-type InlineRscChunk = [1, string] | [3, string];
-
 declare global {
-  var __RSC_CHUNKS__: InlineRscChunk[] | undefined;
-  var __RSC_CLOSED__: boolean | undefined;
-  var __RSC_PUSH__: ((type: InlineRscChunk[0], data: string) => void) | undefined;
-  var __RSC_CLOSE__: (() => void) | undefined;
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
   var __AKAN_DICT_URL__: string | undefined;
   var __webpack_chunk_load__: ((chunkId: string) => Promise<unknown>) | undefined;
-}
-
-function decodeInlineRscChunk([type, data]: InlineRscChunk): Uint8Array {
-  if (type === 1) return new TextEncoder().encode(data);
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 type RscThenable = Promise<ReactNode> & {
@@ -107,24 +97,6 @@ class RscRouteNotFound extends Error {
     super(`[rscClient] no route at ${href}`);
     this.name = "RscRouteNotFound";
   }
-}
-
-function createInitialRscStream(): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      const queued = globalThis.__RSC_CHUNKS__ ?? [];
-      for (const chunk of queued) controller.enqueue(decodeInlineRscChunk(chunk));
-      globalThis.__RSC_CHUNKS__ = [];
-
-      if (globalThis.__RSC_CLOSED__) {
-        controller.close();
-        return;
-      }
-
-      globalThis.__RSC_PUSH__ = (type, data) => controller.enqueue(decodeInlineRscChunk([type, data]));
-      globalThis.__RSC_CLOSE__ = () => controller.close();
-    },
-  });
 }
 
 function normalizeHref(href: string): string {
@@ -432,6 +404,7 @@ if (loadChunk)
   globalThis.__webpack_chunk_load__ = (chunkId) => {
     const loading = loadChunk(chunkId);
     const navigation = navigationOfChunk(chunkId);
+    loading.catch(noteChunkLoadFailure);
     if (navigation) loading.catch((error: unknown) => loadDocumentForChunkFailure(chunkId, navigation, error));
     return loading;
   };
@@ -445,6 +418,17 @@ function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigatio
   if (!claimChunkReload(chunkId)) return;
   if (pending) hardNavigateAfterRscFailure(navigation.href, navigation.replace(), error);
   else hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
+}
+
+//? A rejected `import()` names neither the module that asked nor the one that failed to link, so a lazy chunk counts
+//? as the page on screen's; only a page a navigation's response rendered can hold another build's modules.
+function loadDocumentForLazyChunkFailure(error: unknown): void {
+  const leaving =
+    !!pendingRequest && pendingRequest.navId !== refreshNavId && pendingRequest.target !== pageKeyOf(renderedHref);
+  if (shownNode === initialNode || leaving || documentNavigationFallbackInFlight || !isBuildBundle()) return;
+  const key = lazyLinkFailureKeyOf(error);
+  if (key && navigator.onLine && claimChunkReload(key))
+    hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
 }
 
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
@@ -788,8 +772,10 @@ window.addEventListener("popstate", (event) => {
   }, 0);
 });
 
+window.addEventListener("unhandledrejection", (event) => loadDocumentForLazyChunkFailure(event.reason));
+const rootOptions = isBuildBundle() ? reportingRootErrors(loadDocumentForLazyChunkFailure) : undefined;
 const hydrate = () => {
-  hydrateRoot(document, createElement(Root));
+  hydrateRoot(document, createElement(Root), rootOptions);
   scrollRestoration.restoreDocumentLoad();
 };
 //? Hydrating without the dictionary still beats a dead page: client components show their keys until a navigation

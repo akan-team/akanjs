@@ -45,6 +45,38 @@ const linkFailure =
 export const isLinkFailure = (error: unknown): boolean =>
   (error instanceof SyntaxError || error instanceof TypeError) && linkFailure.test(error.message);
 
+//? RSDW rethrows a chunk's rejection from the element that renders it, so React reports a failure the loader decided.
+const chunkLoadFailures = new WeakSet<object>();
+export const noteChunkLoadFailure = (error: unknown): void => {
+  if (typeof error === "object" && error !== null) chunkLoadFailures.add(error);
+};
+//? The message alone, not the page: a failure the app causes itself would otherwise reload once per page showing it.
+export const lazyLinkFailureKeyOf = (error: unknown): string | null =>
+  error instanceof Error && isLinkFailure(error) && !chunkLoadFailures.has(error) ? `import() ${error.message}` : null;
+
+//? React's own fallback where `reportError` is missing (Chromium before 95): `window.onerror` trackers still see it.
+const reportGlobalError = (error: unknown): void => {
+  if (typeof reportError === "function") {
+    reportError(error);
+    return;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (window.dispatchEvent(new ErrorEvent("error", { bubbles: true, cancelable: true, message, error })))
+    console.error(error);
+};
+
+//? Passing these drops React's production defaults, so they repeat them; `akan start` keeps its development ones.
+export const reportingRootErrors = (onError: (error: unknown) => void) => ({
+  onCaughtError: (error: unknown) => {
+    console.error(error);
+    onError(error);
+  },
+  onUncaughtError: (error: unknown) => {
+    reportGlobalError(error);
+    onError(error);
+  },
+});
+
 //? Per tab and synchronous, which akanjs/client `storage` (localStorage, async) is not; unrecorded, it never reloads.
 const chunkReloadsKey = "akan.rsc.chunkReloads";
 export function claimChunkReload(chunkId: string): boolean {
