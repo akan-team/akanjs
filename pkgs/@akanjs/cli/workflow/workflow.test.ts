@@ -13,6 +13,7 @@ import {
   workflowStepKey,
 } from "@akanjs/devkit/workflow";
 import { ModuleRunner } from "../module/module.runner";
+import { workflowSpecs } from "../workflows";
 import { WorkflowRunner } from "./workflow.runner";
 
 const planTaskWorkflow = async (
@@ -90,11 +91,7 @@ describe("WorkflowRunner", () => {
   });
 
   test("plans add-field as read-only json contract", async () => {
-    const output = await new WorkflowRunner().plan(
-      "add-field",
-      { app: "demo", module: "task", field: "priority", type: "enum", values: "low,medium,high" },
-      { format: "json" },
-    );
+    const { output } = await planTaskWorkflow({ field: "priority", type: "enum", values: "low,medium,high" });
     const plan = JSON.parse(output) as WorkflowPlan;
 
     expect(plan).toMatchObject({
@@ -132,11 +129,7 @@ describe("WorkflowRunner", () => {
   });
 
   test("plans number field types as unsupported before apply", async () => {
-    const output = await new WorkflowRunner().plan(
-      "add-field",
-      { app: "demo", module: "task", field: "budget", type: "number" },
-      { format: "json" },
-    );
+    const { output } = await planTaskWorkflow({ field: "budget", type: "number" });
     const plan = JSON.parse(output) as WorkflowPlan;
 
     expect(plan.diagnostics).toContainEqual(
@@ -152,11 +145,7 @@ describe("WorkflowRunner", () => {
   });
 
   test("plans default literal normalization before apply", async () => {
-    const output = await new WorkflowRunner().plan(
-      "add-field",
-      { app: "demo", module: "task", field: "budget", type: "Float", default: "0" },
-      { format: "json" },
-    );
+    const { output } = await planTaskWorkflow({ field: "budget", type: "Float", default: "0" });
     const plan = JSON.parse(output) as WorkflowPlan;
 
     expect(plan.diagnostics).toContainEqual(
@@ -176,11 +165,12 @@ describe("WorkflowRunner", () => {
   });
 
   test("plans invalid enum default before apply", async () => {
-    const output = await new WorkflowRunner().plan(
-      "add-field",
-      { app: "demo", module: "task", field: "priority", type: "enum", values: "low,high", default: "medium" },
-      { format: "json" },
-    );
+    const { output } = await planTaskWorkflow({
+      field: "priority",
+      type: "enum",
+      values: "low,high",
+      default: "medium",
+    });
     const plan = JSON.parse(output) as WorkflowPlan;
 
     expect(plan.diagnostics).toContainEqual(
@@ -210,9 +200,9 @@ describe("WorkflowRunner", () => {
   });
 
   test("dry-runs workflow apply from a plan artifact without writing files", async () => {
-    const { module, planPath, runner } = await planTaskWorkflow({ field: "priority", type: "String" });
+    const { workspace, module, planPath, runner } = await planTaskWorkflow({ field: "priority", type: "String" });
 
-    const output = await runner.apply(planPath, { dryRun: true, format: "json" });
+    const output = await runner.apply(planPath, { dryRun: true, format: "json", workspace });
     const report = JSON.parse(output) as WorkflowApplyReport;
 
     expect(report).toMatchObject({ workflow: "add-field", mode: "dry-run", status: "passed" });
@@ -226,9 +216,9 @@ describe("WorkflowRunner", () => {
   });
 
   test("renders apply reports with user-facing outcome sections", async () => {
-    const { planPath, runner } = await planTaskWorkflow({ field: "priority", type: "String" });
+    const { workspace, planPath, runner } = await planTaskWorkflow({ field: "priority", type: "String" });
 
-    const output = await runner.apply(planPath, { dryRun: true });
+    const output = await runner.apply(planPath, { dryRun: true, workspace });
 
     expect(output).toContain("## Automatically Modified");
     expect(output).toContain("## Generated Sync");
@@ -502,12 +492,12 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
   });
 
   test("returns failed report for unsupported workflow steps", async () => {
-    const { planPath, runner } = await planTaskWorkflow(
+    const { workspace, planPath, runner } = await planTaskWorkflow(
       { mutation: "archiveTask", guard: "Public" },
-      { workflow: "add-mutation", plan: "archive-task", scaffold: false },
+      { workflow: "add-mutation", plan: "archive-task" },
     );
 
-    const output = await runner.apply(planPath, { format: "json", registry: {} });
+    const output = await runner.apply(planPath, { format: "json", workspace, registry: {} });
     const report = JSON.parse(output) as WorkflowApplyReport;
 
     expect(report.status).toBe("failed");
@@ -561,10 +551,7 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
   });
 
   test("validates a workflow plan and stores a run report", async () => {
-    const { root, workspace, planPath, runner } = await planTaskWorkflow(
-      { field: "priority", type: "String" },
-      { scaffold: false },
-    );
+    const { root, workspace, planPath, runner } = await planTaskWorkflow({ field: "priority", type: "String" });
 
     const output = await runner.validate(planPath, {
       format: "json",
@@ -691,10 +678,7 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
   });
 
   test("separates passing source validation from baseline workspace blockers", async () => {
-    const { root, workspace, planPath, runner } = await planTaskWorkflow(
-      { field: "priority", type: "String" },
-      { scaffold: false },
-    );
+    const { root, workspace, planPath, runner } = await planTaskWorkflow({ field: "priority", type: "String" });
     await writeText(`${root}/apps/demo/base.ts`, "export const unrelated = true;\n");
     const passes: WorkflowValidationCommandExecutor = async (command) => ({
       command: command.command,
@@ -812,6 +796,106 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     expect(JSON.parse(output)).toMatchObject({ runId: run.runId, workflow: "add-field", mode: "validate" });
   });
 
+  describe("a module the target lacks", () => {
+    const moduleWorkflows: [string, WorkflowPlanInputs][] = [
+      ["add-enum-field", { field: "kind", values: "fire,water" }],
+      ["add-field", { field: "nickname", type: "String" }],
+      ["add-mutation", { mutation: "evolvePokemon", guard: "Public" }],
+      ["add-slice", { slice: "inParty" }],
+      ["create-ui", { surface: "view" }],
+      ["rename-key", { slice: "inPublic", to: "inParty" }],
+    ];
+
+    test("is refused at plan time by every workflow that writes into an existing module", async () => {
+      const { workspace, module } = track(await createTempModule("task"));
+      await new ModuleRunner().createModuleTemplate(module);
+      const runner = new WorkflowRunner();
+      const planOf = async (workflow: string, inputs: WorkflowPlanInputs) =>
+        JSON.parse(
+          await runner.plan(workflow, { app: "demo", ...inputs }, { format: "json", workspace }),
+        ) as WorkflowPlan;
+
+      for (const [workflow, inputs] of moduleWorkflows) {
+        const plan = await planOf(workflow, { module: "pokemon", ...inputs });
+        expect(plan.diagnostics).toEqual([
+          {
+            severity: "error",
+            code: "workflow-module-missing",
+            input: "module",
+            message:
+              "No module named pokemon in apps/demo: apps/demo/lib/pokemon does not exist. Its modules are task. If pokemon is a new model, create it with the create-module workflow first, then plan this again.",
+          },
+        ]);
+        expect([plan.predictedChanges, plan.recommendations]).toEqual([[], []]);
+      }
+      expect((await planOf("add-field", { module: "Task", field: "nickname", type: "String" })).diagnostics).toEqual([
+        expect.objectContaining({
+          code: "workflow-module-missing",
+          message: expect.stringContaining("Did you mean task?"),
+        }),
+      ]);
+      expect((await planOf("create-module", { module: "pokemon" })).diagnostics).toEqual([]);
+      expect(
+        (await planOf("add-field", { app: "pokedex", module: "task", field: "nickname", type: "String" })).diagnostics,
+      ).toEqual([
+        expect.objectContaining({ code: "workflow-target-missing", message: expect.stringContaining("Apps: demo.") }),
+      ]);
+      expect(
+        workflowSpecs
+          .filter((spec) => spec.inputs.module?.mustExist)
+          .map((spec) => spec.name)
+          .sort(),
+      ).toEqual(moduleWorkflows.map(([workflow]) => workflow));
+    });
+
+    test("names the scalar, the service or the library a module name points at, instead of create-module", async () => {
+      const { root, workspace, module } = track(await createTempModule("task"));
+      await new ModuleRunner().createModuleTemplate(module);
+      await writeText(`${root}/apps/demo/lib/__scalar/address/address.constant.ts`, "");
+      await writeText(`${root}/apps/demo/lib/_demo/demo.service.ts`, "");
+      await writeText(`${root}/libs/shared/akan.config.ts`, "export default {};\n");
+      await writeText(`${root}/libs/shared/lib/user/user.constant.ts`, "");
+      const runner = new WorkflowRunner();
+      const messageOf = async (moduleName: string) => {
+        const plan = JSON.parse(
+          await runner.plan(
+            "add-field",
+            { app: "demo", module: moduleName, field: "nickname", type: "String" },
+            { format: "json", workspace },
+          ),
+        ) as WorkflowPlan;
+        return plan.diagnostics.map((diagnostic) => diagnostic.message).join(" ");
+      };
+
+      expect(await messageOf("address")).toContain(
+        "apps/demo/lib/__scalar/address is a scalar, and this workflow writes only into a module under apps/demo/lib.",
+      );
+      expect(await messageOf("demo")).toContain("Did you mean _demo?");
+      expect(await messageOf("user")).toContain("user is in libs/shared, so plan this with --app shared.");
+      for (const moduleName of ["address", "demo", "user"])
+        expect(await messageOf(moduleName)).not.toContain("create-module");
+    });
+
+    test("fails a dry run and an apply of a plan that names it, writing nothing", async () => {
+      const { workspace, module, planPath, runner } = await planTaskWorkflow({ field: "nickname", type: "String" });
+      const plan = JSON.parse(await readFile(planPath, "utf8")) as WorkflowPlan;
+      await writeFile(planPath, JSON.stringify({ ...plan, inputs: { ...plan.inputs, module: "pokemon" } }));
+
+      const dryRun = JSON.parse(
+        await runner.apply(planPath, { dryRun: true, format: "json", workspace }),
+      ) as WorkflowApplyReport;
+      const applied = JSON.parse(
+        await runner.apply(planPath, { format: "json", workspace, registry: WorkflowRunner.stepRegistry(workspace) }),
+      ) as WorkflowApplyReport;
+
+      expect(dryRun).toMatchObject({ mode: "dry-run", status: "failed", changedFiles: [] });
+      expect(applied).toMatchObject({ mode: "apply", status: "failed", changedFiles: [] });
+      for (const report of [dryRun, applied])
+        expect(report.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["workflow-module-missing"]);
+      expect(await module.readFile("task.constant.ts")).not.toContain("nickname");
+    });
+  });
+
   describe("add-mutation", () => {
     const planMutation = async (inputs: WorkflowPlanInputs, { scaffold = true } = {}) => {
       const planned = await planTaskWorkflow(
@@ -865,11 +949,15 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
       );
     });
 
-    test("plans a module that does not exist yet with a warning, so a create-module plan can precede it", async () => {
+    test("refuses to plan a module that does not exist yet, pointing at create-module", async () => {
       const { plan } = await planMutation({ guard: "Public" }, { scaffold: false });
 
       expect(plan.diagnostics).toEqual([
-        expect.objectContaining({ severity: "warning", code: "add-mutation-module-missing" }),
+        expect.objectContaining({
+          severity: "error",
+          code: "workflow-module-missing",
+          message: expect.stringContaining("create-module"),
+        }),
       ]);
     });
 
