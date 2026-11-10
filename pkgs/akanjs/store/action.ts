@@ -42,6 +42,7 @@ import type {
   SlceDbSort,
   SliceCls,
 } from "akanjs/signal";
+import { produce } from "immer";
 import { expandQueryArgs, normalizeQueryArgs } from "../fetch/client/sliceQueryArgs";
 import { tagAction } from "./actionTag";
 import { DraftStore } from "./draftStore";
@@ -312,20 +313,32 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
   const fileUploadRefName = resolveFileUploadCapability(fetch.serializedSignal)?.refName;
 
   const names = modelNames(refName);
-  type UploadState = { [key: string]: { [field: string]: string[] } };
+  type Uploading = { [field: string]: string[] };
+  type FormState = { [key: string]: any };
   let uploadSeq = 0;
-  const releaseUpload = (state: UploadState, field: string, ticket?: string) => {
-    const pending = state[names.modelFormUploading][field];
-    if (!pending || (ticket && !pending.includes(ticket))) return;
-    const { [field]: tickets = [], ...rest } = state[names.modelFormUploading];
+  const releasedUpload = (uploading: Uploading, field: string, ticket?: string): Uploading => {
+    const pending = uploading[field];
+    if (!pending || (ticket && !pending.includes(ticket))) return uploading;
+    const { [field]: tickets = [], ...rest } = uploading;
     const left = ticket ? tickets.filter((pending) => pending !== ticket) : [];
-    state[names.modelFormUploading] = left.length ? { ...rest, [field]: left } : rest;
+    return left.length ? { ...rest, [field]: left } : rest;
   };
+  const formPatchOf = (
+    state: FormState,
+    recipe: (form: FormState) => void,
+    uploading: Uploading = state[names.modelFormUploading],
+  ) => ({
+    [names.modelForm]: produce(state[names.modelForm] as FormState, recipe),
+    // `set` reads a form patch without the upload slot as a whole-form replace and drops every upload in flight.
+    [names.modelFormUploading]: uploading,
+  });
   const baseSetAction = {
     [names.writeOnModel]: function (this: SetGet, path: string | (string | number)[], value: any) {
-      this.set((state: { [key: string]: any }) => {
-        pathSet(state[names.modelForm], path, value);
-      });
+      this.set(
+        formPatchOf(this.get(), (form) => {
+          pathSet(form, path, value);
+        }),
+      );
     },
   };
   const fieldSetAction = Object.entries(modelRef[FIELD_META]).reduce((acc, [key, field]) => {
@@ -334,17 +347,23 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
       field.isClass && !!fileUploadRefName && ConstantRegistry.getRefName(field.modelRef) === fileUploadRefName;
     const singleFieldSetAction = {
       [namesOfField.setFieldOnModel]: function (this: SetGet, value: any | null) {
-        this.set((state: { [key: string]: any }) => {
-          // An explicit write wins over a single field's upload in flight; an array keeps its uploads.
-          if (isFileField && !field.isArray) releaseUpload(state as UploadState, namesOfField.field);
-          const setValue =
-            value === null
-              ? null
-              : field.isClass
-                ? immerify<object>(field.modelRef, value as object)
-                : (value as object);
-          (state[names.modelForm] as { [key: string]: any })[namesOfField.field] = setValue;
-        });
+        const state = this.get() as FormState;
+        const setValue =
+          value === null ? null : field.isClass ? immerify<object>(field.modelRef, value as object) : (value as object);
+        // An explicit write wins over a single field's upload in flight; an array keeps its uploads.
+        const uploading: Uploading =
+          isFileField && !field.isArray
+            ? releasedUpload(state[names.modelFormUploading], namesOfField.field)
+            : state[names.modelFormUploading];
+        this.set(
+          formPatchOf(
+            state,
+            (form) => {
+              form[namesOfField.field] = setValue;
+            },
+            uploading,
+          ),
+        );
         // After the write, so a hook that reads the field sees the new value.
         const postSet = (this as unknown as { [key: string]: ((value: unknown) => unknown) | undefined })[
           namesOfField.postSetField
@@ -363,22 +382,26 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
               if (options.limit && options.limit <= length) return;
               const idx = options.idx ?? length;
               const setValue = field.isClass ? immerify<Light | Light[]>(field.modelRef, value) : value;
-              this.set((state: { [key: string]: any }) => {
-                (state[names.modelForm] as { [key: string]: any })[namesOfField.field] = [
-                  ...(form[namesOfField.field] as object[]).slice(0, idx),
-                  ...(Array.isArray(setValue) ? setValue : [setValue]),
-                  ...(form[namesOfField.field] as object[]).slice(idx),
-                ];
-              });
+              this.set(
+                formPatchOf(this.get(), (draft) => {
+                  draft[namesOfField.field] = [
+                    ...(form[namesOfField.field] as object[]).slice(0, idx),
+                    ...(Array.isArray(setValue) ? setValue : [setValue]),
+                    ...(form[namesOfField.field] as object[]).slice(idx),
+                  ];
+                }),
+              );
             },
             [namesOfField.subFieldOnModel]: function (this: SetGet, idx: number | number[]) {
               const form = (this.get() as { [key: string]: any })[names.modelForm] as { [key: string]: object[] };
-              this.set((state: { [key: string]: any }) => {
-                (state[names.modelForm] as { [key: string]: any })[namesOfField.field] =
-                  typeof idx === "number"
-                    ? form[namesOfField.field].filter((_, i) => i !== idx)
-                    : form[namesOfField.field].filter((_, i) => !idx.includes(i));
-              });
+              this.set(
+                formPatchOf(this.get(), (draft) => {
+                  draft[namesOfField.field] =
+                    typeof idx === "number"
+                      ? form[namesOfField.field].filter((_, i) => i !== idx)
+                      : form[namesOfField.field].filter((_, i) => !idx.includes(i));
+                }),
+              );
             },
             [namesOfField.addOrSubFieldOnModel]: function (
               this: SetGet,
@@ -407,37 +430,45 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
               if (!fileList.length) return;
               // A whole-form set clears all tickets and a single field keeps only the newest; a missing one is stale.
               const ticket = `${++uploadSeq}`;
-              this.set((state: UploadState) => {
-                const tickets = state[names.modelFormUploading][namesOfField.field] ?? [];
-                state[names.modelFormUploading] = {
-                  ...state[names.modelFormUploading],
+              const uploading = (this.get() as FormState)[names.modelFormUploading] as Uploading;
+              const tickets = uploading[namesOfField.field] ?? [];
+              this.set({
+                [names.modelFormUploading]: {
+                  ...uploading,
                   [namesOfField.field]: field.isArray ? [...tickets, ticket] : [ticket],
-                };
+                },
               });
-              const held = (state: { [key: string]: any }) =>
-                !!(state as UploadState)[names.modelFormUploading][namesOfField.field]?.includes(ticket) &&
-                (state[names.modelForm] as { id?: string }).id === formId;
+              const releasedIn = (state: FormState) =>
+                releasedUpload(state[names.modelFormUploading], namesOfField.field, ticket);
               let files: ProtoFile[];
               try {
                 files = await (fetch[names.addModelFiles] as (...args: any) => Promise<ProtoFile[]>)(fileList, formId);
               } catch (error) {
-                this.set((state: UploadState) => releaseUpload(state, namesOfField.field, ticket));
+                this.set({ [names.modelFormUploading]: releasedIn(this.get() as FormState) });
                 throw error;
               }
-              let isWritten = false;
+              const state = this.get() as FormState;
+              const isWritten =
+                !!(state[names.modelFormUploading] as Uploading)[namesOfField.field]?.includes(ticket) &&
+                (state[names.modelForm] as { id?: string }).id === formId;
+              if (!isWritten) {
+                this.set({ [names.modelFormUploading]: releasedIn(state) });
+                return;
+              }
               // One update, so no subscriber sees the field idle before the file it waited for is in the form.
-              this.set((state: { [key: string]: any }) => {
-                isWritten = held(state);
-                releaseUpload(state as UploadState, namesOfField.field, ticket);
-                if (!isWritten) return;
-                const form = state[names.modelForm] as { [key: string]: ProtoLightFile[] | ProtoLightFile | null };
-                if (field.isArray) {
-                  const current = (form[namesOfField.field] as ProtoLightFile[] | null) ?? [];
-                  const idx = Math.min(index ?? current.length, current.length);
-                  form[namesOfField.field] = [...current.slice(0, idx), ...files, ...current.slice(idx)];
-                } else form[namesOfField.field] = files[0] ?? null;
-              });
-              if (!isWritten) return;
+              this.set(
+                formPatchOf(
+                  state,
+                  (form) => {
+                    if (field.isArray) {
+                      const current = (form[namesOfField.field] as ProtoLightFile[] | null) ?? [];
+                      const idx = Math.min(index ?? current.length, current.length);
+                      form[namesOfField.field] = [...current.slice(0, idx), ...files, ...current.slice(idx)];
+                    } else form[namesOfField.field] = files[0] ?? null;
+                  },
+                  releasedIn(state),
+                ),
+              );
               const postSet = (this as unknown as { [key: string]: ((value: unknown) => unknown) | undefined })[
                 namesOfField.postSetField
               ];
@@ -471,12 +502,12 @@ export const makeFormSetter = (refName: string, fetch: FetchProxy<any>) => {
                         return;
                       }
                       this.set(
-                        (state: { [key: string]: { [key: string]: ProtoLightFile[] | ProtoLightFile | null } }) => {
-                          const value = state[names.modelForm][namesOfField.field];
-                          state[names.modelForm][namesOfField.field] = Array.isArray(value)
+                        formPatchOf(this.get(), (form) => {
+                          const value = form[namesOfField.field] as ProtoLightFile[] | ProtoLightFile | null;
+                          form[namesOfField.field] = Array.isArray(value)
                             ? value.map((heldFile) => (heldFile.id === currentFile.id ? currentFile : heldFile))
                             : currentFile;
-                        },
+                        }),
                       );
                       if (currentFile.status !== "uploading" || attemptsLeft <= 0) clearInterval(intervalKey);
                     } catch (error) {
@@ -831,7 +862,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
       const currentState = this.get() as { [key: string]: any };
       const model = currentState[names.model] as Full | null;
-      if (id === model?.id) this.set({ modelLoading: id });
+      if (id === model?.id) this.set({ [names.modelLoading]: id });
       const updatedModel = await servedFetch<Full>(names.mergeModel)(modelOrId, data, options);
       this.set({
         [names.model]: id === model?.id ? updatedModel : model,

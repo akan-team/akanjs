@@ -1,14 +1,41 @@
 import { describe, expect, test } from "bun:test";
-import { setTestEnv } from "./store.fixture";
+import { setTestEnv, stubSignal } from "./store.fixture";
 
 setTestEnv("storewritecost");
+const { Int } = await import("akanjs/base");
+const { ConstantRegistry, via } = await import("akanjs/constant");
 const { store } = await import("./store");
 const { StoreInstance } = await import("./storeInstance");
 const { StoreRegistry } = await import("./storeRegistry");
 
+const NoteInput = via((f) => ({ title: f(String) }));
+const NoteObject = via(NoteInput, () => ({}));
+const NoteLight = via(NoteObject, ["title"] as const, () => ({}));
+const NoteFull = via(NoteObject, NoteLight, () => ({}));
+const NoteInsight = via(NoteFull, (f) => ({ count: f(Int, { default: 0 }) }));
+const noteConstant = ConstantRegistry.buildModel(
+  "writeCostNote",
+  NoteInput,
+  NoteObject,
+  NoteFull,
+  NoteLight,
+  NoteInsight,
+  {},
+);
+const noteSignal = stubSignal("writeCostNote", noteConstant, {
+  prefix: "writeCostNote",
+  endpoint: {},
+  slice: { "": { args: [] } },
+});
+
 const KEYS_PER_STORE = 29;
 
-const buildRoot = (keyNum: number, tag: string, onCompute: () => void = () => undefined) => {
+const buildRoot = (
+  keyNum: number,
+  tag: string,
+  onCompute: () => void = () => undefined,
+  ...extraStores: ReturnType<typeof store>[]
+) => {
   const stores = Array.from({ length: Math.round(keyNum / KEYS_PER_STORE) }, (_, storeIdx) => {
     const name = `${tag}${storeIdx}`;
     const plain = Object.fromEntries(Array.from({ length: KEYS_PER_STORE - 2 }, (_, idx) => [`${name}K${idx}`, idx]));
@@ -24,7 +51,7 @@ const buildRoot = (keyNum: number, tag: string, onCompute: () => void = () => un
       }),
     );
   });
-  return new StoreInstance(StoreRegistry.merge(`${tag}Root`, ...stores));
+  return new StoreInstance(StoreRegistry.merge(`${tag}Root`, ...stores, ...extraStores));
 };
 
 const nanosOf = (run: () => unknown, iterations: number) => {
@@ -70,6 +97,20 @@ describe("store write cost", () => {
       const copy = () => ({ ...instance.get(), [keys[0] as string]: writeIdx });
       medianRatio(write, copy, 50);
       expect(medianRatio(write, copy, 100)).toBeLessThan(3);
+    }
+  });
+
+  test("a form field setter costs about one copy of the state, at 1,740 keys and at twice that", () => {
+    for (const keyNum of [1740, 3480]) {
+      class WriteCostNoteStore extends store(noteSignal, () => ({})) {}
+      const instance = buildRoot(keyNum, `form${keyNum}S`, undefined, WriteCostNoteStore);
+      const setTitle = instance.do.setTitleOnWriteCostNote as (title: string) => unknown;
+      let writeIdx = 0;
+      const write = () => setTitle(`title${writeIdx++}`);
+      const copy = () => ({ ...instance.get(), writeCostNoteForm: writeIdx });
+      medianRatio(write, copy, 50);
+      expect(medianRatio(write, copy, 100)).toBeLessThan(3);
+      expect((instance.get().writeCostNoteForm as { title: string }).title).toBe(`title${writeIdx - 1}`);
     }
   });
 });

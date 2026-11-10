@@ -261,6 +261,35 @@ describe("StoreInstance runtime", () => {
     expect(() => instance.set({ label: "manual" })).toThrow("Cannot set derived state directly: label");
   });
 
+  test("a set that names a derived key changes nothing", () => {
+    setupEnv();
+    class DerivedGuardStore extends store(
+      "derivedGuard" as const,
+      () => ({ total: 1 }),
+      ({ computed }) => ({
+        totalLabel: computed(["total"], (total) => `total:${total}`),
+      }),
+    ) {}
+    StoreRegistry.register(DerivedGuardStore);
+    const instance = new StoreInstance(makeRoot("derivedGuardRoot", DerivedGuardStore));
+    const before = instance.get();
+    let setNum = 0;
+    instance.subscribe(() => {
+      setNum++;
+    });
+
+    expect(() => instance.set({ total: 2, totalLabel: "manual" })).toThrow(
+      "Cannot set derived state directly: totalLabel",
+    );
+    expect(instance.get()).toBe(before);
+    expect(setNum).toBe(0);
+
+    instance.set((state) => {
+      state.totalLabel = "manual";
+    });
+    expect(instance.get()).toMatchObject({ total: 1, totalLabel: "total:1" });
+  });
+
   test("a computed key that reads a lib store's computed key follows it on every write", () => {
     setupEnv();
     class ChainLibStore extends store(
@@ -970,6 +999,136 @@ describe("signal generated store contract", () => {
     const rows = [...(instance.get().storeTestItemList as DataList<InstanceType<typeof StoreTestLight>>)];
     expect(rows.map((row) => row.title)).toEqual(["two", "one", "Ada", "Ben"]);
     expect((instance.get().storeTestItemInsight as { count: number }).count).toBe(4);
+  });
+
+  const deferredCall = () => {
+    let answer: (model: unknown) => void = () => undefined;
+    const call = mock(
+      (..._args: unknown[]) =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    return { call, answer: (model: unknown) => answer(model) };
+  };
+  const setsDuring = async (instance: StoreInstance, write: () => unknown) => {
+    let setNum = 0;
+    const unsubscribe = instance.subscribe(() => {
+      setNum++;
+    });
+    await write();
+    unsubscribe();
+    return setNum;
+  };
+  type Rows = DataList<InstanceType<typeof StoreTestLight>>;
+
+  test("merge<Model> marks the open model loading under its own key, then lands in one set", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class MergeLoadingStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(MergeLoadingStore);
+    const instance = new StoreInstance(makeRoot("mergeLoadingRoot", MergeLoadingStore));
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    await instance.do.initStoreTestItem();
+    await instance.do.initStoreTestItemByTitle("Ada");
+    await instance.do.viewStoreTestItem(id);
+    const merge = deferredCall();
+    signal.calls.mergeStoreTestItem = merge.call;
+
+    const merging = instance.do.mergeStoreTestItem(id, { title: "merged" });
+    expect(instance.get().storeTestItemLoading).toBe(id);
+    expect(instance.get()).not.toHaveProperty("modelLoading");
+
+    const setNum = await setsDuring(instance, async () => {
+      merge.answer(new StoreTestFull({ id, title: "merged" } as never));
+      await merging;
+    });
+    expect(setNum).toBe(1);
+    expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { title: "merged" } });
+    const lists = [instance.get().storeTestItemList as Rows, instance.get().storeTestItemListByTitle as Rows];
+    expect(lists.map((list) => list.get(id)?.title)).toEqual(["merged", "merged"]);
+  });
+
+  test("update<Model>InForm lands the answer, the lists and the form reset in one set", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class UpdateInFormStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(UpdateInFormStore);
+    const instance = new StoreInstance(makeRoot("updateInFormRoot", UpdateInFormStore));
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    await instance.do.initStoreTestItem();
+    await instance.do.initStoreTestItemByTitle("Ada");
+    await instance.do.editStoreTestItem(id);
+    await instance.do.setTitleOnStoreTestItem("edited");
+    const update = deferredCall();
+    signal.calls.updateStoreTestItem = update.call;
+
+    const updating = instance.do.updateStoreTestItemInForm();
+    expect(instance.get().storeTestItemLoading).toBe(id);
+    expect(update.call.mock.calls[0]?.[1]).toMatchObject({ title: "edited" });
+
+    const setNum = await setsDuring(instance, async () => {
+      update.answer(new StoreTestFull({ id, title: "edited" } as never));
+      await updating;
+    });
+    expect(setNum).toBe(1);
+    expect(instance.get()).toMatchObject({
+      storeTestItemLoading: false,
+      storeTestItem: { title: "edited" },
+      storeTestItemForm: { title: "" },
+    });
+    const lists = [instance.get().storeTestItemList as Rows, instance.get().storeTestItemListByTitle as Rows];
+    expect(lists.map((list) => list.get(id)?.title)).toEqual(["edited", "edited"]);
+  });
+
+  test("a remove the server answers without removedAt updates the row in place, in one set", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class SoftRemoveStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(SoftRemoveStore);
+    const instance = new StoreInstance(makeRoot("softRemoveRoot", SoftRemoveStore));
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    await instance.do.initStoreTestItem();
+    await instance.do.initStoreTestItemByTitle("Ada");
+    await instance.do.viewStoreTestItem(id);
+    signal.calls.removeStoreTestItem = mock(
+      async (rowId: string) => new StoreTestFull({ id: rowId, title: "archived" }),
+    );
+    const insights = [instance.get().storeTestItemInsight, instance.get().storeTestItemInsightByTitle];
+
+    expect(await setsDuring(instance, () => instance.do.removeStoreTestItem(id, { modal: null }))).toBe(1);
+    const lists = [instance.get().storeTestItemList as Rows, instance.get().storeTestItemListByTitle as Rows];
+    expect(lists.map((list) => list.get(id)?.title)).toEqual(["archived", "archived"]);
+    expect([instance.get().storeTestItemInsight, instance.get().storeTestItemInsightByTitle]).toEqual(insights);
+    expect(instance.get().storeTestItemModal).toBeNull();
+
+    await instance.do.viewStoreTestItem(id);
+    await instance.do.removeStoreTestItem("cccccccccccccccccccccccc", { modal: null });
+    expect(instance.get().storeTestItemModal).toBe("view");
+  });
+
+  test("a create into a loaded slice that is not live prepends the row and counts it there only", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    signal.calls.storeTestItemListByTags = mock(async () => [
+      new StoreTestLight({ id: "bbbbbbbbbbbbbbbbbbbbbbbb", title: "Ben" }),
+    ]);
+    signal.calls.storeTestItemInsightByTags = mock(async () => new StoreTestInsight({ count: 1 }));
+    class NonLiveCreateStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(NonLiveCreateStore);
+    const instance = new StoreInstance(makeRoot("nonLiveCreateRoot", NonLiveCreateStore));
+    await instance.do.initStoreTestItem();
+    await instance.do.initStoreTestItemByTitle("Ada");
+    await instance.do.initStoreTestItemByTags(["a"]);
+    const untouched = [instance.get().storeTestItemList, instance.get().storeTestItemListByTitle];
+
+    await instance.do.createStoreTestItem(
+      { title: "created", count: 0, tags: [] },
+      { sliceName: "storeTestItemByTags" },
+    );
+    expect([...(instance.get().storeTestItemListByTags as Rows)].map((row) => row.title)).toEqual(["created", "Ben"]);
+    expect((instance.get().storeTestItemInsightByTags as { count: number }).count).toBe(2);
+    expect([instance.get().storeTestItemList, instance.get().storeTestItemListByTitle]).toEqual(untouched);
   });
 });
 
