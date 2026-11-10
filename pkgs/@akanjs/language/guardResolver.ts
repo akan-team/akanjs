@@ -45,6 +45,13 @@ interface Reexport {
   from: string | null;
 }
 
+interface StarExports {
+  owners: string[];
+  packages: string[];
+  paths: string[];
+  isOpaque: boolean;
+}
+
 interface Declaration {
   source: TS.SourceFile;
   statement: TS.Statement;
@@ -57,7 +64,9 @@ export const frameworkOwner = "akanjs";
 export const frameworkPattern = /^akanjs(?:\/|$)/;
 const aliasPattern = /^@(apps|libs)\/([^/]+)/;
 const maxMapDepth = 4;
-export const starExportPattern = /export\s*\*\s*from\s*["']([^"']+)["']/g;
+//? ES2022 lets an import name be any string (`import { "is(admin" as IsAdmin }`), which no declaration can carry.
+const identifierPattern = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200c\u200d]*$/u;
+const starExportPattern = /export\s*\*\s*from\s*["']([^"']+)["']/g;
 
 const declaringPatternOf = (name: string, isAnyBinding: boolean) => {
   const escaped = escapeRegExp(name);
@@ -79,7 +88,7 @@ export class GuardResolver {
   readonly #mapEntries = new Map<string, MapEntry[]>();
   readonly #reexports = new Map<string, { local: string; site: GuardSite } | null>();
   readonly #declarations = new Map<string, Declaration | null>();
-  readonly #starExports = new Map<string, { owners: string[]; isOpaque: boolean }>();
+  readonly #starExports = new Map<string, StarExports>();
   #ownerFiles: Map<string, [fileName: string, words: string][]> | null = null;
   #modules: Map<string, string[]> | null = null;
 
@@ -116,7 +125,7 @@ export class GuardResolver {
     for (const factory of declaredFactories)
       factory.targets = factory.fact.via
         .map((callee) => this.#factoryAt(factories, callee, factory.site))
-        .filter((target) => target !== undefined);
+        .filter((target): target is DeclaredFactory => target?.fact.layers === 0);
     for (let isGrowing = true; isGrowing; ) {
       isGrowing = false;
       for (const factory of declaredFactories) {
@@ -159,7 +168,8 @@ export class GuardResolver {
           continue;
         }
         const factory = this.#factoryAt(factories, made.callee, file);
-        if (factory?.isReal) factory.made.push(declare(file, made, factory.scope, partsOf(factory)));
+        if (factory?.isReal && factory.fact.layers === made.layers)
+          factory.made.push(declare(file, made, factory.scope, partsOf(factory)));
       }
     }
     for (let isGrowing = true; isGrowing; ) {
@@ -304,7 +314,8 @@ export class GuardResolver {
       const relative = this.#source.relative(fileName);
       return !!near && (relative.startsWith(`${near}/`) || relative.replace(/\.tsx?$/, "") === near);
     };
-    const candidates = this.filesIn(owner)
+    if (!identifierPattern.test(name)) return [];
+    const candidates = this.#filesIn(owner)
       .filter(([, words]) => words.includes(`\n${name}\n`))
       .map(([fileName]) => fileName);
     return [...candidates.filter(isNear), ...candidates.filter((other) => !isNear(other))];
@@ -318,7 +329,7 @@ export class GuardResolver {
     const entries: MapEntry[] = [];
     const fileNames = [
       ...(fileName ? [fileName] : []),
-      ...(owner === null ? [] : this.filesIn(owner))
+      ...(owner === null ? [] : this.#filesIn(owner))
         .filter(
           ([other, words]) =>
             other !== fileName && words.includes(`\n${objectName}\n`) && words.includes(`\n${member}\n`),
@@ -398,28 +409,28 @@ export class GuardResolver {
     near: string,
   ) {
     if (!declared.length) return undefined;
-    const { owners, isOpaque } = this.#starExportsOf(owner, near);
+    const { owners, isOpaque } = this.starExportsOf(owner, near);
     const reached = declared.filter((other) => other.owner !== null && owners.includes(other.owner));
     return reached.length === 1 && !isOpaque && !this.declares(owner, name) ? reached[0] : undefined;
   }
 
-  #starExportsOf(owner: string, near: string) {
-    const cached = this.#starExports.get(near);
+  starExportsOf(owner: string, near: string) {
+    const key = `${owner}\n${near}`;
+    const cached = this.#starExports.get(key);
     if (cached) return cached;
-    const found = { owners: [] as string[], isOpaque: false };
-    this.#starExports.set(near, found);
-    const paths = [near];
-    for (let idx = 0; idx < paths.length && !found.isOpaque; idx++)
-      for (const fileName of this.#modulesAt(paths[idx] ?? "")) {
+    const found: StarExports = { owners: [], packages: [], paths: [near], isOpaque: false };
+    this.#starExports.set(key, found);
+    for (let idx = 0; idx < found.paths.length; idx++)
+      for (const fileName of this.#modulesAt(found.paths[idx] ?? ""))
         for (const [, specifier = ""] of this.#source.readText(fileName)?.matchAll(starExportPattern) ?? []) {
           const target = this.ownerOfSpecifier(fileName, specifier);
           const path = this.pathOfSpecifier(fileName, specifier);
+          if (path === null && !found.packages.includes(specifier)) found.packages.push(specifier);
           if (target === undefined || target === frameworkOwner || path === null) found.isOpaque = true;
-          else if (!paths.includes(path)) paths.push(path);
+          else if (!found.paths.includes(path)) found.paths.push(path);
           if (target && target !== frameworkOwner && target !== owner && !found.owners.includes(target))
             found.owners.push(target);
         }
-      }
     return found;
   }
 
@@ -440,7 +451,7 @@ export class GuardResolver {
     return this.#filesOf(owner, name, null).some((fileName) => declaring.test(this.#source.readText(fileName) ?? ""));
   }
 
-  filesIn(owner: string) {
+  #filesIn(owner: string) {
     if (!this.#ownerFiles) {
       this.#ownerFiles = new Map();
       for (const entry of this.#source.files) {

@@ -779,6 +779,123 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({${sibli
     ]);
   });
 
+  it("draws no edge for a guard made in place by an akanjs or package factory, and keeps a workspace one past a same-name import", () => {
+    const given: Record<string, string> = {
+      "libs/util/srvkit/guards.ts": `import type { Guard } from "akanjs/signal";
+export const resourceGuard = (field: string) =>
+  class implements Guard {
+    static scope = "resource" as const;
+    canPass() {
+      return !!field;
+    }
+  };
+export const opaque = (field: string) => field;
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { "is(admin" as IsAdmin, opaque, resourceGuard } from "@libs/util/srvkit";
+import * as v from "@vendor/auth";
+import { memo } from "@vendor/x";
+import { endpoint, roleGuard } from "akanjs/signal";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, {
+    guards: [IsAdmin, roleGuard("a"), v.roleGuard("a"), resourceGuard("memo"), opaque("memo")],
+  }).exec(async function () {
+    return memo;
+  }),
+})) {}
+`,
+    };
+    const index = new AkanIndex({ ts, root });
+    for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+    const graph = index.graph((fileName) => given[fileName.slice(root.length + 1)]);
+    const inPlace = "guard:apps/demo:lib/memo/memo.signal.ts#memo.shareMemo:";
+    expect(edgesOf(graph, "guard")).toEqual([
+      `endpoint:apps/demo:memo.shareMemo --> ${inPlace}opaque@1`,
+      `endpoint:apps/demo:memo.shareMemo --> ${inPlace}resourceGuard@1`,
+      "endpoint:apps/demo:memo.shareMemo --> guard:libs/util:is(admin",
+    ]);
+    expect(graph.nodes.find((node) => node.id === "endpoint:apps/demo:memo.shareMemo")?.detail).toEqual([
+      "mutation",
+      "IsAdmin",
+      'roleGuard("a")',
+      'v.roleGuard("a")',
+      'resourceGuard("memo")',
+      'opaque("memo")',
+    ]);
+    expect(
+      graph.nodes
+        .filter((node) => node.kind === "guard")
+        .map(({ id, label, detail, at }) => [id, label, detail, at && `${at.file}:${at.line}`]),
+    ).toEqual([
+      [`${inPlace}opaque@1`, 'opaque("memo")', [], null],
+      [`${inPlace}resourceGuard@1`, 'resourceGuard("memo")', ["resource"], "apps/demo/lib/memo/memo.signal.ts:8"],
+      ["guard:libs/util:is(admin", "is(admin", [], null],
+    ]);
+  });
+
+  it("makes a guard from a curried factory called through every layer, and none from a partial call", () => {
+    const given: Record<string, string> = {
+      "libs/util/srvkit/guards.ts": `import type { Guard } from "akanjs/signal";
+export const resourceGuard = (field: string) =>
+  class implements Guard {
+    static scope = "resource" as const;
+    canPass() {
+      return !!field;
+    }
+  };
+export const curried = (role: string) => (field: string) =>
+  class implements Guard {
+    static scope = "account" as const;
+    canPass() {
+      return !!role && !!field;
+    }
+  };
+export function staged(role: string) {
+  return (field: string) => resourceGuard(\`\${role}:\${field}\`);
+}
+`,
+      "apps/demo/srvkit/guards.ts": `import { curried } from "@libs/util/srvkit";
+export const Editor = curried("e")("f");
+export const Partial = curried("e");
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { curried, staged } from "@libs/util/srvkit";
+import { endpoint } from "akanjs/signal";
+import { Editor, Partial } from "../../srvkit/guards";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, {
+    guards: [Editor, Partial, curried("e")("f"), curried("e"), staged("s")("t")],
+  }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+    };
+    const index = new AkanIndex({ ts, root });
+    for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+    const graph = index.graph((fileName) => given[fileName.slice(root.length + 1)]);
+    const inPlace = "guard:apps/demo:lib/memo/memo.signal.ts#memo.shareMemo:";
+    expect(graph.nodes.find((node) => node.id === "endpoint:apps/demo:memo.shareMemo")?.detail).toEqual([
+      "mutation",
+      "Editor",
+      "Partial",
+      'curried("e")("f")',
+      'curried("e")',
+      'staged("s")("t")',
+    ]);
+    expect(
+      graph.nodes
+        .filter((node) => node.kind === "guard")
+        .map(({ id, label, detail, at }) => [id, label, detail, at && `${at.file}:${at.line}`]),
+    ).toEqual([
+      ["guard:apps/demo:Editor", "Editor", ["account"], "apps/demo/srvkit/guards.ts:2"],
+      ["guard:apps/demo:Partial", "Partial", [], null],
+      [`${inPlace}curried@1`, 'curried("e")("f")', ["account"], "apps/demo/lib/memo/memo.signal.ts:7"],
+      [`${inPlace}curried@2`, 'curried("e")', [], null],
+      [`${inPlace}staged@1`, 'staged("s")("t")', ["resource"], "apps/demo/lib/memo/memo.signal.ts:7"],
+    ]);
+  });
+
   it("keys a name two files of one owner declare by file, and follows each import to its own", () => {
     const admin = (doc: string) => `import type { Guard } from "akanjs/signal";
 // ${doc}
@@ -1144,6 +1261,10 @@ export { Client as Mailgun } from "@mailgun/sdk/server";
 `,
       "libs/shared/srvkit/square.ts": `export * from "square-sdk";
 `,
+      "libs/shared/srvkit/index.ts": `export * from "./notifier";
+export * from "./paypal";
+export * from "./square";
+`,
       "libs/social/lib/memo/memo.service.ts": `import { serve } from "akanjs/service";
 import Paypal from "paypal";
 import * as db from "../db";
@@ -1384,6 +1505,65 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({ clock: plug(Clo
       "removed adaptor:apps/demo:srvkit/clockB.ts#Clock",
       "removed adaptor:apps/demo:srvkit/clockB.ts#Clock -> adaptor:apps/demo:Mailer",
     ]);
+  });
+
+  it("follows a folder index to the same-name adaptor it exports, and a package `export *` only along the import's chain", () => {
+    const clock = (name: string) => `import { adapt } from "akanjs/service";
+export class Clock extends adapt("${name}") {}
+`;
+    const wired = (barrel: string): Record<string, string> => ({
+      "apps/demo/srvkit/clockA.ts": clock("clockA"),
+      "apps/demo/srvkit/clockB.ts": clock("clockB"),
+      "apps/demo/srvkit/index.ts": barrel,
+      "libs/shared/srvkit/index.ts": `export * from "./square";
+`,
+      "libs/shared/srvkit/square.ts": `export * from "square-sdk";
+`,
+      "libs/shared/srvkit/legacy/other.ts": `export * from "other-sdk";
+`,
+      "libs/util/srvkit/index.ts": `export * from "./storage";
+`,
+      "libs/util/srvkit/storage.ts": `export const storage = 1;
+`,
+      "libs/util/srvkit/legacy/foo.ts": `export * from "foo-sdk";
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Square } from "@libs/shared/srvkit";
+import { Foo } from "@libs/util/srvkit";
+import { serve } from "akanjs/service";
+import { Clock } from "../../srvkit";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  clock: plug(Clock),
+  square: plug(Square),
+  foo: plug(Foo),
+})) {
+  async stamp() {
+    await this.square.charge();
+    await this.foo.run();
+    return this.clock.now();
+  }
+}
+`,
+    });
+    const callsOf = (barrel: string) => {
+      const given = wired(barrel);
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    const reached = (clockId: string) => [
+      `method:apps/demo:memo.stamp -charge-> adaptor:square-sdk:Square`,
+      `method:apps/demo:memo.stamp -now-> ${clockId}`,
+      `method:apps/demo:memo.stamp -run-> adaptor:libs/util:Foo`,
+    ];
+    expect(callsOf(`export { Clock } from "./clockB";\n`)).toEqual(reached("adaptor:apps/demo:srvkit/clockB.ts#Clock"));
+    expect(callsOf(`export * from "./clockB";\n`)).toEqual(reached("adaptor:apps/demo:srvkit/clockB.ts#Clock"));
+    expect(callsOf(`export * from "./clockA";\nexport * from "./clockB";\n`)).toEqual(
+      reached("adaptor:apps/demo:Clock"),
+    );
   });
 
   it("marks a job and an adaptor changed or removed in the Change Map", () => {
