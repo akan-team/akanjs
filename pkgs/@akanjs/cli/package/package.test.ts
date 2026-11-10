@@ -27,6 +27,28 @@ describe("PackageScript", () => {
     expect(script.packageRunner.version).toHaveBeenCalledWith(workspace, { log: false });
   });
 
+  test("creates a package named name or @scope/name, and refuses any other name before writing", async () => {
+    const script = CommandContainer.get(PackageScript);
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor("workspace", {}, recorder);
+    script.packageRunner.createPackage = async (_workspace, pkgName) => recorder.record("createPackage", pkgName);
+
+    for (const name of ["..", "../x", "@scope/../x", "@scope/x/y", "a/b", "@/x", "/tmp/x", "./x", ".x", "_x", "X", ""])
+      await expect(script.createPackage(workspace as never, name)).rejects.toThrow(
+        `${JSON.stringify(name)} is no package name; use name or @scope/name, each of lowercase letters, digits, -, . and _, starting with a letter or digit`,
+      );
+    expect(recorder.names()).toEqual([]);
+
+    for (const name of ["tool", "my-tool.js", "@akanjs/cli", "@my_org/tool_2"])
+      await script.createPackage(workspace as never, name);
+    expect(recorder.calls.filter((call) => call.name === "createPackage").map((call) => call.args[0])).toEqual([
+      "tool",
+      "my-tool.js",
+      "@akanjs/cli",
+      "@my_org/tool_2",
+    ]);
+  });
+
   test("wraps package runner calls with spinner lifecycle", async () => {
     const script = CommandContainer.get(PackageScript);
     const recorder = createCallRecorder();
