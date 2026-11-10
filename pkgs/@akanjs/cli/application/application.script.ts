@@ -224,7 +224,8 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
         budget,
       });
       Logger.rawLog(`${app.name} built in dist/apps/${app.name}`);
-      if (!quiet) ApplicationBuildReporter.printSummary(result);
+      if (quiet) ApplicationBuildReporter.printRouteJsWarnings(result);
+      else ApplicationBuildReporter.printSummary(result);
     } catch (error) {
       Logger.rawLog(`${app.name} build failed in dist/apps/${app.name}`, undefined, "error");
       Logger.rawLog(ApplicationBuildReporter.formatError(error), undefined, "error");

@@ -342,7 +342,7 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 - --env (String, local | debug | develop | main): The environment the server runs in. Without it, the build takes `AKAN_PUBLIC_ENV` from the shell, or from the workspace `.env` when the shell does not set it.
 
-- --check-budget (Boolean, default false): Fail the build when a route's JS is over its `akan.budget.json` entry, when the file cannot be read, or when the app has none. Without it the build only reports an overage. CI runs it.
+- --check-budget (Boolean, default false): Fail the build when a route's JS is over its `akan.budget.json` entry, when a route has no entry, when the file cannot be read, or when the app has none. Without it the build only reports these. CI runs it.
 
 - --update-budget (Boolean, default false): Write the app's `akan.budget.json`: add each route that has no entry at what it measures now, lower an entry its route now fits under, and drop the routes that are gone. It never raises an entry, and fails a route still over one.
 
@@ -354,7 +354,7 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 - web surfaces: The SSR and CSR steps follow `web` in `akan.config.ts`; a surface turned off is skipped.
 
-- route JS budget: The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors; the root layout's `System` counts as the SSR shell a server page renders, not the CSR or MCP App shells. It counts the brotli bytes served and prints the largest routes. A route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry in `akan.budget.json` is an overage; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A plain build and `akan verify` warn of an overage or an unreadable file and never fail on either; `--check-budget` fails on them. A route with no entry is only reported. Record the file with `--update-budget` and commit it. To raise an entry, run `--raise-budget`, or edit the entry by hand, in the change that grows the route. A mobile or desktop build skips the step.
+- route JS budget: The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors; the root layout's `System` counts as the SSR shell a server page renders, not the CSR or MCP App shells. It counts the brotli bytes served and prints the largest routes. A route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry in `akan.budget.json` is an overage; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A plain build, `--quiet` included, and `akan verify` warn of an overage or an unreadable file and never fail on either; `--check-budget` fails on them. A route with no entry is only reported, except under `--check-budget`, which fails it until `--update-budget` adds it. Record the file with `--update-budget` and commit it. To raise an entry, run `--raise-budget`, or edit the entry by hand, in the change that grows the route. A mobile or desktop build skips the step.
 
 `akan start-ios <app> [--target <target>] [--env <env>] [--release <boolean>] [--device <device>] [--team <team>] [--write <boolean>]`
 

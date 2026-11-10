@@ -1411,8 +1411,8 @@ akan test util`,
             type: "Boolean",
             defaultValue: "false",
             desc: l.trans({
-              en: "Fail the build when a route's JS is over its `akan.budget.json` entry, when the file cannot be read, or when the app has none. Without it the build only reports an overage. CI runs it.",
-              ko: "라우트의 JS가 `akan.budget.json` 항목을 넘거나, 파일을 읽을 수 없거나, 앱에 파일이 없으면 빌드를 실패시킵니다. 주지 않으면 빌드는 초과를 알리기만 합니다. CI가 이 옵션으로 빌드합니다.",
+              en: "Fail the build when a route's JS is over its `akan.budget.json` entry, when a route has no entry, when the file cannot be read, or when the app has none. Without it the build only reports these. CI runs it.",
+              ko: "라우트의 JS가 `akan.budget.json` 항목을 넘거나, 항목이 없는 라우트가 있거나, 파일을 읽을 수 없거나, 앱에 파일이 없으면 빌드를 실패시킵니다. 주지 않으면 빌드는 이를 알리기만 합니다. CI가 이 옵션으로 빌드합니다.",
             }),
           },
           {
@@ -1453,8 +1453,8 @@ akan test util`,
           {
             name: l.trans({ en: "route JS budget", ko: "라우트 JS 예산" }),
             desc: l.trans({
-              en: "The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors; the root layout's `System` counts as the SSR shell a server page renders, not the CSR or MCP App shells. It counts the brotli bytes served and prints the largest routes. A route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry in `akan.budget.json` is an overage; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A plain build and `akan verify` warn of an overage or an unreadable file and never fail on either; `--check-budget` fails on them. A route with no entry is only reported. Record the file with `--update-budget` and commit it. To raise an entry, run `--raise-budget`, or edit the entry by hand, in the change that grows the route. A mobile or desktop build skips the step.",
-              ko: "빌드는 서버 라우트마다 불러오는 JavaScript를 잽니다. 런타임, 그 페이지와 레이아웃에서 정적으로 닿는 모든 클라이언트 모듈, 그리고 그 벤더가 대상이며, 루트 레이아웃의 `System`은 서버 페이지가 그리는 SSR 셸만 셉니다(CSR과 MCP App 셸은 빼고). 실제로 내려보내는 brotli 바이트를 세고, 가장 큰 라우트들을 보여 줍니다. `akan.budget.json`의 `routeJsBrotliKB` 항목을 1%와 4KB 중 큰 값보다 더 넘는 라우트는 초과입니다. 이 여유분은 빌드가 박아 넣는 공개 env 값을 흡수하므로, 한 `--env`로 기록한 예산이 다른 환경에서도 맞습니다. 일반 빌드와 `akan verify`는 초과나 읽을 수 없는 파일을 경고만 하고 실패시키지 않으며, `--check-budget`을 주면 실패시킵니다. 항목이 없는 라우트는 보고만 합니다. 파일은 `--update-budget`으로 기록해 커밋합니다. 항목을 올리려면, 라우트를 키우는 변경에서 `--raise-budget`을 실행하거나 항목을 직접 고칩니다. 모바일과 데스크톱 빌드는 이 단계를 건너뜁니다.",
+              en: "The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors; the root layout's `System` counts as the SSR shell a server page renders, not the CSR or MCP App shells. It counts the brotli bytes served and prints the largest routes. A route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry in `akan.budget.json` is an overage; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A plain build, `--quiet` included, and `akan verify` warn of an overage or an unreadable file and never fail on either; `--check-budget` fails on them. A route with no entry is only reported, except under `--check-budget`, which fails it until `--update-budget` adds it. Record the file with `--update-budget` and commit it. To raise an entry, run `--raise-budget`, or edit the entry by hand, in the change that grows the route. A mobile or desktop build skips the step.",
+              ko: "빌드는 서버 라우트마다 불러오는 JavaScript를 잽니다. 런타임, 그 페이지와 레이아웃에서 정적으로 닿는 모든 클라이언트 모듈, 그리고 그 벤더가 대상이며, 루트 레이아웃의 `System`은 서버 페이지가 그리는 SSR 셸만 셉니다(CSR과 MCP App 셸은 빼고). 실제로 내려보내는 brotli 바이트를 세고, 가장 큰 라우트들을 보여 줍니다. `akan.budget.json`의 `routeJsBrotliKB` 항목을 1%와 4KB 중 큰 값보다 더 넘는 라우트는 초과입니다. 이 여유분은 빌드가 박아 넣는 공개 env 값을 흡수하므로, 한 `--env`로 기록한 예산이 다른 환경에서도 맞습니다. 일반 빌드(`--quiet` 포함)와 `akan verify`는 초과나 읽을 수 없는 파일을 경고만 하고 실패시키지 않으며, `--check-budget`을 주면 실패시킵니다. 항목이 없는 라우트는 보고만 하지만, `--check-budget`은 `--update-budget`으로 항목을 더할 때까지 그 라우트를 실패시킵니다. 파일은 `--update-budget`으로 기록해 커밋합니다. 항목을 올리려면, 라우트를 키우는 변경에서 `--raise-budget`을 실행하거나 항목을 직접 고칩니다. 모바일과 데스크톱 빌드는 이 단계를 건너뜁니다.",
             }),
           },
         ],

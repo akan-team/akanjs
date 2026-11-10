@@ -99,10 +99,18 @@ describe("RouteJsBudget", () => {
       return { app: "shop", budgetPath, source: "apps/shop/akan.budget.json", environment: "local" };
     };
 
-    test("enforce fails a route over its limit, a file it cannot read, and an app with no file", async () => {
+    test("enforce fails a route over its limit, a route with no entry, a file it cannot read, and an app with no file", async () => {
       const over = await setup(JSON.stringify({ env: "main", routeJsBrotliKB: { "/:lang/memo": 120 } }));
       await expect(RouteJsBudget.check(sizes, { ...over, mode: "enforce" })).rejects.toThrow(
         "1 route over the JS budget in apps/shop/akan.budget.json (recorded for main, built for local):",
+      );
+      const missing = await setup(JSON.stringify({ routeJsBrotliKB: { "/:lang/memo": 130 } }));
+      await expect(RouteJsBudget.check(sizes, { ...missing, mode: "enforce" })).rejects.toThrow(
+        [
+          "1 route with no entry in apps/shop/akan.budget.json, which --check-budget checks every route against:",
+          "  /:lang/new",
+          "Record it in the same change: `akan build shop --update-budget` adds each new route at its measured size.",
+        ].join("\n"),
       );
       const broken = await setup("{");
       await expect(RouteJsBudget.check(sizes, { ...broken, mode: "enforce" })).rejects.toThrow("is not valid JSON");

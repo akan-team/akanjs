@@ -89,7 +89,7 @@ export class RouteJsBudget {
     return RouteJsBudget.parse(await file.text(), source);
   }
 
-  //? Only `enforce` (`--check-budget`, run by CI) fails a build: a deploy build and `akan verify`'s edit loop report.
+  //? A deploy build and `akan verify`'s edit loop only report: `enforce` (`--check-budget`, run by CI) is the gate.
   static async check(sizes: RouteJsSize[], check: RouteJsBudgetCheck): Promise<RouteJsBudgetStatus> {
     const { mode, app, budgetPath, source, environment } = check;
     const { committed, unreadable } = await RouteJsBudget.#loadFor(mode, budgetPath, source);
@@ -106,7 +106,9 @@ export class RouteJsBudget {
     const envNote = committed?.envNote(environment) ?? "";
     if (overages.length && mode !== "report")
       throw new Error(RouteJsBudget.formatOverages(overages, { app, source }, envNote));
-    const unbudgeted = budget?.unbudgeted(sizes).length ?? 0;
+    const unbudgeted = budget?.unbudgeted(sizes) ?? [];
+    if (unbudgeted.length && mode === "enforce")
+      throw new Error(RouteJsBudget.formatUnbudgeted(unbudgeted, { app, source }));
     if (mode === "update" || mode === "raise")
       return { summary: RouteJsBudget.#writtenSummary(check, unreadable, committed, budget) };
     if (unreadable)
@@ -130,7 +132,8 @@ export class RouteJsBudget {
           fix: `shrink what the route loads, or raise its entry with akan build ${app} --raise-budget`,
         })),
       };
-    return { summary: `within ${source}${envNote}${unbudgeted ? `, ${unbudgeted} route(s) without an entry` : ""}` };
+    const unbudgetedNote = unbudgeted.length ? `, ${unbudgeted.length} route(s) without an entry` : "";
+    return { summary: `within ${source}${envNote}${unbudgetedNote}` };
   }
 
   static #writtenSummary(
@@ -207,6 +210,14 @@ export class RouteJsBudget {
           `  ${routeId}: ${bytes(brotliBytes)} bytes brotli, over its limit of ${bytes(limitBytes)} (${budgetKB}KB + the larger of 1% and 4KB)`,
       ),
       RouteJsBudget.#overageFix(target),
+    ].join("\n");
+  }
+
+  static formatUnbudgeted(routeIds: string[], { app, source }: BudgetTarget): string {
+    return [
+      `${routeIds.length} route${routeIds.length === 1 ? "" : "s"} with no entry in ${source}, which --check-budget checks every route against:`,
+      ...routeIds.map((routeId) => `  ${routeId}`),
+      `Record ${routeIds.length === 1 ? "it" : "them"} in the same change: \`akan build ${app} --update-budget\` adds each new route at its measured size.`,
     ].join("\n");
   }
 

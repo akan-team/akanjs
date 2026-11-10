@@ -52,6 +52,16 @@ describe("ApplicationBuildReporter.printSummary", () => {
     );
   });
 
+  test("prints only the route JS budget warnings for a quiet build", () => {
+    const routeJsWarnings = [{ file: "apps/shop/akan.budget.json", message: "unreadable", fix: "correct it" }];
+    ApplicationBuildReporter.printRouteJsWarnings({ routeJsWarnings });
+    ApplicationBuildReporter.printRouteJsWarnings({});
+
+    expect(rawLog.mock.calls.map(([line]) => line)).toEqual([
+      "Warning: apps/shop/akan.budget.json: unreadable (correct it)",
+    ]);
+  });
+
   test("prints each route JS budget warning of a build that only reports it", () => {
     const routeJsWarnings = [
       { file: "apps/shop/akan.budget.json", message: "/:lang/memo loads 133,120 bytes brotli", fix: "shrink it" },

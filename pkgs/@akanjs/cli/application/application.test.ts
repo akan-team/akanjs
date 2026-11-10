@@ -347,6 +347,33 @@ describe("ApplicationScript", () => {
     }
   });
 
+  test("build prints the route JS budget warnings of a --quiet build, and nothing else of its summary", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app } = track(await createTempApp("demo"));
+    app.scanSync = mock(async () => undefined) as never;
+    const warning = { file: "apps/demo/akan.budget.json", message: "/:lang loads 9 bytes brotli", fix: "shrink it" };
+    const build = spyOn(script.applicationRunner, "build").mockImplementation(async () => ({
+      phases: [],
+      durationMs: 1,
+      outputDir: "dist/apps/demo",
+      artifactDir: "dist/apps/demo/.akan/artifact",
+      environment: "main",
+      routeJs: [{ routeId: "/:lang", files: 1, rawBytes: 27, brotliBytes: 9 }],
+      routeJsWarnings: [warning],
+    }));
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+    try {
+      await script.build(app, { quiet: true });
+      expect(printed.mock.calls.map(([line]) => line)).toEqual([
+        "demo built in dist/apps/demo",
+        "Warning: apps/demo/akan.budget.json: /:lang loads 9 bytes brotli (shrink it)",
+      ]);
+    } finally {
+      build.mockRestore();
+      printed.mockRestore();
+    }
+  });
+
   test("build reports the route JS budget unless handed another budget mode", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const { app } = track(await createTempApp("demo"));

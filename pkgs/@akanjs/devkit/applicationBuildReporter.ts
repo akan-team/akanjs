@@ -41,14 +41,17 @@ export class ApplicationBuildReporter {
       Logger.rawLog("");
     }
     if (result.routeJsWarnings?.length) {
-      for (const { file, message, fix } of result.routeJsWarnings)
-        Logger.rawLog(`Warning: ${file}: ${message} (${fix})`);
+      ApplicationBuildReporter.printRouteJsWarnings(result);
       Logger.rawLog("");
     }
     Logger.rawLog(`Route artifacts: ${result.artifactDir}`);
     Logger.rawLog(`Server output: ${result.outputDir}`);
     Logger.rawLog(`Done in ${ApplicationBuildReporter.formatDuration(result.durationMs)}`);
     if (result.environment === "local") Logger.rawLog(ApplicationBuildReporter.localBuildNotice);
+  }
+
+  static printRouteJsWarnings({ routeJsWarnings = [] }: Pick<ApplicationBuildResult, "routeJsWarnings">) {
+    for (const { file, message, fix } of routeJsWarnings) Logger.rawLog(`Warning: ${file}: ${message} (${fix})`);
   }
 
   static readonly localBuildNotice =
