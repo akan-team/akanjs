@@ -54,10 +54,10 @@ interface Declaration {
 }
 
 export const frameworkOwner = "akanjs";
-const frameworkPattern = /^akanjs(?:\/|$)/;
+export const frameworkPattern = /^akanjs(?:\/|$)/;
 const aliasPattern = /^@(apps|libs)\/([^/]+)/;
 const maxMapDepth = 4;
-const starExportPattern = /export\s*\*\s*from\s*["']([^"']+)["']/g;
+export const starExportPattern = /export\s*\*\s*from\s*["']([^"']+)["']/g;
 
 const declaringPatternOf = (name: string, isAnyBinding: boolean) => {
   const escaped = escapeRegExp(name);

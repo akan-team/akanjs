@@ -1116,15 +1116,62 @@ export class StorageApi extends adapt("storageApi", ({ env, plug }) => ({
 `,
       "apps/demo/plugin/mailer.ts": `import { adapt, dangerouslyAdapt } from "akanjs/service";
 export class Clock extends adapt("clock") {}
+export class Stripe extends adapt("stripe") {}
 export class Mailer extends dangerouslyAdapt("mailer", ({ env }) => ({ host: env(() => "") })) {
   send() {
     return 1;
   }
 }
 `,
+      "apps/demo/plugin/mailer.test.ts": `import { adapt } from "akanjs/service";
+export class FakeMailer extends adapt("fakeMailer") {}
+`,
+      "apps/demo/srvkit/chatLlm.ts": `import { adapt } from "akanjs/service";
+export class ChatLlm extends adapt("chatLlm") {}
+`,
+      "apps/demo/lib/option.ts": `import { AkanOption } from "akanjs/server";
+import { LlmAdaptorRole } from "akanjs/service";
+import { ChatLlm } from "../srvkit/chatLlm";
+export const option = new AkanOption().applyAdaptor(LlmAdaptorRole, ChatLlm);
+`,
+      "libs/shared/srvkit/notifier.ts": `import { adapt } from "akanjs/service";
+export class Notifier extends adapt("notifier") {}
+`,
+      "libs/util/srvkit/stripe.ts": `export { Stripe } from "stripe-sdk";
+export { Client as Mailgun } from "@mailgun/sdk/server";
+`,
+      "libs/shared/srvkit/paypal.ts": `export { default as Paypal } from "paypal";
+`,
+      "libs/shared/srvkit/square.ts": `export * from "square-sdk";
+`,
+      "libs/social/lib/memo/memo.service.ts": `import { serve } from "akanjs/service";
+import Paypal from "paypal";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ use, plug }) => ({
+  notifier: use<{ ping: () => void }>(),
+  payer: plug(Paypal),
+})) {
+  async ping() {
+    return this.notifier.ping();
+  }
+  async pay() {
+    return this.payer.charge();
+  }
+}
+`,
+      "libs/shared/lib/memo/memo.service.ts": `import { serve } from "akanjs/service";
+import { Notifier } from "../../srvkit/notifier";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  notifier: plug(Notifier),
+})) {}
+`,
       "apps/demo/lib/memo/memo.constant.ts": files["apps/demo/lib/memo/memo.constant.ts"],
       "apps/demo/lib/memo/memo.service.ts": `import * as srvkit from "@libs/util/srvkit";
-import { DatabaseAdaptorRole, serve } from "akanjs/service";
+import { DatabaseAdaptorRole, LlmAdaptorRole, serve } from "akanjs/service";
+import { Stripe } from "stripe-sdk";
+import { Stripe as LibStripe } from "@libs/util/srvkit";
+import { Paypal, Square } from "@libs/shared/srvkit";
 import { Clock, Mailer } from "../../plugin/mailer";
 import * as db from "../db";
 export class MemoService extends serve(db.memo, ({ plug, use }) => ({
@@ -1132,6 +1179,12 @@ export class MemoService extends serve(db.memo, ({ plug, use }) => ({
   database: plug(DatabaseAdaptorRole),
   mailer: plug(Mailer),
   clock: plug(Clock),
+  stripe: plug(Stripe),
+  billing: plug(LibStripe),
+  mailgun: plug(srvkit.Mailgun),
+  paypal: plug(Paypal),
+  square: plug(Square),
+  llm: plug(LlmAdaptorRole),
   option: use<string>(),
 })) {
   async sweep(url: string) {
@@ -1145,10 +1198,32 @@ export class MemoService extends serve(db.memo, ({ plug, use }) => ({
         return this.mailer.send();
       }
     };
-    return this.database.count(Local);
+    const literal = {
+      mailer: { send: () => 1 },
+      run() {
+        return this.mailer.send();
+      },
+    };
+    function nested() {
+      return this.mailer.send();
+    }
+    return this.database.count(Local, literal, nested);
   }
   async stamp() {
     return this.clock.getMemo();
+  }
+  async settle() {
+    await this.paypal.charge();
+    return this.square.charge();
+  }
+  async charge() {
+    await this.billing.pay();
+    await this.mailgun.send();
+    return this.stripe.pay();
+  }
+  async notify() {
+    await this.llm.chat();
+    return this.notifier.getMemo();
   }
 }
 `,
@@ -1160,15 +1235,17 @@ export class MemoInternal extends internal(
     ownerName: resolveField(String).exec(async function (memo) {
       return memo.owner;
     }),
-    sweepMemos: interval(5 * 60 * 1000).exec(async function () {
+    sweepMemos: interval(5 * 60 * 1000, { once: true, lock: false }).exec(async function () {
       await this.memoService.sweep("");
     }),
-    reportMemos: cron("0 * * * *", { serverMode: "batch", operationMode: ["cloud"] }).exec(async function () {}),
+    reportMemos: cron("0 * * * *" as const, { serverMode: "batch", operationMode: ["cloud"] }).exec(
+      async function () {},
+    ),
     hourly: cron(EVERY_HOUR, { lock: false }).exec(async function () {}),
-    seedMemos: initialize({ enabled: false, once: true }).exec(async function () {}),
-    cleanUp: destroy({ serverMode: ServerMode.batch }).exec(async function () {}),
+    seedMemos: initialize({ enabled: false, once: true, lock: false }).exec(async function () {}),
+    cleanUp: destroy({ serverMode: ServerMode.batch, lock: false }).exec(async function () {}),
     handleMemo: process(cnst.Memo, { serverMode: "federation" }).exec(async function () {}),
-    later: timeout(SECONDS).exec(async function () {}),
+    later: timeout(SECONDS, { lock: false }).exec(async function () {}),
   }),
 ) {}
 `,
@@ -1179,18 +1256,23 @@ export class MemoInternal extends internal(
     expect(internals.map(({ id, label, detail }) => [id, label, detail])).toEqual([
       ["internal:apps/demo:memo.cleanUp", "MemoInternal.cleanUp", ["destroy", "batch"]],
       ["internal:apps/demo:memo.handleMemo", "MemoInternal.handleMemo", ["process", "federation"]],
-      ["internal:apps/demo:memo.hourly", "MemoInternal.hourly", ["cron", "EVERY_HOUR", "unlocked"]],
+      ["internal:apps/demo:memo.hourly", "MemoInternal.hourly", ["cron", "EVERY_HOUR"]],
       ["internal:apps/demo:memo.later", "MemoInternal.later", ["timeout", "SECONDS"]],
       ["internal:apps/demo:memo.reportMemos", "MemoInternal.reportMemos", ["cron", "0 * * * *", "batch", "cloud"]],
       ["internal:apps/demo:memo.seedMemos", "MemoInternal.seedMemos", ["initialize", "disabled", "once"]],
-      ["internal:apps/demo:memo.sweepMemos", "MemoInternal.sweepMemos", ["interval", "5m"]],
+      ["internal:apps/demo:memo.sweepMemos", "MemoInternal.sweepMemos", ["interval", "5m", "unlocked"]],
     ]);
     const adaptors = graph.nodes.filter((node) => node.kind === "adaptor");
     expect(adaptors.map(({ id, detail, at, doc }) => [id, detail, at && `${at.file}:${at.line}`, doc ?? null])).toEqual(
       [
         ["adaptor::DatabaseAdaptorRole", ["akanjs"], null, null],
+        ["adaptor::LlmAdaptorRole", ["akanjs"], null, null],
+        ["adaptor:@mailgun/sdk:Client", ["@mailgun/sdk"], null, null],
+        ["adaptor:apps/demo:ChatLlm", ["chatLlm"], "apps/demo/srvkit/chatLlm.ts:2", null],
         ["adaptor:apps/demo:Clock", ["clock"], "apps/demo/plugin/mailer.ts:2", null],
-        ["adaptor:apps/demo:Mailer", ["mailer"], "apps/demo/plugin/mailer.ts:3", null],
+        ["adaptor:apps/demo:Mailer", ["mailer"], "apps/demo/plugin/mailer.ts:4", null],
+        ["adaptor:apps/demo:Stripe", ["stripe"], "apps/demo/plugin/mailer.ts:3", null],
+        ["adaptor:libs/shared:Notifier", ["notifier"], "libs/shared/srvkit/notifier.ts:2", null],
         ["adaptor:libs/util:BlobStorageApi", ["blobStorageApi"], "libs/util/srvkit/storageApi.ts:2", null],
         [
           "adaptor:libs/util:StorageApi",
@@ -1198,18 +1280,155 @@ export class MemoInternal extends internal(
           "libs/util/srvkit/storageApi.ts:5",
           "Stores files on the object store, or on disk when none is configured.",
         ],
+        ["adaptor:paypal:Paypal", ["paypal"], null, null],
+        ["adaptor:square-sdk:Square", ["square-sdk"], null, null],
+        ["adaptor:stripe-sdk:Stripe", ["stripe-sdk"], null, null],
       ],
     );
     expect(edgesOf(graph, "plugs")).toEqual(["adaptor:libs/util:StorageApi -blob-> adaptor:libs/util:BlobStorageApi"]);
+    expect(edgesOf(graph, "binds")).toEqual(["adaptor::LlmAdaptorRole -apps/demo-> adaptor:apps/demo:ChatLlm"]);
+    expect(graph.edges.find((edge) => edge.kind === "binds")?.at).toEqual({
+      file: "apps/demo/lib/option.ts",
+      line: 4,
+      column: 40,
+    });
     expect(edgesOf(graph, "calls")).toEqual([
       "internal:apps/demo:memo.sweepMemos -sweep-> method:apps/demo:memo.sweep",
+      "method:apps/demo:memo.charge -pay-> adaptor:stripe-sdk:Stripe",
+      "method:apps/demo:memo.charge -send-> adaptor:@mailgun/sdk:Client",
+      "method:apps/demo:memo.notify -chat-> adaptor::LlmAdaptorRole",
+      "method:apps/demo:memo.notify -getMemo-> adaptor:libs/shared:Notifier",
+      "method:apps/demo:memo.settle -charge-> adaptor:paypal:Paypal",
+      "method:apps/demo:memo.settle -charge-> adaptor:square-sdk:Square",
       "method:apps/demo:memo.stamp -getMemo-> adaptor:apps/demo:Clock",
       "method:apps/demo:memo.sweep -count-> adaptor::DatabaseAdaptorRole",
       "method:apps/demo:memo.sweep -deleteData-> adaptor:libs/util:StorageApi",
+      "method:libs/social:memo.pay -charge-> adaptor:paypal:Paypal",
     ]);
     expect(
       [...internals, ...adaptors.filter((node) => node.at)].every((node) => /^[0-9a-f]{8}$/.test(node.digest ?? "")),
     ).toBe(true);
+  });
+
+  it("keys two same-name adaptors of one owner by file, and follows the import that names one", () => {
+    const clocks = (wallClock: string): Record<string, string> => ({
+      "apps/demo/srvkit/mailer.ts": `import { adapt } from "akanjs/service";
+export class Mailer extends adapt("mailer") {}
+`,
+      "apps/demo/srvkit/clockA.ts": `import { adapt } from "akanjs/service";
+export class Clock extends adapt("clockA") {
+  now() {
+    return ${wallClock};
+  }
+}
+`,
+      "apps/demo/srvkit/clockB.ts": `import { adapt } from "akanjs/service";
+import { Mailer } from "./mailer";
+export class Clock extends adapt("clockB", ({ plug }) => ({ mailer: plug(Mailer) })) {}
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { serve } from "akanjs/service";
+import { Clock } from "../../srvkit/clockB";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({ clock: plug(Clock) })) {
+  async stamp() {
+    return this.clock.now();
+  }
+}
+`,
+    });
+    const graphOf = (wired: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(wired)) index.setFile(`${root}/${rel}`, text);
+      return index.graph((fileName) => wired[fileName.slice(root.length + 1)], { digests: true });
+    };
+    const graph = graphOf(clocks("Date.now()"));
+    expect(
+      graph.nodes.filter((node) => node.kind === "adaptor").map(({ id, label, detail }) => [id, label, detail]),
+    ).toEqual([
+      ["adaptor:apps/demo:Mailer", "Mailer", ["mailer"]],
+      ["adaptor:apps/demo:srvkit/clockA.ts#Clock", "Clock", ["clockA"]],
+      ["adaptor:apps/demo:srvkit/clockB.ts#Clock", "Clock", ["clockB"]],
+    ]);
+    expect(edgesOf(graph, "plugs")).toEqual([
+      "adaptor:apps/demo:srvkit/clockB.ts#Clock -mailer-> adaptor:apps/demo:Mailer",
+    ]);
+    expect(edgesOf(graph, "calls")).toEqual([
+      "method:apps/demo:memo.stamp -now-> adaptor:apps/demo:srvkit/clockB.ts#Clock",
+    ]);
+    const changes = AkanGraphDiff.between(graph, graphOf(clocks("0")));
+    expect(changes.nodes.filter((node) => node.change).map(({ id, change }) => `${change} ${id}`)).toEqual([
+      "changed adaptor:apps/demo:srvkit/clockA.ts#Clock",
+    ]);
+    const { "apps/demo/srvkit/clockB.ts": _clockB, ...single } = clocks("Date.now()");
+    const alone = graphOf({
+      ...single,
+      "apps/demo/lib/memo/memo.service.ts": single["apps/demo/lib/memo/memo.service.ts"].replace("clockB", "clockA"),
+    });
+    const paired = graphOf({
+      ...clocks("Date.now()"),
+      "apps/demo/lib/memo/memo.service.ts": single["apps/demo/lib/memo/memo.service.ts"].replace("clockB", "clockA"),
+    });
+    expect(alone.nodes.filter((node) => node.kind === "adaptor").map(({ id }) => id)).toEqual([
+      "adaptor:apps/demo:Clock",
+      "adaptor:apps/demo:Mailer",
+    ]);
+    const summarize = (diff: ReturnType<typeof AkanGraphDiff.between>) => [
+      ...diff.nodes.filter((node) => node.change).map(({ id, change }) => `${change} ${id}`),
+      ...diff.edges.filter((edge) => edge.change).map(({ from, to, change }) => `${change} ${from} -> ${to}`),
+    ];
+    expect(summarize(AkanGraphDiff.between(alone, paired))).toEqual([
+      "added adaptor:apps/demo:srvkit/clockB.ts#Clock",
+      "added adaptor:apps/demo:srvkit/clockB.ts#Clock -> adaptor:apps/demo:Mailer",
+    ]);
+    expect(summarize(AkanGraphDiff.between(paired, alone))).toEqual([
+      "removed adaptor:apps/demo:srvkit/clockB.ts#Clock",
+      "removed adaptor:apps/demo:srvkit/clockB.ts#Clock -> adaptor:apps/demo:Mailer",
+    ]);
+  });
+
+  it("marks a job and an adaptor changed or removed in the Change Map", () => {
+    const wired = (jobs: string, adaptors: string): Record<string, string> => ({
+      "apps/demo/srvkit/mailer.ts": `import { adapt } from "akanjs/service";
+${adaptors}`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { internal } from "akanjs/signal";
+import * as srv from "../srv";
+export class MemoInternal extends internal(srv.memo, ({ interval, cron }) => ({
+${jobs}
+})) {}
+`,
+    });
+    const graphOf = (files: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(files)) index.setFile(`${root}/${rel}`, text);
+      return index.graph((fileName) => files[fileName.slice(root.length + 1)], { digests: true });
+    };
+    const base = graphOf(
+      wired(
+        `  sweepMemos: interval(5 * 60 * 1000).exec(async function () {}),
+  reportMemos: cron("0 * * * *").exec(async function () {}),`,
+        `export class Mailer extends adapt("mailer") {}
+export class Clock extends adapt("clock") {}
+`,
+      ),
+    );
+    const head = graphOf(
+      wired(
+        "  sweepMemos: interval(10 * 60 * 1000).exec(async function () {}),",
+        `export class Mailer extends adapt("mailer") {
+  send() {
+    return 1;
+  }
+}
+`,
+      ),
+    );
+    const changes = AkanGraphDiff.between(base, head);
+    expect(changes.nodes.map(({ id, change, detail }) => [id, change, detail])).toEqual([
+      ["adaptor:apps/demo:Clock", "removed", ["clock"]],
+      ["adaptor:apps/demo:Mailer", "changed", ["mailer"]],
+      ["internal:apps/demo:memo.reportMemos", "removed", ["cron", "0 * * * *"]],
+      ["internal:apps/demo:memo.sweepMemos", "changed", ["interval", "10m"]],
+    ]);
   });
 
   it("draws the same graph whatever order the files were read in", () => {
@@ -1252,7 +1471,10 @@ export class Clock extends adapt("clockB") {}
     const graph = graphIn(Object.entries(withFolder));
     expect(graph).toContain('"from":"slice:apps/demo:folder","to":"guard:apps/demo:Admin"');
     expect(graph).toContain(
-      '"detail":["clockA"],"at":{"file":"apps/demo/srvkit/clockA.ts","line":3,"column":14},"doc":"Reads the wall clock."',
+      '"id":"adaptor:apps/demo:srvkit/clockA.ts#Clock","kind":"adaptor","name":"Clock","label":"Clock","owner":"apps/demo","module":null,"detail":["clockA"],"at":{"file":"apps/demo/srvkit/clockA.ts","line":3,"column":14},"doc":"Reads the wall clock."',
+    );
+    expect(graph).toContain(
+      '"id":"adaptor:apps/demo:srvkit/clockB.ts#Clock","kind":"adaptor","name":"Clock","label":"Clock","owner":"apps/demo","module":null,"detail":["clockB"],"at":{"file":"apps/demo/srvkit/clockB.ts","line":3,"column":14},"doc":"Reads a frozen clock."',
     );
     expect(graphIn(Object.entries(withFolder).reverse())).toBe(graph);
   });

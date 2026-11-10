@@ -14,7 +14,7 @@ export type AkanGraphNodeKind =
   | "internal"
   | "adaptor";
 
-export type AkanGraphEdgeKind = "field" | "guard" | "calls" | "fetches" | "uses" | "wraps" | "plugs";
+export type AkanGraphEdgeKind = "field" | "guard" | "calls" | "fetches" | "uses" | "wraps" | "plugs" | "binds";
 
 export type AkanGraphChange = "added" | "removed" | "changed";
 
