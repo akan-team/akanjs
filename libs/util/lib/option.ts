@@ -39,7 +39,8 @@ export type SSOOptions = {
 };
 
 export interface SecurityOptions {
-  jwtSecret: string;
+  //? Optional: JWT_SECRET may carry it instead, and outside local boot refuses when neither is set.
+  jwtSecret?: string;
   aeskey?: string; //? no longer read; the env files outside git still set it
 
   verifies: ("wallet" | "password" | "phone" | "kakao" | "naver" | "email")[][];
@@ -67,7 +68,8 @@ export interface GoogleAccount {
 
 export type ModulesOptions = LibOptions & {
   hostname?: string | readonly string[] | null;
-  security: SecurityOptions;
+  //? Optional so the empty env file `akan sync` seeds into a fresh clone typechecks; every reader falls back.
+  security?: SecurityOptions;
   objectStorage?: ObjectStorageOptions;
   privateStorage?: ObjectStorageOptions;
   ipfs?: IpfsApiOptions;
