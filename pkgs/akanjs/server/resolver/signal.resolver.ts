@@ -597,6 +597,7 @@ export class SignalResolver {
   //? A call still running when its socket closes finishes after `handleWsClose`, which ran every cleanup it knew of.
   static #closedWs = new WeakSet<Bun.ServerWebSocket<unknown>>();
   static #pendingSubscribes = new PendingSubscribes();
+  static #unacked = new WeakSet<object>();
   static #liveWsPubsubRoomCtx = new WeakMap<
     Bun.ServerWebSocket<unknown>,
     Map<string, SignalContext<WebSocketExecutionContext>>
@@ -745,19 +746,37 @@ export class SignalResolver {
                       payload: liveOption.payload,
                       fields: SignalResolver.#queryFieldsOf(live, liveOption.refName),
                     });
+                  roomCtxMap.set(roomId, context);
+                  SignalResolver.#liveWsPubsubRoomCtx.set(ws, roomCtxMap);
                   //? A binary frame goes out unnumbered, so a binary room acks no cursor and its resubscribe resyncs.
                   const isBinaryRoom = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
                   const replay = isBinaryRoom ? null : SignalResolver.#roomReplay;
+                  //? Before the wait: a frame numbered during it leaves a gap after the ack's cursor, which resyncs.
                   replay?.watch(roomId);
+                  const cursor = replay?.cursor(roomId);
+                  //? The ack vouches for what other servers publish after it. The socket subscribes only after the
+                  //? wait: the client keys a live room's frames by the ack, and drops one that arrives ahead of it.
+                  SignalResolver.#unacked.add(context);
+                  try {
+                    await websocket.joinRoom(ws, roomId, { live: liveOption?.refName });
+                  } finally {
+                    SignalResolver.#unacked.delete(context);
+                  }
+                  //? An unsubscribe, a close, a revoke or a second subscribe of the room took it meanwhile.
+                  if (SignalResolver.#liveWsPubsubRoomCtx.get(ws)?.get(roomId) !== context) {
+                    const left: WebsocketSubscribeAck = {
+                      type: "sub",
+                      roomId: requestRoomId,
+                      requestRoomId,
+                      subscribe: false,
+                    };
+                    return left;
+                  }
                   ws.subscribe(roomId);
                   //? In the same turn as the subscribe: a frame published after it is queued behind these, never ahead.
                   const missed = request?.since && replay ? replay.since(roomId, request.since) : null;
                   for (const frame of missed ?? []) ws.send(frame);
-                  roomCtxMap.set(roomId, context);
-                  SignalResolver.#liveWsPubsubRoomCtx.set(ws, roomCtxMap);
-                  websocket.joinRoom(ws, roomId);
                   SignalResolver.logger.verbose(`WebSocket subscribed to room ${roomId}`);
-                  const cursor = replay?.cursor(roomId);
                   const ack: WebsocketSubscribeAck = {
                     type: "sub",
                     roomId,
@@ -887,7 +906,8 @@ export class SignalResolver {
     for (const [roomId, roomCtx] of [...roomCtxMap]) {
       if (await roomCtx.authorize()) continue;
       if (!SignalResolver.#leaveWsRoom(ws, roomId, roomCtx, websocket, live)) continue;
-      revokedRooms.push(roomId);
+      //? Not acked yet, so the client has no alias for a live room's id and knows the room only by its own label.
+      revokedRooms.push(SignalResolver.#unacked.has(roomCtx) ? roomCtx.getRequestRoomId(roomCtx.key) : roomId);
       SignalResolver.logger.verbose(`WebSocket lost access to room ${roomId}; unsubscribed`);
       await SignalResolver.#runLifecycleHandlers([roomCtx], ["unsubscribe"]);
     }

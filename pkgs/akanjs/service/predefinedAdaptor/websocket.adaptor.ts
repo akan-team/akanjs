@@ -23,6 +23,11 @@ export interface WebsocketPublishOption {
   coalesce?: boolean;
 }
 
+export interface WebsocketJoinOption {
+  /** The model a live room is routed by: its events come from that model's changes, never from a `publish`. */
+  live?: string;
+}
+
 export interface WebsocketAdaptor {
   /** Across every server instance. */
   publish(roomId: string, data: unknown, option?: WebsocketPublishOption): void;
@@ -35,7 +40,8 @@ export interface WebsocketAdaptor {
   onChange?(handler: LiveChangeHandler): void;
   /** The models this server holds live rooms for, each time that changes, so changes to the rest pass it by. */
   reportLiveModels?(models: string[]): void;
-  joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
+  /** Resolves once what another server publishes to the room reaches this one, or sooner if that link is down or stalls. */
+  joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string, option?: WebsocketJoinOption): Promise<void>;
   leaveRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
   leaveAllRooms(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
   registerSocket(ws: Bun.ServerWebSocket<unknown>, meta?: Record<string, string>): Promise<void>;
@@ -43,10 +49,22 @@ export interface WebsocketAdaptor {
 }
 
 interface BufferedMessage {
+  channel: string;
   roomId: string;
   message: Buffer;
   coalesce: boolean;
   seq: number;
+}
+
+interface HeldRoom {
+  sockets: Set<string>;
+  channel: string;
+}
+
+interface ChannelHold {
+  rooms: number;
+  reply?: Promise<void>;
+  confirmed: boolean;
 }
 
 export class WebSocketRedisAdaptor
@@ -67,13 +85,19 @@ export class WebSocketRedisAdaptor
   implements WebsocketAdaptor
 {
   //* `[version][kind][origin length][origin][room length][room][payload]`; the payload is what the publisher hands its
-  //* own sockets, so a receiver needs no model and releases interoperate mid-deploy. Old ones drop a roomless `change`.
+  //* own sockets, so a receiver needs no model.
   static readonly #version = 1;
   static readonly #kind = { json: 0x6a, bytes: 0x62, change: 0x63 } as const;
+  //* Every server of an app must split rooms the same way, or it listens on shards the others never publish to. More
+  //* shards bring what a server hears closer to its own rooms, at one more SUBSCRIBE for a room alone in its shard.
+  static readonly #shards = 16_384;
+  //? A link that stalls without closing would otherwise hold a subscribe's ack for as long as it stalls.
+  static readonly #subscribeTimeoutMs = 3_000;
   readonly #buffer: BufferedMessage[] = [];
   readonly #maxBufferSize = 10000;
-  readonly #roomSockets = new Map<string, Set<string>>();
+  readonly #rooms = new Map<string, HeldRoom>();
   readonly #socketRooms = new Map<string, Set<string>>();
+  readonly #channels = new Map<string, ChannelHold>();
   #eventHandler: WsRedisEventHandler | null = null;
   #changeHandler: LiveChangeHandler | null = null;
   #recoveryHandler: (() => void) | null = null;
@@ -86,10 +110,16 @@ export class WebSocketRedisAdaptor
   #subscriberReady = false;
   /** Whether the subscriber has ever been up, so the first `ready` is a start rather than a recovery. */
   #subscriberStarted = false;
+  #subscriberLost: Promise<void> = Promise.resolve();
+  #loseSubscriber = () => {};
   #warnedVersion = false;
 
-  get #channel() {
-    return `${this.channelPrefix}ws:broadcast`;
+  #roomChannel(roomId: string) {
+    return `${this.channelPrefix}ws:room:${Bun.hash.crc32(roomId) % WebSocketRedisAdaptor.#shards}`;
+  }
+
+  #changeChannel(refName: string) {
+    return `${this.channelPrefix}ws:change:${refName}`;
   }
 
   override async onInit() {
@@ -114,11 +144,18 @@ export class WebSocketRedisAdaptor
       this.logger.warn(`Subscriber error: ${err.message}`);
     });
     this.subscriber.on("close", () => {
+      this.#loseSubscriber();
       if (!this.#subscriberReady) return;
       this.#subscriberReady = false;
       this.logger.warn("Subscriber disconnected; cross-server events are being missed until it returns");
     });
     this.subscriber.on("ready", () => {
+      this.#subscriberLost = new Promise((resolve) => {
+        this.#loseSubscriber = resolve;
+      });
+      //* ioredis resubscribes only the channels Redis had confirmed, and rejects a SUBSCRIBE queued through a long
+      //* outage; its `ready` also fires before Redis answers what it resent, so no earlier reply vouches for now.
+      for (const [channel, hold] of this.#channels) this.#subscribe(channel, hold);
       const recovering = !this.#subscriberReady && this.#subscriberStarted;
       this.#subscriberReady = true;
       this.#subscriberStarted = true;
@@ -129,20 +166,13 @@ export class WebSocketRedisAdaptor
 
     await this.publisher.connect();
     await this.subscriber.connect();
-    await this.subscriber.subscribe(this.#channel, (err?: Error | null) => {
-      if (err) this.logger.warn(`Subscribe error: ${err.message}`);
-    });
     this.subscriber.on("messageBuffer", (_channel: Buffer, message: Buffer) => this.#receive(message));
     this.logger.verbose(`WebSocket Redis adaptor initialized (serverId: ${this.serverId})`);
   }
 
   override async onDestroy() {
-    if (this.subscriber) {
-      try {
-        await this.subscriber.unsubscribe(this.#channel);
-      } catch {}
-      this.subscriber.disconnect();
-    }
+    this.#loseSubscriber();
+    this.subscriber.disconnect();
     if (this.publisher) {
       this.#cancelRetry();
       //? A batch the publisher was cut off under waits in ioredis for Redis to return, which a shutdown must not.
@@ -155,8 +185,9 @@ export class WebSocketRedisAdaptor
     this.#recoveryHandler = null;
     this.#publisherReady = false;
     this.#subscriberReady = false;
-    this.#roomSockets.clear();
+    this.#rooms.clear();
     this.#socketRooms.clear();
+    this.#channels.clear();
     this.logger.verbose("WebSocket Redis adaptor destroyed");
   }
 
@@ -167,11 +198,18 @@ export class WebSocketRedisAdaptor
       this.logger.warn(`Nothing to publish to ${roomId}: the payload has no JSON form`);
       return;
     }
-    this.#send({ roomId, message: this.#pack(bytes ? "bytes" : "json", roomId, payload), coalesce, seq: this.#sent++ });
+    this.#send({
+      channel: this.#roomChannel(roomId),
+      roomId,
+      message: this.#pack(bytes ? "bytes" : "json", roomId, payload),
+      coalesce,
+      seq: this.#sent++,
+    });
   }
 
   publishChange(change: LiveChange): void {
     this.#send({
+      channel: this.#changeChannel(change.refName),
       roomId: "",
       message: this.#pack("change", "", JSON.stringify(change)),
       coalesce: false,
@@ -190,7 +228,7 @@ export class WebSocketRedisAdaptor
       void this.#flushBuffer();
       return;
     }
-    this.publisher.publish(this.#channel, buffered.message).catch((err: Error) => {
+    this.publisher.publish(buffered.channel, buffered.message).catch((err: Error) => {
       this.logger.warn(`Publish failed, buffering: ${err.message}`);
       this.#requeue([buffered]);
       void this.#flushBuffer();
@@ -209,14 +247,19 @@ export class WebSocketRedisAdaptor
     this.#recoveryHandler = handler;
   }
 
-  async joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void> {
+  async joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string, { live }: WebsocketJoinOption = {}): Promise<void> {
     const socketId = this.#getSocketId(ws);
-    const sockets = this.#roomSockets.get(room) ?? new Set<string>();
-    sockets.add(socketId);
-    this.#roomSockets.set(room, sockets);
+    let held = this.#rooms.get(room);
+    if (!held) {
+      held = { sockets: new Set(), channel: live ? this.#changeChannel(live) : this.#roomChannel(room) };
+      this.#rooms.set(room, held);
+      this.#hold(held.channel);
+    }
+    held.sockets.add(socketId);
     const rooms = this.#socketRooms.get(socketId) ?? new Set<string>();
     rooms.add(room);
     this.#socketRooms.set(socketId, rooms);
+    await this.#awaitChannel(held.channel);
   }
 
   async leaveRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void> {
@@ -249,9 +292,58 @@ export class WebSocketRedisAdaptor
   }
 
   #forget(socketId: string, room: string) {
-    const sockets = this.#roomSockets.get(room);
-    sockets?.delete(socketId);
-    if (sockets?.size === 0) this.#roomSockets.delete(room);
+    const held = this.#rooms.get(room);
+    if (!held?.sockets.delete(socketId) || held.sockets.size) return;
+    this.#rooms.delete(room);
+    this.#release(held.channel);
+  }
+
+  #hold(channel: string) {
+    const hold = this.#channels.get(channel) ?? { rooms: 0, confirmed: false };
+    hold.rooms += 1;
+    this.#channels.set(channel, hold);
+  }
+
+  #release(channel: string) {
+    const hold = this.#channels.get(channel);
+    if (!hold) return;
+    hold.rooms -= 1;
+    if (hold.rooms > 0) return;
+    this.#channels.delete(channel);
+    this.subscriber.unsubscribe(channel).catch((err: Error) => {
+      this.logger.warn(`Unsubscribe from ${channel} failed: ${err.message}`);
+    });
+  }
+
+  //? Redis hands this connection every PUBLISH it runs after the SUBSCRIBE, so once the reply is in, nothing later is lost.
+  async #awaitChannel(channel: string) {
+    const hold = this.#channels.get(channel);
+    if (!hold || hold.confirmed) return;
+    const reply = hold.reply ?? this.#subscribe(channel, hold);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, WebSocketRedisAdaptor.#subscribeTimeoutMs);
+    });
+    try {
+      await Promise.race([reply, this.#subscriberLost, timedOut]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  #subscribe(channel: string, hold: ChannelHold): Promise<void> {
+    const reply: Promise<void> = this.subscriber.subscribe(channel).then(
+      () => {
+        if (hold.reply === reply) hold.confirmed = true;
+      },
+      (err: Error) => {
+        this.logger.warn(`Subscribe to ${channel} failed: ${err.message}`);
+        if (hold.reply === reply) hold.reply = undefined;
+      },
+    );
+    hold.reply = reply;
+    hold.confirmed = false;
+    return reply;
   }
 
   #receive(message: Buffer) {
@@ -262,8 +354,8 @@ export class WebSocketRedisAdaptor
         this.#changeHandler?.(JSON.parse(unpacked.payload.toString()) as LiveChange);
         return;
       }
-      // Every server hears every event of the app; one with nobody in the room stops before reading the payload.
-      if (!this.#eventHandler || !this.#roomSockets.has(unpacked.roomId)) return;
+      // A shard carries other rooms too; a server with nobody in this one stops before reading the payload.
+      if (!this.#eventHandler || !this.#rooms.has(unpacked.roomId)) return;
       const data =
         unpacked.kind === WebSocketRedisAdaptor.#kind.bytes
           ? new Uint8Array(unpacked.payload)
@@ -351,7 +443,7 @@ export class WebSocketRedisAdaptor
         this.logger.verbose(`Flushing ${this.#buffer.length} buffered messages`);
         const batch = this.#buffer.splice(0);
         const results = await Promise.allSettled(
-          batch.map((buffered) => this.publisher.publish(this.#channel, buffered.message)),
+          batch.map((buffered) => this.publisher.publish(buffered.channel, buffered.message)),
         );
         const failed = batch.filter((_, idx) => results[idx].status === "rejected");
         if (!failed.length) {
