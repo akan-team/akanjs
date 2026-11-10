@@ -1237,6 +1237,40 @@ describe("signal generated store contract", () => {
     });
   });
 
+  const failedOpens: [string, Open, string][] = [
+    ["view<Model>", viewIt, "view"],
+    ["edit<Model>", editIt, "edit"],
+  ];
+  for (const [action, open, modal] of failedOpens)
+    test(`a failed ${action} that is still the latest open closes its modal, unless the modal already shows that record`, async () => {
+      setupEnv();
+      const signal = makeSignal();
+      class FailedOpenStore extends store(signal, () => ({})) {}
+      StoreRegistry.register(FailedOpenStore);
+      const instance = new StoreInstance(makeRoot(`failedOpenRoot${action}`, FailedOpenStore));
+      const [first, second] = ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"];
+      const loaded = signal.calls.storeTestItem;
+      const read = deferredCall();
+      signal.calls.storeTestItem = read.call;
+
+      const opening = open(instance, first);
+      const failing = open(instance, second);
+      read.refuse(new Error("network gone"));
+      await expect(failing).rejects.toThrow("network gone");
+      expect(instance.get().storeTestItemModal).toBeNull();
+      read.answer(new StoreTestFull({ id: first, title: "first" } as never), 0);
+      await opening;
+      expect(instance.get()).toMatchObject({ storeTestItemModal: null, storeTestItem: null });
+
+      signal.calls.storeTestItem = loaded;
+      await open(instance, first);
+      signal.calls.storeTestItem = read.call;
+      const refreshing = open(instance, first);
+      read.refuse(new Error("network gone"));
+      await expect(refreshing).rejects.toThrow("network gone");
+      expect(instance.get()).toMatchObject({ storeTestItemModal: modal, storeTestItem: { id: first } });
+    });
+
   test("a create<Model> leaves the open model and its modal to a view<Model> opened during its request", async () => {
     setupEnv();
     const signal = makeSignal();

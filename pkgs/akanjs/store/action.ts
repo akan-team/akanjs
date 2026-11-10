@@ -56,6 +56,10 @@ import type { SetGet, StoreSliceArgs, StoreSliceMap, StoreSliceSuffixCap } from 
 
 type _SliceMap<S extends SliceCls> = StoreSliceMap<S>;
 type StateRecord = { [key: string]: unknown };
+interface OpenSeq {
+  open: number;
+  form: number;
+}
 type _ActionRefName<S extends SliceCls> = SlceCnstRefName<S>;
 type _ActionCap<S extends SliceCls> = SlceCnstCapitalizedRefName<S>;
 type _ActionInput<S extends SliceCls> = SlceCnstInput<S>;
@@ -554,6 +558,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   const modelRef = cnst.full;
   // Deliberately not store state: a secret field in the opened form must not reach a subscribed component.
   let openFormBase: object | null = null;
+  const savingDraftKeys = new Map<string, number>();
   const slices = Object.entries(slice).map(([suffix, serializedSlice]) => {
     const keys = sliceKeysOf(refName, suffix);
     return { sliceName: keys.slice, keys, slice: serializedSlice };
@@ -579,27 +584,34 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     throw restoreRemoteError({ error: "base.error.endpointClosed", data: { endpoint: key } }, 404);
   };
   const flagOwners = new WeakMap<SetGet, Map<string, object>>();
-  const openSeqs = new WeakMap<SetGet, number>();
-  const openSeqOf = (ctx: SetGet) => openSeqs.get(ctx) ?? 0;
-  const markOpened = (ctx: SetGet) => {
-    const openSeq = openSeqOf(ctx) + 1;
-    openSeqs.set(ctx, openSeq);
-    return openSeq;
+  const openSeqs = new WeakMap<SetGet, OpenSeq>();
+  const openSeqOf = (ctx: SetGet): OpenSeq => openSeqs.get(ctx) ?? { open: 0, form: 0 };
+  const markOpened = (ctx: SetGet, { form }: { form: boolean }) => {
+    const seen = openSeqOf(ctx);
+    const opened = { open: seen.open + 1, form: form ? seen.form + 1 : seen.form };
+    openSeqs.set(ctx, opened);
+    return opened;
   };
-  // A view, edit or new form opened during a write's request owns the modal and the form when the write lands.
-  const isOvertaken = (ctx: SetGet, openSeq: number) => openSeqOf(ctx) !== openSeq;
+  // A view, edit or new form opened during a write's request owns the modal and the open model when the write lands.
+  const isOvertaken = (ctx: SetGet, seen: OpenSeq) => openSeqOf(ctx).open !== seen.open;
+  // Only an edit or new form takes the form over: a save that a view overtook still resets the form it saved.
+  const isSavedFormOpen = (ctx: SetGet, seen: OpenSeq, savedForm: { id?: string }) =>
+    openSeqOf(ctx).form === seen.form &&
+    ((ctx.get() as StateRecord)[names.modelForm] as { id?: string }).id === savedForm.id;
   // A write owns its loading flag while the flag holds its value and no later write has set the flag since.
   const withFlag = async <T>(
     ctx: SetGet,
     {
       flag,
       opening = {},
+      failed,
       onError,
       request,
       land,
     }: {
       flag: { key: string; value: string | true } | null;
       opening?: StateRecord;
+      failed?: () => StateRecord;
       onError?: ErrorReportOption["onError"];
       request: () => Promise<T>;
       land: (answer: T, ownsFlag: boolean) => void;
@@ -618,11 +630,17 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       land(answer, ownsFlag());
       return answer;
     } catch (error) {
-      if (flag && ownsFlag()) ctx.set({ [flag.key]: false });
+      const released = { ...(flag && ownsFlag() ? { [flag.key]: false } : {}), ...failed?.() };
+      if (Object.keys(released).length) ctx.set(released);
       if (!AbortSignals.isAbort(error)) onError?.(actionErrorKey(error));
       throw error;
     }
   };
+  // A failed latest open would leave its modal over another record; a payload-seeded one already shows the right record.
+  const closedUnlessShown = (ctx: SetGet, seen: OpenSeq, shownKey: string, id: string): StateRecord =>
+    isOvertaken(ctx, seen) || ((ctx.get() as StateRecord)[shownKey] as { id?: string } | null)?.id === id
+      ? {}
+      : { [names.modelModal]: null };
   const openModelPatchOf = (latest: StateRecord, updatedModel: Full, ownsFlag: boolean, opened: StateRecord = {}) => ({
     ...((latest[names.model] as Full | null)?.id === updatedModel.id ? { [names.model]: updatedModel, ...opened } : {}),
     ...(ownsFlag ? { [names.modelLoading]: false } : {}),
@@ -642,7 +660,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   }
   async function applyDraft(this: SetGet, { auto }: { auto: boolean }) {
     const draft = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
-    if (!draft) return;
+    // A debounce still pending at submit writes the form being saved back under its key during the request.
+    if (!draft || savingDraftKeys.has(draft.key)) return;
     const record = await DraftStore.read(draft.key);
     if (!record) return;
     // The editor moved on while the read was in flight.
@@ -679,6 +698,36 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     openFormBase = null;
     if (draft) void DraftStore.remove(draft.key);
     return null;
+  };
+  const restoreSavedDraft = async (draft: DraftState, form: object) => {
+    // A form opened meanwhile under the key may have written its own record; an unchanged form never had one.
+    if ((await DraftStore.read(draft.key)) || DraftStore.formHash(refName, form) === draft.baseHash) return;
+    await DraftStore.write(draft.key, {
+      v: 1,
+      savedAt: new Date().toISOString(),
+      baseUpdatedAt: draft.baseUpdatedAt,
+      form: DraftStore.encodeForm(refName, form),
+    });
+  };
+  // The record is out of storage during the request, so no form opened meanwhile under its key is refilled with it.
+  const savingDraft = async <T>(draft: DraftState | null, form: object, save: () => Promise<T>) => {
+    if (!draft) return await save();
+    savingDraftKeys.set(draft.key, (savingDraftKeys.get(draft.key) ?? 0) + 1);
+    void DraftStore.remove(draft.key);
+    try {
+      const answer = await save();
+      void DraftStore.remove(draft.key);
+      return answer;
+    } catch (error) {
+      await restoreSavedDraft(draft, form).catch((restoreError: unknown) => {
+        Logger.warn(`Failed to restore the ${refName} form draft: ${String(restoreError)}`);
+      });
+      throw error;
+    } finally {
+      const saving = (savingDraftKeys.get(draft.key) ?? 1) - 1;
+      if (saving > 0) savingDraftKeys.set(draft.key, saving);
+      else savingDraftKeys.delete(draft.key);
+    }
   };
   const isLiveSlice = (sliceName: string) => !!slices.find((entry) => entry.sliceName === sliceName)?.slice.live;
   // A live slice places the row through `applyLive`, so the server's echo of this create is not counted twice.
@@ -728,21 +777,19 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
 
       if (!modelInput || isUploadingIn(currentState)) return;
       const openSeq = openSeqOf(this);
+      const draft = currentState[names.modelDraft] as DraftState | null;
       const model = await withFlag(this, {
         flag: { key: names.modelLoading, value: true },
         onError,
-        request: () => servedFetch<Full>(names.createModel)(modelInput),
+        request: () => savingDraft(draft, modelForm, () => servedFetch<Full>(names.createModel)(modelInput)),
         land: (model, ownsFlag) => {
           this.set({
+            ...(isSavedFormOpen(this, openSeq, modelForm)
+              ? { [names.modelForm]: immerify(modelRef, defaultModel), [names.modelDraft]: clearDraft(draft) }
+              : {}),
             ...(isOvertaken(this, openSeq)
               ? {}
-              : {
-                  [names.modelForm]: immerify(modelRef, defaultModel),
-                  [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
-                  [names.model]: model,
-                  [names.modelViewAt]: new Date(),
-                  [names.modelModal]: modal ?? null,
-                }),
+              : { [names.model]: model, [names.modelViewAt]: new Date(), [names.modelModal]: modal ?? null }),
             ...(ownsFlag ? { [names.modelLoading]: false } : {}),
             ...staleAtOfSlices(),
             ...(typeof path === "string" && path ? { [path]: model } : {}),
@@ -764,23 +811,20 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
       if (!modelInput || isUploadingIn(currentState)) return;
       const openSeq = openSeqOf(this);
+      const draft = currentState[names.modelDraft] as DraftState | null;
       const updatedModel = await withFlag(this, {
         flag: model?.id === modelForm.id ? { key: names.modelLoading, value: modelForm.id } : null,
         onError,
-        request: () => servedFetch<Full>(names.updateModel)(modelForm.id, modelInput),
+        request: () =>
+          savingDraft(draft, modelForm, () => servedFetch<Full>(names.updateModel)(modelForm.id, modelInput)),
         land: (updatedModel, ownsFlag) => {
           const latest = this.get() as StateRecord;
-          const overtaken = isOvertaken(this, openSeq);
-          const isSavedForm = !overtaken && (latest[names.modelForm] as { id?: string }).id === modelForm.id;
           this.set({
             ...openModelPatchOf(latest, updatedModel, ownsFlag, { [names.modelViewAt]: new Date() }),
-            ...(isSavedForm
-              ? {
-                  [names.modelForm]: immerify(modelRef, defaultModel),
-                  [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
-                }
+            ...(isSavedFormOpen(this, openSeq, modelForm)
+              ? { [names.modelForm]: immerify(modelRef, defaultModel), [names.modelDraft]: clearDraft(draft) }
               : {}),
-            ...(overtaken ? {} : { [names.modelModal]: modal ?? null }),
+            ...(isOvertaken(this, openSeq) ? {} : { [names.modelModal]: modal ?? null }),
             ...staleAtOfSlices(),
             ...(typeof path === "string" && path ? { [path]: updatedModel } : {}),
             ...updatedListPatchOf(latest, updatedModel),
@@ -913,7 +957,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       partial: Partial<Full> = {},
       { modal, setDefault, sliceName = names.model, draftScope }: NewOption = {},
     ) {
-      markOpened(this);
+      markOpened(this, { form: true });
       const defaultModelKey = defaultKeyOf(sliceName);
       const currentState = this.get() as { [key: string]: any };
       const defaultModel = currentState[defaultModelKey] as Full;
@@ -936,10 +980,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       { modal, onError, draftScope }: EditOption & ReportingFetchPolicy = {},
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-      const openSeq = markOpened(this);
+      const openSeq = markOpened(this, { form: true });
       await withFlag(this, {
         flag: { key: names.modelFormLoading, value: id },
         opening: { [names.modelModal]: modal ?? "edit" },
+        failed: () => closedUnlessShown(this, openSeq, names.modelForm, id),
         onError,
         request: () => servedFetch<Full>(names.model)(id),
         land: (model, ownsFlag) => {
@@ -988,10 +1033,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       { modal, onError }: { modal?: string | null } & ReportingFetchPolicy = {},
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
-      const openSeq = markOpened(this);
+      const openSeq = markOpened(this, { form: false });
       await withFlag(this, {
         flag: { key: names.modelLoading, value: id },
         opening: { [names.modelModal]: modal ?? "view" },
+        failed: () => closedUnlessShown(this, openSeq, names.model, id),
         onError,
         request: () => servedFetch<Full>(names.model)(id),
         land: (model, ownsFlag) => {

@@ -4,7 +4,7 @@ import { Int, resetEnvCache, SLICE_META, STATE_DERIVED_META } from "akanjs/base"
 import { ConstantRegistry, via } from "akanjs/constant";
 import type { ClientSignal } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
-import { DraftStore } from "./draftStore";
+import { type DraftRecord, DraftStore } from "./draftStore";
 import { store } from "./store";
 import { MemoryStorage, setTestEnv } from "./store.fixture";
 import { StoreInstance } from "./storeInstance";
@@ -62,8 +62,8 @@ const makeSignal = () => {
 let storage: MemoryStorage;
 let rootIndex = 0;
 
-const makeInstance = () => {
-  class NoteStore extends store(makeSignal(), () => ({})) {}
+const makeInstance = (signal = makeSignal()) => {
+  class NoteStore extends store(signal, () => ({})) {}
   StoreRegistry.register(NoteStore);
   rootIndex += 1;
   return new StoreInstance(StoreRegistry.merge(`draftRoot${rootIndex}`, NoteStore)) as unknown as {
@@ -320,6 +320,124 @@ describe("form draft lifecycle", () => {
     await settle();
     expect(draftCount()).toBe(0);
     expect(instance.get().draftNoteFormDraft).toBeNull();
+  });
+});
+
+describe("a form save that another open overtakes", () => {
+  const OTHER_ID = "bbbbbbbbbbbbbbbbbbbbbbbb";
+  const deferred = () => {
+    const pending: { resolve: (value: unknown) => void; reject: (error: Error) => void }[] = [];
+    const call = mock((..._args: unknown[]) => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+    return {
+      call,
+      answer: (value: unknown) => pending.at(-1)?.resolve(value),
+      refuse: (error: Error) => pending.at(-1)?.reject(error),
+    };
+  };
+  const recordTitle = () =>
+    (JSON.parse(storage.getItem(DraftStore.keyOf("draftNote", "new:scope-a")) ?? "null") as DraftRecord | null)?.form
+      .title;
+  const typedNew = async (instance: ReturnType<typeof makeInstance>) => {
+    instance.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    await settle();
+    const blankTitle = instance.get().draftNoteForm.title as string;
+    instance.do.setTitleOnDraftNote("about to submit");
+    return blankTitle;
+  };
+
+  test("create<Model>InForm still resets the form and drops its draft when a view<Model> opened during the save", async () => {
+    const signal = makeSignal();
+    const instance = makeInstance(signal);
+    const create = deferred();
+    signal.calls.createDraftNote = create.call;
+    const blankTitle = await typedNew(instance);
+    instance.flushDrafts();
+    await settle();
+
+    const creating = instance.do.createDraftNoteInForm();
+    expect(draftCount()).toBe(0);
+    await instance.do.viewDraftNote(OTHER_ID);
+    create.answer(new NoteFull({ id: NOTE_ID, title: "about to submit" } as never));
+    await creating;
+    await settle();
+    expect(instance.get()).toMatchObject({
+      draftNoteForm: { title: blankTitle },
+      draftNoteFormDraft: null,
+      draftNoteModal: "view",
+      draftNote: { id: OTHER_ID },
+    });
+    expect(draftCount()).toBe(0);
+    instance.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    await settle();
+    expect(instance.get().draftNoteForm.title).toBe(blankTitle);
+  });
+
+  test("a new<Model> in the same scope during create<Model>InForm opens blank, though the typing's debounce lands mid-save", async () => {
+    const signal = makeSignal();
+    const instance = makeInstance(signal);
+    const create = deferred();
+    signal.calls.createDraftNote = create.call;
+    const blankTitle = await typedNew(instance);
+
+    const creating = instance.do.createDraftNoteInForm();
+    instance.flushDrafts();
+    expect(recordTitle()).toBe("about to submit");
+    instance.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    await settle();
+    expect(instance.get().draftNoteForm.title).toBe(blankTitle);
+    create.answer(new NoteFull({ id: NOTE_ID, title: "about to submit" } as never));
+    await creating;
+    await settle();
+    expect(instance.get().draftNoteForm.title).toBe(blankTitle);
+    expect(instance.get().draftNoteFormDraft).not.toBeNull();
+    expect(draftCount()).toBe(0);
+  });
+
+  test("update<Model>InForm still resets the form when a view<Model> opened during the save", async () => {
+    const signal = makeSignal();
+    const instance = makeInstance(signal);
+    const update = deferred();
+    signal.calls.updateDraftNote = update.call;
+    await instance.do.editDraftNote(NOTE_ID, { draftScope: DraftStore.editScope(NOTE_ID) });
+    await settle();
+    instance.do.setTitleOnDraftNote("edited");
+    instance.flushDrafts();
+    await settle();
+    expect(draftCount()).toBe(1);
+
+    const updating = instance.do.updateDraftNoteInForm();
+    await instance.do.viewDraftNote(OTHER_ID);
+    update.answer(new NoteFull({ id: NOTE_ID, title: "edited" } as never));
+    await updating;
+    await settle();
+    expect(instance.get().draftNoteForm.id).not.toBe(NOTE_ID);
+    expect(instance.get().draftNoteForm.title).not.toBe("edited");
+    expect(instance.get()).toMatchObject({ draftNoteFormDraft: null, draftNote: { id: OTHER_ID } });
+    expect(draftCount()).toBe(0);
+  });
+
+  test("a failed save puts its draft back for the next open, without refilling the form opened meanwhile", async () => {
+    const signal = makeSignal();
+    const instance = makeInstance(signal);
+    const create = deferred();
+    signal.calls.createDraftNote = create.call;
+    const blankTitle = await typedNew(instance);
+    instance.flushDrafts();
+    await settle();
+
+    const creating = instance.do.createDraftNoteInForm();
+    instance.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    await settle();
+    create.refuse(new Error("network gone"));
+    await expect(creating).rejects.toThrow("network gone");
+    await settle();
+    expect(instance.get().draftNoteForm.title).toBe(blankTitle);
+    expect(recordTitle()).toBe("about to submit");
+
+    const next = makeInstance();
+    next.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    await settle();
+    expect(next.get().draftNoteForm.title).toBe("about to submit");
   });
 });
 
