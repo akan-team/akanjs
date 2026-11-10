@@ -941,6 +941,18 @@ describe("CloudRunner", () => {
       "No environment files found to archive",
     );
   });
+
+  test("a 403 on an env download names everyone the owner can allow, not the owner alone", async () => {
+    const api = {
+      downloadEnv: async () => {
+        throw httpError(403, "denied");
+      },
+    } as unknown as CloudApi;
+    const workspace = { mkdir: async () => undefined };
+    await expect(new CloudRunner().downloadEnv(api, workspace as never, "project-1")).rejects.toThrow(
+      "The project refused: only the repository owner, or an owner or operator they allowed on the project's settings page, can download its env archive; sign in as one of them with `akan login`.",
+    );
+  });
 });
 
 describe("pipeline secrets", () => {

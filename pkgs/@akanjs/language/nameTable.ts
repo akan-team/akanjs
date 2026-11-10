@@ -8,7 +8,13 @@ import {
   sliceNames,
   stateSetterName,
 } from "akanjs/common/akanNames.ts";
+import { guardLabelOf } from "./guardFacts";
 import type { AkanSpan, ConstantClassFact, FileFacts, NamedFact, SliceClassFact } from "./moduleFacts";
+
+const guardDetailOf = (facts: FileFacts[], guards: string[]) => {
+  const labels: Record<string, string> = Object.assign({}, ...facts.map((file) => file.guardLabels));
+  return guards.length ? [`guards: ${guards.map((guard) => guardLabelOf(guard, labels)).join(", ")}`] : [];
+};
 
 export type AkanFamily = "slice" | "query" | "model" | "formSetter" | "storeState" | "endpoint" | "module";
 
@@ -163,7 +169,7 @@ export class NameTable {
         role: "sig",
         gate: "sig",
         label: sliceClass.name,
-        detail: sliceClass.guards.length ? [`guards: ${sliceClass.guards.join(", ")}`] : [],
+        detail: guardDetailOf(facts, sliceClass.guards),
       });
     if (modelDoc)
       this.#add({
@@ -230,7 +236,7 @@ export class NameTable {
         sourceKey: slice.name,
         span: slice.span,
         label: `slice ${refName} (default)`,
-        detail: slice.guards.length ? [`guards: ${slice.guards.join(", ")}`] : [],
+        detail: guardDetailOf(facts, slice.guards),
       };
       this.#addSliceNames(defaultTarget, refName, "", modelNameSet);
       for (const key of slice.keys)
@@ -241,7 +247,7 @@ export class NameTable {
             sourceKey: key.name,
             span: key.span,
             label: `slice ${key.name}`,
-            detail: [...(key.guards.length ? [`guards: ${key.guards.join(", ")}`] : []), ...(key.live ? ["live"] : [])],
+            detail: [...guardDetailOf(facts, key.guards), ...(key.live ? ["live"] : [])],
           },
           refName,
           key.name,
@@ -308,7 +314,7 @@ export class NameTable {
           role: key.verb === "pubsub" ? "subscribe" : "listen",
           gate: null,
           label: `${key.verb} ${key.name}`,
-          detail: key.guards.length ? [`guards: ${key.guards.join(", ")}`] : [],
+          detail: guardDetailOf(facts, key.guards),
         });
       }
   }

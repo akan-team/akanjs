@@ -7,7 +7,8 @@ import { CsrDevModuleCompiler } from "./csrDevModuleCompiler";
 import { CsrDevPatcher } from "./csrDevPatcher";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
-import type { CsrDevCompiledModule, CsrDevContext, CsrDevGraph } from "./csrDevTypes";
+import type { CsrDevBarrelStamp, CsrDevCompiledModule, CsrDevContext, CsrDevGraph } from "./csrDevTypes";
+import { DevBarrelImports } from "./devBarrelImports";
 import { RegistryMetadataFingerprint } from "./registryMetadataFingerprint";
 import { WatchRootResolver } from "./watchRootResolver";
 
@@ -131,7 +132,7 @@ export abstract class DevRegistryBundler {
     const resolver = new CsrDevResolver({ paths: this.paths, context, entryFiles: roots });
     await resolver.prepass();
     const compiler = this.compiler(context, resolver);
-    const { modules: compiled } = await compiler.compile(
+    const { modules: compiled, barrels } = await compiler.compile(
       [...roots, ...(context.refreshFile ? [context.refreshFile] : [])],
       new Set(),
     );
@@ -147,7 +148,7 @@ export abstract class DevRegistryBundler {
       pending: [],
       metadata,
     };
-    this.merge(graph, resolver, compiled);
+    this.merge(graph, resolver, compiled, barrels);
     await this.writer.markBuilding();
     await this.writer.writeModules(compiled);
     const vendorFile = await this.writer.writeVendor(graph);
@@ -170,7 +171,16 @@ export abstract class DevRegistryBundler {
     });
   }
 
-  merge(graph: CsrDevGraph, resolver: CsrDevResolver, compiled: CsrDevCompiledModule[]): void {
+  async barrelImports(context: CsrDevContext): Promise<DevBarrelImports | null> {
+    return await DevBarrelImports.create(this.app, context.barrelImports ?? []);
+  }
+
+  merge(
+    graph: CsrDevGraph,
+    resolver: CsrDevResolver,
+    compiled: CsrDevCompiledModule[],
+    barrels: Record<string, CsrDevBarrelStamp> = {},
+  ): void {
     for (const module of compiled)
       graph.modules[module.id] = {
         vendor: module.vendor,
@@ -178,7 +188,12 @@ export abstract class DevRegistryBundler {
         hash: module.hash,
         deps: module.deps.map((dep) => (CsrDevPaths.isStub(dep) ? dep : this.paths.idOf(dep))),
         ...(module.helpers ? { helpers: module.helpers.hash } : {}),
+        ...(module.narrowed ? { narrowed: module.narrowed } : {}),
       };
+    const narrowing = new Set(Object.values(graph.modules).flatMap((module) => Object.keys(module.narrowed ?? {})));
+    graph.barrels = Object.fromEntries(
+      Object.entries({ ...graph.barrels, ...barrels }).filter(([barrel]) => narrowing.has(barrel)),
+    );
     //? Only what this round compiled leaves pending: a root another route's check failed on stays for its retry.
     const compiledIds = new Set(compiled.map((module) => module.id));
     graph.pending = graph.pending.filter((id) => !compiledIds.has(id));

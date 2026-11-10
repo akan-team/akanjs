@@ -343,6 +343,49 @@ describe("route client store bootstrap", () => {
     expect(bundled).not.toContain("lib-ui-marker");
   });
 
+  test("a route's bundle runs the client runtime and the stores before the UI it renders, which reads them on load", async () => {
+    const { appDir, app } = await writeBarrelFixture();
+    const record = (label: string) =>
+      `((globalThis as { __akanOrder?: string[] }).__akanOrder ??= []).push("${label}");`;
+    await write(
+      path.join(appDir, "lib/useClient.ts"),
+      `${record("runtime")}\nexport const { msg, Err, usePage, fetch, sig } = { usePage: () => "page" } as Record<string, unknown>;\n`,
+    );
+    await write(
+      path.join(appDir, "../../libs/kit/lib/st.ts"),
+      `${record("lib-store")}\nexport class RootStore {}\nexport const st = Object.freeze({ mark: "lib-store-marker" });\n`,
+    );
+    await write(
+      path.join(appDir, "lib/st.ts"),
+      `import { RootStore as kit } from "@libs/kit/client";\n${record("store")}\nexport class RootStore {}\nexport const st = Object.freeze({ mark: "store-marker", kit });\n`,
+    );
+    await write(
+      path.join(appDir, "lib/memo/Memo.Zone.tsx"),
+      `"use client";\nimport { Memo, st } from "@apps/demo/client";\n${record("memo-ui")}\nexport const seen = [st.mark, typeof Memo];\n`,
+    );
+
+    await new RouteClientBuilder({
+      app,
+      seeds: [],
+      entries: [path.join(appDir, "lib/memo/Memo.Zone.tsx")],
+      artifact: {} as never,
+      browser: "chunks",
+    }).build();
+
+    const clientOut = path.join(appDir, ".akan/artifact/client");
+    const entries = [...new Bun.Glob("*.js").scanSync(clientOut)];
+    expect(entries).toHaveLength(1);
+    const loaded = (await import(path.join(clientOut, entries[0] ?? ""))) as { seen?: unknown };
+
+    expect(loaded.seen).toEqual(["store-marker", "object"]);
+    expect((globalThis as { __akanOrder?: string[] }).__akanOrder).toEqual([
+      "runtime",
+      "lib-store",
+      "store",
+      "memo-ui",
+    ]);
+  });
+
   test("a route reaching a lib's cnst through its client barrel carries no module UI", async () => {
     const { root, appDir, app } = await writeBarrelFixture();
 

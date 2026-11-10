@@ -173,10 +173,13 @@ export class HttpClient {
   }
 
   abortError(signal: AbortSignal): unknown {
-    const reason: unknown = signal.reason;
-    if (reason instanceof Error && reason.name === "TimeoutError")
-      return this.#restoreError({ error: transportErrorKeyMap[408], data: { status: 408 } }, 408);
-    return reason;
+    return HttpClient.abortErrorOf(signal, this.ErrorCls);
+  }
+
+  static abortErrorOf(signal: AbortSignal, ErrorCls?: ErrorConstructor): unknown {
+    if (AbortSignals.isTimeout(signal))
+      return restoreRemoteError({ error: transportErrorKeyMap[408], data: { status: 408 } }, 408, ErrorCls);
+    return AbortSignals.reasonOf(signal);
   }
 
   //? `crypto.randomUUID` exists only in a secure context, which a dev server at http://192.168.x.x is not.

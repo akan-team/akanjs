@@ -1,4 +1,5 @@
-import type { Head, ResolvedHead, ResolveHeadResult } from "akanjs/client";
+import { createHash } from "node:crypto";
+import type { ResolvedHead, ResolveHeadResult } from "akanjs/client";
 import { isRecord } from "akanjs/common";
 import { AKAN_RSC_HEAD_SNAPSHOT_VERSION, type AkanHeadSnapshotV1 } from "./routeState";
 
@@ -19,24 +20,8 @@ export function mergeAkanHeadSnapshots(
   return snapshots.some(Boolean) ? { version: AKAN_RSC_HEAD_SNAPSHOT_VERSION, nodes } : undefined;
 }
 
-export function renderAkanHeadSnapshot(snapshot: AkanHeadSnapshotV1): Head {
-  return (
-    <>
-      {snapshot.nodes.map((node, index) => {
-        const key = `${node.tag}:${index}`;
-        const marker = { "data-akan-head": "route", "data-akan-head-key": key };
-        if (node.tag === "title") {
-          return (
-            <title key={key} {...marker}>
-              {node.text ?? ""}
-            </title>
-          );
-        }
-        if (node.tag === "meta") return <meta key={key} {...node.attrs} {...marker} />;
-        return <link key={key} {...node.attrs} {...marker} />;
-      })}
-    </>
-  );
+export function akanHeadSnapshotKey(snapshot: AkanHeadSnapshotV1): string {
+  return createHash("sha256").update(JSON.stringify(snapshot.nodes)).digest("base64url").slice(0, 16);
 }
 
 function isResolvedHead(value: unknown): value is ResolvedHead {

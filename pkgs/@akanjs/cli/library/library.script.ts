@@ -1,5 +1,6 @@
 import { type Lib, script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { formatLibStatuses } from "@akanjs/devkit/libSource";
+import { assertPlainName } from "@akanjs/devkit/workflow/plainName";
 import { Logger } from "akanjs/common";
 import { LibraryRunner } from "./library.runner";
 
@@ -12,6 +13,7 @@ export class LibraryScript extends script("library", [LibraryRunner]) {
   }
 
   async createLibrary(libName: string, workspace: Workspace) {
+    assertPlainName("lib", libName);
     const spinner = workspace.spinning(`Creating ${libName} library`);
     const lib = await this.libraryRunner.createLibrary(libName, workspace);
     spinner.succeed(`${libName} library (libs/${libName}) is created`);
@@ -31,6 +33,7 @@ export class LibraryScript extends script("library", [LibraryRunner]) {
     Logger.rawLog(format === "json" ? JSON.stringify(statuses, null, 2) : formatLibStatuses(statuses));
   }
   async installLibrary(workspace: Workspace, libName: string) {
+    assertPlainName("lib", libName);
     const installSpinner = workspace.spinning(`Installing ${libName} library`);
     const lib = await this.libraryRunner.installLibrary(workspace, libName);
     installSpinner.succeed(`${libName} library (libs/${libName}) is installed`);

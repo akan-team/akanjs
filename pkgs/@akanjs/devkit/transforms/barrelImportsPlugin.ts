@@ -4,7 +4,7 @@ import ts from "typescript";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap, type PackageEntry } from "./barrelAnalyzer";
-import { loaderFor, type NamedItem, parseNamedList } from "./moduleSyntax";
+import { loaderFor, type NamedItem } from "./moduleSyntax";
 
 export interface BarrelImportsPluginOptions {
   /** Absolute paths whose content is returned unchanged (e.g. node_modules). */
@@ -234,10 +234,22 @@ const resolveFileCandidate = async (candidate: string): Promise<string | null> =
 
 const MACRO_ATTR_RE = /with\s*\{\s*type\s*:\s*["']macro["']\s*\}/;
 
+export interface RewriteBarrelImportsOptions {
+  /** Each replacement takes one line plus the newlines the statement spanned, so later lines keep their numbers. */
+  keepLines?: boolean;
+  specifierOf?: (subpath: string) => string;
+  /** Called for each import of a listed barrel with the value names whose rewrite reads its export map. */
+  onImport?: (barrel: string, names: string[]) => void;
+}
+
+export const workspaceBarrels = (barrels: readonly string[]): string[] =>
+  barrels.filter((barrel) => /^@(?:apps|libs)\//.test(barrel));
+
 export const rewriteBarrelImports = async (
   source: string,
   barrels: string[],
   analyzer: BarrelAnalyzer,
+  { keepLines = false, specifierOf = (subpath: string) => subpath, onImport }: RewriteBarrelImportsOptions = {},
 ): Promise<string | null> => {
   // Sound pre-filter before the costly parse: a static import cannot name a specifier absent from the text.
   if (!barrels.some((barrel) => source.includes(barrel))) return null;
@@ -251,20 +263,32 @@ export const rewriteBarrelImports = async (
     const stmt = statements[i];
     if (!stmt) continue;
     if (!barrels.includes(stmt.specifier)) continue;
+    const names = valueNamesOf(stmt.clause);
+    if (names.length > 0) onImport?.(stmt.specifier, names);
     const map = await analyzer.analyze(stmt.specifier);
     if (!map || map.size === 0) continue;
-    const replacement = rewriteSingleStatement(stmt, map);
-    if (replacement === null) continue;
+    const lines = rewriteSingleStatement(stmt, map, specifierOf);
+    if (lines === null) continue;
+    const replacement = keepLines
+      ? `${lines.join(" ")}${"\n".repeat(source.slice(stmt.start, stmt.end).split("\n").length - 1)}`
+      : lines.join("\n");
     out = out.slice(0, stmt.start) + replacement + out.slice(stmt.end);
     changed = true;
   }
   return changed ? out : null;
 };
 
+interface ParsedClause {
+  defaultImport?: string;
+  namespaceImport?: string;
+  named?: NamedItem[];
+  typeOnly: boolean;
+}
+
 interface ImportStatement {
   start: number;
   end: number;
-  clause: string;
+  clause: ParsedClause | null;
   specifier: string;
 }
 
@@ -286,52 +310,42 @@ const findImportStatements = (source: string): ImportStatement[] => {
     statements.push({
       start: statement.getStart(sourceFile),
       end: statement.end,
-      clause: source.slice(importClause.getStart(sourceFile), importClause.end).trim(),
+      clause: clauseOf(importClause),
       specifier: statement.moduleSpecifier.text,
     });
   }
   return statements;
 };
 
-interface ParsedClause {
-  defaultImport?: string;
-  namespaceImport?: string;
-  named?: NamedItem[];
-  typeOnly: boolean;
-}
-
-const parseImportClause = (clause: string): ParsedClause | null => {
-  let rest = clause.trim();
-  let typeOnly = false;
-  if (rest.startsWith("type ")) {
-    typeOnly = true;
-    rest = rest.slice(5).trim();
+const clauseOf = (importClause: ts.ImportClause): ParsedClause | null => {
+  const parsed: ParsedClause = { typeOnly: importClause.phaseModifier === ts.SyntaxKind.TypeKeyword };
+  if (importClause.name) parsed.defaultImport = importClause.name.text;
+  const bindings = importClause.namedBindings;
+  if (!bindings) return parsed;
+  if (ts.isNamespaceImport(bindings)) return { ...parsed, namespaceImport: bindings.name.text };
+  const named: NamedItem[] = [];
+  for (const element of bindings.elements) {
+    if (element.propertyName && !ts.isIdentifier(element.propertyName)) return null;
+    named.push({
+      imported: (element.propertyName ?? element.name).text,
+      local: element.name.text,
+      isType: element.isTypeOnly,
+    });
   }
-  const parsed: ParsedClause = { typeOnly };
-  const commaMatch = /^(\w+)\s*,\s*(.+)$/.exec(rest);
-  if (commaMatch) {
-    parsed.defaultImport = commaMatch[1];
-    rest = commaMatch[2] ?? "";
-  } else if (/^\w+$/.test(rest)) {
-    parsed.defaultImport = rest;
-    return parsed;
-  }
-  if (rest.startsWith("*")) {
-    const ns = /^\*\s+as\s+(\w+)$/.exec(rest);
-    if (!ns) return null;
-    parsed.namespaceImport = ns[1];
-    return parsed;
-  }
-  if (rest.startsWith("{")) {
-    const close = rest.indexOf("}");
-    if (close === -1) return null;
-    parsed.named = parseNamedList(rest.slice(1, close));
-  }
-  return parsed;
+  return { ...parsed, named };
 };
 
-const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): string | null => {
-  const clause = parseImportClause(stmt.clause);
+const valueNamesOf = (clause: ParsedClause | null): string[] => {
+  if (!clause || clause.namespaceImport || clause.typeOnly) return [];
+  return (clause.named ?? []).filter((item) => !item.isType).map((item) => item.imported);
+};
+
+const rewriteSingleStatement = (
+  stmt: ImportStatement,
+  map: BarrelExportMap,
+  specifierOf: (subpath: string) => string,
+): string[] | null => {
+  const { clause } = stmt;
   if (!clause) return null;
   // Namespace imports need the whole barrel — cannot rewrite safely.
   if (clause.namespaceImport) return null;
@@ -353,7 +367,7 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
       continue;
     }
     if (target.namespace) {
-      namespaceLines.push(`import * as ${item.local} from "${target.subpath}";`);
+      namespaceLines.push(`import * as ${item.local} from ${JSON.stringify(specifierOf(target.subpath))};`);
       continue;
     }
     const list = rewrites.get(target.subpath) ?? [];
@@ -364,7 +378,9 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
   if (rewrites.size === 0 && namespaceLines.length === 0) return null;
 
   //? An app or lib client barrel's import-time side effects are its client runtime and store, not its module UI.
-  const lines: string[] = [...(StoreBootstrap.ofClientBarrel(stmt.specifier, map) ?? [])];
+  const lines = (StoreBootstrap.ofClientBarrel(stmt.specifier, map) ?? []).map(
+    (specifier) => `import ${JSON.stringify(specifierOf(specifier))};`,
+  );
 
   if (clause.defaultImport || remaining.length > 0) {
     const parts: string[] = [];
@@ -374,11 +390,11 @@ const rewriteSingleStatement = (stmt: ImportStatement, map: BarrelExportMap): st
   }
 
   for (const [subpath, items] of rewrites) {
-    lines.push(`import { ${items.map(serializeNamedItem).join(", ")} } from "${subpath}";`);
+    lines.push(`import { ${items.map(serializeNamedItem).join(", ")} } from ${JSON.stringify(specifierOf(subpath))};`);
   }
   lines.push(...namespaceLines);
 
-  return lines.join("\n");
+  return lines;
 };
 
 const serializeNamedItem = (item: NamedItem): string => {

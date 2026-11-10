@@ -1,6 +1,11 @@
 import { Logger } from "akanjs/common";
 import type { ReactNode } from "react";
-import type { BuildChangesPayload, BuildFrameworkPayload, BuildGraphPayload } from "../../artifact";
+import {
+  type BuildChangesPayload,
+  BuilderRpc,
+  type BuildFrameworkPayload,
+  type BuildGraphPayload,
+} from "../../artifact";
 import { createSystemPageHeaders } from "../../systemPages";
 import { StudioDocument, type StudioEditor, type StudioPayload, type StudioQuery } from "./studioDocument";
 import type { StudioView } from "./studioLayout";
@@ -9,6 +14,7 @@ import type { StudioRuntimePayload } from "./studioRuntimeGraph";
 export interface StudioRouteContext {
   basePath: string;
   appName: string;
+  web: boolean;
   buildGraph: (() => Promise<BuildGraphPayload | null>) | null;
   buildChanges: ((since: string | null) => Promise<BuildChangesPayload | null>) | null;
   buildFramework: (() => Promise<BuildFrameworkPayload | null>) | null;
@@ -42,7 +48,7 @@ export class StudioRoute {
     const url = new URL(req.url);
     const asked = StudioRoute.queryOf(url);
     const loaded = await this.#load(asked);
-    const landed = "error" in loaded && loaded.builderless && !url.searchParams.has("view");
+    const landed = "error" in loaded && loaded.unanswered && !views.has(url.searchParams.get("view") as StudioView);
     const query: StudioQuery = landed ? { ...asked, view: "runtime" } : asked;
     const shown = landed ? await this.#load(query) : loaded;
     if ("error" in shown)
@@ -67,22 +73,23 @@ export class StudioRoute {
     return buildGraph ? await buildGraph() : null;
   }
 
-  async #load(query: StudioQuery): Promise<{ payload: StudioPayload } | { error: string; builderless: boolean }> {
+  async #load(query: StudioQuery): Promise<{ payload: StudioPayload } | { error: string; unanswered: boolean }> {
     if (query.view === "runtime") return { payload: this.#context.runtime() };
     try {
       const payload = await this.#payloadOf(query);
-      return payload
-        ? { payload }
-        : {
-            error:
-              "Akan Studio reads this view from the dev builder; open it under `akan start`. Runtime (live) reads this running server and needs no builder.",
-            builderless: true,
-          };
+      return payload ? { payload } : { error: this.#builderless(), unanswered: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       StudioRoute.logger.warn(`Failed to build the Akan Graph: ${message}`);
-      return { error: message, builderless: false };
+      return { error: message, unanswered: BuilderRpc.isTimeout(error) || BuilderRpc.isUnavailable(error) };
     }
+  }
+
+  #builderless(): string {
+    const reach = this.#context.web
+      ? "Akan Studio reads this view from the dev builder; open it under `akan start`."
+      : "Akan Studio reads this view from the dev builder, which a server reaches only with its web surface on, and this one serves the API only (`AKAN_SSR=false` or `setWeb(false)`).";
+    return `${reach} Runtime (live) reads this running server and needs no builder.`;
   }
 
   //? The editor extension's panel frames Studio from a `vscode-webview:` document under a `vscode-file:` window; no

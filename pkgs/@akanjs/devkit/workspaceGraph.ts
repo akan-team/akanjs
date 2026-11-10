@@ -1,6 +1,13 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { type AkanChangeMap, type AkanGraph, AkanGraphDiff, type AkanGraphNode, AkanIndex } from "@akanjs/language";
+import {
+  type AkanChangeMap,
+  type AkanGraph,
+  AkanGraphDiff,
+  type AkanGraphEdge,
+  type AkanGraphNode,
+  AkanIndex,
+} from "@akanjs/language";
 import ts from "typescript";
 import type { Workspace } from "./commandDecorators";
 import { GitRevision } from "./gitRevision";
@@ -64,12 +71,14 @@ export class WorkspaceGraph {
         .filter((node) => node.change)
         .flatMap((node) => [
           node.at?.file,
+          ...(node.sources ?? []),
           ...(node.fields ?? []).filter((field) => field.change).map(({ at }) => at.file),
         ]),
       ...changes.edges.filter((edge) => edge.change).map((edge) => edge.at?.file),
     ]);
     const unmapped = files.filter(({ file }) => !mapped.has(file) && !hiddenPath.test(file));
-    return { ...changes, since: sha.slice(0, 12), unmapped };
+    const nodes = changes.nodes.map(({ sources: _sources, ...node }) => node);
+    return { ...changes, nodes, since: sha.slice(0, 12), unmapped };
   }
 
   static #baseAt(root: string, sha: string) {
@@ -107,9 +116,30 @@ export class WorkspaceGraph {
     //? A lib's guard is linked from every app's endpoints; through it, a scope would reach all of them.
     const guards = new Set(graph.nodes.filter((node) => node.kind === "guard").map((node) => node.id));
     const reaches = (id: string) => seeds.has(id) && !guards.has(id);
-    const edges = graph.edges.filter((edge) => reaches(edge.from) || reaches(edge.to));
-    const ids = new Set([...seeds, ...edges.flatMap((edge) => [edge.from, edge.to])]);
-    return { version: 1, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges };
+    const edges = graph.edges.filter((edge) => edge.kind !== "binds" && (reaches(edge.from) || reaches(edge.to)));
+    const kept = new Set([...seeds, ...edges.flatMap((edge) => [edge.from, edge.to])]);
+    const isLib =
+      !!app &&
+      graph.nodes.some((node) => node.owner === `libs/${app}`) &&
+      !graph.nodes.some((node) => node.owner === `apps/${app}`);
+    const applicable = WorkspaceGraph.#bindingsOf(graph, app && !isLib ? `apps/${app}` : null);
+    const isOwn = (edge: AkanGraphEdge) => !module && !!owners?.has(edge.label ?? "");
+    const roles = new Set(
+      applicable.filter((edge) => isOwn(edge) || kept.has(edge.from) || reaches(edge.to)).map((edge) => edge.from),
+    );
+    const bindings = applicable.filter((edge) => roles.has(edge.from));
+    const ids = new Set([...kept, ...bindings.flatMap((edge) => [edge.from, edge.to])]);
+    return { version: 1, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges: [...edges, ...bindings] };
+  }
+
+  //? An app runs a role as its own `applyAdaptor` binds it, else as a lib's does; a lib's code runs under every app's.
+  static #bindingsOf(graph: AkanGraph, appOwner: string | null) {
+    const binds = graph.edges.filter((edge) => edge.kind === "binds");
+    if (!appOwner) return binds;
+    const own = new Set(
+      binds.filter((edge) => edge.label === appOwner && edge.change !== "removed").map((edge) => edge.from),
+    );
+    return binds.filter((edge) => edge.label === appOwner || (!edge.label?.startsWith("apps/") && !own.has(edge.from)));
   }
 
   //? Pages are many and most only wrap one another, so a graph too large to answer whole drops the pages that neither
@@ -139,7 +169,14 @@ export class WorkspaceGraph {
     const isVisible = ({ owner }: AkanGraphNode) => !owner || owner === appOwner || owner.startsWith("libs/");
     const nodes = graph.nodes.filter(isVisible);
     const ids = new Set(nodes.map((node) => node.id));
-    return { version: 1, nodes, edges: graph.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to)) };
+    const bindings = new Set(WorkspaceGraph.#bindingsOf(graph, appOwner));
+    return {
+      version: 1,
+      nodes,
+      edges: graph.edges.filter(
+        (edge) => ids.has(edge.from) && ids.has(edge.to) && (edge.kind !== "binds" || bindings.has(edge)),
+      ),
+    };
   }
 
   static changesVisibleTo(changes: AkanChangeMap, app: string): AkanChangeMap {
@@ -188,15 +225,16 @@ export class WorkspaceGraph {
     if (scope.app || scope.module || graph.nodes.length <= unscopedNodeLimit) return WorkspaceGraph.scope(graph, scope);
     const unscoped = WorkspaceGraph.#withoutPages(graph);
     if (unscoped.nodes.length <= unscopedNodeLimit) return unscoped;
+    const kept = new Set(unscoped.nodes.map((node) => node.id));
     const owners = new Map<string, number>();
     for (const node of counted)
-      if (node.owner && !pageKinds.has(node.kind)) owners.set(node.owner, (owners.get(node.owner) ?? 0) + 1);
+      if (node.owner && kept.has(node.id)) owners.set(node.owner, (owners.get(node.owner) ?? 0) + 1);
     return {
       diagnostics: [
         {
           severity: "error",
           code: "graph-scope-required",
-          message: `The graph has ${unscoped.nodes.length} nodes besides its pages. Pass app, module or both to scope it.`,
+          message: `The graph has ${unscoped.nodes.length} nodes once unchanged pages are set aside. Pass app, module or both to scope it.`,
           input: "app",
         },
       ],

@@ -11,6 +11,7 @@ export interface FetchPolicy<_Returns = unknown> {
   cache?: boolean | number;
   crystalize?: boolean;
   origin?: string;
+  /** @deprecated Read by nothing; catch the call's rejection instead. */
   onError?: (error: string) => void;
   token?: string;
   /** @deprecated Read by nothing; a query always answers its whole return. */
@@ -37,6 +38,11 @@ export interface FetchPolicy<_Returns = unknown> {
    * it, so only a write that is harmless to repeat and safe for anyone to trigger may pass it.
    */
   duringRender?: boolean;
+  /**
+   * Marks a write that changes nothing a query reads back, such as a typing notice: queries already in flight and the
+   * pages a link prefetched survive it, where any other write sends them again.
+   */
+  keepsReads?: boolean;
 }
 
 export type SnakeCase<S extends string> = S extends `${infer T}_${infer U}` ? `${Lowercase<T>}_${SnakeCase<U>}` : S;
