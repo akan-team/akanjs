@@ -8,14 +8,13 @@ import {
   sliceNames,
   stateSetterName,
 } from "akanjs/common/akanNames.ts";
-import {
-  type AkanSpan,
-  type ConstantClassFact,
-  type FileFacts,
-  guardLabelOf,
-  type NamedFact,
-  type SliceClassFact,
-} from "./moduleFacts";
+import { guardLabelOf } from "./guardFacts";
+import type { AkanSpan, ConstantClassFact, FileFacts, NamedFact, SliceClassFact } from "./moduleFacts";
+
+const guardDetailOf = (facts: FileFacts[], guards: string[]) => {
+  const labels: Record<string, string> = Object.assign({}, ...facts.map((file) => file.guardLabels));
+  return guards.length ? [`guards: ${guards.map((guard) => guardLabelOf(guard, labels)).join(", ")}`] : [];
+};
 
 export type AkanFamily = "slice" | "query" | "model" | "formSetter" | "storeState" | "endpoint" | "module";
 
@@ -149,9 +148,6 @@ export class NameTable {
     const base = { owner, refName };
     const modelClass = group.constants.find((constant) => constant.name === Model);
     const facts = group.facts;
-    const labels: Record<string, string> = Object.assign({}, ...facts.map((file) => file.guardLabels));
-    const guarded = (guards: string[]) =>
-      guards.length ? [`guards: ${guards.map((guard) => guardLabelOf(guard, labels)).join(", ")}`] : [];
     const names = moduleNames(refName);
     const serviceClass = facts.flatMap((file) => file.services).find((item) => item.model === refName);
     const sliceClass = group.slices[0];
@@ -173,7 +169,7 @@ export class NameTable {
         role: "sig",
         gate: "sig",
         label: sliceClass.name,
-        detail: guarded(sliceClass.guards),
+        detail: guardDetailOf(facts, sliceClass.guards),
       });
     if (modelDoc)
       this.#add({
@@ -240,7 +236,7 @@ export class NameTable {
         sourceKey: slice.name,
         span: slice.span,
         label: `slice ${refName} (default)`,
-        detail: guarded(slice.guards),
+        detail: guardDetailOf(facts, slice.guards),
       };
       this.#addSliceNames(defaultTarget, refName, "", modelNameSet);
       for (const key of slice.keys)
@@ -251,7 +247,7 @@ export class NameTable {
             sourceKey: key.name,
             span: key.span,
             label: `slice ${key.name}`,
-            detail: [...guarded(key.guards), ...(key.live ? ["live"] : [])],
+            detail: [...guardDetailOf(facts, key.guards), ...(key.live ? ["live"] : [])],
           },
           refName,
           key.name,
@@ -318,7 +314,7 @@ export class NameTable {
           role: key.verb === "pubsub" ? "subscribe" : "listen",
           gate: null,
           label: `${key.verb} ${key.name}`,
-          detail: guarded(key.guards),
+          detail: guardDetailOf(facts, key.guards),
         });
       }
   }

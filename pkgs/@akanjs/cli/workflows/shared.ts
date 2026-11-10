@@ -11,7 +11,9 @@ export const moduleInput = {
   module: {
     type: "string",
     required: true,
-    description: "Target domain, service, or scalar module name.",
+    description:
+      "An existing database module, one with lib/<module>/<module>.constant.ts; not a service or scalar module.",
+    mustExist: true,
   },
 } satisfies Record<string, WorkflowInputSpec>;
 

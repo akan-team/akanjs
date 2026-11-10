@@ -674,9 +674,11 @@ for it to be added.
 ## 10. Akan Studio's runtime view
 
 `/_akan/studio?view=runtime` draws `/_akan/deps` and `/_akan/signal` as one picture, next to Studio's
-source-built views (ERD, Signals, Changes). It calls the same serializers in process, so it reads the
+source-built views (ERD, Signals, Changes, Framework). It calls the same serializers in process, so it reads the
 container of the process that answered and needs that server running; the header says which (`pid`,
-`serverMode`, `replicaIdx`).
+`serverMode`, `replicaIdx`). It needs no dev builder, so `/_akan/studio` with no `view` lands on it when no
+builder answers; a source-built view asked for then answers 503 inside Studio's nav, saying to open it under
+`akan start`.
 
 - **Columns.** Jobs, then services by boot stage, then adaptors by boot stage. An injection always targets
   an earlier stage, so the latest stage stands leftmost and every arrow points from what injects to what it
@@ -684,8 +686,9 @@ container of the process that answered and needs that server running; the header
 - **Edges.** `database`, `service`, `plug` and `memory` injections, one arrow per `from|to|kind` with every
   prop in its title. `env`, `use` and `signal` injections are left out (see §7).
 - **Jobs.** One box per internal class that declares a job, one row per job with its schedule; `resolveField`
-  internals are not jobs and are left out. A row the process does not run (`scheduledHere: false`) is greyed,
-  and its `skipReason` is the row's tooltip. Behind the gateway only a `federation` or `all` child answers, so
+  internals are not jobs and are left out. Each row's tooltip names the job in full with its schedule
+  (`cron syncAccountBalances · 0 * * * *`). A row the process does not run (`scheduledHere: false`) is greyed,
+  and its `skipReason` is the tooltip's second line. Behind the gateway only a `federation` or `all` child answers, so
   with separate `federation` and `batch` replicas every `serverMode: "batch"` job is greyed: it runs on a
   batch child, which Studio never reads.
 - **`disabledModules`** are listed under the diagram.

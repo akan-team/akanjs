@@ -510,11 +510,11 @@ export class Owner implements Guard {
   }
 }
 `,
-      "apps/demo/lib/memo/memo.signal.ts": `import { Owner, Public } from "@vendor/auth";
+      "apps/demo/lib/memo/memo.signal.ts": `import { Owner, Public, roleGuard } from "@vendor/auth";
 import { endpoint } from "akanjs/signal";
 import * as srv from "../srv";
 export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
-  shareMemo: mutation(cnst.Memo, { guards: [Owner, Public] }).exec(async function () {
+  shareMemo: mutation(cnst.Memo, { guards: [Owner, Public, roleGuard("admin")] }).exec(async function () {
     return null;
   }),
 })) {}
@@ -532,6 +532,7 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
       "mutation",
       "Owner",
       "Public",
+      'roleGuard("admin")',
     ]);
   });
 

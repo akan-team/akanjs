@@ -2,6 +2,7 @@ import type { AkanGraph } from "akanjs/common/akanGraph.ts";
 import type * as TS from "typescript";
 import { GraphBuilder } from "./akanGraph";
 import { type AkanAst, createAst, type Ts } from "./ast";
+import { escapeRegExp } from "./escapeRegExp";
 import {
   type AkanFactReader,
   type AkanSpan,
@@ -47,7 +48,6 @@ const dictionaryPattern = /\.dictionary\.ts$/;
 const srvkitPattern = /\/srvkit\//;
 const wordPattern = /[A-Za-z_$][\w$]*/g;
 const identifierPattern = /^[A-Za-z_$][\w$]*$/;
-const regExpSpecials = /[\\^$.*+?()[\]{}|]/g;
 const stateReceivers = new Set(["use", "sel", "get", "do"]);
 const lensFamilies = new Set<AkanFamily>(["slice", "query", "formSetter", "storeState", "endpoint"]);
 const modellessFamilies = new Set<AkanFamily>(["query", "storeState", "endpoint"]);
@@ -56,7 +56,6 @@ const parseCacheSize = 64;
 
 //? TypeScript rewrites a source file's name to forward slashes, and every span carries that name.
 const pathOf = (fileName: string) => fileName.replace(/\\/g, "/");
-const escapeRegExp = (text: string) => text.replace(regExpSpecials, (special) => `\\${special}`);
 const receiverGap = String.raw`(?:\s|\)|\/\*[\s\S]*?\*\/)*`;
 
 export class AkanIndex {

@@ -14,8 +14,9 @@ export class StoreBootstrap {
     if (!/^@(?:apps|libs)\/[^/]+\/client$/.test(specifier)) return null;
     const runtime = exports.get("usePage");
     const store = exports.get("st");
-    if (!runtime || runtime.namespace || !store || store.namespace) return StoreBootstrap.#lines([specifier]);
-    return StoreBootstrap.#lines([...new Set([runtime.subpath, store.subpath])]);
+    //? A barrel with only one of the two is not the generated shape, so what else it runs on import is unknown.
+    if (!runtime || runtime.namespace || !store || store.namespace) return [specifier];
+    return [...new Set([runtime.subpath, store.subpath])];
   }
 
   static #lines(specifiers: string[]): string[] {

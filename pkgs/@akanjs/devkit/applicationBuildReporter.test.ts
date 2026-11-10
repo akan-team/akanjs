@@ -30,4 +30,25 @@ describe("ApplicationBuildReporter.printSummary", () => {
     expect(rawLog.mock.calls.map(([line]) => line)).not.toContain(ApplicationBuildReporter.localBuildNotice);
     expect(rawLog.mock.calls.at(-1)?.[0]).toBe("Done in 1.2s");
   });
+
+  test("lists the largest routes' JS before the paths, and how many more it left out", () => {
+    const routeJs = Array.from({ length: 12 }, (_, idx) => ({
+      routeId: `/:lang/r${idx}`,
+      files: 3,
+      rawBytes: (12 - idx) * 3 * 1024,
+      brotliBytes: (12 - idx) * 1024,
+    }));
+    ApplicationBuildReporter.printSummary({ ...resultFor("main"), routeJs });
+
+    const lines = rawLog.mock.calls.map(([line]) => line);
+    expect(lines.slice(1, 4)).toEqual([
+      "Route JS, largest first (brotli / raw):",
+      "  /:lang/r0    12.0KB    36.0KB",
+      "  /:lang/r1    11.0KB    33.0KB",
+    ]);
+    expect(lines).toContain("  …and 2 more");
+    expect(lines.indexOf("  …and 2 more")).toBeLessThan(
+      lines.indexOf("Route artifacts: dist/apps/shop/.akan/artifact"),
+    );
+  });
 });

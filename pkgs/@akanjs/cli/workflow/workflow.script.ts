@@ -1,5 +1,13 @@
 import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
-import type { WorkflowFormat, WorkflowPlanInputs } from "@akanjs/devkit/workflow";
+import {
+  jsonText,
+  renderWorkflowApply,
+  renderWorkflowPlan,
+  renderWorkflowValidation,
+  type WorkflowFormat,
+  type WorkflowPlanInputs,
+  workflowStatus,
+} from "@akanjs/devkit/workflow";
 import { Logger } from "akanjs/common";
 import { WorkflowRunner } from "./workflow.runner";
 
@@ -25,18 +33,24 @@ export class WorkflowScript extends script("workflow", [WorkflowRunner]) {
       return;
     }
     if (action === "plan") {
-      Logger.rawLog(await this.workflowRunner.plan(workflow, inputs, { format, out, workspace }));
+      const plan = await this.workflowRunner.planReport(workflow, inputs, { out, workspace });
+      Logger.rawLog(format === "json" ? jsonText(plan) : renderWorkflowPlan(plan));
+      if (workflowStatus(plan.diagnostics) === "failed") process.exitCode = 1;
       return;
     }
     if (action === "apply") {
       if (!workspace) throw new Error("Workspace is required for workflow apply.");
       const registry = WorkflowRunner.stepRegistry(workspace);
-      Logger.rawLog(await this.workflowRunner.apply(workflow, { dryRun, format, workspace, registry }));
+      const report = await this.workflowRunner.applyReport(workflow, { dryRun, workspace, registry });
+      Logger.rawLog(renderWorkflowApply(report, format));
+      if (report.status === "failed") process.exitCode = 1;
       return;
     }
     if (action === "validate") {
       if (!workspace) throw new Error("Workspace is required for workflow validate.");
-      Logger.rawLog(await this.workflowRunner.validate(workflow, { format, workspace }));
+      const report = await this.workflowRunner.validateReport(workflow, { workspace });
+      Logger.rawLog(renderWorkflowValidation(report, format));
+      if (report.status === "failed") process.exitCode = 1;
       return;
     }
     if (action === "report") {

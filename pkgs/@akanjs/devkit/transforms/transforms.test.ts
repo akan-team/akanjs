@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import fs from "node:fs";
 import path from "node:path";
 import { ApplicationBuildReporter } from "../applicationBuildReporter";
 import { tempDirs, writeText as write } from "../testHelpers";
@@ -262,6 +263,27 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(await rewriteBarrelImports(source, ["@libs/util/common"], analyzer)).toBeNull();
   });
 
+  test("forgets an analysis when a file beside one it read changes, under the link or the real path", async () => {
+    const root = await makeTempRoot();
+    await write(path.join(root, "real/ui/index.ts"), 'export * from "./Foo";\n');
+    await write(path.join(root, "real/ui/Foo.ts"), "export const Foo = 1;\n");
+    await write(path.join(root, "real/other/Bar.ts"), "export const Bar = 1;\n");
+    fs.symlinkSync(path.join(root, "real"), path.join(root, "linked"));
+    const pkgDir = path.join(root, "linked/ui");
+    const analyzer = new BarrelAnalyzer({
+      resolvePackage: async () => ({ pkgName: "@scope/ui", entryFile: path.join(pkgDir, "index.ts"), pkgDir }),
+    });
+    const analyzed = async () => {
+      await analyzer.analyze("@scope/ui");
+      return analyzer;
+    };
+
+    expect([...(await analyzed()).forget([path.join(root, "real/other/Bar.ts")]).keys()]).toEqual([]);
+    expect([...(await analyzed()).forget([path.join(root, "real/ui/Foo.ts")]).keys()]).toEqual(["@scope/ui"]);
+    expect([...(await analyzed()).forget([path.join(pkgDir, "Created.ts")]).keys()]).toEqual(["@scope/ui"]);
+    expect([...analyzer.forget([path.join(pkgDir, "Foo.ts")]).keys()]).toEqual([]);
+  });
+
   test("rewrites flattenable named imports and preserves default, type, and unknown imports", async () => {
     const analyzer = fakeAnalyzer([
       ["A", { subpath: "@scope/pkg/leaf", originalName: "A" }],
@@ -287,6 +309,27 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(await rewriteBarrelImports('import { A } from "@other/pkg";', ["@scope/pkg"], analyzer)).toBeNull();
   });
 
+  test("reads every name of an import whose braces hold comments, aliases and type-only names", async () => {
+    const analyzer = fakeAnalyzer([
+      ["A", { subpath: "@scope/pkg/leaf", originalName: "A" }],
+      ["st", { subpath: "@scope/pkg/store", originalName: "st" }],
+    ]);
+    const rewrite = async (source: string) => await rewriteBarrelImports(source, ["@scope/pkg"], analyzer);
+    const narrowed = 'import { A } from "@scope/pkg/leaf";\nimport { st } from "@scope/pkg/store";\n';
+
+    expect(await rewrite('import {\n  A, // the leaf\n  st,\n} from "@scope/pkg";\n')).toBe(narrowed);
+    expect(await rewrite('import { A, /* the store */ st } from "@scope/pkg";\n')).toBe(narrowed);
+    expect(await rewrite('import { type Shape, A as Leaf, st as store } from "@scope/pkg";\n')).toBe(
+      [
+        'import { type Shape } from "@scope/pkg";',
+        'import { A as Leaf } from "@scope/pkg/leaf";',
+        'import { st as store } from "@scope/pkg/store";',
+        "",
+      ].join("\n"),
+    );
+    expect(await rewrite('import { "A" as quoted } from "@scope/pkg";\n')).toBeNull();
+  });
+
   test("keeps a client barrel's runtime and store, never its module UI, when flattening an app or lib import", async () => {
     const root = await makeTempRoot();
     for (const sys of ["apps/demo", "libs/kit"]) {
@@ -308,13 +351,15 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     }
     await write(path.join(root, "libs/hand/client.ts"), 'export { thing } from "./lib/thing";\n');
     await write(path.join(root, "libs/hand/lib/thing.ts"), "export const thing = 1;\n");
+    await write(path.join(root, "libs/half/client.ts"), 'export { st } from "./lib/st";\n');
+    await write(path.join(root, "libs/half/lib/st.ts"), "export const st = {};\n");
     const analyzer = new BarrelAnalyzer({
       resolvePackage: await createTsconfigPackageResolver({
         workspace: { workspaceRoot: root },
         getTsConfig: async () => ({ compilerOptions: { paths: { "@apps/*": ["./apps/*"], "@libs/*": ["./libs/*"] } } }),
       } as never),
     });
-    const barrels = ["@apps/demo/client", "@libs/kit/client", "@libs/hand/client"];
+    const barrels = ["@apps/demo/client", "@libs/kit/client", "@libs/hand/client", "@libs/half/client"];
     const rewrite = async (source: string) => await rewriteBarrelImports(source, barrels, analyzer);
 
     expect(await rewrite('import { Memo, st } from "@apps/demo/client";\n')).toBe(
@@ -348,6 +393,27 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(await rewrite('import { thing } from "@libs/hand/client";\n')).toBe(
       ['import "@libs/hand/client";', 'import { thing } from "@libs/hand/lib/thing";', ""].join("\n"),
     );
+    expect(await rewrite('import { st } from "@libs/half/client";\n')).toBe(
+      ['import "@libs/half/client";', 'import { st } from "@libs/half/lib/st";', ""].join("\n"),
+    );
+  });
+
+  test("keeps each statement's line count and writes the specifier specifierOf gives a target", async () => {
+    const analyzer = fakeAnalyzer([
+      ["A", { subpath: "@scope/pkg/leaf", originalName: "A" }],
+      ["ns", { subpath: "@scope/pkg/namespace", originalName: "ns", namespace: true }],
+    ]);
+    const source = 'import {\n  A,\n  ns,\n} from "@scope/pkg";\nconsole.log(A, ns);\n';
+
+    const rewritten = await rewriteBarrelImports(source, ["@scope/pkg"], analyzer, {
+      keepLines: true,
+      specifierOf: (subpath) => `./${subpath.slice("@scope/pkg/".length)}.ts`,
+    });
+
+    expect(rewritten).toBe(
+      'import { A } from "./leaf.ts"; import * as ns from "./namespace.ts";\n\n\n\nconsole.log(A, ns);\n',
+    );
+    expect(rewritten?.split("\n")).toHaveLength(source.split("\n").length);
   });
 
   test("does not rewrite import-looking code inside template literals", async () => {

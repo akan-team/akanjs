@@ -1,5 +1,6 @@
 "use client";
 import { getEnv } from "akanjs/base";
+import { AbortSignals } from "akanjs/common";
 import { type FetchBridge, restoreRemoteError } from "akanjs/fetch";
 import {
   MCP_APP_META,
@@ -140,15 +141,34 @@ export class McpAppBridge {
   request(
     method: string,
     params: Record<string, unknown>,
-    { timeoutMs, timedOut }: { timeoutMs?: number; timedOut?: () => Error } = {},
+    { timeoutMs, timedOut, signal }: { timeoutMs?: number; timedOut?: () => Error; signal?: AbortSignal } = {},
   ): Promise<unknown> {
+    if (signal?.aborted) return Promise.reject(AbortSignals.reasonOf(signal));
     const id = ++this.#seq;
     return new Promise((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject });
+      //? MCP `notifications/cancelled` lets the host stop relaying; an answer that still arrives finds nothing pending.
+      const cancel = () => {
+        if (!signal || !this.#pending.delete(id)) return;
+        this.notify("notifications/cancelled", { requestId: id });
+        reject(AbortSignals.reasonOf(signal));
+      };
+      const release = () => signal?.removeEventListener("abort", cancel);
+      this.#pending.set(id, {
+        resolve: (value) => {
+          release();
+          resolve(value);
+        },
+        reject: (error) => {
+          release();
+          reject(error);
+        },
+      });
+      signal?.addEventListener("abort", cancel, { once: true });
       window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
       if (timeoutMs)
         setTimeout(() => {
           if (!this.#pending.delete(id)) return;
+          release();
           reject(timedOut?.() ?? new Error(`The host did not answer ${method}`));
         }, timeoutMs);
     });
@@ -159,11 +179,15 @@ export class McpAppBridge {
   }
 
   // `MCP_APP_META.view` asks the server for the value a browser would receive, not the one masked for a model.
-  async callTool(name: string, args: Record<string, unknown>, { timeoutMs }: { timeoutMs?: number } = {}) {
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    { timeoutMs, signal }: { timeoutMs?: number; signal?: AbortSignal } = {},
+  ) {
     return (await this.request(
       "tools/call",
       { name, arguments: args, _meta: { [MCP_APP_META.view]: true } },
-      { timeoutMs, timedOut: McpAppBridge.#timedOut },
+      { timeoutMs, timedOut: McpAppBridge.#timedOut, signal },
     )) as Partial<McpToolResult>;
   }
 
