@@ -103,12 +103,14 @@ export class RouteJsBudget {
           : committed;
     if ((mode === "update" || mode === "raise") && budget) await Bun.write(budgetPath, budget.stringify());
     const overages = budget?.overages(sizes) ?? [];
-    const envNote = committed?.envNote(environment) ?? "";
-    if (overages.length && mode !== "report")
-      throw new Error(RouteJsBudget.formatOverages(overages, { app, source }, envNote));
     const unbudgeted = budget?.unbudgeted(sizes) ?? [];
-    if (unbudgeted.length && mode === "enforce")
-      throw new Error(RouteJsBudget.formatUnbudgeted(unbudgeted, { app, source }));
+    const envNote = committed?.envNote(environment) ?? "";
+    const target = { app, source };
+    const failures = [
+      ...(overages.length && mode !== "report" ? [RouteJsBudget.formatOverages(overages, target, envNote)] : []),
+      ...(unbudgeted.length && mode === "enforce" ? [RouteJsBudget.formatUnbudgeted(unbudgeted, target)] : []),
+    ];
+    if (failures.length) throw new Error(failures.join("\n"));
     if (mode === "update" || mode === "raise")
       return { summary: RouteJsBudget.#writtenSummary(check, unreadable, committed, budget) };
     if (unreadable)
@@ -123,17 +125,23 @@ export class RouteJsBudget {
         ],
       };
     if (!budget) return { summary: `no ${RouteJsBudget.fileName}` };
-    if (overages.length)
-      return {
-        summary: `${overages.length} route(s) over ${source}${envNote}, reported only: ${overages.map(({ routeId }) => routeId).join(", ")}`,
-        warnings: overages.map(({ routeId, brotliBytes, limitBytes }) => ({
-          file: source,
-          message: `${routeId} loads ${RouteJsBudget.#bytes(brotliBytes)} bytes brotli, over its limit of ${RouteJsBudget.#bytes(limitBytes)}${envNote}; akan build --check-budget fails on it`,
-          fix: `shrink what the route loads, or raise its entry with akan build ${app} --raise-budget`,
-        })),
-      };
-    const unbudgetedNote = unbudgeted.length ? `, ${unbudgeted.length} route(s) without an entry` : "";
-    return { summary: `within ${source}${envNote}${unbudgetedNote}` };
+    const warnings = [
+      ...overages.map(({ routeId, brotliBytes, limitBytes }) => ({
+        file: source,
+        message: `${routeId} loads ${RouteJsBudget.#bytes(brotliBytes)} bytes brotli, over its limit of ${RouteJsBudget.#bytes(limitBytes)}${envNote}; akan build --check-budget fails on it`,
+        fix: `shrink what the route loads, or raise its entry with akan build ${app} --raise-budget`,
+      })),
+      ...unbudgeted.map((routeId) => ({
+        file: source,
+        message: `${routeId} has no entry; akan build --check-budget fails on it`,
+        fix: `record it with akan build ${app} --update-budget`,
+      })),
+    ];
+    const verdict = overages.length
+      ? `${overages.length} route(s) over ${source}${envNote}, reported only: ${overages.map(({ routeId }) => routeId).join(", ")}`
+      : `within ${source}${envNote}`;
+    const unbudgetedNote = unbudgeted.length ? `; ${unbudgeted.length} route(s) without an entry` : "";
+    return { summary: `${verdict}${unbudgetedNote}`, ...(warnings.length ? { warnings } : {}) };
   }
 
   static #writtenSummary(

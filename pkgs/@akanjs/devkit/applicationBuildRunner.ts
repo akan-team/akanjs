@@ -55,7 +55,10 @@ export interface ApplicationBuildRunnerOptions {
   environment?: string;
   /** Bundles `env/env.server.<environment>.<profile>.ts`, which may hold no secret, in place of the environment's file. */
   profile?: string;
-  /** `enforce` fails on an overage; `update` and `raise` rewrite akan.budget.json first; `report` only names one. */
+  /**
+   * `enforce` fails on an overage, a route with no entry, or a missing or unreadable akan.budget.json; `update` and
+   * `raise` rewrite the file first; `report` only warns.
+   */
   budget?: RouteJsBudgetMode;
 }
 export interface BuildOptions {

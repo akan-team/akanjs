@@ -14,6 +14,7 @@ const teamOption = { flag: "T", desc: "Apple team id the signing is narrowed to"
 const signDesc =
   "sign with the identity AKAN_NATIVE_MACOS_* / AKAN_NATIVE_WINDOWS_* names (without it the env signs nothing)";
 const notarizeDesc = "macOS: upload the signed app to Apple's notary service (takes --sign)";
+const checkBudgetDesc = "fail on a route over its akan.budget.json entry or with none, or a missing or unreadable file";
 const devEnvs = ["local", "debug", "develop", "main"] as const;
 const buildEnvOption = { enum: devEnvs, desc: "backend environment", default: "debug" } as const;
 const startEnvOption = {
@@ -232,7 +233,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       desc: "environment the server runs in (default: AKAN_PUBLIC_ENV of the shell, else of the workspace .env)",
       nullable: true,
     })
-    .option("checkBudget", Boolean, { desc: "fail on a route over its akan.budget.json entry", default: false })
+    .option("checkBudget", Boolean, { desc: checkBudgetDesc, default: false })
     .option("updateBudget", Boolean, { desc: "write akan.budget.json, never raising an entry", default: false })
     .option("raiseBudget", Boolean, { desc: "rewrite akan.budget.json at each route's measured JS", default: false })
     .exec(async function (app, write, fast, quiet, profile, env, checkBudget, updateBudget, raiseBudget) {

@@ -91,7 +91,7 @@ describe("VerifyPipeline", () => {
     expect(result.steps.find((step) => step.name === "lint")?.fixed).toBe(1);
   }, 60_000);
 
-  test("warns of a route over its JS budget, which only akan build --check-budget fails on", async () => {
+  test("warns of a route over its JS budget or with no entry, which only akan build --check-budget fails on", async () => {
     const { root, workspace } = await createTempApp("demo");
     roots.push(root);
     await symlink(path.join(repoRoot, "node_modules"), path.join(root, "node_modules"));
@@ -100,7 +100,10 @@ describe("VerifyPipeline", () => {
     const budgetPath = path.join(root, "apps/demo", RouteJsBudget.fileName);
     await writeJson(budgetPath, { routeJsBrotliKB: { "/:lang": 120 } });
     const { warnings } = await RouteJsBudget.check(
-      [{ routeId: "/:lang", files: 1, rawBytes: 300_000, brotliBytes: 128_000 }],
+      [
+        { routeId: "/:lang", files: 1, rawBytes: 300_000, brotliBytes: 128_000 },
+        { routeId: "/:lang/new", files: 1, rawBytes: 3_000, brotliBytes: 1_000 },
+      ],
       { mode: "report", app: "demo", budgetPath, source: "apps/demo/akan.budget.json", environment: "local" },
     );
     const builds: unknown[] = [];
@@ -120,6 +123,7 @@ describe("VerifyPipeline", () => {
     expect(result.steps.find((step) => step.name === "build")?.status).toBe("pass");
     expect(VerifyReport.text(result).split("\n").slice(1)).toEqual([
       "apps/demo/akan.budget.json warning akan.budget /:lang loads 128,000 bytes brotli, over its limit of 126,976; akan build --check-budget fails on it fix: shrink what the route loads, or raise its entry with akan build demo --raise-budget",
+      "apps/demo/akan.budget.json warning akan.budget /:lang/new has no entry; akan build --check-budget fails on it fix: record it with akan build demo --update-budget",
     ]);
   }, 60_000);
 });
