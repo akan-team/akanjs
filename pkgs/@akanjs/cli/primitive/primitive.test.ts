@@ -320,6 +320,7 @@ export const dictionary = modelDictionary(["en", "ko"])
     ];
     const written = await module.readFile("post.constant.ts");
     const unknown = await addField("tag", "Adress");
+    const unparsed = [await addField("label", "Adress | null"), await addField("tags", "Adress[]")];
 
     expect(reports.map((report) => report.status)).toEqual(["passed", "passed", "passed", "passed"]);
     expect(written).toContain('import { Address } from "../__scalar/address/address.constant";');
@@ -334,6 +335,10 @@ export const dictionary = modelDictionary(["en", "ko"])
         message: expect.stringContaining("Its scalars are Address. Its models are Owner, Post."),
       }),
     );
+    for (const report of unparsed) {
+      expect(report).toMatchObject({ status: "failed", changedFiles: [] });
+      expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: "primitive-field-type-unknown" }));
+    }
     expect(await module.readFile("post.constant.ts")).toBe(written);
   });
 

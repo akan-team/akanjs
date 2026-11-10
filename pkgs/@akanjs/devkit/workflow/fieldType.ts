@@ -42,9 +42,18 @@ export const fieldTypeSource = async (
   typeName: string,
   constantContent: string,
 ): Promise<{ import?: { name: string; from: string }; diagnostic?: WorkflowDiagnostic }> => {
-  const [, name, member] = fieldTypeReference.exec(typeName) ?? [];
-  if (!name || builtInFieldTypes.has(name) || baseFieldTypes.has(name) || valueNamesOf(constantContent).has(name))
-    return {};
+  const reference = fieldTypeReference.exec(typeName);
+  if (!reference)
+    return {
+      diagnostic: {
+        severity: "error",
+        code: "primitive-field-type-unknown",
+        input: "type",
+        message: `Field type "${typeName}" is not a type name field() takes. Name one type, such as Address, or a list of one, such as [Address], then plan this again.`,
+      },
+    };
+  const [, name = "", member] = reference;
+  if (builtInFieldTypes.has(name) || baseFieldTypes.has(name) || valueNamesOf(constantContent).has(name)) return {};
   const [scalars, models] = await Promise.all([sys.getScalarModules(), sys.getDatabaseModules()]);
   const scalar = member ? undefined : scalars.find((scalarName) => moduleComponentName(scalarName) === name);
   if (scalar) return { import: { name, from: `../__scalar/${scalar}/${scalar}.constant` } };
