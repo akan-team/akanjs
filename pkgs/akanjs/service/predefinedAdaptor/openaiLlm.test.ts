@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { LlmOption, LlmTurnRequest } from "akanjs/service";
+import { type LlmOption, LlmSpend, type LlmTurnRequest } from "akanjs/service";
 import { OpenaiDialect } from "./openaiDialect";
 import { OpenaiLlm } from "./openaiLlm";
 
@@ -172,5 +172,24 @@ describe("OpenaiLlm turn model", () => {
 
   test("a turn's model answers even where the option names none", async () => {
     expect((await llmOf({ apiKey: "k" }).chat({ ...turn, model: "model-b" }))?.model).toBe("model-b");
+  });
+
+  test("an abort reaches the provider call, streamed or not, and the failure names the model", async () => {
+    const seen: AbortSignal[] = [];
+    for (const onDelta of [undefined, () => undefined]) {
+      globalThis.fetch = ((_url: string, init: { signal: AbortSignal }) => {
+        seen.push(init.signal);
+        return new Promise((_resolve, reject) =>
+          init.signal.addEventListener("abort", () => reject(init.signal.reason)),
+        );
+      }) as unknown as typeof fetch;
+      const llm = Object.assign(new OpenaiLlm(), { llmOption: { apiKey: "k", model: "model-a" } });
+      const abort = new AbortController();
+      const pending = llm.chat(turn, onDelta, abort.signal).catch((error: unknown) => error);
+      abort.abort();
+      const failure = await pending;
+      expect(LlmSpend.of(failure)).toEqual({ model: "model-a" });
+    }
+    expect(seen.map(({ aborted }) => aborted)).toEqual([true, true]);
   });
 });
