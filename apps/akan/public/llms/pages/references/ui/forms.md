@@ -104,7 +104,7 @@ Related pages
 
   - Field.DateRange ({ from, to, onChangeFrom, onChangeTo, onChange?, min?, max?, showTime? }): Two ends of a range. `onChange(from, to)` fires only once both ends are set.
 
-  - Field.Switch ({ value: boolean | null, onDesc?, offDesc? }): A labelled boolean. `onDesc` / `offDesc` describe the current position beside the toggle.
+  - Field.Switch ({ value: boolean | null, onDesc?, offDesc?, variant? }): A labelled boolean. `onDesc` / `offDesc` describe the current position beside the toggle; `variant` colors the on position as on `Switch`.
 
   - Field.ToggleSelect ({ items, value: I | null, nullable?, validate?, btnClassName? }): One choice as a row of buttons. An `enumOf(...)` in `items` gets each value translated.
 

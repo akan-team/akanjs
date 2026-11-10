@@ -3,7 +3,7 @@ import { type EnumInstance, isEnum } from "akanjs/base";
 import { cn, usePage } from "akanjs/client";
 import { useFieldTool } from "akanjs/store";
 import { agentAttrs } from "../agentAttrs";
-import { Switch as UiSwitch } from "../Switch";
+import { Switch as UiSwitch, type SwitchProps as UiSwitchProps } from "../Switch";
 import { ToggleSelect as UtilToggleSelect } from "../ToggleSelect";
 import { Label } from "./Label";
 
@@ -18,6 +18,7 @@ export interface SwitchProps {
   onDesc?: string;
   offDesc?: string;
   disabled?: boolean;
+  variant?: UiSwitchProps["variant"];
 }
 export const Switch = ({
   label,
@@ -30,6 +31,7 @@ export const Switch = ({
   inputClassName,
   onDesc,
   offDesc,
+  variant = "primary",
 }: SwitchProps) => {
   useFieldTool(onChange, { disabled });
   return (
@@ -37,7 +39,7 @@ export const Switch = ({
       {label ? <Label className={labelClassName} label={label} desc={desc} /> : null}
       <div className="flex items-center gap-2">
         <UiSwitch
-          variant="accent"
+          variant={variant}
           disabled={disabled}
           className={inputClassName}
           checked={value ?? false}

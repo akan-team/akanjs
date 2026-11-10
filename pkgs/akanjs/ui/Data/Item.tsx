@@ -258,10 +258,10 @@ const statusColors = {
   restricted: "border-transparent bg-destructive text-destructive-foreground",
   paused: "",
   running: "border-warning text-warning",
-  break: "border-accent text-accent",
+  break: "border-muted-foreground text-muted-foreground",
   rejected: "border-destructive text-destructive",
   hidden: "",
-  inProgress: "border-transparent bg-accent text-accent-foreground",
+  inProgress: "border-transparent bg-info text-info-foreground",
   resolved: "border-success text-success",
   finished: "border-transparent bg-secondary text-secondary-foreground",
 };
