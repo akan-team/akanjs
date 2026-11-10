@@ -944,12 +944,23 @@ export class GraphBuilder {
     return this.#addNode(this.#key("adaptor", pkg, name), "adaptor", null, null, name, null, [pkg]).id;
   }
 
-  //? A lib reaches a third-party class only through a one-line re-export, so the class is the package's, not the lib's.
+  //? A lib reaches a third-party class only through a re-export, so the class is the package's, not the lib's.
   #packageShimOf(owner: string, name: string, near: string | null) {
     const reexport = this.#reexportOf(owner, name, near);
     const [shim] = reexport?.site.imports ?? [];
-    if (!reexport || !shim || this.#pathOfSpecifier(reexport.site.fileName, shim.from) !== null) return null;
-    return { name: reexport.local, from: shim.from };
+    if (reexport && shim && this.#pathOfSpecifier(reexport.site.fileName, shim.from) === null)
+      return { name: reexport.local === "default" ? name : reexport.local, from: shim.from };
+    if (reexport || !near) return null;
+    const packages = new Set<string>();
+    for (const [fileName, words] of this.#filesIn(owner)) {
+      const relative = this.#source.relative(fileName);
+      const isNear = relative.startsWith(`${near}/`) || relative.replace(/\.tsx?$/, "") === near;
+      if (!isNear || !words.includes("\nexport\n")) continue;
+      for (const [, specifier = ""] of this.#source.readText(fileName)?.matchAll(starExportPattern) ?? [])
+        if (this.#pathOfSpecifier(fileName, specifier) === null) packages.add(specifier);
+    }
+    const [only] = packages;
+    return packages.size === 1 && only && !this.#declares(owner, name) ? { name, from: only } : null;
   }
 
   #adaptorNodeOf({ fact, owner, fileName, id }: DeclaredAdaptor) {

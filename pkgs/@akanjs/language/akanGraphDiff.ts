@@ -45,6 +45,12 @@ export class AkanGraphDiff {
         .filter((edge) => !headKeys.has(edgeKeyOf(edge)))
         .map((edge) => ({ ...edge, change: "removed" as const })),
     ];
+    const shown = new Set([...marked.keys(), ...edges.flatMap((edge) => [edge.from, edge.to])]);
+    const listed = new Set(edges.map(edgeKeyOf));
+    //? A role runs as whichever binding of it applies to an app, so a shown role brings every binding it has.
+    edges.push(
+      ...head.edges.filter((edge) => edge.kind === "binds" && shown.has(edge.from) && !listed.has(edgeKeyOf(edge))),
+    );
     const context = edges
       .flatMap((edge) => [edge.from, edge.to])
       .filter((id) => !marked.has(id))

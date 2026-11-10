@@ -1139,13 +1139,22 @@ export class Notifier extends adapt("notifier") {}
       "libs/util/srvkit/stripe.ts": `export { Stripe } from "stripe-sdk";
 export { Client as Mailgun } from "@mailgun/sdk/server";
 `,
+      "libs/shared/srvkit/paypal.ts": `export { default as Paypal } from "paypal";
+`,
+      "libs/shared/srvkit/square.ts": `export * from "square-sdk";
+`,
       "libs/social/lib/memo/memo.service.ts": `import { serve } from "akanjs/service";
+import Paypal from "paypal";
 import * as db from "../db";
-export class MemoService extends serve(db.memo, ({ use }) => ({
+export class MemoService extends serve(db.memo, ({ use, plug }) => ({
   notifier: use<{ ping: () => void }>(),
+  payer: plug(Paypal),
 })) {
   async ping() {
     return this.notifier.ping();
+  }
+  async pay() {
+    return this.payer.charge();
   }
 }
 `,
@@ -1161,6 +1170,7 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({
 import { DatabaseAdaptorRole, LlmAdaptorRole, serve } from "akanjs/service";
 import { Stripe } from "stripe-sdk";
 import { Stripe as LibStripe } from "@libs/util/srvkit";
+import { Paypal, Square } from "@libs/shared/srvkit";
 import { Clock, Mailer } from "../../plugin/mailer";
 import * as db from "../db";
 export class MemoService extends serve(db.memo, ({ plug, use }) => ({
@@ -1171,6 +1181,8 @@ export class MemoService extends serve(db.memo, ({ plug, use }) => ({
   stripe: plug(Stripe),
   billing: plug(LibStripe),
   mailgun: plug(srvkit.Mailgun),
+  paypal: plug(Paypal),
+  square: plug(Square),
   llm: plug(LlmAdaptorRole),
   option: use<string>(),
 })) {
@@ -1198,6 +1210,10 @@ export class MemoService extends serve(db.memo, ({ plug, use }) => ({
   }
   async stamp() {
     return this.clock.getMemo();
+  }
+  async settle() {
+    await this.paypal.charge();
+    return this.square.charge();
   }
   async charge() {
     await this.billing.pay();
@@ -1263,6 +1279,8 @@ export class MemoInternal extends internal(
           "libs/util/srvkit/storageApi.ts:5",
           "Stores files on the object store, or on disk when none is configured.",
         ],
+        ["adaptor:paypal:Paypal", ["paypal"], null, null],
+        ["adaptor:square-sdk:Square", ["square-sdk"], null, null],
         ["adaptor:stripe-sdk:Stripe", ["stripe-sdk"], null, null],
       ],
     );
@@ -1279,9 +1297,12 @@ export class MemoInternal extends internal(
       "method:apps/demo:memo.charge -send-> adaptor:@mailgun/sdk:Client",
       "method:apps/demo:memo.notify -chat-> adaptor::LlmAdaptorRole",
       "method:apps/demo:memo.notify -getMemo-> adaptor:libs/shared:Notifier",
+      "method:apps/demo:memo.settle -charge-> adaptor:paypal:Paypal",
+      "method:apps/demo:memo.settle -charge-> adaptor:square-sdk:Square",
       "method:apps/demo:memo.stamp -getMemo-> adaptor:apps/demo:Clock",
       "method:apps/demo:memo.sweep -count-> adaptor::DatabaseAdaptorRole",
       "method:apps/demo:memo.sweep -deleteData-> adaptor:libs/util:StorageApi",
+      "method:libs/social:memo.pay -charge-> adaptor:paypal:Paypal",
     ]);
     expect(
       [...internals, ...adaptors.filter((node) => node.at)].every((node) => /^[0-9a-f]{8}$/.test(node.digest ?? "")),

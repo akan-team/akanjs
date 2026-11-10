@@ -118,17 +118,27 @@ export class WorkspaceGraph {
     const reaches = (id: string) => seeds.has(id) && !guards.has(id);
     const edges = graph.edges.filter((edge) => edge.kind !== "binds" && (reaches(edge.from) || reaches(edge.to)));
     const kept = new Set([...seeds, ...edges.flatMap((edge) => [edge.from, edge.to])]);
-    const bindings = WorkspaceGraph.#bindingsFor(graph, app).filter((edge) => kept.has(edge.from) || reaches(edge.to));
+    const isLib =
+      !!app &&
+      graph.nodes.some((node) => node.owner === `libs/${app}`) &&
+      !graph.nodes.some((node) => node.owner === `apps/${app}`);
+    const applicable = WorkspaceGraph.#bindingsOf(graph, app && !isLib ? `apps/${app}` : null);
+    const isOwn = (edge: AkanGraphEdge) => !module && !!owners?.has(edge.label ?? "");
+    const roles = new Set(
+      applicable.filter((edge) => isOwn(edge) || kept.has(edge.from) || reaches(edge.to)).map((edge) => edge.from),
+    );
+    const bindings = applicable.filter((edge) => roles.has(edge.from));
     const ids = new Set([...kept, ...bindings.flatMap((edge) => [edge.from, edge.to])]);
     return { version: 1, nodes: graph.nodes.filter((node) => ids.has(node.id)), edges: [...edges, ...bindings] };
   }
 
   //? An app runs a role as its own `applyAdaptor` binds it, else as a lib's does; a lib's code runs under every app's.
-  static #bindingsFor(graph: AkanGraph, app: string | null | undefined) {
+  static #bindingsOf(graph: AkanGraph, appOwner: string | null) {
     const binds = graph.edges.filter((edge) => edge.kind === "binds");
-    const appOwner = `apps/${app}`;
-    if (!app || !graph.nodes.some((node) => node.owner === appOwner)) return binds;
-    const own = new Set(binds.filter((edge) => edge.label === appOwner).map((edge) => edge.from));
+    if (!appOwner) return binds;
+    const own = new Set(
+      binds.filter((edge) => edge.label === appOwner && edge.change !== "removed").map((edge) => edge.from),
+    );
     return binds.filter((edge) => edge.label === appOwner || (!edge.label?.startsWith("apps/") && !own.has(edge.from)));
   }
 
@@ -159,12 +169,13 @@ export class WorkspaceGraph {
     const isVisible = ({ owner }: AkanGraphNode) => !owner || owner === appOwner || owner.startsWith("libs/");
     const nodes = graph.nodes.filter(isVisible);
     const ids = new Set(nodes.map((node) => node.id));
-    const isOtherApps = ({ kind, label }: AkanGraphEdge) =>
-      kind === "binds" && !!label?.startsWith("apps/") && label !== appOwner;
+    const bindings = new Set(WorkspaceGraph.#bindingsOf(graph, appOwner));
     return {
       version: 1,
       nodes,
-      edges: graph.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to) && !isOtherApps(edge)),
+      edges: graph.edges.filter(
+        (edge) => ids.has(edge.from) && ids.has(edge.to) && (edge.kind !== "binds" || bindings.has(edge)),
+      ),
     };
   }
 

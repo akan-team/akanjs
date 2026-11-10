@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AkanChangeMap, AkanGraphEdge, AkanGraphNode } from "@akanjs/language";
+import { AkanGraphDiff } from "@akanjs/language";
 import type { Workspace } from "./commandDecorators";
 import { WorkspaceGraph } from "./workspaceGraph";
 
@@ -227,7 +228,47 @@ describe("WorkspaceGraph.scope", () => {
       WorkspaceGraph.visibleTo(graph, "sceny")
         .edges.filter(({ kind }) => kind === "binds")
         .map(({ label }) => label),
-    ).toEqual(["apps/sceny", "libs/genai"]);
+    ).toEqual(["apps/sceny"]);
+  });
+
+  it("scopes a Change Map to the binding the app runs, whether or not that binding changed", () => {
+    const role = "adaptor::LlmAdaptorRole";
+    const versioned = (id: string, owner: string | null, digest: string, module: string | null = null) => ({
+      ...node(id, owner),
+      module,
+      digest,
+      at: { file: `${owner ?? "akanjs"}/x.ts`, line: 1, column: 1 },
+    });
+    const binds = (to: string, label: string): AkanGraphEdge => ({ ...edge(role, to), kind: "binds", label });
+    const graphOf = (ownBinding: boolean, method: string, lib: string) => ({
+      version: 1 as const,
+      nodes: [
+        versioned("method:apps/sceny:plan.draft", "apps/sceny", method, "plan"),
+        node(role, null),
+        node("adaptor::AnthropicLlm", null),
+        versioned("adaptor:libs/genai:GenaiLlm", "libs/genai", lib),
+      ],
+      edges: [
+        edge("method:apps/sceny:plan.draft", role),
+        ...(ownBinding ? [binds("adaptor::AnthropicLlm", "apps/sceny")] : []),
+        binds("adaptor:libs/genai:GenaiLlm", "libs/genai"),
+      ],
+    });
+    const scopedBinds = (base: ReturnType<typeof graphOf>, head: ReturnType<typeof graphOf>) => {
+      const changes = { ...AkanGraphDiff.between(base, head), since: "0123456789ab", unmapped: [] };
+      const answer = WorkspaceGraph.answerChanges(changes, { app: "sceny" });
+      if (!("edges" in answer)) throw new Error("expected an answer");
+      return answer.edges
+        .filter(({ kind }) => kind === "binds")
+        .map(({ label, to, change }) => `${change ?? "unchanged"} ${label} ${to}`);
+    };
+    expect(scopedBinds(graphOf(true, "1", "1"), graphOf(true, "2", "2"))).toEqual([
+      "unchanged apps/sceny adaptor::AnthropicLlm",
+    ]);
+    expect(scopedBinds(graphOf(true, "1", "1"), graphOf(false, "1", "2"))).toEqual([
+      "unchanged libs/genai adaptor:libs/genai:GenaiLlm",
+      "removed apps/sceny adaptor::AnthropicLlm",
+    ]);
   });
 });
 
