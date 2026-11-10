@@ -53,6 +53,7 @@ export interface ArgMeta<Context = CommandContext> {
 export interface InternalArgOption {
   nullable?: boolean;
   onlyApp?: boolean;
+  services?: boolean;
 }
 export interface InternalArgMeta {
   key: string;
@@ -111,6 +112,9 @@ export type Pkg = PkgExecutor;
 
 export const Module = createInternalArgToken<ModuleExecutor, "Module">("Module");
 export type Module = ModuleExecutor;
+
+/** Module, or a service module (`lib/_<name>`) named as `<sys>:_<name>`. */
+export const ModuleOrService = createInternalArgToken<ModuleExecutor, "Module">("Module", { services: true });
 
 export const Workspace = createInternalArgToken<WorkspaceExecutor, "Workspace">("Workspace");
 export type Workspace = WorkspaceExecutor;
