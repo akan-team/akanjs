@@ -222,7 +222,7 @@ Tool
 
 - Apply and repair
 
-  - apply_workflow: Carries out a stored plan and, unless it failed, names what to validate next.
+  - apply_workflow: Carries out a stored plan and, unless it failed, names what to validate next, or after a dry run the apply.
 
   - run_validation: Runs the validation commands for a plan or an apply report.
 

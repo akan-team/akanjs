@@ -384,7 +384,7 @@ export const applyMcpTools: McpToolDefinition[] = [
   {
     name: "apply_workflow",
     description:
-      "Apply a stored workflow plan before direct edits and return validationTarget, plus next.tool=run_validation unless the apply failed.",
+      "Apply a stored workflow plan before direct edits and return validationTarget. Unless it failed, next.tool is run_validation after an apply and apply_workflow without dryRun after a dry run.",
     inputSchema: {
       type: "object",
       properties: { planPath: stringProperty, dryRun: booleanProperty },
