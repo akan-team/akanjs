@@ -537,6 +537,23 @@ describe("WorkspaceRunner", () => {
     expect(withBun.scripts).not.toHaveProperty("start");
   });
 
+  test("lists each script once, under the name the workspace's AGENTS.md tells an agent to run", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    process.chdir(root);
+    await runner.createWorkspace("repo", "demo", { dirname: "generated", init: false, akanVersion: "2.0.0-beta.0" });
+
+    const { scripts = {} } = (await Bun.file(`${root}/generated/repo/package.json`).json()) as PackageJson;
+    const commands = Object.values(scripts);
+    const named = [...(await Bun.file(`${root}/generated/repo/AGENTS.md`).text()).matchAll(/`bun run ([\w:-]+)`/g)].map(
+      ([, name = ""]) => name,
+    );
+    expect(commands.filter((command, idx) => commands.indexOf(command) !== idx)).toEqual([]);
+    expect(named).toContain("setup:agent");
+    expect(named.filter((name) => !(name in scripts))).toEqual([]);
+  });
+
   test("pins @akanjs/cli at the akan version, so `akan` in the new workspace runs its own bin", async () => {
     const runner = new WorkspaceRunner();
     stubNpmLatest();
