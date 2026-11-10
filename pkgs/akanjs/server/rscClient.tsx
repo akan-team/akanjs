@@ -6,6 +6,7 @@ import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
 import { isAuthTokenKey } from "../common/authCookie";
 import { CookieJar } from "../common/cookieJar";
+import { mapFlightLineRows } from "./flightRowReader";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   type AkanHeadSnapshotV1,
@@ -143,9 +144,55 @@ function createRscThenable(stream: ReadableStream<Uint8Array>): RscThenable {
   return trackRscThenable(createFromReadableStream<ReactNode>(stream) as RscThenable);
 }
 
+interface ChunkNavigation {
+  navId: number;
+  href: string;
+  replace: () => boolean;
+}
+
+//? RSDW asks the global loader for a chunk without naming the response that wants it, so a navigation's rows record
+//? the chunks they name; a chunk no navigation named is the document's own.
+const chunkNavigations = new Map<string, ChunkNavigation>();
+const quotedScript = /"([^"\\]+\.js)"/g;
+const rowDecoder = new TextDecoder();
+
+function recordChunksOf(stream: ReadableStream<Uint8Array>, navigation: ChunkNavigation): ReadableStream<Uint8Array> {
+  return mapFlightLineRows(stream, (row, tag) => {
+    if (tag === "I" || tag === "")
+      for (const [, chunkId] of rowDecoder.decode(row).matchAll(quotedScript))
+        chunkNavigations.set(chunkId, navigation);
+    return row;
+  });
+}
+
+//? How Chromium, Firefox and WebKit word a failed link or bare specifier; a fetch or evaluation error is not skew.
+const linkFailure =
+  /does not provide an export named|doesn't provide an export named|import not found|Importing binding name|Failed to resolve module specifier|was a bare specifier|does not resolve to a valid URL/;
+const isLinkFailure = (error: unknown) =>
+  (error instanceof SyntaxError || error instanceof TypeError) && linkFailure.test(error.message);
+
+//? Per tab and synchronous, which akanjs/client `storage` (localStorage, async) is not; unrecorded, it never reloads.
+const chunkReloadsKey = "akan.rsc.chunkReloads";
+function claimChunkReload(chunkId: string): boolean {
+  try {
+    const reloaded = JSON.parse(sessionStorage.getItem(chunkReloadsKey) ?? "[]") as string[];
+    if (reloaded.includes(chunkId)) return false;
+    sessionStorage.setItem(chunkReloadsKey, JSON.stringify([...reloaded, chunkId].slice(-32)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+//? A `beforeunload` handler can keep the page; once it is still here after this, a later failure may navigate again.
+const DOCUMENT_FALLBACK_SETTLE_MS = 10_000;
+
 function hardNavigateAfterRscFailure(target: string, replace = false, error?: unknown): void {
   if (documentNavigationFallbackInFlight) return;
   documentNavigationFallbackInFlight = true;
+  window.setTimeout(() => {
+    documentNavigationFallbackInFlight = false;
+  }, DOCUMENT_FALLBACK_SETTLE_MS);
   console.warn(`[rscClient] RSC navigation failed, falling back to document navigation: ${String(error)}`);
   if (replace) window.location.replace(target);
   else window.location.assign(target);
@@ -242,6 +289,12 @@ async function fetchRsc(
   } = {},
 ): Promise<RscFetchResult> {
   const shouldApplyNavigation = options.shouldApplyNavigation ?? (() => true);
+  const navigation =
+    options.navId === undefined
+      ? undefined
+      : { navId: options.navId, href, replace: options.replaceOnRedirect ?? (() => true) };
+  const thenableOf = (stream: ReadableStream<Uint8Array>) =>
+    createRscThenable(navigation ? recordChunksOf(stream, navigation) : stream);
   const responseResult = await fetchRscNavigationResponse(href, {
     buildId: options.buildId,
     currentRouterState,
@@ -263,7 +316,7 @@ async function fetchRsc(
         response: responseResult.response,
         patch: responseResult.patch,
         href,
-        createThenable: createRscThenable,
+        createThenable: thenableOf,
         navId: options.navId,
         getCurrentNavId: () => navigationSeq,
         getHeadSnapshotPatchFailureReason: getAkanHeadSnapshotPatchFailureReason,
@@ -300,7 +353,7 @@ async function fetchRsc(
   const guardedStream = guardRscRedirectRows(stream, {
     onRedirect: handleRedirect,
   });
-  const thenable = createRscThenable(guardedStream);
+  const thenable = thenableOf(guardedStream);
   const node = createRscNavigationCacheNode({
     href,
     thenable,
@@ -341,6 +394,7 @@ let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
 let pendingRequest: { navId: number; controller: AbortController; target: string } | null = null;
+let latestPageNavId = 0;
 let cachedAuthCookies = readAuthCookies();
 
 //? Only a request whose page has not committed is cut: a committed one may still stream the Suspense content on screen.
@@ -351,6 +405,7 @@ function supersedeNavigation(): number {
 }
 
 function requestSignalOf(navId: number, target: string): AbortSignal {
+  latestPageNavId = navId;
   const controller = new AbortController();
   pendingRequest = { navId, controller, target: pageKeyOf(target) };
   return controller.signal;
@@ -360,21 +415,25 @@ function settleRequestOf(navId: number): void {
   if (pendingRequest?.navId === navId) pendingRequest = null;
 }
 
-//? A chunk from a replica a rolling deploy has not reached can import a name this document's vendors lack; RSDW keeps
-//? the failed load. Chunks load after their navigation commits, and one loaded before any is the document's own.
+//? A replica a rolling deploy has not reached can send a page whose chunks import a name this document's narrowed
+//? vendors lack, and RSDW keeps the failed load; one reload per chunk keeps a chunk that always fails from looping.
 const loadChunk = globalThis.__webpack_chunk_load__;
 if (loadChunk)
   globalThis.__webpack_chunk_load__ = (chunkId) => {
     const loading = loadChunk(chunkId);
-    if (navigationSeq > 0)
-      loading.catch((error: unknown) => {
-        if (process.env.NODE_ENV !== "production") return;
-        const here = normalizeHref(window.location.href);
-        const target = pendingRequest?.target ?? here;
-        hardNavigateAfterRscFailure(target, pageKeyOf(here) === pageKeyOf(target), error);
-      });
+    const navigation = chunkNavigations.get(chunkId);
+    if (navigation) loading.catch((error: unknown) => loadDocumentForChunkFailure(chunkId, navigation, error));
     return loading;
   };
+
+function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigation, error: unknown): void {
+  if (process.env.AKAN_BUNDLE_COMMAND !== "build") return;
+  const pending = pendingRequest?.navId === navigation.navId;
+  const onScreen = navigation.navId === latestPageNavId && pageKeyOf(renderedHref) === pageKeyOf(navigation.href);
+  if (!pending && !(onScreen && navigator.onLine && isLinkFailure(error))) return;
+  if (!claimChunkReload(chunkId)) return;
+  hardNavigateAfterRscFailure(navigation.href, navigation.replace(), error);
+}
 
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
 globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
