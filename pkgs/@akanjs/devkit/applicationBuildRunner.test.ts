@@ -174,10 +174,13 @@ console.info(new SampleService().name);
       expect(await readFile(path.join(root, ".env"), "utf8")).toContain("AKAN_PUBLIC_ENV=local\n");
       process.env.AKAN_PUBLIC_ENV = "main";
       const app = stoppedBeforePhases(AppExecutor.from(workspace, "portal"));
-      spyOn(app.logger, "warn").mockImplementation(() => undefined);
+      const warn = spyOn(app.logger, "warn").mockImplementation(() => undefined);
       const runner = new ApplicationBuildRunner(app);
       await expect(runner.build()).rejects.toThrow("stopped before the phases");
       expect(bakedEnv(app)).toBe(JSON.stringify("main"));
+      expect(warn.mock.calls.map(([line]) => line)).toEqual([
+        "The shell (or a .env.local) outranks the workspace .env: the bundles and the image take AKAN_PUBLIC_ENV=main (.env: local). Unset it there to build what the .env says.",
+      ]);
       await runner.buildAppMeta();
       expect(JSON.parse(await readFile(path.join(app.dist.cwdPath, "akan.env.json"), "utf8"))).toMatchObject({
         AKAN_PUBLIC_ENV: "main",
@@ -186,10 +189,19 @@ console.info(new SampleService().name);
 
       process.env.AKAN_PUBLIC_ENV = "main";
       const desktop = stoppedBeforePhases(AppExecutor.from(workspace, "portal"));
+      const desktopWarn = spyOn(desktop.logger, "warn").mockImplementation(() => undefined);
       await expect(new ApplicationBuildRunner(desktop, { environment: "debug" }).build()).rejects.toThrow(
         "stopped before the phases",
       );
       expect(bakedEnv(desktop)).toBe(JSON.stringify("debug"));
+      expect(desktopWarn).not.toHaveBeenCalled();
+
+      process.env.AKAN_PUBLIC_ENV = "";
+      const unset = stoppedBeforePhases(AppExecutor.from(workspace, "portal"));
+      await expect(new ApplicationBuildRunner(unset, { environment: "debug" }).build()).rejects.toThrow(
+        "stopped before the phases",
+      );
+      expect(bakedEnv(unset)).toBe(JSON.stringify("debug"));
     } finally {
       if (shellEnv === undefined) delete process.env.AKAN_PUBLIC_ENV;
       else process.env.AKAN_PUBLIC_ENV = shellEnv;
@@ -224,7 +236,9 @@ console.info(new SampleService().name);
         AKAN_PUBLIC_REPO_NAME: "shell-repo",
         AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
       });
-      expect(warn).not.toHaveBeenCalled();
+      expect(warn.mock.calls.map(([line]) => line)).toEqual([
+        "The shell (or a .env.local) outranks the workspace .env: the bundles and the image take AKAN_PUBLIC_REPO_NAME=shell-repo (.env: repo). Unset it there to build what the .env says.",
+      ]);
     } finally {
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];

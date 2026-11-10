@@ -1470,8 +1470,8 @@ akan start-android myapp --device Pixel_10`,
           {
             name: l.trans({ en: "a server without --release", ko: "--release 없이 서버를 싣는 타깃" }),
             desc: l.trans({
-              en: "For a target that carries its server, a dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the workspace `.env`.",
-              ko: "서버를 싣는 타깃이면, 앱의 개발 포트에서 이미 응답하는 개발 서버가 있을 때 그대로 씁니다. 없으면 같은 명령에서 `akan start <app>`을 띄우고, 서버가 응답하면 앱을 엽니다. Ctrl+C를 누르거나 앱을 닫으면 둘 다 멈춥니다. `--env`는 개발 서버에 영향을 주지 않고, 개발 서버는 워크스페이스 `.env`를 따릅니다.",
+              en: "For a target that carries its server, a dev server already answering on the app's dev port is used as it is. Otherwise `akan start <app>` runs in the same command, the app opens once it serves, and Ctrl+C or closing the app stops both. `--env` does not reach the dev server, which follows the shell, then the workspace `.env`.",
+              ko: "서버를 싣는 타깃이면, 앱의 개발 포트에서 이미 응답하는 개발 서버가 있을 때 그대로 씁니다. 없으면 같은 명령에서 `akan start <app>`을 띄우고, 서버가 응답하면 앱을 엽니다. Ctrl+C를 누르거나 앱을 닫으면 둘 다 멈춥니다. `--env`는 개발 서버에 영향을 주지 않고, 개발 서버는 셸 값을, 없으면 워크스페이스 `.env`를 따릅니다.",
             }),
           },
           serverSwitchNote,

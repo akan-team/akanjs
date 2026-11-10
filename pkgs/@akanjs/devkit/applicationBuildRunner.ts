@@ -9,7 +9,7 @@ import type {
   ApplicationBuildResult,
 } from "./applicationBuildReporter";
 import type { App } from "./commandDecorators";
-import { WorkspaceExecutor } from "./executors";
+import { parseEnvFile, WorkspaceExecutor } from "./executors";
 import {
   AllRoutesBuilder,
   CsrArtifactBuilder,
@@ -107,11 +107,23 @@ export class ApplicationBuildRunner {
   //? Bundles bake AKAN_PUBLIC_* from process.env, which lacks `--env` and the defaults an unset repo name or serve
   //? domain takes: a page built otherwise drops the image's tokens as foreign or dials another serve domain.
   #pinImageEnv(baseDevEnv: BaseDevEnv, environment: string) {
-    Object.assign(process.env, {
+    const imageEnv = {
       AKAN_PUBLIC_ENV: environment,
       AKAN_PUBLIC_REPO_NAME: baseDevEnv.repoName,
       AKAN_PUBLIC_SERVE_DOMAIN: baseDevEnv.serveDomain,
+    };
+    const dotenv = parseEnvFile(path.join(this.#app.workspace.workspaceRoot, ".env"));
+    const overridden = Object.entries(imageEnv).filter(([key, value]) => {
+      if (!dotenv[key] || dotenv[key] === value || WorkspaceExecutor.publicEnvPin?.[key]) return false;
+      return !(key === "AKAN_PUBLIC_ENV" && this.#environment);
     });
+    if (overridden.length)
+      this.#app.logger.warn(
+        `The shell (or a .env.local) outranks the workspace .env: the bundles and the image take ${overridden
+          .map(([key, value]) => `${key}=${value} (.env: ${dotenv[key]})`)
+          .join(", ")}. Unset it there to build what the .env says.`,
+      );
+    Object.assign(process.env, imageEnv);
   }
 
   async build({ spinner = false }: BuildOptions = {}): Promise<BuildResult> {

@@ -511,6 +511,23 @@ describe("Workspace and app executor environment contracts", () => {
     });
   });
 
+  test("an empty export reads as unset, so the .env's value stands", async () => {
+    const root = await makeTempRoot();
+    await writeFile(
+      path.join(root, ".env"),
+      "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=file-repo\nAKAN_PUBLIC_SERVE_DOMAIN=file.example.com\n",
+    );
+    for (const key of baseDevEnvKeys) delete process.env[key];
+    Object.assign(process.env, { AKAN_PUBLIC_ENV: "", AKAN_PUBLIC_REPO_NAME: "", AKAN_PUBLIC_SERVE_DOMAIN: "" });
+
+    expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env"))).toMatchObject({
+      env: "main",
+      repoName: "file-repo",
+      serveDomain: "file.example.com",
+      defaulted: [],
+    });
+  });
+
   test("builds app command environment and prepareCommand artifacts", async () => {
     const root = await makeTempRoot();
     process.env.AKAN_PUBLIC_REPO_NAME = "repo";

@@ -156,7 +156,7 @@ const parseEnvValue = (value: string) => {
   return inner.replace(/\\(.)/g, (pair, char: string) => (char === "n" ? "\n" : char === "r" ? "\r" : pair));
 };
 
-const parseEnvFile = (envPath: string): Record<string, string> => {
+export const parseEnvFile = (envPath: string): Record<string, string> => {
   const env: Record<string, string> = {};
   const content = (() => {
     try {
@@ -690,7 +690,8 @@ export class WorkspaceExecutor extends Executor {
     // Bun auto-loads .env, so we use process.env directly
     const sourceEnv = {
       ...(envPath ? parseEnvFile(envPath) : {}),
-      ...process.env,
+      //? An empty export reads as unset, unlike in dotenv, so it can't blank a key the .env sets.
+      ...Object.fromEntries(Object.entries(process.env).filter(([, value]) => value)),
       ...WorkspaceExecutor.publicEnvPin,
     };
 
