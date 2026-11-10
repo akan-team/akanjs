@@ -14,8 +14,10 @@ import {
   AllRoutesBuilder,
   CsrArtifactBuilder,
   FontPruner,
+  NARROWABLE_VENDOR_SPECIFIERS,
   precompressArtifacts,
   SsrBaseArtifactBuilder,
+  VendorImportScanner,
 } from "./frontendBuild";
 import { RouteJsBudget, type RouteJsBudgetMode, type RouteJsSize } from "./routeJsBudget";
 import { Spinner } from "./spinner";
@@ -428,13 +430,18 @@ void run().catch((error) => {
       return null;
     }
     const { baseDevEnv, branches } = await this.#app.getConfig();
+    //? Routes first: the vendor entries export only the names the route bundles import.
+    const routes = new AllRoutesBuilder(this.#app, "build");
+    const allRoutes = await routes.build();
+    const vendorExports = await VendorImportScanner.exportsUsedIn(
+      path.join(this.#app.dist.cwdPath, ".akan/artifact/client"),
+      NARROWABLE_VENDOR_SPECIFIERS,
+    );
     const base = await new SsrBaseArtifactBuilder(this.#app, "build", {
       serverEnv: this.#serverEnvPlugin(baseDevEnv.env, branches),
+      vendorExports,
     }).build();
-    const allRoutes = await new AllRoutesBuilder(this.#app, base.artifact, "build", {
-      runtimeChunks: base.runtimeChunks,
-    }).build();
-    this.#modulesByRoute = allRoutes.modulesByRoute;
+    this.#modulesByRoute = (await routes.writeModulePreloads(base.runtimeChunks)).modulesByRoute();
     return { base, allRoutes };
   }
 

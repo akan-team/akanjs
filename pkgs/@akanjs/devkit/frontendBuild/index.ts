@@ -26,5 +26,7 @@ export * from "./ssrBaseArtifactBuilder";
 export * from "./ssrDevBundler";
 export * from "./styleContract";
 export * from "./themeValidator";
+export * from "./vendorImportScanner";
+export * from "./vendorNarrowing";
 export * from "./vendorSpecifiers";
 export * from "./watchRootResolver";

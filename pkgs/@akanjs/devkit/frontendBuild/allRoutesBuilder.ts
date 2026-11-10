@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { BaseBuildArtifact, RoutesManifest } from "akanjs/server";
+import type { RoutesManifest } from "akanjs/server";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex, type RouteSeedIndex } from "../artifact/routeSeedIndex";
 import type { App } from "../commandDecorators";
@@ -13,12 +13,10 @@ export interface BuildAllRoutesResult {
   manifest: RoutesManifest;
   manifestPath: string;
   seedIndex: RouteSeedIndex;
-  modulesByRoute?: Record<string, string[]>;
 }
 
 export class AllRoutesBuilder {
   #app: App;
-  #artifact: BaseBuildArtifact;
   #command: "build" | "start";
   #artifactDir: string;
   #merged: Pick<RoutesManifest, "clientManifest" | "ssrManifest" | "knownEntries"> = {
@@ -29,19 +27,12 @@ export class AllRoutesBuilder {
   #knownSet = new Set<string>();
   #routeIds: string[] = [];
   #entriesByRoute = new Map<string, string[]>();
+  #externalsByChunkUrl: Record<string, string[]> = {};
   #discovery: ClientEntryDiscovery | null = null;
-  #runtimeChunks?: RuntimeChunks;
 
-  constructor(
-    app: App,
-    artifact: BaseBuildArtifact,
-    command: "build" | "start" = "start",
-    { runtimeChunks }: { runtimeChunks?: RuntimeChunks } = {},
-  ) {
+  constructor(app: App, command: "build" | "start" = "start") {
     this.#app = app;
-    this.#artifact = artifact;
     this.#command = command;
-    this.#runtimeChunks = runtimeChunks;
     this.#artifactDir = `${command === "build" ? app.dist.cwdPath : app.cwdPath}/.akan/artifact`;
   }
 
@@ -66,13 +57,33 @@ export class AllRoutesBuilder {
     const delta = await this.#buildEntries([...allEntries]);
     this.#mergeDelta(delta);
     this.#merged.knownEntries = Array.from(this.#knownSet);
+    this.#externalsByChunkUrl = delta.externalsByChunkUrl ?? {};
 
-    const preloads = this.#modulePreloadsOf(delta);
     const manifest: RoutesManifest = {
       routeIds: this.#routeIds,
       ...this.#merged,
-      ...(preloads ? { modulePreloads: preloads.table } : {}),
     };
+    const manifestPath = await this.#writeManifest(manifest);
+    this.#app.verbose(
+      `[build-all] wrote ${manifestPath} routes=${this.#routeIds.length} entries=${this.#merged.knownEntries.length}`,
+    );
+
+    return { manifest, manifestPath, seedIndex };
+  }
+
+  async writeModulePreloads(runtimeChunks: RuntimeChunks): Promise<RouteModulePreloads> {
+    const preloads = new RouteModulePreloads({
+      runtimeChunks,
+      entriesByRoute: this.#entriesByRoute,
+      clientManifest: this.#merged.clientManifest,
+      externalsByChunkUrl: this.#externalsByChunkUrl,
+      workspaceRoot: this.#app.workspace.workspaceRoot,
+    });
+    await this.#writeManifest({ routeIds: this.#routeIds, ...this.#merged, modulePreloads: preloads.table });
+    return preloads;
+  }
+
+  async #writeManifest(manifest: RoutesManifest) {
     const manifestPath = path.join(path.resolve(this.#artifactDir), "routes-manifest.json");
     await Bun.write(
       manifestPath,
@@ -84,11 +95,7 @@ export class AllRoutesBuilder {
         2,
       )}\n`,
     );
-    this.#app.verbose(
-      `[build-all] wrote ${manifestPath} routes=${this.#routeIds.length} entries=${this.#merged.knownEntries.length}`,
-    );
-
-    return { manifest, manifestPath, seedIndex, ...(preloads ? { modulesByRoute: preloads.modulesByRoute() } : {}) };
+    return manifestPath;
   }
 
   async #buildEntries(entries: string[]): Promise<BuildRouteClientResult> {
@@ -105,24 +112,12 @@ export class AllRoutesBuilder {
       app: this.#app,
       seeds: [],
       entries,
-      artifact: this.#artifact,
       knownEntries: this.#knownSet,
       discovery: this.#discovery,
       command: this.#command,
     }).build();
     this.#app.verbose(`[build-all] bundled ${delta.newEntries.length} entries (${Date.now() - started}ms)`);
     return delta;
-  }
-
-  #modulePreloadsOf({ externalsByChunkUrl }: BuildRouteClientResult): RouteModulePreloads | null {
-    if (!this.#runtimeChunks) return null;
-    return new RouteModulePreloads({
-      runtimeChunks: this.#runtimeChunks,
-      entriesByRoute: this.#entriesByRoute,
-      clientManifest: this.#merged.clientManifest,
-      externalsByChunkUrl: externalsByChunkUrl ?? {},
-      workspaceRoot: this.#app.workspace.workspaceRoot,
-    });
   }
 
   #mergeDelta(delta: BuildRouteClientResult): void {

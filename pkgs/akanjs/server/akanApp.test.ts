@@ -164,20 +164,31 @@ const writePubsubChild = (serverPath: string) =>
       export const server = {
         async start() {
           const delivered = [];
+          const changes = [];
           const http = Bun.serve({
             unix: process.env.AKAN_CHILD_SOCKET,
             fetch(req) {
               const url = new URL(req.url);
               const roomId = url.searchParams.get("room");
               const socketId = url.searchParams.get("socket") ?? undefined;
+              const models = url.searchParams.getAll("model");
               if (url.pathname === "/subscribe")
                 process.send?.({ type: "pubsub.subscribe", roomId, socketId, pid: process.pid });
               if (url.pathname === "/unsubscribe")
                 process.send?.({ type: "pubsub.unsubscribe", roomId, socketId, pid: process.pid });
               if (url.pathname === "/snapshot")
-                process.send?.({ type: "pubsub.snapshot", rooms: url.searchParams.getAll("room"), pid: process.pid });
+                process.send?.({
+                  type: "pubsub.snapshot",
+                  rooms: url.searchParams.getAll("room"),
+                  ...(url.searchParams.has("live") ? { liveModels: models } : {}),
+                  pid: process.pid,
+                });
               if (url.pathname === "/publish")
                 process.send?.({ type: "pubsub.publish", roomId, data: { n: Number(url.searchParams.get("n")) } });
+              if (url.pathname === "/models") process.send?.({ type: "live.models", models, pid: process.pid });
+              if (url.pathname === "/change")
+                process.send?.({ type: "live.change", change: { refName: models[0], next: url.searchParams.get("n") } });
+              if (url.pathname === "/changes") return Response.json(changes);
               return Response.json(delivered);
             },
           });
@@ -185,6 +196,7 @@ const writePubsubChild = (serverPath: string) =>
             if (!message || typeof message !== "object") return;
             ${answerHealthPing}
             if (message.type === "pubsub.deliver") delivered.push(message.data.n);
+            if (message.type === "live.change") changes.push(message.change.refName + ":" + message.change.next);
             if (message.type === "shutdown") {
               http.stop(true);
               process.exit(0);
@@ -1926,6 +1938,59 @@ describe("AkanApp", () => {
       await call(holder, "/unsubscribe?room=q&socket=s1");
       await until(async () => (await metrics()).rooms === 0, "the confirmed room outlived its last socket");
       expect(await metrics()).toMatchObject({ rooms: 0, sockets: 0 });
+    });
+  }, 20_000);
+
+  test("routes a live change only to another replica that reported a live room for its model", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-live-models-");
+    await writePubsubChild(serverPath);
+
+    await withApp(serverPath, { replica: 2, runtimeDir, port }, async () => {
+      await waitFor(async () => {
+        const body = await readHealth(port);
+        return body?.children.length === 2 && body.children.every((child) => child.ready) ? body : null;
+      });
+      const entries = await readdir(runtimeDir);
+      const socketOf = (idx: number) =>
+        path.join(runtimeDir, entries.find((name) => name.endsWith(`-${idx}.sock`)) ?? `missing-${idx}`);
+      const [holder, writer] = [socketOf(0), socketOf(1)];
+      const call = async (socketPath: string, pathname: string) =>
+        (await (await fetch(`http://child${pathname}`, { unix: socketPath })).json()) as unknown;
+      const rooms = async () =>
+        (
+          (await (await fetch(`http://127.0.0.1:${port}/_akan/app/metrics`, { headers: statusAuth })).json()) as {
+            rooms: number;
+          }
+        ).rooms;
+      //? A child's messages reach the gateway in order, so a room count it then sees proves the earlier ones arrived.
+      const roomsReach = (expected: number) =>
+        waitFor(async () => ((await rooms()) === expected ? true : null), 2_000, `the gateway never held ${expected}`);
+      const changesReach = (expected: string[]) =>
+        waitFor(
+          async () => (JSON.stringify(await call(holder, "/changes")) === JSON.stringify(expected) ? true : null),
+          2_000,
+          `the holder never received exactly ${JSON.stringify(expected)}`,
+        );
+
+      await call(writer, "/models?model=task");
+      await call(holder, "/models?model=task");
+      await call(holder, "/subscribe?room=a");
+      await roomsReach(1);
+      await call(writer, "/change?model=story&n=1");
+      await call(writer, "/change?model=task&n=2");
+      await changesReach(["task:2"]);
+
+      await call(holder, "/models");
+      await call(holder, "/subscribe?room=b");
+      await roomsReach(2);
+      await call(writer, "/change?model=task&n=3");
+      await call(writer, "/subscribe?room=w");
+      await roomsReach(3);
+      await call(holder, "/snapshot?live&model=task&room=a&room=b&room=c");
+      await roomsReach(4);
+      await call(writer, "/change?model=task&n=4");
+      await changesReach(["task:2", "task:4"]);
+      expect(await call(writer, "/changes")).toEqual([]);
     });
   }, 20_000);
 

@@ -51,6 +51,11 @@
       "types": "./store/index.ts",
       "default": "./store/index.ts"
     },
+    "./store/agent": {
+      "import": "./store/agent/index.ts",
+      "types": "./store/agent/index.ts",
+      "default": "./store/agent/index.ts"
+    },
     "./ui": {
       "import": "./ui/index.ts",
       "types": "./ui/index.ts",

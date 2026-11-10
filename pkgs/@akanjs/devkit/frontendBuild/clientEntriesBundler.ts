@@ -22,6 +22,7 @@ export class ClientEntriesBundler {
   #external: readonly string[];
   #externalSubpaths: readonly string[];
   #externalAliases: Partial<Record<string, string>>;
+  #entryExports: Partial<Record<string, readonly string[]>>;
   #command: "build" | "start";
   #target: ClientBundleTarget;
   #outputSubdir: string;
@@ -46,6 +47,7 @@ export class ClientEntriesBundler {
     this.#external = options.external ?? [];
     this.#externalSubpaths = options.externalSubpaths ?? [];
     this.#externalAliases = options.externalAliases ?? {};
+    this.#entryExports = options.entryExports ?? {};
     this.#command = options.command ?? "start";
     this.#target = options.target ?? "browser";
     this.#outputSubdir = options.outputSubdir ?? "client";
@@ -89,6 +91,7 @@ export class ClientEntriesBundler {
 
     for (const artifact of result.outputs.filter((a) => a.kind === "entry-point"))
       this.#addEntryArtifact(artifact.path);
+    this.#assertNarrowedExports();
 
     return {
       manifest: this.#manifest,
@@ -109,11 +112,15 @@ export class ClientEntriesBundler {
     const aliasedEntries = await Promise.all(
       this.#entries.map(async (entry) => {
         const absEntry = path.resolve(entry);
-        const hash = Bun.hash(`${this.#app.name}\n${this.#outputSubdir}\n${absEntry}`).toString(36);
-        const aliasPath = path.join(aliasDir, `${hash}.tsx`);
+        const narrowed = this.#entryExports[absEntry];
+        //? `akan build` and `akan start` share this directory, so a narrowed alias never takes the whole one's file.
+        const key = `${this.#app.name}\n${this.#outputSubdir}\n${absEntry}${narrowed ? "\nnarrowed" : ""}`;
+        const aliasPath = path.join(aliasDir, `${Bun.hash(key).toString(36)}.tsx`);
         await Bun.write(
           aliasPath,
-          this.#createOpaqueEntryAliasSource(absEntry, await this.#scanEntryExportNames(absEntry)),
+          narrowed
+            ? ClientEntriesBundler.narrowedAliasSource(absEntry, narrowed)
+            : this.#createOpaqueEntryAliasSource(absEntry, await this.#scanEntryExportNames(absEntry)),
         );
         originalByAlias.set(path.resolve(aliasPath), absEntry);
         return aliasPath;
@@ -129,6 +136,27 @@ export class ClientEntriesBundler {
     const lines = namedExports.length > 0 ? [`export { ${namedExports.join(", ")} } from ${entryLit};`] : [];
     if (exportNames.includes("default")) lines.push(`export { default } from ${entryLit};`);
     return `${lines.join("\n")}\n`;
+  }
+
+  //? `export {} from` still loads the entry, so a module only ever imported for its side effects keeps them.
+  static narrowedAliasSource(absEntry: string, names: readonly string[]): string {
+    const list = names.length > 0 ? `{ ${names.join(", ")} }` : "{}";
+    return `export ${list} from ${JSON.stringify(path.resolve(absEntry))};\n`;
+  }
+
+  //? Bun silently drops a name `export { … } from` cannot find behind an `export *`.
+  #assertNarrowedExports(): void {
+    const missing = Object.entries(this.#entryExports).flatMap(([absEntry, names = []]) => {
+      const absOut = this.#entryOutputAbsByAbsPath.get(absEntry);
+      if (!absOut) return [`${path.basename(absEntry)}: no output`];
+      const exported = new Set(this.#metafileOutputsByAbs.get(absOut)?.exports);
+      const absent = names.filter((name) => !exported.has(name));
+      return absent.length > 0 ? [`${path.basename(absEntry)}: ${absent.join(", ")}`] : [];
+    });
+    if (missing.length > 0)
+      throw new Error(
+        `[ClientEntriesBundler] client code imports names its vendor does not export (${missing.join("; ")})`,
+      );
   }
 
   async #scanEntryExportNames(absEntry: string): Promise<string[]> {
