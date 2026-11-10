@@ -402,6 +402,38 @@ export class CloudRunner extends runner("cloud") {
       Logger.info(`${library}@${nextVersion} is published to ${registry ?? "npm"}`);
     }
     Logger.info(`All libraries are published to ${registry ?? "npm"}`);
+    if (!registry && isOfficialRelease) await this.releaseEditorExtension(workspace);
+  }
+  //? The VS Marketplace and Open VSX trust only the vscode-publish workflow's GitHub OIDC token, so a release asks CI to publish the commit it shipped.
+  async releaseEditorExtension(workspace: Workspace) {
+    const repo = "akan-team/akanjs";
+    try {
+      if ((await workspace.spawn("git", ["status", "--porcelain", "--", "pkgs/@akanjs/vscode"])).trim())
+        throw new Error("pkgs/@akanjs/vscode has uncommitted changes, such as the version `changeset version` wrote");
+      const sha = (await workspace.spawn("git", ["rev-parse", "HEAD"])).trim();
+      const onMain = (
+        await workspace.spawn("gh", ["api", `repos/${repo}/compare/${sha}...main`, "--jq", ".status"])
+      ).trim();
+      if (onMain !== "identical" && onMain !== "ahead") throw new Error(`${sha.slice(0, 9)} is not on main`);
+      await workspace.spawn("gh", [
+        "workflow",
+        "run",
+        "vscode-publish.yml",
+        "--repo",
+        repo,
+        "--ref",
+        "main",
+        "-f",
+        `sha=${sha}`,
+      ]);
+      Logger.info(
+        `CI is releasing the editor extension from ${sha.slice(0, 9)}: https://github.com/${repo}/actions/workflows/vscode-publish.yml`,
+      );
+    } catch (error) {
+      Logger.warn(
+        `The editor extension was not released: ${error instanceof Error ? error.message : String(error)}. Push the release commit to main, then run \`gh workflow run vscode-publish.yml --repo ${repo} --ref main\``,
+      );
+    }
   }
   #dependenciesFirst(libraries: string[], dependencies: Map<string, string[]>) {
     const ordered: string[] = [];
