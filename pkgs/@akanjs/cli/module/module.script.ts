@@ -1,6 +1,7 @@
 import { type App, type Module, type Sys, script } from "@akanjs/devkit/commandDecorators";
 import { ModuleExecutor } from "@akanjs/devkit/executors";
 import {
+  assertPlainName,
   createPassedPrimitiveReport,
   generatedFilesForSync,
   type PrimitiveWriteReport,
@@ -24,6 +25,7 @@ export class ModuleScript extends script("module", [ModuleRunner, PageScript]) {
     name: string,
     { page = false }: { page?: boolean } = {},
   ): Promise<PrimitiveWriteReport> {
+    assertPlainName("module", name);
     const mod = ModuleExecutor.from(sys, name);
     const files = await this.moduleRunner.createModuleTemplate(mod);
     if (page && sys.type === "app")
@@ -40,6 +42,7 @@ export class ModuleScript extends script("module", [ModuleRunner, PageScript]) {
     await this.moduleRunner.removeModule(mod);
   }
   async createService(sys: Sys, name: string): Promise<PrimitiveWriteReport> {
+    assertPlainName("service", name);
     const service = ModuleExecutor.from(sys, `_${name}`);
     const files = await this.moduleRunner.createService(service);
     await sys.scan();

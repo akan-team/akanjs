@@ -1,0 +1,25 @@
+{
+  "akan.size.file": {
+    "packages/cli/src/api.ts": 858,
+    "packages/cli/src/lib/codegen.ts": 1146,
+    "packages/cli/src/platforms/android.ts": 1350,
+    "packages/cli/src/platforms/ios.ts": 820,
+    "plugins/updates/src/desktop.ts": 1447
+  },
+  "akan.size.function": {
+    "packages/cli/src/lib/codegen.ts#buildModel": 261,
+    "packages/cli/src/lib/codegen.ts#generateKotlin": 185,
+    "packages/cli/src/lib/codegen.ts#generateSwift": 174,
+    "packages/cli/src/lib/hmr.ts#startHmrServer": 199,
+    "packages/cli/src/lib/project.ts#projectFromConfig": 170,
+    "packages/cli/src/platforms/android.ts#buildAndroid": 478,
+    "packages/cli/src/platforms/ios.ts#buildIos": 222,
+    "packages/cli/src/platforms/windows-installer.ts#installerScript": 424,
+    "packages/core/src/plugin.ts#definePlugin": 192,
+    "packages/desktop/src/dispatcher.ts#createDispatcher": 506,
+    "packages/desktop/src/host.ts#startHost": 419,
+    "packages/desktop/src/server.ts#createDesktopServer": 249,
+    "plugins/filesystem/src/desktop.ts#createDesktopFilesystem": 309,
+    "plugins/updates/src/desktop.ts#createDesktopUpdates": 1061
+  }
+}

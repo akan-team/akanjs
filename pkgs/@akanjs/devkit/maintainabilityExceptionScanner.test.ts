@@ -15,7 +15,7 @@ const baselineOf = (json: object) => `${JSON.stringify(json, null, 2)}\n`;
 const reason = "The court canvas is one pointer state machine.";
 
 describe("MaintainabilityExceptionScanner", () => {
-  test("warns once per app or lib and rule, counting reasoned exceptions apart from adopted debt", async () => {
+  test("warns once per app, lib or package and rule, counting reasoned exceptions apart from adopted debt", async () => {
     const root = await makeWorkspace({
       "apps/demo/akan.baseline.json": baselineOf({
         "akan.size.file": {
@@ -38,6 +38,11 @@ describe("MaintainabilityExceptionScanner", () => {
         },
       }),
       "libs/shared/akan.baseline.json": baselineOf({ "akan.size.file": { "ui/Table.tsx": 500 } }),
+      "pkgs/core/akan.baseline.json": baselineOf({ "akan.size.class": { "server/host.ts#Host": 70 } }),
+      "pkgs/@demo/tool/akan.baseline.json": baselineOf({
+        "akan.size.function": { "boot.ts#boot": 200 },
+        reasons: { "boot.ts#boot": reason },
+      }),
       "libs/util/akan.baseline.json": baselineOf({}),
       "libs/broken/akan.baseline.json": "{",
       "apps/clean/main.ts": "export {};\n",
@@ -48,7 +53,7 @@ describe("MaintainabilityExceptionScanner", () => {
       warnings.find((warning) => warning.file === file && warning.message.includes(`for ${rule}:`));
 
     expect(warnings.map(({ rule }) => rule).every((rule) => rule === MaintainabilityExceptionScanner.rule)).toBe(true);
-    expect(warnings).toHaveLength(8);
+    expect(warnings).toHaveLength(10);
     expect(byRule("apps/demo/akan.baseline.json", "akan.size.file")).toMatchObject({
       scope: "file",
       severity: "warning",
@@ -83,6 +88,12 @@ describe("MaintainabilityExceptionScanner", () => {
     );
     expect(byRule("libs/shared/akan.baseline.json", "akan.size.file")?.message).toBe(
       "libs/shared carries 0 reasoned exceptions and 1 adopted-debt entry for akan.size.file: ui/Table.tsx.",
+    );
+    expect(byRule("pkgs/core/akan.baseline.json", "akan.size.class")?.message).toBe(
+      "pkgs/core carries 0 reasoned exceptions and 1 adopted-debt entry for akan.size.class: server/host.ts#Host.",
+    );
+    expect(byRule("pkgs/@demo/tool/akan.baseline.json", "akan.size.function")?.message).toBe(
+      `pkgs/@demo/tool carries 1 reasoned exception and 0 adopted-debt entries for akan.size.function: boot.ts#boot (${JSON.stringify(reason)}).`,
     );
     expect(byRule("apps/demo/akan.baseline.json", "akan.size.component")?.fix).toContain("threshold is wrong");
     expect(byRule("apps/demo/akan.baseline.json", "akan.store.multi-write")?.fix).toContain("add-mutation");

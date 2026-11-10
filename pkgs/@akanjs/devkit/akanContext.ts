@@ -2,6 +2,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { capitalize, isRecord, parseRouteModuleKey } from "akanjs/common";
 import { extractBlockVersion, readDevkitVersion } from "./agentsIndex";
+import { constantFieldNames } from "./constantFieldNames";
 import { AppExecutor, LibExecutor, type SysExecutor, type WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
 import { collectRecipeSources, findInlineRecipeDuplicates, scanRecipes } from "./recipeScanner";
@@ -336,9 +337,6 @@ const moduleShapeFiles = (module: AkanModuleContext) => {
     `${module.name}.signal.ts`,
   ];
 };
-
-const constantFieldNames = (content: string) =>
-  [...content.matchAll(/\b([A-Za-z_$][\w$]*)\s*:\s*field\(/g)].map((match) => match[1]).filter(Boolean);
 
 const safeReadDir = async (dirPath: string) =>
   (await readdir(dirPath, { withFileTypes: true }).catch(() => [])).sort((a, b) => a.name.localeCompare(b.name));

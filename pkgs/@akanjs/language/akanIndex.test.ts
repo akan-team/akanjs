@@ -38,7 +38,7 @@ export class MemoService extends serve(db.memo, () => ({})) {
   "apps/demo/lib/memo/memo.signal.ts": `import { endpoint, slice } from "akanjs/signal";
 import * as srv from "../srv";
 export class MemoSlice extends slice(srv.memo, { guards: { root: Admin, get: Public } }, (init) => ({
-  inPublic: init({ guards: [Public] })
+  inPublic: init({ guards: [Public, resourceGuard("memo")] })
     .search("name", String)
     .live()
     .exec(function (name) {
@@ -189,7 +189,7 @@ describe("AkanIndex definitions", () => {
     expect(hover?.targets[0]).toMatchObject({
       family: "slice",
       label: "slice inPublic",
-      detail: ["guards: Public", "live"],
+      detail: ['guards: Public, resourceGuard("memo")', "live"],
     });
   });
 });

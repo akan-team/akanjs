@@ -6,6 +6,7 @@ export * from "./keyRename";
 export * from "./moduleIndex";
 export * from "./mutationScaffold";
 export * from "./mutationSource";
+export * from "./plainName";
 export * from "./plan";
 export * from "./render";
 export * from "./rolloutGate";

@@ -8,8 +8,17 @@ import {
 } from "@akanjs/devkit/akanContext";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, ModuleExecutor } from "@akanjs/devkit/executors";
-import { createTempApp, createTempModule, tempRoots, writeJson, writeText } from "@akanjs/devkit/testHelpers";
+import {
+  createTempApp,
+  createTempModule,
+  makeCliTempWorkspace,
+  tempRoots,
+  writeJson,
+  writeText,
+} from "@akanjs/devkit/testHelpers";
 import { AgentRunner } from "../agent/agent.runner";
+import { ApplicationRunner } from "../application/application.runner";
+import { LibraryRunner } from "../library/library.runner";
 import { ModuleRunner } from "../module/module.runner";
 import { ContextRunner } from "./context.runner";
 
@@ -90,6 +99,17 @@ describe("ContextRunner", () => {
     expect(strict.repairActions.map((action) => action.command)).toContain(
       "akan repair module-shape --app demo --module post",
     );
+  });
+
+  test("passes strict on a new app and library, whose own service modules come with an abstract", async () => {
+    const { workspace } = track(await makeCliTempWorkspace());
+    await new ApplicationRunner().createApplication("demo", workspace);
+    await new LibraryRunner().createLibrary("mylib", workspace);
+
+    const strict = await AkanContextAnalyzer.doctor(workspace, { strict: true });
+
+    expect(strict.diagnostics).toEqual([]);
+    expect(strict.status).toBe("passed");
   });
 
   test("doctor ignores a malformed workflow artifact instead of throwing", async () => {
@@ -450,7 +470,9 @@ describe("ContextRunner", () => {
       mode: "apply-first",
       directSourceEdits: "fallback-only",
     });
-    expect(contract.directEditFallbackPolicy.applyRequiredWhen).toContain("plan_workflow returns planPath");
+    expect(contract.directEditFallbackPolicy.applyRequiredWhen).toEqual([
+      "plan_workflow returns next.tool=apply_workflow",
+    ]);
     expect(contract.directEditFallbackPolicy.approvalMeaning).toContain("not a separate MCP permission gate");
     expect(contract.directEditFallbackPolicy.validationRequiredAfterApply).toContain("validationTarget");
     expect(contract.directEditFallbackPolicy.fallbackAllowedWhen.join("\n")).toContain("no matching workflow");
@@ -567,7 +589,8 @@ describe("ContextRunner", () => {
   });
 
   test("runs workflow read tools through MCP plan mode", async () => {
-    const { root, workspace } = track(await createTempApp("demo"));
+    const { root, workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
     const runner = new ContextRunner();
     const planPath = `${root}/.akan/workflows/plans/task-priority.json`;
 
@@ -614,7 +637,8 @@ describe("ContextRunner", () => {
   });
 
   test("writes a default plan artifact from MCP plan_workflow", async () => {
-    const { root, workspace } = track(await createTempApp("demo"));
+    const { root, workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
 
     const plan = (await new ContextRunner().callMcpTool(
       workspace,
@@ -634,6 +658,65 @@ describe("ContextRunner", () => {
     );
     expect(plan.recommendations.map((recommendation) => recommendation.code)).toContain("add-field-component");
     expect(await Bun.file(`${root}/${plan.planPath}`).exists()).toBe(true);
+  });
+
+  test("names no next tool for an MCP plan or apply that failed", async () => {
+    const { workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
+    const runner = new ContextRunner();
+
+    const plan = (await runner.callMcpTool(
+      workspace,
+      "plan_workflow",
+      { workflow: "add-field", inputs: { app: "demo", module: "task", field: "budget", type: "Number" } },
+      { mode: "apply" },
+    )) as {
+      planPath: string;
+      diagnostics: { severity: string; code: string }[];
+      approval: Record<string, unknown>;
+      recommendations: { code: string }[];
+    };
+    const reports = (await Promise.all(
+      [true, false].map((dryRun) =>
+        runner.callMcpTool(workspace, "apply_workflow", { planPath: plan.planPath, dryRun }, { mode: "apply" }),
+      ),
+    )) as Record<string, unknown>[];
+
+    expect(plan.diagnostics).toEqual([
+      expect.objectContaining({ severity: "error", code: "primitive-field-type-unsupported" }),
+    ]);
+    expect(plan).not.toHaveProperty("next");
+    expect(plan.approval).toMatchObject({ required: true, applyTool: "apply_workflow" });
+    expect(plan.approval).not.toHaveProperty("canApplyWith");
+    expect(plan.recommendations.map((recommendation) => recommendation.code)).not.toContain("workflow-apply-first");
+    expect(plan.recommendations.map((recommendation) => recommendation.code)).not.toContain(
+      "workflow-validate-apply-report",
+    );
+    expect(reports).toEqual([
+      expect.objectContaining({ mode: "dry-run", status: "failed" }),
+      expect.objectContaining({ mode: "apply", status: "failed" }),
+    ]);
+    for (const report of reports) expect(report).not.toHaveProperty("next");
+  });
+
+  test("refuses an MCP plan_workflow for a module the target lacks, in the MCP server's workspace", async () => {
+    const { workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
+
+    const plan = (await new ContextRunner().callMcpTool(
+      workspace,
+      "plan_workflow",
+      { workflow: "add-field", inputs: { app: "demo", module: "pokemon", field: "nickname", type: "String" } },
+      { mode: "plan" },
+    )) as { diagnostics: { severity: string; code: string; message: string }[] };
+
+    expect(plan.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        code: "workflow-module-missing",
+        message: expect.stringContaining("Its database modules are task."),
+      }),
+    ]);
   });
 
   test("splits doctor diagnostics by workflow context paths", async () => {

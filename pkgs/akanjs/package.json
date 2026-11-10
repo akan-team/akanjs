@@ -160,6 +160,11 @@
       "types": "./server/lifecycle/buildEnv.ts",
       "default": "./server/lifecycle/buildEnv.ts"
     },
+    "./server/artifact/modulePreloadPlan": {
+      "import": "./server/artifact/modulePreloadPlan.ts",
+      "types": "./server/artifact/modulePreloadPlan.ts",
+      "default": "./server/artifact/modulePreloadPlan.ts"
+    },
     "./server/artifact/routeSeedIndexStore": {
       "import": "./server/artifact/routeSeedIndexStore.ts",
       "types": "./server/artifact/routeSeedIndexStore.ts",

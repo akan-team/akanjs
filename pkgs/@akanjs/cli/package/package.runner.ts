@@ -3,6 +3,8 @@ import { type Pkg, runner, type Workspace } from "@akanjs/devkit/commandDecorato
 import { TypeScriptDependencyScanner } from "@akanjs/devkit/dependencyScanner";
 import { PkgExecutor } from "@akanjs/devkit/executors";
 import { FileSys } from "@akanjs/devkit/fileSys";
+import { FrameworkGraph } from "@akanjs/devkit/frameworkGraph";
+import { MaintainabilityBaseline } from "@akanjs/devkit/maintainabilityBaseline";
 import { PackageExportsMap } from "@akanjs/devkit/packageExportsMap";
 import type { PackageJson } from "@akanjs/devkit/types";
 import { Logger } from "akanjs/common";
@@ -131,7 +133,7 @@ export class PackageRunner extends runner("package") {
       });
     } else {
       await pkg.dist.cp(pkg.cwdPath, pkg.dist.cwdPath);
-      await $`rm -rf ${pkg.dist.cwdPath}/local`;
+      await $`rm -rf ${pkg.dist.cwdPath}/local ${pkg.dist.cwdPath}/akan.baseline.json`;
       await Promise.all([
         pkg.generateDistPackageJson(packageRuntimeDeps, packageRuntimeDevDeps),
         pkg.generateTsconfigJson(),
@@ -262,15 +264,35 @@ export class PackageRunner extends runner("package") {
       cwd: pkg.workspace.workspaceRoot,
     });
     const [packResult] = JSON.parse(packOutput) as Array<{ files?: { path?: string }[]; size?: number }>;
-    const localFiles = (packResult?.files ?? []).filter((file) => file.path?.startsWith("local/"));
+    const packedPaths = (packResult?.files ?? []).map((file) => file.path ?? "");
+    const localFiles = packedPaths.filter((filePath) => filePath.startsWith("local/"));
     if (localFiles.length > 0)
       throw new Error(`[package] ${pkg.name} would publish ${localFiles.length} test-run files under local/`);
+    const baselines = packedPaths.filter(
+      (filePath) => path.posix.basename(filePath) === MaintainabilityBaseline.fileName,
+    );
+    if (baselines.length > 0)
+      throw new Error(`[package] ${pkg.name} would publish its workspace's lint baseline: ${baselines.join(", ")}`);
     return {
       name: pkg.name,
       version: pkgJson.version,
       files: packResult?.files?.length ?? 0,
       size: packResult?.size ?? 0,
     };
+  }
+
+  async syncArchitecture(workspace: Workspace) {
+    const architecture = await FrameworkGraph.architecture(workspace.workspaceRoot);
+    if (!architecture) throw new Error(`${FrameworkGraph.architectureFile} is only kept in the akanjs repository`);
+    const { file, current, next, unknownClasses, map } = architecture;
+    if (next !== current) await Bun.write(file, next);
+    const problems = [
+      ...unknownClasses.map((name) => `\`${name}\` is cited outside the generated part but is no framework class`),
+      ...map.missing.map((channel) => `channel ${channel} was not found`),
+      ...map.cycles.map((cycle) => `facets ${cycle.join(", ")} load values from each other`),
+    ];
+    if (problems.length) throw new Error(`${FrameworkGraph.architectureFile}:\n${problems.join("\n")}`);
+    return { file: FrameworkGraph.architectureFile, changed: next !== current };
   }
 
   async verifyAkanPublishPackages(workspace: Workspace) {

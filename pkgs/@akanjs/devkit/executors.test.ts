@@ -331,6 +331,16 @@ describe("Executor filesystem helpers", () => {
 });
 
 describe("Workspace and app executor environment contracts", () => {
+  const baseDevEnvKeys = [
+    "AKAN_PUBLIC_APP_NAME",
+    "AKAN_WORKSPACE_ROOT",
+    "AKAN_WORKSPACE_ID",
+    "AKAN_PUBLIC_REPO_NAME",
+    "AKAN_PUBLIC_SERVE_DOMAIN",
+    "AKAN_PUBLIC_ENV",
+    "PORT_OFFSET",
+  ];
+
   test("reads base development environment", () => {
     process.env.AKAN_PUBLIC_REPO_NAME = "repo";
     process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
@@ -427,8 +437,7 @@ describe("Workspace and app executor environment contracts", () => {
         "",
       ].join("\n"),
     );
-    delete process.env.AKAN_PUBLIC_REPO_NAME;
-    delete process.env.AKAN_PUBLIC_SERVE_DOMAIN;
+    for (const key of baseDevEnvKeys) delete process.env[key];
 
     expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env"))).toEqual({
       appName: "file-app",
@@ -458,6 +467,7 @@ describe("Workspace and app executor environment contracts", () => {
         "",
       ].join("\r\n"),
     );
+    for (const key of baseDevEnvKeys) delete process.env[key];
 
     expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env"))).toEqual({
       appName: 'say \\"hi\\"\nagain',
@@ -467,6 +477,53 @@ describe("Workspace and app executor environment contracts", () => {
       env: "develop",
       portOffset: 7,
       workspaceId: "ws # kept",
+      defaulted: [],
+    });
+  });
+
+  test("the shell outranks the workspace .env key by key, and a default stands in for what neither sets", async () => {
+    const root = await makeTempRoot();
+    await writeFile(
+      path.join(root, ".env"),
+      [
+        "AKAN_PUBLIC_ENV=local",
+        "AKAN_PUBLIC_REPO_NAME=file-repo",
+        "AKAN_PUBLIC_SERVE_DOMAIN=file.example.com",
+        "",
+      ].join("\n"),
+    );
+    for (const key of baseDevEnvKeys) delete process.env[key];
+    Object.assign(process.env, { AKAN_PUBLIC_ENV: "main", AKAN_PUBLIC_SERVE_DOMAIN: "shell.example.com" });
+
+    expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env"))).toMatchObject({
+      env: "main",
+      repoName: "file-repo",
+      serveDomain: "shell.example.com",
+      defaulted: [],
+    });
+
+    delete process.env.AKAN_PUBLIC_ENV;
+    await writeFile(path.join(root, ".env"), "AKAN_PUBLIC_ENV=local\n");
+    expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env"))).toMatchObject({
+      env: "local",
+      serveDomain: "shell.example.com",
+      defaulted: ["AKAN_PUBLIC_REPO_NAME"],
+    });
+  });
+
+  test("an empty export reads as unset, so the .env's value stands", async () => {
+    const root = await makeTempRoot();
+    await writeFile(
+      path.join(root, ".env"),
+      "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=file-repo\nAKAN_PUBLIC_SERVE_DOMAIN=file.example.com\n",
+    );
+    for (const key of baseDevEnvKeys) delete process.env[key];
+    Object.assign(process.env, { AKAN_PUBLIC_ENV: "", AKAN_PUBLIC_REPO_NAME: "", AKAN_PUBLIC_SERVE_DOMAIN: "" });
+
+    expect(WorkspaceExecutor.getBaseDevEnv(path.join(root, ".env"))).toMatchObject({
+      env: "main",
+      repoName: "file-repo",
+      serveDomain: "file.example.com",
       defaulted: [],
     });
   });

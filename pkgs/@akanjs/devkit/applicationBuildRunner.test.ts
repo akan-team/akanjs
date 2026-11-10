@@ -160,7 +160,7 @@ console.info(new SampleService().name);
     }
   });
 
-  test("bakes into the route bundles the env their server env is, not the shell's that the root .env outranks", async () => {
+  test("builds for the shell's AKAN_PUBLIC_ENV over the root .env's, and for --env over both", async () => {
     const { root, workspace } = await createTempApp("portal");
     const shellEnv = process.env.AKAN_PUBLIC_ENV;
     const stoppedBeforePhases = (app: AppExecutor) => {
@@ -172,17 +172,37 @@ console.info(new SampleService().name);
     const bakedEnv = (app: AppExecutor) =>
       (bundleDefine(app, "build", "ssr") as { [key: string]: string })["process.env.AKAN_PUBLIC_ENV"];
     try {
+      expect(await readFile(path.join(root, ".env"), "utf8")).toContain("AKAN_PUBLIC_ENV=local\n");
       process.env.AKAN_PUBLIC_ENV = "main";
       const app = stoppedBeforePhases(AppExecutor.from(workspace, "portal"));
-      await expect(new ApplicationBuildRunner(app).build()).rejects.toThrow("stopped before the phases");
-      expect(bakedEnv(app)).toBe(JSON.stringify("local"));
+      const warn = spyOn(app.logger, "warn").mockImplementation(() => undefined);
+      const runner = new ApplicationBuildRunner(app);
+      await expect(runner.build()).rejects.toThrow("stopped before the phases");
+      expect(bakedEnv(app)).toBe(JSON.stringify("main"));
+      expect(warn.mock.calls.map(([line]) => line)).toEqual([
+        "The shell (or a .env.local) outranks the workspace .env: the bundles and the image take AKAN_PUBLIC_ENV=main (.env: local). Unset it there to build what the .env says.",
+      ]);
+      await runner.buildAppMeta();
+      expect(JSON.parse(await readFile(path.join(app.dist.cwdPath, "akan.env.json"), "utf8"))).toMatchObject({
+        AKAN_PUBLIC_ENV: "main",
+      });
+      expect(await readFile(path.join(app.dist.cwdPath, "Dockerfile"), "utf8")).toContain("ENV AKAN_PUBLIC_ENV=main\n");
 
       process.env.AKAN_PUBLIC_ENV = "main";
       const desktop = stoppedBeforePhases(AppExecutor.from(workspace, "portal"));
+      const desktopWarn = spyOn(desktop.logger, "warn").mockImplementation(() => undefined);
       await expect(new ApplicationBuildRunner(desktop, { environment: "debug" }).build()).rejects.toThrow(
         "stopped before the phases",
       );
       expect(bakedEnv(desktop)).toBe(JSON.stringify("debug"));
+      expect(desktopWarn).not.toHaveBeenCalled();
+
+      process.env.AKAN_PUBLIC_ENV = "";
+      const unset = stoppedBeforePhases(AppExecutor.from(workspace, "portal"));
+      await expect(new ApplicationBuildRunner(unset, { environment: "debug" }).build()).rejects.toThrow(
+        "stopped before the phases",
+      );
+      expect(bakedEnv(unset)).toBe(JSON.stringify("debug"));
     } finally {
       if (shellEnv === undefined) delete process.env.AKAN_PUBLIC_ENV;
       else process.env.AKAN_PUBLIC_ENV = shellEnv;
@@ -190,7 +210,7 @@ console.info(new SampleService().name);
     }
   });
 
-  test("bakes into the bundles every AKAN_PUBLIC_* its Dockerfile carries, and names the shell values it outranked", async () => {
+  test("bakes into the bundles every AKAN_PUBLIC_* its Dockerfile carries, each the shell's over the root .env's", async () => {
     const { root, workspace } = await createTempApp("portal");
     const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
     const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
@@ -199,11 +219,8 @@ console.info(new SampleService().name);
       "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
     );
     await Promise.all(["private", "public"].map((dir) => mkdir(path.join(root, "apps", "portal", dir))));
-    Object.assign(process.env, {
-      AKAN_PUBLIC_ENV: "local",
-      AKAN_PUBLIC_REPO_NAME: "shell-repo",
-      AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
-    });
+    for (const key of keys) delete process.env[key];
+    process.env.AKAN_PUBLIC_REPO_NAME = "shell-repo";
     const app = AppExecutor.from(workspace, "portal");
     const warn = spyOn(app.logger, "warn").mockImplementation(() => undefined);
     const runner = new ApplicationBuildRunner(app);
@@ -215,11 +232,14 @@ console.info(new SampleService().name);
       const define = bundleDefine(app, "build", "csr") as { [key: string]: string };
       const imageEnv = (await app.getConfig()).getProductionEnv();
       for (const key of keys) expect(define[`process.env.${key}`]).toBe(JSON.stringify(imageEnv[key]));
-      expect(imageEnv.AKAN_PUBLIC_SERVE_DOMAIN).toBe("akanjs.com");
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn.mock.calls[0]?.[0]).toBe(
-        "The workspace .env outranks this process's environment: the bundles and the image take AKAN_PUBLIC_ENV=main (not local), AKAN_PUBLIC_REPO_NAME=repo (not shell-repo), AKAN_PUBLIC_SERVE_DOMAIN=akanjs.com (not localhost). Pick the environment with `akan build --env`, and set the rest in the workspace .env.",
-      );
+      expect(imageEnv).toMatchObject({
+        AKAN_PUBLIC_ENV: "main",
+        AKAN_PUBLIC_REPO_NAME: "shell-repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
+      });
+      expect(warn.mock.calls.map(([line]) => line)).toEqual([
+        "The shell (or a .env.local) outranks the workspace .env: the bundles and the image take AKAN_PUBLIC_REPO_NAME=shell-repo (.env: repo). Unset it there to build what the .env says.",
+      ]);
     } finally {
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];

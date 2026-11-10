@@ -1,11 +1,12 @@
 import { capitalize } from "akanjs/common";
-import type { Workspace } from "../commandDecorators";
-import { workflowPlanApproval } from "./artifacts";
+import type { Sys, Workspace } from "../commandDecorators";
+import { withoutApplyHints, workflowPlanApproval } from "./artifacts";
 import { resolveWorkflowSys } from "./executor";
 import { InteractionScaffold } from "./interactionScaffold";
 import { KeyRename } from "./keyRename";
 import { MutationScaffold } from "./mutationScaffold";
-import { coerceFieldDefault, moduleSourcePaths } from "./source";
+import { identifierPattern, sysNamePattern } from "./plainName";
+import { coerceFieldDefault, getSysRoot, moduleSourcePaths } from "./source";
 import type {
   WorkflowDiagnostic,
   WorkflowInputSpec,
@@ -17,11 +18,10 @@ import type {
   WorkflowSurfaceMode,
 } from "./types";
 import { addFieldUiPolicyForType } from "./uiPolicy";
+import { workflowStatus } from "./utils";
 
 const surfaceModes = new Set<WorkflowSurfaceMode>(["infer", "include", "skip"]);
 
-const sysNamePattern = /^[a-z0-9][a-zA-Z0-9_-]*$/;
-const identifierPattern = /^_{0,2}[a-zA-Z][a-zA-Z0-9_-]*$/;
 //? These inputs become path segments, identifiers and command arguments, so none may carry a separator or a dot.
 const nameInputPatterns: Record<string, RegExp> = {
   app: sysNamePattern,
@@ -34,11 +34,6 @@ const nameInputPatterns: Record<string, RegExp> = {
   mutation: identifierPattern,
   interaction: identifierPattern,
 };
-
-export const isWorkflowSysName = (value: unknown): value is string =>
-  typeof value === "string" && sysNamePattern.test(value);
-export const isWorkflowModuleName = (value: unknown): value is string =>
-  typeof value === "string" && identifierPattern.test(value);
 
 const parseStringList = (value: unknown) => {
   if (Array.isArray(value)) {
@@ -479,25 +474,116 @@ const inspectRenameKeyPlan = async (workspace: Workspace, plan: WorkflowPlan): P
   };
 };
 
-export const inspectWorkflowPlan = async (workspace: Workspace, plan: WorkflowPlan): Promise<WorkflowPlan> => {
-  if (plan.workflow === "rename-key") return await inspectRenameKeyPlan(workspace, plan);
-  if (plan.workflow !== "add-mutation" && plan.workflow !== "create-interaction") return plan;
-  const app = planString(plan.inputs, "app");
-  if (!app) return plan;
+const syssHolding = async (workspace: Workspace, module: string, except: Sys) => {
+  const [apps, libs] = await workspace.getSyss();
+  const others = await Promise.all(
+    [...apps, ...libs]
+      .filter((name) => name !== except.name)
+      .map(async (name) => await resolveWorkflowSys(workspace, name)),
+  );
+  const holding = await Promise.all(
+    others.map(async (other) => (other && (await other.getDatabaseModules()).includes(module) ? other : null)),
+  );
+  return holding.filter((other): other is Sys => other !== null);
+};
+
+const moduleMissing = async (workspace: Workspace, sys: Sys, module: string): Promise<WorkflowDiagnostic | null> => {
+  if ((await sys.readdir("lib")).includes(module)) return null;
+  const root = getSysRoot(sys);
+  const modules = await sys.getDatabaseModules();
+  const sameName = modules.find((name) => name.toLowerCase() === module.toLowerCase());
+  const service = (await sys.getServiceModules()).find(
+    (name) => name.replace(/^_/, "").toLowerCase() === module.replace(/^_/, "").toLowerCase(),
+  );
+  const isScalar = (await sys.getScalarModules()).includes(module);
+  const [holder] = sameName || service || isScalar ? [] : await syssHolding(workspace, module, sys);
+  return {
+    severity: "error",
+    code: "workflow-module-missing",
+    input: "module",
+    message: [
+      `No module named ${module} in ${root}: ${root}/lib/${module} does not exist.`,
+      modules.length ? `Its database modules are ${modules.join(", ")}.` : `${root} has no database modules yet.`,
+      sameName
+        ? `Did you mean ${sameName}?`
+        : service
+          ? `${root}/lib/${service} is a service module, which stores no model, and this workflow writes only into a database module.`
+          : isScalar
+            ? `${root}/lib/__scalar/${module} is a scalar, and this workflow writes only into a module under ${root}/lib.`
+            : holder
+              ? `${module} is in ${getSysRoot(holder)}, so plan this with --app ${holder.name}.`
+              : `If ${module} is a new model, create it with the create-module workflow first, then plan this again.`,
+    ].join(" "),
+  };
+};
+
+const moduleNotDatabase = async (sys: Sys, spec: WorkflowSpec, module: string): Promise<WorkflowDiagnostic | null> => {
+  const databaseModules = await sys.getDatabaseModules();
+  if (databaseModules.includes(module)) return null;
+  const root = getSysRoot(sys);
+  const isServiceModule = module.startsWith("_") && !module.startsWith("__");
+  return {
+    severity: "error",
+    code: "workflow-module-not-database",
+    input: "module",
+    message: [
+      isServiceModule
+        ? `${module} in ${root} is a service module, which stores no model.`
+        : `${root}/lib/${module} is not a database module: it has no ${module}.constant.ts.`,
+      `${spec.name} needs a database module, one with lib/<model>/<model>.constant.ts.`,
+      databaseModules.length
+        ? `Its database modules are ${databaseModules.join(", ")}.`
+        : `${root} has no database modules yet.`,
+      spec.inputs.field
+        ? "Add the field to one of them, or create its model with the create-module workflow first; a value several models embed is a scalar, made with create-scalar and added to a model as a field of that type."
+        : "Plan this on one of them, or create the model with the create-module workflow first.",
+    ].join(" "),
+  };
+};
+
+export const workflowTargetDiagnostics = async (
+  workspace: Workspace,
+  spec: WorkflowSpec,
+  inputs: Record<string, WorkflowInputValue>,
+): Promise<WorkflowDiagnostic[]> => {
+  const app = planString(inputs, "app");
+  if (!app) return [];
   const sys = await resolveWorkflowSys(workspace, app).catch(() => null);
-  if (!sys)
+  if (!sys) {
+    const [apps, libs] = await workspace.getSyss();
+    return [
+      {
+        severity: "error",
+        code: "workflow-target-missing",
+        input: "app",
+        message: `No app or library named ${app}. Apps: ${apps.join(", ") || "none"}. Libraries: ${libs.join(", ") || "none"}.`,
+      },
+    ];
+  }
+  const module = planString(inputs, "module");
+  const moduleSpec: WorkflowInputSpec | undefined = spec.inputs.module;
+  if (!module || !moduleSpec?.mustExist) return [];
+  const refused = (await moduleMissing(workspace, sys, module)) ?? (await moduleNotDatabase(sys, spec, module));
+  return refused ? [refused] : [];
+};
+
+const inspectPlanTarget = async (
+  workspace: Workspace,
+  spec: WorkflowSpec,
+  plan: WorkflowPlan,
+): Promise<WorkflowPlan> => {
+  const targetDiagnostics = await workflowTargetDiagnostics(workspace, spec, plan.inputs);
+  if (targetDiagnostics.length)
     return {
       ...plan,
-      diagnostics: [
-        ...plan.diagnostics,
-        {
-          severity: "error",
-          code: "workflow-target-missing",
-          input: "app",
-          message: `No app or library named ${app}.`,
-        },
-      ],
+      predictedChanges: [],
+      diagnostics: [...plan.diagnostics, ...targetDiagnostics],
+      recommendations: [],
     };
+  if (plan.workflow === "rename-key") return await inspectRenameKeyPlan(workspace, plan);
+  if (plan.workflow !== "add-mutation" && plan.workflow !== "create-interaction") return plan;
+  const sys = await resolveWorkflowSys(workspace, planString(plan.inputs, "app")).catch(() => null);
+  if (!sys) return plan;
   const inspected =
     plan.workflow === "add-mutation"
       ? await MutationScaffold.build(
@@ -523,4 +609,14 @@ export const inspectWorkflowPlan = async (workspace: Workspace, plan: WorkflowPl
     ],
     recommendations: [...plan.recommendations, ...inspected.recommendations],
   };
+};
+
+export const inspectWorkflowPlan = async (
+  workspace: Workspace,
+  spec: WorkflowSpec,
+  plan: WorkflowPlan,
+): Promise<WorkflowPlan> => {
+  const inspected = await inspectPlanTarget(workspace, spec, plan);
+  if (workflowStatus(inspected.diagnostics) === "passed") return inspected;
+  return { ...inspected, recommendations: withoutApplyHints(inspected.recommendations) };
 };

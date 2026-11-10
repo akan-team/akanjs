@@ -3,7 +3,11 @@ import path from "node:path";
 import type { BaseBuildArtifact } from "akanjs/server";
 import { type PageEntry, resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import type { App } from "../commandDecorators";
-import { type BarrelImportsPluginOptions, createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
+import {
+  type BarrelImportsPluginOptions,
+  createBarrelImportsPlugin,
+  workspaceBarrels,
+} from "../transforms/barrelImportsPlugin";
 import { createBrowserDirnamePlugin } from "../transforms/browserDirnamePlugin";
 import { SideEffectImportOrder } from "../transforms/sideEffectImportOrder";
 import { bundleConditions, bundleDefine } from "./bundleDefine";
@@ -121,9 +125,11 @@ export class CsrArtifactBuilder {
     };
   }
 
-  //? Whole, the akanjs/ui barrel bundles every component and the optional peers (react-icons) they import.
+  //? Whole, the akanjs/ui barrel bundles every component and the optional peers (react-icons) they import, and an app or
+  //? lib client barrel every module's UI.
   static async barrelImportsPlugin(app: App, pipeAfter?: BarrelImportsPluginOptions["pipeAfter"]) {
-    return await createBarrelImportsPlugin(app, { barrels: ["akanjs/ui"], pipeAfter });
+    const barrels = ["akanjs/ui", ...workspaceBarrels((await app.getConfig()).barrelImports)];
+    return await createBarrelImportsPlugin(app, { barrels, pipeAfter });
   }
 
   /** Where a build records the `AKAN_PUBLIC_*` it inlined, which nothing in the minified bundle names. */
