@@ -1332,7 +1332,7 @@ describe("akan workflow", () => {
     });
   }, 120_000);
 
-  test("exits 1 when validate fails, and 0 when it passes", async () => {
+  test("exits 1 when validate fails, and 0 when it passes or only baseline blockers remain", async () => {
     const { root, workspace } = track(await createTempModule("task"));
     const missingRun = await workflowCli(root, ["validate", "validation-missing", "--format", "json"]);
     expect(missingRun.code).toBe(1);
@@ -1342,12 +1342,27 @@ describe("akan workflow", () => {
     const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
     const exitCode = process.exitCode;
     try {
-      for (const status of ["failed", "passed"] as const) {
+      const exits: Record<string, number | string | undefined> = {};
+      for (const overallStatus of [
+        "failed",
+        "blocked-by-workspace-config",
+        "blocked-by-environment",
+        "passed-with-baseline-blockers",
+        "passed",
+      ] as const) {
         process.exitCode = 0;
-        validateReport.mockResolvedValue({ status } as WorkflowValidationRunReport);
+        const status = overallStatus === "passed" ? "passed" : "failed";
+        validateReport.mockResolvedValue({ status, overallStatus } as WorkflowValidationRunReport);
         await CommandContainer.get(WorkflowScript).workflow("validate", "run-1", {}, { format: "json", workspace });
-        expect([status, process.exitCode]).toEqual([status, status === "failed" ? 1 : 0]);
+        exits[overallStatus] = process.exitCode;
       }
+      expect(exits).toEqual({
+        failed: 1,
+        "blocked-by-workspace-config": 1,
+        "blocked-by-environment": 1,
+        "passed-with-baseline-blockers": 0,
+        passed: 0,
+      });
     } finally {
       validateReport.mockRestore();
       printed.mockRestore();

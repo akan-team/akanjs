@@ -747,14 +747,17 @@ akan repair dictionary --app koyo --module icecreamOrder --format json`,
                     <span>
                       Runs the checks the plan asked for — <code>sync</code>, <code>lint</code>, <code>typecheck</code>{" "}
                       or <code>build</code> — and sorts each failure by cause. It exits 1 when the status is{" "}
-                      <code>failed</code>.
+                      <code>failed</code>, but 0 when every failure left is a known baseline blocker (
+                      <code>passed-with-baseline-blockers</code>).
                     </span>
                   ),
                   ko: (
                     <span>
                       플랜이 요구한 검증(<code>sync</code>, <code>lint</code>, <code>typecheck</code>,{" "}
                       <code>build</code>
-                      )을 돌리고, 실패를 원인별로 분류합니다. 상태가 <code>failed</code>이면 종료 코드 1로 끝납니다.
+                      )을 돌리고, 실패를 원인별로 분류합니다. 상태가 <code>failed</code>이면 종료 코드 1로 끝나지만,
+                      남은 실패가 모두 알려진 기준선 문제(<code>passed-with-baseline-blockers</code>)라면 0으로
+                      끝납니다.
                     </span>
                   ),
                 })}

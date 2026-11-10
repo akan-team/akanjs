@@ -50,7 +50,7 @@ export class WorkflowScript extends script("workflow", [WorkflowRunner]) {
       if (!workspace) throw new Error("Workspace is required for workflow validate.");
       const report = await this.workflowRunner.validateReport(workflow, { workspace });
       Logger.rawLog(renderWorkflowValidation(report, format));
-      if (report.status === "failed") process.exitCode = 1;
+      if (report.status === "failed" && report.overallStatus !== "passed-with-baseline-blockers") process.exitCode = 1;
       return;
     }
     if (action === "report") {

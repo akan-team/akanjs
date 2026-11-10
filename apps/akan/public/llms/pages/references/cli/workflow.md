@@ -74,7 +74,7 @@ Takes the plan file, not a workflow name, and writes the source changes. A plan 
 
 3. Validate
 
-Runs the checks the plan asked for — `sync`, `lint`, `typecheck` or `build` — and sorts each failure by cause. It exits 1 when the status is `failed`.
+Runs the checks the plan asked for — `sync`, `lint`, `typecheck` or `build` — and sorts each failure by cause. It exits 1 when the status is `failed`, but 0 when every failure left is a known baseline blocker (`passed-with-baseline-blockers`).
 
 4. Repair
 
