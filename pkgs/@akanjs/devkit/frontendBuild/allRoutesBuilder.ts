@@ -1,11 +1,12 @@
 import path from "node:path";
-import type { BuildRouteClientResult, RoutesManifest } from "akanjs/server";
+import type { RoutesManifest } from "akanjs/server";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex, type RouteSeedIndex } from "../artifact/routeSeedIndex";
 import type { App } from "../commandDecorators";
 import type { ClientEntryDiscovery } from "./clientBuildTypes";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
-import { RouteClientBuilder } from "./routeClientBuilder";
+import { type BuildRouteClientResult, RouteClientBuilder } from "./routeClientBuilder";
+import { RouteModulePreloads, type RuntimeChunks } from "./routeModulePreloads";
 import { RoutesManifestArtifactSerializer } from "./routesManifestArtifactSerializer";
 
 export interface BuildAllRoutesResult {
@@ -25,6 +26,8 @@ export class AllRoutesBuilder {
   };
   #knownSet = new Set<string>();
   #routeIds: string[] = [];
+  #entriesByRoute = new Map<string, string[]>();
+  #externalsByChunkUrl: Record<string, string[]> = {};
   #discovery: ClientEntryDiscovery | null = null;
 
   constructor(app: App, command: "build" | "start" = "start") {
@@ -44,7 +47,9 @@ export class AllRoutesBuilder {
     const allEntries = new Set<string>();
     for (const entry of seedIndex.entries) {
       const seeds = Array.from(new Set([...seedIndex.globalLayoutFiles, ...entry.seeds]));
-      for (const discovered of await this.#discovery.discover(seeds)) allEntries.add(discovered);
+      const routeEntries = await this.#discovery.discover(seeds);
+      for (const discovered of routeEntries) allEntries.add(discovered);
+      this.#entriesByRoute.set(entry.routeId, routeEntries);
       this.#routeIds.push(entry.routeId);
     }
     this.#app.verbose(`[build-all] ${allEntries.size} client entries across ${this.#routeIds.length} routes`);
@@ -52,11 +57,33 @@ export class AllRoutesBuilder {
     const delta = await this.#buildEntries([...allEntries]);
     this.#mergeDelta(delta);
     this.#merged.knownEntries = Array.from(this.#knownSet);
+    this.#externalsByChunkUrl = delta.externalsByChunkUrl ?? {};
 
     const manifest: RoutesManifest = {
       routeIds: this.#routeIds,
       ...this.#merged,
     };
+    const manifestPath = await this.#writeManifest(manifest);
+    this.#app.verbose(
+      `[build-all] wrote ${manifestPath} routes=${this.#routeIds.length} entries=${this.#merged.knownEntries.length}`,
+    );
+
+    return { manifest, manifestPath, seedIndex };
+  }
+
+  async writeModulePreloads(runtimeChunks: RuntimeChunks): Promise<RouteModulePreloads> {
+    const preloads = new RouteModulePreloads({
+      runtimeChunks,
+      entriesByRoute: this.#entriesByRoute,
+      clientManifest: this.#merged.clientManifest,
+      externalsByChunkUrl: this.#externalsByChunkUrl,
+      workspaceRoot: this.#app.workspace.workspaceRoot,
+    });
+    await this.#writeManifest({ routeIds: this.#routeIds, ...this.#merged, modulePreloads: preloads.table });
+    return preloads;
+  }
+
+  async #writeManifest(manifest: RoutesManifest) {
     const manifestPath = path.join(path.resolve(this.#artifactDir), "routes-manifest.json");
     await Bun.write(
       manifestPath,
@@ -68,11 +95,7 @@ export class AllRoutesBuilder {
         2,
       )}\n`,
     );
-    this.#app.verbose(
-      `[build-all] wrote ${manifestPath} routes=${this.#routeIds.length} entries=${this.#merged.knownEntries.length}`,
-    );
-
-    return { manifest, manifestPath, seedIndex };
+    return manifestPath;
   }
 
   async #buildEntries(entries: string[]): Promise<BuildRouteClientResult> {

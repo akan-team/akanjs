@@ -202,7 +202,15 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       quiet = false,
       profile,
       env,
-    }: { write?: boolean; fast?: boolean; quiet?: boolean; profile?: string; env?: string } = {},
+      updateBudget = false,
+    }: {
+      write?: boolean;
+      fast?: boolean;
+      quiet?: boolean;
+      profile?: string;
+      env?: string;
+      updateBudget?: boolean;
+    } = {},
   ) {
     await app.scanSync({ write });
     if (!quiet) Logger.rawLog(`Creating an optimized production build for ${app.name}...`);
@@ -212,6 +220,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
         spinner: !quiet,
         envProfile: profile,
         environment: env,
+        budget: updateBudget ? "update" : "enforce",
       });
       Logger.rawLog(`${app.name} built in dist/apps/${app.name}`);
       if (!quiet) ApplicationBuildReporter.printSummary(result);

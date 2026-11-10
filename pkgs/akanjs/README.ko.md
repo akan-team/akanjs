@@ -75,10 +75,12 @@ URL이라면, 코딩 에이전트는 묻지 않고 아래대로 진행하면 됩
 
   새로 clone한 사본도 그대로 빌드됩니다. env 파일은 gitignore된 채로 두면 `akan`이 없는 것을 만들어 주므로 커밋할
   필요가 없습니다. 빌드에 필요한 env가 함께 들어 있고, 실행할 때 지정한 변수가 그 값을 덮어씁니다.
-- **실행할 곳에 맞게 빌드하기.** `akan build`는 워크스페이스 `.env`의 `AKAN_PUBLIC_ENV`로 빌드하며, 새 워크스페이스에서는
-  `local`입니다. 내 컴퓨터나 테스트 러너에서는 이대로 맞지만, 서버가 엔드포인트 rate limit 없이 로컬 기본값으로 실행됩니다.
-  다른 사람이 접속하는 호스트라면 워크스페이스 `.env`에 `AKAN_PUBLIC_REPO_NAME`과 `AKAN_PUBLIC_SERVE_DOMAIN`(서비스할
-  도메인)을 지정하고 `akan build <app> --env main`을 실행하세요.
+- **실행할 곳에 맞게 빌드하기.** 셸이나 Bun이 읽는 `.env.local`에서 지정한 변수가 워크스페이스 `.env`보다 우선하고(빈
+  값은 지정하지 않은 것으로 보며, 빌드는 그렇게 가져간 값을 하나씩 알려 줍니다), `AKAN_PUBLIC_ENV`는 `--env`가 둘보다
+  우선합니다. 새 워크스페이스의 `.env`는 `local`이라 내 컴퓨터나 테스트 러너에서는 이대로 맞지만, 서버가
+  엔드포인트 rate limit 없이 로컬 기본값으로 실행됩니다. 다른 사람이 접속하는 호스트라면 셸이나 워크스페이스 `.env`에
+  `AKAN_PUBLIC_REPO_NAME`과 `AKAN_PUBLIC_SERVE_DOMAIN`(서비스할 도메인)을 지정하고 `akan build <app> --env main`을
+  실행하세요.
 
 ## 이 모든 게 한 줄입니다
 

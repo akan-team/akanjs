@@ -3,6 +3,7 @@ import path from "node:path";
 import type { BiomeDiagnostic, BiomeReport } from "@akanjs/devkit/linter";
 import type { MaintainabilityReport } from "@akanjs/devkit/maintainabilityReport";
 import type { QualityWarning } from "@akanjs/devkit/qualityScanner";
+import type { RouteJsBudgetWarning } from "@akanjs/devkit/routeJsBudget";
 import type { TypecheckRecord } from "@akanjs/devkit/typeChecker";
 
 export type VerifyStepName = "sync" | "lint" | "typecheck" | "build" | "ssr";
@@ -142,6 +143,10 @@ export class VerifyDiagnostics {
         message: warning.message,
         ...(warning.fix ? { fix: warning.fix } : {}),
       }));
+  }
+
+  static fromRouteJsBudget({ file, message, fix }: RouteJsBudgetWarning): VerifyDiagnostic {
+    return { step: "build", file, line: 0, col: 0, code: "akan.budget", severity: "warning", message, fix };
   }
 
   static readonly #prefix = /^\[([\w.-]+)\]\s*/;
