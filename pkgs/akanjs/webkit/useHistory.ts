@@ -2,14 +2,14 @@
 import type { History, Location } from "akanjs/client";
 import { useCallback, useRef } from "react";
 
-interface setForwardOptions {
+export interface setForwardOptions {
   type: "push" | "replace" | "popForward";
   location: Location;
   scrollTop?: number;
   scrollToTop?: boolean;
 }
 
-interface setBackOptions {
+export interface setBackOptions {
   type: "back" | "popBack";
   location: Location;
   scrollTop?: number;

@@ -1,4 +1,5 @@
 export * from "./action";
+export * from "./actionOption";
 export * from "./actionTag";
 export * from "./agentic";
 export * from "./baseSt";

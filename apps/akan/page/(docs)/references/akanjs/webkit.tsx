@@ -1840,7 +1840,7 @@ export const BuyCoins = ({ className }: BuyCoinsProps) => {
           </Docs.Description>
           <Code.Snippet
             className="w-full"
-            title="pkgs/akanjs/webkit/useCsrValues.ts"
+            title="pkgs/akanjs/webkit/useCsrLocationState.ts"
             code={`const { getLocation } = useLocation({ rootRouteGuide });
 const {
   history,
