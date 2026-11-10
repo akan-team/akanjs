@@ -2,7 +2,7 @@ import "../test/registerDom";
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, type ReactNode, startTransition } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { hasRscRouteHead, rscRouteHeadKey } from "../client/rscRoutePatch";
+import { hasRscRouteHead } from "../client/rscRoutePatch";
 import type { AkanHeadSnapshotV1 } from "./routeState";
 import { applyAkanHeadSnapshotPatch } from "./rscHeadPatch";
 import {
@@ -68,11 +68,9 @@ afterEach(() => {
 
 describe("AkanRouteHead", () => {
   test("a patch swaps the page's part under the layouts' part, and the next full commit takes it back over", () => {
-    const { root, unmount } = mount(
-      <AkanRouteHead layouts={layouts} layoutsKey="layouts" page={pageOf("Intro", "intro")} />,
-    );
+    const { root, unmount } = mount(<AkanRouteHead layouts={layouts} page={pageOf("Intro", "intro")} />);
 
-    expect(rscRouteHeadKey()).toBe("layouts");
+    expect(hasRscRouteHead()).toBe(true);
     expect(headState()).toEqual({ title: "Intro", titles: 1, description: ["intro"], icons: 1 });
 
     act(() => {
@@ -87,21 +85,17 @@ describe("AkanRouteHead", () => {
 
     act(() => {
       resetAkanSegmentOutletPatches();
-      root.render(<AkanRouteHead layouts={layouts} layoutsKey="home layouts" page={pageOf("Home", "home")} />);
+      root.render(<AkanRouteHead layouts={layouts} page={pageOf("Home", "home")} />);
     });
     expect(headState()).toEqual({ title: "Home", titles: 1, description: ["home"], icons: 1 });
-    expect(rscRouteHeadKey()).toBe("home layouts");
 
     unmount();
-    expect(rscRouteHeadKey()).toBeNull();
     expect(hasRscRouteHead()).toBe(false);
     expect(headState()).toEqual({ title: "", titles: 0, description: [], icons: 0 });
   });
 
   test("a full commit after a patch goes straight to the new head, never back through the last full one", async () => {
-    const { root, unmount } = mount(
-      <AkanRouteHead layouts={layouts} layoutsKey="layouts" page={pageOf("Intro", "intro")} />,
-    );
+    const { root, unmount } = mount(<AkanRouteHead layouts={layouts} page={pageOf("Intro", "intro")} />);
     act(() => {
       applyAkanHeadSnapshotPatch(pageOf("Routing", "routes"), "/en/docs/routing");
     });
@@ -110,7 +104,7 @@ describe("AkanRouteHead", () => {
     await act(async () => {
       startTransition(() => {
         resetAkanSegmentOutletPatches();
-        root.render(<AkanRouteHead layouts={layouts} layoutsKey="layouts" page={pageOf("Home", "home")} />);
+        root.render(<AkanRouteHead layouts={layouts} page={pageOf("Home", "home")} />);
       });
     });
     titles.stop();
@@ -120,7 +114,7 @@ describe("AkanRouteHead", () => {
   });
 
   test("a full commit back to the element the last full commit rendered drops the patch", async () => {
-    const element = <AkanRouteHead layouts={layouts} layoutsKey="layouts" page={pageOf("Intro", "intro")} />;
+    const element = <AkanRouteHead layouts={layouts} page={pageOf("Intro", "intro")} />;
     const { root, unmount } = mount(element);
     act(() => {
       applyAkanHeadSnapshotPatch(pageOf("Routing", "routes"), "/en/docs/routing");
@@ -143,7 +137,7 @@ describe("AkanSegmentOutlet", () => {
   test("the head and the body move in the same commit, on a patch and on the full commit after it", async () => {
     const App = ({ title, body }: { title: string; body: string }) => (
       <>
-        <AkanRouteHead layouts={layouts} layoutsKey="layouts" page={pageOf(title, title)} />
+        <AkanRouteHead layouts={layouts} page={pageOf(title, title)} />
         <AkanSegmentOutlet segmentKey="slot:layout:1:2">
           <p>{body}</p>
         </AkanSegmentOutlet>

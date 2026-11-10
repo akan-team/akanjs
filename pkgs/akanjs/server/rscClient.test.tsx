@@ -8,10 +8,13 @@ import { act } from "react";
 import { Translator } from "../client/translator";
 import {
   AKAN_RSC_CURRENT_ROUTE_HEADER,
+  AKAN_RSC_CURRENT_STATE_HEADER,
   AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
   AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_RESPONSE_STATE_HEADER,
+  type AkanRouterStateV1,
+  decodeAkanRouterState,
   encodeAkanRouterState,
 } from "./routeState";
 
@@ -896,5 +899,35 @@ export default { page: { title: { t: ${JSON.stringify(title)} } } };`,
     await refresh();
 
     expect(Translator.translateByLocale("ko", "page.title")).toBe("새 공지 사항입니다");
+  });
+});
+
+describe("rscClient route head key", () => {
+  test("a navigation names the layouts head of the page it leaves from, never one still mounted before it", async () => {
+    const keyed = (response: Response, headKey: string) => {
+      const state = decodeAkanRouterState(response.headers.get(AKAN_RSC_RESPONSE_STATE_HEADER));
+      if (state) response.headers.set(AKAN_RSC_RESPONSE_STATE_HEADER, encodeAkanRouterState({ ...state, headKey }));
+      return response;
+    };
+    const sent = new Map<string, AkanRouterStateV1 | null>();
+    const fetchOf = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+      const target = new URL(new URL(String(input)).searchParams.get("url") ?? "/", origin);
+      sent.set(target.pathname, decodeAkanRouterState(new Headers(init?.headers).get(AKAN_RSC_CURRENT_STATE_HEADER)));
+      return fetchOf(input, init);
+    }) as typeof fetch;
+    served.set("/atlas", () => keyed(routedResponseOf("/atlas"), "atlas layouts"));
+    served.set("/atlas/map", () => routedResponseOf("/atlas/map"));
+    try {
+      await navigate("/atlas");
+      await navigate("/atlas/map");
+      await navigate("/atlas/legend");
+    } finally {
+      globalThis.fetch = fetchOf;
+    }
+
+    expect(sent.get("/atlas/map")).toMatchObject({ routeId: "/atlas", headKey: "atlas layouts" });
+    expect(sent.get("/atlas/legend")).toMatchObject({ routeId: "/atlas/map" });
+    expect(sent.get("/atlas/legend")?.headKey).toBeUndefined();
   });
 });

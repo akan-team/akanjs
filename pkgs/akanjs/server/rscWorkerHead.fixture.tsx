@@ -34,12 +34,15 @@ export const pages: PagesContext = {
   "./wordy.tsx": async () => ({
     default: page()
       .config({ rscPatchHeadSafe: true })
-      .head(() => (
-        <>
-          <title>wordy</title>
-          <meta name="description" content={"설명".repeat(400)} />
-        </>
-      ))
+      .head(() => {
+        log("wordy");
+        return (
+          <>
+            <title>wordy</title>
+            <meta name="description" content={"설명".repeat(400)} />
+          </>
+        );
+      })
       .render(() => <p>wordy body</p>),
   }),
   "./query/_layout.tsx": async () => ({

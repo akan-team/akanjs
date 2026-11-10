@@ -29,6 +29,8 @@ export interface CachedRscResult {
   ssrBlocking?: boolean;
   cacheState: RouteCacheRenderState;
   patch?: CachedRscPatchMetadata;
+  /** Key of the layouts' head the page renders in its route head, named in the router state a replay sends. */
+  routeHeadKey?: string;
 }
 
 export interface CachedRscPatchMetadata {

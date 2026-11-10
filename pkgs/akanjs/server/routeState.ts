@@ -15,7 +15,6 @@ export const AKAN_RSC_PATCH_SEGMENT_PATH_HEADER = "X-Akan-Rsc-Patch-Segment-Path
 export const AKAN_RSC_PATCH_START_SEGMENT_HEADER = "X-Akan-Rsc-Patch-Start-Segment";
 export const AKAN_RSC_PATCH_HEAD_SAFE_HEADER = "X-Akan-Rsc-Patch-Head-Safe";
 export const AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER = "X-Akan-Rsc-Patch-Head-Snapshot";
-export const AKAN_RSC_ROUTE_HEAD_HEADER = "X-Akan-Rsc-Route-Head";
 export const AKAN_RSC_HEAD_SNAPSHOT_VERSION = 1;
 //? Kept to 2 KB to leave room under a proxy's header buffer, not to guarantee a fit: nginx's default `proxy_buffer_size`
 //? is one memory page (4 KB on most hosts), headers over it fail as a 502, and router state, trace headers and
@@ -36,6 +35,8 @@ export interface AkanRouterStateV1 {
   href: string;
   routeId: string;
   segments: AkanRouteSegmentState[];
+  /** Key of the layouts' head the page rendered in a route head; a head-safe patch keeps that head, so needs a match. */
+  headKey?: string;
 }
 
 export type AkanHeadSnapshotTag = "title" | "meta" | "link";
@@ -141,6 +142,7 @@ export function isAkanRouterStateV1(value: unknown): value is AkanRouterStateV1 
     (state.buildId === undefined || typeof state.buildId === "number") &&
     typeof state.href === "string" &&
     typeof state.routeId === "string" &&
+    (state.headKey === undefined || typeof state.headKey === "string") &&
     Array.isArray(state.segments) &&
     state.segments.every(isSegmentState)
   );

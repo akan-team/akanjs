@@ -167,6 +167,7 @@ export class SsrBaseArtifactBuilder {
       vendorMap,
     };
   }
+
   /** Every export of the outlet module shares one client id, so each joins that id's row instead of replacing it. */
   static outletModuleMap(
     manifest: NonNullable<BaseBuildArtifact["rscRuntimeClientManifest"]>,
