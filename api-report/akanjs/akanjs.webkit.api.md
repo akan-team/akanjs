@@ -154,7 +154,7 @@ export declare const useGeoLocation: () => {
     checkPermission: () => Promise<import("@akanjs/native/plugins/geolocation").LocationPermission>;
     getPosition: (options?: {
         enableHighAccuracy?: boolean;
-    }) => Promise<import("akanjs/client/native").Position | undefined>;
+    }) => Promise<import("@akanjs/native/plugins/geolocation").Position | undefined>;
 };
 
 export declare const useHistory: (locations?: Location[], { idx, dormant }?: {
@@ -249,7 +249,7 @@ interface PageToolOptions {
     onSelect: (page: number) => void;
 }
 
-// ../@akanjs/native/plugins/geolocation/src/index
+// ../../../../../pkgs/@akanjs/native/plugins/geolocation/src/index
 type PermissionState = "denied" | "granted" | "prompt" | "prompt-with-rationale";
 
 // webkit/useCamera

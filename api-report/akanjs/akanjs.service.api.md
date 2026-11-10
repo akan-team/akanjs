@@ -98,9 +98,6 @@ export interface AkanCronJob {
 }
 
 export type AkanIpcMessage = {
-    type: "backend-ready";
-    pid: number;
-} | {
     type: "error";
     message: string;
     stack?: string;

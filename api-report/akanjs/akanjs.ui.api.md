@@ -1633,6 +1633,7 @@ interface DefaultProps {
     slice: SliceMeta;
     modal?: string;
     loading?: ReactNode;
+    error?: StreamError;
     children?: ReactNode;
     onSubmit?: string;
     onCancel?: string;
@@ -1654,6 +1655,7 @@ interface DefaultProps<L extends {
     from?: number;
     to?: number;
     loading?: ReactNode;
+    error?: StreamError;
     filter?: (item: L, idx: number) => boolean;
     sort?: (a: L, b: L) => number;
     empty?: ReactNode;
@@ -1671,6 +1673,7 @@ interface DefaultProps<_T extends string, M> {
     noDiv?: boolean;
     loading?: ReactNode;
     empty?: ReactNode;
+    error?: StreamError;
     renderView: (model: M) => ReactNode;
 }
 
@@ -2452,7 +2455,7 @@ interface PageProps<Return> {
 declare function Pagination<T extends string>({ className, slice }: PaginationProps<T>): import("react").JSX.Element;
 
 // ui/Load/Pagination
-declare function Pagination<T extends string, L>({ className, init, scrollToTop }: PaginationProps<T, L>): import("react").JSX.Element;
+declare function Pagination<T extends string, L>({ className, init, scrollToTop, error, }: PaginationProps<T, L>): import("react").JSX.Element;
 
 // ui/Data/Pagination
 interface PaginationProps<_T extends string> {
@@ -2465,6 +2468,7 @@ interface PaginationProps<RefName extends string, Light> {
     className?: string;
     init: ClientInit<RefName, Light>;
     scrollToTop?: boolean;
+    error?: StreamError;
 }
 
 // ui/Pagination
@@ -2923,11 +2927,14 @@ interface StateKeyProps {
     live?: boolean;
 }
 
-declare function Stream<Value>({ of, fallback, children }: StreamProps<Value>): Iterable<ReactNode> | Promise<Iterable<ReactNode> | bigint | boolean | import("react").ReactElement<unknown, import("react").JSXElementConstructor<any> | string> | import("react").ReactPortal | null | number | string | undefined> | bigint | boolean | import("react").JSX.Element | null | number | string | undefined;
+declare function Stream<Value>({ of, fallback, error, children }: StreamProps<Value>): Iterable<ReactNode> | Promise<Iterable<ReactNode> | bigint | boolean | import("react").ReactElement<unknown, import("react").JSXElementConstructor<any> | string> | import("react").ReactPortal | null | number | string | undefined> | bigint | boolean | import("react").JSX.Element | null | number | string | undefined;
+
+type StreamError = ((error: unknown, retry: () => void) => ReactNode) | ReactNode;
 
 interface StreamProps<Value> {
     of: PromiseOrObject<Value>;
     fallback?: ReactNode;
+    error?: StreamError;
     children: (value: Value) => ReactNode;
 }
 

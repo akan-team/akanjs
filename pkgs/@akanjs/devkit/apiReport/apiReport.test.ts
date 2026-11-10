@@ -214,6 +214,72 @@ interface Options {
     ]);
   });
 
+  test("compares a referenced type the same change exports with its old block", async () => {
+    const hidden = fixture["hidden.ts"] ?? "";
+    const exportingInner = (from: "index.ts" | "sub/index.ts", source: string) => ({
+      [from]: `export type { Inner } from "${from === "index.ts" ? "." : ".."}/hidden";\n${fixture[from] ?? ""}`,
+      "hidden.ts": source.replace("interface Inner", "export interface Inner"),
+    });
+    const before = await generate();
+    expect(ApiReportDiff.breaks(before, await generate(exportingInner("index.ts", hidden)))).toEqual([]);
+    expect(
+      ApiReportDiff.breaks(
+        before,
+        await generate(exportingInner("index.ts", hidden.replace("depth: number", "depth: string"))),
+      ),
+    ).toEqual([
+      {
+        report: "demo.api.md",
+        name: "Inner (referenced)",
+        kind: "changed",
+        before: "interface Inner {\n    depth: number;\n    options: Options;\n}",
+        after: "export interface Inner {\n    depth: string;\n    options: Options;\n}",
+      },
+    ]);
+    expect(ApiReportDiff.breaks(before, await generate(exportingInner("sub/index.ts", hidden)))).toEqual([]);
+    expect(
+      ApiReportDiff.breaks(
+        before,
+        await generate(exportingInner("sub/index.ts", hidden.replace("depth: number", "depth: string"))),
+      ).map(({ report, name, kind }) => `${kind} ${name} (${report})`),
+    ).toEqual(["changed Inner (referenced) (demo.api.md)"]);
+  });
+
+  test("compares a referenced type that a second one of its name moves to a module key", async () => {
+    const hidden = fixture["hidden.ts"] ?? "";
+    const withOtherInner = (source: string) => ({
+      "index.ts": `import { makeExtra } from "./extra";\n${fixture["index.ts"] ?? ""}export const extra = makeExtra();\n`,
+      "extra.ts": `interface Inner {
+  size: number;
+}
+export interface Extra {
+  inner: Inner;
+}
+export const makeExtra = (): Extra => ({ inner: { size: 0 } });
+`,
+      "hidden.ts": source,
+    });
+    const before = await generate();
+    expect(ApiReportDiff.breaks(before, await generate(withOtherInner(hidden)))).toEqual([]);
+    expect(
+      ApiReportDiff.breaks(
+        before,
+        await generate(withOtherInner(hidden.replace("depth: number", "depth: string"))),
+      ).map(({ name, kind }) => `${kind} ${name}`),
+    ).toEqual(["changed Inner (referenced)"]);
+  });
+
+  test("shows a removed wildcard subpath as a break, and not an added one", async () => {
+    const before = await generate();
+    const after = await generate({
+      "package.json": (fixture["package.json"] ?? "").replace('"./parts/*":"./parts/*"', '"./more/*":"./more/*"'),
+    });
+    expect(after.get("demo.wildcards.api.md")).toContain("- `./more/*`");
+    expect(ApiReportDiff.breaks(before, after)).toEqual([
+      { report: "demo.wildcards.api.md", name: "./parts/*", kind: "removed", before: "- `./parts/*`" },
+    ]);
+  });
+
   test("gives the same text on a second run", async () => {
     expect(await generate()).toEqual(await generate());
   });

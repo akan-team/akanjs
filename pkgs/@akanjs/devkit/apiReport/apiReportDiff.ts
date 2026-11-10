@@ -22,12 +22,15 @@ export class ApiReportDiff {
   static readonly #reexportPattern = /^export \{ (\S+)(?: as (\S+))? \} from /;
   static readonly #namespaceReexportPattern = /^export \* as (\S+) from /;
   static readonly #tagLine = /^\/\*\* (?:@\w+ ?)+\*\/$/;
+  static readonly #subpathPattern = /^- `(\S+)`$/gm;
   static readonly #referencedSuffix = " (referenced)";
+  static readonly #referencedMark = " (referenced";
 
   static blocksOf(text: string) {
     const [exported = "", referenced = ""] = text.split(`\n${ApiReport.referencedHeading}\n`);
     const blocks = new Map<string, string>();
     for (const [name, block] of ApiReportDiff.#namedBlocksOf(exported)) blocks.set(name, block);
+    for (const [block, subpath = ""] of ApiReportDiff.#subpathsOf(exported)) blocks.set(subpath, block);
     for (const [name, block, module] of ApiReportDiff.#namedBlocksOf(referenced))
       blocks.set(module ? `${name} (referenced, ${module})` : `${name}${ApiReportDiff.#referencedSuffix}`, block);
     return blocks;
@@ -47,19 +50,37 @@ export class ApiReportDiff {
     return changed.length + added.length + removed.length > 0;
   }
 
-  //? A referenced declaration that disappears is not a break of its own: whatever named it changed too, or exports it.
   static breaks(before: ApiReportFiles, after: ApiReportFiles): ApiBreak[] {
+    const nextReports = new Map([...after].map(([report, text]) => [report, ApiReportDiff.blocksOf(text)]));
     return [...before].flatMap(([report, text]) => {
-      const previous = ApiReportDiff.blocksOf(text);
-      const next = ApiReportDiff.blocksOf(after.get(report) ?? "");
-      return [...previous].flatMap(([name, block]): ApiBreak[] => {
+      const next = nextReports.get(report) ?? new Map<string, string>();
+      return [...ApiReportDiff.blocksOf(text)].flatMap(([name, block]): ApiBreak[] => {
         const current = next.get(name);
-        if (current === undefined)
-          return ApiReportDiff.#isReferenced(name) ? [] : [{ report, name, kind: "removed", before: block }];
-        if (ApiReportDiff.#withoutTags(current) === ApiReportDiff.#withoutTags(block)) return [];
-        return [{ report, name, kind: "changed", before: block, after: current }];
+        if (current !== undefined)
+          return ApiReportDiff.#sameDeclaration(current, block)
+            ? []
+            : [{ report, name, kind: "changed", before: block, after: current }];
+        const referenced = ApiReportDiff.#referencedNameOf(name);
+        if (referenced === null) return [{ report, name, kind: "removed", before: block }];
+        const successors = ApiReportDiff.#successorsOf(referenced, report, nextReports);
+        //? Found nowhere, it is named by nothing now: whatever named it changed, and that change is the break.
+        if (!successors.length || successors.some((successor) => ApiReportDiff.#sameDeclaration(successor, block)))
+          return [];
+        return [{ report, name, kind: "changed", before: block, after: successors.join("\n\n") }];
       });
     });
+  }
+
+  static #successorsOf(name: string, report: string, nextReports: ReadonlyMap<string, ReadonlyMap<string, string>>) {
+    const others = [...nextReports].filter(([other]) => other !== report).map(([, blocks]) => blocks);
+    const found = [nextReports.get(report) ?? new Map<string, string>(), ...others].flatMap((blocks) =>
+      [...blocks]
+        .filter(([key]) => key === name || ApiReportDiff.#referencedNameOf(key) === name)
+        .map(([, block]) => block),
+    );
+    return found.filter(
+      (block, idx) => found.findIndex((other) => ApiReportDiff.#sameDeclaration(other, block)) === idx,
+    );
   }
 
   static #namedBlocksOf(section: string): [string, string, string | null][] {
@@ -73,6 +94,10 @@ export class ApiReportDiff {
     });
   }
 
+  static #subpathsOf(section: string) {
+    return section.replace(/```ts\n[\s\S]*?```/g, "").matchAll(ApiReportDiff.#subpathPattern);
+  }
+
   static #nameOf(head: string) {
     if (head.startsWith("export default ")) return "default";
     const reexport = ApiReportDiff.#reexportPattern.exec(head);
@@ -82,14 +107,20 @@ export class ApiReportDiff {
     return ApiReportDiff.#declarationPattern.exec(head)?.[1] ?? null;
   }
 
-  static #isReferenced(name: string) {
-    return name.endsWith(ApiReportDiff.#referencedSuffix) || name.includes(" (referenced, ");
+  static #referencedNameOf(key: string) {
+    const index = key.indexOf(ApiReportDiff.#referencedMark);
+    return index < 0 ? null : key.slice(0, index);
   }
 
-  static #withoutTags(block: string) {
+  static #sameDeclaration(a: string, b: string) {
+    return ApiReportDiff.#declarationOf(a) === ApiReportDiff.#declarationOf(b);
+  }
+
+  static #declarationOf(block: string) {
     return block
       .split("\n")
-      .filter((line) => !ApiReportDiff.#tagLine.test(line))
+      .filter((line, idx) => !ApiReportDiff.#tagLine.test(line) && !(idx === 0 && line.startsWith("// ")))
+      .map((line) => (line.startsWith("export ") ? line.slice("export ".length) : line))
       .join("\n");
   }
 }

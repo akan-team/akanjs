@@ -17,12 +17,12 @@ interface ErrRestoreOption {
   timestamp?: string;
 }
 
-interface ErrPayload extends ErrRestoreOption {
+export interface ErrPayload extends ErrRestoreOption {
   error: string;
   data?: Record<string, unknown>;
 }
 
-type PageErrInstance = Error & {
+export interface PageErrInstance extends Error {
   readonly error: string;
   readonly statusCode: number;
   readonly code?: string;
@@ -31,13 +31,10 @@ type PageErrInstance = Error & {
   readonly path?: string;
   readonly timestamp?: string;
   toJSON(): ErrPayload & { statusCode: number };
-};
+}
 
-type PageErrConstructor<ErrorKey extends string> = (new (
-  key: ErrorKey,
-  data?: Record<string, unknown>,
-  option?: ErrRestoreOption,
-) => PageErrInstance) & {
+export interface PageErrConstructor<ErrorKey extends string> {
+  new (key: ErrorKey, data?: Record<string, unknown>, option?: ErrRestoreOption): PageErrInstance;
   prototype: PageErrInstance;
   fromJSON(payload: ErrPayload): PageErrInstance;
   is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is PageErrInstance & { readonly error: Key };
@@ -46,7 +43,7 @@ type PageErrConstructor<ErrorKey extends string> = (new (
   Forbidden: PageErrConstructor<ErrorKey>;
   NotFound: PageErrConstructor<ErrorKey>;
   Conflict: PageErrConstructor<ErrorKey>;
-};
+}
 
 const htmlEntities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escapeRichParams = (param: { [key: string]: string | number } | undefined) =>

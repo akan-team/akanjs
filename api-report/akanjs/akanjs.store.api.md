@@ -161,11 +161,10 @@ export interface ComputedOptions<T> {
 
 export interface CreateOption<Full extends {
     id: string;
-}> {
+}> extends ErrorReportOption {
     path?: string;
     modal?: string;
     sliceName?: string;
-    onError?: (e: string) => void;
     onSuccess?: (model: Full) => Promise<void> | void;
 }
 
@@ -247,6 +246,10 @@ export declare class DraftStore {
 export interface EditOption {
     modal?: null | string;
     draftScope?: string;
+}
+
+export interface ErrorReportOption {
+    onError?: (key: string) => void;
 }
 
 export interface FieldToolOptions {
@@ -389,6 +392,12 @@ export type RootStoreCls<RefName extends string = any, WritableState = any, Acti
         };
     };
     _slice: SliceInfoObj;
+    _root: {
+        writable: WritableState;
+        action: Action;
+        slice: InternalSliceObj;
+        state: State;
+    };
 }>;
 
 export declare class ScreenFlash {
@@ -940,304 +949,7 @@ export declare const resolveWritableState: (refName: string, state: Record<strin
     meta: StateDerivedMeta;
 };
 
-export declare const st: import("./agentic").StAgentic & {
-    sub: {
-        (listener: (state: import("./stateBuilder").WritableStateOf<{
-            csrLoaded: boolean;
-            path: string;
-            pathname: string;
-            params: {
-                [key: string]: string;
-            };
-            searchParams: BaseSearchParamsState;
-            theme: string;
-            innerWidth: number;
-            innerHeight: number;
-            responsive: Responsive["value"];
-            uiOperation: "idle" | "loading" | "sleep";
-            messages: (typeof defaultMessage)[];
-            tryJwt: null | string;
-            trySignalType: SignalType;
-            tryGuards: string[];
-            tryAccount: Account<{
-                [key: string]: string | undefined;
-            }>;
-            keyboardHeight: number;
-            pageState: PageState;
-            devMode: boolean;
-            currentPath: string;
-        }>, prev: import("./stateBuilder").WritableStateOf<{
-            csrLoaded: boolean;
-            path: string;
-            pathname: string;
-            params: {
-                [key: string]: string;
-            };
-            searchParams: BaseSearchParamsState;
-            theme: string;
-            innerWidth: number;
-            innerHeight: number;
-            responsive: Responsive["value"];
-            uiOperation: "idle" | "loading" | "sleep";
-            messages: (typeof defaultMessage)[];
-            tryJwt: null | string;
-            trySignalType: SignalType;
-            tryGuards: string[];
-            tryAccount: Account<{
-                [key: string]: string | undefined;
-            }>;
-            keyboardHeight: number;
-            pageState: PageState;
-            devMode: boolean;
-            currentPath: string;
-        }>) => void): () => void;
-        <U>(selector: (state: import("./stateBuilder").WritableStateOf<{
-            csrLoaded: boolean;
-            path: string;
-            pathname: string;
-            params: {
-                [key: string]: string;
-            };
-            searchParams: BaseSearchParamsState;
-            theme: string;
-            innerWidth: number;
-            innerHeight: number;
-            responsive: Responsive["value"];
-            uiOperation: "idle" | "loading" | "sleep";
-            messages: (typeof defaultMessage)[];
-            tryJwt: null | string;
-            trySignalType: SignalType;
-            tryGuards: string[];
-            tryAccount: Account<{
-                [key: string]: string | undefined;
-            }>;
-            keyboardHeight: number;
-            pageState: PageState;
-            devMode: boolean;
-            currentPath: string;
-        }>) => U, listener: (state: U, prev: U) => void, options?: undefined | {
-            equalityFn?: ((a: U, b: U) => boolean) | undefined;
-            fireImmediately?: boolean;
-        }): () => void;
-    };
-    ref: <U>(selector: (state: import("./stateBuilder").WritableStateOf<{
-        csrLoaded: boolean;
-        path: string;
-        pathname: string;
-        params: {
-            [key: string]: string;
-        };
-        searchParams: BaseSearchParamsState;
-        theme: string;
-        innerWidth: number;
-        innerHeight: number;
-        responsive: Responsive["value"];
-        uiOperation: "idle" | "loading" | "sleep";
-        messages: (typeof defaultMessage)[];
-        tryJwt: null | string;
-        trySignalType: SignalType;
-        tryGuards: string[];
-        tryAccount: Account<{
-            [key: string]: string | undefined;
-        }>;
-        keyboardHeight: number;
-        pageState: PageState;
-        devMode: boolean;
-        currentPath: string;
-    }>) => U) => import("react").RefObject<U>;
-    sel: <U>(selector: (state: import("./stateBuilder").WritableStateOf<{
-        csrLoaded: boolean;
-        path: string;
-        pathname: string;
-        params: {
-            [key: string]: string;
-        };
-        searchParams: BaseSearchParamsState;
-        theme: string;
-        innerWidth: number;
-        innerHeight: number;
-        responsive: Responsive["value"];
-        uiOperation: "idle" | "loading" | "sleep";
-        messages: (typeof defaultMessage)[];
-        tryJwt: null | string;
-        trySignalType: SignalType;
-        tryGuards: string[];
-        tryAccount: Account<{
-            [key: string]: string | undefined;
-        }>;
-        keyboardHeight: number;
-        pageState: PageState;
-        devMode: boolean;
-        currentPath: string;
-    }>) => U, equals?: ((a: U, b: U) => boolean) | undefined) => U;
-    use: {
-        csrLoaded: (options?: import("./types").StoreUseOptions) => boolean;
-        path: (options?: import("./types").StoreUseOptions) => string;
-        pathname: (options?: import("./types").StoreUseOptions) => string;
-        params: (options?: import("./types").StoreUseOptions) => {
-            [key: string]: string;
-        };
-        searchParams: (options?: import("./types").StoreUseOptions) => BaseSearchParamsState;
-        theme: (options?: import("./types").StoreUseOptions) => string;
-        innerWidth: (options?: import("./types").StoreUseOptions) => number;
-        innerHeight: (options?: import("./types").StoreUseOptions) => number;
-        responsive: (options?: import("./types").StoreUseOptions) => "lg" | "md" | "sm" | "xl" | "xs";
-        uiOperation: (options?: import("./types").StoreUseOptions) => "idle" | "loading" | "sleep";
-        messages: (options?: import("./types").StoreUseOptions) => {
-            type: "error" | "info" | "loading" | "success" | "warning";
-            content: string;
-            duration: number;
-            key: string;
-        }[];
-        tryJwt: (options?: import("./types").StoreUseOptions) => null | string;
-        trySignalType: (options?: import("./types").StoreUseOptions) => SignalType;
-        tryGuards: (options?: import("./types").StoreUseOptions) => string[];
-        tryAccount: (options?: import("./types").StoreUseOptions) => Account<{
-            [key: string]: string | undefined;
-        }>;
-        keyboardHeight: (options?: import("./types").StoreUseOptions) => number;
-        pageState: (options?: import("./types").StoreUseOptions) => PageState;
-        devMode: (options?: import("./types").StoreUseOptions) => boolean;
-        currentPath: (options?: import("./types").StoreUseOptions) => string;
-    };
-    do: import("./types").VoidActions<RootStore> & {
-        setCsrLoaded: (value: boolean) => void;
-        setPath: (value: string) => void;
-        setPathname: (value: string) => void;
-        setParams: (value: {
-            [key: string]: string;
-        }) => void;
-        setSearchParams: (value: BaseSearchParamsState) => void;
-        setTheme: (value: string) => void;
-        setInnerWidth: (value: number) => void;
-        setInnerHeight: (value: number) => void;
-        setResponsive: (value: "lg" | "md" | "sm" | "xl" | "xs") => void;
-        setUiOperation: (value: "idle" | "loading" | "sleep") => void;
-        setMessages: (value: {
-            type: "error" | "info" | "loading" | "success" | "warning";
-            content: string;
-            duration: number;
-            key: string;
-        }[]) => void;
-        setTryJwt: (value: null | string) => void;
-        setTrySignalType: (value: SignalType) => void;
-        setTryGuards: (value: string[]) => void;
-        setTryAccount: (value: Account<{
-            [key: string]: string | undefined;
-        }>) => void;
-        setKeyboardHeight: (value: number) => void;
-        setPageState: (value: PageState) => void;
-        setDevMode: (value: boolean) => void;
-        setCurrentPath: (value: string) => void;
-    };
-    get: () => import("./stateBuilder").WritableStateOf<{
-        csrLoaded: boolean;
-        path: string;
-        pathname: string;
-        params: {
-            [key: string]: string;
-        };
-        searchParams: BaseSearchParamsState;
-        theme: string;
-        innerWidth: number;
-        innerHeight: number;
-        responsive: Responsive["value"];
-        uiOperation: "idle" | "loading" | "sleep";
-        messages: (typeof defaultMessage)[];
-        tryJwt: null | string;
-        trySignalType: SignalType;
-        tryGuards: string[];
-        tryAccount: Account<{
-            [key: string]: string | undefined;
-        }>;
-        keyboardHeight: number;
-        pageState: PageState;
-        devMode: boolean;
-        currentPath: string;
-    }>;
-    set: (state: ((state: import("./stateBuilder").WritableStateOf<{
-        csrLoaded: boolean;
-        path: string;
-        pathname: string;
-        params: {
-            [key: string]: string;
-        };
-        searchParams: BaseSearchParamsState;
-        theme: string;
-        innerWidth: number;
-        innerHeight: number;
-        responsive: Responsive["value"];
-        uiOperation: "idle" | "loading" | "sleep";
-        messages: (typeof defaultMessage)[];
-        tryJwt: null | string;
-        trySignalType: SignalType;
-        tryGuards: string[];
-        tryAccount: Account<{
-            [key: string]: string | undefined;
-        }>;
-        keyboardHeight: number;
-        pageState: PageState;
-        devMode: boolean;
-        currentPath: string;
-    }>) => any) | Partial<import("./stateBuilder").WritableStateOf<{
-        csrLoaded: boolean;
-        path: string;
-        pathname: string;
-        params: {
-            [key: string]: string;
-        };
-        searchParams: BaseSearchParamsState;
-        theme: string;
-        innerWidth: number;
-        innerHeight: number;
-        responsive: Responsive["value"];
-        uiOperation: "idle" | "loading" | "sleep";
-        messages: (typeof defaultMessage)[];
-        tryJwt: null | string;
-        trySignalType: SignalType;
-        tryGuards: string[];
-        tryAccount: Account<{
-            [key: string]: string | undefined;
-        }>;
-        keyboardHeight: number;
-        pageState: PageState;
-        devMode: boolean;
-        currentPath: string;
-    }>>) => void;
-    slice: {
-        [x: `base${Capitalize<string>}`]: import("./withSelector").SliceSelectors<"base", import("./state").SliceState<"base", "", any, any, any[], any, any, any, "", any, any>, {
-            [x: `init${any}`]: (...args: any[]) => Promise<void>;
-        } & {
-            [x: `refresh${any}`]: (initForm?: (import("akanjs/fetch").FetchInitForm<any, any> & import("akanjs/common").FetchPolicy<unknown> & {
-                queryArgs?: any[] | undefined;
-            }) | undefined) => Promise<void>;
-        } & {
-            [x: `select${any}`]: (model: any, options?: {
-                refresh?: boolean;
-                remove?: boolean;
-            }) => void;
-        } & {
-            [x: `setPageOf${any}`]: (page: number, options?: import("akanjs/common").FetchPolicy) => Promise<void>;
-        } & {
-            [x: `loadMoreOf${any}`]: (options?: import("akanjs/common").FetchPolicy) => Promise<void>;
-        } & {
-            [x: `setLimitOf${any}`]: (limit: number, options?: import("akanjs/common").FetchPolicy) => Promise<void>;
-        } & {
-            [x: `setQueryArgsOf${any}`]: (...args: [
-                setQueryArgs: (...prevQueryArgs: any[]) => any[],
-                options?: import("akanjs/common").FetchPolicy<unknown> | undefined
-            ] | any[]) => Promise<void>;
-        } & {
-            [x: `setSortOf${any}`]: (sort: any, options?: import("akanjs/common").FetchPolicy) => Promise<void>;
-        } & {
-            refName: "base";
-            suffix: string;
-            sliceName: `base${Capitalize<string>}`;
-            get: () => import("./state").SliceState<"base", "", any, any, any[], any, any, any, "", any, any>;
-            set: (setState: ((state: import("./state").SliceState<"base", "", any, any, any[], any, any, any, "", any, any>) => void) | Partial<import("./state").SliceState<"base", "", any, any, any[], any, any, any, "", any, any>>) => void;
-        }>;
-    };
-};
+export declare const st: import("./withSelector").WithSelectors<typeof RootStore>;
 
 export declare function store<Sig extends ClientSignal<any, any, any> | string, State, LibStores extends StoreCls[]>(sigRefOrRefName: Sig, state: StateFactory<State>, ...libStores: LibStores): StoreReturn<Sig, WritableStateOf<State>, LibStores>;
 export declare function store<Sig extends ClientSignal<any, any, any> | string, State, DerivedState, LibStores extends StoreCls[]>(sigRefOrRefName: Sig, state: StateFactory<State>, derivedState: DerivedStateFactory<WritableStateOf<State>, DerivedState>, ...libStores: LibStores): StoreReturn<Sig, WritableStateOf<State>, LibStores, DerivedStateOf<DerivedState>>;
@@ -1343,7 +1055,7 @@ type BaseAction<RefName extends string, Input, Full extends {
 } & {
     [K in `update${_CapitalizedRefName}`]: (id: string, data: _InputData, options?: _CreateOption) => Promise<void>;
 } & {
-    [K in `remove${_CapitalizedRefName}`]: (id: string, options?: FetchPolicy & {
+    [K in `remove${_CapitalizedRefName}`]: (id: string, options?: ReportingFetchPolicy & {
         modal?: null | string;
     }) => Promise<void>;
 } & {
@@ -1353,7 +1065,7 @@ type BaseAction<RefName extends string, Input, Full extends {
 } & {
     [K in `new${_CapitalizedRefName}`]: (partial?: PartialOrNull<Full>, options?: NewOption) => void;
 } & {
-    [K in `edit${_CapitalizedRefName}`]: (model: Full | string, options?: EditOption & FetchPolicy) => Promise<void>;
+    [K in `edit${_CapitalizedRefName}`]: (model: Full | string, options?: EditOption & ReportingFetchPolicy) => Promise<void>;
 } & {
     [K in `load${_CapitalizedRefName}FormDraft`]: (draftScope?: string) => Promise<void>;
 } & {
@@ -1361,11 +1073,11 @@ type BaseAction<RefName extends string, Input, Full extends {
 } & {
     [K in `discard${_CapitalizedRefName}FormDraft`]: () => void;
 } & {
-    [K in `merge${_CapitalizedRefName}`]: (model: Full | string, data: Partial<Full>, options?: FetchPolicy) => Promise<void>;
+    [K in `merge${_CapitalizedRefName}`]: (model: Full | string, data: Partial<Full>, options?: ReportingFetchPolicy) => Promise<void>;
 } & {
     [K in `view${_CapitalizedRefName}`]: (model: Full | string, options?: {
         modal?: null | string;
-    } & FetchPolicy) => Promise<void>;
+    } & ReportingFetchPolicy) => Promise<void>;
 } & {
     [K in `set${_CapitalizedRefName}`]: (...models: (Full | Light)[]) => void;
 } & {
@@ -1592,6 +1304,8 @@ interface PublishedScope {
     kind?: string;
 }
 
+type ReportingFetchPolicy = Omit<FetchPolicy, "onError"> & ErrorReportOption;
+
 interface ResourceDiff {
     name: string;
     value?: unknown;
@@ -1782,7 +1496,7 @@ type VoidAction<T> = T extends (...args: infer Args) => infer Ret ? [
     PromiseLike<unknown>
 ] ? (...args: Args) => Promise<void> : (...args: Args) => void : T;
 
-type WithSelectors<RtStoreCls extends RootStoreCls> = RtStoreCls extends RootStoreCls<any, infer WritableState, infer Action, infer InternalSliceObj, any, any, infer State> ? WithSelectorsOf<State, WritableState, Action, InternalSliceObj> : never;
+type WithSelectors<RtStoreCls extends RootStoreCls> = WithSelectorsOf<RtStoreCls["_root"]["state"], RtStoreCls["_root"]["writable"], RtStoreCls["_root"]["action"], RtStoreCls["_root"]["slice"]>;
 
 type WithSelectorsOf<State, WritableState, Action, InternalSliceObj> = StAgentic & {
     sub: {

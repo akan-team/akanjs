@@ -8,6 +8,7 @@ export interface RoutesManifest {
     clientManifest: ClientManifest;
     ssrManifest: SsrManifest;
     knownEntries: string[];
+    modulePreloads?: ModulePreloadTable;
 }
 
 export declare class RoutesManifestStore {

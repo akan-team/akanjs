@@ -9,7 +9,10 @@ export declare class AbortSignals {
         dispose: () => void;
     };
     static race<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T>;
+    static reasonOf(signal: AbortSignal): unknown;
+    static isTimeout(signal: AbortSignal): boolean;
     static isAbort(error: unknown): boolean;
+    static isAbortOf(error: unknown, callArgs: unknown[]): boolean;
 }
 
 export interface AkanChangeMap extends AkanGraph {
@@ -43,7 +46,7 @@ export interface AkanGraphEdge {
     change?: Exclude<AkanGraphChange, "changed">;
 }
 
-export type AkanGraphEdgeKind = "calls" | "fetches" | "field" | "guard" | "plugs" | "uses" | "wraps";
+export type AkanGraphEdgeKind = "binds" | "calls" | "fetches" | "field" | "guard" | "plugs" | "uses" | "wraps";
 
 export interface AkanGraphField {
     name: string;
@@ -76,6 +79,7 @@ export interface AkanGraphNode {
     values?: string[];
     doc?: string;
     digest?: string;
+    sources?: string[];
     change?: AkanGraphChange;
 }
 
@@ -623,12 +627,72 @@ export interface FetchPolicy<_Returns = unknown> {
     retry?: RetryPolicy | false;
     idempotencyKey?: string;
     duringRender?: boolean;
+    keepsReads?: boolean;
 }
 
 export interface FileUploadCapability {
     refName: string;
     endpointKey: string;
     prefix?: string;
+}
+
+export interface FrameworkChannel {
+    name: string;
+    label: string;
+    at: AkanGraphLocation;
+    messages: FrameworkMessage[];
+}
+
+export interface FrameworkClass {
+    name: string;
+    members: number;
+    at: AkanGraphLocation;
+}
+
+export interface FrameworkFacet {
+    id: string;
+    name: string;
+    packageName: string;
+    layer: number;
+    files: number;
+    classes: FrameworkClass[];
+}
+
+export interface FrameworkImport {
+    from: string;
+    to: string;
+    value: number;
+    type: number;
+    dynamic: number;
+    at: AkanGraphLocation;
+}
+
+export interface FrameworkMap {
+    version: 1;
+    packages: FrameworkPackage[];
+    facets: FrameworkFacet[];
+    imports: FrameworkImport[];
+    channels: FrameworkChannel[];
+    missing: string[];
+    cycles: string[][];
+}
+
+export interface FrameworkMessage {
+    type: string;
+    at: AkanGraphLocation;
+    senders: FrameworkSite[];
+    handlers: FrameworkSite[];
+}
+
+export interface FrameworkPackage {
+    name: string;
+    root: string;
+}
+
+export interface FrameworkSite {
+    owner: string;
+    count: number;
+    at: AkanGraphLocation;
 }
 
 export declare class IpLiteral {

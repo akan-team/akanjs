@@ -194,6 +194,11 @@ export interface Dictionary {
 
 export declare const Err: RuntimeErr;
 
+export interface ErrPayload extends ErrRestoreOption {
+    error: string;
+    data?: Record<string, unknown>;
+}
+
 export type Font = ReactFont;
 
 export interface FrameContentViewportState {
@@ -505,6 +510,7 @@ export interface PageConfig {
     cache?: boolean;
     ssr?: SsrRenderMode;
     rscPatchHeadSafe?: boolean;
+    prefetch?: boolean;
     topSafeAreaColor?: string;
     bottomSafeAreaColor?: string;
     devOnly?: boolean;
@@ -530,6 +536,33 @@ export declare class PageDefinition<Args extends RouteArgsShape = Record<never, 
     loadApp(name: string, args: RouteBaseArgs & Args): Promise<ReactNode>;
     protected declare(arg: RouteArgInfo): void;
     protected renderArgsOf(args: RouteBaseArgs & Args): PromiseOrObject<RouteBaseArgs & Args>;
+}
+
+export interface PageErrConstructor<ErrorKey extends string> {
+    new (key: ErrorKey, data?: Record<string, unknown>, option?: ErrRestoreOption): PageErrInstance;
+    prototype: PageErrInstance;
+    fromJSON(payload: ErrPayload): PageErrInstance;
+    is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is PageErrInstance & {
+        readonly error: Key;
+    };
+    BadRequest: PageErrConstructor<ErrorKey>;
+    Unauthorized: PageErrConstructor<ErrorKey>;
+    Forbidden: PageErrConstructor<ErrorKey>;
+    NotFound: PageErrConstructor<ErrorKey>;
+    Conflict: PageErrConstructor<ErrorKey>;
+}
+
+export interface PageErrInstance extends Error {
+    readonly error: string;
+    readonly statusCode: number;
+    readonly code?: string;
+    readonly details?: unknown;
+    readonly data?: Record<string, unknown>;
+    readonly path?: string;
+    readonly timestamp?: string;
+    toJSON(): ErrPayload & {
+        statusCode: number;
+    };
 }
 
 export interface PageLoadingProps {
@@ -597,6 +630,7 @@ export interface PathRoute {
     renderRootLayouts: RouteRender[];
     renderLayouts: RouteRender[];
     resolveHead?: ResolveHead;
+    resolveLayoutsHead?: ResolveHead;
 }
 
 export type PrefetchPriority = "high" | "low";
@@ -832,6 +866,7 @@ export interface RouteGuide {
 export declare class RouteHead {
     static merge(levels: ResolveHeadResult[]): ResolveHeadResult;
     static mergePage(layouts: ResolveHeadResult, page: ResolveHeadResult): ResolveHeadResult;
+    static snapshotOf(head: ResolveHeadResult): AkanHeadSnapshotV1 | undefined;
     static split(node: ReactNode): {
         tags: ReactNode[];
         rest: ReactNode;
@@ -839,6 +874,7 @@ export declare class RouteHead {
     static noindexOver(node: ReactNode): ReactElement;
     static keyOf(tag: string, props: TagProps): null | string;
     static mergeNodes(nodes: ReactNode[]): ReactNode;
+    static mergeSnapshots(levels: AkanHeadSnapshotNode[][]): AkanHeadSnapshotV1;
 }
 
 export type RouteKind = "layout" | "page" | "rootLayout";
@@ -936,7 +972,7 @@ export interface RouterInstance {
     back: (routeOptions?: RouteOptions) => void;
     refresh: () => void;
     canGoBack?: () => boolean;
-    prefetch?: (href: string, priority?: PrefetchPriority) => void;
+    prefetch?: (href: string, priority?: PrefetchPriority) => (() => void) | void;
 }
 
 export interface RouterProps {
@@ -1261,7 +1297,7 @@ export declare const pageActivityContext: import("react").Context<PageActivitySt
 
 export declare const pathContext: import("react").Context<PathContextType>;
 
-export declare const prefetchRsc: (href: string, priority?: PrefetchPriority) => void;
+export declare const prefetchRsc: (href: string, priority?: PrefetchPriority) => (() => void) | undefined;
 
 export declare const radiusTokens: string[];
 
@@ -1370,11 +1406,6 @@ interface DeviceInitOption {
     native: NativeControls | null;
 }
 
-interface ErrPayload extends ErrRestoreOption {
-    error: string;
-    data?: Record<string, unknown>;
-}
-
 interface ErrRestoreOption {
     statusCode?: number;
     code?: string;
@@ -1395,32 +1426,6 @@ type NativeControls = Pick<NativeModule, "haptics" | "keyboard">;
 
 type NativeModule = typeof import("./native");
 
-type PageErrConstructor<ErrorKey extends string> = (new (key: ErrorKey, data?: Record<string, unknown>, option?: ErrRestoreOption) => PageErrInstance) & {
-    prototype: PageErrInstance;
-    fromJSON(payload: ErrPayload): PageErrInstance;
-    is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is PageErrInstance & {
-        readonly error: Key;
-    };
-    BadRequest: PageErrConstructor<ErrorKey>;
-    Unauthorized: PageErrConstructor<ErrorKey>;
-    Forbidden: PageErrConstructor<ErrorKey>;
-    NotFound: PageErrConstructor<ErrorKey>;
-    Conflict: PageErrConstructor<ErrorKey>;
-};
-
-type PageErrInstance = Error & {
-    readonly error: string;
-    readonly statusCode: number;
-    readonly code?: string;
-    readonly details?: unknown;
-    readonly data?: Record<string, unknown>;
-    readonly path?: string;
-    readonly timestamp?: string;
-    toJSON(): ErrPayload & {
-        statusCode: number;
-    };
-};
-
 declare class Router {
     isInitialized: boolean;
     init(options: CSRClientRouterOption | SsrClientRouterOption | SsrServerRouterOption): void;
@@ -1438,7 +1443,7 @@ declare class Router {
     replace(href: string, routeOptions?: RouteOptions): never;
     prefetch(href: string, { priority }?: {
         priority?: PrefetchPriority;
-    }): void;
+    }): () => void;
     addNavigationGuard(guard: NavigationGuard): () => void;
     navigation(): Promise<void>;
     canGoBack(): boolean;

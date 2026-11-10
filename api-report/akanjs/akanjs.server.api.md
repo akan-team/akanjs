@@ -241,6 +241,11 @@ export interface BuildChangesPayload {
     };
 }
 
+export interface BuildFrameworkPayload {
+    workspaceRoot: string;
+    framework: FrameworkMap | null;
+}
+
 export interface BuildGraphPayload {
     workspaceRoot: string;
     graph: AkanGraph;
@@ -297,6 +302,7 @@ export type BuilderCsrRes = {
     id: number;
     ok: false;
     error: string;
+    kind?: BuilderFailureKind;
 } | {
     type: "build-csr-res";
     id: number;
@@ -337,12 +343,15 @@ export type BuilderEvent = {
     data: SsrUpdatedPayload;
 };
 
+export type BuilderFailureKind = "unavailable";
+
 export type BuilderGraphReq = {
     type: "build-graph";
     id: number;
     changes?: {
         since: null | string;
     };
+    framework?: boolean;
 };
 
 export type BuilderGraphRes = {
@@ -350,11 +359,12 @@ export type BuilderGraphRes = {
     id: number;
     ok: false;
     error: string;
+    kind?: BuilderFailureKind;
 } | {
     type: "build-graph-res";
     id: number;
     ok: true;
-    data: BuildChangesPayload | BuildGraphPayload;
+    data: BuildChangesPayload | BuildFrameworkPayload | BuildGraphPayload;
 };
 
 export type BuilderMessage = BuilderControl | BuilderEvent | BuilderRequest | BuilderResponse;
@@ -382,6 +392,7 @@ export type BuilderRes = {
     id: number;
     ok: false;
     error: string;
+    kind?: BuilderFailureKind;
 } | {
     type: "build-route-res";
     id: number;
@@ -404,6 +415,9 @@ export declare class BuilderRpc {
     }): Promise<void>;
     buildGraph(): Promise<BuildGraphPayload>;
     buildChanges(since: null | string): Promise<BuildChangesPayload>;
+    buildFramework(): Promise<BuildFrameworkPayload>;
+    static isTimeout(error: unknown): error is BuilderRpcTimeout;
+    static isUnavailable(error: unknown): error is BuilderRpcUnavailable;
     dispose(): void;
 }
 
@@ -418,6 +432,14 @@ export interface BuilderRpcEventHandlers {
     onCsrUpdated?: (update: CsrUpdatedPayload) => void;
     onSsrUpdated?: (update: SsrUpdatedPayload) => void;
     onBuildStatus?: (status: DevBuildStatus) => void;
+}
+
+export interface BuilderRpcTimeout extends Error {
+    timeoutMs: number;
+}
+
+export interface BuilderRpcUnavailable extends Error {
+    kind: "unavailable";
 }
 
 export type BuilderStateReason = "builder-recycle";
@@ -670,6 +692,9 @@ export declare class DevtoolsRouter {
     static readonly basePath = "/_akan";
     static readonly logger: Logger;
     static isEnabled(env: BaseEnv): boolean;
+    static buildsFrom(webRouter: null | {
+        readonly builderRpc: BuilderRpc | null;
+    }): Pick<DevtoolsRouterContext, "buildChanges" | "buildFramework" | "buildGraph" | "web">;
     constructor(context: DevtoolsRouterContext);
     createRoutes(): HttpRoutes;
 }
@@ -682,9 +707,11 @@ export interface DevtoolsRouterContext {
     prefix: string;
     websocketPrefix: string;
     openapi: boolean;
+    web?: boolean;
     getStatus: () => string;
     buildGraph?: () => Promise<BuildGraphPayload | null>;
     buildChanges?: (since: null | string) => Promise<BuildChangesPayload | null>;
+    buildFramework?: () => Promise<BuildFrameworkPayload | null>;
 }
 
 export interface DictAsset {
@@ -1312,6 +1339,18 @@ export interface MobileDeepLinkAssociation {
     androidSha256CertFingerprints?: string[];
 }
 
+export declare class ModulePreloadPlan {
+    constructor(table: ModulePreloadTable, clientManifest?: ClientManifest);
+    knows(url: string): boolean;
+    urlsOf(chunkUrls: Iterable<string>): string[];
+}
+
+export interface ModulePreloadTable {
+    runtime: string[];
+    vendors: Record<string, string[]>;
+    chunkVendors: Record<string, string[]>;
+}
+
 export declare class NativeFile {
     static timeoutMs: number;
     static operationMode: () => string;
@@ -1660,6 +1699,7 @@ export interface RoutesManifest {
     clientManifest: ClientManifest;
     ssrManifest: SsrManifest;
     knownEntries: string[];
+    modulePreloads?: ModulePreloadTable;
 }
 
 export declare class RoutesManifestStore {

@@ -106,6 +106,7 @@ export interface FetchBridgeCall {
     args: UnknownRecord;
     returns: SerializedReturns;
     timeout?: false | number;
+    signal?: AbortSignal;
 }
 
 export interface FetchClaim {
@@ -267,6 +268,7 @@ export declare class HttpClient {
     post<Returns = unknown>(url: string, data: FormData | Record<string, unknown>, options?: FetchOptions): Promise<Returns>;
     delete<Returns = unknown>(url: string, options?: FetchOptions): Promise<Returns>;
     abortError(signal: AbortSignal): unknown;
+    static abortErrorOf(signal: AbortSignal, ErrorCls?: ErrorConstructor): unknown;
     static retryWait(error: unknown, attempt: number, { attempts, ...backoff }: RetryPolicy): null | number;
     static makePath(key: string, paramArgs: SerializedArg[], prefix?: string): string;
     static makeUrl(path: string, searchArgs: SerializedArg[], argMap: Map<string, unknown>): string;
@@ -366,6 +368,11 @@ export type SliceMeta<Sort = unknown> = {
     argLength: number;
     _Sort?: Sort;
 };
+
+export declare class StreamedRead {
+    static mark(reason: unknown): void;
+    static is(reason: unknown): boolean;
+}
 
 export type ViewHandle<RefName extends string, Full> = FetchHandleOf<ViewReturn<RefName, Full>, {
     [K in RefName]: Promise<Full>;
