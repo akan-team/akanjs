@@ -587,7 +587,8 @@ describe("ContextRunner", () => {
   });
 
   test("runs workflow read tools through MCP plan mode", async () => {
-    const { root, workspace } = track(await createTempApp("demo"));
+    const { root, workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
     const runner = new ContextRunner();
     const planPath = `${root}/.akan/workflows/plans/task-priority.json`;
 
@@ -634,7 +635,8 @@ describe("ContextRunner", () => {
   });
 
   test("writes a default plan artifact from MCP plan_workflow", async () => {
-    const { root, workspace } = track(await createTempApp("demo"));
+    const { root, workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
 
     const plan = (await new ContextRunner().callMcpTool(
       workspace,
@@ -654,6 +656,26 @@ describe("ContextRunner", () => {
     );
     expect(plan.recommendations.map((recommendation) => recommendation.code)).toContain("add-field-component");
     expect(await Bun.file(`${root}/${plan.planPath}`).exists()).toBe(true);
+  });
+
+  test("refuses an MCP plan_workflow for a module the target lacks, in the MCP server's workspace", async () => {
+    const { workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
+
+    const plan = (await new ContextRunner().callMcpTool(
+      workspace,
+      "plan_workflow",
+      { workflow: "add-field", inputs: { app: "demo", module: "pokemon", field: "nickname", type: "String" } },
+      { mode: "plan" },
+    )) as { diagnostics: { severity: string; code: string; message: string }[] };
+
+    expect(plan.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        code: "workflow-module-missing",
+        message: expect.stringContaining("Its modules are task."),
+      }),
+    ]);
   });
 
   test("splits doctor diagnostics by workflow context paths", async () => {
