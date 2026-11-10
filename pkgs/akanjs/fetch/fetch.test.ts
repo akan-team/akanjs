@@ -910,6 +910,22 @@ describe("HttpClient", () => {
     expect(fetchCalls).toHaveLength(2);
   });
 
+  test("keeps a generalized 429 that names no wait a refusal, and does not send it again", async () => {
+    setMockFetch();
+    rawResponses.push(
+      Response.json({ error: "Too Many Requests", code: "monthlyQuotaExceeded", statusCode: 429 }, { status: 429 }),
+    );
+    const client = new HttpClient("https://api.example");
+
+    const refused = (await client
+      .get("/items", { retry: { min: 1, jitter: 0 } })
+      .catch((error: unknown) => error)) as RestoredError & { code?: string };
+    expect(refused.message).not.toBe("base.error.tooManyRequests");
+    expect(refused).toMatchObject({ statusCode: 429, code: "monthlyQuotaExceeded" });
+    expect(HttpClient.retryWait(refused, 1, { min: 10, jitter: 0 })).toBeNull();
+    expect(fetchCalls).toHaveLength(1);
+  });
+
   test("restores a 413 as a request too large, and does not send it again", async () => {
     setMockFetch();
     rawResponses.push(new Response("Payload Too Large", { status: 413, headers: { "content-type": "text/plain" } }));

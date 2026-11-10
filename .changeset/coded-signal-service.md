@@ -35,6 +35,6 @@ A refused insight statement is forwarded to its author as a fixed sentence or wi
 
 - `SignalFailure` sends its `Retry-After` from `data.seconds`, a finite number only. The new `SignalFailure.headersOf(error, statusCode)` builds the headers for both paths.
 - The `Logging` middleware keeps it at debug level.
-- `HttpClient` restores it under `base.error.tooManyRequests`, with the code it carried and the wait its `Retry-After` names. So it is retried and worded as a forwarded one is.
+- `HttpClient` restores it under `base.error.tooManyRequests`, with the code it carried and the wait its `Retry-After` names. So it is retried and worded as a forwarded one is. One with no `Retry-After` to read, because none was sent or a cross-origin caller is not exposed to it, stays the refusal it was and is not retried.
 
 **`Exception.<Status>.is(error)` type-checks.** `StatusException` now declares `is`, so `Exception.BadRequest.is(error)` narrows `error` to an `Exception` and checks its own class.
