@@ -18,5 +18,4 @@ export const getPushDeviceId = () =>
     throw error;
   }));
 
-/** The installation id if this device ever registered for push, without making one. */
 export const loadPushDeviceId = async () => (await storage.getItem(pushDeviceIdKey)) ?? null;
