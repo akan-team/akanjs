@@ -363,30 +363,24 @@ export const getInternalArgumentValue = async (
     const pkgName = await select<string>({ message: `Select the ${sysType} name`, choices: pkgs });
     return PkgExecutor.from(workspace, pkgName);
   } else if (sysType === "module") {
-    if (value) {
-      const [sysName, moduleName] = value.split(":");
-      if (!sysName || !moduleName) throw new Error(`Invalid module name: ${value}`);
-      if (appNames.includes(sysName)) {
-        const app = AppExecutor.from(workspace, sysName);
-        const modules = await app.getModules();
-        if (modules.includes(moduleName)) return ModuleExecutor.from(app, moduleName);
-        else throw new Error(`Invalid module name: ${moduleName}`);
-      } else if (libNames.includes(sysName)) {
-        const lib = LibExecutor.from(workspace, sysName);
-        const modules = await lib.getModules();
-        if (modules.includes(moduleName)) return ModuleExecutor.from(lib, moduleName);
-      } else throw new Error(`Invalid system name: ${sysName}`);
-    }
     const systems = [
       ...appNames.map((name) => AppExecutor.from(workspace, name)),
       ...libNames.map((name) => LibExecutor.from(workspace, name)),
     ];
-    const choices =
-      process.stdin.isTTY && !destructive
-        ? []
-        : (
-            await Promise.all(systems.map(async (sys) => (await sys.getModules()).map((m) => `${sys.name}:${m}`)))
-          ).flat();
+    const listModules = async () =>
+      (await Promise.all(systems.map(async (sys) => (await sys.getModules()).map((m) => `${sys.name}:${m}`)))).flat();
+    if (value) {
+      const [sysName, moduleName] = value.split(":");
+      if (!sysName || !moduleName) throw new Error(`Invalid module name: ${value}`);
+      const sys = systems.find((each) => each.name === sysName);
+      if (!sys) throw new Error(`Invalid system name: ${sysName}`);
+      if ((await sys.getModules()).includes(moduleName)) return ModuleExecutor.from(sys, moduleName);
+      throw refusalOf(problemOf("module"), `${sysName} has no such module`, {
+        choices: await listModules(),
+        ...rerunRemedyOf(rerun, "<sys:module>"),
+      });
+    }
+    const choices = process.stdin.isTTY && !destructive ? [] : await listModules();
     assertAskable("module", choices, "<sys:module>");
     const { type, name } = await select<{ type: "app" | "lib"; name: string }>({
       message: `select the App or Lib name`,

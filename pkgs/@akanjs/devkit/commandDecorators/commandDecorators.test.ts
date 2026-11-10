@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import path from "node:path";
-import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "../executors";
+import { AppExecutor, LibExecutor, ModuleExecutor, PkgExecutor, WorkspaceExecutor } from "../executors";
 import { makeCliTempWorkspace, tempRoots, writeText } from "../testHelpers";
 import {
   App,
@@ -440,6 +440,7 @@ describe("enum arg type inference", () => {
 
 describe("a Sys that defaults to the only app", () => {
   const ownIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  const ownCwd = process.cwd();
   const asked: unknown[] = [];
   let answer = "";
   const setTTY = (isTTY: boolean | undefined) =>
@@ -455,6 +456,7 @@ describe("a Sys that defaults to the only app", () => {
   });
   afterEach(() => {
     CommandContainer.clear();
+    process.chdir(ownCwd);
     if (ownIsTTY) Object.defineProperty(process.stdin, "isTTY", ownIsTTY);
     else Reflect.deleteProperty(process.stdin, "isTTY");
   });
@@ -475,6 +477,20 @@ describe("a Sys that defaults to the only app", () => {
     const meta = getArgMetas(OnlyAppCommand, key)[0].find((arg): arg is InternalArgMeta => arg.type === "Sys");
     if (!meta) throw new Error(`no Sys meta on ${key}`);
     return meta;
+  };
+  const track = tempRoots();
+  //? From the workspace root, as the CLI runs: getDirInModule stats its entries relative to the process directory.
+  const moduleWorkspace = async () => {
+    const { root, workspace } = track(await makeCliTempWorkspace());
+    process.chdir(root);
+    for (const [sys, name] of [
+      ["apps/web", "card"],
+      ["libs/util", "photo"],
+    ] as const) {
+      await writeText(path.join(root, sys, "akan.config.ts"), "export default {};\n");
+      await writeText(path.join(root, sys, "lib", name, `${name}.constant.ts`), "export {};\n");
+    }
+    return workspace;
   };
 
   test("the opted-in command takes a one-app workspace's app without asking, even on a piped stdin", async () => {
@@ -607,6 +623,28 @@ describe("a Sys that defaults to the only app", () => {
     const taken = await getInternalArgumentValue(sysMetaOf("typecheck"), undefined, workspace);
     expect(taken instanceof AppExecutor ? taken.name : null).toBe("web");
     expect(asked).toEqual([]);
+  });
+
+  test("a module an app or a lib lacks is refused with the modules there are, in a terminal too", async () => {
+    setTTY(true);
+    answer = "util";
+    const workspace = await moduleWorkspace();
+    for (const value of ["util:nope", "web:nope"]) {
+      const sysName = value.split(":")[0];
+      await expect(
+        getInternalArgumentValue(
+          { key: "", idx: 0, type: "Module" },
+          value,
+          workspace,
+          rerunCommandOf(["create-view", value], [value], 0),
+        ),
+      ).rejects.toThrow(
+        `Unknown module '${value}': ${sysName} has no such module, so rerun it as \`akan create-view <sys:module>\` (choices: web:card, util:photo).`,
+      );
+    }
+    expect(asked).toEqual([]);
+    const photo = await getInternalArgumentValue({ key: "", idx: 0, type: "Module" }, "util:photo", workspace);
+    expect(photo instanceof ModuleExecutor ? `${photo.sys.name}:${photo.name}` : null).toBe("util:photo");
   });
 });
 
