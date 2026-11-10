@@ -12,14 +12,23 @@ import {
   AKAN_RSC_CURRENT_STATE_HEADER,
   AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
+  AKAN_RSC_PATCH_HEAD_SAFE_HEADER,
+  AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER,
+  AKAN_RSC_PATCH_SEGMENT_PATH_HEADER,
+  AKAN_RSC_PATCH_START_INDEX_HEADER,
+  AKAN_RSC_PATCH_START_SEGMENT_HEADER,
   AKAN_RSC_PREFETCH_HEADER,
   AKAN_RSC_RESPONSE_STATE_HEADER,
   type AkanRouterStateV1,
   decodeAkanRouterState,
+  encodeAkanHeadSnapshot,
   encodeAkanRouterState,
+  encodeAkanRscPatchSegmentPath,
 } from "./routeState";
+import * as outletModule from "./rscSegmentOutlet";
 
 const origin = "http://localhost";
+const OUTLET_MODULE_ID = "akan-outlet";
 //? A Flight row for the whole document, so the root that hydrates `document` gets a tree it can own.
 const rowOf = (text: string) =>
   `0:["$","html",null,{"children":[["$","head","h",{}],["$","body","b",{"children":["$","main",null,{"children":${JSON.stringify(text)}}]}]]}]\n`;
@@ -46,7 +55,7 @@ const back = async (expected: string) => {
   await act(async () => window.history.back());
   await waitFor(() => shown() === expected);
 };
-const served = new Map<string, () => Response | Promise<Response>>();
+const served = new Map<string, (headers: Headers) => Response | Promise<Response>>();
 const fetched: { pathname: string; sentRouterState: boolean; prefetch: boolean; signal?: AbortSignal }[] = [];
 const fetchCountOf = (pathname: string) => fetched.filter((request) => request.pathname === pathname).length;
 const signalOf = (pathname: string) => fetched.findLast((request) => request.pathname === pathname)?.signal;
@@ -135,7 +144,7 @@ beforeAll(async () => {
   Object.assign(globalThis, {
     //? happy-dom swaps in a TransformStream of its own, which the runtime's ReadableStream refuses to pipe through.
     TransformStream,
-    __webpack_require__: Object.assign(() => ({}), { u: () => "" }),
+    __webpack_require__: Object.assign((id: string) => (id === OUTLET_MODULE_ID ? outletModule : {}), { u: () => "" }),
     __webpack_chunk_load__: async () => undefined,
     __RSC_CHUNKS__: [[1, rowOf("/list")]],
     __RSC_CLOSED__: true,
@@ -146,7 +155,7 @@ beforeAll(async () => {
       const prefetch = headers.get(AKAN_RSC_PREFETCH_HEADER) === "1";
       const signal = init?.signal ?? undefined;
       fetched.push({ pathname: target.pathname, sentRouterState, prefetch, signal });
-      const response = served.get(target.pathname)?.() ?? responseOf(`${target.pathname}${target.search}`);
+      const response = served.get(target.pathname)?.(headers) ?? responseOf(`${target.pathname}${target.search}`);
       if (!signal) return response;
       signal.throwIfAborted();
       return new Promise<Response>((resolve, reject) => {
@@ -1242,5 +1251,310 @@ describe("rscClient route head key", () => {
     expect(sent.get("/atlas/map")).toMatchObject({ routeId: "/atlas", headKey: "atlas layouts" });
     expect(sent.get("/atlas/legend")).toMatchObject({ routeId: "/atlas/map" });
     expect(sent.get("/atlas/legend")?.headKey).toBeUndefined();
+  });
+});
+
+describe("rscClient patch cache", () => {
+  const enabled = process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+  beforeAll(() => {
+    process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = "1";
+  });
+  afterAll(() => {
+    if (enabled === undefined) delete process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+    else process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = enabled;
+  });
+  const frameShown = () => document.querySelector("nav")?.textContent;
+  const stateOf = (pathname: string, headKey: string): AkanRouterStateV1 => ({
+    version: 1,
+    href: `${origin}${pathname}`,
+    routeId: pathname,
+    segments: [
+      { key: "root", path: "/", kind: "root-layout" },
+      { key: `page:${pathname}`, path: pathname, kind: "page" },
+    ],
+    headKey,
+  });
+  const flight = (value: unknown) => `0:${JSON.stringify(value)}\n`;
+  const wholeResponseOf = (pathname: string, frame: string, state: AkanRouterStateV1) => {
+    const head = {
+      layouts: { version: 1, nodes: [] },
+      page: { version: 1, nodes: [{ tag: "title", text: pathname }] },
+    };
+    const outlet = ["$", "$L1", null, { segmentKey: "slot:root:1", children: pathname }];
+    const body = {
+      children: [
+        ["$", "nav", "n", { children: frame }],
+        ["$", "main", "m", { children: outlet }],
+      ],
+    };
+    const html = {
+      children: [
+        ["$", "head", "h", { children: ["$", "$L2", null, head] }],
+        ["$", "body", "b", body],
+      ],
+    };
+    const rows = `1:I${JSON.stringify([OUTLET_MODULE_ID, [], "AkanSegmentOutlet"])}\n2:I${JSON.stringify([OUTLET_MODULE_ID, [], "AkanRouteHead"])}\n${flight(["$", "html", null, html])}`;
+    return new Response(rows, {
+      headers: { "Content-Type": "text/x-component", [AKAN_RSC_RESPONSE_STATE_HEADER]: encodeAkanRouterState(state) },
+    });
+  };
+  const patchResponseOf = (pathname: string, state: AkanRouterStateV1) =>
+    new Response(flight(`${pathname} patched`), {
+      headers: {
+        "Content-Type": "text/x-component",
+        "X-Akan-Rsc-Partial": "patch",
+        [AKAN_RSC_PATCH_START_INDEX_HEADER]: "1",
+        [AKAN_RSC_PATCH_START_SEGMENT_HEADER]: `page:${pathname}`,
+        [AKAN_RSC_PATCH_SEGMENT_PATH_HEADER]: encodeAkanRscPatchSegmentPath(["root", `page:${pathname}`]),
+        [AKAN_RSC_PATCH_HEAD_SAFE_HEADER]: "1",
+        [AKAN_RSC_PATCH_HEAD_SNAPSHOT_HEADER]:
+          encodeAkanHeadSnapshot({ version: 1, nodes: [{ tag: "title", text: `${pathname} patched` }] }) ?? "",
+        [AKAN_RSC_RESPONSE_STATE_HEADER]: encodeAkanRouterState(state),
+      },
+    });
+  //? The worker's planner in small: a patch only from a page of the same frame (route group, locale) and layouts head.
+  const frames = new Map<string, { frame: string; headKey: string }>();
+  const framed = (pathname: string, frame: string, headKey = `${frame} layouts`) => {
+    frames.set(pathname, { frame, headKey });
+    served.set(pathname, (headers) => {
+      const from = decodeAkanRouterState(headers.get(AKAN_RSC_CURRENT_STATE_HEADER));
+      const target = frames.get(pathname) ?? { frame, headKey };
+      const state = stateOf(pathname, target.headKey);
+      const fromFrame = from ? frames.get(new URL(from.href, origin).pathname)?.frame : undefined;
+      return fromFrame === target.frame && from?.headKey === target.headKey
+        ? patchResponseOf(pathname, state)
+        : wholeResponseOf(pathname, target.frame, state);
+    });
+  };
+
+  test("a patch is replayed once a full commit brings back the page it went under, with its own title", async () => {
+    framed("/deck/a", "deck");
+    framed("/deck/b", "deck");
+    framed("/stage", "stage");
+    await navigate("/deck/a");
+    await navigate("/deck/b");
+    expect(shown()).toBe("/deck/b patched");
+
+    await navigate("/stage");
+    await navigate("/deck/a");
+    expect(document.title).toBe("/deck/a");
+    await navigate("/deck/b");
+
+    expect(fetchCountOf("/deck/b")).toBe(1);
+    expect(fetchCountOf("/deck/a")).toBe(1);
+    expect(shown()).toBe("/deck/b patched");
+    expect(frameShown()).toBe("deck");
+    expect(document.title).toBe("/deck/b patched");
+    expect(document.head.querySelectorAll("title").length).toBe(1);
+    expect(window.location.pathname).toBe("/deck/b");
+    expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
+  });
+
+  test("a patch laid on a patch is replayed straight under its base, and the next request names it", async () => {
+    framed("/ch/a", "ch");
+    framed("/ch/b", "ch");
+    framed("/ch/c", "ch");
+    framed("/ch/d", "ch");
+    framed("/cho", "cho");
+    await navigate("/ch/a");
+    await navigate("/ch/b");
+    await navigate("/ch/c");
+    await navigate("/cho");
+    await navigate("/ch/a");
+    await navigate("/ch/c");
+    expect(fetchCountOf("/ch/c")).toBe(1);
+    expect(shown()).toBe("/ch/c patched");
+    expect(frameShown()).toBe("ch");
+    let sentFrom: AkanRouterStateV1 | null = null;
+    const inner = served.get("/ch/d");
+    served.set("/ch/d", (headers) => {
+      sentFrom = decodeAkanRouterState(headers.get(AKAN_RSC_CURRENT_STATE_HEADER));
+      return inner?.(headers) ?? responseOf("x");
+    });
+
+    await navigate("/ch/d");
+
+    expect((sentFrom as AkanRouterStateV1 | null)?.href).toBe(`${origin}/ch/c`);
+    expect((sentFrom as AkanRouterStateV1 | null)?.headKey).toBe("ch layouts");
+    expect(shown()).toBe("/ch/d patched");
+    expect(document.head.querySelectorAll("title").length).toBe(1);
+  });
+
+  test("a not-found view in between keeps the patches of the page before it", async () => {
+    framed("/shed/a", "shed");
+    framed("/shed/b", "shed");
+    served.set("/shed/gone", notFoundViewOf("shed missing"));
+    await navigate("/shed/a");
+    await navigate("/shed/b");
+    await navigate("/shed/gone");
+    expect(shown()).toBe("shed missing");
+
+    await navigate("/shed/a");
+    await navigate("/shed/b");
+
+    expect(fetchCountOf("/shed/b")).toBe(1);
+    expect(shown()).toBe("/shed/b patched");
+  });
+
+  test.each([
+    ["route group", "/account/login", "/account/signup", "guest", "/account/settings", "member"],
+    ["locale", "/en/guide/a", "/en/guide/b", "en", "/ko/guide/a", "ko"],
+  ])(
+    "a patch is never laid under another %s's layouts at the same segment keys",
+    async (_, base, sibling, frame, other, otherFrame) => {
+      framed(base, frame);
+      framed(sibling, frame);
+      framed(other, otherFrame);
+      await navigate(base);
+      await navigate(sibling);
+      await navigate(other);
+      expect(frameShown()).toBe(otherFrame);
+      await navigate(base);
+      await navigate(sibling);
+      expect(fetchCountOf(sibling)).toBe(1);
+
+      await navigate(other);
+      await navigate(sibling);
+
+      expect(fetchCountOf(sibling)).toBe(2);
+      expect(shown()).toBe(sibling);
+      expect(frameShown()).toBe(frame);
+      expect(document.title).toBe(sibling);
+    },
+  );
+
+  test("a page rendered again with other layouts after it left the full cache takes none of the patches laid under it", async () => {
+    framed("/hall/a", "hall", "hall v1");
+    framed("/hall/b", "hall", "hall v1");
+    framed("/porch", "porch");
+    await navigate("/hall/a");
+    await navigate("/hall/b");
+    await navigate("/porch");
+    await navigate("/hall/a");
+    await navigate("/hall/b");
+    expect(fetchCountOf("/hall/b")).toBe(1);
+
+    for (let index = 0; index < 32; index += 1) await navigate(`/corridor/${index}`);
+    framed("/hall/a", "hall", "hall v2");
+    framed("/hall/b", "hall", "hall v2");
+    await navigate("/hall/a");
+    expect(fetchCountOf("/hall/a")).toBe(2);
+    await navigate("/hall/b");
+
+    expect(fetchCountOf("/hall/b")).toBe(2);
+    expect(sentRouterStateFor("/hall/b")).toBe(true);
+    expect(shown()).toBe("/hall/b patched");
+  });
+
+  test("an HMR refresh drops the patches cached before it", async () => {
+    framed("/loft/a", "loft");
+    framed("/loft/b", "loft");
+    framed("/roof", "roof");
+    await navigate("/loft/a");
+    await navigate("/loft/b");
+    await navigate("/roof");
+    await navigate("/loft/a");
+    await navigate("/loft/b");
+    expect(fetchCountOf("/loft/b")).toBe(1);
+    await navigate("/roof");
+
+    await act(async () => {
+      globalThis.__AKAN_RSC_CLEAR_CACHE__?.();
+      await globalThis.__AKAN_RSC_REFRESH__?.({ buildId: 4 });
+    });
+    await navigate("/loft/a");
+    await navigate("/loft/b");
+
+    expect(fetchCountOf("/loft/a")).toBe(2);
+    expect(fetchCountOf("/loft/b")).toBe(2);
+    expect(shown()).toBe("/loft/b patched");
+  });
+
+  test("clearing the navigation cache with the base on screen drops the patches laid under it", async () => {
+    framed("/p1/a", "p1");
+    framed("/p1/b", "p1");
+    framed("/p1o", "p1o");
+    await navigate("/p1/a");
+    await navigate("/p1/b");
+    await navigate("/p1o");
+    await navigate("/p1/a");
+
+    await act(async () => {
+      globalThis.__AKAN_RSC_CLEAR_CACHE__?.();
+    });
+    await navigate("/p1/b");
+
+    expect(fetchCountOf("/p1/b")).toBe(2);
+  });
+
+  test("a patch reached through a redirect is replayed for the page it landed on, and the redirect asked again", async () => {
+    framed("/mill/a", "mill");
+    framed("/mill/new", "mill");
+    framed("/yard", "yard");
+    served.set("/mill/old", preStreamRedirectTo("/mill/new"));
+    await navigate("/mill/a");
+    await navigate("/mill/old");
+    await waitFor(() => window.location.pathname === "/mill/new");
+    expect(shown()).toBe("/mill/new patched");
+    await navigate("/yard");
+    await navigate("/mill/a");
+
+    await navigate("/mill/old");
+    await waitFor(() => window.location.pathname === "/mill/new");
+
+    expect(fetchCountOf("/mill/old")).toBe(2);
+    expect(fetchCountOf("/mill/new")).toBe(1);
+    expect(shown()).toBe("/mill/new patched");
+    expect(document.title).toBe("/mill/new patched");
+  });
+
+  test("a page the server now redirects is asked again, never replayed from the patch it had", async () => {
+    framed("/rv/a", "rv");
+    framed("/rv/b", "rv");
+    framed("/rvo", "rvo");
+    framed("/rv/login", "rvo");
+    await navigate("/rv/a");
+    await navigate("/rv/b");
+    await navigate("/rvo");
+    served.set("/rv/b", preStreamRedirectTo("/rv/login"));
+    await navigate("/rv/b");
+    await waitFor(() => window.location.pathname === "/rv/login");
+    await navigate("/rv/a");
+
+    await navigate("/rv/b");
+
+    expect(fetchCountOf("/rv/b")).toBe(3);
+  });
+
+  test("a page the server now answers not-found is asked again, never replayed from the patch it had", async () => {
+    framed("/nf/a", "nf");
+    framed("/nf/b", "nf");
+    framed("/nfo", "nfo");
+    await navigate("/nf/a");
+    await navigate("/nf/b");
+    await navigate("/nfo");
+    served.set("/nf/b", notFoundViewOf("nf gone"));
+    await navigate("/nf/b");
+    await navigate("/nf/a");
+
+    await navigate("/nf/b");
+
+    expect(fetchCountOf("/nf/b")).toBe(3);
+    expect(shown()).toBe("nf gone");
+  });
+
+  test("a page committed without router state names none for the next request, which renders whole at once", async () => {
+    framed("/bare/a", "bare");
+    framed("/bare/b", "bare");
+    served.set("/plain", () => responseOf("plain"));
+    await navigate("/bare/a");
+    await navigate("/plain");
+
+    await navigate("/bare/b");
+
+    expect(fetchCountOf("/bare/b")).toBe(1);
+    expect(sentRouterStateFor("/bare/b")).toBe(false);
+    expect(shown()).toBe("/bare/b");
+    expect(frameShown()).toBe("bare");
   });
 });
