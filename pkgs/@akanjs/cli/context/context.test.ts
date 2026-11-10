@@ -470,7 +470,9 @@ describe("ContextRunner", () => {
       mode: "apply-first",
       directSourceEdits: "fallback-only",
     });
-    expect(contract.directEditFallbackPolicy.applyRequiredWhen).toContain("plan_workflow returns planPath");
+    expect(contract.directEditFallbackPolicy.applyRequiredWhen).toEqual([
+      "plan_workflow returns next.tool=apply_workflow",
+    ]);
     expect(contract.directEditFallbackPolicy.approvalMeaning).toContain("not a separate MCP permission gate");
     expect(contract.directEditFallbackPolicy.validationRequiredAfterApply).toContain("validationTarget");
     expect(contract.directEditFallbackPolicy.fallbackAllowedWhen.join("\n")).toContain("no matching workflow");
@@ -656,6 +658,45 @@ describe("ContextRunner", () => {
     );
     expect(plan.recommendations.map((recommendation) => recommendation.code)).toContain("add-field-component");
     expect(await Bun.file(`${root}/${plan.planPath}`).exists()).toBe(true);
+  });
+
+  test("names no next tool for an MCP plan or apply that failed", async () => {
+    const { workspace, module } = track(await createTempModule("task"));
+    await new ModuleRunner().createModuleTemplate(module);
+    const runner = new ContextRunner();
+
+    const plan = (await runner.callMcpTool(
+      workspace,
+      "plan_workflow",
+      { workflow: "add-field", inputs: { app: "demo", module: "task", field: "budget", type: "Number" } },
+      { mode: "apply" },
+    )) as {
+      planPath: string;
+      diagnostics: { severity: string; code: string }[];
+      approval: Record<string, unknown>;
+      recommendations: { code: string }[];
+    };
+    const reports = (await Promise.all(
+      [true, false].map((dryRun) =>
+        runner.callMcpTool(workspace, "apply_workflow", { planPath: plan.planPath, dryRun }, { mode: "apply" }),
+      ),
+    )) as Record<string, unknown>[];
+
+    expect(plan.diagnostics).toEqual([
+      expect.objectContaining({ severity: "error", code: "primitive-field-type-unsupported" }),
+    ]);
+    expect(plan).not.toHaveProperty("next");
+    expect(plan.approval).toMatchObject({ required: true, applyTool: "apply_workflow" });
+    expect(plan.approval).not.toHaveProperty("canApplyWith");
+    expect(plan.recommendations.map((recommendation) => recommendation.code)).not.toContain("workflow-apply-first");
+    expect(plan.recommendations.map((recommendation) => recommendation.code)).not.toContain(
+      "workflow-validate-apply-report",
+    );
+    expect(reports).toEqual([
+      expect.objectContaining({ mode: "dry-run", status: "failed" }),
+      expect.objectContaining({ mode: "apply", status: "failed" }),
+    ]);
+    for (const report of reports) expect(report).not.toHaveProperty("next");
   });
 
   test("refuses an MCP plan_workflow for a module the target lacks, in the MCP server's workspace", async () => {

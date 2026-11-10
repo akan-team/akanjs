@@ -1,0 +1,6 @@
+---
+"@akanjs/cli": patch
+"@akanjs/devkit": patch
+---
+
+A failed workflow no longer reports success to its caller. `akan workflow apply` exits 1 when the apply or its `--dry-run` fails; it exited 0 before. A dry run of a plan with an error, such as `add-field --type Number`, reports `failed` and lists no changed or generated files, where it used to list the plan's edits under "Automatically Modified". Over MCP, `plan_workflow` names `apply_workflow` in `next` and `approval.canApplyWith` only for a plan without an error, and `apply_workflow` names `run_validation` only when the apply did not fail; a refused plan also drops its "apply this plan" and "validate the apply report" recommendations. The workflows that write into an existing module (`add-field`, `add-enum-field`, `add-mutation`, `add-slice`, `create-ui`, `rename-key`) now refuse a service module, or any folder without its `<module>.constant.ts`, at plan time and again at apply. The `workflow-module-not-database` error lists the target's database modules and points at `create-module`, and for a field at `create-scalar`. Before, `add-field` on a service module passed its plan and dry run and failed only at apply, and `create-ui` wrote a misnamed `_<service>.View.tsx` into it.

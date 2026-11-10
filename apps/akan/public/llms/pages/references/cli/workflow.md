@@ -66,11 +66,11 @@ on failure
 
 1. Plan
 
-Checks your inputs and writes the plan JSON: the steps, the files it expects to change, and the checks to run. Source is neither read nor written.
+Checks your inputs against the target's source and writes the plan JSON: the steps, the files it expects to change, and the checks to run. It reads source but never writes it.
 
 2. Apply
 
-Takes the plan file, not a workflow name, and writes the source changes. A plan with an error, such as a missing input, applies nothing.
+Takes the plan file, not a workflow name, and writes the source changes. A plan with an error, such as a missing input, applies nothing, and its dry run lists no changes. A failed apply or dry run exits 1.
 
 3. Validate
 
@@ -212,7 +212,7 @@ List, explain, plan, apply, or validate a workflow, or print an earlier run's re
 
 - --app (String, -a): Plan input: the target app or library. Every workflow requires it.
 
-- --module (String, -m): Plan input: the target domain, service or scalar module. All but `create-scalar` require it.
+- --module (String, -m): Plan input: a new module for `create-module`, else an existing database module, never a service or scalar one.
 
 - --field (String, -f): Plan input for `add-field` and `add-enum-field`: the field name.
 

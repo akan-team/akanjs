@@ -349,8 +349,8 @@ export default page()
             type: "String",
             enumOrFlag: "-m",
             desc: l.trans({
-              en: "Plan input: the target domain, service or scalar module. All but `create-scalar` require it.",
-              ko: "플랜 입력: 대상 도메인, 서비스, 스칼라 모듈입니다. `create-scalar`를 뺀 모든 워크플로에 필요합니다.",
+              en: "Plan input: a new module for `create-module`, else an existing database module, never a service or scalar one.",
+              ko: "플랜 입력: `create-module`에는 새 모듈, 나머지에는 이미 있는 데이터베이스 모듈이며 서비스·스칼라 모듈은 받지 않습니다.",
             }),
           },
           {
@@ -723,8 +723,8 @@ akan repair dictionary --app koyo --module icecreamOrder --format json`,
               <code className={chip}>{"akan workflow plan <workflow> … --out <path>"}</code>
               <div className="mt-2 text-foreground/70 text-sm">
                 {l.trans({
-                  en: "Checks your inputs and writes the plan JSON: the steps, the files it expects to change, and the checks to run. Source is neither read nor written.",
-                  ko: "입력값을 확인하고 플랜 JSON을 씁니다. 단계, 바뀔 파일 예상, 이후 돌릴 검증이 담기며 소스는 읽지도 쓰지도 않습니다.",
+                  en: "Checks your inputs against the target's source and writes the plan JSON: the steps, the files it expects to change, and the checks to run. It reads source but never writes it.",
+                  ko: "입력값을 대상의 소스와 대조해 확인하고 플랜 JSON을 씁니다. 단계, 바뀔 파일 예상, 이후 돌릴 검증이 담기며, 소스를 읽기만 하고 쓰지는 않습니다.",
                 })}
               </div>
             </div>
@@ -733,8 +733,8 @@ akan repair dictionary --app koyo --module icecreamOrder --format json`,
               <code className={chip}>{"akan workflow apply <planPath>"}</code>
               <div className="mt-2 text-foreground/70 text-sm">
                 {l.trans({
-                  en: "Takes the plan file, not a workflow name, and writes the source changes. A plan with an error, such as a missing input, applies nothing.",
-                  ko: "워크플로 이름이 아니라 플랜 파일을 받아 소스를 고칩니다. 입력이 빠진 것처럼 오류가 있는 플랜은 아무것도 적용하지 않습니다.",
+                  en: "Takes the plan file, not a workflow name, and writes the source changes. A plan with an error, such as a missing input, applies nothing, and its dry run lists no changes. A failed apply or dry run exits 1.",
+                  ko: "워크플로 이름이 아니라 플랜 파일을 받아 소스를 고칩니다. 입력이 빠진 것처럼 오류가 있는 플랜은 아무것도 적용하지 않고, 그 dry run도 바뀔 파일을 내놓지 않습니다. 적용이나 dry run이 실패하면 종료 코드 1로 끝납니다.",
                 })}
               </div>
             </div>

@@ -682,8 +682,8 @@ akan mcp-call plan_workflow --mode plan --args '{"workflow":"add-field","inputs"
           {
             name: "plan_workflow",
             desc: l.trans({
-              en: "Writes a plan file and returns its `planPath` for `apply_workflow`.",
-              ko: "플랜 파일을 쓰고, `apply_workflow`에 넘길 `planPath`를 돌려줍니다.",
+              en: "Writes a plan file and returns its `planPath` for `apply_workflow`, which it names next unless the plan has an error.",
+              ko: "플랜 파일을 쓰고, `apply_workflow`에 넘길 `planPath`를 돌려줍니다. 플랜에 오류가 없으면 다음 호출로 `apply_workflow`를 알려 줍니다.",
             }),
             marks: planModes,
           },
@@ -695,8 +695,8 @@ akan mcp-call plan_workflow --mode plan --args '{"workflow":"add-field","inputs"
           {
             name: "apply_workflow",
             desc: l.trans({
-              en: "Carries out a stored plan and names what to validate next.",
-              ko: "저장된 플랜을 실행하고, 다음에 검증할 대상을 알려 줍니다.",
+              en: "Carries out a stored plan and, unless it failed, names what to validate next.",
+              ko: "저장된 플랜을 실행하고, 실패하지 않았으면 다음에 검증할 대상을 알려 줍니다.",
             }),
             marks: applyModes,
           },

@@ -199,7 +199,7 @@ export const defaultWorkflowPlanPath = (workflow: string, inputs: WorkflowPlanIn
 export const applyFirstPolicy = {
   mode: "apply-first",
   directSourceEdits: "fallback-only",
-  applyRequiredWhen: ["plan_workflow returns planPath", "plan_workflow returns next.tool=apply_workflow"],
+  applyRequiredWhen: ["plan_workflow returns next.tool=apply_workflow"],
   approvalMeaning:
     "requiresApproval is an agent/user review signal before apply_workflow mutates files; it is not a separate MCP permission gate.",
   validationRequiredAfterApply: ["validationTarget", "applyReportPath"],
@@ -371,7 +371,7 @@ export const planMcpTools: McpToolDefinition[] = [
   {
     name: "plan_workflow",
     description:
-      "Create a read-only workflow plan after context inspection and return planPath plus next.tool=apply_workflow.",
+      "Create a read-only workflow plan after context inspection and return planPath, plus next.tool=apply_workflow unless a diagnostic is an error.",
     inputSchema: {
       type: "object",
       properties: { workflow: stringProperty, inputs: objectProperty, out: stringProperty },
@@ -383,7 +383,8 @@ export const planMcpTools: McpToolDefinition[] = [
 export const applyMcpTools: McpToolDefinition[] = [
   {
     name: "apply_workflow",
-    description: "Apply a stored workflow plan before direct edits and return validationTarget for run_validation.",
+    description:
+      "Apply a stored workflow plan before direct edits and return validationTarget, plus next.tool=run_validation unless the apply failed.",
     inputSchema: {
       type: "object",
       properties: { planPath: stringProperty, dryRun: booleanProperty },
