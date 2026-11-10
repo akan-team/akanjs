@@ -15,7 +15,7 @@ export type AdaptorCls<Methods = any, InjectMap extends Record<string, InjectInf
 }>;
 
 export declare class AgentService extends AgentService_base {
-    runTurn(request: LlmTurnRequest, onDelta?: (delta: string) => void): Promise<{
+    runTurn(request: LlmTurnRequest, options?: ((delta: string) => void) | AgentTurnOptions): Promise<{
         limits?: import("./predefinedAdaptor").LlmLimits | undefined;
         model?: string | undefined;
         usage?: import("./predefinedAdaptor").LlmUsage | undefined;
@@ -24,12 +24,18 @@ export declare class AgentService extends AgentService_base {
         stop: "end" | "length" | "toolUse";
     }>;
     static readonly preamble: string;
-    static instructed(request: LlmTurnRequest): LlmTurnRequest;
+    static instructed(request: LlmTurnRequest, preamble?: false | string): LlmTurnRequest;
     static explained(request: LlmTurnRequest): LlmTurnRequest;
     static readonly referenceLimit = 20000;
     static referenced(request: LlmTurnRequest): LlmTurnRequest;
     static readonly referenceHeading: string;
     static readable(request: LlmTurnRequest, accepts: LlmAccepts | undefined): LlmTurnRequest;
+}
+
+export interface AgentTurnOptions {
+    onDelta?: (delta: string) => void;
+    preamble?: false | string;
+    signal?: AbortSignal;
 }
 
 export interface AgentWireAttachment {
@@ -381,7 +387,7 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
     static readonly imageTypes: Set<string>;
     get limits(): LlmLimits;
     get accepts(): LlmAccepts;
-    chat(request: LlmTurnRequest, onDelta?: (delta: string) => void): Promise<LlmTurnAnswer | null>;
+    chat(request: LlmTurnRequest, onDelta?: (delta: string) => void, signal?: AbortSignal): Promise<LlmTurnAnswer | null>;
     static refusal(host: string, response: Response): Promise<Error>;
     static reasonOf(response: Response): Promise<string>;
     static requestBody(model: string, request: LlmTurnRequest, { accepts, stream, maxTokens }?: {
@@ -902,7 +908,7 @@ export interface LlmAccepts {
 }
 
 export interface LlmAdaptor {
-    chat(request: LlmTurnRequest, onDelta?: (delta: string) => void): Promise<LlmTurnAnswer | null>;
+    chat(request: LlmTurnRequest, onDelta?: (delta: string) => void, signal?: AbortSignal): Promise<LlmTurnAnswer | null>;
     readonly accepts?: LlmAccepts;
     readonly limits?: LlmLimits;
 }
@@ -936,6 +942,16 @@ export interface LlmOverflowFacts {
     requested?: number;
 }
 
+export declare class LlmSpend {
+    static attach<E>(error: E, spent: LlmSpent): E;
+    static of(error: unknown): LlmSpent | null;
+}
+
+export interface LlmSpent {
+    usage?: LlmUsage;
+    model?: string;
+}
+
 export interface LlmTurnAnswer {
     text?: string;
     toolCalls?: AgentWireToolCall[];
@@ -956,6 +972,7 @@ export interface LlmUsage {
     inputTokens: number;
     outputTokens: number;
     cachedTokens: number;
+    cacheWriteTokens?: number;
 }
 
 export interface LocalFilePath {
@@ -1050,7 +1067,7 @@ export declare class OpenaiLlm extends OpenaiLlm_base implements LlmAdaptor {
     get limits(): LlmLimits;
     get accepts(): LlmAccepts | undefined;
     static acceptsOf({ accepts, host }: LlmOption): LlmAccepts | undefined;
-    chat(request: LlmTurnRequest, onDelta?: (delta: string) => void): Promise<LlmTurnAnswer | null>;
+    chat(request: LlmTurnRequest, onDelta?: (delta: string) => void, signal?: AbortSignal): Promise<LlmTurnAnswer | null>;
     static refusal(host: string, response: Response): Promise<Error>;
 }
 
@@ -1821,7 +1838,7 @@ export declare class WebSocketRedisAdaptor extends WebSocketRedisAdaptor_base im
     setEventHandler(handler: WsRedisEventHandler): void;
     clearEventHandler(): void;
     onRecovered(handler: () => void): void;
-    joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
+    joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string, { live }?: WebsocketJoinOption): Promise<void>;
     leaveRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
     leaveAllRooms(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
     registerSocket(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
@@ -1836,7 +1853,7 @@ export interface WebsocketAdaptor {
     publishChange?(change: LiveChange): void;
     onChange?(handler: LiveChangeHandler): void;
     reportLiveModels?(models: string[]): void;
-    joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
+    joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string, option?: WebsocketJoinOption): Promise<void>;
     leaveRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
     leaveAllRooms(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
     registerSocket(ws: Bun.ServerWebSocket<unknown>, meta?: Record<string, string>): Promise<void>;
@@ -1844,6 +1861,10 @@ export interface WebsocketAdaptor {
 }
 
 export declare const WebsocketAdaptorRole: AdaptorCls<WebsocketAdaptor>;
+
+export interface WebsocketJoinOption {
+    live?: string;
+}
 
 export interface WebsocketPublishOption {
     coalesce?: boolean;
@@ -2001,6 +2022,8 @@ export declare const injectionBuilder: (parentRefName: string) => {
         incr: (by?: number, option?: CacheSetOptions) => Promise<number>;
     }, never, ValueRef>;
 };
+
+export declare const llmCallSignal: (signal?: AbortSignal) => AbortSignal;
 
 export declare const llmProviderOf: (host: string) => string;
 

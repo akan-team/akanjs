@@ -55,16 +55,28 @@ export declare class AgentMeter {
         quota?: AgentQuotaHook | null;
         serial?: boolean;
     }): void;
-    static run<T extends {
+    static turnOf(account: unknown, { headers, ip }?: {
+        headers?: Headers;
+        ip?: null | string;
+    }): AgentTurnContext;
+    static run<T extends null | {
         usage?: LlmUsage;
         model?: string;
-    }>(account: unknown, turn: () => Promise<T>): Promise<T>;
+    }>(account: unknown, turn: () => Promise<T>, scope?: AgentMeterScope): Promise<T>;
+}
+
+export interface AgentMeterScope {
+    turn?: AgentTurnContext;
+    request?: LlmTurnRequest;
+    signal?: AbortSignal;
 }
 
 export type AgentOrigin = "base" | "endpoint" | "slice";
 
 export interface AgentQuotaCheck {
     account: unknown;
+    turn: AgentTurnContext;
+    request?: LlmTurnRequest;
 }
 
 export type AgentQuotaHook = (check: AgentQuotaCheck) => PromiseOrObject<boolean>;
@@ -85,14 +97,12 @@ export declare class AgentRelayAccess implements Guard {
 export declare class AgentRelayPolicy {
     static readonly defaultLimits: Readonly<AgentRequestLimits>;
     static use(policy: AgentRequestPolicy | null): void;
-    static apply(request: LlmTurnRequest, context: AgentRequestContext): Promise<LlmTurnRequest>;
+    static apply(request: LlmTurnRequest, context: AgentTurnContext): Promise<LlmTurnRequest>;
     static capped(request: LlmTurnRequest, limits?: Partial<AgentRequestLimits>): LlmTurnRequest;
 }
 
-export interface AgentRequestContext {
-    account: unknown;
-    ip: null | string;
-}
+/** @deprecated */
+export type AgentRequestContext = AgentTurnContext;
 
 export interface AgentRequestLimits {
     messages: number;
@@ -102,7 +112,7 @@ export interface AgentRequestLimits {
     attachmentChars: number;
 }
 
-export type AgentRequestPolicy = (request: LlmTurnRequest, context: AgentRequestContext) => PromiseOrObject<LlmTurnRequest>;
+export type AgentRequestPolicy = (request: LlmTurnRequest, context: AgentTurnContext) => PromiseOrObject<LlmTurnRequest>;
 
 export declare class AgentStop extends AgentStop_base {
 }
@@ -111,8 +121,17 @@ export declare class AgentTurn extends AgentTurn_base {
     isToolUse(): boolean;
 }
 
+export interface AgentTurnContext {
+    id: string;
+    headers: Headers;
+    account: unknown;
+    ip: null | string;
+}
+
 export declare class AgentTurnDocument extends AgentTurnDocument_base {
 }
+
+export type AgentTurnOutcome = "aborted" | "failed" | "ok";
 
 export declare class AgentTurnStream {
     static wants(request: Bun.BunRequest): boolean;
@@ -135,8 +154,10 @@ export type AgentUsageHook = (report: AgentUsageReport) => PromiseOrObject<void>
 
 export interface AgentUsageReport {
     account: unknown;
+    turn: AgentTurnContext;
     model: null | string;
     usage: LlmUsage;
+    outcome: AgentTurnOutcome;
 }
 
 export interface ArgInfo<ArgProps = any> {
@@ -345,6 +366,8 @@ export declare class EndpointErrorContract {
     static assertDeclared(errors: EndpointErrors | undefined): void;
     static keysOf(errors: EndpointErrors | undefined): string[];
     static checkThrown(endpoint: Adaptor, endpointInfo: EndpointInfo, key: string, thrownKey: string): void;
+    static promised(endpointInfo: EndpointInfo, error: ExceptionLike): boolean;
+    static wireKey(error: ExceptionLike): string;
 }
 
 export type EndpointErrorKey = `${string}.error.${string}`;
@@ -2636,7 +2659,7 @@ interface RootSliceOption {
 
 type RootSliceQueryKey<Filter extends FilterInstance> = Extract<keyof Filter["query"], string>;
 
-type RunTurn = (onDelta: (delta: string) => void) => Promise<StreamedTurn>;
+type RunTurn = (onDelta: (delta: string) => void, signal: AbortSignal) => Promise<StreamedTurn>;
 
 type RuntimeRecord = Record<string, unknown>;
 
