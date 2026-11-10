@@ -22,9 +22,12 @@ const publicBlobOf = (publicKey: string) => {
 
 //? ssh2 1.17's keygen strips a leading zero byte off an ed25519 public key, so 1 pair in 256 cannot be read back.
 const ed25519Pair = () => {
-  let pair = utils.generateKeyPairSync("ed25519");
-  while (utils.parseKey(pair.private) instanceof Error) pair = utils.generateKeyPairSync("ed25519");
-  return pair;
+  for (let tries = 1; ; tries++) {
+    const pair = utils.generateKeyPairSync("ed25519");
+    const parsed = utils.parseKey(pair.private);
+    if (!(parsed instanceof Error)) return pair;
+    if (tries === 8) throw parsed;
+  }
 };
 
 const sshServers: { server: Server; clients: Set<Connection> }[] = [];
