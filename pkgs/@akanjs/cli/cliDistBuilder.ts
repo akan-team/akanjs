@@ -4,6 +4,7 @@ import { $ } from "bun";
 
 interface PackageManifest {
   name?: string;
+  workspaces?: string[] | { packages?: string[] };
   dependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
 }
@@ -31,9 +32,12 @@ export class CliDistBuilder {
     const stamp = await this.inputStamp();
     const force = process.env.AKAN_CLI_FORCE_BUILD === "1";
     if (!force && (await this.#stampMatches(stamp))) return "up-to-date";
+    const lockRequestedAt = Date.now();
     const releaseLock = await this.#acquireLock();
     try {
-      if (!force && (await this.#stampMatches(stamp))) return "built-by-other";
+      // A forced build yields to one that finished during the wait: that build's process is running from `dist/`.
+      if ((await this.#stampMatches(stamp)) && (!force || (await this.#stampWrittenSince(lockRequestedAt))))
+        return "built-by-other";
       await this.#bundle();
       // Written last, so a build killed halfway leaves no stamp to trust a partial bundle by.
       await Bun.write(path.join(this.#outDir, CliDistBuilder.#stampFile), stamp);
@@ -64,13 +68,21 @@ export class CliDistBuilder {
 
   async bundledPackageDirs(): Promise<string[]> {
     const externals = new Set(CliDistBuilder.#externalsOf(await CliDistBuilder.#manifestOf(this.#cliDir)));
-    const dirs = new Set([this.#cliDir, this.#devkitDir]);
+    const workspaceRoot = await this.#workspaceRoot();
+    const workspaces = workspaceRoot
+      ? await CliDistBuilder.#workspacePackages(workspaceRoot)
+      : new Map<string, string>();
+    const dirs = new Set(await Promise.all([this.#cliDir, this.#devkitDir].map((dir) => realpath(dir))));
     for (const dir of dirs) {
       const manifest = await CliDistBuilder.#manifestOf(dir);
-      for (const name of Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies })) {
+      for (const [name, spec] of Object.entries({ ...manifest.dependencies, ...manifest.peerDependencies })) {
         if (externals.has(name)) continue;
-        const workspaceDir = await CliDistBuilder.#workspaceDirOf(name, dir);
-        if (workspaceDir) dirs.add(workspaceDir);
+        const target = CliDistBuilder.#aliasTargetOf(spec);
+        const packageDir =
+          (target && workspaces.get(target)) ??
+          workspaces.get(name) ??
+          (await CliDistBuilder.#resolvedPackageDirOf(name, dir, workspaceRoot));
+        if (packageDir) dirs.add(packageDir);
       }
     }
     return [...dirs];
@@ -84,16 +96,44 @@ export class CliDistBuilder {
     return Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies });
   }
 
-  static async #workspaceDirOf(name: string, fromDir: string): Promise<string | null> {
-    const entry = await CliDistBuilder.#resolve(name, fromDir);
-    if (!entry || entry.split(path.sep).includes("node_modules")) return null;
-    for (let dir = path.dirname(entry); dir !== path.dirname(dir); dir = path.dirname(dir)) {
-      const manifest = await Bun.file(path.join(dir, "package.json"))
-        .json()
-        .catch(() => null);
-      if (manifest) return (manifest as PackageManifest).name === name ? dir : null;
+  async #workspaceRoot(): Promise<string | null> {
+    for (let dir = await realpath(this.#cliDir); dir !== path.dirname(dir); dir = path.dirname(dir)) {
+      const manifest = await CliDistBuilder.#manifestOf(dir).catch(() => null);
+      if (manifest?.workspaces) return dir;
     }
     return null;
+  }
+
+  static async #workspacePackages(root: string): Promise<Map<string, string>> {
+    const { workspaces } = await CliDistBuilder.#manifestOf(root);
+    const patterns = (Array.isArray(workspaces) ? workspaces : workspaces?.packages) ?? [];
+    const packages = new Map<string, string>();
+    for (const pattern of patterns)
+      for await (const manifestPath of new Bun.Glob(`${pattern.replace(/\/+$/, "")}/package.json`).scan({
+        cwd: root,
+      })) {
+        const dir = await realpath(path.join(root, path.dirname(manifestPath)));
+        const { name } = await CliDistBuilder.#manifestOf(dir).catch(() => ({ name: undefined }));
+        if (name && !packages.has(name)) packages.set(name, dir);
+      }
+    return packages;
+  }
+
+  static #aliasTargetOf(spec: string): string | null {
+    const target = spec.replace(/^(?:npm|workspace):((?:@[\w.-]+\/)?[\w.-]+)(?:@.*)?$/, "$1");
+    return target === spec ? null : target;
+  }
+
+  static async #resolvedPackageDirOf(name: string, fromDir: string, workspaceRoot: string | null) {
+    const entry =
+      (await CliDistBuilder.#resolve(`${name}/package.json`, fromDir)) ??
+      (await CliDistBuilder.#resolve(name, fromDir));
+    if (!entry || entry.split(path.sep).includes("node_modules")) return null;
+    for (let dir = path.dirname(entry); dir !== path.dirname(dir) && dir !== workspaceRoot; dir = path.dirname(dir)) {
+      const manifest = await CliDistBuilder.#manifestOf(dir).catch(() => null);
+      if (manifest?.name) return dir;
+    }
+    return path.dirname(entry) === workspaceRoot ? null : path.dirname(entry);
   }
 
   static async #resolve(name: string, fromDir: string): Promise<string | null> {
@@ -111,6 +151,11 @@ export class CliDistBuilder {
     if (recorded?.trim() !== stamp) return false;
     // A stamp with no entrypoint beside it means someone removed part of `dist/` by hand.
     return await Bun.file(path.join(this.#outDir, "index.js")).exists();
+  }
+
+  async #stampWrittenSince(at: number): Promise<boolean> {
+    const info = await stat(path.join(this.#outDir, CliDistBuilder.#stampFile)).catch(() => null);
+    return !!info && info.mtimeMs >= at;
   }
 
   async #acquireLock(): Promise<() => Promise<void>> {

@@ -19,13 +19,22 @@ const workspace = async () => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), "cli-dist-builder-")));
   roots.push(root);
   const pkg = (dir: string, manifest: object) => write(path.join(root, dir, "package.json"), JSON.stringify(manifest));
+  await pkg(".", { name: "fixture", workspaces: ["pkgs/*", "pkgs/@akanjs/*", "pkgs/@sample/*"] });
   await pkg("pkgs/@akanjs/cli", { name: "@akanjs/cli", dependencies: { akanjs: "1.0.0" } });
   await pkg("pkgs/@akanjs/devkit", {
     name: "@akanjs/devkit",
-    dependencies: { "@sample/lang": "1.0.0", akanjs: "1.0.0" },
+    dependencies: {
+      "@sample/lang": "1.0.0",
+      akanjs: "1.0.0",
+      "lang-alias": "npm:@sample/subpaths@1.0.0",
+      "@sample/vendored": "1.0.0",
+    },
   });
   await pkg("pkgs/@sample/lang", { name: "@sample/lang", dependencies: { akanjs: "1.0.0" } });
+  await pkg("pkgs/@sample/subpaths", { name: "@sample/subpaths", exports: { "./x": "./x.ts" } });
   await pkg("pkgs/akanjs", { name: "akanjs" });
+  await pkg("vendor/vendored", { name: "@sample/vendored", main: "./dist/index.ts" });
+  await write(path.join(root, "vendor/vendored/dist/package.json"), JSON.stringify({ type: "module" }));
   for (const file of [
     "pkgs/@akanjs/cli/index.ts",
     "pkgs/@akanjs/cli/code/akanCode.ts",
@@ -33,7 +42,9 @@ const workspace = async () => {
     "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts",
     "pkgs/@akanjs/devkit/typecheck/typecheck.proc.ts",
     "pkgs/@sample/lang/index.ts",
+    "pkgs/@sample/subpaths/x.ts",
     "pkgs/akanjs/index.ts",
+    "vendor/vendored/dist/index.ts",
   ])
     await write(path.join(root, file), "export const value = 1;\n");
   for (const dir of [
@@ -43,8 +54,7 @@ const workspace = async () => {
   ])
     await write(path.join(root, dir, "README.md"), "\n");
   await mkdir(path.join(root, "node_modules/@sample"), { recursive: true });
-  await symlink(path.join(root, "pkgs/@sample/lang"), path.join(root, "node_modules/@sample/lang"));
-  await symlink(path.join(root, "pkgs/akanjs"), path.join(root, "node_modules/akanjs"));
+  await symlink(path.join(root, "vendor/vendored"), path.join(root, "node_modules/@sample/vendored"));
   const builder = new CliDistBuilder({
     cliDir: path.join(root, "pkgs/@akanjs/cli"),
     outDir: path.join(root, "dist/pkgs/@akanjs/cli"),
@@ -56,7 +66,9 @@ describe("CliDistBuilder", () => {
   test("stamps the workspace packages the bundle compiles in, and not the ones it leaves external", async () => {
     const { root, builder } = await workspace();
     expect(await builder.bundledPackageDirs()).toEqual(
-      ["pkgs/@akanjs/cli", "pkgs/@akanjs/devkit", "pkgs/@sample/lang"].map((dir) => path.join(root, dir)),
+      ["pkgs/@akanjs/cli", "pkgs/@akanjs/devkit", "pkgs/@sample/lang", "pkgs/@sample/subpaths", "vendor/vendored"].map(
+        (dir) => path.join(root, dir),
+      ),
     );
     const stamp = await builder.inputStamp();
     await write(path.join(root, "pkgs/akanjs/index.ts"), "export const value = 2;\n");
@@ -73,16 +85,37 @@ describe("CliDistBuilder", () => {
     expect(dirs).not.toContain(await realpath(path.resolve(import.meta.dir, "../../akanjs")));
   });
 
-  test("AKAN_CLI_FORCE_BUILD rebuilds an up-to-date dist, also after waiting for another build's lock", async () => {
-    const { root, builder } = await workspace();
-    expect(await builder.build()).toBe("built");
-    expect(await builder.build()).toBe("up-to-date");
-    process.env.AKAN_CLI_FORCE_BUILD = "1";
-    expect(await builder.build()).toBe("built");
-    const lockDir = path.join(root, "dist/pkgs/@akanjs/cli.lock");
-    await write(path.join(lockDir, "owner"), `${process.pid}`);
-    const released = Bun.sleep(300).then(() => rm(lockDir, { recursive: true, force: true }));
-    expect(await builder.build()).toBe("built");
-    await released;
-  }, 60_000);
+  describe("AKAN_CLI_FORCE_BUILD", () => {
+    const holdLock = async (root: string, { buildMeanwhile }: { buildMeanwhile: boolean }) => {
+      const outDir = path.join(root, "dist/pkgs/@akanjs/cli");
+      await write(path.join(`${outDir}.lock`, "owner"), `${process.pid}`);
+      return Bun.sleep(300).then(async () => {
+        if (buildMeanwhile) {
+          const stampFile = path.join(outDir, ".build-stamp");
+          await Bun.write(stampFile, await Bun.file(stampFile).text());
+        }
+        await rm(`${outDir}.lock`, { recursive: true, force: true });
+      });
+    };
+
+    test("rebuilds an up-to-date dist, and after a wait in which no build finished", async () => {
+      const { root, builder } = await workspace();
+      expect(await builder.build()).toBe("built");
+      expect(await builder.build()).toBe("up-to-date");
+      process.env.AKAN_CLI_FORCE_BUILD = "1";
+      expect(await builder.build()).toBe("built");
+      const released = holdLock(root, { buildMeanwhile: false });
+      expect(await builder.build()).toBe("built");
+      await released;
+    }, 60_000);
+
+    test("leaves the dist a build finished while it waited for the lock", async () => {
+      const { root, builder } = await workspace();
+      expect(await builder.build()).toBe("built");
+      process.env.AKAN_CLI_FORCE_BUILD = "1";
+      const released = holdLock(root, { buildMeanwhile: true });
+      expect(await builder.build()).toBe("built-by-other");
+      await released;
+    }, 60_000);
+  });
 });
