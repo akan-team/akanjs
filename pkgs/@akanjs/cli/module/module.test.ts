@@ -139,4 +139,29 @@ describe("ModuleScript", () => {
     expect(report.command).toBe("create-service");
     expect(report.generatedFiles.map((file) => file.action)).toContain("sync");
   });
+
+  test("refuses a module or service name that is not one plain path segment before writing", async () => {
+    const script = CommandContainer.get(ModuleScript);
+    const recorder = createCallRecorder();
+    const sys = { type: "app", name: "demo", workspace: {}, scan: async () => recorder.record("scan") };
+    script.moduleRunner.createModuleTemplate = async (module) => {
+      recorder.record("createModuleTemplate", module.name);
+      return {} as never;
+    };
+    script.moduleRunner.createService = async (module) => {
+      recorder.record("createService", module.name);
+      return {} as never;
+    };
+
+    for (const name of ["..", "../x", "a/b", "/tmp/x", ""]) {
+      await expect(script.createModuleTemplate(sys as never, name)).rejects.toThrow(
+        `${JSON.stringify(name)} is no module name; use letters, digits, - and _, starting with a letter`,
+      );
+      await expect(script.createService(sys as never, name)).rejects.toThrow(
+        `${JSON.stringify(name)} is no service name`,
+      );
+    }
+
+    expect(recorder.names()).toEqual([]);
+  });
 });

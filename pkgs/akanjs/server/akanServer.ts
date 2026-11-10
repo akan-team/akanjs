@@ -794,7 +794,7 @@ export class AkanServer {
       websocketPrefix: this.websocketPrefix,
       openapi: this.openapi,
       getStatus: () => this.status,
-      ...(webRouter ? DevtoolsRouter.buildsFrom(() => webRouter.builderRpc) : {}),
+      ...DevtoolsRouter.buildsFrom(webRouter),
     }).createRoutes();
     return { ...openapiRoutes, ...mcpRoutes, ...devtoolsRoutes, ...soloRoutes };
   }

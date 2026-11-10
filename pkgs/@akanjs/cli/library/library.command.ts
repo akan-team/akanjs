@@ -8,7 +8,7 @@ export class LibraryCommand extends command("library", [LibraryScript], ({ publi
     .exec(async function (libName, workspace) {
       await this.libraryScript.createLibrary(libName.toLowerCase().replace(/ /g, "-"), workspace);
     }),
-  removeLibrary: target({ desc: "Remove a library from the workspace" })
+  removeLibrary: target({ desc: "Remove a library from the workspace", destructive: true })
     .with(Lib)
     .exec(async function (lib) {
       await this.libraryScript.removeLibrary(lib);

@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { readFile, writeFile } from "node:fs/promises";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
+import { ModuleExecutor } from "@akanjs/devkit/executors";
 import { createTempModule, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
 import {
   type WorkflowApplyReport,
@@ -10,11 +11,14 @@ import {
   type WorkflowValidationCommandExecutor,
   type WorkflowValidationRunReport,
   workflowPathsForPlan,
+  workflowStatus,
   workflowStepKey,
 } from "@akanjs/devkit/workflow";
+import { Logger } from "akanjs/common";
 import { ModuleRunner } from "../module/module.runner";
 import { workflowSpecs } from "../workflows";
 import { WorkflowRunner } from "./workflow.runner";
+import { WorkflowScript } from "./workflow.script";
 
 const planTaskWorkflow = async (
   inputs: WorkflowPlanInputs,
@@ -491,6 +495,32 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     expect(await module.readFile("task.constant.ts")).not.toContain("budget:");
   });
 
+  test("fails a dry run of a plan with an error, listing no edits and no apply or validate hint", async () => {
+    const { workspace, planPath, runner, output } = await planTaskWorkflow({ field: "budget", type: "Number" });
+    const applyHintsOf = (recommendations: WorkflowPlan["recommendations"]) =>
+      recommendations.map(({ kind }) => kind).filter((kind) => kind === "auto-apply" || kind === "validation");
+
+    const dryRun = JSON.parse(
+      await runner.apply(planPath, { dryRun: true, format: "json", workspace }),
+    ) as WorkflowApplyReport;
+
+    expect(applyHintsOf((JSON.parse(output) as WorkflowPlan).recommendations)).toEqual([]);
+    expect(dryRun).toMatchObject({
+      mode: "dry-run",
+      status: "failed",
+      changedFiles: [],
+      generatedFiles: [],
+      recommendedValidationCommands: [],
+    });
+    expect(dryRun.diagnostics.map(({ code }) => code)).toEqual(["primitive-field-type-unsupported"]);
+    expect(dryRun.nextActions.map(({ command }) => command)).toEqual(["akan workflow explain add-field"]);
+    expect(applyHintsOf(dryRun.recommendations)).toEqual([]);
+    const rendered = await runner.apply(planPath, { dryRun: true, workspace });
+    expect(rendered).toContain("- Status: failed\n");
+    expect(rendered).toContain("- Source files changed: 0\n");
+    expect(rendered).toContain("## Automatically Modified\n- none\n");
+  });
+
   test("returns failed report for unsupported workflow steps", async () => {
     const { workspace, planPath, runner } = await planTaskWorkflow(
       { mutation: "archiveTask", guard: "Public" },
@@ -796,16 +826,16 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     expect(JSON.parse(output)).toMatchObject({ runId: run.runId, workflow: "add-field", mode: "validate" });
   });
 
-  describe("a module the target lacks", () => {
-    const moduleWorkflows: [string, WorkflowPlanInputs][] = [
-      ["add-enum-field", { field: "kind", values: "fire,water" }],
-      ["add-field", { field: "nickname", type: "String" }],
-      ["add-mutation", { mutation: "evolvePokemon", guard: "Public" }],
-      ["add-slice", { slice: "inParty" }],
-      ["create-ui", { surface: "view" }],
-      ["rename-key", { slice: "inPublic", to: "inParty" }],
-    ];
+  const moduleWorkflows: [string, WorkflowPlanInputs][] = [
+    ["add-enum-field", { field: "kind", values: "fire,water" }],
+    ["add-field", { field: "nickname", type: "String" }],
+    ["add-mutation", { mutation: "evolvePokemon", guard: "Public" }],
+    ["add-slice", { slice: "inParty" }],
+    ["create-ui", { surface: "view" }],
+    ["rename-key", { slice: "inPublic", to: "inParty" }],
+  ];
 
+  describe("a module the target lacks", () => {
     test("is refused at plan time by every workflow that writes into an existing module", async () => {
       const { workspace, module } = track(await createTempModule("task"));
       await new ModuleRunner().createModuleTemplate(module);
@@ -823,7 +853,7 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
             code: "workflow-module-missing",
             input: "module",
             message:
-              "No module named pokemon in apps/demo: apps/demo/lib/pokemon does not exist. Its modules are task. If pokemon is a new model, create it with the create-module workflow first, then plan this again.",
+              "No module named pokemon in apps/demo: apps/demo/lib/pokemon does not exist. Its database modules are task. If pokemon is a new model, create it with the create-module workflow first, then plan this again.",
           },
         ]);
         expect([plan.predictedChanges, plan.recommendations]).toEqual([[], []]);
@@ -870,7 +900,9 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
       expect(await messageOf("address")).toContain(
         "apps/demo/lib/__scalar/address is a scalar, and this workflow writes only into a module under apps/demo/lib.",
       );
-      expect(await messageOf("demo")).toContain("Did you mean _demo?");
+      expect(await messageOf("demo")).toContain(
+        "Its database modules are task. apps/demo/lib/_demo is a service module, which stores no model, and this workflow writes only into a database module.",
+      );
       expect(await messageOf("user")).toContain("user is in libs/shared, so plan this with --app shared.");
       for (const moduleName of ["address", "demo", "user"])
         expect(await messageOf(moduleName)).not.toContain("create-module");
@@ -893,6 +925,63 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
       for (const report of [dryRun, applied])
         expect(report.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["workflow-module-missing"]);
       expect(await module.readFile("task.constant.ts")).not.toContain("nickname");
+    });
+  });
+
+  describe("a service module", () => {
+    const planTaskAndService = async () => {
+      const planned = await planTaskWorkflow({ field: "nickname", type: "String" });
+      await new ModuleRunner().createService(ModuleExecutor.from(planned.module.sys, "_localBuild"));
+      return planned;
+    };
+
+    test("is refused at plan time by every workflow that writes into a module, naming the database modules", async () => {
+      const { workspace, runner } = await planTaskAndService();
+      const planOf = async (workflow: string, inputs: WorkflowPlanInputs) =>
+        JSON.parse(
+          await runner.plan(workflow, { app: "demo", module: "_localBuild", ...inputs }, { format: "json", workspace }),
+        ) as WorkflowPlan;
+      const serviceModule =
+        "_localBuild in apps/demo is a service module, which stores no model. <workflow> needs a database module, one with lib/<model>/<model>.constant.ts. Its database modules are task.";
+
+      for (const [workflow, inputs] of moduleWorkflows) {
+        const plan = await planOf(workflow, inputs);
+        expect(plan.diagnostics).toEqual([
+          expect.objectContaining({ severity: "error", code: "workflow-module-not-database", input: "module" }),
+        ]);
+        expect(plan.diagnostics[0]?.message).toStartWith(serviceModule.replace("<workflow>", workflow));
+        expect([plan.predictedChanges, plan.recommendations]).toEqual([[], []]);
+      }
+      expect((await planOf("add-field", { field: "nickname", type: "String" })).diagnostics[0]?.message).toEndWith(
+        "Its database modules are task. Add the field to one of them, or create its model with the create-module workflow first; a value several models embed is a scalar, made with create-scalar and added to a model as a field of that type.",
+      );
+      expect((await planOf("add-slice", { slice: "inParty" })).diagnostics[0]?.message).toEndWith(
+        "Its database modules are task. Plan this on one of them, or create the model with the create-module workflow first.",
+      );
+      expect((await planOf("add-field", { module: "task", field: "nickname", type: "String" })).diagnostics).toEqual(
+        [],
+      );
+    });
+
+    test("fails a dry run and an apply of a plan that names it, writing nothing", async () => {
+      const { workspace, module, planPath, runner } = await planTaskAndService();
+      const plan = JSON.parse(await readFile(planPath, "utf8")) as WorkflowPlan;
+      await writeFile(planPath, JSON.stringify({ ...plan, inputs: { ...plan.inputs, module: "_localBuild" } }));
+      const serviceDir = `${module.sys.cwdPath}/lib/_localBuild`;
+      const serviceFiles = await readdir(serviceDir);
+
+      const dryRun = JSON.parse(
+        await runner.apply(planPath, { dryRun: true, format: "json", workspace }),
+      ) as WorkflowApplyReport;
+      const applied = JSON.parse(
+        await runner.apply(planPath, { format: "json", workspace, registry: WorkflowRunner.stepRegistry(workspace) }),
+      ) as WorkflowApplyReport;
+
+      expect(dryRun).toMatchObject({ mode: "dry-run", status: "failed", changedFiles: [] });
+      expect(applied).toMatchObject({ mode: "apply", status: "failed", changedFiles: [] });
+      for (const report of [dryRun, applied])
+        expect(report.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["workflow-module-not-database"]);
+      expect(await readdir(serviceDir)).toEqual(serviceFiles);
     });
   });
 
@@ -1157,8 +1246,7 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
 });
 
 describe("akan workflow", () => {
-  const planThroughCli = async (workflowArgs: string[]) => {
-    const { root } = track(await createTempModule("task"));
+  const workflowCli = async (root: string, args: string[]) => {
     const entry = path.join(root, "cli.ts");
     await writeText(
       entry,
@@ -1169,23 +1257,30 @@ describe("akan workflow", () => {
         "",
       ].join("\n"),
     );
-    const planPath = path.join(root, "plan.json");
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("AKAN_")));
-    const proc = Bun.spawn(
-      ["bun", entry, "workflow", "plan", ...workflowArgs, "--app", "demo", "--module", "task", "--out", planPath],
-      {
-        cwd: root,
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...env, HOME: path.join(root, "home"), GIT_CEILING_DIRECTORIES: path.dirname(root) },
-      },
-    );
+    const proc = Bun.spawn(["bun", entry, "workflow", ...args], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...env, HOME: path.join(root, "home"), GIT_CEILING_DIRECTORIES: path.dirname(root) },
+    });
     const [stdout, stderr, code] = await Promise.all([
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
       proc.exited,
     ]);
-    expect({ code, stderr }).toEqual({ code: 0, stderr: "" });
+    return { stdout, stderr, code };
+  };
+
+  const planThroughCli = async (workflowArgs: string[]) => {
+    const { root } = track(await createTempModule("task"));
+    const planPath = path.join(root, "plan.json");
+    const { stdout, stderr } = await workflowCli(root, [
+      "plan",
+      ...workflowArgs,
+      ...["--app", "demo", "--module", "task", "--out", planPath],
+    ]);
+    expect(stderr).toBe("");
     expect(stdout).not.toContain("unknown option");
     return JSON.parse(await readFile(planPath, "utf8")) as WorkflowPlan;
   };
@@ -1201,5 +1296,62 @@ describe("akan workflow", () => {
   test("passes --query and --to to the rename-key plan inputs", async () => {
     const plan = await planThroughCli(["rename-key", "--query", "byName", "--to", "byTitle"]);
     expect(plan.inputs).toMatchObject({ query: "byName", to: "byTitle" });
+  }, 60_000);
+
+  test("exits 1 when a plan has an error or an apply or its dry run fails, and 0 when each passes", async () => {
+    const exitsOf = async (inputs: WorkflowPlanInputs) => {
+      const { root, planPath } = await planTaskWorkflow(inputs);
+      const exits: Record<string, number> = {};
+      const planned = await workflowCli(root, [
+        ...["plan", "add-field", "--app", "demo", "--module", "task", "--format", "json", "--out", planPath],
+        ...Object.entries(inputs).flatMap(([input, value]) => [`--${input}`, String(value)]),
+      ]);
+      exits[`plan ${workflowStatus((JSON.parse(planned.stdout) as WorkflowPlan).diagnostics)}`] = planned.code;
+      for (const run of ["dry-run", "apply"]) {
+        const { stdout, code } = await workflowCli(root, [
+          "apply",
+          planPath,
+          "--format",
+          "json",
+          ...(run === "dry-run" ? ["--dry-run"] : []),
+        ]);
+        exits[`${run} ${(JSON.parse(stdout) as WorkflowApplyReport).status}`] = code;
+      }
+      return exits;
+    };
+
+    expect(await exitsOf({ field: "budget", type: "Number" })).toEqual({
+      "plan failed": 1,
+      "dry-run failed": 1,
+      "apply failed": 1,
+    });
+    expect(await exitsOf({ field: "priority", type: "String" })).toEqual({
+      "plan passed": 0,
+      "dry-run passed": 0,
+      "apply passed": 0,
+    });
+  }, 120_000);
+
+  test("exits 1 when validate fails, and 0 when it passes", async () => {
+    const { root, workspace } = track(await createTempModule("task"));
+    const missingRun = await workflowCli(root, ["validate", "validation-missing", "--format", "json"]);
+    expect(missingRun.code).toBe(1);
+    expect(missingRun.stdout).toContain('"code": "workflow-validation-source-read-failed"');
+
+    const validateReport = spyOn(CommandContainer.get(WorkflowRunner), "validateReport");
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+    const exitCode = process.exitCode;
+    try {
+      for (const status of ["failed", "passed"] as const) {
+        process.exitCode = 0;
+        validateReport.mockResolvedValue({ status } as WorkflowValidationRunReport);
+        await CommandContainer.get(WorkflowScript).workflow("validate", "run-1", {}, { format: "json", workspace });
+        expect([status, process.exitCode]).toEqual([status, status === "failed" ? 1 : 0]);
+      }
+    } finally {
+      validateReport.mockRestore();
+      printed.mockRestore();
+      process.exitCode = exitCode ?? 0;
+    }
   }, 60_000);
 });

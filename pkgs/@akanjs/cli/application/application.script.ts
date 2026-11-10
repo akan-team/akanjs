@@ -19,6 +19,7 @@ import { AppExecutor, LibExecutor, PkgExecutor, SysExecutor } from "@akanjs/devk
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import { DesktopServerStage } from "@akanjs/devkit/mobile";
 import { formatSlicePlan } from "@akanjs/devkit/slicePlanner";
+import { assertPlainName } from "@akanjs/devkit/workflow/plainName";
 import { confirm } from "@inquirer/prompts";
 import { Logger, toError } from "akanjs/common";
 import { LibraryScript } from "../library/library.script";
@@ -105,6 +106,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     workspace: Workspace,
     { start = false, libs = [] }: { start?: boolean; libs?: string[] } = {},
   ) {
+    assertPlainName("app", appName);
     const spinner = workspace.spinning("Creating application...");
     const app = await this.applicationRunner.createApplication(appName, workspace, libs);
     spinner.succeed(`Application created in apps/${app.name}`);

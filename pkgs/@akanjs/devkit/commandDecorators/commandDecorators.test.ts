@@ -551,6 +551,63 @@ describe("a Sys that defaults to the only app", () => {
     );
     expect(asked).toEqual([]);
   });
+
+  test("a destructive command never takes the only app, lib, pkg or module, nor asks, terminal or not", async () => {
+    const workspace = workspaceWith([]);
+    workspace.getExecs = async () => [["web"], ["util"], []];
+    workspace.getPkgs = async () => ["tools"];
+    workspace.getDirInModule = async (basePath) => (basePath === "apps/web/lib" ? ["pokemon"] : []);
+    const refusedAs = (rerun: string, choices: string) =>
+      `: this command deletes files and never picks its target, so rerun it as \`${rerun}\` (choices: ${choices}).`;
+    const resolve = (type: InternalArgMeta["type"], commandName: string, operands: (string | undefined)[]) =>
+      getInternalArgumentValue(
+        { key: "", idx: operands.length - 1, type },
+        operands.at(-1),
+        workspace,
+        rerunCommandOf(
+          [commandName, ...operands.filter((operand): operand is string => operand !== undefined)],
+          operands,
+          operands.length - 1,
+        ),
+        { destructive: true },
+      );
+    for (const isTTY of [true, undefined]) {
+      setTTY(isTTY);
+      answer = "web";
+      await expect(resolve("App", "remove-application", [undefined])).rejects.toThrow(
+        `Missing app${refusedAs("akan remove-application <app>", "web")}`,
+      );
+      await expect(resolve("Lib", "remove-library", [undefined])).rejects.toThrow(
+        `Missing lib${refusedAs("akan remove-library <lib>", "util")}`,
+      );
+      await expect(resolve("Pkg", "remove-package", [undefined])).rejects.toThrow(
+        `Missing pkg${refusedAs("akan remove-package <pkg>", "tools")}`,
+      );
+      await expect(resolve("Module", "remove-module", [undefined])).rejects.toThrow(
+        `Missing module${refusedAs("akan remove-module <sys:module>", "web:pokemon")}`,
+      );
+      await expect(resolve("Sys", "remove-scalar", ["place", undefined])).rejects.toThrow(
+        `Missing app or lib${refusedAs("akan remove-scalar place <app-or-lib>", "web, util")}`,
+      );
+      await expect(resolve("App", "remove-application", ["webb"])).rejects.toThrow(
+        `Unknown app 'webb'${refusedAs("akan remove-application <app>", "web")}`,
+      );
+    }
+    expect(asked).toEqual([]);
+  });
+
+  test("a destructive command takes the target it is named, while another still takes the only app", async () => {
+    setTTY(undefined);
+    const workspace = workspaceWith([]);
+    workspace.getExecs = async () => [["web"], [], []];
+    const named = await getInternalArgumentValue({ key: "", idx: 0, type: "App" }, "web", workspace, undefined, {
+      destructive: true,
+    });
+    expect(named instanceof AppExecutor ? named.name : null).toBe("web");
+    const taken = await getInternalArgumentValue(sysMetaOf("typecheck"), undefined, workspace);
+    expect(taken instanceof AppExecutor ? taken.name : null).toBe("web");
+    expect(asked).toEqual([]);
+  });
 });
 
 describe("the line a refused target is rerun with", () => {
@@ -573,7 +630,7 @@ describe("the line a refused target is rerun with", () => {
 
 describe("a target left out where no terminal can ask for it", () => {
   const track = tempRoots();
-  const run = async (apps: string[]) => {
+  const run = async (apps: string[], args = ["create-thing", "photo", "--force"]) => {
     const { root } = track(await makeCliTempWorkspace());
     await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
     await writeText(path.join(root, "tsconfig.json"), "{}\n");
@@ -582,7 +639,7 @@ describe("a target left out where no terminal can ask for it", () => {
     await writeText(
       entry,
       [
-        `import { command, runCommands, Sys } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
+        `import { App, command, runCommands, Sys } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
         'class ThingCommand extends command("thing", ({ public: target }) => ({',
         '  createThing: target({ desc: "creates a thing" })',
         '    .arg("thing", String, { desc: "name of the thing" })',
@@ -591,12 +648,17 @@ describe("a target left out where no terminal can ask for it", () => {
         "    .exec(async function (thing, sys, force) {",
         '      process.stdout.write(thing + " in " + sys.name + ", force " + force + "\\n");',
         "    }),",
+        '  removeThing: target({ desc: "removes an app", destructive: true })',
+        "    .with(App)",
+        "    .exec(async function (app) {",
+        '      process.stdout.write("removed " + app.name + "\\n");',
+        "    }),",
         "})) {}",
         "await runCommands(ThingCommand);",
         "",
       ].join("\n"),
     );
-    const proc = Bun.spawn(["bun", entry, "create-thing", "photo", "--force"], {
+    const proc = Bun.spawn(["bun", entry, ...args], {
       cwd: root,
       stdin: "ignore",
       stdout: "pipe",
@@ -627,6 +689,16 @@ describe("a target left out where no terminal can ask for it", () => {
     );
     expect(refused.stdout).toMatch(/\(choices: (web, admin|admin, web)\)\./);
     expect(refused.stdout).not.toContain("photo in");
+  }, 30_000);
+
+  test("a destructive command exits with the line to rerun even when the workspace has one app", async () => {
+    const refused = await run(["web"], ["remove-thing"]);
+    expect(refused.code).toBe(1);
+    expect(refused.stdout).toContain(
+      "Missing app: this command deletes files and never picks its target, so rerun it as `akan remove-thing <app>` (choices: web).",
+    );
+    expect(refused.stdout).not.toContain("removed");
+    expect((await run(["web"], ["remove-thing", "web"])).stdout).toContain("removed web\n");
   }, 30_000);
 });
 
