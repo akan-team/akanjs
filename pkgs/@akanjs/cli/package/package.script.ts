@@ -33,6 +33,11 @@ export class PackageScript extends script("package", [PackageRunner]) {
     spinner.succeed(`Package verified (${result.files} files, ${result.size} bytes packed)`);
     return result;
   }
+  async syncArchitecture(workspace: Workspace) {
+    const spinner = workspace.spinning("Mapping the framework...");
+    const { file, changed } = await this.packageRunner.syncArchitecture(workspace);
+    spinner.succeed(changed ? `${file} regenerated` : `${file} is current`);
+  }
   async verifyAkanPublishPackages(workspace: Workspace) {
     const spinner = workspace.spinning("Verifying Akan publish packages...");
     const results = await this.packageRunner.verifyAkanPublishPackages(workspace);

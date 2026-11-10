@@ -20,6 +20,25 @@ describe("ScalarScript", () => {
     });
     expect(report.changedFiles.map((file) => file.path)).toContain("apps/demo/lib/__scalar/money/money.constant.ts");
   });
+
+  test("refuses a scalar name that is not one plain path segment, and touches no file", async () => {
+    const { root, app } = track(await createTempApp("demo"));
+    const script = CommandContainer.get(ScalarScript);
+    await script.createScalar(app, "money");
+    const filesOf = async () => (await Array.fromAsync(new Bun.Glob("**").scan({ cwd: root, dot: true }))).sort();
+    const before = await filesOf();
+
+    for (const name of ["..", "../..", "money/..", "a/b", `${root}/apps/demo`, ""]) {
+      await expect(script.removeScalar(app, name)).rejects.toThrow(`${JSON.stringify(name)} is no scalar name`);
+      await expect(script.createScalar(app, name)).rejects.toThrow(
+        "use letters, digits, - and _, starting with a letter",
+      );
+    }
+
+    expect(await filesOf()).toEqual(before);
+    await script.removeScalar(app, "money");
+    expect(await Bun.file(`${app.cwdPath}/lib/__scalar/money/money.constant.ts`).exists()).toBe(false);
+  });
 });
 
 describe("ScalarRunner", () => {

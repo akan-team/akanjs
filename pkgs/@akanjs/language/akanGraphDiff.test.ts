@@ -126,7 +126,7 @@ export default layout()${guard}
     const changes = AkanGraphDiff.between(graphOf(pages("")), graphOf(pages("\n  .guard(() => signedIn())")));
     expect(changes.summary).toEqual({ added: 1, removed: 0, changed: 1 });
     expect(changes.nodes.filter((node) => node.change).map(({ id, change }) => `${change} ${id}`)).toEqual([
-      "added guard:libs/shared:signedIn",
+      "added guard:libs/shared:webkit/signedIn.ts#signedIn",
       "changed layout:apps/demo:/(app)",
     ]);
   });

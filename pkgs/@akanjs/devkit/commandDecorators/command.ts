@@ -138,15 +138,21 @@ const assertEnumChoice = (argMeta: ArgMeta, value: unknown) => {
 };
 
 // On a piped stdin a prompt takes the pipe as its answer and echoes it: a piped secret printed as the secret's name.
-export const assertPromptable = (
-  problem: string,
-  { choices = [], remedy = "pass it on the command line" }: { choices?: readonly unknown[]; remedy?: string } = {},
-) => {
+export const assertPromptable = (problem: string, refusal: Refusal = {}) => {
   if (process.stdin.isTTY) return;
-  throw new Error(
-    `${problem}: stdin is not a terminal to prompt on, so ${remedy}${choices.length ? ` (choices: ${choices.join(", ")})` : ""}.`,
-  );
+  throw refusalOf(problem, "stdin is not a terminal to prompt on", refusal);
 };
+
+interface Refusal {
+  choices?: readonly unknown[];
+  remedy?: string;
+}
+
+const refusalOf = (
+  problem: string,
+  reason: string,
+  { choices = [], remedy = "pass it on the command line" }: Refusal,
+) => new Error(`${problem}: ${reason}, so ${remedy}${choices.length ? ` (choices: ${choices.join(", ")})` : ""}.`);
 
 const inputMessageOf = ({ name, argsOption: { desc, example, ask } }: ArgMeta) =>
   ask ? `${ask}: ` : desc ? `${desc}: ` : `Enter the ${name} value${example ? ` (example: ${example})` : ""}: `;
@@ -229,6 +235,28 @@ const assertCurrentDirectoryIsWorkspaceRoot = async () => {
   );
 };
 
+export type RerunOf = (target: string) => string;
+
+const shellWordOf = (word: string) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`);
+
+//? Commander fills operands left to right, so every operand before an empty slot was given.
+export const rerunCommandOf =
+  (argv: readonly string[], operands: readonly unknown[], slot: number): RerunOf =>
+  (target) => {
+    const [commandName = "", ...words] = argv;
+    let at = 0;
+    for (const operand of operands.slice(0, slot)) if (typeof operand === "string") at = words.indexOf(operand, at) + 1;
+    const given = operands[slot];
+    const givenAt = typeof given === "string" ? words.indexOf(given, at) : -1;
+    const rerun = words.map(shellWordOf);
+    if (givenAt >= 0) rerun.splice(givenAt, 1, target);
+    else rerun.splice(at, 0, target);
+    return ["akan", commandName, ...rerun].join(" ");
+  };
+
+const rerunRemedyOf = (rerun: RerunOf | undefined, placeholder: string) =>
+  rerun ? { remedy: `rerun it as \`${rerun(placeholder)}\`` } : {};
+
 const parseAppNameList = (value: string | string[] | undefined): string[] =>
   (Array.isArray(value) ? value : value === undefined ? [] : [value])
     .flatMap((entry) => entry.split(","))
@@ -239,6 +267,7 @@ const parseAppNameList = (value: string | string[] | undefined): string[] =>
 export const getAppsArgumentValue = async (
   value: string | string[] | undefined,
   workspace: WorkspaceExecutor,
+  rerun?: RerunOf,
 ): Promise<AppExecutor[]> => {
   const appNames = await workspace.getApps();
   if (appNames.length === 0) throw new Error("No apps found in this workspace (apps/<appName>/akan.config.ts)");
@@ -253,7 +282,7 @@ export const getAppsArgumentValue = async (
     return [...new Set(requested)].map((name) => AppExecutor.from(workspace, name));
   }
   if (appNames.length === 1 && appNames[0]) return [AppExecutor.from(workspace, appNames[0])];
-  assertPromptable("Missing apps", { choices: [...appNames, "all"] });
+  assertPromptable("Missing apps", { choices: [...appNames, "all"], ...rerunRemedyOf(rerun, "<apps...>") });
   const remembered = new Set(await AppSelectionMemory.read(workspace.workspaceRoot));
   const picked = await checkbox<string>({
     message: "Select the apps to run (space to toggle, enter to confirm)",
@@ -269,11 +298,19 @@ export const getInternalArgumentValue = async (
   argMeta: InternalArgMeta,
   value: string | undefined,
   workspace: WorkspaceExecutor,
+  rerun?: RerunOf,
+  { destructive = false }: { destructive?: boolean } = {},
 ) => {
   if (argMeta.type === "Workspace") return workspace;
   const sysType = argMeta.type.toLowerCase();
   const [appNames, libNames, pkgNames] = await workspace.getExecs();
   const problemOf = (kind: string) => (value ? `Unknown ${kind} '${value}'` : `Missing ${kind}`);
+  //? Refused in a terminal too: a select deletes on a stray Enter, its cursor resting on the first choice.
+  const assertAskable = (kind: string, choices: readonly unknown[], placeholder: string) => {
+    const refusal = { choices, ...rerunRemedyOf(rerun, placeholder) };
+    if (destructive) throw refusalOf(problemOf(kind), "this command deletes files and never picks its target", refusal);
+    assertPromptable(problemOf(kind), refusal);
+  };
   if (sysType === "sys" || sysType === "exec") {
     const pkgChoices = sysType === "exec" ? pkgNames : [];
     const execOf = (name: string) => {
@@ -284,33 +321,45 @@ export const getInternalArgumentValue = async (
     };
     const found = value ? execOf(value) : null;
     if (found) return found;
-    if (!value && argMeta.option?.onlyApp && appNames.length === 1 && appNames[0])
+    if (!value && !destructive && argMeta.option?.onlyApp && appNames.length === 1 && appNames[0])
       return AppExecutor.from(workspace, appNames[0]);
-    assertPromptable(problemOf(sysType === "exec" ? "app, lib or pkg" : "app or lib"), {
-      choices: [...appNames, ...libNames, ...pkgChoices],
-    });
+    const [kind, placeholder] =
+      sysType === "exec" ? ["app, lib or pkg", "<app-lib-or-pkg>"] : ["app or lib", "<app-or-lib>"];
+    const choices = [...appNames, ...libNames, ...pkgChoices];
+    const only = choices.length === 1 ? execOf(choices[0] ?? "") : null;
+    //? Not for Lib, Pkg or Module, which name what a command acts on: `akan remove-library` would delete the only one.
+    if (!value && !destructive && only && !process.stdin.isTTY) {
+      const how = rerun ? `: ${rerun(only.name)}` : "";
+      Logger.rawLog(
+        `No ${kind} named, so this runs on '${only.name}', the only one in this workspace${how}`,
+        undefined,
+        "error",
+      );
+      return only;
+    }
+    assertAskable(kind, choices, placeholder);
     const name = await select<string>({
       message: sysType === "exec" ? `Select the App or Lib or Pkg name` : `Select the App or Lib name`,
-      choices: [...appNames, ...libNames, ...pkgChoices],
+      choices,
     });
     const picked = execOf(name);
     if (!picked) throw new Error(`Invalid system name: ${name}`);
     return picked;
   } else if (sysType === "app") {
     if (value && appNames.includes(value)) return AppExecutor.from(workspace, value);
-    if (!value && appNames.length === 1 && appNames[0]) return AppExecutor.from(workspace, appNames[0]);
-    assertPromptable(problemOf("app"), { choices: appNames });
+    if (!value && !destructive && appNames.length === 1 && appNames[0]) return AppExecutor.from(workspace, appNames[0]);
+    assertAskable("app", appNames, "<app>");
     const appName = await select<string>({ message: `Select the ${sysType} name`, choices: appNames });
     return AppExecutor.from(workspace, appName);
   } else if (sysType === "lib") {
     if (value && libNames.includes(value)) return LibExecutor.from(workspace, value);
-    assertPromptable(problemOf("lib"), { choices: libNames });
+    assertAskable("lib", libNames, "<lib>");
     const libName = await select<string>({ message: `Select the ${sysType} name`, choices: libNames });
     return LibExecutor.from(workspace, libName);
   } else if (sysType === "pkg") {
     const pkgs = await workspace.getPkgs();
     if (value && pkgs.includes(value)) return PkgExecutor.from(workspace, value);
-    assertPromptable(problemOf("pkg"), { choices: pkgs });
+    assertAskable("pkg", pkgs, "<pkg>");
     const pkgName = await select<string>({ message: `Select the ${sysType} name`, choices: pkgs });
     return PkgExecutor.from(workspace, pkgName);
   } else if (sysType === "module") {
@@ -328,7 +377,17 @@ export const getInternalArgumentValue = async (
         if (modules.includes(moduleName)) return ModuleExecutor.from(lib, moduleName);
       } else throw new Error(`Invalid system name: ${sysName}`);
     }
-    assertPromptable(problemOf("module"));
+    const systems = [
+      ...appNames.map((name) => AppExecutor.from(workspace, name)),
+      ...libNames.map((name) => LibExecutor.from(workspace, name)),
+    ];
+    const choices =
+      process.stdin.isTTY && !destructive
+        ? []
+        : (
+            await Promise.all(systems.map(async (sys) => (await sys.getModules()).map((m) => `${sys.name}:${m}`)))
+          ).flat();
+    assertAskable("module", choices, "<sys:module>");
     const { type, name } = await select<{ type: "app" | "lib"; name: string }>({
       message: `select the App or Lib name`,
       choices: [
@@ -443,6 +502,7 @@ export const runCommands = async (...commands: CommandCls[]) => {
           const workspace = WorkspaceExecutor.fromRoot();
           const commandContext: CommandContext = { values: {} };
           for (const argMeta of allArgMetas) {
+            const rerun = rerunCommandOf(process.argv.slice(2), cmdArgs, argMeta.idx);
             if (argMeta.type === "Option")
               commandArgs[argMeta.idx] = await getOptionValue(argMeta, opt, commandContext);
             else if (argMeta.type === "Argument")
@@ -451,12 +511,15 @@ export const runCommands = async (...commands: CommandCls[]) => {
               commandArgs[argMeta.idx] = await getAppsArgumentValue(
                 cmdArgs[argMeta.idx] as string | string[] | undefined,
                 workspace,
+                rerun,
               );
             else
               commandArgs[argMeta.idx] = await getInternalArgumentValue(
                 argMeta as InternalArgMeta,
                 cmdArgs[argMeta.idx] as string,
                 workspace,
+                rerun,
+                { destructive: targetMeta.targetOption.destructive },
               );
             if (commandArgs[argMeta.idx] instanceof AppExecutor)
               process.env.AKAN_PUBLIC_APP_NAME = (commandArgs[argMeta.idx] as AppExecutor).name;

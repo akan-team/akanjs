@@ -18,18 +18,14 @@ import { RouteClientBuilder } from "@akanjs/devkit/frontendBuild/routeClientBuil
 import { ServerGraphFile } from "@akanjs/devkit/frontendBuild/serverGraphFile";
 import { SsrDevBundler } from "@akanjs/devkit/frontendBuild/ssrDevBundler";
 import { WatchRootResolver } from "@akanjs/devkit/frontendBuild/watchRootResolver";
-import { GitRevision } from "@akanjs/devkit/gitRevision";
-import { WorkspaceGraph } from "@akanjs/devkit/workspaceGraph";
 import { Logger } from "akanjs/common";
 import type {
   BaseBuildArtifact,
-  BuildChangesPayload,
   BuilderCsrReq,
   BuilderGraphReq,
   BuilderMessage,
   BuilderReq,
   BuilderRes,
-  BuildGraphPayload,
   BuildPhase,
   BuildRouteResultPayload,
   ChangeBatch,
@@ -39,6 +35,7 @@ import { CSR_DEV_PATCHING_MARKER } from "akanjs/server/hmr/csrDevManifest";
 import type { BuildBatchNeed, BuildBatchRequest, BuildBatchResult, OptimizedFonts } from "./buildBatchProtocol";
 import { BuildBatchRunner } from "./buildBatchRunner";
 import { BuilderChannel } from "./builderChannel";
+import { BuilderGraphPayloads } from "./builderGraphPayloads";
 import { type BatchJob, BuilderWorkQueue, type DiscoveryJob } from "./builderWorkQueue";
 import { prepareDevWatchBatch } from "./devWatchBatch";
 
@@ -69,8 +66,7 @@ class IncrementalBuilder {
   #watcher: HmrWatcher | null = null;
   #generation = 0;
   #shellKey: string | null = null;
-  #graph: { generation: number; payload: BuildGraphPayload } | null = null;
-  #changes: { key: string; payload: Promise<BuildChangesPayload> } | null = null;
+  readonly #graphPayloads: BuilderGraphPayloads;
   #discoveredThrough = 0;
   #csrActive = IncrementalBuilder.#csrArmedByEnv();
   #csrBundler: CsrDevBundler;
@@ -122,6 +118,7 @@ class IncrementalBuilder {
     this.#discovery = options.discovery;
     this.#generation = options.initialGeneration ?? 0;
     this.#discoveredThrough = this.#generation;
+    this.#graphPayloads = new BuilderGraphPayloads(options.app, () => this.#generation);
     this.#batchRunner = new BuildBatchRunner({
       workspaceRoot: options.app.workspace.workspaceRoot,
       cwd: options.app.cwdPath,
@@ -370,6 +367,7 @@ class IncrementalBuilder {
   }
 
   async #handleWatchBatch(batch: ChangeBatch) {
+    this.#graphPayloads.touched(batch.files);
     const rawKinds = new Set(batch.kinds);
     if (rawKinds.size === 0) return;
     const generation = ++this.#generation;
@@ -882,42 +880,13 @@ class IncrementalBuilder {
 
   async handleBuildGraph(msg: BuilderGraphReq): Promise<void> {
     try {
-      const data = msg.changes ? await this.#changesPayload(msg.changes.since) : await this.#graphPayload();
+      const data = await this.#graphPayloads.of(msg);
       await BuilderChannel.send({ type: "build-graph-res", id: msg.id, ok: true, data });
     } catch (err) {
       const error = ApplicationBuildReporter.formatError(err, this.#app.workspace.workspaceRoot);
       this.#logger.error(`build-graph failed: ${error}`);
       await BuilderChannel.send({ type: "build-graph-res", id: msg.id, ok: false, error });
     }
-  }
-
-  async #graphPayload(): Promise<BuildGraphPayload> {
-    const generation = this.#generation;
-    if (this.#graph?.generation !== generation) {
-      const { workspace } = this.#app;
-      const graph = WorkspaceGraph.visibleTo(await WorkspaceGraph.build(workspace), this.#app.name);
-      this.#graph = { generation, payload: { workspaceRoot: workspace.workspaceRoot, graph } };
-    }
-    return this.#graph.payload;
-  }
-
-  async #changesPayload(since: string | null): Promise<BuildChangesPayload> {
-    const { workspace, name } = this.#app;
-    const { workspaceRoot } = workspace;
-    const forkPoint = await new GitRevision(workspaceRoot).forkPointOf(since);
-    if (forkPoint.error !== undefined) return { workspaceRoot, changes: { error: forkPoint.error } };
-    const key = `${this.#generation}:${forkPoint.sha}`;
-    if (this.#changes?.key !== key) {
-      const payload = WorkspaceGraph.changesAt(workspace, forkPoint.sha).then((changes) => ({
-        workspaceRoot,
-        changes: WorkspaceGraph.changesVisibleTo(changes, name),
-      }));
-      payload.catch(() => {
-        if (this.#changes?.payload === payload) this.#changes = null;
-      });
-      this.#changes = { key, payload };
-    }
-    return await this.#changes.payload;
   }
 
   // On demand: dev serves CSR only via the opt-in `/__csr` and `?csr=true` routes; once built, it rebuilds every save.

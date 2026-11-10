@@ -1548,6 +1548,44 @@ describe("WebRouter production boot", () => {
       },
     );
   });
+
+  test("hands the renderer a preload plan from the prebuilt manifest, and none to a manifest that lists no preloads", async () => {
+    const entry = {
+      id: "/_akan/client/card.js",
+      chunks: ["/_akan/client/card.js", "/_akan/client/card.js"],
+      name: "Card",
+    };
+    const prebuilt: RoutesManifest = {
+      routeIds: [],
+      clientManifest: { "apps/a/ui/Card.tsx#Card": entry },
+      ssrManifest: { moduleLoading: null, moduleMap: {} },
+      knownEntries: [],
+    };
+    const planOf = async (manifest: RoutesManifest) => {
+      const inputs: Array<Parameters<SsrFromRscRenderer["render"]>[0]> = [];
+      await withFullSsrCacheHarness(async ({ fullSsr }) => await fullSsr(new Request("https://example.test/docs")), {
+        prebuilt: manifest,
+        onRenderInput: (input) => inputs.push(input),
+      });
+      return inputs[0]?.modulePreloadPlan;
+    };
+
+    const plan = await planOf({
+      ...prebuilt,
+      modulePreloads: {
+        runtime: ["/_akan/client/rsc.js"],
+        vendors: { "akanjs/ui": ["/_akan/vendor/ui.js"] },
+        chunkVendors: { "/_akan/client/card.js": ["akanjs/ui"] },
+      },
+    });
+    expect(plan?.knows("/_akan/client/card.js")).toBe(true);
+    expect(plan?.urlsOf(["/_akan/client/card.js"])).toEqual([
+      "/_akan/client/rsc.js",
+      "/_akan/vendor/ui.js",
+      "/_akan/client/card.js",
+    ]);
+    expect(await planOf(prebuilt)).toBeUndefined();
+  });
 });
 
 describe("WebRouter full SSR cache orchestration", () => {

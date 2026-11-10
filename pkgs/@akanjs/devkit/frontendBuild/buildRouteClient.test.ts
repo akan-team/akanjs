@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { tempDirs, writeText as write } from "../testHelpers";
 import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
@@ -262,6 +263,51 @@ describe("route client store bootstrap", () => {
     expect(carriers.filter(Boolean)).toHaveLength(1);
   });
 
+  test("names each entry's static chunks and the importmap specifiers every chunk imports", async () => {
+    const root = await realpath(await makeTempRoot());
+    const appDir = path.join(root, "apps/demo");
+    const entryA = path.join(appDir, "ui/A.tsx");
+    const entryB = path.join(appDir, "ui/B.tsx");
+    await write(
+      entryA,
+      '"use client";\nimport { useState } from "react";\nimport { mark } from "../common/shared";\nexport const A = () => [useState, mark];\n',
+    );
+    await write(
+      entryB,
+      '"use client";\nimport { mark } from "../common/shared";\nexport const B = () => import("../common/lazy").then(() => mark);\n',
+    );
+    await write(
+      path.join(appDir, "common/shared.ts"),
+      'import { tag } from "akanjs/base";\nexport const mark = tag;\n',
+    );
+    await write(path.join(appDir, "common/lazy.ts"), 'import "tailwind-merge";\nexport const lazy = 1;\n');
+    const app = {
+      name: "demo",
+      cwdPath: appDir,
+      dist: { cwdPath: path.join(root, "dist/apps/demo") },
+      workspace: { workspaceRoot: root },
+      getConfig: async () => ({ barrelImports: [], optimizeImports: [] }),
+      getPublicEnv: () => ({}),
+    } as never;
+
+    const bundle = await new ClientEntriesBundler({
+      app,
+      entries: [entryA, entryB],
+      external: ["react", "akanjs/base", "tailwind-merge"],
+      command: "build",
+    }).bundle();
+
+    const [urlA, sharedA] = bundle.entryChunkUrlsByAbsPath.get(entryA) ?? [];
+    const [urlB, sharedB] = bundle.entryChunkUrlsByAbsPath.get(entryB) ?? [];
+    expect(bundle.entryChunkUrlsByAbsPath.get(entryA)).toHaveLength(2);
+    expect(bundle.entryChunkUrlsByAbsPath.get(entryB)).toHaveLength(2);
+    expect(sharedA).toBe(sharedB);
+    expect(bundle.externalsByChunkUrl.get(urlA ?? "")).toEqual(["react"]);
+    expect(bundle.externalsByChunkUrl.get(urlB ?? "")).toEqual([]);
+    expect(bundle.externalsByChunkUrl.get(sharedA ?? "")).toEqual(["akanjs/base"]);
+    expect([...bundle.externalsByChunkUrl.values()].flat()).toContain("tailwind-merge");
+  });
+
   test("a route carries the client runtime and stores, but no module UI it never imports", async () => {
     const { appDir, app } = await writeBarrelFixture();
 
@@ -295,6 +341,49 @@ describe("route client store bootstrap", () => {
     expect(bundled).toContain("store-marker");
     expect(bundled).not.toContain("other-ui-marker");
     expect(bundled).not.toContain("lib-ui-marker");
+  });
+
+  test("a route's bundle runs the client runtime and the stores before the UI it renders, which reads them on load", async () => {
+    const { appDir, app } = await writeBarrelFixture();
+    const record = (label: string) =>
+      `((globalThis as { __akanOrder?: string[] }).__akanOrder ??= []).push("${label}");`;
+    await write(
+      path.join(appDir, "lib/useClient.ts"),
+      `${record("runtime")}\nexport const { msg, Err, usePage, fetch, sig } = { usePage: () => "page" } as Record<string, unknown>;\n`,
+    );
+    await write(
+      path.join(appDir, "../../libs/kit/lib/st.ts"),
+      `${record("lib-store")}\nexport class RootStore {}\nexport const st = Object.freeze({ mark: "lib-store-marker" });\n`,
+    );
+    await write(
+      path.join(appDir, "lib/st.ts"),
+      `import { RootStore as kit } from "@libs/kit/client";\n${record("store")}\nexport class RootStore {}\nexport const st = Object.freeze({ mark: "store-marker", kit });\n`,
+    );
+    await write(
+      path.join(appDir, "lib/memo/Memo.Zone.tsx"),
+      `"use client";\nimport { Memo, st } from "@apps/demo/client";\n${record("memo-ui")}\nexport const seen = [st.mark, typeof Memo];\n`,
+    );
+
+    await new RouteClientBuilder({
+      app,
+      seeds: [],
+      entries: [path.join(appDir, "lib/memo/Memo.Zone.tsx")],
+      artifact: {} as never,
+      browser: "chunks",
+    }).build();
+
+    const clientOut = path.join(appDir, ".akan/artifact/client");
+    const entries = [...new Bun.Glob("*.js").scanSync(clientOut)];
+    expect(entries).toHaveLength(1);
+    const loaded = (await import(path.join(clientOut, entries[0] ?? ""))) as { seen?: unknown };
+
+    expect(loaded.seen).toEqual(["store-marker", "object"]);
+    expect((globalThis as { __akanOrder?: string[] }).__akanOrder).toEqual([
+      "runtime",
+      "lib-store",
+      "store",
+      "memo-ui",
+    ]);
   });
 
   test("a route reaching a lib's cnst through its client barrel carries no module UI", async () => {

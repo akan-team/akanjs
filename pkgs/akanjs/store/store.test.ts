@@ -1,8 +1,9 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import { ACTION_META, DataList, Int, SLICE_META, STATE_DERIVED_META, STATE_INIT_META, STATE_META } from "akanjs/base";
 import { Translator } from "akanjs/client/translator";
+import { AbortSignals } from "akanjs/common";
 import { ConstantRegistry, MAX_PAGE_SIZE, via } from "akanjs/constant";
-import type { ClientSignal } from "akanjs/fetch";
+import { type ClientSignal, HttpClient, restoreRemoteError } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
 import type { RootStoreCls } from "./rootStore";
 import { type StoreCls, store } from "./store";
@@ -339,6 +340,59 @@ describe("StoreInstance runtime", () => {
     expect(instance.get().messages).toMatchObject([{ key: "failLoudly" }]);
   });
 
+  test("an action that rejects with an abort shows no toast, whatever reason the signal was aborted with", async () => {
+    setupEnv();
+    const hang = () => new Promise<never>(() => undefined);
+    class AbortReasonStore extends store("abortReason" as const, () => ({ messages: [] as { key: string }[] })) {
+      showMessage(message: { key: string }) {
+        this.set({ messages: [...this.get().messages, { key: message.key }] });
+      }
+      async waitFor(policy: { signal: AbortSignal }) {
+        await AbortSignals.race(hang(), policy.signal);
+      }
+      async waitOn(signal: AbortSignal) {
+        await AbortSignals.race(hang(), signal);
+      }
+      async supersedeItself() {
+        const own = new AbortController();
+        const waiting = AbortSignals.race(hang(), own.signal);
+        own.abort(new Error("abortReason.error.superseded"));
+        await waiting;
+      }
+      async failWith(_policy: { signal: AbortSignal }) {
+        throw new Error("abortReason.error.real");
+      }
+      async stopWhenRefused(policy: { signal: AbortSignal }) {
+        await AbortSignals.race(hang(), policy.signal);
+      }
+    }
+    StoreRegistry.register(AbortReasonStore);
+    const instance = new StoreInstance(makeRoot("abortReasonRoot", AbortReasonStore));
+
+    const left = new AbortController();
+    const waiting = instance.do.waitFor({ signal: left.signal });
+    left.abort("left the page");
+    await expect(waiting).rejects.toBe("left the page");
+    const closed = new AbortController();
+    const waitingOn = instance.do.waitOn(closed.signal);
+    closed.abort(42);
+    await expect(waitingOn).rejects.toBe(42);
+    await expect(instance.do.supersedeItself()).rejects.toThrow("abortReason.error.superseded");
+    expect(instance.get().messages).toEqual([]);
+
+    await expect(instance.do.failWith({ signal: new AbortController().signal })).rejects.toThrow(
+      "abortReason.error.real",
+    );
+    expect(instance.get().messages).toEqual([{ key: "failWith" }]);
+
+    const batch = new AbortController();
+    const refused = restoreRemoteError({ error: "abortReason.error.forbidden" }, 403);
+    const stopping = instance.do.stopWhenRefused({ signal: batch.signal });
+    batch.abort(refused);
+    await expect(stopping).rejects.toBe(refused);
+    expect(instance.get().messages).toEqual([{ key: "failWith" }, { key: "stopWhenRefused" }]);
+  });
+
   test("a generated action a lib store lists in static silent stays silent in the store extending it", async () => {
     setupEnv();
     const signal = makeSignal();
@@ -634,6 +688,153 @@ describe("signal generated store contract", () => {
     requests[1]?.answer();
     await more;
     expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
+  });
+
+  const abortableSlice = async (rootName: string) => {
+    setupEnv();
+    const signal = makeSignal();
+    class AbortableSliceStore extends store(signal, () => ({ messages: [] as { type: string; key: string }[] })) {
+      showMessage(message: { type: string; key: string }) {
+        this.set({ messages: [...this.get().messages, { type: message.type, key: message.key }] });
+      }
+    }
+    StoreRegistry.register(AbortableSliceStore);
+    const instance = new StoreInstance(makeRoot(rootName, AbortableSliceStore));
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 1 });
+    const listed = mock(
+      async (_title: string, _skip: number, _limit: number, _sort: string, option: { signal: AbortSignal }) =>
+        await new Promise<never>((_resolve, reject) => {
+          option.signal.addEventListener("abort", () => reject(HttpClient.abortErrorOf(option.signal)));
+        }),
+    );
+    signal.calls.storeTestItemListByTitle = listed;
+    const state = () => instance.get() as unknown as Record<string, unknown>;
+    const before = state();
+    const changed = () =>
+      Object.keys(state()).filter((key) => key !== "messages" && !Object.is(before[key], state()[key]));
+    return { instance, listed, changed, messages: () => state().messages };
+  };
+  type AbortableSlice = Awaited<ReturnType<typeof abortableSlice>>["instance"];
+  const sliceLoads: [string, (instance: AbortableSlice, policy: { signal: AbortSignal }) => Promise<unknown>][] = [
+    ["initStoreTestItemByTitle", async (instance, policy) => await instance.do.initStoreTestItemByTitle("Ben", policy)],
+    [
+      "refreshStoreTestItemByTitle",
+      async (instance, policy) => await instance.do.refreshStoreTestItemByTitle({ invalidate: true, ...policy }),
+    ],
+    [
+      "setPageOfStoreTestItemByTitle",
+      async (instance, policy) => await instance.do.setPageOfStoreTestItemByTitle(2, policy),
+    ],
+    [
+      "setLimitOfStoreTestItemByTitle",
+      async (instance, policy) => await instance.do.setLimitOfStoreTestItemByTitle(5, policy),
+    ],
+    [
+      "setSortOfStoreTestItemByTitle",
+      async (instance, policy) => await instance.do.setSortOfStoreTestItemByTitle("titleAsc", policy),
+    ],
+    [
+      "setQueryArgsOfStoreTestItemByTitle",
+      async (instance, policy) => await instance.do.setQueryArgsOfStoreTestItemByTitle("Ben", policy),
+    ],
+    [
+      "loadMoreOfStoreTestItemByTitle",
+      async (instance, policy) => await instance.do.loadMoreOfStoreTestItemByTitle(policy),
+    ],
+  ];
+  const timedOut = () => new DOMException("The operation timed out.", "TimeoutError");
+
+  test.each(sliceLoads)(
+    "%s ends on its caller's abort with no write, no error and no spinner",
+    async (action, load) => {
+      const { instance, listed, changed, messages } = await abortableSlice(`callerAbort-${action}`);
+      const leaving = new AbortController();
+      const loading = load(instance, { signal: leaving.signal });
+      expect(listed).toHaveBeenCalledTimes(1);
+      leaving.abort(new Error("left the page"));
+      expect(await loading).toBeUndefined();
+      expect(changed()).toEqual(action === "initStoreTestItemByTitle" ? ["defaultStoreTestItem"] : []);
+      expect(messages()).toEqual([]);
+    },
+  );
+
+  test.each(sliceLoads)(
+    "%s rejects with the slow-server error once its caller's timeout fires",
+    async (action, load) => {
+      const { instance, changed, messages } = await abortableSlice(`callerTimeout-${action}`);
+      const deadline = new AbortController();
+      const loading = load(instance, { signal: deadline.signal }).catch((error: unknown) => error);
+      deadline.abort(timedOut());
+      expect(await loading).toMatchObject({ error: "base.error.gatewayTimeout", statusCode: 408 });
+      expect(changed()).toEqual(action === "initStoreTestItemByTitle" ? ["defaultStoreTestItem"] : []);
+      expect(messages()).toEqual([{ type: "error", key: action }]);
+    },
+  );
+
+  test.each(sliceLoads)("%s given a spent signal sends nothing and changes nothing", async (action, load) => {
+    const { instance, listed, changed, messages } = await abortableSlice(`spentSignal-${action}`);
+    const spent = new AbortController();
+    spent.abort("gone");
+    expect(await load(instance, { signal: spent.signal })).toBeUndefined();
+    const timedOutAlready = await load(instance, { signal: AbortSignal.abort(timedOut()) }).catch((error) => error);
+    expect(timedOutAlready).toMatchObject({ error: "base.error.gatewayTimeout", statusCode: 408 });
+    expect(listed).not.toHaveBeenCalled();
+    expect(changed()).toEqual([]);
+    expect(messages()).toEqual([{ type: "error", key: action }]);
+  });
+
+  test("a page request under AbortSignal.timeout surfaces the slow-server error, not silence", async () => {
+    const { instance } = await abortableSlice("realTimeoutRoot");
+    const paging = instance.do.setPageOfStoreTestItemByTitle(2, { signal: AbortSignal.timeout(5) });
+    await expect(paging).rejects.toMatchObject({ error: "base.error.gatewayTimeout", statusCode: 408 });
+    expect(instance.get().pageOfStoreTestItemByTitle).toBe(1);
+    expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
+  });
+
+  test("an init abandoned mid-flight, or one with nothing to change, keeps a loaded-more list whole, and one that lands starts it over", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const listed = mock(
+      async (_title: string, skip: number, limit: number, _sort: string, option: { signal: AbortSignal }) => {
+        await Promise.resolve();
+        if (option.signal.aborted) throw option.signal.reason;
+        return new Array(limit)
+          .fill(null)
+          .map((_, i) => new StoreTestLight({ id: `${skip + i}`.padStart(24, "0"), title: `row${skip + i}` } as never));
+      },
+    );
+    signal.calls.storeTestItemListByTitle = listed;
+    class FreshInitStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(FreshInitStore);
+    const instance = new StoreInstance(makeRoot("freshInitRoot", FreshInitStore));
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 2 });
+    await instance.do.loadMoreOfStoreTestItemByTitle();
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
+
+    const leaving = new AbortController();
+    const abandoned = instance.do.initStoreTestItemByTitle("Ada", {
+      limit: 2,
+      invalidate: true,
+      signal: leaving.signal,
+    });
+    expect(listed).toHaveBeenCalledTimes(3);
+    leaving.abort();
+    await abandoned;
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
+    await instance.do.refreshStoreTestItemByTitle({ invalidate: true });
+    expect(listed).toHaveBeenLastCalledWith("Ada", 0, 4, "latest", expect.any(Object));
+
+    listed.mockClear();
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 2 });
+    expect(listed).not.toHaveBeenCalled();
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
+    await instance.do.refreshStoreTestItemByTitle({ invalidate: true });
+    expect(listed).toHaveBeenLastCalledWith("Ada", 0, 4, "latest", expect.any(Object));
+
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 2, invalidate: true });
+    expect(listed).toHaveBeenLastCalledWith("Ada", 0, 2, "latest", expect.any(Object));
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(false);
+    expect((instance.get().storeTestItemListByTitle as DataList<InstanceType<typeof StoreTestLight>>).length).toBe(2);
   });
 
   test.each(["refetch", "load-more"] as const)(

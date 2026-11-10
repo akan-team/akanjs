@@ -22,10 +22,9 @@ import { getWebManifestBasePath } from "../client/webManifest";
 import type { PagePromptSource } from "../signal/mcp/pagePrompt";
 import { SignalContext } from "../signal/signalContext";
 import {
-  type BuildChangesPayload,
   type BuilderRpc,
-  type BuildGraphPayload,
   type MergedManifest,
+  ModulePreloadPlan,
   RouteClientCache,
   type RouteSeedIndex,
   RouteSeedIndexStore,
@@ -357,6 +356,8 @@ export class WebRouter {
   readonly web: AkanWebConfig;
   #seedIndex: RouteSeedIndex;
   readonly #prebuilt: RoutesManifest | null;
+  //? Only a production build lists chunks: a dev page loads its client code from the SSR dev registry.
+  readonly #modulePreloadPlan?: ModulePreloadPlan;
   constructor({ artifact, web, cssBytesByUrl, rsc, seedIndex, upgradeHmrWs, prebuilt = null }: WebRouterOptions) {
     this.#logger.verbose(`[SSR] loaded ${Object.keys(cssBytesByUrl).length} CSS assets`);
     this.web = web;
@@ -380,6 +381,8 @@ export class WebRouter {
     };
     this.#seedIndex = seedIndex;
     this.#prebuilt = prebuilt;
+    if (prebuilt?.modulePreloads)
+      this.#modulePreloadPlan = new ModulePreloadPlan(prebuilt.modulePreloads, prebuilt.clientManifest);
     if (this.#prodMode) {
       this.#builderRpc = null;
       this.#routeCache = new RouteClientCache({
@@ -752,6 +755,7 @@ export class WebRouter {
             ssrManifest: manifest.ssrManifest,
             bootstrapModules: [this.#artifact.rscClientUrl],
             modulePreloads: dictionaryUrl ? [dictionaryUrl] : undefined,
+            modulePreloadPlan: this.#modulePreloadPlan,
             extraBootstrapInline: extraBootstrapInline || undefined,
             importmap: this.#artifact.vendorMap,
             //? Read once the shell has rendered: the root layout's theme arrives after the stream starts.
@@ -847,11 +851,8 @@ export class WebRouter {
     };
     return { renderEnvRoutes, hmrHub: this.#hub, builderRpc: this.#builderRpc };
   }
-  async buildGraph(): Promise<BuildGraphPayload | null> {
-    return this.#builderRpc ? await this.#builderRpc.buildGraph() : null;
-  }
-  async buildChanges(since: string | null): Promise<BuildChangesPayload | null> {
-    return this.#builderRpc ? await this.#builderRpc.buildChanges(since) : null;
+  get builderRpc(): BuilderRpc | null {
+    return this.#builderRpc;
   }
   refreshHmrState(): void {
     this.#devHmr?.refreshRegistryState();

@@ -199,7 +199,7 @@ export const defaultWorkflowPlanPath = (workflow: string, inputs: WorkflowPlanIn
 export const applyFirstPolicy = {
   mode: "apply-first",
   directSourceEdits: "fallback-only",
-  applyRequiredWhen: ["plan_workflow returns planPath", "plan_workflow returns next.tool=apply_workflow"],
+  applyRequiredWhen: ["plan_workflow returns next.tool=apply_workflow"],
   approvalMeaning:
     "requiresApproval is an agent/user review signal before apply_workflow mutates files; it is not a separate MCP permission gate.",
   validationRequiredAfterApply: ["validationTarget", "applyReportPath"],
@@ -324,7 +324,7 @@ export const readonlyMcpTools: McpToolDefinition[] = [
   {
     name: "get_graph",
     description:
-      "Read-only Akan Graph from source, no dev server needed: models with their fields and relations, slices and endpoints with the guards they name (each guard keyed by the app or lib that declares it, with its scope and the comment that says what it checks), the service methods and queries each calls, the store actions that fetch them, and the components and routes that use them. A module's jobs (internal: interval, cron, timeout, initialize, destroy, process) read their schedule and server or operation modes and call service methods like endpoints do; each adaptor a service plugs (an adapt() class, or an akanjs role) is a node, a method that calls it links to it, and an adaptor links to the adaptors it plugs itself. Each page/ file is a route (its URL pattern after the locale) or a layout, layouts wrap what they contain, and a route or layout that runs .guard() reads `guard` and links each function its guard calls; a layout's guard gates every route it wraps. A graph too large to answer unscoped drops first the routes and layouts that neither changed nor use a change; app or module brings them back. Every node and edge carries its source location. Pass app and/or module to scope a large workspace. Pass since (a git revision such as main, or HEAD for uncommitted work) for the Change Map instead: what changed since HEAD forked from it, working tree included, with each node, field and edge marked added, removed or changed, the unchanged neighbours they call or are called by, and the changed files no node covers, each marked the same way.",
+      "Read-only Akan Graph from source, no dev server needed: models with their fields and relations, slices and endpoints with the guards they name (each guard keyed by the app or lib that declares it, with its scope and the comment that says what it checks), the service methods and queries each calls, the store actions that fetch them, and the components and routes that use them. A module's jobs (internal: interval, cron, timeout, initialize, destroy, process) read their schedule and server or operation modes and call service methods like endpoints do; each adaptor a service plugs (an adapt() class, or an akanjs role) is a node, a method that calls it links to it (an app service holds the fields its module's lib services plug, unless it declares the field itself), an adaptor links to the adaptors it plugs itself, a class from a package outside the workspace is adaptor:<package>:<Name>, and a role an app binds with applyAdaptor(Role, Impl) links to that implementation (binds, labelled with the app; a scope keeps its app's bindings). Each page/ file is a route (its URL pattern after the locale) or a layout, layouts wrap what they contain, and a route or layout that runs .guard() reads `guard` and links each function its guard calls; a layout's guard gates every route it wraps. A graph too large to answer unscoped drops first the routes and layouts that neither changed nor use a change; app or module brings them back. Every node and edge carries its source location. Pass app and/or module to scope a large workspace. Pass since (a git revision such as main, or HEAD for uncommitted work) for the Change Map instead: what changed since HEAD forked from it, working tree included, with each node, field and edge marked added, removed or changed, the unchanged neighbours they call or are called by, and the changed files no node covers, each marked the same way.",
     inputSchema: { type: "object", properties: { app: stringProperty, module: stringProperty, since: stringProperty } },
   },
   {
@@ -371,7 +371,7 @@ export const planMcpTools: McpToolDefinition[] = [
   {
     name: "plan_workflow",
     description:
-      "Create a read-only workflow plan after context inspection and return planPath plus next.tool=apply_workflow.",
+      "Create a read-only workflow plan after context inspection and return planPath, plus next.tool=apply_workflow unless a diagnostic is an error.",
     inputSchema: {
       type: "object",
       properties: { workflow: stringProperty, inputs: objectProperty, out: stringProperty },
@@ -383,7 +383,8 @@ export const planMcpTools: McpToolDefinition[] = [
 export const applyMcpTools: McpToolDefinition[] = [
   {
     name: "apply_workflow",
-    description: "Apply a stored workflow plan before direct edits and return validationTarget for run_validation.",
+    description:
+      "Apply a stored workflow plan before direct edits and return validationTarget, plus next.tool=run_validation unless the apply failed.",
     inputSchema: {
       type: "object",
       properties: { planPath: stringProperty, dryRun: booleanProperty },

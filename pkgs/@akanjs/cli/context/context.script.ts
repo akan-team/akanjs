@@ -25,7 +25,9 @@ export class ContextScript extends script("context", [ContextRunner]) {
   }
 
   async doctor(workspace: Workspace, options: { format?: "text" | "json"; strict?: boolean; ios?: boolean } = {}) {
-    Logger.rawLog(await this.contextRunner.doctor(workspace, options));
+    const { status, output } = await this.contextRunner.doctor(workspace, options);
+    Logger.rawLog(output);
+    if (status === "failed") process.exitCode = 1;
   }
 
   async mcpInstall(

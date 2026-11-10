@@ -114,7 +114,7 @@ describe("NativePublicEnv", () => {
       WorkspaceExecutor.publicEnvPin = null;
     });
 
-    test("leaves exactly the pinned values and the derived ones, and outranks the root .env", async () => {
+    test("leaves exactly the pinned values and the derived ones, and outranks the shell and the root .env", async () => {
       const root = await makeTempRoot();
       const envFile = path.join(root, ".env");
       await writeText(
@@ -125,6 +125,10 @@ describe("NativePublicEnv", () => {
       NativePublicEnv.pin(recorded);
       expect(NativePublicEnv.of(process.env)).toEqual(recorded);
       expect(process.env.AKAN_PUBLIC_APP_NAME).toBe("lu");
+      Object.assign(process.env, {
+        AKAN_PUBLIC_REPO_NAME: "from-shell",
+        AKAN_PUBLIC_SERVE_DOMAIN: "shell.example.com",
+      });
       const base = WorkspaceExecutor.getBaseDevEnv(envFile);
       expect(base.repoName).toBe("softs2");
       expect(base.serveDomain).toBe("akamir.com");
