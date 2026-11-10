@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 
 const dirs: string[] = [];
@@ -98,6 +99,35 @@ describe("GraphClientEntryDiscovery", () => {
     expect(await discovery.discover([file("M0.tsx")])).toEqual([file("C.tsx")]);
     expect(performance.now() - started).toBeLessThan(2_000);
     expect(await discovery.discover([file("M5.tsx")])).toEqual([file("C.tsx")]);
+  });
+
+  test("a root layout importing System by its file under a tsconfig wildcard reaches System's client entries", async () => {
+    const file = await tempDir();
+    const workspaceRoot = path.dirname(file("x"));
+    await Bun.write(
+      file("pkgs/akanjs/ui/System/index.tsx"),
+      'import SSR from "./SSR";\nexport const System = { SSR };\n',
+    );
+    await Bun.write(
+      file("pkgs/akanjs/ui/System/SSR.tsx"),
+      'import { ClientWrapper } from "./Client";\nexport default ClientWrapper;\n',
+    );
+    await Bun.write(
+      file("pkgs/akanjs/ui/System/Client.tsx"),
+      '"use client";\nexport const ClientWrapper = () => null;\n',
+    );
+    await Bun.write(
+      file("root/__root_layout.tsx"),
+      'import { System } from "akanjs/ui/System/index.tsx";\nexport default System;\n',
+    );
+    const resolvePackage = await createTsconfigPackageResolver({
+      workspace: { workspaceRoot },
+      getTsConfig: async () => ({ compilerOptions: { paths: { "akanjs/ui/*": ["./pkgs/akanjs/ui/*"] } } }),
+    } as never);
+    const discovery = new GraphClientEntryDiscovery({ barrelImports: [] }, resolvePackage);
+    expect(await discovery.discover([file("root/__root_layout.tsx")])).toEqual([
+      file("pkgs/akanjs/ui/System/Client.tsx"),
+    ]);
   });
 
   test("a file walked inside an import cycle keeps no partial result for a walk that starts at it", async () => {
