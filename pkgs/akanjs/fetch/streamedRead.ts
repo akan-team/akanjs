@@ -1,3 +1,5 @@
+import { updateRequestPolicy } from "./requestStorage";
+
 declare global {
   var __AKAN_STREAMED_READS__: WeakSet<object> | undefined;
 }
@@ -6,7 +8,9 @@ declare global {
 export class StreamedRead {
   static readonly #reasons: WeakSet<object> = StreamedRead.#shared();
 
+  //? The render still answers 200, so a cached copy would replay the failure to every visitor, a retry included.
   static mark(reason: unknown): void {
+    updateRequestPolicy({ cacheable: false });
     if (typeof reason === "object" && reason !== null) StreamedRead.#reasons.add(reason);
   }
 

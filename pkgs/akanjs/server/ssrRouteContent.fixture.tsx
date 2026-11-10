@@ -119,4 +119,10 @@ export const pages: PagesContext = {
       return <p>{await label}</p>;
     }),
   }),
+  "./failing/lost/_layout.tsx": async () => ({
+    default: layout()
+      .notFound(async () => <p>{await refusedRead().label}</p>)
+      .render(({ children }) => <div>lost:{children}</div>),
+  }),
+  "./failing/lost/_index.tsx": async () => ({ default: page().render(() => router.notFound()) }),
 };

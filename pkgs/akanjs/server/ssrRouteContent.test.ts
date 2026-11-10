@@ -10,6 +10,7 @@ interface Rendered {
   html: string;
   status: number;
   controlAtShell: SsrLateControl | null;
+  cacheable: boolean;
 }
 
 const readsWindowId = "routecontent/readsWindow";
@@ -20,12 +21,14 @@ const streamedLabelModule = path.join(import.meta.dir, "ssrStreamedReadClient.fi
 const withRouteContentWorker = async (
   run: (render: (route: string) => Promise<Rendered>) => Promise<void>,
   fixture = "ssrRouteContent.fixture.tsx",
+  env: Record<string, string> = {},
 ) => {
   const vars: Record<string, string> = {
     AKAN_RSC_WORKER_PATH: path.join(import.meta.dir, "rscWorker.tsx"),
     AKAN_PUBLIC_APP_NAME: "routecontent",
     AKAN_PUBLIC_REPO_NAME: "akanjs",
     AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+    ...env,
   };
   const saved = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]));
   Object.assign(process.env, vars);
@@ -70,7 +73,8 @@ const withRouteContentWorker = async (
       //? What the host reads to pick the status, the moment the shell is ready.
       const controlAtShell = await Promise.race([result.lateControl, Promise.resolve(null)]);
       const status = controlAtShell?.type === "not-found" ? 404 : (result.status ?? 200);
-      return { html: await new Response(stream).text(), status, controlAtShell };
+      const html = await new Response(stream).text();
+      return { html, status, controlAtShell, cacheable: (await result.cacheState).cacheable };
     });
   } finally {
     rsc.kill();
@@ -166,6 +170,33 @@ describe("SSR of a fetch handle's field read refused before the first byte", () 
         expect(failed.status).toBe(500);
         expect(failed.html).toContain('<p id="failing-error">failing error <!-- -->AKAN_RENDER_ERROR</p>');
       });
+    });
+  }, 20_000);
+
+  test("still answers a layout's .notFound() view that awaits the field with the .error() above it", async () => {
+    await withLoggedErrors(async () => {
+      await withRouteContentWorker(async (render) => {
+        const failed = await render("failing/lost");
+        expect(failed.status).toBe(500);
+        expect(failed.html).toContain('<p id="failing-error">failing error <!-- -->AKAN_RENDER_ERROR</p>');
+      });
+    });
+  }, 20_000);
+
+  test("keeps the render out of the RSC result cache, so the next visitor and a retry render it again", async () => {
+    await withLoggedErrors(async () => {
+      await withRouteContentWorker(
+        async (render) => {
+          expect((await render("quick")).cacheable).toBe(true);
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const page = await render("failing/streamed");
+            expect(page.status).toBe(200);
+            expect(page.cacheable).toBe(false);
+          }
+        },
+        "ssrRouteContent.fixture.tsx",
+        { AKAN_RSC_RESULT_CACHE: "1", AKAN_RSC_RESULT_CACHE_PATHS: "/" },
+      );
     });
   }, 20_000);
 });

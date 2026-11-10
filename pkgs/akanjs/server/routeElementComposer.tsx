@@ -339,14 +339,23 @@ export class RouteElementComposer {
         await routeRender.render({ children, params, searchParams } as never),
       );
     } catch (error) {
-      if (typeof error === "object" && error !== null) RouteElementComposer.#levelErrors.add(error);
+      RouteElementComposer.#recordLevelError(error);
       if (!notFound || (error as { digest?: unknown } | null)?.digest !== "AKAN_NOT_FOUND") throw error;
       notFound.onNotFound();
-      return await RouteElementComposer.#renderNotFoundInPlace(notFound, params, searchParams);
+      try {
+        return await RouteElementComposer.#renderNotFoundInPlace(notFound, params, searchParams);
+      } catch (viewError) {
+        RouteElementComposer.#recordLevelError(viewError);
+        throw viewError;
+      }
     } finally {
       gate?.leave();
     }
   };
+
+  static #recordLevelError(error: unknown): void {
+    if (typeof error === "object" && error !== null) RouteElementComposer.#levelErrors.add(error);
+  }
 
   static async #renderNotFoundInPlace(
     { owners, pathname, systemFallback, head }: RouteNotFoundInPlace & { owners: RouteRender[] },
