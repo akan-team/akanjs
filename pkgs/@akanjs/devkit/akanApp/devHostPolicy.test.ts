@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { RestartSchedule } from "akanjs/common/restartSchedule";
+import { RestartSchedule } from "akanjs/common";
 import type { BuilderMessage, BuildPhase, DevBuildStatus, DevChangeAction } from "akanjs/server";
 //? The source itself, not the package: the published akanjs exports no such subpath, and tests are not bundled.
 import { DevBuildRecovery } from "../../../akanjs/server/artifact/devBuildRecovery";

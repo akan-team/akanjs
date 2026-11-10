@@ -1174,6 +1174,22 @@ export interface RestRequestOptions extends Omit<RequestInit, "body" | "headers"
     timeout?: number;
 }
 
+export interface RestartPolicy extends BackoffPolicy {
+    maxAttempts?: number;
+}
+
+export declare class RestartSchedule {
+    constructor({ jitter, ...policy }?: RestartPolicy);
+    get attempts(): number;
+    get pending(): boolean;
+    get exhausted(): boolean;
+    next(): number;
+    arm(delay: number, run: () => void): void;
+    schedule(run: () => void): number;
+    cancel(): void;
+    reset(): void;
+}
+
 export interface RetryPolicy extends BackoffPolicy {
     attempts?: number;
 }

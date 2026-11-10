@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { RestartPolicy } from "akanjs/common/restartSchedule";
+import type { RestartPolicy } from "akanjs/common";
 import type {
   BuilderMessage,
   BuildPhase,

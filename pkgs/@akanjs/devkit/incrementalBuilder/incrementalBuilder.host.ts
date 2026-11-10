@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Logger } from "akanjs/common";
-import { RestartSchedule } from "akanjs/common/restartSchedule";
+import { Logger, RestartSchedule } from "akanjs/common";
 import type { BuilderMessage, BuilderRequest } from "akanjs/server";
 import { CSR_DEV_DIRNAME, CSR_DEV_PATCHING_MARKER, SSR_DEV_DIRNAME } from "akanjs/server/hmr/csrDevManifest";
 import { MemoryLimit } from "akanjs/server/memoryLimit";
