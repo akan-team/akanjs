@@ -346,7 +346,7 @@ describe("CsrDevModuleCompiler barrel narrowing", () => {
     }
     await Bun.write(
       file("apps/demo/page/home.tsx"),
-      'import {\n  Memo,\n  st,\n} from "@apps/demo/client";\nexport const Page = () => [Memo.Zone.Card, st];\n',
+      'import { Memo, st } from "@apps/demo/client";\nexport const Page = () => [Memo.Zone.Card, st];\n',
     );
     await Bun.write(
       file("apps/demo/page/added.tsx"),
@@ -371,7 +371,8 @@ describe("CsrDevModuleCompiler barrel narrowing", () => {
     ]);
     const page = modules.find((module) => module.id === "apps/demo/page/home.tsx");
     const [sourceContent] = (JSON.parse(page?.sourceMap ?? "{}") as { sourcesContent?: string[] }).sourcesContent ?? [];
-    expect(sourceContent?.split("\n")).toHaveLength(6);
+    expect(sourceContent?.split("\n")).toHaveLength(3);
+    expect(sourceContent).toContain('import "../lib/useClient.ts"; import "../lib/st.ts";');
   });
 
   test("a save that adds a barrel import compiles without the resolution build a new bare import needs", async () => {

@@ -196,6 +196,72 @@ describe("McpAppViewBuilder.build", () => {
   });
 });
 
+describe("McpAppViewBuilder.build with an app barrel", () => {
+  test("narrows the app's client barrel to the module the trimmed page names, never another module's UI", async () => {
+    const root = await makeTempRoot();
+    const file = (rel: string) => path.join(root, rel);
+    const paths = { "@apps/*": ["./apps/*"] };
+    await write(file("tsconfig.json"), JSON.stringify({ compilerOptions: { baseUrl: ".", paths } }));
+    await write(
+      file("node_modules/akanjs/package.json"),
+      JSON.stringify({ name: "akanjs", exports: { "./webkit": "./webkit.ts" } }),
+    );
+    await write(
+      file("node_modules/akanjs/webkit.ts"),
+      "export const McpAppBoot = { run: (view: unknown) => console.info(view) };\n",
+    );
+    await write(
+      file("apps/demo/client.ts"),
+      [
+        'export { usePage } from "./lib/useClient";',
+        'export { st } from "./lib/st";',
+        'export { Memo } from "./lib/memo";',
+        'export { Report } from "./lib/report";',
+        "",
+      ].join("\n"),
+    );
+    await write(
+      file("apps/demo/lib/useClient.ts"),
+      'console.info("the client runtime loaded");\nexport const usePage = () => null;\n',
+    );
+    await write(file("apps/demo/lib/st.ts"), 'console.info("the store loaded");\nexport const st = null;\n');
+    await write(file("apps/demo/lib/memo/index.ts"), 'export const Memo = "a memo card";\n');
+    await write(
+      file("apps/demo/lib/report/index.ts"),
+      'console.info("the report module loaded");\nexport const Report = "a report card";\n',
+    );
+    await write(
+      file("apps/demo/page/home.tsx"),
+      [
+        'import { Memo, Report } from "@apps/demo/client";',
+        "const page = () => ({ app: (name: string, description: string, draw: () => unknown) => ({ render: (render: () => unknown) => [name, description, draw, render] }) });",
+        'export default page().app("showHome", "Show home.", () => Memo).render(() => Report);',
+      ].join("\n"),
+    );
+    const app = {
+      cwdPath: file("apps/demo"),
+      dist: { cwdPath: file("dist/apps/demo") },
+      workspace: { workspaceRoot: root },
+      getTsConfig: async () => ({ compilerOptions: { paths } }),
+      getConfig: async () => ({ barrelImports: ["@apps/demo/client"] }),
+      getPublicEnv: () => ({}),
+      logger: { warn: () => undefined },
+    };
+
+    await new McpAppViewBuilder(app as never, "build").build(
+      [{ key: "./home.tsx", moduleAbsPath: file("apps/demo/page/home.tsx") }],
+      { basePaths: [], cssAssets: {}, options: CsrArtifactBuilder.bundleOptions(app as never, "build") },
+    );
+
+    const view = await Bun.file(file("dist/apps/demo/mcp-apps/showHome.html")).text();
+    expect(view).toContain("a memo card");
+    expect(view).toContain("the client runtime loaded");
+    expect(view).toContain("the store loaded");
+    expect(view).not.toContain("a report card");
+    expect(view).not.toContain("the report module loaded");
+  });
+});
+
 describe("McpAppViewBuilder.entryOf", () => {
   test("boots the one app with its page, the root layout and overrides it sits under, by relative path", () => {
     const view = {
