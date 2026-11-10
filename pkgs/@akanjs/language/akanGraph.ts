@@ -16,6 +16,8 @@ import {
   type ConstantClassFact,
   type Extent,
   type FileFacts,
+  type GuardCallFact,
+  type GuardFact,
   type GuardFactoryFact,
   type MemberFact,
   ownerOf,
@@ -68,13 +70,17 @@ interface DeclaredGuard {
   scope: string | null;
   doc: string | null;
   parts: GuardPart[];
+  file: string | null;
 }
 
 interface DeclaredFactory {
   fact: GuardFactoryFact;
   owner: string | null;
-  fileName: string;
+  site: GuardSite;
   made: DeclaredGuard[];
+  isReal: boolean;
+  scope: string | null;
+  targets: DeclaredFactory[];
 }
 
 interface MapEntry {
@@ -82,12 +88,19 @@ interface MapEntry {
   site: GuardSite;
 }
 
-type GuardLookup = { guard: DeclaredGuard } | { name: string; from: string | undefined };
+type GuardLookup = { guard: DeclaredGuard } | { name: string; from: string | undefined } | { external: true };
+
+interface Reexport {
+  name: string;
+  from: string | null;
+}
 
 interface Declaration {
   source: TS.SourceFile;
   statement: TS.Statement;
   declared: TS.Node;
+  extent: Extent;
+  name: string;
 }
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -116,7 +129,9 @@ export class GraphBuilder {
   readonly #contexts = new Map<string, Context[]>();
   readonly #members = new Map<string, AkanGraphNode[]>();
   readonly #guards = new Map<string, DeclaredGuard[]>();
+  readonly #madeInPlace = new Map<string, DeclaredGuard>();
   readonly #mapEntries = new Map<string, MapEntry[]>();
+  readonly #reexports = new Map<string, { local: string; site: GuardSite } | null>();
   readonly #routeFiles = new Map<string, { id: string; alias: string | null }>();
   readonly #declarations = new Map<string, Declaration | null>();
   readonly #routes: RouteFactReader;
@@ -370,64 +385,137 @@ export class GraphBuilder {
 
   //? A slice's class-level guards read `role Guard` (`{ root: Admin, get: Public }`); a key's are bare names.
   #guard(node: AkanGraphNode, guard: string, file: FileFacts) {
-    const [role, local] = guard.includes(" ") ? guard.split(" ") : [null, guard];
+    const [, role = null, local = guard] = guard.match(/^([\w$]+) (.+)$/) ?? [];
     if (!local || local === "?") return;
-    this.#addEdge(node.id, this.#guardIdOf(local, file), "guard", role, node.at);
+    const id = local.includes("(") ? this.#madeInPlaceIdOf(local, file) : this.#guardIdOf(local, file);
+    if (id) this.#addEdge(node.id, id, "guard", role, node.at);
   }
 
   #declareGuards(facts: FileFacts[]) {
     const factories = new Map<string, DeclaredFactory[]>();
+    const declaredFactories: DeclaredFactory[] = [];
     for (const file of facts)
       for (const fact of file.guardFactories) {
-        const factory = { fact, owner: file.owner, fileName: file.fileName, made: [] };
+        const factory = {
+          fact,
+          owner: file.owner,
+          site: file,
+          made: [],
+          isReal: fact.direct,
+          scope: fact.scope,
+          targets: [],
+        };
         factories.set(fact.name, [...(factories.get(fact.name) ?? []), factory]);
+        declaredFactories.push(factory);
       }
-    const sameFile = (factory: DeclaredFactory, name: string | null) =>
-      name ? factories.get(name)?.find((other) => other.fileName === factory.fileName) : undefined;
-    const declare = (guard: DeclaredGuard, factory: DeclaredFactory | undefined) => {
-      this.#guards.set(guard.name, [...(this.#guards.get(guard.name) ?? []), guard]);
-      factory?.made.push(guard);
-    };
-    const madeBy = (factory: DeclaredFactory | undefined, fileName: string, extent: Extent) => {
-      const parts: GuardPart[] = [{ fileName, extent }];
-      const seen = new Set<DeclaredFactory>();
-      for (let current = factory; current && !seen.has(current); current = sameFile(current, current.fact.via)) {
-        seen.add(current);
-        parts.push({ fileName: current.fileName, extent: current.fact.extent });
-      }
-      return parts;
-    };
-    for (const file of facts) {
-      const { owner, fileName } = file;
-      for (const { name, span, extent, scope, doc, factory: callee } of file.guards) {
-        const factory = callee ? factories.get(callee)?.find((other) => other.fileName === fileName) : undefined;
-        declare({ name, owner, span, scope, doc, parts: madeBy(factory, fileName, extent) }, factory);
-      }
-      for (const { name, span, extent, doc, callee } of file.guardCalls) {
-        const imported = file.imports.find((item) => item.name === callee);
-        if (!imported) continue;
-        const from = this.#ownerOfSpecifier(fileName, imported.from);
-        const candidates =
-          factories.get(imported.imported === "default" || imported.imported === "*" ? callee : imported.imported) ??
-          [];
-        const factory =
-          candidates.find((other) => other.owner === from) ?? this.#soleVisible(candidates, from ?? owner);
-        if (factory)
-          declare(
-            { name, owner, span, scope: factory.fact.scope, doc, parts: madeBy(factory, fileName, extent) },
-            factory,
-          );
+    for (const factory of declaredFactories)
+      factory.targets = factory.fact.via
+        .map((callee) => this.#factoryAt(factories, callee, factory.site))
+        .filter((target) => target !== undefined);
+    for (let isGrowing = true; isGrowing; ) {
+      isGrowing = false;
+      for (const factory of declaredFactories) {
+        const target = factory.targets.find((other) => other.isReal);
+        if (factory.isReal || !target) continue;
+        factory.isReal = true;
+        factory.scope ??= target.scope;
+        isGrowing = true;
       }
     }
-    for (const list of factories.values())
-      for (const { fact, made } of list)
-        if (made.every((guard) => !guard.doc)) for (const guard of made) guard.doc = fact.doc;
+    const partsOf = (factory: DeclaredFactory, seen = new Set<DeclaredFactory>()): GuardPart[] => {
+      if (seen.has(factory)) return [];
+      seen.add(factory);
+      return [
+        { fileName: factory.site.fileName, extent: factory.fact.extent },
+        ...factory.targets.filter((target) => target.isReal).flatMap((target) => partsOf(target, seen)),
+      ];
+    };
+    const declare = (file: FileFacts, made: GuardFact | GuardCallFact, scope: string | null, parts: GuardPart[]) => {
+      const { name, span, extent, doc } = made;
+      const own = { fileName: file.fileName, extent };
+      const guard = { name, owner: file.owner, span, scope, doc, parts: [own, ...parts], file: null };
+      if (name.includes("(")) this.#madeInPlace.set(`${file.fileName}\n${name}`, guard);
+      else this.#guards.set(name, [...(this.#guards.get(name) ?? []), guard]);
+      return guard;
+    };
+    const extending: [FileFacts, GuardCallFact][] = [];
+    for (const file of facts) {
+      for (const made of file.guards) {
+        const factory = made.factory
+          ? factories.get(made.factory)?.find((other) => other.site.fileName === file.fileName)
+          : undefined;
+        if (!made.factory) declare(file, made, made.scope, []);
+        else if (factory?.isReal) factory.made.push(declare(file, made, factory.scope, partsOf(factory)));
+      }
+      for (const made of file.guardCalls) {
+        if (made.kind === "extends") {
+          extending.push([file, made]);
+          continue;
+        }
+        const factory = this.#factoryAt(factories, made.callee, file);
+        if (factory?.isReal) factory.made.push(declare(file, made, factory.scope, partsOf(factory)));
+      }
+    }
+    for (let isGrowing = true; isGrowing; ) {
+      isGrowing = false;
+      for (const [idx, entry] of extending.entries()) {
+        const [file, made] = entry;
+        const found = this.#findGuard(made.callee, file, 0);
+        if (!("guard" in found)) continue;
+        declare(file, made, made.scope ?? found.guard.scope, found.guard.parts);
+        extending.splice(idx, 1);
+        isGrowing = true;
+        break;
+      }
+    }
+    for (const { fact, made, isReal } of declaredFactories)
+      if (isReal && made.every((guard) => !guard.doc)) for (const guard of made) guard.doc = fact.doc;
+    for (const list of this.#guards.values())
+      for (const guard of list)
+        if (list.some((other) => other !== guard && other.owner === guard.owner))
+          guard.file = this.#inOwner(guard.span.fileName, guard.owner);
+    for (const guard of this.#madeInPlace.values()) guard.file = this.#inOwner(guard.span.fileName, guard.owner);
     for (const list of this.#guards.values()) for (const guard of list) this.#guardNodeOf(guard);
+    for (const guard of this.#madeInPlace.values()) this.#guardNodeOf(guard);
+  }
+
+  #factoryAt(factories: Map<string, DeclaredFactory[]>, callee: string, site: GuardSite) {
+    const [head = callee, member] = callee.split(".");
+    const imported = site.imports.find((item) => item.name === head);
+    if (!imported)
+      return member ? undefined : factories.get(callee)?.find((other) => other.site.fileName === site.fileName);
+    if (member && imported.imported !== "*") return undefined;
+    const from = this.#ownerOfSpecifier(site.fileName, imported.from);
+    if (from === undefined || from === frameworkOwner) return undefined;
+    const name = member ?? (imported.imported === "default" || imported.imported === "*" ? head : imported.imported);
+    const candidates = factories.get(name) ?? [];
+    const near = this.#pathOfSpecifier(site.fileName, imported.from);
+    return (
+      this.#nearest(
+        candidates.filter((other) => other.owner === from),
+        ({ site }) => site.fileName,
+        near,
+      ) ?? this.#soleVisible(candidates, from)
+    );
+  }
+
+  #nearest<Item>(items: Item[], fileOf: (item: Item) => string, near: string | null) {
+    const isNear = (fileName: string) => {
+      const relative = this.#source.relative(fileName);
+      return !!near && (relative.startsWith(`${near}/`) || relative.replace(/\.tsx?$/, "") === near);
+    };
+    return items.find((item) => isNear(fileOf(item))) ?? items[0];
+  }
+
+  #inOwner(fileName: string, owner: string | null) {
+    const relative = this.#source.relative(fileName);
+    return owner && relative.startsWith(`${owner}/`) ? relative.slice(owner.length + 1) : relative;
   }
 
   //? Keyed by the declaring owner through its import, not the bare name: two libs' `Admin` stay two nodes.
-  #guardIdOf(local: string, site: GuardSite): string {
+  #guardIdOf(local: string, site: GuardSite): string | null {
     const found = this.#findGuard(local, site, 0);
+    if ("external" in found) return null;
     if ("guard" in found) return this.#guardNodeOf(found.guard);
     const { name, from } = found;
     const isFramework = from === frameworkOwner || (from === undefined && !!builtinGuards[name]);
@@ -439,34 +527,117 @@ export class GraphBuilder {
     return node.id;
   }
 
+  #madeInPlaceIdOf(text: string, file: FileFacts) {
+    const made = this.#madeInPlace.get(`${file.fileName}\n${text}`);
+    if (made) return this.#guardNodeOf(made);
+    const head = text.slice(0, text.indexOf("(")).split(".")[0] ?? text;
+    const imported = file.imports.find((item) => item.name === head);
+    const from = imported ? this.#ownerOfSpecifier(file.fileName, imported.from) : file.owner;
+    if (from === undefined || from === frameworkOwner) return null;
+    const scope = `${this.#inOwner(file.fileName, file.owner)}#${text}`;
+    return this.#addNode(this.#key("guard", file.owner, scope), "guard", file.owner, null, text, null).id;
+  }
+
   #findGuard(local: string, site: GuardSite, depth: number): GuardLookup {
-    const [head = local, member] = local.split(".");
+    const segments = local.split(".");
+    const head = segments[0] ?? local;
     const imported = site.imports.find((item) => item.name === head);
     const from = imported ? this.#ownerOfSpecifier(site.fileName, imported.from) : undefined;
-    const holder = imported ? from : site.owner;
-    if (
-      member &&
-      imported?.imported !== "*" &&
-      holder !== undefined &&
-      holder !== frameworkOwner &&
-      depth < maxMapDepth
-    ) {
-      const objectName = imported && imported.imported !== "default" ? imported.imported : head;
+    if (imported && from === undefined) return { external: true };
+    const near = imported
+      ? this.#pathOfSpecifier(site.fileName, imported.from)
+      : this.#source.relative(site.fileName).replace(/\.tsx?$/, "");
+    const named = imported && imported.imported !== "default" && imported.imported !== "*" ? imported.imported : null;
+    const path = imported?.imported === "*" ? segments.slice(1) : [named ?? head, ...segments.slice(1)];
+    const holder = imported ? (from ?? null) : site.owner;
+    const [objectName, member] = path;
+    if (path.length === 2 && objectName && member && holder !== frameworkOwner && depth < maxMapDepth) {
+      const made = this.#nearest(
+        (this.#guards.get(`${objectName}.${member}`) ?? []).filter((guard) => guard.owner === holder),
+        ({ span }) => span.fileName,
+        near,
+      );
+      if (made) return { guard: made };
       for (const entry of this.#mapEntriesOf(objectName, member, imported ? null : site.fileName, holder)) {
         const found = this.#findGuard(entry.name, entry.site, depth + 1);
         if ("guard" in found) return found;
       }
     }
-    const name =
-      member ?? (imported && imported.imported !== "default" && imported.imported !== "*" ? imported.imported : head);
+    const name = path[path.length - 1] ?? head;
+    if (from === frameworkOwner) return { name, from };
     const declared = this.#guards.get(name) ?? [];
-    const guard =
-      from === undefined
-        ? (declared.find((other) => other.owner === site.owner) ??
-          declared.find((other) => this.#visible(other.owner, site.owner)))
-        : (declared.find((other) => other.owner === from) ??
-          (from === frameworkOwner ? undefined : this.#soleVisible(declared, from)));
-    return guard ? { guard } : { name, from };
+    const own = this.#nearest(
+      declared.filter((other) => other.owner === (imported ? from : site.owner)),
+      ({ span }) => span.fileName,
+      near,
+    );
+    if (own) return { guard: own };
+    if (!imported) {
+      const visible = declared.find((other) => this.#visible(other.owner, site.owner));
+      return visible ? { guard: visible } : { name, from };
+    }
+    const reexport = from && depth < maxMapDepth ? this.#reexportOf(from, name, near) : null;
+    if (reexport) return this.#findGuard(reexport.local, reexport.site, depth + 1);
+    const sole = this.#soleVisible(declared, from ?? null);
+    return sole ? { guard: sole } : { name, from };
+  }
+
+  #reexportOf(owner: string, name: string, near: string | null) {
+    const key = `${owner}\n${name}\n${near ?? ""}`;
+    const cached = this.#reexports.get(key);
+    if (cached !== undefined) return cached;
+    let found: { local: string; site: GuardSite } | null = null;
+    const exporting = new RegExp(`export\\s*\\{(?:[^}]*?[\\s,])?${name.replace(/\$/g, "\\$")}(?![\\w$])`);
+    for (const fileName of this.#filesOf(owner, name, near)) {
+      const text = this.#source.readText(fileName);
+      if (text === undefined || !exporting.test(text)) continue;
+      const reexport = this.#reexportIn(this.#source.parse(fileName, text), name);
+      if (!reexport) continue;
+      const site = { fileName, owner, imports: [] };
+      found = reexport.from
+        ? {
+            local: reexport.name,
+            site: { ...site, imports: [{ ...reexport, imported: reexport.name, from: reexport.from }] },
+          }
+        : { local: reexport.name, site };
+      break;
+    }
+    this.#reexports.set(key, found);
+    return found;
+  }
+
+  #reexportIn(source: TS.SourceFile, name: string): Reexport | null {
+    const { ts, reader } = this.#source;
+    for (const statement of source.statements) {
+      if (!ts.isExportDeclaration(statement) || statement.isTypeOnly) continue;
+      const { exportClause, moduleSpecifier } = statement;
+      if (!exportClause || !ts.isNamedExports(exportClause)) continue;
+      const element = exportClause.elements.find((item) => !item.isTypeOnly && item.name.text === name);
+      if (!element) continue;
+      const original = (element.propertyName ?? element.name).text;
+      if (moduleSpecifier && ts.isStringLiteral(moduleSpecifier)) return { name: original, from: moduleSpecifier.text };
+      const imported = reader.importsIn(source).find((item) => item.name === original);
+      if (!imported) return { name: original, from: null };
+      return imported.imported === "default" || imported.imported === "*"
+        ? null
+        : { name: imported.imported, from: imported.from };
+    }
+    return null;
+  }
+
+  //? The import path is searched first, so `isAdmin` from `@libs/shared/webkit` is not another folder's `isAdmin`.
+  #filesOf(owner: string, name: string, near: string | null) {
+    const isNear = (fileName: string) => {
+      const relative = this.#source.relative(fileName);
+      return !!near && (relative.startsWith(`${near}/`) || relative.replace(/\.tsx?$/, "") === near);
+    };
+    const candidates = this.#source.files
+      .filter(
+        ([fileName, words]) =>
+          !testFilePattern.test(fileName) && words.includes(`\n${name}\n`) && this.#source.ownerOf(fileName) === owner,
+      )
+      .map(([fileName]) => fileName);
+    return [...candidates.filter(isNear), ...candidates.filter((other) => !isNear(other))];
   }
 
   #mapEntriesOf(objectName: string, member: string, fileName: string | null, owner: string | null) {
@@ -521,29 +692,37 @@ export class GraphBuilder {
     return entries;
   }
 
-  //? The import path is searched first, so `isAdmin` from `@libs/shared/webkit` is not another folder's `isAdmin`.
-  #declarationOf(owner: string, name: string, near: string | null) {
+  //? Only a file whose text declares or re-exports the name is parsed: every page names `usePage`, which the generated
+  //? client hands out without a plain declaration.
+  #declarationOf(owner: string, name: string, near: string | null, depth = 0): Declaration | null {
     const key = `${owner}\n${name}\n${near ?? ""}`;
     const cached = this.#declarations.get(key);
     if (cached !== undefined) return cached;
-    const isNear = (fileName: string) => {
-      const relative = this.#source.relative(fileName);
-      return !!near && (relative.startsWith(`${near}/`) || relative.replace(/\.tsx?$/, "") === near);
-    };
-    const candidates = this.#source.files
-      .filter(
-        ([fileName, words]) =>
-          !testFilePattern.test(fileName) && words.includes(`\n${name}\n`) && this.#source.ownerOf(fileName) === owner,
-      )
-      .map(([fileName]) => fileName);
+    this.#declarations.set(key, null);
+    const escaped = name.replace(/\$/g, "\\$");
+    const declaring = new RegExp(
+      `(?:function\\s*\\*?\\s*|(?:const|let|var)\\s+|export\\s*\\{(?:[^}]*?[\\s,])?)${escaped}(?![\\w$])`,
+    );
     let found: Declaration | null = null;
-    for (const fileName of [...candidates.filter(isNear), ...candidates.filter((other) => !isNear(other))]) {
+    for (const fileName of this.#filesOf(owner, name, near)) {
       const text = this.#source.readText(fileName);
-      if (text === undefined) continue;
+      if (text === undefined || !declaring.test(text)) continue;
       const source = this.#source.parse(fileName, text);
       const declared = this.#routes.declarationIn(source, name);
-      if (!declared) continue;
-      found = { source, statement: declared.statement, declared: declared.declared };
+      if (declared) {
+        found = { source, ...declared, name };
+        break;
+      }
+      const reexport = this.#reexportIn(source, name);
+      if (!reexport) continue;
+      if (!reexport.from) {
+        const local = this.#routes.declarationIn(source, reexport.name);
+        found = local ? { source, ...local, name: reexport.name } : null;
+        break;
+      }
+      const next = this.#ownerOfSpecifier(fileName, reexport.from);
+      if (next && next !== frameworkOwner && depth < maxMapDepth)
+        found = this.#declarationOf(next, reexport.name, this.#pathOfSpecifier(fileName, reexport.from), depth + 1);
       break;
     }
     this.#declarations.set(key, found);
@@ -613,29 +792,31 @@ export class GraphBuilder {
     }
   }
 
-  //? A function declared in the route file is keyed by that file, so two pages' own `isOwn` stay two nodes.
+  //? A guard function is keyed by the file that declares it, so two pages' own `isOwn` stay two nodes, and so do a
+  //? `canEdit` in `webkit/` and one in `common/`.
   #routeGuardIdOf({ name: local, local: declared }: RouteGuardCall, fact: RouteFact, text: string) {
     if (declared) {
-      const file = this.#source.relative(fact.fileName).slice(fact.owner.length + 1);
-      const id = this.#key("guard", fact.owner, `${file}#${local}`);
+      const id = this.#key("guard", fact.owner, `${this.#inOwner(fact.fileName, fact.owner)}#${local}`);
       return this.#routeGuardNodeOf(id, fact.owner, local, declared.span, declared.doc, text, declared.extent);
     }
-    const imported = fact.imports.find((item) => item.name === local);
-    if (!imported) return null;
-    const name = imported.imported !== "default" && imported.imported !== "*" ? imported.imported : local;
+    const [head = local, member] = local.split(".");
+    const imported = fact.imports.find((item) => item.name === head);
+    if (!imported || (member && imported.imported !== "*")) return null;
+    const name = member ?? (imported.imported !== "default" && imported.imported !== "*" ? imported.imported : local);
     const from = this.#ownerOfSpecifier(fact.fileName, imported.from);
     if (!from || from === frameworkOwner) return null;
     const found = this.#declarationOf(from, name, this.#pathOfSpecifier(fact.fileName, imported.from));
     if (!found) return null;
     const { reader } = this.#source;
+    const owner = this.#source.ownerOf(found.source.fileName) ?? from;
     return this.#routeGuardNodeOf(
-      this.#key("guard", from, name),
-      from,
-      name,
+      this.#key("guard", owner, `${this.#inOwner(found.source.fileName, owner)}#${found.name}`),
+      owner,
+      found.name,
       reader.spanOf(found.source, found.declared),
       reader.docOf(found.source, found.statement),
       found.source.text,
-      reader.extentOf(found.source, found.statement),
+      found.extent,
     );
   }
 
@@ -683,18 +864,20 @@ export class GraphBuilder {
     return node.id;
   }
 
-  #guardNodeOf({ name, owner, span, scope, doc, parts }: DeclaredGuard) {
-    const node = this.#addNode(this.#key("guard", owner, name), "guard", owner, null, name, span, scope ? [scope] : []);
+  #guardNodeOf({ name, owner, span, scope, doc, parts, file }: DeclaredGuard) {
+    const id = this.#key("guard", owner, file ? `${file}#${name}` : name);
+    const node = this.#addNode(id, "guard", owner, null, name, span, scope ? [scope] : []);
     if (doc && !node.doc) node.doc = doc;
-    const digest = node.digest
-      ? null
-      : this.#hashOf(
-          ...parts.map(({ fileName, extent }): [string | undefined, Extent] => [
-            this.#source.readText(fileName),
-            extent,
-          ]),
-        );
-    if (digest) node.digest = digest;
+    if (node.digest) return node.id;
+    const digest = this.#hashOf(
+      ...parts.map(({ fileName, extent }): [string | undefined, Extent] => [this.#source.readText(fileName), extent]),
+    );
+    if (!digest) return node.id;
+    node.digest = digest;
+    const sources = [...new Set(parts.map(({ fileName }) => this.#source.relative(fileName)))].filter(
+      (source) => source !== node.at?.file,
+    );
+    if (sources.length) node.sources = sources;
     return node.id;
   }
 

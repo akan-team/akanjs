@@ -49,6 +49,7 @@ export interface AkanGraphNode {
   values?: string[];
   doc?: string;
   digest?: string;
+  sources?: string[];
   change?: AkanGraphChange;
 }
 

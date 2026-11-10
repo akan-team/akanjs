@@ -96,14 +96,21 @@ export class RouteFactReader {
 
   declarationIn(source: TS.SourceFile, name: string) {
     const ts = this.#ts;
+    const overloads = source.statements.filter(
+      (statement): statement is TS.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === name,
+    );
+    const [first] = overloads;
+    const last = overloads.at(-1);
+    if (first?.name && last)
+      return { statement: first, declared: first.name, extent: { start: first.getStart(source), end: last.getEnd() } };
     for (const statement of source.statements) {
-      if (ts.isFunctionDeclaration(statement) && statement.name?.text === name)
-        return { statement, declared: statement.name, initializer: null };
       if (!ts.isVariableStatement(statement)) continue;
       const declaration = statement.declarationList.declarations.find(
         (item) => ts.isIdentifier(item.name) && item.name.text === name,
       );
-      if (declaration) return { statement, declared: declaration.name, initializer: declaration.initializer ?? null };
+      if (declaration)
+        return { statement, declared: declaration.name, extent: this.#reader.extentOf(source, statement) };
     }
     return null;
   }
@@ -111,10 +118,6 @@ export class RouteFactReader {
   #guardOf(source: TS.SourceFile, exported: TS.Statement): RouteGuardFact | null {
     const ts = this.#ts;
     let current = ts.isExportAssignment(exported) ? this.#reader.unwrap(exported.expression) : null;
-    if (current && ts.isIdentifier(current)) {
-      const initializer = this.declarationIn(source, current.text)?.initializer;
-      current = initializer ? this.#reader.unwrap(initializer) : null;
-    }
     while (current && ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression)) {
       const { name, expression } = current.expression;
       const [stage] = current.arguments;
@@ -129,14 +132,24 @@ export class RouteFactReader {
   //? through to its arguments; a known one is the guard, and the helpers it is handed (`isId(id)`) are not.
   #callsIn(source: TS.SourceFile, stage: TS.Expression): RouteGuardCall[] {
     const ts = this.#ts;
-    const imported = new Set(
-      this.#reader
-        .importsIn(source)
-        .filter(({ from }) => RouteFactReader.#workspacePattern.test(from))
-        .map(({ name }) => name),
-    );
+    const imports = this.#reader.importsIn(source).filter(({ from }) => RouteFactReader.#workspacePattern.test(from));
+    const imported = new Set(imports.filter(({ imported }) => imported !== "*").map(({ name }) => name));
+    const namespaces = new Set(imports.filter(({ imported }) => imported === "*").map(({ name }) => name));
+    const shadowed = this.#namesDeclaredIn(stage);
     const calls = new Map<string, RouteGuardCall>();
-    const callOf = (name: string) => {
+    const callOf = (callee: TS.Expression) => {
+      if (
+        ts.isPropertyAccessExpression(callee) &&
+        ts.isIdentifier(callee.expression) &&
+        namespaces.has(callee.expression.text) &&
+        !shadowed.has(callee.expression.text)
+      ) {
+        const name = `${callee.expression.text}.${callee.name.text}`;
+        if (!calls.has(name)) calls.set(name, { name, local: null });
+        return true;
+      }
+      if (!ts.isIdentifier(callee) || shadowed.has(callee.text)) return false;
+      const name = callee.text;
       if (calls.has(name)) return true;
       const declared = this.declarationIn(source, name);
       if (!declared && !imported.has(name)) return false;
@@ -144,18 +157,34 @@ export class RouteFactReader {
         name,
         local: declared && {
           span: this.#reader.spanOf(source, declared.declared),
-          extent: this.#reader.extentOf(source, declared.statement),
+          extent: declared.extent,
           doc: this.#reader.docOf(source, declared.statement),
         },
       });
       return true;
     };
     const visit = (node: TS.Node): void => {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && callOf(node.expression.text)) return;
+      if (ts.isCallExpression(node) && callOf(node.expression)) return;
       ts.forEachChild(node, visit);
     };
-    if (ts.isIdentifier(stage)) callOf(stage.text);
+    if (ts.isIdentifier(stage)) callOf(stage);
     else visit(stage);
     return [...calls.values()];
+  }
+
+  #namesDeclaredIn(stage: TS.Expression) {
+    const ts = this.#ts;
+    const names = new Set<string>();
+    const bind = (name: TS.BindingName) => {
+      if (ts.isIdentifier(name)) names.add(name.text);
+      else for (const element of name.elements) if (!ts.isOmittedExpression(element)) bind(element.name);
+    };
+    const visit = (node: TS.Node): void => {
+      if (ts.isVariableDeclaration(node) || ts.isParameter(node)) bind(node.name);
+      if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) names.add(node.name.text);
+      ts.forEachChild(node, visit);
+    };
+    visit(stage);
+    return names;
   }
 }

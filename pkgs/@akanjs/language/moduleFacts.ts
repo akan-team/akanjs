@@ -109,11 +109,14 @@ export interface GuardFact extends MemberFact {
 export interface GuardFactoryFact extends MemberFact {
   scope: string | null;
   doc: string | null;
-  via: string | null;
+  direct: boolean;
+  via: string[];
 }
 
 export interface GuardCallFact extends MemberFact {
   callee: string;
+  kind: "call" | "extends";
+  scope: string | null;
   doc: string | null;
 }
 
@@ -224,20 +227,41 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       : ast.expressionName(value);
   };
 
-  const guardsIn = (object: TS.ObjectLiteralExpression | undefined) => {
+  const pathOf = (expression: TS.Expression): string | null => {
+    if (ts.isIdentifier(expression)) return expression.text;
+    if (!ts.isPropertyAccessExpression(expression)) return null;
+    const head = pathOf(expression.expression);
+    return head && `${head}.${expression.name.text}`;
+  };
+
+  const callTextOf = (source: TS.SourceFile, call: TS.CallExpression) => call.getText(source).replace(/\s*\n\s*/g, " ");
+
+  const guardRefOf = (source: TS.SourceFile, expression: TS.Expression, made: TS.CallExpression[]) => {
+    const value = unwrap(expression);
+    if (!ts.isCallExpression(value)) return pathOf(value) ?? ast.expressionName(value);
+    made.push(value);
+    return callTextOf(source, value);
+  };
+
+  const guardsIn = (
+    source: TS.SourceFile,
+    object: TS.ObjectLiteralExpression | undefined,
+    made: TS.CallExpression[],
+  ) => {
     const guards = object?.properties.find(
       (property): property is TS.PropertyAssignment =>
         ts.isPropertyAssignment(property) && ast.nodeName(property.name) === "guards",
     )?.initializer;
     if (!guards) return [];
-    if (ts.isArrayLiteralExpression(guards)) return guards.elements.map(guardNameOf).filter((name) => name !== null);
+    const refOf = (expression: TS.Expression) => guardRefOf(source, expression, made);
+    if (ts.isArrayLiteralExpression(guards)) return guards.elements.map(refOf).filter((name) => name !== null);
     if (ts.isObjectLiteralExpression(guards))
       return guards.properties.filter(ts.isPropertyAssignment).flatMap((property) => {
         const value = unwrap(property.initializer);
-        const names = ts.isArrayLiteralExpression(value) ? value.elements.map(guardNameOf) : [guardNameOf(value)];
+        const names = ts.isArrayLiteralExpression(value) ? value.elements.map(refOf) : [refOf(value)];
         return names.map((name) => `${ast.nodeName(property.name)} ${name ?? "?"}`);
       });
-    const single = guardNameOf(guards);
+    const single = refOf(guards);
     return single ? [single] : [];
   };
 
@@ -273,7 +297,11 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       return name && node ? [{ name, span: spanOf(source, node), extent: extentOf(source, property) }] : [];
     });
 
-  const sliceKeysOf = (source: TS.SourceFile, builder: TS.ArrowFunction | TS.FunctionExpression | undefined) =>
+  const sliceKeysOf = (
+    source: TS.SourceFile,
+    builder: TS.ArrowFunction | TS.FunctionExpression | undefined,
+    made: TS.CallExpression[],
+  ) =>
     (returnedObject(builder)?.properties ?? []).flatMap((property): SliceKeyFact[] => {
       if (!ts.isPropertyAssignment(property)) return [];
       const name = ast.nodeName(property.name);
@@ -284,7 +312,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           name,
           span: spanOf(source, property.name),
           extent: extentOf(source, property),
-          guards: root ? guardsIn(optionObjectOf(root)) : [],
+          guards: root ? guardsIn(source, optionObjectOf(root), made) : [],
           live: methods.includes("live"),
           argCount: methods.filter((method) => argMethods.has(method)).length,
         },
@@ -397,7 +425,11 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     });
   };
 
-  const endpointKeysOf = (source: TS.SourceFile, builder: TS.ArrowFunction | TS.FunctionExpression | undefined) => {
+  const endpointKeysOf = (
+    source: TS.SourceFile,
+    builder: TS.ArrowFunction | TS.FunctionExpression | undefined,
+    made: TS.CallExpression[],
+  ) => {
     const verbOf = verbReaderOf(builder?.parameters[0]);
     return (returnedObject(builder)?.properties ?? []).flatMap((property): EndpointKeyFact[] => {
       if (!ts.isPropertyAssignment(property)) return [];
@@ -410,7 +442,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           span: spanOf(source, property.name),
           extent: extentOf(source, property),
           verb: root ? verbOf(root.expression) : null,
-          guards: root ? guardsIn(optionObjectOf(root)) : [],
+          guards: root ? guardsIn(source, optionObjectOf(root), made) : [],
           argCount: methods.filter((method) => argMethods.has(method)).length,
         },
       ];
@@ -499,17 +531,6 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         clause.types.some(({ expression }) => guardNames.has(ast.expressionName(expression) ?? "")),
     );
 
-  const guardClassIn = (node: TS.Node, guardNames: ReadonlySet<string>): TS.ClassLikeDeclaration | null => {
-    if ((ts.isClassExpression(node) || ts.isClassDeclaration(node)) && implementsGuard(node, guardNames)) return node;
-    return ts.forEachChild(node, (child) => guardClassIn(child, guardNames)) ?? null;
-  };
-
-  const callsIn = (node: TS.Node, names: ReadonlySet<string>): string | null => {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && names.has(node.expression.text))
-      return node.expression.text;
-    return ts.forEachChild(node, (child) => callsIn(child, names)) ?? null;
-  };
-
   const scopeOf = (node: TS.ClassLikeDeclaration) => {
     const scope = node.members.find(
       (member): member is TS.PropertyDeclaration =>
@@ -564,75 +585,145 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     return functions;
   };
 
-  const guardFactoriesOf = (source: TS.SourceFile, guardNames: ReadonlySet<string>) => {
+  const returnedOf = (body: TS.Node, guardNames: ReadonlySet<string>) => {
+    const locals = new Map<string, TS.Node>();
+    const pending: TS.Node[] = [];
+    const visit = (node: TS.Node) => {
+      if (ts.isClassDeclaration(node) && node.name) locals.set(node.name.text, node);
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer)
+        locals.set(node.name.text, node.initializer);
+      if (ts.isReturnStatement(node) && node.expression) pending.push(node.expression);
+      if (!ts.isFunctionLike(node) && !ts.isClassLike(node)) ts.forEachChild(node, visit);
+    };
+    if (ts.isBlock(body)) ts.forEachChild(body, visit);
+    else pending.push(body);
+    let guard: TS.ClassLikeDeclaration | null = null;
+    const calls: string[] = [];
+    const seen = new Set<TS.Node>();
+    for (let node = pending.pop(); node; node = pending.pop()) {
+      if (seen.has(node)) continue;
+      seen.add(node);
+      const value = ts.isExpression(node) ? unwrap(node) : node;
+      if ((ts.isClassExpression(value) || ts.isClassDeclaration(value)) && implementsGuard(value, guardNames))
+        guard ??= value;
+      else if (ts.isConditionalExpression(value)) pending.push(value.whenTrue, value.whenFalse);
+      else if (ts.isBinaryExpression(value)) pending.push(value.left, value.right);
+      else if (ts.isIdentifier(value)) {
+        const local = locals.get(value.text);
+        if (local) pending.push(local);
+      } else if (ts.isCallExpression(value)) {
+        const callee = pathOf(unwrap(value.expression));
+        if (callee && !calls.includes(callee)) calls.push(callee);
+      }
+    }
+    return { guard, calls };
+  };
+
+  //? A function returning a call to an import is kept as a factory: only the graph knows whether that import makes one.
+  const guardFactoriesOf = (
+    source: TS.SourceFile,
+    guardNames: ReadonlySet<string>,
+    isImported: (callee: string) => boolean,
+  ) => {
     const functions = functionsOf(source);
+    const returned = new Map([...functions].map(([name, { body }]) => [name, returnedOf(body, guardNames)]));
+    const members = new Set<string>();
+    const isFactoryCall = (callee: string) => members.has(callee) || (!functions.has(callee) && isImported(callee));
+    for (let isGrowing = true; isGrowing; ) {
+      isGrowing = false;
+      for (const [name, { guard, calls }] of returned) {
+        if (members.has(name) || (!guard && !calls.some(isFactoryCall))) continue;
+        members.add(name);
+        isGrowing = true;
+      }
+    }
     const factories = new Map<string, GuardFactoryFact>();
-    const factoryOf = (name: string, scope: string | null, via: string | null) => {
+    for (const name of members) {
       const found = functions.get(name);
-      if (!found) return;
+      const made = returned.get(name);
+      if (!found || !made) continue;
       factories.set(name, {
         name,
         span: spanOf(source, found.name),
         extent: extentOf(source, found.statement),
-        scope,
+        scope: made.guard ? scopeOf(made.guard) : null,
         doc: docOf(source, found.statement),
-        via,
+        direct: !!made.guard,
+        via: made.calls.filter(isFactoryCall),
       });
-    };
-    for (const [name, { body }] of functions) {
-      const guard = guardClassIn(body, guardNames);
-      if (guard) factoryOf(name, scopeOf(guard), null);
-    }
-    for (let isGrowing = true; isGrowing; ) {
-      isGrowing = false;
-      for (const [name, { body }] of functions) {
-        const called = factories.has(name) ? null : callsIn(body, new Set(factories.keys()));
-        if (!called) continue;
-        factoryOf(name, factories.get(called)?.scope ?? null, called);
-        isGrowing = true;
-      }
     }
     return factories;
   };
 
-  const guardsOf = (source: TS.SourceFile, imports: ImportFact[]) => {
+  const guardsOf = (source: TS.SourceFile, imports: ImportFact[], madeInPlace: TS.CallExpression[]) => {
     const guardNames = new Set([
       "Guard",
       ...imports.filter(({ imported }) => imported === "Guard").map(({ name }) => name),
     ]);
     const imported = new Set(imports.map(({ name }) => name));
-    const factories = guardFactoriesOf(source, guardNames);
+    const isImported = (callee: string) => imported.has(callee.split(".")[0] ?? callee);
+    const factories = guardFactoriesOf(source, guardNames, isImported);
     const guards: GuardFact[] = [];
     const calls: GuardCallFact[] = [];
+    const makeOf = (made: MemberFact & { doc: string | null }, value: TS.Expression) => {
+      if (ts.isClassExpression(value) && implementsGuard(value, guardNames)) {
+        guards.push({ ...made, scope: scopeOf(value), factory: null });
+        return;
+      }
+      const callee = ts.isCallExpression(value) ? pathOf(unwrap(value.expression)) : null;
+      const factory = callee && factories.get(callee);
+      if (factory) guards.push({ ...made, scope: factory.scope, factory: factory.name });
+      else if (callee && isImported(callee)) calls.push({ ...made, callee, kind: "call", scope: null });
+    };
     for (const statement of source.statements) {
-      if (ts.isClassDeclaration(statement) && statement.name && implementsGuard(statement, guardNames))
-        guards.push({
+      if (ts.isClassDeclaration(statement) && statement.name) {
+        const declared = {
           name: statement.name.text,
           span: spanOf(source, statement.name),
           extent: extentOf(source, statement),
           scope: scopeOf(statement),
           doc: docOf(source, statement),
-          factory: null,
-        });
+        };
+        const base = statement.heritageClauses?.find(({ token }) => token === ts.SyntaxKind.ExtendsKeyword)?.types[0];
+        const callee = base && pathOf(base.expression);
+        if (implementsGuard(statement, guardNames)) guards.push({ ...declared, factory: null });
+        else if (callee) calls.push({ ...declared, callee, kind: "extends" });
+      }
       if (!ts.isVariableStatement(statement)) continue;
       for (const declaration of statement.declarationList.declarations) {
         const initializer = declaration.initializer && unwrap(declaration.initializer);
         if (!initializer || !ts.isIdentifier(declaration.name)) continue;
-        const made = {
-          name: declaration.name.text,
-          span: spanOf(source, declaration.name),
-          extent: extentOf(source, statement),
-          doc: docOf(source, statement),
-        };
-        if (ts.isClassExpression(initializer) && implementsGuard(initializer, guardNames))
-          guards.push({ ...made, scope: scopeOf(initializer), factory: null });
-        if (!ts.isCallExpression(initializer) || !ts.isIdentifier(initializer.expression)) continue;
-        const callee = initializer.expression.text;
-        const factory = factories.get(callee);
-        if (factory) guards.push({ ...made, scope: factory.scope, factory: callee });
-        else if (imported.has(callee)) calls.push({ ...made, callee });
+        const holder = declaration.name.text;
+        makeOf(
+          {
+            name: holder,
+            span: spanOf(source, declaration.name),
+            extent: extentOf(source, statement),
+            doc: docOf(source, statement),
+          },
+          initializer,
+        );
+        if (!ts.isObjectLiteralExpression(initializer)) continue;
+        for (const property of initializer.properties) {
+          const key = ts.isPropertyAssignment(property) ? ast.nodeName(property.name) : null;
+          if (key && ts.isPropertyAssignment(property))
+            makeOf(
+              {
+                name: `${holder}.${key}`,
+                span: spanOf(source, property.name),
+                extent: extentOf(source, property),
+                doc: docOf(source, property),
+              },
+              unwrap(property.initializer),
+            );
+        }
       }
     }
+    for (const call of madeInPlace)
+      makeOf(
+        { name: callTextOf(source, call), span: spanOf(source, call), extent: extentOf(source, call), doc: null },
+        call,
+      );
     return { guards, guardFactories: [...factories.values()], guardCalls: calls };
   };
 
@@ -642,11 +733,14 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
 
   const read = (source: TS.SourceFile, owner: string | null): FileFacts => {
     const imports = importsIn(source);
+    const madeInPlace: TS.CallExpression[] = [];
     const facts: FileFacts = {
       fileName: source.fileName,
       owner,
       imports,
-      ...guardsOf(source, imports),
+      guards: [],
+      guardFactories: [],
+      guardCalls: [],
       constants: [],
       enums: [],
       filters: [],
@@ -681,8 +775,8 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         facts.slices.push({
           ...name,
           model: moduleRefOf(call.arguments[0], "srv"),
-          guards: guardsIn(call.arguments.find(ts.isObjectLiteralExpression)),
-          keys: sliceKeysOf(source, builder),
+          guards: guardsIn(source, call.arguments.find(ts.isObjectLiteralExpression), madeInPlace),
+          keys: sliceKeysOf(source, builder, madeInPlace),
         });
       else if (callee === "internal")
         facts.internals.push({
@@ -703,7 +797,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
         facts.endpoints.push({
           ...name,
           model: moduleRefOf(call.arguments[0], "srv"),
-          keys: endpointKeysOf(source, builder),
+          keys: endpointKeysOf(source, builder, madeInPlace),
         });
       else if (callee === "store")
         facts.stores.push({
@@ -713,7 +807,7 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
           actions: methodsOf(source, statement),
         });
     }
-    return facts;
+    return { ...facts, ...guardsOf(source, imports, madeInPlace) };
   };
 
   return { read, spanOf, extentOf, docOf, importsIn, moduleRefOf, chainOf, unwrap };
