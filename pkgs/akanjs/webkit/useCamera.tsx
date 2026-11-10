@@ -1,16 +1,7 @@
 "use client";
 import { Binary } from "akanjs/base";
-import { Translator } from "akanjs/client";
-import {
-  AkanNativeError,
-  dialog,
-  fileBlob,
-  isNativeApp,
-  loadCamera,
-  opener,
-  type Photo,
-  releaseFile,
-} from "akanjs/client/native";
+import { isNativeApp, Translator } from "akanjs/client";
+import type { Photo } from "akanjs/client/native";
 import { parseAkanI18nEnv } from "akanjs/common";
 import { useEffect, useState } from "react";
 
@@ -28,8 +19,14 @@ export interface CameraPromptLabels {
 const promptLabel = (key: string, override?: string) =>
   override ?? Translator.translateByLocale(Translator.getActiveLocale() ?? parseAkanI18nEnv().defaultLocale, key);
 
+//? Each loaded on first use: a static import puts @akanjs/native/core on every web page that renders this hook.
+const loadCamera = () => import("akanjs/client/native/camera");
+const loadCore = () => import("@akanjs/native/core");
+const openSettings = async () => await (await import("akanjs/client/native/opener")).opener.openSettings();
+
 //* The runtime serves a photo from memory until it is released, so it is read once and let go.
 const toDataUrl = async (photo: Photo) => {
+  const { fileBlob, releaseFile } = await loadCore();
   try {
     const bytes = new Uint8Array(await (await fileBlob(photo)).arrayBuffer());
     return { dataUrl: `data:${photo.mime};base64,${Binary.toBase64(bytes)}` };
@@ -43,11 +40,11 @@ export const useCamera = ({ promptLabels = {} }: { promptLabels?: CameraPromptLa
   const [permissions, setPermissions] = useState<{ camera: PermissionState }>({ camera: "prompt" });
 
   const openSettingsWhenDenied = async (error: unknown) => {
-    const code = AkanNativeError.from(error).code;
+    const code = (await loadCore()).AkanNativeError.from(error).code;
     if (code === "CANCELLED") return;
     if (code !== "PERMISSION_DENIED") throw error;
     setPermissions({ camera: "denied" });
-    await opener.openSettings();
+    await openSettings();
   };
 
   const checkPermission = async () => {
@@ -55,11 +52,12 @@ export const useCamera = ({ promptLabels = {} }: { promptLabels?: CameraPromptLa
     const { camera } = await loadCamera();
     const { camera: state } = await camera.requestPermission();
     setPermissions({ camera: state });
-    if (state === "denied") await opener.openSettings();
+    if (state === "denied") await openSettings();
     return state;
   };
 
   const chooseSource = async (): Promise<"camera" | "library" | null> => {
+    const { dialog } = await import("akanjs/client/native/dialog");
     const { index } = await dialog.actionSheet({
       title: promptLabel("base.cameraPromptHeader", promptLabels.header),
       options: [

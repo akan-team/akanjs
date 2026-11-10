@@ -1,8 +1,9 @@
 "use client";
-import { AkanNativeError, type IapProduct, type IapTransaction, loadIap, nativePlatform } from "akanjs/client/native";
+import { nativePlatform } from "akanjs/client";
+import type { IapProduct, IapTransaction } from "akanjs/client/native";
 import { useEffect, useRef, useState } from "react";
 
-import { NativePurchase, type NativePurchaseOptions } from "./nativePurchase";
+import { loadIap, NativePurchase, type NativePurchaseOptions } from "./nativePurchase";
 
 export type {
   BillingVerification,
@@ -72,6 +73,7 @@ export const usePurchase = ({ platform, ...options }: UsePurchaseOptions) => {
       const settled = await flow().settle(transaction);
       return settled === "finished" ? "purchased" : settled === "unverified" ? "unverified" : "pending";
     } catch (error) {
+      const { AkanNativeError } = await import("@akanjs/native/core");
       if (AkanNativeError.from(error).code === "CANCELLED") return "cancelled";
       throw error;
     }
