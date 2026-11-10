@@ -150,17 +150,29 @@ interface ChunkNavigation {
   replace: () => boolean;
 }
 
-//? RSDW asks the global loader for a chunk without naming the response that wants it, so a navigation's rows record
-//? the chunks they name; a chunk no navigation named is the document's own.
+//? RSDW asks the global loader for a chunk without naming the response that wants it, so a navigation's `I` rows
+//? record the chunks they name; a chunk no navigation named is the document's own.
 const chunkNavigations = new Map<string, ChunkNavigation>();
-const quotedScript = /"([^"\\]+\.js)"/g;
+const quotedString = /"([^"\\]*)"/g;
+const maxScriptRowBytes = 1024;
 const rowDecoder = new TextDecoder();
 
 function recordChunksOf(stream: ReadableStream<Uint8Array>, navigation: ChunkNavigation): ReadableStream<Uint8Array> {
+  //? The server writes each chunk path once as a string row, and an `I` row names it as `$<that row's id>`.
+  const scriptRows = new Map<string, string>();
   return mapFlightLineRows(stream, (row, tag) => {
-    if (tag === "I" || tag === "")
-      for (const [, chunkId] of rowDecoder.decode(row).matchAll(quotedScript))
-        chunkNavigations.set(chunkId, navigation);
+    if (tag !== "I" && (tag !== "" || row.byteLength > maxScriptRowBytes)) return row;
+    const text = rowDecoder.decode(row);
+    const colon = text.indexOf(":");
+    const value = text.slice(colon + 1 + tag.length).trimEnd();
+    if (tag === "") {
+      if (value.startsWith('"') && value.endsWith('.js"')) scriptRows.set(text.slice(0, colon), value.slice(1, -1));
+      return row;
+    }
+    for (const [, named] of value.matchAll(quotedString)) {
+      const chunkId = (named.startsWith("$") ? scriptRows.get(named.slice(1)) : undefined) ?? named;
+      if (chunkId.endsWith(".js")) chunkNavigations.set(chunkId, navigation);
+    }
     return row;
   });
 }
@@ -184,15 +196,23 @@ function claimChunkReload(chunkId: string): boolean {
   }
 }
 
-//? A `beforeunload` handler can keep the page; once it is still here after this, a later failure may navigate again.
-const DOCUMENT_FALLBACK_SETTLE_MS = 10_000;
+//? Not `typeof process`: the define replaces only this member read, and a browser has no `process` to test.
+const isBuildBundle = () => {
+  try {
+    return process.env.AKAN_BUNDLE_COMMAND === "build";
+  } catch {
+    return false;
+  }
+};
+
+//? A page restored from the back-forward cache outlived the document load its fallback started.
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) documentNavigationFallbackInFlight = false;
+});
 
 function hardNavigateAfterRscFailure(target: string, replace = false, error?: unknown): void {
   if (documentNavigationFallbackInFlight) return;
   documentNavigationFallbackInFlight = true;
-  window.setTimeout(() => {
-    documentNavigationFallbackInFlight = false;
-  }, DOCUMENT_FALLBACK_SETTLE_MS);
   console.warn(`[rscClient] RSC navigation failed, falling back to document navigation: ${String(error)}`);
   if (replace) window.location.replace(target);
   else window.location.assign(target);
@@ -427,12 +447,14 @@ if (loadChunk)
   };
 
 function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigation, error: unknown): void {
-  if (process.env.AKAN_BUNDLE_COMMAND !== "build") return;
-  const pending = pendingRequest?.navId === navigation.navId;
-  const onScreen = navigation.navId === latestPageNavId && pageKeyOf(renderedHref) === pageKeyOf(navigation.href);
+  if (documentNavigationFallbackInFlight || !isBuildBundle()) return;
+  const showsItsPage = pageKeyOf(renderedHref) === pageKeyOf(navigation.href);
+  const pending = pendingRequest?.navId === navigation.navId && !showsItsPage;
+  const onScreen = navigation.navId === latestPageNavId && showsItsPage;
   if (!pending && !(onScreen && navigator.onLine && isLinkFailure(error))) return;
   if (!claimChunkReload(chunkId)) return;
-  hardNavigateAfterRscFailure(navigation.href, navigation.replace(), error);
+  if (pending) hardNavigateAfterRscFailure(navigation.href, navigation.replace(), error);
+  else hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
 }
 
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
@@ -588,6 +610,9 @@ function Root(): ReactNode {
     }
     forgetPagesOfAnotherAccount();
     rscPrefetchCache.prune();
+    //? A page navigation started after a fallback supersedes its document load, or follows a `beforeunload` that kept
+    //? the page; a refresh does not, since a timer can start one while that document is still loading.
+    documentNavigationFallbackInFlight = false;
     const navId = supersedeNavigation();
     const target = normalizeHref(href);
     const signal = requestSignalOf(navId, target);

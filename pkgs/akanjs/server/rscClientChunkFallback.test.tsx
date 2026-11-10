@@ -9,10 +9,13 @@ const documentOf = (text: string) =>
   `0:["$","html",null,{"children":[["$","head","h",{}],["$","body","b",{"children":["$","main",null,{"children":${JSON.stringify(text)}}]}]]}]\n`;
 //? RSDW loads the chunk an `I` row names as the row arrives, so a page needs no element of it to fail.
 const chunkRowOf = (row: number, chunk: string) => `${row}:I${JSON.stringify([chunk, [chunk, chunk], "Chat"])}\n`;
+const outlinedChunkRowsOf = (pathRow: string, importRow: string, chunk: string) => {
+  const reference = `$${pathRow}`;
+  return `${pathRow}:${JSON.stringify(chunk)}\n${importRow}:I${JSON.stringify([reference, [reference, reference], "Chat"])}\n`;
+};
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const linkError = () =>
   new SyntaxError("The requested module 'akanjs/store' does not provide an export named 'AgentContext'");
-const settleMs = 10_000;
 
 type Step = string | Promise<unknown>;
 const served = new Map<string, () => Step[]>();
@@ -56,27 +59,21 @@ beforeAll(async () => {
 
 let assign: Mock<(href: string | URL) => void>;
 let replace: Mock<(href: string | URL) => void>;
-const settleTimers: (() => void)[] = [];
 const restorers: (() => void)[] = [];
+const restoreFromBackForwardCache = () =>
+  window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
 
 beforeEach(() => {
+  restoreFromBackForwardCache();
   sessionStorage.clear();
   process.env.AKAN_BUNDLE_COMMAND = "build";
   assign = spyOn(window.location, "assign").mockImplementation(() => undefined);
   replace = spyOn(window.location, "replace").mockImplementation(() => undefined);
-  const setTimeoutOf = window.setTimeout.bind(window);
-  //? Held, the settle timer stands in for a page a `beforeunload` handler kept.
-  const timers = spyOn(window, "setTimeout").mockImplementation(((handler: () => void, ms?: number) => {
-    if (ms !== settleMs) return setTimeoutOf(handler, ms);
-    settleTimers.push(handler);
-    return 0;
-  }) as typeof window.setTimeout);
   const quiet = [spyOn(console, "warn"), spyOn(console, "error")].map((spy) => spy.mockImplementation(() => undefined));
-  restorers.push(...[assign, replace, timers, ...quiet].map((spy) => () => spy.mockRestore()));
+  restorers.push(...[assign, replace, ...quiet].map((spy) => () => spy.mockRestore()));
 });
 
 afterEach(() => {
-  for (const settle of settleTimers.splice(0)) settle();
   for (const restore of restorers.splice(0)) restore();
   Reflect.deleteProperty(process.env, "AKAN_BUNDLE_COMMAND");
   served.clear();
@@ -106,6 +103,19 @@ const navigate = async (href: string, options?: { shallow?: boolean; replace?: b
   await act(async () => {
     await globalThis.__AKAN_RSC_NAVIGATE__?.(href, options);
   });
+};
+const refresh = async () => {
+  await act(async () => {
+    await globalThis.__AKAN_RSC_REFRESH__?.();
+  });
+};
+const reloadedChunks = () => JSON.parse(sessionStorage.getItem("akan.rsc.chunkReloads") ?? "[]") as string[];
+const heldStep = () => {
+  const held = { release: () => {}, step: Promise.resolve() };
+  held.step = new Promise<void>((resolve) => {
+    held.release = resolve;
+  });
+  return held;
 };
 const serveCommittedPage = (pathname: string, chunks: string[]) =>
   served.set(pathname, () => [
@@ -148,7 +158,6 @@ describe("rscClient chunk that fails to load", () => {
     await push.started;
     await fail(pushChunk, linkError());
     await push.settled(pushHeld);
-    for (const settle of settleTimers.splice(0)) settle();
 
     const replaceChunk = "/_akan/client/pending-replace-a1.js";
     const replaceHeld = servePendingPage("/pending-replace", replaceChunk);
@@ -163,14 +172,56 @@ describe("rscClient chunk that fails to load", () => {
     });
   });
 
-  test("a committed page whose chunk fails to link loads again as a document, once per chunk in a tab", async () => {
+  test("a committed page whose chunk fails to link reloads its entry as it stands, once per chunk in a tab", async () => {
     const chunk = "/_akan/client/agent-a1.js";
-    serveCommittedPage("/agent", [chunk]);
+    served.set("/agent", () => [documentOf("/agent"), sleep(20), outlinedChunkRowsOf("1a", "1b", chunk)]);
     await navigate("/agent#chat");
+    await navigate("/agent?tab=2#chat", { shallow: true, replace: true });
     await fail(chunk, linkError());
 
-    expect(documentLoads()).toEqual({ assigned: [], replaced: [`${origin}/agent#chat`] });
-    expect(JSON.parse(sessionStorage.getItem("akan.rsc.chunkReloads") ?? "[]")).toEqual([chunk]);
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [`${origin}/agent?tab=2#chat`] });
+    expect(reloadedChunks()).toEqual([chunk]);
+  });
+
+  test("a refresh of the page on screen reloads it for a link error only, as its committed page would", async () => {
+    const [fetchChunk, linkChunk] = ["refresh-fetch", "refresh-link"].map((name) => `/_akan/client/${name}-a1.js`);
+    const held = heldStep();
+    const responses: Step[][] = [
+      [documentOf("/refreshing")],
+      [chunkRowOf(1, fetchChunk), chunkRowOf(2, linkChunk), held.step, documentOf("/refreshing")],
+    ];
+    served.set("/refreshing", () => responses.shift() ?? [documentOf("/refreshing")]);
+    await navigate("/refreshing");
+    let refreshed: Promise<void> | undefined;
+    await act(async () => {
+      refreshed = globalThis.__AKAN_RSC_REFRESH__?.();
+      await sleep(5);
+    });
+    await fail(
+      fetchChunk,
+      new TypeError("Failed to fetch dynamically imported module: /_akan/client/refresh-fetch-a1.js"),
+    );
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
+    await fail(linkChunk, linkError());
+    await act(async () => {
+      held.release();
+      await refreshed;
+    });
+
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [`${origin}/refreshing`] });
+  });
+
+  test("a chunk a page's text only mentions stays the document's own", async () => {
+    const chunk = "/_akan/client/mentioned-a1.js";
+    served.set("/mentions", () => [documentOf(chunk), `2a:${JSON.stringify(chunk)}\n`]);
+    await navigate("/mentions");
+    await act(async () => {
+      globalThis.__RSC_PUSH__?.(1, chunkRowOf(7, chunk));
+      await sleep(5);
+    });
+    await fail(chunk, linkError());
+
+    expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
   });
 
   test("a chunk that already reloaded this tab shows its error instead of reloading again", async () => {
@@ -218,21 +269,11 @@ describe("rscClient chunk that fails to load", () => {
 
   test("a replaced response's late chunk leaves the refresh that replaced it in place", async () => {
     const chunk = "/_akan/client/replaced-a1.js";
-    const held = { release: () => {} };
-    const responses: Step[][] = [
-      [
-        documentOf("/replaced"),
-        new Promise<void>((resolve) => {
-          held.release = resolve;
-        }),
-        chunkRowOf(1, chunk),
-      ],
-    ];
+    const held = heldStep();
+    const responses: Step[][] = [[documentOf("/replaced"), held.step, chunkRowOf(1, chunk)]];
     served.set("/replaced", () => responses.shift() ?? [documentOf("/replaced")]);
     await navigate("/replaced");
-    await act(async () => {
-      await globalThis.__AKAN_RSC_REFRESH__?.();
-    });
+    await refresh();
     held.release();
     await fail(chunk, linkError());
 
@@ -268,21 +309,41 @@ describe("rscClient chunk that fails to load", () => {
     expect(documentLoads()).toEqual({ assigned: [], replaced: [] });
   });
 
-  test("a page a `beforeunload` kept navigates on a later failure once the first has settled", async () => {
-    const [first, held, later] = ["first", "held", "later"].map((name) => `/_akan/client/${name}-a1.js`);
-    serveCommittedPage("/first", [first]);
+  test("a refresh during a fallback's document load leaves it alone, and the page's next navigation may fall back", async () => {
+    const [first, during, later] = ["first", "during", "later"].map((name) => `/_akan/client/${name}-a1.js`);
+    const responses: Step[][] = [
+      [documentOf("/first"), sleep(20), chunkRowOf(1, first)],
+      [documentOf("/first"), sleep(20), chunkRowOf(1, during)],
+    ];
+    served.set("/first", () => responses.shift() ?? [documentOf("/first")]);
     await navigate("/first");
     await fail(first, linkError());
-    serveCommittedPage("/held", [held]);
-    await navigate("/held");
-    await fail(held, linkError());
+    await refresh();
+    await fail(during, linkError());
     expect(documentLoads().replaced).toEqual([`${origin}/first`]);
+    expect(reloadedChunks()).toEqual([first]);
 
-    for (const settle of settleTimers.splice(0)) settle();
     serveCommittedPage("/later", [later]);
     await navigate("/later");
     await fail(later, linkError());
 
     expect(documentLoads().replaced).toEqual([`${origin}/first`, `${origin}/later`]);
+    expect(reloadedChunks()).toEqual([first, later]);
+  });
+
+  test("a page restored from the back-forward cache may fall back again", async () => {
+    const [left, restored] = ["left", "restored"].map((name) => `/_akan/client/${name}-a1.js`);
+    const responses: Step[][] = [
+      [documentOf("/left"), sleep(20), chunkRowOf(1, left)],
+      [documentOf("/left"), sleep(20), chunkRowOf(1, restored)],
+    ];
+    served.set("/left", () => responses.shift() ?? [documentOf("/left")]);
+    await navigate("/left");
+    await fail(left, linkError());
+    restoreFromBackForwardCache();
+    await refresh();
+    await fail(restored, linkError());
+
+    expect(documentLoads().replaced).toEqual([`${origin}/left`, `${origin}/left`]);
   });
 });
