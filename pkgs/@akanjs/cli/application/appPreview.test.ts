@@ -188,6 +188,6 @@ describe("AppPreview.run", () => {
         await rm(root, { recursive: true, force: true });
       }
     },
-    60_000,
+    PreviewView.startTimeoutMs + 60_000,
   );
 });

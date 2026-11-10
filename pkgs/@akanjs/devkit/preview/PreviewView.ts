@@ -5,6 +5,7 @@ export interface PreviewProbeOptions {
   width?: number;
   height?: number;
   engine?: PreviewEngine;
+  startTimeoutMs?: number;
   /** Bounds the probe once the browser is up: a dev server that is recovering takes the connection and never answers. */
   timeoutMs?: number;
   /** Waited after the load, so the errors effects throw land before the page is read. */
@@ -45,8 +46,9 @@ interface PageRead {
 // Bun.WebView rather than a downloaded browser: on macOS its webkit backend needs no Chromium at all.
 // It is experimental, so its whole surface stays behind this adapter; a Bun minor that changes it breaks one file.
 export class PreviewView {
-  /** A process's first view spawns Chrome, which took a cold CI runner over 30 s; no page's bound should absorb that. */
+  /** A view's first navigation includes the browser's start, which took ~35 s on a cold CI runner. */
   static readonly startTimeoutMs = 120_000;
+  static readonly #unstarted = new Map<PreviewEngine, Error>();
 
   static get available() {
     return PreviewView.isAvailable();
@@ -69,21 +71,31 @@ export class PreviewView {
       width = 1280,
       height = 800,
       engine = PreviewChrome.backend,
+      startTimeoutMs = PreviewView.startTimeoutMs,
       timeoutMs = 30_000,
       settleMs = 0,
     }: PreviewProbeOptions = {},
   ): Promise<PreviewProbeResult> {
+    //? Bun spawns the browser once per process, so one that did not start will not start for a later page either.
+    const unstarted = PreviewView.#unstarted.get(engine);
+    if (unstarted) throw unstarted;
     const logs: string[] = [];
     const view = PreviewView.#open({ width, height, engine, onConsole: (line) => logs.push(line) });
     try {
-      await PreviewView.#within(
-        view.navigate("about:blank"),
-        Date.now() + PreviewView.startTimeoutMs,
-        `Timed out starting the ${engine} browser.`,
+      const stalled = new Error(`Timed out starting the ${engine} browser after ${startTimeoutMs / 1_000} s.`);
+      await PreviewView.#within(view.navigate("about:blank"), Date.now() + startTimeoutMs, stalled).catch(
+        (error: unknown) => {
+          if (error === stalled) PreviewView.#unstarted.set(engine, stalled);
+          throw error;
+        },
       );
       const deadline = Date.now() + timeoutMs;
       const within = <T>(work: Promise<T>, what: string) =>
-        PreviewView.#within(work, deadline, `Timed out ${what} ${url}; the dev server may be rebuilding or stuck.`);
+        PreviewView.#within(
+          work,
+          deadline,
+          new Error(`Timed out ${what} ${url}; the dev server may be rebuilding or stuck.`),
+        );
       let page = await PreviewView.#load(view, url, settleMs, within);
       //? Right after a save the first load can render nothing (`[rscClient] module not loaded`); the next one has it.
       if (page.empty) {
@@ -135,10 +147,10 @@ export class PreviewView {
     return response?.status ?? null;
   }
 
-  static async #within<T>(work: Promise<T>, deadline: number, message: string): Promise<T> {
+  static async #within<T>(work: Promise<T>, deadline: number, expiry: Error): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const expired = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(message)), Math.max(0, deadline - Date.now()));
+      timer = setTimeout(() => reject(expiry), Math.max(0, deadline - Date.now()));
     });
     try {
       return await Promise.race([work, expired]);

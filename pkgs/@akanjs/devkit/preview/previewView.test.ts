@@ -8,6 +8,35 @@ import { PreviewView } from "./PreviewView";
 const serve = (html: string, status = 200) =>
   Bun.serve({ port: 0, fetch: () => new Response(html, { status, headers: { "content-type": "text/html" } }) });
 
+const browserTestMs = PreviewView.startTimeoutMs + 30_000;
+const slowChromeRuns = PreviewView.isAvailable("chrome") && process.platform !== "win32";
+
+const withSlowChrome = async (body: string) => {
+  const dir = await mkdtemp(path.join(tmpdir(), "akan-slow-chrome-"));
+  const chrome = path.join(dir, "chrome");
+  await writeFile(chrome, `#!/bin/sh\nsleep 3\nexec "${PreviewChrome.executable()}" "$@"\n`);
+  await chmod(chrome, 0o755);
+  const script = `const { PreviewView } = await import(${JSON.stringify(path.join(import.meta.dir, "PreviewView.ts"))});\n${body}`;
+  //? Chrome is spawned once per process, so only a fresh process takes the slow executable.
+  const child = Bun.spawn([process.execPath, "-e", script], {
+    env: { ...process.env, [PreviewChrome.pathEnvKey]: chrome },
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: PreviewView.startTimeoutMs + 15_000,
+  });
+  try {
+    const [out, err, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    return { code, out: out.trim(), err };
+  } finally {
+    child.kill();
+    await rm(dir, { recursive: true, force: true });
+  }
+};
+
 describe("PreviewView", () => {
   test("reports whether this Bun build can drive a headless page at all", () => {
     expect(typeof PreviewView.available).toBe("boolean");
@@ -33,7 +62,7 @@ describe("PreviewView", () => {
         server.stop(true);
       }
     },
-    30_000,
+    browserTestMs,
   );
 
   test.skipIf(!PreviewView.available)(
@@ -60,7 +89,7 @@ describe("PreviewView", () => {
         server.stop(true);
       }
     },
-    30_000,
+    browserTestMs,
   );
 
   test.skipIf(!PreviewView.available)(
@@ -75,41 +104,47 @@ describe("PreviewView", () => {
         server.stop(true);
       }
     },
-    30_000,
+    browserTestMs,
   );
 
-  test.skipIf(!PreviewView.isAvailable("chrome") || process.platform === "win32")(
+  test.skipIf(!slowChromeRuns)(
     "starts the page's bound once the browser is up, however long Chrome takes to spawn",
     async () => {
       const server = serve("<!doctype html><title>Up</title><body>up</body>");
-      const dir = await mkdtemp(path.join(tmpdir(), "akan-slow-chrome-"));
-      const chrome = path.join(dir, "chrome");
-      await writeFile(chrome, `#!/bin/sh\nsleep 3\nexec "${PreviewChrome.executable()}" "$@"\n`);
-      await chmod(chrome, 0o755);
-      const script = [
-        `const { PreviewView } = await import(${JSON.stringify(path.join(import.meta.dir, "PreviewView.ts"))});`,
-        `const probe = await PreviewView.probe("http://localhost:${server.port}/", { engine: "chrome", timeoutMs: 1_500 });`,
-        "console.log(probe.text);",
-      ].join("\n");
       try {
-        //? Chrome is spawned once per process, so only a fresh process takes the slow executable.
-        const child = Bun.spawn([process.execPath, "-e", script], {
-          env: { ...process.env, [PreviewChrome.pathEnvKey]: chrome },
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        const [out, err, code] = await Promise.all([
-          new Response(child.stdout).text(),
-          new Response(child.stderr).text(),
-          child.exited,
-        ]);
-        expect(out.trim() || err).toBe("up");
+        const { code, out, err } = await withSlowChrome(
+          `const probe = await PreviewView.probe("http://localhost:${server.port}/", { engine: "chrome", timeoutMs: 1_500 });
+console.log(probe.text);`,
+        );
+        expect(out || err).toBe("up");
         expect(code).toBe(0);
       } finally {
         server.stop(true);
-        await rm(dir, { recursive: true, force: true });
       }
     },
-    120_000,
+    browserTestMs,
+  );
+
+  test.skipIf(!slowChromeRuns)(
+    "fails every later page at once when the browser did not start in time",
+    async () => {
+      const { code, out, err } = await withSlowChrome(
+        `const open = async () => {
+  const at = Date.now();
+  const failure = await PreviewView.probe("about:blank", { engine: "chrome", startTimeoutMs: 500 }).then(() => "opened", (error) => error.message);
+  return failure + " " + (Date.now() - at < 300 ? "at once" : "after waiting");
+};
+console.log(await open());
+console.log(await open());`,
+      );
+      expect(out || err).toBe(
+        [
+          "Timed out starting the chrome browser after 0.5 s. after waiting",
+          "Timed out starting the chrome browser after 0.5 s. at once",
+        ].join("\n"),
+      );
+      expect(code).toBe(0);
+    },
+    browserTestMs,
   );
 });
