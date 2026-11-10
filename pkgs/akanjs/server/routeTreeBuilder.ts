@@ -188,6 +188,7 @@ export class RouteTreeBuilder {
               renderRootLayouts: layer.pageRenderRootLayouts,
               renderLayouts: layer.pageRenderLayouts,
               resolveHead: RouteTreeBuilder.#composePageHead(route.renderPage.resolveHead, pageHead),
+              resolveLayoutsHead: pageHead,
               pageState: route.pageState ?? defaultPageState,
             },
           ]

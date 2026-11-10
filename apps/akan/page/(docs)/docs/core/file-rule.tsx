@@ -133,7 +133,7 @@ const moduleMatrix = [
 ];
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title = lang === "ko" ? "핵심 개념: 파일 규칙 | Akan.js" : "Core Concepts: File Rule | Akan.js";
     const description =

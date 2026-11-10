@@ -38,7 +38,11 @@ export interface PageConfig {
   cache?: boolean;
   /** Initial full-document SSR strategy. Defaults to `"stream"`. */
   ssr?: SsrRenderMode;
-  /** Opt-in suffix-only RSC commits, for a page needing no head update under a layout head its siblings share. */
+  /**
+   * Opt-in suffix-only RSC commits under `AKAN_PUBLIC_RSC_PARTIAL_COMMIT=1`: the page's `.head()` is plain `title`,
+   * `meta` and `link` tags, and the layouts above it render the same for each sibling page, apart from what they
+   * read through `usePathCtx()`.
+   */
   rscPatchHeadSafe?: boolean;
   topSafeAreaColor?: string;
   bottomSafeAreaColor?: string;
@@ -400,6 +404,11 @@ export interface PathRoute {
   renderRootLayouts: RouteRender[];
   renderLayouts: RouteRender[];
   resolveHead?: ResolveHead;
+  /**
+   * The layouts' part of `resolveHead`, which a partial commit keeps on screen while it swaps the page's part;
+   * `resolveHead` must equal this merged with the page's own head by `RouteHead.mergePage`.
+   */
+  resolveLayoutsHead?: ResolveHead;
 }
 
 export type FrameSlotScope = "page" | "layout";

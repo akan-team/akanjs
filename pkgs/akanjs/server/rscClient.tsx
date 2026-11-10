@@ -175,7 +175,7 @@ function commitRscPatchNavigation({
 }): boolean {
   const patchThenable = patch.patchedNode.thenable;
   if (!patchThenable) throw new Error("[rscClient] validated RSC patch is missing a thenable");
-  const preparedHeadPatch = prepareAkanHeadSnapshotPatch(patch.headSnapshot);
+  const preparedHeadPatch = prepareAkanHeadSnapshotPatch(patch.headSnapshot, target);
   if (!preparedHeadPatch) return false;
 
   let outletCommitted = false;
