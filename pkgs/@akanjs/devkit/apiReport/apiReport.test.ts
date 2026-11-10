@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { tempDirs, writeText } from "../testHelpers";
@@ -97,6 +97,9 @@ const writeFixture = async (overrides: Record<string, string> = {}) => {
     await writeText(path.join(root, file), content);
   return root;
 };
+
+//? Each generate runs the TypeScript declaration emit, which took up to 5.5 s on a CI runner under coverage.
+setDefaultTimeout(30_000);
 
 const generate = async (overrides: Record<string, string> = {}) =>
   await ApiReport.generate(await writeFixture(overrides));
