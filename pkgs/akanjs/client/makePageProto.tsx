@@ -1,5 +1,12 @@
 import { getEnv } from "akanjs/base";
-import { hasErrKey, parseAkanI18nEnv, RequestLocale } from "akanjs/common";
+import {
+  Err,
+  type ErrConstructor,
+  type ErrPayload,
+  type ErrRestoreOption,
+  parseAkanI18nEnv,
+  RequestLocale,
+} from "akanjs/common";
 import { untrackedHeaders, untrackedRequest } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { csrLocation } from "./csrLocation";
@@ -9,19 +16,9 @@ type TransMessage<Locale extends Record<string, unknown>> = {
   [K in keyof Locale]-?: `${K & string}${Locale[K] extends Record<string, unknown> ? `.${keyof Locale[K] extends string ? keyof Locale[K] : never}` : ""}`;
 }[keyof Locale];
 
-interface ErrRestoreOption {
-  statusCode?: number;
-  code?: string;
-  details?: unknown;
-  path?: string;
-  timestamp?: string;
-}
+export type { ErrPayload } from "akanjs/common";
 
-export interface ErrPayload extends ErrRestoreOption {
-  error: string;
-  data?: Record<string, unknown>;
-}
-
+/** @deprecated `Err` from `akanjs/common`, the class `makePageProto`'s `Err` is. */
 export interface PageErrInstance extends Error {
   readonly error: string;
   readonly statusCode: number;
@@ -33,6 +30,7 @@ export interface PageErrInstance extends Error {
   toJSON(): ErrPayload & { statusCode: number };
 }
 
+/** @deprecated `ErrConstructor` from `akanjs/common`, the type `makePageProto` returns its `Err` as. */
 export interface PageErrConstructor<ErrorKey extends string> {
   new (key: ErrorKey, data?: Record<string, unknown>, option?: ErrRestoreOption): PageErrInstance;
   prototype: PageErrInstance;
@@ -108,78 +106,7 @@ export const makePageProto = <
   [key: string]: { [key: string]: Record<string, unknown> };
 }) => {
   const translator = new Translator(dictionary);
-  class Err extends Error {
-    readonly error: string;
-    readonly statusCode: number;
-    readonly code?: string;
-    readonly details?: unknown;
-    readonly data?: Record<string, unknown>;
-    readonly path?: string;
-    readonly timestamp?: string;
-
-    constructor(key: ErrorKey, data?: Record<string, unknown>, option: ErrRestoreOption = {}) {
-      super(key);
-      this.name = this.constructor.name;
-      this.error = key;
-      this.statusCode = option.statusCode ?? 400;
-      this.code = option.code;
-      this.details = option.details;
-      this.data = data;
-      this.path = option.path;
-      this.timestamp = option.timestamp;
-    }
-
-    toJSON() {
-      return {
-        error: this.message,
-        statusCode: this.statusCode,
-        ...(this.code !== undefined ? { code: this.code } : {}),
-        ...(this.details !== undefined ? { details: this.details } : {}),
-        ...(this.data !== undefined ? { data: this.data } : {}),
-        ...(this.path !== undefined ? { path: this.path } : {}),
-        ...(this.timestamp !== undefined ? { timestamp: this.timestamp } : {}),
-      };
-    }
-
-    static fromJSON(payload: ErrPayload) {
-      return new Err(payload.error as ErrorKey, payload.data, payload);
-    }
-
-    static is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is Err & { readonly error: Key } {
-      return hasErrKey(error, keys);
-    }
-
-    static BadRequest = class BadRequestErr extends Err {
-      constructor(key: ErrorKey, data?: Record<string, unknown>, option: ErrRestoreOption = {}) {
-        super(key, data, { ...option, statusCode: 400 });
-      }
-    };
-
-    static Unauthorized = class UnauthorizedErr extends Err {
-      constructor(key: ErrorKey, data?: Record<string, unknown>, option: ErrRestoreOption = {}) {
-        super(key, data, { ...option, statusCode: 401 });
-      }
-    };
-
-    static Forbidden = class ForbiddenErr extends Err {
-      constructor(key: ErrorKey, data?: Record<string, unknown>, option: ErrRestoreOption = {}) {
-        super(key, data, { ...option, statusCode: 403 });
-      }
-    };
-
-    static NotFound = class NotFoundErr extends Err {
-      constructor(key: ErrorKey, data?: Record<string, unknown>, option: ErrRestoreOption = {}) {
-        super(key, data, { ...option, statusCode: 404 });
-      }
-    };
-
-    static Conflict = class ConflictErr extends Err {
-      constructor(key: ErrorKey, data?: Record<string, unknown>, option: ErrRestoreOption = {}) {
-        super(key, data, { ...option, statusCode: 409 });
-      }
-    };
-  }
-  const PageErr: PageErrConstructor<ErrorKey> = Err;
+  const PageErr: ErrConstructor<ErrorKey> = Err;
   return {
     Err: PageErr,
     msg: msg as {

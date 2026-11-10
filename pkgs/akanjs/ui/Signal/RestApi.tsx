@@ -224,8 +224,9 @@ export const RestApiTry = ({
     return fetch.clone({ origin: httpUri, connect: false, jwt: tryJwt || undefined });
   };
   const formatError = (error: unknown) => {
-    if (error instanceof Error) return { ...error, message: error.message };
-    return error;
+    if (!(error instanceof Error)) return error;
+    const wire = (error as { toJSON?: () => unknown }).toJSON?.();
+    return { ...(wire && typeof wire === "object" ? wire : error), message: error.message };
   };
   const onSend = async () => {
     setResponse({ status: "loading", data: null });

@@ -1,4 +1,6 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { AkanError } from "../base/akanError";
+import { Err as SharedErr } from "../common/err";
 import { hasErrKey } from "../common/hasErrKey";
 import { interpolateTranslation } from "../common/interpolateTranslation";
 import { pathGetLoose } from "../common/objectPath";
@@ -36,6 +38,7 @@ beforeAll(() => {
     jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
   }));
   mock.module("akanjs/base", () => ({
+    AkanError,
     getEnv: () => ({
       side: envState.mode === "server" ? "server" : "client",
       renderMode: "csr",
@@ -53,6 +56,7 @@ beforeAll(() => {
         if (!acc || typeof acc !== "object") return fallback;
         return (acc as Record<string, unknown>)[key] ?? fallback;
       }, obj),
+    Err: SharedErr,
     hasErrKey,
     interpolateTranslation,
     pathGetLoose,
@@ -238,9 +242,14 @@ describe("makePageProto", () => {
     const restored = Err.fromJSON({ error: "user.error.failure", statusCode: 404, data: { id: "1" } });
     const remote = Object.assign(new Error("user.error.failure"), { error: "user.error.failure", statusCode: 404 });
 
+    expect(Err).toBe(SharedErr);
     expect(Err.is(conflict)).toBe(true);
     expect(Err.is(conflict, "user.error.failure")).toBe(true);
     expect(Err.is(conflict, "user.error.other")).toBe(false);
+    expect(Err.Conflict.is(conflict)).toBe(true);
+    expect(Err.NotFound.is(conflict)).toBe(false);
+    expect(Err.NotFound.is(remote)).toBe(true);
+    expect(Err.NotFound.fromJSON({ error: "user.error.failure", statusCode: 409 })).toBeInstanceOf(Err.NotFound);
     expect(Err.is(restored, "user.error.other", "user.error.failure")).toBe(true);
     expect(Err.is(restored, "user.error.other")).toBe(false);
     expect(Err.is(remote, "user.error.failure")).toBe(true);
@@ -287,5 +296,21 @@ describe("generated client glue", () => {
     });
     client.msg.success("user.hello", { key: "inviteOwnerFromOrg" });
     expect(shownMessages).toEqual([{ key: "user.hello", option: { key: "inviteOwnerFromOrg" } }]);
+  });
+
+  test("the runtime Err proxy tells status classes apart and restores through them", async () => {
+    const runtime = await import("./clientRuntime");
+    const { makePageProto } = await import("./makePageProto");
+    runtime.registerClientRuntime({ ...makePageProto(dictionary), fetch: generatedFetch, sig: generatedSig });
+    const Err = runtime.Err as unknown as typeof SharedErr;
+    const conflict = new Err.Conflict("user.error.failure");
+    const restored = Err.fromJSON({ error: "user.error.failure", statusCode: 409 });
+
+    expect(conflict).toBeInstanceOf(SharedErr.Conflict);
+    expect(Err.is(conflict)).toBe(true);
+    expect(Err.NotFound.is(conflict)).toBe(false);
+    expect(restored).toBeInstanceOf(SharedErr);
+    expect(restored).not.toBeInstanceOf(SharedErr.Conflict);
+    expect(SharedErr.Conflict.is(restored)).toBe(true);
   });
 });

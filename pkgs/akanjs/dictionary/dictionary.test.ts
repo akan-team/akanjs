@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ENDPOINT_DICT_SHAPE, FILTER_DICT_SHAPE, SLICE_DICT_SHAPE } from "akanjs/base";
+import { AkanError, type ENDPOINT_DICT_SHAPE, type FILTER_DICT_SHAPE, type SLICE_DICT_SHAPE } from "akanjs/base";
+import { Err } from "akanjs/common";
 import type { FilterCls, FilterInfo } from "akanjs/document";
 import type { ServiceModel } from "akanjs/service";
 import type { EndpointCls, EndpointInfo, SliceCls, SliceInfo } from "akanjs/signal";
@@ -565,6 +566,62 @@ describe("makeTrans", () => {
     expect(restored.code).toBe("queueFull");
     expect(restored.toJSON()).toEqual({ error: "Service Unavailable", statusCode: 503, code: "queueFull" });
     expect("code" in new trans.Err("dictionaryTestItem.error.notFound" as never).toJSON()).toBe(false);
+  });
+
+  test("hands every dictionary the one Err class, an AkanError the request path forwards", () => {
+    const other = makeTrans({});
+    const notFound = new trans.Err.NotFound("dictionaryTestItem.error.notFound" as never);
+
+    expect(trans.Err).toBe(Err);
+    expect(other.Err).toBe(Err);
+    expect(notFound).toBeInstanceOf(other.Err.NotFound);
+    expect(notFound.name).toBe("NotFoundErr");
+    expect(AkanError.is(notFound, "notFound")).toBe(true);
+    expect(notFound.forwarded).toBe(true);
+    expect(notFound.code).toBe("notFound");
+    expect(Err.fromJSON({ error: "x.error.y", statusCode: 503, code: "queueFull" }).code).toBe("queueFull");
+  });
+
+  test("tells its status classes apart, and restores through the one it is called on", () => {
+    const conflict = new trans.Err.Conflict("dictionaryTestItem.error.notFound" as never);
+    const remote = Object.assign(new Error("x.error.y"), { error: "x.error.y", statusCode: 404 });
+    const viaNotFound = trans.Err.NotFound.fromJSON({ error: "x.error.y", statusCode: 409 });
+    const { fromJSON, is } = trans.Err;
+
+    expect(trans.Err.Conflict.is(conflict)).toBe(true);
+    expect(trans.Err.NotFound.is(conflict)).toBe(false);
+    expect(trans.Err.NotFound.is(remote)).toBe(true);
+    expect(trans.Err.is(conflict)).toBe(true);
+    expect(viaNotFound).toBeInstanceOf(trans.Err.NotFound);
+    expect(viaNotFound.statusCode).toBe(404);
+    expect(trans.Err.fromJSON({ error: "x.error.y", statusCode: 409 })).not.toBeInstanceOf(trans.Err.Conflict);
+    expect(fromJSON.call(undefined, { error: "x.error.y", statusCode: 409 })).toBeInstanceOf(Err);
+    expect(is.call(undefined, conflict)).toBe(true);
+  });
+
+  test("keeps only a string code off the wire, so a numeric or null one leaves the error forwarded", () => {
+    const numeric = Err.fromJSON({ error: "F", statusCode: 403, code: 0 as unknown as string });
+    const nulled = Err.fromJSON({ error: "F", statusCode: 403, code: null as unknown as string });
+    const kept = Err.fromJSON({ error: "F", statusCode: 403, code: "fileGrantRefused" });
+
+    for (const restored of [numeric, nulled]) {
+      expect(restored.forwarded).toBe(true);
+      expect(restored.code).toBe("forbidden");
+      expect("code" in restored.toJSON()).toBe(false);
+    }
+    expect(kept.forwarded).toBe(false);
+    expect(kept.code).toBe("fileGrantRefused");
+    expect(kept.toJSON().code).toBe("fileGrantRefused");
+  });
+
+  test("keeps a restored code off its own enumerable keys, and answers it through a proxy", () => {
+    const restored = trans.Err.fromJSON({ error: "Service Unavailable", statusCode: 503, code: "queueFull" });
+    const plain = new trans.Err("dictionaryTestItem.error.notFound" as never);
+
+    expect(Object.keys(restored)).toEqual(Object.keys(plain));
+    expect(Object.getOwnPropertySymbols({ ...restored })).toEqual([]);
+    expect(JSON.parse(JSON.stringify(new Proxy(restored, {})))).toEqual(restored.toJSON());
+    expect(restored.toJSON().code).toBe("queueFull");
   });
 });
 

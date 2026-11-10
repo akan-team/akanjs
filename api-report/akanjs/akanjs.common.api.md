@@ -596,6 +596,56 @@ export type DynamicRecord<Value = unknown> = {
     [key: string]: Value;
 };
 
+export declare class Err extends AkanError<string, Record<string, unknown>> {
+    static status?: number;
+    readonly error: string;
+    readonly details?: unknown;
+    readonly path?: string;
+    readonly timestamp?: string;
+    constructor(key: string, data?: Record<string, unknown>, option?: ErrRestoreOption);
+    get forwarded(): boolean;
+    toString(): string;
+    toJSON(): ErrPayload & {
+        statusCode: number;
+    };
+    static fromJSON(this: typeof Err | undefined, payload: ErrPayload): Err;
+    static is<Key extends string>(error: unknown, ...keys: Key[]): error is Err & {
+        readonly error: Key;
+    };
+    static is<E extends AkanError>(this: abstract new (...args: never[]) => E, error: unknown, ...codes: E["code"][]): error is E;
+    static BadRequest: typeof Err;
+    static Unauthorized: typeof Err;
+    static Forbidden: typeof Err;
+    static NotFound: typeof Err;
+    static Conflict: typeof Err;
+}
+
+export type ErrConstructor<ErrorKey extends string> = (new (key: ErrorKey, data?: Record<string, unknown>, option?: ErrRestoreOption) => Err) & {
+    prototype: Err;
+    fromJSON(payload: ErrPayload): Err;
+    is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is Err & {
+        readonly error: Key;
+    };
+    BadRequest: ErrConstructor<ErrorKey>;
+    Unauthorized: ErrConstructor<ErrorKey>;
+    Forbidden: ErrConstructor<ErrorKey>;
+    NotFound: ErrConstructor<ErrorKey>;
+    Conflict: ErrConstructor<ErrorKey>;
+};
+
+export interface ErrPayload extends ErrRestoreOption {
+    error: string;
+    data?: Record<string, unknown>;
+}
+
+export interface ErrRestoreOption {
+    statusCode?: number;
+    code?: string;
+    details?: unknown;
+    path?: string;
+    timestamp?: string;
+}
+
 export declare class EventStream {
     static readonly defaultKeepAliveMs = 15000;
     constructor(onCancel: () => void, { keepAliveMs, keepAliveChunk }?: EventStreamOptions);

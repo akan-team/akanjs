@@ -96,6 +96,7 @@ export {
   isCodeAgentReply,
 } from "./codeAgentWire";
 export { type CookieEntry, CookieJar, type CookieRead } from "./cookieJar";
+export { Err, type ErrConstructor, type ErrPayload, type ErrRestoreOption } from "./err";
 export { EventStream, type EventStreamOptions } from "./eventStream";
 export { FailureCode } from "./failureCode";
 export {
