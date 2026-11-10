@@ -1,16 +1,28 @@
 import type { PromiseOrObject } from "akanjs/base";
 import { Err } from "akanjs/dictionary";
 import type { LlmTurnRequest } from "akanjs/service";
+import { AgentMeter } from "./agentMeter";
 
-export interface AgentRequestContext {
+/** One relayed turn, the same object from the request policy through the quota to the usage report. */
+export interface AgentTurnContext {
+  /** Fresh per turn, so a quota hold and the usage that settles it pair up without guessing. */
+  id: string;
+  /** The turn's HTTP request headers, Authorization and Cookie included; empty for a turn no request carried. */
+  headers: Headers;
   /** What the account middleware resolved for this call, as the access guard saw it; `null` for an anonymous one. */
+  account: unknown;
+  ip: string | null;
+}
+
+/** @deprecated Use `AgentTurnContext`; `apply` still takes this shape and gives it a fresh `id` and empty `headers`. */
+export interface AgentRequestContext {
   account: unknown;
   ip: string | null;
 }
 
 export type AgentRequestPolicy = (
   request: LlmTurnRequest,
-  context: AgentRequestContext,
+  context: AgentTurnContext,
 ) => PromiseOrObject<LlmTurnRequest>;
 
 export interface AgentRequestLimits {
@@ -40,9 +52,12 @@ export class AgentRelayPolicy {
     AgentRelayPolicy.#policy = policy;
   }
 
-  static async apply(request: LlmTurnRequest, context: AgentRequestContext): Promise<LlmTurnRequest> {
+  static async apply(
+    request: LlmTurnRequest,
+    context: AgentTurnContext | AgentRequestContext,
+  ): Promise<LlmTurnRequest> {
     const policy = AgentRelayPolicy.#policy ?? AgentRelayPolicy.#defaultPolicy;
-    return await policy(request, context);
+    return await policy(request, "id" in context ? context : AgentMeter.turnOf(context.account, { ip: context.ip }));
   }
 
   static readonly #defaultPolicy: AgentRequestPolicy = (request) => AgentRelayPolicy.capped(request);

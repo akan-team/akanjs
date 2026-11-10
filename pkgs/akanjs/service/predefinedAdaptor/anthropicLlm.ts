@@ -10,9 +10,11 @@ import {
   type LlmTurnAnswer,
   type LlmTurnRequest,
   type LlmUsage,
+  llmCallSignal,
   pageContentInstruction,
 } from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
+import { LlmSpend } from "./llmSpend";
 import { eachSseData } from "./sseData";
 
 type AnthropicSource = { type: "base64"; media_type: string; data: string } | { type: "url"; url: string };
@@ -79,7 +81,11 @@ export class AnthropicLlm
     return this.llmOption.accepts ?? { image: true, document: true };
   }
 
-  async chat(request: LlmTurnRequest, onDelta?: (delta: string) => void): Promise<LlmTurnAnswer | null> {
+  async chat(
+    request: LlmTurnRequest,
+    onDelta?: (delta: string) => void,
+    signal?: AbortSignal,
+  ): Promise<LlmTurnAnswer | null> {
     const model = request.model || this.llmOption.model;
     if (!this.llmOption.apiKey || !model) {
       this.logger.warn(
@@ -93,16 +99,19 @@ export class AnthropicLlm
       if (!onDelta) {
         const answer = await this.#api<AnthropicAnswer>(
           AnthropicLlm.requestBody(model, request, { accepts, maxTokens }),
+          signal,
         );
         return { ...this.#reported(AnthropicLlm.turnAnswer(answer)), model };
       }
       const body = await this.#apiStream(
         AnthropicLlm.requestBody(model, request, { accepts, stream: true, maxTokens }),
+        signal,
       );
       return { ...this.#reported(await AnthropicLlm.consumeStream(body, onDelta)), model };
     } catch (error) {
-      this.logger.error(`Anthropic turn failed: ${error instanceof Error ? error.message : String(error)}`);
-      throw error;
+      if (!signal?.aborted)
+        this.logger.error(`Anthropic turn failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw LlmSpend.attach(error, { model });
     }
   }
 
@@ -123,24 +132,23 @@ export class AnthropicLlm
     };
   }
 
-  async #api<T>(body: object): Promise<T> {
+  async #api<T>(body: object, signal?: AbortSignal): Promise<T> {
     const response = await fetch(`${this.#host}/messages`, {
       method: "POST",
       headers: this.#headers,
       body: JSON.stringify(body),
-      // A model turn regularly outlives the usual 20s adapter budget; long tool turns finish well within this.
-      signal: AbortSignal.timeout(120_000),
+      signal: llmCallSignal(signal),
     });
     if (!response.ok) throw await AnthropicLlm.refusal(this.#host, response);
     return (await response.json()) as T;
   }
 
-  async #apiStream(body: object): Promise<ReadableStream<Uint8Array>> {
+  async #apiStream(body: object, signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
     const response = await fetch(`${this.#host}/messages`, {
       method: "POST",
       headers: this.#headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(120_000),
+      signal: llmCallSignal(signal),
     });
     if (!response.ok || !response.body) throw await AnthropicLlm.refusal(this.#host, response);
     return response.body;
@@ -329,10 +337,12 @@ export class AnthropicLlm
   //* Anthropic's `input_tokens` leaves out what was read from or written to the cache; both are prompt, so both count.
   static usageOf(usage: AnthropicUsage): LlmUsage {
     const cachedTokens = usage.cache_read_input_tokens ?? 0;
+    const cacheWriteTokens = usage.cache_creation_input_tokens ?? 0;
     return {
-      inputTokens: (usage.input_tokens ?? 0) + cachedTokens + (usage.cache_creation_input_tokens ?? 0),
+      inputTokens: (usage.input_tokens ?? 0) + cachedTokens + cacheWriteTokens,
       outputTokens: usage.output_tokens ?? 0,
       cachedTokens,
+      cacheWriteTokens,
     };
   }
 
@@ -350,7 +360,8 @@ export class AnthropicLlm
     let text = "";
     let stopReason: string | null = null;
     let usage: AnthropicUsage = {};
-    await eachSseData(body, (payload) => {
+    let finalCount = false;
+    const read = eachSseData(body, (payload) => {
       const event = JSON.parse(payload) as AnthropicStreamEvent;
       const index = event.index ?? 0;
       if (event.type === "content_block_start" && event.content_block?.type === "tool_use")
@@ -369,7 +380,18 @@ export class AnthropicLlm
       if (event.type === "message_delta" && event.delta?.stop_reason) stopReason = event.delta.stop_reason;
       //* `message_start` carries the prompt side and `message_delta` the running output count.
       if (event.type === "message_start" && event.message?.usage) usage = { ...usage, ...event.message.usage };
-      if (event.type === "message_delta" && event.usage) usage = { ...usage, ...event.usage };
+      if (event.type === "message_delta" && event.usage) {
+        usage = { ...usage, ...event.usage };
+        finalCount = true;
+      }
+    });
+    await read.catch((error: unknown) => {
+      const partial = Object.keys(usage).length ? AnthropicLlm.usageOf(usage) : undefined;
+      const streamed = text + [...calls.values()].map(({ args }) => args).join("");
+      throw LlmSpend.attach(
+        error,
+        partial && finalCount ? { usage: partial } : LlmSpend.estimate(partial, { streamed }),
+      );
     });
     const toolCalls = [...calls.entries()]
       .sort(([a], [b]) => a - b)

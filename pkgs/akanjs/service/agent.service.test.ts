@@ -1,8 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { AgentService } from "./agent.service";
 import { AnthropicLlm } from "./predefinedAdaptor/anthropicLlm";
 import { type LlmTurnRequest, pageContentInstruction } from "./predefinedAdaptor/llm.adaptor";
+import { LlmSpend } from "./predefinedAdaptor/llmSpend";
 import { OpenaiDialect } from "./predefinedAdaptor/openaiDialect";
+import { OpenaiLlm } from "./predefinedAdaptor/openaiLlm";
 import { ToolNames } from "./toolNames";
 
 const turn = (): LlmTurnRequest => ({
@@ -295,6 +297,15 @@ describe("AgentService.instructed", () => {
     expect(AgentService.instructed(plain()).instructions).toBe(AgentService.preamble);
   });
 
+  test("a turn with no screen behind it replaces the in-page preamble, or sends none", () => {
+    const own = { ...plain(), instructions: "Answer in the channel thread." };
+    expect(AgentService.instructed(own, "You are the team's agent.").instructions).toBe(
+      "You are the team's agent.\n\nAnswer in the channel thread.",
+    );
+    expect(AgentService.instructed(own, false).instructions).toBe("Answer in the channel thread.");
+    expect("instructions" in AgentService.instructed(plain(), false)).toBe(false);
+  });
+
   test("the batching instruction reaches the provider's system prompt", () => {
     const body = OpenaiDialect.requestBody("deepseek-v4-flash", AgentService.instructed(plain()));
     expect(body.messages[0].content).toContain("in the same turn, rather than one call per turn");
@@ -306,6 +317,167 @@ describe("AgentService.instructed", () => {
     expect(AnthropicLlm.systemPrompt(plain())).toContain(pageContentInstruction);
     expect(OpenaiDialect.systemPrompt(plain())).toContain(pageContentInstruction);
     expect(pageContentInstruction).toContain("<page-content");
+  });
+});
+
+describe("AgentService.runTurn", () => {
+  const serviceOf = (seen: unknown[][]) =>
+    Object.assign(new AgentService(), {
+      llm: {
+        chat: async (...args: unknown[]) => {
+          seen.push(args);
+          return { text: "ok", stop: "end" as const };
+        },
+      },
+    });
+  const turn = (): LlmTurnRequest => ({ tools: [], context: [], messages: [{ role: "user", text: "hi" }] });
+
+  test("hands the provider the preamble a caller picks and the caller's signal", async () => {
+    const seen: unknown[][] = [];
+    const abort = new AbortController();
+    const deltas: string[] = [];
+    await serviceOf(seen).runTurn(turn(), { preamble: false, signal: abort.signal, onDelta: (d) => deltas.push(d) });
+    const [request, delta, signal] = seen[0] ?? [];
+    expect((request as LlmTurnRequest).instructions).toBeUndefined();
+    (delta as (delta: string) => void)("Hi");
+    expect(deltas).toEqual(["Hi"]);
+    expect(signal).toBe(abort.signal);
+  });
+
+  test("still takes onDelta alone, under the in-page preamble", async () => {
+    const seen: unknown[][] = [];
+    const deltas: string[] = [];
+    await serviceOf(seen).runTurn(turn(), (d) => deltas.push(d));
+    const [request, delta] = seen[0] ?? [];
+    expect((request as LlmTurnRequest).instructions).toBe(AgentService.preamble);
+    (delta as (delta: string) => void)("Hi");
+    expect(deltas).toEqual(["Hi"]);
+  });
+});
+
+describe("AgentService.runTurn on a turn its caller stops", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const option = { apiKey: "k", model: "model-a" };
+  //* 4,000 ASCII characters: about 1,000 tokens at the four characters a token English averages.
+  const long = (): LlmTurnRequest => ({
+    tools: [],
+    context: [],
+    messages: [{ role: "user", text: "a".repeat(4_000) }],
+  });
+  const serviceOn = (llm: object) => Object.assign(new AgentService(), { llm });
+  const sse = (events: object[]) => events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
+  const providerStream = (signal: AbortSignal, frames: string, reached: () => void) =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(frames));
+          signal.addEventListener("abort", () => controller.error(signal.reason));
+          reached();
+        },
+      }),
+    );
+
+  test("an OpenAI-compatible stream, counted only in its last chunk, is billed at an estimate of what was sent and streamed", async () => {
+    const sent = Promise.withResolvers<void>();
+    const provider: AbortSignal[] = [];
+    globalThis.fetch = ((_url: string, init: { signal: AbortSignal }) => {
+      provider.push(init.signal);
+      const deltas = ["Here ", "is the ", "first part"].map((content) => ({ choices: [{ delta: { content } }] }));
+      return Promise.resolve(providerStream(init.signal, sse(deltas), sent.resolve));
+    }) as unknown as typeof fetch;
+    const abort = new AbortController();
+    const deltas: string[] = [];
+    const llm = Object.assign(new OpenaiLlm(), { llmOption: option });
+    const pending = serviceOn(llm)
+      .runTurn(long(), { signal: abort.signal, onDelta: (delta) => deltas.push(delta) })
+      .catch((error: unknown) => error);
+    await sent.promise;
+    await Bun.sleep(0);
+    abort.abort();
+    const spent = LlmSpend.of(await pending);
+    expect(provider[0]?.aborted).toBe(true);
+    expect(deltas.join("")).toBe("Here is the first part");
+    expect(spent?.estimated).toBe(true);
+    expect(spent?.model).toBe("model-a");
+    expect(spent?.usage?.inputTokens).toBeGreaterThanOrEqual(1_000);
+    expect(spent?.usage?.outputTokens).toBeGreaterThanOrEqual(LlmSpend.tokensOf("Here is the first part"));
+    expect(spent?.usage?.cachedTokens).toBe(0);
+  });
+
+  test("an Anthropic stream keeps the prompt the provider counted and estimates the output it streamed", async () => {
+    const sent = Promise.withResolvers<void>();
+    const usage = { input_tokens: 20, cache_read_input_tokens: 70, cache_creation_input_tokens: 10, output_tokens: 1 };
+    const text = "A long answer the reader stopped ".repeat(10);
+    globalThis.fetch = ((_url: string, init: { signal: AbortSignal }) => {
+      const events = [
+        { type: "message_start", message: { usage } },
+        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+      ];
+      return Promise.resolve(providerStream(init.signal, sse(events), sent.resolve));
+    }) as unknown as typeof fetch;
+    const abort = new AbortController();
+    const llm = Object.assign(new AnthropicLlm(), { llmOption: option });
+    const pending = serviceOn(llm)
+      .runTurn(long(), { signal: abort.signal, onDelta: () => undefined })
+      .catch((error: unknown) => error);
+    await sent.promise;
+    await Bun.sleep(0);
+    abort.abort();
+    expect(LlmSpend.of(await pending)).toEqual({
+      usage: { inputTokens: 100, outputTokens: LlmSpend.tokensOf(text), cachedTokens: 70, cacheWriteTokens: 10 },
+      model: "model-a",
+      estimated: true,
+    });
+  });
+
+  test("a plain call answers its caller at once and settles with the provider's own counts once it ends", async () => {
+    const answered = Promise.withResolvers<Response>();
+    const provider: AbortSignal[] = [];
+    globalThis.fetch = ((_url: string, init: { signal: AbortSignal }) => {
+      provider.push(init.signal);
+      return answered.promise;
+    }) as unknown as typeof fetch;
+    const abort = new AbortController();
+    const llm = Object.assign(new OpenaiLlm(), { llmOption: option });
+    const pending = serviceOn(llm)
+      .runTurn(long(), { signal: abort.signal })
+      .catch((error: unknown) => error);
+    await Bun.sleep(0);
+    abort.abort();
+    const failure = await pending;
+    expect((failure as Error).name).toBe("AbortError");
+    expect(provider[0]?.aborted).toBe(false);
+    answered.resolve(
+      Response.json({
+        choices: [{ message: { content: "done" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1_200, completion_tokens: 40, prompt_tokens_details: { cached_tokens: 0 } },
+      }),
+    );
+    expect(await LlmSpend.settled(failure)).toEqual({
+      usage: { inputTokens: 1_200, outputTokens: 40, cachedTokens: 0 },
+      model: "model-a",
+    });
+  });
+
+  test("a turn stopped before it starts never reaches the provider", async () => {
+    let called = false;
+    globalThis.fetch = (() => {
+      called = true;
+      return Promise.reject(new Error("unreachable"));
+    }) as unknown as typeof fetch;
+    const abort = new AbortController();
+    abort.abort();
+    const llm = Object.assign(new OpenaiLlm(), { llmOption: option });
+    for (const onDelta of [undefined, () => undefined]) {
+      const failure = await serviceOn(llm)
+        .runTurn(long(), { signal: abort.signal, onDelta })
+        .catch((error: unknown) => error);
+      expect(LlmSpend.of(failure)).toBeNull();
+    }
+    expect(called).toBe(false);
   });
 });
 

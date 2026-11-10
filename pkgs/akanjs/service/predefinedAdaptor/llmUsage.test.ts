@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AnthropicLlm } from "./anthropicLlm";
+import { LlmSpend } from "./llmSpend";
 import { OpenaiDialect } from "./openaiDialect";
 
 const streamOf = (lines: string[]) =>
@@ -38,6 +39,7 @@ describe("LLM usage", () => {
       inputTokens: 100,
       outputTokens: 5,
       cachedTokens: 70,
+      cacheWriteTokens: 10,
     });
     const streamed = await AnthropicLlm.consumeStream(
       streamOf([
@@ -47,6 +49,49 @@ describe("LLM usage", () => {
       ]),
       () => {},
     );
-    expect(streamed.usage).toEqual({ inputTokens: 90, outputTokens: 9, cachedTokens: 70 });
+    expect(streamed.usage).toEqual({ inputTokens: 90, outputTokens: 9, cachedTokens: 70, cacheWriteTokens: 0 });
+  });
+
+  test("a stream cut before its counts carries an estimate of what it streamed, tool arguments included", async () => {
+    const args = JSON.stringify({ body: "a long document the model was writing into a tool call" });
+    const frames = [
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "write", arguments: "" } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: args } }] } }] },
+    ];
+    let pulled = 0;
+    const cut = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled++) return controller.error(new Error("socket closed"));
+        controller.enqueue(new TextEncoder().encode(frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join("")));
+      },
+    });
+    const failure = await OpenaiDialect.consumeStream(cut, () => {}).catch((error: unknown) => error);
+    expect(LlmSpend.of(failure)).toEqual({
+      usage: { inputTokens: 0, outputTokens: LlmSpend.tokensOf(args), cachedTokens: 0 },
+      estimated: true,
+    });
+  });
+
+  test("a stream cut after the provider's final counts keeps them rather than an estimate", async () => {
+    const frames = [
+      { choices: [{ delta: { content: "A whole answer, every word of it" }, finish_reason: "stop" }] },
+      { choices: [], usage: { prompt_tokens: 50, completion_tokens: 3 } },
+    ];
+    let pulled = 0;
+    const cut = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled++) return controller.error(new Error("socket closed"));
+        controller.enqueue(new TextEncoder().encode(frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join("")));
+      },
+    });
+    const failure = await OpenaiDialect.consumeStream(cut, () => {}).catch((error: unknown) => error);
+    expect(LlmSpend.of(failure)).toEqual({ usage: { inputTokens: 50, outputTokens: 3, cachedTokens: 0 } });
+  });
+
+  test("a prompt's estimate counts a picture at the image rate, not as its base64", () => {
+    const data = "A".repeat(300_000);
+    const withPicture = { messages: [{ role: "user", attachments: [{ name: "p.png", mimeType: "image/png", data }] }] };
+    expect(LlmSpend.promptOf(withPicture)).toBeLessThan(LlmSpend.imageTokens + 100);
+    expect(LlmSpend.promptOf({ text: "가".repeat(300) })).toBeGreaterThanOrEqual(300);
   });
 });

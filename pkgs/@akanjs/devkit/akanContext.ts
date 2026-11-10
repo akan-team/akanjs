@@ -2,9 +2,9 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { capitalize, isRecord, parseRouteModuleKey } from "akanjs/common";
 import { extractBlockVersion, readDevkitVersion } from "./agentsIndex";
-import { constantFieldNames } from "./constantFieldNames";
 import { AppExecutor, LibExecutor, type SysExecutor, type WorkspaceExecutor } from "./executors";
 import { FileSys } from "./fileSys";
+import { unlabeledFieldNames } from "./moduleFieldNames";
 import { collectRecipeSources, findInlineRecipeDuplicates, scanRecipes } from "./recipeScanner";
 import type { PackageJson } from "./types";
 import {
@@ -851,8 +851,7 @@ export class AkanContextAnalyzer {
             safeReadText(dictionaryPath),
           ]);
           if (constantContent && dictionaryContent) {
-            for (const fieldName of constantFieldNames(constantContent)) {
-              if (new RegExp(`\\b${fieldName}\\s*:`).test(dictionaryContent)) continue;
+            for (const fieldName of unlabeledFieldNames(constantContent, dictionaryContent)) {
               report(
                 {
                   severity: "warning",

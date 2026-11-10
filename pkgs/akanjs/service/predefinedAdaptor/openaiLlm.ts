@@ -6,9 +6,11 @@ import {
   type LlmOption,
   type LlmTurnAnswer,
   type LlmTurnRequest,
+  llmCallSignal,
   llmProviderOf,
 } from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
+import { LlmSpend } from "./llmSpend";
 import { type OpenaiAnswer, OpenaiDialect } from "./openaiDialect";
 
 /**
@@ -46,7 +48,11 @@ export class OpenaiLlm
     return !host || llmProviderOf(host) === llmProviderOf(OpenaiLlm.defaultHost) ? { image: true } : undefined;
   }
 
-  async chat(request: LlmTurnRequest, onDelta?: (delta: string) => void): Promise<LlmTurnAnswer | null> {
+  async chat(
+    request: LlmTurnRequest,
+    onDelta?: (delta: string) => void,
+    signal?: AbortSignal,
+  ): Promise<LlmTurnAnswer | null> {
     const model = request.model || this.llmOption.model;
     if (!this.llmOption.apiKey || !model) {
       this.logger.warn(
@@ -60,39 +66,41 @@ export class OpenaiLlm
         const answer = await this.#api<OpenaiAnswer>(
           "/chat/completions",
           OpenaiDialect.requestBody(model, request, { accepts }),
+          signal,
         );
         return { ...OpenaiDialect.turnAnswer(answer), model };
       }
       const body = await this.#apiStream(
         "/chat/completions",
         OpenaiDialect.requestBody(model, request, { accepts, stream: true }),
+        signal,
       );
       return { ...(await OpenaiDialect.consumeStream(body, onDelta)), model };
     } catch (error) {
       // Rethrown, not `null`: the user needs the provider's refusal, and `null` reads as "no model is configured".
-      this.logger.error(`LLM turn failed: ${error instanceof Error ? error.message : String(error)}`);
-      throw error;
+      if (!signal?.aborted)
+        this.logger.error(`LLM turn failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw LlmSpend.attach(error, { model });
     }
   }
 
-  async #api<T>(path: string, body: object): Promise<T> {
+  async #api<T>(path: string, body: object, signal?: AbortSignal): Promise<T> {
     const response = await fetch(`${this.#host}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${this.llmOption.apiKey}` },
       body: JSON.stringify(body),
-      // A model turn regularly outlives the usual 20s adapter budget; long tool turns finish well within this.
-      signal: AbortSignal.timeout(120_000),
+      signal: llmCallSignal(signal),
     });
     if (!response.ok) throw await OpenaiLlm.refusal(this.#host, response);
     return (await response.json()) as T;
   }
 
-  async #apiStream(path: string, body: object): Promise<ReadableStream<Uint8Array>> {
+  async #apiStream(path: string, body: object, signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
     const response = await fetch(`${this.#host}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${this.llmOption.apiKey}` },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(120_000),
+      signal: llmCallSignal(signal),
     });
     if (!response.ok || !response.body) throw await OpenaiLlm.refusal(this.#host, response);
     return response.body;

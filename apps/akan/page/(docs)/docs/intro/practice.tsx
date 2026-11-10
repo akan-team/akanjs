@@ -5,7 +5,7 @@ import { page } from "akanjs/client";
 import { Image } from "akanjs/ui";
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title = lang === "ko" ? "소개: 실습하기 | Akan.js" : "Introduction: Practice | Akan.js";
     const description =

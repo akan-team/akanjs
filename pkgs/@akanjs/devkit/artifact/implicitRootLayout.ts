@@ -71,8 +71,19 @@ export function getRootBoundarySegments(key: string): string[] | null {
   return prefix.split("/").filter(Boolean);
 }
 
+//? The generated root layout serves SSR, CSR and MCP App views alike; an SSR page renders only System's SSR shell.
+export const ROOT_LAYOUT_SYSTEM = {
+  specifier: "akanjs/ui/System/index.tsx",
+  ssrShell: "akanjs/ui/System/SSR.tsx",
+  importsNoSsrPageRenders: ["./CSR", "./App"],
+} as const;
+
 function implicitRootLayoutKey(segments: string[]): string {
   return `./${[...segments, "__root_layout"].join("/")}.tsx`;
+}
+
+export function isImplicitRootLayoutKey(key: string): boolean {
+  return key.endsWith("/__root_layout.tsx");
 }
 
 function implicitRootLayoutAbsPath(appCwdPath: string, segments: string[]): string {
@@ -218,7 +229,7 @@ ${layoutBinding}  return `;
     ? `import type { LayoutModule, LayoutProps, PageProps } from "akanjs/client";
 import { assertGuardOnChain, loadFonts, RouteGuards, resolveRouteModule, RouteHead } from "akanjs/client";
 import type { ReactNode } from "react";
-import { System } from "akanjs/ui/System/index.tsx";
+import { System } from "${ROOT_LAYOUT_SYSTEM.specifier}";
 import type { McpAppRootProps } from "akanjs/webkit";
 import { env } from "@apps/${opts.appName}/env/env.client";
 import { allDictionary } from ${JSON.stringify(dictMacroSpecifier)};

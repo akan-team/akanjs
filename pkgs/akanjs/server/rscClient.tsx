@@ -6,6 +6,7 @@ import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
 import { isAuthTokenKey } from "../common/authCookie";
 import { CookieJar } from "../common/cookieJar";
+import { StaleReads } from "../fetch/staleReads";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   type AkanHeadSnapshotV1,
@@ -24,6 +25,7 @@ import {
   navigationOfChunk,
   noteChunkLoadFailure,
   recordChunksOf,
+  reportingRootErrors,
 } from "./rscClientChunks";
 import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
 import { validateRscPatchForGuardedCommit } from "./rscClientPatch";
@@ -34,6 +36,7 @@ import {
   rollbackPreparedAkanHeadSnapshotPatch,
 } from "./rscHeadPatch";
 import { getRscPayloadStream, guardRscRedirectRows, type RscRedirectRow } from "./rscHttp";
+import { createInitialRscStream } from "./rscInlineStream";
 import {
   type AkanSegmentCacheNode,
   commitLatestRscNavigation,
@@ -47,28 +50,15 @@ import {
   rememberRscCacheNode,
   resolveCachedRscPatchNavigation,
 } from "./rscNavigationState";
+import { RscParkedRedirect } from "./rscParkedRedirect";
 import { RscPrefetchCache } from "./rscPrefetchCache";
 import { RscScrollRestoration } from "./rscScrollRestoration";
 import { commitAkanSegmentOutletPatch, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
-type InlineRscChunk = [1, string] | [3, string];
-
 declare global {
-  var __RSC_CHUNKS__: InlineRscChunk[] | undefined;
-  var __RSC_CLOSED__: boolean | undefined;
-  var __RSC_PUSH__: ((type: InlineRscChunk[0], data: string) => void) | undefined;
-  var __RSC_CLOSE__: (() => void) | undefined;
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
   var __AKAN_DICT_URL__: string | undefined;
   var __webpack_chunk_load__: ((chunkId: string) => Promise<unknown>) | undefined;
-}
-
-function decodeInlineRscChunk([type, data]: InlineRscChunk): Uint8Array {
-  if (type === 1) return new TextEncoder().encode(data);
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 type RscThenable = Promise<ReactNode> & {
@@ -107,24 +97,6 @@ class RscRouteNotFound extends Error {
     super(`[rscClient] no route at ${href}`);
     this.name = "RscRouteNotFound";
   }
-}
-
-function createInitialRscStream(): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      const queued = globalThis.__RSC_CHUNKS__ ?? [];
-      for (const chunk of queued) controller.enqueue(decodeInlineRscChunk(chunk));
-      globalThis.__RSC_CHUNKS__ = [];
-
-      if (globalThis.__RSC_CLOSED__) {
-        controller.close();
-        return;
-      }
-
-      globalThis.__RSC_PUSH__ = (type, data) => controller.enqueue(decodeInlineRscChunk([type, data]));
-      globalThis.__RSC_CLOSE__ = () => controller.close();
-    },
-  });
 }
 
 function normalizeHref(href: string): string {
@@ -193,7 +165,7 @@ function commitRscPatchNavigation({
 }): boolean {
   const patchThenable = patch.patchedNode.thenable;
   if (!patchThenable) throw new Error("[rscClient] validated RSC patch is missing a thenable");
-  const preparedHeadPatch = prepareAkanHeadSnapshotPatch(patch.headSnapshot);
+  const preparedHeadPatch = prepareAkanHeadSnapshotPatch(patch.headSnapshot, target);
   if (!preparedHeadPatch) return false;
 
   let outletCommitted = false;
@@ -208,6 +180,8 @@ function commitRscPatchNavigation({
         return;
       }
       commitHistory(target, replace);
+      shownNode = null;
+      parkedRedirect.clear();
       requestScroll?.();
     } catch {
       if (headApplied) rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
@@ -227,7 +201,6 @@ function akanHistoryState(replace: boolean, shallow = false) {
 
 // The href the page on screen was rendered for; a shallow entry changes the query without rendering anything.
 let renderedHref = normalizeHref(window.location.href);
-let renderedFromResponse = false;
 const scrollRestoration = new RscScrollRestoration();
 const pathnameOf = (href: string) => new URL(href).pathname;
 const withoutHash = (href: string | undefined) => href?.split("#", 1)[0];
@@ -276,6 +249,8 @@ async function fetchRsc(
     signal: options.signal,
     prefetched: options.prefetched,
   });
+  if (responseResult.type === "not-found" && shouldApplyNavigation())
+    parkedRedirect.resume(stillOnItsEntry, navigateAfterRscRedirect);
   if (responseResult.type === "redirected" || responseResult.type === "not-found") return responseResult;
   //? Awaited before the result is returned, so no caller commits a page whose locale the Translator lacks.
   const dictionaryReady = DictionaryAsset.load(responseResult.response.headers.get(AKAN_RSC_DICTIONARY_HEADER));
@@ -316,10 +291,15 @@ async function fetchRsc(
   if (!stream) throw new Error(`[rscClient] RSC fetch failed ${res.status} ${res.statusText}`);
   const nodeRef: { current?: RscCacheNode } = {};
   const handleRedirect = (redirect: RscRedirectRow) => {
-    if (!shouldApplyNavigation()) return;
+    const node = nodeRef.current;
+    if (node) deleteRscCacheEntryIfCurrent(rscCache, href, node);
+    const applies = shouldApplyNavigation();
+    //? A later navigation may have replayed this page, under another fragment or back from elsewhere, and still show it.
+    if (!applies && node !== shownNode) return;
     const location = redirect.location ? normalizeHref(redirect.location) : href;
-    if (nodeRef.current) deleteRscCacheEntryIfCurrent(rscCache, href, nodeRef.current);
-    navigateAfterRscRedirect(location, redirect.method !== "push" && (options.replaceOnRedirect?.() ?? true));
+    const replace = redirect.method !== "push" && (options.replaceOnRedirect?.() ?? true);
+    if (!applies && node && pendingRequest) parkedRedirect.park({ node, location, replace });
+    else navigateAfterRscRedirect(location, replace);
   };
   const guardedStream = guardRscRedirectRows(stream, {
     onRedirect: handleRedirect,
@@ -350,6 +330,8 @@ const readAuthCookies = () =>
 const rscCache = new Map<string, RscCacheNode>();
 const rscPatchCache = new Map<string, RscPatchNavigationCacheNode<RscThenable>>();
 const rscPrefetchCache = new RscPrefetchCache({ fetchResponse: fetchRscPrefetchResponse });
+//? A page prefetched before this tab's own write would commit as current, showing what the write changed as it was.
+StaleReads.subscribe(() => rscPrefetchCache.clear());
 const initialThenable = createRscThenable(createInitialRscStream());
 const initialRouterState = decodeAkanRouterState(globalThis.__AKAN_RSC_INITIAL_STATE__);
 const initialNode = createRscNavigationCacheNode({
@@ -361,12 +343,23 @@ rscCache.set(initialNode.href, initialNode);
 let currentRouterState: AkanRouterStateV1 | null = initialRouterState;
 let currentSegmentTree: RscSegmentCacheNode | null = createAkanSegmentCacheTree(initialNode);
 let currentFullNode: RscCacheNode | null = initialNode;
+let shownNode: RscCacheNode | null = initialNode;
+const parkedRedirect = new RscParkedRedirect<RscCacheNode>();
 let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
 let navigationSeq = 0;
 let pendingRequest: { navId: number; controller: AbortController; target: string } | null = null;
 let latestPageNavId = 0;
 let cachedAuthCookies = readAuthCookies();
+
+//? Back or Forward moves the URL before its page loads, and a redirect then would replace the entry it moved to; a
+//? shallow entry, its query or fragment changed in place, still shows the page it was written over.
+const stillOnItsEntry = (node: RscCacheNode) => {
+  const entry = (window.history.state as { __akanRouter?: { shallow?: boolean; rendered?: string } } | null)
+    ?.__akanRouter;
+  const here = normalizeHref(window.location.href);
+  return node === shownNode && pageKeyOf(node.href) === withoutHash(entry?.shallow ? entry.rendered : here);
+};
 
 //? Only a request whose page has not committed is cut: a committed one may still stream the Suspense content on screen.
 function supersedeNavigation(): number {
@@ -380,6 +373,17 @@ function supersedeNavigation(): number {
 function supersedeForPageNavigation(): number {
   documentNavigationFallbackInFlight = false;
   return supersedeNavigation();
+}
+
+let refreshNavId: number | undefined;
+function supersedeForRefresh(): number {
+  refreshNavId = supersedeNavigation();
+  return refreshNavId;
+}
+
+function supersedeKeepingPage(): void {
+  supersedeNavigation();
+  parkedRedirect.resume(stillOnItsEntry, navigateAfterRscRedirect);
 }
 
 function requestSignalOf(navId: number, target: string): AbortSignal {
@@ -400,16 +404,14 @@ if (loadChunk)
   globalThis.__webpack_chunk_load__ = (chunkId) => {
     const loading = loadChunk(chunkId);
     const navigation = navigationOfChunk(chunkId);
-    loading.catch((error: unknown) => {
-      noteChunkLoadFailure(error);
-      if (navigation) loadDocumentForChunkFailure(chunkId, navigation, error);
-    });
+    loading.catch(noteChunkLoadFailure);
+    if (navigation) loading.catch((error: unknown) => loadDocumentForChunkFailure(chunkId, navigation, error));
     return loading;
   };
 
 function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigation, error: unknown): void {
   if (documentNavigationFallbackInFlight || !isBuildBundle()) return;
-  const showsItsPage = pageKeyOf(renderedHref) === pageKeyOf(navigation.href);
+  const showsItsPage = navigation.navId === refreshNavId || pageKeyOf(renderedHref) === pageKeyOf(navigation.href);
   const pending = pendingRequest?.navId === navigation.navId && !showsItsPage;
   const onScreen = navigation.navId === latestPageNavId && showsItsPage;
   if (!pending && !(onScreen && navigator.onLine && isLinkFailure(error))) return;
@@ -422,7 +424,7 @@ function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigatio
 //? as the page on screen's; only a page a navigation's response rendered can hold another build's modules.
 function loadDocumentForLazyChunkFailure(error: unknown): void {
   const leaving = pendingRequest !== null && pendingRequest.target !== pageKeyOf(renderedHref);
-  if (!renderedFromResponse || leaving || documentNavigationFallbackInFlight || !isBuildBundle()) return;
+  if (shownNode === initialNode || leaving || documentNavigationFallbackInFlight || !isBuildBundle()) return;
   if (!navigator.onLine || !isLazyLinkFailure(error)) return;
   if (claimChunkReload(`${pathnameOf(renderedHref)} ${error.message}`))
     hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
@@ -433,7 +435,8 @@ globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
 
 function rememberCommittedRouteState(node: RscCacheNode): void {
   rscPatchCache.clear();
-  renderedFromResponse = node !== initialNode;
+  shownNode = node;
+  parkedRedirect.clear();
   if (!node.routerState) return;
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
@@ -444,7 +447,8 @@ function rememberCommittedRouteState(node: RscCacheNode): void {
 //? A not-found view is never replayed or patched onto, so the page after it is rendered whole.
 function forgetCommittedRouteState(): void {
   rscPatchCache.clear();
-  renderedFromResponse = true;
+  shownNode = null;
+  parkedRedirect.clear();
   currentRouterState = null;
   currentSegmentTree = null;
   currentFullNode = null;
@@ -452,7 +456,6 @@ function forgetCommittedRouteState(): void {
 }
 
 function rememberPatchedRouteState(tree: RscSegmentCacheNode, patchedNode: RscSegmentCacheNode): void {
-  renderedFromResponse = true;
   currentRouterState = patchedNode.routerState;
   currentSegmentTree = tree;
   currentCommitKind = "patch";
@@ -470,6 +473,18 @@ function forgetPagesOfAnotherAccount(): void {
   currentSegmentTree = null;
 }
 
+//? The fragment never reaches the server, so a page cached under one fragment is the payload of every other.
+function cachedPageOf(target: string): RscCacheNode | undefined {
+  const key = pageKeyOf(target);
+  return rscCache.get(target) ?? [...rscCache.values()].findLast((node) => pageKeyOf(node.href) === key);
+}
+
+function replayedPageOf(target: string): RscCacheNode | undefined {
+  const node = cachedPageOf(target);
+  if (node) rememberRscCacheNode(rscCache, node, MAX_RSC_CACHE_ENTRIES);
+  return node;
+}
+
 const isConstrainedNetwork = () => {
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
     .connection;
@@ -477,15 +492,16 @@ const isConstrainedNetwork = () => {
 };
 
 globalThis.__AKAN_RSC_PREFETCH__ = (href, priority) => {
-  if (isConstrainedNetwork()) return;
+  const none = () => undefined;
+  if (isConstrainedNetwork()) return none;
   const target = normalizeHref(href);
   const key = pageKeyOf(target);
-  if (new URL(target).origin !== window.location.origin || pendingRequest?.target === key) return;
+  if (new URL(target).origin !== window.location.origin || pendingRequest?.target === key) return none;
   //? Not forgetPagesOfAnotherAccount: only a navigation may record the change, or a page of the old account still in
   //? flight commits into the cache as the new account's.
   const authCookies = readAuthCookies();
-  if (authCookies === cachedAuthCookies && rscCache.has(target)) return;
-  rscPrefetchCache.request(key, authCookies, priority);
+  if (authCookies === cachedAuthCookies && cachedPageOf(target)) return none;
+  return rscPrefetchCache.request(key, authCookies, priority);
 };
 
 function Root(): ReactNode {
@@ -509,19 +525,19 @@ function Root(): ReactNode {
     if (!currentFullNode) return;
     const currentFullState = currentFullNode.routerState;
     const canRestoreFullNode =
-      currentFullNode.href === href &&
+      pageKeyOf(currentFullNode.href) === pageKeyOf(href) &&
       ((!currentFullState && !currentRouterState) ||
         (currentFullState !== null &&
           currentRouterState !== null &&
           currentFullState.routeId === currentRouterState.routeId));
     if (canRestoreFullNode) {
       resetAkanSegmentOutletPatches();
-      rscCache.set(href, currentFullNode);
+      rscCache.set(currentFullNode.href, currentFullNode);
     }
   };
 
   globalThis.__AKAN_RSC_REFRESH__ = async (options = {}) => {
-    const navId = supersedeNavigation();
+    const navId = supersedeForRefresh();
     const target = normalizeHref(window.location.href);
     rscCache.clear();
     rscPatchCache.clear();
@@ -579,7 +595,7 @@ function Root(): ReactNode {
 
   globalThis.__AKAN_RSC_NAVIGATE__ = async (href, options = {}) => {
     if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) {
-      supersedeNavigation();
+      supersedeKeepingPage();
       return;
     }
     forgetPagesOfAnotherAccount();
@@ -594,7 +610,8 @@ function Root(): ReactNode {
     const hash = options.scrollY === undefined ? new URL(target).hash : "";
     const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY, hash });
     try {
-      let nextNode = rscCache.get(target);
+      const replayed = replayedPageOf(target);
+      let nextNode = replayed;
       let notFound = false;
       let servedFromCache = !!nextNode;
       if (!nextNode) {
@@ -684,8 +701,6 @@ function Root(): ReactNode {
           nextNode = fetched.node;
           notFound = !!fetched.notFound;
         }
-      } else {
-        rememberRscCacheNode(rscCache, nextNode, MAX_RSC_CACHE_ENTRIES);
       }
       observeRscNavigationNode({
         cache: rscCache,
@@ -697,8 +712,9 @@ function Root(): ReactNode {
       });
       // Awaited before committing so use() never suspends the root transition (see trackRscThenable).
       await nextNode.thenable;
+      //? A replay stays keyed by its own href alone, where a redirect or a failure deletes it, never by the fragment it serves.
       const committed = commitLatestRscNavigation({
-        cache: notFound ? undefined : rscCache,
+        cache: notFound || replayed ? undefined : rscCache,
         href: target,
         thenable: nextNode,
         maxEntries: MAX_RSC_CACHE_ENTRIES,
@@ -745,7 +761,7 @@ window.addEventListener("popstate", (event) => {
       ?.catch((error: unknown) => hardNavigateAfterRscFailure(window.location.href, true, error));
   else {
     //? Still a navigation: one in flight would otherwise commit its page onto the entry this move landed on.
-    supersedeNavigation();
+    supersedeKeepingPage();
     if (scrollY !== undefined) scrollRestoration.scrollTo(scrollY);
   }
   window.setTimeout(() => {
@@ -755,22 +771,10 @@ window.addEventListener("popstate", (event) => {
   }, 0);
 });
 
-//? Passing these drops React's production defaults, so they repeat them; `akan start` keeps its development ones.
-const reportingLazyChunkFailures = {
-  onCaughtError: (error: unknown) => {
-    console.error(error);
-    loadDocumentForLazyChunkFailure(error);
-  },
-  onUncaughtError: (error: unknown) => {
-    if (typeof reportError === "function") reportError(error);
-    else console.error(error);
-    loadDocumentForLazyChunkFailure(error);
-  },
-};
 window.addEventListener("unhandledrejection", (event) => loadDocumentForLazyChunkFailure(event.reason));
-
+const rootOptions = isBuildBundle() ? reportingRootErrors(loadDocumentForLazyChunkFailure) : undefined;
 const hydrate = () => {
-  hydrateRoot(document, createElement(Root), isBuildBundle() ? reportingLazyChunkFailures : undefined);
+  hydrateRoot(document, createElement(Root), rootOptions);
   scrollRestoration.restoreDocumentLoad();
 };
 //? Hydrating without the dictionary still beats a dead page: client components show their keys until a navigation

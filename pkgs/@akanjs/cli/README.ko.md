@@ -110,7 +110,9 @@ Akan 프레임워크 패키지는 `dist/pkgs/*`에서만 배포합니다. `verif
 
 릴리스 후보(rc)는 CI가 배포합니다. `rc` 브랜치에 push될 때마다 CI 전체를 돌린 뒤, 대기 중인 changeset이
 릴리스할 버전의 다음 `<version>-rc.N`을 npm provenance와 함께 배포하고 그 커밋에 `v<version>-rc.N` 태그를 붙입니다.
-정식 릴리스는 지금처럼 수동입니다: `bun run changeset:version` 후 `akan deploy-akan --registry npm`.
+정식 릴리스는 지금처럼 수동입니다: `bun run changeset:version`, 커밋해서 `main`에 push, 그다음
+`akan deploy-akan --registry npm`. npm 배포가 끝나면 `deploy-akan`이 그 커밋으로 에디터 확장 릴리스를 CI에
+요청합니다. 커밋이 아직 `main`에 없으면 push한 뒤 돌릴 `gh workflow run` 명령을 알려 줍니다.
 `npm-publish` environment는 `rc`만 허용하므로 `rc`에 push할 수 있는 사람은 rc를 배포할 수 있습니다. 저장소 규칙에서
 `rc` push 권한을 제한하세요.
 

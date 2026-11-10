@@ -1,16 +1,37 @@
 import type { PromiseOrObject } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { Err } from "akanjs/dictionary";
-import type { LlmUsage } from "akanjs/service";
+import { LlmSpend, type LlmTurnRequest, type LlmUsage } from "akanjs/service";
+import type { AgentTurnContext } from "./agentRelayPolicy";
+
+export type AgentTurnOutcome = "ok" | "failed" | "aborted";
 
 export interface AgentUsageReport {
   account: unknown;
+  turn: AgentTurnContext;
   model: string | null;
+  /** On a failed or aborted turn, what the provider spent before it ended; zero where it spent nothing. */
   usage: LlmUsage;
+  /**
+   * Some of `usage` is the framework's estimate, not the provider's count: a stream cut short sends no counts of its
+   * own, so what was sent and streamed stands in for them, erring high.
+   */
+  estimated?: boolean;
+  /** `aborted` is a turn whose caller went away before the answer, `failed` one the provider or the network ended. */
+  outcome: AgentTurnOutcome;
 }
 
 export interface AgentQuotaCheck {
   account: unknown;
+  turn: AgentTurnContext;
+  /** What the request policy returned; absent when server code meters a turn without naming it. */
+  request?: LlmTurnRequest;
+}
+
+export interface AgentMeterScope {
+  turn?: AgentTurnContext;
+  request?: LlmTurnRequest;
+  signal?: AbortSignal;
 }
 
 export type AgentUsageHook = (report: AgentUsageReport) => PromiseOrObject<void>;
@@ -40,13 +61,23 @@ export class AgentMeter {
     if (serial !== undefined) AgentMeter.#serial = serial;
   }
 
-  static async run<T extends { usage?: LlmUsage; model?: string }>(account: unknown, turn: () => Promise<T>) {
+  static turnOf(account: unknown, { headers, ip }: { headers?: Headers; ip?: string | null } = {}): AgentTurnContext {
+    return { id: crypto.randomUUID(), headers: headers ?? new Headers(), account, ip: ip ?? null };
+  }
+
+  static async run<T extends { usage?: LlmUsage; model?: string } | null>(
+    account: unknown,
+    turn: () => Promise<T>,
+    scope: AgentMeterScope = {},
+  ) {
+    const context = scope.turn ?? AgentMeter.turnOf(account);
+    const check: AgentQuotaCheck = { account, turn: context, ...(scope.request ? { request: scope.request } : {}) };
     const quota = AgentMeter.#quota;
-    if (!quota) return await AgentMeter.#spend(account, turn, () => undefined);
+    if (!quota) return await AgentMeter.#spend(check, turn, scope.signal, () => undefined);
     const key = AgentMeter.#serial ? AgentMeter.#keyOf(account) : null;
     if (key === null) {
-      if (!(await quota({ account }))) throw new Err("agent.error.quotaExceeded");
-      return await AgentMeter.#spend(account, turn, () => undefined);
+      if (!(await quota(check))) throw new Err("agent.error.quotaExceeded");
+      return await AgentMeter.#spend(check, turn, scope.signal, () => undefined);
     }
     //? One turn per caller until its usage is reported, or a burst sent together passes the quota before any is billed.
     const ahead = AgentMeter.#lanes.get(key);
@@ -64,29 +95,67 @@ export class AgentMeter {
     };
     try {
       await ahead;
-      if (!(await quota({ account }))) throw new Err("agent.error.quotaExceeded");
-      return await AgentMeter.#spend(account, turn, release);
+      if (!(await quota(check))) throw new Err("agent.error.quotaExceeded");
     } catch (error) {
       release();
       throw error;
     }
+    return await AgentMeter.#spend(check, turn, scope.signal, release);
   }
 
-  static async #spend<T extends { usage?: LlmUsage; model?: string }>(
-    account: unknown,
+  static async #spend<T extends { usage?: LlmUsage; model?: string } | null>(
+    { account, turn: context }: AgentQuotaCheck,
     turn: () => Promise<T>,
+    signal: AbortSignal | undefined,
     settled: () => void,
   ) {
-    const result = await turn();
+    let result: T;
+    try {
+      result = await turn();
+    } catch (error) {
+      const outcome = signal?.aborted ? "aborted" : "failed";
+      void LlmSpend.settled(error).then((spent) =>
+        AgentMeter.#report(
+          {
+            account,
+            turn: context,
+            model: spent?.model ?? null,
+            usage: spent?.usage ?? AgentMeter.#unspent(),
+            ...(spent?.estimated ? { estimated: true } : {}),
+            outcome,
+          },
+          settled,
+        ),
+      );
+      throw error;
+    }
+    AgentMeter.#report(
+      {
+        account,
+        turn: context,
+        model: result?.model ?? null,
+        usage: result?.usage ?? AgentMeter.#unspent(),
+        outcome: "ok",
+      },
+      settled,
+    );
+    return result;
+  }
+
+  //? One per report: a hook that rewrites its report's usage in place must not bill the next turn with it.
+  static #unspent(): LlmUsage {
+    return { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+  }
+
+  static #report(report: AgentUsageReport, settled: () => void) {
     const hook = AgentMeter.#usage;
-    const usage = result.usage;
-    if (!hook || !usage) {
+    if (!hook) {
       settled();
-      return result;
+      return;
     }
     //* Never awaited: a slow or failing ledger must not cost the user a turn the provider already billed.
     const reported = Promise.resolve()
-      .then(() => hook({ account, model: result.model ?? null, usage }))
+      .then(() => hook(report))
       .catch((error: unknown) =>
         AgentMeter.#logger.error(`agent usage hook failed: ${error instanceof Error ? error.message : String(error)}`),
       );
@@ -105,7 +174,6 @@ export class AgentMeter {
       clearTimeout(timer);
       settled();
     });
-    return result;
   }
 
   //? An anonymous caller names no one to queue behind, so its turns are not held for one another.

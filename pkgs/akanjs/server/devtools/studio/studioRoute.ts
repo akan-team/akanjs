@@ -81,7 +81,7 @@ export class StudioRoute {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       StudioRoute.logger.warn(`Failed to build the Akan Graph: ${message}`);
-      return { error: message, unanswered: BuilderRpc.isTimeout(error) };
+      return { error: message, unanswered: BuilderRpc.isTimeout(error) || BuilderRpc.isUnavailable(error) };
     }
   }
 

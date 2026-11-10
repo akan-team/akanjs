@@ -1,3 +1,5 @@
+import { StreamedRead } from "../streamedRead";
+
 type FieldFactories<Handle> = { [Key in keyof Handle]: () => Handle[Key] };
 
 /** Awaitable as the shape a helper always gave, and destructurable into one promise per field. */
@@ -26,7 +28,7 @@ export class FetchHandle {
       Object.defineProperty(handle, key, {
         enumerable: true,
         get: () => {
-          if (!read.has(key)) read.set(key, factories[key]());
+          if (!read.has(key)) read.set(key, FetchHandle.#streamed(factories[key]()));
           return read.get(key);
         },
       });
@@ -38,6 +40,15 @@ export class FetchHandle {
       catch: { value: (...args: unknown[]) => Reflect.apply(resolve().catch, resolve(), args) },
       finally: { value: (...args: unknown[]) => Reflect.apply(resolve().finally, resolve(), args) },
     }) as PromiseLike<Awaited> & Handle;
+  }
+
+  //? A field is the read a route hands a `Load.*` unawaited, so its failure is the stream's to show, not the page's.
+  static #streamed(field: unknown): unknown {
+    if (!(field instanceof Promise)) return field;
+    return field.catch((reason: unknown) => {
+      StreamedRead.mark(reason);
+      throw reason;
+    });
   }
 
   /** The awaited shape's fields stay lazy for the same reason the handle's do: a caller reads one, not all. */

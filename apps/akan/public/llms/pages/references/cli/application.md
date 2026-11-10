@@ -270,7 +270,7 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 
 Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.
 
-- paths (String): Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. A `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a signal route or a file such as `/robots.txt` opens as written, without a locale.
+- paths (String): Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, the default `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`. A full URL (`http://localhost:<port>/oauth/token`) opens exactly as written, for an endpoint mounted outside the API prefix or a custom MCP path. A page `--changed` finds always gets the locale.
 
 - --changed (Boolean, default false, -C): Also open the pages that uncommitted page and layout changes reach, `/` when no route changed.
 
@@ -328,7 +328,7 @@ Prepare an app, library or package, then run its tests with `bun test --isolate`
 
 - --write (Boolean, default true): Sync an app target first. Libraries and packages are always prepared.
 
-`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--update-budget <boolean>]`
+`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--check-budget <boolean>] [--update-budget <boolean>] [--raise-budget <boolean>]`
 
 Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.
 
@@ -342,7 +342,11 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 - --env (String, local | debug | develop | main): The environment the server runs in. Without it, the build takes `AKAN_PUBLIC_ENV` from the shell, or from the workspace `.env` when the shell does not set it.
 
-- --update-budget (Boolean, default false): Write the app's `akan.budget.json`: add each route that has no entry at what it measures now, lower an entry its route now fits under, and drop the routes that are gone. It never raises an entry.
+- --check-budget (Boolean, default false): Fail the build when a route's JS is over its `akan.budget.json` entry, when a route has no entry, when the file cannot be read, or when the app has none. Without it the build only reports these. CI runs it.
+
+- --update-budget (Boolean, default false): Write the app's `akan.budget.json`: add each route that has no entry at what it measures now, lower an entry its route now fits under, and drop the routes that are gone. It never raises an entry, and fails a route still over one.
+
+- --raise-budget (Boolean, default false): Rewrite the app's `akan.budget.json` at what every route measures now, raising the entries of the routes that grew, and name them. Run it in the change that grows a route on purpose, and commit the file with it. Pass one of the three budget flags at most.
 
 - alias: `akan b` runs this command.
 
@@ -350,7 +354,7 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 - web surfaces: The SSR and CSR steps follow `web` in `akan.config.ts`; a surface turned off is skipped.
 
-- route JS budget: The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors. It counts the brotli bytes served and prints the largest routes. When the app has an `akan.budget.json`, a route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry fails the build; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A route with no entry is only reported. Record the file with `--update-budget` and commit it. To raise an entry, edit it by hand in the change that grows the route. `akan verify` warns of a route over its entry or an unreadable file but never fails on either, and a mobile or desktop build skips the step.
+- route JS budget: The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors; the root layout's `System` counts as the SSR shell a server page renders, not the CSR or MCP App shells. It counts the brotli bytes served and prints the largest routes. A route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry in `akan.budget.json` is an overage; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A plain build, `--quiet` included, and `akan verify` warn of an overage, a route with no entry or an unreadable file and never fail on one; `--check-budget` fails on them, naming them all at once, and on an app with no file. Record the file with `--update-budget`, which also adds a new route, and commit it. To raise an entry, run `--raise-budget`, or edit the entry by hand, in the change that grows the route. A mobile or desktop build skips the step.
 
 `akan start-ios <app> [--target <target>] [--env <env>] [--release <boolean>] [--device <device>] [--team <team>] [--write <boolean>]`
 
@@ -855,7 +859,9 @@ akan test util
 akan build myapp
 akan build myapp --write true --fast false --quiet false
 akan build myapp --profile edge
+akan build myapp --check-budget
 akan build myapp --update-budget
+akan build myapp --raise-budget
 ```
 
 ### start-ios

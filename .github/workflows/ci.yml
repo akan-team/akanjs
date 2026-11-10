@@ -47,6 +47,22 @@ jobs:
       - uses: ./.github/actions/setup
       - run: bun run typecheckPkgs
 
+  api-report:
+    name: API report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Full history: a removed or changed export is checked against the report where the branch left the base.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: bun run api:report --check
+      - if: github.event_name == 'pull_request'
+        run: bun run api:report --base "origin/$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+
   typecheck-libs:
     name: Typecheck libs
     runs-on: ubuntu-latest
@@ -103,6 +119,20 @@ jobs:
           path: local/coverage/
           if-no-files-found: warn
 
+  route-js-budget:
+    name: Route JS budget
+    # A called workflow sees its caller's `github` context, so this skips the run npm-publish.yml calls: an app's budget never holds a release.
+    if: ${{ contains(github.workflow_ref, '/.github/workflows/ci.yml@') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: bun run buildAkan
+      # --fast skips the typecheck, which fails on the empty env files a fresh checkout seeds; the budget reads only bundles.
+      - run: bun run runAkan build minimal --fast --check-budget
+      - run: bun run runAkan build akan --fast --check-budget
+
   sync:
     name: Sync is clean
     runs-on: ubuntu-latest
@@ -120,3 +150,8 @@ jobs:
             echo "::error::akan sync changed tracked files. Run it locally and commit the result."
             exit 1
           fi
+      - name: Keep native core off a page drawing the synced shared lib
+        working-directory: pkgs/@akanjs/devkit
+        run: bun test --isolate ./frontendBuild/nativeCore.test.ts
+        env:
+          REQUIRE_SYNCED_LIBS: "1"

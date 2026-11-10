@@ -1,5 +1,6 @@
 import type { DatabaseMode } from "@akanjs/devkit/akanConfig";
 import { App, Apps, command, Exec, Sys, SysOrOnlyApp, Workspace } from "@akanjs/devkit/commandDecorators";
+import { RouteJsBudget } from "@akanjs/devkit/routeJsBudget";
 import { MigrationCommand } from "akanjs/server/migration/migrationCommand";
 import { MigrationError } from "akanjs/server/migration/migrationError";
 import { ApplicationScript } from "./application.script";
@@ -13,6 +14,7 @@ const teamOption = { flag: "T", desc: "Apple team id the signing is narrowed to"
 const signDesc =
   "sign with the identity AKAN_NATIVE_MACOS_* / AKAN_NATIVE_WINDOWS_* names (without it the env signs nothing)";
 const notarizeDesc = "macOS: upload the signed app to Apple's notary service (takes --sign)";
+const checkBudgetDesc = "fail on a route over its akan.budget.json entry or with none, or a missing or unreadable file";
 const devEnvs = ["local", "debug", "develop", "main"] as const;
 const buildEnvOption = { enum: devEnvs, desc: "backend environment", default: "debug" } as const;
 const startEnvOption = {
@@ -98,7 +100,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
   })
     .with(App)
     .arg("paths", String, {
-      desc: "page paths, comma-separated; the default locale is added when missing, but not to /_akan routes such as Studio or to files (default: /)",
+      desc: "page paths, comma-separated; the default locale is added when missing, except to a path the server answers outside a locale (/_akan, the API prefix, /__csr, /__rsc, /.well-known, /openapi.json, the default /mcp, the server's own files, public/ files) or a full URL, which opens as written (default: /)",
       example: "/board,/board/new",
       nullable: true,
     })
@@ -231,18 +233,17 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
       desc: "environment the server runs in (default: AKAN_PUBLIC_ENV of the shell, else of the workspace .env)",
       nullable: true,
     })
-    .option("updateBudget", Boolean, {
-      desc: "write akan.budget.json: add each new route's JS and lower an entry a route now fits under, never raise one",
-      default: false,
-    })
-    .exec(async function (app, write, fast, quiet, profile, env, updateBudget) {
+    .option("checkBudget", Boolean, { desc: checkBudgetDesc, default: false })
+    .option("updateBudget", Boolean, { desc: "write akan.budget.json, never raising an entry", default: false })
+    .option("raiseBudget", Boolean, { desc: "rewrite akan.budget.json at each route's measured JS", default: false })
+    .exec(async function (app, write, fast, quiet, profile, env, checkBudget, updateBudget, raiseBudget) {
       await this.applicationScript.build(app, {
         write,
         fast,
         quiet,
         profile: profile ?? undefined,
         env: env ?? undefined,
-        updateBudget,
+        budget: RouteJsBudget.modeOf({ checkBudget, updateBudget, raiseBudget }),
       });
     }),
   typecheck: target({ short: true, desc: "Typecheck an app or a library, its tests and specs included" })

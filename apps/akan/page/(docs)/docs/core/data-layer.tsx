@@ -115,7 +115,7 @@ const layerQuestions = [
 ];
 
 export default page()
-  .config({ transition: "fade" })
+  .config({ transition: "fade", rscPatchHeadSafe: true })
   .head(({ lang }) => {
     const title = lang === "ko" ? "핵심 개념: 데이터 레이어 | Akan.js" : "Core Concepts: Data Layer | Akan.js";
     const description =

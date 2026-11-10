@@ -53,6 +53,19 @@ export const noteChunkLoadFailure = (error: unknown): void => {
 export const isLazyLinkFailure = (error: unknown): error is SyntaxError | TypeError =>
   isLinkFailure(error) && !chunkLoadFailures.has(error);
 
+//? Passing these drops React's production defaults, so they repeat them; `akan start` keeps its development ones.
+export const reportingRootErrors = (onError: (error: unknown) => void) => ({
+  onCaughtError: (error: unknown) => {
+    console.error(error);
+    onError(error);
+  },
+  onUncaughtError: (error: unknown) => {
+    if (typeof reportError === "function") reportError(error);
+    else console.error(error);
+    onError(error);
+  },
+});
+
 //? Per tab and synchronous, which akanjs/client `storage` (localStorage, async) is not; unrecorded, it never reloads.
 const chunkReloadsKey = "akan.rsc.chunkReloads";
 export function claimChunkReload(chunkId: string): boolean {
