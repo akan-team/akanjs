@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
@@ -102,13 +102,20 @@ export interface IosReleaseOptions extends MobileTargetOptions, MobilePublicEnvO
 // Lazy, so the `akan start` hot path never loads the build, mobile and prompt stacks.
 const loadBuildRunner = async () => (await import("@akanjs/devkit/applicationBuildRunner")).ApplicationBuildRunner;
 const loadPrompts = async () => await import("@inquirer/prompts");
-const testFileName = /[._](test|spec)\.[cm]?[jt]sx?$/;
-//? `bun test` never scans a dot folder or node_modules, so a test file there does not count.
-const hasTestFile = (dir: string): boolean =>
-  readdirSync(dir, { withFileTypes: true }).some((entry) => {
-    if (entry.name.startsWith(".") || entry.name === "node_modules") return false;
-    return entry.isDirectory() ? hasTestFile(path.join(dir, entry.name)) : testFileName.test(entry.name);
+const testFileName = /[._](test|spec)\.[cm]?[jt]sx?$/i;
+//? `bun test` skips a dot folder and node_modules but follows a linked folder, such as a synced `page/(libs)` link.
+const hasTestFile = (dir: string, seen = new Set<string>()): boolean => {
+  const real = realpathSync(dir);
+  if (seen.has(real)) return false;
+  seen.add(real);
+  return readdirSync(dir, { withFileTypes: true }).some((entry) => {
+    const entryPath = path.join(dir, entry.name);
+    const isDir =
+      entry.isDirectory() || (entry.isSymbolicLink() && statSync(entryPath, { throwIfNoEntry: false })?.isDirectory());
+    if (!isDir) return testFileName.test(entry.name);
+    return !entry.name.startsWith(".") && entry.name !== "node_modules" && hasTestFile(entryPath, seen);
   });
+};
 
 export class ApplicationRunner extends runner("application") {
   async createApplication(appName: string, workspace: Workspace, libs: string[] = []) {

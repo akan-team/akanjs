@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
@@ -1361,6 +1361,39 @@ describe("ApplicationRunner", () => {
       await new ApplicationRunner().test(pkg);
       expect(spawn).toHaveBeenCalledTimes(1);
     }
+  });
+
+  test("a test file bun runs in a linked folder, under an upper-case suffix or a dot name still runs bun", async () => {
+    const layouts: ((root: string, cwd: string) => Promise<void>)[] = [
+      async (root, cwd) => {
+        await writeText(path.join(root, "libs", "shared", "page", "route.test.ts"), "");
+        await mkdir(path.join(cwd, "page"), { recursive: true });
+        await symlink(path.join(root, "libs", "shared", "page"), path.join(cwd, "page", "shared"));
+      },
+      async (_root, cwd) => await writeText(path.join(cwd, "src", "User.Test.TS"), ""),
+      async (_root, cwd) => await writeText(path.join(cwd, "src", ".user.test.ts"), ""),
+    ];
+    for (const layout of layouts) {
+      const { root, pkg } = track(await createTempPackage());
+      await layout(root, pkg.cwdPath);
+      const spawn = mock(async () => "");
+      pkg.spawn = spawn as never;
+
+      await new ApplicationRunner().test(pkg);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test("a linked folder that loops back is read once", async () => {
+    const { pkg } = track(await createTempPackage());
+    await mkdir(path.join(pkg.cwdPath, "src"), { recursive: true });
+    await symlink(pkg.cwdPath, path.join(pkg.cwdPath, "src", "loop"));
+    const spawn = mock(async () => "");
+    pkg.spawn = spawn as never;
+    spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+
+    await new ApplicationRunner().test(pkg);
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   test("named paths reach bun even when the target has no test file, so bun still fails on them", async () => {
