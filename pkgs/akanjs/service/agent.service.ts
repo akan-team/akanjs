@@ -12,17 +12,25 @@ import { LlmAdaptorRole } from "./predefinedAdaptor/role.adaptor";
 import { serve } from "./serve";
 import { ToolNames } from "./toolNames";
 
+export interface AgentTurnOptions {
+  onDelta?: (delta: string) => void;
+  preamble?: string | false;
+  signal?: AbortSignal;
+}
+
 export class AgentService extends serve("agent" as const, ({ plug }) => ({
   llm: plug(LlmAdaptorRole),
 })) {
-  async runTurn(request: LlmTurnRequest, onDelta?: (delta: string) => void) {
+  async runTurn(request: LlmTurnRequest, options: AgentTurnOptions | ((delta: string) => void) = {}) {
+    const { onDelta, preamble, signal } = typeof options === "function" ? { onDelta: options } : options;
     const names = ToolNames.of(request);
     const prepared = names.encode(
       AgentService.instructed(
         AgentService.readable(AgentService.referenced(AgentService.explained(request)), this.llm.accepts),
+        preamble,
       ),
     );
-    const answer = await this.llm.chat(prepared, onDelta);
+    const answer = await this.llm.chat(prepared, onDelta, signal);
     if (!answer) throw new Err("agent.error.llmUnavailable");
     return {
       text: answer.text ?? "",
@@ -49,8 +57,11 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
     pageContentInstruction,
   ].join(" ");
 
-  static instructed(request: LlmTurnRequest): LlmTurnRequest {
-    return { ...request, instructions: [AgentService.preamble, request.instructions].filter(Boolean).join("\n\n") };
+  static instructed(request: LlmTurnRequest, preamble: string | false = AgentService.preamble): LlmTurnRequest {
+    const instructions = [preamble, request.instructions].filter(Boolean).join("\n\n");
+    if (instructions) return { ...request, instructions };
+    const { instructions: _none, ...rest } = request;
+    return rest;
   }
 
   /** Provider mappings read `text` and drop `error`, so a failed turn is folded into its text or retried blind. */

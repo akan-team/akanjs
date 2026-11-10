@@ -295,6 +295,15 @@ describe("AgentService.instructed", () => {
     expect(AgentService.instructed(plain()).instructions).toBe(AgentService.preamble);
   });
 
+  test("a turn with no screen behind it replaces the in-page preamble, or sends none", () => {
+    const own = { ...plain(), instructions: "Answer in the channel thread." };
+    expect(AgentService.instructed(own, "You are the team's agent.").instructions).toBe(
+      "You are the team's agent.\n\nAnswer in the channel thread.",
+    );
+    expect(AgentService.instructed(own, false).instructions).toBe("Answer in the channel thread.");
+    expect("instructions" in AgentService.instructed(plain(), false)).toBe(false);
+  });
+
   test("the batching instruction reaches the provider's system prompt", () => {
     const body = OpenaiDialect.requestBody("deepseek-v4-flash", AgentService.instructed(plain()));
     expect(body.messages[0].content).toContain("in the same turn, rather than one call per turn");
@@ -306,6 +315,39 @@ describe("AgentService.instructed", () => {
     expect(AnthropicLlm.systemPrompt(plain())).toContain(pageContentInstruction);
     expect(OpenaiDialect.systemPrompt(plain())).toContain(pageContentInstruction);
     expect(pageContentInstruction).toContain("<page-content");
+  });
+});
+
+describe("AgentService.runTurn", () => {
+  const serviceOf = (seen: unknown[][]) =>
+    Object.assign(new AgentService(), {
+      llm: {
+        chat: async (...args: unknown[]) => {
+          seen.push(args);
+          return { text: "ok", stop: "end" as const };
+        },
+      },
+    });
+  const turn = (): LlmTurnRequest => ({ tools: [], context: [], messages: [{ role: "user", text: "hi" }] });
+
+  test("hands the provider the preamble a caller picks and the caller's signal", async () => {
+    const seen: unknown[][] = [];
+    const abort = new AbortController();
+    const onDelta = () => undefined;
+    await serviceOf(seen).runTurn(turn(), { preamble: false, signal: abort.signal, onDelta });
+    const [request, delta, signal] = seen[0] ?? [];
+    expect((request as LlmTurnRequest).instructions).toBeUndefined();
+    expect(delta).toBe(onDelta);
+    expect(signal).toBe(abort.signal);
+  });
+
+  test("still takes onDelta alone, under the in-page preamble", async () => {
+    const seen: unknown[][] = [];
+    const onDelta = () => undefined;
+    await serviceOf(seen).runTurn(turn(), onDelta);
+    const [request, delta] = seen[0] ?? [];
+    expect((request as LlmTurnRequest).instructions).toBe(AgentService.preamble);
+    expect(delta).toBe(onDelta);
   });
 });
 

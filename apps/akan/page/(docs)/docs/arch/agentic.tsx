@@ -1779,8 +1779,8 @@ st.expose("selectedWaypointId", ID)
             <Docs.SubSubTitle>{l.trans({ en: "Writing your own adaptor", ko: "어댑터 직접 쓰기" })}</Docs.SubSubTitle>
             <div>
               {l.trans({
-                en: "An adaptor implements one method, chat(request, onDelta?): the whole transcript goes in and one assistant answer comes out. Install it with applyAdaptor; as with applyMiddleware, the last writer wins.",
-                ko: "어댑터가 구현할 것은 chat(request, onDelta?) 하나입니다. 전체 대화가 들어가고 어시스턴트 응답 하나가 나옵니다. applyAdaptor로 끼우며, applyMiddleware처럼 마지막에 쓴 쪽이 이깁니다.",
+                en: "An adaptor implements one method, chat(request, onDelta?, signal?): the whole transcript goes in and one assistant answer comes out. Pass signal to the provider call, which then stops once nobody waits for the answer. Install it with applyAdaptor; as with applyMiddleware, the last writer wins.",
+                ko: "어댑터가 구현할 것은 chat(request, onDelta?, signal?) 하나입니다. 전체 대화가 들어가고 어시스턴트 응답 하나가 나옵니다. signal을 프로바이더 호출에 넘기면, 응답을 기다리는 쪽이 없을 때 호출이 멈춥니다. applyAdaptor로 끼우며, applyMiddleware처럼 마지막에 쓴 쪽이 이깁니다.",
               })}
             </div>
           </Docs.Description>
@@ -1798,7 +1798,11 @@ export const option = new AkanOption<ModulesOptions>()
             className="w-full"
             title="akanjs/service — LlmAdaptor"
             code={`export interface LlmAdaptor {
-  chat(request: LlmTurnRequest, onDelta?: (delta: string) => void): Promise<LlmTurnAnswer | null>;
+  chat(
+    request: LlmTurnRequest,
+    onDelta?: (delta: string) => void,
+    signal?: AbortSignal,
+  ): Promise<LlmTurnAnswer | null>;
 }`}
           />
         </Scroll.Slide>
