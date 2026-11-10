@@ -19,7 +19,7 @@ export interface DevtoolsRouterContext {
   prefix: string;
   websocketPrefix: string;
   openapi: boolean;
-  web: boolean;
+  web?: boolean;
   getStatus: () => string;
   buildGraph?: () => Promise<BuildGraphPayload | null>;
   buildChanges?: (since: string | null) => Promise<BuildChangesPayload | null>;
@@ -62,7 +62,7 @@ export class DevtoolsRouter {
     const studio = new StudioRoute({
       basePath: `${DevtoolsRouter.basePath}/studio`,
       appName: this.#context.env.appName,
-      web: this.#context.web,
+      web: this.#context.web ?? true,
       buildGraph: this.#context.buildGraph ?? null,
       buildChanges: this.#context.buildChanges ?? null,
       buildFramework: this.#context.buildFramework ?? null,
