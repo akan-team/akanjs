@@ -24,16 +24,14 @@ import {
 } from "akanjs/constant";
 import { DictionaryRegistry } from "akanjs/dictionary";
 import { baseDocumentColumns, documentQueryHelper, getFilterSortByKey, type QueryFieldMap } from "akanjs/document";
-import {
-  type AdaptorCls,
-  type AkanJob,
-  type AkanJobOptions,
-  type DocumentStore,
-  type InjectRegistry,
-  type LiveChange,
-  type LiveRegistry,
-  type WebsocketAdaptor,
-  WebsocketAdaptorRole,
+import type {
+  AkanJob,
+  AkanJobOptions,
+  DocumentStore,
+  InjectRegistry,
+  LiveChange,
+  LiveRegistry,
+  WebsocketAdaptor,
 } from "akanjs/service";
 import { type Endpoint, type EndpointCls, sliceEndpoint } from "../../signal/endpoint";
 import { EndpointErrorContract } from "../../signal/endpointErrorContract";
@@ -58,6 +56,7 @@ import { MachineToken } from "../machine/machineToken";
 import type { RoomReplay } from "../routing/roomReplay";
 import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "../types";
 import { PendingSubscribes } from "./PendingSubscribes";
+import { websocketOf } from "./websocketOf";
 
 type LiveChangeListener = (doc: unknown, type: unknown, previous?: unknown) => void;
 type LiveRoute = (next: Record<string, unknown>, previous?: Record<string, unknown>) => Promise<LiveDelivery[]>;
@@ -76,7 +75,6 @@ export class SignalResolver {
   static readonly #coalescingRooms = new Set<string>();
   static readonly #liveRoutes = new Map<string, { store: DocumentStore; route: LiveRoute }>();
   static readonly #cappedListKeys = new Set<string>();
-  static readonly #websockets = new WeakMap<InjectRegistry, { key: AdaptorCls; websocket: WebsocketAdaptor }>();
 
   static coalescesRoom(roomId: string): boolean {
     const separator = roomId.indexOf("-");
@@ -122,7 +120,7 @@ export class SignalResolver {
   ): ServerSignalCls {
     const endpointMeta = serverSignalCls[ENDPOINT_META] as { [key: string]: EndpointInfo };
     const internalMeta = serverSignalCls[INTERNAL_META] as { [key: string]: InternalInfo };
-    const websocket = SignalResolver.#getWebsocket(registry);
+    const websocket = websocketOf(registry);
     Object.entries(endpointMeta).forEach(([key, endpointInfo]) => {
       if (endpointInfo.type !== "pubsub") throw new Error(`Endpoint ${key} is not a pubsub endpoint`);
       const isBinaryFrame = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
@@ -208,7 +206,7 @@ export class SignalResolver {
       | undefined;
     if (!service) throw new Error(`Live slice on "${refName}" has no service to listen to`);
     const store = service.__databaseModel.__store;
-    const websocket = SignalResolver.#getWebsocket(registry);
+    const websocket = websocketOf(registry);
     const route: LiveRoute = async (next, previous) => {
       const targets = live.syncHub.route(refName, next, previous);
       if (!targets.length) return [];
@@ -706,7 +704,7 @@ export class SignalResolver {
             const arrival = SignalResolver.#pendingSubscribes.arrive(ws, subscribe);
             try {
               return await SignalContext.run(endpoint, endpointInfo, key, "websocket", async () => {
-                const websocket = SignalResolver.#getWebsocket(registry);
+                const websocket = websocketOf(registry);
                 const context = await new SignalContext(
                   key,
                   { ws, data: message, eventType: event ?? "unsubscribe" },
@@ -720,19 +718,19 @@ export class SignalResolver {
                 const baseRoomId = context.getRoomId(key);
                 if (subscribe) {
                   const isClosed = SignalResolver.#closedWs.has(ws);
+                  //? The request id, as no room was joined: a live room's id would drop the alias a resubscribe set.
+                  const unsubscribed: WebsocketSubscribeAck = {
+                    type: "sub",
+                    roomId: requestRoomId,
+                    requestRoomId,
+                    subscribe: false,
+                  };
                   //? The close or the unsubscribe already left what it found, so a room joined now would stay joined.
                   if (isClosed || SignalResolver.#pendingSubscribes.isLeft(ws, baseRoomId, arrival)) {
                     await SignalResolver.#runLifecycleHandlers(
                       [context as SignalContext<WebSocketExecutionContext>],
                       isClosed ? ["unsubscribe", "disconnect"] : ["unsubscribe"],
                     );
-                    //? The request id, as no room was joined: a live room's id would drop the alias a resubscribe set.
-                    const unsubscribed: WebsocketSubscribeAck = {
-                      type: "sub",
-                      roomId: requestRoomId,
-                      requestRoomId,
-                      subscribe: false,
-                    };
                     return unsubscribed;
                   }
                   const roomId = liveOption ? context.getLiveRoomId(key, query) : baseRoomId;
@@ -751,27 +749,8 @@ export class SignalResolver {
                   //? A binary frame goes out unnumbered, so a binary room acks no cursor and its resubscribe resyncs.
                   const isBinaryRoom = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
                   const replay = isBinaryRoom ? null : SignalResolver.#roomReplay;
-                  //? Before the wait: a frame numbered during it leaves a gap after the ack's cursor, which resyncs.
-                  replay?.watch(roomId);
-                  const cursor = replay?.cursor(roomId);
-                  //? The ack vouches for what other servers publish after it. The socket subscribes only after the
-                  //? wait: the client keys a live room's frames by the ack, and drops one that arrives ahead of it.
-                  SignalResolver.#unacked.add(context);
-                  try {
-                    await websocket.joinRoom(ws, roomId, { live: liveOption?.refName });
-                  } finally {
-                    SignalResolver.#unacked.delete(context);
-                  }
-                  //? An unsubscribe, a close, a revoke or a second subscribe of the room took it meanwhile.
-                  if (SignalResolver.#liveWsPubsubRoomCtx.get(ws)?.get(roomId) !== context) {
-                    const left: WebsocketSubscribeAck = {
-                      type: "sub",
-                      roomId: requestRoomId,
-                      requestRoomId,
-                      subscribe: false,
-                    };
-                    return left;
-                  }
+                  const joined = await SignalResolver.#awaitJoin(ws, roomId, context, websocket, replay);
+                  if (!joined) return unsubscribed;
                   ws.subscribe(roomId);
                   //? In the same turn as the subscribe: a frame published after it is queued behind these, never ahead.
                   const missed = request?.since && replay ? replay.since(roomId, request.since) : null;
@@ -782,7 +761,7 @@ export class SignalResolver {
                     roomId,
                     requestRoomId,
                     subscribe,
-                    ...(cursor ? { cursor } : {}),
+                    ...(joined.cursor ? { cursor: joined.cursor } : {}),
                     ...(request?.since ? { replayed: !!missed } : {}),
                   };
                   return ack;
@@ -893,6 +872,27 @@ export class SignalResolver {
     return select;
   }
 
+  //? The ack vouches for what other servers publish after it, so the socket subscribes only after the join: the client
+  //? keys a live room's frames by the ack. The numbering starts before it, so a frame sent meanwhile leaves a gap that
+  //? resyncs. `null` when an unsubscribe, a close, a revoke or a second subscribe took the room meanwhile.
+  static async #awaitJoin(
+    ws: Bun.ServerWebSocket<unknown>,
+    roomId: string,
+    context: SignalContext,
+    websocket: WebsocketAdaptor,
+    replay: RoomReplay | null,
+  ) {
+    replay?.watch(roomId);
+    const cursor = replay?.cursor(roomId);
+    SignalResolver.#unacked.add(context);
+    try {
+      await websocket.joinRoom(ws, roomId, { live: context.endpointInfo.signalOption.live?.refName });
+    } finally {
+      SignalResolver.#unacked.delete(context);
+    }
+    return SignalResolver.#liveWsPubsubRoomCtx.get(ws)?.get(roomId) === context ? { cursor } : null;
+  }
+
   // Rooms are authorized once at subscribe; without this re-check a signed-out socket would keep its old rooms.
   static async revalidateWsRooms(
     ws: Bun.ServerWebSocket<any>,
@@ -901,7 +901,7 @@ export class SignalResolver {
   ): Promise<string[]> {
     const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
     if (!roomCtxMap?.size) return [];
-    const websocket = SignalResolver.#getWebsocket(registry);
+    const websocket = websocketOf(registry);
     const revokedRooms: string[] = [];
     for (const [roomId, roomCtx] of [...roomCtxMap]) {
       if (await roomCtx.authorize()) continue;
@@ -932,7 +932,7 @@ export class SignalResolver {
   }
 
   static async handleWsOpen(ws: Bun.ServerWebSocket<any>, registry: InjectRegistry) {
-    await SignalResolver.#getWebsocket(registry).registerSocket(ws);
+    await websocketOf(registry).registerSocket(ws);
   }
 
   static async handleWsClose(ws: Bun.ServerWebSocket<any>, registry: InjectRegistry, live?: LiveRegistry) {
@@ -946,7 +946,7 @@ export class SignalResolver {
     // The routing table must hear about a close too: a room nobody is in still costs an evaluation on every write.
     for (const roomId of roomCtxMap?.keys() ?? []) SignalResolver.#leaveRoom(roomId, live);
 
-    await SignalResolver.#getWebsocket(registry).unregisterSocket(ws);
+    await websocketOf(registry).unregisterSocket(ws);
     SignalResolver.logger.verbose(`WebSocket disconnected from all rooms`);
   }
   // A live room nobody here is in is routed no change, so what it numbered no longer vouches for what followed.
@@ -955,25 +955,5 @@ export class SignalResolver {
     live?.syncHub.leave(roomId);
     if ((live?.syncHub.roomCount ?? 0) < liveRooms) SignalResolver.#roomReplay?.forget(roomId);
     else SignalResolver.#roomReplay?.left(roomId);
-  }
-  // Every subscribe and every live event reaches this, so the scan runs once per registry and the answer is kept while
-  // the registry still holds that same instance under that same key.
-  static #getWebsocket(registry: InjectRegistry): WebsocketAdaptor {
-    const found = SignalResolver.#websockets.get(registry);
-    if (found && registry.adaptor.get(found.key) === (found.websocket as unknown)) return found.websocket;
-    const key = SignalResolver.#websocketKey(registry);
-    const websocket = key ? (registry.adaptor.get(key) as WebsocketAdaptor | undefined) : undefined;
-    if (!key || !websocket) throw new Error("WebSocket adaptor is not registered");
-    SignalResolver.#websockets.set(registry, { key, websocket });
-    return websocket;
-  }
-
-  static #websocketKey(registry: InjectRegistry): AdaptorCls | undefined {
-    if (registry.adaptor.has(WebsocketAdaptorRole)) return WebsocketAdaptorRole;
-    const roleProvider = [...registry.adaptorRole.entries()].find(
-      ([role]) => role.refName === WebsocketAdaptorRole.refName,
-    )?.[1];
-    if (roleProvider && registry.adaptor.has(roleProvider)) return roleProvider;
-    return [...registry.adaptor.keys()].find((adaptorCls) => ["solidPubsub", "wsRedis"].includes(adaptorCls.refName));
   }
 }
