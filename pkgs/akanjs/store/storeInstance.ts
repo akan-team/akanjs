@@ -107,7 +107,12 @@ export class StoreInstance {
     return ret;
   };
 
-  #ctx: Record<string, unknown> = { set: this.set, get: this.get, pick: this.#pick };
+  #ctx: Record<string, unknown> = {
+    set: this.set,
+    get: this.get,
+    pick: this.#pick,
+    flushDrafts: () => this.flushDrafts(),
+  };
 
   subscribe = (listener: () => void) => {
     this.#listeners.add(listener);

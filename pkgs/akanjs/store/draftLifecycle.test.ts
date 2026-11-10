@@ -355,7 +355,7 @@ describe("a form save that another open overtakes", () => {
     await settle();
 
     const creating = instance.do.createDraftNoteInForm();
-    expect(draftCount()).toBe(0);
+    expect(recordTitle()).toBe("about to submit");
     await instance.do.viewDraftNote(OTHER_ID);
     create.answer(new NoteFull({ id: NOTE_ID, title: "about to submit" } as never));
     await creating;
@@ -372,7 +372,7 @@ describe("a form save that another open overtakes", () => {
     expect(instance.get().draftNoteForm.title).toBe(blankTitle);
   });
 
-  test("a new<Model> in the same scope during create<Model>InForm opens blank, though the typing's debounce lands mid-save", async () => {
+  test("a new<Model> in the same scope during create<Model>InForm opens blank, though the record holds the form being saved", async () => {
     const signal = makeSignal();
     const instance = makeInstance(signal);
     const create = deferred();
@@ -416,7 +416,41 @@ describe("a form save that another open overtakes", () => {
     expect(draftCount()).toBe(0);
   });
 
-  test("a failed save puts its draft back for the next open, without refilling the form opened meanwhile", async () => {
+  test("the draft stays in storage while its save is in flight, so a reload during the save restores it", async () => {
+    const signal = makeSignal();
+    const instance = makeInstance(signal);
+    signal.calls.createDraftNote = deferred().call;
+    await typedNew(instance);
+    instance.flushDrafts();
+    await settle();
+
+    void instance.do.createDraftNoteInForm();
+    await settle();
+    expect(recordTitle()).toBe("about to submit");
+    const reloaded = makeInstance();
+    reloaded.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    await settle();
+    expect(reloaded.get().draftNoteForm.title).toBe("about to submit");
+  });
+
+  test("a debounce still pending at submit does not drop the draft once a blank form opens under its key mid-save", async () => {
+    const signal = makeSignal();
+    const instance = makeInstance(signal);
+    signal.calls.createDraftNote = deferred().call;
+    await typedNew(instance);
+
+    void instance.do.createDraftNoteInForm();
+    instance.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    instance.flushDrafts();
+    await settle();
+    expect(recordTitle()).toBe("about to submit");
+    const reloaded = makeInstance();
+    reloaded.do.newDraftNote({}, { draftScope: "new:scope-a" });
+    await settle();
+    expect(reloaded.get().draftNoteForm.title).toBe("about to submit");
+  });
+
+  test("a failed save keeps its draft for the next open, without refilling the form opened meanwhile", async () => {
     const signal = makeSignal();
     const instance = makeInstance(signal);
     const create = deferred();

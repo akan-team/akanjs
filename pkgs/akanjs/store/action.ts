@@ -660,7 +660,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
   }
   async function applyDraft(this: SetGet, { auto }: { auto: boolean }) {
     const draft = (this.get() as { [key: string]: any })[names.modelDraft] as DraftState | null;
-    // A debounce still pending at submit writes the form being saved back under its key during the request.
+    // While a form under this key saves, the record holds the form being saved.
     if (!draft || savingDraftKeys.has(draft.key)) return;
     const record = await DraftStore.read(draft.key);
     if (!record) return;
@@ -700,7 +700,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     return null;
   };
   const restoreSavedDraft = async (draft: DraftState, form: object) => {
-    // A form opened meanwhile under the key may have written its own record; an unchanged form never had one.
+    // A record still there is the saved form's or one a form opened meanwhile wrote; an unchanged form never had one.
     if ((await DraftStore.read(draft.key)) || DraftStore.formHash(refName, form) === draft.baseHash) return;
     await DraftStore.write(draft.key, {
       v: 1,
@@ -709,11 +709,12 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       form: DraftStore.encodeForm(refName, form),
     });
   };
-  // The record is out of storage during the request, so no form opened meanwhile under its key is refilled with it.
-  const savingDraft = async <T>(draft: DraftState | null, form: object, save: () => Promise<T>) => {
+  // The record stays in storage until the request succeeds, so a reload mid-save that never reached the server keeps it.
+  const savingDraft = async <T>(ctx: SetGet, draft: DraftState | null, form: object, save: () => Promise<T>) => {
     if (!draft) return await save();
+    // A debounce left pending past submit fires on whatever form is open by then, and drops the record if it is blank.
+    (ctx as SetGet & { flushDrafts?: () => void }).flushDrafts?.();
     savingDraftKeys.set(draft.key, (savingDraftKeys.get(draft.key) ?? 0) + 1);
-    void DraftStore.remove(draft.key);
     try {
       const answer = await save();
       void DraftStore.remove(draft.key);
@@ -781,7 +782,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const model = await withFlag(this, {
         flag: { key: names.modelLoading, value: true },
         onError,
-        request: () => savingDraft(draft, modelForm, () => servedFetch<Full>(names.createModel)(modelInput)),
+        request: () => savingDraft(this, draft, modelForm, () => servedFetch<Full>(names.createModel)(modelInput)),
         land: (model, ownsFlag) => {
           this.set({
             ...(isSavedFormOpen(this, openSeq, modelForm)
@@ -816,7 +817,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         flag: model?.id === modelForm.id ? { key: names.modelLoading, value: modelForm.id } : null,
         onError,
         request: () =>
-          savingDraft(draft, modelForm, () => servedFetch<Full>(names.updateModel)(modelForm.id, modelInput)),
+          savingDraft(this, draft, modelForm, () => servedFetch<Full>(names.updateModel)(modelForm.id, modelInput)),
         land: (updatedModel, ownsFlag) => {
           const latest = this.get() as StateRecord;
           this.set({
