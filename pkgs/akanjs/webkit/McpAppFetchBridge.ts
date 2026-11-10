@@ -1,5 +1,12 @@
 "use client";
-import { type ErrorResponsePayload, type FetchBridge, type FetchBridgeCall, restoreRemoteError } from "akanjs/fetch";
+import { AbortSignals } from "akanjs/common";
+import {
+  type ErrorResponsePayload,
+  type FetchBridge,
+  type FetchBridgeCall,
+  HttpClient,
+  restoreRemoteError,
+} from "akanjs/fetch";
 import { MCP_APP_META, type McpAppSnapshotRecord, type McpToolResult } from "../signal/mcp/mcpProtocol";
 import type { McpAppBridge } from "./McpAppBridge";
 
@@ -32,11 +39,30 @@ export class McpAppFetchBridge implements FetchBridge {
       return value;
     }
     const args = McpAppFetchBridge.#defined(request.args);
-    const result = await this.#bridge.callTool(request.key, args, {
-      timeoutMs: McpAppFetchBridge.#deadlineOf(request),
-      signal: request.signal,
-    });
-    return McpAppFetchBridge.#valueOf(request, result);
+    const timeoutMs = McpAppFetchBridge.#deadlineOf(request);
+    if (request.type === "mutation")
+      return McpAppFetchBridge.#valueOf(request, await this.#bridge.callTool(request.key, args, { timeoutMs }));
+    //? A mutation that may have run is only given up on; a query's deadline asks the host to cancel, as an abort does.
+    const deadline = new AbortController();
+    const timer =
+      timeoutMs === undefined
+        ? undefined
+        : setTimeout(
+            () => deadline.abort(new DOMException("The host did not answer in time.", "TimeoutError")),
+            timeoutMs,
+          );
+    const joined = AbortSignals.join([request.signal, deadline.signal]);
+    try {
+      return McpAppFetchBridge.#valueOf(
+        request,
+        await this.#bridge.callTool(request.key, args, { signal: joined.signal }),
+      );
+    } catch (error) {
+      throw joined.signal?.aborted ? HttpClient.abortErrorOf(joined.signal) : error;
+    } finally {
+      clearTimeout(timer);
+      joined.dispose();
+    }
   }
 
   // A view call carries the browser's value in `_meta`; the masked text is the fallback for a host that strips it.

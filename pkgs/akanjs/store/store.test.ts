@@ -3,7 +3,7 @@ import { ACTION_META, DataList, Int, SLICE_META, STATE_DERIVED_META, STATE_INIT_
 import { Translator } from "akanjs/client/translator";
 import { AbortSignals } from "akanjs/common";
 import { ConstantRegistry, MAX_PAGE_SIZE, via } from "akanjs/constant";
-import { type ClientSignal, HttpClient } from "akanjs/fetch";
+import { type ClientSignal, HttpClient, restoreRemoteError } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
 import type { RootStoreCls } from "./rootStore";
 import { type StoreCls, store } from "./store";
@@ -362,6 +362,9 @@ describe("StoreInstance runtime", () => {
       async failWith(_policy: { signal: AbortSignal }) {
         throw new Error("abortReason.error.real");
       }
+      async stopWhenRefused(policy: { signal: AbortSignal }) {
+        await AbortSignals.race(hang(), policy.signal);
+      }
     }
     StoreRegistry.register(AbortReasonStore);
     const instance = new StoreInstance(makeRoot("abortReasonRoot", AbortReasonStore));
@@ -381,6 +384,13 @@ describe("StoreInstance runtime", () => {
       "abortReason.error.real",
     );
     expect(instance.get().messages).toEqual([{ key: "failWith" }]);
+
+    const batch = new AbortController();
+    const refused = restoreRemoteError({ error: "abortReason.error.forbidden" }, 403);
+    const stopping = instance.do.stopWhenRefused({ signal: batch.signal });
+    batch.abort(refused);
+    await expect(stopping).rejects.toBe(refused);
+    expect(instance.get().messages).toEqual([{ key: "failWith" }, { key: "stopWhenRefused" }]);
   });
 
   test("a generated action a lib store lists in static silent stays silent in the store extending it", async () => {
@@ -405,6 +415,36 @@ describe("StoreInstance runtime", () => {
 
     await expect(instance.do.removeStoreTestItem("aaaaaaaaaaaaaaaaaaaaaaaa")).rejects.toBe(refused);
     expect(instance.get().messages).toEqual([]);
+  });
+
+  test("a generated write hands its failure's key to the caller's onError, then rejects and toasts as before", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const locked = restoreRemoteError({ error: "storeTestItem.error.locked" }, 409);
+    signal.calls.removeStoreTestItem = mock(async () => {
+      throw locked;
+    });
+    signal.calls.updateStoreTestItem = mock(async () => {
+      throw locked;
+    });
+    class ReportingItemStore extends store(signal, () => ({ messages: [] as { key: string }[] })) {
+      showMessage(message: { key: string }) {
+        this.set({ messages: [...this.get().messages, { key: message.key }] });
+      }
+    }
+    StoreRegistry.register(ReportingItemStore);
+    const instance = new StoreInstance(makeRoot("reportingItemRoot", ReportingItemStore));
+    const reported: string[] = [];
+    const onError = (key: string) => void reported.push(key);
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+
+    await expect(instance.do.removeStoreTestItem(id, { onError })).rejects.toBe(locked);
+    await expect(
+      instance.do.updateStoreTestItem(id, { title: "updated", count: 0, tags: [] }, { onError }),
+    ).rejects.toBe(locked);
+    expect(reported).toEqual(["storeTestItem.error.locked", "storeTestItem.error.locked"]);
+    expect(instance.get().messages).toEqual([{ key: "removeStoreTestItem" }, { key: "updateStoreTestItem" }]);
+    expect(signal.calls.removeStoreTestItem.mock.calls[0]).toEqual([id, {}]);
   });
 
   test("a static silent name that is no action of the store is reported at registration", () => {
@@ -779,6 +819,45 @@ describe("signal generated store contract", () => {
     await expect(paging).rejects.toMatchObject({ error: "base.error.gatewayTimeout", statusCode: 408 });
     expect(instance.get().pageOfStoreTestItemByTitle).toBe(1);
     expect(instance.get().storeTestItemListLoadingByTitle).toBe(false);
+  });
+
+  test("an init abandoned mid-flight keeps a loaded-more list whole, and one that lands starts it over", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const listed = mock(
+      async (_title: string, skip: number, limit: number, _sort: string, option: { signal: AbortSignal }) => {
+        await Promise.resolve();
+        if (option.signal.aborted) throw option.signal.reason;
+        return new Array(limit)
+          .fill(null)
+          .map((_, i) => new StoreTestLight({ id: `${skip + i}`.padStart(24, "0"), title: `row${skip + i}` } as never));
+      },
+    );
+    signal.calls.storeTestItemListByTitle = listed;
+    class FreshInitStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(FreshInitStore);
+    const instance = new StoreInstance(makeRoot("freshInitRoot", FreshInitStore));
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 2 });
+    await instance.do.loadMoreOfStoreTestItemByTitle();
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
+
+    const leaving = new AbortController();
+    const abandoned = instance.do.initStoreTestItemByTitle("Ada", {
+      limit: 2,
+      invalidate: true,
+      signal: leaving.signal,
+    });
+    expect(listed).toHaveBeenCalledTimes(3);
+    leaving.abort();
+    await abandoned;
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(true);
+    await instance.do.refreshStoreTestItemByTitle({ invalidate: true });
+    expect(listed).toHaveBeenLastCalledWith("Ada", 0, 4, "latest", expect.any(Object));
+
+    await instance.do.initStoreTestItemByTitle("Ada", { limit: 2, invalidate: true });
+    expect(listed).toHaveBeenLastCalledWith("Ada", 0, 2, "latest", expect.any(Object));
+    expect(instance.get().isCumulativeOfStoreTestItemByTitle).toBe(false);
+    expect((instance.get().storeTestItemListByTitle as DataList<InstanceType<typeof StoreTestLight>>).length).toBe(2);
   });
 
   test.each(["refetch", "load-more"] as const)(

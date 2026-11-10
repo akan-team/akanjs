@@ -44,8 +44,9 @@ export interface WsClientOptions {
    */
   onCredentialExpired?: () => unknown;
   /**
-   * Messages kept while the socket is down, the oldest dropped past it; 100 unless named, `0` keeps none and
-   * `Infinity` every one. Subscribes never queue here: every room is sent again on open.
+   * Messages kept while the socket is down, the oldest dropped past it; 100 unless named, `0` keeps none and says so
+   * once, and a negative limit or `Infinity` keeps every one. Subscribes never queue here: every room is sent again
+   * on open.
    */
   outboxLimit?: number;
 }
@@ -103,6 +104,7 @@ export class WsClient {
   #hadConnection = false;
   #outbox: string[] = [];
   #outboxDropped = 0;
+  #outboxNoneWarned = false;
   #unconnectedWarnTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #jwt: string | null = null;
   #renewing: Promise<unknown> | null = null;
@@ -203,8 +205,10 @@ export class WsClient {
       });
       const queued = this.#outbox;
       this.#outbox = [];
-      if (this.#outboxDropped > 0)
+      if (this.#outboxDropped > 0 && !this.#outboxNoneWarned) {
         this.logger.warn(`WebSocket dropped ${this.#outboxDropped} oldest queued message(s) while disconnected`);
+        this.#outboxNoneWarned = this.#outboxLimit === 0;
+      }
       this.#outboxDropped = 0;
       for (const frame of queued) this.#ws?.send(frame);
       this.#handleMessage("connect", undefined);
@@ -534,14 +538,14 @@ export class WsClient {
     this.#ws.send(frame);
     return this;
   }
-  #enqueue(frame: string) {
+  get #outboxLimit() {
     const { outboxLimit } = this.#options;
-    const limit =
-      outboxLimit === undefined || Number.isNaN(outboxLimit)
-        ? WsClient.defaultOutboxLimit
-        : Math.max(0, Math.floor(outboxLimit));
+    if (outboxLimit === undefined || Number.isNaN(outboxLimit)) return WsClient.defaultOutboxLimit;
+    return outboxLimit < 0 ? Number.POSITIVE_INFINITY : Math.floor(outboxLimit);
+  }
+  #enqueue(frame: string) {
     this.#outbox.push(frame);
-    const overflow = this.#outbox.length - limit;
+    const overflow = this.#outbox.length - this.#outboxLimit;
     if (overflow <= 0) return;
     this.#outbox.splice(0, overflow);
     this.#outboxDropped += overflow;

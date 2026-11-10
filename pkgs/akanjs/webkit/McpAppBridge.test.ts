@@ -232,6 +232,27 @@ describe("McpAppBridge", () => {
     expect(sent.filter((message) => message.method === "notifications/cancelled")).toHaveLength(1);
   });
 
+  test("asks the host to cancel a query that outlives its deadline, and only gives up on a mutation that may have run", async () => {
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
+    const fetchBridge = bridge.fetchBridge([]);
+    jest.useFakeTimers();
+    sent.length = 0;
+    const cancelled = () => sent.filter((message) => message.method === "notifications/cancelled");
+    const keyOf = async (asked: Promise<unknown>) =>
+      ((await asked.catch((error: unknown) => error)) as RestoredError).toJSON?.();
+
+    const query = keyOf(fetchBridge.call({ ...call({ refName: "String" }), timeout: 5_000 }));
+    const queryId = lastRequest("tools/call")?.id;
+    jest.advanceTimersByTime(5_000);
+    expect(await query).toEqual({ error: "base.error.gatewayTimeout", statusCode: 408, data: { status: 408 } });
+    expect(cancelled().map((message) => message.params)).toEqual([{ requestId: queryId }]);
+
+    const mutation = keyOf(fetchBridge.call({ ...call({ refName: "String" }), type: "mutation", timeout: 5_000 }));
+    jest.advanceTimersByTime(5_000);
+    expect(await mutation).toEqual({ error: "base.error.gatewayTimeout", statusCode: 408, data: { status: 408 } });
+    expect(cancelled()).toHaveLength(1);
+  });
+
   test("reads a masked answer by the declared return when the host dropped the view's value", async () => {
     const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
     const fetchBridge = bridge.fetchBridge([]);

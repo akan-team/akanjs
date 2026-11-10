@@ -1914,8 +1914,8 @@ describe("FetchClient HTTP generation", () => {
     const memo = requestStorage;
     const requests = setGatedFetch();
     const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
-    const ask = (signal?: AbortSignal) =>
-      client.handler.getThing("1234567890abcdef12345678", [], null, { signal }) as Promise<string>;
+    const ask = (signal?: AbortSignal, id = "1234567890abcdef12345678") =>
+      client.handler.getThing(id, [], null, { signal }) as Promise<string>;
     await memo.run(new Request("https://example.test"), async () => {
       const leaving = new AbortController();
       const left = ask(leaving.signal).catch((error: unknown) => error);
@@ -1931,6 +1931,7 @@ describe("FetchClient HTTP generation", () => {
       const spent = new AbortController();
       spent.abort("gone");
       expect(await ask(spent.signal).catch((error: unknown) => error)).toBe("gone");
+      expect(await ask(spent.signal, "abcdefabcdefabcdef123456").catch((error: unknown) => error)).toBe("gone");
       const timedOut = (await ask(AbortSignal.abort(new DOMException("timed out", "TimeoutError"))).catch(
         (error: unknown) => error,
       )) as TestErr;
@@ -2962,9 +2963,23 @@ describe("WsClient", () => {
       expect(warnings.at(-1)).toBe("WebSocket dropped 120 oldest queued message(s) while disconnected");
       const warned = warnings.length;
       expect(sentAfter(Number.POSITIVE_INFINITY)).toBe(120);
+      expect(sentAfter(-1)).toBe(120);
       expect(warnings).toHaveLength(warned);
       expect(sentAfter(2.5)).toBe(2);
       expect(warnings.at(-1)).toBe("WebSocket dropped 118 oldest queued message(s) while disconnected");
+
+      const keepsNone = new WsClient("ws://example/ws").configure({ outboxLimit: 0 });
+      const warnedBefore = warnings.length;
+      for (const round of [1, 2, 3]) {
+        keepsNone.connect();
+        keepsNone.emit("send", [round]);
+        const socket = FakeWebSocket.instances.at(-1);
+        socket?.open();
+        expect(socket?.sent).toEqual([]);
+        socket?.close(1006, "gone");
+      }
+      keepsNone.destroy();
+      expect(warnings).toHaveLength(warnedBefore + 1);
     } finally {
       Logger.prototype.warn = warn;
     }

@@ -42,7 +42,7 @@ export class AbortSignals {
 
   static reasonOf(signal: AbortSignal): unknown {
     const reason: unknown = signal.reason;
-    if (typeof reason === "object" && reason !== null && !AbortSignals.isTimeout(signal))
+    if (typeof reason === "object" && reason !== null && AbortSignals.#isQuiet(reason, signal))
       AbortSignals.#reasons.add(reason);
     return reason;
   }
@@ -62,8 +62,16 @@ export class AbortSignals {
     if (AbortSignals.isAbort(error)) return true;
     return callArgs.some((arg) => {
       const signal = AbortSignals.#signalIn(arg);
-      return !!signal?.aborted && !AbortSignals.isTimeout(signal) && Object.is(signal.reason, error);
+      return !!signal?.aborted && Object.is(signal.reason, error) && AbortSignals.#isQuiet(error, signal);
     });
+  }
+
+  //? An app or restored error that aborted a call is still a failure to show, and so is a timeout.
+  static #isQuiet(reason: unknown, signal: AbortSignal) {
+    if (AbortSignals.isTimeout(signal)) return false;
+    if (typeof reason !== "object" || reason === null) return true;
+    const { error, statusCode } = reason as { error?: unknown; statusCode?: unknown };
+    return typeof error !== "string" && statusCode === undefined;
   }
 
   static #signalIn(arg: unknown): AbortSignal | undefined {

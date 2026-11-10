@@ -6,6 +6,7 @@ import type { SerializedArg } from "akanjs/signal";
 import { enableMapSet, produce } from "immer";
 import type { EffectCallback, RefObject } from "react";
 import { type AgentGate, useAgentGate, useScopePath } from "use-agentic";
+import { actionErrorKey } from "./actionErrorKey";
 import { type ActionOwner, actionTagOf, tagAction } from "./actionTag";
 import { useFormTools } from "./agentic/useFormTools";
 import { DraftStore } from "./draftStore";
@@ -24,14 +25,6 @@ type StoreStateRecord = Record<string, unknown>;
 const DRAFT_DEBOUNCE_MS = 400;
 type StoreAction = (...args: unknown[]) => unknown;
 type TranslationParam = Record<string, string | number>;
-
-const getActionErrorKey = (error: unknown) => {
-  if (typeof error === "string") return error;
-  if (!isRecord(error)) return String(error);
-  if (typeof error.error === "string") return error.error;
-  if (typeof error.message === "string") return error.message;
-  return String(error);
-};
 
 const getActionErrorData = (error: unknown): TranslationParam | undefined => {
   if (!isRecord(error) || !isRecord(error.data)) return undefined;
@@ -426,7 +419,7 @@ export class StoreInstance {
     if (typeof showMessage !== "function") return;
     try {
       const lang = Translator.getActiveLocale() ?? parseAkanI18nEnv().defaultLocale;
-      const errorKey = getActionErrorKey(error);
+      const errorKey = actionErrorKey(error);
       const content = Translator.translateByLocale(lang, errorKey, getActionErrorData(error));
       showMessage({ type: "error", key: actionKey, duration: 3, content });
     } catch (messageError) {

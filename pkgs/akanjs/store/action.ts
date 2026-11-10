@@ -43,6 +43,7 @@ import type {
   SliceCls,
 } from "akanjs/signal";
 import { expandQueryArgs, normalizeQueryArgs } from "../fetch/client/sliceQueryArgs";
+import { actionErrorKey } from "./actionErrorKey";
 import { tagAction } from "./actionTag";
 import { DraftStore } from "./draftStore";
 import { type LiveSortableRow, livePlacementIndex } from "./liveInsert";
@@ -70,11 +71,15 @@ type SliceRefreshForm<S extends SliceCls, Suffix extends keyof _SliceMap<S>> = S
 const UPLOAD_POLL_INTERVAL_MS = 3000;
 const UPLOAD_POLL_ATTEMPTS = 40;
 
-export interface CreateOption<Full extends { id: string }> {
+export interface ErrorReportOption {
+  /** Called with the failed request's dictionary key, as a `Button`'s `onError` takes it; the action still rejects. */
+  onError?: (key: string) => void;
+}
+type ReportingFetchPolicy = Omit<FetchPolicy, "onError"> & ErrorReportOption;
+export interface CreateOption<Full extends { id: string }> extends ErrorReportOption {
   path?: string;
   modal?: string;
   sliceName?: string;
-  onError?: (e: string) => void;
   onSuccess?: (model: Full) => void | Promise<void>;
 }
 export interface NewOption {
@@ -110,7 +115,7 @@ type BaseAction<
 } & {
   [K in `remove${_CapitalizedRefName}`]: (
     id: string,
-    options?: FetchPolicy & { modal?: string | null },
+    options?: ReportingFetchPolicy & { modal?: string | null },
   ) => Promise<void>;
 } & {
   [K in `check${_CapitalizedRefName}Submitable`]: (disabled?: boolean) => Promise<void>;
@@ -119,7 +124,10 @@ type BaseAction<
 } & {
   [K in `new${_CapitalizedRefName}`]: (partial?: PartialOrNull<Full>, options?: NewOption) => void;
 } & {
-  [K in `edit${_CapitalizedRefName}`]: (model: Full | string, options?: EditOption & FetchPolicy) => Promise<void>;
+  [K in `edit${_CapitalizedRefName}`]: (
+    model: Full | string,
+    options?: EditOption & ReportingFetchPolicy,
+  ) => Promise<void>;
 } & {
   [K in `load${_CapitalizedRefName}FormDraft`]: (draftScope?: string) => Promise<void>;
 } & {
@@ -135,7 +143,7 @@ type BaseAction<
 } & {
   [K in `view${_CapitalizedRefName}`]: (
     model: Full | string,
-    options?: { modal?: string | null } & FetchPolicy,
+    options?: { modal?: string | null } & ReportingFetchPolicy,
   ) => Promise<void>;
 } & { [K in `set${_CapitalizedRefName}`]: (...models: (Full | Light)[]) => void } & {
   [K in `reset${_CapitalizedRefName}`]: (model?: Full) => void;
@@ -541,6 +549,14 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     if (fn) return fn;
     throw restoreRemoteError({ error: "base.error.endpointClosed", data: { endpoint: key } }, 404);
   };
+  const reported = async <T>(onError: ErrorReportOption["onError"], request: () => Promise<T>) => {
+    try {
+      return await request();
+    } catch (error) {
+      if (!AbortSignals.isAbort(error)) onError?.(actionErrorKey(error));
+      throw error;
+    }
+  };
   function armDraft(this: SetGet, draftScope: string | undefined, form: object, baseUpdatedAt: string | null) {
     openFormBase = draftScope ? form : null;
     if (!draftScope) return null;
@@ -642,7 +658,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
 
       if (!modelInput || isUploadingIn(currentState)) return;
       this.set({ [names.modelLoading]: true });
-      const model = await servedFetch<Full>(names.createModel)(modelInput, { onError });
+      const model = await reported(onError, () => servedFetch<Full>(names.createModel)(modelInput));
       this.set({
         [names.modelForm]: immerify(modelRef, defaultModel),
         [names.modelDraft]: clearDraft(currentState[names.modelDraft] as DraftState | null),
@@ -668,7 +684,9 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelInput = (cnst.input.purify as (form: any) => DefaultOf<Input> | null)(modelForm);
       if (!modelInput || isUploadingIn(currentState)) return;
       if (model?.id === modelForm.id) this.set({ [names.modelLoading]: modelForm.id });
-      const updatedModel = await servedFetch<Full>(names.updateModel)(modelForm.id, modelInput, { onError });
+      const updatedModel = await reported(onError, () =>
+        servedFetch<Full>(names.updateModel)(modelForm.id, modelInput),
+      );
       this.set({
         ...(model?.id === updatedModel.id
           ? { [names.model]: updatedModel, [names.modelLoading]: false, [names.modelViewAt]: new Date() }
@@ -690,7 +708,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelInput = (cnst.input.purify as (data: any) => Input | null)(data);
       if (!modelInput) return;
       this.set({ [names.modelLoading]: true });
-      const model = await servedFetch<Full>(names.createModel)(modelInput, { onError });
+      const model = await reported(onError, () => servedFetch<Full>(names.createModel)(modelInput));
       this.set({
         [names.model]: model,
         [names.modelLoading]: false,
@@ -714,9 +732,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       const modelInput = (cnst.input.purify as (data: any) => DefaultOf<Input> | null)(data);
       if (!modelInput) return;
       if (model?.id === id) this.set({ [names.modelLoading]: id });
-      const updatedModel = await servedFetch<Full>(names.updateModel)(id, modelInput, {
-        onError,
-      });
+      const updatedModel = await reported(onError, () => servedFetch<Full>(names.updateModel)(id, modelInput));
       this.set({
         ...(model?.id === updatedModel.id
           ? { [names.model]: updatedModel, [names.modelLoading]: false, [names.modelViewAt]: new Date() }
@@ -728,9 +744,15 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       });
       await onSuccess?.(updatedModel);
     },
-    [names.removeModel]: async function (this: SetGet, id: string, options?: FetchPolicy & { modal?: string | null }) {
-      const { modal, ...fetchPolicyOptions } = options ?? {};
-      const model = await servedFetch<Full & { removedAt: Dayjs | null }>(names.removeModel)(id, fetchPolicyOptions);
+    [names.removeModel]: async function (
+      this: SetGet,
+      id: string,
+      options?: ReportingFetchPolicy & { modal?: string | null },
+    ) {
+      const { modal, onError, ...fetchPolicyOptions } = options ?? {};
+      const model = await reported(onError, () =>
+        servedFetch<Full & { removedAt: Dayjs | null }>(names.removeModel)(id, fetchPolicyOptions),
+      );
       const currentState = this.get() as { [key: string]: unknown };
       if (!model.removedAt) {
         const listPatch = updatedListPatchOf(currentState, model);
@@ -806,11 +828,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     [names.editModel]: async function (
       this: SetGet,
       modelOrId: Full | string,
-      { modal, onError, draftScope }: EditOption & FetchPolicy = {},
+      { modal, onError, draftScope }: EditOption & ReportingFetchPolicy = {},
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
       this.set({ [names.modelFormLoading]: id, [names.modelModal]: modal ?? "edit" });
-      const model = await servedFetch<Full>(names.model)(id, { onError });
+      const model = await reported(onError, () => servedFetch<Full>(names.model)(id));
       const modelForm = immerify(modelRef, deepObjectify<Input>(model as unknown as Input) as object) as Input;
       this.set({
         [names.model]: model,
@@ -843,11 +865,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
     [names.viewModel]: async function (
       this: SetGet,
       modelOrId: Full | string,
-      { modal, onError }: { modal?: string | null } & FetchPolicy = {},
+      { modal, onError }: { modal?: string | null } & ReportingFetchPolicy = {},
     ) {
       const id = typeof modelOrId === "string" ? modelOrId : modelOrId.id;
       this.set({ [names.modelModal]: modal ?? "view", [names.modelLoading]: id });
-      const model = await servedFetch<Full>(names.model)(id, { onError });
+      const model = await reported(onError, () => servedFetch<Full>(names.model)(id));
       this.set({ [names.model]: model, [names.modelViewAt]: new Date(), [names.modelLoading]: false });
     },
     [names.setModel]: function (this: SetGet, ...fullOrLightModels: Full[]) {
@@ -953,13 +975,14 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       modelObjInsight ?? (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
     const queryArgsIn = (self: SetGet) =>
       (self.get() as { [key: string]: any })[namesOfSlice.queryArgsOfModel] as object[];
-    //? A caller's `AbortSignal.timeout` ends its load with the slow-server error, as a query's own deadline does; any
-    //? other abort, a newer load of this slice included, ends it with no write and no error.
+    //? A caller's timeout fails its load as a query's own deadline does; any other abort ends it with no write.
     const endsQuietly = (ownSignal: AbortSignal, callerSignal?: AbortSignal) =>
       ownSignal.aborted || (!!callerSignal?.aborted && !AbortSignals.isTimeout(callerSignal));
     const endSpent = (callerSignal: AbortSignal) => {
-      if (AbortSignals.isTimeout(callerSignal)) throw HttpClient.abortErrorOf(callerSignal);
+      if (!AbortSignals.isTimeout(callerSignal)) return;
+      throw fetch.instance?.http?.abortError(callerSignal) ?? HttpClient.abortErrorOf(callerSignal);
     };
+    const freshLoad = Symbol("freshLoad");
     // A row stamped stale while the request ran may be missing from its rows, so they are read once more, and only once.
     const loadList = async <T>(
       self: SetGet,
@@ -1005,16 +1028,16 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         } as FetchInitForm<Input, Filter> & FetchPolicy;
         const queryArgs = new Array(initArgLength).fill(null).map((_, i) => args[i] as object);
         const defaultModel = new cnst.full().set(initForm.default ?? {}) as unknown as Full;
-        if (!initForm.signal?.aborted)
-          this.set({ [names.defaultModel]: defaultModel, [namesOfSlice.isCumulativeOfModel]: false });
+        if (!initForm.signal?.aborted) this.set({ [names.defaultModel]: defaultModel });
         await ((this as unknown as DynamicRecord)[namesOfSlice.refreshModel] as (...args: any[]) => Promise<void>)({
           ...initForm,
           queryArgs,
+          [freshLoad]: true,
         });
       },
       [namesOfSlice.refreshModel]: async function (
         this: SetGet,
-        initForm: FetchInitForm<Input, Filter> & FetchPolicy & { queryArgs?: any[] } = {},
+        initForm: FetchInitForm<Input, Filter> & FetchPolicy & { queryArgs?: any[]; [freshLoad]?: boolean } = {},
       ) {
         const args = initForm.queryArgs ?? [];
         const refreshArgLength = Math.min(args.length, slice.args.length);
@@ -1035,10 +1058,11 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           sort = currentState[namesOfSlice.sortOfModel] as Sort,
           invalidate = true,
           queryArgs: queryArgsFromInitForm,
+          [freshLoad]: fresh = false,
           ...fetchPolicy
         } = initForm;
         const modelOperation = currentState[names.modelOperation] as string;
-        const isCumulative = currentState[namesOfSlice.isCumulativeOfModel] as boolean;
+        const isCumulative = !fresh && (currentState[namesOfSlice.isCumulativeOfModel] as boolean);
         const loadedLength = (currentState[namesOfSlice.modelList] as DataList<Light>).length;
         // A cumulative list refetches every loaded row, or it would collapse back to the first page.
         const fetchLimit = isCumulative ? Math.max(limit, loadedLength) : limit;
@@ -1053,8 +1077,10 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           page === pageOfModel &&
           limit === limitOfModel &&
           isQueryEqual(sort as unknown as object, sortOfModel as unknown as object)
-        )
+        ) {
+          if (fresh && !fetchPolicy.signal?.aborted) this.set({ [namesOfSlice.isCumulativeOfModel]: false });
           return;
+        }
         await loadList(
           this,
           fetchPolicy.signal,
@@ -1079,6 +1105,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
               [namesOfSlice.sortOfModel]: sort,
               [namesOfSlice.pageOfModel]: page,
               [names.modelOperation]: "idle",
+              ...(fresh ? { [namesOfSlice.isCumulativeOfModel]: false } : {}),
             };
           },
         );

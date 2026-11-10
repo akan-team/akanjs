@@ -129,4 +129,16 @@ describe("AbortSignals", () => {
     expect(AbortSignals.isAbortOf("other", [left.signal])).toBe(false);
     expect(AbortSignals.isAbortOf("left", [{ signal: new AbortController().signal }, null, "left"])).toBe(false);
   });
+
+  test("never takes an app or restored error for an abort, though it aborted a call", () => {
+    const keyed = Object.assign(new Error("Forbidden"), { error: "memo.error.forbidden" });
+    const restored = Object.assign(new Error("Forbidden"), { statusCode: 403 });
+    for (const failure of [keyed, restored]) {
+      const ctrl = new AbortController();
+      ctrl.abort(failure);
+      expect(AbortSignals.reasonOf(ctrl.signal)).toBe(failure);
+      expect(AbortSignals.isAbort(failure)).toBe(false);
+      expect(AbortSignals.isAbortOf(failure, [ctrl.signal])).toBe(false);
+    }
+  });
 });
