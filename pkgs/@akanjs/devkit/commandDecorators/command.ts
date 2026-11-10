@@ -319,6 +319,17 @@ export const getInternalArgumentValue = async (
     if (destructive) throw refusalOf(problemOf(kind), "this command deletes files and never picks its target", refusal);
     assertPromptable(problemOf(kind), refusal);
   };
+  const takeOnly = <Target>(kind: string, names: readonly string[], take: (name: string) => Target) => {
+    const [only] = names;
+    if (value || destructive || process.stdin.isTTY || names.length !== 1 || !only) return null;
+    const how = rerun ? `: ${rerun(only)}` : "";
+    Logger.rawLog(
+      `No ${kind} named, so this runs on '${only}', the only one in this workspace${how}`,
+      undefined,
+      "error",
+    );
+    return take(only);
+  };
   if (sysType === "sys" || sysType === "exec") {
     const pkgChoices = sysType === "exec" ? pkgNames : [];
     const execOf = (name: string) => {
@@ -334,17 +345,8 @@ export const getInternalArgumentValue = async (
     const [kind, placeholder] =
       sysType === "exec" ? ["app, lib or pkg", "<app-lib-or-pkg>"] : ["app or lib", "<app-or-lib>"];
     const choices = [...appNames, ...libNames, ...pkgChoices];
-    const only = choices.length === 1 ? execOf(choices[0] ?? "") : null;
-    //? Not for Lib, Pkg or Module, which name what a command acts on: `akan remove-library` would delete the only one.
-    if (!value && !destructive && only && !process.stdin.isTTY) {
-      const how = rerun ? `: ${rerun(only.name)}` : "";
-      Logger.rawLog(
-        `No ${kind} named, so this runs on '${only.name}', the only one in this workspace${how}`,
-        undefined,
-        "error",
-      );
-      return only;
-    }
+    const only = takeOnly(kind, choices, execOf);
+    if (only) return only;
     assertAskable(kind, choices, placeholder);
     const name = await select<string>({
       message: sysType === "exec" ? `Select the App or Lib or Pkg name` : `Select the App or Lib name`,
@@ -361,12 +363,16 @@ export const getInternalArgumentValue = async (
     return AppExecutor.from(workspace, appName);
   } else if (sysType === "lib") {
     if (value && libNames.includes(value)) return LibExecutor.from(workspace, value);
+    const only = takeOnly("lib", libNames, (name) => LibExecutor.from(workspace, name));
+    if (only) return only;
     assertAskable("lib", libNames, "<lib>");
     const libName = await select<string>({ message: `Select the ${sysType} name`, choices: libNames });
     return LibExecutor.from(workspace, libName);
   } else if (sysType === "pkg") {
     const pkgs = await workspace.getPkgs();
     if (value && pkgs.includes(value)) return PkgExecutor.from(workspace, value);
+    const only = takeOnly("pkg", pkgs, (name) => PkgExecutor.from(workspace, name));
+    if (only) return only;
     assertAskable("pkg", pkgs, "<pkg>");
     const pkgName = await select<string>({ message: `Select the ${sysType} name`, choices: pkgs });
     return PkgExecutor.from(workspace, pkgName);
@@ -393,6 +399,12 @@ export const getInternalArgumentValue = async (
       });
     }
     const choices = process.stdin.isTTY && !destructive ? [] : await listModules();
+    const only = takeOnly("module", choices, (label) => {
+      const [sysName, moduleName = ""] = label.split(":");
+      const sys = systems.find((each) => each.name === sysName);
+      return sys ? ModuleExecutor.from(sys, moduleName) : null;
+    });
+    if (only) return only;
     assertAskable("module", choices, "<sys:module>");
     const { type, name } = await select<{ type: "app" | "lib"; name: string }>({
       message: `select the App or Lib name`,

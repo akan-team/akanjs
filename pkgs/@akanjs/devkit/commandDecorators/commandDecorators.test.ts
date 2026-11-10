@@ -542,19 +542,24 @@ describe("a Sys that defaults to the only app", () => {
     expect(asked).toEqual([]);
   });
 
-  test("without a terminal, the only lib, pkg or module is not taken, as a command may be removing it", async () => {
+  test("without a terminal, a command that deletes nothing takes the only lib, pkg or module; a terminal is asked", async () => {
     setTTY(undefined);
     const workspace = workspaceWith([]);
     workspace.getExecs = async () => [[], ["util"], []];
     workspace.getPkgs = async () => ["tools"];
-    const rerunOf = (name: string) => rerunCommandOf([name], [undefined], 0);
-    await expect(
-      getInternalArgumentValue({ key: "", idx: 0, type: "Lib" }, undefined, workspace, rerunOf("remove-library")),
-    ).rejects.toThrow("so rerun it as `akan remove-library <lib>` (choices: util).");
-    await expect(
-      getInternalArgumentValue({ key: "", idx: 0, type: "Pkg" }, undefined, workspace, rerunOf("remove-package")),
-    ).rejects.toThrow("so rerun it as `akan remove-package <pkg>` (choices: tools).");
+    workspace.getDirInModule = async (basePath) => (basePath === "libs/util/lib" ? ["photo"] : []);
+    const lib = await getInternalArgumentValue({ key: "", idx: 0, type: "Lib" }, undefined, workspace);
+    expect(lib instanceof LibExecutor ? lib.name : null).toBe("util");
+    const pkg = await getInternalArgumentValue({ key: "", idx: 0, type: "Pkg" }, undefined, workspace);
+    expect(pkg instanceof PkgExecutor ? pkg.name : null).toBe("tools");
+    const mod = await getInternalArgumentValue({ key: "", idx: 0, type: "Module" }, undefined, workspace);
+    expect(mod instanceof ModuleExecutor ? `${mod.sys.name}:${mod.name}` : null).toBe("util:photo");
     expect(asked).toEqual([]);
+
+    setTTY(true);
+    answer = "util";
+    await getInternalArgumentValue({ key: "", idx: 0, type: "Lib" }, undefined, workspace);
+    expect(asked).toEqual([["util"]]);
   });
 
   test("without a terminal, a named target the workspace lacks is refused, not swapped for the only one", async () => {
