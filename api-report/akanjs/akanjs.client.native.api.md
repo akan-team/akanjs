@@ -689,13 +689,13 @@ interface OpenerApi {
     openSettings(): Promise<void>;
 }
 
-// ../../../../../pkgs/@akanjs/native/plugins/camera/src/index
+// ../@akanjs/native/plugins/camera/src/index
 type PermissionState = "denied" | "granted" | "prompt";
 
-// ../../../../../pkgs/@akanjs/native/plugins/contacts/src/index
+// ../@akanjs/native/plugins/contacts/src/index
 type PermissionState = "denied" | "granted" | "prompt" | "prompt-with-rationale";
 
-// ../../../../../pkgs/@akanjs/native/plugins/geolocation/src/index
+// ../@akanjs/native/plugins/geolocation/src/index
 type PermissionState = "denied" | "granted" | "prompt" | "prompt-with-rationale";
 
 interface PickImagesOptions {

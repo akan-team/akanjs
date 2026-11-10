@@ -249,7 +249,7 @@ interface PageToolOptions {
     onSelect: (page: number) => void;
 }
 
-// ../../../../../pkgs/@akanjs/native/plugins/geolocation/src/index
+// ../@akanjs/native/plugins/geolocation/src/index
 type PermissionState = "denied" | "granted" | "prompt" | "prompt-with-rationale";
 
 // webkit/useCamera
