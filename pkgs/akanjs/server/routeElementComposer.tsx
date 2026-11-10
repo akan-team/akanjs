@@ -3,6 +3,7 @@ import type {
   LayoutErrorRender,
   LayoutFallbackRoute,
   LayoutNotFoundRender,
+  LevelBoundary,
   PageConfig,
   PathRoute,
   ResolvedHead,
@@ -63,7 +64,16 @@ export class RouteElementComposer {
       pageState: RouteElementComposer.#webPageState(pageConfigChain, pathRoute.path, basePath),
       pageConfigChain,
       explicitPageConfigKeys: getExplicitPageConfigKeys(pageConfigChain),
+      levelBoundary: await RouteElementComposer.#levelBoundaryOf(pathRoute),
     };
+  }
+
+  static async #levelBoundaryOf(route: PathRoute | LayoutFallbackRoute): Promise<LevelBoundary | undefined> {
+    for (const render of route.renderRootLayouts) {
+      const levelBoundary = await render.getLevelBoundary?.();
+      if (levelBoundary) return levelBoundary;
+    }
+    return undefined;
   }
 
   static async resolveSsrFallbackFrameState({
@@ -106,6 +116,7 @@ export class RouteElementComposer {
     return RouteElementComposer.composeRenders({
       renders: RouteElementComposer.#getRenderStack(pathRoute),
       segments: isAkanRscPartialCommitEnabled() ? createAkanRouteSegments(pathRoute) : undefined,
+      levelBoundary: pathRoute.levelBoundary,
       params,
       searchParams,
       navKey,
@@ -221,6 +232,7 @@ export class RouteElementComposer {
     return RouteElementComposer.composeRenders({
       renders: renders.slice(patchStartIndex),
       owners: renders.slice(0, patchStartIndex),
+      levelBoundary: pathRoute.levelBoundary,
       params,
       searchParams,
       navKey,
@@ -320,7 +332,8 @@ export class RouteElementComposer {
         ...layoutStack.slice(0, index + 1),
         RouteElementComposer.#makeFallbackRouteRender({ kind, fallback, pathname, error, digest, head }),
       ];
-      return RouteElementComposer.composeRenders({ renders, params, searchParams, gate });
+      const levelBoundary = await RouteElementComposer.#levelBoundaryOf(route);
+      return RouteElementComposer.composeRenders({ renders, levelBoundary, params, searchParams, gate });
     }
     return null;
   }
@@ -329,6 +342,7 @@ export class RouteElementComposer {
     renders,
     owners = [],
     segments,
+    levelBoundary: Boundary,
     params,
     searchParams,
     navKey,
@@ -339,6 +353,9 @@ export class RouteElementComposer {
     /** Layouts above `renders` that this element leaves out (a patch) but whose `.notFound()` still applies. */
     owners?: RouteRender[];
     segments?: AkanRouteSegmentState[];
+    /** Around each level: a client component the server never runs, so a level failing before the first byte still
+     * takes its `.error()`. */
+    levelBoundary?: LevelBoundary;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     navKey?: string;
@@ -369,7 +386,7 @@ export class RouteElementComposer {
       //? Even with no fallback, the boundary is where React client-renders a level that failed SSR or hydration.
       element = (
         <Suspense key={suspenseKey} fallback={loadingFallback}>
-          {level}
+          {Boundary ? <Boundary>{level}</Boundary> : level}
           {routeRender.Loading && levelGate ? <RouteShellGate.Wait until={levelGate.opened} /> : null}
         </Suspense>
       );

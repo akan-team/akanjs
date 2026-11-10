@@ -311,6 +311,7 @@ export class RouteTreeBuilder {
       routeRender.getLayoutTheme = async () => (await layoutModule()).theme;
       routeRender.getLayoutViewport = async () => (await layoutModule()).viewport;
       routeRender.getLayoutManifest = async () => (await layoutModule()).manifest;
+      routeRender.getLevelBoundary = async () => (await layoutModule()).LevelBoundary;
       routeRender.resolveNotFound = async () => syncFallbacks(await layoutModule()).NotFound;
       routeRender.resolveError = async () => syncFallbacks(await layoutModule()).Error;
     }

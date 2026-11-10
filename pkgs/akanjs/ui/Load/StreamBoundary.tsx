@@ -43,7 +43,7 @@ export class StreamBoundary extends Component<StreamBoundaryProps, StreamBoundar
 const retry = () => router.refresh();
 
 //? Raised below a route after the first byte, a not-found or redirect is the host's to answer; its subtree draws nothing.
-const isRouteControl = (error: unknown) => {
+export const isRouteControl = (error: unknown) => {
   const digest = (error as { digest?: unknown } | null)?.digest;
   return digest === "AKAN_NOT_FOUND" || (typeof digest === "string" && digest.startsWith("AKAN_REDIRECT"));
 };

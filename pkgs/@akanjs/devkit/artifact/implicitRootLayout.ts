@@ -242,6 +242,7 @@ const defaultFontClassName = defaultFont ? (defaultFont.className ?? \`font-\${d
 export const theme = userLayout.theme ?? inheritedLayout.theme;
 export const viewport = userLayout.viewport ?? inheritedLayout.viewport;
 export const manifest = userLayout.manifest ?? inheritedLayout.manifest;
+export { RouteLevelBoundary as LevelBoundary } from "akanjs/webkit/RouteLevelBoundary.tsx";
 
 ${layoutExports}(
     <System.Provider

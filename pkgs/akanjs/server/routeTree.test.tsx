@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
-import { isValidElement } from "react";
+import { isValidElement, Suspense } from "react";
 import { renderToReadableStream } from "react-dom/server.browser";
 import { layout, page } from "../client/route/routeBuilders";
 import { type AkanModalComponent, createOverridable, override, UiOverrideProvider } from "../ui/UiOverride";
+import { RouteLevelBoundary } from "../webkit/RouteLevelBoundary";
 import { RouteElementComposer } from "./routeElementComposer";
 import { RouteTreeBuilder } from "./routeTreeBuilder";
 import { AkanSegmentOutletReference } from "./rscSegmentOutletReference";
@@ -18,10 +19,11 @@ const pageInput = ({ pathRoute, params }: NonNullable<ReturnType<typeof RouteTre
   searchParams: {},
 });
 
-const buildDocsApiRoutes = () =>
+const buildDocsApiRoutes = (rootExports: Record<string, unknown> = {}) =>
   new RouteTreeBuilder({
     "./__root_layout.tsx": async () => ({
       default: ({ children }: { children: ReactNode }) => <main>root:{children}</main>,
+      ...rootExports,
     }),
     "./docs/_layout.tsx": async () => ({
       default: ({ children }: { children: ReactNode }) => <section>docs:{children}</section>,
@@ -35,6 +37,16 @@ function containsElementType(node: ReactNode, type: unknown): boolean {
   if (node.type === type) return true;
   const props = node.props as { children?: ReactNode; fallback?: ReactNode };
   return containsElementType(props.children, type) || containsElementType(props.fallback, type);
+}
+
+//? Per route level, outermost first: whether its Suspense renders the level inside the given boundary.
+function levelsInside(node: ReactNode, boundary: unknown): boolean[] {
+  if (Array.isArray(node)) return node.flatMap((child) => levelsInside(child, boundary));
+  if (!isValidElement(node)) return [];
+  const { children } = node.props as { children?: ReactNode };
+  if (node.type !== Suspense) return levelsInside(children, boundary);
+  const [first] = Array.isArray(children) ? children : [children];
+  return [isValidElement(first) && first.type === boundary, ...levelsInside(children, boundary)];
 }
 
 function findElementProp(node: ReactNode, type: unknown, propName: string): unknown {
@@ -530,6 +542,39 @@ describe("RouteTreeBuilder implicit locale", () => {
       expect(containsElementType(guardOn, AkanSegmentOutletReference)).toBe(true);
       expect(findElementProp(guardOn, AkanSegmentOutletReference, "segmentKey")).toBe("slot:layout:/:lang:1:2");
       expect(containsElementType(suffix, AkanSegmentOutletReference)).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+      else process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = previous;
+    }
+  });
+});
+
+describe("RouteElementComposer level boundary", () => {
+  const resolved = async (rootExports: Record<string, unknown> = {}) => {
+    const matched = RouteTreeBuilder.match("/ko/docs/api", buildDocsApiRoutes(rootExports));
+    if (!matched) throw new Error("route did not match");
+    return { ...pageInput(matched), pathRoute: await RouteElementComposer.resolveSsrFramePathRoute(matched) };
+  };
+
+  test("renders every level inside the root layout's boundary, with the same server markup", async () => {
+    const bounded = await resolved({ LevelBoundary: RouteLevelBoundary });
+    const full = RouteElementComposer.compose(bounded);
+    expect(levelsInside(full, RouteLevelBoundary)).toEqual([true, true, true]);
+    expect(await renderToText(full)).toBe(await renderToText(RouteElementComposer.compose(await resolved())));
+  });
+
+  test("keeps the segment outlet of a partial commit and bounds each level of the patch it fills", async () => {
+    const previous = process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
+    try {
+      process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = "1";
+      const bounded = await resolved({ LevelBoundary: RouteLevelBoundary });
+      const full = RouteElementComposer.compose(bounded);
+      const suffix = RouteElementComposer.composeSuffix({ ...bounded, patchStartIndex: 2 });
+
+      expect(findElementProp(full, AkanSegmentOutletReference, "segmentKey")).toBe("slot:layout:/:lang:1:2");
+      expect(levelsInside(full, RouteLevelBoundary)).toEqual([true, true, true]);
+      expect(containsElementType(suffix, AkanSegmentOutletReference)).toBe(false);
+      expect(levelsInside(suffix, RouteLevelBoundary)).toEqual([true]);
     } finally {
       if (previous === undefined) delete process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
       else process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = previous;

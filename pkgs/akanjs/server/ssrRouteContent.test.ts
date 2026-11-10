@@ -1,6 +1,10 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { Logger } from "akanjs/common";
+import { act, Children, createElement, Fragment, isValidElement, type ReactElement, type ReactNode } from "react";
+import { renderToReadableStream } from "react-dom/server.browser";
+import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { RscWorker } from "./rscWorkerHost";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { SsrLateControl } from "./ssrTypes";
@@ -11,12 +15,37 @@ interface Rendered {
   status: number;
   controlAtShell: SsrLateControl | null;
   cacheable: boolean;
+  payload: Uint8Array;
 }
 
 const readsWindowId = "routecontent/readsWindow";
 const readsWindowModule = path.join(import.meta.dir, "ssrRouteContentClient.fixture.tsx");
 const streamedLabelId = "routecontent/streamedLabel";
 const streamedLabelModule = path.join(import.meta.dir, "ssrStreamedReadClient.fixture.tsx");
+const levelBoundaryId = "routecontent/levelBoundary";
+const levelBoundaryModule = path.join(import.meta.dir, "../webkit/RouteLevelBoundary.tsx");
+const routeContentSsrManifest = {
+  moduleLoading: null,
+  moduleMap: {
+    [readsWindowId]: {
+      ReadsWindow: { id: readsWindowModule, chunks: [readsWindowModule, readsWindowModule], name: "ReadsWindow" },
+    },
+    [streamedLabelId]: {
+      StreamedLabel: {
+        id: streamedLabelModule,
+        chunks: [streamedLabelModule, streamedLabelModule],
+        name: "StreamedLabel",
+      },
+    },
+    [levelBoundaryId]: {
+      RouteLevelBoundary: {
+        id: levelBoundaryModule,
+        chunks: [levelBoundaryModule, levelBoundaryModule],
+        name: "RouteLevelBoundary",
+      },
+    },
+  },
+};
 
 const withRouteContentWorker = async (
   run: (render: (route: string) => Promise<Rendered>) => Promise<void>,
@@ -38,6 +67,7 @@ const withRouteContentWorker = async (
     rscRuntimeClientManifest: {
       [readsWindowId]: { id: readsWindowId, chunks: [], name: "ReadsWindow" },
       [streamedLabelId]: { id: streamedLabelId, chunks: [], name: "StreamedLabel" },
+      [levelBoundaryId]: { id: levelBoundaryId, chunks: [], name: "RouteLevelBoundary" },
     },
   } as unknown as BaseBuildArtifact);
   try {
@@ -46,35 +76,26 @@ const withRouteContentWorker = async (
       const request = new Request(`http://localhost/en/${route}`);
       const result = await rsc.renderWithMeta(request);
       if (result.type !== "stream") throw new Error(`expected a rendered page, got ${result.type}`);
+      const [rscStream, payloadStream] = result.stream.tee();
+      const payload = new Response(payloadStream).arrayBuffer();
+      payload.catch(() => undefined);
       const stream = await new SsrFromRscRenderer().render({
         request,
-        rscStream: result.stream,
-        ssrManifest: {
-          moduleLoading: null,
-          moduleMap: {
-            [readsWindowId]: {
-              ReadsWindow: {
-                id: readsWindowModule,
-                chunks: [readsWindowModule, readsWindowModule],
-                name: "ReadsWindow",
-              },
-            },
-            [streamedLabelId]: {
-              StreamedLabel: {
-                id: streamedLabelModule,
-                chunks: [streamedLabelModule, streamedLabelModule],
-                name: "StreamedLabel",
-              },
-            },
-          },
-        },
+        rscStream,
+        ssrManifest: routeContentSsrManifest,
         lateControl: result.lateControl,
       });
       //? What the host reads to pick the status, the moment the shell is ready.
       const controlAtShell = await Promise.race([result.lateControl, Promise.resolve(null)]);
       const status = controlAtShell?.type === "not-found" ? 404 : (result.status ?? 200);
       const html = await new Response(stream).text();
-      return { html, status, controlAtShell, cacheable: (await result.cacheState).cacheable };
+      return {
+        html,
+        status,
+        controlAtShell,
+        cacheable: (await result.cacheState).cacheable,
+        payload: new Uint8Array(await payload),
+      };
     });
   } finally {
     rsc.kill();
@@ -294,5 +315,85 @@ describe("SSR head of a not-found or error view", () => {
       expect(late.html.indexOf("<title>slow – Dex</title>")).toBeLessThan(late.html.indexOf("</head>"));
       expect(headTags(late.html).titles).toContain("Not found – Dex");
     }, "ssrNotFoundHead.fixture.tsx");
+  }, 20_000);
+});
+
+//? The body the browser hydrates, decoded from the page's Flight payload as the RSC client entry decodes it.
+const bodyOf = async (payload: Uint8Array): Promise<ReactNode> => {
+  const html = await createFromNodeStream<ReactElement<{ children: ReactNode }>>(
+    Readable.from([payload]),
+    routeContentSsrManifest,
+  );
+  const body = Children.toArray(html.props.children).find(
+    (child): child is ReactElement<{ children: ReactNode }> => isValidElement(child) && child.type === "body",
+  );
+  return createElement(Fragment, null, body?.props.children);
+};
+
+const markupOf = async (node: ReactNode) => {
+  const stream = await renderToReadableStream(node, { onError: () => undefined });
+  await stream.allReady;
+  return await new Response(stream).text();
+};
+
+//? A DOM only for the hydration: the worker host and the SSR renderer above read `typeof window`.
+const hydrated = async (payload: Uint8Array, run: (container: HTMLElement, uncaught: unknown[]) => void) => {
+  const markup = await markupOf(await bodyOf(payload));
+  const { GlobalRegistrator } = await import("@happy-dom/global-registrator");
+  GlobalRegistrator.register();
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const { hydrateRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  container.innerHTML = markup;
+  document.body.appendChild(container);
+  const uncaught: unknown[] = [];
+  const kept = ["main", "section", "#beside"].map((selector) => [selector, container.querySelector(selector)] as const);
+  let root: ReturnType<typeof hydrateRoot> | undefined;
+  try {
+    const tree = await bodyOf(payload);
+    await act(async () => {
+      root = hydrateRoot(container, tree, {
+        onUncaughtError: (error) => void uncaught.push(error),
+        onCaughtError: () => undefined,
+        onRecoverableError: () => undefined,
+      });
+    });
+    await act(async () => {});
+    for (const [selector, node] of kept) expect(container.querySelector(selector)).toBe(node);
+    run(container, uncaught);
+  } finally {
+    await act(async () => {
+      root?.unmount();
+    });
+    await GlobalRegistrator.unregister();
+  }
+};
+
+describe("A route level that fails after the first byte", () => {
+  test("answers 200, then hydrates into the level's notice under the layouts above it, which keep their nodes", async () => {
+    await withLoggedErrors(async () => {
+      await withRouteContentWorker(async (render) => {
+        const late = await render("late/broken");
+        expect(late.status).toBe(200);
+        expect(late.html).toContain(
+          '<section>late:<!--$?--><template id="B:3"></template><!--/$--><aside id="beside">',
+        );
+        expect(late.html).toContain('$RX("B:3"');
+        const nested = await render("failing/nested");
+        expect(nested.status).toBe(200);
+        expect(nested.html).toContain("<section>failing:<!--$!-->");
+
+        await hydrated(late.payload, (container, uncaught) => {
+          expect(container.querySelector('section > [role="alert"]')?.textContent).toContain("base.retry");
+          expect(container.querySelector("#beside")).not.toBeNull();
+          expect(uncaught).toEqual([]);
+        });
+        await hydrated(nested.payload, (container, uncaught) => {
+          expect(container.querySelector('section > [role="alert"]')).not.toBeNull();
+          expect(container.querySelector("#nested")).toBeNull();
+          expect(uncaught).toEqual([]);
+        });
+      });
+    });
   }, 20_000);
 });

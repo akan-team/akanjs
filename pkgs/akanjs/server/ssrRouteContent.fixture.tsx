@@ -21,6 +21,16 @@ const StreamedLabel = registerClientReference(
   "StreamedLabel",
 );
 
+const LevelBoundary = registerClientReference(
+  (_: { children?: ReactNode }): ReactNode => {
+    throw new Error("LevelBoundary is a client component");
+  },
+  "routecontent/levelBoundary",
+  "RouteLevelBoundary",
+);
+
+const AwaitsLabel = async ({ of }: { of: Promise<string> }) => <b>{await of}</b>;
+
 const refusedRead = () => {
   const request = Promise.reject(new Error("read refused"));
   return FetchHandle.of<{ label: string }, { label: Promise<string> }>(
@@ -33,6 +43,7 @@ const refusedRead = () => {
 export const pages: PagesContext = {
   "./__root_layout.tsx": async () => ({
     default: ({ children }: { children: ReactNode }) => <main>root:{children}</main>,
+    LevelBoundary,
   }),
   "./quick/_index.tsx": async () => ({
     default: page().render(async () => {
@@ -117,6 +128,35 @@ export const pages: PagesContext = {
     default: page().render(async () => {
       const { label } = refusedRead();
       return <p>{await label}</p>;
+    }),
+  }),
+  "./failing/nested.tsx": async () => ({
+    default: page().render(() => {
+      const { label } = refusedRead();
+      return (
+        <p id="nested">
+          nested <AwaitsLabel of={label} />
+        </p>
+      );
+    }),
+  }),
+  "./late/_layout.tsx": async () => ({
+    default: layout()
+      .loading(() => <i>late loading</i>)
+      .render(async ({ children }) => {
+        await Bun.sleep(20);
+        return (
+          <section>
+            late:{children}
+            <aside id="beside">beside</aside>
+          </section>
+        );
+      }),
+  }),
+  "./late/broken.tsx": async () => ({
+    default: page().render(async () => {
+      await Bun.sleep(40);
+      throw new Error("late page broke");
     }),
   }),
   "./failing/lost/_layout.tsx": async () => ({

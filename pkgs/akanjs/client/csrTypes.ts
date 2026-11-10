@@ -2,7 +2,7 @@
 import type { AnimatedComponent, AnimatedProps, Interpolation, SpringValue } from "@react-spring/web";
 import type { ReactDOMAttributes } from "@use-gesture/react/dist/declarations/src/types";
 import type { PromiseOrObject } from "akanjs/base";
-import { type ForwardRefExoticComponent, type ReactNode, type RefObject, useContext } from "react";
+import { type ComponentType, type ForwardRefExoticComponent, type ReactNode, type RefObject, useContext } from "react";
 import type { TailwindBreakpoint } from "./frameConfig";
 import type { RouteDefinition } from "./route/RouteDefinition";
 import type { RouterInstance } from "./router";
@@ -116,6 +116,7 @@ export type PageLoadingRender = (props: PageLoadingProps) => PromiseOrObject<Rea
 export type LayoutLoadingRender = (props: LayoutLoadingProps) => PromiseOrObject<ReactNode>;
 export type LayoutNotFoundRender = (props: LayoutNotFoundProps) => PromiseOrObject<ReactNode>;
 export type LayoutErrorRender = (props: LayoutErrorProps) => PromiseOrObject<ReactNode>;
+export type LevelBoundary = ComponentType<{ children?: ReactNode }>;
 export interface RouteGuardProps {
   params: Record<string, string>;
   searchParams: Record<string, string | string[]>;
@@ -149,6 +150,8 @@ export interface RouteRender {
   getLayoutViewport?: () => PromiseOrObject<RouteViewport | undefined>;
   /** A root layout's `manifest`, which the server answers at the URL its documents link. */
   getLayoutManifest?: () => PromiseOrObject<WebAppManifest | undefined>;
+  /** The generated root layout's client error boundary, which SSR puts around every route level. */
+  getLevelBoundary?: () => PromiseOrObject<LevelBoundary | undefined>;
   /** The `page()` chain behind a page render, when it was declared as one — what a page prompt is read off. */
   getRouteDefinition?: () => PromiseOrObject<RouteDefinition | undefined>;
 }
@@ -209,6 +212,7 @@ export interface LayoutModule {
   Loading?: LayoutLoadingRender;
   NotFound?: LayoutNotFoundRender;
   Error?: LayoutErrorRender;
+  LevelBoundary?: LevelBoundary;
 }
 export type RouteModule = PageModule | LayoutModule;
 export interface Route {
@@ -404,6 +408,7 @@ export interface PathRoute {
   pageState: PageState;
   pageConfigChain?: PageConfig[];
   explicitPageConfigKeys?: Partial<Record<keyof PageConfig, boolean>>;
+  levelBoundary?: LevelBoundary;
   renderRootLayouts: RouteRender[];
   renderLayouts: RouteRender[];
   resolveHead?: ResolveHead;
