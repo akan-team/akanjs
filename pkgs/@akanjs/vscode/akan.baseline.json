@@ -1,6 +1,6 @@
 {
   "akan.size.function": {
-    "commands.ts#registerCommands": 402,
+    "commands.ts#registerCommands": 396,
     "providers.ts#registerProviders": 173
   }
 }

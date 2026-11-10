@@ -1,10 +1,19 @@
 import type { DatabaseMode } from "@akanjs/devkit/akanConfig";
-import { App, Apps, command, Exec, Sys, SysOrOnlyApp, Workspace } from "@akanjs/devkit/commandDecorators";
+import { App, Apps, CliError, command, Exec, Sys, SysOrOnlyApp, Workspace } from "@akanjs/devkit/commandDecorators";
 import { RouteJsBudget } from "@akanjs/devkit/routeJsBudget";
 import { MigrationCommand } from "akanjs/server/migration/migrationCommand";
 import { MigrationError } from "akanjs/server/migration/migrationError";
 import { ApplicationScript } from "./application.script";
 import { allowLocalOption, nativeTargetOption, publicEnvOption, releaseEnvOption, writeOption } from "./commandOptions";
+
+const packUpdateDesc =
+  "Pack an unsigned over-the-air update of the mobile web bundle for a signer; records it in <out>/pack.json. Exits 2 when --against needs a new store build, 1 on any other failure";
+
+const migrationFailureOf = (error: unknown, usage: boolean) => {
+  const message = MigrationError.messageOf(error);
+  if (usage || CliError.is(error, "usage")) return new MigrationError("usage", message);
+  return CliError.is(error, "unknownTarget") ? new MigrationError("notFound", message) : error;
+};
 
 const deviceOption = {
   desc: "simulator, emulator or device to run on: its id or name (e.g. 'iPhone 17' or 'Pixel_10')",
@@ -65,8 +74,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     //? A `--json` caller parses the last line, so a failure before the app ran answers in the app's shape too.
     onFailure: async (error, { usage, given }) => {
       if (given.json !== true) return;
-      const failure = usage ? new MigrationError("usage", MigrationError.messageOf(error)) : error;
-      await MigrationCommand.print(MigrationCommand.failure(null, failure), true);
+      await MigrationCommand.print(MigrationCommand.failure(null, migrationFailureOf(error, usage)), true);
     },
   })
     .with(App)
@@ -420,9 +428,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         publicEnv: publicEnv ?? undefined,
       });
     }),
-  packUpdate: target({
-    desc: "Pack an unsigned over-the-air update of the mobile web bundle for a signer; records it in <out>/pack.json. Exits 2 when --against needs a new store build, 1 on any other failure",
-  })
+  packUpdate: target({ desc: packUpdateDesc, usageExitCode: 1 })
     .with(App)
     .option("platform", String, { enum: ["ios", "android"], desc: "the app it updates" })
     .option("target", String, nativeTargetOption)

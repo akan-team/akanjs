@@ -84,4 +84,15 @@ describe("AkanCli", () => {
     expect(AkanCli.jsonOf('{ broken\n{\n  "workflow": "add-field"\n}\n')).toEqual({ workflow: "add-field" });
     expect(AkanCli.jsonOf("verify ok · demo\n")).toBeNull();
   });
+
+  test("tells the CLI's failure line from a report, a failed verify report included", () => {
+    const failure = AkanCli.jsonOf('\n{"ok":false,"error":"Unknown workflow: nope","code":"failed"}\n');
+    expect(AkanCli.failureOf(failure)).toEqual({ error: "Unknown workflow: nope", code: "failed" });
+    expect(AkanCli.failureOf({ ok: false, action: null, code: "notFound", error: "Unknown app", runId: null })).toEqual(
+      { error: "Unknown app", code: "notFound" },
+    );
+    expect(AkanCli.failureOf({ ok: false, targets: ["demo"], steps: [], diagnostics: [] })).toBeNull();
+    expect(AkanCli.failureOf({ status: "failed", diagnostics: [] })).toBeNull();
+    expect(AkanCli.failureOf({ ok: false, error: "no code" })).toBeNull();
+  });
 });

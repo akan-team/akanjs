@@ -13,6 +13,7 @@
   "{0} has no akan CLI. Install @akanjs/cli.": "{0}에 akan CLI가 없습니다. @akanjs/cli를 설치하세요.",
   "Could not run bun. Is it on the PATH?": "bun을 실행하지 못했습니다. PATH에 있는지 확인하세요.",
   "akan {0} printed no report. See the Akan.js output.": "akan {0}가 리포트를 출력하지 않았습니다. Akan.js 출력을 확인하세요.",
+  "akan {0} failed: {1}": "akan {0} 실패: {1}",
   "akan verify {0}": "akan verify {0}",
   "akan verify (changes)": "akan verify (변경분)",
   "nothing changed": "변경 없음",

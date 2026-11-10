@@ -259,6 +259,7 @@ export class CloudRunner extends runner("cloud") {
       const reason = result.infraError ?? "failing tests";
       if (!interactive) continue;
       assertPromptable(`${result.platform} did not pass (${reason}) — ${run.logDir}`, {
+        code: "failed",
         remedy: "leave it out of --platforms to publish without it, or run it in a terminal to be asked",
       });
       const proceed = await confirm({

@@ -6,6 +6,7 @@ import path from "node:path";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
 import {
   type ArgMeta,
+  CliError,
   CommandContainer,
   getArgMetas,
   getArgumentValue,
@@ -211,6 +212,8 @@ describe("ApplicationCommand", () => {
     try {
       await onFailure(new Error("unknown option '--frob'"), { usage: true, given: { json: true } });
       await onFailure(new Error("Unknown app 'shop'"), { usage: false, given: { json: true } });
+      await onFailure(new CliError("unknownTarget", "Unknown app 'shop'"), { usage: false, given: { json: true } });
+      await onFailure(new CliError("usage", "Missing argument 'action'"), { usage: false, given: { json: true } });
       await onFailure(new Error("unknown option '--frob'"), { usage: true, given: { json: false } });
     } finally {
       write.mockRestore();
@@ -218,6 +221,8 @@ describe("ApplicationCommand", () => {
     expect(lines.map((line) => JSON.parse(line))).toEqual([
       { ok: false, action: null, code: "usage", error: "unknown option '--frob'", runId: null },
       { ok: false, action: null, code: "failed", error: "Unknown app 'shop'", runId: null },
+      { ok: false, action: null, code: "notFound", error: "Unknown app 'shop'", runId: null },
+      { ok: false, action: null, code: "usage", error: "Missing argument 'action'", runId: null },
     ]);
   });
 
