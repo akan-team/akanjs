@@ -254,7 +254,9 @@ describe("WebSocketRedisAdaptor channels", () => {
   test("does not wait for Redis while the subscriber is down, nor once it drops mid-wait", async () => {
     const { adaptor, subscriber } = await openAdaptor();
     subscriber.holdReplies = true;
-    await adaptor.joinRoom(newSocket(), "task-a::1", { live: "task" });
+    const down = settledFlag(adaptor.joinRoom(newSocket(), "task-a::1", { live: "task" }));
+    await Bun.sleep(5);
+    expect(down.settled).toBe(true);
     subscriber.emit("ready");
     const waiting = settledFlag(adaptor.joinRoom(newSocket(), "note-a::1", { live: "note" }));
     await Bun.sleep(5);
