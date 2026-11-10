@@ -105,6 +105,8 @@ jobs:
 
   route-js-budget:
     name: Route JS budget
+    # A called workflow sees its caller's `github` context, so this skips the run npm-publish.yml calls: an app's budget never holds a release.
+    if: ${{ contains(github.workflow_ref, '/.github/workflows/ci.yml@') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
