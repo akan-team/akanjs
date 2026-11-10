@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { type AkanI18nConfig, DEFAULT_AKAN_I18N, Logger, type LogRecord } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
+import { RestartSchedule } from "../common/restartSchedule";
 import type {
   PagePromptEntry,
   PagePromptRun,
@@ -426,7 +427,7 @@ export class RscWorker {
   #status: RscWorkerStatus = "starting";
   #killed = false;
   #queuedSends: { requestId: string; send: () => void }[] = [];
-  #restartAttempts = 0;
+  readonly #restart = new RestartSchedule({ min: 200, max: 30_000 });
   #restartCount = 0;
   #recycleCount = 0;
   #reloadsSinceSpawn = 0;
@@ -436,7 +437,6 @@ export class RscWorker {
   onLogRecords: ((records: LogRecord[], dropped: number) => void) | null = null;
   #logLevel: number | null = null;
   #hostPendingChunkOverflowCount = 0;
-  #restartTimer: ReturnType<typeof setTimeout> | null = null;
   #recycleTimer: ReturnType<typeof setTimeout> | null = null;
   #rollingRecycle: { oldProc: RscProcess; reason: string; reloadsSinceSpawn: number } | null = null;
   #booting: RscProcess | null = null;
@@ -546,9 +546,8 @@ export class RscWorker {
   kill(): void {
     this.#killed = true;
     this.#status = "stopped";
-    if (this.#restartTimer) clearTimeout(this.#restartTimer);
+    this.#restart.cancel();
     if (this.#recycleTimer) clearTimeout(this.#recycleTimer);
-    this.#restartTimer = null;
     this.#recycleTimer = null;
     this.#rollingRecycle?.oldProc.kill();
     this.#rollingRecycle = null;
@@ -794,7 +793,7 @@ export class RscWorker {
         this.#status = "ready";
         this.#answeredReloadId = this.#nextReloadId - 1;
         this.#droppedWhileBooting = false;
-        this.#restartAttempts = 0;
+        this.#restart.reset();
         this.#resolveReady();
         this.#finishRollingRecycle();
         //? A stylesheet update sent after its hello was held while it booted, and queued renders must not see the old one.
@@ -1036,7 +1035,7 @@ export class RscWorker {
     //? Only what this worker was sent: a request still queued never reached it, and the respawn takes it. That holds
     //? across a crash and a respawn that failed to boot, not a crash loop, where it would wait forever.
     const queued = new Set(this.#queuedSends.map((entry) => entry.requestId));
-    const keepsQueue = this.#restartAttempts < RscWorker.#queuedRespawns;
+    const keepsQueue = this.#restart.attempts < RscWorker.#queuedRespawns;
     this.#failRequests(err, (requestId) => !keepsQueue || !queued.has(requestId));
 
     if (this.#killed) {
@@ -1058,12 +1057,7 @@ export class RscWorker {
 
   #scheduleRestart(): void {
     this.#status = "restarting";
-    const delay = Math.min(200 * 2 ** this.#restartAttempts, 30_000);
-    this.#restartAttempts += 1;
-    this.#restartCount += 1;
-    this.#logger.verbose(`[rsc] worker crashed, restarting in ${delay}ms (attempt ${this.#restartAttempts})`);
-    this.#restartTimer = setTimeout(() => {
-      this.#restartTimer = null;
+    const delay = this.#restart.schedule(() => {
       if (this.#killed) return;
       try {
         this.#proc = this.#spawn();
@@ -1071,7 +1065,9 @@ export class RscWorker {
         this.#logger.error(`[rsc] failed to spawn worker: ${err instanceof Error ? err.message : String(err)}`);
         this.#scheduleRestart();
       }
-    }, delay);
+    });
+    this.#restartCount += 1;
+    this.#logger.verbose(`[rsc] worker crashed, restarting in ${delay}ms (attempt ${this.#restart.attempts})`);
   }
 
   #shouldRecycleForReloadAccumulation(): boolean {

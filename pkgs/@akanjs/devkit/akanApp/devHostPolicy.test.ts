@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { RestartSchedule } from "akanjs/common";
 import type { BuilderMessage, BuildPhase, DevBuildStatus, DevChangeAction } from "akanjs/server";
 //? The source itself, not the package: the published akanjs exports no such subpath, and tests are not bundled.
 import { DevBuildRecovery } from "../../../akanjs/server/artifact/devBuildRecovery";
 import {
+  backendRecoveryPolicy,
   backendRestartReasonFromMessage,
   buildStatusReplaySequence,
   createBackendBuildStatus,
@@ -18,7 +20,6 @@ import {
   normalizeBackendReportedGeneration,
   redisTunnelPolicy,
   resolveIdleSuspendMs,
-  shouldAbandonBackendRecovery,
   shouldHoldForReturningBuilder,
   shouldKeepBuildFailure,
   shouldMarkBuildPhaseRecovered,
@@ -489,16 +490,15 @@ describe("legacy backend graph fallback", () => {
 });
 
 describe("backend recovery abandonment", () => {
-  test("keeps retrying below the attempt ceiling and abandons at it", () => {
-    expect(shouldAbandonBackendRecovery(0)).toBe(false);
-    expect(shouldAbandonBackendRecovery(4)).toBe(false);
-    expect(shouldAbandonBackendRecovery(5)).toBe(true);
-    expect(shouldAbandonBackendRecovery(9)).toBe(true);
-  });
-
-  test("honors a custom attempt ceiling", () => {
-    expect(shouldAbandonBackendRecovery(2, 3)).toBe(false);
-    expect(shouldAbandonBackendRecovery(3, 3)).toBe(true);
+  test("backs off from 1s and gives up after five failed restarts in a row", () => {
+    const recovery = new RestartSchedule(backendRecoveryPolicy);
+    const delays = [1, 2, 3, 4].map(() => recovery.next());
+    expect(recovery.exhausted).toBe(false);
+    delays.push(recovery.next());
+    expect(delays).toEqual([1_000, 2_000, 4_000, 8_000, 16_000]);
+    expect(recovery.exhausted).toBe(true);
+    recovery.reset();
+    expect(recovery.exhausted).toBe(false);
   });
 });
 

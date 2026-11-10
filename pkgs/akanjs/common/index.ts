@@ -215,6 +215,7 @@ export { randomPick, randomPicks } from "./randomPick";
 export { RemoteAuthCode } from "./remoteAuthCode";
 export { RequestLocale, type RequestLocaleInput } from "./requestLocale";
 export { hostFromRequest, isJsonContentType, originFromRequest } from "./requestOrigin";
+export { type RestartPolicy, RestartSchedule } from "./restartSchedule";
 export { RestClient, type RestClientOptions, type RestRequestOptions } from "./restClient";
 export { round } from "./round";
 export {

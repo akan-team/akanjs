@@ -1,5 +1,5 @@
 import path from "node:path";
-import { Logger } from "akanjs/common";
+import { Logger, RestartSchedule } from "akanjs/common";
 import type { BuilderMessage, BuilderMetrics, BuildPhase, ChangeBatch, DevBuildStatus } from "akanjs/server";
 import type { App } from "../commandDecorators";
 import { createTunnel } from "../createTunnel";
@@ -15,6 +15,7 @@ import {
   type BackendLifecycleState,
   type BackendRestartReason,
   BUILDER_MIN_RSS_RECYCLE_INTERVAL_MS,
+  backendRecoveryPolicy,
   backendRestartReasonFromMessage,
   buildStatusReplaySequence,
   createBackendBuildStatus,
@@ -35,7 +36,6 @@ import {
   redisTunnelPolicy,
   resolveIdleSuspendMs,
   type SourceFingerprints,
-  shouldAbandonBackendRecovery,
   shouldHoldForReturningBuilder,
   shouldKeepBuildFailure,
   shouldMarkBuildPhaseRecovered,
@@ -59,10 +59,6 @@ const BACKEND_RESTART_DEBOUNCE_MS = 120;
 // Above the gateway's ~5s child-shutdown wait: a gateway SIGKILLed mid-shutdown strands orphan replicas.
 const BACKEND_GRACEFUL_TIMEOUT_MS = 8_000;
 
-const BACKEND_RECOVERY_BASE_DELAY_MS = 1_000;
-
-const BACKEND_RECOVERY_MAX_DELAY_MS = 30_000;
-
 const BACKEND_STDERR_TAIL_LIMIT = 40;
 
 const BUILDER_READY_TIMEOUT_MS = 150000;
@@ -76,11 +72,6 @@ const BUILDER_RSS_RECYCLE_QUIET_MS = 750;
 const BUILDER_RSS_SETTLE_MS = 20_000;
 
 const PS_RSS_TIMEOUT_MS = 2_000;
-
-// The builder is the file watcher, so unlike the backend its recovery never gives up; it only backs off.
-const BUILDER_RECOVERY_BASE_DELAY_MS = 2_000;
-
-const BUILDER_RECOVERY_MAX_DELAY_MS = 60_000;
 
 interface LastGoodFrontendState {
   pages?: Extract<BuilderMessage, { type: "pages-updated" }>;
@@ -101,8 +92,7 @@ export class AkanAppHost {
   #backendReady = false;
   #plannedBackendStops = new WeakSet<Bun.Subprocess<"ignore", "inherit", "inherit">>();
   #restartTimer: ReturnType<typeof setTimeout> | null = null;
-  #backendRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
-  #backendRecoveryAttempts = 0;
+  readonly #backendRecovery = new RestartSchedule(backendRecoveryPolicy);
   #backendGaveUp = false;
   #backendLifecycleState: BackendLifecycleState = "stopped";
   #pendingRestartReason: BackendRestartReason | null = null;
@@ -119,8 +109,9 @@ export class AkanAppHost {
   //? its recovery, reported past the failure's generation so the scan overlay clears.
   #restartFailedAfterApply: number | null = null;
   #stopping = false;
-  #builderRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
-  #builderRecoveryAttempts = 0;
+  //? The builder is the file watcher, so unlike the backend its recovery never gives up; it only backs off.
+  readonly #builderRecovery = new RestartSchedule({ min: 2_000, max: 60_000 });
+  #abandonBuilderStart: ((error: Error) => void) | null = null;
   #backendStartStatus: { generation?: number; files: string[] } | null = null;
   #backendBuildStatusGeneration = 0;
   #backendStderrTail: string[] = [];
@@ -186,6 +177,8 @@ export class AkanAppHost {
     this.#cancelIdleSuspend();
     this.#stopIdleWatcher();
     this.#clearRestartTimers();
+    //? A stopped builder sends no exit: a start waiting for its ready would sit out the ready timeout, then retry.
+    this.#abandonBuilderStart?.(new Error("dev server stopped before the builder was ready"));
     this.#pendingRestartReason = null;
     // Before the backend goes away, while it can still receive the answer.
     this.#failPendingBuilderMessages("dev server is shutting down");
@@ -195,9 +188,10 @@ export class AkanAppHost {
     return this;
   }
   #clearRestartTimers() {
-    for (const timer of [this.#restartTimer, this.#backendRecoveryTimer, this.#builderRecoveryTimer])
-      if (timer) clearTimeout(timer);
-    this.#restartTimer = this.#backendRecoveryTimer = this.#builderRecoveryTimer = null;
+    if (this.#restartTimer) clearTimeout(this.#restartTimer);
+    this.#restartTimer = null;
+    this.#backendRecovery.cancel();
+    this.#builderRecovery.cancel();
   }
   kill() {
     void this.stop();
@@ -239,7 +233,7 @@ export class AkanAppHost {
         if (!msg || typeof msg !== "object") return;
         if (msg.type === "backend-ready") {
           this.#backendReady = true;
-          this.#backendRecoveryAttempts = 0;
+          this.#backendRecovery.reset();
           this.#setBackendLifecycleState("ready", `pid=${msg.pid}`);
           this.#recordBackendReadyStatus();
           this.logger.verbose(`backend ready pid=${msg.pid}`);
@@ -402,10 +396,7 @@ export class AkanAppHost {
       "restart-pending",
       `generation=${pending.generation ?? "(unknown)"} files=${pending.files.length} roles=${pending.roles.join(",") || "(none)"}`,
     );
-    if (this.#backendRecoveryTimer) {
-      clearTimeout(this.#backendRecoveryTimer);
-      this.#backendRecoveryTimer = null;
-    }
+    this.#backendRecovery.cancel();
     if (this.#restartTimer) clearTimeout(this.#restartTimer);
     this.#restartTimer = setTimeout(() => {
       this.#restartTimer = null;
@@ -426,16 +417,16 @@ export class AkanAppHost {
     this.logger.verbose(
       `[backend-reload] restarting backend generation=${reason.generation ?? "(unknown)"} files=${reason.files.length} roles=${reason.roles.join(",") || "(none)"}`,
     );
-    this.#backendRecoveryAttempts = 0;
+    this.#backendRecovery.reset();
     await Promise.all([this.#stopBackend(), this.#backendGraph.refresh()]);
     this.#startBackend({ generation: reason.generation, files: reason.files });
   }
   #scheduleBackendRecovery(reason: string) {
-    if (this.#backendRecoveryTimer || this.#backend) return;
-    if (shouldAbandonBackendRecovery(this.#backendRecoveryAttempts)) {
-      const message = `Backend exited ${this.#backendRecoveryAttempts} times in a row (${reason}); waiting for an edit or a green build to retry.`;
+    if (this.#backendRecovery.pending || this.#backend) return;
+    if (this.#backendRecovery.exhausted) {
+      const message = `Backend exited ${this.#backendRecovery.attempts} times in a row (${reason}); waiting for an edit or a green build to retry.`;
       this.#backendGaveUp = true;
-      this.#setBackendLifecycleState("stopped", `gave up after ${this.#backendRecoveryAttempts} recovery attempts`);
+      this.#setBackendLifecycleState("stopped", `gave up after ${this.#backendRecovery.attempts} recovery attempts`);
       this.logger.error(`[backend-recovery] ${message}`);
       if (this.#backendStderrTail.length > 0) {
         this.logger.error(`[backend-recovery] recent backend stderr:\n${this.#backendStderrTail.join("\n")}`);
@@ -445,9 +436,7 @@ export class AkanAppHost {
       return;
     }
     this.#setBackendLifecycleState("recovering", reason);
-    const attempt = this.#backendRecoveryAttempts;
-    const delay = Math.min(BACKEND_RECOVERY_BASE_DELAY_MS * 2 ** attempt, BACKEND_RECOVERY_MAX_DELAY_MS);
-    this.#backendRecoveryAttempts = attempt + 1;
+    const delay = this.#backendRecovery.next();
     const failureStatus = this.#recordBackendBuildStatus({
       ok: false,
       files: [],
@@ -455,18 +444,17 @@ export class AkanAppHost {
     });
     this.#sendOrQueueBuildStatus(failureStatus);
     this.logger.warn(
-      `[backend-recovery] backend exited unexpectedly (${reason}); restarting in ${delay}ms (attempt ${this.#backendRecoveryAttempts})`,
+      `[backend-recovery] backend exited unexpectedly (${reason}); restarting in ${delay}ms (attempt ${this.#backendRecovery.attempts})`,
     );
     if (this.#backendStderrTail.length > 0) {
       this.logger.warn(`[backend-recovery] recent backend stderr:\n${this.#backendStderrTail.join("\n")}`);
     }
-    this.#backendRecoveryTimer = setTimeout(() => {
-      this.#backendRecoveryTimer = null;
+    this.#backendRecovery.arm(delay, () => {
       if (this.#backend) return;
       void this.#backendGraph.refresh().finally(() => {
         if (!this.#backend) this.#startBackend({ generation: failureStatus.generation, files: failureStatus.files });
       });
-    }, delay);
+    });
   }
   #enqueueBuilderMessage(message: BuilderMessage) {
     this.#builderMessageQueue = this.#builderMessageQueue
@@ -763,8 +751,8 @@ export class AkanAppHost {
       this.#pendingRecycle ||
       this.#restartTimer ||
       this.#backendRestart ||
-      this.#backendRecoveryTimer ||
-      this.#builderRecoveryTimer ||
+      this.#backendRecovery.pending ||
+      this.#builderRecovery.pending ||
       this.#rssRecycleReason
     );
   }
@@ -1024,28 +1012,25 @@ export class AkanAppHost {
     this.#scheduleBuilderRecovery({ generation, files: message.files });
   }
   #scheduleBuilderRecovery(reason: { generation?: number; files: string[] }): void {
-    if (this.#builderRecoveryTimer || this.#builder) return;
-    const attempt = this.#builderRecoveryAttempts;
-    const delay = Math.min(BUILDER_RECOVERY_BASE_DELAY_MS * 2 ** attempt, BUILDER_RECOVERY_MAX_DELAY_MS);
-    this.#builderRecoveryAttempts = attempt + 1;
-    this.logger.warn(
-      `[builder-recovery] builder is down; retrying start in ${delay}ms (attempt ${this.#builderRecoveryAttempts})`,
-    );
-    this.#builderRecoveryTimer = setTimeout(() => {
-      this.#builderRecoveryTimer = null;
-      if (this.#builder) return;
+    if (this.#stopping || this.#builderRecovery.pending || this.#builder) return;
+    const delay = this.#builderRecovery.schedule(() => {
+      if (this.#stopping || this.#builder) return;
       void this.#recoverBuilder(reason);
-    }, delay);
+    });
+    this.logger.warn(
+      `[builder-recovery] builder is down; retrying start in ${delay}ms (attempt ${this.#builderRecovery.attempts})`,
+    );
   }
   async #recoverBuilder(reason: { generation?: number; files: string[] }): Promise<void> {
     try {
       await this.#startBuilder();
     } catch (err) {
+      if (this.#stopping) return;
       this.logger.warn(`[builder-recovery] builder start failed: ${err instanceof Error ? err.message : String(err)}`);
       this.#scheduleBuilderRecovery(reason);
       return;
     }
-    this.#builderRecoveryAttempts = 0;
+    this.#builderRecovery.reset();
     this.logger.info("[builder-recovery] builder recovered");
     void this.#restartBackendForGapChanges();
     const failedAfterApply = this.#restartFailedAfterApply;
@@ -1062,14 +1047,14 @@ export class AkanAppHost {
     };
     this.#recordBuildStatus(status);
     this.#sendOrQueueBuildStatus(status);
-    if (!this.#backend && !this.#backendRecoveryTimer) {
+    if (!this.#backend && !this.#backendRecovery.pending) {
       this.#startBackend({ generation: reason.generation, files: reason.files });
     }
   }
   #reviveBackendAfterGreenBuild(status: DevBuildStatus): void {
-    if (!status.ok || !this.#backendGaveUp || this.#backend || this.#backendRecoveryTimer) return;
+    if (!status.ok || !this.#backendGaveUp || this.#backend || this.#backendRecovery.pending) return;
     this.logger.info(`[backend-recovery] build went green (generation=${status.generation}); retrying backend`);
-    this.#backendRecoveryAttempts = 0;
+    this.#backendRecovery.reset();
     this.#startBackend({ generation: status.generation, files: status.files });
   }
   async #restartDevChildren(message: Extract<BuilderMessage, { type: "invalidate" }>): Promise<void> {
@@ -1097,7 +1082,7 @@ export class AkanAppHost {
   ): Promise<void> {
     const generation = message.devPlan?.generation ?? message.generation;
     this.#clearRestartTimers();
-    this.#builderRecoveryAttempts = 0;
+    this.#builderRecovery.reset();
     this.#pendingRestartReason = null;
     await this.#backendRestart;
     this.#lastGoodFrontend = {};
@@ -1232,7 +1217,7 @@ export class AkanAppHost {
     this.app.verbose(`[cli] waiting for builder to complete initial base build…`);
     let lastError: unknown;
     for (let attempt = 1; attempt <= BUILDER_START_MAX_ATTEMPTS; attempt++) {
-      this.#builder = await IncrementalBuilderHost.create(
+      const builder = await IncrementalBuilderHost.create(
         this.app,
         this.env,
         (msg) => {
@@ -1244,6 +1229,11 @@ export class AkanAppHost {
           patcherOff: this.#patcherOff,
         },
       );
+      if (this.#stopping) {
+        builder.stop();
+        throw new Error("dev server stopped before the builder started");
+      }
+      this.#builder = builder;
       try {
         await this.#waitForBuilderReady(attempt, { announceBootState });
         this.app.verbose(`[cli] base build ready in ${Date.now() - startTime}ms — starting backend`);
@@ -1251,7 +1241,7 @@ export class AkanAppHost {
       } catch (err) {
         lastError = err;
         this.#stopBuilder();
-        if (attempt >= BUILDER_START_MAX_ATTEMPTS) break;
+        if (attempt >= BUILDER_START_MAX_ATTEMPTS || this.#stopping) break;
         this.app.verbose(`[cli] builder failed before ready; retrying (${attempt + 1}/${BUILDER_START_MAX_ATTEMPTS})`);
       }
     }
@@ -1269,8 +1259,11 @@ export class AkanAppHost {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        if (this.#abandonBuilderStart === abandon) this.#abandonBuilderStart = null;
         fn();
       };
+      const abandon = (error: Error) => settle(() => reject(error));
+      this.#abandonBuilderStart = abandon;
       const timeout = setTimeout(() => {
         settle(() => reject(new Error("[cli] builder timed out before emitting builder-ready")));
       }, BUILDER_READY_TIMEOUT_MS);

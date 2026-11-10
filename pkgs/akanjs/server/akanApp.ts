@@ -6,6 +6,7 @@ import path from "node:path";
 import { Logger, TrustedProxy } from "akanjs/common";
 import type { AkanChildRole, AkanChildStatus, AkanIpcMessage, AkanMetricsReport, AkanUpstream } from "akanjs/service";
 import { getApiPrefix, getWsPrefix, normalizeRoutePrefix, resetEnvCache } from "../base/baseEnv";
+import { type RestartPolicy, RestartSchedule } from "../common/restartSchedule";
 import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { isTraceEnabled } from "../signal/trace";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
@@ -46,9 +47,8 @@ interface ChildState {
   metrics: AkanMetricsReport;
   /** Monotonic (`performance.now()`) so sleep/wake wall-clock jumps cannot fake a health timeout. */
   lastPongAtMono?: number;
-  restartAttempts: number;
+  restart: RestartSchedule;
   restartCount: number;
-  restartTimer: Timer | null;
   restartPending: boolean;
   lastExitCode?: number | null;
   lastRestartAt?: number;
@@ -110,13 +110,16 @@ interface AkanReplicaConfig {
 }
 
 export class AkanApp {
-  static readonly #childRestartBaseDelayMs = 1_000;
-  static readonly #childRestartMaxDelayMs = 30_000;
   static readonly #childRestartGraceMs = 5_000;
   static readonly #devMaxChildBootFailures = 3;
 
   readonly logger = new Logger("AkanApp");
   readonly #devHosted = process.env.AKAN_COMMAND_TYPE === "start";
+  readonly #childRestartPolicy: RestartPolicy = {
+    min: 1_000,
+    max: 30_000,
+    ...(this.#devHosted ? { maxAttempts: AkanApp.#devMaxChildBootFailures - 1 } : {}),
+  };
   readonly #healthTimeoutMs = AkanApp.#parseHealthTimeoutMs();
   readonly #upstreamWaitMs = AkanApp.#parseUpstreamWaitMs();
   /** Child stderr is mostly bundler/runtime noise, kept to the log file; with none it may be a crash's only trace. */
@@ -333,8 +336,7 @@ export class AkanApp {
     this.#server?.stop(true);
     this.#server = null;
     for (const child of this.#children.values()) {
-      if (child.restartTimer) clearTimeout(child.restartTimer);
-      child.restartTimer = null;
+      child.restart.cancel();
       this.#sendToChild(child, { type: "shutdown", signal } satisfies AkanIpcMessage);
     }
     await Promise.race([
@@ -399,9 +401,9 @@ export class AkanApp {
       ready: false,
       status: "starting",
       metrics: {},
-      restartAttempts: previous?.restartAttempts ?? 0,
+      //? Carried across respawns so a replica's failures add up; only a fired restart respawns, so it is never pending.
+      restart: previous?.restart ?? new RestartSchedule(this.#childRestartPolicy),
       restartCount: previous?.restartCount ?? 0,
-      restartTimer: null,
       restartPending: false,
       lastExitCode: previous?.lastExitCode,
       lastRestartAt: previous?.lastRestartAt,
@@ -449,11 +451,11 @@ export class AkanApp {
   #scheduleChildRestart(child: ChildState, proc: Bun.Subprocess<"ignore", "pipe", "pipe">, reason: string): void {
     if (this.#stopping) return;
     if (child.proc !== proc) return;
-    if (child.restartPending || child.restartTimer) {
+    if (child.restartPending || child.restart.pending) {
       child.lastRestartReason = reason;
       return;
     }
-    if (this.#devHosted && child.restartAttempts >= AkanApp.#devMaxChildBootFailures - 1 && !child.ready) {
+    if (child.restart.exhausted && !child.ready) {
       this.#markChildCrashed(child, reason);
       return;
     }
@@ -469,12 +471,10 @@ export class AkanApp {
     child.lastRestartAt = Date.now();
     this.#removeChildRooms(child.idx);
 
-    const attempt = child.restartAttempts;
-    const delay = Math.min(AkanApp.#childRestartBaseDelayMs * 2 ** attempt, AkanApp.#childRestartMaxDelayMs);
-    child.restartAttempts = attempt + 1;
+    const delay = child.restart.next();
     child.restartCount += 1;
     this.logger.error(
-      `Child ${child.idx}/${child.role} failed (${reason}); restarting in ${delay}ms (attempt ${child.restartAttempts})`,
+      `Child ${child.idx}/${child.role} failed (${reason}); restarting in ${delay}ms (attempt ${child.restart.attempts})`,
     );
 
     void this.#restartChildAfterDelay(child.idx, proc, reason, delay).catch((error) => {
@@ -500,8 +500,7 @@ export class AkanApp {
     if (this.#stopping) return;
     const current = this.#children.get(idx);
     if (!current || current.proc !== proc) return;
-    current.restartTimer = setTimeout(() => {
-      current.restartTimer = null;
+    current.restart.arm(delay, () => {
       void this.#respawnChild(idx, proc).catch((error) => {
         const latest = this.#children.get(idx);
         if (!latest || latest.proc !== proc || this.#stopping) return;
@@ -511,7 +510,7 @@ export class AkanApp {
         );
         this.#scheduleChildRestart(latest, proc, "respawn-failed");
       });
-    }, delay);
+    });
   }
 
   async #respawnChild(idx: number, proc: Bun.Subprocess<"ignore", "pipe", "pipe">) {
@@ -519,6 +518,7 @@ export class AkanApp {
     const current = this.#children.get(idx);
     if (!current || current.proc !== proc) return;
     await this.#removeChildSocket(idx, current.role);
+    if (this.#stopping) return;
     current.restartPending = false;
     this.#spawn(idx);
   }
@@ -536,7 +536,7 @@ export class AkanApp {
     child.lastRestartReason = reason;
     this.#federationChildCache = null;
     this.#removeChildRooms(child.idx);
-    const attempts = child.restartAttempts + 1;
+    const attempts = child.restart.attempts + 1;
     const detail = child.lastErrorMessage ?? reason;
     const message = `Backend replica ${child.idx}/${child.role} failed ${attempts} consecutive boots; waiting for a code change to retry: ${detail}`;
     this.logger.error(`[child-crash-loop] ${message}`);
@@ -821,7 +821,7 @@ export class AkanApp {
         ready: child.ready,
         pid: child.pid,
         upstream: child.upstream,
-        restartAttempts: child.restartAttempts,
+        restartAttempts: child.restart.attempts,
         restartCount: child.restartCount,
         restartPending: child.restartPending,
         lastExitCode: child.lastExitCode,
@@ -864,7 +864,7 @@ export class AkanApp {
         role: child.role,
         metrics: child.metrics,
         rooms: this.#childRooms.get(child.idx)?.size ?? 0,
-        restartAttempts: child.restartAttempts,
+        restartAttempts: child.restart.attempts,
         restartCount: child.restartCount,
         restartPending: child.restartPending,
         lastExitCode: child.lastExitCode,
@@ -1233,7 +1233,7 @@ export class AkanApp {
     child.healthPath = message.healthPath;
     if (message.crossSite) CrossSiteGuard.configure(message.crossSite);
     child.lastPongAtMono = performance.now();
-    child.restartAttempts = 0;
+    child.restart.reset();
     // A child that (re)spawned after subscribers arrived has never heard the floor.
     if (this.#logHub && this.#logHub.floor !== null)
       this.#sendToChild(child, { type: "log.level", minSev: this.#logHub.floor });
