@@ -31,8 +31,9 @@ const openServer = async (serverId: string, app: string) => {
   adaptor.onChange((change) => changes.push(change));
   const socket = { data: {} } as Bun.ServerWebSocket<unknown>;
   let heard = 0;
-  adaptor.subscriber.on("messageBuffer", () => {
-    heard += 1;
+  // TODO(#458): every server also hears the copies on the channel of earlier releases, which it skips.
+  adaptor.subscriber.on("messageBuffer", (channel: Buffer) => {
+    if (!channel.toString().endsWith(":ws:broadcast")) heard += 1;
   });
   return {
     adaptor,
@@ -53,6 +54,30 @@ const openServer = async (serverId: string, app: string) => {
 const until = async (condition: () => boolean, timeoutMs = 2_000) => {
   const deadline = Date.now() + timeoutMs;
   while (!condition() && Date.now() < deadline) await Bun.sleep(10);
+};
+
+//? The envelope as `#unpack` and `#receive` read it up to v3.2.0-rc.5, which skip only their own origin.
+const readAsEarlierRelease = (message: Buffer, ownId: string) => {
+  const originLength = message.readUInt16BE(2);
+  if (message.readUInt8(0) !== 1 || message.subarray(4, 4 + originLength).toString() === ownId) return null;
+  const kind = String.fromCharCode(message.readUInt8(1));
+  const roomStart = 6 + originLength;
+  const roomEnd = roomStart + message.readUInt16BE(4 + originLength);
+  const payload = message.subarray(roomEnd);
+  const data = kind === "b" ? [...payload] : (JSON.parse(payload.toString()) as unknown);
+  return { kind, roomId: message.subarray(roomStart, roomEnd).toString(), data };
+};
+
+const packAsEarlierRelease = (kind: "j" | "c", origin: string, roomId: string, data: unknown) => {
+  const [originBytes, roomBytes] = [Buffer.from(origin), Buffer.from(roomId)];
+  const header = Buffer.alloc(6 + originBytes.length + roomBytes.length);
+  header.writeUInt8(1, 0);
+  header.writeUInt8(kind.charCodeAt(0), 1);
+  header.writeUInt16BE(originBytes.length, 2);
+  originBytes.copy(header, 4);
+  header.writeUInt16BE(roomBytes.length, 4 + originBytes.length);
+  roomBytes.copy(header, 6 + originBytes.length);
+  return Buffer.concat([header, Buffer.from(JSON.stringify(data))]);
 };
 
 describe.skipIf(!ConformanceEnv.has("pubsub conformance", "redis"))("pubsub conformance (redis)", () => {
@@ -242,6 +267,49 @@ describe.skipIf(!ConformanceEnv.has("pubsub conformance", "redis"))("pubsub conf
     publisher.adaptor.publish(roomId, { label: "returned", count: 1, ratio: 1 });
     expect(await deliveredTo(reader, roomId)).toEqual([{ label: "returned", count: 1, ratio: 1 }]);
     expect(await reader.client.pubsub("NUMSUB", stray)).toEqual([stray, 0]);
+    await reader.close();
+  });
+
+  test("[C-1] a server of an earlier release and one of this release hear each other's events and changes once", async () => {
+    const { Redis } = await import("ioredis");
+    const legacyChannel = "alpha:testing:ws:broadcast";
+    const roomId = `${pulse}-mixed`;
+    const refName = ConformanceEnv.uniqueName("model");
+    const earlier = new Redis(ConformanceEnv.url("redis") as string);
+    const earlierListener = earlier.duplicate();
+    const heardByEarlier: Buffer[] = [];
+    earlierListener.on("messageBuffer", (_channel: Buffer, message: Buffer) => heardByEarlier.push(message));
+    await earlierListener.subscribe(legacyChannel);
+    const reader = await openServer("server-d", "alpha");
+    await reader.join(roomId);
+    await reader.joinLive(`${envelope}-mixed::1`, refName);
+
+    publisher.adaptor.publish(roomId, { label: "this", count: 1, ratio: 1 });
+    publisher.adaptor.publish(roomId, new Uint8Array([7, 250]));
+    publisher.adaptor.publishChange({ refName, next: `{"id":"a"}` });
+    await earlier.publish(legacyChannel, packAsEarlierRelease("j", "server-old", roomId, { label: "earlier" }));
+    await earlier.publish(legacyChannel, packAsEarlierRelease("c", "server-old", "", { refName, next: `{"id":"b"}` }));
+    const readByEarlier = () =>
+      heardByEarlier
+        .map((message) => readAsEarlierRelease(message, "server-old"))
+        .filter((read) => read?.roomId === roomId || (read?.data as LiveChange | undefined)?.refName === refName);
+    await until(() => reader.received.length >= 3 && reader.changes.length >= 2 && readByEarlier().length >= 3);
+    await Bun.sleep(50);
+
+    expect(readByEarlier()).toEqual([
+      { kind: "j", roomId, data: { label: "this", count: 1, ratio: 1 } },
+      { kind: "b", roomId, data: [7, 250] },
+      { kind: "c", roomId: "", data: { refName, next: `{"id":"a"}` } },
+    ]);
+    const heardHere = reader.received.map(({ data }) => (data instanceof Uint8Array ? [...data] : data));
+    expect(heardHere).toHaveLength(3);
+    expect(heardHere).toEqual(
+      expect.arrayContaining([{ label: "this", count: 1, ratio: 1 }, [7, 250], { label: "earlier" }]),
+    );
+    expect(reader.changes.map(({ next }) => next)).toHaveLength(2);
+    expect(reader.changes.map(({ next }) => next)).toEqual(expect.arrayContaining([`{"id":"a"}`, `{"id":"b"}`]));
+    earlierListener.disconnect();
+    earlier.disconnect();
     await reader.close();
   });
 });
