@@ -36,7 +36,6 @@ export class RouteModulePreloads {
     };
   }
 
-  //* What a route can load, whether or not a render reaches it; a page preloads only what its flight names.
   modulesByRoute(): Record<string, string[]> {
     const plan = new ModulePreloadPlan(this.table);
     return Object.fromEntries(
