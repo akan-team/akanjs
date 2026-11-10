@@ -1,6 +1,5 @@
 import type { PageEntry } from "../artifact/implicitRootLayout";
 
-/** The names a module imports from one barrel, and a hash of the files narrowing them resolved to. */
 export interface CsrDevNarrowedImport {
   names: string[];
   hash: string;

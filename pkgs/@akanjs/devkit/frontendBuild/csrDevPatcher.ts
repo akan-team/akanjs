@@ -109,8 +109,7 @@ export class CsrDevPatcher {
     const present = CsrDevPatcher.#presence(changedFiles);
     const forgotten = this.#forgetDeletedModules(state, present);
     const changed = onlyRoots ? new Set<string>() : await this.#changedModules(graph, changedFiles, present);
-    const renarrowed = onlyRoots ? null : await this.#renarrowed(context, graph, changedFiles);
-    for (const id of renarrowed?.importers ?? []) changed.add(id);
+    const restamped = onlyRoots ? null : await this.#renarrowed(context, graph, changedFiles, changed);
     for (const id of this.#withoutFactory(state, present)) changed.add(id);
     for (const file of entries.changed) changed.add(paths.idOf(file));
     const rootFiles = [...Object.values(entries.files), ...roots.filter((file) => fs.existsSync(file))];
@@ -124,7 +123,7 @@ export class CsrDevPatcher {
       (entries.changed.length > 0 || JSON.stringify(entryIds) !== JSON.stringify(graph.entries));
     if (changed.size === 0) {
       //? No importer moved (none compiles), so the restamped barrels already hold.
-      if (renarrowed) graph.barrels = { ...graph.barrels, ...renarrowed.barrels };
+      if (restamped) graph.barrels = { ...graph.barrels, ...restamped };
       if (carried.length === 0) return { kind: "unchanged" };
       return await this.#retryCarried(context, state, carried, { announce, allowWholeAppBuilds });
     }
@@ -192,15 +191,11 @@ export class CsrDevPatcher {
       forgotten.push(id);
     }
     graph.pending = graph.pending.filter((id) => !orphans.includes(id));
-    this.#bundler.merge(graph, resolver, compiled, { ...renarrowed?.barrels, ...result.barrels });
+    this.#bundler.merge(graph, resolver, compiled, { ...restamped, ...result.barrels });
     if (!this.#resident) delete graph.failed;
     for (const module of compiled) this.#delegated.delete(module.id);
     graph.entries = entryIds;
-    for (const module of compiled) {
-      if (module.vendor || !code) continue;
-      code.modules.set(module.id, module.factory);
-      if (module.helpers) code.helpers.set(module.helpers.hash, module.helpers.definition);
-    }
+    if (code) CsrDevPatcher.#remember(code, compiled);
     const changedIds = compiled.filter((module) => !module.vendor).map((module) => module.id);
     const constantId = changedIds.find((id) => id.endsWith(".constant.ts"));
     // A model class swapped under live store state would mix old and new instances; reload instead.
@@ -513,16 +508,14 @@ export class CsrDevPatcher {
     return changed;
   }
 
-  //? A narrowed import names the file its export lived in when the importer compiled, and an export moved to another
-  //? file leaves the importer's text as it was: a barrel whose files changed (stat'ed as modules are, so a restart sees
-  //? an edit made meanwhile) is analyzed again, and an importer whose names now narrow elsewhere compiles again. The new
-  //? stamps go into the graph with the compile that follows (`merge`), never ahead of it: a round that fails or is handed
-  //? back must leave the barrel stale for the next one.
+  //? The new stamps go into the graph with the compile that follows (`merge`), never ahead of it: a round that fails or
+  //? is handed back must leave the barrel stale for the next one.
   async #renarrowed(
     context: CsrDevContext,
     graph: CsrDevGraph,
     changedFiles: string[],
-  ): Promise<{ importers: string[]; barrels: Record<string, CsrDevBarrelStamp> }> {
+    changed: Set<string>,
+  ): Promise<Record<string, CsrDevBarrelStamp>> {
     const { paths } = this.#bundler;
     const saved = new Set(changedFiles.map((file) => paths.idOf(file)));
     const stale = Object.entries(graph.barrels ?? {})
@@ -533,19 +526,26 @@ export class CsrDevPatcher {
       )
       .map(([barrel]) => barrel);
     const barrelImports = stale.length > 0 ? await this.#bundler.barrelImports(context) : null;
-    if (!barrelImports) return { importers: [], barrels: {} };
+    if (!barrelImports) return {};
     const barrels = await barrelImports.stamps(stale, (file) => paths.idOf(file));
     const moved = stale.filter((barrel) => barrels[barrel]?.digest !== graph.barrels?.[barrel]?.digest);
-    const importers: string[] = [];
     for (const [id, module] of Object.entries(graph.modules)) {
       for (const barrel of moved) {
         const narrowed = module.narrowed?.[barrel];
         if (!narrowed || (await barrelImports.fingerprint(barrel, narrowed.names)) === narrowed.hash) continue;
-        importers.push(id);
+        changed.add(id);
         break;
       }
     }
-    return { importers, barrels };
+    return barrels;
+  }
+
+  static #remember(code: CsrDevCode, compiled: CsrDevCompileResult["modules"]) {
+    for (const module of compiled) {
+      if (module.vendor) continue;
+      code.modules.set(module.id, module.factory);
+      if (module.helpers) code.helpers.set(module.helpers.hash, module.helpers.definition);
+    }
   }
 
   //? A new file can take over a relative import another module already resolved (`Foo.tsx` created beside

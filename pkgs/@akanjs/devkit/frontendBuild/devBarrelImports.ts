@@ -10,9 +10,8 @@ export interface DevBarrelRewrite {
   narrowed: Record<string, CsrDevNarrowedImport>;
 }
 
-//* A dev registry narrows the workspace barrels `akan build` narrows, so a module UI file runs in dev only where a
-//* production page runs it. Targets are written as relative paths, which resolve against the disk with no resolution
-//* build: a save that adds a barrel import stays a patch.
+//* Targets are written as relative paths, which resolve against the disk with no resolution build: a save that adds a
+//* barrel import stays a patch.
 export class DevBarrelImports {
   readonly #barrels: string[];
   readonly #resolvePackage: (pkgName: string) => Promise<PackageEntry | null>;
