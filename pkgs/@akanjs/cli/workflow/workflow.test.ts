@@ -848,6 +848,34 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
       ).toEqual(moduleWorkflows.map(([workflow]) => workflow));
     });
 
+    test("names the scalar, the service or the library a module name points at, instead of create-module", async () => {
+      const { root, workspace, module } = track(await createTempModule("task"));
+      await new ModuleRunner().createModuleTemplate(module);
+      await writeText(`${root}/apps/demo/lib/__scalar/address/address.constant.ts`, "");
+      await writeText(`${root}/apps/demo/lib/_demo/demo.service.ts`, "");
+      await writeText(`${root}/libs/shared/akan.config.ts`, "export default {};\n");
+      await writeText(`${root}/libs/shared/lib/user/user.constant.ts`, "");
+      const runner = new WorkflowRunner();
+      const messageOf = async (moduleName: string) => {
+        const plan = JSON.parse(
+          await runner.plan(
+            "add-field",
+            { app: "demo", module: moduleName, field: "nickname", type: "String" },
+            { format: "json", workspace },
+          ),
+        ) as WorkflowPlan;
+        return plan.diagnostics.map((diagnostic) => diagnostic.message).join(" ");
+      };
+
+      expect(await messageOf("address")).toContain(
+        "apps/demo/lib/__scalar/address is a scalar, and this workflow writes only into a module under apps/demo/lib.",
+      );
+      expect(await messageOf("demo")).toContain("Did you mean _demo?");
+      expect(await messageOf("user")).toContain("user is in libs/shared, so plan this with --app shared.");
+      for (const moduleName of ["address", "demo", "user"])
+        expect(await messageOf(moduleName)).not.toContain("create-module");
+    });
+
     test("fails a dry run and an apply of a plan that names it, writing nothing", async () => {
       const { workspace, module, planPath, runner } = await planTaskWorkflow({ field: "nickname", type: "String" });
       const plan = JSON.parse(await readFile(planPath, "utf8")) as WorkflowPlan;

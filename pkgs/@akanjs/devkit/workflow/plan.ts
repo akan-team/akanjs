@@ -479,11 +479,26 @@ const inspectRenameKeyPlan = async (workspace: Workspace, plan: WorkflowPlan): P
   };
 };
 
-const moduleMissing = async (sys: Sys, module: string): Promise<WorkflowDiagnostic | null> => {
+const syssHolding = async (workspace: Workspace, module: string, except: Sys) => {
+  const [apps, libs] = await workspace.getSyss();
+  const others = await Promise.all(
+    [...apps, ...libs]
+      .filter((name) => name !== except.name)
+      .map(async (name) => await resolveWorkflowSys(workspace, name)),
+  );
+  const holding = await Promise.all(
+    others.map(async (other) => (other && (await other.readdir("lib")).includes(module) ? other : null)),
+  );
+  return holding.filter((other): other is Sys => other !== null);
+};
+
+const moduleMissing = async (workspace: Workspace, sys: Sys, module: string): Promise<WorkflowDiagnostic | null> => {
   if ((await sys.readdir("lib")).includes(module)) return null;
   const root = getSysRoot(sys);
   const modules = [...(await sys.getDatabaseModules()), ...(await sys.getServiceModules())];
-  const sameName = modules.find((name) => name.toLowerCase() === module.toLowerCase());
+  const sameName = modules.find((name) => name.replace(/^_/, "").toLowerCase() === module.toLowerCase());
+  const isScalar = (await sys.getScalarModules()).includes(module);
+  const [holder] = sameName || isScalar ? [] : await syssHolding(workspace, module, sys);
   return {
     severity: "error",
     code: "workflow-module-missing",
@@ -493,7 +508,11 @@ const moduleMissing = async (sys: Sys, module: string): Promise<WorkflowDiagnost
       modules.length ? `Its modules are ${modules.join(", ")}.` : `${root} has no modules yet.`,
       sameName
         ? `Did you mean ${sameName}?`
-        : `If ${module} is a new model, create it with the create-module workflow first, then plan this again.`,
+        : isScalar
+          ? `${root}/lib/__scalar/${module} is a scalar, and this workflow writes only into a module under ${root}/lib.`
+          : holder
+            ? `${module} is in ${getSysRoot(holder)}, so plan this with --app ${holder.name}.`
+            : `If ${module} is a new model, create it with the create-module workflow first, then plan this again.`,
     ].join(" "),
   };
 };
@@ -520,7 +539,7 @@ export const workflowTargetDiagnostics = async (
   const module = planString(inputs, "module");
   const moduleSpec: WorkflowInputSpec | undefined = spec.inputs.module;
   if (!module || !moduleSpec?.mustExist) return [];
-  const missing = await moduleMissing(sys, module);
+  const missing = await moduleMissing(workspace, sys, module);
   return missing ? [missing] : [];
 };
 
