@@ -1,11 +1,13 @@
 "use client";
 
-import { router, storage } from "akanjs/client";
-import { isNativeApp, type NativePushToken, push } from "akanjs/client/native";
+import { isNativeApp, router } from "akanjs/client";
+import type { NativePushToken } from "akanjs/client/native";
+import { Logger } from "akanjs/common";
 import type { Messaging } from "firebase/messaging";
 import { useEffect } from "react";
 import { pushColdOpenParam } from "../common/pushColdOpenParam";
 import { pushNavigateMessage } from "../common/pushNavigateMessage";
+import { getPushDeviceId } from "./pushDeviceId";
 
 export type PushNotificationPlatform = "web" | "ios" | "android";
 export type PushNotificationProvider = "apns" | "fcm";
@@ -60,26 +62,15 @@ const isWebRuntime = () => typeof window !== "undefined" && typeof navigator !==
 let firebaseLoad: Promise<[typeof import("firebase/app"), typeof import("firebase/messaging")]> | null = null;
 const loadFirebase = () => (firebaseLoad ??= Promise.all([import("firebase/app"), import("firebase/messaging")]));
 
-const pushDeviceIdKey = "akan:pushDeviceId";
-let deviceIdLoad: Promise<string> | null = null;
-
-//? Kept in the app's own storage, so a reinstall or cleared site data starts a new installation along with its token.
-export const getPushDeviceId = () =>
-  (deviceIdLoad ??= (async () => {
-    const stored = await storage.getItem(pushDeviceIdKey);
-    if (stored) return stored;
-    const created = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
-      byte.toString(16).padStart(2, "0"),
-    ).join("");
-    await storage.setItem(pushDeviceIdKey, created);
-    return created;
-  })().catch((error: unknown) => {
-    deviceIdLoad = null;
-    throw error;
-  }));
-
-/** The installation id if this device ever registered for push, without making one. */
-export const loadPushDeviceId = async () => (await storage.getItem(pushDeviceIdKey)) ?? null;
+//? Loaded on first use too: a static import puts @akanjs/native/core on every web page that renders this hook.
+const loadPush = async () => {
+  try {
+    return (await import("akanjs/client/native/push")).push;
+  } catch (error) {
+    Logger.warn(`The native push plugin did not load, so push is off on this page: ${String(error)}`);
+    return null;
+  }
+};
 
 const isInternalDeepLink = (url: string) => {
   if (url.startsWith("/") && !url.startsWith("//")) return true;
@@ -112,6 +103,42 @@ const withDeviceId = async ({ token, provider, platform }: NativePushToken): Pro
   platform,
   deviceId: await getPushDeviceId(),
 });
+
+type TokenListener = (pushToken: PushToken) => void;
+
+//? One native subscription per page, kept: an effect re-run swaps the listener without a $unlisten/$listen round trip.
+const tokenListeners = new Set<TokenListener>();
+//? The shell keeps the latest token no page heard for the next listener; with the subscription kept, the page must.
+let heldToken: NativePushToken | null = null;
+let latestToken: NativePushToken | null = null;
+let tokenSubscription: Promise<void> | null = null;
+
+//? Listeners are read at delivery, not arrival: a remount or effect re-run while the device id resolves swaps them.
+const handOn = (nativeToken: NativePushToken) =>
+  void withDeviceId(nativeToken)
+    .then((pushToken) => {
+      if (tokenListeners.size) for (const listener of [...tokenListeners]) listener(pushToken);
+      else if (nativeToken === latestToken) heldToken = nativeToken;
+    })
+    .catch((error: unknown) => Logger.warn(`A rotated push token was not handed on: ${String(error)}`));
+
+const subscribeTokens = () =>
+  (tokenSubscription ??= loadPush().then((push) => {
+    if (!push) {
+      tokenSubscription = null;
+      return;
+    }
+    try {
+      push.listen("token", (nativeToken) => {
+        latestToken = nativeToken;
+        if (tokenListeners.size) handOn(nativeToken);
+        else heldToken = nativeToken;
+      });
+    } catch (error) {
+      tokenSubscription = null;
+      Logger.warn(`The native push token subscription failed: ${String(error)}`);
+    }
+  }));
 
 //* FCM SDK 는 보이는 window client 가 하나라도 있으면 워커에서 그리지 않고 페이지로 payload 를 넘긴다.
 //* 이 경로가 없으면 앱 창을 보고 있는 동안 푸시가 통째로 사라진다 — FCM 응답은 성공이라 서버 쪽은 정상으로 보인다.
@@ -232,13 +259,14 @@ export const usePushNotification = () => {
 
   const isSupported = async () => {
     if (!isWebRuntime()) return false;
-    if (isNativeApp()) return push.isSupported("register");
+    if (isNativeApp()) return (await loadPush())?.isSupported("register") ?? false;
     return Boolean(getFirebaseConfig()?.apiKey && "Notification" in window && "serviceWorker" in navigator);
   };
 
   const getPermission = async (): Promise<PushNotificationPermission> => {
     if (isNativeApp()) {
-      if (!push.isSupported("checkPermission")) return "denied";
+      const push = await loadPush();
+      if (!push?.isSupported("checkPermission")) return "denied";
       return (await push.checkPermission()).display;
     }
     if (!isWebRuntime() || !("Notification" in window)) return "denied";
@@ -247,7 +275,8 @@ export const usePushNotification = () => {
 
   const requestPermission = async (): Promise<PushNotificationPermission> => {
     if (isNativeApp()) {
-      if (!push.isSupported("requestPermission")) return "denied";
+      const push = await loadPush();
+      if (!push?.isSupported("requestPermission")) return "denied";
       return (await push.requestPermission()).display;
     }
     if (!isWebRuntime() || !("Notification" in window)) return "denied";
@@ -257,7 +286,10 @@ export const usePushNotification = () => {
   //? Asks for nothing: registering with APNs or FCM shows no prompt, so callers check the permission first.
   const getToken = async () => {
     try {
-      if (isNativeApp()) return await withDeviceId(await push.register());
+      if (isNativeApp()) {
+        const push = await loadPush();
+        return push ? await withDeviceId(await push.register()) : undefined;
+      }
       return await getWebToken();
     } catch {
       return undefined;
@@ -276,9 +308,14 @@ export const usePushNotification = () => {
   /** A native shell's token rotates on its own (FCM refreshes, APNs after a restore); hand each new one to the server. */
   const onTokenChange = (listener: (pushToken: PushToken) => void) => {
     if (!isNativeApp()) return () => undefined;
-    return push.listen("token", (nativeToken) => {
-      void withDeviceId(nativeToken).then(listener);
-    });
+    const each: TokenListener = (pushToken) => listener(pushToken);
+    tokenListeners.add(each);
+    if (heldToken) handOn(heldToken);
+    heldToken = null;
+    void subscribeTokens();
+    return () => {
+      tokenListeners.delete(each);
+    };
   };
 
   return {

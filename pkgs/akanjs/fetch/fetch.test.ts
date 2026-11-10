@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { Any, DataList, getEnv, ID, Int, Upload } from "akanjs/base";
 import { AbortSignals, Logger, websocketBinaryFrameContract, websocketCredentialContract } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
@@ -39,6 +39,8 @@ import {
   untrackedRequest,
   updateRequestPolicy,
 } from "./requestStorage";
+import { StaleReads } from "./staleReads";
+import { StreamedRead } from "./streamedRead";
 
 type Equal<Left, Right> =
   (<Type>() => Type extends Left ? 1 : 2) extends <Type>() => Type extends Right ? 1 : 2 ? true : false;
@@ -1859,6 +1861,84 @@ describe("FetchClient HTTP generation", () => {
     }
   });
 
+  test("tells the page its reads may be stale on a write, a message sent and a new credential, not on a push", async () => {
+    setFakeWebSocket();
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    client.handler.subscribeRoomThing("room-1", () => undefined);
+    let marks = 0;
+    const unsubscribe = StaleReads.subscribe(() => {
+      marks += 1;
+    });
+    try {
+      const created = client.handler.createThing("Created", 2);
+      expect(marks).toBe(1);
+      requests[0]?.answer({ title: "Created", count: 2, nested: { label: "N" } });
+      await created;
+      expect(marks).toBe(2);
+
+      client.handler.sendThing("hello");
+      expect(marks).toBe(3);
+
+      client.setJwt("alice");
+      client.setJwt("alice");
+      client.clone({ connect: false, jwt: "bob" });
+      expect(marks).toBe(4);
+
+      ws.receive({ type: "pub", roomId: "roomThing-room-1", data: { title: "Published" } });
+      expect(marks).toBe(4);
+    } finally {
+      unsubscribe();
+      client.disconnect();
+    }
+  });
+
+  test("keeps reads across a write or a message that says it changes none, and marks the rest past a listener that throws", async () => {
+    setFakeWebSocket();
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const ask = () => client.handler.getThing("1234567890abcdef12345678", [], null) as Promise<string>;
+    client.connect();
+    FakeWebSocket.instances[0].open();
+    let marks = 0;
+    const unsubscribeFailing = StaleReads.subscribe(() => {
+      throw new Error("listener failed");
+    });
+    const unsubscribe = StaleReads.subscribe(() => {
+      marks += 1;
+    });
+    const consoleError = spyOn(console, "error").mockImplementation(() => undefined);
+    Object.assign(globalThis, { window: {} });
+    try {
+      const beforeWrite = ask();
+      const created = client.handler.createThing("Created", 2, { keepsReads: true });
+      client.handler.sendThing("typing", { keepsReads: true });
+      const afterWrite = ask();
+      expect(requests).toHaveLength(2);
+      expect(marks).toBe(0);
+      requests[1]?.answer({ title: "Created", count: 2, nested: { label: "N" } });
+      await created;
+      requests[0]?.answer("shared");
+      expect(await Promise.all([beforeWrite, afterWrite])).toEqual(["shared", "shared"]);
+
+      const again = client.handler.createThing("Again", 3);
+      expect(marks).toBe(1);
+      expect(consoleError).toHaveBeenCalledTimes(1);
+      requests[2]?.answer({ title: "Again", count: 3, nested: { label: "N" } });
+      await again;
+      expect(marks).toBe(2);
+    } finally {
+      consoleError.mockRestore();
+      unsubscribeFailing();
+      unsubscribe();
+      Reflect.deleteProperty(globalThis, "window");
+      client.disconnect();
+    }
+  });
+
   test("sends a query of its own after a file upload or a socket message, never joining one sent before", async () => {
     setFakeWebSocket();
     const requests = setGatedFetch();
@@ -2678,6 +2758,45 @@ describe("FetchClient database signal helpers", () => {
     >;
 
     await expect(Promise.resolve(handle)).rejects.toThrow();
+  });
+
+  test("marks a field's failure as a streamed read that keeps its render out of the cache, and an awaited one's not", async () => {
+    setMockFetch();
+    setAkanPublicEnv();
+    if (!requestStorage) return;
+    rawResponses.push(
+      new Error("list down"),
+      new Error("insight down"),
+      new Error("list down"),
+      new Error("insight down"),
+    );
+    const client = new FetchClient("https://api.example", {}, { fetchTestItem: databaseSignal });
+    const ownerId = "abcdefabcdefabcdefabcdef";
+
+    const streamed = await requestStorage.run(new Request("https://example.test/streamed"), async () => {
+      const handle = client.handler.initFetchTestItemByOwner(ownerId) as unknown as {
+        fetchTestItemInitByOwner: Promise<unknown>;
+      };
+      const reason = await handle.fetchTestItemInitByOwner.then(
+        () => null,
+        (error: unknown) => error,
+      );
+      return { reason, cacheable: getRequestPolicy()?.cacheable };
+    });
+    expect(streamed.reason).toBeInstanceOf(Error);
+    expect(StreamedRead.is(streamed.reason)).toBe(true);
+    expect(streamed.cacheable).toBe(false);
+
+    const awaited = await requestStorage.run(new Request("https://example.test/awaited"), async () => {
+      const reason = await (client.handler.getFetchTestItemInitByOwner(ownerId) as Promise<unknown>).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      return { reason, cacheable: getRequestPolicy()?.cacheable };
+    });
+    expect(awaited.reason).toBeInstanceOf(Error);
+    expect(StreamedRead.is(awaited.reason)).toBe(false);
+    expect(awaited.cacheable).not.toBe(false);
   });
 });
 

@@ -68,6 +68,11 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
 - **A subscribe the client leaves before it finishes joins nothing.** When an `unsubscribe` for the room, or the
   socket's close, arrives while the subscribe is still running, the subscribe answers `subscribe: false` and runs its
   `unsubscribe` cleanup (and its `disconnect` one when the socket closed) instead of joining the room.
+- **A send from the browser drops the reads it may have made stale.** A mutation, an upload or a `message` sent
+  through `fetch` ends the sharing of queries already in flight and drops the pages a `Link` prefetched, so the next
+  read asks again; only this tab's own sends count. A send that changes nothing anyone reads back — typing status, a
+  cursor move — passes `{ keepsReads: true }` after its arguments (`fetch.typing(chatId, { keepsReads: true })`), or
+  a chatty endpoint keeps every prefetch from surviving. A read receipt changes an unread count and passes nothing.
 
 ## Writing A Guard
 
@@ -286,12 +291,3 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   `Binary`.
 - The federation gateway relays a binary frame unchanged, and Bun IPC carries bytes as bytes, so the only hop
   that needed teaching was the socket itself. A cross-server (Redis) fan-out encodes it as protobuf `bytes`.
-
-## Mutation HTTP Verb
-
-- A `mutation` is `POST`. `{ method: "PATCH" | "PUT" | "DELETE" }` moves it, and one path may carry several verbs
-  — a `query` GET and a `mutation` POST on the same custom `path` are mounted side by side. Two endpoints claiming
-  the same path **and** verb fail the boot rather than silently shadowing one another.
-- Reach for it only when a foreign wire protocol forces the verb (a client you cannot change that sends
-  `PATCH /rest/v1/<table>`). Akan's own `fetch.*` client, the OpenAPI document, and the API explorer all follow
-  whatever is declared, so nothing needs restating per caller.

@@ -42,6 +42,7 @@ const pageConfigKeys = new Set<keyof PageConfig>([
   "cache",
   "ssr",
   "rscPatchHeadSafe",
+  "prefetch",
   "topSafeAreaColor",
   "bottomSafeAreaColor",
 ]);
@@ -62,8 +63,9 @@ export const validatePageConfig = (routeKey: string, config?: PageConfig) => {
       throw new Error(`[route-convention] unsupported pageConfig option "${key}" in ${routeKey}`);
     }
   }
-  if (pageConfig.devOnly !== undefined && typeof pageConfig.devOnly !== "boolean") {
-    throw new Error(`[route-convention] pageConfig.devOnly in ${routeKey} must be a boolean.`);
+  for (const key of ["devOnly", "prefetch"] as const) {
+    if (pageConfig[key] !== undefined && typeof pageConfig[key] !== "boolean")
+      throw new Error(`[route-convention] pageConfig.${key} in ${routeKey} must be a boolean.`);
   }
   if (pageConfig.transition !== undefined && !transitionTypes.includes(pageConfig.transition)) {
     throw new Error(`[route-convention] unsupported pageConfig.transition "${pageConfig.transition}" in ${routeKey}`);

@@ -70,11 +70,13 @@ export class RscPatchPlanner {
     url,
     match,
     searchParams,
+    admitted = false,
   }: {
     request: Request;
     url: URL;
     match: RouteMatch | null;
     searchParams: SearchParams;
+    admitted?: boolean;
   }): Promise<RscPatchPlan> {
     const currentRouterState = readAkanRouterStateRequest(request.headers);
     if (!match) {
@@ -102,6 +104,7 @@ export class RscPatchPlanner {
       searchParams,
       currentRouterState.state,
       patchDecision,
+      admitted,
     );
     return { targetRouterState, currentRouterState, decision, admittedHead };
   }
@@ -123,6 +126,7 @@ export class RscPatchPlanner {
     searchParams: SearchParams,
     current: AkanRouterStateV1 | null,
     patchDecision: AkanRscPatchDecision,
+    admitted: boolean,
   ): Promise<{ decision: AkanRscPatchDecision; admittedHead?: ResolvedRouteHead }> {
     if (patchDecision.status !== "patch" || !patchDecision.patch) return { decision: patchDecision };
     if (!isAkanRscPartialCommitEnabled()) {
@@ -140,7 +144,8 @@ export class RscPatchPlanner {
     if (pageConfig?.rscPatchHeadSafe === true && routeHeadMounted && !frameChange) {
       //? Security: a head-safe patch reads the page's head before its suffix renders, so the route's guards run
       //? first (a refusal there keeps only the layouts above it), and the suffix does not run them again.
-      await RouteElementComposer.admit({ pathRoute: match.pathRoute, params: match.params, searchParams });
+      if (!admitted)
+        await RouteElementComposer.admit({ pathRoute: match.pathRoute, params: match.params, searchParams });
       admittedHead = await this.resolveHead(url, match.pathRoute, match.params, searchParams);
     }
     const snapshots = admittedHead?.snapshots;

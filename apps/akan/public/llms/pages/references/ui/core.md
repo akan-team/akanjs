@@ -71,7 +71,7 @@ Navigates between internal routes. Use it for every internal link, and keep a ba
 
 - replace (boolean): Replaces the current history entry instead of adding one.
 
-- prefetch ("hover" | "viewport" | boolean, default "hover"): Built SSR pages load the target on hover or keyboard focus, and on view with `"viewport"`. `false` turns it off.
+- prefetch ("hover" | "viewport" | boolean, default "hover"): Built SSR pages load the target on hover or keyboard focus, and on view with `"viewport"`. `false` turns it off; a page whose render has a side effect sets `.config({ prefetch: false })` instead.
 
 - noCache (boolean): Deprecated: it has no effect, so leave it out.
 
@@ -185,13 +185,13 @@ Members
 
 - Load.Units ({ init, renderItem | renderList, … }): Renders a slice's list and hydrates the store, so generated paging and refresh keep working.
 
-- Load.View ({ view, renderView, loading?, empty?, noDiv?, className? }): Hydrates one full model and draws it with `renderView`; `noDiv` drops the wrapper element.
+- Load.View ({ view, renderView, loading?, empty?, error?, noDiv?, className? }): Hydrates one full model and draws it with `renderView`; `noDiv` drops the wrapper element.
 
-- Load.Edit ({ edit, slice, type?, modal?, loading?, draft?, onSubmit?, onCancel?, submitText?, renderSubmit?, … }, default type "modal"): `edit` takes an edit payload, its promise, or a new-record seed. `type`: `modal`, `form`, `empty`.
+- Load.Edit ({ edit, slice, type?, modal?, loading?, error?, draft?, onSubmit?, onCancel?, submitText?, renderSubmit?, … }, default type "modal"): `edit` takes an edit payload, its promise, or a new-record seed. `type`: `modal`, `form`, `empty`.
 
-- Load.Pagination ({ init, className?, scrollToTop? }): A standalone pager on a list's `init`. It draws nothing while every row fits on one page.
+- Load.Pagination ({ init, className?, scrollToTop?, error? }): A standalone pager on a list's `init`. It draws nothing while every row fits on one page, or when `init` fails.
 
-- Load.Stream ({ of, fallback?, children }): Awaits one promise behind its own Suspense boundary and hands the value to `children`.
+- Load.Stream ({ of, fallback?, error?, children }): Awaits one promise behind its own Suspense boundary and hands the value to `children`. A rejection renders `error` in its place, and the rest of the page stays. By default that is a short notice with a retry button.
 
 - Load.Page ({ of, loader, render, loading?, noCache? }): Route-level loader for SSR and CSR: `of` is the component CSR mounts, `loader` the shared fetch.
 
@@ -202,6 +202,8 @@ Load.Units options
 - empty / renderEmpty (ReactNode / () => ReactNode): Shown when the list has no rows. `empty` wins when both are given.
 
 - loading (ReactNode): Fallback while `init` is pending and while a refetch runs.
+
+- error (ReactNode | (error, retry) => ReactNode): Shown in place of the list when `init` fails. The rejection stops here, so a boundary above never sees it.
 
 - pagination (boolean, default true): A pager on desktop, infinite scroll on mobile. Turn it off to place `Load.Pagination` yourself.
 

@@ -262,6 +262,35 @@ describe("StoreInstance runtime", () => {
     expect(() => instance.set({ label: "manual" })).toThrow("Cannot set derived state directly: label");
   });
 
+  test("a set that names a derived key changes nothing", () => {
+    setupEnv();
+    class DerivedGuardStore extends store(
+      "derivedGuard" as const,
+      () => ({ total: 1 }),
+      ({ computed }) => ({
+        totalLabel: computed(["total"], (total) => `total:${total}`),
+      }),
+    ) {}
+    StoreRegistry.register(DerivedGuardStore);
+    const instance = new StoreInstance(makeRoot("derivedGuardRoot", DerivedGuardStore));
+    const before = instance.get();
+    let setNum = 0;
+    instance.subscribe(() => {
+      setNum++;
+    });
+
+    expect(() => instance.set({ total: 2, totalLabel: "manual" })).toThrow(
+      "Cannot set derived state directly: totalLabel",
+    );
+    expect(instance.get()).toBe(before);
+    expect(setNum).toBe(0);
+
+    instance.set((state) => {
+      state.totalLabel = "manual";
+    });
+    expect(instance.get()).toMatchObject({ total: 1, totalLabel: "total:1" });
+  });
+
   test("a computed key that reads a lib store's computed key follows it on every write", () => {
     setupEnv();
     class ChainLibStore extends store(
@@ -415,6 +444,70 @@ describe("StoreInstance runtime", () => {
 
     await expect(instance.do.removeStoreTestItem("aaaaaaaaaaaaaaaaaaaaaaaa")).rejects.toBe(refused);
     expect(instance.get().messages).toEqual([]);
+  });
+
+  test("a generated write hands its failure's key to the caller's onError, then rejects and toasts as before", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const locked = restoreRemoteError({ error: "storeTestItem.error.locked" }, 409);
+    signal.calls.removeStoreTestItem = mock(async () => {
+      throw locked;
+    });
+    signal.calls.updateStoreTestItem = mock(async () => {
+      throw locked;
+    });
+    class ReportingItemStore extends store(signal, () => ({ messages: [] as { key: string }[] })) {
+      showMessage(message: { key: string }) {
+        this.set({ messages: [...this.get().messages, { key: message.key }] });
+      }
+    }
+    StoreRegistry.register(ReportingItemStore);
+    const instance = new StoreInstance(makeRoot("reportingItemRoot", ReportingItemStore));
+    const reported: string[] = [];
+    const onError = (key: string) => void reported.push(key);
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+
+    await expect(instance.do.removeStoreTestItem(id, { onError })).rejects.toBe(locked);
+    await expect(
+      instance.do.updateStoreTestItem(id, { title: "updated", count: 0, tags: [] }, { onError }),
+    ).rejects.toBe(locked);
+    expect(reported).toEqual(["storeTestItem.error.locked", "storeTestItem.error.locked"]);
+    expect(instance.get().messages).toEqual([{ key: "removeStoreTestItem" }, { key: "updateStoreTestItem" }]);
+    expect(signal.calls.removeStoreTestItem.mock.calls[0]).toEqual([id, {}]);
+
+    const aborted = new DOMException("The operation was aborted.", "AbortError");
+    signal.calls.removeStoreTestItem = mock(async () => {
+      throw aborted;
+    });
+    await expect(instance.do.removeStoreTestItem(id, { onError })).rejects.toBe(aborted);
+    expect(reported).toHaveLength(2);
+  });
+
+  test("merge<Model> hands its failure's key to onError too, and a write whose landing throws after the server took it reports none", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    const locked = restoreRemoteError({ error: "storeTestItem.error.locked" }, 409);
+    signal.calls.mergeStoreTestItem = mock(async () => {
+      throw locked;
+    });
+    class ReportingMergeStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(ReportingMergeStore);
+    const instance = new StoreInstance(makeRoot("reportingMergeRoot", ReportingMergeStore));
+    const reported: string[] = [];
+    const onError = (key: string) => void reported.push(key);
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+
+    await expect(instance.do.mergeStoreTestItem(id, { title: "merged" }, { onError })).rejects.toBe(locked);
+    expect(reported).toEqual(["storeTestItem.error.locked"]);
+    expect(signal.calls.mergeStoreTestItem.mock.calls[0]).toEqual([id, { title: "merged" }, {}]);
+
+    signal.calls.mergeStoreTestItem = mock(async () => null);
+    signal.calls.updateStoreTestItem = mock(async () => null);
+    await expect(instance.do.mergeStoreTestItem(id, { title: "merged" }, { onError })).rejects.toThrow();
+    await expect(
+      instance.do.updateStoreTestItem(id, { title: "updated", count: 0, tags: [] }, { onError }),
+    ).rejects.toThrow();
+    expect(reported).toHaveLength(1);
   });
 
   test("a static silent name that is no action of the store is reported at registration", () => {
@@ -1171,6 +1264,453 @@ describe("signal generated store contract", () => {
     const rows = [...(instance.get().storeTestItemList as DataList<InstanceType<typeof StoreTestLight>>)];
     expect(rows.map((row) => row.title)).toEqual(["two", "one", "Ada", "Ben"]);
     expect((instance.get().storeTestItemInsight as { count: number }).count).toBe(4);
+  });
+
+  const deferredCall = () => {
+    const pending: { resolve: (model: unknown) => void; reject: (error: Error) => void }[] = [];
+    const call = mock(
+      (..._args: unknown[]) =>
+        new Promise((resolve, reject) => {
+          pending.push({ resolve, reject });
+        }),
+    );
+    return {
+      call,
+      answer: (model: unknown, idx = pending.length - 1) => pending[idx]?.resolve(model),
+      refuse: (error: Error) => pending.at(-1)?.reject(error),
+    };
+  };
+  const setsDuring = async (instance: StoreInstance, write: () => unknown) => {
+    let setNum = 0;
+    const unsubscribe = instance.subscribe(() => {
+      setNum++;
+    });
+    await write();
+    unsubscribe();
+    return setNum;
+  };
+  type Rows = DataList<InstanceType<typeof StoreTestLight>>;
+
+  test("merge<Model> marks the open model loading under its own key, then lands in one set", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class MergeLoadingStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(MergeLoadingStore);
+    const instance = new StoreInstance(makeRoot("mergeLoadingRoot", MergeLoadingStore));
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    await instance.do.initStoreTestItem();
+    await instance.do.initStoreTestItemByTitle("Ada");
+    await instance.do.viewStoreTestItem(id);
+    const merge = deferredCall();
+    signal.calls.mergeStoreTestItem = merge.call;
+
+    const merging = instance.do.mergeStoreTestItem(id, { title: "merged" });
+    expect(instance.get().storeTestItemLoading).toBe(id);
+    expect(instance.get()).not.toHaveProperty("modelLoading");
+
+    const setNum = await setsDuring(instance, async () => {
+      merge.answer(new StoreTestFull({ id, title: "merged" } as never));
+      await merging;
+    });
+    expect(setNum).toBe(1);
+    expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { title: "merged" } });
+    const lists = [instance.get().storeTestItemList as Rows, instance.get().storeTestItemListByTitle as Rows];
+    expect(lists.map((list) => list.get(id)?.title)).toEqual(["merged", "merged"]);
+  });
+
+  type Open = (instance: StoreInstance, id: string) => Promise<unknown>;
+  const viewIt: Open = (instance, id) => instance.do.viewStoreTestItem(id) as Promise<unknown>;
+  const editIt: Open = (instance, id) => instance.do.editStoreTestItem(id) as Promise<unknown>;
+  const failedWrites: [string, string, Open, Open][] = [
+    [
+      "merge<Model>",
+      "storeTestItemLoading",
+      viewIt,
+      (instance, id) => instance.do.mergeStoreTestItem(id, { title: "merged" }) as Promise<unknown>,
+    ],
+    [
+      "update<Model>",
+      "storeTestItemLoading",
+      viewIt,
+      (instance, id) =>
+        instance.do.updateStoreTestItem(id, { title: "updated", count: 0, tags: [] }) as Promise<unknown>,
+    ],
+    [
+      "update<Model>InForm",
+      "storeTestItemLoading",
+      editIt,
+      (instance) => instance.do.updateStoreTestItemInForm() as Promise<unknown>,
+    ],
+    [
+      "create<Model>",
+      "storeTestItemLoading",
+      viewIt,
+      (instance) => instance.do.createStoreTestItem({ title: "created", count: 0, tags: [] }) as Promise<unknown>,
+    ],
+    [
+      "create<Model>InForm",
+      "storeTestItemLoading",
+      (instance) => instance.do.newStoreTestItem({ title: "formed", tags: [] }) as Promise<unknown>,
+      (instance) => instance.do.createStoreTestItemInForm() as Promise<unknown>,
+    ],
+    ["view<Model>", "storeTestItemLoading", viewIt, viewIt],
+    ["edit<Model>", "storeTestItemFormLoading", viewIt, editIt],
+  ];
+  for (const [action, flagKey, open, write] of failedWrites)
+    test(`a failed ${action} ends the loading it started`, async () => {
+      setupEnv();
+      const signal = makeSignal();
+      class FailedWriteStore extends store(signal, () => ({})) {}
+      StoreRegistry.register(FailedWriteStore);
+      const instance = new StoreInstance(makeRoot(`failedWriteRoot${action}`, FailedWriteStore));
+      const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+      await open(instance, id);
+      const refuse = mock(async () => {
+        throw new Error("network gone");
+      });
+      for (const endpoint of ["mergeStoreTestItem", "updateStoreTestItem", "createStoreTestItem", "storeTestItem"])
+        signal.calls[endpoint] = refuse;
+
+      await expect(write(instance, id)).rejects.toThrow("network gone");
+      expect(refuse).toHaveBeenCalledTimes(1);
+      expect(instance.get()[flagKey]).toBe(false);
+    });
+
+  test("a failed write leaves the loading flag to a view<Model> that started during its request", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class FailedDuringViewStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(FailedDuringViewStore);
+    const instance = new StoreInstance(makeRoot("failedDuringViewRoot", FailedDuringViewStore));
+    const [first, second] = ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"];
+    await instance.do.viewStoreTestItem(first);
+    const merge = deferredCall();
+    const view = deferredCall();
+    signal.calls.mergeStoreTestItem = merge.call;
+    signal.calls.storeTestItem = view.call;
+
+    const merging = instance.do.mergeStoreTestItem(first, { title: "merged" });
+    const viewing = instance.do.viewStoreTestItem(second);
+    merge.refuse(new Error("network gone"));
+    await expect(merging).rejects.toThrow("network gone");
+    expect(instance.get().storeTestItemLoading).toBe(second);
+    view.answer(new StoreTestFull({ id: second, title: "second" } as never));
+    await viewing;
+    expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { id: second } });
+  });
+
+  test("a view<Model> of the same record during a write keeps its own loading flag", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class SameRecordViewStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(SameRecordViewStore);
+    const instance = new StoreInstance(makeRoot("sameRecordViewRoot", SameRecordViewStore));
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    await instance.do.viewStoreTestItem(id);
+    const merge = deferredCall();
+    const view = deferredCall();
+    signal.calls.mergeStoreTestItem = merge.call;
+    signal.calls.storeTestItem = view.call;
+
+    const merging = instance.do.mergeStoreTestItem(id, { title: "merged" });
+    const viewing = instance.do.viewStoreTestItem(id);
+    merge.answer(new StoreTestFull({ id, title: "merged" } as never));
+    await merging;
+    expect(instance.get()).toMatchObject({ storeTestItemLoading: id, storeTestItem: { title: "merged" } });
+    view.answer(new StoreTestFull({ id, title: "fresh" } as never));
+    await viewing;
+    expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { title: "fresh" } });
+  });
+
+  test("a write whose landing throws still ends its loading", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class ThrowingLandStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(ThrowingLandStore);
+    const instance = new StoreInstance(makeRoot("throwingLandRoot", ThrowingLandStore));
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    await instance.do.viewStoreTestItem(id);
+    signal.calls.mergeStoreTestItem = mock(async () => null);
+
+    await expect(instance.do.mergeStoreTestItem(id, { title: "merged" })).rejects.toThrow();
+    expect(instance.get().storeTestItemLoading).toBe(false);
+  });
+
+  test("a view<Model> or edit<Model> overtaken by another does not land its record", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class OvertakenOpenStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(OvertakenOpenStore);
+    const instance = new StoreInstance(makeRoot("overtakenOpenRoot", OvertakenOpenStore));
+    const [first, second] = ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"];
+    const read = deferredCall();
+    signal.calls.storeTestItem = read.call;
+
+    const openTwice = async (open: Open) => {
+      const opening = open(instance, first);
+      const reopening = open(instance, second);
+      read.answer(new StoreTestFull({ id: second, title: "second" } as never));
+      await reopening;
+      read.answer(new StoreTestFull({ id: first, title: "first" } as never), read.call.mock.calls.length - 2);
+      await opening;
+    };
+
+    await openTwice(viewIt);
+    expect(instance.get()).toMatchObject({ storeTestItem: { id: second }, storeTestItemLoading: false });
+    await openTwice(editIt);
+    expect(instance.get()).toMatchObject({
+      storeTestItem: { id: second },
+      storeTestItemForm: { id: second, title: "second" },
+      storeTestItemFormLoading: false,
+    });
+  });
+
+  const failedOpens: [string, Open, string][] = [
+    ["view<Model>", viewIt, "view"],
+    ["edit<Model>", editIt, "edit"],
+  ];
+  for (const [action, open, modal] of failedOpens)
+    test(`a failed ${action} that is still the latest open closes its modal, unless the modal already shows that record`, async () => {
+      setupEnv();
+      const signal = makeSignal();
+      class FailedOpenStore extends store(signal, () => ({})) {}
+      StoreRegistry.register(FailedOpenStore);
+      const instance = new StoreInstance(makeRoot(`failedOpenRoot${action}`, FailedOpenStore));
+      const [first, second] = ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"];
+      const loaded = signal.calls.storeTestItem;
+      const read = deferredCall();
+      signal.calls.storeTestItem = read.call;
+
+      const opening = open(instance, first);
+      const failing = open(instance, second);
+      read.refuse(new Error("network gone"));
+      await expect(failing).rejects.toThrow("network gone");
+      expect(instance.get().storeTestItemModal).toBeNull();
+      read.answer(new StoreTestFull({ id: first, title: "first" } as never), 0);
+      await opening;
+      expect(instance.get()).toMatchObject({ storeTestItemModal: null, storeTestItem: null });
+
+      signal.calls.storeTestItem = loaded;
+      await open(instance, first);
+      signal.calls.storeTestItem = read.call;
+      const refreshing = open(instance, first);
+      read.refuse(new Error("network gone"));
+      await expect(refreshing).rejects.toThrow("network gone");
+      expect(instance.get()).toMatchObject({ storeTestItemModal: modal, storeTestItem: { id: first } });
+    });
+
+  test("a create<Model> leaves the open model and its modal to a view<Model> opened during its request", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class CreateDuringViewStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(CreateDuringViewStore);
+    const instance = new StoreInstance(makeRoot("createDuringViewRoot", CreateDuringViewStore));
+    const create = deferredCall();
+    signal.calls.createStoreTestItem = create.call;
+
+    const creating = instance.do.createStoreTestItem({ title: "created", count: 0, tags: [] });
+    expect(instance.get().storeTestItemLoading).toBe(true);
+    await instance.do.viewStoreTestItem("aaaaaaaaaaaaaaaaaaaaaaaa");
+    create.answer(new StoreTestFull({ id: "cccccccccccccccccccccccc", title: "created" } as never));
+    await creating;
+    expect(instance.get()).toMatchObject({
+      storeTestItem: { id: "aaaaaaaaaaaaaaaaaaaaaaaa" },
+      storeTestItemModal: "view",
+      storeTestItemLoading: false,
+    });
+  });
+
+  test("update<Model>InForm leaves the form and modal to an edit<Model> of another record opened during the save", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class EditDuringSaveStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(EditDuringSaveStore);
+    const instance = new StoreInstance(makeRoot("editDuringSaveRoot", EditDuringSaveStore));
+    const [first, second] = ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"];
+    const loaded = signal.calls.storeTestItem;
+    const save = deferredCall();
+    const read = deferredCall();
+    signal.calls.updateStoreTestItem = save.call;
+    const editFirst = async () => {
+      signal.calls.storeTestItem = loaded;
+      await instance.do.editStoreTestItem(first);
+      signal.calls.storeTestItem = read.call;
+    };
+    const editedSecond = { storeTestItemForm: { id: second, title: "second" }, storeTestItemModal: "edit" };
+
+    await editFirst();
+    await instance.do.setTitleOnStoreTestItem("edited");
+    const saving = instance.do.updateStoreTestItemInForm();
+    const editing = instance.do.editStoreTestItem(second);
+    read.answer(new StoreTestFull({ id: second, title: "second" } as never));
+    await editing;
+    save.answer(new StoreTestFull({ id: first, title: "edited" } as never));
+    await saving;
+    expect(instance.get()).toMatchObject({ ...editedSecond, storeTestItemFormLoading: false });
+
+    await editFirst();
+    const resaving = instance.do.updateStoreTestItemInForm();
+    const reediting = instance.do.editStoreTestItem(second);
+    save.answer(new StoreTestFull({ id: first, title: "loaded" } as never));
+    await resaving;
+    expect(instance.get()).toMatchObject({ storeTestItemModal: "edit", storeTestItemFormLoading: second });
+    read.answer(new StoreTestFull({ id: second, title: "second" } as never));
+    await reediting;
+    expect(instance.get()).toMatchObject({ ...editedSecond, storeTestItemFormLoading: false });
+  });
+
+  const viewRaces: [
+    string,
+    "mergeStoreTestItem" | "updateStoreTestItem",
+    (instance: StoreInstance, id: string) => Promise<unknown>,
+    (instance: StoreInstance, id: string) => Promise<unknown>,
+  ][] = [
+    [
+      "merge<Model>",
+      "mergeStoreTestItem",
+      (instance, id) => instance.do.viewStoreTestItem(id) as Promise<unknown>,
+      (instance, id) => instance.do.mergeStoreTestItem(id, { title: "written" }) as Promise<unknown>,
+    ],
+    [
+      "update<Model>",
+      "updateStoreTestItem",
+      (instance, id) => instance.do.viewStoreTestItem(id) as Promise<unknown>,
+      (instance, id) =>
+        instance.do.updateStoreTestItem(id, { title: "written", count: 0, tags: [] }) as Promise<unknown>,
+    ],
+    [
+      "update<Model>InForm",
+      "updateStoreTestItem",
+      (instance, id) => instance.do.editStoreTestItem(id) as Promise<unknown>,
+      (instance) => instance.do.updateStoreTestItemInForm() as Promise<unknown>,
+    ],
+  ];
+  for (const [action, endpoint, open, write] of viewRaces)
+    test(`${action} leaves the open model and its loading flag to a view<Model> that started during the request`, async () => {
+      setupEnv();
+      const signal = makeSignal();
+      class ViewRaceStore extends store(signal, () => ({})) {}
+      StoreRegistry.register(ViewRaceStore);
+      const instance = new StoreInstance(makeRoot(`viewRaceRoot${action}`, ViewRaceStore));
+      const [first, second] = ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"];
+      const loaded = signal.calls.storeTestItem;
+      const written = deferredCall();
+      const view = deferredCall();
+      signal.calls[endpoint] = written.call;
+      const openThenHold = async (id: string) => {
+        signal.calls.storeTestItem = loaded;
+        await open(instance, id);
+        signal.calls.storeTestItem = view.call;
+      };
+
+      await openThenHold(first);
+      const writing = write(instance, first);
+      const viewing = instance.do.viewStoreTestItem(second);
+      written.answer(new StoreTestFull({ id: first, title: "written" } as never));
+      await writing;
+      expect(instance.get()).toMatchObject({
+        storeTestItemLoading: second,
+        storeTestItemModal: "view",
+        storeTestItem: { id: first, title: "written" },
+      });
+      view.answer(new StoreTestFull({ id: second, title: "second" } as never));
+      await viewing;
+      expect(instance.get()).toMatchObject({ storeTestItemLoading: false, storeTestItem: { id: second } });
+
+      await openThenHold(second);
+      const rewriting = write(instance, second);
+      const reviewing = instance.do.viewStoreTestItem(first);
+      view.answer(new StoreTestFull({ id: first, title: "first" } as never));
+      await reviewing;
+      written.answer(new StoreTestFull({ id: second, title: "written again" } as never));
+      await rewriting;
+      expect(instance.get()).toMatchObject({
+        storeTestItemLoading: false,
+        storeTestItemModal: "view",
+        storeTestItem: { id: first, title: "first" },
+      });
+    });
+
+  test("update<Model>InForm lands the answer, the lists and the form reset in one set", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class UpdateInFormStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(UpdateInFormStore);
+    const instance = new StoreInstance(makeRoot("updateInFormRoot", UpdateInFormStore));
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    await instance.do.initStoreTestItem();
+    await instance.do.initStoreTestItemByTitle("Ada");
+    await instance.do.editStoreTestItem(id);
+    await instance.do.setTitleOnStoreTestItem("edited");
+    const update = deferredCall();
+    signal.calls.updateStoreTestItem = update.call;
+
+    const updating = instance.do.updateStoreTestItemInForm();
+    expect(instance.get().storeTestItemLoading).toBe(id);
+    expect(update.call.mock.calls[0]?.[1]).toMatchObject({ title: "edited" });
+
+    const setNum = await setsDuring(instance, async () => {
+      update.answer(new StoreTestFull({ id, title: "edited" } as never));
+      await updating;
+    });
+    expect(setNum).toBe(1);
+    expect(instance.get()).toMatchObject({
+      storeTestItemLoading: false,
+      storeTestItem: { title: "edited" },
+      storeTestItemForm: { title: "" },
+    });
+    const lists = [instance.get().storeTestItemList as Rows, instance.get().storeTestItemListByTitle as Rows];
+    expect(lists.map((list) => list.get(id)?.title)).toEqual(["edited", "edited"]);
+  });
+
+  test("a remove the server answers without removedAt updates the row in place, in one set", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class SoftRemoveStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(SoftRemoveStore);
+    const instance = new StoreInstance(makeRoot("softRemoveRoot", SoftRemoveStore));
+    const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    await instance.do.initStoreTestItem();
+    await instance.do.initStoreTestItemByTitle("Ada");
+    await instance.do.viewStoreTestItem(id);
+    signal.calls.removeStoreTestItem = mock(
+      async (rowId: string) => new StoreTestFull({ id: rowId, title: "archived" }),
+    );
+    const insights = [instance.get().storeTestItemInsight, instance.get().storeTestItemInsightByTitle];
+
+    expect(await setsDuring(instance, () => instance.do.removeStoreTestItem(id, { modal: null }))).toBe(1);
+    const lists = [instance.get().storeTestItemList as Rows, instance.get().storeTestItemListByTitle as Rows];
+    expect(lists.map((list) => list.get(id)?.title)).toEqual(["archived", "archived"]);
+    expect([instance.get().storeTestItemInsight, instance.get().storeTestItemInsightByTitle]).toEqual(insights);
+    expect(instance.get().storeTestItemModal).toBeNull();
+
+    await instance.do.viewStoreTestItem(id);
+    await instance.do.removeStoreTestItem("cccccccccccccccccccccccc", { modal: null });
+    expect(instance.get().storeTestItemModal).toBe("view");
+  });
+
+  test("a create into a loaded slice that is not live prepends the row and counts it there only", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    signal.calls.storeTestItemListByTags = mock(async () => [
+      new StoreTestLight({ id: "bbbbbbbbbbbbbbbbbbbbbbbb", title: "Ben" }),
+    ]);
+    signal.calls.storeTestItemInsightByTags = mock(async () => new StoreTestInsight({ count: 1 }));
+    class NonLiveCreateStore extends store(signal, () => ({})) {}
+    StoreRegistry.register(NonLiveCreateStore);
+    const instance = new StoreInstance(makeRoot("nonLiveCreateRoot", NonLiveCreateStore));
+    await instance.do.initStoreTestItem();
+    await instance.do.initStoreTestItemByTitle("Ada");
+    await instance.do.initStoreTestItemByTags(["a"]);
+    const untouched = [instance.get().storeTestItemList, instance.get().storeTestItemListByTitle];
+
+    await instance.do.createStoreTestItem(
+      { title: "created", count: 0, tags: [] },
+      { sliceName: "storeTestItemByTags" },
+    );
+    expect([...(instance.get().storeTestItemListByTags as Rows)].map((row) => row.title)).toEqual(["created", "Ben"]);
+    expect((instance.get().storeTestItemInsightByTags as { count: number }).count).toBe(2);
+    expect([instance.get().storeTestItemList, instance.get().storeTestItemListByTitle]).toEqual(untouched);
   });
 });
 

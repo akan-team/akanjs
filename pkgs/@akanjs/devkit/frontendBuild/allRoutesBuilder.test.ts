@@ -32,14 +32,18 @@ const writeApp = async () => {
   );
   await write(
     path.join(appDir, "page/memo.tsx"),
-    'import { Memo } from "../ui/Memo";\nexport default function Page() {\n  return <Memo />;\n}\n',
+    'import { System } from "akanjs/ui/System";\nimport { Memo } from "../ui/Memo";\nexport default function Page() {\n  return <><Memo /><System.ThemeToggle /></>;\n}\n',
+  );
+  await write(
+    path.join(appDir, "page/shell.tsx"),
+    'import { CSR } from "akanjs/ui/System/CSR";\nexport default function Page() {\n  return <CSR />;\n}\n',
   );
   const app = {
     name: "demo",
     cwdPath: appDir,
     dist: { cwdPath: path.join(root, "dist/apps/demo") },
     workspace: { workspaceRoot: root },
-    getPageKeys: async () => ["./_index.tsx", "./memo.tsx"],
+    getPageKeys: async () => ["./_index.tsx", "./memo.tsx", "./shell.tsx"],
     getConfig: async () => ({ basePaths: [], optimizeImports: [], barrelImports: [] }),
     getTsConfig: async () => ({ compilerOptions: { paths } }),
     getPublicEnv: () => ({}),
@@ -51,12 +55,12 @@ const writeApp = async () => {
 };
 
 describe("AllRoutesBuilder", () => {
-  test("writes the route manifest, then the preload table once the runtime chunks are known, and each route's modules", async () => {
+  test("writes the route manifest, then the preload table once the runtime chunks are known, and each route's modules without System's CSR and MCP App providers unless the page imports one", async () => {
     const app = await writeApp();
     const routes = new AllRoutesBuilder(app as never, "build");
     const { manifest, manifestPath } = await routes.build();
 
-    expect(new Set(manifest.routeIds)).toEqual(new Set(["/:lang", "/:lang/memo"]));
+    expect(new Set(manifest.routeIds)).toEqual(new Set(["/:lang", "/:lang/memo", "/:lang/shell"]));
     expect(await Bun.file(manifestPath).json()).not.toHaveProperty("modulePreloads");
 
     const runtimeChunks = { runtime: ["/_akan/client/rsc.js"], vendors: { react: ["/_akan/client/react.js"] } };
@@ -70,8 +74,14 @@ describe("AllRoutesBuilder", () => {
     const [home] = chunksOf("apps/demo/ui/Home.tsx#Home");
     const [memo] = chunksOf("apps/demo/ui/Memo.tsx#Memo");
     const shell = chunksOf("akanjs/ui/System/Client.tsx#Client");
+    const [csrShell] = chunksOf("akanjs/ui/System/CSR.tsx#CSR");
+    const [mcpAppShell] = chunksOf("akanjs/ui/System/App.tsx#AppProvider");
+    const [themeToggle] = chunksOf("akanjs/ui/System/ThemeToggle.tsx#ThemeToggle");
     const modules = preloads.modulesByRoute();
     expect(shell.length).toBeGreaterThan(0);
+    expect([csrShell, mcpAppShell, themeToggle]).not.toContain(undefined);
+    expect(modules["/:lang/memo"]).toContain(themeToggle);
+    expect(modules["/:lang/shell"]).toContain(csrShell);
     for (const [routeId, own, other] of [
       ["/:lang", home, memo],
       ["/:lang/memo", memo, home],
@@ -79,6 +89,8 @@ describe("AllRoutesBuilder", () => {
       expect(modules[routeId]?.slice(0, 2)).toEqual(["/_akan/client/rsc.js", "/_akan/client/react.js"]);
       expect(modules[routeId]).toEqual(expect.arrayContaining([own, ...shell]));
       expect(modules[routeId]).not.toContain(other);
+      expect(modules[routeId]).not.toContain(csrShell);
+      expect(modules[routeId]).not.toContain(mcpAppShell);
     }
   }, 30_000);
 });

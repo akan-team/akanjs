@@ -6,6 +6,7 @@ import path from "node:path";
 import { TransformStream } from "node:stream/web";
 import { act } from "react";
 import { Translator } from "../client/translator";
+import { StaleReads } from "../fetch/staleReads";
 import {
   AKAN_RSC_CURRENT_ROUTE_HEADER,
   AKAN_RSC_CURRENT_STATE_HEADER,
@@ -96,6 +97,26 @@ const lateRedirectTo = (location: string) => () => {
     },
   });
   return new Response(stream, { headers: { "Content-Type": "text/x-component" } });
+};
+const heldRedirectTo = (location: string) => {
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const serve = () => {
+    const encoder = new TextEncoder();
+    const digest = `AKAN_REDIRECT;replace;307;${encodeURIComponent(location)}`;
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(encoder.encode(rowOf("$L1")));
+        await held;
+        controller.enqueue(encoder.encode(`1:E${JSON.stringify({ digest, message: `Redirect to ${location}` })}\n`));
+        controller.close();
+      },
+    });
+    return new Response(stream, { headers: { "Content-Type": "text/x-component" } });
+  };
+  return { serve, release: () => release() };
 };
 const redirectInFirstChunkTo = (location: string) => () => {
   const digest = `AKAN_REDIRECT;replace;307;${encodeURIComponent(location)}`;
@@ -463,6 +484,219 @@ describe("rscClient redirect", () => {
     expect(window.history.length).toBe(entries + 1);
     await back("/foyer");
   });
+
+  const heldPage = (text: string) => {
+    let release = () => undefined as unknown;
+    const respond = () =>
+      new Promise<Response>((resolve) => {
+        release = () => resolve(responseOf(text));
+      });
+    return { respond, release: () => release() };
+  };
+
+  test("a redirect the page being left raises while the next page loads leaves that navigation alone", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/probe", leaving.serve);
+    await navigate("/probe");
+    const next = heldPage("/probeother");
+    served.set("/probeother", next.respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/probeother");
+      await sleep(10);
+    });
+
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+    await act(async () => {
+      next.release();
+      await pending;
+    });
+    served.delete("/probeother");
+
+    expect(signalOf("/probeother")?.aborted).toBe(false);
+    expect(window.location.pathname).toBe("/probeother");
+    expect(shown()).toBe("/probeother");
+  });
+
+  test("a redirect the page left by Back raises while the entry it returned to loads keeps that entry", async () => {
+    await navigate("/vestibule");
+    const leaving = heldRedirectTo("/exit");
+    served.set("/sideroom", leaving.serve);
+    await navigate("/sideroom");
+    await act(async () => {
+      globalThis.__AKAN_RSC_CLEAR_CACHE__?.();
+    });
+    const vestibule = heldPage("/vestibule");
+    served.set("/vestibule", vestibule.respond);
+    await act(async () => window.history.back());
+    await act(async () => {
+      await sleep(10);
+    });
+
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+    await act(async () => {
+      vestibule.release();
+      await sleep(30);
+    });
+    served.delete("/vestibule");
+
+    expect(signalOf("/vestibule")?.aborted).toBe(false);
+    expect(window.location.pathname).toBe("/vestibule");
+    expect(shown()).toBe("/vestibule");
+  });
+
+  const heldNotFound = () => {
+    let release = () => undefined as unknown;
+    const respond = () =>
+      new Promise<Response>((resolve) => {
+        release = () => resolve(bareNotFound());
+      });
+    return { respond, release: () => release() };
+  };
+
+  test("a redirect the page on screen raises while the next navigation loads runs once that one is refused as a bare 404", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/probe2", leaving.serve);
+    await navigate("/probe2");
+    const entries = window.history.length;
+    const refused = heldNotFound();
+    served.set("/nowhere2", refused.respond);
+    let refusal: unknown;
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.("/nowhere2")?.catch((error: unknown) => {
+        refusal = error;
+      });
+      await sleep(10);
+    });
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+    expect(window.location.pathname).toBe("/probe2");
+
+    await act(async () => {
+      refused.release();
+      await pending;
+    });
+    await waitFor(() => shown() === "/exit");
+    served.delete("/nowhere2");
+
+    expect((refusal as Error | undefined)?.name).toBe("RscRouteNotFound");
+    expect(window.location.pathname).toBe("/exit");
+    expect(window.history.length).toBe(entries);
+  });
+
+  test("a redirect the page on screen raises while its refresh loads runs once the refresh finds no page", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/lantern", leaving.serve);
+    await navigate("/lantern");
+    const refused = heldNotFound();
+    served.set("/lantern", refused.respond);
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_REFRESH__?.();
+      await sleep(10);
+    });
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+    expect(window.location.pathname).toBe("/lantern");
+
+    await act(async () => {
+      refused.release();
+      await pending;
+    });
+    await waitFor(() => shown() === "/exit");
+    served.delete("/lantern");
+
+    expect(window.location.pathname).toBe("/exit");
+  });
+
+  const startNavigation = async (href: string) => {
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = globalThis.__AKAN_RSC_NAVIGATE__?.(href)?.catch(() => undefined);
+      await sleep(10);
+    });
+    return () => pending;
+  };
+
+  test("a parked redirect runs on a bare 404 after a shallow change of the page's query", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/terrace", leaving.serve);
+    await navigate("/terrace");
+    await navigate("/terrace?tab=2", { shallow: true });
+    const refused = heldNotFound();
+    served.set("/nowhere3", refused.respond);
+    const pending = await startNavigation("/nowhere3");
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+
+    await act(async () => {
+      refused.release();
+      await pending();
+    });
+    await waitFor(() => shown() === "/exit");
+    served.delete("/nowhere3");
+
+    expect(window.location.pathname).toBe("/exit");
+  });
+
+  test("a parked redirect runs once a shallow change cancels the navigation it waited for", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/balcony", leaving.serve);
+    await navigate("/balcony");
+    const refused = heldNotFound();
+    served.set("/nowhere4", refused.respond);
+    const pending = await startNavigation("/nowhere4");
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+
+    await navigate("/balcony?tab=3", { shallow: true });
+    await waitFor(() => shown() === "/exit");
+    await act(async () => {
+      refused.release();
+      await pending();
+    });
+    served.delete("/nowhere4");
+
+    expect(window.location.pathname).toBe("/exit");
+  });
+
+  test("a parked redirect runs once Back between the page's shallow entries cancels the navigation it waited for", async () => {
+    const leaving = heldRedirectTo("/exit");
+    served.set("/atelier", leaving.serve);
+    await navigate("/atelier");
+    await navigate("/atelier?tab=1", { shallow: true });
+    const refused = heldNotFound();
+    served.set("/nowhere5", refused.respond);
+    const pending = await startNavigation("/nowhere5");
+    await act(async () => {
+      leaving.release();
+      await sleep(30);
+    });
+
+    await back("/exit");
+    await act(async () => {
+      refused.release();
+      await pending();
+    });
+    served.delete("/nowhere5");
+
+    expect(window.location.pathname).toBe("/exit");
+  });
 });
 
 describe("rscClient account change", () => {
@@ -757,6 +991,81 @@ describe("rscClient prefetch", () => {
 
     expect(fetchCountOf("/secret")).toBe(2);
     expect(shown()).toBe("visitor secret");
+  });
+
+  test("a page prefetched before this tab's own write is asked for again on the click", async () => {
+    await navigate("/cart");
+    await prefetch("/cart/total");
+
+    StaleReads.mark();
+    await navigate("/cart/total");
+
+    expect(fetchCountOf("/cart/total")).toBe(2);
+    expect(fetched.findLast((request) => request.pathname === "/cart/total")?.prefetch).toBe(false);
+  });
+
+  test("a page that opts out of prefetching is asked once ahead of the click, then rendered on it", async () => {
+    await navigate("/stats");
+    served.set("/stats/views", () =>
+      fetched.at(-1)?.prefetch ? new Response(null, { status: 204 }) : responseOf("/stats/views"),
+    );
+    await prefetch("/stats/views");
+    await prefetch("/stats/views");
+
+    await navigate("/stats/views");
+
+    expect(fetched.filter((request) => request.pathname === "/stats/views").map((request) => request.prefetch)).toEqual(
+      [true, false],
+    );
+    expect(shown()).toBe("/stats/views");
+    expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(false);
+  });
+
+  test("a page the navigation cache holds under another fragment is not prefetched, and serves the click", async () => {
+    await navigate("/atlas");
+    await navigate("/atlas/next");
+
+    await prefetch("/atlas#legend");
+    await navigate("/atlas#legend");
+
+    expect(fetchCountOf("/atlas")).toBe(1);
+    expect(shown()).toBe("/atlas");
+  });
+
+  test("a redirect the page raises after a push to its own fragment still moves it, and is not replayed", async () => {
+    const ledger = heldRedirectTo("/exit");
+    served.set("/ledger", ledger.serve);
+    await navigate("/ledger");
+    await navigate("/ledger#total");
+    expect(fetchCountOf("/ledger")).toBe(1);
+
+    ledger.release();
+    await waitFor(() => shown() === "/exit");
+    expect(shown()).toBe("/exit");
+
+    served.delete("/ledger");
+    await navigate("/ledger#total");
+    expect(fetchCountOf("/ledger")).toBe(2);
+    expect(shown()).toBe("/ledger");
+  });
+
+  test("a cache clear on a page replayed under another fragment keeps that page for the next visit", async () => {
+    served.set("/chart", () => routedResponseOf("/chart"));
+    served.set("/chart/next", () => routedResponseOf("/chart/next"));
+    await navigate("/chart");
+    await navigate("/chart/next");
+    await navigate("/chart#legend");
+    expect(fetchCountOf("/chart")).toBe(1);
+
+    await act(async () => {
+      globalThis.__AKAN_RSC_CLEAR_CACHE__?.();
+    });
+    await navigate("/chart/next");
+    await navigate("/chart");
+
+    expect(fetchCountOf("/chart/next")).toBe(2);
+    expect(fetchCountOf("/chart")).toBe(1);
+    expect(shown()).toBe("/chart");
   });
 
   test("a page the navigation cache holds is not prefetched", async () => {
@@ -1084,29 +1393,7 @@ describe("rscClient patch cache", () => {
     },
   );
 
-  test("a page rendered again with other layouts takes none of the patches laid under its earlier render", async () => {
-    framed("/gate/a", "gate", "gate v1");
-    framed("/gate/b", "gate", "gate v1");
-    framed("/lawn", "lawn");
-    await navigate("/gate/a");
-    await navigate("/gate/b");
-    await navigate("/lawn");
-    await navigate("/gate/a");
-    await navigate("/gate/b");
-    expect(fetchCountOf("/gate/b")).toBe(1);
-    await navigate("/lawn");
-
-    framed("/gate/a", "gate", "gate v2");
-    framed("/gate/b", "gate", "gate v2");
-    await navigate("/gate/a#hinges");
-    expect(fetchCountOf("/gate/a")).toBe(2);
-    await navigate("/gate/b");
-
-    expect(fetchCountOf("/gate/b")).toBe(2);
-    expect(shown()).toBe("/gate/b patched");
-  });
-
-  test("a page asked for again after it left the full cache takes none of the patches laid under it", async () => {
+  test("a page rendered again with other layouts after it left the full cache takes none of the patches laid under it", async () => {
     framed("/hall/a", "hall", "hall v1");
     framed("/hall/b", "hall", "hall v1");
     framed("/porch", "porch");

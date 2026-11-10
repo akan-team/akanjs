@@ -257,6 +257,36 @@ describe("Akan Studio", () => {
     }
   });
 
+  test("lands on the live view when the dev host says the builder is stopped, and says so on a view that needs it", async () => {
+    const saved = process.send;
+    const stopped = "builder is stopped; reload after the builder is ready";
+    process.send = ((message: { id?: number }) => {
+      const reply = { type: "build-graph-res", id: message.id, ok: false, error: stopped, kind: "unavailable" };
+      queueMicrotask(() => process.emit("message", reply, undefined));
+      return true;
+    }) as unknown as typeof process.send;
+    const rpc = new BuilderRpc();
+    try {
+      const routes = new DevtoolsRouter({
+        ...makeContext("local"),
+        ...DevtoolsRouter.buildsFrom({ builderRpc: rpc }),
+      }).createRoutes() as AsyncRoutes;
+      for (const search of ["", "?view=", "?view=bogus"]) {
+        const landing = await routes["/_akan/studio"].GET(new Request(`http://localhost/_akan/studio${search}`));
+        expect(landing.status).toBe(200);
+        expect(await landing.text()).toContain('aria-current="page">Runtime (live)</a>');
+      }
+      const asked = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=erd"));
+      expect(asked.status).toBe(503);
+      const html = await asked.text();
+      expect(html).toContain(`[builder] build-graph-res failed: ${stopped}`);
+      expect(html).toContain('aria-current="page">ERD</a>');
+    } finally {
+      rpc.dispose();
+      process.send = saved;
+    }
+  });
+
   test("says the web surface is off, not to run `akan start`, when this server serves the API only", async () => {
     const routes = new DevtoolsRouter({ ...makeContext("local"), web: false }).createRoutes() as AsyncRoutes;
     const response = await routes["/_akan/studio"].GET(new Request("http://localhost/_akan/studio?view=erd"));
