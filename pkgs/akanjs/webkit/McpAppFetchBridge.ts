@@ -34,6 +34,7 @@ export class McpAppFetchBridge implements FetchBridge {
     const args = McpAppFetchBridge.#defined(request.args);
     const result = await this.#bridge.callTool(request.key, args, {
       timeoutMs: McpAppFetchBridge.#deadlineOf(request),
+      signal: request.signal,
     });
     return McpAppFetchBridge.#valueOf(request, result);
   }

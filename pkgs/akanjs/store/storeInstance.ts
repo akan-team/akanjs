@@ -408,7 +408,7 @@ export class StoreInstance {
           Logger.verbose(`=> ${k} action dispatched (${Date.now() - start}ms)`);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          if (silent || AbortSignals.isAbort(error)) Logger.verbose(`${k} action failed silently: ${message}`);
+          if (silent || AbortSignals.isAbortOf(error, args)) Logger.verbose(`${k} action failed silently: ${message}`);
           else {
             this.#showActionErrorMessage(k, error);
             Logger.error(`${k} action error return: ${message}`);

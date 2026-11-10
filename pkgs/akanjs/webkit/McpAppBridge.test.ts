@@ -204,6 +204,34 @@ describe("McpAppBridge", () => {
     expect(await unbounded).toBe("slow but sure");
   });
 
+  test("cancels a relayed call its caller aborts, and relays none for a signal already spent", async () => {
+    const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
+    const fetchBridge = bridge.fetchBridge([]);
+    sent.length = 0;
+    const spent = new AbortController();
+    spent.abort("gone");
+    const refused = await fetchBridge
+      .call({ ...call({ refName: "String" }), signal: spent.signal })
+      .catch((error: unknown) => error);
+    expect(refused).toBe("gone");
+    expect(sent).toEqual([]);
+
+    const leaving = new AbortController();
+    const asked = fetchBridge
+      .call({ ...call({ refName: "String" }), signal: leaving.signal })
+      .catch((error: unknown) => error);
+    const request = lastRequest("tools/call");
+    leaving.abort("left the page");
+    expect(await asked).toBe("left the page");
+    expect(lastRequest("notifications/cancelled")?.params).toEqual({ requestId: request?.id });
+    fromHost({ id: request?.id, result: { _meta: { [MCP_APP_META.value]: "too late" } } });
+
+    const next = fetchBridge.call({ ...call({ refName: "String" }), signal: new AbortController().signal });
+    fromHost({ id: lastRequest("tools/call")?.id, result: { _meta: { [MCP_APP_META.value]: "next" } } });
+    expect(await next).toBe("next");
+    expect(sent.filter((message) => message.method === "notifications/cancelled")).toHaveLength(1);
+  });
+
   test("reads a masked answer by the declared return when the host dropped the view's value", async () => {
     const { bridge } = await started({ structuredContent: { href: "/en", params: { lang: "en" } } });
     const fetchBridge = bridge.fetchBridge([]);

@@ -44,8 +44,8 @@ export interface WsClientOptions {
    */
   onCredentialExpired?: () => unknown;
   /**
-   * Messages kept while the socket is down, the oldest dropped past it; 100 unless named, `0` keeps none. Subscribes
-   * never queue here: every room is sent again on open.
+   * Messages kept while the socket is down, the oldest dropped past it; 100 unless named, `0` keeps none and
+   * `Infinity` every one. Subscribes never queue here: every room is sent again on open.
    */
   outboxLimit?: number;
 }
@@ -537,9 +537,9 @@ export class WsClient {
   #enqueue(frame: string) {
     const { outboxLimit } = this.#options;
     const limit =
-      outboxLimit !== undefined && Number.isFinite(outboxLimit)
-        ? Math.max(0, Math.floor(outboxLimit))
-        : WsClient.defaultOutboxLimit;
+      outboxLimit === undefined || Number.isNaN(outboxLimit)
+        ? WsClient.defaultOutboxLimit
+        : Math.max(0, Math.floor(outboxLimit));
     this.#outbox.push(frame);
     const overflow = this.#outbox.length - limit;
     if (overflow <= 0) return;

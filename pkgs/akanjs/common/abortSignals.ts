@@ -1,5 +1,6 @@
 export class AbortSignals {
   static readonly #noop = () => undefined;
+  static readonly #reasons = new WeakSet<object>();
 
   //? `AbortSignal.any` arrived in Safari 17.4 and an iOS 16 WebView lacks it; the by-hand join listens until `dispose`.
   static join(signals: (AbortSignal | null | undefined)[]): { signal?: AbortSignal; dispose: () => void } {
@@ -30,16 +31,45 @@ export class AbortSignals {
     if (!signal) return promise;
     if (signal.aborted) {
       void promise.catch(() => undefined);
-      return Promise.reject(signal.reason);
+      return Promise.reject(AbortSignals.reasonOf(signal));
     }
     return new Promise<T>((resolve, reject) => {
-      const abort = () => reject(signal.reason);
+      const abort = () => reject(AbortSignals.reasonOf(signal));
       signal.addEventListener("abort", abort, { once: true });
       promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
     });
   }
 
+  static reasonOf(signal: AbortSignal): unknown {
+    const reason: unknown = signal.reason;
+    if (typeof reason === "object" && reason !== null && !AbortSignals.isTimeout(signal))
+      AbortSignals.#reasons.add(reason);
+    return reason;
+  }
+
+  static isTimeout(signal: AbortSignal) {
+    const reason: unknown = signal.reason;
+    return reason instanceof Error && reason.name === "TimeoutError";
+  }
+
   static isAbort(error: unknown) {
-    return typeof error === "object" && error !== null && (error as { name?: unknown }).name === "AbortError";
+    if (typeof error !== "object" || error === null) return false;
+    return (error as { name?: unknown }).name === "AbortError" || AbortSignals.#reasons.has(error);
+  }
+
+  //? A primitive reason (`abort("left")`) cannot be remembered, so it is matched against the signals the call was given.
+  static isAbortOf(error: unknown, callArgs: unknown[]) {
+    if (AbortSignals.isAbort(error)) return true;
+    return callArgs.some((arg) => {
+      const signal = AbortSignals.#signalIn(arg);
+      return !!signal?.aborted && !AbortSignals.isTimeout(signal) && Object.is(signal.reason, error);
+    });
+  }
+
+  static #signalIn(arg: unknown): AbortSignal | undefined {
+    if (typeof AbortSignal === "undefined" || typeof arg !== "object" || arg === null) return undefined;
+    if (arg instanceof AbortSignal) return arg;
+    const signal = (arg as { signal?: unknown }).signal;
+    return signal instanceof AbortSignal ? signal : undefined;
   }
 }

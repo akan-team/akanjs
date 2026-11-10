@@ -27,7 +27,7 @@ import {
   withSharedInstances,
 } from "akanjs/constant";
 import type { BaseFilterSortKey, ExtractSort, FilterInstance } from "akanjs/document";
-import { type FetchInitForm, type FetchProxy, restoreRemoteError } from "akanjs/fetch";
+import { type FetchInitForm, type FetchProxy, HttpClient, restoreRemoteError } from "akanjs/fetch";
 import type {
   LiveEventPayload,
   SerializedSlice,
@@ -953,6 +953,13 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       modelObjInsight ?? (new cnst.insight().set({ count: modelDataList.length }) as unknown as Insight & BaseInsight);
     const queryArgsIn = (self: SetGet) =>
       (self.get() as { [key: string]: any })[namesOfSlice.queryArgsOfModel] as object[];
+    //? A caller's `AbortSignal.timeout` ends its load with the slow-server error, as a query's own deadline does; any
+    //? other abort, a newer load of this slice included, ends it with no write and no error.
+    const endsQuietly = (ownSignal: AbortSignal, callerSignal?: AbortSignal) =>
+      ownSignal.aborted || (!!callerSignal?.aborted && !AbortSignals.isTimeout(callerSignal));
+    const endSpent = (callerSignal: AbortSignal) => {
+      if (AbortSignals.isTimeout(callerSignal)) throw HttpClient.abortErrorOf(callerSignal);
+    };
     // A row stamped stale while the request ran may be missing from its rows, so they are read once more, and only once.
     const loadList = async <T>(
       self: SetGet,
@@ -960,7 +967,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
       load: (signal: AbortSignal) => Promise<T>,
       commit: (loaded: T, requestedAt: Date) => object,
     ) => {
-      if (callerSignal?.aborted) return;
+      if (callerSignal?.aborted) return endSpent(callerSignal);
       self.set({ [namesOfSlice.modelListLoading]: true });
       const { ticket, signal: ownSignal } = requests.claim();
       const joined = AbortSignals.join([ownSignal, callerSignal]);
@@ -978,7 +985,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           if (staleAt.getTime() <= requestedAt.getTime()) return;
         }
       } catch (error) {
-        if (signal.aborted) return;
+        if (endsQuietly(ownSignal, callerSignal)) return;
         throw error;
       } finally {
         joined.dispose();
@@ -998,7 +1005,8 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         } as FetchInitForm<Input, Filter> & FetchPolicy;
         const queryArgs = new Array(initArgLength).fill(null).map((_, i) => args[i] as object);
         const defaultModel = new cnst.full().set(initForm.default ?? {}) as unknown as Full;
-        this.set({ [names.defaultModel]: defaultModel, [namesOfSlice.isCumulativeOfModel]: false });
+        if (!initForm.signal?.aborted)
+          this.set({ [names.defaultModel]: defaultModel, [namesOfSlice.isCumulativeOfModel]: false });
         await ((this as unknown as DynamicRecord)[namesOfSlice.refreshModel] as (...args: any[]) => Promise<void>)({
           ...initForm,
           queryArgs,
@@ -1124,7 +1132,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
         const pageOfModel = currentState[namesOfSlice.pageOfModel] as number;
         const limitOfModel = (currentState[namesOfSlice.limitOfModel] as number) || 20;
         const sortOfModel = currentState[namesOfSlice.sortOfModel] as Sort;
-        if (options?.signal?.aborted) return;
+        if (options?.signal?.aborted) return endSpent(options.signal);
         const { ticket, signal: ownSignal } = requests.claim();
         const joined = AbortSignals.join([ownSignal, options?.signal]);
         const signal = joined.signal ?? ownSignal;
@@ -1136,7 +1144,7 @@ export const makeActions = (refName: string, slice: { [key: string]: SerializedS
           { ...options, signal },
         )
           .catch((error: unknown) => {
-            if (signal.aborted) return null;
+            if (endsQuietly(ownSignal, options?.signal)) return null;
             throw error;
           })
           .finally(joined.dispose);
