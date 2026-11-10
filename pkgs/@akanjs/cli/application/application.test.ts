@@ -23,6 +23,7 @@ import {
   writeText,
 } from "@akanjs/devkit/testHelpers";
 import { DatabaseModes } from "akanjs/base";
+import { Logger } from "akanjs/common";
 import { ApplicationCommand } from "./application.command";
 import { ApplicationRunner } from "./application.runner";
 import { ApplicationScript } from "./application.script";
@@ -135,6 +136,21 @@ describe("ApplicationCommand", () => {
       [{ name: "demo" }, { write: true, fast: false, quiet: false, env: "main" }],
       [{ name: "demo" }, { write: true, fast: false, quiet: false }],
     ]);
+  });
+
+  test("studio passes the runtime and framework views through, and opens the ERD for anything else", async () => {
+    const view = getArgMetas(ApplicationCommand, "studio")[1].find((meta) => meta.name === "view");
+    expect(view?.argsOption).toMatchObject({ enum: ["erd", "signals", "changes", "runtime", "framework"] });
+
+    const command = CommandContainer.get(ApplicationCommand);
+    const calls: unknown[] = [];
+    command.applicationScript.studio = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "studio")?.handler;
+    for (const asked of ["runtime", "framework", "nope"])
+      await handler?.call(command, { name: "demo" }, null, asked, null, "vscode", false, "text");
+    expect(calls.map((call) => (call as [unknown, { view: string }])[1].view)).toEqual(["runtime", "framework", "erd"]);
   });
 
   test("the Capacitor-era commands and flags are gone", () => {
@@ -261,6 +277,33 @@ describe("ApplicationScript", () => {
 
     await expect(script.test(app, { files: ["libs/shared/lib/x.test.ts"] })).rejects.toThrow("is outside apps/demo");
     expect(scanSync).not.toHaveBeenCalled();
+  });
+
+  test("studio prints the URL of the view asked for on the app's running dev server", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app } = track(await createTempApp("demo"));
+    app.getDevPort = mock(async () => 8654) as never;
+    const answers = spyOn(ApplicationRunner, "answers").mockImplementation(async () => true);
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+    try {
+      await script.studio(app, { module: null, view: "runtime", editor: "cursor", open: false, format: "json" });
+      expect(printed.mock.calls[0]?.[0]).toBe(
+        JSON.stringify({ url: "http://localhost:8654/_akan/studio?view=runtime&editor=cursor" }),
+      );
+      await expect(
+        script.studio(app, {
+          module: null,
+          view: "runtime",
+          since: "main",
+          editor: "vscode",
+          open: false,
+          format: "text",
+        }),
+      ).rejects.toThrow("pass `--view changes` with it");
+    } finally {
+      answers.mockRestore();
+      printed.mockRestore();
+    }
   });
 
   test("build hands its --env to the build runner", async () => {

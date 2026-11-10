@@ -31,6 +31,7 @@ export interface StudioRow {
   at: AkanGraphLocation | null;
   change?: AkanGraphChange;
   skipped?: string;
+  title?: string;
 }
 
 export interface StudioBox {

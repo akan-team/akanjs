@@ -96,18 +96,7 @@ export class StudioDocument {
           <header>
             <strong>Akan Studio</strong>
             <span className="muted">{appName}</span>
-            <nav>
-              {views.map((view) => (
-                <a
-                  key={view}
-                  href={hrefOf({ view })}
-                  title={viewTitles[view]}
-                  aria-current={view === query.view ? "page" : undefined}
-                >
-                  {viewLabels[view]}
-                </a>
-              ))}
-            </nav>
+            {StudioDocument.#views(basePath, query)}
             <form method="get" action={basePath} hidden={query.view === "framework"}>
               <input type="hidden" name="view" value={query.view} />
               <input type="hidden" name="editor" value={query.editor} />
@@ -217,19 +206,44 @@ export class StudioDocument {
     );
   }
 
-  static unavailable(appName: string, reason: string) {
+  static unavailable({ basePath, appName, query, reason }: Omit<StudioDocumentProps, "payload"> & { reason: string }) {
     return (
       <html lang="en">
         <head>
           <meta charSet="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>{`Akan Studio · ${appName}`}</title>
           <style>{studioStyle}</style>
         </head>
         <body>
-          <p className="empty">{reason}</p>
+          <header>
+            <strong>Akan Studio</strong>
+            <span className="muted">{appName}</span>
+            {StudioDocument.#views(basePath, query)}
+          </header>
+          <main>
+            <p className="empty">{reason}</p>
+          </main>
           {StudioDocument.#runtime()}
         </body>
       </html>
+    );
+  }
+
+  static #views(basePath: string, query: StudioQuery) {
+    return (
+      <nav>
+        {views.map((view) => (
+          <a
+            key={view}
+            href={StudioDocument.href(basePath, { ...query, view })}
+            title={viewTitles[view]}
+            aria-current={view === query.view ? "page" : undefined}
+          >
+            {viewLabels[view]}
+          </a>
+        ))}
+      </nav>
     );
   }
 
@@ -335,7 +349,7 @@ export class StudioDocument {
         </text>
         {rows.map((row, idx) => (
           <a key={idx} href={openOf(row.at)}>
-            {row.skipped ? <title>{row.skipped}</title> : null}
+            {row.title || row.skipped ? <title>{[row.title, row.skipped].filter(Boolean).join("\n")}</title> : null}
             <text className={row.skipped ? "skipped" : row.change} x={x + 12} y={row.y + 4}>
               {clip(
                 row.change ? `${changeSigns[row.change]} ${row.text}` : row.text,

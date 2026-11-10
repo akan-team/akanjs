@@ -39,10 +39,18 @@ export class StudioRoute {
 
   async page(req: Request): Promise<Response> {
     const { basePath, appName } = this.#context;
-    const query = StudioRoute.queryOf(new URL(req.url));
-    const loaded = await this.#load(query);
-    if ("error" in loaded) return await StudioRoute.#html(StudioDocument.unavailable(appName, loaded.error), 503);
-    return await StudioRoute.#html(StudioDocument.render({ basePath, appName, payload: loaded.payload, query }), 200);
+    const url = new URL(req.url);
+    const asked = StudioRoute.queryOf(url);
+    const loaded = await this.#load(asked);
+    const landed = "error" in loaded && loaded.builderless && !url.searchParams.has("view");
+    const query: StudioQuery = landed ? { ...asked, view: "runtime" } : asked;
+    const shown = landed ? await this.#load(query) : loaded;
+    if ("error" in shown)
+      return await StudioRoute.#html(
+        StudioDocument.unavailable({ basePath, appName, query, reason: shown.error }),
+        503,
+      );
+    return await StudioRoute.#html(StudioDocument.render({ basePath, appName, payload: shown.payload, query }), 200);
   }
 
   async graph(req: Request): Promise<Response> {
@@ -59,17 +67,21 @@ export class StudioRoute {
     return buildGraph ? await buildGraph() : null;
   }
 
-  async #load(query: StudioQuery): Promise<{ payload: StudioPayload } | { error: string }> {
+  async #load(query: StudioQuery): Promise<{ payload: StudioPayload } | { error: string; builderless: boolean }> {
     if (query.view === "runtime") return { payload: this.#context.runtime() };
     try {
       const payload = await this.#payloadOf(query);
       return payload
         ? { payload }
-        : { error: "Akan Studio reads the graph from the dev builder; open it under `akan start`." };
+        : {
+            error:
+              "Akan Studio reads this view from the dev builder; open it under `akan start`. Runtime (live) reads this running server and needs no builder.",
+            builderless: true,
+          };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       StudioRoute.logger.warn(`Failed to build the Akan Graph: ${message}`);
-      return { error: message };
+      return { error: message, builderless: false };
     }
   }
 
