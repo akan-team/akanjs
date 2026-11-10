@@ -73,7 +73,7 @@ export const usePurchase = ({ platform, ...options }: UsePurchaseOptions) => {
       const settled = await flow().settle(transaction);
       return settled === "finished" ? "purchased" : settled === "unverified" ? "unverified" : "pending";
     } catch (error) {
-      const { AkanNativeError } = await import("@akanjs/native/core");
+      const { AkanNativeError } = await import("./nativeCore");
       if (AkanNativeError.from(error).code === "CANCELLED") return "cancelled";
       throw error;
     }

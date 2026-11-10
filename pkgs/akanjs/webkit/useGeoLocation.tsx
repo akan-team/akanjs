@@ -15,7 +15,7 @@ export const useGeoLocation = () => {
     try {
       return await geolocation.getCurrentPosition(options);
     } catch (error) {
-      const { AkanNativeError } = await import("@akanjs/native/core");
+      const { AkanNativeError } = await import("./nativeCore");
       if (AkanNativeError.from(error).code !== "PERMISSION_DENIED") throw error;
       const { opener } = await import("akanjs/client/native/opener");
       await opener.openSettings().catch(() => undefined);
