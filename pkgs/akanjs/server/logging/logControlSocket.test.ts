@@ -239,6 +239,45 @@ describe("LogControlSocket", () => {
     }
   });
 
+  test("a start on one path waits until the start ahead of it has unbound", async () => {
+    const own = await mkdtemp(path.join(os.tmpdir(), "akan-lcs-"));
+    const [firstHub, nextHub] = [new LogHub(), new LogHub()];
+    const logger = new Logger("LogControlSocketTest");
+    const steps: string[] = [];
+    const { connect, listen } = Bun;
+    const spies = [
+      spyOn(Bun, "connect").mockImplementation(((options: Parameters<typeof Bun.connect>[0]) => {
+        steps.push("probe");
+        return connect(options);
+      }) as typeof Bun.connect),
+      spyOn(Bun, "listen").mockImplementation(((options: Parameters<typeof Bun.listen>[0]) => {
+        const server = listen(options);
+        const stop = server.stop.bind(server);
+        server.stop = (closeActiveConnections?: boolean) => {
+          steps.push("unbind");
+          stop(closeActiveConnections);
+        };
+        steps.push("bind");
+        firstHub.close();
+        return server;
+      }) as typeof Bun.listen),
+    ];
+    const [first, next] = await Promise.all([
+      LogControlSocket.open(firstHub, own, logger),
+      LogControlSocket.open(nextHub, own, logger),
+    ]);
+    for (const spy of spies) spy.mockRestore();
+    try {
+      expect(steps).toEqual(["probe", "bind", "unbind", "probe", "bind"]);
+      expect(next).not.toBeNull();
+    } finally {
+      await first?.stop();
+      await next?.stop();
+      nextHub.close();
+      await rm(own, { recursive: true, force: true });
+    }
+  });
+
   test.skipIf(process.platform === "win32")(
     "a socket that fails after binding is unbound before it reports",
     async () => {
