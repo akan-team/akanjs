@@ -351,16 +351,15 @@ try {
   let booted: number[] = [];
   let failure: string | undefined;
   let passed = false;
-  const has = (pattern: RegExp) =>
-    until(`${pattern} in the app's log`, () => lines.some((l) => pattern.test(l)), 10_000);
+  const has = (text: string) => until(`"${text}" in the app's log`, () => lines.some((l) => l.includes(text)), 10_000);
 
   const at = async (name: string, detail: { innerWidth?: number; innerHeight?: number }): Promise<string> => {
     if (name === "refusedTop") {
-      await has(new RegExp(`refused a navigation to ${other.replace(/[.:/]/g, "\\$&")}/board, which is on no origin`));
+      await has(`refused a navigation to ${other}/board, which is on no origin`);
       return JSON.stringify({ ok: true });
     }
     if (name === "refusedMailto") {
-      await has(/refused a navigation to mailto:board@example\.com/);
+      await has("refused a navigation to mailto:board@example.com");
       return JSON.stringify({ ok: true });
     }
     if (!x11) return JSON.stringify({ ok: true, skipped: true });
