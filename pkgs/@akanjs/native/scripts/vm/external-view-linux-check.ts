@@ -8,10 +8,12 @@
 // lines. At a checkpoint the probe waits on the board server for the check's answer: on X11 the check reads the
 // screen and clicks (xdotool, ImageMagick), elsewhere it only reads the app's log. The probe checks that a view
 // 1. answers isSupported for every method but sendKey, opens, runs its init script before the page's own and in no
-//    frame, and answers evaluate, while a cross-origin frame in it loads,
-// 2. lies at its bounds over the page, which takes the clicks around it and, once it is hidden, under it,
+//    frame, and answers evaluate, while a cross-origin frame in it loads, and outlives its page's window.close(),
+// 2. lies at its bounds over the page, which takes the clicks around it and, once it is hidden, under it, also once
+//    an open with another init script built it again,
 // 3. sends load events, and loadFailed for a server that does not answer and for a server's error page,
-// 4. refuses a navigation off its origins, from the app and from its own page, and a frame's mailto: link,
+// 4. refuses a navigation off its origins, from the app and from its own page, the error page of one that fails, and
+//    a frame's mailto: link,
 // 5. holds the keyboard while it is shown (the page has it while it is hidden), takes it back when its window is
 //    active again, captures its own content as a PNG, and mutes,
 // 6. plays sound without a gesture, and a view opened with autoplay false does not,
@@ -100,12 +102,16 @@ const other = `http://localhost:${server.port}`;
 const closed = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
 const dead = `http://127.0.0.1:${closed.port}`;
 closed.stop(true);
+const closedOff = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+const deadOff = `http://127.0.0.1:${closedOff.port}`;
+closedOff.stop(true);
 
 const PROBE = `
 import { externalView } from ${JSON.stringify(join(root, "plugins/external-view/src/index.ts"))};
-const ORIGIN = ${JSON.stringify(origin)}, OTHER = ${JSON.stringify(other)}, DEAD = ${JSON.stringify(dead)};
+const ORIGIN = ${JSON.stringify(origin)}, OTHER = ${JSON.stringify(other)}, DEAD = ${JSON.stringify(dead)}, DEAD_OFF = ${JSON.stringify(deadOff)};
 const log = (m) => console.info("AKAN_EV_PROBE " + m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const within = (what, p, ms) => Promise.race([p, sleep(ms).then(() => { throw new Error("timed out waiting for " + what); })]);
 async function until(what, check, timeout = 30000) {
   let last;
   for (const t = Date.now(); Date.now() - t < timeout; await sleep(250)) {
@@ -162,6 +168,9 @@ async function main() {
   if (frame.alive !== "undefined") throw new Error("the init script ran in a frame: " + JSON.stringify(frame));
   await checkpoint("active");
   await holdsKeyboard("open");
+  await inView("window.close(); 0");
+  await sleep(1000);
+  if ((await within("the view after its page's window.close()", inView("document.title"), 5000)) !== "board") throw new Error("window.close() took the board");
 
   log("step 2. at its bounds over the page; the page takes the clicks around it, and under it once hidden");
   const placed = await checkpoint("placed", { innerWidth, innerHeight });
@@ -172,6 +181,12 @@ async function main() {
   await externalView.setVisible({ id: "board", visible: false });
   const hidden = await checkpoint("hidden", { innerWidth, innerHeight });
   if (!hidden.skipped && pageClicks !== 2) throw new Error("a hidden view took the click meant for the page");
+  await externalView.open({ id: "board", url: ORIGIN + "/board", allowOrigins: [ORIGIN, DEAD],
+    bounds: { x: 100, y: 100, width: 200, height: 150 }, initScript: "window.__alive = typeof window.__keys; window.__rebuilt = true",
+    console: true, muted: false });
+  await until("the board built again", async () => (await inView("window.__rebuilt ?? false")) === true);
+  const rebuilt = await checkpoint("hiddenRebuilt", { innerWidth, innerHeight });
+  if (!rebuilt.skipped && pageClicks !== 3) throw new Error("a hidden view built again took the click meant for the page");
   await externalView.setVisible({ id: "board", visible: true });
   await holdsKeyboard("shown again after a click on the page");
   await externalView.setBounds({ id: "board", bounds: "fill" });
@@ -196,6 +211,10 @@ async function main() {
   await inView("location.href = " + JSON.stringify(OTHER + "/board") + "; 0");
   await checkpoint("refusedTop");
   if ((await inView("location.origin")) !== ORIGIN) throw new Error("the page left its origins");
+  await inView("location.href = " + JSON.stringify(DEAD_OFF + "/") + "; 0");
+  await checkpoint("refusedErrorPage");
+  if ((await inView("location.origin")) !== ORIGIN) throw new Error("the page reached an error page off its origins");
+  if (events.some((e) => e.event === "loadFailed" && e.data.url.startsWith(DEAD_OFF))) throw new Error("a load off its origins reported loadFailed");
   await inView("const mail = document.createElement('iframe'); mail.src = 'mailto:board@example.com'; document.body.append(mail); 0");
   await checkpoint("refusedMailto");
 
@@ -358,6 +377,10 @@ try {
       await has(`refused a navigation to ${other}/board, which is on no origin`);
       return JSON.stringify({ ok: true });
     }
+    if (name === "refusedErrorPage") {
+      await has(`refused the error page of ${deadOff}/, which is on no origin`);
+      return JSON.stringify({ ok: true });
+    }
     if (name === "refusedMailto") {
       await has("refused a navigation to mailto:board@example.com");
       return JSON.stringify({ ok: true });
@@ -398,7 +421,7 @@ try {
     const expected =
       name === "placed"
         ? { inside: BOARD_COLOR, beside: PAGE }
-        : name === "hidden"
+        : name === "hidden" || name === "hiddenRebuilt"
           ? { inside: PAGE, beside: PAGE }
           : { inside: BOARD_COLOR, beside: BOARD_COLOR };
     if (seen.inside !== expected.inside || seen.beside !== expected.beside)
@@ -408,7 +431,7 @@ try {
       await Bun.sleep(300);
       click(inside.x, inside.y);
     }
-    if (name === "hidden") click(inside.x, inside.y);
+    if (name === "hidden" || name === "hiddenRebuilt") click(inside.x, inside.y);
     await Bun.sleep(500);
     return JSON.stringify({ ok: true });
   };

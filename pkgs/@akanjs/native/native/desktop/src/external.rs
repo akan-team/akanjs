@@ -77,6 +77,8 @@ impl View {
     (self.restarts, self.gone_streak, self.reloaded_at, self.visible) = (restarts, gone_streak, reloaded_at, visible);
     if !visible {
       let _ = self.webview.set_visible(false);
+      #[cfg(target_os = "linux")]
+      platform::set_visible(&self.webview, false);
     }
     if cursor_hidden {
       self.cursor_hidden = true;
@@ -725,8 +727,12 @@ fn build(
       crate::win::kiosk::lock(&webview, &format!("external view {}", opts.view));
     }
   }
+  #[cfg(target_os = "linux")]
+  if crate::unattended() {
+    crate::linux::kiosk::lock(&webview);
+  }
   // Release builds: no Print, Save as or Inspect in its right-click menu either.
-  #[cfg(target_os = "windows")]
+  #[cfg(any(target_os = "windows", target_os = "linux"))]
   crate::page_menu::install(devtools, &webview);
   if opts.muted {
     platform::set_muted(&webview, true)?;

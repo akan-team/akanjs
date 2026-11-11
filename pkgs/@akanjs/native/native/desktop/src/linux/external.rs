@@ -8,8 +8,8 @@ use std::{cell::RefCell, rc::Rc};
 use gtk::{gdk, glib, prelude::*};
 use webkit2gtk::{
   LoadEvent, NavigationPolicyDecision, NavigationPolicyDecisionExt, NetworkError, PolicyDecisionExt, PolicyDecisionType, PolicyError, ResponsePolicyDecision,
-  ResponsePolicyDecisionExt, SnapshotOptions, SnapshotRegion, URIRequestExt, URIResponseExt, WebContextExt, WebProcessTerminationReason, WebResourceExt, WebViewExt,
-  WebsiteDataManagerExtManual, WebsiteDataTypes,
+  ResponsePolicyDecisionExt, SettingsExt, SnapshotOptions, SnapshotRegion, URIRequestExt, URIResponseExt, WebContextExt, WebProcessTerminationReason, WebResourceExt,
+  WebViewExt, WebsiteDataManagerExtManual, WebsiteDataTypes,
 };
 use wry::{WebView, WebViewBuilder, WebViewBuilderExtUnix, WebViewExtUnix};
 
@@ -38,13 +38,37 @@ pub(crate) fn build(builder: WebViewBuilder, window: &tao::window::Window, bound
     .and_then(|vbox| vbox.children().into_iter().find_map(|child| child.downcast::<gtk::Overlay>().ok()))
     .ok_or("external view: the window has no page overlay")?;
   let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+  //? tao's window.show_all() (its first show, window.show, a reopen) would show a view the page hid.
+  holder.set_no_show_all(true);
   overlay.add_overlay(&holder);
   lay_out(&holder, bounds);
   holder.show();
-  builder.build_gtk(&holder).map_err(|e| {
+  let webview = builder.build_gtk(&holder).map_err(|e| {
     overlay.remove(&holder);
     format!("external view: {e}")
-  })
+  })?;
+  keep_open(&webview);
+  Ok(webview)
+}
+
+//? wry destroys a webview on `close`, which WebKit sends for window.close() in a top frame with no history: the view
+//? would go and leave its box over the page, taking its clicks. Windows and macOS ignore the call, so the view does too.
+fn keep_open(webview: &WebView) {
+  use glib::translate::IntoGlib;
+  let wv = webview.webview();
+  // SAFETY: `wv` is a live WebKitWebView, and "close" is a signal of its class.
+  unsafe {
+    let close = glib::gobject_ffi::g_signal_lookup(b"close\0".as_ptr().cast(), webkit2gtk::WebView::static_type().into_glib());
+    glib::gobject_ffi::g_signal_handlers_disconnect_matched(
+      wv.as_ptr().cast(),
+      glib::gobject_ffi::G_SIGNAL_MATCH_ID,
+      close,
+      0,
+      std::ptr::null_mut(),
+      std::ptr::null_mut(),
+      std::ptr::null_mut(),
+    );
+  }
 }
 
 fn holder_of(webview: &WebView) -> Option<gtk::Box> {
@@ -109,8 +133,27 @@ pub(crate) fn clear_data(webview: &WebView, reply: Reply) {
 /// The top level stays on `allow`, checked once its response says it is the top-level document; frames load web
 /// content from anywhere; any other scheme (mailto:, another app's) goes nowhere, in any frame.
 pub(crate) fn guard(webview: &WebView, view: &str, allow: Rc<RefCell<Vec<String>>>) {
+  let wv = webview.webview();
+  //? A history load restored from the page cache commits with no response to check below.
+  if let Some(settings) = WebViewExt::settings(&wv) {
+    settings.set_enable_page_cache(false);
+  }
+  //? A failed load's error page commits at the failing URL with no response to check below, and runs the init script
+  //? there; one with TLS errors would also report its URL. Both are connected before watch's, so they stop it too.
+  let (failed_allow, failed_view) = (allow.clone(), view.to_string());
+  wv.connect_load_failed(move |_, _, url, error| {
+    if admits(&failed_allow.borrow(), url, false) {
+      return false;
+    }
+    if !error.matches(PolicyError::FrameLoadInterruptedByPolicyChange) && !error.matches(NetworkError::Cancelled) {
+      log!("external view {failed_view}: refused the error page of {}, which is on no origin it was opened for", shown(url));
+    }
+    true
+  });
+  let tls_allow = allow.clone();
+  wv.connect_load_failed_with_tls_errors(move |_, url, _, _| !admits(&tls_allow.borrow(), url, false));
   let view = view.to_string();
-  webview.webview().connect_decide_policy(move |_, decision, kind| match kind {
+  wv.connect_decide_policy(move |_, decision, kind| match kind {
     PolicyDecisionType::NavigationAction => {
       let Some(action) = decision.dynamic_cast_ref::<NavigationPolicyDecision>().and_then(|d| d.navigation_action()) else { return false };
       let url = action.request().and_then(|r| r.uri()).map(|u| u.to_string()).unwrap_or_default();
@@ -145,7 +188,8 @@ pub(crate) fn watch(webview: &WebView, view: &str, window: u32, _console: bool) 
   let failed_view = view.to_string();
   wv.connect_load_failed(move |_, _, url, error| {
     //? A navigation refused above and one a newer navigation replaced end so: neither is a failure.
-    if error.matches(PolicyError::FrameLoadInterruptedByPolicyChange) || error.matches(NetworkError::Cancelled) {
+    //? WebKit sends one with TLS errors here too, once load-failed-with-tls-errors below has reported it.
+    if error.matches(PolicyError::FrameLoadInterruptedByPolicyChange) || error.matches(NetworkError::Cancelled) || error.kind::<gtk::gio::TlsError>().is_some() {
       return false;
     }
     failed(&failed_view, url, &error_name(error));
