@@ -11,7 +11,9 @@ import type {
   AgentWireToolCall,
   AgentWireToolResult,
   LlmTurnRequest,
+  LlmUsage,
 } from "../predefinedAdaptor/llm.adaptor";
+import { LlmSpend } from "../predefinedAdaptor/llmSpend";
 import { OpenaiDialect } from "../predefinedAdaptor/openaiDialect";
 import { AgentLoop, type AgentLoopAnswer, type AgentLoopPort } from "./agentLoop";
 import type { AgentLoopEvent, AgentLoopRequest } from "./agentLoopTypes";
@@ -409,6 +411,60 @@ describe("AgentLoop interruption", () => {
   });
 });
 
+describe("AgentLoop spend on interruption", () => {
+  const cutShort = async (extra: Partial<AgentLoopRequest>, counted?: LlmUsage) => {
+    const reports: AgentUsageReport[] = [];
+    AgentMeter.use({ usage: (report) => void reports.push(report) });
+    const service = Object.assign(new AgentService(), {
+      llm: {
+        chat: (_request: LlmTurnRequest, onDelta: (delta: string) => void, signal: AbortSignal) =>
+          new Promise((_resolve, reject) => {
+            onDelta("partial answer");
+            signal.addEventListener("abort", () =>
+              reject(counted ? LlmSpend.attach(signal.reason, { usage: counted }) : signal.reason),
+            );
+          }),
+      },
+      agentTools: harness([]).port.tools,
+    });
+    const events: AgentLoopEvent[] = [];
+    for await (const event of service.loop(ask("go", extra))) events.push(event);
+    await Bun.sleep(5);
+    return { stop: stopOf(events), reports };
+  };
+  const expectBilled = ([report]: AgentUsageReport[]) => {
+    expect(report).toMatchObject({ outcome: "aborted", estimated: true });
+    expect(report?.usage.inputTokens).toBeGreaterThan(0);
+    expect(report?.usage.outputTokens).toBeGreaterThan(0);
+  };
+
+  test("reports what a streamed call spent when wallMs cuts it short", async () => {
+    const { stop, reports } = await cutShort({ budget: { wallMs: 5 } });
+    expect(stop).toBe("budget");
+    expect(reports).toHaveLength(1);
+    expectBilled(reports);
+  });
+
+  test("keeps the provider's own counts an adaptor attached to wallMs's rejection", async () => {
+    const counted = { inputTokens: 7, outputTokens: 3, cachedTokens: 1 };
+    const { reports } = await cutShort({ budget: { wallMs: 5 } }, counted);
+    expect(reports[0]?.usage).toMatchObject(counted);
+  });
+
+  for (const [label, reason] of [
+    ["string", "shutting down"],
+    ["symbol", Symbol("shutting down")],
+  ] as const)
+    test(`reports what a streamed call spent when a caller aborts with a ${label}`, async () => {
+      const abort = new AbortController();
+      setTimeout(() => abort.abort(reason), 5);
+      const { stop, reports } = await cutShort({ signal: abort.signal });
+      expect(stop).toBe("aborted");
+      expect(reports).toHaveLength(1);
+      expectBilled(reports);
+    });
+});
+
 describe("AgentLoop request checks", () => {
   const invalid: [string, string, Partial<AgentLoopRequest>][] = [
     ["NaN", "maxRounds", { maxRounds: Number.NaN }],
@@ -419,6 +475,9 @@ describe("AgentLoop request checks", () => {
     ["too large", "budget.wallMs", { budget: { wallMs: 2 ** 31 } }],
     ["NaN", "budget.tokens", { budget: { tokens: Number.NaN } }],
     ["negative", "budget.toolCalls", { budget: { toolCalls: -1 } }],
+    ["NaN", "compact.at", { compact: { at: Number.NaN } }],
+    ["negative", "compact.keep", { compact: { at: 1, keep: -1 } }],
+    ["missing", "messages", { messages: undefined as never }],
     ["missing", "allow", { allow: undefined as never }],
     ["a string", "allow", { allow: "readPage" as never }],
   ];
@@ -442,6 +501,40 @@ describe("AgentLoop request checks", () => {
 });
 
 describe("AgentLoop accounts", () => {
+  const falsy: [string, unknown][] = [
+    ["missing", undefined],
+    ["null", null],
+    ["empty", ""],
+    ["zero", 0],
+    ["false", false],
+  ];
+  for (const [label, account] of falsy)
+    test(`a ${label} account ends the run as unauthorized before listing a tool or asking the model`, async () => {
+      const { port, called, listed, requests } = harness([saying("never")]);
+      expect(stopOf(await drain(port, ask("go", { account })))).toBe("unauthorized");
+      expect(listed).toHaveLength(0);
+      expect(called).toHaveLength(0);
+      expect(requests).toHaveLength(0);
+    });
+
+  test("an empty principal is never resolved, and a falsy resolved account is unauthorized", async () => {
+    const resolved: string[] = [];
+    AgentAccounts.use((principal) => {
+      resolved.push(principal);
+      return "";
+    });
+    const blank = harness([saying("never")]);
+    const empty = { ...ask("go"), account: undefined, principal: "" } as AgentLoopRequest;
+    expect(stopOf(await drain(blank.port, empty))).toBe("unauthorized");
+    expect(resolved).toEqual([]);
+
+    const revoked = harness([saying("never")]);
+    const named = { ...ask("go"), account: undefined, principal: "u7" } as AgentLoopRequest;
+    expect(stopOf(await drain(revoked.port, named))).toBe("unauthorized");
+    expect(resolved).toEqual(["u7"]);
+    expect(revoked.requests).toHaveLength(0);
+  });
+
   test("resolves a principal before every round, and stops as unauthorized once it resolves to null", async () => {
     const resolved: string[] = [];
     let live = true;
@@ -479,6 +572,48 @@ describe("AgentLoop accounts", () => {
 });
 
 describe("AgentLoop approval", () => {
+  const fromWeb = (result: AgentWireToolResult) => (result.result as { source?: string } | undefined)?.source === "web";
+  const paddedRead = (_account: unknown, { id, name }: AgentWireToolCall) => ({
+    id,
+    name,
+    result: { source: "web", body: "x".repeat(LoopToolOutput.limit + 1) },
+  });
+
+  test("judges a result whole, so one clipped into a string still taints this run and a resumed one", async () => {
+    const stored: AgentWireMessage[] = [];
+    const { port, called } = harness(
+      [calling(callOf("c1", "readPage")), calling(callOf("c2", "renameTitle")), saying("done")],
+      paddedRead,
+    );
+    const events = await drain(port, ask("go", { untrusted: fromWeb, onMessage: (m) => void stored.push(m) }));
+    expect(called.map(({ call }) => call.name)).toEqual(["readPage"]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "toolResult",
+        result: expect.objectContaining({ id: "c2", error: AgentLoop.taintedWrite }),
+      }),
+    );
+    const firstAnswer = stored.find((message) => message.role === "tool");
+    expect(typeof firstAnswer?.toolResults?.[0]?.result).toBe("string");
+    expect(firstAnswer?.tainted).toBe(true);
+
+    const resumed = harness([calling(callOf("c3", "renameTitle")), saying("done")]);
+    const messages: AgentWireMessage[] = [{ role: "user", text: "go" }, ...stored, { role: "user", text: "again" }];
+    await drain(resumed.port, ask("unused", { messages, untrusted: fromWeb }));
+    expect(resumed.called).toHaveLength(0);
+  });
+
+  test("a predicate that throws stores the result it could not judge as tainted", async () => {
+    const stored: AgentWireMessage[] = [];
+    const { port } = harness([calling(callOf("c1", "readPage"))]);
+    const untrusted = () => {
+      throw new Error("predicate failed");
+    };
+    const events = await drain(port, ask("go", { untrusted, onMessage: (m) => void stored.push(m) }));
+    expect(events.at(-1)).toMatchObject({ type: "error", message: "predicate failed" });
+    expect(stored.at(-1)).toMatchObject({ role: "tool", tainted: true });
+  });
+
   test("refuses a write once an untrusted result was read, keeps reads running, and lets the batch that read it finish", async () => {
     const { port, called } = harness([
       calling(callOf("c1", "readPage"), callOf("c2", "renameTitle")),
@@ -544,6 +679,28 @@ describe("AgentLoop approval", () => {
 });
 
 describe("AgentLoop resume", () => {
+  test("a resumed partial batch with a picture keeps every answer ahead of OpenAI's picture message", async () => {
+    const picture = { name: "shot", mimeType: "image/png", data: "AAAA" };
+    const { port, requests, called } = harness([saying("done")]);
+    const messages: AgentWireMessage[] = [
+      { role: "user", text: "go" },
+      { role: "assistant", toolCalls: [callOf("c1", "readPage"), callOf("c2", "readPage")] },
+      { role: "tool", toolResults: [{ id: "c1", name: "readPage", result: "one", attachments: [picture] }] },
+    ];
+    await drain(port, ask("unused", { messages }));
+    expect(called.map(({ call }) => call.id)).toEqual(["c2"]);
+    const [request] = requests as [LlmTurnRequest];
+    const body = OpenaiDialect.requestBody("m1", request, { accepts: { image: true } });
+    expect(body.messages.map((message) => message.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "tool",
+      "tool",
+      "user",
+    ]);
+  });
+
   const stored = (): AgentWireMessage[] => [
     { role: "user", text: "tidy the titles" },
     { role: "assistant", toolCalls: [callOf("c1", "readPage")] },
@@ -572,7 +729,10 @@ describe("AgentLoop resume", () => {
     expect(events.slice(0, 2).map((event) => event.type)).toEqual(["toolCall", "toolResult"]);
     expect(requests[0]?.messages.at(-1)).toEqual({
       role: "tool",
-      toolResults: [{ id: "c2", name: "renameTitle", result: "renameTitle:ok" }],
+      toolResults: [
+        { id: "c3", name: "readPage", result: "ok" },
+        { id: "c2", name: "renameTitle", result: "renameTitle:ok" },
+      ],
     });
     expect(stopOf(events)).toBe("end");
   });

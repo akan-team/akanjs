@@ -156,6 +156,9 @@ class ToolsEndpoint extends endpoint(serverResolverTestServiceModel, (builder) =
       ranEndpoints.push(`removeTitle:${id}`);
       return "gone";
     }),
+  archiveTitle: builder.mutation(String, { guards: [HasAccount], destructive: true }).exec(() => "archived"),
+  dropOffTitle: builder.mutation(String, { guards: [HasAccount], destructive: false }).exec(() => "dropped off"),
+  purgeTitle: builder.mutation(String, { guards: [HasAccount] }).exec(() => "purged"),
   argGuardedTitle: builder
     .mutation(String, { guards: [ArgReadingGuard] })
     .param("id", ID)
@@ -519,6 +522,14 @@ describe("AgentService.loop", () => {
     );
     expect(seen).toEqual([true]);
     expect(ranEndpoints).toEqual([`removeTitle:${itemId}`]);
+  });
+
+  test("marks a mutation by its destructive option first and its key second", async () => {
+    const allow = ["archiveTitle", "dropOffTitle", "purgeTitle", "renameTitle"];
+    const needs = Object.fromEntries(
+      (await tools.listAs(ann, { allow })).map((tool) => [tool.name, tool.needsConfirm]),
+    );
+    expect(needs).toEqual({ archiveTitle: true, dropOffTitle: false, purgeTitle: true, renameTitle: false });
   });
 
   test("answers a tool this round did not list as unknown, without asking approve or running it", async () => {

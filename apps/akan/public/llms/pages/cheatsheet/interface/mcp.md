@@ -164,7 +164,7 @@ Tool part
 
 - title, description: The endpoint's dictionary label and its `.desc()`.
 
-- annotations: `readOnlyHint` on a query, `destructiveHint` on a `remove…` or `delete…` mutation.
+- annotations: `readOnlyHint` on a query, `destructiveHint` on a mutation whose key starts `remove`, `delete`, `purge`, `destroy`, `erase`, `wipe`, `drop`, `cancel`, `bulkRemove` or `bulkDelete`. The endpoint's `destructive` option overrides the key.
 
 Write the dictionary entry in the same change:
 

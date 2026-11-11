@@ -54,8 +54,8 @@ export interface AgentWireMessage {
   /** A compaction summary: it arrives with the user's role but is history, not an ask, and a provider frames it so. */
   summary?: boolean;
   /**
-   * On a summary `agentService.loop` wrote: whether its run had read a result `untrusted` marked. Absent, nothing
-   * judged what it replaced, so a resumed run with `untrusted` counts it as tainted.
+   * On a summary or tool message `agentService.loop` wrote: whether its run had read a result `untrusted` marked.
+   * Absent on a summary, nothing judged what it replaced, so a resumed run with `untrusted` counts it as tainted.
    */
   tainted?: boolean;
 }

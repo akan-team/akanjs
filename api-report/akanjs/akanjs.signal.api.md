@@ -1320,6 +1320,7 @@ export interface SerializedEndpoint extends SerializedSignalOption {
     returns: SerializedReturns;
     timeout?: number;
     errors?: EndpointErrors;
+    destructive?: boolean;
 }
 
 export interface SerializedFilter {
@@ -1509,6 +1510,7 @@ export interface SignalOption<Response = any, Nullable extends boolean = false, 
     method?: HttpMutationMethod;
     fileUpload?: boolean;
     mcp?: boolean;
+    destructive?: boolean;
     errors?: EndpointErrors;
     backpressure?: "coalesce" | "queue";
     live?: LiveEndpointOption;

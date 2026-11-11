@@ -56,7 +56,10 @@ export interface AgentLoopOptions {
   compact?: { at: number; keep?: number };
   /** Asked before every call; without it a `needsConfirm` tool is refused, and so is any write once tainted. */
   approve?: AgentLoopApprove;
-  /** Must judge a result by what it holds, as a resume re-applies it to stored results to rebuild the taint. */
+  /**
+   * Sees a result whole, before the 20,000-character clip. A resume re-applies it to stored, clipped results and also
+   * reads the `tainted` mark on stored messages, so store each message `onMessage` hands over whole.
+   */
   untrusted?: (result: AgentWireToolResult) => boolean;
   meta?: Record<string, string>;
   signal?: AbortSignal;
@@ -66,7 +69,8 @@ export interface AgentLoopOptions {
 
 /**
  * `account` is a snapshot the server resolved; `principal` is a server-stored id `option.setAgentAccountResolver`
- * resolves at the start and before every round, so a revoked one stops the run.
+ * resolves at the start and before every round, so a revoked one stops the run. Either one missing or falsy ends the
+ * run as `unauthorized`: there is no anonymous run.
  */
 export type AgentLoopRequest = AgentLoopOptions &
   ({ account: unknown; principal?: undefined } | { principal: string; account?: undefined });

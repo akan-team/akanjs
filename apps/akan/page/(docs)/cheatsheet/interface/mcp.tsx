@@ -520,8 +520,8 @@ export default page()
       {
         name: "annotations",
         desc: l.trans({
-          en: "`readOnlyHint` on a query, `destructiveHint` on a `remove…` or `delete…` mutation.",
-          ko: "query에는 `readOnlyHint`, `remove…`나 `delete…` mutation에는 `destructiveHint`가 붙습니다.",
+          en: "`readOnlyHint` on a query, `destructiveHint` on a mutation whose key starts `remove`, `delete`, `purge`, `destroy`, `erase`, `wipe`, `drop`, `cancel`, `bulkRemove` or `bulkDelete`. The endpoint's `destructive` option overrides the key.",
+          ko: "query에는 `readOnlyHint`가, 키가 `remove`, `delete`, `purge`, `destroy`, `erase`, `wipe`, `drop`, `cancel`, `bulkRemove`, `bulkDelete`로 시작하는 mutation에는 `destructiveHint`가 붙습니다. 엔드포인트의 `destructive` 옵션이 키보다 우선합니다.",
         }),
       },
     ];

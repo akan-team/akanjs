@@ -39,9 +39,29 @@ describe("LoopTranscript.sanitize", () => {
       { role: "tool", toolResults: [{ id: "c1", name: "first", result: "done" }] },
     ];
     const repaired = LoopTranscript.sanitize(partial);
-    expect(repaired).toHaveLength(3);
-    expect(repaired[1]?.toolResults).toEqual([{ id: "c2", name: "second", error: LoopTranscript.unanswered }]);
-    expect(repaired[2]?.toolResults).toEqual([{ id: "c1", name: "first", result: "done" }]);
+    expect(repaired).toHaveLength(2);
+    expect(repaired[1]?.toolResults).toEqual([
+      { id: "c2", name: "second", error: LoopTranscript.unanswered },
+      { id: "c1", name: "first", result: "done" },
+    ]);
+  });
+
+  test("a batch split over two tool messages reaches the provider as one", () => {
+    const split: AgentWireMessage[] = [
+      {
+        role: "assistant",
+        toolCalls: [
+          { id: "c1", name: "first", args: {} },
+          { id: "c2", name: "second", args: {} },
+        ],
+      },
+      { role: "tool", toolResults: [{ id: "c1", name: "first", result: "one" }] },
+      { role: "tool", toolResults: [{ id: "c2", name: "second", result: "two" }] },
+    ];
+    const repaired = LoopTranscript.sanitize(split);
+    expect(repaired.map((message) => message.role)).toEqual(["assistant", "tool"]);
+    expect(repaired[1]?.toolResults?.map((result) => result.id)).toEqual(["c1", "c2"]);
+    expect(split[1]?.toolResults).toHaveLength(1);
   });
 
   test("a result whose call was cut away is dropped, and an empty assistant draft too", () => {

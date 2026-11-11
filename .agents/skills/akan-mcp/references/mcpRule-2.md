@@ -237,7 +237,8 @@ at every event.
 
 - **Who it acts as.** `account` is a snapshot the server resolved; `principal` is a stored id that
   `option.setAgentAccountResolver((principal) => account | null)` resolves at the start and before every round, so
-  a revoked one ends the run as `"unauthorized"`. Neither is ever client input. The model is offered `allow` ∩ what
+  a revoked one ends the run as `"unauthorized"`, as does a missing or falsy `account`: there is no anonymous run.
+  Neither is ever client input. The model is offered `allow` ∩ what
   the account sees on `/mcp`, and a call to a name that round did not list is answered as an unknown tool, neither
   asked about nor run. A request with no `allow` array is an `error`.
 - **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call

@@ -94,7 +94,9 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
       const spent = LlmSpend.of(error);
       if (!signal?.aborted && !spent?.usage) throw error;
       const own = spent?.usage ? "" : streamed;
-      throw LlmSpend.attach(error, LlmSpend.estimate(spent?.usage, { prompt: prepared, streamed: own }));
+      //? `fetch` rejects with the abort reason as given, and a primitive one cannot key the counts `LlmSpend` holds.
+      const carrier = error && typeof error === "object" ? error : new DOMException(String(error), "AbortError");
+      throw LlmSpend.attach(carrier, LlmSpend.estimate(spent?.usage, { prompt: prepared, streamed: own }));
     }
   }
 

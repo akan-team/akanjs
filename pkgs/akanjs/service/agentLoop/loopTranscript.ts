@@ -46,7 +46,7 @@ export class LoopTranscript {
     for (const message of messages) {
       if (message.role === "tool") {
         const results = (message.toolResults ?? []).filter((result) => called.has(result.id));
-        if (results.length) kept.push({ ...message, toolResults: results });
+        if (results.length) LoopTranscript.#answer(kept, { ...message, toolResults: results });
         continue;
       }
       if (message.role === "assistant" && !LoopTranscript.carries(message)) continue;
@@ -56,12 +56,21 @@ export class LoopTranscript {
       const unanswered = calls.filter((call) => !answered.has(call.id));
       // A model told the call was stopped asks again; one shown no call at all answers as if it had the result.
       if (unanswered.length)
-        kept.push({
+        LoopTranscript.#answer(kept, {
           role: "tool",
           toolResults: unanswered.map((call) => ({ id: call.id, name: call.name, error: LoopTranscript.unanswered })),
         });
     }
     return kept;
+  }
+
+  //? Only a resume splits a batch over two tool messages, and OpenAI's dialect puts a message's pictures straight after
+  //? its answers, which between two of them leaves a call unanswered when the next non-tool message arrives.
+  static #answer(kept: AgentWireMessage[], message: AgentWireMessage) {
+    const last = kept.at(-1);
+    if (last?.role !== "tool") kept.push(message);
+    else
+      kept[kept.length - 1] = { ...last, toolResults: [...(last.toolResults ?? []), ...(message.toolResults ?? [])] };
   }
 
   static carries(message: AgentWireMessage) {
@@ -82,9 +91,10 @@ export class LoopTranscript {
     return last.toolCalls.filter((call) => !answered.has(call.id));
   }
 
-  //? Security: a summary replaced the results `untrusted` would judge, so an unmarked one counts as tainted to a run that judges.
-  static summaryTainted(messages: readonly AgentWireMessage[], judging: boolean): boolean {
-    return messages.some(({ summary, tainted }) => summary && (tainted ?? judging));
+  //? Security: a summary replaced the results `untrusted` would judge, so an unmarked one counts as tainted to a run that
+  //? judges; a tool message's mark stands for what clipping took from the results it stores.
+  static markedTainted(messages: readonly AgentWireMessage[], judging: boolean): boolean {
+    return messages.some(({ summary, tainted }) => tainted ?? (!!summary && judging));
   }
 
   static results(messages: readonly AgentWireMessage[]): AgentWireToolResult[] {

@@ -205,8 +205,11 @@ export default page()
   alike: the caller reads `You are not permitted to perform this action.`, because either sentence names your
   authorization structure to the one caller barred from it. A domain `Err` at any other status resolves through
   the dictionary and keeps its own words, placeholders filled.
-- The `readOnly` / `destructive` / `idempotent` hints a client renders are derived from the endpoint type and key
-  and are not configurable. Clients are told to distrust hints; they are never a gate.
+- The `readOnly` / `destructive` / `idempotent` hints a client renders are derived from the endpoint type and key.
+  A mutation named `remove`, `delete`, `purge`, `destroy`, `erase`, `wipe`, `drop`, `cancel`, `bulkRemove` or
+  `bulkDelete` is destructive; `destructive: true` or `false` on the endpoint overrides that, for an `archiveOrder`
+  no verb gives away. Clients are told to distrust hints; they are never a gate. `agentService.loop` does read this
+  one: it refuses a destructive tool unless `approve` allows it.
 - **`AKAN_MCP_READONLY=true` is the read-only-deployment valve, not the exposure switch.** It drops every mutation
   whatever it declared, and reports each one in the boot log like any other refusal. It also drops each `.prompt()`
   page's text tool, whose run renders the whole page; the prompts, the `.app()` tools and their views stay.
@@ -523,7 +526,8 @@ at every event.
 
 - **Who it acts as.** `account` is a snapshot the server resolved; `principal` is a stored id that
   `option.setAgentAccountResolver((principal) => account | null)` resolves at the start and before every round, so
-  a revoked one ends the run as `"unauthorized"`. Neither is ever client input. The model is offered `allow` ∩ what
+  a revoked one ends the run as `"unauthorized"`, as does a missing or falsy `account`: there is no anonymous run.
+  Neither is ever client input. The model is offered `allow` ∩ what
   the account sees on `/mcp`, and a call to a name that round did not list is answered as an unknown tool, neither
   asked about nor run. A request with no `allow` array is an `error`.
 - **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
