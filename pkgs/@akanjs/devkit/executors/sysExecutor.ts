@@ -1,20 +1,20 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { capitalize, getPageSourceFileViolation } from "akanjs/common";
+import { AkanAppConfig, AkanLibConfig } from "../akanConfig";
 import {
   renderScopeAgentBlock,
   renderScopeAgentsMd,
   renderScopeClaudeMd,
   scanScopeRecipes,
   upsertAgentBlock,
-} from "../agentsIndex";
-import { AkanAppConfig, AkanLibConfig } from "../akanConfig";
-import { CodegenLock } from "../codegenLock";
-import { EnvSeed } from "../envSeed";
-import { ManifestDependencies } from "../manifestDependencies";
-import { AppInfo, isAkanFrameworkDependency, LibInfo } from "../scanInfo";
-import type { FileContent } from "../types";
-import { barrelFacetDirs } from "../workspaceLayout";
+} from "../guideline/agentsIndex";
+import { CodegenLock } from "../workspace/codegenLock";
+import { EnvSeed } from "../workspace/envSeed";
+import { ManifestDependencies } from "../workspace/manifestDependencies";
+import { AppInfo, isAkanFrameworkDependency, LibInfo } from "../workspace/scanInfo";
+import type { FileContent } from "../workspace/types";
+import { barrelFacetDirs } from "../workspace/workspaceLayout";
 import type { AppExecutor } from "./appExecutor";
 import { Executor, execEmoji } from "./executor";
 import type { LibExecutor } from "./libExecutor";

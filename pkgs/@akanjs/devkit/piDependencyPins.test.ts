@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import type { PackageJson } from "@akanjs/devkit/types";
+import type { PackageJson } from "@akanjs/devkit/workspace/types";
 
 //? PackageRunner re-declares pi's sibling pins because neither our `overrides` nor pi's own ranges reach a
 //? consumer's install. The source of truth is pi's `dependencies`: since 1.3.0 it pins every sibling exactly, where

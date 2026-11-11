@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { tempDirs, writeText } from "../testHelpers";
+import { tempDirs, writeText } from "../test/testHelpers";
 import { SideEffectImportOrder } from "./sideEffectImportOrder";
 
 const makeTempRoot = tempDirs("akan-devkit-side-effect-order-");

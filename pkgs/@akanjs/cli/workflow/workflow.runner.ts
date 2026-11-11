@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
 import { CommandContainer, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { AkanContextAnalyzer } from "@akanjs/devkit/context/akanContext";
 import { WorkspaceExecutor } from "@akanjs/devkit/executors";
 import {
   compactWorkflowInputs,

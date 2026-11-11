@@ -1,0 +1,1083 @@
+import { readdir } from "node:fs/promises";
+import path from "node:path";
+import { capitalize, isRecord, parseRouteModuleKey } from "akanjs/common";
+import { AppExecutor, LibExecutor, type SysExecutor, type WorkspaceExecutor } from "../executors";
+import { extractBlockVersion, readDevkitVersion } from "../guideline/agentsIndex";
+import { FileSys } from "../util/fileSys";
+import {
+  type GeneratedSyncState,
+  type RepairAction,
+  type WorkflowApplyReport,
+  type WorkflowPlan,
+  type WorkflowRunArtifact,
+  workflowPathsForPlan,
+  workflowRunArtifactPath,
+  workflowSyncDir,
+} from "../workflow";
+import type { PackageJson } from "../workspace/types";
+import {
+  barrelFacetDirs,
+  facetIndexShadowOf,
+  isScannedRootEntry,
+  rootAllowedDirs,
+  rootAllowedFiles,
+  rootEntryHintOf,
+} from "../workspace/workspaceLayout";
+import { unlabeledFieldNames } from "./moduleFieldNames";
+import { collectRecipeSources, findInlineRecipeDuplicates, scanRecipes } from "./recipeScanner";
+
+export type AkanContextFormat = "json" | "markdown";
+export type AkanModuleKind = "domain" | "service" | "scalar";
+export type AkanDiagnosticSeverity = "warning" | "error";
+
+export interface AkanAbstractSummary {
+  path: string;
+  exists: boolean;
+  title?: string;
+  headings: string[];
+  content?: string;
+}
+
+export interface AkanModuleContext {
+  kind: AkanModuleKind;
+  name: string;
+  folderName: string;
+  sysName: string;
+  sysType: "app" | "lib";
+  path: string;
+  abstract: AkanAbstractSummary;
+  files: string[];
+}
+
+export interface AkanRouteContext {
+  /** The URL pattern without the `/:lang` segment every route starts with. */
+  path: string;
+  file: string;
+  search: string[];
+  /** The page or a layout above it calls `.guard()`. */
+  guarded: boolean;
+  devOnly: boolean;
+}
+
+export interface AkanSysContext {
+  type: "app" | "lib";
+  name: string;
+  path: string;
+  hasConfig: boolean;
+  modules: AkanModuleContext[];
+  /** Listed for the app `--app` names only; reading them parses every route file. */
+  routes?: AkanRouteContext[];
+  routeError?: string;
+}
+
+export interface AkanPackageContext {
+  name: string;
+  path: string;
+  version?: string;
+}
+
+export interface AkanWorkspaceContext {
+  schemaVersion: 1;
+  repoName: string;
+  root: string;
+  packageVersion?: string;
+  apps: AkanSysContext[];
+  libs: AkanSysContext[];
+  pkgs: AkanPackageContext[];
+  generatedFiles: string[];
+  validationCommands: string[];
+}
+
+export interface AkanDiagnostic {
+  severity: AkanDiagnosticSeverity;
+  code: string;
+  message: string;
+  path?: string;
+  repairActions?: RepairAction[];
+  scope?: "baseline" | "workflow" | "unknown";
+  context?: {
+    workflow?: string;
+    planPath?: string;
+    runId?: string;
+    target?: string;
+    paths?: string[];
+  };
+}
+
+export interface GeneratedFilesFreshness {
+  status: "fresh" | "stale" | "missing" | "unknown";
+  message: string;
+  refreshCommand: string;
+  verifyingCommands: string[];
+  targets?: {
+    target: string;
+    status: "fresh" | "stale" | "missing" | "unknown";
+    lastSyncedAt?: string;
+    runId?: string;
+    generatedFiles: string[];
+    reason: string;
+  }[];
+}
+
+export interface AkanDoctorResult {
+  schemaVersion: 1;
+  repoName: string;
+  root: string;
+  strict: boolean;
+  status: "passed" | "failed";
+  diagnostics: AkanDiagnostic[];
+  generatedFiles: string[];
+  generatedFilesFreshness: GeneratedFilesFreshness;
+  validationCommands: string[];
+  repairActions: RepairAction[];
+  baselineDiagnostics?: AkanDiagnostic[];
+  workflowDiagnostics?: AkanDiagnostic[];
+}
+
+export type JsonRpcRequest = {
+  jsonrpc?: "2.0";
+  id?: string | number | null;
+  method: string;
+  params?: Record<string, unknown>;
+};
+
+export type McpFraming = "content-length" | "newline";
+export type AkanMcpMode = "readonly" | "plan" | "apply";
+
+// Cursor and Claude Code read a JSON `mcpServers` map; Codex reads a TOML `[mcp_servers.<name>]` table.
+export type AkanMcpInstallTarget = "cursor" | "claude" | "codex";
+
+export type CursorMcpConfig = {
+  mcpServers?: Record<string, unknown>;
+};
+
+export const guidelineResourceUri = (name: string) => `akan://guidelines/${name}`;
+
+const staticResourceList = [
+  { uri: "akan://docs/framework", name: "Akan framework guide", mimeType: "text/markdown" },
+  { uri: "akan://workspace/summary", name: "Workspace summary", mimeType: "application/json" },
+  { uri: "akan://workspace/apps", name: "Workspace apps", mimeType: "application/json" },
+  { uri: "akan://workspace/modules", name: "Workspace modules", mimeType: "application/json" },
+];
+
+export const buildResourceList = (guidelineNames: readonly string[]) => [
+  ...staticResourceList,
+  ...guidelineNames.map((name) => ({
+    uri: guidelineResourceUri(name),
+    name: `${name} guideline`,
+    mimeType: "text/markdown",
+  })),
+];
+
+export const cursorMcpConfigPath = ".cursor/mcp.json";
+// Claude Code reads project-scoped MCP servers from `.mcp.json` at the workspace root.
+export const claudeMcpConfigPath = ".mcp.json";
+// Codex reads project-scoped config (trusted projects) from `.codex/config.toml`.
+export const codexMcpConfigPath = ".codex/config.toml";
+
+export const akanMcpInstallTargets: AkanMcpInstallTarget[] = ["cursor", "claude", "codex"];
+
+export const akanMcpInstallConfigPaths: Record<AkanMcpInstallTarget, string> = {
+  cursor: cursorMcpConfigPath,
+  claude: claudeMcpConfigPath,
+  codex: codexMcpConfigPath,
+};
+
+// `akan mcp` resolves the workspace from its cwd: Cursor expands ${workspaceFolder}, Claude Code only sets
+// CLAUDE_PROJECT_DIR (its cwd is not guaranteed), and Codex runs from its own launch cwd.
+const cursorWorkspaceFolder = "$" + "{workspaceFolder}";
+const claudeProjectDir = "$CLAUDE_PROJECT_DIR";
+
+const akanMcpCommand = (mode: AkanMcpMode, { cd }: { cd?: string } = {}) =>
+  cd ? `cd "${cd}" && akan mcp --mode ${mode}` : `akan mcp --mode ${mode}`;
+
+const bashMcpServer = (mode: AkanMcpMode, cd: string) => ({
+  type: "stdio",
+  command: "bash",
+  args: ["-lc", akanMcpCommand(mode, { cd })],
+});
+
+export const createAkanCursorMcpServer = (mode: AkanMcpMode = "readonly") => bashMcpServer(mode, cursorWorkspaceFolder);
+
+export const createAkanClaudeMcpServer = (mode: AkanMcpMode = "readonly") => bashMcpServer(mode, claudeProjectDir);
+
+export const createAkanMcpServer = (target: "cursor" | "claude", mode: AkanMcpMode = "readonly") =>
+  target === "cursor" ? createAkanCursorMcpServer(mode) : createAkanClaudeMcpServer(mode);
+
+export const akanCursorMcpServer = createAkanCursorMcpServer();
+
+// No TOML serializer is bundled, so the `[mcp_servers.akan]` table is written as text.
+export const codexMcpServerTableHeader = "[mcp_servers.akan]";
+export const createAkanCodexMcpServerBlock = (mode: AkanMcpMode = "readonly") =>
+  `${codexMcpServerTableHeader}\ncommand = "bash"\nargs = ["-lc", "${akanMcpCommand(mode)}"]\n`;
+
+// A TOML table runs from its header until the next top-level `[header]` or EOF.
+const codexAkanTablePattern = /^\[mcp_servers\.akan\][^\n]*\n(?:(?!\[)[^\n]*(?:\n|$))*/m;
+
+export const upsertCodexMcpServerBlock = (
+  existing: string,
+  block: string,
+  { force = false }: { force?: boolean } = {},
+) => {
+  const nextBlock = block.endsWith("\n") ? block : `${block}\n`;
+  const match = existing.match(codexAkanTablePattern);
+  if (!match) {
+    if (!existing.trim()) return nextBlock;
+    return `${existing.trimEnd()}\n\n${nextBlock}`;
+  }
+  if (match[0].trim() === nextBlock.trim()) return existing;
+  if (!force)
+    throw new Error(`${codexMcpConfigPath} already has an "akan" MCP server. Re-run with --force to overwrite it.`);
+  const start = match.index ?? 0;
+  const before = existing.slice(0, start);
+  const after = existing.slice(start + match[0].length);
+  // The matched table absorbed its trailing blank line, so re-insert one before any following table.
+  const separator = after && !after.startsWith("\n") ? "\n" : "";
+  return `${before}${nextBlock}${separator}${after}`;
+};
+
+export const renderDoctorText = (result: AkanDoctorResult) => {
+  const lines = [`Akan doctor status: ${result.status}`];
+  if (result.diagnostics.length === 0) {
+    lines.push("", "No Akan workspace diagnostics found.");
+  } else {
+    lines.push(
+      "",
+      ...result.diagnostics.map((diagnostic) =>
+        [
+          `[${diagnostic.severity}] ${diagnostic.code}: ${diagnostic.message}`,
+          diagnostic.path ? `  ${diagnostic.path}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      ),
+    );
+  }
+  lines.push(
+    "",
+    "Generated file freshness:",
+    `Status: ${result.generatedFilesFreshness.status}`,
+    result.generatedFilesFreshness.message,
+    `Refresh: ${result.generatedFilesFreshness.refreshCommand}`,
+    "",
+    "Repair actions:",
+    ...(result.repairActions.length ? result.repairActions.map((action) => `- ${action.command}`) : ["- none"]),
+    "",
+    "Validation commands:",
+    ...result.validationCommands.map((command) => `- ${command}`),
+  );
+  return `${lines.join("\n")}\n`;
+};
+
+export interface AkanContextOptions {
+  app?: string | null;
+  module?: string | null;
+  includeAbstractContent?: boolean;
+}
+
+const generatedFiles = [
+  "apps/*/client.ts",
+  "apps/*/server.ts",
+  "*/lib/cnst.ts",
+  "*/lib/db.ts",
+  "*/lib/dict.ts",
+  "*/lib/sig.ts",
+  "*/lib/srv.ts",
+  "*/lib/st.ts",
+  "*/lib/useClient.ts",
+  "*/lib/useServer.ts",
+  "*/lib/**/index.ts",
+  "*/ui/index.ts",
+  "*/webkit/index.ts",
+  "*/srvkit/index.ts",
+  "*/common/index.ts",
+];
+
+const validationCommands = [
+  "akan verify [<app-or-lib-or-pkg>]",
+  "akan sync <app-or-lib>",
+  "akan lint <app-or-lib-or-pkg>",
+  "akan typecheck <app-or-lib>",
+  "akan test <app-or-lib-or-pkg>",
+  "akan build <app-name>",
+  "akan doctor --strict --format json",
+  "akan quality scan [--format json]",
+  "akan quality ssr [--format json]",
+];
+
+const unknownGeneratedFilesFreshness: GeneratedFilesFreshness = {
+  status: "unknown" as const,
+  message: "Run sync before validation so generated Akan files match the current source conventions.",
+  refreshCommand: "akan sync <app-or-lib>",
+  verifyingCommands: ["akan verify <app-or-lib>"],
+};
+
+const repairAction = (
+  kind: RepairAction["kind"],
+  command: string,
+  reason: string,
+  safeToRun: boolean,
+): RepairAction => ({
+  kind,
+  command,
+  reason,
+  safeToRun,
+});
+
+const moduleShapeFiles = (module: AkanModuleContext) => {
+  if (module.kind === "service") {
+    return [`${module.name}.dictionary.ts`, `${module.name}.service.ts`, `${module.name}.signal.ts`];
+  }
+  if (module.kind === "scalar") return [`${module.name}.constant.ts`, `${module.name}.dictionary.ts`];
+  return [
+    `${module.name}.constant.ts`,
+    `${module.name}.dictionary.ts`,
+    `${module.name}.service.ts`,
+    `${module.name}.store.ts`,
+    `${module.name}.signal.ts`,
+  ];
+};
+
+const safeReadDir = async (dirPath: string) =>
+  (await readdir(dirPath, { withFileTypes: true }).catch(() => [])).sort((a, b) => a.name.localeCompare(b.name));
+
+const safeReadText = (filePath: string) => FileSys.readText(filePath).catch(() => null);
+
+const safeReadJson = <T>(filePath: string) => FileSys.readJson<T>(filePath).catch(() => null);
+
+const isWorkflowPlan = (value: unknown): value is WorkflowPlan =>
+  typeof value === "object" &&
+  value !== null &&
+  "schemaVersion" in value &&
+  value.schemaVersion === 1 &&
+  "mode" in value &&
+  value.mode === "plan" &&
+  "inputs" in value &&
+  isRecord(value.inputs) &&
+  "predictedChanges" in value &&
+  Array.isArray(value.predictedChanges) &&
+  value.predictedChanges.every((change) => isRecord(change) && typeof change.target === "string");
+
+const isPathList = (value: unknown) =>
+  Array.isArray(value) && value.every((file) => isRecord(file) && typeof file.path === "string");
+
+const isWorkflowApplyReport = (value: unknown): value is WorkflowApplyReport =>
+  typeof value === "object" &&
+  value !== null &&
+  "schemaVersion" in value &&
+  value.schemaVersion === 1 &&
+  "mode" in value &&
+  (value.mode === "apply" || value.mode === "dry-run") &&
+  "changedFiles" in value &&
+  isPathList(value.changedFiles) &&
+  "generatedFiles" in value &&
+  isPathList(value.generatedFiles) &&
+  "plan" in value &&
+  isWorkflowPlan(value.plan);
+
+const isWorkflowRunArtifact = (value: unknown): value is WorkflowRunArtifact =>
+  typeof value === "object" && value !== null && "schemaVersion" in value && value.schemaVersion === 1;
+
+const workflowPathsForArtifact = (artifact: WorkflowRunArtifact) => {
+  if (isWorkflowPlan(artifact)) return workflowPathsForPlan(artifact);
+  if (isWorkflowApplyReport(artifact)) {
+    return [
+      ...artifact.changedFiles.map((file) => file.path),
+      ...artifact.generatedFiles.map((file) => file.path),
+      ...workflowPathsForPlan(artifact.plan),
+    ];
+  }
+  if ("mode" in artifact && artifact.mode === "validate" && isWorkflowPlan(artifact.plan))
+    return workflowPathsForPlan(artifact.plan);
+  return [];
+};
+
+const loadWorkflowContextPaths = async (
+  workspace: WorkspaceExecutor,
+  runIdOrPlan: string | null,
+  changedFiles: string[],
+) => {
+  const paths = [...changedFiles];
+  if (!runIdOrPlan) return paths;
+  const inputPath = path.isAbsolute(runIdOrPlan) ? runIdOrPlan : path.join(workspace.workspaceRoot, runIdOrPlan);
+  const artifact =
+    (await safeReadJson<WorkflowRunArtifact | WorkflowPlan>(inputPath)) ??
+    (await safeReadJson<WorkflowRunArtifact>(path.join(workspace.workspaceRoot, workflowRunArtifactPath(runIdOrPlan))));
+  if (artifact && isWorkflowRunArtifact(artifact)) paths.push(...workflowPathsForArtifact(artifact));
+  return [...new Set(paths.filter(Boolean))];
+};
+
+const pathKey = (value: string) =>
+  value
+    .replaceAll("\\", "/")
+    .replaceAll("*", "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\/+/g, "/")
+    .replace(/^\/|\/$/g, "");
+
+const isWorkflowRelatedDiagnostic = (diagnostic: AkanDiagnostic, workflowPaths: string[]) => {
+  if (!diagnostic.path) return false;
+  const diagnosticPath = pathKey(diagnostic.path);
+  return workflowPaths.some((workflowPath) => {
+    const candidate = pathKey(workflowPath);
+    if (!candidate) return false;
+    return (
+      diagnosticPath.startsWith(candidate) || candidate.startsWith(diagnosticPath) || diagnosticPath.includes(candidate)
+    );
+  });
+};
+
+const readGeneratedSyncStates = async (workspace: WorkspaceExecutor) => {
+  const syncDir = path.join(workspace.workspaceRoot, workflowSyncDir);
+  const entries = await safeReadDir(syncDir);
+  const states = await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .map((entry) => safeReadJson<GeneratedSyncState>(path.join(syncDir, entry.name))),
+  );
+  return states.filter(
+    (state): state is GeneratedSyncState =>
+      !!state && state.schemaVersion === 1 && typeof state.target === "string" && typeof state.syncedAt === "string",
+  );
+};
+
+const generatedFreshnessFromStates = async (workspace: WorkspaceExecutor): Promise<GeneratedFilesFreshness> => {
+  const states = await readGeneratedSyncStates(workspace);
+  if (states.length === 0) return unknownGeneratedFilesFreshness;
+  const targets = states
+    .sort((a, b) => a.target.localeCompare(b.target))
+    .map((state) => ({
+      target: state.target,
+      status: state.status === "passed" ? ("fresh" as const) : ("stale" as const),
+      lastSyncedAt: state.syncedAt,
+      runId: state.runId,
+      generatedFiles: state.generatedFiles.map((file) => file.path),
+      reason:
+        state.status === "passed"
+          ? `Generated files were refreshed by ${state.command}.`
+          : `Last generated repair command failed: ${state.command}.`,
+    }));
+  const lastFresh = targets
+    .filter((target) => target.status === "fresh" && target.lastSyncedAt)
+    .sort((a, b) => (b.lastSyncedAt ?? "").localeCompare(a.lastSyncedAt ?? ""))[0];
+  return {
+    status: targets.some((target) => target.status === "fresh") ? "fresh" : "stale",
+    message: lastFresh
+      ? `Generated files were refreshed for ${lastFresh.target} at ${lastFresh.lastSyncedAt}.`
+      : "Generated sync state exists, but the last recorded repair did not pass.",
+    refreshCommand: "akan sync <app-or-lib>",
+    verifyingCommands: ["akan verify <app-or-lib>"],
+    targets,
+  };
+};
+
+const parseAbstractSummary = (
+  relativePath: string,
+  content: string | null,
+  includeContent: boolean,
+): AkanAbstractSummary => {
+  if (content === null) return { path: relativePath, exists: false, headings: [] };
+  const headings = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("#"))
+    .map((line) => line.replace(/^#+\s*/, "").trim())
+    .filter(Boolean);
+  return {
+    path: relativePath,
+    exists: true,
+    title: headings[0],
+    headings: headings.slice(0, 8),
+    ...(includeContent ? { content } : {}),
+  };
+};
+
+const readFiles = async (dirPath: string) =>
+  (await safeReadDir(dirPath))
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .sort();
+
+const getRelative = (workspace: WorkspaceExecutor, absolutePath: string) =>
+  path.relative(workspace.workspaceRoot, absolutePath).replaceAll(path.sep, "/");
+
+const createModuleContext = async (
+  workspace: WorkspaceExecutor,
+  sys: SysExecutor,
+  kind: AkanModuleKind,
+  folderName: string,
+  moduleName: string,
+  includeAbstractContent: boolean,
+): Promise<AkanModuleContext> => {
+  const modulePath =
+    kind === "scalar"
+      ? path.join(sys.cwdPath, "lib", "__scalar", moduleName)
+      : path.join(sys.cwdPath, "lib", folderName);
+  const relativePath = getRelative(workspace, modulePath);
+  const abstractPath = `${relativePath}/${moduleName}.abstract.md`;
+  const abstractContent = await safeReadText(path.join(workspace.workspaceRoot, abstractPath));
+  return {
+    kind,
+    name: moduleName,
+    folderName,
+    sysName: sys.name,
+    sysType: sys.type,
+    path: relativePath,
+    abstract: parseAbstractSummary(abstractPath, abstractContent, includeAbstractContent),
+    files: await readFiles(modulePath),
+  };
+};
+
+const getSysModules = async (
+  workspace: WorkspaceExecutor,
+  sys: SysExecutor,
+  {
+    includeAbstractContent = false,
+    module: moduleFilter,
+  }: { includeAbstractContent?: boolean; module?: string | null } = {},
+) => {
+  const libPath = path.join(sys.cwdPath, "lib");
+  const entries = await safeReadDir(libPath);
+  const modules: AkanModuleContext[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name === "__scalar") continue;
+    if (entry.name.startsWith("__")) continue;
+    if (entry.name.startsWith("_")) {
+      const serviceName = entry.name.replace(/^_+/, "");
+      if (moduleFilter && moduleFilter !== serviceName && moduleFilter !== entry.name) continue;
+      if (!(await FileSys.fileExists(path.join(libPath, entry.name, `${serviceName}.service.ts`)))) continue;
+      modules.push(
+        await createModuleContext(workspace, sys, "service", entry.name, serviceName, includeAbstractContent),
+      );
+    } else {
+      if (moduleFilter && moduleFilter !== entry.name) continue;
+      if (!(await FileSys.fileExists(path.join(libPath, entry.name, `${entry.name}.constant.ts`)))) continue;
+      modules.push(await createModuleContext(workspace, sys, "domain", entry.name, entry.name, includeAbstractContent));
+    }
+  }
+
+  const scalarRoot = path.join(libPath, "__scalar");
+  for (const entry of await safeReadDir(scalarRoot)) {
+    if (!entry.isDirectory() || entry.name.startsWith("_")) continue;
+    if (moduleFilter && moduleFilter !== entry.name) continue;
+    if (!(await FileSys.fileExists(path.join(scalarRoot, entry.name, `${entry.name}.constant.ts`)))) continue;
+    modules.push(await createModuleContext(workspace, sys, "scalar", entry.name, entry.name, includeAbstractContent));
+  }
+
+  return modules.sort((a, b) => `${a.sysName}:${a.path}`.localeCompare(`${b.sysName}:${b.path}`));
+};
+
+const getAppRoutes = async (app: AppExecutor, workspaceRoot: string): Promise<AkanRouteContext[]> => {
+  const sources = await app.getRouteSources();
+  const guardedLayouts = new Set<string>();
+  const pages: { source: (typeof sources)[number]; parsed: ReturnType<typeof parseRouteModuleKey> }[] = [];
+  for (const source of sources) {
+    const parsed = parseRouteModuleKey(source.key);
+    if (parsed.kind === "layout" && source.info.chain?.guarded) guardedLayouts.add(parsed.routeSegments.join("/"));
+    else if (parsed.kind === "page") pages.push({ source, parsed });
+  }
+  return pages
+    .map(({ source, parsed }) => {
+      const segments = parsed.routeSegments;
+      //? The layouts that wrap a page, as the route seed index walks them: an `_index` sits inside its own folder.
+      const reach = parsed.leaf === "_index" ? segments.length : segments.length - 1;
+      const underGuard = Array.from({ length: reach + 1 }, (_, idx) => segments.slice(0, idx).join("/")).some(
+        (prefix) => guardedLayouts.has(prefix),
+      );
+      return {
+        path: parsed.pattern.replace(/^\/:lang/, "") || "/",
+        file: path.relative(workspaceRoot, source.absPath).replaceAll(path.sep, "/"),
+        search: source.info.chain?.search ?? [],
+        guarded: !!source.info.chain?.guarded || underGuard,
+        devOnly: source.info.devOnly,
+      };
+    })
+    .sort((a, b) => a.path.localeCompare(b.path));
+};
+
+const getSysContext = async (
+  workspace: WorkspaceExecutor,
+  type: "app" | "lib",
+  name: string,
+  options: AkanContextOptions,
+): Promise<AkanSysContext> => {
+  const sys = type === "app" ? AppExecutor.from(workspace, name) : LibExecutor.from(workspace, name);
+  const context: AkanSysContext = {
+    type,
+    name,
+    path: `${type}s/${name}`,
+    hasConfig: await FileSys.fileExists(path.join(sys.cwdPath, "akan.config.ts")),
+    modules: await getSysModules(workspace, sys, {
+      includeAbstractContent: options.includeAbstractContent,
+      module: options.module,
+    }),
+  };
+  if (sys instanceof AppExecutor && options.app === name)
+    await getAppRoutes(sys, workspace.workspaceRoot).then(
+      (routes) => (context.routes = routes),
+      (error: unknown) => (context.routeError = error instanceof Error ? error.message : String(error)),
+    );
+  return context;
+};
+
+export class AkanContextAnalyzer {
+  static async analyze(workspace: WorkspaceExecutor, options: AkanContextOptions = {}): Promise<AkanWorkspaceContext> {
+    const [appNames, libNames, pkgNames] = await workspace.getExecs();
+    const rootPackageJson = await safeReadJson<PackageJson>(path.join(workspace.workspaceRoot, "package.json"));
+    const filteredApps = options.app ? appNames.filter((name) => name === options.app) : appNames;
+    const [apps, libs, pkgs] = await Promise.all([
+      Promise.all(filteredApps.map((name) => getSysContext(workspace, "app", name, options))),
+      Promise.all(libNames.map((name) => getSysContext(workspace, "lib", name, options))),
+      Promise.all(
+        pkgNames.map(async (name) => {
+          const packageJson = await safeReadJson<PackageJson>(
+            path.join(workspace.workspaceRoot, "pkgs", name, "package.json"),
+          );
+          return {
+            name,
+            path: `pkgs/${name}`,
+            ...(packageJson?.version ? { version: packageJson.version } : {}),
+          };
+        }),
+      ),
+    ]);
+
+    return {
+      schemaVersion: 1,
+      repoName: workspace.repoName,
+      root: workspace.workspaceRoot,
+      packageVersion: rootPackageJson?.dependencies?.akanjs ?? rootPackageJson?.devDependencies?.["@akanjs/devkit"],
+      apps,
+      libs,
+      pkgs,
+      generatedFiles,
+      validationCommands,
+    };
+  }
+
+  // Nothing re-renders the AGENTS.md block on `bun update`, so the version stamp is the only staleness signal.
+  static async #agentGuideDrift(workspace: WorkspaceExecutor) {
+    const installed = await readDevkitVersion();
+    if (!installed) return null;
+    const content = await safeReadText(path.join(workspace.workspaceRoot, "AGENTS.md"));
+    if (content === null) return null;
+    const stamped = extractBlockVersion(content);
+    if (stamped === installed) return null;
+    const hint = "Re-render the AGENTS.md managed block from the installed framework release.";
+    if (!stamped)
+      return {
+        code: "agent-guide-unstamped",
+        message: `AGENTS.md carries no generated-version stamp, so its conventions may predate @akanjs/devkit ${installed}`,
+        hint,
+      };
+    return {
+      code: "agent-guide-stale",
+      message: `AGENTS.md was generated by @akanjs/devkit ${stamped}, but ${installed} is installed`,
+      hint,
+    };
+  }
+
+  //? Codex joins every AGENTS.md from the repo root down to its folder and drops what passes 32 KiB (`project_doc_max_bytes`).
+  static async #agentGuideOversize(workspace: WorkspaceExecutor, sysPaths: string[]) {
+    const sizeOf = async (file: string) => {
+      const content = await safeReadText(path.join(workspace.workspaceRoot, file));
+      return { file, bytes: content === null ? 0 : Buffer.byteLength(content) };
+    };
+    const root = await sizeOf("AGENTS.md");
+    if (root.bytes === 0) return null;
+    const scoped = await Promise.all(sysPaths.map((sysPath) => sizeOf(`${sysPath}/AGENTS.md`)));
+    const largest = scoped.reduce((max, entry) => (entry.bytes > max.bytes ? entry : max), { file: "", bytes: 0 });
+    const total = root.bytes + largest.bytes;
+    if (total <= 32 * 1024 * 0.8) return null;
+    const subject = largest.bytes ? `AGENTS.md and ${largest.file} add up to` : "AGENTS.md is";
+    return `${subject} ${Math.ceil(total / 1024)} KiB of the 32 KiB Codex reads — run \`akan agent install\`, then shorten the text outside the akan:agent markers or move it into a skill.`;
+  }
+
+  static async #agentGuideLeftovers(workspace: WorkspaceExecutor) {
+    const root = workspace.workspaceRoot;
+    const guide = (await safeReadText(path.join(root, "AGENTS.md"))) ?? "";
+    const leftovers: { path: string; message: string }[] = [];
+    for (const doc of ["docs/AI-DEVELOPMENT.md", "docs/GENERATED.md"]) {
+      const pointer = guide.includes(doc);
+      if ((await safeReadText(path.join(root, doc))) !== null)
+        leftovers.push({
+          path: doc,
+          message: `${doc} is an older template's copy of the agent guide, and nothing reads it now — delete it${pointer ? " and the AGENTS.md sentence that points to it" : ""}.`,
+        });
+      else if (pointer)
+        leftovers.push({
+          path: "AGENTS.md",
+          message: `AGENTS.md points to ${doc}, which is gone — delete that sentence.`,
+        });
+    }
+    return leftovers;
+  }
+
+  //? Older templates wrote these for Next.js: nothing installs or reads them, and editors warn about the plugin.
+  static async #configLeftovers(workspace: WorkspaceExecutor, sysPaths: string[]) {
+    const leftovers: { path: string; message: string }[] = [];
+    for (const sysPath of sysPaths) {
+      const tsconfigPath = `${sysPath}/tsconfig.json`;
+      const tsconfig = await safeReadText(path.join(workspace.workspaceRoot, tsconfigPath));
+      if (tsconfig && (/"name"\s*:\s*"next"/.test(tsconfig) || tsconfig.includes(".next/types")))
+        leftovers.push({
+          path: tsconfigPath,
+          message: `${tsconfigPath} still names the Next.js TS plugin or .next/types, which Akan never uses — delete the "next" plugin entry and the ".next/types/**/*.ts" include.`,
+        });
+    }
+    const bunfig = await safeReadText(path.join(workspace.workspaceRoot, "bunfig.toml"));
+    if (bunfig?.includes("bun-plugin-tailwind"))
+      leftovers.push({
+        path: "bunfig.toml",
+        message:
+          "bunfig.toml still loads bun-plugin-tailwind, which is not installed and which Akan never uses (it compiles Tailwind itself) — delete the [serve.static] section, which Akan never reads.",
+      });
+    return leftovers;
+  }
+
+  static async doctor(
+    workspace: WorkspaceExecutor,
+    {
+      strict = false,
+      runIdOrPlan = null,
+      changedFiles = [],
+    }: { strict?: boolean; runIdOrPlan?: string | null; changedFiles?: string[] } = {},
+  ): Promise<AkanDoctorResult> {
+    const context = await AkanContextAnalyzer.analyze(workspace);
+    const workflowPaths = await loadWorkflowContextPaths(workspace, runIdOrPlan, changedFiles);
+    const diagnostics: AkanDiagnostic[] = [];
+    const repairActions: RepairAction[] = [
+      repairAction("generated", "akan repair generated --app <app-or-lib>", "Refresh generated Akan files.", true),
+      repairAction(
+        "format",
+        "akan repair format --target <app-or-lib-or-pkg>",
+        "Run the formatter/linter repair path.",
+        true,
+      ),
+    ];
+    const report = (diagnostic: AkanDiagnostic, action: RepairAction) => {
+      diagnostics.push({ ...diagnostic, repairActions: [action] });
+      repairActions.push(action);
+    };
+
+    for (const sys of [...context.apps, ...context.libs]) {
+      const sysPath = path.join(workspace.workspaceRoot, sys.path);
+      for (const entry of await safeReadDir(sysPath)) {
+        if (!isScannedRootEntry(sys.type, entry.name)) continue;
+        const allowed = entry.isDirectory()
+          ? rootAllowedDirs[sys.type].has(entry.name)
+          : rootAllowedFiles[sys.type].has(entry.name);
+        const rootEntryHint = rootEntryHintOf(sys.type, entry.name);
+        if (!allowed)
+          report(
+            {
+              severity: "error",
+              code: `${sys.type}-root-unknown-entry`,
+              path: `${sys.path}/${entry.name}`,
+              message: `Unexpected ${entry.isDirectory() ? "folder" : "file"} in ${sys.type} root: ${sys.path}/${entry.name}${
+                rootEntryHint ? ` (${rootEntryHint})` : ""
+              }`,
+            },
+            repairAction(
+              "module-shape",
+              `akan repair module-shape --app ${sys.name}`,
+              `Review ${sys.type} root shape and remove or move the unknown entry.`,
+              false,
+            ),
+          );
+      }
+      for (const facet of barrelFacetDirs)
+        for (const entry of await safeReadDir(path.join(sysPath, facet))) {
+          const shadow = entry.isDirectory() ? null : facetIndexShadowOf(`${facet}/${entry.name}`);
+          if (!shadow) continue;
+          const entryPath = `${sys.path}/${facet}/${entry.name}`;
+          report(
+            { severity: "error", code: "facet-index-shadowed", path: entryPath, message: `${entryPath} ${shadow}` },
+            repairAction("generated", `akan sync ${sys.name}`, `Delete ${entryPath} by hand, then sync.`, false),
+          );
+        }
+    }
+
+    const agentDrift = await AkanContextAnalyzer.#agentGuideDrift(workspace);
+    if (agentDrift)
+      report(
+        { severity: "warning", code: agentDrift.code, path: "AGENTS.md", message: agentDrift.message },
+        repairAction("generated", "akan agent install agents-md", agentDrift.hint, true),
+      );
+    const sysPaths = [...context.apps, ...context.libs].map((sys) => sys.path);
+    const oversize = await AkanContextAnalyzer.#agentGuideOversize(workspace, sysPaths);
+    if (oversize)
+      diagnostics.push({ severity: "warning", code: "agent-guide-oversized", path: "AGENTS.md", message: oversize });
+    for (const leftover of await AkanContextAnalyzer.#agentGuideLeftovers(workspace))
+      diagnostics.push({ severity: "warning", code: "agent-guide-leftover", ...leftover });
+    for (const leftover of await AkanContextAnalyzer.#configLeftovers(workspace, sysPaths))
+      diagnostics.push({ severity: "warning", code: "config-leftover", ...leftover });
+
+    for (const sys of [...context.apps, ...context.libs]) {
+      for (const module of sys.modules) {
+        const moduleShapeCommand = `akan repair module-shape --app ${sys.name} --module ${module.name}`;
+        if (!module.abstract.exists)
+          report(
+            {
+              severity: strict ? "error" : "warning",
+              code: "module-abstract-missing",
+              path: module.abstract.path,
+              message: `${capitalize(module.kind)} module ${sys.name}:${module.name} should include ${module.abstract.path}`,
+            },
+            repairAction(
+              "module-shape",
+              moduleShapeCommand,
+              "Create the missing module abstract or inspect required source files.",
+              false,
+            ),
+          );
+        const missingFiles = moduleShapeFiles(module).filter((filename) => !module.files.includes(filename));
+        if (missingFiles.length)
+          report(
+            {
+              severity: "error",
+              code: "module-shape-invalid",
+              path: module.path,
+              message: `${capitalize(module.kind)} module ${sys.name}:${module.name} is missing required files: ${missingFiles.join(", ")}`,
+            },
+            repairAction("module-shape", moduleShapeCommand, "Review missing required module source files.", false),
+          );
+        if (module.kind !== "service" && module.files.includes(`${module.name}.dictionary.ts`)) {
+          const constantPath = path.join(workspace.workspaceRoot, module.path, `${module.name}.constant.ts`);
+          const dictionaryPath = path.join(workspace.workspaceRoot, module.path, `${module.name}.dictionary.ts`);
+          const [constantContent, dictionaryContent] = await Promise.all([
+            safeReadText(constantPath),
+            safeReadText(dictionaryPath),
+          ]);
+          if (constantContent && dictionaryContent) {
+            for (const fieldName of unlabeledFieldNames(constantContent, dictionaryContent)) {
+              report(
+                {
+                  severity: "warning",
+                  code: "dictionary-label-missing",
+                  path: `${module.path}/${module.name}.dictionary.ts`,
+                  message: `Dictionary labels for ${sys.name}:${module.name}.${fieldName} were not found.`,
+                },
+                repairAction(
+                  "dictionary",
+                  `akan repair dictionary --app ${sys.name} --module ${module.name}`,
+                  "Add missing dictionary labels for source constant fields.",
+                  false,
+                ),
+              );
+            }
+          }
+        }
+      }
+    }
+
+    //* Advisory only (warning): promoted to lint only if inline re-authoring actually recurs.
+    for (const sys of [...context.apps, ...context.libs]) {
+      const sources = await collectRecipeSources(path.join(workspace.workspaceRoot, sys.path, "ui"), "ui");
+      if (sources.length === 0) continue;
+      const recipes = scanRecipes(sources);
+      const files: { path: string; content: string }[] = [];
+      const glob = new Bun.Glob("**/*.tsx");
+      for await (const abs of glob.scan({ cwd: path.join(workspace.workspaceRoot, sys.path), absolute: true })) {
+        if (/[\\/](node_modules|\.akan|dist)[\\/]|[\\/]v1[\\/]/.test(abs) || /\.(test|spec)\.tsx$/.test(abs)) continue;
+        files.push({
+          path: abs,
+          content: await Bun.file(abs)
+            .text()
+            .catch(() => ""),
+        });
+      }
+      const duplicates = findInlineRecipeDuplicates(recipes, files);
+      if (duplicates.length === 0) continue;
+      const preview = duplicates
+        .slice(0, 3)
+        .map((duplicate) => `${path.relative(workspace.workspaceRoot, duplicate.path)}:${duplicate.line}`)
+        .join(", ");
+      diagnostics.push({
+        severity: "warning",
+        code: "recipe-inline-duplicate",
+        path: path.join(sys.path, "ui/Recipe"),
+        message: `${sys.name}: ${duplicates.length} inline className(s) re-author a recipe fingerprint (${preview}${duplicates.length > 3 ? ", …" : ""}) — consume the recipe instead.`,
+      });
+    }
+
+    // Doctor never writes, so this is what catches a committed stale recipe index (lint and sync self-heal the tree).
+    const scanNames = async (uiDirPath: string, basename?: string) =>
+      new Set(scanRecipes(await collectRecipeSources(uiDirPath, "ui", basename)).map((info) => info.name));
+    const declaredByImport = new Map<string, Set<string>>();
+    declaredByImport.set("akanjs/ui", await scanNames(path.join(workspace.workspaceRoot, "pkgs/akanjs/ui"), "recipe"));
+    for (const sys of [...context.apps, ...context.libs])
+      declaredByImport.set(`@${sys.path}/ui`, await scanNames(path.join(workspace.workspaceRoot, sys.path, "ui")));
+    // Section slice anchors the heading to a full line — the same string appears back-ticked in prose.
+    const sectionOf = (content: string, heading: string) => {
+      const match = new RegExp(`^${heading}$`, "m").exec(content);
+      if (!match) return "";
+      const section = content.slice(match.index);
+      const sectionEnd = section.indexOf("\n## ", 1);
+      return sectionEnd === -1 ? section : section.slice(0, sectionEnd);
+    };
+    // `Import from \`<path>\`:` groups with their `- \`name\`` items, so each name checks against its owner.
+    const listedByImport = (body: string) => {
+      const groups = new Map<string, Set<string>>();
+      let current: Set<string> | null = null;
+      for (const line of body.split("\n")) {
+        const group = /^Import from `([^`]+)`:/.exec(line);
+        if (group) {
+          current = groups.get(group[1]) ?? new Set();
+          groups.set(group[1], current);
+          continue;
+        }
+        const item = /^- `([A-Za-z0-9_$]+)`/.exec(line);
+        if (item && current) current.add(item[1]);
+        else if (!item) current = null;
+      }
+      return groups;
+    };
+    const pushIndexDiagnostic = (indexPath: string, missing: string[], stale: string[], repairCommand: string) => {
+      if (missing.length === 0 && stale.length === 0) return;
+      const parts = [
+        missing.length > 0 ? `${missing.length} declared but unlisted (${missing.slice(0, 5).join(", ")})` : "",
+        stale.length > 0 ? `${stale.length} listed but gone (${stale.slice(0, 5).join(", ")})` : "",
+      ].filter(Boolean);
+      report(
+        {
+          severity: "error",
+          code: "recipe-index-stale",
+          path: indexPath,
+          message: `${indexPath} recipe index is out of date — ${parts.join("; ")}. Agents read this list as authoritative.`,
+        },
+        repairAction("generated", repairCommand, "Regenerate the recipe index from the scanned recipes.", true),
+      );
+    };
+    const frameworkDeclared = declaredByImport.get("akanjs/ui") ?? new Set<string>();
+    if (frameworkDeclared.size > 0) {
+      const agentsMd = await Bun.file(path.join(workspace.workspaceRoot, "AGENTS.md"))
+        .text()
+        .catch(() => "");
+      const listed = listedByImport(sectionOf(agentsMd, "## Recipes")).get("akanjs/ui") ?? new Set<string>();
+      pushIndexDiagnostic(
+        "AGENTS.md",
+        [...frameworkDeclared].filter((name) => !listed.has(name)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+        [...listed].filter((name) => !frameworkDeclared.has(name)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+        "akan agent install agents-md",
+      );
+    }
+    for (const sys of [...context.apps, ...context.libs]) {
+      const own = declaredByImport.get(`@${sys.path}/ui`) ?? new Set<string>();
+      const scopeMd = await Bun.file(path.join(workspace.workspaceRoot, sys.path, "AGENTS.md"))
+        .text()
+        .catch(() => "");
+      const groups = listedByImport(sectionOf(scopeMd, "## Recipes In Scope"));
+      const ownListed = groups.get(`@${sys.path}/ui`) ?? new Set<string>();
+      const missing = [...own].filter((name) => !ownListed.has(name)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      // Every listed name — the scope's own and its dependency libs' — must still exist at its owner.
+      const stale = [...groups.entries()]
+        .flatMap(([importFrom, names]) =>
+          [...names].filter((name) => !(declaredByImport.get(importFrom) ?? new Set()).has(name)),
+        )
+        .sort();
+      pushIndexDiagnostic(`${sys.path}/AGENTS.md`, missing, stale, `akan sync ${sys.name}`);
+    }
+
+    const scopedDiagnostics = diagnostics.map((diagnostic) => ({
+      ...diagnostic,
+      scope: workflowPaths.length
+        ? isWorkflowRelatedDiagnostic(diagnostic, workflowPaths)
+          ? ("workflow" as const)
+          : ("baseline" as const)
+        : diagnostic.scope,
+      context: workflowPaths.length ? { ...diagnostic.context, paths: workflowPaths } : diagnostic.context,
+    }));
+    const workflowDiagnostics = scopedDiagnostics.filter((diagnostic) => diagnostic.scope === "workflow");
+    const baselineDiagnostics = scopedDiagnostics.filter((diagnostic) => diagnostic.scope === "baseline");
+    return {
+      schemaVersion: 1,
+      repoName: context.repoName,
+      root: context.root,
+      strict,
+      status: scopedDiagnostics.some((diagnostic) => diagnostic.severity === "error") ? "failed" : "passed",
+      diagnostics: scopedDiagnostics,
+      generatedFiles: context.generatedFiles,
+      generatedFilesFreshness: await generatedFreshnessFromStates(workspace),
+      validationCommands: context.validationCommands,
+      repairActions,
+      ...(workflowPaths.length ? { baselineDiagnostics, workflowDiagnostics } : {}),
+    };
+  }
+
+  static findModules(
+    context: AkanWorkspaceContext,
+    moduleName?: string | null,
+    { app = null }: { app?: string | null } = {},
+  ) {
+    const modules = [...context.apps, ...context.libs]
+      .filter((sys) => !app || sys.name === app)
+      .flatMap((sys) => sys.modules);
+    return moduleName
+      ? modules.filter((module) => module.name === moduleName || module.folderName === moduleName)
+      : modules;
+  }
+
+  static renderMarkdown(context: AkanWorkspaceContext, { module: moduleName }: { module?: string | null } = {}) {
+    const lines = [`# Akan Workspace Context`, "", `- Repo: ${context.repoName}`, `- Root: ${context.root}`];
+    if (context.packageVersion) lines.push(`- Akan version: ${context.packageVersion}`);
+    lines.push("", "## Apps", ...context.apps.map((app) => `- ${app.name}: ${app.modules.length} module(s)`));
+    lines.push("", "## Libraries", ...context.libs.map((lib) => `- ${lib.name}: ${lib.modules.length} module(s)`));
+    lines.push(
+      "",
+      "## Packages",
+      ...context.pkgs.map((pkg) => `- ${pkg.name}${pkg.version ? ` (${pkg.version})` : ""}`),
+    );
+
+    for (const app of context.apps) {
+      if (app.routeError) lines.push("", `## Routes: ${app.name}`, `- Not read: ${app.routeError}`);
+      else if (app.routes)
+        lines.push("", `## Routes: ${app.name}`, ...AkanContextAnalyzer.#routeLines(app.name, app.routes));
+    }
+
+    const modules = AkanContextAnalyzer.findModules(context, moduleName);
+    lines.push("", "## Modules");
+    for (const module of modules) {
+      lines.push("", `### ${module.sysName}:${module.name} (${module.kind})`, `- Path: ${module.path}`);
+      lines.push(`- Abstract: ${module.abstract.exists ? module.abstract.path : "missing"}`);
+      if (module.abstract.exists && module.abstract.content) lines.push("", module.abstract.content.trim(), "");
+      else if (module.abstract.headings.length)
+        lines.push(`- Abstract headings: ${module.abstract.headings.join(", ")}`);
+      lines.push(`- Files: ${module.files.join(", ") || "none"}`);
+    }
+
+    lines.push("", "## Validation", ...context.validationCommands.map((command) => `- \`${command}\``));
+    return `${lines.join("\n")}\n`;
+  }
+
+  static readonly routeListLimit = 60;
+
+  //? Past the limit the biggest top folders fold into one line each: a docs section alone would fill the context.
+  static #routeLines(appName: string, routes: AkanRouteContext[]) {
+    const folderOf = (route: AkanRouteContext) => route.file.split("/").slice(0, 4).join("/");
+    const groups = Map.groupBy(routes, folderOf);
+    const folded = new Set<string>();
+    let listed = routes.length;
+    for (const [folder, members] of [...groups].sort((a, b) => b[1].length - a[1].length)) {
+      if (listed <= AkanContextAnalyzer.routeListLimit) break;
+      folded.add(folder);
+      listed -= members.length;
+    }
+    const lines = [`Paths omit the \`/:lang\` prefix; \`akan preview ${appName} <path>\` opens one.`];
+    for (const route of routes) {
+      if (folded.has(folderOf(route))) continue;
+      const search = route.search.length ? ` ?${route.search.join("&")}` : "";
+      const marks = `${route.guarded ? " (guarded)" : ""}${route.devOnly ? " (dev only)" : ""}`;
+      lines.push(`- ${route.path}${search}${marks} — ${route.file}`);
+    }
+    for (const folder of folded) {
+      const members = groups.get(folder) ?? [];
+      const examples = members.slice(0, 3).map((route) => route.path);
+      lines.push(
+        `- ${folder}/: ${members.length} routes folded (${examples.join(", ")}, …); \`--format json\` lists every route`,
+      );
+    }
+    return lines;
+  }
+}

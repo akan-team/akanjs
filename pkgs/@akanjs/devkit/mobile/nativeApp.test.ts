@@ -4,7 +4,7 @@ import type { AkanPlugin } from "akanjs";
 import type { AkanNativeTarget } from "../akanConfig";
 import type { App } from "../commandDecorators";
 import { CsrArtifactBuilder } from "../frontendBuild/csrArtifactBuilder";
-import { tempDirs, writeText } from "../testHelpers";
+import { tempDirs, writeText } from "../test/testHelpers";
 import { NativeApp } from "./nativeApp";
 import { NativeConfig } from "./nativeConfig";
 import { NativePublicEnv } from "./nativePublicEnv";

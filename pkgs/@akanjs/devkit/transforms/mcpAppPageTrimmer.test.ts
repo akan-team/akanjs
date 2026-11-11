@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { symlink } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs, writeText } from "../testHelpers";
+import { tempDirs, writeText } from "../test/testHelpers";
 import { createBarrelImportsPlugin } from "./barrelImportsPlugin";
 import { McpAppPageTrimmer } from "./mcpAppPageTrimmer";
 

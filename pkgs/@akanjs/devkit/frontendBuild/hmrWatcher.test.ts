@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Logger } from "akanjs/common";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { type ChangeBatch, HmrWatcher } from "./hmrWatcher";
 
 // The real Bun watcher, not a fake: the dropped-event behaviour under test only exists there.

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { BunTestReport } from "./BunTestReport";
 import { PlatformTestRun } from "./PlatformTestRun";
 import type { PackageTestResult, PlatformTestResult } from "./PlatformTestTarget";

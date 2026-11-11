@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import type { BuilderMessage } from "akanjs/server";
 import { IncrementalBuilderHost } from "../incrementalBuilder";
-import { createTempApp, isolateEnv, tempRoots, writeText } from "../testHelpers";
+import { createTempApp, isolateEnv, tempRoots, writeText } from "../test/testHelpers";
 import { AkanAppHost } from "./akanApp.host";
 import type { DevHostEvent } from "./devHostPolicy";
 

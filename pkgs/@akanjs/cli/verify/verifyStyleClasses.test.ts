@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Linter, parseBiomeReport } from "@akanjs/devkit/linter";
-import { writeJson, writeText } from "@akanjs/devkit/testHelpers";
+import { Linter, parseBiomeReport } from "@akanjs/devkit/lint/linter";
+import { writeJson, writeText } from "@akanjs/devkit/test/testHelpers";
 import { VerifyStyleClasses } from "./verifyStyleClasses";
 
 const grit = path.resolve(import.meta.dir, "../../devkit/lint/no-daisyui-legacy-class.grit");

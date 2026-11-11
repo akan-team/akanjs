@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, realpath, symlink } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs, writeText as write } from "../testHelpers";
+import { tempDirs, writeText as write } from "../test/testHelpers";
 import { AllRoutesBuilder } from "./allRoutesBuilder";
 
 const makeTempRoot = tempDirs("akan-all-routes-");

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, realpath, symlink } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs, writeText as write } from "../testHelpers";
+import { tempDirs, writeText as write } from "../test/testHelpers";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 
 const makeTempRoot = tempDirs("akan-native-core-");

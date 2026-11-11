@@ -1,6 +1,6 @@
 import { CommandContainer, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { Subspace, type SubspaceEnvUploadResult } from "@akanjs/devkit/subspace";
-import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
+import { Subspace, type SubspaceEnvUploadResult } from "@akanjs/devkit/subspace/subspace";
+import { SubspaceConfig } from "@akanjs/devkit/subspace/subspaceConfig";
 
 export type SubspaceAction = "status" | "plan" | "diff" | "push" | "pull" | "upload-env";
 type SubspacePrompts = Pick<typeof import("@inquirer/prompts"), "checkbox" | "confirm" | "select">;

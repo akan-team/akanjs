@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { FileSys } from "../fileSys";
 import { hasUseClientDirective, scanUseClientExports } from "../transforms/rscUseClientTransform";
+import { FileSys } from "../util/fileSys";
 import { CsrDevPaths } from "./csrDevPaths";
 
 export interface ServerGraph {

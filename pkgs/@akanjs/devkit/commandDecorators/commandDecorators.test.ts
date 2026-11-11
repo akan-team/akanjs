@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import path from "node:path";
 import { AppExecutor, LibExecutor, ModuleExecutor, PkgExecutor, WorkspaceExecutor } from "../executors";
-import { makeCliTempWorkspace, tempRoots, writeText } from "../testHelpers";
+import { makeCliTempWorkspace, tempRoots, writeText } from "../test/testHelpers";
 import {
   App,
   type ArgMeta,
