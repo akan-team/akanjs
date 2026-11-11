@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { MaintainabilityBaseline } from "./maintainabilityBaseline";
 import { MaintainabilityContract } from "./maintainabilityContract";
@@ -956,6 +956,86 @@ describe("MaintainabilityContract packages", () => {
         "How to fix:\n" +
         "  function: Split it by family into named functions or a collaborator class, each under the limit, keeping its signature for callers.",
     );
+  });
+
+  test("keeps a moved file's entries under its new path, and still fails one that grew in the move", async () => {
+    const recordOf = (key: string, count: number, reason?: string) =>
+      `{\n  "akan.size.function": {\n    ${JSON.stringify(key)}: ${count}\n  }${reason ? `,\n  "reasons": {\n    ${JSON.stringify(key)}: ${JSON.stringify(reason)}\n  }` : ""}\n}\n`;
+    const reason = "boot reads every flag in one pass";
+    const root = await makeWorkspace({
+      "pkgs/@demo/core/server/host.ts": functionOf("boot", 200),
+      "pkgs/@demo/core/akan.baseline.json": recordOf("server/host.ts#boot", 200, reason),
+    });
+    await commitAll(root);
+    await mkdir(path.join(root, "pkgs/@demo/core/gateway"));
+    await git(root, "mv", "pkgs/@demo/core/server/host.ts", "pkgs/@demo/core/gateway/host.ts");
+    const baselinePath = path.join(root, "pkgs/@demo/core/akan.baseline.json");
+
+    expect(await packageOf(root).enforce({ fix: true })).toEqual([]);
+    expect(await readFile(baselinePath, "utf8")).toBe(recordOf("gateway/host.ts#boot", 200, reason));
+
+    expect(await packageOf(root).enforce({ fix: false })).toEqual([]);
+
+    await writeText(path.join(root, "pkgs/@demo/core/gateway/host.ts"), functionOf("boot", 210));
+    await writeText(baselinePath, recordOf("gateway/host.ts#boot", 210));
+    expect(await packageOf(root).enforce({ fix: false })).toMatchObject([
+      { kind: "baselineGrowth", key: "gateway/host.ts#boot", count: 210, committed: 200 },
+    ]);
+  });
+
+  test("follows a move git has not staged, without staging it, and reads an entry left at the old key as the reference's", async () => {
+    const recordOf = (key: string) => `{\n  "akan.size.function": {\n    ${JSON.stringify(key)}: 200\n  }\n}\n`;
+    const root = await makeWorkspace({
+      "pkgs/@demo/core/server/host.ts": functionOf("boot", 200),
+      "pkgs/@demo/core/akan.baseline.json": recordOf("server/host.ts#boot"),
+    });
+    await commitAll(root);
+    await mkdir(path.join(root, "pkgs/@demo/core/gateway"));
+    await rename(path.join(root, "pkgs/@demo/core/server/host.ts"), path.join(root, "pkgs/@demo/core/gateway/host.ts"));
+
+    expect(await packageOf(root).enforce({ fix: false })).toMatchObject([
+      { rule: "akan.size.function", key: "gateway/host.ts#boot" },
+    ]);
+    expect(Bun.spawnSync(["git", "status", "--porcelain"], { cwd: root }).stdout.toString()).toBe(
+      " D pkgs/@demo/core/server/host.ts\n?? pkgs/@demo/core/gateway/\n",
+    );
+
+    await writeText(path.join(root, "pkgs/@demo/core/gateway/host.ts"), functionOf("boot", 120));
+    expect(await packageOf(root).enforce({ fix: false })).toEqual([]);
+
+    await writeText(path.join(root, "pkgs/@demo/core/gateway/host.ts"), functionOf("boot", 200));
+    expect(await packageOf(root).enforce({ fix: true })).toEqual([]);
+    expect(await readFile(path.join(root, "pkgs/@demo/core/akan.baseline.json"), "utf8")).toBe(
+      recordOf("gateway/host.ts#boot"),
+    );
+  });
+
+  test("still reads a staged move where it cannot stage, and stores no untracked file but a source", async () => {
+    const recordOf = (key: string) => `{\n  "akan.size.function": {\n    ${JSON.stringify(key)}: 200\n  }\n}\n`;
+    const root = await makeWorkspace({
+      "pkgs/@demo/core/server/host.ts": functionOf("boot", 200),
+      "pkgs/@demo/core/akan.baseline.json": recordOf("server/host.ts#boot"),
+    });
+    await commitAll(root);
+    await mkdir(path.join(root, "pkgs/@demo/core/gateway"));
+    await git(root, "mv", "pkgs/@demo/core/server/host.ts", "pkgs/@demo/core/gateway/host.ts");
+    await writeText(path.join(root, "pkgs/@demo/core/local.db"), "rows that change on every run");
+
+    const tmpdirBefore = process.env.TMPDIR;
+    process.env.TMPDIR = path.join(root, "missing-tmp");
+    try {
+      expect(await packageOf(root).enforce({ fix: true })).toEqual([]);
+    } finally {
+      if (tmpdirBefore === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = tmpdirBefore;
+    }
+    expect(await readFile(path.join(root, "pkgs/@demo/core/akan.baseline.json"), "utf8")).toBe(
+      recordOf("gateway/host.ts#boot"),
+    );
+
+    expect(await packageOf(root).enforce({ fix: false })).toEqual([]);
+    const hash = Bun.spawnSync(["git", "hash-object", "pkgs/@demo/core/local.db"], { cwd: root }).stdout.toString();
+    expect(Bun.spawnSync(["git", "cat-file", "-e", hash.trim()], { cwd: root }).exitCode).not.toBe(0);
   });
 });
 
