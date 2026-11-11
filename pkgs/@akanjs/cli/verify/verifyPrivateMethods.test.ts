@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { writeText } from "@akanjs/devkit/testHelpers";
+import { writeText } from "@akanjs/devkit/test/testHelpers";
 import ts from "typescript";
 import { VerifyPrivateMethods } from "./verifyPrivateMethods";
 

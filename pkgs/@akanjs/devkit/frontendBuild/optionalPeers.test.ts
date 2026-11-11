@@ -3,7 +3,7 @@ import { mkdir, symlink } from "node:fs/promises";
 import path from "node:path";
 import type { BunPlugin } from "bun";
 import { resolveSsrPageEntries } from "../artifact/implicitRootLayout";
-import { tempDirs, writeText as write } from "../testHelpers";
+import { tempDirs, writeText as write } from "../test/testHelpers";
 import { CsrArtifactBuilder } from "./csrArtifactBuilder";
 import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
 

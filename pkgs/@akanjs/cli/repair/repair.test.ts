@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
-import { createTempModule, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
+import { AkanContextAnalyzer } from "@akanjs/devkit/context/akanContext";
+import { createTempModule, tempRoots, writeText } from "@akanjs/devkit/test/testHelpers";
 import { isWorkflowSysName, type RepairReport, type WorkflowValidationCommandExecutor } from "@akanjs/devkit/workflow";
 import { akanCommandArgs, RepairRunner, spawnAkan } from "./repair.runner";
 

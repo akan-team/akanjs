@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { App } from "../commandDecorators";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { FontOptimizer } from "./fontOptimizer";
 
 const SOURCE_FONT = path.resolve(import.meta.dir, "../../../../libs/shared/public/fonts/Assistant-Regular.woff2");

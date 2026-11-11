@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import dayjs from "dayjs";
 import type { Workspace } from "../commandDecorators";
-import { tempDirs, writeJson, writeText } from "../testHelpers";
+import { tempDirs, writeJson, writeText } from "../test/testHelpers";
 import { CloudApi } from "./cloudApi";
 
 // The cloud rotates a refresh token on every use and treats a second use as theft, revoking every session.

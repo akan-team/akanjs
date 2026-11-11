@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import zlib from "node:zlib";
 import type { App } from "../commandDecorators";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { precompressArtifacts } from "./precompressArtifacts";
 
 const tempRoot = tempDirs("akan-devkit-precompress-");

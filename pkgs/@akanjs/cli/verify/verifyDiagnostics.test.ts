@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { BiomeSeverity } from "@akanjs/devkit/linter";
+import type { BiomeSeverity } from "@akanjs/devkit/lint/linter";
 import { VerifyDiagnostics } from "./verifyDiagnostics";
 import { VerifyReport } from "./verifyReport";
 

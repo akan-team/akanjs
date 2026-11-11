@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { makeCliTempWorkspace, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
+import { makeCliTempWorkspace, tempRoots, writeText } from "@akanjs/devkit/test/testHelpers";
 
 const track = tempRoots();
 const runner = Bun.resolveSync("@akanjs/devkit/commandDecorators", import.meta.dir);

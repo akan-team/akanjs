@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { BiomeDiagnostic } from "@akanjs/devkit/linter";
+import type { BiomeDiagnostic } from "@akanjs/devkit/lint/linter";
 
 export class VerifyStyleClasses {
   static readonly #message = "daisyUI legacy class";

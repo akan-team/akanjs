@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { AkanBinConfig, BinPlatform } from "../akanConfig";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { DesktopBin } from "./desktopBin";
 
 const makeTempRoot = tempDirs("akan-desktop-bin-");

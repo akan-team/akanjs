@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs, writeText as write } from "../testHelpers";
+import { tempDirs, writeText as write } from "../test/testHelpers";
 import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
 import { CLIENT_BUNDLE_NAMING } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";

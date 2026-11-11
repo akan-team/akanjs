@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { FileSys } from "../../fileSys";
+import { FileSys } from "../../util/fileSys";
 import { AkanCodeEnv } from "./AkanCodeEnv";
 
 // Two candidates: the CLI bundle flattens entry chunks into the package root, where `skills/` is a sibling.

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { App } from "../commandDecorators";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { DictionaryAssetBuilder } from "./dictionaryAssetBuilder";
 
 const tempRoot = tempDirs("akan-devkit-dict-asset-");

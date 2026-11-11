@@ -25,7 +25,7 @@ describe("akan skills", () => {
 
   test("every tool, workflow and guideline the skills name is one the runtime publishes", async () => {
     const { ContextRunner } = await import("../context/context.runner");
-    const { Prompter } = await import("@akanjs/devkit/prompter");
+    const { Prompter } = await import("@akanjs/devkit/guideline/prompter");
     const runner = new ContextRunner();
     // `akan_verify` is registered by the akan pack rather than by the MCP catalogue.
     const tools = new Set([...runner.listMcpTools("apply").map((tool) => tool.name), "akan_verify"]);

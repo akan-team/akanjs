@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { DevGeneratedIndexSync } from "./devGeneratedIndexSync";
 
 const makeTempRoot = tempDirs("akan-generated-index-");

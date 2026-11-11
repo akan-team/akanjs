@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { realpathSync } from "node:fs";
 import path from "node:path";
-import { tempDirs, writeText } from "../testHelpers";
+import { tempDirs, writeText } from "../test/testHelpers";
 import { createBrowserDirnamePlugin } from "./browserDirnamePlugin";
 
 const makeTempRoot = tempDirs("akan-devkit-browser-dirname-");

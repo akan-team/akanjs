@@ -355,6 +355,10 @@ export type AkanIpcMessage = {
     roomId: string;
     socketId?: string;
     pid?: number;
+    ack?: number;
+} | {
+    type: "pubsub.subscribed";
+    ack: number;
 } | {
     type: "pubsub.unsubscribe";
     roomId: string;
@@ -2614,6 +2618,9 @@ declare const SolidCache_base: import("..").AdaptorCls<{}, {
 
 declare const SolidPubSub_base: import("..").AdaptorCls<{}, {
     serverId: import("..").InjectInfo<"env", string, {
+        [key: string]: any;
+    }, never>;
+    behindGateway: import("..").InjectInfo<"env", boolean, {
         [key: string]: any;
     }, never>;
 }>;

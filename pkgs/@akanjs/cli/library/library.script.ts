@@ -1,6 +1,6 @@
 import { type Lib, script, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { formatLibStatuses } from "@akanjs/devkit/libSource";
 import { assertPlainName } from "@akanjs/devkit/workflow/plainName";
+import { formatLibStatuses } from "@akanjs/devkit/workspace/libSource";
 import { Logger } from "akanjs/common";
 import { LibraryRunner } from "./library.runner";
 

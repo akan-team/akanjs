@@ -5,8 +5,8 @@ import type { PipelineDiagnostic, PipelinePlanContext, PipelinePlanResult } from
 import { toError } from "akanjs/common";
 import { AkanAppConfig, AkanWorkspaceConfig } from "../akanConfig";
 import { AppExecutor, type WorkspaceExecutor } from "../executors";
-import { FileSys } from "../fileSys";
 import { resolveMobileTargets } from "../mobile/mobileTarget";
+import { FileSys } from "../util/fileSys";
 import { PipelineCompiler, type PipelineNativeTargets, type PipelineSourceFile } from "./PipelineCompiler";
 
 /**

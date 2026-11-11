@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { tempDirs, writeText as write } from "../testHelpers";
+import { tempDirs, writeText as write } from "../test/testHelpers";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { VendorNarrowing } from "./vendorNarrowing";
 

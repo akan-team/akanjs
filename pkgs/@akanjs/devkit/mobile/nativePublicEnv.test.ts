@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { WorkspaceExecutor } from "../executors";
-import { tempDirs, writeText } from "../testHelpers";
+import { tempDirs, writeText } from "../test/testHelpers";
 import { NativePublicEnv } from "./nativePublicEnv";
 
 const makeTempRoot = tempDirs("akan-native-public-env-");

@@ -5,7 +5,7 @@ import path from "node:path";
 import { buildCsp, cspHash, parseCsp } from "../../native/packages/cli/src/lib/csp";
 import { rewriteDevHtml } from "../../native/packages/cli/src/lib/hmr";
 import type { AkanNativeTarget } from "../akanConfig";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { NativeApi } from "./nativeApi";
 import { NativeConfig } from "./nativeConfig";
 
