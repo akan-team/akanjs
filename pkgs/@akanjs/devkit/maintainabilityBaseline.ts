@@ -194,6 +194,29 @@ export class MaintainabilityBaseline {
     return new MaintainabilityBaseline(sections, this.reasons);
   }
 
+  movedBy(moves: ReadonlyMap<string, string>) {
+    if (!moves.size) return this;
+    const movedKey = (key: string) => {
+      const file = key.split("#", 1)[0] ?? key;
+      const to = moves.get(file);
+      return to === undefined ? key : `${to}${key.slice(file.length)}`;
+    };
+    const sections = new Map(
+      [...this.sections].map(([rule, counts]) => {
+        const moved = new Map<string, number>();
+        for (const [key, count] of counts) {
+          const to = movedKey(key);
+          moved.set(to, Math.max(moved.get(to) ?? 0, count));
+        }
+        return [rule, moved];
+      }),
+    );
+    return new MaintainabilityBaseline(
+      sections,
+      new Map([...this.reasons].map(([key, reason]) => [movedKey(key), reason])),
+    );
+  }
+
   tightenedBy(violations: MaintainabilityViolation[]) {
     const current = MaintainabilityBaseline.of(violations);
     const sections = new Map(

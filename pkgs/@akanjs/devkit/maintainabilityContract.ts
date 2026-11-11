@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import ts from "typescript";
 import { BareErrorScanner } from "./bareErrorScanner";
@@ -199,10 +200,12 @@ export class MaintainabilityContract {
       this.#readBaseline(),
       this.#readReferenceBaseline(),
     ]);
-    const baseline =
+    const moves = await this.#movesSince(reference.ref);
+    const onDisk =
       existing === null ? new MaintainabilityBaseline() : MaintainabilityBaseline.parse(existing, this.baselinePath);
+    const baseline = fix ? onDisk.movedBy(moves) : onDisk;
     const tightened = baseline.tightenedBy(violations);
-    if (fix && existing !== null) await this.#tighten(baseline, tightened);
+    if (fix && existing !== null) await this.#tighten(onDisk, tightened);
     //? Without fix the file on disk is what merges, so an entry it holds above the measured count is checked as written.
     const working = fix ? tightened : baseline;
     const lines = ((await this.#readBaseline()) ?? "").split(/\r?\n/);
@@ -229,8 +232,9 @@ export class MaintainabilityContract {
     const unrecorded = new Set(working.rulesOutside(recorded));
     const measured = unrecorded.size ? await this.#measuredAt(reference.ref) : null;
     if (recorded === null && measured === null) return failures;
-    const committed = (recorded ?? new MaintainabilityBaseline()).withSectionsOf(measured, unrecorded);
-    const growths = working
+    const committed = (recorded ?? new MaintainabilityBaseline()).withSectionsOf(measured, unrecorded).movedBy(moves);
+    //? Without fix the entries on disk keep their old keys, so they are compared under the moved ones the reference took.
+    const growths = (fix ? working : working.movedBy(moves))
       .grownFrom(committed)
       .map(
         ({ rule, ...growth }): BaselineGrowth => ({
@@ -519,6 +523,55 @@ export class MaintainabilityContract {
     return "HEAD";
   }
 
+  //? Git pairs a moved file with its old path by content, so its entries carry over instead of reading as new debt.
+  //? A move that also rewrote more than half the file, or left a file at the old path, reads as an add and fails as new.
+  async #movesSince(ref: string) {
+    const staged = await this.#stagedScope();
+    try {
+      const diff = ["diff", ...(staged ? ["--cached"] : []), "--relative", "--name-status", "-z", "-M", ref];
+      const fields = (await this.#git([...diff, "--", this.sysPath], staged?.env))?.split("\0") ?? [];
+      const prefix = `${this.sysPath}/`;
+      const moves = new Map<string, string>();
+      for (let idx = 0; idx < fields.length; idx += fields[idx]?.startsWith("R") ? 3 : 2) {
+        const [from, to] = [fields[idx + 1], fields[idx + 2]];
+        if (!fields[idx]?.startsWith("R") || !from?.startsWith(prefix) || !to?.startsWith(prefix)) continue;
+        moves.set(from.slice(prefix.length), to.slice(prefix.length));
+      }
+      return moves;
+    } finally {
+      if (staged) await rm(staged.dir, { recursive: true, force: true });
+    }
+  }
+
+  //? Git pairs moves only between staged paths, so a copy of the index stages the scope's tracked changes and its new
+  //? sources: a plain rename pairs too, the user's index is never written, and no other untracked file is stored.
+  //? Where any step fails, the moves already staged in the user's index are still read.
+  async #stagedScope() {
+    const indexPath = (await this.#git(["rev-parse", "--git-path", "index"]))?.trim();
+    const untracked = (await this.#git(["ls-files", "-o", "--exclude-standard", "-z", "--", this.sysPath]))
+      ?.split("\0")
+      .filter((file) => /\.(tsx?|md)$/.test(file));
+    if (!indexPath || !untracked) return null;
+    const dir = await mkdtemp(path.join(tmpdir(), "akan-moves-")).catch(() => null);
+    if (!dir) return null;
+    const env = { GIT_INDEX_FILE: path.join(dir, "index") };
+    const listPath = path.join(dir, "untracked");
+    try {
+      const indexFile = path.resolve(this.#workspaceRoot, indexPath);
+      if (existsSync(indexFile)) await copyFile(indexFile, env.GIT_INDEX_FILE);
+      await writeFile(listPath, untracked.join("\0"));
+      const added =
+        (await this.#git(["add", "-u", "--", this.sysPath], env)) !== null &&
+        (!untracked.length ||
+          (await this.#git(["add", "--pathspec-from-file", listPath, "--pathspec-file-nul"], env)) !== null);
+      if (added) return { dir, env };
+    } catch {
+      //? A full or read-only temp dir: fall back to the moves the user's own index holds.
+    }
+    await rm(dir, { recursive: true, force: true });
+    return null;
+  }
+
   static #missingHistory(sysPath: string, cause: string) {
     return (
       `${sysPath}/${MaintainabilityBaseline.fileName} is compared with its copy where this branch forked from the default branch, ` +
@@ -526,9 +579,15 @@ export class MaintainabilityContract {
     );
   }
 
-  async #git(args: string[]) {
+  //? GIT_OPTIONAL_LOCKS=0 keeps a read from refreshing the index under the user's own git, which would then fail on index.lock.
+  async #git(args: string[], env: Record<string, string> = {}) {
     try {
-      const proc = Bun.spawn(["git", ...args], { cwd: this.#workspaceRoot, stdout: "pipe", stderr: "ignore" });
+      const proc = Bun.spawn(["git", ...args], {
+        cwd: this.#workspaceRoot,
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", ...env },
+        stdout: "pipe",
+        stderr: "ignore",
+      });
       const [text, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
       return exitCode === 0 ? text : null;
     } catch {

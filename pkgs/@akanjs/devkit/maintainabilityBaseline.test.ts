@@ -225,6 +225,30 @@ describe("MaintainabilityBaseline", () => {
     expect(baseline.tightenedBy([]).reasons.size).toBe(0);
   });
 
+  test("moves a moved file's entries and reasons to its new path, matching the file before the first #", () => {
+    const reason = "The canvas is one pointer state machine.";
+    const baseline = baselineOf(
+      {
+        "akan.size.file": { "lib/a/A.Zone.tsx": 900, "lib/a/A.Zone.tsxx": 700 },
+        "akan.component.store-access": { "lib/a/A.Zone.tsx#Canvas": 30, "lib/a/A.Zone.tsx#Canvas#2": 25 },
+      },
+      { "lib/a/A.Zone.tsx#Canvas": reason },
+    );
+
+    const moved = baseline.movedBy(new Map([["lib/a/A.Zone.tsx", "lib/b/A.Zone.tsx"]]));
+
+    expect([...(moved.sections.get("akan.size.file") ?? [])]).toEqual([
+      ["lib/b/A.Zone.tsx", 900],
+      ["lib/a/A.Zone.tsxx", 700],
+    ]);
+    expect([...(moved.sections.get("akan.component.store-access") ?? [])]).toEqual([
+      ["lib/b/A.Zone.tsx#Canvas", 30],
+      ["lib/b/A.Zone.tsx#Canvas#2", 25],
+    ]);
+    expect([...moved.reasons]).toEqual([["lib/b/A.Zone.tsx#Canvas", reason]]);
+    expect(baseline.movedBy(new Map())).toBe(baseline);
+  });
+
   test("holds a total rule to the sum of its section: a moved count passes, a raised sum names the files that rose", () => {
     const baseline = baselineOf({ "akan.error.bare-error": { "server/a.ts": 2, "server/b.ts": 1 } });
 
