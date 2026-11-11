@@ -237,6 +237,19 @@ describe("native plugin inputs", async () => {
     expect(Object.keys(np.pluginDecls(plugins, "ios"))).toEqual(["app-state", "preferences", "keyboard", "camera"]);
   });
 
+  test("external-view declares on each desktop OS only what its shell implements there", () => {
+    const [view] = resolvePlugins(sample, ["external-view"]);
+    if (!view) throw new Error("external-view did not resolve");
+    const methods = (platform: "macos" | "windows" | "linux") => {
+      const decl = np.pluginDecls([view], platform)["external-view"];
+      return typeof decl === "object" ? decl.methods : decl;
+    };
+    const all = view.manifest.methods;
+    expect(methods("windows")).toEqual(all);
+    expect(methods("linux")).toEqual(all.filter((m) => m !== "sendKey"));
+    expect(methods("macos")).toEqual(all.filter((m) => !["sendKey", "setMuted", "capture"].includes(m)));
+  });
+
   test("registries list native classes", () => {
     const swift = np.swiftRegistry(np.iosPlugins(plugins));
     expect(swift).toContain('("preferences", PreferencesPlugin.self),');

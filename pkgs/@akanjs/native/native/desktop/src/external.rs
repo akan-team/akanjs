@@ -766,7 +766,7 @@ mod platform {
 
   pub(crate) type Cursor = ();
 
-  pub(super) const NO_MUTE: &str = "UNSUPPORTED: a view is muted on Windows only";
+  pub(super) const NO_MUTE: &str = "UNSUPPORTED: a view is not muted on macOS";
 
   pub(super) fn reclaim(_page: &WebView) {}
 
@@ -779,7 +779,7 @@ mod platform {
   }
 
   pub(super) fn cdp(_webview: &WebView, method: &str, _params: &str, reply: Reply) {
-    reply.send(Err(format!("UNSUPPORTED: {method} reaches a view on Windows only")));
+    reply.send(Err(format!("UNSUPPORTED: {method} reaches no view on macOS")));
   }
 
   pub(super) fn watch(_webview: &WebView, _view: &str, _window: u32, _console: bool) {}

@@ -201,7 +201,7 @@ fn error_name(error: &glib::Error) -> String {
 pub(crate) fn cdp(webview: &WebView, method: &str, _params: &str, reply: Reply) {
   match method {
     "Page.captureScreenshot" => capture(webview, reply),
-    _ => reply.send(Err(format!("UNSUPPORTED: {method} reaches a view on Windows only"))),
+    _ => reply.send(Err(format!("UNSUPPORTED: {method} reaches no view on Linux"))),
   }
 }
 
