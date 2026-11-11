@@ -1,6 +1,7 @@
 import { createElement, type ReactNode, startTransition, type Usable, use, useLayoutEffect, useState } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { createFromReadableStream } from "react-server-dom-webpack/client.browser";
+import { AkanError } from "../base/akanError";
 import { csrLocation } from "../client/csrLocation";
 import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
@@ -84,18 +85,18 @@ type RscFetchResult =
 const MAX_RSC_CACHE_ENTRIES = 32;
 let documentNavigationFallbackInFlight = false;
 
-class RscRedirectNavigationStarted extends Error {
+class RscRedirectNavigationStarted extends AkanError<"rscRedirectStarted"> {
   constructor(readonly location: string) {
-    super("[rscClient] RSC redirect navigation started");
+    super("rscRedirectStarted", "[rscClient] RSC redirect navigation started", { statusCode: 303 });
     this.name = "RscRedirectNavigationStarted";
   }
 }
 
 // Thrown, never turned into a document navigation, which would trade a working page (and an in-page agent's session)
 // for a 404. Matched by `name`, not instanceof: the RSC client is inlined into more than one browser bundle.
-class RscRouteNotFound extends Error {
+class RscRouteNotFound extends AkanError<"routeNotFound"> {
   constructor(readonly href: string) {
-    super(`[rscClient] no route at ${href}`);
+    super("routeNotFound", `[rscClient] no route at ${href}`, { statusCode: 404 });
     this.name = "RscRouteNotFound";
   }
 }
@@ -165,7 +166,8 @@ function commitRscPatchNavigation({
   requestScroll?: () => void;
 }): boolean {
   const patchThenable = patch.patchedNode.thenable;
-  if (!patchThenable) throw new Error("[rscClient] validated RSC patch is missing a thenable");
+  if (!patchThenable)
+    throw new AkanError("invalidRscResponse", "[rscClient] validated RSC patch is missing a thenable");
   const preparedHeadPatch = prepareAkanHeadSnapshotPatch(patch.headSnapshot, target);
   if (!preparedHeadPatch) return false;
 
@@ -271,7 +273,8 @@ async function fetchRsc(
       dictionaryReady,
     ]);
     if (patchResult.status === "patched") {
-      if (!patchResult.headSnapshot) throw new Error("[rscClient] validated RSC patch is missing a head snapshot");
+      if (!patchResult.headSnapshot)
+        throw new AkanError("invalidRscResponse", "[rscClient] validated RSC patch is missing a head snapshot");
       return {
         type: "patched",
         tree: patchResult.tree,
@@ -289,7 +292,10 @@ async function fetchRsc(
   }
   const res = responseResult.response;
   const stream = getRscPayloadStream(res);
-  if (!stream) throw new Error(`[rscClient] RSC fetch failed ${res.status} ${res.statusText}`);
+  if (!stream)
+    throw new AkanError("rscFetchFailed", `[rscClient] RSC fetch failed ${res.status} ${res.statusText}`, {
+      statusCode: 502,
+    });
   const nodeRef: { current?: RscCacheNode } = {};
   const handleRedirect = (redirect: RscRedirectRow) => {
     const node = nodeRef.current;
@@ -697,7 +703,7 @@ function Root(): ReactNode {
           });
           if (fallback.type === "redirected") return;
           if (fallback.type === "not-found") throw new RscRouteNotFound(target);
-          if (fallback.type === "patched") throw new Error("[rscClient] full fallback unexpectedly returned a patch");
+          if (fallback.type === "patched") throw new AkanError("invalidRscResponse", "[rscClient] fallback is a patch");
           nextNode = fallback.node;
           notFound = !!fallback.notFound;
         } else {
