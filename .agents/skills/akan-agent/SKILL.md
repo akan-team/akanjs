@@ -48,7 +48,7 @@ Full detail: `get_guideline` with `agentRule`.
 
 The full guidelines, split where each part fits one read; `akan guideline show <name>` prints the same text.
 
-- `.agents/skills/akan-agent/references/agentRule-1.md` — Purpose · The Surface Is The Declaration · Mounting The Chat · Attachments And Speech
-- `.agents/skills/akan-agent/references/agentRule-2.md` — Zones And Route Guidance · Publishing A Tool · What `akanjs/ui` Publishes For You · Forms
-- `.agents/skills/akan-agent/references/agentRule-3.md` — Reading State · Slash Commands And The Transcript · Built-In Tools
-- `.agents/skills/akan-agent/references/agentRule-4.md` — What The Page Draws
+- `.agents/skills/akan-agent/references/agentRule-1.md` — Purpose · The Surface Is The Declaration · Mounting The Chat
+- `.agents/skills/akan-agent/references/agentRule-2.md` — Attachments And Speech · Zones And Route Guidance · Publishing A Tool
+- `.agents/skills/akan-agent/references/agentRule-3.md` — What `akanjs/ui` Publishes For You · Forms · Reading State · Slash Commands And The Transcript
+- `.agents/skills/akan-agent/references/agentRule-4.md` — Built-In Tools · What The Page Draws

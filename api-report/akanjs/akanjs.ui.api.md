@@ -287,7 +287,8 @@ export interface ChatMessage {
 
 export interface ChatProps {
     className?: string;
-    title?: string;
+    title?: ReactNode;
+    label?: string;
     instructions?: string;
     runner?: AgentRunner;
     maxTurns?: number;

@@ -62,8 +62,12 @@ pages declaring one name never clash, and a registry kept outside the surface re
   and under every menu and modal — `launcherClassName` / `panelClassName` reach one surface each where
   `className` reaches both, `intro`
   replaces the empty-state line — where starter questions go — and `header` adds controls beside the built-in
-  clear and close. `chrome={false}` drops the header bar whole, for an `inline` chat inside a panel the app
-  already titles, and `defaultDraft` opens the composer with text in it without sending it. A panel driven by a
+  clear and close. `title` takes a node (a mark before the name); give `label` then, as the panel's accessible
+  name. The header's parts carry `data-slot="agent-header"`, `"agent-title"` and `"agent-running"`, so
+  `panelClassName="[&_[data-slot=agent-running]]:bg-accent"` restyles one without leaning on the markup. A modal,
+  menu or popconfirm opened from inside the floating panel, `header` included, stacks above the panel, while
+  one the page opens stays under it. `chrome={false}` drops the header bar whole, for an `inline` chat inside a
+  panel the app already titles, and `defaultDraft` opens the composer with text in it without sending it. A panel driven by a
   controlled `open` with **no** `onOpenChange` draws no close button at all rather than an inert one. Then the
   slots: `AgentLauncher`, `AgentSteps`, `AgentBubble`, `AgentComposer`, `AgentApproval`,
   `AgentQuestion`, `AgentToolCard`, `AgentQueued`, `AgentMenu`, `AgentMarkdown` and `AgentCode` each replace one part in `_overrides.tsx`, and
@@ -142,131 +146,3 @@ pages declaring one name never clash, and a registry kept outside the surface re
   user sees. It travels as the dictionary key plus the values that key interpolates, on both the JSON and the SSE
   path, and **`fetchRunner` resolves it against the dictionary one step before the transcript** — the endpoint has
   no language to resolve it in and the browser does, which is why the key was reaching the screen raw.
-
-## Attachments And Speech
-- **A file the user attaches rides the message, and nothing is stored.** The composer takes a paperclip, a drop and
-  a paste; an image rides as bytes and a text file as text, which is all a browser reads with no dependency.
-  Everything else is the app's own reader — `<Agent.Chat attach={…} />`, one `File` in, a `MessageAttachment` or
-  `null` out — because extracting a PDF needs a parser and the framework carries attachments without depending on
-  one. It runs ahead of the built-in, so it is also where an image is downscaled before it costs a megabyte of
-  prompt. **What the provider cannot read is replaced by a note naming the file**, never dropped: an attachment the
-  model never saw is one it answers about from the filename. An adaptor declares `accepts: { image, document }` and
-  `AgentService.readable` degrades the rest, so a text-only provider needs no attachment code at all — DeepSeek
-  declares none, which is why an image against the *default* provider is refused out loud while an extracted PDF
-  works, `text` being readable by every model there is. Swap in `OpenaiLlm` or `AnthropicLlm` and the same image
-  arrives as an image. `accepts.document` is one boolean over every non-image type, so an adaptor whose API has a
-  block for only some of them — Anthropic's `document` is PDF and nothing else — names the rest in the text rather
-  than dropping them, which is the wire's own rule applied at the one layer that knows which blocks exist. Persisting keeps each
-  attachment's name, type, address and `ref` and drops only its content: web storage is a few megabytes, one
-  screenshot fills a chunk of it, and a save that fails is silent — so keeping the bytes would quietly stop keeping
-  the transcript, while an id is the handle a restored conversation has left to find the file with.
-  **The ceilings are the message's, not the file's**: 4 MB per file, 8 MB and five files per message, and the same
-  file twice is refused by name. The bytes ride inside one turn's JSON, so what a provider refuses is the sum —
-  and a request that cannot be sent is one the user has to empty the composer to escape, which is why the refusal
-  happens at the paperclip and names the file it dropped. All three are defaults rather than the law —
-  `<Agent.Chat attachLimits={{ perFileBytes, perMessageBytes, perMessageCount }} />` — because what one request can
-  carry belongs to the configured provider and not to the framework. The per-file one is measured on **what the
-  reader produced**, not on the file that was picked: a reader that uploads and answers a `url` has already paid
-  what the ceiling exists for, so refusing its 6 MB photo would refuse it for a cost it does not incur. Only the
-  built-in path checks the source size, and there the file itself is the carrier.
-- **An app may also build attachments itself and hand them to `session.send([{ role: "user", text, attachments }])`**,
-  which is why `MessageAttachment` is exported from `akanjs/ui` — the composer's path is typed by the `AttachReader`
-  callback, that one is not, and an object assembled with no nameable type is the one that gets a field wrong.
-  Nothing downstream trusts the result: an attachment whose `mimeType` is not a string is noted like any other
-  unreadable one, and its chip renders its name with no preview, because the host wrote the object and the declared
-  type is a claim rather than a check. A field that arrives wrong costs that attachment, never the turn.
-- **A `url` carrier is an address the *provider* fetches, and bytes beside it win.** A reader that uploads answers
-  `{ url }` when its storage is publicly reachable, and `{ data }` — or both — when it is not: an attachment
-  carrying both is read from its bytes and displayed from its address, so the chip draws a thumbnail and the model
-  still gets the picture. That precedence exists because the other order fails the one way nothing reports: the
-  default storage backend serves a path only the app can resolve, the adaptor would hand it over as written, and
-  the model answers about a picture it never saw. Send a provider-reachable URL **alone** — paired with bytes it
-  costs the provider hop whatever the bytes weigh, for a fetch the provider would have done itself.
-- **An image type the provider has no block for is refused at the adaptor, not upstream.** `accepts.image` is one
-  boolean, so `AgentService.readable` passes every `image/*` through, and the built-in composer reader base64s
-  every `image/*` as well — an `AttachReader` answering `null` means "not mine" and falls through to it, so an app
-  cannot gate one either. Both shipped vision adaptors therefore match an exact set (`jpeg`, `png`, `gif`, `webp`)
-  and name the rest in the text. It matters because an unsupported type is not one unread attachment: it is a
-  block the API refuses, so the **whole turn** dies on a vendor 400 — and `image/heic`, the iPhone camera default,
-  is the likeliest one an app meets.
-- **`MessageAttachment.ref` is the host's own handle on the file — carried, never read.** A file id, a storage key,
-  whatever turns the attachment back into something a tool can be handed. The framework only moves it: the model is
-  never shown one, and a tool the app publishes (`useFileFieldTool` below) is what spends it. Without it a host that
-  stores its uploads keeps a map beside the transcript keyed on name and size — the same guess `Attachment.same`
-  has to make, and the one that is wrong for two crops of one export. So when both sides carry a `ref`, it *is* the
-  answer to "the same file twice", and the heuristic is what is left for when they do not.
-- **A tool hands the model a file with `ToolReturn.attach(result, [attachment])`** (`akanjs/store`), which lands in
-  `ToolCallResult.attachments` beside the value — a `result` reaches the model as JSON text, so a URL in it is read
-  as letters and base64 as a wall of them. It takes a user attachment's shape and meets the same `accepts` check and
-  type allow-list; Anthropic carries it inside the `tool_result`, the chat-completions dialect (whose `tool` message
-  holds text alone) in one user message after the turn's tool messages. It is outside the 20,000-character ceiling
-  and held to the 4 MB per-file one, and only the latest turn's ride as bytes: an earlier one becomes a note telling
-  the model to call the tool again while the picture is on screen, since one picture costs over a thousand tokens on
-  every turn it rides.
-- **Speech is one engine contract and the framework's own policy.** `<Agent.Chat voice={engine} />` takes a
-  `VoiceEngine` — `listen(handlers)` and `speak(sentence)`, both cancellable — and the chat decides everything
-  else: a press-to-talk microphone whose transcript lands in the composer to be corrected, one utterance per
-  press, sentence-at-a-time reading, barge-in on the next press or on Stop, and markdown stripped so `**bold**`
-  is not pronounced. **A reply is read aloud only when the ask arrived by voice**, so a typed question never turns
-  on the speakers — and it needs no wire field, because how a message was sent is the composer's own business.
-  A question or an approval the loop parked on is read aloud under that same condition, because the loop stops
-  there: a voice user who is never told about the card is a conversation that simply ends.
-  The contract is a subscription rather than `listen(): Promise<string>` on purpose: a promise fits push-to-talk
-  and nothing else, so hands-free could then only arrive as a breaking change. `useSpeech` in a util lib's
-  `webkit/` is the engine — the browser's own recognition and synthesis. An app's WebView **has neither on
-  Android or iOS** and `@akanjs/native` ships no speech plugin yet, so a `speech.plugin.ts` declares only the
-  permission and its usage texts. An engine answering `available()` false renders no microphone at all,
-  the same rule as publishing no tool for a control the screen does not draw.
-- **Data the user points at rides the message too, as `references` — and its value is a snapshot.** A file is
-  something they handed over; a reference is something they pointed at while asking, so it belongs in the same
-  place and for the same reason. Screen context does not do this job: `ContextBlock`s are rebuilt from the screen
-  every turn, so what was named three turns ago is simply not in the conversation any more. A `MessageReference`
-  carries the host's own `refName`, the id, a label, an optional dotted `path` into the document, and the `value`
-  those resolved to. **The value is never re-read on a later turn**, which is the point: re-reading rewrites what
-  the person was looking at when they spoke, and the usual next thing the agent does is edit the very field it was
-  pointed at — leaving a live reference showing the result with no record of what it was changed from.
-  `refName`/`refId`/`path` travel so a tool can read the current value when the answer needs it, and
-  `AgentService.referenced` folds the whole lot into the message text in one place, so every provider carries a
-  reference without either adaptor knowing the word. **The value is masked on the way in and nowhere else**: masking
-  needs the model class, which no wire carries, so the model a host names when it stages the reference is the whole
-  of the decision about what leaves the browser — name the class that actually holds the field, because a `Light`
-  one usually does not. **The ceiling is 20,000 characters per reference**, applied as it is staged and again on
-  the server; a reference is bulkier than a tool result and outlives one, riding every later turn and being the last
-  thing compaction folds. Persisting keeps the pointer and drops the value with a note saying so, which is a better
-  restored state than an attachment can offer — the pointer is still live, so the answer is to read it again.
-  Staging lives on the **session** (`stage` / `staged` / `unstage(key)` / `clearStaged()`), not on the composer where
-  staged files live, because a reference comes from whichever component drew the data rather than from the paperclip;
-  `unstage` is keyed on `refName/refId#path` because what orders a message's references is its text, not that list.
-- **Two ways to point at data, and which one depends on who knows the value.** `<Agent.Chat reference={[…]} />`
-  takes one `ReferenceSource` per kind of document — `refName`, a `type`, the app's own `search`, and a `resolve` —
-  and the composer's `@` menu offers whole documents from them; the token is written the moment a row is picked and
-  the value is staged when `resolve` lands, so a slow fetch never freezes the menu and one that fails leaves a
-  pointer that reads as *go and read it*. For a field *inside* a document, the component drawing it calls
-  `useAgentReference()` — it already holds the value, so there is no round trip, and it is the only thing that
-  knows a rich-text field stored as `field(Any)` reads as a paragraph rather than as the editor document it is. The
-  hook no-ops with a warning outside a session, the same call `AgentValue.publishable` makes: a card carrying a
-  reference button must not cost a route its render.
-- **The token in the draft is what carries a reference, and the chip only draws it.** Deleting
-  `@[label](mention:refName/id#path)` by hand drops the reference exactly as removing the chip does — removing the
-  chip removes the token — so the two can never disagree, and nothing re-derives a value from text somebody edited.
-  A token pasted out of an earlier message travels as a pointer with a note, which is the same shape a restored
-  conversation produces. Staged references are the **session's**, not the composer's, because `useAgentReference`
-  is called from components the composer cannot see; writing the token is the composer's half, and `refer` warns
-  rather than staging silently when no chat is mounted on that session — the case where a card sits outside the
-  `<Agent.Zone>` its chat is inside.
-- **The composer draws a pointer as the name it points at, never as the token.** Where `reference` sources are
-  declared the input is a Lexical editor rather than a textarea, and each pointer is one atomic node — a backspace
-  takes the whole thing rather than a character of a label that would then name nothing. Nothing above it changes:
-  the node's text content *is* the `@[…](mention:…)` token, so the draft string the chat reads, the `@` query, the
-  chips, the wire and the server's framing all see what they always saw, and every offset the chat hands over is
-  an offset into that string. It is its own chunk behind the chat's, fetched only where a source was declared, and
-  `mentions={false}` keeps the plain textarea — for an app that overrides `AgentComposer`, or one that would
-  rather see the tokens it is sending. An override that draws its own textarea keeps working: it fills the
-  `inputRef` it is handed, and the chat reads the caret off that when no editor filled `handleRef`.
-- **`attach` and `voice` both carry functions, so a server layout cannot pass either.** A closure does not cross
-  the RSC boundary — `non-scalar-props-restricted` says so on `page/**` — so an app that wants either mounts the
-  chat from a small client component in the app's own `ui/` that calls the hook.
-- **A dialog's close is the dialog's own dismissal, not a state flip.** `closeDialogIn<Ns>` (and `Dialog.Close`)
-  run through whatever `Dialog.Modal` registered, so the agent takes the exact path the X button takes —
-  `confirmClose` still prompts and `onCancel` still fires. A close that only set `open` to false would skip both,
-  which is a different action wearing the same name.

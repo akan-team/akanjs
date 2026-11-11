@@ -110,7 +110,9 @@ Mount `Agent.Chat` once, in the layout that wraps every screen the agent should 
 
 Props
 
-- title (string, default l("base.agent")): Header text and the panel's accessible name.
+- title (ReactNode, default l("base.agent")): Header title, and the panel's accessible name when it is plain text.
+
+- label (string): The panel's accessible name, for a `title` that is not plain text.
 
 - instructions (string): App-wide guidance for the model, in English, which `Agent.Guide` adds route guidance to.
 
@@ -128,7 +130,7 @@ Props
 
 - intro (ReactNode): Replaces the empty-state line while the transcript is empty, where starter questions go.
 
-- header (ReactNode): Extra controls in the header bar, left of the built-in clear and close buttons.
+- header (ReactNode): Extra controls left of clear and close. Mount a modal they open here, not beside the Chat, or it opens under the panel.
 
 - chrome (boolean, default true): `false` drops the header bar and `header` for an inline chat; `/new` still clears.
 

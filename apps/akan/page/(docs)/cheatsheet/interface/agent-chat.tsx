@@ -1369,11 +1369,19 @@ export default layout().render(({ children }) => {
               items={[
                 {
                   key: "title",
-                  type: "string",
+                  type: "ReactNode",
                   default: 'l("base.agent")',
                   desc: l.trans({
-                    en: "Header text and the panel's accessible name.",
-                    ko: "헤더 제목이자 패널의 접근성 이름입니다.",
+                    en: "Header title, and the panel's accessible name when it is plain text.",
+                    ko: "헤더 제목이며, 텍스트일 때는 패널의 접근성 이름도 됩니다.",
+                  }),
+                },
+                {
+                  key: "label",
+                  type: "string",
+                  desc: l.trans({
+                    en: "The panel's accessible name, for a `title` that is not plain text.",
+                    ko: "`title`이 텍스트가 아닐 때 쓰는 패널의 접근성 이름입니다.",
                   }),
                 },
                 {
@@ -1447,8 +1455,8 @@ export default layout().render(({ children }) => {
                   key: "header",
                   type: "ReactNode",
                   desc: l.trans({
-                    en: "Extra controls in the header bar, left of the built-in clear and close buttons.",
-                    ko: "기본 비우기·닫기 버튼 왼쪽, 헤더 바에 더할 컨트롤입니다.",
+                    en: "Extra controls left of clear and close. Mount a modal they open here, not beside the Chat, or it opens under the panel.",
+                    ko: "기본 비우기·닫기 버튼 왼쪽에 더할 컨트롤입니다. 여기서 여는 모달은 Chat 옆이 아니라 여기에 두어야 패널 아래에 깔리지 않습니다.",
                   }),
                 },
                 {

@@ -1,5 +1,133 @@
 <!-- akan:generated -->
 
+## Attachments And Speech
+- **A file the user attaches rides the message, and nothing is stored.** The composer takes a paperclip, a drop and
+  a paste; an image rides as bytes and a text file as text, which is all a browser reads with no dependency.
+  Everything else is the app's own reader — `<Agent.Chat attach={…} />`, one `File` in, a `MessageAttachment` or
+  `null` out — because extracting a PDF needs a parser and the framework carries attachments without depending on
+  one. It runs ahead of the built-in, so it is also where an image is downscaled before it costs a megabyte of
+  prompt. **What the provider cannot read is replaced by a note naming the file**, never dropped: an attachment the
+  model never saw is one it answers about from the filename. An adaptor declares `accepts: { image, document }` and
+  `AgentService.readable` degrades the rest, so a text-only provider needs no attachment code at all — DeepSeek
+  declares none, which is why an image against the *default* provider is refused out loud while an extracted PDF
+  works, `text` being readable by every model there is. Swap in `OpenaiLlm` or `AnthropicLlm` and the same image
+  arrives as an image. `accepts.document` is one boolean over every non-image type, so an adaptor whose API has a
+  block for only some of them — Anthropic's `document` is PDF and nothing else — names the rest in the text rather
+  than dropping them, which is the wire's own rule applied at the one layer that knows which blocks exist. Persisting keeps each
+  attachment's name, type, address and `ref` and drops only its content: web storage is a few megabytes, one
+  screenshot fills a chunk of it, and a save that fails is silent — so keeping the bytes would quietly stop keeping
+  the transcript, while an id is the handle a restored conversation has left to find the file with.
+  **The ceilings are the message's, not the file's**: 4 MB per file, 8 MB and five files per message, and the same
+  file twice is refused by name. The bytes ride inside one turn's JSON, so what a provider refuses is the sum —
+  and a request that cannot be sent is one the user has to empty the composer to escape, which is why the refusal
+  happens at the paperclip and names the file it dropped. All three are defaults rather than the law —
+  `<Agent.Chat attachLimits={{ perFileBytes, perMessageBytes, perMessageCount }} />` — because what one request can
+  carry belongs to the configured provider and not to the framework. The per-file one is measured on **what the
+  reader produced**, not on the file that was picked: a reader that uploads and answers a `url` has already paid
+  what the ceiling exists for, so refusing its 6 MB photo would refuse it for a cost it does not incur. Only the
+  built-in path checks the source size, and there the file itself is the carrier.
+- **An app may also build attachments itself and hand them to `session.send([{ role: "user", text, attachments }])`**,
+  which is why `MessageAttachment` is exported from `akanjs/ui` — the composer's path is typed by the `AttachReader`
+  callback, that one is not, and an object assembled with no nameable type is the one that gets a field wrong.
+  Nothing downstream trusts the result: an attachment whose `mimeType` is not a string is noted like any other
+  unreadable one, and its chip renders its name with no preview, because the host wrote the object and the declared
+  type is a claim rather than a check. A field that arrives wrong costs that attachment, never the turn.
+- **A `url` carrier is an address the *provider* fetches, and bytes beside it win.** A reader that uploads answers
+  `{ url }` when its storage is publicly reachable, and `{ data }` — or both — when it is not: an attachment
+  carrying both is read from its bytes and displayed from its address, so the chip draws a thumbnail and the model
+  still gets the picture. That precedence exists because the other order fails the one way nothing reports: the
+  default storage backend serves a path only the app can resolve, the adaptor would hand it over as written, and
+  the model answers about a picture it never saw. Send a provider-reachable URL **alone** — paired with bytes it
+  costs the provider hop whatever the bytes weigh, for a fetch the provider would have done itself.
+- **An image type the provider has no block for is refused at the adaptor, not upstream.** `accepts.image` is one
+  boolean, so `AgentService.readable` passes every `image/*` through, and the built-in composer reader base64s
+  every `image/*` as well — an `AttachReader` answering `null` means "not mine" and falls through to it, so an app
+  cannot gate one either. Both shipped vision adaptors therefore match an exact set (`jpeg`, `png`, `gif`, `webp`)
+  and name the rest in the text. It matters because an unsupported type is not one unread attachment: it is a
+  block the API refuses, so the **whole turn** dies on a vendor 400 — and `image/heic`, the iPhone camera default,
+  is the likeliest one an app meets.
+- **`MessageAttachment.ref` is the host's own handle on the file — carried, never read.** A file id, a storage key,
+  whatever turns the attachment back into something a tool can be handed. The framework only moves it: the model is
+  never shown one, and a tool the app publishes (`useFileFieldTool` below) is what spends it. Without it a host that
+  stores its uploads keeps a map beside the transcript keyed on name and size — the same guess `Attachment.same`
+  has to make, and the one that is wrong for two crops of one export. So when both sides carry a `ref`, it *is* the
+  answer to "the same file twice", and the heuristic is what is left for when they do not.
+- **A tool hands the model a file with `ToolReturn.attach(result, [attachment])`** (`akanjs/store`), which lands in
+  `ToolCallResult.attachments` beside the value — a `result` reaches the model as JSON text, so a URL in it is read
+  as letters and base64 as a wall of them. It takes a user attachment's shape and meets the same `accepts` check and
+  type allow-list; Anthropic carries it inside the `tool_result`, the chat-completions dialect (whose `tool` message
+  holds text alone) in one user message after the turn's tool messages. It is outside the 20,000-character ceiling
+  and held to the 4 MB per-file one, and only the latest turn's ride as bytes: an earlier one becomes a note telling
+  the model to call the tool again while the picture is on screen, since one picture costs over a thousand tokens on
+  every turn it rides.
+- **Speech is one engine contract and the framework's own policy.** `<Agent.Chat voice={engine} />` takes a
+  `VoiceEngine` — `listen(handlers)` and `speak(sentence)`, both cancellable — and the chat decides everything
+  else: a press-to-talk microphone whose transcript lands in the composer to be corrected, one utterance per
+  press, sentence-at-a-time reading, barge-in on the next press or on Stop, and markdown stripped so `**bold**`
+  is not pronounced. **A reply is read aloud only when the ask arrived by voice**, so a typed question never turns
+  on the speakers — and it needs no wire field, because how a message was sent is the composer's own business.
+  A question or an approval the loop parked on is read aloud under that same condition, because the loop stops
+  there: a voice user who is never told about the card is a conversation that simply ends.
+  The contract is a subscription rather than `listen(): Promise<string>` on purpose: a promise fits push-to-talk
+  and nothing else, so hands-free could then only arrive as a breaking change. `useSpeech` in a util lib's
+  `webkit/` is the engine — the browser's own recognition and synthesis. An app's WebView **has neither on
+  Android or iOS** and `@akanjs/native` ships no speech plugin yet, so a `speech.plugin.ts` declares only the
+  permission and its usage texts. An engine answering `available()` false renders no microphone at all,
+  the same rule as publishing no tool for a control the screen does not draw.
+- **Data the user points at rides the message too, as `references` — and its value is a snapshot.** A file is
+  something they handed over; a reference is something they pointed at while asking, so it belongs in the same
+  place and for the same reason. Screen context does not do this job: `ContextBlock`s are rebuilt from the screen
+  every turn, so what was named three turns ago is simply not in the conversation any more. A `MessageReference`
+  carries the host's own `refName`, the id, a label, an optional dotted `path` into the document, and the `value`
+  those resolved to. **The value is never re-read on a later turn**, which is the point: re-reading rewrites what
+  the person was looking at when they spoke, and the usual next thing the agent does is edit the very field it was
+  pointed at — leaving a live reference showing the result with no record of what it was changed from.
+  `refName`/`refId`/`path` travel so a tool can read the current value when the answer needs it, and
+  `AgentService.referenced` folds the whole lot into the message text in one place, so every provider carries a
+  reference without either adaptor knowing the word. **The value is masked on the way in and nowhere else**: masking
+  needs the model class, which no wire carries, so the model a host names when it stages the reference is the whole
+  of the decision about what leaves the browser — name the class that actually holds the field, because a `Light`
+  one usually does not. **The ceiling is 20,000 characters per reference**, applied as it is staged and again on
+  the server; a reference is bulkier than a tool result and outlives one, riding every later turn and being the last
+  thing compaction folds. Persisting keeps the pointer and drops the value with a note saying so, which is a better
+  restored state than an attachment can offer — the pointer is still live, so the answer is to read it again.
+  Staging lives on the **session** (`stage` / `staged` / `unstage(key)` / `clearStaged()`), not on the composer where
+  staged files live, because a reference comes from whichever component drew the data rather than from the paperclip;
+  `unstage` is keyed on `refName/refId#path` because what orders a message's references is its text, not that list.
+- **Two ways to point at data, and which one depends on who knows the value.** `<Agent.Chat reference={[…]} />`
+  takes one `ReferenceSource` per kind of document — `refName`, a `type`, the app's own `search`, and a `resolve` —
+  and the composer's `@` menu offers whole documents from them; the token is written the moment a row is picked and
+  the value is staged when `resolve` lands, so a slow fetch never freezes the menu and one that fails leaves a
+  pointer that reads as *go and read it*. For a field *inside* a document, the component drawing it calls
+  `useAgentReference()` — it already holds the value, so there is no round trip, and it is the only thing that
+  knows a rich-text field stored as `field(Any)` reads as a paragraph rather than as the editor document it is. The
+  hook no-ops with a warning outside a session, the same call `AgentValue.publishable` makes: a card carrying a
+  reference button must not cost a route its render.
+- **The token in the draft is what carries a reference, and the chip only draws it.** Deleting
+  `@[label](mention:refName/id#path)` by hand drops the reference exactly as removing the chip does — removing the
+  chip removes the token — so the two can never disagree, and nothing re-derives a value from text somebody edited.
+  A token pasted out of an earlier message travels as a pointer with a note, which is the same shape a restored
+  conversation produces. Staged references are the **session's**, not the composer's, because `useAgentReference`
+  is called from components the composer cannot see; writing the token is the composer's half, and `refer` warns
+  rather than staging silently when no chat is mounted on that session — the case where a card sits outside the
+  `<Agent.Zone>` its chat is inside.
+- **The composer draws a pointer as the name it points at, never as the token.** Where `reference` sources are
+  declared the input is a Lexical editor rather than a textarea, and each pointer is one atomic node — a backspace
+  takes the whole thing rather than a character of a label that would then name nothing. Nothing above it changes:
+  the node's text content *is* the `@[…](mention:…)` token, so the draft string the chat reads, the `@` query, the
+  chips, the wire and the server's framing all see what they always saw, and every offset the chat hands over is
+  an offset into that string. It is its own chunk behind the chat's, fetched only where a source was declared, and
+  `mentions={false}` keeps the plain textarea — for an app that overrides `AgentComposer`, or one that would
+  rather see the tokens it is sending. An override that draws its own textarea keeps working: it fills the
+  `inputRef` it is handed, and the chat reads the caret off that when no editor filled `handleRef`.
+- **`attach` and `voice` both carry functions, so a server layout cannot pass either.** A closure does not cross
+  the RSC boundary — `non-scalar-props-restricted` says so on `page/**` — so an app that wants either mounts the
+  chat from a small client component in the app's own `ui/` that calls the hook.
+- **A dialog's close is the dialog's own dismissal, not a state flip.** `closeDialogIn<Ns>` (and `Dialog.Close`)
+  run through whatever `Dialog.Modal` registered, so the agent takes the exact path the X button takes —
+  `confirmClose` still prompts and `onCancel` still fires. A close that only set `open` to false would skip both,
+  which is a different action wearing the same name.
+
 ## Zones And Route Guidance
 - **`<Agent.Zone id="comments">` runs a second agent over one section, in parallel with the root.** Everything
   mounted inside — `st.use` subscriptions, hook tools, Guides — belongs to that zone's own conversation *and*
@@ -122,150 +250,3 @@
   tools that take no required argument, each with a `run` that calls the control's own handler (guard included,
   not logged as an agent call) and `needsConfirm` for the ones a person should confirm — so ⌘K offers exactly
   what the agent can do here, with nothing declared twice.
-
-## What `akanjs/ui` Publishes For You
-- **`akanjs/ui` publishes its own controls, so an app writes nothing for them.** `Data.ListContainer` (and every
-  `Model.AdminPanel`) publishes its toolbar and its row verbs; `Model.NewWrapper` (so `Model.New` too) publishes
-  `new<Model>`; `Load.Units`, `Load.Pagination` and `Data.Pagination` publish `setPageOf<Model>`; `Layout.Sider`,
-  `System.SelectLanguage`, `Link.Back` and `System.ThemeToggle` publish the shell. **A component that can render
-  twice on one screen takes a `namespace` prop and publishes nothing without it** — `Tab`, `Dialog`,
-  `ScreenNavigator`, `Dropdown`. Pass one (`<Tab namespace="detail">`) and the tool becomes `switchTabInDetail`;
-  leave it off and that tab is invisible to the agent, because two tabs answering to `switchTab` would mean the
-  first to mount loses. A named `Dropdown` publishes `openDropdownIn<Ns>` / `closeDropdownIn<Ns>` and the state
-  `dropdownIn<Ns>`, and its trigger annotates whichever of the two its next click performs. `Model.NewWrapper`
-  takes the same prop but publishes without one, because its slice already names it — a second create trigger for
-  the same slice, opening a form seeded differently, is what needs the suffix.
-- **The `Model.*` row wrappers publish their verb, taking the id.** `Model.EditWrapper`, `Model.ViewWrapper`,
-  `Model.RemoveWrapper` and `Model.Remove` publish `edit<Model>` / `view<Model>` / `remove<Model>` with a
-  `modelId` argument, so a list built from `Load.Units` and an app's own `Unit` reaches the same verbs an
-  `AdminPanel` does. `Model.SureToRemove` publishes the same — except under `typeNameToRemove`, where it
-  publishes nothing: that gate makes a person retype the model's name, an approval card is one click, and
-  offering the lever at a friction the screen does not have is not the same control.
-- **A dropdown's menu is mounted from the first render and hidden while closed** — the deliberate opposite of the
-  modal rule below, because a menu is one click away rather than a surface of its own. A tool is declared by a
-  mount effect, so an unmounted menu is one whose row verbs and field setters do not exist yet: an agent asked for
-  one finds nothing, and no catalogue entry hints that opening the menu would help. `readScreen` still skips
-  hidden content, so the items themselves are read only after `openDropdownIn<Ns>` — what a closed menu publishes
-  is its tools, not its text. The cost is that `content` renders on page load, so a heavy panel belongs behind a
-  `Dialog` instead.
-- **A modal publishes its verbs while it is open, and only then.** `Model.EditModal` publishes `submit<Model>`
-  and `cancelEditOf<Model>`, `Model.ViewModal` publishes `closeViewOf<Model>`, and `Model.ViewEditModal`
-  publishes `edit<Model>` / `submit<Model>` / `closeViewOf<Model>` — each from a subtree that mounts with the
-  open modal, never from the component that merely holds it. That is what makes a list legal: `Data.CardList`
-  renders one editor per row, and at most one of them is ever open, so one name is registered rather than fifty.
-  It also means the verb is absent from the catalogue while nothing is open, which is honest — and costs the
-  agent nothing, because the catalogue is re-read on the turn that follows the tool call that opened the form.
-- **A shell's `submit<Model>` refuses while an upload is in flight.** `Model.EditModal` (also while its submit is
-  disabled) and `Model.ViewEditModal` disable the button and answer `The <model> form is not ready to submit.` while
-  `<model>FormUploading` is not empty. That key is read `{ agent: false }`, so the refusal is how an agent learns of
-  the upload: call `submit<Model>` again once the file has landed, rather than setting the field a second time.
-
-## Forms
-- **A form control publishes its own setter, and reading a form publishes one tool that fills several at once.**
-  Both are free: an app writes no `st.tool` for a form. A `Field.*` / `Input.*` / `Select` / `Switch` handed
-  `onChange={st.do.setTitleOnTask}` **by reference** publishes `setTitleOnTask` while it is on screen — the same
-  reference that earns `data-akan-action`, so the tool and the person press one function and an inline arrow
-  still publishes nothing. `st.use.taskForm()` adds `fillTaskForm(patch)`, which takes several fields in one call
-  and is the only way to reach a list, a map, or an embedded object, whose rows are written through
-  `writeOnTask(path, value)` and can carry no annotation. It is a patch: a field left out keeps its value.
-  `fillTaskForm` refuses a plain field whose control is not on screen and names the ones that are; a composite it
-  cannot see is let through, which is the one place an agent reaches a field the screen may not draw. Never a
-  relation (picked or uploaded, not typed), a base document field, or a `hidden`/`secret` one at any depth —
-  their reads are masked and a writer would be the door around that. `st.use.taskForm({ agent: false })`
-  withholds the patch tool; an inline arrow withholds a control's own.
-  **The patch writes each plain field through that control's own published tool, not the setter underneath it** —
-  which is what carries the control's `transform`, so a field cannot normalize one way for `setPhoneOnBizAccount`
-  and another way for `fillBizAccountForm`. Only a composite, having no control, dispatches its setter directly.
-  The patch tool's entry is a pure function of the model, so a form put on screen by a shell that subscribes it
-  (`Model.EditModal`) *and* by the `Template` inside it registers the same name with the same description twice
-  over — one declaration, not a clash. Neither has to suppress the other, and neither is asked to.
-- **A `disabled` control publishes nothing, so the agent never gets a lever the person cannot pull.** Every value
-  control reads it — `Field.*`, `Input.*`, `Select`, `Switch`, and the four relation pickers — and disabling a
-  mounted control withdraws its tool for as long as it stays disabled. One gate covers both writers: with no
-  control published, `fill<Model>Form`'s guard refuses that field too. `readScreen` says `(disabled)` beside the
-  control, from the native attribute or `aria-disabled`, so a refusal is something the agent could have read first
-  rather than a surprise. This is the same rule as publishing only where the screen renders the control, applied to
-  a control the screen renders but withholds.
-- **Whatever the wrapper was for, there is a place to put it that is not the wrapper.** An inline arrow is the one
-  shape that publishes nothing, so each reason for writing one has its own home, and reaching for that home is what
-  keeps the field reachable:
-  - *normalize* — `(v) => set(formatPhone(v))` becomes the control's own `transform` prop, which every text and
-    number `Field.*` already takes (`Field.Phone` defaults it to `formatPhone`). `onChange` stays a reference, and
-    **`transform` runs on the agent's write too**, by both paths — the field's own tool and `fill<Model>Form`,
-    which goes through the control to get it — otherwise a person would store `010-1234-5678` and an agent the raw
-    digits. It normalizes one scalar, so an array control applies it per element and a cleared nullable field stays
-    null. It is the *control's* rule, though: a rule that must hold however the field is written — including a
-    composite path or a base-document write — belongs in `_postSet<Field>` below.
-  - *multi-write* — `(v) => { set(v); other(v); }` becomes a **`_postSet<Field>` method on the store**, and the
-    control keeps handing over the generated setter by reference. It runs right after the field is written, so it
-    reads the new value, and it reaches every other generated action with `this.` —
-    `_postSetToBiz(toBiz) { if (toBiz) this.addSendEmailsOnEstSheet(toBiz.sendEmails ?? []); }`. Nothing about the
-    control changes, so `data-akan-action` **and** `data-akan-state` both survive, and the rule now fires for every
-    writer — the person, the agent, `fill<Model>Form` — which is what a rule about a field should do.
-    **A generated action cannot be overridden, so do not try.** They all come from mapped types, and a mapped type
-    produces *properties*: a subclass method of the same name is `TS2425`, optional or not, and the two shapes
-    TypeScript does allow — a class field and a getter — are both skipped by `StoreRegistry.register`, which only
-    collects prototype descriptors holding a function. There is no legal middle, which is exactly why the hook
-    carries a leading `_` and no model suffix: a name no mapped type can produce is the only name a subclass may
-    declare. It cannot be typed either, for the same reason, so a misspelled field is named on the console at
-    registration instead. Calling a generated action *from* a custom one is fine and always was — `this.setXOnY(v)`
-    typechecks anywhere.
-  - *nested path* — `(v) => writeOnTask("payments.3.name", v)` has no home and needs none: an embedded row is
-    unannotatable by design, and an agent reaches it through `fillTaskForm`, which waves composites through.
-
-  `no-unpublished-form-setter.grit` errors on the pure-forwarding shape only, because every other one has a
-  legitimate reading. **`akan quality scan` counts them all** (`akan.agent.unpublished-form-setter`, one warning per
-  file): the lint rule is the per-line enforcement, the scan is the inventory of fields this screen writes but
-  cannot be asked to write.
-- **A relation reaches an agent from its picker, not from the form patch.** `fillTaskForm` publishes no schema for
-  one and is right not to: the form holds the whole related document, so an id would need a lookup the store does
-  not do. The picker is where that lookup lives, so `Field.Parent` / `Field.Children` publish the pair themselves —
-  `load<Field>OptionsOn<Model>`, which loads the slice and returns `[{ id, label }]`, and the field's own
-  `set<Field>On<Model>` taking `<field>Id` / `<field>Ids`. Listing is its own tool because loading is its own step
-  for a person too: the options arrive when the dropdown opens, and an agent never opens it. `Field.ParentId` /
-  `Field.ChildrenId` need none of that — the id *is* the value, so the ordinary setter describes it. All four still
-  require the setter **by reference**, and a `disabled` picker publishes nothing.
-- **An upload control reaches an agent the same way, through `useFileFieldTool`.** The clause after "picked **or
-  uploaded**" has its own hook: the control hands `read` and `label` and gets `load<Field>OptionsOn<Model>` — the
-  same name the relation picker publishes, because a form draws both side by side and a model that learned the
-  name on one field spells it the same on the next — plus the field's own `set<Field>On<Model>` taking
-  `<field>Id` / `<field>Ids`, with `add`/`sub` besides on an array field. **`read` omitted publishes nothing**: a
-  shared `Field.Img` forwards an optional prop, and a call site handing it none has no candidates and must not
-  grow a tool that refuses every id. `read` is the control's rather than the framework's because the ids are the
-  host's — a conversation carries `MessageAttachment.ref`s, and only whoever set them can turn one back into the
-  model a form field holds. akanjs draws no upload control itself, so this is the hook a lib's `Field.Img` /
-  `Field.Imgs` calls, exactly as `Field.Relation` calls the relation one.
-- **`add`/`sub` on a file field are the only way in, not the weaker way.** For every other list of ids they are a
-  convenience the framework declines to pay a tool for — `useFieldTool` publishes them for embedded rows only, and
-  the relation picker not at all, because a picker's `read` is the whole resolvable set so rewriting the array is
-  always expressible. An upload control's `read` is what *this conversation* brought, and the field may already
-  hold files that predate it: naming the array whole drops those, since the ids that would keep them are ids the
-  guard has never heard of. **`max` / `min` are passed, not derived** — `ConstantField` carries `arrDepth`, which
-  says the value is a list and not how long a legal one is — and they reach the tool's *description* as well as
-  its guard, because a limit an agent can only learn by tripping the server's `Err` is the round trip the listing
-  tool exists to spare it. Two call sites rendering one field with different caps describe one name two ways, and
-  the surface warns, which is the right answer: a field has one cap. For the same reason the unknown-id refusal
-  **names the boundary rather than the absence** on a list: an id already on the field is real, on screen, and in
-  the form the agent just read, so "no such file" reads as the form being wrong instead of the verb — it says the
-  id is not among what is *offered*, and points at `sub<Field>On<Model>`, which does cover it.
-- **An array of embedded rows also publishes `add<Field>On<Model>` and `sub<Field>On<Model>`** — append, and
-  remove-by-position — beside the whole-array setter. Not new authority: the setter can already produce any array
-  those two can, so they are strictly weaker. What they add is that neither can touch a row it was not given, and
-  that is the point: writing the whole array means echoing every row the agent is *not* changing, `checked`
-  validates types and not values, so one mistyped row nobody asked about is written silently. Both take a list and
-  act atomically, because removing positions one call at a time would shift the ones not yet removed. **Only an
-  embedded-row array gets them** — an array of primitives or of relation ids has nothing to retype wrong, its
-  values *are* the payload, so it keeps one setter and pays for no extra tools. `add` appends and publishes no
-  insert position, matching the `+` a person presses; `addOrSub` is never published, since it matches by `indexOf`
-  and would compare rows by reference. Editing a row in place stays `fill<Model>Form`'s job.
-- **A list the person can drag also publishes `move<Field>On<Model>(from, to)`**, and `DraggableList` is a form
-  control like any other: handed the generated setter by reference it publishes that field, so an app that renders
-  its own rows with `DraggableList` writes no `st.tool`. The reorder tool exists for the same reason `add`/`sub` do
-  — the drag is the lever the screen offers and it changes no entry's content, so moving one row should not mean
-  retyping the nine beside it. No store action answers to it: reordering *is* a whole-array write, so the tool
-  splices the live entries and hands them to the setter the drag hands them to, `transform` deliberately not
-  applied, since the values are stored already and dragging normalizes nothing. It comes from the control saying
-  it sorts, not from the field, so a plain `Field.List` publishes no reorder and a scalar field never gets one.
-  **A component that composes `DraggableList` and already published the field hands the inner list a wrapper** —
-  the two would otherwise register one name twice, and the outer one is the one holding `transform`. That is what
-  `Field.TextList` does, and the only place an inline arrow is the right answer rather than a bug.

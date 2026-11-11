@@ -13,7 +13,7 @@ export const OVERLAY_LAYER_ATTR = "data-akan-overlay";
 // card tops even a modal: the call it asks about may be one of the modal's own controls.
 // The agent's launcher floats over the page but under every menu and modal it would otherwise cover.
 // A toast tops a modal: it reports what the modal's own controls did.
-// The open agent panel drives every overlay a page opens, so it tops them all.
+// The open agent panel drives every overlay a page opens, so it tops them all; one opened from the panel tops it.
 // Reconnect blocks the whole app on purpose, so nothing tops it.
 export const overlayZ = {
   agentLauncher: 80,
@@ -26,6 +26,7 @@ export const overlayZ = {
   approval: 130,
   toast: 140,
   agentPanel: 150,
+  agentPanelOverlay: 160,
   reconnect: 200,
 } as const;
 

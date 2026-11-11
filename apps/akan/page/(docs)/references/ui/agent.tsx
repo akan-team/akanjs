@@ -347,11 +347,11 @@ export default page()
         }),
       },
       {
-        key: "title",
-        type: "string",
+        key: "title / label",
+        type: "ReactNode / string",
         desc: l.trans({
-          en: 'Panel heading. Left out, it reads "Agent" in the user\'s language.',
-          ko: "패널 제목입니다. 생략하면 사용자 언어로 '에이전트'가 나옵니다.",
+          en: 'Panel heading, "Agent" in the user\'s language when left out. `label` names the panel for a `title` that is not plain text.',
+          ko: "패널 제목이며, 생략하면 사용자 언어로 '에이전트'가 나옵니다. `title`이 텍스트가 아니면 `label`이 패널의 이름이 됩니다.",
         }),
       },
       {
@@ -367,8 +367,8 @@ export default page()
         type: "ReactNode / boolean",
         default: "chrome = true",
         desc: l.trans({
-          en: "Controls left of clear and close. `chrome={false}` drops the whole bar, leaving `/new` to clear.",
-          ko: "지우기·닫기 버튼 왼쪽에 컨트롤을 더합니다. `chrome={false}`면 헤더 바를 없애고, 지우기는 `/new`로 합니다.",
+          en: "Controls left of clear and close; a modal they open stacks above the panel. `chrome={false}` drops the whole bar, leaving `/new` to clear.",
+          ko: "지우기·닫기 버튼 왼쪽에 컨트롤을 더하며, 여기서 연 모달은 패널 위에 뜹니다. `chrome={false}`면 헤더 바를 없애고, 지우기는 `/new`로 합니다.",
         }),
       },
     ];
