@@ -78,6 +78,29 @@ describe("CsrGuards", () => {
     expect(runs).toBe(3);
   });
 
+  test("hands each guard the target's in-app path, and keeps a verdict when only an undeclared query moves", async () => {
+    const paths: (string | undefined)[] = [];
+    const { guard } = page()
+      .param("orgId", String)
+      .guard((_, { path }) => {
+        paths.push(path);
+      })
+      .render(() => null)
+      .toRouteModule();
+    const location = {
+      ...locationOf(undefined, guard),
+      params: { lang: "en", orgId: "a" },
+      pathname: "/en/org/a/home",
+      search: "seat=3",
+    };
+    expect(await CsrGuards.of(location)).toBe(true);
+    expect(await CsrGuards.of({ ...location, search: "seat=4", searchParams: { seat: "4" } })).toBe(true);
+    expect(await CsrGuards.of({ ...location, params: { lang: "en", orgId: "b" }, pathname: "/en/org/b/home" })).toBe(
+      true,
+    );
+    expect(paths).toEqual(["/org/a/home?seat=3", "/org/b/home?seat=3"]);
+  });
+
   test("holds a verdict while a layer of its location is on screen, and asks again once none is", async () => {
     let runs = 0;
     const location = locationOf(undefined, async () => {

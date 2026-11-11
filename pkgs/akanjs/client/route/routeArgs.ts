@@ -16,6 +16,13 @@ export interface RouteBaseArgs {
   lang: string;
 }
 
+/** A guard's second argument. `path` is a target to send the visitor back to, never a reason to let them in: CSR asks
+ *  a guard again only when the route or an arg it declared moves, so a query it did not declare can move on. */
+export interface RouteGuardRequest {
+  /** The requested in-app path with its search, as `router.push` takes it; `undefined` while MCP lists the screen. */
+  path?: string;
+}
+
 export interface RouteArgInfo {
   kind: "param" | "search";
   name: string;

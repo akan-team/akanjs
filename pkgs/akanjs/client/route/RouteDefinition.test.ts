@@ -281,6 +281,28 @@ describe(".guard() stage", () => {
     expect(seen).toEqual([{ lang: "ko", projectId: pid, page: 2 }, { lang: "en" }]);
   });
 
+  test("hands the guard the requested path as a second argument, which no declared arg can shadow", async () => {
+    process.env.AKAN_PUBLIC_APP_NAME ??= "test";
+    process.env.AKAN_PUBLIC_REPO_NAME ??= "akanjs";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "akanjs.com";
+    const seen: unknown[] = [];
+    const mod = layout()
+      .param("path", String)
+      .guard((args, { path }) => {
+        seen.push([args, path]);
+      })
+      .render(({ children }) => children)
+      .toRouteModule();
+    await mod.guard?.({ params: { lang: "en", path: "p" }, searchParams: {}, path: "/org/a/checkin?seat=3" });
+    await mod.guard?.({ params: { lang: "en", path: "p" }, searchParams: {} });
+    await mod.guard?.({ params: { lang: "en" }, searchParams: {}, path: "/org/a", listing: true });
+    expect(seen).toEqual([
+      [{ lang: "en", path: "p" }, "/org/a/checkin?seat=3"],
+      [{ lang: "en", path: "p" }, undefined],
+      [{ lang: "en" }, undefined],
+    ]);
+  });
+
   test("answers not-found for a path value the type refuses, before the guard runs", async () => {
     let ran = false;
     const mod = page()

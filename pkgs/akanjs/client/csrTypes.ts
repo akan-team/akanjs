@@ -121,6 +121,8 @@ export interface RouteGuardProps {
   searchParams: Record<string, string | string[]>;
   /** MCP is listing the screen, so no argument is known: a guard reading one throws `RouteArgPending`. */
   listing?: boolean;
+  /** The CSR target's in-app path; a server request's own URL gives it when this is left off. */
+  path?: string;
 }
 export type RouteGuard = (props: RouteGuardProps) => Promise<void>;
 export interface RouteRender {

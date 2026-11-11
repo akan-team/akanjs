@@ -112,7 +112,7 @@ Shared by `page()`, `layout()` and `rootLayout()`:
 .render(render: (args: RouteBaseArgs) => PromiseOrObject<ReactNode>)
 .config(config: PageConfig)
 .head(head: HeadStage<RouteBaseArgs>)
-.guard(guard: (args: RouteBaseArgs) => void | Promise<void>)
+.guard(guard: (args: RouteBaseArgs, request: RouteGuardRequest) => void | Promise<void>)
 .loading(render: (args: RouteBaseArgs) => PromiseOrObject<ReactNode>)
 ```
 

@@ -116,6 +116,16 @@ const getServerPublicOrigin = () => {
 
 const getConfiguredBasePaths = () => new Set(parseBasePaths(process.env.AKAN_PUBLIC_BASE_PATHS));
 
+export const getRequestRoutePath = (lang: string): string | undefined => {
+  const request = getEnv().side === "server" ? getServerRequestContext().getRequest() : undefined;
+  if (!request) return undefined;
+  const { pathname, search } = new URL(request.url);
+  const headers = getServerRequestContext().headers();
+  const locale = headers.get("x-locale") ?? lang;
+  const basePath = getServerBasePath(pathname, locale, headers.get("x-base-path") ?? undefined, "");
+  return `${getPathInfo(pathname, locale, basePath).path}${search}`;
+};
+
 const shouldExposeBasePath = () => getEnv().operationMode === "local";
 const CSR_RUNTIME_SEARCH_PARAMS = ["csr", "akanMobileTarget", "akanMobileBasePath", "akanMobileIndexPath"] as const;
 

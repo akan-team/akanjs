@@ -667,8 +667,8 @@ export default rootLayout()
           <Docs.Description>
             <div>
               {l.trans({
-                en: ".guard(fn) decides whether a route may open, before anything renders. Every chain takes it, at most once per route: a second .guard() throws when the module loads. fn receives the route's typed .param() and .search() values and lang, never a layout's children, and may be async. It refuses by calling router.redirect(href), router.notFound() or getSelf({ unauthorize: \"/signin\" }); signedIn() from @libs/shared/webkit makes that last call for you.",
-                ko: '.guard(fn)은 무엇이든 렌더링되기 전에 라우트를 열어도 되는지 정합니다. 세 체인 모두에 있고 라우트마다 한 번만 쓰며, 두 번째 .guard()는 모듈을 불러올 때 에러를 던집니다. fn은 라우트의 타입이 붙은 .param()·.search() 값과 lang을 받고, 레이아웃의 children은 받지 않으며, async여도 됩니다. router.redirect(href), router.notFound(), getSelf({ unauthorize: "/signin" }) 중 하나를 호출해 거절하며, @libs/shared/webkit의 signedIn()이 마지막 호출을 대신해 줍니다.',
+                en: ".guard(fn) decides whether a route may open, before anything renders. Every chain takes it, at most once per route: a second .guard() throws when the module loads. fn receives the route's typed .param() and .search() values and lang, never a layout's children, and a second { path }: the in-app path the visitor asked for with its search, undefined while MCP lists the screen. It may be async and refuses by calling router.redirect(href), router.notFound() or getSelf({ unauthorize: \"/signin\" }); signedIn({ path }) from @libs/shared/webkit makes that last call with ?redirect=<path> on the sign-in URL.",
+                ko: '.guard(fn)은 무엇이든 렌더링되기 전에 라우트를 열어도 되는지 정합니다. 세 체인 모두에 있고 라우트마다 한 번만 쓰며, 두 번째 .guard()는 모듈을 불러올 때 에러를 던집니다. fn은 라우트의 타입이 붙은 .param()·.search() 값과 lang을 받고(레이아웃의 children은 받지 않음), 두 번째 인자로 { path }를 받습니다. path는 방문자가 요청한 앱 안 경로와 쿼리이며, MCP가 화면 목록을 만들 때는 undefined입니다. fn은 async여도 되고 router.redirect(href), router.notFound(), getSelf({ unauthorize: "/signin" }) 중 하나를 호출해 거절하며, @libs/shared/webkit의 signedIn({ path })이 로그인 URL에 ?redirect=<path>를 붙여 마지막 호출을 대신합니다.',
               })}
             </div>
           </Docs.Description>
@@ -679,7 +679,7 @@ export default rootLayout()
 import { layout } from "akanjs/client";
 
 export default layout()
-  .guard(() => signedIn())
+  .guard((_, { path }) => signedIn({ path }))
   .render(({ children }) => <div className="flex flex-col">{children}</div>);`}
           />
           <Code.Snippet
@@ -703,18 +703,19 @@ export default page()
           />
           <Docs.Alert type="warning">
             {l.trans({
-              en: "A route guard is not authorization for data. It decides who may open a screen and redirects early; every query the screen makes is still judged by that endpoint's signal guards, so keep both. A query in a guard that the server refuses with 403 or 404 answers not-found, so the screen never confirms that the record exists.",
-              ko: "라우트 guard는 데이터 권한이 아닙니다. 누가 화면을 열 수 있는지 정하고 일찍 redirect할 뿐이며, 화면이 보내는 모든 쿼리는 여전히 그 endpoint의 signal guard가 판정하므로 둘 다 둡니다. guard 안의 쿼리를 서버가 403이나 404로 거절하면 not-found로 응답하므로, 화면은 그 레코드가 있는지 알려 주지 않습니다.",
+              en: "A route guard is not authorization for data. It decides who may open a screen and redirects early; every query the screen makes is still judged by that endpoint's signal guards, so keep both. path only builds a redirect target, never a reason to let someone in: CSR asks a guard again only when the route or an argument it declared moves. A query in a guard that the server refuses with 403 or 404 answers not-found, so the screen never confirms that the record exists.",
+              ko: "라우트 guard는 데이터 권한이 아닙니다. 누가 화면을 열 수 있는지 정하고 일찍 redirect할 뿐이며, 화면이 보내는 모든 쿼리는 여전히 그 endpoint의 signal guard가 판정하므로 둘 다 둡니다. path는 redirect 대상을 만들 때만 쓰고 들여보낼지 정하는 데는 쓰지 않습니다. CSR은 라우트나 guard가 선언한 인자가 바뀔 때만 guard에 다시 묻기 때문입니다. guard 안의 쿼리를 서버가 403이나 404로 거절하면 not-found로 응답하므로, 화면은 그 레코드가 있는지 알려 주지 않습니다.",
             })}
           </Docs.Alert>
           <Docs.Alert type="info">
             {l.trans({
               en: (
                 <span>
-                  Call <code>signedIn()</code>, never pass it: <code>.guard(signedIn)</code> would hand the route's
-                  arguments to <code>unauthorize</code>. In a <code>_layout.tsx</code>, prefer{" "}
-                  <code>{".guard(() => signedIn())"}</code> to <code>{"getSelf({ unauthorize })"}</code> in the layout
-                  body: the guard runs before anything renders, so the redirect is a real 307 on the server. The{" "}
+                  Call <code>signedIn()</code>, never pass it: <code>.guard(signedIn)</code> would take the route's
+                  arguments as its option. In a <code>_layout.tsx</code>, prefer{" "}
+                  <code>{".guard((_, { path }) => signedIn({ path }))"}</code> to{" "}
+                  <code>{"getSelf({ unauthorize })"}</code> in the layout body: the guard runs before anything renders,
+                  so the redirect is a real 307 on the server. The{" "}
                   <Link href="/references/akanjs/client#guard" className="text-primary">
                     client reference
                   </Link>{" "}
@@ -723,10 +724,11 @@ export default page()
               ),
               ko: (
                 <span>
-                  <code>signedIn()</code>은 넘기지 말고 호출합니다. <code>.guard(signedIn)</code>으로 쓰면 라우트 인자가{" "}
-                  <code>unauthorize</code>로 들어갑니다. <code>_layout.tsx</code>에서는 레이아웃 body 안의{" "}
-                  <code>{"getSelf({ unauthorize })"}</code>보다 <code>{".guard(() => signedIn())"}</code>을 씁니다.
-                  guard는 무엇이든 렌더링되기 전에 실행되므로 서버에서 redirect가 실제 307이 됩니다. 나머지는{" "}
+                  <code>signedIn()</code>은 넘기지 말고 호출합니다. <code>.guard(signedIn)</code>으로 쓰면 라우트 인자가
+                  옵션으로 들어갑니다. <code>_layout.tsx</code>에서는 레이아웃 body 안의{" "}
+                  <code>{"getSelf({ unauthorize })"}</code>보다{" "}
+                  <code>{".guard((_, { path }) => signedIn({ path }))"}</code>을 씁니다. guard는 무엇이든 렌더링되기
+                  전에 실행되므로 서버에서 redirect가 실제 307이 됩니다. 나머지는{" "}
                   <Link href="/references/akanjs/client#guard" className="text-primary">
                     client 레퍼런스
                   </Link>
