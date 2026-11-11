@@ -41,6 +41,11 @@ interface DeclaredPlug {
   target: string;
 }
 
+interface PackageExport {
+  name: string;
+  from: string;
+}
+
 const maxModules = 64;
 
 export class AdaptorResolver {
@@ -129,6 +134,7 @@ export class AdaptorResolver {
     const declared = this.#adaptors.get(name) ?? [];
     const holder = from === undefined ? file.owner : from;
     const own = this.#adaptorIn(name, declared, holder, path, file.fileName);
+    if (own && "from" in own) return this.#packageAdaptorOf(own.name, own.from);
     const found =
       own === undefined && from !== frameworkOwner
         ? declared.find((adaptor) => this.#resolver.visible(adaptor.owner, holder))
@@ -149,19 +155,21 @@ export class AdaptorResolver {
     owner: string | null,
     path: string | null,
     fileName: string,
-  ): DeclaredAdaptor | null | undefined {
+  ): DeclaredAdaptor | PackageExport | null | undefined {
     const own = declared.filter((adaptor) => adaptor.owner === owner);
     const [first] = own;
     if (path === null) return own.find((adaptor) => adaptor.fileName === fileName) ?? first;
     if (own.length === 1) return first;
-    const exported = this.#exportedAt(name, path, new Set());
+    if (!this.#resolver.hasModule(path))
+      return own.find((adaptor) => this.#source.relative(adaptor.fileName).startsWith(`${path}/`)) ?? first;
+    const exported = this.#exportedAt(name, path, new Set()).filter((item) => first || "fact" in item);
     const [only] = exported;
     if (only) return exported.length === 1 ? only : null;
     return first ? null : undefined;
   }
 
   //? TypeScript prefers a module's own `export { Clock }` to its `export *`s, and drops a name two `export *` share.
-  #exportedAt(name: string, path: string, seen: Set<string>): DeclaredAdaptor[] {
+  #exportedAt(name: string, path: string, seen: Set<string>): (DeclaredAdaptor | PackageExport)[] {
     const key = `${path}\n${name}`;
     if (seen.has(key) || seen.size >= maxModules) return [];
     seen.add(key);
@@ -171,6 +179,8 @@ export class AdaptorResolver {
     });
     if (here.length) return here;
     const { named, stars } = this.#resolver.exportsAt(path, name);
+    if (named?.from && this.#resolver.pathOfSpecifier(named.fileName, named.from) === null)
+      return [{ name: named.name === "default" ? name : named.name, from: named.from }];
     if (named) {
       const target = named.from === null ? path : this.#resolver.pathOfSpecifier(named.fileName, named.from);
       return target === null ? [] : this.#exportedAt(named.name, target, seen);
@@ -196,9 +206,12 @@ export class AdaptorResolver {
     if (reexport && shim && this.#resolver.pathOfSpecifier(reexport.site.fileName, shim.from) === null)
       return { name: reexport.local === "default" ? name : reexport.local, from: shim.from };
     if (reexport || !near) return null;
-    const { packages, owners } = this.#resolver.starExportsOf(owner, near);
+    const { packages, paths } = this.#resolver.hasModule(near)
+      ? this.#resolver.starExportsOf(owner, near)
+      : { packages: this.#resolver.packagesUnder(owner, near), paths: [] };
     const [only] = packages;
-    const isDeclared = [owner, ...owners].some((other) => this.#resolver.declares(other, name));
+    const isDeclared =
+      this.#resolver.declares(owner, name) || paths.some((path) => this.#resolver.declaresAt(path, name));
     return packages.length === 1 && only && !isDeclared ? { name, from: only } : null;
   }
 

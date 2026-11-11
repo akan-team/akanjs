@@ -488,9 +488,29 @@ export class GuardResolver {
     return this.#modules.get(path) ?? [];
   }
 
+  hasModule(path: string) {
+    return this.#modulesAt(path).length > 0;
+  }
+
+  //? A folder's index is generated and gitignored, so a graph read from git has only the folder's files to go on.
+  packagesUnder(owner: string, folder: string) {
+    const packages = new Set<string>();
+    for (const [fileName, words] of this.#filesIn(owner)) {
+      if (!this.#source.relative(fileName).startsWith(`${folder}/`) || !words.includes("\nexport\n")) continue;
+      for (const [, specifier = ""] of this.#source.readText(fileName)?.matchAll(starExportPattern) ?? [])
+        if (this.pathOfSpecifier(fileName, specifier) === null) packages.add(specifier);
+    }
+    return [...packages];
+  }
+
   declares(owner: string, name: string) {
     const declaring = declaringPatternOf(name, true);
     return this.#filesOf(owner, name, null).some((fileName) => declaring.test(this.#source.readText(fileName) ?? ""));
+  }
+
+  declaresAt(path: string, name: string) {
+    const declaring = declaringPatternOf(name, true);
+    return this.#modulesAt(path).some((fileName) => declaring.test(this.#source.readText(fileName) ?? ""));
   }
 
   #filesIn(owner: string) {

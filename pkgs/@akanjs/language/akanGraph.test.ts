@@ -1598,6 +1598,113 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({
     expect(callsOf(`export * from "./clockA";\nexport * from "./clockB";\n`)).toEqual(
       reached("adaptor:apps/demo:Clock"),
     );
+    expect(callsOf(`export { Clock } from "clock-sdk";\n`)).toEqual(reached("adaptor:clock-sdk:Clock"));
+  });
+
+  it("scans the folder when the import path has no module, so a graph without the gitignored barrels matches one with them", () => {
+    const clock = (name: string) => `import { adapt } from "akanjs/service";
+export class Clock extends adapt("${name}") {}
+`;
+    const sources: Record<string, string> = {
+      "apps/demo/srvkit/clock.ts": clock("srvkitClock"),
+      "apps/demo/plugin/clock.ts": clock("pluginClock"),
+      "libs/shared/srvkit/square.ts": `export * from "square-sdk";
+`,
+      "libs/shared/srvkit/stripe.ts": `export { Stripe } from "stripe-sdk";
+`,
+      "libs/billing/srvkit/stripe.ts": `import { adapt } from "akanjs/service";
+export class Stripe extends adapt("stripe") {}
+`,
+      "libs/util/srvkit/a.ts": `export * from "a-sdk";
+`,
+      "libs/util/srvkit/b.ts": `export * from "b-sdk";
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Square, Stripe } from "@libs/shared/srvkit";
+import { Foo } from "@libs/util/srvkit";
+import { serve } from "akanjs/service";
+import { Clock } from "../../plugin";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  clock: plug(Clock),
+  square: plug(Square),
+  stripe: plug(Stripe),
+  foo: plug(Foo),
+})) {
+  async stamp() {
+    await this.square.charge();
+    await this.stripe.pay();
+    await this.foo.run();
+    return this.clock.now();
+  }
+}
+`,
+    };
+    const barrels: Record<string, string> = {
+      "apps/demo/srvkit/index.ts": `export * from "./clock";
+`,
+      "apps/demo/plugin/index.ts": `export * from "./clock";
+`,
+      "libs/shared/srvkit/index.ts": `export * from "./square";
+export * from "./stripe";
+`,
+      "libs/util/srvkit/index.ts": `export * from "./a";
+export * from "./b";
+`,
+    };
+    const callsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    const expected = [
+      "method:apps/demo:memo.stamp -charge-> adaptor:square-sdk:Square",
+      "method:apps/demo:memo.stamp -now-> adaptor:apps/demo:plugin/clock.ts#Clock",
+      "method:apps/demo:memo.stamp -pay-> adaptor:libs/billing:Stripe",
+      "method:apps/demo:memo.stamp -run-> adaptor:libs/util:Foo",
+    ];
+    expect(callsOf(sources)).toEqual(expected);
+    expect(callsOf({ ...sources, ...barrels })).toEqual(expected);
+  });
+
+  it("refuses a package `export *` only for a name declared along the chain, not elsewhere in a lib it reaches", () => {
+    const wired = (storage: string): Record<string, string> => ({
+      "libs/shared/srvkit/index.ts": `export * from "./square";
+export * from "@libs/util/srvkit";
+`,
+      "libs/shared/srvkit/square.ts": `export * from "square-sdk";
+`,
+      "libs/util/srvkit/index.ts": `export * from "./storage";
+`,
+      "libs/util/srvkit/storage.ts": storage,
+      "libs/util/lib/square/square.constant.ts": `export class Square {}
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Square } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({ square: plug(Square) })) {
+  async pay() {
+    return this.square.charge();
+  }
+}
+`,
+    });
+    const callsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    expect(callsOf(wired(`export const storage = 1;\n`))).toEqual([
+      "method:apps/demo:memo.pay -charge-> adaptor:square-sdk:Square",
+    ]);
+    expect(callsOf(wired(`export class Square {}\n`))).toEqual([
+      "method:apps/demo:memo.pay -charge-> adaptor:libs/shared:Square",
+    ]);
   });
 
   it("marks a job and an adaptor changed or removed in the Change Map", () => {
