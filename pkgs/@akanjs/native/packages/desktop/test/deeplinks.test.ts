@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { desktopEntry, desktopExec, linkArguments, registerDeepLinks, withDefaults } from "../src/deeplinks.ts";
 
 const app = { id: "com.akanjs.sample", name: "Akan Native Sample" };
@@ -81,6 +81,7 @@ describe("deep links on Windows and Linux (D6)", () => {
       XDG_DATA_HOME: join(home, "data"),
       XDG_CONFIG_HOME: join(home, "config"),
       APPIMAGE: "/home/u/Sample.AppImage",
+      APPDIR: dirname(process.execPath),
     };
     const icon = join(home, "icon.png");
     writeFileSync(icon, "png");
@@ -91,6 +92,21 @@ describe("deep links on Windows and Linux (D6)", () => {
     expect(
       readFileSync(join(env.XDG_DATA_HOME, "icons", "hicolor", "256x256", "apps", "com.akanjs.sample.png"), "utf8"),
     ).toBe("png");
+  });
+
+  test("Linux: an app another AppImage started registers itself, not that AppImage", async () => {
+    const home = mkdtempSync(join(tmpdir(), "akan-native-links-"));
+    const run = async () => ({ code: 0, stdout: "" });
+    const env = {
+      XDG_DATA_HOME: join(home, "data"),
+      XDG_CONFIG_HOME: join(home, "config"),
+      APPIMAGE: "/opt/Editor.AppImage",
+      APPDIR: "/tmp/.mount_Editor1",
+    };
+    await registerDeepLinks(app, ["akansample"], { platform: "linux", env, home, run });
+    const entry = readFileSync(join(env.XDG_DATA_HOME, "applications", "com.akanjs.sample.desktop"), "utf8");
+    expect(entry).not.toContain("Editor.AppImage");
+    expect(entry).toContain(process.execPath);
   });
 
   test("Windows: HKCU\\Software\\Classes keys, skipped when the command is already ours", async () => {

@@ -18,6 +18,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { AkanNativeError } from "../../../packages/core/src/index.ts";
 import { type DesktopContext, defineDesktopPlugin } from "../../../packages/desktop/src/plugin.ts";
+import { appLauncher } from "../../../packages/desktop/src/relaunch.ts";
 import type { AutostartApi, AutostartState, AutostartStatus } from "./index.ts";
 
 export interface ShellError {
@@ -126,7 +127,7 @@ export function entryStatus(text: string | null): AutostartStatus {
 /** `executable`: the file the entry starts; an AppImage's mount point changes at every start, $APPIMAGE does not. */
 export function linuxAutostart(
   dir: () => string = () => autostartDir(),
-  executable: () => string = () => process.env.APPIMAGE || process.execPath,
+  executable: () => string = () => appLauncher(),
 ) {
   const file = (ctx: DesktopContext) => join(dir(), `${ctx.app.id}.desktop`);
   const read = (ctx: DesktopContext) => (existsSync(file(ctx)) ? readFileSync(file(ctx), "utf8") : null);
