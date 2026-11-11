@@ -138,7 +138,7 @@ describe("RSC HTTP helpers", () => {
     ]);
   });
 
-  test("calls back once for a streamed server error, and never for a not-found or redirect digest", async () => {
+  test("calls back once for a streamed server error, and never for a not-found, redirect or empty digest", async () => {
     const watched = async (rows: string) => {
       let errors = 0;
       const output = await readBytes(watchRscErrorRows(streamOf(encoder.encode(rows)), () => (errors += 1)));
@@ -150,5 +150,6 @@ describe("RSC HTTP helpers", () => {
     expect(await watched(`0:"page"\n1:E{"digest":"3f2a9c1d"}\n2:E{"digest":"8b7e6d5c"}\n`)).toBe(1);
     expect(await watched(`0:"page"\n1:E{"digest":"AKAN_NOT_FOUND"}\n2:E{"digest":"${redirect}"}\n`)).toBe(0);
     expect(await watched(`0:"page"\n1:T6,E{x:1}\n`)).toBe(0);
+    expect(await watched(`0:"page"\n1:E{"digest":"","name":"Error","message":"backend down","stack":[]}\n`)).toBe(0);
   });
 });

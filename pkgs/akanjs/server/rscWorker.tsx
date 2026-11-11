@@ -857,7 +857,7 @@ export class RscRenderer {
     const message = error instanceof Error ? error.message : String(error);
     const description = error instanceof Error ? (error.stack ?? message) : message;
     const opaque = process.env.NODE_ENV === "production";
-    const digest = opaque ? crypto.randomUUID().slice(0, 8) : message;
+    const digest = opaque ? crypto.randomUUID().slice(0, 8) : message || "AKAN_RENDER_ERROR";
     const scope = `${pathname ? ` path=${pathname}` : ""}${opaque ? ` digest=${digest}` : ""}`;
     if (RscRenderer.#isExpectedRequestAbort(error)) this.#logger.debug(`[rsc] render aborted${scope}: ${description}`);
     else this.#logger.error(`[rsc] render failed${scope}: ${description}`);
