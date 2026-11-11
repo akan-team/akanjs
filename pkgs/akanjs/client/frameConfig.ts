@@ -92,6 +92,7 @@ const isValidInsetValue = (value: unknown): value is NonNullable<PageConfig["top
   return Object.entries(value).every(([key, px]) => responsiveInsetKeys.has(key) && isInsetPx(px));
 };
 
+/** @internal */
 export const isResponsiveInset = (inset: PageConfig["topInset"]): inset is ResponsiveInset => isRecord(inset);
 
 /** The inset at each breakpoint, each one the nearest declared value at or below it. */

@@ -12,7 +12,7 @@ import { toPostgresSql } from "../values";
 // Unprepared, a parameterized `unsafe` costs two round trips; the URL's `?prepare=false` (PgBouncer) still wins.
 const prepared = { prepare: true } as const;
 
-export class PostgresStatement implements AkanSqlStatement {
+class PostgresStatement implements AkanSqlStatement {
   constructor(
     private readonly client: Sql | TransactionSql,
     private readonly sql: string,

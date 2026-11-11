@@ -30,6 +30,7 @@ export function createDefaultSitemapUrls({ origin, basePath, entries, i18n }: De
   return paths.map((pathname) => `${normalizedOrigin}${pathname}`);
 }
 
+/** @deprecated Ignores `basePaths`; use `getSitemapBasePath(pathname, basePaths, headerBasePath) !== undefined`. */
 export function isSitemapPath(pathname: string, basePaths: readonly string[]): boolean {
   return normalizePathname(pathname) === "/sitemap.xml";
 }

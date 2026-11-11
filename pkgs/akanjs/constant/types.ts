@@ -140,6 +140,7 @@ export type NonFunctionalKeys<T> = {
 }[keyof T];
 
 export const unsetDate = dayjs(new Date("0000"));
+/** @deprecated Unused by akanjs; write the int32 bound `2 ** 31 - 1` where it is meant. */
 export const MAX_INT = 2147483647;
 
 export class Responsive extends enumOf("responsive", ["xl", "lg", "md", "sm", "xs"] as const) {}

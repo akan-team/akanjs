@@ -1901,8 +1901,10 @@ export declare const assertAkanConsoleAllowed: (env?: Partial<Pick<BaseEnv, "env
 
 export declare const copyBunRequestFields: (target: Request, source: Request) => Request;
 
+/** @internal */
 export declare const createAkanConsoleContext: (server: AkanServer, globals?: Record<string, unknown>) => AkanConsoleContext;
 
+/** @internal */
 export declare const createAkanConsoleLogCommands: (appName: string, runtimeDir: string) => Record<string, AkanConsoleCommand>;
 
 export declare function createDefaultAkanOption(): AkanOption<BackendEnv>;
@@ -1927,6 +1929,7 @@ export declare const getWebConfigFromEnv: () => AkanWebConfig;
 
 export declare const isAkanConsoleInputComplete: (source: string) => boolean;
 
+/** @deprecated */
 export declare function isSitemapPath(pathname: string, basePaths: readonly string[]): boolean;
 
 export declare function mergeAkanImageConfig(config?: Partial<AkanImageConfig>): ResolvedAkanImageConfig;
@@ -1941,6 +1944,7 @@ export declare const migrationActions: readonly [
     "rollback"
 ];
 
+/** @internal */
 export declare const parseAkanConsoleQuery: (args: string) => Record<string, string>;
 
 export declare const resolveWebConfig: (web: Partial<AkanWebConfig> | undefined) => AkanWebConfig;
