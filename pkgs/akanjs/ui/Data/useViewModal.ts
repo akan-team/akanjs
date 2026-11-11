@@ -6,6 +6,8 @@ import { st } from "akanjs/store";
 import { usePageLocation } from "akanjs/webkit";
 import { useEffect, useRef, useState } from "react";
 
+import { seedOpen } from "../../store/openSeq";
+
 type SearchParams = Record<string, string | string[] | undefined>;
 const firstOf = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 
@@ -48,7 +50,7 @@ export const useViewModal = (slice: SliceMeta, { inUrl }: { inUrl: boolean }) =>
   useEffect(() => {
     if (!editedFrom || modelModal === "edit") return;
     setEditedFrom(null);
-    if (isReturning) void storeDo[setModelModal]("view");
+    if (isReturning) seedOpen(st, names.model, "view", { [names.modelModal]: "view" });
   }, [modelModal]);
   //? Two-way, so a side is followed only when it moved since the last agreement: the URL on mount and on a Link or
   //? back, the store when a row's view button or close changed it.

@@ -617,6 +617,38 @@ describe("Model.AdminPanel view modal", () => {
     setState({ searchParams: {} });
   });
 
+  test("keeps the view an edit closed back to while its save was in flight, and shows the saved record", async () => {
+    makeStore();
+    replaces.length = 0;
+    let land = () => {};
+    calls.updateAdminTestItem = mock(
+      (id: string) =>
+        new Promise((resolve) => {
+          land = () => resolve(new Full({ id, title: "Hopper" }));
+        }),
+    );
+    setState({ searchParams: { topMenu: "account", action: "view", modelId: offPageId } });
+    const { unmount } = await mount(
+      <AdminPanel slice={slice} components={viewComponents} actions={["edit", "view"]} viewInUrl />,
+      viewing("Grace"),
+    );
+
+    await click(buttonOf("base.edit"));
+    await waitFor(() => !!buttonOf("base.updateModel") && !buttonOf("base.updateModel")?.disabled);
+    await click(buttonOf("base.updateModel"));
+    await waitFor(() => calls.updateAdminTestItem?.mock.calls.length === 1);
+    await click(dialog()?.querySelector<HTMLElement>('[aria-label="Close"]'));
+    expect(dialog()).not.toBeNull();
+    expect(buttonOf("base.updateModel")).toBeUndefined();
+
+    await act(async () => land());
+    await waitFor(viewing("Hopper"));
+    expect(viewing("Hopper")()).toBe(true);
+    expect(replaces).toEqual([]);
+    unmount();
+    setState({ searchParams: {} });
+  });
+
   test("removes from the view behind the row's confirm, then closes it and takes its params out", async () => {
     makeStore();
     replaces.length = 0;
