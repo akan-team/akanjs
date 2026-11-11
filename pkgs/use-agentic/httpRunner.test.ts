@@ -208,6 +208,15 @@ describe("httpRunner streaming", () => {
     expect(await turn(refusing(403, { error: "Forbidden", statusCode: 403 }))).toEqual([
       { type: "error", message: "Forbidden", code: "forbidden" },
     ]);
+    expect(await turn(refusing(403, { error: "agent.error.requestRefused", statusCode: 403 }))).toEqual([
+      { type: "error", message: "agent.error.requestRefused", code: "forbidden" },
+    ]);
+    expect(await turn(refusing(401, { message: "agent.error.signedOut", code: "agent.error.signedOut" }))).toEqual([
+      { type: "error", message: "agent.error.signedOut", code: "unauthorized" },
+    ]);
+    expect(await turn(refusing(409, { message: "agent.error.busy", code: "agent.error.busy" }))).toEqual([
+      { type: "error", message: "agent.error.busy", code: "agent.error.busy" },
+    ]);
     expect(await turn(refusing(403, { error: "grant refused", code: "fileGrantRefused", statusCode: 403 }))).toEqual([
       { type: "error", message: "grant refused", code: "fileGrantRefused" },
     ]);

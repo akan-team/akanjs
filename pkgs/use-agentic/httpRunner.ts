@@ -1,4 +1,4 @@
-import { codeOfStatus, failureCodeOf, isFailureCode } from "./failureCode";
+import { codeOfAnswer, codeOfStatus, isFailureCode } from "./failureCode";
 import type { AgentRunner, RunnerEvent, ToolCallRequest, TurnLimits, TurnUsage } from "./types";
 
 export interface HttpRunnerOptions {
@@ -103,7 +103,7 @@ const turnError = async (response: Response): Promise<RunnerEvent> => {
     return {
       type: "error",
       message,
-      code: failureCodeOf(body) ?? byStatus,
+      code: codeOfAnswer(response.status, body),
       ...(data ? { data } : {}),
       ...(overflow ? { overflow } : {}),
     };

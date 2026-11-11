@@ -24,6 +24,21 @@ const statusCodes: { readonly [status: number]: string } = {
 
 export const codeOfStatus = (status: number): string => statusCodes[status] ?? `http${status}`;
 
+const isKey = (value: unknown): value is string => typeof value === "string" && errKey.test(value);
+
+//? Named as the stream names it. Security: a 401/403's key names the authorization structure, so only a kept error's
+//? `code` outranks its status; only a generalized answer carries one.
+export const codeOfAnswer = (status: number, body: unknown): string => {
+  const fields = (typeof body === "object" && body !== null ? body : {}) as {
+    code?: unknown;
+    error?: unknown;
+    message?: unknown;
+  };
+  const kept = typeof fields.code === "string" && token.test(fields.code) ? fields.code : undefined;
+  if (status === 401 || status === 403) return kept ?? codeOfStatus(status);
+  return [fields.error, fields.message, fields.code].find(isKey) ?? kept ?? codeOfStatus(status);
+};
+
 export const failureCodeOf = (value: unknown): string | undefined => {
   if (typeof value !== "object" || value === null) return undefined;
   const { code, error } = value as { code?: unknown; error?: unknown };

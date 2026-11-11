@@ -115,10 +115,12 @@ message that is a code rather than a sentence may be accompanied by a flat `data
 the values whoever resolves the code interpolates into its text; a host that does not know the code shows the
 message as it stands.
 
-The event also carries `code`: the body's `error` when that is a dictionary key (`<module>.error.<key>`), else
-its `code` when that is one camelCase token, else the status's name (`unauthorized`, `forbidden`,
-`tooManyRequests`, `internalError`, or `http<status>` for a status with no name). A guard's refusal arrives this
-way, before any stream opens. A body's `code` shaped otherwise is dropped rather than passed on. This path takes a
+The event also carries `code`: the dictionary key (`<module>.error.<key>`) in the body's `error`, `message` or
+`code`, else its `code` when that is one camelCase token, else the status's name (`unauthorized`, `forbidden`,
+`tooManyRequests`, `internalError`, or `http<status>` for a status with no name). A 401 or 403 takes no dictionary
+key: it is its `code` token, else its status's name, exactly as a streamed `error` event names it, so a host sees
+one code whether the refusal came before or after the stream opened. A body's `code` shaped otherwise is dropped
+rather than passed on. This path takes a
 5xx body's `code` as well, since that body is the akan server's own answer; a streamed `error` event is named by
 the server, which never names a 5xx by a duck-typed `code`. The code is what a host branches on, since the message
 may reach it already translated. The session keeps it on the failed assistant message as `errorCode`, which is

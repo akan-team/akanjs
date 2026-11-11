@@ -95,7 +95,8 @@ export class Compaction {
   }
 
   static #charsOf(message: ChatMessage): number {
-    const posted = message.usage ? { ...message, usage: undefined } : message;
+    const posted =
+      message.usage || message.errorCode ? { ...message, usage: undefined, errorCode: undefined } : message;
     const own = Compaction.#blanked(message.attachments);
     let images = own.images;
     const toolResults = message.toolResults?.map((result) => {
