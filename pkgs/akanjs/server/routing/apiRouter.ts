@@ -1,4 +1,4 @@
-import { dayjs } from "akanjs/base";
+import { AkanError, dayjs } from "akanjs/base";
 import {
   CookieJar,
   type Logger,
@@ -172,35 +172,38 @@ export class ApiRouter {
         //? Named on an error frame, so a client can tell which subscribe or message the refusal answers.
         let failedKey: string | undefined;
         try {
-          if (typeof message === "string") {
-            const msg = JSON.parse(message) as WebsocketReqData;
-            if (!msg.key) throw new Error("Message key is required");
-            failedKey = msg.key;
-            if (msg.key === websocketAuthContract.key) {
-              // Must stay synchronous: the next frame (e.g. a subscribe) has to see the new credential.
-              AppWsData.applyCredential(AppWsData.of(ws), websocketAuthContract.readJwt(msg.data));
-              WsCredentialExpiry.watch(ws);
-              const revokedRooms = await SignalResolver.revalidateWsRooms(ws, registry, live);
-              ws.send(JSON.stringify(websocketAuthContract.makeAck(revokedRooms)));
-              return;
-            }
-            if (msg.key === websocketHeartbeatContract.key) {
-              ws.send(JSON.stringify(websocketHeartbeatContract.makeAck()));
-              return;
-            }
-            const wsRoute = wsRoutes[msg.key];
-            if (!wsRoute) throw new Error(`WebSocket route "${msg.key}" is not registered`);
-            const eventType =
-              typeof msg.subscribe === "boolean" ? (msg.subscribe ? "subscribe" : "unsubscribe") : "message";
-            const result = await wsRoute(ws, msg.data, eventType, { since: msg.since });
-            ws.send(JSON.stringify(result));
-          } else throw new Error("Message is not a string");
+          const msg = ApiRouter.#frameOf(message);
+          failedKey = msg.key;
+          if (msg.key === websocketAuthContract.key) {
+            // Must stay synchronous: the next frame (e.g. a subscribe) has to see the new credential.
+            AppWsData.applyCredential(AppWsData.of(ws), websocketAuthContract.readJwt(msg.data));
+            WsCredentialExpiry.watch(ws);
+            const revokedRooms = await SignalResolver.revalidateWsRooms(ws, registry, live);
+            ws.send(JSON.stringify(websocketAuthContract.makeAck(revokedRooms)));
+            return;
+          }
+          if (msg.key === websocketHeartbeatContract.key) {
+            ws.send(JSON.stringify(websocketHeartbeatContract.makeAck()));
+            return;
+          }
+          const wsRoute = wsRoutes[msg.key];
+          if (!wsRoute) {
+            //? A client bundle older or newer than the server names routes this one lacks: kept visible in the log.
+            logger.warn(`WebSocket route "${msg.key}" is not registered`);
+            throw new AkanError("routeNotFound", `WebSocket route "${msg.key}" is not registered`, {
+              statusCode: 404,
+            });
+          }
+          const eventType =
+            typeof msg.subscribe === "boolean" ? (msg.subscribe ? "subscribe" : "unsubscribe") : "message";
+          const result = await wsRoute(ws, msg.data, eventType, { since: msg.since });
+          ws.send(JSON.stringify(result));
         } catch (error) {
           if (isExceptionLike(error)) {
             ws.send(JSON.stringify({ ...error.toJSON(), key: failedKey, timestamp: new Date().toISOString() }));
             return;
           }
-          if (!SignalContext.wasReported(error)) {
+          if (!SignalContext.wasReported(error) && SignalFailure.generalized(error).statusCode >= 500) {
             logger.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
           }
           // The same generalization the HTTP 500 makes: a socket frame is no less readable by the caller.
@@ -217,6 +220,22 @@ export class ApiRouter {
         SignalResolver.handleWsClose(ws, registry, live);
       },
     };
+  }
+
+  static #frameOf(message: string | Buffer): WebsocketReqData {
+    if (typeof message !== "string")
+      throw new AkanError("invalidMessage", "Message is not a string", { statusCode: 400 });
+    let frame: unknown;
+    try {
+      frame = JSON.parse(message);
+    } catch (cause) {
+      throw new AkanError("invalidMessage", "Message is not JSON", { statusCode: 400, cause });
+    }
+    if (!frame || typeof frame !== "object")
+      throw new AkanError("invalidMessage", "Message is not an object", { statusCode: 400 });
+    if (!(frame as WebsocketReqData).key)
+      throw new AkanError("invalidMessage", "Message key is required", { statusCode: 400 });
+    return frame as WebsocketReqData;
   }
 
   static applyGlobalPrefix(prefix: string, path: string, options?: SignalRouteOptions): string {

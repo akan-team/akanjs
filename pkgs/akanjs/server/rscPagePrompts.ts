@@ -1,5 +1,6 @@
+import { AkanError } from "akanjs/base";
 import type { PageDefinition, PathRoute, RoutePromptMeta } from "akanjs/client";
-import { Logger, parseSearchParams } from "akanjs/common";
+import { isGuardRefusal, Logger, parseSearchParams } from "akanjs/common";
 import { AppScope, getRequestStore, RenderScope } from "akanjs/fetch";
 import { RouteGuards } from "../client/route/RouteGuards";
 import type {
@@ -128,7 +129,8 @@ export class RscPagePrompts {
     const claim = (kind: PagePromptEntry["kind"], meta: RoutePromptMeta, path: string) => {
       const owner = owners.get(meta.name);
       if (owner)
-        throw new Error(
+        throw new AkanError(
+          "routeConflict",
           `[route-convention] ${kind} "${meta.name}" is declared by both ${owner.path}${owner.kind === kind ? "" : ` (as its ${owner.kind})`} and ${path}`,
         );
       owners.set(meta.name, { kind, path });
@@ -201,10 +203,15 @@ export class RscPagePrompts {
     }
     if (digest === "AKAN_NOT_FOUND")
       return { ok: false, reason: "not-found", message: "The page answers not-found for these arguments." };
-    // A guard's refusal (or a miss) of an awaited `fetch.*` arrives as the remote `Err` with its `statusCode`.
+    // A guard's refusal (or a miss) of an awaited `fetch.*` arrives as the remote `Err` with its `statusCode`. A 403
+    // the server kept is the screen failing, not the caller's credential.
+    if (isGuardRefusal(error))
+      return {
+        ok: false,
+        reason: "forbidden",
+        message: `A query the screen makes refused the caller (${error.statusCode}).`,
+      };
     const status = (error as { statusCode?: unknown } | null)?.statusCode;
-    if (status === 401 || status === 403)
-      return { ok: false, reason: "forbidden", message: `A query the screen makes refused the caller (${status}).` };
     if (status === 404)
       return { ok: false, reason: "not-found", message: "A document the screen reads does not exist." };
     RscPagePrompts.logger.warn(

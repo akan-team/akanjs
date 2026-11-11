@@ -1,4 +1,5 @@
 import path from "node:path";
+import { AkanError } from "akanjs/base";
 import { RouteSeedMatcher } from "./routeSeedMatcher";
 
 export interface RouteSeedEntry {
@@ -32,13 +33,14 @@ export class RouteSeedIndexStore {
     const absPath = path.join(path.resolve(artifactDir), ROUTE_SEED_INDEX_JSON);
     const file = Bun.file(absPath);
     if (!(await file.exists())) {
-      throw new Error(
+      throw new AkanError(
+        "artifactMissing",
         `[route-seed-index] ${absPath} missing — rebuild with \`akan build\` or \`akan start-backend\` so the index is generated`,
       );
     }
     const json = (await file.json()) as unknown;
     if (!json || typeof json !== "object") {
-      throw new Error(`[route-seed-index] ${absPath} is not a valid JSON object`);
+      throw new AkanError("invalidArtifact", `[route-seed-index] ${absPath} is not a valid JSON object`);
     }
     return RouteSeedIndexStore.normalize(json as SerializedRouteSeedIndex, path.resolve(artifactDir));
   }

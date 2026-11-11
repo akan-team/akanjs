@@ -1,4 +1,5 @@
 import type { KeyObject } from "node:crypto";
+import { AkanError } from "akanjs/base";
 import { bearerTokenOf } from "akanjs/common";
 import { Ed25519Key } from "../ed25519Key";
 import { EdDsaJwt } from "../edDsaJwt";
@@ -29,7 +30,8 @@ export class OpsTokenVerifier {
   readonly #seen = new Map<string, number>();
 
   constructor(key: KeyObject, audience: string) {
-    if (key.asymmetricKeyType !== "ed25519") throw new Error("AKAN_OPS_PUBLIC_KEY must be an Ed25519 public key");
+    if (key.asymmetricKeyType !== "ed25519")
+      throw new AkanError("invalidKey", "AKAN_OPS_PUBLIC_KEY must be an Ed25519 public key");
     this.#key = key;
     this.audience = audience;
   }

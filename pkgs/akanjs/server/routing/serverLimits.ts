@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
 
 type Env = Record<string, string | undefined>;
@@ -11,7 +12,9 @@ export class ServerLimits {
   static readonly defaultRequestBodyBytes = 16 * 1024 * 1024;
   static readonly loopbackHost = "127.0.0.1";
   static readonly #agentTurnPath = "/runAgentTurn";
-  static readonly #tooLarge = new Error("Request body is over the server's limit");
+  static readonly #tooLarge = new AkanError("payloadTooLarge", "Request body is over the server's limit", {
+    statusCode: 413,
+  });
   static readonly #logger = new Logger("ServerLimits");
   static readonly #warned = new Set<string>();
 

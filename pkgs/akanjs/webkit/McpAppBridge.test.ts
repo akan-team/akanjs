@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from "bun:test";
-import { MCP_FAILURE_META } from "akanjs/common";
+import { isGuardRefusal, MCP_FAILURE_META } from "akanjs/common";
 import type { FetchBridgeCall, RestoredError } from "akanjs/fetch";
 import { MCP_APP_META } from "../signal/mcp/mcpProtocol";
 import { McpAppBridge } from "./McpAppBridge";
@@ -326,7 +326,8 @@ describe("McpAppBridge", () => {
       isError: true,
       _meta: { [MCP_APP_META.error]: { statusCode: 403 }, [MCP_FAILURE_META]: { code: "forbidden", statusCode: 403 } },
     });
-    expect(refused.toJSON?.()).toMatchObject({ statusCode: 403, code: "forbidden" });
+    expect(refused.toJSON?.()).toEqual({ error: "You are not permitted to perform this action.", statusCode: 403 });
+    expect(isGuardRefusal(refused)).toBe(true);
     const bare = await answered({ content: text, isError: true });
     expect(bare.statusCode).toBeUndefined();
     expect(bare.message).toBe(text[0].text);

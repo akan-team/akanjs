@@ -73,8 +73,10 @@ export class McpAppFetchBridge implements FetchBridge {
     const failure = result._meta?.[MCP_FAILURE_META] as Partial<McpFailure> | undefined;
     const statusCode = restorable?.statusCode ?? failure?.statusCode;
     const error = text || `${key} failed`;
+    //? A guard's refusal reaches a view as its status alone: a code copied from the failure would read as one kept.
+    const code = restorable ? undefined : failure?.code;
     if (result.isError && statusCode)
-      throw restoreRemoteError({ error, statusCode, ...(failure?.code ? { code: failure.code } : {}) }, statusCode);
+      throw restoreRemoteError({ error, statusCode, ...(code ? { code } : {}) }, statusCode);
     if (result.isError) throw new Error(error);
     if (result._meta && MCP_APP_META.value in result._meta) return result._meta[MCP_APP_META.value];
     const structured = result.structuredContent as Record<string, unknown> | undefined;

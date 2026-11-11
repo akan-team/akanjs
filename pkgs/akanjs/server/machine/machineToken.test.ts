@@ -8,6 +8,14 @@ import { MachineAccount } from "./machineAccount";
 import { MachineToken } from "./machineToken";
 
 const kiosk = { kind: "kiosk", id: "pc-7", version: 3 };
+const thrownBy = (run: () => unknown): unknown => {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  return null;
+};
 const keys = Ed25519Key.generate();
 const saved = { ...process.env };
 
@@ -59,6 +67,7 @@ describe("MachineToken", () => {
     expect(MachineToken.canIssue()).toBe(false);
     expect(MachineToken.verify(token)).toEqual({ ok: true, identity: kiosk });
     expect(() => MachineToken.issue(kiosk)).toThrow("needs AKAN_MACHINE_PRIVATE_KEY");
+    expect(thrownBy(() => MachineToken.issue(kiosk))).toMatchObject({ code: "invalidConfig", statusCode: 500 });
   });
 
   test("refuses another key's token, another app or environment, a lapsed expiry and a tampered payload", () => {
@@ -103,6 +112,39 @@ describe("MachineToken", () => {
   test("refuses an identity without kind, id or a whole version", () => {
     expect(() => MachineToken.issue({ kind: "", id: "pc-7", version: 1 })).toThrow("A machine identity is");
     expect(() => MachineToken.issue({ kind: "kiosk", id: "pc-7", version: 1.5 })).toThrow("A machine identity is");
+    expect(thrownBy(() => MachineToken.issue({ kind: "", id: "pc-7", version: 1 }))).toMatchObject({
+      code: "invalidIdentity",
+    });
+  });
+
+  test("names a key it cannot read, or one that is not Ed25519, by its env key", () => {
+    expect(thrownBy(() => Ed25519Key.parsePublic("not-a-key", "AKAN_MACHINE_PUBLIC_KEY"))).toMatchObject({
+      code: "invalidKey",
+      message: "AKAN_MACHINE_PUBLIC_KEY must be a PEM, a JWK, base64 SPKI DER, or a raw 32-byte base64url key",
+    });
+    expect(thrownBy(() => Ed25519Key.parsePrivate("not-a-key", "AKAN_MACHINE_PRIVATE_KEY"))).toMatchObject({
+      code: "invalidKey",
+    });
+  });
+
+  test("names a key whose PEM, JWK or DER does not parse by its env key, keeping the parser's reason as the cause", () => {
+    const unreadable = [
+      () =>
+        Ed25519Key.parsePublic(
+          "-----BEGIN PUBLIC KEY-----\\n!!!\\n-----END PUBLIC KEY-----",
+          "AKAN_MACHINE_PUBLIC_KEY",
+        ),
+      () => Ed25519Key.parsePublic('{"kty":"OKP","crv":"Ed25519","x":', "AKAN_MACHINE_PUBLIC_KEY"),
+      () => Ed25519Key.parsePublic(Buffer.alloc(44, 1).toString("base64url"), "AKAN_MACHINE_PUBLIC_KEY"),
+      () => Ed25519Key.parsePrivate('{"kty":"OKP","crv":"Ed25519"}', "AKAN_MACHINE_PRIVATE_KEY"),
+      () => Ed25519Key.parsePrivate(Buffer.alloc(48, 1).toString("base64"), "AKAN_MACHINE_PRIVATE_KEY"),
+    ];
+    for (const parse of unreadable) {
+      const error = thrownBy(parse);
+      expect(error).toMatchObject({ code: "invalidKey", statusCode: 500 });
+      expect((error as Error).message).toStartWith("AKAN_MACHINE_");
+      expect((error as Error).cause).toBeInstanceOf(Error);
+    }
   });
 });
 

@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import type {
   AkanNotFoundError,
   AkanRedirectError,
@@ -273,9 +274,8 @@ export class RscRenderer {
   });
 
   constructor() {
-    if (typeof process.send !== "function") {
-      throw new Error("rscWorker must be run as a Bun subprocess with ipc enabled");
-    }
+    if (typeof process.send !== "function")
+      throw new AkanError("ipcRequired", "rscWorker must be run as a Bun subprocess with ipc enabled");
     this.#send = process.send.bind(process) as (message: unknown) => void;
     Logger.role = "rsc-worker";
     if (Logger.isNdjson) Logger.consoleOutput = false;
@@ -457,7 +457,7 @@ export class RscRenderer {
     const mod = (await import(specifier)) as { pages?: PagesContext; default?: PagesContext };
     const importedAt = Date.now();
     const pages = mod.pages ?? mod.default;
-    if (!pages) throw new Error(`pages export not found in ${specifier}`);
+    if (!pages) throw new AkanError("invalidArtifact", `pages export not found in ${specifier}`);
 
     const routeBuildStart = Date.now();
     const routeTree = new RouteTreeBuilder(pages);

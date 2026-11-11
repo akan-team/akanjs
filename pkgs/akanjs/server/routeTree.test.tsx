@@ -303,7 +303,7 @@ describe("RouteTreeBuilder implicit locale", () => {
     });
   });
 
-  test("rejects duplicate route patterns and unsupported page exports", () => {
+  test("rejects duplicate route patterns and unsupported page exports", async () => {
     expect(() =>
       new RouteTreeBuilder({
         "./users/[id].tsx": async () => ({ default: () => null }),
@@ -319,6 +319,9 @@ describe("RouteTreeBuilder implicit locale", () => {
     expect(matched && RouteElementComposer.resolveHead(pageInput(matched))).rejects.toThrow(
       '[route-convention] unsupported export "loader"',
     );
+    await expect(matched && RouteElementComposer.resolveHead(pageInput(matched))).rejects.toMatchObject({
+      code: "invalidRoute",
+    });
 
     const routesWithBadFallback = new RouteTreeBuilder({
       "./bad-fallback.tsx": async () => ({ default: () => null, NotFound: () => null }) as never,

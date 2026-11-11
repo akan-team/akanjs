@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import { type AdaptorCls, type InjectRegistry, type WebsocketAdaptor, WebsocketAdaptorRole } from "akanjs/service";
 
 const found = new WeakMap<InjectRegistry, { key: AdaptorCls; websocket: WebsocketAdaptor }>();
@@ -18,7 +19,7 @@ export const websocketOf = (registry: InjectRegistry): WebsocketAdaptor => {
   if (cached && registry.adaptor.get(cached.key) === (cached.websocket as unknown)) return cached.websocket;
   const key = websocketKeyOf(registry);
   const websocket = key ? (registry.adaptor.get(key) as WebsocketAdaptor | undefined) : undefined;
-  if (!key || !websocket) throw new Error("WebSocket adaptor is not registered");
+  if (!key || !websocket) throw new AkanError("notRegistered", "WebSocket adaptor is not registered");
   found.set(registry, { key, websocket });
   return websocket;
 };

@@ -1,3 +1,4 @@
+import { AkanError } from "../base/akanError";
 import {
   AKAN_RSC_IMPORT_MAP_HEADER,
   AKAN_RSC_NOT_FOUND_HEADER,
@@ -102,7 +103,8 @@ export async function fetchRscNavigationResponse(
   }
   if (response.headers.get("X-Akan-Rsc-Partial") === "patch") {
     const patch = readAkanRscPatchMetadataResponseHeaders(response.headers);
-    if (options.sendRouterState === false) throw new Error("[rscClient] RSC full fallback returned a patch response");
+    if (options.sendRouterState === false)
+      throw new AkanError("invalidRscResponse", "[rscClient] RSC full fallback returned a patch response");
     if (!patch) {
       await response.body?.cancel();
       return fetchRscNavigationResponse(href, {

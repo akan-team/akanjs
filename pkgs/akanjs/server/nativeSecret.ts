@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import type { AkanIpcMessage } from "akanjs/service";
 import { SelfExec } from "./selfExec";
 
@@ -36,7 +37,8 @@ export class NativeSecret {
     const send = NativeSecret.available ? process.send?.bind(process) : undefined;
     if (!send)
       return Promise.reject(
-        new Error(
+        new AkanError(
+          "desktopAppRequired",
           "Secrets are kept only by the desktop app that carries this server; elsewhere use the env or secrets.",
         ),
       );
@@ -45,13 +47,20 @@ export class NativeSecret {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         NativeSecret.#waiting.delete(id);
-        reject(new Error(`The desktop app did not answer for the secret "${request.key}".`));
+        reject(
+          new AkanError("secretStoreUnavailable", `The desktop app did not answer for the secret "${request.key}".`, {
+            statusCode: 503,
+          }),
+        );
       }, NativeSecret.timeoutMs);
       NativeSecret.#waiting.set(id, (answer) => {
         clearTimeout(timer);
         NativeSecret.#waiting.delete(id);
         if (answer.error === undefined) resolve(answer);
-        else reject(new Error(`The desktop app refused the secret "${request.key}": ${answer.error}`));
+        else
+          reject(
+            new AkanError("secretRefused", `The desktop app refused the secret "${request.key}": ${answer.error}`),
+          );
       });
       send({ type: "secret.request", id, ...request } satisfies AkanIpcMessage);
     });

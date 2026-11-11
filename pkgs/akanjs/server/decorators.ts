@@ -1,3 +1,5 @@
+import { AkanError } from "akanjs/base";
+
 // Kept for `libs/util` storage adaptors' `@Try`; new code follows the adaptor rule (catch → logger.error → null).
 
 type DecoratedInstance = {
@@ -30,7 +32,7 @@ export const Transaction = (): MethodDecorator => {
       const instance = this as DecoratedInstance;
       const database =
         instance.__database ?? instance.__databaseModel?.__database ?? instance.database ?? instance.connection;
-      if (!database?.transaction) throw new Error(`No transactional database in function ${key}`);
+      if (!database?.transaction) throw new AkanError("invalidConfig", `No transactional database in function ${key}`);
       return await database.transaction(async () => await originMethod.apply(this, args));
     };
     return descriptor;

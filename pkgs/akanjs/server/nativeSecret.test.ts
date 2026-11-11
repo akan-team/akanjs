@@ -68,16 +68,19 @@ describe("NativeSecret", () => {
     await expect(NativeSecret.set("k", "v")).rejects.toThrow(
       'refused the secret "k": the Secret Service is not running',
     );
+    await expect(NativeSecret.get("k")).rejects.toMatchObject({ code: "secretRefused", statusCode: 500 });
 
     shell(new Map(), { silent: true });
     NativeSecret.timeoutMs = 20;
     await expect(NativeSecret.get("k")).rejects.toThrow('did not answer for the secret "k"');
+    await expect(NativeSecret.get("k")).rejects.toMatchObject({ code: "secretStoreUnavailable", statusCode: 503 });
   });
 
   test("sends nothing from a server no desktop app carries, a gateway's replica included", async () => {
     const asked = shell(new Map([["k", "v"]]));
     expect(NativeSecret.available).toBe(false);
     await expect(NativeSecret.get("k")).rejects.toThrow("only by the desktop app that carries this server");
+    await expect(NativeSecret.get("k")).rejects.toMatchObject({ code: "desktopAppRequired", statusCode: 500 });
     expect(asked).toEqual([]);
   });
 
