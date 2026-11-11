@@ -779,6 +779,133 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({${sibli
     ]);
   });
 
+  it("draws no edge for a guard made in place by an akanjs or package factory, and keeps a workspace one past a same-name import", () => {
+    const given: Record<string, string> = {
+      "libs/util/srvkit/guards.ts": `import type { Guard } from "akanjs/signal";
+export const resourceGuard = (field: string) =>
+  class implements Guard {
+    static scope = "resource" as const;
+    canPass() {
+      return !!field;
+    }
+  };
+export const opaque = (field: string) => field;
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { "is(admin" as IsAdmin, opaque, resourceGuard } from "@libs/util/srvkit";
+import * as v from "@vendor/auth";
+import { memo } from "@vendor/x";
+import { endpoint, roleGuard } from "akanjs/signal";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, {
+    guards: [IsAdmin, roleGuard("a"), v.roleGuard("a"), resourceGuard("memo"), opaque("memo")],
+  }).exec(async function () {
+    return memo;
+  }),
+})) {}
+`,
+    };
+    const index = new AkanIndex({ ts, root });
+    for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+    const graph = index.graph((fileName) => given[fileName.slice(root.length + 1)]);
+    const inPlace = "guard:apps/demo:lib/memo/memo.signal.ts#memo.shareMemo:";
+    expect(edgesOf(graph, "guard")).toEqual([
+      `endpoint:apps/demo:memo.shareMemo --> ${inPlace}opaque@1`,
+      `endpoint:apps/demo:memo.shareMemo --> ${inPlace}resourceGuard@1`,
+      "endpoint:apps/demo:memo.shareMemo --> guard:libs/util:is(admin",
+    ]);
+    expect(graph.nodes.find((node) => node.id === "endpoint:apps/demo:memo.shareMemo")?.detail).toEqual([
+      "mutation",
+      "IsAdmin",
+      'roleGuard("a")',
+      'v.roleGuard("a")',
+      'resourceGuard("memo")',
+      'opaque("memo")',
+    ]);
+    expect(
+      graph.nodes
+        .filter((node) => node.kind === "guard")
+        .map(({ id, label, detail, at }) => [id, label, detail, at && `${at.file}:${at.line}`]),
+    ).toEqual([
+      [`${inPlace}opaque@1`, 'opaque("memo")', [], null],
+      [`${inPlace}resourceGuard@1`, 'resourceGuard("memo")', ["resource"], "apps/demo/lib/memo/memo.signal.ts:8"],
+      ["guard:libs/util:is(admin", "is(admin", [], null],
+    ]);
+  });
+
+  it("makes a guard from a curried factory called through every layer, and none from a partial call", () => {
+    const given: Record<string, string> = {
+      "libs/util/srvkit/guards.ts": `import type { Guard } from "akanjs/signal";
+export const resourceGuard = (field: string) =>
+  class implements Guard {
+    static scope = "resource" as const;
+    canPass() {
+      return !!field;
+    }
+  };
+export const curried = (role: string) => (field: string) =>
+  class implements Guard {
+    static scope = "account" as const;
+    canPass() {
+      return !!role && !!field;
+    }
+  };
+export function staged(role: string) {
+  return (field: string) => resourceGuard(\`\${role}:\${field}\`);
+}
+export const wrap = (role: string) => curried(role);
+export const half = (role: string) => (field: string) => curried(role)(field);
+export const both = (role: string, field: string) => curried(role)(field);
+`,
+      "apps/demo/srvkit/guards.ts": `import { both, curried, half, wrap } from "@libs/util/srvkit";
+export const Editor = curried("e")("f");
+export const Partial = curried("e");
+export const Wrapped = wrap("e")("f");
+export const Half = half("e")("f");
+export const Both = both("e", "f");
+export const Over = curried("e")("f")("g");
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { curried, staged } from "@libs/util/srvkit";
+import { endpoint } from "akanjs/signal";
+import { Editor, Partial } from "../../srvkit/guards";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, {
+    guards: [Editor, Partial, curried("e")("f"), curried("e"), staged("s")("t")],
+  }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+    };
+    const index = new AkanIndex({ ts, root });
+    for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+    const graph = index.graph((fileName) => given[fileName.slice(root.length + 1)]);
+    const inPlace = "guard:apps/demo:lib/memo/memo.signal.ts#memo.shareMemo:";
+    expect(graph.nodes.find((node) => node.id === "endpoint:apps/demo:memo.shareMemo")?.detail).toEqual([
+      "mutation",
+      "Editor",
+      "Partial",
+      'curried("e")("f")',
+      'curried("e")',
+      'staged("s")("t")',
+    ]);
+    expect(
+      graph.nodes
+        .filter((node) => node.kind === "guard")
+        .map(({ id, label, detail, at }) => [id, label, detail, at && `${at.file}:${at.line}`]),
+    ).toEqual([
+      ["guard:apps/demo:Both", "Both", ["account"], "apps/demo/srvkit/guards.ts:6"],
+      ["guard:apps/demo:Editor", "Editor", ["account"], "apps/demo/srvkit/guards.ts:2"],
+      ["guard:apps/demo:Half", "Half", ["account"], "apps/demo/srvkit/guards.ts:5"],
+      ["guard:apps/demo:Partial", "Partial", [], null],
+      ["guard:apps/demo:Wrapped", "Wrapped", ["account"], "apps/demo/srvkit/guards.ts:4"],
+      [`${inPlace}curried@1`, 'curried("e")("f")', ["account"], "apps/demo/lib/memo/memo.signal.ts:7"],
+      [`${inPlace}curried@2`, 'curried("e")', [], null],
+      [`${inPlace}staged@1`, 'staged("s")("t")', ["resource"], "apps/demo/lib/memo/memo.signal.ts:7"],
+    ]);
+  });
+
   it("keys a name two files of one owner declare by file, and follows each import to its own", () => {
     const admin = (doc: string) => `import type { Guard } from "akanjs/signal";
 // ${doc}
@@ -1144,6 +1271,10 @@ export { Client as Mailgun } from "@mailgun/sdk/server";
 `,
       "libs/shared/srvkit/square.ts": `export * from "square-sdk";
 `,
+      "libs/shared/srvkit/index.ts": `export * from "./notifier";
+export * from "./paypal";
+export * from "./square";
+`,
       "libs/social/lib/memo/memo.service.ts": `import { serve } from "akanjs/service";
 import Paypal from "paypal";
 import * as db from "../db";
@@ -1383,6 +1514,196 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({ clock: plug(Clo
     expect(summarize(AkanGraphDiff.between(paired, alone))).toEqual([
       "removed adaptor:apps/demo:srvkit/clockB.ts#Clock",
       "removed adaptor:apps/demo:srvkit/clockB.ts#Clock -> adaptor:apps/demo:Mailer",
+    ]);
+  });
+
+  it("follows a folder index to the same-name adaptor it exports, and a package `export *` only along the import's chain", () => {
+    const clock = (name: string) => `import { adapt } from "akanjs/service";
+export class Clock extends adapt("${name}") {}
+`;
+    const wired = (barrel: string): Record<string, string> => ({
+      "apps/demo/srvkit/clockA.ts": clock("clockA"),
+      "apps/demo/srvkit/clockB.ts": clock("clockB"),
+      "apps/demo/srvkit/index.ts": barrel,
+      "apps/demo/srvkit/compat/index.ts": `export { Clock } from "../clockB";
+`,
+      "libs/shared/srvkit/index.ts": `export * from "./square";
+`,
+      "libs/shared/srvkit/square.ts": `export * from "square-sdk";
+`,
+      "libs/shared/srvkit/legacy/other.ts": `export * from "other-sdk";
+`,
+      "libs/util/srvkit/index.ts": `export * from "./storage";
+`,
+      "libs/social/srvkit/index.ts": `export * from "@libs/billing/srvkit";
+`,
+      "libs/billing/srvkit/index.ts": `export * from "bill-sdk";
+export * from "./bill";
+`,
+      "libs/billing/srvkit/bill.ts": `export class Bill {}
+`,
+      "libs/util/srvkit/storage.ts": `export const storage = 1;
+`,
+      "libs/util/srvkit/legacy/foo.ts": `export * from "foo-sdk";
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Square } from "@libs/shared/srvkit";
+import { Bill } from "@libs/social/srvkit";
+import { Foo } from "@libs/util/srvkit";
+import { serve } from "akanjs/service";
+import { Clock, WallClock } from "../../srvkit";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  clock: plug(Clock),
+  wall: plug(WallClock),
+  square: plug(Square),
+  foo: plug(Foo),
+  bill: plug(Bill),
+})) {
+  async stamp() {
+    await this.square.charge();
+    await this.foo.run();
+    await this.bill.send();
+    await this.wall.tick();
+    return this.clock.now();
+  }
+}
+`,
+    });
+    const callsOf = (barrel: string) => {
+      const given = wired(barrel);
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    const clockA = "adaptor:apps/demo:srvkit/clockA.ts#Clock";
+    const clockB = "adaptor:apps/demo:srvkit/clockB.ts#Clock";
+    const reached = (clockId: string, wallId = "adaptor:apps/demo:WallClock") => [
+      "method:apps/demo:memo.stamp -charge-> adaptor:square-sdk:Square",
+      `method:apps/demo:memo.stamp -now-> ${clockId}`,
+      "method:apps/demo:memo.stamp -run-> adaptor:libs/util:Foo",
+      "method:apps/demo:memo.stamp -send-> adaptor:libs/social:Bill",
+      `method:apps/demo:memo.stamp -tick-> ${wallId}`,
+    ];
+    expect(callsOf(`export { Clock } from "./clockB";\n`)).toEqual(reached(clockB));
+    expect(callsOf(`export * from "./clockB";\n`)).toEqual(reached(clockB));
+    expect(callsOf(`export * from "./clockA";\n`)).toEqual(reached(clockA));
+    expect(callsOf(`export { Clock } from "./clockB";\nexport * from "./clockA";\n`)).toEqual(reached(clockB));
+    expect(callsOf(`export * from "./compat";\n`)).toEqual(reached(clockB));
+    expect(callsOf(`export { Clock as WallClock } from "./clockA";\nexport { Clock } from "./clockB";\n`)).toEqual(
+      reached(clockB, clockA),
+    );
+    expect(callsOf(`export * from "./clockA";\nexport * from "./clockB";\n`)).toEqual(
+      reached("adaptor:apps/demo:Clock"),
+    );
+    expect(callsOf(`export { Clock } from "clock-sdk";\n`)).toEqual(reached("adaptor:clock-sdk:Clock"));
+  });
+
+  it("scans the folder when the import path has no module, so a graph without the gitignored barrels matches one with them", () => {
+    const clock = (name: string) => `import { adapt } from "akanjs/service";
+export class Clock extends adapt("${name}") {}
+`;
+    const sources: Record<string, string> = {
+      "apps/demo/srvkit/clock.ts": clock("srvkitClock"),
+      "apps/demo/plugin/clock.ts": clock("pluginClock"),
+      "libs/shared/srvkit/square.ts": `export * from "square-sdk";
+`,
+      "libs/shared/srvkit/stripe.ts": `export { Stripe } from "stripe-sdk";
+`,
+      "libs/billing/srvkit/stripe.ts": `import { adapt } from "akanjs/service";
+export class Stripe extends adapt("stripe") {}
+`,
+      "libs/util/srvkit/a.ts": `export * from "a-sdk";
+`,
+      "libs/util/srvkit/b.ts": `export * from "b-sdk";
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Square, Stripe } from "@libs/shared/srvkit";
+import { Foo } from "@libs/util/srvkit";
+import { serve } from "akanjs/service";
+import { Clock } from "../../plugin";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  clock: plug(Clock),
+  square: plug(Square),
+  stripe: plug(Stripe),
+  foo: plug(Foo),
+})) {
+  async stamp() {
+    await this.square.charge();
+    await this.stripe.pay();
+    await this.foo.run();
+    return this.clock.now();
+  }
+}
+`,
+    };
+    const barrels: Record<string, string> = {
+      "apps/demo/srvkit/index.ts": `export * from "./clock";
+`,
+      "apps/demo/plugin/index.ts": `export * from "./clock";
+`,
+      "libs/shared/srvkit/index.ts": `export * from "./square";
+export * from "./stripe";
+`,
+      "libs/util/srvkit/index.ts": `export * from "./a";
+export * from "./b";
+`,
+    };
+    const callsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    const expected = [
+      "method:apps/demo:memo.stamp -charge-> adaptor:square-sdk:Square",
+      "method:apps/demo:memo.stamp -now-> adaptor:apps/demo:plugin/clock.ts#Clock",
+      "method:apps/demo:memo.stamp -pay-> adaptor:libs/billing:Stripe",
+      "method:apps/demo:memo.stamp -run-> adaptor:libs/util:Foo",
+    ];
+    expect(callsOf(sources)).toEqual(expected);
+    expect(callsOf({ ...sources, ...barrels })).toEqual(expected);
+  });
+
+  it("refuses a package `export *` only for a name declared along the chain, not elsewhere in a lib it reaches", () => {
+    const wired = (storage: string): Record<string, string> => ({
+      "libs/shared/srvkit/index.ts": `export * from "./square";
+export * from "@libs/util/srvkit";
+`,
+      "libs/shared/srvkit/square.ts": `export * from "square-sdk";
+`,
+      "libs/util/srvkit/index.ts": `export * from "./storage";
+`,
+      "libs/util/srvkit/storage.ts": storage,
+      "libs/util/lib/square/square.constant.ts": `export class Square {}
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Square } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({ square: plug(Square) })) {
+  async pay() {
+    return this.square.charge();
+  }
+}
+`,
+    });
+    const callsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    expect(callsOf(wired(`export const storage = 1;\n`))).toEqual([
+      "method:apps/demo:memo.pay -charge-> adaptor:square-sdk:Square",
+    ]);
+    expect(callsOf(wired(`export class Square {}\n`))).toEqual([
+      "method:apps/demo:memo.pay -charge-> adaptor:libs/shared:Square",
     ]);
   });
 
