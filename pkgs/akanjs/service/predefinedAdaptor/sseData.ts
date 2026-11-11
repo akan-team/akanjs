@@ -35,7 +35,5 @@ export const parseToolArgs = (raw: string | undefined): Record<string, unknown> 
 };
 
 //? Security: a call that lost its arguments would otherwise run with `{}`, which every optional-argument write accepts.
-export const isToolStreamCut = (calls: Iterable<{ args: string }>, ended: boolean): boolean => {
-  const streamed = [...calls];
-  return !!streamed.length && (!ended || streamed.some(({ args }) => parseToolArgs(args) === null));
-};
+export const isStreamCut = (calls: Iterable<{ args: string }>, ended: boolean): boolean =>
+  !ended || [...calls].some(({ args }) => parseToolArgs(args) === null);

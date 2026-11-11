@@ -16,7 +16,7 @@ import {
 } from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
 import { LlmSpend } from "./llmSpend";
-import { eachSseData, isToolStreamCut, parseToolArgs } from "./sseData";
+import { eachSseData, isStreamCut, parseToolArgs } from "./sseData";
 
 type AnthropicSource = { type: "base64"; media_type: string; data: string } | { type: "url"; url: string };
 type AnthropicContentBlock =
@@ -363,6 +363,7 @@ export class AnthropicLlm
     const calls = new Map<number, { id?: string; name?: string; args: string }>();
     let text = "";
     let stopReason: string | null = null;
+    let stopped = false;
     let failure: Error | null = null;
     let usage: AnthropicUsage = {};
     let finalCount = false;
@@ -370,6 +371,7 @@ export class AnthropicLlm
       const event = JSON.parse(payload) as AnthropicStreamEvent;
       if (event.type === "error")
         failure = LlmOverflow.refusal(host, 500, event.error?.message || event.error?.type || "no reason given");
+      if (event.type === "message_stop") stopped = true;
       const index = event.index ?? 0;
       if (event.type === "content_block_start" && event.content_block?.type === "tool_use")
         calls.set(index, { id: event.content_block.id, name: event.content_block.name, args: "" });
@@ -412,7 +414,7 @@ export class AnthropicLlm
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: isToolStreamCut(calls.values(), stopReason !== null)
+      stop: isStreamCut(calls.values(), stopReason !== null || stopped)
         ? "length"
         : AnthropicLlm.stopOf(stopReason, toolCalls.length),
       ...(Object.keys(usage).length ? { usage: AnthropicLlm.usageOf(usage) } : {}),

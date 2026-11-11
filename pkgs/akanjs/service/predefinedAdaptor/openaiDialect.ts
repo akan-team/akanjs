@@ -10,7 +10,7 @@ import {
 } from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
 import { LlmSpend } from "./llmSpend";
-import { eachSseData, isToolStreamCut, parseToolArgs } from "./sseData";
+import { eachSseData, isStreamCut, parseToolArgs } from "./sseData";
 
 export interface OpenaiToolCall {
   id?: string;
@@ -39,6 +39,12 @@ interface OpenaiStreamChunk {
 }
 type OpenaiImagePart = { type: "image_url"; image_url: { url: string } };
 type OpenaiContentPart = { type: "text"; text: string } | OpenaiImagePart;
+interface OpenaiStreamedCall {
+  index: number;
+  id?: string;
+  name?: string;
+  args: string;
+}
 export interface OpenaiMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | OpenaiContentPart[];
@@ -193,7 +199,8 @@ export class OpenaiDialect {
     onDelta: (delta: string) => void,
     host = "The model provider",
   ): Promise<LlmTurnAnswer> {
-    const calls = new Map<number, { id?: string; name?: string; args: string }>();
+    const open = new Map<number, OpenaiStreamedCall>();
+    const calls: OpenaiStreamedCall[] = [];
     let text = "";
     let finish: string | null = null;
     let done = false;
@@ -215,11 +222,16 @@ export class OpenaiDialect {
       }
       for (const fragment of choice.delta?.tool_calls ?? []) {
         const index = fragment.index ?? 0;
-        const call = calls.get(index) ?? { args: "" };
+        let call = open.get(index);
+        //? Gemini's compatibility layer omits `index`, and other gateways reuse it across parallel calls.
+        if (!call || (fragment.id && call.id && fragment.id !== call.id)) {
+          call = { index, args: "" };
+          open.set(index, call);
+          calls.push(call);
+        }
         if (fragment.id) call.id = fragment.id;
         if (fragment.function?.name) call.name = fragment.function.name;
         if (fragment.function?.arguments) call.args += fragment.function.arguments;
-        calls.set(index, call);
       }
       if (choice.finish_reason) finish = choice.finish_reason;
     });
@@ -228,20 +240,18 @@ export class OpenaiDialect {
       if (failure) throw failure;
     });
     await failed.catch((error: unknown) => {
-      const streamed = text + [...calls.values()].map(({ args }) => args).join("");
+      const streamed = text + calls.map(({ args }) => args).join("");
       throw LlmSpend.attach(error, usage ? { usage } : LlmSpend.estimate(undefined, { streamed }));
     });
-    const toolCalls = [...calls.entries()]
-      .sort(([a], [b]) => a - b)
-      .flatMap(([, call]) =>
+    const toolCalls = [...calls]
+      .sort((a, b) => a.index - b.index)
+      .flatMap((call) =>
         call.id && call.name ? [{ id: call.id, name: call.name, args: OpenaiDialect.parsedArgs(call.args) }] : [],
       );
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: isToolStreamCut(calls.values(), finish !== null || done)
-        ? "length"
-        : OpenaiDialect.stopOf(finish, toolCalls.length),
+      stop: isStreamCut(calls, finish !== null || done) ? "length" : OpenaiDialect.stopOf(finish, toolCalls.length),
       ...(usage ? { usage } : {}),
     };
   }

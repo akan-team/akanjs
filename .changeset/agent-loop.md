@@ -28,6 +28,6 @@
   - A tool result is capped at 20,000 characters, as the browser caps it. `untrusted` sees it before the cap.
 - **Moved.** `AgentMeter` and `AgentRelayPolicy` now live in `akanjs/service`, and `akanjs/signal` still re-exports them.
 
-- **Streams.** An error frame inside a provider's stream now fails the turn instead of reading as a finished answer. A stream of tool calls that ends with no finish reason, or with arguments that do not parse, now stops as `length`, so those calls do not run with empty arguments. This also applies to the in-page chat.
+- **Streams.** An error frame inside a provider's stream now fails the turn instead of reading as a finished answer. A stream that ends with no terminal event, or with tool arguments that do not parse, now stops as `length`, so those calls do not run with empty arguments and a half answer is not reported as finished. Parallel calls from a gateway that omits or reuses `index` now stay separate. This also applies to the in-page chat.
 
 The `AgentTurnContext` fields are optional and the moved classes are still exported from `akanjs/signal`, so no upgrade step is needed.

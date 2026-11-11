@@ -52,6 +52,11 @@ describe("LoopTranscript.sanitize", () => {
     expect(repaired[1]?.toolResults).toHaveLength(1);
   });
 
+  test("a call id a later round reuses keeps its own result", () => {
+    const messages = [call("c1"), answer("c1"), call("c1"), answer("c1")];
+    expect(LoopTranscript.sanitize(messages)).toEqual(messages);
+  });
+
   test("a batch split over two tool messages reaches the provider as one", () => {
     const split: AgentWireMessage[] = [
       {

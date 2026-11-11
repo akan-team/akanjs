@@ -276,6 +276,7 @@ describe("OpenaiDialect.consumeStream", () => {
         'data: {"choices":[{"delta":{"content":"Half"}}]}\n',
         "data: {not json at all\n",
         'data: {"choices":[{"delta":{"content":" an answer"}}]}\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
       ]),
       () => undefined,
     );

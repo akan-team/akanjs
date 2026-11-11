@@ -45,6 +45,49 @@ describe("a stream that did not finish", () => {
     expect((await anthropic([...anthropicToolFrames('{"a":1}'), stopped])).stop).toBe("toolUse");
   });
 
+  test("a text answer or an empty body with no terminal event is cut, not finished", async () => {
+    const text = `data: ${JSON.stringify({ choices: [{ delta: { content: "half a sen" } }] })}`;
+    expect(await openai([text])).toEqual({ text: "half a sen", stop: "length" });
+    expect((await openai([])).stop).toBe("length");
+    const delta = `data: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "half" } })}`;
+    expect((await anthropic([delta])).stop).toBe("length");
+    expect((await anthropic([delta, `data: ${JSON.stringify({ type: "message_stop" })}`])).stop).toBe("end");
+  });
+
+  test("parallel calls that omit or reuse an index stay separate, and a repeated id stays one call", async () => {
+    const frameOf = (fragment: object) =>
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [fragment] } }] })}`;
+    const named = (id: string, args: string) => ({ id, function: { name: "write", arguments: args } });
+    const omitted = await openai([frameOf(named("a", '{"x":1}')), frameOf(named("b", '{"y":2}')), finished]);
+    expect(omitted.stop).toBe("toolUse");
+    expect(omitted.toolCalls).toEqual([
+      { id: "a", name: "write", args: { x: 1 } },
+      { id: "b", name: "write", args: { y: 2 } },
+    ]);
+    const repeated = await openai([
+      frameOf({ index: 0, ...named("a", '{"x"') }),
+      frameOf({ index: 0, id: "a", function: { arguments: ":1}" } }),
+      finished,
+    ]);
+    expect(repeated.toolCalls).toEqual([{ id: "a", name: "write", args: { x: 1 } }]);
+  });
+
+  test("interleaved fragments still land on their own call, in index order", async () => {
+    const frameOf = (fragment: object) =>
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [fragment] } }] })}`;
+    const answer = await openai([
+      frameOf({ index: 1, id: "b", function: { name: "second", arguments: '{"b"' } }),
+      frameOf({ index: 0, id: "a", function: { name: "first", arguments: '{"a"' } }),
+      frameOf({ index: 1, function: { arguments: ":2}" } }),
+      frameOf({ index: 0, function: { arguments: ":1}" } }),
+      finished,
+    ]);
+    expect(answer.toolCalls).toEqual([
+      { id: "a", name: "first", args: { a: 1 } },
+      { id: "b", name: "second", args: { b: 2 } },
+    ]);
+  });
+
   test("an error frame fails the turn, carrying what was streamed, instead of reading as an answer", async () => {
     const text = `data: ${JSON.stringify({ choices: [{ delta: { content: "half an answer" } }] })}`;
     const frame = `data: ${JSON.stringify({ error: { message: "overloaded", code: 503 } })}`;

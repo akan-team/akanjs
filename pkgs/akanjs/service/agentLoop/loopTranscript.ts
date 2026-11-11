@@ -55,7 +55,10 @@ export class LoopTranscript {
       if (message.role === "assistant" && !LoopTranscript.carries(message)) continue;
       kept.push(message);
       const calls = message.toolCalls ?? [];
-      for (const call of calls) called.add(call.id);
+      for (const call of calls) {
+        called.add(call.id);
+        paired.delete(call.id);
+      }
       const unanswered = calls.filter((call) => !answered.has(call.id));
       // A model told the call was stopped asks again; one shown no call at all answers as if it had the result.
       if (unanswered.length)
