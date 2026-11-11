@@ -56,7 +56,7 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
     const ref = useRef<HTMLDivElement>(null);
     const shown = useRef(false);
     const portal = useOverlayPortal();
-    const overlayLayerProps = useOverlayLayerProps();
+    const overlayLayerProps = useOverlayLayerProps(true);
     //? It portals out of its page, so the `inert` on a page the CSR stack keeps drawn underneath never reaches it.
     const isCurrentPage = usePageActivity() === "current";
     const [root, setRoot] = useState<HTMLDivElement | null>(null);

@@ -136,11 +136,11 @@ Look
 
 - launcherClassName / panelClassName (string): Styles one surface each, where `className` reaches both.
 
-- title (string): Panel heading. Left out, it reads "Agent" in the user's language.
+- title / label (ReactNode / string): Panel heading, "Agent" in the user's language when left out. `label` names the panel for a `title` that is not plain text.
 
 - intro (ReactNode): Replaces the intro line while the transcript is empty. Starter questions go here.
 
-- header / chrome (ReactNode / boolean, default chrome = true): Controls left of clear and close. `chrome={false}` drops the whole bar, leaving `/new` to clear.
+- header / chrome (ReactNode / boolean, default chrome = true): Controls left of clear and close; a modal they open stacks above the panel. `chrome={false}` drops the whole bar, leaving `/new` to clear.
 
 Composer Input
 

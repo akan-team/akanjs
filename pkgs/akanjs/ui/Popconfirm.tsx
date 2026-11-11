@@ -55,7 +55,7 @@ export const DefaultPopconfirm = ({
   const portal = useOverlayPortal();
   const triggerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const overlayLayerProps = useOverlayLayerProps();
+  const overlayLayerProps = useOverlayLayerProps(true);
   const position = useOverlayPosition({
     opened: isConfirming,
     triggerRef,

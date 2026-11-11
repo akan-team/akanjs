@@ -287,7 +287,8 @@ export interface ChatMessage {
 
 export interface ChatProps {
     className?: string;
-    title?: string;
+    title?: ReactNode;
+    label?: string;
     instructions?: string;
     runner?: AgentRunner;
     maxTurns?: number;
@@ -1136,7 +1137,8 @@ export declare const useAgent: () => AgentSession;
 
 export declare const useAgentReference: () => <T extends AgentFieldType>({ type, value, ...pointer }: AgentReferenceInput<T>) => void;
 
-export declare const useOverlayLayerProps: () => {
+export declare const useOverlayLayerProps: (scrim?: boolean) => {
+    "data-akan-scrim"?: string | undefined;
     "data-akan-overlay": string;
 };
 

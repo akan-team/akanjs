@@ -421,7 +421,7 @@ describe("Agent.Chat", () => {
   });
 
   test("resolves an _overrides AgentChat slot in place of the default", () => {
-    const Branded = ({ title }: { title?: string }) => <div data-skin="brand">{title ?? "branded"}</div>;
+    const Branded = ({ title }: { title?: ReactNode }) => <div data-skin="brand">{title ?? "branded"}</div>;
     const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
     const { container, unmount } = mount(
       <lib.AgentProvider session={session}>
@@ -690,6 +690,220 @@ describe("Agent.Chat", () => {
     const inline = mountChat(session, { defaultOpen: true, inline: true });
     expect(inline.host.querySelector("aside")?.className).not.toContain("fixed");
     inline.unmount();
+  });
+
+  test("a modal opened from the floating panel stacks above it, while a page modal stays on the body", () => {
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
+    const chat = mount(
+      <lib.AgentProvider session={session}>
+        <Modal open>
+          <p>page modal</p>
+        </Modal>
+        <DefaultChat
+          defaultOpen
+          header={
+            <Modal open>
+              <p>panel modal</p>
+            </Modal>
+          }
+        />
+      </lib.AgentProvider>,
+    );
+    const rootOf = (text: string) =>
+      [...document.querySelectorAll<HTMLElement>("p")]
+        .find((p) => p.textContent === text)
+        ?.closest<HTMLElement>("[style]");
+    try {
+      const host = document.body.querySelector("aside")?.nextElementSibling as HTMLElement | null;
+      expect(host?.style.zIndex).toBe(String(overlayZ.agentPanelOverlay));
+      expect(overlayZ.agentPanelOverlay).toBeGreaterThan(overlayZ.agentPanel);
+      expect(rootOf("panel modal")?.parentElement).toBe(host);
+      expect(rootOf("page modal")?.parentElement).toBe(document.body);
+    } finally {
+      chat.unmount();
+    }
+  });
+
+  test("a modal anywhere in the floating panel, not only its header, stacks above it", () => {
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
+    const chat = mount(
+      <lib.AgentProvider session={session}>
+        <DefaultChat
+          defaultOpen
+          intro={
+            <Modal open>
+              <p>intro modal</p>
+            </Modal>
+          }
+        />
+      </lib.AgentProvider>,
+    );
+    try {
+      const host = document.body.querySelector("aside")?.nextElementSibling as HTMLElement | null;
+      expect(host?.textContent).toContain("intro modal");
+    } finally {
+      chat.unmount();
+    }
+  });
+
+  test("a turn waiting on an answer sinks a panel modal under its card, and what the card opens stays up", async () => {
+    const surface = new lib.AgenticSurface();
+    surface.registerTool([], { name: "removeThing", confirm: true, run: () => undefined });
+    const session = new lib.AgentSession(
+      surface,
+      scripted({ toolCall: { id: "c1", name: "removeThing", args: {} } }, { text: "Removed." }),
+    );
+    const skin = {
+      AgentApproval: ({ approval }: { approval: { approve: () => void } }) => (
+        <div>
+          <button onClick={approval.approve} type="button">
+            approve it
+          </button>
+          <Modal open>
+            <p>card modal</p>
+          </Modal>
+        </div>
+      ),
+    };
+    const chat = mount(
+      <lib.AgentProvider session={session}>
+        <UiOverrideProvider value={skin as never}>
+          <DefaultChat
+            defaultOpen
+            header={
+              <Modal open>
+                <p>panel modal</p>
+              </Modal>
+            }
+          />
+        </UiOverrideProvider>
+      </lib.AgentProvider>,
+    );
+    const layer = () => document.body.querySelector("aside")?.nextElementSibling as HTMLElement;
+    try {
+      expect(layer().style.zIndex).toBe(String(overlayZ.agentPanelOverlay));
+      let sendDone: Promise<void> = Promise.resolve();
+      await act(async () => {
+        sendDone = session.send("remove it");
+        await untilFlushed(() => !!session.pendingApproval);
+      });
+      expect(layer().style.zIndex).toBe(String(overlayZ.agentPanelOverlaySunk));
+      expect(overlayZ.agentPanelOverlaySunk).toBeLessThan(overlayZ.agentPanel);
+      const cardLayer = layer().nextElementSibling as HTMLElement;
+      expect(cardLayer.textContent).toContain("card modal");
+      expect(cardLayer.style.zIndex).toBe(String(overlayZ.agentPanelCardOverlay));
+      expect(overlayZ.agentPanelCardOverlay).toBeGreaterThan(overlayZ.agentPanel);
+
+      await act(async () => {
+        [...document.querySelectorAll("button")].find((b) => b.textContent === "approve it")?.click();
+        await sendDone;
+      });
+      expect(layer().style.zIndex).toBe(String(overlayZ.agentPanelOverlay));
+    } finally {
+      chat.unmount();
+    }
+  });
+
+  test("a card waiting beside no scrim leaves the panel's overlays above it", async () => {
+    const surface = new lib.AgenticSurface();
+    surface.registerTool([], { name: "removeThing", confirm: true, run: () => undefined });
+    const session = new lib.AgentSession(surface, scripted({ toolCall: { id: "c1", name: "removeThing", args: {} } }));
+    const chat = mountChat(session);
+    try {
+      await act(async () => {
+        void session.send("remove it");
+        await untilFlushed(() => !!session.pendingApproval);
+      });
+      const layer = document.body.querySelector("aside")?.nextElementSibling as HTMLElement;
+      expect(layer.style.zIndex).toBe(String(overlayZ.agentPanelOverlay));
+    } finally {
+      chat.unmount();
+    }
+  });
+
+  test("an inline chat inside a modal leaves the overlays it opens in that modal", () => {
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
+    const chat = mount(
+      <lib.AgentProvider session={session}>
+        <Modal open>
+          <p>outer</p>
+          <DefaultChat
+            defaultOpen
+            header={
+              <Modal open>
+                <p>inner</p>
+              </Modal>
+            }
+            inline
+          />
+        </Modal>
+      </lib.AgentProvider>,
+    );
+    const rootOf = (text: string) =>
+      [...document.querySelectorAll<HTMLElement>("p")]
+        .find((p) => p.textContent === text)
+        ?.closest<HTMLElement>("[style]");
+    try {
+      const outer = rootOf("outer");
+      expect(outer?.parentElement).toBe(document.body);
+      expect(rootOf("inner")?.parentElement).toBe(outer ?? null);
+      expect(document.body.querySelector("aside")?.nextElementSibling).toBeNull();
+    } finally {
+      chat.unmount();
+    }
+  });
+
+  test("names the panel from `label`, else a plain-text `title`, else the default", () => {
+    const named = (props: ChatProps) => {
+      const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
+      const chat = mountChat(session, { defaultOpen: true, ...props });
+      try {
+        const name = document.body.querySelector("aside")?.getAttribute("aria-label");
+        const title = document.body.querySelector('[data-slot="agent-title"]')?.innerHTML;
+        return { name, title };
+      } finally {
+        chat.unmount();
+      }
+    };
+    expect(named({ title: "Helper" })).toEqual({ name: "Helper", title: "Helper" });
+    expect(named({ title: <b>✦ Helper</b>, label: "Helper" })).toEqual({ name: "Helper", title: "<b>✦ Helper</b>" });
+    expect(named({ title: <b>Helper</b> }).name).toBe("base.agent");
+    expect(named({})).toEqual({ name: "base.agent", title: "base.agent" });
+  });
+
+  test("marks the header parts with data-slot hooks, the running dot only while a turn runs", async () => {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runner: AgentRunner = {
+      async *run() {
+        yield { type: "text", delta: "working" };
+        await held;
+        yield { type: "done", stop: "end" };
+      },
+    };
+    const session = new lib.AgentSession(new lib.AgenticSurface(), runner);
+    const { container, unmount } = mountChat(session);
+    const slot = (name: string) => container.querySelector<HTMLElement>(`[data-slot="${name}"]`);
+    let sendDone: Promise<void> = Promise.resolve();
+    try {
+      expect(slot("agent-header")?.className).toContain("border-border");
+      expect(slot("agent-title")).toBeTruthy();
+      expect(slot("agent-running")).toBeNull();
+      await act(async () => {
+        sendDone = session.send("go");
+        await untilFlushed(() => session.isRunning);
+      });
+      expect(slot("agent-running")).toBeTruthy();
+    } finally {
+      await act(async () => {
+        release();
+        await sendDone;
+      });
+    }
+    expect(slot("agent-running")).toBeNull();
+    unmount();
   });
 
   test("the launcher sits under menus and modals, above the page's bottom chrome, in the corner it is given", () => {

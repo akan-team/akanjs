@@ -22,7 +22,7 @@
     "server/rscWorker.tsx#RscRenderer.#renderFlightElement": 186,
     "server/rscWorkerHost.ts#createRscHostRenderStream": 164,
     "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 158,
-    "ui/Agent/Chat.tsx#DefaultChat": 429,
+    "ui/Agent/Chat.tsx#DefaultChat": 409,
     "ui/BottomSheet.tsx#BottomSheet": 154,
     "ui/Data/ListContainer.tsx#ListContainer": 341,
     "ui/Data/RefPicker.tsx#RefPicker": 169,

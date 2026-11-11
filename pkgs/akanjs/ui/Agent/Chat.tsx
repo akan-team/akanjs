@@ -12,7 +12,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
-import { AiOutlineClear, AiOutlineClose } from "react-icons/ai";
 import {
   type AgentRunner,
   type AgentSession,
@@ -22,21 +21,19 @@ import {
   SessionContext,
   type SessionHistory,
 } from "use-agentic";
-import { overlayZ } from "../overlayLayer";
+import { OverlayPortalProvider, overlayZ, useOverlayPortal } from "../overlayLayer";
 import { createOverridable } from "../UiOverride";
-import Approval from "./Approval";
 import { agentSessionOf, type BuiltinOption, type PersistOption } from "./agentSessionOf";
 import type { AttachLimits, AttachReader } from "./attachment";
 import Bubble from "./Bubble";
 import { type ChatCommand, ChatCommands } from "./ChatCommands";
+import { ChatHeader } from "./ChatHeader";
+import { ChatPendingCards, isAsking, PanelOverlayHosts, usePanelOverlays } from "./ChatPendingCards";
 import { Composer, type ComposerHandle } from "./Composer";
 import { Launcher } from "./Launcher";
 import Menu from "./Menu";
-import Question from "./Question";
 import Queued from "./Queued";
 import Steps from "./Steps";
-import ToolCard from "./ToolCard";
-import { tokenCount } from "./tokenCount";
 import { useAccountBoundSession } from "./useAccountBoundSession";
 import { useChatAttachments } from "./useChatAttachments";
 import { type QueuedMessage, useChatQueue } from "./useChatQueue";
@@ -51,7 +48,10 @@ import type { VoiceEngine } from "./voice";
 export interface ChatProps {
   /** Applied to the launcher while closed and to the panel while open. */
   className?: string;
-  title?: string;
+  /** The header's title; also the panel's accessible name when it is a string and `label` is left off. */
+  title?: ReactNode;
+  /** The panel's accessible name, for a `title` that is not plain text. */
+  label?: string;
   /** App-global framing; route-scoped `Agent.Guide`s layer on it. */
   instructions?: string;
   /** Defaults to the app's `runAgentTurn` endpoint. */
@@ -133,6 +133,7 @@ const stickyEdge = 80;
 export const DefaultChat = ({
   className,
   title,
+  label,
   instructions,
   runner,
   maxTurns,
@@ -221,6 +222,9 @@ export const DefaultChat = ({
   const read = useRef(session.messages.length);
   const keyboardFrame = useKeyboardFrame();
   const [overlay, setOverlay] = useState<HTMLElement | null>(null);
+  const { layer: panelOverlays, cardLayer: cardOverlays, hosts: overlayHosts } = usePanelOverlays();
+  //? An inline chat hands down the portal it sits in, so a modal around it still hosts what it opens.
+  const enclosingPortal = useOverlayPortal();
   useEffect(() => {
     setOverlay(document.body);
   }, []);
@@ -270,6 +274,11 @@ export const DefaultChat = ({
   const dismiss = () => {
     returning.current = true;
     setOpen(false);
+  };
+  const clear = () => {
+    files.clear();
+    queue.take();
+    void session.reset();
   };
   const runCommand = (command: ChatCommand) => {
     write("");
@@ -446,117 +455,88 @@ export const DefaultChat = ({
       : null;
   // data-agent-ui keeps the chat out of readScreen, so a turn never re-reads its own transcript.
   return layer(
-    <aside
-      aria-label={title ?? l("base.agent")}
-      data-agent-ui=""
-      className={cn(
-        "flex flex-col overflow-hidden border border-border bg-background",
-        inline ? "h-full w-full rounded-box" : [panelLayer, panelSize, "shadow-xl"],
-        files.dragging && "border-primary ring-2 ring-primary/40",
-        className,
-        panelClassName,
-      )}
-      role="dialog"
-      style={inline ? undefined : { zIndex: overlayZ.agentPanel, ...keyboardFrame }}
-      {...files.dropProps}
-    >
-      {chrome ? (
-        <header className="flex items-center gap-2 border-foreground/5 border-b px-4 py-3">
-          <span className="font-semibold text-sm">{title ?? l("base.agent")}</span>
-          {session.isRunning ? <span className="size-2 animate-pulse rounded-full bg-primary" /> : null}
-          {context.used ? (
-            <span
-              className="shrink-0 whitespace-nowrap text-[10px] text-foreground/40"
-              title={
-                context.compactAt ? l("base.agentCompactsAt", { limit: tokenCount(context.compactAt) }) : undefined
-              }
-            >
-              {context.compactAt
-                ? l("base.agentTokensOf", { count: tokenCount(context.used), limit: tokenCount(context.compactAt) })
-                : l("base.agentTokens", { count: tokenCount(context.used) })}
-            </span>
-          ) : null}
-          <span className="ml-auto flex items-center gap-2">
-            {header}
-            {session.messages.length ? (
-              <button
-                aria-label={l("base.agentClear")}
-                className="text-foreground/50 hover:text-foreground"
-                onClick={() => {
-                  files.clear();
-                  queue.take();
-                  void session.reset();
-                }}
-                type="button"
-              >
-                <AiOutlineClear />
-              </button>
-            ) : null}
-            {closable ? (
-              <button
-                aria-label={l("base.cancel")}
-                className="text-foreground/50 hover:text-foreground"
-                onClick={dismiss}
-                type="button"
-              >
-                <AiOutlineClose />
-              </button>
-            ) : null}
-          </span>
-        </header>
-      ) : null}
-      <div
-        aria-busy={session.isRunning}
-        aria-live="polite"
-        className="scrollbar-thin flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-3"
-        onScroll={() => {
-          const list = listRef.current;
-          if (list) sticky.current = list.scrollHeight - list.scrollTop - list.clientHeight < stickyEdge;
-        }}
-        ref={listRef}
-        role="log"
+    <>
+      <aside
+        aria-label={label ?? (typeof title === "string" ? title : l("base.agent"))}
+        data-agent-ui=""
+        className={cn(
+          "flex flex-col overflow-hidden border border-border bg-background",
+          inline ? "h-full w-full rounded-box" : [panelLayer, panelSize, "shadow-xl"],
+          files.dragging && "border-primary ring-2 ring-primary/40",
+          className,
+          panelClassName,
+        )}
+        role="dialog"
+        style={inline ? undefined : { zIndex: overlayZ.agentPanel, ...keyboardFrame }}
+        {...files.dropProps}
       >
-        {bubbles.length
-          ? bubbles
-          : (intro ?? <p className="py-6 text-center text-foreground/40 text-sm">{l("base.agentIntro")}</p>)}
-        {session.isCompacting ? (
-          <p className="flex items-center gap-2 text-foreground/50 text-xs">
-            <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
-            {l("base.agentSummarizing")}
-          </p>
-        ) : null}
-      </div>
-      {session.pendingApproval ? <Approval approval={session.pendingApproval} /> : null}
-      {session.pendingCard ? <ToolCard card={session.pendingCard} key={session.pendingCard.callId} /> : null}
-      {session.pendingQuestion ? (
-        <Question key={session.pendingQuestion.callId} question={session.pendingQuestion} />
-      ) : null}
-      {queue.queued ? <Queued message={queue.queued} onCancel={() => queue.take()} onEdit={unpark} /> : null}
-      <Menu onPick={(row) => row.pick()} prefix={list === menu ? "/" : "@"} rows={list.rows} selected={list.selected} />
-      <Composer
-        attached={files.attached}
-        pending={files.pending}
-        draft={draft}
-        handleRef={handleRef}
-        inputRef={inputRef}
-        isMenuOpen={!!list.at()}
-        mentions={mentions ?? !!reference?.length}
-        {...(speech.canListen ? { mic: { listening: speech.listening, onToggle: speech.toggle } } : {})}
-        onDraft={write}
-        onFiles={(picked) => void files.add(picked)}
-        onKeyDown={onKeyDown}
-        onRemoveFile={files.remove}
-        onRemoveReference={refs.remove}
-        onSend={send}
-        references={refs.references}
-        onStop={() => {
-          speech.silence();
-          unpark();
-          session.abort();
-        }}
-        session={session}
-      />
-    </aside>,
+        <OverlayPortalProvider value={inline ? enclosingPortal : panelOverlays}>
+          {chrome ? (
+            <ChatHeader
+              context={context}
+              controls={header}
+              running={session.isRunning}
+              title={title}
+              onClear={session.messages.length ? clear : undefined}
+              onClose={closable ? dismiss : undefined}
+            />
+          ) : null}
+          <div
+            aria-busy={session.isRunning}
+            aria-live="polite"
+            className="scrollbar-thin flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-3"
+            onScroll={() => {
+              const list = listRef.current;
+              if (list) sticky.current = list.scrollHeight - list.scrollTop - list.clientHeight < stickyEdge;
+            }}
+            ref={listRef}
+            role="log"
+          >
+            {bubbles.length
+              ? bubbles
+              : (intro ?? <p className="py-6 text-center text-foreground/40 text-sm">{l("base.agentIntro")}</p>)}
+            {session.isCompacting ? (
+              <p className="flex items-center gap-2 text-foreground/50 text-xs">
+                <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
+                {l("base.agentSummarizing")}
+              </p>
+            ) : null}
+          </div>
+          <ChatPendingCards portal={inline ? enclosingPortal : cardOverlays} session={session} />
+          {queue.queued ? <Queued message={queue.queued} onCancel={() => queue.take()} onEdit={unpark} /> : null}
+          <Menu
+            onPick={(row) => row.pick()}
+            prefix={list === menu ? "/" : "@"}
+            rows={list.rows}
+            selected={list.selected}
+          />
+          <Composer
+            attached={files.attached}
+            pending={files.pending}
+            draft={draft}
+            handleRef={handleRef}
+            inputRef={inputRef}
+            isMenuOpen={!!list.at()}
+            mentions={mentions ?? !!reference?.length}
+            {...(speech.canListen ? { mic: { listening: speech.listening, onToggle: speech.toggle } } : {})}
+            onDraft={write}
+            onFiles={(picked) => void files.add(picked)}
+            onKeyDown={onKeyDown}
+            onRemoveFile={files.remove}
+            onRemoveReference={refs.remove}
+            onSend={send}
+            references={refs.references}
+            onStop={() => {
+              speech.silence();
+              unpark();
+              session.abort();
+            }}
+            session={session}
+          />
+        </OverlayPortalProvider>
+      </aside>
+      {inline ? null : <PanelOverlayHosts asking={isAsking(session)} {...overlayHosts} />}
+    </>,
   );
 };
 

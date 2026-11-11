@@ -1,5 +1,152 @@
 <!-- akan:generated -->
 
+## What `akanjs/ui` Publishes For You
+- **`akanjs/ui` publishes its own controls, so an app writes nothing for them.** `Data.ListContainer` (and every
+  `Model.AdminPanel`) publishes its toolbar and its row verbs; `Model.NewWrapper` (so `Model.New` too) publishes
+  `new<Model>`; `Load.Units`, `Load.Pagination` and `Data.Pagination` publish `setPageOf<Model>`; `Layout.Sider`,
+  `System.SelectLanguage`, `Link.Back` and `System.ThemeToggle` publish the shell. **A component that can render
+  twice on one screen takes a `namespace` prop and publishes nothing without it** — `Tab`, `Dialog`,
+  `ScreenNavigator`, `Dropdown`. Pass one (`<Tab namespace="detail">`) and the tool becomes `switchTabInDetail`;
+  leave it off and that tab is invisible to the agent, because two tabs answering to `switchTab` would mean the
+  first to mount loses. A named `Dropdown` publishes `openDropdownIn<Ns>` / `closeDropdownIn<Ns>` and the state
+  `dropdownIn<Ns>`, and its trigger annotates whichever of the two its next click performs. `Model.NewWrapper`
+  takes the same prop but publishes without one, because its slice already names it — a second create trigger for
+  the same slice, opening a form seeded differently, is what needs the suffix.
+- **The `Model.*` row wrappers publish their verb, taking the id.** `Model.EditWrapper`, `Model.ViewWrapper`,
+  `Model.RemoveWrapper` and `Model.Remove` publish `edit<Model>` / `view<Model>` / `remove<Model>` with a
+  `modelId` argument, so a list built from `Load.Units` and an app's own `Unit` reaches the same verbs an
+  `AdminPanel` does. `Model.SureToRemove` publishes the same — except under `typeNameToRemove`, where it
+  publishes nothing: that gate makes a person retype the model's name, an approval card is one click, and
+  offering the lever at a friction the screen does not have is not the same control.
+- **A dropdown's menu is mounted from the first render and hidden while closed** — the deliberate opposite of the
+  modal rule below, because a menu is one click away rather than a surface of its own. A tool is declared by a
+  mount effect, so an unmounted menu is one whose row verbs and field setters do not exist yet: an agent asked for
+  one finds nothing, and no catalogue entry hints that opening the menu would help. `readScreen` still skips
+  hidden content, so the items themselves are read only after `openDropdownIn<Ns>` — what a closed menu publishes
+  is its tools, not its text. The cost is that `content` renders on page load, so a heavy panel belongs behind a
+  `Dialog` instead.
+- **A modal publishes its verbs while it is open, and only then.** `Model.EditModal` publishes `submit<Model>`
+  and `cancelEditOf<Model>`, `Model.ViewModal` publishes `closeViewOf<Model>`, and `Model.ViewEditModal`
+  publishes `edit<Model>` / `submit<Model>` / `closeViewOf<Model>` — each from a subtree that mounts with the
+  open modal, never from the component that merely holds it. That is what makes a list legal: `Data.CardList`
+  renders one editor per row, and at most one of them is ever open, so one name is registered rather than fifty.
+  It also means the verb is absent from the catalogue while nothing is open, which is honest — and costs the
+  agent nothing, because the catalogue is re-read on the turn that follows the tool call that opened the form.
+- **A shell's `submit<Model>` refuses while an upload is in flight.** `Model.EditModal` (also while its submit is
+  disabled) and `Model.ViewEditModal` disable the button and answer `The <model> form is not ready to submit.` while
+  `<model>FormUploading` is not empty. That key is read `{ agent: false }`, so the refusal is how an agent learns of
+  the upload: call `submit<Model>` again once the file has landed, rather than setting the field a second time.
+
+## Forms
+- **A form control publishes its own setter, and reading a form publishes one tool that fills several at once.**
+  Both are free: an app writes no `st.tool` for a form. A `Field.*` / `Input.*` / `Select` / `Switch` handed
+  `onChange={st.do.setTitleOnTask}` **by reference** publishes `setTitleOnTask` while it is on screen — the same
+  reference that earns `data-akan-action`, so the tool and the person press one function and an inline arrow
+  still publishes nothing. `st.use.taskForm()` adds `fillTaskForm(patch)`, which takes several fields in one call
+  and is the only way to reach a list, a map, or an embedded object, whose rows are written through
+  `writeOnTask(path, value)` and can carry no annotation. It is a patch: a field left out keeps its value.
+  `fillTaskForm` refuses a plain field whose control is not on screen and names the ones that are; a composite it
+  cannot see is let through, which is the one place an agent reaches a field the screen may not draw. Never a
+  relation (picked or uploaded, not typed), a base document field, or a `hidden`/`secret` one at any depth —
+  their reads are masked and a writer would be the door around that. `st.use.taskForm({ agent: false })`
+  withholds the patch tool; an inline arrow withholds a control's own.
+  **The patch writes each plain field through that control's own published tool, not the setter underneath it** —
+  which is what carries the control's `transform`, so a field cannot normalize one way for `setPhoneOnBizAccount`
+  and another way for `fillBizAccountForm`. Only a composite, having no control, dispatches its setter directly.
+  The patch tool's entry is a pure function of the model, so a form put on screen by a shell that subscribes it
+  (`Model.EditModal`) *and* by the `Template` inside it registers the same name with the same description twice
+  over — one declaration, not a clash. Neither has to suppress the other, and neither is asked to.
+- **A `disabled` control publishes nothing, so the agent never gets a lever the person cannot pull.** Every value
+  control reads it — `Field.*`, `Input.*`, `Select`, `Switch`, and the four relation pickers — and disabling a
+  mounted control withdraws its tool for as long as it stays disabled. One gate covers both writers: with no
+  control published, `fill<Model>Form`'s guard refuses that field too. `readScreen` says `(disabled)` beside the
+  control, from the native attribute or `aria-disabled`, so a refusal is something the agent could have read first
+  rather than a surprise. This is the same rule as publishing only where the screen renders the control, applied to
+  a control the screen renders but withholds.
+- **Whatever the wrapper was for, there is a place to put it that is not the wrapper.** An inline arrow is the one
+  shape that publishes nothing, so each reason for writing one has its own home, and reaching for that home is what
+  keeps the field reachable:
+  - *normalize* — `(v) => set(formatPhone(v))` becomes the control's own `transform` prop, which every text and
+    number `Field.*` already takes (`Field.Phone` defaults it to `formatPhone`). `onChange` stays a reference, and
+    **`transform` runs on the agent's write too**, by both paths — the field's own tool and `fill<Model>Form`,
+    which goes through the control to get it — otherwise a person would store `010-1234-5678` and an agent the raw
+    digits. It normalizes one scalar, so an array control applies it per element and a cleared nullable field stays
+    null. It is the *control's* rule, though: a rule that must hold however the field is written — including a
+    composite path or a base-document write — belongs in `_postSet<Field>` below.
+  - *multi-write* — `(v) => { set(v); other(v); }` becomes a **`_postSet<Field>` method on the store**, and the
+    control keeps handing over the generated setter by reference. It runs right after the field is written, so it
+    reads the new value, and it reaches every other generated action with `this.` —
+    `_postSetToBiz(toBiz) { if (toBiz) this.addSendEmailsOnEstSheet(toBiz.sendEmails ?? []); }`. Nothing about the
+    control changes, so `data-akan-action` **and** `data-akan-state` both survive, and the rule now fires for every
+    writer — the person, the agent, `fill<Model>Form` — which is what a rule about a field should do.
+    **A generated action cannot be overridden, so do not try.** They all come from mapped types, and a mapped type
+    produces *properties*: a subclass method of the same name is `TS2425`, optional or not, and the two shapes
+    TypeScript does allow — a class field and a getter — are both skipped by `StoreRegistry.register`, which only
+    collects prototype descriptors holding a function. There is no legal middle, which is exactly why the hook
+    carries a leading `_` and no model suffix: a name no mapped type can produce is the only name a subclass may
+    declare. It cannot be typed either, for the same reason, so a misspelled field is named on the console at
+    registration instead. Calling a generated action *from* a custom one is fine and always was — `this.setXOnY(v)`
+    typechecks anywhere.
+  - *nested path* — `(v) => writeOnTask("payments.3.name", v)` has no home and needs none: an embedded row is
+    unannotatable by design, and an agent reaches it through `fillTaskForm`, which waves composites through.
+
+  `no-unpublished-form-setter.grit` errors on the pure-forwarding shape only, because every other one has a
+  legitimate reading. **`akan quality scan` counts them all** (`akan.agent.unpublished-form-setter`, one warning per
+  file): the lint rule is the per-line enforcement, the scan is the inventory of fields this screen writes but
+  cannot be asked to write.
+- **A relation reaches an agent from its picker, not from the form patch.** `fillTaskForm` publishes no schema for
+  one and is right not to: the form holds the whole related document, so an id would need a lookup the store does
+  not do. The picker is where that lookup lives, so `Field.Parent` / `Field.Children` publish the pair themselves —
+  `load<Field>OptionsOn<Model>`, which loads the slice and returns `[{ id, label }]`, and the field's own
+  `set<Field>On<Model>` taking `<field>Id` / `<field>Ids`. Listing is its own tool because loading is its own step
+  for a person too: the options arrive when the dropdown opens, and an agent never opens it. `Field.ParentId` /
+  `Field.ChildrenId` need none of that — the id *is* the value, so the ordinary setter describes it. All four still
+  require the setter **by reference**, and a `disabled` picker publishes nothing.
+- **An upload control reaches an agent the same way, through `useFileFieldTool`.** The clause after "picked **or
+  uploaded**" has its own hook: the control hands `read` and `label` and gets `load<Field>OptionsOn<Model>` — the
+  same name the relation picker publishes, because a form draws both side by side and a model that learned the
+  name on one field spells it the same on the next — plus the field's own `set<Field>On<Model>` taking
+  `<field>Id` / `<field>Ids`, with `add`/`sub` besides on an array field. **`read` omitted publishes nothing**: a
+  shared `Field.Img` forwards an optional prop, and a call site handing it none has no candidates and must not
+  grow a tool that refuses every id. `read` is the control's rather than the framework's because the ids are the
+  host's — a conversation carries `MessageAttachment.ref`s, and only whoever set them can turn one back into the
+  model a form field holds. akanjs draws no upload control itself, so this is the hook a lib's `Field.Img` /
+  `Field.Imgs` calls, exactly as `Field.Relation` calls the relation one.
+- **`add`/`sub` on a file field are the only way in, not the weaker way.** For every other list of ids they are a
+  convenience the framework declines to pay a tool for — `useFieldTool` publishes them for embedded rows only, and
+  the relation picker not at all, because a picker's `read` is the whole resolvable set so rewriting the array is
+  always expressible. An upload control's `read` is what *this conversation* brought, and the field may already
+  hold files that predate it: naming the array whole drops those, since the ids that would keep them are ids the
+  guard has never heard of. **`max` / `min` are passed, not derived** — `ConstantField` carries `arrDepth`, which
+  says the value is a list and not how long a legal one is — and they reach the tool's *description* as well as
+  its guard, because a limit an agent can only learn by tripping the server's `Err` is the round trip the listing
+  tool exists to spare it. Two call sites rendering one field with different caps describe one name two ways, and
+  the surface warns, which is the right answer: a field has one cap. For the same reason the unknown-id refusal
+  **names the boundary rather than the absence** on a list: an id already on the field is real, on screen, and in
+  the form the agent just read, so "no such file" reads as the form being wrong instead of the verb — it says the
+  id is not among what is *offered*, and points at `sub<Field>On<Model>`, which does cover it.
+- **An array of embedded rows also publishes `add<Field>On<Model>` and `sub<Field>On<Model>`** — append, and
+  remove-by-position — beside the whole-array setter. Not new authority: the setter can already produce any array
+  those two can, so they are strictly weaker. What they add is that neither can touch a row it was not given, and
+  that is the point: writing the whole array means echoing every row the agent is *not* changing, `checked`
+  validates types and not values, so one mistyped row nobody asked about is written silently. Both take a list and
+  act atomically, because removing positions one call at a time would shift the ones not yet removed. **Only an
+  embedded-row array gets them** — an array of primitives or of relation ids has nothing to retype wrong, its
+  values *are* the payload, so it keeps one setter and pays for no extra tools. `add` appends and publishes no
+  insert position, matching the `+` a person presses; `addOrSub` is never published, since it matches by `indexOf`
+  and would compare rows by reference. Editing a row in place stays `fill<Model>Form`'s job.
+- **A list the person can drag also publishes `move<Field>On<Model>(from, to)`**, and `DraggableList` is a form
+  control like any other: handed the generated setter by reference it publishes that field, so an app that renders
+  its own rows with `DraggableList` writes no `st.tool`. The reorder tool exists for the same reason `add`/`sub` do
+  — the drag is the lever the screen offers and it changes no entry's content, so moving one row should not mean
+  retyping the nine beside it. No store action answers to it: reordering *is* a whole-array write, so the tool
+  splices the live entries and hands them to the setter the drag hands them to, `transform` deliberately not
+  applied, since the values are stored already and dragging normalizes nothing. It comes from the control saying
+  it sorts, not from the field, so a plain `Field.List` publishes no reorder and a scalar field never gets one.
+  **A component that composes `DraggableList` and already published the field hands the inner list a wrapper** —
+  the two would otherwise register one name twice, and the outer one is the one holding `transform`. That is what
+  `Field.TextList` does, and the only place an inline arrow is the right answer rather than a bug.
+
 ## Reading State
 - **Reading is per key, not per store.** `st.expose(name, Type).desc("…").value(v)` publishes a derived value and
   `st.useState(name, Type, { set: true }).desc("…").init(initial)` local state, read-only without `set`. Both
@@ -108,146 +255,3 @@
   half-written draft they were walked away from comes back at the bottom of the walk. **The `/` menu takes those
   keys while it is open** — it is the thing on screen the arrows point at — with Enter picking the highlighted
   row, Tab completing its name, and Escape closing the menu and then, pressed again, the panel.
-
-## Built-In Tools
-- The framework publishes six built-ins on every store surface: `navigate` (internal paths only, the same router
-  `Link` rides, so the app's navigation guards are asked and a refusal is reported as a kept page), `goBack` (this session's history — global, because history is not a control a page owns and a page
-  that draws no back link is not one you may not leave — a screen that must not be left withholds them with `builtins`,
-  not with prose), `readScreen` (the rendered DOM as compact text — headings, links, control values, and `(disabled)`
-  on a control or button that has it; the chat's own UI is skipped via `data-agent-ui`, and a password value is never
-  read), `readState(key)` (one masked store key — a key that is unknown or that this screen does not read is refused
-  *with the keys it can* read, the way `readScreen` names its sections), `highlight(target)`, and `viewImage(src)` (one
-  `<img>` on screen, redrawn as a JPEG at most 1568px long and attached to the result — `src` must be one this view
-  shows, as `readScreen({ images: true })` printed it, so the agent cannot have the browser fetch an address of its
-  own, and a `data:` one is refused). Declaring a hook tool under one of those names shadows the built-in, so reuse
-  them only to mean that. **There is no general-purpose wait**:
-  a built-in one was reachable on every screen and a model spent it on whatever key it liked, parking turns nobody
-  asked to park. Waiting belongs to the screen that knows what is worth waiting for — publish an `st.tool` beside the
-  control that starts the work, and let it await the work.
-- **A tool that changes the screen waits for the screen before it answers.** `router.push` returns while the RSC
-  payload is still in flight and a store action that fires `void fetch.*` commits a tick later, so `navigate`
-  awaits `ScreenSettle.wait()` — DOM quiescence, bounded, because the client router hands its promise to nobody —
-  and the session awaits it after every tool that did not declare `settle: false` before taking the change report.
-  Without it the report describes the moment before the change landed and the `readScreen` that follows reads the
-  page the user left. The reading built-ins (`readScreen`, `readState`, `highlight`, `viewImage`) declare it,
-  because a wait costs 120ms of quiet at the very least and they change nothing a resource holds.
-  New tools and state from a fresh route are still only listed from the next turn: the catalogue is snapshotted
-  when the turn starts. **So a navigation ends the model's turn, and a name nobody listed is answered with the names
-  that exist.** A call is looked up when it runs, so one batched behind `navigate` already reaches the new screen —
-  but the model wrote it against the old catalogue, and a screen-scoped name it never saw is one it composed
-  (`addBacklogTicketInProject` for `addBacklogTicket`), and refused with a bare `Unknown tool` it composes the next.
-  `AgentService.preamble` therefore says that a navigation ends the turn and that names are never guessed, and the
-  session answers an unknown name with the tools listed now — saying, when the catalogue moved since the turn's
-  list was written, that the call was written against the screen it left and the new one's tools arrive with their
-  arguments next turn. `navigate`'s own answer says the same, reports the path the page actually landed on when a
-  redirect or the not-found page moved it elsewhere, and a path with no route is refused with the internal links on
-  screen (`ScreenTarget.linkedRoutes`) rather than an invitation to compose another. Layout-level tools — a channel
-  post, a new wiki page — stay listed across routes, which is why the cross-screen requests that use only them never
-  hit this.
-- **A tool that waits for its own work costs no model turns; one that returns early costs one round trip per
-  look.** The session awaits `run`, so a `.exec` that awaits the store action finishing the job simply makes the
-  turn take that long — and the change report that follows carries whatever landed, so the model needs no second
-  call to read the result. A fire-and-forget tool leaves the agent to poll instead, which burns the whole
-  `maxTurns` budget in seconds on a job measured in minutes. Say so in the `desc` ("takes about two minutes; do
-  not poll while it runs") and, for a route full of slow work, in an `Agent.Guide`.
-- **A wait is a screen's own tool, declared where the slow work is.** For the job a tool cannot await — one
-  started in an earlier turn, or by a person clicking the button — publish an `st.tool` that parks on the thing
-  *that* screen knows about, and say in its `desc` what it waits for and roughly how long. A general built-in was
-  tried and removed: reachable on every screen with no idea what any key means, a model spent it on whatever key
-  looked promising and parked turns nobody asked to park. The screen that starts the work is the only place that
-  knows what finishing looks like, and a tool declared there is also one the agent cannot reach on a screen where
-  waiting makes no sense. Honour `AgentAbort.current` in the body and report with `AgentProgress.report`, so Stop
-  ends the wait and the row says how it is going.
-- **Stop reaches a tool that is still running.** The session races every call against its abort signal, so a
-  two-minute tool does not hold the loop for two minutes after the user presses Stop. The signal itself arrives
-  through `AgentAbort.current` — the same module slot `AgentProgress` is — and honouring it is optional, since the
-  race lands whatever the tool does; what it buys is the tool's own cleanup, a timer or a poll loop that would
-  otherwise run out with nobody left to answer. A tool that ignores it is left running rather than cancelled: the
-  work is usually a job a server is already doing.
-- **`readScreen` takes a `section`, and `highlight` a `target`.** Both resolve a name the agent has already seen —
-  a `data-akan-action` / `data-akan-state` annotation, an `Agent.Zone` or `useScreenScope` container
-  (`data-agent-scope`, which `Load.Units` / `Load.View` / `Data.ListContainer` put on the container they render),
-  an element id, or **a heading by its own text**, matched on letters and digits so the slug an agent writes for a
-  heading it read resolves. That tolerance stops at headings: a heading is a landmark and scrolling to the wrong
-  one costs nothing, while two buttons reading "Save" are not the same control. **Nothing hidden ever resolves** —
-  a ring nobody can see reads as a broken tool, not as a miss. A section named by a heading is read to the next
-  heading of its level or higher.
-- **An image is always named, and its address rides only when asked for.** `readScreen` prints `[image: <alt>]`,
-  and `[image]` for one with no `alt` — dropping the unlabelled one left a card that renders a picture reading
-  exactly like a card that renders nothing, and "this page shows no image" is the one answer the screen cannot
-  support. `readScreen({ images: true })` appends `(<src>)` to each, for handing one to `viewImage` or another tool
-  that takes a picture; it is off by default because a gallery is one long URL per thumbnail, which is the read's whole budget
-  spent on the part of the screen it can say the least about. A `data:` URL is never printed — that is the bytes
-  themselves rather than somewhere to fetch them.
-- **A screen is only aimable if its names are printed.** `readScreen` writes `(#anchor)` beside a heading that
-  opens an id'd or scoped container, and a truncated read ends with the headings below the cut — otherwise
-  everything past the 8000-character limit is unreachable, because nothing names it, and an agent asked to point
-  at a section it cannot name guesses a slug and is refused. A refusal lists the sections actually on screen.
-  `highlight` scrolls its target into view and flashes it **once the scroll lands**, since a smooth scroll across a
-  long page outlasts the flash; it is the one built-in that exists for the *user's* benefit, because showing where
-  a control is beats writing directions to it.
-- **`<Agent.Skip label="site footer">` leaves a region out of the default read** — chrome that costs tokens and
-  answers nothing: a footer, a cookie banner, a nav that repeats on every route. What stands in its place is
-  `[skipped: site footer]`, never nothing, because a deleted region reads as an absent one and an agent asked about
-  the footer would answer that the page has none. The marker's name **is** a `section`, so naming it reads the
-  region after all: what the marker withholds is the *default* read, not the region. It renders a wrapper div, so
-  where that would move a flex or grid layout put `data-agent-skip="<name>"` on the element the page already
-  renders — an unlabelled attribute falls back to the tag name, which is why the raw form belongs on a `<footer>`
-  or `<nav>` and the component insists on a label. A region that is hidden anyway leaves no marker claiming it is
-  there. **It hides text, not behaviour**: tools and state keys are declarations rather than markup, so an
-  `st.tool` inside is published exactly as before and `highlight` still reaches a control in there. This is
-  `field.visual` one layer up — cost, not secrecy. Secrecy is `data-agent-private="<label>"`: the read prints
-  `[private: <label>]` in its place even when asked for by name, and it is no `section` or `highlight` target. A
-  password, one-time-code or card input (its standard `autocomplete`) is never read either; any other value on
-  screen is.
-- **Reach for it second.** A read narrows from the other side too: `Agent.Zone` and `readScreen({ section })` scope
-  to one container, which beats blocklisting five regions on a screen that is mostly chrome. And a footer is last
-  in the document, so on a page long enough to truncate it was already past the cut — the regions worth marking are
-  the ones *above* the content.
-- **Every tool's return value is bounded at 20,000 characters before it enters the transcript** (`ToolOutput.limit`,
-  clipped with a note that gives the real size and tells the model to read a narrower part). `readScreen` caps
-  itself; nothing else did, and a store key is sized for a screen rather than for a model's window — one
-  `readState` of a list whose rows carry inlined bytes is megabytes, which the loop then posts on this turn *and on
-  every turn after it*, so the window fills after four messages. Compaction cannot save that: it summarizes what is
-  above the cut and a result this large arrives below it. Clipped rather than dropped, because a model handed a
-  value it cannot see the end of asks a narrower question, where one handed nothing answers from the field names.
-  The cap is a safety rail, not the design: a tool should return what answers the question — an id, a count, the
-  three fields the agent asked about — and `AgentContext` inlines only small primitives for the same reason.
-- **A slow tool reports its own progress with `AgentProgress.report(message, { done, total })`** from wherever the
-  work is — a store action, an upload loop, an adapter — reached through a module slot rather than a parameter, and
-  a no-op when nobody is rendering it. The chat shows it on that call's row until the row resolves. It is the
-  browser twin of `McpProgress.report`. Import it and `AgentAbort` from `akanjs/store`: an app may not reach
-  `use-agentic` directly (`no-import-external-library`), and those two are the channels a long tool body needs.
-- **One turn carries every call the model made in it, and they run in order.** An assistant turn may hold any
-  number of tool calls; the session executes them one at a time, in the order they arrived, and posts them back as
-  one `tool` message. A batch therefore costs **one** model round trip, where the same calls chained one per turn
-  cost a round trip *and* a resend of the whole transcript each — and then meet the turn cap halfway through. The
-  framework asks for the batch in its own half of the system prompt (`AgentService.preamble`); what an app adds is
-  a tool that does the whole job in one call, so there are fewer calls to batch in the first place. Two agents'
-  calls still take turns page-wide — see Zones.
-- **A chain of ten calls is usually a model checking its own work, not ten things to do.** Measured against the
-  provider, the batch itself lands in one turn; what follows it is `readScreen → readState → readScreen`, one read
-  per turn, confirming a write whose change report already said the same thing. The preamble tells the model not
-  to, which is worth a turn and a half on a plain "approve what is pending". So a tool that returns *what
-  changed* pays for itself twice — once as the answer, once as the reads it stops. The read a fresh route needs
-  after `navigate` is acquisition rather than confirmation and is unaffected.
-- **A batch reports each changed resource once, at the end.** Every call takes its own before-and-after, so eight
-  approvals would each attach the whole list they approved from — and by the time the model reads the message,
-  only the last copy is still true. The superseded ones are dropped (`ToolOutput.deduped`), so a resource several
-  calls touched appears once, as it finally stands, on the last result that touched it. What each call did is
-  still its own `result`; do not compensate by returning the collection from every write.
-- **The turn cap is a question, not a dead end.** At `maxTurns` the session asks whether to keep going through the
-  same card `askUser` uses, and the answer rides as the user's own turn — so a steer typed instead of the
-  keep-going choice reaches the model as guidance. A host that renders no `pendingQuestion` passes no
-  `continueAsk` and keeps the old failure, because asking with nobody listening would hang.
-- **`askUser` is a fourth built-in the *session* owns, not the surface.** The answer comes from the conversation
-  rather than the screen, so it rides on every turn whatever the page declares, and a zone agent asks inside its
-  own transcript. `choices` offers a pick (`multiple` for several) and omitting them asks for free text; the card
-  keeps a free-text row either way, because the model wrote the options and only the user knows whether the answer
-  is among them. The loop parks on the question exactly as it parks on an approval, a dismissal is the tool's
-  error result rather than a silent empty answer, and the settled exchange renders as question-and-answer instead
-  of a tool row. **Never re-implement it per screen** — a `st.tool("askAboutX")` that opens a modal is the same
-  thing with a worse transcript — and a hook tool named `askUser` shadows it like any other built-in. The line
-  between it and a `.card()` tool is what the answer *is*: a sentence or a pick off a list is `askUser` and belongs
-  to the conversation, while a shape the model must not invent — fields, a form, a signature — is a card the screen
-  declares, because only the screen knows what filling it in looks like.

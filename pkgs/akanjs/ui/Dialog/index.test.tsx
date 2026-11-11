@@ -89,6 +89,21 @@ describe("Dialog stacking", () => {
     return root;
   };
 
+  test("a modal and a legacy modal mark their scrim, so an agent panel holding one can sink it", async () => {
+    for (const Surface of [Dialog.Modal, Dialog.LegacyModal]) {
+      const { unmount } = await mountAsync(
+        <Dialog defaultOpen>
+          <Surface>
+            <div>body</div>
+          </Surface>
+        </Dialog>,
+      );
+      await settle();
+      expect(document.querySelectorAll("[data-akan-scrim]")).not.toHaveLength(0);
+      unmount();
+    }
+  });
+
   test("a dropdown on the page sits under an open modal", async () => {
     const { unmount } = await mountAsync(
       <>
