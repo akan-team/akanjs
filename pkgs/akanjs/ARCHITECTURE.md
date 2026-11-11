@@ -192,5 +192,5 @@ Declared in [server/hmr/wsHub.ts](server/hmr/wsHub.ts).
 | `sync-navigation` | — | `isSyncNavigationMessage` |
 | `ok` | — | — |
 | `build-status` | `devBuildStatusToHmrMessage` | — |
-| `error` | `WebRouter` | — |
+| `error` | `WebRouteContext` | — |
 <!-- akan:framework-map:end -->

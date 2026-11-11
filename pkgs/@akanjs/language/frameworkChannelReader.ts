@@ -545,6 +545,15 @@ export class FrameworkChannelReader {
       const field = this.#memberOf(this.#classOf(receiver), receiver.name.text);
       return field && ts.isPropertyDeclaration(field) ? this.#namesIn(field.type) : new Set();
     }
+    if (
+      ts.isCallExpression(receiver) &&
+      ts.isPropertyAccessExpression(receiver.expression) &&
+      receiver.expression.expression.kind === ts.SyntaxKind.ThisKeyword
+    ) {
+      const field = this.#memberOf(this.#classOf(receiver), receiver.expression.name.text);
+      const type = field && ts.isPropertyDeclaration(field) ? field.type : undefined;
+      return type && ts.isFunctionTypeNode(type) ? this.#namesIn(type.type) : new Set();
+    }
     return this.#declaredTypeNames(receiver) ?? new Set();
   }
 
