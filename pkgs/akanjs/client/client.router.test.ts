@@ -891,6 +891,10 @@ describe("router", () => {
     envState.localePrefix = "as-needed";
     expect(roundTrip("https://site.test/org/a", [["x-locale", "en"]])).toEqual(["/org/a", "/org/a"]);
     expect(roundTrip("https://site.test/ko/org/a", [["x-locale", "ko"]])).toEqual(["/org/a", "/ko/org/a"]);
+    for (const hostile of ["//evil.com", "/%5Cevil.com", "/https://evil.com"]) {
+      const [, location] = roundTrip(`https://site.test/ko${hostile}`, [["x-locale", "ko"]]);
+      expect(location?.startsWith("/ko/")).toBe(true);
+    }
     requestState.request = undefined;
     expect(getRequestRoutePath("en")).toBeUndefined();
     envState.side = "client";

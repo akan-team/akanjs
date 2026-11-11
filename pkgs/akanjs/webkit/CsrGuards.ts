@@ -98,8 +98,10 @@ export class CsrGuards {
 
   static async #run({ pathRoute, params, searchParams, pathname, search }: GuardedLocation): Promise<boolean> {
     const navigations = router.navigationCount();
-    //? The target's own: a pushed entry's guards run before the browser's URL moves to it.
-    const path = pathname === undefined ? undefined : `${router.routeOf(pathname)}${search ? `?${search}` : ""}`;
+    //? The target's own, language too: a pushed entry's guards run before the browser's URL moves to it, and an older
+    //? history entry keeps the language it was visited in.
+    const path =
+      pathname === undefined ? undefined : `${router.routeOf(pathname, params.lang)}${search ? `?${search}` : ""}`;
     for (const render of CsrGuards.#rendersOf(pathRoute)) {
       if (!render?.guard) continue;
       try {

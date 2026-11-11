@@ -703,8 +703,8 @@ export default page()
           />
           <Docs.Alert type="warning">
             {l.trans({
-              en: "A route guard is not authorization for data. It decides who may open a screen and redirects early; every query the screen makes is still judged by that endpoint's signal guards, so keep both. path only builds a redirect target, never a reason to let someone in: CSR asks a guard again only when the route or an argument it declared moves. A query in a guard that the server refuses with 403 or 404 answers not-found, so the screen never confirms that the record exists.",
-              ko: "라우트 guard는 데이터 권한이 아닙니다. 누가 화면을 열 수 있는지 정하고 일찍 redirect할 뿐이며, 화면이 보내는 모든 쿼리는 여전히 그 endpoint의 signal guard가 판정하므로 둘 다 둡니다. path는 redirect 대상을 만들 때만 쓰고 들여보낼지 정하는 데는 쓰지 않습니다. CSR은 라우트나 guard가 선언한 인자가 바뀔 때만 guard에 다시 묻기 때문입니다. guard 안의 쿼리를 서버가 403이나 404로 거절하면 not-found로 응답하므로, 화면은 그 레코드가 있는지 알려 주지 않습니다.",
+              en: "A route guard is not authorization for data. It decides who may open a screen and redirects early; every query the screen makes is still judged by that endpoint's signal guards, so keep both. path only builds a redirect target, never a reason to let someone in: CSR asks a guard again only when the route or an argument it declared moves. Hand it only to router.push or router.redirect, since it can be a raw //host that window.location would follow off the site. A query in a guard that the server refuses with 403 or 404 answers not-found, so the screen never confirms that the record exists.",
+              ko: "라우트 guard는 데이터 권한이 아닙니다. 누가 화면을 열 수 있는지 정하고 일찍 redirect할 뿐이며, 화면이 보내는 모든 쿼리는 여전히 그 endpoint의 signal guard가 판정하므로 둘 다 둡니다. path는 redirect 대상을 만들 때만 쓰고 들여보낼지 정하는 데는 쓰지 않습니다. CSR은 라우트나 guard가 선언한 인자가 바뀔 때만 guard에 다시 묻기 때문입니다. path는 router.push나 router.redirect에만 넘깁니다. 그대로의 //host일 수 있어 window.location에 넘기면 사이트 밖으로 나갑니다. guard 안의 쿼리를 서버가 403이나 404로 거절하면 not-found로 응답하므로, 화면은 그 레코드가 있는지 알려 주지 않습니다.",
             })}
           </Docs.Alert>
           <Docs.Alert type="info">

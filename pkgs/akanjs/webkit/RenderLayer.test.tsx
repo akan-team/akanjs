@@ -194,6 +194,36 @@ describe("RenderLayer", () => {
     expect(Translator.getRenderPath()).toBeUndefined();
   });
 
+  test("hands a guard the path and search of the location it draws", async () => {
+    const paths: (string | undefined)[] = [];
+    const notes: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      guard: async ({ path }) => void paths.push(path),
+      render: (async () => <p>notes</p>) as RouteRender["render"],
+    };
+    const location = {
+      pathname: "/en/notes",
+      search: "seat=3",
+      params: { lang: "en" },
+      searchParams: { seat: "3" },
+      pathRoute: { path: "/notes", renderRootLayouts: [], renderLayouts: [], renderPage: notes },
+    };
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    mounted = { root, container };
+    await act(async () => {
+      root.render(
+        <pathContext.Provider value={{ location } as never}>
+          <RenderLayer renders={[notes]} index={0} params={location.params} searchParams={location.searchParams} />
+        </pathContext.Provider>,
+      );
+    });
+    await settle();
+    expect(paths).toEqual(["/notes?seat=3"]);
+  });
+
   test("draws a page only once its route guards admit the visitor, and nothing while they send them elsewhere", async () => {
     const replaced: string[] = [];
     router.init({

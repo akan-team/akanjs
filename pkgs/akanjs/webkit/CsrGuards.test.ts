@@ -99,6 +99,12 @@ describe("CsrGuards", () => {
       true,
     );
     expect(paths).toEqual(["/org/a/home?seat=3", "/org/b/home?seat=3"]);
+
+    paths.length = 0;
+    expect(await CsrGuards.of({ ...location, params: { lang: "ko", orgId: "c" }, pathname: "/ko/org/c/home" })).toBe(
+      true,
+    );
+    expect(paths).toEqual(["/org/c/home?seat=3"]);
   });
 
   test("holds a verdict while a layer of its location is on screen, and asks again once none is", async () => {

@@ -1464,7 +1464,7 @@ declare class Router {
     redirect(target: string, options?: RedirectOptions): never;
     notFound(): never;
     setLang(lang: string): never;
-    routeOf(pathname: string): string;
+    routeOf(pathname: string, lang?: string): string;
     getPath(pathname?: string): string;
     getFullPath(withLang?: boolean): string;
     getPrefix(): string;

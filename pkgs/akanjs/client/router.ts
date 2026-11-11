@@ -742,8 +742,8 @@ class Router {
     return undefined as never;
   }
   /** A pathname without its locale and base-path segments; unlike `getPath`, it needs no browser. */
-  routeOf(pathname: string) {
-    return getPathInfo(pathname, this.#lang, this.#prefix).path;
+  routeOf(pathname: string, lang = this.#lang) {
+    return getPathInfo(pathname, lang, this.#prefix).path;
   }
   getPath(pathname = csrLocation.pathname) {
     if (getEnv().side === "server") throw new Error("getPath is only available in client side");
