@@ -92,9 +92,9 @@ export class AppPreview {
     const unavailable = PreviewView.unavailableReason(engine);
     if (unavailable) throw new Error(unavailable);
     const changed = options.changed ? await AppPreview.#changedPages(app) : { paths: [], skipped: [] };
-    const plan = await AppPreview.planOf(app, options, changed);
     const port = await app.getDevPort();
     const origin = `http://localhost:${port}`;
+    const plan = await AppPreview.planOf(app, options, changed, origin);
     const root = app.workspace.workspaceRoot;
     const previewDir = path.join(ApplicationRunner.runtimeDirOf(app), "preview");
     const started = (await ApplicationRunner.answers(origin, app.name, root))
@@ -147,6 +147,7 @@ export class AppPreview {
     app: Pick<App, "name" | "getConfig" | "cwdPath">,
     options: Pick<AppPreviewOptions, "paths" | "changed" | "csr">,
     changed: { paths: string[]; skipped: string[] },
+    origin: string,
   ) {
     const typed = options.paths ?? [];
     if (options.changed && !changed.paths.length && !typed.length)
@@ -160,21 +161,34 @@ export class AppPreview {
       publicDir: path.join(app.cwdPath, "public"),
       pages: changed.paths,
     });
-    const notes =
-      options.csr && asWritten.length
+    const dev = new URL(origin);
+    const isDevServer = (url: URL) =>
+      url.protocol === dev.protocol &&
+      url.port === dev.port &&
+      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    const elsewhere = [...new Set(typed)].filter((raw) => /^https?:\/\//.test(raw) && !isDevServer(new URL(raw)));
+    const skipsBoot = [...new Set(asWritten)];
+    const notes = [
+      ...(elsewhere.length
         ? [
-            `--csr does not apply to ${asWritten.join(", ")}: ${asWritten.length === 1 ? "it opens" : "they open"} as written.`,
+            `${elsewhere.join(", ")} ${elsewhere.length === 1 ? "names another server: its path opens" : "name other servers: their paths open"} on ${origin}.`,
           ]
-        : [];
+        : []),
+      ...(options.csr && skipsBoot.length
+        ? [
+            `--csr does not apply to ${skipsBoot.join(", ")}: ${skipsBoot.length === 1 ? "it opens" : "they open"} without the CSR boot.`,
+          ]
+        : []),
+    ];
     return { paths, notes };
   }
 
-  /** An unprefixed path answers with a redirect or a 503 where it does not name the default locale itself: under
-   * `"always"`, and in a CSR boot, whose routes match on the locale segment. */
   static pagePaths(paths: string[], i18n: I18nLike, options: PathRuleOptions) {
     return AppPreview.#plan(paths, i18n, options).paths;
   }
 
+  /** An unprefixed path answers with a redirect or a 503 where it does not name the default locale itself: under
+   * `"always"`, and in a CSR boot, whose routes match on the locale segment. */
   static #plan(
     paths: string[],
     i18n: I18nLike,
@@ -204,8 +218,12 @@ export class AppPreview {
       asWritten.push(raw);
       return `${url.pathname}${url.search}`;
     });
-    const opened = [...typed, ...pages.map((page) => asPage(urlOf(page)))];
-    return { paths: [...new Set(opened)], asWritten };
+    const opened = new Map<string, string>();
+    for (const pagePath of [...typed, ...pages.map((page) => asPage(urlOf(page)))]) {
+      const key = pagePath.replace(/^([^?]*?)\/+(\?|$)/, "$1$2");
+      if (!opened.has(key)) opened.set(key, pagePath);
+    }
+    return { paths: [...opened.values()], asWritten };
   }
 
   //? Joined as text, not resolved: `new URL("//host/x", origin)` is protocol-relative and leaves the dev server.
@@ -219,6 +237,7 @@ export class AppPreview {
     "/sitemap.xml",
     "/manifest.webmanifest",
     "/openapi.json",
+    "/mcp",
   ]);
 
   //? The server routes these outside `/:lang` and the locale proxy skips them, so a locale prefix 404s them.
@@ -293,14 +312,20 @@ export class AppPreview {
     const url = AppPreview.probeUrlOf("http://localhost", pagePath);
     const slugOf = (text: string) => text.replace(/[^\w-]/g, "_");
     const hashOf = (text: string) => Bun.hash(text).toString(36).slice(0, 6);
-    const plain = url.pathname.split("/").filter(Boolean).join("-");
+    const pathname = url.pathname.replace(/(.)\/+$/, "$1");
+    const plain = pathname.split("/").filter(Boolean).join("-");
     //? Lower case only: on a case-insensitive disk, macOS's default, `/A` and `/a` would write one file.
-    const isPlain = /^(\/[a-z0-9]+)*\/?$/.test(url.pathname) && plain.length <= 80;
-    const page = !plain ? "_index" : isPlain ? plain : `${slugOf(plain).slice(0, 80)}_${hashOf(url.pathname)}`;
-    const params = [...url.searchParams].filter(([key]) => key !== "csr" && key !== "akanMobileTarget");
+    const isPlain = /^(\/[a-z0-9]+)*$/.test(pathname) && plain.length <= 80;
+    const page = !plain ? "_index" : isPlain ? plain : `${slugOf(plain).slice(0, 80)}_${hashOf(pathname)}`;
+    const boot = ["csr=true", `akanMobileTarget=${AppPreview.csrTarget}`];
+    const pairs = url.search.slice(1).split("&").filter(Boolean);
+    const isBoot = boot.every((pair) => pairs.includes(pair));
+    const rest = isBoot ? pairs.filter((pair) => !boot.includes(pair)) : pairs;
+    const params = [...new URLSearchParams(rest.join("&"))];
     const readable = slugOf(params.map(([key, value]) => `${key}-${value}`).join("-")).slice(0, 40);
-    const query = params.length ? `.${readable}-${hashOf(new URLSearchParams(params).toString())}` : "";
-    return `${page}${query}${url.searchParams.get("csr") === "true" ? ".csr" : ""}.png`;
+    //? Hashed raw, not decoded: the probe sends the query as written, and `?a=b+c` and `?a=b%20c` decode alike.
+    const query = rest.length ? `.${readable}-${hashOf(rest.join("&"))}` : "";
+    return `${page}${query}${isBoot ? ".csr" : ""}.png`;
   }
 
   static attribute(page: AppPreviewPage, records: LogRecord[]) {
