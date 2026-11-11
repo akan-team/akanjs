@@ -9,6 +9,7 @@ import { itemFixtureOf, l, setTestEnv, waitFor } from "../testHelpers.fixture";
 
 let Units: typeof import("./Units").default;
 let View: typeof import("./View").default;
+let ItemFull: Awaited<ReturnType<typeof itemFixtureOf<"loadTestItem">>>["Full"];
 let makeStore: (state?: Record<string, unknown>) => void;
 let makeProjectStore: (state?: Record<string, unknown>) => void;
 let calls: Record<string, ReturnType<typeof mock>>;
@@ -31,6 +32,7 @@ type Project = keyof typeof projectRows;
 beforeAll(async () => {
   setTestEnv("loadtest");
   const { Light, Full, Insight, storeMaker } = await itemFixtureOf("loadTestItem");
+  ItemFull = Full;
   const client = await import("akanjs/client");
   const { st } = await import("akanjs/store");
   ({ pathContext, pageActivityContext } = client);
@@ -515,5 +517,81 @@ describe("Load.View", () => {
     expect(calls.loadTestItem).toHaveBeenCalled();
     expect(container.textContent).toContain("Fresh");
     await unmount();
+  });
+
+  const [ada, grace] = ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"];
+  const renderTitle = (item: Item) => <span>{item.title}</span>;
+  const holdEndpoint = async (endpoint: string, run: (land: (record: Item) => Promise<void>) => Promise<void>) => {
+    const held = calls[endpoint];
+    let answer: (record: Item) => void = () => undefined;
+    calls[endpoint] = mock(
+      () =>
+        new Promise((resolve) => {
+          answer = (record) => resolve(new ItemFull().set(record as never));
+        }),
+    );
+    try {
+      await run((record) =>
+        act(async () => {
+          answer(record);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }),
+      );
+    } finally {
+      if (held) calls[endpoint] = held;
+      else Reflect.deleteProperty(calls, endpoint);
+    }
+  };
+  const writesDuringHydration: [string, string, () => Promise<void>][] = [
+    ["a create<Model>", "createLoadTestItem", () => sliceState.do.createLoadTestItem({ title: "written" })],
+    ["an update<Model>", "updateLoadTestItem", () => sliceState.do.updateLoadTestItem(ada, { title: "written" })],
+    ["a view<Model>", "loadTestItem", () => sliceState.do.viewLoadTestItem(ada)],
+  ];
+  for (const [action, endpoint, write] of writesDuringHydration)
+    test(`${action} landing after it hydrated another record leaves that record and its view modal`, async () => {
+      makeStore();
+      const { container, rerender, unmount } = mount(
+        <View<"loadTestItem", Item> view={serverView()} renderView={renderTitle} />,
+      );
+      await holdEndpoint(endpoint, async (land) => {
+        let writing: Promise<void> = Promise.resolve();
+        await act(async () => {
+          writing = write();
+        });
+        await rerender(
+          <View<"loadTestItem", Item> view={serverView({ id: grace, title: "Grace" })} renderView={renderTitle} />,
+        );
+        await land({ id: endpoint === "createLoadTestItem" ? "cccccccccccccccccccccccc" : ada, title: "written" });
+        await writing;
+      });
+      expect(sliceState.get()).toMatchObject({
+        loadTestItem: { id: grace, title: "Grace" },
+        loadTestItemModal: "view",
+      });
+      expect(container.textContent).toBe("Grace");
+      await unmount();
+    });
+
+  test("an update<Model> landing after it hydrated the same record writes the answer and keeps the view modal", async () => {
+    makeStore();
+    await act(async () => {
+      await sliceState.do.viewLoadTestItem(ada);
+    });
+    await holdEndpoint("updateLoadTestItem", async (land) => {
+      let writing: Promise<void> = Promise.resolve();
+      await act(async () => {
+        writing = sliceState.do.updateLoadTestItem(ada, { title: "written" });
+      });
+      const { container, unmount } = mount(<View<"loadTestItem", Item> view={serverView()} renderView={renderTitle} />);
+      expect(sliceState.get()).toMatchObject({ loadTestItem: { title: "Ada" }, loadTestItemLoading: false });
+      await land({ id: ada, title: "written" });
+      await writing;
+      expect(sliceState.get()).toMatchObject({
+        loadTestItem: { id: ada, title: "written" },
+        loadTestItemModal: "view",
+      });
+      expect(container.textContent).toBe("written");
+      await unmount();
+    });
   });
 });

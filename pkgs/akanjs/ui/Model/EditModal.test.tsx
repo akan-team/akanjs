@@ -11,6 +11,7 @@ let DraftStore: typeof import("akanjs/store").DraftStore;
 let ItemFull: Awaited<ReturnType<typeof itemFixtureOf<"editModalTestItem">>>["Full"];
 let makeStore: () => void;
 let refetchOf: (id: string) => Promise<unknown> = async () => null;
+let updateOf: (id: string) => Promise<unknown> = async () => null;
 
 const slice = { refName: "editModalTestItem", sliceName: "editModalTestItem", argLength: 1 };
 const inParent = { ...slice, sliceName: "editModalTestItemInParent" };
@@ -26,7 +27,10 @@ beforeAll(async () => {
   } as never);
   makeStore = storeMaker({
     root: "editModalRoot",
-    calls: { editModalTestItem: mock((id: string) => refetchOf(id)) },
+    calls: {
+      editModalTestItem: mock((id: string) => refetchOf(id)),
+      updateEditModalTestItem: mock((id: string) => updateOf(id)),
+    },
   });
   ({ st, DraftStore } = await import("akanjs/store"));
   ({ default: EditModal } = await import("./EditModal"));
@@ -59,6 +63,7 @@ interface ItemForm {
   title: string;
 }
 interface ItemState {
+  editModalTestItem: ItemForm | null;
   editModalTestItemForm: ItemForm;
   editModalTestItemModal: string | null;
   editModalTestItemFormDraft: { pending: { form: ItemForm } | null } | null;
@@ -67,6 +72,7 @@ interface ItemDo {
   setTitleOnEditModalTestItem: (title: string) => void;
   resetEditModalTestItem: () => void;
   newEditModalTestItem: (partial: Seed) => void;
+  updateEditModalTestItemInForm: () => Promise<void>;
 }
 const itemState = () => st.get() as unknown as ItemState;
 const itemDo = () => st.do as unknown as ItemDo;
@@ -186,6 +192,52 @@ describe("Model.EditModal", () => {
     expect(document.body.textContent).not.toContain("item form");
     unmount();
   });
+});
+
+describe("Model.EditModal seeding while a save is in flight", () => {
+  const savedAt = new Date("2026-10-24T00:00:00.000Z");
+  const holdUpdate = () => {
+    let answer: (record: Seed) => void = () => undefined;
+    updateOf = () =>
+      new Promise((resolve) => {
+        answer = (record) => resolve(new ItemFull().set(record as never));
+      });
+    return (record: Seed) =>
+      act(async () => {
+        answer(record);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+  };
+
+  afterEach(() => {
+    updateOf = async () => null;
+  });
+
+  const seeds: [string, string, string][] = [
+    ["another record", otherItemId, "payload"],
+    ["a newer version of the saved record", itemId, "typed"],
+  ];
+  for (const [what, seededId, openTitle] of seeds)
+    test(`keeps the edit form a page payload seeds for ${what} while update<Model>InForm saves`, async () => {
+      const { rerender, typeTitle, unmount } = await mountSeeded(editOf("saved", savedAt));
+      await typeTitle("typed");
+      const landUpdate = holdUpdate();
+      let saving: Promise<void> = Promise.resolve();
+      await act(async () => {
+        saving = itemDo().updateEditModalTestItemInForm();
+      });
+      await rerender(editOf("payload", new Date(savedAt.getTime() + 1_000), seededId));
+      expect(itemState().editModalTestItemForm).toMatchObject({ id: seededId, title: "payload" });
+      await landUpdate({ id: itemId, title: "typed", updatedAt: new Date(savedAt.getTime() + 2_000) });
+      await saving;
+      expect(itemState()).toMatchObject({
+        editModalTestItem: { id: seededId, title: openTitle },
+        editModalTestItemModal: "edit",
+        editModalTestItemForm: { id: seededId, title: "payload" },
+      });
+      expect(document.body.textContent).toContain("item form");
+      unmount();
+    });
 });
 
 describe("Model.EditModal form drafts", () => {

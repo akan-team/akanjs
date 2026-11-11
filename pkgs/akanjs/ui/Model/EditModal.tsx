@@ -8,6 +8,7 @@ import { useDebounce } from "akanjs/webkit";
 import { type ReactNode, type Usable, use, useCallback, useEffect, useMemo, useRef } from "react";
 import { AiOutlinePlus, AiOutlineSave } from "react-icons/ai";
 
+import { seedOpen } from "../../store/openSeq";
 import { agentAttrs } from "../agentAttrs";
 import { Button } from "../Button";
 import type { ModalSurfaceProps } from "../Dialog/modalSurface";
@@ -199,7 +200,7 @@ export default function EditModal<Full extends { id: string }>({
       const draftScope = editDraftScope(draft, modelObj.id);
       // Left armed, the previous slot would save this fill as typing; flush its pending write before dropping it.
       StoreRegistry.instance.flushDrafts();
-      st.set({
+      seedOpen(st, names.model, "form", {
         [names.model]: crystal,
         [names.modelLoading]: false,
         [names.modelForm]: immerify(modelRef, crystal),

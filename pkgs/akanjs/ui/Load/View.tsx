@@ -7,6 +7,7 @@ import { st } from "akanjs/store";
 import { useScreenScope } from "akanjs/webkit";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
 
+import { seedOpen } from "../../store/openSeq";
 import { Empty } from "../Empty";
 import { Loading } from "../Loading";
 import Stream from "./Stream";
@@ -64,7 +65,7 @@ function Render<T extends string, Full extends { id: string }>({
   useEffect(() => {
     if (loadedId.current === modelObj.id) return;
     const modelViewAt = (view as DynamicRecord)[names.modelViewAt] as Date;
-    st.set({
+    seedOpen(st, names.model, "view", {
       [refName]: modelInit,
       [names.modelLoading]: false,
       [names.modelModal]: "view",
