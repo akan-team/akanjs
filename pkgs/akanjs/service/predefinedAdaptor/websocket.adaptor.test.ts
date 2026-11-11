@@ -1,5 +1,5 @@
 import { heapStats } from "bun:jsc";
-import { describe, expect, jest, test } from "bun:test";
+import { describe, expect, jest, setSystemTime, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { type LiveChange, WebSocketRedisAdaptor } from "./websocket.adaptor";
 
@@ -16,6 +16,7 @@ class FakeRedis extends EventEmitter {
   readonly replies: { settle: (refused: boolean) => void }[] = [];
   readonly sent: { channel: string; message: Buffer }[] = [];
   readonly legacy: Buffer[] = [];
+  readonly refuse = new Set<string>();
   legacySubscribes = 0;
   calls = 0;
   failing = false;
@@ -47,6 +48,8 @@ class FakeRedis extends EventEmitter {
     this.disconnected = true;
   }
   publish(channel: string, message: Buffer) {
+    if ([...this.refuse].some((refused) => channel.startsWith(refused)))
+      return Promise.reject(new Error("NOPERM User default has no permissions to access the channel"));
     if (channel === legacyChannel) {
       this.legacy.push(message);
       this.sent.push({ channel, message });
@@ -84,15 +87,20 @@ const openAdaptor = async (serverId = "server-a") => {
   const publisher = new FakeRedis();
   const subscriber = new FakeRedis();
   const adaptor = new WebSocketRedisAdaptor();
+  const [warns, errors]: string[][] = [[], []];
   Object.assign(adaptor, {
     serverId,
     channelPrefix: "app:",
     publisher,
     subscriber,
-    logger: { verbose: () => undefined, warn: () => undefined },
+    logger: {
+      verbose: () => undefined,
+      warn: (msg: string) => warns.push(msg),
+      error: (msg: string) => errors.push(msg),
+    },
   });
   await adaptor.onInit();
-  return { adaptor, publisher, subscriber, send: (n: number) => adaptor.publish("room", { n }) };
+  return { adaptor, publisher, subscriber, warns, errors, send: (n: number) => adaptor.publish("room", { n }) };
 };
 
 const newSocket = () => ({ data: {} }) as Bun.ServerWebSocket<unknown>;
@@ -230,6 +238,64 @@ describe("WebSocketRedisAdaptor buffer", () => {
     await until(() => publisher.published.length === 50);
     expect(publisher.published).toEqual(Array.from({ length: 50 }, (_, idx) => idx + 1));
     expect(publisher.calls).toBe(51);
+  });
+
+  test("drops an event Redis refuses with NOPERM, buffered or sent directly, rather than holding back what follows", async () => {
+    const { publisher, send, warns, errors } = await openAdaptor();
+    publisher.refuse.add(legacyChannel);
+    send(1);
+    send(2);
+    publisher.emit("ready");
+    await until(() => publisher.published.length === 2);
+    await Bun.sleep(5);
+    expect(warns).toEqual([]);
+    send(3);
+    await until(() => publisher.published.length === 3);
+    await Bun.sleep(5);
+    expect(warns).toEqual([]);
+    expect(publisher.published).toEqual([1, 2, 3]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(`events on ${legacyChannel} are being dropped`);
+  });
+
+  test("logs refusals on a family of channels at most once a minute, whatever shard they name", async () => {
+    const { adaptor, publisher, errors } = await openAdaptor();
+    publisher.refuse.add("app:ws:room:");
+    publisher.emit("ready");
+    try {
+      setSystemTime(new Date("2026-11-11T00:00:00Z"));
+      for (let n = 0; n < 20; n += 1) adaptor.publish(`room-${n}`, { n });
+      await Bun.sleep(5);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("events on app:ws:room are being dropped");
+      setSystemTime(new Date("2026-11-11T00:00:59Z"));
+      adaptor.publish("room-20", { n: 20 });
+      await Bun.sleep(5);
+      expect(errors).toHaveLength(1);
+      setSystemTime(new Date("2026-11-11T00:01:00Z"));
+      adaptor.publish("room-21", { n: 21 });
+      await Bun.sleep(5);
+      expect(errors).toHaveLength(2);
+    } finally {
+      setSystemTime();
+    }
+  });
+
+  test("warns of a dropped link, but not of the one its own shutdown closes", async () => {
+    const { adaptor, publisher, subscriber, warns } = await openAdaptor();
+    publisher.emit("ready");
+    subscriber.emit("ready");
+    publisher.emit("close");
+    subscriber.emit("close");
+    expect(warns).toHaveLength(2);
+    publisher.emit("ready");
+    subscriber.emit("ready");
+    warns.length = 0;
+    //? Sooner than ioredis, which emits it a tick later, so a ready flag cleared only after `disconnect()` fails here.
+    publisher.disconnect = () => publisher.emit("close");
+    subscriber.disconnect = () => subscriber.emit("close");
+    await adaptor.onDestroy();
+    expect(warns).toEqual([]);
   });
 
   test("shuts down without waiting for a batch the publisher was cut off under", async () => {
