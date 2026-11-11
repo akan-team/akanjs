@@ -6,9 +6,8 @@ import {
   PrimitiveRegistry,
   type PrimitiveScalar,
 } from "akanjs/base";
-
-import type { FieldProps } from ".";
 import { ConstantRegistry } from "./constantRegistry";
+import type { FieldProps } from "./fieldInfo";
 
 export type CrystalizeFunc<Model> = (self: GetStateObject<Model>, isChild?: boolean) => Model;
 export type Converter = (value: unknown) => unknown;

@@ -10,9 +10,11 @@ import {
   PrimitiveRegistry,
   type PrimitiveScalar,
 } from "akanjs/base";
-
-import { type ConstantCls, type ConstantModelRef, ConstantRegistry, type FieldProps, withSharedInstances } from ".";
+import { ConstantRegistry } from "./constantRegistry";
+import { withSharedInstances } from "./crystalize";
+import type { FieldProps } from "./fieldInfo";
 import { FieldPlan } from "./fieldPlan";
+import type { ConstantCls, ConstantModelRef } from "./via";
 
 export type Serialized<O> = O extends (infer V)[]
   ? Serialized<V>[]

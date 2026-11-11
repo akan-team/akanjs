@@ -1,5 +1,5 @@
 import { DEFAULT_VALUE, FIELD_META, type PrimitiveScalar } from "akanjs/base";
-import type { FieldObject } from ".";
+import type { FieldObject } from "./fieldInfo";
 import type { DefaultOf } from "./types";
 
 export interface DefaultPlan {

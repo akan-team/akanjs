@@ -1,5 +1,5 @@
 import type { EnumInstance, GetStateObject } from "akanjs/base";
-import type { FilterInfo } from ".";
+import type { FilterInfo } from "./filterMeta";
 
 export type DataInputOf<Input = any, Obj = any> = {
   [K in keyof Input as Input[K] extends (...args: any[]) => any ? never : K]: Input[K] extends any[]

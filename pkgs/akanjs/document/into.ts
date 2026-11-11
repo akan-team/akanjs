@@ -1,7 +1,6 @@
 import { type Cls, LOADER_META, type PromiseOrObject } from "akanjs/base";
 import { applyMixins } from "akanjs/common";
 import type { DocumentModel, QueryOf } from "akanjs/constant";
-import type { FilterCls, FilterQueryOf, FilterSortOf, SchemaOf } from ".";
 import type { CacheDatabase, QueryMethodPart } from "./database";
 import type { DataLoader } from "./dataLoader";
 import type {
@@ -11,6 +10,8 @@ import type {
   DocumentUpdateInput,
   DocumentUpdateOptions,
 } from "./documentQuery";
+import type { SchemaOf } from "./documentSchema";
+import type { FilterCls, FilterQueryOf, FilterSortOf } from "./filterMeta";
 import { type LoaderBuilder, type ModelCls, makeLoaderBuilder } from "./loaderInfo";
 import type { DocumentProjection } from "./types";
 

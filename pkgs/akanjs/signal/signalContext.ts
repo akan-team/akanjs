@@ -23,7 +23,6 @@ import {
 import { Err } from "akanjs/dictionary";
 import type { Adaptor, AdaptorCls, DatabaseService, InjectRegistry, LiveRegistry } from "akanjs/service";
 import { websocketRoomContract } from "../common/websocketContract";
-import type { Internal, InternalCls, InternalInfo, MiddlewareCls } from ".";
 import { CrossSiteGuard } from "./CrossSiteGuard";
 import { carriedClientIps } from "./carriedClientIps";
 import { EndpointCache } from "./endpointCache";
@@ -33,7 +32,11 @@ import type { ArgInfo, EndpointInfo, EndpointType } from "./endpointInfo";
 import { EndpointRateLimit } from "./endpointRateLimit";
 import { Exception, isExceptionLike } from "./exception";
 import { type GuardCls, type GuardScope, guardOf } from "./guard";
+import type { InternalCls } from "./internal";
+import type { InternalInfo } from "./internalInfo";
+import type { MiddlewareCls } from "./middleware";
 import { MiddlewareChain } from "./middlewareChain";
+import { ResolveFieldContext } from "./resolveFieldContext";
 import { RoomKey } from "./roomKey";
 import { SignalFailure } from "./SignalFailure";
 import { SignalContractError } from "./signalContractError";
@@ -977,34 +980,4 @@ export class WebSocketExecutionContext<Appended = unknown> {
     if (event === "disconnect") this.onDisconnect.delete(handler);
     else this.onUnsubscribe.delete(handler);
   };
-}
-
-export class ResolveFieldContext {
-  signalContext: SignalContext | null;
-  internalInfo: InternalInfo<"resolveField">;
-  internal: Internal;
-  parent: unknown;
-  constructor(
-    parent: unknown,
-    {
-      signalContext,
-      internalInfo,
-      internal,
-    }: { signalContext: SignalContext | null; internalInfo: InternalInfo<"resolveField">; internal: Internal },
-  ) {
-    this.signalContext = signalContext;
-    this.internalInfo = internalInfo;
-    this.internal = internal;
-    this.parent = parent;
-  }
-  async exec() {
-    if (!this.internalInfo.execFn) throw new SignalContractError("noHandler", "Exec function is not set");
-    const internalArgs = await Promise.all(
-      this.internalInfo.internalArgs.map((arg) =>
-        this.signalContext ? (new arg.argRef().getArg(this.signalContext) ?? null) : null,
-      ),
-    );
-    const result = await this.internalInfo.execFn.call(this.internal, this.parent, ...internalArgs);
-    return result;
-  }
 }

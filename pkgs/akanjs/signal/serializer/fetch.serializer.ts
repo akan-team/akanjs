@@ -3,12 +3,13 @@ import { Logger } from "akanjs/common";
 import { ConstantRegistry, type ConstantType } from "akanjs/constant";
 import { type FilterArgInfo, getFilterArgInfos, getFilterMeta } from "akanjs/document";
 import type { LiveRegistry } from "akanjs/service";
+import type { EndpointCls } from "../endpoint";
+import type { ArgInfo, EndpointArgProps, EndpointInfo } from "../endpointInfo";
+import { type GuardCls, refusesAgents } from "../guard";
+import { SignalDeclarationError } from "../signalDeclarationError";
+import type { ResolvedSliceCrud, SliceCls } from "../slice";
+import type { SliceInfo } from "../sliceInfo";
 import type {
-  ArgInfo,
-  EndpointArgProps,
-  EndpointCls,
-  EndpointInfo,
-  ResolvedSliceCrud,
   SerializedArg,
   SerializedEndpoint,
   SerializedFilter,
@@ -16,11 +17,7 @@ import type {
   SerializedSignal,
   SerializedSignalMcp,
   SerializedSlice,
-  SliceCls,
-  SliceInfo,
-} from "akanjs/signal";
-import { type GuardCls, refusesAgents } from "../guard";
-import { SignalDeclarationError } from "../signalDeclarationError";
+} from "../types";
 
 export class FetchSerializer {
   static logger = new Logger("FetchSerializer");

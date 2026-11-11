@@ -16,10 +16,11 @@ import type {
   ServerSignalCls,
   SliceCls,
 } from "akanjs/signal";
-import type { Adaptor, AdaptorCls, Service, ServiceCls } from ".";
+import type { Adaptor, AdaptorCls } from "./adapt";
 import { InjectError } from "./injectError";
 import { LiveSyncHub } from "./liveSyncHub";
 import type { CacheAdaptor, CacheSetOptions, CacheValue } from "./predefinedAdaptor";
+import type { Service, ServiceCls } from "./serve";
 
 export type InjectType = "database" | "service" | "use" | "signal" | "plug" | "env" | "memory";
 
