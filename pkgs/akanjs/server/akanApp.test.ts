@@ -909,6 +909,21 @@ describe("AkanApp", () => {
     }
   }, 15_000);
 
+  test("a stop while start is still preparing leaves no child, listener or log socket behind", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-stop-in-start-");
+    await writeOkChild(serverPath, "ok");
+    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port });
+    const running = app.start();
+    await app.stop();
+
+    expect(await Promise.race([running.then(() => "returned"), wait(2_000).then(() => "still running")])).toBe(
+      "returned",
+    );
+    await wait(300);
+    expect(await fetch(`http://127.0.0.1:${port}/`).catch(() => null)).toBeNull();
+    expect((await readdir(runtimeDir).catch(() => [])).filter((name) => name.endsWith(".sock"))).toEqual([]);
+  }, 20_000);
+
   test("honors an explicitly configured runtimeDir for child sockets", async () => {
     const { serverPath, runtimeDir, port } = await makeRoot("akan-rtdir-", "custom-runtime");
     await writeOkChild(serverPath, "ok");
