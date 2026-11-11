@@ -1,7 +1,13 @@
 import fs from "node:fs";
 import { CookieJar, getBasePathFromPathname, Logger, parseAkanI18nEnv, RequestLocale } from "akanjs/common";
 import { type MergedManifest, type RouteClientCache, type RouteSeedIndex, RouteSeedIndexStore } from "./artifact";
-import { type AssetHeaderOptions, applySecurityHeaders, assetHeaders, strictTransportSecurity } from "./assetHeaders";
+import {
+  type AssetHeaderOptions,
+  applySecurityHeaders,
+  assetHeaders,
+  missingAssetResponse,
+  strictTransportSecurity,
+} from "./assetHeaders";
 import { getClientFacingOrigin, resolveHtmlCacheControl } from "./cachePolicy";
 import { encodedFileResponse, isCompressibleContentType, matchesIfNoneMatch, varyOnEncoding } from "./contentEncoding";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
@@ -206,7 +212,7 @@ export class WebRouteContext {
   static async fileResponse(req: Request, filePath: string, options: AssetHeaderOptions): Promise<Response> {
     const headers = assetHeaders(options);
     const file = Bun.file(filePath);
-    if (!(await file.exists())) return new Response("Not Found", { status: 404 });
+    if (!(await file.exists())) return missingAssetResponse();
     const stat = fs.statSync(filePath);
     const lastModifiedMs = Math.floor(stat.mtimeMs / 1000) * 1000;
     const etag = `W/"${stat.size.toString(16)}-${lastModifiedMs.toString(16)}"`;
