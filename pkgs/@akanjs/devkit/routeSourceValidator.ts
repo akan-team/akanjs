@@ -45,7 +45,7 @@ export class RouteSourceValidator {
     const assertExport = (name: string) => {
       if (options.rootLayout && GENERATED_ROOT_LAYOUT_EXPORTS.has(name))
         throw new Error(
-          `[route-convention] unsupported export "${name}" in ${filePath}: the generated root layout defines its own and would ignore this one`,
+          `[route-convention] unsupported export "${name}" in ${filePath}: ${name} belongs to the root layout Akan.js generates, which never reads one from an app's layout`,
         );
       if (!allowed.has(name)) {
         throw new Error(`[route-convention] unsupported export "${name}" in ${filePath}`);
