@@ -7,7 +7,7 @@ import { type AkanI18nConfig, resolveAkanI18nConfig, trimSlashes } from "akanjs/
 import type { ServerPolicy } from "akanjs/native/api";
 import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
-import { LibExecutor, WorkspaceExecutor } from "../executors";
+import { WorkspaceExecutor } from "../executors/workspaceExecutor";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import type { BaseDevEnv, PackageJson } from "../types";
 import { AkanBin } from "./akanBin";
@@ -708,16 +708,16 @@ CMD [${command.map((c) => `"${c}"`).join(",")}]`;
   //* Every workspace lib is read, not just this app's lib deps: narrowing the set needs the dependency
   //* scan, and the incremental page rebundle re-reads this config on every file change.
   static async #collectLibContributions(app: App, libs: string[], bustImportCache: boolean): Promise<LibContributions> {
+    //? Imported on use: sysExecutor.ts imports this file, so a static import would load a SysExecutor subclass first.
+    const { LibExecutor } = await import("../executors/libExecutor");
     const libConfigs = await Promise.all(
       libs.map(async (libName) =>
-        LibExecutor.from(app, libName)
-          .getConfig({ refresh: bustImportCache })
-          .catch((error: unknown) => {
-            //? Skipping a refused lib config would build the image without its docker steps, and the build would pass.
-            if (error instanceof LibConfigRefusal) throw error;
-            app.logger.warn(`Skipped libs/${libName}/akan.config.ts contributions: ${String(error)}`);
-            return null;
-          }),
+        AkanLibConfig.from(LibExecutor.from(app, libName), { bustImportCache }).catch((error: unknown) => {
+          //? Skipping a refused lib config would build the image without its docker steps, and the build would pass.
+          if (error instanceof LibConfigRefusal) throw error;
+          app.logger.warn(`Skipped libs/${libName}/akan.config.ts contributions: ${String(error)}`);
+          return null;
+        }),
       ),
     );
     return {

@@ -1079,6 +1079,29 @@ describe("AkanAppConfig.importConfigModule", () => {
   });
 });
 
+describe("AkanAppConfig.from", () => {
+  test("a busted reload re-reads an edited lib config", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "akan-config-lib-bust-"));
+    try {
+      const libConfigPath = path.join(root, "libs/extlib/akan.config.ts");
+      fs.mkdirSync(path.join(root, "apps/extapp"), { recursive: true });
+      fs.mkdirSync(path.join(root, "libs/extlib"), { recursive: true });
+      fs.writeFileSync(path.join(root, "apps/extapp/akan.config.ts"), "export default {};\n");
+      fs.writeFileSync(libConfigPath, "export default { externalLibs: ['first'] };\n");
+      fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "extrepo", version: "1.0.0" }));
+      fs.writeFileSync(path.join(root, ".env"), "AKAN_PUBLIC_REPO_NAME=extrepo\nAKAN_PUBLIC_SERVE_DOMAIN=ext.test\n");
+      const workspace = WorkspaceExecutor.fromRoot({ workspaceRoot: root, repoName: "extrepo" });
+      const app = AppExecutor.from(workspace, "extapp");
+      expect((await AkanAppConfig.from(app)).externalLibs).toEqual(["first"]);
+
+      fs.writeFileSync(libConfigPath, "export default { externalLibs: ['second'] };\n");
+      expect((await AkanAppConfig.from(app, { bustImportCache: true })).externalLibs).toEqual(["second"]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("pipeline and workspace keys in app and lib configs", () => {
   test("an app's pipeline is dropped before the instance exists, so it never reaches akan.app.json", async () => {
     const config = await loadExtAppConfig(
