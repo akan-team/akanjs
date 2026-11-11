@@ -210,6 +210,26 @@ export class QueryError extends AkanError<"badQuery" | "queryDown"> {
     );
   });
 
+  test("reads a forwarded getter on state only a restored copy holds as forwarded", async () => {
+    const root = await fixtureOf({
+      "common/restoredError.ts": `import { AkanError } from "../base/akanError";
+const wireCodeOf = (error: unknown) => (error as { wire?: string }).wire;
+export class RestoredError extends AkanError<"restored"> {
+  constructor() {
+    super("restored", "restored");
+  }
+  override get forwarded() {
+    return wireCodeOf(this) === undefined;
+  }
+}
+`,
+    });
+
+    expect(ErrorCodeReference.collect(root).map(({ code, forwarded }) => `${code} ${forwarded}`)).toEqual([
+      "restored true",
+    ]);
+  });
+
   test("lists each code with the status its own code chooses", async () => {
     const root = await fixtureOf({
       "service/storeError.ts": `import { AkanError } from "../base/akanError";

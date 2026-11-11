@@ -334,11 +334,27 @@ export class ErrorCodeScan {
       if (returned?.kind === ts.SyntaxKind.FalseKeyword) return () => false;
       const byCode = returned ? ErrorCodeScan.#codeComparisonOf(returned) : null;
       if (byCode) return byCode;
+      if (returned && ErrorCodeScan.#readsRestoredState(returned)) return () => true;
       throw new Error(
         `${this.#nameOf(current)}'s forwarded getter returns more than a literal true or false, or this.code compared to a literal`,
       );
     }
     return () => false;
+  }
+
+  //? `wireCodeOf(this) === undefined`: only a copy restored from the wire holds that state, and this scan reads `new` sites.
+  static #readsRestoredState(expression: ts.Expression) {
+    if (!ts.isBinaryExpression(expression)) return false;
+    if (expression.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken) return false;
+    const read = unwrapped(expression.left);
+    const compared = unwrapped(expression.right);
+    return (
+      ts.isCallExpression(read) &&
+      read.arguments.length === 1 &&
+      read.arguments[0]?.kind === ts.SyntaxKind.ThisKeyword &&
+      ts.isIdentifier(compared) &&
+      compared.text === "undefined"
+    );
   }
 
   static #codeComparisonOf(expression: ts.Expression): ((code: Value | null) => boolean) | null {
