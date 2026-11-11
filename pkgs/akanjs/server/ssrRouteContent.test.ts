@@ -318,7 +318,6 @@ describe("SSR head of a not-found or error view", () => {
   }, 20_000);
 });
 
-//? The body the browser hydrates, decoded from the page's Flight payload as the RSC client entry decodes it.
 const bodyOf = async (payload: Uint8Array): Promise<ReactNode> => {
   const html = await createFromNodeStream<ReactElement<{ children: ReactNode }>>(
     Readable.from([payload]),

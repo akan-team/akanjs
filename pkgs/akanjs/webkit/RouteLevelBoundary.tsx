@@ -12,7 +12,7 @@ interface RouteLevelBoundaryState {
 }
 
 //? Past the first byte a level's server error reaches the browser as a rethrow, and with no boundary above it React
-//? unmounts the root (#441). Only the Flight client gives an error a string digest, so a client render bug passes on.
+//? unmounts the root (#441). Only a streamed error or a route control has a string digest: a client bug passes on.
 export class RouteLevelBoundary extends Component<RouteLevelBoundaryProps, RouteLevelBoundaryState> {
   override state: RouteLevelBoundaryState = { children: this.props.children, failure: null };
 

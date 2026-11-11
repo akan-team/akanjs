@@ -19,8 +19,14 @@ const pageInput = ({ pathRoute, params }: NonNullable<ReturnType<typeof RouteTre
   searchParams: {},
 });
 
-const buildDocsApiRoutes = (rootExports: Record<string, unknown> = {}) =>
+const passthroughModule = async () => ({ default: ({ children }: { children: ReactNode }) => children });
+
+const buildDocsApiRoutes = (
+  rootExports: Record<string, unknown> = {},
+  extraModules: Record<string, typeof passthroughModule> = {},
+) =>
   new RouteTreeBuilder({
+    ...extraModules,
     "./__root_layout.tsx": async () => ({
       default: ({ children }: { children: ReactNode }) => <main>root:{children}</main>,
       ...rootExports,
@@ -39,7 +45,6 @@ function containsElementType(node: ReactNode, type: unknown): boolean {
   return containsElementType(props.children, type) || containsElementType(props.fallback, type);
 }
 
-//? Per route level, outermost first: whether its Suspense renders the level inside the given boundary.
 function levelsInside(node: ReactNode, boundary: unknown): boolean[] {
   if (Array.isArray(node)) return node.flatMap((child) => levelsInside(child, boundary));
   if (!isValidElement(node)) return [];
@@ -550,8 +555,11 @@ describe("RouteTreeBuilder implicit locale", () => {
 });
 
 describe("RouteElementComposer level boundary", () => {
-  const resolved = async (rootExports: Record<string, unknown> = {}) => {
-    const matched = RouteTreeBuilder.match("/ko/docs/api", buildDocsApiRoutes(rootExports));
+  const resolved = async (
+    rootExports: Record<string, unknown> = {},
+    extraModules: Record<string, typeof passthroughModule> = {},
+  ) => {
+    const matched = RouteTreeBuilder.match("/ko/docs/api", buildDocsApiRoutes(rootExports, extraModules));
     if (!matched) throw new Error("route did not match");
     return { ...pageInput(matched), pathRoute: await RouteElementComposer.resolveSsrFramePathRoute(matched) };
   };
@@ -561,6 +569,34 @@ describe("RouteElementComposer level boundary", () => {
     const full = RouteElementComposer.compose(bounded);
     expect(levelsInside(full, RouteLevelBoundary)).toEqual([false, true, true]);
     expect(await renderToText(full)).toBe(await renderToText(RouteElementComposer.compose(await resolved())));
+  });
+
+  test("bounds no level above the root layout, whose System.Provider starts the router a retry needs", async () => {
+    const bounded = await resolved({ LevelBoundary: RouteLevelBoundary }, { "./_overrides.tsx": passthroughModule });
+    const suffixFrom = (patchStartIndex: number) =>
+      levelsInside(RouteElementComposer.composeSuffix({ ...bounded, patchStartIndex }), RouteLevelBoundary);
+
+    expect(levelsInside(RouteElementComposer.compose(bounded), RouteLevelBoundary)).toEqual([false, false, true, true]);
+    expect(suffixFrom(0)).toEqual([false, false, true, true]);
+    expect(suffixFrom(1)).toEqual([false, true, true]);
+    expect(suffixFrom(2)).toEqual([true, true]);
+  });
+
+  test("bounds the fallback a layout draws, and no level above the root layout", async () => {
+    const bounded = await resolved(
+      { LevelBoundary: RouteLevelBoundary, NotFound: () => <p>missing</p>, Error: () => <p>failed</p> },
+      { "./_overrides.tsx": passthroughModule },
+    );
+    for (const kind of ["not-found", "error"] as const) {
+      const fallback = await RouteElementComposer.composeFallback({
+        kind,
+        route: bounded.pathRoute,
+        params: bounded.params,
+        searchParams: {},
+        pathname: "/ko/docs/api",
+      });
+      expect(levelsInside(fallback, RouteLevelBoundary)).toEqual([false, false, true]);
+    }
   });
 
   test("keeps the segment outlet of a partial commit and bounds each level of the patch it fills", async () => {

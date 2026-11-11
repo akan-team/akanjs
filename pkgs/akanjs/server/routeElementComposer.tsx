@@ -372,8 +372,8 @@ export class RouteElementComposer {
     /** Layouts above `renders` that this element leaves out (a patch) but whose `.notFound()` still applies. */
     owners?: RouteRender[];
     segments?: AkanRouteSegmentState[];
-    /** Around each level: the Flight server only references it and React's server renderer runs no error boundary,
-     * so a level failing before the first byte still takes its `.error()`. */
+    /** Around each level below its owner: the Flight server only references it and React's server renderer runs no
+     * error boundary, so a level failing before the first byte still takes its `.error()`. */
     levelBoundary?: OwnedLevelBoundary;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
@@ -383,6 +383,7 @@ export class RouteElementComposer {
     gate?: RouteShellGate;
   }): ReactNode {
     const levelGates = gate ? RouteElementComposer.#gateLevels(renders, gate) : [];
+    const ownerIndex = levelBoundary ? renders.indexOf(levelBoundary.owner) : -1;
     let element: ReactNode = null;
     for (let i = renders.length - 1; i >= 0; i--) {
       const routeRender = renders[i];
@@ -391,8 +392,9 @@ export class RouteElementComposer {
       const suspenseKey =
         navKey && loadingFallback != null && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
       const levelGate = levelGates[i];
-      //? The owner renders System.Provider, which starts the router: a notice around it would have no router to retry.
-      const Boundary = levelBoundary?.owner === routeRender ? undefined : levelBoundary?.Boundary;
+      //? The owner renders System.Provider, which starts the router, and a root `_overrides` level sits above it: a
+      //? notice at or above the owner would have no router to retry.
+      const Boundary = i > ownerIndex ? levelBoundary?.Boundary : undefined;
       const level = (
         <RouteElementComposer.AsyncRender
           routeRender={routeRender}
