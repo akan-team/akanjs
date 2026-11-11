@@ -108,7 +108,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
   })
     .with(App)
     .arg("paths", String, {
-      desc: "page paths, comma-separated; the default locale is added when missing, except to a path the server answers outside a locale (/_akan, the API prefix, /__csr, /__rsc, /.well-known, /openapi.json, the default /mcp, the server's own files, public/ files) or a full URL, which opens as written (default: /)",
+      desc: "page paths, comma-separated; the default locale is added when missing, except to a path the server answers outside a locale (/_akan, the API prefix, /__csr, /__rsc, /.well-known, /openapi.json, the server's own files, public/ files) or a full URL, which opens as written on the dev server (default: /)",
       example: "/board,/board/new",
       nullable: true,
     })

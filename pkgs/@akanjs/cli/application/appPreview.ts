@@ -54,6 +54,7 @@ export interface AppPreviewReport {
   logsRead: boolean;
   /** Pages `--changed` reached but did not open, each with why. */
   skipped: string[];
+  notes: string[];
   pages: AppPreviewPage[];
 }
 
@@ -61,6 +62,13 @@ interface I18nLike {
   defaultLocale: string;
   locales: readonly string[];
   localePrefix?: AkanLocalePrefix;
+}
+
+interface PathRuleOptions {
+  csr: boolean;
+  apiPrefix?: string;
+  publicDir?: string | null;
+  pages?: string[];
 }
 
 interface StartedServer {
@@ -84,11 +92,7 @@ export class AppPreview {
     const unavailable = PreviewView.unavailableReason(engine);
     if (unavailable) throw new Error(unavailable);
     const changed = options.changed ? await AppPreview.#changedPages(app) : { paths: [], skipped: [] };
-    if (options.changed && !changed.paths.length && !options.paths?.length)
-      throw new Error(
-        `No page to open: ${changed.skipped.join("; ")}. Pass a concrete path, e.g. \`akan preview ${app.name} /memo/1\`.`,
-      );
-    const paths = await AppPreview.pathsOf(app, options.paths ?? [], !!options.csr, changed.paths);
+    const plan = await AppPreview.planOf(app, options, changed);
     const port = await app.getDevPort();
     const origin = `http://localhost:${port}`;
     const root = app.workspace.workspaceRoot;
@@ -107,6 +111,7 @@ export class AppPreview {
       serverLog: started ? path.relative(root, started.logPath) : null,
       logsRead: false,
       skipped: changed.skipped,
+      notes: plan.notes,
       pages: [],
     };
     try {
@@ -115,7 +120,7 @@ export class AppPreview {
       const tail = await AppPreview.#tail(app, records);
       report.logsRead = !!tail;
       try {
-        for (const pagePath of paths) {
+        for (const pagePath of plan.paths) {
           const mark = records.length;
           const page = await AppPreview.#probe(origin, pagePath, {
             engine,
@@ -138,29 +143,49 @@ export class AppPreview {
     }
   }
 
-  static async pathsOf(app: Pick<App, "getConfig" | "cwdPath">, paths: string[], csr: boolean, pages: string[] = []) {
+  static async planOf(
+    app: Pick<App, "name" | "getConfig" | "cwdPath">,
+    options: Pick<AppPreviewOptions, "paths" | "changed" | "csr">,
+    changed: { paths: string[]; skipped: string[] },
+  ) {
+    const typed = options.paths ?? [];
+    if (options.changed && !changed.paths.length && !typed.length)
+      throw new Error(
+        `No page to open: ${changed.skipped.join("; ")}. Pass a concrete path, e.g. \`akan preview ${app.name} /memo/1\`.`,
+      );
     const { i18n, api } = await app.getConfig();
-    return AppPreview.pagePaths(paths, i18n, {
-      csr,
+    const { paths, asWritten } = AppPreview.#plan(typed, i18n, {
+      csr: !!options.csr,
       apiPrefix: api.prefix,
       publicDir: path.join(app.cwdPath, "public"),
-      pages,
+      pages: changed.paths,
     });
+    const notes =
+      options.csr && asWritten.length
+        ? [
+            `--csr does not apply to ${asWritten.join(", ")}: ${asWritten.length === 1 ? "it opens" : "they open"} as written.`,
+          ]
+        : [];
+    return { paths, notes };
   }
 
   /** An unprefixed path answers with a redirect or a 503 where it does not name the default locale itself: under
    * `"always"`, and in a CSR boot, whose routes match on the locale segment. */
-  static pagePaths(
+  static pagePaths(paths: string[], i18n: I18nLike, options: PathRuleOptions) {
+    return AppPreview.#plan(paths, i18n, options).paths;
+  }
+
+  static #plan(
     paths: string[],
     i18n: I18nLike,
-    {
-      csr,
-      apiPrefix = "/api",
-      publicDir = null,
-      pages = [],
-    }: { csr: boolean; apiPrefix?: string; publicDir?: string | null; pages?: string[] },
+    { csr, apiPrefix = "/api", publicDir = null, pages = [] }: PathRuleOptions,
   ) {
     const keepsUnprefixed = i18n.localePrefix === "as-needed" && !csr;
+    const urlOf = (raw: string) => {
+      const url = /^https?:\/\//.test(raw) ? new URL(raw) : AppPreview.probeUrlOf("http://localhost", raw);
+      url.pathname = url.pathname.replace(/^\/{2,}/, "/");
+      return url;
+    };
     const asPage = (url: URL) => {
       const [first] = url.pathname.split("/").filter(Boolean);
       if (!keepsUnprefixed && (!first || !i18n.locales.includes(first)))
@@ -171,18 +196,21 @@ export class AppPreview {
       }
       return `${url.pathname}${url.search}`;
     };
-    const urlOf = (raw: string) => new URL(`http://localhost${raw.startsWith("/") ? "" : "/"}${raw}`);
+    const asWritten: string[] = [];
     const typed = (paths.length || pages.length ? paths : ["/"]).map((raw) => {
-      if (/^https?:\/\//.test(raw)) {
-        const url = new URL(raw);
-        return `${url.pathname}${url.search}`;
-      }
       const url = urlOf(raw);
-      return AppPreview.#isPagePath(url.pathname, i18n, { apiPrefix, publicDir })
-        ? asPage(url)
-        : `${url.pathname}${url.search}`;
+      if (!/^https?:\/\//.test(raw) && AppPreview.#isPagePath(url.pathname, i18n, { apiPrefix, publicDir }))
+        return asPage(url);
+      asWritten.push(raw);
+      return `${url.pathname}${url.search}`;
     });
-    return [...new Set([...typed, ...pages.map((page) => asPage(urlOf(page)))])];
+    const opened = [...typed, ...pages.map((page) => asPage(urlOf(page)))];
+    return { paths: [...new Set(opened)], asWritten };
+  }
+
+  //? Joined as text, not resolved: `new URL("//host/x", origin)` is protocol-relative and leaves the dev server.
+  static probeUrlOf(origin: string, pagePath: string) {
+    return new URL(`${origin}${pagePath.startsWith("/") ? "" : "/"}${pagePath}`);
   }
 
   static readonly #serverFiles = new Set([
@@ -191,7 +219,6 @@ export class AppPreview {
     "/sitemap.xml",
     "/manifest.webmanifest",
     "/openapi.json",
-    "/mcp",
   ]);
 
   //? The server routes these outside `/:lang` and the locale proxy skips them, so a locale prefix 404s them.
@@ -263,11 +290,13 @@ export class AppPreview {
   }
 
   static screenshotName(pagePath: string) {
-    const url = new URL(pagePath, "http://localhost");
+    const url = AppPreview.probeUrlOf("http://localhost", pagePath);
     const slugOf = (text: string) => text.replace(/[^\w-]/g, "_");
     const hashOf = (text: string) => Bun.hash(text).toString(36).slice(0, 6);
-    const pathSlug = slugOf(url.pathname.split("/").filter(Boolean).join("-")) || "index";
-    const page = pathSlug.length > 80 ? `${pathSlug.slice(0, 80)}-${hashOf(url.pathname)}` : pathSlug;
+    const plain = url.pathname.split("/").filter(Boolean).join("-");
+    //? Lower case only: on a case-insensitive disk, macOS's default, `/A` and `/a` would write one file.
+    const isPlain = /^(\/[a-z0-9]+)*\/?$/.test(url.pathname) && plain.length <= 80;
+    const page = !plain ? "_index" : isPlain ? plain : `${slugOf(plain).slice(0, 80)}_${hashOf(url.pathname)}`;
     const params = [...url.searchParams].filter(([key]) => key !== "csr" && key !== "akanMobileTarget");
     const readable = slugOf(params.map(([key, value]) => `${key}-${value}`).join("-")).slice(0, 40);
     const query = params.length ? `.${readable}-${hashOf(new URLSearchParams(params).toString())}` : "";
@@ -298,6 +327,7 @@ export class AppPreview {
     ];
     if (!report.logsRead) lines.push("The app's log socket did not answer, so client and server errors are not shown.");
     for (const reason of report.skipped) lines.push(`Not opened: ${reason}.`);
+    for (const note of report.notes) lines.push(`Note: ${note}`);
     lines.push("");
     for (const page of report.pages) {
       const verdict = page.failed ? "FAIL" : page.domFindings.length || page.consoleWarnings.length ? "warn" : "ok";
@@ -346,7 +376,7 @@ export class AppPreview {
       timeoutMs: number;
     },
   ): Promise<AppPreviewPage> {
-    const url = new URL(pagePath, origin).toString();
+    const url = AppPreview.probeUrlOf(origin, pagePath).toString();
     const at = Date.now();
     const page: AppPreviewPage = {
       path: pagePath,

@@ -60,11 +60,22 @@ describe("AppPreview.pagePaths", () => {
     ).toEqual(["/oauth/authorize?client_id=a", "/board"]);
   });
 
+  test("keeps a path that starts with // on the dev server instead of reading it as another host", () => {
+    expect(
+      AppPreview.pagePaths(["http://localhost:8282//example.com/x?a=1", "//example.com/board"], i18n, { csr: false }),
+    ).toEqual(["/example.com/x?a=1", "/en/example.com/board"]);
+    expect(AppPreview.probeUrlOf("http://localhost:8282", "//example.com/x").origin).toBe("http://localhost:8282");
+    expect(AppPreview.probeUrlOf("http://localhost:8282", "board").href).toBe("http://localhost:8282/board");
+  });
+
   test("gives every route-derived page the locale, even one that shares a server route's path", () => {
-    expect(AppPreview.pagePaths([], i18n, { csr: false, pages: ["/mcp", "/board"] })).toEqual(["/en/mcp", "/en/board"]);
-    expect(AppPreview.pagePaths(["/mcp"], i18n, { csr: true, pages: ["/mcp"] })).toEqual([
-      "/mcp",
-      "/en/mcp?csr=true&akanMobileTarget=preview",
+    expect(AppPreview.pagePaths([], i18n, { csr: false, pages: ["/openapi.json", "/board"] })).toEqual([
+      "/en/openapi.json",
+      "/en/board",
+    ]);
+    expect(AppPreview.pagePaths(["/openapi.json"], i18n, { csr: true, pages: ["/openapi.json"] })).toEqual([
+      "/openapi.json",
+      "/en/openapi.json?csr=true&akanMobileTarget=preview",
     ]);
   });
 
@@ -83,7 +94,6 @@ describe("AppPreview.pagePaths", () => {
         "/sitemap.xml",
         "/shop/manifest.webmanifest",
         "/openapi.json",
-        "/mcp",
         "/images/logo.png",
         "/images/missing.png",
         "/shop/sitemap.xml",
@@ -102,7 +112,6 @@ describe("AppPreview.pagePaths", () => {
         "/sitemap.xml",
         "/shop/manifest.webmanifest",
         "/openapi.json",
-        "/mcp",
         "/images/logo.png",
         "/en/images/missing.png?csr=true&akanMobileTarget=preview",
         "/en/shop/sitemap.xml?csr=true&akanMobileTarget=preview",
@@ -127,9 +136,10 @@ describe("AppPreview.pagePaths", () => {
 
   test("names a screenshot after the page, its query and its boot, one name per page", () => {
     expect(AppPreview.screenshotName("/en/")).toBe("en.png");
-    expect(AppPreview.screenshotName("/en/board/[id]?csr=true")).toBe("en-board-_id_.csr.png");
+    expect(AppPreview.screenshotName("/")).toBe("_index.png");
+    expect(AppPreview.screenshotName("/en/board/[id]?csr=true")).toMatch(/^en-board-_id__\w{1,6}\.csr\.png$/);
     expect(AppPreview.screenshotName("/_akan/studio?view=runtime")).toMatch(
-      /^_akan-studio\.view-runtime-\w{1,6}\.png$/,
+      /^_akan-studio_\w{1,6}\.view-runtime-\w{1,6}\.png$/,
     );
     expect(AppPreview.screenshotName("/en/board?tab=a/b&csr=true&akanMobileTarget=preview")).toMatch(
       /^en-board\.tab-a_b-\w{1,6}\.csr\.png$/,
@@ -138,27 +148,75 @@ describe("AppPreview.pagePaths", () => {
       (query) => AppPreview.screenshotName(`/x${query}`),
     );
     expect(new Set(names).size).toBe(names.length);
+    const pages = ["/a/b", "/a-b", "/a_b", "/a/b-c", "/a-b/c", "/", "/index", "/_index", "/a", "/A", "/a//b", "/사과"];
+    const pageNames = pages.map((page) => AppPreview.screenshotName(page).toLowerCase());
+    expect(new Set(pageNames).size).toBe(pages.length);
     const long = AppPreview.screenshotName(`/${"p".repeat(300)}?q=${"v".repeat(300)}&csr=true`);
     expect(long.length).toBeLessThan(160);
     expect(long).not.toBe(AppPreview.screenshotName(`/${"p".repeat(299)}?q=${"v".repeat(300)}&csr=true`));
   });
 });
 
-describe("AppPreview.pathsOf", () => {
+describe("AppPreview.planOf", () => {
+  const appOf = (cwdPath: string, config = i18n) =>
+    ({
+      name: "demo",
+      cwdPath,
+      getConfig: async () => ({ i18n: config, api: { prefix: "/backend" } }),
+    }) as unknown as App;
+  const none = { paths: [], skipped: [] };
+
   test("reads the app's API prefix and public/ for the paths it opens as written", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "akan-preview-app-"));
     try {
       await Bun.write(path.join(root, "public/logo.png"), "png");
-      const app = { cwdPath: root, getConfig: async () => ({ i18n, api: { prefix: "/backend" } }) } as unknown as App;
-      expect(await AppPreview.pathsOf(app, ["/backend/memo", "/logo.png", "/board"], false, ["/mcp"])).toEqual([
-        "/backend/memo",
-        "/logo.png",
-        "/en/board",
-        "/en/mcp",
-      ]);
+      const plan = await AppPreview.planOf(
+        appOf(root),
+        { paths: ["/backend/memo", "/logo.png", "/board"], changed: true },
+        { paths: ["/openapi.json"], skipped: [] },
+      );
+      expect(plan).toEqual({ paths: ["/backend/memo", "/logo.png", "/en/board", "/en/openapi.json"], notes: [] });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("opens a page --changed finds as a page, unprefixed only under as-needed without --csr", async () => {
+    const changed = { paths: ["/board"], skipped: [] };
+    const asNeeded = { ...i18n, localePrefix: "as-needed" as const };
+    expect((await AppPreview.planOf(appOf("/nowhere"), { changed: true }, changed)).paths).toEqual(["/en/board"]);
+    expect((await AppPreview.planOf(appOf("/nowhere", asNeeded), { changed: true }, changed)).paths).toEqual([
+      "/board",
+    ]);
+    expect((await AppPreview.planOf(appOf("/nowhere", asNeeded), { changed: true, csr: true }, changed)).paths).toEqual(
+      ["/en/board?csr=true&akanMobileTarget=preview"],
+    );
+  });
+
+  test("says which paths --csr does not apply to instead of dropping it silently", async () => {
+    const plan = await AppPreview.planOf(
+      appOf("/nowhere"),
+      { paths: ["http://localhost:8282/oauth/authorize", "/openapi.json", "/board"], csr: true },
+      none,
+    );
+    expect(plan).toEqual({
+      paths: ["/oauth/authorize", "/openapi.json", "/en/board?csr=true&akanMobileTarget=preview"],
+      notes: ["--csr does not apply to http://localhost:8282/oauth/authorize, /openapi.json: they open as written."],
+    });
+    expect((await AppPreview.planOf(appOf("/nowhere"), { paths: ["/openapi.json"], csr: true }, none)).notes).toEqual([
+      "--csr does not apply to /openapi.json: it opens as written.",
+    ]);
+    expect((await AppPreview.planOf(appOf("/nowhere"), { paths: ["/openapi.json"] }, none)).notes).toEqual([]);
+  });
+
+  test("refuses --changed with nothing to open and no path typed", async () => {
+    const skipped = { paths: [], skipped: ["/admin/:userId needs a concrete path"] };
+    await expect(AppPreview.planOf(appOf("/nowhere"), { changed: true }, skipped)).rejects.toThrow(
+      "No page to open: /admin/:userId needs a concrete path. Pass a concrete path, e.g. `akan preview demo /memo/1`.",
+    );
+    expect((await AppPreview.planOf(appOf("/nowhere"), { paths: ["/memo/1"], changed: true }, skipped)).paths).toEqual([
+      "/en/memo/1",
+    ]);
   });
 });
 
@@ -223,6 +281,7 @@ describe("AppPreview.render", () => {
     serverLog: "local/apps/demo/runtime/preview/server.log",
     logsRead: false,
     skipped: ["/admin/:userId needs a concrete path"],
+    notes: ["--csr does not apply to /openapi.json: it opens as written."],
     pages: [
       pageOf({ path: "/en/", url: "http://localhost:8282/en/", finalUrl: "http://localhost:8282/en/explore" }),
       pageOf({ failed: true, status: 500, pageErrors: ["The page body rendered empty."], text: "" }),
@@ -234,6 +293,7 @@ describe("AppPreview.render", () => {
     expect(text).toContain(`left running (pid 4242; stop it with \`${AppPreview.stopArgvOf(4242).join(" ")}\`)`);
     expect(text).toContain("client and server errors are not shown");
     expect(text).toContain("Not opened: /admin/:userId needs a concrete path.");
+    expect(text).toContain("Note: --csr does not apply to /openapi.json: it opens as written.");
     expect(text).toContain('ok    /en/ -> /en/explore  200  "Board"  1.2s');
     expect(text).toContain('FAIL  /en/board  500  "Board"  1.2s\n  page: The page body rendered empty.');
     expect(text.trim().endsWith("1 of 2 page(s) failed.")).toBe(true);
