@@ -33,6 +33,9 @@ export class LogControlSocket {
   static readonly fileName = "akan-control.sock";
   static readonly maxPendingBytes = 1024 * 1024;
   static readonly maxInboxBytes = 64 * 1024;
+  //? Starts and stops on one path take turns, across instances: a restart would otherwise find an abandoned start's
+  //? socket still bound, and give up.
+  static readonly #turns = new Map<string, Promise<void>>();
 
   static pathIn(runtimeDir: string) {
     return path.join(runtimeDir, LogControlSocket.fileName);
@@ -42,6 +45,7 @@ export class LogControlSocket {
   readonly #hub: LogHub;
   readonly #logger = new Logger("LogControlSocket");
   #server: ReturnType<typeof Bun.listen<ClientState>> | null = null;
+  #generation = 0;
 
   constructor(hub: LogHub, runtimeDir: string) {
     this.#hub = hub;
@@ -62,11 +66,40 @@ export class LogControlSocket {
   }
 
   async start() {
+    const generation = ++this.#generation;
+    await this.#takeTurn(() => this.#listen(generation));
+  }
+
+  async stop() {
+    this.#generation += 1;
+    await this.#takeTurn(() => this.#close());
+  }
+
+  async #takeTurn(task: () => Promise<void>) {
+    const turns = LogControlSocket.#turns;
+    const turn = (turns.get(this.path) ?? Promise.resolve()).then(task);
+    const settled = turn.catch(() => undefined);
+    turns.set(this.path, settled);
+    try {
+      await turn;
+    } finally {
+      if (turns.get(this.path) === settled) turns.delete(this.path);
+    }
+  }
+
+  //? An owner stopped before `open` hands it this instance can't stop() it, but it closes the hub.
+  #abandoned(generation: number) {
+    return generation !== this.#generation || this.#hub.closed;
+  }
+
+  async #listen(generation: number) {
     await mkdir(path.dirname(this.path), { recursive: true });
     //? A test or script run from inside an app shares `akan start`'s runtime dir; unlinking a live socket would leave
     //? that dev server unreachable by `akan logs` until it restarts.
     if (await LogControlSocket.#answers(this.path)) throw new Error("another server is listening on it");
+    if (this.#abandoned(generation)) return;
     await rm(this.path, { force: true });
+    if (this.#abandoned(generation)) return;
     //* Under a 0177 umask, since the chmod below lands only after listen and a looser umask leaves it open till then.
     const umask = process.platform === "win32" ? null : process.umask(0o177);
     try {
@@ -88,12 +121,21 @@ export class LogControlSocket {
     } finally {
       if (umask !== null) process.umask(umask);
     }
-    await chmod(this.path, 0o600);
+    try {
+      await chmod(this.path, 0o600);
+    } catch (error) {
+      await this.#close();
+      throw error;
+    }
+    if (this.#abandoned(generation)) await this.#close();
   }
 
-  async stop() {
-    this.#server?.stop(true);
+  //? Only the socket this instance bound is unlinked: one that never listened would remove another server's.
+  async #close() {
+    const server = this.#server;
     this.#server = null;
+    if (!server) return;
+    server.stop(true);
     await rm(this.path, { force: true });
   }
 
