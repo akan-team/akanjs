@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import type { BuilderMessage, BuilderReq } from "akanjs/server";
-import { createTempApp, tempRoots, writeText } from "../testHelpers";
+import { createTempApp, tempRoots, writeText } from "../test/testHelpers";
 
 const track = tempRoots();
 

@@ -1,9 +1,9 @@
 import { Logger } from "akanjs/common";
 import type { BuilderMessage } from "akanjs/server";
 import type { App } from "../commandDecorators";
-import { createTunnel } from "../createTunnel";
 import { WorkspaceExecutor } from "../executors";
 import type { DevStdioMode } from "../incrementalBuilder";
+import { createTunnel } from "../tunnel/createTunnel";
 import { BackendImportGraph } from "./BackendImportGraph";
 import { BuilderGap } from "./builderGap";
 import { BuilderRequestRelay } from "./builderRequestRelay";

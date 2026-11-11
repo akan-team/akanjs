@@ -5,7 +5,7 @@ import type { ServerPolicy } from "akanjs/native/api";
 import { BUILD_ENV_FILE } from "akanjs/server/lifecycle/buildEnv";
 import type { AkanAppConfig, NativeEnv } from "../akanConfig";
 import type { App } from "../commandDecorators";
-import type { PackageJson } from "../types";
+import type { PackageJson } from "../workspace/types";
 import { DesktopBin } from "./desktopBin";
 
 /** What a desktop build hands the native runtime as `desktop.server`. */

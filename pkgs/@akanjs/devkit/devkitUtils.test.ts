@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
-import { ApplicationBuildReporter } from "./applicationBuildReporter";
-import { resolveSignalTestPreloadPath } from "./applicationTestPreload";
-import { TypeScriptDependencyScanner } from "./dependencyScanner";
+import { ApplicationBuildReporter } from "./app/applicationBuildReporter";
+import { resolveSignalTestPreloadPath } from "./app/applicationTestPreload";
 import { AppExecutor, WorkspaceExecutor } from "./executors";
-import { tempDirs, writeText as write } from "./testHelpers";
-import type { PackageJson, TsConfigJson } from "./types";
+import { tempDirs, writeText as write } from "./test/testHelpers";
+import { TypeScriptDependencyScanner } from "./workspace/dependencyScanner";
+import type { PackageJson, TsConfigJson } from "./workspace/types";
 
 const makeTempRoot = tempDirs("akan-devkit-utils-");
 

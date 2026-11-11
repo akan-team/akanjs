@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import * as nativeApi from "akanjs/native/api";
 import { AkanAppConfig } from "../akanConfig";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import type { DesktopArch } from "./desktopBin";
 import { DesktopRelease, type SignatureTool } from "./desktopRelease";
 import type { DesktopPlatform } from "./mobileTarget";

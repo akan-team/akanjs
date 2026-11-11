@@ -1,7 +1,7 @@
 import { rm, writeFile } from "node:fs/promises";
 import { trimTrailingSlashes } from "akanjs/common";
 import dayjs from "dayjs";
-import { FileSys } from "../fileSys";
+import { FileSys } from "../util/fileSys";
 import { ConfigLock } from "./configLock";
 import {
   type AccessToken,

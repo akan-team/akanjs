@@ -1,7 +1,7 @@
 import { GlobalConfig } from "@akanjs/devkit/cloud";
 import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { Subspace } from "@akanjs/devkit/subspace";
-import { SubspaceReport } from "@akanjs/devkit/subspaceReport";
+import { Subspace } from "@akanjs/devkit/subspace/subspace";
+import { SubspaceReport } from "@akanjs/devkit/subspace/subspaceReport";
 import { Logger } from "akanjs/common";
 import { type SubspaceAction, SubspaceRunner } from "./subspace.runner";
 

@@ -3,7 +3,7 @@ import {
   type MaintainabilityCommands,
   MaintainabilityContract,
   type MaintainabilityRuleId,
-} from "@akanjs/devkit/maintainabilityContract";
+} from "@akanjs/devkit/quality/maintainabilityContract";
 import type { WorkflowSpec } from "@akanjs/devkit/workflow";
 import { workflowSpecs } from "./index";
 import { sysInputs } from "./shared";

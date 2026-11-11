@@ -12,15 +12,15 @@ import path from "node:path";
 import { capitalize, Logger, toError } from "akanjs/common";
 import { $ } from "bun";
 import chalk from "chalk";
-import { FileSys, getDirname } from "../fileSys";
-import { JsonFormatter } from "../jsonFormatter";
-import { Linter } from "../linter";
-import type { AppInfo, LibInfo } from "../scanInfo";
-import { Spinner } from "../spinner";
-// Type-only: `getTypeChecker` loads it on demand to keep `typescript` out of the resident module graph.
-import type { TypeChecker } from "../typeChecker";
+import { Linter } from "../lint/linter";
 import { ProjectTypecheck } from "../typecheck/projectTypecheck";
-import type { FileContent, PackageJson, TsConfigJson } from "../types";
+// Type-only: `getTypeChecker` loads it on demand to keep `typescript` out of the resident module graph.
+import type { TypeChecker } from "../typecheck/typeChecker";
+import { FileSys, getDirname } from "../util/fileSys";
+import { JsonFormatter } from "../util/jsonFormatter";
+import { Spinner } from "../util/spinner";
+import type { AppInfo, LibInfo } from "../workspace/scanInfo";
+import type { FileContent, PackageJson, TsConfigJson } from "../workspace/types";
 import { CommandExecutionError } from "./commandExecutionError";
 
 export interface WrittenFileContent extends FileContent {
@@ -458,7 +458,7 @@ export class Executor {
   }
   // Async so `typescript` (~65MB resident) loads only in the commands that typecheck.
   async getTypeChecker() {
-    const { TypeChecker } = await import("../typeChecker");
+    const { TypeChecker } = await import("../typecheck/typeChecker");
     this.typeChecker ??= new TypeChecker(this);
     return this.typeChecker;
   }

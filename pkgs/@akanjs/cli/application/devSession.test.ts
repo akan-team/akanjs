@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { getArgMetas } from "@akanjs/devkit/commandDecorators";
 import { camelToKebabCase } from "@akanjs/devkit/commandDecorators/camelToKebabCase";
-import { stripAnsi } from "@akanjs/devkit/stripAnsi";
+import { stripAnsi } from "@akanjs/devkit/util/stripAnsi";
 import { ApplicationCommand } from "./application.command";
 import { DevBootConcurrency } from "./devBootConcurrency";
 import { DevLogBuffer, HOST_SOURCE, plainTextOf, sourceOf } from "./devLogBuffer";

@@ -19,7 +19,7 @@
   "web": null,
   "desktop": {
     "module": "./src/desktop.ts",
-    "unsupported": { "macos": ["sendKey", "setMuted", "capture"], "linux": ["sendKey"] }
+    "unsupported": { "macos": ["sendKey", "setMuted", "capture"] }
   },
   "ios": null,
   "android": null

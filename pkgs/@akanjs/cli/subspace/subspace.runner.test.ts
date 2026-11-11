@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
-import { isolateEnv, makeCliTempWorkspace, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
+import { SubspaceConfig } from "@akanjs/devkit/subspace/subspaceConfig";
+import { isolateEnv, makeCliTempWorkspace, tempRoots, writeText } from "@akanjs/devkit/test/testHelpers";
 import { SubspaceRunner } from "./subspace.runner";
 
 const config = new SubspaceConfig({

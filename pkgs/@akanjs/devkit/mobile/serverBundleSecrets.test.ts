@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { tempDirs, writeText as write } from "../testHelpers";
+import { tempDirs, writeText as write } from "../test/testHelpers";
 import { ServerBundleSecrets } from "./serverBundleSecrets";
 
 const makeTempRoot = tempDirs("akan-devkit-server-bundle-secrets-");

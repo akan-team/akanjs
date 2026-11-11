@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { ApplicationBuildReporter } from "@akanjs/devkit/applicationBuildReporter";
+import { ApplicationBuildReporter } from "@akanjs/devkit/app/applicationBuildReporter";
 import type { Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
-import { Linter, parseBiomeReport } from "@akanjs/devkit/linter";
-import { AkanQualityScanner } from "@akanjs/devkit/qualityScanner";
+import { Linter, parseBiomeReport } from "@akanjs/devkit/lint/linter";
+import { AkanQualityScanner } from "@akanjs/devkit/quality/qualityScanner";
 import { ProjectTypecheck } from "@akanjs/devkit/typecheck/projectTypecheck";
 import { TypecheckFailure } from "@akanjs/devkit/typecheck/typecheckFailure";
 import type { ApplicationRunner } from "../application/application.runner";

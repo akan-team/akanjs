@@ -3,7 +3,7 @@ import { realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import type { App } from "../commandDecorators";
-import { tempDirs, writeText } from "../testHelpers";
+import { tempDirs, writeText } from "../test/testHelpers";
 import { BackendImportGraph } from "./BackendImportGraph";
 import { filesChangedSince } from "./devHostPolicy";
 

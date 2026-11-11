@@ -1,5 +1,5 @@
 import { Logger } from "akanjs/common";
-import { TypeChecker } from "../typeChecker";
+import { TypeChecker } from "./typeChecker";
 import { TypecheckFailure } from "./typecheckFailure";
 
 try {

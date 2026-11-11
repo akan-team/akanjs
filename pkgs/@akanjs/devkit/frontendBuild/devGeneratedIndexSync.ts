@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { capitalize } from "akanjs/common";
-import { FileSys } from "../fileSys";
+import { FileSys } from "../util/fileSys";
 
 const BARREL_FACETS = new Set(["common", "srvkit", "ui", "webkit", "plugin"]);
 const FACET_SOURCE_FILE_RE = /\.(ts|tsx)$/;

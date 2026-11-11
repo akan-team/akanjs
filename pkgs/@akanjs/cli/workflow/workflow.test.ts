@@ -3,7 +3,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { ModuleExecutor } from "@akanjs/devkit/executors";
-import { createTempModule, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
+import { createTempModule, tempRoots, writeText } from "@akanjs/devkit/test/testHelpers";
 import {
   type WorkflowApplyReport,
   type WorkflowPlan,
