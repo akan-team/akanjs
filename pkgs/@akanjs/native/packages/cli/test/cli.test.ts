@@ -246,7 +246,7 @@ describe("native plugin inputs", async () => {
     };
     const all = view.manifest.methods;
     expect(methods("windows")).toEqual(all);
-    expect(methods("linux")).toEqual(all.filter((m) => m !== "sendKey"));
+    expect(methods("linux")).toEqual(all);
     expect(methods("macos")).toEqual(all.filter((m) => !["sendKey", "setMuted", "capture"].includes(m)));
   });
 
