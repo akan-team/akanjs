@@ -6,7 +6,7 @@ import { st } from "akanjs/store";
 import { usePageLocation } from "akanjs/webkit";
 import { useEffect, useRef, useState } from "react";
 
-import { seedOpen } from "../../store/openSeq";
+import { openSeqIn, seedOpen } from "../../store/openSeq";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 const firstOf = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
@@ -73,8 +73,12 @@ export const useViewModal = (slice: SliceMeta, { inUrl }: { inUrl: boolean }) =>
   }, [inUrl, urlId, storeId]);
   const editInView = (id: string) => {
     setEditedFrom(id);
-    //? A form that failed to load never opened, so the view it was asked from comes back.
-    void Promise.resolve(storeDo[names.editModel](id)).catch(returnToView);
+    const editing = Promise.resolve(storeDo[names.editModel](id));
+    const opened = openSeqIn(st, names.model).open;
+    //? A form that failed to load never opened, so the view it was asked from comes back, unless a later open took over.
+    void editing.catch(() => {
+      if (openSeqIn(st, names.model).open === opened) returnToView();
+    });
   };
   return { editInView };
 };

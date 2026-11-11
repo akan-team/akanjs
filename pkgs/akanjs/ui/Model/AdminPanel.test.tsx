@@ -687,6 +687,7 @@ describe("Model.AdminPanel view modal", () => {
     });
     afterEach(() => {
       unmount();
+      unmount = () => {};
       if (loadView) calls.adminTestItem = loadView;
       setState({ searchParams: {} });
     });
@@ -721,6 +722,38 @@ describe("Model.AdminPanel view modal", () => {
       await failEditDuringWrite();
       expect(viewing("Hopper")()).toBe(true);
       expect(replaces).toEqual([]);
+    });
+
+    test("leaves a view opened while the edit loaded open when the edit then fails", async () => {
+      makeStore();
+      replaces.length = 0;
+      setState({ searchParams: { topMenu: "account", action: "view", modelId: offPageId } });
+      ({ unmount } = await mount(
+        <AdminPanel slice={slice} components={viewComponents} actions={["edit", "view"]} viewInUrl />,
+        viewing("Grace"),
+      ));
+      const held = { failEdit: () => {}, landView: () => {} };
+      calls.adminTestItem = mock((id: string) =>
+        id === otherId
+          ? new Promise((resolve) => {
+              held.landView = () => resolve(new Full({ id, title: "Linus" }));
+            })
+          : new Promise((_, reject) => {
+              held.failEdit = () => reject(new Error("edit load failed"));
+            }),
+      );
+
+      await click(buttonOf("base.edit"));
+      await waitFor(() => calls.adminTestItem?.mock.calls.length === 1);
+      const viewingOther = storeDo.viewAdminTestItem(otherId);
+      await act(async () => held.failEdit());
+      await act(async () => {
+        held.landView();
+        await viewingOther;
+      });
+      await waitFor(viewing("Linus"));
+      expect(viewing("Linus")()).toBe(true);
+      expect(paramsOf(replaces.at(-1)?.href).modelId).toBe(otherId);
     });
   });
 
