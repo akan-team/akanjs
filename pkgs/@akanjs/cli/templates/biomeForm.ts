@@ -1,4 +1,4 @@
-import { compareExportNames } from "./facetIndex";
+import { compareExportNames } from "akanjs/common";
 
 export interface JsxElement {
   tag: string;

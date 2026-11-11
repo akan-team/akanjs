@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { facetBarrelOf } from "akanjs/common/facetBarrel.ts";
 import ts from "typescript";
 import { AkanGraphDiff } from "./akanGraphDiff";
 import { AkanIndex } from "./akanIndex";
@@ -1601,7 +1602,7 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({
     expect(callsOf(`export { Clock } from "clock-sdk";\n`)).toEqual(reached("adaptor:clock-sdk:Clock"));
   });
 
-  it("scans the folder when the import path has no module, so a graph without the gitignored barrels matches one with them", () => {
+  it("reads a facet folder with no index as its generated barrel, so a graph without the gitignored barrels matches one with them", () => {
     const clock = (name: string) => `import { adapt } from "akanjs/service";
 export class Clock extends adapt("${name}") {}
 `;
@@ -1739,23 +1740,86 @@ export * from "./toss";
     expect(edgesIn({ ...sources, ...barrel })).toEqual(expected);
   });
 
-  it("follows the barrel past a named package re-export in the import's folder that it does not export", () => {
-    const wired = (barrel: Record<string, string>): Record<string, string> => ({
-      "libs/shared/srvkit/legacy/stripe.ts": `export { Stripe } from "stripe-legacy";
-`,
+  it("reads a facet folder with no index as the barrel `akan sync` writes, so the Change Map names the graph view's adaptor", () => {
+    const sources: Record<string, string> = {
       "libs/shared/srvkit/stripe.ts": `export { Stripe } from "stripe-sdk";
 `,
-      ...barrel,
-      "apps/demo/lib/memo/memo.service.ts": `import { Stripe } from "@libs/shared/srvkit";
+      "libs/shared/srvkit/stripeServer.ts": `export { Stripe } from "stripe-sdk/server";
+`,
+      "libs/shared/srvkit/adyen.ts": `export { Adyen } from "adyen-sdk";
+`,
+      "libs/shared/srvkit/legacy/index.ts": `export * from "./adyen";
+export * from "./klarna";
+`,
+      "libs/shared/srvkit/legacy/adyen.ts": `export { Adyen } from "adyen-legacy";
+`,
+      "libs/shared/srvkit/legacy/klarna.ts": `export { Klarna } from "klarna-sdk";
+`,
+      "libs/shared/srvkit/legacy/paypal.ts": `export { PayPal } from "paypal-legacy";
+`,
+      "libs/shared/srvkit/toss.helper.ts": `export { Toss } from "toss-sdk";
+`,
+      "libs/shared/srvkit/square.ts": `export * from "../common/square";
+`,
+      "libs/shared/common/square.ts": `export { Square } from "square-sdk";
+`,
+      "libs/shared/srvkit/util.ts": `export * from "@libs/util/srvkit";
+`,
+      "libs/util/srvkit/mollie.ts": `export { Mollie } from "mollie-sdk";
+`,
+      "libs/shared/srvkit/wise.ts": `export { Wise } from "./vendors/wise";
+`,
+      "libs/shared/srvkit/vendors/wise.ts": `export { Wise } from "wise-sdk";
+`,
+      "libs/shared/plugin/bill.ts": `export * from "bill-sdk";
+`,
+      "libs/shared/webkit/bill.ts": `export class Bill {}
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Bill } from "@libs/shared/plugin";
+import { Adyen, Klarna, Mollie, PayPal, Square, Stripe, Toss, Wise } from "@libs/shared/srvkit";
 import { serve } from "akanjs/service";
 import * as db from "../db";
-export class MemoService extends serve(db.memo, ({ plug }) => ({ stripe: plug(Stripe) })) {
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  adyen: plug(Adyen),
+  bill: plug(Bill),
+  klarna: plug(Klarna),
+  mollie: plug(Mollie),
+  paypal: plug(PayPal),
+  square: plug(Square),
+  stripe: plug(Stripe),
+  toss: plug(Toss),
+  wise: plug(Wise),
+})) {
   async pay() {
+    await this.adyen.capture();
+    await this.bill.bill();
+    await this.klarna.split();
+    await this.mollie.collect();
+    await this.paypal.send();
+    await this.square.refund();
+    await this.toss.transfer();
+    await this.wise.wire();
     return this.stripe.charge();
   }
 }
 `,
-    });
+    };
+    const facetFolder = /^((?:apps|libs)\/[^/]+\/(ui|webkit|srvkit|common|plugin))\/([^/]+)(\/)?/;
+    const synced = (given: Record<string, string>) => {
+      const folders = new Map<string, { facet: string; files: Set<string>; dirs: Set<string> }>();
+      for (const rel of Object.keys(given)) {
+        const [, folder, facet, entry, nested] = rel.match(facetFolder) ?? [];
+        if (!folder || !facet || !entry) continue;
+        const found = folders.get(folder) ?? { facet, files: new Set<string>(), dirs: new Set<string>() };
+        (nested ? found.dirs : found.files).add(entry);
+        folders.set(folder, found);
+      }
+      const barrels = [...folders].map(([folder, { facet, files, dirs }]) => [
+        `${folder}/index.ts`,
+        facetBarrelOf(facet, [...files], [...dirs]),
+      ]);
+      return { ...given, ...Object.fromEntries(barrels) };
+    };
     const callsOf = (given: Record<string, string>) => {
       const index = new AkanIndex({ ts, root });
       for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
@@ -1764,15 +1828,29 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({ stripe: plug(St
         "calls",
       );
     };
-    const index = "libs/shared/srvkit/index.ts";
-    expect(callsOf(wired({ [index]: `export * from "./stripe";\n` }))).toEqual([
+    const graphView = synced(sources);
+    expect(graphView["libs/shared/srvkit/index.ts"]).toBe(`export * from "./adyen";
+export * from "./legacy";
+export * from "./square";
+export * from "./stripe";
+export * from "./stripeServer";
+export * from "./util";
+export * from "./vendors";
+export * from "./wise";
+`);
+    const expected = [
+      "method:apps/demo:memo.pay -bill-> adaptor:bill-sdk:Bill",
+      "method:apps/demo:memo.pay -capture-> adaptor:libs/shared:Adyen",
       "method:apps/demo:memo.pay -charge-> adaptor:stripe-sdk:Stripe",
-    ]);
-    const unlocated = ["method:apps/demo:memo.pay -charge-> adaptor:libs/shared:Stripe"];
-    expect(callsOf(wired({ [index]: `export * from "./stripe";\nexport * from "./legacy/stripe";\n` }))).toEqual(
-      unlocated,
-    );
-    expect(callsOf(wired({}))).toEqual(unlocated);
+      "method:apps/demo:memo.pay -collect-> adaptor:mollie-sdk:Mollie",
+      "method:apps/demo:memo.pay -refund-> adaptor:square-sdk:Square",
+      "method:apps/demo:memo.pay -send-> adaptor:libs/shared:PayPal",
+      "method:apps/demo:memo.pay -split-> adaptor:klarna-sdk:Klarna",
+      "method:apps/demo:memo.pay -transfer-> adaptor:libs/shared:Toss",
+      "method:apps/demo:memo.pay -wire-> adaptor:wise-sdk:Wise",
+    ];
+    expect(callsOf(graphView)).toEqual(expected);
+    expect(callsOf(sources)).toEqual(expected);
   });
 
   it("refuses a package `export *` only for a name declared along the chain, not elsewhere in a lib it reaches", () => {

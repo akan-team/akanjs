@@ -1,13 +1,9 @@
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { capitalize } from "akanjs/common";
+import { barrelFacetDirs, capitalize, facetBarrelOf } from "akanjs/common";
 import { FileSys } from "../fileSys";
 
-const BARREL_FACETS = new Set(["common", "srvkit", "ui", "webkit", "plugin"]);
-const FACET_SOURCE_FILE_RE = /\.(ts|tsx)$/;
-const FACET_EXCLUDED_FILE_RE = /(^index\.tsx?$|\.d\.ts$|\.(test|spec)\.(ts|tsx)$|\.css$|\.scss$|\.sass$)/;
-const FACET_PASCAL_CASE_RE = /^[A-Z][A-Za-z0-9]*$/;
-const FACET_CAMEL_CASE_RE = /^[a-z][A-Za-z0-9]*$/;
+const BARREL_FACETS = new Set<string>(barrelFacetDirs);
 const MODULE_UI_TYPES = ["Template", "Unit", "Util", "View", "Zone"] as const;
 const SERVICE_UI_TYPES = ["Util", "Zone"] as const;
 const SCALAR_UI_TYPES = ["Template", "Unit"] as const;
@@ -113,22 +109,11 @@ export class DevGeneratedIndexSync {
   }
 
   async #facetContent(dir: string): Promise<string | null> {
-    const nameCasePattern = path.basename(dir) === "ui" ? FACET_PASCAL_CASE_RE : FACET_CAMEL_CASE_RE;
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => null);
     if (!entries) return null;
-    const exportNames = entries
-      .flatMap((entry) => {
-        const name = entry.name;
-        if (name.startsWith(".")) return [];
-        if (entry.isDirectory()) return nameCasePattern.test(name) ? [name] : [];
-        if (!entry.isFile()) return [];
-        if (!FACET_SOURCE_FILE_RE.test(name) || FACET_EXCLUDED_FILE_RE.test(name)) return [];
-        const exportName = name.replace(FACET_SOURCE_FILE_RE, "");
-        return nameCasePattern.test(exportName) ? [exportName] : [];
-      })
-      .sort(compareExportNames);
-    if (exportNames.length === 0) return "export {};\n";
-    return `${exportNames.map((name) => `export * from "./${name}";`).join("\n")}\n`;
+    const files = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+    const dirs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    return facetBarrelOf(path.basename(dir), files, dirs);
   }
 
   async #moduleContent(dir: string): Promise<string | null> {
@@ -153,22 +138,6 @@ export class DevGeneratedIndexSync {
     return `${fileTypes.map((type) => `import * as ${type} from "./${modelName}.${type}";`).join("\n")}\n\nexport const ${modelName} = { ${fileTypes.join(", ")} };\n`;
   }
 }
-
-//? Biome's organizeImports order, or `akan lint` reorders the barrel: A < a < B < b, a digit before a letter, and a
-//? run of digits compared by its length first. The facetIndex template sorts the same way.
-const letterRankOf = (char: string) => char.toLowerCase().charCodeAt(0) * 2 + (char === char.toLowerCase() ? 1 : 0);
-const digitRunAt = (name: string, idx: number) => /^\d+/.exec(name.slice(idx))?.[0] ?? "";
-const compareExportNames = (a: string, b: string) => {
-  for (let idx = 0; idx < a.length && idx < b.length; ) {
-    const [runA, runB] = [digitRunAt(a, idx), digitRunAt(b, idx)];
-    if (runA && runB && runA !== runB) return runA.length - runB.length || (runA < runB ? -1 : 1);
-    if (runA && runB) idx += runA.length;
-    else if (runA || runB) return runA ? -1 : 1;
-    else if (a.charAt(idx) !== b.charAt(idx)) return letterRankOf(a.charAt(idx)) - letterRankOf(b.charAt(idx));
-    else idx++;
-  }
-  return a.length - b.length;
-};
 
 const exists = async (file: string) =>
   stat(file)

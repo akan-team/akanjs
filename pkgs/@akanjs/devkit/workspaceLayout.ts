@@ -1,6 +1,8 @@
 // The one source of the app/lib root allowlists (sync, doctor and quality scan read it); mirror a change into the
 // root AGENTS.md list.
 
+import { barrelFacetDirs } from "akanjs/common";
+
 export type SysType = "app" | "lib";
 
 export const appRootAllowedFiles = new Set([
@@ -98,7 +100,7 @@ export const moduleTestHint =
   "a module test is named after the one module file it covers (<model>.<role>.test.ts); add a describe block to " +
   "that file's suite instead, or move a suite that drives several modules into srvkit/";
 
-export const barrelFacetDirs = ["ui", "webkit", "srvkit", "common", "plugin"] as const;
+export { barrelFacetDirs };
 
 //* Bun resolves a folder import to `index.tsx`, `index.jsx` or `index.mts` ahead of `index.ts`, and TypeScript to
 //* `index.ts` first, so one of these beside the generated barrel typechecks every name the barrel adds and serves none.
