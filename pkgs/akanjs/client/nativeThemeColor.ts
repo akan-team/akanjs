@@ -27,6 +27,7 @@ export class NativeThemeColor {
     if (!context) return null;
     //? A shell parses only hex, and painting one pixel resolves oklch(), color-mix() and names the way the page's CSS does.
     context.clearRect(0, 0, 1, 1);
+    //? Canvas ignores a color it cannot parse (light-dark() passes CSS.supports), which would repaint the previous one.
     context.fillStyle = "transparent";
     context.fillStyle = color;
     context.fillRect(0, 0, 1, 1);

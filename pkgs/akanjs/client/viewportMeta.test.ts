@@ -146,6 +146,13 @@ describe("--akan-theme-color", () => {
     );
   });
 
+  test("names no color when no tag's media matches, since the browser then applies none", () => {
+    reset();
+    const unmatched = window.matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark";
+    expect(ViewportMeta.applyThemeColor({ themeColor: { [unmatched]: "#000000" } }, "system")).toBeNull();
+    expect(themeColorTags()).toEqual([["#000000", `(prefers-color-scheme: ${unmatched})`]]);
+  });
+
   test("applies again once a frame after the root's style or data-theme changes, until stopped", async () => {
     reset();
     let applied = 0;

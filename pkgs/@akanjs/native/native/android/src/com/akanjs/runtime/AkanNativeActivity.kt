@@ -289,8 +289,7 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
 
     // S1: dark bar icons on a light background, light ones on a dark background. The framework
     // DayNight theme keeps them light in day mode, where they vanish on a light page. Following the
-    // painted color (not night mode) also fits an app that is dark in day mode; the status bar follows
-    // the page's theme color once it names one.
+    // painted color (not night mode) also fits an app that is dark in day mode.
     private fun applyBars() {
         val background = Color.luminance(backgroundColor()) > 0.5f
         lightBars(status = themeColor?.let { Color.luminance(it) > 0.5f } ?: background, navigation = background)

@@ -51,8 +51,7 @@ export class ViewportMeta {
       for (const meta of existing) if (meta.hasAttribute(ViewportMeta.#ownAttr)) meta.remove();
       return null;
     }
-    const inEffect =
-      (tags.find((tag) => !tag.media || window.matchMedia(tag.media).matches) ?? tags[0])?.content ?? null;
+    const inEffect = tags.find((tag) => !tag.media || window.matchMedia(tag.media).matches)?.content ?? null;
     const live = existing.filter((meta) => meta.getAttribute("media") !== ViewportMeta.#offMedia);
     const isCurrent =
       live.length === tags.length &&

@@ -1,10 +1,12 @@
 import "../test/registerDom";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { installMockHost, type MockHost } from "@akanjs/native/core/testing";
+import { Logger } from "akanjs/common";
 import { NativeThemeColor } from "./nativeThemeColor";
 
 let host: MockHost | null = null;
 afterEach(() => {
+  mock.restore();
   host?.uninstall();
   host = null;
 });
@@ -36,16 +38,21 @@ describe("NativeThemeColor", () => {
     ]);
   });
 
-  test("leaves a shell built before setThemeColor alone, and a browser never loads the plugin", async () => {
+  test("leaves alone a shell built before setThemeColor, and one whose capabilities deny it", async () => {
+    const warn = spyOn(Logger, "warn");
     host = installMockHost({ platform: "android", plugins: { appearance: { methods: { get: () => null } } } });
     NativeThemeColor.follow("#123456");
     await settle();
-    expect(host.requests).toEqual([]);
     host.uninstall();
 
-    host = installMockHost({ platform: "web" });
+    host = installMockHost({
+      platform: "android",
+      plugins: { appearance: { methods: { setThemeColor: () => {} } } },
+      acl: { grants: [] },
+    });
     NativeThemeColor.follow("#654321");
     await settle();
     expect(host.requests).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
   });
 });
