@@ -77,7 +77,6 @@ export class RscClientCache<T extends object> {
     return true;
   }
 
-  //? A render that streamed an error would replay it, notice and all, with no request; the next visit asks instead.
   noteFailedRender(thenable: T): void {
     this.#failed.add(thenable);
   }
