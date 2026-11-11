@@ -444,7 +444,7 @@ describe("AgentService.loop", () => {
     expect(llmSeen[0]?.tools.map((tool) => tool.name).sort()).toEqual(["echoTitle", "whoAmI"]);
     expect(events.flatMap((event) => (event.type === "toolResult" ? [event.result] : []))).toEqual([
       { id: "c1", name: "whoAmI", result: "ann" },
-      { id: "c2", name: "quietTitle", error: "Unknown tool: quietTitle." },
+      { id: "c2", name: "quietTitle", error: "Unknown tool: quietTitle.", code: "unknownTool" },
     ]);
     expect(llmSeen[1]?.messages.at(-1)?.role).toBe("tool");
     expect(events.at(-1)).toEqual({ type: "done", stop: "end", rounds: 2 });
