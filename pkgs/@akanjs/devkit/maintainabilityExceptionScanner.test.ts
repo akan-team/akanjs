@@ -98,4 +98,18 @@ describe("MaintainabilityExceptionScanner", () => {
     expect(byRule("apps/demo/akan.baseline.json", "akan.size.component")?.fix).toContain("threshold is wrong");
     expect(byRule("apps/demo/akan.baseline.json", "akan.store.multi-write")?.fix).toContain("add-mutation");
   });
+
+  test("tells a bare Error entry to construct a coded error, since the rule takes no exception", async () => {
+    const root = await makeWorkspace({
+      "pkgs/akanjs/akan.baseline.json": baselineOf({ "akan.error.bare-error": { "server/host.ts": 2 } }),
+    });
+
+    expect(await new MaintainabilityExceptionScanner().scan(root)).toMatchObject([
+      {
+        message:
+          "pkgs/akanjs carries 0 reasoned exceptions and 1 adopted-debt entry for akan.error.bare-error: server/host.ts.",
+        fix: expect.stringContaining("construct an `AkanError` subclass"),
+      },
+    ]);
+  });
 });

@@ -8,7 +8,7 @@ import type {
 } from "./maintainabilityContract";
 import { type FileKind, MaintainabilityLimits } from "./maintainabilityLimits";
 
-type FixKey = FileKind | "package" | Exclude<MaintainabilityRuleId, "akan.size.file">;
+type FixKey = FileKind | "package" | "staleTotal" | Exclude<MaintainabilityRuleId, "akan.size.file">;
 
 export class MaintainabilityReport {
   static readonly #clientSplitFix =
@@ -53,6 +53,8 @@ export class MaintainabilityReport {
       "Construct an `AkanError` subclass from `akanjs/base` with a code the caller can branch on, and a `statusCode` when it answers a request: an existing class whose code fits, or a new one beside the code that fails; a class extending a built-in Error extends `AkanError` instead. A failure another process reported travels as itself. The package's total is what is held, so moving a bare Error between files passes and `akan lint` rewrites the entries.",
     "akan.baseline.growth":
       "Restore the entry from the default branch, then split the file or move the writes instead: `akan lint` lowers an entry as the code shrinks and never raises one.",
+    staleTotal:
+      "Run `akan verify <package>`, which lowers the section, and commit `akan.baseline.json` in this change: a recorded total above the code is room for a new failure anywhere. A bare `akan verify` covers only uncommitted files.",
   };
 
   static readonly #labels: { [key in FixKey]?: string } = {
@@ -70,6 +72,7 @@ export class MaintainabilityReport {
     "akan.service.call-in-loop": "service call per item",
     "akan.error.bare-error": "bare Error",
     "akan.baseline.growth": "baseline entry",
+    staleTotal: "baseline total",
   };
 
   static readonly #units: { [rule in DebtRuleId]: string } = {
@@ -123,6 +126,8 @@ export class MaintainabilityReport {
   }
 
   static #problemOf(failure: MaintainabilityFailure) {
+    if (failure.kind === "staleTotal")
+      return `records ${failure.recorded} ${MaintainabilityReport.#units[failure.rule]} in all, above the ${failure.count} the code holds`;
     if (failure.kind === "baselineGrowth") {
       const entry = `entry "${failure.key}" under ${failure.debtRule}`;
       const units = MaintainabilityReport.#units[failure.debtRule];
@@ -174,6 +179,7 @@ export class MaintainabilityReport {
   }
 
   static #fixKeyOf(sysPath: string, failure: MaintainabilityFailure): FixKey {
+    if (failure.kind === "staleTotal") return "staleTotal";
     if (failure.rule !== "akan.size.file") return failure.rule;
     if (sysPath.startsWith("pkgs/")) return "package";
     return MaintainabilityLimits.fileKindOf(failure.file) ?? "akan.size.component";

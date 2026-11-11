@@ -14,9 +14,16 @@ export interface BaselineEntry {
   reason?: string;
 }
 
+export interface BaselineStaleTotal {
+  rule: DebtRuleId;
+  count: number;
+  recorded: number;
+}
+
 type Counts = ReadonlyMap<string, number>;
 
-//* One section per rule, each key holding what the gate measured: lines, members, accesses, writes, calls or throws.
+//* One section per rule, each key holding what the gate measured: lines, members, accesses, writes, calls or the
+//* built-in Errors constructed or extended.
 //* A count only falls, so a recorded entry cannot take on more of the debt it records.
 export class MaintainabilityBaseline {
   static readonly fileName = "akan.baseline.json";
@@ -134,6 +141,15 @@ export class MaintainabilityBaseline {
     );
   }
 
+  staleTotals(violations: MaintainabilityViolation[]): BaselineStaleTotal[] {
+    const measured = MaintainabilityBaseline.of(violations);
+    return [...MaintainabilityBaseline.totalRules].flatMap((rule) => {
+      const count = measured.totalOf(rule);
+      const recorded = this.totalOf(rule);
+      return count < recorded ? [{ rule, count, recorded }] : [];
+    });
+  }
+
   totalOf(rule: DebtRuleId) {
     return [...(this.sections.get(rule)?.values() ?? [])].reduce((sum, count) => sum + count, 0);
   }
@@ -183,8 +199,10 @@ export class MaintainabilityBaseline {
     const sections = new Map(
       [...this.sections].map(([rule, counts]) => {
         const measured = current.sections.get(rule) ?? new Map<string, number>();
-        const carried = MaintainabilityBaseline.totalRules.has(rule) && current.totalOf(rule) <= this.totalOf(rule);
-        return [rule, carried ? measured : MaintainabilityBaseline.#lowered(counts, measured)];
+        if (!MaintainabilityBaseline.totalRules.has(rule))
+          return [rule, MaintainabilityBaseline.#lowered(counts, measured)];
+        //? Over budget, a file that went down may only have moved its count; recording it would refuse that move later.
+        return [rule, current.totalOf(rule) > this.totalOf(rule) ? counts : measured];
       }),
     );
     return new MaintainabilityBaseline(sections).#withReasonsOf(this.reasons);

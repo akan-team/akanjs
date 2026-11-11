@@ -121,6 +121,16 @@ export interface BaselineGrowth {
   measured?: boolean;
 }
 
+export interface StaleTotal {
+  kind: "staleTotal";
+  rule: DebtRuleId;
+  key: string;
+  file: string;
+  line: number;
+  count: number;
+  recorded: number;
+}
+
 export type MaintainabilityViolation =
   | SizeViolation
   | ClassSizeViolation
@@ -129,7 +139,7 @@ export type MaintainabilityViolation =
   | WritePlacementViolation
   | LoopCallViolation
   | BareErrorViolation;
-export type MaintainabilityFailure = MaintainabilityViolation | BaselineGrowth;
+export type MaintainabilityFailure = MaintainabilityViolation | BaselineGrowth | StaleTotal;
 
 export type BaselineSeed = "written" | "kept" | "removed" | "clean";
 
@@ -193,12 +203,26 @@ export class MaintainabilityContract {
       existing === null ? new MaintainabilityBaseline() : MaintainabilityBaseline.parse(existing, this.baselinePath);
     const tightened = baseline.tightenedBy(violations);
     if (fix && existing !== null) await this.#tighten(baseline, tightened);
-    const failures: MaintainabilityFailure[] = baseline.unallowed(violations).map((violation) => {
-      const recorded = baseline.recordedOf(violation);
-      return recorded === undefined ? violation : { ...violation, recorded };
-    });
     //? Without fix the file on disk is what merges, so an entry it holds above the measured count is checked as written.
     const working = fix ? tightened : baseline;
+    const lines = ((await this.#readBaseline()) ?? "").split(/\r?\n/);
+    const failures: MaintainabilityFailure[] = [
+      ...working.staleTotals(violations).map(
+        ({ rule, count, recorded }): StaleTotal => ({
+          kind: "staleTotal",
+          rule,
+          key: MaintainabilityBaseline.totalKey,
+          file: MaintainabilityBaseline.fileName,
+          line: MaintainabilityContract.#lineOf(lines, rule, MaintainabilityBaseline.totalKey),
+          count,
+          recorded,
+        }),
+      ),
+      ...baseline.unallowed(violations).map((violation) => {
+        const recorded = baseline.recordedOf(violation);
+        return recorded === undefined ? violation : { ...violation, recorded };
+      }),
+    ];
     const source = `${reference.label}:${this.sysPath}/${MaintainabilityBaseline.fileName}`;
     const recorded =
       reference.text !== null ? MaintainabilityBaseline.parse(reference.text, source, { lenient: true }) : null;
@@ -206,7 +230,6 @@ export class MaintainabilityContract {
     const measured = unrecorded.size ? await this.#measuredAt(reference.ref) : null;
     if (recorded === null && measured === null) return failures;
     const committed = (recorded ?? new MaintainabilityBaseline()).withSectionsOf(measured, unrecorded);
-    const lines = ((await this.#readBaseline()) ?? "").split(/\r?\n/);
     const growths = working
       .grownFrom(committed)
       .map(

@@ -18,8 +18,9 @@ by `akan agent install`; edit anything outside the markers freely.
   it started with and only shrinks; split the code rather than raise an entry.
 - In `pkgs/akanjs`, `server/`, `service/` and `signal/` fail with an `AkanError` subclass carrying a code, never a
   bare `Error` constructed, thrown, rejected or extended (`akan.error.bare-error`). The same baseline holds the
-  package's total of them, recorded per file, so moving one passes and a new one anywhere fails. A new or changed code
-  goes into the `errorCodes` guideline with `bun run error:codes`; the devkit test fails while it is stale.
+  package's total of them, recorded per file, so moving one passes and a new one anywhere fails. Removing one lowers
+  the section in the same change: `akan verify akanjs` writes it, and CI fails until it is committed. A new or changed
+  code goes into the `errorCodes` guideline with `bun run error:codes`; the devkit test fails while it is stale.
 - `akan verify @akanjs/cli` lints and typechecks one package. Tests run with `bun run akan test <pkg> [files]` from
   the root or `cd <pkg> && bun test --isolate ./<file>`, never plain `bun test` from the root.
 - The managed block below, `.claude/rules/akan/`, `.cursor/rules/akan-*.mdc`, `.claude/skills/` and

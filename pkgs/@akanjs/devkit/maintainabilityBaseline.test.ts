@@ -236,7 +236,10 @@ describe("MaintainabilityBaseline", () => {
       new Map([["server/c.ts", 2]]),
     );
     expect(baseline.tightenedBy([bareOf("server/a.ts", 4)]).sections.get("akan.error.bare-error")).toEqual(
-      new Map([["server/a.ts", 2]]),
+      new Map([
+        ["server/a.ts", 2],
+        ["server/b.ts", 1],
+      ]),
     );
     expect(baselineOf({ "akan.error.bare-error": { "server/c.ts": 3 } }).grownFrom(baseline)).toEqual([]);
     expect(baselineOf({ "akan.error.bare-error": { "server/c.ts": 4 } }).grownFrom(baseline)).toEqual([
@@ -245,6 +248,22 @@ describe("MaintainabilityBaseline", () => {
     expect(baseline.grownFrom(new MaintainabilityBaseline())).toEqual([
       { rule: "akan.error.bare-error", key: MaintainabilityBaseline.totalKey, count: 3, committed: undefined },
     ]);
+  });
+
+  test("names a total recorded above the code's and no other, on a total rule only", () => {
+    const baseline = baselineOf({
+      "akan.size.file": { "lib/a/A.Zone.tsx": 900 },
+      "akan.error.bare-error": { "server/a.ts": 2, "server/b.ts": 1 },
+    });
+
+    expect(baseline.staleTotals([bareOf("server/a.ts", 2)])).toEqual([
+      { rule: "akan.error.bare-error", count: 2, recorded: 3 },
+    ]);
+    expect(baseline.staleTotals([])).toEqual([{ rule: "akan.error.bare-error", count: 0, recorded: 3 }]);
+    expect(baseline.staleTotals([bareOf("server/c.ts", 3)])).toEqual([]);
+    expect(baseline.staleTotals([bareOf("server/c.ts", 4)])).toEqual([]);
+    expect(baseline.tightenedBy([bareOf("server/a.ts", 1)]).staleTotals([bareOf("server/a.ts", 1)])).toEqual([]);
+    expect(new MaintainabilityBaseline().staleTotals([])).toEqual([]);
   });
 
   test("prints the rule sections in rule order with sorted keys, as Biome would, and reprints them unchanged", () => {
