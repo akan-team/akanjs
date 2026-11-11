@@ -1,5 +1,5 @@
 import "../../test/registerDom";
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { act, type ReactNode } from "react";
 import { AgenticSurface, AgentProvider } from "use-agentic";
 import { itemFixtureOf, l, mountSuspense, rootSliceArgs, setTestEnv, waitFor } from "../testHelpers.fixture";
@@ -615,6 +615,146 @@ describe("Model.AdminPanel view modal", () => {
     expect(paramsOf(replaces[0]?.href)).toEqual({ topMenu: "account" });
     unmount();
     setState({ searchParams: {} });
+  });
+
+  test("keeps the view an edit closed back to while its save was in flight, and shows the saved record", async () => {
+    makeStore();
+    replaces.length = 0;
+    let land = () => {};
+    calls.updateAdminTestItem = mock(
+      (id: string) =>
+        new Promise((resolve) => {
+          land = () => resolve(new Full({ id, title: "Hopper" }));
+        }),
+    );
+    setState({ searchParams: { topMenu: "account", action: "view", modelId: offPageId } });
+    const { unmount } = await mount(
+      <AdminPanel slice={slice} components={viewComponents} actions={["edit", "view"]} viewInUrl />,
+      viewing("Grace"),
+    );
+
+    await click(buttonOf("base.edit"));
+    await waitFor(() => !!buttonOf("base.updateModel") && !buttonOf("base.updateModel")?.disabled);
+    await click(buttonOf("base.updateModel"));
+    await waitFor(() => calls.updateAdminTestItem?.mock.calls.length === 1);
+    await click(dialog()?.querySelector<HTMLElement>('[aria-label="Close"]'));
+    expect(dialog()).not.toBeNull();
+    expect(buttonOf("base.updateModel")).toBeUndefined();
+
+    await act(async () => land());
+    await waitFor(viewing("Hopper"));
+    expect(viewing("Hopper")()).toBe(true);
+    expect(replaces).toEqual([]);
+    unmount();
+    setState({ searchParams: {} });
+  });
+
+  describe("when an edit opened from the view fails to load while a write is in flight", () => {
+    const heldWriteAndFailingEdit = () => {
+      const held = { failEdit: () => {}, land: () => {} };
+      calls.updateAdminTestItem = mock(
+        (id: string) =>
+          new Promise((resolve) => {
+            held.land = () => resolve(new Full({ id, title: "Hopper" }));
+          }),
+      );
+      calls.adminTestItem = mock(
+        () =>
+          new Promise((_, reject) => {
+            held.failEdit = () => reject(new Error("edit load failed"));
+          }),
+      );
+      return held;
+    };
+    const failEditDuringWrite = async () => {
+      const held = heldWriteAndFailingEdit();
+      await click(buttonOf("base.edit"));
+      await waitFor(() => calls.adminTestItem?.mock.calls.length === 1);
+      const writing = storeDo.updateAdminTestItem(offPageId, { title: "Hopper" });
+      await act(async () => held.failEdit());
+      expect(dialog()).not.toBeNull();
+      expect(buttonOf("base.updateModel")).toBeUndefined();
+      await act(async () => {
+        held.land();
+        await writing;
+      });
+      await waitFor(viewing("Hopper"));
+    };
+    let loadView: (typeof calls)[string] | undefined;
+    let unmount = () => {};
+    beforeAll(() => {
+      loadView = calls.adminTestItem;
+    });
+    afterEach(() => {
+      unmount();
+      unmount = () => {};
+      if (loadView) calls.adminTestItem = loadView;
+      setState({ searchParams: {} });
+    });
+
+    test("keeps the view it went back to once the write lands", async () => {
+      makeStore();
+      replaces.length = 0;
+      setState({ searchParams: { topMenu: "account", action: "view", modelId: offPageId } });
+      ({ unmount } = await mount(
+        <AdminPanel slice={slice} components={viewComponents} actions={["edit", "view"]} viewInUrl />,
+        viewing("Grace"),
+      ));
+
+      await failEditDuringWrite();
+      expect(viewing("Hopper")()).toBe(true);
+      expect(replaces).toEqual([]);
+    });
+
+    test("keeps the view it went back to when the form still held that record from an earlier edit", async () => {
+      makeStore();
+      replaces.length = 0;
+      setState({ searchParams: { topMenu: "account", action: "view", modelId: offPageId } });
+      ({ unmount } = await mount(
+        <AdminPanel slice={slice} components={viewComponents} actions={["edit", "view"]} viewInUrl />,
+        viewing("Grace"),
+      ));
+      await click(buttonOf("base.edit"));
+      await waitFor(() => !!buttonOf("base.updateModel"));
+      await click(dialog()?.querySelector<HTMLElement>('[aria-label="Close"]'));
+      await waitFor(viewing("Grace"));
+
+      await failEditDuringWrite();
+      expect(viewing("Hopper")()).toBe(true);
+      expect(replaces).toEqual([]);
+    });
+
+    test("leaves a view opened while the edit loaded open when the edit then fails", async () => {
+      makeStore();
+      replaces.length = 0;
+      setState({ searchParams: { topMenu: "account", action: "view", modelId: offPageId } });
+      ({ unmount } = await mount(
+        <AdminPanel slice={slice} components={viewComponents} actions={["edit", "view"]} viewInUrl />,
+        viewing("Grace"),
+      ));
+      const held = { failEdit: () => {}, landView: () => {} };
+      calls.adminTestItem = mock((id: string) =>
+        id === otherId
+          ? new Promise((resolve) => {
+              held.landView = () => resolve(new Full({ id, title: "Linus" }));
+            })
+          : new Promise((_, reject) => {
+              held.failEdit = () => reject(new Error("edit load failed"));
+            }),
+      );
+
+      await click(buttonOf("base.edit"));
+      await waitFor(() => calls.adminTestItem?.mock.calls.length === 1);
+      const viewingOther = storeDo.viewAdminTestItem(otherId);
+      await act(async () => held.failEdit());
+      await act(async () => {
+        held.landView();
+        await viewingOther;
+      });
+      await waitFor(viewing("Linus"));
+      expect(viewing("Linus")()).toBe(true);
+      expect(paramsOf(replaces.at(-1)?.href).modelId).toBe(otherId);
+    });
   });
 
   test("removes from the view behind the row's confirm, then closes it and takes its params out", async () => {
