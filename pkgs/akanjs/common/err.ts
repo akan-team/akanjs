@@ -53,7 +53,7 @@ export class Err extends AkanError<string, Record<string, unknown>> {
     this.details = option.details;
     this.path = option.path;
     this.timestamp = option.timestamp;
-    //? Non-enumerable, so `{ ...err }` and a structured clone see what they saw before `code` came from the payload.
+    //? A symbol, not `#private`, which throws on a proxied error; non-enumerable, so `{ ...err }` does not copy it.
     if (code !== undefined) Object.defineProperty(this, wireCode, { value: code });
   }
 
@@ -83,13 +83,12 @@ export class Err extends AkanError<string, Record<string, unknown>> {
     };
   }
 
-  //? `this` is the status class it was called on, or `undefined` when called detached, which restores a plain `Err`.
-  static fromJSON(this: typeof Err | undefined, payload: ErrPayload): Err {
-    return new (this ?? Err)(payload.error, payload.data, payload);
+  static fromJSON(this: unknown, payload: ErrPayload): Err {
+    const Restored = typeof this === "function" ? (this as typeof Err) : Err;
+    return new Restored(payload.error, payload.data, payload);
   }
 
-  /** A keyed error of this status class's status, and one of `keys` when any are named. Read off `error` and
-   * `statusCode`, so a restored remote one passes too. */
+  //? Read off `error` and `statusCode`, not `instanceof`, so a duck-typed remote error passes too.
   static override is<Key extends string>(error: unknown, ...keys: Key[]): error is Err & { readonly error: Key };
   //? Never chosen by a direct call; it keeps `typeof Err` assignable to `typeof AkanError`. Called through a
   //? `typeof AkanError` reference, it still reads `codes` as dictionary keys.

@@ -594,6 +594,14 @@ async refreshStock() {
         }),
       },
       {
+        rule: "no-import-common-err",
+        scope: l.trans({ en: "`apps/**` `libs/**`, except tests", ko: "`apps/**` `libs/**` (테스트 제외)" }),
+        desc: l.trans({
+          en: "A value import of `Err` from `akanjs/common`, whose keys are unchecked. Import it from `dict` or a client entry.",
+          ko: "key를 검사하지 않는 `akanjs/common`의 `Err`를 값으로 import합니다. `dict`나 client 엔트리에서 import합니다.",
+        }),
+      },
+      {
         rule: "no-import-server-in-client",
         scope: l.trans({
           en: "`ui/` `webkit/` `page/` `common/`, `*.store.ts` `*.constant.ts`, every `.tsx`",

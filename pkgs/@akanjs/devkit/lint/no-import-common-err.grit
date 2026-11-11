@@ -1,0 +1,31 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// `akanjs/common`'s `Err` takes any string, so a mistyped key compiles and `no-throw-raw-error`, which only knows a raw
+// `Error`, passes it. The `Err` from an app's or lib's dict is the same class typed with that dictionary's keys.
+//
+// `import type` stays legal, to annotate a caught `Err`: a type cannot be constructed. A namespace import is not
+// matched, since the rule cannot tell `common.Err` from the helpers such an import is for.
+or {
+  or {
+    JsShorthandNamedImportSpecifier() as $specifier where { $specifier <: r"Err" },
+    JsNamedImportSpecifier() as $specifier where { $specifier <: r"Err\s+as\s[\s\S]*" }
+  } where {
+    $specifier <: within JsImport() as $statement,
+    not $statement <: r"import\s+type[\s\S]*"
+  },
+  JsExportNamedFromSpecifier() as $specifier where {
+    $specifier <: r"Err(?:\s+as\s[\s\S]*)?",
+    $specifier <: within JsExport() as $statement,
+    not $statement <: r"export\s+type[\s\S]*"
+  }
+} where {
+  $statement <: contains JsModuleSource() as $source where {
+    $source <: r"[\x22']akanjs/common(?:/(?:err|index)(?:\.ts)?)?[\x22']"
+  },
+  register_diagnostic(
+    span = $specifier,
+    message = "Do not import `Err` from akanjs/common: it takes any string, so a mistyped key compiles. Import the typed `Err` from the app/lib dict on the server (import { Err } from '../dict') or from the package client entrypoint in UI ('@libs/<lib>/client', '@apps/<app>/client'), and register the key in that module's dictionary `.error({})`. `common/` and `env/` have no legal `Err`: keep throwing code out of them. Write 'import type' if only the type is needed.",
+    severity = "error"
+  )
+}

@@ -15,6 +15,8 @@ This is the common failure. Import `Err` from the source matching the **runtime 
 - server code: `import { Err } from "../dict"`
 - UI: `from "@libs/<lib>/client"` or `from "@apps/<app>/client"`
 
+Never `from "akanjs/common"` (`no-import-common-err.grit`): that `Err` takes any string, so a mistyped key compiles.
+
 ## Where the rule does not apply
 
 The lint rule exempts tests, `*.constant.ts`, `common/**`, and `env/**`. The last two have **no legal `Err`

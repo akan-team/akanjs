@@ -608,7 +608,7 @@ export declare class Err extends AkanError<string, Record<string, unknown>> {
     toJSON(): ErrPayload & {
         statusCode: number;
     };
-    static fromJSON(this: typeof Err | undefined, payload: ErrPayload): Err;
+    static fromJSON(this: unknown, payload: ErrPayload): Err;
     static is<Key extends string>(error: unknown, ...keys: Key[]): error is Err & {
         readonly error: Key;
     };
