@@ -1,5 +1,35 @@
 <!-- akan:generated -->
 
+## Choosing What To Open
+
+One rule: **an endpoint is open to an agent when the same person could do the same thing from the page, under
+the same guards.** What stays closed is closed because no agent has a reason to call it, not because of who may
+— and that is the only thing `mcp: false` says.
+
+| Endpoint | Decision |
+|---|---|
+| Domain read slices (`inOrg`, `inProject`, `inSelf`, `byStatuses`) | Open. A named slice publishes only when it declares its **own** `guards`; the `slice()` map reaches the root slice and the generated CRUD, never a named slice. A search slice only on data that may be enumerated. |
+| The root slice and generated CRUD | Published by default; `root:` is `Admin`, so a user token never lists it. Take the cost line first: `mcp: { cru: false }` keeps the reads and drops the writes of a model whose write entries are most of its bytes; `mcp: false` for an internal or sensitive model. |
+| Domain mutations (`startTask`, `completeTicket`) | Open when a person would ask an agent to do it for them; a resource guard is mandatory. An act that cannot be undone — signing, paying, sending, removing — either stays off or says so in its `.desc()`: MCP has no approval card. |
+| Steps of a UI state machine (`requestPhoneCodeForSignin`, `setPasswordInPrepareUser`, a prepare-user flow) | `mcp: false`. Perfectly guarded, and only ever called by mistake. |
+| Authentication, SSO, and the OAuth protocol endpoints | Already `mcp: false` where they are declared. |
+| File upload, an `Any` / `Upload` return, a required `Any` argument, `pubsub` / `message`, `light<Model>` | Refused by the framework; nothing to write. |
+| Admin-only endpoints | Leave the `Admin` guard; an account-scope guard hides the entry from every caller it refuses. |
+| An act only a person may take (signing, paying, sending to a customer) | `guards: [Every, Person]` refuses every agent and, because `Person` declares `static agents = false`, takes the entry out of the catalogue document — no `mcp: false` needed, the HTTP route untouched. When a person and a model may both call but not to the same effect, keep the guards and take `.with(AgentCall)` to narrow what the call sets in motion. |
+
+- **Scope is what makes hiding possible.** `static scope: "account"` (a role check) is evaluated with no arguments
+  and filters the listing per caller; `"resource"` (`Can<Verb><Model>`, ownership) needs `context.getArg()`, stays
+  listed, and stops the call. Marking a resource guard `"account"` would make the listing lie — the marker has no
+  default for that reason. An `"account"` guard that throws at listing time reached for arguments it does not
+  have: the entry is hidden from every caller and the guard is named once in the log as mismarked.
+- **Identity comes from the internal args** (`.with(Self)`, `.with(Account)`, `.with(Me)`), never from an id the
+  client sent, and the service re-checks ownership behind the guard.
+- **An admin who signs in on the consent page mints an admin token.** A connector created under an admin account
+  passes `Admin` guards; treat that as an operational decision, and read the request's subject type when in doubt.
+- **Return what answers the question.** A count-or-summary endpoint taking an id beats a document; a nullable model
+  return publishes no `outputSchema`, so prefer a non-null return plus an `Err`. Bulky page-only fields are
+  `field.visual`. Narrow a list with a named filter slice, never with the root list's raw `query`.
+
 ## Writing `instructions`
 
 `*.abstract.md` never reaches an MCP client, and `<Agent.Guide>` only through an MCP App's view, from inside the app's

@@ -2,15 +2,16 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type BackendEnv, dayjs, ID, ImageResult } from "akanjs/base";
+import { type BackendEnv, dayjs, getEnv, ID, ImageResult } from "akanjs/base";
+import { MCP_FAILURE_META, type McpFailure } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
-import { type AgentToolsAdaptor, AgentToolsRole, ServiceModel, serve } from "akanjs/service";
+import { type AgentToolsAdaptor, AgentToolsRole, adapt, InjectError, ServiceModel, serve } from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
 import { Exception } from "../../signal/exception";
 import type { Guard, GuardScope } from "../../signal/guard";
 import { Public } from "../../signal/guards";
 import { internal } from "../../signal/internal";
-import { CallerAccount, type InternalArg, Ip, Req } from "../../signal/internalArg";
+import { CallerAccount, type InternalArg, Ip, Machine, Req } from "../../signal/internalArg";
 import { middleware } from "../../signal/middleware";
 import { serverSignal } from "../../signal/serverSignal";
 import type { SignalContext } from "../../signal/signalContext";
@@ -29,10 +30,11 @@ import { McpRouter } from "./McpRouter";
 
 class BearerAccount extends middleware("bearerAccount") {
   override async use() {
+    const { appName, environment } = getEnv();
     return async (context: SignalContext, next: () => Promise<unknown>) => {
-      const { req } = context.getHttpContext<{ account?: { id: string } }>();
+      const { req } = context.getHttpContext<{ account?: { id?: string } }>();
       const id = req.headers.get("authorization")?.replace(/^Bearer /, "");
-      Object.assign(req, { account: id ? { id } : undefined });
+      Object.assign(req, { account: id ? { id } : { appName, environment } });
       return await next();
     };
   }
@@ -42,7 +44,7 @@ class HasAccount implements Guard {
   static name = "HasAccount";
   static scope: GuardScope = "account";
   canPass(context: SignalContext) {
-    return !!context.get<{ id?: string }>("account");
+    return !!context.get<{ id?: string }>("account")?.id;
   }
 }
 
@@ -95,6 +97,13 @@ class ToolsEndpoint extends endpoint(serverResolverTestServiceModel, (builder) =
     .query(String, { guards: [Public], nullable: true })
     .with(Ip, { nullable: true })
     .exec((ip) => ip),
+  callerMachine: builder
+    .query(String, { guards: [Public], nullable: true })
+    .with(Machine, { nullable: true })
+    .exec((machine) => machine?.id ?? null),
+  limitedTitle: builder
+    .query(String, { guards: [Public], rateLimit: { calls: 1, windowMs: 60_000 } })
+    .exec(() => "limited"),
   orgHeader: builder
     .query(String, { guards: [Public], nullable: true })
     .with(Req)
@@ -131,7 +140,22 @@ class ToolsSlice extends slice(
 class ToolsInternal extends internal(serverResolverTestServiceModel, () => ({})) {}
 class ToolsServerSignal extends serverSignal(ToolsEndpoint, ToolsInternal) {}
 
-class AgentRunService extends serve("agentRun" as const, ({ plug }) => ({ agentTools: plug(AgentToolsRole) })) {}
+class AgentToolsUser extends adapt("agentToolsUser" as const, ({ plug }) => ({ agentTools: plug(AgentToolsRole) })) {}
+
+let bootAnswers: unknown[] = [];
+class AgentRunService extends serve("agentRun" as const, ({ plug }) => ({
+  agentTools: plug(AgentToolsRole),
+  agentToolsUser: plug(AgentToolsUser),
+})) {
+  override async onInit() {
+    const caught = (error: unknown) => error;
+    bootAnswers = await Promise.all([
+      this.agentTools.listAs(null).catch(caught),
+      this.agentTools.callAs(null, { id: "boot", name: "echoTitle", args: { id: itemId } }).catch(caught),
+      this.agentTools.callAs(null, { id: "boot", name: "echoTitle", args: {} }, { allow: [] }).catch(caught),
+    ]);
+  }
+}
 const agentRunService = ServiceModel.from(AgentRunService);
 class AgentRunEndpoint extends endpoint(agentRunService, () => ({})) {}
 class AgentRunInternal extends internal(agentRunService, () => ({})) {}
@@ -212,14 +236,14 @@ const mcpRequest = (bearer: string | null, body?: object) =>
   });
 const mcpToolNames = async (bearer: string | null) =>
   (await mcp().listFor(mcpRequest(bearer))).tools.map((tool) => tool.name).sort((a, b) => a.localeCompare(b));
-const mcpCallText = async (bearer: string | null, name: string, args: Record<string, unknown>) => {
+const mcpCallFailure = async (bearer: string | null, name: string, args: Record<string, unknown>) => {
   const body = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } };
   const routes = mcp().createRoutes() as unknown as { "/mcp": { POST: (req: Request) => Promise<Response> } };
   const { result } = (await (await routes["/mcp"].POST(mcpRequest(bearer, body))).json()) as {
-    result: { content: { text: string }[]; isError: boolean };
+    result: { content: { text: string }[]; isError: boolean; _meta: { [MCP_FAILURE_META]: McpFailure } };
   };
   expect(result.isError).toBe(true);
-  return result.content[0]?.text;
+  return { error: result.content[0]?.text, code: result._meta[MCP_FAILURE_META].code };
 };
 
 const call = async (account: unknown, name: string, args: Record<string, unknown> = {}, caller = {}) =>
@@ -231,6 +255,24 @@ describe("AgentTools", () => {
     expect(di.getService<AgentRunService>("agentRun").agentTools).toBe(tools as never);
     expect(di.registry.adaptor.get(AgentToolsRole)).toBe(tools as never);
     expect(di.live.adaptor.has(AgentToolsRole.refName)).toBe(false);
+  });
+
+  test("is what an adaptor plugging AgentToolsRole receives", () => {
+    expect(di.getService<AgentRunService>("agentRun").agentToolsUser.agentTools).toBe(tools as never);
+  });
+
+  test("refuses a call made before the endpoints exist, and caches nothing from it", async () => {
+    expect(bootAnswers).toHaveLength(3);
+    for (const answer of bootAnswers) {
+      expect(answer).toBeInstanceOf(InjectError);
+      expect((answer as InjectError).code).toBe("notInitialized");
+    }
+    expect((await tools.listAs(ann)).map((tool) => tool.name)).toContain("echoTitle");
+    expect(await call(ann, "echoTitle", { id: itemId })).toEqual({
+      id: "call-1",
+      name: "echoTitle",
+      result: `${itemId}:echo`,
+    });
   });
 
   test("lists for an account exactly what /mcp lists for a bearer of it", async () => {
@@ -258,11 +300,17 @@ describe("AgentTools", () => {
     const allow = ["echoTitle", "quietTitle", "personTitle", "unguardedTitle", "missingTitle"];
     expect((await tools.listAs(ann, { allow })).map((tool) => tool.name)).toEqual(["echoTitle"]);
     for (const name of ["quietTitle", "personTitle", "unguardedTitle"])
-      expect(await call(ann, name, {}, { allow })).toEqual({ id: "call-1", name, error: `Unknown tool: ${name}.` });
+      expect(await call(ann, name, {}, { allow })).toEqual({
+        id: "call-1",
+        name,
+        error: `Unknown tool: ${name}.`,
+        code: "unknownTool",
+      });
     expect(await call(ann, "whoAmI", {}, { allow: ["echoTitle"] })).toEqual({
       id: "call-1",
       name: "whoAmI",
       error: "Unknown tool: whoAmI.",
+      code: "unknownTool",
     });
   });
 
@@ -282,8 +330,16 @@ describe("AgentTools", () => {
       id: "call-1",
       name: "whoAmI",
       error: "You are not permitted to perform this action.",
+      code: "forbidden",
     });
     expect((await call(null, "orgHeader", {}, forged)).result).toBe("org-1");
+  });
+
+  test("takes a machine claim off the account, as only a verified machine token may set one", async () => {
+    const claimed = { id: "ann", machine: { kind: "worker", id: "forged", version: 1 } };
+    expect((await call(claimed, "callerMachine")).result).toBeNull();
+    expect((await call(claimed, "whoAmI")).result).toBe("ann");
+    expect(claimed.machine.id).toBe("forged");
   });
 
   test("reports the ip it was given and never one a forwarded header claims", async () => {
@@ -292,14 +348,25 @@ describe("AgentTools", () => {
     expect((await call(ann, "callerIp", {}, { headers: forwarded })).result).toBeNull();
   });
 
-  test("answers failures with the text /mcp gives, never throwing", async () => {
+  test("spends the endpoint's own rate limit, per pinned ip", async () => {
+    const first = { ip: "203.0.113.20" };
+    expect((await call(ann, "limitedTitle", {}, first)).result).toBe("limited");
+    expect((await call(ann, "limitedTitle", {}, first)).code).toBe("base.error.tooManyRequests");
+    expect((await call(ann, "limitedTitle", {}, { ip: "203.0.113.21" })).result).toBe("limited");
+  });
+
+  test("answers failures with the text and code /mcp gives, never throwing", async () => {
     const failing: [string, Record<string, unknown>][] = [
       ["lockedTitle", {}],
       ["renameTitle", { id: itemId }],
       ["echoTitle", { id: itemId, extra: 1 }],
     ];
     for (const [name, args] of failing)
-      expect((await call(ann, name, args)).error).toBe(await mcpCallText("ann", name, args));
+      expect(await call(ann, name, args)).toEqual({
+        id: "call-1",
+        name,
+        ...(await mcpCallFailure("ann", name, args)),
+      });
     expect((await call(ann, "renameTitle", { id: itemId })).error).toBe('Missing required argument "title".');
   });
 
@@ -319,6 +386,7 @@ describe("AgentTools", () => {
       env,
       live: di.live,
       middleware: di.modules.middleware,
+      endpointsBuilt: () => true,
       readOnly: true,
       excludeEndpoints: ["echoTitle"],
     });

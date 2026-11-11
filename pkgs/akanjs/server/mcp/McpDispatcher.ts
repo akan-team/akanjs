@@ -37,7 +37,7 @@ interface McpDispatcherProps {
   legacyTextBlock?: boolean;
 }
 
-export type McpAnswer = { value: unknown } | { images: ImageResultValue[] } | { error: string };
+export type McpAnswer = { value: unknown } | { images: ImageResultValue[] } | { error: string; code: string };
 
 export class McpDispatcher {
   static readonly logger = new Logger("McpDispatcher");
@@ -95,16 +95,18 @@ export class McpDispatcher {
   // `call` without the envelope or the 401 challenge: an in-process caller has no client to send for a credential.
   async answer(exposed: McpExposedEndpoint, args: Record<string, unknown>, req: Request): Promise<McpAnswer> {
     const found = this.#index().get(exposed.key);
-    if (!found) return { error: `Tool "${exposed.key}" is declared but not mounted on this server.` };
+    const crashed = McpDispatcher.#crashed.code;
+    if (!found) return { error: `Tool "${exposed.key}" is declared but not mounted on this server.`, code: crashed };
     try {
       const wire = await this.#exec(exposed.key, found, args, req);
       if (exposed.endpoint.returns.refName !== ImageResult.refName)
         return { value: McpDispatcher.#readable(exposed, wire) };
       if (wire === null || wire === undefined) return { value: null };
       const images = McpDispatcher.#images(exposed, wire);
-      return images ? { images } : { error: "The server failed to complete this request." };
+      return images ? { images } : { error: "The server failed to complete this request.", code: crashed };
     } catch (error) {
-      return { error: this.#message(error, McpDispatcher.#statusOf(error), exposed.refName) };
+      const status = McpDispatcher.#statusOf(error);
+      return { error: this.#message(error, status, exposed.refName), code: McpDispatcher.#codeOf(error, status).code };
     }
   }
 

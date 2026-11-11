@@ -55,7 +55,7 @@
     "server/rscWorkerHost.ts#RscWorker": 80,
     "server/webRouter.ts#WebRouter": 81,
     "service/predefinedAdaptor/sql/SqlDocumentStore.ts#SqlDocumentStore": 99,
-    "signal/signalContext.ts#SignalContext": 73,
+    "signal/signalContext.ts#SignalContext": 72,
     "store/storeInstance.ts#StoreInstance": 68
   }
 }

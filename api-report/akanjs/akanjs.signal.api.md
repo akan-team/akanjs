@@ -1446,7 +1446,6 @@ export declare class SignalContext<Ctx extends HttpExecutionContext | WebSocketE
     get<T = unknown>(key: string): T | null;
     getClientIp(): null | string;
     static carryClientIp(target: Request, source: Request): void;
-    static pinClientIp(target: Request, ip: null | string): void;
     static clientIpOf(req: Request): null | string;
     static isTrustedHop(req: Request): boolean;
     getClientPort(): null | number;

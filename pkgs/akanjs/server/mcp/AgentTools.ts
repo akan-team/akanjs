@@ -8,13 +8,14 @@ import {
   type AgentWireToolCall,
   type AgentWireToolResult,
   adapt,
+  InjectError,
   type InjectRegistry,
   type LiveRegistry,
 } from "akanjs/service";
+import { carriedClientIps } from "../../signal/carriedClientIps";
 import { McpDocument, type McpExposedEndpoint } from "../../signal/mcp";
 import type { MiddlewareCls } from "../../signal/middleware";
 import { FetchSerializer } from "../../signal/serializer";
-import { SignalContext } from "../../signal/signalContext";
 import type { DiLifecycle } from "../di/diLifecycle";
 import { AgentToolsAccount } from "./AgentToolsAccount";
 import { McpDispatcher } from "./McpDispatcher";
@@ -37,6 +38,7 @@ interface AgentToolsProps extends AgentToolsCatalogue {
   env: BackendEnv;
   live: LiveRegistry;
   middleware: ReadonlyMap<string, MiddlewareCls>;
+  endpointsBuilt: () => boolean;
 }
 
 export class AgentTools extends adapt("agentTools") implements AgentToolsAdaptor {
@@ -59,7 +61,10 @@ export class AgentTools extends adapt("agentTools") implements AgentToolsAdaptor
   }
 
   // Before the services stage, which injects it: it wraps this container's registry and middlewares, which no stage hands over.
-  static provide({ registry, live, modules }: DiLifecycle, { env, mcpOption, mcpReadOnly }: AgentToolsServer) {
+  static provide(
+    { registry, live, modules, initTimings }: DiLifecycle,
+    { env, mcpOption, mcpReadOnly }: AgentToolsServer,
+  ) {
     const tools = new AgentTools({
       ...mcpOption,
       readOnly: mcpReadOnly,
@@ -67,6 +72,7 @@ export class AgentTools extends adapt("agentTools") implements AgentToolsAdaptor
       env,
       live,
       middleware: modules.middleware,
+      endpointsBuilt: () => initTimings.has("endpoints"),
     });
     registry.adaptorRole.set(AgentToolsRole, AgentTools);
     registry.adaptorCls.set(AgentToolsRole.refName, AgentToolsRole);
@@ -89,11 +95,12 @@ export class AgentTools extends adapt("agentTools") implements AgentToolsAdaptor
 
   async callAs(account: unknown, call: AgentWireToolCall, caller: AgentToolsCaller = {}): Promise<AgentWireToolResult> {
     const { id, name } = call;
-    const exposed = caller.allow && !caller.allow.includes(name) ? undefined : this.#getDocument().findTool(name);
+    const document = this.#getDocument();
+    const exposed = caller.allow && !caller.allow.includes(name) ? undefined : document.findTool(name);
     // Security: outside `allow` reads exactly like nonexistent, as `/mcp` answers an unpublished name.
-    if (!exposed) return { id, name, error: `Unknown tool: ${name}.` };
+    if (!exposed) return { id, name, error: `Unknown tool: ${name}.`, code: "unknownTool" };
     const answer = await this.#dispatcher.answer(exposed, call.args ?? {}, this.#request(account, caller));
-    if ("error" in answer) return { id, name, error: answer.error };
+    if ("error" in answer) return { id, name, error: answer.error, code: answer.code };
     if ("value" in answer) return { id, name, result: answer.value };
     return AgentTools.#withImages(exposed, call, answer.images);
   }
@@ -116,7 +123,8 @@ export class AgentTools extends adapt("agentTools") implements AgentToolsAdaptor
     const forwarded = new Headers(headers);
     for (const header of AgentTools.#dropped) forwarded.delete(header);
     const req = new Request(`${AgentTools.#origin}/agent-tools`, { method: "POST", headers: forwarded });
-    SignalContext.pinClientIp(req, ip);
+    // Security: no proxy wrote this request's forwarding headers, so they never count.
+    carriedClientIps.set(req, { ip, trustedHop: false });
     if (account !== null && account !== undefined) AgentToolsAccount.vouch(req, account);
     return req;
   }
@@ -124,6 +132,11 @@ export class AgentTools extends adapt("agentTools") implements AgentToolsAdaptor
   // Lazy: the signals it reads are registered only once DI has built every endpoint, after this adaptor exists.
   #getDocument() {
     if (this.#document) return this.#document;
+    if (!this.#props.endpointsBuilt())
+      throw new InjectError(
+        "notInitialized",
+        "AgentToolsRole answers only once the server has built its endpoints, after every service's onInit. Call listAs or callAs from a request, a job or a schedule.",
+      );
     const lookup = new DictionaryLookup(this.#props.language ?? "en");
     this.#document = new McpDocument(FetchSerializer.serializeRegistry(this.#props.live).signal, {
       resolveDescription: (key) => lookup.text(key),

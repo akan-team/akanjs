@@ -7,7 +7,14 @@ export class AgentToolsAccount {
   static readonly #vouched = new WeakMap<Request, { account: unknown }>();
 
   static vouch(req: Request, account: unknown) {
-    AgentToolsAccount.#vouched.set(req, { account });
+    AgentToolsAccount.#vouched.set(req, { account: AgentToolsAccount.#withoutMachine(account) });
+  }
+
+  // Security: this runs after `MachineAccount`, so a `machine` left on the account would reach `.with(Machine)` unverified.
+  static #withoutMachine(account: unknown) {
+    if (typeof account !== "object" || account === null || !("machine" in account)) return account;
+    const { machine: _unverified, ...claims } = account;
+    return claims;
   }
 
   use() {

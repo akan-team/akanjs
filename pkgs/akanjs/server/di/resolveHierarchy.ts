@@ -169,7 +169,7 @@ export function resolveAdaptorHierarchy(
 
     for (const [propKey, injectInfo] of Object.entries(injectMap)) {
       if (injectInfo.type === "plug") {
-        if (!injectInfo.adaptor) continue;
+        if (!injectInfo.adaptor || injectInfo.adaptor === AgentToolsRole) continue;
         const depKey = classToKey.get(injectInfo.adaptor);
         if (!depKey) {
           throw new Error(

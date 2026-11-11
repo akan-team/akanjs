@@ -503,10 +503,14 @@ A server-side agent loop or a queue job reaches the same catalogue with no token
 `readOnly`, `Person`, the account guards, masking and the refusal text — and the call's `origin` is `"mcp"`, so
 `isAgentCall` and `.with(AgentCall)` treat it as an agent's. `allow` only narrows. It is built from the DI
 registry, so a batch server, which mounts no `/mcp`, has it too; the per-caller `/mcp` budget does not apply, an
-endpoint's own `rateLimit` does. A failure never throws: it comes back as the result's `error`.
+endpoint's own `rateLimit` does. A tool's failure never throws: it comes back as the result's `error` and `code`.
+An adaptor may plug the role too. Neither method works before the server has built its endpoints, so a call from an
+`onInit` throws `InjectError` `notInitialized`; call from a request, a job or a schedule. A page's `page().app()` tools
+are left out: `/mcp` `tools/list` shows them, `listAs` does not, and `callAs` answers `Unknown tool`.
 
 - **The account is trusted as given.** It is put on the call after the middleware chain, so pass one the server
   resolved, never client input, and resolve a stored one again before reusing it: a revoked session is not noticed.
+  Its `machine` field is removed, since only a verified machine token may set one.
 - **`headers` are forwarded without `authorization`, `cookie` and `origin`**; `ip` is what `getClientIp()` and an
   ip-scoped `rateLimit` read, unknown by default.
 
