@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
+import { BareErrorScanner } from "./bareErrorScanner";
 import { ComponentSizeScanner } from "./componentSizeScanner";
 import { ComponentWriteChainScanner } from "./componentWriteChainScanner";
 import { EndpointReach } from "./endpointReach";
@@ -97,6 +98,16 @@ export interface StoreAccessViolation {
   recorded?: number;
 }
 
+export interface BareErrorViolation {
+  kind: "bareError";
+  rule: "akan.error.bare-error";
+  key: string;
+  file: string;
+  line: number;
+  lines: number[];
+  recorded?: number;
+}
+
 export interface BaselineGrowth {
   kind: "baselineGrowth";
   rule: "akan.baseline.growth";
@@ -110,14 +121,25 @@ export interface BaselineGrowth {
   measured?: boolean;
 }
 
+export interface StaleTotal {
+  kind: "staleTotal";
+  rule: DebtRuleId;
+  key: string;
+  file: string;
+  line: number;
+  count: number;
+  recorded: number;
+}
+
 export type MaintainabilityViolation =
   | SizeViolation
   | ClassSizeViolation
   | MultiWriteViolation
   | StoreAccessViolation
   | WritePlacementViolation
-  | LoopCallViolation;
-export type MaintainabilityFailure = MaintainabilityViolation | BaselineGrowth;
+  | LoopCallViolation
+  | BareErrorViolation;
+export type MaintainabilityFailure = MaintainabilityViolation | BaselineGrowth | StaleTotal;
 
 export type BaselineSeed = "written" | "kept" | "removed" | "clean";
 
@@ -133,6 +155,7 @@ export class MaintainabilityContract {
     "akan.component.store-access",
     "akan.write.placement",
     "akan.service.call-in-loop",
+    "akan.error.bare-error",
     "akan.baseline.growth",
   ] as const;
   static readonly #measuredFiles = "{lib,ui,webkit,srvkit,common,plugin}/**/*.{ts,tsx,md}";
@@ -180,23 +203,33 @@ export class MaintainabilityContract {
       existing === null ? new MaintainabilityBaseline() : MaintainabilityBaseline.parse(existing, this.baselinePath);
     const tightened = baseline.tightenedBy(violations);
     if (fix && existing !== null) await this.#tighten(baseline, tightened);
-    const failures: MaintainabilityFailure[] = violations
-      .filter((violation) => !baseline.allows(violation))
-      .map((violation) => {
-        const recorded = baseline.recordedOf(violation);
-        return recorded === undefined ? violation : { ...violation, recorded };
-      });
     //? Without fix the file on disk is what merges, so an entry it holds above the measured count is checked as written.
     const working = fix ? tightened : baseline;
-    const source = `${reference.label}:${this.sysPath}/${MaintainabilityBaseline.fileName}`;
-    const committed =
-      reference.text !== null
-        ? MaintainabilityBaseline.parse(reference.text, source, { lenient: true })
-        : working.isEmpty
-          ? null
-          : await this.#measuredAt(reference.ref);
-    if (committed === null) return failures;
     const lines = ((await this.#readBaseline()) ?? "").split(/\r?\n/);
+    const failures: MaintainabilityFailure[] = [
+      ...working.staleTotals(violations).map(
+        ({ rule, count, recorded }): StaleTotal => ({
+          kind: "staleTotal",
+          rule,
+          key: MaintainabilityBaseline.totalKey,
+          file: MaintainabilityBaseline.fileName,
+          line: MaintainabilityContract.#lineOf(lines, rule, MaintainabilityBaseline.totalKey),
+          count,
+          recorded,
+        }),
+      ),
+      ...baseline.unallowed(violations).map((violation) => {
+        const recorded = baseline.recordedOf(violation);
+        return recorded === undefined ? violation : { ...violation, recorded };
+      }),
+    ];
+    const source = `${reference.label}:${this.sysPath}/${MaintainabilityBaseline.fileName}`;
+    const recorded =
+      reference.text !== null ? MaintainabilityBaseline.parse(reference.text, source, { lenient: true }) : null;
+    const unrecorded = new Set(working.rulesOutside(recorded));
+    const measured = unrecorded.size ? await this.#measuredAt(reference.ref) : null;
+    if (recorded === null && measured === null) return failures;
+    const committed = (recorded ?? new MaintainabilityBaseline()).withSectionsOf(measured, unrecorded);
     const growths = working
       .grownFrom(committed)
       .map(
@@ -207,7 +240,7 @@ export class MaintainabilityContract {
           line: MaintainabilityContract.#lineOf(lines, rule, growth.key),
           debtRule: rule,
           reference: reference.label,
-          ...(reference.text === null ? { measured: true } : {}),
+          ...(unrecorded.has(rule) ? { measured: true } : {}),
           ...growth,
         }),
       )
@@ -234,17 +267,37 @@ export class MaintainabilityContract {
 
   async #measurePackage() {
     const files = (await this.#packageFiles()).filter(MaintainabilityLimits.isPackageSource);
+    const packageName = await this.#packageName();
     const violations = await Promise.all(
       files.map(async (file) => {
         const workspaceFile = `${this.sysPath}/${file}`;
         const content = await this.#read(workspaceFile);
-        return MaintainabilityContract.#measurePackageFile(file, this.#sourceOf(workspaceFile, content).sourceFile);
+        return MaintainabilityContract.#measurePackageFile(
+          file,
+          this.#sourceOf(workspaceFile, content).sourceFile,
+          MaintainabilityLimits.holdsBareErrors(packageName, file),
+        );
       }),
     );
     return violations.flat();
   }
 
-  static #measurePackageFile(file: string, sourceFile: ts.SourceFile) {
+  async #packageName() {
+    const manifest = `${this.sysPath}/package.json`;
+    const text = this.#tree
+      ? this.#tree.get(manifest)
+      : existsSync(path.join(this.#workspaceRoot, manifest))
+        ? await this.#read(manifest)
+        : undefined;
+    try {
+      const { name } = JSON.parse(text ?? "{}") as { name?: unknown };
+      return typeof name === "string" ? name : null;
+    } catch {
+      return null;
+    }
+  }
+
+  static #measurePackageFile(file: string, sourceFile: ts.SourceFile, holdsBareErrors: boolean) {
     const violations: MaintainabilityViolation[] = [];
     const maxLines = MaintainabilityLimits.packageFileMaxLines;
     const lineCount = MaintainabilityLimits.lineCountOf(sourceFile.text);
@@ -274,6 +327,16 @@ export class MaintainabilityContract {
         owner: name,
         memberCount,
         maxMembers: MaintainabilityLimits.classMaxMembers,
+      });
+    const bareErrors = holdsBareErrors ? new BareErrorScanner().lines(sourceFile) : [];
+    if (bareErrors.length)
+      violations.push({
+        kind: "bareError",
+        rule: "akan.error.bare-error",
+        key: file,
+        file,
+        line: bareErrors[0] ?? 1,
+        lines: bareErrors,
       });
     return violations;
   }
@@ -426,15 +489,16 @@ export class MaintainabilityContract {
     return { ref, label: ref === "HEAD" ? ref : ref.slice(0, 12), text };
   }
 
-  //* With no baseline file at the reference, the debt its code already holds is the floor: none for a scope new to the
-  //* branch or one whose paid-off file was removed, and the breaches it had for a scope that adopts the gate here.
+  //* With no baseline file at the reference, or no section there for a rule, the debt its code already holds is the
+  //* floor: none for a scope new to the branch or one whose paid-off file was removed, and the breaches it had for a
+  //* scope that adopts the gate here or a rule this version adds.
   async #measuredAt(ref: string) {
     if ((await this.#git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`])) === null) return null;
     const roots = [this.sysPath, ...this.#libNames.map((libName) => `libs/${libName}`)];
     const contract = new MaintainabilityContract(this.#workspaceRoot, this.#scope, this.#libNames);
     contract.#tree = await new GitRevision(this.#workspaceRoot).filesAt(
       ref,
-      (file) => /\.(tsx?|md)$/.test(file),
+      (file) => /\.(tsx?|md)$/.test(file) || file === `${this.sysPath}/package.json`,
       roots,
     );
     return MaintainabilityBaseline.of(await contract.measure());
@@ -492,6 +556,7 @@ export class MaintainabilityContract {
       lines.findIndex((line) => line.includes(`${JSON.stringify(rule)}:`)),
       0,
     );
+    if (key === MaintainabilityBaseline.totalKey) return from + 1;
     const idx = lines.findIndex((line, lineIdx) => lineIdx >= from && line.includes(`${JSON.stringify(key)}:`));
     return Math.max(idx + 1, 1);
   }

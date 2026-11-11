@@ -40,3 +40,8 @@ discards what the endpoint chose to say, and a bare `Error` is generalized to "I
 way out.
 
 Korean `.error()` messages end in `다.`.
+
+**The framework's own failures carry a code.** A `NoDocumentError`, an `Exception` status class or another
+`AkanError` names its kind in `code`; branch on that with `AkanError.is(error, "<code>")`, never on its message.
+
+Every code, its status and whether the caller's JSON carries it: `get_guideline` with `errorCodes`.

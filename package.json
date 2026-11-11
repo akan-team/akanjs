@@ -33,6 +33,7 @@
     "release:typecheck-consumer": "bun infra/test/runPackedConsumer.ts",
     "release:smoke-registry": "bun run akan reset-registry && bun run akan smoke-registry --test=true --tag=rc --registry=http://127.0.0.1:4873",
     "api:report": "bun infra/test/runApiReport.ts",
+    "error:codes": "bun pkgs/@akanjs/devkit/errorCodeReference.ts && bun run akan agent install",
     "akan": "bun pkgs/@akanjs/cli/build.ts && bun dist/pkgs/@akanjs/cli/index.js",
     "testPkgs": "bun run buildAkan && for p in akanjs @akanjs/devkit @akanjs/cli @akanjs/native @akanjs/language @akanjs/vscode create-akan-workspace use-agentic; do printf '\\n== %s\\n' \"$p\" && bun run runAkan test \"$p\" || exit 1; done",
     "typecheckPkgs": "for p in pkgs/akanjs pkgs/@akanjs/devkit pkgs/@akanjs/cli pkgs/@akanjs/native pkgs/@akanjs/language pkgs/@akanjs/vscode pkgs/use-agentic; do printf '\\n== %s\\n' \"$p\" && bunx tsc --noEmit -p \"$p/tsconfig.json\" || exit 1; done",

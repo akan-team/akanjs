@@ -1,4 +1,5 @@
 import { AbstractDoc } from "./abstractDoc";
+import { MaintainabilityBaseline } from "./maintainabilityBaseline";
 import type {
   DebtRuleId,
   MaintainabilityCommands,
@@ -7,7 +8,7 @@ import type {
 } from "./maintainabilityContract";
 import { type FileKind, MaintainabilityLimits } from "./maintainabilityLimits";
 
-type FixKey = FileKind | "package" | Exclude<MaintainabilityRuleId, "akan.size.file">;
+type FixKey = FileKind | "package" | "staleTotal" | Exclude<MaintainabilityRuleId, "akan.size.file">;
 
 export class MaintainabilityReport {
   static readonly #clientSplitFix =
@@ -48,8 +49,12 @@ export class MaintainabilityReport {
       "A server write leaves the browser through one store action, started by one module component. Move a `fetch.<mutation>` into a store action, and hand `ui/` and `webkit/` code the write as an `onX` prop or hook argument from the module's `Zone` or `Util`: they stay free of any one model, and an agent or another screen reaches the write through the store.",
     "akan.service.call-in-loop":
       "Load the set once (`load<Model>Many(ids)`, one filter query) or write it once (`create<Model>Many(rows)`, one batch method), then loop in memory: a call per item is a round trip per item, so the endpoint slows as its input grows.",
+    "akan.error.bare-error":
+      "Construct an `AkanError` subclass from `akanjs/base` with a code the caller can branch on, and a `statusCode` when it answers a request: an existing class whose code fits, or a new one beside the code that fails; a class extending a built-in Error extends `AkanError` instead. A failure another process reported travels as itself. The package's total is what is held, so moving a bare Error between files passes and `akan lint` rewrites the entries.",
     "akan.baseline.growth":
       "Restore the entry from the default branch, then split the file or move the writes instead: `akan lint` lowers an entry as the code shrinks and never raises one.",
+    staleTotal:
+      "Run `akan verify <package>`, which lowers the section, and commit `akan.baseline.json` in this change: a recorded total above the code is room for a new failure anywhere. A bare `akan verify` covers only uncommitted files.",
   };
 
   static readonly #labels: { [key in FixKey]?: string } = {
@@ -65,7 +70,9 @@ export class MaintainabilityReport {
     "akan.component.store-access": "component or hook reaching the store often",
     "akan.write.placement": "write sent outside a store action or module component",
     "akan.service.call-in-loop": "service call per item",
+    "akan.error.bare-error": "bare Error",
     "akan.baseline.growth": "baseline entry",
+    staleTotal: "baseline total",
   };
 
   static readonly #units: { [rule in DebtRuleId]: string } = {
@@ -79,6 +86,7 @@ export class MaintainabilityReport {
     "akan.component.write-chain": "writes",
     "akan.write.placement": "writes",
     "akan.service.call-in-loop": "calls per item",
+    "akan.error.bare-error": "bare Errors",
   };
 
   static describe(sysPath: string, failures: MaintainabilityFailure[], commands: MaintainabilityCommands = {}) {
@@ -118,13 +126,17 @@ export class MaintainabilityReport {
   }
 
   static #problemOf(failure: MaintainabilityFailure) {
+    if (failure.kind === "staleTotal")
+      return `records ${failure.recorded} ${MaintainabilityReport.#units[failure.rule]} in all, above the ${failure.count} the code holds`;
     if (failure.kind === "baselineGrowth") {
       const entry = `entry "${failure.key}" under ${failure.debtRule}`;
       const units = MaintainabilityReport.#units[failure.debtRule];
+      if (failure.key === MaintainabilityBaseline.totalKey)
+        return `${failure.debtRule} allows ${failure.count} ${units} in all, above the ${failure.committed ?? 0} ${failure.measured ? `the code at ${failure.reference} holds with no entry for its rule recorded there` : `at ${failure.reference}`}; the baseline may only shrink`;
       if (failure.measured)
         return failure.committed === undefined
-          ? `${entry} is debt the code at ${failure.reference} does not hold, and with no baseline there the baseline may only shrink from that code`
-          : `${entry} allows ${failure.count} ${units}, above the ${failure.committed} the code at ${failure.reference} holds with no baseline there; the baseline may only shrink`;
+          ? `${entry} is debt the code at ${failure.reference} does not hold, and with no entry for its rule recorded there the baseline may only shrink from that code`
+          : `${entry} allows ${failure.count} ${units}, above the ${failure.committed} the code at ${failure.reference} holds with no entry for its rule recorded there; the baseline may only shrink`;
       return failure.committed === undefined
         ? `${entry} is not in the baseline at ${failure.reference}, which may only shrink`
         : `${entry} allows ${failure.count} ${units}, above the ${failure.committed} at ${failure.reference}; the baseline may only shrink`;
@@ -143,6 +155,10 @@ export class MaintainabilityReport {
     }
     if (failure.kind === "writePlacement")
       return `sends ${failure.writes.length} server write(s) from outside a store action or a module component: ${failure.writes.join(", ")}${grown}`;
+    if (failure.kind === "bareError") {
+      const plural = failure.lines.length === 1 ? "" : "s";
+      return `constructs or extends ${failure.lines.length} bare Error${plural}, on line${plural} ${failure.lines.join(", ")}${grown}, and the package's total grew`;
+    }
     if (failure.kind === "loopCall")
       return `service method ${failure.owner} calls once per item: ${failure.calls.join(", ")}${grown}`;
     if (failure.kind === "classSize")
@@ -163,6 +179,7 @@ export class MaintainabilityReport {
   }
 
   static #fixKeyOf(sysPath: string, failure: MaintainabilityFailure): FixKey {
+    if (failure.kind === "staleTotal") return "staleTotal";
     if (failure.rule !== "akan.size.file") return failure.rule;
     if (sysPath.startsWith("pkgs/")) return "package";
     return MaintainabilityLimits.fileKindOf(failure.file) ?? "akan.size.component";

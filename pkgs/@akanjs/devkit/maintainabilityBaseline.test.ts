@@ -39,6 +39,14 @@ const placementOf = (file: string, writes: string[]): MaintainabilityViolation =
   line: 1,
   writes,
 });
+const bareOf = (file: string, count: number): MaintainabilityViolation => ({
+  kind: "bareError",
+  rule: "akan.error.bare-error",
+  key: file,
+  file,
+  line: 1,
+  lines: Array.from({ length: count }, (_, idx) => idx + 1),
+});
 const baselineOf = (
   sections: { [rule in DebtRuleId]?: Record<string, number> },
   reasons: Record<string, string> = {},
@@ -215,6 +223,47 @@ describe("MaintainabilityBaseline", () => {
       ["lib/a/A.Zone.tsx#Canvas", reason],
     ]);
     expect(baseline.tightenedBy([]).reasons.size).toBe(0);
+  });
+
+  test("holds a total rule to the sum of its section: a moved count passes, a raised sum names the files that rose", () => {
+    const baseline = baselineOf({ "akan.error.bare-error": { "server/a.ts": 2, "server/b.ts": 1 } });
+
+    expect(baseline.unallowed([bareOf("server/c.ts", 3)])).toEqual([]);
+    expect(baseline.unallowed([bareOf("server/a.ts", 3), bareOf("server/b.ts", 1)])).toEqual([
+      bareOf("server/a.ts", 3),
+    ]);
+    expect(baseline.tightenedBy([bareOf("server/c.ts", 2)]).sections.get("akan.error.bare-error")).toEqual(
+      new Map([["server/c.ts", 2]]),
+    );
+    expect(baseline.tightenedBy([bareOf("server/a.ts", 4)]).sections.get("akan.error.bare-error")).toEqual(
+      new Map([
+        ["server/a.ts", 2],
+        ["server/b.ts", 1],
+      ]),
+    );
+    expect(baselineOf({ "akan.error.bare-error": { "server/c.ts": 3 } }).grownFrom(baseline)).toEqual([]);
+    expect(baselineOf({ "akan.error.bare-error": { "server/c.ts": 4 } }).grownFrom(baseline)).toEqual([
+      { rule: "akan.error.bare-error", key: MaintainabilityBaseline.totalKey, count: 4, committed: 3 },
+    ]);
+    expect(baseline.grownFrom(new MaintainabilityBaseline())).toEqual([
+      { rule: "akan.error.bare-error", key: MaintainabilityBaseline.totalKey, count: 3, committed: undefined },
+    ]);
+  });
+
+  test("names a total recorded above the code's and no other, on a total rule only", () => {
+    const baseline = baselineOf({
+      "akan.size.file": { "lib/a/A.Zone.tsx": 900 },
+      "akan.error.bare-error": { "server/a.ts": 2, "server/b.ts": 1 },
+    });
+
+    expect(baseline.staleTotals([bareOf("server/a.ts", 2)])).toEqual([
+      { rule: "akan.error.bare-error", count: 2, recorded: 3 },
+    ]);
+    expect(baseline.staleTotals([])).toEqual([{ rule: "akan.error.bare-error", count: 0, recorded: 3 }]);
+    expect(baseline.staleTotals([bareOf("server/c.ts", 3)])).toEqual([]);
+    expect(baseline.staleTotals([bareOf("server/c.ts", 4)])).toEqual([]);
+    expect(baseline.tightenedBy([bareOf("server/a.ts", 1)]).staleTotals([bareOf("server/a.ts", 1)])).toEqual([]);
+    expect(new MaintainabilityBaseline().staleTotals([])).toEqual([]);
   });
 
   test("prints the rule sections in rule order with sorted keys, as Biome would, and reprints them unchanged", () => {

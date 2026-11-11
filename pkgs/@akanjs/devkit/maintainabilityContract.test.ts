@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { MaintainabilityBaseline } from "./maintainabilityBaseline";
 import { MaintainabilityContract } from "./maintainabilityContract";
@@ -506,6 +506,7 @@ describe("MaintainabilityContract rules", () => {
       "akan.component.store-access",
       "akan.write.placement",
       "akan.service.call-in-loop",
+      "akan.error.bare-error",
       "akan.baseline.growth",
     ]);
     const root = await makeWorkspace({
@@ -954,6 +955,306 @@ describe("MaintainabilityContract packages", () => {
         "  pkgs/@demo/core/server/host.ts:1  akan.size.function  function boot has 210 lines, over the 150-line limit, up from 200\n" +
         "How to fix:\n" +
         "  function: Split it by family into named functions or a collaborator class, each under the limit, keeping its signature for callers.",
+    );
+  });
+});
+
+describe("MaintainabilityContract bare errors", () => {
+  const manifest = '{ "name": "akanjs" }\n';
+  const akanjsOf = (root: string) => new MaintainabilityContract(root, { type: "pkg", name: "akanjs" });
+  const failing = (count: number, prefix = "f") =>
+    `${Array.from(
+      { length: count },
+      (_, idx) => `export const ${prefix}${idx} = () => {\n  throw new Error("${idx}");\n};`,
+    ).join("\n")}\n`;
+  const shapes = `import { AkanError } from "akanjs/base";
+import { Err } from "akanjs/dictionary";
+export const a = () => {
+  throw new globalThis.Error("1");
+};
+export const b = () => {
+  throw Object.assign(new Error("2"), { statusCode: 400 });
+};
+export const c = (err?: Error) => {
+  throw err ?? Error("3");
+};
+export const d = (x: boolean) => {
+  throw x ? new TypeError("4a") : new RangeError("4b");
+};
+export const e = () => {
+  const failure = new Error("5");
+  throw failure;
+};
+export const f = () => {
+  throw (<Error>new Error("6"))!;
+};
+export const g = () => new Promise((_, reject) => reject(new Error("7") satisfies Error));
+class LocalError extends Error {}
+export const h = () => {
+  throw new LocalError("9");
+};
+export const i = (Error: ErrorConstructor) => {
+  throw new Error("shadowed by a parameter");
+};
+export const j = () => {
+  const TypeError = class {};
+  throw new TypeError();
+};
+export const k = (input: unknown) => {
+  if (input === 1) throw new AkanError("coded", "coded", { statusCode: 400 });
+  if (input === 2) throw new Err.NotFound("base.error.missing");
+  if (input instanceof Error) Error.captureStackTrace(input);
+  throw new DOMException("aborted", "AbortError");
+};
+`;
+  const baselineAt = async (root: string) =>
+    MaintainabilityBaseline.parse(
+      await readFile(path.join(root, "pkgs/akanjs/akan.baseline.json"), "utf8"),
+    ).sections.get("akan.error.bare-error");
+
+  test("counts each built-in Error constructed, rejected or extended under server/, service/ and signal/ of akanjs", async () => {
+    const root = await makeWorkspace({
+      "pkgs/akanjs/package.json": manifest,
+      "pkgs/akanjs/server/shapes.ts": shapes,
+      "pkgs/akanjs/signal/fail.ts": failing(1),
+      "pkgs/akanjs/service/run.test.ts": failing(2),
+      "pkgs/akanjs/client/run.ts": failing(2),
+      "pkgs/akanjs/service/imported.ts": `import { Error } from "./errors";\nexport const fail = () => new Error("x");\n`,
+      "pkgs/framework/package.json": manifest,
+      "pkgs/framework/server/fail.ts": failing(1),
+      "pkgs/other/package.json": '{ "name": "other" }\n',
+      "pkgs/other/server/fail.ts": failing(1),
+    });
+
+    expect(await akanjsOf(root).measure()).toEqual([
+      {
+        kind: "bareError",
+        rule: "akan.error.bare-error",
+        key: "server/shapes.ts",
+        file: "server/shapes.ts",
+        line: 4,
+        lines: [4, 7, 10, 13, 13, 16, 20, 22, 23],
+      },
+      {
+        kind: "bareError",
+        rule: "akan.error.bare-error",
+        key: "signal/fail.ts",
+        file: "signal/fail.ts",
+        line: 2,
+        lines: [2],
+      },
+    ]);
+    expect(await new MaintainabilityContract(root, { type: "pkg", name: "framework" }).measure()).toMatchObject([
+      { rule: "akan.error.bare-error", key: "server/fail.ts" },
+    ]);
+    expect(await new MaintainabilityContract(root, { type: "pkg", name: "other" }).measure()).toEqual([]);
+  });
+
+  test("holds the package's total, so a rename or a split passes and the entries follow the code", async () => {
+    const root = await makeWorkspace({
+      "pkgs/akanjs/package.json": manifest,
+      "pkgs/akanjs/server/host.ts": failing(3),
+    });
+    await akanjsOf(root).seed();
+    await commitAll(root);
+    await git(root, "checkout", "-q", "-b", "feat");
+
+    await git(root, "mv", "pkgs/akanjs/server/host.ts", "pkgs/akanjs/server/moved.ts");
+    expect(await akanjsOf(root).enforce({ fix: false })).toEqual([]);
+    expect(await akanjsOf(root).enforce({ fix: true })).toEqual([]);
+    expect(await baselineAt(root)).toEqual(new Map([["server/moved.ts", 3]]));
+
+    await writeText(path.join(root, "pkgs/akanjs/server/moved.ts"), failing(1));
+    await writeText(path.join(root, "pkgs/akanjs/signal/extracted.ts"), failing(2, "g"));
+    expect(await akanjsOf(root).enforce({ fix: false })).toEqual([]);
+    expect(await akanjsOf(root).enforce({ fix: true })).toEqual([]);
+    expect(await baselineAt(root)).toEqual(
+      new Map([
+        ["server/moved.ts", 1],
+        ["signal/extracted.ts", 2],
+      ]),
+    );
+
+    await writeText(path.join(root, "pkgs/akanjs/signal/extracted.ts"), failing(1, "g"));
+    expect(await akanjsOf(root).enforce({ fix: true })).toEqual([]);
+    expect(await baselineAt(root)).toEqual(
+      new Map([
+        ["server/moved.ts", 1],
+        ["signal/extracted.ts", 1],
+      ]),
+    );
+  });
+
+  test("fails a new bare Error anywhere, naming the file whose count rose", async () => {
+    const root = await makeWorkspace({
+      "pkgs/akanjs/package.json": manifest,
+      "pkgs/akanjs/server/host.ts": failing(3),
+    });
+    await akanjsOf(root).seed();
+    await commitAll(root);
+    await writeText(path.join(root, "pkgs/akanjs/service/fresh.ts"), failing(1));
+
+    const contract = akanjsOf(root);
+    const failures = await contract.enforce({ fix: false });
+
+    expect(failures).toMatchObject([{ rule: "akan.error.bare-error", key: "service/fresh.ts", lines: [2] }]);
+    expect(contract.describe(failures)).toBe(
+      "[maintainability] 1 violation(s) in pkgs/akanjs:\n" +
+        "  pkgs/akanjs/service/fresh.ts:2  akan.error.bare-error  constructs or extends 1 bare Error, on line 2, and the package's total grew\n" +
+        "How to fix:\n" +
+        "  bare Error: Construct an `AkanError` subclass from `akanjs/base` with a code the caller can branch on, and a `statusCode` when it answers a request: an existing class whose code fits, or a new one beside the code that fails; a class extending a built-in Error extends `AkanError` instead. A failure another process reported travels as itself. The package's total is what is held, so moving a bare Error between files passes and `akan lint` rewrites the entries.",
+    );
+
+    await writeText(path.join(root, "pkgs/akanjs/server/host.ts"), failing(4));
+    await Bun.write(path.join(root, "pkgs/akanjs/service/fresh.ts"), "export const fine = 1;\n");
+    expect(await akanjsOf(root).enforce({ fix: false })).toMatchObject([
+      { rule: "akan.error.bare-error", key: "server/host.ts", lines: [2, 5, 8, 11], recorded: 3 },
+    ]);
+  });
+
+  test("refuses a working total raised over the fork point's, whatever file it is recorded under", async () => {
+    const root = await makeWorkspace({
+      "pkgs/akanjs/package.json": manifest,
+      "pkgs/akanjs/server/host.ts": failing(2),
+    });
+    await akanjsOf(root).seed();
+    await commitAll(root);
+    await writeText(path.join(root, "pkgs/akanjs/server/host.ts"), failing(3));
+    await akanjsOf(root).seed({ force: true });
+
+    const contract = akanjsOf(root);
+    const failures = await contract.enforce({ fix: false });
+
+    expect(failures).toMatchObject([
+      { kind: "baselineGrowth", debtRule: "akan.error.bare-error", key: "(total)", count: 3, committed: 2, line: 2 },
+    ]);
+    expect(contract.describe(failures)).toMatch(
+      /akan\.baseline\.json:2 {2}akan\.baseline\.growth {2}akan\.error\.bare-error allows 3 bare Errors in all, above the 2 at [0-9a-f]{12}; the baseline may only shrink/,
+    );
+  });
+
+  test("refuses a paydown that keeps the baseline, so a later change cannot spend what it paid", async () => {
+    const root = await makeWorkspace({
+      "pkgs/akanjs/package.json": manifest,
+      "pkgs/akanjs/server/a.ts": failing(3),
+    });
+    await akanjsOf(root).seed();
+    await commitAll(root);
+    await git(root, "checkout", "-q", "-b", "pr-1");
+    await writeText(path.join(root, "pkgs/akanjs/server/a.ts"), failing(1));
+
+    const contract = akanjsOf(root);
+    const failures = await contract.enforce({ fix: false });
+
+    expect(failures).toEqual([
+      {
+        kind: "staleTotal",
+        rule: "akan.error.bare-error",
+        key: "(total)",
+        file: "akan.baseline.json",
+        line: 2,
+        count: 1,
+        recorded: 3,
+      },
+    ]);
+    expect(contract.describe(failures)).toBe(
+      "[maintainability] 1 violation(s) in pkgs/akanjs:\n" +
+        "  pkgs/akanjs/akan.baseline.json:2  akan.error.bare-error  records 3 bare Errors in all, above the 1 the code holds\n" +
+        "How to fix:\n" +
+        "  baseline total: Run `akan verify <package>`, which lowers the section, and commit `akan.baseline.json` in this change: a recorded total above the code is room for a new failure anywhere. A bare `akan verify` covers only uncommitted files.",
+    );
+
+    expect(await akanjsOf(root).enforce({ fix: true })).toEqual([]);
+    expect(await baselineAt(root)).toEqual(new Map([["server/a.ts", 1]]));
+    expect(await akanjsOf(root).enforce({ fix: false })).toEqual([]);
+
+    await git(root, "add", "-A");
+    await git(root, "commit", "-q", "-m", "pr 1");
+    await git(root, "checkout", "-q", "main");
+    await git(root, "merge", "-q", "--ff-only", "pr-1");
+    await git(root, "checkout", "-q", "-b", "pr-2");
+    await writeText(path.join(root, "pkgs/akanjs/signal/new.ts"), failing(2, "g"));
+
+    expect(await akanjsOf(root).enforce({ fix: false })).toMatchObject([
+      { rule: "akan.error.bare-error", key: "signal/new.ts", lines: [2, 5] },
+    ]);
+  });
+
+  test("refuses a stale total in a scope with no reference to compare with", async () => {
+    const root = await makeWorkspace({
+      "pkgs/akanjs/package.json": manifest,
+      "pkgs/akanjs/server/a.ts": failing(1),
+      "pkgs/akanjs/akan.baseline.json": '{\n  "akan.error.bare-error": {\n    "server/a.ts": 3\n  }\n}\n',
+    });
+
+    expect(await akanjsOf(root).enforce({ fix: false })).toMatchObject([{ kind: "staleTotal", count: 1, recorded: 3 }]);
+  });
+
+  test("leaves the section untouched while over budget, so a move survives a run that also added one", async () => {
+    const root = await makeWorkspace({
+      "pkgs/akanjs/package.json": manifest,
+      "pkgs/akanjs/server/a.ts": failing(3),
+      "pkgs/akanjs/server/b.ts": failing(1),
+    });
+    await akanjsOf(root).seed();
+    await commitAll(root);
+    await git(root, "checkout", "-q", "-b", "feat");
+    await writeText(path.join(root, "pkgs/akanjs/server/a.ts"), failing(2));
+    await writeText(path.join(root, "pkgs/akanjs/server/b.ts"), failing(2));
+    await writeText(path.join(root, "pkgs/akanjs/server/c.ts"), failing(1));
+
+    expect(await akanjsOf(root).enforce({ fix: true })).toMatchObject([
+      { key: "server/b.ts", recorded: 1 },
+      { key: "server/c.ts" },
+    ]);
+    expect(await baselineAt(root)).toEqual(
+      new Map([
+        ["server/a.ts", 3],
+        ["server/b.ts", 1],
+      ]),
+    );
+
+    await rm(path.join(root, "pkgs/akanjs/server/c.ts"));
+    expect(await akanjsOf(root).enforce({ fix: true })).toEqual([]);
+    expect(await baselineAt(root)).toEqual(
+      new Map([
+        ["server/a.ts", 2],
+        ["server/b.ts", 2],
+      ]),
+    );
+    expect(await akanjsOf(root).enforce({ fix: false })).toEqual([]);
+  });
+
+  test("adopts the rule in a baseline that predates it with the fork point's total, and no more", async () => {
+    const root = await makeWorkspace({
+      "pkgs/akanjs/package.json": manifest,
+      "pkgs/akanjs/server/host.ts": failing(2),
+      "pkgs/akanjs/akan.baseline.json": '{\n  "akan.size.file": {\n    "server/big.ts": 900\n  }\n}\n',
+      "pkgs/akanjs/server/big.ts": linesOf(900),
+    });
+    await commitAll(root);
+
+    await akanjsOf(root).seed({ force: true });
+    expect(await baselineAt(root)).toEqual(new Map([["server/host.ts", 2]]));
+    expect(await akanjsOf(root).enforce({ fix: false })).toEqual([]);
+
+    await writeText(path.join(root, "pkgs/akanjs/signal/fresh.ts"), failing(1));
+    await akanjsOf(root).seed({ force: true });
+    const contract = akanjsOf(root);
+    const failures = await contract.enforce({ fix: false });
+
+    expect(failures).toMatchObject([
+      {
+        kind: "baselineGrowth",
+        debtRule: "akan.error.bare-error",
+        key: "(total)",
+        count: 3,
+        committed: 2,
+        measured: true,
+      },
+    ]);
+    expect(contract.describe(failures)).toMatch(
+      /akan\.error\.bare-error allows 3 bare Errors in all, above the 2 the code at [0-9a-f]{12} holds with no entry for its rule recorded there/,
     );
   });
 });

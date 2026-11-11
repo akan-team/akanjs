@@ -45,7 +45,7 @@ export class AgentAssets {
       "modelUtil",
       "framework",
     ],
-    "akan-err": [],
+    "akan-err": ["errorCodes"],
     "akan-deps": [],
     "akan-debug": [],
     "akan-page": ["pageRule", "akanApi"],

@@ -15,6 +15,7 @@ export class MaintainabilityPaths {
     "akan.size.function",
     "akan.size.class",
     "akan.service.call-in-loop",
+    "akan.error.bare-error",
     "akan.baseline.growth",
   ]);
   readonly #specs: readonly WorkflowSpec[];
