@@ -1,5 +1,5 @@
 import { AkanError, type BackendEnv, type PromiseOrObject } from "akanjs/base";
-import type { Adaptor, AdaptorCls, LlmOption } from "akanjs/service";
+import type { Adaptor, AdaptorCls, AgentAccountResolver, LlmOption } from "akanjs/service";
 import type {
   AgentQuotaHook,
   AgentRequestPolicy,
@@ -31,6 +31,7 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   #agentRequestPolicy: AgentRequestPolicy | null | undefined;
   #agentUsage: AgentUsageHook | null | undefined;
   #agentQuota: AgentQuotaHook | null | undefined;
+  #agentAccountResolver: AgentAccountResolver | null | undefined;
   #crossSite: CrossSiteOption | undefined;
   #getRateLimit: ((env: Env) => RateLimitSetting | false) | undefined;
   #sessionRefresh: SessionRefreshHook | null | undefined;
@@ -79,6 +80,14 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   /** Asked before a turn spends the key; `false` refuses it with `agent.error.quotaExceeded`. */
   setAgentQuota(hook: AgentQuotaHook | null) {
     this.#agentQuota = hook;
+    return this;
+  }
+  /**
+   * Turns a stored principal into the account an `agentService.loop` run acts as, at its start and before each
+   * round; `null` ends the run as `"unauthorized"`. A principal is server-stored, never client input.
+   */
+  setAgentAccountResolver(resolver: AgentAccountResolver | null) {
+    this.#agentAccountResolver = resolver;
     return this;
   }
   /** Extra origins that may drive a mutation beyond the serving one and native shells; the gate is on by default. */
@@ -156,6 +165,9 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   }
   getAgentQuota(): AgentQuotaHook | null | undefined {
     return this.#agentQuota;
+  }
+  getAgentAccountResolver(): AgentAccountResolver | null | undefined {
+    return this.#agentAccountResolver;
   }
   getCrossSite(): CrossSiteOption | undefined {
     return this.#crossSite;

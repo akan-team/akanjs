@@ -239,6 +239,8 @@ method?: HttpMutationMethod;
 fileUpload?: boolean;
 /** `false` keeps it out of the MCP catalogue (default `true`); curation, not authorization — HTTP still serves it. */
 mcp?: boolean;
+/** Overrides what the key implies for a `mutation`'s MCP `destructiveHint`: `true` for one no verb gives away, such as `archiveOrder`, `false` for a `drop…` that loses nothing. */
+destructive?: boolean;
 /** The errors this endpoint throws on purpose, by status. */
 errors?: EndpointErrors;
 /** A slow subscriber of a `pubsub(Binary)`: `"coalesce"` (default) keeps only the newest frame per room, `"queue"` delivers every frame and grows the send buffer with the slowest subscriber. */

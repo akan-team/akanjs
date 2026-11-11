@@ -79,6 +79,9 @@ export class FetchSerializer {
       ...(guards?.length ? { guards } : {}),
       ...(endpointInfo.signalOption.mcp === false ? { mcp: false as const } : {}),
       ...(refusesAgents(endpointInfo.signalOption.guards) ? { agents: false as const } : {}),
+      ...(endpointInfo.signalOption.destructive !== undefined
+        ? { destructive: endpointInfo.signalOption.destructive }
+        : {}),
     };
   }
 

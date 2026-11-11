@@ -10,6 +10,7 @@ export interface McpExposureEndpoint {
   mcp?: boolean;
   /** `false` when a guard declares `static agents = false`: no model may ever pass, whatever else the guards say. */
   agents?: boolean;
+  destructive?: boolean;
 }
 
 export interface McpExposureOption {
@@ -34,9 +35,11 @@ export const mcpBaseVerbOf = (refName: string, key: string) => {
 };
 
 /** Hints never stand in for a guard; `openWorldHint` is false: every endpoint reaches this app's own database. */
-export const mcpHintsOf = (key: string, endpoint: { type: string }) => {
+export const mcpHintsOf = (key: string, endpoint: { type: string; destructive?: boolean }) => {
   const readOnly = endpoint.type === "query";
-  const destructive = !readOnly && /^(remove|delete)/.test(key);
+  const destructive =
+    !readOnly &&
+    (endpoint.destructive ?? /^(remove|delete|purge|destroy|erase|wipe|drop|cancel|bulkRemove|bulkDelete)/.test(key));
   return {
     readOnlyHint: readOnly,
     destructiveHint: destructive,

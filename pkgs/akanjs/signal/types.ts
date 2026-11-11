@@ -122,6 +122,12 @@ export interface SignalOption<Response = any, Nullable extends boolean = false, 
   /** `false` keeps it out of the MCP catalogue (default `true`); curation, not authorization — HTTP still serves it. */
   mcp?: boolean;
   /**
+   * Overrides what the key implies for a `mutation`'s MCP `destructiveHint`: `true` for one no verb gives away, such as
+   * `archiveOrder`, `false` for a `drop…` that loses nothing. `agentService.loop` refuses a destructive tool unless
+   * `approve` allows it.
+   */
+  destructive?: boolean;
+  /**
    * The errors this endpoint throws on purpose, by status. Published as OpenAPI responses and in the MCP tool's
    * description; outside production, throwing a key this leaves out is warned about once.
    */
@@ -185,6 +191,7 @@ export interface SerializedEndpoint extends SerializedSignalOption {
   /** Milliseconds; the client sizes its request budget from it. */
   timeout?: number;
   errors?: EndpointErrors;
+  destructive?: boolean;
 }
 export interface SerializedFilter {
   filter: { [key: string]: SerializedArg[] };

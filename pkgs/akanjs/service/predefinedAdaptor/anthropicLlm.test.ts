@@ -354,6 +354,7 @@ describe("AnthropicLlm.consumeStream", () => {
         'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Half"}}\n',
         "data: {not json at all\n",
         'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" an answer"}}\n',
+        'data: {"type":"message_stop"}\n',
       ]),
       () => undefined,
     );

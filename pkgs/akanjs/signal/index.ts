@@ -1,7 +1,19 @@
+export {
+  AgentMeter,
+  type AgentMeterScope,
+  type AgentQuotaCheck,
+  type AgentQuotaHook,
+  AgentRelayPolicy,
+  type AgentRequestContext,
+  type AgentRequestLimits,
+  type AgentRequestPolicy,
+  type AgentTurnContext,
+  type AgentTurnOutcome,
+  type AgentUsageHook,
+  type AgentUsageReport,
+} from "akanjs/service";
 export * from "./agent";
 export * from "./agent.signal";
-export * from "./agentMeter";
-export * from "./agentRelayPolicy";
 export * from "./agentTurn";
 export * from "./agentTurnStream";
 export * from "./base.signal";

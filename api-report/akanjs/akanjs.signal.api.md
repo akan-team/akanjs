@@ -129,6 +129,11 @@ export interface AgentTurnContext {
     headers: Headers;
     account: unknown;
     ip: null | string;
+    loop?: {
+        id: string;
+        round: number;
+    };
+    meta?: Record<string, string>;
 }
 
 export declare class AgentTurnDocument extends AgentTurnDocument_base {
@@ -1315,6 +1320,7 @@ export interface SerializedEndpoint extends SerializedSignalOption {
     returns: SerializedReturns;
     timeout?: number;
     errors?: EndpointErrors;
+    destructive?: boolean;
 }
 
 export interface SerializedFilter {
@@ -1504,6 +1510,7 @@ export interface SignalOption<Response = any, Nullable extends boolean = false, 
     method?: HttpMutationMethod;
     fileUpload?: boolean;
     mcp?: boolean;
+    destructive?: boolean;
     errors?: EndpointErrors;
     backpressure?: "coalesce" | "queue";
     live?: LiveEndpointOption;

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Err } from "akanjs/dictionary";
 import { AnthropicLlm } from "./anthropicLlm";
 import { LlmSpend } from "./llmSpend";
 import { OpenaiDialect } from "./openaiDialect";
@@ -10,6 +11,104 @@ const streamOf = (lines: string[]) =>
       controller.close();
     },
   });
+
+const toolFrame = (args: string) => [
+  `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "write", arguments: args } }] } }] })}`,
+];
+const anthropicToolFrames = (args: string) => [
+  `data: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "c1", name: "write" } })}`,
+  `data: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: args } })}`,
+];
+const finished = `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] })}`;
+const stopped = `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "tool_use" } })}`;
+const none = () => undefined;
+
+describe("a stream that did not finish", () => {
+  const openai = (lines: string[]) => OpenaiDialect.consumeStream(streamOf(lines), none, "https://llm.test");
+  const anthropic = (lines: string[]) => AnthropicLlm.consumeStream(streamOf(lines), none, "https://llm.test");
+
+  test("an OpenAI call with no finish reason or [DONE], or arguments that do not parse, is cut", async () => {
+    expect((await openai(toolFrame('{"a":1}'))).stop).toBe("length");
+    expect((await openai([...toolFrame('{"a":'), finished])).stop).toBe("length");
+    expect((await openai([...toolFrame("[1]"), finished])).stop).toBe("length");
+  });
+
+  test("an OpenAI call that finished is not, a gateway's bare [DONE] and a no-argument call included", async () => {
+    expect((await openai([...toolFrame('{"a":1}'), finished])).stop).toBe("toolUse");
+    expect((await openai([...toolFrame('{"a":1}'), "data: [DONE]"])).stop).toBe("toolUse");
+    expect((await openai([...toolFrame(""), finished])).stop).toBe("toolUse");
+  });
+
+  test("an Anthropic call with no stop reason, or arguments that do not parse, is cut", async () => {
+    expect((await anthropic(anthropicToolFrames('{"a":1}'))).stop).toBe("length");
+    expect((await anthropic([...anthropicToolFrames('{"a":'), stopped])).stop).toBe("length");
+    expect((await anthropic([...anthropicToolFrames('{"a":1}'), stopped])).stop).toBe("toolUse");
+  });
+
+  test("a text answer or an empty body with no terminal event is cut, not finished", async () => {
+    const text = `data: ${JSON.stringify({ choices: [{ delta: { content: "half a sen" } }] })}`;
+    expect(await openai([text])).toEqual({ text: "half a sen", stop: "length" });
+    expect((await openai([])).stop).toBe("length");
+    const delta = `data: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "half" } })}`;
+    expect((await anthropic([delta])).stop).toBe("length");
+    expect((await anthropic([delta, `data: ${JSON.stringify({ type: "message_stop" })}`])).stop).toBe("end");
+  });
+
+  test("parallel calls that omit or reuse an index stay separate, and a repeated id stays one call", async () => {
+    const frameOf = (fragment: object) =>
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [fragment] } }] })}`;
+    const named = (id: string, args: string) => ({ id, function: { name: "write", arguments: args } });
+    const omitted = await openai([frameOf(named("a", '{"x":1}')), frameOf(named("b", '{"y":2}')), finished]);
+    expect(omitted.stop).toBe("toolUse");
+    expect(omitted.toolCalls).toEqual([
+      { id: "a", name: "write", args: { x: 1 } },
+      { id: "b", name: "write", args: { y: 2 } },
+    ]);
+    const repeated = await openai([
+      frameOf({ index: 0, ...named("a", '{"x"') }),
+      frameOf({ index: 0, id: "a", function: { arguments: ":1}" } }),
+      finished,
+    ]);
+    expect(repeated.toolCalls).toEqual([{ id: "a", name: "write", args: { x: 1 } }]);
+  });
+
+  test("interleaved fragments still land on their own call, in index order", async () => {
+    const frameOf = (fragment: object) =>
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [fragment] } }] })}`;
+    const answer = await openai([
+      frameOf({ index: 1, id: "b", function: { name: "second", arguments: '{"b"' } }),
+      frameOf({ index: 0, id: "a", function: { name: "first", arguments: '{"a"' } }),
+      frameOf({ index: 1, function: { arguments: ":2}" } }),
+      frameOf({ index: 0, function: { arguments: ":1}" } }),
+      finished,
+    ]);
+    expect(answer.toolCalls).toEqual([
+      { id: "a", name: "first", args: { a: 1 } },
+      { id: "b", name: "second", args: { b: 2 } },
+    ]);
+  });
+
+  test("an error frame fails the turn, carrying what was streamed, instead of reading as an answer", async () => {
+    const text = `data: ${JSON.stringify({ choices: [{ delta: { content: "half an answer" } }] })}`;
+    const frame = `data: ${JSON.stringify({ error: { message: "overloaded", code: 503 } })}`;
+    const failure = await openai([text, frame]).catch((error: unknown) => error);
+    expect(Err.is(failure, "agent.error.llmRequestFailed")).toBe(true);
+    expect((failure as { data?: unknown }).data).toEqual({ provider: "llm.test", status: "503" });
+    expect(LlmSpend.of(failure)?.usage?.outputTokens).toBeGreaterThan(0);
+  });
+
+  test("an Anthropic error event fails the turn even mid tool call", async () => {
+    const frame = `data: ${JSON.stringify({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } })}`;
+    const failure = await anthropic([...anthropicToolFrames('{"a":'), frame]).catch((error: unknown) => error);
+    expect(Err.is(failure, "agent.error.llmRequestFailed")).toBe(true);
+  });
+
+  test("a prompt-too-long error frame is the same overflow a refused request is", async () => {
+    const frame = `data: ${JSON.stringify({ error: { message: "maximum context length is 8000 tokens" } })}`;
+    const failure = await openai([frame]).catch((error: unknown) => error);
+    expect(Err.is(failure, "agent.error.contextOverflow")).toBe(true);
+  });
+});
 
 describe("LLM usage", () => {
   test("OpenAI-dialect answers report usage whole and streamed, DeepSeek's cache field included", async () => {

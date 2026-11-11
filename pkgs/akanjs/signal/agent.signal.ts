@@ -1,8 +1,12 @@
 import { Any } from "akanjs/base";
-import type { AgentWireContext, AgentWireMessage, AgentWireTool } from "akanjs/service";
-import { srv } from "akanjs/service";
-import { AgentMeter } from "./agentMeter";
-import { AgentRelayPolicy } from "./agentRelayPolicy";
+import {
+  AgentMeter,
+  AgentRelayPolicy,
+  type AgentWireContext,
+  type AgentWireMessage,
+  type AgentWireTool,
+  srv,
+} from "akanjs/service";
 import { AgentTurn } from "./agentTurn";
 import { AgentTurnStream } from "./agentTurnStream";
 import { endpoint } from "./endpoint";

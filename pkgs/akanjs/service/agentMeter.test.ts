@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { LlmSpend, type LlmTurnRequest } from "akanjs/service";
 import { AgentMeter, type AgentQuotaCheck, type AgentUsageReport } from "./agentMeter";
+import type { LlmTurnRequest } from "./predefinedAdaptor/llm.adaptor";
+import { LlmSpend } from "./predefinedAdaptor/llmSpend";
 
 afterEach(() => AgentMeter.use({ usage: null, quota: null, serial: true }));
 

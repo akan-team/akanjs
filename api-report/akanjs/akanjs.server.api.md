@@ -104,6 +104,7 @@ export declare class AkanOption<Env extends BackendEnv = BackendEnv> {
     setAgentRequestPolicy(policy: AgentRequestPolicy | null): this;
     setAgentUsage(hook: AgentUsageHook | null): this;
     setAgentQuota(hook: AgentQuotaHook | null): this;
+    setAgentAccountResolver(resolver: AgentAccountResolver | null): this;
     setCrossSite(crossSite: CrossSiteOption): this;
     setRateLimit(settingOrFn: ((env: Env) => RateLimitSetting | false) | RateLimitSetting | false): this;
     setSessionRefresh(hook: SessionRefreshHook | null): this;
@@ -122,6 +123,7 @@ export declare class AkanOption<Env extends BackendEnv = BackendEnv> {
     getAgentRequestPolicy(): AgentRequestPolicy | null | undefined;
     getAgentUsage(): AgentUsageHook | null | undefined;
     getAgentQuota(): AgentQuotaHook | null | undefined;
+    getAgentAccountResolver(): AgentAccountResolver | null | undefined;
     getCrossSite(): CrossSiteOption | undefined;
     getRateLimit(env: Env): RateLimitSetting | false | undefined;
     getSessionRefresh(): SessionRefreshHook | null | undefined;
