@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { MaintainabilityContract, type MultiWriteViolation } from "@akanjs/devkit/maintainabilityContract";
-import { MaintainabilityReport } from "@akanjs/devkit/maintainabilityReport";
+import { MaintainabilityContract, type MultiWriteViolation } from "@akanjs/devkit/quality/maintainabilityContract";
+import { MaintainabilityReport } from "@akanjs/devkit/quality/maintainabilityReport";
 import type { WorkflowSpec } from "@akanjs/devkit/workflow";
 import { workflowSpecs } from "./index";
 import { MaintainabilityPaths } from "./maintainabilityPaths";

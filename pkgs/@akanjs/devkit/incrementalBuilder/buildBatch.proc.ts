@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ApplicationBuildReporter } from "@akanjs/devkit/applicationBuildReporter";
+import { ApplicationBuildReporter } from "@akanjs/devkit/app/applicationBuildReporter";
 import { resolveSsrPageEntriesForApp } from "@akanjs/devkit/artifact/implicitRootLayout";
 import { computeRouteSeedIndex, saveRouteSeedIndex } from "@akanjs/devkit/artifact/routeSeedIndex";
 import type { App } from "@akanjs/devkit/commandDecorators";

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { ModuleExecutor } from "@akanjs/devkit/executors";
-import { createTempModule, formatWithBiome, hasBiome, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
+import { createTempModule, formatWithBiome, hasBiome, tempRoots, writeText } from "@akanjs/devkit/test/testHelpers";
 import type { AddMutationInput } from "@akanjs/devkit/workflow";
 import { ModuleRunner } from "../module/module.runner";
 import { PrimitiveScript } from "./primitive.script";

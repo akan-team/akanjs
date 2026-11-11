@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { ModuleExecutor } from "@akanjs/devkit/executors";
-import { createCallRecorder, createTempModule, tempRoots } from "@akanjs/devkit/testHelpers";
+import { createCallRecorder, createTempModule, tempRoots } from "@akanjs/devkit/test/testHelpers";
 import { ModuleRunner } from "./module.runner";
 import { ModuleScript } from "./module.script";
 

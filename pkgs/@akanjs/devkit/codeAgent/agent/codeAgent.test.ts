@@ -4,7 +4,7 @@ import path from "node:path";
 import type { ExtensionAPI, InlineExtension } from "@earendil-works/pi-coding-agent";
 import { type CodeAgentEvent, type CodeAgentProfile, codeAgentPresets } from "akanjs/common";
 import { WorkspaceExecutor } from "../../executors";
-import { isolateEnv, tempDirs } from "../../testHelpers";
+import { isolateEnv, tempDirs } from "../../test/testHelpers";
 import { AkanCodePlugins } from "../tools/AkanCodePlugins";
 import { akanCodeDefaultModel, type CodeAgentModelRef } from "./akanCodeModel";
 import { akanCodePaths } from "./akanCodePaths";

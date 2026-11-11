@@ -1,5 +1,5 @@
 import { script } from "@akanjs/devkit/commandDecorators";
-import { Prompter } from "@akanjs/devkit/prompter";
+import { Prompter } from "@akanjs/devkit/guideline/prompter";
 import { Logger } from "akanjs/common";
 
 export class GuidelineScript extends script("guideline") {

@@ -115,7 +115,7 @@ export class McpAppViewBuilder {
 
   /** Every `.app()` the pages declare, read off their sources without evaluating them. */
   static async discover(pageEntries: PageEntry[], basePaths: string[]): Promise<McpAppView[]> {
-    const { RouteSourceValidator } = await import("../routeSourceValidator");
+    const { RouteSourceValidator } = await import("../app/routeSourceValidator");
     const roots = pageEntries.filter((entry) => parseRouteModuleKey(entry.key).isInternalRootLayout);
     const overrides = pageEntries.filter((entry) => parseRouteModuleKey(entry.key).kind === "overrides");
     const layoutNodes = new Set(

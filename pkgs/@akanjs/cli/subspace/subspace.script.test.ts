@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
-import type { SubspacePlan } from "@akanjs/devkit/subspace";
-import { createFakeExecutor } from "@akanjs/devkit/testHelpers";
+import type { SubspacePlan } from "@akanjs/devkit/subspace/subspace";
+import { createFakeExecutor } from "@akanjs/devkit/test/testHelpers";
 import { Logger } from "akanjs/common";
 import { SubspaceRunner } from "./subspace.runner";
 import { SubspaceScript } from "./subspace.script";

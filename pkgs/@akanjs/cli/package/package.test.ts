@@ -7,7 +7,7 @@ import {
   tempRoots,
   writeJson,
   writeText,
-} from "@akanjs/devkit/testHelpers";
+} from "@akanjs/devkit/test/testHelpers";
 import { PackageRunner } from "./package.runner";
 import { PackageScript } from "./package.script";
 

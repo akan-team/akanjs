@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { BuilderChannel } from "./builderChannel";
 
 const tempDir = tempDirs("builder-channel-");

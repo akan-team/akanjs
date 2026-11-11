@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs, writeText } from "../testHelpers";
+import { tempDirs, writeText } from "../test/testHelpers";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 
 const makeTempRoot = tempDirs("akan-client-entries-");

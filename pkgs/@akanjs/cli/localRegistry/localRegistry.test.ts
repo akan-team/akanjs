@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import path from "node:path";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
-import { createCallRecorder, createFakeExecutor, makeCliTempWorkspace, tempRoots } from "@akanjs/devkit/testHelpers";
+import {
+  createCallRecorder,
+  createFakeExecutor,
+  makeCliTempWorkspace,
+  tempRoots,
+} from "@akanjs/devkit/test/testHelpers";
 import { Logger } from "akanjs/common";
 import { LocalRegistryCommand } from "./localRegistry.command";
 import { LocalRegistryRunner } from "./localRegistry.runner";

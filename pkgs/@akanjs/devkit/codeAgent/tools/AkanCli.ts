@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { stripAnsi } from "../../stripAnsi";
+import { stripAnsi } from "../../util/stripAnsi";
 
 export interface AkanCliResult {
   command: string;

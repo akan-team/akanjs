@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, symlink } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs, writeJson } from "../testHelpers";
+import { tempDirs, writeJson } from "../test/testHelpers";
 import { WorkspaceVersionCheck } from "./workspaceVersionCheck";
 
 const makeRoot = tempDirs("akan-version-check-");

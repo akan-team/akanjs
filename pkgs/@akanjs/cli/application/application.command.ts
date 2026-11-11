@@ -1,6 +1,6 @@
 import type { DatabaseMode } from "@akanjs/devkit/akanConfig";
+import { RouteJsBudget } from "@akanjs/devkit/app/routeJsBudget";
 import { App, Apps, CliError, command, Exec, Sys, SysOrOnlyApp, Workspace } from "@akanjs/devkit/commandDecorators";
-import { RouteJsBudget } from "@akanjs/devkit/routeJsBudget";
 import { MigrationCommand } from "akanjs/server/migration/migrationCommand";
 import { MigrationError } from "akanjs/server/migration/migrationError";
 import { ApplicationScript } from "./application.script";

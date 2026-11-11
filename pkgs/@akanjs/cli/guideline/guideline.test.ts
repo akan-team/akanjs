@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
-import { Prompter } from "@akanjs/devkit/prompter";
+import { Prompter } from "@akanjs/devkit/guideline/prompter";
 
 afterEach(() => {
   CommandContainer.clear();

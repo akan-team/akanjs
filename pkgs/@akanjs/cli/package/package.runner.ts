@@ -1,12 +1,12 @@
 import path from "node:path";
 import { type Pkg, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { TypeScriptDependencyScanner } from "@akanjs/devkit/dependencyScanner";
+import { FrameworkGraph } from "@akanjs/devkit/docs/frameworkGraph";
 import { PkgExecutor } from "@akanjs/devkit/executors";
-import { FileSys } from "@akanjs/devkit/fileSys";
-import { FrameworkGraph } from "@akanjs/devkit/frameworkGraph";
-import { MaintainabilityBaseline } from "@akanjs/devkit/maintainabilityBaseline";
-import { PackageExportsMap } from "@akanjs/devkit/packageExportsMap";
-import type { PackageJson } from "@akanjs/devkit/types";
+import { MaintainabilityBaseline } from "@akanjs/devkit/quality/maintainabilityBaseline";
+import { FileSys } from "@akanjs/devkit/util/fileSys";
+import { TypeScriptDependencyScanner } from "@akanjs/devkit/workspace/dependencyScanner";
+import { PackageExportsMap } from "@akanjs/devkit/workspace/packageExportsMap";
+import type { PackageJson } from "@akanjs/devkit/workspace/types";
 import { Logger } from "akanjs/common";
 import { $ } from "bun";
 

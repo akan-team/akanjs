@@ -1,4 +1,4 @@
-import { ShellOnlyEnv } from "@akanjs/devkit/shellOnlyEnv";
+import { ShellOnlyEnv } from "@akanjs/devkit/util/shellOnlyEnv";
 import { Logger } from "akanjs/common";
 
 interface NpmPackageMetadata {

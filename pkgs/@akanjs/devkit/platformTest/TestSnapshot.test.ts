@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs, writeText } from "../testHelpers";
+import { tempDirs, writeText } from "../test/testHelpers";
 import { TestSnapshot } from "./TestSnapshot";
 
 const makeRoot = tempDirs("akan-snapshot-");

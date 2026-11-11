@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { PackageExportsMap } from "@akanjs/devkit/packageExportsMap";
+import { PackageExportsMap } from "@akanjs/devkit/workspace/packageExportsMap";
 
 //? The monorepo resolves subpaths through tsconfig `paths`, which probe extensions; a published consumer goes through
 //? the exports map, matched exactly — so `"./*": "./*"` passed every test here and broke every installed subpath.
@@ -41,7 +41,9 @@ describe("published exports map", () => {
 
   test("covers both facet shapes and keeps explicit extensions intact", () => {
     // One wildcard cannot serve bare files, directory facets and already-suffixed specifiers (no `.ts.ts`) at once.
-    expect(exportsMap.resolve("./executors")).toBe("./executors.ts");
+    expect(exportsMap.resolve("./executors")).toBe("./executors/index.ts");
+    expect(exportsMap.resolve("./fileSys")).toBe("./util/fileSys.ts");
+    expect(exportsMap.resolve("./workspaceLayout.ts")).toBe("./workspace/workspaceLayout.ts");
     expect(exportsMap.resolve("./frontendBuild")).toBe("./frontendBuild/index.ts");
     expect(exportsMap.resolve("./cloud/cloudApi.ts")).toBe("./cloud/cloudApi.ts");
     expect(exportsMap.resolve("./package.json")).toBe("./package.json");
@@ -54,5 +56,21 @@ describe("published exports map", () => {
         existsSync(path.join(packageDir, subpath, "index.ts")) && exportsMap.resolve(subpath) !== `${subpath}/index.ts`,
     );
     expect(missing).toEqual([]);
+  });
+
+  test("points every literal entry at a file, so a subpath the root once held still loads from its folder", async () => {
+    const manifest = (await Bun.file(path.join(packageDir, "package.json")).json()) as {
+      exports: Record<string, unknown>;
+    };
+    const literals = Object.keys(manifest.exports).filter((subpath) => !subpath.includes("*"));
+    expect(literals.length).toBeGreaterThan(100);
+    expect(exportsMap.findUnreachable(literals)).toEqual([]);
+  });
+
+  test("keeps every source out of the package root but its type barrel", () => {
+    const loose = [...new Bun.Glob("*.{ts,tsx}").scanSync({ cwd: packageDir })].filter(
+      (file) => file !== "index.ts" && !file.endsWith(".test.ts"),
+    );
+    expect(loose).toEqual([]);
   });
 });
