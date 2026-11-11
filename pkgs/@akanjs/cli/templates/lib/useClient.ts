@@ -18,7 +18,7 @@ ${
 const dictionary = {};`
 }
 const pageProto = makePageProto<typeof dict>(dictionary);
-const fetchProto = FetchClient.build<typeof signal>(cnst, getSerializedSignal(), { Err: pageProto.Err });
+const fetchProto = FetchClient.build<typeof signal>(cnst, getSerializedSignal());
 export const runtime = registerClientRuntime({ ...pageProto, ...fetchProto }, { scope: ${JSON.stringify(scanInfo?.type ?? "lib")} });
 
 export const { msg, Err, usePage, sig, fetch } = runtime;
