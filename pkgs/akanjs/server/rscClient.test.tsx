@@ -1385,6 +1385,41 @@ describe("rscClient patch cache", () => {
     expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
   });
 
+  test("a patch whose stream carried a server error after it was laid is asked for again, not replayed", async () => {
+    framed("/err/a", "err");
+    framed("/err/off", "erroff");
+    let release = () => {};
+    served.set("/err/b", () => {
+      const state = stateOf("/err/b", "err layouts");
+      if (fetchCountOf("/err/b") > 1) return patchResponseOf("/err/b", state);
+      const encoder = new TextEncoder();
+      const error = { digest: "5c6d7e8f", name: "Error", message: "broke", stack: [], env: "Server", owner: null };
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          controller.enqueue(encoder.encode(flight("/err/b patched")));
+          await new Promise<void>((resolve) => (release = resolve));
+          controller.enqueue(encoder.encode(`1:E${JSON.stringify(error)}\n`));
+          controller.close();
+        },
+      });
+      return new Response(body, { headers: patchResponseOf("/err/b", state).headers });
+    });
+    await navigate("/err/a");
+    await navigate("/err/b");
+    expect(shown()).toBe("/err/b patched");
+    release();
+    await act(async () => {
+      await sleep(10);
+    });
+    await navigate("/err/off");
+    await navigate("/err/a");
+
+    await navigate("/err/b");
+
+    expect(fetchCountOf("/err/b")).toBe(2);
+    expect(shown()).toBe("/err/b patched");
+  });
+
   test("a patch laid on a patch is replayed straight under its base, and the next request names it", async () => {
     framed("/ch/a", "ch");
     framed("/ch/b", "ch");

@@ -44,11 +44,12 @@ interface RscClientScreen<T> {
   pendingTarget: () => string | undefined;
 }
 
-export class RscClientCache<T> {
+export class RscClientCache<T extends object> {
   static readonly maxEntries = 32;
   readonly pages = new Map<string, RscNavigationCacheNode<T>>();
   readonly prefetches: RscPrefetchCache<RscNavigationCacheNode<T> | null>;
   #patches = new Map<string, RscPatchNavigationCacheNode<T>>();
+  #failed = new WeakSet<T>();
   #account = readAuthCookies();
   #screen: RscClientScreen<T>;
 
@@ -76,10 +77,18 @@ export class RscClientCache<T> {
     return true;
   }
 
+  noteFailedRender(thenable: T): void {
+    this.#failed.add(thenable);
+  }
+
   //? The fragment never reaches the server, so a page cached under one fragment is the payload of every other.
   pageOf(target: string): RscNavigationCacheNode<T> | undefined {
     const key = pageKeyOf(target);
-    return this.pages.get(target) ?? [...this.pages.values()].findLast((node) => pageKeyOf(node.href) === key);
+    const exact = this.pages.get(target);
+    if (exact && !this.#failed.has(exact.thenable)) return exact;
+    return [...this.pages.values()].findLast(
+      (node) => pageKeyOf(node.href) === key && !this.#failed.has(node.thenable),
+    );
   }
 
   replayedPageOf(target: string): RscNavigationCacheNode<T> | undefined {
@@ -90,7 +99,7 @@ export class RscClientCache<T> {
 
   replayPatch(target: string, navId: number, commit: (patch: RscPatchedResult<T>) => boolean): boolean {
     const key = pageKeyOf(target);
-    const cachedPatch = this.#patches.get(key);
+    const cachedPatch = this.#patchOf(key);
     if (!cachedPatch) return false;
     const patchResult = this.#patchReplayOf(cachedPatch, navId);
     if (patchResult.status === "patched") {
@@ -131,10 +140,15 @@ export class RscClientCache<T> {
     //? Not forgetAnotherAccount: only a navigation may record the change, or a page of the old account still in
     //? flight commits into the cache as the new account's.
     const account = readAuthCookies();
-    const cachedPatch = this.#patches.get(key);
+    const cachedPatch = this.#patchOf(key);
     const replayable = this.pageOf(target) || (!!cachedPatch && this.#patchReplayOf(cachedPatch).status === "patched");
     if (account === this.#account && replayable) return none;
     return this.prefetches.request(key, account, priority, this.#prefetchBase());
+  }
+
+  #patchOf(key: string): RscPatchNavigationCacheNode<T> | undefined {
+    const node = this.#patches.get(key);
+    return node && !this.#failed.has(node.thenable) ? node : undefined;
   }
 
   //? With partial commit off every prefetch is a whole page, good under any page on screen, so none is tied to one.
