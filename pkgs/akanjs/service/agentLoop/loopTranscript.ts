@@ -82,6 +82,11 @@ export class LoopTranscript {
     return last.toolCalls.filter((call) => !answered.has(call.id));
   }
 
+  //? Security: a summary replaced the results `untrusted` would judge, so an unmarked one counts as tainted to a run that judges.
+  static summaryTainted(messages: readonly AgentWireMessage[], judging: boolean): boolean {
+    return messages.some(({ summary, tainted }) => summary && (tainted ?? judging));
+  }
+
   static results(messages: readonly AgentWireMessage[]): AgentWireToolResult[] {
     return messages.flatMap((message) => (message.role === "tool" ? (message.toolResults ?? []) : []));
   }

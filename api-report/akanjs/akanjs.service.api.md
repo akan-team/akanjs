@@ -175,6 +175,7 @@ export declare class AgentService extends AgentService_base {
 
 export interface AgentTool extends AgentWireTool {
     readOnly: boolean;
+    needsConfirm?: boolean;
 }
 
 export interface AgentToolsAdaptor {
@@ -244,6 +245,7 @@ export interface AgentWireMessage {
     toolResults?: AgentWireToolResult[];
     error?: string;
     summary?: boolean;
+    tainted?: boolean;
 }
 
 export interface AgentWireReference {

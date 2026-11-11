@@ -13,6 +13,8 @@ export interface AgentToolsCaller {
 export interface AgentTool extends AgentWireTool {
   /** A query, which reads and changes nothing. */
   readOnly: boolean;
+  /** A `remove*` or `delete*` mutation: `agentService.loop` refuses it unless `approve` allows it. */
+  needsConfirm?: boolean;
 }
 
 /**

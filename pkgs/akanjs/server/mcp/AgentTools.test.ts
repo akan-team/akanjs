@@ -7,6 +7,7 @@ import { MCP_FAILURE_META, type McpFailure } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import {
   type AgentLoopEvent,
+  type AgentLoopRequest,
   type AgentService,
   type AgentToolsAdaptor,
   AgentToolsRole,
@@ -67,6 +68,15 @@ class PersonOnly implements Guard {
   static agents = false;
   canPass() {
     return true;
+  }
+}
+
+const ranEndpoints: string[] = [];
+class ArgReadingGuard implements Guard {
+  static name = "ArgReadingGuard";
+  static scope: GuardScope = "account";
+  canPass(context: SignalContext) {
+    return !!context.args[0];
   }
 }
 
@@ -139,6 +149,20 @@ class ToolsEndpoint extends endpoint(serverResolverTestServiceModel, (builder) =
   shotImage: builder
     .query(ImageResult, { guards: [Public] })
     .exec(() => ({ data: pixelPng, mimeType: "image/png", caption: "pixel" })),
+  removeTitle: builder
+    .mutation(String, { guards: [HasAccount] })
+    .param("id", ID)
+    .exec((id) => {
+      ranEndpoints.push(`removeTitle:${id}`);
+      return "gone";
+    }),
+  argGuardedTitle: builder
+    .mutation(String, { guards: [ArgReadingGuard] })
+    .param("id", ID)
+    .exec((id) => {
+      ranEndpoints.push(`argGuardedTitle:${id}`);
+      return "ran";
+    }),
   quietTitle: builder.query(String, { guards: [HasAccount], mcp: false }).exec(() => "quiet"),
   personTitle: builder.query(String, { guards: [HasAccount, PersonOnly] }).exec(() => "person"),
   unguardedTitle: builder.query(String).exec(() => "unguarded"),
@@ -448,5 +472,83 @@ describe("AgentService.loop", () => {
     ]);
     expect(llmSeen[1]?.messages.at(-1)?.role).toBe("tool");
     expect(events.at(-1)).toEqual({ type: "done", stop: "end", rounds: 2 });
+  });
+
+  const runLoop = async (request: Partial<AgentLoopRequest>, ...script: LlmTurnAnswer[]) => {
+    llmScript.splice(0, llmScript.length, ...script);
+    const events: AgentLoopEvent[] = [];
+    const agent = di.getService<AgentService>("agent");
+    const messages = [{ role: "user" as const, text: "go" }];
+    for await (const event of agent.loop({ account: ann, messages, ...request } as AgentLoopRequest))
+      events.push(event);
+    return events;
+  };
+  const resultsOf = (events: AgentLoopEvent[]) =>
+    events.flatMap((event) => (event.type === "toolResult" ? [event.result] : []));
+
+  test("marks a remove as needing a person, refuses it with no approve, and runs it once approve allows", async () => {
+    const byName = Object.fromEntries(
+      (await tools.listAs(ann, { allow: ["removeTitle", "renameTitle"] })).map((tool) => [tool.name, tool]),
+    );
+    expect(byName.removeTitle?.needsConfirm).toBe(true);
+    expect(byName.renameTitle?.needsConfirm).toBe(false);
+
+    ranEndpoints.length = 0;
+    const call = { id: "r1", name: "removeTitle", args: { id: itemId } };
+    const script: LlmTurnAnswer[] = [
+      { stop: "toolUse", toolCalls: [call] },
+      { text: "ok", stop: "end" },
+    ];
+    const allow = ["removeTitle"];
+    const refused = await runLoop({ allow }, ...script);
+    expect(ranEndpoints).toEqual([]);
+    expect(resultsOf(refused)).toEqual([
+      { id: "r1", name: "removeTitle", error: expect.stringContaining("needs a person's confirmation") },
+    ]);
+
+    const seen: unknown[] = [];
+    await runLoop(
+      {
+        allow,
+        approve: (_call, { tool }) => {
+          seen.push(tool.needsConfirm);
+          return "allow";
+        },
+      },
+      ...script,
+    );
+    expect(seen).toEqual([true]);
+    expect(ranEndpoints).toEqual([`removeTitle:${itemId}`]);
+  });
+
+  test("answers a tool this round did not list as unknown, without asking approve or running it", async () => {
+    const allow = ["argGuardedTitle", "echoTitle"];
+    expect((await tools.listAs(ann, { allow })).map((tool) => tool.name)).toEqual(["echoTitle"]);
+    ranEndpoints.length = 0;
+    const asked: string[] = [];
+    const events = await runLoop(
+      {
+        allow,
+        approve: (call) => {
+          asked.push(call.name);
+          return { deny: "no" };
+        },
+      },
+      { stop: "toolUse", toolCalls: [{ id: "h1", name: "argGuardedTitle", args: { id: itemId } }] },
+      { text: "ok", stop: "end" },
+    );
+    expect(asked).toEqual([]);
+    expect(ranEndpoints).toEqual([]);
+    expect(resultsOf(events)).toEqual([
+      { id: "h1", name: "argGuardedTitle", error: "Unknown tool: argGuardedTitle.", code: "unknownTool" },
+    ]);
+  });
+
+  test("offers nothing and runs nothing when allow is missing at runtime", async () => {
+    const seenBefore = llmSeen.length;
+    const events = await runLoop({}, { text: "never", stop: "end" });
+    expect(llmSeen).toHaveLength(seenBefore);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "error" });
   });
 });

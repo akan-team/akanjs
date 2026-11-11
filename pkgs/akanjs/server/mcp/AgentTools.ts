@@ -90,6 +90,7 @@ export class AgentTools extends adapt("agentTools") implements AgentToolsAdaptor
       ...(description ? { description } : {}),
       parameters: inputSchema,
       readOnly: annotations?.readOnlyHint === true,
+      needsConfirm: annotations?.destructiveHint === true,
     }));
   }
 

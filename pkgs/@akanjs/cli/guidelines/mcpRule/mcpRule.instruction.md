@@ -524,22 +524,31 @@ at every event.
 - **Who it acts as.** `account` is a snapshot the server resolved; `principal` is a stored id that
   `option.setAgentAccountResolver((principal) => account | null)` resolves at the start and before every round, so
   a revoked one ends the run as `"unauthorized"`. Neither is ever client input. The model is offered `allow` ∩ what
-  the account sees on `/mcp`.
+  the account sees on `/mcp`, and a call to a name that round did not list is answered as an unknown tool, neither
+  asked about nor run. A request with no `allow` array is an `error`.
 - **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
   reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
-  wrote it before reading its results. Without `approve`, a `needsConfirm` tool is refused, and so is every write
-  once tainted. `"defer"` holds the whole batch, emits `awaiting` and ends the run as `"awaiting"`.
+  wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a `remove*` or
+  `delete*` mutation — is refused, and so is every write once tainted. `"defer"` holds the whole batch, emits
+  `awaiting` and ends the run as `"awaiting"`.
 - **Resuming.** Store each message `onMessage` hands over — it is awaited, and a retried run may hand one over twice —
   and call `loop` again with them. Trailing calls nothing answered go to `approve` again before any model call, and
   the taint is rebuilt by re-applying `untrusted`, so it must judge a result by what it holds. `compacted` says the
-  first `replaced` messages are now `summary`.
+  first `replaced` messages are now `summary`. Store that message whole: its `tainted` marker stands in for the
+  results it replaced, and a summary with no marker counts as tainted to a run with `untrusted`. A batch's results
+  reach `onMessage` even when the consumer stops reading or a later call throws, so a resume runs only calls that
+  never started.
 - **Metering.** Each model call, compactions included, is its own turn for the request policy, the quota and the
   usage hook. It gets a fresh `id`, `loop { id, round }`, a copy of the request's `meta` — server-set, so it may key
   billing — empty headers and no ip. The relay's default size caps skip loop rounds; a refused quota ends the run as
   `"quota"`.
 - **Limits.** `maxRounds` (12), `budget { tokens, toolCalls, wallMs }` (`"budget"`), `signal` (`"aborted"`) and a
-  provider cut (`"length"`). There is no preamble unless `preamble` gives one, `compact { at, keep }` summarizes the
-  head, and a tool result is capped at 20,000 characters as the browser caps it. Its calls carry no ip, so an
+  provider cut (`"length"`). A limit that is not a valid number is an `error` before any model call. `wallMs` and
+  `signal` also end a run waiting on a tool or on `approve`. `callAs` cannot cancel a call, so the run stops waiting
+  and answers it with an error saying it may still finish; a resume does not run it again, and the endpoint runs on
+  with its outcome unreported. There is no preamble unless `preamble` gives one; with no `instructions` either, a
+  short neutral prompt stands in, as each adaptor's own fallback is about a screen. `compact { at, keep }` summarizes
+  the head, and a tool result is capped at 20,000 characters as the browser caps it. Its calls carry no ip, so an
   ip-scoped `rateLimit` counts them under one unknown address.
 
 ## Rolling MCP Out To An App

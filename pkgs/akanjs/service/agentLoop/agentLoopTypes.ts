@@ -20,6 +20,11 @@ export interface AgentLoopBudget {
   /** Input and output tokens summed over this run's model calls, compactions included. */
   tokens?: number;
   toolCalls?: number;
+  /**
+   * Like `signal`, also ends a run stuck in a tool or in `approve`. `callAs` cannot cancel a call: the run stops waiting
+   * and answers it with an error saying it may still finish, so a resume does not run it again, and the endpoint runs
+   * on unreported.
+   */
   wallMs?: number;
 }
 
@@ -39,6 +44,7 @@ export interface AgentLoopOptions {
   allow: readonly string[];
   /** The transcript so far, ending in a user message for a new ask or in unanswered calls for a resumed run. */
   messages: AgentWireMessage[];
+  /** With no `preamble` either, a short neutral prompt stands in, as each adaptor's own fallback is about a screen. */
   instructions?: string;
   /** Prepended to `instructions`; there is none by default, as the in-page preamble is about a screen. */
   preamble?: string;
@@ -70,7 +76,10 @@ export type AgentLoopEvent =
   | { type: "toolCall"; call: AgentWireToolCall; round: number }
   | { type: "toolResult"; result: AgentWireToolResult; round: number }
   | { type: "usage"; usage: LlmUsage; model?: string; round: number }
-  /** The first `replaced` messages of the transcript as it stands, `onMessage`'s included, are now `summary`. */
+  /**
+   * The first `replaced` messages of the transcript as it stands, `onMessage`'s included, are now `summary`. Store it
+   * whole: its `tainted` carries the run's taint across a resume.
+   */
   | { type: "compacted"; replaced: number; summary: AgentWireMessage }
   | { type: "awaiting"; call: AgentWireToolCall }
   | { type: "done"; stop: AgentLoopStop; rounds: number }

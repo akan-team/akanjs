@@ -5,12 +5,14 @@ import { AgentAccounts } from "../agentAccounts";
 import { AgentMeter, type AgentUsageReport } from "../agentMeter";
 import { AgentRelayPolicy, type AgentTurnContext } from "../agentRelayPolicy";
 import type { AgentTool, AgentToolsAdaptor, AgentToolsCaller } from "../predefinedAdaptor/agentTools.adaptor";
+import { AnthropicLlm } from "../predefinedAdaptor/anthropicLlm";
 import type {
   AgentWireMessage,
   AgentWireToolCall,
   AgentWireToolResult,
   LlmTurnRequest,
 } from "../predefinedAdaptor/llm.adaptor";
+import { OpenaiDialect } from "../predefinedAdaptor/openaiDialect";
 import { AgentLoop, type AgentLoopAnswer, type AgentLoopPort } from "./agentLoop";
 import type { AgentLoopEvent, AgentLoopRequest } from "./agentLoopTypes";
 import { LoopCompaction } from "./loopCompaction";
@@ -46,7 +48,10 @@ const calling = (...calls: AgentWireToolCall[]): AgentLoopAnswer => ({
 });
 const saying = (text: string): AgentLoopAnswer => ({ text, toolCalls: [], stop: "end", usage, model: "m1" });
 
-const harness = (answers: Scripted[], run?: (account: unknown, call: AgentWireToolCall) => AgentWireToolResult) => {
+const harness = (
+  answers: Scripted[],
+  run?: (account: unknown, call: AgentWireToolCall) => AgentWireToolResult | Promise<AgentWireToolResult>,
+) => {
   const requests: LlmTurnRequest[] = [];
   const options: TurnOptions[] = [];
   const called: { account: unknown; call: AgentWireToolCall; caller?: AgentToolsCaller }[] = [];
@@ -93,6 +98,10 @@ const ask = (text: string, extra: Partial<AgentLoopRequest> = {}): AgentLoopRequ
     messages: [{ role: "user", text }],
     ...extra,
   }) as AgentLoopRequest;
+
+const never = <T>() => new Promise<T>(() => undefined);
+const within = async <T>(work: Promise<T>, ms = 1_000) =>
+  await Promise.race([work, Bun.sleep(ms).then(() => "still running" as const)]);
 
 describe("AgentLoop rounds", () => {
   test("runs the model and the tools until it answers, handing each message over before it acts on it", async () => {
@@ -148,6 +157,24 @@ describe("AgentLoop rounds", () => {
     expect(plain.context).toEqual(context);
     expect(plain.model).toBe("m2");
     expect((await run(ask("hi", { preamble: "You run tasks." }))).instructions).toBe("You run tasks.");
+  });
+
+  test("sends its own prompt when the request names none, as each adaptor's fallback is about a screen", async () => {
+    const seenByLlm: LlmTurnRequest[] = [];
+    const service = Object.assign(new AgentService(), {
+      llm: {
+        chat: async (request: LlmTurnRequest) => {
+          seenByLlm.push(request);
+          return { text: "ok", stop: "end" as const };
+        },
+      },
+      agentTools: harness([]).port.tools,
+    });
+    for await (const _event of service.loop(ask("hi")));
+    const [request] = seenByLlm as [LlmTurnRequest];
+    expect(request.instructions).toBe(AgentLoop.noInstructions);
+    expect(AnthropicLlm.systemPrompt(request)).not.toContain("in-page");
+    expect(OpenaiDialect.systemPrompt(request)).not.toContain("in-page");
   });
 
   test("ends on a length cut with only its text kept, and at maxRounds before another model call", async () => {
@@ -285,6 +312,132 @@ describe("AgentLoop metering", () => {
     for await (const event of new AgentLoop(harness([streaming]).port, ask("go")).run())
       if (event.type === "text") break;
     expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe("AgentLoop interruption", () => {
+  const twoWrites = () => calling(callOf("c1", "renameTitle"), callOf("c2", "renameTitle"));
+
+  test("a consumer that stops after a result keeps it, so a resume does not run that write again", async () => {
+    const first = harness([twoWrites()]);
+    const stored: AgentWireMessage[] = [{ role: "user", text: "go" }];
+    const request = ask("go", { onMessage: (message) => void stored.push(message) });
+    for await (const event of new AgentLoop(first.port, request).run()) if (event.type === "toolResult") break;
+    expect(first.called.map(({ call }) => call.id)).toEqual(["c1"]);
+    expect(stored.at(-1)).toEqual({
+      role: "tool",
+      toolResults: [{ id: "c1", name: "renameTitle", result: "renameTitle:ok" }],
+    });
+
+    const resumed = harness([saying("Done.")]);
+    await drain(resumed.port, { ...ask("unused"), messages: stored });
+    expect(resumed.called.map(({ call }) => call.id)).toEqual(["c2"]);
+  });
+
+  test("a later call that throws keeps the results before it, and reports the failure", async () => {
+    const { port } = harness([twoWrites()], (_account, call) => {
+      if (call.id === "c2") throw new Error("the adaptor broke");
+      return { id: call.id, name: call.name, result: "ok" };
+    });
+    const stored: AgentWireMessage[] = [];
+    const events = await drain(port, ask("go", { onMessage: (message) => void stored.push(message) }));
+    expect(stopOf(events)).toBe("error");
+    expect(stored.at(-1)?.toolResults?.map((result) => result.id)).toEqual(["c1"]);
+  });
+
+  test("an untrusted check that throws keeps the result it was judging", async () => {
+    const { port } = harness([twoWrites()]);
+    const stored: AgentWireMessage[] = [];
+    const untrusted = () => {
+      throw new Error("the judge broke");
+    };
+    const events = await drain(port, ask("go", { untrusted, onMessage: (message) => void stored.push(message) }));
+    expect(stopOf(events)).toBe("error");
+    expect(stored.at(-1)?.toolResults?.map((result) => result.id)).toEqual(["c1"]);
+  });
+
+  test("the wall clock ends a run stuck in a tool, records it as abandoned, and a resume does not run it", async () => {
+    const { port } = harness([twoWrites()], () => never());
+    const stored: AgentWireMessage[] = [{ role: "user", text: "go" }];
+    const events = await within(
+      drain(port, ask("go", { budget: { wallMs: 5 }, onMessage: (message) => void stored.push(message) })),
+    );
+    expect(events).not.toBe("still running");
+    expect(stopOf(events as AgentLoopEvent[])).toBe("budget");
+    expect(stored.at(-1)).toEqual({
+      role: "tool",
+      toolResults: [{ id: "c1", name: "renameTitle", error: AgentLoop.abandoned }],
+    });
+    expect(LoopTranscript.pending(stored).map((call) => call.id)).toEqual(["c2"]);
+
+    const resumed = harness([saying("Checked.")]);
+    await drain(resumed.port, { ...ask("unused"), messages: stored });
+    expect(resumed.called.map(({ call }) => call.id)).toEqual(["c2"]);
+  });
+
+  test("a caller's abort ends a run stuck in a tool, and a late failure of it goes nowhere", async () => {
+    const abort = new AbortController();
+    let fail: (error: Error) => void = () => undefined;
+    const { port } = harness([twoWrites()], () => {
+      setTimeout(() => abort.abort(), 1);
+      return new Promise((_resolve, reject) => {
+        fail = reject;
+      });
+    });
+    const events = await within(drain(port, ask("go", { signal: abort.signal })));
+    expect(events).not.toBe("still running");
+    expect(stopOf(events as AgentLoopEvent[])).toBe("aborted");
+    fail(new Error("too late"));
+    await Bun.sleep(0);
+  });
+
+  test("the wall clock and a caller's abort end a run stuck in approve, running nothing", async () => {
+    const stuck = harness([twoWrites()]);
+    const approve = () => never<"allow">();
+    const events = await within(drain(stuck.port, ask("go", { approve, budget: { wallMs: 5 } })));
+    expect(events).not.toBe("still running");
+    expect(stopOf(events as AgentLoopEvent[])).toBe("budget");
+    expect(stuck.called).toHaveLength(0);
+
+    const abort = new AbortController();
+    const held = harness([twoWrites()]);
+    setTimeout(() => abort.abort(), 5);
+    const aborted = await within(drain(held.port, ask("go", { approve, signal: abort.signal })));
+    expect(aborted).not.toBe("still running");
+    expect(stopOf(aborted as AgentLoopEvent[])).toBe("aborted");
+    expect(held.called).toHaveLength(0);
+  });
+});
+
+describe("AgentLoop request checks", () => {
+  const invalid: [string, string, Partial<AgentLoopRequest>][] = [
+    ["NaN", "maxRounds", { maxRounds: Number.NaN }],
+    ["negative", "maxRounds", { maxRounds: -1 }],
+    ["fractional", "maxRounds", { maxRounds: 1.5 }],
+    ["infinite", "maxRounds", { maxRounds: Number.POSITIVE_INFINITY }],
+    ["NaN", "budget.wallMs", { budget: { wallMs: Number.NaN } }],
+    ["too large", "budget.wallMs", { budget: { wallMs: 2 ** 31 } }],
+    ["NaN", "budget.tokens", { budget: { tokens: Number.NaN } }],
+    ["negative", "budget.toolCalls", { budget: { toolCalls: -1 } }],
+    ["missing", "allow", { allow: undefined as never }],
+    ["a string", "allow", { allow: "readPage" as never }],
+  ];
+  for (const [label, name, extra] of invalid)
+    test(`refuses a ${label} ${name} before any model call`, async () => {
+      const { port, requests } = harness([saying("never")]);
+      const events = await drain(port, ask("go", extra));
+      expect(requests).toHaveLength(0);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ type: "error" });
+      const { error } = events[0] as Extract<AgentLoopEvent, { type: "error" }>;
+      expect(Err.is(error, "base.error.invalidArgument")).toBe(true);
+      expect((error as { data?: unknown }).data).toEqual({ name });
+    });
+
+  test("a wall clock already past ends the run as budget, as a deadline minus now can be negative", async () => {
+    const hanging: Scripted = (_request, options) =>
+      new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("aborted"))));
+    expect(stopOf(await drain(harness([hanging]).port, ask("go", { budget: { wallMs: -5 } })))).toBe("budget");
   });
 });
 
@@ -437,6 +590,80 @@ describe("AgentLoop resume", () => {
     );
   });
 
+  const untrustedC1 = (result: AgentWireToolResult) => result.id === "c1";
+  const pendingWrite: AgentWireMessage = { role: "assistant", toolCalls: [callOf("c9", "renameTitle")] };
+
+  test("a transcript compacted past its untrusted result resumes tainted", async () => {
+    const page = "x".repeat(1_600);
+    const first = harness(
+      [
+        calling(callOf("c1", "readPage")),
+        calling(callOf("c2", "readPage")),
+        saying("notes so far"),
+        calling(callOf("c3", "renameTitle")),
+      ],
+      (_account, call) => ({ id: call.id, name: call.name, result: page }),
+    );
+    const transcript: AgentWireMessage[] = [{ role: "user", text: "go" }];
+    const approve: AgentLoopRequest["approve"] = (call) => (call.name === "renameTitle" ? "defer" : "allow");
+    for await (const event of new AgentLoop(first.port, {
+      ...ask("unused"),
+      messages: [...transcript],
+      untrusted: untrustedC1,
+      compact: { at: 700, keep: 1 },
+      approve,
+      onMessage: (message) => void transcript.push(message),
+    }).run())
+      if (event.type === "compacted") transcript.splice(0, event.replaced, event.summary);
+    expect(transcript[0]).toEqual({ role: "user", text: "notes so far", summary: true, tainted: true });
+    expect(LoopTranscript.results(transcript).some(untrustedC1)).toBe(false);
+
+    const resumed = harness([saying("Could not.")]);
+    const events = await drain(resumed.port, { ...ask("unused"), messages: transcript, untrusted: untrustedC1 });
+    expect(resumed.called).toHaveLength(0);
+    expect(events).toContainEqual(
+      expect.objectContaining({ result: expect.objectContaining({ error: AgentLoop.taintedWrite }) }),
+    );
+  });
+
+  test("a summary with no marker fails closed when the run judges results, as what it replaced cannot be judged", async () => {
+    const { port, called } = harness([saying("Could not.")]);
+    const asked: boolean[] = [];
+    const older: AgentWireMessage[] = [{ role: "user", text: "notes", summary: true }, pendingWrite];
+    await drain(port, { ...ask("unused"), messages: older, untrusted: untrustedC1 });
+    expect(called).toHaveLength(0);
+    const approved = harness([saying("Done.")]);
+    await drain(approved.port, {
+      ...ask("unused"),
+      messages: older,
+      untrusted: untrustedC1,
+      approve: (_call, { tainted }) => {
+        asked.push(tainted);
+        return "allow";
+      },
+    });
+    expect(asked).toEqual([true]);
+  });
+
+  test("a summary marked clean stays clean, and a run that judges nothing is not tainted by an unmarked one", async () => {
+    const clean = harness([saying("Done.")]);
+    const marked: AgentWireMessage[] = [{ role: "user", text: "notes", summary: true, tainted: false }, pendingWrite];
+    await drain(clean.port, { ...ask("unused"), messages: marked, untrusted: untrustedC1 });
+    expect(clean.called.map(({ call }) => call.id)).toEqual(["c9"]);
+
+    const unjudged = harness([saying("Done.")]);
+    const unmarked: AgentWireMessage[] = [{ role: "user", text: "notes", summary: true }, pendingWrite];
+    await drain(unjudged.port, { ...ask("unused"), messages: unmarked });
+    expect(unjudged.called.map(({ call }) => call.id)).toEqual(["c9"]);
+  });
+
+  test("a summary marked tainted refuses a write even in a run that judges nothing", async () => {
+    const { port, called } = harness([saying("Could not.")]);
+    const marked: AgentWireMessage[] = [{ role: "user", text: "notes", summary: true, tainted: true }, pendingWrite];
+    await drain(port, { ...ask("unused"), messages: marked });
+    expect(called).toHaveLength(0);
+  });
+
   test("calls a later message moved past are closed as stopped, not re-asked; a settled transcript has nothing to answer", async () => {
     const asked: string[] = [];
     const { port, requests } = harness([saying("Fine.")]);
@@ -485,6 +712,22 @@ describe("AgentLoop compaction", () => {
     await Bun.sleep(0);
     expect(reports.map((report) => report.turn.loop?.round)).toEqual([1, 1]);
     expect(stopOf(events)).toBe("end");
+  });
+
+  test("a new summary records the run's verdict, and carries a marked taint through a run that judges nothing", async () => {
+    const summaryOf = async (messages: AgentWireMessage[], untrusted?: AgentLoopRequest["untrusted"]) => {
+      const { port } = harness([saying("notes"), saying("Here.")]);
+      const events = await drain(port, { ...ask("unused"), messages, compact: { at: 10, keep: 1 }, untrusted });
+      return events.find((event) => event.type === "compacted");
+    };
+    const history: AgentWireMessage[] = [
+      { role: "user", text: "x".repeat(800) },
+      { role: "assistant", text: "ok" },
+      { role: "user", text: "and now?" },
+    ];
+    expect(await summaryOf(history, () => false)).toMatchObject({ summary: { tainted: false } });
+    const marked: AgentWireMessage[] = [{ role: "user", text: "old notes", summary: true, tainted: true }, ...history];
+    expect(await summaryOf(marked)).toMatchObject({ summary: { tainted: true } });
   });
 
   test("a summary that fails leaves the transcript as it stands and the round still runs", async () => {

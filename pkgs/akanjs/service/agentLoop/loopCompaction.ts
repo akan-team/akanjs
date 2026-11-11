@@ -101,8 +101,8 @@ export class LoopCompaction {
     return [...head, `[... ${high - low + 1} messages omitted ...]`, ...tail].join("\n");
   }
 
-  static message(summary: string): AgentWireMessage {
-    return { role: "user", text: summary, summary: true };
+  static message(summary: string, tainted?: boolean): AgentWireMessage {
+    return { role: "user", text: summary, summary: true, ...(tainted === undefined ? {} : { tainted }) };
   }
 
   //? Attachments and references are named as gone: a model shown only a filename answers about the file from it.
