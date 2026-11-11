@@ -62,7 +62,12 @@ body shape — this is the full contract behind them. Before changing route beha
   `.guard()` throws when the module loads. `fn` receives the route's typed arguments and `lang` (a layout's gets no
   `children`) and may be `async`. It refuses by moving the router — `router.redirect(href)`, `router.notFound()` — or
   with `getSelf({ unauthorize })`; `signedIn()` from `@libs/shared/webkit` is that last one, called inside an arrow
-  (`.guard(() => signedIn())`), because `.guard(signedIn)` would hand the route's arguments to `unauthorize`.
+  (`.guard(() => signedIn())`), because `.guard(signedIn)` would take the route's arguments as its option.
+- **A guard's second argument `{ path }` is where the visitor was going** — the in-app path with its search, as
+  `router.push` takes it (`undefined` while MCP lists the screen): `.guard((_, { path }) => signedIn({ path }))`
+  sends a refused visitor to `/signin?redirect=<path>`. Build a redirect target from it, never an admission rule —
+  CSR asks a guard again only when the route or an argument it declared moves. Hand it only to `router.push` or
+  `router.redirect`: it can be a raw `//host`, which `window.location` would follow off the site.
 - **On the server every guard of the chain runs before any layout body starts**, root layout first and before the
   route's arguments are checked, so a redirect is a real 307 even after an awaited query, and a not-found is a 404 —
   where a `getSelf({ unauthorize })` inside a layout body under a `.loading()` redirects late after I/O, inside the

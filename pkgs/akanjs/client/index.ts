@@ -177,6 +177,7 @@ export {
   type RouteArgValue,
   type RouteBaseArgs,
   RouteDefinition,
+  type RouteGuardRequest,
   RouteGuards,
   RouteHead,
   type RouteKind,

@@ -5,6 +5,8 @@ interface GuardedLocation {
   pathRoute: PathRoute;
   params: Record<string, string>;
   searchParams: Record<string, string | string[]>;
+  pathname?: string;
+  search?: string;
 }
 
 /**
@@ -94,12 +96,16 @@ export class CsrGuards {
     CsrGuards.#released.delete(key);
   }
 
-  static async #run({ pathRoute, params, searchParams }: GuardedLocation): Promise<boolean> {
+  static async #run({ pathRoute, params, searchParams, pathname, search }: GuardedLocation): Promise<boolean> {
     const navigations = router.navigationCount();
+    //? The target's own, language too: a pushed entry's guards run before the browser's URL moves to it, and an older
+    //? history entry keeps the language it was visited in.
+    const path =
+      pathname === undefined ? undefined : `${router.routeOf(pathname, params.lang)}${search ? `?${search}` : ""}`;
     for (const render of CsrGuards.#rendersOf(pathRoute)) {
       if (!render?.guard) continue;
       try {
-        await render.guard({ params, searchParams });
+        await render.guard({ params, searchParams, path });
       } catch (error) {
         if (router.navigationCount() !== navigations) return false;
         const refusal = RouteGuards.refusalOf(error);

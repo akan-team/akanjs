@@ -836,10 +836,10 @@ export default page()
         }),
       },
       {
-        name: 'signedIn(unauthorize = "/signin")',
+        name: 'signedIn({ path, unauthorize = "/signin" })',
         desc: l.trans({
-          en: "The same check, from `@libs/shared/webkit`. Call it inside an arrow, `.guard(() => signedIn())`: `.guard(signedIn)` would hand the route's arguments to `unauthorize`.",
-          ko: "같은 검사를 하는 `@libs/shared/webkit`의 helper입니다. `.guard(() => signedIn())`처럼 arrow 안에서 부릅니다. `.guard(signedIn)`으로 넘기면 route의 인자가 `unauthorize`로 들어갑니다.",
+          en: "The same check, from `@libs/shared/webkit`, with `?redirect=<path>` on `unauthorize`; a bare string is `unauthorize`. Call it inside an arrow, `.guard((_, { path }) => signedIn({ path }))`: `.guard(signedIn)` would hand it the route's arguments.",
+          ko: "같은 검사를 하는 `@libs/shared/webkit`의 helper로, `unauthorize`에 `?redirect=<path>`를 붙입니다. 문자열 하나를 넘기면 `unauthorize`입니다. `.guard((_, { path }) => signedIn({ path }))`처럼 arrow 안에서 부릅니다. `.guard(signedIn)`으로 넘기면 route의 인자가 들어갑니다.",
         }),
       },
     ];
@@ -1984,8 +1984,8 @@ export default page()
             </div>
             <div>
               {l.trans({
-                en: "`fn` receives the route's typed arguments and `lang`; a layout's guard gets no `children`. It may be `async`, and it refuses with one of these calls:",
-                ko: "`fn`은 route의 타입이 맞춰진 인자와 `lang`을 받으며, layout의 guard는 `children`을 받지 않습니다. `async`여도 되고, 아래 호출 중 하나로 거절합니다:",
+                en: "`fn` receives the route's typed arguments and `lang` (a layout's guard gets no `children`), and a second `{ path }`: the requested in-app path with its search, as `router.push` takes it, `undefined` while MCP lists the screen. It may be `async`, and it refuses with one of these calls:",
+                ko: "`fn`은 route의 타입이 맞춰진 인자와 `lang`을 받고(layout의 guard는 `children`을 받지 않음), 두 번째 인자로 `{ path }`를 받습니다. `path`는 요청한 앱 안 경로와 쿼리로 `router.push`가 받는 형태이며, MCP가 화면 목록을 만들 때는 `undefined`입니다. `async`여도 되고, 아래 호출 중 하나로 거절합니다:",
               })}
             </div>
             <Docs.IntroTable type={l.trans({ en: "Call", ko: "호출" })} items={guardRefusalRows} />
@@ -2004,7 +2004,7 @@ export default page()
 import { layout } from "akanjs/client";
 
 export default layout()
-  .guard(() => signedIn())
+  .guard((_, { path }) => signedIn({ path }))
   .render(({ children }) => <div className="flex flex-col">{children}</div>);`}
           />
           <Docs.Description>
@@ -2043,14 +2043,18 @@ export default page()
                   <span>
                     <strong>A route guard is not authorization for data.</strong> It decides who may open a screen and
                     redirects early. Every query the screen makes is still judged by its endpoint's signal guards (
-                    <code>guards: [...]</code>), so keep both.
+                    <code>guards: [...]</code>), so keep both. <code>path</code> builds a redirect target, never a
+                    reason to let someone in: CSR asks a guard again only when the route or an argument it declared
+                    moves.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>route guard는 데이터 권한 검사가 아닙니다.</strong> 누가 화면을 열 수 있는지 정하고 일찍
                     redirect할 뿐입니다. 화면이 부르는 query는 여전히 그 endpoint의 signal guard(
-                    <code>guards: [...]</code>)가 판단하므로, 둘 다 둡니다.
+                    <code>guards: [...]</code>)가 판단하므로, 둘 다 둡니다. <code>path</code>는 redirect 대상을 만들
+                    때만 쓰고 들여보낼지 정하는 데는 쓰지 않습니다. CSR은 route나 guard가 선언한 인자가 바뀔 때만
+                    guard에 다시 묻기 때문입니다.
                   </span>
                 ),
               })}

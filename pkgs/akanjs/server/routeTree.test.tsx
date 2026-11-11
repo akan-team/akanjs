@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { isValidElement, Suspense } from "react";
 import { renderToReadableStream } from "react-dom/server.browser";
 import { layout, page } from "../client/route/routeBuilders";
+import { createRequestStore, requestStorage } from "../fetch/requestStorage";
 import { type AkanModalComponent, createOverridable, override, UiOverrideProvider } from "../ui/UiOverride";
 import { RouteLevelBoundary } from "../webkit/RouteLevelBoundary";
 import { RouteElementComposer } from "./routeElementComposer";
@@ -355,6 +356,35 @@ describe("RouteTreeBuilder implicit locale", () => {
     expect(withMetadata && RouteElementComposer.resolveHead(pageInput(withMetadata))).rejects.toThrow(
       '[route-convention] unsupported export "metadata"',
     );
+  });
+
+  test("hands every guard on the route the server request's in-app path, a layout's included", async () => {
+    process.env.AKAN_PUBLIC_APP_NAME ??= "test";
+    process.env.AKAN_PUBLIC_REPO_NAME ??= "akanjs";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "akanjs.com";
+    const paths: (string | undefined)[] = [];
+    const routes = new RouteTreeBuilder({
+      "./org/[orgId]/_layout.tsx": async () => ({
+        default: layout()
+          .param("orgId", String)
+          .guard((_, { path }) => void paths.push(path))
+          .render(({ children }) => children),
+      }),
+      "./org/[orgId]/resource/[resourceId]/checkin.tsx": async () => ({
+        default: page()
+          .param("orgId", String)
+          .param("resourceId", String)
+          .guard((_, { path }) => void paths.push(path))
+          .render(() => <p>checkin</p>),
+      }),
+    }).build();
+    const url = "https://site.test/en/org/a/resource/b/checkin?seat=3";
+    const matched = RouteTreeBuilder.match(new URL(url).pathname, routes);
+    if (!matched || !requestStorage) throw new Error("no route match or request storage");
+    await requestStorage.run(createRequestStore(new Request(url)), () =>
+      RouteElementComposer.admit({ pathRoute: matched.pathRoute, params: matched.params, searchParams: { seat: "3" } }),
+    );
+    expect(paths).toEqual(["/org/a/resource/b/checkin?seat=3", "/org/a/resource/b/checkin?seat=3"]);
   });
 
   test("draws a guard refusal's fallback from the layouts above the refusal alone, with no head", async () => {

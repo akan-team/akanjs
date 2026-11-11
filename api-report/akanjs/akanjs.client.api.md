@@ -820,7 +820,7 @@ export declare abstract class RouteDefinition<Args extends RouteArgsShape = Reco
     readonly args: RouteArgInfo[];
     config(config: PageConfig): this;
     head(head: HeadStage<RouteBaseArgs & Args>): this;
-    guard(guard: (args: RouteBaseArgs & Args) => Promise<void> | void): this;
+    guard(guard: (args: RouteBaseArgs & Args, request: RouteGuardRequest) => Promise<void> | void): this;
     loading(render: (args: RouteBaseArgs & Args & Extra) => PromiseOrObject<ReactNode>): this;
     render(render: (args: RouteBaseArgs & Args & Extra) => PromiseOrObject<ReactNode>): this;
     get pageConfig(): PageConfig | undefined;
@@ -845,6 +845,11 @@ export interface RouteGuardProps {
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     listing?: boolean;
+    path?: string;
+}
+
+export interface RouteGuardRequest {
+    path?: string;
 }
 
 export declare class RouteGuards {
@@ -1459,7 +1464,7 @@ declare class Router {
     redirect(target: string, options?: RedirectOptions): never;
     notFound(): never;
     setLang(lang: string): never;
-    routeOf(pathname: string): string;
+    routeOf(pathname: string, lang?: string): string;
     getPath(pathname?: string): string;
     getFullPath(withLang?: boolean): string;
     getPrefix(): string;

@@ -52,10 +52,11 @@ export const useLocation = ({ rootRouteGuide }: UseLocationOptions) => {
     };
     const hrefWithoutOrigin = csrLocation.strip(href);
     const [hrefWithoutHash, hash = ""] = hrefWithoutOrigin.split("#");
-    const [pathname, search] = hrefWithoutHash.split("?");
+    const [pathname, ...query] = hrefWithoutHash.split("?");
+    const search = query.join("?");
     const pathRoute = getPathRoute(pathname);
     const params = getParams(pathname, pathRoute);
-    const searchParams = parseSearchParams(search ?? "");
+    const searchParams = parseSearchParams(search);
     return { pathname, search, params, searchParams, pathRoute, hash, href, entryId: CsrStack.nextEntryId() };
   }, []);
   return { getLocation };

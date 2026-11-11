@@ -49,6 +49,13 @@ describe("useLocation", () => {
     expect(location?.hash).toBe("top");
   });
 
+  test("keeps a query's later question marks, as the server's URL does", () => {
+    const location = locate("/en/list?next=/x?y=1");
+
+    expect(location?.search).toBe("next=/x?y=1");
+    expect(location?.searchParams).toEqual({ next: "/x?y=1" });
+  });
+
   test("draws the not-found of the deepest node a path reaches, with the params of the path down to it", () => {
     const guide: RouteGuide = {
       pathSegment: "/",

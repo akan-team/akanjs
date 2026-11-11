@@ -861,6 +861,47 @@ describe("router", () => {
     expect(locationOf("ko")).toBe("/ko/users?tab=a");
   });
 
+  test("a guard's request path is one router.redirect sends back to the same page", async () => {
+    envState.side = "server";
+    const { AkanRedirectError, getRequestRoutePath, router } = await import("./router");
+    const roundTrip = (url: string, headers: [string, string][]) => {
+      requestState.request = new Request(url);
+      requestState.headers = new Map(headers);
+      const path = getRequestRoutePath("en");
+      try {
+        router.redirect(path ?? "/missing");
+      } catch (error) {
+        if (error instanceof AkanRedirectError) return [path, error.location];
+        throw error;
+      }
+      throw new Error("no redirect");
+    };
+
+    process.env.AKAN_PUBLIC_BASE_PATHS = "admin,console";
+    const underBase = roundTrip("https://example.test/en/admin/org/a/checkin?seat=3&ok=1", [
+      ["x-locale", "en"],
+      ["x-base-path", "admin"],
+    ]);
+    expect(underBase).toEqual(["/org/a/checkin?seat=3&ok=1", "/en/admin/org/a/checkin?seat=3&ok=1"]);
+    envState.operationMode = "main";
+    expect(roundTrip("https://site.test/en/org/a?seat=3", [["x-locale", "en"]])).toEqual([
+      "/org/a?seat=3",
+      "/en/org/a?seat=3",
+    ]);
+    envState.localePrefix = "as-needed";
+    expect(roundTrip("https://site.test/org/a", [["x-locale", "en"]])).toEqual(["/org/a", "/org/a"]);
+    expect(roundTrip("https://site.test/ko/org/a", [["x-locale", "ko"]])).toEqual(["/org/a", "/ko/org/a"]);
+    for (const hostile of ["//evil.com", "/%5Cevil.com", "/https://evil.com"]) {
+      const [, location] = roundTrip(`https://site.test/ko${hostile}`, [["x-locale", "ko"]]);
+      expect(location?.startsWith("/ko/")).toBe(true);
+    }
+    requestState.request = undefined;
+    expect(getRequestRoutePath("en")).toBeUndefined();
+    envState.side = "client";
+    requestState.request = new Request("https://site.test/en/org/a");
+    expect(getRequestRoutePath("en")).toBeUndefined();
+  });
+
   test("throws initialized guard before init and server redirect/notFound errors", async () => {
     envState.side = "client";
     installClientWindow();

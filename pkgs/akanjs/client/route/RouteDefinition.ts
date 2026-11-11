@@ -11,9 +11,16 @@ import { deserialize } from "akanjs/constant";
 import { RenderScope } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import type { Head, LayoutModule, PageConfig, PageModule, RouteGuardProps } from "../csrTypes";
-import { AkanNotFoundError } from "../router";
+import { AkanNotFoundError, getRequestRoutePath } from "../router";
 import { Translator } from "../translator";
-import { RouteArgError, type RouteArgInfo, type RouteArgInput, RouteArgPending, type RouteBaseArgs } from "./routeArgs";
+import {
+  RouteArgError,
+  type RouteArgInfo,
+  type RouteArgInput,
+  RouteArgPending,
+  type RouteBaseArgs,
+  type RouteGuardRequest,
+} from "./routeArgs";
 
 export type RouteArgsShape = Record<string, unknown>;
 export type RouteKind = "page" | "layout" | "rootLayout";
@@ -23,6 +30,7 @@ export const routeDefinitionMarker = Symbol.for("akan.routeDefinition");
 export const routeArgsMarker = Symbol.for("akan.routeArgs");
 
 type HeadStage<Args> = Head | ((args: Args) => PromiseOrObject<Head | null | undefined>);
+type GuardStage<Args> = (args: Args, request: RouteGuardRequest) => void | Promise<void>;
 
 interface RouteRenderProps {
   params: Record<string, string>;
@@ -47,7 +55,7 @@ export abstract class RouteDefinition<
   // Held as `never`-argument functions: a `PageDefinition<{ projectId }>` must still be a `RouteDefinition` to
   // the loaders, and a stage typed over `Args` would make the wider declaration unassignable to the plain one.
   #head?: HeadStage<never>;
-  #guard?: (args: never) => void | Promise<void>;
+  #guard?: GuardStage<never>;
   #loading?: (args: never) => PromiseOrObject<ReactNode>;
   #render?: (args: never) => PromiseOrObject<ReactNode>;
   #renderRoute?: {
@@ -65,10 +73,10 @@ export abstract class RouteDefinition<
     return this;
   }
   /** Runs before any layout body; refuses with `router.redirect()` or `router.notFound()`. */
-  guard(guard: (args: RouteBaseArgs & Args) => void | Promise<void>) {
+  guard(guard: (args: RouteBaseArgs & Args, request: RouteGuardRequest) => void | Promise<void>) {
     if (this.#guard)
       throw new Error(`[route-convention] ${this.kind}() declares .guard() twice; run every check from one guard`);
-    this.#guard = guard as (args: never) => void | Promise<void>;
+    this.#guard = guard as GuardStage<never>;
     return this;
   }
   loading(render: (args: RouteBaseArgs & Args & Extra) => PromiseOrObject<ReactNode>) {
@@ -172,9 +180,18 @@ export abstract class RouteDefinition<
   }
 
   //? Marked with the args it reads, as the render is, so CSR asks the guards again only when one of those moves.
-  #guardRouteOf(guard: (args: never) => void | Promise<void>) {
+  #guardRouteOf(guard: GuardStage<never>) {
     const route = async (props: RouteGuardProps) =>
-      await RenderScope.run(() => guard(this.#guardArgsOf(props) as never));
+      await RenderScope.run(() => {
+        const args = this.#guardArgsOf(props);
+        //? Read on demand: most guards never look, and the request it falls back to needs the server's env.
+        const request: RouteGuardRequest = {
+          get path() {
+            return props.listing ? undefined : (props.path ?? getRequestRoutePath(args.lang));
+          },
+        };
+        return guard(args as never, request);
+      });
     Object.defineProperty(route, routeArgsMarker, { value: this.args.map(({ kind, name }) => ({ kind, name })) });
     return route;
   }
