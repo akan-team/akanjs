@@ -1366,6 +1366,25 @@ describe("rscClient patch cache", () => {
     expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
   });
 
+  test("a patch cached under one fragment of a page is replayed for another fragment of it", async () => {
+    framed("/sec/a", "sec");
+    framed("/sec/b", "sec");
+    framed("/sec-off", "secoff");
+    await navigate("/sec/a");
+    await navigate("/sec/b#one");
+    expect(shown()).toBe("/sec/b patched");
+    await navigate("/sec-off");
+    await navigate("/sec/a");
+
+    await navigate("/sec/b#two");
+
+    expect(fetchCountOf("/sec/b")).toBe(1);
+    expect(shown()).toBe("/sec/b patched");
+    expect(document.title).toBe("/sec/b patched");
+    expect(window.location.hash).toBe("#two");
+    expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
+  });
+
   test("a patch laid on a patch is replayed straight under its base, and the next request names it", async () => {
     framed("/ch/a", "ch");
     framed("/ch/b", "ch");
@@ -1714,6 +1733,40 @@ describe("rscClient patch cache", () => {
       expect(prefetchCountOf("/cab/b")).toBe(0);
       expect(navigationCountOf("/cab/b")).toBe(1);
       expect(shown()).toBe("/cab/b patched");
+    });
+
+    test("a page whose patch was cached under another fragment is not prefetched", async () => {
+      framed("/frg/a", "frg");
+      framed("/frg/b", "frg");
+      framed("/frg-off", "frgoff");
+      await navigate("/frg/a");
+      await navigate("/frg/b#one");
+      await navigate("/frg-off");
+      await navigate("/frg/a");
+
+      await prefetch("/frg/b#two");
+
+      expect(prefetchCountOf("/frg/b")).toBe(0);
+    });
+
+    test("a page that opts out of prefetching is asked once, not again under each page put on screen", async () => {
+      framed("/opt/a", "opt");
+      framed("/opt/x", "optx");
+      served.set("/opt/stats", (headers) =>
+        headers.get(AKAN_RSC_PREFETCH_HEADER) === "1"
+          ? new Response(null, { status: 204 })
+          : wholeResponseOf("/opt/stats", "opt", stateOf("/opt/stats", "opt layouts")),
+      );
+      await navigate("/opt/a");
+      await prefetch("/opt/stats");
+      await navigate("/opt/x");
+      await prefetch("/opt/stats");
+
+      await navigate("/opt/stats");
+
+      expect(prefetchCountOf("/opt/stats")).toBe(1);
+      expect(navigationCountOf("/opt/stats")).toBe(1);
+      expect(shown()).toBe("/opt/stats");
     });
 
     test("a page whose cached patch went under another full commit is still prefetched", async () => {
