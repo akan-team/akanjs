@@ -4,7 +4,7 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 
 export interface RelaunchOptions {
   /** How long the helper waits after this process exited before it starts the app. */
@@ -49,8 +49,9 @@ export function recoveryCommand(script: string): string | null {
   return command.length <= 260 ? command : null;
 }
 
-/** The file that starts this app again: an AppImage's own file, not the mount it runs from, which is gone at exit. */
-export const appLauncher = (env: NodeJS.ProcessEnv = process.env): string => env.APPIMAGE || process.execPath;
+//? An AppImage's mount is gone at exit, so $APPIMAGE starts it again; a child of another AppImage inherits both.
+export const appLauncher = (env: NodeJS.ProcessEnv = process.env, exe = process.execPath): string =>
+  env.APPIMAGE && env.APPDIR && exe.startsWith(`${resolve(env.APPDIR)}/`) ? env.APPIMAGE : exe;
 
 //? Quit-on-stdin binds only the CLI's own child (lib.rs stdin_quit); the AppImage runtime sets the rest per mount.
 const NOT_INHERITED = new Set(["AKAN_NATIVE_QUIT_ON_STDIN", "APPDIR", "APPIMAGE", "ARGV0", "OWD"]);

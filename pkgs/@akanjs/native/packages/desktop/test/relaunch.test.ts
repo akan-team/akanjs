@@ -152,10 +152,20 @@ process.exit(0);
     }
   }, 20_000);
 
+  test("an app another AppImage started starts again from its own file, not that AppImage", () => {
+    const inherited = { APPIMAGE: "/opt/Cursor.AppImage", APPDIR: "/tmp/.mount_Cursor1" };
+    expect(appLauncher(inherited, "/opt/board/board")).toBe("/opt/board/board");
+    expect(appLauncher({ APPIMAGE: "/opt/Cursor.AppImage" }, "/opt/board/board")).toBe("/opt/board/board");
+  });
+
   test("an AppImage starts again from its file, without the variables its runtime set for the mount that is gone", async () => {
-    expect(appLauncher({ APPIMAGE: "/home/u/Board.AppImage" })).toBe("/home/u/Board.AppImage");
     expect(appLauncher({})).toBe(process.execPath);
     if (windows) return;
+    const mount = "/tmp/.mount_Board0";
+    const exe = `${mount}/usr/bin/board`;
+    const image = "/home/u/Board.AppImage";
+    expect(appLauncher({ APPIMAGE: image, APPDIR: mount }, exe)).toBe(image);
+    expect(appLauncher({ APPIMAGE: image, APPDIR: `${mount}/` }, exe)).toBe(image);
     const marker = join(dir, "marker-appimage");
     const app = join(dir, "image.sh");
     writeFileSync(app, `#!/bin/sh\necho "[$APPIMAGE][$APPDIR][$ARGV0][$OWD][$KEPT]" >> "${marker}"\n`);
@@ -164,11 +174,10 @@ process.exit(0);
     writeFileSync(
       script,
       `import { appLauncher, relaunchAfterExit } from ${JSON.stringify(join(import.meta.dir, "../src/relaunch.ts"))};
-await relaunchAfterExit(appLauncher());
+await relaunchAfterExit(appLauncher(process.env, ${JSON.stringify(exe)}));
 process.exit(0);
 `,
     );
-    const mount = "/tmp/.mount_Board0";
     const exiting = Bun.spawn([process.execPath, script], {
       env: { ...process.env, APPIMAGE: app, APPDIR: mount, ARGV0: "Board.AppImage", OWD: dir, KEPT: "kept" },
       stdout: "inherit",
