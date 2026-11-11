@@ -523,7 +523,6 @@ export class MaintainabilityContract {
     return "HEAD";
   }
 
-  //? Git pairs a moved file with its old path by content, so its entries carry over instead of reading as new debt.
   //? A move that also rewrote more than half the file, or left a file at the old path, reads as an add and fails as new.
   async #movesSince(ref: string) {
     const staged = await this.#stagedScope();
@@ -543,11 +542,10 @@ export class MaintainabilityContract {
     }
   }
 
-  //? Git pairs moves only between staged paths, so a copy of the index stages the scope's tracked changes and its new
-  //? sources: a plain rename pairs too, the user's index is never written, and no other untracked file is stored.
-  //? Where any step fails, the moves already staged in the user's index are still read.
+  //? Git pairs moves only between staged paths, so a plain rename is staged too, in a copy of the user's index.
   async #stagedScope() {
     const indexPath = (await this.#git(["rev-parse", "--git-path", "index"]))?.trim();
+    //? Only sources: staging writes each file into .git/objects, where a local database or a log would pile up.
     const untracked = (await this.#git(["ls-files", "-o", "--exclude-standard", "-z", "--", this.sysPath]))
       ?.split("\0")
       .filter((file) => /\.(tsx?|md)$/.test(file));

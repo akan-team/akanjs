@@ -983,7 +983,7 @@ describe("MaintainabilityContract packages", () => {
     ]);
   });
 
-  test("follows a move git has not staged, and reads an entry left at the old key as the reference's", async () => {
+  test("follows a move git has not staged, without staging it, and reads an entry left at the old key as the reference's", async () => {
     const recordOf = (key: string) => `{\n  "akan.size.function": {\n    ${JSON.stringify(key)}: 200\n  }\n}\n`;
     const root = await makeWorkspace({
       "pkgs/@demo/core/server/host.ts": functionOf("boot", 200),
@@ -996,6 +996,9 @@ describe("MaintainabilityContract packages", () => {
     expect(await packageOf(root).enforce({ fix: false })).toMatchObject([
       { rule: "akan.size.function", key: "gateway/host.ts#boot" },
     ]);
+    expect(Bun.spawnSync(["git", "status", "--porcelain"], { cwd: root }).stdout.toString()).toBe(
+      " D pkgs/@demo/core/server/host.ts\n?? pkgs/@demo/core/gateway/\n",
+    );
 
     await writeText(path.join(root, "pkgs/@demo/core/gateway/host.ts"), functionOf("boot", 120));
     expect(await packageOf(root).enforce({ fix: false })).toEqual([]);
