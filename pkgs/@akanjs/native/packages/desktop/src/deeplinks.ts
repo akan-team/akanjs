@@ -16,6 +16,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { appLauncher } from "./relaunch.ts";
 
 type Env = Record<string, string | undefined>;
 type Runner = (argv: string[]) => Promise<{ code: number; stdout: string }>;
@@ -171,8 +172,7 @@ export async function registerDeepLinks(
   const platform = options.platform ?? process.platform;
   if (!schemes.length || (platform !== "win32" && platform !== "linux")) return;
   const env = options.env ?? process.env;
-  // An AppImage runs from a mount point made anew at every start and gone at exit; $APPIMAGE is the file itself.
-  const exe = options.exe ?? (env.APPIMAGE || process.execPath);
+  const exe = options.exe ?? appLauncher(env);
   const runner = options.run ?? run;
   if (platform === "win32") await registerWindows(app, exe, schemes, runner);
   else await registerLinux(app, exe, schemes, { env, home: options.home ?? homedir(), runner, icon: options.icon });

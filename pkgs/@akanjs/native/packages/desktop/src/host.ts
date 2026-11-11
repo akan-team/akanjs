@@ -21,7 +21,7 @@ import { cstr, FRAME_EVENT, FRAME_HEADER, FRAME_IPC, openNative, resolvePaths } 
 import { createLifecycle } from "./lifecycle.ts";
 import { appDataDir, appLocalDataDir, reservedDirs, serverDataDir } from "./paths.ts";
 import { type DesktopPlugin, useShellOpenLimit } from "./plugin.ts";
-import { nextRelaunchDelay, relaunchAfterExit } from "./relaunch.ts";
+import { appLauncher, nextRelaunchDelay, relaunchAfterExit } from "./relaunch.ts";
 import { createSecretStore } from "./secretStore.ts";
 import {
   createDesktopServer,
@@ -367,7 +367,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
       void lifecycle.quit(1);
       return;
     }
-    relaunchAfterExit(process.execPath, [], { delayMs })
+    relaunchAfterExit(appLauncher(), [], { delayMs })
       .then(() => lifecycle.quit(0))
       .catch((error: unknown) => console.error("[akan-native] cannot relaunch the app", error));
   };

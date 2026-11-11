@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  appLauncher,
   nextRelaunchDelay,
   RELAUNCH_HEALTHY,
   RELAUNCH_LIMIT,
@@ -150,6 +151,42 @@ process.exit(0);
       keeper.kill("SIGKILL");
     }
   }, 20_000);
+
+  test("an app another AppImage started starts again from its own file, not that AppImage", () => {
+    const inherited = { APPIMAGE: "/opt/Cursor.AppImage", APPDIR: "/tmp/.mount_Cursor1" };
+    expect(appLauncher(inherited, "/opt/board/board")).toBe("/opt/board/board");
+    expect(appLauncher({ APPIMAGE: "/opt/Cursor.AppImage" }, "/opt/board/board")).toBe("/opt/board/board");
+  });
+
+  test("an AppImage starts again from its file, without the variables its runtime set for the mount that is gone", async () => {
+    expect(appLauncher({})).toBe(process.execPath);
+    if (windows) return;
+    const mount = "/tmp/.mount_Board0";
+    const exe = `${mount}/usr/bin/board`;
+    const image = "/home/u/Board.AppImage";
+    expect(appLauncher({ APPIMAGE: image, APPDIR: mount }, exe)).toBe(image);
+    expect(appLauncher({ APPIMAGE: image, APPDIR: `${mount}/` }, exe)).toBe(image);
+    const marker = join(dir, "marker-appimage");
+    const app = join(dir, "image.sh");
+    writeFileSync(app, `#!/bin/sh\necho "[$APPIMAGE][$APPDIR][$ARGV0][$OWD][$KEPT]" >> "${marker}"\n`);
+    chmodSync(app, 0o755);
+    const script = join(dir, "appimage.ts");
+    writeFileSync(
+      script,
+      `import { appLauncher, relaunchAfterExit } from ${JSON.stringify(join(import.meta.dir, "../src/relaunch.ts"))};
+await relaunchAfterExit(appLauncher(process.env, ${JSON.stringify(exe)}));
+process.exit(0);
+`,
+    );
+    const exiting = Bun.spawn([process.execPath, script], {
+      env: { ...process.env, APPIMAGE: app, APPDIR: mount, ARGV0: "Board.AppImage", OWD: dir, KEPT: "kept" },
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    expect(await exiting.exited).toBe(0);
+    for (let waited = 0; !existsSync(marker) && waited < 15_000; waited += 100) await Bun.sleep(100);
+    expect(readFileSync(marker, "utf8").trim()).toBe("[][][][][kept]");
+  }, 30_000);
 });
 
 describe("the recovery of a Windows swap cut short", () => {

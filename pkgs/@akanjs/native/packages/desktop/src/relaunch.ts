@@ -4,7 +4,7 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 
 export interface RelaunchOptions {
   /** How long the helper waits after this process exited before it starts the app. */
@@ -49,6 +49,14 @@ export function recoveryCommand(script: string): string | null {
   return command.length <= 260 ? command : null;
 }
 
+//? An AppImage's mount is gone at exit, so $APPIMAGE starts it again; a child of another AppImage inherits both.
+export const appLauncher = (env: NodeJS.ProcessEnv = process.env, exe = process.execPath): string =>
+  env.APPIMAGE && env.APPDIR && exe.startsWith(`${resolve(env.APPDIR)}/`) ? env.APPIMAGE : exe;
+
+//? Quit-on-stdin binds only the CLI's own child (lib.rs stdin_quit); the AppImage runtime sets the rest per mount.
+const NOT_INHERITED = new Set(["AKAN_NATIVE_QUIT_ON_STDIN", "APPDIR", "APPIMAGE", "ARGV0", "OWD"]);
+const inheritedEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !NOT_INHERITED.has(key)));
+
 //? One relaunch per process: the browser process's end reaches every window (one event each), and a page may
 //? call app.relaunch() twice; a second helper would start a second app.
 let started: Promise<void> | null = null;
@@ -85,9 +93,7 @@ function startHelper(
   recover: RelaunchOptions["recover"],
   start: boolean,
 ): Promise<void> {
-  //? The CLI's contract with the app it started (lib.rs stdin_quit): nobody holds the new app's stdin, and
-  //? reading it closed would quit it at once.
-  const { AKAN_NATIVE_QUIT_ON_STDIN: _cli, ...inherited } = process.env;
+  const inherited = inheritedEnv();
   const delay = (delayMs / 1000).toFixed(3);
   if (process.platform !== "win32") {
     const done: [string, string][] = [];
