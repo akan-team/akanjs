@@ -1,6 +1,6 @@
 //! The external-view plugin (plugins/external-view): a third-party page shown first-party inside an app
 //! window, as signage needs it. Nothing of the app reaches it: no init script, no IPC, no app scheme. It runs
-//! in a browser profile of its own (a data folder on Windows, a data store on macOS 14+), so its storage is
+//! in a browser profile of its own (a data folder on Windows and Linux, a data store on macOS 14+), so its storage is
 //! neither the app's nor cleared with it, and its top level navigates only to the origins it was opened for
 //! (frames load web content from anywhere); popups, downloads, device permissions and a link another program
 //! would open are refused. Its web process ending reloads it (UserEvent::ExternalGone).
@@ -20,6 +20,8 @@ use wry::{Rect, WebView, RGBA};
 use crate::{json, push_event, send, UserEvent};
 #[cfg(target_os = "windows")]
 use crate::win::external as platform;
+#[cfg(target_os = "linux")]
+use crate::linux::external as platform;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Bounds {
@@ -58,6 +60,9 @@ pub(crate) struct View {
   /// Its window hides the pointer (window.setCursorVisible): the view does too, in every document it loads.
   cursor_hidden: bool,
   cursor: platform::Cursor,
+  /// When it was last opened or shown (Views::shows): the visible view shown last holds the keyboard.
+  #[cfg(target_os = "linux")]
+  shown: u64,
 }
 
 /// What a view built again in an old one's place keeps: restarts, streak, last reload, visible, pointer hidden.
@@ -83,6 +88,45 @@ impl View {
 #[derive(Default)]
 pub(crate) struct Views {
   map: HashMap<String, View>,
+  #[cfg(target_os = "linux")]
+  shows: u64,
+}
+
+/// Linux has no sendKey: a visible view holds the keyboard focus instead, so a key reaches it as the user's own.
+#[cfg(target_os = "linux")]
+impl Views {
+  fn raise(&mut self, view: &str) {
+    if let Some(v) = self.map.get_mut(view) {
+      self.shows += 1;
+      v.shown = self.shows;
+    }
+  }
+
+  fn keyboard_view(&self, window: u32) -> Option<&View> {
+    self.map.values().filter(|v| v.window == window && v.visible).max_by_key(|v| v.shown)
+  }
+
+  /// The visible view shown last takes the keyboard; with none shown, the window's page does. `any` is a webview on the
+  /// window: its page or one of its views.
+  fn give_keyboard(&self, window: u32, any: &WebView) {
+    match self.keyboard_view(window) {
+      Some(view) => platform::focus(&view.webview),
+      None => platform::focus_page(any),
+    }
+  }
+
+  fn give_keyboard_by(&self, view: &str) {
+    if let Some(v) = self.map.get(view) {
+      self.give_keyboard(v.window, &v.webview);
+    }
+  }
+
+  /// The window is active again: the view that holds the keyboard takes it back from whatever had it.
+  pub(crate) fn refocus(&self, window: u32) {
+    if let Some(view) = self.keyboard_view(window) {
+      platform::focus(&view.webview);
+    }
+  }
 }
 
 pub(crate) struct OpenOptions {
@@ -169,7 +213,6 @@ pub(crate) fn allowed(allow: &[String], url: &str) -> bool {
   url == "about:blank" || origin_of(url).is_some_and(|origin| allow.contains(&origin))
 }
 
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(crate) fn admits(allow: &[String], url: &str, sub_frame: bool) -> bool {
   if sub_frame {
     crate::navigation::scheme(url).is_some_and(|s| crate::contract::FRAME_SCHEMES.contains(&s.as_str()))
@@ -201,16 +244,13 @@ fn navigation_handler(view: String, allow: Rc<RefCell<Vec<String>>>) -> impl Fn(
 //? WebView2 runs a document-created script in every frame (wry's main-frame-only flag is WebKit's). Run first, this
 //? marks a frame's window so that the init script, declaring the same name, fails before it declares anything: a throw
 //? or a wrapper would leave its let bindings uninitialized there, or change their scope. That error goes unreported.
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 const TOP_ONLY: &str = r#"if(window.top!==window.self){Object.defineProperty(window,"__akanTopOnly",{value:true});addEventListener("error",e=>{e.preventDefault();e.stopImmediatePropagation()},{capture:true,once:true})}"#;
 
 /// The init script, declaring the name TOP_ONLY marks a frame with: on a line of its own after the script's last.
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 fn top_only(script: &str) -> String {
   format!("{script}\n;let __akanTopOnly;")
 }
 
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 fn fnv1a(view: &str, basis: u64) -> u64 {
   view.bytes().fold(basis, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x0000_0100_0000_01b3))
 }
@@ -218,7 +258,6 @@ fn fnv1a(view: &str, basis: u64) -> u64 {
 /// A view's data folder: its id hashed (FNV-1a, stable where std's hasher is not), so ids differing only in case and
 /// device names (CON, NUL) get folders of their own, and a long id no long path. XOR-folded to 32 bits, as FNV's
 /// authors fold a hash: WebView2's profile path must fit MAX_PATH below the app's own.
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 fn folder(view: &str) -> String {
   let hash = fnv1a(view, 0xcbf2_9ce4_8422_2325);
   format!("{:08x}", (hash >> 32) as u32 ^ hash as u32)
@@ -267,6 +306,19 @@ fn discard(view: View) {
   view.live.set(false);
   let _ = view.webview.set_visible(false);
   let _ = view.webview.load_url("about:blank");
+  #[cfg(target_os = "linux")]
+  platform::discard(&view.webview);
+}
+
+fn place(webview: &WebView, bounds: Bounds, inner: LogicalSize<f64>) -> Result<(), String> {
+  #[cfg(target_os = "linux")]
+  {
+    let _ = inner;
+    platform::place(webview, bounds);
+    Ok(())
+  }
+  #[cfg(not(target_os = "linux"))]
+  webview.set_bounds(rect(bounds, inner)).map_err(|e| e.to_string())
 }
 
 /// Ends in a row: an end within a minute of the last reload follows the one before (lib.rs WebviewGone).
@@ -345,7 +397,7 @@ impl Views {
     background: RGBA,
     opts: OpenOptions,
   ) -> Result<String, String> {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     if opts.muted {
       return Err(platform::NO_MUTE.into());
     }
@@ -353,7 +405,12 @@ impl Views {
     let Some(open) = self.map.get(&opts.view) else {
       let view = build(window, inner, data_root, devtools, background, &opts).inspect_err(|_| platform::reclaim(page))?;
       let answer = state(&opts.view, &view);
-      self.map.insert(opts.view, view);
+      self.map.insert(opts.view.clone(), view);
+      #[cfg(target_os = "linux")]
+      {
+        self.raise(&opts.view);
+        self.give_keyboard(opts.window, page);
+      }
       return Ok(answer);
     };
     if open.window != opts.window {
@@ -374,7 +431,12 @@ impl Views {
       platform::reclaim(page);
       fresh.restore(kept);
       let answer = state(&opts.view, &fresh);
-      self.map.insert(opts.view, fresh);
+      self.map.insert(opts.view.clone(), fresh);
+      #[cfg(target_os = "linux")]
+      {
+        self.raise(&opts.view);
+        self.give_keyboard(opts.window, page);
+      }
       return Ok(answer);
     }
     let view = self.map.get_mut(&opts.view).expect("looked up above");
@@ -385,12 +447,18 @@ impl Views {
       platform::set_muted(&view.webview, opts.muted)?;
       view.muted = opts.muted;
     }
-    view.webview.set_bounds(rect(view.bounds, inner)).map_err(|e| e.to_string())?;
+    place(&view.webview, view.bounds, inner)?;
     if view.url != opts.url {
       view.webview.load_url(&opts.url).map_err(|e| e.to_string())?;
       view.url = opts.url;
     }
-    Ok(state(&opts.view, view))
+    let answer = state(&opts.view, view);
+    #[cfg(target_os = "linux")]
+    {
+      self.raise(&opts.view);
+      self.give_keyboard(opts.window, page);
+    }
+    Ok(answer)
   }
 
   pub(crate) fn close(&mut self, view: &str, page: &WebView) -> Result<String, String> {
@@ -398,6 +466,8 @@ impl Views {
     let window = closed.window;
     discard(closed);
     platform::reclaim(page);
+    #[cfg(target_os = "linux")]
+    self.give_keyboard(window, page);
     push_event(&event(view, window, r#""event":"closed""#));
     Ok("null".into())
   }
@@ -413,7 +483,7 @@ impl Views {
   pub(crate) fn fit(&self, window: u32, inner: LogicalSize<f64>) {
     //? WebView2 keeps a child's physical rect when the window's DPI changes: fixed bounds are applied again too.
     for view in self.map.values().filter(|v| v.window == window) {
-      let _ = view.webview.set_bounds(rect(view.bounds, inner));
+      let _ = place(&view.webview, view.bounds, inner);
     }
   }
 
@@ -424,24 +494,37 @@ impl Views {
     }
     v.webview.load_url(url).map_err(|e| e.to_string())?;
     v.url = url.to_string();
+    #[cfg(target_os = "linux")]
+    self.give_keyboard_by(view);
     Ok("null".into())
   }
 
   pub(crate) fn reload(&self, view: &str) -> Result<String, String> {
     self.get(view)?.webview.reload().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    self.give_keyboard_by(view);
     Ok("null".into())
   }
 
   pub(crate) fn set_visible(&mut self, view: &str, visible: bool) -> Result<String, String> {
     let v = self.get_mut(view)?;
     v.webview.set_visible(visible).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    platform::set_visible(&v.webview, visible);
     v.visible = visible;
+    #[cfg(target_os = "linux")]
+    {
+      if visible {
+        self.raise(view);
+      }
+      self.give_keyboard_by(view);
+    }
     Ok("null".into())
   }
 
   pub(crate) fn set_bounds(&mut self, view: &str, bounds: Bounds, inner: LogicalSize<f64>) -> Result<String, String> {
     let v = self.get_mut(view)?;
-    v.webview.set_bounds(rect(bounds, inner)).map_err(|e| e.to_string())?;
+    place(&v.webview, bounds, inner)?;
     v.bounds = bounds;
     Ok("null".into())
   }
@@ -449,6 +532,12 @@ impl Views {
   pub(crate) fn clear_data(&self, view: &str) -> Result<String, String> {
     self.get(view)?.webview.clear_all_browsing_data().map_err(|e| e.to_string())?;
     Ok("null".into())
+  }
+
+  #[cfg(target_os = "linux")]
+  pub(crate) fn clear_data_then(&self, view: &str, done: impl FnOnce(Result<String, String>) + Send + 'static) -> Result<(), String> {
+    platform::clear_data(&self.get(view)?.webview, Reply::new(done));
+    Ok(())
   }
 
   pub(crate) fn set_muted(&mut self, view: &str, muted: bool) -> Result<String, String> {
@@ -468,7 +557,8 @@ impl Views {
     Ok(())
   }
 
-  /// A Chrome DevTools Protocol method on the view's page: trusted input, a screenshot (Windows only).
+  /// A Chrome DevTools Protocol method on the view's page: trusted input, a screenshot (Windows; Linux answers the two
+  /// desktop.ts sends).
   pub(crate) fn cdp(&self, view: &str, method: &str, params: &str, done: impl FnOnce(Result<String, String>) + Send + 'static) -> Result<(), String> {
     platform::cdp(&self.get(view)?.webview, method, params, Reply::new(done));
     Ok(())
@@ -513,7 +603,10 @@ impl Views {
     v.reload_pending = false;
     v.reloaded_at = Some(Instant::now());
     if !v.dead {
-      return v.webview.reload().map_err(|e| e.to_string());
+      v.webview.reload().map_err(|e| e.to_string())?;
+      #[cfg(target_os = "linux")]
+      self.give_keyboard_by(view);
+      return Ok(());
     }
     let old = self.map.remove(view).expect("looked up above");
     let opts = OpenOptions {
@@ -536,6 +629,8 @@ impl Views {
     })?;
     fresh.restore(kept);
     self.map.insert(view.to_string(), fresh);
+    #[cfg(target_os = "linux")]
+    self.give_keyboard(opts.window, page);
     Ok(())
   }
 
@@ -560,107 +655,110 @@ fn build(
   background: RGBA,
   opts: &OpenOptions,
 ) -> Result<View, String> {
-  #[cfg(target_os = "linux")]
-  {
-    let _ = (window, inner, data_root, devtools, background, opts);
-    Err("UNSUPPORTED: external views are not on Linux yet".into())
-  }
+  use wry::{NewWindowResponse, PageLoadEvent, PermissionResponse, WebViewBuilder};
+  let data = data_root.join(folder(&opts.view));
+  let mut context = wry::WebContext::new(Some(data));
+  let allow = Rc::new(RefCell::new(opts.allow.clone()));
+  let live = Rc::new(Cell::new(true));
+  let (view_id, window_id, loaded) = (opts.view.clone(), opts.window, live.clone());
+  let mut builder = WebViewBuilder::new_with_web_context(&mut context)
+    .with_url(&opts.url)
+    .with_bounds(rect(opts.bounds, inner))
+    // WebView2 paints a new view white until the remote page's first frame; the app's backgroundColor covers that gap.
+    .with_background_color(background)
+    .with_autoplay(opts.autoplay)
+    .with_devtools(devtools)
+    //? wry focuses a new webview on Windows: the remote page would take the keys meant for the app (a scanner, a PIN).
+    .with_focused(false)
+    .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
+    .with_download_started_handler(|_, _| false)
+    .with_permission_handler(|_| PermissionResponse::Deny)
+    .with_on_page_load_handler(move |ev, url| {
+      if !loaded.get() {
+        return;
+      }
+      let state = match ev {
+        PageLoadEvent::Started => "started",
+        PageLoadEvent::Finished => "finished",
+      };
+      push_event(&event(&view_id, window_id, &format!(r#""event":"load","state":"{state}","url":{}"#, json::quote(&url))));
+    });
+  //? WebKitGTK asks wry's handler about every frame without saying which: platform::guard decides at the response.
   #[cfg(not(target_os = "linux"))]
   {
-    use wry::{NewWindowResponse, PageLoadEvent, PermissionResponse, WebViewBuilder};
-    let data = data_root.join(folder(&opts.view));
-    let mut context = wry::WebContext::new(Some(data));
-    let allow = Rc::new(RefCell::new(opts.allow.clone()));
-    let live = Rc::new(Cell::new(true));
-    let (view_id, window_id, loaded) = (opts.view.clone(), opts.window, live.clone());
-    let mut builder = WebViewBuilder::new_with_web_context(&mut context)
-      .with_url(&opts.url)
-      .with_bounds(rect(opts.bounds, inner))
-      // WebView2 paints a new view white until the remote page's first frame; the app's backgroundColor covers that gap.
-      .with_background_color(background)
-      .with_autoplay(opts.autoplay)
-      .with_devtools(devtools)
-      //? wry focuses a new webview on Windows: the remote page would take the keys meant for the app (a scanner, a PIN).
-      .with_focused(false)
-      .with_navigation_handler(navigation_handler(opts.view.clone(), allow.clone()))
-      .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
-      .with_download_started_handler(|_, _| false)
-      .with_permission_handler(|_| PermissionResponse::Deny)
-      .with_on_page_load_handler(move |ev, url| {
-        if !loaded.get() {
-          return;
-        }
-        let state = match ev {
-          PageLoadEvent::Started => "started",
-          PageLoadEvent::Finished => "finished",
-        };
-        push_event(&event(&view_id, window_id, &format!(r#""event":"load","state":"{state}","url":{}"#, json::quote(&url))));
-      });
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
-    if crate::unattended() {
-      builder = builder.with_initialization_script_for_main_only(crate::KIOSK_SCRIPT, false);
-    }
-    if let Some(script) = opts.init_script.as_deref().filter(|s| !s.is_empty()) {
-      builder = builder.with_initialization_script_for_main_only(TOP_ONLY, true).with_initialization_script_for_main_only(top_only(script), true);
-    }
-    #[cfg(target_os = "windows")]
-    {
-      use wry::WebViewBuilderExtWindows;
-      // The browser's keys (Ctrl+P, F5, zoom, F12) are off, as on the app's own page (lib.rs open_window).
-      builder = builder.with_browser_accelerator_keys(false);
-    }
-    #[cfg(target_os = "macos")]
-    {
-      use wry::WebViewBuilderExtDarwin;
-      let (gone_view, alive) = (opts.view.clone(), live.clone());
-      builder = builder.with_data_store_identifier(store_id(&opts.view)).with_on_web_content_process_terminate_handler(move || {
-        if alive.get() {
-          send(UserEvent::ExternalGone { view: gone_view.clone(), reason: "terminated" });
-        }
-      });
-    }
-    let webview = builder.build_as_child(window).map_err(|e| format!("external view: {e}"))?;
-    platform::watch(&webview, &opts.view, opts.window, opts.console);
-    #[cfg(target_os = "windows")]
-    {
-      platform::guard_frames(&webview, &opts.view);
-      if crate::unattended() {
-        crate::win::kiosk::lock(&webview, &format!("external view {}", opts.view));
-      }
-    }
-    // Release builds: no Print, Save as or Inspect in its right-click menu either.
-    #[cfg(target_os = "windows")]
-    crate::page_menu::install(devtools, &webview);
-    if opts.muted {
-      platform::set_muted(&webview, true)?;
-    }
-    let view = View {
-      webview,
-      _context: context,
-      window: opts.window,
-      bounds: opts.bounds,
-      allow,
-      url: opts.url.clone(),
-      visible: true,
-      restarts: 0,
-      gone_streak: 0,
-      reloaded_at: None,
-      reload_pending: false,
-      dead: false,
-      live,
-      init_script: opts.init_script.clone(),
-      muted: opts.muted,
-      autoplay: opts.autoplay,
-      console: opts.console,
-      cursor_hidden: false,
-      cursor: platform::Cursor::default(),
-    };
-    platform::track_frames(&view.webview, &opts.view, &view.cursor);
-    Ok(view)
+    builder = builder.with_navigation_handler(navigation_handler(opts.view.clone(), allow.clone()));
   }
+  #[cfg(any(target_os = "windows", target_os = "macos"))]
+  if crate::unattended() {
+    builder = builder.with_initialization_script_for_main_only(crate::KIOSK_SCRIPT, false);
+  }
+  if let Some(script) = opts.init_script.as_deref().filter(|s| !s.is_empty()) {
+    builder = builder.with_initialization_script_for_main_only(TOP_ONLY, true).with_initialization_script_for_main_only(top_only(script), true);
+  }
+  #[cfg(target_os = "windows")]
+  {
+    use wry::WebViewBuilderExtWindows;
+    // The browser's keys (Ctrl+P, F5, zoom, F12) are off, as on the app's own page (lib.rs open_window).
+    builder = builder.with_browser_accelerator_keys(false);
+  }
+  #[cfg(target_os = "macos")]
+  {
+    use wry::WebViewBuilderExtDarwin;
+    let (gone_view, alive) = (opts.view.clone(), live.clone());
+    builder = builder.with_data_store_identifier(store_id(&opts.view)).with_on_web_content_process_terminate_handler(move || {
+      if alive.get() {
+        send(UserEvent::ExternalGone { view: gone_view.clone(), reason: "terminated" });
+      }
+    });
+  }
+  #[cfg(target_os = "linux")]
+  let webview = platform::build(builder, window, opts.bounds)?;
+  #[cfg(not(target_os = "linux"))]
+  let webview = builder.build_as_child(window).map_err(|e| format!("external view: {e}"))?;
+  #[cfg(target_os = "linux")]
+  platform::guard(&webview, &opts.view, allow.clone());
+  platform::watch(&webview, &opts.view, opts.window, opts.console);
+  #[cfg(target_os = "windows")]
+  {
+    platform::guard_frames(&webview, &opts.view);
+    if crate::unattended() {
+      crate::win::kiosk::lock(&webview, &format!("external view {}", opts.view));
+    }
+  }
+  // Release builds: no Print, Save as or Inspect in its right-click menu either.
+  #[cfg(target_os = "windows")]
+  crate::page_menu::install(devtools, &webview);
+  if opts.muted {
+    platform::set_muted(&webview, true)?;
+  }
+  let view = View {
+    webview,
+    _context: context,
+    window: opts.window,
+    bounds: opts.bounds,
+    allow,
+    url: opts.url.clone(),
+    visible: true,
+    restarts: 0,
+    gone_streak: 0,
+    reloaded_at: None,
+    reload_pending: false,
+    dead: false,
+    live,
+    init_script: opts.init_script.clone(),
+    muted: opts.muted,
+    autoplay: opts.autoplay,
+    console: opts.console,
+    cursor_hidden: false,
+    cursor: platform::Cursor::default(),
+    #[cfg(target_os = "linux")]
+    shown: 0,
+  };
+  platform::track_frames(&view.webview, &opts.view, &view.cursor);
+  Ok(view)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 mod platform {
   use wry::WebView;
 
@@ -674,7 +772,6 @@ mod platform {
 
   pub(super) fn set_cursor_hidden(_webview: &WebView, _hidden: bool, _cursor: &Cursor) {}
 
-  #[cfg_attr(target_os = "linux", allow(dead_code))]
   pub(super) fn track_frames(_webview: &WebView, _view: &str, _cursor: &Cursor) {}
 
   pub(super) fn set_muted(_webview: &WebView, _muted: bool) -> Result<(), String> {
@@ -685,7 +782,6 @@ mod platform {
     reply.send(Err(format!("UNSUPPORTED: {method} reaches a view on Windows only")));
   }
 
-  #[cfg_attr(target_os = "linux", allow(dead_code))]
   pub(super) fn watch(_webview: &WebView, _view: &str, _window: u32, _console: bool) {}
 }
 

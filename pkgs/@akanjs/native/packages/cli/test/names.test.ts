@@ -137,6 +137,19 @@ describe("plugin manifests", () => {
     expect(() => resolvePlugins(dir, [plugin("future", { apiVersion: 2 })])).toThrow(/needs a newer akan-native/);
   });
 
+  test("desktop.unsupported names desktop OSes and methods of the desktop entry", () => {
+    const desktop = (unsupported: unknown) => ({ desktop: { module: "./d.ts", unsupported } });
+    expect(resolvePlugins(dir, [plugin("lacks", desktop({ linux: ["go"] }))])[0]?.manifest.id).toBe("lacks");
+    for (const [id, unsupported] of [
+      ["os", { ios: ["go"] }],
+      ["name", { linux: ["went"] }],
+      ["list", { linux: "go" }],
+    ] as const)
+      expect(() => resolvePlugins(dir, [plugin(id, desktop(unsupported))])).toThrow(
+        /desktop.unsupported must map macos, windows or linux to methods of its desktop entry/,
+      );
+  });
+
   test("dependencies: listed in the app, and native wherever the dependent is", () => {
     const base = plugin("base", { ios: { sources: [], class: "Base" }, android: "web" });
     const user = plugin("user", {

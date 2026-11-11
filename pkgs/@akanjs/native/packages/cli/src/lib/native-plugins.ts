@@ -8,7 +8,7 @@ import { pluginBindings } from "./codegen.ts";
 import { CliError } from "./log.ts";
 import { mergePlist } from "./nativeconfig.ts";
 import type { PlistValue } from "./plist.ts";
-import type { AndroidManifest, IosManifest, NativeSubset, ResolvedPlugin } from "./project.ts";
+import type { AndroidManifest, DesktopManifest, IosManifest, NativeSubset, ResolvedPlugin } from "./project.ts";
 
 export type NativePlatform = "macos" | "windows" | "linux" | "ios" | "android";
 
@@ -16,8 +16,9 @@ export type NativePlatform = "macos" | "windows" | "linux" | "ios" | "android";
 export function pluginDecls(plugins: ResolvedPlugin[], platform: NativePlatform): Record<string, PluginDecl> {
   const decls: Record<string, PluginDecl> = {};
   for (const { manifest } of plugins) {
-    // One desktop module serves macOS, Windows and Linux; it rejects what its OS lacks (UNSUPPORTED).
-    const entry = platform === "ios" || platform === "android" ? manifest[platform] : manifest.desktop;
+    // One desktop module serves macOS, Windows and Linux; what one OS lacks is left out of its declaration.
+    const mobile = platform === "ios" || platform === "android";
+    const entry = mobile ? manifest[platform] : manifest.desktop;
     if (entry === undefined || entry === null) continue;
     if (entry === "web") {
       if (manifest.web) decls[manifest.id] = "web";
@@ -26,8 +27,9 @@ export function pluginDecls(plugins: ResolvedPlugin[], platform: NativePlatform)
     const subset: NativeSubset = typeof entry === "string" ? {} : entry;
     const events = subset.events ?? manifest.events;
     const coalesce = (manifest.coalesce ?? []).filter((e) => events.includes(e));
+    const lacks = mobile ? [] : ((subset as DesktopManifest).unsupported?.[platform] ?? []);
     decls[manifest.id] = {
-      methods: subset.methods ?? manifest.methods,
+      methods: (subset.methods ?? manifest.methods).filter((m) => !lacks.includes(m)),
       events,
       ...(subset.web && manifest.web ? { web: true as const } : {}),
       ...(coalesce.length ? { coalesce } : {}),

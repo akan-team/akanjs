@@ -320,6 +320,19 @@ describe("desktop manifest subsets", async () => {
     expect(decls).toEqual({ x: { methods: ["open"], events: ["finished"] } });
   });
 
+  test("unsupported leaves a method out of one desktop OS's declaration only", () => {
+    const manifest = {
+      id: "x",
+      apiVersion: 1 as const,
+      methods: ["open", "press"],
+      events: [],
+      desktop: { module: "./d.ts", unsupported: { linux: ["press"] } },
+    };
+    const plugins = [{ spec: "x", dir: "/tmp", manifest }];
+    expect(np.pluginDecls(plugins, "linux")).toEqual({ x: { methods: ["open"], events: [] } });
+    expect(np.pluginDecls(plugins, "windows")).toEqual({ x: { methods: ["open", "press"], events: [] } });
+  });
+
   test("web: true lets the unlisted methods fall back to the web implementation (only with a web entry)", () => {
     const manifest = {
       id: "x",
