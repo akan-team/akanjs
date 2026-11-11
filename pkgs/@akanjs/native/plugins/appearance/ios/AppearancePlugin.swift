@@ -10,6 +10,7 @@ import UIKit
 /// - change: a trait registration on the web view sees both system switches and set(). iOS flips
 ///   the style of a backgrounded app twice to snapshot both appearances, so changes are only
 ///   reported while not in the background, and checked again on the way back to the foreground.
+/// - setThemeColor: the view controller's status bar style, until the page's document ends.
 /// Arguments arrive decoded and checked by the generated AppearancePluginSpec (PL-10).
 final class AppearancePlugin: AppearancePluginSpec {
     static let id = "appearance"
@@ -45,6 +46,32 @@ final class AppearancePlugin: AppearancePluginSpec {
         reply.resolve()
         // A setting change that keeps the drawn scheme (system is dark, set dark) moves no trait.
         report()
+    }
+
+    func setThemeColor(_ args: AppearanceSetThemeColorArgs, _ reply: AkanNativeReply<Void>) {
+        var style: UIStatusBarStyle?
+        if let color = args.color {
+            guard let light = Self.isLight(hex: color) else { return reply.reject(.invalidArgs, "color must be #rrggbb (got \(color))") }
+            style = light ? .darkContent : .lightContent
+        }
+        (context.viewController as? AkanNativeViewController)?.statusBarStyle = style
+        reply.resolve()
+    }
+
+    /// The next page starts from the appearance, whether or not it names a theme color.
+    func documentEnded(_ document: String) {
+        (context.viewController as? AkanNativeViewController)?.statusBarStyle = nil
+    }
+
+    //? Android's Color.luminance (sRGB relative luminance) over 0.5, so both shells pick the same icons for one color.
+    static func isLight(hex: String) -> Bool? {
+        let digits = hex.dropFirst()
+        guard hex.first == "#", digits.count == 6, digits.allSatisfy(\.isHexDigit), let rgb = UInt32(digits, radix: 16) else { return nil }
+        let linear = { (byte: UInt32) -> Double in
+            let c = Double(byte & 0xff) / 255
+            return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(rgb >> 16) + 0.7152 * linear(rgb >> 8) + 0.0722 * linear(rgb) > 0.5
     }
 
     func startListening(_ event: String) {

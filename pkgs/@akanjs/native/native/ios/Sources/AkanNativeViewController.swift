@@ -38,7 +38,12 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
     required init?(coder: NSCoder) { fatalError("not used") }
 
     // S1: the status bar follows the page's light/dark appearance (UIViewControllerBasedStatusBarAppearance).
-    override var preferredStatusBarStyle: UIStatusBarStyle { .default }
+    override var preferredStatusBarStyle: UIStatusBarStyle { statusBarStyle ?? .default }
+
+    /// appearance.setThemeColor: icons that read on the color the page paints under the bar; nil follows the appearance.
+    var statusBarStyle: UIStatusBarStyle? {
+        didSet { if statusBarStyle != oldValue { setNeedsStatusBarAppearanceUpdate() } }
+    }
 
     /// screen-orientation plugin: the orientations the page locked to (already intersected with
     /// Info.plist, or UIKit throws); nil = the app's default set.

@@ -1080,7 +1080,9 @@ export declare class ViewportMeta {
     static applyContent(viewport: RouteViewport | undefined, { native }?: {
         native?: boolean;
     }): void;
-    static applyThemeColor(viewport: RouteViewport | undefined, theme?: string): void;
+    static runtimeThemeColor(): null | string;
+    static applyThemeColor(viewport: RouteViewport | undefined, theme?: string): null | string;
+    static watchThemeColor(apply: () => void): () => void;
 }
 
 export interface WebAppManifest {

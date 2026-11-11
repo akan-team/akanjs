@@ -40,11 +40,14 @@ describe("appearance arguments", () => {
     }
   });
 
-  test("manifest: every platform implements get, set and change", () => {
+  test("manifest: every platform implements get, set and change; only the phones take setThemeColor", () => {
     const plugin = { spec: "appearance", dir: `${import.meta.dir}/..`, manifest: manifest as never };
-    for (const platform of ["ios", "android", "macos"] as const) {
-      expect(pluginDecls([plugin], platform)).toEqual({ appearance: { methods: ["get", "set"], events: ["change"] } });
+    for (const platform of ["ios", "android"] as const) {
+      expect(pluginDecls([plugin], platform)).toEqual({
+        appearance: { methods: ["get", "set", "setThemeColor"], events: ["change"] },
+      });
     }
+    expect(pluginDecls([plugin], "macos")).toEqual({ appearance: { methods: ["get", "set"], events: ["change"] } });
   });
 });
 
@@ -74,6 +77,26 @@ describe("appearance routing", () => {
     expect(await appearance.get()).toEqual({ mode: "dark", setting: "dark" });
     expect(seen).toEqual([{ mode: "dark", setting: "dark" }]);
     stop();
+  });
+
+  test("setThemeColor reaches a phone's shell; a shell built before it leaves the page without the method", async () => {
+    host = installMockHost({
+      platform: "android",
+      plugins: {
+        appearance: { methods: { get: () => ({ mode: "light", setting: "system" }), setThemeColor: () => {} } },
+      },
+    });
+    expect(appearance.isSupported("setThemeColor")).toBe(true);
+    await appearance.setThemeColor({ color: "#0c1e3e" });
+    expect(host.requests.at(-1)).toMatchObject({ method: "setThemeColor", args: { color: "#0c1e3e" } });
+    host.uninstall();
+
+    host = installMockHost({
+      platform: "ios",
+      plugins: { appearance: { methods: { get: () => null, set: () => {} } } },
+    });
+    expect(appearance.isSupported("setThemeColor")).toBe(false);
+    expect(isAkanNativeError(await rejection(appearance.setThemeColor({ color: null })), "UNSUPPORTED")).toBe(true);
   });
 });
 

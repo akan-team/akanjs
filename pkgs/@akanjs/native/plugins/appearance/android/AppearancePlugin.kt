@@ -3,6 +3,7 @@ package com.akanjs.plugins.appearance
 import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Color
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -26,6 +27,7 @@ import com.akanjs.runtime.AkanNativeVoidReply
  * - mode: the fixed setting, or the configuration's night bit when following the system.
  * - change: onConfigurationChanged, plus a check shortly after set(), since a setting that keeps
  *   the drawn scheme (system dark, set dark) changes no configuration. Duplicates are filtered.
+ * - setThemeColor: the shell's status bar icons, until the page's document ends.
  * - Below API 31 there is no per-app night mode: the setting goes to AkanNativeCompat.storeNightMode, the
  *   shell applies it as an override configuration when the activity starts, and set() recreates the
  *   activity when the drawn scheme changes, so the page reloads there.
@@ -76,6 +78,16 @@ class AppearancePlugin(private val context: AkanNativePluginContext) : Appearanc
         reply.resolve()
         if (next != drawn) main.post { activity.recreate() }
     }
+
+    override fun setThemeColor(args: AppearanceSetThemeColorArgs, reply: AkanNativeVoidReply) {
+        val hex = args.color
+        if (hex != null && !HEX.matches(hex)) return reply.reject(AkanNativeErrorCode.INVALID_ARGS, "color must be #rrggbb (got $hex)")
+        context.setThemeColor(hex?.let(Color::parseColor))
+        reply.resolve()
+    }
+
+    /** The next page starts from the background color, whether or not it names a theme color. */
+    override fun documentEnded(document: String) = context.setThemeColor(null)
 
     private fun isNight(config: Configuration) = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
@@ -129,5 +141,6 @@ class AppearancePlugin(private val context: AkanNativePluginContext) : Appearanc
     private companion object {
         const val KEY = "setting"
         const val SETTLE_MS = 500L
+        val HEX = Regex("#[0-9a-fA-F]{6}")
     }
 }

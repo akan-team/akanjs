@@ -26,6 +26,13 @@ export interface AppearanceApi {
    * available on the web (UNSUPPORTED): a page cannot change `prefers-color-scheme`.
    */
   set(args: { mode: AppearanceSetting }): Promise<void>;
+  /**
+   * iOS and Android: the color the page paints under the status bar, as `#rrggbb`. The bar's icons turn dark on a light
+   * color and light on a dark one; null hands them back to the shell (the appearance on iOS, the app's background color
+   * on Android). The page keeps drawing under the bar, so the bar gets no background of its own, and the setting ends
+   * with the page's document. Not available on the web or the desktop (UNSUPPORTED).
+   */
+  setThemeColor(args: { color: string | null }): Promise<void>;
 }
 
 export interface AppearanceEvents {
@@ -34,7 +41,7 @@ export interface AppearanceEvents {
 }
 
 export const appearance = definePlugin<AppearanceApi, AppearanceEvents>("appearance", {
-  methods: ["get", "set"],
+  methods: ["get", "set", "setThemeColor"],
   events: ["change"],
   web,
 });

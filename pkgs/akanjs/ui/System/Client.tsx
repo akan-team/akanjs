@@ -50,6 +50,7 @@ import {
   useState,
 } from "react";
 import { AgentActivity } from "use-agentic";
+import { NativeThemeColor } from "../../client/nativeThemeColor";
 import { readRscRoutePatch, subscribeRscRoutePatch } from "../../client/rscRoutePatch";
 import { FrameRootVars } from "../../webkit/FrameRootVars";
 import { useTransitionStore } from "../../webkit/useTransitionStore";
@@ -301,7 +302,9 @@ export const ClientBridge = ({ env, lang, theme, viewport, prefix, wsConnect }: 
     ViewportMeta.applyContent(viewport, { native: isNativeApp() });
   }, [viewport]);
   useLayoutEffect(() => {
-    ViewportMeta.applyThemeColor(viewport, documentTheme);
+    const apply = () => NativeThemeColor.follow(ViewportMeta.applyThemeColor(viewport, documentTheme));
+    apply();
+    return ViewportMeta.watchThemeColor(apply);
   }, [viewport, documentTheme]);
 
   //? A native shell reports the keyboard through its plugin and a CSR frame reads the visual viewport itself; an SSR

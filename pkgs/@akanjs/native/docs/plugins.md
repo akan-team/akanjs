@@ -179,7 +179,7 @@ Expo SDK는 클론하지 않았다. Expo에만 있는 기능에는 †를 붙였
 | `network` | P1 ✓ | `getStatus() → { connected, type: wifi \| cellular \| ethernet \| none \| unknown }`, 이벤트 `change` | ✓ | `web` | ✓ | ✓ |
 | `screen-orientation` | P2 ✓ | `get()`, `lock({ orientation })`, `unlock()`, 이벤트 `change` | ✓ | – | ✓ | ✓ |
 | `keep-awake`† | P2 ✓ | `keepAwake()`, `allowSleep()` | ✓ | ✓ | ✓ | ✓ |
-| `appearance` | P2 ✓ | `get()`, `set("light" \| "dark" \| "system")`, 이벤트 `change` | △ (set 없음) | ✓ | ✓ | ✓ |
+| `appearance` | P2 ✓ | `get()`, `set("light" \| "dark" \| "system")`, `setThemeColor({ color: "#rrggbb" \| null })`(iOS·Android), 이벤트 `change` | △ (set 없음) | △ (setThemeColor 없음) | ✓ | ✓ |
 | `accessibility` | P3 ✓ | `getState() → { screenReader: bool \| null, reduceMotion, fontScale }`, `announce({ text, priority: polite \| assertive })`, 이벤트 `change` | △ | `web` | ✓ | ✓ (announce는 페이지) |
 
 - **app-state 보강**
@@ -217,6 +217,7 @@ Expo SDK는 클론하지 않았다. Expo에만 있는 기능에는 †를 붙였
   - 읽기만 필요하면 CSS `prefers-color-scheme`으로 충분하다. 강제 설정(`set`)이 필요할 때만 쓰는 플러그인이다.
   - iOS: 모든 scene의 모든 window에 `overrideUserInterfaceStyle`을 설정한다 (`react-native/…/RCTAppearance.mm:112-126`).
   - Android: AppCompatDelegate 대신 `UiModeManager.setApplicationNightMode`를 쓴다.
+  - `setThemeColor`: 페이지가 상태 표시줄 밑에 칠한 색이다. 상대 휘도(Android `Color.luminance`)가 0.5를 넘으면 어두운 아이콘을 쓴다. 페이지가 바 밑까지 그리므로 바 배경은 칠하지 않고, 문서가 끝나면 되돌린다. akanjs 페이지는 theme-color가 바뀔 때마다 부르며, 이 메서드가 없는 셸에서는 부르지 않는다.
 - **accessibility**
   - Android
     - reduce motion은 `TRANSITION_ANIMATION_SCALE == 0`으로 판단한다. 쉼표를 소수점으로 쓰는 로캘을 처리해야 한다 (`react-native/…/AccessibilityInfoModule.kt:101-121`).

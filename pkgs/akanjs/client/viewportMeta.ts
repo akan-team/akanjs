@@ -9,6 +9,7 @@ export interface ThemeColorTag {
 export class ViewportMeta {
   static readonly #offMedia = "not all";
   static readonly #ownAttr = "data-akan-theme-color";
+  static readonly #themeColorVar = "--akan-theme-color";
 
   static content(viewport: RouteViewport | undefined, { native = false }: { native?: boolean } = {}): string {
     const parts = ["width=device-width", "initial-scale=1"];
@@ -38,17 +39,26 @@ export class ViewportMeta {
     if (meta.content !== content) meta.content = content;
   }
 
-  static applyThemeColor(viewport: RouteViewport | undefined, theme?: string) {
-    const tags = ViewportMeta.themeColors(viewport, theme);
-    if (!tags.length) return;
+  static runtimeThemeColor(): string | null {
+    return getComputedStyle(document.documentElement).getPropertyValue(ViewportMeta.#themeColorVar).trim() || null;
+  }
+
+  static applyThemeColor(viewport: RouteViewport | undefined, theme?: string): string | null {
+    const runtime = ViewportMeta.runtimeThemeColor();
+    const tags = runtime ? [{ content: runtime }] : ViewportMeta.themeColors(viewport, theme);
     const existing = [...document.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
+    if (!tags.length) {
+      for (const meta of existing) if (meta.hasAttribute(ViewportMeta.#ownAttr)) meta.remove();
+      return null;
+    }
+    const inEffect = tags.find((tag) => !tag.media || window.matchMedia(tag.media).matches)?.content ?? null;
     const live = existing.filter((meta) => meta.getAttribute("media") !== ViewportMeta.#offMedia);
     const isCurrent =
       live.length === tags.length &&
       tags.every(
         (tag, idx) => live[idx]?.content === tag.content && live[idx]?.getAttribute("media") === (tag.media ?? null),
       );
-    if (isCurrent) return;
+    if (isCurrent) return inEffect;
     //? iOS repaints the status bar for a new meta, not a changed `content`; React's own metas must stay attached.
     for (const meta of existing) {
       if (meta.hasAttribute(ViewportMeta.#ownAttr)) meta.remove();
@@ -62,6 +72,27 @@ export class ViewportMeta {
       meta.setAttribute(ViewportMeta.#ownAttr, "");
       document.head.appendChild(meta);
     }
+    return inEffect;
+  }
+
+  //? A stylesheet edit fires nothing, so the variable is read again when what selects it changes, the OS scheme included.
+  static watchThemeColor(apply: () => void): () => void {
+    let frame = 0;
+    const schedule = () => {
+      frame ||= requestAnimationFrame(() => {
+        frame = 0;
+        apply();
+      });
+    };
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class", "data-theme"] });
+    const scheme = window.matchMedia("(prefers-color-scheme: dark)");
+    scheme.addEventListener("change", schedule);
+    return () => {
+      observer.disconnect();
+      scheme.removeEventListener("change", schedule);
+      if (frame) cancelAnimationFrame(frame);
+    };
   }
 
   static #ensureMeta(name: string): HTMLMetaElement {

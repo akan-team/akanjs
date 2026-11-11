@@ -119,7 +119,7 @@ Stage
 
   - .layoutStyle: The outer page container style, web or mobile. Use mobile for app-like shells. — (style)
 
-  - .viewport: The viewport meta: fitCover for edge-to-edge, the keyboard's interactiveWidget, and themeColor. — ({ … })
+  - .viewport: The viewport meta: fitCover for edge-to-edge, the keyboard's interactiveWidget, and themeColor, which --akan-theme-color on the root outranks. — ({ … })
 
 - Ends the chain
 

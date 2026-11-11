@@ -154,6 +154,8 @@ By name — native.plugins
 
   - iap: In-app purchase: StoreKit 2 and Play Billing.
 
+  - appearance: Light or dark for the whole app, and status bar icons that follow the page's theme color.
+
   - share · biometric · …: The runtime's other plugins, by id, or a plugin folder by its absolute path.
 
 Yes

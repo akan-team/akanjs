@@ -423,6 +423,14 @@ export default page()
             marks: byName,
           },
           {
+            name: "appearance",
+            desc: l.trans({
+              en: "Light or dark for the whole app, and status bar icons that follow the page's theme color.",
+              ko: "앱 전체의 라이트·다크 설정과, 페이지 테마 색을 따르는 상태 표시줄 아이콘입니다.",
+            }),
+            marks: byName,
+          },
+          {
             name: "share · biometric · …",
             desc: l.trans({
               en: "The runtime's other plugins, by id, or a plugin folder by its absolute path.",
