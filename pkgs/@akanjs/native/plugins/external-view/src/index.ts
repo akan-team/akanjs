@@ -10,9 +10,9 @@ import { definePlugin, type FileRef } from "../../../packages/core/src/index.ts"
  * permissions and links another program would open (`mailto:`, a custom scheme) are refused. Listing the plugin in
  * `native.plugins` is what lets an app open one.
  *
- * Windows has every method. Linux has all but `sendKey` and sends no `consoleMessage`; there the visible view shown
- * last holds the keyboard focus inside its window, so keys reach it as the user's own, until a click on the page takes
- * the focus or the view is hidden or closed. macOS (14 or later, for its separate profile) has all but `sendKey`,
+ * Windows has every method. Linux has every method and sends no `consoleMessage`; there the visible view shown last
+ * also holds the keyboard focus inside its window, so the user's own keys reach it, until a click on the page takes the
+ * focus or the view is hidden or closed. macOS (14 or later, for its separate profile) has all but `sendKey`,
  * `setMuted` and `capture`, and sends no `loadFailed` or `consoleMessage`. iOS and Android: UNSUPPORTED.
  */
 export type ExternalViewBounds = "fill" | { x: number; y: number; width: number; height: number };
@@ -72,7 +72,7 @@ export interface ExternalViewApi {
    * answer within 30 s, as from a page busy in a loop; `sendKey` and `capture` time out the same way.
    */
   evaluate(args: { id: string; script: string }): Promise<{ value: unknown }>;
-  /** A trusted key press (`{ key: "z", code: "KeyZ" }`), whether or not the view has the focus. Windows only. */
+  /** A trusted key press (`{ key: "z", code: "KeyZ" }`), whether or not the view has the focus. Not on macOS. */
   sendKey(args: { id: string; key: string; code: string }): Promise<void>;
   /** The view's own sound only; the system volume is the volume plugin's. Not on macOS. */
   setMuted(args: { id: string; muted: boolean }): Promise<void>;

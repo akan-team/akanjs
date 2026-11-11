@@ -1,7 +1,7 @@
 //! The external-view plugin on WebKitGTK (external.rs). A view lies on a GtkOverlay over its window's page: wry's
-//! build_as_child is X11 only. WebKitGTK has no DevTools Protocol, so `cdp` answers the screenshot desktop.ts asks for
-//! through GTK, a visible view holds the keyboard focus in place of sendKey, and frames are told apart at their
-//! responses, as navigation.rs does for the page.
+//! build_as_child is X11 only. WebKitGTK has no DevTools Protocol, so `cdp` answers the screenshot and the key events
+//! desktop.ts asks for through GTK, a visible view also holds the keyboard focus for the user's own keys, and frames are
+//! told apart at their responses, as navigation.rs does for the page.
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -27,7 +27,23 @@ pub(crate) fn page_layer(vbox: &gtk::Box) -> gtk::Overlay {
   let overlay = gtk::Overlay::new();
   vbox.pack_start(&overlay, true, true, 0);
   overlay.show();
+  if let Some(window) = vbox.toplevel().and_then(|top| top.downcast::<gtk::Window>().ok()) {
+    window.connect_key_press_event(hand_back);
+    window.connect_key_release_event(hand_back);
+  }
   overlay
+}
+
+//? WebKit hands an unhandled key back via the window, which would give it to the page; a view takes its own or drops its next.
+fn hand_back(window: &gtk::Window, key: &gdk::EventKey) -> glib::Propagation {
+  if !key.is_send_event() || key.window() == window.window() {
+    return glib::Propagation::Proceed;
+  }
+  let mut event = (**key).clone();
+  if let Some(view) = gtk::event_widget(&mut event).filter(|widget| widget != window.upcast_ref::<gtk::Widget>()) {
+    view.event(&event);
+  }
+  glib::Propagation::Stop
 }
 
 /// The view in a box of its own on the window's overlay, laid out at `bounds`.
@@ -241,10 +257,11 @@ fn error_name(error: &glib::Error) -> String {
   }
 }
 
-/// The one DevTools Protocol method desktop.ts sends here: sendKey is not declared on Linux (focus, below).
-pub(crate) fn cdp(webview: &WebView, method: &str, _params: &str, reply: Reply) {
+/// The DevTools Protocol methods desktop.ts sends, answered through GTK.
+pub(crate) fn cdp(webview: &WebView, method: &str, params: &str, reply: Reply) {
   match method {
     "Page.captureScreenshot" => capture(webview, reply),
+    "Input.dispatchKeyEvent" => reply.send(json::parse(params).and_then(|params| send_key(webview, &params)).map(|()| "{}".into())),
     _ => reply.send(Err(format!("UNSUPPORTED: {method} reaches no view on Linux"))),
   }
 }
@@ -261,7 +278,156 @@ fn capture(webview: &WebView, reply: Reply) {
   });
 }
 
-//? WebKitGTK has no trusted input to send a view, so keys reach it as the user's own: through the keyboard focus.
+/// The X keysym of a KeyboardEvent.code a key's text does not name: every key desktop.ts's virtualKey knows.
+pub(crate) fn keysym(code: &str) -> Option<String> {
+  if let Some(n) = code.strip_prefix('F').and_then(|n| n.parse::<u8>().ok()).filter(|n| (1..=24).contains(n)) {
+    return Some(format!("F{n}"));
+  }
+  if let Some(digit) = code.strip_prefix("Numpad").filter(|d| d.len() == 1 && d.as_bytes()[0].is_ascii_digit()) {
+    return Some(format!("KP_{digit}"));
+  }
+  let name = match code {
+    "Enter" => "Return",
+    "NumpadEnter" => "KP_Enter",
+    "Escape" => "Escape",
+    "Tab" => "Tab",
+    "Backspace" => "BackSpace",
+    "Delete" => "Delete",
+    "ArrowLeft" => "Left",
+    "ArrowUp" => "Up",
+    "ArrowRight" => "Right",
+    "ArrowDown" => "Down",
+    "Home" => "Home",
+    "End" => "End",
+    "PageUp" => "Page_Up",
+    "PageDown" => "Page_Down",
+    "Space" => "space",
+    _ => return None,
+  };
+  Some(name.into())
+}
+
+//? WebKitGTK reads KeyboardEvent.code off the hardware keycode (evdev + 8), so it comes from `code`, never the layout.
+pub(crate) fn evdev(code: &str) -> Option<u16> {
+  const LETTERS: &[u8; 26] = b"\x1e\x30\x2e\x20\x12\x21\x22\x23\x17\x24\x25\x26\x32\x31\x18\x19\x10\x13\x1f\x14\x16\x2f\x11\x2d\x15\x2c";
+  if let Some(letter) = code.strip_prefix("Key").filter(|l| l.len() == 1 && l.as_bytes()[0].is_ascii_uppercase()) {
+    return Some(u16::from(LETTERS[usize::from(letter.as_bytes()[0] - b'A')]));
+  }
+  if let Some(digit) = code.strip_prefix("Digit").filter(|d| d.len() == 1 && d.as_bytes()[0].is_ascii_digit()) {
+    let d = digit.as_bytes()[0] - b'0';
+    return Some(if d == 0 { 11 } else { u16::from(d) + 1 });
+  }
+  if let Some(digit) = code.strip_prefix("Numpad").filter(|d| d.len() == 1 && d.as_bytes()[0].is_ascii_digit()) {
+    return Some([82, 79, 80, 81, 75, 76, 77, 71, 72, 73][usize::from(digit.as_bytes()[0] - b'0')]);
+  }
+  if let Some(n) = code.strip_prefix('F').and_then(|n| n.parse::<u16>().ok()).filter(|n| (1..=24).contains(n)) {
+    return Some(match n {
+      1..=10 => 58 + n,
+      11 | 12 => 76 + n,
+      _ => 170 + n,
+    });
+  }
+  Some(match code {
+    "Escape" => 1,
+    "Minus" => 12,
+    "Equal" => 13,
+    "Backspace" => 14,
+    "Tab" => 15,
+    "BracketLeft" => 26,
+    "BracketRight" => 27,
+    "Enter" => 28,
+    "Semicolon" => 39,
+    "Quote" => 40,
+    "Backquote" => 41,
+    "Backslash" => 43,
+    "Comma" => 51,
+    "Period" => 52,
+    "Slash" => 53,
+    "Space" => 57,
+    "NumpadEnter" => 96,
+    "Home" => 102,
+    "ArrowUp" => 103,
+    "PageUp" => 104,
+    "ArrowLeft" => 105,
+    "ArrowRight" => 106,
+    "End" => 107,
+    "ArrowDown" => 108,
+    "PageDown" => 109,
+    "Delete" => 111,
+    _ => return None,
+  })
+}
+
+//? Sent to the view's widget, not the display: it reaches that view alone, focused, hidden or not, and counts as trusted.
+fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
+  let field = |k: &str| params.get(k).and_then(|v| v.as_str()).unwrap_or("");
+  let kind = match field("type") {
+    "keyDown" | "rawKeyDown" => gdk::EventType::KeyPress,
+    "keyUp" => gdk::EventType::KeyRelease,
+    other => return Err(format!("INVALID_ARGS: no key event of type {other}")),
+  };
+  let (key, code) = (field("key"), field("code"));
+  let unknown = || format!("INVALID_ARGS: code {code} is not a key sendKey knows");
+  let mut chars = key.chars();
+  let keyval = match (chars.next(), chars.next()) {
+    (Some(c), None) => *gdk::keys::Key::from_unicode(c),
+    _ => *gdk::keys::Key::from_name(&keysym(code).ok_or_else(unknown)?),
+  };
+  let keycode = evdev(code).ok_or_else(unknown)? + 8;
+  let wv = webview.webview();
+  wv.realize();
+  let window = key_window(&wv)?;
+  if !window.is_viewable() {
+    return Err("UNAVAILABLE: the view's window is not on screen".into());
+  }
+  let display = window.display();
+  let mut native = gdk::Event::new(kind);
+  native.set_device(display.default_seat().and_then(|seat| seat.keyboard()).as_ref());
+  // SAFETY: Event::new(KeyPress|KeyRelease) allocated a GdkEventKey, which releases the window reference with itself.
+  unsafe {
+    use glib::translate::{ToGlibPtr, ToGlibPtrMut};
+    let raw = ToGlibPtrMut::<*mut gdk::ffi::GdkEvent>::to_glib_none_mut(&mut native).0 as *mut gdk::ffi::GdkEventKey;
+    (*raw).window = window.to_glib_full();
+    (*raw).time = (glib::monotonic_time() / 1000) as u32;
+    (*raw).send_event = 1;
+    (*raw).keyval = keyval;
+    (*raw).hardware_keycode = keycode;
+  }
+  wv.event(&native);
+  Ok(())
+}
+
+//? GTK drops a key press on a window not viewable, a hidden view's own: keys go through an off-screen one routed to it.
+fn key_window(wv: &webkit2gtk::WebView) -> Result<gdk::Window, String> {
+  use glib::translate::ToGlibPtr;
+  const KEY: &str = "akan-key-window";
+  // SAFETY: only key_window sets KEY, always to a gdk::Window.
+  if let Some(window) = unsafe { wv.data::<gdk::Window>(KEY) } {
+    return Ok(unsafe { window.as_ref() }.clone());
+  }
+  let top = wv.toplevel().and_then(|top| top.window()).ok_or("UNAVAILABLE: the view's window is not on screen yet")?;
+  let attrs = gdk::WindowAttr {
+    x: Some(-1),
+    y: Some(-1),
+    width: 1,
+    height: 1,
+    wclass: gdk::WindowWindowClass::InputOnly,
+    window_type: gdk::WindowType::Child,
+    ..Default::default()
+  };
+  let window = gdk::Window::new(Some(&top), &attrs);
+  // SAFETY: the window names the view as its widget only while the view lives: the view's destroy destroys it.
+  unsafe {
+    gdk::ffi::gdk_window_set_user_data(window.to_glib_none().0, wv.upcast_ref::<glib::Object>().as_ptr() as *mut _);
+    wv.set_data(KEY, window.clone());
+  }
+  window.show();
+  let destroyed = window.clone();
+  wv.connect_destroy(move |_| destroyed.destroy());
+  Ok(window)
+}
+
+//? A visible view takes the user's own keys too: their way to a view is the keyboard focus.
 pub(crate) fn focus(webview: &WebView) {
   webview.webview().grab_focus();
 }
@@ -271,5 +437,40 @@ pub(crate) fn focus_page(any: &WebView) {
   let page = any.webview().ancestor(gtk::Overlay::static_type()).and_then(|o| o.downcast::<gtk::Overlay>().ok()).and_then(|o| o.child());
   if let Some(page) = page {
     page.grab_focus();
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{evdev, keysym};
+
+  #[test]
+  fn every_key_virtual_key_knows_but_text_has_a_keysym() {
+    for code in ["Enter", "NumpadEnter", "Escape", "Tab", "Backspace", "Delete", "ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown", "Home", "End", "PageUp", "PageDown", "Space"] {
+      assert!(keysym(code).is_some(), "{code}");
+    }
+    assert_eq!(keysym("F1").as_deref(), Some("F1"));
+    assert_eq!(keysym("F24").as_deref(), Some("F24"));
+    assert_eq!(keysym("Numpad7").as_deref(), Some("KP_7"));
+    for code in ["F0", "F25", "Numpad", "KeyA", "Digit1", "Fn"] {
+      assert_eq!(keysym(code), None, "{code}");
+    }
+  }
+
+  #[test]
+  fn every_key_virtual_key_knows_has_its_evdev_keycode() {
+    let known = [("KeyA", 30), ("KeyQ", 16), ("KeyZ", 44), ("Digit1", 2), ("Digit0", 11), ("Numpad0", 82), ("Numpad9", 73), ("F1", 59), ("F10", 68), ("F11", 87), ("F12", 88), ("F13", 183), ("F24", 194)];
+    for (code, keycode) in known {
+      assert_eq!(evdev(code), Some(keycode), "{code}");
+    }
+    assert_eq!([evdev("Space"), evdev("BracketLeft"), evdev("ArrowLeft"), evdev("Enter")], [Some(57), Some(26), Some(105), Some(28)]);
+    let named = ["Space", "Enter", "NumpadEnter", "Escape", "Tab", "Backspace", "Delete", "ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown", "Home", "End", "PageUp", "PageDown", "Slash", "Minus", "Equal", "Period", "Comma", "Semicolon", "Quote", "BracketLeft", "BracketRight", "Backslash", "Backquote"];
+    let letters = ('A'..='Z').map(|c| format!("Key{c}"));
+    for code in named.map(String::from).into_iter().chain(letters).chain((0..10).map(|d| format!("Digit{d}"))) {
+      assert!(evdev(&code).is_some(), "{code}");
+    }
+    for code in ["F0", "F25", "Keya", "KeyAA", "Digit", "Numpad10", "ShiftLeft"] {
+      assert_eq!(evdev(code), None, "{code}");
+    }
   }
 }

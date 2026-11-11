@@ -7,7 +7,7 @@
 // page console reaches stdout) with a probe page in place of its own, serves a board page, and reads the probe's
 // lines. At a checkpoint the probe waits on the board server for the check's answer: on X11 the check reads the
 // screen and clicks (xdotool, ImageMagick), elsewhere it only reads the app's log. The probe checks that a view
-// 1. answers isSupported for every method but sendKey, opens, runs its init script before the page's own and in no
+// 1. answers isSupported for every method, opens, runs its init script before the page's own and in no
 //    frame, and answers evaluate, while a cross-origin frame in it loads, and outlives its page's window.close(),
 // 2. lies at its bounds over the page, which takes the clicks around it and, once it is hidden, under it, also once
 //    an open with another init script built it again,
@@ -15,7 +15,8 @@
 // 4. refuses a navigation off its origins, from the app and from its own page, the error page of one that fails, and
 //    a frame's mailto: link,
 // 5. holds the keyboard while it is shown (the page has it while it is hidden), takes it back when its window is
-//    active again, captures its own content as a PNG, and mutes,
+//    active again, takes sendKey's keydown and keyup with their codes whether it, the page or another window has the
+//    focus and while it is hidden, the page seeing none, captures its own content as a PNG, and mutes,
 // 6. plays sound without a gesture, and a view opened with autoplay false does not,
 // 7. keeps storage of its own, which clearData clears,
 // 8. loads again when its web process ends, counting restarts, with its init script.
@@ -58,6 +59,8 @@ const BOARD = `<!doctype html><title>board</title><body style="margin:0;backgrou
 <script>
 window.__keys = []; window.__clicks = 0;
 addEventListener("keydown", (e) => window.__keys.push(e.key + ":" + e.isTrusted));
+window.__sent = []; window.__untrusted = 0;
+for (const type of ["keydown", "keyup"]) addEventListener(type, (e) => { window.__sent.push(type + "," + e.key + "," + e.code); if (!e.isTrusted) window.__untrusted++; });
 addEventListener("click", () => window.__clicks++);
 addEventListener("message", (e) => { if (typeof e.data?.alive === "string") window.__frame = e.data; });
 const frame = document.createElement("iframe");
@@ -152,7 +155,7 @@ const holdsKeyboard = async (what, id = "board") => {
 async function main() {
   const unsupported = externalView.methods.filter((m) => !externalView.isSupported(m));
   log("booted " + JSON.stringify({ unsupported }));
-  if (unsupported.join() !== "sendKey") throw new Error("not supported: " + unsupported.join());
+  if (unsupported.length) throw new Error("not supported: " + unsupported.join());
   await sleep(2000);
 
   log("step 1. open, the init script first and in no frame, evaluate, a cross-origin frame");
@@ -236,6 +239,35 @@ async function main() {
   await holdsKeyboard("shown");
   const regained = await checkpoint("regain", { innerWidth, innerHeight });
   if (!regained.skipped) await holdsKeyboard("its window active again");
+  const SENT = [["z", "KeyZ"], ["1", "Digit1"], [" ", "Space"], ["[", "BracketLeft"], ["ArrowLeft", "ArrowLeft"], ["Enter", "Enter"]];
+  const expected = SENT.flatMap(([key, code]) => ["keydown," + key + "," + code, "keyup," + key + "," + code]).join("|");
+  const sent = async (what) => {
+    await inView("window.__sent = []; 0");
+    const before = pageKeys.length;
+    for (const [key, code] of SENT) await externalView.sendKey({ id: "board", key, code });
+    let seen = "";
+    for (const t = Date.now(); Date.now() - t < 5000 && seen !== expected; await sleep(250)) seen = await inView("window.__sent.join('|')");
+    if (seen !== expected) throw new Error("sendKey with " + what + ": the view saw " + seen + ", not " + expected);
+    await sleep(500);
+    if (pageKeys.length !== before) throw new Error("sendKey with " + what + ": the page took " + pageKeys.slice(before).join());
+    log("sendKey with " + what + ": " + SENT.length + " keys, untrusted events so far " + (await inView("window.__untrusted")));
+  };
+  await sent("the view holding the keyboard");
+  const pageFocused = await checkpoint("sendPageFocused", { innerWidth, innerHeight });
+  if (!pageFocused.skipped) {
+    await until("the page holds the keyboard after a click on it", () => document.hasFocus(), 10000);
+    await sent("the page holding the keyboard");
+    await checkpoint("sendBlurred");
+    await sent("another window focused");
+    await checkpoint("sendRefocused");
+    await holdsKeyboard("its window active again after sendKey");
+  }
+  await externalView.setVisible({ id: "board", visible: false });
+  await until("the page holds the keyboard", () => document.hasFocus(), 10000);
+  await sent("the view hidden");
+  await externalView.setVisible({ id: "board", visible: true });
+  await holdsKeyboard("shown after sendKey while hidden");
+  await sent("the view shown again");
   const shot = await externalView.capture({ id: "board" });
   log("capture " + JSON.stringify(shot));
   if (!(shot.width > 0 && shot.height > 0)) throw new Error("no capture");
@@ -413,7 +445,18 @@ try {
       xdotool("windowfocus", "--sync", id ?? "");
       await Bun.sleep(500);
     }
-    if (name === "active" || name === "typeInView" || name === "typeInPage" || name === "regain")
+    if (name === "sendPageFocused") click(beside.x, beside.y);
+    if (name === "sendBlurred")
+      xdotool(
+        "windowfocus",
+        "--sync",
+        xdotool("search", "--maxdepth", "0", "").stdout.toString().trim().split("\n")[0] ?? "",
+      );
+    if (name === "sendRefocused") xdotool("windowfocus", "--sync", id ?? "");
+    if (name.startsWith("send")) await Bun.sleep(500);
+    if (
+      ["active", "typeInView", "typeInPage", "regain", "sendPageFocused", "sendBlurred", "sendRefocused"].includes(name)
+    )
       return JSON.stringify({ ok: true });
     await Bun.sleep(700);
     const seen = { inside: pixel(inside.x, inside.y), beside: pixel(beside.x, beside.y) };
