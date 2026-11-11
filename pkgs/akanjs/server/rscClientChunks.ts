@@ -54,6 +54,29 @@ export const noteChunkLoadFailure = (error: unknown): void => {
 export const lazyLinkFailureKeyOf = (error: unknown): string | null =>
   error instanceof Error && isLinkFailure(error) && !chunkLoadFailures.has(error) ? `import() ${error.message}` : null;
 
+//? Chromium, and Firefox from 115, name the module that failed to fetch; WebKit's "Importing a module script failed."
+//? names none, so a chunk gone there stays on its error.
+const fetchFailure = /^(?:Failed to fetch dynamically imported module|error loading dynamically imported module): \S+$/;
+const ownChunkUrlOf = (message: string): string | null => {
+  if (!fetchFailure.test(message)) return null;
+  try {
+    const url = new URL(message.slice(message.lastIndexOf(" ") + 1));
+    return url.origin === window.location.origin && url.pathname.startsWith("/_akan/client/") ? url.href : null;
+  } catch {
+    return null;
+  }
+};
+//? Only a 404 says this origin no longer serves the chunk; a network failure, a blocked request or a 5xx can pass.
+export const ifLazyChunkGone = (error: unknown, then: (key: string) => void): void => {
+  if (!(error instanceof TypeError) || chunkLoadFailures.has(error) || !navigator.onLine) return;
+  const url = ownChunkUrlOf(error.message);
+  if (url)
+    void fetch(url, { method: "HEAD", cache: "no-store" }).then(
+      ({ status }) => status === 404 && then(`import() ${error.message}`),
+      () => undefined,
+    );
+};
+
 //? React's own fallback where `reportError` is missing (Chromium before 95): `window.onerror` trackers still see it.
 const reportGlobalError = (error: unknown): void => {
   if (typeof reportError === "function") {
