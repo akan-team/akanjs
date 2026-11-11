@@ -34,7 +34,7 @@ plugins/<id>/
 }
 ```
 - 플랫폼 값이 `null`이거나 없으면 그 플랫폼에서 `UNSUPPORTED`다. `"web"`이면 WebView 안에서 web 구현을 쓴다.
-- 네이티브 구현이 manifest의 메서드 일부만 지원하면 플랫폼 항목에 `"methods": [...]`를 적는다. 데스크톱은 `"desktop": { "module": "./src/desktop.ts", "methods": [...] }` 형식을 쓴다. 적지 않은 메서드는 그 플랫폼에서 `UNSUPPORTED`이고 `isSupported()`도 false다. 데스크톱 OS 하나만 갖추지 못한 메서드는 `"unsupported": { "linux": ["sendKey"] }`처럼 그 OS의 선언에서만 뺀다.
+- 네이티브 구현이 manifest의 메서드 일부만 지원하면 플랫폼 항목에 `"methods": [...]`를 적는다. 데스크톱은 `"desktop": { "module": "./src/desktop.ts", "methods": [...] }` 형식을 쓴다. 적지 않은 메서드는 그 플랫폼에서 `UNSUPPORTED`이고 `isSupported()`도 false다. 데스크톱 OS 하나만 갖추지 못한 메서드는 `"unsupported": { "macos": ["sendKey"] }`처럼 그 OS의 선언에서만 뺀다.
 - 일부만 네이티브이고 나머지는 web 구현으로 충분하면 `"web": true`를 더한다. 예: macOS camera는 `"desktop": { "module": "./src/desktop.ts", "methods": ["checkPermission", "requestPermission"], "events": [], "web": true }` — 권한 상태는 셸(AVFoundation), 촬영은 getUserMedia. manifest에 `web` 항목이 있어야 한다.
 - macOS에서 셸이 실행 직후 `UNUserNotificationCenter`의 delegate가 되어야 하는 플러그인(알림 클릭으로 앱이 켜져도 받으려면)은 `"macos": { "infoPlist": { "AkanNativeUserNotifications": true } }`를 둔다(`plugins/local-notifications`).
 - 빌드가 거절하는 것(아키텍처 검토 6단계, 2026-09-27)

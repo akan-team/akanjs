@@ -1,14 +1,15 @@
 import { fetch, Memo, usePage } from "@apps/minimal/client";
 import { appNavClass, Screen } from "@apps/minimal/ui";
 import { ID } from "akanjs/base";
-import { page } from "akanjs/client";
+import { page, router } from "akanjs/client";
 import { Layout } from "akanjs/ui";
 
 export default page()
   .param("memoId", ID)
   .config({ topInset: 48, transition: "stack" })
-  .guard(async ({ memoId }) => {
-    await fetch.memo(memoId);
+  .guard(async (args) => {
+    if (!(await fetch.isMemoOpen())) return router.notFound();
+    await fetch.memo(args.memoId);
   })
   .app("showTripNote", "Show one trip note with its images.", ({ memoId }) => {
     const { memoView } = fetch.viewMemo(memoId);
