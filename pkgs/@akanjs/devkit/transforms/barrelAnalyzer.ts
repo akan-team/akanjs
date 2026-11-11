@@ -38,6 +38,12 @@ const LOCAL_NAMED_RE = /(?:^|\n)\s*export\s+\{\s*([^}]*?)\s*\}(?!\s*from)/g;
 
 const CANDIDATE_EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
 
+interface BarrelWalk {
+  visited: Set<string>;
+  read: Set<string>;
+  following: Set<string>;
+}
+
 export class BarrelAnalyzer {
   readonly #logger = new Logger("BarrelAnalyzer");
   readonly #opts: BarrelAnalyzerOptions;
@@ -96,7 +102,7 @@ export class BarrelAnalyzer {
       const map: BarrelExportMap = new Map();
       const read = new Set<string>();
       this.#read.set(pkgName, read);
-      await this.#walk(pkg.entryFile, pkg, map, read);
+      await this.#walk(pkg.entryFile, pkg, map, { visited: new Set(), read, following: new Set([pkg.entryFile]) });
       return map;
     } catch (err) {
       this.#logger.error(`analyze failed for ${pkgName}: ${(err as Error).message}`);
@@ -104,9 +110,10 @@ export class BarrelAnalyzer {
     }
   }
 
-  async #walk(absFile: string, pkg: PackageEntry, map: BarrelExportMap, visited: Set<string>): Promise<void> {
-    if (visited.has(absFile)) return;
-    visited.add(absFile);
+  async #walk(absFile: string, pkg: PackageEntry, map: BarrelExportMap, walk: BarrelWalk): Promise<void> {
+    if (walk.visited.has(absFile)) return;
+    walk.visited.add(absFile);
+    walk.read.add(absFile);
     const file = Bun.file(absFile);
     if (!(await file.exists())) return;
     const source = await file.text();
@@ -119,11 +126,12 @@ export class BarrelAnalyzer {
     authoritative.delete("default");
 
     const attributed = new Set<string>();
-    const attribute = (listBody: string, subpath: string) => {
+    const attribute = (listBody: string, subpath: string, source?: BarrelExportMap | null) => {
       for (const item of parseNamedList(listBody)) {
         if (item.isType || item.imported === "default" || !authoritative.has(item.local)) continue;
         attributed.add(item.local);
-        if (!map.has(item.local)) map.set(item.local, { subpath, originalName: item.imported });
+        if (map.has(item.local)) continue;
+        map.set(item.local, source?.get(item.imported) ?? { subpath, originalName: item.imported });
       }
     };
 
@@ -152,7 +160,7 @@ export class BarrelAnalyzer {
         const targetAbs = await this.#resolveRel(absFile, spec);
         if (!targetAbs) continue;
         const targetSubpath = this.#subpathFor(pkg, targetAbs);
-        if (targetSubpath) attribute(namedList, targetSubpath);
+        if (targetSubpath) attribute(namedList, targetSubpath, await this.#exportsOf(targetAbs, pkg, walk));
       }
     }
 
@@ -172,8 +180,18 @@ export class BarrelAnalyzer {
 
     for (const spec of starSpecs) {
       const targetAbs = await this.#resolveRel(absFile, spec);
-      if (targetAbs) await this.#walk(targetAbs, pkg, map, visited);
+      if (targetAbs) await this.#walk(targetAbs, pkg, map, walk);
     }
+  }
+
+  //? A name re-exported by name from a barrel is mapped to the file that declares it, as a star walk would map it:
+  //? a rewrite to the barrel itself would load every module behind it.
+  async #exportsOf(absFile: string, pkg: PackageEntry, walk: BarrelWalk): Promise<BarrelExportMap | null> {
+    if (walk.following.has(absFile)) return null;
+    const map: BarrelExportMap = new Map();
+    const following = new Set([...walk.following, absFile]);
+    await this.#walk(absFile, pkg, map, { visited: new Set(), read: walk.read, following });
+    return map;
   }
 
   #scanExports(source: string, absFile: string): Set<string> {

@@ -209,6 +209,33 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(map?.get("OnlyA")).toEqual({ subpath: "@scope/pkg/a", originalName: "OnlyA" });
   });
 
+  test("a name re-exported by name from a sub-barrel maps to the file that declares it", async () => {
+    const root = await makeTempRoot();
+    const pkgDir = path.join(root, "pkg");
+    await write(
+      path.join(pkgDir, "index.ts"),
+      'export { A, Bee as B2 } from "./sub";\nexport { C } from "./cycleA";\n',
+    );
+    await write(path.join(pkgDir, "sub", "index.ts"), 'export * from "./a";\nexport { B as Bee } from "./b";\n');
+    await write(path.join(pkgDir, "sub", "a.ts"), "export const A = 1;\n");
+    await write(path.join(pkgDir, "sub", "b.ts"), "export const B = 2;\n");
+    await write(path.join(pkgDir, "cycleA.ts"), 'export { C } from "./cycleB";\n');
+    await write(path.join(pkgDir, "cycleB.ts"), 'export { C } from "./cycleA";\n');
+    const analyzer = new BarrelAnalyzer({
+      resolvePackage: async () => ({ pkgName: "@scope/pkg", entryFile: path.join(pkgDir, "index.ts"), pkgDir }),
+    });
+
+    const map = await analyzer.analyze("@scope/pkg");
+    expect(map?.get("A")).toEqual({ subpath: "@scope/pkg/sub/a", originalName: "A" });
+    expect(map?.get("B2")).toEqual({ subpath: "@scope/pkg/sub/b", originalName: "B" });
+    expect(map?.get("C")).toEqual({ subpath: "@scope/pkg/cycleA", originalName: "C" });
+    expect(
+      (await analyzer.filesOf("@scope/pkg"))
+        .map((file) => path.relative(pkgDir, file))
+        .sort((a, b) => a.localeCompare(b)),
+    ).toEqual(["cycleA.ts", "cycleB.ts", "index.ts", "sub/a.ts", "sub/b.ts", "sub/index.ts"]);
+  });
+
   test("two analyses that interleave each keep their own place in their barrel", async () => {
     const root = await makeTempRoot();
     const barrels = { first: ["a1", "a2", "a3"], second: ["b1", "b2"] } as const;
