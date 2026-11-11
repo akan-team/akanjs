@@ -231,7 +231,7 @@ export class GuardResolver {
       near,
     );
     if (own) return own;
-    const reexport = from && depth < maxMapDepth ? this.reexportOf(from, name, near) : null;
+    const reexport = from && depth < maxMapDepth ? this.#reexportOf(from, name, near) : null;
     if (reexport) return this.#factoryAt(factories, reexport.local, reexport.site, depth + 1);
     return from && near ? this.#throughStar(candidates, from, name, near) : undefined;
   }
@@ -274,13 +274,13 @@ export class GuardResolver {
       const visible = isBase ? undefined : declared.find((other) => this.visible(other.owner, site.owner));
       return visible ? { guard: visible } : { name, from };
     }
-    const reexport = from && depth < maxMapDepth ? this.reexportOf(from, name, near) : null;
+    const reexport = from && depth < maxMapDepth ? this.#reexportOf(from, name, near) : null;
     if (reexport) return this.#findGuard(reexport.local, reexport.site, depth + 1, isBase);
     const reached = from && near ? this.#throughStar(declared, from, name, near) : undefined;
     return reached ? { guard: reached } : { name, from };
   }
 
-  reexportOf(owner: string, name: string, near: string | null) {
+  #reexportOf(owner: string, name: string, near: string | null) {
     const key = `${owner}\n${name}\n${near ?? ""}`;
     const cached = this.#reexports.get(key);
     if (cached !== undefined) return cached;
@@ -501,6 +501,13 @@ export class GuardResolver {
         if (this.pathOfSpecifier(fileName, specifier) === null) packages.add(specifier);
     }
     return [...packages];
+  }
+
+  modulesUnder(owner: string, folder: string, name: string) {
+    return this.#filesOf(owner, name, folder)
+      .map((fileName) => this.#source.relative(fileName))
+      .filter((module) => module.startsWith(`${folder}/`))
+      .map((module) => module.replace(/\.tsx?$/, ""));
   }
 
   declares(owner: string, name: string) {

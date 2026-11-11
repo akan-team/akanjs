@@ -201,12 +201,15 @@ export class AdaptorResolver {
 
   //? A lib reaches a third-party class only through a re-export, so the class is the package's, not the lib's.
   #packageShimOf(owner: string, name: string, near: string | null) {
-    const reexport = this.#resolver.reexportOf(owner, name, near);
-    const [shim] = reexport?.site.imports ?? [];
-    if (reexport && shim && this.#resolver.pathOfSpecifier(reexport.site.fileName, shim.from) === null)
-      return { name: reexport.local === "default" ? name : reexport.local, from: shim.from };
-    if (reexport || !near) return null;
-    const { packages, paths } = this.#resolver.hasModule(near)
+    if (!near) return null;
+    const isModule = this.#resolver.hasModule(near);
+    const seen = new Set<string>();
+    const shims = (isModule ? [near] : this.#resolver.modulesUnder(owner, near, name))
+      .flatMap((path) => this.#exportedAt(name, path, seen))
+      .filter((item): item is PackageExport => !("fact" in item));
+    const [shim] = shims;
+    if (shim) return shims.every((other) => other.name === shim.name && other.from === shim.from) ? shim : null;
+    const { packages, paths } = isModule
       ? this.#resolver.starExportsOf(owner, near)
       : { packages: this.#resolver.packagesUnder(owner, near), paths: [] };
     const [only] = packages;
