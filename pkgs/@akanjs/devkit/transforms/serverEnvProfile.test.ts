@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { Logger } from "akanjs/common";
-import { tempDirs, writeText as write } from "../testHelpers";
+import { tempDirs, writeText as write } from "../test/testHelpers";
 import { ServerEnvProfile } from "./serverEnvProfile";
 
 const makeTempRoot = tempDirs("akan-devkit-server-env-profile-");

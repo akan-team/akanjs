@@ -2,7 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor } from "@akanjs/devkit/executors";
 import { NativeApp } from "@akanjs/devkit/mobile";
-import { createTempApp, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
+import { createTempApp, tempRoots, writeText } from "@akanjs/devkit/test/testHelpers";
 import { Logger } from "akanjs/common";
 import { ContextScript } from "./context.script";
 

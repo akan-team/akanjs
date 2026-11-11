@@ -1,6 +1,6 @@
 import { mkdir, rename } from "node:fs/promises";
 import path from "node:path";
-import { stripAnsi } from "@akanjs/devkit/stripAnsi";
+import { stripAnsi } from "@akanjs/devkit/util/stripAnsi";
 import dayjs from "dayjs";
 import type { DevAppStatus } from "./devSupervisor";
 

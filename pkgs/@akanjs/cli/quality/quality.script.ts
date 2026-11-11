@@ -1,7 +1,11 @@
 import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
-import { MaintainabilityBaseline } from "@akanjs/devkit/maintainabilityBaseline";
-import { AkanQualityScanner, formatQualityScanResult, formatSsrScanResult } from "@akanjs/devkit/qualityScanner";
+import { MaintainabilityBaseline } from "@akanjs/devkit/quality/maintainabilityBaseline";
+import {
+  AkanQualityScanner,
+  formatQualityScanResult,
+  formatSsrScanResult,
+} from "@akanjs/devkit/quality/qualityScanner";
 import { Logger } from "akanjs/common";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
 

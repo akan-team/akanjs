@@ -8,7 +8,6 @@ import type {
 import { Logger } from "akanjs/common";
 import chalk from "chalk";
 import { type Command, type CommanderError, program } from "commander";
-import { AppSelectionMemory } from "../appSelectionMemory";
 import {
   AppExecutor,
   Executor,
@@ -19,8 +18,9 @@ import {
   WorkspaceExecutor,
 } from "../executors";
 // Never the root barrel: it drags ink, ssh2 and the cloud stack into every command process.
-import { FileSys, getDirname } from "../fileSys";
-import type { PackageJson } from "../types";
+import { FileSys, getDirname } from "../util/fileSys";
+import { AppSelectionMemory } from "../workspace/appSelectionMemory";
+import type { PackageJson } from "../workspace/types";
 import {
   type ArgMeta,
   type CommandContext,

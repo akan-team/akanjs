@@ -163,6 +163,38 @@ describe("DevHmrController pages-updated broadcast", () => {
     }
   });
 
+  test("fully reloads for every module the browser's RSC client loads, a shared one included", async () => {
+    for (const file of [
+      "rscClientCache.ts",
+      "rscClientPatch.ts",
+      "rscClientChunks.ts",
+      "rscClientFetch.ts",
+      "rscHeadPatch.ts",
+      "rscInlineStream.ts",
+      "rscNavigationState.ts",
+      "rscParkedRedirect.ts",
+      "rscPrefetchCache.ts",
+      "rscScrollRestoration.ts",
+      "rscHttp.ts",
+      "routeState.ts",
+      "flightRowReader.ts",
+    ]) {
+      expect(await broadcastTypesFor(`/repo/pkgs/akanjs/server/${file}`)).toEqual(["reload"]);
+    }
+  });
+
+  test("refreshes RSC in place for a server-only RSC module, an RSC client test, or a same-named app file", async () => {
+    for (const file of [
+      "/repo/pkgs/akanjs/server/rscWorker.tsx",
+      "/repo/pkgs/akanjs/server/rscPatchPlanner.ts",
+      "/repo/pkgs/akanjs/server/rscResponse.ts",
+      "/repo/pkgs/akanjs/server/rscClient.test.tsx",
+      "/repo/apps/demo/lib/routeState.ts",
+    ]) {
+      expect(await broadcastTypesFor(file)).toEqual(["rsc-refresh"]);
+    }
+  });
+
   test("refreshes RSC in place for an ordinary non-client source change", async () => {
     expect(await broadcastTypesFor("/repo/apps/demo/lib/task/task.service.ts")).toEqual(["rsc-refresh"]);
   });

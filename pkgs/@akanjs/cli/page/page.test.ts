@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
-import { createCallRecorder, createTempModule, tempRoots } from "@akanjs/devkit/testHelpers";
+import { createCallRecorder, createTempModule, tempRoots } from "@akanjs/devkit/test/testHelpers";
 import { PageRunner } from "./page.runner";
 import { PageScript } from "./page.script";
 

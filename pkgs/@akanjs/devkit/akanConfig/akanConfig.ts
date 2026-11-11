@@ -9,7 +9,7 @@ import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
 import { WorkspaceExecutor } from "../executors/workspaceExecutor";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
-import type { BaseDevEnv, PackageJson } from "../types";
+import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
 import {
   type AkanApiConfig,

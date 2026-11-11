@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
-import { createTempApp, tempRoots, writeJson, writeText } from "@akanjs/devkit/testHelpers";
+import { createTempApp, tempRoots, writeJson, writeText } from "@akanjs/devkit/test/testHelpers";
 import { Logger } from "akanjs/common";
 import { QualityScript } from "./quality.script";
 

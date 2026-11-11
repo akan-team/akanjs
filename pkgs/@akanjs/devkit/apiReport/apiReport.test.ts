@@ -1,7 +1,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs, writeText } from "../testHelpers";
+import { tempDirs, writeText } from "../test/testHelpers";
 import { ApiReport } from "./apiReport";
 import { ApiReportDiff } from "./apiReportDiff";
 import { ApiReportPolicy } from "./apiReportPolicy";

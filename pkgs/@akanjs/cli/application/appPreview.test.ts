@@ -60,11 +60,22 @@ describe("AppPreview.pagePaths", () => {
     ).toEqual(["/oauth/authorize?client_id=a", "/board"]);
   });
 
+  test("keeps a path that starts with // on the dev server instead of reading it as another host", () => {
+    expect(
+      AppPreview.pagePaths(["http://localhost:8282//example.com/x?a=1", "//example.com/board"], i18n, { csr: false }),
+    ).toEqual(["/example.com/x?a=1", "/en/example.com/board"]);
+    expect(AppPreview.probeUrlOf("http://localhost:8282", "//example.com/x").origin).toBe("http://localhost:8282");
+    expect(AppPreview.probeUrlOf("http://localhost:8282", "board").href).toBe("http://localhost:8282/board");
+  });
+
   test("gives every route-derived page the locale, even one that shares a server route's path", () => {
-    expect(AppPreview.pagePaths([], i18n, { csr: false, pages: ["/mcp", "/board"] })).toEqual(["/en/mcp", "/en/board"]);
-    expect(AppPreview.pagePaths(["/mcp"], i18n, { csr: true, pages: ["/mcp"] })).toEqual([
-      "/mcp",
-      "/en/mcp?csr=true&akanMobileTarget=preview",
+    expect(AppPreview.pagePaths([], i18n, { csr: false, pages: ["/openapi.json", "/board"] })).toEqual([
+      "/en/openapi.json",
+      "/en/board",
+    ]);
+    expect(AppPreview.pagePaths(["/openapi.json"], i18n, { csr: true, pages: ["/openapi.json"] })).toEqual([
+      "/openapi.json",
+      "/en/openapi.json?csr=true&akanMobileTarget=preview",
     ]);
   });
 
@@ -127,38 +138,110 @@ describe("AppPreview.pagePaths", () => {
 
   test("names a screenshot after the page, its query and its boot, one name per page", () => {
     expect(AppPreview.screenshotName("/en/")).toBe("en.png");
-    expect(AppPreview.screenshotName("/en/board/[id]?csr=true")).toBe("en-board-_id_.csr.png");
+    expect(AppPreview.screenshotName("/")).toBe("_index.png");
+    expect(AppPreview.screenshotName("/en/board/[id]?csr=true&akanMobileTarget=preview")).toMatch(
+      /^en-board-_id__\w{1,6}\.csr\.png$/,
+    );
     expect(AppPreview.screenshotName("/_akan/studio?view=runtime")).toMatch(
-      /^_akan-studio\.view-runtime-\w{1,6}\.png$/,
+      /^_akan-studio_\w{1,6}\.view-runtime-\w{1,6}\.png$/,
     );
     expect(AppPreview.screenshotName("/en/board?tab=a/b&csr=true&akanMobileTarget=preview")).toMatch(
       /^en-board\.tab-a_b-\w{1,6}\.csr\.png$/,
     );
-    const names = ["?view=runtime", "?view=signals", "?a=b&c=d", "?a=b-c-d", "?a-b=c-d", "?q=사과", "?q=포도"].map(
-      (query) => AppPreview.screenshotName(`/x${query}`),
+    const queries = ["", "?csr=1", "?csr=true", "?a=b+c", "?a=b%20c", "?view=runtime", "?view=signals", "?a=b&c=d"];
+    const names = [...queries, "?a=b-c-d", "?a-b=c-d", "?q=사과", "?q=포도"].map((query) =>
+      AppPreview.screenshotName(`/x${query}`),
     );
     expect(new Set(names).size).toBe(names.length);
+    const pages = ["/a/b", "/a-b", "/a_b", "/a/b-c", "/a-b/c", "/", "/index", "/_index", "/a", "/A", "/a//b", "/사과"];
+    const pageNames = pages.map((page) => AppPreview.screenshotName(page).toLowerCase());
+    expect(new Set(pageNames).size).toBe(pages.length);
     const long = AppPreview.screenshotName(`/${"p".repeat(300)}?q=${"v".repeat(300)}&csr=true`);
     expect(long.length).toBeLessThan(160);
     expect(long).not.toBe(AppPreview.screenshotName(`/${"p".repeat(299)}?q=${"v".repeat(300)}&csr=true`));
   });
 });
 
-describe("AppPreview.pathsOf", () => {
+describe("AppPreview.planOf", () => {
+  const dev = "http://localhost:8282";
+  const appOf = (cwdPath: string, config: Parameters<typeof AppPreview.pagePaths>[1] = i18n) =>
+    ({
+      name: "demo",
+      cwdPath,
+      getConfig: async () => ({ i18n: config, api: { prefix: "/backend" } }),
+    }) as unknown as App;
+  const none = { paths: [] as string[], skipped: [] as string[] };
+  const planOf = (options: Parameters<typeof AppPreview.planOf>[1], changed = none, app = appOf("/nowhere")) =>
+    AppPreview.planOf(app, options, changed, dev);
+
   test("reads the app's API prefix and public/ for the paths it opens as written", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "akan-preview-app-"));
     try {
       await Bun.write(path.join(root, "public/logo.png"), "png");
-      const app = { cwdPath: root, getConfig: async () => ({ i18n, api: { prefix: "/backend" } }) } as unknown as App;
-      expect(await AppPreview.pathsOf(app, ["/backend/memo", "/logo.png", "/board"], false, ["/mcp"])).toEqual([
-        "/backend/memo",
-        "/logo.png",
-        "/en/board",
-        "/en/mcp",
-      ]);
+      const plan = await planOf(
+        { paths: ["/backend/memo", "/logo.png", "/board", "/mcp"], changed: true },
+        { paths: ["/openapi.json"], skipped: [] },
+        appOf(root),
+      );
+      expect(plan).toEqual({
+        paths: ["/backend/memo", "/logo.png", "/en/board", "/mcp", "/en/openapi.json"],
+        notes: [],
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("opens a page --changed finds as a page, unprefixed only under as-needed without --csr", async () => {
+    const changed = { paths: ["/board"], skipped: [] };
+    const asNeeded = appOf("/nowhere", { ...i18n, localePrefix: "as-needed" as const });
+    expect((await planOf({ changed: true }, changed)).paths).toEqual(["/en/board"]);
+    expect((await planOf({ changed: true }, changed, asNeeded)).paths).toEqual(["/board"]);
+    expect((await planOf({ changed: true, csr: true }, changed, asNeeded)).paths).toEqual([
+      "/en/board?csr=true&akanMobileTarget=preview",
+    ]);
+  });
+
+  test("opens a page once whether or not its path ends in a slash", async () => {
+    const changed = { paths: ["/", "/board/"], skipped: [] };
+    expect((await planOf({ paths: ["/en", "/en/board", "/board?tab=2"], changed: true }, changed)).paths).toEqual([
+      "/en",
+      "/en/board",
+      "/en/board?tab=2",
+    ]);
+  });
+
+  test("says which paths --csr does not apply to instead of dropping it silently", async () => {
+    const authorize = `${dev}/oauth/authorize`;
+    const plan = await planOf({ paths: [authorize, "/openapi.json", "/board", "/openapi.json"], csr: true });
+    expect(plan).toEqual({
+      paths: ["/oauth/authorize", "/openapi.json", "/en/board?csr=true&akanMobileTarget=preview"],
+      notes: [`--csr does not apply to ${authorize}, /openapi.json: they open without the CSR boot.`],
+    });
+    expect((await planOf({ paths: ["/mcp"], csr: true })).notes).toEqual([
+      "--csr does not apply to /mcp: it opens without the CSR boot.",
+    ]);
+    expect((await planOf({ paths: ["/openapi.json"] })).notes).toEqual([]);
+  });
+
+  test("says when a full URL names another server, whose path it opens on the dev server instead", async () => {
+    const plan = await planOf({ paths: ["https://staging.example.com/board", "http://127.0.0.1:8282/en/board"] });
+    expect(plan).toEqual({
+      paths: ["/board", "/en/board"],
+      notes: [`https://staging.example.com/board names another server: its path opens on ${dev}.`],
+    });
+    const others = ["http://localhost:3000/a", "https://localhost:8282/b"];
+    expect((await planOf({ paths: others })).notes).toEqual([
+      `${others.join(", ")} name other servers: their paths open on ${dev}.`,
+    ]);
+  });
+
+  test("refuses --changed with nothing to open and no path typed", async () => {
+    const skipped = { paths: [], skipped: ["/admin/:userId needs a concrete path"] };
+    await expect(planOf({ changed: true }, skipped)).rejects.toThrow(
+      "No page to open: /admin/:userId needs a concrete path. Pass a concrete path, e.g. `akan preview demo /memo/1`.",
+    );
+    expect((await planOf({ paths: ["/memo/1"], changed: true }, skipped)).paths).toEqual(["/en/memo/1"]);
   });
 });
 
@@ -223,6 +306,7 @@ describe("AppPreview.render", () => {
     serverLog: "local/apps/demo/runtime/preview/server.log",
     logsRead: false,
     skipped: ["/admin/:userId needs a concrete path"],
+    notes: ["--csr does not apply to /openapi.json: it opens without the CSR boot."],
     pages: [
       pageOf({ path: "/en/", url: "http://localhost:8282/en/", finalUrl: "http://localhost:8282/en/explore" }),
       pageOf({ failed: true, status: 500, pageErrors: ["The page body rendered empty."], text: "" }),
@@ -234,6 +318,7 @@ describe("AppPreview.render", () => {
     expect(text).toContain(`left running (pid 4242; stop it with \`${AppPreview.stopArgvOf(4242).join(" ")}\`)`);
     expect(text).toContain("client and server errors are not shown");
     expect(text).toContain("Not opened: /admin/:userId needs a concrete path.");
+    expect(text).toContain("Note: --csr does not apply to /openapi.json: it opens without the CSR boot.");
     expect(text).toContain('ok    /en/ -> /en/explore  200  "Board"  1.2s');
     expect(text).toContain('FAIL  /en/board  500  "Board"  1.2s\n  page: The page body rendered empty.');
     expect(text.trim().endsWith("1 of 2 page(s) failed.")).toBe(true);
@@ -279,8 +364,12 @@ describe("AppPreview.run", () => {
         getConfig: async () => ({ i18n, api: { prefix: "/api" } }),
       } as unknown as App;
       try {
-        const report = await AppPreview.run(app, { paths: ["/board", "/gone", "/_akan/studio"], timeoutMs: 20_000 });
+        const paths = ["/board", "/gone", "/_akan/studio", "http://staging.example.com/en/board"];
+        const report = await AppPreview.run(app, { paths, timeoutMs: 20_000 });
         expect(report.server).toBe("running");
+        expect(report.notes).toEqual([
+          `http://staging.example.com/en/board names another server: its path opens on http://localhost:${server.port}.`,
+        ]);
         expect(report.logsRead).toBe(false);
         expect(report.pages.map((page) => [page.path, page.status, page.failed, page.text])).toEqual([
           ["/en/board", 200, false, "Board"],

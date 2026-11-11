@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import dayjs from "dayjs";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { GlobalConfig } from "./globalConfig";
 
 const tempHome = tempDirs("akan-global-config-");

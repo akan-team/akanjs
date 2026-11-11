@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { codeAgentPresets } from "akanjs/common";
-import { makeCliTempWorkspace, tempRoots, writeText } from "../../testHelpers";
+import { makeCliTempWorkspace, tempRoots, writeText } from "../../test/testHelpers";
 import { CodeAgent, type CodeAgentOptions } from "../agent/CodeAgent";
 import { SubagentPool } from "../agent/SubagentPool";
 import { WorkspaceTrust } from "../agent/WorkspaceTrust";

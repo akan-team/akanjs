@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { rm, symlink } from "node:fs/promises";
 import path from "node:path";
-import { RouteJsBudget } from "@akanjs/devkit/routeJsBudget";
-import { createTempApp, createTempPackage, writeJson, writeText } from "@akanjs/devkit/testHelpers";
+import { RouteJsBudget } from "@akanjs/devkit/app/routeJsBudget";
+import { createTempApp, createTempPackage, writeJson, writeText } from "@akanjs/devkit/test/testHelpers";
 import { ApplicationRunner } from "../application/application.runner";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
 import { VerifyPipeline } from "./verifyPipeline";

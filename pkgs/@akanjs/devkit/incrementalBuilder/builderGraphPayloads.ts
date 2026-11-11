@@ -1,7 +1,7 @@
 import type { App } from "@akanjs/devkit/commandDecorators";
-import { FrameworkGraph } from "@akanjs/devkit/frameworkGraph";
-import { GitRevision } from "@akanjs/devkit/gitRevision";
-import { WorkspaceGraph } from "@akanjs/devkit/workspaceGraph";
+import { FrameworkGraph } from "@akanjs/devkit/docs/frameworkGraph";
+import { GitRevision } from "@akanjs/devkit/workspace/gitRevision";
+import { WorkspaceGraph } from "@akanjs/devkit/workspace/workspaceGraph";
 import type { BuildChangesPayload, BuilderGraphReq, BuildFrameworkPayload, BuildGraphPayload } from "akanjs/server";
 
 export class BuilderGraphPayloads {

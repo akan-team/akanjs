@@ -3,15 +3,15 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { CommandContainer, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { CommandExecutionError } from "@akanjs/devkit/executors";
-import { LibSource } from "@akanjs/devkit/libSource";
 import {
   createCallRecorder,
   createFakeExecutor,
   createTempLib,
   tempRoots,
   writeJson,
-} from "@akanjs/devkit/testHelpers";
-import type { PackageJson } from "@akanjs/devkit/types";
+} from "@akanjs/devkit/test/testHelpers";
+import { LibSource } from "@akanjs/devkit/workspace/libSource";
+import type { PackageJson } from "@akanjs/devkit/workspace/types";
 import { LibraryRunner } from "./library.runner";
 import { LibraryScript } from "./library.script";
 

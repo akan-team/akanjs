@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { createTempApp, tempRoots, writeJson, writeText } from "../testHelpers";
+import { createTempApp, tempRoots, writeJson, writeText } from "../test/testHelpers";
 import { GuardCatalog } from "./guardCatalog";
 
 const track = tempRoots();

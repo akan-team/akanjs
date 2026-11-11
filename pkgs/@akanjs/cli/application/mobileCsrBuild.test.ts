@@ -7,7 +7,7 @@ import type { AppExecutor } from "@akanjs/devkit/executors";
 const built: { environment?: string; budget?: string; publicEnv?: string }[] = [];
 let buildFails = true;
 let afterBuild: (() => Promise<void>) | null = null;
-mock.module("@akanjs/devkit/applicationBuildRunner", () => ({
+mock.module("@akanjs/devkit/app/applicationBuildRunner", () => ({
   ApplicationBuildRunner: class {
     constructor(
       _app: unknown,
