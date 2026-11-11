@@ -1062,6 +1062,14 @@ describe("AkanApp", () => {
       expect(await font.text()).toBe("font-bytes");
       expect(font.headers.get("access-control-allow-origin")).toBe("*");
       expect(font.headers.get("x-content-type-options")).toBe("nosniff");
+      for (const name of ["gone.js", "..%2Fbase-artifact.json"]) {
+        const missing = await fetch(`http://127.0.0.1:${port}/_akan/client/${name}`);
+        expect([
+          missing.status,
+          missing.headers.get("cache-control"),
+          missing.headers.get("x-content-type-options"),
+        ]).toEqual([404, "no-store", "nosniff"]);
+      }
     });
   }, 20_000);
 

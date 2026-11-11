@@ -2,7 +2,7 @@ import path from "node:path";
 import type { Logger } from "akanjs/common";
 import { isTraceEnabled } from "../../signal/trace";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "../akanAppHeaders";
-import { type AssetHeaderOptions, assetHeaders } from "../assetHeaders";
+import { type AssetHeaderOptions, assetHeaders, missingAssetResponse } from "../assetHeaders";
 import { compressResponse, compressStreamResponse, encodedFileResponse } from "../contentEncoding";
 import { ServerLimits } from "../routing/serverLimits";
 import { resolveStaticPath } from "../staticPath";
@@ -57,9 +57,9 @@ export class GatewayHttpProxy {
       path.join(this.#config.artifactDir, artifact.root),
       url.pathname.slice(artifact.strip),
     );
-    if (!filePath) return new Response("Not Found", { status: 404 });
+    if (!filePath) return missingAssetResponse();
     const file = Bun.file(filePath);
-    if (!(await file.exists())) return new Response("Not Found", { status: 404 });
+    if (!(await file.exists())) return missingAssetResponse();
     return this.#fileResponse(req, filePath, {
       contentType: file.type || artifact.type,
       cacheControl: "public, max-age=31536000, immutable",

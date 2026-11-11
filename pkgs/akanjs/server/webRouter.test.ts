@@ -931,6 +931,24 @@ const withArtifactFiles = async <T>(files: Record<string, string | Uint8Array>, 
   }
 };
 
+describe("WebRouter client assets", () => {
+  test("answers a client chunk it does not hold with a 404 no cache may keep", async () => {
+    await withArtifactFiles({ "base-artifact.json": "{}", "client/chunks/kept.js": "export const kept = 1;" }, () =>
+      withFullSsrCacheHarness(async ({ renderEnvRoutes }) => {
+        const answer = async (name: string) => {
+          const res = await renderEnvRoutes["/_akan/client/*"](
+            new Request(`https://example.test/_akan/client/${name}`),
+          );
+          return [res.status, res.headers.get("Cache-Control"), res.headers.get("X-Content-Type-Options")];
+        };
+        expect(await answer("chunks/kept.js")).toEqual([200, "public, max-age=31536000, immutable", "nosniff"]);
+        expect(await answer("chunks/gone.js")).toEqual([404, "no-store", "nosniff"]);
+        expect(await answer("..%2Fbase-artifact.json")).toEqual([404, "no-store", "nosniff"]);
+      }),
+    );
+  });
+});
+
 describe("WebRouter dictionary assets", () => {
   const withArtifactCwd = <T>(run: () => Promise<T>) =>
     withArtifactFiles(
