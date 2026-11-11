@@ -42,10 +42,13 @@ export class LoopTranscript {
   static sanitize(messages: readonly AgentWireMessage[]): AgentWireMessage[] {
     const answered = new Set(messages.flatMap((message) => (message.toolResults ?? []).map((result) => result.id)));
     const called = new Set<string>();
+    const paired = new Set<string>();
     const kept: AgentWireMessage[] = [];
     for (const message of messages) {
       if (message.role === "tool") {
-        const results = (message.toolResults ?? []).filter((result) => called.has(result.id));
+        //? A retried run may store one tool message twice, and a provider refuses two results for one call.
+        const results = (message.toolResults ?? []).filter((result) => called.has(result.id) && !paired.has(result.id));
+        for (const result of results) paired.add(result.id);
         if (results.length) LoopTranscript.#answer(kept, { ...message, toolResults: results });
         continue;
       }

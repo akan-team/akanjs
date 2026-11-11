@@ -46,6 +46,12 @@ describe("LoopTranscript.sanitize", () => {
     ]);
   });
 
+  test("a tool message stored twice answers its call once", () => {
+    const repaired = LoopTranscript.sanitize([call("c1"), answer("c1"), answer("c1")]);
+    expect(repaired.map((message) => message.role)).toEqual(["assistant", "tool"]);
+    expect(repaired[1]?.toolResults).toHaveLength(1);
+  });
+
   test("a batch split over two tool messages reaches the provider as one", () => {
     const split: AgentWireMessage[] = [
       {

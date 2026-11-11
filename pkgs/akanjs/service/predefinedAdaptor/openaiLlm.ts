@@ -75,7 +75,7 @@ export class OpenaiLlm
         OpenaiDialect.requestBody(model, request, { accepts, stream: true }),
         signal,
       );
-      return { ...(await OpenaiDialect.consumeStream(body, onDelta)), model };
+      return { ...(await OpenaiDialect.consumeStream(body, onDelta, this.#host)), model };
     } catch (error) {
       // Rethrown, not `null`: the user needs the provider's refusal, and `null` reads as "no model is configured".
       if (!signal?.aborted)

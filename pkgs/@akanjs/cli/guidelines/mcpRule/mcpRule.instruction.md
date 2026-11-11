@@ -532,14 +532,15 @@ at every event.
   asked about nor run. A request with no `allow` array is an `error`.
 - **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
   reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
-  wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a `remove*` or
-  `delete*` mutation — is refused, and so is every write once tainted. `"defer"` holds the whole batch, emits
+  wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation
+  with the `destructive` hint above — is refused, and so is every write once tainted. `"defer"` holds the whole batch, emits
   `awaiting` and ends the run as `"awaiting"`.
 - **Resuming.** Store each message `onMessage` hands over — it is awaited, and a retried run may hand one over twice —
   and call `loop` again with them. Trailing calls nothing answered go to `approve` again before any model call, and
-  the taint is rebuilt by re-applying `untrusted`, so it must judge a result by what it holds. `compacted` says the
-  first `replaced` messages are now `summary`. Store that message whole: its `tainted` marker stands in for the
-  results it replaced, and a summary with no marker counts as tainted to a run with `untrusted`. A batch's results
+  the taint is rebuilt from the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result
+  whole during the run and clipped on a resume. Store every message whole, marks included. `compacted` says the first
+  `replaced` messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a summary
+  with no marker counts as tainted to a run with `untrusted`. A batch's results
   reach `onMessage` even when the consumer stops reading or a later call throws, so a resume runs only calls that
   never started.
 - **Metering.** Each model call, compactions included, is its own turn for the request policy, the quota and the

@@ -603,7 +603,7 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
     static turnAnswer(answer: AnthropicAnswer): LlmTurnAnswer;
     static usageOf(usage: AnthropicUsage): LlmUsage;
     static stopOf(reason: null | string | undefined, calls: number): LlmTurnAnswer["stop"];
-    static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void): Promise<LlmTurnAnswer>;
+    static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void, host?: string): Promise<LlmTurnAnswer>;
     static parsedArgs(raw: string): Record<string, unknown>;
 }
 
@@ -1273,7 +1273,7 @@ export declare class OpenaiDialect {
             part: OpenaiImagePart;
         }[];
     };
-    static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void): Promise<LlmTurnAnswer>;
+    static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void, host?: string): Promise<LlmTurnAnswer>;
     static usageOf(usage: OpenaiUsage): LlmUsage;
     static stopOf(finish: null | string | undefined, calls: number): LlmTurnAnswer["stop"];
     static turnAnswer(answer: OpenaiAnswer): LlmTurnAnswer;

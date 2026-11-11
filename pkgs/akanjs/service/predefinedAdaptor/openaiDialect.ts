@@ -8,8 +8,9 @@ import {
   type LlmUsage,
   pageContentInstruction,
 } from "./llm.adaptor";
+import { LlmOverflow } from "./llmOverflow";
 import { LlmSpend } from "./llmSpend";
-import { eachSseData } from "./sseData";
+import { eachSseData, isToolStreamCut, parseToolArgs } from "./sseData";
 
 export interface OpenaiToolCall {
   id?: string;
@@ -26,6 +27,7 @@ export interface OpenaiAnswer {
   usage?: OpenaiUsage | null;
 }
 interface OpenaiStreamChunk {
+  error?: { message?: unknown; code?: unknown } | string;
   usage?: OpenaiUsage | null;
   choices?: {
     delta?: {
@@ -189,14 +191,21 @@ export class OpenaiDialect {
   static async consumeStream(
     body: ReadableStream<Uint8Array>,
     onDelta: (delta: string) => void,
+    host = "The model provider",
   ): Promise<LlmTurnAnswer> {
     const calls = new Map<number, { id?: string; name?: string; args: string }>();
     let text = "";
     let finish: string | null = null;
+    let done = false;
+    let failure: Error | null = null;
     let usage: LlmUsage | undefined;
     const read = eachSseData(body, (payload) => {
-      if (payload === "[DONE]") return;
+      if (payload === "[DONE]") {
+        done = true;
+        return;
+      }
       const chunk = JSON.parse(payload) as OpenaiStreamChunk;
+      if (chunk.error) failure = OpenaiDialect.#streamFailure(host, chunk.error);
       if (chunk.usage) usage = OpenaiDialect.usageOf(chunk.usage);
       const choice = chunk.choices?.[0];
       if (!choice) return;
@@ -214,7 +223,11 @@ export class OpenaiDialect {
       }
       if (choice.finish_reason) finish = choice.finish_reason;
     });
-    await read.catch((error: unknown) => {
+    //? Thrown here, as `eachSseData` swallows a throw from its callback: an error frame arrives on a 200 response.
+    const failed = read.then(() => {
+      if (failure) throw failure;
+    });
+    await failed.catch((error: unknown) => {
       const streamed = text + [...calls.values()].map(({ args }) => args).join("");
       throw LlmSpend.attach(error, usage ? { usage } : LlmSpend.estimate(undefined, { streamed }));
     });
@@ -226,9 +239,20 @@ export class OpenaiDialect {
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: OpenaiDialect.stopOf(finish, toolCalls.length),
+      stop: isToolStreamCut(calls.values(), finish !== null || done)
+        ? "length"
+        : OpenaiDialect.stopOf(finish, toolCalls.length),
       ...(usage ? { usage } : {}),
     };
+  }
+
+  static #streamFailure(host: string, error: NonNullable<OpenaiStreamChunk["error"]>): Error {
+    const { message, code } = typeof error === "string" ? { message: error, code: undefined } : error;
+    return LlmOverflow.refusal(
+      host,
+      typeof code === "number" ? code : 500,
+      typeof message === "string" && message ? message : "no reason given",
+    );
   }
 
   //* DeepSeek reports its cache hits as `prompt_cache_hit_tokens` rather than OpenAI's nested detail.
@@ -262,13 +286,7 @@ export class OpenaiDialect {
 
   /** The provider sends arguments as a JSON string; an unparsable one becomes an empty call rather than a crash. */
   static parsedArgs(raw: string | undefined): Record<string, unknown> {
-    if (!raw) return {};
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-    } catch {
-      return {};
-    }
+    return parseToolArgs(raw) ?? {};
   }
 
   /** The dialect refuses as `{ error: { message } }`, and that sentence names the limit a long prompt passed. */

@@ -445,6 +445,71 @@ describe("AgentLoop spend on interruption", () => {
     expectBilled(reports);
   });
 
+  test("keeps two runs on one controller from billing each other's prompts", async () => {
+    const reports: AgentUsageReport[] = [];
+    AgentMeter.use({ usage: (report) => void reports.push(report), serial: false });
+    const service = Object.assign(new AgentService(), {
+      llm: {
+        chat: (_request: LlmTurnRequest, onDelta: (delta: string) => void, signal: AbortSignal) =>
+          new Promise((_resolve, reject) => {
+            onDelta("x");
+            signal.addEventListener("abort", () => reject(signal.reason));
+          }),
+      },
+      agentTools: harness([]).port.tools,
+    });
+    const abort = new AbortController();
+    const runOf = async (id: string, text: string) => {
+      for await (const _event of service.loop(ask(text, { account: { id }, signal: abort.signal })));
+    };
+    const both = Promise.all([runOf("alice", "y".repeat(30_000)), runOf("bob", "hi")]);
+    setTimeout(() => abort.abort(), 5);
+    await both;
+    await Bun.sleep(5);
+    const inputOf = (id: string) =>
+      reports.find((report) => (report.account as { id: string }).id === id)?.usage.inputTokens ?? 0;
+    expect(inputOf("alice")).toBeGreaterThan(inputOf("bob") + 5_000);
+  });
+
+  test("runs nothing from a provider stream cut in the middle of a call's arguments", async () => {
+    const encoder = new TextEncoder();
+    const frame = {
+      choices: [
+        {
+          delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "renameTitle", arguments: '{"title":"a' } }] },
+        },
+      ],
+    };
+    const { port } = harness([]);
+    const called: string[] = [];
+    const tools = {
+      ...port.tools,
+      callAs: async (_account: unknown, call: AgentWireToolCall) => {
+        called.push(call.id);
+        return { id: call.id, name: call.name, result: "ran" };
+      },
+    };
+    const service = Object.assign(new AgentService(), {
+      llm: {
+        chat: (_request: LlmTurnRequest, onDelta: (delta: string) => void) =>
+          OpenaiDialect.consumeStream(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+                controller.close();
+              },
+            }),
+            onDelta,
+          ),
+      },
+      agentTools: tools,
+    });
+    const events: AgentLoopEvent[] = [];
+    for await (const event of service.loop(ask("go"))) events.push(event);
+    expect(stopOf(events)).toBe("length");
+    expect(called).toEqual([]);
+  });
+
   test("keeps the provider's own counts an adaptor attached to wallMs's rejection", async () => {
     const counted = { inputTokens: 7, outputTokens: 3, cachedTokens: 1 };
     const { reports } = await cutShort({ budget: { wallMs: 5 } }, counted);

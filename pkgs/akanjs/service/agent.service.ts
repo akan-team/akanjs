@@ -94,9 +94,12 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
       const spent = LlmSpend.of(error);
       if (!signal?.aborted && !spent?.usage) throw error;
       const own = spent?.usage ? "" : streamed;
-      //? `fetch` rejects with the abort reason as given, and a primitive one cannot key the counts `LlmSpend` holds.
-      const carrier = error && typeof error === "object" ? error : new DOMException(String(error), "AbortError");
-      throw LlmSpend.attach(carrier, LlmSpend.estimate(spent?.usage, { prompt: prepared, streamed: own }));
+      //? `fetch` rejects with the abort reason as given: a primitive cannot key `LlmSpend`'s counts, and one object
+      //? shared by every run on the same controller would mix them.
+      const ownError = error && typeof error === "object" && error !== signal?.reason;
+      const carrier = ownError ? error : new DOMException("The caller stopped this turn.", "AbortError");
+      const estimate = LlmSpend.estimate(spent?.usage, { prompt: prepared, streamed: own });
+      throw LlmSpend.attach(carrier, { ...spent, ...estimate });
     }
   }
 
