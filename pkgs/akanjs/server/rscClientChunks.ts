@@ -67,8 +67,11 @@ const ownChunkUrlOf = (message: string): string | null => {
   }
 };
 //? The reload list alone cannot stop a 404 a reload does not fix: each load would claim the next chunk, and past 32
-//? the first again. The navigation type needs no storage, at the cost of leaving a page the user reloaded alone too.
-const loadedByReload = () =>
+//? the first again. That loop stays on the path the reload loaded, which a refresh or a shallow update keeps, so after
+//? any reload, the user's or `Reconnect`'s too, only a page navigation to another path probes again.
+const reloadedPathname = window.location.pathname;
+const onReloadedPath = () =>
+  window.location.pathname === reloadedPathname &&
   (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type === "reload";
 //? A document navigation the router never sees (a plain link, a form post, `location.assign`) fires one of these; they
 //? are heard only while the probe is out, since a `beforeunload` listener used to keep a page out of the bfcache.
@@ -77,7 +80,7 @@ const unloadEvents = ["beforeunload", "pagehide"] as const;
 export const ifLazyChunkGone = (error: unknown, then: (key: string) => void): void => {
   if (!(error instanceof TypeError) || chunkLoadFailures.has(error) || !navigator.onLine) return;
   const url = ownChunkUrlOf(error.message);
-  if (!url || loadedByReload()) return;
+  if (!url || onReloadedPath()) return;
   let unloading = false;
   const unload = () => {
     unloading = true;

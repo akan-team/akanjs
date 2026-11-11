@@ -235,7 +235,7 @@ describe("rscClient lazy chunk the server no longer serves", () => {
       (type) => (type === "navigation" ? [{ type: navigationType }] : []) as unknown as PerformanceEntryList,
     );
     //? One module instance stands in for each load: what the decision reads is the list, the navigation type and
-    //? the document's own page, which a reload carries over or resets the same way.
+    //? the path, which a reload carries over or resets the same way.
     const reloadsOverLoads = async (keepList: boolean) => {
       sessionStorage.clear();
       reloadedAt = [];
@@ -255,6 +255,32 @@ describe("rscClient lazy chunk the server no longer serves", () => {
         kept: 1,
         cleared: 1,
       });
+    } finally {
+      entries.mockRestore();
+    }
+  });
+
+  test("a document a reload loaded probes once a page navigation leaves its path, and not after a refresh", async () => {
+    const gone = chunkUrl("after-reload-a1");
+    probeAnswers.set(gone, 404);
+    const entries = spyOn(performance, "getEntriesByType").mockImplementation(
+      (type) => (type === "navigation" ? [{ type: "reload" }] : []) as unknown as PerformanceEntryList,
+    );
+    try {
+      await navigate("/home");
+      await act(async () => {
+        await globalThis.__AKAN_RSC_NAVIGATE__?.("/home?tab=2", { shallow: true });
+        await globalThis.__AKAN_RSC_REFRESH__?.();
+        await sleep(20);
+      });
+      await rejectImport(chromiumGone(gone));
+      expect(probedUrls()).toEqual([]);
+
+      await navigate("/next");
+      await rejectImport(chromiumGone(gone));
+      await rejectImport(chromiumGone(chunkUrl("after-reload-b1")));
+      expect(probedUrls()).toEqual([gone]);
+      expect(reloadedAt).toEqual([`${origin}/next`]);
     } finally {
       entries.mockRestore();
     }
