@@ -73,7 +73,6 @@
     "server/ops/snapshotJobs.ts": 3,
     "server/ops/snapshotRestore.ts": 10,
     "server/ops/sqliteSnapshot.ts": 4,
-    "server/rscClient.tsx": 6,
     "server/rscWorkerHost.ts": 15,
     "server/ssrFromRscRenderer.tsx": 1,
     "server/tunnel/TunnelAgent.ts": 3,
