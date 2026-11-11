@@ -434,8 +434,8 @@ export class GuardResolver {
     return reached.length === 1 && !isOpaque && !this.declares(owner, name) ? reached[0] : undefined;
   }
 
-  starExportsOf(owner: string, near: string, isGenerated = false) {
-    const key = `${owner}\n${near}\n${isGenerated}`;
+  starExportsOf(owner: string, near: string) {
+    const key = `${owner}\n${near}`;
     const cached = this.#starExports.get(key);
     if (cached) return cached;
     const found: StarExports = { owners: [], packages: [], paths: [near], isOpaque: false };
@@ -449,8 +449,7 @@ export class GuardResolver {
     };
     for (let idx = 0; idx < found.paths.length; idx++) {
       const path = found.paths[idx] ?? "";
-      for (const module of (isGenerated ? this.#barrelAt(path) : null) ?? [])
-        reach(module, module, ownerOf(module) ?? undefined);
+      for (const module of this.#barrelAt(path) ?? []) reach(module, module, ownerOf(module) ?? undefined);
       for (const fileName of this.#modulesAt(path))
         for (const [, specifier = ""] of this.#source.readText(fileName)?.matchAll(starExportPattern) ?? [])
           reach(specifier, this.pathOfSpecifier(fileName, specifier), this.ownerOfSpecifier(fileName, specifier));

@@ -374,6 +374,45 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
     }
   });
 
+  it("follows a guard through a facet folder's generated barrel whether or not it is on disk", () => {
+    const sources: Record<string, string> = {
+      "libs/util/srvkit/admin.ts": `import type { Guard } from "akanjs/signal";
+export class Admin implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`,
+      "libs/shared/srvkit/util.ts": `export * from "@libs/util/srvkit";
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { Admin } from "@libs/shared/srvkit";
+import { endpoint } from "akanjs/signal";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, { guards: [Admin] }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+    };
+    const synced = {
+      ...sources,
+      "libs/shared/srvkit/index.ts": facetBarrelOf("srvkit", ["util.ts"], []),
+      "libs/util/srvkit/index.ts": facetBarrelOf("srvkit", ["admin.ts"], []),
+    };
+    const guardsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "guard",
+      );
+    };
+    const expected = ["endpoint:apps/demo:memo.shareMemo --> guard:libs/util:Admin"];
+    expect(guardsOf(synced)).toEqual(expected);
+    expect(guardsOf(sources)).toEqual(expected);
+  });
+
   it("follows a guard through a map's own imports, a re-export, and a factory a file imports or wraps", () => {
     const guarded = (resourceBody: string, pinField: string): Record<string, string> => ({
       "libs/util/srvkit/guards.ts": `import type { Guard, GuardScope } from "akanjs/signal";
@@ -1670,7 +1709,7 @@ export * from "./b";
     expect(callsOf({ ...sources, ...barrels })).toEqual(expected);
   });
 
-  it("takes a named package re-export only along the import's chain, or from the folder's files without a barrel", () => {
+  it("takes a named package re-export only along the import's chain, with or without the generated barrel", () => {
     const sources: Record<string, string> = {
       "libs/util/srvkit/admin.ts": `import type { Guard } from "akanjs/signal";
 export class Admin implements Guard {

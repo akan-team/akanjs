@@ -207,7 +207,7 @@ export class AdaptorResolver {
     const shims = this.#exportedAt(name, near, new Set()).filter((item): item is PackageExport => !("fact" in item));
     const [shim] = shims;
     if (shim) return shims.length === 1 ? shim : null;
-    const { packages, paths } = this.#resolver.starExportsOf(owner, near, true);
+    const { packages, paths } = this.#resolver.starExportsOf(owner, near);
     const [only] = packages;
     const isDeclared = paths.some((path) => this.#resolver.declaresAt(path, name));
     return only && new Set(packages.map(packageOf)).size === 1 && !isDeclared ? { name, from: only } : null;
