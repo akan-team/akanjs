@@ -9,7 +9,7 @@ import {
   linkClaimed,
   type QuitReason,
 } from "../../../packages/desktop/src/plugin.ts";
-import { relaunchAfterExit } from "../../../packages/desktop/src/relaunch.ts";
+import { appLauncher, relaunchAfterExit } from "../../../packages/desktop/src/relaunch.ts";
 import type { AppApi, AppEvents } from "./index.ts";
 
 // Every window's page that listens is asked before quitting; all must allow (plugins.md D4, SH-6).
@@ -50,7 +50,7 @@ export default defineDesktopPlugin<AppApi, AppEvents>({
       setTimeout(() => ctx.quit(0), 50); // answer the call first
     },
     relaunch: async (_args, ctx) => {
-      await relaunchAfterExit(process.execPath);
+      await relaunchAfterExit(appLauncher());
       setTimeout(() => ctx.quit(0), 50);
     },
     answerBeforeQuit: (args, ctx) => quitVeto.answer(args, ctx.window),

@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  appLauncher,
   nextRelaunchDelay,
   RELAUNCH_HEALTHY,
   RELAUNCH_LIMIT,
@@ -150,6 +151,33 @@ process.exit(0);
       keeper.kill("SIGKILL");
     }
   }, 20_000);
+
+  test("an AppImage starts again from its file, without the variables its runtime set for the mount that is gone", async () => {
+    expect(appLauncher({ APPIMAGE: "/home/u/Board.AppImage" })).toBe("/home/u/Board.AppImage");
+    expect(appLauncher({})).toBe(process.execPath);
+    if (windows) return;
+    const marker = join(dir, "marker-appimage");
+    const app = join(dir, "image.sh");
+    writeFileSync(app, `#!/bin/sh\necho "[$APPIMAGE][$APPDIR][$ARGV0][$OWD][$KEPT]" >> "${marker}"\n`);
+    chmodSync(app, 0o755);
+    const script = join(dir, "appimage.ts");
+    writeFileSync(
+      script,
+      `import { appLauncher, relaunchAfterExit } from ${JSON.stringify(join(import.meta.dir, "../src/relaunch.ts"))};
+await relaunchAfterExit(appLauncher());
+process.exit(0);
+`,
+    );
+    const mount = "/tmp/.mount_Board0";
+    const exiting = Bun.spawn([process.execPath, script], {
+      env: { ...process.env, APPIMAGE: app, APPDIR: mount, ARGV0: "Board.AppImage", OWD: dir, KEPT: "kept" },
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    expect(await exiting.exited).toBe(0);
+    for (let waited = 0; !existsSync(marker) && waited < 15_000; waited += 100) await Bun.sleep(100);
+    expect(readFileSync(marker, "utf8").trim()).toBe("[][][][][kept]");
+  }, 30_000);
 });
 
 describe("the recovery of a Windows swap cut short", () => {
