@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { SourceMtimeIndex } from "./sourceMtimeIndex";
 
 const seed = async (root: string, rel: string, content = "export const x = 1;\n") => {

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
-import { ApplicationBuildReporter } from "../applicationBuildReporter";
-import { tempDirs, writeText as write } from "../testHelpers";
+import { ApplicationBuildReporter } from "../app/applicationBuildReporter";
+import { tempDirs, writeText as write } from "../test/testHelpers";
 import { BarrelAnalyzer, type BarrelExportTarget } from "./barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "./barrelImportsPlugin";
 import {

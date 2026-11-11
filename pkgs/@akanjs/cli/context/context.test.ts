@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
+import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import {
   AkanContextAnalyzer,
   createAkanClaudeMcpServer,
   createAkanCodexMcpServerBlock,
   createAkanCursorMcpServer,
-} from "@akanjs/devkit/akanContext";
-import { AkanMcpToolError } from "@akanjs/devkit/akanMcpToolError";
-import { CommandContainer } from "@akanjs/devkit/commandDecorators";
+} from "@akanjs/devkit/context/akanContext";
+import { AkanMcpToolError } from "@akanjs/devkit/context/akanMcpToolError";
 import { AppExecutor, ModuleExecutor } from "@akanjs/devkit/executors";
 import {
   createTempApp,
@@ -16,7 +16,7 @@ import {
   tempRoots,
   writeJson,
   writeText,
-} from "@akanjs/devkit/testHelpers";
+} from "@akanjs/devkit/test/testHelpers";
 import { MCP_FAILURE_META } from "akanjs/common";
 import { AgentRunner } from "../agent/agent.runner";
 import { ApplicationRunner } from "../application/application.runner";

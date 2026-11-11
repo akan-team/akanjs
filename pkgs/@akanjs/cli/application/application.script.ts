@@ -1,8 +1,9 @@
 import path from "node:path";
 import type { DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
-import { ApplicationBuildReporter } from "@akanjs/devkit/applicationBuildReporter";
-import type { TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
+import { ApplicationBuildReporter } from "@akanjs/devkit/app/applicationBuildReporter";
+import type { TypecheckOptions } from "@akanjs/devkit/app/applicationBuildRunner";
+import type { RouteJsBudgetMode } from "@akanjs/devkit/app/routeJsBudget";
 import {
   type App,
   type Apps,
@@ -18,9 +19,8 @@ import {
 import { AppExecutor, LibExecutor, PkgExecutor, SysExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import { DesktopServerStage } from "@akanjs/devkit/mobile";
-import type { RouteJsBudgetMode } from "@akanjs/devkit/routeJsBudget";
-import { formatSlicePlan } from "@akanjs/devkit/slicePlanner";
 import { assertPlainName } from "@akanjs/devkit/workflow/plainName";
+import { formatSlicePlan } from "@akanjs/devkit/workspace/slicePlanner";
 import { confirm } from "@inquirer/prompts";
 import { Logger, toError } from "akanjs/common";
 import { LibraryScript } from "../library/library.script";

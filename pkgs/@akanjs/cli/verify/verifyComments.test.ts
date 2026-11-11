@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { WorkspaceExecutor } from "@akanjs/devkit/executors";
-import { writeText } from "@akanjs/devkit/testHelpers";
+import { writeText } from "@akanjs/devkit/test/testHelpers";
 import { bilingualDescriptionForField, bilingualLabelForField } from "@akanjs/devkit/workflow";
 import { capitalize, Logger } from "akanjs/common";
 import ts from "typescript";

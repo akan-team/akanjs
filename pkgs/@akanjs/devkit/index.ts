@@ -1,35 +1,35 @@
 // XXX: types only. A value import from this barrel loads every facet (ink, typescript, ssh2, …) into the process;
-// `export type *` erases at runtime. Import values from the owning facet (`@akanjs/devkit/fileSys`) and never "fix" a
-// TS1362 by widening an entry back to `export *`.
+// `export type *` erases at runtime. Import values from the owning facet (`@akanjs/devkit/util/fileSys`) and never
+// "fix" a TS1362 by widening an entry back to `export *`.
 export type * from "./akanApp";
 export type * from "./akanConfig";
-export type * from "./akanContext";
-export type * from "./akanMcpContract";
-export type * from "./applicationBuildReporter";
-export type * from "./applicationBuildRunner";
-export type * from "./applicationTestPreload";
+export type * from "./app/applicationBuildReporter";
+export type * from "./app/applicationBuildRunner";
+export type * from "./app/applicationTestPreload";
 export type * from "./artifact";
 export type * from "./cloud";
 export type * from "./codeAgent";
 export type * from "./commandDecorators";
-export type * from "./createTunnel";
-export type * from "./dependencyScanner";
+export type * from "./context/akanContext";
+export type * from "./context/akanMcpContract";
+export type * from "./context/recipeScanner";
 export type * from "./executors";
-export type * from "./fileSys";
 export type * from "./frontendBuild";
-export type * from "./getRelatedCnsts";
+export type * from "./guideline/prompter";
 export type * from "./incrementalBuilder";
-export type * from "./maintainabilityContract";
 export type * from "./mobile";
-export type * from "./packageExportsMap";
-export type * from "./prompter";
-export type * from "./qualityScanner";
-export type * from "./recipeScanner";
-export type * from "./scanInfo";
-export type * from "./selectModel";
-export type * from "./spinner";
-export type * from "./stripAnsi";
+export type * from "./quality/maintainabilityContract";
+export type * from "./quality/qualityScanner";
 export type * from "./transforms";
-export type * from "./typeChecker";
-export type * from "./types";
+export type * from "./tunnel/createTunnel";
+export type * from "./typecheck/typeChecker";
+export type * from "./util/fileSys";
+export type * from "./util/selectModel";
+export type * from "./util/spinner";
+export type * from "./util/stripAnsi";
 export type * from "./workflow";
+export type * from "./workspace/dependencyScanner";
+export type * from "./workspace/getRelatedCnsts";
+export type * from "./workspace/packageExportsMap";
+export type * from "./workspace/scanInfo";
+export type * from "./workspace/types";

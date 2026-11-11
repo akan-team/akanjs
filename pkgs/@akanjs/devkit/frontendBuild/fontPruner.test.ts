@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { App } from "../commandDecorators";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { FontPruner } from "./fontPruner";
 
 const tempRoot = tempDirs("akan-devkit-font-prune-");

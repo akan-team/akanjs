@@ -1,6 +1,6 @@
 import type { DatabaseMode } from "@akanjs/devkit/akanConfig";
+import { RouteJsBudget } from "@akanjs/devkit/app/routeJsBudget";
 import { App, Apps, CliError, command, Exec, Sys, SysOrOnlyApp, Workspace } from "@akanjs/devkit/commandDecorators";
-import { RouteJsBudget } from "@akanjs/devkit/routeJsBudget";
 import { MigrationCommand } from "akanjs/server/migration/migrationCommand";
 import { MigrationError } from "akanjs/server/migration/migrationError";
 import { ApplicationScript } from "./application.script";
@@ -108,7 +108,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
   })
     .with(App)
     .arg("paths", String, {
-      desc: "page paths, comma-separated; the default locale is added when missing, except to a path the server answers outside a locale (/_akan, the API prefix, /__csr, /__rsc, /.well-known, /openapi.json, the default /mcp, the server's own files, public/ files) or a full URL, which opens as written (default: /)",
+      desc: "page paths, comma-separated; the default locale is added when missing, except to a path the server answers outside a locale (/_akan, the API prefix, /__csr, /__rsc, /.well-known, /openapi.json, /mcp, the server's own files, public/ files), which opens as written; a full URL opens its path on the dev server (default: /)",
       example: "/board,/board/new",
       nullable: true,
     })

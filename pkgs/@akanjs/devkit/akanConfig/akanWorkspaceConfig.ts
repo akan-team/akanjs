@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { SubspaceConfigInput, WorkspaceConfig, WorkspacePipelineConfig } from "akanjs";
 import type { WorkspaceExecutor } from "../executors";
-import { FileSys } from "../fileSys";
+import { FileSys } from "../util/fileSys";
 import { AkanAppConfig } from "./akanConfig";
 
 /** The workspace root's own `akan.config.ts`: settings that belong to no app. */

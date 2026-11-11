@@ -1,5 +1,5 @@
-import { type AkanMcpInstallTarget, type AkanMcpMode, akanMcpInstallTargets } from "@akanjs/devkit/akanContext";
 import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { type AkanMcpInstallTarget, type AkanMcpMode, akanMcpInstallTargets } from "@akanjs/devkit/context/akanContext";
 import { jsonText } from "@akanjs/devkit/workflow";
 import { Logger } from "akanjs/common";
 import { ContextRunner } from "./context.runner";

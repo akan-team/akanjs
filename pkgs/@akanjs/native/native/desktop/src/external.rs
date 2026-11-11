@@ -94,7 +94,7 @@ pub(crate) struct Views {
   shows: u64,
 }
 
-/// Linux has no sendKey: a visible view holds the keyboard focus instead, so a key reaches it as the user's own.
+/// On Linux the user's own keys reach a view only through the keyboard focus, so a visible view holds it.
 #[cfg(target_os = "linux")]
 impl Views {
   fn raise(&mut self, view: &str) {

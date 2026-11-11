@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AppExecutor, WorkspaceExecutor } from "../executors";
 import { NativeConfig } from "../mobile/nativeConfig";
-import type { PackageJson } from "../types";
+import type { PackageJson } from "../workspace/types";
 import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
 import type { LibConfigInput } from "./types";
 

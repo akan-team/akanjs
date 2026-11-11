@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { AutoImportSync, transformSource } from "./autoImportSync";
 
 const makeTempRoot = tempDirs("akan-auto-import-");

@@ -7,7 +7,7 @@
 // page console reaches stdout) with a probe page in place of its own, serves a board page, and reads the probe's
 // lines. At a checkpoint the probe waits on the board server for the check's answer: on X11 the check reads the
 // screen and clicks (xdotool, ImageMagick), elsewhere it only reads the app's log. The probe checks that a view
-// 1. answers isSupported for every method but sendKey, opens, runs its init script before the page's own and in no
+// 1. answers isSupported for every method, opens, runs its init script before the page's own and in no
 //    frame, and answers evaluate, while a cross-origin frame in it loads, and outlives its page's window.close(),
 // 2. lies at its bounds over the page, which takes the clicks around it and, once it is hidden, under it, also once
 //    an open with another init script built it again,
@@ -15,7 +15,9 @@
 // 4. refuses a navigation off its origins, from the app and from its own page, the error page of one that fails, and
 //    a frame's mailto: link,
 // 5. holds the keyboard while it is shown (the page has it while it is hidden), takes it back when its window is
-//    active again, captures its own content as a PNG, and mutes,
+//    active again, takes sendKey's keydown and keyup with their codes whether it, the page or another window has the
+//    focus, while it is hidden and while an app dialog is open, the page and the dialog seeing none, types sendKey's
+//    text into a field, answers UNSUPPORTED while its window is hidden, captures its own content as a PNG, and mutes,
 // 6. plays sound without a gesture, and a view opened with autoplay false does not,
 // 7. keeps storage of its own, which clearData clears,
 // 8. loads again when its web process ends, counting restarts, with its init script.
@@ -58,6 +60,8 @@ const BOARD = `<!doctype html><title>board</title><body style="margin:0;backgrou
 <script>
 window.__keys = []; window.__clicks = 0;
 addEventListener("keydown", (e) => window.__keys.push(e.key + ":" + e.isTrusted));
+window.__sent = []; window.__untrusted = 0;
+for (const type of ["keydown", "keyup"]) addEventListener(type, (e) => { window.__sent.push(type + "," + e.key + "," + e.code); if (!e.isTrusted) window.__untrusted++; });
 addEventListener("click", () => window.__clicks++);
 addEventListener("message", (e) => { if (typeof e.data?.alive === "string") window.__frame = e.data; });
 const frame = document.createElement("iframe");
@@ -108,6 +112,8 @@ closedOff.stop(true);
 
 const PROBE = `
 import { externalView } from ${JSON.stringify(join(root, "plugins/external-view/src/index.ts"))};
+import { dialog } from ${JSON.stringify(join(root, "plugins/dialog/src/index.ts"))};
+import { appWindow } from ${JSON.stringify(join(root, "plugins/window/src/index.ts"))};
 const ORIGIN = ${JSON.stringify(origin)}, OTHER = ${JSON.stringify(other)}, DEAD = ${JSON.stringify(dead)}, DEAD_OFF = ${JSON.stringify(deadOff)};
 const log = (m) => console.info("AKAN_EV_PROBE " + m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -152,7 +158,7 @@ const holdsKeyboard = async (what, id = "board") => {
 async function main() {
   const unsupported = externalView.methods.filter((m) => !externalView.isSupported(m));
   log("booted " + JSON.stringify({ unsupported }));
-  if (unsupported.join() !== "sendKey") throw new Error("not supported: " + unsupported.join());
+  if (unsupported.length) throw new Error("not supported: " + unsupported.join());
   await sleep(2000);
 
   log("step 1. open, the init script first and in no frame, evaluate, a cross-origin frame");
@@ -236,6 +242,58 @@ async function main() {
   await holdsKeyboard("shown");
   const regained = await checkpoint("regain", { innerWidth, innerHeight });
   if (!regained.skipped) await holdsKeyboard("its window active again");
+  const SENT = [["z", "KeyZ"], ["1", "Digit1"], ["7", "Numpad7"], [" ", "Space"], ["[", "BracketLeft"], ["ArrowLeft", "ArrowLeft"], ["Enter", "Enter"]];
+  const expected = SENT.flatMap(([key, code]) => ["keydown," + key + "," + code, "keyup," + key + "," + code]).join("|");
+  const sent = async (what) => {
+    await inView("window.__sent = []; 0");
+    const before = pageKeys.length;
+    for (const [key, code] of SENT) await externalView.sendKey({ id: "board", key, code });
+    let seen = "";
+    for (const t = Date.now(); Date.now() - t < 5000 && seen !== expected; await sleep(250)) seen = await inView("window.__sent.join('|')");
+    if (seen !== expected) throw new Error("sendKey with " + what + ": the view saw " + seen + ", not " + expected);
+    await sleep(500);
+    if (pageKeys.length !== before) throw new Error("sendKey with " + what + ": the page took " + pageKeys.slice(before).join());
+    log("sendKey with " + what + ": " + SENT.length + " keys, untrusted events so far " + (await inView("window.__untrusted")));
+  };
+  await sent("the view holding the keyboard");
+  const pageFocused = await checkpoint("sendPageFocused", { innerWidth, innerHeight });
+  if (!pageFocused.skipped) {
+    await until("the page holds the keyboard after a click on it", () => document.hasFocus(), 10000);
+    await sent("the page holding the keyboard");
+    await checkpoint("sendBlurred");
+    await sent("another window focused");
+    await checkpoint("sendRefocused");
+    await holdsKeyboard("its window active again after sendKey");
+    let answered = null;
+    dialog.prompt({ title: "PIN", message: "PIN", inputText: "" }).then((r) => { answered = r; }, (e) => { answered = { error: e?.code ?? String(e) }; });
+    await sleep(1500);
+    await sent("an app dialog open");
+    if (answered) throw new Error("sendKey's keys answered the app's dialog: " + JSON.stringify(answered));
+    await checkpoint("dismiss");
+    await until("the dialog closed", () => answered, 10000);
+    if (!answered.cancelled || answered.value !== "") throw new Error("the dialog took sendKey's keys: " + JSON.stringify(answered));
+    await holdsKeyboard("the dialog closed");
+    await sent("the dialog closed");
+    await appWindow.hide();
+    await sleep(500);
+    const withdrawn = await code(externalView.sendKey({ id: "board", key: "b", code: "KeyB" }));
+    await appWindow.show();
+    if (withdrawn !== "UNSUPPORTED") throw new Error("sendKey with its window hidden answered " + withdrawn);
+    await checkpoint("sendRefocused");
+    await holdsKeyboard("its window shown again");
+  }
+  await externalView.setVisible({ id: "board", visible: false });
+  await until("the page holds the keyboard", () => document.hasFocus(), 10000);
+  await sent("the view hidden");
+  await externalView.setVisible({ id: "board", visible: true });
+  await holdsKeyboard("shown after sendKey while hidden");
+  await sent("the view shown again");
+  await inView("window.__field = document.createElement('input'); document.body.append(window.__field); window.__field.focus(); 0");
+  for (const [key, code] of [["a", "KeyA"], ["7", "Numpad7"], [" ", "Space"], ["b", "KeyB"]]) await externalView.sendKey({ id: "board", key, code });
+  let field = "";
+  for (const t = Date.now(); Date.now() - t < 5000 && field !== "a7 b"; await sleep(250)) field = await inView("window.__field.value");
+  if (field !== "a7 b") throw new Error("sendKey typed " + JSON.stringify(field) + " into a field, focused " + (await inView("document.activeElement === window.__field")));
+  await inView("window.__field.remove(); 0");
   const shot = await externalView.capture({ id: "board" });
   log("capture " + JSON.stringify(shot));
   if (!(shot.width > 0 && shot.height > 0)) throw new Error("no capture");
@@ -386,6 +444,11 @@ try {
       return JSON.stringify({ ok: true });
     }
     if (!x11) return JSON.stringify({ ok: true, skipped: true });
+    //? The dialog's grab takes a real key whichever window has the X focus.
+    if (name === "dismiss") {
+      Bun.spawnSync(["xdotool", "key", "Escape"], { timeout: 30_000 });
+      await Bun.sleep(700);
+    }
     const id = Bun.spawnSync(["xdotool", "search", "--onlyvisible", "--pid", String(started.pid)], { timeout: 30_000 })
       .stdout.toString()
       .trim()
@@ -413,7 +476,27 @@ try {
       xdotool("windowfocus", "--sync", id ?? "");
       await Bun.sleep(500);
     }
-    if (name === "active" || name === "typeInView" || name === "typeInPage" || name === "regain")
+    if (name === "sendPageFocused") click(beside.x, beside.y);
+    if (name === "sendBlurred")
+      xdotool(
+        "windowfocus",
+        "--sync",
+        xdotool("search", "--maxdepth", "0", "").stdout.toString().trim().split("\n")[0] ?? "",
+      );
+    if (name === "sendRefocused" || name === "dismiss") xdotool("windowfocus", "--sync", id ?? "");
+    if (name.startsWith("send") || name === "dismiss") await Bun.sleep(500);
+    if (
+      [
+        "active",
+        "typeInView",
+        "typeInPage",
+        "regain",
+        "sendPageFocused",
+        "sendBlurred",
+        "sendRefocused",
+        "dismiss",
+      ].includes(name)
+    )
       return JSON.stringify({ ok: true });
     await Bun.sleep(700);
     const seen = { inside: pixel(inside.x, inside.y), beside: pixel(beside.x, beside.y) };

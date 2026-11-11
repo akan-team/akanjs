@@ -88,6 +88,7 @@ Declared in [service/ipcTypes.ts](service/ipcTypes.ts).
 | `pubsub.publish` | `SolidPubSub` | `AkanApp` |
 | `pubsub.deliver` | `GatewayRooms` | `SolidPubSub` |
 | `pubsub.subscribe` | `SolidPubSub` | `AkanApp` |
+| `pubsub.subscribed` | `GatewayRooms` | `SolidPubSub` |
 | `pubsub.unsubscribe` | `SolidPubSub` | `AkanApp` |
 | `pubsub.snapshot.request` | `GatewayRooms` | `SolidPubSub` |
 | `pubsub.snapshot` | `SolidPubSub` | `AkanApp` |

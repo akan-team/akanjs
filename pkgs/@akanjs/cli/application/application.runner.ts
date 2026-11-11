@@ -2,8 +2,9 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
-import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/applicationBuildRunner";
-import { resolveSignalTestPreloadPath } from "@akanjs/devkit/applicationTestPreload";
+import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/app/applicationBuildRunner";
+import { resolveSignalTestPreloadPath } from "@akanjs/devkit/app/applicationTestPreload";
+import type { RouteJsBudgetMode } from "@akanjs/devkit/app/routeJsBudget";
 import { type App, assertPromptable, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, CommandExecutionError, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
@@ -20,9 +21,8 @@ import {
   UpdatePackFolder,
   UpdateUploader,
 } from "@akanjs/devkit/mobile";
-import type { RouteJsBudgetMode } from "@akanjs/devkit/routeJsBudget";
-import { AppInfo } from "@akanjs/devkit/scanInfo";
-import { SlicePlanner } from "@akanjs/devkit/slicePlanner";
+import { AppInfo } from "@akanjs/devkit/workspace/scanInfo";
+import { SlicePlanner } from "@akanjs/devkit/workspace/slicePlanner";
 import type { ServerPolicy } from "@akanjs/native/api";
 import { Logger, type LogRecord, toError } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
@@ -102,7 +102,7 @@ export interface IosReleaseOptions extends MobileTargetOptions, MobilePublicEnvO
 }
 
 // Lazy, so the `akan start` hot path never loads the build, mobile and prompt stacks.
-const loadBuildRunner = async () => (await import("@akanjs/devkit/applicationBuildRunner")).ApplicationBuildRunner;
+const loadBuildRunner = async () => (await import("@akanjs/devkit/app/applicationBuildRunner")).ApplicationBuildRunner;
 const loadPrompts = async () => await import("@inquirer/prompts");
 
 export class ApplicationRunner extends runner("application") {

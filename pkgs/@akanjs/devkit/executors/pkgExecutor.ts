@@ -1,6 +1,6 @@
 import path from "node:path";
-import { PkgInfo } from "../scanInfo";
-import type { PackageJson, TsConfigJson } from "../types";
+import { PkgInfo } from "../workspace/scanInfo";
+import type { PackageJson, TsConfigJson } from "../workspace/types";
 import { Executor, execEmoji } from "./executor";
 import type { NamedExecutorOptions, SysExecutor } from "./sysExecutor";
 import { WorkspaceExecutor } from "./workspaceExecutor";

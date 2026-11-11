@@ -18,11 +18,14 @@ the server errors logged meanwhile, console errors and warnings, and layout smel
   running one.
 - Paths are comma-separated (`akan preview <app> /board,/board/new`) and get the default locale when they lack
   one, unless the app sets `localePrefix: "as-needed"` and `--csr` is off. What the server answers outside a
-  locale opens as written: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the
-  API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, the default `/mcp`, `/favicon.ico`,
-  `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest` and a file in the app's `public/`. A full URL
-  (`http://localhost:<port>/oauth/token`) opens exactly as written: use it for an endpoint mounted outside the
-  API prefix or a custom MCP path. A page `--changed` finds always gets the locale.
+  locale opens as written, with no locale and no CSR boot query: a `/_akan` route such as Studio
+  (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`,
+  `/openapi.json`, `/mcp`, `/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest` and a file in
+  the app's `public/`; `--csr` prints a note naming them. `/mcp` answers only `POST`, so preview cannot check it
+  (it fails with 405); the `akan-mcp` exposure test does. A full URL (`http://localhost:<port>/oauth/token`)
+  opens its path and query the same way, always on the app's dev server, with a note when it names another
+  server: use it for an endpoint mounted outside the API prefix. A page `--changed` finds opens as a page even at
+  a server route's path, under the same locale rule, and `/en` and `/en/` open once.
   `--changed` adds the pages your uncommitted page and layout edits reach. A dynamic route needs a concrete
   path (`/memo/1`); `akan context --app <app>` lists every route with its params and search names.
 - The viewport is a 390x844 phone; `--desktop` is 1280x800. `--csr` loads each page in the CSR boot the native

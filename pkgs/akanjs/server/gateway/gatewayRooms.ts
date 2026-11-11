@@ -52,6 +52,14 @@ export class GatewayRooms {
     }
   }
 
+  //? Answered after the membership: a child's messages arrive in order, so its live models reported earlier are in too.
+  subscribe(childIdx: number, message: Extract<AkanIpcMessage, { type: "pubsub.subscribe" }>) {
+    this.addRoomMembership(childIdx, message.roomId, message.socketId);
+    const child = this.#children.get(childIdx);
+    if (child && message.ack !== undefined)
+      this.#children.send(child, { type: "pubsub.subscribed", ack: message.ack } satisfies AkanIpcMessage);
+  }
+
   addRoomMembership(childIdx: number, roomId: string, socketId?: string) {
     const roomChildren = this.#roomChildren.get(roomId) ?? new Set<number>();
     roomChildren.add(childIdx);

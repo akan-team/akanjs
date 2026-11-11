@@ -1,7 +1,7 @@
 import { capitalize } from "akanjs/common";
 import ts from "typescript";
-import type { AkanModuleContext } from "../akanContext";
 import type { Sys, Workspace } from "../commandDecorators";
+import type { AkanModuleContext } from "../context/akanContext";
 import { AppExecutor, LibExecutor } from "../executors";
 import { createWorkflowApplyReport, workflowCommandsForPlan } from "./artifacts";
 import { buildAkanModuleContextIndex } from "./moduleIndex";

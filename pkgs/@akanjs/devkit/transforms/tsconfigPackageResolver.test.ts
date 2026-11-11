@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { createTsconfigPackageResolver } from "./barrelImportsPlugin";
 
 const makeTempRoot = tempDirs("akan-devkit-resolver-");

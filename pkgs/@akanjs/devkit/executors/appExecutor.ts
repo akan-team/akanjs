@@ -4,10 +4,10 @@ import { pathToFileURL } from "node:url";
 import type { AkanPlugin, AkanSyncContext } from "akanjs";
 import { isRouteSourceFile, parseRouteModuleKey, validatePageSourceFile, validateSubRoutePageKey } from "akanjs/common";
 import { AkanAppConfig, decreaseBuildNum, increaseBuildNum } from "../akanConfig";
+import type { RouteSourceInfo } from "../app/routeSourceValidator";
 import { getRootBoundarySegments, isRootBoundarySegments } from "../artifact/implicitRootLayout";
-import { FileSys } from "../fileSys";
-import type { RouteSourceInfo } from "../routeSourceValidator";
-import type { AppInfo } from "../scanInfo";
+import { FileSys } from "../util/fileSys";
+import type { AppInfo } from "../workspace/scanInfo";
 import { Executor, execEmoji } from "./executor";
 import { LibExecutor } from "./libExecutor";
 import { type NamedExecutorOptions, SysExecutor } from "./sysExecutor";
@@ -30,9 +30,9 @@ export interface AppRouteSource {
 
 export class AppExecutor extends SysExecutor {
   // Lazy: the validator pulls in `typescript` (~65MB resident).
-  static #routeSourceValidator: typeof import("../routeSourceValidator").RouteSourceValidator | null = null;
+  static #routeSourceValidator: typeof import("../app/routeSourceValidator").RouteSourceValidator | null = null;
   static async #getRouteSourceValidator() {
-    AppExecutor.#routeSourceValidator ??= (await import("../routeSourceValidator")).RouteSourceValidator;
+    AppExecutor.#routeSourceValidator ??= (await import("../app/routeSourceValidator")).RouteSourceValidator;
     return AppExecutor.#routeSourceValidator;
   }
   dist: Executor;

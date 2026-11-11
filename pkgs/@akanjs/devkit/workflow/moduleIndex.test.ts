@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import type { AkanModuleContext } from "../akanContext";
 import type { Workspace } from "../commandDecorators";
-import { tempDirs, writeText } from "../testHelpers";
+import type { AkanModuleContext } from "../context/akanContext";
+import { tempDirs, writeText } from "../test/testHelpers";
 import { buildAkanModuleContextIndex } from "./moduleIndex";
 
 const tempRoot = tempDirs("akan-module-index-");
