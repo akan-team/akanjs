@@ -257,7 +257,7 @@ export default page()
   the tool's `outputSchema` even on a failure — and a JSON-RPC error holds `data.code`, which tells apart what
   `-32602` files together: `unknownTool`, `invalidArgument`, `unknownPrompt`, `unknownResource` and a screen's
   refusal, beside `tooManyRequests` and `internalError`. The code is the one an HTTP caller gets: a domain `Err`'s
-  dictionary key (what `Err.is` matches), else the `AkanError`'s own code; a 401 or a 403 by its status alone
+  dictionary key (what `Err.is` matches), else the `AkanError`'s own code; a guard's 401 or 403 by its status alone
   (`unauthorized`, `forbidden`), since a guard's own code names its rule as its message does; a crash, or a 5xx whose
   code this server did not name, by its status (`internalError`). A code is a bounded key or camelCase token, never
   prose. No host hands `_meta` to the model, so what the model must act on belongs in the dictionary sentence.

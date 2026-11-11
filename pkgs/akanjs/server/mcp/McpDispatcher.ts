@@ -209,8 +209,9 @@ export class McpDispatcher {
   }
 
   // Named as its HTTP body names it: a forwarded error by its dictionary key, else by its code. A forwarded refusal by
-  // its status alone, since a guard's own code names the authorization structure as its message would. Security: a 5xx's text is
-  // redacted, so its code is a dictionary key or this server's own `AkanError` code, never a duck-typed body's `code`.
+  // its status alone, since a guard's own code names the authorization structure as its message would. Security: a
+  // 5xx's text is redacted, so its code is a dictionary key or this server's own `AkanError` code, never a duck-typed
+  // body's `code`.
   static #codeOf(error: unknown, status: number | undefined): McpFailure {
     if (!status) return McpDispatcher.#crashed;
     const byStatus = { code: AkanError.codeOfStatus(status), statusCode: status };

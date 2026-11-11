@@ -67,7 +67,6 @@ interface LiveDelivery {
   roomId: string;
   payload: LiveEventPayload;
 }
-
 type HttpMethodRoutes = Record<string, (req: Bun.BunRequest) => Response | Promise<Response | undefined> | undefined>;
 
 export class SignalResolver {
