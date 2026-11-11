@@ -264,11 +264,11 @@ export class FetchClient {
   setTimeout(timeout?: number | false) {
     this.http.setTimeout(timeout);
   }
+  /** @deprecated Every `Err` is `akanjs/common`'s, which a restored error already is; drop the call. */
   setErrorConstructor(ErrorCls?: ErrorConstructor) {
     this.ErrorCls = ErrorCls;
     this.http.setErrorConstructor(ErrorCls);
-    this.ws.setErrorConstructor(ErrorCls);
-    for (const ws of this.#originWs.values()) ws.setErrorConstructor(ErrorCls);
+    for (const ws of [this.ws, ...this.#originWs.values()]) ws.setErrorConstructor(ErrorCls);
   }
   applySignal(serializedSignal: { [key: string]: SerializedSignal }, { share = true }: { share?: boolean } = {}) {
     if (share && Object.keys(serializedSignal).length > 0) {
@@ -1111,7 +1111,7 @@ export class FetchClient {
       origin?: string;
       connect?: boolean;
       base?: FetchProxy;
-      Err?: ErrorConstructor;
+      /** @deprecated Every `Err` is `akanjs/common`'s, which a restored error already is. */ Err?: ErrorConstructor;
       /** This app's own default request budget, for calls no endpoint and no caller gave one. */
       timeout?: number | false;
     } = {},

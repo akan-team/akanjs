@@ -19,7 +19,6 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   return `
 import { FetchClient, type FetchClientType } from "akanjs/fetch";
 import { SignalRegistry, serverSignal${libs.length === 0 ? ", fetch as base" : ""} } from "akanjs/signal";
-import { Err } from "./dict";
 ${libs.map((lib) => `import { fetch as ${lib} } from "@libs/${lib}/lib/sig";`).join("\n")}
 
 ${databaseModules.map((module) => `import * as ${module}Sig from "./${module}/${module}.signal";`).join("\n")}
@@ -37,9 +36,6 @@ ${serviceModules.map((module) => `export const ${module} = SignalRegistry.regist
 export const fetchSignals = [${signalNames.join(", ")}] as const;
 export type Fetch = FetchClientType<typeof fetchSignals>;
 export const fetch = FetchClient.from(...fetchSignals) as unknown as Fetch;
-// A failure restored from another process is this scope's own Err, so a server hop that rethrows one keeps its
-// dictionary key and data instead of answering the original caller with Internal Server Error.
-fetch.setErrorConstructor(Err);
 
 export const getSerializedSignal = () => fetch.ownSerializedSignal
 `;

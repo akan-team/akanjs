@@ -196,7 +196,7 @@ export class PagesBundleBuilder {
       edits.push({
         start: tokens[fetchProtoAt].start,
         end: fetchProtoEnd.end,
-        text: "const fetchProto = FetchClient.build<typeof signal>(cnst, serverFetch.serializedSignal, { Err: pageProto.Err, base: serverFetch });",
+        text: "const fetchProto = FetchClient.build<typeof signal>(cnst, serverFetch.serializedSignal, { base: serverFetch });",
       });
     let transformed = source;
     for (const { start, end, text } of edits.sort((a, b) => b.start - a.start))

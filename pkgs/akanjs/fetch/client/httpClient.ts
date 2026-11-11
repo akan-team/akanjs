@@ -11,6 +11,7 @@ export interface HttpClientOptions {
   headers?: Record<string, string>;
   /** Milliseconds before the request is abandoned; `false` waits as long as the browser will. */
   timeout?: number | false;
+  /** @deprecated Every `Err` is `akanjs/common`'s, which a restored error already is. */
   ErrorCls?: ErrorConstructor;
 }
 
@@ -62,6 +63,7 @@ export class HttpClient {
     this.ErrorCls = options.ErrorCls;
   }
 
+  /** @deprecated Every `Err` is `akanjs/common`'s, which a restored error already is; drop the call. */
   setErrorConstructor(ErrorCls?: ErrorConstructor) {
     this.ErrorCls = ErrorCls;
   }
