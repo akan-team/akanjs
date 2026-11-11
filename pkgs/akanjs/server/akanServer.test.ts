@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -744,6 +744,36 @@ describe("AkanServer module exclusion", () => {
     } finally {
       delete process.env.AKAN_DISABLE_LIBS;
       await server.stop();
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("AkanServer stopped while starting", () => {
+  test("runs no init schedule once a stop lands while its log transport starts", async () => {
+    const { AkanServer, createLib } = await loadRuntime();
+    const { LogControlSocket } = await import("./logging/logControlSocket");
+    const { DiLifecycle } = await import("./di/diLifecycle");
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-stop-in-start-"));
+    const replica = new AkanServer("serverGet", createEnv(tmp), "all", createLib());
+    const listeners = { message: process.listeners("message"), disconnect: process.listeners("disconnect") };
+    const schedulerInit = spyOn(DiLifecycle.prototype, "runSchedulerInit");
+    const open = spyOn(LogControlSocket, "open").mockImplementation(async () => {
+      await replica.stop();
+      return null;
+    });
+
+    try {
+      await replica.start({ listen: false });
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(replica.status).toBe("stopped");
+      expect(schedulerInit).not.toHaveBeenCalled();
+    } finally {
+      open.mockRestore();
+      schedulerInit.mockRestore();
+      for (const event of ["message", "disconnect"] as const)
+        for (const listener of process.listeners(event))
+          if (!listeners[event].includes(listener)) process.off(event, listener);
       await rm(tmp, { recursive: true, force: true });
     }
   });

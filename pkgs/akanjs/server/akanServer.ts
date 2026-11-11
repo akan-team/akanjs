@@ -597,7 +597,7 @@ export class AkanServer {
           replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
           role: this.serverMode,
         });
-        if (this.#schedules) await this.#di.runSchedulerInit();
+        if (this.#schedules && this.status === "running") await this.#di.runSchedulerInit();
         ShutdownManager.register(this.logger, () => this.stop());
       }
       return this;

@@ -100,6 +100,12 @@ export class AkanApp {
     await this.#supervisor.prepareRuntimeDir();
     await this.#logging.start();
     await this.#startOps();
+    //? A stop during the awaits above has already run `stopAll` and the log stop: spawning or listening would outlive
+    //? it, and a log file opened since would stay open.
+    if (this.#children.stopping) {
+      await this.#logging.stop();
+      return;
+    }
     for (let idx = 0; idx < this.#config.replica.total; idx++) this.#supervisor.spawn(idx);
     try {
       this.#listen();
