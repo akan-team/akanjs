@@ -69,18 +69,36 @@ const buildCsr = async (indexPage: string) => {
     logger: { warn: () => undefined },
   };
   const reached: string[] = [];
+  const metafiles: Bun.BuildMetafile[] = [];
   const build = Bun.build;
-  const recorded = spyOn(Bun, "build").mockImplementation((config) =>
-    build({ ...config, plugins: [recordOptionalPeers(reached), ...(config.plugins ?? [])] }),
-  );
+  const recorded = spyOn(Bun, "build").mockImplementation(async (config) => {
+    const result = await build({
+      ...config,
+      metafile: true,
+      plugins: [recordOptionalPeers(reached), ...(config.plugins ?? [])],
+    });
+    if (result.metafile) metafiles.push(result.metafile);
+    return result;
+  });
 
   try {
     await new CsrArtifactBuilder(app as never, "build").build();
   } finally {
     recorded.mockRestore();
   }
-  return { root, reached };
+  return { root, reached, metafiles };
 };
+
+const mcpAppPage =
+  'import { page } from "akanjs/client";\nimport { Link } from "akanjs/ui";\n\nexport default page()\n  .app("showHome", "Show the home link.", () => <Link href="/">home</Link>)\n  .render(() => null);\n';
+
+const bytesFrom = (metafiles: Bun.BuildMetafile[], entry: string, input: string) =>
+  metafiles
+    .flatMap((metafile) => Object.values(metafile.outputs))
+    .filter((output) => output.entryPoint?.endsWith(entry))
+    .flatMap((output) => Object.entries(output.inputs))
+    .filter(([file]) => file.endsWith(input))
+    .reduce((sum, [, { bytesInOutput }]) => sum + bytesInOutput, 0);
 
 describe("optional peers of akanjs", () => {
   test("the generated root layout, the _overrides.tsx wrapper and the runtime entries import none", async () => {
@@ -122,11 +140,21 @@ describe("optional peers of akanjs", () => {
   });
 
   test("the MCP App view build of a page drawing akanjs/ui components imports none", async () => {
-    const { root, reached } = await buildCsr(
-      'import { page } from "akanjs/client";\nimport { Link } from "akanjs/ui";\n\nexport default page()\n  .app("showHome", "Show the home link.", () => <Link href="/">home</Link>)\n  .render(() => null);\n',
-    );
+    const { root, reached } = await buildCsr(mcpAppPage);
 
     expect(await Bun.file(path.join(root, "dist/apps/demo/mcp-apps/showHome.html")).exists()).toBe(true);
     expect(reached).toEqual([]);
+  });
+});
+
+describe("the CSR shell and the MCP App view", () => {
+  test("leave out the route-level boundary class, which only a server render draws, and keep RenderFailure", async () => {
+    const { metafiles } = await buildCsr(mcpAppPage);
+
+    for (const entry of ["generated/csr/index.html", "generated/mcp-apps/showHome.html"]) {
+      expect(bytesFrom(metafiles, entry, "webkit/RenderFailure.tsx")).toBeGreaterThan(0);
+      //? What stays of the module is its React import binding; the class alone is several hundred bytes.
+      expect(bytesFrom(metafiles, entry, "webkit/RouteLevelBoundary.tsx")).toBeLessThan(40);
+    }
   });
 });
