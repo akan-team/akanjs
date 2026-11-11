@@ -648,6 +648,53 @@ describe("AkanApp", () => {
     });
   });
 
+  test("restarts a replica that stops answering health pings, and leaves one that answers", async () => {
+    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-health-");
+    const counterPath = path.join(root, "counter.txt");
+
+    await Bun.write(
+      serverPath,
+      `
+        const counterPath = ${JSON.stringify(counterPath)};
+        export const server = {
+          async start() {
+            const file = Bun.file(counterPath);
+            const boot = (await file.exists() ? Number(await file.text()) : 0) + 1;
+            await Bun.write(counterPath, String(boot));
+            const http = Bun.serve({
+              unix: process.env.AKAN_CHILD_SOCKET,
+              fetch() { return new Response("ok"); },
+            });
+            process.on("message", (message) => {
+              if (!message || typeof message !== "object") return;
+              if (boot > 1) { ${answerHealthPing} }
+              if (message.type === "shutdown") {
+                http.stop(true);
+                process.exit(0);
+              }
+            });
+            ${sendReady()}
+          },
+        };
+      `,
+    );
+
+    await withEnvSet({ AKAN_HEALTH_TIMEOUT_MS: "3000" }, () =>
+      withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+        const restarted = await waitFor(async () => {
+          const body = await readHealth(port);
+          const child = body?.children[0];
+          return child?.ready && child.restartCount > 0 && !child.restartPending ? body : null;
+        }, 12_000);
+        expect(restarted.children[0]?.restartCount).toBe(1);
+
+        await wait(5_000);
+        expect((await readHealth(port))?.children[0]?.restartCount).toBe(1);
+        expect(await Bun.file(counterPath).text()).toBe("2");
+      }),
+    );
+  }, 25_000);
+
   test("restarts a ready child when its unix upstream stops accepting connections", async () => {
     const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-upstream-");
     const counterPath = path.join(root, "counter.txt");
@@ -958,7 +1005,7 @@ describe("AkanApp", () => {
     await Bun.write(path.join(root, ".akan/artifact/client/app.js"), "export const x = 1;\n");
     await writeOkChild(serverPath, "from-child");
 
-    // `#web` is read at construction, so each case needs its own gateway.
+    // `GatewayConfig.web` is read at construction, so each case needs its own gateway.
     const readAsset = async (ssr: string | undefined) => {
       const port = randomPort();
       if (ssr === undefined) delete process.env.AKAN_SSR;

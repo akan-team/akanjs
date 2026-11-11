@@ -86,23 +86,23 @@ Declared in [service/ipcTypes.ts](service/ipcTypes.ts).
 | --- | --- | --- |
 | `ready` | `AkanServer` | `AkanApp` |
 | `pubsub.publish` | `SolidPubSub` | `AkanApp` |
-| `pubsub.deliver` | `AkanApp` | `SolidPubSub` |
+| `pubsub.deliver` | `GatewayRooms` | `SolidPubSub` |
 | `pubsub.subscribe` | `SolidPubSub` | `AkanApp` |
 | `pubsub.unsubscribe` | `SolidPubSub` | `AkanApp` |
-| `pubsub.snapshot.request` | `AkanApp` | `SolidPubSub` |
+| `pubsub.snapshot.request` | `GatewayRooms` | `SolidPubSub` |
 | `pubsub.snapshot` | `SolidPubSub` | `AkanApp` |
 | `live.change` | `SolidPubSub` | `AkanApp`, `SolidPubSub` |
 | `live.models` | `SolidPubSub` | `AkanApp` |
 | `queue.enqueued` | `SolidQueue` | `AkanApp` |
 | `queue.wake` | `AkanApp` | `SolidQueue` |
-| `health.ping` | `AkanApp` | `AkanServer` |
+| `health.ping` | `ChildSupervisor` | `AkanServer` |
 | `health.pong` | `AkanServer` | `AkanApp` |
 | `ws.opened` | — | — |
 | `ws.closed` | — | — |
 | `metrics.report` | `AkanServer` | `AkanApp` |
 | `log.records` | `LogForwarder` | `AkanApp` |
-| `log.level` | `AkanApp` | `AkanServer` |
-| `shutdown` | `AkanApp` | `AkanServer` |
+| `log.level` | `ChildSupervisor`, `GatewayLogging` | `AkanServer` |
+| `shutdown` | `ChildSupervisor` | `AkanServer` |
 | `file.resolve` | `NativeFile` | — |
 | `file.resolved` | — | `NativeFile` |
 | `secret.request` | `NativeSecret` | — |
@@ -123,13 +123,13 @@ Declared in [server/artifact/ipcTypes.ts](server/artifact/ipcTypes.ts).
 | `build-graph-res` | `AkanAppHost`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `builder-shutdown` | `IncrementalBuilderHost` | `IncrementalBuilder` |
 | `builder-ready` | `IncrementalBuilder` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
-| `backend-ready` | `AkanApp` | `AkanAppHost` |
+| `backend-ready` | `ChildSupervisor` | `AkanAppHost` |
 | `invalidate` | `AkanAppHost`, `prepareDevWatchBatch` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `css-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost`, `shouldRelayRecycledFrontendState` |
 | `pages-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost`, `shouldRelayRecycledFrontendState` |
 | `csr-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `ssr-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
-| `build-status` | `AkanApp`, `AkanAppHost`, `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuildBatchRunner`, `BuilderRpc`, `IncrementalBuilderHost` |
+| `build-status` | `AkanAppHost`, `BuildBatch`, `DevHostChannel`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuildBatchRunner`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `builder-metrics` | `IncrementalBuilder` | `AkanAppHost`, `IncrementalBuilderHost` |
 | `boot-armed` | `IncrementalBuilder` | `AkanAppHost`, `IncrementalBuilderHost` |
 

@@ -26,7 +26,7 @@ export const plainTextOf = (lines: DevLogLine[], { withApp = false }: { withApp?
   return lines.map((line) => `${withApp ? `${line.app.padEnd(width)} │ ` : ""}${stripAnsi(line.text)}`).join("\n");
 };
 
-// `AkanApp.#writeChildLine` prefixes each forwarded replica line with `[child:<idx> <role>] [<stream>] `;
+// `GatewayLogging.writeChildLine` prefixes each forwarded replica line with `[child:<idx> <role>] [<stream>] `;
 // anything else is the host process's own stdio (dev host, gateway, RSC worker).
 export const HOST_SOURCE = "host";
 const childPrefix = /^\[child:(\d+) ([a-z-]+)\] \[(?:stdout|stderr)\] /;
