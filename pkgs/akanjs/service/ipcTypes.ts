@@ -149,7 +149,9 @@ export type AkanIpcMessage =
     }
   | { type: "pubsub.publish"; roomId: string; data: object | object[]; origin?: string }
   | { type: "pubsub.deliver"; roomId: string; data: object | object[]; origin?: string }
-  | { type: "pubsub.subscribe"; roomId: string; socketId?: string; pid?: number }
+  | { type: "pubsub.subscribe"; roomId: string; socketId?: string; pid?: number; ack?: number }
+  /** Gateway → child: the subscribe carrying `ack`, and whatever the child sent before it, now route to the child. */
+  | { type: "pubsub.subscribed"; ack: number }
   | { type: "pubsub.unsubscribe"; roomId: string; socketId?: string; pid?: number }
   | { type: "pubsub.snapshot.request" }
   | { type: "pubsub.snapshot"; rooms: string[]; liveModels?: string[]; pid?: number }
