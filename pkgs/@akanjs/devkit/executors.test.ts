@@ -1048,6 +1048,20 @@ describe("Workspace and app executor environment contracts", () => {
 
       await expect(app.getPageKeys({ refresh: true })).resolves.toEqual(["./(docs)/_layout.tsx"]);
     });
+
+    test("refuses a LevelBoundary export on the app's root layout, which the generated one would ignore", async () => {
+      const app = await makeRouteValidationApp("root-level-boundary", "export default {};\n", {
+        "_layout.tsx": [
+          "export const LevelBoundary = ({ children }) => children;",
+          "export default function Layout({ children }) { return children; }",
+          "",
+        ].join("\n"),
+      });
+
+      await expect(app.getPageKeys({ refresh: true })).rejects.toThrow(
+        /unsupported export "LevelBoundary" in .*page\/_layout\.tsx: the generated root layout defines its own/,
+      );
+    });
   });
 
   test("accepts head route exports during page key discovery", async () => {

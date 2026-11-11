@@ -1,4 +1,4 @@
-import { getRouteExports } from "akanjs/common";
+import { GENERATED_ROOT_LAYOUT_EXPORTS, getRouteExports } from "akanjs/common";
 import ts from "typescript";
 
 /** What the build needs out of a route module without evaluating it. */
@@ -43,6 +43,10 @@ export class RouteSourceValidator {
     const allowed = getRouteExports(kind, { rootLayout: options.rootLayout });
     const exported = new Set<string>();
     const assertExport = (name: string) => {
+      if (options.rootLayout && GENERATED_ROOT_LAYOUT_EXPORTS.has(name))
+        throw new Error(
+          `[route-convention] unsupported export "${name}" in ${filePath}: the generated root layout defines its own and would ignore this one`,
+        );
       if (!allowed.has(name)) {
         throw new Error(`[route-convention] unsupported export "${name}" in ${filePath}`);
       }

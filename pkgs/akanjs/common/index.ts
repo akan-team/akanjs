@@ -223,6 +223,7 @@ export { round } from "./round";
 export {
   assertUniqueRoutePatterns,
   compareRouteSpecificity,
+  GENERATED_ROOT_LAYOUT_EXPORTS,
   getPageSourceFileViolation,
   getRouteExports,
   isRouteSourceFile,

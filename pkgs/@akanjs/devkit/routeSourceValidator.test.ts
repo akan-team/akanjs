@@ -20,6 +20,21 @@ describe("RouteSourceValidator", () => {
     expect(() => validate(source, "layout", true)).not.toThrow();
   });
 
+  test("refuses an export only the generated root layout defines on an app's root layout, which it would ignore", () => {
+    const layout = "export default function Layout({ children }) { return children; }";
+    for (const source of [
+      `${layout}\nexport const LevelBoundary = ({ children }) => children;`,
+      `${layout}\nexport { Boundary as LevelBoundary } from "./boundary";`,
+      `${layout}\nexport function McpAppRoot({ children }) { return children; }`,
+    ]) {
+      const name = source.includes("McpAppRoot") ? "McpAppRoot" : "LevelBoundary";
+      expect(() => validate(source, "layout", true)).toThrow(
+        `unsupported export "${name}" in page/_layout.tsx: the generated root layout defines its own`,
+      );
+      expect(() => validate(source, "layout")).toThrow(`unsupported export "${name}" in page/_layout.tsx`);
+    }
+  });
+
   test("rejects root-layout-only exports on a nested layout and on a page", () => {
     const source = ["export default function Layout() { return null; }", "export const wsConnect = true;"].join("\n");
 
