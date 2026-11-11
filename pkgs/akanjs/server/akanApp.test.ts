@@ -165,6 +165,7 @@ const writePubsubChild = (serverPath: string) =>
         async start() {
           const delivered = [];
           const changes = [];
+          const acks = [];
           const http = Bun.serve({
             unix: process.env.AKAN_CHILD_SOCKET,
             fetch(req) {
@@ -172,8 +173,9 @@ const writePubsubChild = (serverPath: string) =>
               const roomId = url.searchParams.get("room");
               const socketId = url.searchParams.get("socket") ?? undefined;
               const models = url.searchParams.getAll("model");
+              const ack = url.searchParams.has("ack") ? { ack: Number(url.searchParams.get("ack")) } : {};
               if (url.pathname === "/subscribe")
-                process.send?.({ type: "pubsub.subscribe", roomId, socketId, pid: process.pid });
+                process.send?.({ type: "pubsub.subscribe", roomId, socketId, pid: process.pid, ...ack });
               if (url.pathname === "/unsubscribe")
                 process.send?.({ type: "pubsub.unsubscribe", roomId, socketId, pid: process.pid });
               if (url.pathname === "/snapshot")
@@ -189,6 +191,7 @@ const writePubsubChild = (serverPath: string) =>
               if (url.pathname === "/change")
                 process.send?.({ type: "live.change", change: { refName: models[0], next: url.searchParams.get("n") } });
               if (url.pathname === "/changes") return Response.json(changes);
+              if (url.pathname === "/acks") return Response.json(acks);
               return Response.json(delivered);
             },
           });
@@ -197,6 +200,7 @@ const writePubsubChild = (serverPath: string) =>
             ${answerHealthPing}
             if (message.type === "pubsub.deliver") delivered.push(message.data.n);
             if (message.type === "live.change") changes.push(message.change.refName + ":" + message.change.next);
+            if (message.type === "pubsub.subscribed") acks.push(message.ack);
             if (message.type === "shutdown") {
               http.stop(true);
               process.exit(0);
@@ -2053,6 +2057,41 @@ describe("AkanApp", () => {
       await call(writer, "/change?model=task&n=4");
       await changesReach(["task:2", "task:4"]);
       expect(await call(writer, "/changes")).toEqual([]);
+    });
+  }, 20_000);
+
+  test("answers a subscribe once its room and the live models reported before it route to the child", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-subscribe-ack-");
+    await writePubsubChild(serverPath);
+
+    await withApp(serverPath, { replica: 2, runtimeDir, port }, async () => {
+      await waitFor(async () => {
+        const body = await readHealth(port);
+        return body?.children.length === 2 && body.children.every((child) => child.ready) ? body : null;
+      });
+      const entries = await readdir(runtimeDir);
+      const socketOf = (idx: number) =>
+        path.join(runtimeDir, entries.find((name) => name.endsWith(`-${idx}.sock`)) ?? `missing-${idx}`);
+      const [holder, writer] = [socketOf(0), socketOf(1)];
+      const call = async (socketPath: string, pathname: string) =>
+        (await (await fetch(`http://child${pathname}`, { unix: socketPath })).json()) as unknown;
+      const reaches = (pathname: string, expected: unknown) =>
+        waitFor(
+          async () => (JSON.stringify(await call(holder, pathname)) === JSON.stringify(expected) ? true : null),
+          2_000,
+          `${pathname} never reached ${JSON.stringify(expected)}`,
+        );
+
+      await call(holder, "/models?model=task");
+      await call(holder, "/subscribe?room=a&socket=s1&ack=7");
+      await reaches("/acks", [7]);
+      await call(writer, "/publish?room=a&n=1");
+      await call(writer, "/change?model=task&n=2");
+      await reaches("/", [1]);
+      await reaches("/changes", ["task:2"]);
+      await call(holder, "/subscribe?room=b&socket=s1");
+      await call(holder, "/subscribe?room=c&socket=s1&ack=8");
+      await reaches("/acks", [7, 8]);
     });
   }, 20_000);
 
