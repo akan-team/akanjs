@@ -27,7 +27,7 @@ import {
 import { fetchRscNavigationResponse } from "./rscClientFetch";
 import { commitRscPatch, type RscPatchedResult, validateRscPatchForGuardedCommit } from "./rscClientPatch";
 import { getAkanHeadSnapshotPatchFailureReason } from "./rscHeadPatch";
-import { getRscPayloadStream, guardRscRedirectRows, type RscRedirectRow } from "./rscHttp";
+import { getRscPayloadStream, guardRscRedirectRows, type RscRedirectRow, watchRscErrorRows } from "./rscHttp";
 import { createInitialRscStream } from "./rscInlineStream";
 import {
   type AkanSegmentCacheNode,
@@ -102,7 +102,9 @@ function trackRscThenable(thenable: RscThenable): RscThenable {
 }
 
 function createRscThenable(stream: ReadableStream<Uint8Array>): RscThenable {
-  return trackRscThenable(createFromReadableStream<ReactNode>(stream) as RscThenable);
+  const watched = watchRscErrorRows(stream, () => caches.noteFailedRender(thenable));
+  const thenable = trackRscThenable(createFromReadableStream<ReactNode>(watched) as RscThenable);
+  return thenable;
 }
 
 //? A page restored from the back-forward cache outlived the document load its fallback started.

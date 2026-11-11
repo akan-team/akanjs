@@ -2,6 +2,8 @@ import { mapFlightLineRows } from "./flightRowReader";
 
 export const RSC_CONTENT_TYPE = "text/x-component; charset=utf-8";
 const RSC_REDIRECT_ROW_RE = /^([0-9a-z]+):E(\{[^\n]*"digest":"AKAN_REDIRECT(?:;[^"]*)?"[^\n]*\})(\n?)$/;
+const RSC_ROUTE_CONTROL_ROW_RE =
+  /^[0-9a-z]+:E\{[^\n]*"digest":"(?:AKAN_NOT_FOUND|AKAN_REDIRECT(?:;[^"]*)?)"[^\n]*\}\n?$/;
 const AKAN_REDIRECT_DIGEST_PREFIX = "AKAN_REDIRECT";
 
 export interface RscRedirectRow {
@@ -90,5 +92,17 @@ export function guardRscRedirectRows(
       options.onRedirect?.(redirect);
     }
     return encoder.encode(`${redirect.rowId}:null${row[row.byteLength - 1] === 10 ? "\n" : ""}`);
+  });
+}
+
+//? A not-found or a redirect digest is the route's own answer; any other error row is a render that failed.
+export function watchRscErrorRows(stream: ReadableStream<Uint8Array>, onError: () => void): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder();
+  let failed = false;
+  return mapFlightLineRows(stream, (row, tag) => {
+    if (tag !== "E" || failed || RSC_ROUTE_CONTROL_ROW_RE.test(decoder.decode(row))) return row;
+    failed = true;
+    onError();
+    return row;
   });
 }
