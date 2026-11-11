@@ -114,7 +114,7 @@ export class WebSocketRedisAdaptor
   /** Whether the subscriber has ever been up, so the first `ready` is a start rather than a recovery. */
   #subscriberStarted = false;
   readonly #lossWaiters = new Set<() => void>();
-  #warnedVersion = false;
+  readonly #lastLogged = new Map<string, number>();
 
   get #legacyChannel() {
     return `${this.channelPrefix}ws:broadcast`;
@@ -138,6 +138,7 @@ export class WebSocketRedisAdaptor
       void this.#flushBuffer();
     });
     this.publisher.on("close", () => {
+      if (!this.#publisherReady) return;
       this.#publisherReady = false;
       this.logger.warn("Publisher disconnected, buffering messages...");
     });
@@ -179,19 +180,19 @@ export class WebSocketRedisAdaptor
 
   override async onDestroy() {
     this.#loseSubscriber();
+    this.#subscriberReady = false;
     this.subscriber.disconnect();
     if (this.publisher) {
       this.#cancelRetry();
       //? A batch the publisher was cut off under waits in ioredis for Redis to return, which a shutdown must not.
       if (this.#publisherReady) await Promise.race([this.#flushBuffer(), this.#closed()]);
       this.#cancelRetry();
+      this.#publisherReady = false;
       this.publisher.disconnect();
     }
     this.#eventHandler = null;
     this.#changeHandler = null;
     this.#recoveryHandler = null;
-    this.#publisherReady = false;
-    this.#subscriberReady = false;
     this.#rooms.clear();
     this.#socketRooms.clear();
     this.#channels.clear();
@@ -228,7 +229,7 @@ export class WebSocketRedisAdaptor
     this.#sendLegacy("change", "", payload, false);
   }
 
-  //? TODO(#458): a separate entry, so a PUBLISH refused on one channel is retried without repeating the other.
+  //? TODO(#458): a separate entry, so a PUBLISH that fails on one channel is retried without repeating the other.
   #sendLegacy(kind: "json" | "bytes" | "change", roomId: string, payload: string | Uint8Array, coalesce: boolean) {
     const origin = `${this.serverId}${WebSocketRedisAdaptor.#legacyMark}`;
     const message = this.#pack(kind, roomId, payload, origin);
@@ -253,6 +254,7 @@ export class WebSocketRedisAdaptor
       return;
     }
     this.publisher.publish(buffered.channel, buffered.message).catch((err: Error) => {
+      if (this.#refused(buffered, err)) return;
       this.logger.warn(`Publish failed, buffering: ${err.message}`);
       this.#requeue([buffered]);
       void this.#flushBuffer();
@@ -418,11 +420,11 @@ export class WebSocketRedisAdaptor
   #unpack(buffer: Buffer): { kind: number; origin: string; roomId: string; payload: Buffer } | null {
     if (buffer.length < 6) return null;
     if (buffer.readUInt8(0) !== WebSocketRedisAdaptor.#version) {
-      if (!this.#warnedVersion)
+      if (!this.#lastLogged.has("version"))
         this.logger.warn(
           `Dropping cross-server events of envelope version ${buffer.readUInt8(0)}; this server reads 1`,
         );
-      this.#warnedVersion = true;
+      this.#lastLogged.set("version", Date.now());
       return null;
     }
     const kind = buffer.readUInt8(1);
@@ -485,7 +487,10 @@ export class WebSocketRedisAdaptor
         const results = await Promise.allSettled(
           batch.map((buffered) => this.publisher.publish(buffered.channel, buffered.message)),
         );
-        const failed = batch.filter((_, idx) => results[idx].status === "rejected");
+        const failed = batch.filter((buffered, idx) => {
+          const result = results[idx];
+          return result.status === "rejected" && !this.#refused(buffered, result.reason);
+        });
         if (!failed.length) {
           this.#retries = 0;
           continue;
@@ -498,6 +503,19 @@ export class WebSocketRedisAdaptor
     } finally {
       this.#draining = false;
     }
+  }
+
+  //? An ACL refuses the channel on every retry too, and a retried message holds back every one queued behind it.
+  //? Logged per family, not per shard, and again after a minute, so an ACL fixed and broken again is heard.
+  #refused({ channel }: BufferedMessage, err: unknown) {
+    if (!(err instanceof Error) || !err.message.startsWith("NOPERM")) return false;
+    //? TODO(#458): the only channel with no shard or model after its family.
+    const family = channel === this.#legacyChannel ? channel : channel.slice(0, channel.lastIndexOf(":"));
+    const now = Date.now();
+    if (now - (this.#lastLogged.get(family) ?? Number.NEGATIVE_INFINITY) < 60_000) return true;
+    this.#lastLogged.set(family, now);
+    this.logger.error(`Redis refused a PUBLISH to ${channel}; events on ${family} are being dropped: ${err.message}`);
+    return true;
   }
 
   //? An error reply leaves the publisher connected, and a flush on the next send would fail the same way.
