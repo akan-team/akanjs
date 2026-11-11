@@ -33,6 +33,16 @@ beforeAll(async () => {
       new Promise<void>((_resolve, reject) => {
         failChunk.set(chunkId, reject);
       }),
+    //? RSDW's development build holds a response with no pending rows weakly, and after a GC drops the rows that follow.
+    WeakRef: class<T extends object> {
+      readonly #target: T;
+      constructor(target: T) {
+        this.#target = target;
+      }
+      deref() {
+        return this.#target;
+      }
+    },
     //? Left open: the document's own Suspense rows can arrive after the tab has navigated.
     __RSC_CHUNKS__: [[1, documentOf("/list")]],
     __RSC_CLOSED__: false,
@@ -95,7 +105,8 @@ const flush = async (ms = 5) => {
   });
 };
 const chunkRequested = async (chunk: string) => {
-  for (let i = 0; i < 50 && !failChunk.has(chunk); i += 1) await flush(2);
+  const deadline = performance.now() + 2_000;
+  while (!failChunk.has(chunk) && performance.now() < deadline) await flush(2);
   expect(failChunk.has(chunk)).toBe(true);
 };
 const fail = async (chunk: string, error: Error) => {
