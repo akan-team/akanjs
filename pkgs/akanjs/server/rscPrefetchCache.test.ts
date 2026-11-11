@@ -341,6 +341,24 @@ describe("RscPrefetchCache", () => {
     expect(cache.has("/b", "acct", "a")).toBe(false);
   });
 
+  test("keeps a page that opts out of prefetching under any base, though only for its account and its TTL", async () => {
+    let base = "a";
+    const { cache, requests, hrefs, advance } = harness({ ttlMs: 1000, baseOf: () => base });
+    cache.request("/counted", "acct", "high", base);
+    requests[0]?.finish(null, 204);
+    await sleep(0);
+    base = "c";
+
+    cache.request("/counted", "acct", "high", base);
+
+    expect(hrefs()).toEqual(["/counted"]);
+    expect(cache.has("/counted", "acct", "c")).toBe(true);
+    expect(cache.has("/counted", "other", "c")).toBe(false);
+    advance(1001);
+    cache.request("/counted", "acct", "high", base);
+    expect(hrefs()).toEqual(["/counted", "/counted"]);
+  });
+
   test("names a prefetch by the base it started under, not the one it was queued under", async () => {
     let base = "a";
     const { cache, requests } = harness({ baseOf: () => base, maxConcurrent: 1 });

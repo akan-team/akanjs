@@ -11,6 +11,7 @@ import {
   forgetRscPatchesOfLostBases,
   type RscNavigationCacheNode,
   type RscPatchNavigationCacheNode,
+  rememberRscCacheEntry,
   rememberRscCacheNode,
   resolveCachedRscPatchNavigation,
 } from "./rscNavigationState";
@@ -88,28 +89,29 @@ export class RscClientCache<T> {
   }
 
   replayPatch(target: string, navId: number, commit: (patch: RscPatchedResult<T>) => boolean): boolean {
-    const cachedPatch = this.#patches.get(target);
+    const key = pageKeyOf(target);
+    const cachedPatch = this.#patches.get(key);
     if (!cachedPatch) return false;
     const patchResult = this.#patchReplayOf(cachedPatch, navId);
     if (patchResult.status === "patched") {
       const { tree, patchedNode, outletKey, headSnapshot } = patchResult;
       if (commit({ type: "patched", tree, patchedNode, patch: cachedPatch.patch, outletKey, headSnapshot })) {
-        rememberRscCacheNode(this.#patches, cachedPatch, RscClientCache.maxEntries);
+        rememberRscCacheEntry(this.#patches, key, cachedPatch, RscClientCache.maxEntries);
         return true;
       }
     }
-    this.#patches.delete(target);
+    this.#patches.delete(key);
     return false;
   }
 
   rememberPatch(href: string, { patch, patchedNode, outletKey, headSnapshot }: RscPatchedResult<T>): void {
     const base = this.#screen.base();
     const node = createRscPatchNavigationCacheNode({ href, patch, patchedNode, outletKey, headSnapshot, base });
-    if (node) rememberRscCacheNode(this.#patches, node, RscClientCache.maxEntries);
+    if (node) rememberRscCacheEntry(this.#patches, pageKeyOf(href), node, RscClientCache.maxEntries);
   }
 
   forgetPatch(target: string): void {
-    this.#patches.delete(target);
+    this.#patches.delete(pageKeyOf(target));
   }
 
   forgetPatchesOfLostBases(base: RscNavigationCacheNode<T>): void {
@@ -129,7 +131,7 @@ export class RscClientCache<T> {
     //? Not forgetAnotherAccount: only a navigation may record the change, or a page of the old account still in
     //? flight commits into the cache as the new account's.
     const account = readAuthCookies();
-    const cachedPatch = this.#patches.get(target);
+    const cachedPatch = this.#patches.get(key);
     const replayable = this.pageOf(target) || (!!cachedPatch && this.#patchReplayOf(cachedPatch).status === "patched");
     if (account === this.#account && replayable) return none;
     return this.prefetches.request(key, account, priority, this.#prefetchBase());
