@@ -94,8 +94,10 @@ const flush = async (ms = 5) => {
     await sleep(ms);
   });
 };
+//? A deadline, not a count: CI's loaded coverage run has taken more than the ~100ms 50 short flushes give.
 const chunkRequested = async (chunk: string) => {
-  for (let i = 0; i < 50 && !failChunk.has(chunk); i += 1) await flush(2);
+  const deadline = performance.now() + 2_000;
+  while (!failChunk.has(chunk) && performance.now() < deadline) await flush(2);
   expect(failChunk.has(chunk)).toBe(true);
 };
 const fail = async (chunk: string, error: Error) => {
