@@ -15,9 +15,7 @@ export class Transcript {
 
   /** What one turn posts: no host-only message, no unanswered call, no result answering a call nobody sees. */
   static wire(messages: readonly ChatMessage[]): ChatMessage[] {
-    return Transcript.sanitize(
-      Transcript.seen(messages.filter((message) => !message.local)).map(Transcript.unmeasured),
-    );
+    return Transcript.sanitize(Transcript.seen(messages.filter((message) => !message.local)).map(Transcript.#sent));
   }
 
   /**
@@ -52,6 +50,11 @@ export class Transcript {
             },
     );
     return { ...result, attachments };
+  }
+
+  static #sent(message: ChatMessage): ChatMessage {
+    const unmeasured = Transcript.unmeasured(message);
+    return unmeasured.errorCode ? { ...unmeasured, errorCode: undefined } : unmeasured;
   }
 
   /** A message without the provider's count for its turn — what the wire carries and what a compaction keeps. */

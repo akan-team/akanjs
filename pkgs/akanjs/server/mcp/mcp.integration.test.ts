@@ -268,6 +268,12 @@ class McpItemEndpoint extends endpoint(serverResolverTestServiceModel, (builder)
   vendorTitle: builder.query(String, { guards: [Public] }).exec(() => {
     throw Object.assign(new Error("GET https://vendor.example/?key=secret 422"), { statusCode: 422, data: { raw: 1 } });
   }),
+  zeroStatusTitle: builder.query(String, { guards: [Public] }).exec(() => {
+    throw Object.assign(new Error("no status"), {
+      statusCode: 0,
+      toJSON: () => ({ error: "no status", statusCode: 0 }),
+    });
+  }),
   deniedTitle: builder.query(String, { guards: [None] }).exec(() => "denied"),
   ownedTitle: builder.query(String, { guards: [HasAccount] }).exec(() => "owned"),
   personTitle: builder.query(String, { guards: [SignedIn, PersonOnly] }).exec(() => "signed by a person"),
@@ -501,6 +507,7 @@ describe("MCP over a booted container", () => {
       "vendorDeniedTitle",
       "vendorTitle",
       "visualItem",
+      "zeroStatusTitle",
     ]);
   });
 
@@ -598,10 +605,10 @@ describe("MCP over a booted container", () => {
     }
     const log = lines.join("\n");
     // The whole build, not one caller's view: per-credential hiding makes these counts exceed tools/list above.
-    expect(log).toContain("MCP catalogue: tools=30 resourceTemplates=3 · listing ");
-    expect(log).toContain("MCP catalogue cost: serverResolverTestItem 30/");
+    expect(log).toContain("MCP catalogue: tools=31 resourceTemplates=3 · listing ");
+    expect(log).toContain("MCP catalogue cost: serverResolverTestItem 31/");
     expect(lines.find((line) => line.includes('"publicRenameTitle"'))).toContain("`[Public]` is having none");
-    expect(log).toContain("MCP catalogue: tools=27 resourceTemplates=3 (read-only deployment)");
+    expect(log).toContain("MCP catalogue: tools=28 resourceTemplates=3 (read-only deployment)");
     expect(lines.find((line) => line.includes('did not expose "renameTitle"'))).toContain("read-only");
     // These signals carry no dictionary, so every entry, generated ones included, is named.
     expect(lines.find((line) => line.includes('exposed "echoTitle" with no description'))).toContain(
@@ -776,6 +783,7 @@ describe("MCP over a booted container", () => {
     expect(JSON.stringify(crashed)).not.toContain("boom");
     expect(failure(await call("vendorTitle"))).toEqual({ code: "internalError", statusCode: 500 });
     expect(failure(await call("junkTitle"))).toEqual({ code: "serviceUnavailable", statusCode: 503 });
+    expect(failure(await call("zeroStatusTitle"))).toEqual({ code: "internalError", statusCode: 500 });
   });
 
   test("names a refused call in the JSON-RPC error's data, where one error number covers several", async () => {

@@ -94,6 +94,11 @@ describe("Compaction.promptTokensOf", () => {
     const counted: ChatMessage = { role: "assistant", text: "a", usage: { input: 1, output: 1 } };
     expect(Compaction.tokensOf([counted])).toBe(Compaction.tokensOf([assistant("a")]));
   });
+
+  test("a failure's code is never part of what the estimate says is posted", () => {
+    const failed: ChatMessage = { role: "assistant", text: "a", errorCode: "agent.error.".concat("x".repeat(100)) };
+    expect(Compaction.tokensOf([failed])).toBe(Compaction.tokensOf([assistant("a")]));
+  });
 });
 
 describe("Compaction.thresholdOf", () => {

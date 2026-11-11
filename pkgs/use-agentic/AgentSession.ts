@@ -10,6 +10,7 @@ import type {
   ContextBlock,
   MessageReference,
   PublishedTool,
+  RunnerEvent,
   RunnerRequest,
   SurfaceView,
   ToolActivity,
@@ -432,7 +433,7 @@ export class AgentSession {
           budget = turn + maxTurns;
         }
         await this.#autoCompact(controller.signal);
-        const { toolCalls, stop, overflow } = await this.#assistantTurn(controller.signal);
+        const { toolCalls, stop, failure } = await this.#assistantTurn(controller.signal);
         // Stop can land after the calls were recorded and before any of them ran. They are answered rather than
         // dropped: an unanswered call is the one shape every provider dialect refuses, and the transcript this
         // turn leaves behind is what the next one posts.
@@ -440,9 +441,9 @@ export class AgentSession {
           this.#unanswered(toolCalls);
           return;
         }
-        if (overflow) {
-          if (recovered || !(await this.#recover(overflow, controller.signal))) {
-            if (!controller.signal.aborted) this.#fail(overflow.message);
+        if (failure) {
+          if (!failure.overflow || recovered || !(await this.#recover(failure.overflow, controller.signal))) {
+            if (!controller.signal.aborted) this.#fail(failure.message, failure.code);
             return;
           }
           recovered = true;
@@ -770,7 +771,7 @@ export class AgentSession {
 
   async #assistantTurn(
     signal: AbortSignal,
-  ): Promise<{ toolCalls: ToolCallRequest[]; stop: TurnStop; overflow?: { message: string; limit?: number } }> {
+  ): Promise<{ toolCalls: ToolCallRequest[]; stop: TurnStop; failure?: Extract<RunnerEvent, { type: "error" }> }> {
     const frame = this.#frame();
     this.#overhead = AgentSession.#tokensOfFrame(frame);
     this.#listed = frame.tools.map((tool) => tool.name);
@@ -790,9 +791,7 @@ export class AgentSession {
         stop = event.stop;
         usage = event.usage;
         if (event.limits) this.#limits = { ...this.#limits, ...event.limits };
-      } else if (event.overflow)
-        return { toolCalls: [], stop: "end", overflow: { message: event.message, limit: event.overflow.limit } };
-      else throw new Error(event.message);
+      } else return { toolCalls: [], stop: "end", failure: event };
     }
     if (toolCalls.length || usage)
       this.#patchLast({ ...(toolCalls.length ? { toolCalls } : {}), ...(usage ? { usage } : {}) });
@@ -927,10 +926,11 @@ export class AgentSession {
   }
 
   /** Recorded on the open assistant draft when there is one, so a failed turn reads as that turn failing. */
-  #fail(message: string) {
+  #fail(message: string, code?: string) {
+    const failed = { error: message, ...(code ? { errorCode: code } : {}) };
     const last = this.#messages[this.#messages.length - 1];
-    if (last?.role === "assistant" && !last.error) this.#patchLast({ error: message });
-    else this.#append({ role: "assistant", error: message });
+    if (last?.role === "assistant" && !last.error) this.#patchLast(failed);
+    else this.#append({ role: "assistant", ...failed });
   }
 
   #append(message: ChatMessage) {

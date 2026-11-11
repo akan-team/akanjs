@@ -25,13 +25,16 @@ export class AgentTurnStream {
   /** A domain `Err`'s `data` travels with its key, or the chat could not fill the text's placeholders. */
   static failure(error: unknown): {
     message: string;
+    code: string;
     data?: Record<string, string | number>;
     overflow?: { limit?: number };
   } {
+    const status = isExceptionLike(error) ? error.statusCode : SignalFailure.generalized(error).statusCode;
+    const code = SignalFailure.codeOf(error, status);
     //? Security: an adapter's error can quote the provider's response, so it is generalized like an HTTP failure.
     if (!isExceptionLike(error)) {
       const detail = error instanceof Error ? error.message : String(error);
-      return { message: SignalFailure.detailed ? detail : SignalFailure.message };
+      return { message: SignalFailure.detailed ? detail : SignalFailure.message, code };
     }
     const message = error instanceof Error ? error.message : String(error);
     const raw = (error as { data?: unknown } | null)?.data;
@@ -40,7 +43,7 @@ export class AgentTurnStream {
     // A wire flag, since a non-akan client cannot be expected to know `agent.error.contextOverflow`.
     const overflow =
       message === "agent.error.contextOverflow" ? (typeof data?.limit === "number" ? { limit: data.limit } : {}) : null;
-    return { message, ...(data ? { data } : {}), ...(overflow ? { overflow } : {}) };
+    return { message, code, ...(data ? { data } : {}), ...(overflow ? { overflow } : {}) };
   }
 
   static response(run: RunTurn): Response {

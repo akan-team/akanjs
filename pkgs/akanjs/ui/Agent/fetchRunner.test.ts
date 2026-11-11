@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { AkanError } from "akanjs/base";
 import { registerClientRuntime, Translator } from "akanjs/client";
 import type { RunnerEvent, RunnerRequest } from "use-agentic";
 import { setTestEnv } from "../testHelpers.fixture";
@@ -87,7 +88,7 @@ describe("fetchRunner", () => {
         status: 500,
       })) as unknown as typeof fetch;
     const events = await collect(request(), fetcher);
-    expect(events).toEqual([{ type: "error", message: "the relay is down" }]);
+    expect(events).toEqual([{ type: "error", message: "the relay is down", code: "internalError" }]);
   });
 
   test("a domain Err arrives as its key and is resolved against the dictionary, values interpolated", async () => {
@@ -105,11 +106,44 @@ describe("fetchRunner", () => {
         { status: 400 },
       )) as unknown as typeof fetch;
     expect(await collect(request(), fetcher)).toEqual([
-      { type: "error", message: "api.deepseek.com가 거절했습니다 (status 400)." },
+      { type: "error", message: "api.deepseek.com가 거절했습니다 (status 400).", code: "agent.error.llmRequestFailed" },
     ]);
   });
 
-  test("a translated overflow keeps the flag the session compacts on", async () => {
+  test("a refused key is translated but named by its status, as the stream names it", async () => {
+    Translator.seed("en", { agent: { error: { requestRefused: { t: "Refused." } } } });
+    Translator.setActiveLocale("en");
+    handlerHolder.runAgentTurn = () => undefined;
+    const fetcher = (async () =>
+      new Response(JSON.stringify({ error: "agent.error.requestRefused", statusCode: 403 }), {
+        status: 403,
+      })) as unknown as typeof fetch;
+    expect(await collect(request(), fetcher)).toEqual([{ type: "error", message: "Refused.", code: "forbidden" }]);
+  });
+
+  test("a translated key past the code's bound stays off the event", async () => {
+    const module = "m".repeat(70);
+    Translator.seed("en", { [module]: { error: { x: { t: "Too long a key." } } } });
+    Translator.setActiveLocale("en");
+    handlerHolder.runAgentTurn = () => undefined;
+    const fetcher = (async () =>
+      new Response(`data: ${JSON.stringify({ type: "error", message: `${module}.error.x` })}\n\n`, {
+        headers: { "content-type": "text/event-stream" },
+      })) as unknown as typeof fetch;
+    expect(await collect(request(), fetcher)).toEqual([{ type: "error", message: "Too long a key." }]);
+  });
+
+  test("use-agentic's copied status table matches the framework's", async () => {
+    handlerHolder.runAgentTurn = () => undefined;
+    for (const status of [400, 401, 403, 404, 409, 413, 415, 418, 429, 500, 502, 503, 504]) {
+      const fetcher = (async () => new Response("", { status })) as unknown as typeof fetch;
+      expect(await collect(request(), fetcher)).toEqual([
+        { type: "error", message: `Agent turn failed: ${status}`, code: AkanError.codeOfStatus(status) },
+      ]);
+    }
+  });
+
+  test("a translated overflow keeps the flag the session compacts on, and its key as the code", async () => {
     Translator.seed("en", {
       agent: { error: { contextOverflow: { t: "No longer fits at {provider}." } } },
     });
@@ -126,7 +160,12 @@ describe("fetchRunner", () => {
         { headers: { "content-type": "text/event-stream" } },
       )) as unknown as typeof fetch;
     expect(await collect(request(), fetcher)).toEqual([
-      { type: "error", message: "No longer fits at api.deepseek.com.", overflow: { limit: 65_536 } },
+      {
+        type: "error",
+        message: "No longer fits at api.deepseek.com.",
+        code: "agent.error.contextOverflow",
+        overflow: { limit: 65_536 },
+      },
     ]);
   });
 
@@ -137,6 +176,8 @@ describe("fetchRunner", () => {
       new Response(JSON.stringify({ error: "agent.error.notInAnyDictionary" }), {
         status: 400,
       })) as unknown as typeof fetch;
-    expect(await collect(request(), fetcher)).toEqual([{ type: "error", message: "agent.error.notInAnyDictionary" }]);
+    expect(await collect(request(), fetcher)).toEqual([
+      { type: "error", message: "agent.error.notInAnyDictionary", code: "agent.error.notInAnyDictionary" },
+    ]);
   });
 });

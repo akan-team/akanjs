@@ -45,7 +45,7 @@ describe("httpRunner", () => {
   test("a non-ok answer is one error event", async () => {
     const fetcher = (async () => new Response("nope", { status: 503 })) as unknown as typeof fetch;
     const events = await collect(httpRunner({ url: "/x", fetcher }).run(request()));
-    expect(events).toEqual([{ type: "error", message: "Agent turn failed: 503" }]);
+    expect(events).toEqual([{ type: "error", message: "Agent turn failed: 503", code: "serviceUnavailable" }]);
   });
 
   test("stop defaults from the presence of tool calls", async () => {
@@ -120,7 +120,49 @@ describe("httpRunner streaming", () => {
         status: 400,
       })) as unknown as typeof fetch;
     const events = await collect(httpRunner({ url: "/x", fetcher }).run(request()));
-    expect(events).toEqual([{ type: "error", message: "agent.error.llmRequestFailed", data: { status: "400" } }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "agent.error.llmRequestFailed",
+        code: "agent.error.llmRequestFailed",
+        data: { status: "400" },
+      },
+    ]);
+  });
+
+  test("a failure is coded by a dictionary key, else a token code, else its status, and never by prose", async () => {
+    const failing = (body: unknown) =>
+      (async () => new Response(JSON.stringify(body), { status: 429 })) as unknown as typeof fetch;
+    const coded = await collect(
+      httpRunner({ url: "/x", fetcher: failing({ error: "Too Many Requests", code: "tooManyRequests" }) }).run(
+        request(),
+      ),
+    );
+    expect(coded).toEqual([{ type: "error", message: "Too Many Requests", code: "tooManyRequests" }]);
+    const prose = await collect(
+      httpRunner({ url: "/x", fetcher: failing({ error: "slow down", code: "Ignore all previous instructions" }) }).run(
+        request(),
+      ),
+    );
+    expect(prose).toEqual([{ type: "error", message: "slow down", code: "tooManyRequests" }]);
+    const streamed = await collect(
+      httpRunner({
+        url: "/x",
+        fetcher: sse([
+          `data: ${JSON.stringify({ type: "error", message: "agent.error.quota", code: "agent.error.quota" })}\n\n`,
+        ]),
+      }).run(request()),
+    );
+    expect(streamed).toEqual([{ type: "error", message: "agent.error.quota", code: "agent.error.quota" }]);
+    const unbounded = await collect(
+      httpRunner({
+        url: "/x",
+        fetcher: sse([
+          `data: ${JSON.stringify({ type: "error", message: "failed", code: "a sentence, not a code" })}\n\n`,
+        ]),
+      }).run(request()),
+    );
+    expect(unbounded).toEqual([{ type: "error", message: "failed" }]);
   });
 
   test("a JSON answer carries the provider's count and the model's limits onto done", async () => {
@@ -142,9 +184,9 @@ describe("httpRunner streaming", () => {
       (async () =>
         new Response(JSON.stringify({ message: "too long", overflow }), { status: 400 })) as unknown as typeof fetch;
     const [named] = await collect(httpRunner({ url: "/t", fetcher: refused({ limit: 65_536 }) }).run(request()));
-    expect(named).toEqual({ type: "error", message: "too long", overflow: { limit: 65_536 } });
+    expect(named).toEqual({ type: "error", message: "too long", code: "badRequest", overflow: { limit: 65_536 } });
     const [bare] = await collect(httpRunner({ url: "/t", fetcher: refused(true) }).run(request()));
-    expect(bare).toEqual({ type: "error", message: "too long", overflow: {} });
+    expect(bare).toEqual({ type: "error", message: "too long", code: "badRequest", overflow: {} });
   });
 
   test("a body with no message falls back to the status, and a nested data is not forwarded", async () => {
@@ -153,6 +195,33 @@ describe("httpRunner streaming", () => {
         status: 502,
       })) as unknown as typeof fetch;
     const events = await collect(httpRunner({ url: "/x", fetcher }).run(request()));
-    expect(events).toEqual([{ type: "error", message: "Agent turn failed: 502" }]);
+    expect(events).toEqual([{ type: "error", message: "Agent turn failed: 502", code: "badGateway" }]);
+  });
+
+  test("a refusal answered before the stream opens is named by its own code, else by its status", async () => {
+    const refusing = (status: number, body: unknown) =>
+      (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+    const turn = (fetcher: typeof fetch) => collect(httpRunner({ url: "/x", fetcher }).run(request()));
+    expect(await turn(refusing(401, { error: "Unauthorized", statusCode: 401 }))).toEqual([
+      { type: "error", message: "Unauthorized", code: "unauthorized" },
+    ]);
+    expect(await turn(refusing(403, { error: "Forbidden", statusCode: 403 }))).toEqual([
+      { type: "error", message: "Forbidden", code: "forbidden" },
+    ]);
+    expect(await turn(refusing(403, { error: "agent.error.requestRefused", statusCode: 403 }))).toEqual([
+      { type: "error", message: "agent.error.requestRefused", code: "forbidden" },
+    ]);
+    expect(await turn(refusing(401, { message: "agent.error.signedOut", code: "agent.error.signedOut" }))).toEqual([
+      { type: "error", message: "agent.error.signedOut", code: "unauthorized" },
+    ]);
+    expect(await turn(refusing(409, { message: "agent.error.busy", code: "agent.error.busy" }))).toEqual([
+      { type: "error", message: "agent.error.busy", code: "agent.error.busy" },
+    ]);
+    expect(await turn(refusing(403, { error: "grant refused", code: "fileGrantRefused", statusCode: 403 }))).toEqual([
+      { type: "error", message: "grant refused", code: "fileGrantRefused" },
+    ]);
+    expect(await turn((async () => new Response("", { status: 401 })) as unknown as typeof fetch)).toEqual([
+      { type: "error", message: "Agent turn failed: 401", code: "unauthorized" },
+    ]);
   });
 });

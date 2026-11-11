@@ -275,6 +275,8 @@ export interface ChatMessage {
   toolResults?: ToolCallResult[];
   /** A failed or capped turn, recorded in the transcript rather than thrown past it. */
   error?: string;
+  /** The code the runner named that failure by, for a host to branch on where `error` is text. Never sent. */
+  errorCode?: string;
   /**
    * Host-rendered and never sent: a command's own output belongs in the transcript the user reads but not in the
    * history the model reads, which would take it for something it had said itself.
@@ -310,10 +312,14 @@ export type RunnerEvent =
    *
    * `overflow` marks the provider refusing a prompt too long for its window — the one refusal a session can undo
    * on its own, by compacting and asking again. `limit` is the window when the refusal named it.
+   *
+   * `code` names the failure for a host to branch on, since `message` may reach it already translated: a
+   * dictionary key (`<module>.error.<key>`) or a camelCase token, never prose.
    */
   | {
       type: "error";
       message: string;
+      code?: string;
       data?: Record<string, string | number>;
       overflow?: { limit?: number };
     };

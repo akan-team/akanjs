@@ -1,3 +1,4 @@
+import { codeOfAnswer, codeOfStatus, isFailureCode } from "./failureCode";
 import type { AgentRunner, RunnerEvent, ToolCallRequest, TurnLimits, TurnUsage } from "./types";
 
 export interface HttpRunnerOptions {
@@ -25,7 +26,10 @@ const parseFrame = (frame: string): RunnerEvent | null => {
     .join("\n");
   if (!data) return null;
   const event = JSON.parse(data) as RunnerEvent;
-  return eventTypes.has((event as { type?: string }).type ?? "") ? event : null;
+  if (!eventTypes.has((event as { type?: string }).type ?? "")) return null;
+  if (event.type !== "error" || event.code === undefined || isFailureCode(event.code)) return event;
+  const { code: _unbounded, ...bounded } = event;
+  return bounded;
 };
 
 /**
@@ -88,14 +92,21 @@ const overflowOf = (value: unknown): { limit?: number } | undefined => {
  * The status stands in only when the body says nothing.
  */
 const turnError = async (response: Response): Promise<RunnerEvent> => {
-  const fallback = { type: "error", message: `Agent turn failed: ${response.status}` } as const;
+  const byStatus = codeOfStatus(response.status);
+  const fallback = { type: "error", message: `Agent turn failed: ${response.status}`, code: byStatus } as const;
   try {
     const body = (await response.json()) as { message?: unknown; error?: unknown; data?: unknown; overflow?: unknown };
     const message = typeof body.message === "string" ? body.message : typeof body.error === "string" ? body.error : "";
     if (!message) return fallback;
     const data = interpolations(body.data);
     const overflow = overflowOf(body.overflow);
-    return { type: "error", message, ...(data ? { data } : {}), ...(overflow ? { overflow } : {}) };
+    return {
+      type: "error",
+      message,
+      code: codeOfAnswer(response.status, body),
+      ...(data ? { data } : {}),
+      ...(overflow ? { overflow } : {}),
+    };
   } catch {
     return fallback;
   }
