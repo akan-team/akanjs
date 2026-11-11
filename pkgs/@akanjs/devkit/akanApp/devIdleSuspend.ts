@@ -22,6 +22,7 @@ export class DevIdleSuspend {
   #timer: ReturnType<typeof setTimeout> | null = null;
   #suspended = false;
   #waking = false;
+  #stopped = false;
   #wokeAtMono: number | null = null;
   #watcher: HmrWatcher | null = null;
   #suspendedChanges: ChangeBatch | null = null;
@@ -37,7 +38,7 @@ export class DevIdleSuspend {
   }
 
   get away(): boolean {
-    return this.#suspended || this.#waking;
+    return !this.#stopped && (this.#suspended || this.#waking);
   }
 
   markActivity(): void {
@@ -47,30 +48,38 @@ export class DevIdleSuspend {
 
   arm(): void {
     const idleMs = DevIdleSuspend.idleMs();
-    this.cancel();
-    if (idleMs === null) return;
+    this.#cancel();
+    if (idleMs === null || this.#stopped) return;
     this.#timer = setTimeout(() => {
       this.#timer = null;
       void this.#suspendWhenIdle(idleMs);
     }, idleMs);
   }
 
-  cancel(): void {
+  #cancel(): void {
     if (!this.#timer) return;
     clearTimeout(this.#timer);
     this.#timer = null;
   }
 
-  stopWatcher(): void {
+  #stopWatcher(): void {
     this.#watcher?.stop();
     this.#watcher = null;
   }
 
+  //? For good: a wake, a builder message or a relayed request that comes after the host stops must not re-arm it, and
+  //? a request must reach the stopped builder, which refuses it, rather than wait on a wake that will not come.
+  stop(): void {
+    this.#stopped = true;
+    this.#cancel();
+    this.#stopWatcher();
+  }
+
   async wake(reason: string): Promise<void> {
-    if (!this.#suspended || this.#waking) return;
+    if (!this.#suspended || this.#waking || this.#stopped) return;
     this.#waking = true;
-    this.cancel();
-    this.stopWatcher();
+    this.#cancel();
+    this.#stopWatcher();
     const batch = this.#suspendedChanges;
     this.#suspendedChanges = null;
     const startedAtMono = performance.now();
@@ -90,7 +99,7 @@ export class DevIdleSuspend {
       this.#links.flushHeld();
       this.arm();
       // A wake often leaves the backend state untouched, so nothing else would tell a supervisor it came back.
-      this.#links.awake();
+      if (!this.#stopped) this.#links.awake();
     }
   }
 
@@ -131,13 +140,17 @@ export class DevIdleSuspend {
       });
       // Awaited so the mtime baseline exists before the first edit; a file missing from the batch is never rebuilt.
       await watcher.start();
+      if (this.#stopped) {
+        watcher.stop();
+        return false;
+      }
       this.#watcher = watcher;
       return true;
     } catch (err) {
       this.#logger.warn(
         `[idle-suspend] could not install the idle watcher; staying awake: ${err instanceof Error ? err.message : String(err)}`,
       );
-      this.stopWatcher();
+      this.#stopWatcher();
       return false;
     }
   }
