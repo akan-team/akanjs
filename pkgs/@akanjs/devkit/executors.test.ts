@@ -1325,6 +1325,29 @@ describe("WorkspaceExecutor listing", () => {
 });
 
 describe("SysExecutor module listing", () => {
+  test("reads an app's and a lib's constants from that sys's own folder", async () => {
+    const { root, workspace, app } = trackRoot(await createTempApp("demo"));
+    const appConstant = "export const owner = 'app';\n";
+    const libConstant = "export const owner = 'lib';\n";
+    await writeText(path.join(root, "apps/demo/lib/post/post.constant.ts"), appConstant);
+    await writeText(path.join(root, "libs/shared/lib/user/user.constant.ts"), libConstant);
+    await writeText(path.join(root, "libs/shared/akan.config.ts"), "export default {};\n");
+    await mkdir(path.join(root, "libs/shared/lib/__scalar"), { recursive: true });
+    const contents = (files: { content: string }[]) => files.map((file) => file.content);
+
+    const scan = spyOn(AppInfo, "fromExecutor").mockResolvedValue({ getLibs: () => ["shared"] } as never);
+    const cwd = process.cwd();
+    // `getDirInModule` stats the workspace-relative path it just listed, so it resolves against the process cwd.
+    process.chdir(root);
+    try {
+      expect(contents(await workspace.getConstantFiles())).toEqual([appConstant, libConstant]);
+      expect(contents(await app.getConstantFilesWithLibs())).toEqual([appConstant, libConstant]);
+    } finally {
+      process.chdir(cwd);
+      scan.mockRestore();
+    }
+  });
+
   test("lists only the module folders that hold the module's own file", async () => {
     const root = await makeTempRoot();
     const lib = path.join(root, "apps/modlist/lib");
