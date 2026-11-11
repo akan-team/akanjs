@@ -59,6 +59,44 @@ describe("resolveSsrPageEntries", () => {
     );
   });
 
+  test("bounds the System root layout's own content inside System.Provider, for a server render only", async () => {
+    const appRoot = await makeTempRoot();
+    await write(path.join(appRoot, "env", "env.client.ts"), "export const env = {};\n");
+    await write(
+      path.join(appRoot, "page", "_layout.tsx"),
+      "export default function Layout({ children }) { return children; }\n",
+    );
+    await write(
+      path.join(appRoot, "page", "(home)", "_layout.tsx"),
+      "export default function Layout({ children }) { return children; }\n",
+    );
+
+    const entries = await resolveSsrPageEntries({
+      appCwdPath: appRoot,
+      appName: "demo",
+      pageKeys: ["./_layout.tsx", "./(home)/_layout.tsx", "./(home)/_index.tsx"],
+    });
+
+    const source = await Bun.file(
+      entries.find((entry) => entry.key === "./__root_layout.tsx")?.moduleAbsPath ?? "",
+    ).text();
+    expect(source).toContain('import { RouteLevelBoundary } from "akanjs/webkit/RouteLevelBoundary.tsx";');
+    expect(source).toContain("export { RouteLevelBoundary as LevelBoundary };");
+    expect(source).toContain(
+      "  const layout = <UserLayout params={params} searchParams={searchParams}>{children}</UserLayout>;\n  return (\n    <System.Provider",
+    );
+    expect(source).toContain(
+      '    >\n      {process.env.AKAN_PUBLIC_RENDER_ENV === "csr" ? layout : <RouteLevelBoundary>{layout}</RouteLevelBoundary>}\n    </System.Provider>',
+    );
+    expect(source.match(/<RouteLevelBoundary>/g)).toHaveLength(1);
+    expect(source.slice(source.indexOf("export function McpAppRoot"))).not.toContain("RouteLevelBoundary");
+
+    const nested = await Bun.file(
+      entries.find((entry) => entry.key === "./(home)/__root_layout.tsx")?.moduleAbsPath ?? "",
+    ).text();
+    expect(nested).not.toContain("RouteLevelBoundary");
+  });
+
   test("keeps system provider for grouped root boundaries without an ancestor root", async () => {
     const appRoot = await makeTempRoot();
     const pageRoot = path.join(appRoot, "page");
@@ -88,9 +126,7 @@ describe("resolveSsrPageEntries", () => {
     );
     expect(generatedSource).toContain("export function McpAppRoot({ children, params, path }: McpAppRootProps) {");
     expect(generatedSource).toContain("<System.App");
-    expect(generatedSource).toContain(
-      'export { RouteLevelBoundary as LevelBoundary } from "akanjs/webkit/RouteLevelBoundary.tsx";',
-    );
+    expect(generatedSource).toContain("export { RouteLevelBoundary as LevelBoundary };");
     expect(generatedSource).toContain('import { allDictionary } from "../dict/useDict.ts";');
     expect(generatedSource).toContain(
       'allDictionary={process.env.AKAN_PUBLIC_RENDER_ENV === "ssr" ? allDictionary : undefined}',
@@ -174,7 +210,9 @@ describe("resolveSsrPageEntries", () => {
     expect(userSource).toContain('process.env.AKAN_PUBLIC_RENDER_ENV === "csr"');
     expect(userSource).toContain("? await UserLayout({ params, searchParams, children })");
     expect(userSource).toContain(": <UserLayout params={params} searchParams={searchParams}>{children}</UserLayout>;");
-    expect(userSource).toContain("      {layout}\n    </System.Provider>");
+    expect(userSource).toContain(
+      '      {process.env.AKAN_PUBLIC_RENDER_ENV === "csr" ? layout : <RouteLevelBoundary>{layout}</RouteLevelBoundary>}\n    </System.Provider>',
+    );
 
     const signRoot = entries.find((entry) => entry.key === "./(sign)/__root_layout.tsx");
     const signSource = await Bun.file(signRoot?.moduleAbsPath ?? "").text();
@@ -182,7 +220,7 @@ describe("resolveSsrPageEntries", () => {
     expect(signSource).toContain("export default function GeneratedLayout(");
     expect(signSource).not.toContain("await UserLayout(");
     expect(signSource).toContain(
-      "      <UserLayout params={params} searchParams={searchParams}>{children}</UserLayout>\n    </System.Provider>",
+      "  const layout = <UserLayout params={params} searchParams={searchParams}>{children}</UserLayout>;\n",
     );
   });
 
