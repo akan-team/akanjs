@@ -264,3 +264,19 @@ describe("Field.ToggleSelect", () => {
     view.unmount();
   });
 });
+
+describe("Field.Switch", () => {
+  test("fills the on position with primary unless a variant is given, as Switch does", () => {
+    const classOf = (node: ReactNode) => {
+      const { container, unmount } = mount(node);
+      const className = container.querySelector('[role="switch"]')?.className ?? "";
+      unmount();
+      return className;
+    };
+
+    expect(classOf(<Field.Switch value onChange={() => undefined} />)).toContain("data-[state=checked]:bg-primary");
+    expect(classOf(<Field.Switch value variant="accent" onChange={() => undefined} />)).toContain(
+      "data-[state=checked]:bg-accent",
+    );
+  });
+});

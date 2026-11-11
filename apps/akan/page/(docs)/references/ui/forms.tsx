@@ -277,10 +277,10 @@ export default page()
           },
           {
             name: "Field.Switch",
-            type: "{ value: boolean | null, onDesc?, offDesc? }",
+            type: "{ value: boolean | null, onDesc?, offDesc?, variant? }",
             desc: l.trans({
-              en: "A labelled boolean. `onDesc` / `offDesc` describe the current position beside the toggle.",
-              ko: "라벨이 붙은 boolean입니다. `onDesc` / `offDesc`가 토글 옆에서 현재 상태를 설명합니다.",
+              en: "A labelled boolean. `onDesc` / `offDesc` describe the current position beside the toggle; `variant` colors the on position as on `Switch`.",
+              ko: "라벨이 붙은 boolean입니다. `onDesc` / `offDesc`가 토글 옆에서 현재 상태를 설명하고, `variant`는 `Switch`와 같이 켜졌을 때의 색을 정합니다.",
             }),
           },
           {

@@ -18,6 +18,7 @@ export interface SwitchProps {
   onDesc?: string;
   offDesc?: string;
   disabled?: boolean;
+  variant?: "primary" | "accent" | "success";
 }
 export const Switch = ({
   label,
@@ -30,6 +31,7 @@ export const Switch = ({
   inputClassName,
   onDesc,
   offDesc,
+  variant = "primary",
 }: SwitchProps) => {
   useFieldTool(onChange, { disabled });
   return (
@@ -37,7 +39,7 @@ export const Switch = ({
       {label ? <Label className={labelClassName} label={label} desc={desc} /> : null}
       <div className="flex items-center gap-2">
         <UiSwitch
-          variant="accent"
+          variant={variant}
           disabled={disabled}
           className={inputClassName}
           checked={value ?? false}

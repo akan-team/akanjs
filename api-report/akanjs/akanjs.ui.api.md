@@ -496,7 +496,7 @@ export declare const Field: (({ className, containerClassName, labelClassName, l
     List: <Item>({ className, labelClassName, label, desc, value, onChange, onAdd, nullable, renderItem, }: import("./Collection").ListProps<Item>) => import("react").JSX.Element;
     Text: import("react").MemoExoticComponent<({ label, desc, labelClassName, className, value, onChange, placeholder, nullable, disabled, minlength, maxlength, transform, validate, onPressEnter, inputClassName, inputStyleType, }: import("./Text").TextProps) => import("react").JSX.Element>;
     TextArea: import("react").MemoExoticComponent<({ label, desc, labelClassName, className, value, onChange, placeholder, nullable, disabled, rows, minlength, maxlength, transform, validate, onPressEnter, inputClassName, }: import("./Text").TextAreaProps) => import("react").JSX.Element>;
-    Switch: ({ label, desc, labelClassName, className, value, onChange, disabled, inputClassName, onDesc, offDesc, }: import("./Choice").SwitchProps) => import("react").JSX.Element;
+    Switch: ({ label, desc, labelClassName, className, value, onChange, disabled, inputClassName, onDesc, offDesc, variant, }: import("./Choice").SwitchProps) => import("react").JSX.Element;
     ToggleSelect: <I extends boolean | null | number | string, Nullable extends boolean = false>({ className, labelClassName, label, desc, items, value, validate, onChange, nullable, disabled, btnClassName, }: import("./Choice").ToggleSelectProps<I, Nullable>) => import("react").JSX.Element;
     MultiToggleSelect: <I extends boolean | number | string>({ className, labelClassName, label, desc, items, value, minlength, maxlength, validate, onChange, disabled, }: import("./Choice").MultiToggleSelectProps<I>) => import("react").JSX.Element;
     TextList: ({ label, desc, labelClassName, className, value, onChange, placeholder, disabled, transform, minlength, maxlength, minTextlength, maxTextlength, validate, inputClassName, }: import("./Collection").TextListProps) => import("react").JSX.Element;
@@ -2977,6 +2977,7 @@ interface SwitchProps {
     onDesc?: string;
     offDesc?: string;
     disabled?: boolean;
+    variant?: "accent" | "primary" | "success";
 }
 
 interface TabType {
