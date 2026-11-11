@@ -1,6 +1,5 @@
 {
   "akan.size.file": {
-    "akanApp/akanApp.host.ts": 1331,
     "akanConfig/akanConfig.ts": 907,
     "akanContext.ts": 1083,
     "incrementalBuilder/incrementalBuilder.proc.ts": 1152,
@@ -14,7 +13,6 @@
     "mobile/nativeConfig.ts#NativeConfig.build": 156
   },
   "akan.size.class": {
-    "akanApp/akanApp.host.ts#AkanAppHost": 126,
     "akanConfig/akanConfig.ts#AkanAppConfig": 66,
     "codeAgent/agent/CodeAgent.ts#CodeAgent": 67,
     "incrementalBuilder/incrementalBuilder.proc.ts#IncrementalBuilder": 90

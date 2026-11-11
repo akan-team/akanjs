@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
+import type { BuilderMessage } from "akanjs/server";
 import { IncrementalBuilderHost } from "../incrementalBuilder";
 import { createTempApp, isolateEnv, tempRoots, writeText } from "../testHelpers";
 import { AkanAppHost } from "./akanApp.host";
@@ -193,6 +194,118 @@ describe("a builder request while no builder is running", () => {
       IncrementalBuilderHost.create = create;
     }
   });
+});
+
+describe("the builder's answers and a returning builder", () => {
+  isolateEnv({ AKAN_PUBLIC_REPO_NAME: "repo", AKAN_PUBLIC_SERVE_DOMAIN: "localhost", AKAN_PUBLIC_ENV: "local" });
+  const track = tempRoots();
+  const until = async (done: () => boolean | Promise<boolean>, timeoutMs = 10_000) => {
+    const deadline = performance.now() + timeoutMs;
+    while (!(await done()) && performance.now() < deadline) await Bun.sleep(25);
+    expect(await done()).toBe(true);
+  };
+  const fakeBuilder = (sent: BuilderMessage[]) =>
+    ({
+      status: "ready",
+      patcherOff: false,
+      start: ({ onReady }: { onReady?: () => void }) => onReady?.(),
+      send: (message: BuilderMessage) => {
+        sent.push(message);
+        return true;
+      },
+      stop: () => undefined,
+    }) as unknown as IncrementalBuilderHost;
+
+  test("a restarted backend never receives its predecessor's answer", async () => {
+    const { root, app } = track(await createTempApp("demo"));
+    const bootPath = path.join(root, "boot.txt");
+    const repliesPath = path.join(root, "replies.txt");
+    await writeText(
+      path.join(root, "apps/demo/main.ts"),
+      [
+        'import fs from "node:fs";',
+        `const bootPath = ${JSON.stringify(bootPath)};`,
+        `const repliesPath = ${JSON.stringify(repliesPath)};`,
+        'const boot = (fs.existsSync(bootPath) ? Number(fs.readFileSync(bootPath, "utf8")) : 0) + 1;',
+        "fs.writeFileSync(bootPath, String(boot));",
+        'process.on("message", (message) => {',
+        '  if (message?.type === "build-graph-res") fs.appendFileSync(repliesPath, message.id + ":" + message.error + "\\n");',
+        "});",
+        'process.send?.({ type: "backend-ready", pid: process.pid });',
+        'process.send?.({ type: "build-graph", id: 1 });',
+        "if (boot === 1) setTimeout(() => process.exit(1), 100);",
+        "setInterval(() => undefined, 1_000);",
+        "",
+      ].join("\n"),
+    );
+    const sent: BuilderMessage[] = [];
+    let toHost: (message: BuilderMessage) => void = () => undefined;
+    const create = IncrementalBuilderHost.create;
+    IncrementalBuilderHost.create = (async (_app: unknown, _env: unknown, onMessage: typeof toHost) => {
+      toHost = onMessage;
+      return fakeBuilder(sent);
+    }) as unknown as typeof IncrementalBuilderHost.create;
+    const host = new AkanAppHost(app, { env: { ...process.env } as Record<string, string> });
+    try {
+      await host.start();
+      await until(() => sent.length >= 2);
+      const [stale, live] = sent as unknown as { id: number }[];
+      toHost({
+        type: "build-graph-res",
+        id: stale.id,
+        ok: false,
+        error: "stale",
+        kind: "unavailable",
+      } as BuilderMessage);
+      toHost({ type: "build-graph-res", id: live.id, ok: false, error: "live", kind: "unavailable" } as BuilderMessage);
+      await until(() => Bun.file(repliesPath).exists());
+      expect(await Bun.file(repliesPath).text()).toBe("1:live\n");
+    } finally {
+      await host.stop();
+      IncrementalBuilderHost.create = create;
+    }
+  }, 20_000);
+
+  test("a request that wakes an idle builder reaches it once the wake ends", async () => {
+    process.env.AKAN_DEV_IDLE_SUSPEND_MS = "200";
+    const { root, app } = track(await createTempApp("demo"));
+    const triggerPath = path.join(root, "trigger.txt");
+    await writeText(
+      path.join(root, "apps/demo/main.ts"),
+      [
+        'import fs from "node:fs";',
+        `const triggerPath = ${JSON.stringify(triggerPath)};`,
+        'process.send?.({ type: "backend-ready", pid: process.pid });',
+        "const poll = setInterval(() => {",
+        "  if (!fs.existsSync(triggerPath)) return;",
+        "  clearInterval(poll);",
+        '  process.send?.({ type: "build-graph", id: 5 });',
+        "}, 20);",
+        "setInterval(() => undefined, 1_000);",
+        "",
+      ].join("\n"),
+    );
+    const sent: BuilderMessage[] = [];
+    const create = IncrementalBuilderHost.create;
+    IncrementalBuilderHost.create = async () => fakeBuilder(sent);
+    const suspended = Promise.withResolvers<void>();
+    const host = new AkanAppHost(app, {
+      env: { ...process.env } as Record<string, string>,
+      onDevEvent: (event) => {
+        if ("state" in event && event.state === "suspended") suspended.resolve();
+      },
+    });
+    try {
+      await host.start();
+      await suspended.promise;
+      expect(sent.filter((message) => message.type === "build-graph")).toEqual([]);
+      await writeText(triggerPath, "go");
+      await until(() => sent.some((message) => message.type === "build-graph"));
+    } finally {
+      await host.stop();
+      IncrementalBuilderHost.create = create;
+    }
+  }, 20_000);
 });
 
 describe("a stop while the builder is starting", () => {
