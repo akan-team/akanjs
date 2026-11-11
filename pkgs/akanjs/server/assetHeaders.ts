@@ -43,3 +43,11 @@ export const assetHeaders = ({ contentType, cacheControl, anyOrigin }: AssetHead
   if (anyOrigin) headers.set("Access-Control-Allow-Origin", "*");
   return applySecurityHeaders(headers);
 };
+
+//? A CDN caches a 404 that names no policy (Cloudflare: 3 minutes on `.js`), so one replica's 404 for a chunk would
+//? be served for the replicas that have it.
+export const missingAssetResponse = (): Response =>
+  new Response("Not Found", {
+    status: 404,
+    headers: assetHeaders({ contentType: "text/plain; charset=utf-8", cacheControl: "no-store" }),
+  });

@@ -16,6 +16,7 @@ import { normalizeHref, pageKeyOf, RscClientCache, withoutHash } from "./rscClie
 import {
   type ChunkNavigation,
   claimChunkReload,
+  ifLazyChunkGone,
   isBuildBundle,
   isLinkFailure,
   lazyLinkFailureKeyOf,
@@ -380,12 +381,15 @@ function loadDocumentForChunkFailure(chunkId: string, navigation: ChunkNavigatio
 }
 
 //? A rejected `import()` names neither the module that asked nor the one that failed to link, so a lazy chunk counts
-//? as the page on screen's; only a page a navigation's response rendered can hold another build's modules.
-function loadDocumentForLazyChunkFailure(error: unknown): void {
+//? as the page on screen's; only a page a navigation's response rendered can hold another build's modules, while a
+//? chunk a deploy removed fails to fetch under the document's own page too.
+function loadDocumentForLazyChunkFailure(error: unknown, goneKey?: string): void {
   const leaving =
     !!pendingRequest && pendingRequest.navId !== refreshNavId && pendingRequest.target !== pageKeyOf(renderedHref);
-  if (shownNode === initialNode || leaving || documentNavigationFallbackInFlight || !isBuildBundle()) return;
-  const key = lazyLinkFailureKeyOf(error);
+  if (leaving || documentNavigationFallbackInFlight || !isBuildBundle()) return;
+  const navId = navigationSeq;
+  if (!goneKey) ifLazyChunkGone(error, (key) => navId === navigationSeq && loadDocumentForLazyChunkFailure(error, key));
+  const key = goneKey ?? (shownNode === initialNode ? null : lazyLinkFailureKeyOf(error));
   if (key && navigator.onLine && claimChunkReload(key))
     hardNavigateAfterRscFailure(normalizeHref(window.location.href), true, error);
 }
