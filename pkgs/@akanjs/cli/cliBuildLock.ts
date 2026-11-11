@@ -46,7 +46,7 @@ export class CliBuildLock {
     console.warn(`[cli-build] could not release ${lockDir}; the next build takes it over when its lease ends`);
   }
 
-  //? One lock's removals take turns under a marker named by its token, or inode and birth time while it has no owner.
+  //? Removals of one lock take turns, or a late remover could move away the new holder's lock that replaced it.
   static async #removeIf(lockDir: string, isTarget: (held: HeldLock) => boolean): Promise<boolean> {
     const judged = await CliBuildLock.#heldAt(lockDir);
     if (!judged || !isTarget(judged)) return false;

@@ -5,7 +5,8 @@ import path from "node:path";
 
 const realMkdir = fsPromises.mkdir;
 const realRename = fsPromises.rename;
-const inject: { beforeMkdir?: (dir: string) => Promise<void>; beforeRename?: (from: string) => void } = {};
+const inject: { beforeMkdir?: (dir: string) => Promise<void>; beforeRename?: (from: string) => Promise<void> | void } =
+  {};
 mock.module("node:fs/promises", () => ({
   ...fsPromises,
   mkdir: async (...args: Parameters<typeof fsPromises.mkdir>) => {
@@ -13,7 +14,7 @@ mock.module("node:fs/promises", () => ({
     return await realMkdir(...args);
   },
   rename: async (...args: Parameters<typeof fsPromises.rename>) => {
-    inject.beforeRename?.(String(args[0]));
+    await inject.beforeRename?.(String(args[0]));
     return await realRename(...args);
   },
 }));
@@ -78,6 +79,37 @@ describe("CliBuildLock", () => {
     }
     expect(await readdir(path.dirname(lockDir))).toEqual([]);
   }, 20_000);
+
+  test("keeps a second waiter that judged the same dead lock from moving away the lock the first one made", async () => {
+    const lockDir = await lockDirIn();
+    await holdAs(lockDir, `${await deadPid()}\nstale`);
+    const secondRename = Promise.withResolvers<void>();
+    let renames = 0;
+    inject.beforeRename = async (from) => {
+      if (from !== lockDir) return;
+      renames++;
+      if (renames === 1) {
+        await Promise.race([secondRename.promise, letItPoll()]);
+        return;
+      }
+      if (renames > 2) return;
+      secondRename.resolve();
+      while (!(await ownerOf(lockDir).catch(() => "")).startsWith(`${process.pid}\n`)) await Bun.sleep(5);
+    };
+    let holding = 0;
+    let most = 0;
+    await Promise.all(
+      [0, 1].map(async () => {
+        const release = await CliBuildLock.acquire(lockDir);
+        holding++;
+        most = Math.max(most, holding);
+        await letItPoll();
+        holding--;
+        await release();
+      }),
+    );
+    expect(most).toBe(1);
+  });
 
   test("leaves a lock that a fresh holder took while the waiter was getting to its removal", async () => {
     const lockDir = await lockDirIn();
