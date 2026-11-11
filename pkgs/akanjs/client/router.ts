@@ -95,6 +95,12 @@ export class AkanNotFoundError extends Error {
   }
 }
 
+//? Raised below a route after the first byte, a not-found or redirect is the host's to answer; its subtree draws nothing.
+export const isRouteControl = (error: unknown) => {
+  const digest = (error as { digest?: unknown } | null)?.digest;
+  return digest === "AKAN_NOT_FOUND" || (typeof digest === "string" && digest.startsWith("AKAN_REDIRECT"));
+};
+
 function getServerRequestContext() {
   const { untrackedHeaders, untrackedRequest } = require("akanjs/fetch");
   return { getRequest: untrackedRequest, headers: untrackedHeaders } as {

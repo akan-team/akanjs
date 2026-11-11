@@ -10,7 +10,15 @@ import type {
   RouteRender,
 } from "akanjs/client";
 import { StreamedRead } from "akanjs/fetch";
-import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, Suspense } from "react";
+import {
+  Children,
+  type ComponentType,
+  cloneElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+  Suspense,
+} from "react";
 import { getExplicitPageConfigKeys, mergePageConfigs, resolvePageState } from "../client/frameConfig";
 import { RouteGuards } from "../client/route/RouteGuards";
 import { RouteHead } from "../client/route/RouteHead";
@@ -41,6 +49,18 @@ export interface AdmittedNotFoundFallback {
   searchParams: Record<string, string | string[]>;
 }
 
+export type LevelBoundary = ComponentType<{ children?: ReactNode }>;
+export interface LevelBoundaryOwner {
+  getLevelBoundary?: () => Promise<LevelBoundary | undefined>;
+}
+export interface OwnedLevelBoundary {
+  Boundary: LevelBoundary;
+  owner: RouteRender;
+}
+export interface SsrPathRoute extends PathRoute {
+  levelBoundary?: OwnedLevelBoundary;
+}
+
 export class RouteElementComposer {
   static readonly #levelErrors = new WeakSet<object>();
 
@@ -56,14 +76,23 @@ export class RouteElementComposer {
   }: {
     pathRoute: PathRoute;
     basePath?: string | null;
-  }): Promise<PathRoute> {
+  }): Promise<SsrPathRoute> {
     const pageConfigChain = await RouteElementComposer.#resolvePageConfigChain(pathRoute);
     return {
       ...pathRoute,
       pageState: RouteElementComposer.#webPageState(pageConfigChain, pathRoute.path, basePath),
       pageConfigChain,
       explicitPageConfigKeys: getExplicitPageConfigKeys(pageConfigChain),
+      levelBoundary: await RouteElementComposer.#levelBoundaryOf(pathRoute),
     };
+  }
+
+  static async #levelBoundaryOf(route: PathRoute | LayoutFallbackRoute): Promise<OwnedLevelBoundary | undefined> {
+    for (const render of route.renderRootLayouts) {
+      const Boundary = await (render as RouteRender & LevelBoundaryOwner).getLevelBoundary?.();
+      if (Boundary) return { Boundary, owner: render };
+    }
+    return undefined;
   }
 
   static async resolveSsrFallbackFrameState({
@@ -96,7 +125,7 @@ export class RouteElementComposer {
     notFound,
     gate,
   }: {
-    pathRoute: PathRoute;
+    pathRoute: SsrPathRoute;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     navKey?: string;
@@ -106,6 +135,7 @@ export class RouteElementComposer {
     return RouteElementComposer.composeRenders({
       renders: RouteElementComposer.#getRenderStack(pathRoute),
       segments: isAkanRscPartialCommitEnabled() ? createAkanRouteSegments(pathRoute) : undefined,
+      levelBoundary: pathRoute.levelBoundary,
       params,
       searchParams,
       navKey,
@@ -209,7 +239,7 @@ export class RouteElementComposer {
     navKey,
     notFound,
   }: {
-    pathRoute: PathRoute;
+    pathRoute: SsrPathRoute;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     patchStartIndex: number;
@@ -221,6 +251,7 @@ export class RouteElementComposer {
     return RouteElementComposer.composeRenders({
       renders: renders.slice(patchStartIndex),
       owners: renders.slice(0, patchStartIndex),
+      levelBoundary: pathRoute.levelBoundary,
       params,
       searchParams,
       navKey,
@@ -320,7 +351,8 @@ export class RouteElementComposer {
         ...layoutStack.slice(0, index + 1),
         RouteElementComposer.#makeFallbackRouteRender({ kind, fallback, pathname, error, digest, head }),
       ];
-      return RouteElementComposer.composeRenders({ renders, params, searchParams, gate });
+      const levelBoundary = await RouteElementComposer.#levelBoundaryOf(route);
+      return RouteElementComposer.composeRenders({ renders, levelBoundary, params, searchParams, gate });
     }
     return null;
   }
@@ -329,6 +361,7 @@ export class RouteElementComposer {
     renders,
     owners = [],
     segments,
+    levelBoundary,
     params,
     searchParams,
     navKey,
@@ -339,6 +372,9 @@ export class RouteElementComposer {
     /** Layouts above `renders` that this element leaves out (a patch) but whose `.notFound()` still applies. */
     owners?: RouteRender[];
     segments?: AkanRouteSegmentState[];
+    /** Around each level below its owner: the Flight server only references it and React's server renderer runs no
+     * error boundary, so a level failing before the first byte still takes its `.error()`. */
+    levelBoundary?: OwnedLevelBoundary;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     navKey?: string;
@@ -347,6 +383,7 @@ export class RouteElementComposer {
     gate?: RouteShellGate;
   }): ReactNode {
     const levelGates = gate ? RouteElementComposer.#gateLevels(renders, gate) : [];
+    const ownerIndex = levelBoundary ? renders.indexOf(levelBoundary.owner) : -1;
     let element: ReactNode = null;
     for (let i = renders.length - 1; i >= 0; i--) {
       const routeRender = renders[i];
@@ -355,6 +392,9 @@ export class RouteElementComposer {
       const suspenseKey =
         navKey && loadingFallback != null && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
       const levelGate = levelGates[i];
+      //? The owner renders System.Provider, which starts the router, and a root `_overrides` level sits above it: a
+      //? notice at or above the owner would have no router to retry.
+      const Boundary = i > ownerIndex ? levelBoundary?.Boundary : undefined;
       const level = (
         <RouteElementComposer.AsyncRender
           routeRender={routeRender}
@@ -369,7 +409,7 @@ export class RouteElementComposer {
       //? Even with no fallback, the boundary is where React client-renders a level that failed SSR or hydration.
       element = (
         <Suspense key={suspenseKey} fallback={loadingFallback}>
-          {level}
+          {Boundary ? <Boundary>{level}</Boundary> : level}
           {routeRender.Loading && levelGate ? <RouteShellGate.Wait until={levelGate.opened} /> : null}
         </Suspense>
       );

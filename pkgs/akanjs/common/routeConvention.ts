@@ -29,6 +29,7 @@ export const ROOT_LAYOUT_ROUTE_EXPORTS: ReadonlySet<string> = new Set([
   "layoutStyle",
   "viewport",
   "McpAppRoot",
+  "LevelBoundary",
 ]);
 /** Root-layout exports that are plain config rather than components, so a PascalCase check cannot allow them. */
 export const RESERVED_ROUTE_CONFIG_EXPORTS: ReadonlySet<string> = new Set(
