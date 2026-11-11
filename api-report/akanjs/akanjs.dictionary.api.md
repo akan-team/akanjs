@@ -51,20 +51,20 @@ export type EnumTranslatorKey<EnumKey extends string> = `${EnumKey}.${string}${"
 
 export declare const Err: import("./trans").ErrConstructor<"agent.error.contextOverflow" | "agent.error.llmRequestFailed" | "agent.error.llmUnavailable" | "agent.error.quotaExceeded" | "agent.error.requestRefused" | "base.error.documentNotFound" | "base.error.endpointClosed" | "base.error.gatewayTimeout" | "base.error.idempotencyInFlight" | "base.error.immutableField" | "base.error.invalidArgument" | "base.error.invalidField" | "base.error.mutationInApp" | "base.error.mutationInRender" | "base.error.payloadTooLarge" | "base.error.readOnlyDeployment" | "base.error.relationNotFound" | "base.error.requiredArgument" | "base.error.serverUnavailable" | "base.error.serverUnreachable" | "base.error.tooManyRequests" | "base.error.unexpectedResponse">;
 
-export type ErrConstructor<ErrorKey extends string> = {
-    new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption): ErrInstance;
-    prototype: ErrInstance;
-    fromJSON(payload: ErrPayload): ErrInstance;
-    is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is ErrInstance & {
+export type ErrConstructor<ErrorKey extends string> = (new (key: ErrorKey, data?: Record<string, unknown>, option?: ErrRestoreOption) => Err) & {
+    prototype: Err;
+    fromJSON(payload: ErrPayload): Err;
+    is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is Err & {
         readonly error: Key;
     };
-    BadRequest: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
-    Unauthorized: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
-    Forbidden: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
-    NotFound: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
-    Conflict: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
+    BadRequest: ErrConstructor<ErrorKey>;
+    Unauthorized: ErrConstructor<ErrorKey>;
+    Forbidden: ErrConstructor<ErrorKey>;
+    NotFound: ErrConstructor<ErrorKey>;
+    Conflict: ErrConstructor<ErrorKey>;
 };
 
+/** @deprecated */
 export type ErrInstance = Error & {
     readonly error: string;
     readonly statusCode: number;
@@ -80,7 +80,7 @@ export type ErrInstance = Error & {
 
 export interface ErrPayload extends ErrRestoreOption {
     error: string;
-    data?: TranslationData;
+    data?: Record<string, unknown>;
 }
 
 export interface ErrRestoreOption {

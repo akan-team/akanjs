@@ -20,6 +20,9 @@ each plugin's header and diagnostic carry its full reasoning.
   stored loses the key and status too (a warning for now). Exempt: tests, `*.constant.ts`, a root `native/` folder
   (plugins throw `AkanNativeError`), `script/migration/**` (an operator reads its message), and `common/**` / `env/**`,
   which have no legal `Err` import — keep throwing code out of them.
+- **Never import `Err` from `akanjs/common`** or `akanjs/common/err` (`no-import-common-err`). That class takes any
+  string, so a mistyped key compiles; the `Err` from `"../dict"` or a client entrypoint is the same class, typed with
+  the dictionary's keys. `import type` stays legal, to annotate a caught `Err`. Exempt: tests.
 - **Never import a third-party package** (`no-import-external-library`) from `page/**`, any barrel, a module logic file
   (`*.{constant,dictionary,document,service,signal,store}.ts`) or module component
   (`*.{Template,Unit,Util,View,Zone}.tsx`) — re-export it through a lib first (one-line shims in a lib's `common/`,

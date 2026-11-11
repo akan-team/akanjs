@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Err } from "akanjs/common";
 import { restoreRemoteError } from "./remoteError";
 
 describe("restoreRemoteError", () => {
@@ -13,5 +14,14 @@ describe("restoreRemoteError", () => {
     const restored = restoreRemoteError({ error: "item.error.locked" }, 409);
 
     expect(restored.toJSON?.()).toEqual({ error: "item.error.locked", statusCode: 409 });
+  });
+
+  test("restores through a `fromJSON` lifted off Err into a plain holder", () => {
+    const restored = restoreRemoteError({ error: "item.error.locked" }, 409, { fromJSON: Err.fromJSON });
+    const holder = { is: Err.is };
+
+    expect(restored).toBeInstanceOf(Err);
+    expect(restored.statusCode).toBe(409);
+    expect(holder.is(restored, "item.error.locked")).toBe(true);
   });
 });

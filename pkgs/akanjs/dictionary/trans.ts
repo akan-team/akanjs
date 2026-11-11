@@ -1,8 +1,17 @@
 import type { GetStateObject, ObjectAssign, Prettify } from "akanjs/base";
-import { hasErrKey, interpolateTranslation, Logger, parseAkanI18nEnv, pathGetLoose } from "akanjs/common";
+import {
+  Err,
+  type ErrConstructor,
+  type ErrPayload,
+  interpolateTranslation,
+  parseAkanI18nEnv,
+  pathGetLoose,
+} from "akanjs/common";
 
 import { DictionaryRegistry } from "./dictionaryRegistry";
 import type { DictModule } from "./locale";
+
+export type { ErrConstructor, ErrPayload, ErrRestoreOption } from "akanjs/common";
 
 type TranslationSingle = readonly [string, string] | readonly [string, string, string, string];
 type TranslationWithParam = readonly [string, string, { [key: string]: string | number }];
@@ -37,20 +46,7 @@ export interface TransMessageOption {
   data?: TranslationData;
 }
 
-export interface ErrRestoreOption {
-  statusCode?: number;
-  /** A generalized failure's `AkanError` code, which a restored copy keeps so its caller can branch on it. */
-  code?: string;
-  details?: unknown;
-  path?: string;
-  timestamp?: string;
-}
-
-export interface ErrPayload extends ErrRestoreOption {
-  error: string;
-  data?: TranslationData;
-}
-
+/** @deprecated `Err` from `akanjs/common`, the class every dictionary's `Err` is. */
 export type ErrInstance = Error & {
   readonly error: string;
   readonly statusCode: number;
@@ -61,20 +57,9 @@ export type ErrInstance = Error & {
   readonly timestamp?: string;
   toJSON(): ErrPayload & { statusCode: number };
 };
+
 type MsgApi<Key> = {
   [Level in "info" | "success" | "error" | "warning" | "loading"]: (key: Key, option?: TransMessageOption) => void;
-};
-
-export type ErrConstructor<ErrorKey extends string> = {
-  new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption): ErrInstance;
-  prototype: ErrInstance;
-  fromJSON(payload: ErrPayload): ErrInstance;
-  is<Key extends ErrorKey>(error: unknown, ...keys: Key[]): error is ErrInstance & { readonly error: Key };
-  BadRequest: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
-  Unauthorized: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
-  Forbidden: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
-  NotFound: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
-  Conflict: new (key: ErrorKey, data?: TranslationData, option?: ErrRestoreOption) => ErrInstance;
 };
 
 // `<Messages/>` assigns the real toasts over these when it mounts (never on the server); until then a call warns once
@@ -116,76 +101,7 @@ export const makeTrans = <
   const rootDictionary = {} as RootDictionary;
   for (const [refName, trans] of Object.entries(transMap)) trans.dict._registerToRoot(refName, rootDictionary);
   DictionaryRegistry.register(rootDictionary, transMap);
-  class Err extends Error {
-    declare static status?: number;
-    readonly error: string;
-    readonly statusCode: number;
-    readonly code?: string;
-    readonly details?: unknown;
-    readonly data?: TranslationData;
-    readonly path?: string;
-    readonly timestamp?: string;
-
-    constructor(key: _ErrorKey, data?: TranslationData, option: ErrRestoreOption = {}) {
-      super(key as string);
-      this.name = this.constructor.name;
-      this.error = key as string;
-      this.statusCode = new.target.status ?? option.statusCode ?? 400;
-      this.code = option.code;
-      this.details = option.details;
-      this.data = data;
-      this.path = option.path;
-      this.timestamp = option.timestamp;
-    }
-
-    // `String(err)` is what a log line splices in, and the key alone drops what failed (an exit code, a status).
-    override toString() {
-      return this.data === undefined
-        ? `${this.name}: ${this.message}`
-        : `${this.name}: ${this.message} ${Logger.inlineData(this.data)}`;
-    }
-
-    toJSON() {
-      return {
-        error: this.message,
-        statusCode: this.statusCode,
-        ...(this.code !== undefined ? { code: this.code } : {}),
-        ...(this.details !== undefined ? { details: this.details } : {}),
-        ...(this.data !== undefined ? { data: this.data } : {}),
-        ...(this.path !== undefined ? { path: this.path } : {}),
-        ...(this.timestamp !== undefined ? { timestamp: this.timestamp } : {}),
-      };
-    }
-
-    static fromJSON(payload: ErrPayload) {
-      return new Err(payload.error as _ErrorKey, payload.data, payload);
-    }
-
-    /** An Akan error, and one of `keys` when any are named; read off `error`, so a restored remote one passes too. */
-    static is<Key extends _ErrorKey>(error: unknown, ...keys: Key[]): error is ErrInstance & { readonly error: Key } {
-      return hasErrKey(error, keys);
-    }
-
-    static BadRequest = class BadRequestErr extends Err {
-      static override status = 400;
-    };
-
-    static Unauthorized = class UnauthorizedErr extends Err {
-      static override status = 401;
-    };
-
-    static Forbidden = class ForbiddenErr extends Err {
-      static override status = 403;
-    };
-
-    static NotFound = class NotFoundErr extends Err {
-      static override status = 404;
-    };
-
-    static Conflict = class ConflictErr extends Err {
-      static override status = 409;
-    };
-  }
+  const DictionaryErr: ErrConstructor<_ErrorKey> = Err;
   const lookup = (lang: string, modelName: string, msgKey: string) => {
     const model = rootDictionary[lang]?.[modelName];
     if (!model) return undefined;
@@ -204,7 +120,7 @@ export const makeTrans = <
     return interpolateTranslation(message, data);
   };
   return {
-    Err,
+    Err: DictionaryErr,
     translate,
     msg,
     getDictionary: (lang: Language) => rootDictionary[lang],

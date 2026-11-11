@@ -47,7 +47,7 @@ and infrastructure. A workspace is Bun-first: `apps/<app>` holds pages, domain m
 contract. Path rules name their checks the same way.
 
 - Throw `new Err("<module>.error.<key>")` with the key in the module dictionary's `.error({})`; never a raw `Error`
-  (`no-throw-raw-error`) [app].
+  (`no-throw-raw-error`) and never the untyped `Err` of `akanjs/common` (`no-import-common-err`) [app].
 - A third-party package reaches `page/**`, a barrel or a module file only through a lib re-export
   (`no-import-external-library`) [app].
 - Colors only from the semantic vocabulary (`bg-primary`, `text-foreground/70`) — no palette, arbitrary, daisyUI or

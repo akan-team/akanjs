@@ -538,6 +538,7 @@ export declare class PageDefinition<Args extends RouteArgsShape = Record<never, 
     protected renderArgsOf(args: RouteBaseArgs & Args): PromiseOrObject<RouteBaseArgs & Args>;
 }
 
+/** @deprecated */
 export interface PageErrConstructor<ErrorKey extends string> {
     new (key: ErrorKey, data?: Record<string, unknown>, option?: ErrRestoreOption): PageErrInstance;
     prototype: PageErrInstance;
@@ -552,6 +553,7 @@ export interface PageErrConstructor<ErrorKey extends string> {
     Conflict: PageErrConstructor<ErrorKey>;
 }
 
+/** @deprecated */
 export interface PageErrInstance extends Error {
     readonly error: string;
     readonly statusCode: number;
@@ -1251,7 +1253,7 @@ export declare const makePageProto: <Dict extends {
         [key: string]: Record<string, unknown>;
     };
 }) => {
-    Err: PageErrConstructor<ErrorKey>;
+    Err: ErrConstructor<ErrorKey>;
     msg: {
         info: (key: DictKey, option?: TransMessageOption) => void;
         success: (key: DictKey, option?: TransMessageOption) => void;
@@ -1406,14 +1408,6 @@ interface DeviceInitOption {
     topSafeArea: number;
     bottomSafeArea: number;
     native: NativeControls | null;
-}
-
-interface ErrRestoreOption {
-    statusCode?: number;
-    code?: string;
-    details?: unknown;
-    path?: string;
-    timestamp?: string;
 }
 
 type FreeName<Name extends string, Taken> = Name extends "lang" | keyof Taken ? never : Name;

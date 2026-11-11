@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
-import { Any, DataList, getEnv, ID, Int, Upload } from "akanjs/base";
-import { AbortSignals, Logger, websocketBinaryFrameContract, websocketCredentialContract } from "akanjs/common";
+import { AkanError, Any, DataList, getEnv, ID, Int, Upload } from "akanjs/base";
+import { AbortSignals, Err, Logger, websocketBinaryFrameContract, websocketCredentialContract } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import {
   buildEndpoint,
@@ -12,6 +12,7 @@ import {
   type SerializedArg,
   type SerializedEndpoint,
   type SerializedSignal,
+  SignalFailure,
   type SliceCls,
 } from "akanjs/signal";
 import { AppScope } from "./appScope";
@@ -835,6 +836,41 @@ describe("HttpClient", () => {
       statusCode: 400,
       data: { name: "drone-1", timeout: 3000 },
     });
+  });
+
+  test("restores a server's Err as the one Err class, on a client with no error constructor", async () => {
+    setMockFetch();
+    const thrown = new Err.NotFound("fetchTest.error.gone", { id: "1" });
+    responseStatuses.push(404, 503);
+    jsonResponses.push(isExceptionLike(thrown) ? thrown.toJSON() : null, {
+      error: "Service Unavailable",
+      statusCode: 503,
+      code: "queueFull",
+    });
+    const client = new HttpClient("https://api.example");
+
+    const restored = await client.get("/items").catch((error: unknown) => error);
+    const generalized = await client.get("/items").catch((error: unknown) => error);
+
+    expect(restored).toBeInstanceOf(Err);
+    expect(Err.is(restored, "fetchTest.error.gone")).toBe(true);
+    expect(AkanError.is(restored, "notFound")).toBe(true);
+    expect((restored as Err).toJSON()).toEqual(thrown.toJSON());
+    expect(generalized).toBeInstanceOf(Err);
+    expect((generalized as Err).code).toBe("queueFull");
+  });
+
+  test("restores a failure its origin generalized as unforwarded, so it is generalized again to the same body", () => {
+    const refused = restoreRemoteError({ error: "Forbidden", code: "fileGrantRefused", statusCode: 403 }, 403) as Err;
+    const gone = restoreRemoteError(new Err.NotFound("fetchTest.error.gone").toJSON(), 404) as Err;
+    const { timestamp: _timestamp, stack: _stack, ...body } = SignalFailure.body(refused);
+
+    expect(refused.forwarded).toBe(false);
+    expect(isExceptionLike(refused)).toBe(false);
+    expect<object>(body).toEqual(refused.toJSON());
+    expect(SignalFailure.generalized(refused)).toEqual(refused.toJSON());
+    expect(gone.forwarded).toBe(true);
+    expect(isExceptionLike(gone)).toBe(true);
   });
 
   test("restores a transport failure as rethrowable too, with the status the transport reported", async () => {

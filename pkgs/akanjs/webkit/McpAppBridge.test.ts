@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from "bun:test";
-import { isGuardRefusal, MCP_FAILURE_META } from "akanjs/common";
+import { Err, isGuardRefusal, MCP_FAILURE_META } from "akanjs/common";
 import type { FetchBridgeCall, RestoredError } from "akanjs/fetch";
 import { MCP_APP_META } from "../signal/mcp/mcpProtocol";
 import { McpAppBridge } from "./McpAppBridge";
@@ -287,6 +287,7 @@ describe("McpAppBridge", () => {
       },
     });
     const error = (await asked.catch((caught: unknown) => caught)) as { toJSON?: () => unknown };
+    expect(error).toBeInstanceOf(Err);
     expect(error.toJSON?.()).toEqual({ error: "memo.error.locked", statusCode: 409, data: { id: "1" } });
   });
 
