@@ -5,18 +5,14 @@ import { AkanError } from "../base/akanError";
 import { csrLocation } from "../client/csrLocation";
 import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
-import { isAuthTokenKey } from "../common/authCookie";
-import { CookieJar } from "../common/cookieJar";
-import { StaleReads } from "../fetch/staleReads";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
-  type AkanHeadSnapshotV1,
   type AkanRouterStateV1,
-  type AkanRscPatchMetadata,
   decodeAkanRouterState,
   isAkanRscPartialCommitEnabled,
   readAkanRouterStateResponseHeader,
 } from "./routeState";
+import { normalizeHref, pageKeyOf, RscClientCache, withoutHash } from "./rscClientCache";
 import {
   type ChunkNavigation,
   claimChunkReload,
@@ -29,14 +25,9 @@ import {
   recordChunksOf,
   reportingRootErrors,
 } from "./rscClientChunks";
-import { fetchRscNavigationResponse, fetchRscPrefetchResponse } from "./rscClientFetch";
-import { validateRscPatchForGuardedCommit } from "./rscClientPatch";
-import {
-  commitPreparedAkanHeadSnapshotPatch,
-  getAkanHeadSnapshotPatchFailureReason,
-  prepareAkanHeadSnapshotPatch,
-  rollbackPreparedAkanHeadSnapshotPatch,
-} from "./rscHeadPatch";
+import { fetchRscNavigationResponse } from "./rscClientFetch";
+import { commitRscPatch, type RscPatchedResult, validateRscPatchForGuardedCommit } from "./rscClientPatch";
+import { getAkanHeadSnapshotPatchFailureReason } from "./rscHeadPatch";
 import { getRscPayloadStream, guardRscRedirectRows, type RscRedirectRow } from "./rscHttp";
 import { createInitialRscStream } from "./rscInlineStream";
 import {
@@ -44,19 +35,13 @@ import {
   commitLatestRscNavigation,
   createAkanSegmentCacheTree,
   createRscNavigationCacheNode,
-  createRscPatchNavigationCacheNode,
   deleteRscCacheEntryIfCurrent,
-  forgetRscPatchesOfLostBases,
   observeRscNavigationNode,
   type RscNavigationCacheNode,
-  type RscPatchNavigationCacheNode,
-  rememberRscCacheNode,
-  resolveCachedRscPatchNavigation,
 } from "./rscNavigationState";
 import { RscParkedRedirect } from "./rscParkedRedirect";
-import { RscPrefetchCache } from "./rscPrefetchCache";
 import { RscScrollRestoration } from "./rscScrollRestoration";
-import { commitAkanSegmentOutletPatch, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
+import { resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
 declare global {
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
@@ -71,19 +56,16 @@ type RscThenable = Promise<ReactNode> & {
 };
 type RscCacheNode = RscNavigationCacheNode<RscThenable>;
 type RscSegmentCacheNode = AkanSegmentCacheNode<RscThenable>;
+type RscPatched = RscPatchedResult<RscThenable>;
 type RscFetchResult =
   | { type: "rsc"; node: RscCacheNode; notFound?: boolean }
-  | {
-      type: "patched";
-      tree: RscSegmentCacheNode;
-      patchedNode: RscSegmentCacheNode;
-      patch: AkanRscPatchMetadata;
-      outletKey: string;
-      headSnapshot: AkanHeadSnapshotV1;
-    }
+  | RscPatched
   | { type: "not-found" }
   | { type: "redirected"; status?: number };
-const MAX_RSC_CACHE_ENTRIES = 32;
+interface ScrollRequest {
+  scrollY: number;
+  hash?: string;
+}
 let documentNavigationFallbackInFlight = false;
 
 class RscRedirectNavigationStarted extends AkanError<"rscRedirectStarted"> {
@@ -100,10 +82,6 @@ class RscRouteNotFound extends AkanError<"routeNotFound"> {
     super("routeNotFound", `[rscClient] no route at ${href}`, { statusCode: 404 });
     this.name = "RscRouteNotFound";
   }
-}
-
-function normalizeHref(href: string): string {
-  return new URL(href, window.location.origin).href;
 }
 
 // React's thenable status lets use() read a fulfilled payload synchronously; its suspend-and-ping path intermittently
@@ -158,43 +136,26 @@ function navigateAfterRscRedirect(target: string, replace = true): void {
 function commitRscPatchNavigation({
   target,
   patch,
+  fromCache,
   replace,
   requestScroll,
 }: {
   target: string;
-  patch: Extract<RscFetchResult, { type: "patched" }>;
+  patch: RscPatched;
+  fromCache: boolean;
   replace?: boolean;
   requestScroll?: () => void;
 }): boolean {
-  const patchThenable = patch.patchedNode.thenable;
-  if (!patchThenable)
-    throw new AkanError("invalidRscResponse", "[rscClient] validated RSC patch is missing a thenable");
-  const preparedHeadPatch = prepareAkanHeadSnapshotPatch(patch.headSnapshot, target);
-  if (!preparedHeadPatch) return false;
-
-  let outletCommitted = false;
-  let headApplied = false;
-  startTransition(() => {
-    try {
-      headApplied = commitPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
-      if (!headApplied) return;
-      outletCommitted = commitAkanSegmentOutletPatch(patch.outletKey, patchThenable);
-      if (!outletCommitted) {
-        rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
-        return;
-      }
-      commitHistory(target, replace);
-      shownNode = null;
-      parkedRedirect.clear();
-      requestScroll?.();
-    } catch {
-      if (headApplied) rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
-      if (outletCommitted) resetAkanSegmentOutletPatches();
-      headApplied = false;
-      outletCommitted = false;
-    }
+  const committed = commitRscPatch(target, patch, () => {
+    commitHistory(target, replace);
+    shownNode = null;
+    parkedRedirect.clear();
+    requestScroll?.();
   });
-  return outletCommitted && headApplied;
+  if (!committed) return false;
+  currentCommitFromCache = fromCache;
+  rememberPatchedRouteState(patch.tree, patch.patchedNode);
+  return true;
 }
 
 function akanHistoryState(replace: boolean, shallow = false) {
@@ -207,8 +168,6 @@ function akanHistoryState(replace: boolean, shallow = false) {
 let renderedHref = normalizeHref(window.location.href);
 const scrollRestoration = new RscScrollRestoration();
 const pathnameOf = (href: string) => new URL(href).pathname;
-const withoutHash = (href: string | undefined) => href?.split("#", 1)[0];
-const pageKeyOf = (href: string) => withoutHash(href) ?? href;
 
 function commitHistory(target: string, replace: boolean | undefined) {
   if (replace) csrLocation.replace(akanHistoryState(true), target);
@@ -300,7 +259,7 @@ async function fetchRsc(
   const nodeRef: { current?: RscCacheNode } = {};
   const handleRedirect = (redirect: RscRedirectRow) => {
     const node = nodeRef.current;
-    if (node) deleteRscCacheEntryIfCurrent(rscCache, href, node);
+    if (node) deleteRscCacheEntryIfCurrent(caches.pages, href, node);
     const applies = shouldApplyNavigation();
     //? A later navigation may have replayed this page, under another fragment or back from elsewhere, and still show it.
     if (!applies && node !== shownNode) return;
@@ -327,24 +286,13 @@ async function fetchRsc(
   };
 }
 
-// `/__rsc` is sent with cookies alone, so its auth cookies are the account a cached payload was rendered for.
-const readAuthCookies = () =>
-  CookieJar.parse(document.cookie)
-    .entries()
-    .filter(({ name }) => isAuthTokenKey(name))
-    .map(({ name, value }) => `${name}=${value}`)
-    .sort((a, b) => a.localeCompare(b))
-    .join("; ");
-const rscCache = new Map<string, RscCacheNode>();
-const rscPatchCache = new Map<string, RscPatchNavigationCacheNode<RscThenable>>();
-//? With partial commit off every prefetch is a whole page, good under any page on screen, so none is tied to one.
-const prefetchBase = () => (isAkanRscPartialCommitEnabled() ? currentFullNode : null);
-const rscPrefetchCache = new RscPrefetchCache<RscCacheNode | null>({
-  fetchResponse: (href, signal) => fetchRscPrefetchResponse(href, signal, currentRouterState),
-  baseOf: prefetchBase,
+const caches = new RscClientCache<RscThenable>({
+  routerState: () => currentRouterState,
+  tree: () => currentSegmentTree,
+  base: () => currentFullNode,
+  navId: () => navigationSeq,
+  pendingTarget: () => pendingRequest?.target,
 });
-//? A page prefetched before this tab's own write would commit as current, showing what the write changed as it was.
-StaleReads.subscribe(() => rscPrefetchCache.clear());
 const initialThenable = createRscThenable(createInitialRscStream());
 const initialRouterState = decodeAkanRouterState(globalThis.__AKAN_RSC_INITIAL_STATE__);
 const initialNode = createRscNavigationCacheNode({
@@ -352,7 +300,7 @@ const initialNode = createRscNavigationCacheNode({
   thenable: initialThenable,
   routerState: initialRouterState,
 });
-rscCache.set(initialNode.href, initialNode);
+caches.pages.set(initialNode.href, initialNode);
 let currentRouterState: AkanRouterStateV1 | null = initialRouterState;
 let currentSegmentTree: RscSegmentCacheNode | null = createAkanSegmentCacheTree(initialNode);
 let currentFullNode: RscCacheNode | null = initialNode;
@@ -363,7 +311,6 @@ let currentCommitFromCache = false;
 let navigationSeq = 0;
 let pendingRequest: { navId: number; controller: AbortController; target: string } | null = null;
 let latestPageNavId = 0;
-let cachedAuthCookies = readAuthCookies();
 
 //? Back or Forward moves the URL before its page loads, and a redirect then would replace the entry it moved to; a
 //? shallow entry, its query or fragment changed in place, still shows the page it was written over.
@@ -454,7 +401,7 @@ function rememberCommittedRouteState(node: RscCacheNode): void {
   currentFullNode = node;
   shownNode = node;
   parkedRedirect.clear();
-  forgetRscPatchesOfLostBases(rscPatchCache, rscCache, node);
+  caches.forgetPatchesOfLostBases(node);
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
   currentCommitKind = "full";
@@ -477,91 +424,32 @@ function rememberPatchedRouteState(tree: RscSegmentCacheNode, patchedNode: RscSe
 }
 
 function forgetPagesOfAnotherAccount(): void {
-  const authCookies = readAuthCookies();
-  if (authCookies === cachedAuthCookies) return;
-  cachedAuthCookies = authCookies;
-  rscCache.clear();
-  rscPatchCache.clear();
-  rscPrefetchCache.clear();
+  if (!caches.forgetAnotherAccount()) return;
   //? The layouts on screen were rendered for the other account too, so the next page is not patched onto them.
   currentRouterState = null;
   currentSegmentTree = null;
 }
 
-//? The fragment never reaches the server, so a page cached under one fragment is the payload of every other.
-function cachedPageOf(target: string): RscCacheNode | undefined {
-  const key = pageKeyOf(target);
-  return rscCache.get(target) ?? [...rscCache.values()].findLast((node) => pageKeyOf(node.href) === key);
-}
-
-function replayedPageOf(target: string): RscCacheNode | undefined {
-  const node = cachedPageOf(target);
-  if (node) rememberRscCacheNode(rscCache, node, MAX_RSC_CACHE_ENTRIES);
-  return node;
-}
-
-const cachedPatchReplayOf = (node: RscPatchNavigationCacheNode<RscThenable>, navId?: number) =>
-  resolveCachedRscPatchNavigation({
-    currentTree: currentSegmentTree,
-    currentBase: currentFullNode,
-    node,
-    partialCommitEnabled: isAkanRscPartialCommitEnabled(),
-    navId,
-    getCurrentNavId: () => navigationSeq,
-  });
-
-function replayCachedPatch(target: string, navId: number, replace?: boolean, requestScroll?: () => void): boolean {
-  const cachedPatch = rscPatchCache.get(target);
-  if (!cachedPatch) return false;
-  const patchResult = cachedPatchReplayOf(cachedPatch, navId);
-  if (patchResult.status === "patched") {
-    const { tree, patchedNode, outletKey, headSnapshot } = patchResult;
-    const patch = { type: "patched" as const, tree, patchedNode, patch: cachedPatch.patch, outletKey, headSnapshot };
-    if (commitRscPatchNavigation({ target, patch, replace, requestScroll })) {
-      currentCommitFromCache = true;
-      rememberPatchedRouteState(tree, patchedNode);
-      rememberRscCacheNode(rscPatchCache, cachedPatch, MAX_RSC_CACHE_ENTRIES);
-      return true;
-    }
-  }
-  rscPatchCache.delete(target);
-  return false;
-}
-
-const isConstrainedNetwork = () => {
-  const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
-    .connection;
-  return connection?.saveData === true || /2g$/.test(connection?.effectiveType ?? "");
-};
-
-globalThis.__AKAN_RSC_PREFETCH__ = (href, priority) => {
-  const none = () => undefined;
-  if (isConstrainedNetwork()) return none;
-  const target = normalizeHref(href);
-  const key = pageKeyOf(target);
-  if (new URL(target).origin !== window.location.origin || pendingRequest?.target === key) return none;
-  //? Not forgetPagesOfAnotherAccount: only a navigation may record the change, or a page of the old account still in
-  //? flight commits into the cache as the new account's.
-  const authCookies = readAuthCookies();
-  const cachedPatch = rscPatchCache.get(target);
-  const replayable = cachedPageOf(target) || (!!cachedPatch && cachedPatchReplayOf(cachedPatch).status === "patched");
-  if (authCookies === cachedAuthCookies && replayable) return none;
-  return rscPrefetchCache.request(key, authCookies, priority, prefetchBase());
-};
+globalThis.__AKAN_RSC_PREFETCH__ = (href, priority) => caches.prefetch(href, priority);
 
 function Root(): ReactNode {
   const [thenable, setThenable] = useState<RscThenable>(initialThenable);
-  const [scrollRequest, setScrollRequest] = useState<{ scrollY: number; hash?: string } | null>(null);
+  const [scrollRequest, setScrollRequest] = useState<ScrollRequest | null>(null);
 
   useLayoutEffect(() => {
     if (scrollRequest?.hash) scrollRestoration.scrollToHash(scrollRequest.hash, scrollRequest.scrollY);
     else if (scrollRequest) scrollRestoration.scrollTo(scrollRequest.scrollY);
   }, [scrollRequest]);
 
+  installCacheClear();
+  installRefresh(setThenable);
+  installNavigate(setThenable, setScrollRequest);
+  return use(thenable as Usable<ReactNode>);
+}
+
+function installCacheClear(): void {
   globalThis.__AKAN_RSC_CLEAR_CACHE__ = () => {
-    rscCache.clear();
-    rscPatchCache.clear();
-    rscPrefetchCache.clear();
+    caches.clear();
     if (currentCommitKind === "patch") {
       void globalThis.__AKAN_RSC_REFRESH__?.();
       return;
@@ -577,16 +465,16 @@ function Root(): ReactNode {
           currentFullState.routeId === currentRouterState.routeId));
     if (canRestoreFullNode) {
       resetAkanSegmentOutletPatches();
-      rscCache.set(currentFullNode.href, currentFullNode);
+      caches.pages.set(currentFullNode.href, currentFullNode);
     }
   };
+}
 
+function installRefresh(setThenable: (thenable: RscThenable) => void): void {
   globalThis.__AKAN_RSC_REFRESH__ = async (options = {}) => {
     const navId = supersedeForRefresh();
     const target = normalizeHref(window.location.href);
-    rscCache.clear();
-    rscPatchCache.clear();
-    rscPrefetchCache.clear();
+    caches.clear();
     try {
       const next = await fetchRsc(target, {
         ...options,
@@ -603,7 +491,7 @@ function Root(): ReactNode {
       }
       if (next.type === "patched") return;
       observeRscNavigationNode({
-        cache: rscCache,
+        cache: caches.pages,
         node: next.node,
         navId,
         getCurrentNavId: () => navigationSeq,
@@ -613,10 +501,10 @@ function Root(): ReactNode {
       // Awaited before committing so use() never suspends the root transition (see trackRscThenable).
       await next.node.thenable;
       const committed = commitLatestRscNavigation({
-        cache: next.notFound ? undefined : rscCache,
+        cache: next.notFound ? undefined : caches.pages,
         href: target,
         thenable: next.node,
-        maxEntries: MAX_RSC_CACHE_ENTRIES,
+        maxEntries: RscClientCache.maxEntries,
         startTransition,
         commitThenable: (node) => {
           currentCommitFromCache = false;
@@ -637,14 +525,19 @@ function Root(): ReactNode {
       settleRequestOf(navId);
     }
   };
+}
 
+function installNavigate(
+  setThenable: (thenable: RscThenable) => void,
+  setScrollRequest: (request: ScrollRequest) => void,
+): void {
   globalThis.__AKAN_RSC_NAVIGATE__ = async (href, options = {}) => {
     if (options.shallow && navigateShallow(normalizeHref(href), options.replace)) {
       supersedeKeepingPage();
       return;
     }
     forgetPagesOfAnotherAccount();
-    rscPrefetchCache.prune();
+    caches.prefetches.prune();
     const navId = supersedeForPageNavigation();
     const target = normalizeHref(href);
     const signal = requestSignalOf(navId, target);
@@ -655,13 +548,15 @@ function Root(): ReactNode {
     const hash = options.scrollY === undefined ? new URL(target).hash : "";
     const requestScroll = scrollY === undefined ? undefined : () => setScrollRequest({ scrollY, hash });
     try {
-      const replayed = replayedPageOf(target);
+      const replayed = caches.replayedPageOf(target);
       let nextNode = replayed;
       let notFound = false;
       let servedFromCache = !!nextNode;
       if (!nextNode) {
-        if (replayCachedPatch(target, navId, options.replace, requestScroll)) return;
-        const taken = rscPrefetchCache.take(pageKeyOf(target), cachedAuthCookies, signal, prefetchBase());
+        const commitPatch = (patch: RscPatched, fromCache: boolean) =>
+          commitRscPatchNavigation({ target, patch, fromCache, replace: options.replace, requestScroll });
+        if (caches.replayPatch(target, navId, (patch) => commitPatch(patch, true))) return;
+        const taken = caches.takePrefetch(target, signal);
         const prefetched = (await taken?.response) ?? undefined;
         if (signal.aborted) return;
         servedFromCache = !!prefetched && !taken?.fresh;
@@ -676,28 +571,11 @@ function Root(): ReactNode {
         if (fetched.type === "not-found") throw new RscRouteNotFound(target);
         if (fetched.type === "patched") {
           if (navId !== navigationSeq) return;
-          if (
-            commitRscPatchNavigation({
-              target,
-              patch: fetched,
-              replace: options.replace,
-              requestScroll,
-            })
-          ) {
-            currentCommitFromCache = servedFromCache;
-            rememberPatchedRouteState(fetched.tree, fetched.patchedNode);
-            const patchCacheNode = createRscPatchNavigationCacheNode({
-              href: target,
-              patch: fetched.patch,
-              patchedNode: fetched.patchedNode,
-              outletKey: fetched.outletKey,
-              headSnapshot: fetched.headSnapshot,
-              base: currentFullNode,
-            });
-            if (patchCacheNode) rememberRscCacheNode(rscPatchCache, patchCacheNode, MAX_RSC_CACHE_ENTRIES);
+          if (commitPatch(fetched, servedFromCache)) {
+            caches.rememberPatch(target, fetched);
             return;
           }
-          rscPatchCache.delete(target);
+          caches.forgetPatch(target);
           const fallback = await fetchRsc(target, {
             replaceOnRedirect,
             sendRouterState: false,
@@ -716,7 +594,7 @@ function Root(): ReactNode {
         }
       }
       observeRscNavigationNode({
-        cache: rscCache,
+        cache: caches.pages,
         node: nextNode,
         navId,
         getCurrentNavId: () => navigationSeq,
@@ -727,10 +605,10 @@ function Root(): ReactNode {
       await nextNode.thenable;
       //? A replay stays keyed by its own href alone, where a redirect or a failure deletes it, never by the fragment it serves.
       const committed = commitLatestRscNavigation({
-        cache: notFound || replayed ? undefined : rscCache,
+        cache: notFound || replayed ? undefined : caches.pages,
         href: target,
         thenable: nextNode,
-        maxEntries: MAX_RSC_CACHE_ENTRIES,
+        maxEntries: RscClientCache.maxEntries,
         startTransition,
         commitThenable: (node) => {
           currentCommitFromCache = servedFromCache;
@@ -757,8 +635,6 @@ function Root(): ReactNode {
       settleRequestOf(navId);
     }
   };
-
-  return use(thenable as Usable<ReactNode>);
 }
 
 window.addEventListener("popstate", (event) => {

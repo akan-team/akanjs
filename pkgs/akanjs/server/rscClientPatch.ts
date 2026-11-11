@@ -1,5 +1,12 @@
+import { type ReactNode, startTransition } from "react";
+import { AkanError } from "../base/akanError";
 import { mapFlightLineRows } from "./flightRowReader";
 import { type AkanHeadSnapshotV1, type AkanRscPatchMetadata, readAkanRouterStateResponseHeader } from "./routeState";
+import {
+  commitPreparedAkanHeadSnapshotPatch,
+  prepareAkanHeadSnapshotPatch,
+  rollbackPreparedAkanHeadSnapshotPatch,
+} from "./rscHeadPatch";
 import { getRscPayloadStream } from "./rscHttp";
 import {
   type AkanSegmentCacheNode,
@@ -7,10 +14,19 @@ import {
   type AkanSegmentPatchResult,
   applyAkanSegmentCachePatch,
 } from "./rscNavigationState";
-import { hasAkanSegmentOutlet } from "./rscSegmentOutlet";
+import { commitAkanSegmentOutletPatch, hasAkanSegmentOutlet, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
 const RSC_PATCH_REDIRECT_ROW_RE = /^[0-9a-z]+:E\{[^\n]*"digest":"AKAN_REDIRECT(?:;[^"]*)?"[^\n]*\}\n?$/;
 const RSC_PATCH_ERROR_ROW_RE = /^[0-9a-z]+:E\{[^\n]*\}\n?$/;
+
+export interface RscPatchedResult<T> {
+  type: "patched";
+  tree: AkanSegmentCacheNode<T>;
+  patchedNode: AkanSegmentCacheNode<T>;
+  patch: AkanRscPatchMetadata;
+  outletKey: string;
+  headSnapshot: AkanHeadSnapshotV1;
+}
 
 interface ValidateRscSegmentPatchInput<T extends PromiseLike<unknown>> {
   href: string;
@@ -110,4 +126,37 @@ export async function validateRscPatchForGuardedCommit<T extends PromiseLike<unk
   if (!patchResult.patchedNode.thenable) return { status: "rejected", reason: "decode-error" };
   if (!hasAkanSegmentOutlet(patchResult.outletKey)) return { status: "rejected", reason: "outlet-missing" };
   return { ...patchResult, headSnapshot: input.patch.headSnapshot };
+}
+
+export function commitRscPatch<T extends PromiseLike<ReactNode>>(
+  target: string,
+  patch: RscPatchedResult<T>,
+  onCommitted: () => void,
+): boolean {
+  const patchThenable = patch.patchedNode.thenable;
+  if (!patchThenable)
+    throw new AkanError("invalidRscResponse", "[rscClient] validated RSC patch is missing a thenable");
+  const preparedHeadPatch = prepareAkanHeadSnapshotPatch(patch.headSnapshot, target);
+  if (!preparedHeadPatch) return false;
+
+  let outletCommitted = false;
+  let headApplied = false;
+  startTransition(() => {
+    try {
+      headApplied = commitPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
+      if (!headApplied) return;
+      outletCommitted = commitAkanSegmentOutletPatch(patch.outletKey, patchThenable);
+      if (!outletCommitted) {
+        rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
+        return;
+      }
+      onCommitted();
+    } catch {
+      if (headApplied) rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
+      if (outletCommitted) resetAkanSegmentOutletPatches();
+      headApplied = false;
+      outletCommitted = false;
+    }
+  });
+  return outletCommitted && headApplied;
 }
