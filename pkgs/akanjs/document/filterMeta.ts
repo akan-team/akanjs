@@ -26,6 +26,7 @@ import type { ConstantFilterMeta } from "./types";
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+/** @deprecated Unused by akanjs; `getFilterMeta(ref, { allowEmpty: true }) !== undefined` answers the same. */
 export const isFilterModel = (filterRef: Cls<unknown, { [FILTER_META]?: ConstantFilterMeta }>): boolean =>
   filterRef[FILTER_META] !== undefined;
 export const getFilterMeta = <AllowEmpty extends boolean = false>(
@@ -36,6 +37,7 @@ export const getFilterMeta = <AllowEmpty extends boolean = false>(
   if (!filterMeta && !allowEmpty) throw new Error("filterMeta is not defined");
   return filterMeta as AllowEmpty extends true ? ConstantFilterMeta | undefined : ConstantFilterMeta;
 };
+/** @internal */
 export const setFilterMeta = (
   filterRef: Cls<unknown, { [FILTER_META]?: ConstantFilterMeta; sortField: Set<string> }>,
   filterMeta: ConstantFilterMeta,
@@ -79,6 +81,7 @@ export const getFilterInfoByKey = <ArgNames extends string[] = [], Args extends 
   if (!queryMeta) throw new Error(`queryMeta is not defined for key: ${key}`);
   return queryMeta;
 };
+/** @deprecated Unused by akanjs; declare the query in the filter class built with `from(model, (filter) => …)`. */
 export const setFilterInfoByKey = <ArgNames extends string[] = [], Args extends any[] = any[], Model = any>(
   modelRef: Cls<Model>,
   key: string,
@@ -128,7 +131,7 @@ export interface FilterArgInfo {
 
 // Each item of a list arg is one bound parameter, and a caller of the root slice picks how many it sends.
 export const DEFAULT_FILTER_ARG_MAX_ITEMS = 1000;
-/** Unwraps a filter arg's declaration the way `EndpointInfo.getArgInfo` unwraps an endpoint's. */
+/** @internal Unwraps a filter arg's declaration the way `EndpointInfo.getArgInfo` unwraps an endpoint's. */
 export const getFilterArgInfo = (arg: FilterInfo["args"][number]): FilterArgInfo => {
   const [singleArg, arrDepth] = getNonArrayModel(arg.argRef as Cls);
   const argIsEnum = isEnum(singleArg);

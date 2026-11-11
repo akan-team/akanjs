@@ -367,6 +367,7 @@ export declare class InvalidInputError extends AkanError<"invalidInput" | "missi
     constructor(path: string, expected: null | string);
 }
 
+/** @deprecated */
 export declare const MAX_INT = 2147483647;
 
 export declare const MAX_PAGE_SIZE = 500;

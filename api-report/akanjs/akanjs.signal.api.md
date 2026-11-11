@@ -1928,6 +1928,7 @@ export declare function intercept<Name extends string, Injection extends InjectB
 
 export declare function internal<SrvModule extends ServiceModel, InternalInfoMap extends ReturnType<InternalBuilder<SrvModule>>, LibInternals extends InternalCls[]>(srv: SrvModule, internalBuilder: (builder: BuildInternal<SrvModule>) => InternalInfoMap, ...libInternals: LibInternals): InternalCls<SrvModule, MergeAllKeyOfObjects<LibInternals, typeof INTERNAL_META> & InternalInfoMap>;
 
+/** @internal */
 export declare const isDebugHeaderAllowed: () => boolean;
 
 export declare const isExceptionLike: (error: unknown) => error is ExceptionLike;
@@ -1954,6 +1955,7 @@ export declare const refusesAgents: (guards: readonly GuardCls[] | undefined) =>
 
 export declare const runTraced: <T>(trace: SignalTrace | null, fn: () => Promise<T>) => Promise<T>;
 
+/** @deprecated */
 export declare const runWithTrace: <T>(trace: SignalTrace, fn: () => T) => T;
 
 export declare const serverSignal: <EnpCls, IntCls>(endpointRef: EnpCls, internalRef: IntCls) => ServerSignalCls<EnpCls, IntCls>;
@@ -1979,6 +1981,7 @@ export declare const traceCache: (hit: boolean) => void;
 
 export declare const traceDataLoaderBatch: (keyCount: number) => void;
 
+/** @deprecated */
 export declare const traceDbQuery: (durationMs: number) => void;
 
 export declare const traceSpan: <T>(name: string, fn: () => Promise<T>) => Promise<T>;

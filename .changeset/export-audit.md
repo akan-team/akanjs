@@ -1,0 +1,5 @@
+---
+"akanjs": patch
+---
+
+Exports that nothing in akanjs, its tests or a consumer workspace uses are now marked. Thirteen that no code calls at all are `@deprecated` and leave in a later minor: `MAX_INT` (write `2 ** 31 - 1`), `isFilterModel` (`getFilterMeta(ref, { allowEmpty: true }) !== undefined`), `setFilterInfoByKey` (declare the query with `from(model, (filter) => …)`), `getDefaultSchemaOptions` (`new DocumentSchema()`), `runWithTrace` (`runTraced`, only where the caller owns the trace, since it finalizes it), `traceDbQuery` (`getCurrentTrace()?.countDbQuery(ms)`), `isSitemapPath` (`getSitemapBasePath(pathname, basePaths, headerBasePath) !== undefined`), `useRscNavigation` (`navigateRsc`, `clearRscNavigationCache`, `isRscNavigationFromCache`), `getSearchParam` and `getBaseSearchParam` (read `searchParams[key]`, taking the first value of an array), `dictionaryContext`, `groupByOwner` and `ServiceRegistry`. Eleven that only their own file uses, such as the console helpers in `akanjs/server` and `getClientRuntime` in `akanjs/client`, are `@internal`: they are not meant for use outside akanjs and may stop being exported in a later minor.

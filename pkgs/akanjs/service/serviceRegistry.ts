@@ -3,6 +3,7 @@ import { applyMixins } from "akanjs/common";
 import type { AdaptorCls } from "./adapt";
 import type { ServiceCls } from "./serve";
 
+/** @deprecated Nothing in akanjs registers into it or reads it; removed in a later minor. */
 export class ServiceRegistry {
   static #database = new Map<string, ServiceCls>();
   static #plain = new Map<string, ServiceCls>();
