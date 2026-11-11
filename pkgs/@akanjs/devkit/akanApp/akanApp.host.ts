@@ -168,8 +168,7 @@ export class AkanAppHost {
     //? Nothing reapplies once it stops: a pages ok received meanwhile would bring children back after it.
     this.#stopping = true;
     this.#recycler.drop();
-    this.#idle.cancel();
-    this.#idle.stopWatcher();
+    this.#idle.stop();
     this.#backend.cancelTimers();
     this.#builder.cancelRecovery();
     //? A stopped builder sends no exit: a start waiting for its ready would sit out the ready timeout, then retry.
