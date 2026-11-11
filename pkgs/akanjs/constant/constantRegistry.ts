@@ -8,16 +8,12 @@ import {
   type PrimitiveValue,
 } from "akanjs/base";
 import { capitalize, lowerlize } from "akanjs/common";
-import {
-  type ConstantCls,
-  type ConstantModelRef,
-  deserialize,
-  type FieldObject,
-  type PurifiedModel,
-  serialize,
-} from ".";
+import type { FieldObject } from "./fieldInfo";
+import type { PurifiedModel } from "./purify";
 import { RefNameClaims, type RefNameOwner } from "./refNameClaims";
+import { deserialize, serialize } from "./serialize";
 import type { ConstantType, DefaultOf, DocumentModel, QueryOf } from "./types";
+import type { ConstantCls, ConstantModelRef } from "./via";
 
 export class ConstantRegistry {
   static database = new Map<string, ConstantModel>();

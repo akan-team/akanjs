@@ -7,7 +7,7 @@ import type {
   CodeAgentSubagent,
   CodeAgentToolOutcome,
   CodeAgentToolSummary,
-} from "akanjs/common";
+} from "./codeAgentWire";
 
 export type CodeTranscriptPart =
   | { kind: "user"; id: string; text: string; images?: number }

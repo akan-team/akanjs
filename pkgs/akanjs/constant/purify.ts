@@ -12,15 +12,10 @@ import {
   type PrimitiveScalar,
 } from "akanjs/base";
 import { Logger } from "akanjs/common";
-
-import {
-  type BaseObject,
-  type ConstantModelRef,
-  ConstantRegistry,
-  type DefaultOf,
-  type DefaultOfSchema,
-  type FieldProps,
-} from ".";
+import { ConstantRegistry } from "./constantRegistry";
+import type { FieldProps } from "./fieldInfo";
+import type { BaseObject, DefaultOf, DefaultOfSchema } from "./types";
+import type { ConstantModelRef } from "./via";
 
 type Purified<O> = O extends BaseObject
   ? string

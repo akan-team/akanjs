@@ -1,7 +1,7 @@
 import type { GetStateObject, MergedValues } from "akanjs/base";
 import type { BaseInsight, BaseObject } from "akanjs/constant";
 import type { SliceInfo, SliceInfoArgNames, SliceInfoRefName } from "akanjs/signal";
-import type { ModelDictInfo, ScalarDictInfo, ServiceDictInfo } from ".";
+import type { ModelDictInfo, ScalarDictInfo, ServiceDictInfo } from "./dictInfo";
 import type { DictArgNames, DictEndpointShape, DictFilterQuery, DictFilterSort, DictSliceShape } from "./dictShape";
 
 interface Trans {

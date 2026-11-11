@@ -1,5 +1,6 @@
-import type { CLIENT_VALUE, Cls, DEFAULT_VALUE, PURIFIED_VALUE, SERVER_VALUE } from ".";
 import { Float, Int } from "./primitiveRegistry";
+import type { CLIENT_VALUE, DEFAULT_VALUE, PURIFIED_VALUE, SERVER_VALUE } from "./symbols";
+import type { Cls } from "./types";
 
 class EnumPrototype {}
 export type EnumInstance<RefName extends string = string, T = string | number> = Cls<

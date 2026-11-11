@@ -9,7 +9,7 @@
     "server/rscWorkerHost.ts": 1116,
     "server/ssrFromRscRenderer.tsx": 839,
     "service/predefinedAdaptor/sql/SqlDocumentStore.ts": 1384,
-    "signal/signalContext.ts": 1010,
+    "signal/signalContext.ts": 983,
     "ui/Constant/Doc.tsx": 812
   },
   "akan.size.function": {

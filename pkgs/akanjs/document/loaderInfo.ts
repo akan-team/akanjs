@@ -1,6 +1,7 @@
 import { type Cls, LOADER_META } from "akanjs/base";
 import type { QueryOf } from "akanjs/constant";
-import type { Loader, SchemaOf } from ".";
+import type { Loader } from "./dataLoader";
+import type { SchemaOf } from "./documentSchema";
 
 type LoaderType = "field" | "arrayField" | "query";
 

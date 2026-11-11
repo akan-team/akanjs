@@ -20,6 +20,7 @@ export * from "./internalInfo";
 export * from "./mcp";
 export * from "./middleware";
 export * from "./openapi";
+export * from "./resolveFieldContext";
 export { SignalFailure } from "./SignalFailure";
 export * from "./schema";
 export * from "./serializer";

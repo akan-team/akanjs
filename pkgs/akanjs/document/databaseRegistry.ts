@@ -1,5 +1,6 @@
 import type { ConstantCls } from "akanjs/constant";
-import type { DatabaseCls, ExtractQuery, ExtractSort, FilterCls, FilterInstance } from ".";
+import type { DatabaseCls } from "./by";
+import type { ExtractQuery, ExtractSort, FilterCls, FilterInstance } from "./filterMeta";
 import type { ModelCls } from "./loaderInfo";
 
 export interface DatabaseModel<
