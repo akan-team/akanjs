@@ -17,7 +17,10 @@
   ],
   "events": ["load", "loadFailed", "gone", "consoleMessage"],
   "web": null,
-  "desktop": "./src/desktop.ts",
+  "desktop": {
+    "module": "./src/desktop.ts",
+    "unsupported": { "macos": ["sendKey", "setMuted", "capture"], "linux": ["sendKey"] }
+  },
   "ios": null,
   "android": null
 }

@@ -1566,12 +1566,13 @@ fn open_window(target: &EventLoopWindowTarget<UserEvent>, shell: &Shell, context
     use wry::WebViewBuilderExtDarwin;
     builder.with_on_web_content_process_terminate_handler(move || send(UserEvent::WebviewGone { window: id, reason: "terminated" }))
   };
-  // Linux: inside tao's GTK box, which works on Wayland as well as X11 (wry's build() is X11 only).
+  // Linux: inside tao's GTK box, which works on Wayland as well as X11 (wry's build() is X11 only), on the overlay
+  // external views lie on.
   #[cfg(target_os = "linux")]
   let webview = {
     use tao::platform::unix::WindowExtUnix;
     use wry::WebViewBuilderExtUnix;
-    builder.build_gtk(window.default_vbox().ok_or("webview: the window has no GTK box")?)
+    builder.build_gtk(&linux::external::page_layer(window.default_vbox().ok_or("webview: the window has no GTK box")?))
   };
   #[cfg(not(target_os = "linux"))]
   let webview = builder.build(&window);
@@ -1785,15 +1786,20 @@ impl Windows {
     }
   }
 
-  /// evaluate and cdp answer from the engine's callback: true when this took the op.
+  /// evaluate and cdp (and clearData on Linux) answer from the engine's callback: true when this took the op.
   fn external_async(&self, id: u64, json: &str) -> bool {
     let Ok(cmd) = json::parse(json) else { return false };
     let op = cmd.get("op").and_then(|v| v.as_str()).unwrap_or("");
-    if op != "externalView.evaluate" && op != "externalView.cdp" {
+    let clear = cfg!(target_os = "linux") && op == "externalView.clearData";
+    if op != "externalView.evaluate" && op != "externalView.cdp" && !clear {
       return false;
     }
     let started = (|| -> Result<(), String> {
       let view = cmd.get("view").and_then(|v| v.as_str()).ok_or("view must be a string")?;
+      #[cfg(target_os = "linux")]
+      if clear {
+        return self.external.clear_data_then(view, move |result| reply(id, result));
+      }
       if op == "externalView.evaluate" {
         let script = cmd.get("script").and_then(|v| v.as_str()).ok_or("script must be a string")?;
         //? Sent on as a JSON string: the engine's text is spliced into the reply, and not every engine's is JSON.
@@ -2145,6 +2151,8 @@ pub unsafe extern "C" fn akan_native_run(config_json: *const c_char) -> i32 {
             push_event(&format!(r#"{{"type":"window","event":"focused","window":{id},"value":{focused}}}"#));
             if focused {
               windows.focused(id);
+              #[cfg(target_os = "linux")]
+              windows.external.refocus(id);
             }
           }
           WindowEvent::Resized(_) => {

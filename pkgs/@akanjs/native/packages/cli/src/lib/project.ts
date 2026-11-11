@@ -408,9 +408,14 @@ export interface AndroidManifest extends NativeSubset {
   minSdk?: number;
 }
 
+export const DESKTOP_OSES = ["macos", "windows", "linux"] as const;
+export type DesktopOs = (typeof DESKTOP_OSES)[number];
+
 /** Desktop Bun module that implements only some methods (the rest are UNSUPPORTED, or web with `web: true`). */
 export interface DesktopManifest extends NativeSubset {
   module: string;
+  /** The methods one desktop OS lacks: left out of that OS's declaration, so `isSupported()` is false there only. */
+  unsupported?: Partial<Record<DesktopOs, string[]>>;
 }
 
 export interface PluginManifest {
@@ -538,6 +543,25 @@ export function resolvePlugins(appDir: string, specs: string[], resolveFrom = ap
     }
     if (!Array.isArray(manifest.methods) || !Array.isArray(manifest.events ?? []))
       throw new CliError(`plugin ${spec}: methods and events must be arrays`);
+    const desktop = typeof manifest.desktop === "object" && manifest.desktop ? manifest.desktop : undefined;
+    if (desktop?.unsupported !== undefined) {
+      const declared = desktop.methods ?? manifest.methods;
+      const lists = desktop.unsupported as Record<string, unknown> | null;
+      const valid =
+        !!lists &&
+        typeof lists === "object" &&
+        !Array.isArray(lists) &&
+        Object.entries(lists).every(
+          ([os, names]) =>
+            (DESKTOP_OSES as readonly string[]).includes(os) &&
+            Array.isArray(names) &&
+            names.every((name) => typeof name === "string" && declared.includes(name)),
+        );
+      if (!valid)
+        throw new CliError(
+          `plugin ${spec}: desktop.unsupported must map macos, windows or linux to methods of its desktop entry`,
+        );
+    }
     manifest.events ??= [];
     // Names starting with "$" are the bridge's own operations; a plugin's may not look like one.
     for (const [kind, names] of [
@@ -610,7 +634,7 @@ const MANIFEST_KEYS: Record<string, readonly string[]> = {
     "maven",
     "minSdk",
   ],
-  desktop: ["methods", "events", "web", "module"],
+  desktop: ["methods", "events", "web", "module", "unsupported"],
   macos: ["infoPlist"],
 };
 
