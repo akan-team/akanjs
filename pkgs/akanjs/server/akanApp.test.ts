@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -8,6 +8,8 @@ import { resetEnvCache } from "../base/baseEnv";
 import { TrustedProxy } from "../common/TrustedProxy";
 import { AkanApp } from "./akanApp";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
+import { LogControlSocket } from "./logging/logControlSocket";
+import { RotatingLogWriter } from "./logging/rotatingLogWriter";
 import { HostAllowlist } from "./routing/hostAllowlist";
 
 const tempRoots: string[] = [];
@@ -922,6 +924,35 @@ describe("AkanApp", () => {
     await wait(300);
     expect(await fetch(`http://127.0.0.1:${port}/`).catch(() => null)).toBeNull();
     expect((await readdir(runtimeDir).catch(() => [])).filter((name) => name.endsWith(".sock"))).toEqual([]);
+  }, 20_000);
+
+  test("a stop while start opens its log socket spawns nothing and closes the log file it opens afterwards", async () => {
+    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-stop-in-log-open-");
+    await writeOkChild(serverPath, "ok");
+    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port });
+    const close = mock(async () => undefined);
+    const writer = spyOn(RotatingLogWriter, "fromRuntimeDir").mockReturnValue({
+      close,
+      write: () => undefined,
+    } as unknown as RotatingLogWriter);
+    const open = spyOn(LogControlSocket, "open").mockImplementation(async () => {
+      await app.stop();
+      return null;
+    });
+
+    try {
+      expect(await Promise.race([app.start().then(() => "returned"), wait(2_000).then(() => "still running")])).toBe(
+        "returned",
+      );
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledTimes(1);
+      await wait(300);
+      expect(await fetch(`http://127.0.0.1:${port}/`).catch(() => null)).toBeNull();
+      expect((await readdir(runtimeDir).catch(() => [])).filter((name) => name.endsWith(".sock"))).toEqual([]);
+    } finally {
+      open.mockRestore();
+      writer.mockRestore();
+    }
   }, 20_000);
 
   test("honors an explicitly configured runtimeDir for child sockets", async () => {
