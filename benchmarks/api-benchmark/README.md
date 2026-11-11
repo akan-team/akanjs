@@ -245,7 +245,7 @@ Instrumentation points (all no-op when `AKAN_TRACE` is unset):
 - `pkgs/akanjs/signal/middleware.ts` — cache hit/miss
 - `pkgs/akanjs/server/resolver/database.resolver.ts` — queries/request + DataLoader batches
 - `pkgs/akanjs/server/processMetricsCollector.ts` — event-loop lag + GC duration
-- `pkgs/akanjs/server/gateway/gatewayStatus.ts` — gateway proxy-hop timing
+- `pkgs/akanjs/server/gateway/gatewayHttpProxy.ts` — gateway proxy-hop timing
 
 ### How the trace snapshot is collected
 
