@@ -16,7 +16,8 @@
 //    a frame's mailto: link,
 // 5. holds the keyboard while it is shown (the page has it while it is hidden), takes it back when its window is
 //    active again, takes sendKey's keydown and keyup with their codes whether it, the page or another window has the
-//    focus and while it is hidden, the page seeing none, captures its own content as a PNG, and mutes,
+//    focus, while it is hidden and while an app dialog is open, the page and the dialog seeing none, types sendKey's
+//    text into a field, answers UNSUPPORTED while its window is hidden, captures its own content as a PNG, and mutes,
 // 6. plays sound without a gesture, and a view opened with autoplay false does not,
 // 7. keeps storage of its own, which clearData clears,
 // 8. loads again when its web process ends, counting restarts, with its init script.
@@ -111,6 +112,8 @@ closedOff.stop(true);
 
 const PROBE = `
 import { externalView } from ${JSON.stringify(join(root, "plugins/external-view/src/index.ts"))};
+import { dialog } from ${JSON.stringify(join(root, "plugins/dialog/src/index.ts"))};
+import { appWindow } from ${JSON.stringify(join(root, "plugins/window/src/index.ts"))};
 const ORIGIN = ${JSON.stringify(origin)}, OTHER = ${JSON.stringify(other)}, DEAD = ${JSON.stringify(dead)}, DEAD_OFF = ${JSON.stringify(deadOff)};
 const log = (m) => console.info("AKAN_EV_PROBE " + m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -239,7 +242,7 @@ async function main() {
   await holdsKeyboard("shown");
   const regained = await checkpoint("regain", { innerWidth, innerHeight });
   if (!regained.skipped) await holdsKeyboard("its window active again");
-  const SENT = [["z", "KeyZ"], ["1", "Digit1"], [" ", "Space"], ["[", "BracketLeft"], ["ArrowLeft", "ArrowLeft"], ["Enter", "Enter"]];
+  const SENT = [["z", "KeyZ"], ["1", "Digit1"], ["7", "Numpad7"], [" ", "Space"], ["[", "BracketLeft"], ["ArrowLeft", "ArrowLeft"], ["Enter", "Enter"]];
   const expected = SENT.flatMap(([key, code]) => ["keydown," + key + "," + code, "keyup," + key + "," + code]).join("|");
   const sent = async (what) => {
     await inView("window.__sent = []; 0");
@@ -261,6 +264,23 @@ async function main() {
     await sent("another window focused");
     await checkpoint("sendRefocused");
     await holdsKeyboard("its window active again after sendKey");
+    let answered = null;
+    dialog.prompt({ title: "PIN", message: "PIN", inputText: "" }).then((r) => { answered = r; }, (e) => { answered = { error: e?.code ?? String(e) }; });
+    await sleep(1500);
+    await sent("an app dialog open");
+    if (answered) throw new Error("sendKey's keys answered the app's dialog: " + JSON.stringify(answered));
+    await checkpoint("dismiss");
+    await until("the dialog closed", () => answered, 10000);
+    if (!answered.cancelled || answered.value !== "") throw new Error("the dialog took sendKey's keys: " + JSON.stringify(answered));
+    await holdsKeyboard("the dialog closed");
+    await sent("the dialog closed");
+    await appWindow.hide();
+    await sleep(500);
+    const withdrawn = await code(externalView.sendKey({ id: "board", key: "b", code: "KeyB" }));
+    await appWindow.show();
+    if (withdrawn !== "UNSUPPORTED") throw new Error("sendKey with its window hidden answered " + withdrawn);
+    await checkpoint("sendRefocused");
+    await holdsKeyboard("its window shown again");
   }
   await externalView.setVisible({ id: "board", visible: false });
   await until("the page holds the keyboard", () => document.hasFocus(), 10000);
@@ -268,6 +288,12 @@ async function main() {
   await externalView.setVisible({ id: "board", visible: true });
   await holdsKeyboard("shown after sendKey while hidden");
   await sent("the view shown again");
+  await inView("window.__field = document.createElement('input'); document.body.append(window.__field); window.__field.focus(); 0");
+  for (const [key, code] of [["a", "KeyA"], ["7", "Numpad7"], [" ", "Space"], ["b", "KeyB"]]) await externalView.sendKey({ id: "board", key, code });
+  let field = "";
+  for (const t = Date.now(); Date.now() - t < 5000 && field !== "a7 b"; await sleep(250)) field = await inView("window.__field.value");
+  if (field !== "a7 b") throw new Error("sendKey typed " + JSON.stringify(field) + " into a field, focused " + (await inView("document.activeElement === window.__field")));
+  await inView("window.__field.remove(); 0");
   const shot = await externalView.capture({ id: "board" });
   log("capture " + JSON.stringify(shot));
   if (!(shot.width > 0 && shot.height > 0)) throw new Error("no capture");
@@ -418,6 +444,11 @@ try {
       return JSON.stringify({ ok: true });
     }
     if (!x11) return JSON.stringify({ ok: true, skipped: true });
+    //? The dialog's grab takes a real key whichever window has the X focus.
+    if (name === "dismiss") {
+      Bun.spawnSync(["xdotool", "key", "Escape"], { timeout: 30_000 });
+      await Bun.sleep(700);
+    }
     const id = Bun.spawnSync(["xdotool", "search", "--onlyvisible", "--pid", String(started.pid)], { timeout: 30_000 })
       .stdout.toString()
       .trim()
@@ -452,10 +483,19 @@ try {
         "--sync",
         xdotool("search", "--maxdepth", "0", "").stdout.toString().trim().split("\n")[0] ?? "",
       );
-    if (name === "sendRefocused") xdotool("windowfocus", "--sync", id ?? "");
-    if (name.startsWith("send")) await Bun.sleep(500);
+    if (name === "sendRefocused" || name === "dismiss") xdotool("windowfocus", "--sync", id ?? "");
+    if (name.startsWith("send") || name === "dismiss") await Bun.sleep(500);
     if (
-      ["active", "typeInView", "typeInPage", "regain", "sendPageFocused", "sendBlurred", "sendRefocused"].includes(name)
+      [
+        "active",
+        "typeInView",
+        "typeInPage",
+        "regain",
+        "sendPageFocused",
+        "sendBlurred",
+        "sendRefocused",
+        "dismiss",
+      ].includes(name)
     )
       return JSON.stringify({ ok: true });
     await Bun.sleep(700);

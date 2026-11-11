@@ -27,23 +27,29 @@ pub(crate) fn page_layer(vbox: &gtk::Box) -> gtk::Overlay {
   let overlay = gtk::Overlay::new();
   vbox.pack_start(&overlay, true, true, 0);
   overlay.show();
-  if let Some(window) = vbox.toplevel().and_then(|top| top.downcast::<gtk::Window>().ok()) {
-    window.connect_key_press_event(hand_back);
-    window.connect_key_release_event(hand_back);
-  }
+  static SNOOPER: std::sync::Once = std::sync::Once::new();
+  // SAFETY: page_layer runs on GTK's thread once GTK is up, and the snooper stays for the process.
+  SNOOPER.call_once(|| unsafe {
+    gtk::ffi::gtk_key_snooper_install(Some(hand_back), std::ptr::null_mut());
+  });
   overlay
 }
 
-//? WebKit hands an unhandled key back via the window, which would give it to the page; a view takes its own or drops its next.
-fn hand_back(window: &gtk::Window, key: &gdk::EventKey) -> glib::Propagation {
-  if !key.is_send_event() || key.window() == window.window() {
-    return glib::Propagation::Proceed;
+//? WebKit hands a key the page left unhandled back through gtk_main_do_event, which gives it to the window's page, or
+//? to an app dialog holding a grab, and leaves the view to drop its next key. Key snoopers run before either: a sent
+//? key goes back to its own view, which takes it as the one handed back.
+unsafe extern "C" fn hand_back(_grab: *mut gtk::ffi::GtkWidget, key: *mut gdk::ffi::GdkEventKey, _: glib::ffi::gpointer) -> std::os::raw::c_int {
+  use glib::translate::FromGlibPtrBorrow;
+  let event = gdk::Event::from_glib_borrow(key.cast::<gdk::ffi::GdkEvent>());
+  let Some(window) = event.window().filter(|_| event.is_send_event()) else { return 0 };
+  let mut copy = (*event).clone();
+  let Some(view) = gtk::event_widget(&mut copy).and_then(|widget| widget.downcast::<webkit2gtk::WebView>().ok()) else { return 0 };
+  // SAFETY: only key_window sets KEY_WINDOW, always to a gdk::Window.
+  if unsafe { view.data::<gdk::Window>(KEY_WINDOW) }.is_none_or(|own| unsafe { own.as_ref() } != &window) {
+    return 0;
   }
-  let mut event = (**key).clone();
-  if let Some(view) = gtk::event_widget(&mut event).filter(|widget| widget != window.upcast_ref::<gtk::Widget>()) {
-    view.event(&event);
-  }
-  glib::Propagation::Stop
+  view.event(&copy);
+  1
 }
 
 /// The view in a box of its own on the window's overlay, laid out at `bounds`.
@@ -358,6 +364,22 @@ pub(crate) fn evdev(code: &str) -> Option<u16> {
   })
 }
 
+/// The keysym the page reads `key` off: `code`'s own when it types the same text (a numpad digit), else `key`'s.
+fn keyval(key: &str, code: &str) -> Option<u32> {
+  let named = |name: &str| keysym(name).map(|sym| gdk::keys::Key::from_name(&sym));
+  let mut chars = key.chars();
+  let sym = match (chars.next(), chars.next()) {
+    (Some(c), None) => named(code).filter(|sym| sym.to_unicode() == Some(c)).unwrap_or_else(|| gdk::keys::Key::from_unicode(c)),
+    _ => named(key)?,
+  };
+  Some(*sym)
+}
+
+//? IBus's IBUS_IGNORED_MASK and Fcitx's FcitxKeyState_IgnoredMask: both commit such a key's own text, where a
+//? composing input method (Hangul, Pinyin) would make a sent `z` part of a syllable.
+const IM_PASS_THROUGH: u32 = 1 << 25;
+const KEY_WINDOW: &str = "akan-key-window";
+
 //? Sent to the view's widget, not the display: it reaches that view alone, focused, hidden or not, and counts as trusted.
 fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
   let field = |k: &str| params.get(k).and_then(|v| v.as_str()).unwrap_or("");
@@ -367,18 +389,15 @@ fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
     other => return Err(format!("INVALID_ARGS: no key event of type {other}")),
   };
   let (key, code) = (field("key"), field("code"));
-  let unknown = || format!("INVALID_ARGS: code {code} is not a key sendKey knows");
-  let mut chars = key.chars();
-  let keyval = match (chars.next(), chars.next()) {
-    (Some(c), None) => *gdk::keys::Key::from_unicode(c),
-    _ => *gdk::keys::Key::from_name(&keysym(code).ok_or_else(unknown)?),
-  };
-  let keycode = evdev(code).ok_or_else(unknown)? + 8;
+  let keyval = keyval(key, code).ok_or_else(|| format!("INVALID_ARGS: key {key} is not one sendKey sends on Linux"))?;
+  let keycode = evdev(code).ok_or_else(|| format!("INVALID_ARGS: code {code} is not a key sendKey knows"))? + 8;
+  //? GTK's key bindings read a key off its keycode and state: a numpad digit without NumLock (Mod2) is Home, End, ….
+  let num_lock = if code.starts_with("Numpad") { gdk::ModifierType::MOD2_MASK.bits() } else { 0 };
   let wv = webview.webview();
   wv.realize();
   let window = key_window(&wv)?;
   if !window.is_viewable() {
-    return Err("UNAVAILABLE: the view's window is not on screen".into());
+    return Err("UNSUPPORTED: sendKey on Linux needs the view's window shown".into());
   }
   let display = window.display();
   let mut native = gdk::Event::new(kind);
@@ -390,6 +409,7 @@ fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
     (*raw).window = window.to_glib_full();
     (*raw).time = (glib::monotonic_time() / 1000) as u32;
     (*raw).send_event = 1;
+    (*raw).state = IM_PASS_THROUGH | num_lock;
     (*raw).keyval = keyval;
     (*raw).hardware_keycode = keycode;
   }
@@ -400,12 +420,11 @@ fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
 //? GTK drops a key press on a window not viewable, a hidden view's own: keys go through an off-screen one routed to it.
 fn key_window(wv: &webkit2gtk::WebView) -> Result<gdk::Window, String> {
   use glib::translate::ToGlibPtr;
-  const KEY: &str = "akan-key-window";
-  // SAFETY: only key_window sets KEY, always to a gdk::Window.
-  if let Some(window) = unsafe { wv.data::<gdk::Window>(KEY) } {
+  // SAFETY: only key_window sets KEY_WINDOW, always to a gdk::Window.
+  if let Some(window) = unsafe { wv.data::<gdk::Window>(KEY_WINDOW) } {
     return Ok(unsafe { window.as_ref() }.clone());
   }
-  let top = wv.toplevel().and_then(|top| top.window()).ok_or("UNAVAILABLE: the view's window is not on screen yet")?;
+  let top = wv.toplevel().and_then(|top| top.window()).ok_or("UNSUPPORTED: sendKey on Linux needs the view's window shown")?;
   let attrs = gdk::WindowAttr {
     x: Some(-1),
     y: Some(-1),
@@ -419,7 +438,7 @@ fn key_window(wv: &webkit2gtk::WebView) -> Result<gdk::Window, String> {
   // SAFETY: the window names the view as its widget only while the view lives: the view's destroy destroys it.
   unsafe {
     gdk::ffi::gdk_window_set_user_data(window.to_glib_none().0, wv.upcast_ref::<glib::Object>().as_ptr() as *mut _);
-    wv.set_data(KEY, window.clone());
+    wv.set_data(KEY_WINDOW, window.clone());
   }
   window.show();
   let destroyed = window.clone();
@@ -442,7 +461,21 @@ pub(crate) fn focus_page(any: &WebView) {
 
 #[cfg(test)]
 mod tests {
-  use super::{evdev, keysym};
+  use super::{evdev, keysym, keyval};
+  use gtk::gdk::keys::constants as k;
+
+  #[test]
+  fn the_page_reads_key_and_a_numpad_digit_keeps_its_place() {
+    assert_eq!(keyval("z", "KeyZ"), Some(*k::z));
+    assert_eq!(keyval("Z", "KeyZ"), Some(*k::Z));
+    assert_eq!(keyval(" ", "Space"), Some(*k::space));
+    assert_eq!(keyval("7", "Numpad7"), Some(*k::KP_7));
+    assert_eq!(keyval("7", "Digit7"), Some(*k::_7));
+    assert_eq!(keyval("ArrowLeft", "Numpad4"), Some(*k::Left));
+    assert_eq!(keyval("Enter", "NumpadEnter"), Some(*k::Return));
+    assert_eq!(keyval("F5", "F5"), Some(*k::F5));
+    assert_eq!(keyval("Unidentified", "KeyA"), None);
+  }
 
   #[test]
   fn every_key_virtual_key_knows_but_text_has_a_keysym() {

@@ -72,7 +72,10 @@ export interface ExternalViewApi {
    * answer within 30 s, as from a page busy in a loop; `sendKey` and `capture` time out the same way.
    */
   evaluate(args: { id: string; script: string }): Promise<{ value: unknown }>;
-  /** A trusted key press (`{ key: "z", code: "KeyZ" }`), whether or not the view has the focus. Not on macOS. */
+  /**
+   * A trusted key press (`{ key: "z", code: "KeyZ" }`), whether or not the view has the focus. Not on macOS; on Linux
+   * UNSUPPORTED while the view's window is hidden.
+   */
   sendKey(args: { id: string; key: string; code: string }): Promise<void>;
   /** The view's own sound only; the system volume is the volume plugin's. Not on macOS. */
   setMuted(args: { id: string; muted: boolean }): Promise<void>;
