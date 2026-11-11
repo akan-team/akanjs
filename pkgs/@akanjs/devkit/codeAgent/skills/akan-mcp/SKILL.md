@@ -36,6 +36,9 @@ an endpoint with a real guard is published, one with none is refused, and so is 
 
 - `plug(AgentToolsRole)` gives a service `listAs(account, { allow })` / `callAs(account, call)`: the same catalogue
   and refusals in-process, batch servers included. Pass only an account the server resolved, never client input.
+- `this.agentService.loop({ account | principal, allow, messages, approve, untrusted, onMessage, meta, budget })`
+  runs a model over those tools until it answers; `option.setAgentAccountResolver` resolves a stored `principal`
+  before every round. Each round is metered as its own turn with `turn.loop` and `turn.meta`.
 
 ## Verify
 

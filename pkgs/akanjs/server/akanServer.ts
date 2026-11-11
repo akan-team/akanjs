@@ -13,14 +13,12 @@ import type {
   SolidConfig,
 } from "akanjs/service";
 import type { ServerSignal, ServerSignalCls, WebsocketPublishData } from "akanjs/signal";
-import { AgentMeter } from "../signal/agentMeter";
-import { AgentRelayPolicy } from "../signal/agentRelayPolicy";
 import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { EndpointRateLimit } from "../signal/endpointRateLimit";
-import { AgentRelayAccess } from "../signal/guards";
 import { createOpenApiDocument } from "../signal/openapi";
 import { FetchSerializer } from "../signal/serializer";
 import { SignalContext } from "../signal/signalContext";
+import { AgentHooks } from "./agentHooks";
 import { AKAN_CHILD_HOST } from "./akanAppHeaders";
 import type { AkanLib, AkanLibProps } from "./akanLib";
 import { BinaryPubsub } from "./binaryPubsub";
@@ -228,12 +226,7 @@ export class AkanServer {
     libs.forEach((lib) => {
       const mcp = lib.option.getMcp(this.env);
       if (mcp !== undefined) this.setMcp(mcp);
-      const agentAccess = lib.option.getAgentAccess();
-      if (agentAccess !== undefined) AgentRelayAccess.use(agentAccess);
-      const agentRequestPolicy = lib.option.getAgentRequestPolicy();
-      if (agentRequestPolicy !== undefined) AgentRelayPolicy.use(agentRequestPolicy);
-      const [usage, quota] = [lib.option.getAgentUsage(), lib.option.getAgentQuota()];
-      if (usage !== undefined || quota !== undefined) AgentMeter.use({ usage, quota });
+      AgentHooks.apply(lib.option);
       const crossSite = lib.option.getCrossSite();
       if (crossSite !== undefined) CrossSiteGuard.configure(crossSite);
       const rateLimit = lib.option.getRateLimit(this.env);

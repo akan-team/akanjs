@@ -38,6 +38,9 @@ an endpoint with a real guard is published, one with none is refused, and so is 
 
 - `plug(AgentToolsRole)` gives a service `listAs(account, { allow })` / `callAs(account, call)`: the same catalogue
   and refusals in-process, batch servers included. Pass only an account the server resolved, never client input.
+- `this.agentService.loop({ account | principal, allow, messages, approve, untrusted, onMessage, meta, budget })`
+  runs a model over those tools until it answers; `option.setAgentAccountResolver` resolves a stored `principal`
+  before every round. Each round is metered as its own turn with `turn.loop` and `turn.meta`.
 
 ## Verify
 
@@ -53,4 +56,4 @@ The full guidelines, split where each part fits one read; `akan guideline show <
 
 - `.agents/skills/akan-mcp/references/mcpRule-1.md` — Purpose · Exposure Rule · Keeping An Endpoint Off The Shelf — `mcp: false` · Configuration · Declaring Endpoints · …
 - `.agents/skills/akan-mcp/references/mcpRule-2.md` — Authentication — The Authorization Server Is The Same Process · Page Prompts — `page().prompt()` · MCP Apps — One Component Of A Page, Drawn In The Chat · Progress Reporting · Calling The Catalogue In-Process — `AgentToolsRole` · …
-- `.agents/skills/akan-mcp/references/mcpRule-3.md` — Choosing What To Open · Writing `instructions` · Verifying An App
+- `.agents/skills/akan-mcp/references/mcpRule-3.md` — Rolling MCP Out To An App · Choosing What To Open · Writing `instructions` · Verifying An App

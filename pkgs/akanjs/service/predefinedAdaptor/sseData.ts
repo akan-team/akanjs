@@ -22,3 +22,18 @@ export const eachSseData = async (body: ReadableStream<Uint8Array>, onData: (pay
   }
   feed(buffer.trimEnd());
 };
+
+/** `null` when the arguments are not one JSON object; a tool called with none streams no fragment at all. */
+export const parseToolArgs = (raw: string | undefined): Record<string, unknown> | null => {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+};
+
+//? Security: a call that lost its arguments would otherwise run with `{}`, which every optional-argument write accepts.
+export const isStreamCut = (calls: Iterable<{ args: string }>, ended: boolean): boolean =>
+  !ended || [...calls].some(({ args }) => parseToolArgs(args) === null);

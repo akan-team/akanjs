@@ -16,7 +16,7 @@ import {
 } from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
 import { LlmSpend } from "./llmSpend";
-import { eachSseData } from "./sseData";
+import { eachSseData, isStreamCut, parseToolArgs } from "./sseData";
 
 type AnthropicSource = { type: "base64"; media_type: string; data: string } | { type: "url"; url: string };
 type AnthropicContentBlock =
@@ -44,6 +44,7 @@ interface AnthropicAnswer {
 }
 interface AnthropicStreamEvent {
   type?: string;
+  error?: { type?: string; message?: string };
   message?: { usage?: AnthropicUsage };
   usage?: AnthropicUsage;
   index?: number;
@@ -108,7 +109,7 @@ export class AnthropicLlm
         AnthropicLlm.requestBody(model, request, { accepts, stream: true, maxTokens }),
         signal,
       );
-      return { ...this.#reported(await AnthropicLlm.consumeStream(body, onDelta)), model };
+      return { ...this.#reported(await AnthropicLlm.consumeStream(body, onDelta, this.#host)), model };
     } catch (error) {
       if (!signal?.aborted)
         this.logger.error(`Anthropic turn failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -357,14 +358,20 @@ export class AnthropicLlm
   static async consumeStream(
     body: ReadableStream<Uint8Array>,
     onDelta: (delta: string) => void,
+    host = "The model provider",
   ): Promise<LlmTurnAnswer> {
     const calls = new Map<number, { id?: string; name?: string; args: string }>();
     let text = "";
     let stopReason: string | null = null;
+    let stopped = false;
+    let failure: Error | null = null;
     let usage: AnthropicUsage = {};
     let finalCount = false;
     const read = eachSseData(body, (payload) => {
       const event = JSON.parse(payload) as AnthropicStreamEvent;
+      if (event.type === "error")
+        failure = LlmOverflow.refusal(host, 500, event.error?.message || event.error?.type || "no reason given");
+      if (event.type === "message_stop") stopped = true;
       const index = event.index ?? 0;
       if (event.type === "content_block_start" && event.content_block?.type === "tool_use")
         calls.set(index, { id: event.content_block.id, name: event.content_block.name, args: "" });
@@ -387,7 +394,11 @@ export class AnthropicLlm
         finalCount = true;
       }
     });
-    await read.catch((error: unknown) => {
+    //? Thrown here, as `eachSseData` swallows a throw from its callback: an `error` event arrives on a 200 response.
+    const failed = read.then(() => {
+      if (failure) throw failure;
+    });
+    await failed.catch((error: unknown) => {
       const partial = Object.keys(usage).length ? AnthropicLlm.usageOf(usage) : undefined;
       const streamed = text + [...calls.values()].map(({ args }) => args).join("");
       throw LlmSpend.attach(
@@ -403,19 +414,15 @@ export class AnthropicLlm
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: AnthropicLlm.stopOf(stopReason, toolCalls.length),
+      stop: isStreamCut(calls.values(), stopReason !== null || stopped)
+        ? "length"
+        : AnthropicLlm.stopOf(stopReason, toolCalls.length),
       ...(Object.keys(usage).length ? { usage: AnthropicLlm.usageOf(usage) } : {}),
     };
   }
 
   /** A tool called with no arguments streams no fragment at all, so an empty string is an empty object. */
   static parsedArgs(raw: string): Record<string, unknown> {
-    if (!raw) return {};
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-    } catch {
-      return {};
-    }
+    return parseToolArgs(raw) ?? {};
   }
 }

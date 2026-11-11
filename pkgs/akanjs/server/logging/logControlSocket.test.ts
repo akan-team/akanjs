@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
-import { statSync } from "node:fs";
+import { existsSync, rmSync, statSync } from "node:fs";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -54,6 +54,16 @@ class Client {
     this.#socket.end();
   }
 }
+
+const answers = async (unix: string) => {
+  try {
+    const socket = await Bun.connect<undefined>({ unix, socket: { data: () => undefined } });
+    socket.end();
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 describe("LogControlSocket", () => {
   let dir: string;
@@ -160,6 +170,158 @@ describe("LogControlSocket", () => {
   test("a second server in the same runtime dir leaves the live socket alone", async () => {
     const second = await LogControlSocket.open(hub, dir, new Logger("LogControlSocketTest"));
     expect(second).toBeNull();
+    const client = new Client();
+    await client.connect(control.path);
+    client.send({ cmd: "coverage" });
+    expect((await client.next()).type).toBe("coverage");
+    client.close();
+  });
+
+  test("a stop() while start() is pending leaves nothing bound or on disk", async () => {
+    const own = await mkdtemp(path.join(os.tmpdir(), "akan-lcs-"));
+    const second = new LogControlSocket(hub, own);
+    try {
+      const starting = second.start();
+      await second.stop();
+      await starting;
+      expect(existsSync(second.path)).toBe(false);
+      expect(await answers(second.path)).toBe(false);
+    } finally {
+      await second.stop();
+      await rm(own, { recursive: true, force: true });
+    }
+  });
+
+  test("a hub its owner closes while open() is pending abandons the socket", async () => {
+    const own = await mkdtemp(path.join(os.tmpdir(), "akan-lcs-"));
+    const ownHub = new LogHub();
+    const opening = LogControlSocket.open(ownHub, own, new Logger("LogControlSocketTest"));
+    ownHub.close();
+    const second = await opening;
+    try {
+      expect(existsSync(LogControlSocket.pathIn(own))).toBe(false);
+      expect(await answers(LogControlSocket.pathIn(own))).toBe(false);
+    } finally {
+      await second?.stop();
+      await rm(own, { recursive: true, force: true });
+    }
+  });
+
+  test("a hub closed once the socket is bound unbinds it before a restart on that path opens", async () => {
+    const own = await mkdtemp(path.join(os.tmpdir(), "akan-lcs-"));
+    const [firstHub, nextHub] = [new LogHub(), new LogHub()];
+    const logger = new Logger("LogControlSocketTest");
+    let reopening: Promise<LogControlSocket | null> = Promise.resolve(null);
+    const listen = Bun.listen;
+    const spy = spyOn(Bun, "listen").mockImplementation(((options: Parameters<typeof Bun.listen>[0]) => {
+      const server = listen(options);
+      if (spy.mock.calls.length === 1) {
+        firstHub.close();
+        reopening = LogControlSocket.open(nextHub, own, logger);
+      }
+      return server;
+    }) as typeof Bun.listen);
+    const first = await LogControlSocket.open(firstHub, own, logger);
+    const next = await reopening;
+    spy.mockRestore();
+    try {
+      expect(next).not.toBeNull();
+      const client = new Client();
+      await client.connect(LogControlSocket.pathIn(own));
+      client.send({ cmd: "coverage" });
+      expect((await client.next()).type).toBe("coverage");
+      client.close();
+    } finally {
+      await first?.stop();
+      await next?.stop();
+      nextHub.close();
+      await rm(own, { recursive: true, force: true });
+    }
+  });
+
+  test("a start on one path waits until the start ahead of it has unbound", async () => {
+    const own = await mkdtemp(path.join(os.tmpdir(), "akan-lcs-"));
+    const [firstHub, nextHub] = [new LogHub(), new LogHub()];
+    const logger = new Logger("LogControlSocketTest");
+    const steps: string[] = [];
+    const { connect, listen } = Bun;
+    const spies = [
+      spyOn(Bun, "connect").mockImplementation(((options: Parameters<typeof Bun.connect>[0]) => {
+        steps.push("probe");
+        return connect(options);
+      }) as typeof Bun.connect),
+      spyOn(Bun, "listen").mockImplementation(((options: Parameters<typeof Bun.listen>[0]) => {
+        const server = listen(options);
+        const stop = server.stop.bind(server);
+        server.stop = (closeActiveConnections?: boolean) => {
+          steps.push("unbind");
+          stop(closeActiveConnections);
+        };
+        steps.push("bind");
+        firstHub.close();
+        return server;
+      }) as typeof Bun.listen),
+    ];
+    const [first, next] = await Promise.all([
+      LogControlSocket.open(firstHub, own, logger),
+      LogControlSocket.open(nextHub, own, logger),
+    ]);
+    for (const spy of spies) spy.mockRestore();
+    try {
+      expect(steps).toEqual(["probe", "bind", "unbind", "probe", "bind"]);
+      expect(next).not.toBeNull();
+    } finally {
+      await first?.stop();
+      await next?.stop();
+      nextHub.close();
+      await rm(own, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "a socket that fails after binding is unbound before it reports",
+    async () => {
+      const own = await mkdtemp(path.join(os.tmpdir(), "akan-lcs-"));
+      const stops: unknown[] = [];
+      const listen = Bun.listen;
+      const spy = spyOn(Bun, "listen").mockImplementation(((options: Parameters<typeof Bun.listen>[0]) => {
+        const server = listen(options);
+        const stop = server.stop.bind(server);
+        server.stop = (closeActiveConnections?: boolean) => {
+          stops.push(closeActiveConnections);
+          stop(closeActiveConnections);
+        };
+        rmSync(LogControlSocket.pathIn(own));
+        return server;
+      }) as typeof Bun.listen);
+      try {
+        expect(await LogControlSocket.open(hub, own, new Logger("LogControlSocketTest"))).toBeNull();
+        expect(stops).toEqual([true]);
+      } finally {
+        spy.mockRestore();
+        await rm(own, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("the last of start(), stop(), start() wins", async () => {
+    const own = await mkdtemp(path.join(os.tmpdir(), "akan-lcs-"));
+    const second = new LogControlSocket(hub, own);
+    try {
+      await Promise.all([second.start(), second.stop(), second.start()]);
+      expect(await answers(second.path)).toBe(true);
+      await second.stop();
+      expect(existsSync(second.path)).toBe(false);
+    } finally {
+      await second.stop();
+      await rm(own, { recursive: true, force: true });
+    }
+  });
+
+  test("stopping an instance that never bound leaves the live socket alone", async () => {
+    const second = new LogControlSocket(hub, dir);
+    await second.stop();
+    expect(existsSync(control.path)).toBe(true);
     const client = new Client();
     await client.connect(control.path);
     client.send({ cmd: "coverage" });

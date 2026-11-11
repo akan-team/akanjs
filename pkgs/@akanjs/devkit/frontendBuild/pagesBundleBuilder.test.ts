@@ -2,11 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { PagesBundleBuilder } from "./pagesBundleBuilder";
 
 const macroImport = `import { getSerializedSignal } from "./sig" with { type: "macro" };`;
-const macroFetchProto =
-  "const fetchProto = FetchClient.build<typeof signal>(cnst, getSerializedSignal(), { Err: pageProto.Err });";
+const macroFetchProto = "const fetchProto = FetchClient.build<typeof signal>(cnst, getSerializedSignal());";
 const serverImport = `import { fetch as serverFetch } from "./sig";`;
 const serverFetchProto =
-  "const fetchProto = FetchClient.build<typeof signal>(cnst, serverFetch.serializedSignal, { Err: pageProto.Err, base: serverFetch });";
+  "const fetchProto = FetchClient.build<typeof signal>(cnst, serverFetch.serializedSignal, { base: serverFetch });";
 
 const generatedUseClient = (lines: { importLine?: string; fetchProtoLine?: string } = {}) =>
   [

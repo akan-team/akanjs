@@ -98,6 +98,7 @@ export const registerClientRuntime = <Runtime>(
   return runtime;
 };
 
+/** @internal */
 export const getClientRuntime = () => {
   if (!state.runtime) throw missingRuntimeError();
   return state.runtime;

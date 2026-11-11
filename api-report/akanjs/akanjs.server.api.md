@@ -104,6 +104,7 @@ export declare class AkanOption<Env extends BackendEnv = BackendEnv> {
     setAgentRequestPolicy(policy: AgentRequestPolicy | null): this;
     setAgentUsage(hook: AgentUsageHook | null): this;
     setAgentQuota(hook: AgentQuotaHook | null): this;
+    setAgentAccountResolver(resolver: AgentAccountResolver | null): this;
     setCrossSite(crossSite: CrossSiteOption): this;
     setRateLimit(settingOrFn: ((env: Env) => RateLimitSetting | false) | RateLimitSetting | false): this;
     setSessionRefresh(hook: SessionRefreshHook | null): this;
@@ -122,6 +123,7 @@ export declare class AkanOption<Env extends BackendEnv = BackendEnv> {
     getAgentRequestPolicy(): AgentRequestPolicy | null | undefined;
     getAgentUsage(): AgentUsageHook | null | undefined;
     getAgentQuota(): AgentQuotaHook | null | undefined;
+    getAgentAccountResolver(): AgentAccountResolver | null | undefined;
     getCrossSite(): CrossSiteOption | undefined;
     getRateLimit(env: Env): RateLimitSetting | false | undefined;
     getSessionRefresh(): SessionRefreshHook | null | undefined;
@@ -1901,8 +1903,10 @@ export declare const assertAkanConsoleAllowed: (env?: Partial<Pick<BaseEnv, "env
 
 export declare const copyBunRequestFields: (target: Request, source: Request) => Request;
 
+/** @internal */
 export declare const createAkanConsoleContext: (server: AkanServer, globals?: Record<string, unknown>) => AkanConsoleContext;
 
+/** @internal */
 export declare const createAkanConsoleLogCommands: (appName: string, runtimeDir: string) => Record<string, AkanConsoleCommand>;
 
 export declare function createDefaultAkanOption(): AkanOption<BackendEnv>;
@@ -1927,6 +1931,7 @@ export declare const getWebConfigFromEnv: () => AkanWebConfig;
 
 export declare const isAkanConsoleInputComplete: (source: string) => boolean;
 
+/** @deprecated */
 export declare function isSitemapPath(pathname: string, basePaths: readonly string[]): boolean;
 
 export declare function mergeAkanImageConfig(config?: Partial<AkanImageConfig>): ResolvedAkanImageConfig;
@@ -1941,6 +1946,7 @@ export declare const migrationActions: readonly [
     "rollback"
 ];
 
+/** @internal */
 export declare const parseAkanConsoleQuery: (args: string) => Record<string, string>;
 
 export declare const resolveWebConfig: (web: Partial<AkanWebConfig> | undefined) => AkanWebConfig;

@@ -13,6 +13,8 @@ export interface AgentToolsCaller {
 export interface AgentTool extends AgentWireTool {
   /** A query, which reads and changes nothing. */
   readOnly: boolean;
+  /** A mutation MCP marks `destructiveHint`, by its key or its `destructive` option: `agentService.loop` refuses it unless `approve` allows it. */
+  needsConfirm?: boolean;
 }
 
 /**

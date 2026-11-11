@@ -16,6 +16,15 @@ describe("restoreRemoteError", () => {
     expect(restored.toJSON?.()).toEqual({ error: "item.error.locked", statusCode: 409 });
   });
 
+  test("restores into the forwarded Err with no constructor named, so a server that rethrows it keeps key and data", () => {
+    const restored = restoreRemoteError({ error: "item.error.locked", data: { id: "i1" } }, 409);
+
+    expect(restored).toBeInstanceOf(Err);
+    expect(Err.is(restored, "item.error.locked")).toBe(true);
+    expect((restored as Err).forwarded).toBe(true);
+    expect(restored.toJSON?.()).toEqual({ error: "item.error.locked", data: { id: "i1" }, statusCode: 409 });
+  });
+
   test("restores through a `fromJSON` lifted off Err into a plain holder", () => {
     const restored = restoreRemoteError({ error: "item.error.locked" }, 409, { fromJSON: Err.fromJSON });
     const holder = { is: Err.is };

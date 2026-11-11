@@ -2,7 +2,7 @@
   "akan.size.file": {
     "fetch/client/fetchClient.ts": 1163,
     "server/akanApp.ts": 1509,
-    "server/akanServer.ts": 1032,
+    "server/akanServer.ts": 1025,
     "server/di/diLifecycle.ts": 834,
     "server/resolver/signal.resolver.ts": 939,
     "server/rscWorker.tsx": 1669,
@@ -73,7 +73,6 @@
     "server/ops/snapshotJobs.ts": 3,
     "server/ops/snapshotRestore.ts": 10,
     "server/ops/sqliteSnapshot.ts": 4,
-    "server/rscClient.tsx": 6,
     "server/rscWorkerHost.ts": 15,
     "server/ssrFromRscRenderer.tsx": 1,
     "server/tunnel/TunnelAgent.ts": 3,

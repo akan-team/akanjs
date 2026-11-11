@@ -1,4 +1,6 @@
 import { Err } from "akanjs/dictionary";
+import { AgentLoop } from "./agentLoop/agentLoop";
+import type { AgentLoopEvent, AgentLoopRequest } from "./agentLoop/agentLoopTypes";
 import {
   type AgentWireAttachment,
   type AgentWireMessage,
@@ -10,7 +12,7 @@ import {
   pageContentInstruction,
 } from "./predefinedAdaptor/llm.adaptor";
 import { LlmSpend } from "./predefinedAdaptor/llmSpend";
-import { LlmAdaptorRole } from "./predefinedAdaptor/role.adaptor";
+import { AgentToolsRole, LlmAdaptorRole } from "./predefinedAdaptor/role.adaptor";
 import { serve } from "./serve";
 import { ToolNames } from "./toolNames";
 
@@ -22,7 +24,13 @@ export interface AgentTurnOptions {
 
 export class AgentService extends serve("agent" as const, ({ plug }) => ({
   llm: plug(LlmAdaptorRole),
+  agentTools: plug(AgentToolsRole),
 })) {
+  loop(request: AgentLoopRequest): AsyncIterable<AgentLoopEvent> {
+    const runTurn = this.runTurn.bind(this);
+    return new AgentLoop({ tools: this.agentTools, runTurn }, request).run();
+  }
+
   async runTurn(request: LlmTurnRequest, options: AgentTurnOptions | ((delta: string) => void) = {}) {
     const { onDelta, preamble, signal } = typeof options === "function" ? { onDelta: options } : options;
     signal?.throwIfAborted();
@@ -86,7 +94,12 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
       const spent = LlmSpend.of(error);
       if (!signal?.aborted && !spent?.usage) throw error;
       const own = spent?.usage ? "" : streamed;
-      throw LlmSpend.attach(error, LlmSpend.estimate(spent?.usage, { prompt: prepared, streamed: own }));
+      //? `fetch` rejects with the abort reason as given: a primitive cannot key `LlmSpend`'s counts, and one object
+      //? shared by every run on the same controller would mix them.
+      const ownError = error && typeof error === "object" && error !== signal?.reason;
+      const carrier = ownError ? error : new DOMException("The caller stopped this turn.", "AbortError");
+      const estimate = LlmSpend.estimate(spent?.usage, { prompt: prepared, streamed: own });
+      throw LlmSpend.attach(carrier, { ...spent, ...estimate });
     }
   }
 

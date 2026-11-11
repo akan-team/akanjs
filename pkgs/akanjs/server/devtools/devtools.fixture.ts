@@ -5,6 +5,7 @@ import type { BackendEnv } from "akanjs/base";
 import { AkanLib } from "../akanLib";
 import { AkanOption } from "../akanOption";
 import type { DiLifecycle } from "../di/diLifecycle";
+import { AgentTools } from "../mcp/AgentTools";
 import {
   makeSqliteEnv,
   ServerResolverTestEndpoint,
@@ -49,6 +50,7 @@ export class DevtoolsFixture {
       option: new AkanOption(),
     });
     const lifecycle = new DiLifecycle({ env }, lib);
+    AgentTools.provide(lifecycle, { env, mcpOption: {}, mcpReadOnly: false });
     await lifecycle.initializeAll();
     return new DevtoolsFixture(lifecycle, env, serverMode, workspaceRoot);
   }

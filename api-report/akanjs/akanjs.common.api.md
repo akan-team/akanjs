@@ -973,6 +973,7 @@ export interface McpExposureEndpoint {
     fileUpload?: boolean;
     mcp?: boolean;
     agents?: boolean;
+    destructive?: boolean;
 }
 
 export interface McpExposureOption {
@@ -1689,6 +1690,7 @@ export declare const mcpBaseVerbOf: (refName: string, key: string) => "create" |
 
 export declare const mcpHintsOf: (key: string, endpoint: {
     type: string;
+    destructive?: boolean;
 }) => {
     readOnlyHint: boolean;
     destructiveHint: boolean;

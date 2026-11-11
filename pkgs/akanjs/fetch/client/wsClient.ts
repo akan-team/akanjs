@@ -120,6 +120,7 @@ export class WsClient {
     this.url = url;
   }
 
+  /** @deprecated Every `Err` is `akanjs/common`'s, which a restored error already is; drop the call. */
   setErrorConstructor(ErrorCls?: ErrorConstructor) {
     this.ErrorCls = ErrorCls;
   }

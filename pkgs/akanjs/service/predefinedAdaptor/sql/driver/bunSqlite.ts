@@ -7,11 +7,11 @@ export type SqliteWriteTurn = () => Promise<void> | null;
 /** The connection a read from the calling context runs on; `null` for the one the statement was prepared on. */
 export type SqliteReader = () => Database | null;
 
-export const openTurn: SqliteWriteTurn = () => null;
+const openTurn: SqliteWriteTurn = () => null;
 
-export const ownConnection: SqliteReader = () => null;
+const ownConnection: SqliteReader = () => null;
 
-export class BunSqliteStatement implements AkanSqlStatement {
+class BunSqliteStatement implements AkanSqlStatement {
   readonly #reads: boolean;
   #onReader: Statement | null = null;
   constructor(

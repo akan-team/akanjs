@@ -18,7 +18,7 @@ export interface AkanConsoleOptions {
   runtimeDir?: string;
 }
 
-/** `level=warn grep="payment failed" endpoint=mutation:*` → a query object the socket parses. */
+/** @internal `level=warn grep="payment failed" endpoint=mutation:*` → a query object the socket parses. */
 export const parseAkanConsoleQuery = (args: string): Record<string, string> => {
   const query: Record<string, string> = {};
   for (const match of args.matchAll(/(?<![A-Za-z])([A-Za-z]+)=(?:"([^"]*)"|'([^']*)'|(\S+))/g)) {
@@ -28,7 +28,7 @@ export const parseAkanConsoleQuery = (args: string): Record<string, string> => {
   return query;
 };
 
-/** Attaches to the running server's control socket, not the console's own `listen: false` server. */
+/** @internal Attaches to the running server's control socket, not the console's own `listen: false` server. */
 export const createAkanConsoleLogCommands = (
   appName: string,
   runtimeDir: string,
@@ -165,6 +165,7 @@ export const getAkanConsoleMethods = (value: unknown): string[] => {
   return [...names].sort((a, b) => a.localeCompare(b));
 };
 
+/** @internal */
 export const createAkanConsoleContext = (
   server: AkanServer,
   globals: Record<string, unknown> = {},

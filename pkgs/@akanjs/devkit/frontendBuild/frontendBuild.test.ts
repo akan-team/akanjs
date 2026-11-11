@@ -123,7 +123,7 @@ describe("PagesBundleBuilder", () => {
       "",
       "const dictionary = {};",
       "const pageProto = makePageProto<typeof dict>(dictionary);",
-      "const fetchProto = FetchClient.build<typeof signal>(cnst, getSerializedSignal(), { Err: pageProto.Err });",
+      "const fetchProto = FetchClient.build<typeof signal>(cnst, getSerializedSignal());",
       'export const runtime = registerClientRuntime({ ...pageProto, ...fetchProto }, { scope: "app" });',
       "",
     ].join("\n");
@@ -132,7 +132,7 @@ describe("PagesBundleBuilder", () => {
 
     expect(transformed).toContain('import { fetch as serverFetch } from "./sig";');
     expect(transformed).toContain(
-      "const fetchProto = FetchClient.build<typeof signal>(cnst, serverFetch.serializedSignal, { Err: pageProto.Err, base: serverFetch });",
+      "const fetchProto = FetchClient.build<typeof signal>(cnst, serverFetch.serializedSignal, { base: serverFetch });",
     );
     expect(transformed).not.toContain("getSerializedSignal");
     expect(transformed).not.toContain('with { type: "macro" }');

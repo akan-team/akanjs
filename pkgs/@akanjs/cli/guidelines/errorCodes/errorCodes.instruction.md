@@ -89,8 +89,11 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `redisUriMissing` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeConflict` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeNotFound` | 404 | `AkanError` | no | yes | `base/akanError.ts` |
+| `routeNotFound` | 404 | `RscRouteNotFound` | no | yes | `server/rscClient.tsx` |
 | `routerNotReady` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `rpcDisposed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `rscFetchFailed` | 502 | `AkanError` | no | yes | `base/akanError.ts` |
+| `rscRedirectStarted` | 303 | `RscRedirectNavigationStarted` | no | yes | `server/rscClient.tsx` |
 | `searchMisconfigured` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
 | `searchUnavailable` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
 | `secretRefused` | 500 | `AkanError` | no | yes | `base/akanError.ts` |

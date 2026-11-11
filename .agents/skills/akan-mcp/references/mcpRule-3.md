@@ -1,5 +1,35 @@
 <!-- akan:generated -->
 
+## Rolling MCP Out To An App
+
+The goal of exposing a service over MCP is that a person uses it through an agent instead of through the page:
+one browser consent (the app's own sign-in included), then an hour-long access token and a thirty-day rotating
+refresh token stand in for every later sign-in. The token is the app's own access JWT, so what an agent may do is
+exactly what that person may do over HTTP — nothing is widened and nothing is scoped. Do these in order; steps 2
+and 3 are the ones whose omission shows up as a 404 or a doubled basePath on the consent page.
+
+1. **Mount the lib that carries the authorization server** (`libs/shared`) and confirm `lib/_oauth`,
+   `page/oauth/consent` and `srvkit/oauthServer.ts` are present. Its `option.ts` declares `auth` for `setMcp`, and
+   `setMcp` merges field by field in mount order with the app last — the app never restates `auth`.
+2. **`akan.config.ts`: `syncPageLibs: true`** (or the lib's name in an array). `akan sync <app>` links the consent
+   route under every basePath the app declares; the link folder is generated and never committed.
+3. **`env.server.*` → `oauth`.** `consentPath` / `signinPath` carry the basePath the browser sees
+   (`/office/oauth/consent`, `/office/signin`) and are omitted for an app without one. The server hands the
+   sign-in page `?redirect=` as the app's router names the route — basePath removed — because `router.push` puts
+   the locale and basePath back; the app adds nothing. `issuer` (`AKAN_MCP_AUTH_SERVERS` for the resource side)
+   only behind a tunnel or an edge that renames the host, `resource` (`AKAN_MCP_RESOURCE`) only when `path` moved
+   off `/mcp`, `clients` + `dynamicRegistration: false` only for a deployment that closes registration.
+4. **The sign-in page honours `?redirect=`** by passing it unchanged to the password and SSO controls — a
+   router-space path, never prefixed by hand. Accepting it needs only `startsWith("/") && !startsWith("//")`.
+5. **`lib/option.ts`: `option.setMcp({ instructions, legacyTextBlock: false })`** (`AKAN_MCP_INSTRUCTIONS`,
+   `AKAN_MCP_LEGACY_TEXT`). Leave `readOnly` (`AKAN_MCP_READONLY`) off when the point is to let people *use* the
+   service; it is the valve for a deployment that must not write, not the way to curate.
+6. **`JWT_SECRET`** (or `security.jwtSecret`) in every deployment outside `local`; the boot refuses without it.
+7. **Read the boot log** — `MCP catalogue: tools=… · listing …KB`, the `MCP catalogue cost:` line, one `warn` per
+   refusal, and the list of published entries with no `.desc()`. A tool missing from it is missing everywhere.
+8. **Connect once per app** — `claude mcp add --transport http <name> <issuer>/mcp`; a second entry for the same
+   server with a pre-registered client tests a registration mode, it does not add anything a user needs.
+
 ## Choosing What To Open
 
 One rule: **an endpoint is open to an agent when the same person could do the same thing from the page, under

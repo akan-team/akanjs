@@ -23,6 +23,7 @@ import {
   serverResolverTestModule,
   validId,
 } from "../resolver/resolver.contract.fixture";
+import type { DiLifecycleProps } from "./diLifecycle";
 
 const loadDiLifecycle = async (appName: string) => {
   process.env.AKAN_PUBLIC_APP_NAME = appName;
@@ -32,7 +33,20 @@ const loadDiLifecycle = async (appName: string) => {
   process.env.AKAN_PUBLIC_OPERATION_MODE = "local";
   process.env.SERVER_MODE = "all";
   process.env.NODE_ENV = "test";
-  return (await import("./diLifecycle")).DiLifecycle;
+  const { DiLifecycle } = await import("./diLifecycle");
+  const { AgentTools } = await import("../mcp/AgentTools");
+  //? AkanServer provides the agent tools role before it initializes a container; a bare one gets it here.
+  return class ServedDiLifecycle extends DiLifecycle {
+    readonly #props: DiLifecycleProps;
+    constructor(props: DiLifecycleProps, ...libs: AkanLib[]) {
+      super(props, ...libs);
+      this.#props = props;
+    }
+    override async initializeAll() {
+      AgentTools.provide(this, { env: this.#props.env, mcpOption: {}, mcpReadOnly: false });
+      return await super.initializeAll();
+    }
+  };
 };
 
 const libOf = (

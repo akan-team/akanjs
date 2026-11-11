@@ -563,8 +563,7 @@ describe("AkanServer agent relay access", () => {
   });
 
   test("installs the request policy an app declares in its option.ts", async () => {
-    const { AgentRelayPolicy } = await import("../signal/agentRelayPolicy");
-    const { AgentMeter } = await import("../signal/agentMeter");
+    const { AgentMeter, AgentRelayPolicy } = await import("akanjs/service");
     const { AkanOption, AkanServer, createLib } = await loadRuntime();
     const tmp = await mkdtemp(join(tmpdir(), "akan-server-relay-policy-"));
     const sent = { messages: [], tools: [], context: [] };
@@ -574,6 +573,23 @@ describe("AkanServer agent relay access", () => {
       expect((await AgentRelayPolicy.apply(sent, AgentMeter.turnOf(null))).instructions).toBe("Scoped.");
     } finally {
       AgentRelayPolicy.use(null);
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("installs the account resolver an app declares in its option.ts", async () => {
+    const { AgentAccounts } = await import("akanjs/service");
+    const { AkanOption, AkanServer, createLib } = await loadRuntime();
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-account-resolver-"));
+    try {
+      const option = new AkanOption().setAgentAccountResolver((principal) =>
+        principal === "u1" ? { id: "u1" } : null,
+      );
+      new AkanServer("serverGet", createEnv(tmp), "all", createLib(option));
+      expect(await AgentAccounts.resolve("u1")).toEqual({ id: "u1" });
+      expect(await AgentAccounts.resolve("gone")).toBeNull();
+    } finally {
+      AgentAccounts.use(null);
       await rm(tmp, { recursive: true, force: true });
     }
   });
