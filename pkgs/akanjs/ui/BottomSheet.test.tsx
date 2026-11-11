@@ -64,6 +64,7 @@ describe("BottomSheet", () => {
     expect(container.textContent).not.toContain("sheet body");
     expect(document.body.textContent).toContain("sheet body");
     expect(document.body.style.overflow).toBe("hidden");
+    expect(backdrop?.closest("[data-akan-scrim]")).not.toBeNull();
     act(() => backdrop?.click());
     expect(onCancel).toHaveBeenCalledTimes(1);
     unmount();

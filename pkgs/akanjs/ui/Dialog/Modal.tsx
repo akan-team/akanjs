@@ -40,7 +40,7 @@ export const Modal = ({
   const focusedElementRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const contentId = useId();
-  const overlayLayerProps = useOverlayLayerProps();
+  const overlayLayerProps = useOverlayLayerProps(true);
   const portalElement = useOverlayPortal();
   //? It portals out of its page, so the `inert` on a page the CSR stack keeps drawn underneath never reaches it.
   const isCurrentPage = usePageActivity() === "current";

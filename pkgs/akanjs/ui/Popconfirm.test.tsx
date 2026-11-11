@@ -39,6 +39,13 @@ describe("Popconfirm", () => {
     unmount();
   });
 
+  test("marks its scrim, so an agent panel holding it can sink it under a card waiting on an answer", () => {
+    const { unmount } = open();
+    expect(document.querySelectorAll("[data-akan-scrim]")).not.toHaveLength(0);
+    unmount();
+    expect(document.querySelectorAll("[data-akan-scrim]")).toHaveLength(0);
+  });
+
   test("the scrim cancels without confirming", () => {
     let confirmed = false;
     const { unmount } = open(() => {

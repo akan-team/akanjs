@@ -37,7 +37,7 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
   const focusedElementRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const contentId = useId();
-  const overlayLayerProps = useOverlayLayerProps();
+  const overlayLayerProps = useOverlayLayerProps(true);
   const [{ translate }, api] = useSpring(() => ({ translate: 1 }));
   const portalElement = useOverlayPortal();
   const isCurrentPage = usePageActivity() === "current";

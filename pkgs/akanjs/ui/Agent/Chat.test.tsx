@@ -724,6 +724,103 @@ describe("Agent.Chat", () => {
     }
   });
 
+  test("a modal anywhere in the floating panel, not only its header, stacks above it", () => {
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
+    const chat = mount(
+      <lib.AgentProvider session={session}>
+        <DefaultChat
+          defaultOpen
+          intro={
+            <Modal open>
+              <p>intro modal</p>
+            </Modal>
+          }
+        />
+      </lib.AgentProvider>,
+    );
+    try {
+      const host = document.body.querySelector("aside")?.nextElementSibling as HTMLElement | null;
+      expect(host?.textContent).toContain("intro modal");
+    } finally {
+      chat.unmount();
+    }
+  });
+
+  test("a turn waiting on an answer sinks a panel modal under its card, and what the card opens stays up", async () => {
+    const surface = new lib.AgenticSurface();
+    surface.registerTool([], { name: "removeThing", confirm: true, run: () => undefined });
+    const session = new lib.AgentSession(
+      surface,
+      scripted({ toolCall: { id: "c1", name: "removeThing", args: {} } }, { text: "Removed." }),
+    );
+    const skin = {
+      AgentApproval: ({ approval }: { approval: { approve: () => void } }) => (
+        <div>
+          <button onClick={approval.approve} type="button">
+            approve it
+          </button>
+          <Modal open>
+            <p>card modal</p>
+          </Modal>
+        </div>
+      ),
+    };
+    const chat = mount(
+      <lib.AgentProvider session={session}>
+        <UiOverrideProvider value={skin as never}>
+          <DefaultChat
+            defaultOpen
+            header={
+              <Modal open>
+                <p>panel modal</p>
+              </Modal>
+            }
+          />
+        </UiOverrideProvider>
+      </lib.AgentProvider>,
+    );
+    const layer = () => document.body.querySelector("aside")?.nextElementSibling as HTMLElement;
+    try {
+      expect(layer().style.zIndex).toBe(String(overlayZ.agentPanelOverlay));
+      let sendDone: Promise<void> = Promise.resolve();
+      await act(async () => {
+        sendDone = session.send("remove it");
+        await untilFlushed(() => !!session.pendingApproval);
+      });
+      expect(layer().style.zIndex).toBe(String(overlayZ.agentPanelOverlaySunk));
+      expect(overlayZ.agentPanelOverlaySunk).toBeLessThan(overlayZ.agentPanel);
+      const cardLayer = layer().nextElementSibling as HTMLElement;
+      expect(cardLayer.textContent).toContain("card modal");
+      expect(cardLayer.style.zIndex).toBe(String(overlayZ.agentPanelCardOverlay));
+      expect(overlayZ.agentPanelCardOverlay).toBeGreaterThan(overlayZ.agentPanel);
+
+      await act(async () => {
+        [...document.querySelectorAll("button")].find((b) => b.textContent === "approve it")?.click();
+        await sendDone;
+      });
+      expect(layer().style.zIndex).toBe(String(overlayZ.agentPanelOverlay));
+    } finally {
+      chat.unmount();
+    }
+  });
+
+  test("a card waiting beside no scrim leaves the panel's overlays above it", async () => {
+    const surface = new lib.AgenticSurface();
+    surface.registerTool([], { name: "removeThing", confirm: true, run: () => undefined });
+    const session = new lib.AgentSession(surface, scripted({ toolCall: { id: "c1", name: "removeThing", args: {} } }));
+    const chat = mountChat(session);
+    try {
+      await act(async () => {
+        void session.send("remove it");
+        await untilFlushed(() => !!session.pendingApproval);
+      });
+      const layer = document.body.querySelector("aside")?.nextElementSibling as HTMLElement;
+      expect(layer.style.zIndex).toBe(String(overlayZ.agentPanelOverlay));
+    } finally {
+      chat.unmount();
+    }
+  });
+
   test("an inline chat inside a modal leaves the overlays it opens in that modal", () => {
     const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
     const chat = mount(

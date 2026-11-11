@@ -13,7 +13,8 @@ export const OVERLAY_LAYER_ATTR = "data-akan-overlay";
 // card tops even a modal: the call it asks about may be one of the modal's own controls.
 // The agent's launcher floats over the page but under every menu and modal it would otherwise cover.
 // A toast tops a modal: it reports what the modal's own controls did.
-// The open agent panel drives every overlay a page opens, so it tops them all; one opened from the panel tops it.
+// The open agent panel drives every overlay a page opens, so it tops them all; one opened from the panel tops it,
+// unless the panel's turn waits on an answer and that overlay's scrim would cover the card. One a card opens tops both.
 // Reconnect blocks the whole app on purpose, so nothing tops it.
 export const overlayZ = {
   agentLauncher: 80,
@@ -25,10 +26,27 @@ export const overlayZ = {
   modal: 120,
   approval: 130,
   toast: 140,
+  agentPanelOverlaySunk: 145,
   agentPanel: 150,
   agentPanelOverlay: 160,
+  agentPanelCardOverlay: 170,
   reconnect: 200,
 } as const;
+
+const OVERLAY_SCRIM_ATTR = "data-akan-scrim";
+
+export const useHoldsScrim = (layer: HTMLElement | null) => {
+  const [holds, setHolds] = useState(false);
+  useEffect(() => {
+    if (!layer) return;
+    const read = () => setHolds(!!layer.querySelector(`[${OVERLAY_SCRIM_ATTR}]`));
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(layer, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [layer]);
+  return holds;
+};
 
 const OverlayOwnerContext = sharedContext("overlayOwner", "");
 
@@ -42,7 +60,10 @@ export const useOverlayScope = (id: string) => {
 };
 
 /** Spread onto every root an overlay portals out of its own tree. */
-export const useOverlayLayerProps = () => ({ [OVERLAY_LAYER_ATTR]: useContext(OverlayOwnerContext) });
+export const useOverlayLayerProps = (scrim = false) => ({
+  [OVERLAY_LAYER_ATTR]: useContext(OverlayOwnerContext),
+  ...(scrim ? { [OVERLAY_SCRIM_ATTR]: "" } : null),
+});
 
 /** True when the click landed in an overlay `scope`, or a scope nested in it, rendered; any other is outside. */
 export const isOwnOverlayClick = (target: EventTarget | null, scope: string) => {

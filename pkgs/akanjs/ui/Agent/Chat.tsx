@@ -23,19 +23,17 @@ import {
 } from "use-agentic";
 import { OverlayPortalProvider, overlayZ, useOverlayPortal } from "../overlayLayer";
 import { createOverridable } from "../UiOverride";
-import Approval from "./Approval";
 import { agentSessionOf, type BuiltinOption, type PersistOption } from "./agentSessionOf";
 import type { AttachLimits, AttachReader } from "./attachment";
 import Bubble from "./Bubble";
 import { type ChatCommand, ChatCommands } from "./ChatCommands";
 import { ChatHeader } from "./ChatHeader";
+import { ChatPendingCards, isAsking, PanelOverlayHosts, usePanelOverlays } from "./ChatPendingCards";
 import { Composer, type ComposerHandle } from "./Composer";
 import { Launcher } from "./Launcher";
 import Menu from "./Menu";
-import Question from "./Question";
 import Queued from "./Queued";
 import Steps from "./Steps";
-import ToolCard from "./ToolCard";
 import { useAccountBoundSession } from "./useAccountBoundSession";
 import { useChatAttachments } from "./useChatAttachments";
 import { type QueuedMessage, useChatQueue } from "./useChatQueue";
@@ -127,9 +125,6 @@ const launcherSides = {
 const launcherHiddenBelow = { sm: "max-sm:hidden", md: "max-md:hidden", lg: "max-lg:hidden" } as const;
 
 const panelLayer = "fixed inset-0 sm:inset-auto sm:right-4 sm:bottom-4";
-// Zero-size and untransformed, so a modal's `fixed inset-0` root inside it still covers the viewport.
-const panelOverlayHost = "fixed top-0 left-0 size-0";
-const panelOverlayStyle = { zIndex: overlayZ.agentPanelOverlay } as const;
 const panelSize =
   "h-dvh w-screen rounded-none sm:h-[min(600px,calc(100dvh-2rem))] sm:w-[min(24rem,calc(100vw-2rem))] sm:rounded-box";
 
@@ -227,7 +222,7 @@ export const DefaultChat = ({
   const read = useRef(session.messages.length);
   const keyboardFrame = useKeyboardFrame();
   const [overlay, setOverlay] = useState<HTMLElement | null>(null);
-  const [panelOverlays, setPanelOverlays] = useState<HTMLElement | null>(null);
+  const { layer: panelOverlays, cardLayer: cardOverlays, hosts: overlayHosts } = usePanelOverlays();
   //? An inline chat hands down the portal it sits in, so a modal around it still hosts what it opens.
   const enclosingPortal = useOverlayPortal();
   useEffect(() => {
@@ -507,11 +502,7 @@ export const DefaultChat = ({
               </p>
             ) : null}
           </div>
-          {session.pendingApproval ? <Approval approval={session.pendingApproval} /> : null}
-          {session.pendingCard ? <ToolCard card={session.pendingCard} key={session.pendingCard.callId} /> : null}
-          {session.pendingQuestion ? (
-            <Question key={session.pendingQuestion.callId} question={session.pendingQuestion} />
-          ) : null}
+          <ChatPendingCards portal={inline ? enclosingPortal : cardOverlays} session={session} />
           {queue.queued ? <Queued message={queue.queued} onCancel={() => queue.take()} onEdit={unpark} /> : null}
           <Menu
             onPick={(row) => row.pick()}
@@ -544,7 +535,7 @@ export const DefaultChat = ({
           />
         </OverlayPortalProvider>
       </aside>
-      {inline ? null : <div className={panelOverlayHost} ref={setPanelOverlays} style={panelOverlayStyle} />}
+      {inline ? null : <PanelOverlayHosts asking={isAsking(session)} {...overlayHosts} />}
     </>,
   );
 };
