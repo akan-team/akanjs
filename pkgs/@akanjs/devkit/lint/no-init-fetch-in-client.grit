@@ -11,7 +11,7 @@ language js(typescript, jsx)
 // closure reaches nothing.
 //
 // The client is not missing the load, only this spelling of it: every slice also generates
-// `st.do.init<Model><Suffix>` (pkgs/akanjs/store/action.ts), which runs the same two queries and commits
+// `st.do.init<Model><Suffix>` (pkgs/akanjs/store/sliceListActions.ts), which runs the same two queries and commits
 // them to state.
 //
 // Both names are matched by shape, since a lint rule cannot know which slices exist. The generated one is

@@ -43,7 +43,7 @@ interface CsrE2eServer {
 
 const DEFAULT_PORT = 8391;
 const RELOAD_MARKER = "__akanE2eBootMarker";
-//? Longer than the frame's navigation lock (360ms after a transition commits, `webkit/useCsrValues.ts`).
+//? Longer than the frame's navigation lock (360ms after a transition commits, `webkit/useCsrNavigation.ts`).
 const SETTLE_MS = 450;
 
 /** Drives a page of a running `akan start` in a headless `Bun.WebView`: CSR (`?csr=true` + a mobile target) or SSR. */

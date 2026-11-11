@@ -612,7 +612,7 @@ export const BuyCoins = ({ className }: BuyCoinsProps) => {
 };
 ```
 
-### pkgs/akanjs/webkit/useCsrValues.ts
+### pkgs/akanjs/webkit/useCsrLocationState.ts
 
 ```ts
 const { getLocation } = useLocation({ rootRouteGuide });

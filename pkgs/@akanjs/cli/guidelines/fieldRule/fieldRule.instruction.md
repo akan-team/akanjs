@@ -63,7 +63,8 @@ Use this whenever generating constants or scalar constants. It defines the curre
 - **Do not declare `Upload` as a model field.** `Upload` is a signal-body-only primitive. Declare an image/file
   field as a relation to `File`: `image: field(File).optional()` for one, `images: field([File])` for many.
 - The store then auto-generates an `upload<Field>On<Model>(fileList)` action that calls the framework upload
-  mutation and polls file status until it leaves `"uploading"` (`pkgs/akanjs/store/action.ts`).
+  mutation and polls file status until it leaves `"uploading"` (`uploadSetterOf` in
+  `pkgs/akanjs/store/formFieldSetters.ts`).
 - **An upload is scoped to the form that started it.** `Field.Img` / `Imgs` / `File` / `Files` handed the generated
   `set<Field>On<Model>` upload through `upload<Field>On<Model>` (any other `onChange` keeps the plain slice upload).
   While the request runs, `<model>FormUploading` holds a ticket under the field's name (`{}` when idle);
