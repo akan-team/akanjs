@@ -12,6 +12,9 @@ by `akan agent install`; edit anything outside the markers freely.
   client, ui) published as the single `akanjs` package — extend an existing facet before adding a framework-level
   pattern. `pkgs/@akanjs/cli` and `pkgs/@akanjs/devkit` hold the CLI and build tooling; `infra/` holds Helm,
   deployment templates, edge configs and the Jenkins env/secret scripts.
+- A file in an `akanjs` facet imports its siblings by path, never its own facet's `index.ts` (`facetImports.test.ts`).
+  The `signal`, `client`, `server`, `constant` and `store` barrels name every export, so a new export reaches
+  `akanjs/<facet>` only once its facet's `index.ts` names it. `bun run api:report` then rewrites the report CI checks.
 - The grit lint plugins scope `apps/` and `libs/` only; `pkgs/` still follows the house style, comments included.
 - `akan lint` and `akan verify` hold a package to a structure budget: a file ≤ 800 lines, a function ≤ 150
   (`akan.size.function`), a class ≤ 60 members (`akan.size.class`). `pkgs/<pkg>/akan.baseline.json` records the debt
