@@ -1,4 +1,5 @@
 import { type AdaptorCls, adapt } from "../adapt";
+import type { AgentToolsAdaptor } from "./agentTools.adaptor";
 import type { CacheAdaptor } from "./cache.adaptor";
 import type { CompressAdaptor } from "./compress.adaptor";
 import type { DatabaseAdaptor } from "./database.adaptor";
@@ -18,3 +19,4 @@ export const LoggingAdaptorRole = adapt("loggingAdaptorRole") as AdaptorCls<Logg
 export const WebsocketAdaptorRole = adapt("websocketAdaptorRole") as AdaptorCls<WebsocketAdaptor>;
 export const CompressAdaptorRole = adapt("compressAdaptorRole") as AdaptorCls<CompressAdaptor>;
 export const LlmAdaptorRole = adapt("llmAdaptorRole") as AdaptorCls<LlmAdaptor>;
+export const AgentToolsRole = adapt("agentToolsRole") as AdaptorCls<AgentToolsAdaptor>;

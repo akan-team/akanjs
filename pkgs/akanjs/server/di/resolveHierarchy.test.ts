@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type AdaptorCls, adapt, CacheAdaptorRole } from "akanjs/service";
+import { type AdaptorCls, AgentToolsRole, adapt, CacheAdaptorRole } from "akanjs/service";
 import { resolveAdaptorHierarchy } from "./resolveHierarchy";
 
 describe("resolveAdaptorHierarchy", () => {
@@ -21,5 +21,13 @@ describe("resolveAdaptorHierarchy", () => {
 
     expect(graph.get(MemoryAdaptor.refName)?.dependencies).toEqual([CacheProvider.refName]);
     expect(stageIndexOf(CacheProvider.refName)).toBeLessThan(stageIndexOf(MemoryAdaptor.refName));
+  });
+
+  test("adds no stage dependency for AgentToolsRole, which the server provides before the stages", () => {
+    const Plugging = adapt("hierarchyTestAgentTools", ({ plug }) => ({ agentTools: plug(AgentToolsRole) }));
+
+    const { graph } = resolveAdaptorHierarchy(new Map<string, AdaptorCls>([[Plugging.refName, Plugging]]));
+
+    expect(graph.get(Plugging.refName)?.dependencies).toEqual([]);
   });
 });

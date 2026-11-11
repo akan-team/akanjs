@@ -37,7 +37,7 @@ import { LogForwarder } from "./logging/logForwarder";
 import { LogHub } from "./logging/logHub";
 import { LogStreamRoute } from "./logging/logStreamRoute";
 import { RotatingLogWriter } from "./logging/rotatingLogWriter";
-import { type McpAuthOption, type McpRateLimitOption, McpRouter } from "./mcp";
+import { AgentTools, type McpAuthOption, McpRateLimiter, type McpRateLimitOption, McpRouter } from "./mcp";
 import { AppInfo } from "./ops/appInfo";
 import { OpsRoute } from "./ops/opsRoute";
 import { SqliteFiles } from "./ops/sqliteFiles";
@@ -372,6 +372,7 @@ export class AkanServer {
     if (this.status !== "stopped") throw new Error("AkanServer is not able to init. It is already running.");
     this.status = "initializing";
     this.#assertPrefixClearsBasePaths();
+    AgentTools.provide(this.#di, this);
     const { routes, wsRoutes, routeOptions } = await this.#di.initializeAll();
     if (!initRoutes) {
       this.#prepared = null;
@@ -977,27 +978,13 @@ export class AkanServer {
       ...(AkanServer.#isEnvOff("AKAN_MCP_APPS") ? { apps: false } : {}),
       ...AkanServer.#mcpModernFromEnv(),
       ...AkanServer.#mcpOutputSchemaFromEnv(),
-      ...AkanServer.#mcpRateLimitFromEnv(),
+      ...McpRateLimiter.fromEnv(),
     };
   }
 
   static #mcpModernFromEnv(): Pick<McpServerOption, "modern"> {
     if (AkanServer.#isEnvEnabled("AKAN_MCP_MODERN")) return { modern: true };
     return AkanServer.#isEnvOff("AKAN_MCP_MODERN") ? { modern: false } : {};
-  }
-
-  static #mcpRateLimitFromEnv(): Pick<McpServerOption, "rateLimit"> {
-    const raw = process.env.AKAN_MCP_RATE_LIMIT?.trim().toLowerCase();
-    if (raw === "off" || raw === "false" || raw === "0") return { rateLimit: false };
-    const option: McpRateLimitOption = {};
-    if (raw) {
-      const [calls, seconds] = raw.split("/").map((part) => Number(part));
-      if (Number.isInteger(calls) && calls > 0) option.calls = calls;
-      if (Number.isInteger(seconds) && seconds > 0) option.windowMs = seconds * 1000;
-    }
-    const concurrent = Number(process.env.AKAN_MCP_CONCURRENT);
-    if (Number.isInteger(concurrent) && concurrent >= 0) option.concurrent = concurrent;
-    return Object.keys(option).length ? { rateLimit: option } : {};
   }
 
   static #mcpOutputSchemaFromEnv(): Pick<McpServerOption, "outputSchema"> {

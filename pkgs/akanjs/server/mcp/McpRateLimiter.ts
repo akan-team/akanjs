@@ -38,6 +38,20 @@ export class McpRateLimiter {
     this.#limiter = new RateLimiter(shared, { topic: "mcpRate" });
   }
 
+  static fromEnv(): { rateLimit?: McpRateLimitOption | false } {
+    const raw = process.env.AKAN_MCP_RATE_LIMIT?.trim().toLowerCase();
+    if (raw === "off" || raw === "false" || raw === "0") return { rateLimit: false };
+    const option: McpRateLimitOption = {};
+    if (raw) {
+      const [calls, seconds] = raw.split("/").map((part) => Number(part));
+      if (Number.isInteger(calls) && calls > 0) option.calls = calls;
+      if (Number.isInteger(seconds) && seconds > 0) option.windowMs = seconds * 1000;
+    }
+    const concurrent = Number(process.env.AKAN_MCP_CONCURRENT);
+    if (Number.isInteger(concurrent) && concurrent >= 0) option.concurrent = concurrent;
+    return Object.keys(option).length ? { rateLimit: option } : {};
+  }
+
   async acquire(key: string, now = Date.now()): Promise<McpRateLimitVerdict> {
     const held = this.#inFlight.get(key) ?? 0;
     if (this.concurrent && held >= this.concurrent) return { ok: false, reason: "concurrent", retryAfterMs: 1_000 };

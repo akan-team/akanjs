@@ -44,6 +44,8 @@ interface McpDispatcherProps {
   legacyTextBlock?: boolean;
 }
 
+export type McpAnswer = { value: unknown } | { images: ImageResultValue[] } | { error: string; code: string };
+
 export class McpDispatcher {
   static readonly logger = new Logger("McpDispatcher");
 
@@ -96,6 +98,24 @@ export class McpDispatcher {
       );
       const restorable = forView ? McpDispatcher.#restorable(error, status) : null;
       return restorable ? { ...failure, _meta: { ...failure._meta, [MCP_APP_META.error]: restorable } } : failure;
+    }
+  }
+
+  // `call` without the envelope or the 401 challenge: an in-process caller has no client to send for a credential.
+  async answer(exposed: McpExposedEndpoint, args: Record<string, unknown>, req: Request): Promise<McpAnswer> {
+    const found = this.#index().get(exposed.key);
+    const crashed = McpDispatcher.#crashed.code;
+    if (!found) return { error: `Tool "${exposed.key}" is declared but not mounted on this server.`, code: crashed };
+    try {
+      const wire = await this.#exec(exposed.key, found, args, req);
+      if (exposed.endpoint.returns.refName !== ImageResult.refName)
+        return { value: McpDispatcher.#readable(exposed, wire) };
+      if (wire === null || wire === undefined) return { value: null };
+      const images = McpDispatcher.#images(exposed, wire);
+      return images ? { images } : { error: "The server failed to complete this request.", code: crashed };
+    } catch (error) {
+      const status = McpDispatcher.#statusOf(error);
+      return { error: this.#message(error, status, exposed.refName), code: McpDispatcher.#codeOf(error, status).code };
     }
   }
 
@@ -267,19 +287,23 @@ export class McpDispatcher {
   // No structuredContent and no JSON text block: either would repeat hundreds of KB of base64 the image block carries.
   static #imageResult(exposed: McpExposedEndpoint, value: unknown): McpToolResult {
     if (value === null || value === undefined) return { content: [{ type: "text", text: "null" }], isError: false };
-    const images = (exposed.endpoint.returns.arrDepth ? [value].flat(Number.POSITIVE_INFINITY) : [value]) as unknown[];
+    const images = McpDispatcher.#images(exposed, value);
+    if (!images) return McpDispatcher.#failure("The server failed to complete this request.");
     if (!images.length) return { content: [{ type: "text", text: "[]" }], isError: false };
-    if (!images.every((image) => ImageResult.validate(image as ImageResultValue))) {
-      McpDispatcher.logger.error(
-        `MCP refused the "${exposed.key}" image result: an ImageResult needs \`data\` in padded base64 without a \`data:\` prefix and a \`mimeType\` of ${ImageResult.mimeTypes.join(", ")}.`,
-      );
-      return McpDispatcher.#failure("The server failed to complete this request.");
-    }
-    const content = (images as ImageResultValue[]).flatMap(({ data, mimeType, caption }) => [
+    const content = images.flatMap(({ data, mimeType, caption }) => [
       ...(caption ? [{ type: "text" as const, text: caption }] : []),
       { type: "image" as const, data, mimeType },
     ]);
     return { content, isError: false };
+  }
+
+  static #images(exposed: McpExposedEndpoint, value: unknown): ImageResultValue[] | null {
+    const images = (exposed.endpoint.returns.arrDepth ? [value].flat(Number.POSITIVE_INFINITY) : [value]) as unknown[];
+    if (images.every((image) => ImageResult.validate(image as ImageResultValue))) return images as ImageResultValue[];
+    McpDispatcher.logger.error(
+      `MCP refused the "${exposed.key}" image result: an ImageResult needs \`data\` in padded base64 without a \`data:\` prefix and a \`mimeType\` of ${ImageResult.mimeTypes.join(", ")}.`,
+    );
+    return null;
   }
 
   static #failure(message: string, failure = McpDispatcher.#crashed): McpToolResult {

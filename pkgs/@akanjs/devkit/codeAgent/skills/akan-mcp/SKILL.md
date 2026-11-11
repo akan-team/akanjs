@@ -32,6 +32,11 @@ an endpoint with a real guard is published, one with none is refused, and so is 
 - `page().app(name, description, load)` publishes one component a host draws in the chat, as a read-only tool
   whose `load` may only query.
 
+## Calling it from the server
+
+- `plug(AgentToolsRole)` gives a service `listAs(account, { allow })` / `callAs(account, call)`: the same catalogue
+  and refusals in-process, batch servers included. Pass only an account the server resolved, never client input.
+
 ## Verify
 
 - One exposure test per app in `srvkit/mcpExposure.signal.test.ts`: list the tools with a user token, pin the names

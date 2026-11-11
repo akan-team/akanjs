@@ -25,6 +25,7 @@ import type { Adaptor, AdaptorCls, DatabaseService, InjectRegistry, LiveRegistry
 import { websocketRoomContract } from "../common/websocketContract";
 import type { Internal, InternalCls, InternalInfo, MiddlewareCls } from ".";
 import { CrossSiteGuard } from "./CrossSiteGuard";
+import { carriedClientIps } from "./carriedClientIps";
 import { EndpointCache } from "./endpointCache";
 import { EndpointErrorContract } from "./endpointErrorContract";
 import { EndpointIdempotency } from "./endpointIdempotency";
@@ -750,16 +751,15 @@ export class SignalContext<
     if (!ws.data.headers) return ws.remoteAddress ? normalizeIpAddress(ws.remoteAddress) : null;
     return TrustedProxy.clientAddress(ws.data.headers, ws.remoteAddress);
   }
-  static #carried = new WeakMap<Request, { ip: string | null; trustedHop: boolean }>();
   /** A request a proxy rebuilt has no socket behind it, so it keeps the address and the hop trust its original had. */
   static carryClientIp(target: Request, source: Request) {
     if (target === source) return;
     const carried = { ip: SignalContext.clientIpOf(source), trustedHop: SignalContext.isTrustedHop(source) };
-    SignalContext.#carried.set(target, carried);
+    carriedClientIps.set(target, carried);
   }
   /** `getClientIp` for a request no context wraps, as the MCP router and the page renderer hold one. */
   static clientIpOf(req: Request): string | null {
-    const carried = SignalContext.#carried.get(req);
+    const carried = carriedClientIps.get(req);
     if (carried) return carried.ip;
     // A resolver answering `null` is an addressless unix socket (a local hop); no resolver is an unknown peer.
     const peer = SignalContext.#httpPeer?.(req);
@@ -767,7 +767,7 @@ export class SignalContext<
   }
   /** Whether `req`'s forwarded headers count: it came over a unix socket or from a trusted proxy's address. */
   static isTrustedHop(req: Request): boolean {
-    const carried = SignalContext.#carried.get(req);
+    const carried = carriedClientIps.get(req);
     if (carried) return carried.trustedHop;
     const peer = SignalContext.#httpPeer?.(req);
     if (peer === undefined) return false;

@@ -40,7 +40,8 @@ const loadRuntime = async () => {
   process.env.SERVER_MODE = "all";
   process.env.NODE_ENV = "test";
   const [
-    { SolidPubSub, WebsocketAdaptorRole },
+    { AgentToolsRole, SolidPubSub, WebsocketAdaptorRole },
+    { AgentTools },
     { AkanLib },
     { AkanOption },
     { AkanServer },
@@ -56,6 +57,7 @@ const loadRuntime = async () => {
     },
   ] = await Promise.all([
     import("akanjs/service"),
+    import("./mcp/AgentTools"),
     import("./akanLib"),
     import("./akanOption"),
     import("./akanServer"),
@@ -83,6 +85,8 @@ const loadRuntime = async () => {
     });
 
   return {
+    AgentTools,
+    AgentToolsRole,
     SolidPubSub,
     WebsocketAdaptorRole,
     AkanLib,
@@ -97,6 +101,8 @@ const loadRuntime = async () => {
 describe("AkanServer DI lookup", () => {
   test("gets service, server signal, and adaptor instances", async () => {
     const {
+      AgentTools,
+      AgentToolsRole,
       SolidPubSub,
       WebsocketAdaptorRole,
       AkanServer,
@@ -122,6 +128,7 @@ describe("AkanServer DI lookup", () => {
       const adaptorByClass = server.get(SolidPubSub);
       expect(server.get(WebsocketAdaptorRole)).toBe(adaptorByClass);
       expect(server.getAdaptor("solidPubsub")).toBe(adaptorByClass);
+      expect(server.get(AgentToolsRole)).toBeInstanceOf(AgentTools);
     } finally {
       await server.stop();
       await rm(tmp, { recursive: true, force: true });
