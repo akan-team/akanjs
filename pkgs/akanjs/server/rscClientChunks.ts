@@ -54,8 +54,8 @@ export const noteChunkLoadFailure = (error: unknown): void => {
 export const lazyLinkFailureKeyOf = (error: unknown): string | null =>
   error instanceof Error && isLinkFailure(error) && !chunkLoadFailures.has(error) ? `import() ${error.message}` : null;
 
-//? Chromium, and Firefox from 115, name the module that failed to fetch; WebKit's "Importing a module script failed."
-//? names none, so a chunk gone there stays on its error.
+//? Chromium and Firefox 115 name the `import()` target, and current Firefox the module that failed to fetch; WebKit's
+//? "Importing a module script failed." names none, so a chunk gone there stays on its error.
 const fetchFailure = /^(?:Failed to fetch dynamically imported module|error loading dynamically imported module): \S+$/;
 const ownChunkUrlOf = (message: string): string | null => {
   if (!fetchFailure.test(message)) return null;
@@ -66,15 +66,32 @@ const ownChunkUrlOf = (message: string): string | null => {
     return null;
   }
 };
+//? The reload list alone cannot stop a 404 a reload does not fix: each load would claim the next chunk, and past 32
+//? the first again. The navigation type needs no storage, at the cost of leaving a page the user reloaded alone too.
+const loadedByReload = () =>
+  (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type === "reload";
+//? A document navigation the router never sees (a plain link, a form post, `location.assign`) fires one of these; they
+//? are heard only while the probe is out, since a `beforeunload` listener used to keep a page out of the bfcache.
+const unloadEvents = ["beforeunload", "pagehide"] as const;
 //? Only a 404 says this origin no longer serves the chunk; a network failure, a blocked request or a 5xx can pass.
 export const ifLazyChunkGone = (error: unknown, then: (key: string) => void): void => {
   if (!(error instanceof TypeError) || chunkLoadFailures.has(error) || !navigator.onLine) return;
   const url = ownChunkUrlOf(error.message);
-  if (url)
-    void fetch(url, { method: "HEAD", cache: "no-store" }).then(
-      ({ status }) => status === 404 && then(`import() ${error.message}`),
-      () => undefined,
-    );
+  if (!url || loadedByReload()) return;
+  let unloading = false;
+  const unload = () => {
+    unloading = true;
+  };
+  for (const type of unloadEvents) window.addEventListener(type, unload);
+  void fetch(url, { method: "HEAD", cache: "no-store" })
+    .then(
+      ({ status }) => status === 404,
+      () => false,
+    )
+    .then((gone) => {
+      for (const type of unloadEvents) window.removeEventListener(type, unload);
+      if (gone && !unloading) then(`import() ${error.message}`);
+    });
 };
 
 //? React's own fallback where `reportError` is missing (Chromium before 95): `window.onerror` trackers still see it.

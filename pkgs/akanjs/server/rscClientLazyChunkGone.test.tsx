@@ -106,6 +106,20 @@ const rejectImport = (error: unknown) =>
     await sleep(5);
   });
 const probedUrls = () => probes.map(({ url }) => url);
+const holdProbe = (url: string) => {
+  let answer: (status: number) => void = () => undefined;
+  probeAnswers.set(
+    url,
+    new Promise<number>((resolve) => {
+      answer = resolve;
+    }),
+  );
+  return (status: number) =>
+    act(async () => {
+      answer(status);
+      await sleep(5);
+    });
+};
 const reloadedKeys = () => JSON.parse(sessionStorage.getItem("akan.rsc.chunkReloads") ?? "[]") as string[];
 const serveLazyPage = (pathname: string, failure: () => unknown) => {
   const host = `/_akan/client/gone${pathname}-host-a1.js`;
@@ -182,26 +196,68 @@ describe("rscClient lazy chunk the server no longer serves", () => {
 
   test("a navigation made while the probe is out leaves the page it went to in place", async () => {
     const gone = chunkUrl("first-a1");
-    const held = { answer: (_status: number) => {} };
-    probeAnswers.set(
-      gone,
-      new Promise<number>((resolve) => {
-        held.answer = resolve;
-      }),
-    );
+    const answer = holdProbe(gone);
     await navigate("/first");
     await rejectImport(chromiumGone(gone));
     await navigate("/second");
-    await act(async () => {
-      held.answer(404);
-      await sleep(5);
-    });
+    await answer(404);
     expect(probedUrls()).toEqual([gone]);
     expect(reloadedAt).toEqual([]);
 
     probeAnswers.set(gone, 404);
     await rejectImport(chromiumGone(gone));
     expect(reloadedAt).toEqual([`${origin}/second`]);
+  });
+
+  test.each(["beforeunload", "pagehide"])(
+    "a document load the router never sees, after %s, is not reloaded over",
+    async (type) => {
+      const gone = chunkUrl(`unload-${type}`);
+      const answer = holdProbe(gone);
+      await navigate("/leaving");
+      await rejectImport(chromiumGone(gone));
+      window.dispatchEvent(new Event(type));
+      await answer(404);
+      expect(probedUrls()).toEqual([gone]);
+      expect(reloadedAt).toEqual([]);
+
+      probeAnswers.set(gone, 404);
+      await rejectImport(chromiumGone(gone));
+      expect(reloadedAt).toEqual([`${origin}/leaving`]);
+    },
+  );
+
+  test("chunks that keep answering 404 reload one load of a chain, with or without the per-tab list", async () => {
+    const chunks = Array.from({ length: 34 }, (_, n) => chunkUrl(`always-${n}`));
+    for (const url of chunks) probeAnswers.set(url, 404);
+    let navigationType = "navigate";
+    const entries = spyOn(performance, "getEntriesByType").mockImplementation(
+      (type) => (type === "navigation" ? [{ type: navigationType }] : []) as unknown as PerformanceEntryList,
+    );
+    //? One module instance stands in for each load: what the decision reads is the list, the navigation type and
+    //? the document's own page, which a reload carries over or resets the same way.
+    const reloadsOverLoads = async (keepList: boolean) => {
+      sessionStorage.clear();
+      reloadedAt = [];
+      navigationType = "navigate";
+      for (let load = 0; load < 40; load += 1) {
+        if (!keepList) sessionStorage.clear();
+        const before = reloadedAt.length;
+        await navigate("/home");
+        await rejectImport(chromiumGone(chunks[load % chunks.length] ?? ""));
+        if (reloadedAt.length === before) break;
+        navigationType = "reload";
+      }
+      return reloadedAt.length;
+    };
+    try {
+      expect({ kept: await reloadsOverLoads(true), cleared: await reloadsOverLoads(false) }).toEqual({
+        kept: 1,
+        cleared: 1,
+      });
+    } finally {
+      entries.mockRestore();
+    }
   });
 
   test("a chunk the Flight client loaded is left to the chunk fallback, even when its element throws", async () => {
