@@ -96,14 +96,14 @@ Declared in [service/ipcTypes.ts](service/ipcTypes.ts).
 | `live.models` | `SolidPubSub` | `AkanApp` |
 | `queue.enqueued` | `SolidQueue` | `AkanApp` |
 | `queue.wake` | `AkanApp` | `SolidQueue` |
-| `health.ping` | `ChildSupervisor` | `AkanServer` |
-| `health.pong` | `AkanServer` | `AkanApp` |
+| `health.ping` | `ChildSupervisor` | `ParentChannel` |
+| `health.pong` | `ParentChannel` | `AkanApp` |
 | `ws.opened` | — | — |
 | `ws.closed` | — | — |
-| `metrics.report` | `AkanServer` | `AkanApp` |
+| `metrics.report` | `ServerMetrics` | `AkanApp` |
 | `log.records` | `LogForwarder` | `AkanApp` |
-| `log.level` | `ChildSupervisor`, `GatewayLogging` | `AkanServer` |
-| `shutdown` | `ChildSupervisor` | `AkanServer` |
+| `log.level` | `ChildSupervisor`, `GatewayLogging` | `ParentChannel` |
+| `shutdown` | `ChildSupervisor` | `ParentChannel` |
 | `file.resolve` | `NativeFile` | — |
 | `file.resolved` | — | `NativeFile` |
 | `secret.request` | `NativeSecret` | — |
