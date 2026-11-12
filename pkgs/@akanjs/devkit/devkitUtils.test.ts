@@ -199,6 +199,20 @@ describe("ApplicationBuildReporter", () => {
     );
   });
 
+  test("shows the first 20 errors of an aggregate, counts the rest, and follows its cause", () => {
+    const many = new AggregateError(
+      Array.from({ length: 23 }, (_, index) => new Error(`log ${index + 1}`)),
+      "server graph failed",
+      { cause: new Error("plugin licenseNotices") },
+    );
+    expect(ApplicationBuildReporter.formatError(many).split("\n")).toEqual([
+      "server graph failed",
+      ...Array.from({ length: 20 }, (_, index) => `  log ${index + 1}`),
+      "  …and 3 more",
+      "Caused by: plugin licenseNotices",
+    ]);
+  });
+
   test("says where the bundler placed each reason, relative to the workspace root", async () => {
     const root = await makeTempRoot();
     const refuseWith = (message: string) => ({
