@@ -48,7 +48,7 @@ export const upsertAgentBlock = (existing: string, block: string): string => {
   if (startIndex >= 0 && endIndex > startIndex) {
     return `${existing.slice(0, startIndex)}${managed}${existing.slice(endIndex + AGENT_BLOCK_END.length)}`;
   }
-  return `${existing.replace(/\s*$/, "")}\n\n${managed}\n`;
+  return `${existing.trimEnd()}\n\n${managed}\n`;
 };
 
 /** The content between the akan:agent markers, or null when the file carries no managed block. */

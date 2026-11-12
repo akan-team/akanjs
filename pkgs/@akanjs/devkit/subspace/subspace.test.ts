@@ -486,6 +486,12 @@ describe("Subspace pull", () => {
 });
 
 describe("SubspaceConfig", () => {
+  test("refuses a repo that git would read as an option", () => {
+    expect(
+      () => new SubspaceConfig({ subspaces: [{ name: "a", repo: "--upload-pack=touch pwned", apps: ["one"] }] }),
+    ).toThrow(/reads as a git option/);
+  });
+
   test("refuses one app claimed by two subspaces", () => {
     expect(
       () =>
