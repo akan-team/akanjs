@@ -46,7 +46,7 @@ export class Logging extends middleware("logging") {
         //? A declared error is an answer the endpoint documents, so probes of a public one must not reach error alerts.
         if (
           status === 429 ||
-          ByIdRead.missed(context.endpointInfo, error) ||
+          ByIdRead.missed(context, error) ||
           (isExceptionLike(error) && EndpointErrorContract.promised(context.endpointInfo, error))
         ) {
           if (debug) context.adaptor.logger.debug(line);

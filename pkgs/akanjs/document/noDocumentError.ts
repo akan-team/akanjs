@@ -6,9 +6,12 @@ import { AkanError } from "akanjs/base";
  */
 export class NoDocumentError extends AkanError<"documentNotFound"> {
   readonly error = "base.error.documentNotFound";
+  /** The table and id a by-id read missed; a query's miss leaves it unset. */
+  readonly lookup?: { readonly refName: string; readonly id: string };
 
-  constructor(message = "", options?: ErrorOptions) {
+  constructor(message = "", options?: ErrorOptions & { lookup?: NoDocumentError["lookup"] }) {
     super("documentNotFound", message, { statusCode: 404, cause: options?.cause });
+    this.lookup = options?.lookup;
   }
 
   override get forwarded() {

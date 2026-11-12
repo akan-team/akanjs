@@ -1,16 +1,19 @@
 import { NoDocumentError } from "akanjs/document";
 import type { EndpointInfo } from "./endpointInfo";
+import type { SignalContext } from "./signalContext";
 
-//? Only in the generated `<model>` reads is a missing document the caller's own id; in a write or a service, a bug.
+//? A `<model>` or `light<Model>` read missing the id it was asked for is the caller's; a write's stays loud on purpose.
 export class ByIdRead {
-  static readonly #endpoints = new WeakSet<EndpointInfo>();
+  static readonly #refNames = new WeakMap<EndpointInfo, string>();
 
-  static mark<Info extends EndpointInfo>(endpointInfo: Info): Info {
-    ByIdRead.#endpoints.add(endpointInfo);
+  static mark<Info extends EndpointInfo>(refName: string, endpointInfo: Info): Info {
+    ByIdRead.#refNames.set(endpointInfo, refName);
     return endpointInfo;
   }
 
-  static missed(endpointInfo: EndpointInfo, error: unknown) {
-    return error instanceof NoDocumentError && ByIdRead.#endpoints.has(endpointInfo);
+  static missed(context: SignalContext, error: unknown) {
+    if (!(error instanceof NoDocumentError) || !error.lookup) return false;
+    const { refName, id } = error.lookup;
+    return refName === ByIdRead.#refNames.get(context.endpointInfo) && id === context.args[0];
   }
 }

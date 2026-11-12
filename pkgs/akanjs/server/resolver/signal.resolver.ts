@@ -495,13 +495,11 @@ export class SignalResolver {
       });
 
       if (sliceCls.crud.get)
-        for (const [key, returns] of [
-          [names.model, cnst.full],
-          [names.lightModel, cnst.light],
-        ] as const)
+        for (const key of [names.model, names.lightModel])
           endpointObj[key] = ByIdRead.mark(
+            refName,
             (builder as any)
-              .query(returns, { guards: sliceCls.getGuards })
+              .query(key === names.model ? cnst.full : cnst.light, { guards: sliceCls.getGuards })
               .param(names.modelId, ID)
               .exec(async function (this: any, id: string) {
                 return await this[serviceName][names.getModel](id);
