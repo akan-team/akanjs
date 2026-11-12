@@ -1,7 +1,7 @@
 {
   "akan.size.file": {
     "fetch/client/fetchClient.ts": 1163,
-    "server/akanServer.ts": 997,
+    "server/akanServer.ts": 976,
     "server/di/diLifecycle.ts": 834,
     "server/resolver/signal.resolver.ts": 939,
     "server/rscWorker.tsx": 1669,
@@ -37,7 +37,7 @@
     "common/Logger.ts#Logger": 65,
     "fetch/client/fetchClient.ts#FetchClient": 92,
     "fetch/client/wsClient.ts#WsClient": 65,
-    "server/akanServer.ts#AkanServer": 92,
+    "server/akanServer.ts#AkanServer": 91,
     "server/rscWorker.tsx#RscRenderer": 72,
     "server/rscWorkerHost.ts#RscWorker": 80,
     "service/predefinedAdaptor/sql/SqlDocumentStore.ts#SqlDocumentStore": 99,

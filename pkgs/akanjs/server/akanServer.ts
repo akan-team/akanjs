@@ -28,6 +28,7 @@ import type { HmrWsData, HmrWsHub } from "./hmr/wsHub";
 import { OrphanGroup } from "./lifecycle/orphanGroup";
 import { isPortInUseError } from "./lifecycle/portInUse";
 import { ShutdownManager } from "./lifecycle/shutdownManager";
+import { StartGuard } from "./lifecycle/startGuard";
 import { ServerLogging } from "./logging/serverLogging";
 import { AgentTools, type McpAuthOption, McpRateLimiter, type McpRateLimitOption, McpRouter } from "./mcp";
 import { AppInfo } from "./ops/appInfo";
@@ -133,7 +134,6 @@ interface AkanAppPrepared {
   builtinRoutes: HttpRoutes;
   renderEnvRoutes: HttpRoutes;
   hmrHub: HmrWsHub | null;
-  webRouter: WebRouter | null;
   webProxyRunner: WebProxyRunner | null;
 }
 
@@ -155,6 +155,7 @@ export class AkanServer {
   #server: Bun.Server<AppWsData | HmrWsData> | null = null;
   #wsServer: Bun.Server<AppWsData | HmrWsData> | null = null;
   #prepared: AkanAppPrepared | null = null;
+  #webRouter: WebRouter | null = null;
   readonly logger: Logger;
   readonly name: string;
   readonly libs: AkanLib[];
@@ -187,8 +188,7 @@ export class AkanServer {
   readonly #logging: ServerLogging;
   #ops: OpsRoute | null | undefined;
   #lastMetrics: AkanMetricsReport = {};
-  #stopping: Promise<void> | null = null;
-  #startStep: { stop: PromiseWithResolvers<void> | null } | null = null;
+  readonly #start: StartGuard;
   #parentGone: boolean = false;
   #schedules = true;
   #orphanExiting = false;
@@ -206,6 +206,7 @@ export class AkanServer {
     this.name = name;
     this.logger = new Logger(name);
     this.#logging = new ServerLogging(this.#solo, this.logger);
+    this.#start = new StartGuard(this.logger, () => this.#teardown());
     this.libs = libs;
     this.env = libs.reduce((current, lib) => lib.option.resolveEnv(current), { ...env });
     //? An edge server runs on premises for its own screens and machines: no agent there is one to serve unasked.
@@ -344,25 +345,25 @@ export class AkanServer {
   }
 
   async init(option: { routes?: boolean; web?: AkanWebOption } = {}) {
+    if (this.status !== "stopped") throw new Error("AkanServer is not able to init. It is already running.");
+    this.#assertPrefixClearsBasePaths();
     const start = performance.now();
     this.#initTimings.clear();
-    if (await this.#stoppedDuring(() => this.#init(option))) return this;
+    if (await this.#start.unwound(() => this.#start.stoppedDuring(() => this.#init(option)))) return this;
     const stages = [...this.#di.initTimings, ...this.#initTimings].map(([stage, ms]) => `${stage} ${ms.toFixed(1)}`);
     this.logger.debug(`Initialized in ${(performance.now() - start).toFixed(1)}ms (${stages.join(" · ")})`);
     return this;
   }
 
   async #init({ routes: initRoutes = true, web }: { routes?: boolean; web?: AkanWebOption }) {
-    if (this.status !== "stopped") throw new Error("AkanServer is not able to init. It is already running.");
     this.status = "initializing";
-    this.#assertPrefixClearsBasePaths();
     AgentTools.provide(this.#di, this);
     const { routes, wsRoutes, routeOptions } = await this.#di.initializeAll().catch((error: unknown) => {
-      //? The container unwinds a failed init itself, so a held stop's teardown must not destroy it a second time.
+      //? The container unwinds a failed init itself, so no teardown after it may destroy it a second time.
       this.status = "stopped";
       throw error;
     });
-    if (this.#startStep?.stop) return this;
+    if (this.#start.stopHeld) return this;
     if (!initRoutes) {
       this.#prepared = null;
       this.status = "initialized";
@@ -378,7 +379,6 @@ export class AkanServer {
         builtinRoutes: this.#timedBuiltinRoutes(null),
         renderEnvRoutes: {},
         hmrHub: null,
-        webRouter: null,
         webProxyRunner: null,
       };
       this.status = "initialized";
@@ -391,7 +391,7 @@ export class AkanServer {
     }
     const webStart = performance.now();
     const { WebRouter } = await import("./webRouter");
-    if (this.#startStep?.stop) return this;
+    if (this.#start.stopHeld) return this;
     const webRouter = await WebRouter.create({
       web: requestedWeb,
       //? Bun throws when `upgrade()` runs on a server that did not receive the request, and behind the gateway an HMR
@@ -406,6 +406,7 @@ export class AkanServer {
       this.logger.warn("web off: no build artifact under .akan/artifact; serving api only");
       return noWeb();
     }
+    this.#webRouter = webRouter;
     this.web = webRouter.web;
     this.logger.verbose(`web on: ssr=${this.web.ssr} csr=${this.web.csr}`);
     const { renderEnvRoutes, hmrHub } = await webRouter.initializeRoute();
@@ -418,7 +419,6 @@ export class AkanServer {
       builtinRoutes: this.#timedBuiltinRoutes(webRouter),
       renderEnvRoutes,
       hmrHub,
-      webRouter,
       webProxyRunner,
     };
     this.status = "initialized";
@@ -426,20 +426,24 @@ export class AkanServer {
   }
 
   async listen() {
-    if (this.status !== "initialized" || !this.#prepared) {
+    const prepared = this.#prepared;
+    if (this.status !== "initialized" || !prepared)
       throw new Error("AkanServer is not able to listen. Call `init` first.");
-    }
     this.status = "starting";
     Logger.role = this.serverMode;
-    if (await this.#stoppedDuring(() => this.#logging.startTransport(this.#prepared?.webRouter))) return this;
+    return await this.#start.unwound(() => this.#listen(prepared));
+  }
+
+  async #listen(prepared: AkanAppPrepared) {
+    if (await this.#start.stoppedDuring(() => this.#logging.startTransport(this.#webRouter))) return this;
     this.#logging.startFileLogging(this.serverMode);
     const port = process.env.AKAN_CHILD_SOCKET
       ? undefined
       : Number(process.env.AKAN_CHILD_WS_PORT || process.env.PORT || 8282);
     const unix = process.env.AKAN_CHILD_SOCKET || undefined;
     this.logger.verbose(`${this.name} is serving on ${unix ? `unix://${unix}` : `port ${port}`}`);
-    const { routes, routeOptions, wsRoutes, builtinRoutes, renderEnvRoutes, hmrHub, webRouter, webProxyRunner } =
-      this.#prepared;
+    const { routes, routeOptions, wsRoutes, builtinRoutes, renderEnvRoutes, hmrHub, webProxyRunner } = prepared;
+    const webRouter = this.#webRouter;
     const limits = new ServerLimits();
     const websocketHandlers = {
       ...ApiRouter.buildWebsocketHandlers({
@@ -578,59 +582,30 @@ export class AkanServer {
     if (shouldListen || !isNoListenCommand) this.#registerParentIpc();
     await this.init({ routes: shouldListen, web });
     if (this.#parentGone || this.status !== "initialized") return this;
-    if (!shouldListen) {
+    if (shouldListen) return this.listen();
+    return await this.#start.unwound(async () => {
       const websocket = this.#di.getWebsocketAdaptor();
       if (websocket)
         SignalResolver.setLocalPublish((roomId, data) => this.#localPublish?.(roomId, data), websocket, this.#di.live);
       this.status = "running";
-      if (!isNoListenCommand) {
-        Logger.role = this.serverMode;
-        this.#metricsTimer ??= ProcessMetricsCollector.startReporting(() => this.#reportMetrics());
-        if (this.#schedules) this.#di.registerSchedule(this.serverMode);
-        await this.#logging.startTransport();
-        this.#sendReady({
-          type: "ready",
-          pid: process.pid,
-          replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
-          role: this.serverMode,
-        });
-        if (this.#schedules && this.status === "running") await this.#di.runSchedulerInit();
-        ShutdownManager.register(this.logger, () => this.stop());
-      }
+      if (isNoListenCommand) return this;
+      Logger.role = this.serverMode;
+      this.#metricsTimer ??= ProcessMetricsCollector.startReporting(() => this.#reportMetrics());
+      if (this.#schedules) this.#di.registerSchedule(this.serverMode);
+      if (await this.#start.stoppedDuring(() => this.#logging.startTransport())) return this;
+      this.#sendReady({
+        type: "ready",
+        pid: process.pid,
+        replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
+        role: this.serverMode,
+      });
+      if (this.#schedules && this.status === "running") await this.#di.runSchedulerInit();
+      ShutdownManager.register(this.logger, () => this.stop());
       return this;
-    }
-    return this.listen();
+    });
   }
   stop(): Promise<void> {
-    this.#stopping ??= this.#stop().finally(() => {
-      this.#stopping = null;
-    });
-    return this.#stopping;
-  }
-
-  async #stop() {
-    //? A start step tears down once its await settles; a teardown under it would be outrun by what it starts next.
-    if (this.#startStep) {
-      this.#startStep.stop ??= Promise.withResolvers<void>();
-      return await this.#startStep.stop.promise;
-    }
-    if (this.status !== "running" && this.status !== "initialized") {
-      this.logger.warn("AkanServer is not running. Cannot stop.");
-      return;
-    }
-    await this.#teardown();
-  }
-
-  async #stoppedDuring(run: () => Promise<unknown>) {
-    const step: { stop: PromiseWithResolvers<void> | null } = { stop: null };
-    this.#startStep = step;
-    try {
-      await run();
-    } finally {
-      this.#startStep = null;
-      if (step.stop) await this.#teardown().then(step.stop.resolve, step.stop.reject);
-    }
-    return step.stop !== null;
+    return this.#start.stop(() => this.status === "running" || this.status === "initialized");
   }
 
   async #teardown() {
@@ -648,23 +623,28 @@ export class AkanServer {
       this.#wsServer = null;
       SignalContext.setHttpPeerResolver(null);
 
-      this.#prepared?.webRouter?.dispose();
+      this.#webRouter?.dispose();
+      this.#webRouter = null;
       await this.#withShutdownTimeout(this.#di.destroyAll());
       this.#prepared = null;
       this.status = "stopped";
       this.logger.info(`Shutdown completed successfully in ${Date.now() - now}ms`);
-      // Last, so the line above still has a hub — and in ndjson mode a stdout — to reach.
-      await this.#logging.stop();
     } catch (error) {
+      //? The failure line that reaches the gateway: logging closes below, before a caller could log its own.
       this.logger.error(`Error during shutdown: ${error instanceof Error ? error.message : String(error)}`);
       this.status = "stopped";
       throw error;
+    } finally {
+      // Last, so the lines above still have a hub — and in ndjson mode a stdout — to reach.
+      await this.#logging.stop();
     }
   }
 
   #registerParentIpc() {
-    process.on("message", (message) => this.#handleIpcMessage(message as AkanIpcMessage));
-    process.on("disconnect", () => this.#handleParentDisconnect());
+    if (!process.listeners("disconnect").includes(this.#handleParentDisconnect)) {
+      process.on("message", (message) => this.#handleIpcMessage(message as AkanIpcMessage));
+      process.on("disconnect", this.#handleParentDisconnect);
+    }
     //? A channel that closed before these listeners existed never calls them; `connected` is what is left of it.
     if (process.send && !process.connected) this.#handleParentDisconnect();
   }
@@ -675,7 +655,7 @@ export class AkanServer {
   }
 
   // Fires when the gateway dies, even by SIGKILL; exiting keeps orphan replicas from holding ports into the next boot.
-  #handleParentDisconnect() {
+  readonly #handleParentDisconnect = () => {
     if (this.#parentGone) return;
     this.#parentGone = true;
     this.logger.warn("Parent IPC channel closed; shutting down to avoid an orphaned replica");
@@ -683,7 +663,7 @@ export class AkanServer {
     void this.stop()
       .then(() => this.#exitOrphaned(0))
       .catch(() => this.#exitOrphaned(1));
-  }
+  };
 
   #exitOrphaned(code: number) {
     if (this.#orphanExiting) return;
@@ -702,7 +682,7 @@ export class AkanServer {
       } satisfies AkanIpcMessage);
     else if (message.type === "log.level") {
       this.#logging.setMinSev(message.minSev);
-      this.#prepared?.webRouter?.setLogLevel(message.minSev);
+      this.#webRouter?.setLogLevel(message.minSev);
     } else if (message.type === "shutdown") {
       void this.stop()
         .then(() => process.exit(0))
@@ -714,7 +694,7 @@ export class AkanServer {
     const metrics = await ProcessMetricsCollector.collect({
       role: this.serverMode,
       pubsubCoalesceCount: this.#binaryPubsub.coalescedCount,
-      ...(this.#prepared?.webRouter?.getMetrics() ?? {}),
+      ...(this.#webRouter?.getMetrics() ?? {}),
     });
     this.#lastMetrics = metrics;
     process.send?.({ type: "metrics.report", pid: process.pid, metrics } satisfies AkanIpcMessage);
@@ -750,7 +730,6 @@ export class AkanServer {
     return builtinRoutes;
   }
 
-  // Takes `webRouter` as an argument: this runs while the `#prepared` literal is still being built, so it is null.
   #createBuiltinRoutes(webRouter: WebRouter | null): HttpRoutes {
     const { appName } = getEnv();
     const openapiRoutes: HttpRoutes = this.openapi

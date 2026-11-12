@@ -314,16 +314,21 @@ export class WebRouter {
         new Logger("WebRouter").error(`RSC worker failed to load the pages bundle: ${String(error)}`);
         process.exit(1);
       });
-    else await rsc.ready;
-    const seedIndex = await RouteSeedIndexStore.load(artifactDir);
-    return new WebRouter({
-      artifact,
-      web: { ssr: true, csr: web.csr && builtWeb.csr },
-      cssBytesByUrl,
-      rsc,
-      seedIndex,
-      upgradeHmrWs,
-      prebuilt,
-    });
+    try {
+      if (!prodMode) await rsc.ready;
+      const seedIndex = await RouteSeedIndexStore.load(artifactDir);
+      return new WebRouter({
+        artifact,
+        web: { ssr: true, csr: web.csr && builtWeb.csr },
+        cssBytesByUrl,
+        rsc,
+        seedIndex,
+        upgradeHmrWs,
+        prebuilt,
+      });
+    } catch (error) {
+      rsc.kill();
+      throw error;
+    }
   }
 }
