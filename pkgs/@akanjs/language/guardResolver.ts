@@ -315,7 +315,8 @@ export class GuardResolver {
     return found;
   }
 
-  #reexportIn(source: TS.SourceFile, name: string): Reexport | null {
+  //? A guard is followed by the name it is declared under, which a default import does not carry.
+  #reexportIn(source: TS.SourceFile, name: string, takesPackageDefault = false): Reexport | null {
     const { ts, reader } = this.#source;
     for (const statement of source.statements) {
       if (!ts.isExportDeclaration(statement) || statement.isTypeOnly) continue;
@@ -327,9 +328,11 @@ export class GuardResolver {
       if (moduleSpecifier && ts.isStringLiteral(moduleSpecifier)) return { name: original, from: moduleSpecifier.text };
       const imported = reader.importsIn(source).find((item) => item.name === original);
       if (!imported) return { name: original, from: null };
-      return imported.imported === "default" || imported.imported === "*"
-        ? null
-        : { name: imported.imported, from: imported.from };
+      if (imported.imported === "default")
+        return takesPackageDefault && this.pathOfSpecifier(source.fileName, imported.from) === null
+          ? { name: "default", from: imported.from }
+          : null;
+      return imported.imported === "*" ? null : { name: imported.imported, from: imported.from };
     }
     return null;
   }
@@ -474,7 +477,7 @@ export class GuardResolver {
       if (text === undefined) continue;
       const named =
         text.includes(name) && identifierPattern.test(name) && exportingPatternOf(name).test(text)
-          ? this.#reexportIn(this.#source.parse(fileName, text), name)
+          ? this.#reexportIn(this.#source.parse(fileName, text), name, true)
           : null;
       if (named) {
         found.named = { ...named, fileName };
@@ -495,7 +498,7 @@ export class GuardResolver {
     return found;
   }
 
-  //? `#reexportIn` finds no re-export in `export { Stripe }` of a default or namespace import, so that one binds here.
+  //? `#reexportIn` follows no namespace import and no module's default export, so `export { Stripe }` of one binds here.
   #exportsLocally(source: TS.SourceFile, name: string) {
     const { ts } = this.#source;
     const binds = (node: TS.BindingName): boolean =>

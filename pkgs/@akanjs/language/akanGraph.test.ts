@@ -1804,6 +1804,96 @@ export * from "./toss";
     expect(edgesIn({ ...sources, ...barrel })).toEqual(expected);
   });
 
+  it("takes a package's default import a lib exports by name as that package's adaptor, along the import's chain", () => {
+    const sources: Record<string, string> = {
+      "libs/shared/webkit/stray.ts": `import Square from "square-web";
+export { Square };
+`,
+      "libs/shared/srvkit/stripe.ts": `import Stripe from "stripe-sdk";
+export { Stripe };
+`,
+      "libs/shared/srvkit/pay.ts": `import PayClient from "pay-sdk";
+export { PayClient as Pay };
+`,
+      "libs/shared/srvkit/toss.ts": `import { Toss } from "toss-sdk";
+export { Toss };
+`,
+      "libs/shared/srvkit/klarna.ts": `import { Client as Klarna } from "klarna-sdk";
+export { Klarna };
+`,
+      "libs/shared/srvkit/sdk.ts": `import * as sdk from "mollie-sdk";
+export { sdk };
+`,
+      "libs/shared/srvkit/wise.ts": `import Wise from "../vendor/wise";
+export { Wise };
+`,
+      "libs/shared/vendor/wise.ts": `export default class Wise {}
+`,
+      "libs/shared/srvkit/util.ts": `export * from "@libs/util/srvkit";
+`,
+      "libs/util/srvkit/adyen.ts": `import Adyen from "adyen-sdk";
+export { Adyen };
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Adyen, Klarna, Pay, Square, Stripe, Toss, Wise, sdk } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  adyen: plug(Adyen),
+  klarna: plug(Klarna),
+  mollie: plug(sdk.Mollie),
+  pay: plug(Pay),
+  square: plug(Square),
+  stripe: plug(Stripe),
+  toss: plug(Toss),
+  wise: plug(Wise),
+})) {
+  async run() {
+    await this.adyen.capture();
+    await this.klarna.split();
+    await this.mollie.refund();
+    await this.pay.send();
+    await this.square.tap();
+    await this.toss.transfer();
+    await this.wise.convert();
+    return this.stripe.charge();
+  }
+}
+`,
+    };
+    const synced = Object.fromEntries(
+      ["libs/shared/srvkit/", "libs/util/srvkit/"].map((folder) => [
+        `${folder}index.ts`,
+        facetBarrelOf(
+          "srvkit",
+          Object.keys(sources)
+            .filter((rel) => rel.startsWith(folder))
+            .map((rel) => rel.slice(folder.length)),
+          [],
+        ),
+      ]),
+    );
+    const callsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    const expected = [
+      "method:apps/demo:memo.run -capture-> adaptor:adyen-sdk:Adyen",
+      "method:apps/demo:memo.run -charge-> adaptor:stripe-sdk:Stripe",
+      "method:apps/demo:memo.run -convert-> adaptor:libs/shared:Wise",
+      "method:apps/demo:memo.run -refund-> adaptor:libs/shared:Mollie",
+      "method:apps/demo:memo.run -send-> adaptor:pay-sdk:Pay",
+      "method:apps/demo:memo.run -split-> adaptor:klarna-sdk:Client",
+      "method:apps/demo:memo.run -tap-> adaptor:libs/shared:Square",
+      "method:apps/demo:memo.run -transfer-> adaptor:toss-sdk:Toss",
+    ];
+    expect(callsOf(sources)).toEqual(expected);
+    expect(callsOf({ ...sources, ...synced })).toEqual(expected);
+  });
+
   it("reads a facet folder with no index as the barrel `akan sync` writes, so the Change Map names the graph view's adaptor", () => {
     const sources: Record<string, string> = {
       "libs/shared/srvkit/stripe.ts": `export { Stripe } from "stripe-sdk";
@@ -2107,7 +2197,7 @@ export * from "../vendor/inner";
       expect(starredCallsOf(passing)).toEqual(["method:apps/demo:memo.pay -charge-> adaptor:libs/util:Stripe"]);
   });
 
-  it("takes a top-level export of the name in every binding form as the module's own, over its `export *`", () => {
+  it("takes a top-level export of the name in every binding form as the module's own, over its `export *`, and a package's default import as that package's re-export", () => {
     for (const own of [
       `export const { Stripe } = makeAdaptors();\n`,
       `export const [Stripe] = makeAdaptors();\n`,
@@ -2115,10 +2205,13 @@ export * from "../vendor/inner";
       `export namespace Stripe {}\n`,
       `import * as Legacy from "./legacy";\nexport import Stripe = Legacy.Stripe;\n`,
       `export function Stripe() {}\n`,
-      `import Stripe from "stripe-sdk";\nexport { Stripe };\n`,
       `import * as Stripe from "stripe-sdk";\nexport { Stripe };\n`,
+      `import Stripe from "../vendor/stripe";\nexport { Stripe };\n`,
     ])
       expect(starredCallsOf(own)).toEqual(["method:apps/demo:memo.pay -charge-> adaptor:libs/shared:Stripe"]);
+    expect(starredCallsOf(`import Stripe from "stripe-sdk";\nexport { Stripe };\n`)).toEqual(
+      starredCallsOf(`export { Stripe } from "stripe-sdk";\n`),
+    );
   });
 
   it("marks a job and an adaptor changed or removed in the Change Map", () => {
