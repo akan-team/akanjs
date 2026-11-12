@@ -19,6 +19,7 @@ import { commitAkanSegmentOutletPatch, hasAkanSegmentOutlet, resetAkanSegmentOut
 const RSC_PATCH_REDIRECT_ROW_RE = /^[0-9a-z]+:E\{[^\n]*"digest":"AKAN_REDIRECT(?:;[^"]*)?"[^\n]*\}\n?$/;
 const RSC_PATCH_ERROR_ROW_RE = /^[0-9a-z]+:E\{[^\n]*\}\n?$/;
 const patchesWithControlRows = new WeakSet<PromiseLike<unknown>>();
+const lateControlHandlers = new WeakMap<PromiseLike<unknown>, () => void>();
 
 export interface RscPatchedResult<T> {
   type: "patched";
@@ -84,7 +85,9 @@ export async function validateRscSegmentPatch<T extends PromiseLike<unknown>>({
           patchStream,
           patchControlRowGuard((reason) => {
             patchControlReason ??= reason;
-            if (patchThenable) patchesWithControlRows.add(patchThenable);
+            if (!patchThenable) return;
+            patchesWithControlRows.add(patchThenable);
+            lateControlHandlers.get(patchThenable)?.();
           }),
         ),
       )
@@ -139,6 +142,7 @@ export function commitRscPatch<T extends PromiseLike<ReactNode>>(
   target: string,
   patch: RscPatchedResult<T>,
   onCommitted: () => void,
+  onLateControl: () => void,
 ): boolean {
   const patchThenable = patch.patchedNode.thenable;
   if (!patchThenable)
@@ -159,6 +163,7 @@ export function commitRscPatch<T extends PromiseLike<ReactNode>>(
         return;
       }
       onCommitted();
+      lateControlHandlers.set(patchThenable, onLateControl);
     } catch {
       if (headApplied) rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
       if (outletCommitted) resetAkanSegmentOutletPatches();

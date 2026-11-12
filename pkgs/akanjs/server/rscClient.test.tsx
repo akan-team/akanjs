@@ -1482,43 +1482,105 @@ describe("rscClient patch cache", () => {
     expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
   });
 
-  test.each([
-    ["a server error", "err", "5c6d7e8f"],
-    ["a redirect", "rdl", "AKAN_REDIRECT;push;307;%2Flogin"],
-  ])("a patch whose stream carried %s after it was laid is asked for again, not replayed", async (_, base, digest) => {
+  const lateRow = (digest: string) => ({
+    digest,
+    name: "Error",
+    message: "late",
+    stack: [],
+    env: "Server",
+    owner: null,
+  });
+  const servedWithLateRows = (base: string, rows: object[], whole?: () => Response) => {
+    let release = () => {};
     framed(`/${base}/a`, base);
     framed(`/${base}/off`, `${base}off`);
-    let release = () => {};
-    served.set(`/${base}/b`, () => {
+    served.set(`/${base}/b`, (headers) => {
       const state = stateOf(`/${base}/b`, `${base} layouts`);
+      if (!headers.has(AKAN_RSC_CURRENT_ROUTE_HEADER)) return whole?.() ?? wholeResponseOf(`/${base}/b`, base, state);
       if (fetchCountOf(`/${base}/b`) > 1) return patchResponseOf(`/${base}/b`, state);
       const encoder = new TextEncoder();
-      const error = { digest, name: "Error", message: "broke", stack: [], env: "Server", owner: null };
       const body = new ReadableStream<Uint8Array>({
         async start(controller) {
           controller.enqueue(encoder.encode(flight(`/${base}/b patched`)));
           await new Promise<void>((resolve) => (release = resolve));
-          controller.enqueue(encoder.encode(`1:E${JSON.stringify(error)}\n`));
+          controller.enqueue(encoder.encode(rows.map((row, i) => `${i + 1}:E${JSON.stringify(row)}\n`).join("")));
           controller.close();
         },
       });
       return new Response(body, { headers: patchResponseOf(`/${base}/b`, state).headers });
     });
-    await navigate(`/${base}/a`);
-    await navigate(`/${base}/b`);
-    expect(shown()).toBe(`/${base}/b patched`);
-    release();
-    await act(async () => {
-      await sleep(10);
-    });
-    await navigate(`/${base}/off`);
-    await navigate(`/${base}/a`);
+    return () => release();
+  };
+  const requestsOf = (pathname: string) =>
+    fetched.filter((request) => request.pathname === pathname).map(({ sentRouterState }) => sentRouterState);
 
-    await navigate(`/${base}/b`);
+  test("a redirect a patch's stream carries after it was laid is followed, through the whole page's render", async () => {
+    const redirect = lateRow("AKAN_REDIRECT;replace;307;%2Flrd%2Flogin");
+    const release = servedWithLateRows("lrd", [redirect], preStreamRedirectTo("/lrd/login"));
+    await navigate("/lrd/a");
+    await navigate("/lrd/b");
+    expect(shown()).toBe("/lrd/b patched");
 
-    expect(fetchCountOf(`/${base}/b`)).toBe(2);
-    expect(shown()).toBe(`/${base}/b patched`);
+    await act(async () => release());
+    await waitFor(() => shown() === "/lrd/login");
+
+    expect(window.location.pathname).toBe("/lrd/login");
+    expect(requestsOf("/lrd/b")).toEqual([true, false]);
   });
+
+  test("errors a patch's stream carries after it was laid load the whole page once", async () => {
+    const release = servedWithLateRows("ler", [lateRow("5c6d7e8f"), lateRow("6d7e8f90")]);
+    await navigate("/ler/a");
+    await navigate("/ler/b");
+    expect(shown()).toBe("/ler/b patched");
+
+    await act(async () => release());
+    await waitFor(() => shown() === "/ler/b");
+
+    expect(window.location.pathname).toBe("/ler/b");
+    expect(requestsOf("/ler/b")).toEqual([true, false]);
+  });
+
+  test("a redirect a replayed patch's stream carries after it was laid again is followed", async () => {
+    const redirect = lateRow("AKAN_REDIRECT;replace;307;%2Flrp%2Flogin");
+    const release = servedWithLateRows("lrp", [redirect], preStreamRedirectTo("/lrp/login"));
+    await navigate("/lrp/a");
+    await navigate("/lrp/b");
+    await navigate("/lrp/off");
+    await navigate("/lrp/a");
+    await navigate("/lrp/b");
+    expect(requestsOf("/lrp/b")).toEqual([true]);
+
+    await act(async () => release());
+    await waitFor(() => shown() === "/lrp/login");
+
+    expect(window.location.pathname).toBe("/lrp/login");
+  });
+
+  test.each([
+    ["a server error", "lse", "5c6d7e8f"],
+    ["a redirect", "lsr", "AKAN_REDIRECT;replace;307;%2Flogin"],
+  ])(
+    "a patch whose stream carried %s after a newer page replaced it moves nothing, and is not replayed",
+    async (_, base, digest) => {
+      const release = servedWithLateRows(base, [lateRow(digest)]);
+      await navigate(`/${base}/a`);
+      await navigate(`/${base}/b`);
+      await navigate(`/${base}/off`);
+
+      await act(async () => {
+        release();
+        await sleep(10);
+      });
+      expect(window.location.pathname).toBe(`/${base}/off`);
+      expect(fetchCountOf(`/${base}/off`)).toBe(1);
+      await navigate(`/${base}/a`);
+      await navigate(`/${base}/b`);
+
+      expect(requestsOf(`/${base}/b`)).toEqual([true, true]);
+      expect(shown()).toBe(`/${base}/b patched`);
+    },
+  );
 
   test("a patch laid on a patch is replayed straight under its base, and the next request names it", async () => {
     framed("/ch/a", "ch");
