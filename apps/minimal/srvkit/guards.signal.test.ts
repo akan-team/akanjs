@@ -62,13 +62,16 @@ describe("LocalOrEdge", () => {
     mock.restore();
   });
 
-  it("lets the memo pages open on a server it admits, and answers a missing memo not-found", async () => {
+  it("lets the memo pages open on a server it admits, and answers a missing memo not-found without an error line", async () => {
     expect(await fetch.memo(memoId)).toMatchObject({ id: memoId });
     await guardsOf(memoPage, {});
     await guardsOf(memoViewPage, { memoId });
-    await expect(guardsOf(memoViewPage, { memoId: "000000000000000000000000" })).rejects.toBeInstanceOf(
-      AkanNotFoundError,
-    );
+    const errors = await errorsLoggedBy(async () => {
+      await expect(guardsOf(memoViewPage, { memoId: "000000000000000000000000" })).rejects.toBeInstanceOf(
+        AkanNotFoundError,
+      );
+    });
+    expect(errors).toEqual([]);
   });
 
   it("answers the memo pages not-found on a server it refuses, as a built server does, without a refused call", async () => {

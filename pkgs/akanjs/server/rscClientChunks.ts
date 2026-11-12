@@ -1,4 +1,4 @@
-import { mapFlightLineRows } from "./flightRowReader";
+import type { FlightLineRowHandler } from "./flightRowReader";
 
 export interface ChunkNavigation {
   navId: number;
@@ -13,14 +13,11 @@ const quotedString = /"([^"\\]*)"/g;
 const maxScriptRowBytes = 1024;
 const rowDecoder = new TextDecoder();
 
-export function recordChunksOf(
-  stream: ReadableStream<Uint8Array>,
-  navigation: ChunkNavigation,
-): ReadableStream<Uint8Array> {
+export function chunkRecorderOf(navigation: ChunkNavigation): FlightLineRowHandler {
   //? RSDW outlines a chunk path of 16+ characters into a string row the `I` row names as `$<row id>`, until 32,768
   //? characters per response; shorter paths and those past the budget stay inline.
   const scriptRows = new Map<string, string>();
-  return mapFlightLineRows(stream, (row, tag) => {
+  return (row, tag) => {
     if (tag !== "I" && (tag !== "" || row.byteLength > maxScriptRowBytes)) return row;
     const text = rowDecoder.decode(row);
     const colon = text.indexOf(":");
@@ -34,7 +31,7 @@ export function recordChunksOf(
       if (chunkId.endsWith(".js")) chunkNavigations.set(chunkId, navigation);
     }
     return row;
-  });
+  };
 }
 
 export const navigationOfChunk = (chunkId: string): ChunkNavigation | undefined => chunkNavigations.get(chunkId);

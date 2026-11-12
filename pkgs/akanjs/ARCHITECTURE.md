@@ -123,7 +123,7 @@ Declared in [server/artifact/ipcTypes.ts](server/artifact/ipcTypes.ts).
 | `build-csr-res` | `BuilderRequestRelay`, `CsrRegistry` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `build-graph-res` | `BuilderRequestRelay`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `builder-shutdown` | `IncrementalBuilderHost` | `IncrementalBuilder` |
-| `builder-ready` | `BuilderBoot`, `BuilderChannel` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
+| `builder-ready` | `BuilderBoot`, `IncrementalBuilder` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `backend-ready` | `ChildSupervisor` | `DevBackend` |
 | `invalidate` | `DevRecycler`, `prepareDevWatchBatch` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `DevBuilder`, `IncrementalBuilderHost` |
 | `css-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `DevBuilder`, `IncrementalBuilderHost`, `shouldRelayRecycledFrontendState` |

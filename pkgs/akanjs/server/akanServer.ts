@@ -1,6 +1,6 @@
 import type { AkanWebConfig, AkanWebOption } from "akanjs";
 import { type BackendEnv, type BaseEnv, getApiPrefix, getEnv, getWsPrefix, normalizeRoutePrefix } from "akanjs/base";
-import { Logger, parseBasePaths, websocketBinaryFrameContract } from "akanjs/common";
+import { Logger, parseBasePaths } from "akanjs/common";
 import { DictionaryLookup, DictionaryRegistry } from "akanjs/dictionary";
 import type {
   Adaptor,
@@ -12,7 +12,7 @@ import type {
   ServiceCls,
   SolidConfig,
 } from "akanjs/service";
-import type { ServerSignal, ServerSignalCls, WebsocketPublishData } from "akanjs/signal";
+import type { ServerSignal, ServerSignalCls } from "akanjs/signal";
 import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { EndpointRateLimit } from "../signal/endpointRateLimit";
 import { createOpenApiDocument } from "../signal/openapi";
@@ -27,14 +27,8 @@ import { DiLifecycle } from "./di/diLifecycle";
 import type { HmrWsData, HmrWsHub } from "./hmr/wsHub";
 import { OrphanGroup } from "./lifecycle/orphanGroup";
 import { isPortInUseError } from "./lifecycle/portInUse";
-import { resolveRuntimeDir } from "./lifecycle/runtimeDir";
 import { ShutdownManager } from "./lifecycle/shutdownManager";
-import { HubFileSink } from "./logging/hubFileSink";
-import { LogControlSocket } from "./logging/logControlSocket";
-import { LogForwarder } from "./logging/logForwarder";
-import { LogHub } from "./logging/logHub";
-import { LogStreamRoute } from "./logging/logStreamRoute";
-import { RotatingLogWriter } from "./logging/rotatingLogWriter";
+import { ServerLogging } from "./logging/serverLogging";
 import { AgentTools, type McpAuthOption, McpRateLimiter, type McpRateLimitOption, McpRouter } from "./mcp";
 import { AppInfo } from "./ops/appInfo";
 import { OpsRoute } from "./ops/opsRoute";
@@ -45,6 +39,7 @@ import { SignalResolver } from "./resolver";
 import { type ApiRouteInputs, ApiRouter } from "./routing/apiRouter";
 import type { AppWsData } from "./routing/appWsData";
 import { HostAllowlist } from "./routing/hostAllowlist";
+import { localRoomsOf } from "./routing/localRooms";
 import { RoomReplay } from "./routing/roomReplay";
 import { RouteHosts } from "./routing/routeHosts";
 import { ServerLimits } from "./routing/serverLimits";
@@ -190,15 +185,11 @@ export class AkanServer {
   #metricsTimer: Timer | null = null;
   // No gateway socket: this process owns `/_akan/app/*` and the rotating log the gateway would have handled.
   readonly #solo = !process.env.AKAN_CHILD_SOCKET;
-  #logWriter: RotatingLogWriter | null = null;
-  #detachFileLog: (() => void) | null = null;
-  #logHub: LogHub | null = null;
-  #logControl: LogControlSocket | null = null;
-  #logForwarder: LogForwarder | null = null;
-  #logStream: LogStreamRoute | null = null;
+  readonly #logging: ServerLogging;
   #ops: OpsRoute | null | undefined;
   #lastMetrics: AkanMetricsReport = {};
   #stopping: Promise<void> | null = null;
+  #startStep: { stop: PromiseWithResolvers<void> | null } | null = null;
   #parentGone: boolean = false;
   #schedules = true;
   #orphanExiting = false;
@@ -215,6 +206,7 @@ export class AkanServer {
     const { libs, options } = AkanServer.#splitLibsAndOptions(libsOrOptions);
     this.name = name;
     this.logger = new Logger(name);
+    this.#logging = new ServerLogging(this.#solo, this.logger);
     this.libs = libs;
     this.env = libs.reduce((current, lib) => lib.option.resolveEnv(current), { ...env });
     //? An edge server runs on premises for its own screens and machines: no agent there is one to serve unasked.
@@ -355,7 +347,7 @@ export class AkanServer {
   async init(option: { routes?: boolean; web?: AkanWebOption } = {}) {
     const start = performance.now();
     this.#initTimings.clear();
-    await this.#init(option);
+    if (await this.#stoppedDuring(() => this.#init(option))) return this;
     const stages = [...this.#di.initTimings, ...this.#initTimings].map(([stage, ms]) => `${stage} ${ms.toFixed(1)}`);
     this.logger.debug(`Initialized in ${(performance.now() - start).toFixed(1)}ms (${stages.join(" · ")})`);
     return this;
@@ -366,7 +358,12 @@ export class AkanServer {
     this.status = "initializing";
     this.#assertPrefixClearsBasePaths();
     AgentTools.provide(this.#di, this);
-    const { routes, wsRoutes, routeOptions } = await this.#di.initializeAll();
+    const { routes, wsRoutes, routeOptions } = await this.#di.initializeAll().catch((error: unknown) => {
+      //? The container unwinds a failed init itself, so a held stop's teardown must not destroy it a second time.
+      this.status = "stopped";
+      throw error;
+    });
+    if (this.#startStep?.stop) return this;
     if (!initRoutes) {
       this.#prepared = null;
       this.status = "initialized";
@@ -395,6 +392,7 @@ export class AkanServer {
     }
     const webStart = performance.now();
     const { WebRouter } = await import("./webRouter");
+    if (this.#startStep?.stop) return this;
     const webRouter = await WebRouter.create({
       web: requestedWeb,
       //? Bun throws when `upgrade()` runs on a server that did not receive the request, and behind the gateway an HMR
@@ -434,8 +432,8 @@ export class AkanServer {
     }
     this.status = "starting";
     Logger.role = this.serverMode;
-    await this.#startLogTransport();
-    this.#startFileLogging();
+    if (await this.#stoppedDuring(() => this.#logging.startTransport(this.#prepared?.webRouter))) return this;
+    this.#logging.startFileLogging(this.serverMode);
     const port = process.env.AKAN_CHILD_SOCKET
       ? undefined
       : Number(process.env.AKAN_CHILD_WS_PORT || process.env.PORT || 8282);
@@ -533,21 +531,15 @@ export class AkanServer {
     const subscribed = (roomId: string) =>
       (server?.subscriberCount(roomId) ?? 0) + (wsServer?.subscriberCount(roomId) ?? 0) > 0;
     const roomReplay = new RoomReplay({ vouches: RoomReplay.vouchesFor(websocket, this.#solo), subscribed });
-    const localPublish: LocalPublish = (roomId, data) => {
-      if (data instanceof Uint8Array) {
-        roomReplay.unnumbered(roomId);
-        this.#binaryPubsub.publish(roomId, websocketBinaryFrameContract.encode({ roomId, payload: data }), {
-          coalesce: SignalResolver.coalescesRoom(roomId),
-        });
-        return;
-      }
-      const publishData: WebsocketPublishData = { type: "pub", roomId, data };
-      const frame = roomReplay.frameOf(publishData, subscribed(roomId));
-      server?.publish(roomId, frame);
-      wsServer?.publish(roomId, frame);
-    };
-    SignalResolver.setLocalPublish(localPublish, websocket, this.#di.live, roomReplay);
-    this.#localPublish = localPublish;
+    const rooms = localRoomsOf({
+      servers: [server, wsServer],
+      replay: roomReplay,
+      binary: this.#binaryPubsub,
+      subscribed,
+      coalesces: (roomId) => SignalResolver.coalescesRoom(roomId),
+    });
+    SignalResolver.setLocalPublish(rooms.publish, websocket, this.#di.live, roomReplay, rooms.resync);
+    this.#localPublish = rooms.publish;
 
     this.status = "running";
     this.#metricsTimer ??= ProcessMetricsCollector.startReporting(() => this.#reportMetrics());
@@ -564,7 +556,7 @@ export class AkanServer {
       healthPath: "/_akan/app/child-health",
       crossSite: CrossSiteGuard.option(),
     });
-    if (this.#schedules) await this.#di.runSchedulerInit();
+    if (this.#schedules && this.status === "running") await this.#di.runSchedulerInit();
     ShutdownManager.register(this.logger, () => this.stop());
     return this;
   }
@@ -580,7 +572,7 @@ export class AkanServer {
     //? Before init: once an adaptor listens for `message`, Bun emits `disconnect` at the close only to listeners there.
     if (shouldListen || !isNoListenCommand) this.#registerParentIpc();
     await this.init({ routes: shouldListen, web });
-    if (this.#parentGone) return this;
+    if (this.#parentGone || this.status !== "initialized") return this;
     if (!shouldListen) {
       const websocket = this.#di.getWebsocketAdaptor();
       if (websocket)
@@ -590,7 +582,7 @@ export class AkanServer {
         Logger.role = this.serverMode;
         this.#metricsTimer ??= ProcessMetricsCollector.startReporting(() => this.#reportMetrics());
         if (this.#schedules) this.#di.registerSchedule(this.serverMode);
-        await this.#startLogTransport();
+        await this.#logging.startTransport();
         this.#sendReady({
           type: "ready",
           pid: process.pid,
@@ -612,11 +604,32 @@ export class AkanServer {
   }
 
   async #stop() {
+    //? A start step tears down once its await settles; a teardown under it would be outrun by what it starts next.
+    if (this.#startStep) {
+      this.#startStep.stop ??= Promise.withResolvers<void>();
+      return await this.#startStep.stop.promise;
+    }
     if (this.status !== "running" && this.status !== "initialized") {
       this.logger.warn("AkanServer is not running. Cannot stop.");
       return;
     }
+    await this.#teardown();
+  }
 
+  async #stoppedDuring(run: () => Promise<unknown>) {
+    const step: { stop: PromiseWithResolvers<void> | null } = { stop: null };
+    this.#startStep = step;
+    try {
+      await run();
+    } finally {
+      this.#startStep = null;
+      if (step.stop) await this.#teardown().then(step.stop.resolve, step.stop.reject);
+    }
+    return step.stop !== null;
+  }
+
+  async #teardown() {
+    if (this.status === "stopped") return;
     try {
       const now = Date.now();
       this.logger.info("Shutting down gracefully...");
@@ -636,8 +649,7 @@ export class AkanServer {
       this.status = "stopped";
       this.logger.info(`Shutdown completed successfully in ${Date.now() - now}ms`);
       // Last, so the line above still has a hub — and in ndjson mode a stdout — to reach.
-      await this.#stopLogTransport();
-      await this.#stopFileLogging();
+      await this.#logging.stop();
     } catch (error) {
       this.logger.error(`Error during shutdown: ${error instanceof Error ? error.message : String(error)}`);
       this.status = "stopped";
@@ -684,7 +696,7 @@ export class AkanServer {
         pid: process.pid,
       } satisfies AkanIpcMessage);
     else if (message.type === "log.level") {
-      this.#logForwarder?.setMinSev(message.minSev);
+      this.#logging.setMinSev(message.minSev);
       this.#prepared?.webRouter?.setLogLevel(message.minSev);
     } else if (message.type === "shutdown") {
       void this.stop()
@@ -760,7 +772,6 @@ export class AkanServer {
         : null;
     this.#mcpRouter = mcpRouter;
     const mcpRoutes: HttpRoutes = mcpRouter?.createRoutes() ?? {};
-    this.#logStream ??= this.#solo ? LogStreamRoute.fromEnv(() => this.#logHub) : null;
     const soloRoutes: HttpRoutes = this.#solo
       ? createSoloAppRoutes(
           () => ({
@@ -771,7 +782,7 @@ export class AkanServer {
             rscWorker: webRouter?.rscWorkerStatus ?? null,
             metrics: this.#lastMetrics,
           }),
-          this.#logStream,
+          this.#logging.stream,
           this.#opsRoute(),
         )
       : {};
@@ -818,50 +829,6 @@ export class AkanServer {
       main: typeof main === "string" ? main : fromEnv.main,
       solid: fromEnv.solid && typeof solid === "string" ? solid : fromEnv.solid,
     };
-  }
-
-  #startFileLogging() {
-    if (!this.#solo || this.#logWriter) return;
-    this.#logWriter = RotatingLogWriter.fromRuntimeDir(resolveRuntimeDir());
-    if (this.#logWriter) this.#detachFileLog = HubFileSink.attach(this.#logWriter, this.#logHub, this.serverMode);
-  }
-
-  async #stopFileLogging() {
-    this.#detachFileLog?.();
-    this.#detachFileLog = null;
-    const writer = this.#logWriter;
-    this.#logWriter = null;
-    await writer?.close();
-  }
-
-  async #startLogTransport() {
-    if (this.#logHub || this.#logForwarder) return;
-    const webRouter = this.#prepared?.webRouter ?? null;
-    if (this.#solo) {
-      const hub = LogHub.attach();
-      this.#logHub = hub;
-      hub.onFloorChange((minSev) => webRouter?.setLogLevel(minSev));
-      webRouter?.onLogRecords((records, dropped) => {
-        hub.ingestMany(records);
-        if (dropped) this.logger.warn(`RSC worker dropped ${dropped} log records (ipc backpressure)`);
-      });
-      this.#logControl = await LogControlSocket.open(hub, resolveRuntimeDir(), this.logger);
-      return;
-    }
-    // An ndjson gateway relays records, not text; the forwarder starts at the stdout level before `log.level` arrives.
-    if (Logger.isNdjson) Logger.consoleOutput = false;
-    const forwarder = new LogForwarder((message, onSent) => process.send?.(message, undefined, undefined, onSent));
-    this.#logForwarder = forwarder;
-    webRouter?.onLogRecords((records) => forwarder.pushMany(records));
-  }
-
-  async #stopLogTransport() {
-    await this.#logControl?.stop();
-    this.#logControl = null;
-    this.#logHub?.close();
-    this.#logHub = null;
-    await this.#logForwarder?.close();
-    this.#logForwarder = null;
   }
 
   #getOpenApiDocument(appName: string) {

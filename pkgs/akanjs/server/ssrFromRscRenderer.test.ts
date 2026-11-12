@@ -1,6 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { createRequestStore, getRequestStore, headers } from "../fetch/requestStorage";
@@ -97,6 +98,23 @@ describe("SsrChunkRegistry", () => {
     expect(registry.get("/b.js")).toBeUndefined();
     expect(registry.get("/b.js?v=1")).toBeUndefined();
     expect(registry.get("/c.js")).toBe(modC);
+  });
+});
+
+describe("SSR webpack shim", () => {
+  test("refuses a client module no chunk load brought in as notInitialized", () => {
+    const { __webpack_require__ } = globalThis as unknown as { __webpack_require__: (id: string) => unknown };
+    let failure: unknown;
+    try {
+      __webpack_require__("/_akan/client/never-loaded.js");
+    } catch (error) {
+      failure = error;
+    }
+    expect(AkanError.is(failure, "notInitialized")).toBe(true);
+    expect(failure).toMatchObject({
+      statusCode: 500,
+      message: "[ssrFromRsc] module not loaded yet: /_akan/client/never-loaded.js",
+    });
   });
 });
 
