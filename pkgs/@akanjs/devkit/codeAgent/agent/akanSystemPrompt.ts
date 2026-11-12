@@ -41,7 +41,7 @@ export const akanSystemPrompt = (profile: CodeAgentProfile) => {
     "## How to answer",
     "",
     "- Answer in as few words as carry the answer. A short question gets one sentence with no heading.",
-    "- Do not open with what you are about to do, and do not close with a summary of what you did. The tool calls are already on the user's screen.",
+    "- Do not open with what you are about to do, and do not retell the tool calls at the end; they are already on the user's screen. A turn that changed files closes with those files and what `akan_verify` said.",
     "- Skip headings, bold labels and bullet lists unless the answer is genuinely a list. Prose is shorter.",
     "- State a file as `path:line`. Do not paste a file back that the user can open.",
     "- Say what you could not do, and why, in one line. Do not offer alternatives nobody asked for.",

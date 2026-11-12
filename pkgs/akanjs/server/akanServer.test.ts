@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -749,7 +750,153 @@ describe("AkanServer module exclusion", () => {
   });
 });
 
+const freePort = () => {
+  const probe = Bun.serve({ port: 0, fetch: () => new Response() });
+  const { port } = probe;
+  void probe.stop(true);
+  return port as number;
+};
+
+const listeningServer = async () => {
+  const { AkanServer, createLib } = await loadRuntime();
+  const { DiLifecycle } = await import("./di/diLifecycle");
+  const tmp = await mkdtemp(join(tmpdir(), "akan-sl-"));
+  const port = freePort();
+  const runtimeDir = join(tmp, "runtime");
+  const vars = { PORT: String(port), AKAN_RUNTIME_DIR: runtimeDir };
+  const previous = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]));
+  const events = ["message", "disconnect", "SIGTERM", "SIGINT", "uncaughtException", "unhandledRejection"] as const;
+  const listeners = new Map(events.map((event) => [event, process.listeners(event)]));
+  Object.assign(process.env, vars);
+  const replica = new AkanServer("serverGet", createEnv(tmp), "all", createLib());
+  const destroyAll = spyOn(DiLifecycle.prototype, "destroyAll");
+  const schedulerInit = spyOn(DiLifecycle.prototype, "runSchedulerInit");
+  const restore = async () => {
+    if (replica.status === "running") await replica.stop();
+    destroyAll.mockRestore();
+    schedulerInit.mockRestore();
+    for (const [event, before] of listeners)
+      for (const listener of process.listeners(event)) if (!before.includes(listener)) process.off(event, listener);
+    for (const [key, value] of Object.entries(previous))
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    await rm(tmp, { recursive: true, force: true });
+  };
+  const served = async () => (await fetch(`http://127.0.0.1:${port}/`).catch(() => null)) !== null;
+  return { replica, runtimeDir, destroyAll, schedulerInit, served, restore };
+};
+
 describe("AkanServer stopped while starting", () => {
+  test("a stop during init() tears down before listen, and resolves on the stopped server", async () => {
+    const { replica, destroyAll, schedulerInit, served, restore } = await listeningServer();
+
+    try {
+      const starting = replica.start({ listen: true, web: false });
+      expect(replica.status).toBe("initializing");
+      const stopped = replica.stop().then(() => ({ status: replica.status, destroyed: destroyAll.mock.calls.length }));
+
+      expect(await starting).toBe(replica);
+      expect(await served()).toBe(false);
+      expect(replica.status).toBe("stopped");
+      expect(schedulerInit).not.toHaveBeenCalled();
+      expect(await stopped).toEqual({ status: "stopped", destroyed: 1 });
+
+      await replica.start({ listen: true, web: false });
+      expect(await served()).toBe(true);
+    } finally {
+      await restore();
+    }
+  });
+
+  test("a stop while listen() opens its log control socket closes it, and serves nothing", async () => {
+    const { LogControlSocket } = await import("./logging/logControlSocket");
+    const { replica, runtimeDir, destroyAll, schedulerInit, served, restore } = await listeningServer();
+    const socketPath = LogControlSocket.pathIn(runtimeDir);
+    const openSocket = LogControlSocket.open.bind(LogControlSocket);
+    const stopped = Promise.withResolvers<{ status: string; destroyed: number; socket: boolean }>();
+    let bound = false;
+    const open = spyOn(LogControlSocket, "open").mockImplementation(async (...args) => {
+      expect(replica.status).toBe("starting");
+      void replica
+        .stop()
+        .then(() => ({
+          status: replica.status,
+          destroyed: destroyAll.mock.calls.length,
+          socket: existsSync(socketPath),
+        }))
+        .then(stopped.resolve, stopped.reject);
+      const control = await openSocket(...args);
+      bound = control !== null && existsSync(socketPath);
+      return control;
+    });
+
+    try {
+      expect(await replica.start({ listen: true, web: false })).toBe(replica);
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(bound).toBe(true);
+      expect(await served()).toBe(false);
+      expect(replica.status).toBe("stopped");
+      expect(schedulerInit).not.toHaveBeenCalled();
+      expect(await stopped.promise).toEqual({ status: "stopped", destroyed: 1, socket: false });
+
+      open.mockRestore();
+      await replica.start({ listen: true, web: false });
+      expect(await served()).toBe(true);
+      expect(existsSync(socketPath)).toBe(true);
+    } finally {
+      open.mockRestore();
+      await restore();
+    }
+  });
+
+  test("a stop held through a failed init() leaves the container destroyed once, by the init's own unwind", async () => {
+    const { SignalResolver } = await import("./resolver");
+    const { replica, destroyAll, served, restore } = await listeningServer();
+    const merge = spyOn(SignalResolver, "mergeHttpRoutes").mockImplementation(() => {
+      throw new Error("routes refused");
+    });
+
+    try {
+      const starting = replica.start({ listen: true, web: false });
+      const stopped = replica.stop();
+
+      await expect(starting).rejects.toThrow("routes refused");
+      await stopped;
+      expect(destroyAll).toHaveBeenCalledTimes(1);
+      expect(replica.status).toBe("stopped");
+      expect(await served()).toBe(false);
+    } finally {
+      merge.mockRestore();
+      await restore();
+    }
+  });
+
+  test("runs no init schedule once the ready message finds the parent gone", async () => {
+    const { LogControlSocket } = await import("./logging/logControlSocket");
+    const { OrphanGroup } = await import("./lifecycle/orphanGroup");
+    const { replica, schedulerInit, served, restore } = await listeningServer();
+    const send = process.send;
+    const exited = Promise.withResolvers<number>();
+    const exit = spyOn(OrphanGroup, "exit").mockImplementation((code) => exited.resolve(code));
+    const open = spyOn(LogControlSocket, "open").mockImplementation(async () => {
+      process.send = () => false;
+      return null;
+    });
+
+    try {
+      expect(await replica.start({ listen: true, web: false })).toBe(replica);
+      expect(await exited.promise).toBe(0);
+      expect(replica.status).toBe("stopped");
+      expect(schedulerInit).not.toHaveBeenCalled();
+      expect(await served()).toBe(false);
+    } finally {
+      process.send = send;
+      open.mockRestore();
+      exit.mockRestore();
+      await restore();
+    }
+  });
+
   test("runs no init schedule once a stop lands while its log transport starts", async () => {
     const { AkanServer, createLib } = await loadRuntime();
     const { LogControlSocket } = await import("./logging/logControlSocket");
