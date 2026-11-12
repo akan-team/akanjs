@@ -1055,15 +1055,15 @@ export declare const animated: {
 
 export declare const badgeRecipe: (variants?: Omit<({
     size?: "lg" | "md" | "sm" | "xs" | undefined;
-    variant?: "accent" | "default" | "error" | "info" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     outline?: boolean | undefined;
+    variant?: "accent" | "default" | "error" | "info" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
 } & {
     class?: import("tailwind-variants/lite").ClassValue;
     className?: never;
 }) | ({
     size?: "lg" | "md" | "sm" | "xs" | undefined;
-    variant?: "accent" | "default" | "error" | "info" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     outline?: boolean | undefined;
+    variant?: "accent" | "default" | "error" | "info" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
 } & {
     class?: never;
     className?: import("tailwind-variants/lite").ClassValue;
@@ -1071,16 +1071,16 @@ export declare const badgeRecipe: (variants?: Omit<({
 
 export declare const buttonRecipe: (variants?: Omit<({
     size?: "icon" | "lg" | "md" | "sm" | "xl" | "xs" | undefined;
-    variant?: "accent" | "default" | "destructive" | "ghost" | "info" | "link" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     outline?: boolean | undefined;
+    variant?: "accent" | "default" | "destructive" | "ghost" | "info" | "link" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     shape?: "circle" | "default" | "square" | undefined;
 } & {
     class?: import("tailwind-variants/lite").ClassValue;
     className?: never;
 }) | ({
     size?: "icon" | "lg" | "md" | "sm" | "xl" | "xs" | undefined;
-    variant?: "accent" | "default" | "destructive" | "ghost" | "info" | "link" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     outline?: boolean | undefined;
+    variant?: "accent" | "default" | "destructive" | "ghost" | "info" | "link" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     shape?: "circle" | "default" | "square" | undefined;
 } & {
     class?: never;

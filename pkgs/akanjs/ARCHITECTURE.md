@@ -120,19 +120,19 @@ Declared in [server/artifact/ipcTypes.ts](server/artifact/ipcTypes.ts).
 | `build-csr` | `BuilderRpc` | `AkanApp`, `BuilderRequestRelay`, `DevBackend`, `IncrementalBuilder` |
 | `build-graph` | `BuilderRpc` | `AkanApp`, `BuilderRequestRelay`, `DevBackend`, `IncrementalBuilder` |
 | `build-route-res` | `BuilderRequestRelay`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost` |
-| `build-csr-res` | `BuilderRequestRelay`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost` |
+| `build-csr-res` | `BuilderRequestRelay`, `CsrRegistry` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `build-graph-res` | `BuilderRequestRelay`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `builder-shutdown` | `IncrementalBuilderHost` | `IncrementalBuilder` |
-| `builder-ready` | `IncrementalBuilder` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
+| `builder-ready` | `BuilderBoot`, `IncrementalBuilder` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
 | `backend-ready` | `ChildSupervisor` | `DevBackend` |
 | `invalidate` | `DevRecycler`, `prepareDevWatchBatch` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `DevBuilder`, `IncrementalBuilderHost` |
 | `css-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `DevBuilder`, `IncrementalBuilderHost`, `shouldRelayRecycledFrontendState` |
 | `pages-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `DevBuilder`, `IncrementalBuilderHost`, `shouldRelayRecycledFrontendState` |
-| `csr-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
-| `ssr-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
-| `build-status` | `BuildBatch`, `DevBackend`, `DevHostChannel`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuildBatchRunner`, `BuilderRpc`, `DevBackend`, `DevBuilder`, `IncrementalBuilderHost` |
-| `builder-metrics` | `IncrementalBuilder` | `AkanAppHost`, `DevBuilder`, `IncrementalBuilderHost` |
-| `boot-armed` | `IncrementalBuilder` | `AkanAppHost`, `IncrementalBuilderHost` |
+| `csr-updated` | `BuildBatch`, `CsrRegistry` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
+| `ssr-updated` | `BuildBatch`, `SsrRegistry` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
+| `build-status` | `BuildBatch`, `BuilderBoot`, `DevBackend`, `DevHostChannel`, `sendBuildStatus` | `AkanApp`, `AkanAppHost`, `BuildBatchRunner`, `BuilderRpc`, `DevBackend`, `DevBuilder`, `IncrementalBuilderHost` |
+| `builder-metrics` | `BuilderLanes` | `AkanAppHost`, `DevBuilder`, `IncrementalBuilderHost` |
+| `boot-armed` | `BuilderBoot`, `IncrementalBuilder` | `AkanAppHost`, `IncrementalBuilderHost` |
 
 ### `InMsg`: server → RSC worker
 
