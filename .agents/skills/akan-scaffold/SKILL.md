@@ -18,7 +18,7 @@ Everything else is pages, sections, and props.
 - A page or section whose content you can write as static JSX or props is not an entity. "A self-intro page
   with two detail pages" is pages only — no `profile` module.
 - Never invent a supporting entity (profile, category, tag, author, like) to round out a design. If one looks
-  genuinely necessary, say so in your reply and let the user decide.
+  genuinely necessary, build the request without it and say in your reply why it may be needed; the user decides.
 - "… plus a comment zone that saves to a database" is exactly one new module: `comment`.
 - Check what exists first (`list_modules`) and extend it when it already fits — `add-field` / `add-slice` /
   `create-ui` beat a whole new module.

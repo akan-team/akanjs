@@ -262,8 +262,10 @@ export default page()
   refusal, beside `tooManyRequests` and `internalError`. The code is the one an HTTP caller gets: a domain `Err`'s
   dictionary key (what `Err.is` matches), else the `AkanError`'s own code; a guard's 401 or 403 by its status alone
   (`unauthorized`, `forbidden`), since a guard's own code names its rule as its message does; a crash, or a 5xx whose
-  code this server did not name, by its status (`internalError`). A code is a bounded key or camelCase token, never
-  prose. No host hands `_meta` to the model, so what the model must act on belongs in the dictionary sentence.
+  answer names no bounded code, by its status (`internalError`). A 5xx's text is redacted but its code token is not,
+  and it comes from the error's own JSON when that carries one, which can be a third-party library's. A code is a
+  bounded key or camelCase token, never prose. No host hands `_meta` to the model, so what the model must act on
+  belongs in the dictionary sentence.
 - **Three revisions are spoken**: the modern `2026-07-28` and the legacy `2025-11-25` / `2025-06-18`, which are
   wire-identical over the POST-only surface this implements — a client whose proposal is not listed is told to
   disconnect. An unknown proposal is answered at whichever end of that list it is closer to, and an unimplemented
