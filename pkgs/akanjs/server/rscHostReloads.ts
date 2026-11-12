@@ -30,6 +30,11 @@ export interface RscReloadFailure extends Error {
   failed: RscAdoptedBundle;
 }
 
+export type RscHostArtifact = Pick<
+  BaseBuildArtifact,
+  "rscRuntimeClientManifest" | "pagesBundlePath" | "pagesBundleBuildId" | "cssAssets" | "basePaths" | "i18n"
+>;
+
 interface RscBootState extends RscAdoptedBundle {
   reloadState: number;
   cssAssets: Record<string, CssAsset>;
@@ -77,7 +82,18 @@ export class RscHostReloads {
   readonly #worker: RscWorkerProcess;
   readonly #recycler: RscWorkerRecycler;
 
-  constructor(artifact: BaseBuildArtifact, worker: RscWorkerProcess, recycler: RscWorkerRecycler) {
+  static readArtifact({
+    rscRuntimeClientManifest,
+    pagesBundlePath,
+    pagesBundleBuildId,
+    cssAssets,
+    basePaths,
+    i18n,
+  }: BaseBuildArtifact): RscHostArtifact {
+    return { rscRuntimeClientManifest, pagesBundlePath, pagesBundleBuildId, cssAssets, basePaths, i18n };
+  }
+
+  constructor(artifact: RscHostArtifact, worker: RscWorkerProcess, recycler: RscWorkerRecycler) {
     this.#worker = worker;
     this.#recycler = recycler;
     this.#clientManifest = artifact.rscRuntimeClientManifest ?? {};

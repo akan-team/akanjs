@@ -150,6 +150,8 @@ export class RscWorker {
 
   constructor(artifact: BaseBuildArtifact, { failBeforeReady = false }: { failBeforeReady?: boolean } = {}) {
     this.#failBeforeReady = failBeforeReady;
+    //? Before the spawn: an artifact that fails a read must leave no worker running.
+    const read = RscHostReloads.readArtifact(artifact);
     const logger = this.#logger;
     const worker = new RscWorkerProcess(logger, {
       onMessage: (message, proc) => this.#handleMessage(message as RscInMsg, proc),
@@ -161,7 +163,7 @@ export class RscWorker {
     this.#worker = worker;
     this.#requests = requests;
     this.#recycler = recycler;
-    this.#reloads = new RscHostReloads(artifact, worker, recycler);
+    this.#reloads = new RscHostReloads(read, worker, recycler);
     this.ready = worker.ready;
   }
 
