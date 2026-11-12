@@ -17,6 +17,7 @@ import {
   streamOfChunks,
   textRow,
 } from "./flightRows.fixture";
+import { createInitialRscStream } from "./rscInlineStream";
 import {
   createInlineRscScript,
   createSoftRedirectScript,
@@ -473,6 +474,91 @@ describe("inline RSC interleaving", () => {
     expect(cancelCount).toBe(1);
     expect(htmlCancelled).toBe(1);
     expect(rscCancelled).toBe(1);
+  });
+});
+
+describe("document Flight scripts", () => {
+  const pushesOf = (page: string): Array<[1, string] | [3, string]> =>
+    Array.from(
+      page.matchAll(/<script>self\.__RSC_PUSH__\(([13]),("(?:[^"\\]|\\.)*")\)<\/script>/g),
+      ([, type, data]) => (type === "3" ? [3, JSON.parse(data ?? "")] : [1, JSON.parse(data ?? "")]),
+    );
+  const documentOf = (flight: ReadableStream<Uint8Array>) =>
+    interleaveRscScriptsWithHtml(
+      textStream([{ text: `<main>shell${rscBootstrap}</main>` }]),
+      sanitizeFlightForClientStream(flight),
+    );
+  const browserFlightOf = async (page: string): Promise<Uint8Array> => {
+    globalThis.__RSC_CHUNKS__ = pushesOf(page);
+    globalThis.__RSC_CLOSED__ = true;
+    try {
+      return await readBytes(createInitialRscStream());
+    } finally {
+      globalThis.__RSC_CHUNKS__ = undefined;
+      globalThis.__RSC_CLOSED__ = undefined;
+    }
+  };
+
+  test("lets the browser reassemble the sanitized Flight wherever a chunk boundary falls", async () => {
+    const rows = mixedFlightRows;
+    const expected = joinBytes(
+      ':HL["/style.css","style"]\n',
+      rows.debug,
+      rows.text,
+      rows.bytes,
+      rows.empty,
+      "c7:null\n",
+      rows.model,
+    );
+    const throughDocument = (flight: ReadableStream<Uint8Array>) =>
+      new ReadableStream<Uint8Array>({
+        async start(controller) {
+          controller.enqueue(await browserFlightOf(await new Response(documentOf(flight)).text()));
+          controller.close();
+        },
+      });
+
+    expect(await offsetsWhereOutputDiffers(mixedFlight, expected, throughDocument)).toEqual([]);
+  });
+
+  test("inlines the rows of one Flight chunk as one script, and a binary row as a base64 script of its own", async () => {
+    const page = await new Response(documentOf(streamOfChunks([mixedFlight]))).text();
+
+    expect(pushesOf(page).map(([type]) => type)).toEqual([1, 3, 1]);
+  });
+
+  test("sends the rows a Flight chunk completes before the next chunk arrives", async () => {
+    let releaseSecond!: () => void;
+    let secondReleased = false;
+    const flight = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(encoder.encode('1:"a"\n2:"b"\n3:"pa'));
+        await new Promise<void>((resolve) => {
+          releaseSecond = () => {
+            secondReleased = true;
+            resolve();
+          };
+        });
+        controller.enqueue(encoder.encode('rtial"\n'));
+        controller.close();
+      },
+    });
+    const reader = documentOf(flight).getReader();
+    const firstScript = createInlineRscScript(encoder.encode('1:"a"\n2:"b"\n'));
+    let page = "";
+    while (!page.includes(firstScript)) {
+      const next = await Promise.race([reader.read(), sleep(30).then(() => null)]);
+      if (!next || next.done) throw new Error("timed out waiting for the first chunk's rows");
+      page += decoder.decode(next.value);
+    }
+
+    expect(secondReleased).toBe(false);
+    releaseSecond();
+    for (let next = await reader.read(); !next.done; next = await reader.read()) page += decoder.decode(next.value);
+    expect(pushesOf(page)).toEqual([
+      [1, '1:"a"\n2:"b"\n'],
+      [1, '3:"partial"\n'],
+    ]);
   });
 });
 

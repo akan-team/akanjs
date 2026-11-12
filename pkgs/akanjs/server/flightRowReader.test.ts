@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { FLIGHT_LENGTH_PREFIXED_TAGS, type FlightLineRowHandler, mapFlightLineRows } from "./flightRowReader";
-import { joinBytes, mixedFlight, readBytes, streamOfChunks } from "./flightRows.fixture";
+import { joinBytes, mixedFlight, mixedFlightRows, readBytes, streamOfChunks } from "./flightRows.fixture";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -71,5 +71,22 @@ describe("Flight row reader", () => {
     expect(output).toContain("no row\n");
     expect(output).not.toContain('5:D{"digest"');
     expect(output.endsWith("no row\n0:")).toBe(true);
+  });
+
+  test("hands on the rows each chunk completes as one chunk, and a binary row as a chunk of its own", async () => {
+    const rows = mixedFlightRows;
+    const chunks = [
+      joinBytes(rows.hint, rows.debug, rows.text.subarray(0, 40)),
+      joinBytes(rows.text.subarray(40), rows.bytes, rows.empty, rows.redirect, rows.model),
+    ];
+    const reader = mapFlightLineRows(streamOfChunks(chunks)).getReader();
+    const output: Buffer[] = [];
+    for (let next = await reader.read(); !next.done; next = await reader.read()) output.push(Buffer.from(next.value));
+
+    expect(output).toEqual(
+      [joinBytes(rows.hint, rows.debug), rows.text, rows.bytes, joinBytes(rows.empty, rows.redirect, rows.model)].map(
+        (chunk) => Buffer.from(chunk),
+      ),
+    );
   });
 });
