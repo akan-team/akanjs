@@ -46,7 +46,6 @@ interface PackageExport {
   from: string;
 }
 
-const maxModules = 64;
 const packageOf = (specifier: string) =>
   specifier
     .split("/")
@@ -175,7 +174,7 @@ export class AdaptorResolver {
   //? TypeScript prefers a module's own `export { Clock }` to its `export *`s, and drops a name two `export *` share.
   #exportedAt(name: string, path: string, seen: Set<string>): (DeclaredAdaptor | PackageExport)[] {
     const key = `${path}\n${name}`;
-    if (seen.has(key) || seen.size >= maxModules) return [];
+    if (seen.has(key)) return [];
     seen.add(key);
     const here = (this.#adaptors.get(name) ?? []).filter((adaptor) => {
       const module = this.#source.relative(adaptor.fileName).replace(/\.tsx?$/, "");

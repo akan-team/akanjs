@@ -1930,6 +1930,62 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({ square: plug(Sq
     ]);
   });
 
+  it("follows the import's chain through facets of 70 files each, and reads `export *`s of one package's subpaths as that package", () => {
+    const filler = (folder: string) =>
+      Object.fromEntries(
+        Array.from({ length: 70 }, (_, idx) => [`${folder}/m${idx}.ts`, `export const m${idx} = 0;\n`]),
+      );
+    const sources: Record<string, string> = {
+      ...filler("libs/shared/srvkit"),
+      ...filler("libs/util/srvkit"),
+      "libs/shared/srvkit/bridge.ts": `export * from "@libs/util/srvkit";
+`,
+      "libs/shared/srvkit/pay.ts": `export * from "pay-sdk";
+`,
+      "libs/shared/srvkit/payServer.ts": `export * from "pay-sdk/server";
+`,
+      "libs/shared/srvkit/zeta.ts": `export { Stripe } from "stripe-sdk";
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Pay, Stripe } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({ pay: plug(Pay), stripe: plug(Stripe) })) {
+  async bill() {
+    await this.pay.send();
+    return this.stripe.charge();
+  }
+}
+`,
+    };
+    const barrelOf = (folder: string) => {
+      const files = Object.keys(sources).filter((rel) => rel.startsWith(`${folder}/`));
+      return facetBarrelOf(
+        "srvkit",
+        files.map((rel) => rel.slice(folder.length + 1)),
+        [],
+      );
+    };
+    const synced = {
+      ...sources,
+      "libs/shared/srvkit/index.ts": barrelOf("libs/shared/srvkit"),
+      "libs/util/srvkit/index.ts": barrelOf("libs/util/srvkit"),
+    };
+    const callsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    const expected = [
+      "method:apps/demo:memo.bill -charge-> adaptor:stripe-sdk:Stripe",
+      "method:apps/demo:memo.bill -send-> adaptor:pay-sdk:Pay",
+    ];
+    expect(callsOf(sources)).toEqual(expected);
+    expect(callsOf(synced)).toEqual(expected);
+  });
+
   it("marks a job and an adaptor changed or removed in the Change Map", () => {
     const wired = (jobs: string, adaptors: string): Record<string, string> => ({
       "apps/demo/srvkit/mailer.ts": `import { adapt } from "akanjs/service";
