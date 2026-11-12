@@ -9,10 +9,17 @@ export class StartGuard {
   readonly #teardown: () => Promise<void>;
   #step: StartStep | null = null;
   #stopping: Promise<void> | null = null;
+  #teardowns = 0;
 
   constructor(logger: Logger, teardown: () => Promise<void>) {
     this.#logger = logger;
-    this.#teardown = teardown;
+    this.#teardown = async () => {
+      try {
+        await teardown();
+      } finally {
+        this.#teardowns += 1;
+      }
+    };
   }
 
   get stopHeld() {
@@ -44,9 +51,13 @@ export class StartGuard {
   }
 
   async unwound<T>(run: () => Promise<T>): Promise<T> {
+    const teardowns = this.#teardowns;
     try {
       return await run();
     } catch (error) {
+      //? A teardown finished since this start began took down what it brought up; one more would hit the start after it.
+      if (teardowns !== this.#teardowns) throw error;
+      this.#logger.error(`AkanServer failed to start, tearing down: ${error instanceof Error ? error.message : error}`);
       //? Shares a stop already under way rather than destroying again; the teardown logs its own failure.
       await this.#once(this.#teardown).catch(() => undefined);
       throw error;
