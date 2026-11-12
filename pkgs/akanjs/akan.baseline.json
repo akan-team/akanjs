@@ -2,31 +2,26 @@
   "akan.size.file": {
     "fetch/client/fetchClient.ts": 1163,
     "server/di/diLifecycle.ts": 834,
-    "server/resolver/signal.resolver.ts": 939,
+    "server/resolver/signal.resolver.ts": 936,
     "server/rscWorker.tsx": 1669,
     "server/ssrFromRscRenderer.tsx": 839,
-    "service/predefinedAdaptor/sql/SqlDocumentStore.ts": 1384,
     "signal/signalContext.ts": 983,
     "ui/Constant/Doc.tsx": 812
   },
   "akan.size.function": {
     "server/hmr/csrDevRuntime.ts#installCsrDevRuntime": 612,
-    "server/resolver/database.resolver.ts#DatabaseResolver.resolveDatabase": 381,
     "server/resolver/signal.resolver.ts#SignalResolver.resolveEndpoint": 163,
-    "server/resolver/signal.resolver.ts#SignalResolver.resolveSlice": 151,
     "server/rscWorker.tsx#RscRenderer.#handleRender": 345,
     "server/rscWorker.tsx#RscRenderer.#handleRender.#runWithRequest()": 263,
     "server/rscWorker.tsx#RscRenderer.#renderFlightElement": 186,
     "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 158,
-    "ui/Agent/Chat.tsx#DefaultChat": 409,
     "ui/BottomSheet.tsx#BottomSheet": 154,
-    "ui/Data/ListContainer.tsx#ListContainer": 341,
     "ui/Data/RefPicker.tsx#RefPicker": 169,
     "ui/Dialog/LegacyModal.tsx#LegacyModal": 210,
     "ui/Load/Units.tsx#Render": 215,
     "ui/Menu.tsx#DefaultMenu": 171,
     "ui/Model/EditModal.tsx#EditModal": 243,
-    "ui/Select.tsx#DefaultSelect": 379,
+    "ui/Select.tsx#DefaultSelect": 352,
     "webkit/RenderLayer.tsx#RenderLayer": 178
   },
   "akan.size.class": {
@@ -35,7 +30,6 @@
     "fetch/client/fetchClient.ts#FetchClient": 92,
     "fetch/client/wsClient.ts#WsClient": 65,
     "server/rscWorker.tsx#RscRenderer": 72,
-    "service/predefinedAdaptor/sql/SqlDocumentStore.ts#SqlDocumentStore": 99,
     "signal/signalContext.ts#SignalContext": 72,
     "store/storeInstance.ts#StoreInstance": 68
   },
