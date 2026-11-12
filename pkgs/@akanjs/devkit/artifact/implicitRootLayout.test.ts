@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { tempDirs, writeText as write } from "../testHelpers";
+import { tempDirs, writeText as write } from "../test/testHelpers";
 import { resolveSsrPageEntries } from "./implicitRootLayout";
 
 const makeTempRoot = tempDirs("akan-implicit-root-layout-");

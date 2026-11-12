@@ -1,7 +1,7 @@
 import { type Lib, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { CommandExecutionError, LibExecutor } from "@akanjs/devkit/executors";
-import { LibSource } from "@akanjs/devkit/libSource";
-import { compareSemver } from "@akanjs/devkit/semver";
+import { compareSemver } from "@akanjs/devkit/util/semver";
+import { LibSource } from "@akanjs/devkit/workspace/libSource";
 
 export class LibraryRunner extends runner("library") {
   static readonly libraryRepository = "https://github.com/akan-team/akanjs.git";

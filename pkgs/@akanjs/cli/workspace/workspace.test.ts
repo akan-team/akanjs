@@ -13,8 +13,8 @@ import {
   tempRoots,
   writeJson,
   writeText,
-} from "@akanjs/devkit/testHelpers";
-import type { PackageJson } from "@akanjs/devkit/types";
+} from "@akanjs/devkit/test/testHelpers";
+import type { PackageJson } from "@akanjs/devkit/workspace/types";
 import { Logger } from "akanjs/common";
 import { WorkspaceCommand } from "./workspace.command";
 import { defaultMaxDiagnostics, WorkspaceRunner } from "./workspace.runner";

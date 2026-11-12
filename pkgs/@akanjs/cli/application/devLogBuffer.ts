@@ -1,4 +1,4 @@
-import { stripAnsi } from "@akanjs/devkit/stripAnsi";
+import { stripAnsi } from "@akanjs/devkit/util/stripAnsi";
 
 export interface DevLogLine {
   seq: number;

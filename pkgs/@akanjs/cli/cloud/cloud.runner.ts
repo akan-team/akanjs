@@ -23,7 +23,7 @@ import {
 } from "@akanjs/devkit/mobile";
 import { PlatformTestRun } from "@akanjs/devkit/platformTest/PlatformTestRun";
 import type { RemoteTestPlatform } from "@akanjs/devkit/platformTest/PlatformTestTarget";
-import { SubspaceConfig } from "@akanjs/devkit/subspaceConfig";
+import { SubspaceConfig } from "@akanjs/devkit/subspace/subspaceConfig";
 import { confirm, input, select } from "@inquirer/prompts";
 import { Logger } from "akanjs/common";
 import chalk from "chalk";

@@ -77,7 +77,7 @@ export class AkanToolPack {
 
   static async #guidelineNames() {
     try {
-      const { Prompter } = await import("../../prompter");
+      const { Prompter } = await import("../../guideline/prompter");
       return await Prompter.listGuidelines();
     } catch {
       return [];

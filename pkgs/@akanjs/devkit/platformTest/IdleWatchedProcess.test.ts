@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { IdleWatchedProcess } from "./IdleWatchedProcess";
 
 const makeRoot = tempDirs("akan-idle-watch-");

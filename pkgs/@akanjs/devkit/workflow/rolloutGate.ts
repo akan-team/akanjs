@@ -1,4 +1,4 @@
-import type { PackageJson } from "../types";
+import type { PackageJson } from "../workspace/types";
 
 export type ToolingRolloutDependencySection =
   | "dependencies"

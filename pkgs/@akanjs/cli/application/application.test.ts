@@ -22,7 +22,7 @@ import {
   createTempPackage,
   tempRoots,
   writeText,
-} from "@akanjs/devkit/testHelpers";
+} from "@akanjs/devkit/test/testHelpers";
 import { DatabaseModes } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { ApplicationCommand } from "./application.command";

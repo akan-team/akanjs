@@ -16,6 +16,7 @@ import {
   isRscPayloadResponse,
   RSC_CONTENT_TYPE,
   type RscRedirectRow,
+  watchRscErrorRows,
 } from "./rscHttp";
 
 const encoder = new TextEncoder();
@@ -135,5 +136,20 @@ describe("RSC HTTP helpers", () => {
     expect([...new Map(redirects.map((redirect) => [JSON.stringify(redirect), redirect])).values()]).toEqual([
       { rowId: "c7", location: "/target", method: "replace", status: 307 },
     ]);
+  });
+
+  test("calls back once for a streamed server error, and never for a not-found, redirect or empty digest", async () => {
+    const watched = async (rows: string) => {
+      let errors = 0;
+      const output = await readBytes(watchRscErrorRows(streamOf(encoder.encode(rows)), () => (errors += 1)));
+      expect(decoder.decode(output)).toBe(rows);
+      return errors;
+    };
+    const redirect = encodeAkanRedirectDigest({ location: "/signin", method: "replace", status: 307 });
+
+    expect(await watched(`0:"page"\n1:E{"digest":"3f2a9c1d"}\n2:E{"digest":"8b7e6d5c"}\n`)).toBe(1);
+    expect(await watched(`0:"page"\n1:E{"digest":"AKAN_NOT_FOUND"}\n2:E{"digest":"${redirect}"}\n`)).toBe(0);
+    expect(await watched(`0:"page"\n1:T6,E{x:1}\n`)).toBe(0);
+    expect(await watched(`0:"page"\n1:E{"digest":"","name":"Error","message":"backend down","stack":[]}\n`)).toBe(0);
   });
 });

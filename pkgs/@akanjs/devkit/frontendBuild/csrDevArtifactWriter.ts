@@ -11,7 +11,7 @@ import {
   type CsrDevManifest,
   csrDevModuleFile,
 } from "akanjs/server/hmr/csrDevManifest";
-import { FileSys } from "../fileSys";
+import { FileSys } from "../util/fileSys";
 import { CsrDevPaths } from "./csrDevPaths";
 import type { CsrDevCode, CsrDevCompiledModule, CsrDevGraph } from "./csrDevTypes";
 

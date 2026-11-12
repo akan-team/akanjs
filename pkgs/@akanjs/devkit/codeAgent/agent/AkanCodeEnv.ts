@@ -1,4 +1,4 @@
-import { ShellOnlyEnv } from "../../shellOnlyEnv";
+import { ShellOnlyEnv } from "../../util/shellOnlyEnv";
 
 export const akanCodeGuardedEnv = [
   "AKAN_CODE_HOME",

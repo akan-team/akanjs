@@ -1,22 +1,26 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { collectScopeRecipeSources, extractAgentBlock, renderScopeAgentBlock } from "@akanjs/devkit/agentsIndex";
-import { biomeVersion } from "@akanjs/devkit/biomeBase";
 import { type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { collectRecipeSources, type RecipeSource, scanRecipes } from "@akanjs/devkit/context/recipeScanner";
 import { LibExecutor, PkgExecutor, SysExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
-import { FileSys } from "@akanjs/devkit/fileSys";
 import {
   countBlocking,
   formatStyleContract,
   type StyleContractViolations,
 } from "@akanjs/devkit/frontendBuild/styleContract";
 import { ThemeValidator } from "@akanjs/devkit/frontendBuild/themeValidator";
-import { Linter } from "@akanjs/devkit/linter";
-import { MaintainabilityContract } from "@akanjs/devkit/maintainabilityContract";
-import { MaintainabilityReport } from "@akanjs/devkit/maintainabilityReport";
-import { collectRecipeSources, type RecipeSource, scanRecipes } from "@akanjs/devkit/recipeScanner";
-import type { PackageJson } from "@akanjs/devkit/types";
+import {
+  collectScopeRecipeSources,
+  extractAgentBlock,
+  renderScopeAgentBlock,
+} from "@akanjs/devkit/guideline/agentsIndex";
+import { biomeVersion } from "@akanjs/devkit/lint/biomeBase";
+import { Linter } from "@akanjs/devkit/lint/linter";
+import { MaintainabilityContract } from "@akanjs/devkit/quality/maintainabilityContract";
+import { MaintainabilityReport } from "@akanjs/devkit/quality/maintainabilityReport";
+import { FileSys } from "@akanjs/devkit/util/fileSys";
+import type { PackageJson } from "@akanjs/devkit/workspace/types";
 import { Ed25519Key } from "akanjs/server/ed25519Key";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 import { MaintainabilityPaths } from "../workflows/maintainabilityPaths";

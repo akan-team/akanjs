@@ -1,4 +1,4 @@
-import { assetHeaders } from "./assetHeaders";
+import { assetHeaders, missingAssetResponse } from "./assetHeaders";
 import type { ImageOptimizer } from "./imageOptimizer";
 import { resolveStaticPath } from "./staticPath";
 import type { HttpRoutes } from "./types";
@@ -25,7 +25,7 @@ export class WebAssetRoutes {
         stats.staticAsset += 1;
         const url = new URL(req.url);
         const filePath = resolveStaticPath(clientOutputDir, url.pathname.slice(clientServePrefix.length + 1));
-        if (!filePath) return new Response("Not Found", { status: 404 });
+        if (!filePath) return missingAssetResponse();
         return WebRouteContext.fileResponse(req, filePath, {
           contentType: Bun.file(filePath).type || "application/javascript",
           cacheControl: prodMode ? "public, max-age=31536000, immutable" : "no-store",

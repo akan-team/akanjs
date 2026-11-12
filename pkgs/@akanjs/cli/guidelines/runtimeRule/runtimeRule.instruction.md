@@ -391,8 +391,8 @@ const config: AppConfig = {
   was opened for while its frames load web content from anywhere, with an init script that runs in the top document
   only, `evaluate`, a trusted `sendKey`, `capture`, and `loadFailed` / `gone` (it reloads, or is rebuilt, by itself;
   the reason is `terminated` on macOS, and `rebuildFailed` when a rebuild failed and the view is closed, to be opened
-  again) / `consoleMessage` events. Every method on Windows; Linux lacks `sendKey`, its visible view holding the
-  keyboard focus instead, and sends no `consoleMessage`; macOS 14+ lacks `sendKey`, `setMuted` and `capture`.
+  again) / `consoleMessage` events. Every method on Windows and Linux, where a visible view also holds the keyboard
+  focus and no `consoleMessage` is sent; macOS 14+ lacks `sendKey`, `setMuted` and `capture`.
 
 ## A Desktop App's Server — `bin` And `trustedDependencies`
 

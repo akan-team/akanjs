@@ -6,7 +6,7 @@ import { act, Children, createElement, Fragment, isValidElement, type ReactEleme
 import { renderToReadableStream } from "react-dom/server.edge";
 import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { PagesBundleBuilder } from "../frontendBuild/pagesBundleBuilder";
-import { tempDirs, writeText as write } from "../testHelpers";
+import { tempDirs, writeText as write } from "../test/testHelpers";
 import { resolveSsrPageEntries } from "./implicitRootLayout";
 
 Object.assign(process.env, {

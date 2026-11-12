@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
-import { FileSys } from "../fileSys";
+import { FileSys } from "../util/fileSys";
 
 //* Closed-registry scan (no type information); writes only on a real diff, or the watcher loops on its own edits.
 

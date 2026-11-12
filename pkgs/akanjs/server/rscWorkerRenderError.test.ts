@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { type LogRecord, logSeverity } from "akanjs/common";
+import { watchRscErrorRows } from "./rscHttp";
 import { RscWorker } from "./rscWorkerHost";
 import type { SsrLateControl } from "./ssrTypes";
 import type { BaseBuildArtifact } from "./types";
@@ -21,6 +22,12 @@ const driverMessage = 'duplicate key value violates unique constraint "user_emai
 const errorRowDigest = (body: string): unknown => {
   const row = body.match(/^[0-9a-z]+:E(\{[^\n]*\})$/m)?.[1];
   return row ? (JSON.parse(row) as { digest?: unknown }).digest : undefined;
+};
+
+const readsAsFailed = async (body: string): Promise<boolean> => {
+  let failed = false;
+  await new Response(watchRscErrorRows(new Response(body).body ?? new ReadableStream(), () => (failed = true))).text();
+  return failed;
 };
 
 const withRenderErrorWorker = async (nodeEnv: string, run: (harness: Harness) => Promise<void>) => {
@@ -116,6 +123,19 @@ describe("RscWorker render error digest in development", () => {
     await withRenderErrorWorker("development", async ({ render }) => {
       expect(errorRowDigest((await render("driver")).body)).toBe(driverMessage);
       expect(errorRowDigest((await render("denied")).body)).toBe("drawing.error.denied");
+    });
+  }, 20_000);
+
+  test("is never empty, so the browser reads the failure, while a rejection a component caught reads as none", async () => {
+    await withRenderErrorWorker("development", async ({ render }) => {
+      const blank = (await render("blank")).body;
+      expect(errorRowDigest(blank)).toBe("AKAN_RENDER_ERROR");
+      expect(await readsAsFailed(blank)).toBe(true);
+
+      const caught = (await render("caught")).body;
+      expect(caught).toContain("fallback");
+      expect(caught).toMatch(/^[0-9a-z]+:E\{"digest":"",/m);
+      expect(await readsAsFailed(caught)).toBe(false);
     });
   }, 20_000);
 });

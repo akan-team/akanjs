@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { rm, symlink } from "node:fs/promises";
 import path from "node:path";
-import { createTempPackage, writeJson, writeText } from "@akanjs/devkit/testHelpers";
+import { createTempPackage, writeJson, writeText } from "@akanjs/devkit/test/testHelpers";
 import { AgentHook } from "./agentHook";
 
 const repoRoot = path.resolve(import.meta.dir, "../../../..");
