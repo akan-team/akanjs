@@ -1,4 +1,4 @@
-import { normalizeFieldType } from "./source";
+import { normalizeFieldType } from "./fieldExpression";
 
 export type AddFieldUiComponent = "Field.Text" | "Field.Number" | "Field.Date" | "Field.ToggleSelect";
 

@@ -630,23 +630,34 @@ describe("dev resource budgets", () => {
     // throttled), never disabled for the session. Whether it is back over depends on the machine's allocator, so the
     // warning is asserted only when it is; the decision itself is unit-tested (devHostPolicy).
     const settledFrom = host.markLog();
-    for (let i = 1; i <= 3; i++) {
+    const armed = /\[builder-recycle\] armed/;
+    const settleOutcome = /recycling builder pid=\d+|\[builder-recycle\] (?:skipped|settle check abandoned)/;
+    const answered = () =>
+      /ceiling costs about one boot build per interval/.test(host.logs.join("").slice(start)) ||
+      armed.test(host.logs.join("").slice(settledFrom)) ||
+      settleOutcome.test(host.logs.join("").slice(settledFrom));
+    let deadline = Number.POSITIVE_INFINITY;
+    for (let i = 1; ; i++) {
       const { mark } = await harness.editUntilSeen(host, (attempt) =>
         harness.replaceText("ui/ClientMarker.tsx", /marker(-[\w-]+)?/, `marker-settled-${i}-${attempt}`),
       );
-      await host.waitForLogSince(mark, /pages-rebundle ok/, WAIT_MS).catch(() => undefined);
+      //? The builder reports its rss to the host only once idle, which is after `pages-rebundle ok`.
+      await host.waitForLogSince(mark, /\[work-queue\] batch finished/, WAIT_MS);
+      if (i < 3) continue;
+      if (i === 3) deadline = performance.now() + WAIT_MS;
+      const settled = await DevStabilityHarness.builderProcess(host.proc.pid);
+      //? Read as the host reads it: on macOS `ps` also counts the pages the builder freed.
+      const settledRss = settled ? await AkanAppHost.readProcessRssBytes(settled.pid) : null;
+      //? The host is silent on a report under the ceiling and on a first one over it: only another save asks again.
+      if (answered() || (settledRss ?? 0) < CEILING_MB * MB) break;
+      if (performance.now() > deadline)
+        throw new Error(
+          `The builder stayed over the ${CEILING_MB}MiB ceiling (${Math.round((settledRss ?? 0) / MB)}MiB) for ${i} saves and the host never answered`,
+        );
     }
-    const settled = await DevStabilityHarness.builderProcess(host.proc.pid);
-    //? Read as the host reads it: on macOS `ps` also counts the pages the builder freed.
-    const settledRss = settled ? await AkanAppHost.readProcessRssBytes(settled.pid) : null;
-    const warned = /ceiling costs about one boot build per interval/.test(host.logs.join("").slice(start));
-    //? Past the interval (a slow machine) the next report recycles instead of warning: either answer settles it.
-    if ((settledRss ?? 0) >= CEILING_MB * MB && !warned)
-      await host.waitForLogSince(
-        settledFrom,
-        /ceiling costs about one boot build per interval|recycling builder pid=\d+|skipped: the builder fell to/,
-        WAIT_MS,
-      );
+    //? Past the interval (a slow machine) the host arms a recycle instead, and answers once its settle hold ends.
+    if (armed.test(host.logs.join("").slice(settledFrom)))
+      await host.waitForLogSince(settledFrom, settleOutcome, WAIT_MS);
     expect(host.logs.join("").slice(start)).not.toMatch(/no longer enforcing it this session/);
   });
 

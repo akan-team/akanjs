@@ -2004,6 +2004,22 @@ describe("MCP exclusions and the served catalogue", () => {
     expect(anonymous.prompts.map((prompt) => prompt.name)).toEqual(["briefItem"]);
   });
 
+  test("fails an in-process listing whose next page is gone as listFailed, a 500", async () => {
+    let verdicts = 0;
+    const pagePrompts: PagePromptSource = {
+      ...pagePromptsOf(okRun(), [briefEntry, { ...briefEntry, name: "memberDesk" }]),
+      visible: async () => {
+        if (verdicts++ === 0) throw new Error("guards down");
+        return [];
+      },
+    };
+    const failure = await mcpRouter({ pageSize: 1, pagePrompts })
+      .listFor(listRequest())
+      .catch((error: unknown) => error);
+    expect(AkanError.is(failure, "listFailed")).toBe(true);
+    expect(failure).toMatchObject({ statusCode: 500, message: "MCP prompts/list failed: Invalid cursor." });
+  });
+
   test("costs the served listing less without output schemas", async () => {
     const served = async (props: Partial<McpRouterProps>) => {
       const router = mcpRouter(props);
