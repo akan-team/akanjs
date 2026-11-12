@@ -21,15 +21,13 @@
     "server/rscWorker.tsx#RscRenderer.#renderFlightElement": 186,
     "server/rscWorkerHost.ts#createRscHostRenderStream": 164,
     "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 158,
-    "ui/Agent/Chat.tsx#DefaultChat": 409,
     "ui/BottomSheet.tsx#BottomSheet": 154,
-    "ui/Data/ListContainer.tsx#ListContainer": 341,
     "ui/Data/RefPicker.tsx#RefPicker": 169,
     "ui/Dialog/LegacyModal.tsx#LegacyModal": 210,
     "ui/Load/Units.tsx#Render": 215,
     "ui/Menu.tsx#DefaultMenu": 171,
     "ui/Model/EditModal.tsx#EditModal": 243,
-    "ui/Select.tsx#DefaultSelect": 379,
+    "ui/Select.tsx#DefaultSelect": 352,
     "webkit/RenderLayer.tsx#RenderLayer": 178
   },
   "akan.size.class": {
