@@ -61,7 +61,9 @@ describe("RscWorker render cancel", () => {
       const reader = cancelled.stream.getReader();
       expect((await reader.read()).done).toBe(false);
       await reader.cancel();
-      expect((await settledRenders(rsc, 1)).rscResultCacheEntries).toBe(0);
+      const settled = await settledRenders(rsc, 1);
+      expect(settled.rscInFlightRenderCount).toBe(0);
+      expect(settled.rscResultCacheEntries).toBe(0);
 
       const next = await renderStream(rsc, suspendingPath);
       expect(next.trace?.cache).toBe("miss");
