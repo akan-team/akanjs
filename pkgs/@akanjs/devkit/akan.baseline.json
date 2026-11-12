@@ -2,8 +2,7 @@
   "akan.size.file": {
     "akanConfig/akanConfig.ts": 907,
     "context/akanContext.ts": 1083,
-    "quality/qualityScanner.ts": 983,
-    "workflow/source.ts": 1100
+    "quality/qualityScanner.ts": 983
   },
   "akan.size.function": {
     "context/akanContext.ts#AkanContextAnalyzer.doctor": 269,

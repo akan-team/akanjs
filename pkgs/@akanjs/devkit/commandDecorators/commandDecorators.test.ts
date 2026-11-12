@@ -440,7 +440,6 @@ describe("enum arg type inference", () => {
 
 describe("a Sys that defaults to the only app", () => {
   const ownIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
-  const ownCwd = process.cwd();
   const asked: unknown[] = [];
   let answer = "";
   const setTTY = (isTTY: boolean | undefined) =>
@@ -456,7 +455,6 @@ describe("a Sys that defaults to the only app", () => {
   });
   afterEach(() => {
     CommandContainer.clear();
-    process.chdir(ownCwd);
     if (ownIsTTY) Object.defineProperty(process.stdin, "isTTY", ownIsTTY);
     else Reflect.deleteProperty(process.stdin, "isTTY");
   });
@@ -479,10 +477,8 @@ describe("a Sys that defaults to the only app", () => {
     return meta;
   };
   const track = tempRoots();
-  //? From the workspace root, as the CLI runs: getDirInModule stats its entries relative to the process directory.
   const moduleWorkspace = async () => {
     const { root, workspace } = track(await makeCliTempWorkspace());
-    process.chdir(root);
     for (const [sys, name] of [
       ["apps/web", "card"],
       ["libs/util", "photo"],
@@ -925,6 +921,34 @@ describe("the exit code of a command that failed", () => {
     expect(JSON.parse(rejected.stdout)).toEqual({ ok: false, error: "late", code: "refused" });
     expect(rejected.code).toBe(2);
   }, 60_000);
+
+  test("ends with each reason an aggregate holds, where a bundler log names its file and line", async () => {
+    const graphFailure = [
+      "await (async () => {",
+      '  await Bun.write("graph/server.ts", \'import { env } from "./env.server.debug";\\nexport default env;\\n\');',
+      '  const result = await Bun.build({ entrypoints: ["graph/server.ts"], target: "bun", throw: false });',
+      '  return new AggregateError(result.logs, "[licenseNotices] server graph failed");',
+      "})()",
+    ].join("\n");
+    const reason = '  Could not resolve: "./env.server.debug" (graph/server.ts:1:21)';
+    const json = ' }).option("json", Boolean, { default: false';
+    const [text, asJson] = await Promise.all([
+      run(graphFailure),
+      run(graphFailure, { option: json, args: ["--json"] }),
+    ]);
+    expect(text.code).toBe(1);
+    expect(stripAnsi(text.stdout).trimEnd().split("\n").slice(-2)).toEqual([
+      "[licenseNotices] server graph failed",
+      reason,
+    ]);
+    expect(asJson.code).toBe(1);
+    expect(JSON.parse(asJson.stdout)).toEqual({
+      ok: false,
+      error: "[licenseNotices] server graph failed",
+      code: "failed",
+    });
+    expect(stripAnsi(asJson.stderr).trimEnd().split("\n").at(-1)).toBe(reason);
+  }, 30_000);
 
   test("prints nothing more for an error the command marked as printed", async () => {
     const marked = await run(

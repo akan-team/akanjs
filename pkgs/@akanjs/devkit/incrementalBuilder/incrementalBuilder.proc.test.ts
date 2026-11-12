@@ -20,9 +20,11 @@ describe("incremental builder process", () => {
     const { root } = track(await createTempApp("demo"));
     const appDir = path.join(root, "apps/demo");
     // The batch runner looks under the workspace root first: a stand-in for the boot build, which needs a whole app.
+    // Each stand-in waits for the runner's release, as the real worker does: one exiting at once can lose all it sent.
     await writeText(
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation } = JSON.parse(process.argv[2]);
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -90,6 +92,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation, needs } = JSON.parse(process.argv[2]);
 const errors = needs.includes("base") ? {} : { shell: "handed " + needs.join(",") };
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -135,6 +138,7 @@ process.send({ type: "build-batch-result", data: { generation, errors, artifact:
     await writeText(
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation } = JSON.parse(process.argv[2]);
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -237,6 +241,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
     await writeText(
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation } = JSON.parse(process.argv[2]);
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -299,6 +304,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation, needs } = JSON.parse(process.argv[2]);
 require("node:fs").appendFileSync(${JSON.stringify(ledger)}, needs.join(",") + "\\n");
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -357,6 +363,7 @@ process.on("disconnect", orphaned);
 const deadline = Date.now() + 15_000;
 if (needs.includes("ssr")) while (!fs.existsSync(${JSON.stringify(gate)}) && Date.now() < deadline) await Bun.sleep(20);
 const css = needs.includes("ssr") ? { cssAssets: ${JSON.stringify(landed)} } : {};
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] }, ...css } });
 process.off("disconnect", orphaned);
 `,
@@ -417,6 +424,7 @@ if (needs.includes("ssr")) {
   fs.appendFileSync(${JSON.stringify(runs)}, Date.now() + "\\n");
   if (fs.readFileSync(${JSON.stringify(runs)}, "utf8").trim().split("\\n").length <= 2) process.exit(1);
 }
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -483,6 +491,7 @@ if (needs.includes("ssr")) {
   fs.appendFileSync(${JSON.stringify(runs)}, Date.now() + "\\n");
   if (fs.readFileSync(${JSON.stringify(runs)}, "utf8").trim().split("\\n").length === 2) process.exit(1);
 }
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -539,7 +548,10 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation, needs } = JSON.parse(process.argv[2]);
 if (needs.includes("ssr")) await import(${JSON.stringify(path.join(import.meta.dir, "buildBatch.proc.ts"))});
-else process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+else {
+  process.once("disconnect", () => {});
+  process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+}
 `,
     );
     await writeText(path.join(appDir, "env/env.client.ts"), "export const env = {} as const;\n");
@@ -601,6 +613,7 @@ else process.send({ type: "build-batch-result", data: { generation, errors: {}, 
 const { generation, needs } = JSON.parse(process.argv[2]);
 fs.appendFileSync(${JSON.stringify(ledger)}, needs.join(",") + " " + generation + "\\n");
 const errors = needs.includes("base") && !fs.existsSync(${JSON.stringify(fixed)}) ? { base: "the boot is broken" } : {};
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
