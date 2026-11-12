@@ -95,57 +95,66 @@ export class WebRouter {
       cssBytesByUrl,
     };
     this.#prebuilt = prebuilt;
-    let routeCache: RouteClientCache;
-    let csrDevShell: CsrDevShell | null = null;
-    if (this.#prodMode) {
-      this.#builderRpc = null;
-      routeCache = new RouteClientCache({
-        buildRoute: async (routeId) => {
-          throw new Error(
-            `[SSR] route ${routeId} missing from production artifact — rebuild with \`akan build\` to include it`,
-          );
-        },
-      });
-    } else {
-      this.#devHmr = new DevHmrController({
-        artifactDir: this.#artifactDir,
+    let htmlCache: HtmlResultCache | null = null;
+    try {
+      let routeCache: RouteClientCache;
+      let csrDevShell: CsrDevShell | null = null;
+      if (this.#prodMode) {
+        this.#builderRpc = null;
+        routeCache = new RouteClientCache({
+          buildRoute: async (routeId) => {
+            throw new Error(
+              `[SSR] route ${routeId} missing from production artifact — rebuild with \`akan build\` to include it`,
+            );
+          },
+        });
+      } else {
+        this.#devHmr = new DevHmrController({
+          artifactDir: this.#artifactDir,
+          renderState: this.renderState,
+          rsc: this.#rsc,
+          seedIndex,
+          upgradeHmrWs,
+          pagesBundlePath: artifact.pagesBundlePath,
+        });
+        this.#builderRpc = this.#devHmr.builderRpc;
+        routeCache = this.#devHmr.routeCache;
+        this.#hub = this.#devHmr.hub;
+        if (resolveDevCsrMode() === "registry") csrDevShell = new CsrDevShell(this.#artifactDir);
+        this.#ssrDevShell = new CsrDevShell(this.#artifactDir, {
+          dirName: SSR_DEV_DIRNAME,
+          routePrefix: SSR_DEV_ROUTE_PREFIX,
+        });
+      }
+      this.#context = new WebRouteContext({
+        artifact,
+        prodMode: this.#prodMode,
         renderState: this.renderState,
-        rsc: this.#rsc,
+        subRoutes,
         seedIndex,
-        upgradeHmrWs,
-        pagesBundlePath: artifact.pagesBundlePath,
+        routeCache,
+        hub: () => this.#hub,
       });
-      this.#builderRpc = this.#devHmr.builderRpc;
-      routeCache = this.#devHmr.routeCache;
-      this.#hub = this.#devHmr.hub;
-      if (resolveDevCsrMode() === "registry") csrDevShell = new CsrDevShell(this.#artifactDir);
-      this.#ssrDevShell = new CsrDevShell(this.#artifactDir, {
-        dirName: SSR_DEV_DIRNAME,
-        routePrefix: SSR_DEV_ROUTE_PREFIX,
+      this.#csr = new WebCsrSurface(this.#context, { devShell: csrDevShell, builderRpc: () => this.#builderRpc });
+      htmlCache = new HtmlResultCache({ prodMode: this.#prodMode, devRegistry: this.#ssrDevShell !== null });
+      this.#htmlCache = htmlCache;
+      this.#rscRoute = new WebRscRoute(this.#context, { rsc, importMapKey });
+      this.#document = new WebDocumentRoute(this.#context, {
+        rsc,
+        importMapKey,
+        ssrDevShell: this.#ssrDevShell,
+        htmlCache: this.#htmlCache,
+        //? Only a production build lists chunks: a dev page loads its client code from the SSR dev registry.
+        modulePreloadPlan: prebuilt?.modulePreloads
+          ? new ModulePreloadPlan(prebuilt.modulePreloads, prebuilt.clientManifest)
+          : undefined,
       });
+    } catch (error) {
+      //? The worker stays the caller's: create() kills it when construction throws.
+      this.#devHmr?.dispose();
+      htmlCache?.dispose();
+      throw error;
     }
-    this.#context = new WebRouteContext({
-      artifact,
-      prodMode: this.#prodMode,
-      renderState: this.renderState,
-      subRoutes,
-      seedIndex,
-      routeCache,
-      hub: () => this.#hub,
-    });
-    this.#csr = new WebCsrSurface(this.#context, { devShell: csrDevShell, builderRpc: () => this.#builderRpc });
-    this.#htmlCache = new HtmlResultCache({ prodMode: this.#prodMode, devRegistry: this.#ssrDevShell !== null });
-    this.#rscRoute = new WebRscRoute(this.#context, { rsc, importMapKey });
-    this.#document = new WebDocumentRoute(this.#context, {
-      rsc,
-      importMapKey,
-      ssrDevShell: this.#ssrDevShell,
-      htmlCache: this.#htmlCache,
-      //? Only a production build lists chunks: a dev page loads its client code from the SSR dev registry.
-      modulePreloadPlan: prebuilt?.modulePreloads
-        ? new ModulePreloadPlan(prebuilt.modulePreloads, prebuilt.clientManifest)
-        : undefined,
-    });
   }
 
   async initializeRoute() {
