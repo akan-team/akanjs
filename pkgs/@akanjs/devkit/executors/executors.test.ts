@@ -1041,6 +1041,33 @@ describe("Workspace and app executor environment contracts", () => {
 
       await expect(app.getPageKeys({ refresh: true })).resolves.toEqual(["./(docs)/_layout.tsx"]);
     });
+
+    const levelBoundaryLayout = [
+      "export const LevelBoundary = ({ children }) => children;",
+      "export default function Layout({ children }) { return children; }",
+      "",
+    ].join("\n");
+
+    test("refuses a LevelBoundary export on the app's root layout, which the generated one would ignore", async () => {
+      const app = await makeRouteValidationApp("root-level-boundary", "export default {};\n", {
+        "_layout.tsx": levelBoundaryLayout,
+      });
+
+      await expect(app.getPageKeys({ refresh: true })).rejects.toThrow(
+        /unsupported export "LevelBoundary" in .*page\/_layout\.tsx: LevelBoundary belongs to the root layout Akan\.js generates, which never reads one from an app's layout/,
+      );
+    });
+
+    test("refuses a LevelBoundary export on a grouped root layout under the app's own, naming the grouped file", async () => {
+      const app = await makeRouteValidationApp("nested-root-level-boundary", "export default {};\n", {
+        "_layout.tsx": "export default function Layout({ children }) { return children; }\n",
+        "(home)/_layout.tsx": levelBoundaryLayout,
+      });
+
+      await expect(app.getPageKeys({ refresh: true })).rejects.toThrow(
+        /unsupported export "LevelBoundary" in .*page\/\(home\)\/_layout\.tsx: LevelBoundary belongs to the root layout Akan\.js generates/,
+      );
+    });
   });
 
   test("accepts head route exports during page key discovery", async () => {

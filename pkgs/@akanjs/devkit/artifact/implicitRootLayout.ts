@@ -199,8 +199,9 @@ async function writeGeneratedRootLayoutFile(opts: {
       ? await UserLayout({ params, searchParams, children })
       : ${userLayoutElement};
 `
-    : "";
-  const layoutChild = isAsyncUserLayout ? "{layout}" : userLayoutElement;
+    : opts.includeSystemProvider
+      ? `  const layout = ${userLayoutElement};\n`
+      : "";
   const layoutReturn = isAsyncUserLayout ? "layout" : userLayoutElement;
   //? Under an ancestor root boundary the route tree merges that root's head itself; merging it here would repeat it.
   const headLayouts = opts.includeSystemProvider ? "[inheritedLayout, userLayout]" : "[userLayout]";
@@ -225,12 +226,15 @@ ${layoutSignature}({ children, params, searchParams }: LayoutProps) {
 ${layoutBinding}  return `;
   //? System from its file, not the barrel: a dev registry compiles every module the barrel names, and with them the
   //? optional peers (react-icons) an app drawing none of those components never installs.
+  //? The root level's boundary sits inside System.Provider, beside the bridge that starts the router its retry calls.
+  //? A CSR render has none: RenderLayer draws a failed level there, and a route control also carries a digest.
   const source = opts.includeSystemProvider
     ? `import type { LayoutModule, LayoutProps, PageProps } from "akanjs/client";
 import { assertGuardOnChain, loadFonts, RouteGuards, resolveRouteModule, RouteHead } from "akanjs/client";
 import type { ReactNode } from "react";
 import { System } from "${ROOT_LAYOUT_SYSTEM.specifier}";
 import type { McpAppRootProps } from "akanjs/webkit";
+import { RouteLevelBoundary } from "akanjs/webkit/RouteLevelBoundary.tsx";
 import { env } from "@apps/${opts.appName}/env/env.client";
 import { allDictionary } from ${JSON.stringify(dictMacroSpecifier)};
 ${storeImport}${inheritedImport}${userImport}
@@ -242,7 +246,7 @@ const defaultFontClassName = defaultFont ? (defaultFont.className ?? \`font-\${d
 export const theme = userLayout.theme ?? inheritedLayout.theme;
 export const viewport = userLayout.viewport ?? inheritedLayout.viewport;
 export const manifest = userLayout.manifest ?? inheritedLayout.manifest;
-export { RouteLevelBoundary as LevelBoundary } from "akanjs/webkit/RouteLevelBoundary.tsx";
+export { RouteLevelBoundary as LevelBoundary };
 
 ${layoutExports}(
     <System.Provider
@@ -260,7 +264,7 @@ ${layoutExports}(
       wsConnect={userLayout.wsConnect ?? inheritedLayout.wsConnect}
       allDictionary={process.env.AKAN_PUBLIC_RENDER_ENV === "ssr" ? allDictionary : undefined}
     >
-      ${layoutChild}
+      {process.env.AKAN_PUBLIC_RENDER_ENV === "csr" ? layout : <RouteLevelBoundary>{layout}</RouteLevelBoundary>}
     </System.Provider>
   );
 }
