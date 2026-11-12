@@ -51,18 +51,92 @@ export const noteChunkLoadFailure = (error: unknown): void => {
 export const lazyLinkFailureKeyOf = (error: unknown): string | null =>
   error instanceof Error && isLinkFailure(error) && !chunkLoadFailures.has(error) ? `import() ${error.message}` : null;
 
-//? Chromium and Firefox 115 name the `import()` target, and current Firefox the module that failed to fetch; WebKit's
-//? "Importing a module script failed." names none, so a chunk gone there stays on its error.
-const fetchFailure = /^(?:Failed to fetch dynamically imported module|error loading dynamically imported module): \S+$/;
-const ownChunkUrlOf = (message: string): string | null => {
-  if (!fetchFailure.test(message)) return null;
+//? Chromium names the `import()` target, and Firefox the module that failed to fetch (115 named the target). WebKit
+//? names none, but words only a failed fetch this way: its syntax, link, MIME and evaluation errors read otherwise.
+const namedFetchFailure =
+  /^(?:Failed to fetch dynamically imported module|error loading dynamically imported module): \S+$/;
+const unnamedFetchFailure = "Importing a module script failed.";
+const ownClientUrlOf = (href: string): URL | null => {
   try {
-    const url = new URL(message.slice(message.lastIndexOf(" ") + 1));
-    return url.origin === window.location.origin && url.pathname.startsWith("/_akan/client/") ? url.href : null;
+    const url = new URL(href);
+    return url.origin === window.location.origin && url.pathname.startsWith("/_akan/client/") ? url : null;
   } catch {
     return null;
   }
 };
+//? A module fetch that failed records an empty body. Chromium and Firefox give its status; WebKit gives none and
+//? records a cache hit, memory or disk, with an empty body too, but only an answered fetch sets `responseStart`
+//? there. A served empty chunk passes in WebKit and probes 200. Safari before 16.4 gives no body size and lists none.
+//? An observer: `getEntriesByType` stops at 250 entries.
+const maxFallbackProbes = 4;
+//? WebKit does not fetch a module that failed again, so a chunk dropped here is never listed again: a 404 stays, as its
+//? reload can still be skipped, and one whose probe fails or answers another error status stays for three probes.
+const maxUnansweredProbes = 3;
+const failedChunkFetches = new Map<string, number>();
+const noteFailedChunkFetches = (entries: PerformanceEntryList): void => {
+  for (const entry of entries as PerformanceResourceTiming[]) {
+    const answeredAsFailed =
+      entry.responseStatus === undefined
+        ? entry.responseStart > 0
+        : !(entry.responseStatus >= 200 && entry.responseStatus < 300);
+    const failed = entry.decodedBodySize === 0 && entry.initiatorType !== "fetch" && answeredAsFailed;
+    const url = failed ? ownClientUrlOf(entry.name) : null;
+    //? Bun writes the stylesheets and fonts client code imports under `/_akan/client/` too.
+    if (!url?.pathname.endsWith(".js")) continue;
+    failedChunkFetches.delete(url.href);
+    failedChunkFetches.set(url.href, 0);
+  }
+  for (const url of failedChunkFetches.keys())
+    if (failedChunkFetches.size > maxFallbackProbes) failedChunkFetches.delete(url);
+};
+const chunkFetchObserver = (() => {
+  try {
+    const observer = new PerformanceObserver((list) => noteFailedChunkFetches(list.getEntries()));
+    observer.observe({ type: "resource", buffered: true });
+    return observer;
+  } catch {
+    return null;
+  }
+})();
+const fallbackChunksFor = (named: string | null): string[] => {
+  noteFailedChunkFetches(chunkFetchObserver?.takeRecords() ?? []);
+  return [...failedChunkFetches.keys()].filter((url) => url !== named);
+};
+const settleFailedChunkFetch = (url: string, status: number | null): void => {
+  const unanswered = failedChunkFetches.get(url);
+  if (unanswered === undefined || status === 404) return;
+  if ((status !== null && status < 400) || unanswered + 1 >= maxUnansweredProbes) failedChunkFetches.delete(url);
+  else failedChunkFetches.set(url, unanswered + 1);
+};
+const probesOut = new Map<string, Promise<boolean>>();
+const isGone = (url: string): Promise<boolean> => {
+  const out = probesOut.get(url);
+  if (out) return out;
+  const gone = fetch(url, { method: "HEAD", cache: "no-store" })
+    .then(
+      ({ status }) => status,
+      () => null,
+    )
+    .then((status) => {
+      probesOut.delete(url);
+      settleFailedChunkFetch(url, status);
+      return status === 404;
+    });
+  probesOut.set(url, gone);
+  return gone;
+};
+//? The first 404 whose reload is not claimed yet: a claimed one, a chunk a reload did not fix, would shadow any other.
+const unclaimedGoneKey = (urls: string[], keyOf: (url: string) => string): Promise<string | undefined> =>
+  new Promise((resolve) => {
+    let unsettled = urls.length;
+    if (!unsettled) resolve(undefined);
+    for (const url of urls)
+      void isGone(url).then((gone) => {
+        unsettled -= 1;
+        if (gone && !isChunkReloadClaimed(keyOf(url))) resolve(keyOf(url));
+        else if (!unsettled) resolve(undefined);
+      });
+  });
 //? The reload list alone cannot stop a 404 a reload does not fix: each load would claim the next chunk, and past 32
 //? the first again. That loop stays on the path the reload loaded, which a refresh or a shallow update keeps, so after
 //? any reload, the user's or `Reconnect`'s too, only a page navigation to another path probes again.
@@ -73,25 +147,27 @@ const onReloadedPath = () =>
 //? A document navigation the router never sees (a plain link, a form post, `location.assign`) fires one of these; they
 //? are heard only while the probe is out, since a `beforeunload` listener used to keep a page out of the bfcache.
 const unloadEvents = ["beforeunload", "pagehide"] as const;
-//? Only a 404 says this origin no longer serves the chunk; a network failure, a blocked request or a 5xx can pass.
+//? Only a 404 says this origin no longer serves the chunk; a network failure, a blocked request or a 5xx can pass. A
+//? named chunk that is served can import a gone one statically, which only the page's failed fetches name.
 export const ifLazyChunkGone = (error: unknown, then: (key: string) => void): void => {
   if (!(error instanceof TypeError) || chunkLoadFailures.has(error) || !navigator.onLine) return;
-  const url = ownChunkUrlOf(error.message);
-  if (!url || onReloadedPath()) return;
+  const { message } = error;
+  const named = namedFetchFailure.test(message)
+    ? (ownClientUrlOf(message.slice(message.lastIndexOf(" ") + 1))?.href ?? null)
+    : null;
+  if ((!named && message !== unnamedFetchFailure) || onReloadedPath()) return;
   let unloading = false;
   const unload = () => {
     unloading = true;
   };
   for (const type of unloadEvents) window.addEventListener(type, unload);
-  void fetch(url, { method: "HEAD", cache: "no-store" })
-    .then(
-      ({ status }) => status === 404,
-      () => false,
-    )
-    .then((gone) => {
-      for (const type of unloadEvents) window.removeEventListener(type, unload);
-      if (gone && !unloading) then(`import() ${error.message}`);
-    });
+  void (async () => {
+    const key =
+      (await unclaimedGoneKey(named ? [named] : [], () => `import() ${message}`)) ??
+      (await unclaimedGoneKey(fallbackChunksFor(named), (gone) => `import() ${message} ${gone}`));
+    for (const type of unloadEvents) window.removeEventListener(type, unload);
+    if (key && !unloading) then(key);
+  })();
 };
 
 //? React's own fallback where `reportError` is missing (Chromium before 95): `window.onerror` trackers still see it.
@@ -119,9 +195,17 @@ export const reportingRootErrors = (onError: (error: unknown) => void) => ({
 
 //? Per tab and synchronous, which akanjs/client `storage` (localStorage, async) is not; unrecorded, it never reloads.
 const chunkReloadsKey = "akan.rsc.chunkReloads";
+const claimedChunkReloads = (): string[] => JSON.parse(sessionStorage.getItem(chunkReloadsKey) ?? "[]") as string[];
+const isChunkReloadClaimed = (chunkId: string): boolean => {
+  try {
+    return claimedChunkReloads().includes(chunkId);
+  } catch {
+    return false;
+  }
+};
 export function claimChunkReload(chunkId: string): boolean {
   try {
-    const reloaded = JSON.parse(sessionStorage.getItem(chunkReloadsKey) ?? "[]") as string[];
+    const reloaded = claimedChunkReloads();
     if (reloaded.includes(chunkId)) return false;
     sessionStorage.setItem(chunkReloadsKey, JSON.stringify([...reloaded, chunkId].slice(-32)));
     return true;

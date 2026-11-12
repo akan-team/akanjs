@@ -14,6 +14,34 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const chunkUrl = (name: string) => `${origin}/_akan/client/chunks/${name}.js`;
 const chromiumGone = (url: string) => new TypeError(`Failed to fetch dynamically imported module: ${url}`);
 const firefoxGone = (url: string) => new TypeError(`error loading dynamically imported module: ${url}`);
+const webkitFetchFailure = () => new TypeError("Importing a module script failed.");
+
+interface ResourceEntry {
+  name: string;
+  initiatorType: string;
+  decodedBodySize: number;
+  responseStart: number;
+  responseStatus?: number;
+}
+const pendingResources: ResourceEntry[] = [];
+let deliverResources: (entries: ResourceEntry[]) => void = () => undefined;
+class ResourceObserver {
+  constructor(callback: (list: { getEntries: () => ResourceEntry[] }) => void) {
+    deliverResources = (entries) => callback({ getEntries: () => entries });
+  }
+  observe() {}
+  takeRecords() {
+    return pendingResources.splice(0);
+  }
+}
+const failedFetch = (url: string, entry: Partial<ResourceEntry> = {}): ResourceEntry => ({
+  name: url,
+  initiatorType: "script",
+  decodedBodySize: 0,
+  responseStart: 12,
+  ...entry,
+});
+const webkitCacheHit = (url: string): ResourceEntry => failedFetch(url, { initiatorType: "link", responseStart: 0 });
 
 class Boundary extends Component<{ children?: ReactNode }, { failed: boolean }> {
   override state: { failed: boolean } = { failed: false };
@@ -40,6 +68,7 @@ beforeAll(async () => {
   (window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(`${origin}/home`);
   Object.assign(globalThis, {
     TransformStream,
+    PerformanceObserver: ResourceObserver,
     __webpack_require__: Object.assign((id: string) => modules.get(id) ?? {}, { u: () => "" }),
     __webpack_get_script_filename__: (chunkId: string) => chunkId,
     __webpack_chunk_load__: (chunkId: string) => {
@@ -86,10 +115,14 @@ beforeEach(() => {
   restorers.push(...spies.map((spy) => () => spy.mockRestore()));
 });
 
-afterEach(() => {
+//? The client keeps a failed fetch listed while it answers 404, so each test ends with one probe that answers 200.
+afterEach(async () => {
+  probeAnswers.clear();
+  pendingResources.splice(0);
+  await navigate("/drained");
+  await rejectImport(webkitFetchFailure());
   for (const restore of restorers.splice(0)) restore();
   probes.splice(0);
-  probeAnswers.clear();
   served.clear();
   failingChunks.clear();
 });
@@ -305,5 +338,202 @@ describe("rscClient lazy chunk the server no longer serves", () => {
     await rejectImport(chromiumGone(gone));
     expect(probedUrls()).toEqual([gone]);
     expect(reloadedAt).toEqual([`${origin}/routed`]);
+  });
+});
+
+describe("rscClient lazy chunk gone where the error names none that is", () => {
+  test("WebKit's fetch failure probes the chunks whose fetch failed, all at once and not twice, and reloads on the first 404", async () => {
+    const gone = chunkUrl("webkit-target-a1");
+    const empty = chunkUrl("webkit-empty-a1");
+    const answerEmpty = holdProbe(empty);
+    const answerGone = holdProbe(gone);
+    await navigate("/webkit");
+    pendingResources.push(failedFetch(empty, { initiatorType: "link" }), failedFetch(gone));
+    await rejectImport(webkitFetchFailure());
+    await rejectImport(webkitFetchFailure());
+    expect(probes).toEqual([
+      { url: empty, method: "HEAD", cache: "no-store" },
+      { url: gone, method: "HEAD", cache: "no-store" },
+    ]);
+
+    await answerGone(404);
+    expect(reloadedAt).toEqual([`${origin}/webkit`]);
+    expect(reloadedKeys()).toEqual([`import() ${webkitFetchFailure().message} ${gone}`]);
+    await answerEmpty(200);
+    expect(reloadedAt).toEqual([`${origin}/webkit`]);
+  });
+
+  test("a failure while a chunk's probe is out waits for its answer, and reloads when the first one's was skipped", async () => {
+    const gone = chunkUrl("awaited-a1");
+    const answer = holdProbe(gone);
+    await navigate("/before");
+    pendingResources.push(failedFetch(gone));
+    await rejectImport(webkitFetchFailure());
+    await navigate("/after");
+    await rejectImport(webkitFetchFailure());
+    await answer(404);
+
+    expect(probedUrls()).toEqual([gone]);
+    expect(reloadedAt).toEqual([`${origin}/after`]);
+  });
+
+  test("a probe a network failure or an error status other than 404 answered keeps its chunk, three times at most", async () => {
+    const down = chunkUrl("down-a1");
+    const flaky = chunkUrl("flaky-a1");
+    probeAnswers.set(down, 503);
+    probeAnswers.set(flaky, "unanswered");
+    await navigate("/flaky");
+    pendingResources.push(failedFetch(down), failedFetch(flaky));
+    await rejectImport(webkitFetchFailure());
+    probeAnswers.set(flaky, 403);
+    await rejectImport(webkitFetchFailure());
+    probeAnswers.set(flaky, 404);
+    await rejectImport(webkitFetchFailure());
+    expect(probedUrls()).toEqual([down, flaky, down, flaky, down, flaky]);
+    expect(reloadedAt).toEqual([`${origin}/flaky`]);
+
+    await navigate("/later");
+    await rejectImport(webkitFetchFailure());
+    expect(probedUrls()).toEqual([down, flaky, down, flaky, down, flaky, flaky]);
+    expect(reloadedAt).toEqual([`${origin}/flaky`]);
+  });
+
+  test("a gone chunk whose reload a load already claimed does not shadow a newer one", async () => {
+    const fixedNothing = chunkUrl("claimed-a1");
+    const gone = chunkUrl("newer-gone-a1");
+    const keyOf = (url: string) => `import() ${webkitFetchFailure().message} ${url}`;
+    sessionStorage.setItem("akan.rsc.chunkReloads", JSON.stringify([keyOf(fixedNothing)]));
+    probeAnswers.set(fixedNothing, 404);
+    probeAnswers.set(gone, 404);
+    await navigate("/shadowed");
+    pendingResources.push(failedFetch(fixedNothing), failedFetch(gone));
+    await rejectImport(webkitFetchFailure());
+
+    expect(probedUrls()).toEqual([fixedNothing, gone]);
+    expect(reloadedAt).toEqual([`${origin}/shadowed`]);
+    expect(reloadedKeys()).toEqual([keyOf(fixedNothing), keyOf(gone)]);
+  });
+
+  test("cache hits recorded after a failed fetch, empty-bodied in WebKit, leave it to be probed", async () => {
+    const gone = chunkUrl("preload-gone-a1");
+    probeAnswers.set(gone, 404);
+    await navigate("/warm");
+    deliverResources([failedFetch(gone, { initiatorType: "link" })]);
+    pendingResources.push(...Array.from({ length: 8 }, (_, n) => webkitCacheHit(chunkUrl(`cached-${n}`))));
+    await rejectImport(webkitFetchFailure());
+
+    expect(probedUrls()).toEqual([gone]);
+    expect(reloadedAt).toEqual([`${origin}/warm`]);
+  });
+
+  test("a named chunk that is served falls back to a gone chunk it imports", async () => {
+    const target = chunkUrl("served-target-a1");
+    const dep = chunkUrl("gone-dep-a1");
+    probeAnswers.set(dep, 404);
+    await navigate("/rolling");
+    deliverResources([failedFetch(dep, { responseStatus: 404 }), failedFetch(dep, { responseStatus: 404 })]);
+    await rejectImport(chromiumGone(target));
+
+    expect(probedUrls()).toEqual([target, dep]);
+    expect(reloadedAt).toEqual([`${origin}/rolling`]);
+    expect(reloadedKeys()).toEqual([`import() ${chromiumGone(target).message} ${dep}`]);
+  });
+
+  test("a named chunk is probed first, and alone when it answers 404 and its reload is not claimed", async () => {
+    const busy = chunkUrl("busy-target-a1");
+    const dep = chunkUrl("served-dep-a1");
+    probeAnswers.set(busy, 503);
+    await navigate("/named");
+    pendingResources.push(failedFetch(busy, { responseStatus: 503 }), failedFetch(dep, { responseStatus: 404 }));
+    await rejectImport(chromiumGone(busy));
+    expect(probedUrls()).toEqual([busy, dep]);
+    expect(reloadedAt).toEqual([]);
+
+    const gone = chunkUrl("named-gone-a1");
+    const unasked = chunkUrl("unasked-dep-a1");
+    probeAnswers.set(gone, 404);
+    pendingResources.push(failedFetch(unasked, { responseStatus: 404 }));
+    await rejectImport(chromiumGone(gone));
+    expect(probedUrls()).toEqual([busy, dep, gone]);
+    expect(reloadedKeys()).toEqual([`import() ${chromiumGone(gone).message}`]);
+
+    probeAnswers.set(unasked, 404);
+    await navigate("/named-again");
+    await rejectImport(chromiumGone(gone));
+    expect(probedUrls()).toEqual([busy, dep, gone, gone, busy, unasked]);
+    expect(reloadedAt).toEqual([`${origin}/named`, `${origin}/named-again`]);
+    expect(reloadedKeys()).toEqual([
+      `import() ${chromiumGone(gone).message}`,
+      `import() ${chromiumGone(gone).message} ${unasked}`,
+    ]);
+  });
+
+  test("a 404 whose reload a navigation or a pagehide skipped is probed again on the next failure", async () => {
+    const gone = chunkUrl("skipped-a1");
+    await navigate("/skipped");
+    pendingResources.push(failedFetch(gone));
+    let answer = holdProbe(gone);
+    await rejectImport(webkitFetchFailure());
+    await navigate("/next");
+    await answer(404);
+    expect(reloadedAt).toEqual([]);
+
+    answer = holdProbe(gone);
+    await rejectImport(webkitFetchFailure());
+    window.dispatchEvent(new Event("pagehide"));
+    await answer(404);
+    expect(reloadedAt).toEqual([]);
+
+    probeAnswers.set(gone, 404);
+    await rejectImport(webkitFetchFailure());
+    expect(probedUrls()).toEqual([gone, gone, gone]);
+    expect(reloadedAt).toEqual([`${origin}/next`]);
+  });
+
+  test("only the four latest failed chunk fetches are probed, and one that is not gone only once", async () => {
+    const failed = Array.from({ length: 6 }, (_, n) => chunkUrl(`failed-${n}`));
+    await navigate("/many");
+    deliverResources([
+      ...failed.map((url, n) => failedFetch(url, n === 5 ? { initiatorType: "other", responseStatus: 404 } : {})),
+      failedFetch(chunkUrl("served-empty-a1"), { responseStatus: 200 }),
+      failedFetch(chunkUrl("loaded-a1"), { decodedBodySize: 2048 }),
+      webkitCacheHit(chunkUrl("cached-a1")),
+      failedFetch(chunkUrl("probed-a1"), { initiatorType: "fetch", responseStatus: 404 }),
+      failedFetch("https://cdn.example.com/_akan/client/chunks/foreign-a1.js"),
+      failedFetch(`${origin}/assets/asset-a1.js`),
+      failedFetch(`${origin}/_akan/client/assets/font-a1.woff2`, { initiatorType: "css" }),
+      failedFetch(`${origin}/_akan/client/assets/style-a1.css`, { initiatorType: "link" }),
+      failedFetch(failed[1] ?? ""),
+    ]);
+    await rejectImport(webkitFetchFailure());
+    await rejectImport(webkitFetchFailure());
+
+    expect(probedUrls()).toEqual([...failed.slice(3), failed[1]]);
+    expect(reloadedAt).toEqual([]);
+  });
+
+  test("an error that is no chunk's fetch failure, or a document a reload loaded on its path, probes nothing", async () => {
+    const gone = chunkUrl("kept-a1");
+    probeAnswers.set(gone, 404);
+    await navigate("/home");
+    pendingResources.push(failedFetch(gone));
+    await rejectImport(chromiumGone("https://cdn.example.com/_akan/client/chunks/kept-a1.js"));
+    await rejectImport(new TypeError("boom from module"));
+    await rejectImport(new TypeError("'text/html' is not a valid JavaScript MIME type for module script 'x'."));
+    await rejectImport(new SyntaxError("Unexpected token ';'"));
+    const entries = spyOn(performance, "getEntriesByType").mockImplementation(
+      (type) => (type === "navigation" ? [{ type: "reload" }] : []) as unknown as PerformanceEntryList,
+    );
+    try {
+      await rejectImport(webkitFetchFailure());
+      expect(probedUrls()).toEqual([]);
+
+      await navigate("/elsewhere");
+      await rejectImport(webkitFetchFailure());
+      expect(probedUrls()).toEqual([gone]);
+      expect(reloadedAt).toEqual([`${origin}/elsewhere`]);
+    } finally {
+      entries.mockRestore();
+    }
   });
 });
