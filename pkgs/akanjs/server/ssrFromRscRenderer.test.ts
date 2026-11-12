@@ -60,6 +60,22 @@ function byteStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
   });
 }
 
+function heldHtmlStream(): { stream: ReadableStream<Uint8Array>; release: () => void } {
+  let release = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      controller.enqueue(encoder.encode(`<main>first${rscBootstrap}`));
+      await released;
+      controller.enqueue(encoder.encode("second</main>"));
+      controller.close();
+    },
+  });
+  return { stream, release };
+}
+
 async function withCapturedStderr<T>(fn: () => Promise<T>): Promise<{ result: T; output: string; restored: boolean }> {
   const originalWrite = process.stderr.write;
   let output = "";
@@ -437,6 +453,47 @@ describe("inline RSC interleaving", () => {
     expect(output).toContain(createInlineRscScript(encoder.encode("BB")));
     expect(output).toContain(createInlineRscScript(encoder.encode("C")));
     expect(output).toContain("second</main>");
+  });
+
+  test("reads no RSC chunk past the byte cap while the HTML streams", async () => {
+    const html = heldHtmlStream();
+    const chunks = ["AAAA", "BB", "C"].map((text) => encoder.encode(text));
+    let pulls = 0;
+    const rsc = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          const chunk = chunks[pulls];
+          pulls += 1;
+          if (chunk) controller.enqueue(chunk);
+          else controller.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const output = new Response(interleaveRscScriptsWithHtml(html.stream, rsc, { maxPendingRscBytes: 4 })).text();
+    await sleep(20);
+    const pullsBeforeHtmlEnds = pulls;
+    html.release();
+
+    expect(await output).toContain(createInlineRscScript(encoder.encode("C")));
+    expect(pullsBeforeHtmlEnds).toBe(1);
+  });
+
+  test("encodes no RSC script until the HTML has ended", async () => {
+    const html = heldHtmlStream();
+    const flight = encoder.encode('0:"a"\n');
+    const encode = spyOn(TextEncoder.prototype, "encode");
+    try {
+      const output = new Response(interleaveRscScriptsWithHtml(html.stream, byteStream([flight]))).text();
+      await sleep(20);
+      const scriptsBeforeHtmlEnds = encode.mock.calls.filter(([text]) => text?.includes("__RSC_PUSH__(")).length;
+      html.release();
+
+      expect(await output).toContain(createInlineRscScript(flight));
+      expect(scriptsBeforeHtmlEnds).toBe(0);
+    } finally {
+      encode.mockRestore();
+    }
   });
 
   test("propagates consumer cancel to upstream streams once", async () => {
