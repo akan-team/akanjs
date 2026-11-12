@@ -60,6 +60,10 @@ export class DatabaseResolver {
     });
   }
 
+  static #noDocument(refName: string, id: string) {
+    return new NoDocumentError(`No Document (${refName}): ${id}`, { lookup: { refName, id } });
+  }
+
   static resolveDatabase(
     constant: ConstantModel,
     database: DatabaseModel,
@@ -274,7 +278,7 @@ export class DatabaseResolver {
         const pickById = async (id: string | undefined, projection?: any) => {
           if (!id) throw new NoDocumentError("No Document ID");
           const doc = await timedQuery(() => store.findOne({ id }, { select: projection }));
-          if (!doc) throw new NoDocumentError(`No Document (${modelName}): ${id}`);
+          if (!doc) throw DatabaseResolver.#noDocument(modelName, id);
           return doc;
         };
         return Object.assign(Model, {
@@ -375,7 +379,7 @@ export class DatabaseResolver {
       }
       async __get(id: string) {
         const doc = await this.__loader.load(id);
-        if (!doc) throw new NoDocumentError(`No Document (${database.refName}): ${id}`);
+        if (!doc) throw DatabaseResolver.#noDocument(database.refName, id);
         return doc;
       }
       async [names.getModel](id: string) {
