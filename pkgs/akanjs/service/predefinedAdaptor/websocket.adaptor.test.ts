@@ -24,6 +24,7 @@ class FakeRedis extends EventEmitter {
   holdReplies = false;
   disconnected = false;
   quits = 0;
+  status = "ready";
 
   async connect() {}
   subscribe(channel: string) {
@@ -267,9 +268,11 @@ describe("WebSocketRedisAdaptor buffer", () => {
       const destroyed = settledFlag(adaptor.onDestroy());
       for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
       expect(publisher.quits).toBe(1);
+      publisher.status = "end";
       publisher.emit("close");
       for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
       expect(destroyed.settled).toBe(true);
+      expect(publisher.disconnected).toBe(false);
       expect(warns.filter((warn) => warn.startsWith("Redis did not answer"))).toEqual([]);
     } finally {
       jest.useRealTimers();
