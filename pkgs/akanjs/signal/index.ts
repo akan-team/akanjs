@@ -309,6 +309,7 @@ export {
   type WebsocketPublishData,
   type WebsocketReqData,
   type WebsocketResData,
+  type WebsocketResyncData,
   type WebsocketRoomCursor,
   type WebsocketSubscribeAck,
 } from "./types";

@@ -23,7 +23,10 @@ export interface FetchPolicy<_Returns = unknown> {
    * A mutation ignores it, since one already sent may have run.
    */
   signal?: AbortSignal;
-  /** `pubsub` only: called after a resubscribe, since whatever was published while the socket was down is gone. */
+  /**
+   * `pubsub` only: called when the room may have missed events — after a resubscribe, at a frame the server dropped
+   * for this socket, or once the server's link to the app's other servers returns — so refetch what the room shows.
+   */
   onResync?: () => void;
   /**
    * Tries again when the server is unreachable, restarting (502/503), too slow (504) or limiting (429, after its
