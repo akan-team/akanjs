@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { AkanError } from "akanjs/base";
 import { BuilderRpc } from "./builderRpc";
 import type { BuilderMessage, BuilderResponse, BuildFrameworkPayload } from "./ipcTypes";
 
@@ -69,8 +70,37 @@ describe("BuilderRpc", () => {
         expect((error as Error).message).toBe(
           "[builder] build-graph-res failed: builder is stopped; reload after the builder is ready",
         );
+      expect(errors.map((error) => AkanError.is(error) && [error.code, error.statusCode])).toEqual([
+        ["builderUnavailable", 503],
+        ["buildFailed", 500],
+        ["buildFailed", 500],
+      ]);
     } finally {
       rpc.dispose();
+    }
+  });
+
+  test("rejects a request no answer reaches in time as builderUnavailable, and one a dispose cuts off as rpcDisposed", async () => {
+    const previous = process.env.AKAN_BUILDER_RPC_TIMEOUT_MS;
+    process.env.AKAN_BUILDER_RPC_TIMEOUT_MS = "1";
+    process.send = (() => true) as unknown as typeof process.send;
+    const rpc = new BuilderRpc();
+    try {
+      const timedOut = await rpc.buildGraph().catch((error: unknown) => error);
+      expect(BuilderRpc.isTimeout(timedOut)).toBe(true);
+      expect(AkanError.is(timedOut, "builderUnavailable")).toBe(true);
+      expect(timedOut).toMatchObject({ statusCode: 503, timeoutMs: 1 });
+
+      process.env.AKAN_BUILDER_RPC_TIMEOUT_MS = "60000";
+      const pending = rpc.buildGraph().catch((error: unknown) => error);
+      rpc.dispose();
+      const disposed = await pending;
+      expect(AkanError.is(disposed, "rpcDisposed")).toBe(true);
+      expect(disposed).toMatchObject({ statusCode: 500, message: "[builder] rpc disposed" });
+    } finally {
+      rpc.dispose();
+      if (previous === undefined) delete process.env.AKAN_BUILDER_RPC_TIMEOUT_MS;
+      else process.env.AKAN_BUILDER_RPC_TIMEOUT_MS = previous;
     }
   });
 });

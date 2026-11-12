@@ -1,7 +1,9 @@
 import { Database, type SQLQueryBindings, type Statement } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { dayjs, Float, ID, Int, type PromiseOrObject } from "akanjs/base";
+import { AkanError, dayjs, Float, ID, Int, type PromiseOrObject } from "akanjs/base";
 import { type ConstantModel, ConstantRegistry, via } from "akanjs/constant";
 import {
   by,
@@ -25,7 +27,7 @@ import {
   SqlDocumentStore,
   SqliteDialect,
 } from "./database.adaptor";
-import { decodeSolidValue, encodeSolidValue, getSolidConfig, toEpochMs } from "./solidSqlite";
+import { decodeSolidValue, encodeSolidValue, getSolidConfig, openSolidDatabase, toEpochMs } from "./solidSqlite";
 import { resolveDefaultSqliteFile } from "./sqlitePath";
 
 const { set, inc, push, pull, addToSet, unset, mul, min, max } = documentUpdateHelper;
@@ -366,6 +368,25 @@ describe("solid sqlite utilities", () => {
     expect(toEpochMs(null)).toBeNull();
     expect(toEpochMs(1234)).toBe(1234);
     expect(toEpochMs(date)).toBe(date.valueOf());
+  });
+
+  test("gives up on a file another connection keeps locked as databaseLocked, keeping SQLite's error as its cause", async () => {
+    const filePath = path.join(tmpdir(), `solid-locked-${crypto.randomUUID()}.db`);
+    const holder = new Database(filePath, { create: true });
+    try {
+      holder.run("PRAGMA journal_mode = DELETE");
+      holder.run("CREATE TABLE held (x)");
+      holder.run("BEGIN EXCLUSIVE");
+      holder.run("INSERT INTO held VALUES (1)");
+      const config = { ...getSolidConfig({ solid: { filePath } }), filePath, busyTimeoutMs: 0 };
+      const failure = await openSolidDatabase(config).catch((error: unknown) => error);
+      expect(AkanError.is(failure, "databaseLocked")).toBe(true);
+      expect(failure).toMatchObject({ statusCode: 500, message: "database is locked" });
+      expect((failure as Error).cause).toMatchObject({ code: "SQLITE_BUSY" });
+    } finally {
+      holder.close();
+      for (const suffix of ["", "-journal"]) rmSync(`${filePath}${suffix}`, { force: true });
+    }
   });
 
   test("resolves default sqlite paths and solid config", () => {
