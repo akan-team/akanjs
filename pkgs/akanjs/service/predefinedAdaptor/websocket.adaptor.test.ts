@@ -19,6 +19,8 @@ class FakeRedis extends EventEmitter {
   held = false;
   holdReplies = false;
   disconnected = false;
+  quits = 0;
+  status = "ready";
 
   async connect() {}
   subscribe(channel: string) {
@@ -38,6 +40,8 @@ class FakeRedis extends EventEmitter {
   }
   disconnect() {
     this.disconnected = true;
+    this.failing = true;
+    this.release();
   }
   publish(channel: string, message: Buffer) {
     if ([...this.refuse].some((refused) => channel.startsWith(refused)))
@@ -61,6 +65,18 @@ class FakeRedis extends EventEmitter {
   }
   release() {
     for (const { settle } of this.pending.splice(0)) settle();
+  }
+  quit() {
+    this.quits += 1;
+    return new Promise<string>((resolve, reject) => {
+      const answer = () => {
+        if (this.failing) reject(new Error("Connection is closed."));
+        else resolve("OK");
+        queueMicrotask(() => this.emit("close"));
+      };
+      if (this.pending.length) this.pending.push({ settle: answer });
+      else answer();
+    });
   }
 }
 
@@ -155,6 +171,94 @@ describe("WebSocketRedisAdaptor buffer", () => {
     await until(() => publisher.published.length === 1);
     await Bun.sleep(5);
     expect(publisher.published).toEqual([2]);
+  });
+
+  test("shuts down once Redis has answered every publish sent before it, and quietly", async () => {
+    const { adaptor, publisher, send, warns } = await openAdaptor();
+    publisher.emit("ready");
+    publisher.held = true;
+    send(1);
+    send(2);
+    const destroyed = adaptor.onDestroy();
+    await Bun.sleep(5);
+    expect(publisher.quits).toBe(1);
+    expect(publisher.disconnected).toBe(false);
+    publisher.release();
+    await destroyed;
+    expect(publisher.published).toEqual([1, 2]);
+    expect(publisher.disconnected).toBe(true);
+    expect(warns).toEqual([]);
+  });
+
+  test("stops waiting for Redis to answer at shutdown after a second, and warns", async () => {
+    const { adaptor, publisher, send, warns } = await openAdaptor();
+    publisher.emit("ready");
+    publisher.held = true;
+    send(1);
+    jest.useFakeTimers();
+    try {
+      const destroyed = settledFlag(adaptor.onDestroy());
+      for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+      jest.advanceTimersByTime(999);
+      for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+      expect(destroyed.settled).toBe(false);
+      jest.advanceTimersByTime(1);
+      for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+      expect(destroyed.settled).toBe(true);
+      expect(publisher.disconnected).toBe(true);
+      expect(warns.filter((warn) => warn.startsWith("Redis did not answer"))).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("holds a stalled drain at shutdown to the same second, and warns", async () => {
+    const { adaptor, publisher, send, warns } = await openAdaptor();
+    send(1);
+    publisher.held = true;
+    publisher.emit("ready");
+    jest.useFakeTimers();
+    try {
+      const destroyed = settledFlag(adaptor.onDestroy());
+      for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+      jest.advanceTimersByTime(999);
+      for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+      expect(destroyed.settled).toBe(false);
+      jest.advanceTimersByTime(1);
+      for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+      expect(destroyed.settled).toBe(true);
+      expect(warns.filter((warn) => warn.startsWith("Redis did not answer"))).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("stops waiting at once when the link closes before Redis answers QUIT", async () => {
+    const { adaptor, publisher, send, warns } = await openAdaptor();
+    publisher.emit("ready");
+    publisher.held = true;
+    send(1);
+    jest.useFakeTimers();
+    try {
+      const destroyed = settledFlag(adaptor.onDestroy());
+      for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+      expect(publisher.quits).toBe(1);
+      publisher.status = "end";
+      publisher.emit("close");
+      for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+      expect(destroyed.settled).toBe(true);
+      expect(publisher.disconnected).toBe(false);
+      expect(warns.filter((warn) => warn.startsWith("Redis did not answer"))).toEqual([]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("sends no QUIT to a publisher that is down at shutdown", async () => {
+    const { adaptor, publisher } = await openAdaptor();
+    await adaptor.onDestroy();
+    expect(publisher.quits).toBe(0);
+    expect(publisher.disconnected).toBe(true);
   });
 
   test("puts direct publishes that fail together back in the order they were sent", async () => {

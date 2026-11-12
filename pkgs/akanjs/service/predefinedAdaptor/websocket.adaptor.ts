@@ -178,11 +178,26 @@ export class WebSocketRedisAdaptor
     this.subscriber.disconnect();
     if (this.publisher) {
       this.#cancelRetry();
+      //? One deadline for both waits below: a link that stalls without closing answers neither.
+      const stalled = Promise.withResolvers<"stalled">();
+      const timer = setTimeout(() => stalled.resolve("stalled"), 1_000);
       //? A batch the publisher was cut off under waits in ioredis for Redis to return, which a shutdown must not.
-      if (this.#publisherReady) await Promise.race([this.#flushBuffer(), this.#closed()]);
+      if (this.#publisherReady) await Promise.race([this.#flushBuffer(), this.#closed(), stalled.promise]);
       this.#cancelRetry();
+      const connected = this.#publisherReady;
       this.#publisherReady = false;
-      this.publisher.disconnect();
+      //? `disconnect` returns with the socket still writing, and the process exits next, so the rest of a backlog never
+      //? leaves. Redis answers QUIT only after every command ahead of it.
+      const ended = connected
+        ? await Promise.race([this.publisher.quit().catch(() => undefined), this.#closed(), stalled.promise])
+        : undefined;
+      clearTimeout(timer);
+      if (ended === "stalled")
+        this.logger.warn(
+          "Redis did not answer within 1 s of shutdown; cross-server events still being sent may be lost",
+        );
+      //? On a link that already ended, ioredis would arm a 2 s destroy timer that no close ever clears.
+      if (this.publisher.status !== "end") this.publisher.disconnect();
     }
     this.#eventHandler = null;
     this.#changeHandler = null;
