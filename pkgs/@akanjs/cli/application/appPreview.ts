@@ -163,9 +163,7 @@ export class AppPreview {
     });
     const dev = new URL(origin);
     const isDevServer = (url: URL) =>
-      url.protocol === dev.protocol &&
-      url.port === dev.port &&
-      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+      url.protocol === dev.protocol && url.port === dev.port && AppPreview.#isLoopback(url.hostname);
     const elsewhere = [...new Set(typed)].filter((raw) => /^https?:\/\//.test(raw) && !isDevServer(new URL(raw)));
     const skipsBoot = [...new Set(asWritten)];
     const notes = [
@@ -181,10 +179,6 @@ export class AppPreview {
         : []),
     ];
     return { paths, notes };
-  }
-
-  static pagePaths(paths: string[], i18n: I18nLike, options: PathRuleOptions) {
-    return AppPreview.#plan(paths, i18n, options).paths;
   }
 
   /** An unprefixed path answers with a redirect or a 503 where it does not name the default locale itself: under
@@ -218,12 +212,23 @@ export class AppPreview {
       asWritten.push(raw);
       return `${url.pathname}${url.search}`;
     });
-    const opened = new Map<string, string>();
+    const byScreenshot = new Map<string, string>();
     for (const pagePath of [...typed, ...pages.map((page) => asPage(urlOf(page)))]) {
-      const key = pagePath.replace(/^([^?]*?)\/+(\?|$)/, "$1$2");
-      if (!opened.has(key)) opened.set(key, pagePath);
+      const name = AppPreview.screenshotName(pagePath);
+      if (!byScreenshot.has(name)) byScreenshot.set(name, pagePath);
     }
-    return { paths: [...opened.values()], asWritten };
+    return { paths: [...byScreenshot.values()], asWritten };
+  }
+
+  //? RFC 6761 makes `*.localhost` loopback, and a connect to the unspecified address reaches this machine.
+  static #isLoopback(hostname: string) {
+    const name = hostname.replace(/\.$/, "");
+    return (
+      name === "localhost" ||
+      name.endsWith(".localhost") ||
+      /^127\.\d+\.\d+\.\d+$/.test(name) ||
+      ["0.0.0.0", "[::1]", "[::]"].includes(name)
+    );
   }
 
   //? Joined as text, not resolved: `new URL("//host/x", origin)` is protocol-relative and leaves the dev server.
@@ -242,10 +247,11 @@ export class AppPreview {
 
   //? The server routes these outside `/:lang` and the locale proxy skips them, so a locale prefix 404s them.
   static #isPagePath(
-    pathname: string,
+    rawPath: string,
     i18n: I18nLike,
     { apiPrefix, publicDir }: { apiPrefix: string; publicDir: string | null },
   ) {
+    const pathname = rawPath.replace(/(.)\/+$/, "$1");
     const segments = pathname.split("/").filter(Boolean);
     const [first] = segments;
     if (first && i18n.locales.includes(first)) return true;
