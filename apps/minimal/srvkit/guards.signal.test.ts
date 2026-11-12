@@ -99,4 +99,18 @@ describe("LocalOrEdge", () => {
     expect(await fetch.isMemoOpen()).toBe(false);
     expect(await tripsLinks()).toEqual(["/trips/detail"]);
   });
+
+  it("links the trips page to the trip notes when the memo check fails", async () => {
+    spyOn(LocalOrEdge.prototype, "canPass").mockImplementation(() => {
+      throw new Error("operation mode unreadable");
+    });
+    await expect(fetch.isMemoOpen()).rejects.toThrow();
+    expect(await tripsLinks()).toContain("/memo");
+  });
+
+  it("links the trips page to the trip notes when the memo check outlasts its 3 s deadline", async () => {
+    const answersLate = () => new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 4_000));
+    spyOn(LocalOrEdge.prototype, "canPass").mockImplementation(answersLate as unknown as () => boolean);
+    expect(await tripsLinks()).toContain("/memo");
+  }, 10_000);
 });
