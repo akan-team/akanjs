@@ -5,29 +5,36 @@ export class ErrorReport {
   static readonly shownNestedErrors = 20;
 
   static format(error: unknown, workspaceRoot = process.cwd()): string {
+    return ErrorReport.#format(error, workspaceRoot, []);
+  }
+
+  static #format(error: unknown, workspaceRoot: string, ancestors: readonly unknown[]): string {
+    if (ancestors.includes(error)) return "[circular]";
+    const chain = [...ancestors, error];
     if (error instanceof AggregateError) {
       const shown = error.errors.slice(0, ErrorReport.shownNestedErrors);
       const hidden = error.errors.length - shown.length;
       const nestedMessages = [
         ...shown.map(
-          (nestedError, index) => ErrorReport.format(nestedError, workspaceRoot).trim() || `Unknown error ${index + 1}`,
+          (nestedError, index) =>
+            ErrorReport.#format(nestedError, workspaceRoot, chain).trim() || `Unknown error ${index + 1}`,
         ),
         ...(hidden > 0 ? [`…and ${hidden} more`] : []),
       ]
         .map((message) => message.replace(/^/gm, "  "))
         .join("\n");
       const message = nestedMessages ? `${error.message}\n${nestedMessages}` : error.message;
-      return `${message}${ErrorReport.#causeOf(error, workspaceRoot)}`;
+      return `${message}${ErrorReport.#causeOf(error, workspaceRoot, chain)}`;
     }
     if (error instanceof Error)
-      return `${ErrorReport.#withLocation(error.message, error, workspaceRoot)}${ErrorReport.#causeOf(error, workspaceRoot)}`;
+      return `${ErrorReport.#withLocation(error.message, error, workspaceRoot)}${ErrorReport.#causeOf(error, workspaceRoot, chain)}`;
     if (typeof error === "object" && error !== null && "message" in error)
       return ErrorReport.#withLocation(String(error.message), error, workspaceRoot);
     return String(error);
   }
 
-  static #causeOf(error: Error, workspaceRoot: string): string {
-    return error.cause ? `\nCaused by: ${ErrorReport.format(error.cause, workspaceRoot)}` : "";
+  static #causeOf(error: Error, workspaceRoot: string, chain: readonly unknown[]): string {
+    return error.cause ? `\nCaused by: ${ErrorReport.#format(error.cause, workspaceRoot, chain)}` : "";
   }
 
   static #withLocation(message: string, error: object, workspaceRoot: string): string {

@@ -213,6 +213,26 @@ describe("ApplicationBuildReporter", () => {
     ]);
   });
 
+  test("ends a cause or an aggregate that loops back on itself", () => {
+    const looped = new Error("upload failed");
+    looped.cause = new Error("socket closed", { cause: looped });
+    expect(ApplicationBuildReporter.formatError(looped).split("\n")).toEqual([
+      "upload failed",
+      "Caused by: socket closed",
+      "Caused by: [circular]",
+    ]);
+
+    const shared = new Error("disk full");
+    const aggregate = new AggregateError([shared, shared], "two writes failed");
+    aggregate.errors.push(aggregate);
+    expect(ApplicationBuildReporter.formatError(aggregate).split("\n")).toEqual([
+      "two writes failed",
+      "  disk full",
+      "  disk full",
+      "  [circular]",
+    ]);
+  });
+
   test("says where the bundler placed each reason, relative to the workspace root", async () => {
     const root = await makeTempRoot();
     const refuseWith = (message: string) => ({
