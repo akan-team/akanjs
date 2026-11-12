@@ -449,10 +449,10 @@ export class FetchClient {
     requestQuery: (signal?: AbortSignal) => Promise<unknown>,
     { signal, timeout, retry }: { signal?: AbortSignal; timeout?: number | false; retry?: RetryPolicy | false },
   ) {
-    if (getRequestStore()) return claimRequestQuery(cacheKey, () => requestQuery());
+    const claimKey = `${cacheKey}\n${timeout ?? this.http.timeout}\n${JSON.stringify(retry ?? this.http.retry)}`;
+    if (getRequestStore()) return claimRequestQuery(claimKey, () => requestQuery());
     if (typeof window === "undefined") return { value: requestQuery(signal), owned: true };
-    const inflightKey = `${cacheKey}\n${JSON.stringify([timeout ?? null, retry ?? null])}`;
-    return { value: this.#inflight.claim(inflightKey, requestQuery, signal), owned: true };
+    return { value: this.#inflight.claim(claimKey, requestQuery, signal), owned: true };
   }
   #untilAborted<T>(promise: Promise<T>, signal?: AbortSignal) {
     return AbortSignals.race(promise, signal).catch((error: unknown) => {
