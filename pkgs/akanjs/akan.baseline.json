@@ -47,22 +47,17 @@
   "akan.error.bare-error": {
     "server/akanApp.ts": 2,
     "server/akanServer.ts": 14,
-    "server/artifact/builderRpc.ts": 3,
     "server/di/diLifecycle.ts": 11,
     "server/di/resolveHierarchy.ts": 3,
     "server/di/utils.ts": 2,
     "server/hmr/csrDevRuntime.ts": 4,
-    "server/imageOptimizer.ts": 1,
     "server/logging/logControlSocket.ts": 1,
     "server/logging/logTailClient.ts": 6,
-    "server/mcp/McpRouter.ts": 1,
-    "server/mcp/McpUiSession.ts": 1,
     "server/migration/docPath.ts": 5,
     "server/migration/migrationParams.ts": 2,
     "server/migration/migrationRunner.ts": 1,
     "server/migration/migrationScope.ts": 2,
     "server/migration/migrationTable.ts": 6,
-    "server/oauth/OAuthClientIdMetadata.ts": 1,
     "server/ops/ageEncryption.ts": 12,
     "server/ops/migrateJobs.ts": 1,
     "server/ops/opsCommand.ts": 7,
@@ -71,12 +66,6 @@
     "server/ops/snapshotRestore.ts": 10,
     "server/ops/sqliteSnapshot.ts": 4,
     "server/rscWorkerHost.ts": 15,
-    "server/ssrFromRscRenderer.tsx": 1,
-    "server/tunnel/TunnelAgent.ts": 3,
-    "server/webRouter.ts": 1,
-    "service/predefinedAdaptor/compress.adaptor.ts": 2,
-    "service/predefinedAdaptor/solidQueue.adaptor.ts": 1,
-    "service/predefinedAdaptor/solidSqlite.ts": 1,
-    "service/predefinedAdaptor/storage.adaptor.ts": 1
+    "server/tunnel/TunnelAgent.ts": 3
   }
 }

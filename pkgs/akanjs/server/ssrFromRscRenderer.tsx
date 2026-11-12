@@ -1,7 +1,7 @@
 //? The package ships no types; an app or lib program reaches this file without the ambient declarations otherwise.
 /// <reference path="./types/react-server-dom-webpack.d.ts" />
 import { Readable } from "node:stream";
-import { getApiPrefix, getWsPrefix } from "akanjs/base";
+import { AkanError, getApiPrefix, getWsPrefix } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { type AkanRequestStore, type AkanTheme, createRequestStore, RenderScope, requestStorage } from "akanjs/fetch";
 import type { ReactNode } from "react";
@@ -676,7 +676,7 @@ export class SsrFromRscRenderer {
     };
     g.__webpack_require__ = (id: string) => {
       const mod = registry.get(id);
-      if (!mod) throw new Error(`[ssrFromRsc] module not loaded yet: ${id}`);
+      if (!mod) throw new AkanError("notInitialized", `[ssrFromRsc] module not loaded yet: ${id}`);
       return mod;
     };
   }
