@@ -117,6 +117,8 @@ interface ItemLoader<Key> {
 interface SqliteItemModel {
   __store: { find: (query: unknown, options?: unknown) => Promise<Record<string, unknown>[]> };
   __create: (data: Record<string, unknown>) => Promise<LoadedItem>;
+  __get: (id: string) => Promise<LoadedItem>;
+  ServerResolverTestItem: { pickById: (id: string) => Promise<LoadedItem> };
   getServerResolverTestItem: (id: string) => Promise<LoadedItem>;
   loadServerResolverTestItemMany: (ids: string[]) => Promise<(LoadedItem | null)[]>;
   byOwner: ItemLoader<string>;
@@ -351,6 +353,21 @@ describe("DatabaseResolver declaration contracts", () => {
       await second.set({ count: 2 }).save();
       const [stored] = await instance.__store.find({ id }, { select: { title: true, count: true, secret: true } });
       expect([stored?.title, stored?.count, stored?.secret]).toEqual(["Draft", 2, "s"]);
+    });
+  });
+
+  test("names the table and id a by-id read missed, from __get, the generated get and the model's pickById", async () => {
+    await withSqliteModel(async (instance) => {
+      const misses = [
+        instance.__get(validId),
+        instance.getServerResolverTestItem(validId),
+        instance.ServerResolverTestItem.pickById(validId),
+      ];
+      for (const miss of misses) {
+        const error = await miss.catch((thrown: unknown) => thrown);
+        expect(error).toBeInstanceOf(NoDocumentError);
+        expect((error as NoDocumentError).lookup).toEqual({ refName: "serverResolverTestItem", id: validId });
+      }
     });
   });
 
