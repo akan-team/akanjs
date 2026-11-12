@@ -2,8 +2,7 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 // Module paths, never a barrel: the devkit and `frontendBuild` barrels would hold tailwindcss (~40MB), ssh2, ink
 // and the cloud stack for the whole dev session (`entryModuleGraph.test.ts` enforces it).
-import { ApplicationBuildReporter } from "@akanjs/devkit/applicationBuildReporter";
-import { CodegenLock } from "@akanjs/devkit/codegenLock";
+import { ApplicationBuildReporter } from "@akanjs/devkit/app/applicationBuildReporter";
 import type { App } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, type PageRoot, WorkspaceExecutor } from "@akanjs/devkit/executors";
 import { AutoImportSync } from "@akanjs/devkit/frontendBuild/autoImportSync";
@@ -18,6 +17,7 @@ import { RouteClientBuilder } from "@akanjs/devkit/frontendBuild/routeClientBuil
 import { ServerGraphFile } from "@akanjs/devkit/frontendBuild/serverGraphFile";
 import { SsrDevBundler } from "@akanjs/devkit/frontendBuild/ssrDevBundler";
 import { WatchRootResolver } from "@akanjs/devkit/frontendBuild/watchRootResolver";
+import { CodegenLock } from "@akanjs/devkit/workspace/codegenLock";
 import { Logger } from "akanjs/common";
 import type {
   BaseBuildArtifact,

@@ -260,7 +260,7 @@ export class AkanApp {
         this.#rooms.deliverPubsub(idx, message);
         return;
       case "pubsub.subscribe":
-        this.#rooms.addRoomMembership(idx, message.roomId, message.socketId);
+        this.#rooms.subscribe(idx, message);
         return;
       case "pubsub.unsubscribe":
         this.#rooms.removeRoomMembership(idx, message.roomId, message.socketId);

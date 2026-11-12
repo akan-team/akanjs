@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { barrelFacetDirs, capitalize, facetBarrelOf } from "akanjs/common";
-import { FileSys } from "../fileSys";
+import { FileSys } from "../util/fileSys";
 
 const BARREL_FACETS = new Set<string>(barrelFacetDirs);
 const MODULE_UI_TYPES = ["Template", "Unit", "Util", "View", "Zone"] as const;

@@ -1,4 +1,8 @@
-import { type AgentAsset, AgentAssets } from "@akanjs/devkit/agentAssets";
+import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { AkanContextAnalyzer } from "@akanjs/devkit/context/akanContext";
+import { collectRecipeSources, scanRecipes } from "@akanjs/devkit/context/recipeScanner";
+import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
+import { type AgentAsset, AgentAssets } from "@akanjs/devkit/guideline/agentAssets";
 import {
   AGENT_BLOCK_END,
   AGENT_BLOCK_START,
@@ -7,12 +11,8 @@ import {
   renderRecipeEntries,
   stampBlockVersion,
   upsertAgentBlock,
-} from "@akanjs/devkit/agentsIndex";
-import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
-import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
-import { Prompter } from "@akanjs/devkit/prompter";
-import { collectRecipeSources, scanRecipes } from "@akanjs/devkit/recipeScanner";
+} from "@akanjs/devkit/guideline/agentsIndex";
+import { Prompter } from "@akanjs/devkit/guideline/prompter";
 import { Logger } from "akanjs/common";
 import { AgentHook } from "./agentHook";
 

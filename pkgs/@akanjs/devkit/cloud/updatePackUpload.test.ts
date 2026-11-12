@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { truncate, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Workspace } from "../commandDecorators";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { CloudApi } from "./cloudApi";
 import { UpdatePackUpload } from "./updatePackUpload";
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
-import { createTempApp, tempRoots } from "@akanjs/devkit/testHelpers";
+import { createTempApp, tempRoots } from "@akanjs/devkit/test/testHelpers";
 import { ScalarRunner } from "./scalar.runner";
 import { ScalarScript } from "./scalar.script";
 

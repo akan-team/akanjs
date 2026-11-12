@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { AppExecutor, LibExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
-import { makeCliTempWorkspace, tempRoots } from "@akanjs/devkit/testHelpers";
+import { makeCliTempWorkspace, tempRoots } from "@akanjs/devkit/test/testHelpers";
 import { Logger } from "akanjs/common";
 
 const track = tempRoots();

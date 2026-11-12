@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AkanNativeTarget } from "../akanConfig";
-import { tempDirs } from "../testHelpers";
+import { tempDirs } from "../test/testHelpers";
 import { NativeWebDir } from "./nativeWebDir";
 
 const makeTempRoot = tempDirs("akan-native-web-");

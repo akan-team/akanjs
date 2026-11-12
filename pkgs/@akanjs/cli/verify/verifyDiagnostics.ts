@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { BiomeDiagnostic, BiomeReport } from "@akanjs/devkit/linter";
-import type { MaintainabilityReport } from "@akanjs/devkit/maintainabilityReport";
-import type { QualityWarning } from "@akanjs/devkit/qualityScanner";
-import type { RouteJsBudgetWarning } from "@akanjs/devkit/routeJsBudget";
-import type { TypecheckRecord } from "@akanjs/devkit/typeChecker";
+import type { RouteJsBudgetWarning } from "@akanjs/devkit/app/routeJsBudget";
+import type { BiomeDiagnostic, BiomeReport } from "@akanjs/devkit/lint/linter";
+import type { MaintainabilityReport } from "@akanjs/devkit/quality/maintainabilityReport";
+import type { QualityWarning } from "@akanjs/devkit/quality/qualityScanner";
+import type { TypecheckRecord } from "@akanjs/devkit/typecheck/typeChecker";
 
 export type VerifyStepName = "sync" | "lint" | "typecheck" | "build" | "ssr";
 

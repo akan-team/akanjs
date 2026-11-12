@@ -1,5 +1,5 @@
-import { AkanContextAnalyzer } from "@akanjs/devkit/akanContext";
 import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { AkanContextAnalyzer } from "@akanjs/devkit/context/akanContext";
 import {
   createRepairReport,
   generatedFilePathsForTarget,

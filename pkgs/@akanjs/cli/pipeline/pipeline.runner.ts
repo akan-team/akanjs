@@ -1,7 +1,7 @@
 import path from "node:path";
 import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { FileSys } from "@akanjs/devkit/fileSys";
 import { PipelineDefinition } from "@akanjs/devkit/pipeline";
+import { FileSys } from "@akanjs/devkit/util/fileSys";
 import type { PipelinePlanContext, PipelinePlanResult, PipelineTrigger } from "akanjs/common";
 
 export interface PipelineFlags {

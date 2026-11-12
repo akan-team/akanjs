@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
-import type { PackageJson } from "../types";
+import type { PackageJson } from "../workspace/types";
 
 export class WorkspaceVersionCheck {
   static readonly #exemptCommands = new Set(["update", "create-workspace"]);

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Linter } from "../linter";
+import { Linter } from "./linter";
 
 //? A rule that stops matching reports zero diagnostics, not an error, so a biome upgrade can retire one silently.
 //? Each rule runs alone against a config written here; the path scoping in biome.base.json is deliberately not tested.

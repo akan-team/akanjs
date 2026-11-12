@@ -25,7 +25,7 @@ bun add -d @akanjs/devkit
 ## Usage
 
 ```ts
-import { ApplicationBuildRunner } from "@akanjs/devkit/applicationBuildRunner";
+import { ApplicationBuildRunner } from "@akanjs/devkit/app/applicationBuildRunner";
 import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
 
 const workspace = WorkspaceExecutor.fromRoot();
@@ -38,7 +38,9 @@ await runner.build();
 
 Import values from the facet that owns them (`@akanjs/devkit/executors`, `@akanjs/devkit/akanConfig`,
 `@akanjs/devkit/workflow`, …). The root `@akanjs/devkit` entry exports types only, so loading a tool does not pull
-every facet into the process.
+every facet into the process. A tool with no facet of its own is imported from its folder (`@akanjs/devkit/app/…`,
+`quality/`, `workspace/`, `util/`, …); the paths these tools had at the package root still resolve until the next
+minor release.
 
 ## What It Provides
 

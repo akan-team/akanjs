@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import type { PackageJson } from "../types";
+import type { PackageJson } from "../workspace/types";
 import { findToolingRolloutViolations } from "./rolloutGate";
 
 const manifest = (overrides: Partial<PackageJson>): PackageJson => ({

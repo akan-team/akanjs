@@ -1,3 +1,4 @@
+import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import {
   AkanContextAnalyzer,
   type AkanContextFormat,
@@ -13,7 +14,7 @@ import {
   type McpFraming,
   renderDoctorText,
   upsertCodexMcpServerBlock,
-} from "@akanjs/devkit/akanContext";
+} from "@akanjs/devkit/context/akanContext";
 import {
   applyFirstPolicy,
   createAkanValidationContract,
@@ -24,14 +25,13 @@ import {
   stringArg,
   workflowArtifactPath,
   workflowInputsArg,
-} from "@akanjs/devkit/akanMcpContract";
-import { AkanMcpToolError } from "@akanjs/devkit/akanMcpToolError";
-import { runner, type Workspace } from "@akanjs/devkit/commandDecorators";
+} from "@akanjs/devkit/context/akanMcpContract";
+import { AkanMcpToolError } from "@akanjs/devkit/context/akanMcpToolError";
 import { AppExecutor } from "@akanjs/devkit/executors";
+import { Prompter } from "@akanjs/devkit/guideline/prompter";
 import { appIdsOf, getMobileTargets, isPlaceholderAppId, NativeApp } from "@akanjs/devkit/mobile";
-import { Prompter } from "@akanjs/devkit/prompter";
 import { createWorkflowBaselineSummary, jsonText, type WorkflowPlan, workflowStatus } from "@akanjs/devkit/workflow";
-import { WorkspaceGraph } from "@akanjs/devkit/workspaceGraph";
+import { WorkspaceGraph } from "@akanjs/devkit/workspace/workspaceGraph";
 import { MCP_FAILURE_META } from "akanjs/common";
 import { RepairRunner } from "../repair/repair.runner";
 import { WorkflowRunner } from "../workflow/workflow.runner";

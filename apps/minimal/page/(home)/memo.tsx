@@ -1,12 +1,12 @@
 import { fetch, Memo, usePage } from "@apps/minimal/client";
 import { appNavClass, Screen } from "@apps/minimal/ui";
-import { page } from "akanjs/client";
+import { page, router } from "akanjs/client";
 import { Layout, Model } from "akanjs/ui";
 
 export default page()
   .config({ topInset: 48, transition: "stack" })
   .guard(async () => {
-    await fetch.memoInsightInPublic();
+    if (!(await fetch.isMemoOpen())) router.notFound();
   })
   .app("showTripNotes", "Show the notes shared with everyone on this trip.", () => {
     const { memoInitInPublic } = fetch.initMemoInPublic();

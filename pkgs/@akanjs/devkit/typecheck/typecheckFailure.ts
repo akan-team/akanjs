@@ -1,5 +1,5 @@
 import { CliError } from "../commandDecorators/cliError";
-import type { TypecheckRecord } from "../typeChecker";
+import type { TypecheckRecord } from "./typeChecker";
 
 export class TypecheckFailure extends CliError<"checkFailed"> {
   //? The worker's exit when the project has type errors, so its crash, which exits 1, is told apart.

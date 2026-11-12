@@ -1,10 +1,12 @@
 "use client";
 import { router } from "akanjs/client";
-import { modelNames, stateSetterName } from "akanjs/common";
+import { modelNames } from "akanjs/common";
 import type { SliceMeta } from "akanjs/fetch";
 import { st } from "akanjs/store";
 import { usePageLocation } from "akanjs/webkit";
 import { useEffect, useRef, useState } from "react";
+
+import { openSeqIn, seedOpen } from "../../store/openSeq";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 const firstOf = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
@@ -28,7 +30,7 @@ export const useViewModal = (slice: SliceMeta, { inUrl }: { inUrl: boolean }) =>
   const storeDo = st.do as unknown as { [key: string]: (...args: unknown[]) => Promise<void> | void };
   const { refName } = slice;
   const names = modelNames(refName);
-  const setModelModal = stateSetterName(names.modelModal);
+  const returnToView = () => seedOpen(st, names.model, "view", { [names.modelModal]: "view" });
   const { searchParams } = usePageLocation() as { searchParams: SearchParams };
   const model = storeUse[names.model]({ agent: false }) as { id: string } | null;
   const modelModal = storeUse[names.modelModal]({ agent: false }) as string | null;
@@ -48,7 +50,7 @@ export const useViewModal = (slice: SliceMeta, { inUrl }: { inUrl: boolean }) =>
   useEffect(() => {
     if (!editedFrom || modelModal === "edit") return;
     setEditedFrom(null);
-    if (isReturning) void storeDo[setModelModal]("view");
+    if (isReturning) returnToView();
   }, [modelModal]);
   //? Two-way, so a side is followed only when it moved since the last agreement: the URL on mount and on a Link or
   //? back, the store when a row's view button or close changed it.
@@ -71,8 +73,12 @@ export const useViewModal = (slice: SliceMeta, { inUrl }: { inUrl: boolean }) =>
   }, [inUrl, urlId, storeId]);
   const editInView = (id: string) => {
     setEditedFrom(id);
-    //? A form that failed to load never opened, so the view it was asked from comes back.
-    void Promise.resolve(storeDo[names.editModel](id)).catch(() => storeDo[setModelModal]("view"));
+    const editing = Promise.resolve(storeDo[names.editModel](id));
+    const opened = openSeqIn(st, names.model).open;
+    //? A form that failed to load never opened, so the view it was asked from comes back, unless a later open took over.
+    void editing.catch(() => {
+      if (openSeqIn(st, names.model).open === opened) returnToView();
+    });
   };
   return { editInView };
 };

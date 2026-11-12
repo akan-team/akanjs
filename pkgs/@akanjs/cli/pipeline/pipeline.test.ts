@@ -1,7 +1,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { lstat, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { makeCliTempWorkspace, tempRoots, writeText } from "@akanjs/devkit/testHelpers";
+import { makeCliTempWorkspace, tempRoots, writeText } from "@akanjs/devkit/test/testHelpers";
 import { PipelinePlanSchema } from "akanjs/common";
 
 //? Each case boots the CLI from source in a fresh process.

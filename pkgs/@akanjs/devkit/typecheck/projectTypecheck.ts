@@ -1,7 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { CliError } from "../commandDecorators/cliError";
-import type { TypecheckRecord } from "../typeChecker";
+import type { TypecheckRecord } from "./typeChecker";
 import { TypecheckFailure } from "./typecheckFailure";
 
 export interface ProjectTypecheckOptions {

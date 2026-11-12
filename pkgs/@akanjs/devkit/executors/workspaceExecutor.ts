@@ -2,10 +2,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { AkanWorkspaceConfig } from "../akanConfig";
-import { FileSys } from "../fileSys";
-import { resolveRepoName } from "../repoIdentity";
-import { WorkspaceInfo } from "../scanInfo";
-import type { BaseDevEnv, TsConfigJson } from "../types";
+import { FileSys } from "../util/fileSys";
+import { resolveRepoName } from "../workspace/repoIdentity";
+import { WorkspaceInfo } from "../workspace/scanInfo";
+import type { BaseDevEnv, TsConfigJson } from "../workspace/types";
 import { Executor, execEmoji } from "./executor";
 import { SysExecutor } from "./sysExecutor";
 

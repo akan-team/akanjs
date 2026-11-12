@@ -1,8 +1,8 @@
 import { access } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
-import type { AkanModuleContext } from "../akanContext";
 import type { Workspace } from "../commandDecorators";
+import type { AkanModuleContext } from "../context/akanContext";
 import { moduleComponentName, moduleSourcePaths } from "./source";
 import {
   callExpressionName,

@@ -4,6 +4,7 @@ interface RscPrefetchEntry<B> {
   account: string;
   base: B | undefined;
   whole: boolean;
+  optedOut: boolean;
   startedAt: number;
   controller: AbortController;
   response: Promise<Response | null>;
@@ -75,7 +76,8 @@ export class RscPrefetchCache<B = undefined> {
 
   has(href: string, account: string, base?: B) {
     const entry = this.#entries.get(href);
-    return !!entry && entry.account === account && entry.base === base && !this.#isStale(entry);
+    //? A page's opt-out comes from its guards and config, never the layouts on screen, so it holds under any base.
+    return !!entry && entry.account === account && (entry.base === base || entry.optedOut) && !this.#isStale(entry);
   }
 
   //? Newest pointed-at link first, the likeliest click; a link that merely came into view waits behind all of them, and a
@@ -179,6 +181,7 @@ export class RscPrefetchCache<B = undefined> {
       account,
       base: this.#baseOf?.(),
       whole: false,
+      optedOut: false,
       startedAt: this.#now(),
       controller,
       response: this.#fetchResponse(href, controller.signal).then(
@@ -186,6 +189,7 @@ export class RscPrefetchCache<B = undefined> {
           entry.whole = response.headers.get("X-Akan-Rsc-Partial") !== "patch";
           //? A 204 is a page that opts out of prefetching, kept as nothing for the TTL so hovering again asks no more.
           const optedOut = response.status === 204;
+          entry.optedOut = optedOut;
           //? Only what the click would take as its own answer: a 429, 408 or 5xx may be gone by then, so it asks again.
           const usable = response.ok || response.status === 404;
           if (controller.signal.aborted || optedOut || !usable || !response.body) {
