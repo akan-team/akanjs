@@ -328,6 +328,22 @@ describe("a stop while the builder is starting", () => {
     };
     return builder;
   };
+  // Not `.rejects`: on a start that never settles it waits out three ready timeouts instead of failing the test.
+  const settled = async (starting: Promise<unknown>) => {
+    let timer: Timer | undefined;
+    const pending = new Promise<string>((resolve) => {
+      timer = setTimeout(() => resolve("still starting"), 2_000);
+    });
+    const outcome = await Promise.race([
+      starting.then(
+        () => "started",
+        (error: unknown) => (error instanceof Error ? error.message : String(error)),
+      ),
+      pending,
+    ]);
+    clearTimeout(timer);
+    return outcome;
+  };
 
   test("stops a builder created after the stop, and never starts it", async () => {
     const { app } = track(await createTempApp("demo"));
@@ -345,7 +361,7 @@ describe("a stop while the builder is starting", () => {
       await Bun.sleep(50);
       await host.stop();
       created.resolve(builder as unknown as IncrementalBuilderHost);
-      await expect(starting).rejects.toThrow("dev server stopped before the builder started");
+      expect(await settled(starting)).toBe("dev server stopped before the builder started");
       expect({ creates, started: builder.started, stopped: builder.stopped }).toEqual({
         creates: 1,
         started: 0,
@@ -374,7 +390,7 @@ describe("a stop while the builder is starting", () => {
       await Bun.sleep(50);
       expect(builder.started).toBe(1);
       await host.stop();
-      await expect(starting).rejects.toThrow("dev server stopped before the builder was ready");
+      expect(await settled(starting)).toBe("dev server stopped before the builder was ready");
       exitLate?.();
       await Bun.sleep(50);
       expect({ creates, stopped: builder.stopped }).toEqual({ creates: 1, stopped: 1 });

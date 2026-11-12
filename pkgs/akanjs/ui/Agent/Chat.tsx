@@ -2,8 +2,11 @@
 import { cn, isMcpView, isMobileDevice, usePage } from "akanjs/client";
 import { AgentPrompts, type AgentVisualOption } from "akanjs/store/agent";
 import {
+  type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  type RefObject,
+  type SetStateAction,
   useContext,
   useEffect,
   useMemo,
@@ -130,39 +133,17 @@ const panelSize =
 
 const stickyEdge = 80;
 
-export const DefaultChat = ({
-  className,
-  title,
-  label,
-  instructions,
-  runner,
-  maxTurns,
-  compact,
-  builtins,
-  onCompact,
-  defaultOpen = false,
-  open: openProp,
-  onOpenChange,
-  launcher = true,
-  visual = true,
-  persist,
-  inline = false,
-  shortcut = true,
-  launcherClassName,
-  launcherPlacement = "right",
-  hideLauncherBelow,
-  panelClassName,
-  intro,
-  header,
-  chrome = true,
-  defaultDraft,
-  attach,
-  attachLimits,
-  reference,
-  mentions,
-  voice,
-}: ChatProps) => {
-  const { l } = usePage();
+type Translate = ReturnType<typeof usePage>["l"];
+
+type ChatSessionOptions = Pick<
+  ChatProps,
+  "runner" | "instructions" | "maxTurns" | "compact" | "builtins" | "persist" | "onCompact" | "visual"
+>;
+
+const useChatSession = (
+  l: Translate,
+  { runner, instructions, maxTurns, compact, builtins, persist, onCompact, visual = true }: ChatSessionOptions,
+) => {
   const provided = useContext(SessionContext);
   // Read through a ref so the session's own text follows a language switched mid-conversation.
   const translate = useRef(l);
@@ -188,50 +169,22 @@ export const DefaultChat = ({
     () => session.version,
     () => session.version,
   );
+  return { provided, session, version };
+};
+
+const useOpenState = (defaultOpen: boolean, openProp?: boolean, onOpenChange?: (open: boolean) => void) => {
   const [ownOpen, setOwnOpen] = useState(defaultOpen);
   const open = openProp ?? ownOpen;
   const setOpen = (next: boolean) => {
     if (openProp === undefined) setOwnOpen(next);
     onOpenChange?.(next);
   };
-  const [draft, setDraft] = useState(defaultDraft ?? "");
-  const files = useChatAttachments({ session, attach, limits: attachLimits, l });
-  const speech = useChatVoice({
-    session,
-    engine: voice,
-    version,
-    onTranscript: setDraft,
-    onFailed: () => session.note(l("base.agentVoiceFailed")),
-  });
-  const recall = useDraftRecall(session.messages);
-  // `dispatch` is declared below and only ever called from the flush effect, after this render has finished.
-  const queue = useChatQueue({ session, limits: attachLimits, version, l, onFlush: (message) => dispatch(message) });
-  const [hotkey, setHotkey] = useState<{ label: string; keys: string } | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const launcherRef = useRef<HTMLButtonElement>(null);
-  const handleRef = useRef<ComposerHandle | null>(null);
-  // An override composer drawing its own textarea fills no handle, so the input ref answers instead.
-  const focusComposer = () => {
-    if (handleRef.current) handleRef.current.focus();
-    else inputRef.current?.focus();
-  };
-  const refs = useChatReferences({ session, draft, version, handleRef, onDraft: setDraft });
-  const sticky = useRef(true);
-  const returning = useRef(false);
-  const read = useRef(session.messages.length);
-  const keyboardFrame = useKeyboardFrame();
-  const [overlay, setOverlay] = useState<HTMLElement | null>(null);
-  const { layer: panelOverlays, cardLayer: cardOverlays, hosts: overlayHosts } = usePanelOverlays();
-  //? An inline chat hands down the portal it sits in, so a modal around it still hosts what it opens.
-  const enclosingPortal = useOverlayPortal();
-  useEffect(() => {
-    setOverlay(document.body);
-  }, []);
-  useEffect(() => {
-    if (open) read.current = session.messages.length;
-    if (sticky.current) listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [version, open]);
+  return [open, setOpen] as const;
+};
+
+type Hotkey = { label: string; keys: string };
+
+const useChatShortcut = (shortcut: boolean, setHotkey: (hotkey: Hotkey) => void, onChord: () => void) => {
   useEffect(() => {
     if (!shortcut || isMcpView()) return;
     const apple = isApplePlatform();
@@ -241,23 +194,15 @@ export const DefaultChat = ({
       const chord = apple ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
       if (!chord) return;
       event.preventDefault();
-      sticky.current = true;
-      setOpen(true);
-      focusComposer();
+      onChord();
     };
     // Cmd/Ctrl+L is the browser location bar; capture so preventDefault wins.
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [shortcut]);
-  useEffect(() => {
-    if (!open) {
-      if (returning.current) launcherRef.current?.focus();
-      returning.current = false;
-      return;
-    }
-    // A touch screen raises its keyboard on focus, covering the intro the panel just opened to and panning the page.
-    if (!isMobileDevice()) focusComposer();
-  }, [open, session.pendingQuestion?.callId]);
+};
+
+const useAbortOwnedSession = (provided: AgentSession | null, session: AgentSession) => {
   useEffect(
     () => () => {
       // Unmounted, nothing renders an owned session's approvals; a provided one belongs to its provider.
@@ -265,20 +210,41 @@ export const DefaultChat = ({
     },
     [],
   );
+};
+
+interface ChatComposerSetup {
+  session: AgentSession;
+  l: Translate;
+  draft: string;
+  setDraft: Dispatch<SetStateAction<string>>;
+  files: ReturnType<typeof useChatAttachments>;
+  speech: ReturnType<typeof useChatVoice>;
+  recall: ReturnType<typeof useDraftRecall>;
+  queue: ReturnType<typeof useChatQueue>;
+  refs: ReturnType<typeof useChatReferences>;
+  reference?: readonly ReferenceSource[];
+  sticky: RefObject<boolean>;
+  dismiss: () => void;
+}
+
+const useChatComposer = ({
+  session,
+  l,
+  draft,
+  setDraft,
+  files,
+  speech,
+  recall,
+  queue,
+  refs,
+  reference,
+  sticky,
+  dismiss,
+}: ChatComposerSetup) => {
   const write = (text: string) => {
     setDraft(text);
     menu.reopen();
     mentionMenu.reopen();
-  };
-  const closable = openProp === undefined || !!onOpenChange;
-  const dismiss = () => {
-    returning.current = true;
-    setOpen(false);
-  };
-  const clear = () => {
-    files.clear();
-    queue.take();
-    void session.reset();
   };
   const runCommand = (command: ChatCommand) => {
     write("");
@@ -395,66 +361,130 @@ export const DefaultChat = ({
     event.preventDefault();
     send();
   };
-  // Per transcript change, not per render: the bubbles are memoized on identity, so the maps must stay the same.
-  // A result renders only what no call claimed — a capped transcript can outlive the message that made the call.
-  const bubbles = useMemo(() => {
-    const resultOf = new Map(session.messages.flatMap((message) => message.toolResults ?? []).map((r) => [r.id, r]));
-    const claimed = new Set(session.messages.flatMap((message) => message.toolCalls?.map((call) => call.id) ?? []));
-    const blocks: ({ at: number; user: ChatMessage } | { at: number; turn: ChatMessage[] })[] = [];
-    session.messages.forEach((message, idx) => {
-      if (message.role === "user") {
-        blocks.push({ at: idx, user: message });
-        return;
-      }
-      const orphans = message.role === "tool" ? (message.toolResults ?? []).filter((r) => !claimed.has(r.id)) : null;
-      if (orphans && !orphans.length) return;
-      const shown = orphans ? { ...message, toolResults: orphans } : message;
-      const open = blocks.at(-1);
-      if (open && "turn" in open) open.turn.push(shown);
-      else blocks.push({ at: idx, turn: [shown] });
-    });
-    const last = blocks.at(-1);
-    return blocks.map((block) =>
-      "user" in block ? (
-        <Bubble key={block.at} message={block.user} progress={session.progress} results={resultOf} />
-      ) : (
-        <Steps
-          isRunning={session.isRunning && block === last}
-          key={block.at}
-          messages={block.turn}
-          progress={session.progress}
-          results={resultOf}
-        />
-      ),
-    );
-  }, [version]);
-  // The estimate walks every message, and the composer re-renders on every keystroke.
-  const context = useMemo(() => session.context, [version]);
-  const unread = open ? 0 : Math.max(0, session.messages.length - read.current);
-  //? Inside an MCP host's view the person is already talking to an agent, and this one's relay is out of reach.
-  const layer = (surface: ReactNode) =>
-    isMcpView() ? null : inline ? surface : overlay ? createPortal(surface, overlay) : null;
-  if (!open)
-    return launcher
-      ? layer(
-          <Launcher
-            className={cn(
-              !inline && [launcherLayer, launcherSides[launcherPlacement]],
-              hideLauncherBelow && launcherHiddenBelow[hideLauncherBelow],
-              className,
-              launcherClassName,
-            )}
-            style={inline ? undefined : launcherStyle}
-            hotkey={hotkey}
-            label={l("base.agent")}
-            buttonRef={launcherRef}
-            onOpen={() => setOpen(true)}
-            unread={unread}
-          />,
-        )
-      : null;
+  return { write, dispatch, unpark, send, onKeyDown, menu, list };
+};
+
+// A result renders only what no call claimed — a capped transcript can outlive the message that made the call.
+const transcriptOf = (session: AgentSession) => {
+  const resultOf = new Map(session.messages.flatMap((message) => message.toolResults ?? []).map((r) => [r.id, r]));
+  const claimed = new Set(session.messages.flatMap((message) => message.toolCalls?.map((call) => call.id) ?? []));
+  const blocks: ({ at: number; user: ChatMessage } | { at: number; turn: ChatMessage[] })[] = [];
+  session.messages.forEach((message, idx) => {
+    if (message.role === "user") {
+      blocks.push({ at: idx, user: message });
+      return;
+    }
+    const orphans = message.role === "tool" ? (message.toolResults ?? []).filter((r) => !claimed.has(r.id)) : null;
+    if (orphans && !orphans.length) return;
+    const shown = orphans ? { ...message, toolResults: orphans } : message;
+    const open = blocks.at(-1);
+    if (open && "turn" in open) open.turn.push(shown);
+    else blocks.push({ at: idx, turn: [shown] });
+  });
+  const last = blocks.at(-1);
+  return blocks.map((block) =>
+    "user" in block ? (
+      <Bubble key={block.at} message={block.user} progress={session.progress} results={resultOf} />
+    ) : (
+      <Steps
+        isRunning={session.isRunning && block === last}
+        key={block.at}
+        messages={block.turn}
+        progress={session.progress}
+        results={resultOf}
+      />
+    ),
+  );
+};
+
+const useChatLayers = () => {
+  const [overlay, setOverlay] = useState<HTMLElement | null>(null);
+  const { layer: panelOverlays, cardLayer: cardOverlays, hosts: overlayHosts } = usePanelOverlays();
+  //? An inline chat hands down the portal it sits in, so a modal around it still hosts what it opens.
+  const enclosingPortal = useOverlayPortal();
+  useEffect(() => {
+    setOverlay(document.body);
+  }, []);
+  return { overlay, panelOverlays, cardOverlays, overlayHosts, enclosingPortal };
+};
+
+const usePanelFocus = (
+  open: boolean,
+  questionId: string | undefined,
+  returning: RefObject<boolean>,
+  launcherRef: RefObject<HTMLButtonElement | null>,
+  focusComposer: () => void,
+) => {
+  useEffect(() => {
+    if (!open) {
+      if (returning.current) launcherRef.current?.focus();
+      returning.current = false;
+      return;
+    }
+    // A touch screen raises its keyboard on focus, covering the intro the panel just opened to and panning the page.
+    if (!isMobileDevice()) focusComposer();
+  }, [open, questionId]);
+};
+
+interface ChatPanelProps
+  extends Pick<ChatProps, "className" | "title" | "label" | "intro" | "header" | "panelClassName"> {
+  bubbles: ReactNode[];
+  chrome: boolean;
+  composer: Omit<ReturnType<typeof useChatComposer>, "dispatch">;
+  context: AgentSession["context"];
+  draft: string;
+  files: ReturnType<typeof useChatAttachments>;
+  handleRef: RefObject<ComposerHandle | null>;
+  inline: boolean;
+  inputRef: RefObject<HTMLTextAreaElement | null>;
+  keyboardFrame: ReturnType<typeof useKeyboardFrame>;
+  l: Translate;
+  layers: ReturnType<typeof useChatLayers>;
+  listRef: RefObject<HTMLDivElement | null>;
+  mentions: boolean;
+  onClose?: () => void;
+  queue: ReturnType<typeof useChatQueue>;
+  refs: ReturnType<typeof useChatReferences>;
+  session: AgentSession;
+  speech: ReturnType<typeof useChatVoice>;
+  sticky: RefObject<boolean>;
+}
+
+const ChatPanel = ({
+  bubbles,
+  chrome,
+  className,
+  composer,
+  context,
+  draft,
+  files,
+  handleRef,
+  header,
+  inline,
+  inputRef,
+  intro,
+  keyboardFrame,
+  l,
+  label,
+  layers,
+  listRef,
+  mentions,
+  onClose,
+  panelClassName,
+  queue,
+  refs,
+  session,
+  speech,
+  sticky,
+  title,
+}: ChatPanelProps) => {
+  const clear = () => {
+    files.clear();
+    queue.take();
+    void session.reset();
+  };
   // data-agent-ui keeps the chat out of readScreen, so a turn never re-reads its own transcript.
-  return layer(
+  return (
     <>
       <aside
         aria-label={label ?? (typeof title === "string" ? title : l("base.agent"))}
@@ -470,7 +500,7 @@ export const DefaultChat = ({
         style={inline ? undefined : { zIndex: overlayZ.agentPanel, ...keyboardFrame }}
         {...files.dropProps}
       >
-        <OverlayPortalProvider value={inline ? enclosingPortal : panelOverlays}>
+        <OverlayPortalProvider value={inline ? layers.enclosingPortal : layers.panelOverlays}>
           {chrome ? (
             <ChatHeader
               context={context}
@@ -478,7 +508,7 @@ export const DefaultChat = ({
               running={session.isRunning}
               title={title}
               onClear={session.messages.length ? clear : undefined}
-              onClose={closable ? dismiss : undefined}
+              onClose={onClose}
             />
           ) : null}
           <div
@@ -502,13 +532,15 @@ export const DefaultChat = ({
               </p>
             ) : null}
           </div>
-          <ChatPendingCards portal={inline ? enclosingPortal : cardOverlays} session={session} />
-          {queue.queued ? <Queued message={queue.queued} onCancel={() => queue.take()} onEdit={unpark} /> : null}
+          <ChatPendingCards portal={inline ? layers.enclosingPortal : layers.cardOverlays} session={session} />
+          {queue.queued ? (
+            <Queued message={queue.queued} onCancel={() => queue.take()} onEdit={composer.unpark} />
+          ) : null}
           <Menu
             onPick={(row) => row.pick()}
-            prefix={list === menu ? "/" : "@"}
-            rows={list.rows}
-            selected={list.selected}
+            prefix={composer.list === composer.menu ? "/" : "@"}
+            rows={composer.list.rows}
+            selected={composer.list.selected}
           />
           <Composer
             attached={files.attached}
@@ -516,27 +548,172 @@ export const DefaultChat = ({
             draft={draft}
             handleRef={handleRef}
             inputRef={inputRef}
-            isMenuOpen={!!list.at()}
-            mentions={mentions ?? !!reference?.length}
+            isMenuOpen={!!composer.list.at()}
+            mentions={mentions}
             {...(speech.canListen ? { mic: { listening: speech.listening, onToggle: speech.toggle } } : {})}
-            onDraft={write}
+            onDraft={composer.write}
             onFiles={(picked) => void files.add(picked)}
-            onKeyDown={onKeyDown}
+            onKeyDown={composer.onKeyDown}
             onRemoveFile={files.remove}
             onRemoveReference={refs.remove}
-            onSend={send}
+            onSend={composer.send}
             references={refs.references}
             onStop={() => {
               speech.silence();
-              unpark();
+              composer.unpark();
               session.abort();
             }}
             session={session}
           />
         </OverlayPortalProvider>
       </aside>
-      {inline ? null : <PanelOverlayHosts asking={isAsking(session)} {...overlayHosts} />}
-    </>,
+      {inline ? null : <PanelOverlayHosts asking={isAsking(session)} {...layers.overlayHosts} />}
+    </>
+  );
+};
+
+export const DefaultChat = ({
+  className,
+  title,
+  label,
+  defaultOpen = false,
+  open: openProp,
+  onOpenChange,
+  launcher = true,
+  inline = false,
+  shortcut = true,
+  launcherClassName,
+  launcherPlacement = "right",
+  hideLauncherBelow,
+  panelClassName,
+  intro,
+  header,
+  chrome = true,
+  defaultDraft,
+  attach,
+  attachLimits,
+  reference,
+  mentions,
+  voice,
+  ...sessionOptions
+}: ChatProps) => {
+  const { l } = usePage();
+  const { provided, session, version } = useChatSession(l, sessionOptions);
+  const [open, setOpen] = useOpenState(defaultOpen, openProp, onOpenChange);
+  const [draft, setDraft] = useState(defaultDraft ?? "");
+  const files = useChatAttachments({ session, attach, limits: attachLimits, l });
+  const speech = useChatVoice({
+    session,
+    engine: voice,
+    version,
+    onTranscript: setDraft,
+    onFailed: () => session.note(l("base.agentVoiceFailed")),
+  });
+  const recall = useDraftRecall(session.messages);
+  // `dispatch` is declared below and only ever called from the flush effect, after this render has finished.
+  const queue = useChatQueue({ session, limits: attachLimits, version, l, onFlush: (message) => dispatch(message) });
+  const [hotkey, setHotkey] = useState<Hotkey | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const handleRef = useRef<ComposerHandle | null>(null);
+  // An override composer drawing its own textarea fills no handle, so the input ref answers instead.
+  const focusComposer = () => {
+    if (handleRef.current) handleRef.current.focus();
+    else inputRef.current?.focus();
+  };
+  const refs = useChatReferences({ session, draft, version, handleRef, onDraft: setDraft });
+  const sticky = useRef(true);
+  const returning = useRef(false);
+  const read = useRef(session.messages.length);
+  const keyboardFrame = useKeyboardFrame();
+  const layers = useChatLayers();
+  useEffect(() => {
+    if (open) read.current = session.messages.length;
+    if (sticky.current) listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+  }, [version, open]);
+  useChatShortcut(shortcut, setHotkey, () => {
+    sticky.current = true;
+    setOpen(true);
+    focusComposer();
+  });
+  usePanelFocus(open, session.pendingQuestion?.callId, returning, launcherRef, focusComposer);
+  useAbortOwnedSession(provided, session);
+  const closable = openProp === undefined || !!onOpenChange;
+  const dismiss = () => {
+    returning.current = true;
+    setOpen(false);
+  };
+  const { dispatch, ...composer } = useChatComposer({
+    session,
+    l,
+    draft,
+    setDraft,
+    files,
+    speech,
+    recall,
+    queue,
+    refs,
+    reference,
+    sticky,
+    dismiss,
+  });
+  // Per transcript change, not per render: the bubbles are memoized on identity, so the maps must stay the same.
+  const bubbles = useMemo(() => transcriptOf(session), [version]);
+  // The estimate walks every message, and the composer re-renders on every keystroke.
+  const context = useMemo(() => session.context, [version]);
+  const unread = open ? 0 : Math.max(0, session.messages.length - read.current);
+  //? Inside an MCP host's view the person is already talking to an agent, and this one's relay is out of reach.
+  const layer = (surface: ReactNode) =>
+    isMcpView() ? null : inline ? surface : layers.overlay ? createPortal(surface, layers.overlay) : null;
+  if (!open)
+    return launcher
+      ? layer(
+          <Launcher
+            className={cn(
+              !inline && [launcherLayer, launcherSides[launcherPlacement]],
+              hideLauncherBelow && launcherHiddenBelow[hideLauncherBelow],
+              className,
+              launcherClassName,
+            )}
+            style={inline ? undefined : launcherStyle}
+            hotkey={hotkey}
+            label={l("base.agent")}
+            buttonRef={launcherRef}
+            onOpen={() => setOpen(true)}
+            unread={unread}
+          />,
+        )
+      : null;
+  return layer(
+    <ChatPanel
+      bubbles={bubbles}
+      chrome={chrome}
+      className={className}
+      composer={composer}
+      context={context}
+      draft={draft}
+      files={files}
+      handleRef={handleRef}
+      header={header}
+      inline={inline}
+      inputRef={inputRef}
+      intro={intro}
+      keyboardFrame={keyboardFrame}
+      l={l}
+      label={label}
+      layers={layers}
+      listRef={listRef}
+      mentions={mentions ?? !!reference?.length}
+      onClose={closable ? dismiss : undefined}
+      panelClassName={panelClassName}
+      queue={queue}
+      refs={refs}
+      session={session}
+      speech={speech}
+      sticky={sticky}
+      title={title}
+    />,
   );
 };
 

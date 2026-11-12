@@ -421,7 +421,7 @@ export class McpRouter {
       };
       const body = (await (await this.#dispatch(call)).json()) as McpJsonRpcResponse;
       const result = body.result as Record<string, unknown> | undefined;
-      if (!result) throw new Error(`MCP ${method} failed: ${body.error?.message ?? "no result"}`);
+      if (!result) throw new AkanError("listFailed", `MCP ${method} failed: ${body.error?.message ?? "no result"}`);
       items.push(...((result[key] as unknown[] | undefined) ?? []));
       cursor = typeof result.nextCursor === "string" ? result.nextCursor : undefined;
     } while (cursor);

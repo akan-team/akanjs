@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { AkanError } from "akanjs/base";
 import type { AkanJob } from "../ipcTypes";
 import { SolidQueue } from "./solidQueue.adaptor";
 import { getSolidConfig, type SolidConfig } from "./solidSqlite";
@@ -191,7 +192,7 @@ describe("SolidQueue leases", () => {
     expect(queue.claimJob("mail")).toMatchObject({ id, attemptsMade: 2 });
   });
 
-  test("fails a job whose lease ran out on its last attempt and hands it to onFailed, never running it again", async () => {
+  test("fails a job whose lease ran out on its last attempt and hands it to onFailed as jobStalled, never running it again", async () => {
     const filePath = newFilePath();
     const queue = await openQueue(filePath, { queueLeaseMs: 1_000 });
     let at = 1_000_000;
@@ -202,11 +203,17 @@ describe("SolidQueue leases", () => {
     expect(queue.claimJob("mail")).toBeNull();
 
     const ran: string[] = [];
-    const failed = Promise.withResolvers<AkanJob>();
+    const failed = Promise.withResolvers<{ job: AkanJob; error: unknown }>();
     queue.registerProcessWorker("mail", async (job) => void ran.push(job.id), {
-      onFailed: (job) => failed.resolve(job),
+      onFailed: (job, error) => failed.resolve({ job, error }),
     });
-    expect(await failed.promise).toMatchObject({ id, name: "mail", data: ["a"], attemptsMade: 1 });
+    const { job, error } = await failed.promise;
+    expect(job).toMatchObject({ id, name: "mail", data: ["a"], attemptsMade: 1 });
+    expect(AkanError.is(error, "jobStalled")).toBe(true);
+    expect(error).toMatchObject({
+      statusCode: 500,
+      message: "Its lease ran out on the last attempt: the process running it died or stopped answering",
+    });
     expect(ran).toEqual([]);
     expect(rowsOf(filePath)).toEqual([{ id, status: "failed" }]);
   });

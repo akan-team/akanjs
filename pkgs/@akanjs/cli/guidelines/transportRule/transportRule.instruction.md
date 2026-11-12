@@ -57,7 +57,9 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   each room delivers (`seq`); a client drops a repeat, and a hole — a frame dropped under backpressure — calls the
   room's `onResync`. A resubscribe names its last frame (`since`): a server that saw every publish (a solo process)
   replays what followed it ahead of the ack, and otherwise answers a gap, which calls `onResync` as before. Binary
-  rooms are not numbered.
+  rooms are not numbered. A server on Redis whose link to the app's other servers drops and returns sends each room a
+  `resync` frame once Redis hands it the room's events again, which calls `onResync` too (a live room refetches
+  instead), since what other servers published meanwhile never reached it.
 - **A cleanup registered with `ws.on("disconnect" | "unsubscribe", fn)` is scoped to the call that registered it.**
   From a `pubsub` subscribe it belongs to that room — `unsubscribe` runs when the client leaves it or a credential
   change revokes it, `disconnect` when the socket closes while still subscribed — so a room already left runs

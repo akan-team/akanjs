@@ -36,7 +36,7 @@ import { sliceNamesOf } from "../sliceNamesOf";
 import DataCardList from "./CardList";
 import { columnKey, downloadBlob, toCsvBlob, toJsonBlob } from "./dataExport";
 import { dictLabel } from "./dataText";
-import { QueryMakerArgs, QueryMakerKey, resolveQuerySetting, useQueryMaker } from "./QueryMaker";
+import { QueryMakerArgs, QueryMakerKey, type QueryMakerState, resolveQuerySetting, useQueryMaker } from "./QueryMaker";
 import DataTableList from "./TableList";
 import UnlistedEditModal from "./UnlistedEditModal";
 import { useViewModal } from "./useViewModal";
@@ -102,51 +102,23 @@ export interface ListContainerProps<
   renderLoading?: () => ReactNode;
 }
 
-export default function ListContainer<
-  T extends string,
-  State,
+type SliceNames = ReturnType<typeof sliceNamesOf>["namesOfSlice"];
+type ListProps<Input, Full extends { id: string }, Light extends { id: string }> = ListContainerProps<
+  string,
+  unknown,
   Input,
-  Full extends { id: string },
-  Light extends { id: string },
->({
-  className,
-  cardListClassName,
-  type = "card",
-  query,
-  queryMap,
-  init,
-  create = true,
-  slice,
-  title,
-  sort,
-  columns = ["id", "createdAt", "updatedAt"],
-  actions = ["remove", "edit", "view"],
-  tools = [],
-  renderDashboard,
-  renderItem,
-  renderTemplate,
-  renderTitle,
-  renderViewTitle,
-  renderView,
-  viewInUrl = false,
-  viewActions = true,
-  renderQueryMaker,
-  renderInsight,
-  renderLoading,
-}: ListContainerProps<T, State, Input, Full, Light>) {
-  const { l } = usePage();
-  const storeUse = st.use as { [key: string]: () => unknown };
-  const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
-  const storeSel = st.sel as <Ret>(selector: (state: unknown) => Ret) => Ret;
-  const storeGet = st.get as unknown as <T>() => { [key: string]: T };
-  const { refName, sliceName } = slice;
-  if (refName !== sliceName) throw new Error("ListContainer: sliceName must be the same as refName");
-  const { namesOfSlice } = sliceNamesOf(refName, sliceName);
-  const [view, setView] = useState(type);
-  const limitOfModel = storeUse[namesOfSlice.limitOfModel]() as number;
-  const sortOfModel = storeUse[namesOfSlice.sortOfModel]() as string;
-  const modelInsight = storeUse[namesOfSlice.modelInsight]() as BaseInsight;
-  const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
+  Full,
+  Light
+>;
+type StoreDo = { [key: string]: (...args: unknown[]) => Promise<void> };
+
+interface ListQuerySetup<Input>
+  extends Pick<ListProps<Input, { id: string }, { id: string }>, "slice" | "query" | "queryMap" | "sort" | "init"> {
+  namesOfSlice: SliceNames;
+  storeDo: StoreDo;
+}
+
+const useListQuery = <Input,>({ slice, namesOfSlice, storeDo, query, queryMap, sort, init }: ListQuerySetup<Input>) => {
   const { searchParams } = usePageLocation();
   const filter = Array.isArray(searchParams.filter) ? searchParams.filter[0] : searchParams.filter;
   const initQuery = query ?? (filter ? queryMap?.[filter] : undefined);
@@ -160,7 +132,81 @@ export default function ListContainer<
     }
     void storeDo[namesOfSlice.initModel](...queryArgs, { sort, ...init });
   }, []);
+  return queryState;
+};
 
+const useViewActions = <Full extends { id: string }, Light extends { id: string }>(
+  slice: SliceMeta,
+  actions: DataAction[] | ((item: Light, idx: number) => DataAction[]),
+  inUrl: boolean,
+  namesOfSlice: SliceNames,
+) => {
+  const storeGet = st.get as unknown as <T>() => { [key: string]: T };
+  const { editInView } = useViewModal(slice, { inUrl });
+  return (model: Full) => {
+    const loaded = storeGet<DataList<Light>>()[namesOfSlice.modelList] as DataList<Light>;
+    const actionsOfModel = Array.isArray(actions)
+      ? actions
+      : actions(
+          model as unknown as Light,
+          loaded.findIndex((item) => item.id === model.id),
+        );
+    const remaining = actionsOfModel.filter((action) => !!action && action !== "view");
+    return remaining.length ? (
+      <ViewActions model={model} slice={slice} actions={remaining} onEdit={editInView} />
+    ) : null;
+  };
+};
+
+// `summary` is an app-level state key, so it is read off the state; built as a value, not `<ModelDashboard />`,
+// since a component type created in render remounts every render and loses the picked tile.
+const useListDashboard = (
+  renderDashboard: ListProps<unknown, { id: string }, { id: string }>["renderDashboard"],
+  queryState: QueryMakerState,
+) => {
+  const storeSel = st.sel as <Ret>(selector: (state: unknown) => Ret) => Ret;
+  const summary = storeSel<Record<string, unknown> | undefined>(
+    (state) => (state as { summary?: Record<string, unknown> }).summary,
+  );
+  const summaryLoading = storeSel<boolean>((state) => !!(state as { summaryLoading?: boolean }).summaryLoading);
+  return !renderDashboard || !summary ? null : summaryLoading ? (
+    <Loading.Skeleton className="mb-4" active />
+  ) : (
+    renderDashboard({
+      summary,
+      hidePresents: true,
+      onSelect: queryState.applySetting,
+      queryKey: queryState.setting.queryKey,
+    })
+  );
+};
+
+interface ListToolsSetup<Full extends { id: string }, Light extends { id: string }>
+  extends Pick<ListProps<unknown, Full, Light>, "slice" | "renderTemplate" | "renderView">,
+    Required<Pick<ListProps<unknown, Full, Light>, "columns" | "actions" | "create">> {
+  l: ReturnType<typeof usePage>["l"];
+  namesOfSlice: SliceNames;
+  storeDo: StoreDo;
+  storeGet: <T>() => { [key: string]: T };
+  setView: (view: "card" | "list") => void;
+  modelListLoading: string | boolean;
+}
+
+const useListTools = <Full extends { id: string }, Light extends { id: string }>({
+  l,
+  slice,
+  namesOfSlice,
+  storeDo,
+  storeGet,
+  setView,
+  columns,
+  actions,
+  create,
+  renderTemplate,
+  renderView,
+  modelListLoading,
+}: ListToolsSetup<Full, Light>) => {
+  const { refName, sliceName } = slice;
   // Toolbar controls publish under their store action's name; one the toolbar does not draw registers nothing.
   const sortKeys = fetch.sortKeyMap?.get(refName) ?? [];
   const columnTitle = (column: DataColumn<any>) =>
@@ -222,91 +268,108 @@ export default function ListContainer<
     .desc(`Remove one ${refName}.`)
     .arg("modelId", ID)
     .exec((modelId) => storeDo[namesOfSlice.removeModel](modelId));
-  const scopePath = useScreenScope({
-    id: sliceName,
-    kind: refName,
-    items: () =>
-      [...(storeGet<DataList<Light>>()[namesOfSlice.modelList] as DataList<Light>)].map((item) => {
-        const label = labelOf(ConstantRegistry.getDatabase(refName).full, item);
-        return { id: item.id, ...(label ? { label } : {}) };
-      }),
-  });
-
-  const modelLabel = dictLabel(l._, `${sliceName}.modelName`, refName);
-  const RenderTitle = renderTitle ?? ((model: Full) => `${modelLabel} - ${model.id ? model.id : "New"}`);
-  const { editInView } = useViewModal(slice, { inUrl: viewInUrl && !!renderView });
-  const renderViewAction = (model: Full) => {
-    const loaded = storeGet<DataList<Light>>()[namesOfSlice.modelList] as DataList<Light>;
-    const actionsOfModel = Array.isArray(actions)
-      ? actions
-      : actions(
-          model as unknown as Light,
-          loaded.findIndex((item) => item.id === model.id),
-        );
-    const remaining = actionsOfModel.filter((action) => !!action && action !== "view");
-    return remaining.length ? (
-      <ViewActions model={model} slice={slice} actions={remaining} onEdit={editInView} />
-    ) : null;
+  return {
+    sortKeys,
+    setViewOfModel,
+    setSortOfModel,
+    setLimitOfModel,
+    refreshModel,
+    newModel,
+    exportCsvOfModel,
+    exportJsonOfModel,
   };
-  // `summary` is an app-level state key, so it is read off the state; built as a value, not `<ModelDashboard />`,
-  // since a component type created in render remounts every render and loses the picked tile.
-  const summary = storeSel<Record<string, unknown> | undefined>(
-    (state) => (state as { summary?: Record<string, unknown> }).summary,
-  );
-  const summaryLoading = storeSel<boolean>((state) => !!(state as { summaryLoading?: boolean }).summaryLoading);
-  const modelDashboard =
-    !renderDashboard || !summary ? null : summaryLoading ? (
-      <Loading.Skeleton className="mb-4" active />
-    ) : (
-      renderDashboard({
-        summary,
-        hidePresents: true,
-        onSelect: queryState.applySetting,
-        queryKey: queryState.setting.queryKey,
-      })
-    );
-  // Called, not mounted, for the same remount reason; a fixed `query` is the panel's scope, so no maker is drawn.
-  const queryMakerArgs = renderQueryMaker ? (
-    renderQueryMaker()
-  ) : query ? null : (
-    <QueryMakerArgs slice={slice} state={queryState} />
-  );
-  const RenderInsight = (): ReactNode => (renderInsight ? renderInsight({ insight: modelInsight }) : null);
-  const RenderTemplate = renderTemplate;
+};
+
+type ListTools = ReturnType<typeof useListTools>;
+
+const exportToolsOf = (
+  exportCsvOfModel: ListTools["exportCsvOfModel"],
+  exportJsonOfModel: ListTools["exportJsonOfModel"],
+  l: ReturnType<typeof usePage>["l"],
+): DataTool[] => [
+  {
+    key: "export-csv",
+    render: () => (
+      <button
+        type="button"
+        className={buttonRecipe({ variant: "ghost", size: "sm" }, menuItemClassName)}
+        onClick={exportCsvOfModel}
+        {...agentAttrs(exportCsvOfModel)}
+      >
+        <AiOutlineFileExcel />
+        <span>{l("base.exportCsv")}</span>
+      </button>
+    ),
+  },
+  {
+    key: "export-json",
+    render: () => (
+      <button
+        type="button"
+        className={buttonRecipe({ variant: "ghost", size: "sm" }, menuItemClassName)}
+        onClick={exportJsonOfModel}
+        {...agentAttrs(exportJsonOfModel)}
+      >
+        <AiOutlineFileText />
+        <span>{l("base.exportJson")}</span>
+      </button>
+    ),
+  },
+];
+
+interface ListToolbarProps<Light extends { id: string }>
+  extends Pick<ListProps<unknown, { id: string }, Light>, "slice" | "query" | "renderTemplate" | "title">,
+    Required<Pick<ListProps<unknown, { id: string }, Light>, "create" | "tools">> {
+  count: number;
+  l: ReturnType<typeof usePage>["l"];
+  limitOfModel: number;
+  listTools: ListTools;
+  modelLabel: string;
+  modelListLoading: string | boolean;
+  namesOfSlice: SliceNames;
+  queryState: QueryMakerState;
+  sortOfModel: string;
+  storeUse: { [key: string]: () => unknown };
+  view: "card" | "list";
+}
+
+const ListToolbar = <Light extends { id: string }>({
+  count,
+  create,
+  l,
+  limitOfModel,
+  listTools,
+  modelLabel,
+  modelListLoading,
+  namesOfSlice,
+  query,
+  queryState,
+  renderTemplate,
+  slice,
+  sortOfModel,
+  storeUse,
+  title,
+  tools,
+  view,
+}: ListToolbarProps<Light>) => {
+  const { refName } = slice;
+  const {
+    sortKeys,
+    setViewOfModel,
+    setSortOfModel,
+    setLimitOfModel,
+    refreshModel,
+    newModel,
+    exportCsvOfModel,
+    exportJsonOfModel,
+  } = listTools;
   const RenderTools = (): ReactNode => {
     const modelList = storeUse[namesOfSlice.modelList]() as DataList<Light>;
     const toolList: DataTool[] = modelListLoading
       ? []
       : [
           ...(Array.isArray(tools) ? tools : tools([...modelList])),
-          {
-            key: "export-csv",
-            render: () => (
-              <button
-                type="button"
-                className={buttonRecipe({ variant: "ghost", size: "sm" }, menuItemClassName)}
-                onClick={exportCsvOfModel}
-                {...agentAttrs(exportCsvOfModel)}
-              >
-                <AiOutlineFileExcel />
-                <span>{l("base.exportCsv")}</span>
-              </button>
-            ),
-          },
-          {
-            key: "export-json",
-            render: () => (
-              <button
-                type="button"
-                className={buttonRecipe({ variant: "ghost", size: "sm" }, menuItemClassName)}
-                onClick={exportJsonOfModel}
-                {...agentAttrs(exportJsonOfModel)}
-              >
-                <AiOutlineFileText />
-                <span>{l("base.exportJson")}</span>
-              </button>
-            ),
-          },
+          ...exportToolsOf(exportCsvOfModel, exportJsonOfModel, l),
         ];
     return (
       <Dropdown
@@ -336,74 +399,178 @@ export default function ListContainer<
     );
   };
   return (
-    <div className={cn("w-full p-4", className)} data-agent-scope={scopePath}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className="truncate font-semibold text-foreground text-xl tracking-tight">{title ?? modelLabel}</h2>
-          <span className={badgeRecipe({ variant: "outline", size: "sm" }, "tabular-nums")}>
-            {modelInsight.count.toLocaleString()}
-          </span>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <h2 className="truncate font-semibold text-foreground text-xl tracking-tight">{title ?? modelLabel}</h2>
+        <span className={badgeRecipe({ variant: "outline", size: "sm" }, "tabular-nums")}>
+          {count.toLocaleString()}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-field border border-border p-0.5">
+          {(["card", "list"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={view === mode}
+              title={mode === "card" ? l("base.cardView") : l("base.tableView")}
+              className={buttonRecipe({ variant: view === mode ? "default" : "ghost", size: "sm" }, "h-8 px-2.5")}
+              onClick={() => {
+                void setViewOfModel(mode);
+              }}
+              {...agentAttrs(setViewOfModel)}
+            >
+              {mode === "card" ? <AiOutlineAppstore /> : <AiOutlineUnorderedList />}
+              <span className="sr-only">{mode === "card" ? l("base.cardView") : l("base.tableView")}</span>
+            </button>
+          ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-field border border-border p-0.5">
-            {(["card", "list"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={view === mode}
-                title={mode === "card" ? l("base.cardView") : l("base.tableView")}
-                className={buttonRecipe({ variant: view === mode ? "default" : "ghost", size: "sm" }, "h-8 px-2.5")}
-                onClick={() => {
-                  void setViewOfModel(mode);
-                }}
-                {...agentAttrs(setViewOfModel)}
-              >
-                {mode === "card" ? <AiOutlineAppstore /> : <AiOutlineUnorderedList />}
-                <span className="sr-only">{mode === "card" ? l("base.cardView") : l("base.tableView")}</span>
-              </button>
-            ))}
-          </div>
-          {query ? null : (
-            <QueryMakerKey
-              className="w-44 min-w-0"
-              selectClassName={cn("min-h-0", controlClassName)}
-              slice={slice}
-              state={queryState}
-            />
-          )}
-          <RenderSort />
-          <Select<number>
-            className="w-36 min-w-0"
+        {query ? null : (
+          <QueryMakerKey
+            className="w-44 min-w-0"
             selectClassName={cn("min-h-0", controlClassName)}
-            value={limitOfModel}
-            options={pageLimits.map((limit) => ({
-              label: `${limit} ${l("base.perPage")}`,
-              value: limit,
-            }))}
-            onChange={setLimitOfModel}
+            slice={slice}
+            state={queryState}
           />
+        )}
+        <RenderSort />
+        <Select<number>
+          className="w-36 min-w-0"
+          selectClassName={cn("min-h-0", controlClassName)}
+          value={limitOfModel}
+          options={pageLimits.map((limit) => ({
+            label: `${limit} ${l("base.perPage")}`,
+            value: limit,
+          }))}
+          onChange={setLimitOfModel}
+        />
+        <button
+          type="button"
+          title={l("base.refresh")}
+          className={buttonRecipe({ variant: "outline", size: "icon" }, ["size-9", controlClassName])}
+          onClick={refreshModel}
+          {...agentAttrs(refreshModel)}
+        >
+          <AiOutlineRedo className={modelListLoading ? "animate-spin" : ""} />
+        </button>
+        <RenderTools />
+        {renderTemplate && create ? (
           <button
             type="button"
-            title={l("base.refresh")}
-            className={buttonRecipe({ variant: "outline", size: "icon" }, ["size-9", controlClassName])}
-            onClick={refreshModel}
-            {...agentAttrs(refreshModel)}
+            onClick={newModel}
+            {...agentAttrs(newModel)}
+            className={buttonRecipe({ variant: "primary", size: "sm" }, controlClassName)}
           >
-            <AiOutlineRedo className={modelListLoading ? "animate-spin" : ""} />
+            <AiOutlinePlus /> {l("base.new")}
           </button>
-          <RenderTools />
-          {renderTemplate && create ? (
-            <button
-              type="button"
-              onClick={newModel}
-              {...agentAttrs(newModel)}
-              className={buttonRecipe({ variant: "primary", size: "sm" }, controlClassName)}
-            >
-              <AiOutlinePlus /> {l("base.new")}
-            </button>
-          ) : null}
-        </div>
+        ) : null}
       </div>
+    </div>
+  );
+};
+
+export default function ListContainer<
+  T extends string,
+  State,
+  Input,
+  Full extends { id: string },
+  Light extends { id: string },
+>({
+  className,
+  cardListClassName,
+  type = "card",
+  query,
+  queryMap,
+  init,
+  create = true,
+  slice,
+  title,
+  sort,
+  columns = ["id", "createdAt", "updatedAt"],
+  actions = ["remove", "edit", "view"],
+  tools = [],
+  renderDashboard,
+  renderItem,
+  renderTemplate,
+  renderTitle,
+  renderViewTitle,
+  renderView,
+  viewInUrl = false,
+  viewActions = true,
+  renderQueryMaker,
+  renderInsight,
+  renderLoading,
+}: ListContainerProps<T, State, Input, Full, Light>) {
+  const { l } = usePage();
+  const storeUse = st.use as { [key: string]: () => unknown };
+  const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => Promise<void> };
+  const storeGet = st.get as unknown as <T>() => { [key: string]: T };
+  const { refName, sliceName } = slice;
+  if (refName !== sliceName) throw new Error("ListContainer: sliceName must be the same as refName");
+  const { namesOfSlice } = sliceNamesOf(refName, sliceName);
+  const [view, setView] = useState(type);
+  const limitOfModel = storeUse[namesOfSlice.limitOfModel]() as number;
+  const sortOfModel = storeUse[namesOfSlice.sortOfModel]() as string;
+  const modelInsight = storeUse[namesOfSlice.modelInsight]() as BaseInsight;
+  const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
+  const queryState = useListQuery({ slice, namesOfSlice, storeDo, query, queryMap, sort, init });
+  const listTools = useListTools({
+    l,
+    slice,
+    namesOfSlice,
+    storeDo,
+    storeGet,
+    setView,
+    columns,
+    actions,
+    create,
+    renderTemplate,
+    renderView,
+    modelListLoading,
+  });
+  const scopePath = useScreenScope({
+    id: sliceName,
+    kind: refName,
+    items: () =>
+      [...(storeGet<DataList<Light>>()[namesOfSlice.modelList] as DataList<Light>)].map((item) => {
+        const label = labelOf(ConstantRegistry.getDatabase(refName).full, item);
+        return { id: item.id, ...(label ? { label } : {}) };
+      }),
+  });
+
+  const modelLabel = dictLabel(l._, `${sliceName}.modelName`, refName);
+  const RenderTitle = renderTitle ?? ((model: Full) => `${modelLabel} - ${model.id ? model.id : "New"}`);
+  const renderViewAction = useViewActions<Full, Light>(slice, actions, viewInUrl && !!renderView, namesOfSlice);
+  const modelDashboard = useListDashboard(renderDashboard, queryState);
+  // Called, not mounted, as a type made in render remounts each render; a fixed `query` scopes it, so no maker.
+  const queryMakerArgs = renderQueryMaker ? (
+    renderQueryMaker()
+  ) : query ? null : (
+    <QueryMakerArgs slice={slice} state={queryState} />
+  );
+  const RenderInsight = (): ReactNode => (renderInsight ? renderInsight({ insight: modelInsight }) : null);
+  const RenderTemplate = renderTemplate;
+  return (
+    <div className={cn("w-full p-4", className)} data-agent-scope={scopePath}>
+      <ListToolbar
+        count={modelInsight.count}
+        create={create}
+        l={l}
+        limitOfModel={limitOfModel}
+        listTools={listTools}
+        modelLabel={modelLabel}
+        modelListLoading={modelListLoading}
+        namesOfSlice={namesOfSlice}
+        query={query}
+        queryState={queryState}
+        renderTemplate={renderTemplate}
+        slice={slice}
+        sortOfModel={sortOfModel}
+        storeUse={storeUse}
+        title={title}
+        tools={tools}
+        view={view}
+      />
       {query ? null : modelDashboard}
       {queryMakerArgs}
       <RenderInsight />
