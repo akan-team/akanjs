@@ -1,6 +1,6 @@
 import { AkanError } from "akanjs/base";
 import { FailureCode, isGuardRefusal } from "akanjs/common";
-import { type ExceptionLike, isExceptionLike } from "./exception";
+import { isExceptionLike } from "./exception";
 
 // Anything but an `Exception` is generalized: a stack names server paths and a driver message quotes the statement.
 export class SignalFailure {
@@ -28,25 +28,27 @@ export class SignalFailure {
     return { error: AkanError.reasonOf(statusCode), statusCode, code: error.code };
   }
 
-  //? Named as its HTTP body names it: a forwarded error by its dictionary key, else by its code. A guard's refusal by
-  //? its status alone, since a guard's own code names the authorization structure as its message would. Security: MCP
-  //? redacts a 5xx's text, so its code is a dictionary key or this server's own `AkanError` code, never a duck-typed
-  //? body's `code`.
+  //? Named as its HTTP body names it, by the rule use-agentic's `codeOfAnswer` reads that body with before a turn's
+  //? stream opens; keep the two in step. Security: a 401/403 takes no key, as a refusal's key names the authorization
+  //? structure; a guard's is named by its status alone. A 5xx keeps its body's bounded, prose-free code, which HTTP
+  //? already sends and a third-party error's `toJSON()` may have written; MCP still redacts its text.
   static codeOf(error: unknown, status: number | undefined): string {
     if (!status) return AkanError.codeOfStatus(500);
     const byStatus = AkanError.codeOfStatus(status);
     if (isGuardRefusal(error)) return byStatus;
-    const wire = isExceptionLike(error) ? SignalFailure.#wireOf(error) : {};
-    if (FailureCode.isKey(wire.error)) return wire.error;
-    if (AkanError.is(error) && FailureCode.isToken(error.code)) return error.code;
-    if (status < 500 && FailureCode.isToken(wire.code)) return wire.code;
-    return byStatus;
+    const wire = SignalFailure.#wireOf(error);
+    const kept = FailureCode.isToken(wire.code) ? wire.code : undefined;
+    if (status === 401 || status === 403) return kept ?? byStatus;
+    return [wire.error, wire.message, wire.code].find(FailureCode.isKey) ?? kept ?? byStatus;
   }
 
-  //? Read while a failure is already being answered: a `toJSON()` that throws names it by its status instead.
-  static #wireOf(error: ExceptionLike): { error?: unknown; code?: unknown } {
+  //? The body HTTP answers with, less the raw message detailed mode puts in a generalized one. Read while a failure is
+  //? already being answered: a `toJSON()` that throws, or gives no plain object, names it by its status instead.
+  static #wireOf(error: unknown): { error?: unknown; message?: unknown; code?: unknown } {
+    if (!isExceptionLike(error)) return AkanError.is(error) ? { code: error.code } : {};
     try {
-      return error.toJSON() as { error?: unknown; code?: unknown };
+      const wire: unknown = error.toJSON();
+      return typeof wire === "object" && wire !== null && !Array.isArray(wire) ? wire : {};
     } catch {
       return {};
     }
