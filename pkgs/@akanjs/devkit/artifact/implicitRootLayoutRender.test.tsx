@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { mkdir, readdir, symlink } from "node:fs/promises";
+import { mkdir, readdir, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { act, Children, createElement, Fragment, isValidElement, type ReactElement, type ReactNode } from "react";
@@ -34,11 +34,12 @@ const idsLayoutSource = `import { rootLayout } from "akanjs/client";
 import { UsesId } from "../usesId";
 export default rootLayout().render(({ children }) => <section id="user"><UsesId />{children}</section>);
 `;
+//? Throws only once the test has read the shell's body, so the boundary streams pending whatever the payload's size.
 const lateLayoutSource = `import { rootLayout } from "akanjs/client";
 export default rootLayout()
   .loading(() => <i>root loading</i>)
   .render(async () => {
-    await Bun.sleep(30);
+    while (!(await Bun.file(process.env.AKAN_TEST_SHELL_READ ?? "").exists())) await Bun.sleep(5);
     throw new Error("root layout broke");
   });
 `;
@@ -88,6 +89,21 @@ const clientReferenceIds = async (serverDir: string) => {
 
 const ssrManifest: { moduleLoading: null; moduleMap: Record<string, unknown> } = { moduleLoading: null, moduleMap: {} };
 
+const readHtml = async (stream: ReadableStream<Uint8Array>, onBody: () => Promise<unknown>) => {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let html = "";
+  let bodyRead = false;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return html + decoder.decode();
+    html += decoder.decode(value, { stream: true });
+    if (bodyRead || !html.includes("<body")) continue;
+    bodyRead = true;
+    await onBody();
+  }
+};
+
 interface Rendered {
   html: string;
   status: number;
@@ -125,6 +141,8 @@ const withBuiltPages = async (
       return [id, { "*": { id: file, chunks: [file, file], name: "*" } }];
     }),
   );
+  const shellRead = path.join(root, "shell-read");
+  process.env.AKAN_TEST_SHELL_READ = shellRead;
   const rsc = new RscWorker({
     pagesBundlePath: bundlePath,
     pagesBundleBuildId: 1,
@@ -145,11 +163,13 @@ const withBuiltPages = async (
         ssrManifest,
         lateControl: result.lateControl,
       } as never);
-      const html = await new Response(stream).text();
+      const html = await readHtml(stream, () => Bun.write(shellRead, ""));
+      await rm(shellRead, { force: true });
       return { html, status: result.status ?? 200, payload: new Uint8Array(await payload) };
     });
   } finally {
     rsc.kill();
+    delete process.env.AKAN_TEST_SHELL_READ;
   }
 };
 
