@@ -673,20 +673,21 @@ describe("dev resource budgets", () => {
     await host.waitForLogSince(start, /builder spawned pid=\d+ .*restart=1/, WAIT_MS);
 
     // Never requested before, so no route cache can answer it; it has to reach a builder that is not there yet.
+    const secondSent = host.markLog();
     const second = fetch(`http://127.0.0.1:${port}/second`, { signal: AbortSignal.timeout(WAIT_MS) }).then(
       async (response) => ({ status: response.status, html: await response.text() }),
     );
-    // Two waiting are the drain request and this one; with the gate shut, an earlier answer is a refusal.
+    const holding = /holding build-route until the builder is ready/;
+    // With the gate shut, an answer before a hold is a refusal. Any hold after the mark counts, not "(2 waiting)":
+    // a page that sends more than one held request moves that count.
     const answeredUnheld = await Promise.race([
-      host
-        .waitForLogSince(start, /holding build-route until the builder is ready \(2 waiting\)/, WAIT_MS)
-        .then(() => null),
+      host.waitForLogSince(secondSent, holding, WAIT_MS).then(() => null),
       second.then((response) => response.status),
     ]);
     expect(answeredUnheld).toBeNull();
     await Bun.write(readyGate, "");
-    const held = await host.waitForLogSince(start, /holding build-route until the builder is ready \(2 waiting\)/);
-    const ready = await host.waitForLogSince(start, /builder ready after restart/, WAIT_MS);
+    const held = await host.waitForLogSince(secondSent, holding);
+    const ready = await host.waitForLogSince(secondSent, /builder ready after restart/, WAIT_MS);
     expect(ready.index ?? -1).toBeGreaterThan(held.index ?? Number.POSITIVE_INFINITY);
 
     const res = await second;
