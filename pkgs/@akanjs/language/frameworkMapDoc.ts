@@ -1,4 +1,4 @@
-import type { FrameworkFacet, FrameworkMap, FrameworkSite } from "akanjs/common/frameworkMap.ts";
+import type { FrameworkFacet, FrameworkMap, FrameworkSite } from "akanjs/common";
 
 const startMarker = "<!-- akan:framework-map:start -->";
 const endMarker = "<!-- akan:framework-map:end -->";

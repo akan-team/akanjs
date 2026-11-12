@@ -1727,14 +1727,6 @@ export declare class ServiceModel<Srv extends ServiceCls = ServiceCls, CnstModel
     };
 }
 
-/** @deprecated */
-export declare class ServiceRegistry {
-    static setDatabase(refName: string, service: ServiceCls): void;
-    static getDatabase(refName: string): ServiceCls | undefined;
-    static setPlain(refName: string, service: ServiceCls): void;
-    static setAdaptor(refName: string, adaptor: AdaptorCls): void;
-}
-
 export type ServiceType = "database" | "plain";
 
 export declare class SolidCache extends SolidCache_base implements CacheAdaptor {

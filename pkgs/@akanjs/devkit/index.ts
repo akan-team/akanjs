@@ -1,5 +1,5 @@
 // XXX: types only. A value import from this barrel loads every facet (ink, typescript, ssh2, …) into the process;
-// `export type *` erases at runtime. Import values from the owning facet (`@akanjs/devkit/util/fileSys`) and never
+// `export type *` erases at runtime. Import values from the owning facet (`@akanjs/devkit/frontendBuild`) and never
 // "fix" a TS1362 by widening an entry back to `export *`.
 export type * from "./akanApp";
 export type * from "./akanConfig";

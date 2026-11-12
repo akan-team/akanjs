@@ -918,15 +918,6 @@ export declare const formSetterNames: (className: string, key: string) => {
 
 export declare const formUploadOf: (setter: unknown) => FormUpload | null;
 
-/** @deprecated */
-export declare const getBaseSearchParam: (searchParams: BaseSearchParamsState, key: string) => string;
-
-/** @deprecated */
-export declare const getSearchParam: (searchParams: SearchParamsState, key: string) => string | undefined;
-
-/** @internal */
-export declare const isStateBuilderMarker: (value: unknown) => value is Marker;
-
 export declare const livePlacementIndex: ({ list, row, page, limit, count, cumulative, hasMore, sortKey, allowedSorts, sorts, }: LivePlacementProps) => null | number;
 
 export declare const makeActions: (refName: string, slice: {

@@ -2800,10 +2800,6 @@ interface RootProps {
     st: unknown;
 }
 
-type SSRProviderProps = ProviderProps & {
-    fonts?: ReactFont[];
-};
-
 interface ScalarProps {
     refName?: string;
     scalar?: ScalarSchema;

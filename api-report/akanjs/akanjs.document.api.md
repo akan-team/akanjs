@@ -664,12 +664,6 @@ export declare const from: <Full extends BaseObject, BuildFilter extends (filter
 ], [
 ], Full>) => FilterInstance, LibFilters extends FilterCls[], _Filter extends ReturnType<BuildFilter>, _MergedFilter extends FilterInstance = MergedFilterInstance<Full, LibFilters, _Filter>, _Query = ExtractQuery<_MergedFilter>, _Sort = ExtractSort<_MergedFilter>>(modelRef: Cls<Full>, buildFilter: BuildFilter, ...libFilterRefs: LibFilters) => FilterCls<_MergedFilter, _Query, _Sort>;
 
-/** @deprecated */
-export declare const getDefaultSchemaOptions: <_TSchema, TDocument>() => DocumentSchema<TDocument>;
-
-/** @internal */
-export declare const getFilterArgInfo: (arg: FilterInfo["args"][number]) => FilterArgInfo;
-
 export declare const getFilterArgInfos: (filterInfo: FilterInfo) => FilterArgInfo[];
 
 export declare const getFilterInfoByKey: <ArgNames extends string[] = [
@@ -699,11 +693,6 @@ export declare const isDocumentQueryNode: (value: unknown) => value is DocumentQ
 
 export declare const isDocumentUpdateNode: (value: unknown) => value is DocumentUpdateNode;
 
-/** @deprecated */
-export declare const isFilterModel: (filterRef: Cls<unknown, {
-    [FILTER_META]?: ConstantFilterMeta;
-}>) => boolean;
-
 export declare const makeLoaderBuilder: <Doc>() => {
     byField: <Key extends keyof Doc & string>(fieldName: Key, defaultQuery?: QueryOf<unknown>, option?: LoaderOption) => LoaderInfo<Doc, Key, Doc[Key]>;
     byArrayField: <Key extends keyof Doc & string>(fieldName: Key, defaultQuery?: QueryOf<unknown>, option?: LoaderOption) => LoaderInfo<Doc, Key, Doc[Key]>;
@@ -726,16 +715,6 @@ export declare const searchColumns: readonly [
     "tag",
     "filter"
 ];
-
-/** @deprecated */
-export declare const setFilterInfoByKey: <ArgNames extends string[] = [
-], Args extends any[] = any[], Model = any>(modelRef: Cls<Model>, key: string, filterInfo: FilterInfo<ArgNames, Args, Model>) => void;
-
-/** @internal */
-export declare const setFilterMeta: (filterRef: Cls<unknown, {
-    [FILTER_META]?: ConstantFilterMeta;
-    sortField: Set<string>;
-}>, filterMeta: ConstantFilterMeta, ...libFilterMetas: ConstantFilterMeta[]) => void;
 
 export declare const splitFilterArgs: (filterInfo: FilterInfo, args: unknown[]) => {
     queryArgs: any[];

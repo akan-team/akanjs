@@ -1,8 +1,8 @@
-import type { App } from "@akanjs/devkit/commandDecorators";
-import { FrameworkGraph } from "@akanjs/devkit/docs/frameworkGraph";
-import { GitRevision } from "@akanjs/devkit/workspace/gitRevision";
-import { WorkspaceGraph } from "@akanjs/devkit/workspace/workspaceGraph";
 import type { BuildChangesPayload, BuilderGraphReq, BuildFrameworkPayload, BuildGraphPayload } from "akanjs/server";
+import type { App } from "../commandDecorators";
+import { FrameworkGraph } from "../docs/frameworkGraph";
+import { GitRevision } from "../workspace/gitRevision";
+import { WorkspaceGraph } from "../workspace/workspaceGraph";
 
 export class BuilderGraphPayloads {
   readonly #app: App;

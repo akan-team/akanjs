@@ -14,12 +14,17 @@ const barrelFacets = async (): Promise<string[]> => {
   return [...barrel.matchAll(/^export (?:type )?\* from "\.\/([^"]+)";$/gm)].map((match) => `./${match[1]}`);
 };
 
+//? The CLI's dist inlines devkit: once installed, only devkit's own sources and the CLI's templates import a subpath.
 const importedSubpaths = async (): Promise<string[]> => {
   const repoRoot = path.resolve(packageDir, "../../..");
-  const glob = new Bun.Glob("pkgs/@akanjs/{cli,devkit}/**/*.{ts,tsx}");
   const found = new Set<string>();
-  for await (const relative of glob.scan({ cwd: repoRoot })) {
-    if (relative.includes("node_modules/") || relative.includes("/dist/")) continue;
+  const sources = [
+    ...new Bun.Glob("pkgs/@akanjs/devkit/**/*.{ts,tsx}").scanSync({ cwd: repoRoot }),
+    ...new Bun.Glob("pkgs/@akanjs/cli/templates/**/*").scanSync({ cwd: repoRoot }),
+  ];
+  for (const relative of sources) {
+    if (relative.includes("node_modules/") || relative.includes("/dist/") || /\.(test|spec)\.tsx?$/.test(relative))
+      continue;
     const source = await Bun.file(path.join(repoRoot, relative)).text();
     for (const match of source.matchAll(/"@akanjs\/devkit\/([a-zA-Z0-9_./-]+)"/g)) found.add(`./${match[1]}`);
   }
@@ -27,44 +32,51 @@ const importedSubpaths = async (): Promise<string[]> => {
 };
 
 describe("published exports map", () => {
-  test("resolves every facet the root barrel re-exports", async () => {
-    const facets = await barrelFacets();
-    expect(facets.length).toBeGreaterThan(30);
-    expect(exportsMap.findUnreachable(facets)).toEqual([]);
-  });
-
-  test("resolves every subpath the monorepo actually imports", async () => {
-    const subpaths = await importedSubpaths();
+  test("names every public subpath, with no wildcard to reach a file it does not", async () => {
+    const manifest = (await Bun.file(path.join(packageDir, "package.json")).json()) as {
+      exports: Record<string, unknown>;
+    };
+    const subpaths = Object.keys(manifest.exports);
+    expect(subpaths.filter((subpath) => subpath.includes("*"))).toEqual([]);
     expect(subpaths.length).toBeGreaterThan(20);
     expect(exportsMap.findUnreachable(subpaths)).toEqual([]);
   });
 
-  test("covers both facet shapes and keeps explicit extensions intact", () => {
-    // One wildcard cannot serve bare files, directory facets and already-suffixed specifiers (no `.ts.ts`) at once.
+  test("resolves every subpath a published install imports", async () => {
+    const subpaths = await importedSubpaths();
+    expect(subpaths).toContain("./executors");
+    expect(exportsMap.findUnreachable(subpaths)).toEqual([]);
+  });
+
+  test("points a directory facet at its index and a nested entry at its file", () => {
     expect(exportsMap.resolve("./executors")).toBe("./executors/index.ts");
-    expect(exportsMap.resolve("./fileSys")).toBe("./util/fileSys.ts");
-    expect(exportsMap.resolve("./workspaceLayout.ts")).toBe("./workspace/workspaceLayout.ts");
     expect(exportsMap.resolve("./frontendBuild")).toBe("./frontendBuild/index.ts");
-    expect(exportsMap.resolve("./cloud/cloudApi.ts")).toBe("./cloud/cloudApi.ts");
+    expect(exportsMap.resolve("./cloud/cloudApi")).toBe("./cloud/cloudApi.ts");
     expect(exportsMap.resolve("./package.json")).toBe("./package.json");
   });
 
-  test("every directory facet has a literal entry, since the wildcard cannot probe index.ts", async () => {
+  test("keeps an entry for each nested file a consumer workspace imports", () => {
+    const nested = [
+      "cloud/cloudApi",
+      "cloud/cloudUpdates",
+      "commandDecorators/exitCodeError",
+      "mobile/desktopRelease",
+      "mobile/serverBundleSecrets",
+      "transforms/serverEnvProfile",
+      "util/fileEditor",
+      "util/selectModel",
+      "workspace/getRelatedCnsts",
+    ];
+    expect(nested.filter((file) => exportsMap.resolve(`./${file}`) !== `./${file}.ts`)).toEqual([]);
+  });
+
+  test("every directory facet the root barrel re-exports has a literal entry", async () => {
     const facets = await barrelFacets();
     const missing = facets.filter(
       (subpath) =>
         existsSync(path.join(packageDir, subpath, "index.ts")) && exportsMap.resolve(subpath) !== `${subpath}/index.ts`,
     );
     expect(missing).toEqual([]);
-  });
-
-  test("points every literal entry at a file, so a subpath the root once held still loads from its folder", async () => {
-    const manifest = (await Bun.file(path.join(packageDir, "package.json")).json()) as {
-      exports: Record<string, unknown>;
-    };
-    const literals = Object.keys(manifest.exports).filter((subpath) => !subpath.includes("*"));
-    expect(literals.length).toBeGreaterThan(100);
-    expect(exportsMap.findUnreachable(literals)).toEqual([]);
   });
 
   test("keeps every source out of the package root but its type barrel", () => {

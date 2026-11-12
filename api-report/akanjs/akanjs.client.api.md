@@ -1129,9 +1129,6 @@ export declare const clearRscNavigationCache: () => void;
 
 export declare const cn: (...inputs: ClassNameValue[]) => string;
 
-/** @internal */
-export declare const colorTokens: string[];
-
 export declare const cookieJar: () => CookieJar;
 
 export declare const cookies: () => Map<string, CookieEntry>;
@@ -1148,21 +1145,11 @@ export declare const defaultPageState: PageState;
 
 export declare const desktopPlatform: () => "linux" | "macos" | "windows" | null;
 
-/** @deprecated */
-export declare const dictionaryContext: import("react").Context<{
-    [key: string]: {
-        [key: string]: string;
-    };
-}>;
-
 export declare const fetch: RuntimeFetch;
 
 export declare const getAccount: <AddData = unknown>() => Account<AddData>;
 
 export declare const getAuthToken: () => string | undefined;
-
-/** @internal */
-export declare const getClientRuntime: () => ClientRuntime;
 
 export declare const getCookie: (key: string) => string | undefined;
 
@@ -1243,9 +1230,6 @@ export declare const isNativeShell: () => boolean;
 
 export declare const isNativeTarget: () => boolean;
 
-/** @internal */
-export declare const isResponsiveInset: (inset: PageConfig["topInset"]) => inset is ResponsiveInset;
-
 export declare const isRouteControl: (error: unknown) => boolean;
 
 export declare const isRouteDefinition: (value: unknown) => value is RouteDefinition;
@@ -1314,9 +1298,6 @@ export declare const pathContext: import("react").Context<PathContextType>;
 
 export declare const prefetchRsc: (href: string, priority?: PrefetchPriority) => (() => void) | undefined;
 
-/** @internal */
-export declare const radiusTokens: string[];
-
 export declare const readCssSafeAreaInsets: () => SafeAreaInsets;
 
 export declare const refreshRsc: () => Promise<void> | undefined;
@@ -1380,17 +1361,6 @@ export declare const useCsr: () => CsrContextType;
 export declare const usePage: ClientRuntime["usePage"];
 
 export declare const usePathCtx: () => PathContextType;
-
-/** @deprecated */
-export declare const useRscNavigation: () => {
-    clearCache: () => void;
-    isFromCache: () => boolean;
-    navigate: (href: string, options?: {
-        replace?: boolean;
-        scrollToTop?: boolean;
-        shallow?: boolean;
-    }) => Promise<void> | undefined;
-};
 
 export declare const validatePageConfig: (routeKey: string, config?: PageConfig) => void;
 

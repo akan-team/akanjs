@@ -62,12 +62,9 @@ export {
   type AkanConsoleContext,
   type AkanConsoleOptions,
   assertAkanConsoleAllowed,
-  createAkanConsoleContext,
-  createAkanConsoleLogCommands,
   evaluateAkanConsoleInput,
   getAkanConsoleMethods,
   isAkanConsoleInputComplete,
-  parseAkanConsoleQuery,
   startAkanConsole,
 } from "./console";
 export { Transaction, Try } from "./decorators";
@@ -233,7 +230,6 @@ export {
   createSitemapXml,
   type DefaultSitemapOptions,
   getSitemapBasePath,
-  isSitemapPath,
 } from "./sitemap";
 export type { SsrManifest, SsrManifestEntry } from "./ssrTypes";
 export {

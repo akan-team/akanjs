@@ -15,12 +15,6 @@ const defaultMessage = {
 
 export type BaseSearchParamsState = { [key: string]: string | string[] };
 
-/** @deprecated Unused by akanjs; read `searchParams[key]`, taking the first value of an array. */
-export const getBaseSearchParam = (searchParams: BaseSearchParamsState, key: string) => {
-  const value = searchParams[key];
-  return Array.isArray(value) ? value[0] : value;
-};
-
 export class BaseStore extends store("base" as const, () => ({
   csrLoaded: false,
   path: "/",

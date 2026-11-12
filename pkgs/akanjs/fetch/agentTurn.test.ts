@@ -17,18 +17,12 @@ const agentSignal = {
   },
 } as unknown as SerializedSignal;
 
-class TestErr extends Error {
-  static fromJSON(payload: { error?: string }) {
-    return new TestErr(payload.error ?? "unknown");
-  }
-}
-
 describe("agentTurn scalar on the client graph", () => {
   test("a FetchClient-only import materializes fetch.runAgentTurn", () => {
     const proto = FetchClient.build<{ fetch: { runAgentTurn: unknown } }>(
       {},
       { agent: agentSignal },
-      { origin: "http://localhost", Err: TestErr },
+      { origin: "http://localhost" },
     );
     expect(typeof proto.fetch.runAgentTurn).toBe("function");
   });

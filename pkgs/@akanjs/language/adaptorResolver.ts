@@ -1,9 +1,4 @@
-import type {
-  AkanGraphEdgeKind,
-  AkanGraphLocation,
-  AkanGraphNode,
-  AkanGraphNodeKind,
-} from "akanjs/common/akanGraph.ts";
+import type { AkanGraphEdgeKind, AkanGraphLocation, AkanGraphNode, AkanGraphNodeKind } from "akanjs/common";
 import type { AkanGraphSource } from "./akanGraph";
 import { frameworkOwner, frameworkPattern, type GuardResolver, type GuardSite } from "./guardResolver";
 import type { AdaptorFact, AkanSpan, Extent, FileFacts, ServiceClassFact } from "./moduleFacts";

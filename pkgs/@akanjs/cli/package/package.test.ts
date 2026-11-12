@@ -434,6 +434,7 @@ describe("PackageRunner", () => {
       ].join("\n"),
     );
     await writeText(`${dist}/proc.test.ts`, 'export const fixture = "@sample/tool/neverResolves";\n');
+    await writeText(`${dist}/lint/__fixtures__/rule/bad.tsx`, 'import { Gone } from "@sample/tool/neverResolves";\n');
     pkg.workspace.spawn = (async () => JSON.stringify([{ files: [{ path: "package.json" }], size: 1 }])) as never;
     return pkg;
   };
@@ -457,7 +458,7 @@ describe("PackageRunner", () => {
       "./*": "./*.ts",
     });
 
-    // Passing means the comment and the `.test.ts` fixture above, which name unresolvable subpaths, were ignored.
+    // Passing means the comment, `.test.ts` and lint fixture above, each naming an unresolvable subpath, were ignored.
     await expect(new PackageRunner().verifyDistPackage(pkg)).resolves.toMatchObject({ name: "@sample/tool" });
   });
 

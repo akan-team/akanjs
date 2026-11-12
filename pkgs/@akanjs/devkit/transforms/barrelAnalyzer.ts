@@ -18,7 +18,7 @@ export interface PackageEntry {
   entryFile: string;
   /** Absolute base directory for subpath computation, typically `dirname(entryFile)`. */
   pkgDir: string;
-  /** Emit concrete file paths, for package exports that do not support extensionless deep imports. */
+  /** Emit absolute file paths: an installed package's exports name its barrels, never the files behind them. */
   preserveFilePath?: boolean;
 }
 
@@ -208,7 +208,7 @@ export class BarrelAnalyzer {
   #subpathFor(pkg: PackageEntry, absFile: string): string | null {
     const rel = path.relative(pkg.pkgDir, absFile);
     if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return null;
-    if (pkg.preserveFilePath) return `${pkg.pkgName}/${rel.split(path.sep).join("/")}`;
+    if (pkg.preserveFilePath) return absFile.split(path.sep).join("/");
     const ext = CANDIDATE_EXTS.find((candidate) => rel.endsWith(candidate));
     const parts = (ext ? rel.slice(0, -ext.length) : rel).split(path.sep);
     // `xxx/index` collapses to `xxx`: callers import `@pkg/xxx`, never `@pkg/xxx/index`.
