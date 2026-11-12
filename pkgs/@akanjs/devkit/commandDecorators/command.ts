@@ -17,6 +17,7 @@ import {
   type SysExecutor,
   WorkspaceExecutor,
 } from "../executors";
+import { ErrorReport } from "../util/errorReport";
 // Never the root barrel: it drags ink, ssh2 and the cloud stack into every command process.
 import { FileSys, getDirname } from "../util/fileSys";
 import { AppSelectionMemory } from "../workspace/appSelectionMemory";
@@ -57,7 +58,7 @@ const printCliError = (error: unknown, stream: "log" | "error" = "log") => {
     if (loggedCliErrorObjects.has(error)) return;
     loggedCliErrorObjects.add(error);
   }
-  const message = CliError.messageOf(error);
+  const message = error instanceof Error ? ErrorReport.format(error) || error.name : CliError.messageOf(error);
   if (loggedCliErrorMessages.has(message)) return;
   loggedCliErrorMessages.add(message);
   Logger.rawLog(`\n${chalk.red(message)}`, undefined, stream);
