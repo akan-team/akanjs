@@ -96,14 +96,14 @@ Declared in [service/ipcTypes.ts](service/ipcTypes.ts).
 | `live.models` | `SolidPubSub` | `AkanApp` |
 | `queue.enqueued` | `SolidQueue` | `AkanApp` |
 | `queue.wake` | `AkanApp` | `SolidQueue` |
-| `health.ping` | `ChildSupervisor` | `AkanServer` |
-| `health.pong` | `AkanServer` | `AkanApp` |
+| `health.ping` | `ChildSupervisor` | `ParentChannel` |
+| `health.pong` | `ParentChannel` | `AkanApp` |
 | `ws.opened` | — | — |
 | `ws.closed` | — | — |
-| `metrics.report` | `AkanServer` | `AkanApp` |
+| `metrics.report` | `ServerMetrics` | `AkanApp` |
 | `log.records` | `LogForwarder` | `AkanApp` |
-| `log.level` | `ChildSupervisor`, `GatewayLogging` | `AkanServer` |
-| `shutdown` | `ChildSupervisor` | `AkanServer` |
+| `log.level` | `ChildSupervisor`, `GatewayLogging` | `ParentChannel` |
+| `shutdown` | `ChildSupervisor` | `ParentChannel` |
 | `file.resolve` | `NativeFile` | — |
 | `file.resolved` | — | `NativeFile` |
 | `secret.request` | `NativeSecret` | — |
@@ -161,22 +161,22 @@ Declared in [server/rscWorkerHost.ts](server/rscWorkerHost.ts).
 | `hello` | `RscRenderer` | `RscWorker` |
 | `ready` | `RscRenderer` | `RscWorker` |
 | `reloaded` | `RscRenderer` | `RscWorker` |
-| `meta` | `RscRenderer` | `RscWorker` |
-| `theme` | `RscRenderer` | `RscWorker` |
-| `cache-state` | `RscRenderer` | `RscWorker` |
-| `chunk` | `RscRenderer` | `RscWorker` |
-| `end` | `RscRenderer` | `RscWorker` |
-| `redirect` | `RscRenderer` | `RscWorker` |
-| `late-redirect` | `RscRenderer` | `RscWorker` |
-| `late-not-found` | `RscRenderer` | `RscWorker` |
-| `not-found` | `RscRenderer` | `RscWorker` |
+| `meta` | `RscFlightStream`, `RscRenderHandler` | `RscWorker` |
+| `theme` | `RscFlightStream` | `RscWorker` |
+| `cache-state` | `RscFlightStream` | `RscWorker` |
+| `chunk` | `RscFlightStream` | `RscWorker` |
+| `end` | `RscFlightStream`, `RscRenderHandler` | `RscWorker` |
+| `redirect` | `RscRenderFallbacks` | `RscWorker` |
+| `late-redirect` | `RscFlightStream` | `RscWorker` |
+| `late-not-found` | `RscFlightStream` | `RscWorker` |
+| `not-found` | `RscRenderFallbacks` | `RscWorker` |
 | `metrics` | `RscRenderer` | `RscWorker` |
 | `log.records` | `LogForwarder` | `RscWorker` |
 | `page-prompts.result` | `RscRenderer` | `RscWorker` |
 | `page-prompt.result` | `RscRenderer` | `RscWorker` |
 | `page-prompts.visible.result` | `RscRenderer` | `RscWorker` |
 | `web-manifest.result` | `RscRenderer` | `RscWorker` |
-| `error` | `RscRenderer` | `RscWorker` |
+| `error` | `RscRenderFallbacks`, `RscRenderer` | `RscWorker` |
 
 ### `HmrMessage`: dev server → browser tab
 

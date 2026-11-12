@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -704,6 +704,56 @@ describe("WebRouter dev route builds", () => {
       expect(await cacheControlOf({ nodeEnv: "production" })).toBe("no-cache");
     } finally {
       process.send = originalSend;
+    }
+  });
+});
+
+describe("WebRouter failed construction", () => {
+  test("leaves no builder RPC listener or HTML cache sweep timer behind when it throws after subscribing", () => {
+    const env = {
+      NODE_ENV: "development",
+      AKAN_PUBLIC_APP_NAME: "akan-test",
+      AKAN_PUBLIC_REPO_NAME: "akan",
+      AKAN_PUBLIC_SERVE_DOMAIN: "example.test",
+      AKAN_PUBLIC_OPERATION_MODE: "local",
+    };
+    const previousEnv = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+    for (const [key, value] of Object.entries(env)) setEnv(key, value);
+    const originalSend = process.send;
+    process.send = ((): boolean => true) as typeof process.send;
+    const setIntervalSpy = spyOn(globalThis, "setInterval");
+    const clearIntervalSpy = spyOn(globalThis, "clearInterval");
+    const listeners = process.listenerCount("message");
+    try {
+      expect(
+        () =>
+          new WebRouter({
+            artifact: createTestArtifact(),
+            web: { ssr: true, csr: true },
+            cssBytesByUrl: {},
+            rsc: createFakeRscWorker() as never,
+            seedIndex: { entries: [], globalLayoutFiles: [] },
+            upgradeHmrWs: () => false,
+            prebuilt: {
+              routeIds: [],
+              clientManifest: { "apps/a/ui/Card.tsx#Card": null as never },
+              ssrManifest: { moduleLoading: null, moduleMap: {} },
+              knownEntries: [],
+              modulePreloads: { runtime: [], vendors: {}, chunkVendors: {} },
+            },
+          }),
+      ).toThrow(TypeError);
+      expect(process.listenerCount("message")).toBe(listeners);
+      const started = setIntervalSpy.mock.results.map((result) => result.value);
+      expect(started).not.toHaveLength(0);
+      const cleared = clearIntervalSpy.mock.calls.map(([timer]): unknown => timer);
+      expect(cleared).toHaveLength(started.length);
+      for (const timer of started) expect(cleared.includes(timer)).toBe(true);
+    } finally {
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+      process.send = originalSend;
+      for (const [key, value] of Object.entries(previousEnv)) setEnv(key, value);
     }
   });
 });
