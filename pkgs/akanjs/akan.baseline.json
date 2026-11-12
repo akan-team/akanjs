@@ -5,7 +5,6 @@
     "server/di/diLifecycle.ts": 834,
     "server/resolver/signal.resolver.ts": 939,
     "server/rscWorker.tsx": 1669,
-    "server/rscWorkerHost.ts": 1116,
     "server/ssrFromRscRenderer.tsx": 839,
     "service/predefinedAdaptor/sql/SqlDocumentStore.ts": 1384,
     "signal/signalContext.ts": 983,
@@ -19,7 +18,6 @@
     "server/rscWorker.tsx#RscRenderer.#handleRender": 345,
     "server/rscWorker.tsx#RscRenderer.#handleRender.#runWithRequest()": 263,
     "server/rscWorker.tsx#RscRenderer.#renderFlightElement": 186,
-    "server/rscWorkerHost.ts#createRscHostRenderStream": 164,
     "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 158,
     "ui/Agent/Chat.tsx#DefaultChat": 409,
     "ui/BottomSheet.tsx#BottomSheet": 154,
@@ -39,7 +37,6 @@
     "fetch/client/wsClient.ts#WsClient": 65,
     "server/akanServer.ts#AkanServer": 98,
     "server/rscWorker.tsx#RscRenderer": 72,
-    "server/rscWorkerHost.ts#RscWorker": 80,
     "service/predefinedAdaptor/sql/SqlDocumentStore.ts#SqlDocumentStore": 99,
     "signal/signalContext.ts#SignalContext": 72,
     "store/storeInstance.ts#StoreInstance": 68
@@ -65,7 +62,10 @@
     "server/ops/snapshotJobs.ts": 3,
     "server/ops/snapshotRestore.ts": 10,
     "server/ops/sqliteSnapshot.ts": 4,
-    "server/rscWorkerHost.ts": 15,
+    "server/rscHostReloads.ts": 2,
+    "server/rscHostRenderStream.ts": 6,
+    "server/rscHostRequests.ts": 2,
+    "server/rscWorkerHost.ts": 5,
     "server/tunnel/TunnelAgent.ts": 3
   }
 }

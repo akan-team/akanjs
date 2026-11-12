@@ -57,6 +57,7 @@ interface StarExports {
 interface ModuleExports {
   named: (Reexport & { fileName: string }) | null;
   stars: string[];
+  isLocal: boolean;
 }
 
 interface Declaration {
@@ -81,6 +82,9 @@ const facetEntryPattern = new RegExp(
 const exportingPatternOf = (name: string) =>
   new RegExp(`export\\s*\\{(?:[^}]*?[\\s,])?${escapeRegExp(name)}(?![\\w$])`);
 
+const exportMentioningPatternOf = (name: string) =>
+  new RegExp(`export\\s[^;]*?(?<![\\w$])${escapeRegExp(name)}(?![\\w$])`);
+
 const declaringPatternOf = (name: string, isAnyBinding: boolean) => {
   const escaped = escapeRegExp(name);
   const braced = "\\{(?:[^}]*?[\\s,])?";
@@ -103,6 +107,8 @@ export class GuardResolver {
   readonly #declarations = new Map<string, Declaration | null>();
   readonly #starExports = new Map<string, StarExports>();
   readonly #moduleExports = new Map<string, ModuleExports>();
+  readonly #fileStars = new Map<string, string[]>();
+  readonly #starReach = new Map<string, string[]>();
   #ownerFiles: Map<string, [fileName: string, words: string][]> | null = null;
   #modules: Map<string, string[]> | null = null;
   #barrels: Map<string, string[]> | null = null;
@@ -461,26 +467,102 @@ export class GuardResolver {
     const key = `${path}\n${name}`;
     const cached = this.#moduleExports.get(key);
     if (cached) return cached;
-    const found: ModuleExports = { named: null, stars: this.#barrelAt(path) ?? [] };
-    const exporting = exportingPatternOf(name);
+    const found: ModuleExports = { named: null, stars: [], isLocal: false };
+    const stars = new Set(this.#barrelAt(path));
     for (const fileName of this.#modulesAt(path)) {
       const text = this.#source.readText(fileName);
       if (text === undefined) continue;
       const named =
-        identifierPattern.test(name) && exporting.test(text)
+        text.includes(name) && identifierPattern.test(name) && exportingPatternOf(name).test(text)
           ? this.#reexportIn(this.#source.parse(fileName, text), name)
           : null;
       if (named) {
         found.named = { ...named, fileName };
-        found.stars = [];
         break;
       }
-      for (const [, specifier = ""] of text.matchAll(starExportPattern)) {
-        const target = this.pathOfSpecifier(fileName, specifier);
-        if (target !== null && !found.stars.includes(target)) found.stars.push(target);
+      if (
+        text.includes(name) &&
+        exportMentioningPatternOf(name).test(text) &&
+        this.#exportsLocally(this.#source.parse(fileName, text), name)
+      ) {
+        found.isLocal = true;
+        break;
+      }
+      for (const target of this.#starsIn(fileName, text)) stars.add(target);
+    }
+    if (!found.named && !found.isLocal) found.stars = [...stars];
+    this.#moduleExports.set(key, found);
+    return found;
+  }
+
+  //? `#reexportIn` finds no re-export in `export { Stripe }` of a default or namespace import, so that one binds here.
+  #exportsLocally(source: TS.SourceFile, name: string) {
+    const { ts } = this.#source;
+    const binds = (node: TS.BindingName): boolean =>
+      ts.isIdentifier(node)
+        ? node.text === name
+        : node.elements.some((element) => !ts.isOmittedExpression(element) && binds(element.name));
+    return source.statements.some((statement) => {
+      if (ts.isExportDeclaration(statement))
+        return (
+          !statement.moduleSpecifier &&
+          !statement.isTypeOnly &&
+          !!statement.exportClause &&
+          ts.isNamedExports(statement.exportClause) &&
+          statement.exportClause.elements.some((element) => !element.isTypeOnly && element.name.text === name)
+        );
+      const modifiers = ts.canHaveModifiers(statement) ? (ts.getModifiers(statement) ?? []) : [];
+      if (
+        !modifiers.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword) ||
+        modifiers.some(({ kind }) => kind === ts.SyntaxKind.DefaultKeyword)
+      )
+        return false;
+      if (ts.isVariableStatement(statement))
+        return statement.declarationList.declarations.some((declaration) => binds(declaration.name));
+      return (
+        (ts.isClassDeclaration(statement) ||
+          ts.isFunctionDeclaration(statement) ||
+          ts.isEnumDeclaration(statement) ||
+          ts.isModuleDeclaration(statement) ||
+          ts.isImportEqualsDeclaration(statement)) &&
+        !!statement.name &&
+        ts.isIdentifier(statement.name) &&
+        statement.name.text === name
+      );
+    });
+  }
+
+  //? A module binds a name only by writing it, so a name no file along the `export *`s mentions is bound nowhere there.
+  mentionsAlong(path: string, name: string) {
+    return this.#starReachOf(path).some((text) => text.includes(name));
+  }
+
+  #starReachOf(path: string) {
+    const cached = this.#starReach.get(path);
+    if (cached) return cached;
+    const paths = new Set([path]);
+    const texts: string[] = [];
+    for (const at of paths) {
+      for (const next of this.#barrelAt(at) ?? []) paths.add(next);
+      for (const fileName of this.#modulesAt(at)) {
+        const text = this.#source.readText(fileName) ?? "";
+        texts.push(text);
+        for (const next of this.#starsIn(fileName, text)) paths.add(next);
       }
     }
-    this.#moduleExports.set(key, found);
+    this.#starReach.set(path, texts);
+    return texts;
+  }
+
+  #starsIn(fileName: string, text: string) {
+    const cached = this.#fileStars.get(fileName);
+    if (cached) return cached;
+    const found: string[] = [];
+    for (const [, specifier = ""] of text.matchAll(starExportPattern)) {
+      const target = this.pathOfSpecifier(fileName, specifier);
+      if (target !== null) found.push(target);
+    }
+    this.#fileStars.set(fileName, found);
     return found;
   }
 
