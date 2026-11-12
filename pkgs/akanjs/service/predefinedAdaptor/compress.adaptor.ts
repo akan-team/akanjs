@@ -215,7 +215,7 @@ export class ProtobufCompressor extends adapt("protobufCompressor", () => ({})) 
       const protoEncode = this.#makeProtoEncode(modelRef);
       const data = protoEncode(value as never);
       const errMsg = protoModel.verify(data);
-      if (errMsg) throw new Error(errMsg);
+      if (errMsg) throw new AkanError("unencodableValue", errMsg);
       const message = protoModel.create(data);
       const buffer = protoModel.encode(message).finish();
       return buffer as unknown as Buffer;
@@ -247,7 +247,7 @@ export class ProtobufCompressor extends adapt("protobufCompressor", () => ({})) 
 
       const data = { [fieldName]: encoded };
       const errMsg = wrapperType.verify(data);
-      if (errMsg) throw new Error(errMsg);
+      if (errMsg) throw new AkanError("unencodableValue", errMsg);
       const message = wrapperType.create(data);
       const buffer = wrapperType.encode(message).finish();
       return buffer as unknown as Buffer;

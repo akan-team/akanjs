@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { AkanWebConfig } from "akanjs";
+import { AkanError } from "akanjs/base";
 import { AppHosts, Logger, type LogRecord, resolveSubRouteHosts } from "akanjs/common";
 import type { AkanMetricsReport } from "akanjs/service";
 import { PageDefinition } from "../client/route/PageDefinition";
@@ -103,7 +104,8 @@ export class WebRouter {
         this.#builderRpc = null;
         routeCache = new RouteClientCache({
           buildRoute: async (routeId) => {
-            throw new Error(
+            throw new AkanError(
+              "artifactMissing",
               `[SSR] route ${routeId} missing from production artifact — rebuild with \`akan build\` to include it`,
             );
           },

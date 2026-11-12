@@ -131,8 +131,8 @@ export class OAuthClientIdMetadata {
   static readonly #lookup: OAuthAddressLookup = async (hostname) =>
     await Promise.race([
       lookup(hostname, { all: true }),
-      new Promise<never>((_resolve, reject) =>
-        setTimeout(() => reject(new Error("DNS lookup timed out")), OAuthClientIdMetadata.timeoutMs).unref(),
+      new Promise<{ address: string }[]>((resolve) =>
+        setTimeout(() => resolve([]), OAuthClientIdMetadata.timeoutMs).unref(),
       ),
     ]);
 

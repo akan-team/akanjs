@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
+import { AkanError } from "akanjs/base";
 import { DEFAULT_AKAN_I18N } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
 import type { RouteSeedIndex, RoutesManifest } from "./artifact";
@@ -39,6 +40,7 @@ import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { RscTraceMetadata, SsrLateRedirect } from "./ssrTypes";
 import { type BaseBuildArtifact, defaultAkanImageConfig } from "./types";
 import { cancelStreamForHeadResponse } from "./webDocumentRoute";
+import { WebRouteContext } from "./webRouteContext";
 import { WebRouter } from "./webRouter";
 import { normalizeRscTargetUrlForHostBasePath } from "./webRscRoute";
 
@@ -1842,6 +1844,27 @@ describe("WebRouter production boot", () => {
       "/_akan/client/card.js",
     ]);
     expect(await planOf(prebuilt)).toBeUndefined();
+  });
+
+  test("fails a page whose route the production artifact lacks as artifactMissing, a 500", async () => {
+    const failures: unknown[] = [];
+    const errorPageResponse = WebRouteContext.prototype.errorPageResponse;
+    WebRouteContext.prototype.errorPageResponse = async (_req, _scope, err) => {
+      failures.push(err);
+      return new Response(null, { status: 500 });
+    };
+    try {
+      await withFullSsrCacheHarness(async ({ fullSsr }) => await fullSsr(new Request("https://example.test/docs")), {
+        seedIndex: { entries: [{ routeId: "/docs", pattern: "/docs", seeds: [] }], globalLayoutFiles: [] },
+      });
+    } finally {
+      WebRouteContext.prototype.errorPageResponse = errorPageResponse;
+    }
+    expect(AkanError.is(failures[0], "artifactMissing")).toBe(true);
+    expect(failures[0]).toMatchObject({
+      statusCode: 500,
+      message: "[SSR] route /docs missing from production artifact — rebuild with `akan build` to include it",
+    });
   });
 });
 
