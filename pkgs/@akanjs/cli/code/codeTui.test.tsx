@@ -36,6 +36,7 @@ class FakeAgent {
   canSeeImages = true;
   stored: { id: string; name?: string; opening: string; updatedAt: number; turns: number }[] = [];
   mcp: CodeAgentMcpStatus[] = [];
+  refusal: string | undefined;
   readonly workspaceRoot: string;
   #listener: ((event: CodeAgentEvent) => void) | undefined;
   #seq = 0;
@@ -102,6 +103,7 @@ class FakeAgent {
   async prompt(message: string, images?: { path: string }[]) {
     const attached = (images ?? []).map((image) => `:${image.path}`).join("");
     this.calls.push(`prompt:${message}${attached}`);
+    if (this.refusal) throw new Error(this.refusal);
   }
 
   async abort() {
@@ -114,6 +116,7 @@ class FakeAgent {
 
   async setModel(ref: { provider: string; id: string }) {
     this.calls.push(`setModel:${ref.provider}/${ref.id}`);
+    if (this.refusal) throw new Error(this.refusal);
   }
 
   async answer(questionId: string, answer: CodeAgentAnswer) {
@@ -479,6 +482,19 @@ describe("CodeTui", () => {
     expect(harness.agent.calls).toEqual(["compact:keep the plan", "setModel:deepseek/deepseek-v4-pro"]);
   });
 
+  test("what the agent refuses, from a prompt or a command, lands in the transcript as an error", async () => {
+    const harness = mount();
+    await settle();
+    harness.agent.refusal = "the provider is down";
+    await harness.press("hi");
+    await harness.press("\r");
+    expect(harness.stdout.lastFrame).toContain("the provider is down");
+    harness.agent.refusal = "no such model";
+    await harness.press("/model deepseek/nope");
+    await harness.press("\r");
+    expect(harness.stdout.lastFrame).toContain("no such model");
+  });
+
   test("an unknown slash command answers in an overlay and leaves the transcript alone", async () => {
     const harness = mount();
     await settle();
@@ -492,6 +508,20 @@ describe("CodeTui", () => {
     await harness.press(esc);
     expect(harness.stdout.lastFrame).toContain("› hello there");
     expect(harness.stdout.lastFrame).not.toContain("There is no /nope");
+  });
+
+  test("the arrows scroll an overlay longer than the pane, not the transcript under it", async () => {
+    const harness = mount();
+    await settle();
+    for (let at = 0; at < 40; at += 1)
+      harness.agent.emit({ type: "message", turnId: `t${at}`, role: "assistant", text: `line ${at}` });
+    await harness.press("/help");
+    await harness.press("\r");
+    expect(harness.stdout.lastFrame).toContain("help  ▲0 ▼");
+    await harness.press(`${esc}[B`);
+    expect(harness.stdout.lastFrame).toContain("help  ▲1 ▼");
+    await harness.press(esc);
+    expect(harness.stdout.lastFrame).not.toContain("paused");
   });
 
   test("the arrows replay what was already sent", async () => {
@@ -777,6 +807,20 @@ describe("CodeTui", () => {
       CodeTuiClipboard.has = had;
     }
   });
+
+  test("an image arriving on the clipboard is offered above the prompt", async () => {
+    const had = CodeTuiClipboard.has;
+    CodeTuiClipboard.has = () => true;
+    try {
+      const harness = mount();
+      const offer = "an image is on your clipboard";
+      const deadline = Date.now() + 2 * CodeTui.clipboardMs;
+      while (!harness.stdout.lastFrame.includes(offer) && Date.now() < deadline) await Bun.sleep(50);
+      expect(harness.stdout.lastFrame).toContain(offer);
+    } finally {
+      CodeTuiClipboard.has = had;
+    }
+  }, 10_000);
 
   test("a bracketed paste keeps its newlines instead of sending the prompt", async () => {
     const harness = mount();
