@@ -73,11 +73,14 @@ export const loadWorkflowContextPaths = async (
   return [...new Set(paths.filter(Boolean))];
 };
 
-const pathKey = (value: string) =>
+const withoutPlaceholders = (value: string) =>
   value
-    .replaceAll("\\", "/")
-    .replaceAll("*", "")
-    .replace(/<[^>]+>/g, "")
+    .split("<")
+    .map((part, index) => (index === 0 ? part : part.slice(part.indexOf(">") + 1)))
+    .join("");
+
+const pathKey = (value: string) =>
+  withoutPlaceholders(value.replaceAll("\\", "/").replaceAll("*", ""))
     .replace(/\/+/g, "/")
     .replace(/^\/|\/$/g, "");
 
