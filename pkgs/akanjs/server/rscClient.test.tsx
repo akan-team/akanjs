@@ -1541,6 +1541,34 @@ describe("rscClient patch cache", () => {
     expect(requestsOf("/ler/b")).toEqual([true, false]);
   });
 
+  test("a redirect a patch's stream carries after a shallow change of its query is still followed", async () => {
+    const redirect = lateRow("AKAN_REDIRECT;replace;307;%2Flsh%2Flogin");
+    const release = servedWithLateRows("lsh", [redirect], preStreamRedirectTo("/lsh/login"));
+    await navigate("/lsh/a");
+    await navigate("/lsh/b");
+    await navigate("/lsh/b?tab=2", { shallow: true });
+
+    await act(async () => release());
+    await waitFor(() => shown() === "/lsh/login");
+
+    expect(window.location.pathname).toBe("/lsh/login");
+    expect(requestsOf("/lsh/b")).toEqual([true, false]);
+  });
+
+  test("React's dev-only error row a patch's stream carries after it was laid reloads nothing", async () => {
+    const release = servedWithLateRows("ldb", [lateRow("")]);
+    await navigate("/ldb/a");
+    await navigate("/ldb/b");
+
+    await act(async () => {
+      release();
+      await sleep(10);
+    });
+
+    expect(requestsOf("/ldb/b")).toEqual([true]);
+    expect(shown()).toBe("/ldb/b patched");
+  });
+
   test("a redirect a replayed patch's stream carries after it was laid again is followed", async () => {
     const redirect = lateRow("AKAN_REDIRECT;replace;307;%2Flrp%2Flogin");
     const release = servedWithLateRows("lrp", [redirect], preStreamRedirectTo("/lrp/login"));

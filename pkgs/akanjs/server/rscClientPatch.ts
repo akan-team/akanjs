@@ -17,7 +17,8 @@ import {
 import { commitAkanSegmentOutletPatch, hasAkanSegmentOutlet, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
 const RSC_PATCH_REDIRECT_ROW_RE = /^[0-9a-z]+:E\{[^\n]*"digest":"AKAN_REDIRECT(?:;[^"]*)?"[^\n]*\}\n?$/;
-const RSC_PATCH_ERROR_ROW_RE = /^[0-9a-z]+:E\{[^\n]*\}\n?$/;
+//? An empty digest is React's dev-only debug row (a rejected promise a component caught), not a failed render.
+const RSC_PATCH_ERROR_ROW_RE = /^[0-9a-z]+:E\{(?![^\n]*"digest":"")[^\n]*\}\n?$/;
 const patchesWithControlRows = new WeakSet<PromiseLike<unknown>>();
 const lateControlHandlers = new WeakMap<PromiseLike<unknown>, () => void>();
 

@@ -270,6 +270,22 @@ describe("rscClient patch fallback flow", () => {
     expect(result).toEqual({ status: "rejected", reason });
   });
 
+  test("keeps a patch whose stream carries React's dev-only error row with an empty digest", async () => {
+    const currentState = makeRouterState("https://example.test/docs/intro", "/docs/intro");
+    const targetState = makeRouterState("https://example.test/docs/api", "/docs/api");
+    const debugRow = { digest: "", name: "Error", message: "caught", stack: [], env: "Server", owner: null };
+
+    const result = await validateRscPatchAndRequestFullFallback({
+      href: targetState.href,
+      response: patchResponse(`0:"api"\n1:E${JSON.stringify(debugRow)}\n`, targetState),
+      patch: makePatch("/docs/api"),
+      currentTree: makeTreeOf(currentState, "intro"),
+      createThenable: (rows) => new Response(rows()).text().then(() => "api"),
+    });
+
+    expect(result.patchResult.status).toBe("patched");
+  });
+
   test("keeps a patch whose long text holds lines shaped like redirect or error rows", async () => {
     const currentState = makeRouterState("https://example.test/docs/intro", "/docs/intro");
     const targetState = makeRouterState("https://example.test/docs/api", "/docs/api");
