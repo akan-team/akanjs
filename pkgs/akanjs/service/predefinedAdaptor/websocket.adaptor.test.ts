@@ -622,6 +622,29 @@ describe("WebSocketRedisAdaptor channels", () => {
     }
   });
 
+  test("neither resubscribes nor tells a room to recover on a subscriber ready that arrives once shutdown began", async () => {
+    const { adaptor, publisher, subscriber, warns, send } = await openAdaptor();
+    const recovered: string[][] = [];
+    adaptor.onRecovered((rooms) => recovered.push(rooms));
+    publisher.emit("ready");
+    subscriber.emit("ready");
+    await adaptor.joinRoom(newSocket(), "chat-1");
+    subscriber.emit("close");
+    warns.length = 0;
+    publisher.held = true;
+    send(1);
+    const destroyed = adaptor.onDestroy();
+    const subscribed = subscriber.subscribed.length;
+    subscriber.emit("ready");
+    for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+    expect(recovered).toEqual([]);
+    expect(subscriber.subscribed).toHaveLength(subscribed);
+    expect(warns).toEqual([]);
+    publisher.release();
+    await destroyed;
+    expect(recovered).toEqual([]);
+  });
+
   test("tells the rooms to recover once Redis answers, though it refused a resubscribe", async () => {
     const { adaptor, subscriber } = await openAdaptor();
     const recovered: string[][] = [];

@@ -114,6 +114,7 @@ export class WebSocketRedisAdaptor
   #subscriberReady = false;
   /** Whether the subscriber has ever been up, so the first `ready` is a start rather than a recovery. */
   #subscriberStarted = false;
+  #destroyed = false;
   readonly #lossWaiters = new Set<() => void>();
   readonly #lastLogged = new Map<string, number>();
 
@@ -159,6 +160,8 @@ export class WebSocketRedisAdaptor
         this.logger.warn("Subscriber disconnected; cross-server events are being missed until it returns");
     });
     this.subscriber.on("ready", () => {
+      //? ioredis can still emit a `ready` it queued before `disconnect()`: a resync then reaches sockets being shut down.
+      if (this.#destroyed) return;
       //* A SUBSCRIBE ioredis rejected in an outage included. `ready` fires before Redis answers what ioredis resent, so
       //* no earlier reply vouches for the new connection.
       const replies = [...this.#channels].map(([channel, hold]) => this.#subscribe(channel, hold));
@@ -194,6 +197,7 @@ export class WebSocketRedisAdaptor
   }
 
   override async onDestroy() {
+    this.#destroyed = true;
     this.#loseSubscriber();
     this.#subscriberReady = false;
     this.subscriber.disconnect();
