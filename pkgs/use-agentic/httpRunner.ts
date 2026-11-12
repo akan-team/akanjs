@@ -97,7 +97,7 @@ const turnError = async (response: Response): Promise<RunnerEvent> => {
   try {
     const body = (await response.json()) as { message?: unknown; error?: unknown; data?: unknown; overflow?: unknown };
     const message = typeof body.message === "string" ? body.message : typeof body.error === "string" ? body.error : "";
-    if (!message) return fallback;
+    if (!message) return { ...fallback, code: codeOfAnswer(response.status, body) };
     const data = interpolations(body.data);
     const overflow = overflowOf(body.overflow);
     return {

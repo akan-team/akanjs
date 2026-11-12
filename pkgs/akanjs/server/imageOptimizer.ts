@@ -101,7 +101,10 @@ export class ImageOptimizer {
         await Promise.race([
           lookup(hostname, { all: true }),
           new Promise<never>((_resolve, reject) =>
-            setTimeout(() => reject(new Error("DNS lookup timed out")), this.#config.fetchTimeoutMs).unref(),
+            setTimeout(
+              () => reject(new ImageOptimizerError(502, "DNS lookup timed out")),
+              this.#config.fetchTimeoutMs,
+            ).unref(),
           ),
         ]));
   }

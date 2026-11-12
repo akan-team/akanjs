@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BackendEnv } from "akanjs/base";
@@ -749,7 +750,153 @@ describe("AkanServer module exclusion", () => {
   });
 });
 
+const freePort = () => {
+  const probe = Bun.serve({ port: 0, fetch: () => new Response() });
+  const { port } = probe;
+  void probe.stop(true);
+  return port as number;
+};
+
+const listeningServer = async () => {
+  const { AkanServer, createLib } = await loadRuntime();
+  const { DiLifecycle } = await import("./di/diLifecycle");
+  const tmp = await mkdtemp(join(tmpdir(), "akan-sl-"));
+  const port = freePort();
+  const runtimeDir = join(tmp, "runtime");
+  const vars = { PORT: String(port), AKAN_RUNTIME_DIR: runtimeDir };
+  const previous = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]));
+  const events = ["message", "disconnect", "SIGTERM", "SIGINT", "uncaughtException", "unhandledRejection"] as const;
+  const listeners = new Map(events.map((event) => [event, process.listeners(event)]));
+  Object.assign(process.env, vars);
+  const replica = new AkanServer("serverGet", createEnv(tmp), "all", createLib());
+  const destroyAll = spyOn(DiLifecycle.prototype, "destroyAll");
+  const schedulerInit = spyOn(DiLifecycle.prototype, "runSchedulerInit");
+  const restore = async () => {
+    if (replica.status === "running") await replica.stop();
+    destroyAll.mockRestore();
+    schedulerInit.mockRestore();
+    for (const [event, before] of listeners)
+      for (const listener of process.listeners(event)) if (!before.includes(listener)) process.off(event, listener);
+    for (const [key, value] of Object.entries(previous))
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    await rm(tmp, { recursive: true, force: true });
+  };
+  const served = async () => (await fetch(`http://127.0.0.1:${port}/`).catch(() => null)) !== null;
+  return { replica, port, runtimeDir, destroyAll, schedulerInit, served, restore };
+};
+
 describe("AkanServer stopped while starting", () => {
+  test("a stop during init() tears down before listen, and resolves on the stopped server", async () => {
+    const { replica, destroyAll, schedulerInit, served, restore } = await listeningServer();
+
+    try {
+      const starting = replica.start({ listen: true, web: false });
+      expect(replica.status).toBe("initializing");
+      const stopped = replica.stop().then(() => ({ status: replica.status, destroyed: destroyAll.mock.calls.length }));
+
+      expect(await starting).toBe(replica);
+      expect(await served()).toBe(false);
+      expect(replica.status).toBe("stopped");
+      expect(schedulerInit).not.toHaveBeenCalled();
+      expect(await stopped).toEqual({ status: "stopped", destroyed: 1 });
+
+      await replica.start({ listen: true, web: false });
+      expect(await served()).toBe(true);
+    } finally {
+      await restore();
+    }
+  });
+
+  test("a stop while listen() opens its log control socket closes it, and serves nothing", async () => {
+    const { LogControlSocket } = await import("./logging/logControlSocket");
+    const { replica, runtimeDir, destroyAll, schedulerInit, served, restore } = await listeningServer();
+    const socketPath = LogControlSocket.pathIn(runtimeDir);
+    const openSocket = LogControlSocket.open.bind(LogControlSocket);
+    const stopped = Promise.withResolvers<{ status: string; destroyed: number; socket: boolean }>();
+    let bound = false;
+    const open = spyOn(LogControlSocket, "open").mockImplementation(async (...args) => {
+      expect(replica.status).toBe("starting");
+      void replica
+        .stop()
+        .then(() => ({
+          status: replica.status,
+          destroyed: destroyAll.mock.calls.length,
+          socket: existsSync(socketPath),
+        }))
+        .then(stopped.resolve, stopped.reject);
+      const control = await openSocket(...args);
+      bound = control !== null && existsSync(socketPath);
+      return control;
+    });
+
+    try {
+      expect(await replica.start({ listen: true, web: false })).toBe(replica);
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(bound).toBe(true);
+      expect(await served()).toBe(false);
+      expect(replica.status).toBe("stopped");
+      expect(schedulerInit).not.toHaveBeenCalled();
+      expect(await stopped.promise).toEqual({ status: "stopped", destroyed: 1, socket: false });
+
+      open.mockRestore();
+      await replica.start({ listen: true, web: false });
+      expect(await served()).toBe(true);
+      expect(existsSync(socketPath)).toBe(true);
+    } finally {
+      open.mockRestore();
+      await restore();
+    }
+  });
+
+  test("a stop held through a failed init() leaves the container destroyed once, by the init's own unwind", async () => {
+    const { SignalResolver } = await import("./resolver");
+    const { replica, destroyAll, served, restore } = await listeningServer();
+    const merge = spyOn(SignalResolver, "mergeHttpRoutes").mockImplementation(() => {
+      throw new Error("routes refused");
+    });
+
+    try {
+      const starting = replica.start({ listen: true, web: false });
+      const stopped = replica.stop();
+
+      await expect(starting).rejects.toThrow("routes refused");
+      await stopped;
+      expect(destroyAll).toHaveBeenCalledTimes(1);
+      expect(replica.status).toBe("stopped");
+      expect(await served()).toBe(false);
+    } finally {
+      merge.mockRestore();
+      await restore();
+    }
+  });
+
+  test("runs no init schedule once the ready message finds the parent gone", async () => {
+    const { LogControlSocket } = await import("./logging/logControlSocket");
+    const { OrphanGroup } = await import("./lifecycle/orphanGroup");
+    const { replica, schedulerInit, served, restore } = await listeningServer();
+    const send = process.send;
+    const exited = Promise.withResolvers<number>();
+    const exit = spyOn(OrphanGroup, "exit").mockImplementation((code) => exited.resolve(code));
+    const open = spyOn(LogControlSocket, "open").mockImplementation(async () => {
+      process.send = () => false;
+      return null;
+    });
+
+    try {
+      expect(await replica.start({ listen: true, web: false })).toBe(replica);
+      expect(await exited.promise).toBe(0);
+      expect(replica.status).toBe("stopped");
+      expect(schedulerInit).not.toHaveBeenCalled();
+      expect(await served()).toBe(false);
+    } finally {
+      process.send = send;
+      open.mockRestore();
+      exit.mockRestore();
+      await restore();
+    }
+  });
+
   test("runs no init schedule once a stop lands while its log transport starts", async () => {
     const { AkanServer, createLib } = await loadRuntime();
     const { LogControlSocket } = await import("./logging/logControlSocket");
@@ -759,7 +906,7 @@ describe("AkanServer stopped while starting", () => {
     const listeners = { message: process.listeners("message"), disconnect: process.listeners("disconnect") };
     const schedulerInit = spyOn(DiLifecycle.prototype, "runSchedulerInit");
     const open = spyOn(LogControlSocket, "open").mockImplementation(async () => {
-      await replica.stop();
+      void replica.stop();
       return null;
     });
 
@@ -775,6 +922,350 @@ describe("AkanServer stopped while starting", () => {
         for (const listener of process.listeners(event))
           if (!listeners[event].includes(listener)) process.off(event, listener);
       await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+//? A server whose IPC channel reads closed stops itself as an orphan, and a dev WebRouter's builder RPC needs one.
+const fakeParentIpc = () => {
+  const send = process.send;
+  const connected = Object.getOwnPropertyDescriptor(process, "connected");
+  const sent: unknown[] = [];
+  process.send = (message: unknown) => sent.push(message) > 0;
+  Object.defineProperty(process, "connected", { configurable: true, get: () => true });
+  const restore = () => {
+    process.send = send;
+    if (connected) Object.defineProperty(process, "connected", connected);
+  };
+  return { sent, restore };
+};
+
+const webServer = async () => {
+  const server = await listeningServer();
+  const { ROUTE_SEED_INDEX_JSON } = await import("./artifact");
+  const { LogControlSocket } = await import("./logging/logControlSocket");
+  const { RscWorker } = await import("./rscWorkerHost");
+  const { defaultAkanImageConfig } = await import("./types");
+  const { WebRouter } = await import("./webRouter");
+  const root = await mkdtemp(join(tmpdir(), "akan-web-"));
+  const artifactDir = join(root, ".akan", "artifact");
+  await mkdir(artifactDir, { recursive: true });
+  await Bun.write(
+    join(artifactDir, "base-artifact.json"),
+    JSON.stringify({
+      rscClientUrl: "/_akan/rsc-client.js",
+      vendorMap: {},
+      pagesBundlePath: join(import.meta.dir, "rscWorkerHead.fixture.tsx"),
+      pagesBundleBuildId: 1,
+      cssAssets: {},
+      domains: [],
+      subRoutes: {},
+      basePaths: [],
+      branches: [],
+      imageConfig: defaultAkanImageConfig,
+    }),
+  );
+  const workerPath = process.env.AKAN_RSC_WORKER_PATH;
+  process.env.AKAN_RSC_WORKER_PATH = join(import.meta.dir, "rscWorker.tsx");
+  const ipc = fakeParentIpc();
+  const cwd = spyOn(process, "cwd").mockReturnValue(root);
+  const kill = spyOn(RscWorker.prototype, "kill");
+  const dispose = spyOn(WebRouter.prototype, "dispose");
+  const socketPath = LogControlSocket.pathIn(server.runtimeDir);
+  return {
+    ...server,
+    WebRouter,
+    LogControlSocket,
+    socketPath,
+    start: () => server.replica.start({ listen: true, web: { csr: false } }),
+    writeSeedIndex: () => Bun.write(join(artifactDir, ROUTE_SEED_INDEX_JSON), JSON.stringify({ entries: [] })),
+    unwound: () => ({
+      status: server.replica.status,
+      destroyed: server.destroyAll.mock.calls.length,
+      routersDisposed: dispose.mock.calls.length,
+      workersKilled: kill.mock.calls.length,
+      logSocket: existsSync(socketPath),
+    }),
+    restore: async () => {
+      await server.restore();
+      ipc.restore();
+      cwd.mockRestore();
+      kill.mockRestore();
+      dispose.mockRestore();
+      if (workerPath === undefined) delete process.env.AKAN_RSC_WORKER_PATH;
+      else process.env.AKAN_RSC_WORKER_PATH = workerPath;
+      await rm(root, { recursive: true, force: true });
+    },
+  };
+};
+
+describe("AkanServer start that fails part way", () => {
+  test("a WebRouter.create() that fails after spawning its worker kills it and destroys the container once", async () => {
+    const web = await webServer();
+
+    try {
+      await expect(web.start()).rejects.toThrow("route-seed-index.json missing");
+      expect(web.unwound()).toEqual({
+        status: "stopped",
+        destroyed: 1,
+        routersDisposed: 0,
+        workersKilled: 1,
+        logSocket: false,
+      });
+
+      await web.writeSeedIndex();
+      await web.start();
+      expect(web.replica.status).toBe("running");
+      expect(await web.served()).toBe(true);
+    } finally {
+      await web.restore();
+    }
+  }, 30_000);
+
+  test("an initializeRoute() that throws disposes the router and its worker, and destroys the container once", async () => {
+    const web = await webServer();
+    await web.writeSeedIndex();
+    const initializeRoute = spyOn(web.WebRouter.prototype, "initializeRoute").mockImplementationOnce(async () => {
+      throw new Error("routes refused");
+    });
+
+    try {
+      await expect(web.start()).rejects.toThrow("routes refused");
+      expect(web.unwound()).toEqual({
+        status: "stopped",
+        destroyed: 1,
+        routersDisposed: 1,
+        workersKilled: 1,
+        logSocket: false,
+      });
+
+      await web.start();
+      expect(web.replica.status).toBe("running");
+      expect(await web.served()).toBe(true);
+    } finally {
+      initializeRoute.mockRestore();
+      await web.restore();
+    }
+  }, 30_000);
+
+  test("a listen() that finds its port taken closes the log transport it opened, and serves on a retry", async () => {
+    const { isPortInUseError } = await import("./lifecycle/portInUse");
+    const web = await webServer();
+    await web.writeSeedIndex();
+    const openSocket = web.LogControlSocket.open.bind(web.LogControlSocket);
+    let bound = false;
+    const open = spyOn(web.LogControlSocket, "open").mockImplementation(async (...args) => {
+      const control = await openSocket(...args);
+      bound = control !== null && existsSync(web.socketPath);
+      return control;
+    });
+    const taken = Bun.serve({ port: web.port, fetch: () => new Response("taken") });
+
+    try {
+      expect(isPortInUseError(await web.start().catch((error: unknown) => error))).toBe(true);
+      expect(bound).toBe(true);
+      expect(web.unwound()).toEqual({
+        status: "stopped",
+        destroyed: 1,
+        routersDisposed: 1,
+        workersKilled: 1,
+        logSocket: false,
+      });
+
+      await taken.stop(true);
+      await web.start();
+      expect(web.replica.status).toBe("running");
+      expect(existsSync(web.socketPath)).toBe(true);
+      expect(await (await fetch(`http://127.0.0.1:${web.port}/`)).text()).not.toBe("taken");
+    } finally {
+      open.mockRestore();
+      await taken.stop(true);
+      await web.restore();
+    }
+  }, 30_000);
+  test("a stop that lands while initializeRoute() fails resolves on that start's one teardown", async () => {
+    const web = await webServer();
+    await web.writeSeedIndex();
+    const stopped = Promise.withResolvers<void>();
+    const initializeRoute = spyOn(web.WebRouter.prototype, "initializeRoute").mockImplementationOnce(async () => {
+      void web.replica.stop().then(stopped.resolve, stopped.reject);
+      throw new Error("routes refused");
+    });
+
+    try {
+      await expect(web.start()).rejects.toThrow("routes refused");
+      await stopped.promise;
+      expect(web.unwound()).toEqual({
+        status: "stopped",
+        destroyed: 1,
+        routersDisposed: 1,
+        workersKilled: 1,
+        logSocket: false,
+      });
+    } finally {
+      initializeRoute.mockRestore();
+      await web.restore();
+    }
+  }, 30_000);
+
+  test("an init schedule that fails while a stop tears down waits on that teardown instead of starting another", async () => {
+    const { replica, destroyAll, schedulerInit, served, restore } = await listeningServer();
+    schedulerInit.mockImplementationOnce(async () => {
+      void replica.stop();
+      throw new Error("schedule refused");
+    });
+
+    try {
+      await expect(replica.start({ listen: true, web: false })).rejects.toThrow("schedule refused");
+      expect(replica.status).toBe("stopped");
+      expect(destroyAll).toHaveBeenCalledTimes(1);
+      expect(await served()).toBe(false);
+    } finally {
+      await restore();
+    }
+  });
+  test("a start whose init schedule fails after a stop and the next start leaves that next start running", async () => {
+    const { replica, destroyAll, schedulerInit, served, restore } = await listeningServer();
+    const reached = Promise.withResolvers<void>();
+    const schedule = Promise.withResolvers<void>();
+    schedulerInit.mockImplementationOnce(async () => {
+      reached.resolve();
+      await schedule.promise;
+    });
+
+    try {
+      const first = replica.start({ listen: true, web: false }).catch((error: unknown) => error);
+      await reached.promise;
+      await replica.stop();
+      const second = replica.start({ listen: true, web: false });
+      schedule.reject(new Error("schedule refused"));
+
+      expect(await first).toEqual(new Error("schedule refused"));
+      await second;
+      expect(replica.status).toBe("running");
+      expect(destroyAll).toHaveBeenCalledTimes(1);
+      expect(await served()).toBe(true);
+    } finally {
+      await restore();
+    }
+  });
+
+  test("a stop() that lands while the unwind tears down waits on that teardown, and the container is destroyed once", async () => {
+    const { DiLifecycle } = await import("./di/diLifecycle");
+    const { isPortInUseError } = await import("./lifecycle/portInUse");
+    const { replica, port, destroyAll, served, restore } = await listeningServer();
+    const runSchedulerDestroy = DiLifecycle.prototype.runSchedulerDestroy;
+    const destroying = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const schedulerDestroy = spyOn(DiLifecycle.prototype, "runSchedulerDestroy").mockImplementationOnce(async function (
+      this: InstanceType<typeof DiLifecycle>,
+    ) {
+      destroying.resolve();
+      await release.promise;
+      return await runSchedulerDestroy.call(this);
+    });
+    const warn = spyOn(replica.logger, "warn");
+    const taken = Bun.serve({ port, fetch: () => new Response("taken") });
+
+    try {
+      const starting = replica.start({ listen: true, web: false }).catch((error: unknown) => error);
+      await destroying.promise;
+      const stopping = replica.stop().then(() => replica.status);
+      release.resolve();
+
+      expect(isPortInUseError(await starting)).toBe(true);
+      expect(await stopping).toBe("stopped");
+      expect(warn).not.toHaveBeenCalledWith("AkanServer is not running. Cannot stop.");
+      expect(destroyAll).toHaveBeenCalledTimes(1);
+      await taken.stop(true);
+      expect(await served()).toBe(false);
+    } finally {
+      schedulerDestroy.mockRestore();
+      warn.mockRestore();
+      await taken.stop(true);
+      await restore();
+    }
+  });
+
+  test("a listen: false start whose init schedule throws unwinds to stopped with its log socket closed", async () => {
+    const { LogControlSocket } = await import("./logging/logControlSocket");
+    const { replica, runtimeDir, destroyAll, schedulerInit, restore } = await listeningServer();
+    const socketPath = LogControlSocket.pathIn(runtimeDir);
+    schedulerInit.mockImplementationOnce(async () => {
+      throw new Error("schedule refused");
+    });
+
+    try {
+      await expect(replica.start({ listen: false })).rejects.toThrow("schedule refused");
+      expect({
+        status: replica.status,
+        destroyed: destroyAll.mock.calls.length,
+        socket: existsSync(socketPath),
+      }).toEqual({
+        status: "stopped",
+        destroyed: 1,
+        socket: false,
+      });
+
+      await replica.start({ listen: false });
+      expect(replica.status).toBe("running");
+      expect(existsSync(socketPath)).toBe(true);
+    } finally {
+      await restore();
+    }
+  });
+
+  test("a stop while a listen: false start opens its log control socket closes it", async () => {
+    const { LogControlSocket } = await import("./logging/logControlSocket");
+    const { replica, runtimeDir, destroyAll, schedulerInit, restore } = await listeningServer();
+    const socketPath = LogControlSocket.pathIn(runtimeDir);
+    const openSocket = LogControlSocket.open.bind(LogControlSocket);
+    const stopped = Promise.withResolvers<void>();
+    let bound = false;
+    const open = spyOn(LogControlSocket, "open").mockImplementationOnce(async (...args) => {
+      void replica.stop().then(stopped.resolve, stopped.reject);
+      const control = await openSocket(...args);
+      bound = control !== null && existsSync(socketPath);
+      return control;
+    });
+
+    try {
+      expect(await replica.start({ listen: false })).toBe(replica);
+      await stopped.promise;
+      expect(bound).toBe(true);
+      expect({
+        status: replica.status,
+        destroyed: destroyAll.mock.calls.length,
+        socket: existsSync(socketPath),
+      }).toEqual({
+        status: "stopped",
+        destroyed: 1,
+        socket: false,
+      });
+      expect(schedulerInit).not.toHaveBeenCalled();
+    } finally {
+      open.mockRestore();
+      await restore();
+    }
+  });
+
+  test("a start retried after a failed one answers each health ping once", async () => {
+    const { replica, schedulerInit, restore } = await listeningServer();
+    const ipc = fakeParentIpc();
+    const before = process.listeners("message");
+    schedulerInit.mockImplementationOnce(async () => {
+      throw new Error("schedule refused");
+    });
+    const ping = { type: "health.ping", nonce: "retried", sentAt: 0 };
+
+    try {
+      await expect(replica.start({ listen: false })).rejects.toThrow("schedule refused");
+      await replica.start({ listen: false });
+      for (const listener of process.listeners("message")) if (!before.includes(listener)) listener(ping, undefined);
+      expect(ipc.sent.filter((message) => (message as { nonce?: string }).nonce === ping.nonce)).toHaveLength(1);
+    } finally {
+      ipc.restore();
+      await restore();
     }
   });
 });

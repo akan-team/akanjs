@@ -1,29 +1,24 @@
 {
   "akan.size.file": {
     "fetch/client/fetchClient.ts": 1163,
-    "server/akanServer.ts": 1025,
     "server/di/diLifecycle.ts": 834,
     "server/resolver/signal.resolver.ts": 939,
     "server/ssrFromRscRenderer.tsx": 839,
-    "service/predefinedAdaptor/sql/SqlDocumentStore.ts": 1384,
     "signal/signalContext.ts": 983,
     "ui/Constant/Doc.tsx": 812
   },
   "akan.size.function": {
     "server/hmr/csrDevRuntime.ts#installCsrDevRuntime": 612,
-    "server/resolver/database.resolver.ts#DatabaseResolver.resolveDatabase": 381,
     "server/resolver/signal.resolver.ts#SignalResolver.resolveEndpoint": 163,
     "server/resolver/signal.resolver.ts#SignalResolver.resolveSlice": 151,
     "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 158,
-    "ui/Agent/Chat.tsx#DefaultChat": 409,
     "ui/BottomSheet.tsx#BottomSheet": 154,
-    "ui/Data/ListContainer.tsx#ListContainer": 341,
     "ui/Data/RefPicker.tsx#RefPicker": 169,
     "ui/Dialog/LegacyModal.tsx#LegacyModal": 210,
     "ui/Load/Units.tsx#Render": 215,
     "ui/Menu.tsx#DefaultMenu": 171,
     "ui/Model/EditModal.tsx#EditModal": 243,
-    "ui/Select.tsx#DefaultSelect": 379,
+    "ui/Select.tsx#DefaultSelect": 352,
     "webkit/RenderLayer.tsx#RenderLayer": 178
   },
   "akan.size.class": {
@@ -38,23 +33,18 @@
   },
   "akan.error.bare-error": {
     "server/akanApp.ts": 2,
-    "server/akanServer.ts": 14,
-    "server/artifact/builderRpc.ts": 3,
+    "server/akanServer.ts": 11,
     "server/di/diLifecycle.ts": 11,
     "server/di/resolveHierarchy.ts": 3,
     "server/di/utils.ts": 2,
     "server/hmr/csrDevRuntime.ts": 4,
-    "server/imageOptimizer.ts": 1,
     "server/logging/logControlSocket.ts": 1,
     "server/logging/logTailClient.ts": 6,
-    "server/mcp/McpRouter.ts": 1,
-    "server/mcp/McpUiSession.ts": 1,
     "server/migration/docPath.ts": 5,
     "server/migration/migrationParams.ts": 2,
     "server/migration/migrationRunner.ts": 1,
     "server/migration/migrationScope.ts": 2,
     "server/migration/migrationTable.ts": 6,
-    "server/oauth/OAuthClientIdMetadata.ts": 1,
     "server/ops/ageEncryption.ts": 12,
     "server/ops/migrateJobs.ts": 1,
     "server/ops/opsCommand.ts": 7,
@@ -66,12 +56,6 @@
     "server/rscHostRenderStream.ts": 6,
     "server/rscHostRequests.ts": 2,
     "server/rscWorkerHost.ts": 5,
-    "server/ssrFromRscRenderer.tsx": 1,
-    "server/tunnel/TunnelAgent.ts": 3,
-    "server/webRouter.ts": 1,
-    "service/predefinedAdaptor/compress.adaptor.ts": 2,
-    "service/predefinedAdaptor/solidQueue.adaptor.ts": 1,
-    "service/predefinedAdaptor/solidSqlite.ts": 1,
-    "service/predefinedAdaptor/storage.adaptor.ts": 1
+    "server/tunnel/TunnelAgent.ts": 3
   }
 }

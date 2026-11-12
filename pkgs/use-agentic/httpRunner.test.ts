@@ -198,6 +198,18 @@ describe("httpRunner streaming", () => {
     expect(events).toEqual([{ type: "error", message: "Agent turn failed: 502", code: "badGateway" }]);
   });
 
+  test("a body with no message is still named by its code, as the stream names it", async () => {
+    const answering = (status: number, body: unknown) =>
+      (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+    const turn = (fetcher: typeof fetch) => collect(httpRunner({ url: "/x", fetcher }).run(request()));
+    expect(await turn(answering(503, { code: "vendorQuota", statusCode: 503 }))).toEqual([
+      { type: "error", message: "Agent turn failed: 503", code: "vendorQuota" },
+    ]);
+    expect(await turn(answering(403, { error: "", code: "fileGrantRefused", statusCode: 403 }))).toEqual([
+      { type: "error", message: "Agent turn failed: 403", code: "fileGrantRefused" },
+    ]);
+  });
+
   test("a refusal answered before the stream opens is named by its own code, else by its status", async () => {
     const refusing = (status: number, body: unknown) =>
       (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
