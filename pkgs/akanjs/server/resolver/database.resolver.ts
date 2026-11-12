@@ -21,10 +21,6 @@ export class DatabaseResolver {
     });
   }
 
-  static #noDocument(refName: string, id: string) {
-    return new NoDocumentError(`No Document (${refName}): ${id}`, { lookup: { refName, id } });
-  }
-
   static resolveDatabase(
     constant: ConstantModel,
     database: DatabaseModel,
