@@ -1894,6 +1894,43 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({
     expect(callsOf({ ...sources, ...synced })).toEqual(expected);
   });
 
+  it("names a package's default that reaches the plug only as `default` after the plugged name", () => {
+    const callsOf = (client: string) => {
+      const sources: Record<string, string> = {
+        "libs/shared/srvkit/stripeClient.ts": client,
+        "libs/shared/srvkit/stripe.ts": `export { default as Stripe } from "./stripeClient";
+`,
+        "apps/demo/lib/memo/memo.service.ts": `import { Stripe } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({ stripe: plug(Stripe) })) {
+  async pay() {
+    return this.stripe.charge();
+  }
+}
+`,
+      };
+      const synced: Record<string, string> = {
+        ...sources,
+        "libs/shared/srvkit/index.ts": facetBarrelOf("srvkit", ["stripe.ts", "stripeClient.ts"], []),
+      };
+      return [sources, synced].map((given) => {
+        const index = new AkanIndex({ ts, root });
+        for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+        return edgesOf(
+          index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+          "calls",
+        );
+      });
+    };
+    const located = ["method:apps/demo:memo.pay -charge-> adaptor:stripe-sdk:Stripe"];
+    for (const client of [
+      `import Stripe from "stripe-sdk";\nexport { Stripe as default };\n`,
+      `export { default } from "stripe-sdk";\n`,
+    ])
+      expect(callsOf(client)).toEqual([located, located]);
+  });
+
   it("reads a facet folder with no index as the barrel `akan sync` writes, so the Change Map names the graph view's adaptor", () => {
     const sources: Record<string, string> = {
       "libs/shared/srvkit/stripe.ts": `export { Stripe } from "stripe-sdk";
@@ -2197,7 +2234,7 @@ export * from "../vendor/inner";
       expect(starredCallsOf(passing)).toEqual(["method:apps/demo:memo.pay -charge-> adaptor:libs/util:Stripe"]);
   });
 
-  it("takes a top-level export of the name in every binding form as the module's own, over its `export *`, and a package's default import as that package's re-export", () => {
+  it("takes a top-level export of the name in every binding form as the module's own, over its `export *`, and a package's default import as its named re-export", () => {
     for (const own of [
       `export const { Stripe } = makeAdaptors();\n`,
       `export const [Stripe] = makeAdaptors();\n`,
@@ -2206,6 +2243,7 @@ export * from "../vendor/inner";
       `import * as Legacy from "./legacy";\nexport import Stripe = Legacy.Stripe;\n`,
       `export function Stripe() {}\n`,
       `import * as Stripe from "stripe-sdk";\nexport { Stripe };\n`,
+      `import * as Stripe from "stripe-sdk";\nexport{Stripe};\n`,
       `import Stripe from "../vendor/stripe";\nexport { Stripe };\n`,
     ])
       expect(starredCallsOf(own)).toEqual(["method:apps/demo:memo.pay -charge-> adaptor:libs/shared:Stripe"]);

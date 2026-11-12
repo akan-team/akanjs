@@ -315,7 +315,6 @@ export class GuardResolver {
     return found;
   }
 
-  //? A guard is followed by the name it is declared under, which a default import does not carry.
   #reexportIn(source: TS.SourceFile, name: string, takesPackageDefault = false): Reexport | null {
     const { ts, reader } = this.#source;
     for (const statement of source.statements) {
