@@ -95,6 +95,8 @@ export class RscFlightStream {
         }
         const { value, done } = await pendingRead;
         pendingRead = null;
+        if (options.requestId && this.#props.isCancelled(options.requestId))
+          return await this.#cancelWith(reader, null, true);
         this.#readProbe();
         if (
           this.#controlRef.current &&

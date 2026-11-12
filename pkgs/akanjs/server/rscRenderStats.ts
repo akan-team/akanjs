@@ -7,7 +7,6 @@ export interface RouteRenderStats {
 
 export class RscRenderStats {
   renderCount = 0;
-  inFlightRenderCount = 0;
   lastRenderedPath?: string;
   lastRenderKind?: string;
   lastRenderRouteId?: string;

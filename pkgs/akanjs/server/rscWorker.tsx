@@ -354,7 +354,7 @@ export class RscRenderer {
     const metrics = await ProcessMetricsCollector.collect({
       role: "rsc-worker",
       rscRenderCount: this.#stats.renderCount,
-      rscInFlightRenderCount: this.#stats.inFlightRenderCount,
+      rscInFlightRenderCount: this.#flights.inFlightCount,
       rscLastRenderedPath: this.#stats.lastRenderedPath,
       rscLastRenderKind: this.#stats.lastRenderKind,
       rscLastRenderRouteId: this.#stats.lastRenderRouteId,

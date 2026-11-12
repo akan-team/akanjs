@@ -7,7 +7,7 @@ export class RscFlightRenderer {
   readonly #logger: Logger;
   readonly #send: (message: unknown) => void;
   readonly #activeRenderReaders = new Map<string, ReadableStreamDefaultReader<Uint8Array>>();
-  readonly #cancelledRenderRequests = new Set<string>();
+  readonly #inFlightRenders = new Map<string, { cancelled: boolean }>();
 
   constructor(logger: Logger, send: (message: unknown) => void) {
     this.#logger = logger;
@@ -23,7 +23,7 @@ export class RscFlightRenderer {
       {
         logger: this.#logger,
         send: this.#send,
-        isCancelled: (requestId) => this.#cancelledRenderRequests.has(requestId),
+        isCancelled: (requestId) => this.isCancelled(requestId),
         track: (requestId, reader) => this.#activeRenderReaders.set(requestId, reader),
         untrack: (requestId) => this.#activeRenderReaders.delete(requestId),
         reportRenderError: (error, pathname) => this.#reportRenderError(error, pathname),
@@ -33,22 +33,32 @@ export class RscFlightRenderer {
     return stream.render(element, clientManifest);
   }
 
+  get inFlightCount(): number {
+    return this.#inFlightRenders.size;
+  }
+
+  begin(requestId: string): void {
+    this.#inFlightRenders.set(requestId, { cancelled: false });
+  }
+
   isCancelled(requestId: string): boolean {
-    return this.#cancelledRenderRequests.has(requestId);
+    return !!this.#inFlightRenders.get(requestId)?.cancelled;
   }
 
   handleCancel(requestId: string): void {
-    this.#cancelledRenderRequests.add(requestId);
+    const render = this.#inFlightRenders.get(requestId);
+    if (!render) return;
+    render.cancelled = true;
     const reader = this.#activeRenderReaders.get(requestId);
     if (!reader) return;
     void reader.cancel().catch(() => {
-      // Best-effort: the render loop also checks `#cancelledRenderRequests` before sending more chunks.
+      // Best-effort: the render loop also checks `#inFlightRenders` before sending more chunks.
     });
   }
 
   release(requestId: string): void {
     this.#activeRenderReaders.delete(requestId);
-    this.#cancelledRenderRequests.delete(requestId);
+    this.#inFlightRenders.delete(requestId);
   }
 
   // Past the first Flight chunk only a late redirect reaches the host, so this log is the only record of the failure.

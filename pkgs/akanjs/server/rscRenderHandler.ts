@@ -127,7 +127,7 @@ export class RscRenderHandler {
     const { requestId, url, method = "GET", headers = {} } = msg;
     const startedAt = Date.now();
     this.#stats.renderCount += 1;
-    this.#stats.inFlightRenderCount += 1;
+    this.#flights.begin(requestId);
     const activeRoute: RscActiveRoute = { url: null, match: null, request: null };
     try {
       const request = new Request(url, { method, headers });
@@ -237,7 +237,6 @@ export class RscRenderHandler {
       await this.#fallbacks.answerThrown(msg, activeRoute, error);
     } finally {
       this.#flights.release(requestId);
-      this.#stats.inFlightRenderCount = Math.max(0, this.#stats.inFlightRenderCount - 1);
     }
   }
 
