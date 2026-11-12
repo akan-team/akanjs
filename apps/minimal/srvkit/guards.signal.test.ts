@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, mock, spyOn } from "bun:test";
 import { AkanNotFoundError, RouteGuards } from "akanjs/client";
 import { Logger } from "akanjs/common";
+import { createRequestStore, requestStorage } from "akanjs/fetch";
 import { getOrSetupSignalTestFetch } from "akanjs/test";
 
 import type { fetch as minimalFetch } from "../lib/useServer";
@@ -101,6 +102,14 @@ describe("LocalOrEdge", () => {
     spyOn(LocalOrEdge.prototype, "canPass").mockReturnValue(false);
     expect(await fetch.isMemoOpen()).toBe(false);
     expect(await tripsLinks()).toEqual(["/trips/detail"]);
+  });
+
+  it("renders the trips page without reading the visitor's request, so the route result cache can keep it", async () => {
+    const headers = { authorization: "Bearer visitor", cookie: "jwt=session", "x-real-ip": "203.0.113.5" };
+    const store = createRequestStore(new Request("http://localhost/en/trips", { headers }));
+    const links = await requestStorage?.run(store, tripsLinks);
+    expect(links).toContain("/memo");
+    expect(store.dynamicUsage).toEqual({ headers: false, cookies: false });
   });
 
   it("links the trips page to the trip notes when the memo check fails", async () => {

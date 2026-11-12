@@ -46,6 +46,12 @@ export interface FetchPolicy<_Returns = unknown> {
    * pages a link prefetched survive it, where any other write sends them again.
    */
   keepsReads?: boolean;
+  /**
+   * `false` sends a query made while a page renders without the visitor's session and address, so it answers as to a
+   * stranger and the page stays in the route result cache. Only for an endpoint that answers every caller alike; an
+   * address-keyed rate limit counts the call under the server's own address. A browser's call is unchanged.
+   */
+  forwardVisitor?: boolean;
 }
 
 export type SnakeCase<S extends string> = S extends `${infer T}_${infer U}` ? `${Lowercase<T>}_${SnakeCase<U>}` : S;

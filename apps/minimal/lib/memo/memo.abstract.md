@@ -15,7 +15,8 @@ stored through the util lib's blob storage.
   `showTripNotes` and `showTripNote` are listed only where memo is open, at one `isMemoOpen` call each per listing,
   and the detail guard reads `memoId` only after that check, so where memo is open `showTripNote` stays listed and its
   call decides. The trips page's `showTrips` load hides its Trip notes link only on `false`: a call that fails, or
-  that has not answered within 3 s, shows it.
+  that has not answered within 3 s, shows it. It asks without the visitor's session (`forwardVisitor: false`), so
+  `/trips` stays in the route result cache, a render whose check failed included, until the entry expires.
 - `imageUrl` is written only by `attachMemoImage`, as a URL relative to the server that stored the image; a page on
   another origin resolves it against the server (`resolveServerUrl`).
 - An attached image is a PNG, JPEG, WebP or GIF of at most 5 MB, stored under a name made from that type; the uploaded
