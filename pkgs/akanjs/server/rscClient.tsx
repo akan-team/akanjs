@@ -163,7 +163,8 @@ function commitRscPatchNavigation({
     },
     //? Not a navigation, which the server answers with a patch again, laid before the same late row arrives.
     () => {
-      if (currentSegmentTree === patch.tree && !pendingRequest) void globalThis.__AKAN_RSC_REFRESH__?.();
+      if (currentSegmentTree === patch.tree && !pendingRequest && !documentNavigationFallbackInFlight)
+        void globalThis.__AKAN_RSC_REFRESH__?.();
     },
   );
   if (!committed) return false;

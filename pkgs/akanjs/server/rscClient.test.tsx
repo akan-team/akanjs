@@ -1555,6 +1555,31 @@ describe("rscClient patch cache", () => {
     expect(requestsOf("/lsh/b")).toEqual([true, false]);
   });
 
+  test("a redirect a patch's stream carries after it was laid moves nothing while a document load takes over", async () => {
+    const redirect = lateRow("AKAN_REDIRECT;replace;307;%2Fldf%2Flogin");
+    const release = servedWithLateRows("ldf", [redirect], preStreamRedirectTo("/ldf/login"));
+    served.set("/ldf/broken", () => new Response("down", { status: 500 }));
+    const assign = spyOn(window.location, "assign").mockImplementation(() => undefined);
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await navigate("/ldf/a");
+      await navigate("/ldf/b");
+      await navigate("/ldf/broken");
+      expect(assign).toHaveBeenCalledWith(`${origin}/ldf/broken`);
+
+      await act(async () => {
+        release();
+        await sleep(10);
+      });
+
+      expect(requestsOf("/ldf/b")).toEqual([true]);
+      expect(window.location.pathname).toBe("/ldf/b");
+    } finally {
+      assign.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
   test("React's dev-only error row a patch's stream carries after it was laid reloads nothing", async () => {
     const release = servedWithLateRows("ldb", [lateRow("")]);
     await navigate("/ldb/a");
