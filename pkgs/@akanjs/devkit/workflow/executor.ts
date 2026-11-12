@@ -4,15 +4,12 @@ import type { Sys, Workspace } from "../commandDecorators";
 import type { AkanModuleContext } from "../context/akanContext";
 import { AppExecutor, LibExecutor } from "../executors";
 import { createWorkflowApplyReport, workflowCommandsForPlan } from "./artifacts";
+import { inspectConstantStructure } from "./constantSource";
+import { inspectDictionaryStructure } from "./dictionarySource";
+import { normalizeFieldType } from "./fieldExpression";
+import { insertionIndexForFieldOrder } from "./fieldOrder";
 import { buildAkanModuleContextIndex } from "./moduleIndex";
-import {
-  insertionIndexForFieldOrder,
-  inspectConstantStructure,
-  inspectDictionaryStructure,
-  moduleComponentName,
-  moduleSourcePaths,
-  normalizeFieldType,
-} from "./source";
+import { moduleComponentName, moduleSourcePaths } from "./modulePaths";
 import type {
   PrimitiveChangedFile,
   PrimitiveGeneratedFile,
