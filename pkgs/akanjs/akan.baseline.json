@@ -32,7 +32,7 @@
     "common/Logger.ts#Logger": 65,
     "fetch/client/fetchClient.ts#FetchClient": 92,
     "fetch/client/wsClient.ts#WsClient": 65,
-    "server/akanServer.ts#AkanServer": 98,
+    "server/akanServer.ts#AkanServer": 92,
     "server/rscWorker.tsx#RscRenderer": 72,
     "signal/signalContext.ts#SignalContext": 72,
     "store/storeInstance.ts#StoreInstance": 68
