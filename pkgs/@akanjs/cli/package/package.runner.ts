@@ -154,7 +154,7 @@ export class PackageRunner extends runner("package") {
     return { name, subpath: subpath ? `./${subpath}` : "." };
   }
 
-  // Test files carry specifiers as fixture data, and comment lines document subpath imports in prose: both skipped.
+  // Tests and `__fixtures__` hold specifiers as data, and comment lines name subpaths in prose: all skipped.
   async #collectDistAkanImports(distPath: string, packageNames: Iterable<string>) {
     const alternatives = [...new Set(packageNames)].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const specifierPattern = new RegExp(`["'](${alternatives.join("|")})((?:/[^"'\\s]*)?)["']`, "g");
@@ -163,7 +163,7 @@ export class PackageRunner extends runner("package") {
     for await (const scanned of glob.scan({ cwd: distPath })) {
       const relative = scanned.split(path.sep).join("/");
       if (relative.includes("node_modules/") || relative.endsWith(".d.ts")) continue;
-      if (/\.(test|spec)\.[a-z]+$/.test(relative)) continue;
+      if (/\.(test|spec)\.[a-z]+$/.test(relative) || relative.includes("__fixtures__/")) continue;
       const source = await Bun.file(`${distPath}/${relative}`).text();
       for (const line of source.split("\n")) {
         const trimmed = line.trimStart();
@@ -202,9 +202,8 @@ export class PackageRunner extends runner("package") {
     throw new Error(
       `[package] ${pkg.name} dist imports ${failures.length} subpath(s) no consumer can resolve:\n` +
         `${failures.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join("\n")}\n` +
-        `Add the missing "exports" entries: a bare file facet needs "./*": "./*.ts", a directory facet ` +
-        `needs its own "./name": "./name/index.ts", and "./*.ts": "./*.ts" keeps an already-suffixed ` +
-        `specifier from gaining a second extension.`,
+        `Import a named entry instead, or add one: a file needs "./dir/name": "./dir/name.ts" and a directory ` +
+        `facet "./name": "./name/index.ts". A wildcard would publish every file behind it.`,
     );
   }
 

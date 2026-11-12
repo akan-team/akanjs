@@ -41,6 +41,7 @@ const scanModuleSpecifiers = (source: string, filePath: string, includeExports: 
   return importSpecifiers;
 };
 
+/** @deprecated Nothing in akanjs uses it; removed in a later minor. */
 export const parseTsConfig = (tsConfigPath: string = "./tsconfig.json") => {
   const configFile = ts.readConfigFile(tsConfigPath, (path) => {
     return ts.sys.readFile(path);
@@ -73,12 +74,15 @@ const collectFiles = (constantFilePath: string, parsedConfig: ts.ParsedCommandLi
   return { allFilesToAnalyze, analyzedFiles };
 };
 
+/** @deprecated Nothing in akanjs uses it; removed in a later minor. */
 export const collectImportedFiles = (constantFilePath: string, parsedConfig: ts.ParsedCommandLine) =>
   collectFiles(constantFilePath, parsedConfig, false);
 
+/** @deprecated Nothing in akanjs uses it; removed in a later minor. */
 export const collectExportedFiles = (constantFilePath: string, parsedConfig: ts.ParsedCommandLine) =>
   collectFiles(constantFilePath, parsedConfig, true);
 
+/** @deprecated Nothing in akanjs uses it; removed in a later minor. */
 export const createTsProgram = (filePaths: Set<string>, options: ts.CompilerOptions) => {
   const spinner = ora("Creating TypeScript program for all files...");
   spinner.start();
@@ -94,6 +98,7 @@ export const createTsProgram = (filePaths: Set<string>, options: ts.CompilerOpti
   };
 };
 
+/** @deprecated Nothing in akanjs uses it; removed in a later minor. */
 export const createSymbolCache = (checker: ts.TypeChecker) => {
   const symbolCache = new Map<string, ts.Symbol | undefined>();
 
@@ -108,6 +113,7 @@ export const createSymbolCache = (checker: ts.TypeChecker) => {
   };
 };
 
+/** @deprecated Nothing in akanjs uses it; removed in a later minor. */
 export const analyzeProperties = (filesToAnalyze: Set<string>, program: ts.Program, checker: ts.TypeChecker) => {
   const propertyMap = new Map<
     string,
@@ -226,6 +232,7 @@ export const analyzeProperties = (filesToAnalyze: Set<string>, program: ts.Progr
   return propertyMap;
 };
 
+/** @deprecated Nothing in akanjs uses it; removed in a later minor. */
 export const getRelatedCnsts = (constantFilePath: string) => {
   const parsedConfig = parseTsConfig();
   const { allFilesToAnalyze } = collectImportedFiles(constantFilePath, parsedConfig);

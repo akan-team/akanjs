@@ -226,8 +226,8 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       this.#resolvedSpecifierCache,
       cacheKey,
       async () => {
-        if (spec.startsWith(".") || spec.startsWith("/")) {
-          const abs = spec.startsWith("/") ? spec : path.resolve(importerDir, spec);
+        if (spec.startsWith(".") || path.isAbsolute(spec)) {
+          const abs = path.resolve(importerDir, spec);
           return await this.#resolveFileCandidate(abs);
         }
         const pkg = await this.#resolvePackage(spec);

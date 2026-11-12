@@ -1,5 +1,5 @@
-import type { FontOptimizer } from "@akanjs/devkit/frontendBuild";
 import type { BaseBuildArtifact, CssPayload, HmrTrace, PagesBundlePayload } from "akanjs/server";
+import type { FontOptimizer } from "../frontendBuild";
 
 export type OptimizedFonts = Awaited<ReturnType<FontOptimizer["optimize"]>>;
 

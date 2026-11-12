@@ -9,8 +9,6 @@ export type {
   AkanGraphLocation,
   AkanGraphNode,
   AkanGraphNodeKind,
-} from "akanjs/common/akanGraph.ts";
-export type {
   FrameworkChannel,
   FrameworkClass,
   FrameworkFacet,
@@ -19,7 +17,7 @@ export type {
   FrameworkMessage,
   FrameworkPackage,
   FrameworkSite,
-} from "akanjs/common/frameworkMap.ts";
+} from "akanjs/common";
 export { type AkanGraphChanges, AkanGraphDiff } from "./akanGraphDiff";
 export { type AkanHover, AkanIndex, type AkanIndexOptions, type AkanRenameEdit, type AkanSourceKey } from "./akanIndex";
 export { type AkanAst, createAst, type Ts } from "./ast";

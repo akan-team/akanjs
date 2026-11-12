@@ -428,14 +428,9 @@ describe("route client store bootstrap", () => {
     await write(uiEntry, 'export { ClientPathWrapper } from "./System/Client";\n');
     await write(clientEntry, '"use client";\nexport const ClientPathWrapper = () => null;\n');
 
-    const entryFiles = new Map([
-      ["akanjs/ui", uiEntry],
-      ["akanjs/ui/System/Client.tsx", clientEntry],
-    ]);
     const discovery = new GraphClientEntryDiscovery({ barrelImports: ["akanjs/ui"] }, async (specifier) => {
-      const entryFile = entryFiles.get(specifier);
-      if (!entryFile) return null;
-      return { pkgName: specifier, entryFile, pkgDir: path.dirname(entryFile), preserveFilePath: true };
+      if (specifier !== "akanjs/ui") return null;
+      return { pkgName: specifier, entryFile: uiEntry, pkgDir: path.dirname(uiEntry), preserveFilePath: true };
     });
 
     expect(await discovery.discover([seed])).toEqual([clientEntry]);

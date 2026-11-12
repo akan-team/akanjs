@@ -52,7 +52,6 @@ export {
   type DocumentModel,
   type FieldState,
   type GetPlainObject,
-  MAX_INT,
   MAX_PAGE_SIZE,
   type NonFunctionalKeys,
   type ProtoAppInfo,

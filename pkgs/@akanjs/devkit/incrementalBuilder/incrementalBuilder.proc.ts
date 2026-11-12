@@ -1,23 +1,5 @@
 import { rm } from "node:fs/promises";
 import path from "node:path";
-// Module paths, never a barrel: the devkit and `frontendBuild` barrels would hold tailwindcss (~40MB), ssh2, ink
-// and the cloud stack for the whole dev session (`entryModuleGraph.test.ts` enforces it).
-import { ApplicationBuildReporter } from "@akanjs/devkit/app/applicationBuildReporter";
-import type { App } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, type PageRoot, WorkspaceExecutor } from "@akanjs/devkit/executors";
-import { AutoImportSync } from "@akanjs/devkit/frontendBuild/autoImportSync";
-import type { ClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientBuildTypes";
-import { GraphClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientEntryDiscovery";
-import { CsrDevBundler } from "@akanjs/devkit/frontendBuild/csrDevBundler";
-import { CsrDevPatcher } from "@akanjs/devkit/frontendBuild/csrDevPatcher";
-import { DevChangePlanner } from "@akanjs/devkit/frontendBuild/devChangePlanner";
-import { DevGeneratedIndexSync } from "@akanjs/devkit/frontendBuild/devGeneratedIndexSync";
-import { HmrWatcher } from "@akanjs/devkit/frontendBuild/hmrWatcher";
-import { RouteClientBuilder } from "@akanjs/devkit/frontendBuild/routeClientBuilder";
-import { ServerGraphFile } from "@akanjs/devkit/frontendBuild/serverGraphFile";
-import { SsrDevBundler } from "@akanjs/devkit/frontendBuild/ssrDevBundler";
-import { WatchRootResolver } from "@akanjs/devkit/frontendBuild/watchRootResolver";
-import { CodegenLock } from "@akanjs/devkit/workspace/codegenLock";
 import { Logger } from "akanjs/common";
 import type {
   BaseBuildArtifact,
@@ -32,6 +14,24 @@ import type {
   HmrTrace,
 } from "akanjs/server";
 import { CSR_DEV_PATCHING_MARKER } from "akanjs/server/hmr/csrDevManifest";
+// Module paths, never a barrel: the devkit and `frontendBuild` barrels would hold tailwindcss (~40MB), ssh2, ink
+// and the cloud stack for the whole dev session (`entryModuleGraph.test.ts` enforces it).
+import { ApplicationBuildReporter } from "../app/applicationBuildReporter";
+import type { App } from "../commandDecorators";
+import { AppExecutor, type PageRoot, WorkspaceExecutor } from "../executors";
+import { AutoImportSync } from "../frontendBuild/autoImportSync";
+import type { ClientEntryDiscovery } from "../frontendBuild/clientBuildTypes";
+import { GraphClientEntryDiscovery } from "../frontendBuild/clientEntryDiscovery";
+import { CsrDevBundler } from "../frontendBuild/csrDevBundler";
+import { CsrDevPatcher } from "../frontendBuild/csrDevPatcher";
+import { DevChangePlanner } from "../frontendBuild/devChangePlanner";
+import { DevGeneratedIndexSync } from "../frontendBuild/devGeneratedIndexSync";
+import { HmrWatcher } from "../frontendBuild/hmrWatcher";
+import { RouteClientBuilder } from "../frontendBuild/routeClientBuilder";
+import { ServerGraphFile } from "../frontendBuild/serverGraphFile";
+import { SsrDevBundler } from "../frontendBuild/ssrDevBundler";
+import { WatchRootResolver } from "../frontendBuild/watchRootResolver";
+import { CodegenLock } from "../workspace/codegenLock";
 import type { BuildBatchNeed, BuildBatchRequest, BuildBatchResult, OptimizedFonts } from "./buildBatchProtocol";
 import { BuildBatchRunner } from "./buildBatchRunner";
 import { BuilderChannel } from "./builderChannel";

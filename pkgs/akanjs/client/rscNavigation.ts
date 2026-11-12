@@ -37,10 +37,3 @@ export const prefetchRsc = (href: string, priority?: PrefetchPriority) =>
 export const refreshRsc = () => {
   return globalThis.__AKAN_RSC_REFRESH__?.();
 };
-
-/** @deprecated Not a hook; import `navigateRsc`, `clearRscNavigationCache` and `isRscNavigationFromCache`. */
-export const useRscNavigation = () => ({
-  clearCache: clearRscNavigationCache,
-  isFromCache: isRscNavigationFromCache,
-  navigate: navigateRsc,
-});

@@ -20,13 +20,3 @@ export const originText = (origin: string[]) => {
   const bases = origin.slice(0, -1).reverse().join(", ");
   return bases ? { en: `${owner} (extends ${bases})`, ko: `${owner} (${bases} 확장)` } : { en: owner, ko: owner };
 };
-
-/** @deprecated Unused by akanjs, and removed in a later minor. */
-export const groupByOwner = <Item>(items: Item[], originOf: (item: Item) => string[] | undefined, order: string[]) => {
-  const groups = new Map<string, Item[]>(order.map((owner) => [owner, []]));
-  for (const item of items) {
-    const owner = ownerOf(originOf(item)) ?? "";
-    groups.set(owner, [...(groups.get(owner) ?? []), item]);
-  }
-  return [...groups.entries()].filter(([, grouped]) => grouped.length);
-};

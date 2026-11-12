@@ -37,7 +37,7 @@ export {
   useFormTools,
   useRelationFieldTool,
 } from "./agentic";
-export { type BaseSearchParamsState, BaseStore, base, getBaseSearchParam, RootStore, st } from "./baseSt";
+export { type BaseSearchParamsState, BaseStore, base, RootStore, st } from "./baseSt";
 export {
   AgentBridge,
   AgentContext,
@@ -88,8 +88,6 @@ export {
   type DraftMeta,
   draftMetaOf,
   evaluateInitializers,
-  getSearchParam,
-  isStateBuilderMarker,
   makeDefaultFactory,
   mergeDerivedMeta,
   type PersistSessionMeta,

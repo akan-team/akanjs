@@ -494,7 +494,7 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(rewritten).toBe('import { BottomInset } from "akanjs/ui/Layout/BottomInset";\n');
   });
 
-  test("preserves concrete file paths for package-exported barrels", async () => {
+  test("writes an installed package's targets as files, which its exports map does not have to reach", async () => {
     const root = await makeTempRoot();
     await write(
       path.join(root, "node_modules/akanjs/ui/index.ts"),
@@ -520,8 +520,8 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
 
     expect(rewritten).toBe(
       `${[
-        'import { Link } from "akanjs/ui/Link/index.tsx";',
-        'import { System } from "akanjs/ui/System/index.tsx";',
+        `import { Link } from ${JSON.stringify(path.join(root, "node_modules/akanjs/ui/Link/index.tsx"))};`,
+        `import { System } from ${JSON.stringify(path.join(root, "node_modules/akanjs/ui/System/index.tsx"))};`,
       ].join("\n")}\n`,
     );
   });
