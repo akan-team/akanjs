@@ -185,7 +185,10 @@ export class DocumentWriter {
 
   async #pickByIdForWrite(id: string) {
     const doc = await this.#findOneForWrite({ id } as DocumentQuery);
-    if (!doc) throw new NoDocumentError(`No Document (${this.#store.table}): ${id}`);
+    if (!doc)
+      throw new NoDocumentError(`No Document (${this.#store.table}): ${id}`, {
+        lookup: { refName: this.#store.table, id },
+      });
     return doc;
   }
 

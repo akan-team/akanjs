@@ -2061,7 +2061,7 @@ export declare class WebSocketRedisAdaptor extends WebSocketRedisAdaptor_base im
     onChange(handler: LiveChangeHandler): void;
     setEventHandler(handler: WsRedisEventHandler): void;
     clearEventHandler(): void;
-    onRecovered(handler: () => void): void;
+    onRecovered(handler: (rooms: string[]) => void): void;
     joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string, { live }?: WebsocketJoinOption): Promise<void>;
     leaveRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
     leaveAllRooms(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
@@ -2073,7 +2073,7 @@ export interface WebsocketAdaptor {
     publish(roomId: string, data: unknown, option?: WebsocketPublishOption): void;
     setEventHandler(handler: WsRedisEventHandler): void;
     clearEventHandler(): void;
-    onRecovered?(handler: () => void): void;
+    onRecovered?(handler: (rooms: string[]) => void): void;
     publishChange?(change: LiveChange): void;
     onChange?(handler: LiveChangeHandler): void;
     reportLiveModels?(models: string[]): void;

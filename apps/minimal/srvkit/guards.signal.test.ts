@@ -62,13 +62,16 @@ describe("LocalOrEdge", () => {
     mock.restore();
   });
 
-  it("lets the memo pages open on a server it admits, and answers a missing memo not-found", async () => {
+  it("lets the memo pages open on a server it admits, and answers a missing memo not-found without an error line", async () => {
     expect(await fetch.memo(memoId)).toMatchObject({ id: memoId });
     await guardsOf(memoPage, {});
     await guardsOf(memoViewPage, { memoId });
-    await expect(guardsOf(memoViewPage, { memoId: "000000000000000000000000" })).rejects.toBeInstanceOf(
-      AkanNotFoundError,
-    );
+    const errors = await errorsLoggedBy(async () => {
+      await expect(guardsOf(memoViewPage, { memoId: "000000000000000000000000" })).rejects.toBeInstanceOf(
+        AkanNotFoundError,
+      );
+    });
+    expect(errors).toEqual([]);
   });
 
   it("answers the memo pages not-found on a server it refuses, as a built server does, without a refused call", async () => {
@@ -99,4 +102,20 @@ describe("LocalOrEdge", () => {
     expect(await fetch.isMemoOpen()).toBe(false);
     expect(await tripsLinks()).toEqual(["/trips/detail"]);
   });
+
+  it("links the trips page to the trip notes when the memo check fails", async () => {
+    spyOn(LocalOrEdge.prototype, "canPass").mockImplementation(() => {
+      throw new Error("operation mode unreadable");
+    });
+    await expect(fetch.isMemoOpen()).rejects.toThrow();
+    expect(await tripsLinks()).toContain("/memo");
+  });
+
+  it("links the trips page to the trip notes when the memo check outlasts its 3 s deadline", async () => {
+    const answersLate = () => new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 4_000));
+    spyOn(LocalOrEdge.prototype, "canPass").mockImplementation(answersLate as unknown as () => boolean);
+    const startedAt = performance.now();
+    expect(await tripsLinks()).toContain("/memo");
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(2_500);
+  }, 10_000);
 });
