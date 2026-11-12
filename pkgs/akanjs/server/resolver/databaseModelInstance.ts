@@ -27,7 +27,7 @@ import {
   type DocumentStore,
 } from "akanjs/service";
 import { Exception } from "akanjs/signal";
-import { modelFacadeOf } from "./modelFacade";
+import { missedById, modelFacadeOf } from "./modelFacade";
 import { declaredLoaderOf, idLoaderOf } from "./modelLoaders";
 import { schemaListenerOf } from "./modelSchema";
 import { timedQuery, touchArgs } from "./timedQuery";
@@ -139,7 +139,7 @@ export const databaseModelInstanceOf = (
     }
     async __get(id: string) {
       const doc = await this.__loader.load(id);
-      if (!doc) throw new NoDocumentError(`No Document (${database.refName}): ${id}`);
+      if (!doc) throw missedById(database.refName, id);
       return doc;
     }
     async [names.getModel](id: string) {

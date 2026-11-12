@@ -11,6 +11,9 @@ import type { DocumentStore, UpsertByIdOptions } from "akanjs/service";
 import type { SchemaListener } from "./modelSchema";
 import { timedQuery, touchArgs, touchOf } from "./timedQuery";
 
+export const missedById = (refName: string, id: string) =>
+  new NoDocumentError(`No Document (${refName}): ${id}`, { lookup: { refName, id } });
+
 export const modelFacadeOf = (
   store: DocumentStore,
   modelName: string,
@@ -84,7 +87,7 @@ export const modelFacadeOf = (
   const pickById = async (id: string | undefined, projection?: any) => {
     if (!id) throw new NoDocumentError("No Document ID");
     const doc = await timedQuery(() => store.findOne({ id }, { select: projection }));
-    if (!doc) throw new NoDocumentError(`No Document (${modelName}): ${id}`);
+    if (!doc) throw missedById(modelName, id);
     return doc;
   };
   return Object.assign(Model, {

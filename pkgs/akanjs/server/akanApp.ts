@@ -296,7 +296,7 @@ export class AkanApp {
       case "build-route":
       case "build-csr":
       case "build-graph":
-        this.#host.forwardBuilderReq(idx, message);
+        if (child) this.#host.forwardBuilderReq(child, message);
         return;
     }
   }

@@ -47,10 +47,13 @@ export class BuildBatchRunner {
       env: process.env,
       stdio: ["ignore", "inherit", "inherit"],
       serialization: "advanced",
-      ipc: (message: BuildBatchMessage | BuilderMessage) => {
+      ipc: (message: BuildBatchMessage | BuilderMessage, worker) => {
         if (!message || typeof message !== "object") return;
-        if (message.type === "build-batch-result") result = message.data;
-        else {
+        if (message.type === "build-batch-result") {
+          result = message.data;
+          // On Bun 1.4 a worker that exits within ms of spawning can lose everything it sent: it exits on this release.
+          worker.disconnect();
+        } else {
           if (message.type === "build-status") reported.set(message.data.phase, message.data.message);
           onMessage(message);
         }

@@ -107,6 +107,7 @@ export class ChildSupervisor {
   }
 
   #handleChildExit(idx: number, proc: Bun.Subprocess<"ignore", "pipe", "pipe">, code: number | null) {
+    this.#host.dropChild(proc);
     const child = this.#children.get(idx);
     if (!child || child.proc !== proc) return;
     if (child.status === "crashed") return;

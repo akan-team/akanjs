@@ -745,7 +745,7 @@ export class SqlDocumentStore {
 
   async pickById(id: string) {
     const doc = await this.findOne({ id } as DocumentQuery);
-    if (!doc) throw new NoDocumentError(`No Document (${this.table}): ${id}`);
+    if (!doc) throw new NoDocumentError(`No Document (${this.table}): ${id}`, { lookup: { refName: this.table, id } });
     return doc;
   }
 
@@ -1061,7 +1061,7 @@ export class SqlDocumentStore {
 
   private async pickByIdForWrite(id: string) {
     const doc = await this.findOneForWrite({ id } as DocumentQuery);
-    if (!doc) throw new NoDocumentError(`No Document (${this.table}): ${id}`);
+    if (!doc) throw new NoDocumentError(`No Document (${this.table}): ${id}`, { lookup: { refName: this.table, id } });
     return doc;
   }
 
