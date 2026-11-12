@@ -440,7 +440,6 @@ describe("enum arg type inference", () => {
 
 describe("a Sys that defaults to the only app", () => {
   const ownIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
-  const ownCwd = process.cwd();
   const asked: unknown[] = [];
   let answer = "";
   const setTTY = (isTTY: boolean | undefined) =>
@@ -456,7 +455,6 @@ describe("a Sys that defaults to the only app", () => {
   });
   afterEach(() => {
     CommandContainer.clear();
-    process.chdir(ownCwd);
     if (ownIsTTY) Object.defineProperty(process.stdin, "isTTY", ownIsTTY);
     else Reflect.deleteProperty(process.stdin, "isTTY");
   });
@@ -479,10 +477,8 @@ describe("a Sys that defaults to the only app", () => {
     return meta;
   };
   const track = tempRoots();
-  //? From the workspace root, as the CLI runs: getDirInModule stats its entries relative to the process directory.
   const moduleWorkspace = async () => {
     const { root, workspace } = track(await makeCliTempWorkspace());
-    process.chdir(root);
     for (const [sys, name] of [
       ["apps/web", "card"],
       ["libs/util", "photo"],
