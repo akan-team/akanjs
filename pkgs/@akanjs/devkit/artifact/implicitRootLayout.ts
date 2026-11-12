@@ -228,6 +228,7 @@ ${layoutBinding}  return `;
   //? optional peers (react-icons) an app drawing none of those components never installs.
   //? The root level's boundary sits inside System.Provider, beside the bridge that starts the router its retry calls.
   //? A CSR render has none: RenderLayer draws a failed level there, and a route control also carries a digest.
+  //? Its export is undefined there too, so the `import * as root` of an MCP App view, built as CSR, drops it.
   const source = opts.includeSystemProvider
     ? `import type { LayoutModule, LayoutProps, PageProps } from "akanjs/client";
 import { assertGuardOnChain, loadFonts, RouteGuards, resolveRouteModule, RouteHead } from "akanjs/client";
@@ -246,7 +247,7 @@ const defaultFontClassName = defaultFont ? (defaultFont.className ?? \`font-\${d
 export const theme = userLayout.theme ?? inheritedLayout.theme;
 export const viewport = userLayout.viewport ?? inheritedLayout.viewport;
 export const manifest = userLayout.manifest ?? inheritedLayout.manifest;
-export { RouteLevelBoundary as LevelBoundary };
+export const LevelBoundary = process.env.AKAN_PUBLIC_RENDER_ENV === "csr" ? undefined : RouteLevelBoundary;
 
 ${layoutExports}(
     <System.Provider

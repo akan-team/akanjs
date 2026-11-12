@@ -81,7 +81,6 @@ describe("resolveSsrPageEntries", () => {
       entries.find((entry) => entry.key === "./__root_layout.tsx")?.moduleAbsPath ?? "",
     ).text();
     expect(source).toContain('import { RouteLevelBoundary } from "akanjs/webkit/RouteLevelBoundary.tsx";');
-    expect(source).toContain("export { RouteLevelBoundary as LevelBoundary };");
     expect(source).toContain(
       "  const layout = <UserLayout params={params} searchParams={searchParams}>{children}</UserLayout>;\n  return (\n    <System.Provider",
     );
@@ -95,6 +94,31 @@ describe("resolveSsrPageEntries", () => {
       entries.find((entry) => entry.key === "./(home)/__root_layout.tsx")?.moduleAbsPath ?? "",
     ).text();
     expect(nested).not.toContain("RouteLevelBoundary");
+  });
+
+  test("leaves the boundary out of a CSR build, which an MCP App view's namespace import of the layout shares", async () => {
+    const appRoot = await makeTempRoot();
+    await write(path.join(appRoot, "env", "env.client.ts"), "export const env = {};\n");
+    await write(path.join(appRoot, "page", "_layout.tsx"), "export default ({ children }) => children;\n");
+    const entries = await resolveSsrPageEntries({
+      appCwdPath: appRoot,
+      appName: "demo",
+      pageKeys: ["./_layout.tsx", "./_index.tsx"],
+    });
+    const source = await Bun.file(
+      entries.find((entry) => entry.key === "./__root_layout.tsx")?.moduleAbsPath ?? "",
+    ).text();
+    const compiled = (renderEnv: "csr" | "ssr") =>
+      new Bun.Transpiler({
+        loader: "tsx",
+        define: { "process.env.AKAN_PUBLIC_RENDER_ENV": JSON.stringify(renderEnv) },
+        trimUnusedImports: true,
+      }).transformSync(source);
+
+    expect(compiled("csr")).toContain("export const LevelBoundary = undefined;");
+    expect(compiled("csr")).not.toMatch(/\bRouteLevelBoundary\b(?!\.tsx)/);
+    expect(compiled("ssr")).toContain("export const LevelBoundary = RouteLevelBoundary;");
+    expect(compiled("ssr")).toMatch(/import \{ ?RouteLevelBoundary ?\} from "akanjs\/webkit\/RouteLevelBoundary\.tsx"/);
   });
 
   test("keeps system provider for grouped root boundaries without an ancestor root", async () => {
@@ -126,7 +150,9 @@ describe("resolveSsrPageEntries", () => {
     );
     expect(generatedSource).toContain("export function McpAppRoot({ children, params, path }: McpAppRootProps) {");
     expect(generatedSource).toContain("<System.App");
-    expect(generatedSource).toContain("export { RouteLevelBoundary as LevelBoundary };");
+    expect(generatedSource).toContain(
+      'export const LevelBoundary = process.env.AKAN_PUBLIC_RENDER_ENV === "csr" ? undefined : RouteLevelBoundary;',
+    );
     expect(generatedSource).toContain('import { allDictionary } from "../dict/useDict.ts";');
     expect(generatedSource).toContain(
       'allDictionary={process.env.AKAN_PUBLIC_RENDER_ENV === "ssr" ? allDictionary : undefined}',
