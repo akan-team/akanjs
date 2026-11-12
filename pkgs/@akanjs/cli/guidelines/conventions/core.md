@@ -34,7 +34,7 @@ and infrastructure. A workspace is Bun-first: `apps/<app>` holds pages, domain m
 
 - Carry the task through to `verify ok`. A failing check, a stale generated file, a stopped dev server or a tool
   error is an ordinary obstacle: diagnose it and work through it (`akan sync`, `akan repair generated`, a retry,
-  another command) rather than stopping to report it or offering to continue.
+  another command) rather than stopping to report it or offering to continue. Silencing a check is not a way through.
 - Routine steps need no confirmation: reading code, `akan sync`, `akan verify`, `akan test`, `akan preview`, and the
   workflow plan and apply the task calls for. Ask only when the work cannot go on without the answer, and keep doing
   the parts that do not depend on it.
