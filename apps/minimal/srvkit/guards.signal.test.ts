@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, mock, spyOn } from "bun:test";
-import { AkanNotFoundError, RouteGuards } from "akanjs/client";
+import { AkanNotFoundError, RouteGuards, router } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import { createRequestStore, requestStorage } from "akanjs/fetch";
 import { getOrSetupSignalTestFetch } from "akanjs/test";
@@ -82,6 +82,18 @@ describe("LocalOrEdge", () => {
       await expect(guardsOf(memoPage, {})).rejects.toBeInstanceOf(AkanNotFoundError);
       await expect(guardsOf(memoViewPage, { memoId })).rejects.toBeInstanceOf(AkanNotFoundError);
     });
+    expect(errors).toEqual([]);
+  });
+
+  it("stops the memo detail guard at not-found where the router moves rather than throws, as in a CSR shell", async () => {
+    spyOn(LocalOrEdge.prototype, "canPass").mockReturnValue(false);
+    //? `router` is a proxy binding each method to a per-side instance, so only the class prototype reaches its calls.
+    const routerProto = Object.getPrototypeOf(new (router.constructor as new () => object)()) as typeof router;
+    const notFound = spyOn(routerProto, "notFound").mockImplementation(() => undefined as never);
+    const errors = await errorsLoggedBy(async () => {
+      await guardsOf(memoViewPage, { memoId });
+    });
+    expect(notFound).toHaveBeenCalledTimes(1);
     expect(errors).toEqual([]);
   });
 
