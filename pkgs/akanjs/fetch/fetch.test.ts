@@ -1384,6 +1384,21 @@ describe("FetchClient over a bridge", () => {
     }
   });
 
+  test("opens no socket for a room or a message in a bridged tab, even on a socket that opens on use", () => {
+    setFakeWebSocket();
+    FetchClient.setBridge({ call: async () => null });
+    try {
+      const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+      client.ws.connectOnUse();
+      const unsubscribe = client.handler.subscribeRoomThing("room-1", () => undefined) as () => void;
+      client.handler.sendThing("hello");
+      unsubscribe();
+      expect(FakeWebSocket.instances).toEqual([]);
+    } finally {
+      FetchClient.setBridge(null);
+    }
+  });
+
   test("hands the bridge each call's budget in the HTTP order: the call's, the endpoint's, then the client's", async () => {
     const budgets: unknown[] = [];
     FetchClient.setBridge({
@@ -3667,6 +3682,30 @@ describe("WsClient", () => {
 
       expect(FakeWebSocket.instances[0].readyState).toBe(FakeWebSocket.CLOSED);
       expect(FakeWebSocket.instances).toHaveLength(2);
+    } finally {
+      client.destroy();
+    }
+  });
+
+  test("keeps a socket the server is still talking on, however long ago it opened", async () => {
+    setFakeWebSocket();
+    setSystemTime(new Date("2026-10-23T00:00:00Z"));
+    globalThis.setInterval = ((handler: TimerHandler, _interval?: number, ...args: unknown[]) =>
+      originalSetInterval(handler, 1, ...args)) as typeof setInterval;
+    const client = new WsClient("ws://example/ws");
+    try {
+      client.connect();
+      const ws = FakeWebSocket.instances[0];
+      ws.open();
+
+      setSystemTime(new Date("2026-10-23T00:10:00Z"));
+      ws.receive({ type: "pong" });
+      const sent = ws.sent.length;
+      await waitUntil(() => ws.sent.length > sent || ws.readyState !== FakeWebSocket.OPEN);
+
+      expect(ws.readyState).toBe(FakeWebSocket.OPEN);
+      expect((JSON.parse(ws.sent.at(-1) ?? "{}") as { key?: string }).key).toBe("__ping");
+      expect(FakeWebSocket.instances).toHaveLength(1);
     } finally {
       client.destroy();
     }

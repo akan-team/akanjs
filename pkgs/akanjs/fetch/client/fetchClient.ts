@@ -1,4 +1,4 @@
-import { getApiPrefix, getEnv, getWsPrefix, PrimitiveRegistry, type PromiseOrObject } from "akanjs/base";
+import { getApiPrefix, getEnv } from "akanjs/base";
 import {
   AbortSignals,
   endpointNames,
@@ -10,21 +10,19 @@ import {
   readSessionToken,
   resolveFileUploadCapability,
   sliceNames,
-  trimTrailingSlashes,
 } from "akanjs/common";
-import { type BaseInsight, type BaseObject, ConstantRegistry, deserialize, serialize } from "akanjs/constant";
+import { type BaseInsight, type BaseObject, ConstantRegistry } from "akanjs/constant";
 import type {
   DatabaseSignal,
   SerializedArg,
   SerializedEndpoint,
-  SerializedReturns,
   SerializedSignal,
   SerializedSlice,
   ServiceSignal,
 } from "akanjs/signal";
 import { agentTurnConstant } from "../agentTurn";
 import { AppScope } from "../appScope";
-import type { ClientSignal, FetchClientType, FetchSignalInput, MergeAllFetchTypes, SliceMeta } from "../fetchType";
+import type { FetchClientType, FetchSignalInput, MergeAllFetchTypes, SliceMeta } from "../fetchType";
 import { RenderScope } from "../renderScope";
 import {
   claimRequestQuery,
@@ -34,79 +32,58 @@ import {
   headers as requestHeaders,
 } from "../requestStorage";
 import type { GetSliceMetaObjFromDatabaseSignals } from "../types";
+import type {
+  ClientSignalMap,
+  FetchBridge,
+  FetchBridgeCall,
+  FetchClaim,
+  FetchHandler,
+  FetchHandlerFactory,
+  FetchProxy,
+  SharedClientState,
+  UnknownRecord,
+} from "./fetchClientTypes";
 import { FetchHandle } from "./fetchHandle";
 import { HttpClient } from "./httpClient";
 import { InflightQueries } from "./inflightQueries";
 import { type ErrorConstructor, type RestoredError, restoreRemoteError } from "./remoteError";
+import {
+  deepCopy,
+  makeRequestQueryCacheKey,
+  makeWsUri,
+  normalizeOrigin,
+  originFromEnv,
+  sameOrigin,
+} from "./requestScope";
+import {
+  helpersOf,
+  makeArgSerializer,
+  makeReturnParser,
+  mergeSerializedSignalInto,
+  mountedGuards,
+  refusingUndeclaredNull,
+  sharedSignalRegistry,
+} from "./signalCatalog";
 import { SliceInitHandle } from "./sliceInitHandle";
 import { expandQueryArgs, normalizeQueryArgs } from "./sliceQueryArgs";
 import { WsClient, type WsClientOptions } from "./wsClient";
 
-type FetchHandler = (...args: unknown[]) => PromiseOrObject<unknown>;
-type FetchHandlerFactory = () => FetchHandler;
-type UnknownRecord = Record<string, unknown>;
-
-export type FetchProxy<
-  FetchType = unknown,
-  SliceMetaObj extends Record<string, SliceMeta> = Record<never, never>,
-> = typeof global.fetch &
-  FetchClient &
-  FetchType & { slice: SliceMetaObj; instance: FetchClient; _FetchType: FetchType; _SliceMetaObj: SliceMetaObj };
-
-interface SharedClientState {
-  proxy: FetchProxy | null;
-  origin: string | null;
-}
+export type { FetchBridge, FetchBridgeCall, FetchClaim, FetchProxy };
 
 const SHARED_CLIENT_KEY = Symbol.for("akanjs.fetch.sharedClient");
 const globalWithSharedClient = globalThis as typeof globalThis & { [SHARED_CLIENT_KEY]?: SharedClientState };
 const sharedClientState: SharedClientState = globalWithSharedClient[SHARED_CLIENT_KEY] ?? { proxy: null, origin: null };
 globalWithSharedClient[SHARED_CLIENT_KEY] = sharedClientState;
 
-interface SharedSignalRegistry {
-  signal: { [key: string]: SerializedSignal };
-  version: number;
-}
-
-const SHARED_SIGNAL_KEY = Symbol.for("akanjs.fetch.sharedSignalRegistry");
-const globalWithSharedSignal = globalThis as typeof globalThis & { [SHARED_SIGNAL_KEY]?: SharedSignalRegistry };
-const sharedSignalRegistry: SharedSignalRegistry = globalWithSharedSignal[SHARED_SIGNAL_KEY] ?? {
-  signal: {},
-  version: 0,
+let testClientIps = false;
+let testClientIpSeq = 0;
+const nextTestClientIp = () => {
+  const seq = ++testClientIpSeq;
+  return `198.${18 + ((seq >> 16) & 1)}.${(seq >> 8) & 255}.${seq & 255}`;
 };
-globalWithSharedSignal[SHARED_SIGNAL_KEY] = sharedSignalRegistry;
-
-export interface FetchBridgeCall {
-  key: string;
-  type: "query" | "mutation";
-  args: UnknownRecord;
-  returns: SerializedReturns;
-  timeout?: number | false;
-  /** A query's; the call rejects on abort whether or not the bridge stops what it relayed. */
-  signal?: AbortSignal;
-}
-
-/** A transport that is not HTTP: a view inside an MCP host has no network, and reaches the server through the host. */
-export interface FetchBridge {
-  call(request: FetchBridgeCall): Promise<unknown>;
-}
-
-export interface FetchClaim {
-  key: string;
-  /** What in its module claims the key, phrased for a boot error: `the mutation "removeX"`, `the root slice`. */
-  by: string;
-}
 
 const FETCH_BRIDGE_KEY = Symbol.for("akanjs.fetch.bridge");
 const globalWithFetchBridge = globalThis as typeof globalThis & { [FETCH_BRIDGE_KEY]?: FetchBridge | null };
-
-type ClientSignalMap<SigType extends { fetch: any }> = {
-  [K in keyof SigType as SigType[K] extends DatabaseSignal<any, any, any, any>
-    ? K
-    : never]: SigType[K] extends DatabaseSignal<any, any, infer SlceCls, any>
-    ? ClientSignal<SlceCls["baseName"], SlceCls, SlceCls["srv"]["cnst"]>
-    : never;
-};
 
 export class FetchClient {
   static {
@@ -122,7 +99,7 @@ export class FetchClient {
   readonly sortValueMap = new Map<string, { [key: string]: { [path: string]: 1 | -1 } }>();
   readonly filterQueryMap = new Map<string, { [queryKey: string]: SerializedArg[] }>();
   readonly #originWs = new Map<string, WsClient>();
-  readonly #inflight = new InflightQueries((value) => FetchClient.#deepCopy(value));
+  readonly #inflight = new InflightQueries(deepCopy);
   #wsOptions: WsClientOptions = {};
   readonly #handlerStore: Record<string, FetchHandler> = {};
   readonly #handlerFactory = new Map<string, FetchHandlerFactory>();
@@ -132,8 +109,6 @@ export class FetchClient {
   #clientIp: string | null = null;
   /** Cloned toward another server: the request being served is this server's visitor, not that server's caller. */
   #foreign = false;
-  static #testClientIps = false;
-  static #testClientIpSeq = 0;
   serializedSignal: { [key: string]: SerializedSignal } = {};
   #ownSignal: { [key: string]: SerializedSignal } = {};
   jwt: string | null = null;
@@ -146,7 +121,7 @@ export class FetchClient {
   ) {
     this.origin = origin;
     this.http = new HttpClient(origin, { ErrorCls });
-    this.ws = new WsClient(FetchClient.#makeWsUri(origin), ErrorCls);
+    this.ws = new WsClient(makeWsUri(origin), ErrorCls);
     Object.assign(this.#handlerStore, handler);
     this.handler = this.#makeHandlerProxy();
     this.applySignal(serializedSignal);
@@ -179,12 +154,8 @@ export class FetchClient {
    * trusted to report.
    */
   static useTestClientIps(enabled = true) {
-    FetchClient.#testClientIps = enabled;
-    FetchClient.#testClientIpSeq = 0;
-  }
-  static #nextTestClientIp() {
-    const seq = ++FetchClient.#testClientIpSeq;
-    return `198.${18 + ((seq >> 16) & 1)}.${(seq >> 8) & 255}.${seq & 255}`;
+    testClientIps = enabled;
+    testClientIpSeq = 0;
   }
   static #resolveSharedClientProxy(origin: string, Err?: ErrorConstructor) {
     if (typeof window === "undefined") return null;
@@ -194,64 +165,6 @@ export class FetchClient {
     sharedClientState.proxy = proxy;
     sharedClientState.origin = origin;
     return proxy;
-  }
-  static #mergeSerializedSignalInto(
-    serializedSignal: { [key: string]: SerializedSignal },
-    refName: string,
-    signal: SerializedSignal,
-  ) {
-    const current = serializedSignal[refName];
-    if (!current) serializedSignal[refName] = signal;
-    else if (FetchClient.#folds(current, signal))
-      serializedSignal[refName] = FetchClient.#definedOnly({
-        ...FetchClient.#merged(signal, current),
-        origin: current.origin,
-      });
-    else serializedSignal[refName] = FetchClient.#definedOnly(FetchClient.#merged(current, signal));
-  }
-  //? An app's entry already merged each lib it extends, so that lib's own signal, applied after it, must not win back.
-  static #folds(current: SerializedSignal, signal: SerializedSignal) {
-    const origin = signal.origin ?? [];
-    const folded = new Set(current.origin);
-    return origin.length > 0 && folded.size > origin.length && origin.every((owner) => folded.has(owner));
-  }
-  //? A macro inlines its return as written, so a merge must not leave keys an unmerged signal does not have.
-  static #definedOnly(signal: SerializedSignal): SerializedSignal {
-    return Object.fromEntries(Object.entries(signal).filter(([, value]) => value !== undefined)) as SerializedSignal;
-  }
-  static #merged(current: SerializedSignal, signal: SerializedSignal): SerializedSignal {
-    return {
-      ...current,
-      ...signal,
-      endpoint: { ...current.endpoint, ...signal.endpoint },
-      slice: current.slice || signal.slice ? { ...current.slice, ...signal.slice } : undefined,
-      filter:
-        current.filter || signal.filter
-          ? {
-              filter: { ...current.filter?.filter, ...signal.filter?.filter },
-              sortKeys: [...new Set([...(current.filter?.sortKeys ?? []), ...(signal.filter?.sortKeys ?? [])])],
-              sorts: { ...current.filter?.sorts, ...signal.filter?.sorts },
-            }
-          : undefined,
-      ...FetchClient.#sliceFacts(signal.slice ? signal : current),
-      origin:
-        current.origin || signal.origin
-          ? [...new Set([...(current.origin ?? []), ...(signal.origin ?? [])])]
-          : undefined,
-    };
-  }
-  // The server mounts the last module's slice whole, so a later slice's guards and verb maps never mix with a lib's.
-  static #sliceFacts({
-    getGuards,
-    cruGuards,
-    createGuards,
-    updateGuards,
-    removeGuards,
-    mcp,
-    agents,
-    crud,
-  }: SerializedSignal) {
-    return { getGuards, cruGuards, createGuards, updateGuards, removeGuards, mcp, agents, crud };
   }
   /**
    * What this client was built with and applied itself, never what it synced from another client in the process:
@@ -275,14 +188,14 @@ export class FetchClient {
       //? Only a client already holding every earlier share is current after its own; another still owes a sync.
       const isSynced = this.#sharedRegistryAppliedVersion === sharedSignalRegistry.version;
       for (const [refName, signal] of Object.entries(serializedSignal)) {
-        FetchClient.#mergeSerializedSignalInto(sharedSignalRegistry.signal, refName, signal);
-        FetchClient.#mergeSerializedSignalInto(this.#ownSignal, refName, signal);
+        mergeSerializedSignalInto(sharedSignalRegistry.signal, refName, signal);
+        mergeSerializedSignalInto(this.#ownSignal, refName, signal);
       }
       sharedSignalRegistry.version++;
       if (isSynced) this.#sharedRegistryAppliedVersion = sharedSignalRegistry.version;
     }
     for (const [refName, signal] of Object.entries(serializedSignal))
-      FetchClient.#mergeSerializedSignalInto(this.serializedSignal, refName, signal);
+      mergeSerializedSignalInto(this.serializedSignal, refName, signal);
     // Registered from the merged entry: a lib's signal applied after the app's must not mount the lib's facts again.
     for (const refName of Object.keys(serializedSignal)) {
       const signal = this.serializedSignal[refName];
@@ -379,13 +292,12 @@ export class FetchClient {
     instance.configureWs({ ...this.#wsOptions, ...ws });
     instance.http.setRetry(retry ?? this.http.retry);
     instance.http.setTimeout(this.http.timeout);
-    instance.#foreign = this.#foreign || (!!origin && !FetchClient.#sameOrigin(origin, this.origin));
-    instance.#clientIp =
-      clientIp !== undefined ? clientIp : FetchClient.#testClientIps ? FetchClient.#nextTestClientIp() : this.#clientIp;
+    instance.#foreign = this.#foreign || (!!origin && !sameOrigin(origin, this.origin));
+    instance.#clientIp = clientIp !== undefined ? clientIp : testClientIps ? nextTestClientIp() : this.#clientIp;
     Object.entries(this.handler).forEach(([key, handler]) => {
       if (!(key in instance.handler)) instance.handler[key] = handler;
     });
-    instance.jwt = jwt ?? (FetchClient.#sameOrigin(instance.origin, this.origin) ? this.jwt : null);
+    instance.jwt = jwt ?? (sameOrigin(instance.origin, this.origin) ? this.jwt : null);
     instance.ws.setJwt(instance.jwt);
     if (connect) instance.connect();
     return FetchClient.#makeProxy(instance);
@@ -405,11 +317,11 @@ export class FetchClient {
   }
   // A socket's URL is fixed, so `FetchPolicy.origin` gets a socket of its own, connected on first use.
   #resolveWs(origin?: string) {
-    if (!origin || FetchClient.#sameOrigin(origin, this.origin)) return this.ws;
-    const target = FetchClient.#normalizeOrigin(origin);
+    if (!origin || sameOrigin(origin, this.origin)) return this.ws;
+    const target = normalizeOrigin(origin);
     const cached = this.#originWs.get(target);
     if (cached) return cached;
-    const ws = new WsClient(FetchClient.#makeWsUri(target), this.ErrorCls).configure(this.#wsOptions);
+    const ws = new WsClient(makeWsUri(target), this.ErrorCls).configure(this.#wsOptions);
     this.#originWs.set(target, ws);
     ws.connect();
     return ws;
@@ -430,14 +342,8 @@ export class FetchClient {
       return {};
     }
   }
-  static #normalizeOrigin(origin: string) {
-    return trimTrailingSlashes(origin);
-  }
-  static #sameOrigin(a: string, b: string) {
-    return FetchClient.#normalizeOrigin(a) === FetchClient.#normalizeOrigin(b);
-  }
   #ownOrigin(option?: FetchPolicy) {
-    return !option?.origin || FetchClient.#sameOrigin(option.origin, this.origin);
+    return !option?.origin || sameOrigin(option.origin, this.origin);
   }
   // Security: the request being rendered and the token `setJwt` holds belong to this server's visitor; a call aimed at
   // another server carries only the token its caller gave it, or the session would reach a server they never signed in to.
@@ -467,8 +373,8 @@ export class FetchClient {
   }
   #makeHttpFn(key: string, endpoint: SerializedEndpoint, prefix?: string) {
     const argLength = endpoint.args.length;
-    const serializerMap = this.#makeArgSerializer(endpoint.args);
-    const parseReturn = FetchClient.#refusingUndeclaredNull(key, endpoint, this.#makeReturnParser(endpoint.returns));
+    const serializerMap = makeArgSerializer(endpoint.args);
+    const parseReturn = refusingUndeclaredNull(key, endpoint, makeReturnParser(endpoint.returns));
     const { bodyArgs, uploadArgs } = FetchClient.classifyHttpArgs(endpoint.args);
     const requestOf = (argData: unknown[]) => {
       const args = argData.slice(0, argLength);
@@ -497,14 +403,14 @@ export class FetchClient {
           // the request, and a parsed model can hold references into it.
           const claim = baseUrl
             ? { value: requestQuery(signal), owned: true }
-            : this.#claimQuery(FetchClient.#makeRequestQueryCacheKey(this.origin, url, headers), requestQuery, {
+            : this.#claimQuery(makeRequestQueryCacheKey(this.origin, url, headers), requestQuery, {
                 signal,
                 timeout,
                 retry: option?.retry,
               });
           recordRequestQuery({ key, args: Object.fromEntries(argMap), returns: endpoint.returns, value: claim.value });
           const response = await this.#untilAborted(claim.value, signal);
-          const payload = claim.owned ? response : FetchClient.#deepCopy(response);
+          const payload = claim.owned ? response : deepCopy(response);
           return parseReturn(payload, { crystalize: option?.crystalize ?? true });
         };
       case "mutation": {
@@ -563,8 +469,8 @@ export class FetchClient {
         this.#setHandlerFactory(endpointNames(key).subscribe, () => {
           const roomArgs = endpoint.args.filter((arg) => arg.type === "room");
           const roomArgLength = roomArgs.length;
-          const serializerMap = this.#makeArgSerializer(endpoint.args);
-          const parseReturn = this.#makeReturnParser(endpoint.returns);
+          const serializerMap = makeArgSerializer(endpoint.args);
+          const parseReturn = makeReturnParser(endpoint.returns);
           return (...argData: unknown[]) => {
             this.#refuseInApp(key);
             //? A bridged tab has no socket to subscribe on: the room never fires, and a queued frame would never leave.
@@ -596,7 +502,7 @@ export class FetchClient {
         this.#setHandlerFactory(key, () => {
           const msgArgs = endpoint.args.filter((arg) => arg.type === "msg");
           const msgArgLength = msgArgs.length;
-          const serializerMap = this.#makeArgSerializer(endpoint.args);
+          const serializerMap = makeArgSerializer(endpoint.args);
           return (...argData: unknown[]) => {
             this.#refuseInApp(key);
             const fetchPolicy = argData[msgArgLength] as FetchPolicy | undefined;
@@ -609,7 +515,7 @@ export class FetchClient {
           };
         });
         this.#setHandlerFactory(endpointNames(key).listen, () => {
-          const parseReturn = this.#makeReturnParser(endpoint.returns);
+          const parseReturn = makeReturnParser(endpoint.returns);
           return ((handleEvent: (data: unknown) => void, fetchPolicy: FetchPolicy = {}) => {
             const wrapped = (data: unknown) => {
               this.#inflight.detach();
@@ -668,9 +574,6 @@ export class FetchClient {
       throw payload && this.ErrorCls ? this.ErrorCls.fromJSON(payload) : error;
     }
   }
-  static #makeWsUri(origin: string) {
-    return `${origin.replace("http://", "ws://").replace("https://", "wss://")}${getWsPrefix()}`;
-  }
 
   static paginationArgs: SerializedArg[] = [
     { type: "search", name: "skip", refName: "Int" },
@@ -691,16 +594,16 @@ export class FetchClient {
 
   static getBaseEndpoint(refName: string, signal: SerializedSignal) {
     const names = modelNames(refName);
-    const createGuards = FetchClient.#mountedGuards(signal, "create");
-    const updateGuards = FetchClient.#mountedGuards(signal, "update");
-    const removeGuards = FetchClient.#mountedGuards(signal, "remove");
+    const createGuards = mountedGuards(signal, "create");
+    const updateGuards = mountedGuards(signal, "update");
+    const removeGuards = mountedGuards(signal, "remove");
     // Stamped on here, where these endpoints are born, so every reader sees one resolved field.
     const mcp = (verb: keyof NonNullable<SerializedSignal["mcp"]>) => ({
       ...(signal.mcp?.[verb] === false ? { mcp: false as const } : {}),
       ...(signal.agents?.[verb] === false ? { agents: false as const } : {}),
     });
     const endpoint: { [key: string]: SerializedEndpoint } = {};
-    if (FetchClient.#mountedGuards(signal, "get")) {
+    if (mountedGuards(signal, "get")) {
       endpoint[names.model] = {
         type: "query",
         args: [{ type: "param", name: names.modelId, refName: "ID" }],
@@ -748,19 +651,6 @@ export class FetchClient {
     }
     return endpoint;
   }
-  static #mountedGuards(signal: SerializedSignal, verb: "get" | "create" | "update" | "remove") {
-    if (signal.crud?.[verb] === false) return undefined;
-    const guards = verb === "get" ? signal.getGuards : (signal[`${verb}Guards`] ?? signal.cruGuards);
-    return guards?.some((guard) => guard !== "None") ? guards : undefined;
-  }
-  // view/edit exist exactly when the get handler does; edit also needs a write endpoint; merge wraps updateModel.
-  static #helpersOf(signal: SerializedSignal) {
-    const get = !!FetchClient.#mountedGuards(signal, "get");
-    const update = !!FetchClient.#mountedGuards(signal, "update");
-    const write =
-      update || !!FetchClient.#mountedGuards(signal, "create") || !!FetchClient.#mountedGuards(signal, "remove");
-    return { view: get, edit: get && write, merge: update };
-  }
   /** The `fetch.*` names a module's signal registers, and the bare socket route of each pubsub and message. */
   static claimsOf(refName: string, signal: SerializedSignal) {
     const handlers: FetchClaim[] = [];
@@ -777,7 +667,7 @@ export class FetchClient {
     for (const [key, endpoint] of Object.entries(FetchClient.getBaseEndpoint(refName, signal)))
       claim(key, endpoint, generated);
     const names = modelNames(refName);
-    const helpers = FetchClient.#helpersOf(signal);
+    const helpers = helpersOf(signal);
     const helperKeys = [
       ...(helpers.view ? [names.viewModel, names.getModelView] : []),
       ...(helpers.edit ? [names.editModel, names.getModelEdit] : []),
@@ -807,7 +697,7 @@ export class FetchClient {
       this.#setHandlerFactory(key, () => this.#makeHttpFn(key, value, signal.prefix), refName);
     });
 
-    const helpers = FetchClient.#helpersOf(signal);
+    const helpers = helpersOf(signal);
     if (helpers.view) {
       this.#setHandlerFactory(
         names.viewModel,
@@ -995,54 +885,6 @@ export class FetchClient {
       return (await initFn(...args))[names.initResult];
     });
   }
-  #makeArgSerializer(args: SerializedArg[]) {
-    const serializerMap = new Map(
-      args.map((arg) => {
-        const argRef = arg.modelType
-          ? ConstantRegistry.getModelRef(arg.refName, arg.modelType)
-          : PrimitiveRegistry.get(arg.refName);
-        return [
-          arg.name,
-          (value: unknown) =>
-            serialize(argRef, arg.arrDepth ?? 0, value, "input", {
-              nullable: arg.nullable ?? arg.type === "search",
-            }),
-        ] as const;
-      }),
-    );
-    return serializerMap;
-  }
-  static #refusingUndeclaredNull<Parse extends (value: unknown, option?: { crystalize?: boolean }) => unknown>(
-    key: string,
-    endpoint: SerializedEndpoint,
-    parse: Parse,
-  ): Parse {
-    if (endpoint.returns.nullable) return parse;
-    return ((value: unknown, option?: { crystalize?: boolean }) => {
-      if (value === null || value === undefined)
-        throw new Error(
-          `${endpoint.type} ${key} answered ${value}, but its return is not nullable: answer a value, or declare { nullable: true } and answer null`,
-        );
-      return parse(value, option);
-    }) as Parse;
-  }
-  #makeReturnParser(returns: SerializedReturns) {
-    if (returns.modelType) {
-      const returnRef = ConstantRegistry.getModelRef(returns.refName, returns.modelType);
-      return (value: unknown, { crystalize = true }: { crystalize?: boolean } = {}) =>
-        deserialize(returnRef, returns.arrDepth ?? 0, value, {
-          key: returns.refName,
-          nullable: returns.nullable,
-          convertFn: crystalize
-            ? (value: unknown) => new (returnRef as new (arg: unknown) => object)(value)
-            : undefined,
-        });
-    } else {
-      const returnRef = PrimitiveRegistry.get(returns.refName);
-      return (value: unknown, { crystalize = true }: { crystalize?: boolean } = {}) =>
-        deserialize(returnRef, returns.arrDepth ?? 0, value, { key: returns.refName, nullable: returns.nullable });
-    }
-  }
   static classifyHttpArgs(args: SerializedArg[]) {
     const paramArgs: SerializedArg[] = [];
     const searchArgs: SerializedArg[] = [];
@@ -1057,26 +899,13 @@ export class FetchClient {
     });
     return { paramArgs, searchArgs, bodyArgs, uploadArgs };
   }
-  static #makeRequestQueryCacheKey(origin: string, url: string, headers: Record<string, string>): string {
-    return JSON.stringify({
-      method: "GET",
-      origin,
-      url,
-      headers: Object.entries(headers).sort(([a], [b]) => a.localeCompare(b)),
-    });
-  }
-  static #deepCopy<T>(value: T): T {
-    if (value === null || typeof value !== "object") return value;
-    if (typeof structuredClone === "function") return structuredClone(value);
-    return JSON.parse(JSON.stringify(value)) as T;
-  }
   static from<Signals extends readonly FetchSignalInput[]>(...signals: Signals): FetchClientType<Signals> {
     const serializedSignal: { [key: string]: SerializedSignal } = {};
     const handler: Record<string, FetchHandler> = {};
     signals.forEach((signal) => {
       if ("endpoint" in signal) {
         const refName = (signal as DatabaseSignal | ServiceSignal).endpoint.baseName;
-        FetchClient.#mergeSerializedSignalInto(
+        mergeSerializedSignalInto(
           serializedSignal,
           refName,
           (signal as DatabaseSignal | ServiceSignal).serializedSignal,
@@ -1084,19 +913,12 @@ export class FetchClient {
       } else {
         Object.assign(handler, signal.handler);
         Object.entries(signal.ownSerializedSignal ?? signal.serializedSignal).forEach(([refName, signal]) => {
-          FetchClient.#mergeSerializedSignalInto(serializedSignal, refName, signal);
+          mergeSerializedSignalInto(serializedSignal, refName, signal);
         });
       }
     });
-    const instance = new FetchClient(FetchClient.#originFromEnv(), handler, serializedSignal);
+    const instance = new FetchClient(originFromEnv(), handler, serializedSignal);
     return FetchClient.#makeProxy<MergeAllFetchTypes<Signals>, GetSliceMetaObjFromDatabaseSignals<Signals>>(instance);
-  }
-  static #originFromEnv() {
-    try {
-      return getEnv().serverHttpUri;
-    } catch {
-      return "";
-    }
   }
   static build<SigType extends { fetch: any }>(
     constant: object,
