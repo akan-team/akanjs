@@ -181,7 +181,7 @@ export class AdaptorResolver {
     return first ? null : undefined;
   }
 
-  //? TypeScript prefers a module's own exports to its `export *`s, and drops a name two `export *` share.
+  //? A module's own exports win over its `export *`s; ES modules drop a name two `export *` share, and tsc rejects it.
   #exportedAt(name: string, path: string): Exported[] {
     const key = `${path}\n${name}`;
     const cached = this.#exported.get(key);

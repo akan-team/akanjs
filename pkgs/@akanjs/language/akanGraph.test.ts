@@ -109,6 +109,31 @@ const edgesOf = (graph: ReturnType<typeof graphOf>, kind?: string) =>
     .map((edge) => `${edge.from} -${edge.label ?? ""}-> ${edge.to}`)
     .sort();
 
+const starredCallsOf = (pay: string) => {
+  const given: Record<string, string> = {
+    "libs/shared/srvkit/pay.ts": `${pay}export * from "@libs/util/srvkit/stripe";
+`,
+    "libs/util/srvkit/stripe.ts": `import { adapt } from "akanjs/service";
+export class Stripe extends adapt("stripe") {}
+`,
+    "apps/demo/lib/memo/memo.service.ts": `import { Stripe } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({ stripe: plug(Stripe) })) {
+  async pay() {
+    return this.stripe.charge();
+  }
+}
+`,
+  };
+  const index = new AkanIndex({ ts, root });
+  for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+  return edgesOf(
+    index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+    "calls",
+  );
+};
+
 describe("AkanIndex.graph", () => {
   it("draws a model's fields across its via chain and links each type it names", () => {
     const graph = graphOf();
@@ -2069,6 +2094,31 @@ export * from "../vendor/inner";
       expect(callsOf(given)).toEqual(unlocated);
       expect(callsOf(synced(given))).toEqual(unlocated);
     }
+  });
+
+  it("reads a comment, a string, a namespace member or a default export of the name as no export of it, so the `export *` supplies it", () => {
+    for (const passing of [
+      `// export const Stripe = legacyStripe;\n`,
+      `/* export class Stripe {} */\n`,
+      `export const note = "export const Stripe = 1";\n`,
+      `export namespace Legacy {\n  export const Stripe = 1;\n}\n`,
+      `export default class Stripe {}\n`,
+    ])
+      expect(starredCallsOf(passing)).toEqual(["method:apps/demo:memo.pay -charge-> adaptor:libs/util:Stripe"]);
+  });
+
+  it("takes a top-level export of the name in every binding form as the module's own, over its `export *`", () => {
+    for (const own of [
+      `export const { Stripe } = makeAdaptors();\n`,
+      `export const [Stripe] = makeAdaptors();\n`,
+      `export const legacy = 1,\n  Stripe = legacy;\n`,
+      `export namespace Stripe {}\n`,
+      `import * as Legacy from "./legacy";\nexport import Stripe = Legacy.Stripe;\n`,
+      `export function Stripe() {}\n`,
+      `import Stripe from "stripe-sdk";\nexport { Stripe };\n`,
+      `import * as Stripe from "stripe-sdk";\nexport { Stripe };\n`,
+    ])
+      expect(starredCallsOf(own)).toEqual(["method:apps/demo:memo.pay -charge-> adaptor:libs/shared:Stripe"]);
   });
 
   it("marks a job and an adaptor changed or removed in the Change Map", () => {
