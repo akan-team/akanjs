@@ -93,6 +93,38 @@ setTimeout(() => process.exit(1), 2_000).unref();
     expect(await Bun.file(released).exists()).toBe(true);
   }, 30_000);
 
+  test("uses the result of a worker the release never reaches without waiting out its bound, and leaves it dead", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    const sent = path.join(root, "sent");
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `import fs from "node:fs";
+const { generation } = JSON.parse(process.argv[2]);
+fs.writeFileSync(${JSON.stringify(sent)}, JSON.stringify({ pid: process.pid, at: Date.now() }));
+process.send({ type: "build-batch-result", data: { generation, errors: {} } });
+setTimeout(() => process.exit(0), 5_000);
+`,
+    );
+    const result = await new BuildBatchRunner({ workspaceRoot: root, cwd: appDir }).run({
+      appName: "demo",
+      workspaceRoot: root,
+      repoName: "repo",
+      generation: 5,
+      needs: ["pages"],
+      changedFiles: [],
+      pageKeys: null,
+      optimizedFonts: null,
+      cssAssets: null,
+      artifactDir: path.join(appDir, ".akan/artifact"),
+    });
+    const returnedAt = Date.now();
+    const worker = (await Bun.file(sent).json()) as { pid: number; at: number };
+    expect(result).toEqual({ generation: 5, errors: {} });
+    expect(returnedAt - worker.at).toBeLessThan(3_000);
+    expect(() => process.kill(worker.pid, 0)).toThrow();
+  }, 30_000);
+
   test("the build worker stays up after reporting its result until its runner releases it", async () => {
     const { root } = track(await createTempApp("demo", path.join(import.meta.dir, "..", "local")));
     const appDir = path.join(root, "apps/demo");
