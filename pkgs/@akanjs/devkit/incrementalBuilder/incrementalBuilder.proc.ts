@@ -834,7 +834,7 @@ class IncrementalBuilder {
 
   async boot(): Promise<void> {
     if (this.#watch) await this.installWatcher();
-    BuilderChannel.emit({ type: "builder-ready" });
+    await BuilderChannel.announceReady(this.#logger);
     this.#logger.verbose(`ready (watch=${this.#watch})`);
   }
 

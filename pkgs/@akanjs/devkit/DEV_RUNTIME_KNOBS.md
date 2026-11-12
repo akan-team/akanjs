@@ -74,9 +74,10 @@ which is the one case where replacing it again cannot help; it says that too, an
 | `AKAN_BUILDER_RPC_TIMEOUT_MS` | `120000` | How long the backend waits for a builder answer. Generous on purpose: a cold CSR build of every page legitimately takes tens of seconds. |
 | `AKAN_SERVER_PAGES_SPLITTING` | off | Emit the server pages bundle as chunks instead of one file. Experimental — the memory/latency trade has not been measured on a real app. |
 
-Two more are read by the dev server for its end-to-end tests only; never set them. `AKAN_DEV_SSR_ARM_DELAY_MS`
-holds the SSR registry's boot build back, and `AKAN_CSR_DEV_APP_WRITE_DELAY_MS` holds a registry's `app.js`
-back after a patch is announced.
+Three more are read by the dev server for its end-to-end tests only; never set them. `AKAN_DEV_SSR_ARM_DELAY_MS`
+holds the SSR registry's boot build back, `AKAN_CSR_DEV_APP_WRITE_DELAY_MS` holds a registry's `app.js` back
+after a patch is announced, and `AKAN_DEV_BUILDER_READY_GATE` keeps a builder whose boot build succeeded from
+reporting ready until the file it names exists.
 
 ## Observability
 

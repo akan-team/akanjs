@@ -1,13 +1,18 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import { AkanAppHost } from "../akanApp";
 import { DevGeneratedIndexSync } from "../frontendBuild";
+import { tempDirs } from "../test/testHelpers";
 import { DevStabilityHarness, type DevStabilityHmrProbe } from "./devStabilityHarness.fixture";
 
 const integrationEnabled = process.env.AKAN_DEV_STABILITY_INTEGRATION === "1";
 // Contention pushes a cold dev-server boot from ~3s to nearly a minute; 120s ran out mid-restart.
 const INTEGRATION_TIMEOUT_MS = 180_000;
+const WAIT_MS = 90_000;
 const MB = 1024 * 1024;
 const harnesses: DevStabilityHarness[] = [];
+const tempDir = tempDirs("akan-builder-gate-");
 
 const integrationTest = (name: string, fn: () => Promise<void>): void => {
   if (integrationEnabled) test(name, fn, INTEGRATION_TIMEOUT_MS);
@@ -193,12 +198,7 @@ describe("dev stability integration harness", () => {
     const harness = await createHarness();
     const host = await harness.startHost();
     const hmr = await harness.tryConnectHmrProbe();
-    const initialHtml = await harness.tryWaitForHttpText("initial-client-marker", 3_000);
-    if (!initialHtml) {
-      expect(host.proc.killed).toBe(false);
-      hmr?.close();
-      return;
-    }
+    await harness.waitForHttpText("initial-client-marker", WAIT_MS);
     const hmrMark = hmr?.mark() ?? 0;
 
     const { mark } = await harness.editUntilSeen(
@@ -228,12 +228,7 @@ describe("dev stability integration harness", () => {
     const harness = await createHarness();
     const host = await harness.startHost();
     const hmr = await harness.tryConnectHmrProbe();
-    const initialHtml = await harness.tryWaitForHttpText("initial-shared-marker", 3_000);
-    if (!initialHtml) {
-      expect(host.proc.killed).toBe(false);
-      hmr?.close();
-      return;
-    }
+    await harness.waitForHttpText("initial-shared-marker", WAIT_MS);
     const { mark, evidence } = await harness.editUntilSeen(
       host,
       (attempt) => harness.replaceText("common/marker.ts", /"[^"]*"/, `"updated-shared-marker-${attempt}"`),
@@ -251,12 +246,7 @@ describe("dev stability integration harness", () => {
     const harness = await createHarness();
     const host = await harness.startHost();
     const hmr = await harness.tryConnectHmrProbe();
-    const initialHtml = await harness.tryWaitForHttpText("initial-shared-marker", 3_000);
-    if (!initialHtml) {
-      expect(host.proc.killed).toBe(false);
-      hmr?.close();
-      return;
-    }
+    await harness.waitForHttpText("initial-shared-marker", WAIT_MS);
     const { mark } = await harness.editUntilSeen(
       host,
       (attempt) =>
@@ -287,11 +277,7 @@ export const dictionary = serviceDictionary(["en", "ko"])
   integrationTest("config edits restart the dev host and keep serving", async () => {
     const harness = await createHarness();
     const host = await harness.startHost();
-    const initialHtml = await harness.tryWaitForHttpText("initial-shared-marker", 3_000);
-    if (!initialHtml) {
-      expect(host.proc.killed).toBe(false);
-      return;
-    }
+    await harness.waitForHttpText("initial-shared-marker", WAIT_MS);
     const { mark } = await harness.editUntilSeen(
       host,
       (attempt) =>
@@ -318,12 +304,7 @@ export default config;
     const harness = await createHarness();
     const host = await harness.startHost();
     const hmr = await harness.tryConnectHmrProbe();
-    const initialHtml = await harness.tryWaitForHttpText("initial-client-marker", 3_000);
-    if (!initialHtml) {
-      expect(host.proc.killed).toBe(false);
-      hmr?.close();
-      return;
-    }
+    await harness.waitForHttpText("initial-client-marker", WAIT_MS);
     const failureHmrMark = hmr?.mark() ?? 0;
 
     const { mark: failureMark } = await harness.editUntilSeen(host, (attempt) =>
@@ -495,7 +476,6 @@ export class FixtureService extends serve("fixture" as const, { serverMode: "bat
 // not parallel-safe: run this block alone on an idle machine (`-t "dev resource budgets"`), never loosen it.
 describe("dev resource budgets", () => {
   const BOOT_MS = 150_000;
-  const WAIT_MS = 90_000;
   // ~6x the measured 260-516ms per save: catches a path that got slower by a factor, not jitter.
   const SAVE_LATENCY_BUDGET_MS = 3_000;
   const budgetTest = (name: string, fn: () => Promise<void>): void => {
@@ -663,9 +643,17 @@ describe("dev resource budgets", () => {
 
   budgetTest("serves a page requested while the builder is being replaced", async () => {
     const harness = await createHarness();
-    const host = await harness.startHost({ timeoutMs: BOOT_MS, env: { AKAN_BUILDER_MAX_RSS_MB: String(CEILING_MB) } });
+    // Outside the app, whose watcher would take a write to the gate for a save.
+    const readyGate = path.join(await tempDir(), "ready");
+    await Bun.write(readyGate, "");
+    const host = await harness.startHost({
+      timeoutMs: BOOT_MS,
+      env: { AKAN_BUILDER_MAX_RSS_MB: String(CEILING_MB), AKAN_DEV_BUILDER_READY_GATE: readyGate },
+    });
     const port = await harness.resolvePort();
     await harness.waitForHttpText("initial-client-marker", WAIT_MS);
+    // Shut from here on: the replacement stays between its spawn and its ready until the gate opens again.
+    await rm(readyGate);
 
     const start = host.markLog();
     // One save both evicts the route's cached client entries and arms the recycle.
@@ -681,28 +669,35 @@ describe("dev resource budgets", () => {
       async (response) => ({ status: response.status, html: await response.text() }),
     );
 
-    // Anchored on the spawn: the replacement's boot build leaves a wide, known window rather than a race.
     await host.waitForLogSince(start, /exiting for recycle/, WAIT_MS);
     await host.waitForLogSince(start, /builder spawned pid=\d+ .*restart=1/, WAIT_MS);
 
-    const holdMark = host.markLog();
-    const startedAtMono = performance.now();
     // Never requested before, so no route cache can answer it; it has to reach a builder that is not there yet.
-    const res = await fetch(`http://127.0.0.1:${port}/second`, { signal: AbortSignal.timeout(WAIT_MS) });
-    const html = await res.text();
-    const heldMs = Math.round(performance.now() - startedAtMono);
+    const second = fetch(`http://127.0.0.1:${port}/second`, { signal: AbortSignal.timeout(WAIT_MS) }).then(
+      async (response) => ({ status: response.status, html: await response.text() }),
+    );
+    // Two waiting are the drain request and this one; with the gate shut, an earlier answer is a refusal.
+    const answeredUnheld = await Promise.race([
+      host
+        .waitForLogSince(start, /holding build-route until the builder is ready \(2 waiting\)/, WAIT_MS)
+        .then(() => null),
+      second.then((response) => response.status),
+    ]);
+    expect(answeredUnheld).toBeNull();
+    await Bun.write(readyGate, "");
+    const held = await host.waitForLogSince(start, /holding build-route until the builder is ready \(2 waiting\)/);
+    const ready = await host.waitForLogSince(start, /builder ready after restart/, WAIT_MS);
+    expect(ready.index ?? -1).toBeGreaterThan(held.index ?? Number.POSITIVE_INFINITY);
 
+    const res = await second;
     // Without the hold this is a 500 from the dev error page, which never retries on its own.
     expect(res.status).toBe(200);
-    expect(html).toContain("marker-through-recycle");
-    expect(html).not.toContain("reload after the builder is ready");
-    // Proves the request reached the hold, rather than arriving after the replacement was already ready.
-    expect(host.logs.join("").slice(holdMark)).toMatch(/holding build-route until the builder is ready/);
+    expect(res.html).toContain("marker-through-recycle");
+    expect(res.html).not.toContain("reload after the builder is ready");
 
     const drained = await drainRequest;
     expect(drained.status).toBe(200);
     expect(drained.html).toContain("marker-through-recycle");
-    console.info(`[restart-guard] page held ${heldMs}ms across the recycle, then rendered`);
   });
 
   budgetTest("keeps a save's round trip inside its budget", async () => {
