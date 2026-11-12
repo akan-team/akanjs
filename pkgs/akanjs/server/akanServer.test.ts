@@ -864,6 +864,36 @@ describe("AkanServer stopped while starting", () => {
     }
   });
 
+  test("a stop from outside that lands while an init hook's stop tears the start down waits for that teardown", async () => {
+    const { ServerResolverTestService } = await loadRuntime();
+    const { DiLifecycle } = await import("./di/diLifecycle");
+    const { replica, destroyAll, restore } = await listeningServer();
+    const destroying = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const schedulerDestroy = spyOn(DiLifecycle.prototype, "runSchedulerDestroy").mockImplementation(async () => {
+      destroying.resolve();
+      await release.promise;
+    });
+    const onInit = spyOn(ServerResolverTestService.prototype, "onInit").mockImplementation(async () => {
+      void replica.stop();
+    });
+
+    try {
+      const starting = replica.start({ listen: true, web: false });
+      await destroying.promise;
+      const outside = replica.stop().then(() => replica.status);
+      release.resolve();
+
+      expect(await outside).toBe("stopped");
+      expect(await starting).toBe(replica);
+      expect(destroyAll).toHaveBeenCalledTimes(1);
+    } finally {
+      onInit.mockRestore();
+      schedulerDestroy.mockRestore();
+      await restore();
+    }
+  });
+
   test("a stop while listen() opens its log control socket closes it, and serves nothing", async () => {
     const { LogControlSocket } = await import("./logging/logControlSocket");
     const { replica, runtimeDir, destroyAll, schedulerInit, served, restore } = await listeningServer();
@@ -962,14 +992,19 @@ describe("AkanServer stopped while starting", () => {
     const replica = new AkanServer("serverGet", createEnv(tmp), "all", createLib());
     const listeners = { message: process.listeners("message"), disconnect: process.listeners("disconnect") };
     const schedulerInit = spyOn(DiLifecycle.prototype, "runSchedulerInit");
+    const outside = AsyncLocalStorage.snapshot();
+    const stopped = Promise.withResolvers<string>();
     const open = spyOn(LogControlSocket, "open").mockImplementation(async () => {
-      void replica.stop();
+      void outside(() => replica.stop())
+        .then(() => replica.status)
+        .then(stopped.resolve, stopped.reject);
       return null;
     });
 
     try {
       await replica.start({ listen: false });
       expect(open).toHaveBeenCalledTimes(1);
+      expect(await stopped.promise).toBe("stopped");
       expect(replica.status).toBe("stopped");
       expect(schedulerInit).not.toHaveBeenCalled();
     } finally {
@@ -1143,16 +1178,18 @@ describe("AkanServer start that fails part way", () => {
   test("a stop that lands while initializeRoute() fails resolves on that start's one teardown", async () => {
     const web = await webServer();
     await web.writeSeedIndex();
-    const stopped = Promise.withResolvers<void>();
+    const outside = AsyncLocalStorage.snapshot();
+    const stopped = Promise.withResolvers<ReturnType<typeof web.unwound>>();
     const initializeRoute = spyOn(web.WebRouter.prototype, "initializeRoute").mockImplementationOnce(async () => {
-      void web.replica.stop().then(stopped.resolve, stopped.reject);
+      void outside(() => web.replica.stop())
+        .then(() => web.unwound())
+        .then(stopped.resolve, stopped.reject);
       throw new Error("routes refused");
     });
 
     try {
       await expect(web.start()).rejects.toThrow("routes refused");
-      await stopped.promise;
-      expect(web.unwound()).toEqual({
+      expect(await stopped.promise).toEqual({
         status: "stopped",
         destroyed: 1,
         routersDisposed: 1,
@@ -1277,10 +1314,17 @@ describe("AkanServer start that fails part way", () => {
     const { replica, runtimeDir, destroyAll, schedulerInit, restore } = await listeningServer();
     const socketPath = LogControlSocket.pathIn(runtimeDir);
     const openSocket = LogControlSocket.open.bind(LogControlSocket);
-    const stopped = Promise.withResolvers<void>();
+    const outside = AsyncLocalStorage.snapshot();
+    const stopped = Promise.withResolvers<{ status: string; destroyed: number; socket: boolean }>();
     let bound = false;
     const open = spyOn(LogControlSocket, "open").mockImplementationOnce(async (...args) => {
-      void replica.stop().then(stopped.resolve, stopped.reject);
+      void outside(() => replica.stop())
+        .then(() => ({
+          status: replica.status,
+          destroyed: destroyAll.mock.calls.length,
+          socket: existsSync(socketPath),
+        }))
+        .then(stopped.resolve, stopped.reject);
       const control = await openSocket(...args);
       bound = control !== null && existsSync(socketPath);
       return control;
@@ -1288,13 +1332,8 @@ describe("AkanServer start that fails part way", () => {
 
     try {
       expect(await replica.start({ listen: false })).toBe(replica);
-      await stopped.promise;
       expect(bound).toBe(true);
-      expect({
-        status: replica.status,
-        destroyed: destroyAll.mock.calls.length,
-        socket: existsSync(socketPath),
-      }).toEqual({
+      expect(await stopped.promise).toEqual({
         status: "stopped",
         destroyed: 1,
         socket: false,

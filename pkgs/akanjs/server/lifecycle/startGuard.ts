@@ -25,6 +25,10 @@ export class StartGuard {
     };
   }
 
+  static outside<T>(run: () => T): T {
+    return StartGuard.#caller.exit(run);
+  }
+
   get stopHeld() {
     return Boolean(this.#step?.stop);
   }
@@ -34,8 +38,10 @@ export class StartGuard {
     //? From inside the step (an init hook) a stop would wait on itself: it is held for the step's end and settles now.
     if (step && StartGuard.#caller.getStore() === step) {
       step.stop ??= Promise.withResolvers<void>();
-      //? No caller awaits a teardown only the step itself asked for, and the teardown logs its own failure.
-      void step.stop.promise.catch(() => undefined);
+      const held = step.stop.promise;
+      //? The stop under way, so a later one waits for the step's teardown; nobody here awaits the failure it logs.
+      void held.catch(() => undefined);
+      void this.#once(() => held).catch(() => undefined);
       return Promise.resolve();
     }
     return this.#once(async () => {
