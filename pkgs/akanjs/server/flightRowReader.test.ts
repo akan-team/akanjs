@@ -33,7 +33,9 @@ describe("Flight row reader", () => {
       '0:"tail"',
     );
     const rewrite: FlightLineRowHandler = (row) => {
-      const rewritten = rewrites[decoder.decode(row.subarray(0, 3))];
+      const head = decoder.decode(row.subarray(0, 3));
+      if (head === '0:"') return encoder.encode("0:");
+      const rewritten = rewrites[head];
       if (rewritten === undefined) return row;
       return rewritten === null ? null : encoder.encode(rewritten);
     };
@@ -68,5 +70,6 @@ describe("Flight row reader", () => {
     expect(output).toContain("8:T3,abc");
     expect(output).toContain("no row\n");
     expect(output).not.toContain('5:D{"digest"');
+    expect(output.endsWith("no row\n0:")).toBe(true);
   });
 });

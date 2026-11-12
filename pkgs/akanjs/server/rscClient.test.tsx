@@ -1370,6 +1370,28 @@ describe("rscClient patch cache", () => {
     expect(shown()).toBe("/pass/b patched");
   });
 
+  test.each([
+    ["a redirect", "redirect", { digest: "AKAN_REDIRECT;push;307;%2Flogin", name: "Error" }],
+    ["an error", "error", { digest: "AKAN_RENDER_ERROR", name: "Error", message: "Boom" }],
+  ])("a patch whose stream carries %s row is fetched again whole, not laid", async (_, kind, error) => {
+    const base = `/ctl-${kind}`;
+    framed(`${base}/a`, base);
+    framed(`${base}/b`, base);
+    const framedB = served.get(`${base}/b`);
+    served.set(`${base}/b`, async (headers) => {
+      const response = (await framedB?.(headers)) ?? responseOf(base);
+      if (response.headers.get("X-Akan-Rsc-Partial") !== "patch") return response;
+      return new Response(`${await response.text()}1:E${JSON.stringify(error)}\n`, { headers: response.headers });
+    });
+    await navigate(`${base}/a`);
+
+    await navigate(`${base}/b`);
+
+    const requests = fetched.filter(({ pathname }) => pathname === `${base}/b`);
+    expect(requests.map(({ sentRouterState }) => sentRouterState)).toEqual([true, false]);
+    expect(shown()).toBe(`${base}/b`);
+  });
+
   test("a patch is replayed once a full commit brings back the page it went under, with its own title", async () => {
     framed("/deck/a", "deck");
     framed("/deck/b", "deck");

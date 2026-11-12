@@ -5,7 +5,7 @@ import { AkanError } from "../base/akanError";
 import { csrLocation } from "../client/csrLocation";
 import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
-import { type FlightLineRowHandler, mapFlightLineRows } from "./flightRowReader";
+import { type FlightLineRowHandler, type FlightRowPass, flightRowPassOf } from "./flightRowReader";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   type AkanRouterStateV1,
@@ -103,9 +103,8 @@ function trackRscThenable(thenable: RscThenable): RscThenable {
   return thenable;
 }
 
-function createRscThenable(stream: ReadableStream<Uint8Array>, onLineRows: FlightLineRowHandler[] = []): RscThenable {
-  const watched = mapFlightLineRows(
-    stream,
+function createRscThenable(rows: FlightRowPass, ...onLineRows: FlightLineRowHandler[]): RscThenable {
+  const watched = rows(
     ...onLineRows,
     rscErrorRowWatcher(() => caches.noteFailedRender(thenable)),
   );
@@ -207,8 +206,8 @@ async function fetchRsc(
     options.navId === undefined
       ? undefined
       : { navId: options.navId, href, replace: options.replaceOnRedirect ?? (() => true) };
-  const thenableOf = (stream: ReadableStream<Uint8Array>, guard: FlightLineRowHandler) =>
-    createRscThenable(stream, navigation ? [guard, chunkRecorderOf(navigation)] : [guard]);
+  const thenableOf = (rows: FlightRowPass) =>
+    navigation ? createRscThenable(rows, chunkRecorderOf(navigation)) : createRscThenable(rows);
   const responseResult = await fetchRscNavigationResponse(href, {
     buildId: options.buildId,
     currentRouterState,
@@ -275,7 +274,7 @@ async function fetchRsc(
     if (!applies && node && pendingRequest) parkedRedirect.park({ node, location, replace });
     else navigateAfterRscRedirect(location, replace);
   };
-  const thenable = thenableOf(stream, rscRedirectRowGuard({ onRedirect: handleRedirect }));
+  const thenable = thenableOf(flightRowPassOf(stream, rscRedirectRowGuard({ onRedirect: handleRedirect })));
   const node = createRscNavigationCacheNode({
     href,
     thenable,
@@ -297,7 +296,7 @@ const caches = new RscClientCache<RscThenable>({
   navId: () => navigationSeq,
   pendingTarget: () => pendingRequest?.target,
 });
-const initialThenable = createRscThenable(createInitialRscStream());
+const initialThenable = createRscThenable(flightRowPassOf(createInitialRscStream()));
 const initialRouterState = decodeAkanRouterState(globalThis.__AKAN_RSC_INITIAL_STATE__);
 const initialNode = createRscNavigationCacheNode({
   href: normalizeHref(window.location.href),

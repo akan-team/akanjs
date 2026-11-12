@@ -24,11 +24,10 @@ interface FlightRowSink {
   enqueue(row: Uint8Array): void;
 }
 
-//? A later handler reads a rewritten row as a pass of its own would: by the tag its new bytes carry.
+//? A rewrite (one row, ending where the old one did) reaches later handlers as a pass of its own would read it.
 const lineRowTagOf = (row: Uint8Array): string | null => {
   const colon = row.indexOf(COLON);
-  const newline = row.indexOf(NEWLINE);
-  if (colon === -1 || colon + 1 === row.byteLength || (newline !== -1 && newline < colon)) return null;
+  if (colon === -1 || colon + 1 === row.byteLength) return null;
   const byte = row[colon + 1];
   if (lengthPrefixedTags[byte] === 1) return null;
   return isLineRowTag(byte) ? String.fromCharCode(byte) : "";
@@ -153,3 +152,10 @@ export const mapFlightLineRows = (
     }),
   );
 };
+
+export type FlightRowPass = (...onLineRows: FlightLineRowHandler[]) => ReadableStream<Uint8Array>;
+
+export const flightRowPassOf =
+  (stream: ReadableStream<Uint8Array>, ...firstOnLineRows: FlightLineRowHandler[]): FlightRowPass =>
+  (...onLineRows) =>
+    mapFlightLineRows(stream, ...firstOnLineRows, ...onLineRows);

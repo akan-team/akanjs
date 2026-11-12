@@ -1,6 +1,6 @@
 import { type ReactNode, startTransition } from "react";
 import { AkanError } from "../base/akanError";
-import type { FlightLineRowHandler } from "./flightRowReader";
+import { type FlightLineRowHandler, type FlightRowPass, flightRowPassOf } from "./flightRowReader";
 import { type AkanHeadSnapshotV1, type AkanRscPatchMetadata, readAkanRouterStateResponseHeader } from "./routeState";
 import {
   commitPreparedAkanHeadSnapshotPatch,
@@ -33,7 +33,7 @@ interface ValidateRscSegmentPatchInput<T extends PromiseLike<unknown>> {
   response: Response;
   patch: AkanRscPatchMetadata;
   currentTree: AkanSegmentCacheNode<T> | null;
-  createThenable: (stream: ReadableStream<Uint8Array>, onLineRow: FlightLineRowHandler) => T;
+  createThenable: (rows: FlightRowPass) => T;
   navId?: number;
   getCurrentNavId?: () => number;
   getHeadSnapshotPatchFailureReason?: (snapshot: AkanHeadSnapshotV1) => AkanSegmentPatchFailureReason | null;
@@ -79,10 +79,12 @@ export async function validateRscSegmentPatch<T extends PromiseLike<unknown>>({
   let patchControlReason: Extract<AkanSegmentPatchFailureReason, "redirect-in-patch" | "error-in-patch"> | undefined;
   const patchThenable = patchStream
     ? createThenable(
-        patchStream,
-        patchControlRowGuard((reason) => {
-          patchControlReason ??= reason;
-        }),
+        flightRowPassOf(
+          patchStream,
+          patchControlRowGuard((reason) => {
+            patchControlReason ??= reason;
+          }),
+        ),
       )
     : undefined;
   let decodeFailed = !patchThenable;
