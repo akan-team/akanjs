@@ -82,6 +82,7 @@ export class AppPreview {
   static readonly desktopViewport = { width: 1280, height: 800 };
   //? Not a configured target: `akanMobileTarget` only switches the page into its CSR boot, which is what is checked.
   static readonly csrTarget = "preview";
+  static readonly #fullUrl = /^https?:\/\//i;
   static readonly settleMs = 1_000;
   //? A client report travels page → replica → gateway log hub → this socket after the page read.
   static readonly logGraceMs = 300;
@@ -155,7 +156,7 @@ export class AppPreview {
         `No page to open: ${changed.skipped.join("; ")}. Pass a concrete path, e.g. \`akan preview ${app.name} /memo/1\`.`,
       );
     const { i18n, api } = await app.getConfig();
-    const { paths, asWritten } = AppPreview.#plan(typed, i18n, {
+    const { paths, asWritten, folded } = AppPreview.#plan(typed, i18n, {
       csr: !!options.csr,
       apiPrefix: api.prefix,
       publicDir: path.join(app.cwdPath, "public"),
@@ -163,9 +164,9 @@ export class AppPreview {
     });
     const dev = new URL(origin);
     const isDevServer = (url: URL) =>
-      url.protocol === dev.protocol && url.port === dev.port && AppPreview.#isLoopback(url.hostname);
-    const elsewhere = [...new Set(typed)].filter((raw) => /^https?:\/\//.test(raw) && !isDevServer(new URL(raw)));
-    const skipsBoot = [...new Set(asWritten)];
+      url.protocol === dev.protocol && url.port === dev.port && AppPreview.#isDevHost(url.hostname);
+    const elsewhere = [...new Set(typed)].filter((raw) => AppPreview.#fullUrl.test(raw) && !isDevServer(new URL(raw)));
+    const skipsBoot = asWritten;
     const notes = [
       ...(elsewhere.length
         ? [
@@ -177,6 +178,7 @@ export class AppPreview {
             `--csr does not apply to ${skipsBoot.join(", ")}: ${skipsBoot.length === 1 ? "it opens" : "they open"} without the CSR boot.`,
           ]
         : []),
+      ...folded.map(({ raw, kept }) => `${raw} opens as ${kept}, which writes the same screenshot.`),
     ];
     return { paths, notes };
   }
@@ -190,7 +192,7 @@ export class AppPreview {
   ) {
     const keepsUnprefixed = i18n.localePrefix === "as-needed" && !csr;
     const urlOf = (raw: string) => {
-      const url = /^https?:\/\//.test(raw) ? new URL(raw) : AppPreview.probeUrlOf("http://localhost", raw);
+      const url = AppPreview.#fullUrl.test(raw) ? new URL(raw) : AppPreview.probeUrlOf("http://localhost", raw);
       url.pathname = url.pathname.replace(/^\/{2,}/, "/");
       return url;
     };
@@ -204,31 +206,34 @@ export class AppPreview {
       }
       return `${url.pathname}${url.search}`;
     };
-    const asWritten: string[] = [];
-    const typed = (paths.length || pages.length ? paths : ["/"]).map((raw) => {
+    const rows: { raw: string | null; path: string; asWritten: boolean }[] = (
+      paths.length || pages.length ? paths : ["/"]
+    ).map((raw) => {
       const url = urlOf(raw);
-      if (!/^https?:\/\//.test(raw) && AppPreview.#isPagePath(url.pathname, i18n, { apiPrefix, publicDir }))
-        return asPage(url);
-      asWritten.push(raw);
-      return `${url.pathname}${url.search}`;
+      const isPage =
+        !AppPreview.#fullUrl.test(raw) && AppPreview.#isPagePath(url.pathname, i18n, { apiPrefix, publicDir });
+      return { raw, path: isPage ? asPage(url) : `${url.pathname}${url.search}`, asWritten: !isPage };
     });
-    const byScreenshot = new Map<string, string>();
-    for (const pagePath of [...typed, ...pages.map((page) => asPage(urlOf(page)))]) {
-      const name = AppPreview.screenshotName(pagePath);
-      if (!byScreenshot.has(name)) byScreenshot.set(name, pagePath);
+    for (const page of pages) rows.push({ raw: null, path: asPage(urlOf(page)), asWritten: false });
+    const byScreenshot = new Map<string, (typeof rows)[number]>();
+    const folded: { raw: string; kept: string }[] = [];
+    for (const row of rows) {
+      const name = AppPreview.screenshotName(row.path);
+      const kept = byScreenshot.get(name);
+      if (!kept) byScreenshot.set(name, row);
+      else if (row.raw !== null && kept.path !== row.path) folded.push({ raw: row.raw, kept: kept.path });
     }
-    return { paths: [...byScreenshot.values()], asWritten };
+    const planned = [...byScreenshot.values()];
+    return {
+      paths: planned.map((row) => row.path),
+      asWritten: planned.flatMap((row) => (row.asWritten && row.raw !== null ? [row.raw] : [])),
+      folded,
+    };
   }
 
-  //? RFC 6761 makes `*.localhost` loopback, and a connect to the unspecified address reaches this machine.
-  static #isLoopback(hostname: string) {
-    const name = hostname.replace(/\.$/, "");
-    return (
-      name === "localhost" ||
-      name.endsWith(".localhost") ||
-      /^127\.\d+\.\d+\.\d+$/.test(name) ||
-      ["0.0.0.0", "[::1]", "[::]"].includes(name)
-    );
+  //? `akan start` binds ServerLimits.loopbackHost; a `*.localhost` name can be a sub-route host served at its basePath.
+  static #isDevHost(hostname: string) {
+    return ["localhost", "127.0.0.1", "0.0.0.0"].includes(hostname.replace(/\.$/, ""));
   }
 
   //? Joined as text, not resolved: `new URL("//host/x", origin)` is protocol-relative and leaves the dev server.
@@ -247,16 +252,17 @@ export class AppPreview {
 
   //? The server routes these outside `/:lang` and the locale proxy skips them, so a locale prefix 404s them.
   static #isPagePath(
-    rawPath: string,
+    pathname: string,
     i18n: I18nLike,
     { apiPrefix, publicDir }: { apiPrefix: string; publicDir: string | null },
   ) {
-    const pathname = rawPath.replace(/(.)\/+$/, "$1");
     const segments = pathname.split("/").filter(Boolean);
     const [first] = segments;
     if (first && i18n.locales.includes(first)) return true;
     const prefixes = ["/_akan", "/__csr", "/__rsc", "/.well-known", apiPrefix.replace(/\/+$/, "")].filter(Boolean);
     if (prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return false;
+    //? Bun routes match exactly and the locale proxy skips only an extension, so it redirects `/openapi.json/`.
+    if (pathname.endsWith("/")) return true;
     if (AppPreview.#serverFiles.has(pathname)) return false;
     if (segments.length === 2 && segments[1] === "manifest.webmanifest") return false;
     return !(publicDir && AppPreview.#isPublicFile(publicDir, pathname));
