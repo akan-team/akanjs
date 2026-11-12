@@ -1124,6 +1124,32 @@ describe("AkanServer start that fails part way", () => {
       await restore();
     }
   });
+  test("a start whose init schedule fails after a stop and the next start leaves that next start running", async () => {
+    const { replica, destroyAll, schedulerInit, served, restore } = await listeningServer();
+    const reached = Promise.withResolvers<void>();
+    const schedule = Promise.withResolvers<void>();
+    schedulerInit.mockImplementationOnce(async () => {
+      reached.resolve();
+      await schedule.promise;
+    });
+
+    try {
+      const first = replica.start({ listen: true, web: false }).catch((error: unknown) => error);
+      await reached.promise;
+      await replica.stop();
+      const second = replica.start({ listen: true, web: false });
+      schedule.reject(new Error("schedule refused"));
+
+      expect(await first).toEqual(new Error("schedule refused"));
+      await second;
+      expect(replica.status).toBe("running");
+      expect(destroyAll).toHaveBeenCalledTimes(1);
+      expect(await served()).toBe(true);
+    } finally {
+      await restore();
+    }
+  });
+
   test("a stop() that lands while the unwind tears down waits on that teardown, and the container is destroyed once", async () => {
     const { DiLifecycle } = await import("./di/diLifecycle");
     const { isPortInUseError } = await import("./lifecycle/portInUse");

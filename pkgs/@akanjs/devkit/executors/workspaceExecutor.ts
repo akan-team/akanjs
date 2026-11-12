@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { stat } from "node:fs/promises";
 import path from "node:path";
 import { AkanWorkspaceConfig } from "../akanConfig";
 import { FileSys } from "../util/fileSys";
@@ -190,7 +189,7 @@ export class WorkspaceExecutor extends Executor {
         dirs.map(async (dir) => {
           if (dir.includes("_") || AVOID_DIRS.includes(dir)) return;
           const dirPath = path.join(dirname, dir);
-          if ((await stat(dirPath)).isDirectory()) {
+          if (await FileSys.dirExists(this.getPath(dirPath))) {
             results.push(`${prefix}${dir}`);
             if (maxDepth > 0) await getDirs(dirPath, maxDepth - 1, results, `${prefix}${dir}/`);
           }
