@@ -6,7 +6,7 @@
 `AkanServer`, the DI container, the RSC worker host and `AkanApp` now fail with a coded `AkanError` instead of a bare `Error`. Messages are unchanged, and so is every status a caller is answered with. The error-code reference lists the new codes.
 
 - `AkanServer`:
-  - `alreadyStarted` (500): a `set*` config call, or a second `init()`, once the server has started.
+  - `alreadyInitialized` (500): a `set*` config call, or a second `init()`, once `init()` has run.
   - `notInitialized` (500): `listen()` before `init()`, or `get`/`getService`/`getSignal`/`getAdaptor` before the server is initialized.
   - `shutdownTimeout` (500): `stop()` when the teardown outlasts `setShutdownTimeout`.
 - The DI container:
@@ -16,8 +16,8 @@
   - `duplicateRegistration` (500): two owners claim one adaptor, use, job, fetch handler or socket key.
   - `stageFailed` (500): tasks of a boot stage failed. Its `errors` holds each task's own error.
 - The RSC worker host:
-  - `rscWorkerFailed` (500): the worker answered a render, a page prompt or manifest call, its boot or a reload with an error. A failed reload still carries `adopted` and `failed`.
-  - `rscWorkerStopped` (500): the worker was stopped, exited, or could not be sent the request.
+  - `rscWorkerFailed` (500): the worker answered a render, a page prompt or manifest call, its boot or a reload with an error, or exited while it imported the pages bundle. A failed reload still carries `adopted` and `failed`.
+  - `rscWorkerStopped` (500): a render, a call or a reload the worker could not answer because it was stopped, exited, or could not be sent the request. A failed reload still carries `adopted` and `failed`.
   - `renderAborted` (499): the request aborted with a reason that is not an `Error`. It is still named `AbortError`, so the page still answers 499.
   - `rscQueueOverflow` (500): the host's chunk queue for a render passed its cap.
   - `invalidRscResponse` (500): the worker sent a redirect or a not-found after the stream started.

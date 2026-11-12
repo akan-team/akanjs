@@ -1,7 +1,7 @@
 import { AkanError } from "akanjs/base";
 import type { Logger } from "akanjs/common";
 import { createRscHostRenderStream, type RscPending, type RscRenderResult } from "./rscHostRenderStream";
-import type { RscWorkerProcess } from "./rscWorkerProcess";
+import type { RscWorkerErrorCode, RscWorkerProcess } from "./rscWorkerProcess";
 import type { RscRenderOptions } from "./ssrTypes";
 
 interface RscCall {
@@ -110,13 +110,13 @@ export class RscHostRequests {
         this.#worker.proc.send({ type: "render", requestId, url, method, headers, clientManifest, prefetch });
       } catch (err) {
         this.resolvePending(requestId, (p) =>
-          p.onError(`rsc worker send failed: ${err instanceof Error ? err.message : String(err)}`),
+          p.onError(`rsc worker send failed: ${err instanceof Error ? err.message : String(err)}`, "rscWorkerStopped"),
         );
       }
     };
     if (this.#worker.status === "ready") send();
     else if (this.#worker.status === "stopped") {
-      this.resolvePending(requestId, (p) => p.onError("rsc worker is stopped"));
+      this.resolvePending(requestId, (p) => p.onError("rsc worker is stopped", "rscWorkerStopped"));
     } else {
       this.#queuedSends.push({ requestId, send });
     }
@@ -143,11 +143,11 @@ export class RscHostRequests {
     }
   }
 
-  failRequests(err: Error, which: (requestId: string) => boolean = () => true): void {
+  failRequests(err: AkanError<RscWorkerErrorCode>, which: (requestId: string) => boolean = () => true): void {
     for (const [requestId, pending] of this.pending) {
       if (!which(requestId)) continue;
       this.pending.delete(requestId);
-      pending.onError(err.message);
+      pending.onError(err.message, err.code);
     }
     for (const [requestId, call] of this.calls) {
       if (!which(requestId)) continue;

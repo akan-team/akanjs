@@ -8,6 +8,7 @@ import { ChildOutputReader } from "./logging/childOutputReader";
 
 export type RscWorkerStatus = "starting" | "ready" | "restarting" | "stopped";
 export type RscProcess = Bun.Subprocess;
+export type RscWorkerErrorCode = "rscWorkerFailed" | "rscWorkerStopped";
 
 interface RscWorkerProcessEvents {
   onMessage: (message: unknown, proc: RscProcess) => void;

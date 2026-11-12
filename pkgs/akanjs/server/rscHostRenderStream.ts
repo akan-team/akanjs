@@ -1,6 +1,7 @@
 import { AkanError } from "akanjs/base";
 import type { AkanTheme } from "akanjs/fetch";
 import type { RouteCacheRenderState } from "./cachePolicy";
+import type { RscWorkerErrorCode } from "./rscWorkerProcess";
 import type { RscTraceMetadata, SsrLateControl } from "./ssrTypes";
 
 // A bounded queue guard, not backpressure: a host that cannot drain IPC chunks fails the render instead of buffering.
@@ -9,7 +10,7 @@ const DEFAULT_RSC_HOST_MAX_PENDING_CHUNKS = 256;
 export interface RscPending {
   onChunk: (data: Uint8Array) => void;
   onEnd: () => void;
-  onError: (message: string) => void;
+  onError: (message: string, code?: RscWorkerErrorCode) => void;
   onMeta?: (meta: { theme?: AkanTheme; status?: number; trace?: RscTraceMetadata }) => void;
   onTheme?: (theme: AkanTheme | undefined) => void;
   onCacheState?: (state: RouteCacheRenderState) => void;
@@ -175,16 +176,16 @@ function createRscHostPending({
       settleStream();
       controller.close();
     },
-    onError: (msg) => {
+    onError: (msg, code = "rscWorkerFailed") => {
       settleLateControl(null);
       settleCacheState({ cacheable: false, reason: "error" });
       cleanupAbortListener();
       if (!render.settled) {
         render.settled = true;
-        reject(new AkanError("rscWorkerFailed", msg));
+        reject(new AkanError(code, msg));
         return;
       }
-      controller.error(new AkanError("rscWorkerFailed", msg));
+      controller.error(new AkanError(code, msg));
     },
     onRedirect: (location, method, status) => {
       settleLateControl(null);

@@ -205,32 +205,32 @@ export class AkanServer {
   }
   setPrefix(prefix: string) {
     if (this.status !== "stopped")
-      throw new AkanError("alreadyStarted", "Route prefix must be set before app initialization.");
+      throw new AkanError("alreadyInitialized", "Route prefix must be set before app initialization.");
     this.prefix = ServerConfig.requireRoutePrefix(prefix, "prefix");
     return this;
   }
   setWebsocketPrefix(websocketPrefix: string) {
     if (this.status !== "stopped")
-      throw new AkanError("alreadyStarted", "Websocket prefix must be set before app initialization.");
+      throw new AkanError("alreadyInitialized", "Websocket prefix must be set before app initialization.");
     this.websocketPrefix = ServerConfig.requireRoutePrefix(websocketPrefix, "websocketPrefix");
     return this;
   }
   setOpenApi(openapi = true) {
     if (this.status !== "stopped")
-      throw new AkanError("alreadyStarted", "OpenAPI config must be set before app initialization.");
+      throw new AkanError("alreadyInitialized", "OpenAPI config must be set before app initialization.");
     this.openapi = openapi;
     return this;
   }
   /** Narrows the web surface; never widens it past what the build produced. */
   setWeb(web: AkanWebOption = true) {
     if (this.status !== "stopped")
-      throw new AkanError("alreadyStarted", "Web config must be set before app initialization.");
+      throw new AkanError("alreadyInitialized", "Web config must be set before app initialization.");
     this.web = ServerConfig.narrowWeb(this.web, web);
     return this;
   }
   setMcp(mcp: boolean | McpServerOption = true) {
     if (this.status !== "stopped")
-      throw new AkanError("alreadyStarted", "MCP config must be set before app initialization.");
+      throw new AkanError("alreadyInitialized", "MCP config must be set before app initialization.");
     // An object without `enabled` only configures the surface, and the env switch can only narrow.
     const requested = typeof mcp === "boolean" ? mcp : (mcp.enabled ?? this.mcp);
     this.mcp = requested && !ServerConfig.isEnvOff("AKAN_MCP", "AKAN_PUBLIC_MCP");
@@ -254,13 +254,13 @@ export class AkanServer {
   }
   setDatabaseConfig(database: DatabaseConfig) {
     if (this.status !== "stopped")
-      throw new AkanError("alreadyStarted", "Database config must be set before app initialization.");
+      throw new AkanError("alreadyInitialized", "Database config must be set before app initialization.");
     this.env.database = database;
     return this;
   }
   setSolidConfig(solid: SolidConfig) {
     if (this.status !== "stopped")
-      throw new AkanError("alreadyStarted", "Solid config must be set before app initialization.");
+      throw new AkanError("alreadyInitialized", "Solid config must be set before app initialization.");
     this.env.solid = solid;
     return this;
   }
@@ -318,7 +318,7 @@ export class AkanServer {
 
   async init(option: { routes?: boolean; web?: AkanWebOption } = {}) {
     if (this.status !== "stopped")
-      throw new AkanError("alreadyStarted", "AkanServer is not able to init. It is already running.");
+      throw new AkanError("alreadyInitialized", "AkanServer is not able to init. It is already running.");
     ServerConfig.assertPrefixClearsBasePaths(this.prefix);
     const start = performance.now();
     this.#initTimings.clear();

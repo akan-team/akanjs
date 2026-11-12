@@ -424,13 +424,13 @@ export class RscWorker {
     if (this.#worker.killed) {
       this.#worker.status = "stopped";
       this.#requests.failRequests(err);
-      this.#reloads.rejectReload(err.message);
+      this.#reloads.rejectReload(err.message, err.code);
       return;
     }
     if (this.#failBeforeReady && !this.#worker.readyResolved) {
       this.#worker.status = "stopped";
       this.#requests.failRequests(err);
-      this.#reloads.rejectReload(err.message);
+      this.#reloads.rejectReload(err.message, err.code);
       this.#worker.rejectReady(err);
       return;
     }

@@ -199,7 +199,7 @@ describe("AkanServer shutdown", () => {
 });
 
 describe("AkanServer out-of-order calls", () => {
-  test("refuses a listen before init as notInitialized, and configuration or a second init once started as alreadyStarted", async () => {
+  test("refuses a listen before init as notInitialized, and configuration or a second init once started as alreadyInitialized", async () => {
     const { AkanServer, createLib } = await loadRuntime();
     const tmp = await mkdtemp(join(tmpdir(), "akan-server-order-"));
     const env = createEnv(tmp);
@@ -222,7 +222,7 @@ describe("AkanServer out-of-order calls", () => {
         failureOf(() => server.setSolidConfig(env.solid as SolidConfig)),
         await server.init().catch((error: unknown) => error),
       ];
-      expect(late.map((error) => AkanError.is(error, "alreadyStarted") && error.statusCode)).toEqual(
+      expect(late.map((error) => AkanError.is(error, "alreadyInitialized") && error.statusCode)).toEqual(
         Array(late.length).fill(500),
       );
       expect((late.at(-1) as Error).message).toBe("AkanServer is not able to init. It is already running.");

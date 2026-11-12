@@ -16,7 +16,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | Code | Status | Error | Forwarded | Code on the wire | Source |
 |---|---|---|---|---|---|
 | `alreadyApplied` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
-| `alreadyStarted` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `alreadyInitialized` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `artifactMissing` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `authRequired` | 401 | `McpAuthRequiredError` | no | yes | `server/mcp/McpDispatcher.ts` |
 | `badGateway` | 502 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
