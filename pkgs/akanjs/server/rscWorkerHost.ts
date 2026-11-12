@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import { Logger, type LogRecord } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
@@ -338,7 +339,7 @@ export class RscWorker {
         if (message.requestId === "__init__") {
           if (!this.#worker.readyResolved) {
             this.#reloads.rejectReload(String(message.message));
-            this.#worker.rejectReady(new Error(String(message.message)));
+            this.#worker.rejectReady(new AkanError("rscWorkerFailed", String(message.message)));
           } else {
             this.#bootFailed(proc, String(message.message));
             proc.kill();
@@ -349,7 +350,11 @@ export class RscWorker {
           this.#reloads.onReloadFailed(message, proc);
           return;
         }
-        if (this.#requests.settleCall(message.requestId, (call) => call.reject(new Error(String(message.message)))))
+        if (
+          this.#requests.settleCall(message.requestId, (call) =>
+            call.reject(new AkanError("rscWorkerFailed", String(message.message))),
+          )
+        )
           return;
         this.#requests.resolvePending(message.requestId, (p) => p.onError(String(message.message)));
         return;
@@ -402,14 +407,14 @@ export class RscWorker {
       if (!this.#worker.readyResolved) {
         this.#worker.booting = null;
         this.#worker.status = "stopped";
-        this.#requests.failRequests(new Error(message));
+        this.#requests.failRequests(new AkanError("rscWorkerFailed", message));
         this.#reloads.rejectReload(message);
-        this.#worker.rejectReady(new Error(message));
+        this.#worker.rejectReady(new AkanError("rscWorkerFailed", message));
         return;
       }
     }
 
-    const err = new Error(`rsc worker exited with code ${code}`);
+    const err = new AkanError("rscWorkerStopped", `rsc worker exited with code ${code}`);
     //? Only what this worker was sent: a request still queued never reached it, and the respawn takes it. That holds
     //? across a crash and a respawn that failed to boot, not a crash loop, where it would wait forever.
     const queued = new Set(this.#requests.queuedSends.map((entry) => entry.requestId));

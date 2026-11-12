@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import type { Logger } from "akanjs/common";
 import { createRscHostRenderStream, type RscPending, type RscRenderResult } from "./rscHostRenderStream";
 import type { RscWorkerProcess } from "./rscWorkerProcess";
@@ -58,13 +59,18 @@ export class RscHostRequests {
           this.#worker.proc.send(message(requestId));
         } catch (err) {
           this.settleCall(requestId, (call) =>
-            call.reject(new Error(`rsc worker send failed: ${err instanceof Error ? err.message : String(err)}`)),
+            call.reject(
+              new AkanError(
+                "rscWorkerStopped",
+                `rsc worker send failed: ${err instanceof Error ? err.message : String(err)}`,
+              ),
+            ),
           );
         }
       };
       if (this.#worker.status === "ready") send();
       else if (this.#worker.status === "stopped")
-        this.settleCall(requestId, (call) => call.reject(new Error("rsc worker is stopped")));
+        this.settleCall(requestId, (call) => call.reject(new AkanError("rscWorkerStopped", "rsc worker is stopped")));
       else this.#queuedSends.push({ requestId, send });
     });
   }

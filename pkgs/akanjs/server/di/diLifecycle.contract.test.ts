@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type BaseEnv, DatabaseModes, resetEnvCache } from "akanjs/base";
+import { AkanError, type BaseEnv, DatabaseModes, resetEnvCache } from "akanjs/base";
 import { type ConstantCls, type ConstantModel, ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, into } from "akanjs/document";
-import { adapt, type LlmAdaptor, LlmAdaptorRole, ServiceModel, SolidPubSub, serve } from "akanjs/service";
+import { adapt, InjectError, type LlmAdaptor, LlmAdaptorRole, ServiceModel, SolidPubSub, serve } from "akanjs/service";
 import { endpoint } from "../../signal/endpoint";
 import type { EndpointBuilder } from "../../signal/endpointInfo";
 import { Public } from "../../signal/guards";
@@ -47,6 +47,14 @@ const loadDiLifecycle = async (appName: string) => {
       return await super.initializeAll();
     }
   };
+};
+
+const failureOf = (run: () => unknown) => {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
 };
 
 const libOf = (
@@ -648,6 +656,8 @@ describe("DiLifecycle module selection", () => {
     expect(() => new DiLifecycle({ env: {}, modules: ["selectionTypo"] }, buildSelectionLib())).toThrow(
       'unknown module "selectionTypo"',
     );
+    const failure = failureOf(() => new DiLifecycle({ env: {}, modules: ["selectionTypo"] }, buildSelectionLib()));
+    expect(AkanError.is(failure, "invalidConfig")).toBe(true);
   });
 
   test("drops a disabled module and everything that reaches it", async () => {
@@ -753,6 +763,8 @@ describe("DiLifecycle module selection", () => {
     expect(() => new DiLifecycle({ env: {}, modules: ["@kiosk"] }, buildModeLib())).toThrow(
       '[DI:modules] "@kiosk" names no module',
     );
+    const failure = failureOf(() => new DiLifecycle({ env: {}, modules: ["@kiosk"] }, buildModeLib()));
+    expect(AkanError.is(failure, "invalidConfig")).toBe(true);
   });
 
   test("drops a module whose relation target its operation mode keeps out, and mounts it where the target runs", async () => {
@@ -827,11 +839,54 @@ describe("DiLifecycle database mode", () => {
     const carried = drivers.cluster;
     drivers.cluster = [...carried, "akan-driver-that-is-not-installed"];
     try {
-      await expect(
-        bootIn({ ...deployed, AKAN_DATABASE_MODE: "cluster", AKAN_DATABASE_MODES: undefined }),
-      ).rejects.toThrow("imports akan-driver-that-is-not-installed, which this build does not carry");
+      const failure = await bootIn({
+        ...deployed,
+        AKAN_DATABASE_MODE: "cluster",
+        AKAN_DATABASE_MODES: undefined,
+      }).catch((error: unknown) => error);
+      expect(AkanError.is(failure, "invalidConfig")).toBe(true);
+      expect(failure).toMatchObject({
+        message: expect.stringContaining("imports akan-driver-that-is-not-installed, which this build does not carry"),
+      });
     } finally {
       drivers.cluster = carried;
     }
+  });
+});
+
+describe("DiLifecycle before init", () => {
+  test("fails a lookup, the scheduler and the schedule of a container nothing initialized, with InjectError codes", async () => {
+    const DiLifecycle = await loadDiLifecycle("beforeInit");
+    class BeforeInitProbeService extends serve("beforeInitProbe" as const, () => ({})) {}
+    const lifecycle = new DiLifecycle(
+      { env: {} },
+      libOf("beforeInitTest", new AkanOption(), { services: [serviceModule(BeforeInitProbeService)] }),
+    );
+
+    const lookup = failureOf(() => lifecycle.getService("beforeInitProbe"));
+    expect(InjectError.is(lookup, "notRegistered")).toBe(true);
+    expect(lookup).toMatchObject({ statusCode: 500, message: 'Service "beforeInitProbe" is not registered.' });
+
+    class GhostAdaptor extends adapt("beforeInitGhost" as const, () => ({})) {}
+    lifecycle.registry.adaptorCls.set("beforeInitGhost", GhostAdaptor);
+    const ghost = failureOf(() => lifecycle.getAdaptor("beforeInitGhost"));
+    expect(InjectError.is(ghost, "notInitialized")).toBe(true);
+    expect(ghost).toMatchObject({ statusCode: 500, message: 'Adaptor "beforeInitGhost" is not initialized.' });
+
+    const byClass = failureOf(() => lifecycle.getByClass(BeforeInitProbeService));
+    expect(InjectError.is(byClass, "notInitialized")).toBe(true);
+    expect(byClass).toMatchObject({ statusCode: 500, message: 'Dependency "beforeInitProbe" is not initialized.' });
+
+    const scheduler = await lifecycle.runSchedulerInit().catch((error: unknown) => error);
+    expect(InjectError.is(scheduler, "notRegistered")).toBe(true);
+    expect(scheduler).toMatchObject({ statusCode: 500, message: "Scheduler is not registered" });
+
+    const schedule = failureOf(() => lifecycle.registerSchedule("all"));
+    expect(AkanError.is(schedule, "stageFailed")).toBe(true);
+    const scheduleErrors = (schedule as { errors: unknown[] }).errors;
+    expect(scheduleErrors.every((error) => InjectError.is(error, "notRegistered"))).toBe(true);
+    expect(scheduleErrors).toContainEqual(
+      expect.objectContaining({ message: 'Internal "beforeInitProbeInternal" is not registered' }),
+    );
   });
 });

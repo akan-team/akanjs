@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import type { AkanTheme } from "akanjs/fetch";
 import type { RouteCacheRenderState } from "./cachePolicy";
 import type { RscTraceMetadata, SsrLateControl } from "./ssrTypes";
@@ -89,7 +90,9 @@ export function isRscHostPendingChunkOverflow(pendingChunks: number, maxPendingC
 
 function createRscRenderAbortError(reason?: unknown): Error {
   if (reason instanceof Error) return reason;
-  const error = new Error(reason === undefined ? "rsc render aborted" : String(reason));
+  const error = new AkanError("renderAborted", reason === undefined ? "rsc render aborted" : String(reason), {
+    statusCode: 499,
+  });
   error.name = "AbortError";
   return error;
 }
@@ -154,7 +157,10 @@ function createRscHostPending({
       settleStream();
       render.pendingChunks = nextRscHostPendingChunkCount(render.pendingChunks, controller.desiredSize);
       if (isRscHostPendingChunkOverflow(render.pendingChunks, maxPendingChunks)) {
-        const error = new Error(`rsc worker host queue exceeded ${maxPendingChunks} pending chunks`);
+        const error = new AkanError(
+          "rscQueueOverflow",
+          `rsc worker host queue exceeded ${maxPendingChunks} pending chunks`,
+        );
         input.onPendingChunkOverflow?.();
         cancelRender(error);
         controller.error(error);
@@ -175,10 +181,10 @@ function createRscHostPending({
       cleanupAbortListener();
       if (!render.settled) {
         render.settled = true;
-        reject(new Error(msg));
+        reject(new AkanError("rscWorkerFailed", msg));
         return;
       }
-      controller.error(new Error(msg));
+      controller.error(new AkanError("rscWorkerFailed", msg));
     },
     onRedirect: (location, method, status) => {
       settleLateControl(null);
@@ -190,7 +196,7 @@ function createRscHostPending({
         controller.close();
         return;
       }
-      controller.error(new Error(`redirect after stream started: ${location}`));
+      controller.error(new AkanError("invalidRscResponse", `redirect after stream started: ${location}`));
     },
     onLateRedirect: (location, method, status) => settleLateControl({ type: "redirect", location, method, status }),
     onLateNotFound: () => settleLateControl({ type: "not-found" }),
@@ -205,7 +211,7 @@ function createRscHostPending({
         controller.close();
         return;
       }
-      controller.error(new Error("not-found after stream started"));
+      controller.error(new AkanError("invalidRscResponse", "not-found after stream started"));
     },
   };
 }

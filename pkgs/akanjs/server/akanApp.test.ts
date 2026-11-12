@@ -4,6 +4,7 @@ import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync } from "node:zlib";
+import { AkanError } from "../base/akanError";
 import { resetEnvCache } from "../base/baseEnv";
 import { TrustedProxy } from "../common/TrustedProxy";
 import { AkanApp } from "./akanApp";
@@ -2269,6 +2270,18 @@ describe("AkanApp solo", () => {
         process.stdout.write = original;
       }
       expect(writes.join("")).toContain("replica in this process (solo)");
+    });
+  }, 10_000);
+
+  test("refuses a server file that exports neither server nor app as invalidArtifact", async () => {
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-solo-no-export-");
+    await Bun.write(serverPath, "export const nothing = true;\n");
+    await withSoloEnv({ AKAN_SOLO: undefined, AKAN_REPLICA: undefined }, async () => {
+      const failure = await new AkanApp(serverPath, { runtimeDir, port: randomPort() })
+        .start()
+        .catch((error: unknown) => error);
+      expect(AkanError.is(failure, "invalidArtifact")).toBe(true);
+      expect(failure).toMatchObject({ statusCode: 500, message: "server.ts must export server or app with start()" });
     });
   }, 10_000);
 

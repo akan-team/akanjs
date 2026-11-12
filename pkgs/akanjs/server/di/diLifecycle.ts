@@ -1,4 +1,4 @@
-import { type BackendEnv, DatabaseModes, getEnv, INTERNAL_META } from "akanjs/base";
+import { AkanError, type BackendEnv, DatabaseModes, getEnv, INTERNAL_META } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import { FetchClient } from "akanjs/fetch";
@@ -7,6 +7,7 @@ import {
   type AdaptorCls,
   getDefaultInjectRegistry,
   getDefaultLiveRegistry,
+  InjectError,
   InjectInfo,
   type Scheduler,
   type Service,
@@ -29,7 +30,12 @@ import { MachineAccount } from "../machine/machineAccount";
 import type { WebProxyRegistration } from "../proxy";
 import { CascadeRunner, DatabaseResolver, ServiceResolver, SignalResolver } from "../resolver";
 import type { SignalRoutes, WebsocketRoutes } from "../types";
-import { collectPredefinedDependencies, getPredefinedAdaptor, predefinedAdaptorRole } from "./predefinedAdaptor";
+import {
+  collectPredefinedDependencies,
+  getPredefinedAdaptor,
+  predefinedAdaptorRole,
+  resolveDatabaseMode,
+} from "./predefinedAdaptor";
 import { collectAdaptors, resolveAdaptorHierarchy, resolveServiceHierarchy } from "./resolveHierarchy";
 import {
   assertUniqueRegistrations,
@@ -95,29 +101,6 @@ export class DiLifecycle {
     return [...this.#service.values(), ...this.#database.values()];
   }
 
-  // Fails the boot with what to fix, instead of an import error inside an adaptor's init.
-  static #databaseMode() {
-    const { environment, operationMode } = getEnv();
-    const mode = DatabaseModes.resolve({
-      requested: process.env.AKAN_DATABASE_MODE,
-      declared: process.env.AKAN_DATABASE_MODES,
-      local: environment === "local" || operationMode === "local",
-    });
-    const missing = DatabaseModes.drivers[mode].filter((driver) => {
-      try {
-        import.meta.resolve(driver);
-        return false;
-      } catch {
-        return true;
-      }
-    });
-    if (missing.length)
-      throw new Error(
-        `The ${mode} database mode imports ${missing.join(", ")}, which this build does not carry. Declare "${mode}" in database.modes of akan.config.ts: akan build bundles the drivers of every declared mode, and akan start installs them.`,
-      );
-    return mode;
-  }
-
   static #envOn(...names: string[]) {
     return !names.some((name) => process.env[name] === "false" || process.env[name] === "0");
   }
@@ -126,7 +109,7 @@ export class DiLifecycle {
     //? A disabled lib's constants still register on import, and an app disables a lib to step around its clash.
     ConstantRegistry.assertConsistentRefNames(disableLibs);
     this.#env = env;
-    const databaseMode = DiLifecycle.#databaseMode();
+    const databaseMode = resolveDatabaseMode();
     this.logger.debug(`Database mode: ${DatabaseModes.describe(databaseMode)}`);
     // Copied: "single" mode hands back the shared module-scope object, and applyAdaptor overrides mutate per app.
     this.#predefinedAdaptor = { ...getPredefinedAdaptor(databaseMode) };
@@ -386,7 +369,8 @@ export class DiLifecycle {
             .filter(({ module }) => module.service.srv.operationMode?.includes(mode))
             .map(({ refName }) => refName);
           if (!tagged.length)
-            throw new Error(
+            throw new AkanError(
+              "invalidConfig",
               `[DI:${option}] "${name}" names no module: no serve() in this app or its libs lists operationMode "${mode}".`,
             );
           return tagged;
@@ -399,7 +383,10 @@ export class DiLifecycle {
     const unknown = names.filter((name) => !known.has(name));
     if (!unknown.length) return;
     const listed = [...known].sort((a, b) => a.localeCompare(b)).join(", ");
-    throw new Error(`${unknownLabel} ${unknown.map((name) => `"${name}"`).join(", ")}. ${knownLabel}: ${listed}`);
+    throw new AkanError(
+      "invalidConfig",
+      `${unknownLabel} ${unknown.map((name) => `"${name}"`).join(", ")}. ${knownLabel}: ${listed}`,
+    );
   }
 
   // Unwinds on failure: stage siblings that succeeded are live, and a retrying caller would accumulate them.
@@ -522,7 +509,7 @@ export class DiLifecycle {
     for (const internalCls of internals) {
       try {
         const internal = this.registry.internal.get(internalCls);
-        if (!internal) throw new Error(`Internal "${internalCls.refName}" is not registered`);
+        if (!internal) throw new InjectError("notRegistered", `Internal "${internalCls.refName}" is not registered`);
         SignalResolver.resolveSchedule(internalCls, internal as Internal, serverMode);
       } catch (err) {
         failures.push({ label: `schedule:${internalCls.refName}`, reason: err });
@@ -595,7 +582,7 @@ export class DiLifecycle {
     const adaptor = this.registry.adaptor.get(adaptorCls);
     if (adaptor) return adaptor;
 
-    throw new Error(`Dependency "${cls.refName}" is not initialized.`);
+    throw new InjectError("notInitialized", `Dependency "${cls.refName}" is not initialized.`);
   }
 
   getService<T = Service>(refName: string): T {
@@ -615,16 +602,16 @@ export class DiLifecycle {
 
   static #lookup<C, I>(label: string, refName: string, classes: Map<string, C>, instances: Map<C, I>): I {
     const cls = classes.get(refName);
-    if (!cls) throw new Error(`${label} "${refName}" is not registered.`);
+    if (!cls) throw new InjectError("notRegistered", `${label} "${refName}" is not registered.`);
     const instance = instances.get(cls);
-    if (!instance) throw new Error(`${label} "${refName}" is not initialized.`);
+    if (!instance) throw new InjectError("notInitialized", `${label} "${refName}" is not initialized.`);
     return instance;
   }
 
   #getScheduler(): Scheduler {
     const adaptorCls = this.registry.adaptorRole.get(predefinedAdaptorRole.schedule);
     const scheduler = adaptorCls ? this.registry.adaptor.get(adaptorCls) : undefined;
-    if (!scheduler) throw new Error("Scheduler is not registered");
+    if (!scheduler) throw new InjectError("notRegistered", "Scheduler is not registered");
     return scheduler as Scheduler;
   }
 
@@ -673,7 +660,7 @@ export class DiLifecycle {
           label: `adaptor:${refName}`,
           run: async () => {
             const adaptorCls = adaptorMap.get(refName);
-            if (!adaptorCls) throw new Error(`Adaptor "${refName}" is not registered`);
+            if (!adaptorCls) throw new InjectError("notRegistered", `Adaptor "${refName}" is not registered`);
             const adaptor = new adaptorCls();
             await InjectInfo.resolveInjection(adaptor, adaptorCls, this.registry, this.#env);
             const start = Date.now();
@@ -727,10 +714,11 @@ export class DiLifecycle {
           label: `service:${refName}`,
           run: async () => {
             const serviceCls = serviceMap.get(refName);
-            if (!serviceCls) throw new Error(`Service "${refName}" is not registered`);
+            if (!serviceCls) throw new InjectError("notRegistered", `Service "${refName}" is not registered`);
             if (serviceCls.type === "database") {
               const databaseModule = this.#database.get(serviceCls.refName);
-              if (!databaseModule) throw new Error(`Database "${serviceCls.refName}" is not registered`);
+              if (!databaseModule)
+                throw new InjectError("notRegistered", `Database "${serviceCls.refName}" is not registered`);
               ServiceResolver.resolveDatabaseService(databaseModule.database, serviceCls, this.#cascade);
             }
             const service = new serviceCls();

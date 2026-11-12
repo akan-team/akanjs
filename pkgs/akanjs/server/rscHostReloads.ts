@@ -1,3 +1,4 @@
+import { AkanError } from "akanjs/base";
 import { type AkanI18nConfig, DEFAULT_AKAN_I18N } from "akanjs/common";
 import type { ClientManifest } from "./artifact";
 import type { RscProcess, RscWorkerProcess } from "./rscWorkerProcess";
@@ -94,7 +95,7 @@ export class RscHostReloads {
   }
 
   reload(input: RscWorkerReloadInput): Promise<RscAdoptedBundle> {
-    if (this.#worker.killed) return Promise.reject(new Error("rsc worker is stopped"));
+    if (this.#worker.killed) return Promise.reject(new AkanError("rscWorkerStopped", "rsc worker is stopped"));
     this.#reloadState += 1;
     this.#clientManifest = input.clientManifest;
     this.cssAssets = input.cssAssets ?? this.cssAssets;
@@ -165,7 +166,7 @@ export class RscHostReloads {
     this.#pendingReload = null;
     const failed = { pagesBundlePath: pending.pagesBundlePath, buildId: pending.buildId };
     for (const waiter of pending.waiters)
-      waiter.reject(Object.assign(new Error(message), { adopted: this.#adopted, failed }));
+      waiter.reject(Object.assign(new AkanError("rscWorkerFailed", message), { adopted: this.#adopted, failed }));
   }
 
   rejectIfCovered(message: string): boolean {

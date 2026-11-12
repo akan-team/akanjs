@@ -1,5 +1,5 @@
 import type { AkanWebConfig, AkanWebOption } from "akanjs";
-import { type BackendEnv, type BaseEnv, getApiPrefix, getEnv, getWsPrefix } from "akanjs/base";
+import { AkanError, type BackendEnv, type BaseEnv, getApiPrefix, getEnv, getWsPrefix } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import type { Adaptor, AdaptorCls, DatabaseConfig, Service, ServiceCls, SolidConfig } from "akanjs/service";
 import type { ServerSignal, ServerSignalCls } from "akanjs/signal";
@@ -204,28 +204,33 @@ export class AkanServer {
     });
   }
   setPrefix(prefix: string) {
-    if (this.status !== "stopped") throw new Error("Route prefix must be set before app initialization.");
+    if (this.status !== "stopped")
+      throw new AkanError("alreadyStarted", "Route prefix must be set before app initialization.");
     this.prefix = ServerConfig.requireRoutePrefix(prefix, "prefix");
     return this;
   }
   setWebsocketPrefix(websocketPrefix: string) {
-    if (this.status !== "stopped") throw new Error("Websocket prefix must be set before app initialization.");
+    if (this.status !== "stopped")
+      throw new AkanError("alreadyStarted", "Websocket prefix must be set before app initialization.");
     this.websocketPrefix = ServerConfig.requireRoutePrefix(websocketPrefix, "websocketPrefix");
     return this;
   }
   setOpenApi(openapi = true) {
-    if (this.status !== "stopped") throw new Error("OpenAPI config must be set before app initialization.");
+    if (this.status !== "stopped")
+      throw new AkanError("alreadyStarted", "OpenAPI config must be set before app initialization.");
     this.openapi = openapi;
     return this;
   }
   /** Narrows the web surface; never widens it past what the build produced. */
   setWeb(web: AkanWebOption = true) {
-    if (this.status !== "stopped") throw new Error("Web config must be set before app initialization.");
+    if (this.status !== "stopped")
+      throw new AkanError("alreadyStarted", "Web config must be set before app initialization.");
     this.web = ServerConfig.narrowWeb(this.web, web);
     return this;
   }
   setMcp(mcp: boolean | McpServerOption = true) {
-    if (this.status !== "stopped") throw new Error("MCP config must be set before app initialization.");
+    if (this.status !== "stopped")
+      throw new AkanError("alreadyStarted", "MCP config must be set before app initialization.");
     // An object without `enabled` only configures the surface, and the env switch can only narrow.
     const requested = typeof mcp === "boolean" ? mcp : (mcp.enabled ?? this.mcp);
     this.mcp = requested && !ServerConfig.isEnvOff("AKAN_MCP", "AKAN_PUBLIC_MCP");
@@ -248,12 +253,14 @@ export class AkanServer {
     return this.#builtinRoutes.mcpRouter;
   }
   setDatabaseConfig(database: DatabaseConfig) {
-    if (this.status !== "stopped") throw new Error("Database config must be set before app initialization.");
+    if (this.status !== "stopped")
+      throw new AkanError("alreadyStarted", "Database config must be set before app initialization.");
     this.env.database = database;
     return this;
   }
   setSolidConfig(solid: SolidConfig) {
-    if (this.status !== "stopped") throw new Error("Solid config must be set before app initialization.");
+    if (this.status !== "stopped")
+      throw new AkanError("alreadyStarted", "Solid config must be set before app initialization.");
     this.env.solid = solid;
     return this;
   }
@@ -310,7 +317,8 @@ export class AkanServer {
   }
 
   async init(option: { routes?: boolean; web?: AkanWebOption } = {}) {
-    if (this.status !== "stopped") throw new Error("AkanServer is not able to init. It is already running.");
+    if (this.status !== "stopped")
+      throw new AkanError("alreadyStarted", "AkanServer is not able to init. It is already running.");
     ServerConfig.assertPrefixClearsBasePaths(this.prefix);
     const start = performance.now();
     this.#initTimings.clear();
@@ -389,7 +397,7 @@ export class AkanServer {
   async listen() {
     const prepared = this.#prepared;
     if (this.status !== "initialized" || !prepared)
-      throw new Error("AkanServer is not able to listen. Call `init` first.");
+      throw new AkanError("notInitialized", "AkanServer is not able to listen. Call `init` first.");
     this.status = "starting";
     Logger.role = this.serverMode;
     return await this.#start.unwound(() => this.#listen(prepared));
@@ -492,7 +500,8 @@ export class AkanServer {
 const assertCanGet = (status: AkanServer["status"], type = "Dependency", refName?: string) => {
   if (status === "initialized" || status === "running") return;
   const target = refName ? `${type} "${refName}"` : type;
-  throw new Error(
+  throw new AkanError(
+    "notInitialized",
     `${target} is not initialized while AkanServer status is "${status}". ` +
       "Call server.start() or server.init() first.",
   );
@@ -504,7 +513,10 @@ const withShutdownTimeout = async <T>(promise: Promise<T>, timeoutMs: number) =>
     return await Promise.race([
       promise,
       new Promise<T>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error(`Shutdown timed out after ${timeoutMs}ms`)), timeoutMs);
+        timeout = setTimeout(
+          () => reject(new AkanError("shutdownTimeout", `Shutdown timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        );
       }),
     ]);
   } finally {

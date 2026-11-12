@@ -18,6 +18,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | Code | Status | Error | Forwarded | Code on the wire | Source |
 |---|---|---|---|---|---|
 | `alreadyApplied` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
+| `alreadyStarted` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `artifactMissing` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `authRequired` | 401 | `McpAuthRequiredError` | no | yes | `server/mcp/McpDispatcher.ts` |
 | `badGateway` | 502 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
@@ -27,6 +28,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `buildFailed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `builderUnavailable` | 503 | `AkanError` | no | yes | `base/akanError.ts` |
 | `bytesThroughAny` | 500 | `SignalContractError` | no | yes | `signal/signalContractError.ts` |
+| `circularDependency` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `clientComponentOnServer` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `compressorNotInitialized` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `conflict` | 409 | `Exception.Conflict` | yes | no | `signal/exception.ts` |
@@ -34,6 +36,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `databaseLocked` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `desktopAppRequired` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `documentNotFound` | 404 | `NoDocumentError` | yes | no | `document/noDocumentError.ts` |
+| `duplicateRegistration` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `failed` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `fileGrantRefused` | 403 | `AkanError` | no | yes | `base/akanError.ts` |
 | `fileGrantUnavailable` | 503 | `AkanError` | no | yes | `base/akanError.ts` |
@@ -94,18 +97,24 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `payloadTooLarge` | 413 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
 | `planChanged` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `redisUriMissing` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `renderAborted` | 499 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeConflict` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeNotFound` | 404 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeNotFound` | 404 | `RscRouteNotFound` | no | yes | `server/rscClient.tsx` |
 | `routerNotReady` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `rpcDisposed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `rscFetchFailed` | 502 | `AkanError` | no | yes | `base/akanError.ts` |
+| `rscQueueOverflow` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `rscRedirectStarted` | 303 | `RscRedirectNavigationStarted` | no | yes | `server/rscClient.tsx` |
+| `rscWorkerFailed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `rscWorkerStopped` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `searchMisconfigured` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
 | `searchUnavailable` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
 | `secretRefused` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `secretStoreUnavailable` | 503 | `AkanError` | no | yes | `base/akanError.ts` |
 | `serviceUnavailable` | 503 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
+| `shutdownTimeout` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `stageFailed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `storageNotShared` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `tableMissing` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
 | `tooManyRequests` | 429 | `Exception` | yes | no | `signal/exception.ts` |
