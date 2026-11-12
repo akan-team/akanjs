@@ -109,10 +109,14 @@ const settleFailedChunkFetch = (url: string, status: number | null): void => {
   else failedChunkFetches.set(url, unanswered + 1);
 };
 const probesOut = new Map<string, Promise<boolean>>();
+const probeDeadlineMs = 10_000;
 const isGone = (url: string): Promise<boolean> => {
   const out = probesOut.get(url);
   if (out) return out;
-  const gone = fetch(url, { method: "HEAD", cache: "no-store" })
+  //? Not `AbortSignal.timeout`: Chromium before 103, Safari before 16 and Firefox before 100 lack it.
+  const deadline = new AbortController();
+  setTimeout(() => deadline.abort(), probeDeadlineMs);
+  const gone = fetch(url, { method: "HEAD", cache: "no-store", signal: deadline.signal })
     .then(
       ({ status }) => status,
       () => null,

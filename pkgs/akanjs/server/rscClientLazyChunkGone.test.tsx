@@ -53,7 +53,7 @@ class Boundary extends Component<{ children?: ReactNode }, { failed: boolean }> 
   }
 }
 
-type Probe = number | "unanswered" | Promise<number>;
+type Probe = number | "unanswered" | "hung" | Promise<number>;
 const probeAnswers = new Map<string, Probe>();
 const probes: { url: string; method?: string; cache?: RequestCache }[] = [];
 const served = new Map<string, () => string[]>();
@@ -83,6 +83,10 @@ beforeAll(async () => {
         probes.push({ url, method: init.method, cache: init.cache });
         const answer = await (probeAnswers.get(url) ?? 200);
         if (answer === "unanswered") throw new TypeError("Failed to fetch");
+        if (answer === "hung")
+          return new Promise<Response>((_, reject) =>
+            init.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+          );
         return new Response(null, { status: answer });
       }
       const { pathname } = new URL(new URL(String(input)).searchParams.get("url") ?? "/", origin);
@@ -396,6 +400,55 @@ describe("rscClient lazy chunk gone where the error names none that is", () => {
     await rejectImport(webkitFetchFailure());
     expect(probedUrls()).toEqual([down, flaky, down, flaky, down, flaky, flaky]);
     expect(reloadedAt).toEqual([`${origin}/flaky`]);
+  });
+
+  test("a probe the server never answers fails after 10 s, releasing whoever waits on it, three times at most", async () => {
+    const hung = chunkUrl("hung-a1");
+    probeAnswers.set(hung, "hung");
+    await navigate("/hung");
+    const realSetTimeout = globalThis.setTimeout;
+    const deadlines: (() => void)[] = [];
+    const timers = spyOn(globalThis, "setTimeout").mockImplementation(((run: () => void, ms?: number) => {
+      if (ms !== 10_000) return realSetTimeout(run, ms);
+      deadlines.push(run);
+      return 0;
+    }) as typeof setTimeout);
+    const added = spyOn(window, "addEventListener");
+    const removed = spyOn(window, "removeEventListener");
+    const unloadCalls = (spy: typeof added | typeof removed) =>
+      spy.mock.calls.filter(([type]) => type === "beforeunload" || type === "pagehide");
+    const passDeadlines = () =>
+      act(async () => {
+        for (const run of deadlines.splice(0)) run();
+        await sleep(5);
+      });
+    try {
+      pendingResources.push(failedFetch(hung));
+      await rejectImport(webkitFetchFailure());
+      await rejectImport(webkitFetchFailure());
+      expect(probedUrls()).toEqual([hung]);
+      expect(deadlines).toHaveLength(1);
+      expect(unloadCalls(added)).toHaveLength(4);
+      expect(unloadCalls(removed)).toEqual([]);
+
+      await passDeadlines();
+      expect(unloadCalls(removed)).toEqual(unloadCalls(added));
+      expect(reloadedAt).toEqual([]);
+
+      await rejectImport(webkitFetchFailure());
+      await passDeadlines();
+      await rejectImport(webkitFetchFailure());
+      await passDeadlines();
+      expect(probedUrls()).toEqual([hung, hung, hung]);
+      expect(unloadCalls(removed)).toEqual(unloadCalls(added));
+
+      await rejectImport(webkitFetchFailure());
+      expect(probedUrls()).toEqual([hung, hung, hung]);
+      expect(unloadCalls(removed)).toEqual(unloadCalls(added));
+      expect(reloadedAt).toEqual([]);
+    } finally {
+      for (const spy of [timers, added, removed]) spy.mockRestore();
+    }
   });
 
   test("a gone chunk whose reload a load already claimed does not shadow a newer one", async () => {
