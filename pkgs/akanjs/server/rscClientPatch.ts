@@ -1,6 +1,6 @@
 import { type ReactNode, startTransition } from "react";
 import { AkanError } from "../base/akanError";
-import { mapFlightLineRows } from "./flightRowReader";
+import type { FlightLineRowHandler } from "./flightRowReader";
 import { type AkanHeadSnapshotV1, type AkanRscPatchMetadata, readAkanRouterStateResponseHeader } from "./routeState";
 import {
   commitPreparedAkanHeadSnapshotPatch,
@@ -33,16 +33,15 @@ interface ValidateRscSegmentPatchInput<T extends PromiseLike<unknown>> {
   response: Response;
   patch: AkanRscPatchMetadata;
   currentTree: AkanSegmentCacheNode<T> | null;
-  createThenable: (stream: ReadableStream<Uint8Array>) => T;
+  createThenable: (stream: ReadableStream<Uint8Array>, onLineRow: FlightLineRowHandler) => T;
   navId?: number;
   getCurrentNavId?: () => number;
   getHeadSnapshotPatchFailureReason?: (snapshot: AkanHeadSnapshotV1) => AkanSegmentPatchFailureReason | null;
 }
 
-function guardRscPatchControlRows(
-  stream: ReadableStream<Uint8Array>,
+function patchControlRowGuard(
   onControl: (reason: Extract<AkanSegmentPatchFailureReason, "redirect-in-patch" | "error-in-patch">) => void,
-): ReadableStream<Uint8Array> {
+): FlightLineRowHandler {
   const decoder = new TextDecoder("utf-8", { fatal: true });
 
   const inspectRow = (row: Uint8Array): void => {
@@ -55,10 +54,10 @@ function guardRscPatchControlRows(
     }
   };
 
-  return mapFlightLineRows(stream, (row, tag) => {
+  return (row, tag) => {
     if (tag === "E") inspectRow(row);
     return row;
-  });
+  };
 }
 
 export async function validateRscPatchAndRequestFullFallback<T extends PromiseLike<unknown>>(
@@ -78,12 +77,14 @@ export async function validateRscSegmentPatch<T extends PromiseLike<unknown>>({
 }: ValidateRscSegmentPatchInput<T>): Promise<AkanSegmentPatchResult<T>> {
   const patchStream = getRscPayloadStream(response);
   let patchControlReason: Extract<AkanSegmentPatchFailureReason, "redirect-in-patch" | "error-in-patch"> | undefined;
-  const guardedPatchStream = patchStream
-    ? guardRscPatchControlRows(patchStream, (reason) => {
-        patchControlReason ??= reason;
-      })
-    : null;
-  const patchThenable = guardedPatchStream ? createThenable(guardedPatchStream) : undefined;
+  const patchThenable = patchStream
+    ? createThenable(
+        patchStream,
+        patchControlRowGuard((reason) => {
+          patchControlReason ??= reason;
+        }),
+      )
+    : undefined;
   let decodeFailed = !patchThenable;
 
   if (patchThenable) {

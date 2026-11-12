@@ -1343,6 +1343,33 @@ describe("rscClient patch cache", () => {
     });
   };
 
+  test("a navigation's stream and a patch's each go through one Flight row pass", async () => {
+    framed("/pass/a", "pass");
+    framed("/pass/b", "pass");
+    const passesOf = async (href: string) => {
+      let passes = 0;
+      Object.assign(globalThis, {
+        TransformStream: class extends TransformStream {
+          constructor(...args: ConstructorParameters<typeof TransformStream>) {
+            super(...args);
+            passes += 1;
+          }
+        },
+      });
+      try {
+        await navigate(href);
+      } finally {
+        Object.assign(globalThis, { TransformStream });
+      }
+      return passes;
+    };
+
+    expect(await passesOf("/pass/a")).toBe(1);
+    expect(shown()).toBe("/pass/a");
+    expect(await passesOf("/pass/b")).toBe(1);
+    expect(shown()).toBe("/pass/b patched");
+  });
+
   test("a patch is replayed once a full commit brings back the page it went under, with its own title", async () => {
     framed("/deck/a", "deck");
     framed("/deck/b", "deck");

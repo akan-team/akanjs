@@ -24,15 +24,25 @@ interface FlightRowSink {
   enqueue(row: Uint8Array): void;
 }
 
+//? A later handler reads a rewritten row as a pass of its own would: by the tag its new bytes carry.
+const lineRowTagOf = (row: Uint8Array): string | null => {
+  const colon = row.indexOf(COLON);
+  const newline = row.indexOf(NEWLINE);
+  if (colon === -1 || colon + 1 === row.byteLength || (newline !== -1 && newline < colon)) return null;
+  const byte = row[colon + 1];
+  if (lengthPrefixedTags[byte] === 1) return null;
+  return isLineRowTag(byte) ? String.fromCharCode(byte) : "";
+};
+
 class FlightRowReader {
-  readonly #onLineRow: FlightLineRowHandler;
+  readonly #onLineRows: FlightLineRowHandler[];
   #state = ROW_ID;
   #tag = 0;
   #length = 0;
   #pending: Uint8Array[] = [];
 
-  constructor(onLineRow: FlightLineRowHandler) {
-    this.#onLineRow = onLineRow;
+  constructor(onLineRows: FlightLineRowHandler[]) {
+    this.#onLineRows = onLineRows;
   }
 
   read(chunk: Uint8Array, sink: FlightRowSink): void {
@@ -96,8 +106,16 @@ class FlightRowReader {
   }
 
   #enqueueLineRow(row: Uint8Array, tag: number, sink: FlightRowSink): void {
-    const mapped = this.#onLineRow(row, tag === 0 ? "" : String.fromCharCode(tag));
-    if (mapped && mapped.byteLength > 0) sink.enqueue(mapped);
+    let mapped = row;
+    let lineTag: string | null = tag === 0 ? "" : String.fromCharCode(tag);
+    for (const onLineRow of this.#onLineRows) {
+      if (lineTag === null) break;
+      const next = onLineRow(mapped, lineTag);
+      if (!next || next.byteLength === 0) return;
+      if (next !== mapped) lineTag = lineRowTagOf(next);
+      mapped = next;
+    }
+    sink.enqueue(mapped);
   }
 
   #cutRow(chunk: Uint8Array, start: number, end: number): Uint8Array {
@@ -125,9 +143,9 @@ class FlightRowReader {
 
 export const mapFlightLineRows = (
   stream: ReadableStream<Uint8Array>,
-  onLineRow: FlightLineRowHandler,
+  ...onLineRows: FlightLineRowHandler[]
 ): ReadableStream<Uint8Array> => {
-  const reader = new FlightRowReader(onLineRow);
+  const reader = new FlightRowReader(onLineRows);
   return stream.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform: (chunk, controller) => reader.read(chunk, controller),
