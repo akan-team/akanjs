@@ -383,6 +383,35 @@ describe("ApiReportDiff", () => {
       { report: "demo.old.api.md", name: "Old", kind: "removed", before: "export type Old = string;" },
     ]);
   });
+  test("reads a union or an object type whose members only moved as the same declaration", () => {
+    const recipe = (first: string, second: string, sizes: string) =>
+      reportOf([
+        `export declare const recipe: (variants?: Omit<({\n    size?: ${sizes} | undefined;\n    ${first}\n    ${second}\n} & {\n    class?: string;\n}), "class">) => string;`,
+      ]);
+    const before = new Map([["demo.api.md", recipe("variant?: boolean;", "outline?: boolean;", '"lg" | "sm"')]]);
+    const moved = new Map([["demo.api.md", recipe("outline?: boolean;", "variant?: boolean;", '"sm" | "lg"')]]);
+    const retyped = new Map([["demo.api.md", recipe("outline?: boolean;", "variant?: string;", '"sm" | "lg"')]]);
+    expect(ApiReportDiff.breaks(before, moved)).toEqual([]);
+    expect(ApiReportDiff.breaks(before, retyped).map(({ name, kind }) => `${kind} ${name}`)).toEqual([
+      "changed recipe",
+    ]);
+  });
+
+  test("compares a block that fails to parse as text, since parser recovery can drop what differs", () => {
+    const broken = (member: string) =>
+      new Map([["demo.api.md", reportOf([`export type T = {\n    a: 1;\n    @@@ ${member}\n};`])]]);
+    expect(ApiReportDiff.breaks(broken("b: 2;"), broken("c: 2;")).map(({ name, kind }) => `${kind} ${name}`)).toEqual([
+      "changed T",
+    ]);
+  });
+
+  test("still reads reordered overloads as a change, since their order picks the signature", () => {
+    const overloads = (first: string, second: string) =>
+      new Map([["demo.api.md", reportOf([`export declare const on: {\n    ${first}\n    ${second}\n};`])]]);
+    const before = overloads("(value: string): string;", "(value: number): number;");
+    const after = overloads("(value: number): number;", "(value: string): string;");
+    expect(ApiReportDiff.breaks(before, after).map(({ name, kind }) => `${kind} ${name}`)).toEqual(["changed on"]);
+  });
 });
 
 describe("ChangesetBump", () => {
