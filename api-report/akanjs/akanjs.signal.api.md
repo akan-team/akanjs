@@ -1817,7 +1817,13 @@ export type WebsocketReqData = {
     since?: WebsocketRoomCursor;
 };
 
-export type WebsocketResData = WebsocketAuthAck | WebsocketMessageData | WebsocketPublishData | WebsocketSubscribeAck;
+export type WebsocketResData = WebsocketAuthAck | WebsocketMessageData | WebsocketPublishData | WebsocketResyncData | WebsocketSubscribeAck;
+
+export type WebsocketResyncData = {
+    type: "resync";
+    roomId: string;
+    seq?: number;
+};
 
 export type WebsocketRoomCursor = {
     epoch: string;

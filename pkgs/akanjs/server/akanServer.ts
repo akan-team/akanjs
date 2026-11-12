@@ -1,6 +1,6 @@
 import type { AkanWebConfig, AkanWebOption } from "akanjs";
 import { type BackendEnv, type BaseEnv, getApiPrefix, getEnv, getWsPrefix, normalizeRoutePrefix } from "akanjs/base";
-import { Logger, parseBasePaths, websocketBinaryFrameContract } from "akanjs/common";
+import { Logger, parseBasePaths } from "akanjs/common";
 import { DictionaryLookup, DictionaryRegistry } from "akanjs/dictionary";
 import type {
   Adaptor,
@@ -12,7 +12,7 @@ import type {
   ServiceCls,
   SolidConfig,
 } from "akanjs/service";
-import type { ServerSignal, ServerSignalCls, WebsocketPublishData } from "akanjs/signal";
+import type { ServerSignal, ServerSignalCls } from "akanjs/signal";
 import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { EndpointRateLimit } from "../signal/endpointRateLimit";
 import { createOpenApiDocument } from "../signal/openapi";
@@ -39,6 +39,7 @@ import { SignalResolver } from "./resolver";
 import { type ApiRouteInputs, ApiRouter } from "./routing/apiRouter";
 import type { AppWsData } from "./routing/appWsData";
 import { HostAllowlist } from "./routing/hostAllowlist";
+import { localRoomsOf } from "./routing/localRooms";
 import { RoomReplay } from "./routing/roomReplay";
 import { RouteHosts } from "./routing/routeHosts";
 import { ServerLimits } from "./routing/serverLimits";
@@ -530,21 +531,15 @@ export class AkanServer {
     const subscribed = (roomId: string) =>
       (server?.subscriberCount(roomId) ?? 0) + (wsServer?.subscriberCount(roomId) ?? 0) > 0;
     const roomReplay = new RoomReplay({ vouches: RoomReplay.vouchesFor(websocket, this.#solo), subscribed });
-    const localPublish: LocalPublish = (roomId, data) => {
-      if (data instanceof Uint8Array) {
-        roomReplay.unnumbered(roomId);
-        this.#binaryPubsub.publish(roomId, websocketBinaryFrameContract.encode({ roomId, payload: data }), {
-          coalesce: SignalResolver.coalescesRoom(roomId),
-        });
-        return;
-      }
-      const publishData: WebsocketPublishData = { type: "pub", roomId, data };
-      const frame = roomReplay.frameOf(publishData, subscribed(roomId));
-      server?.publish(roomId, frame);
-      wsServer?.publish(roomId, frame);
-    };
-    SignalResolver.setLocalPublish(localPublish, websocket, this.#di.live, roomReplay);
-    this.#localPublish = localPublish;
+    const rooms = localRoomsOf({
+      servers: [server, wsServer],
+      replay: roomReplay,
+      binary: this.#binaryPubsub,
+      subscribed,
+      coalesces: (roomId) => SignalResolver.coalescesRoom(roomId),
+    });
+    SignalResolver.setLocalPublish(rooms.publish, websocket, this.#di.live, roomReplay, rooms.resync);
+    this.#localPublish = rooms.publish;
 
     this.status = "running";
     this.#metricsTimer ??= ProcessMetricsCollector.startReporting(() => this.#reportMetrics());

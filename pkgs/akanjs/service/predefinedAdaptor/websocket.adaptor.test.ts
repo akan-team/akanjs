@@ -409,6 +409,7 @@ describe("WebSocketRedisAdaptor buffer", () => {
     subscriber.emit("ready");
     subscriber.emit("close");
     subscriber.emit("ready");
+    await Bun.sleep(5);
     expect(warns).toEqual([]);
     expect(recovered).toBe(0);
   });
@@ -423,7 +424,7 @@ describe("WebSocketRedisAdaptor buffer", () => {
     subscriber.emit("close");
     await adaptor.joinRoom(newSocket(), "chat-1");
     subscriber.emit("ready");
-    expect(recovered).toBe(1);
+    await until(() => recovered === 1);
     expect(warns).toEqual(["Subscriber reconnected; asking every room on this server to resynchronize"]);
   });
 
@@ -551,6 +552,88 @@ describe("WebSocketRedisAdaptor channels", () => {
     expect(rejoin.settled).toBe(false);
     subscriber.reply();
     await until(() => rejoin.settled);
+  });
+
+  test("hands every room held here to the recovery handler once Redis answers the resubscribes, not on the first ready", async () => {
+    const { adaptor, subscriber } = await openAdaptor();
+    const recovered: string[][] = [];
+    adaptor.onRecovered((rooms) => recovered.push(rooms));
+    subscriber.emit("ready");
+    await adaptor.joinRoom(newSocket(), "chat-1");
+    await adaptor.joinRoom(newSocket(), "task-a::1", { live: "task" });
+    subscriber.emit("close");
+    await adaptor.joinRoom(newSocket(), "chat-2");
+    subscriber.holdReplies = true;
+    subscriber.emit("ready");
+    await Bun.sleep(5);
+    expect(recovered).toEqual([]);
+    subscriber.reply();
+    await until(() => recovered.length === 1);
+    expect(recovered[0].sort()).toEqual(["chat-1", "chat-2", "task-a::1"]);
+  });
+
+  test("tells the rooms to recover after 3 s on a link that stalls, and again once Redis answers", async () => {
+    const { adaptor, subscriber } = await openAdaptor();
+    const recovered: string[][] = [];
+    adaptor.onRecovered((rooms) => recovered.push(rooms));
+    subscriber.emit("ready");
+    await adaptor.joinRoom(newSocket(), "chat-1");
+    subscriber.emit("close");
+    subscriber.holdReplies = true;
+    jest.useFakeTimers();
+    try {
+      subscriber.emit("ready");
+      jest.advanceTimersByTime(2_999);
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      expect(recovered).toEqual([]);
+      jest.advanceTimersByTime(1);
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      expect(recovered).toEqual([["chat-1"]]);
+      subscriber.reply();
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      expect(recovered).toEqual([["chat-1"], ["chat-1"]]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("tells no room to recover over a link that drops again before Redis answers, but at the next return", async () => {
+    const { adaptor, subscriber } = await openAdaptor();
+    const recovered: string[][] = [];
+    adaptor.onRecovered((rooms) => recovered.push(rooms));
+    subscriber.emit("ready");
+    await adaptor.joinRoom(newSocket(), "chat-1");
+    subscriber.emit("close");
+    subscriber.holdReplies = true;
+    jest.useFakeTimers();
+    try {
+      subscriber.emit("ready");
+      subscriber.emit("close");
+      jest.advanceTimersByTime(3_000);
+      subscriber.reply();
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      expect(recovered).toEqual([]);
+      subscriber.emit("ready");
+      subscriber.reply();
+      for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      expect(recovered).toEqual([["chat-1"]]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("tells the rooms to recover once Redis answers, though it refused a resubscribe", async () => {
+    const { adaptor, subscriber } = await openAdaptor();
+    const recovered: string[][] = [];
+    adaptor.onRecovered((rooms) => recovered.push(rooms));
+    subscriber.emit("ready");
+    await adaptor.joinRoom(newSocket(), "chat-1");
+    subscriber.emit("close");
+    subscriber.holdReplies = true;
+    subscriber.emit("ready");
+    subscriber.reply(true);
+    await until(() => recovered.length === 1);
+    expect(recovered).toEqual([["chat-1"]]);
   });
 
   test("subscribes a channel whose SUBSCRIBE was dropped during an outage once the subscriber returns", async () => {
