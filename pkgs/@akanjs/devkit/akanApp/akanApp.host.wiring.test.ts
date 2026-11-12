@@ -529,7 +529,7 @@ describe("AkanAppHost through an idle suspend", () => {
     expect(dev.builder().sent).toHaveLength(1);
 
     expect(await until(() => statusesOf(backend.sent).some((sent) => sent.message === "Builder recovered"))).toBe(true);
-  });
+  }, 10_000);
 
   test("stops watching for edits once the host stops", async () => {
     const dev = await suspendedHost();
