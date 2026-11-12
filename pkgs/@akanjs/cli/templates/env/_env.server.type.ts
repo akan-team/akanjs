@@ -1,5 +1,5 @@
 import type { AppInfo, LibInfo } from "akanjs";
-import { compareExportNames } from "../facetIndex";
+import { compareExportNames } from "akanjs/common";
 
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [key: string]: string } = {}) {
   if (!scanInfo) return null;

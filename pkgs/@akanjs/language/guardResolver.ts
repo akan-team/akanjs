@@ -1,3 +1,4 @@
+import { barrelFacetDirs, facetBarrelNamesOf } from "akanjs/common/facetBarrel.ts";
 import type * as TS from "typescript";
 import type { AkanGraphSource } from "./akanGraph";
 import { escapeRegExp } from "./escapeRegExp";
@@ -56,6 +57,7 @@ interface StarExports {
 interface ModuleExports {
   named: (Reexport & { fileName: string }) | null;
   stars: string[];
+  isLocal: boolean;
 }
 
 interface Declaration {
@@ -73,9 +75,15 @@ const maxMapDepth = 4;
 //? ES2022 lets an import name be any string (`import { "is(admin" as IsAdmin }`), which no declaration can carry.
 const identifierPattern = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200c\u200d]*$/u;
 const starExportPattern = /export\s*\*\s*from\s*["']([^"']+)["']/g;
+const facetEntryPattern = new RegExp(
+  `^((?:apps|libs)/[^/]+/(${barrelFacetDirs.map(escapeRegExp).join("|")}))/([^/]+)(/)?`,
+);
 
 const exportingPatternOf = (name: string) =>
   new RegExp(`export\\s*\\{(?:[^}]*?[\\s,])?${escapeRegExp(name)}(?![\\w$])`);
+
+const exportMentioningPatternOf = (name: string) =>
+  new RegExp(`export\\s[^;]*?(?<![\\w$])${escapeRegExp(name)}(?![\\w$])`);
 
 const declaringPatternOf = (name: string, isAnyBinding: boolean) => {
   const escaped = escapeRegExp(name);
@@ -99,8 +107,11 @@ export class GuardResolver {
   readonly #declarations = new Map<string, Declaration | null>();
   readonly #starExports = new Map<string, StarExports>();
   readonly #moduleExports = new Map<string, ModuleExports>();
+  readonly #fileStars = new Map<string, string[]>();
+  readonly #starReach = new Map<string, string[]>();
   #ownerFiles: Map<string, [fileName: string, words: string][]> | null = null;
   #modules: Map<string, string[]> | null = null;
+  #barrels: Map<string, string[]> | null = null;
 
   constructor(source: AkanGraphSource, routes: RouteFactReader) {
     this.#source = source;
@@ -231,7 +242,7 @@ export class GuardResolver {
       near,
     );
     if (own) return own;
-    const reexport = from && depth < maxMapDepth ? this.reexportOf(from, name, near) : null;
+    const reexport = from && depth < maxMapDepth ? this.#reexportOf(from, name, near) : null;
     if (reexport) return this.#factoryAt(factories, reexport.local, reexport.site, depth + 1);
     return from && near ? this.#throughStar(candidates, from, name, near) : undefined;
   }
@@ -274,13 +285,13 @@ export class GuardResolver {
       const visible = isBase ? undefined : declared.find((other) => this.visible(other.owner, site.owner));
       return visible ? { guard: visible } : { name, from };
     }
-    const reexport = from && depth < maxMapDepth ? this.reexportOf(from, name, near) : null;
+    const reexport = from && depth < maxMapDepth ? this.#reexportOf(from, name, near) : null;
     if (reexport) return this.#findGuard(reexport.local, reexport.site, depth + 1, isBase);
     const reached = from && near ? this.#throughStar(declared, from, name, near) : undefined;
     return reached ? { guard: reached } : { name, from };
   }
 
-  reexportOf(owner: string, name: string, near: string | null) {
+  #reexportOf(owner: string, name: string, near: string | null) {
     const key = `${owner}\n${name}\n${near ?? ""}`;
     const cached = this.#reexports.get(key);
     if (cached !== undefined) return cached;
@@ -435,17 +446,20 @@ export class GuardResolver {
     if (cached) return cached;
     const found: StarExports = { owners: [], packages: [], paths: [near], isOpaque: false };
     this.#starExports.set(key, found);
-    for (let idx = 0; idx < found.paths.length; idx++)
-      for (const fileName of this.#modulesAt(found.paths[idx] ?? ""))
-        for (const [, specifier = ""] of this.#source.readText(fileName)?.matchAll(starExportPattern) ?? []) {
-          const target = this.ownerOfSpecifier(fileName, specifier);
-          const path = this.pathOfSpecifier(fileName, specifier);
-          if (path === null && !found.packages.includes(specifier)) found.packages.push(specifier);
-          if (target === undefined || target === frameworkOwner || path === null) found.isOpaque = true;
-          else if (!found.paths.includes(path)) found.paths.push(path);
-          if (target && target !== frameworkOwner && target !== owner && !found.owners.includes(target))
-            found.owners.push(target);
-        }
+    const reach = (specifier: string, path: string | null, target: string | undefined) => {
+      if (path === null && !found.packages.includes(specifier)) found.packages.push(specifier);
+      if (target === undefined || target === frameworkOwner || path === null) found.isOpaque = true;
+      else if (!found.paths.includes(path)) found.paths.push(path);
+      if (target && target !== frameworkOwner && target !== owner && !found.owners.includes(target))
+        found.owners.push(target);
+    };
+    for (let idx = 0; idx < found.paths.length; idx++) {
+      const path = found.paths[idx] ?? "";
+      for (const module of this.#barrelAt(path) ?? []) reach(module, module, ownerOf(module) ?? undefined);
+      for (const fileName of this.#modulesAt(path))
+        for (const [, specifier = ""] of this.#source.readText(fileName)?.matchAll(starExportPattern) ?? [])
+          reach(specifier, this.pathOfSpecifier(fileName, specifier), this.ownerOfSpecifier(fileName, specifier));
+    }
     return found;
   }
 
@@ -453,26 +467,102 @@ export class GuardResolver {
     const key = `${path}\n${name}`;
     const cached = this.#moduleExports.get(key);
     if (cached) return cached;
-    const found: ModuleExports = { named: null, stars: [] };
-    const exporting = exportingPatternOf(name);
+    const found: ModuleExports = { named: null, stars: [], isLocal: false };
+    const stars = new Set(this.#barrelAt(path));
     for (const fileName of this.#modulesAt(path)) {
       const text = this.#source.readText(fileName);
       if (text === undefined) continue;
       const named =
-        identifierPattern.test(name) && exporting.test(text)
+        text.includes(name) && identifierPattern.test(name) && exportingPatternOf(name).test(text)
           ? this.#reexportIn(this.#source.parse(fileName, text), name)
           : null;
       if (named) {
         found.named = { ...named, fileName };
-        found.stars = [];
         break;
       }
-      for (const [, specifier = ""] of text.matchAll(starExportPattern)) {
-        const target = this.pathOfSpecifier(fileName, specifier);
-        if (target !== null && !found.stars.includes(target)) found.stars.push(target);
+      if (
+        text.includes(name) &&
+        exportMentioningPatternOf(name).test(text) &&
+        this.#exportsLocally(this.#source.parse(fileName, text), name)
+      ) {
+        found.isLocal = true;
+        break;
+      }
+      for (const target of this.#starsIn(fileName, text)) stars.add(target);
+    }
+    if (!found.named && !found.isLocal) found.stars = [...stars];
+    this.#moduleExports.set(key, found);
+    return found;
+  }
+
+  //? `#reexportIn` finds no re-export in `export { Stripe }` of a default or namespace import, so that one binds here.
+  #exportsLocally(source: TS.SourceFile, name: string) {
+    const { ts } = this.#source;
+    const binds = (node: TS.BindingName): boolean =>
+      ts.isIdentifier(node)
+        ? node.text === name
+        : node.elements.some((element) => !ts.isOmittedExpression(element) && binds(element.name));
+    return source.statements.some((statement) => {
+      if (ts.isExportDeclaration(statement))
+        return (
+          !statement.moduleSpecifier &&
+          !statement.isTypeOnly &&
+          !!statement.exportClause &&
+          ts.isNamedExports(statement.exportClause) &&
+          statement.exportClause.elements.some((element) => !element.isTypeOnly && element.name.text === name)
+        );
+      const modifiers = ts.canHaveModifiers(statement) ? (ts.getModifiers(statement) ?? []) : [];
+      if (
+        !modifiers.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword) ||
+        modifiers.some(({ kind }) => kind === ts.SyntaxKind.DefaultKeyword)
+      )
+        return false;
+      if (ts.isVariableStatement(statement))
+        return statement.declarationList.declarations.some((declaration) => binds(declaration.name));
+      return (
+        (ts.isClassDeclaration(statement) ||
+          ts.isFunctionDeclaration(statement) ||
+          ts.isEnumDeclaration(statement) ||
+          ts.isModuleDeclaration(statement) ||
+          ts.isImportEqualsDeclaration(statement)) &&
+        !!statement.name &&
+        ts.isIdentifier(statement.name) &&
+        statement.name.text === name
+      );
+    });
+  }
+
+  //? A module binds a name only by writing it, so a name no file along the `export *`s mentions is bound nowhere there.
+  mentionsAlong(path: string, name: string) {
+    return this.#starReachOf(path).some((text) => text.includes(name));
+  }
+
+  #starReachOf(path: string) {
+    const cached = this.#starReach.get(path);
+    if (cached) return cached;
+    const paths = new Set([path]);
+    const texts: string[] = [];
+    for (const at of paths) {
+      for (const next of this.#barrelAt(at) ?? []) paths.add(next);
+      for (const fileName of this.#modulesAt(at)) {
+        const text = this.#source.readText(fileName) ?? "";
+        texts.push(text);
+        for (const next of this.#starsIn(fileName, text)) paths.add(next);
       }
     }
-    this.#moduleExports.set(key, found);
+    this.#starReach.set(path, texts);
+    return texts;
+  }
+
+  #starsIn(fileName: string, text: string) {
+    const cached = this.#fileStars.get(fileName);
+    if (cached) return cached;
+    const found: string[] = [];
+    for (const [, specifier = ""] of text.matchAll(starExportPattern)) {
+      const target = this.pathOfSpecifier(fileName, specifier);
+      if (target !== null) found.push(target);
+    }
+    this.#fileStars.set(fileName, found);
     return found;
   }
 
@@ -488,19 +578,25 @@ export class GuardResolver {
     return this.#modules.get(path) ?? [];
   }
 
-  hasModule(path: string) {
-    return this.#modulesAt(path).length > 0;
-  }
-
-  //? A folder's index is generated and gitignored, so a graph read from git has only the folder's files to go on.
-  packagesUnder(owner: string, folder: string) {
-    const packages = new Set<string>();
-    for (const [fileName, words] of this.#filesIn(owner)) {
-      if (!this.#source.relative(fileName).startsWith(`${folder}/`) || !words.includes("\nexport\n")) continue;
-      for (const [, specifier = ""] of this.#source.readText(fileName)?.matchAll(starExportPattern) ?? [])
-        if (this.pathOfSpecifier(fileName, specifier) === null) packages.add(specifier);
+  //? A facet's index is generated and gitignored, so a graph read from git rebuilds the one `akan sync` would write.
+  #barrelAt(path: string) {
+    if (!this.#barrels) {
+      const entries = new Map<string, { facet: string; files: Set<string>; dirs: Set<string> }>();
+      for (const [fileName] of this.#source.files) {
+        const [, folder, facet, entry, nested] = this.#source.relative(fileName).match(facetEntryPattern) ?? [];
+        if (!folder || !facet || !entry) continue;
+        const found = entries.get(folder) ?? { facet, files: new Set<string>(), dirs: new Set<string>() };
+        (nested ? found.dirs : found.files).add(entry);
+        entries.set(folder, found);
+      }
+      this.#barrels = new Map(
+        [...entries].map(([folder, { facet, files, dirs }]) => [
+          folder,
+          facetBarrelNamesOf(facet, [...files], [...dirs]).map((name) => `${folder}/${name}`),
+        ]),
+      );
     }
-    return [...packages];
+    return this.#modulesAt(path).length ? undefined : this.#barrels.get(path);
   }
 
   declares(owner: string, name: string) {

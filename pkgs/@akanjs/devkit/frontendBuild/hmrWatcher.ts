@@ -143,6 +143,8 @@ export class HmrWatcher {
     try {
       while (!this.#stopped) {
         await this.#mergeDetectedChanges();
+        //? stop() can land while the scan runs; a batch handed over after it reaches an owner that has moved on.
+        if (this.#stopped) break;
         if (this.#pending.size === 0) {
           this.#windowStartedAt = null;
           break;

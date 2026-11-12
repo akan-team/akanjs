@@ -1488,6 +1488,14 @@ export declare function assertUniqueRoutePatterns(entries: {
 
 export declare const authTokenKey: () => string;
 
+export declare const barrelFacetDirs: readonly [
+    "ui",
+    "webkit",
+    "srvkit",
+    "common",
+    "plugin"
+];
+
 export declare const bearerTokenOf: (authorization: null | string | undefined) => null | string;
 
 export declare const capitalize: (str: string) => string;
@@ -1529,6 +1537,8 @@ export declare const codeAgentShouldPersist: (event: CodeAgentEventBody) => bool
 
 export declare const codeAgentWireVersion = 1;
 
+export declare const compareExportNames: (a: string, b: string) => number;
+
 export declare function compareRouteSpecificity(a: string, b: string): number;
 
 /** @deprecated */
@@ -1556,6 +1566,10 @@ export declare const endpointNames: (key: string) => {
     subscribe: string;
     listen: string;
 };
+
+export declare const facetBarrelNamesOf: (facet: string, files: string[], dirs: string[]) => string[];
+
+export declare const facetBarrelOf: (facet: string, files: string[], dirs: string[]) => string;
 
 export declare const fileUploadContract: {
     readonly fields: {

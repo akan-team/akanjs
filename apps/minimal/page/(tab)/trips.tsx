@@ -9,7 +9,7 @@ const pageConfig = { topInset: 72 };
 export default page()
   .config(pageConfig)
   .app("showTrips", "Show the trips coming up, starting with the next one.", async () => {
-    const tripNotesOpen = await fetch.isMemoOpen().catch(() => true);
+    const tripNotesOpen = await fetch.isMemoOpen({ timeout: 3_000 }).catch(() => true);
     return (
       <section className="pt-5 md:mx-auto md:max-w-3xl">
         <Link className="block overflow-hidden rounded-[2rem] bg-muted text-foreground" href="/trips/detail">
