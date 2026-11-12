@@ -54,17 +54,58 @@ export const noteChunkLoadFailure = (error: unknown): void => {
 export const lazyLinkFailureKeyOf = (error: unknown): string | null =>
   error instanceof Error && isLinkFailure(error) && !chunkLoadFailures.has(error) ? `import() ${error.message}` : null;
 
-//? Chromium and Firefox 115 name the `import()` target, and current Firefox the module that failed to fetch; WebKit's
-//? "Importing a module script failed." names none, so a chunk gone there stays on its error.
-const fetchFailure = /^(?:Failed to fetch dynamically imported module|error loading dynamically imported module): \S+$/;
-const ownChunkUrlOf = (message: string): string | null => {
-  if (!fetchFailure.test(message)) return null;
+//? Chromium names the `import()` target, and Firefox the module that failed to fetch (115 named the target). WebKit
+//? names none, but words only a failed fetch this way: its syntax, link, MIME and evaluation errors read otherwise.
+const namedFetchFailure =
+  /^(?:Failed to fetch dynamically imported module|error loading dynamically imported module): \S+$/;
+const unnamedFetchFailure = "Importing a module script failed.";
+const ownChunkUrlOf = (href: string): string | null => {
   try {
-    const url = new URL(message.slice(message.lastIndexOf(" ") + 1));
+    const url = new URL(href);
     return url.origin === window.location.origin && url.pathname.startsWith("/_akan/client/") ? url.href : null;
   } catch {
     return null;
   }
+};
+//? A module fetch that failed records an empty body in every engine. WebKit gives no `responseStatus`, so a served
+//? empty chunk passes there too and probes 200. An observer, since `getEntriesByType` stops at 250 entries.
+const maxFallbackProbes = 4;
+const failedChunkFetches: string[] = [];
+const noteFailedChunkFetches = (entries: PerformanceEntryList): void => {
+  for (const entry of entries as PerformanceResourceTiming[]) {
+    const { initiatorType, responseStatus } = entry;
+    const failed =
+      entry.decodedBodySize === 0 &&
+      (initiatorType === "script" || initiatorType === "link") &&
+      !(responseStatus >= 200 && responseStatus < 300);
+    const url = failed ? ownChunkUrlOf(entry.name) : null;
+    if (!url) continue;
+    if (failedChunkFetches.includes(url)) failedChunkFetches.splice(failedChunkFetches.indexOf(url), 1);
+    failedChunkFetches.push(url);
+  }
+  failedChunkFetches.splice(0, failedChunkFetches.length - maxFallbackProbes);
+};
+const chunkFetchObserver = (() => {
+  try {
+    const observer = new PerformanceObserver((list) => noteFailedChunkFetches(list.getEntries()));
+    observer.observe({ type: "resource", buffered: true });
+    return observer;
+  } catch {
+    return null;
+  }
+})();
+const takeFailedChunkFetches = (except: string | null): string[] => {
+  noteFailedChunkFetches(chunkFetchObserver?.takeRecords() ?? []);
+  return failedChunkFetches.splice(0).filter((url) => url !== except);
+};
+const isGone = (url: string): Promise<boolean> =>
+  fetch(url, { method: "HEAD", cache: "no-store" }).then(
+    ({ status }) => status === 404,
+    () => false,
+  );
+const firstGone = async (urls: string[]): Promise<string | undefined> => {
+  const gone = await Promise.all(urls.map(isGone));
+  return urls.find((_, index) => gone[index]);
 };
 //? The reload list alone cannot stop a 404 a reload does not fix: each load would claim the next chunk, and past 32
 //? the first again. That loop stays on the path the reload loaded, which a refresh or a shallow update keeps, so after
@@ -76,25 +117,27 @@ const onReloadedPath = () =>
 //? A document navigation the router never sees (a plain link, a form post, `location.assign`) fires one of these; they
 //? are heard only while the probe is out, since a `beforeunload` listener used to keep a page out of the bfcache.
 const unloadEvents = ["beforeunload", "pagehide"] as const;
-//? Only a 404 says this origin no longer serves the chunk; a network failure, a blocked request or a 5xx can pass.
+//? Only a 404 says this origin no longer serves the chunk; a network failure, a blocked request or a 5xx can pass. A
+//? named chunk that is served can import a gone one statically, which only the page's failed fetches name.
 export const ifLazyChunkGone = (error: unknown, then: (key: string) => void): void => {
   if (!(error instanceof TypeError) || chunkLoadFailures.has(error) || !navigator.onLine) return;
-  const url = ownChunkUrlOf(error.message);
-  if (!url || onReloadedPath()) return;
+  const { message } = error;
+  const named = namedFetchFailure.test(message) ? ownChunkUrlOf(message.slice(message.lastIndexOf(" ") + 1)) : null;
+  if ((!named && message !== unnamedFetchFailure) || onReloadedPath()) return;
   let unloading = false;
   const unload = () => {
     unloading = true;
   };
   for (const type of unloadEvents) window.addEventListener(type, unload);
-  void fetch(url, { method: "HEAD", cache: "no-store" })
-    .then(
-      ({ status }) => status === 404,
-      () => false,
-    )
-    .then((gone) => {
-      for (const type of unloadEvents) window.removeEventListener(type, unload);
-      if (gone && !unloading) then(`import() ${error.message}`);
-    });
+  void (async () => {
+    let key = named && (await isGone(named)) ? `import() ${message}` : null;
+    if (!key) {
+      const gone = await firstGone(takeFailedChunkFetches(named));
+      if (gone) key = `import() ${message} ${gone}`;
+    }
+    for (const type of unloadEvents) window.removeEventListener(type, unload);
+    if (key && !unloading) then(key);
+  })();
 };
 
 //? React's own fallback where `reportError` is missing (Chromium before 95): `window.onerror` trackers still see it.
