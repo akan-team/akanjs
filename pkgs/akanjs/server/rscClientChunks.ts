@@ -67,20 +67,26 @@ const ownChunkUrlOf = (href: string): string | null => {
     return null;
   }
 };
-//? A module fetch that failed records an empty body in every engine. WebKit gives no `responseStatus`, so a served
-//? empty chunk passes there too and probes 200. An observer, since `getEntriesByType` stops at 250 entries.
+//? A module fetch that failed records an empty body. Chromium and Firefox give its status; WebKit gives none and
+//? records a cache hit, memory or disk, with an empty body too, but only an answered fetch sets `responseStart`
+//? there. A served empty chunk passes in WebKit and probes 200. An observer: `getEntriesByType` stops at 250 entries.
 const maxFallbackProbes = 4;
 const failedChunkFetches: string[] = [];
+const probesOut = new Set<string>();
+const forgetChunkFetch = (url: string): void => {
+  const at = failedChunkFetches.indexOf(url);
+  if (at >= 0) failedChunkFetches.splice(at, 1);
+};
 const noteFailedChunkFetches = (entries: PerformanceEntryList): void => {
   for (const entry of entries as PerformanceResourceTiming[]) {
-    const { initiatorType, responseStatus } = entry;
-    const failed =
-      entry.decodedBodySize === 0 &&
-      (initiatorType === "script" || initiatorType === "link") &&
-      !(responseStatus >= 200 && responseStatus < 300);
+    const answeredAsFailed =
+      entry.responseStatus === undefined
+        ? entry.responseStart > 0
+        : !(entry.responseStatus >= 200 && entry.responseStatus < 300);
+    const failed = entry.decodedBodySize === 0 && entry.initiatorType !== "fetch" && answeredAsFailed;
     const url = failed ? ownChunkUrlOf(entry.name) : null;
     if (!url) continue;
-    if (failedChunkFetches.includes(url)) failedChunkFetches.splice(failedChunkFetches.indexOf(url), 1);
+    forgetChunkFetch(url);
     failedChunkFetches.push(url);
   }
   failedChunkFetches.splice(0, failedChunkFetches.length - maxFallbackProbes);
@@ -94,17 +100,23 @@ const chunkFetchObserver = (() => {
     return null;
   }
 })();
-const takeFailedChunkFetches = (except: string | null): string[] => {
+const fallbackChunksFor = (named: string | null): string[] => {
   noteFailedChunkFetches(chunkFetchObserver?.takeRecords() ?? []);
-  return failedChunkFetches.splice(0).filter((url) => url !== except);
+  return failedChunkFetches.filter((url) => url !== named && !probesOut.has(url));
 };
 const isGone = (url: string): Promise<boolean> =>
   fetch(url, { method: "HEAD", cache: "no-store" }).then(
     ({ status }) => status === 404,
     () => false,
   );
+//? A 404 stays listed: the reload can still be skipped, and WebKit does not fetch a module that failed again.
 const firstGone = async (urls: string[]): Promise<string | undefined> => {
+  for (const url of urls) probesOut.add(url);
   const gone = await Promise.all(urls.map(isGone));
+  for (const [index, url] of urls.entries()) {
+    probesOut.delete(url);
+    if (!gone[index]) forgetChunkFetch(url);
+  }
   return urls.find((_, index) => gone[index]);
 };
 //? The reload list alone cannot stop a 404 a reload does not fix: each load would claim the next chunk, and past 32
@@ -132,7 +144,7 @@ export const ifLazyChunkGone = (error: unknown, then: (key: string) => void): vo
   void (async () => {
     let key = named && (await isGone(named)) ? `import() ${message}` : null;
     if (!key) {
-      const gone = await firstGone(takeFailedChunkFetches(named));
+      const gone = await firstGone(fallbackChunksFor(named));
       if (gone) key = `import() ${message} ${gone}`;
     }
     for (const type of unloadEvents) window.removeEventListener(type, unload);

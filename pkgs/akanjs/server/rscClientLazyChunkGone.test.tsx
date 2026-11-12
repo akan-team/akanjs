@@ -20,6 +20,7 @@ interface ResourceEntry {
   name: string;
   initiatorType: string;
   decodedBodySize: number;
+  responseStart: number;
   responseStatus?: number;
 }
 const pendingResources: ResourceEntry[] = [];
@@ -37,8 +38,10 @@ const failedFetch = (url: string, entry: Partial<ResourceEntry> = {}): ResourceE
   name: url,
   initiatorType: "script",
   decodedBodySize: 0,
+  responseStart: 12,
   ...entry,
 });
+const webkitCacheHit = (url: string): ResourceEntry => failedFetch(url, { initiatorType: "link", responseStart: 0 });
 
 class Boundary extends Component<{ children?: ReactNode }, { failed: boolean }> {
   override state: { failed: boolean } = { failed: false };
@@ -112,13 +115,16 @@ beforeEach(() => {
   restorers.push(...spies.map((spy) => () => spy.mockRestore()));
 });
 
-afterEach(() => {
+//? The client keeps a failed fetch listed while it answers 404, so each test ends with one probe that answers 200.
+afterEach(async () => {
+  probeAnswers.clear();
+  pendingResources.splice(0);
+  await navigate("/drained");
+  await rejectImport(webkitFetchFailure());
   for (const restore of restorers.splice(0)) restore();
   probes.splice(0);
-  probeAnswers.clear();
   served.clear();
   failingChunks.clear();
-  pendingResources.splice(0);
 });
 
 const navigate = async (href: string) => {
@@ -336,20 +342,36 @@ describe("rscClient lazy chunk the server no longer serves", () => {
 });
 
 describe("rscClient lazy chunk gone where the error names none that is", () => {
-  test("WebKit's fetch failure probes the chunks whose fetch failed, and reloads on a 404", async () => {
+  test("WebKit's fetch failure probes the chunks whose fetch failed, all at once and not twice, and reloads on a 404", async () => {
     const gone = chunkUrl("webkit-target-a1");
     const empty = chunkUrl("webkit-empty-a1");
     probeAnswers.set(gone, 404);
+    const answerEmpty = holdProbe(empty);
     await navigate("/webkit");
     pendingResources.push(failedFetch(empty, { initiatorType: "link" }), failedFetch(gone));
     await rejectImport(webkitFetchFailure());
-
+    await rejectImport(webkitFetchFailure());
     expect(probes).toEqual([
       { url: empty, method: "HEAD", cache: "no-store" },
       { url: gone, method: "HEAD", cache: "no-store" },
     ]);
+    expect(reloadedAt).toEqual([]);
+
+    await answerEmpty(200);
     expect(reloadedAt).toEqual([`${origin}/webkit`]);
     expect(reloadedKeys()).toEqual([`import() ${webkitFetchFailure().message} ${gone}`]);
+  });
+
+  test("cache hits recorded after a failed fetch, empty-bodied in WebKit, leave it to be probed", async () => {
+    const gone = chunkUrl("preload-gone-a1");
+    probeAnswers.set(gone, 404);
+    await navigate("/warm");
+    deliverResources([failedFetch(gone, { initiatorType: "link" })]);
+    pendingResources.push(...Array.from({ length: 8 }, (_, n) => webkitCacheHit(chunkUrl(`cached-${n}`))));
+    await rejectImport(webkitFetchFailure());
+
+    expect(probedUrls()).toEqual([gone]);
+    expect(reloadedAt).toEqual([`${origin}/warm`]);
   });
 
   test("a named chunk that is served falls back to a gone chunk it imports", async () => {
@@ -365,13 +387,55 @@ describe("rscClient lazy chunk gone where the error names none that is", () => {
     expect(reloadedKeys()).toEqual([`import() ${chromiumGone(target).message} ${dep}`]);
   });
 
-  test("only the four latest failed chunk fetches are probed, each once, and none of them gone leaves the page", async () => {
+  test("a named chunk is probed once, and alone when it answers 404", async () => {
+    const busy = chunkUrl("busy-target-a1");
+    const dep = chunkUrl("served-dep-a1");
+    probeAnswers.set(busy, 503);
+    await navigate("/named");
+    pendingResources.push(failedFetch(busy, { responseStatus: 503 }), failedFetch(dep, { responseStatus: 404 }));
+    await rejectImport(chromiumGone(busy));
+    expect(probedUrls()).toEqual([busy, dep]);
+    expect(reloadedAt).toEqual([]);
+
+    const gone = chunkUrl("named-gone-a1");
+    const unasked = chunkUrl("unasked-dep-a1");
+    probeAnswers.set(gone, 404);
+    pendingResources.push(failedFetch(unasked, { responseStatus: 404 }));
+    await rejectImport(chromiumGone(gone));
+    expect(probedUrls()).toEqual([busy, dep, gone]);
+    expect(reloadedKeys()).toEqual([`import() ${chromiumGone(gone).message}`]);
+  });
+
+  test("a 404 whose reload a navigation or a pagehide skipped is probed again on the next failure", async () => {
+    const gone = chunkUrl("skipped-a1");
+    await navigate("/skipped");
+    pendingResources.push(failedFetch(gone));
+    let answer = holdProbe(gone);
+    await rejectImport(webkitFetchFailure());
+    await navigate("/next");
+    await answer(404);
+    expect(reloadedAt).toEqual([]);
+
+    answer = holdProbe(gone);
+    await rejectImport(webkitFetchFailure());
+    window.dispatchEvent(new Event("pagehide"));
+    await answer(404);
+    expect(reloadedAt).toEqual([]);
+
+    probeAnswers.set(gone, 404);
+    await rejectImport(webkitFetchFailure());
+    expect(probedUrls()).toEqual([gone, gone, gone]);
+    expect(reloadedAt).toEqual([`${origin}/next`]);
+  });
+
+  test("only the four latest failed chunk fetches are probed, and one that is not gone only once", async () => {
     const failed = Array.from({ length: 6 }, (_, n) => chunkUrl(`failed-${n}`));
     await navigate("/many");
     deliverResources([
-      ...failed.map((url) => failedFetch(url)),
+      ...failed.map((url, n) => failedFetch(url, n === 5 ? { initiatorType: "other", responseStatus: 404 } : {})),
       failedFetch(chunkUrl("served-empty-a1"), { responseStatus: 200 }),
       failedFetch(chunkUrl("loaded-a1"), { decodedBodySize: 2048 }),
+      webkitCacheHit(chunkUrl("cached-a1")),
       failedFetch(chunkUrl("probed-a1"), { initiatorType: "fetch", responseStatus: 404 }),
       failedFetch("https://cdn.example.com/_akan/client/chunks/foreign-a1.js"),
       failedFetch(`${origin}/assets/asset-a1.js`),
