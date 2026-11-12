@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Logger } from "akanjs/common";
 
 interface StartStep {
@@ -5,6 +6,8 @@ interface StartStep {
 }
 
 export class StartGuard {
+  //? Not a flag set around the step: it would also take a stop from outside, landing meanwhile, for the step's own.
+  static readonly #caller = new AsyncLocalStorage<StartStep>();
   readonly #logger: Logger;
   readonly #teardown: () => Promise<void>;
   #step: StartStep | null = null;
@@ -27,6 +30,14 @@ export class StartGuard {
   }
 
   stop(stoppable: () => boolean): Promise<void> {
+    const step = this.#step;
+    //? From inside the step (an init hook) a stop would wait on itself: it is held for the step's end and settles now.
+    if (step && StartGuard.#caller.getStore() === step) {
+      step.stop ??= Promise.withResolvers<void>();
+      //? No caller awaits a teardown only the step itself asked for, and the teardown logs its own failure.
+      void step.stop.promise.catch(() => undefined);
+      return Promise.resolve();
+    }
     return this.#once(async () => {
       //? A start step tears down once its await settles; a teardown under it would be outrun by what it starts next.
       if (this.#step) {
@@ -42,7 +53,7 @@ export class StartGuard {
     const step: StartStep = { stop: null };
     this.#step = step;
     try {
-      await run();
+      await StartGuard.#caller.run(step, run);
     } finally {
       this.#step = null;
       if (step.stop) await this.#teardown().then(step.stop.resolve, step.stop.reject);

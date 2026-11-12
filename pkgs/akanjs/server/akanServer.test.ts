@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -808,6 +809,61 @@ describe("AkanServer stopped while starting", () => {
     }
   });
 
+  test("a stop() awaited inside an init hook settles, and the start tears down once init returns", async () => {
+    const { ServerResolverTestService } = await loadRuntime();
+    const { replica, destroyAll, schedulerInit, served, restore } = await listeningServer();
+    const settled = Promise.withResolvers<{ status: string; destroyed: number }>();
+    const onInit = spyOn(ServerResolverTestService.prototype, "onInit").mockImplementation(async () => {
+      await replica.stop();
+      settled.resolve({ status: replica.status, destroyed: destroyAll.mock.calls.length });
+    });
+
+    try {
+      expect(await replica.start({ listen: true, web: false })).toBe(replica);
+      expect(await settled.promise).toEqual({ status: "initializing", destroyed: 0 });
+      expect(replica.status).toBe("stopped");
+      expect(destroyAll).toHaveBeenCalledTimes(1);
+      expect(schedulerInit).not.toHaveBeenCalled();
+      expect(await served()).toBe(false);
+
+      onInit.mockRestore();
+      await replica.start({ listen: true, web: false });
+      expect(await served()).toBe(true);
+    } finally {
+      onInit.mockRestore();
+      await restore();
+    }
+  });
+
+  test("a stop from outside that lands while an init hook runs still waits for the start to tear down", async () => {
+    const { ServerResolverTestService } = await loadRuntime();
+    const { replica, destroyAll, served, restore } = await listeningServer();
+    const hookRunning = Promise.withResolvers<void>();
+    const outsideStopped = Promise.withResolvers<void>();
+    const hookStopped = Promise.withResolvers<void>();
+    const onInit = spyOn(ServerResolverTestService.prototype, "onInit").mockImplementation(async () => {
+      hookRunning.resolve();
+      await outsideStopped.promise;
+      await replica.stop();
+      hookStopped.resolve();
+    });
+
+    try {
+      const starting = replica.start({ listen: true, web: false });
+      await hookRunning.promise;
+      const outside = replica.stop().then(() => ({ status: replica.status, destroyed: destroyAll.mock.calls.length }));
+      outsideStopped.resolve();
+
+      await hookStopped.promise;
+      expect(await starting).toBe(replica);
+      expect(await outside).toEqual({ status: "stopped", destroyed: 1 });
+      expect(await served()).toBe(false);
+    } finally {
+      onInit.mockRestore();
+      await restore();
+    }
+  });
+
   test("a stop while listen() opens its log control socket closes it, and serves nothing", async () => {
     const { LogControlSocket } = await import("./logging/logControlSocket");
     const { replica, runtimeDir, destroyAll, schedulerInit, served, restore } = await listeningServer();
@@ -815,10 +871,11 @@ describe("AkanServer stopped while starting", () => {
     const openSocket = LogControlSocket.open.bind(LogControlSocket);
     const stopped = Promise.withResolvers<{ status: string; destroyed: number; socket: boolean }>();
     let bound = false;
+    //? The mock runs inside the start step, and a stop from a signal or the gateway arrives from outside it.
+    const outside = AsyncLocalStorage.snapshot();
     const open = spyOn(LogControlSocket, "open").mockImplementation(async (...args) => {
       expect(replica.status).toBe("starting");
-      void replica
-        .stop()
+      void outside(() => replica.stop())
         .then(() => ({
           status: replica.status,
           destroyed: destroyAll.mock.calls.length,
