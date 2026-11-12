@@ -137,10 +137,10 @@ contract. Path rules name their checks the same way.
 - One class per file, named after it; TypeScript files are camelCase, component and convention files excepted.
 - Identifiers, endpoint names and logs are English; everything a user reads goes through `l("model.field")` or
   `l.trans({ en, ko })`, and dictionary entries are `[en, ko]` pairs.
-- Comment only what the code cannot say (`akan verify` flags each new one as `akan.comment.added`) — a vendor quirk,
-  an infrastructure constraint, security reasoning, a domain field's meaning, a state transition, a rejected
-  alternative. Never restate code, label a section or add JSDoc; retire a symbol with
-  `/** @deprecated <what instead> */`.
+- Comment only what the code cannot say (`akan verify` flags each new one as `akan.comment.added`, a
+  `// TODO: <issue url>` aside) — a vendor quirk, an infrastructure constraint, security reasoning, a domain field's
+  meaning, a state transition, a rejected alternative. Never restate code, label a section or add JSDoc; retire a
+  symbol with `/** @deprecated <what instead> */`.
 - Server rendering is the default: `"use client"` only for a hook, an event handler, the store, a browser global or
   a client-only package.
 

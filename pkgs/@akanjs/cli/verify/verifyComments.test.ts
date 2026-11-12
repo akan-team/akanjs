@@ -105,6 +105,21 @@ describe("VerifyComments", () => {
     expect(found.map((entry) => !!entry.fix)).toEqual([true, false, false]);
   });
 
+  test("lets a TODO that names its issue url pass, and still flags a bare TODO", async () => {
+    const root = await repo({ "src/a.ts": "export const a = 1;\n" });
+    await writeText(
+      path.join(root, "src/a.ts"),
+      "// TODO: https://github.com/akan-team/akanjs/issues/1\nexport const a = 1;\n// TODO: later\n// TODO see #12\n",
+    );
+
+    const found = await VerifyComments.added(root, ["src/a.ts"]);
+
+    expect(found.map(({ line, message }) => [line, message])).toEqual([
+      [3, "// TODO: later"],
+      [4, "// TODO see #12"],
+    ]);
+  });
+
   test("skips the comments scaffold templates write into new files, and still counts one written beside them", async () => {
     const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
     try {

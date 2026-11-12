@@ -108,6 +108,21 @@ guideline.
 
 `;
 
+const maxListedChars = 160;
+
+const renderNames = (names: string[]) => {
+  if (!names.length) return "none";
+  const shown: string[] = [];
+  let length = 0;
+  for (const name of names) {
+    if (shown.length && length + name.length > maxListedChars) break;
+    shown.push(name);
+    length += name.length + 2;
+  }
+  const rest = names.length - shown.length;
+  return rest ? `${shown.join(", ")}, and ${rest} more` : shown.join(", ");
+};
+
 const renderManagedBlock = async (workspace: Workspace) => {
   const context = await AkanContextAnalyzer.analyze(workspace);
   const conventions = await Prompter.getConventionSet();
@@ -117,9 +132,9 @@ const renderManagedBlock = async (workspace: Workspace) => {
   const block = `## Workspace
 
 - Repo: ${context.repoName}
-- Apps: ${appNames.join(", ") || "none"}
-- Libraries: ${context.libs.map((lib) => lib.name).join(", ") || "none"}
-- Packages: ${context.pkgs.map((pkg) => pkg.name).join(", ") || "none"}
+- Apps: ${renderNames(appNames)}
+- Libraries: ${renderNames(context.libs.map((lib) => lib.name))}
+- Packages: ${renderNames(context.pkgs.map((pkg) => pkg.name))}
 
 ${conventions.core}
 
