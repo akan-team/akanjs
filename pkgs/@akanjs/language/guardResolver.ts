@@ -467,7 +467,8 @@ export class GuardResolver {
     const key = `${path}\n${name}`;
     const cached = this.#moduleExports.get(key);
     if (cached) return cached;
-    const found: ModuleExports = { named: null, stars: this.#barrelAt(path) ?? [], isLocal: false };
+    const found: ModuleExports = { named: null, stars: [], isLocal: false };
+    const stars = new Set(this.#barrelAt(path));
     for (const fileName of this.#modulesAt(path)) {
       const text = this.#source.readText(fileName);
       if (text === undefined) continue;
@@ -477,7 +478,6 @@ export class GuardResolver {
           : null;
       if (named) {
         found.named = { ...named, fileName };
-        found.stars = [];
         break;
       }
       if (
@@ -486,11 +486,11 @@ export class GuardResolver {
         this.#exportsLocally(this.#source.parse(fileName, text), name)
       ) {
         found.isLocal = true;
-        found.stars = [];
         break;
       }
-      for (const target of this.#starsIn(fileName, text)) if (!found.stars.includes(target)) found.stars.push(target);
+      for (const target of this.#starsIn(fileName, text)) stars.add(target);
     }
+    if (!found.named && !found.isLocal) found.stars = [...stars];
     this.#moduleExports.set(key, found);
     return found;
   }
