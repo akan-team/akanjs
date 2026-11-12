@@ -1,5 +1,5 @@
 import type { Sys, Workspace } from "../commandDecorators";
-import type { FieldDefaultValue } from "./source";
+import type { FieldDefaultValue } from "./fieldExpression";
 
 export type WorkflowInputType = "string" | "string-list" | "surface-mode" | "boolean";
 export type WorkflowSurfaceMode = "infer" | "include" | "skip";

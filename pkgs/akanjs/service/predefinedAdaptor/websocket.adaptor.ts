@@ -97,9 +97,6 @@ export class WebSocketRedisAdaptor
   static readonly #shards = 16_384;
   //? A link that stalls without closing would otherwise hold a subscribe's ack for as long as it stalls.
   static readonly #subscribeTimeoutMs = 3_000;
-  //? TODO(#458): earlier releases use only `ws:broadcast` and match an origin only to their own id, so they read a
-  //? copy whose origin carries this mark, and a server of this release skips it, having heard the original.
-  static readonly #legacyMark = "\0sharded";
   readonly #buffer: BufferedMessage[] = [];
   readonly #maxBufferSize = 10000;
   readonly #rooms = new Map<string, HeldRoom>();
@@ -119,10 +116,6 @@ export class WebSocketRedisAdaptor
   #subscriberStarted = false;
   readonly #lossWaiters = new Set<() => void>();
   readonly #lastLogged = new Map<string, number>();
-
-  get #legacyChannel() {
-    return `${this.channelPrefix}ws:broadcast`;
-  }
 
   #roomChannel(roomId: string) {
     return `${this.channelPrefix}ws:room:${Bun.hash.crc32(roomId) % WebSocketRedisAdaptor.#shards}`;
@@ -161,14 +154,15 @@ export class WebSocketRedisAdaptor
       this.#loseSubscriber();
       if (!this.#subscriberReady) return;
       this.#subscriberReady = false;
-      this.logger.warn("Subscriber disconnected; cross-server events are being missed until it returns");
+      //? Redis's idle `timeout` spares only a client holding a channel, so it cuts off a server holding no room.
+      if (this.#channels.size)
+        this.logger.warn("Subscriber disconnected; cross-server events are being missed until it returns");
     });
     this.subscriber.on("ready", () => {
-      this.#listenToLegacy();
       //* A SUBSCRIBE ioredis rejected in an outage included. `ready` fires before Redis answers what ioredis resent, so
       //* no earlier reply vouches for the new connection.
       const replies = [...this.#channels].map(([channel, hold]) => this.#subscribe(channel, hold));
-      const recovering = !this.#subscriberReady && this.#subscriberStarted;
+      const recovering = !this.#subscriberReady && this.#subscriberStarted && this.#channels.size > 0;
       this.#subscriberReady = true;
       this.#subscriberStarted = true;
       if (!recovering) return;
@@ -205,11 +199,26 @@ export class WebSocketRedisAdaptor
     this.subscriber.disconnect();
     if (this.publisher) {
       this.#cancelRetry();
+      //? One deadline for both waits below: a link that stalls without closing answers neither.
+      const stalled = Promise.withResolvers<"stalled">();
+      const timer = setTimeout(() => stalled.resolve("stalled"), 1_000);
       //? A batch the publisher was cut off under waits in ioredis for Redis to return, which a shutdown must not.
-      if (this.#publisherReady) await Promise.race([this.#flushBuffer(), this.#closed()]);
+      if (this.#publisherReady) await Promise.race([this.#flushBuffer(), this.#closed(), stalled.promise]);
       this.#cancelRetry();
+      const connected = this.#publisherReady;
       this.#publisherReady = false;
-      this.publisher.disconnect();
+      //? `disconnect` returns with the socket still writing, and the process exits next, so the rest of a backlog never
+      //? leaves. Redis answers QUIT only after every command ahead of it.
+      const ended = connected
+        ? await Promise.race([this.publisher.quit().catch(() => undefined), this.#closed(), stalled.promise])
+        : undefined;
+      clearTimeout(timer);
+      if (ended === "stalled")
+        this.logger.warn(
+          "Redis did not answer within 1 s of shutdown; cross-server events still being sent may be lost",
+        );
+      //? On a link that already ended, ioredis would arm a 2 s destroy timer that no close ever clears.
+      if (this.publisher.status !== "end") this.publisher.disconnect();
     }
     this.#eventHandler = null;
     this.#changeHandler = null;
@@ -227,39 +236,22 @@ export class WebSocketRedisAdaptor
       this.logger.warn(`Nothing to publish to ${roomId}: the payload has no JSON form`);
       return;
     }
-    const kind = bytes ? "bytes" : "json";
     this.#send({
       channel: this.#roomChannel(roomId),
       roomId,
-      message: this.#pack(kind, roomId, payload),
+      message: this.#pack(bytes ? "bytes" : "json", roomId, payload),
       coalesce,
       seq: this.#sent++,
     });
-    this.#sendLegacy(kind, roomId, payload, coalesce);
   }
 
   publishChange(change: LiveChange): void {
-    const payload = JSON.stringify(change);
     this.#send({
       channel: this.#changeChannel(change.refName),
       roomId: "",
-      message: this.#pack("change", "", payload),
+      message: this.#pack("change", "", JSON.stringify(change)),
       coalesce: false,
       seq: this.#sent++,
-    });
-    this.#sendLegacy("change", "", payload, false);
-  }
-
-  //? TODO(#458): a separate entry, so a PUBLISH that fails on one channel is retried without repeating the other.
-  #sendLegacy(kind: "json" | "bytes" | "change", roomId: string, payload: string | Uint8Array, coalesce: boolean) {
-    const origin = `${this.serverId}${WebSocketRedisAdaptor.#legacyMark}`;
-    const message = this.#pack(kind, roomId, payload, origin);
-    this.#send({ channel: this.#legacyChannel, roomId, message, coalesce, seq: this.#sent++ });
-  }
-
-  #listenToLegacy() {
-    this.subscriber.subscribe(this.#legacyChannel).catch((err: Error) => {
-      this.logger.warn(`Subscribe to ${this.#legacyChannel} failed: ${err.message}`);
     });
   }
 
@@ -407,7 +399,6 @@ export class WebSocketRedisAdaptor
     try {
       const unpacked = this.#unpack(message);
       if (!unpacked || unpacked.origin === this.serverId) return;
-      if (unpacked.origin.endsWith(WebSocketRedisAdaptor.#legacyMark)) return;
       if (unpacked.kind === WebSocketRedisAdaptor.#kind.change) {
         this.#changeHandler?.(JSON.parse(unpacked.payload.toString()) as LiveChange);
         return;
@@ -424,8 +415,8 @@ export class WebSocketRedisAdaptor
     }
   }
 
-  #pack(kind: "json" | "bytes" | "change", roomId: string, payload: string | Uint8Array, from = this.serverId): Buffer {
-    const origin = Buffer.from(from, "utf-8");
+  #pack(kind: "json" | "bytes" | "change", roomId: string, payload: string | Uint8Array): Buffer {
+    const origin = Buffer.from(this.serverId, "utf-8");
     const room = Buffer.from(roomId, "utf-8");
     const header = Buffer.alloc(2 + 2 + origin.length + 2 + room.length);
     let offset = header.writeUInt8(WebSocketRedisAdaptor.#version, 0);
@@ -530,8 +521,7 @@ export class WebSocketRedisAdaptor
   //? Logged per family, not per shard, and again after a minute, so an ACL fixed and broken again is heard.
   #refused({ channel }: BufferedMessage, err: unknown) {
     if (!(err instanceof Error) || !err.message.startsWith("NOPERM")) return false;
-    //? TODO(#458): the only channel with no shard or model after its family.
-    const family = channel === this.#legacyChannel ? channel : channel.slice(0, channel.lastIndexOf(":"));
+    const family = channel.slice(0, channel.lastIndexOf(":"));
     const now = Date.now();
     if (now - (this.#lastLogged.get(family) ?? Number.NEGATIVE_INFINITY) < 60_000) return true;
     this.#lastLogged.set(family, now);

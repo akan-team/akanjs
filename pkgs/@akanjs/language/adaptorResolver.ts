@@ -46,12 +46,21 @@ interface PackageExport {
   from: string;
 }
 
+interface LocalExport {
+  local: string;
+}
+
+type Exported = DeclaredAdaptor | PackageExport | LocalExport;
+
 const packageOf = (specifier: string) =>
   specifier
     .split("/")
     .slice(0, specifier.startsWith("@") ? 2 : 1)
     .join("/");
 const packageKeyOf = ({ name, from }: PackageExport) => `${packageOf(from)}\n${name}`;
+const exportedKeyOf = (item: Exported) =>
+  "fact" in item ? item.id : "local" in item ? `${item.local}\n` : packageKeyOf(item);
+const isPackageExport = (item: Exported): item is PackageExport => "from" in item;
 
 export class AdaptorResolver {
   readonly #source: AkanGraphSource;
@@ -60,6 +69,7 @@ export class AdaptorResolver {
   readonly #adaptors = new Map<string, DeclaredAdaptor[]>();
   readonly #plugs = new Map<string, DeclaredPlug[]>();
   readonly #serviceFields = new Set<string>();
+  readonly #exported = new Map<string, Exported[]>();
 
   constructor(source: AkanGraphSource, resolver: GuardResolver, sink: GraphSink) {
     this.#source = source;
@@ -165,31 +175,59 @@ export class AdaptorResolver {
     const [first] = own;
     if (path === null) return own.find((adaptor) => adaptor.fileName === fileName) ?? first;
     if (own.length === 1) return first;
-    const exported = this.#exportedAt(name, path, new Set()).filter((item) => first || "fact" in item);
+    const exported = this.#exportedAt(name, path).filter((item) => first || !isPackageExport(item));
     const [only] = exported;
-    if (only) return exported.length === 1 ? only : null;
+    if (only) return exported.length === 1 && !("local" in only) ? only : null;
     return first ? null : undefined;
   }
 
-  //? TypeScript prefers a module's own `export { Clock }` to its `export *`s, and drops a name two `export *` share.
-  #exportedAt(name: string, path: string, seen: Set<string>): (DeclaredAdaptor | PackageExport)[] {
+  //? A module's own exports win over its `export *`s; ES modules drop a name two `export *` share, and tsc rejects it.
+  #exportedAt(name: string, path: string): Exported[] {
     const key = `${path}\n${name}`;
-    if (seen.has(key)) return [];
-    seen.add(key);
-    const here = (this.#adaptors.get(name) ?? []).filter((adaptor) => {
+    const cached = this.#exported.get(key);
+    if (cached) return cached;
+    if (!this.#resolver.mentionsAlong(path, name)) {
+      this.#exported.set(key, []);
+      return [];
+    }
+    const reached = new Map<string, Exported>();
+    const seen = new Set<string>();
+    const pending: [name: string, path: string][] = [[name, path]];
+    for (let next = pending.pop(); next; next = pending.pop()) {
+      const [wanted, at] = next;
+      if (seen.has(`${at}\n${wanted}`)) continue;
+      seen.add(`${at}\n${wanted}`);
+      for (const item of this.#bindingAt(wanted, at, pending)) reached.set(exportedKeyOf(item), item);
+    }
+    const found = [...reached.values()];
+    this.#exported.set(key, found);
+    return found;
+  }
+
+  #bindingAt(name: string, path: string, pending: [name: string, path: string][]): Exported[] {
+    const here = this.#declaredAt(name, path);
+    if (here.length) return here;
+    const { named, stars, isLocal } = this.#resolver.exportsAt(path, name);
+    if (isLocal) return [{ local: path }];
+    if (named?.from === null) {
+      const local = this.#declaredAt(named.name, path);
+      return local.length ? local : [{ local: path }];
+    }
+    if (named) {
+      const target = this.#resolver.pathOfSpecifier(named.fileName, named.from);
+      if (target === null) return [{ name: named.name === "default" ? name : named.name, from: named.from }];
+      pending.push([named.name, target]);
+      return [];
+    }
+    for (const star of stars) pending.push([name, star]);
+    return [];
+  }
+
+  #declaredAt(name: string, path: string) {
+    return (this.#adaptors.get(name) ?? []).filter((adaptor) => {
       const module = this.#source.relative(adaptor.fileName).replace(/\.tsx?$/, "");
       return module === path || module === `${path}/index`;
     });
-    if (here.length) return here;
-    const { named, stars } = this.#resolver.exportsAt(path, name);
-    if (named?.from && this.#resolver.pathOfSpecifier(named.fileName, named.from) === null)
-      return [{ name: named.name === "default" ? name : named.name, from: named.from }];
-    if (named) {
-      const target = named.from === null ? path : this.#resolver.pathOfSpecifier(named.fileName, named.from);
-      return target === null ? [] : this.#exportedAt(named.name, target, seen);
-    }
-    const reached = stars.flatMap((star) => this.#exportedAt(name, star, seen));
-    return [...new Map(reached.map((item) => ["fact" in item ? item.id : packageKeyOf(item), item])).values()];
   }
 
   #packageAdaptorOf(name: string, specifier: string) {
@@ -203,13 +241,13 @@ export class AdaptorResolver {
   //? A lib reaches a third-party class only through a re-export, so the class is the package's, not the lib's.
   #packageShimOf(owner: string, name: string, near: string | null) {
     if (!near) return null;
-    const shims = this.#exportedAt(name, near, new Set()).filter((item): item is PackageExport => !("fact" in item));
+    const shims = this.#exportedAt(name, near).filter(isPackageExport);
     const [shim] = shims;
     if (shim) return shims.length === 1 ? shim : null;
     const { packages, paths } = this.#resolver.starExportsOf(owner, near);
     const [only] = packages;
-    const isDeclared = paths.some((path) => this.#resolver.declaresAt(path, name));
-    return only && new Set(packages.map(packageOf)).size === 1 && !isDeclared ? { name, from: only } : null;
+    if (!only || new Set(packages.map(packageOf)).size !== 1) return null;
+    return paths.some((path) => this.#resolver.declaresAt(path, name)) ? null : { name, from: only };
   }
 
   #nodeOf({ fact, owner, fileName, id }: DeclaredAdaptor) {
