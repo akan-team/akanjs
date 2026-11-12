@@ -747,10 +747,12 @@ describe("MCP over a booted container", () => {
 
     const { json } = await post(rpc("tools/list"));
     const listed = json.result.tools as { name: string; description?: string }[];
-    expect(listed.find((tool) => tool.name === "serverResolverTestItem")).not.toHaveProperty("description");
     const agentTools = await (di.getByClass(AgentTools) as unknown as AgentTools).listAs({ id: "agent" });
-    expect(agentTools.find((tool) => tool.name === "serverResolverTestItem")).not.toHaveProperty("description");
-    for (const tool of [...listed, ...agentTools]) expect(tool.description ?? "").not.toContain("base.error.");
+    for (const tools of [listed, agentTools]) {
+      expect(tools.map(({ name }) => name)).toContain("serverResolverTestItem");
+      expect(tools.find(({ name }) => name === "serverResolverTestItem")).not.toHaveProperty("description");
+      for (const tool of tools) expect(tool.description ?? "").not.toContain("base.error.");
+    }
     const generated = AgentCatalogue.candidates(serialized).filter(({ origin }) => origin === "base");
     expect(generated.map(({ key }) => key)).toContain("removeServerResolverTestItem");
     for (const { endpoint } of generated) expect(endpoint.errors).toBeUndefined();
