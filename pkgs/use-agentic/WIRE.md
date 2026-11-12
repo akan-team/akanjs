@@ -110,21 +110,27 @@ outgrows the window, measured by the provider's own count rather than by a chara
 falls back to its transcript ceiling alone.
 
 Any non-2xx status is surfaced to the session as one error event and ends the turn; a string `message` or
-`error` field in a JSON body becomes that event's message verbatim, and any other body is not interpreted. A
-message that is a code rather than a sentence may be accompanied by a flat `data` object of strings and numbers —
-the values whoever resolves the code interpolates into its text; a host that does not know the code shows the
-message as it stands.
+`error` field in a JSON body becomes that event's message verbatim, else the message is
+`Agent turn failed: <status>`. A message that is a code rather than a sentence may be accompanied by a flat `data`
+object of strings and numbers — the values whoever resolves the code interpolates into its text; a host that does
+not know the code shows the message as it stands.
 
-The event also carries `code`: the dictionary key (`<module>.error.<key>`) in the body's `error`, `message` or
-`code`, else its `code` when that is one camelCase token, else the status's name (`unauthorized`, `forbidden`,
-`tooManyRequests`, `internalError`, or `http<status>` for a status with no name). A 401 or 403 takes no dictionary
-key: it is its `code` token, else its status's name, exactly as a streamed `error` event names it, so a host sees
-one code whether the refusal came before or after the stream opened. A body's `code` shaped otherwise is dropped
-rather than passed on. This path takes a
-5xx body's `code` as well, since that body is the akan server's own answer; a streamed `error` event is named by
-the server, which never names a 5xx by a duck-typed `code`. The code is what a host branches on, since the message
-may reach it already translated. The session keeps it on the failed assistant message as `errorCode`, which is
-never sent back.
+The event also carries `code`, read from a JSON body whether or not it has a message: the dictionary key
+(`<module>.error.<key>`) in the body's `error`, `message` or `code`, else its `code` when that is one camelCase
+token, else the status's name (`unauthorized`, `forbidden`, `tooManyRequests`, `internalError`, or `http<status>`
+for a status with no name). A 401 or 403 takes no dictionary key: it is its `code` token, else its status's name. A
+body's `code` shaped otherwise, such as a proxy's `ECONNRESET`, is dropped rather than passed on, and a body that is
+not JSON, such as a proxy's HTML page, leaves the status's name. A 5xx is no exception: its token is taken too, and
+on the akan server it comes from the failed error's own JSON when that carries one, which can be a third-party
+library's rather than the server's own. The bound is what keeps prose out of it.
+
+A server names a failure inside the stream by this same rule, applied to the body it would have answered with, so a
+host sees one code whether the failure came before or after the stream opened. The akan server does, with two
+exceptions. In detailed mode (development, or `AKAN_ERROR_DETAIL=1`) a generalized JSON answer's `error` is the raw
+message, which reads as a key over JSON when it is one. And an app's own forwarded `AkanError` 401 or 403 whose
+JSON carries a code is named by that code over JSON but by its status in the stream; none of the framework's own
+errors is such a refusal. The code is what a host branches on, since the message may reach it already translated.
+The session keeps it on the failed assistant message as `errorCode`, which is never sent back.
 
 **A refusal because the prompt no longer fits the window carries `"overflow": { "limit": 128000 }`** (`limit` only
 when the provider named it). It is the one refusal a session can answer by itself: it summarizes the transcript and
@@ -136,6 +142,6 @@ limit flagged as overflow compacts a conversation that fit.
 The same endpoint may answer `text/event-stream` instead when the request's `accept` names it: one `RunnerEvent`
 (`types.ts`) JSON object per SSE `data:` line, ending with the `done` event. A failure after the stream opened
 travels as one `error` event — the status line is already gone by then. `usage` and `limits` ride the `done` event
-and `overflow` and `code` the `error` event, in the same shapes and bounds as above. `httpRunner` sends
-`accept: text/event-stream, application/json` and branches on the response's content type, so a server that never
-streams keeps answering the single JSON object above unchanged.
+and `overflow` and `code` the `error` event, in the same shapes and bounds as above, `code` named by the rule above.
+`httpRunner` sends `accept: text/event-stream, application/json` and branches on the response's content type, so a
+server that never streams keeps answering the single JSON object above unchanged.

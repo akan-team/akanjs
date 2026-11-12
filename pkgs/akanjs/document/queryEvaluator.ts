@@ -91,7 +91,7 @@ export class DocumentQueryEvaluator {
     return DocumentQueryEvaluator.unevaluableReason(value as DocumentQuery);
   }
 
-  /** Splits a saved document into the row shape above, mirroring `SqlDocumentStore.toRow`. */
+  /** Splits a saved document into the row shape above, mirroring `DocumentRowCodec.toRow`. */
   static rowViewOf({ id, createdAt, updatedAt, removedAt, ...payload }: Record<string, unknown>): DocumentRowView {
     return {
       id: id ?? null,

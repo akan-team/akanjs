@@ -30,6 +30,7 @@ import {
   ServiceModel,
   serve,
 } from "akanjs/service";
+import { ByIdRead } from "./byIdRead";
 import { endpoint } from "./endpoint";
 import { buildEndpoint, type EndpInfoServerArgs, type EndpointInfo } from "./endpointInfo";
 import { Exception } from "./exception";
@@ -1794,6 +1795,60 @@ describe("SignalContext execution", () => {
       await statusOf(400, "item.error.notFound");
       await statusOf(503, "item.error.down");
       expect(errors).toHaveBeenCalledTimes(3);
+    } finally {
+      debugOn.mockRestore();
+    }
+  });
+
+  test("logs a by-id read missing its own id at debug, and a document its guard or handler loads besides as an error", async () => {
+    const adaptor = new (adapt("signalTestByIdReadAdaptor"))();
+    const errors = spyOn(adaptor.logger, "error");
+    const debugs = spyOn(adaptor.logger, "debug");
+    const debugOn = spyOn(Logger, "shouldLog").mockReturnValue(true);
+    const missing = (refName: string, id: string) =>
+      new NoDocumentError(`No Document (${refName}): ${id}`, { lookup: { refName, id } });
+    let ownerGone = false;
+    class LoadsOwner implements Guard {
+      static name = "LoadsOwner";
+      static scope: GuardScope = "resource";
+      canPass() {
+        if (ownerGone) throw missing("user", "u1");
+        return true;
+      }
+    }
+    const readThrowing = (thrown: NoDocumentError) =>
+      ByIdRead.mark(
+        "item",
+        buildEndpoint
+          .query(String, { guards: [LoadsOwner as GuardCls] })
+          .param("id", String)
+          .exec(() => {
+            throw thrown;
+          }),
+      );
+    const loggedAs = async (endpointInfo: EndpointInfo) => {
+      errors.mockClear();
+      debugs.mockClear();
+      const response = await SignalContext.try(adaptor, endpointInfo, "item", async () => {
+        const context = makeSignalContext({
+          endpointInfo,
+          adaptor,
+          middlewareMap: new Map([["logging", Logging]]) as never,
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      });
+      expect(response?.status).toBe(404);
+      if (errors.mock.calls.length) return "error";
+      return debugs.mock.calls.some(([line]) => String(line).startsWith("Error ")) ? "debug" : "unlogged";
+    };
+
+    try {
+      expect(await loggedAs(readThrowing(missing("item", "123")))).toBe("debug");
+      expect(await loggedAs(readThrowing(missing("user", "u1")))).toBe("error");
+      expect(await loggedAs(readThrowing(missing("item", "456")))).toBe("error");
+      ownerGone = true;
+      expect(await loggedAs(readThrowing(missing("item", "123")))).toBe("error");
     } finally {
       debugOn.mockRestore();
     }
