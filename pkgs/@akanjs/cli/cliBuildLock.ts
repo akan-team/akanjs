@@ -7,7 +7,7 @@ interface HeldLock {
   bornAt: number;
 }
 
-type FsNow = () => Promise<number>;
+type FsNow = () => Promise<number | null>;
 
 export class CliBuildLock {
   //? Counted from when the holder took it: a cold build fits, and a hung holder or a reused pid cannot wedge the CLI.
@@ -44,8 +44,10 @@ export class CliBuildLock {
   }
 
   static async #release(lockDir: string, token: string, fsNow: FsNow): Promise<void> {
+    const giveUpAt = Date.now() + CliBuildLock.#transientMs;
     for (let attempt = 0; attempt < CliBuildLock.#releaseTries; attempt++) {
-      const removed = await CliBuildLock.#removeIf(lockDir, (now) => now.token === token, fsNow).catch(() => false);
+      const isOurs = (now: HeldLock) => now.token === token;
+      const removed = await CliBuildLock.#removeIf(lockDir, isOurs, fsNow, giveUpAt).catch(() => false);
       if (removed || (await CliBuildLock.#heldAt(lockDir))?.token !== token) return;
       await Bun.sleep(CliBuildLock.#pollMs);
     }
@@ -53,12 +55,17 @@ export class CliBuildLock {
   }
 
   //? Removals of one lock take turns, or a late remover could move away the new holder's lock that replaced it.
-  static async #removeIf(lockDir: string, isTarget: (held: HeldLock) => boolean, fsNow: FsNow): Promise<boolean> {
+  static async #removeIf(
+    lockDir: string,
+    isTarget: (held: HeldLock) => boolean,
+    fsNow: FsNow,
+    giveUpAt?: number,
+  ): Promise<boolean> {
     const judged = await CliBuildLock.#heldAt(lockDir);
     if (!judged || !isTarget(judged)) return false;
     const markerOf = (attempt: number) => `${lockDir}.removing-${CliBuildLock.#keyOf(judged)}.${attempt}`;
     for (let attempt = 0; ; attempt++) {
-      if (!(await CliBuildLock.#makeDir(markerOf(attempt)))) {
+      if (!(await CliBuildLock.#makeDir(markerOf(attempt), giveUpAt))) {
         if (await CliBuildLock.#isStale(markerOf(attempt), fsNow)) continue;
         return false;
       }
@@ -79,8 +86,7 @@ export class CliBuildLock {
     }
   }
 
-  static async #makeDir(dir: string): Promise<boolean> {
-    const giveUpAt = Date.now() + CliBuildLock.#transientMs;
+  static async #makeDir(dir: string, giveUpAt = Date.now() + CliBuildLock.#transientMs): Promise<boolean> {
     for (;;) {
       try {
         await mkdir(dir);
@@ -132,14 +138,17 @@ export class CliBuildLock {
 
   //? File times come from the filesystem's clock, which on a network mount or WSL's /mnt/c can sit minutes off ours.
   static #fsClockBeside(lockDir: string): FsNow {
-    let offset: Promise<number> | undefined;
+    let offset: Promise<number | null> | undefined;
     return async () => {
       offset ??= CliBuildLock.#fsOffset(lockDir);
-      return Date.now() + (await offset);
+      const measured = await offset;
+      if (measured === null) offset = undefined;
+      return measured === null ? null : Date.now() + measured;
     };
   }
 
-  static async #fsOffset(lockDir: string): Promise<number> {
+  //? A failed probe leaves ages unknown: falling back to this process's clock is the skew the probe exists to avoid.
+  static async #fsOffset(lockDir: string): Promise<number | null> {
     const probe = `${lockDir}.clock-${crypto.randomUUID()}`;
     const before = Date.now();
     try {
@@ -147,7 +156,7 @@ export class CliBuildLock {
       const info = await stat(probe);
       return (info.birthtimeMs || info.mtimeMs) - before;
     } catch {
-      return 0;
+      return null;
     } finally {
       await rm(probe, { recursive: true, force: true }).catch(() => undefined);
     }
@@ -156,18 +165,23 @@ export class CliBuildLock {
   //? A removal takes milliseconds, so a marker past the lease is a dead or frozen remover's and later removers pass it.
   static async #isStale(entry: string, fsNow: FsNow): Promise<boolean> {
     const info = await stat(entry).catch(() => null);
-    return !!info && CliBuildLock.#outlived((await fsNow()) - (info.birthtimeMs || info.mtimeMs));
+    return !!info && CliBuildLock.#outlived(await CliBuildLock.#ageOf(info.birthtimeMs || info.mtimeMs, fsNow));
+  }
+
+  static async #ageOf(bornAt: number, fsNow: FsNow): Promise<number | null> {
+    const now = await fsNow();
+    return now === null ? null : now - bornAt;
   }
 
   //? A clock set back past the lease counts too, or the lock would stay held until the clock caught up.
-  static #outlived(heldFor: number): boolean {
-    return Math.abs(heldFor) > CliBuildLock.#leaseMs;
+  static #outlived(heldFor: number | null): heldFor is number {
+    return heldFor !== null && Math.abs(heldFor) > CliBuildLock.#leaseMs;
   }
 
   static async #isAbandoned(lockDir: string, { token, bornAt }: HeldLock, fsNow: FsNow): Promise<boolean> {
     const [pid, , takenAt] = token?.split("\n") ?? [];
     const takenAtMs = Number(takenAt);
-    const heldFor = takenAtMs ? Date.now() - takenAtMs : (await fsNow()) - bornAt;
+    const heldFor = takenAtMs ? Date.now() - takenAtMs : await CliBuildLock.#ageOf(bornAt, fsNow);
     if (CliBuildLock.#outlived(heldFor)) {
       const age = heldFor < 0 ? `taken ${Math.round(-heldFor)}ms ahead of this clock` : `held ${Math.round(heldFor)}ms`;
       console.warn(`[cli-build] taking over ${lockDir}, ${age}`);
