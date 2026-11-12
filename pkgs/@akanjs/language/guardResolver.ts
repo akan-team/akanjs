@@ -83,7 +83,7 @@ const exportingPatternOf = (name: string) =>
   new RegExp(`export\\s*\\{(?:[^}]*?[\\s,])?${escapeRegExp(name)}(?![\\w$])`);
 
 const exportMentioningPatternOf = (name: string) =>
-  new RegExp(`export\\s[^;]*?(?<![\\w$])${escapeRegExp(name)}(?![\\w$])`);
+  new RegExp(`export(?![\\w$])[^;]*?(?<![\\w$])${escapeRegExp(name)}(?![\\w$])`);
 
 const declaringPatternOf = (name: string, isAnyBinding: boolean) => {
   const escaped = escapeRegExp(name);
@@ -506,14 +506,16 @@ export class GuardResolver {
         ? node.text === name
         : node.elements.some((element) => !ts.isOmittedExpression(element) && binds(element.name));
     return source.statements.some((statement) => {
-      if (ts.isExportDeclaration(statement))
+      if (ts.isExportDeclaration(statement)) {
+        const { exportClause, isTypeOnly, moduleSpecifier } = statement;
+        if (isTypeOnly || !exportClause) return false;
+        if (ts.isNamespaceExport(exportClause)) return exportClause.name.text === name;
         return (
-          !statement.moduleSpecifier &&
-          !statement.isTypeOnly &&
-          !!statement.exportClause &&
-          ts.isNamedExports(statement.exportClause) &&
-          statement.exportClause.elements.some((element) => !element.isTypeOnly && element.name.text === name)
+          !moduleSpecifier &&
+          ts.isNamedExports(exportClause) &&
+          exportClause.elements.some((element) => !element.isTypeOnly && element.name.text === name)
         );
+      }
       const modifiers = ts.canHaveModifiers(statement) ? (ts.getModifiers(statement) ?? []) : [];
       if (
         !modifiers.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword) ||

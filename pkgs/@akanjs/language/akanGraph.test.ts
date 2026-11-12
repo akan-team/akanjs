@@ -2214,6 +2214,60 @@ export * from "../vendor/inner";
     );
   });
 
+  it("takes `export * as X` as the module's own binding of X, over a sibling `export *`, with or without the generated barrel", () => {
+    const callsOf = (srvkit: Record<string, string>) => {
+      const given: Record<string, string> = {
+        ...srvkit,
+        "libs/shared/vendor/legacy.ts": `export const charge = () => null;
+`,
+        "libs/util/srvkit/stripe.ts": `import { adapt } from "akanjs/service";
+export class Stripe extends adapt("stripe") {}
+`,
+        "apps/demo/lib/memo/memo.service.ts": `import { Stripe } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({ stripe: plug(Stripe) })) {
+  async pay() {
+    return this.stripe.charge();
+  }
+}
+`,
+      };
+      const synced: Record<string, string> = {
+        ...given,
+        "libs/shared/srvkit/index.ts": facetBarrelOf(
+          "srvkit",
+          Object.keys(srvkit).map((rel) => rel.slice("libs/shared/srvkit/".length)),
+          [],
+        ),
+        "libs/util/srvkit/index.ts": facetBarrelOf("srvkit", ["stripe.ts"], []),
+      };
+      return [given, synced].map((files) => {
+        const index = new AkanIndex({ ts, root });
+        for (const [rel, text] of Object.entries(files)) index.setFile(`${root}/${rel}`, text);
+        return edgesOf(
+          index.graph((fileName) => files[fileName.slice(root.length + 1)]),
+          "calls",
+        );
+      });
+    };
+    const unlocated = ["method:apps/demo:memo.pay -charge-> adaptor:libs/shared:Stripe"];
+    const starred = `export * from "@libs/util/srvkit/stripe";\n`;
+    const namespaced: Record<string, string>[] = [
+      { "libs/shared/srvkit/pay.ts": `export * as Stripe from "../vendor/legacy";\n${starred}` },
+      { "libs/shared/srvkit/pay.ts": `export*as Stripe from "../vendor/legacy";\n${starred}` },
+      {
+        "libs/shared/srvkit/legacy.ts": `export * as Stripe from "../vendor/legacy";\n`,
+        "libs/shared/srvkit/pay.ts": starred,
+      },
+    ];
+    for (const srvkit of namespaced) expect(callsOf(srvkit)).toEqual([unlocated, unlocated]);
+    const typeOnly = ["method:apps/demo:memo.pay -charge-> adaptor:libs/util:Stripe"];
+    expect(
+      callsOf({ "libs/shared/srvkit/pay.ts": `export type * as Stripe from "../vendor/legacy";\n${starred}` }),
+    ).toEqual([typeOnly, typeOnly]);
+  });
+
   it("marks a job and an adaptor changed or removed in the Change Map", () => {
     const wired = (jobs: string, adaptors: string): Record<string, string> => ({
       "apps/demo/srvkit/mailer.ts": `import { adapt } from "akanjs/service";
