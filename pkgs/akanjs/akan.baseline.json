@@ -13,7 +13,6 @@
   },
   "akan.size.function": {
     "server/hmr/csrDevRuntime.ts#installCsrDevRuntime": 612,
-    "server/resolver/database.resolver.ts#DatabaseResolver.resolveDatabase": 381,
     "server/resolver/signal.resolver.ts#SignalResolver.resolveEndpoint": 163,
     "server/resolver/signal.resolver.ts#SignalResolver.resolveSlice": 151,
     "server/rscWorker.tsx#RscRenderer.#handleRender": 345,
