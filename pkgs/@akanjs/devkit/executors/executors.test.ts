@@ -1356,14 +1356,11 @@ describe("SysExecutor module listing", () => {
     const contents = (files: { content: string }[]) => files.map((file) => file.content);
 
     const scan = spyOn(AppInfo, "fromExecutor").mockResolvedValue({ getLibs: () => ["shared"] } as never);
-    const cwd = process.cwd();
-    // `getDirInModule` stats the workspace-relative path it just listed, so it resolves against the process cwd.
-    process.chdir(root);
+    expect(process.cwd()).not.toBe(root);
     try {
       expect(contents(await workspace.getConstantFiles())).toEqual([appConstant, libConstant]);
       expect(contents(await app.getConstantFilesWithLibs())).toEqual([appConstant, libConstant]);
     } finally {
-      process.chdir(cwd);
       scan.mockRestore();
     }
   });

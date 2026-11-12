@@ -1,20 +1,14 @@
 {
   "akan.size.file": {
     "akanConfig/akanConfig.ts": 907,
-    "context/akanContext.ts": 1083,
-    "incrementalBuilder/incrementalBuilder.proc.ts": 1152,
-    "quality/qualityScanner.ts": 983,
-    "workflow/source.ts": 1100
+    "quality/qualityScanner.ts": 983
   },
   "akan.size.function": {
-    "context/akanContext.ts#AkanContextAnalyzer.doctor": 269,
-    "context/akanMcpContract.ts#inspectAkanContext": 232,
     "frontendBuild/csrDevPatcher.ts#CsrDevPatcher.#patch": 166,
     "mobile/nativeConfig.ts#NativeConfig.build": 156
   },
   "akan.size.class": {
     "akanConfig/akanConfig.ts#AkanAppConfig": 66,
-    "codeAgent/agent/CodeAgent.ts#CodeAgent": 67,
-    "incrementalBuilder/incrementalBuilder.proc.ts#IncrementalBuilder": 90
+    "codeAgent/agent/CodeAgent.ts#CodeAgent": 67
   }
 }

@@ -22,11 +22,14 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `badRequest` | 400 | `Exception.BadRequest` | yes | no | `signal/exception.ts` |
 | `badRequest` | 400 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
 | `baseMismatch` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
+| `buildFailed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `builderUnavailable` | 503 | `AkanError` | no | yes | `base/akanError.ts` |
 | `bytesThroughAny` | 500 | `SignalContractError` | no | yes | `signal/signalContractError.ts` |
 | `clientComponentOnServer` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `compressorNotInitialized` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `conflict` | 409 | `Exception.Conflict` | yes | no | `signal/exception.ts` |
 | `consoleDisabled` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `databaseLocked` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `desktopAppRequired` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `documentNotFound` | 404 | `NoDocumentError` | yes | no | `document/noDocumentError.ts` |
 | `failed` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
@@ -63,6 +66,8 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `invalidSignal` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `invalidStorageKey` | 400 | `AkanError` | no | yes | `base/akanError.ts` |
 | `ipcRequired` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `jobStalled` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `listFailed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `liveAlreadySet` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
 | `livePaused` | 409 | `AkanError` | no | yes | `base/akanError.ts` |
 | `liveRoomTaken` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
@@ -105,6 +110,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `transferUnsupported` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `unauthorized` | 401 | `Exception.Unauthorized` | yes | no | `signal/exception.ts` |
 | `undefinedReturn` | 500 | `SignalContractError` | no | yes | `signal/signalContractError.ts` |
+| `unencodableValue` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `unguardedEndpoint` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `unmaskedResource` | 500 | `PromptError` | no | yes | `signal/mcp/promptError.ts` |
 | `unroutableLiveQuery` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
