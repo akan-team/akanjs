@@ -425,6 +425,39 @@ describe("CliBuildLock", () => {
     await release();
   });
 
+  test("names its pid in the removal marker it holds", async () => {
+    const lockDir = await lockDirIn();
+    const release = await CliBuildLock.acquire(lockDir);
+    const marker = `${lockDir}.removing-${Bun.hash(await ownerOf(lockDir)).toString(36)}.0`;
+    let named = "";
+    inject.beforeRename = async (from) => {
+      if (from === lockDir) named = await ownerOf(marker).catch(() => "");
+    };
+    await release();
+    expect(named).toBe(`${process.pid}`);
+  });
+
+  test("steps past a dead remover's marker by its pid while the filesystem's clock cannot be probed", async () => {
+    const lockDir = await lockDirIn();
+    const stale = `${await deadPid()}\nstale`;
+    await holdAs(lockDir, stale);
+    const marker = `${lockDir}.removing-${Bun.hash(stale).toString(36)}.0`;
+    await holdAs(marker, `${process.pid}`);
+    const probed = fsClockProbed();
+    inject.beforeMkdir = async (dir) => {
+      if (dir.includes(".clock-")) throw refusal("ENOSPC");
+    };
+    const acquired = CliBuildLock.acquire(lockDir);
+    await probed;
+    await letItPoll();
+    expect(await ownerOf(lockDir)).toBe(stale);
+    await Bun.write(path.join(marker, "owner"), `${await deadPid()}`);
+    const release = await acquired;
+    expect(await ownerPidOf(lockDir)).toBe(`${process.pid}`);
+    await release();
+    expect(await readdir(path.dirname(lockDir))).toEqual([]);
+  });
+
   test("spends one 3 s budget across all the tries of a release the OS keeps refusing", async () => {
     const lockDir = await lockDirIn();
     const release = await CliBuildLock.acquire(lockDir);
