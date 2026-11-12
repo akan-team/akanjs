@@ -20,7 +20,7 @@ import type {
 } from "./ssrTypes";
 
 const DEFAULT_SSR_CHUNK_REGISTRY_MAX_ENTRIES = 1024;
-const DEFAULT_MAX_PENDING_INLINE_RSC_SCRIPTS = 32;
+const DEFAULT_MAX_PENDING_INLINE_RSC_BYTES = 16 * 1024;
 
 interface SsrChunkRegistryEntry<T> {
   keys: Set<string>;
@@ -332,8 +332,8 @@ export function interleaveRscScriptsWithHtml(
   options: {
     bootstrapModuleScripts?: string;
     lateControl?: Promise<SsrLateControl | null>;
-    maxPendingRscScripts?: number;
-    onPendingRscScriptsSize?: (size: number) => void;
+    maxPendingRscBytes?: number;
+    onPendingRscBytes?: (bytes: number) => void;
     onComplete?: () => void;
     onCancel?: (reason?: unknown) => void;
     request?: Request;
@@ -342,13 +342,14 @@ export function interleaveRscScriptsWithHtml(
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const bootstrapDetector = new InlineBootstrapDetector();
-  const pendingRscScripts: Uint8Array[] = [];
+  const pendingRscChunks: Uint8Array[] = [];
   const pendingControlScripts: Uint8Array[] = [];
-  const explicitMax = options.maxPendingRscScripts;
-  const maxPendingRscScripts =
+  const explicitMax = options.maxPendingRscBytes;
+  const maxPendingRscBytes =
     explicitMax !== undefined && Number.isFinite(explicitMax) && explicitMax > 0
       ? Math.floor(explicitMax)
-      : (parsePositiveInt(process.env.AKAN_MAX_PENDING_INLINE_RSC_SCRIPTS) ?? DEFAULT_MAX_PENDING_INLINE_RSC_SCRIPTS);
+      : (parsePositiveInt(process.env.AKAN_MAX_PENDING_INLINE_RSC_BYTES) ?? DEFAULT_MAX_PENDING_INLINE_RSC_BYTES);
+  const pendingRscBytes = () => pendingRscChunks.reduce((total, chunk) => total + chunk.byteLength, 0);
   const queueDrainResolvers: Array<() => void> = [];
   const scriptAvailableResolvers: Array<() => void> = [];
   let errored = false;
@@ -383,11 +384,10 @@ export function interleaveRscScriptsWithHtml(
           const script = pendingControlScripts.shift();
           if (script) controller.enqueue(script);
         }
-        while (!errored && pendingRscScripts.length > 0) {
-          const script = pendingRscScripts.shift();
-          if (script) controller.enqueue(script);
+        while (!errored && pendingRscChunks.length > 0) {
+          const chunk = pendingRscChunks.shift();
+          if (chunk) controller.enqueue(encoder.encode(createInlineRscScript(chunk)));
         }
-        options.onPendingRscScriptsSize?.(pendingRscScripts.length);
         while (queueDrainResolvers.length > 0) queueDrainResolvers.shift()?.();
       };
 
@@ -396,9 +396,8 @@ export function interleaveRscScriptsWithHtml(
       };
 
       const waitForRscQueueDrain = async () => {
-        while (!errored && pendingRscScripts.length >= maxPendingRscScripts) {
+        while (!errored && pendingRscBytes() >= maxPendingRscBytes)
           await new Promise<void>((resolve) => queueDrainResolvers.push(resolve));
-        }
       };
 
       const waitForScriptAvailable = () => new Promise<void>((resolve) => scriptAvailableResolvers.push(resolve));
@@ -407,12 +406,13 @@ export function interleaveRscScriptsWithHtml(
         rscReader = rscClientStream.getReader();
         try {
           for (;;) {
-            const { value, done } = await rscReader.read();
-            if (done || errored) break;
             await waitForRscQueueDrain();
             if (errored) break;
-            pendingRscScripts.push(encoder.encode(createInlineRscScript(value)));
-            options.onPendingRscScriptsSize?.(pendingRscScripts.length);
+            const { value, done } = await rscReader.read();
+            if (done || errored) break;
+            //? Encoded only when flushed: encoding in the tick that passes the shell on would hold back its socket write.
+            pendingRscChunks.push(value);
+            options.onPendingRscBytes?.(pendingRscBytes());
             notifyScriptAvailable();
           }
         } finally {
@@ -457,7 +457,7 @@ export function interleaveRscScriptsWithHtml(
         bootstrapDetector.forceAllow();
         while (
           !errored &&
-          (!rscDone || !lateControlDone || pendingControlScripts.length > 0 || pendingRscScripts.length > 0)
+          (!rscDone || !lateControlDone || pendingControlScripts.length > 0 || pendingRscChunks.length > 0)
         ) {
           flushPendingRscScripts();
           if (!rscDone || !lateControlDone) await waitForScriptAvailable();

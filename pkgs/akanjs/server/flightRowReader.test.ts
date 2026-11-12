@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { FLIGHT_LENGTH_PREFIXED_TAGS, type FlightLineRowHandler, mapFlightLineRows } from "./flightRowReader";
-import { joinBytes, mixedFlight, mixedFlightRows, readBytes, streamOfChunks } from "./flightRows.fixture";
+import {
+  joinBytes,
+  lengthPrefixedRow,
+  mixedFlight,
+  mixedFlightRows,
+  readBytes,
+  streamOfChunks,
+} from "./flightRows.fixture";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -88,5 +95,46 @@ describe("Flight row reader", () => {
         (chunk) => Buffer.from(chunk),
       ),
     );
+  });
+
+  test("hands on a row of every binary length-prefixed tag as a chunk of its own, and keeps a T row in the batch", async () => {
+    const outputOf = async (tag: string) => {
+      const flight = joinBytes('1:"a"\n', lengthPrefixedRow("2", tag, encoder.encode("abcdefgh")), '3:"b"\n');
+      const reader = mapFlightLineRows(streamOfChunks([flight])).getReader();
+      const output: string[] = [];
+      for (let next = await reader.read(); !next.done; next = await reader.read())
+        output.push(decoder.decode(next.value));
+      return [tag, output] as const;
+    };
+    const tags = [...FLIGHT_LENGTH_PREFIXED_TAGS];
+
+    expect(Object.fromEntries(await Promise.all(tags.map(outputOf)))).toEqual(
+      Object.fromEntries(
+        tags.map((tag) => [
+          tag,
+          tag === "T" ? ['1:"a"\n2:T8,abcdefgh3:"b"\n'] : ['1:"a"\n', `2:${tag}8,abcdefgh`, '3:"b"\n'],
+        ]),
+      ),
+    );
+  });
+
+  test("hands on rows back to back in a chunk as a view of it, and copies at most 16 KB of rows that are not", async () => {
+    const rows = Array.from({ length: 160 }, (_, index) => `${index.toString(16)}:"${"x".repeat(250)}"\n`);
+    const chunk = joinBytes(...rows);
+    const outputOf = async (...onLineRows: FlightLineRowHandler[]) => {
+      const reader = mapFlightLineRows(streamOfChunks([chunk]), ...onLineRows).getReader();
+      const output: Uint8Array[] = [];
+      for (let next = await reader.read(); !next.done; next = await reader.read()) output.push(next.value);
+      return output;
+    };
+    const untouched = await outputOf();
+    const rewritten = await outputOf((row) => (decoder.decode(row).startsWith("0:") ? encoder.encode('0:"y"\n') : row));
+
+    expect(untouched.map((output) => [output.buffer === chunk.buffer, output.byteLength])).toEqual([
+      [true, chunk.byteLength],
+    ]);
+    expect(rewritten.map((output) => output.buffer === chunk.buffer)).toEqual([false, true]);
+    expect(rewritten[0]?.byteLength).toBeLessThanOrEqual(16 * 1024);
+    expect(Buffer.concat(rewritten)).toEqual(Buffer.from(joinBytes('0:"y"\n', ...rows.slice(1))));
   });
 });

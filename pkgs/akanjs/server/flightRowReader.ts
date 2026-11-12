@@ -11,6 +11,8 @@ const ROW_LENGTH = 2;
 const ROW_LINE = 3;
 const ROW_PAYLOAD = 4;
 const EMPTY = new Uint8Array(0);
+//? The copy runs on the thread that renders the shell; copying a held megabyte chunk whole delays its first byte.
+const MAX_COPIED_BATCH_BYTES = 16 * 1024;
 
 const lengthPrefixedTags = new Uint8Array(256);
 for (const tag of FLIGHT_LENGTH_PREFIXED_TAGS) lengthPrefixedTags[tag.charCodeAt(0)] = 1;
@@ -150,6 +152,8 @@ class FlightRowReader {
 class FlightRowBatch implements FlightRowSink {
   readonly #sink: FlightRowSink;
   #rows: Uint8Array[] = [];
+  #byteLength = 0;
+  #contiguous: boolean = true;
 
   constructor(sink: FlightRowSink) {
     this.#sink = sink;
@@ -159,14 +163,31 @@ class FlightRowBatch implements FlightRowSink {
     if (binary) {
       this.flush();
       this.#sink.enqueue(row);
-    } else this.#rows.push(row);
+      return;
+    }
+    const last = this.#rows.at(-1);
+    const contiguous =
+      !last || (this.#contiguous && row.byteOffset === last.byteOffset + last.byteLength && row.buffer === last.buffer);
+    if (!contiguous && this.#byteLength + row.byteLength > MAX_COPIED_BATCH_BYTES) this.flush();
+    else this.#contiguous = contiguous;
+    this.#rows.push(row);
+    this.#byteLength += row.byteLength;
   }
 
   flush(): void {
     const rows = this.#rows;
-    if (rows.length === 0) return;
+    const [first] = rows;
+    if (!first) return;
+    const joined =
+      rows.length === 1
+        ? first
+        : this.#contiguous
+          ? new Uint8Array(first.buffer, first.byteOffset, this.#byteLength)
+          : joinRows(rows);
     this.#rows = [];
-    this.#sink.enqueue(rows.length === 1 ? (rows[0] as Uint8Array) : joinRows(rows));
+    this.#byteLength = 0;
+    this.#contiguous = true;
+    this.#sink.enqueue(joined);
   }
 }
 

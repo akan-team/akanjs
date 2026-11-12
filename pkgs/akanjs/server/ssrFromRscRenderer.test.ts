@@ -415,26 +415,26 @@ describe("inline RSC interleaving", () => {
     expect(closeIndex).toBeGreaterThan(afterIndex);
   });
 
-  test("bounds pending RSC scripts while preserving HTML-first flushing", async () => {
+  test("bounds pending RSC bytes while preserving HTML-first flushing", async () => {
     let maxPending = 0;
     const html = textStream([
       { text: `<main>first${rscBootstrap}`, delayMs: 20 },
       { text: "second</main>", delayMs: 20 },
     ]);
-    const rsc = textStream([{ text: "A" }, { text: "B" }, { text: "C" }]);
+    const rsc = textStream([{ text: "AAAA" }, { text: "BB" }, { text: "C" }]);
     const output = await new Response(
       interleaveRscScriptsWithHtml(html, rsc, {
-        maxPendingRscScripts: 1,
-        onPendingRscScriptsSize: (size) => {
-          maxPending = Math.max(maxPending, size);
+        maxPendingRscBytes: 4,
+        onPendingRscBytes: (bytes) => {
+          maxPending = Math.max(maxPending, bytes);
         },
       }),
     ).text();
 
-    expect(maxPending).toBeLessThanOrEqual(1);
+    expect(maxPending).toBe(4);
     expect(output.indexOf("<main>first")).toBeGreaterThanOrEqual(0);
-    expect(output).toContain(createInlineRscScript(encoder.encode("A")));
-    expect(output).toContain(createInlineRscScript(encoder.encode("B")));
+    expect(output).toContain(createInlineRscScript(encoder.encode("AAAA")));
+    expect(output).toContain(createInlineRscScript(encoder.encode("BB")));
     expect(output).toContain(createInlineRscScript(encoder.encode("C")));
     expect(output).toContain("second</main>");
   });
