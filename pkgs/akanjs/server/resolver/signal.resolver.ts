@@ -34,6 +34,7 @@ import type {
   LiveRegistry,
   WebsocketAdaptor,
 } from "akanjs/service";
+import { ByIdRead } from "../../signal/byIdRead";
 import { type Endpoint, type EndpointCls, sliceEndpoint } from "../../signal/endpoint";
 import { EndpointErrorContract } from "../../signal/endpointErrorContract";
 import type { EndpointInfo } from "../../signal/endpointInfo";
@@ -493,21 +494,19 @@ export class SignalResolver {
           });
       });
 
-      if (sliceCls.crud.get) {
-        endpointObj[names.model] = (builder as any)
-          .query(cnst.full, { guards: sliceCls.getGuards })
-          .param(names.modelId, ID)
-          .exec(async function (this: any, id: string) {
-            return await this[serviceName][names.getModel](id);
-          });
-
-        endpointObj[names.lightModel] = (builder as any)
-          .query(cnst.light, { guards: sliceCls.getGuards })
-          .param(names.modelId, ID)
-          .exec(async function (this: any, id: string) {
-            return await this[serviceName][names.getModel](id);
-          });
-      }
+      if (sliceCls.crud.get)
+        for (const [key, returns] of [
+          [names.model, cnst.full],
+          [names.lightModel, cnst.light],
+        ] as const)
+          endpointObj[key] = ByIdRead.mark(
+            (builder as any)
+              .query(returns, { guards: sliceCls.getGuards })
+              .param(names.modelId, ID)
+              .exec(async function (this: any, id: string) {
+                return await this[serviceName][names.getModel](id);
+              }),
+          );
 
       if (sliceCls.crud.create)
         endpointObj[names.createModel] = (builder as any)
