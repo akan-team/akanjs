@@ -176,7 +176,6 @@ const RESULT_CACHE_SWEEP_INTERVAL_MS = 60_000;
 
 interface RscRendererStats {
   renderCount: number;
-  inFlightRenderCount: number;
   lastRenderedPath?: string;
   lastRenderKind?: string;
   lastRenderRouteId?: string;
@@ -234,7 +233,6 @@ export class RscRenderer {
   #metricsTimer: Timer | null = null;
   #stats: RscRendererStats = {
     renderCount: 0,
-    inFlightRenderCount: 0,
     lastRenderLoadedModuleDelta: 0,
     lastRenderLoadedModules: [],
     lastFlightBytes: 0,
@@ -254,7 +252,7 @@ export class RscRenderer {
     RscRenderer.#resultCacheOptions(),
   );
   readonly #activeRenderReaders = new Map<string, ReadableStreamDefaultReader<Uint8Array>>();
-  readonly #cancelledRenderRequests = new Set<string>();
+  readonly #inFlightRenders = new Map<string, { cancelled: boolean }>();
   #resultCacheHits = 0;
   #resultCacheMisses = 0;
   #resultCacheBypass = 0;
@@ -357,11 +355,13 @@ export class RscRenderer {
   }
 
   #handleCancel(requestId: string): void {
-    this.#cancelledRenderRequests.add(requestId);
+    const render = this.#inFlightRenders.get(requestId);
+    if (!render) return;
+    render.cancelled = true;
     const reader = this.#activeRenderReaders.get(requestId);
     if (!reader) return;
     void reader.cancel().catch(() => {
-      // Best-effort: the render loop also checks `#cancelledRenderRequests` before sending more chunks.
+      // Best-effort: the render loop also checks `#inFlightRenders` before sending more chunks.
     });
   }
 
@@ -473,7 +473,7 @@ export class RscRenderer {
     const { requestId, url, method = "GET", headers = {} } = msg;
     const startedAt = Date.now();
     this.#stats.renderCount += 1;
-    this.#stats.inFlightRenderCount += 1;
+    this.#inFlightRenders.set(requestId, { cancelled: false });
     const activeRoute: {
       url: URL | null;
       match: { pathRoute: PathRoute; params: Record<string, string> } | null;
@@ -810,8 +810,7 @@ export class RscRenderer {
       });
     } finally {
       this.#activeRenderReaders.delete(requestId);
-      this.#cancelledRenderRequests.delete(requestId);
-      this.#stats.inFlightRenderCount = Math.max(0, this.#stats.inFlightRenderCount - 1);
+      this.#inFlightRenders.delete(requestId);
     }
   }
 
@@ -820,7 +819,7 @@ export class RscRenderer {
     const metrics = await ProcessMetricsCollector.collect({
       role: "rsc-worker",
       rscRenderCount: this.#stats.renderCount,
-      rscInFlightRenderCount: this.#stats.inFlightRenderCount,
+      rscInFlightRenderCount: this.#inFlightRenders.size,
       rscLastRenderedPath: this.#stats.lastRenderedPath,
       rscLastRenderKind: this.#stats.lastRenderKind,
       rscLastRenderRouteId: this.#stats.lastRenderRouteId,
@@ -890,11 +889,12 @@ export class RscRenderer {
     } = {},
   ): Promise<FlightRenderResult> {
     const controlRef: { current: RenderControl | null } = { current: null };
+    const requestCancelled = () => !!options.requestId && !!this.#inFlightRenders.get(options.requestId)?.cancelled;
     //? Cancelling a Flight stream aborts each pending task through `onError`; the control that cancelled it stands.
     let isCancelling = false;
     const stream = await renderToReadableStream(element, clientManifest, {
       onError: (error) => {
-        if (isCancelling || (options.requestId && this.#cancelledRenderRequests.has(options.requestId))) return;
+        if (isCancelling || requestCancelled()) return;
         if (isAkanRedirectError(error)) {
           const { location, method, status } = error;
           controlRef.current = { type: "redirect", location, method, status };
@@ -995,8 +995,7 @@ export class RscRenderer {
     try {
       let pendingRead: ReturnType<typeof reader.read> | null = null;
       for (;;) {
-        if (options.requestId && this.#cancelledRenderRequests.has(options.requestId))
-          return await cancelWith(null, true);
+        if (requestCancelled()) return await cancelWith(null, true);
         pendingRead ??= reader.read();
         if (holding && (await Promise.race([pendingRead.then(() => false), holding.opened.then(() => true)]))) {
           readProbe();
@@ -1006,6 +1005,7 @@ export class RscRenderer {
         }
         const { value, done } = await pendingRead;
         pendingRead = null;
+        if (requestCancelled()) return await cancelWith(null, true);
         readProbe();
         if (controlRef.current && !sentChunk && (!holding || controlRef.current.type === "error"))
           return await cancelWith(controlRef.current, false);
@@ -1025,9 +1025,7 @@ export class RscRenderer {
         else emit(chunk);
       }
     } catch (error) {
-      if (options.requestId && this.#cancelledRenderRequests.has(options.requestId)) {
-        return { chunks, bytes, chunksCount, control: null, lateControlSent, cancelled: true };
-      }
+      if (requestCancelled()) return { chunks, bytes, chunksCount, control: null, lateControlSent, cancelled: true };
       throw error;
     } finally {
       if (options.requestId) this.#activeRenderReaders.delete(options.requestId);
@@ -1173,7 +1171,7 @@ export class RscRenderer {
       cacheState: cached.cacheState,
       trace,
       send: (message) => this.#send(message),
-      isCancelled: () => this.#cancelledRenderRequests.has(requestId),
+      isCancelled: () => !!this.#inFlightRenders.get(requestId)?.cancelled,
     });
   }
 

@@ -54,7 +54,7 @@ export class EndpointErrorContract {
 
   // The key the caller receives: a `NoDocumentError`'s message names the table, while its wire key is a base key.
   static wireKey(error: ExceptionLike): string {
-    const wire = (error.toJSON() as { error?: unknown }).error;
+    const wire = (error.toJSON() as { error?: unknown } | null)?.error;
     return typeof wire === "string" ? wire : (error as unknown as Error).message;
   }
 }

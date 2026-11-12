@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { mapFlightLineRows } from "./flightRowReader";
 import {
   joinBytes,
   mixedFlight,
@@ -12,11 +13,11 @@ import {
 import {
   encodeAkanRedirectDigest,
   getRscPayloadStream,
-  guardRscRedirectRows,
   isRscPayloadResponse,
   RSC_CONTENT_TYPE,
   type RscRedirectRow,
-  watchRscErrorRows,
+  rscErrorRowWatcher,
+  rscRedirectRowGuard,
 } from "./rscHttp";
 
 const encoder = new TextEncoder();
@@ -71,8 +72,9 @@ describe("RSC HTTP helpers", () => {
   });
 
   test("passes normal RSC rows through the redirect guard", async () => {
-    const stream = guardRscRedirectRows(
+    const stream = mapFlightLineRows(
       streamOf(encoder.encode('0:D{"name":"Page"}\n'), encoder.encode('1:["$","main",null,{}]\n')),
+      rscRedirectRowGuard(),
     );
 
     await expect(new Response(stream).text()).resolves.toBe('0:D{"name":"Page"}\n1:["$","main",null,{}]\n');
@@ -82,11 +84,14 @@ describe("RSC HTTP helpers", () => {
     const row = 'a:E{"digest":"AKAN_REDIRECT","name":"AkanRedirectError","message":"Redirect to /target"}\n';
     const redirects: Array<{ rowId: string; location?: string }> = [];
     const bytes = encoder.encode(row);
-    const stream = guardRscRedirectRows(streamOf(bytes.slice(0, 11), bytes.slice(11, 37), bytes.slice(37)), {
-      onRedirect: (redirect) => {
-        redirects.push(redirect);
-      },
-    });
+    const stream = mapFlightLineRows(
+      streamOf(bytes.slice(0, 11), bytes.slice(11, 37), bytes.slice(37)),
+      rscRedirectRowGuard({
+        onRedirect: (redirect) => {
+          redirects.push(redirect);
+        },
+      }),
+    );
 
     await expect(new Response(stream).text()).resolves.toBe("a:null\n");
     expect(redirects).toEqual([{ rowId: "a", location: "/target" }]);
@@ -100,11 +105,14 @@ describe("RSC HTTP helpers", () => {
     });
     const row = `b:E{"digest":"${digest}","name":"Error"}\n`;
     const redirects: Array<{ rowId: string; location?: string; method?: string; status?: number }> = [];
-    const stream = guardRscRedirectRows(streamOf(encoder.encode(row)), {
-      onRedirect: (redirect) => {
-        redirects.push(redirect);
-      },
-    });
+    const stream = mapFlightLineRows(
+      streamOf(encoder.encode(row)),
+      rscRedirectRowGuard({
+        onRedirect: (redirect) => {
+          redirects.push(redirect);
+        },
+      }),
+    );
 
     await expect(new Response(stream).text()).resolves.toBe("b:null\n");
     expect(redirects).toEqual([
@@ -116,7 +124,10 @@ describe("RSC HTTP helpers", () => {
     const flight = joinBytes(textRow("1", rowShapedText), '0:"$1"\n');
     const redirects: RscRedirectRow[] = [];
     const output = await readBytes(
-      guardRscRedirectRows(streamOfChunks([flight]), { onRedirect: (redirect) => redirects.push(redirect) }),
+      mapFlightLineRows(
+        streamOfChunks([flight]),
+        rscRedirectRowGuard({ onRedirect: (redirect) => redirects.push(redirect) }),
+      ),
     );
 
     expect(decoder.decode(output)).toBe(decoder.decode(flight));
@@ -128,7 +139,7 @@ describe("RSC HTTP helpers", () => {
     const expected = joinBytes(rows.hint, rows.debug, rows.text, rows.bytes, rows.empty, "c7:null\n", rows.model);
     const redirects: RscRedirectRow[] = [];
     const differing = await offsetsWhereOutputDiffers(mixedFlight, expected, (stream) =>
-      guardRscRedirectRows(stream, { onRedirect: (redirect) => redirects.push(redirect) }),
+      mapFlightLineRows(stream, rscRedirectRowGuard({ onRedirect: (redirect) => redirects.push(redirect) })),
     );
 
     expect(differing).toEqual([]);
@@ -138,10 +149,33 @@ describe("RSC HTTP helpers", () => {
     ]);
   });
 
+  test("in one pass behind the redirect guard, the error watcher reads the replaced redirect row as no error", async () => {
+    const rows = mixedFlightRows;
+    let errors = 0;
+    const redirects: RscRedirectRow[] = [];
+    const output = await readBytes(
+      mapFlightLineRows(
+        streamOfChunks([mixedFlight]),
+        rscRedirectRowGuard({ onRedirect: (redirect) => redirects.push(redirect) }),
+        rscErrorRowWatcher(() => (errors += 1)),
+      ),
+    );
+
+    expect(output).toEqual(
+      joinBytes(rows.hint, rows.debug, rows.text, rows.bytes, rows.empty, "c7:null\n", rows.model),
+    );
+    expect({ errors, redirects: redirects.length }).toEqual({ errors: 0, redirects: 1 });
+  });
+
   test("calls back once for a streamed server error, and never for a not-found, redirect or empty digest", async () => {
     const watched = async (rows: string) => {
       let errors = 0;
-      const output = await readBytes(watchRscErrorRows(streamOf(encoder.encode(rows)), () => (errors += 1)));
+      const output = await readBytes(
+        mapFlightLineRows(
+          streamOf(encoder.encode(rows)),
+          rscErrorRowWatcher(() => (errors += 1)),
+        ),
+      );
       expect(decoder.decode(output)).toBe(rows);
       return errors;
     };
