@@ -330,6 +330,13 @@ describe("PipelinePlanSchema", () => {
     });
     const output = (await Promise.all(built.outputs.map((artifact) => artifact.text()))).join("\n");
 
-    expect(["PipelinePlanSchema", "pipelineActions"].filter((name) => output.includes(name))).toEqual([]);
+    const pipelineNames = [
+      "PipelinePlanSchema",
+      "PipelinePattern",
+      "PipelineNames",
+      "PipelineValueReader",
+      "pipelineActions",
+    ];
+    expect(pipelineNames.filter((name) => output.includes(name))).toEqual([]);
   });
 });
