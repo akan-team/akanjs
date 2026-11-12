@@ -3,9 +3,6 @@ import { describe, expect, jest, setSystemTime, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { type LiveChange, WebSocketRedisAdaptor } from "./websocket.adaptor";
 
-// TODO(#458): every server of this release also publishes and listens on the channel of earlier releases.
-const legacyChannel = "app:ws:broadcast";
-
 class FakeRedis extends EventEmitter {
   readonly options: { autoResubscribe?: boolean } = {};
   readonly published: number[] = [];
@@ -15,9 +12,8 @@ class FakeRedis extends EventEmitter {
   readonly unsubscribed: string[] = [];
   readonly replies: { settle: (refused: boolean) => void }[] = [];
   readonly sent: { channel: string; message: Buffer }[] = [];
-  readonly legacy: Buffer[] = [];
   readonly refuse = new Set<string>();
-  legacySubscribes = 0;
+  readonly failOn = new Set<string>();
   calls = 0;
   failing = false;
   held = false;
@@ -28,10 +24,6 @@ class FakeRedis extends EventEmitter {
 
   async connect() {}
   subscribe(channel: string) {
-    if (channel === legacyChannel) {
-      this.legacySubscribes += 1;
-      return Promise.resolve(1);
-    }
     this.subscribed.push(channel);
     return new Promise<number>((resolve, reject) => {
       const settle = (refused: boolean) => (refused ? reject(new Error("NOPERM")) : resolve(1));
@@ -54,11 +46,6 @@ class FakeRedis extends EventEmitter {
   publish(channel: string, message: Buffer) {
     if ([...this.refuse].some((refused) => channel.startsWith(refused)))
       return Promise.reject(new Error("NOPERM User default has no permissions to access the channel"));
-    if (channel === legacyChannel) {
-      this.legacy.push(message);
-      this.sent.push({ channel, message });
-      return Promise.resolve(1);
-    }
     this.calls += 1;
     this.channels.push(channel);
     const text = message.toString();
@@ -66,6 +53,8 @@ class FakeRedis extends EventEmitter {
     return new Promise<number>((resolve, reject) => {
       const settle = () => {
         if (this.failing) return reject(new Error("connection lost"));
+        if ([...this.failOn].some((failed) => channel.startsWith(failed)))
+          return reject(new Error("READONLY You can't write against a read only replica."));
         this.published.push(n);
         this.sent.push({ channel, message });
         resolve(1);
@@ -129,30 +118,6 @@ const settledFlag = (promise: Promise<unknown>) => {
   return flag;
 };
 
-//? The envelope as `#unpack` and `#receive` read it up to v3.2.0-rc.5, which skip only their own origin.
-const readAsEarlierRelease = (message: Buffer, ownId: string) => {
-  if (message.readUInt8(0) !== 1) return null;
-  const kind = String.fromCharCode(message.readUInt8(1));
-  const originLength = message.readUInt16BE(2);
-  if (message.subarray(4, 4 + originLength).toString("utf-8") === ownId) return null;
-  const roomLength = message.readUInt16BE(4 + originLength);
-  const roomStart = 6 + originLength;
-  const roomId = message.subarray(roomStart, roomStart + roomLength).toString("utf-8");
-  return { kind, roomId, data: JSON.parse(message.subarray(roomStart + roomLength).toString()) as unknown };
-};
-
-const packAsEarlierRelease = (kind: "j" | "c", origin: string, roomId: string, data: unknown) => {
-  const [originBytes, roomBytes] = [Buffer.from(origin), Buffer.from(roomId)];
-  const header = Buffer.alloc(6 + originBytes.length + roomBytes.length);
-  header.writeUInt8(1, 0);
-  header.writeUInt8(kind.charCodeAt(0), 1);
-  header.writeUInt16BE(originBytes.length, 2);
-  originBytes.copy(header, 4);
-  header.writeUInt16BE(roomBytes.length, 4 + originBytes.length);
-  roomBytes.copy(header, 6 + originBytes.length);
-  return Buffer.concat([header, Buffer.from(JSON.stringify(data))]);
-};
-
 describe("WebSocketRedisAdaptor buffer", () => {
   test("holds a message sent while the buffer drains behind it, so every message leaves in the order sent", async () => {
     const { publisher, send } = await openAdaptor();
@@ -196,6 +161,16 @@ describe("WebSocketRedisAdaptor buffer", () => {
     await destroyed;
     expect(publisher.published).toEqual([1]);
     expect(publisher.disconnected).toBe(true);
+  });
+
+  test("keeps only a room's newest coalesced frame while the publisher is down", async () => {
+    const { adaptor, publisher } = await openAdaptor();
+    adaptor.publish("live", { n: 1 }, { coalesce: true });
+    adaptor.publish("live", { n: 2 }, { coalesce: true });
+    publisher.emit("ready");
+    await until(() => publisher.published.length === 1);
+    await Bun.sleep(5);
+    expect(publisher.published).toEqual([2]);
   });
 
   test("shuts down once Redis has answered every publish sent before it, and quietly", async () => {
@@ -344,22 +319,44 @@ describe("WebSocketRedisAdaptor buffer", () => {
     expect(publisher.calls).toBe(51);
   });
 
-  test("drops an event Redis refuses with NOPERM, buffered or sent directly, rather than holding back what follows", async () => {
-    const { publisher, send, warns, errors } = await openAdaptor();
-    publisher.refuse.add(legacyChannel);
+  test("retries only the publishes of a batch that failed, after the ones that went out", async () => {
+    const { adaptor, publisher, send } = await openAdaptor();
     send(1);
+    adaptor.publishChange({ refName: "task", next: "{}" });
+    send(2);
+    publisher.failOn.add("app:ws:change:");
+    publisher.emit("ready");
+    await until(() => publisher.published.length === 2);
+    publisher.failOn.clear();
+    await until(() => publisher.sent.length === 3);
+    await Bun.sleep(5);
+    expect(publisher.sent.map(({ channel }) => (channel.startsWith("app:ws:change:") ? "change" : "room"))).toEqual([
+      "room",
+      "room",
+      "change",
+    ]);
+    expect(publisher.published.slice(0, 2)).toEqual([1, 2]);
+  });
+
+  test("drops an event Redis refuses with NOPERM, buffered or sent directly, rather than holding back what follows", async () => {
+    const { adaptor, publisher, send, warns, errors } = await openAdaptor();
+    const change = () => adaptor.publishChange({ refName: "task", next: "{}" });
+    publisher.refuse.add("app:ws:change:");
+    send(1);
+    change();
     send(2);
     publisher.emit("ready");
     await until(() => publisher.published.length === 2);
     await Bun.sleep(5);
     expect(warns).toEqual([]);
+    change();
     send(3);
     await until(() => publisher.published.length === 3);
     await Bun.sleep(5);
     expect(warns).toEqual([]);
     expect(publisher.published).toEqual([1, 2, 3]);
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain(`events on ${legacyChannel} are being dropped`);
+    expect(errors[0]).toContain("events on app:ws:change are being dropped");
   });
 
   test("logs refusals on a family of channels at most once a minute, whatever shard they name", async () => {
@@ -389,6 +386,7 @@ describe("WebSocketRedisAdaptor buffer", () => {
     const { adaptor, publisher, subscriber, warns } = await openAdaptor();
     publisher.emit("ready");
     subscriber.emit("ready");
+    await adaptor.joinRoom(newSocket(), "chat-1");
     publisher.emit("close");
     subscriber.emit("close");
     expect(warns).toHaveLength(2);
@@ -400,6 +398,33 @@ describe("WebSocketRedisAdaptor buffer", () => {
     subscriber.disconnect = () => subscriber.emit("close");
     await adaptor.onDestroy();
     expect(warns).toEqual([]);
+  });
+
+  test("neither warns nor asks for a resync when a link holding no channel drops, as Redis's idle timeout does", async () => {
+    const { adaptor, subscriber, warns } = await openAdaptor();
+    let recovered = 0;
+    adaptor.onRecovered(() => {
+      recovered += 1;
+    });
+    subscriber.emit("ready");
+    subscriber.emit("close");
+    subscriber.emit("ready");
+    expect(warns).toEqual([]);
+    expect(recovered).toBe(0);
+  });
+
+  test("asks for a resync when the subscriber returns to a room joined while it was down", async () => {
+    const { adaptor, subscriber, warns } = await openAdaptor();
+    let recovered = 0;
+    adaptor.onRecovered(() => {
+      recovered += 1;
+    });
+    subscriber.emit("ready");
+    subscriber.emit("close");
+    await adaptor.joinRoom(newSocket(), "chat-1");
+    subscriber.emit("ready");
+    expect(recovered).toBe(1);
+    expect(warns).toEqual(["Subscriber reconnected; asking every room on this server to resynchronize"]);
   });
 
   test("shuts down without waiting for a batch the publisher was cut off under", async () => {
@@ -429,6 +454,25 @@ describe("WebSocketRedisAdaptor channels", () => {
     expect(writer.publisher.channels[0]).toMatch(/^app:ws:room:\d+$/);
     expect(writer.publisher.channels).toEqual(holder.subscriber.subscribed);
     expect(holder.subscriber.subscribed[1]).toBe("app:ws:change:task");
+  });
+
+  test("hears the event and the change another server publishes", async () => {
+    const reader = await openAdaptor("server-b");
+    const writer = await openAdaptor("server-a");
+    reader.subscriber.emit("ready");
+    writer.publisher.emit("ready");
+    await reader.adaptor.joinRoom(newSocket(), "chat-1");
+    const received: unknown[] = [];
+    const changes: LiveChange[] = [];
+    reader.adaptor.setEventHandler((_roomId, data) => received.push(data));
+    reader.adaptor.onChange((change) => changes.push(change));
+    writer.adaptor.publish("chat-1", { n: 1 });
+    writer.adaptor.publishChange({ refName: "task", next: "{}" });
+    await until(() => writer.publisher.sent.length === 2);
+    for (const { channel, message } of writer.publisher.sent)
+      reader.subscriber.emit("messageBuffer", Buffer.from(channel), message);
+    expect(received).toEqual([{ n: 1 }]);
+    expect(changes).toEqual([{ refName: "task", next: "{}" }]);
   });
 
   test("resolves a join once Redis confirms the SUBSCRIBE, and a room on the same channel waits for that reply", async () => {
@@ -560,70 +604,36 @@ describe("WebSocketRedisAdaptor channels", () => {
   });
 });
 
-describe("WebSocketRedisAdaptor alongside earlier releases", () => {
-  test("copies each event and change to ws:broadcast as earlier releases read it, from an origin none takes for its own", async () => {
-    const { adaptor, publisher } = await openAdaptor();
+describe("WebSocketRedisAdaptor envelope", () => {
+  const frame = (kind: number, origin: string, roomId: string, payload: Buffer) =>
+    Buffer.concat([
+      Buffer.from([1, kind, 0, origin.length]),
+      Buffer.from(origin),
+      Buffer.from([0, roomId.length]),
+      Buffer.from(roomId),
+      payload,
+    ]);
+
+  test("publishes a JSON event as version, kind 0x6a, origin, room and payload", async () => {
+    const { adaptor, publisher } = await openAdaptor("server-a");
     publisher.emit("ready");
     adaptor.publish("chat-1", { n: 1 });
-    adaptor.publishChange({ refName: "task", next: "{}" });
-    await until(() => publisher.legacy.length === 2);
-    expect(publisher.legacy.map((message) => readAsEarlierRelease(message, "server-a"))).toEqual([
-      { kind: "j", roomId: "chat-1", data: { n: 1 } },
-      { kind: "c", roomId: "", data: { refName: "task", next: "{}" } },
-    ]);
+    await until(() => publisher.sent.length === 1);
+    expect(publisher.sent[0].message).toEqual(frame(0x6a, "server-a", "chat-1", Buffer.from('{"n":1}')));
   });
 
-  test("hears another server's event and change once, and an earlier release's from ws:broadcast", async () => {
-    const reader = await openAdaptor("server-b");
-    const writer = await openAdaptor("server-a");
-    reader.subscriber.emit("ready");
-    writer.publisher.emit("ready");
-    await reader.adaptor.joinRoom(newSocket(), "chat-1");
+  test("reads a change of kind 0x63 and a bytes event of kind 0x62 from another server", async () => {
+    const { adaptor, subscriber } = await openAdaptor("server-b");
+    subscriber.emit("ready");
+    await adaptor.joinRoom(newSocket(), "chat-1");
     const received: unknown[] = [];
     const changes: LiveChange[] = [];
-    reader.adaptor.setEventHandler((_roomId, data) => received.push(data));
-    reader.adaptor.onChange((change) => changes.push(change));
-    writer.adaptor.publish("chat-1", { n: 1 });
-    writer.adaptor.publishChange({ refName: "task", next: "{}" });
-    await until(() => writer.publisher.sent.length === 4);
-    for (const { channel, message } of writer.publisher.sent)
-      reader.subscriber.emit("messageBuffer", Buffer.from(channel), message);
-    const deliver = (message: Buffer) => reader.subscriber.emit("messageBuffer", Buffer.from(legacyChannel), message);
-    deliver(packAsEarlierRelease("j", "server-old", "chat-1", { n: 2 }));
-    deliver(packAsEarlierRelease("c", "server-old", "", { refName: "note", next: "{}" }));
-    expect(received).toEqual([{ n: 1 }, { n: 2 }]);
-    expect(changes).toEqual([
-      { refName: "task", next: "{}" },
-      { refName: "note", next: "{}" },
-    ]);
-  });
-
-  test("listens on ws:broadcast again each time the subscriber returns", async () => {
-    const { subscriber } = await openAdaptor();
-    subscriber.emit("ready");
-    subscriber.emit("close");
-    subscriber.emit("ready");
-    expect(subscriber.legacySubscribes).toBe(2);
-  });
-
-  test("coalesces a room's buffered copies on ws:broadcast apart from those on its own channel", async () => {
-    const { adaptor, publisher } = await openAdaptor();
-    adaptor.publish("live", { n: 1 }, { coalesce: true });
-    adaptor.publish("live", { n: 2 }, { coalesce: true });
-    publisher.emit("ready");
-    await until(() => publisher.published.length === 1 && publisher.legacy.length === 1);
-    expect(publisher.published).toEqual([2]);
-    expect(readAsEarlierRelease(publisher.legacy[0], "server-old")?.data).toEqual({ n: 2 });
-  });
-
-  test("retries a copy refused on one channel without sending the other again", async () => {
-    const { publisher, send } = await openAdaptor();
-    send(1);
-    publisher.failing = true;
-    publisher.emit("ready");
-    await Bun.sleep(5);
-    publisher.failing = false;
-    await until(() => publisher.published.length === 1);
-    expect(publisher.legacy.length).toBe(1);
+    adaptor.setEventHandler((roomId, data) => received.push({ roomId, data }));
+    adaptor.onChange((change) => changes.push(change));
+    const deliver = (message: Buffer) => subscriber.emit("messageBuffer", Buffer.from("app:ws:room:1"), message);
+    deliver(frame(0x63, "server-a", "", Buffer.from('{"refName":"task","next":"{}"}')));
+    deliver(frame(0x62, "server-a", "chat-1", Buffer.from([7, 250])));
+    expect(changes).toEqual([{ refName: "task", next: "{}" }]);
+    expect(received).toEqual([{ roomId: "chat-1", data: new Uint8Array([7, 250]) }]);
   });
 });
