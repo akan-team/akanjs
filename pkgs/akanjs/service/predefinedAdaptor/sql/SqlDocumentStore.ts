@@ -1,102 +1,46 @@
 import { dayjs, FIELD_META } from "akanjs/base";
 import { Logger } from "akanjs/common";
-import { type ConstantModel, getDefault } from "akanjs/constant";
-import { Err } from "akanjs/dictionary";
+import type { ConstantModel } from "akanjs/constant";
 import {
-  createDocumentId,
   type DatabaseModel,
-  type DocumentIndexDescriptor,
   type DocumentQuery,
   type DocumentSchema,
   type DocumentScopeOptions,
   type DocumentTouchOptions,
-  type DocumentUpdate,
   type DocumentUpdateInput,
-  type DocumentUpdateNode,
   type DocumentUpdateOptions,
   documentQueryHelper,
-  isDocumentId,
-  isDocumentQueryNode,
-  isDocumentUpdateNode,
-  LiveRowScope,
   NoDocumentError,
-  resolveDocumentUpdate,
-  sanitizeJson,
 } from "akanjs/document";
 import { DocumentStoreError } from "../../documentStoreError";
+import { DocumentHydrator } from "./DocumentHydrator";
+import { DocumentRowCodec } from "./DocumentRowCodec";
+import { DocumentWriter } from "./DocumentWriter";
 import { SqliteDialect } from "./dialect/sqlite";
-import { decodeFieldValue, normalizeWriteValue, primitiveDefault } from "./fieldValues";
 import { QueryCompiler } from "./QueryCompiler";
+import { QueryScope } from "./QueryScope";
+import { QueryWriter } from "./QueryWriter";
+import { SqlTableSchema } from "./SqlTableSchema";
+import { type StoredRead, StoredRows } from "./StoredRows";
 import {
   type AkanSqlClient,
   type AkanSqlStatement,
   BASE_COLUMNS,
-  type CreateIndexProps,
   type DocumentDatabaseOwner,
   type DocumentRecord,
   type FieldMap,
   type FindIdOptions,
   type FindManyOptions,
   type FindOneOptions,
-  MODIFICATION_STATE,
-  type ModificationState,
-  type MutableDocumentRecord,
   type ProjectedSqliteDocumentRow,
-  type ProjectionOption,
-  REF_NAME_RE,
-  RESERVED_RE,
-  type SearchJoin,
-  type SortOption,
   type SqlDialect,
   type SqliteDocumentRow,
   type TransferRow,
-  toSafeRefName,
   type UpsertByIdOptions,
   type WriteHookOptions,
 } from "./types";
 import { UpdateCompiler } from "./UpdateCompiler";
-import {
-  assertStorableJson,
-  decodeDateValue,
-  descriptorHash,
-  encodeSqlValue,
-  inlineParams,
-  jsonStr,
-  quoteIdent,
-  stableJson,
-} from "./values";
-
-interface DeclaredIndex {
-  name: string;
-  next: string;
-  metaKey: string;
-  /** The name it is built under instead while an index made outside akan holds `name`. */
-  aside: string;
-  hash: string;
-  /** Every descriptor that declares this very index, so a copy an earlier release built under any of them serves it. */
-  hashes: Set<string>;
-  props: Omit<CreateIndexProps, "name">;
-  create: (name: string, concurrently: boolean) => string;
-}
-
-interface StaleIndex {
-  name: string;
-  metaKey: string;
-  exists: boolean;
-}
-
-type StoredRow = Omit<SqliteDocumentRow, "id">;
-
-// A field outside `fields` was never read: a save's comparison sees it only on a document that was given one.
-interface ProjectedRead {
-  row: ProjectedSqliteDocumentRow;
-  fields: string[];
-}
-
-type StoredRead = StoredRow | ProjectedRead;
-
-// A literal default (every array field's `[]`) belongs to the model; uncopied, one document's `push` would reach it.
-const freshDefault = (value: unknown) => (Array.isArray(value) ? [...(value as unknown[])] : value);
+import { assertStorableJson, decodeDateValue, quoteIdent } from "./values";
 
 export class SqlDocumentStore {
   readonly schema: DocumentSchema;
@@ -105,18 +49,14 @@ export class SqlDocumentStore {
   readonly updateCompiler: UpdateCompiler;
   // Keyed by connection too: inside a transaction a statement bound to the pool would run outside it.
   #statements = new WeakMap<AkanSqlClient, Map<string, AkanSqlStatement>>();
-  #docPrototype: object | null = null;
-  #immutableKeys: string[] | null = null;
-  #ensured: Promise<void> | null = null;
-  #warnedUnread = false;
+  readonly #tableSchema: SqlTableSchema;
+  readonly #codec: DocumentRowCodec;
+  readonly #scope: QueryScope;
+  readonly #rows: StoredRows;
+  readonly #hydrator: DocumentHydrator;
+  readonly #writer: DocumentWriter;
+  readonly #queryWriter: QueryWriter;
   static readonly #logger = new Logger("SqlDocumentStore");
-  /** The row a document was read or last written as. */
-  static readonly #storedRow = Symbol("akan.storedRow");
-  /** Set on a document read as removed, which only a `withRemoved` read hands out. */
-  static readonly #readRemoved = Symbol("akan.readRemoved");
-  static readonly #purgeBatchRows = 1000;
-  //? Five parameters a row keeps a statement far under SQLite's 32766 and Postgres's 65535 bound parameters.
-  static readonly #insertBatchRows = 500;
 
   constructor(
     private readonly owner: DocumentDatabaseOwner,
@@ -131,309 +71,43 @@ export class SqlDocumentStore {
     // Resolved per compile: the store exists before the adaptor's `onInit` builds the search index.
     this.compiler = new QueryCompiler(fields, dialect, this.table, () => this.owner.getSearchIndex());
     this.updateCompiler = new UpdateCompiler(fields, dialect);
-  }
-
-  // One shared run: two concurrent `CREATE TABLE IF NOT EXISTS` on one name are a duplicate-key error in Postgres.
-  ensure() {
-    this.#ensured ??= this.#ensure();
-    return this.#ensured;
-  }
-
-  async #ensure() {
-    this.assertValidRefName(this.table);
-    const declared = await this.#declaredIndexes();
-    for (const index of this.schema.indexes) if (!SqlDocumentStore.#builds(index)) this.#warnUnbuilt(index);
-    const createSchema = async () => {
-      const db = this.owner.getConnection();
-      const existed = !!this.owner.buildIndexConcurrently && !!(await this.owner.hasTable?.(this.table));
-      const ts = this.dialect.timestampType();
-      await db.execute(
-        `CREATE TABLE IF NOT EXISTS ${quoteIdent(this.table)} (
-        "id" TEXT PRIMARY KEY NOT NULL,
-        "createdAt" ${ts} NOT NULL,
-        "updatedAt" ${ts} NOT NULL,
-        "removedAt" ${ts},
-        "_doc" ${this.dialect.docColumnType()} NOT NULL
-      )`,
-      );
-      await this.owner.grantInsight?.(this.table);
-      await this.owner.setMeta(
-        `table:${this.table}`,
-        await descriptorHash({ table: this.table, columns: ["id", "createdAt", "updatedAt", "removedAt", "_doc"] }),
-      );
-      const { indexes, adopted, stale } = await this.#reconcileIndexes(declared);
-      const concurrent: (DeclaredIndex & { replace: boolean })[] = [];
-      for (const index of indexes) {
-        if (adopted.has(index.name)) continue;
-        const stored = await this.owner.getMeta(index.metaKey);
-        const replace = !!stored && !index.hashes.has(stored);
-        if (replace)
-          SqlDocumentStore.#logger.warn(
-            `Index ${index.name} on ${this.table} changed its descriptor and is rebuilt; on a large table that is a full index build`,
-          );
-        if (existed && !replace && (await this.owner.hasValidIndex?.(index.name))) {
-          await this.owner.setMeta(index.metaKey, index.hash);
-          continue;
-        }
-        if (existed) {
-          concurrent.push({ ...index, replace });
-          continue;
-        }
-        if (replace) await this.#replaceIndex(index);
-        else await db.execute(index.create(index.name, false));
-        await this.owner.setMeta(index.metaKey, index.hash);
-      }
-      const drops: StaleIndex[] = [];
-      for (const index of stale) {
-        if (!index.exists) await this.owner.deleteMeta(index.metaKey);
-        else if (this.owner.dropIndexConcurrently) drops.push(index);
-        else await this.#dropStaleIndex(index);
-      }
-      return { concurrent, drops };
-    };
-    const { concurrent, drops } = this.owner.lockSchema
-      ? await this.owner.lockSchema(createSchema)
-      : await createSchema();
-    for (const { name, next, create, replace, metaKey, hash } of concurrent) {
-      await this.owner.buildIndexConcurrently?.({ name, next, create: (target) => create(target, true), replace });
-      await this.owner.setMeta(metaKey, hash);
-    }
-    for (const index of drops) await this.#dropStaleIndex(index);
-    await this.owner.getSearchIndex()?.ensureRef(this.constant, this.database);
-  }
-
-  static #builds(index: DocumentIndexDescriptor) {
-    return Object.values(index.fields).every((order) => order === 1 || order === -1);
-  }
-
-  // Named by what it indexes, never by position: a name that moved when an index was added rebuilt every later one.
-  async #declaredIndexes(): Promise<DeclaredIndex[]> {
-    const candidates = await Promise.all(
-      this.schema.indexes.filter(SqlDocumentStore.#builds).map(async (descriptor) => {
-        const paths = Object.keys(descriptor.fields);
-        const base =
-          descriptor.name ??
-          [this.table, ...paths.map(toSafeRefName), ...(descriptor.unique ? ["unique"] : [])].join("_");
-        const columns = paths.map((path) => ({
-          path,
-          expr: this.compiler.fieldExpr(path),
-          isArray: this.compiler.isArrayPath(path),
-        }));
-        const predicate = descriptor.where ? this.#indexPredicate(descriptor.where, base) : undefined;
-        const props = { table: this.table, unique: !!descriptor.unique, columns, where: predicate };
-        const create = (target: string, concurrently: boolean) =>
-          this.dialect.createIndex({ ...props, name: target, concurrently });
-        const definition = create("", false);
-        return {
-          named: !!descriptor.name,
-          base,
-          definition,
-          // Hashed with the predicate: before a `where` reached the DDL, the same descriptor built a whole index.
-          hash: await descriptorHash(predicate ? { ...descriptor, predicate } : descriptor),
-          suffix: (await descriptorHash(definition)).slice(0, 8),
-          props,
-          create,
-        };
-      }),
-    );
-    const definitionsOf = new Map<string, Set<string>>();
-    for (const { base, definition } of candidates)
-      definitionsOf.set(base, (definitionsOf.get(base) ?? new Set()).add(definition));
-    const namedDefinitions = new Set(candidates.filter(({ named }) => named).map(({ definition }) => definition));
-    const indexes = new Map<string, DeclaredIndex>();
-    for (const { named, base, definition, hash, suffix, props, create } of candidates) {
-      if (!named && namedDefinitions.has(definition)) continue;
-      // Two different indexes claiming one name: a named one keeps it, an automatic one adds what tells it apart.
-      const shared = (definitionsOf.get(base)?.size ?? 0) > 1;
-      if (
-        named &&
-        shared &&
-        candidates.some((other) => other.named && other.base === base && other.definition !== definition)
-      )
-        throw new DocumentStoreError("invalidSchema", `Two different indexes on ${this.table} are both named ${base}`);
-      const declared = named || !shared ? base : `${base}_${suffix}`;
-      this.assertValidRefName(declared);
-      const naming = this.#indexNamed(declared);
-      const existing = indexes.get(naming.name);
-      if (existing) {
-        existing.hashes.add(hash);
-        continue;
-      }
-      indexes.set(naming.name, {
-        ...naming,
-        aside: `${declared}_${suffix}`,
-        hash,
-        hashes: new Set([hash]),
-        props,
-        create,
-      });
-    }
-    return [...indexes.values()];
-  }
-
-  #indexNamed(declared: string) {
-    const name = this.dialect.indexName(declared);
-    return { name, next: this.dialect.indexName(`${declared}_next`), metaKey: `index:${this.table}:${name}` };
-  }
-
-  // Only an index whose meta key says an earlier boot built it is adopted or dropped; one made by hand has none.
-  async #reconcileIndexes(declared: DeclaredIndex[]) {
-    const prefix = `index:${this.table}:`;
-    const { sql, params } = this.dialect.indexesOf(this.table);
-    const rows = await this.owner
-      .getConnection()
-      .prepare(sql)
-      .all<{ name: string; valid: unknown; definition: string }>(...params);
-    const physical = new Map(rows.map(({ name, valid, definition }) => [name, { valid: !!valid, definition }]));
-    const recorded = (await this.owner.listMeta(prefix))
-      .map(({ key, value }) => ({ name: key.slice(prefix.length), metaKey: key, hash: value }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const recordedNames = new Set(recorded.map(({ name }) => name));
-    const copiesOf = (index: DeclaredIndex, among = recorded) =>
-      among.filter(({ name, hash }) => index.hashes.has(hash) && physical.get(name)?.valid);
-    const unrecorded = declared.filter(({ name }) => !recordedNames.has(name));
-    const holds = await this.#definitionMatcher(
-      unrecorded.filter((index) => physical.has(index.name) || copiesOf(index).length),
-      physical,
-    );
-    // Unrecorded under a declared name, an index is taken only as that very index: a boot may stop before recording it.
-    const indexes = declared.map((index) => {
-      if (recordedNames.has(index.name) || !physical.has(index.name) || holds(index.name, index)) return index;
-      const aside = { ...index, ...this.#indexNamed(index.aside) };
-      SqlDocumentStore.#logger.warn(
-        `Index ${index.name} on ${this.table} was not built by akan and differs from the declared one, so it is left alone and the declared index is built as ${aside.name}`,
-      );
-      return aside;
+    const logger = SqlDocumentStore.#logger;
+    this.#tableSchema = new SqlTableSchema({
+      owner,
+      table: this.table,
+      schema,
+      constant,
+      database,
+      dialect,
+      compiler: this.compiler,
+      logger,
     });
-    const names = new Set(indexes.map(({ name }) => name));
-    const undeclared = recorded.filter(({ name }) => !names.has(name));
-    // SQLite cannot rename an index, so a copy an earlier release built under its positional name serves on unrebuilt.
-    const kept = new Set<string>();
-    const adopted = new Set<string>();
-    for (const index of indexes) {
-      if (recordedNames.has(index.name) || physical.has(index.name)) continue;
-      const copy = copiesOf(index, undeclared).find(({ name }) => !kept.has(name) && holds(name, index));
-      if (!copy) continue;
-      kept.add(copy.name);
-      adopted.add(index.name);
-    }
-    const stale: StaleIndex[] = undeclared
-      .filter(({ name }) => !kept.has(name))
-      .map(({ name, metaKey }) => ({ name, metaKey, exists: physical.has(name) }));
-    return { indexes, adopted, stale };
+    this.#codec = new DocumentRowCodec(database, this.table, dialect, this.compiler);
+    this.#scope = new QueryScope(this.table, this.compiler);
+    this.#rows = new StoredRows(this, this.#codec, logger);
+    this.#hydrator = new DocumentHydrator(this, this.#codec, this.#rows);
+    this.#writer = new DocumentWriter({
+      owner,
+      store: this,
+      dialect,
+      codec: this.#codec,
+      rows: this.#rows,
+      scope: this.#scope,
+      prepare: (sql) => this.prepareStmt(sql),
+    });
+    this.#queryWriter = new QueryWriter(owner, this, dialect, this.#scope);
   }
 
-  // A descriptor hash ignores field order, so only the definition the database holds tells two indexes apart.
-  async #definitionMatcher(indexes: DeclaredIndex[], physical: Map<string, { definition: string }>) {
-    const props = indexes.map((index) => index.props);
-    const probed =
-      this.dialect.indexDefinition || !props.length ? [] : await this.owner.indexDefinitions?.(this.table, props);
-    const definitions = new Map(indexes.map(({ hash }, idx) => [hash, probed?.[idx]]));
-    return (name: string, index: DeclaredIndex) => {
-      const definition = this.dialect.indexDefinition?.({ ...index.props, name }) ?? definitions.get(index.hash);
-      return definition !== undefined && physical.get(name)?.definition === definition;
-    };
-  }
-
-  // An index no declaration builds costs only its upkeep on writes, so failing to drop it must not fail the boot.
-  async #dropStaleIndex({ name, metaKey }: StaleIndex) {
-    try {
-      if (this.owner.dropIndexConcurrently) await this.owner.dropIndexConcurrently(name);
-      else await this.owner.getConnection().execute(`DROP INDEX IF EXISTS ${quoteIdent(name)}`);
-      await this.owner.deleteMeta(metaKey);
-      SqlDocumentStore.#logger.info(`Dropped index ${name} on ${this.table}, which no declaration builds any more`);
-    } catch (error) {
-      SqlDocumentStore.#logger.warn(
-        `Index ${name} on ${this.table} is no longer declared, and dropping it failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  #indexPredicate(where: DocumentQuery, name: string) {
-    const { where: sql, params, joins, memberTests } = this.compiler.compile(where);
-    if (joins.length)
-      throw new DocumentStoreError(
-        "invalidSchema",
-        `Index ${name} on ${this.table} filters with q.search(), which an index predicate cannot hold`,
-      );
-    // SQLite holds no subquery in an index predicate, so every mode refuses a member test: one app boots in each.
-    if (memberTests.length)
-      throw new DocumentStoreError(
-        "invalidSchema",
-        `Index ${name} on ${this.table} tests ${memberTests.join(", ")} for a member (q.has()), which an index predicate cannot hold`,
-      );
-    return sql === "1 = 1" ? undefined : inlineParams(sql, params);
-  }
-
-  #warnUnbuilt(index: DocumentIndexDescriptor) {
-    const paths = Object.keys(index.fields);
-    SqlDocumentStore.#logger.warn(
-      `Index ${JSON.stringify(index.fields)} on ${this.table} is not built: only 1 and -1 order a key, and "text" is ` +
-        `MongoDB's text index, which as a B-tree would copy each whole value and fail long writes on Postgres. Search ` +
-        `${paths.join(", ")} through the full-text role, field(String, { text: "desc" }), or declare ` +
-        `{ ${paths[0]}: 1 } to look it up by equality.`,
-    );
-  }
-
-  // In one transaction, so a new definition the rows refuse — a `unique` over duplicates — leaves the old index.
-  async #replaceIndex(index: DeclaredIndex) {
-    const rebuild = async () => {
-      const db = this.owner.getConnection();
-      await db.execute(`DROP INDEX IF EXISTS ${quoteIdent(index.name)}`);
-      await db.execute(index.create(index.name, false));
-    };
-    if (this.owner.transaction) await this.owner.transaction(rebuild);
-    else await rebuild();
+  ensure() {
+    return this.#tableSchema.ensure();
   }
 
   async create(data: DocumentRecord, { runSaveHooks = true }: WriteHookOptions = {}) {
-    const doc = this.#newDocument(data, Date.now());
-    if (runSaveHooks) await this.runHooks("save", "create", doc, "pre");
-    await this.runHooks("create", "create", doc, "pre");
-    const row = this.toRow(doc);
-    await this.insertStmt().run(row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc);
-    await this.runHooks("create", "create", doc, "post");
-    if (runSaveHooks) await this.runHooks("save", "create", doc, "post");
-    return this.#withStoredRow(doc, row);
+    return await this.#writer.create(data, { runSaveHooks });
   }
 
   async createMany(data: DocumentRecord[]) {
-    if (!data.length) return [];
-    const now = Date.now();
-    const docs = data.map((record) => this.#newDocument(record, now));
-    for (const doc of docs) {
-      await this.runHooks("save", "create", doc, "pre");
-      await this.runHooks("create", "create", doc, "pre");
-    }
-    const written = docs.map((doc) => ({ doc, row: this.toRow(doc) }));
-    const write = async () => {
-      for (let start = 0; start < written.length; start += SqlDocumentStore.#insertBatchRows) {
-        const batch = written.slice(start, start + SqlDocumentStore.#insertBatchRows);
-        await this.prepareStmt(this.#insertManySql(batch.length)).run(
-          ...batch.flatMap(({ row }) => [row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc]),
-        );
-      }
-      for (const doc of docs) {
-        await this.runHooks("create", "create", doc, "post");
-        await this.runHooks("save", "create", doc, "post");
-      }
-    };
-    if (this.owner.transaction) await this.owner.transaction(write);
-    else await write();
-    return written.map(({ doc, row }) => this.#withStoredRow(doc, row));
-  }
-
-  #newDocument(data: DocumentRecord, now: number) {
-    const id = data.id ?? createDocumentId(now);
-    if (!isDocumentId(id)) throw new DocumentStoreError("invalidDocument", `Invalid ID value: ${id}`);
-    return this.hydrate(
-      this.prepareDocument({
-        ...data,
-        id,
-        createdAt: data.createdAt ?? dayjs(now),
-        updatedAt: data.updatedAt ?? dayjs(now),
-      }),
-    );
+    return await this.#writer.createMany(data);
   }
 
   async clone(data: DocumentRecord & { id: string }) {
@@ -446,59 +120,11 @@ export class SqlDocumentStore {
     data: DocumentRecord & { id: string },
     { preserveTimestamps = false, where, withRemoved }: UpsertByIdOptions = {},
   ) {
-    if (!isDocumentId(data.id)) throw new DocumentStoreError("invalidDocument", `Invalid ID value: ${data.id}`);
-    const now = dayjs();
-    const keepsCreatedAt = preserveTimestamps && data.createdAt != null;
-    const prepared = this.prepareDocument({
-      ...data,
-      createdAt: keepsCreatedAt ? data.createdAt : now,
-      updatedAt: preserveTimestamps ? (data.updatedAt ?? now) : now,
-    });
-    const row = this.toRow(prepared);
-    const kept = keepsCreatedAt ? `"createdAt" = excluded."createdAt", ` : "";
-    const update = `DO UPDATE SET ${kept}"updatedAt" = excluded."updatedAt", "removedAt" = excluded."removedAt", "_doc" = excluded."_doc"`;
-    if (where) return await this.#upsertWhere(data.id, row, update, where, { withRemoved });
-    const stored = await this.owner
-      .getConnection()
-      .prepare(
-        `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES (?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})
-           ON CONFLICT("id") ${update} RETURNING "createdAt"`,
-      )
-      .get<{ createdAt: number | string }>(row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc);
-    const createdAt = Number(stored?.createdAt ?? row.createdAt);
-    return this.#withStoredRow(this.hydrate({ ...prepared, createdAt: dayjs(createdAt) }), { ...row, createdAt });
-  }
-
-  // Postgres reads a bare column in ON CONFLICT's WHERE as ambiguous between the stored row and `excluded`, so the
-  // condition reads the stored row through a subquery that names its columns alone.
-  async #upsertWhere(id: string, row: StoredRow, update: string, where: DocumentQuery, scope: DocumentScopeOptions) {
-    const { where: condition, params } = this.writeQuery(where, "upsertById", scope);
-    const table = quoteIdent(this.table);
-    const columns = [...BASE_COLUMNS, "_doc"].map(
-      (column) => `${table}.${quoteIdent(column)} AS ${quoteIdent(column)}`,
-    );
-    const written = await this.owner
-      .getConnection()
-      .prepare(
-        this.dialect.upsertRow(
-          this.table,
-          `${update} WHERE EXISTS (SELECT 1 FROM (SELECT ${columns.join(", ")}) AS "stored" WHERE ${condition})`,
-        ),
-      )
-      .get<{ inserted: boolean | number }>(id, row.createdAt, row.updatedAt, row.removedAt, row._doc, ...params);
-    if (!written) return { acknowledged: true, matchedCount: 0, modifiedCount: 0, upsertedId: null };
-    const inserted = Boolean(Number(written.inserted));
-    return {
-      acknowledged: true,
-      matchedCount: inserted ? 0 : 1,
-      modifiedCount: 1,
-      upsertedId: inserted ? id : null,
-    };
+    return await this.#writer.upsertById(data, { preserveTimestamps, where, withRemoved });
   }
 
   async update(id: string, patch: DocumentRecord, options: WriteHookOptions = {}) {
-    const current = await this.pickByIdForWrite(id);
-    return await this.writeUpdatedDocument(id, { ...current, ...patch, id }, current, options);
+    return await this.#writer.update(id, patch, options);
   }
 
   async remove(id: string) {
@@ -551,34 +177,7 @@ export class SqlDocumentStore {
         "invalidQuery",
         `updateOneByQuery on "${this.table}" takes upsert or { withRemoved: true }, not both: a match would stay removed while a miss inserts a live row`,
       );
-    return await this.#updateOne(query, update, options, "updateOneByQuery");
-  }
-
-  async #updateOne(
-    query: DocumentQuery,
-    update: DocumentUpdateInput,
-    options: DocumentUpdateOptions,
-    operation: string,
-  ) {
-    const resolved = resolveDocumentUpdate(update);
-    const { assignments, params } = this.compiledUpdate(resolved, options);
-    const { where, params: whereParams } = this.writeQuery(query, operation, options);
-    const subquery = `SELECT ${quoteIdent("id")} FROM ${quoteIdent(this.table)} WHERE ${where} ORDER BY ${this.compiler.orderBy()} LIMIT 1`;
-    //? Postgres re-checks a row another write changed meanwhile against the outer WHERE only, never the subquery's,
-    //? so the condition is repeated there or two racing writes both apply it (READ COMMITTED's EvalPlanQual).
-    const sql = `UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE ${quoteIdent("id")} IN (${subquery}) AND (${where})`;
-    const changes = this.dialect.affectedRows(
-      await this.owner
-        .getConnection()
-        .prepare(sql)
-        .run(...params, ...whereParams, ...whereParams),
-    );
-    if (changes > 0) return { acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedId: null };
-    if (!options.upsert) return { acknowledged: true, matchedCount: 0, modifiedCount: 0, upsertedId: null };
-    const inserted = await this.create(this.applyInsertUpdate(this.extractInsertBase(query), resolved), {
-      runSaveHooks: false,
-    });
-    return { acknowledged: true, matchedCount: 0, modifiedCount: 1, upsertedId: inserted.id };
+    return await this.#queryWriter.updateOne(query, update, options, "updateOneByQuery");
   }
 
   async updateManyByQuery(
@@ -586,87 +185,24 @@ export class SqlDocumentStore {
     update: DocumentUpdateInput,
     options: DocumentScopeOptions & DocumentTouchOptions = {},
   ) {
-    return await this.#updateMany(query, update, options, "updateManyByQuery");
-  }
-
-  async #updateMany(
-    query: DocumentQuery,
-    update: DocumentUpdateInput,
-    options: DocumentScopeOptions & DocumentTouchOptions,
-    operation: string,
-  ) {
-    const { assignments, params } = this.compiledUpdate(resolveDocumentUpdate(update), options);
-    const { where, params: whereParams } = this.writeQuery(query, operation, options);
-    const sql = `UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE ${where}`;
-    const changes = this.dialect.affectedRows(
-      await this.owner
-        .getConnection()
-        .prepare(sql)
-        .run(...params, ...whereParams),
-    );
-    return { acknowledged: true, matchedCount: changes, modifiedCount: changes };
+    return await this.#queryWriter.updateMany(query, update, options, "updateManyByQuery");
   }
 
   // No scope: an already-removed row keeps its `removedAt`, so a cascade reaching it again changes nothing.
   async removeManyByQuery(query: DocumentQuery) {
     // "remove", not "delete": the row survives; `purgeManyByQuery` is the DELETE.
-    return await this.#updateMany(query, { removedAt: dayjs() }, {}, "removeManyByQuery");
+    return await this.#queryWriter.updateMany(query, { removedAt: dayjs() }, {}, "removeManyByQuery");
   }
 
   async removeOneByQuery(query: DocumentQuery) {
     // The newest match, reported as counts rather than an id: for "at most one of these", not a queue.
-    return await this.#updateOne(query, { removedAt: dayjs() }, {}, "removeOneByQuery");
+    return await this.#queryWriter.updateOne(query, { removedAt: dayjs() }, {}, "removeOneByQuery");
   }
 
   //* Live and removed rows alike, unlike every other write: retention purges by age, and most rows past it were removed
   //* long ago. The search mirror's rows go through its AFTER DELETE trigger; no hook, cascade or live room runs.
   async purgeManyByQuery(query: DocumentQuery) {
-    // A filter whose arguments all fell through `q.when` builds `{}`, and a purge has no undo.
-    if (SqlDocumentStore.#matchesEveryRow(query))
-      throw new DocumentStoreError(
-        "invalidQuery",
-        `purgeManyByQuery on "${this.table}" matches every row; a purge cannot be undone, so name a condition`,
-      );
-    const { where, params, joins } = this.compiler.compile(query);
-    if (joins.length)
-      throw new DocumentStoreError(
-        "invalidQuery",
-        `q.search() cannot be used in purgeManyByQuery on "${this.table}"; query-level writes take no join.`,
-      );
-    const table = quoteIdent(this.table);
-    const batch = SqlDocumentStore.#purgeBatchRows;
-    // The outer condition is repeated for Postgres's re-check of a row changed meanwhile, as in `#updateOne`.
-    const statement = this.owner
-      .getConnection()
-      .prepare(
-        `DELETE FROM ${table} WHERE ${quoteIdent("id")} IN (SELECT ${quoteIdent("id")} FROM ${table} WHERE ${where} LIMIT ${batch}) AND (${where})`,
-      );
-    let purged = 0;
-    for (;;) {
-      const changes = this.dialect.affectedRows(await statement.run(...params, ...params));
-      purged += changes;
-      if (changes < batch) return purged;
-      //* bun:sqlite deletes synchronously: a timer turn between batches lets this process's other requests write.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-  }
-
-  static #matchesEveryRow(query: DocumentQuery): boolean {
-    if (!isDocumentQueryNode(query)) return Object.keys(query).length === 0;
-    if (query.kind === "all") return query.queries.every((sub) => SqlDocumentStore.#matchesEveryRow(sub));
-    if (query.kind === "any")
-      return !query.queries.length || query.queries.some((sub) => SqlDocumentStore.#matchesEveryRow(sub));
-    return false;
-  }
-
-  private compiledUpdate(update: DocumentUpdate, { touch = true }: DocumentTouchOptions = {}) {
-    for (const raw of Object.values(update))
-      assertStorableJson(jsonStr(isDocumentUpdateNode(raw) ? raw.value : raw), this.table);
-    const { assignments, params } = this.updateCompiler.compile(update);
-    const updatedAt = quoteIdent("updatedAt");
-    if (touch) return { assignments: [`${updatedAt} = ?`, ...assignments], params: [Date.now(), ...params] };
-    //? A SET needs one assignment: a write left with none still matches and counts, and changes nothing.
-    return { assignments: assignments.length ? assignments : [`${updatedAt} = ${updatedAt}`], params };
+    return await this.#queryWriter.purgeMany(query);
   }
 
   async bulkWrite(
@@ -687,46 +223,35 @@ export class SqlDocumentStore {
   }
 
   async find(query?: DocumentQuery, options: FindManyOptions = {}) {
-    const { star, tail, args } = this.listQuery(query, options);
-    const projection = this.resolveProjection(options.select);
+    const { star, tail, args } = this.#scope.listQuery(query, options);
+    const projection = this.#codec.resolveProjection(options.select);
     if (projection) {
       const rows = await this.prepareStmt(
-        `SELECT ${this.projectionSql(projection)} ${tail}`,
+        `SELECT ${this.#codec.projectionSql(projection)} ${tail}`,
       ).all<ProjectedSqliteDocumentRow>(...args);
       return rows.map((row) =>
-        this.#readAs(
-          this.#withStoredRow(this.hydrate(this.fromProjectedRow(row, projection), undefined, { track: false }), {
-            row,
-            fields: projection,
-          }),
+        this.#rows.readAs(
+          this.#rows.withStoredRow(
+            this.hydrate(this.#codec.fromProjectedRow(row, projection), undefined, { track: false }),
+            { row, fields: projection },
+          ),
           row,
         ),
       );
     }
     const rows = await this.prepareStmt(`SELECT ${star} ${tail}`).all<SqliteDocumentRow>(...args);
     return rows.map((row) =>
-      this.#readAs(this.#withStoredRow(this.hydrate(this.fromRow(row), undefined, { track: false }), row), row),
+      this.#rows.readAs(
+        this.#rows.withStoredRow(this.hydrate(this.#codec.fromRow(row), undefined, { track: false }), row),
+        row,
+      ),
     );
   }
 
   async findIds(query?: DocumentQuery, options: Omit<FindManyOptions, "select"> = {}) {
-    const { tail, args } = this.listQuery(query, options, "findIds");
+    const { tail, args } = this.#scope.listQuery(query, options, "findIds");
     const rows = await this.prepareStmt(`SELECT ${quoteIdent(this.table)}."id" ${tail}`).all<{ id: string }>(...args);
     return rows.map((row) => row.id);
-  }
-
-  private listQuery(query: DocumentQuery | undefined, options: FindManyOptions, operation = "find") {
-    const { where, params, joins } = this.safeQuery(query, operation, options);
-    const limitValue = Number(options.limit ?? 0);
-    const skipValue = Number(options.skip ?? 0);
-    const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.orderBy(options.sort, joins)}`;
-    const page = `${limitValue ? ` LIMIT ${limitValue}` : ""}${skipValue ? ` OFFSET ${skipValue}` : ""}`;
-    return {
-      // A bare `*` would drag the join subquery's `rid`/`score` into the row.
-      star: joins.length ? `${quoteIdent(this.table)}.*` : "*",
-      tail: `FROM ${quoteIdent(this.table)}${this.joinSql(joins)} WHERE ${where} ${order}${page}`,
-      args: [...this.joinParams(joins), ...params],
-    };
   }
 
   async findOne(query?: DocumentQuery, options: FindOneOptions = {}) {
@@ -754,10 +279,10 @@ export class SqlDocumentStore {
   }
 
   async count(query?: DocumentQuery, options: DocumentScopeOptions = {}) {
-    const { where, params, joins } = this.safeQuery(query, "count", options);
+    const { where, params, joins } = this.#scope.safeQuery(query, "count", options);
     const row = await this.prepareStmt(
-      `SELECT count(*) as count FROM ${quoteIdent(this.table)}${this.joinSql(joins)} WHERE ${where}`,
-    ).get<{ count: number }>(...this.joinParams(joins), ...params);
+      `SELECT count(*) as count FROM ${quoteIdent(this.table)}${this.#scope.joinSql(joins)} WHERE ${where}`,
+    ).get<{ count: number }>(...this.#scope.joinParams(joins), ...params);
     return row?.count ?? 0;
   }
 
@@ -766,10 +291,10 @@ export class SqlDocumentStore {
     if (BASE_COLUMNS.has(path) || path.startsWith("_"))
       throw new DocumentStoreError("invalidQuery", `sum reads a model field, not "${path}"`);
     this.compiler.fieldExpr(path);
-    const { where, params, joins } = this.safeQuery(query, "sum", {});
+    const { where, params, joins } = this.#scope.safeQuery(query, "sum", {});
     const row = await this.prepareStmt(
-      `SELECT ${this.dialect.sumOf(path)} as total FROM ${quoteIdent(this.table)}${this.joinSql(joins)} WHERE ${where}`,
-    ).get<{ total: number | string | null }>(...this.joinParams(joins), ...params);
+      `SELECT ${this.dialect.sumOf(path)} as total FROM ${quoteIdent(this.table)}${this.#scope.joinSql(joins)} WHERE ${where}`,
+    ).get<{ total: number | string | null }>(...this.#scope.joinParams(joins), ...params);
     return Number(row?.total ?? 0);
   }
 
@@ -799,563 +324,25 @@ export class SqlDocumentStore {
     return result;
   }
 
-  private safeQuery(
-    query: DocumentQuery | undefined,
-    operation: string,
-    { withRemoved = false }: DocumentScopeOptions,
-  ) {
-    if (withRemoved) {
-      const compiled = this.compiler.compile(query ?? {});
-      // The search mirror drops a row when it is removed, so the join would silently leave every removed row out.
-      if (compiled.joins.length)
-        throw new DocumentStoreError("invalidQuery", `q.search() cannot see removed rows on "${this.table}"`);
-      return compiled;
-    }
-    const conflict = LiveRowScope.conflictOf(query);
-    if (conflict)
-      throw new DocumentStoreError(
-        "invalidQuery",
-        `${operation} on "${this.table}" can never match (${conflict}); ${operation.startsWith("remove") ? "a remove reaches live rows only" : "pass { withRemoved: true }"}`,
-      );
-    return this.compiler.compile(documentQueryHelper.all(documentQueryHelper.empty("removedAt"), query ?? {}));
-  }
-
-  // An atomic write has no join for the search; ignoring it would widen the write to every other match.
-  private writeQuery(query: DocumentQuery | undefined, operation: string, options: DocumentScopeOptions) {
-    const compiled = this.safeQuery(query, operation, options);
-    if (compiled.joins.length)
-      throw new DocumentStoreError(
-        "invalidQuery",
-        `q.search() cannot be used in ${operation} on "${this.table}"; query-level writes take no join.`,
-      );
-    return compiled;
-  }
-
-  private joinSql(joins: SearchJoin[]) {
-    return joins.length ? ` ${joins.map((join) => join.sql).join(" ")}` : "";
-  }
-
-  // The JOIN precedes the WHERE in the text, so its bindings go first; a wrong order raises nothing, just wrong rows.
-  private joinParams(joins: SearchJoin[]) {
-    return joins.flatMap((join) => join.params);
-  }
-
-  // Scores sort best-first ascending (bm25 is negative; Postgres negates its rank), `id` keeping paging stable on ties.
-  // An explicit sort wins; `relevance` arrives as an empty sort map.
-  private orderBy(sort: SortOption, joins: SearchJoin[]) {
-    const explicit = sort && Object.keys(sort).length ? sort : null;
-    if (!explicit && joins.length) return `${joins[0].alias}."score", ${quoteIdent(this.table)}."id" DESC`;
-    return this.compiler.orderBy(explicit ?? undefined);
-  }
-
-  private prepareDocument(data: DocumentRecord) {
-    const fields = this.database.doc[FIELD_META] as unknown as FieldMap;
-    const doc: MutableDocumentRecord = {};
-    for (const [key, field] of Object.entries(fields)) {
-      const props = field.getProps();
-      const value = data[key];
-      if (value === undefined) {
-        if (props.default !== undefined && props.default !== null) {
-          doc[key] = freshDefault(typeof props.default === "function" ? props.default(data) : props.default);
-        } else if (props.isClass && props.isScalar && !props.nullable) {
-          // A nested scalar owns its field defaults, so it is constructible; a relation is not, and fails closed below.
-          doc[key] = getDefault((props.modelRef as { [FIELD_META]: FieldMap })[FIELD_META] as never);
-        } else if (!props.nullable && !["removedAt"].includes(key)) {
-          if (["id", "createdAt", "updatedAt"].includes(key)) continue;
-          throw new DocumentStoreError("invalidDocument", `Missing required field: ${key}`);
-        }
-      } else if (value === null && !props.nullable) {
-        throw new DocumentStoreError("invalidDocument", `Field is not nullable: ${key}`);
-      } else {
-        doc[key] = value;
-      }
-      if (doc[key] !== undefined && doc[key] !== null) {
-        doc[key] = normalizeWriteValue(doc[key], props);
-      }
-      if (props.enum && doc[key] !== undefined && doc[key] !== null) {
-        const values = Array.isArray(doc[key]) ? doc[key] : [doc[key]];
-        const fieldEnum = props.enum as { has: (value: unknown) => boolean } | undefined;
-        const invalidValue = fieldEnum ? values.find((value: unknown) => !fieldEnum.has(value)) : undefined;
-        if (invalidValue !== undefined) throw SqlDocumentStore.#invalidField(key, this.table);
-      }
-      const validate = props.validate as ((value: unknown, doc: MutableDocumentRecord) => boolean) | undefined;
-      if (validate && doc[key] !== undefined && doc[key] !== null && !validate(doc[key], doc)) {
-        throw SqlDocumentStore.#invalidField(key, this.table);
-      }
-    }
-    return { ...data, ...doc };
-  }
-
-  private extractInsertBase(query: DocumentQuery): Record<string, unknown> {
-    if (!query || typeof query !== "object" || Array.isArray(query) || isDocumentQueryNode(query)) return {};
-    return Object.fromEntries(
-      Object.entries(query).flatMap(([key, value]) => {
-        if (["all", "any"].includes(key) || key.startsWith("$")) return [];
-        if (value === null || ["string", "number", "boolean"].includes(typeof value)) return [[key, value]];
-        return [];
-      }),
-    );
-  }
-
-  // An upsert's insert applies the update nodes in JS, having no row to mutate; `setOnInsert` applies only here.
-  private applyInsertUpdate(base: DocumentRecord, update: DocumentUpdate) {
-    const doc: MutableDocumentRecord = { ...base };
-    const setPath = (path: string, value: unknown) => {
-      const parts = path.split(".");
-      let target: MutableDocumentRecord = doc;
-      for (const part of parts.slice(0, -1)) {
-        target[part] ??= {};
-        target = target[part] as MutableDocumentRecord;
-      }
-      target[parts.at(-1) as string] = value;
-    };
-    const getPath = (path: string) =>
-      path.split(".").reduce<unknown>((obj, key) => (obj as DocumentRecord | undefined)?.[key], doc);
-    for (const [path, raw] of Object.entries(update)) {
-      if (raw === undefined) continue;
-      const node: DocumentUpdateNode = isDocumentUpdateNode(raw) ? raw : { kind: "update", op: "set", value: raw };
-      const current = getPath(path);
-      switch (node.op) {
-        case "set":
-        case "setOnInsert":
-          setPath(path, node.value);
-          break;
-        case "unset": {
-          const parts = path.split(".");
-          let target: MutableDocumentRecord | undefined = doc;
-          for (const part of parts.slice(0, -1)) {
-            target = target?.[part] as MutableDocumentRecord | undefined;
-            if (!target || typeof target !== "object") break;
-          }
-          if (target) delete target[parts.at(-1) as string];
-          break;
-        }
-        case "inc":
-          setPath(path, Number(current ?? 0) + Number(node.value));
-          break;
-        case "mul":
-          setPath(path, Number(current ?? 0) * Number(node.value));
-          break;
-        case "min":
-          setPath(path, current === undefined ? node.value : Math.min(Number(current), Number(node.value)));
-          break;
-        case "max":
-          setPath(path, current === undefined ? node.value : Math.max(Number(current), Number(node.value)));
-          break;
-        case "push":
-          setPath(path, [...(Array.isArray(current) ? current : []), node.value]);
-          break;
-        case "addToSet": {
-          const arr = Array.isArray(current) ? current : [];
-          if (!arr.some((item) => stableJson(item) === stableJson(node.value))) setPath(path, [...arr, node.value]);
-          break;
-        }
-        case "pull":
-          if (Array.isArray(current))
-            setPath(
-              path,
-              current.filter((item) => stableJson(item) !== stableJson(node.value)),
-            );
-          break;
-      }
-    }
-    return doc;
-  }
-
-  private toRow({ id, createdAt, updatedAt, removedAt, ...payload }: DocumentRecord) {
-    return {
-      id,
-      createdAt: Number(encodeSqlValue(createdAt ?? dayjs())),
-      updatedAt: Number(encodeSqlValue(updatedAt ?? dayjs())),
-      removedAt: removedAt ? Number(encodeSqlValue(removedAt)) : null,
-      _doc: assertStorableJson(JSON.stringify(sanitizeJson(payload)), this.table),
-    };
-  }
-
-  private fromRow(row: SqliteDocumentRow) {
-    const rawDoc: unknown = row._doc;
-    const raw = typeof rawDoc === "string" ? JSON.parse(rawDoc) : (rawDoc as Record<string, unknown>);
-    const payload = this.decodeDocumentPayload(raw);
-    return {
-      id: row.id,
-      createdAt: dayjs(Number(row.createdAt)),
-      updatedAt: dayjs(Number(row.updatedAt)),
-      removedAt: row.removedAt ? dayjs(Number(row.removedAt)) : undefined,
-      ...payload,
-    };
-  }
-
-  private normalizeProjection(select: ProjectionOption): string[] | null {
-    if (!select) return null;
-    const fields = Object.entries(select)
-      .filter(([, included]) => included)
-      .map(([field]) => field);
-    return [...new Set(fields.filter((field) => field !== "_doc"))];
-  }
-
-  private resolveProjection(select: ProjectionOption): string[] | null {
-    const projection = this.normalizeProjection(select);
-    if (projection !== null) return projection;
-    return this.defaultProjection();
-  }
-
-  private defaultProjection(): string[] | null {
-    const fields = this.database.doc[FIELD_META] as unknown as FieldMap;
-    const entries = Object.entries(fields).filter(([key]) => !BASE_COLUMNS.has(key));
-    if (!entries.some(([, field]) => field.getProps().select === false)) return null;
-    return entries.flatMap(([key, field]) => (field.getProps().select === false ? [] : [key]));
-  }
-
-  private projectionSql(fields: string[]) {
-    const jsonFields = fields.filter((field) => !BASE_COLUMNS.has(field));
-    const baseColumns = [...BASE_COLUMNS].map((field) => quoteIdent(field));
-    const jsonColumns = jsonFields.map(
-      (field, idx) => `${this.compiler.projectExpr(field)} AS ${quoteIdent(this.projectionAlias(idx))}`,
-    );
-    return [...baseColumns, ...jsonColumns].join(", ");
-  }
-
-  private projectionAlias(idx: number) {
-    return `__akan_projection_${idx}`;
-  }
-
-  private fromProjectedRow(row: ProjectedSqliteDocumentRow, fields: string[]) {
-    const doc: DocumentRecord = {
-      id: row.id,
-      createdAt: dayjs(Number(row.createdAt)),
-      updatedAt: dayjs(Number(row.updatedAt)),
-      removedAt: row.removedAt ? dayjs(Number(row.removedAt)) : undefined,
-    };
-    const jsonFields = fields.filter((field) => !BASE_COLUMNS.has(field));
-    for (const [idx, field] of jsonFields.entries()) {
-      const value = this.dialect.decodeProjected(row[this.projectionAlias(idx)]);
-      const props = (this.database.doc[FIELD_META] as unknown as FieldMap)[field]?.getProps?.();
-      if (value === null && !props?.nullable) {
-        if (props?.default != null) {
-          doc[field] = freshDefault(
-            typeof props.default === "function" ? (props.default as (data: unknown) => unknown)(doc) : props.default,
-          );
-        } else if (props?.isClass && props.isScalar) {
-          doc[field] = getDefault((props.modelRef as { [FIELD_META]: FieldMap })[FIELD_META] as never);
-        } else {
-          doc[field] = primitiveDefault(props as Record<string, unknown>);
-        }
-      } else {
-        doc[field] = props ? decodeFieldValue(value, props) : value;
-      }
-    }
-    return doc;
-  }
-
-  private async findForWrite(query?: DocumentQuery, options: FindManyOptions = {}) {
-    const { star, tail, args } = this.listQuery(query, options);
-    const rows = await this.prepareStmt(`SELECT ${star} ${tail}`).all<SqliteDocumentRow>(...args);
-    return rows.map((row) => this.#withStoredRow(this.hydrate(this.fromRow(row)), row));
-  }
-
-  private async findOneForWrite(query?: DocumentQuery, options: FindOneOptions = {}) {
-    return (
-      (await this.findForWrite(query, { ...options, limit: 1, sample: options.sample ? 1 : undefined })).at(0) ?? null
-    );
-  }
-
-  private async pickByIdForWrite(id: string) {
-    const doc = await this.findOneForWrite({ id } as DocumentQuery);
-    if (!doc) throw new NoDocumentError(`No Document (${this.table}): ${id}`, { lookup: { refName: this.table, id } });
-    return doc;
-  }
-
-  private async writeUpdatedDocument(
-    id: string,
-    data: DocumentRecord,
-    originalData: DocumentRecord,
-    { runSaveHooks = true, crudType = "update", touch = true }: WriteHookOptions = {},
-  ) {
-    const prepared = this.prepareDocument({ ...data, id, updatedAt: touch ? dayjs() : originalData.updatedAt });
-    this.#assertImmutableUnchanged(prepared, originalData);
-    const doc = this.hydrate(prepared, originalData);
-    // `update()` re-read the row rather than trusting the caller's document, so this is the stored pre-state.
-    const previous = originalData;
-    if (runSaveHooks) await this.runHooks("save", crudType, doc, "pre", previous);
-    await this.runHooks(crudType, crudType, doc, "pre", previous);
-    const row = this.toRow(doc);
-    const stored = (originalData as Record<symbol, StoredRead | undefined>)[SqlDocumentStore.#storedRow];
-    await this.#writeChanges(id, stored && !("fields" in stored) ? stored : this.toRow(originalData), row, touch);
-    await this.runHooks(crudType, crudType, doc, "post", previous);
-    if (runSaveHooks) await this.runHooks("save", crudType, doc, "post", previous);
-    return this.#withStoredRow(doc, row);
-  }
-
-  /**
-   * Merges only the fields that changed into the stored `_doc`, so a concurrent write to another field survives. A key
-   * the stored row lacks is written out, which is what `q.missing` tells rows from before a field existed apart by.
-   */
-  async #writeChanges(id: string, read: StoredRow, written: StoredRow, touch: boolean) {
-    const before = SqlDocumentStore.#encodedFields(read);
-    const after = SqlDocumentStore.#encodedFields(written);
-    //? Self-assigned untouched, so a write that landed after the read keeps the updatedAt it stamped.
-    const assignments = [touch ? `"updatedAt" = ?` : `"updatedAt" = "updatedAt"`];
-    const params: unknown[] = touch ? [written.updatedAt] : [];
-    for (const column of ["createdAt", "removedAt"] as const) {
-      if (before.get(column) === after.get(column)) continue;
-      assignments.push(`${quoteIdent(column)} = ?`);
-      params.push(written[column]);
-    }
-    const payload = JSON.parse(written._doc) as Record<string, unknown>;
-    const set: [string, string][] = [];
-    const removed: string[] = [];
-    for (const field of new Set([...before.keys(), ...after.keys()])) {
-      if (BASE_COLUMNS.has(field) || before.get(field) === after.get(field)) continue;
-      if (after.has(field)) set.push([field, JSON.stringify(payload[field])]);
-      else removed.push(field);
-    }
-    if (set.length || removed.length) {
-      const merged = this.dialect.mergeDocument(set, removed);
-      assignments.push(`"_doc" = ${merged.sql}`);
-      params.push(...merged.params);
-    }
-    await this.owner
-      .getConnection()
-      .prepare(`UPDATE ${quoteIdent(this.table)} SET ${assignments.join(", ")} WHERE "id" = ?`)
-      .run(...params, id);
-  }
-
-  // A document with no stored row — built rather than read — changes every field it holds.
-  #changesOf(doc: DocumentRecord): DocumentRecord {
-    const stored = (doc as Record<symbol, StoredRead | undefined>)[SqlDocumentStore.#storedRow];
-    if (!stored) {
-      this.#warnUnread();
-      return doc;
-    }
-    // Round-tripped so read-filled defaults and nested models rebuilt in declared order compare equal to themselves.
-    const reread = this.#hydrateStored(stored, String(doc.id));
-    const read = SqlDocumentStore.#encodedFields(this.toRow(reread));
-    const held = SqlDocumentStore.#encodedFields(this.toRow(doc));
-    const changes: DocumentRecord = {};
-    for (const field of new Set([...read.keys(), ...held.keys()]))
-      if (read.get(field) !== held.get(field)) changes[field] = doc[field];
-    return changes;
-  }
-
-  #hydrateStored(stored: StoredRead, id: string) {
-    return this.hydrate(
-      "fields" in stored ? this.fromProjectedRow(stored.row, stored.fields) : this.fromRow({ ...stored, id }),
-      undefined,
-      { track: false },
-    );
-  }
-
-  // Key order is left out of the comparison: jsonb stores an object's keys in an order of its own.
-  static #encodedFields({ createdAt, removedAt, _doc }: StoredRow) {
-    const fields = new Map(
-      Object.entries(JSON.parse(_doc) as Record<string, unknown>).map(([field, value]) => [field, stableJson(value)]),
-    );
-    fields.set("createdAt", String(createdAt));
-    fields.set("removedAt", String(removedAt ?? null));
-    return fields;
-  }
-
-  #warnUnread() {
-    if (process.env.NODE_ENV === "production" || this.#warnedUnread) return;
-    this.#warnedUnread = true;
-    SqlDocumentStore.#logger.warn(
-      `A ${this.table} document that was never read was saved, so every field it holds was written, undoing what ` +
-        `other writes changed since it was built. Read the document before changing it, or write the fields with ` +
-        `updateById().`,
-    );
-  }
-
-  #withStoredRow<Doc extends object>(doc: Doc, row: StoredRead): Doc {
-    Object.defineProperty(doc, SqlDocumentStore.#storedRow, { value: row, configurable: true });
-    return doc;
-  }
-
-  // Marked on both read paths: a model with a `field.secret` reads every document projected.
-  #readAs<Doc extends object>(doc: Doc, { removedAt }: { removedAt?: unknown }): Doc {
-    if (removedAt != null)
-      Object.defineProperty(doc, SqlDocumentStore.#readRemoved, { value: true, configurable: true });
-    return doc;
-  }
-
-  // A removed row is outside the write path's scope, where `update` would answer a misleading NoDocumentError.
-  #assertLiveRow(doc: DocumentRecord) {
-    if (!(doc as Record<symbol, unknown>)[SqlDocumentStore.#readRemoved]) return;
-    throw new DocumentStoreError(
-      "invalidDocument",
-      `read-only: a removed ${this.table} is revived with updateById(id, { removedAt: null }, { withRemoved: true })`,
-    );
-  }
-
-  // An enum or `validate` refusal is the caller's value, so a 400; the value is left out as it may be `field.secret`.
-  static #invalidField(key: string, table: string) {
-    return new Err.BadRequest("base.error.invalidField", { field: key }, { details: { model: table } });
-  }
-
-  // The document path only, as mongoose exempts `bulkWrite`; checked before save hooks so the error names the
-  // caller's change, not a hook's.
-  #assertImmutableUnchanged(prepared: DocumentRecord, originalData: DocumentRecord) {
-    this.#immutableKeys ??= Object.entries(this.database.doc[FIELD_META] as unknown as FieldMap)
-      .filter(([, fieldMeta]) => fieldMeta.getProps().immutable)
-      .map(([key]) => key);
-    if (!this.#immutableKeys.length) return;
-    const changed = this.#immutableKeys.filter((key) => jsonStr(prepared[key]) !== jsonStr(originalData[key]));
-    if (!changed.length) return;
-    // The values are left out: an immutable field may also be `field.secret`.
-    throw new Err(
-      "base.error.immutableField",
-      { field: changed.join(", ") },
-      { details: { model: this.table, id: String(prepared.id) } },
-    );
-  }
-
-  private decodeDocumentPayload(payload: Record<string, unknown>) {
-    const fields = this.database.doc[FIELD_META] as unknown as FieldMap;
-    const result: Record<string, unknown> = {};
-    for (const [key, fieldMeta] of Object.entries(fields)) {
-      if (BASE_COLUMNS.has(key)) continue;
-      const props = fieldMeta.getProps();
-      const value = payload[key];
-      if (value === undefined) {
-        const def = props.default;
-        if (def != null) {
-          result[key] = freshDefault(typeof def === "function" ? (def as (data: unknown) => unknown)(payload) : def);
-        } else if (props.nullable) {
-          result[key] = null;
-        } else if (props.isClass && props.isScalar) {
-          // A row from before the field was declared: `null` would fail the next save's own not-null check.
-          result[key] = getDefault((props.modelRef as { [FIELD_META]: FieldMap })[FIELD_META] as never);
-        } else {
-          result[key] = primitiveDefault(props);
-        }
-      } else {
-        result[key] = decodeFieldValue(value, props);
-      }
-    }
-    for (const [key, value] of Object.entries(payload)) {
-      if (key in result || BASE_COLUMNS.has(key)) continue;
-      const props = fields[key]?.getProps?.();
-      result[key] = props ? decodeFieldValue(value, props) : value;
-    }
-    return result;
-  }
-
   /** `track` buys `isModified()` with a deep clone of the row; only the read paths opt out. */
   hydrate(data: DocumentRecord, originalData: DocumentRecord = data, { track = true }: { track?: boolean } = {}) {
-    const isNew = !originalData.id;
-    const hydratedData = isNew ? this.prepareDocument(data) : data;
-    const doc = Object.assign(Object.create(this.#documentPrototype()), hydratedData);
-    if (!track) return doc;
-    Object.defineProperty(doc, MODIFICATION_STATE, {
-      value: {
-        isNew,
-        // Cloned: `doc` shares nested objects with `hydratedData`, so an in-place push would move the baseline.
-        original: JSON.parse(JSON.stringify(sanitizeJson(originalData) ?? {})) as Record<string, unknown>,
-      } satisfies ModificationState,
-    });
-    return doc;
+    return this.#hydrator.hydrate(data, originalData, { track });
   }
 
   serialize(doc: DocumentRecord) {
-    return JSON.stringify(this.toRow(doc));
+    return JSON.stringify(this.#codec.toRow(doc));
   }
 
   deserialize(text: string) {
-    return this.hydrate(this.fromRow(JSON.parse(text) as SqliteDocumentRow), undefined, { track: false });
+    return this.hydrate(this.#codec.fromRow(JSON.parse(text) as SqliteDocumentRow), undefined, { track: false });
   }
 
   /** Another instance of a read document, built from the row it was read as, so what either is set to stays its own. */
   rehydrate(doc: DocumentRecord) {
-    const stored = (doc as Record<symbol, StoredRead | undefined>)[SqlDocumentStore.#storedRow];
+    const stored = (doc as Record<symbol, StoredRead | undefined>)[StoredRows.storedRow];
     if (!stored) return this.deserialize(this.serialize(doc));
-    const copy = this.#withStoredRow(this.#hydrateStored(stored, String(doc.id)), stored);
-    return this.#readAs(copy, { removedAt: (doc as Record<symbol, unknown>)[SqlDocumentStore.#readRemoved] });
-  }
-
-  //* One prototype per store, extending the model's own so chain methods and `instanceof` hold; methods non-enumerable.
-  #documentPrototype() {
-    if (this.#docPrototype) return this.#docPrototype;
-    const store = this;
-    this.#docPrototype = Object.create(this.database.doc.prototype, {
-      set: {
-        value(this: DocumentRecord, patch: DocumentRecord) {
-          Object.assign(this, patch);
-          return this;
-        },
-      },
-      save: {
-        async value(this: DocumentRecord, { touch }: DocumentTouchOptions = {}) {
-          if (!this.id) return store.create(this);
-          store.#assertLiveRow(this);
-          return store.update(this.id as string, store.#changesOf(this), touch === false ? { touch } : {});
-        },
-      },
-      refresh: {
-        async value(this: DocumentRecord) {
-          const fresh = (await store.pickById(this.id as string)) as DocumentRecord & Record<symbol, StoredRead>;
-          Object.assign(this, fresh);
-          Reflect.deleteProperty(this, SqlDocumentStore.#readRemoved);
-          return store.#withStoredRow(this, fresh[SqlDocumentStore.#storedRow]);
-        },
-      },
-      isModified: {
-        value(this: DocumentRecord & { [MODIFICATION_STATE]?: ModificationState }, field?: string) {
-          const state = this[MODIFICATION_STATE];
-          if (!state)
-            throw new DocumentStoreError(
-              "invalidDocument",
-              SqlDocumentStore.#untrackedModificationMessage(store.table),
-            );
-          if (state.isNew) return true;
-          if (!field) return JSON.stringify(sanitizeJson(this)) !== JSON.stringify(state.original);
-          return JSON.stringify(sanitizeJson(this[field])) !== JSON.stringify(state.original[field]);
-        },
-      },
-      toJSON: {
-        value(this: DocumentRecord) {
-          return sanitizeJson(this);
-        },
-      },
-      toObject: {
-        value(this: DocumentRecord) {
-          return sanitizeJson(this);
-        },
-      },
-    }) as object;
-    return this.#docPrototype;
-  }
-
-  // Thrown, not guessed: `false` skips needed work and `true` redoes it (re-hashing a hashed password). Save hooks
-  // always see a tracked document; only one straight out of a read lands here.
-  static #untrackedModificationMessage(table: string) {
-    return (
-      `isModified() is unavailable on this ${table} document: it was loaded through a read query, which does not ` +
-      `snapshot the row. Call it inside a save hook, or re-load the document through the write path (\`save()\`, ` +
-      `\`update()\`) before comparing.`
-    );
-  }
-
-  private async runHooks(
-    saveType: "save" | "create" | "update" | "remove",
-    crudType: "create" | "update" | "remove",
-    doc: DocumentRecord,
-    phase: "pre" | "post",
-    previous?: DocumentRecord,
-  ) {
-    const hooks = phase === "pre" ? this.schema.preHooks.get(saveType) : this.schema.postHooks.get(saveType);
-    for (const hook of hooks ?? []) {
-      const run = () => hook.call(doc, () => undefined, crudType, previous);
-      if (phase === "post") await this.owner.afterCommit(run);
-      else await run();
-    }
-  }
-
-  private insertStmt() {
-    return this.prepareStmt(this.#insertManySql(1));
-  }
-
-  #insertManySql(rowNum: number) {
-    const values = `(?, ?, ?, ?, ${this.dialect.docValuePlaceholder()})`;
-    return `INSERT INTO ${quoteIdent(this.table)} ("id", "createdAt", "updatedAt", "removedAt", "_doc") VALUES ${Array.from({ length: rowNum }, () => values).join(", ")}`;
+    const copy = this.#rows.withStoredRow(this.#rows.hydrateStored(stored, String(doc.id)), stored);
+    return this.#rows.readAs(copy, { removedAt: (doc as Record<symbol, unknown>)[StoredRows.readRemoved] });
   }
 
   private prepareStmt(sql: string) {
@@ -1375,10 +362,5 @@ export class SqlDocumentStore {
     const stmt = connection.prepare(sql);
     cache.set(sql, stmt);
     return stmt;
-  }
-
-  private assertValidRefName(refName: string) {
-    if (!REF_NAME_RE.test(refName) || RESERVED_RE.test(refName))
-      throw new DocumentStoreError("invalidSchema", `Invalid database identifier: ${refName}`);
   }
 }
