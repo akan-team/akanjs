@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
+import { AkanError } from "akanjs/base";
 import { DEFAULT_AKAN_I18N } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
 import type { RouteSeedIndex, RoutesManifest } from "./artifact";
@@ -39,6 +40,7 @@ import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { RscTraceMetadata, SsrLateRedirect } from "./ssrTypes";
 import { type BaseBuildArtifact, defaultAkanImageConfig } from "./types";
 import { cancelStreamForHeadResponse } from "./webDocumentRoute";
+import { WebRouteContext } from "./webRouteContext";
 import { WebRouter } from "./webRouter";
 import { normalizeRscTargetUrlForHostBasePath } from "./webRscRoute";
 
@@ -702,6 +704,56 @@ describe("WebRouter dev route builds", () => {
       expect(await cacheControlOf({ nodeEnv: "production" })).toBe("no-cache");
     } finally {
       process.send = originalSend;
+    }
+  });
+});
+
+describe("WebRouter failed construction", () => {
+  test("leaves no builder RPC listener or HTML cache sweep timer behind when it throws after subscribing", () => {
+    const env = {
+      NODE_ENV: "development",
+      AKAN_PUBLIC_APP_NAME: "akan-test",
+      AKAN_PUBLIC_REPO_NAME: "akan",
+      AKAN_PUBLIC_SERVE_DOMAIN: "example.test",
+      AKAN_PUBLIC_OPERATION_MODE: "local",
+    };
+    const previousEnv = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+    for (const [key, value] of Object.entries(env)) setEnv(key, value);
+    const originalSend = process.send;
+    process.send = ((): boolean => true) as typeof process.send;
+    const setIntervalSpy = spyOn(globalThis, "setInterval");
+    const clearIntervalSpy = spyOn(globalThis, "clearInterval");
+    const listeners = process.listenerCount("message");
+    try {
+      expect(
+        () =>
+          new WebRouter({
+            artifact: createTestArtifact(),
+            web: { ssr: true, csr: true },
+            cssBytesByUrl: {},
+            rsc: createFakeRscWorker() as never,
+            seedIndex: { entries: [], globalLayoutFiles: [] },
+            upgradeHmrWs: () => false,
+            prebuilt: {
+              routeIds: [],
+              clientManifest: { "apps/a/ui/Card.tsx#Card": null as never },
+              ssrManifest: { moduleLoading: null, moduleMap: {} },
+              knownEntries: [],
+              modulePreloads: { runtime: [], vendors: {}, chunkVendors: {} },
+            },
+          }),
+      ).toThrow(TypeError);
+      expect(process.listenerCount("message")).toBe(listeners);
+      const started = setIntervalSpy.mock.results.map((result) => result.value);
+      expect(started).not.toHaveLength(0);
+      const cleared = clearIntervalSpy.mock.calls.map(([timer]): unknown => timer);
+      expect(cleared).toHaveLength(started.length);
+      for (const timer of started) expect(cleared.includes(timer)).toBe(true);
+    } finally {
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+      process.send = originalSend;
+      for (const [key, value] of Object.entries(previousEnv)) setEnv(key, value);
     }
   });
 });
@@ -1792,6 +1844,27 @@ describe("WebRouter production boot", () => {
       "/_akan/client/card.js",
     ]);
     expect(await planOf(prebuilt)).toBeUndefined();
+  });
+
+  test("fails a page whose route the production artifact lacks as artifactMissing, a 500", async () => {
+    const failures: unknown[] = [];
+    const errorPageResponse = WebRouteContext.prototype.errorPageResponse;
+    WebRouteContext.prototype.errorPageResponse = async (_req, _scope, err) => {
+      failures.push(err);
+      return new Response(null, { status: 500 });
+    };
+    try {
+      await withFullSsrCacheHarness(async ({ fullSsr }) => await fullSsr(new Request("https://example.test/docs")), {
+        seedIndex: { entries: [{ routeId: "/docs", pattern: "/docs", seeds: [] }], globalLayoutFiles: [] },
+      });
+    } finally {
+      WebRouteContext.prototype.errorPageResponse = errorPageResponse;
+    }
+    expect(AkanError.is(failures[0], "artifactMissing")).toBe(true);
+    expect(failures[0]).toMatchObject({
+      statusCode: 500,
+      message: "[SSR] route /docs missing from production artifact — rebuild with `akan build` to include it",
+    });
   });
 });
 

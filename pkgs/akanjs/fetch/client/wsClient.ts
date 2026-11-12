@@ -15,6 +15,7 @@ import type {
   WebsocketPublishData,
   WebsocketReqData,
   WebsocketResData,
+  WebsocketResyncData,
   WebsocketSubscribeAck,
 } from "akanjs/signal";
 import { websocketRoomContract } from "../../common/websocketContract";
@@ -267,6 +268,15 @@ export class WsClient {
               this.logger.warn(`Websocket room ${roomId} is no longer authorized`);
               this.#options.onRevoked?.(requestRoomId);
             }
+            break;
+          }
+          case "resync": {
+            const { roomId, seq } = parsed as WebsocketResyncData;
+            const roomSubscribe = this.#roomSubscribeMap.get(this.#roomAliasMap.get(roomId) ?? roomId);
+            const last = roomSubscribe?.cursor.seq ?? null;
+            if (!roomSubscribe || (seq !== undefined && last !== null && seq <= last)) break;
+            if (seq !== undefined) roomSubscribe.cursor.seq = seq;
+            for (const handler of roomSubscribe.resync) handler();
             break;
           }
           default:

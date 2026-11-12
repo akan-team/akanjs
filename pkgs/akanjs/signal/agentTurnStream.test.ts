@@ -2,8 +2,14 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { Err } from "akanjs/dictionary";
+import { adapt } from "akanjs/service";
+import { httpRunner, type RunnerRequest } from "use-agentic";
 import { AgentTurnStream } from "./agentTurnStream";
+import { buildEndpoint } from "./endpointInfo";
+import { Exception } from "./exception";
+import { Public } from "./guards";
 import { SignalFailure } from "./SignalFailure";
+import { SignalContext } from "./signalContext";
 
 const framesOf = async (response: Response) => {
   const text = await response.text();
@@ -134,16 +140,6 @@ describe("AgentTurnStream", () => {
     expect(await framesOf(response)).toEqual([{ type: "error", message: "unreadable", code: "conflict" }]);
   });
 
-  test("a duck-typed body's code names a 4xx but never a 5xx", () => {
-    const failing = (statusCode: number) =>
-      Object.assign(new Error("vendor said: secret detail"), {
-        statusCode,
-        toJSON: () => ({ error: "vendor said: secret detail", code: "vendorQuota", statusCode }),
-      });
-    expect(AgentTurnStream.failure(failing(429)).code).toBe("vendorQuota");
-    expect(AgentTurnStream.failure(failing(502)).code).toBe("badGateway");
-  });
-
   test("done carries the provider's count and the model's limits in the wire's own shape", async () => {
     const response = AgentTurnStream.response(async () => ({
       text: "ok",
@@ -196,6 +192,109 @@ describe("AgentTurnStream", () => {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
       SignalFailure.reset();
+      logged.mockRestore();
+    }
+  });
+});
+
+describe("a failed turn's code before and after the stream opens", () => {
+  const endpointInfo = buildEndpoint.mutation(String, { guards: [Public] }).exec(() => "unreached");
+  const adaptor = new (adapt("agentTurnFailureCodeAdaptor"))();
+  const request: RunnerRequest = {
+    messages: [{ role: "user", text: "hi" }],
+    tools: [],
+    context: [],
+    signal: new AbortController().signal,
+  };
+  const codeOver = async (answer: () => Promise<Response>) => {
+    const runner = httpRunner({ url: "http://relay.test/runAgentTurn", fetcher: answer as unknown as typeof fetch });
+    for await (const event of runner.run(request)) if (event.type === "error") return event.code;
+    return undefined;
+  };
+  const beforeStream = (failure: () => unknown) =>
+    codeOver(
+      async () =>
+        (await SignalContext.try(adaptor, endpointInfo, "runAgentTurn", async () => {
+          throw failure();
+        })) as Response,
+    );
+  const insideStream = (failure: () => unknown) =>
+    codeOver(async () =>
+      AgentTurnStream.response(async () => {
+        throw failure();
+      }),
+    );
+  const ownJson = (statusCode: number, wire: { error?: string; message?: string; code?: string }) =>
+    Object.assign(new Error(wire.error ?? wire.message ?? ""), { statusCode, toJSON: () => ({ ...wire, statusCode }) });
+
+  const failures: [name: string, failure: () => unknown, code: string][] = [
+    ["a coded 5xx", () => ownJson(503, { error: "Quota spent", code: "vendorQuota" }), "vendorQuota"],
+    [
+      "a 5xx coded by the framework",
+      () => new AkanError("vendorQuota", "quota spent", { statusCode: 503 }),
+      "vendorQuota",
+    ],
+    [
+      "a 5xx keyed by the dictionary",
+      () => new Err("agent.error.llmUnavailable", {}, { statusCode: 503 }),
+      "agent.error.llmUnavailable",
+    ],
+    ["an uncoded 5xx", () => ownJson(503, { error: "Upstream down" }), "serviceUnavailable"],
+    ["a crash", () => new Error("boom"), "internalError"],
+    [
+      "a proxy 502 with a junk code",
+      () => ownJson(502, { error: "<html>Bad Gateway</html>", code: "ECONNRESET" }),
+      "badGateway",
+    ],
+    [
+      "a restored proxy 502",
+      () => Err.fromJSON({ error: "<html>Bad Gateway</html>", statusCode: 502, code: "ECONNRESET" }),
+      "badGateway",
+    ],
+    ["a coded 4xx", () => ownJson(429, { error: "Slow down", code: "vendorQuota" }), "vendorQuota"],
+    ["a guard's 403 keyed by the dictionary", () => new Err.Forbidden("agent.error.requestRefused"), "forbidden"],
+    ["a guard's 403", () => new Exception.Forbidden("Access denied by guard: AgentRelayAccess"), "forbidden"],
+    ["a signed-out 401", () => new Exception.Unauthorized("Internal Argument Account is required"), "unauthorized"],
+    ["a 403 the server kept", () => new AkanError("grantDenied", "no grant", { statusCode: 403 }), "grantDenied"],
+    [
+      "a restored 403 the server kept",
+      () => ownJson(403, { error: "grant refused", code: "fileGrantRefused" }),
+      "fileGrantRefused",
+    ],
+    ["a coded 5xx with no message", () => ownJson(503, { code: "vendorQuota" }), "vendorQuota"],
+    ["a coded 5xx with an empty message", () => ownJson(503, { error: "", code: "vendorQuota" }), "vendorQuota"],
+    ["a coded 4xx with no message", () => ownJson(429, { code: "vendorQuota" }), "vendorQuota"],
+    ["a kept 403 with no message", () => ownJson(403, { code: "fileGrantRefused" }), "fileGrantRefused"],
+    [
+      "a 5xx keyed only in its code",
+      () => ownJson(503, { error: "Upstream down", code: "agent.error.llmUnavailable" }),
+      "agent.error.llmUnavailable",
+    ],
+    [
+      "a 5xx keyed only in its message",
+      () => ownJson(503, { message: "agent.error.llmUnavailable" }),
+      "agent.error.llmUnavailable",
+    ],
+    [
+      "a kept 403 with a key and a code",
+      () => ownJson(403, { error: "agent.error.grantRefused", code: "fileGrantRefused" }),
+      "fileGrantRefused",
+    ],
+    [
+      "a 5xx whose toJSON() gives null",
+      () => Object.assign(new Error("upstream down"), { statusCode: 503, toJSON: () => null }),
+      "serviceUnavailable",
+    ],
+  ];
+
+  test.each(failures)("%s reads one code", async (_name, failure, code) => {
+    const logged = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    try {
+      expect({ beforeStream: await beforeStream(failure), insideStream: await insideStream(failure) }).toEqual({
+        beforeStream: code,
+        insideStream: code,
+      });
+    } finally {
       logged.mockRestore();
     }
   });

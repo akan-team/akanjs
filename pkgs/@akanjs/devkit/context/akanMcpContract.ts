@@ -3,17 +3,17 @@ import path from "node:path";
 import { isRecord } from "akanjs/common";
 import type { Workspace } from "../commandDecorators";
 import type {
-  AkanContextEvidence,
-  AkanContextNext,
   InspectAkanContextProps,
   InspectAkanContextRequest,
   InspectAkanContextResult,
-  WorkflowDiagnostic,
   WorkflowPlanInputs,
 } from "../workflow";
-import { buildAkanModuleContextIndex, createWorkflowBaselineSummary, toolingRolloutGate } from "../workflow";
-import { AkanContextAnalyzer, type AkanDiagnostic, type AkanModuleContext } from "./akanContext";
+import { toolingRolloutGate } from "../workflow";
+import type { AkanModuleContext } from "./akanContext";
+import { AkanContextInspection } from "./akanContextInspection";
 import { AkanMcpToolError } from "./akanMcpToolError";
+
+export { inspectDiagnostic, moduleCandidate, moduleEvidence } from "./akanContextInspection";
 
 export type McpToolDefinition = {
   name: string;
@@ -271,28 +271,6 @@ export const inspectAkanContextPropsArg = (args: Record<string, unknown>): Inspe
   };
 };
 
-export const inspectDiagnostic = (
-  severity: WorkflowDiagnostic["severity"],
-  code: string,
-  message: string,
-): WorkflowDiagnostic => ({ severity, code, message });
-
-export const moduleEvidence = (module: AkanModuleContext): AkanContextEvidence => ({
-  kind: "module",
-  target: `${module.sysName}:${module.name}`,
-  path: module.path,
-  summary: `${module.kind} module at ${module.path} with ${module.files.length} source file(s).`,
-});
-
-export const moduleCandidate = (module: AkanModuleContext) => ({
-  app: module.sysName,
-  sysType: module.sysType,
-  module: module.name,
-  kind: module.kind,
-  path: module.path,
-  files: module.files,
-});
-
 export const expectedFieldInsertionFiles = (module: AkanModuleContext) => {
   const sourceFiles = [`${module.name}.constant.ts`, `${module.name}.dictionary.ts`];
   const uiFiles = module.files.filter((file) => file.endsWith(".tsx"));
@@ -515,230 +493,12 @@ export const inspectAkanContext = async (
   args: Record<string, unknown>,
 ): Promise<InspectAkanContextResult> => {
   const props = inspectAkanContextPropsArg(args);
-  const diagnostics: WorkflowDiagnostic[] = [];
-  if (props.draft.type !== props.request.type) {
-    diagnostics.push(
-      inspectDiagnostic(
-        "warning",
-        "inspect-draft-request-mismatch",
-        `Draft chose ${props.draft.type}, but request uses ${props.request.type}.`,
-      ),
-    );
-  }
-
-  const baseResult = (
-    type: InspectAkanContextRequest["type"],
-    evidence: AkanContextEvidence[],
-    next: AkanContextNext,
-    data?: Record<string, unknown>,
-  ): InspectAkanContextResult => ({
-    schemaVersion: 1,
-    type,
-    question: props.question,
-    diagnostics,
-    evidence,
-    next,
-    ...(data ? { data } : {}),
-  });
-
-  if (props.request.type === "escape") {
-    return baseResult(
-      "escape",
-      [{ kind: "escape", summary: props.request.reason }],
-      {
-        action: "escape",
-        reason: props.request.reason,
-        ...(props.request.nextStep ? { args: { nextStep: props.request.nextStep } } : {}),
-      },
-      { reason: props.request.reason, nextStep: props.request.nextStep ?? null },
-    );
-  }
-
-  if (props.request.type === "workflowDiagnostics") {
-    const doctor = await AkanContextAnalyzer.doctor(workspace, {
-      strict: true,
-      runIdOrPlan: workflowArtifactPath(workspace, props.request.runIdOrPlan),
-    });
-    const toWorkflowDiagnostic = (
-      { severity, code, message, scope }: AkanDiagnostic,
-      context: AkanDiagnostic["context"],
-    ): WorkflowDiagnostic => ({ severity, code, message, scope, context });
-    const baselineSummary = createWorkflowBaselineSummary(
-      (doctor.baselineDiagnostics ?? []).map((diagnostic) => toWorkflowDiagnostic(diagnostic, diagnostic.context)),
-      { detailsIncluded: false },
-    );
-    diagnostics.push(
-      ...(doctor.workflowDiagnostics ?? doctor.diagnostics).map((diagnostic) =>
-        toWorkflowDiagnostic(diagnostic, {
-          ...diagnostic.context,
-          ...(diagnostic.path ? { paths: [diagnostic.path] } : {}),
-        }),
-      ),
-    );
-    return baseResult(
-      "workflowDiagnostics",
-      [
-        {
-          kind: "workflow",
-          target: props.request.runIdOrPlan,
-          summary: `Workflow diagnostics status is ${doctor.status}.`,
-        },
-      ],
-      {
-        action: doctor.status === "passed" ? "answer" : "validate",
-        reason:
-          doctor.status === "passed"
-            ? "No strict workspace diagnostics were found for the workflow context."
-            : "Review diagnostics before applying or manually editing source files.",
-      },
-      {
-        status: doctor.status,
-        baselineSummary,
-        baselineDiagnostics: 0,
-        workflowDiagnostics: doctor.workflowDiagnostics?.length ?? 0,
-      },
-    );
-  }
-
-  const moduleRequest =
-    props.request.type === "moduleContext" || props.request.type === "fieldInsertionContext" ? props.request : null;
-  const context = await AkanContextAnalyzer.analyze(workspace, {
-    app: moduleRequest?.app ?? null,
-    module: moduleRequest?.module ?? null,
-    includeAbstractContent: false,
-  });
-
-  if (props.request.type === "workspaceOverview") {
-    return baseResult(
-      "workspaceOverview",
-      [
-        {
-          kind: "workspace",
-          summary: `${context.repoName} has ${context.apps.length} app(s), ${context.libs.length} lib(s), and ${context.pkgs.length} package(s).`,
-        },
-      ],
-      {
-        action: "inspect",
-        reason: "Choose moduleContext or fieldInsertionContext for module-scoped evidence before planning a workflow.",
-        tool: "inspect_akan_context",
-      },
-      {
-        repoName: context.repoName,
-        apps: context.apps.map((app) => ({ name: app.name, path: app.path, modules: app.modules.length })),
-        libs: context.libs.map((lib) => ({ name: lib.name, path: lib.path, modules: lib.modules.length })),
-        pkgs: context.pkgs.map((pkg) => ({ name: pkg.name, path: pkg.path, version: pkg.version ?? null })),
-        generatedFiles: context.generatedFiles,
-        validationCommands: context.validationCommands,
-      },
-    );
-  }
-
-  const modules = AkanContextAnalyzer.findModules(context, props.request.module, {
-    app: props.request.app ?? null,
-  });
-  if (modules.length === 0) {
-    diagnostics.push(
-      inspectDiagnostic(
-        "error",
-        "inspect-module-not-found",
-        `No module matched ${props.request.app ? `${props.request.app}:` : ""}${props.request.module}.`,
-      ),
-    );
-    return baseResult(
-      props.request.type,
-      [],
-      {
-        action: "escape",
-        reason:
-          "The requested module was not found in the workspace index; inspect workspace files or clarify the target.",
-      },
-      { candidates: [] },
-    );
-  }
-  if (!props.request.app && modules.length > 1) {
-    diagnostics.push(
-      inspectDiagnostic(
-        "error",
-        "inspect-module-ambiguous",
-        `Multiple modules match "${props.request.module}". Re-run with app to disambiguate.`,
-      ),
-    );
-    return baseResult(
-      props.request.type,
-      modules.map(moduleEvidence),
-      {
-        action: "clarify",
-        reason: "Multiple modules have the same name; choose an app before planning a workflow.",
-      },
-      { candidates: modules.map(moduleCandidate) },
-    );
-  }
-
-  const module = modules[0];
-  if (props.request.type === "moduleContext") {
-    return baseResult(
-      "moduleContext",
-      [moduleEvidence(module)],
-      {
-        action: "inspect",
-        reason: "Use fieldInsertionContext when preparing add-field or escape when source body details are required.",
-        tool: "inspect_akan_context",
-      },
-      { module: moduleCandidate(module) },
-    );
-  }
-
-  if (module.kind !== "domain") {
-    diagnostics.push(
-      inspectDiagnostic(
-        "error",
-        "field-insertion-unsupported-module-kind",
-        `fieldInsertionContext currently targets domain modules; ${module.sysName}:${module.name} is ${module.kind}.`,
-      ),
-    );
-  }
-  const moduleIndex = await buildAkanModuleContextIndex(workspace, module, { field: props.request.field });
-  diagnostics.push(...moduleIndex.diagnostics);
-  return baseResult(
-    "fieldInsertionContext",
-    [
-      moduleEvidence(module),
-      {
-        kind: "field-insertion",
-        target: `${module.sysName}:${module.name}.${props.request.field}`,
-        path: module.path,
-        summary:
-          "M2 returns source-body-free AST index evidence for constant fields, dictionary model labels, and light projection fields.",
-      },
-    ],
-    module.kind === "domain"
-      ? {
-          action: "plan_workflow",
-          reason: "The module target is unambiguous; create an add-field workflow plan before source edits.",
-          tool: "plan_workflow",
-          args: {
-            workflow: "add-field",
-            inputs: {
-              app: module.sysName,
-              module: module.name,
-              field: props.request.field,
-              type: props.request.fieldType,
-            },
-          },
-        }
-      : {
-          action: "escape",
-          reason: "This module kind is not a supported add-field target in the P1 context contract.",
-        },
-    {
-      target: {
-        app: module.sysName,
-        module: module.name,
-        field: props.request.field,
-        fieldType: props.request.fieldType,
-      },
-      files: moduleIndex.files,
-      moduleIndex,
-    },
-  );
+  const inspection = new AkanContextInspection(workspace, props);
+  const { request } = props;
+  if (request.type === "escape") return inspection.escape(request);
+  if (request.type === "workflowDiagnostics")
+    return await inspection.workflowDiagnostics(request, workflowArtifactPath(workspace, request.runIdOrPlan));
+  if (request.type === "workspaceOverview") return await inspection.workspaceOverview();
+  if (request.type === "moduleContext") return await inspection.moduleContext(request);
+  return await inspection.fieldInsertionContext(request);
 };

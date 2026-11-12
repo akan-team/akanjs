@@ -246,7 +246,7 @@ export class FrameworkChannelReader {
     this.#spoken.set(source.fileName, spoken);
   }
 
-  //? On a tie the site's own file wins: `RscRenderer` compares its local `RenderControl`, not `RscInMsg`.
+  //? On a tie the site's own file wins: `RscFlightStream` compares its local `RenderControl`, not `RscInMsg`.
   #settle(candidates: UnionShape[], site: Site) {
     const local = candidates.filter(({ file }) => file === site.source.fileName);
     const unions = candidates.length > 1 && local.length ? local : candidates;

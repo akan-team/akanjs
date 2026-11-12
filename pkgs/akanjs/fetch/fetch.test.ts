@@ -3276,6 +3276,53 @@ describe("WsClient", () => {
     });
   });
 
+  test("tells a room to resync when the server says it may have missed events, by the id the server names", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws");
+    let resyncs = 0;
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    client.subscribe({
+      key: "taskLiveInOrg",
+      data: ["o1"],
+      handleEvent: () => undefined,
+      handleResync: () => {
+        resyncs += 1;
+      },
+    });
+    ws.receive({ type: "sub", roomId: "taskLiveInOrg-o1::u1", requestRoomId: "taskLiveInOrg-o1", subscribe: true });
+    ws.receive({ type: "resync", roomId: "taskLiveInOrg-o1::u1" });
+    expect(resyncs).toBe(1);
+    ws.receive({ type: "resync", roomId: "someoneElse-o1::u2" });
+    expect(resyncs).toBe(1);
+    client.destroy();
+  });
+
+  test("counts a numbered resync among the room's frames, so the next frame finds no hole and a repeat runs nothing", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws");
+    let resyncs = 0;
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    client.subscribe({
+      key: "roomChat",
+      data: ["c1"],
+      handleEvent: () => undefined,
+      handleResync: () => {
+        resyncs += 1;
+      },
+    });
+    ws.receive({ type: "pub", roomId: "roomChat-c1", data: { n: 1 }, seq: 1 });
+    ws.receive({ type: "resync", roomId: "roomChat-c1", seq: 2 });
+    ws.receive({ type: "pub", roomId: "roomChat-c1", data: { n: 2 }, seq: 3 });
+    expect(resyncs).toBe(1);
+    ws.receive({ type: "resync", roomId: "roomChat-c1", seq: 2 });
+    expect(resyncs).toBe(1);
+    client.destroy();
+  });
+
   test("re-keys a live room to the id the server names and matches its frames", () => {
     setFakeWebSocket();
     const client = new WsClient("ws://example/ws");
