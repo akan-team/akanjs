@@ -129,6 +129,42 @@ export const writeJson = async (filePath: string, value: object) => {
   await writeText(filePath, `${JSON.stringify(value, null, 2)}\n`);
 };
 
+export const heldMtimeIndex = () => {
+  const primes: PromiseWithResolvers<void>[] = [];
+  const scans: PromiseWithResolvers<string[]>[] = [];
+  class SourceMtimeIndex {
+    #primed = false;
+    readonly trackedFileCount = 0;
+    readonly coverageGaps: { path: string; code: string }[] = [];
+    readonly hasUnsettledDirs = false;
+    get primed() {
+      return this.#primed;
+    }
+    async prime() {
+      const gate = Promise.withResolvers<void>();
+      primes.push(gate);
+      await gate.promise;
+      this.#primed = true;
+    }
+    collectChanges() {
+      const scan = Promise.withResolvers<string[]>();
+      scans.push(scan);
+      return scan.promise;
+    }
+  }
+  return { SourceMtimeIndex, primes, scans };
+};
+
+//? FSEvents drops what lands before its stream is up, so the save repeats until the watcher has acted on one.
+export const saveUntil = async (file: string, seen: () => boolean, timeoutMs = 5_000) => {
+  const deadline = Date.now() + timeoutMs;
+  for (let n = 0; !seen() && Date.now() < deadline; n++) {
+    await writeFile(file, `export const x = ${n};\n`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return seen();
+};
+
 const repoRoot = path.resolve(import.meta.dir, "../../../..");
 const biomeBin = path.join(repoRoot, "node_modules", ".bin", process.platform === "win32" ? "biome.exe" : "biome");
 export const hasBiome = existsSync(biomeBin);
