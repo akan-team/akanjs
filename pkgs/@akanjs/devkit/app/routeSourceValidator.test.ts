@@ -31,7 +31,9 @@ describe("RouteSourceValidator", () => {
       expect(() => validate(source, "layout", true)).toThrow(
         `unsupported export "${name}" in page/_layout.tsx: ${name} belongs to the root layout Akan.js generates, which never reads one from an app's layout`,
       );
-      expect(() => validate(source, "layout")).toThrow(`unsupported export "${name}" in page/_layout.tsx`);
+      expect(() => validate(source, "layout")).toThrow(
+        new RegExp(`unsupported export "${name}" in page/_layout\\.tsx$`),
+      );
     }
   });
 
