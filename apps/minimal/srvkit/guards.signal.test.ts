@@ -111,6 +111,8 @@ describe("LocalOrEdge", () => {
   it("links the trips page to the trip notes when the memo check outlasts its 3 s deadline", async () => {
     const answersLate = () => new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 4_000));
     spyOn(LocalOrEdge.prototype, "canPass").mockImplementation(answersLate as unknown as () => boolean);
+    const startedAt = performance.now();
     expect(await tripsLinks()).toContain("/memo");
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(2_500);
   }, 10_000);
 });
