@@ -140,10 +140,10 @@ Declared in [server/rscWorker.tsx](server/rscWorker.tsx).
 
 | Message | Sent by | Handled by |
 | --- | --- | --- |
-| `init` | `RscWorker` | `RscRenderer` |
-| `render` | `RscWorker` | `RscRenderer` |
-| `cancel` | `RscWorker` | `RscRenderer` |
-| `reload` | `RscWorker` | `RscRenderer` |
+| `init` | `RscHostReloads` | `RscRenderer` |
+| `render` | `RscHostRequests` | `RscRenderer` |
+| `cancel` | `RscHostRequests` | `RscRenderer` |
+| `reload` | `RscHostReloads` | `RscRenderer` |
 | `updateCssAssets` | `RscWorker` | `RscRenderer` |
 | `invalidate-cache` | `createRscWorkerInvalidateCacheMessage` | `RscRenderer` |
 | `log-level` | `RscWorker` | `RscRenderer` |
