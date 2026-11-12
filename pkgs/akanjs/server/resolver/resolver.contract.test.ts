@@ -36,6 +36,7 @@ import { FetchSerializer } from "../../signal/serializer";
 import { serverSignal } from "../../signal/serverSignal";
 import type { SignalContext } from "../../signal/signalContext";
 import { type SliceCls, slice } from "../../signal/slice";
+import { runTraced, SignalTrace } from "../../signal/trace";
 import type { WebsocketSubscribeAck } from "../../signal/types";
 import { ConformanceEnv } from "../../test/conformance";
 import { Ed25519Key } from "../ed25519Key";
@@ -708,6 +709,25 @@ describe("DatabaseResolver declaration contracts", () => {
       method: "purgeManyByQuery",
       args: [{ kind: "all", queries: [{ category: "news" }, {}] }],
     });
+  });
+
+  test("counts a store query against the request's trace from the adaptor, the facade, the id loader and declared loaders", async () => {
+    const { instance } = await bootModel<{
+      __list: (query: unknown) => Promise<unknown[]>;
+      __load: (id: string) => Promise<unknown>;
+      byOwner: { load: (key: string) => Promise<unknown> };
+      byOwnerCategory: { load: (key: Record<string, string>) => Promise<unknown> };
+      ServerResolverTestItem: { count: (query: unknown) => Promise<number> };
+    }>();
+    const trace = new SignalTrace("serverResolverTestItemList", "query", { mode: "full" });
+    await runTraced(trace, async () => {
+      await instance.__list({ category: "news" });
+      await instance.ServerResolverTestItem.count({ category: "news" });
+      await instance.__load("doc-1");
+      await instance.byOwner.load("owner-1");
+      await instance.byOwnerCategory.load({ ownerId: "owner-1", category: "news" });
+    });
+    expect([trace.dbQueryCount, trace.dataLoaderBatchCount]).toEqual([5, 3]);
   });
 
   test("indexes the column a removeWith child is found by", () => {
