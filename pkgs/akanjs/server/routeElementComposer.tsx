@@ -393,7 +393,8 @@ export class RouteElementComposer {
         navKey && loadingFallback != null && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
       const levelGate = levelGates[i];
       //? The owner renders System.Provider, which starts the router, and a root `_overrides` level sits above it: a
-      //? notice at or above the owner would have no router to retry.
+      //? notice at or above the owner would have no router to retry. The owner bounds its own content inside the
+      //? provider instead.
       const Boundary = i > ownerIndex ? levelBoundary?.Boundary : undefined;
       const level = (
         <RouteElementComposer.AsyncRender

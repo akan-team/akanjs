@@ -751,6 +751,8 @@ export interface FrameworkSite {
     at: AkanGraphLocation;
 }
 
+export declare const GENERATED_ROOT_LAYOUT_EXPORTS: ReadonlySet<string>;
+
 export declare class IpLiteral {
     static parse(entry: string): null | string;
 }

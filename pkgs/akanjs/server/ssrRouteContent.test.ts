@@ -24,6 +24,9 @@ const streamedLabelId = "routecontent/streamedLabel";
 const streamedLabelModule = path.join(import.meta.dir, "ssrStreamedReadClient.fixture.tsx");
 const levelBoundaryId = "routecontent/levelBoundary";
 const levelBoundaryModule = path.join(import.meta.dir, "../webkit/RouteLevelBoundary.tsx");
+const rootLevelBoundaryId = "rootlevel/levelBoundary";
+const rootLevelClientId = "rootlevel/client";
+const rootLevelClientModule = path.join(import.meta.dir, "ssrRootLevelClient.fixture.tsx");
 const routeContentSsrManifest = {
   moduleLoading: null,
   moduleMap: {
@@ -44,6 +47,19 @@ const routeContentSsrManifest = {
         name: "RouteLevelBoundary",
       },
     },
+    [rootLevelBoundaryId]: {
+      RouteLevelBoundary: {
+        id: levelBoundaryModule,
+        chunks: [levelBoundaryModule, levelBoundaryModule],
+        name: "RouteLevelBoundary",
+      },
+    },
+    [rootLevelClientId]: Object.fromEntries(
+      ["RouterBridge", "UsesId"].map((name) => [
+        name,
+        { id: rootLevelClientModule, chunks: [rootLevelClientModule, rootLevelClientModule], name },
+      ]),
+    ),
   },
 };
 
@@ -68,6 +84,9 @@ const withRouteContentWorker = async (
       [readsWindowId]: { id: readsWindowId, chunks: [], name: "ReadsWindow" },
       [streamedLabelId]: { id: streamedLabelId, chunks: [], name: "StreamedLabel" },
       [levelBoundaryId]: { id: levelBoundaryId, chunks: [], name: "RouteLevelBoundary" },
+      [rootLevelBoundaryId]: { id: rootLevelBoundaryId, chunks: [], name: "RouteLevelBoundary" },
+      [`${rootLevelClientId}#RouterBridge`]: { id: rootLevelClientId, chunks: [], name: "RouterBridge" },
+      [`${rootLevelClientId}#UsesId`]: { id: rootLevelClientId, chunks: [], name: "UsesId" },
     },
   } as unknown as BaseBuildArtifact);
   try {
@@ -336,7 +355,11 @@ const markupOf = async (node: ReactNode) => {
 };
 
 //? A DOM only for the hydration: the worker host and the SSR renderer above read `typeof window`.
-const hydrated = async (payload: Uint8Array, run: (container: HTMLElement, uncaught: unknown[]) => void) => {
+const hydrated = async (
+  payload: Uint8Array,
+  run: (container: HTMLElement, uncaught: unknown[], recoverable: unknown[]) => void | Promise<void>,
+  keptSelectors = ["main", "section", "#beside"],
+) => {
   const markup = await markupOf(await bodyOf(payload));
   const { GlobalRegistrator } = await import("@happy-dom/global-registrator");
   GlobalRegistrator.register();
@@ -346,7 +369,8 @@ const hydrated = async (payload: Uint8Array, run: (container: HTMLElement, uncau
   container.innerHTML = markup;
   document.body.appendChild(container);
   const uncaught: unknown[] = [];
-  const kept = ["main", "section", "#beside"].map((selector) => [selector, container.querySelector(selector)] as const);
+  const recoverable: unknown[] = [];
+  const kept = keptSelectors.map((selector) => [selector, container.querySelector(selector)] as const);
   let root: ReturnType<typeof hydrateRoot> | undefined;
   try {
     const tree = await bodyOf(payload);
@@ -354,12 +378,12 @@ const hydrated = async (payload: Uint8Array, run: (container: HTMLElement, uncau
       root = hydrateRoot(container, tree, {
         onUncaughtError: (error) => void uncaught.push(error),
         onCaughtError: () => undefined,
-        onRecoverableError: () => undefined,
+        onRecoverableError: (error) => void recoverable.push(error),
       });
     });
     await act(async () => {});
     for (const [selector, node] of kept) expect(container.querySelector(selector)).toBe(node);
-    run(container, uncaught);
+    await run(container, uncaught, recoverable);
   } finally {
     await act(async () => {
       root?.unmount();
@@ -393,6 +417,88 @@ describe("A route level that fails after the first byte", () => {
           expect(uncaught).toEqual([]);
         });
       });
+    });
+  }, 20_000);
+});
+
+describe("The root layout's own level", () => {
+  const markupBeforeScripts = (html: string) => html.slice(html.indexOf("<body>"), html.indexOf("<script"));
+
+  test("renders the same markup and useId values inside its boundary as without it, and hydrates them in place", async () => {
+    await withRouteContentWorker(async (render) => {
+      const bounded = await render("ids");
+      const bare = await render("bareids");
+      expect(markupBeforeScripts(bounded.html)).toContain('<div id="provider"><section id="user"><b id="_R_');
+      expect(markupBeforeScripts(bounded.html)).toBe(markupBeforeScripts(bare.html));
+
+      await hydrated(
+        bounded.payload,
+        (container, uncaught, recoverable) => {
+          expect(container.querySelector("#provider b")?.id).toStartWith("_R_");
+          expect({ uncaught, recoverable }).toEqual({ uncaught: [], recoverable: [] });
+        },
+        ["#provider", "section", "#provider b", "#ids"],
+      );
+    }, "ssrRootLevel.fixture.tsx");
+  }, 20_000);
+
+  test("answers 200 when it fails after the first byte, then draws its notice inside the provider, whose router retries", async () => {
+    const { refreshes } = await import("./ssrRootLevelClient.fixture");
+    await withLoggedErrors(async () => {
+      await withRouteContentWorker(async (render) => {
+        const late = await render("rootlate");
+        expect(late.status).toBe(200);
+        expect(late.html).toContain('<body><!--$?--><template id="B:0"></template><i>root loading</i><!--/$-->');
+        expect(late.html).toContain('$RX("B:0"');
+        const widget = await render("rootwidget");
+        expect(widget.status).toBe(200);
+        expect(widget.html).toContain(
+          '<section id="user"><!--$?--><template id="B:0"></template><i>widget loading</i>',
+        );
+        expect(widget.html).toContain('$RX("B:0"');
+
+        for (const [failed, kept] of [
+          [late, []],
+          [widget, ["#provider"]],
+        ] as const) {
+          await hydrated(
+            failed.payload,
+            async (container, uncaught) => {
+              expect(uncaught).toEqual([]);
+              expect(container.querySelector("#provider > [role='alert']")).not.toBeNull();
+              expect(container.querySelector("#user")).toBeNull();
+              const retry = container.querySelector<HTMLButtonElement>("#provider > [role='alert'] button");
+              const before = refreshes.count;
+              await act(async () => retry?.click());
+              expect(refreshes.count).toBe(before + 1);
+            },
+            [...kept],
+          );
+        }
+      }, "ssrRootLevel.fixture.tsx");
+    });
+  }, 20_000);
+
+  test("lets a route control through: a real redirect before the first byte, and no notice for one after it", async () => {
+    await withLoggedErrors(async () => {
+      await withRouteContentWorker(async (render) => {
+        await expect(render("rootearly")).rejects.toThrow("got redirect");
+        const moved = await render("rootmoved");
+        expect(moved.html).toContain('<script>window.location.replace("/en/elsewhere")</script>');
+        const gone = await render("rootgone");
+        expect(gone.status).toBe(200);
+
+        for (const routed of [moved, gone])
+          await hydrated(
+            routed.payload,
+            (container, uncaught) => {
+              expect(uncaught).toEqual([]);
+              expect(container.querySelector("[role='alert']")).toBeNull();
+              expect(container.querySelector("#provider")).not.toBeNull();
+            },
+            [],
+          );
+      }, "ssrRootLevel.fixture.tsx");
     });
   }, 20_000);
 });
