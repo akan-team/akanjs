@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { joinBytes, rowShapedText, textRow } from "./flightRows.fixture";
+import { joinBytes, rowShapedText, streamOfChunks, textRow } from "./flightRows.fixture";
 import {
   AKAN_RSC_RESPONSE_STATE_HEADER,
   type AkanHeadSnapshotV1,
@@ -9,6 +9,10 @@ import {
 import { validateRscPatchAndRequestFullFallback, validateRscPatchForGuardedCommit } from "./rscClientPatch";
 import { RSC_CONTENT_TYPE } from "./rscHttp";
 import { makePatch, makeRouterState, makeTreeOf } from "./rscNavigation.fixture";
+
+//? RSDW's browser client reads `__webpack_require__.u` as its module loads.
+Object.assign(globalThis, { __webpack_require__: Object.assign(() => ({}), { u: () => "" }) });
+const { createFromReadableStream } = await import("react-server-dom-webpack/client.browser");
 
 function makeHeadSnapshot(title = "API"): AkanHeadSnapshotV1 {
   return { version: 1, nodes: [{ tag: "title", text: title }] };
@@ -242,6 +246,28 @@ describe("rscClient patch fallback flow", () => {
 
     expect(redirectResult).toEqual({ status: "rejected", reason: "redirect-in-patch" });
     expect(errorResult).toEqual({ status: "rejected", reason: "error-in-patch" });
+  });
+
+  test.each([
+    ["redirect", "redirect-in-patch" as const, { digest: "AKAN_REDIRECT;push;307;%2Flogin", name: "Error" }],
+    ["error", "error-in-patch" as const, { digest: "AKAN_RENDER_ERROR", name: "Error", message: "Boom" }],
+  ])("rejects a patch whose %s row comes in a chunk after its root row's", async (_, reason, error) => {
+    const currentState = makeRouterState("https://example.test/docs/intro", "/docs/intro");
+    const targetState = makeRouterState("https://example.test/docs/api", "/docs/api");
+    const chunks = ['0:["$","main",null,{"children":"$L1"}]\n', `1:E${JSON.stringify(error)}\n`];
+
+    const result = await validateRscPatchForGuardedCommit({
+      partialCommitEnabled: true,
+      href: targetState.href,
+      response: new Response(streamOfChunks(chunks.map((rows) => new TextEncoder().encode(rows))), {
+        headers: patchResponse("", targetState).headers,
+      }),
+      patch: { ...makePatch("/docs/api"), headSafe: true, headSnapshot: makeHeadSnapshot() },
+      currentTree: makeTreeOf(currentState, "intro"),
+      createThenable: (rows) => createFromReadableStream(rows()),
+    });
+
+    expect(result).toEqual({ status: "rejected", reason });
   });
 
   test("keeps a patch whose long text holds lines shaped like redirect or error rows", async () => {

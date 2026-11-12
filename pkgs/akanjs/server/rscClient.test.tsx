@@ -1392,6 +1392,54 @@ describe("rscClient patch cache", () => {
     expect(shown()).toBe(`${base}/b`);
   });
 
+  test("a patch whose redirect row comes while its dictionary loads is fetched again whole, not laid", async () => {
+    const dictionaryDir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-rsc-patch-dict-"));
+    const dictionary = path.join(dictionaryDir, "fr.js");
+    fs.writeFileSync(dictionary, 'await globalThis.__patchDictGate;\nexport const lang = "fr";\nexport default {};');
+    let openDictionary = () => {};
+    Object.assign(globalThis, { __patchDictGate: new Promise<void>((resolve) => (openDictionary = resolve)) });
+    let sendRedirect = () => {};
+    framed("/held/a", "held");
+    framed("/held/b", "held");
+    const framedB = served.get("/held/b");
+    served.set("/held/b", async (headers) => {
+      const response = (await framedB?.(headers)) ?? responseOf("/held");
+      if (response.headers.get("X-Akan-Rsc-Partial") !== "patch") return response;
+      const encoder = new TextEncoder();
+      const [root, redirect] = [await response.text(), '1:E{"digest":"AKAN_REDIRECT;push;307;%2Flogin"}\n'];
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(root));
+          sendRedirect = () => {
+            controller.enqueue(encoder.encode(redirect));
+            controller.close();
+          };
+        },
+      });
+      response.headers.set(AKAN_RSC_DICTIONARY_HEADER, dictionary);
+      return new Response(body, { headers: response.headers });
+    });
+    await navigate("/held/a");
+    let navigation: Promise<void> | undefined;
+    await act(async () => {
+      navigation = globalThis.__AKAN_RSC_NAVIGATE__?.("/held/b");
+      await sleep(30);
+    });
+    expect(shown()).toBe("/held/a");
+
+    await act(async () => {
+      sendRedirect();
+      await sleep(10);
+      openDictionary();
+      await navigation;
+    });
+
+    fs.rmSync(dictionaryDir, { recursive: true, force: true });
+    const requests = fetched.filter(({ pathname }) => pathname === "/held/b");
+    expect(requests.map(({ sentRouterState }) => sentRouterState)).toEqual([true, false]);
+    expect(shown()).toBe("/held/b");
+  });
+
   test("a patch is replayed once a full commit brings back the page it went under, with its own title", async () => {
     framed("/deck/a", "deck");
     framed("/deck/b", "deck");
@@ -1434,39 +1482,42 @@ describe("rscClient patch cache", () => {
     expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
   });
 
-  test("a patch whose stream carried a server error after it was laid is asked for again, not replayed", async () => {
-    framed("/err/a", "err");
-    framed("/err/off", "erroff");
+  test.each([
+    ["a server error", "err", "5c6d7e8f"],
+    ["a redirect", "rdl", "AKAN_REDIRECT;push;307;%2Flogin"],
+  ])("a patch whose stream carried %s after it was laid is asked for again, not replayed", async (_, base, digest) => {
+    framed(`/${base}/a`, base);
+    framed(`/${base}/off`, `${base}off`);
     let release = () => {};
-    served.set("/err/b", () => {
-      const state = stateOf("/err/b", "err layouts");
-      if (fetchCountOf("/err/b") > 1) return patchResponseOf("/err/b", state);
+    served.set(`/${base}/b`, () => {
+      const state = stateOf(`/${base}/b`, `${base} layouts`);
+      if (fetchCountOf(`/${base}/b`) > 1) return patchResponseOf(`/${base}/b`, state);
       const encoder = new TextEncoder();
-      const error = { digest: "5c6d7e8f", name: "Error", message: "broke", stack: [], env: "Server", owner: null };
+      const error = { digest, name: "Error", message: "broke", stack: [], env: "Server", owner: null };
       const body = new ReadableStream<Uint8Array>({
         async start(controller) {
-          controller.enqueue(encoder.encode(flight("/err/b patched")));
+          controller.enqueue(encoder.encode(flight(`/${base}/b patched`)));
           await new Promise<void>((resolve) => (release = resolve));
           controller.enqueue(encoder.encode(`1:E${JSON.stringify(error)}\n`));
           controller.close();
         },
       });
-      return new Response(body, { headers: patchResponseOf("/err/b", state).headers });
+      return new Response(body, { headers: patchResponseOf(`/${base}/b`, state).headers });
     });
-    await navigate("/err/a");
-    await navigate("/err/b");
-    expect(shown()).toBe("/err/b patched");
+    await navigate(`/${base}/a`);
+    await navigate(`/${base}/b`);
+    expect(shown()).toBe(`/${base}/b patched`);
     release();
     await act(async () => {
       await sleep(10);
     });
-    await navigate("/err/off");
-    await navigate("/err/a");
+    await navigate(`/${base}/off`);
+    await navigate(`/${base}/a`);
 
-    await navigate("/err/b");
+    await navigate(`/${base}/b`);
 
-    expect(fetchCountOf("/err/b")).toBe(2);
-    expect(shown()).toBe("/err/b patched");
+    expect(fetchCountOf(`/${base}/b`)).toBe(2);
+    expect(shown()).toBe(`/${base}/b patched`);
   });
 
   test("a patch laid on a patch is replayed straight under its base, and the next request names it", async () => {

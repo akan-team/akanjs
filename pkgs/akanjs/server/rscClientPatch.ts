@@ -18,6 +18,7 @@ import { commitAkanSegmentOutletPatch, hasAkanSegmentOutlet, resetAkanSegmentOut
 
 const RSC_PATCH_REDIRECT_ROW_RE = /^[0-9a-z]+:E\{[^\n]*"digest":"AKAN_REDIRECT(?:;[^"]*)?"[^\n]*\}\n?$/;
 const RSC_PATCH_ERROR_ROW_RE = /^[0-9a-z]+:E\{[^\n]*\}\n?$/;
+const patchesWithControlRows = new WeakSet<PromiseLike<unknown>>();
 
 export interface RscPatchedResult<T> {
   type: "patched";
@@ -83,6 +84,7 @@ export async function validateRscSegmentPatch<T extends PromiseLike<unknown>>({
           patchStream,
           patchControlRowGuard((reason) => {
             patchControlReason ??= reason;
+            if (patchThenable) patchesWithControlRows.add(patchThenable);
           }),
         ),
       )
@@ -92,6 +94,8 @@ export async function validateRscSegmentPatch<T extends PromiseLike<unknown>>({
   if (patchThenable) {
     try {
       await patchThenable;
+      //? RSDW resolves on the root row; the chunks after it that have already arrived are read before the next task.
+      await new Promise((resolve) => setTimeout(resolve));
     } catch {
       decodeFailed = true;
     }
@@ -139,6 +143,7 @@ export function commitRscPatch<T extends PromiseLike<ReactNode>>(
   const patchThenable = patch.patchedNode.thenable;
   if (!patchThenable)
     throw new AkanError("invalidRscResponse", "[rscClient] validated RSC patch is missing a thenable");
+  if (patchesWithControlRows.has(patchThenable)) return false;
   const preparedHeadPatch = prepareAkanHeadSnapshotPatch(patch.headSnapshot, target);
   if (!preparedHeadPatch) return false;
 
