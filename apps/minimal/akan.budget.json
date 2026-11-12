@@ -2,7 +2,7 @@
   "env": "local",
   "routeJsBrotliKB": {
     "/:lang": 297,
-    "/:lang/explore": 484,
+    "/:lang/explore": 485,
     "/:lang/explore/book": 316,
     "/:lang/explore/detail": 316,
     "/:lang/inbox": 315,
