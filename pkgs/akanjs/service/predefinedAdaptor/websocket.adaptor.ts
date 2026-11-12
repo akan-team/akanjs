@@ -33,8 +33,12 @@ export interface WebsocketAdaptor {
   publish(roomId: string, data: unknown, option?: WebsocketPublishOption): void;
   setEventHandler(handler: WsRedisEventHandler): void;
   clearEventHandler(): void;
-  /** After a lost cross-server channel returns — a loss the still-open client socket never notices. Optional. */
-  onRecovered?(handler: () => void): void;
+  /**
+   * After a lost cross-server channel returns — a loss the still-open client socket never notices — with the rooms held
+   * here, which may have missed events meanwhile. Called once their events reach this server again, since each room
+   * refetches on it and would miss an event published before then. Optional.
+   */
+  onRecovered?(handler: (rooms: string[]) => void): void;
   /** To the app's other servers, behind the gateway only those with a room for its model; a writer knows only its own. */
   publishChange?(change: LiveChange): void;
   onChange?(handler: LiveChangeHandler): void;
@@ -103,7 +107,7 @@ export class WebSocketRedisAdaptor
   readonly #channels = new Map<string, ChannelHold>();
   #eventHandler: WsRedisEventHandler | null = null;
   #changeHandler: LiveChangeHandler | null = null;
-  #recoveryHandler: (() => void) | null = null;
+  #recoveryHandler: ((rooms: string[]) => void) | null = null;
   #publisherReady = false;
   #draining = false;
   #drained: Promise<void> = Promise.resolve();
@@ -163,13 +167,30 @@ export class WebSocketRedisAdaptor
       this.#listenToLegacy();
       //* A SUBSCRIBE ioredis rejected in an outage included. `ready` fires before Redis answers what ioredis resent, so
       //* no earlier reply vouches for the new connection.
-      for (const [channel, hold] of this.#channels) this.#subscribe(channel, hold);
+      const replies = [...this.#channels].map(([channel, hold]) => this.#subscribe(channel, hold));
       const recovering = !this.#subscriberReady && this.#subscriberStarted;
       this.#subscriberReady = true;
       this.#subscriberStarted = true;
       if (!recovering) return;
       this.logger.warn("Subscriber reconnected; asking every room on this server to resynchronize");
-      this.#recoveryHandler?.();
+      //? Once Redis hands this server its rooms' events again: a room that refetched sooner could miss an event published
+      //? meanwhile. A link that stalls has them told at the cap a join waits, and again once it answers; one that drops
+      //? first has them told at the next `ready`.
+      let lost = false;
+      const recover = () => {
+        if (!lost) this.#recoveryHandler?.([...this.#rooms.keys()]);
+      };
+      const timer = setTimeout(recover, WebSocketRedisAdaptor.#subscribeTimeoutMs);
+      const lose = () => {
+        lost = true;
+        clearTimeout(timer);
+      };
+      this.#lossWaiters.add(lose);
+      void Promise.all(replies).then(() => {
+        this.#lossWaiters.delete(lose);
+        clearTimeout(timer);
+        recover();
+      });
     });
 
     await this.publisher.connect();
@@ -269,7 +290,7 @@ export class WebSocketRedisAdaptor
     this.#eventHandler = null;
   }
 
-  onRecovered(handler: () => void): void {
+  onRecovered(handler: (rooms: string[]) => void): void {
     this.#recoveryHandler = handler;
   }
 

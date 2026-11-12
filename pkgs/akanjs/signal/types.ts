@@ -262,4 +262,14 @@ export type WebsocketSubscribeAck = {
 /** `seq` numbers the frames one server process delivers for a room, one apart. */
 export type WebsocketPublishData = { type: "pub"; roomId: string; data: object | object[] | null; seq?: number };
 export type WebsocketAuthAck = { type: "auth"; revokedRooms: string[] };
-export type WebsocketResData = WebsocketMessageData | WebsocketSubscribeAck | WebsocketPublishData | WebsocketAuthAck;
+/**
+ * The room may have missed events another server published, while this socket stayed open and numbered no hole. `seq`
+ * numbers it among the room's `pub` frames, so a socket that missed it under backpressure sees a hole instead.
+ */
+export type WebsocketResyncData = { type: "resync"; roomId: string; seq?: number };
+export type WebsocketResData =
+  | WebsocketMessageData
+  | WebsocketSubscribeAck
+  | WebsocketPublishData
+  | WebsocketAuthAck
+  | WebsocketResyncData;

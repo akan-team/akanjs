@@ -1,7 +1,7 @@
 {
   "akan.size.file": {
     "fetch/client/fetchClient.ts": 1163,
-    "server/akanServer.ts": 1025,
+    "server/akanServer.ts": 1020,
     "server/di/diLifecycle.ts": 834,
     "server/resolver/signal.resolver.ts": 939,
     "server/rscWorker.tsx": 1669,
