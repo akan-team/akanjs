@@ -1,7 +1,8 @@
 import ts from "typescript";
 import type { Sys } from "../commandDecorators";
-import { ensureBaseImport, ensureNamedImport, getSysRoot, moduleComponentName, moduleSourcePaths } from "./source";
+import { getSysRoot, moduleComponentName, moduleSourcePaths } from "./modulePaths";
 import { sourceFileFor } from "./sourceAst";
+import { ensureBaseImport, ensureNamedImport } from "./sourceImports";
 import type { WorkflowDiagnostic } from "./types";
 
 const builtInFieldTypes = new Set(["String", "Boolean", "Date", "Map"]);
