@@ -72,6 +72,24 @@ and infrastructure. A workspace is Bun-first: `apps/<app>` holds pages, domain m
 - Follow the nearest established pattern; when two shapes disagree, follow the newer neighbour. A new abstraction must
   remove real duplication — near-identical sibling modules are copied with changed literals, not parameterised.
 
+## Finishing Work
+
+- Carry the task through to `verify ok`. A failing check, a stale generated file, a stopped dev server or a tool
+  error is an ordinary obstacle: diagnose it and work through it (`akan sync`, `akan repair generated`, a retry,
+  another command) rather than stopping to report it or offering to continue.
+- Routine steps need no confirmation: reading code, `akan sync`, `akan verify`, `akan test`, `akan preview`, and the
+  workflow plan and apply the task calls for. Ask only when the work cannot go on without the answer, and keep doing
+  the parts that do not depend on it.
+- A deliberate blocker stays put — another person's change in a dirty tree, an `akan.baseline.json` entry, a secret
+  you cannot read, a failure outside what you changed: leave it, say what you found, and finish the rest. Confirm
+  before a step that is hard to undo or leaves this machine, such as a push, a deploy or a write to a shared database.
+
+## Reporting
+
+Write the final message for a reader who did not watch your tool calls. Lead with the outcome, name every file you
+changed (small edits too), give each check's own result line, and say what you left undone or could not check, and
+why. Use plain words, not labels you coined during the work.
+
 ## Looks Wrong, Is Right — Do Not "Fix"
 
 - Tailwind class order (`font-bold text-2xl text-foreground`) — Biome sorts it, `cn()` arguments included.
