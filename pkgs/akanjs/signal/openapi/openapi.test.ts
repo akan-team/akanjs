@@ -216,7 +216,54 @@ describe("createOpenApiDocument", () => {
       },
     });
     expect(document.components.schemas.AkanError).toMatchObject({ required: ["error", "statusCode"] });
-    expect(createOpenApiDocument(serializedSignal).components.schemas.AkanError).toBeUndefined();
+    const createOnly = createOpenApiDocument({
+      openApiItem: {
+        prefix: "openApiItem",
+        cruGuards: ["User"],
+        crud: { update: false, remove: false },
+        endpoint: {},
+      },
+    });
+    expect(Object.keys(createOnly.paths)).toEqual(["/openApiItem/createOpenApiItem"]);
+    expect(createOnly.components.schemas.AkanError).toBeUndefined();
+  });
+
+  test("documents the 404 a generated read or write by id answers for a missing id, and no 404 where none is taken", () => {
+    const document = createOpenApiDocument(serializedSignal, {
+      resolveDescription: (key) =>
+        key === "base.error.documentNotFound" ? "The requested item does not exist." : undefined,
+    });
+    const responsesOf = (path: string, method: "get" | "post") =>
+      document.paths[path][method].responses as Record<string, unknown>;
+
+    for (const [path, method] of [
+      ["/openApiItem/openApiItem/{openApiItemId}", "get"],
+      ["/openApiItem/lightOpenApiItem/{openApiItemId}", "get"],
+      ["/openApiItem/updateOpenApiItem/{openApiItemId}", "post"],
+      ["/openApiItem/removeOpenApiItem/{openApiItemId}", "post"],
+    ] as const) {
+      expect(Object.keys(responsesOf(path, method))).toEqual(["200", "404", "default"]);
+      expect(responsesOf(path, method)["404"]).toEqual({
+        description: "base.error.documentNotFound: The requested item does not exist.",
+        content: {
+          "application/json": {
+            schema: {
+              allOf: [
+                { $ref: "#/components/schemas/AkanError" },
+                { type: "object", properties: { error: { type: "string", enum: ["base.error.documentNotFound"] } } },
+              ],
+            },
+          },
+        },
+      });
+    }
+    for (const [path, method] of [
+      ["/openApiItem/createOpenApiItem", "post"],
+      ["/openApiItem/openApiItemListActive", "get"],
+      ["/openApiItem/searchOpenApiItems", "get"],
+    ] as const)
+      expect(Object.keys(responsesOf(path, method))).toEqual(["200", "default"]);
+    expect(document.components.schemas.AkanError).toMatchObject({ required: ["error", "statusCode"] });
   });
 
   test("can include base and non-standard paths explicitly", () => {
