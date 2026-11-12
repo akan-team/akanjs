@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { facetBarrelOf } from "akanjs/common/facetBarrel.ts";
 import ts from "typescript";
 import { AkanGraphDiff } from "./akanGraphDiff";
 import { AkanIndex } from "./akanIndex";
@@ -371,6 +372,45 @@ export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
       expect(guardsOf(graph)).toEqual(["guard:libs/shared:Admin"]);
       expect(graph.nodes.find((node) => node.id === "guard:libs/shared:Admin")?.at).toBeNull();
     }
+  });
+
+  it("follows a guard through a facet folder's generated barrel whether or not it is on disk", () => {
+    const sources: Record<string, string> = {
+      "libs/util/srvkit/admin.ts": `import type { Guard } from "akanjs/signal";
+export class Admin implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`,
+      "libs/shared/srvkit/util.ts": `export * from "@libs/util/srvkit";
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { Admin } from "@libs/shared/srvkit";
+import { endpoint } from "akanjs/signal";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, { guards: [Admin] }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+    };
+    const synced = {
+      ...sources,
+      "libs/shared/srvkit/index.ts": facetBarrelOf("srvkit", ["util.ts"], []),
+      "libs/util/srvkit/index.ts": facetBarrelOf("srvkit", ["admin.ts"], []),
+    };
+    const guardsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "guard",
+      );
+    };
+    const expected = ["endpoint:apps/demo:memo.shareMemo --> guard:libs/util:Admin"];
+    expect(guardsOf(synced)).toEqual(expected);
+    expect(guardsOf(sources)).toEqual(expected);
   });
 
   it("follows a guard through a map's own imports, a re-export, and a factory a file imports or wraps", () => {
@@ -1601,7 +1641,7 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({
     expect(callsOf(`export { Clock } from "clock-sdk";\n`)).toEqual(reached("adaptor:clock-sdk:Clock"));
   });
 
-  it("scans the folder when the import path has no module, so a graph without the gitignored barrels matches one with them", () => {
+  it("reads a facet folder with no index as its generated barrel, so a graph without the gitignored barrels matches one with them", () => {
     const clock = (name: string) => `import { adapt } from "akanjs/service";
 export class Clock extends adapt("${name}") {}
 `;
@@ -1669,6 +1709,189 @@ export * from "./b";
     expect(callsOf({ ...sources, ...barrels })).toEqual(expected);
   });
 
+  it("takes a named package re-export only along the import's chain, with or without the generated barrel", () => {
+    const sources: Record<string, string> = {
+      "libs/util/srvkit/admin.ts": `import type { Guard } from "akanjs/signal";
+export class Admin implements Guard {
+  canPass() {
+    return true;
+  }
+}
+`,
+      "libs/shared/webkit/stray.ts": `export { Stripe } from "stripe-web";
+export { Klarna } from "klarna-web";
+export { Admin } from "@libs/util/srvkit";
+`,
+      "libs/shared/srvkit/stripe.ts": `export { Stripe } from "stripe-sdk";
+`,
+      "libs/shared/srvkit/paypal.ts": `export { default as PayPal } from "paypal-sdk";
+`,
+      "libs/shared/srvkit/toss.ts": `import { TossClient } from "toss-sdk";
+export { TossClient as Toss };
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Klarna, PayPal, Stripe, Toss } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  klarna: plug(Klarna),
+  paypal: plug(PayPal),
+  stripe: plug(Stripe),
+  toss: plug(Toss),
+})) {
+  async pay() {
+    await this.klarna.split();
+    await this.paypal.send();
+    await this.toss.transfer();
+    return this.stripe.charge();
+  }
+}
+`,
+      "apps/demo/lib/memo/memo.signal.ts": `import { Admin } from "@libs/shared/srvkit";
+import { endpoint } from "akanjs/signal";
+import * as srv from "../srv";
+export class MemoEndpoint extends endpoint(srv.memo, ({ mutation }) => ({
+  shareMemo: mutation(cnst.Memo, { guards: [Admin] }).exec(async function () {
+    return null;
+  }),
+})) {}
+`,
+    };
+    const barrel = {
+      "libs/shared/srvkit/index.ts": `export * from "./paypal";
+export * from "./stripe";
+export * from "./toss";
+`,
+    };
+    const edgesIn = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      const graph = index.graph((fileName) => given[fileName.slice(root.length + 1)]);
+      return [...edgesOf(graph, "calls"), ...edgesOf(graph, "guard")];
+    };
+    const expected = [
+      "method:apps/demo:memo.pay -charge-> adaptor:stripe-sdk:Stripe",
+      "method:apps/demo:memo.pay -send-> adaptor:paypal-sdk:PayPal",
+      "method:apps/demo:memo.pay -split-> adaptor:libs/shared:Klarna",
+      "method:apps/demo:memo.pay -transfer-> adaptor:toss-sdk:TossClient",
+      "endpoint:apps/demo:memo.shareMemo --> guard:libs/util:Admin",
+    ];
+    expect(edgesIn(sources)).toEqual(expected);
+    expect(edgesIn({ ...sources, ...barrel })).toEqual(expected);
+  });
+
+  it("reads a facet folder with no index as the barrel `akan sync` writes, so the Change Map names the graph view's adaptor", () => {
+    const sources: Record<string, string> = {
+      "libs/shared/srvkit/stripe.ts": `export { Stripe } from "stripe-sdk";
+`,
+      "libs/shared/srvkit/stripeServer.ts": `export { Stripe } from "stripe-sdk/server";
+`,
+      "libs/shared/srvkit/adyen.ts": `export { Adyen } from "adyen-sdk";
+`,
+      "libs/shared/srvkit/legacy/index.ts": `export * from "./adyen";
+export * from "./klarna";
+`,
+      "libs/shared/srvkit/legacy/adyen.ts": `export { Adyen } from "adyen-legacy";
+`,
+      "libs/shared/srvkit/legacy/klarna.ts": `export { Klarna } from "klarna-sdk";
+`,
+      "libs/shared/srvkit/legacy/paypal.ts": `export { PayPal } from "paypal-legacy";
+`,
+      "libs/shared/srvkit/toss.helper.ts": `export { Toss } from "toss-sdk";
+`,
+      "libs/shared/srvkit/square.ts": `export * from "../common/square";
+`,
+      "libs/shared/common/square.ts": `export { Square } from "square-sdk";
+`,
+      "libs/shared/srvkit/util.ts": `export * from "@libs/util/srvkit";
+`,
+      "libs/util/srvkit/mollie.ts": `export { Mollie } from "mollie-sdk";
+`,
+      "libs/shared/srvkit/wise.ts": `export { Wise } from "./vendors/wise";
+`,
+      "libs/shared/srvkit/vendors/wise.ts": `export { Wise } from "wise-sdk";
+`,
+      "libs/shared/plugin/bill.ts": `export * from "bill-sdk";
+`,
+      "libs/shared/webkit/bill.ts": `export class Bill {}
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Bill } from "@libs/shared/plugin";
+import { Adyen, Klarna, Mollie, PayPal, Square, Stripe, Toss, Wise } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  adyen: plug(Adyen),
+  bill: plug(Bill),
+  klarna: plug(Klarna),
+  mollie: plug(Mollie),
+  paypal: plug(PayPal),
+  square: plug(Square),
+  stripe: plug(Stripe),
+  toss: plug(Toss),
+  wise: plug(Wise),
+})) {
+  async pay() {
+    await this.adyen.capture();
+    await this.bill.bill();
+    await this.klarna.split();
+    await this.mollie.collect();
+    await this.paypal.send();
+    await this.square.refund();
+    await this.toss.transfer();
+    await this.wise.wire();
+    return this.stripe.charge();
+  }
+}
+`,
+    };
+    const facetFolder = /^((?:apps|libs)\/[^/]+\/(ui|webkit|srvkit|common|plugin))\/([^/]+)(\/)?/;
+    const synced = (given: Record<string, string>) => {
+      const folders = new Map<string, { facet: string; files: Set<string>; dirs: Set<string> }>();
+      for (const rel of Object.keys(given)) {
+        const [, folder, facet, entry, nested] = rel.match(facetFolder) ?? [];
+        if (!folder || !facet || !entry) continue;
+        const found = folders.get(folder) ?? { facet, files: new Set<string>(), dirs: new Set<string>() };
+        (nested ? found.dirs : found.files).add(entry);
+        folders.set(folder, found);
+      }
+      const barrels = [...folders].map(([folder, { facet, files, dirs }]) => [
+        `${folder}/index.ts`,
+        facetBarrelOf(facet, [...files], [...dirs]),
+      ]);
+      return { ...given, ...Object.fromEntries(barrels) };
+    };
+    const callsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    const graphView = synced(sources);
+    expect(graphView["libs/shared/srvkit/index.ts"]).toBe(`export * from "./adyen";
+export * from "./legacy";
+export * from "./square";
+export * from "./stripe";
+export * from "./stripeServer";
+export * from "./util";
+export * from "./vendors";
+export * from "./wise";
+`);
+    const expected = [
+      "method:apps/demo:memo.pay -bill-> adaptor:bill-sdk:Bill",
+      "method:apps/demo:memo.pay -capture-> adaptor:libs/shared:Adyen",
+      "method:apps/demo:memo.pay -charge-> adaptor:stripe-sdk:Stripe",
+      "method:apps/demo:memo.pay -collect-> adaptor:mollie-sdk:Mollie",
+      "method:apps/demo:memo.pay -refund-> adaptor:square-sdk:Square",
+      "method:apps/demo:memo.pay -send-> adaptor:libs/shared:PayPal",
+      "method:apps/demo:memo.pay -split-> adaptor:klarna-sdk:Klarna",
+      "method:apps/demo:memo.pay -transfer-> adaptor:libs/shared:Toss",
+      "method:apps/demo:memo.pay -wire-> adaptor:wise-sdk:Wise",
+    ];
+    expect(callsOf(graphView)).toEqual(expected);
+    expect(callsOf(sources)).toEqual(expected);
+  });
+
   it("refuses a package `export *` only for a name declared along the chain, not elsewhere in a lib it reaches", () => {
     const wired = (storage: string): Record<string, string> => ({
       "libs/shared/srvkit/index.ts": `export * from "./square";
@@ -1705,6 +1928,62 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({ square: plug(Sq
     expect(callsOf(wired(`export class Square {}\n`))).toEqual([
       "method:apps/demo:memo.pay -charge-> adaptor:libs/shared:Square",
     ]);
+  });
+
+  it("follows the import's chain through facets of 70 files each, and reads `export *`s of one package's subpaths as that package", () => {
+    const filler = (folder: string) =>
+      Object.fromEntries(
+        Array.from({ length: 70 }, (_, idx) => [`${folder}/m${idx}.ts`, `export const m${idx} = 0;\n`]),
+      );
+    const sources: Record<string, string> = {
+      ...filler("libs/shared/srvkit"),
+      ...filler("libs/util/srvkit"),
+      "libs/shared/srvkit/bridge.ts": `export * from "@libs/util/srvkit";
+`,
+      "libs/shared/srvkit/pay.ts": `export * from "pay-sdk";
+`,
+      "libs/shared/srvkit/payServer.ts": `export * from "pay-sdk/server";
+`,
+      "libs/shared/srvkit/zeta.ts": `export { Stripe } from "stripe-sdk";
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Pay, Stripe } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({ pay: plug(Pay), stripe: plug(Stripe) })) {
+  async bill() {
+    await this.pay.send();
+    return this.stripe.charge();
+  }
+}
+`,
+    };
+    const barrelOf = (folder: string) => {
+      const files = Object.keys(sources).filter((rel) => rel.startsWith(`${folder}/`));
+      return facetBarrelOf(
+        "srvkit",
+        files.map((rel) => rel.slice(folder.length + 1)),
+        [],
+      );
+    };
+    const synced = {
+      ...sources,
+      "libs/shared/srvkit/index.ts": barrelOf("libs/shared/srvkit"),
+      "libs/util/srvkit/index.ts": barrelOf("libs/util/srvkit"),
+    };
+    const callsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    const expected = [
+      "method:apps/demo:memo.bill -charge-> adaptor:stripe-sdk:Stripe",
+      "method:apps/demo:memo.bill -send-> adaptor:pay-sdk:Pay",
+    ];
+    expect(callsOf(sources)).toEqual(expected);
+    expect(callsOf(synced)).toEqual(expected);
   });
 
   it("marks a job and an adaptor changed or removed in the Change Map", () => {

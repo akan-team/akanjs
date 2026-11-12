@@ -46,7 +46,12 @@ interface PackageExport {
   from: string;
 }
 
-const maxModules = 64;
+const packageOf = (specifier: string) =>
+  specifier
+    .split("/")
+    .slice(0, specifier.startsWith("@") ? 2 : 1)
+    .join("/");
+const packageKeyOf = ({ name, from }: PackageExport) => `${packageOf(from)}\n${name}`;
 
 export class AdaptorResolver {
   readonly #source: AkanGraphSource;
@@ -160,8 +165,6 @@ export class AdaptorResolver {
     const [first] = own;
     if (path === null) return own.find((adaptor) => adaptor.fileName === fileName) ?? first;
     if (own.length === 1) return first;
-    if (!this.#resolver.hasModule(path))
-      return own.find((adaptor) => this.#source.relative(adaptor.fileName).startsWith(`${path}/`)) ?? first;
     const exported = this.#exportedAt(name, path, new Set()).filter((item) => first || "fact" in item);
     const [only] = exported;
     if (only) return exported.length === 1 ? only : null;
@@ -171,7 +174,7 @@ export class AdaptorResolver {
   //? TypeScript prefers a module's own `export { Clock }` to its `export *`s, and drops a name two `export *` share.
   #exportedAt(name: string, path: string, seen: Set<string>): (DeclaredAdaptor | PackageExport)[] {
     const key = `${path}\n${name}`;
-    if (seen.has(key) || seen.size >= maxModules) return [];
+    if (seen.has(key)) return [];
     seen.add(key);
     const here = (this.#adaptors.get(name) ?? []).filter((adaptor) => {
       const module = this.#source.relative(adaptor.fileName).replace(/\.tsx?$/, "");
@@ -185,34 +188,28 @@ export class AdaptorResolver {
       const target = named.from === null ? path : this.#resolver.pathOfSpecifier(named.fileName, named.from);
       return target === null ? [] : this.#exportedAt(named.name, target, seen);
     }
-    return [...new Set(stars.flatMap((star) => this.#exportedAt(name, star, seen)))];
+    const reached = stars.flatMap((star) => this.#exportedAt(name, star, seen));
+    return [...new Map(reached.map((item) => ["fact" in item ? item.id : packageKeyOf(item), item])).values()];
   }
 
   #packageAdaptorOf(name: string, specifier: string) {
     if (frameworkPattern.test(specifier))
       return this.#sink.addNode(this.#sink.key("adaptor", null, name), "adaptor", null, name, null, [frameworkOwner])
         .id;
-    const pkg = specifier
-      .split("/")
-      .slice(0, specifier.startsWith("@") ? 2 : 1)
-      .join("/");
+    const pkg = packageOf(specifier);
     return this.#sink.addNode(this.#sink.key("adaptor", pkg, name), "adaptor", null, name, null, [pkg]).id;
   }
 
   //? A lib reaches a third-party class only through a re-export, so the class is the package's, not the lib's.
   #packageShimOf(owner: string, name: string, near: string | null) {
-    const reexport = this.#resolver.reexportOf(owner, name, near);
-    const [shim] = reexport?.site.imports ?? [];
-    if (reexport && shim && this.#resolver.pathOfSpecifier(reexport.site.fileName, shim.from) === null)
-      return { name: reexport.local === "default" ? name : reexport.local, from: shim.from };
-    if (reexport || !near) return null;
-    const { packages, paths } = this.#resolver.hasModule(near)
-      ? this.#resolver.starExportsOf(owner, near)
-      : { packages: this.#resolver.packagesUnder(owner, near), paths: [] };
+    if (!near) return null;
+    const shims = this.#exportedAt(name, near, new Set()).filter((item): item is PackageExport => !("fact" in item));
+    const [shim] = shims;
+    if (shim) return shims.length === 1 ? shim : null;
+    const { packages, paths } = this.#resolver.starExportsOf(owner, near);
     const [only] = packages;
-    const isDeclared =
-      this.#resolver.declares(owner, name) || paths.some((path) => this.#resolver.declaresAt(path, name));
-    return packages.length === 1 && only && !isDeclared ? { name, from: only } : null;
+    const isDeclared = paths.some((path) => this.#resolver.declaresAt(path, name));
+    return only && new Set(packages.map(packageOf)).size === 1 && !isDeclared ? { name, from: only } : null;
   }
 
   #nodeOf({ fact, owner, fileName, id }: DeclaredAdaptor) {
