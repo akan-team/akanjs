@@ -22,6 +22,11 @@ import { type ChangeKind, type HmrMessage, type HmrWsData, HmrWsHub } from "./ws
 
 export { isAkanRuntimeMetadataFile };
 
+//? The open tab runs these from its own bundle (rscClient.tsx and what it imports), so an RSC refresh keeps their old code.
+const BROWSER_RSC_MODULE_RE =
+  /^(?:rscClient\w*|rscHeadPatch|rscHttp|rscInlineStream|rscNavigationState|rscParkedRedirect|rscPrefetchCache|rscScrollRestoration|routeState|flightRowReader)\.tsx?$/;
+const FRAMEWORK_SERVER_DIR = `${path.sep}pkgs${path.sep}akanjs${path.sep}server`;
+
 export function manifestClientEntriesForFiles(
   files: string[],
   clientManifest: ClientManifest,
@@ -623,14 +628,19 @@ export class DevHmrController {
     return this.#seedIndex.globalLayoutFiles.some((file) => normalized.has(path.resolve(file)));
   }
 
+  static #isBrowserRscModule(file: string): boolean {
+    const resolved = path.resolve(file);
+    return path.dirname(resolved).endsWith(FRAMEWORK_SERVER_DIR) && BROWSER_RSC_MODULE_RE.test(path.basename(resolved));
+  }
+
   #shouldFullReloadForFiles(files: string[], routeIds: string[] | undefined): boolean {
     if (files.length === 0) return false;
     const runtimeRoots = [
       `${path.sep}pkgs${path.sep}akanjs${path.sep}server${path.sep}hmr${path.sep}`,
-      `${path.sep}pkgs${path.sep}akanjs${path.sep}server${path.sep}rscClient.tsx`,
       `${path.sep}pkgs${path.sep}akanjs${path.sep}server${path.sep}ssrFromRscRenderer.tsx`,
     ];
     if (files.some((file) => runtimeRoots.some((needle) => path.resolve(file).includes(needle)))) return true;
+    if (files.some((file) => DevHmrController.#isBrowserRscModule(file))) return true;
     if (files.some((file) => path.basename(file).endsWith(".signal.ts"))) return true;
 
     // An unindexed page file is likely a route the seed index has not picked up (its reload failed): reload fully.

@@ -11,6 +11,14 @@ const AfterIo = async ({ fail }: { fail: () => never }): Promise<ReactNode> => {
   return fail();
 };
 
+const Caught = async ({ read }: { read: Promise<string> }): Promise<ReactNode> => {
+  try {
+    return await read;
+  } catch {
+    return <b>fallback</b>;
+  }
+};
+
 const streamed = (fail: () => never) =>
   page().render(() => (
     <Suspense fallback={<i>loading</i>}>
@@ -30,6 +38,18 @@ export const pages: PagesContext = {
   "./denied/_index.tsx": async () => ({
     default: streamed(() => {
       throw new Err("drawing.error.denied");
+    }),
+  }),
+  "./blank/_index.tsx": async () => ({
+    default: streamed(() => {
+      throw new Error("");
+    }),
+  }),
+  "./caught/_index.tsx": async () => ({
+    default: page().render(() => {
+      const read = Promise.reject(new Error("backend down"));
+      read.catch(() => undefined);
+      return <Caught read={read} />;
     }),
   }),
   "./moved/_index.tsx": async () => ({ default: streamed(() => router.redirect("/target")) }),
