@@ -20,7 +20,7 @@ export class MemoSlice extends slice(
 ) {}
 
 export class MemoEndpoint extends endpoint(srv.memo, ({ query, mutation }) => ({
-  isMemoOpen: query(Boolean, { guards: [Public], mcp: false }).exec(function () {
+  isMemoOpen: query(Boolean, { guards: [Public], rateLimit: false, mcp: false }).exec(function () {
     return this.memoService.isOpen();
   }),
   attachMemoImage: mutation(cnst.Memo, { guards: [LocalOrEdge], fileUpload: true, mcp: false })

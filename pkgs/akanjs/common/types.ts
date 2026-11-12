@@ -47,9 +47,11 @@ export interface FetchPolicy<_Returns = unknown> {
    */
   keepsReads?: boolean;
   /**
-   * `false` sends a query made while a page renders without the visitor's session and address, so it answers as to a
-   * stranger and the page stays in the route result cache. Only for an endpoint that answers every caller alike; an
-   * address-keyed rate limit counts the call under the server's own address. A browser's call is unchanged.
+   * `false` sends a call made while the server renders a page without the visitor's session or address, so it answers
+   * as to a stranger and the render can stay in the route result cache. An explicit `token` and a clone's `clientIp`
+   * still go, and a browser's call is unchanged. Only for an endpoint that answers every caller alike: every visitor's
+   * render then shares one budget under the server's own address, so give that endpoint `rateLimit: false` (or exempt
+   * it) rather than an address budget, or one client forcing renders spends it for everyone.
    */
   forwardVisitor?: boolean;
 }
