@@ -1,6 +1,5 @@
 import { AkanError } from "akanjs/base";
-import { type Logger, websocketBinaryFrameContract } from "akanjs/common";
-import type { WebsocketPublishData } from "akanjs/signal";
+import type { Logger } from "akanjs/common";
 import { SignalContext } from "../../signal/signalContext";
 import { AKAN_CHILD_HOST } from "../akanAppHeaders";
 import type { AkanServer } from "../akanServer";
@@ -15,6 +14,7 @@ import type { WebRouter } from "../webRouter";
 import { type ApiRouteInputs, ApiRouter, type NonNullHttpRoutes } from "./apiRouter";
 import type { AppWsData } from "./appWsData";
 import { HostAllowlist } from "./hostAllowlist";
+import { localRoomsOf } from "./localRooms";
 import { RoomReplay } from "./roomReplay";
 import { ServerLimits } from "./serverLimits";
 
@@ -185,20 +185,14 @@ export class ServerListener {
     const subscribed = (roomId: string) =>
       (server?.subscriberCount(roomId) ?? 0) + (wsServer?.subscriberCount(roomId) ?? 0) > 0;
     const roomReplay = new RoomReplay({ vouches: RoomReplay.vouchesFor(websocket, this.#solo), subscribed });
-    const localPublish: LocalPublish = (roomId, data) => {
-      if (data instanceof Uint8Array) {
-        roomReplay.unnumbered(roomId);
-        this.#binaryPubsub.publish(roomId, websocketBinaryFrameContract.encode({ roomId, payload: data }), {
-          coalesce: SignalResolver.coalescesRoom(roomId),
-        });
-        return;
-      }
-      const publishData: WebsocketPublishData = { type: "pub", roomId, data };
-      const frame = roomReplay.frameOf(publishData, subscribed(roomId));
-      server?.publish(roomId, frame);
-      wsServer?.publish(roomId, frame);
-    };
-    SignalResolver.setLocalPublish(localPublish, websocket, this.#di.live, roomReplay);
-    this.#localPublish = localPublish;
+    const rooms = localRoomsOf({
+      servers: [server, wsServer],
+      replay: roomReplay,
+      binary: this.#binaryPubsub,
+      subscribed,
+      coalesces: (roomId) => SignalResolver.coalescesRoom(roomId),
+    });
+    SignalResolver.setLocalPublish(rooms.publish, websocket, this.#di.live, roomReplay, rooms.resync);
+    this.#localPublish = rooms.publish;
   }
 }

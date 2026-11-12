@@ -89,16 +89,17 @@ export class SignalResolver {
     websocket: WebsocketAdaptor,
     live?: LiveRegistry,
     roomReplay: RoomReplay | null = null,
+    resync?: (roomId: string) => void,
   ) {
     SignalResolver.#localPublish = localPublish;
     SignalResolver.#roomReplay = roomReplay;
     websocket.setEventHandler((roomId, data) => localPublish(roomId, data as object | object[] | Uint8Array | null));
-    // A room that missed events cannot tell which ones, so every live room is invalidated and its subscribers refetch.
-    websocket.onRecovered?.(() => {
-      for (const roomId of live?.syncHub.roomIds() ?? []) {
-        const payload: LiveEventPayload = { op: "invalidate", id: "" };
-        localPublish(roomId, payload);
-      }
+    // A room that missed events cannot tell which ones: a live room is invalidated and refetches, any other is told to.
+    websocket.onRecovered?.((rooms) => {
+      const liveRooms = new Set(live?.syncHub.roomIds());
+      for (const roomId of rooms)
+        if (liveRooms.has(roomId)) localPublish(roomId, { op: "invalidate", id: "" } satisfies LiveEventPayload);
+        else resync?.(roomId);
     });
     websocket.onChange?.((change) => {
       void SignalResolver.#routeChange(change, live).catch((error: unknown) =>

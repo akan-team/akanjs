@@ -1714,6 +1714,30 @@ describe("SignalResolver declaration contracts", () => {
     }
   });
 
+  test("once the cross-server link returns, a live room held here is invalidated and any other room told to resync", async () => {
+    const { registry, live, route } = resolveLiveCategoryRoute();
+    let recover: ((rooms: string[]) => void) | undefined;
+    const websocket = Object.assign(makeFakeWebsocket().instance, {
+      onRecovered: (handler: (rooms: string[]) => void) => {
+        recover = handler;
+      },
+    });
+    const published: { roomId: string; data: unknown }[] = [];
+    const resyncs: string[] = [];
+    const publish = (roomId: string, data: unknown) => void published.push({ roomId, data });
+    SignalResolver.setLocalPublish(publish, websocket, live, null, (roomId) => resyncs.push(roomId));
+    const ws = makeWs();
+    try {
+      const ack = (await route(ws, ["news"], "subscribe")) as WebsocketSubscribeAck;
+      recover?.([ack.roomId, "roomStream-ch1"]);
+      expect(published).toEqual([{ roomId: ack.roomId, data: { op: "invalidate", id: "" } }]);
+      expect(resyncs).toEqual(["roomStream-ch1"]);
+    } finally {
+      await SignalResolver.handleWsClose(ws, registry, live);
+      SignalResolver.setLocalPublish(() => undefined, makeFakeWebsocket().instance);
+    }
+  });
+
   test("a binary room acks no cursor, so its resubscribe resyncs: its frames go out unnumbered", async () => {
     const { registry, websocket } = withFakeWebsocket();
     const replay = new RoomReplay({ vouches: true });
