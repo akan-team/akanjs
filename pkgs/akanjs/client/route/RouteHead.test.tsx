@@ -33,6 +33,66 @@ describe("RouteHead", () => {
     expect(text).toContain("https://cdn.example");
   });
 
+  test("a level that writes an image drops the image tags it inherits, and keeps its own", async () => {
+    const root = (
+      <>
+        <meta property="og:title" content="Root" />
+        <meta property="og:image" content="/root.jpg" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:alt" content="root alt" />
+        <meta name="twitter:image" content="/root.jpg" />
+        <meta name="twitter:image:alt" content="root card alt" />
+      </>
+    );
+    const leaf = (
+      <>
+        <meta property="og:image" content="/leaf.jpg" />
+        <meta property="og:image:height" content="400" />
+        <meta name="twitter:image" content="/leaf.jpg" />
+      </>
+    );
+    const text = await html(RouteHead.mergeNodes([root, leaf]));
+
+    expect(text).toContain('content="/leaf.jpg"');
+    expect(text).not.toContain("/root.jpg");
+    expect(text).not.toContain("1200");
+    expect(text).not.toContain("root alt");
+    expect(text).not.toContain("root card alt");
+    expect(text).toContain('property="og:image:height"');
+    expect(text).toContain('content="Root"');
+
+    const inherited = await html(RouteHead.mergeNodes([root, <meta key="d" name="description" content="d" />]));
+    expect(inherited).toContain("1200");
+    expect(inherited).toContain("root card alt");
+    const alone = await html(RouteHead.mergeNodes([root, <meta key="w" property="og:image:width" content="600" />]));
+    expect(alone).toContain("/root.jpg");
+    expect(alone).toContain('content="600"');
+    expect(alone).not.toContain("1200");
+  });
+
+  test("snapshot levels drop an inherited image's tags the same way", () => {
+    const merged = RouteHead.mergeSnapshots([
+      [
+        { tag: "meta", attrs: { property: "og:image", content: "/root.jpg" } },
+        { tag: "meta", attrs: { property: "og:image:width", content: "1200" } },
+      ],
+      [{ tag: "meta", attrs: { property: "og:image", content: "/leaf.jpg" } }],
+    ]);
+
+    expect(merged.nodes).toEqual([{ tag: "meta", attrs: { property: "og:image", content: "/leaf.jpg" } }]);
+  });
+
+  test("a page's theme-color replaces the one the root's viewport wrote, and the root's returns without it", async () => {
+    const viewport = [
+      { tag: "meta" as const, attrs: { name: "theme-color", content: "#fff", media: "(prefers-color-scheme: light)" } },
+      { tag: "meta" as const, attrs: { name: "theme-color", content: "#000", media: "(prefers-color-scheme: dark)" } },
+    ];
+    const own = [{ tag: "meta" as const, attrs: { name: "theme-color", content: "#123456" } }];
+
+    expect(RouteHead.mergeSnapshots([viewport, own]).nodes).toEqual(own);
+    expect(RouteHead.mergeSnapshots([viewport, []]).nodes).toEqual(viewport);
+  });
+
   test("a single level passes through untouched", () => {
     const only = <title>Only</title>;
     expect(RouteHead.mergeNodes([undefined, only, null])).toBe(only);

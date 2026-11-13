@@ -1,4 +1,4 @@
-import type { ResolvedHead, RouteRender, RouteViewport } from "akanjs/client";
+import type { AkanHeadSnapshotNode, ResolvedHead, RouteRender, RouteViewport } from "akanjs/client";
 import { type AkanI18nConfig, getBasePathFromPathname, LocalePath } from "akanjs/common";
 import { untrackedRequest } from "akanjs/fetch";
 import type { ReactNode } from "react";
@@ -41,15 +41,8 @@ export class RscDocumentHead {
     return values.find((value) => value !== undefined);
   }
 
-  renderViewport(viewport: RouteViewport | undefined, theme?: string): ReactNode {
-    return (
-      <>
-        <meta key="viewport" name="viewport" content={ViewportMeta.content(viewport)} />
-        {ViewportMeta.themeColors(viewport, theme).map(({ content, media }) => (
-          <meta key={`theme-color:${media ?? ""}`} name="theme-color" content={content} media={media} />
-        ))}
-      </>
-    );
+  renderViewport(viewport: RouteViewport | undefined): ReactNode {
+    return <meta key="viewport" name="viewport" content={ViewportMeta.content(viewport)} />;
   }
 
   //? In the shell's own head: a link streamed with the body lands in <body>, where Chromium never reads a manifest.
@@ -69,9 +62,11 @@ export class RscDocumentHead {
       snapshots,
       noindex = false,
       tags = null,
+      themeColors = [],
     }: {
       manifestLink: ReactNode;
       routeHead: ResolvedHead;
+      themeColors?: AkanHeadSnapshotNode[];
       snapshots?: RouteHeadSnapshots;
       noindex?: boolean;
       tags?: ReactNode[] | null;
@@ -84,14 +79,23 @@ export class RscDocumentHead {
       return (
         <>
           {ownsManifest ? null : manifestLink}
-          <AkanRouteHeadReference layouts={snapshots.layouts} page={snapshots.page} />
+          <AkanRouteHeadReference
+            layouts={{ ...snapshots.layouts, nodes: [...themeColors, ...snapshots.layouts.nodes] }}
+            page={snapshots.page}
+          />
         </>
       );
     }
     const head = routeHead.node ?? this.renderDefaultHead();
     return (
       <>
-        {RouteHead.mergeNodes([manifestLink, head, noindex ? RouteHead.noindexOver(head) : null, tags])}
+        {RouteHead.mergeNodes([
+          themeColors.map((node, idx) => <meta key={`theme-color:${idx}`} {...node.attrs} />),
+          manifestLink,
+          head,
+          noindex ? RouteHead.noindexOver(head) : null,
+          tags,
+        ])}
         {this.#renderLocaleAlternates(url)}
       </>
     );

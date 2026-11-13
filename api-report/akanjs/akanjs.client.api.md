@@ -1078,10 +1078,14 @@ export interface UserMenuItem {
 }
 
 export declare class ViewportMeta {
+    static readonly viewportAttrs: {
+        "data-akan-viewport": string;
+    };
     static content(viewport: RouteViewport | undefined, { native }?: {
         native?: boolean;
     }): string;
     static themeColors(viewport: RouteViewport | undefined, theme?: string): ThemeColorTag[];
+    static themeColorNodes(viewport: RouteViewport | undefined, theme?: string): AkanHeadSnapshotNode[];
     static applyContent(viewport: RouteViewport | undefined, { native }?: {
         native?: boolean;
     }): void;

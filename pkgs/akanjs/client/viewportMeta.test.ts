@@ -71,7 +71,7 @@ describe("ViewportMeta", () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     const meta = (key: string, content: string, media?: string) =>
-      createElement("meta", { key, name: "theme-color", content, media });
+      createElement("meta", { key, name: "theme-color", content, media, ...ViewportMeta.viewportAttrs });
     await act(async () => {
       root.render([
         meta("light", "#fff", "(prefers-color-scheme: light)"),
@@ -97,6 +97,82 @@ describe("ViewportMeta", () => {
     });
     container.remove();
     expect(themeColorTags()).toEqual([["#123", null]]);
+  });
+});
+
+describe("a theme-color a page's head writes", () => {
+  const reset = () => {
+    document.head.innerHTML = "";
+    document.documentElement.removeAttribute("style");
+  };
+  const page = (content: string, media?: string) => {
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = content;
+    if (media) meta.setAttribute("media", media);
+    document.head.appendChild(meta);
+    return meta;
+  };
+
+  test("is the one in effect over the root's viewport, and the viewport's returns once the page's is gone", () => {
+    reset();
+    const viewport = { themeColor: { light: "#fff", dark: "#000" } };
+    const own = page("#123456");
+
+    expect(ViewportMeta.applyThemeColor(viewport, "dark")).toBe("#123456");
+    expect(themeColorTags()).toEqual([["#123456", null]]);
+
+    own.remove();
+    expect(ViewportMeta.applyThemeColor(viewport, "dark")).toBe("#000");
+    expect(themeColorTags()).toEqual([["#000", null]]);
+
+    page("#654321");
+    expect(ViewportMeta.applyThemeColor(viewport, "dark")).toBe("#654321");
+    expect(themeColorTags()).toEqual([["#654321", null]]);
+  });
+
+  test("outranks the viewport's tags the server rendered, which are left for React to remove", () => {
+    reset();
+    for (const [content, media] of [
+      ["#fff", "(prefers-color-scheme: light)"],
+      ["#000", "(prefers-color-scheme: dark)"],
+    ] as const) {
+      const meta = page(content, media);
+      for (const [name, value] of Object.entries(ViewportMeta.viewportAttrs)) meta.setAttribute(name, value);
+    }
+    page("#123456");
+
+    expect(ViewportMeta.applyThemeColor({ themeColor: { light: "#fff", dark: "#000" } }, "system")).toBe("#123456");
+    expect(themeColorTags().filter(([, media]) => media !== "not all")).toEqual([["#123456", null]]);
+  });
+
+  test("steps aside for --akan-theme-color, and is back in effect when the variable goes", () => {
+    reset();
+    const own = page("#123456", "(prefers-color-scheme: light)");
+    document.documentElement.style.setProperty("--akan-theme-color", "#336699");
+
+    expect(ViewportMeta.applyThemeColor(undefined)).toBe("#336699");
+    expect(own.getAttribute("media")).toBe("not all");
+    expect(themeColorTags().filter(([, media]) => media !== "not all")).toEqual([["#336699", null]]);
+
+    document.documentElement.style.removeProperty("--akan-theme-color");
+    ViewportMeta.applyThemeColor(undefined);
+    expect(own.getAttribute("media")).toBe("(prefers-color-scheme: light)");
+    expect(themeColorTags()).toEqual([["#123456", "(prefers-color-scheme: light)"]]);
+  });
+
+  test("is applied again when the head's tags change, so a navigation settles on the page's color", async () => {
+    reset();
+    let applied = 0;
+    const stop = ViewportMeta.watchThemeColor(() => applied++);
+    const own = page("#123456");
+    await nextFrame();
+    expect(applied).toBe(1);
+
+    own.setAttribute("content", "#654321");
+    await nextFrame();
+    expect(applied).toBe(2);
+    stop();
   });
 });
 
