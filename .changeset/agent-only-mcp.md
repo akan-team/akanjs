@@ -11,4 +11,4 @@
 - **MCP Apps.** A rendered view may still call an `mcp: "agent"` entry, as it may call an `mcp: false` one.
 - **Types.** `McpShelf` (`boolean | "agent"`) and `narrowestMcpShelf` are new in `akanjs/common`. `SerializedSignalShelf` is new in `akanjs/signal`. `McpDocumentOptions` and `McpExposureOption` gain `agent`.
 
-Upgrade: code that reads `SliceCls.mcp`, a serialized endpoint's `mcp` or a serialized signal's `mcp` map as a boolean must now compare it with `false` or `true`. `"agent"` is truthy, and it means "not on `/mcp`". Code that only declares `mcp: false` or `mcp: true` needs no change.
+Upgrade: code that reads `mcp` (an endpoint's `signalOption.mcp`, `SliceCls.mcp`, a serialized endpoint's `mcp` or a serialized signal's `mcp` map) to decide whether an entry is on `/mcp` must test for listed, `(mcp ?? true) === true`. A check of `mcp !== false`, or a truthiness test, now lets `"agent"` through as listed. A workspace's copied `libs/shared` `AccountMiddleware` had exactly that check, which let an MCP client's OAuth token reach an `mcp: "agent"` endpoint over HTTP, so port its fix. Code that only declares `mcp: false` or `mcp: true` needs no change.

@@ -14,7 +14,7 @@ import {
   type PromiseOrObject,
   SLICE_META,
 } from "akanjs/base";
-import { capitalize, Logger, modelNames, moduleNames, sliceNames } from "akanjs/common";
+import { capitalize, Logger, moduleNames, sliceNames } from "akanjs/common";
 import {
   type ConstantField,
   deserialize,
@@ -34,7 +34,6 @@ import type {
   LiveRegistry,
   WebsocketAdaptor,
 } from "akanjs/service";
-import { ByIdRead } from "../../signal/byIdRead";
 import { type Endpoint, type EndpointCls, sliceEndpoint } from "../../signal/endpoint";
 import { EndpointErrorContract } from "../../signal/endpointErrorContract";
 import type { EndpointInfo } from "../../signal/endpointInfo";
@@ -60,6 +59,7 @@ import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "..
 import { invalidSignal as invalid } from "./invalidSignal";
 import { LivePause } from "./livePause";
 import { PendingSubscribes } from "./PendingSubscribes";
+import { SliceCrud } from "./sliceCrud";
 import { websocketOf } from "./websocketOf";
 
 type LiveChangeListener = (doc: unknown, type: unknown, previous?: unknown) => void;
@@ -394,7 +394,6 @@ export class SignalResolver {
     if (!cnst) throw invalid("Constant is not set for slice");
     const refName = cnst.refName;
     const serviceName = moduleNames(refName).service;
-    const names = modelNames(refName);
 
     // Unchecked, an array fails deep in query compilation as the opaque "Unknown document field path: 0".
     const assertSliceQuery = (query: unknown, key: string) => {
@@ -495,42 +494,7 @@ export class SignalResolver {
           });
       });
 
-      if (sliceCls.crud.get)
-        for (const key of [names.model, names.lightModel])
-          endpointObj[key] = ByIdRead.mark(
-            refName,
-            (builder as any)
-              .query(key === names.model ? cnst.full : cnst.light, { guards: sliceCls.getGuards })
-              .param(names.modelId, ID)
-              .exec(async function (this: any, id: string) {
-                return await this[serviceName][names.getModel](id);
-              }),
-          );
-
-      if (sliceCls.crud.create)
-        endpointObj[names.createModel] = (builder as any)
-          .mutation(cnst.full, { guards: sliceCls.createGuards })
-          .body("data", cnst.input)
-          .exec(async function (this: any, data: any) {
-            return await this[serviceName].__create(data);
-          });
-
-      if (sliceCls.crud.update)
-        endpointObj[names.updateModel] = (builder as any)
-          .mutation(cnst.full, { guards: sliceCls.updateGuards })
-          .param(names.modelId, ID)
-          .body("data", cnst.input)
-          .exec(async function (this: any, id: string, data: any) {
-            return await this[serviceName].__update(id, data);
-          });
-
-      if (sliceCls.crud.remove)
-        endpointObj[names.removeModel] = (builder as any)
-          .mutation(cnst.full, { guards: sliceCls.removeGuards })
-          .param(names.modelId, ID)
-          .exec(async function (this: any, id: string) {
-            return await this[serviceName].__remove(id);
-          });
+      Object.assign(endpointObj, SliceCrud.endpoints(builder, sliceCls, cnst));
       return endpointObj;
     }) {}
     return SliceEndpoint;

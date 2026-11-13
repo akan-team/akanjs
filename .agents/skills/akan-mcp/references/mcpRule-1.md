@@ -51,7 +51,9 @@ export class FileSlice extends slice(srv.file, {
 - **`mcp: "agent"` keeps it off `/mcp` and on the in-process agent.** It goes wherever `mcp: false` goes, a slice
   map key included. `/mcp` neither lists nor runs it and `listingCost` leaves it out, while `AgentToolsRole` and
   `agentService.loop` list it under the same guards and exclusions. Use it when the listing's size, not the step,
-  keeps an entry off. A lib's slice and the app's keep the narrowest: `false`, then `"agent"`, then listed.
+  keeps an entry off. A lib's slice and the app's keep the narrowest: `false`, then `"agent"`, then listed. Code
+  that reads `signalOption.mcp` to tell whether an entry is listed tests `(mcp ?? true) === true`, never
+  `mcp !== false`.
 - **`mcp: true` is the default and is a no-op**; write it only to say out loud that an entry is deliberately on
   the shelf. It does not override a shape refusal (an `Any` return stays refused) and it cannot publish something
   the guard rules keep out.
