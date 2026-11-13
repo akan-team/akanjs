@@ -170,7 +170,6 @@ export class CliBuildLock {
     if (!info) return false;
     const age = await CliBuildLock.#ageOf(info.birthtimeMs || info.mtimeMs, fsNow);
     if (age !== null) return CliBuildLock.#outlived(age);
-    //? A failed clock probe leaves no age, so a marker is passed once the remover pid written into it is gone.
     const remover = await Bun.file(path.join(entry, "owner"))
       .text()
       .catch(() => "");
