@@ -660,7 +660,7 @@ describe("AgentSession restored question", () => {
       role: "assistant",
       toolCalls: [
         { id: "c1", name: "readPage", args: {} },
-        { id: "q1", name: "askUser", args: asked },
+        { id: "q1", name: AgentSession.askUserTool.name, args: asked },
         { id: "c3", name: "eventList", args: {} },
       ],
     },

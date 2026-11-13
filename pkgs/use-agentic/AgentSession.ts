@@ -147,7 +147,7 @@ export class AgentSession {
    * A surface tool of this name shadows it, like any other built-in.
    */
   static readonly askUserTool: PublishedTool = {
-    name: SessionQuestion.toolName,
+    name: "askUser",
     description:
       "Ask the user to decide something that is theirs to decide — an ambiguous request, a missing value, a choice between paths. Use it instead of guessing. Pass `choices` to offer options, or omit them for a free-text answer; the user may answer off-list either way. Returns what they chose or wrote, and errors if they dismiss it.",
     parameters: {
