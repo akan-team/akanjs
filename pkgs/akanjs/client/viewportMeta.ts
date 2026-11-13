@@ -13,8 +13,6 @@ export class ViewportMeta {
   static readonly #viewportAttr = "data-akan-viewport";
   static readonly #themeColorVar = "--akan-theme-color";
 
-  static readonly viewportAttrs = { [ViewportMeta.#viewportAttr]: "" };
-
   static content(viewport: RouteViewport | undefined, { native = false }: { native?: boolean } = {}): string {
     const parts = ["width=device-width", "initial-scale=1"];
     if (viewport?.fitCover ?? native) parts.push("viewport-fit=cover");
@@ -40,7 +38,7 @@ export class ViewportMeta {
   static themeColorNodes(viewport: RouteViewport | undefined, theme?: string): AkanHeadSnapshotNode[] {
     return ViewportMeta.themeColors(viewport, theme).map(({ content, media }) => ({
       tag: "meta",
-      attrs: { name: "theme-color", content, ...(media ? { media } : {}), ...ViewportMeta.viewportAttrs },
+      attrs: { name: "theme-color", content, ...(media ? { media } : {}), [ViewportMeta.#viewportAttr]: "" },
     }));
   }
 
@@ -104,6 +102,8 @@ export class ViewportMeta {
   }
 
   static #mute(meta: HTMLMetaElement) {
+    //? Setting an attribute to the value it holds still wakes watchThemeColor's observer, which would apply again.
+    if (meta.getAttribute("media") === ViewportMeta.#offMedia) return;
     if (!meta.hasAttribute(ViewportMeta.#mutedAttr))
       meta.setAttribute(ViewportMeta.#mutedAttr, meta.getAttribute("media") ?? "");
     meta.setAttribute("media", ViewportMeta.#offMedia);

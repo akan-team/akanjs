@@ -71,7 +71,7 @@ describe("ViewportMeta", () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     const meta = (key: string, content: string, media?: string) =>
-      createElement("meta", { key, name: "theme-color", content, media, ...ViewportMeta.viewportAttrs });
+      createElement("meta", { key, name: "theme-color", content, media, "data-akan-viewport": "" });
     await act(async () => {
       root.render([
         meta("light", "#fff", "(prefers-color-scheme: light)"),
@@ -138,12 +138,27 @@ describe("a theme-color a page's head writes", () => {
       ["#000", "(prefers-color-scheme: dark)"],
     ] as const) {
       const meta = page(content, media);
-      for (const [name, value] of Object.entries(ViewportMeta.viewportAttrs)) meta.setAttribute(name, value);
+      meta.setAttribute("data-akan-viewport", "");
     }
     page("#123456");
 
     expect(ViewportMeta.applyThemeColor({ themeColor: { light: "#fff", dark: "#000" } }, "system")).toBe("#123456");
     expect(themeColorTags().filter(([, media]) => media !== "not all")).toEqual([["#123456", null]]);
+  });
+
+  test("settles after one apply beside the viewport's tags, so the head's own watcher is not woken again", async () => {
+    reset();
+    page("#000", "(prefers-color-scheme: dark)").setAttribute("data-akan-viewport", "");
+    page("#123456");
+    let applied = 0;
+    const stop = ViewportMeta.watchThemeColor(() => {
+      applied++;
+      ViewportMeta.applyThemeColor({ themeColor: { dark: "#000" } }, "system");
+    });
+    page("#654321").remove();
+    for (let frame = 0; frame < 4; frame++) await nextFrame();
+    stop();
+    expect(applied).toBe(2);
   });
 
   test("steps aside for --akan-theme-color, and is back in effect when the variable goes", () => {

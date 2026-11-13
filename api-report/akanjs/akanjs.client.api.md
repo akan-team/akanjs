@@ -1078,9 +1078,6 @@ export interface UserMenuItem {
 }
 
 export declare class ViewportMeta {
-    static readonly viewportAttrs: {
-        "data-akan-viewport": string;
-    };
     static content(viewport: RouteViewport | undefined, { native }?: {
         native?: boolean;
     }): string;

@@ -9,4 +9,4 @@ A page's `.head()` can now set its own `theme-color`, and a level that writes an
 - A level that writes `og:image` drops the `og:image:*` tags (`width`, `height`, `alt`, `type`) it inherits and keeps its own. `twitter:image` and its `twitter:image:*` tags merge the same way.
 - Only `.head()` merges. A `<title>` or `<meta>` written inside a component renders beside the merged head, so a second `<title>` can reach the document. The `pageRule` guideline now says so.
 
-Behaviour is unchanged for a page that sets neither a theme-color nor an image. The api report lists two new `ViewportMeta` statics; no upgrade step is needed.
+Behaviour is unchanged for a page that sets neither a theme-color nor an image. The api report lists one new `ViewportMeta` static; no upgrade step is needed.

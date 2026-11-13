@@ -80,7 +80,10 @@ export class RscDocumentHead {
         <>
           {ownsManifest ? null : manifestLink}
           <AkanRouteHeadReference
-            layouts={{ ...snapshots.layouts, nodes: [...themeColors, ...snapshots.layouts.nodes] }}
+            layouts={{
+              ...snapshots.layouts,
+              nodes: RouteHead.mergeSnapshots([themeColors, snapshots.layouts.nodes]).nodes,
+            }}
             page={snapshots.page}
           />
         </>
