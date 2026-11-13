@@ -65,7 +65,9 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `panelClassName="[&_[data-slot=agent-running]]:bg-accent"` restyles one without leaning on the markup. A modal,
   menu or popconfirm opened from inside the floating panel, `header` included, stacks above the panel, while
   one the page opens stays under it. While the turn waits on an approval, card or question, a scrim the panel
-  opened sinks under the panel so the answer stays reachable, and it comes back once answered. `chrome={false}` drops the header bar whole, for an `inline` chat inside a
+  opened sinks under the panel so the answer stays reachable, and it comes back once answered. A question
+  arriving leaves focus in an overlay the person is typing in, and Escape in the composer closes a modal the panel
+  or a card opened through the modal's own close, `confirmClose` included, before it closes the panel. `chrome={false}` drops the header bar whole, for an `inline` chat inside a
   panel the app already titles, and `defaultDraft` opens the composer with text in it without sending it. A panel driven by a
   controlled `open` with **no** `onOpenChange` draws no close button at all rather than an inert one. Then the
   slots: `AgentLauncher`, `AgentSteps`, `AgentBubble`, `AgentComposer`, `AgentApproval`,
