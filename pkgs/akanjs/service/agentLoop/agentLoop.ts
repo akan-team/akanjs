@@ -70,6 +70,7 @@ export class AgentLoop {
   #toolCalls = 0;
   #tainted: boolean = false;
   #compactFloor = 0;
+  #overflowAt = Number.POSITIVE_INFINITY;
 
   constructor(port: AgentLoopPort, request: AgentLoopRequest) {
     this.#port = port;
@@ -178,16 +179,38 @@ export class AgentLoop {
   }
 
   async *#ask(tools: AgentTool[]): Events<AgentLoopAnswer> {
+    const preamble = this.#request.preamble ?? false;
+    const request = this.#turnOf(tools);
+    try {
+      return yield* this.#metered(request, preamble, true);
+    } catch (error) {
+      if (!this.#request.compact || !Err.is(error, "agent.error.contextOverflow")) throw error;
+      this.#learnOverflow(error.data, request);
+      //? Once a round: a request refused again after its own summary is not one another summary will fit.
+      if (!(yield* this.#compact(true))) throw error;
+    }
+    return yield* this.#metered(this.#turnOf(tools), preamble, true);
+  }
+
+  #turnOf(tools: AgentTool[]): LlmTurnRequest {
     const { context = [], model, preamble } = this.#request;
     const instructions = this.#request.instructions || (preamble ? "" : AgentLoop.noInstructions);
-    const request: LlmTurnRequest = {
+    return {
       messages: LoopTranscript.wire(this.#messages),
       tools: tools.map(({ readOnly: _readOnly, ...tool }) => tool),
       context,
       ...(instructions ? { instructions } : {}),
       ...(model ? { model } : {}),
     };
-    return yield* this.#metered(request, preamble ?? false, true);
+  }
+
+  //? Scaled by the refusal's own limit-to-requested ratio, so a cap counted in bytes lands in this estimate's unit too.
+  #learnOverflow(data: Record<string, unknown> | undefined, request: LlmTurnRequest) {
+    const { limit, requested } = data ?? {};
+    if (typeof limit !== "number" || typeof requested !== "number" || !(limit > 0 && requested > limit)) return;
+    const frame = LoopCompaction.frameTokensOf(request);
+    const fits = Math.floor(((LoopCompaction.tokensOf(this.#messages) + frame) * limit) / requested) - frame;
+    if (fits > 0) this.#overflowAt = Math.min(this.#overflowAt, fits);
   }
 
   async *#metered(request: LlmTurnRequest, preamble: string | false, streamed: boolean): Events<AgentLoopAnswer> {
@@ -221,12 +244,13 @@ export class AgentLoop {
     return answer;
   }
 
-  async *#compact(): Events<void> {
+  async *#compact(forced = false): Events<boolean> {
     const { compact, model, untrusted } = this.#request;
-    if (!compact) return;
-    if (LoopCompaction.tokensOf(this.#messages) < Math.max(compact.at, this.#compactFloor)) return;
+    if (!compact) return false;
+    const threshold = Math.min(compact.at, this.#overflowAt);
+    if (!forced && LoopCompaction.tokensOf(this.#messages) < Math.max(threshold, this.#compactFloor)) return false;
     const at = LoopCompaction.cutAt(this.#messages, compact.keep ?? LoopCompaction.keep);
-    if (at <= 0) return;
+    if (at <= 0) return false;
     const digest = LoopCompaction.digest(this.#messages.slice(0, at));
     let text = "";
     try {
@@ -242,9 +266,9 @@ export class AgentLoop {
       if (this.#haltedBy(error)) throw error;
       //? Best effort: the round may still fit, and a failed summary says nothing about whether this transcript can shrink.
       AgentLoop.#logger.warn(`agent loop compaction failed: ${error instanceof Error ? error.message : String(error)}`);
-      return;
+      return false;
     }
-    if (!text) return;
+    if (!text) return false;
     const summary = LoopCompaction.message(
       text,
       this.#tainted || untrusted ? this.#tainted : undefined,
@@ -253,8 +277,9 @@ export class AgentLoop {
     this.#messages.splice(0, at, summary);
     const after = LoopCompaction.tokensOf(this.#messages);
     //? Still over after summarizing: one kept message is that large, so wait for another threshold's growth.
-    this.#compactFloor = after >= compact.at ? after + compact.at : 0;
+    this.#compactFloor = after >= threshold ? after + threshold : 0;
     yield { type: "compacted", replaced: at, summary };
+    return true;
   }
 
   async *#runCalls(calls: AgentWireToolCall[], tools: AgentTool[]): Events<AgentLoopStop | null> {

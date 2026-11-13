@@ -1,4 +1,4 @@
-import type { AgentWireAttachment, AgentWireMessage } from "../predefinedAdaptor/llm.adaptor";
+import type { AgentWireAttachment, AgentWireMessage, LlmTurnRequest } from "../predefinedAdaptor/llm.adaptor";
 import { LoopTranscript } from "./loopTranscript";
 
 //? A server twin of use-agentic's Compaction; keep the estimate, the cut and the digest in step with it.
@@ -19,6 +19,10 @@ export class LoopCompaction {
     let chars = 0;
     for (const message of LoopTranscript.seen(messages)) chars += LoopCompaction.#charsOf(message);
     return Math.ceil(chars / 4);
+  }
+
+  static frameTokensOf({ messages: _messages, ...frame }: LlmTurnRequest): number {
+    return Math.ceil(JSON.stringify(frame).length / 4);
   }
 
   static #charsOf(message: AgentWireMessage): number {

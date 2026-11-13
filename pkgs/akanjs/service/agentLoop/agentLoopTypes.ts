@@ -81,7 +81,11 @@ export interface AgentLoopOptions {
    * no question is answered with an error instead. A `clientTools` entry by that name is dropped.
    */
   ask?: boolean;
-  /** Summarizes all but the last `keep` messages (6) once the transcript is estimated at `at` tokens. */
+  /**
+   * Summarizes all but the last `keep` messages (6) once the transcript is estimated at `at` tokens, and also when a
+   * round's call fails as `agent.error.contextOverflow`, which is then asked again once. A refusal whose data carries
+   * `limit` and `requested`, in any one unit, lowers `at` for the rest of the run to where the request would fit.
+   */
   compact?: { at: number; keep?: number };
   /** Asked before every call; without it a `needsConfirm` tool is refused, and so is any write once tainted. */
   approve?: AgentLoopApprove;
