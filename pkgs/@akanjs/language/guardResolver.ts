@@ -83,7 +83,7 @@ const exportingPatternOf = (name: string) =>
   new RegExp(`export\\s*\\{(?:[^}]*?[\\s,])?${escapeRegExp(name)}(?![\\w$])`);
 
 const exportMentioningPatternOf = (name: string) =>
-  new RegExp(`export\\s[^;]*?(?<![\\w$])${escapeRegExp(name)}(?![\\w$])`);
+  new RegExp(`export(?![\\w$])[^;]*?(?<![\\w$])${escapeRegExp(name)}(?![\\w$])`);
 
 const declaringPatternOf = (name: string, isAnyBinding: boolean) => {
   const escaped = escapeRegExp(name);
@@ -315,7 +315,7 @@ export class GuardResolver {
     return found;
   }
 
-  #reexportIn(source: TS.SourceFile, name: string): Reexport | null {
+  #reexportIn(source: TS.SourceFile, name: string, takesPackageDefault = false): Reexport | null {
     const { ts, reader } = this.#source;
     for (const statement of source.statements) {
       if (!ts.isExportDeclaration(statement) || statement.isTypeOnly) continue;
@@ -327,9 +327,11 @@ export class GuardResolver {
       if (moduleSpecifier && ts.isStringLiteral(moduleSpecifier)) return { name: original, from: moduleSpecifier.text };
       const imported = reader.importsIn(source).find((item) => item.name === original);
       if (!imported) return { name: original, from: null };
-      return imported.imported === "default" || imported.imported === "*"
-        ? null
-        : { name: imported.imported, from: imported.from };
+      if (imported.imported === "default")
+        return takesPackageDefault && this.pathOfSpecifier(source.fileName, imported.from) === null
+          ? { name: "default", from: imported.from }
+          : null;
+      return imported.imported === "*" ? null : { name: imported.imported, from: imported.from };
     }
     return null;
   }
@@ -474,7 +476,7 @@ export class GuardResolver {
       if (text === undefined) continue;
       const named =
         text.includes(name) && identifierPattern.test(name) && exportingPatternOf(name).test(text)
-          ? this.#reexportIn(this.#source.parse(fileName, text), name)
+          ? this.#reexportIn(this.#source.parse(fileName, text), name, true)
           : null;
       if (named) {
         found.named = { ...named, fileName };
@@ -495,7 +497,7 @@ export class GuardResolver {
     return found;
   }
 
-  //? `#reexportIn` finds no re-export in `export { Stripe }` of a default or namespace import, so that one binds here.
+  //? `#reexportIn` follows no namespace import and no module's default export, so `export { Stripe }` of one binds here.
   #exportsLocally(source: TS.SourceFile, name: string) {
     const { ts } = this.#source;
     const binds = (node: TS.BindingName): boolean =>
@@ -503,14 +505,16 @@ export class GuardResolver {
         ? node.text === name
         : node.elements.some((element) => !ts.isOmittedExpression(element) && binds(element.name));
     return source.statements.some((statement) => {
-      if (ts.isExportDeclaration(statement))
+      if (ts.isExportDeclaration(statement)) {
+        const { exportClause, isTypeOnly, moduleSpecifier } = statement;
+        if (isTypeOnly || !exportClause) return false;
+        if (ts.isNamespaceExport(exportClause)) return exportClause.name.text === name;
         return (
-          !statement.moduleSpecifier &&
-          !statement.isTypeOnly &&
-          !!statement.exportClause &&
-          ts.isNamedExports(statement.exportClause) &&
-          statement.exportClause.elements.some((element) => !element.isTypeOnly && element.name.text === name)
+          !moduleSpecifier &&
+          ts.isNamedExports(exportClause) &&
+          exportClause.elements.some((element) => !element.isTypeOnly && element.name.text === name)
         );
+      }
       const modifiers = ts.canHaveModifiers(statement) ? (ts.getModifiers(statement) ?? []) : [];
       if (
         !modifiers.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword) ||

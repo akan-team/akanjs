@@ -197,14 +197,14 @@ export class AdaptorResolver {
       const [wanted, at] = next;
       if (seen.has(`${at}\n${wanted}`)) continue;
       seen.add(`${at}\n${wanted}`);
-      for (const item of this.#bindingAt(wanted, at, pending)) reached.set(exportedKeyOf(item), item);
+      for (const item of this.#bindingAt(wanted, at, pending, name)) reached.set(exportedKeyOf(item), item);
     }
     const found = [...reached.values()];
     this.#exported.set(key, found);
     return found;
   }
 
-  #bindingAt(name: string, path: string, pending: [name: string, path: string][]): Exported[] {
+  #bindingAt(name: string, path: string, pending: [name: string, path: string][], plugged: string): Exported[] {
     const here = this.#declaredAt(name, path);
     if (here.length) return here;
     const { named, stars, isLocal } = this.#resolver.exportsAt(path, name);
@@ -215,7 +215,10 @@ export class AdaptorResolver {
     }
     if (named) {
       const target = this.#resolver.pathOfSpecifier(named.fileName, named.from);
-      if (target === null) return [{ name: named.name === "default" ? name : named.name, from: named.from }];
+      if (target === null) {
+        const exposed = named.name !== "default" ? named.name : name !== "default" ? name : plugged;
+        return [{ name: exposed, from: named.from }];
+      }
       pending.push([named.name, target]);
       return [];
     }
