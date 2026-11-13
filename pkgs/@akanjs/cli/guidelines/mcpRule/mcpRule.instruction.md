@@ -536,6 +536,10 @@ at every event.
   Neither is ever client input. The model is offered `allow` ∩ what
   the account sees on `/mcp`, and a call to a name that round did not list is answered as an unknown tool, neither
   asked about nor run. A request with no `allow` array is an `error`.
+- **Toolkits.** `toolkits: { calendar: { description, tools } }` groups names of `allow` so a round need not carry
+  every tool. A tool in no toolkit is listed every round, beside one more, `openToolkit({ name })`, whose description
+  lists the toolkits. An opened toolkit's tools are listed from the next round on; `openToolkit` never reaches
+  `approve` and counts as no tool call. A resume reopens what stored calls and a summary's `toolkits` opened.
 - **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
   reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
   wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation

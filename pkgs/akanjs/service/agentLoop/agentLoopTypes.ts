@@ -16,6 +16,12 @@ export type AgentLoopApprove = (
   state: { tainted: boolean; tool: AgentTool },
 ) => PromiseOrObject<AgentLoopApproval>;
 
+/** `description` is the one line the model reads, in `openToolkit`'s own description, to decide whether to open it. */
+export interface AgentLoopToolkit {
+  description: string;
+  tools: readonly string[];
+}
+
 export interface AgentLoopBudget {
   /** Input and output tokens summed over this run's model calls, compactions included. */
   tokens?: number;
@@ -52,6 +58,12 @@ export interface AgentLoopOptions {
   model?: string;
   maxRounds?: number;
   budget?: AgentLoopBudget;
+  /**
+   * Named groups of `allow` the model adds with `openToolkit({ name })`, a tool this run lists beside them; a tool in no
+   * toolkit is listed every round. An opened toolkit's tools are listed from the next round on, `allow` still capping
+   * them, and stay open across a resume and a compaction. `openToolkit` is never asked about and counts as no tool call.
+   */
+  toolkits?: Record<string, AgentLoopToolkit>;
   /** Summarizes all but the last `keep` messages (6) once the transcript is estimated at `at` tokens. */
   compact?: { at: number; keep?: number };
   /** Asked before every call; without it a `needsConfirm` tool is refused, and so is any write once tainted. */

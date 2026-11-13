@@ -16,6 +16,7 @@ import type { AgentLoopApproval, AgentLoopEvent, AgentLoopRequest, AgentLoopStop
 import { DeltaStream } from "./deltaStream";
 import { LoopCompaction } from "./loopCompaction";
 import { LoopRequest } from "./loopRequest";
+import { LoopToolkits } from "./loopToolkits";
 import { LoopToolOutput } from "./loopToolOutput";
 import { LoopTranscript } from "./loopTranscript";
 
@@ -59,6 +60,7 @@ export class AgentLoop {
   //? An object, and one per run: an aborted model call rejects with this reason, and `LlmSpend` keys its counts on it.
   readonly #wall = new DOMException("The run's wallMs ran out.", "AbortError");
   readonly #signal: AbortSignal;
+  readonly #toolkits: LoopToolkits;
   #account: unknown = null;
   #round = 0;
   #tokens = 0;
@@ -71,6 +73,7 @@ export class AgentLoop {
     this.#request = request;
     this.#messages = Array.isArray(request.messages) ? [...request.messages] : [];
     this.#signal = request.signal ? AbortSignal.any([request.signal, this.#halt.signal]) : this.#halt.signal;
+    this.#toolkits = new LoopToolkits(request.toolkits);
   }
 
   async *run(): Events<void> {
@@ -98,6 +101,7 @@ export class AgentLoop {
   }
 
   async *#drive(): Events<AgentLoopStop> {
+    this.#toolkits.restore(this.#messages);
     this.#tainted = LoopTranscript.markedTainted(this.#messages, !!this.#request.untrusted);
     for (const result of LoopTranscript.results(this.#messages)) this.#taintBy(result);
     const pending = LoopTranscript.pending(this.#messages);
@@ -144,7 +148,7 @@ export class AgentLoop {
   }
 
   async #listTools() {
-    return await this.#port.tools.listAs(this.#account, { allow: this.#request.allow });
+    return this.#toolkits.listed(await this.#port.tools.listAs(this.#account, { allow: this.#request.allow }));
   }
 
   async *#ask(tools: AgentTool[]): Events<AgentLoopAnswer> {
@@ -215,7 +219,11 @@ export class AgentLoop {
       return;
     }
     if (!text) return;
-    const summary = LoopCompaction.message(text, this.#tainted || untrusted ? this.#tainted : undefined);
+    const summary = LoopCompaction.message(
+      text,
+      this.#tainted || untrusted ? this.#tainted : undefined,
+      this.#toolkits.opened,
+    );
     this.#messages.splice(0, at, summary);
     const after = LoopCompaction.tokensOf(this.#messages);
     //? Still over after summarizing: one kept message is that large, so wait for another threshold's growth.
@@ -240,13 +248,14 @@ export class AgentLoop {
     try {
       for (const [at, call] of calls.entries()) {
         const verdict = verdicts[at] ?? { deny: AgentLoop.unjudged };
-        stop = this.#haltStop() ?? (verdict === "allow" ? this.#callBudgetStop() : null);
+        const meta = this.#toolkits.isMeta(call.name);
+        stop = this.#haltStop() ?? (verdict === "allow" && !meta ? this.#callBudgetStop() : null);
         if (stop) break;
-        const whole = await this.#execute(call, verdict);
+        const whole = meta ? this.#toolkits.open(call) : await this.#execute(call, verdict);
         const result = LoopToolOutput.clipped(whole);
         results.push(result);
         //? Security: clipping turns a large object into a string, which a predicate reading its fields no longer matches.
-        this.#taintBy(whole);
+        if (!meta) this.#taintBy(whole);
         yield { type: "toolResult", result, round };
       }
     } finally {
@@ -258,8 +267,14 @@ export class AgentLoop {
   }
 
   async #verdictOf(call: AgentWireToolCall, tool: AgentTool | undefined): Promise<Verdict> {
+    if (this.#toolkits.isMeta(call.name)) return "allow";
     //? Security: refused here, as a guard that hid a tool from the listing may still pass it at call time, past `approve`.
-    if (!tool) return { deny: `Unknown tool: ${call.name}.`, code: "unknownTool" };
+    if (!tool) {
+      const closed = this.#toolkits.refusalOf(call.name);
+      return closed
+        ? { deny: closed, code: "toolkitClosed" }
+        : { deny: `Unknown tool: ${call.name}.`, code: "unknownTool" };
+    }
     const { approve } = this.#request;
     if (approve) return AgentLoop.#judged(await this.#untilHalted(approve(call, { tainted: this.#tainted, tool })));
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };

@@ -58,6 +58,8 @@ export interface AgentWireMessage {
    * Absent on a summary, nothing judged what it replaced, so a resumed run with `untrusted` counts it as tainted.
    */
   tainted?: boolean;
+  /** On a summary `agentService.loop` wrote: the toolkits its run had opened, which the messages it replaced recorded. */
+  toolkits?: string[];
 }
 
 export interface AgentWireTool {

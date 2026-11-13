@@ -40,7 +40,8 @@ an endpoint with a real guard is published, one with none is refused, and so is 
   and refusals in-process plus the `mcp: "agent"` entries, batch servers included. Pass only an account the server resolved, never client input.
 - `this.agentService.loop({ account | principal, allow, messages, approve, untrusted, onMessage, meta, budget })`
   runs a model over those tools until it answers; `option.setAgentAccountResolver` resolves a stored `principal`
-  before every round. Each round is metered as its own turn with `turn.loop` and `turn.meta`.
+  before every round. Each round is metered as its own turn with `turn.loop` and `turn.meta`. `toolkits` holds named
+  groups of `allow` back until the model calls `openToolkit`.
 
 ## Verify
 
