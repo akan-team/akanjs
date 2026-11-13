@@ -19,6 +19,7 @@ import type {
   ToolCallResult,
   ToolCard,
   TurnLimits,
+  TurnOverflow,
   TurnStop,
   TurnUsage,
 } from "./types";
@@ -684,7 +685,7 @@ export class AgentSession {
     const guard = Compaction.thresholdOf(this.#limits, buffer);
     const measure = () => ({
       transcript: Compaction.tokensOf(this.#messages),
-      prompt: Compaction.promptTokensOf(this.#messages, () => AgentSession.#tokensOfFrame(this.#frame())),
+      prompt: Compaction.promptTokensOf(this.#messages, () => Compaction.frameTokensOf(this.#frame())),
     });
     const before = measure();
     const floor = this.#compactFloor;
@@ -715,8 +716,9 @@ export class AgentSession {
    * refused again after its own summary is not one another summary will fit — and never where the host turned
    * automatic compaction off, since that host keeps the window itself.
    */
-  async #recover(overflow: { limit?: number }, signal: AbortSignal): Promise<boolean> {
-    if (overflow.limit) this.#limits = { ...this.#limits, window: overflow.limit };
+  async #recover(overflow: TurnOverflow, signal: AbortSignal): Promise<boolean> {
+    const window = Compaction.windowOf(overflow, this.#messages, this.#overhead);
+    if (window) this.#limits = { ...this.#limits, window };
     const { at, keep } = this.#compactOptions;
     if (!at) return false;
     const draft = this.#messages[this.#messages.length - 1];
@@ -751,10 +753,6 @@ export class AgentSession {
     };
   }
 
-  static #tokensOfFrame(frame: Omit<RunnerRequest, "messages" | "signal">): number {
-    return Math.ceil(JSON.stringify(frame).length / 4);
-  }
-
   /** No tools and no screen context: this turn summarizes the conversation, and must not act on it. */
   async #summarize(digest: string, signal: AbortSignal): Promise<string> {
     const custom = this.#options.compact?.summarize;
@@ -777,7 +775,7 @@ export class AgentSession {
     signal: AbortSignal,
   ): Promise<{ toolCalls: ToolCallRequest[]; stop: TurnStop; failure?: Extract<RunnerEvent, { type: "error" }> }> {
     const frame = this.#frame();
-    this.#overhead = AgentSession.#tokensOfFrame(frame);
+    this.#overhead = Compaction.frameTokensOf(frame);
     this.#listed = frame.tools.map((tool) => tool.name);
     const request: RunnerRequest = { messages: Transcript.wire(this.#messages), ...frame, signal };
     this.#append({ role: "assistant" });

@@ -126,9 +126,10 @@ pages declaring one name never clash, and a registry kept outside the surface re
   carries `{ provider, status }`, the hostname and the HTTP status; the provider's own sentence goes to the server
   log only, because it can quote an account id or part of a key and `Err` data reaches the browser.
   `LlmOverflow.refusal(host, status, reason)` builds it, and reads the one refusal a chat can undo — a prompt past
-  the window, recognized from each provider's own sentence — as `agent.error.contextOverflow` with the `limit` it
-  named, which the relay flags so the chat compacts and asks again. An adaptor an app wrote throws through the same function, so its refusals
-  translate and recover the way the shipped ones do without a key in the framework's dictionary it cannot add.
+  the window, recognized from each provider's own sentence — as `agent.error.contextOverflow` with the `limit` and
+  `requested` it named, which the relay flags so the chat compacts and asks again. An adaptor an app wrote throws through the same function, so its refusals
+  translate and recover the way the shipped ones do without a key in the framework's dictionary it cannot add. An
+  adaptor's own size cap throws that error with `{ limit, requested }` in its own unit, bytes included.
 - **`accepts` is answered per model, through `option.setLlm({ accepts })`.** An adaptor answers for an API and one
   API serves models that differ, so the override rides beside the `model` it is a fact about. It is not a table
   the framework keeps: a table is a claim about models that ship after it, and getting this wrong is the worst
@@ -603,8 +604,8 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `window − answer ceiling (8,192 when unreported) − compact.buffer (13,000, the margin Claude Code leaves)` —
   measured by the provider's own count of the last turn (`done.usage`, kept on that assistant message) plus the
   four-character estimate for what arrived since, so a Korean transcript the character rule reads as small is
-  still caught. The window comes from `option.setLlm({ contextWindow })` or from the first refusal that names it;
-  with neither, only the ceiling runs. **A refusal for length is answered once**: a relay flags it `overflow` on
+  still caught. The window comes from `option.setLlm({ contextWindow })` or from a refusal that names it, scaled by
+  its `limit / requested` to this estimate when it gives both; with neither, only the ceiling runs. **A refusal for length is answered once**: a relay flags it `overflow` on
   the wire, and the session compacts and sends the same turn again, and a second refusal in the same send fails
   with `agent.error.contextOverflow`. Either way the history above the last `keep` messages
   becomes one message standing in for it, flagged `summary` on the wire — `<Agent.Chat compact={{ at, keep, buffer }} />`

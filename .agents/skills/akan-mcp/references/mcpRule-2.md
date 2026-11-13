@@ -278,3 +278,7 @@ at every event.
   short neutral prompt stands in, as each adaptor's own fallback is about a screen. `compact { at, keep }` summarizes
   the head, and a tool result is capped at 20,000 characters as the browser caps it. Its calls carry no ip, so an
   ip-scoped `rateLimit` counts them under one unknown address.
+- **A refusal for length.** With `compact` set, a round whose call fails as `agent.error.contextOverflow` compacts
+  regardless of `at` and asks once more, as one round; a second refusal, or nothing to cut, ends the run with the
+  error. An adaptor with its own size cap throws that error with `{ limit, requested }` in its own unit, bytes
+  included, and the run lowers `at` to where that request would have fit.

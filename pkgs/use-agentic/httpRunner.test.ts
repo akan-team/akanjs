@@ -187,6 +187,9 @@ describe("httpRunner streaming", () => {
     expect(named).toEqual({ type: "error", message: "too long", code: "badRequest", overflow: { limit: 65_536 } });
     const [bare] = await collect(httpRunner({ url: "/t", fetcher: refused(true) }).run(request()));
     expect(bare).toEqual({ type: "error", message: "too long", code: "badRequest", overflow: {} });
+    const measured = refused({ limit: 400_000, requested: 412_000 });
+    const [both] = await collect(httpRunner({ url: "/t", fetcher: measured }).run(request()));
+    expect(both).toMatchObject({ overflow: { limit: 400_000, requested: 412_000 } });
   });
 
   test("a body with no message falls back to the status, and a nested data is not forwarded", async () => {

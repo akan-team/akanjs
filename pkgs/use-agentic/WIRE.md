@@ -133,8 +133,10 @@ errors is such a refusal. The code is what a host branches on, since the message
 The session keeps it on the failed assistant message as `errorCode`, which is never sent back.
 
 **A refusal because the prompt no longer fits the window carries `"overflow": { "limit": 128000 }`** (`limit` only
-when the provider named it). It is the one refusal a session can answer by itself: it summarizes the transcript and
-asks again, once, and remembers the window for the rest of the conversation. Flag nothing else with it — a rate
+when the refusal named it). With `requested` beside it, both are in the refusal's own unit — a byte cap included —
+and the session scales its own estimate of the refused prompt by their ratio; `limit` alone is a window in tokens. It
+is the one refusal a session can answer by itself: it summarizes the transcript and asks again, once, and remembers
+the window for the rest of the conversation. Flag nothing else with it — a rate
 limit flagged as overflow compacts a conversation that fit.
 
 ## Streaming

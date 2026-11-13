@@ -1,5 +1,5 @@
 import { Transcript } from "./Transcript";
-import type { ChatMessage, MessageAttachment, ToolCallResult, TurnLimits } from "./types";
+import type { ChatMessage, MessageAttachment, RunnerRequest, ToolCallResult, TurnLimits, TurnOverflow } from "./types";
 
 export interface CompactOptions {
   /**
@@ -70,6 +70,10 @@ export class Compaction {
     return Math.ceil(chars / 4) + images * Compaction.imageTokens;
   }
 
+  static frameTokensOf(frame: Omit<RunnerRequest, "messages" | "signal">): number {
+    return Math.ceil(JSON.stringify(frame).length / 4);
+  }
+
   /**
    * What the next request is estimated to cost, prompt and all: the provider's own count for the last turn that
    * reported one, plus four characters a token for what the transcript gained since. The provider's number is the
@@ -83,6 +87,12 @@ export class Compaction {
       if (usage) return usage.input + usage.output + Compaction.tokensOf(messages.slice(at + 1));
     }
     return Compaction.tokensOf(messages) + overhead();
+  }
+
+  //? Scaled by the refusal's own limit-to-requested ratio, so a cap counted in bytes lands in the prompt estimate's unit.
+  static windowOf({ limit, requested }: TurnOverflow, messages: readonly ChatMessage[], overhead: number) {
+    if (!limit || !requested || requested <= limit) return limit;
+    return Math.floor((Compaction.promptTokensOf(messages, () => overhead) * limit) / requested);
   }
 
   /**
