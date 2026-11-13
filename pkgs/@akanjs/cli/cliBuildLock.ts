@@ -1,4 +1,6 @@
+import { readlinkSync } from "node:fs";
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { hostname } from "node:os";
 import path from "node:path";
 
 interface HeldLock {
@@ -20,6 +22,8 @@ export class CliBuildLock {
   static readonly #transientCodes = new Set(["EPERM", "EBUSY"]);
   //? A scanner holding a marker's owner file refuses its removal briefly; left, it stalls removals until the lease.
   static readonly #removalRetryCodes = new Set([...CliBuildLock.#transientCodes, "ENOTEMPTY"]);
+  //? A hostname alone misses WSL, which takes its Windows host's name, and a `--network host` container, its machine's.
+  static readonly #host = CliBuildLock.#hostIdentity();
 
   static async acquire(lockDir: string): Promise<() => Promise<void>> {
     await mkdir(path.dirname(lockDir), { recursive: true });
@@ -27,7 +31,8 @@ export class CliBuildLock {
     for (;;) {
       const held = await CliBuildLock.#heldAt(lockDir);
       if (!held) {
-        const token = `${process.pid}\n${crypto.randomUUID()}\n${Date.now()}`;
+        //? The host goes last: an older CLI reads the pid and the time taken by their line index.
+        const token = `${process.pid}\n${crypto.randomUUID()}\n${Date.now()}\n${CliBuildLock.#host}`;
         if (await CliBuildLock.#create(lockDir, token)) {
           await CliBuildLock.#sweep(lockDir, fsNow);
           return async () => await CliBuildLock.#release(lockDir, token, fsNow);
@@ -73,7 +78,8 @@ export class CliBuildLock {
         return false;
       }
       try {
-        await Bun.write(path.join(markerOf(attempt), "owner"), `${process.pid}`).catch(() => undefined);
+        const owner = `${process.pid}\n${CliBuildLock.#host}`;
+        await Bun.write(path.join(markerOf(attempt), "owner"), owner).catch(() => undefined);
         const held = await CliBuildLock.#heldAt(lockDir);
         if (!held || !isTarget(held)) return false;
         const tombstone = `${lockDir}.removed-${crypto.randomUUID()}`;
@@ -190,7 +196,8 @@ export class CliBuildLock {
     const remover = await Bun.file(path.join(entry, "owner"))
       .text()
       .catch(() => "");
-    return CliBuildLock.#isGone(Number(remover));
+    const [pid, host] = remover.split("\n");
+    return CliBuildLock.#isGone(pid, host);
   }
 
   static async #ageOf(bornAt: number, fsNow: FsNow): Promise<number | null> {
@@ -204,7 +211,7 @@ export class CliBuildLock {
   }
 
   static async #isAbandoned(lockDir: string, { token, bornAt }: HeldLock, fsNow: FsNow): Promise<boolean> {
-    const [pid, , takenAt] = token?.split("\n") ?? [];
+    const [pid, , takenAt, host] = token?.split("\n") ?? [];
     const takenAtMs = Number(takenAt);
     const heldFor = takenAtMs ? Date.now() - takenAtMs : await CliBuildLock.#ageOf(bornAt, fsNow);
     if (CliBuildLock.#outlived(heldFor)) {
@@ -212,11 +219,26 @@ export class CliBuildLock {
       console.warn(`[cli-build] taking over ${lockDir}, ${age}`);
       return true;
     }
-    return CliBuildLock.#isGone(Number(pid));
+    return CliBuildLock.#isGone(pid, host);
   }
 
-  static #isGone(pid: number): boolean {
-    if (!Number.isFinite(pid) || pid <= 0) return false;
+  static #hostIdentity(): string {
+    const pidNamespace = process.platform === "linux" ? CliBuildLock.#pidNamespace() : "";
+    return [hostname(), process.platform, pidNamespace].filter(Boolean).join(" ");
+  }
+
+  static #pidNamespace(): string {
+    try {
+      return readlinkSync("/proc/self/ns/pid");
+    } catch {
+      return "";
+    }
+  }
+
+  //? A live pid on another host or container reads ESRCH here; an older CLI's token or marker names no host at all.
+  static #isGone(pidText: string | undefined, host: string | undefined): boolean {
+    const pid = Number(pidText);
+    if ((host !== undefined && host !== CliBuildLock.#host) || !Number.isFinite(pid) || pid <= 0) return false;
     try {
       process.kill(pid, 0);
       return false;
