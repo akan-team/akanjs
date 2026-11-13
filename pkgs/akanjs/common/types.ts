@@ -46,6 +46,15 @@ export interface FetchPolicy<_Returns = unknown> {
    * pages a link prefetched survive it, where any other write sends them again.
    */
   keepsReads?: boolean;
+  /**
+   * `false` sends a call made while the server renders a page without the visitor's session or address, so it answers
+   * as to a stranger and the render can stay in the route result cache. An explicit `token` and the client's own `jwt`
+   * and `clientIp` still go, and a browser's call is unchanged. Only for an endpoint that answers every caller alike:
+   * every visitor's render then shares one budget under the server's own address, so give that endpoint
+   * `rateLimit: false` (or exempt it) rather than an address budget, or one client forcing renders spends it for
+   * everyone.
+   */
+  forwardVisitor?: boolean;
 }
 
 export type SnakeCase<S extends string> = S extends `${infer T}_${infer U}` ? `${Lowercase<T>}_${SnakeCase<U>}` : S;

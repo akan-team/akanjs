@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, mock, spyOn } from "bun:test";
-import { AkanNotFoundError, RouteGuards } from "akanjs/client";
+import { AkanNotFoundError, RouteGuards, router } from "akanjs/client";
 import { Logger } from "akanjs/common";
+import { createRequestStore, requestStorage } from "akanjs/fetch";
 import { getOrSetupSignalTestFetch } from "akanjs/test";
 
 import type { fetch as minimalFetch } from "../lib/useServer";
@@ -84,6 +85,18 @@ describe("LocalOrEdge", () => {
     expect(errors).toEqual([]);
   });
 
+  it("stops the memo detail guard at not-found where the router moves rather than throws, as in a CSR shell", async () => {
+    spyOn(LocalOrEdge.prototype, "canPass").mockReturnValue(false);
+    //? `router` is a proxy binding each method to a per-side instance, so only the class prototype reaches its calls.
+    const routerProto = Object.getPrototypeOf(new (router.constructor as new () => object)()) as typeof router;
+    const notFound = spyOn(routerProto, "notFound").mockImplementation(() => undefined as never);
+    const errors = await errorsLoggedBy(async () => {
+      await guardsOf(memoViewPage, { memoId });
+    });
+    expect(notFound).toHaveBeenCalledTimes(1);
+    expect(errors).toEqual([]);
+  });
+
   it("lists the memo apps over MCP only on a server it admits, without a refused call", async () => {
     expect(await listedOverMcp(memoPage)).toBe(true);
     expect(await listedOverMcp(memoViewPage)).toBe(true);
@@ -101,6 +114,14 @@ describe("LocalOrEdge", () => {
     spyOn(LocalOrEdge.prototype, "canPass").mockReturnValue(false);
     expect(await fetch.isMemoOpen()).toBe(false);
     expect(await tripsLinks()).toEqual(["/trips/detail"]);
+  });
+
+  it("renders the trips page without reading the visitor's request, so the route result cache can keep it", async () => {
+    const headers = { authorization: "Bearer visitor", cookie: "jwt=session", "x-real-ip": "203.0.113.5" };
+    const store = createRequestStore(new Request("http://localhost/en/trips", { headers }));
+    const links = await requestStorage?.run(store, tripsLinks);
+    expect(links).toContain("/memo");
+    expect(store.dynamicUsage).toEqual({ headers: false, cookies: false });
   });
 
   it("links the trips page to the trip notes when the memo check fails", async () => {

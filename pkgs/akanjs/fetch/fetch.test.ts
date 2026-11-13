@@ -2218,6 +2218,33 @@ describe("FetchClient HTTP generation", () => {
     expect(forwarded(1)).toBeNull();
   });
 
+  test("sends a forwardVisitor: false query made while rendering without the visitor, leaving the page cacheable", async () => {
+    if (!requestStorage) return;
+    setMockFetch();
+    jsonResponses.push("stranger", "visitor");
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const page = createRequestStore(
+      new Request("https://example.test", {
+        headers: { authorization: "Bearer visitor", cookie: "jwt=session", "x-real-ip": "203.0.113.5" },
+      }),
+    );
+    const id = "abcdefabcdefabcdefabcdef";
+
+    const usageAfterStrangerCall = await requestStorage.run(page, async () => {
+      setAkanPublicEnv();
+      await client.handler.getThing(id, [], null, { forwardVisitor: false });
+      const usage = { ...page.dynamicUsage };
+      await client.handler.getThing(id, [], null);
+      return usage;
+    });
+
+    const sent = (idx: number) => new Headers(fetchCalls[idx]?.init?.headers as HeadersInit);
+    expect([sent(0).get("authorization"), sent(0).get("x-real-ip")]).toEqual([null, null]);
+    expect(usageAfterStrangerCall).toEqual({ headers: false, cookies: false });
+    expect([sent(1).get("authorization"), sent(1).get("x-real-ip")]).toEqual(["Bearer visitor", "203.0.113.5"]);
+    expect(page.dynamicUsage).toEqual({ headers: true, cookies: false });
+  });
+
   test("hands the visitor's credential only to this server: another origin gets the token its caller gave or none", async () => {
     if (!requestStorage) return;
     setMockFetch();

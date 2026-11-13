@@ -348,7 +348,7 @@ export class FetchClient {
   // Security: the request being rendered and the token `setJwt` holds belong to this server's visitor; a call aimed at
   // another server carries only the token its caller gave it, or the session would reach a server they never signed in to.
   #forwardsVisitor(option?: FetchPolicy) {
-    return !this.#foreign && this.#ownOrigin(option);
+    return option?.forwardVisitor !== false && !this.#foreign && this.#ownOrigin(option);
   }
   #makeAuthHeaders(option?: FetchPolicy): Record<string, string> {
     if (option?.token) return { Authorization: `Bearer ${option.token}` };

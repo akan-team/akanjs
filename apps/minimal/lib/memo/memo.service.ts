@@ -1,3 +1,4 @@
+import { LocalOrEdge } from "@apps/minimal/srvkit";
 import { BlobStorageApi } from "@libs/util/srvkit";
 import { serve } from "akanjs/service";
 
@@ -14,6 +15,10 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({
     "image/webp": "webp",
     "image/gif": "gif",
   };
+
+  isOpen() {
+    return new LocalOrEdge().canPass();
+  }
 
   async attachImage(memoId: string, upload: File | undefined) {
     if (!upload) throw new Err("memo.error.imageMissing");

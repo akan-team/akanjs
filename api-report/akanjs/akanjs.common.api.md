@@ -684,6 +684,7 @@ export interface FetchPolicy<_Returns = unknown> {
     idempotencyKey?: string;
     duringRender?: boolean;
     keepsReads?: boolean;
+    forwardVisitor?: boolean;
 }
 
 export interface FileUploadCapability {
