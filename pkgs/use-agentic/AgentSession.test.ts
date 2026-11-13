@@ -652,6 +652,111 @@ describe("AgentSession askUser", () => {
   });
 });
 
+describe("AgentSession restored question", () => {
+  const asked = { question: " Which calendar? ", choices: ["Team", "Team", " Personal "] };
+  const parked: ChatMessage[] = [
+    { role: "user", text: "Check my calendar." },
+    {
+      role: "assistant",
+      toolCalls: [
+        { id: "c1", name: "readPage", args: {} },
+        { id: "q1", name: "askUser", args: asked },
+        { id: "c3", name: "eventList", args: {} },
+      ],
+    },
+    { role: "tool", toolResults: [{ id: "c1", name: "readPage", result: "page" }] },
+    { role: "assistant" },
+  ];
+  const stored = (messages: ChatMessage[]) => ({ load: () => messages, save: () => undefined, clear: () => undefined });
+  const answering = () =>
+    scripted([
+      { type: "text", delta: "Team calendar checked." },
+      { type: "done", stop: "end" },
+    ]);
+
+  test("a transcript a run left on askUser restores with the question open, and an answer runs the turn on", async () => {
+    const { runner, requests } = answering();
+    const session = new AgentSession(new AgenticSurface(), runner, { history: stored(parked) });
+    expect(session.pendingQuestion).toMatchObject({
+      callId: "q1",
+      question: "Which calendar?",
+      choices: ["Team", "Personal"],
+      multiple: false,
+    });
+    expect(session.isRunning).toBe(false);
+    expect(session.messages.flatMap((message) => message.toolResults ?? []).map((result) => result.id)).toEqual([
+      "c3",
+      "c1",
+    ]);
+
+    session.pendingQuestion?.answer("Team");
+    await until(() => session.messages.at(-1)?.text === "Team calendar checked.");
+    expect(session.pendingQuestion).toBeNull();
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages.flatMap((message) => message.toolResults ?? [])).toContainEqual({
+      id: "q1",
+      name: "askUser",
+      result: "Team",
+    });
+  });
+
+  test("a dismissal runs the turn on with the error, and an async load reopens it the same way", async () => {
+    const { runner, requests } = answering();
+    let deliver: (messages: ChatMessage[]) => void = () => undefined;
+    const pending = new Promise<ChatMessage[]>((resolve) => {
+      deliver = resolve;
+    });
+    const session = new AgentSession(new AgenticSurface(), runner, {
+      history: { load: () => pending, save: () => undefined, clear: () => undefined },
+    });
+    expect(session.pendingQuestion).toBeNull();
+    deliver(parked);
+    await until(() => session.pendingQuestion !== null);
+    const question = session.pendingQuestion;
+    question?.dismiss();
+    question?.answer("Team");
+    await until(() => session.messages.at(-1)?.text === "Team calendar checked.");
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages.flatMap((message) => message.toolResults ?? [])).toContainEqual({
+      id: "q1",
+      name: "askUser",
+      error: "The user dismissed the question without answering it.",
+    });
+  });
+
+  test("a turn started first takes the question down and the wire closes the call", async () => {
+    const { runner, requests } = answering();
+    const session = new AgentSession(new AgenticSurface(), runner, { history: stored(parked) });
+    const question = session.pendingQuestion;
+    await session.send("Never mind, list my notes.");
+    question?.answer("Team");
+    await tick();
+    expect(session.pendingQuestion).toBeNull();
+    expect(requests).toHaveLength(1);
+    expect(requests[0].messages.flatMap((message) => message.toolResults ?? [])).toContainEqual({
+      id: "q1",
+      name: "askUser",
+      error: Transcript.unanswered,
+    });
+    const cleared = new AgentSession(new AgenticSurface(), answering().runner, { history: stored(parked) });
+    await cleared.reset();
+    expect(cleared.pendingQuestion).toBeNull();
+  });
+
+  test("restores closed what a run did not leave waiting on a question", async () => {
+    const closes = (messages: ChatMessage[]) => {
+      const session = new AgentSession(new AgenticSurface(), answering().runner, { history: stored(messages) });
+      expect(session.pendingQuestion).toBeNull();
+      return session.messages.flatMap((message) => message.toolResults ?? []).find((result) => result.id === "q1");
+    };
+    const [user, assistant, ran] = parked;
+    expect(closes([user, assistant, ran, { role: "user", text: "Hello?" }])?.error).toBe(Transcript.unanswered);
+    expect(closes([user, assistant])?.error).toBe(Transcript.unanswered);
+    const blank = { ...assistant, toolCalls: [{ id: "q1", name: "askUser", args: { question: " " } }] };
+    expect(closes([user, blank])?.error).toBe(Transcript.unanswered);
+  });
+});
+
 describe("AgentSession history", () => {
   const memoryHistory = (initial: import("./types").ChatMessage[] | null = null) => {
     const state = { stored: initial, saves: 0, cleared: 0, loads: 0 };
