@@ -2219,8 +2219,10 @@ export class StoryModel extends into(
                   <span>
                     <strong>A changed index is rebuilt.</strong> Change a shipped index, even <code>-1</code> to{" "}
                     <code>1</code> or adding <code>unique</code>, and the next boot builds the new one and drops the
-                    old: a full index build on a large table. Adding or removing another index renames none of them, and
-                    an index you delete from <code>_onSchema</code> is dropped on the next boot.
+                    old: a full index build on a large table. Adding or removing another index renames none of them. An
+                    index you delete from <code>_onSchema</code>, or whose fields you reorder, stays until{" "}
+                    <code>akan migrate &lt;app&gt; prune-indexes</code> drops it, run once no instance of the earlier
+                    release is serving; a unique one keeps refusing duplicates until then.
                   </span>
                 ),
                 ko: (
@@ -2228,7 +2230,9 @@ export class StoryModel extends into(
                     <strong>바꾼 인덱스는 다시 만들어집니다.</strong> 배포된 인덱스를 바꾸면, <code>-1</code>을{" "}
                     <code>1</code>로 바꾸거나 <code>unique</code>를 더하기만 해도, 다음 부팅에서 새 인덱스를 만들고 옛
                     인덱스를 삭제합니다. 큰 테이블에서는 인덱스 전체를 새로 만드는 작업입니다. 다른 인덱스를 더하거나
-                    빼도 이름은 바뀌지 않으며, <code>_onSchema</code>에서 지운 인덱스는 다음 부팅에서 삭제됩니다.
+                    빼도 이름은 바뀌지 않습니다. <code>_onSchema</code>에서 지우거나 필드 순서를 바꾼 인덱스는 이전
+                    릴리스 인스턴스가 모두 내려간 뒤 <code>akan migrate &lt;app&gt; prune-indexes</code>로 삭제할 때까지
+                    남으며, unique 인덱스는 그때까지 중복을 계속 거부합니다.
                   </span>
                 ),
               })}

@@ -775,7 +775,7 @@ const describeDriver = (kind: SqlDriverKind) => {
       }
     });
 
-    test("the B-tree an earlier boot built from a text index is dropped, and an index without a meta key is kept", async () => {
+    test("the B-tree an earlier boot built from a text index is kept until pruned, and one without a meta key is kept", async () => {
       const legacy = await storeOf(driver, confConstant, confDatabase);
       const connection = driver.database.getConnection();
       const legacyIndex = (name: string, path: string) =>
@@ -797,16 +797,26 @@ const describeDriver = (kind: SqlDriverKind) => {
       const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "info" });
       const textIndexes = () => new DocumentSchema().index({ note: "text" }).index({ title: "text" });
       try {
-        await storeOf(await sibling(), confConstant, confDatabase, textIndexes());
+        const booted = await storeOf(await sibling(), confConstant, confDatabase, textIndexes());
+        expect((await validIndexNamesOf(driver, "dialectConf")).sort()).toEqual([
+          "dialectConf_note_0",
+          "dialectConf_title_1",
+        ]);
+        expect(
+          warnings.filter((message) => message.includes("dialectConf_note_0 on dialectConf is no longer declared")),
+        ).toHaveLength(1);
+        expect(warnings.filter((message) => message.includes("dialectConf_title_1"))).toHaveLength(0);
+
+        expect(await booted.pruneUndeclaredIndexes()).toEqual([
+          { table: "dialectConf", name: "dialectConf_note_0", unique: false },
+        ]);
         expect(await validIndexNamesOf(driver, "dialectConf")).toEqual(["dialectConf_title_1"]);
         expect(await driver.database.getMeta("index:dialectConf:dialectConf_note_0")).toBeUndefined();
-        expect(warnings.filter((message) => message.includes("Dropped index dialectConf_note_0"))).toHaveLength(1);
-        expect(warnings.filter((message) => message.includes("Dropped index dialectConf_title_1"))).toHaveLength(0);
 
         warnings.length = 0;
         await storeOf(await sibling(), confConstant, confDatabase, textIndexes());
         expect(warnings.filter((message) => message.includes("MongoDB's text index"))).toHaveLength(2);
-        expect(warnings.filter((message) => message.includes("Dropped"))).toHaveLength(0);
+        expect(warnings.filter((message) => message.includes("no longer declared"))).toHaveLength(0);
 
         await storeOf(await sibling(), confConstant, confDatabase, new DocumentSchema().index({ note: 1 }));
         expect((await validIndexNamesOf(driver, "dialectConf")).sort()).toEqual([
@@ -833,7 +843,7 @@ const describeDriver = (kind: SqlDriverKind) => {
       }
     });
 
-    test("[DDL-6] an index no declaration builds any more is dropped, and one made by hand is kept", async () => {
+    test("[DDL-6] an index no declaration builds any more is kept at boot and dropped by a prune, and one made by hand by neither", async () => {
       const store = await storeOf(
         driver,
         uniqueConstant,
@@ -848,12 +858,28 @@ const describeDriver = (kind: SqlDriverKind) => {
           columns: [{ path: "label", expr: store.compiler.fieldExpr("label"), isArray: false }],
         }),
       );
-      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ code: 1 }));
+      const narrowed = () => new DocumentSchema().index({ code: 1 });
+      const booted = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, narrowed());
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
+        "uniqueConf_byHand",
+        "uniqueConf_code",
+        "uniqueConf_label",
+      ]);
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label")).toBeDefined();
+      const undeclared = [{ table: "uniqueConf", name: "uniqueConf_label", unique: false }];
+      expect(await booted.undeclaredIndexes()).toEqual(undeclared);
+
+      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, narrowed());
+      expect(await validIndexNamesOf(driver, "uniqueConf")).toHaveLength(3);
+
+      expect(await booted.pruneUndeclaredIndexes()).toEqual(undeclared);
       expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(["uniqueConf_byHand", "uniqueConf_code"]);
       expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label")).toBeUndefined();
+      expect(await booted.undeclaredIndexes()).toEqual([]);
+      expect(await booted.pruneUndeclaredIndexes()).toEqual([]);
     });
 
-    test("[DDL-6] the positional copies an earlier release built serve on, and their duplicates are dropped", async () => {
+    test("[DDL-6] the positional copies an earlier release built serve on, and their duplicates wait for a prune", async () => {
       const legacy = await storeOf(driver, uniqueConstant, uniqueDatabase);
       const legacyIndex = async (name: string, path: string) => {
         await driver.database.getConnection().execute(
@@ -877,25 +903,121 @@ const describeDriver = (kind: SqlDriverKind) => {
 
       const current = () => new DocumentSchema().index({ code: 1 }).index({ label: 1 });
       await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+      const everyCopy = ["uniqueConf_code_0", "uniqueConf_code_2", "uniqueConf_label_1"];
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(everyCopy);
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code_2")).toBeDefined();
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label_3")).toBeUndefined();
+
+      const booted = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(everyCopy);
+      expect((await booted.pruneUndeclaredIndexes()).map(({ name }) => name)).toEqual(["uniqueConf_code_2"]);
       expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
         "uniqueConf_code_0",
         "uniqueConf_label_1",
       ]);
       expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code_2")).toBeUndefined();
-      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label_3")).toBeUndefined();
 
-      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+      const changed = new DocumentSchema().index({ code: 1 }).index({ label: 1 }, { unique: true });
+      const rebuilt = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, changed);
       expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
         "uniqueConf_code_0",
         "uniqueConf_label_1",
+        "uniqueConf_label_unique",
       ]);
-
-      const changed = new DocumentSchema().index({ code: 1 }).index({ label: 1 }, { unique: true });
-      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, changed);
+      await rebuilt.pruneUndeclaredIndexes();
       expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
         "uniqueConf_code_0",
         "uniqueConf_label_unique",
       ]);
+    });
+
+    test("[DDL-6] an upgrade keeps the copy older replicas declare, so none rebuilds it and no later boot drops it", async () => {
+      const legacy = await storeOf(driver, uniqueConstant, uniqueDatabase);
+      const labelUnique = new DocumentSchema().index({ label: 1 }, { unique: true }).indexes[0];
+      const legacyIndex = async (name: string, path: string, unique: boolean) => {
+        await driver.database.getConnection().execute(
+          driver.dialect.createIndex({
+            name,
+            table: "uniqueConf",
+            unique,
+            columns: [{ path, expr: legacy.compiler.fieldExpr(path), isArray: false }],
+          }),
+        );
+        const descriptor = unique ? labelUnique : { fields: { [path]: 1 } };
+        await driver.database.setMeta(`index:uniqueConf:${name}`, await descriptorHash(descriptor));
+      };
+      // What #192 left: an orphan from before `code` was declared in front of `label`, and the two copies 3.0.2 declares.
+      await legacyIndex("uniqueConf_label_0", "label", true);
+      await legacyIndex("uniqueConf_code_0", "code", false);
+      await legacyIndex("uniqueConf_label_1", "label", true);
+      const everyCopy = ["uniqueConf_code_0", "uniqueConf_label_0", "uniqueConf_label_1"];
+      // A 3.0.2 replica builds an index again unless it finds both its meta row and the index under its name.
+      const olderReplicaFinds = async (name: string) =>
+        !!(await driver.database.getMeta(`index:uniqueConf:${name}`)) &&
+        (await validIndexNamesOf(driver, "uniqueConf")).includes(name);
+
+      const warnings: string[] = [];
+      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "info" });
+      try {
+        const current = () => new DocumentSchema().index({ code: 1 }).index({ label: 1 }, { unique: true });
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+        expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(everyCopy);
+        expect(await olderReplicaFinds("uniqueConf_label_1")).toBe(true);
+        expect(await olderReplicaFinds("uniqueConf_code_0")).toBe(true);
+
+        const booted = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+        expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(everyCopy);
+        expect(await olderReplicaFinds("uniqueConf_label_1")).toBe(true);
+        expect(warnings.filter((message) => message.includes("Dropped"))).toEqual([]);
+        const undeclared = warnings.filter((message) => message.includes("no longer declared"));
+        expect(undeclared).toHaveLength(2);
+        expect(undeclared[0]).toContain("Unique index uniqueConf_label_1 on uniqueConf");
+
+        expect(await booted.pruneUndeclaredIndexes()).toEqual([
+          { table: "uniqueConf", name: "uniqueConf_label_1", unique: true },
+        ]);
+        expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
+          "uniqueConf_code_0",
+          "uniqueConf_label_0",
+        ]);
+        await booted.create({ label: "first", code: "A" });
+        await expect(booted.create({ label: "first", code: "B" })).rejects.toThrow();
+      } finally {
+        removeSink();
+      }
+    });
+
+    test("[DDL-6] a unique index no longer declared refuses a duplicate until pruned, and boot says so", async () => {
+      const strict = await storeOf(
+        driver,
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ code: 1 }, { unique: true }),
+      );
+      await strict.create({ label: "first", code: "A" });
+      const warnings: string[] = [];
+      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "warn" });
+      try {
+        const relaxed = await storeOf(
+          await sibling(),
+          uniqueConstant,
+          uniqueDatabase,
+          new DocumentSchema().index({ code: 1 }),
+        );
+        const stale = [{ table: "uniqueConf", name: "uniqueConf_code_unique", unique: true }];
+        expect(await relaxed.undeclaredIndexes()).toEqual(stale);
+        expect(
+          warnings.filter((message) =>
+            message.includes("Unique index uniqueConf_code_unique on uniqueConf is no longer declared"),
+          ),
+        ).toHaveLength(1);
+        await expect(relaxed.create({ label: "repeat", code: "A" })).rejects.toThrow();
+
+        expect(await relaxed.pruneUndeclaredIndexes()).toEqual(stale);
+        await relaxed.create({ label: "repeat", code: "A" });
+      } finally {
+        removeSink();
+      }
     });
 
     test("[DDL-6] two declarations of one index build it once, and one a named index differs from takes a suffix", async () => {
@@ -930,9 +1052,19 @@ const describeDriver = (kind: SqlDriverKind) => {
       }
     });
 
-    test("[DDL-6] reordering the fields of an index builds it in the new order", async () => {
+    test("[DDL-6] reordering the fields of an index builds it in the new order, and a prune drops the old one", async () => {
       await storeOf(driver, uniqueConstant, uniqueDatabase, new DocumentSchema().index({ code: 1, label: 1 }));
-      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ label: 1, code: 1 }));
+      const reordered = await storeOf(
+        await sibling(),
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ label: 1, code: 1 }),
+      );
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
+        "uniqueConf_code_label",
+        "uniqueConf_label_code",
+      ]);
+      await reordered.pruneUndeclaredIndexes();
       expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label_code"]);
     });
 
@@ -954,7 +1086,16 @@ const describeDriver = (kind: SqlDriverKind) => {
       await legacyIndex("uniqueConf_code_label_0", ["code", "label"]);
       await legacyIndex("uniqueConf_label_code_0", ["label", "code"]);
 
-      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ label: 1, code: 1 }));
+      const booted = await storeOf(
+        await sibling(),
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ label: 1, code: 1 }),
+      );
+      expect(await booted.undeclaredIndexes()).toEqual([
+        { table: "uniqueConf", name: "uniqueConf_code_label_0", unique: false },
+      ]);
+      await booted.pruneUndeclaredIndexes();
       expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label_code_0"]);
       expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code_label_0")).toBeUndefined();
     });
@@ -986,7 +1127,9 @@ const describeDriver = (kind: SqlDriverKind) => {
         expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code")).toBeDefined();
         expect(warnings.filter((message) => message.includes("Index uniqueConf_label on uniqueConf"))).toHaveLength(2);
 
-        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema());
+        const emptied = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema());
+        expect(await validIndexNamesOf(driver, "uniqueConf")).toHaveLength(3);
+        await emptied.pruneUndeclaredIndexes();
         expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label"]);
       } finally {
         removeSink();

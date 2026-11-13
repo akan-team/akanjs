@@ -1165,6 +1165,11 @@ export interface MigrationPlanResult {
     itemCount: number;
 }
 
+export interface MigrationPruneResult {
+    dropped: UndeclaredIndex[];
+    failed: PrunedIndex[];
+}
+
 export declare class MigrationPulse {
     static readonly holdWarnMs = 5000;
     readonly lock: MigrationLock;
@@ -1222,6 +1227,10 @@ export declare class MigrationRunner {
     static readonly defaultItemNum = 100;
     constructor(entries: MigrationEntry[], { database, get, buildId, logger }: MigrationRunnerOption);
     list(): Promise<MigrationListItem[]>;
+    undeclaredIndexes(): Promise<UndeclaredIndex[]>;
+    pruneIndexes({ actor }?: {
+        actor?: null | string;
+    }): Promise<MigrationPruneResult>;
     plan(id: string, raw?: Record<string, string>, { actor, items }?: {
         actor?: null | string;
         items?: number;
@@ -1943,7 +1952,9 @@ export declare const migrationActions: readonly [
     "plan",
     "apply",
     "verify",
-    "rollback"
+    "rollback",
+    "indexes",
+    "prune-indexes"
 ];
 
 /** @internal */

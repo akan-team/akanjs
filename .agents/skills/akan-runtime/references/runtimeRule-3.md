@@ -63,10 +63,11 @@ serving without a key. Everything else is behind the ops channel.
   get 30 a minute per process; every refusal is the same 401 and spends none of them, and an address refused 10
   times in a minute gets 429 until it passes. A malformed key, or the machine token's own key
   (`AKAN_MACHINE_PUBLIC_KEY`), logs an error and leaves the app serving with the channel off.
-- **A migrate job runs for the token's `sub`**, which the run records as its actor: apply and rollback refuse a
-  token without one, and a body naming `actor` is refused. Each option reaches the command as `--name=value`. One
-  job runs at a time per process (409 meanwhile); the run's own lease keeps two hosts on one database apart. Jobs
-  live in memory, so after a restart read the outcome from `list`. Polls count toward the 30 a minute.
+- **A migrate job runs for the token's `sub`**, which the run records as its actor: apply, rollback and prune-indexes
+  refuse a token without one, and a body naming `actor` is refused. Each option reaches the command as
+  `--name=value`. One job runs at a time per process (409 meanwhile); the run's own lease keeps two hosts on one
+  database apart. Jobs live in memory, so after a restart read the outcome from `list`. Polls count toward the 30 a
+  minute.
 - **The app holds no storage credential.** It PUTs to the presigned URLs it was handed (`application/octet-stream`,
   the manifest `application/json`), plain http only to loopback. The manifest landing is the commit marker.
 - **Snapshots cover the SQLite modes only.** `single` copies the main file and, with `includeSolid`, the Solid file;

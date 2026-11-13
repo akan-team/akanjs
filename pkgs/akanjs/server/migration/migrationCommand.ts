@@ -1,8 +1,9 @@
 import { parseArgs } from "node:util";
+import type { UndeclaredIndex } from "akanjs/service";
 import { MigrationError, type MigrationErrorCode } from "./migrationError";
 import type { MigrationListItem, MigrationRunner } from "./migrationRunner";
 
-export const migrationActions = ["list", "plan", "apply", "verify", "rollback"] as const;
+export const migrationActions = ["list", "plan", "apply", "verify", "rollback", "indexes", "prune-indexes"] as const;
 export type MigrationAction = (typeof migrationActions)[number];
 const migrationOptions = ["param", "expect", "actor", "items"] as const;
 type MigrationOption = (typeof migrationOptions)[number];
@@ -35,7 +36,10 @@ export class MigrationCommand {
     apply: ["param", "expect", "actor"],
     verify: ["param", "actor"],
     rollback: ["actor"],
+    indexes: [],
+    "prune-indexes": ["actor"],
   };
+  static readonly #untargeted = new Set<MigrationAction>(["list", "indexes", "prune-indexes"]);
 
   static usageOf(invokedAs = "ops migrate") {
     return [
@@ -45,6 +49,8 @@ export class MigrationCommand {
       `  ${invokedAs} apply <id> [--param <name>=<value>]... [--expect <planHash>] [--actor <id>] [--json]`,
       `  ${invokedAs} verify <id> [--param <name>=<value>]... [--actor <id>] [--json]`,
       `  ${invokedAs} rollback <applyRunId|id> [--actor <id>] [--json]`,
+      `  ${invokedAs} indexes [--json]`,
+      `  ${invokedAs} prune-indexes [--actor <id>] [--json]`,
     ].join("\n");
   }
 
@@ -59,7 +65,7 @@ export class MigrationCommand {
     if (!migrationActions.includes(name as MigrationAction))
       throw new MigrationError("usage", `Unknown action "${name}"\n${usage}`);
     const action = name as MigrationAction;
-    if (action === "list" ? target : !target)
+    if (MigrationCommand.#untargeted.has(action) ? target : !target)
       throw new MigrationError("usage", `${action} ${target ? "takes no id" : "needs an id"}\n${usage}`);
     if (extra.length) throw new MigrationError("usage", `Unexpected arguments: ${extra.join(" ")}`);
     const refused = migrationOptions.find(
@@ -85,6 +91,19 @@ export class MigrationCommand {
       if (action === "list") return { ok: true, action, migrations: await runner.list() };
       if (action === "plan") return { ok: true, action, ...(await runner.plan(target, params, { actor, items })) };
       if (action === "rollback") return { ok: true, action, ...(await runner.rollback(target, { actor })) };
+      if (action === "indexes") return { ok: true, action, indexes: await runner.undeclaredIndexes() };
+      if (action === "prune-indexes") {
+        const { dropped, failed } = await runner.pruneIndexes({ actor });
+        if (!failed.length) return { ok: true, action, dropped, failed };
+        return {
+          ok: false,
+          action,
+          code: "failed",
+          error: `${failed.length} of the indexes could not be dropped`,
+          dropped,
+          failed,
+        };
+      }
       const result =
         action === "apply"
           ? await runner.apply(target, params, { expect, actor })
@@ -129,6 +148,8 @@ export class MigrationCommand {
     if (json) return JSON.stringify(result);
     if (result.ok && result.action === "list")
       return MigrationCommand.#renderList(result.migrations as MigrationListItem[]);
+    if (result.ok && result.action === "indexes")
+      return MigrationCommand.#renderIndexes(result.indexes as UndeclaredIndex[]);
     return JSON.stringify(result, null, 2);
   }
 
@@ -145,6 +166,14 @@ export class MigrationCommand {
         return [head, ...params.map((line) => `         ${line}`)].join("\n");
       })
       .join("\n");
+  }
+
+  static #renderIndexes(indexes: UndeclaredIndex[]) {
+    if (!indexes.length) return "This release declares every index an earlier one built";
+    return [
+      "Kept for an earlier release; drop them with prune-indexes once no instance runs one:",
+      ...indexes.map(({ table, name, unique }) => `${unique ? "unique" : "      "}  ${table}  ${name}`),
+    ].join("\n");
   }
 
   static #parseArgs(argv: string[], usage: string) {

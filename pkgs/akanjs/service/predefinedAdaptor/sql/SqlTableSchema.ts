@@ -6,10 +6,12 @@ import type { QueryCompiler } from "./QueryCompiler";
 import {
   type CreateIndexProps,
   type DocumentDatabaseOwner,
+  type PrunedIndex,
   REF_NAME_RE,
   RESERVED_RE,
   type SqlDialect,
   toSafeRefName,
+  type UndeclaredIndex,
 } from "./types";
 import { descriptorHash, inlineParams, quoteIdent } from "./values";
 
@@ -30,6 +32,7 @@ interface StaleIndex {
   name: string;
   metaKey: string;
   exists: boolean;
+  unique: boolean;
 }
 
 export interface SqlTableSchemaOptions {
@@ -115,23 +118,40 @@ export class SqlTableSchema {
         else await db.execute(index.create(index.name, false));
         await this.#owner.setMeta(index.metaKey, index.hash);
       }
-      const drops: StaleIndex[] = [];
-      for (const index of stale) {
-        if (!index.exists) await this.#owner.deleteMeta(index.metaKey);
-        else if (this.#owner.dropIndexConcurrently) drops.push(index);
-        else await this.#dropStaleIndex(index);
-      }
-      return { concurrent, drops };
+      // Never dropped at boot: an instance of the earlier release may still query it, and would rebuild it on restart.
+      const kept: StaleIndex[] = [];
+      for (const index of stale)
+        if (index.exists) kept.push(index);
+        else await this.#owner.deleteMeta(index.metaKey);
+      return { concurrent, kept };
     };
-    const { concurrent, drops } = this.#owner.lockSchema
+    const { concurrent, kept } = this.#owner.lockSchema
       ? await this.#owner.lockSchema(createSchema)
       : await createSchema();
     for (const { name, next, create, replace, metaKey, hash } of concurrent) {
       await this.#owner.buildIndexConcurrently?.({ name, next, create: (target) => create(target, true), replace });
       await this.#owner.setMeta(metaKey, hash);
     }
-    for (const index of drops) await this.#dropStaleIndex(index);
+    for (const index of kept) this.#warnUndeclared(index);
     await this.#owner.getSearchIndex()?.ensureRef(this.#constant, this.#database);
+  }
+
+  async undeclaredIndexes(): Promise<UndeclaredIndex[]> {
+    await this.ensure();
+    const { stale } = await this.#reconcileIndexes(await this.#declaredIndexes());
+    return stale.filter(({ exists }) => exists).map(({ name, unique }) => ({ table: this.#table, name, unique }));
+  }
+
+  async pruneUndeclaredIndexes(): Promise<PrunedIndex[]> {
+    await this.ensure();
+    const declared = await this.#declaredIndexes();
+    const reconcile = async () => (await this.#reconcileIndexes(declared)).stale;
+    const stale = this.#owner.lockSchema ? await this.#owner.lockSchema(reconcile) : await reconcile();
+    const pruned: PrunedIndex[] = [];
+    for (const index of stale)
+      if (index.exists) pruned.push(await this.#dropStaleIndex(index));
+      else await this.#owner.deleteMeta(index.metaKey);
+    return pruned;
   }
 
   static #builds(index: DocumentIndexDescriptor) {
@@ -208,15 +228,17 @@ export class SqlTableSchema {
     return { name, next: this.#dialect.indexName(`${declared}_next`), metaKey: `index:${this.#table}:${name}` };
   }
 
-  // Only an index whose meta key says an earlier boot built it is adopted or dropped; one made by hand has none.
+  // Only an index whose meta key says an earlier boot built it is adopted or pruned; one made by hand has none.
   async #reconcileIndexes(declared: DeclaredIndex[]) {
     const prefix = `index:${this.#table}:`;
     const { sql, params } = this.#dialect.indexesOf(this.#table);
     const rows = await this.#owner
       .getConnection()
       .prepare(sql)
-      .all<{ name: string; valid: unknown; definition: string }>(...params);
-    const physical = new Map(rows.map(({ name, valid, definition }) => [name, { valid: !!valid, definition }]));
+      .all<{ name: string; valid: unknown; definition: string; unique: unknown }>(...params);
+    const physical = new Map(
+      rows.map(({ name, valid, definition, unique }) => [name, { valid: !!valid, definition, unique: !!unique }]),
+    );
     const recorded = (await this.#owner.listMeta(prefix))
       .map(({ key, value }) => ({ name: key.slice(prefix.length), metaKey: key, hash: value }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -251,7 +273,12 @@ export class SqlTableSchema {
     }
     const stale: StaleIndex[] = undeclared
       .filter(({ name }) => !kept.has(name))
-      .map(({ name, metaKey }) => ({ name, metaKey, exists: physical.has(name) }));
+      .map(({ name, metaKey }) => ({
+        name,
+        metaKey,
+        exists: physical.has(name),
+        unique: !!physical.get(name)?.unique,
+      }));
     return { indexes, adopted, stale };
   }
 
@@ -267,18 +294,28 @@ export class SqlTableSchema {
     };
   }
 
-  // An index no declaration builds costs only its upkeep on writes, so failing to drop it must not fail the boot.
-  async #dropStaleIndex({ name, metaKey }: StaleIndex) {
+  async #dropStaleIndex({ name, metaKey, unique }: StaleIndex): Promise<PrunedIndex> {
+    const index = { table: this.#table, name, unique };
     try {
       if (this.#owner.dropIndexConcurrently) await this.#owner.dropIndexConcurrently(name);
       else await this.#owner.getConnection().execute(`DROP INDEX IF EXISTS ${quoteIdent(name)}`);
       await this.#owner.deleteMeta(metaKey);
       this.#logger.info(`Dropped index ${name} on ${this.#table}, which no declaration builds any more`);
+      return index;
     } catch (error) {
-      this.#logger.warn(
-        `Index ${name} on ${this.#table} is no longer declared, and dropping it failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      this.#logger.warn(`Index ${name} on ${this.#table} is no longer declared, and dropping it failed: ${message}`);
+      return { ...index, error: message };
     }
+  }
+
+  #warnUndeclared({ name, unique }: StaleIndex) {
+    const prune = "`akan migrate <app> prune-indexes` (`bun main.js ops migrate prune-indexes` in a built image)";
+    this.#logger.warn(
+      unique
+        ? `Unique index ${name} on ${this.#table} is no longer declared but still refuses a duplicate of its key, so a write this release allows can fail; once no instance runs an earlier release, drop it with ${prune}`
+        : `Index ${name} on ${this.#table} is no longer declared and is kept for any instance still running an earlier release; once none does, drop it with ${prune}`,
+    );
   }
 
   #indexPredicate(where: DocumentQuery, name: string) {
