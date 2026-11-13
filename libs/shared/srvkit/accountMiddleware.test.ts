@@ -42,7 +42,7 @@ const tokenOf = async (sid: string) => (await accessToken(sid)).slice("Bearer ".
 
 const oauthCall = async (
   clientId: string,
-  signalOption: { mcp?: boolean; guards?: unknown[] },
+  signalOption: { mcp?: boolean | "agent"; guards?: unknown[] },
   { origin = "http", key = "x", callEnv = env }: { origin?: string; key?: string; callEnv?: ModulesOptions } = {},
 ) => {
   const { appName, environment } = getEnv();
@@ -133,7 +133,10 @@ describe("AccountMiddleware", () => {
   test("an OAuth client's token is refused off the MCP shelf, and a token an app mints for itself is not", async () => {
     await expect(oauthCall("dcr_client", { mcp: false })).rejects.toEqual(offShelfRefusal);
     await expect(oauthCall("https://client.example.com/meta.json", { mcp: false })).rejects.toEqual(offShelfRefusal);
+    await expect(oauthCall("dcr_client", { mcp: "agent" })).rejects.toEqual(offShelfRefusal);
     expect((await oauthCall("dcr_client", {}))?.self?.id).toBe("u");
+    expect((await oauthCall("dcr_client", { mcp: true }))?.self?.id).toBe("u");
+    expect((await oauthCall("dcr_client", { mcp: "agent" }, { origin: "mcp" }))?.self?.id).toBe("u");
     expect((await oauthCall("dcr_client", { mcp: false }, { origin: "mcp" }))?.self?.id).toBe("u");
     expect((await oauthCall("dcr_client", { mcp: false, guards: [{ agents: false }] }))?.self?.id).toBe("u");
     expect((await oauthCall("app-own-runner", { mcp: false }))?.self?.id).toBe("u");
