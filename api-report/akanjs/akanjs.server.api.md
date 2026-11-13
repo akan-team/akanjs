@@ -1812,8 +1812,6 @@ export interface RemoteScreen {
 }
 
 export declare class RemoteSource implements AgentLoopRemote {
-    static readonly staticMeta = "akanjs/static";
-    static readonly renderMeta = "akanjs/render";
     static readonly disconnected = "remoteDisconnected";
     static readonly viewBytes: number;
     readonly name: string;

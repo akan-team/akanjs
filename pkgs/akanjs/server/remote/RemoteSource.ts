@@ -1,5 +1,5 @@
 import type { AgentLoopRemote, AgentLoopRemoteResult, AgentTool } from "akanjs/service";
-import { MCP_APP_META, MCP_UI_MIME_TYPE } from "../../signal/mcp/mcpProtocol";
+import { MCP_APP_META, MCP_STATIC_APP_META, MCP_UI_MIME_TYPE } from "../../signal/mcp/mcpProtocol";
 import type { RemoteFetch } from "./RemoteFetch";
 import { RemoteMcp, type RemoteMcpCallResult, type RemoteMcpTool } from "./RemoteMcp";
 import { RemoteError } from "./remoteError";
@@ -36,9 +36,6 @@ interface RemoteApp {
 
 // One remote MCP server as one account sees it: what `agentService.loop({ remotes })` lists and calls.
 export class RemoteSource implements AgentLoopRemote {
-  /** On a listed tool: its screen can be drawn as script-less HTML. On a call: asks for that HTML. */
-  static readonly staticMeta = "akanjs/static";
-  static readonly renderMeta = "akanjs/render";
   static readonly disconnected = "remoteDisconnected";
   //? A view is one file holding its whole client bundle, far past what a tool result may weigh.
   static readonly viewBytes = 8 * 1024 * 1024;
@@ -117,7 +114,7 @@ export class RemoteSource implements AgentLoopRemote {
     if (!this.#apps.size && !(await this.list())) return null;
     const app = this.#apps.get(tool);
     if (!app?.static || !app.readOnly) return null;
-    const answer = await this.#with((mcp) => mcp.callTool(tool, args, { [RemoteSource.renderMeta]: "html" }));
+    const answer = await this.#with((mcp) => mcp.callTool(tool, args, { [MCP_STATIC_APP_META.render]: "html" }));
     if (!answer || answer.isError) return null;
     const html = answer.content.find((part) => part.type === "resource" && part.resource?.mimeType === "text/html")
       ?.resource?.text;
@@ -210,7 +207,7 @@ export class RemoteSource implements AgentLoopRemote {
     const meta = tool._meta;
     const ui = meta?.ui as { resourceUri?: unknown } | undefined;
     const resourceUri = typeof ui?.resourceUri === "string" ? ui.resourceUri : undefined;
-    const isStatic = meta?.[RemoteSource.staticMeta] === true;
+    const isStatic = meta?.[MCP_STATIC_APP_META.static] === true;
     if (!resourceUri && !isStatic) return null;
     return {
       ...(resourceUri ? { resourceUri } : {}),
