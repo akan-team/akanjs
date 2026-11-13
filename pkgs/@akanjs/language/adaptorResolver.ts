@@ -150,14 +150,20 @@ export class AdaptorResolver {
     const holder = from === undefined ? file.owner : from;
     const own = this.#adaptorIn(name, declared, holder, path, file.fileName);
     if (own && "from" in own) return this.#packageAdaptorOf(own.name, own.from);
+    const shims =
+      own === undefined && from && from !== frameworkOwner && path
+        ? this.#exportedAt(name, path).filter(isPackageExport)
+        : [];
+    const [shim] = shims;
+    if (shim && shims.length === 1) return this.#packageAdaptorOf(shim.name, shim.from);
     const found =
-      own === undefined && from !== frameworkOwner
+      own === undefined && !shim && from !== frameworkOwner
         ? declared.find((adaptor) => this.#resolver.visible(adaptor.owner, holder))
         : own;
     if (found) return found.id;
-    const reexported =
-      own === undefined && from && from !== frameworkOwner ? this.#packageShimOf(from, name, path) : null;
-    if (reexported) return this.#packageAdaptorOf(reexported.name, reexported.from);
+    const starred =
+      own === undefined && !shim && from && from !== frameworkOwner ? this.#starredPackageOf(from, name, path) : null;
+    if (starred) return this.#packageAdaptorOf(starred.name, starred.from);
     const owner = from === frameworkOwner ? null : imported ? (from ?? null) : file.owner;
     const detail = from === frameworkOwner ? [frameworkOwner] : [];
     return this.#sink.addNode(this.#sink.key("adaptor", owner, name), "adaptor", owner, name, null, detail).id;
@@ -242,11 +248,8 @@ export class AdaptorResolver {
   }
 
   //? A lib reaches a third-party class only through a re-export, so the class is the package's, not the lib's.
-  #packageShimOf(owner: string, name: string, near: string | null) {
+  #starredPackageOf(owner: string, name: string, near: string | null) {
     if (!near) return null;
-    const shims = this.#exportedAt(name, near).filter(isPackageExport);
-    const [shim] = shims;
-    if (shim) return shims.length === 1 ? shim : null;
     const { packages, paths } = this.#resolver.starExportsOf(owner, near);
     const [only] = packages;
     if (!only || new Set(packages.map(packageOf)).size !== 1) return null;
