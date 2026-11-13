@@ -6,11 +6,12 @@ export class LoopRequest {
   //? The most `setTimeout` takes: past it a timer fires at once, which would end the run as out of budget.
   static readonly maxWallMs = 2 ** 31 - 1;
 
-  static assertValid({ allow, messages, maxRounds, budget, compact, toolkits }: AgentLoopRequest) {
+  static assertValid({ allow, messages, maxRounds, budget, compact, toolkits, clientTools }: AgentLoopRequest) {
     //? Security: `listAs` reads a missing `allow` as every tool the account may see.
     if (!Array.isArray(allow)) LoopRequest.#refuse("allow");
     if (!Array.isArray(messages)) LoopRequest.#refuse("messages");
     LoopRequest.#assertToolkits(toolkits, allow);
+    LoopRequest.#assertClientTools(clientTools);
     LoopRequest.#assertCount("maxRounds", maxRounds);
     LoopRequest.#assertCount("compact.at", compact?.at);
     LoopRequest.#assertCount("compact.keep", compact?.keep);
@@ -35,6 +36,20 @@ export class LoopRequest {
     }
     //? The run answers that name itself, so a real tool by it would be shadowed.
     if (allow.includes(LoopToolkits.toolName)) LoopRequest.#refuse("allow");
+  }
+
+  static #assertClientTools(clientTools: AgentLoopRequest["clientTools"]) {
+    if (clientTools === undefined) return;
+    if (!Array.isArray(clientTools)) LoopRequest.#refuse("clientTools");
+    for (const tool of clientTools as unknown[]) {
+      const { name, description, parameters } = (tool ?? {}) as Record<string, unknown>;
+      const valid =
+        typeof name === "string" &&
+        !!name &&
+        (description === undefined || typeof description === "string") &&
+        (parameters === undefined || (typeof parameters === "object" && parameters !== null));
+      if (!valid) LoopRequest.#refuse("clientTools");
+    }
   }
 
   static #assertCount(name: string, value: number | undefined) {

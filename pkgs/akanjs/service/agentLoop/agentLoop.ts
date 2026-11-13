@@ -61,6 +61,7 @@ export class AgentLoop {
   readonly #wall = new DOMException("The run's wallMs ran out.", "AbortError");
   readonly #signal: AbortSignal;
   readonly #toolkits: LoopToolkits;
+  #clientNames = new Set<string>();
   #account: unknown = null;
   #round = 0;
   #tokens = 0;
@@ -148,7 +149,27 @@ export class AgentLoop {
   }
 
   async #listTools() {
-    return this.#toolkits.listed(await this.#port.tools.listAs(this.#account, { allow: this.#request.allow }));
+    const visible = await this.#port.tools.listAs(this.#account, { allow: this.#request.allow });
+    const listed = this.#toolkits.listed(visible);
+    const taken = new Set(visible.map((tool) => tool.name));
+    //? Security: client input, so a browser's definition never takes a name the server answers, in a closed toolkit too.
+    const client = (this.#request.clientTools ?? []).filter((tool) => {
+      if (taken.has(tool.name) || this.#toolkits.isMeta(tool.name)) return false;
+      taken.add(tool.name);
+      return true;
+    });
+    this.#clientNames = new Set(client.map((tool) => tool.name));
+    return [...listed, ...client.map(AgentLoop.#clientTool)];
+  }
+
+  static #clientTool({ name, description, parameters, readOnly, needsConfirm }: AgentTool): AgentTool {
+    return {
+      name,
+      ...(description ? { description } : {}),
+      ...(parameters ? { parameters } : {}),
+      readOnly: readOnly === true,
+      needsConfirm: needsConfirm === true,
+    };
   }
 
   async *#ask(tools: AgentTool[]): Events<AgentLoopAnswer> {
@@ -251,6 +272,13 @@ export class AgentLoop {
         const meta = this.#toolkits.isMeta(call.name);
         stop = this.#haltStop() ?? (verdict === "allow" && !meta ? this.#callBudgetStop() : null);
         if (stop) break;
+        //? The calls after it wait too: the model wrote them in order, possibly against what this one changes.
+        if (verdict === "allow" && this.#clientNames.has(call.name)) {
+          this.#toolCalls += 1;
+          yield { type: "awaiting", call, client: true };
+          stop = "awaiting";
+          break;
+        }
         const whole = meta ? this.#toolkits.open(call) : await this.#execute(call, verdict);
         const result = LoopToolOutput.clipped(whole);
         results.push(result);

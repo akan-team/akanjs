@@ -39,6 +39,7 @@ export interface AgentLoopBudget {
 export type AgentLoopEvent = {
     type: "awaiting";
     call: AgentWireToolCall;
+    client?: true;
 } | {
     type: "compacted";
     replaced: number;
@@ -80,6 +81,7 @@ export interface AgentLoopOptions {
     maxRounds?: number;
     budget?: AgentLoopBudget;
     toolkits?: Record<string, AgentLoopToolkit>;
+    clientTools?: AgentTool[];
     compact?: {
         at: number;
         keep?: number;

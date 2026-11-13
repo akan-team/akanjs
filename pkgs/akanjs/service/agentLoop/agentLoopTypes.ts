@@ -34,7 +34,10 @@ export interface AgentLoopBudget {
   wallMs?: number;
 }
 
-/** `awaiting`: `approve` deferred a call; resume with the messages `onMessage` stored and it is asked again. */
+/**
+ * `awaiting`: `approve` deferred a call, and a resume with the messages `onMessage` stored asks it again; or a client
+ * tool was called, and a resume with its result appended runs on from it.
+ */
 export type AgentLoopStop =
   | "end"
   | "maxRounds"
@@ -64,6 +67,13 @@ export interface AgentLoopOptions {
    * them, and stay open across a resume and a compaction. `openToolkit` is never asked about and counts as no tool call.
    */
   toolkits?: Record<string, AgentLoopToolkit>;
+  /**
+   * The tools of a screen a connected browser has open (`AgentClientTools.list()` in `akanjs/ui`): client input,
+   * listed beside the endpoint tools and never run here. `approve` is still asked. An allowed call ends the run as
+   * `awaiting` with `client: true`; append the browser's result, or an error when no page answers, and resume. A name
+   * an endpoint tool or `openToolkit` holds is dropped.
+   */
+  clientTools?: AgentTool[];
   /** Summarizes all but the last `keep` messages (6) once the transcript is estimated at `at` tokens. */
   compact?: { at: number; keep?: number };
   /** Asked before every call; without it a `needsConfirm` tool is refused, and so is any write once tainted. */
@@ -97,6 +107,6 @@ export type AgentLoopEvent =
    * whole: its `tainted` carries the run's taint across a resume.
    */
   | { type: "compacted"; replaced: number; summary: AgentWireMessage }
-  | { type: "awaiting"; call: AgentWireToolCall }
+  | { type: "awaiting"; call: AgentWireToolCall; client?: true }
   | { type: "done"; stop: AgentLoopStop; rounds: number }
   | { type: "error"; message: string; error: unknown };
