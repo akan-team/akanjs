@@ -236,6 +236,29 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     ).toEqual(["cycleA.ts", "cycleB.ts", "index.ts", "sub/a.ts", "sub/b.ts", "sub/index.ts"]);
   });
 
+  test("a module that calls a macro import is still read, so a name it re-exports maps past it", async () => {
+    const root = await makeTempRoot();
+    const pkgDir = path.join(root, "app");
+    await write(path.join(pkgDir, "client.ts"), 'export { usePage, sig } from "./lib/useClient";\n');
+    await write(
+      path.join(pkgDir, "lib", "useClient.ts"),
+      [
+        'import { getSerializedSignal } from "./sig" with { type: "macro" };',
+        'export { sig } from "./sigs";',
+        "export const usePage = getSerializedSignal();",
+        "",
+      ].join("\n"),
+    );
+    await write(path.join(pkgDir, "lib", "sigs.ts"), "export const sig = 1;\n");
+    const analyzer = new BarrelAnalyzer({
+      resolvePackage: async () => ({ pkgName: "@apps/app", entryFile: path.join(pkgDir, "client.ts"), pkgDir }),
+    });
+
+    const map = await analyzer.analyze("@apps/app");
+    expect(map?.get("sig")).toEqual({ subpath: "@apps/app/lib/sigs", originalName: "sig" });
+    expect(map?.get("usePage")).toEqual({ subpath: "@apps/app/lib/useClient", originalName: "usePage" });
+  });
+
   test("two analyses that interleave each keep their own place in their barrel", async () => {
     const root = await makeTempRoot();
     const barrels = { first: ["a1", "a2", "a3"], second: ["b1", "b2"] } as const;
