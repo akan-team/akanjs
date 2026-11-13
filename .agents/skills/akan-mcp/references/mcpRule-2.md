@@ -253,6 +253,8 @@ at every event.
   A call ends the run `awaiting` with `question: true`; put the question to the member, append
   `{ id, name: "askUser", result }` — or an `error` when they dismiss it — and resume. It never reaches `approve`,
   counts as no tool call, and `untrusted` never sees the answer. A `clientTools` entry by that name is dropped.
+- **Other servers.** `remotes` takes other MCP servers, each a toolkit named after it: none is listed or contacted
+  until the model opens it, and its tools then read `<name>.<tool>`. See "Calling Another Server" below.
 - **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
   reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
   wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation

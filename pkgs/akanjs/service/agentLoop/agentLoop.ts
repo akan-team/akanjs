@@ -16,6 +16,7 @@ import type { AgentLoopApproval, AgentLoopEvent, AgentLoopRequest, AgentLoopStop
 import { DeltaStream } from "./deltaStream";
 import { LoopAsk } from "./loopAsk";
 import { LoopCompaction } from "./loopCompaction";
+import { LoopRemotes } from "./loopRemotes";
 import { LoopRequest } from "./loopRequest";
 import { LoopToolkits } from "./loopToolkits";
 import { LoopToolOutput } from "./loopToolOutput";
@@ -61,6 +62,7 @@ export class AgentLoop {
   //? An object, and one per run: an aborted model call rejects with this reason, and `LlmSpend` keys its counts on it.
   readonly #wall = new DOMException("The run's wallMs ran out.", "AbortError");
   readonly #signal: AbortSignal;
+  readonly #remotes: LoopRemotes;
   readonly #toolkits: LoopToolkits;
   readonly #askUser: LoopAsk;
   #clientNames = new Set<string>();
@@ -77,7 +79,8 @@ export class AgentLoop {
     this.#request = request;
     this.#messages = Array.isArray(request.messages) ? [...request.messages] : [];
     this.#signal = request.signal ? AbortSignal.any([request.signal, this.#halt.signal]) : this.#halt.signal;
-    this.#toolkits = new LoopToolkits(request.toolkits);
+    this.#remotes = new LoopRemotes(request.remotes);
+    this.#toolkits = new LoopToolkits(request.toolkits, this.#remotes.kits);
     this.#askUser = new LoopAsk(request.ask);
   }
 
@@ -156,16 +159,20 @@ export class AgentLoop {
 
   async #listTools() {
     const visible = await this.#port.tools.listAs(this.#account, { allow: this.#request.allow });
+    const remote = await this.#untilHalted(this.#remotes.listed(this.#toolkits.opened));
+    for (const kit of remote.lost) this.#toolkits.close(kit);
     const listed = this.#toolkits.listed(visible);
     const taken = new Set(visible.map((tool) => tool.name));
-    //? Security: client input, so a browser's definition never takes a name the server answers, in a closed toolkit too.
+    //? Security: client input, so a browser's definition never takes a name the server answers, in a closed toolkit too,
+    //? nor one under a remote's prefix, which `approve` would read as that remote's.
     const client = (this.#request.clientTools ?? []).filter((tool) => {
       if (taken.has(tool.name) || this.#toolkits.isMeta(tool.name) || this.#askUser.isMeta(tool.name)) return false;
+      if (this.#remotes.ownerOf(tool.name)) return false;
       taken.add(tool.name);
       return true;
     });
     this.#clientNames = new Set(client.map((tool) => tool.name));
-    return [...listed, ...client.map(AgentLoop.#clientTool), ...this.#askUser.listed()];
+    return [...listed, ...remote.tools, ...client.map(AgentLoop.#clientTool), ...this.#askUser.listed()];
   }
 
   static #clientTool({ name, description, parameters, readOnly, needsConfirm }: AgentTool): AgentTool {
@@ -316,12 +323,21 @@ export class AgentLoop {
           stop = "awaiting";
           break;
         }
-        const whole = unasked ?? (meta ? this.#toolkits.open(call) : await this.#execute(call, verdict));
+        const kit = this.#toolkits.externalOf(call);
+        const opened = kit ? await this.#openRemote(call, kit) : null;
+        //? Left unanswered, so a resume runs it again, by then against the connection the person made.
+        if (kit && !opened) {
+          yield { type: "awaiting", call, connect: kit };
+          stop = "awaiting";
+          break;
+        }
+        const whole = unasked ?? opened ?? (meta ? this.#toolkits.open(call) : await this.#execute(call, verdict));
         const result = LoopToolOutput.clipped(whole);
         results.push(result);
         //? Security: clipping turns a large object into a string, which a predicate reading its fields no longer matches.
         if (!meta) this.#taintBy(whole);
-        yield { type: "toolResult", result, round };
+        const view = this.#remotes.takeView(call.id);
+        yield { type: "toolResult", result, round, ...(view ? { view } : {}) };
       }
     } finally {
       //? A consumer's break or a later throw lands here too: a call that ran and went unrecorded would run again on resume.
@@ -341,7 +357,9 @@ export class AgentLoop {
         : { deny: `Unknown tool: ${call.name}.`, code: "unknownTool" };
     }
     const { approve } = this.#request;
-    if (approve) return AgentLoop.#judged(await this.#untilHalted(approve(call, { tainted: this.#tainted, tool })));
+    const remote = this.#remotes.ownerOf(call.name);
+    const state = { tainted: this.#tainted, tool, ...(remote ? { remote } : {}) };
+    if (approve) return AgentLoop.#judged(await this.#untilHalted(approve(call, state)));
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };
     if (this.#tainted && !tool.readOnly) return { deny: AgentLoop.taintedWrite };
     return "allow";
@@ -361,7 +379,15 @@ export class AgentLoop {
     if (verdict !== "allow") return { id, name, error: verdict.deny, ...(verdict.code ? { code: verdict.code } : {}) };
     this.#toolCalls += 1;
     try {
-      return await this.#untilHalted(this.#port.tools.callAs(this.#account, call, { allow: this.#request.allow }));
+      const remote = this.#remotes.ownerOf(name);
+      if (!remote)
+        return await this.#untilHalted(this.#port.tools.callAs(this.#account, call, { allow: this.#request.allow }));
+      const result = await this.#untilHalted(this.#remotes.call(call));
+      if (result.code === LoopRemotes.disconnected) {
+        this.#toolkits.close(remote);
+        this.#remotes.forget(remote);
+      }
+      return result;
     } catch (error) {
       if (!this.#signal.aborted) throw error;
       AgentLoop.#logger.warn(`agent loop stopped waiting for ${name}, which may still finish`);
@@ -382,8 +408,20 @@ export class AgentLoop {
     });
   }
 
+  async #openRemote(call: AgentWireToolCall, kit: string): Promise<AgentWireToolResult | null> {
+    const answer = await this.#untilHalted(this.#remotes.open(kit));
+    if (!answer) return null;
+    if ("error" in answer) return { id: call.id, name: call.name, error: answer.error, code: LoopRemotes.unavailable };
+    return this.#toolkits.openExternal(call, kit, answer.tools);
+  }
+
   #taintBy(result: AgentWireToolResult) {
     if (this.#tainted) return;
+    //? Security: a remote's result is another party's text, whatever `untrusted` makes of it.
+    if (this.#remotes.ownerOf(result.name)) {
+      this.#tainted = true;
+      return;
+    }
     try {
       this.#tainted = !!this.#request.untrusted?.(result);
     } catch (error) {

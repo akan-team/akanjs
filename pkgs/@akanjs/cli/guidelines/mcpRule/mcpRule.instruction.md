@@ -550,6 +550,8 @@ at every event.
   A call ends the run `awaiting` with `question: true`; put the question to the member, append
   `{ id, name: "askUser", result }` — or an `error` when they dismiss it — and resume. It never reaches `approve`,
   counts as no tool call, and `untrusted` never sees the answer. A `clientTools` entry by that name is dropped.
+- **Other servers.** `remotes` takes other MCP servers, each a toolkit named after it: none is listed or contacted
+  until the model opens it, and its tools then read `<name>.<tool>`. See "Calling Another Server" below.
 - **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
   reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
   wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation
@@ -579,6 +581,51 @@ at every event.
   regardless of `at` and asks once more, as one round; a second refusal, or nothing to cut, ends the run with the
   error. An adaptor with its own size cap throws that error with `{ limit, requested }` in its own unit, bytes
   included, and the run lowers `at` to where that request would have fit.
+
+## Calling Another Server — `remotes`
+
+The other direction: an agent running here calls another server's `/mcp` as the signed-in user. The other server needs
+no change; any akan app is one already, and so is any MCP server that speaks OAuth 2.1 with dynamic registration.
+
+```ts
+// lib/option.ts — off by default, since it lets a signed-in user make this server call an address they name
+export const option = new AkanOption<ModulesOptions>().transformEnv((env) => ({ ...env, remote: { enabled: true } }));
+
+// a service that runs the loop
+const remotes = this.remoteService.sources(account, [
+  { name: "shop", url: project.serverUrl, description: "Orders and refunds of the shop this project runs." },
+]);
+for await (const event of this.agentService.loop({ account, allow, messages, remotes, approve, onMessage })) {
+  if (event.type === "awaiting" && event.connect) /* tell the page: this run waits for a connection to event.connect */;
+}
+```
+
+- **A connection is the user's own OAuth grant at the other server.** `libs/shared`'s `remote` service registers this
+  app there once, sends the user to that server's consent page, and keeps the tokens sealed on the server. The other
+  server judges every call by its own guards, as it judges any agent's, so `Person` endpoints stay closed. Accounts
+  are never matched across servers.
+- **Connecting happens in the chat.** Opening a remote the account has no connection to ends the run `awaiting` with
+  `connect: "<name>"` and leaves the call unanswered. Render `<Remote.Util.Connect url={…} onConnected={resume} />`:
+  it opens the other server's sign-in in a window and calls back once `page/remote/callback` finished the exchange.
+  Resume with the stored messages and the run opens the toolkit itself. When the user declines, append
+  `{ id, name: "openToolkit", error }` for that call and resume.
+- **What a remote returns is another party's text.** Reading any remote result taints the run, whatever `untrusted`
+  says. A remote tool that does not call itself read-only is a `needsConfirm` one, refused without `approve`, which
+  is told the target as `state.remote`. Show the user that server's name and the arguments before allowing a write:
+  a record on one server can ask the model to write to another.
+- **Names.** A remote's `name` is `[a-z][A-Za-z0-9]{0,15}` and may not be a toolkit's. A tool name too long or with
+  characters a provider refuses is listed under a shortened alias and still called by its real name.
+- **Addresses.** `url` is the server's address or its MCP endpoint; a bare origin means `/mcp`. Every request goes
+  through `RemoteFetch`: https only, no private address, no redirect, the checked address pinned. A local run
+  (`operationMode: "local"`) reaches loopback over http, so two dev servers can connect; `remote.allowUrl` narrows
+  the addresses an app accepts.
+- **A screen in the result.** When the called tool is a `page().app()`, the `toolResult` event carries `view`
+  (`{ remote, tool, args, href?, static?, resourceUri? }`) beside the result. It never reaches the model or
+  `onMessage`; store it yourself to draw a card that links to `href`.
+- **Not published onward.** The connection endpoints take `Person` and are `mcp: false`, and remote tools exist only
+  inside the run: an outside agent connected to this app's `/mcp` never reaches a user's other servers through it.
+
+Without `libs/shared`, build each entry from `RemoteSource` (`akanjs/server`) with your own `access { token, renew }`.
 
 ## Rolling MCP Out To An App
 
