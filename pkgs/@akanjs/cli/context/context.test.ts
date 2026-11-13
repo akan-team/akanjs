@@ -1095,6 +1095,26 @@ describe("AgentRunner", () => {
     expect(await Bun.file(`${root}/CLAUDE.md`).text()).toBe("custom\n");
   });
 
+  test("keeps the managed block bounded for a workspace with long app and lib lists", async () => {
+    const { root, workspace } = track(await createTempApp("demo"));
+    for (let index = 0; index < 40; index++) {
+      for (const kind of ["apps", "libs"]) {
+        const name = `${kind}-long-workspace-member-${index}`;
+        await Bun.write(`${root}/${kind}/${name}/package.json`, JSON.stringify({ name }));
+        await Bun.write(`${root}/${kind}/${name}/akan.config.ts`, "export default {};\n");
+        await Bun.write(`${root}/${kind}/${name}/tsconfig.json`, "{}\n");
+      }
+    }
+
+    await new AgentRunner().install(workspace, ["agents-md"]);
+
+    const agents = await Bun.file(`${root}/AGENTS.md`).text();
+    const block = agents.slice(agents.indexOf("<!-- akan:agent:start -->"), agents.indexOf("<!-- akan:agent:end -->"));
+    expect(block).toMatch(/- Apps: .*, and \d+ more\n/);
+    expect(block).toMatch(/- Libraries: .*, and \d+ more\n/);
+    expect(Buffer.byteLength(block)).toBeLessThanOrEqual(12 * 1024);
+  });
+
   test("preserves hand-written AGENTS.md content and refreshes only the managed block", async () => {
     const { root, workspace } = track(await createTempApp("demo"));
     const runner = new AgentRunner();
