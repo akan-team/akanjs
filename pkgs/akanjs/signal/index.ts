@@ -282,6 +282,7 @@ export {
   type SerializedReturns,
   type SerializedSignal,
   type SerializedSignalMcp,
+  type SerializedSignalShelf,
   type SerializedSlice,
   type SignalOption,
   type SignalType,

@@ -168,9 +168,11 @@ export {
   isMcpDescribableArg,
   type McpExposureEndpoint,
   type McpExposureOption,
+  type McpShelf,
   mcpBaseVerbOf,
   mcpHintsOf,
   mcpRefusalOf,
+  narrowestMcpShelf,
 } from "./mcpExposure";
 export { MCP_FAILURE_META, type McpFailure } from "./mcpFailure";
 export { deepObjectify, objectify, plainFieldsOf } from "./objectify";

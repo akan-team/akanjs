@@ -1,5 +1,5 @@
 import { Any, type Assign, type MergeAllKeyOfObjects, SLICE_DICT_SHAPE, SLICE_META } from "akanjs/base";
-import { applyMixins } from "akanjs/common";
+import { applyMixins, type McpShelf, narrowestMcpShelf } from "akanjs/common";
 import { type FilterInstance, FilterQueryError, resolveFilterQuery } from "akanjs/document";
 import { type Adaptor, type AdaptorCls, dangerouslyAdapt, type ServiceModel } from "akanjs/service";
 import { Exception } from "./exception";
@@ -45,10 +45,10 @@ export type SliceCls<
 
 /** `root` is absent: it rides on the root slice itself. */
 export interface ResolvedSliceMcp {
-  get: boolean;
-  create: boolean;
-  update: boolean;
-  remove: boolean;
+  get: McpShelf;
+  create: McpShelf;
+  update: McpShelf;
+  remove: McpShelf;
 }
 
 /** Which generated verbs the server mounts: a verb whose guards resolve to none (or `false`) has no route at all. */
@@ -75,12 +75,13 @@ interface RootSliceOption {
   };
   /**
    * Keyed like `guards`, for the root slice and generated CRUD only; `create`/`update`/`remove` fall back to `cru`
-   * and a bare boolean sets every key. Curation, not authorization: HTTP is unchanged. Omitted, every key a lib slice
-   * passed here sets `false` stays off, while `guards` are always this slice's own.
+   * and a bare value sets every key; `"agent"` lists it to the in-process agent only. Curation, not authorization: HTTP
+   * is unchanged. Omitted, each key takes the narrowest a lib slice passed here set, while `guards` are always this
+   * slice's own.
    */
   mcp?:
-    | boolean
-    | { root?: boolean; get?: boolean; cru?: boolean; create?: boolean; update?: boolean; remove?: boolean };
+    | McpShelf
+    | { root?: McpShelf; get?: McpShelf; cru?: McpShelf; create?: McpShelf; update?: McpShelf; remove?: McpShelf };
   prefix?: string;
 }
 
@@ -181,31 +182,33 @@ export function slice<
     remove: removeGuards.length > 0,
   };
   const mcpOption =
-    typeof option.mcp === "boolean" ? { root: option.mcp, get: option.mcp, cru: option.mcp } : option.mcp;
-  const cruMcp = mcpOption?.cru !== false;
+    typeof option.mcp === "object" || option.mcp === undefined
+      ? option.mcp
+      : { root: option.mcp, get: option.mcp, cru: option.mcp };
+  const cruMcp = mcpOption?.cru ?? true;
   const mcp: ResolvedSliceMcp = mcpOption
     ? {
-        get: mcpOption.get !== false,
+        get: mcpOption.get ?? true,
         create: mcpOption.create ?? cruMcp,
         update: mcpOption.update ?? cruMcp,
         remove: mcpOption.remove ?? cruMcp,
       }
     : {
-        get: libSlices.every((libSlice) => libSlice.mcp.get),
-        create: libSlices.every((libSlice) => libSlice.mcp.create),
-        update: libSlices.every((libSlice) => libSlice.mcp.update),
-        remove: libSlices.every((libSlice) => libSlice.mcp.remove),
+        get: narrowestMcpShelf(libSlices.map((libSlice) => libSlice.mcp.get)),
+        create: narrowestMcpShelf(libSlices.map((libSlice) => libSlice.mcp.create)),
+        update: narrowestMcpShelf(libSlices.map((libSlice) => libSlice.mcp.update)),
+        remove: narrowestMcpShelf(libSlices.map((libSlice) => libSlice.mcp.remove)),
       };
   const rootMcp = mcpOption
-    ? mcpOption.root !== false
-    : libSlices.every((libSlice) => libSlice[SLICE_META][""]?.signalOption.mcp !== false);
+    ? (mcpOption.root ?? true)
+    : narrowestMcpShelf(libSlices.map((libSlice) => libSlice[SLICE_META][""]?.signalOption.mcp ?? true));
   const srvKeys = [
     ...new Set([...Object.keys(srv.srvMap), ...libSlices.flatMap((libSlice) => Object.keys(libSlice.srv.srvMap))]),
   ];
   // Names one of the model's filters rather than taking a raw query, which would let a caller compose any query.
   const rootSlice =
     rootGuards &&
-    init({ guards: rootGuards, ...(rootMcp ? {} : { mcp: false }) })
+    init({ guards: rootGuards, ...(rootMcp === true ? {} : { mcp: rootMcp }) })
       .search<"queryKey", string>("queryKey", String)
       .search<"args", unknown[]>("args", Any)
       .exec((queryKey, args) => {
