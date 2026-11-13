@@ -3,18 +3,23 @@
 //! desktop.ts asks for through GTK, a visible view also holds the keyboard focus for the user's own keys, and frames are
 //! told apart at their responses, as navigation.rs does for the page.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+  cell::{Cell, RefCell},
+  collections::HashMap,
+  rc::Rc,
+};
 
-use gtk::{gdk, glib, prelude::*};
+use gtk::{gdk, gio, glib, prelude::*};
+use javascriptcore::{ContextExt, ValueExt};
 use webkit2gtk::{
-  LoadEvent, NavigationPolicyDecision, NavigationPolicyDecisionExt, NetworkError, PolicyDecisionExt, PolicyDecisionType, PolicyError, ResponsePolicyDecision,
+  JavascriptError, LoadEvent, NavigationPolicyDecision, NavigationPolicyDecisionExt, NetworkError, PolicyDecisionExt, PolicyDecisionType, PolicyError, ResponsePolicyDecision,
   ResponsePolicyDecisionExt, SettingsExt, SnapshotOptions, SnapshotRegion, URIRequestExt, URIResponseExt, WebContextExt, WebProcessTerminationReason, WebResourceExt,
   WebViewExt, WebsiteDataManagerExtManual, WebsiteDataTypes,
 };
 use wry::{WebView, WebViewBuilder, WebViewBuilderExtUnix, WebViewExtUnix};
 
 use crate::{
-  external::{admits, event, Bounds, Reply},
+  external::{admits, event, json_answer, Bounds, Reply},
   json,
   navigation::{scheme, shown},
   push_event, send, UserEvent,
@@ -123,8 +128,15 @@ pub(crate) fn set_visible(webview: &WebView, visible: bool) {
   }
 }
 
-/// Off the overlay; wry destroys the webview itself when it is dropped.
+/// Off the overlay, its calls answered CANCELLED; wry destroys the webview itself when it is dropped.
 pub(crate) fn discard(webview: &WebView) {
+  // SAFETY: only `calls` sets CALLS, always to a Calls.
+  if let Some(calls) = unsafe { webview.webview().data::<Calls>(CALLS) } {
+    let pending = std::mem::take(&mut *unsafe { calls.as_ref() }.pending.borrow_mut());
+    for reply in pending.into_values() {
+      reply.send(Err("CANCELLED: the view was closed or built again before its page answered".into()));
+    }
+  }
   let Some(holder) = holder_of(webview) else { return };
   if let Some(overlay) = holder.parent().and_then(|parent| parent.downcast::<gtk::Container>().ok()) {
     overlay.remove(&holder);
@@ -150,6 +162,75 @@ pub(crate) fn clear_data(webview: &WebView, reply: Reply) {
   manager.clear(WebsiteDataTypes::ALL, glib::TimeSpan::from_seconds(0), None::<&gtk::gio::Cancellable>, move |done| {
     reply.send(done.map(|()| "null".into()).map_err(|e| format!("clearData: {e}")));
   });
+}
+
+const CALLS: &str = "akan-calls";
+
+//? Not wry's evaluate_script_with_callback: before the first navigation commits it queues the script, runs it at the
+//? commit and drops the callback, and it answers "" for a value JSON has no form for.
+pub(crate) fn evaluate(webview: &WebView, script: &str, reply: Reply) {
+  let wv = webview.webview();
+  let calls = calls(&wv);
+  let id = calls.next.get();
+  calls.next.set(id + 1);
+  calls.pending.borrow_mut().insert(id, reply);
+  let (pending, before, ends) = (Rc::downgrade(&calls.pending), calls.ends.get(), calls.ends);
+  wv.evaluate_javascript(script, None, None, None::<&gio::Cancellable>, move |result| {
+    //? WebKit answers a call its web process ended under before it emits web-process-terminated.
+    glib::idle_add_local_once(move || {
+      let reply = pending.upgrade().and_then(|pending| pending.borrow_mut().remove(&id));
+      if let Some(reply) = reply {
+        reply.send(answer(result, ends.get() != before));
+      }
+    });
+  });
+}
+
+/// A view's evaluate calls not yet answered, and the times its web process ended.
+#[derive(Clone)]
+struct Calls {
+  //? WebKit never answers a call whose page loops, even once the view is closed: discard answers them instead.
+  pending: Rc<RefCell<HashMap<u64, Reply>>>,
+  next: Rc<Cell<u64>>,
+  //? WebKit answers a call its web process ended under as it answers a script that threw: null, where macOS errs.
+  ends: Rc<Cell<u64>>,
+}
+
+fn calls(wv: &webkit2gtk::WebView) -> Calls {
+  // SAFETY: only `calls` sets CALLS, always to a Calls.
+  if let Some(calls) = unsafe { wv.data::<Calls>(CALLS) } {
+    return unsafe { calls.as_ref() }.clone();
+  }
+  let calls = Calls { pending: Rc::default(), next: Rc::default(), ends: Rc::default() };
+  let ends = calls.ends.clone();
+  wv.connect_web_process_terminated(move |_, _| ends.set(ends.get() + 1));
+  unsafe { wv.set_data(CALLS, calls.clone()) };
+  calls
+}
+
+/// The answer mac::evaluate gives: null for an exception or a value WebKit passes no result for, an error for a call
+/// its web process ended under.
+fn answer(result: Result<javascriptcore::Value, glib::Error>, ended: bool) -> Result<String, String> {
+  if ended {
+    return Err("INTERNAL: the view's web process ended before its page answered".into());
+  }
+  let error = match result {
+    Ok(value) => {
+      let text = value.to_json(0);
+      //? jsc_value_to_json leaves JSON.stringify's TypeError (a cycle, a BigInt) on WebKit's shared result context.
+      if text.is_none() {
+        if let Some(context) = value.context() {
+          context.clear_exception();
+        }
+      }
+      return Ok(json_answer(text.as_deref()));
+    }
+    Err(error) => error,
+  };
+  match error.kind::<JavascriptError>() {
+    Some(JavascriptError::ScriptFailed | JavascriptError::InvalidResult) => Ok("null".into()),
+    _ => Err(format!("INTERNAL: {error}")),
+  }
 }
 
 /// The top level stays on `allow`, checked once its response says it is the top-level document; frames load web
@@ -461,8 +542,27 @@ pub(crate) fn focus_page(any: &WebView) {
 
 #[cfg(test)]
 mod tests {
-  use super::{evdev, keysym, keyval};
-  use gtk::gdk::keys::constants as k;
+  use super::{answer, evdev, keysym, keyval};
+  use gtk::{gdk::keys::constants as k, glib};
+  use javascriptcore::ContextExt;
+  use webkit2gtk::JavascriptError;
+
+  #[test]
+  fn what_json_has_no_form_for_and_an_exception_answer_null_as_on_macos() {
+    let context = javascriptcore::Context::new();
+    let run = |script: &str| answer(Ok(context.evaluate(script).expect("a value")), false);
+    for script in ["undefined", "(function () {})", "Symbol('s')", "1n", "NaN", "(() => { const a = {}; a.a = a; return a; })()"] {
+      assert_eq!(run(script), Ok("null".to_string()), "{script}");
+    }
+    assert!(context.exception().is_none());
+    assert_eq!(run("({ a: undefined, d: new Date(0), s: 'A\\ud800B', n: [1, 2.5, true, null] })"), Ok("{\"d\":\"1970-01-01T00:00:00.000Z\",\"s\":\"A\u{fffd}B\",\"n\":[1,2.5,true,null]}".to_string()));
+    for kind in [JavascriptError::ScriptFailed, JavascriptError::InvalidResult] {
+      assert_eq!(answer(Err(glib::Error::new(kind, "x")), false), Ok("null".to_string()));
+      assert!(answer(Err(glib::Error::new(kind, "x")), true).is_err_and(|e| e.starts_with("INTERNAL: ")));
+    }
+    assert!(answer(Ok(context.evaluate("undefined").expect("a value")), true).is_err_and(|e| e.starts_with("INTERNAL: ")));
+    assert!(answer(Err(glib::Error::new(JavascriptError::InvalidParameter, "x")), false).is_err_and(|e| e.starts_with("INTERNAL: ")));
+  }
 
   #[test]
   fn the_page_reads_key_and_a_numpad_digit_keeps_its_place() {
