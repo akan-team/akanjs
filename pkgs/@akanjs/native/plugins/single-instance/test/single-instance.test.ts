@@ -22,9 +22,12 @@ import type { SecondInstance } from "../src/index.ts";
 import {
   type Claim,
   claim,
+  claimPipe,
   decodeMessage,
   encodeMessage,
+  heldPipe,
   lockFile,
+  type PipeCalls,
   privateFolder,
   sidText,
   socketPath,
@@ -44,6 +47,27 @@ const tempSocket = () => {
   return join(dir, "s.sock");
 };
 const hello: SecondInstance = { args: ["--open", "a b.txt"], cwd: "/Users/me" };
+const mine = "S-1-5-21-1004336348-1177238915-682003330-1001";
+const theirs = "S-1-5-21-1004336348-1177238915-682003330-1002";
+const asMine = () => mine;
+const ignored = () => {};
+const holding = (owner: string | null) => {
+  const count = { opened: 0, closed: 0 };
+  const hold = () => {
+    count.opened++;
+    return { owner, close: () => void count.closed++ };
+  };
+  return { count, hold };
+};
+const listening = async (path: string) => {
+  const seen = { connections: 0, received: "" };
+  const server = createServer((socket) => {
+    seen.connections++;
+    socket.on("data", (chunk) => (seen.received += chunk));
+  });
+  await new Promise<void>((resolve) => server.listen(path, resolve));
+  return { seen, server };
+};
 
 describe("single-instance socket", () => {
   test("path: per-user folder, short hashed name, stable per app id", () => {
@@ -95,6 +119,122 @@ describe("single-instance socket", () => {
     };
     expect(tokenSid(written)).toBe("S-1-5-18");
     expect(tokenSid(() => false)).toBeNull();
+  });
+
+  test("Windows: a held pipe's owner is read from the security descriptor the call wrote", () => {
+    const system = [1, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0];
+    const calls = (handle: bigint, descriptor: number[] | null) => {
+      const made: { name: string; handles: bigint[]; closed: bigint[] } = { name: "", handles: [], closed: [] };
+      const pipe: PipeCalls = {
+        open: (name) => {
+          made.name = Buffer.from(name).toString("utf16le");
+          return handle;
+        },
+        security: (opened, into) => {
+          made.handles.push(opened);
+          if (descriptor) into.set(descriptor);
+          return descriptor !== null;
+        },
+        close: (opened) => void made.closed.push(opened),
+      };
+      return { made, pipe };
+    };
+    const owned = calls(0x1a4n, [1, 0, 0, 0x80, 20, 0, 0, 0, ...new Array(12).fill(0), ...system]);
+    const held = heldPipe("\\\\.\\pipe\\akan-native-0123456789abcdef", owned.pipe);
+    expect(held?.owner).toBe("S-1-5-18");
+    expect(owned.made).toEqual({ name: "\\\\.\\pipe\\akan-native-0123456789abcdef\0", handles: [0x1a4n], closed: [] });
+    held?.close();
+    expect(owned.made.closed).toEqual([0x1a4n]);
+
+    const unopened = calls(-1n, null);
+    expect(heldPipe("\\\\.\\pipe\\x", unopened.pipe)).toBeNull();
+    expect(unopened.made).toMatchObject({ handles: [], closed: [] });
+
+    for (const descriptor of [
+      null,
+      [1, 0, 0, 0x80, 0, 0, 0, 0, ...new Array(12).fill(0), ...system],
+      [1, 0, 0, 0, 20, 0, 0, 0, ...new Array(12).fill(0), ...system],
+      [1, 0, 0, 0x80, 0xff, 0xff, 0, 0],
+      [1, 0, 0, 0x80, 20, 0, 0, 0, ...new Array(12).fill(0), 2, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0],
+    ]) {
+      const unread = calls(7n, descriptor);
+      expect(heldPipe("\\\\.\\pipe\\x", unread.pipe)?.owner).toBeNull();
+    }
+    if (process.platform !== "win32") expect(heldPipe("\\\\.\\pipe\\x")).toBeNull();
+  });
+
+  test("Windows: a pipe another account created first gets no message, and the launch runs", async () => {
+    const path = tempSocket();
+    const { seen, server } = await listening(path);
+    for (const owner of [theirs, "S-1-5-18", null]) {
+      const { count, hold } = holding(owner);
+      expect((await claimPipe(path, hello, ignored, 300, hold, asMine)).kind).toBe("failed");
+      expect(count).toEqual({ opened: 1, closed: 1 });
+    }
+    const accountUnread = () => null;
+    expect((await claimPipe(path, hello, ignored, 300, holding(mine).hold, accountUnread)).kind).toBe("failed");
+    await Bun.sleep(20);
+    expect(seen).toEqual({ connections: 0, received: "" });
+    server.close();
+  });
+
+  test("Windows: a pipe this account or an elevated launch owns gets the message, held until it is sent", async () => {
+    const path = tempSocket();
+    const got: SecondInstance[] = [];
+    const closedAtReceipt: number[] = [];
+    let sending = holding(mine);
+    const received = (m: SecondInstance) => {
+      got.push(m);
+      closedAtReceipt.push(sending.count.closed);
+    };
+    const first = await claimPipe(path, { args: [], cwd: "/" }, received, 300, sending.hold, asMine);
+    open.push(first);
+    expect(first.kind).toBe("primary");
+    expect(sending.count.opened).toBe(0);
+    for (const owner of [mine, "S-1-5-32-544"]) {
+      sending = holding(owner);
+      expect((await claimPipe(path, hello, ignored, 300, sending.hold, asMine)).kind).toBe("forwarded");
+      expect(sending.count).toEqual({ opened: 1, closed: 1 });
+    }
+    expect(got).toEqual([hello, hello]);
+    expect(closedAtReceipt).toEqual([0, 0]);
+  });
+
+  test("Windows: a taken name that cannot be opened gets no message and is not waited on forever", async () => {
+    const path = tempSocket();
+    const { seen, server } = await listening(path);
+    let attempts = 0;
+    const unopened = () => {
+      attempts++;
+      return null;
+    };
+    const started = Date.now();
+    expect((await claimPipe(path, hello, ignored, 150, unopened, asMine)).kind).toBe("failed");
+    expect(attempts).toBeGreaterThan(1);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(150);
+    expect(seen).toEqual({ connections: 0, received: "" });
+    const instanceQuitBeforeTheOpen = () => {
+      server.close();
+      return null;
+    };
+    const next = await claimPipe(path, hello, ignored, 1000, instanceQuitBeforeTheOpen, asMine);
+    open.push(next);
+    expect(next.kind).toBe("primary");
+  });
+
+  test.skipIf(process.platform !== "win32")("Windows: a real pipe is owned by the account that listens", async () => {
+    const path = socketPath(`com.akanjs.test-${process.pid}`);
+    const got: SecondInstance[] = [];
+    const first = await claim(path, { args: [], cwd: "/" }, (m) => got.push(m));
+    open.push(first);
+    expect(first.kind).toBe("primary");
+    const held = heldPipe(path);
+    expect([tokenSid(), "S-1-5-32-544"]).toContain(held?.owner ?? "");
+    held?.close();
+    expect((await claim(path, hello, () => {})).kind).toBe("forwarded");
+    await Bun.sleep(20);
+    expect(got).toEqual([hello]);
+    expect(heldPipe(socketPath(`com.akanjs.test-none-${process.pid}`))).toBeNull();
   });
 
   test("messages: round trip; anything else is rejected", () => {
