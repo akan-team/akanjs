@@ -14,6 +14,7 @@ export class CliBuildLock {
   static readonly #leaseMs = 120_000;
   static readonly #pollMs = 100;
   static readonly #releaseTries = 5;
+  //? Not the lease: EPERM is also a POSIX refusal that never clears, which must fail rather than hang for 2 min.
   static readonly #transientMs = 3_000;
   //? Windows answers EPERM or EBUSY for a path whose deletion is pending while another process still holds it open.
   static readonly #transientCodes = new Set(["EPERM", "EBUSY"]);
@@ -70,6 +71,7 @@ export class CliBuildLock {
         return false;
       }
       try {
+        await Bun.write(path.join(markerOf(attempt), "owner"), `${process.pid}`).catch(() => undefined);
         const held = await CliBuildLock.#heldAt(lockDir);
         if (!held || !isTarget(held)) return false;
         const tombstone = `${lockDir}.removed-${crypto.randomUUID()}`;
@@ -165,7 +167,13 @@ export class CliBuildLock {
   //? A removal takes milliseconds, so a marker past the lease is a dead or frozen remover's and later removers pass it.
   static async #isStale(entry: string, fsNow: FsNow): Promise<boolean> {
     const info = await stat(entry).catch(() => null);
-    return !!info && CliBuildLock.#outlived(await CliBuildLock.#ageOf(info.birthtimeMs || info.mtimeMs, fsNow));
+    if (!info) return false;
+    const age = await CliBuildLock.#ageOf(info.birthtimeMs || info.mtimeMs, fsNow);
+    if (age !== null) return CliBuildLock.#outlived(age);
+    const remover = await Bun.file(path.join(entry, "owner"))
+      .text()
+      .catch(() => "");
+    return CliBuildLock.#isGone(Number(remover));
   }
 
   static async #ageOf(bornAt: number, fsNow: FsNow): Promise<number | null> {
@@ -187,10 +195,13 @@ export class CliBuildLock {
       console.warn(`[cli-build] taking over ${lockDir}, ${age}`);
       return true;
     }
-    const owner = Number(pid);
-    if (!Number.isFinite(owner) || owner <= 0) return false;
+    return CliBuildLock.#isGone(Number(pid));
+  }
+
+  static #isGone(pid: number): boolean {
+    if (!Number.isFinite(pid) || pid <= 0) return false;
     try {
-      process.kill(owner, 0);
+      process.kill(pid, 0);
       return false;
     } catch (error) {
       // ESRCH is the only code that means gone — EPERM is a live process owned by someone else.

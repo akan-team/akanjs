@@ -7,6 +7,7 @@ import type { BuildBatchMessage, BuildBatchRequest, BuildBatchResult } from "./b
 // their own work (the slow lane, the css queue, the SSR registry's boot build beside them), so a few can overlap.
 // A worker that dies without reporting must not take the watcher down; its needs come back as errors.
 export class BuildBatchRunner {
+  static readonly #exitGraceMs = 500;
   #logger = new Logger("BuildBatchRunner");
   #entry: string | null = null;
   #workspaceRoot: string;
@@ -39,6 +40,7 @@ export class BuildBatchRunner {
     const started = Date.now();
     const entry = await this.#resolveEntry();
     let result: BuildBatchResult | null = null;
+    const resultArrived = Promise.withResolvers<null>();
     const reported = new Map<string, string | undefined>();
     const payload = request.trace ? { ...request, trace: { ...request.trace, spawnAt: Date.now() } } : request;
     // argv rather than IPC, so the worker starts on its first tick instead of waiting for a handshake.
@@ -53,13 +55,21 @@ export class BuildBatchRunner {
           result = message.data;
           // On Bun 1.4 a worker that exits within ms of spawning can lose everything it sent: it exits on this release.
           worker.disconnect();
+          //? Bun on Windows may never deliver that release; the worker would hold its arenas for its own 5 s bound.
+          const lingering = setTimeout(() => {
+            this.#logger.verbose(`[build-batch] worker still up ${BuildBatchRunner.#exitGraceMs}ms after its result`);
+            worker.kill("SIGKILL");
+          }, BuildBatchRunner.#exitGraceMs);
+          void worker.exited.then(() => clearTimeout(lingering));
+          resultArrived.resolve(null);
         } else {
           if (message.type === "build-status") reported.set(message.data.phase, message.data.message);
           onMessage(message);
         }
       },
     });
-    const exitCode = await proc.exited;
+    //? On the result, not the exit: a worker the release never reaches would make each batch wait for the kill.
+    const exitCode = await Promise.race([proc.exited, resultArrived.promise]);
     if (result) {
       this.#logger.verbose(
         `[build-batch] generation=${request.generation} needs=${request.needs.join(",")} done in ${Date.now() - started}ms`,

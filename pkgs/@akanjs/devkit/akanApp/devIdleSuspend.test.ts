@@ -27,6 +27,10 @@ mock.module("../frontendBuild/hmrWatcher", () => ({
     stop() {
       this.#record.stopped++;
     }
+    async close() {
+      this.#record.stopped++;
+      return null;
+    }
   },
 }));
 

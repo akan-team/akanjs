@@ -81,12 +81,18 @@ export class DevIdleSuspend {
     if (!this.#suspended || this.#waking || this.#stopped) return;
     this.#waking = true;
     this.#cancel();
-    this.#stopWatcher();
-    const batch = this.#suspendedChanges;
-    this.#suspendedChanges = null;
     const startedAtMono = performance.now();
     this.#logger.info(`[idle-suspend] waking (${reason})`);
+    const watcher = this.#watcher;
+    this.#watcher = null;
+    let batch: ChangeBatch | null = null;
     try {
+      //? Closed, not stopped: a save its last scan found, a config one included, has no other record once released.
+      const unreported = await watcher?.close();
+      if (unreported) this.#recordSuspendedChange(unreported);
+      batch = this.#suspendedChanges;
+      this.#suspendedChanges = null;
+      if (this.#stopped) return;
       await this.#links.wake(batch);
       this.#logger.info(`[idle-suspend] awake in ${Math.round(performance.now() - startedAtMono)}ms`);
     } catch (err) {

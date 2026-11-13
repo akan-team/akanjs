@@ -29,6 +29,8 @@ const makeRoot = tempDirs("akan-idle-suspend-watcher-");
 
 let previous: string | undefined;
 beforeEach(() => {
+  held.primes.length = 0;
+  held.scans.length = 0;
   previous = process.env.AKAN_DEV_IDLE_SUSPEND_MS;
   process.env.AKAN_DEV_IDLE_SUSPEND_MS = "5";
 });
@@ -71,7 +73,48 @@ test("a save while the idle watcher primes stays with the awake builder, and the
   held.primes[1].resolve();
   await tick();
   expect(released).toBe(1);
-  await idle.wake("a route request");
+  const woken = idle.wake("a route request");
+  await tick();
+  held.scans[1].resolve([]);
+  await woken;
   expect(wokenWith).toEqual([null]);
+  idle.stop();
+}, 15_000);
+
+test("a config save found by the scan a wake interrupts reaches that wake", async () => {
+  root = await makeRoot();
+  const source = path.join(root, "lib/a.ts");
+  const config = path.join(root, "akan.config.ts");
+  await writeText(source, "export const x = 0;\n");
+  let released = 0;
+  const wokenWith: (ChangeBatch | null)[] = [];
+  const idle = new DevIdleSuspend(
+    {} as App,
+    { logger },
+    {
+      readiness: () => ({ builderReady: true, backendReady: true, buildFailed: false, restartPending: false }),
+      release: () => {
+        released++;
+      },
+      wake: async (batch) => {
+        wokenWith.push(batch);
+      },
+      wakeFailed: () => undefined,
+      flushHeld: () => undefined,
+      awake: () => undefined,
+    },
+  );
+  idle.arm();
+  while (held.primes.length === 0) await tick(5);
+  held.primes[0].resolve();
+  await tick();
+  expect(released).toBe(1);
+  expect(await saveUntil(source, () => held.scans.length > 0)).toBe(true);
+  const woken = idle.wake("a route request");
+  held.scans[0].resolve([config]);
+  await tick();
+  held.scans[1]?.resolve([]);
+  await woken;
+  expect(wokenWith).toEqual([{ files: [config], kinds: new Set(["config"]) }]);
   idle.stop();
 }, 15_000);

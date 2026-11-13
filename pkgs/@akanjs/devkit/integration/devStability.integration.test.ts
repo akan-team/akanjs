@@ -676,16 +676,16 @@ describe("dev resource budgets", () => {
     const second = fetch(`http://127.0.0.1:${port}/second`, { signal: AbortSignal.timeout(WAIT_MS) }).then(
       async (response) => ({ status: response.status, html: await response.text() }),
     );
-    // Two waiting are the drain request and this one; with the gate shut, an earlier answer is a refusal.
+    //? By route, not by order or count: the drain request's hold can land before or after this one's.
+    const holding = /holding build-route \S*\/second until the builder is ready/;
+    // With the gate shut, an answer before that hold is a refusal.
     const answeredUnheld = await Promise.race([
-      host
-        .waitForLogSince(start, /holding build-route until the builder is ready \(2 waiting\)/, WAIT_MS)
-        .then(() => null),
+      host.waitForLogSince(start, holding, WAIT_MS).then(() => null),
       second.then((response) => response.status),
     ]);
     expect(answeredUnheld).toBeNull();
     await Bun.write(readyGate, "");
-    const held = await host.waitForLogSince(start, /holding build-route until the builder is ready \(2 waiting\)/);
+    const held = await host.waitForLogSince(start, holding);
     const ready = await host.waitForLogSince(start, /builder ready after restart/, WAIT_MS);
     expect(ready.index ?? -1).toBeGreaterThan(held.index ?? Number.POSITIVE_INFINITY);
 
