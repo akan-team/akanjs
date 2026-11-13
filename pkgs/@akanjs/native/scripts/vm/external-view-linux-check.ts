@@ -20,7 +20,10 @@
 //    text into a field, answers UNSUPPORTED while its window is hidden, captures its own content as a PNG, and mutes,
 // 6. plays sound without a gesture, and a view opened with autoplay false does not,
 // 7. keeps storage of its own, which clearData clears,
-// 8. loads again when its web process ends, counting restarts, with its init script.
+// 8. loads again when its web process ends, counting restarts, with its init script, and an evaluate the end cut off
+//    answers INTERNAL,
+// 9. answers an evaluate sent before its first commit once, run once, gives null for what JSON has no form for, and
+//    answers CANCELLED for an evaluate its close cut off.
 
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -95,6 +98,7 @@ const server = Bun.serve({
     const { pathname } = new URL(req.url);
     const html = { "content-type": "text/html" };
     if (pathname === "/board") return new Response(BOARD, { headers: html });
+    if (pathname === "/slow") return Bun.sleep(1500).then(() => new Response(BOARD, { headers: html }));
     if (pathname === "/frame") return new Response(FRAME, { headers: html });
     if (pathname === "/silence.wav") return new Response(SILENCE, { headers: { "content-type": "audio/wav" } });
     if (pathname.startsWith("/cp/")) return new Response(await answer(pathname.slice(4)).promise);
@@ -134,6 +138,7 @@ const pageKeys = [];
 addEventListener("keydown", (e) => pageKeys.push(e.key + ":" + e.isTrusted));
 const inView = async (script, id = "board") => (await externalView.evaluate({ id, script })).value;
 const code = (p) => p.then(() => "ok", (e) => e.code ?? String(e));
+const sorted = (v) => JSON.stringify(v, (_, o) => (o && typeof o === "object" && !Array.isArray(o) ? Object.fromEntries(Object.entries(o).sort()) : o));
 let checkpoints = 0;
 async function checkpoint(name, detail = {}) {
   const key = "__cp" + ++checkpoints;
@@ -324,15 +329,40 @@ async function main() {
   if (localStorage.getItem("seen") !== null) throw new Error("the view's storage reached the app's");
 
   log("step 8. its web process ends: loaded again, counted, with its init script");
+  const busy = code(inView("for (;;) {}"));
+  await sleep(500);
   log("kill");
   const gone = await waitFor("gone", (e) => e.event === "gone", 60000);
   log("gone " + JSON.stringify(gone.data));
+  const cutOff = await within("an evaluate cut off by the end of its web process", busy, 10000);
+  if (cutOff !== "INTERNAL") throw new Error("an evaluate cut off by the end of its web process answered " + cutOff);
   await board();
   const [listed] = await externalView.list();
   if ((listed?.restarts ?? 0) < 1) throw new Error("the restart was not counted: " + JSON.stringify(listed));
   if ((await inView("window.__alive")) !== "undefined") throw new Error("the reloaded view lost its init script");
   await holdsKeyboard("a web process restart");
   if (events.some((e) => e.event === "consoleMessage")) log("note: a consoleMessage arrived");
+
+  log("step 9. evaluate before the first commit answers once and runs once; what JSON has no form for is null");
+  await externalView.open({ id: "early", url: ORIGIN + "/slow", allowOrigins: [ORIGIN], bounds: { x: 0, y: 0, width: 40, height: 40 } });
+  const early = await inView("window.__early = (window.__early ?? 0) + 1; location.href", "early");
+  log("evaluate before the first commit ran in " + early);
+  await until("the slow page", async () => (await inView("document.title", "early")) === "board");
+  const ranAgain = await inView("window.__early ?? 0", "early");
+  if (ranAgain !== (early === "about:blank" ? 0 : 1)) throw new Error("a script evaluated in " + early + " ran " + ranAgain + " times in the page");
+  const RESULTS = { "undefined": null, "void 0": null, "(() => { throw new Error('x'); })()": null, "() => 1": null, "Symbol('s')": null,
+    "1n": null, "Promise.resolve(1)": null, "NaN": null, "(() => { const a = { n: 1 }; a.self = a; return a; })()": null,
+    "({ a: undefined, b: NaN, d: new Date(0), s: 'A\\\\ud800B' })": { b: null, d: "1970-01-01T00:00:00.000Z", s: "A\\ufffdB" }, "[1, 'x', true, null]": [1, "x", true, null] };
+  for (const [script, expected] of Object.entries(RESULTS)) {
+    const value = await inView(script, "early");
+    log("evaluate " + script + " answered " + JSON.stringify(value));
+    if (sorted(value) !== sorted(expected)) throw new Error("evaluate " + script + " answered " + JSON.stringify(value) + ", not " + JSON.stringify(expected));
+  }
+  const cut = code(inView("for (;;) {}", "early"));
+  await sleep(500);
+  await externalView.close({ id: "early" });
+  const closedMid = await within("an evaluate cut off by a close", cut, 10000);
+  if (closedMid !== "CANCELLED") throw new Error("an evaluate cut off by a close answered " + closedMid);
 
   await externalView.close({ id: "board" });
   if ((await externalView.list()).length !== 0) throw new Error("the view is still listed");

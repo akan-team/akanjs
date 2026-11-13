@@ -67,8 +67,8 @@ export interface ExternalViewApi {
   setBounds(args: { id: string; bounds: ExternalViewBounds }): Promise<void>;
   /**
    * The script's completion value as JSON has it (a Date as its ISO string, a lone surrogate as U+FFFD), and `null`
-   * for undefined, NaN, a cycle or an exception: catch it in the script. macOS answers `null` past 128 levels of
-   * nesting too. A promise is not awaited. CANCELLED: a close or a rebuild of the view cut the call off. TIMEOUT: no
+   * for undefined, NaN, a cycle or an exception: catch it in the script. macOS and Linux answer `null` past 128 levels
+   * of nesting too. A promise is not awaited. CANCELLED: a close or a rebuild of the view cut the call off. TIMEOUT: no
    * answer within 30 s, as from a page busy in a loop; `sendKey` and `capture` time out the same way.
    */
   evaluate(args: { id: string; script: string }): Promise<{ value: unknown }>;

@@ -40,6 +40,8 @@ gtk = "0.18"
 # WebKitGTK's API, the version wry pins: the script-dialog signal (D7 under tests, linux/dialogs.rs);
 # v2_40 (already on through wry's linux-body) for the response's main-frame flag (navigation.rs).
 webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+# JavaScriptCore's values, the version wry pins: an external view's evaluate result as JSON (external.rs).
+javascriptcore-rs = "=1.1.2"
 
 [profile.release]
 opt-level = "s"
