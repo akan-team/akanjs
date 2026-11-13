@@ -44,8 +44,12 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
   `onMessage`; store it yourself and draw `<Remote.Zone.Screen url tool={view.tool} args={view.args} href={view.href}
   drawn={view.static} />`. For an app the other server declared `{ static: true }` the card asks `remoteScreen` for
   that server's script-less HTML when it scrolls into view and shows it in a frame that runs no script; for any other
-  app it is the server's name and a link to `href`. The HTML is fetched again on every draw and never stored, since
-  what the user may see there can change.
+  app, draw `<Remote.Zone.View url tool args uri={view.resourceUri} href />`: it frames that server's view (its
+  client bundle) with scripts on but no origin, under a policy that lets it load only from that server and connect
+  nowhere, and relays the view's own calls to that one server through `McpAppHost` (`akanjs/webkit`). A view cannot
+  write into the model's context, and a link it opens must stay on its server. Neither card stores what it drew: the
+  HTML and the view's data are fetched again on every draw, since what the user may see there can change. A view
+  weighs over a megabyte, so prefer `{ static: true }` on the other server for anything a person only reads.
 - **Not published onward.** The connection endpoints take `Person` and are `mcp: false`, and remote tools exist only
   inside the run: an outside agent connected to this app's `/mcp` never reaches a user's other servers through it.
 

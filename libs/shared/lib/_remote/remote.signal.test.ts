@@ -148,6 +148,11 @@ describe("Remote Signal", () => {
     expect(await owner.fetch.remoteScreen(base, "noSuchTool", "{}")).toBe("");
     await expect(owner.fetch.remoteScreen(base, "noSuchTool", "[1]")).rejects.toThrow(/badArguments/);
     expect(await other.fetch.remoteScreen(base, "noSuchTool", "{}")).toBe("");
+    expect(await owner.fetch.remoteView(base, "ui://nowhere/apps/none")).toBe("");
+    await expect(owner.fetch.callRemoteView(base, "noSuchTool", "{}")).rejects.toThrow(/viewCallRefused/);
+    await expect(other.fetch.callRemoteView(base, names[0] ?? "", "{}")).rejects.toThrow(/viewCallRefused/);
+    const relayed = JSON.parse(await owner.fetch.callRemoteView(base, names[0] ?? "", "{}")) as { content: unknown[] };
+    expect(Array.isArray(relayed.content)).toBe(true);
     expect(await sourceOf({ self: { id: other.user.id } } as unknown as SerAccount).list()).toBeNull();
   });
 
@@ -161,6 +166,7 @@ describe("Remote Signal", () => {
         body: JSON.stringify({ url: base }),
       });
     expect((await asAgent("connectRemote")).status).toBe(403);
+    expect((await asAgent("callRemoteView")).status).toBe(403);
     expect((await asAgent("disconnectRemote")).status).toBe(403);
     expect(await owner.fetch.listRemoteConnections()).toHaveLength(1);
   });

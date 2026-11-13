@@ -321,6 +321,39 @@ describe("RemoteSource", () => {
     expect(metas).toHaveLength(1);
   });
 
+  test("frames a listed app's view under a policy that connects nowhere, and relays the view's own calls", async () => {
+    const metas: unknown[] = [];
+    const reads: string[] = [];
+    const { fetcher } = fetcherOf((seen) => {
+      const { id, method, params } = rpc(seen);
+      if (id === undefined) return new Response(null, { status: 202 });
+      if (method === "initialize") return json({ id, result: {} });
+      if (method === "tools/list") return json({ id, result: { tools } });
+      if (method === "resources/read") {
+        reads.push(String(params?.uri));
+        const text =
+          '<!doctype html><html><head><meta charset="utf-8"><script>boot()</script></head><body></body></html>';
+        return json({ id, result: { contents: [{ uri: params?.uri, mimeType: "text/html;profile=mcp-app", text }] } });
+      }
+      metas.push(params?._meta);
+      return json({
+        id,
+        result: { content: [], structuredContent: { href: "/order/o1" }, _meta: { "akanjs/snapshot": [] } },
+      });
+    });
+    const source = sourceOf(fetcher, { token: async () => "", renew: async () => null });
+    const view = (await source.view("ui://shop/apps/showOrder")) ?? "";
+    expect(view.indexOf("Content-Security-Policy")).toBeGreaterThan(0);
+    expect(view.indexOf("Content-Security-Policy")).toBeLessThan(view.indexOf("<script>"));
+    expect(view).toContain("connect-src 'none'");
+    expect(view).toContain("img-src https://shop.example.com data: blob:");
+    expect(await source.view("ui://shop/apps/other")).toBeNull();
+    expect(reads).toEqual(["ui://shop/apps/showOrder"]);
+    expect((await source.viewCall("showOrder", { id: "o1" }))?._meta).toEqual({ "akanjs/snapshot": [] });
+    expect(await source.viewCall("notListed", {})).toBeNull();
+    expect(metas).toEqual([{ "akanjs/view": true }]);
+  });
+
   test("reads a bare origin as the /mcp an akan server answers at", () => {
     const { fetcher } = fetcherOf(() => json({}));
     expect(RemoteSource.endpointOf(fetcher, " https://shop.example.com ")).toBe("https://shop.example.com/mcp");

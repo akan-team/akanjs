@@ -65,6 +65,38 @@ export class RemoteEndpoint extends endpoint(srv.remote, ({ query, mutation }) =
       return await this.remoteService.screen(account, url ?? "", tool ?? "", args ?? "{}");
     }),
 
+  remoteView: query(String, {
+    guards: [Every, Person],
+    mcp: false,
+    rateLimit: { calls: 60, by: "account" },
+    errors: { 400: ["remote.error.urlRejected"], 404: ["remote.error.disabled"] },
+  })
+    .search("url", String)
+    .search("uri", String)
+    .with(Account)
+    .exec(async function (url, uri, account) {
+      return await this.remoteService.view(account, url ?? "", uri ?? "");
+    }),
+
+  //? Security: it goes to the one server whose view asked, for a tool that server lists to this user, and its answer
+  //? is handed to that view's frame alone; nothing here reaches a model.
+  callRemoteView: mutation(String, {
+    guards: [Every, Person],
+    mcp: false,
+    rateLimit: { calls: 120, by: "account" },
+    errors: {
+      400: ["remote.error.urlRejected", "remote.error.badArguments", "remote.error.viewCallRefused"],
+      404: ["remote.error.disabled"],
+    },
+  })
+    .body("url", String)
+    .body("tool", String)
+    .body("args", String)
+    .with(Account)
+    .exec(async function (url, tool, args, account) {
+      return await this.remoteService.viewCall(account, url, tool, args);
+    }),
+
   listRemoteConnections: query([cnst.RemoteConnection], { guards: [Every, Person], mcp: false })
     .with(Account)
     .exec(async function (account) {

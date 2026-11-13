@@ -10,4 +10,6 @@
 - `akanjs/server` exports the client half of `/mcp` and `/oauth`: `RemoteFetch` (https only, no private address, no redirect, the checked address pinned), `RemoteOAuth` (discovery, registration, PKCE, exchange, refresh, revoke), `RemoteMcp` (Streamable HTTP, request and answer) and `RemoteSource`, which implements `AgentLoopRemote` over them. A failure is a `RemoteError` with one of six `remote…` codes.
 - `libs/shared` gains the `remote` service, off unless `remote.enabled`: `connectRemote`, `completeRemoteConnection`, `disconnectRemote`, `listRemoteConnections`, the `page/remote/callback` page and `<Remote.Util.Connect>`. A connection is the user's own OAuth grant at the other server, stored sealed; `remoteService.sources(account, refs)` hands them to the loop.
 
+- A connected server's app is drawn in the chat by `<Remote.Zone.Screen>` (the server's script-less HTML for an app it declares `{ static: true }`, in a frame that runs no script) or `<Remote.Zone.View>` (its MCP Apps view, scripts on, no origin, under a policy that connects nowhere). `McpAppHost` in `akanjs/webkit` is the host half of the MCP Apps bridge the view talks to. `remoteScreen`, `remoteView` and `callRemoteView` serve them, each limited to what that server lists to the user.
+
 Nothing changes for a request without `remotes`.

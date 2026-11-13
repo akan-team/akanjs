@@ -43,6 +43,25 @@ export const dictionary = serviceDictionary(["en", "ko"])
           "앱을 호출한 인자(JSON)",
         ]),
       })),
+    remoteView: fn(["Remote View", "원격 뷰"])
+      .desc([
+        "A connected server's app view document, framed under a policy that lets it load only from that server, or an empty string when the server lists no such view",
+        "연결된 서버의 앱 뷰 문서. 그 서버에서만 불러오도록 정책을 씌워 돌려주고, 그런 뷰가 없으면 빈 문자열",
+      ])
+      .arg((t) => ({
+        url: t(["URL", "주소"]).desc(["The connected server", "연결된 서버"]),
+        uri: t(["View URI", "뷰 URI"]).desc(["The view's `ui://` address", "뷰의 `ui://` 주소"]),
+      })),
+    callRemoteView: fn(["Call From Remote View", "원격 뷰의 호출"])
+      .desc([
+        "Relays a call a framed view makes to its own server and answers that server's result as JSON",
+        "프레임 안의 뷰가 자기 서버에 하는 호출을 중계하고 그 서버의 결과를 JSON 으로 돌려준다",
+      ])
+      .arg((t) => ({
+        url: t(["URL", "주소"]).desc(["The connected server", "연결된 서버"]),
+        tool: t(["Tool", "툴"]).desc(["A tool that server lists", "그 서버가 내놓은 툴"]),
+        args: t(["Arguments", "인자"]).desc(["The call's arguments, as JSON", "호출 인자(JSON)"]),
+      })),
     listRemoteConnections: fn(["Connected Servers", "연결된 서버"]).desc([
       "The servers the signed-in account connected",
       "지금 로그인한 계정이 연결한 서버 목록",
@@ -70,6 +89,10 @@ export const dictionary = serviceDictionary(["en", "ko"])
       "요청한 곳과 다른 인가 서버가 응답했다.",
     ],
     authorizationRefused: ["The server sent back no code", "서버가 코드를 돌려보내지 않았다."],
+    viewCallRefused: [
+      "The server lists no such tool to this account, or the connection is gone",
+      "그 서버가 이 계정에 그런 툴을 내놓지 않거나 연결이 끊겼다.",
+    ],
     badArguments: ["The arguments are not a JSON object", "인자가 JSON 객체가 아니다."],
   })
   .translate({

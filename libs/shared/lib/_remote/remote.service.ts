@@ -145,6 +145,27 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     return screen?.html ?? "";
   }
 
+  /** An app's view document, framed for a sandboxed frame, or `""` when the remote lists no such view. */
+  async view(account: SerAccount | null, input: string, uri: string): Promise<string> {
+    const source = this.source(this.subjectOf(account), { name: "view", url: input, description: "" });
+    return (await this.reached(() => source.view(uri))) ?? "";
+  }
+
+  /** A call the framed view makes at its own server, as JSON: raw values, which go to that frame and nowhere else. */
+  async viewCall(account: SerAccount | null, input: string, tool: string, args: string): Promise<string> {
+    const source = this.source(this.subjectOf(account), { name: "view", url: input, description: "" });
+    const parsed = RemoteService.argumentsOf(args);
+    const answer = await this.reached(() => source.viewCall(tool, parsed));
+    if (!answer) throw new Err("remote.error.viewCallRefused", undefined, { statusCode: 400 });
+    const { content, structuredContent, _meta, isError } = answer;
+    return JSON.stringify({
+      content,
+      ...(structuredContent ? { structuredContent } : {}),
+      ...(_meta ? { _meta } : {}),
+      isError,
+    });
+  }
+
   endpointOf(input: string): string {
     const { enabled, fetcher, allowUrl } = this.remoteOption;
     if (!enabled) throw new Err("remote.error.disabled", undefined, { statusCode: 404 });

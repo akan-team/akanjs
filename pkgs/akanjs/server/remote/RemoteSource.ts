@@ -1,4 +1,5 @@
 import type { AgentLoopRemote, AgentLoopRemoteResult, AgentTool } from "akanjs/service";
+import { MCP_APP_META, MCP_UI_MIME_TYPE } from "../../signal/mcp/mcpProtocol";
 import type { RemoteFetch } from "./RemoteFetch";
 import { RemoteMcp, type RemoteMcpCallResult, type RemoteMcpTool } from "./RemoteMcp";
 import { RemoteError } from "./remoteError";
@@ -39,12 +40,15 @@ export class RemoteSource implements AgentLoopRemote {
   static readonly staticMeta = "akanjs/static";
   static readonly renderMeta = "akanjs/render";
   static readonly disconnected = "remoteDisconnected";
+  //? A view is one file holding its whole client bundle, far past what a tool result may weigh.
+  static readonly viewBytes = 8 * 1024 * 1024;
   static readonly #fullScreen = /^Open the full screen: (\S+)$/m;
 
   readonly name: string;
   readonly description: string;
   readonly #props: RemoteSourceProps;
   readonly #apps = new Map<string, RemoteApp>();
+  readonly #tools = new Set<string>();
   #client: { token: string; mcp: RemoteMcp } | null = null;
 
   constructor(props: RemoteSourceProps) {
@@ -68,7 +72,9 @@ export class RemoteSource implements AgentLoopRemote {
     const allowed = this.#props.allow ? new Set(this.#props.allow) : null;
     const tools = listed.filter((tool) => !allowed || allowed.has(tool.name));
     this.#apps.clear();
+    this.#tools.clear();
     for (const tool of tools) {
+      this.#tools.add(tool.name);
       const app = RemoteSource.#appOf(tool);
       if (app) this.#apps.set(tool.name, app);
     }
@@ -118,6 +124,46 @@ export class RemoteSource implements AgentLoopRemote {
     if (!html) return null;
     const href = this.#hrefOf(answer, RemoteMcp.textOf(answer.content.filter((part) => part.type === "text")));
     return { html, ...(href ? { href } : {}) };
+  }
+
+  /**
+   * An app's view document, framed for a sandboxed frame on another origin, or `null` when the remote lists no such view.
+   * Security: the document is the remote's own script. The policy put ahead of it lets it load only from the remote's
+   * origin and connect nowhere, so everything it does goes through the host that frames it.
+   */
+  async view(uri: string): Promise<string | null> {
+    if (!this.#apps.size && !(await this.list())) return null;
+    if (![...this.#apps.values()].some((app) => app.resourceUri === uri)) return null;
+    const contents = await this.#with((mcp) => mcp.readResource(uri, RemoteSource.viewBytes));
+    const html = contents?.find((part) => part.mimeType === MCP_UI_MIME_TYPE)?.text;
+    return html ? RemoteSource.framed(html, new URL(this.#props.url).origin) : null;
+  }
+
+  /** A call the view itself makes, answered as its server answers a view: raw values, for that frame alone. */
+  async viewCall(tool: string, args: Record<string, unknown>): Promise<RemoteMcpCallResult | null> {
+    if (!this.#tools.size && !(await this.list())) return null;
+    if (!this.#tools.has(tool)) return null;
+    return await this.#with((mcp) => mcp.callTool(tool, args, { [MCP_APP_META.view]: true }));
+  }
+
+  static framed(html: string, origin: string): string {
+    const policy = [
+      "default-src 'none'",
+      "script-src 'unsafe-inline'",
+      `style-src 'unsafe-inline' ${origin}`,
+      `img-src ${origin} data: blob:`,
+      `font-src ${origin} data:`,
+      `media-src ${origin} data: blob:`,
+      "connect-src 'none'",
+      "frame-src 'none'",
+      "form-action 'none'",
+      `base-uri ${origin}`,
+    ].join("; ");
+    const meta = `<meta http-equiv="Content-Security-Policy" content="${policy}">`;
+    const head = /<head(\s[^>]*)?>/i.exec(html);
+    if (!head) return `${meta}${html}`;
+    const at = head.index + head[0].length;
+    return `${html.slice(0, at)}${meta}${html.slice(at)}`;
   }
 
   //? Security: the link is the remote's own text, so it is kept only when it stays on the origin the person connected.

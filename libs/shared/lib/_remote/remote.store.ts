@@ -43,6 +43,21 @@ export class RemoteStore extends store("remote" as const, () => ({
     }
   }
 
+  //? An action returns nothing, and the frame that asked waits on this one answer, so it is handed over.
+  async callRemoteView(
+    url: string,
+    tool: string,
+    args: Record<string, unknown>,
+    settle: (result: Record<string, unknown>) => void,
+    fail: (error: unknown) => void,
+  ) {
+    try {
+      settle(JSON.parse(await fetch.callRemoteView(url, tool, JSON.stringify(args))) as Record<string, unknown>);
+    } catch (error) {
+      fail(error);
+    }
+  }
+
   async disconnectRemote(url: string) {
     await fetch.disconnectRemote(url);
   }

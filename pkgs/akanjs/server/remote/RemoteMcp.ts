@@ -103,9 +103,12 @@ export class RemoteMcp {
     };
   }
 
-  async readResource(uri: string): Promise<{ uri?: string; mimeType?: string; text?: string; _meta?: unknown }[]> {
+  async readResource(
+    uri: string,
+    maxBytes?: number,
+  ): Promise<{ uri?: string; mimeType?: string; text?: string; _meta?: unknown }[]> {
     await this.#initialized();
-    const result = RemoteMcp.#resultOf(await this.#call("resources/read", { uri }));
+    const result = RemoteMcp.#resultOf(await this.#call("resources/read", { uri }, maxBytes));
     return Array.isArray(result.contents) ? result.contents : [];
   }
 
@@ -129,12 +132,12 @@ export class RemoteMcp {
     return this.#ready;
   }
 
-  async #call(method: string, params: unknown): Promise<JsonRpcAnswer> {
+  async #call(method: string, params: unknown, maxBytes?: number): Promise<JsonRpcAnswer> {
     this.#nextId += 1;
-    return await this.#post({ jsonrpc: "2.0", id: this.#nextId, method, params });
+    return await this.#post({ jsonrpc: "2.0", id: this.#nextId, method, params }, maxBytes);
   }
 
-  async #post(body: unknown): Promise<JsonRpcAnswer> {
+  async #post(body: unknown, maxBytes = this.#options.maxBytes): Promise<JsonRpcAnswer> {
     const { status, headers, text } = await this.#fetcher.send(this.#url, {
       method: "POST",
       headers: {
@@ -147,7 +150,7 @@ export class RemoteMcp {
       },
       body: JSON.stringify(body),
       ...(this.#options.signal ? { signal: this.#options.signal } : {}),
-      ...(this.#options.maxBytes ? { maxBytes: this.#options.maxBytes } : {}),
+      ...(maxBytes ? { maxBytes } : {}),
     });
     //? Thrown, not returned as a JSON-RPC error: a 401's body says nothing, and discovery starts from its header.
     if (status === 401)

@@ -1715,7 +1715,7 @@ export declare class RemoteMcp {
     constructor(fetcher: RemoteFetch, url: string, token: null | string, options?: RemoteMcpOptions);
     listTools(): Promise<RemoteMcpTool[]>;
     callTool(name: string, args: Record<string, unknown>, meta?: Record<string, unknown>): Promise<RemoteMcpCallResult>;
-    readResource(uri: string): Promise<{
+    readResource(uri: string, maxBytes?: number): Promise<{
         uri?: string;
         mimeType?: string;
         text?: string;
@@ -1815,6 +1815,7 @@ export declare class RemoteSource implements AgentLoopRemote {
     static readonly staticMeta = "akanjs/static";
     static readonly renderMeta = "akanjs/render";
     static readonly disconnected = "remoteDisconnected";
+    static readonly viewBytes: number;
     readonly name: string;
     readonly description: string;
     constructor(props: RemoteSourceProps);
@@ -1822,6 +1823,9 @@ export declare class RemoteSource implements AgentLoopRemote {
     list(): Promise<AgentTool[] | null>;
     call(tool: string, args: Record<string, unknown>): Promise<AgentLoopRemoteResult>;
     screen(tool: string, args: Record<string, unknown>): Promise<RemoteScreen | null>;
+    view(uri: string): Promise<null | string>;
+    viewCall(tool: string, args: Record<string, unknown>): Promise<RemoteMcpCallResult | null>;
+    static framed(html: string, origin: string): string;
 }
 
 export interface RemoteSourceProps {
