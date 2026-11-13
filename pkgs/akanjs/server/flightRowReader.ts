@@ -4,15 +4,28 @@ export const FLIGHT_LENGTH_PREFIXED_TAGS = "TAOobUSsLlGgMmV";
 const NEWLINE = 10;
 const COLON = 58;
 const COMMA = 44;
+const TEXT = 84;
 const ROW_ID = 0;
 const ROW_TAG = 1;
 const ROW_LENGTH = 2;
 const ROW_LINE = 3;
 const ROW_PAYLOAD = 4;
 const EMPTY = new Uint8Array(0);
+//? The copy runs on the thread that renders the shell; copying a held megabyte chunk whole delays its first byte.
+const MAX_COPIED_BATCH_BYTES = 16 * 1024;
 
 const lengthPrefixedTags = new Uint8Array(256);
 for (const tag of FLIGHT_LENGTH_PREFIXED_TAGS) lengthPrefixedTags[tag.charCodeAt(0)] = 1;
+
+const joinRows = (rows: Uint8Array[]): Uint8Array => {
+  const joined = new Uint8Array(rows.reduce((total, row) => total + row.byteLength, 0));
+  let offset = 0;
+  for (const row of rows) {
+    joined.set(row, offset);
+    offset += row.byteLength;
+  }
+  return joined;
+};
 
 const isLineRowTag = (byte: number): boolean => (byte > 64 && byte < 91) || byte === 35 || byte === 114 || byte === 120;
 
@@ -21,7 +34,7 @@ const hexDigit = (byte: number): number => (byte > 96 ? byte - 87 : byte - 48);
 export type FlightLineRowHandler = (row: Uint8Array, tag: string) => Uint8Array | null;
 
 interface FlightRowSink {
-  enqueue(row: Uint8Array): void;
+  enqueue(row: Uint8Array, binary?: boolean): void;
 }
 
 //? A rewrite (one row, ending where the old one did) reaches later handlers as a pass of its own would read it.
@@ -78,7 +91,8 @@ class FlightRowReader {
           index = end;
         } else {
           index += this.#length;
-          sink.enqueue(this.#cutRow(chunk, rowStart, index));
+          const binary = this.#tag !== TEXT;
+          sink.enqueue(this.#cutRow(chunk, rowStart, index), binary);
           rowStart = index;
         }
       } else {
@@ -123,20 +137,57 @@ class FlightRowReader {
     if (this.#pending.length === 0) return tail;
     const pieces = this.#pending;
     this.#pending = [];
-    const row = new Uint8Array(pieces.reduce((total, piece) => total + piece.byteLength, tail.byteLength));
-    let offset = 0;
-    for (const piece of pieces) {
-      row.set(piece, offset);
-      offset += piece.byteLength;
-    }
-    row.set(tail, offset);
-    return row;
+    pieces.push(tail);
+    return joinRows(pieces);
   }
 
   #reset(): void {
     this.#state = ROW_ID;
     this.#tag = 0;
     this.#length = 0;
+  }
+}
+
+//? The SSR document inlines a chunk as one script, base64 whole if any byte is not UTF-8, so a binary row goes alone.
+class FlightRowBatch implements FlightRowSink {
+  readonly #sink: FlightRowSink;
+  #rows: Uint8Array[] = [];
+  #byteLength = 0;
+  #contiguous: boolean = true;
+
+  constructor(sink: FlightRowSink) {
+    this.#sink = sink;
+  }
+
+  enqueue(row: Uint8Array, binary = false): void {
+    if (binary) {
+      this.flush();
+      this.#sink.enqueue(row);
+      return;
+    }
+    const last = this.#rows.at(-1);
+    const contiguous =
+      !last || (this.#contiguous && row.byteOffset === last.byteOffset + last.byteLength && row.buffer === last.buffer);
+    if (!contiguous && this.#byteLength + row.byteLength > MAX_COPIED_BATCH_BYTES) this.flush();
+    else this.#contiguous = contiguous;
+    this.#rows.push(row);
+    this.#byteLength += row.byteLength;
+  }
+
+  flush(): void {
+    const rows = this.#rows;
+    const [first] = rows;
+    if (!first) return;
+    const joined =
+      rows.length === 1
+        ? first
+        : this.#contiguous
+          ? new Uint8Array(first.buffer, first.byteOffset, this.#byteLength)
+          : joinRows(rows);
+    this.#rows = [];
+    this.#byteLength = 0;
+    this.#contiguous = true;
+    this.#sink.enqueue(joined);
   }
 }
 
@@ -147,7 +198,11 @@ export const mapFlightLineRows = (
   const reader = new FlightRowReader(onLineRows);
   return stream.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
-      transform: (chunk, controller) => reader.read(chunk, controller),
+      transform: (chunk, controller) => {
+        const batch = new FlightRowBatch(controller);
+        reader.read(chunk, batch);
+        batch.flush();
+      },
       flush: (controller) => reader.end(controller),
     }),
   );
