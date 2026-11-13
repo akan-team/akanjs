@@ -79,6 +79,7 @@ export interface AgentLoopOptions {
     model?: string;
     maxRounds?: number;
     budget?: AgentLoopBudget;
+    toolkits?: Record<string, AgentLoopToolkit>;
     compact?: {
         at: number;
         keep?: number;
@@ -99,6 +100,11 @@ export type AgentLoopRequest = AgentLoopOptions & ({
 });
 
 export type AgentLoopStop = "aborted" | "awaiting" | "budget" | "end" | "length" | "maxRounds" | "quota" | "unauthorized";
+
+export interface AgentLoopToolkit {
+    description: string;
+    tools: readonly string[];
+}
 
 export declare class AgentMeter {
     static usageTimeoutMs: number;
@@ -246,6 +252,7 @@ export interface AgentWireMessage {
     error?: string;
     summary?: boolean;
     tainted?: boolean;
+    toolkits?: string[];
 }
 
 export interface AgentWireReference {
