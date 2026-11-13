@@ -8,9 +8,22 @@ export interface StoreAccessCount {
   accessCount: number;
 }
 
+const formSetterPrefixes = ["set", "add", "sub", "addOrSub", "upload"];
+const startsUpper = (text: string) => /^[A-Z]/.test(text);
+
+const isFormSetterName = (name: string) => {
+  if (!/^\w+$/.test(name)) return false;
+  if (name.startsWith("writeOn")) return startsUpper(name.slice("writeOn".length));
+  return formSetterPrefixes.some(
+    (prefix) =>
+      name.startsWith(prefix) &&
+      startsUpper(name.slice(prefix.length)) &&
+      /On[A-Z]/.test(name.slice(prefix.length + 1)),
+  );
+};
+
 //? A generated form setter only binds a field to its control: a long form is a size breach, not a busy component.
 export class StoreAccessScanner {
-  static readonly #formSetter = /^(?:(?:set|add|sub|addOrSub|upload)[A-Z]\w*On|writeOn)[A-Z]\w*$/;
   readonly #index: WritingActionIndex;
 
   constructor(index: WritingActionIndex) {
@@ -64,7 +77,7 @@ export class StoreAccessScanner {
       access.name.text === "do" &&
       ts.isPropertyAccessExpression(action) &&
       action.expression === access &&
-      StoreAccessScanner.#formSetter.test(action.name.text) &&
+      isFormSetterName(action.name.text) &&
       !this.#index.isWritingAction(action.name.text)
     );
   }

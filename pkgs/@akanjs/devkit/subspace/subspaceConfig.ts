@@ -32,6 +32,10 @@ export class SubspaceConfig {
     for (const subspace of this.subspaces) {
       if (!subspace.name || !subspace.repo)
         throw new Error(`${SubspaceConfig.source}: every subspace needs a name and a repo`);
+      if (subspace.repo.startsWith("-"))
+        throw new Error(
+          `${SubspaceConfig.source}: subspace "${subspace.name}" repo "${subspace.repo}" reads as a git option`,
+        );
       //? The name is the clone folder under .akan/subspace, which a fresh clone empties first.
       if (!SubspaceConfig.namePattern.test(subspace.name))
         throw new Error(
