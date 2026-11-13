@@ -412,7 +412,7 @@ export class AgentLoop {
     const answer = await this.#untilHalted(this.#remotes.open(kit));
     if (!answer) return null;
     if ("error" in answer) return { id: call.id, name: call.name, error: answer.error, code: LoopRemotes.unavailable };
-    return this.#toolkits.openExternal(call, kit, answer.tools);
+    return this.#toolkits.openExternal(call, kit, answer.tools, answer.omitted);
   }
 
   #taintBy(result: AgentWireToolResult) {

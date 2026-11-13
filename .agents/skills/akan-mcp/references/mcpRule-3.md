@@ -32,7 +32,9 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
   is told the target as `state.remote`. Show the user that server's name and the arguments before allowing a write:
   a record on one server can ask the model to write to another.
 - **Names.** A remote's `name` is `[a-z][A-Za-z0-9]{0,15}` and may not be a toolkit's. A tool name too long or with
-  characters a provider refuses is listed under a shortened alias and still called by its real name.
+  characters a provider refuses is listed under a shortened alias and still called by its real name. A run takes
+  at most 120 tools from one remote, a description to 1,000 characters and a parameter schema to 8,000; pass `allow`
+  in the remote's entry to choose which tools those are.
 - **Addresses.** `url` is the server's address or its MCP endpoint; a bare origin means `/mcp`. Every request goes
   through `RemoteFetch`: https only, no private address, no redirect, the checked address pinned. A local run
   (`operationMode: "local"`) reaches loopback over http, so two dev servers can connect; `remote.allowUrl` narrows

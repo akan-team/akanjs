@@ -7,13 +7,16 @@ interface RemoteEntry {
   real: string;
 }
 
-type Opened = { tools: string[] } | { error: string } | null;
+type Opened = { tools: string[]; omitted: number } | { error: string } | null;
 
 export class LoopRemotes {
   static readonly namePattern = /^[a-z][A-Za-z0-9]{0,15}$/;
   //? `<remote>.<tool>` folds to `<remote>__<tool>` on the wire, which trims a name past 64 characters from the front.
   static readonly toolLimit = 46;
   static readonly descriptionLimit = 1_000;
+  //? A remote's listing rides every later round, and its size is the remote's to choose: past these it is cut.
+  static readonly maxTools = 120;
+  static readonly schemaLimit = 8_000;
   static readonly unavailable = "remoteUnavailable";
   /** A remote answers a call with this code once its connection is gone, so the run offers the toolkit again. */
   static readonly disconnected = "remoteDisconnected";
@@ -58,7 +61,7 @@ export class LoopRemotes {
       if (listed === null) return null;
       const entries = LoopRemotes.#entriesOf(name, listed);
       this.#tools.set(name, entries);
-      return { tools: [...entries.keys()] };
+      return { tools: [...entries.keys()], omitted: Math.max(0, listed.length - entries.size) };
     } catch (error) {
       return { error: `Could not reach "${name}": ${error instanceof Error ? error.message : String(error)}` };
     }
@@ -107,6 +110,7 @@ export class LoopRemotes {
   static #entriesOf(remote: string, listed: readonly AgentTool[]): Map<string, RemoteEntry> {
     const entries = new Map<string, RemoteEntry>();
     for (const { name: real, description, parameters, readOnly } of listed) {
+      if (entries.size >= LoopRemotes.maxTools) break;
       if (typeof real !== "string" || !real) continue;
       const name = `${remote}.${LoopRemotes.#aliasOf(real)}`;
       if (entries.has(name)) continue;
@@ -114,13 +118,18 @@ export class LoopRemotes {
       const tool: AgentTool = {
         name,
         ...(text ? { description: text } : {}),
-        ...(parameters && typeof parameters === "object" ? { parameters } : {}),
+        ...(parameters && typeof parameters === "object" ? { parameters: LoopRemotes.#schemaOf(parameters) } : {}),
         readOnly: readOnly === true,
         needsConfirm: readOnly !== true,
       };
       entries.set(name, { tool, real });
     }
     return entries;
+  }
+
+  static #schemaOf(parameters: Record<string, unknown>): Record<string, unknown> {
+    const size = JSON.stringify(parameters)?.length ?? 0;
+    return size <= LoopRemotes.schemaLimit ? parameters : { type: "object", additionalProperties: true };
   }
 
   static #aliasOf(real: string): string {

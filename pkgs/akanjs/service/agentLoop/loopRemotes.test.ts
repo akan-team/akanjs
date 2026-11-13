@@ -244,6 +244,21 @@ describe("AgentLoop remotes", () => {
     expect(state.calls.map((call) => call.tool)).toEqual([long, "order.list/all"]);
   });
 
+  test("cuts a listing past its tool count, and a schema past its size", async () => {
+    const huge = { type: "object", properties: { note: { type: "string", description: "x".repeat(9_000) } } };
+    const { remote } = remoteOf("shop", {
+      tools: [
+        { name: "big", parameters: huge, readOnly: true },
+        ...Array.from({ length: 130 }, (_, at) => ({ name: `t${at}`, parameters: {}, readOnly: true })),
+      ],
+    });
+    const { port, requests } = harness([calling(callOf("c1", "openToolkit", { name: "shop" })), saying("Opened.")]);
+    const opened = resultsOf(await drain(port, ask([remote])))[0]?.result as { tools: string[]; omitted: number };
+    expect(opened.tools).toHaveLength(120);
+    expect(opened.omitted).toBe(11);
+    expect(toolOf(requests[1], "shop.big")?.parameters).toEqual({ type: "object", additionalProperties: true });
+  });
+
   test("drops a client tool under a remote's prefix", async () => {
     const { remote } = remoteOf("shop");
     const { port, requests } = harness([saying("Nothing to do.")]);

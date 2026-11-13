@@ -70,9 +70,9 @@ export class LoopToolkits {
       : null;
   }
 
-  openExternal({ id, name }: AgentWireToolCall, kit: string, tools: string[]): AgentWireToolResult {
+  openExternal({ id, name }: AgentWireToolCall, kit: string, tools: string[], omitted = 0): AgentWireToolResult {
     this.#open.add(kit);
-    return { id, name, result: { opened: kit, tools } };
+    return { id, name, result: { opened: kit, tools, ...(omitted ? { omitted } : {}) } };
   }
 
   close(kit: string) {
