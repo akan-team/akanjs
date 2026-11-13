@@ -19,7 +19,7 @@ export class VerifyComments {
   static readonly #codeFile = /\.[cm]?[jt]sx?$/;
   static readonly #directive =
     /^(\/\/\/?|\/\*+)\s*(biome-ignore|@ts-|eslint-|prettier-ignore|#region|#endregion|<reference|[#@]__PURE__|@__NO_SIDE_EFFECTS__)/;
-  static readonly #trackedTodo = /^(\/\/|\/\*+)\s*TODO\b[^\n]*https?:\/\/\S/;
+  static readonly #trackedTodo = /^(\/\/|\/\*+)\s*TODO:?\s*https?:\/\/\S[^\n]*$/;
   static #typescriptLoad: Promise<TypeScript> | undefined;
   static #templateCommentsLoad: Promise<Set<string>> | undefined;
 

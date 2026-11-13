@@ -109,7 +109,17 @@ describe("VerifyComments", () => {
     const root = await repo({ "src/a.ts": "export const a = 1;\n" });
     await writeText(
       path.join(root, "src/a.ts"),
-      "// TODO: https://github.com/akan-team/akanjs/issues/1\nexport const a = 1;\n// TODO: later\n// TODO see #12\n",
+      [
+        "// TODO: https://github.com/akan-team/akanjs/issues/1",
+        "export const a = 1;",
+        "// TODO: later",
+        "// TODO see #12",
+        "// TODO: https://github.com/akan-team/akanjs/issues/2 once Bun ships it",
+        "// TODO the API is odd, see https://example.com",
+        "/* TODO: https://github.com/akan-team/akanjs/issues/3",
+        " * and whatever else follows */",
+        "",
+      ].join("\n"),
     );
 
     const found = await VerifyComments.added(root, ["src/a.ts"]);
@@ -117,6 +127,8 @@ describe("VerifyComments", () => {
     expect(found.map(({ line, message }) => [line, message])).toEqual([
       [3, "// TODO: later"],
       [4, "// TODO see #12"],
+      [6, "// TODO the API is odd, see https://example.com"],
+      [7, "/* TODO: https://github.com/akan-team/akanjs/issues/3"],
     ]);
   });
 
