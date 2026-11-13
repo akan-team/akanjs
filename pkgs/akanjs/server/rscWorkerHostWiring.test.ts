@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -212,4 +212,16 @@ describe("RscWorker collaborator wiring", () => {
       role: "rsc-worker",
     });
   }, 20_000);
+
+  test("an artifact that fails to read throws before any worker is spawned", () => {
+    const spawn = spyOn(Bun, "spawn").mockImplementation(() => {
+      throw new Error("spawned a worker");
+    });
+    try {
+      expect(() => new RscWorker(null as unknown as BaseBuildArtifact)).toThrow(TypeError);
+      expect(spawn).not.toHaveBeenCalled();
+    } finally {
+      spawn.mockRestore();
+    }
+  });
 });
