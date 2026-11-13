@@ -275,6 +275,31 @@ describe("Agent.Chat", () => {
     unmount();
   });
 
+  test("a restored transcript a run left on askUser opens on its question, and a pick runs the turn on", async () => {
+    const parked: ChatMessage[] = [
+      { role: "user", text: "Set the theme." },
+      {
+        role: "assistant",
+        toolCalls: [{ id: "q1", name: "askUser", args: { question: "Which theme?", choices: ["Dark", "Light"] } }],
+      },
+    ];
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "Applied." }), {
+      history: stored(...parked),
+    });
+    const { container, unmount } = mountChat(session);
+    const dark = [...container.querySelectorAll("button")].find((button) => button.textContent === "Dark");
+    expect(dark).toBeTruthy();
+    await act(async () => {
+      dark?.click();
+      await untilFlushed(() => session.messages.at(-1)?.text === "Applied.");
+    });
+    expect(session.messages.flatMap((message) => message.toolResults ?? [])).toEqual([
+      { id: "q1", name: "askUser", result: "Dark" },
+    ]);
+    expect(container.innerHTML).toContain("Applied.");
+    unmount();
+  });
+
   test("a question with no choices is answered in the card's own input", async () => {
     const session = new lib.AgentSession(
       new lib.AgenticSurface(),

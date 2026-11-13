@@ -1,6 +1,7 @@
 import type { AgentProgressReport } from "./AgentProgress";
 import { Compaction, type CompactOptions } from "./Compaction";
 import { Reference } from "./Reference";
+import { SessionQuestion } from "./SessionQuestion";
 import { ToolOutput } from "./ToolOutput";
 import { type ToolApprovalRequest, type ToolCardAnswer, type ToolCardRequest, ToolRunner } from "./ToolRunner";
 import { Transcript } from "./Transcript";
@@ -169,7 +170,7 @@ export class AgentSession {
   #messages: ChatMessage[] = [];
   #running = false;
   #pending: PendingApproval | null = null;
-  #question: PendingQuestion | null = null;
+  readonly #questions = new SessionQuestion(() => this.#notify());
   #card: PendingCard | null = null;
   #staged: MessageReference[] = [];
   #inserts: MessageReference[] = [];
@@ -218,13 +219,13 @@ export class AgentSession {
       },
       fallback: async (call, signal) =>
         call.name === AgentSession.askUserTool.name
-          ? await this.#ask(call, signal)
+          ? await this.#questions.ask(call, signal)
           : { id: call.id, name: call.name, error: this.#unknown(call.name) },
     });
     this.#history = options.history;
     this.#onCompact = options.onCompact;
     const restored = AgentSession.#restored(options.history);
-    if (Array.isArray(restored)) this.#messages = restored;
+    if (Array.isArray(restored)) this.#reopen(restored);
     else {
       this.#restoring = true;
       void this.#hydrate(restored);
@@ -265,7 +266,7 @@ export class AgentSession {
   }
 
   get pendingQuestion(): PendingQuestion | null {
-    return this.#question;
+    return this.#questions.pending;
   }
 
   get pendingCard(): PendingCard | null {
@@ -403,6 +404,7 @@ export class AgentSession {
   /** A user's text, or prewritten messages — how a host injects a prompt's result as the user's turn. */
   send = async (input: string | ChatMessage[]) => {
     if (this.#running) throw new Error("A turn is already running.");
+    this.#questions.clear();
     this.#running = true;
     const run = this.#turn(input);
     this.#active = run;
@@ -479,7 +481,7 @@ export class AgentSession {
       this.#controller = null;
       this.#active = null;
       this.#pending = null;
-      this.#question = null;
+      this.#questions.clear();
       this.#card = null;
       this.#progress = null;
       // Stop caught before the first delta leaves the draft this turn opened, and the rendered transcript is the
@@ -508,6 +510,7 @@ export class AgentSession {
       await this.#active;
     }
     this.#messages = [];
+    this.#questions.clear();
     this.#staged = [];
     this.#inserts = [];
     this.#tools.forgetUntrusted();
@@ -589,6 +592,7 @@ export class AgentSession {
     if (this.#running) return false;
     const controller = new AbortController();
     this.#controller = controller;
+    this.#questions.clear();
     this.#running = true;
     // Summarizing is a model turn like any other, so the chat shows it as one — and Stop reaches it.
     this.#notify();
@@ -802,7 +806,8 @@ export class AgentSession {
   async #askToContinue(turns: number, signal: AbortSignal): Promise<string | null> {
     const ask = this.#options.continueAsk?.();
     if (!ask) return null;
-    const settled = await this.#awaitAnswer(`continue-${turns}`, ask.question, [ask.keep], false, signal);
+    const asked = { question: ask.question, choices: [ask.keep], multiple: false };
+    const settled = await this.#questions.wait(`continue-${turns}`, asked, signal);
     if ("error" in settled) return null;
     return Array.isArray(settled.result) ? settled.result.join(", ") : settled.result;
   }
@@ -819,52 +824,6 @@ export class AgentSession {
     return moved
       ? `Unknown tool: ${name}. The screen changed during this turn, so this call was written against tools that are no longer on it. The tools on screen now are listed with their arguments on your next turn — call one then by its exact name: ${now.join(", ")}.`
       : `Unknown tool: ${name}. Call only a tool listed to you, by its exact name — never a guessed one. Listed now: ${now.join(", ")}.`;
-  }
-
-  /** No surface call and so no diff to report: the only thing this changes is what the model knows. */
-  async #ask(call: ToolCallRequest, signal: AbortSignal): Promise<ToolCallResult> {
-    const base = { id: call.id, name: call.name };
-    const question = typeof call.args.question === "string" ? call.args.question.trim() : "";
-    if (!question) return { ...base, error: "askUser needs a question to ask." };
-    // Deduped and trimmed because the answer is the choice's own text — two identical options cannot be told apart.
-    const choices = [
-      ...new Set(
-        (Array.isArray(call.args.choices) ? call.args.choices : [])
-          .filter((choice): choice is string => typeof choice === "string")
-          .map((choice) => choice.trim())
-          .filter(Boolean),
-      ),
-    ];
-    const multiple = call.args.multiple === true && choices.length > 1;
-    return { ...base, ...(await this.#awaitAnswer(call.id, question, choices, multiple, signal)) };
-  }
-
-  #awaitAnswer(
-    callId: string,
-    question: string,
-    choices: string[],
-    multiple: boolean,
-    signal: AbortSignal,
-  ): Promise<{ result: string | string[] } | { error: string }> {
-    return new Promise((resolve) => {
-      const settle = (value: { result: string | string[] } | { error: string }) => {
-        this.#question = null;
-        signal.removeEventListener("abort", onAbort);
-        this.#notify();
-        resolve(value);
-      };
-      const onAbort = () => settle({ error: "The user aborted the turn." });
-      signal.addEventListener("abort", onAbort);
-      this.#question = {
-        callId,
-        question,
-        choices,
-        multiple,
-        answer: (value) => settle({ result: value }),
-        dismiss: (reason) => settle({ error: reason ?? "The user dismissed the question without answering it." }),
-      };
-      this.#notify();
-    });
   }
 
   #awaitCard(request: ToolCardRequest, signal: AbortSignal): Promise<ToolCardAnswer> {
@@ -986,7 +945,7 @@ export class AgentSession {
 
   static #settled(messages: ChatMessage[] | null): ChatMessage[] {
     // A reload mid-turn leaves both an assistant draft that never settled and calls nothing answered.
-    return Array.isArray(messages) ? Transcript.sanitize(messages) : [];
+    return Array.isArray(messages) ? Transcript.sanitize(messages, SessionQuestion.openCall(messages)?.id) : [];
   }
 
   /**
@@ -1011,8 +970,13 @@ export class AgentSession {
    * which would save the transcript it has just loaded.
    */
   #restore(restored: ChatMessage[]) {
-    if (this.#version === 0 && restored.length) this.#messages = restored;
+    if (this.#version === 0 && restored.length) this.#reopen(restored);
     this.#version += 1;
     for (const listener of this.#listeners) listener();
+  }
+
+  #reopen(restored: ChatMessage[]) {
+    this.#messages = restored;
+    this.#questions.reopen(restored, (result) => void this.send([{ role: "tool", toolResults: [result] }]));
   }
 }
