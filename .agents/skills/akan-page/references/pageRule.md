@@ -126,6 +126,10 @@ body shape — this is the full contract behind them. Before changing route beha
   `property`, and a canonical / manifest / icon link, and keeps the rest — so a page states only what it changes.
 - A canonical link and `og:url` each name one URL, so a page carries them only from its own `.head()`, never from a
   layout's.
+- A level that writes `og:image` or `twitter:image` drops the `og:image:*` / `twitter:image:*` tags it inherits, and a
+  `<meta name="theme-color">` a `.head()` writes replaces the root `.viewport({ themeColor })`'s. Only `.head()`
+  merges: a `<title>` or `<meta>` written inside a component renders beside the merged head, so a second `<title>`
+  can reach the document.
 - **A not-found or error view titles itself**: the `<title>` and `<meta>` at the top of what a layout's `.notFound()`
   / `.error()` returns replace the layouts' head, and the page's own head is dropped. Under a `.loading()` the head is
   already out, so they stay in the view.

@@ -39,12 +39,6 @@ export default rootLayout()
       <meta property="og:image:height" content="630" />
       <meta property="og:image:alt" content="The Akan.js jelly star with its five friends" />
       <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content="Akan.js" />
-      <meta
-        name="twitter:description"
-        content="A full-stack TypeScript framework for building web, app, server, database, and infrastructure together."
-      />
-      <meta name="twitter:image" content="https://akanjs.com/jelly/og.jpg" />
       <link rel="icon" type="image/png" sizes="512x512" href="/icon-512x512.png" />
       <link rel="icon" type="image/png" sizes="384x384" href="/icon-384x384.png" />
       <link rel="icon" type="image/png" sizes="256x256" href="/icon-256x256.png" />

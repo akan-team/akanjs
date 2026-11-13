@@ -1558,6 +1558,15 @@ describe("RscWorker late theme", () => {
       const lightBody = await render("http://localhost/en/viewport", { cookie: "theme=light" });
       expect(lightBody).toContain("#fafafa");
       expect(lightBody).not.toContain("#0b1020");
+      expect(body).toContain("/root.jpg");
+      expect(body).toContain("1200");
+      const ownTheme = await render("http://localhost/en/own-theme");
+      expect(ownTheme).toContain("#123456");
+      expect(ownTheme).not.toContain("#0b1020");
+      expect(ownTheme).not.toContain("#fafafa");
+      expect(ownTheme).toContain("/own.jpg");
+      expect(ownTheme).not.toContain("/root.jpg");
+      expect(ownTheme).not.toContain("1200");
       const ownManifest = await render("http://localhost/en/own-manifest");
       expect(ownManifest).toContain('"rel":"manifest","href":"/fixture.webmanifest"');
       expect(ownManifest).not.toContain("/manifest.webmanifest");

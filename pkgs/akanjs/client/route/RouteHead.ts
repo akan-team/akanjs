@@ -16,6 +16,7 @@ export class RouteHead {
   ]);
   // Each names one URL, so a layout's would claim that URL for every page below it.
   static readonly #pageIdentityKeys = new Set(["link:canonical", "meta:property:og:url"]);
+  static readonly #imageKeys = ["meta:property:og:image", "meta:name:twitter:image", "meta:property:twitter:image"];
 
   static merge(levels: ResolveHeadResult[]): ResolveHeadResult {
     const present = levels.filter((level) => RouteHead.#nodeOf(level) != null || RouteHead.#snapshotOf(level));
@@ -179,7 +180,9 @@ export class RouteHead {
         .map((item, idx) => ({ item, level, idx }))
         .filter(({ item }) => {
           const key = keyOf(item);
-          return !key || owner.get(key) === level;
+          if (!key) return true;
+          const imageOwner = RouteHead.#imageKeys.find((imageKey) => key.startsWith(`${imageKey}:`));
+          return owner.get(key) === level && (!imageOwner || (owner.get(imageOwner) ?? level) <= level);
         }),
     );
   }

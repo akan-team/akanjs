@@ -3,6 +3,7 @@ import type { AkanI18nConfig, Logger } from "akanjs/common";
 import { setRequestFrameState, setRequestTheme, untrackedCookies, untrackedRequest } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import { RouteHead } from "../client/route/RouteHead";
+import { ViewportMeta } from "../client/viewportMeta";
 import { FallbackHead } from "./fallbackHead";
 import { resolveHeadResult } from "./head";
 import { type AdmittedNotFoundFallback, RouteElementComposer, type RouteNotFoundInPlace } from "./routeElementComposer";
@@ -100,7 +101,15 @@ export class RscRouteDocument {
             key="route-head"
             head={fallbackHead}
             until={gate?.opened ?? Promise.resolve()}
-            render={(tags) => this.#head.renderHeadTags(url, { manifestLink, routeHead, noindex: true, tags })}
+            render={(tags) =>
+              this.#head.renderHeadTags(url, {
+                manifestLink,
+                routeHead,
+                noindex: true,
+                tags,
+                themeColors: ViewportMeta.themeColorNodes(viewport),
+              })
+            }
           />
           {this.#head.renderStylesheet(pathname)}
         </head>
@@ -175,12 +184,14 @@ export class RscRouteDocument {
       notFound: { ...notFound, head: fallbackHead },
       gate,
     });
+    const themeColors = ViewportMeta.themeColorNodes(viewport, themeColorTheme);
     const renderHead = async (tags: ReactNode[] | null) => {
       if (!tags)
         return this.#head.renderHeadTags(url, {
           manifestLink,
           routeHead: routeHead.layers.head,
           snapshots: routeHead.snapshots,
+          themeColors,
         });
       const layoutsHead = await RscRouteDocument.#resolveFallbackHead({
         kind: "not-found",
@@ -188,14 +199,20 @@ export class RscRouteDocument {
         params: match.params,
         searchParams,
       });
-      return this.#head.renderHeadTags(url, { manifestLink, routeHead: layoutsHead, noindex: true, tags });
+      return this.#head.renderHeadTags(url, {
+        manifestLink,
+        routeHead: layoutsHead,
+        noindex: true,
+        tags,
+        themeColors,
+      });
     };
     // Cookie theme is applied on the HTML stream and by the client so RSC cache cannot replay a stale data-theme.
     const element = (
       <html lang={match.params.lang ?? this.#i18n.defaultLocale} suppressHydrationWarning>
         <head key="head">
           <meta key="charset" charSet="utf-8" />
-          {this.#head.renderViewport(viewport, themeColorTheme)}
+          {this.#head.renderViewport(viewport)}
           <FallbackHead.Settled
             key="route-head"
             head={fallbackHead}

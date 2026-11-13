@@ -1082,6 +1082,7 @@ export declare class ViewportMeta {
         native?: boolean;
     }): string;
     static themeColors(viewport: RouteViewport | undefined, theme?: string): ThemeColorTag[];
+    static themeColorNodes(viewport: RouteViewport | undefined, theme?: string): AkanHeadSnapshotNode[];
     static applyContent(viewport: RouteViewport | undefined, { native }?: {
         native?: boolean;
     }): void;
