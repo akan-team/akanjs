@@ -34,6 +34,16 @@ export interface AgentAttachmentsProps {
 
 export type AgentBuiltin = (typeof StoreSurfaceSource.builtins)[number];
 
+export interface AgentClientToolDefinition extends PublishedTool {
+    readOnly: false;
+}
+
+export declare class AgentClientTools {
+    constructor(surface?: SurfaceView, host?: ToolRunnerHost);
+    list(): AgentClientToolDefinition[];
+    run(call: ToolCallRequest, signal?: AbortSignal): Promise<ToolCallResult>;
+}
+
 export interface AgentHistoryProps {
     load: SessionHistory["load"];
     save: SessionHistory["save"];
@@ -975,9 +985,26 @@ export declare const ToggleSelect: (<I extends boolean | null | number | string>
     Multi: ComponentType<MultiProps>;
 };
 
+export interface ToolApprovalRequest {
+    callId: string;
+    name: string;
+    args: Record<string, unknown>;
+    message: string;
+}
+
 export interface ToolCardProps {
     className?: string;
     card: PendingCard;
+}
+
+export interface ToolRunnerHost {
+    approve?: (request: ToolApprovalRequest, signal: AbortSignal) => Promise<string | true>;
+    askAfterUntrusted?: boolean;
+    card?: (request: ToolCardRequest, signal: AbortSignal) => Promise<ToolCardAnswer>;
+    settle?: () => Promise<void> | void;
+    progress?: (progress: ToolProgress) => void;
+    activity?: (event: ToolActivity) => Promise<void> | void;
+    fallback?: (call: ToolCallRequest, signal: AbortSignal) => Promise<ToolCallResult> | ToolCallResult;
 }
 
 export declare const Tooltip: import("react").ComponentType<TooltipProps>;
@@ -3201,6 +3228,12 @@ interface ToolCallResult {
 
 type ToolCard = (control: ToolCardControl) => ReactNode;
 
+type ToolCardAnswer = {
+    error: string;
+} | {
+    result: unknown;
+};
+
 interface ToolCardControl {
     args: Record<string, unknown>;
     submit: (value: unknown) => void;
@@ -3210,6 +3243,13 @@ interface ToolCardControl {
 interface ToolCardEntry extends ToolEntryBase {
     card: ToolCard;
     run?: never;
+}
+
+interface ToolCardRequest {
+    callId: string;
+    name: string;
+    args: Record<string, unknown>;
+    render: ToolCard;
 }
 
 type ToolConfirm = ((args: Record<string, unknown>) => boolean | string) | boolean | string;
@@ -3228,6 +3268,11 @@ interface ToolEntryBase {
 }
 
 type ToolGuard = (args: Record<string, unknown>) => string | true;
+
+interface ToolProgress {
+    callId: string;
+    report: AgentProgressReport | null;
+}
 
 interface ToolProps {
     className?: string;

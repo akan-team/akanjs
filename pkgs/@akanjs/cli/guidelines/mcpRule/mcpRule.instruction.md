@@ -540,6 +540,10 @@ at every event.
   every tool. A tool in no toolkit is listed every round, beside one more, `openToolkit({ name })`, whose description
   lists the toolkits. An opened toolkit's tools are listed from the next round on; `openToolkit` never reaches
   `approve` and counts as no tool call. A resume reopens what stored calls and a summary's `toolkits` opened.
+- **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
+  (`akanjs/ui`), sent over your own transport. It is client input, and a name an endpoint holds is dropped. The run
+  never runs one: `approve` is asked, then the run ends `awaiting` with `client: true`. Have the page `run(call)`,
+  append its result — or your own error when no page answers — and resume.
 - **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
   reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
   wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation
