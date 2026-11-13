@@ -812,9 +812,7 @@ export type RunnerEvent = {
     message: string;
     code?: string;
     data?: Record<string, number | string>;
-    overflow?: {
-        limit?: number;
-    };
+    overflow?: TurnOverflow;
 } | {
     type: "text";
     delta: string;
@@ -3326,6 +3324,11 @@ interface TriggerSlotOptions {
 interface TurnLimits {
     window?: number;
     output?: number;
+}
+
+interface TurnOverflow {
+    limit?: number;
+    requested?: number;
 }
 
 type TurnStop = "end" | "length" | "toolUse";

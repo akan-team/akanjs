@@ -1290,6 +1290,30 @@ describe("AgentSession compaction", () => {
     expect(session.context.compactAt).toBe(50_000 - Compaction.answerTokens - Compaction.defaults.buffer);
   });
 
+  test("a refusal measured in its own unit scales the window by its ratio, a byte cap included", async () => {
+    const windowAfter = async (overflow: { limit: number; requested?: number }) => {
+      const surface = new AgenticSurface();
+      surface.registerTool([], { name: "look", run: () => "ok" });
+      const { runner } = scripted(
+        [
+          { type: "toolCall", id: "c0", name: "look", args: {} },
+          { type: "done", stop: "toolUse", usage: { input: 300_000, output: 0 } },
+        ],
+        [{ type: "error", message: "The prompt is too long", overflow }],
+        [{ type: "done", stop: "end" }],
+      );
+      const session = new AgentSession(surface, runner, {
+        compact: { at: Number.POSITIVE_INFINITY, keep: 1, summarize: async () => "notes" },
+      });
+      await session.send("look, then answer");
+      return (session.context.compactAt ?? 0) + Compaction.answerTokens + Compaction.defaults.buffer;
+    };
+    expect(await windowAfter({ limit: 400_000 })).toBe(400_000);
+    const scaled = await windowAfter({ limit: 400_000, requested: 500_000 });
+    expect(scaled).toBeGreaterThanOrEqual(240_000);
+    expect(scaled).toBeLessThan(240_100);
+  });
+
   test("a second refusal in the same send fails with the provider's own sentence", async () => {
     const surface = new AgenticSurface();
     surface.registerTool([], { name: "look", run: () => "ok" });

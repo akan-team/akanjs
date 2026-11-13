@@ -321,8 +321,14 @@ export type RunnerEvent =
       message: string;
       code?: string;
       data?: Record<string, string | number>;
-      overflow?: { limit?: number };
+      overflow?: TurnOverflow;
     };
+
+/** `limit` alone is a window in tokens; with `requested` beside it, both are in the refusal's own unit, bytes included. */
+export interface TurnOverflow {
+  limit?: number;
+  requested?: number;
+}
 
 export interface RunnerRequest {
   messages: ChatMessage[];

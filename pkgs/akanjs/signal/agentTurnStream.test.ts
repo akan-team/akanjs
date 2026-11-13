@@ -168,6 +168,10 @@ describe("AgentTurnStream", () => {
         overflow: { limit: 65_536 },
       },
     ]);
+    const measured = AgentTurnStream.response(async () => {
+      throw new Err("agent.error.contextOverflow", { provider: "own cap", limit: 400_000, requested: 412_000 });
+    });
+    expect(await framesOf(measured)).toMatchObject([{ overflow: { limit: 400_000, requested: 412_000 } }]);
   });
 
   test("an adapter's own error reaches the chat as a generic failure outside development, and the log in full", async () => {

@@ -128,9 +128,10 @@ pages declaring one name never clash, and a registry kept outside the surface re
   carries `{ provider, status }`, the hostname and the HTTP status; the provider's own sentence goes to the server
   log only, because it can quote an account id or part of a key and `Err` data reaches the browser.
   `LlmOverflow.refusal(host, status, reason)` builds it, and reads the one refusal a chat can undo — a prompt past
-  the window, recognized from each provider's own sentence — as `agent.error.contextOverflow` with the `limit` it
-  named, which the relay flags so the chat compacts and asks again. An adaptor an app wrote throws through the same function, so its refusals
-  translate and recover the way the shipped ones do without a key in the framework's dictionary it cannot add.
+  the window, recognized from each provider's own sentence — as `agent.error.contextOverflow` with the `limit` and
+  `requested` it named, which the relay flags so the chat compacts and asks again. An adaptor an app wrote throws through the same function, so its refusals
+  translate and recover the way the shipped ones do without a key in the framework's dictionary it cannot add. An
+  adaptor's own size cap throws that error with `{ limit, requested }` in its own unit, bytes included.
 - **`accepts` is answered per model, through `option.setLlm({ accepts })`.** An adaptor answers for an API and one
   API serves models that differ, so the override rides beside the `model` it is a fact about. It is not a table
   the framework keeps: a table is a claim about models that ship after it, and getting this wrong is the worst

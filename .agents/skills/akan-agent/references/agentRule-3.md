@@ -206,8 +206,8 @@
   `window − answer ceiling (8,192 when unreported) − compact.buffer (13,000, the margin Claude Code leaves)` —
   measured by the provider's own count of the last turn (`done.usage`, kept on that assistant message) plus the
   four-character estimate for what arrived since, so a Korean transcript the character rule reads as small is
-  still caught. The window comes from `option.setLlm({ contextWindow })` or from the first refusal that names it;
-  with neither, only the ceiling runs. **A refusal for length is answered once**: a relay flags it `overflow` on
+  still caught. The window comes from `option.setLlm({ contextWindow })` or from a refusal that names it, scaled by
+  its `limit / requested` to this estimate when it gives both; with neither, only the ceiling runs. **A refusal for length is answered once**: a relay flags it `overflow` on
   the wire, and the session compacts and sends the same turn again, and a second refusal in the same send fails
   with `agent.error.contextOverflow`. Either way the history above the last `keep` messages
   becomes one message standing in for it, flagged `summary` on the wire — `<Agent.Chat compact={{ at, keep, buffer }} />`

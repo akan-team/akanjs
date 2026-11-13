@@ -27,7 +27,7 @@ export class AgentTurnStream {
     message: string;
     code: string;
     data?: Record<string, string | number>;
-    overflow?: { limit?: number };
+    overflow?: { limit?: number; requested?: number };
   } {
     const status = isExceptionLike(error) ? error.statusCode : SignalFailure.generalized(error).statusCode;
     const code = SignalFailure.codeOf(error, status);
@@ -42,7 +42,12 @@ export class AgentTurnStream {
       raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, string | number>) : null;
     // A wire flag, since a non-akan client cannot be expected to know `agent.error.contextOverflow`.
     const overflow =
-      message === "agent.error.contextOverflow" ? (typeof data?.limit === "number" ? { limit: data.limit } : {}) : null;
+      message === "agent.error.contextOverflow"
+        ? {
+            ...(typeof data?.limit === "number" ? { limit: data.limit } : {}),
+            ...(typeof data?.requested === "number" ? { requested: data.requested } : {}),
+          }
+        : null;
     return { message, code, ...(data ? { data } : {}), ...(overflow ? { overflow } : {}) };
   }
 

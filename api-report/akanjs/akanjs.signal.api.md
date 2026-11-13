@@ -149,6 +149,7 @@ export declare class AgentTurnStream {
         data?: Record<string, number | string>;
         overflow?: {
             limit?: number;
+            requested?: number;
         };
     };
     static response(run: RunTurn): Response;
