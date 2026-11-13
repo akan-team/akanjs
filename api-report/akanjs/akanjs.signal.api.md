@@ -859,6 +859,7 @@ export interface McpDocumentOptions {
     readOnly?: boolean;
     outputSchema?: McpOutputSchemaMode;
     apps?: boolean;
+    agent?: boolean;
 }
 
 export type McpEra = "legacy" | "modern";
@@ -1290,10 +1291,10 @@ export interface ResolvedSliceCrud {
 }
 
 export interface ResolvedSliceMcp {
-    get: boolean;
-    create: boolean;
-    update: boolean;
-    remove: boolean;
+    get: McpShelf;
+    create: McpShelf;
+    update: McpShelf;
+    remove: McpShelf;
 }
 
 export interface ReturnInfo<Returns extends ConstantFieldTypeInput = any, Nullable extends boolean = false> {
@@ -1358,7 +1359,7 @@ export interface SerializedSignal {
     createGuards?: string[];
     updateGuards?: string[];
     removeGuards?: string[];
-    mcp?: SerializedSignalMcp;
+    mcp?: SerializedSignalShelf;
     crud?: SerializedSignalMcp;
     agents?: SerializedSignalMcp;
     origin?: string[];
@@ -1369,6 +1370,13 @@ export interface SerializedSignalMcp {
     create?: false;
     update?: false;
     remove?: false;
+}
+
+export interface SerializedSignalShelf {
+    get?: "agent" | false;
+    create?: "agent" | false;
+    update?: "agent" | false;
+    remove?: "agent" | false;
 }
 
 export interface SerializedSlice extends SerializedSignalOption {
@@ -1511,7 +1519,7 @@ export interface SignalOption<Response = any, Nullable extends boolean = false, 
     globalPrefix?: false;
     method?: HttpMutationMethod;
     fileUpload?: boolean;
-    mcp?: boolean;
+    mcp?: McpShelf;
     destructive?: boolean;
     errors?: EndpointErrors;
     backpressure?: "coalesce" | "queue";
@@ -2686,13 +2694,13 @@ interface RootSliceOption {
         update?: GuardCls | GuardCls[] | false;
         remove?: GuardCls | GuardCls[] | false;
     };
-    mcp?: boolean | {
-        root?: boolean;
-        get?: boolean;
-        cru?: boolean;
-        create?: boolean;
-        update?: boolean;
-        remove?: boolean;
+    mcp?: McpShelf | {
+        root?: McpShelf;
+        get?: McpShelf;
+        cru?: McpShelf;
+        create?: McpShelf;
+        update?: McpShelf;
+        remove?: McpShelf;
     };
     prefix?: string;
 }
@@ -2711,7 +2719,7 @@ interface SerializedSignalOption {
     guards?: string[];
     method?: HttpMutationMethod;
     fileUpload?: boolean;
-    mcp?: false;
+    mcp?: "agent" | false;
     agents?: false;
 }
 

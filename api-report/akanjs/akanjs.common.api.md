@@ -974,7 +974,7 @@ export interface McpExposureEndpoint {
     }[];
     guards?: string[];
     fileUpload?: boolean;
-    mcp?: boolean;
+    mcp?: McpShelf;
     agents?: boolean;
     destructive?: boolean;
 }
@@ -984,12 +984,15 @@ export interface McpExposureOption {
     key: string;
     readOnly?: boolean;
     view?: boolean;
+    agent?: boolean;
 }
 
 export interface McpFailure {
     code: string;
     statusCode?: number;
 }
+
+export type McpShelf = "agent" | boolean;
 
 export declare const PAGE_ROUTE_EXPORTS: ReadonlySet<string>;
 
@@ -1715,7 +1718,7 @@ export declare const mcpHintsOf: (key: string, endpoint: {
     openWorldHint: boolean;
 };
 
-export declare const mcpRefusalOf: (endpoint: McpExposureEndpoint, { refName, key, readOnly, view }: McpExposureOption) => null | string;
+export declare const mcpRefusalOf: (endpoint: McpExposureEndpoint, { refName, key, readOnly, view, agent }: McpExposureOption) => null | string;
 
 export declare const mergeVersion: (major: number, minor: number, patch: number) => string;
 
@@ -1781,6 +1784,8 @@ export declare const moduleNames: (refName: string) => {
     InternalClass: string;
     EndpointClass: string;
 };
+
+export declare const narrowestMcpShelf: (shelves: readonly McpShelf[]) => McpShelf;
 
 export declare const normalizeIpAddress: (address: string) => string;
 

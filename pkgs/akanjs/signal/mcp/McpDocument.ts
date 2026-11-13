@@ -25,6 +25,8 @@ export interface McpDocumentOptions {
    * refusal still holds.
    */
   apps?: boolean;
+  /** The in-process agent's catalogue (`AgentToolsRole`), which also lists an endpoint declared `mcp: "agent"`. */
+  agent?: boolean;
 }
 
 export type McpOutputSchemaMode = "full" | "shallow" | "none";
@@ -154,7 +156,12 @@ export class McpDocument {
         this.#catalogue.refuse(key, excluded);
         continue;
       }
-      const reason = mcpRefusalOf(endpoint, { refName, key, readOnly: this.#options.readOnly });
+      const reason = mcpRefusalOf(endpoint, {
+        refName,
+        key,
+        readOnly: this.#options.readOnly,
+        agent: this.#options.agent,
+      });
       if (reason && this.#isAppOnly(item)) {
         appOnly.push({ ...item, reason });
         continue;

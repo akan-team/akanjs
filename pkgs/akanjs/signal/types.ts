@@ -1,4 +1,5 @@
 import type { DefaultPrimitiveName, UnCls } from "akanjs/base";
+import type { McpShelf } from "akanjs/common";
 import type { AkanJob, ServiceModel } from "akanjs/service";
 import type { RateLimitBudget } from "./endpointRateLimit";
 import type { GuardCls } from "./guard";
@@ -119,8 +120,11 @@ export interface SignalOption<Response = any, Nullable extends boolean = false, 
   /** HTTP verb of a `mutation`, `POST` unless named; every other endpoint type ignores it. */
   method?: HttpMutationMethod;
   fileUpload?: boolean;
-  /** `false` keeps it out of the MCP catalogue (default `true`); curation, not authorization — HTTP still serves it. */
-  mcp?: boolean;
+  /**
+   * `false` keeps it out of the MCP catalogue (default `true`), and `"agent"` keeps it off `/mcp` while the in-process
+   * agent (`AgentToolsRole`, `agentService.loop`) still lists it; curation, not authorization — HTTP still serves it.
+   */
+  mcp?: McpShelf;
   /**
    * Overrides what the key implies for a `mutation`'s MCP `destructiveHint`: `true` for one no verb gives away, such as
    * `archiveOrder`, `false` for a `drop…` that loses nothing. `agentService.loop` refuses a destructive tool unless
@@ -155,8 +159,8 @@ interface SerializedSignalOption {
   guards?: string[];
   method?: HttpMutationMethod;
   fileUpload?: boolean;
-  /** Only ever `false`, when declared. Resolved here because the API explorer holds guard names, not classes. */
-  mcp?: false;
+  /** Only ever `false` or `"agent"`, when declared. Resolved here because the API explorer holds guard names, not classes. */
+  mcp?: false | "agent";
   /** Only ever `false`, when a guard declares `static agents = false` (a person-only act). */
   agents?: false;
 }
@@ -211,13 +215,21 @@ export interface SerializedSignal {
   updateGuards?: string[];
   removeGuards?: string[];
   /** Generated CRUD verbs kept off the agent shelf, carried here because `FetchClient.getBaseEndpoint` synthesizes them. */
-  mcp?: SerializedSignalMcp;
+  mcp?: SerializedSignalShelf;
   /** Generated CRUD verbs the server does not mount at all, so no client synthesizes them. */
   crud?: SerializedSignalMcp;
   /** Which generated CRUD verbs a person-only guard protects, by the same verb map; only the `false` keys travel. */
   agents?: SerializedSignalMcp;
   /** The app or lib that registered the signal, first registrant first: an app extending a lib module reads `["shared", "sceny"]`. */
   origin?: string[];
+}
+
+/** The generated CRUD verbs not on `/mcp`, by the same verb map; `"agent"` ones are still listed to the in-process agent. */
+export interface SerializedSignalShelf {
+  get?: false | "agent";
+  create?: false | "agent";
+  update?: false | "agent";
+  remove?: false | "agent";
 }
 
 /** Keyed by generated verb, mirroring the `guards` map `slice()` takes. The root slice's own flag rides on `slice[""]`. */

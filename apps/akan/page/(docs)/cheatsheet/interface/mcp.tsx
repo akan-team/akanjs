@@ -140,6 +140,13 @@ export default page()
         }),
       },
       {
+        when: l.trans({ en: 'It declares `mcp: "agent"`', ko: '`mcp: "agent"`를 선언했다' }),
+        why: l.trans({
+          en: "Listed only to the in-process agent (`AgentToolsRole`, `agentService.loop`) under the same guards; `/mcp` neither lists nor runs it.",
+          ko: "서버 안 에이전트(`AgentToolsRole`, `agentService.loop`)에게만 같은 가드로 보입니다. `/mcp`는 목록에 올리지도, 실행하지도 않습니다.",
+        }),
+      },
+      {
         when: l.trans({
           en: "A guard declares `static agents = false`, like `Person`",
           ko: "`Person`처럼 `static agents = false`인 가드가 붙어 있다",
@@ -642,6 +649,26 @@ export default page()
             </strong>{" "}
             <code>root</code>, <code>get</code>, <code>cru</code>로 펼쳐지고, <code>create</code>, <code>update</code>,{" "}
             <code>remove</code>는 <code>cru</code>를 물려받습니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>
+              <code>mcp: "agent"</code> keeps it off <code>/mcp</code> only.
+            </strong>{" "}
+            The in-process agent (<code>AgentToolsRole</code>, <code>agentService.loop</code>) still lists it under the
+            same guards, and the listing's size leaves it out.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>
+              <code>mcp: "agent"</code>는 <code>/mcp</code>에서만 뺍니다.
+            </strong>{" "}
+            서버 안 에이전트(<code>AgentToolsRole</code>, <code>agentService.loop</code>)는 같은 가드로 계속 보고, 목록
+            크기에도 잡히지 않습니다.
           </>
         ),
       }),

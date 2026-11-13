@@ -49,7 +49,7 @@ export type AgentLoopStop =
   | "awaiting";
 
 export interface AgentLoopOptions {
-  /** Tool names; the run sees only those the account may also see on `/mcp`. */
+  /** Tool names; the run sees only those `AgentToolsRole` lists to the account: `/mcp`'s, plus `mcp: "agent"` ones. */
   allow: readonly string[];
   /** The transcript so far, ending in a user message for a new ask or in unanswered calls for a resumed run. */
   messages: AgentWireMessage[];

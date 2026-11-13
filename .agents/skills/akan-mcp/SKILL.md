@@ -15,7 +15,7 @@ an endpoint with a real guard is published, one with none is refused, and so is 
 
 - `mcp: false` on an endpoint, or a `slice()` `mcp` map mirroring `guards`, keeps a perfectly guarded step (a UI
   state-machine step a model would only call by mistake) off the shelf. It is an opt-out; everything else still
-  publishes.
+  publishes. `mcp: "agent"` keeps an entry off `/mcp` but listed to `AgentToolsRole` and `agentService.loop`.
 - `guards: [Every, Person]` reserves an act for a person; `.with(AgentCall)` narrows what an agent's call may do.
 - A guard's `static scope` decides whether a listing can hide the entry: `"account"` guards are evaluated per
   caller, `"resource"` guards stay visible and stop the call.
@@ -37,7 +37,7 @@ an endpoint with a real guard is published, one with none is refused, and so is 
 ## Calling it from the server
 
 - `plug(AgentToolsRole)` gives a service `listAs(account, { allow })` / `callAs(account, call)`: the same catalogue
-  and refusals in-process, batch servers included. Pass only an account the server resolved, never client input.
+  and refusals in-process plus the `mcp: "agent"` entries, batch servers included. Pass only an account the server resolved, never client input.
 - `this.agentService.loop({ account | principal, allow, messages, approve, untrusted, onMessage, meta, budget })`
   runs a model over those tools until it answers; `option.setAgentAccountResolver` resolves a stored `principal`
   before every round. Each round is metered as its own turn with `turn.loop` and `turn.meta`. `toolkits` holds named
