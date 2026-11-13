@@ -296,7 +296,7 @@ Each part is exported, so an app that wants a dock of its own shape composes the
 
 Restyling the chat
 
-Eleven of the chat's own parts are override slots, so an app re-skins the transcript or the composer without re-implementing the loop. `AgentChat` replaces the whole panel.
+Twelve of the chat's own parts are override slots, so an app re-skins the transcript or the composer without re-implementing the loop. `AgentChat` replaces the whole panel.
 
 Overridable Slots
 

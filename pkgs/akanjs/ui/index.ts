@@ -59,6 +59,7 @@ export {
 } from "./Agent/Refer";
 export { DefaultSteps, type StepsProps } from "./Agent/Steps";
 export { DefaultToolCard, type ToolCardProps } from "./Agent/ToolCard";
+export { DefaultToolRow, type ToolRowProps } from "./Agent/ToolRow";
 export { tokenCount } from "./Agent/tokenCount";
 export type { QueuedMessage } from "./Agent/useChatQueue";
 export type { ReferenceCandidate, ReferenceSource } from "./Agent/useReferenceMenu";

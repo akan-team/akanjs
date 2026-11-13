@@ -71,7 +71,7 @@ pages declaring one name never clash, and a registry kept outside the surface re
   panel the app already titles, and `defaultDraft` opens the composer with text in it without sending it. A panel driven by a
   controlled `open` with **no** `onOpenChange` draws no close button at all rather than an inert one. Then the
   slots: `AgentLauncher`, `AgentSteps`, `AgentBubble`, `AgentComposer`, `AgentApproval`,
-  `AgentQuestion`, `AgentToolCard`, `AgentQueued`, `AgentMenu`, `AgentMarkdown` and `AgentCode` each replace one part in `_overrides.tsx`, and
+  `AgentQuestion`, `AgentToolCard`, `AgentToolRow`, `AgentQueued`, `AgentMenu`, `AgentMarkdown` and `AgentCode` each replace one part in `_overrides.tsx`, and
   `akanjs/ui` exports every default beside them (`DefaultBubble`, `DefaultComposer`, …) so a skin composes the
   one it is replacing. **`AgentSteps` is one agent turn** — the messages between the user message that opened it
   and the next one, with `isRunning` saying whether more are still coming — which is the grain a chat needs to

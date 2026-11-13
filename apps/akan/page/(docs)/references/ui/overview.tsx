@@ -127,6 +127,7 @@ export default page()
       "DefaultQueued",
       "DefaultSteps",
       "DefaultToolCard",
+      "DefaultToolRow",
       "DefaultToast",
       "DefaultToastItem",
     ];

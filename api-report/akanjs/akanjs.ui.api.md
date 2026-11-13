@@ -196,6 +196,7 @@ export interface AkanUiOverrides {
     AgentMenu: ComponentType<AgentMenuProps>;
     AgentMarkdown: ComponentType<AgentMarkdownProps>;
     AgentToolCard: ComponentType<AgentToolCardProps>;
+    AgentToolRow: ComponentType<AgentToolRowProps>;
     AgentCode: ComponentType<AgentCodeProps>;
     Button: ComponentType<ButtonProps<unknown>>;
     Select: ComponentType<SelectProps<boolean | null | number | string | undefined>>;
@@ -463,6 +464,8 @@ export declare const DefaultToast: ({ className, messages, topSafeArea, onClose,
 export declare const DefaultToastItem: ({ className, message, onClose, onClosed }: ToastItemProps) => import("react").JSX.Element;
 
 export declare const DefaultToolCard: ({ className, card }: ToolCardProps) => import("react").JSX.Element;
+
+export declare const DefaultToolRow: ({ className, name, args, result, progress }: ToolRowProps) => import("react").JSX.Element;
 
 export declare const DevModeToggle: () => import("react").JSX.Element;
 
@@ -995,6 +998,14 @@ export interface ToolApprovalRequest {
 export interface ToolCardProps {
     className?: string;
     card: PendingCard;
+}
+
+export interface ToolRowProps {
+    className?: string;
+    name: string;
+    args?: Record<string, unknown>;
+    result?: ToolCallResult;
+    progress?: AgentProgressReport | null;
 }
 
 export interface ToolRunnerHost {
