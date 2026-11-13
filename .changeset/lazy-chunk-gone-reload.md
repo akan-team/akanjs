@@ -20,6 +20,7 @@ A lazily loaded chunk the server no longer serves now reloads its page once.
   - Each error asks about at most the four latest, all at once, and waits for a request another error already has out. The first 404 whose reload is not claimed yet reloads, so a chunk a reload did not fix never hides another.
   - A recorded failure the server serves is not asked about again. One that answers 404 stays listed, since its reload can be skipped and WebKit does not fetch a module that failed again. One whose request fails or answers another error status, such as a load balancer's 5xx, stays for three requests.
   - Only WebKit's exact message counts. Its syntax, link, MIME-type and evaluation errors are worded differently and still leave the page alone.
+- **A request the server has not answered after 10 seconds is given up** and counts as failed, like a network failure: it does not reload, and the next error asks again instead of waiting on it.
 - **The reload is skipped if anything happened while the request was out:**
   - any client navigation, including a shallow update, a refresh (the token-refresh timer's too) or a back or forward move;
   - a `beforeunload` or `pagehide`, which a document load the router never sees fires (a plain link, a form post, `location.assign`).
