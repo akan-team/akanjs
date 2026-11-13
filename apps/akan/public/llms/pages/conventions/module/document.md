@@ -347,7 +347,7 @@ The second argument of `schema.index()`:
 
 **A builder form exists too.** `schema.createIndex(name)` chains `.path(field, order)`, `.unique()`, `.where(query)` and ends with `.done()`.
 
-**A changed index is rebuilt.** Change a shipped index, even `-1` to `1` or adding `unique`, and the next boot builds the new one and drops the old: a full index build on a large table. Adding or removing another index renames none of them, and an index you delete from `_onSchema` is dropped on the next boot.
+**A changed index is rebuilt.** Change a shipped index, even `-1` to `1` or adding `unique`, and the next boot builds the new one and drops the old: a full index build on a large table. Adding or removing another index renames none of them. An index you delete from `_onSchema`, or whose fields you reorder, stays until `akan migrate <app> prune-indexes` drops it, run once no instance of the earlier release is serving; a unique one keeps refusing duplicates until then.
 
 Hooks
 

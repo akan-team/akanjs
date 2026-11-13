@@ -33,9 +33,11 @@ import {
   type FindManyOptions,
   type FindOneOptions,
   type ProjectedSqliteDocumentRow,
+  type PrunedIndex,
   type SqlDialect,
   type SqliteDocumentRow,
   type TransferRow,
+  type UndeclaredIndex,
   type UpsertByIdOptions,
   type WriteHookOptions,
 } from "./types";
@@ -100,6 +102,14 @@ export class SqlDocumentStore {
 
   ensure() {
     return this.#tableSchema.ensure();
+  }
+
+  undeclaredIndexes(): Promise<UndeclaredIndex[]> {
+    return this.#tableSchema.undeclaredIndexes();
+  }
+
+  pruneUndeclaredIndexes(): Promise<PrunedIndex[]> {
+    return this.#tableSchema.pruneUndeclaredIndexes();
   }
 
   async create(data: DocumentRecord, { runSaveHooks = true }: WriteHookOptions = {}) {

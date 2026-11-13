@@ -80,6 +80,20 @@ export default page()
           ko: "변경 기록으로 apply를 되돌립니다.",
         }),
       },
+      {
+        action: "indexes",
+        desc: l.trans({
+          en: "Lists the indexes an earlier release built that this one no longer declares. A boot keeps them for the instances still running that release, and a unique one keeps refusing duplicates.",
+          ko: "이전 릴리스가 만들었지만 이번 릴리스가 더는 선언하지 않는 인덱스를 보여 줍니다. 부팅은 그 릴리스로 아직 도는 인스턴스를 위해 이 인덱스를 남겨 두며, unique 인덱스는 계속 중복을 거부합니다.",
+        }),
+      },
+      {
+        action: "prune-indexes",
+        desc: l.trans({
+          en: "Drops what `indexes` lists. Run it once every instance runs this release: an older one builds its index again when it restarts.",
+          ko: "`indexes`가 보여 주는 인덱스를 삭제합니다. 모든 인스턴스가 이번 릴리스로 돌 때 실행합니다. 이전 인스턴스는 재시작할 때 자기 인덱스를 다시 만듭니다.",
+        }),
+      },
     ];
 
     const paramItems = [

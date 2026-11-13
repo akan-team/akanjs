@@ -8,7 +8,7 @@ export type DocumentHookName = `before${Capitalize<SaveEventType>}` | `after${Ca
 export interface DocumentIndexDescriptor {
   name?: string;
   // Only 1 and -1 build a key. `"text"` (MongoDB's text index) builds nothing and warns, and the B-tree an earlier
-  // version built from it is dropped: full-text search is a field's `text` role.
+  // version built from it waits for `prune-indexes`: full-text search is a field's `text` role.
   fields: Record<string, 1 | -1 | "text" | boolean>;
   unique?: boolean;
   where?: DocumentQuery;

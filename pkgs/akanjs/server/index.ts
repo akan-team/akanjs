@@ -150,6 +150,7 @@ export {
   type MigrationPatch,
   type MigrationPlan,
   type MigrationPlanResult,
+  type MigrationPruneResult,
   MigrationPulse,
   type MigrationRevertOutcome,
   type MigrationRewriteOption,

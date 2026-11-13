@@ -198,6 +198,16 @@ export interface ConcurrentIndexBuild {
   replace: boolean;
 }
 
+export interface UndeclaredIndex {
+  table: string;
+  name: string;
+  unique: boolean;
+}
+
+export interface PrunedIndex extends UndeclaredIndex {
+  error?: string;
+}
+
 export interface DocumentDatabaseOwner {
   getConnection(): AkanSqlClient;
   getSearchIndex(): SearchIndex | null;
@@ -296,8 +306,8 @@ export interface SqlDialect {
   indexName(name: string): string;
   createIndex(props: CreateIndexProps): string;
   /**
-   * Rows `{ name, valid, definition }`, one per index on `table` besides its primary key; `definition` is the index as
-   * the database holds it, its fields in order.
+   * Rows `{ name, valid, definition, unique }`, one per index on `table` besides its primary key; `definition` is the
+   * index as the database holds it, its fields in order.
    */
   indexesOf(table: string): SqlFrag;
   /** The `definition` `indexesOf` reads back for `createIndex(props)`; absent where only the database can tell. */

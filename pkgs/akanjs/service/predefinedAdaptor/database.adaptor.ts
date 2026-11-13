@@ -65,11 +65,13 @@ export type {
   DocumentStore,
   InsightSession,
   PostgresDatabaseConfig,
+  PrunedIndex,
   SearchConfig,
   SqlDialect,
   SqliteDatabaseConfig,
   SqlResultRows,
   TransferRow,
+  UndeclaredIndex,
   UpsertByIdOptions,
 } from "./sql/types";
 export { descriptorHash, stableJson } from "./sql/values";

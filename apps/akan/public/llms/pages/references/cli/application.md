@@ -196,7 +196,7 @@ Sync the app, then run `apps/<app>/script/<filename>.ts` with Bun. Leave the fil
 
 Sync the app, then boot its server without a port or schedules and run one action on the migrations in `apps/<app>/script/migration/`. Inside a built container, `bun main.js ops migrate` takes the same actions and options. See the Data Migrations cheatsheet.
 
-- action (String, default list, list | plan | apply | verify | rollback): What to do; every action but `list` takes a target.
+- action (String, default list, list | plan | apply | verify | rollback | indexes | prune-indexes): What to do; `plan`, `apply`, `verify` and `rollback` take a target. `indexes` lists the indexes an earlier release built that this one no longer declares, which a boot keeps; `prune-indexes` drops them.
 
 - target (String): A migration id such as `202610211000_orderToppings`; `rollback` also takes an apply's run id.
 
@@ -217,6 +217,8 @@ Sync the app, then boot its server without a port or schedules and run one actio
 - one at a time: While one run holds the database's migration lock, a second is refused with `locked`.
 
 - record: Each run and the values it changed stay in the app's own database.
+
+- prune-indexes: Run it once no instance of an earlier release is serving: one still declaring an index builds it again when it restarts. A unique index it lists keeps refusing duplicates until then.
 
 `akan create-migration <migrationName> <app>`
 
@@ -790,6 +792,8 @@ akan migrate myapp
 akan migrate myapp plan 202610211000_orderToppings
 akan migrate myapp apply 202610211000_orderToppings --expect <planHash>
 akan migrate myapp rollback 202610211000_orderToppings
+akan migrate myapp indexes
+akan migrate myapp prune-indexes
 kubectl exec -n myapp-main deploy/app-deployment -c app -- \
   bun main.js ops migrate list --json
 ```

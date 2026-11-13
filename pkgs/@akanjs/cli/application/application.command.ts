@@ -83,7 +83,7 @@ const workspaceTargets = ({ public: target }: ApplicationBuilderContext) => ({
 
 const migrationTargets = ({ public: target }: ApplicationBuilderContext) => ({
   migrate: target({
-    desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration",
+    desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration, or list and prune the indexes it no longer declares",
     stdio: true,
     usageExitCode: 2,
     //? A `--json` caller parses the last line, so a failure before the app ran answers in the app's shape too.
@@ -93,7 +93,10 @@ const migrationTargets = ({ public: target }: ApplicationBuilderContext) => ({
     },
   })
     .with(App)
-    .arg("action", String, { desc: "list, plan, apply, verify or rollback", default: "list" })
+    .arg("action", String, {
+      desc: "list, plan, apply, verify, rollback, indexes or prune-indexes",
+      default: "list",
+    })
     .arg("target", String, { desc: "migration id; for rollback, an apply's run id too", nullable: true })
     .option("param", String, { desc: "a param the migration declares, as name=value", multiple: true })
     .option("expect", String, { desc: "the plan hash an apply must still match", nullable: true })

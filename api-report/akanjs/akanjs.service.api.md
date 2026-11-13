@@ -1451,6 +1451,10 @@ export declare class ProtobufCompressor extends ProtobufCompressor_base implemen
     }): T;
 }
 
+export interface PrunedIndex extends UndeclaredIndex {
+    error?: string;
+}
+
 export interface QueueAdaptor {
     registerProcessWorker(key: string, handler: (job: AkanJob) => Promise<unknown>, options?: ProcessWorkerOptions): AkanWorker;
     registerProcessQueue(key: string, args: unknown[], jobOptions?: AkanJobOptions): Promise<AkanJob>;
@@ -1864,6 +1868,8 @@ export declare class SqlDocumentStore {
     readonly updateCompiler: UpdateCompiler;
     constructor(owner: DocumentDatabaseOwner, constant: ConstantModel, database: DatabaseModel, schema: DocumentSchema, dialect?: SqlDialect);
     ensure(): Promise<void>;
+    undeclaredIndexes(): Promise<UndeclaredIndex[]>;
+    pruneUndeclaredIndexes(): Promise<PrunedIndex[]>;
     create(data: DocumentRecord, { runSaveHooks }?: WriteHookOptions): Promise<any>;
     createMany(data: DocumentRecord[]): Promise<any[]>;
     clone(data: DocumentRecord & {
@@ -2026,6 +2032,12 @@ export interface TransferRow {
     updatedAt: number;
     removedAt: null | number;
     _doc: Record<string, unknown>;
+}
+
+export interface UndeclaredIndex {
+    table: string;
+    name: string;
+    unique: boolean;
 }
 
 export interface UploadFromStreamRequest {

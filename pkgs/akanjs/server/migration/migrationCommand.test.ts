@@ -30,6 +30,11 @@ describe("MigrationCommand", () => {
       json: true,
     });
     expect(MigrationCommand.parse(["plan", "x", "--items", "0"]).items).toBe(0);
+    expect(MigrationCommand.parse(["indexes"])).toMatchObject({ action: "indexes", target: "" });
+    expect(MigrationCommand.parse(["prune-indexes", "--actor", "u1"])).toMatchObject({
+      action: "prune-indexes",
+      actor: "u1",
+    });
   });
 
   test("refuses what no action takes, as a usage error", () => {
@@ -54,6 +59,9 @@ describe("MigrationCommand", () => {
     expect(usage(["apply", "x", "--items", "5"])).toBe("usage");
     expect(usage(["rollback", "x", "--param", "a=1"])).toBe("usage");
     expect(usage(["list", "--actor", "u1"])).toBe("usage");
+    expect(usage(["indexes", "x"])).toBe("usage");
+    expect(usage(["indexes", "--actor", "u1"])).toBe("usage");
+    expect(usage(["prune-indexes", "searchConf_scope"])).toBe("usage");
   });
 
   test("names the command it was invoked as, and finds --json before parsing can fail", () => {
@@ -90,6 +98,41 @@ describe("MigrationCommand", () => {
     expect(await verify([])).toEqual({ ok: true, action: "verify", id: "m", runId: "r1", problems: [] });
     expect(await verify(["a"])).toMatchObject({ ok: false, code: "verifyFailed", error: "1 problem remains" });
     expect(await verify(["a", "b"])).toMatchObject({ code: "verifyFailed", error: "2 problems remain" });
+  });
+
+  test("reports a prune that could not drop every index as failed, with what it did drop", async () => {
+    const dropped = { table: "card", name: "card_a", unique: false };
+    const failed = { table: "card", name: "card_b", unique: true, error: "locked" };
+    const runner = {
+      pruneIndexes: async () => ({ dropped: [dropped], failed: [failed] }),
+    } as unknown as MigrationRunner;
+    const result = await MigrationCommand.run(runner, MigrationCommand.parse(["prune-indexes"]));
+    expect(result).toEqual({
+      ok: false,
+      action: "prune-indexes",
+      code: "failed",
+      error: "1 of the indexes could not be dropped",
+      dropped: [dropped],
+      failed: [failed],
+    });
+    expect(MigrationCommand.exitCode(result)).toBe(1);
+  });
+
+  test("lists the indexes an earlier release left for a person to read, unique ones marked", () => {
+    const render = (indexes: unknown[]) => MigrationCommand.render({ ok: true, action: "indexes", indexes }, false);
+    expect(render([])).toBe("This release declares every index an earlier one built");
+    expect(
+      render([
+        { table: "card", name: "card_code_unique", unique: true },
+        { table: "card", name: "card_label_1", unique: false },
+      ]),
+    ).toBe(
+      [
+        "Kept for an earlier release; drop them with prune-indexes once no instance runs one:",
+        "unique  card  card_code_unique",
+        "        card  card_label_1",
+      ].join("\n"),
+    );
   });
 
   test("prints one JSON line with --json, and a list a person reads without it", () => {
