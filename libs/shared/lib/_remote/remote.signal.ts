@@ -50,6 +50,21 @@ export class RemoteEndpoint extends endpoint(srv.remote, ({ query, mutation }) =
       return await this.remoteService.disconnect(account, url);
     }),
 
+  //? Draws what a run already showed: the service calls only a tool the remote lists as a read-only static app.
+  remoteScreen: query(String, {
+    guards: [Every, Person],
+    mcp: false,
+    rateLimit: { calls: 60, by: "account" },
+    errors: { 400: ["remote.error.urlRejected", "remote.error.badArguments"], 404: ["remote.error.disabled"] },
+  })
+    .search("url", String)
+    .search("tool", String)
+    .search("args", String)
+    .with(Account)
+    .exec(async function (url, tool, args, account) {
+      return await this.remoteService.screen(account, url ?? "", tool ?? "", args ?? "{}");
+    }),
+
   listRemoteConnections: query([cnst.RemoteConnection], { guards: [Every, Person], mcp: false })
     .with(Account)
     .exec(async function (account) {

@@ -6,7 +6,6 @@ import {
   RemoteError,
   RemoteMcp,
   RemoteOAuth,
-  type RemoteScreen,
   RemoteSource,
   type RemoteTokens,
 } from "akanjs/server";
@@ -138,14 +137,12 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     return grants.flatMap((grant) => (grant ? [RemoteService.connectionOf(grant)] : []));
   }
 
-  async screen(
-    account: SerAccount | null,
-    input: string,
-    tool: string,
-    args: Record<string, unknown>,
-  ): Promise<RemoteScreen | null> {
+  /** A static app's screen as the remote drew it for this account, or `""` when it sent none. */
+  async screen(account: SerAccount | null, input: string, tool: string, args: string): Promise<string> {
     const source = this.source(this.subjectOf(account), { name: "screen", url: input, description: "" });
-    return await this.reached(() => source.screen(tool, args));
+    const parsed = RemoteService.argumentsOf(args);
+    const screen = await this.reached(() => source.screen(tool, parsed));
+    return screen?.html ?? "";
   }
 
   endpointOf(input: string): string {
@@ -299,6 +296,18 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     if (error.code === "remoteOAuth")
       return new Err("remote.error.signInRefused", { reason: error.message }, { statusCode: 502 });
     return new Err("remote.error.unreachable", { reason: error.message }, { statusCode: 502 });
+  }
+
+  private static argumentsOf(args: string): Record<string, unknown> {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(args || "{}");
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      throw new Err("remote.error.badArguments", undefined, { statusCode: 400 });
+    return parsed as Record<string, unknown>;
   }
 
   private static keyOf(subjectId: string, url: string): string {

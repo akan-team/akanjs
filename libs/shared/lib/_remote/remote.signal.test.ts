@@ -145,6 +145,9 @@ describe("Remote Signal", () => {
       expect(names).not.toContain(hidden);
     const unknown = await source.call("noSuchTool", {});
     expect(unknown.code).toBe("unknownTool");
+    expect(await owner.fetch.remoteScreen(base, "noSuchTool", "{}")).toBe("");
+    await expect(owner.fetch.remoteScreen(base, "noSuchTool", "[1]")).rejects.toThrow(/badArguments/);
+    expect(await other.fetch.remoteScreen(base, "noSuchTool", "{}")).toBe("");
     expect(await sourceOf({ self: { id: other.user.id } } as unknown as SerAccount).list()).toBeNull();
   });
 

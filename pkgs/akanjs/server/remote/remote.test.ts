@@ -316,6 +316,9 @@ describe("RemoteSource", () => {
       href: "https://shop.example.com/order/o1",
     });
     expect(metas).toEqual([{ "akanjs/render": "html" }]);
+    expect(await source.screen("refundOrder", { id: "o1" })).toBeNull();
+    expect(await source.screen("orderList", {})).toBeNull();
+    expect(metas).toHaveLength(1);
   });
 
   test("reads a bare origin as the /mcp an akan server answers at", () => {

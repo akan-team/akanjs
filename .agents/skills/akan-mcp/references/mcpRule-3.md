@@ -39,7 +39,11 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
   the addresses an app accepts.
 - **A screen in the result.** When the called tool is a `page().app()`, the `toolResult` event carries `view`
   (`{ remote, tool, args, href?, static?, resourceUri? }`) beside the result. It never reaches the model or
-  `onMessage`; store it yourself to draw a card that links to `href`.
+  `onMessage`; store it yourself and draw `<Remote.Zone.Screen url tool={view.tool} args={view.args} href={view.href}
+  drawn={view.static} />`. For an app the other server declared `{ static: true }` the card asks `remoteScreen` for
+  that server's script-less HTML when it scrolls into view and shows it in a frame that runs no script; for any other
+  app it is the server's name and a link to `href`. The HTML is fetched again on every draw and never stored, since
+  what the user may see there can change.
 - **Not published onward.** The connection endpoints take `Person` and are `mcp: false`, and remote tools exist only
   inside the run: an outside agent connected to this app's `/mcp` never reaches a user's other servers through it.
 

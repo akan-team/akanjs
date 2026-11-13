@@ -30,6 +30,7 @@ export interface RemoteScreen {
 interface RemoteApp {
   resourceUri?: string;
   static: boolean;
+  readOnly: boolean;
 }
 
 // One remote MCP server as one account sees it: what `agentService.loop({ remotes })` lists and calls.
@@ -101,8 +102,15 @@ export class RemoteSource implements AgentLoopRemote {
     };
   }
 
-  /** A static app's screen as the remote rendered it for this account, or `null` when it sent none. */
+  /**
+   * A static app's screen as the remote rendered it for this account, or `null` when it sent none.
+   * Security: reached from a browser with no `approve` in front, so it calls only what the remote lists as a
+   * read-only static app.
+   */
   async screen(tool: string, args: Record<string, unknown>): Promise<RemoteScreen | null> {
+    if (!this.#apps.size && !(await this.list())) return null;
+    const app = this.#apps.get(tool);
+    if (!app?.static || !app.readOnly) return null;
     const answer = await this.#with((mcp) => mcp.callTool(tool, args, { [RemoteSource.renderMeta]: "html" }));
     if (!answer || answer.isError) return null;
     const html = answer.content.find((part) => part.type === "resource" && part.resource?.mimeType === "text/html")
@@ -158,6 +166,10 @@ export class RemoteSource implements AgentLoopRemote {
     const resourceUri = typeof ui?.resourceUri === "string" ? ui.resourceUri : undefined;
     const isStatic = meta?.[RemoteSource.staticMeta] === true;
     if (!resourceUri && !isStatic) return null;
-    return { ...(resourceUri ? { resourceUri } : {}), static: isStatic };
+    return {
+      ...(resourceUri ? { resourceUri } : {}),
+      static: isStatic,
+      readOnly: tool.annotations?.readOnlyHint === true,
+    };
   }
 }
