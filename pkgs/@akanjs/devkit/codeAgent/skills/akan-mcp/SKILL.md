@@ -40,7 +40,8 @@ an endpoint with a real guard is published, one with none is refused, and so is 
   runs a model over those tools until it answers; `option.setAgentAccountResolver` resolves a stored `principal`
   before every round. Each round is metered as its own turn with `turn.loop` and `turn.meta`. `toolkits` holds named
   groups of `allow` back until the model calls `openToolkit`; `clientTools` (from `AgentClientTools` on an open page)
-  parks a call as `awaiting { client: true }` for the page to run.
+  parks a call as `awaiting { client: true }` for the page to run; `ask: true` lists `askUser`, which parks as
+  `awaiting { question: true }` until you append the member's answer.
 
 ## Verify
 

@@ -14,6 +14,7 @@ import type {
 } from "../predefinedAdaptor/llm.adaptor";
 import type { AgentLoopApproval, AgentLoopEvent, AgentLoopRequest, AgentLoopStop } from "./agentLoopTypes";
 import { DeltaStream } from "./deltaStream";
+import { LoopAsk } from "./loopAsk";
 import { LoopCompaction } from "./loopCompaction";
 import { LoopRequest } from "./loopRequest";
 import { LoopToolkits } from "./loopToolkits";
@@ -61,6 +62,7 @@ export class AgentLoop {
   readonly #wall = new DOMException("The run's wallMs ran out.", "AbortError");
   readonly #signal: AbortSignal;
   readonly #toolkits: LoopToolkits;
+  readonly #askUser: LoopAsk;
   #clientNames = new Set<string>();
   #account: unknown = null;
   #round = 0;
@@ -75,6 +77,7 @@ export class AgentLoop {
     this.#messages = Array.isArray(request.messages) ? [...request.messages] : [];
     this.#signal = request.signal ? AbortSignal.any([request.signal, this.#halt.signal]) : this.#halt.signal;
     this.#toolkits = new LoopToolkits(request.toolkits);
+    this.#askUser = new LoopAsk(request.ask);
   }
 
   async *run(): Events<void> {
@@ -104,7 +107,9 @@ export class AgentLoop {
   async *#drive(): Events<AgentLoopStop> {
     this.#toolkits.restore(this.#messages);
     this.#tainted = LoopTranscript.markedTainted(this.#messages, !!this.#request.untrusted);
-    for (const result of LoopTranscript.results(this.#messages)) this.#taintBy(result);
+    //? Security: a person's answer is the principal's own input, like a user message, so `untrusted` never sees it.
+    for (const result of LoopTranscript.results(this.#messages))
+      if (!this.#askUser.isMeta(result.name)) this.#taintBy(result);
     const pending = LoopTranscript.pending(this.#messages);
     if (pending.length) {
       if (!(await this.#authorize())) return "unauthorized";
@@ -154,12 +159,12 @@ export class AgentLoop {
     const taken = new Set(visible.map((tool) => tool.name));
     //? Security: client input, so a browser's definition never takes a name the server answers, in a closed toolkit too.
     const client = (this.#request.clientTools ?? []).filter((tool) => {
-      if (taken.has(tool.name) || this.#toolkits.isMeta(tool.name)) return false;
+      if (taken.has(tool.name) || this.#toolkits.isMeta(tool.name) || this.#askUser.isMeta(tool.name)) return false;
       taken.add(tool.name);
       return true;
     });
     this.#clientNames = new Set(client.map((tool) => tool.name));
-    return [...listed, ...client.map(AgentLoop.#clientTool)];
+    return [...listed, ...client.map(AgentLoop.#clientTool), ...this.#askUser.listed()];
   }
 
   static #clientTool({ name, description, parameters, readOnly, needsConfirm }: AgentTool): AgentTool {
@@ -269,17 +274,24 @@ export class AgentLoop {
     try {
       for (const [at, call] of calls.entries()) {
         const verdict = verdicts[at] ?? { deny: AgentLoop.unjudged };
-        const meta = this.#toolkits.isMeta(call.name);
+        const asked = this.#askUser.isMeta(call.name);
+        const meta = asked || this.#toolkits.isMeta(call.name);
         stop = this.#haltStop() ?? (verdict === "allow" && !meta ? this.#callBudgetStop() : null);
         if (stop) break;
+        const unasked = asked ? LoopAsk.refusalOf(call) : null;
         //? The calls after it wait too: the model wrote them in order, possibly against what this one changes.
+        if (asked && !unasked) {
+          yield { type: "awaiting", call, question: true };
+          stop = "awaiting";
+          break;
+        }
         if (verdict === "allow" && this.#clientNames.has(call.name)) {
           this.#toolCalls += 1;
           yield { type: "awaiting", call, client: true };
           stop = "awaiting";
           break;
         }
-        const whole = meta ? this.#toolkits.open(call) : await this.#execute(call, verdict);
+        const whole = unasked ?? (meta ? this.#toolkits.open(call) : await this.#execute(call, verdict));
         const result = LoopToolOutput.clipped(whole);
         results.push(result);
         //? Security: clipping turns a large object into a string, which a predicate reading its fields no longer matches.
@@ -295,7 +307,7 @@ export class AgentLoop {
   }
 
   async #verdictOf(call: AgentWireToolCall, tool: AgentTool | undefined): Promise<Verdict> {
-    if (this.#toolkits.isMeta(call.name)) return "allow";
+    if (this.#toolkits.isMeta(call.name) || this.#askUser.isMeta(call.name)) return "allow";
     //? Security: refused here, as a guard that hid a tool from the listing may still pass it at call time, past `approve`.
     if (!tool) {
       const closed = this.#toolkits.refusalOf(call.name);
