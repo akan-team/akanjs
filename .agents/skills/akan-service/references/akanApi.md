@@ -237,8 +237,8 @@ globalPrefix?: false;
 /** HTTP verb of a `mutation`, `POST` unless named; every other endpoint type ignores it. */
 method?: HttpMutationMethod;
 fileUpload?: boolean;
-/** `false` keeps it out of the MCP catalogue (default `true`); curation, not authorization — HTTP still serves it. */
-mcp?: boolean;
+/** `false` keeps it out of the MCP catalogue (default `true`), and `"agent"` keeps it off `/mcp` while the in-process agent (`AgentToolsRole`, `agentService.loop`) still lists it; curation, not authorization — HTTP still serves it. */
+mcp?: McpShelf;
 /** Overrides what the key implies for a `mutation`'s MCP `destructiveHint`: `true` for one no verb gives away, such as `archiveOrder`, `false` for a `drop…` that loses nothing. */
 destructive?: boolean;
 /** The errors this endpoint throws on purpose, by status. */

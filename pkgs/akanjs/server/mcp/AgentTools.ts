@@ -142,6 +142,7 @@ export class AgentTools extends adapt("agentTools") implements AgentToolsAdaptor
     this.#document = new McpDocument(FetchSerializer.serializeRegistry(this.#props.live).signal, {
       resolveDescription: (key) => lookup.text(key),
       readOnly: this.#props.readOnly,
+      agent: true,
       excludeSignals: this.#props.excludeSignals,
       excludeEndpoints: this.#props.excludeEndpoints,
     });

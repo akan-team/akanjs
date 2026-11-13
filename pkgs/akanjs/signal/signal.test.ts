@@ -677,6 +677,33 @@ describe("signal serialization and registry", () => {
     expect(QuietSlice.mcp).toEqual({ get: false, create: false, update: false, remove: false });
   });
 
+  test("ships an agent-only verb, root and endpoint as `agent`, and an explicit true as nothing", () => {
+    class AgentSlice extends slice(
+      signalTestServiceModel,
+      { guards: { root: Public, get: Public, cru: Public }, mcp: { cru: "agent", get: true, remove: false } },
+      (init) => ({ byAgent: init({ mcp: "agent" }).exec(() => ({})) }),
+    ) {}
+    expect(AgentSlice.mcp).toEqual({ get: true, create: "agent", update: "agent", remove: false });
+    const declaring = endpoint(signalTestServiceModel, (builder) => ({
+      agentOnly: builder.query(String, { guards: [Public], mcp: "agent" }).exec(() => "agent"),
+      listed: builder.query(String, { guards: [Public], mcp: true }).exec(() => "listed"),
+    }));
+    const serialized = FetchSerializer.serializeDatabaseSignal(AgentSlice, declaring);
+    expect(serialized.mcp).toEqual({ create: "agent", update: "agent", remove: false });
+    expect(serialized.slice?.[""]?.mcp).toBeUndefined();
+    expect(serialized.slice?.byAgent?.mcp).toBe("agent");
+    expect(serialized.endpoint.agentOnly?.mcp).toBe("agent");
+    expect(serialized.endpoint.listed && "mcp" in serialized.endpoint.listed).toBe(false);
+
+    class AgentRootSlice extends slice(
+      signalTestServiceModel,
+      { guards: { root: Public }, mcp: "agent" },
+      () => ({}),
+    ) {}
+    expect(AgentRootSlice.mcp).toEqual({ get: "agent", create: "agent", update: "agent", remove: "agent" });
+    expect(FetchSerializer.serializeDatabaseSignal(AgentRootSlice, RegistryEndpoint).slice?.[""]?.mcp).toBe("agent");
+  });
+
   describe("a slice extending a lib's", () => {
     class Admin implements Guard {
       static name = "Admin";
@@ -729,6 +756,34 @@ describe("signal serialization and registry", () => {
       const serialized = FetchSerializer.serializeDatabaseSignal(AppSlice, RegistryEndpoint);
       expect(serialized.mcp).toEqual({ remove: false });
       expect(serialized.slice?.[""]?.mcp).toBeUndefined();
+    });
+
+    test("keeps the narrowest of its libs' shelves, off before agent-only before listed", () => {
+      class AgentLibSlice extends slice(
+        signalTestServiceModel,
+        { guards: { root: Public, get: Public, cru: Admin }, mcp: { cru: "agent", get: "agent", root: "agent" } },
+        () => ({}),
+      ) {}
+      class OpenLibSlice extends slice(signalTestServiceModel, { guards: { root: Public } }, () => ({})) {}
+      class AppSlice extends slice(
+        signalTestServiceModel,
+        { guards: { root: Public, get: Public, cru: Admin } },
+        () => ({}),
+        LibSlice,
+        AgentLibSlice,
+        OpenLibSlice,
+      ) {}
+      expect(AppSlice.mcp).toEqual({ get: "agent", create: false, update: false, remove: false });
+      expect(FetchSerializer.serializeDatabaseSignal(AppSlice, RegistryEndpoint).slice?.[""]?.mcp).toBe(false);
+      class AgentAppSlice extends slice(
+        signalTestServiceModel,
+        { guards: { root: Public, get: Public, cru: Admin } },
+        () => ({}),
+        AgentLibSlice,
+        OpenLibSlice,
+      ) {}
+      expect(AgentAppSlice.mcp).toEqual({ get: "agent", create: "agent", update: "agent", remove: "agent" });
+      expect(FetchSerializer.serializeDatabaseSignal(AgentAppSlice, RegistryEndpoint).slice?.[""]?.mcp).toBe("agent");
     });
   });
 

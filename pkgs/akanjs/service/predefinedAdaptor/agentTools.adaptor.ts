@@ -19,8 +19,9 @@ export interface AgentTool extends AgentWireTool {
 
 /**
  * The `/mcp` tool catalogue run in-process as a given account, with the same refusals, masking and error text and
- * `origin` "mcp". Built from the DI registry, so a batch server without `/mcp` has it too. Covers the endpoint tools
- * only: a page's `page().app()` tool is listed on `/mcp` but absent here, and `callAs` answers it as an unknown tool.
+ * `origin` "mcp", plus every endpoint declared `mcp: "agent"`, which `/mcp` never lists. Built from the DI registry,
+ * so a batch server without `/mcp` has it too. Covers the endpoint tools only: a page's `page().app()` tool is listed
+ * on `/mcp` but absent here, and `callAs` answers it as an unknown tool.
  * Security: `account` is put on the call after the middleware chain, unchecked — pass one the server resolved, never
  * client input, and resolve a stored one again before reusing it, as a revoked session is not noticed here. Its
  * `machine` field is removed, since only a verified machine token may set one. Both methods throw `InjectError`

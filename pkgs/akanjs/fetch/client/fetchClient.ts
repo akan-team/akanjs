@@ -599,7 +599,7 @@ export class FetchClient {
     const removeGuards = mountedGuards(signal, "remove");
     // Stamped on here, where these endpoints are born, so every reader sees one resolved field.
     const mcp = (verb: keyof NonNullable<SerializedSignal["mcp"]>) => ({
-      ...(signal.mcp?.[verb] === false ? { mcp: false as const } : {}),
+      ...(signal.mcp?.[verb] !== undefined ? { mcp: signal.mcp[verb] } : {}),
       ...(signal.agents?.[verb] === false ? { agents: false as const } : {}),
     });
     const endpoint: { [key: string]: SerializedEndpoint } = {};
@@ -799,7 +799,7 @@ export class FetchClient {
     const names = sliceNames(refName, suffix).endpoint;
     // One `mcp: false` on `init()` covers both the list and the aggregate.
     const mcp = {
-      ...(slice.mcp === false ? { mcp: false as const } : {}),
+      ...(slice.mcp !== undefined ? { mcp: slice.mcp } : {}),
       ...(slice.agents === false ? { agents: false as const } : {}),
     };
     const endpoint: { [key: string]: SerializedEndpoint } = {

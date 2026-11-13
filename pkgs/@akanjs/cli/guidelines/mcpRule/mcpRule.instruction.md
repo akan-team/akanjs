@@ -46,6 +46,10 @@ export class FileSlice extends slice(srv.file, {
 - **A view keeps reaching it.** To a host that renders MCP Apps views, an endpoint refused for `mcp: false` alone
   is published with `visibility: ["app"]`: an app's view may call it, the model is never shown it (below). Every
   other refusal still holds there.
+- **`mcp: "agent"` keeps it off `/mcp` and on the in-process agent.** It goes wherever `mcp: false` goes, a slice
+  map key included. `/mcp` neither lists nor runs it and `listingCost` leaves it out, while `AgentToolsRole` and
+  `agentService.loop` list it under the same guards and exclusions. Use it when the listing's size, not the step,
+  keeps an entry off. A lib's slice and the app's keep the narrowest: `false`, then `"agent"`, then listed.
 - **`mcp: true` is the default and is a no-op**; write it only to say out loud that an entry is deliberately on
   the shelf. It does not override a shape refusal (an `Any` return stays refused) and it cannot publish something
   the guard rules keep out.
@@ -504,14 +508,14 @@ costs something to assemble.
 
 A server-side agent loop or a queue job reaches the same catalogue with no token and no loopback request:
 `plug(AgentToolsRole)` in a service, then `listAs(account, { allow })` for the tools a model is offered and
-`callAs(account, { id, name, args })` to run one. Everything above still holds — `mcp: false`, the exclusions,
-`readOnly`, `Person`, the account guards, masking and the refusal text — and the call's `origin` is `"mcp"`, so
-`isAgentCall` and `.with(AgentCall)` treat it as an agent's. `allow` only narrows. It is built from the DI
-registry, so a batch server, which mounts no `/mcp`, has it too; the per-caller `/mcp` budget does not apply, an
-endpoint's own `rateLimit` does. A tool's failure never throws: it comes back as the result's `error` and `code`.
-An adaptor may plug the role too. Neither method works before the server has built its endpoints, so a call from an
-`onInit` throws `InjectError` `notInitialized`; call from a request, a job or a schedule. A page's `page().app()` tools
-are left out: `/mcp` `tools/list` shows them, `listAs` does not, and `callAs` answers `Unknown tool`.
+`callAs(account, { id, name, args })` to run one. It adds every `mcp: "agent"` entry, and everything above still
+holds — `mcp: false`, the exclusions, `readOnly`, `Person`, the account guards, masking and the refusal text — and
+the call's `origin` is `"mcp"`, so `isAgentCall` and `.with(AgentCall)` treat it as an agent's. `allow` only
+narrows. It is built from the DI registry, so a batch server, which mounts no `/mcp`, has it too; the per-caller
+`/mcp` budget does not apply, an endpoint's own `rateLimit` does. A tool's failure never throws: it comes back as
+the result's `error` and `code`. An adaptor may plug the role too. Neither method works before the server has built
+its endpoints, so a call from an `onInit` throws `InjectError` `notInitialized`; call from a request, a job or a
+schedule. A page's `page().app()` tools are left out: `/mcp` `tools/list` shows them, `listAs` does not, and `callAs` answers `Unknown tool`.
 
 - **The account is trusted as given.** It is put on the call after the middleware chain, so pass one the server
   resolved, never client input, and resolve a stored one again before reusing it: a revoked session is not noticed.

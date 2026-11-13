@@ -78,6 +78,8 @@ Why, and what to do
 
 - It declares `mcp: false` — Curated off the shelf on purpose; guards and HTTP stay as they were, and an app's view in the chat still calls it.
 
+- It declares `mcp: "agent"` — Listed only to the in-process agent (`AgentToolsRole`, `agentService.loop`) under the same guards; `/mcp` neither lists nor runs it.
+
 - A guard declares `static agents = false`, like `Person` — It is an act reserved for a person, so no model is ever offered it.
 
 - It declares no `guards`, or an empty list — Nobody decided who may call it; write `guards: [Public]` if anonymous access is the intent.
@@ -193,6 +195,8 @@ To keep an entry off the shelf, use `mcp: false`. On `slice()` it is a map keyed
 **The `slice()` map mirrors `guards` key for key** (`root`, `get`, `cru`, `create`, `update`, `remove`) and reaches exactly as far: the root slice and generated CRUD.
 
 **A bare `mcp: false` turns them all off.** It expands to `root`, `get` and `cru`, and `create`, `update` and `remove` inherit `cru`.
+
+**`mcp: "agent"` keeps it off `/mcp` only.** The in-process agent (`AgentToolsRole`, `agentService.loop`) still lists it under the same guards, and the listing's size leaves it out.
 
 **A named slice or a custom endpoint writes a plain boolean** in its own option, never the map.
 
