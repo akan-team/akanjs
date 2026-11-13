@@ -164,4 +164,47 @@ describe("McpApps", () => {
     expect(asked).toEqual(["showProbe"]);
     expect(await new McpApps(null).read("ui://probe/apps/showProbe", "https://app.example.com")).toBeNull();
   });
+
+  test("marks a static app's tool only where the server draws its HTML, with or without a view", () => {
+    const entry = { kind: "app" as const, name: "showProbe", description: "Show.", arguments: [], pattern: "/:lang/x" };
+    const drawn = { ...entry, static: true };
+    expect(new McpApps(null, { staticHtml: true }).toolOf(drawn)._meta).toEqual({ "akanjs/static": true });
+    expect(new McpApps({ read: async () => null }, { staticHtml: true }).toolOf(drawn)._meta).toEqual({
+      ui: { resourceUri: "ui://probe/apps/showProbe" },
+      "ui/resourceUri": "ui://probe/apps/showProbe",
+      "akanjs/static": true,
+    });
+    expect(new McpApps(null).toolOf(drawn)._meta).toBeUndefined();
+    expect(new McpApps(null, { staticHtml: true }).toolOf(entry)._meta).toBeUndefined();
+  });
+
+  test("draws HTML only for a static app a host asked for it, and embeds it beside the briefing", () => {
+    const entry = { kind: "app" as const, name: "showProbe", description: "Show.", arguments: [], pattern: "/:lang/x" };
+    const drawn = { ...entry, static: true };
+    const apps = new McpApps(null, { staticHtml: true });
+    const asked = { name: "showProbe", _meta: { "akanjs/render": "html" } };
+    expect(apps.drawsHtml(drawn, asked)).toBe(true);
+    expect(apps.drawsHtml(entry, asked)).toBe(false);
+    expect(apps.drawsHtml(drawn, { name: "showProbe" })).toBe(false);
+    expect(apps.drawsHtml(drawn, { name: "showProbe", _meta: { "akanjs/render": "text" } })).toBe(false);
+    expect(new McpApps(null).drawsHtml(drawn, asked)).toBe(false);
+
+    const run = {
+      ok: true as const,
+      url: "http://127.0.0.1/en/x",
+      records: [],
+      route: { params: {}, searchParams: {} },
+    };
+    const brief = [{ role: "user" as const, content: { type: "text" as const, text: "Brief." } }];
+    const result = apps.resultOf(drawn, run, brief, "https://app.example.com", null, "<!DOCTYPE html><p>x</p>");
+    expect(result.content).toEqual([
+      { type: "text", text: "Brief." },
+      { type: "text", text: "Open the full screen: https://app.example.com/en/x" },
+      {
+        type: "resource",
+        resource: { uri: "ui://probe/static/showProbe", mimeType: "text/html", text: "<!DOCTYPE html><p>x</p>" },
+      },
+    ]);
+    expect(apps.resultOf(drawn, run, brief, "https://app.example.com", null).content).toHaveLength(2);
+  });
 });

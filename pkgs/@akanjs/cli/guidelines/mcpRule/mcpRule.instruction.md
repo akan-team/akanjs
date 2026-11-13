@@ -499,6 +499,19 @@ export default page()
 - `option.setMcp({ apps: false })` / `AKAN_MCP_APPS=false` publishes no page tools: no app is published and every
   prompt stays a prompt only. `web: { csr: false }` publishes the app tools with no view, and an API-only build
   (`web: false`) has no pages to publish.
+- **`{ static: true }` sends the app as HTML to a host that runs no view.** `.app(name, description, load,
+  { static: true })` marks the tool `_meta["akanjs/static"]: true` wherever the server renders pages, view or not. A
+  `tools/call` whose `params._meta["akanjs/render"]` is `"html"` then gets, after the usual blocks, an embedded
+  `text/html` resource `ui://<app>/static/<name>`: one document drawn under the caller's credential after the route
+  guards, with the load under the same query-only rule — the element inside the root layout's `McpAppRoot` (no
+  `_overrides.tsx`), the layout's theme as `data-theme`, `<base href="<web origin>/" target="_blank">`, the stylesheet
+  as an absolute link, every Suspense boundary resolved in place, and no `<script>`: no view, no Flight payload,
+  nothing runs. Mark an app static only when its server render is the whole picture — nothing hydrates, so a client
+  component shows its first state and a button does nothing.
+- **A static app sends no HTML, and the call answers as if none was asked** (with a server warning), when the guards
+  refuse, the drawing fails or passes 1 MB, the body is empty or a fallback stands in for content, or a component needs
+  a browser: `lazy(…, { ssr: false })` says so itself, and a component whose look only a browser finishes (a canvas, a
+  chart drawn in an effect, data read after mount) calls `needsBrowser()` from `akanjs/webkit` while it renders.
 
 ## Progress Reporting
 **`McpProgress.report(n, { total, message })`** reports progress from anywhere inside a call, a service or adapter

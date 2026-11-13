@@ -3,6 +3,7 @@ export { lazy } from "./lazy";
 export { McpAppBoot, type McpAppBootProps, type McpAppRootProps } from "./McpAppBoot";
 export type { McpHostContext } from "./McpAppBridge";
 export { McpAppHost, type McpAppHostProps } from "./McpAppHost";
+export { needsBrowser } from "./needsBrowser";
 export { createRobotPage, createSitemapPage } from "./seoPages";
 export type * from "./types";
 export { useBodyScrollLock } from "./useBodyScrollLock";

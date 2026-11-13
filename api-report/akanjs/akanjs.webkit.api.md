@@ -106,6 +106,8 @@ export declare const createSitemapPage: (clientHttpUri: string, paths: string[])
 
 export declare const lazy: <Loaded>(loader: () => Promise<Loaded>, option?: LazyOption) => LoadedOf<Loaded>;
 
+export declare const needsBrowser: () => void;
+
 export declare const replacePages: (context: CsrRouteContext) => Promise<boolean>;
 
 export declare const useBodyScrollLock: (active: boolean) => void;

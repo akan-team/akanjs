@@ -18,6 +18,7 @@ import { RscRenderHandler } from "./rscRenderHandler";
 import { RscRenderStats } from "./rscRenderStats";
 import { RscResultCaches } from "./rscResultCaches";
 import { RscRouteDocument } from "./rscRouteDocument";
+import { RscStaticApp } from "./rscStaticApp";
 import { invalidateCachedRscResults } from "./rscWorkerCache";
 
 export { isAkanNotFoundError, isAkanRedirectError } from "./rscRenderControl";
@@ -75,6 +76,12 @@ interface PagePromptRunMsg {
   requestId: string;
   input: PagePromptRunInput;
 }
+interface PagePromptDrawMsg {
+  type: "page-prompt.draw";
+  requestId: string;
+  input: PagePromptRunInput;
+  clientManifest?: ClientManifest;
+}
 interface PagePromptsVisibleMsg {
   type: "page-prompts.visible";
   requestId: string;
@@ -95,6 +102,7 @@ type InMsg =
   | LogLevelMsg
   | PagePromptsMsg
   | PagePromptRunMsg
+  | PagePromptDrawMsg
   | PagePromptsVisibleMsg
   | WebManifestMsg;
 
@@ -114,6 +122,7 @@ export class RscRenderer {
   readonly #stats = new RscRenderStats();
   readonly #caches = new RscResultCaches(this.#logger);
   readonly #flights = new RscFlightRenderer(this.#logger, (message) => this.#send(message));
+  readonly #staticApps = new RscStaticApp(this.#logger, this.#flights);
   readonly #send: (message: unknown) => void;
   readonly #pagePrompts = new RscPagePrompts({
     routes: () => this.#pathRoutes,
@@ -221,6 +230,13 @@ export class RscRenderer {
       case "page-prompt.run":
         void this.#answer(msg.requestId, "page-prompt.result", () => this.#pagePrompts.run(msg.input));
         return;
+      case "page-prompt.draw": {
+        const clientManifest = msg.clientManifest ?? this.#clientManifest;
+        void this.#answer(msg.requestId, "page-prompt.draw.result", () =>
+          this.#pagePrompts.draw(msg.input, (drawing) => this.#staticApps.draw(drawing, clientManifest)),
+        );
+        return;
+      }
       case "page-prompts.visible":
         void this.#answer(msg.requestId, "page-prompts.visible.result", () => this.#pagePrompts.visible(msg.input));
         return;

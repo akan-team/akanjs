@@ -149,6 +149,7 @@ Declared in [server/rscWorker.tsx](server/rscWorker.tsx).
 | `log-level` | `RscWorker` | `RscRenderer` |
 | `page-prompts` | `RscWorker` | `RscRenderer` |
 | `page-prompt.run` | `RscWorker` | `RscRenderer` |
+| `page-prompt.draw` | `RscWorker` | `RscRenderer` |
 | `page-prompts.visible` | `RscWorker` | `RscRenderer` |
 | `web-manifest` | `RscWorker` | `RscRenderer` |
 
@@ -174,6 +175,7 @@ Declared in [server/rscWorkerHost.ts](server/rscWorkerHost.ts).
 | `log.records` | `LogForwarder` | `RscWorker` |
 | `page-prompts.result` | `RscRenderer` | `RscWorker` |
 | `page-prompt.result` | `RscRenderer` | `RscWorker` |
+| `page-prompt.draw.result` | `RscRenderer` | `RscWorker` |
 | `page-prompts.visible.result` | `RscRenderer` | `RscWorker` |
 | `web-manifest.result` | `RscRenderer` | `RscWorker` |
 | `error` | `RscRenderFallbacks`, `RscRenderer` | `RscWorker` |

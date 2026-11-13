@@ -9,7 +9,14 @@ import {
 } from "../../signal/mcp";
 import type { PromptMessage } from "../../signal/mcp/Msg";
 import type { McpPrompt } from "../../signal/mcp/mcpProtocol";
-import type { PagePromptEntry, PagePromptRefusal, PagePromptRun, PagePromptSource } from "../../signal/mcp/pagePrompt";
+import type {
+  PagePromptEntry,
+  PagePromptRefusal,
+  PagePromptRender,
+  PagePromptRun,
+  PagePromptRunInput,
+  PagePromptSource,
+} from "../../signal/mcp/pagePrompt";
 import { McpApps } from "./McpApps";
 import { McpAuthRequiredError, type McpDispatcher } from "./McpDispatcher";
 import type { McpUiSession } from "./McpUiSession";
@@ -37,7 +44,7 @@ interface McpPageCall {
 export type McpPageRun =
   | { badArguments: true }
   | { refusal: string; failure: McpFailure }
-  | { run: Extract<PagePromptRun, { ok: true }> | null; messages: PromptMessage[] };
+  | { run: Extract<PagePromptRun, { ok: true }> | null; messages: PromptMessage[]; html?: string | null };
 
 export class McpPages {
   static readonly listWaitMs = 1_000;
@@ -106,7 +113,8 @@ export class McpPages {
     args: Record<string, unknown> | null,
   ): Promise<{ badArguments: true } | { result: object }> {
     const apps = this.#props.apps;
-    const page = await this.run(call, document, entry, args);
+    const origin = this.#props.publicOrigin(call.req);
+    const page = await this.run(call, document, entry, args, apps?.drawsHtml(entry, call.params) ? origin : null);
     if ("badArguments" in page) return page;
     if ("refusal" in page)
       return {
@@ -117,9 +125,8 @@ export class McpPages {
         },
       };
     if (!page.run || !apps) return { result: { content: page.messages.map((message) => message.content) } };
-    const origin = this.#props.publicOrigin(call.req);
     const forView = call.ui ? { account: McpApps.accountOf(call.req) } : null;
-    return { result: apps.resultOf(entry, page.run, page.messages, origin, forView) };
+    return { result: apps.resultOf(entry, page.run, page.messages, origin, forView, page.html ?? null) };
   }
 
   async run(
@@ -127,6 +134,7 @@ export class McpPages {
     document: McpDocument,
     entry: PagePromptEntry,
     args: Record<string, unknown> | null,
+    htmlOrigin: string | null = null,
   ): Promise<McpPageRun> {
     const source = this.#props.source;
     const { name } = entry;
@@ -148,12 +156,16 @@ export class McpPages {
       .filter((arg) => arg.required && strings[arg.name] === undefined)
       .map((arg) => arg.name);
     if (missing.length) return { run: null, messages: composer.missing(entry, missing) };
-    const run = await source.run({
-      name,
-      arguments: strings,
-      headers: McpPages.#forwardedHeaders(call.req),
-      language: this.#props.language,
-    });
+    const { run, html } = await this.#render(
+      source,
+      {
+        name,
+        arguments: strings,
+        headers: McpPages.#forwardedHeaders(call.req),
+        language: this.#props.language,
+      },
+      htmlOrigin,
+    );
     if (!run.ok) {
       // A redirect or a guard's 401/403: no credential gets the auth challenge; with one, a bare refusal that never
       // confirms an id exists.
@@ -170,7 +182,20 @@ export class McpPages {
               : MCP_SCREEN_REFUSAL.failed;
       return { refusal: message, failure: McpPages.#failureOf(gated ? "forbidden" : run.reason) };
     }
-    return { run, messages: await composer.compose(entry, run) };
+    return { run, messages: await composer.compose(entry, run), html };
+  }
+
+  //? The HTML only rides along: a draw that throws falls back to the plain run, so the call answers as it always did.
+  async #render(source: PagePromptSource, input: PagePromptRunInput, origin: string | null): Promise<PagePromptRender> {
+    if (origin === null || !source.render) return { run: await source.run(input), html: null };
+    try {
+      return await source.render({ ...input, origin });
+    } catch (error) {
+      this.#props.logger.warn(
+        `static app "${input.name}" sent no HTML: ${error instanceof Error ? error.message : error}`,
+      );
+      return { run: await source.run(input), html: null };
+    }
   }
 
   static #failureOf(reason: PagePromptRefusal): McpFailure {
