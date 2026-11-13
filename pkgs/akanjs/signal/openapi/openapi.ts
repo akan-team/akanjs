@@ -1,3 +1,4 @@
+import { mcpBaseVerbOf } from "akanjs/common";
 import { FetchClient } from "akanjs/fetch";
 import { type JsonSchema, JsonSchemaBuilder } from "../schema";
 import type { EndpointErrors, SerializedArg, SerializedEndpoint, SerializedSignal } from "../types";
@@ -108,8 +109,17 @@ export const createOpenApiDocument = (
   };
 };
 
+// On OpenAPI's copy alone: on the shared one, MCP and the in-page agent would print it in each tool's description.
+const missingIdErrors: EndpointErrors = { 404: ["base.error.documentNotFound"] };
+const byIdVerbs: ReadonlySet<string | null> = new Set(["get", "update", "remove"]);
+
 const collectRestEndpoints = (refName: string, signal: SerializedSignal): [string, SerializedEndpoint][] => {
-  const baseEndpointEntries = Object.entries(FetchClient.getBaseEndpoint(refName, signal));
+  const baseEndpointEntries = Object.entries(FetchClient.getBaseEndpoint(refName, signal)).map(
+    ([key, endpoint]): [string, SerializedEndpoint] => [
+      key,
+      byIdVerbs.has(mcpBaseVerbOf(refName, key)) ? { ...endpoint, errors: missingIdErrors } : endpoint,
+    ],
+  );
   const sliceEndpointEntries = signal.slice
     ? Object.entries(signal.slice).flatMap(([suffix, slice]) =>
         Object.entries(FetchClient.getEndpointFromSlice(refName, suffix, slice)),
