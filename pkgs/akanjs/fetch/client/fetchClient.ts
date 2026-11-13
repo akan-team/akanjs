@@ -401,13 +401,10 @@ export class FetchClient {
             this.http.get(url, { headers, baseUrl, timeout, retry: option?.retry, signal: requestSignal });
           // A caller that did not start the request parses a copy: the memo hands one response to every caller in
           // the request, and a parsed model can hold references into it.
+          const budget = { timeout: timeout ?? this.http.timeout, retry: option?.retry ?? this.http.retry };
           const claim = baseUrl
             ? { value: requestQuery(signal), owned: true }
-            : this.#claimQuery(makeRequestQueryCacheKey(this.origin, url, headers), requestQuery, {
-                signal,
-                timeout,
-                retry: option?.retry,
-              });
+            : this.#claimQuery(makeRequestQueryCacheKey(this.origin, url, headers, budget), requestQuery, signal);
           recordRequestQuery({ key, args: Object.fromEntries(argMap), returns: endpoint.returns, value: claim.value });
           const response = await this.#untilAborted(claim.value, signal);
           const payload = claim.owned ? response : deepCopy(response);
@@ -444,12 +441,7 @@ export class FetchClient {
     }
   }
   //* A server outside a request shares nothing: a signal test firing one query twice means it.
-  #claimQuery(
-    cacheKey: string,
-    requestQuery: (signal?: AbortSignal) => Promise<unknown>,
-    { signal, timeout, retry }: { signal?: AbortSignal; timeout?: number | false; retry?: RetryPolicy | false },
-  ) {
-    const claimKey = `${cacheKey}\n${timeout ?? this.http.timeout}\n${JSON.stringify(retry ?? this.http.retry)}`;
+  #claimQuery(claimKey: string, requestQuery: (signal?: AbortSignal) => Promise<unknown>, signal?: AbortSignal) {
     if (getRequestStore()) return claimRequestQuery(claimKey, () => requestQuery());
     if (typeof window === "undefined") return { value: requestQuery(signal), owned: true };
     return { value: this.#inflight.claim(claimKey, requestQuery, signal), owned: true };

@@ -6,6 +6,7 @@ import {
   type RestoredError,
   restoreRemoteError,
 } from "./remoteError";
+import { DEFAULT_TIMEOUT_MS } from "./requestScope";
 
 export interface HttpClientOptions {
   headers?: Record<string, string>;
@@ -46,8 +47,6 @@ const retryableKeys = new Set([
 const unexpectedResponseKey = "base.error.unexpectedResponse";
 const dictionaryErrorKey = /^\w+\.error\./;
 const transportDetailLimit = 200;
-// A solo process has no gateway to answer a dead upstream with a 504, and a severed connection answers nothing at all.
-const DEFAULT_TIMEOUT_MS = 30_000;
 
 export class HttpClient {
   static readonly #logger = new Logger("HttpClient");
