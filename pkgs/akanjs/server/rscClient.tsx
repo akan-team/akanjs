@@ -152,12 +152,21 @@ function commitRscPatchNavigation({
   replace?: boolean;
   requestScroll?: () => void;
 }): boolean {
-  const committed = commitRscPatch(target, patch, () => {
-    commitHistory(target, replace);
-    shownNode = null;
-    parkedRedirect.clear();
-    requestScroll?.();
-  });
+  const committed = commitRscPatch(
+    target,
+    patch,
+    () => {
+      commitHistory(target, replace);
+      shownNode = null;
+      parkedRedirect.clear();
+      requestScroll?.();
+    },
+    //? Not a navigation, which the server answers with a patch again, laid before the same late row arrives.
+    () => {
+      if (currentSegmentTree === patch.tree && !pendingRequest && !documentNavigationFallbackInFlight)
+        void globalThis.__AKAN_RSC_REFRESH__?.();
+    },
+  );
   if (!committed) return false;
   currentCommitFromCache = fromCache;
   rememberPatchedRouteState(patch.tree, patch.patchedNode);
