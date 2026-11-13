@@ -1,5 +1,12 @@
-import { INJECT_META } from "akanjs/base";
-import { type AdaptorCls, AgentToolsRole, CacheAdaptorRole, type InjectInfo, type ServiceCls } from "akanjs/service";
+import { AkanError, INJECT_META } from "akanjs/base";
+import {
+  type AdaptorCls,
+  AgentToolsRole,
+  CacheAdaptorRole,
+  InjectError,
+  type InjectInfo,
+  type ServiceCls,
+} from "akanjs/service";
 
 export interface DependencyNode {
   key: string;
@@ -47,7 +54,7 @@ export function topologicalStages<T extends DependencyNode>(graph: Map<string, T
   if (processed !== graph.size) {
     const remaining = [...graph.keys()].filter((k) => (inDegree.get(k) ?? 0) > 0);
     const cycle = traceCycle(graph, remaining);
-    throw new Error(`Circular dependency detected: ${cycle.join(" → ")}`);
+    throw new AkanError("circularDependency", `Circular dependency detected: ${cycle.join(" → ")}`);
   }
 
   return stages;
@@ -172,7 +179,8 @@ export function resolveAdaptorHierarchy(
         if (!injectInfo.adaptor || injectInfo.adaptor === AgentToolsRole) continue;
         const depKey = classToKey.get(injectInfo.adaptor);
         if (!depKey) {
-          throw new Error(
+          throw new InjectError(
+            "notRegistered",
             `Adaptor "${key}" has a plug dependency (property "${propKey}") ` +
               `on adaptor "${injectInfo.adaptor.refName}" which is not registered.`,
           );
@@ -185,7 +193,10 @@ export function resolveAdaptorHierarchy(
       } else if (injectInfo.type === "memory") {
         const depKey = classToKey.get(CacheAdaptorRole);
         if (!depKey) {
-          throw new Error(`Adaptor "${key}" has a memory dependency but cache adaptor role is not registered.`);
+          throw new InjectError(
+            "notRegistered",
+            `Adaptor "${key}" has a memory dependency but cache adaptor role is not registered.`,
+          );
         }
         addDependency(depKey);
       }

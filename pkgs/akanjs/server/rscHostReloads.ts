@@ -1,6 +1,7 @@
+import { AkanError } from "akanjs/base";
 import { type AkanI18nConfig, DEFAULT_AKAN_I18N } from "akanjs/common";
 import type { ClientManifest } from "./artifact";
-import type { RscProcess, RscWorkerProcess } from "./rscWorkerProcess";
+import type { RscProcess, RscWorkerErrorCode, RscWorkerProcess } from "./rscWorkerProcess";
 import type { RscWorkerRecycler } from "./rscWorkerRecycler";
 import type { BaseBuildArtifact, CssAsset } from "./types";
 
@@ -94,7 +95,7 @@ export class RscHostReloads {
   }
 
   reload(input: RscWorkerReloadInput): Promise<RscAdoptedBundle> {
-    if (this.#worker.killed) return Promise.reject(new Error("rsc worker is stopped"));
+    if (this.#worker.killed) return Promise.reject(new AkanError("rscWorkerStopped", "rsc worker is stopped"));
     this.#reloadState += 1;
     this.#clientManifest = input.clientManifest;
     this.cssAssets = input.cssAssets ?? this.cssAssets;
@@ -157,7 +158,7 @@ export class RscHostReloads {
 
   //? The worker did not take the latest state, so the host goes back to what it runs: the next respawn then boots a
   //? bundle that loads, and each caller learns what the worker serves.
-  rejectReload(message: string): void {
+  rejectReload(message: string, code: RscWorkerErrorCode = "rscWorkerFailed"): void {
     this.#pagesBundlePath = this.#adopted.pagesBundlePath;
     this.#pagesBundleBuildId = this.#adopted.buildId;
     const pending = this.#pendingReload;
@@ -165,7 +166,7 @@ export class RscHostReloads {
     this.#pendingReload = null;
     const failed = { pagesBundlePath: pending.pagesBundlePath, buildId: pending.buildId };
     for (const waiter of pending.waiters)
-      waiter.reject(Object.assign(new Error(message), { adopted: this.#adopted, failed }));
+      waiter.reject(Object.assign(new AkanError(code, message), { adopted: this.#adopted, failed }));
   }
 
   rejectIfCovered(message: string): boolean {

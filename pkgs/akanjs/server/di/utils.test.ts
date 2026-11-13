@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { enumOf, ID, Int } from "akanjs/base";
+import { AkanError, enumOf, ID, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import type { DatabaseModule, ServiceModule } from "../akanLib";
-import { assertUniqueRegistrations, getModuleCascadeRefNames, getModuleRelationRefNames } from "./utils";
+import { assertUniqueRegistrations, getModuleCascadeRefNames, getModuleRelationRefNames, runStage } from "./utils";
 
 const OwnerInput = via((f) => ({ url: f(String) }));
 const OwnerObject = via(OwnerInput, () => ({}));
@@ -79,14 +79,46 @@ describe("assertUniqueRegistrations", () => {
     ).not.toThrow();
   });
 
-  test("names both claimants of a repeated key", () => {
-    expect(() =>
+  test("names both claimants of a repeated key, as duplicateRegistration", () => {
+    let failure: unknown;
+    try {
       assertUniqueRegistrations("use", [
         { key: "storageApi", owner: 'lib "util"' },
         { key: "storageApi", owner: 'lib "shared"' },
-      ]),
-    ).toThrow(
-      '[DI:use] 1 duplicate registration(s):\n  • "storageApi" is registered by lib "util" and by lib "shared"',
-    );
+      ]);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(AkanError.is(failure, "duplicateRegistration")).toBe(true);
+    expect(failure).toMatchObject({
+      statusCode: 500,
+      message:
+        '[DI:use] 1 duplicate registration(s):\n  • "storageApi" is registered by lib "util" and by lib "shared"',
+    });
+  });
+});
+
+describe("runStage", () => {
+  test("fails a stage as stageFailed, summarizing every failed task and keeping each one's error", async () => {
+    const refused = new Error("connection refused");
+
+    const failure = await runStage("adaptor[stage=0]", [
+      { label: "adaptor:ok", run: async () => undefined },
+      { label: "adaptor:db", run: async () => Promise.reject(refused) },
+      { label: "adaptor:cache", run: async () => Promise.reject("timed out") },
+    ]).catch((error: unknown) => error);
+
+    expect(AkanError.is(failure, "stageFailed")).toBe(true);
+    expect(failure).toMatchObject({
+      statusCode: 500,
+      message:
+        "[DI:adaptor[stage=0]] 2/3 task(s) failed:\n  • adaptor:db: connection refused\n  • adaptor:cache: timed out",
+    });
+    expect((failure as { errors: Error[] }).errors.map((error) => error.message)).toEqual([
+      "connection refused",
+      "timed out",
+    ]);
+    expect((failure as { errors: Error[] }).errors[0]).toBe(refused);
   });
 });

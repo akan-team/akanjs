@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { AkanError } from "akanjs/base";
 import { Logger, type LogRecord } from "akanjs/common";
 import { RscWorker } from "./rscWorkerHost";
 import type { BaseBuildArtifact } from "./types";
@@ -29,6 +30,7 @@ process.on("message", (message) => {
   }
   if (message.type === "render") {
     const url = new URL(message.url);
+    if (url.pathname === "/exit") process.exit(7);
     if (url.pathname === "/metrics") {
       process.send?.({ type: "not-found", requestId: message.requestId });
       const renders = Number(url.searchParams.get("renders"));
@@ -41,6 +43,11 @@ process.on("message", (message) => {
       process.send?.({ type: "chunk", requestId: message.requestId, data: new Uint8Array([i % 256]) });
     return;
   }
+  if (message.type === "page-prompts") {
+    process.send?.({ type: "error", requestId: message.requestId, message: "prompts refused" });
+    return;
+  }
+  if (message.type === "page-prompt.run") process.exit(7);
   process.send?.({ type: "log.records", records: [{ message: JSON.stringify(message) }] });
 });
 process.send?.({ type: "hello" });
@@ -119,6 +126,44 @@ describe("RscWorker collaborator wiring", () => {
 
     await until(() => rsc.getMetrics().rscHostPendingChunkOverflowCount === 1, "the overflow count");
     await until(() => echoed().some((message) => message.type === "cancel"), "the cancel");
+  }, 20_000);
+
+  test("a call the worker answers with an error fails as rscWorkerFailed, and one it exits on as rscWorkerStopped", async () => {
+    const { rsc } = await startWorker();
+
+    const refused = await rsc.listPagePrompts().catch((error: unknown) => error);
+    expect(AkanError.is(refused, "rscWorkerFailed")).toBe(true);
+    expect(refused).toMatchObject({ statusCode: 500, message: "prompts refused" });
+
+    const exited = await rsc
+      .runPagePrompt({} as Parameters<typeof rsc.runPagePrompt>[0])
+      .catch((error: unknown) => error);
+    expect(AkanError.is(exited, "rscWorkerStopped")).toBe(true);
+    expect(exited).toMatchObject({ statusCode: 500, message: "rsc worker exited with code 7" });
+  }, 20_000);
+
+  test("a render in flight when the worker exits, and one sent once it is killed, fail as rscWorkerStopped", async () => {
+    const { rsc } = await startWorker();
+
+    const exited = await rsc.renderWithMeta(new Request("http://localhost/exit")).catch((error: unknown) => error);
+    expect(AkanError.is(exited, "rscWorkerStopped")).toBe(true);
+    expect(exited).toMatchObject({ statusCode: 500, message: "rsc worker exited with code 7" });
+
+    rsc.kill();
+    const stopped = await rsc.renderWithMeta(new Request("http://localhost/x")).catch((error: unknown) => error);
+    expect(AkanError.is(stopped, "rscWorkerStopped")).toBe(true);
+    expect(stopped).toMatchObject({ statusCode: 500, message: "rsc worker is stopped" });
+  }, 20_000);
+
+  test("a reload in flight when kill() stops the worker fails as rscWorkerStopped", async () => {
+    const { rsc, echoed } = await startWorker();
+    const reload = rsc.reload({ clientManifest: {}, buildId: 2 }).catch((error: unknown) => error);
+    await until(() => echoed().some((message) => message.type === "reload"), "the reload");
+
+    rsc.kill();
+    const failed = await reload;
+    expect(AkanError.is(failed, "rscWorkerStopped")).toBe(true);
+    expect(failed).toMatchObject({ statusCode: 500, message: "rsc worker exited with code 0" });
   }, 20_000);
 
   test("a cache invalidation reaches the worker", async () => {

@@ -3,9 +3,18 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BackendEnv } from "akanjs/base";
+import { AkanError, type BackendEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
+import type { DatabaseConfig, SolidConfig } from "akanjs/service";
 import { DatabaseSignal } from "../signal/signalRegistry";
+
+const failureOf = (run: () => unknown) => {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+};
 
 const createEnv = (tmp: string) =>
   ({
@@ -145,12 +154,24 @@ describe("AkanServer DI lookup", () => {
       expect(() => server.getService("serverResolverTestItem")).toThrow(
         'Service "serverResolverTestItem" is not initialized while AkanServer status is "stopped"',
       );
+      const beforeInit = failureOf(() => server.getService("serverResolverTestItem"));
+      expect(AkanError.is(beforeInit, "notInitialized")).toBe(true);
 
       await server.start({ listen: false });
 
       expect(() => server.getService("missing")).toThrow('Service "missing" is not registered.');
       expect(() => server.getSignal("missing")).toThrow('Server signal "missingSignal" is not registered.');
       expect(() => server.getAdaptor("missing")).toThrow('Adaptor "missing" is not registered.');
+      const lookups = [
+        () => server.getService("missing"),
+        () => server.getSignal("missing"),
+        () => server.getAdaptor("missing"),
+      ];
+      for (const lookup of lookups) expect(AkanError.is(failureOf(lookup), "notRegistered")).toBe(true);
+      const { RedisCache } = await import("akanjs/service");
+      const unmounted = failureOf(() => server.get(RedisCache));
+      expect(AkanError.is(unmounted, "notInitialized")).toBe(true);
+      expect(unmounted).toMatchObject({ message: 'Dependency "redisCache" is not initialized.' });
     } finally {
       await server.stop();
       await rm(tmp, { recursive: true, force: true });
@@ -172,6 +193,70 @@ describe("AkanServer shutdown", () => {
       await first;
     } finally {
       if (server.status === "running") await server.stop();
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("AkanServer out-of-order calls", () => {
+  test("refuses a listen before init as notInitialized, and configuration or a second init once started as alreadyInitialized", async () => {
+    const { AkanServer, createLib } = await loadRuntime();
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-order-"));
+    const env = createEnv(tmp);
+    const server = new AkanServer("serverGet", env, "all", createLib());
+
+    try {
+      const early = await server.listen().catch((error: unknown) => error);
+      expect(AkanError.is(early, "notInitialized")).toBe(true);
+      expect(early).toMatchObject({ statusCode: 500, message: "AkanServer is not able to listen. Call `init` first." });
+
+      await server.start({ listen: false });
+
+      const late = [
+        failureOf(() => server.setPrefix("/api")),
+        failureOf(() => server.setWebsocketPrefix("/ws")),
+        failureOf(() => server.setOpenApi()),
+        failureOf(() => server.setWeb()),
+        failureOf(() => server.setMcp()),
+        failureOf(() => server.setDatabaseConfig(env.database as DatabaseConfig)),
+        failureOf(() => server.setSolidConfig(env.solid as SolidConfig)),
+        await server.init().catch((error: unknown) => error),
+      ];
+      expect(late.map((error) => AkanError.is(error, "alreadyInitialized") && error.statusCode)).toEqual(
+        Array(late.length).fill(500),
+      );
+      expect((late.at(-1) as Error).message).toBe("AkanServer is not able to init. It is already running.");
+    } finally {
+      await server.stop();
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a stop whose teardown outlasts the shutdown timeout as shutdownTimeout", async () => {
+    const { AkanServer, createLib } = await loadRuntime();
+    const { DiLifecycle } = await import("./di/diLifecycle");
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-shutdown-timeout-"));
+    const server = new AkanServer("serverGet", createEnv(tmp), "all", createLib()).setShutdownTimeout(10);
+    const held = Promise.withResolvers<void>();
+    const destroyAll = DiLifecycle.prototype.destroyAll;
+    let destroying: Promise<void> | null = null;
+    const spy = spyOn(DiLifecycle.prototype, "destroyAll").mockImplementation(function (
+      this: InstanceType<typeof DiLifecycle>,
+    ) {
+      destroying = held.promise.then(() => destroyAll.call(this));
+      return destroying;
+    });
+
+    try {
+      await server.start({ listen: false });
+      const failure = await server.stop().catch((error: unknown) => error);
+
+      expect(AkanError.is(failure, "shutdownTimeout")).toBe(true);
+      expect(failure).toMatchObject({ statusCode: 500, message: "Shutdown timed out after 10ms" });
+    } finally {
+      held.resolve();
+      await destroying;
+      spy.mockRestore();
       await rm(tmp, { recursive: true, force: true });
     }
   });

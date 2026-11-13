@@ -1,5 +1,6 @@
 //? First: the modules below may read the env as they load, so the build's defaults must be in it by then.
 import "./lifecycle/loadBuildEnv";
+import { AkanError } from "akanjs/base";
 import { Logger, TrustedProxy } from "akanjs/common";
 import type { AkanIpcMessage } from "akanjs/service";
 import { resetEnvCache } from "../base/baseEnv";
@@ -93,7 +94,8 @@ export class AkanApp {
     }
     if (this.#config.solo) return await this.#startSolo();
     if (SelfExec.carried)
-      throw new Error(
+      throw new AkanError(
+        "invalidConfig",
         "A desktop app's server runs in one process, and this one was asked for a gateway and replicas, which would start with the `bun` on the user's PATH: by `replica` or `solo: false` in main.ts, or by AKAN_SOLO=false, an AKAN_REPLICA other than one traffic replica, or AKAN_COMMAND_TYPE=start in its env. Leave them out of the app the desktop build carries.",
       );
     Logger.role = "gateway";
@@ -146,7 +148,7 @@ export class AkanApp {
     this.logger.info(`Starting ${role} replica in this process (solo); set AKAN_SOLO=false for the gateway`);
     const mod = (await import(this.#config.serverPath)) as { server?: SoloServer; app?: SoloServer };
     const server = mod.server ?? mod.app;
-    if (!server?.start) throw new Error("server.ts must export server or app with start()");
+    if (!server?.start) throw new AkanError("invalidArtifact", "server.ts must export server or app with start()");
     await server.start({ listen: true });
   }
 
