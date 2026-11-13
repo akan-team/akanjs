@@ -36,7 +36,7 @@ export interface AgentLoopBudget {
 
 /**
  * `awaiting`: `approve` deferred a call, and a resume with the messages `onMessage` stored asks it again; or a client
- * tool was called, and a resume with its result appended runs on from it.
+ * tool or `askUser` was called, and a resume with its result appended runs on from it.
  */
 export type AgentLoopStop =
   | "end"
@@ -74,6 +74,13 @@ export interface AgentLoopOptions {
    * an endpoint tool or `openToolkit` holds is dropped.
    */
   clientTools?: AgentTool[];
+  /**
+   * Lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool. A call ends the run as `awaiting`
+   * with `question: true`; append the person's `{ id, name: "askUser", result }`, or an `error` when they dismiss it,
+   * and resume. It never reaches `approve`, counts as no tool call, and `untrusted` never sees its answer. A call with
+   * no question is answered with an error instead. A `clientTools` entry by that name is dropped.
+   */
+  ask?: boolean;
   /** Summarizes all but the last `keep` messages (6) once the transcript is estimated at `at` tokens. */
   compact?: { at: number; keep?: number };
   /** Asked before every call; without it a `needsConfirm` tool is refused, and so is any write once tainted. */
@@ -107,6 +114,6 @@ export type AgentLoopEvent =
    * whole: its `tainted` carries the run's taint across a resume.
    */
   | { type: "compacted"; replaced: number; summary: AgentWireMessage }
-  | { type: "awaiting"; call: AgentWireToolCall; client?: true }
+  | { type: "awaiting"; call: AgentWireToolCall; client?: true; question?: true }
   | { type: "done"; stop: AgentLoopStop; rounds: number }
   | { type: "error"; message: string; error: unknown };

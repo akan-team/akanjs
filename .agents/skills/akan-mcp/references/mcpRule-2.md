@@ -249,6 +249,10 @@ at every event.
   (`akanjs/ui`), sent over your own transport. It is client input, and a name an endpoint holds is dropped. The run
   never runs one: `approve` is asked, then the run ends `awaiting` with `client: true`. Have the page `run(call)`,
   append its result — or your own error when no page answers — and resume.
+- **Asking the member.** `ask: true` lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool.
+  A call ends the run `awaiting` with `question: true`; put the question to the member, append
+  `{ id, name: "askUser", result }` — or an `error` when they dismiss it — and resume. It never reaches `approve`,
+  counts as no tool call, and `untrusted` never sees the answer. A `clientTools` entry by that name is dropped.
 - **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
   reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
   wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation

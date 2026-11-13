@@ -1,16 +1,19 @@
 import { Err } from "akanjs/dictionary";
 import type { AgentLoopRequest } from "./agentLoopTypes";
+import { LoopAsk } from "./loopAsk";
 import { LoopToolkits } from "./loopToolkits";
 
 export class LoopRequest {
   //? The most `setTimeout` takes: past it a timer fires at once, which would end the run as out of budget.
   static readonly maxWallMs = 2 ** 31 - 1;
 
-  static assertValid({ allow, messages, maxRounds, budget, compact, toolkits, clientTools }: AgentLoopRequest) {
+  static assertValid({ allow, messages, maxRounds, budget, compact, toolkits, clientTools, ask }: AgentLoopRequest) {
     //? Security: `listAs` reads a missing `allow` as every tool the account may see.
     if (!Array.isArray(allow)) LoopRequest.#refuse("allow");
     if (!Array.isArray(messages)) LoopRequest.#refuse("messages");
     LoopRequest.#assertToolkits(toolkits, allow);
+    if (ask !== undefined && typeof ask !== "boolean") LoopRequest.#refuse("ask");
+    if (ask && allow.includes(LoopAsk.toolName)) LoopRequest.#refuse("allow");
     LoopRequest.#assertClientTools(clientTools);
     LoopRequest.#assertCount("maxRounds", maxRounds);
     LoopRequest.#assertCount("compact.at", compact?.at);
