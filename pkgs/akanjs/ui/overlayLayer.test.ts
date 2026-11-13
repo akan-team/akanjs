@@ -67,10 +67,15 @@ describe("overlayZ", () => {
     expect(bottomUp).toEqual([...bottomUp].sort((a, b) => a - b));
     expect(new Set(bottomUp).size).toBe(bottomUp.length);
 
-    expect(overlayZ.toast).toBeGreaterThan(overlayZ.modal);
     expect(overlayZ.agentLauncher).toBeLessThan(overlayZ.dropdown);
     expect(overlayZ.agentLauncher).toBeLessThan(overlayZ.select);
-    expect(overlayZ.agentPanel).toBeGreaterThan(Math.max(overlayZ.toast, overlayZ.approval, overlayZ.modal));
+    expect(overlayZ.agentPanel).toBeGreaterThan(Math.max(overlayZ.approval, overlayZ.modal));
+  });
+
+  test("puts a toast above every overlay that can report through one, the agent panel's included", () => {
+    const { toast, reconnect, ...below } = overlayZ;
+    for (const [, zIndex] of Object.entries(below)) expect(toast).toBeGreaterThan(zIndex);
+    expect(toast).toBeLessThan(reconnect);
   });
 
   test("leaves Reconnect alone on top", () => {

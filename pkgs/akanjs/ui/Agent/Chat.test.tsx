@@ -1387,6 +1387,100 @@ describe("Agent.Chat", () => {
     }
   });
 
+  test("a question leaves focus in a modal the panel opened, and Escape closes that modal through its own close first", async () => {
+    const onCancel = mock(() => undefined);
+    const confirm = mock(() => false);
+    const originalConfirm = window.confirm;
+    window.confirm = confirm as unknown as typeof window.confirm;
+    const session = new lib.AgentSession(
+      new lib.AgenticSurface(),
+      scripted({ toolCall: { id: "q1", name: "askUser", args: { question: "Which theme?", choices: ["Dark"] } } }),
+    );
+    const { container, unmount } = mount(
+      <lib.AgentProvider session={session}>
+        <DefaultChat
+          defaultOpen
+          header={
+            <Modal confirmClose onCancel={onCancel} open>
+              <input aria-label="modal field" />
+            </Modal>
+          }
+        />
+      </lib.AgentProvider>,
+    );
+    try {
+      const field = container.querySelector<HTMLInputElement>('input[aria-label="modal field"]');
+      act(() => field?.focus());
+      await act(async () => {
+        void session.send("set the theme");
+        await untilFlushed(() => !!session.pendingQuestion);
+      });
+      expect(document.activeElement).toBe(field);
+
+      const input = composer(container);
+      const escape = () => {
+        const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+        input.press("Escape", { event });
+        act(() => {
+          window.dispatchEvent(event);
+        });
+      };
+      escape();
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(container.querySelector("aside")).toBeTruthy();
+      expect(container.querySelector('input[aria-label="modal field"]')).toBeTruthy();
+
+      confirm.mockImplementation(() => true);
+      escape();
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('input[aria-label="modal field"]')).toBeNull();
+      expect(container.querySelector("aside")).toBeTruthy();
+
+      escape();
+      expect(container.querySelector("aside")).toBeNull();
+    } finally {
+      window.confirm = originalConfirm;
+      unmount();
+    }
+  });
+
+  test("Escape in the composer closes a modal a card opened before the panel", async () => {
+    const onCancel = mock(() => undefined);
+    const surface = new lib.AgenticSurface();
+    surface.registerTool([], { name: "removeThing", confirm: true, run: () => undefined });
+    const session = new lib.AgentSession(surface, scripted({ toolCall: { id: "c1", name: "removeThing", args: {} } }));
+    const skin = {
+      AgentApproval: () => (
+        <Modal onCancel={onCancel} open>
+          <p>card modal</p>
+        </Modal>
+      ),
+    };
+    const { container, unmount } = mount(
+      <lib.AgentProvider session={session}>
+        <UiOverrideProvider value={skin as never}>
+          <DefaultChat defaultOpen />
+        </UiOverrideProvider>
+      </lib.AgentProvider>,
+    );
+    try {
+      await act(async () => {
+        void session.send("remove it");
+        await untilFlushed(() => !!session.pendingApproval);
+      });
+      const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+      composer(container).press("Escape", { event });
+      act(() => {
+        window.dispatchEvent(event);
+      });
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(container.querySelector("aside")).toBeTruthy();
+    } finally {
+      session.abort();
+      unmount();
+    }
+  });
+
   test("pressing a menu row leaves focus in the composer, so a phone keeps its keyboard up", () => {
     const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "hi" }));
     const { container, unmount } = mountChat(session);

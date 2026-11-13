@@ -24,7 +24,7 @@ import {
   SessionContext,
   type SessionHistory,
 } from "use-agentic";
-import { OverlayPortalProvider, overlayZ, useOverlayPortal } from "../overlayLayer";
+import { holdsScrim, OVERLAY_LAYER_ATTR, OverlayPortalProvider, overlayZ, useOverlayPortal } from "../overlayLayer";
 import { createOverridable } from "../UiOverride";
 import { agentSessionOf, type BuiltinOption, type PersistOption } from "./agentSessionOf";
 import type { AttachLimits, AttachReader } from "./attachment";
@@ -225,6 +225,7 @@ interface ChatComposerSetup {
   reference?: readonly ReferenceSource[];
   sticky: RefObject<boolean>;
   dismiss: () => void;
+  overlaid: () => boolean;
 }
 
 const useChatComposer = ({
@@ -240,6 +241,7 @@ const useChatComposer = ({
   reference,
   sticky,
   dismiss,
+  overlaid,
 }: ChatComposerSetup) => {
   const write = (text: string) => {
     setDraft(text);
@@ -346,6 +348,8 @@ const useChatComposer = ({
       }
     }
     if (event.key === "Escape") {
+      //? Left to the escape stack: closing the panel would unmount what it opened, past that overlay's `confirmClose`.
+      if (overlaid()) return;
       event.preventDefault();
       dismiss();
       return;
@@ -405,7 +409,8 @@ const useChatLayers = () => {
   useEffect(() => {
     setOverlay(document.body);
   }, []);
-  return { overlay, panelOverlays, cardOverlays, overlayHosts, enclosingPortal };
+  const overlaid = () => holdsScrim(panelOverlays) || holdsScrim(cardOverlays);
+  return { overlay, panelOverlays, cardOverlays, overlayHosts, enclosingPortal, overlaid };
 };
 
 const usePanelFocus = (
@@ -415,12 +420,16 @@ const usePanelFocus = (
   launcherRef: RefObject<HTMLButtonElement | null>,
   focusComposer: () => void,
 ) => {
+  const wasOpen = useRef(false);
   useEffect(() => {
+    const opening = !wasOpen.current;
+    wasOpen.current = open;
     if (!open) {
       if (returning.current) launcherRef.current?.focus();
       returning.current = false;
       return;
     }
+    if (!opening && document.activeElement?.closest(`[${OVERLAY_LAYER_ATTR}]`)) return;
     // A touch screen raises its keyboard on focus, covering the intro the panel just opened to and panning the page.
     if (!isMobileDevice()) focusComposer();
   }, [open, questionId]);
@@ -657,6 +666,7 @@ export const DefaultChat = ({
     reference,
     sticky,
     dismiss,
+    overlaid: layers.overlaid,
   });
   // Per transcript change, not per render: the bubbles are memoized on identity, so the maps must stay the same.
   const bubbles = useMemo(() => transcriptOf(session), [version]);
