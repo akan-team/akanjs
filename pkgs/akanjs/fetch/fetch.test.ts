@@ -2110,6 +2110,33 @@ describe("FetchClient HTTP generation", () => {
     });
   });
 
+  test("in a request, a page's capped query keeps its deadline beside a layout's uncapped one, and alike calls share", async () => {
+    if (!requestStorage) return;
+    const memo = requestStorage;
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
+    const ask = (policy?: { timeout?: number; retry?: { attempts: number } | false }) =>
+      client.handler.getThing("1234567890abcdef12345678", [], null, policy) as Promise<string>;
+    await memo.run(new Request("https://example.test"), async () => {
+      const layout = ask();
+      const page = ask({ timeout: 20 }).catch((error: unknown) => error) as Promise<TestErr>;
+      const pageAgain = ask({ timeout: 20 }).catch((error: unknown) => error) as Promise<TestErr>;
+      const layoutAgain = ask();
+      const unretried = ask({ retry: false });
+      const retried = ask({ retry: { attempts: 2 } });
+      expect(requests).toHaveLength(3);
+
+      expect((await page).error).toBe("base.error.gatewayTimeout");
+      expect((await pageAgain).error).toBe("base.error.gatewayTimeout");
+      expect(requests[0]?.signal?.aborted).toBe(false);
+      requests[0]?.answer("layout");
+      requests[2]?.answer("retried");
+      const answers = await Promise.all([layout, layoutAgain, unretried, retried]);
+      expect(answers).toEqual(["layout", "layout", "layout", "retried"]);
+      expect(requests).toHaveLength(3);
+    });
+  });
+
   test("hands a joiner its copy as the answer lands, before the starter's caller can change it", async () => {
     const requests = setGatedFetch();
     const blobSignal: SerializedSignal = {
@@ -2365,6 +2392,28 @@ describe("FetchClient HTTP generation", () => {
       "https://api.example/custom/1234567890abcdef12345678",
       "https://clone.example/custom/1234567890abcdef12345678",
     ]);
+  });
+
+  test("in a request, a same-origin clone with its own retry or budget queries alone, and a plain clone shares", async () => {
+    if (!requestStorage) return;
+    const memo = requestStorage;
+    const requests = setGatedFetch();
+    type Getter = { getThing: (id: string, tags: string[], empty: null) => Promise<string> };
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const plain = client.clone({ connect: false });
+    const retrying = client.clone({ connect: false, retry: { attempts: 4 } });
+    const budgeted = client.clone({ connect: false });
+    budgeted.setTimeout(12_345);
+    await memo.run(new Request("https://example.test"), async () => {
+      const answers = [client.handler, plain, retrying, budgeted].map((fetch) =>
+        (fetch as unknown as Getter).getThing("1234567890abcdef12345678", [], null),
+      );
+      expect(requests).toHaveLength(3);
+      requests[0]?.answer("layout");
+      requests[1]?.answer("retrying");
+      requests[2]?.answer("budgeted");
+      expect(await Promise.all(answers)).toEqual(["layout", "layout", "retrying", "budgeted"]);
+    });
   });
 
   test("materializes handlers lazily from local and shared serialized signals", async () => {
