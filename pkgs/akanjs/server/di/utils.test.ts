@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { AkanError, enumOf, ID, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import type { DatabaseModule, ServiceModule } from "../akanLib";
+import { StageFailedError } from "./stageFailedError";
 import { assertUniqueRegistrations, getModuleCascadeRefNames, getModuleRelationRefNames, runStage } from "./utils";
 
 const OwnerInput = via((f) => ({ url: f(String) }));
@@ -115,10 +116,8 @@ describe("runStage", () => {
       message:
         "[DI:adaptor[stage=0]] 2/3 task(s) failed:\n  • adaptor:db: connection refused\n  • adaptor:cache: timed out",
     });
-    expect((failure as { errors: Error[] }).errors.map((error) => error.message)).toEqual([
-      "connection refused",
-      "timed out",
-    ]);
-    expect((failure as { errors: Error[] }).errors[0]).toBe(refused);
+    const errors = StageFailedError.is(failure) ? failure.errors : [];
+    expect(errors.map((error) => error.message)).toEqual(["connection refused", "timed out"]);
+    expect(errors[0]).toBe(refused);
   });
 });

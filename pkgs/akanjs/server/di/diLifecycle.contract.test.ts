@@ -24,6 +24,7 @@ import {
   validId,
 } from "../resolver/resolver.contract.fixture";
 import type { DiLifecycleProps } from "./diLifecycle";
+import { StageFailedError } from "./stageFailedError";
 
 const loadDiLifecycle = async (appName: string) => {
   process.env.AKAN_PUBLIC_APP_NAME = appName;
@@ -883,7 +884,7 @@ describe("DiLifecycle before init", () => {
 
     const schedule = failureOf(() => lifecycle.registerSchedule("all"));
     expect(AkanError.is(schedule, "stageFailed")).toBe(true);
-    const scheduleErrors = (schedule as { errors: unknown[] }).errors;
+    const scheduleErrors = StageFailedError.is(schedule) ? schedule.errors : [];
     expect(scheduleErrors.every((error) => InjectError.is(error, "notRegistered"))).toBe(true);
     expect(scheduleErrors).toContainEqual(
       expect.objectContaining({ message: 'Internal "beforeInitProbeInternal" is not registered' }),
