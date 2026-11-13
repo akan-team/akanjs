@@ -65,6 +65,14 @@ const fsClockProbed = () => {
   return probed.promise;
 };
 const refusal = (code: string) => Object.assign(new Error(`${code}: refused`), { code });
+const refuseRemovingMarkers = (codes: string[]) => {
+  const left = [...codes];
+  inject.beforeRm = (target) => {
+    const code = target.includes(".removing-") ? left.shift() : undefined;
+    if (code) throw refusal(code);
+  };
+  return left;
+};
 const mostHoldersOfTwoRacingWaiters = async (lockDir: string) => {
   const secondRename = Promise.withResolvers<void>();
   let renames = 0;
@@ -321,10 +329,64 @@ describe("CliBuildLock", () => {
     const lockDir = await lockDirIn();
     await holdAs(lockDir, `${await deadPid()}\nstale`);
     inject.beforeRm = (target) => {
-      if (target.includes(".removing-")) throw refusal("EBUSY");
+      if (!target.includes(".removing-")) return;
+      setSystemTime(Date.now() + 1_000);
+      throw refusal("EBUSY");
     };
     const release = await CliBuildLock.acquire(lockDir);
     expect(await ownerPidOf(lockDir)).toBe(`${process.pid}`);
+    inject.beforeRm = undefined;
+    await release();
+  });
+
+  test("retries removing its removal marker while the OS refuses it for a moment, so a refused release still ends", async () => {
+    const lockDir = await lockDirIn();
+    const release = await CliBuildLock.acquire(lockDir);
+    let renameRefused = false;
+    inject.beforeRename = (from) => {
+      if (from !== lockDir || renameRefused) return;
+      renameRefused = true;
+      throw refusal("EBUSY");
+    };
+    const left = refuseRemovingMarkers(["EBUSY", "EPERM", "ENOTEMPTY"]);
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    await release();
+    warn.mockRestore();
+    expect(left).toEqual([]);
+    expect(await readdir(path.dirname(lockDir))).toEqual([]);
+  });
+
+  test("tries a dead remover's marker it stepped past only once, and retries only its own", async () => {
+    const lockDir = await lockDirIn();
+    await holdAs(lockDir, `${await deadPid()}\nstale`);
+    const release = await CliBuildLock.acquire(lockDir);
+    const ownerToken = await ownerOf(lockDir);
+    const markerOf = (attempt: number) => `${lockDir}.removing-${Bun.hash(ownerToken).toString(36)}.${attempt}`;
+    await mkdir(markerOf(0));
+    setSystemTime(Date.now() + 121_000);
+    let deadTries = 0;
+    const left = ["EBUSY", "EBUSY"];
+    inject.beforeRm = (target) => {
+      if (target === markerOf(0)) {
+        deadTries++;
+        throw refusal("EPERM");
+      }
+      const code = target === markerOf(1) ? left.shift() : undefined;
+      if (code) throw refusal(code);
+    };
+    await release();
+    expect(deadTries).toBe(1);
+    expect(left).toEqual([]);
+    expect(await readdir(path.dirname(lockDir))).toEqual([path.basename(markerOf(0))]);
+  });
+
+  test("retries removing the removal marker of a takeover while the OS refuses it for a moment", async () => {
+    const lockDir = await lockDirIn();
+    await holdAs(lockDir, `${await deadPid()}\nstale`);
+    const left = refuseRemovingMarkers(["EBUSY", "EBUSY", "EBUSY"]);
+    const release = await CliBuildLock.acquire(lockDir);
+    expect(left).toEqual([]);
+    expect(await readdir(path.dirname(lockDir))).toEqual([path.basename(lockDir)]);
     inject.beforeRm = undefined;
     await release();
   });

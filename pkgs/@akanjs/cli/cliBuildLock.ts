@@ -18,6 +18,8 @@ export class CliBuildLock {
   static readonly #transientMs = 3_000;
   //? Windows answers EPERM or EBUSY for a path whose deletion is pending while another process still holds it open.
   static readonly #transientCodes = new Set(["EPERM", "EBUSY"]);
+  //? A scanner holding a marker's owner file refuses its removal briefly; left, it stalls removals until the lease.
+  static readonly #removalRetryCodes = new Set([...CliBuildLock.#transientCodes, "ENOTEMPTY"]);
 
   static async acquire(lockDir: string): Promise<() => Promise<void>> {
     await mkdir(path.dirname(lockDir), { recursive: true });
@@ -82,8 +84,23 @@ export class CliBuildLock {
         if (moved) await rm(tombstone, { recursive: true, force: true }).catch(() => undefined);
         return moved;
       } finally {
-        for (let done = 0; done <= attempt; done++)
+        //? The markers below are dead removers' that a live one may remake, so only this process's own is retried.
+        for (let done = 0; done < attempt; done++)
           await rm(markerOf(done), { recursive: true, force: true }).catch(() => undefined);
+        await CliBuildLock.#removeMarker(markerOf(attempt), giveUpAt ?? Date.now() + CliBuildLock.#transientMs);
+      }
+    }
+  }
+
+  static async #removeMarker(marker: string, giveUpAt: number): Promise<void> {
+    for (;;) {
+      try {
+        await rm(marker, { recursive: true, force: true });
+        return;
+      } catch (error) {
+        const code = (error as { code?: string }).code ?? "";
+        if (!CliBuildLock.#removalRetryCodes.has(code) || Date.now() > giveUpAt) return;
+        await Bun.sleep(CliBuildLock.#pollMs);
       }
     }
   }
