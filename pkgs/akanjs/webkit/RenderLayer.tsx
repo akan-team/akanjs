@@ -1,9 +1,20 @@
 "use client";
 import { debugFrame, RouteDefinition, type RouteRender, router, Translator, usePathCtx } from "akanjs/client";
 import { isThenable, Logger } from "akanjs/common";
-import { createContext, createElement, memo, type ReactNode, useContext, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  createElement,
+  memo,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { CsrGuards } from "./CsrGuards";
 import { CsrFrameDump } from "./csrFrameDump";
+import { CsrRefresh } from "./csrRefresh";
 import { RenderFailure } from "./RenderFailure";
 import { useFetch } from "./useFetch";
 import { usePageActivity } from "./usePageActivity";
@@ -29,6 +40,7 @@ interface RenderedRoute {
   failure: { error: unknown } | null;
   /** Asked after the layer's last run was refused, so it draws nothing until its own answer arrives. */
   afterRefusal: boolean;
+  refreshEpoch: number;
 }
 
 interface RenderLayerProps {
@@ -51,6 +63,7 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
   const renderedRef = useRef<RenderedRoute | null>(null);
   const [, setFailures] = useState(0);
   const activity = usePageActivity();
+  const refresh = useSyncExternalStore(CsrRefresh.subscribe, CsrRefresh.current, CsrRefresh.current);
   //? Effects stop while the page is hidden, so a cleanup is the one place that sees it leave the screen.
   const onScreenRef = useRef(activity === "current");
   useEffect(() => {
@@ -68,7 +81,7 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
   //? waits too: under a root layout's guard, a legacy page is the only layer its location has.
   const guarded = location && CsrGuards.declared(location) ? location : null;
   const guardKey = guarded ? CsrGuards.keyOf(guarded) : null;
-  const locationId = location ? `${location.entryId ?? ""} ${location.href}` : null;
+  const locationId = location ? CsrRefresh.idOf(location) : null;
   //? Only the page in front asks. React still renders a parked page, whose effects are stopped, and a page under the
   //? current one (`prev`) is not the one the visitor is on: a guard run for either would move the router off it.
   const mayAsk = activity !== "hidden" && activity !== "prev";
@@ -117,22 +130,17 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         )
       : (guardKey ?? "");
     const rendered = renderedRef.current;
-    //? A cached page back on screen reruns a render that redirected: signed out, a layout redirects to the sign-in
-    //? page, and kept, it would stay blank after the sign-in brings the person back.
     const returned = activity === "current" && !onScreenRef.current;
-    //? A guard may move the router within its own route (a merged id, a defaulted query), which keeps this layer
-    //? mounted, perhaps with args no guard reads: the location it refused is gone, so it asks the new one.
-    const moved = !!rendered?.refusedAt && rendered.refusedAt !== locationId;
-    //? A sync layer let in under this key before and not now: the verdict lapsed while its page was parked.
-    const lapsed = !isAsyncRender && rendered?.admittedKey === guardKey;
-    //? Rerun only when the render itself (a hot update) or the args it reads change: any other re-render would refetch.
     if (
-      !rendered ||
-      rendered.render !== routeRender.render ||
-      rendered.argsKey !== argsKey ||
-      (returned && rendered.redirected) ||
-      moved ||
-      lapsed
+      mustRerun(rendered, {
+        render: routeRender.render,
+        argsKey,
+        returned,
+        locationId,
+        guardKey,
+        isAsyncRender,
+        refresh,
+      })
     ) {
       const redirectsBefore = router.redirectCount();
       const layer = `${routeRender.kind ?? "layout"} ${index} of ${path}`;
@@ -165,6 +173,7 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         admittedKey: null,
         failure: null,
         afterRefusal: !!rendered?.refusedAt,
+        refreshEpoch: refresh.epoch,
       };
       if (isThenable(result))
         (result as Promise<ReactNode>).then(
@@ -216,6 +225,31 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
     return <>{Translator.renderAt(renderPath, () => composeLoadingFallback(renders.slice(index), params))}</>;
   return <layerChildContext.Provider value={children}>{value}</layerChildContext.Provider>;
 });
+
+interface LayerRun {
+  render: RouteRender["render"];
+  argsKey: string;
+  returned: boolean;
+  locationId: string | null;
+  guardKey: string | null;
+  isAsyncRender: boolean;
+  refresh: ReturnType<typeof CsrRefresh.current>;
+}
+//? Rerun only when the render itself (a hot update) or the args it reads change: any other re-render would refetch.
+function mustRerun(rendered: RenderedRoute | null, run: LayerRun): boolean {
+  if (!rendered || rendered.render !== run.render || rendered.argsKey !== run.argsKey) return true;
+  //? A cached page back on screen reruns a render that redirected: signed out, a layout redirects to the sign-in
+  //? page, and kept, it would stay blank after the sign-in brings the person back.
+  if (run.returned && rendered.redirected) return true;
+  //? A guard may move the router within its own route (a merged id, a defaulted query), which keeps this layer
+  //? mounted, perhaps with args no guard reads: the location it refused is gone, so it asks the new one.
+  if (rendered.refusedAt && rendered.refusedAt !== run.locationId) return true;
+  //? A sync layer let in under this key before and not now: the verdict lapsed while its page was parked.
+  if (!run.isAsyncRender && rendered.admittedKey === run.guardKey) return true;
+  //? A refresh reruns the location it was asked on and the root layouts every page draws under, never a parked page.
+  if (rendered.refreshEpoch === run.refresh.epoch) return false;
+  return run.locationId === null || run.refresh.locationId === run.locationId;
+}
 
 //? useFetch drops a rejection, so a render that throws would leave its layer blank with nothing in the console.
 function reportFailure(result: ReactNode | Promise<ReactNode>, layer: string): ReactNode | Promise<ReactNode> {

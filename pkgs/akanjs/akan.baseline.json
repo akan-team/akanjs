@@ -18,7 +18,7 @@
     "ui/Menu.tsx#DefaultMenu": 171,
     "ui/Model/EditModal.tsx#EditModal": 243,
     "ui/Select.tsx#DefaultSelect": 352,
-    "webkit/RenderLayer.tsx#RenderLayer": 178
+    "webkit/RenderLayer.tsx#RenderLayer": 175
   },
   "akan.size.class": {
     "client/router.ts#Router": 69,
