@@ -17,4 +17,4 @@ A failed call is now logged at a level that says how bad it was: a failure under
 
 With `AKAN_LOG_CANONICAL` off, `render[<id>] failed url=…` and `Schedule … error: …` are written as before, at `error`.
 
-An alert on `error` that counted 4xx calls should match `warn` with a `status` under 500. A parser that read the stack out of the message should read `attrs.stack`.
+An alert on `error` that counted 4xx calls should match `warn` with a `status` under 500. A parser that read the stack out of the message should read `attrs.stack` in ndjson; the text format still prints the stack on its own lines, now under the record's line instead of inside its message.
