@@ -78,7 +78,7 @@ export class OpenaiDialect {
       messages: OpenaiDialect.contextual(
         [
           { role: "system" as const, content: OpenaiDialect.systemPrompt(request) },
-          ...OpenaiDialect.conversation(request.messages, accepts),
+          ...OpenaiDialect.#conversation(request.messages, accepts),
         ],
         request.context,
       ),
@@ -122,7 +122,7 @@ export class OpenaiDialect {
   }
 
   //? A summary whose cut lands on the user's ask would be two user messages in a row, so it opens that ask's message.
-  static conversation(messages: AgentWireMessage[], accepts?: LlmAccepts): OpenaiMessage[] {
+  static #conversation(messages: AgentWireMessage[], accepts?: LlmAccepts): OpenaiMessage[] {
     const asks = (message?: AgentWireMessage) => message?.role === "user" && !message.summary;
     return messages.flatMap((message, at) => {
       if (message.summary && asks(messages[at + 1])) return [];
