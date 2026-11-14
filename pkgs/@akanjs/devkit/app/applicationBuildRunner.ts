@@ -190,7 +190,11 @@ export class ApplicationBuildRunner {
             ? "skipped"
             : "disabled by akan.config.ts web.ssr",
     );
-    if (this.#verify) return this.#resultOf(environment, await this.#runBudgetPhase(environment));
+    if (this.#verify) {
+      const routeJs = await this.#runBudgetPhase(environment);
+      await this.#app.dist.writeJson("akan.build.json", { profile: "verify", builtAt: new Date().toISOString() });
+      return this.#resultOf(environment, routeJs);
+    }
     await this.#runPhase(
       "csr",
       "Building CSR assets",
@@ -363,6 +367,13 @@ export class ApplicationBuildRunner {
     return this.#serverEnv;
   }
 
+  //? `bun main.js` in dist/apps/<app> is a documented way to run a build, and a verify output has no CSR bundle or
+  //? production env file, so its main.js refuses to boot before any app module runs.
+  #verifyBanner() {
+    const message = `dist/apps/${this.#app.name} holds the partial output of akan verify, not a build. Run \`akan build ${this.#app.name}\` first.`;
+    return `console.error(${JSON.stringify(message)});process.exit(1);`;
+  }
+
   async #buildBackend() {
     const { externalLibs, web, baseDevEnv, branches } = await this.#app.getConfig();
     const backendEntryPoints = [`${this.#app.cwdPath}/main.ts`, `${this.#app.cwdPath}/server.ts`];
@@ -384,7 +395,11 @@ export class ApplicationBuildRunner {
     };
     //* Built apart so main.js keeps its own module copies; splitting moves lazy vendor `import()`s out of the boot parse.
     const [mainResult, serverResult] = [
-      await this.#buildOrThrow("backend", { ...backendConfig, entrypoints: [backendEntryPoints[0]] }),
+      await this.#buildOrThrow("backend", {
+        ...backendConfig,
+        entrypoints: [backendEntryPoints[0]],
+        ...(this.#verify ? { banner: this.#verifyBanner() } : {}),
+      }),
       await this.#buildOrThrow("backend", { ...backendConfig, entrypoints: [backendEntryPoints[1]], splitting: true }),
     ];
     // Nothing spawns the RSC worker without SSR, so an api-only image does not carry it.
