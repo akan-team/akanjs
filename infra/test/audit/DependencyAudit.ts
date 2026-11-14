@@ -161,10 +161,10 @@ export class DependencyAudit {
   }
 
   static #inRange(version: string, range: string) {
-    const release = /^(\d+\.\d+\.\d+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.exec(version);
-    if (!release?.[1]) return true;
+    const [, core, prerelease] = /^(\d+\.\d+\.\d+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.exec(version) ?? [];
+    if (!core) return true;
     // Bun.semver keeps a prerelease outside every range without a prerelease bound, `*` included.
-    return Bun.semver.satisfies(version, range) || (!!release[2] && Bun.semver.satisfies(release[1], range));
+    return Bun.semver.satisfies(version, range) || (!!prerelease && Bun.semver.satisfies(core, range));
   }
 
   #walk(publishedWorkspaces: string[]) {
