@@ -29,6 +29,7 @@ export class RemoteEndpoint extends endpoint(srv.remote, ({ query, mutation }) =
   completeRemoteConnection: mutation(cnst.RemoteConnection, {
     guards: [Every, Person],
     mcp: false,
+    rateLimit: { calls: 10, by: "account" },
     errors: {
       400: ["remote.error.authorizationNotFound", "remote.error.issuerMismatch", "remote.error.authorizationRefused"],
       403: ["remote.error.authorizationBoundToAnotherAccount"],
@@ -43,7 +44,7 @@ export class RemoteEndpoint extends endpoint(srv.remote, ({ query, mutation }) =
       return await this.remoteService.complete(account, { state, code, iss });
     }),
 
-  disconnectRemote: mutation(Boolean, { guards: [Every, Person], mcp: false })
+  disconnectRemote: mutation(Boolean, { guards: [Every, Person], mcp: false, rateLimit: { calls: 20, by: "account" } })
     .body("url", String)
     .with(Account)
     .exec(async function (url, account) {
@@ -97,7 +98,11 @@ export class RemoteEndpoint extends endpoint(srv.remote, ({ query, mutation }) =
       return await this.remoteService.viewCall(account, url, tool, args);
     }),
 
-  listRemoteConnections: query([cnst.RemoteConnection], { guards: [Every, Person], mcp: false })
+  listRemoteConnections: query([cnst.RemoteConnection], {
+    guards: [Every, Person],
+    mcp: false,
+    rateLimit: { calls: 60, by: "account" },
+  })
     .with(Account)
     .exec(async function (account) {
       return await this.remoteService.listConnections(account);

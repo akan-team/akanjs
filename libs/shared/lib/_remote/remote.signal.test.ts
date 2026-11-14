@@ -103,6 +103,25 @@ describe("Remote Signal", () => {
     expect(await owner.fetch.listRemoteConnections()).toEqual([]);
   });
 
+  it("refuses a sign-in answered after its lifetime", async () => {
+    const { authorizationMinutes } = service;
+    Object.assign(service, { authorizationMinutes: 0.002 });
+    try {
+      const callback = await signInAt(await owner.fetch.connectRemote(base), owner.accessToken.jwt);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await expect(
+        owner.fetch.completeRemoteConnection(
+          callback.searchParams.get("state") ?? "",
+          callback.searchParams.get("code") ?? "",
+          callback.searchParams.get("iss"),
+        ),
+      ).rejects.toThrow(/authorizationNotFound/);
+    } finally {
+      Object.assign(service, { authorizationMinutes });
+    }
+    expect(await owner.fetch.listRemoteConnections()).toEqual([]);
+  });
+
   it("refuses an answer from another authorization server, and one with no code", async () => {
     const mixed = await signInAt(await owner.fetch.connectRemote(base), owner.accessToken.jwt);
     const state = mixed.searchParams.get("state") ?? "";
@@ -236,5 +255,20 @@ describe("Remote Signal", () => {
     expect((await grantedApps(owner.accessToken.jwt)).filter((app) => app.clientName === clientName)).toHaveLength(
       live - 1,
     );
+  });
+
+  it("limits how often one account completes, disconnects or lists connections", async () => {
+    const caller = await userSpec.getUserAgentWithPassword();
+    for (let idx = 0; idx < 10; idx++)
+      await expect(caller.fetch.completeRemoteConnection("no-such-state", "code", null)).rejects.toThrow(
+        /authorizationNotFound/,
+      );
+    await expect(caller.fetch.completeRemoteConnection("no-such-state", "code", null)).rejects.toThrow(
+      /tooManyRequests/,
+    );
+    for (let idx = 0; idx < 20; idx++) expect(await caller.fetch.disconnectRemote(base)).toBe(false);
+    await expect(caller.fetch.disconnectRemote(base)).rejects.toThrow(/tooManyRequests/);
+    for (let idx = 0; idx < 60; idx++) expect(await caller.fetch.listRemoteConnections()).toEqual([]);
+    await expect(caller.fetch.listRemoteConnections()).rejects.toThrow(/tooManyRequests/);
   });
 });
