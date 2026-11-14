@@ -247,8 +247,11 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   invalidating ones. An indexed room is reached through its key and never counts. A new counted room past it is
   refused the same way with `per: "model"`, existing rooms keep working, and the refusal is warned at most once a
   minute per model.
-- **A subscribe refused with 429 names its room** (`requestRoomId` on the error frame). The client drops that room,
-  so a reconnect does not send it again, and calls the subscriber's `onRefused(error)` fetch policy once. A live
+- **A subscribe refused with 429 names its room** (`requestRoomId` on the error frame). Refused with `liveRoomLimit`,
+  the client drops that room, so a reconnect does not send it again, and calls the subscriber's `onRefused(error)`
+  fetch policy once. Refused for a budget (`tooManyRequests`), it sends the subscribe again after the frame's
+  `data.seconds` (1 to 60) plus up to a second of jitter per attempt, and drops the room the same way after five
+  tries without an ack. A live
   slice shows the error as a message, marks its list stale, and subscribes again only on its next watch, such as the
   next mount — never in a loop.
 - **Subscribe frames have a budget of their own**, over every pubsub endpoint: 1,000 a minute per websocket, counted

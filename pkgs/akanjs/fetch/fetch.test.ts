@@ -3666,6 +3666,54 @@ describe("WsClient", () => {
     setSystemTime();
   });
 
+  test("sends a subscribe refused for a budget again after the wait the server named, and drops it past five tries", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws");
+    client.logger.warn = (() => undefined) as typeof client.logger.warn;
+    const refusals: unknown[] = [];
+    client.subscribe({
+      key: "commandOfPc",
+      data: ["pc-7"],
+      handleEvent: () => undefined,
+      handleRefused: (error: unknown) => refusals.push(error),
+    });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const timers: { run: () => void; ms: number }[] = [];
+    const timeout = spyOn(globalThis, "setTimeout").mockImplementation(((run: () => void, ms: number) => {
+      timers.push({ run, ms });
+      return { unref: () => undefined };
+    }) as never);
+    const random = spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      const refuse = () =>
+        ws.receive({
+          error: "base.error.tooManyRequests",
+          statusCode: 429,
+          data: { seconds: 3 },
+          key: "commandOfPc",
+          requestRoomId: "commandOfPc-pc-7",
+        });
+      const subscribes = () => ws.sent.filter((frame) => (JSON.parse(frame) as { subscribe?: boolean }).subscribe);
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        refuse();
+        expect(timers.at(-1)?.ms).toBe(3_000 + 500 * attempt);
+        expect(refusals).toEqual([]);
+        timers.at(-1)?.run();
+        expect(subscribes()).toHaveLength(1 + attempt);
+      }
+      refuse();
+      expect(timers).toHaveLength(5);
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]).toMatchObject({ statusCode: 429 });
+    } finally {
+      timeout.mockRestore();
+      random.mockRestore();
+      client.destroy();
+    }
+  });
+
   test("a server-side client sends its headers and its token with the upgrade", () => {
     setFakeWebSocket();
     const client = new WsClient("wss://cloud.example/ws").configure({ headers: { "x-edge-version": "3" } });

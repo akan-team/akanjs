@@ -15,7 +15,12 @@ A server process now holds at most 50,000 live rooms per model that every write 
 
 Subscribe frames now have a budget, over every pubsub endpoint: 1,000 a minute per websocket, and 10,000 a minute per caller across its sockets. A caller is its account when signed in, else its address. A subscribe past either budget is refused with the usual 429 `base.error.tooManyRequests` and `data: { seconds }`. A page's subscribes and a reconnect that resubscribes every room the socket held fit well inside both.
 
-When the server refuses a subscribe with 429, the error frame names the room it refused (`requestRoomId`). The client drops that room, so a reconnect does not send it again, and calls the new `onRefused(error)` fetch policy of the subscriber. A live slice shows the error as a message, marks its list stale so the next mount refetches, and subscribes again only on its next watch, never in a loop.
+When the server refuses a subscribe with 429, the error frame names the room it refused (`requestRoomId`).
+- Refused for a room limit (`liveRoomLimit`), the room is dropped, so a reconnect does not send it again, and the subscriber's new `onRefused(error)` fetch policy is called.
+- Refused for a budget (`tooManyRequests`), the subscribe is sent again after the `seconds` the server named (counted as 1 to 60), plus up to a second of random wait per attempt. After five such tries without an ack, the room is dropped the same way.
+- A refusal with any other status leaves the room as it was.
+
+When its room is dropped, a live slice shows the error as a message, marks its list stale so the next mount refetches, and subscribes again only on its next watch, never in a loop.
 
 **Upgrading.** Nothing changes for an app whose sockets hold 256 rooms or fewer, whose callers hold 2,000 rooms or fewer per server, whose models hold 50,000 scanned or invalidating live rooms or fewer per server, and whose sockets subscribe less often than the budgets above.
 - To raise or lift the room limits, call `option.setLiveRoomLimit({ roomsPerSocket: <count>, roomsPerCaller: <count>, roomsPerModel: <count> })` in `lib/option.ts`. Pass `false` for any of them to turn it off. Libs merge in mount order, with the app last. `AKAN_LIVE_ROOMS_PER_SOCKET`, `AKAN_LIVE_ROOMS_PER_CALLER` and `AKAN_LIVE_ROOMS_PER_MODEL`, set to a count or `off`, override the code for one deployment.
