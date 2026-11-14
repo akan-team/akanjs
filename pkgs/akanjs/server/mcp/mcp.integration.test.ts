@@ -1728,6 +1728,82 @@ describe("MCP Apps", () => {
     expect(prompt.content.at(-1)).toEqual(result.content.at(-1));
   });
 
+  test("embeds a static app's HTML for a host that asks, and answers every other call as it did", async () => {
+    const drawnEntry: PagePromptEntry = { ...showEntry, static: true };
+    const origins: string[] = [];
+    const source = (render: PagePromptSource["render"], entries = [briefEntry, drawnEntry]): PagePromptSource => ({
+      ...pagePromptsOf(okRun(), entries),
+      render: async (input) => {
+        origins.push(input.origin);
+        return await (render ?? (async () => ({ run: okRun(), html: null })))(input);
+      },
+    });
+    const html = "<!DOCTYPE html><html><body><p>item</p></body></html>";
+    const drawing = source(async () => ({ run: okRun(), html }));
+    const call = async (pagePrompts: PagePromptSource, meta?: Record<string, unknown>) =>
+      (
+        await postWith(
+          rpc("tools/call", {
+            name: "showItem",
+            arguments: { serverResolverTestItemId: itemId },
+            ...(meta ? { _meta: meta } : {}),
+          }),
+          { ...apps, appShell: undefined, pagePrompts },
+        )
+      ).json.result;
+    const asks = { "akanjs/render": "html" };
+
+    const listed = await postWith(rpc("tools/list"), { ...apps, appShell: undefined, pagePrompts: drawing });
+    const tool = listed.json.result.tools.find((candidate: { name: string }) => candidate.name === "showItem");
+    expect(tool._meta).toEqual({ "akanjs/static": true });
+    const drawn = await call(drawing, asks);
+    expect(drawn.isError).toBe(false);
+    expect(drawn.content.at(-1)).toEqual({
+      type: "resource",
+      resource: { uri: "ui://mcpintegration/static/showItem", mimeType: "text/html", text: html },
+    });
+    expect(origins).toEqual(["http://127.0.0.1:8080"]);
+
+    const plain = await call(drawing);
+    expect(plain.content).toEqual(drawn.content.slice(0, -1));
+    expect(
+      await call(
+        source(async () => ({ run: okRun(), html: null })),
+        asks,
+      ),
+    ).toEqual(plain);
+    expect(
+      await call(
+        source(async () => ({ run: okRun(), html }), [briefEntry, showEntry]),
+        asks,
+      ),
+    ).toEqual(plain);
+    expect(origins).toHaveLength(2);
+    let runs = 0;
+    const throwing: PagePromptSource = {
+      ...source(async () => {
+        throw new Error("worker gone");
+      }),
+      run: async () => {
+        runs += 1;
+        return okRun();
+      },
+    };
+    expect(await call(throwing, asks)).toMatchObject({
+      isError: true,
+      content: [{ type: "text", text: "The page failed to load." }],
+    });
+    expect(runs).toBe(0);
+    const refused = await call(
+      source(async () => ({ run: { ok: false, reason: "not-found", message: "x" }, html: null })),
+      asks,
+    );
+    expect(refused).toMatchObject({
+      isError: true,
+      content: [{ type: "text", text: "No screen exists for these arguments." }],
+    });
+  });
+
   test("hands a view the value a browser would get, visual fields included, and a model the masked one", async () => {
     const session = { "mcp-session-id": await uiSession() };
     const call = (headers: Record<string, string>, meta?: object) =>
