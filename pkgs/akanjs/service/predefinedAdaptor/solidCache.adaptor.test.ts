@@ -183,15 +183,17 @@ describe("SolidCache expiry sweep (sqlite)", () => {
     raw.close();
   });
 
-  test("the sweep's selection searches an expiresAt index instead of scanning the table", async () => {
+  test("the DELETE the sweep sends finds expired rows through the expiresAt index, not a table scan", async () => {
+    const query = spyOn(Database.prototype, "query");
     ({ cache } = await createCache(filePath));
     const raw = new Database(filePath);
+    for (let waited = 0; waited < 5000 && expiredCounts(raw).some(Boolean); waited += 10) await Bun.sleep(10);
+    const sent = new Set(query.mock.calls.map(([sql]) => sql).filter((sql) => sql.startsWith("DELETE FROM")));
+    query.mockRestore();
     for (const table of tables) {
-      const plan = raw
-        .query(
-          `EXPLAIN QUERY PLAN SELECT rowid FROM "${table}" WHERE "expiresAt" IS NOT NULL AND "expiresAt" <= ? LIMIT 1000`,
-        )
-        .all(Date.now()) as { detail: string }[];
+      const sweeps = [...sent].filter((sql) => sql.startsWith(`DELETE FROM "${table}" WHERE`));
+      expect(sweeps).toHaveLength(1);
+      const plan = raw.query(`EXPLAIN QUERY PLAN ${sweeps[0]}`).all(Date.now()) as { detail: string }[];
       expect(plan.map((row) => row.detail).join("\n")).toContain(`USING COVERING INDEX ${table}_expiry_idx`);
     }
     raw.close();
