@@ -2059,3 +2059,84 @@ describe("rscClient patch cache", () => {
     });
   });
 });
+
+describe("rscClient newly mounted route level", () => {
+  const encoder = new TextEncoder();
+  const stateOf = (pathname: string, layout: string): AkanRouterStateV1 => ({
+    version: 1,
+    href: `${origin}${pathname}`,
+    routeId: pathname,
+    segments: [
+      { key: "root", path: "/", kind: "root-layout" },
+      { key: `layout:${layout}`, path: layout, kind: "layout" },
+      { key: `page:${pathname}`, path: pathname, kind: "page" },
+    ],
+  });
+  const headersOf = (state: AkanRouterStateV1) => ({
+    "Content-Type": "text/x-component",
+    [AKAN_RSC_RESPONSE_STATE_HEADER]: encodeAkanRouterState(state),
+  });
+  const documentRowOf = (main: unknown) =>
+    `0:${JSON.stringify([
+      "$",
+      "html",
+      null,
+      {
+        children: [
+          ["$", "head", "h", {}],
+          ["$", "body", "b", { children: ["$", "main", null, { children: main }] }],
+        ],
+      },
+    ])}\n`;
+  //? `<section>` replaces the text under `<main>`, so the level's boundary inside it mounts showing its null fallback.
+  const levelOf = (pathname: string, layout: string, streamed: () => Promise<unknown>) => () => {
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const boundary = ["$", "$Sreact.suspense", null, { fallback: null, children: "$L1" }];
+        controller.enqueue(encoder.encode(documentRowOf(["$", "section", null, { children: boundary }])));
+        await streamed();
+        controller.enqueue(encoder.encode(`1:${JSON.stringify(pathname)}\n`));
+        controller.close();
+      },
+    });
+    return new Response(stream, { headers: headersOf(stateOf(pathname, layout)) });
+  };
+  const leaveFor = async (pathname: string, layout: string) => {
+    served.set(pathname, () => new Response(rowOf(pathname), { headers: headersOf(stateOf(pathname, layout)) }));
+    await navigate(pathname);
+    expect(shown()).toBe(pathname);
+  };
+
+  test("a navigation into another layout commits once the new level streams in, never showing it blank", async () => {
+    await leaveFor("/levels/a", "(a)");
+    served.set(
+      "/levels/b",
+      levelOf("/levels/b", "(b)", () => sleep(30)),
+    );
+
+    await navigate("/levels/b");
+
+    expect(window.location.pathname).toBe("/levels/b");
+    expect(shown()).toBe("/levels/b");
+  });
+
+  test("the wait is capped, so a level still streaming commits blank and fills in when its rows land", async () => {
+    await leaveFor("/levels/c", "(a)");
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    served.set(
+      "/levels/d",
+      levelOf("/levels/d", "(d)", () => held),
+    );
+
+    await navigate("/levels/d");
+
+    expect(window.location.pathname).toBe("/levels/d");
+    expect(shown()).toBe("");
+    await act(async () => release());
+    await waitFor(() => shown() === "/levels/d");
+    expect(shown()).toBe("/levels/d");
+  });
+});

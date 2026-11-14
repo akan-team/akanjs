@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { FLIGHT_LENGTH_PREFIXED_TAGS, type FlightLineRowHandler, mapFlightLineRows } from "./flightRowReader";
+import {
+  FLIGHT_LENGTH_PREFIXED_TAGS,
+  type FlightLineRowHandler,
+  flightRowsEndWatcher,
+  mapFlightLineRows,
+} from "./flightRowReader";
 import {
   joinBytes,
   lengthPrefixedRow,
@@ -136,5 +141,22 @@ describe("Flight row reader", () => {
     expect(rewritten.map((output) => output.buffer === chunk.buffer)).toEqual([false, true]);
     expect(rewritten[0]?.byteLength).toBeLessThanOrEqual(16 * 1024);
     expect(Buffer.concat(rewritten)).toEqual(Buffer.from(joinBytes('0:"y"\n', ...rows.slice(1))));
+  });
+
+  test("tells an end watcher once the last row has passed the handlers, and passes every row on untouched", async () => {
+    const seen: string[] = [];
+    const reader = mapFlightLineRows(
+      streamOfChunks([encoder.encode('0:"a"\n1:"b"')]),
+      (row) => {
+        seen.push(decoder.decode(row));
+        return row;
+      },
+      flightRowsEndWatcher(() => seen.push("end")),
+    ).getReader();
+    const output: Uint8Array[] = [];
+    for (let next = await reader.read(); !next.done; next = await reader.read()) output.push(next.value);
+
+    expect(decoder.decode(Buffer.concat(output))).toBe('0:"a"\n1:"b"');
+    expect(seen).toEqual(['0:"a"\n', '1:"b"', "end"]);
   });
 });

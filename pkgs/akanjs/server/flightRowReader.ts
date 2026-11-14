@@ -31,7 +31,10 @@ const isLineRowTag = (byte: number): boolean => (byte > 64 && byte < 91) || byte
 
 const hexDigit = (byte: number): number => (byte > 96 ? byte - 87 : byte - 48);
 
-export type FlightLineRowHandler = (row: Uint8Array, tag: string) => Uint8Array | null;
+export interface FlightLineRowHandler {
+  (row: Uint8Array, tag: string): Uint8Array | null;
+  end?: () => void;
+}
 
 interface FlightRowSink {
   enqueue(row: Uint8Array, binary?: boolean): void;
@@ -203,10 +206,16 @@ export const mapFlightLineRows = (
         reader.read(chunk, batch);
         batch.flush();
       },
-      flush: (controller) => reader.end(controller),
+      flush: (controller) => {
+        reader.end(controller);
+        for (const onLineRow of onLineRows) onLineRow.end?.();
+      },
     }),
   );
 };
+
+export const flightRowsEndWatcher = (onEnd: () => void): FlightLineRowHandler =>
+  Object.assign((row: Uint8Array) => row, { end: onEnd });
 
 export type FlightRowPass = (...onLineRows: FlightLineRowHandler[]) => ReadableStream<Uint8Array>;
 
