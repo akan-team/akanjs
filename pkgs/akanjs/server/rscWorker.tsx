@@ -15,6 +15,7 @@ import { RscPagePrompts } from "./rscPagePrompts";
 import { RscPatchPlanner } from "./rscPatchPlanner";
 import { RscRenderFallbacks } from "./rscRenderFallbacks";
 import { RscRenderHandler } from "./rscRenderHandler";
+import { RscRenderManifest } from "./rscRenderManifest";
 import { RscRenderStats } from "./rscRenderStats";
 import { RscResultCaches } from "./rscResultCaches";
 import { RscRouteDocument } from "./rscRouteDocument";
@@ -38,6 +39,7 @@ interface RenderMsg {
   url: string;
   method?: string;
   headers?: Record<string, string>;
+  manifestRevision?: number;
   clientManifest?: ClientManifest;
   prefetch?: boolean;
 }
@@ -122,6 +124,7 @@ export class RscRenderer {
   #metricsTimer: Timer | null = null;
   readonly #stats = new RscRenderStats();
   readonly #caches = new RscResultCaches(this.#logger);
+  readonly #renderManifest = new RscRenderManifest();
   readonly #flights = new RscFlightRenderer(this.#logger, (message) => this.#send(message));
   readonly #staticApps = new RscStaticApp(this.#logger, this.#flights);
   readonly #send: (message: unknown) => void;
@@ -201,10 +204,18 @@ export class RscRenderer {
         this.#logger.verbose("received init message");
         void this.#handleInit(msg);
         return;
-      case "render":
+      case "render": {
         this.#logger.verbose(`received render requestId=${msg.requestId} url=${msg.url} method=${msg.method ?? "GET"}`);
-        void this.#renders.handleRender(msg);
+        const render = this.#renderManifest.admit(msg);
+        if (render) void this.#renders.handleRender(render);
+        else
+          this.#send({
+            type: "error",
+            requestId: msg.requestId,
+            message: `render names client manifest revision ${msg.manifestRevision}, which this worker was not sent`,
+          });
         return;
+      }
       case "cancel":
         this.#logger.verbose(`received cancel requestId=${msg.requestId}`);
         this.#flights.handleCancel(msg.requestId);

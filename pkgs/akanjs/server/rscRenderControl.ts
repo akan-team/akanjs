@@ -6,6 +6,8 @@ export interface RscRenderRequest {
   url: string;
   method?: string;
   headers?: Record<string, string>;
+  /** Names the manifest to render against; the host sends that manifest itself once per worker process. */
+  manifestRevision?: number;
   clientManifest?: ClientManifest;
   prefetch?: boolean;
 }

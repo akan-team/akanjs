@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
+import type { ClientManifest } from "./artifact";
 import { RscHostRequests } from "./rscHostRequests";
 import type { RscWorkerProcess } from "./rscWorkerProcess";
 
@@ -65,5 +66,94 @@ describe("RscHostRequests renders", () => {
     live.failRequests(new AkanError("rscWorkerFailed", "rsc worker exited with code 3 while loading the pages bundle"));
 
     expect(AkanError.is(await inFlight, "rscWorkerFailed")).toBe(true);
+  });
+});
+
+describe("RscHostRequests render manifest", () => {
+  interface SentRender {
+    type: string;
+    manifestRevision?: number;
+    clientManifest?: ClientManifest;
+  }
+  const manifestOf = (id: string): ClientManifest => ({ "ui/Widget.tsx#Widget": { id, chunks: [], name: "Widget" } });
+  const procOf = (sent: SentRender[]) => ({ send: (message: SentRender) => void sent.push(message) });
+  const hostOf = (status: string, proc: { send: (message: SentRender) => void }) => {
+    const worker = { status, proc };
+    const requests = new RscHostRequests(worker as unknown as RscWorkerProcess, new Logger("RscHostRequestsTest"));
+    const render = (clientManifest?: ClientManifest) =>
+      void requests.render(new Request("http://localhost/x"), { clientManifest }).catch(() => undefined);
+    return { worker, requests, render };
+  };
+  const manifestsOf = (sent: SentRender[]) =>
+    sent.map(({ manifestRevision, clientManifest }) => [manifestRevision, clientManifest]);
+
+  test("sends a manifest with the first render that uses it, and only its revision with the renders after", () => {
+    const sent: SentRender[] = [];
+    const { render } = hostOf("ready", procOf(sent));
+    const first = manifestOf("/a.js");
+    const second = manifestOf("/b.js");
+
+    render(first);
+    render(first);
+    render(second);
+    render(second);
+    render(first);
+    render();
+
+    expect(manifestsOf(sent)).toEqual([
+      [1, first],
+      [1, undefined],
+      [2, second],
+      [2, undefined],
+      [3, first],
+      [undefined, undefined],
+    ]);
+  });
+
+  test("sends the manifest again to the process that replaced the worker, a render queued for it included", () => {
+    const toFirst: SentRender[] = [];
+    const toSecond: SentRender[] = [];
+    const { worker, requests, render } = hostOf("ready", procOf(toFirst));
+    const manifest = manifestOf("/a.js");
+    render(manifest);
+    render(manifest);
+
+    worker.status = "restarting";
+    render(manifest);
+    worker.proc = procOf(toSecond);
+    worker.status = "ready";
+    requests.flushQueuedSends();
+    render(manifest);
+
+    expect(manifestsOf(toFirst)).toEqual([
+      [1, manifest],
+      [1, undefined],
+    ]);
+    expect(manifestsOf(toSecond)).toEqual([
+      [2, manifest],
+      [2, undefined],
+    ]);
+  });
+
+  test("sends the manifest again after a send that failed", () => {
+    const sent: SentRender[] = [];
+    const channel = { closed: true };
+    const { render } = hostOf("ready", {
+      send: (message) => {
+        if (channel.closed) throw new Error("channel closed");
+        sent.push(message);
+      },
+    });
+    const manifest = manifestOf("/a.js");
+
+    render(manifest);
+    channel.closed = false;
+    render(manifest);
+    render(manifest);
+
+    expect(manifestsOf(sent)).toEqual([
+      [1, manifest],
+      [1, undefined],
+    ]);
   });
 });
