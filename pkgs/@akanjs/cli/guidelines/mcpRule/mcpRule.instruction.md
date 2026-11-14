@@ -545,22 +545,34 @@ at every event.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
   (`akanjs/ui`), sent over your own transport. It is client input, and a name an endpoint holds is dropped. The run
   never runs one: `approve` is asked, then the run ends `awaiting` with `client: true`. Have the page `run(call)`,
-  append its result — or your own error when no page answers — and resume.
+  append its result — or your own error when no page answers — and resume. The page keeps its own rule beside the
+  run's: `run(call)` asks the member through `host.approve` when a call that changes something follows a
+  `taint: "source"` read. The run's rule below is the wider one, counting every result, the page's included, so with
+  no `approve` a client call is refused once the run has read anything; an `approve` that allows a client call
+  leaves that question to the page.
 - **Asking the member.** `ask: true` lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool.
   A call ends the run `awaiting` with `question: true`; put the question to the member, append
   `{ id, name: "askUser", result }` — or an `error` when they dismiss it — and resume. It never reaches `approve`,
   counts as no tool call, and `untrusted` never sees the answer. A `clientTools` entry by that name is dropped.
-- **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
-  reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
-  wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation
-  with the `destructive` hint above — is refused, and so is every write once tainted. `"defer"` holds the whole batch, emits
-  `awaiting` and ends the run as `"awaiting"`.
+- **Writes after a read.** What a tool returns may be text someone else wrote, so the run is tainted from the first
+  result of a call that ran — an endpoint tool's or a client tool's, an error included — and every later call
+  reaches `approve(call, { tainted, tool })` with `tainted` set. `askUser`'s answer, `openToolkit`'s and a call the
+  run refused without running taint nothing. A batch is judged before it runs, since the model wrote it before
+  reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation with the
+  `destructive` hint above — is refused, and so is every write once tainted: such a run writes only in the batch
+  written before any result, and a later write is answered with the code `writeAfterRead` and a sentence naming the
+  two ways on. Pass `approve` to decide those calls, or pass `untrusted(result)` to say which results carry another
+  party's text: `(result) => !own.has(result.name)` trusts the tools you name, and `() => false` trusts every
+  result, which is right only when nothing the run reads was written by anyone but the app and the member. No
+  endpoint option says whose text a tool returns — `readOnly` says only that it changes nothing — so the predicate
+  is where that is declared. `"defer"` holds the whole batch, emits `awaiting` and ends the run as `"awaiting"`.
 - **Resuming.** Store each message `onMessage` hands over — it is awaited, and a retried run may hand one over twice —
   and call `loop` again with them. Trailing calls nothing answered go to `approve` again before any model call, and
   the taint is rebuilt from the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result
-  whole during the run and clipped on a resume. Store every message whole, marks included. `compacted` says the first
-  `replaced` messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a summary
-  with no marker counts as tainted to a run with `untrusted`. A batch's results
+  whole during the run and clipped on a resume; with no `untrusted` every stored tool result taints, a refusal
+  included, as a resume cannot tell one from a result. Store every message whole, marks included. `compacted` says
+  the first `replaced` messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a
+  summary with no marker counts as tainted. A batch's results
   reach `onMessage` one tool message a call, as each call finishes, so a resume runs only the calls that had not
   finished, even after a crash mid-batch. It cannot tell a call that was running when the run died from one that
   never started: both go to `approve` again and run again, so a write that must not land twice needs an idempotent

@@ -10,7 +10,10 @@ import type {
 
 export type AgentLoopApproval = "allow" | "defer" | { deny: string };
 
-/** `tainted`: a result `untrusted` marked was read earlier in this run, or in the messages it resumed from. */
+/**
+ * `tainted`: a result `untrusted` marked, or with no `untrusted` any result a tool returned, was read earlier in this
+ * run or in the messages it resumed from.
+ */
 export type AgentLoopApprove = (
   call: AgentWireToolCall,
   state: { tainted: boolean; tool: AgentTool },
@@ -91,8 +94,12 @@ export interface AgentLoopOptions {
   /** Asked before every call; without it a `needsConfirm` tool is refused, and so is any write once tainted. */
   approve?: AgentLoopApprove;
   /**
-   * Sees a result whole, before the 20,000-character clip. A resume re-applies it to stored, clipped results and also
-   * reads the `tainted` mark on stored messages, so store each message `onMessage` hands over whole.
+   * Says which results carry text someone else wrote. Left out, every result of a call that ran taints the run, an
+   * error and a client tool's included, so with no `approve` only the batch written before any result may write;
+   * `() => false` trusts them all. `askUser`'s answer, `openToolkit`'s and a call the run refused never taint. Sees a
+   * result whole, before the 20,000-character clip. A resume re-applies it to stored, clipped results, or with none
+   * counts every stored result, a refusal included, and also reads the `tainted` mark on stored messages, so store
+   * each message `onMessage` hands over whole.
    */
   untrusted?: (result: AgentWireToolResult) => boolean;
   meta?: Record<string, string>;

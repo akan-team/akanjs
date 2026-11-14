@@ -121,10 +121,10 @@ export class LoopTranscript {
     return last.toolCalls.filter((call) => !LoopTranscript.#take(answers, call.id));
   }
 
-  //? Security: a summary replaced the results `untrusted` would judge, so an unmarked one counts as tainted to a run that
-  //? judges; a tool message's mark stands for what clipping took from the results it stores.
-  static markedTainted(messages: readonly AgentWireMessage[], judging: boolean): boolean {
-    return messages.some(({ summary, tainted }) => tainted ?? (!!summary && judging));
+  //? Security: a summary replaced the results a run would judge, so an unmarked one counts as tainted; a tool message's
+  //? mark stands for what clipping took from the results it stores.
+  static markedTainted(messages: readonly AgentWireMessage[]): boolean {
+    return messages.some(({ summary, tainted }) => tainted ?? !!summary);
   }
 
   static results(messages: readonly AgentWireMessage[]): AgentWireToolResult[] {

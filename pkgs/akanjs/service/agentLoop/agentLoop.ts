@@ -45,6 +45,8 @@ export class AgentLoop {
   static readonly needsPerson = "Not run: this tool needs a person's confirmation, and none is available to this run.";
   static readonly taintedWrite =
     "Not run: this tool changes data, and this run has read untrusted content, so it may not change anything without a person's approval.";
+  static readonly writeAfterRead =
+    "Not run: this tool changes data, and this run has already read a tool result. agentService.loop was given no `untrusted`, so everything a tool returns counts as untrusted, and no `approve`, so nothing may change data after it. For the app's developer: pass `approve` to decide such calls, or `untrusted` to say which results are not the app's own data. Do not call it again; tell the user what was left undone.";
   static readonly unjudged = "Not run: the approval check returned no verdict.";
   static readonly abandoned =
     "Stopped waiting: this run ended while the tool was still running. It may still finish, so check its effect before calling it again.";
@@ -107,10 +109,10 @@ export class AgentLoop {
 
   async *#drive(): Events<AgentLoopStop> {
     this.#toolkits.restore(this.#messages);
-    this.#tainted = LoopTranscript.markedTainted(this.#messages, !!this.#request.untrusted);
+    this.#tainted = LoopTranscript.markedTainted(this.#messages);
     //? Security: a person's answer is the principal's own input, like a user message, so `untrusted` never sees it.
     for (const result of LoopTranscript.results(this.#messages))
-      if (!this.#askUser.isMeta(result.name)) this.#taintBy(result);
+      if (!this.#askUser.isMeta(result.name) && !this.#toolkits.isMeta(result.name)) this.#taintBy(result);
     const pending = LoopTranscript.pending(this.#messages);
     if (pending.length) {
       if (!(await this.#authorize())) return "unauthorized";
@@ -245,7 +247,7 @@ export class AgentLoop {
   }
 
   async *#compact(forced = false): Events<boolean> {
-    const { compact, model, untrusted } = this.#request;
+    const { compact, model } = this.#request;
     if (!compact) return false;
     const threshold = Math.min(compact.at, this.#overflowAt);
     if (!forced && LoopCompaction.tokensOf(this.#messages) < Math.max(threshold, this.#compactFloor)) return false;
@@ -269,11 +271,7 @@ export class AgentLoop {
       return false;
     }
     if (!text) return false;
-    const summary = LoopCompaction.message(
-      text,
-      this.#tainted || untrusted ? this.#tainted : undefined,
-      this.#toolkits.opened,
-    );
+    const summary = LoopCompaction.message(text, this.#tainted, this.#toolkits.opened);
     this.#messages.splice(0, at, summary);
     const after = LoopCompaction.tokensOf(this.#messages);
     //? Still over after summarizing: one kept message is that large, so wait for another threshold's growth.
@@ -322,7 +320,7 @@ export class AgentLoop {
         const result = LoopToolOutput.clipped(whole);
         results.push(result);
         //? Security: clipping turns a large object into a string, which a predicate reading its fields no longer matches.
-        if (!meta) this.#taintBy(whole);
+        if (!meta) this.#taintBy(whole, verdict === "allow");
         await this.#record(results);
         yield { type: "toolResult", result, round };
       }
@@ -364,8 +362,16 @@ export class AgentLoop {
     const { approve } = this.#request;
     if (approve) return AgentLoop.#judged(await this.#untilHalted(approve(call, { tainted: this.#tainted, tool })));
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };
+    if (this.#tainted && !tool.readOnly && !this.#request.untrusted) return this.#writeAfterRead(call);
     if (this.#tainted && !tool.readOnly) return { deny: AgentLoop.taintedWrite };
     return "allow";
+  }
+
+  #writeAfterRead({ name }: AgentWireToolCall): Verdict {
+    AgentLoop.#logger.warn(
+      `agent loop refused ${name}: it changes data after a read, and the run has neither \`approve\` nor \`untrusted\``,
+    );
+    return { deny: AgentLoop.writeAfterRead, code: "writeAfterRead" };
   }
 
   //? Fails closed: an approver returning anything else, `true` from an older contract included, runs nothing.
@@ -403,10 +409,16 @@ export class AgentLoop {
     });
   }
 
-  #taintBy(result: AgentWireToolResult) {
+  #taintBy(result: AgentWireToolResult, ran = true) {
     if (this.#tainted) return;
+    const { untrusted } = this.#request;
+    //? Security: fails closed. Nothing says whose text a tool returned, so whatever a call that ran returned is untrusted.
+    if (!untrusted) {
+      this.#tainted = ran;
+      return;
+    }
     try {
-      this.#tainted = !!this.#request.untrusted?.(result);
+      this.#tainted = !!untrusted(result);
     } catch (error) {
       //? Security: fails closed, and before the batch's `finally` stores this result with its mark.
       this.#tainted = true;

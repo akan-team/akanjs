@@ -122,6 +122,7 @@ describe("AgentLoop client tools", () => {
     expect(stored.at(-1)).toEqual({
       role: "tool",
       toolResults: [{ id: "c1", name: "readPage", result: "readPage:ok" }],
+      tainted: true,
     });
   });
 
