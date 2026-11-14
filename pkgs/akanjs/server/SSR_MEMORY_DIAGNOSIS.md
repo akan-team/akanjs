@@ -29,7 +29,8 @@ replica's own; the worker's is `rscWorkerRssBytes`.** Sum them for what the pod 
 Key fields:
 
 - `rssBytes`, `heapUsedBytes`, `jscHeapSizeBytes`: the replica. Distinguish RSS-only native retention from JS
-  heap retention.
+  heap retention. The `jsc…` fields walk the whole heap, so they appear only under `AKAN_MEMORY_LOG=1` or
+  `AKAN_MEMORY_GC_ON_REPORT=1`.
 - `rscWorkerRssBytes`, `rscWorkerHeapUsedBytes`, `rscWorkerJscHeapSizeBytes`, `rscWorkerJscExtraMemorySizeBytes`:
   the same for the worker. `jscExtra` is off-heap, mostly typed-array backing stores.
 - `rscRenderCount`, `rscInFlightRenderCount`: detect request lifecycle leaks.

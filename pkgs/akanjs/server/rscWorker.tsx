@@ -8,8 +8,10 @@ import type { TraceParentRef } from "../signal/requestTrace";
 import { runTraced, SignalTrace } from "../signal/trace";
 import type { ClientManifest } from "./artifact";
 import { LogForwarder } from "./logging/logForwarder";
+import { metricRegistry } from "./metrics/metricRegistry";
 import { OtlpExporter } from "./otlp/otlpExporter";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
+import { RouteCacheTally } from "./routeCacheTally";
 import { type PagesContext, RouteTreeBuilder } from "./routeTreeBuilder";
 import { RscDocumentHead } from "./rscDocumentHead";
 import { RscFlightRenderer } from "./rscFlightRenderer";
@@ -432,6 +434,8 @@ export class RscRenderer {
       rscResultCacheHits: this.#caches.resultCacheHits,
       rscResultCacheMisses: this.#caches.resultCacheMisses,
       rscResultCacheBypass: this.#caches.resultCacheBypass,
+      startedAt: Math.round(performance.timeOrigin),
+      metricFamilies: [...metricRegistry.snapshot(), RouteCacheTally.family("rsc")],
     });
     this.#send({ type: "metrics", metrics });
   }

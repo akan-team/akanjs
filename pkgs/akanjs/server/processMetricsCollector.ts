@@ -148,7 +148,9 @@ export class ProcessMetricsCollector {
     ].join(" ");
   }
 
+  //? `heapStats()` walks every object, 46 ms with the loop stopped on a 150 MiB heap, so only a memory diagnosis pays it.
   static async #collectJscHeapStats(): Promise<BunJscHeapStats | null> {
+    if (process.env.AKAN_MEMORY_LOG !== "1" && process.env.AKAN_MEMORY_GC_ON_REPORT !== "1") return null;
     try {
       const mod = (await import("bun:jsc")) as { heapStats?: () => BunJscHeapStats };
       return mod.heapStats?.() ?? null;
