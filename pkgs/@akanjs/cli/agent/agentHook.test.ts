@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { createTempPackage, writeJson, writeText } from "@akanjs/devkit/test/testHelpers";
@@ -64,6 +64,29 @@ describe("AgentHook", () => {
     expect(denied.block).toBe(true);
     expect(denied.message).toStartWith("apps/demo/lib/cnst.ts is generated");
   });
+
+  test("skips verify without blocking when the CLI's major.minor differs from the workspace's akanjs", async () => {
+    const { root, workspace } = await createTempPackage("@sample/tool");
+    roots.push(root);
+    await writeJson(path.join(root, "node_modules/akanjs/package.json"), { name: "akanjs", version: "1.0.0" });
+    const file = path.join(root, "pkgs/@sample/tool/index.ts");
+    await writeText(file, "export const ok = 1\n");
+    const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const hook = new AgentHook(workspace, { cliVersion: "3.2.0" });
+      for (const outcome of [
+        await hook.run("post-edit", { session_id: "s1", tool_input: { file_path: file } }),
+        await hook.run("stop", { session_id: "s1" }),
+      ]) {
+        expect(outcome.block).toBe(false);
+        expect(outcome.message).toContain("this workspace has akanjs 1.0.0, another major.minor");
+      }
+      expect(String(stderr.mock.calls[0]?.[0])).toContain("AKAN_ALLOW_VERSION_MISMATCH=1");
+    } finally {
+      stderr.mockRestore();
+    }
+    expect(await Bun.file(file).text()).toBe("export const ok = 1\n");
+  }, 60_000);
 
   test("lints each edit, then verifies what the session edited once it tries to stop", async () => {
     const { root, workspace, file } = await brokenPackage();
