@@ -132,6 +132,34 @@ export const pages: PagesContext = {
       )
       .render(() => null),
   }),
+  "./active.tsx": async () => ({
+    default: page()
+      .app(
+        "showActive",
+        "Show the active note.",
+        () => (
+          <article>
+            <h1>Active</h1>
+            <Raw
+              html={[
+                '<p onclick="go()" ONMOUSEOVER="go()" title="kept title">active text</p>',
+                '<iframe srcdoc="<p>inner</p>" title="frame"></iframe>',
+                '<object data="/movie.swf"></object><embed src="/movie.swf">',
+                '<meta http-equiv="refresh" content="0;url=/away">',
+                '<a href=" &#x6A;ava\tscript:go()">entity link</a>',
+                '<a href="JAVASCRIPT:go()">upper link</a>',
+                '<a href="\u0001javascript:go()">control link</a>',
+                '<form action="javascript:go()"><button formaction="javascript:go()">send</button></form>',
+                '<svg><a xlink:href="javascript:go()"><text>svg link</text></a></svg>',
+                '<img src="javascript:go()" alt="pic"><a href="/kept">plain link</a>',
+              ].join("")}
+            />
+          </article>
+        ),
+        { static: true },
+      )
+      .render(() => null),
+  }),
   "./slow.tsx": async () => ({
     default: page()
       .app("showHung", "Show a board whose load never ends.", () => new Promise<ReactNode>(() => undefined), {

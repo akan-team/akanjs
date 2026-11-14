@@ -117,6 +117,20 @@ describe("a static app drawn as HTML", () => {
     });
   }, 20_000);
 
+  test("drops every handler, embedded document and script link the app wrote, and keeps its text", async () => {
+    await withStaticAppWorker(async (draw) => {
+      const { html } = await draw("showActive");
+      expect(html).toContain("active text");
+      expect(html).toContain('title="kept title"');
+      expect(html).toContain("entity link");
+      expect(html).toContain("svg link");
+      expect(html).toContain('<a href="/kept">plain link</a>');
+      expect(html).toContain('<iframe title="frame">');
+      expect(html).not.toMatch(/\son[a-z]+=/i);
+      expect(html).not.toMatch(/srcdoc|<object|<embed|http-equiv|javascript|&#x6A;ava/i);
+    });
+  }, 20_000);
+
   test("is refused once its deadline passes, whether the load or a component never ends", async () => {
     await withStaticAppWorker(async (draw) => {
       for (const name of ["showHung", "showUnsettled"]) {

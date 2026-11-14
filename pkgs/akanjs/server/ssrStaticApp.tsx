@@ -23,6 +23,9 @@ export interface SsrStaticAppInput {
 export class SsrStaticApp {
   static readonly maxBytes = 1024 * 1024;
   static readonly deadlineMs = 10_000;
+  static readonly #scriptElements =
+    'script, link[rel="modulepreload"], link[as="script"], object, embed, meta[http-equiv]';
+  static readonly #urlAttributes = new Set(["href", "src", "action", "formaction", "xlink:href"]);
   static readonly #mediaTag = /<(img|svg|picture|video|audio|canvas|iframe|input|select|textarea|object|embed)\b/i;
   readonly #logger: Logger;
 
@@ -88,16 +91,61 @@ export class SsrStaticApp {
     );
   }
 
-  //? Security: a host shows this document as it is, so it carries no script, React's own inline ones included.
+  //? Security: a host shows this document as it is, in a sandbox it chooses, so it carries no script, React's own inline
+  //? ones included, and no handler, embedded document, refresh or `javascript:` link that would run one.
   static #scriptless(html: string): string {
+    return SsrStaticApp.#scriptParts(html, (element, attribute) =>
+      attribute === null ? element.remove() : element.removeAttribute(attribute),
+    );
+  }
+
+  static #scriptParts(
+    html: string,
+    found: (element: HTMLRewriterTypes.Element, attribute: string | null) => void,
+  ): string {
     return new HTMLRewriter()
-      .on('script, link[rel="modulepreload"], link[as="script"]', { element: (element) => void element.remove() })
+      .on(SsrStaticApp.#scriptElements, { element: (element) => found(element, null) })
+      .on("*", {
+        element: (element) => {
+          for (const name of SsrStaticApp.#scriptAttributes(element)) found(element, name);
+        },
+      })
       .transform(html);
+  }
+
+  static #scriptAttributes(element: HTMLRewriterTypes.Element): string[] {
+    const names: string[] = [];
+    for (const [name, value] of element.attributes)
+      if (
+        name.startsWith("on") ||
+        name === "srcdoc" ||
+        (SsrStaticApp.#urlAttributes.has(name) && SsrStaticApp.#runsScript(value))
+      )
+        names.push(name);
+    return names;
+  }
+
+  //? The rewriter hands an attribute over still entity-encoded, and a browser drops control characters from a URL; a
+  //? scheme never holds `&`, so one a named reference could still spell is refused rather than decoded.
+  static #runsScript(value: string): boolean {
+    const url = value
+      .replace(/&#(x[0-9a-f]+|\d+);?/gi, (_, code: string) => {
+        const point = code[0] === "x" || code[0] === "X" ? Number.parseInt(code.slice(1), 16) : Number(code);
+        return point <= 0x10ffff ? String.fromCodePoint(point) : "";
+      })
+      .replace(/\p{Cc}/gu, "")
+      .trim()
+      .toLowerCase();
+    return url.startsWith("javascript:") || url.slice(0, url.search(/[:/?#]|$/)).includes("&");
   }
 
   //? React writes `<!--$?-->` for a boundary still pending and `<!--$!-->` for one left to the client: a fallback.
   static #refusalOf(html: string): string | null {
-    if (/<script/i.test(html)) return "a script survived its stripping";
+    let survived = /<script/i.test(html);
+    SsrStaticApp.#scriptParts(html, () => {
+      survived = true;
+    });
+    if (survived) return "a script survived its stripping";
     if (html.includes("<!--$?-->") || html.includes("<!--$!-->")) return "a Suspense boundary did not resolve";
     const body = html.replace(/^[\s\S]*?<body[^>]*>/i, "").replace(/<\/body>[\s\S]*$/i, "");
     if (!SsrStaticApp.#hasText(body) && !SsrStaticApp.#mediaTag.test(body)) return "its body is empty";
