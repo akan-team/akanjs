@@ -19,6 +19,11 @@ export declare class AgentAbort {
 }
 
 export declare class AgentBridge {
+    static readonly routeKeys: readonly [
+        "pathname",
+        "params",
+        "searchParams"
+    ];
     readonly refusals: AgentRefusal[];
     static of(): AgentBridge;
     constructor(instance: StoreInstance);
@@ -43,6 +48,7 @@ export interface AgentConfirmPolicy {
 }
 
 export declare class AgentContext {
+    static readonly withheldNote = "Free text is left out. Call readState(key) with a key of `withheld` to read it.";
     static of(): AgentContext;
     constructor(instance: StoreInstance, bridge: AgentBridge);
     blocks(surface: SurfaceView, view?: string[]): ContextBlock[];
