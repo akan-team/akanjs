@@ -15,6 +15,7 @@ import {
 } from "./cachePolicy";
 import { type EncodedBody, encodeBody } from "./contentEncoding";
 import { canonicalRouteCacheUrl, type RouteCacheQueryForm } from "./routeCacheQuery";
+import { RouteCacheTally } from "./routeCacheTally";
 import type { SsrLateControl } from "./ssrTypes";
 import { WebRouteContext } from "./webRouteContext";
 
@@ -144,6 +145,7 @@ export class HtmlResultCache {
     //? it was rendered with, and a tab that reloads onto the current pair would reload again until the entry expired.
     if (this.#devRegistry) {
       this.#bypass += 1;
+      RouteCacheTally.bypass("html", "dev-registry");
       return { entry: null, reason: "dev-registry" };
     }
     const theme = WebRouteContext.cookieValue(req, "theme");
@@ -164,6 +166,7 @@ export class HtmlResultCache {
     });
     if (!decision.entry) {
       this.#bypass += 1;
+      RouteCacheTally.bypass("html", decision.reason);
       return decision;
     }
     return { entry: { ...decision.entry, exactKey: createRouteCacheKey({ request: req, url, theme, variant }) } };
@@ -171,6 +174,11 @@ export class HtmlResultCache {
 
   get(entry: HtmlCacheEntry): EncodedBody | null {
     const cached = this.#lookup(entry);
+    RouteCacheTally.lookup(
+      "html",
+      cached !== null,
+      entry.key === entry.exactKey ? "canonical-query" : "rewritten-query",
+    );
     if (!cached) {
       this.#misses += 1;
       return null;

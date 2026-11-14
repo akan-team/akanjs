@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Logger } from "akanjs/common";
+import { RouteCacheTally } from "./routeCacheTally";
 import { RscResultCaches } from "./rscResultCaches";
 import { type CachedRscResult, joinRscChunks } from "./rscWorkerCache";
 
@@ -68,6 +69,44 @@ describe("RscResultCaches", () => {
       expect(cache.byteSize).toBe(4);
     } finally {
       cache.dispose();
+      caches.patchResultCache.dispose();
+    }
+  });
+
+  test("tallies its lookups by the request's query and its bypasses by why the request skipped the cache", () => {
+    const caches = cachesWith({});
+    const saved = { enabled: process.env.AKAN_RSC_RESULT_CACHE, paths: process.env.AKAN_RSC_RESULT_CACHE_PATHS };
+    process.env.AKAN_RSC_RESULT_CACHE = "1";
+    process.env.AKAN_RSC_RESULT_CACHE_PATHS = "/en";
+    const entryOf = (href: string, headers?: Record<string, string>) =>
+      caches.getResultCacheEntry(new Request(href, { headers }), new URL(href));
+    try {
+      const before = RouteCacheTally.snapshot().rsc;
+      const { entry } = entryOf("http://localhost/en/list?a=1");
+      if (!entry) throw new Error("expected a cache entry");
+      caches.getCached(caches.resultCache, entry.key, "canonical-query");
+      caches.store("full", caches.resultCache, entry.key, resultOf("/en/list", [new Uint8Array(1)]), 30);
+      caches.getCached(caches.resultCache, entry.key, "rewritten-query");
+      entryOf("http://localhost/en/list?a=1", { cookie: "jwt=1" });
+      entryOf("http://localhost/docs");
+      caches.unmatchedEntry();
+      const after = RouteCacheTally.snapshot().rsc;
+
+      expect(after.miss["canonical-query"] - before.miss["canonical-query"]).toBe(1);
+      expect(after.hit["rewritten-query"] - before.hit["rewritten-query"]).toBe(1);
+      expect(after.bypass["request-not-public"] - before.bypass["request-not-public"]).toBe(1);
+      expect(after.bypass["path-excluded"] - before.bypass["path-excluded"]).toBe(1);
+      expect(after.bypass["no-route"] - before.bypass["no-route"]).toBe(1);
+      expect(caches.resultCacheBypass).toBe(2);
+    } finally {
+      for (const [key, value] of [
+        ["AKAN_RSC_RESULT_CACHE", saved.enabled],
+        ["AKAN_RSC_RESULT_CACHE_PATHS", saved.paths],
+      ] as const) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      caches.resultCache.dispose();
       caches.patchResultCache.dispose();
     }
   });

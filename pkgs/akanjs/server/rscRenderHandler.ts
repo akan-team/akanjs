@@ -17,6 +17,7 @@ import {
   shouldStoreRouteCache,
 } from "./cachePolicy";
 import { canonicalRouteCacheUrl, type RouteCacheQueryForm } from "./routeCacheQuery";
+import type { RouteCacheLookupReason } from "./routeCacheTally";
 import { type AdmittedNotFoundFallback, RouteElementComposer } from "./routeElementComposer";
 import { RouteShellGate } from "./routeShellGate";
 import {
@@ -63,6 +64,7 @@ interface RscRenderPlan {
   searchParams: Record<string, string | string[]>;
   renderUrl: URL;
   queryForm: RouteCacheQueryForm;
+  lookupReason: RouteCacheLookupReason;
   notFoundFallback: AdmittedNotFoundFallback | null;
   admitted: boolean;
   cacheEntry: RouteCacheEntry | null;
@@ -273,9 +275,10 @@ export class RscRenderHandler {
     }
     const admitted = verdict === "admitted";
     const queryForm = match ? await RouteElementComposer.routeCacheQueryForm(match.pathRoute) : "exact";
-    const renderUrl = queryForm === "canonical" ? canonicalRouteCacheUrl(urlObj) : urlObj;
+    const canonicalUrl = canonicalRouteCacheUrl(urlObj);
+    const renderUrl = queryForm === "canonical" ? canonicalUrl : urlObj;
     if (queryForm === "canonical") setRequestRenderSearch(renderUrl.search);
-    const cacheDecision = match ? this.#caches.getResultCacheEntry(request, renderUrl) : { entry: null };
+    const cacheDecision = match ? this.#caches.getResultCacheEntry(request, renderUrl) : this.#caches.unmatchedEntry();
     const cacheEntry = cacheDecision.entry;
     const {
       targetRouterState,
@@ -302,6 +305,7 @@ export class RscRenderHandler {
       searchParams,
       renderUrl,
       queryForm,
+      lookupReason: canonicalUrl === urlObj ? "canonical-query" : "rewritten-query",
       notFoundFallback,
       admitted,
       cacheEntry,
@@ -313,12 +317,10 @@ export class RscRenderHandler {
     };
   }
 
-  #replayFromCache(
-    { requestId, routeId, startedAt }: RscRenderTarget,
-    { cacheEntry, targetRouterState, safePatchDecision, admittedHead, patchCacheEntry, createTraceBase }: RscRenderPlan,
-  ): boolean {
+  #replayFromCache({ requestId, routeId, startedAt }: RscRenderTarget, plan: RscRenderPlan): boolean {
+    const { cacheEntry, targetRouterState, safePatchDecision, admittedHead, patchCacheEntry, createTraceBase } = plan;
     const cachedPatch = patchCacheEntry
-      ? this.#caches.getCached(this.#caches.patchResultCache, patchCacheEntry.key)
+      ? this.#caches.getCached(this.#caches.patchResultCache, patchCacheEntry.key, plan.lookupReason)
       : null;
     if (
       cachedPatch?.patch &&
@@ -348,7 +350,7 @@ export class RscRenderHandler {
     }
     const cached =
       shouldUseRscWorkerFullResultCache({ cacheEntry, patchCacheEntry }) && cacheEntry
-        ? this.#caches.getCached(this.#caches.resultCache, cacheEntry.key)
+        ? this.#caches.getCached(this.#caches.resultCache, cacheEntry.key, plan.lookupReason)
         : null;
     if (!cached) return false;
     const traceBase = createTraceBase(

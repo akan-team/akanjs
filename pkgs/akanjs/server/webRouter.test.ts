@@ -21,6 +21,7 @@ import {
   DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES,
   resolveHtmlRouteCacheStoreTtl,
 } from "./htmlResultCache";
+import { RouteCacheTally } from "./routeCacheTally";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_IMPORT_MAP_HEADER,
@@ -2110,6 +2111,31 @@ describe("WebRouter full SSR cache orchestration", () => {
         expect(await cacheOf("/docs?b=2&a=1")).toBe("HIT");
         expect(await cacheOf("/docs?a=1&b=2")).toBe("HIT");
         expect(fakeWorker.renderCalls).toHaveLength(3);
+      },
+      { worker },
+    );
+  });
+
+  test("tallies the HTML cache's hits and misses by the request's query and its bypasses by reason", async () => {
+    const worker = createFakeRscWorker(() => ({
+      cacheState: { cacheable: true, revalidate: 5, queryForm: "canonical" },
+    }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const before = RouteCacheTally.snapshot().html;
+        for (const [href, headers] of [
+          ["/docs?b=2&a=1", {}],
+          ["/docs?a=1&b=2", {}],
+          ["/docs?a=1&b=2&utm_source=news", {}],
+          ["/docs?a=1&b=3", { cookie: "jwt=1" }],
+        ] as const)
+          await (await fullSsr(new Request(`https://example.test${href}`, { headers }))).text();
+        const after = RouteCacheTally.snapshot().html;
+
+        expect(after.miss["rewritten-query"] - before.miss["rewritten-query"]).toBe(1);
+        expect(after.hit["canonical-query"] - before.hit["canonical-query"]).toBe(1);
+        expect(after.hit["rewritten-query"] - before.hit["rewritten-query"]).toBe(1);
+        expect(after.bypass["request-not-public"] - before.bypass["request-not-public"]).toBe(1);
       },
       { worker },
     );
