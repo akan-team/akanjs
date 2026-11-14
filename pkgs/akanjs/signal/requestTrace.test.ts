@@ -82,9 +82,9 @@ describe("RequestTrace", () => {
     expect(ids[0]).toMatch(hex32);
     expect(ids).not.toContain(inbound);
     expect(ids[0]).not.toBe(ids[1]);
-    expect(logs.entries.map(({ record }) => [record.traceId, record.attrs?.link])).toEqual([
-      [ids[0] ?? "", inbound],
-      [ids[1] ?? "", inbound],
+    expect(logs.entries.map(({ record }) => [record.traceId, record.link, record.attrs?.link])).toEqual([
+      [ids[0] ?? "", inbound, inbound],
+      [ids[1] ?? "", inbound, inbound],
     ]);
   });
 

@@ -45,12 +45,16 @@ export class LogQueryMatcher {
     )
       return false;
     if (q.origin?.length && (record.origin === null || !q.origin.includes(record.origin))) return false;
-    if (this.#traceId !== undefined && record.traceId !== this.#traceId && record.link !== this.#traceId) return false;
+    if (this.#traceId !== undefined && !LogQueryMatcher.#idsOf(record).includes(this.#traceId)) return false;
     if (q.child?.length && (record.replicaIdx === null || !q.child.includes(record.replicaIdx))) return false;
     if (q.role?.length && (record.role === null || !q.role.includes(record.role))) return false;
     if (q.stream?.length && !q.stream.includes(record.stream)) return false;
     if (q.since !== undefined && record.at < q.since) return false;
     return true;
+  }
+
+  static #idsOf(record: LogRecord): unknown[] {
+    return [record.traceId, record.link, record.attrs?.link];
   }
 
   /** `*` is the only wildcard (`mutation:*`, `*:userList`); everything else is literal. */

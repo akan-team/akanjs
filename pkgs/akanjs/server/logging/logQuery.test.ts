@@ -25,6 +25,7 @@ describe("LogQueryMatcher trace", () => {
     expect(matches({ traceId: "f".repeat(32) }, job)).toBe(true);
     expect(matches({ traceId: stored }, { traceId: "f".repeat(32) })).toBe(false);
     expect(matches({ traceId: "e".repeat(32) }, job)).toBe(false);
+    expect(matches({ traceId: stored }, { traceId: "f".repeat(32), attrs: { ms: 1, link: stored } })).toBe(true);
   });
 
   test("reads the searched id as an inbound one is read: a UUID in any case finds its 32-digit form", () => {
