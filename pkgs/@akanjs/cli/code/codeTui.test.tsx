@@ -132,18 +132,21 @@ class FakeAgent {
 
 const keys = { backspace: String.fromCharCode(127) };
 
-// Ink moves the cursor "up N from the line after the last one", so the row is read from the frame of the same write.
+// Ink writes a cursor move ("up N from the line after the last") alone when no text changed, so the latest move wins.
 const caretOf = (stdout: FakeStdout) => {
   const suffix = new RegExp(`(?:${esc}\\[(\\d+)A)?${esc}\\[(\\d+)G${esc}\\[\\?25h`);
+  let move: RegExpExecArray | undefined;
   for (let at = stdout.frames.length - 1; at >= 0; at -= 1) {
     const frame = stdout.frames[at] ?? "";
     const match = suffix.exec(frame);
+    if (!match) continue;
+    move ??= match;
     const text = frame.replace(csi, "");
-    if (!match || !text.trim()) continue;
+    if (!text.trim()) continue;
     const lines = text.split("\n");
     return {
-      row: (text.endsWith("\n") ? lines.length - 1 : lines.length) - Number(match[1] ?? 0),
-      column: Number(match[2] ?? 1) - 1,
+      row: (text.endsWith("\n") ? lines.length - 1 : lines.length) - Number(move[1] ?? 0),
+      column: Number(move[2] ?? 1) - 1,
       lines,
     };
   }
