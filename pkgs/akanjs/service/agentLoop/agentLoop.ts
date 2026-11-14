@@ -20,7 +20,7 @@ import type {
   AgentLoopStop,
 } from "./agentLoopTypes";
 import { DeltaStream } from "./deltaStream";
-import { LoopAnswer } from "./loopAnswer";
+import { LoopAnswer, type LoopPark } from "./loopAnswer";
 import { LoopAsk } from "./loopAsk";
 import { LoopCompaction } from "./loopCompaction";
 import { LoopRemotes } from "./loopRemotes";
@@ -380,17 +380,20 @@ export class AgentLoop {
 
   //? Security: stored before the calls it left are judged. A page's answer taints whatever `untrusted` makes of it: a
   //? client tool may carry the name of an endpoint this run does not list, which a predicate reading names would trust.
+  //? A person's reply, and their refusal to connect a remote, are their own input.
   async *#accept(answer: AgentLoopCallAnswer): Events<void> {
     const whole = LoopAnswer.resultOf(answer, this.#messages, (call) => this.#parks(call));
     const result = LoopToolOutput.clipped(whole);
-    if (!this.#askUser.isMeta(whole.name)) this.#tainted = true;
+    if (this.#clientNames.has(whole.name)) this.#tainted = true;
     await this.#record([result]);
     yield { type: "toolResult", result, round: this.#round };
   }
 
-  #parks(call: AgentWireToolCall): boolean {
-    if (call.argsError) return false;
-    return this.#askUser.isMeta(call.name) ? !LoopAsk.refusalOf(call) : this.#clientNames.has(call.name);
+  #parks(call: AgentWireToolCall): LoopPark | null {
+    if (call.argsError) return null;
+    if (this.#toolkits.externalOf(call)) return "refusal";
+    const parked = this.#askUser.isMeta(call.name) ? !LoopAsk.refusalOf(call) : this.#clientNames.has(call.name);
+    return parked ? "answer" : null;
   }
 
   //? Per call, not per batch: a run killed mid-batch reaches no `finally`, and its resume would run a landed write again.

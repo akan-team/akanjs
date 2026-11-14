@@ -21,7 +21,10 @@ export type AgentLoopApprove = (
   state: { tainted: boolean; tool: AgentTool; client?: true; remote?: string },
 ) => PromiseOrObject<AgentLoopApproval>;
 
-/** What answers a parked call: a page's `run(call)` result or the member's reply. Its `name` is the call's, never sent. */
+/**
+ * What answers a parked call: a page's `run(call)` result, the member's reply, or their refusal to connect a remote.
+ * Its `name` is the call's, never sent.
+ */
 export type AgentLoopCallAnswer = Omit<AgentWireToolResult, "name">;
 
 /** Where a remote's result can be drawn for the person: its screen on that server. Never sent to the model. */
@@ -115,10 +118,10 @@ export interface AgentLoopOptions {
   /**
    * Other servers, each a toolkit the model opens with `openToolkit({ name })`; none is listed or contacted before.
    * Opening one the account has no live connection to ends the run as `awaiting` with `connect` naming it: connect
-   * and resume, or append an `error` for that call when the person declines. Security: what a remote lists and returns
-   * is another party's text, so opening one taints the run, and a call's arguments leave for that server, so a
-   * request with `remotes` and no `approve` is refused. `approve` hears a tool the remote does not call read-only as
-   * a `needsConfirm` one. A `clientTools` entry named `<remote>.…` is dropped.
+   * and resume with the stored messages, or with `answer: { id, error }` for that call when the person declines.
+   * Security: what a remote lists and returns is another party's text, so opening one taints the run, and a call's
+   * arguments leave for that server, so a request with `remotes` and no `approve` is refused. `approve` hears a tool
+   * the remote does not call read-only as a `needsConfirm` one. A `clientTools` entry named `<remote>.…` is dropped.
    */
   remotes?: readonly AgentLoopRemote[];
   /**
@@ -146,7 +149,9 @@ export interface AgentLoopOptions {
    * failure code, and of its `attachments` the first four carrying `data` or `text` are kept, never a `url`. Pass it
    * only after an `awaiting` event with `client` or `question` named that call: `approve` is not asked about an
    * answered call, as nothing runs here, so one given for a call `approve` deferred, or for one a run died before
-   * parking on, is stored as it stands.
+   * parking on, is stored as it stands. A call parked with `connect` takes only the person's refusal, `{ id, error }`,
+   * which taints nothing: with a `result`, or for an `openToolkit` call that names no remote, it is refused the same
+   * way, as a connected remote is opened by resuming without `answer`.
    */
   answer?: AgentLoopCallAnswer;
   /**

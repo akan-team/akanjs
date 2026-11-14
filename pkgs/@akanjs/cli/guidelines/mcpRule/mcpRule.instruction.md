@@ -584,7 +584,8 @@ at every event.
   are kept, never a `url`. An endpoint tool's call is answered only by running it: an `answer` naming one, a call
   the run has not reached, or a call already answered ends the run with `agent.error.answerRefused` before anything
   runs, and a resume without it carries on. Only `askUser`'s answer is the member's own word; a client tool's always
-  taints the run, by the rule below.
+  taints the run, by the rule below. A call parked with `connect` takes one answer only, the user's refusal as
+  `{ id, error }`; see "Calling Another Server".
 - **Other servers.** `remotes` takes other MCP servers, each a toolkit named after it: none is listed or contacted
   until the model opens it, and its tools then read `<name>.<tool>`. See "Calling Another Server" below.
 - **Writes after a read.** What a tool returns may be text someone else wrote, so the run is tainted from the first
@@ -663,8 +664,10 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
 - **Connecting happens in the chat.** Opening a remote the account has no connection to ends the run `awaiting` with
   `connect: "<name>"` and leaves the call unanswered. Render `<Remote.Util.Connect url={…} onConnected={resume} />`:
   it opens the other server's sign-in in a window and calls back once `page/remote/callback` finished the exchange.
-  Resume with the stored messages and the run opens the toolkit itself. When the user declines, append
-  `{ id, name: "openToolkit", error }` for that call and resume.
+  Resume with the stored messages and no `answer`, and the run opens the toolkit itself. When the user declines,
+  resume with `answer: { id, error }` for that call: the run stores your sentence as the open's result and goes on.
+  It is the user's own word, so it taints nothing. An `answer` carrying a `result` for an open is refused with
+  `agent.error.answerRefused`, as only the server sees whether a connection exists.
 - **What a remote lists and returns is another party's text.** Opening a remote taints the run, whatever `untrusted`
   says: its tools' names, descriptions and schemas reach the model with the open, and so does the error of an open
   that failed. An open that only asks the user to connect taints nothing. A call's arguments leave for that server,

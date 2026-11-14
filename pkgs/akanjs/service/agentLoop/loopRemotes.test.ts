@@ -155,17 +155,62 @@ describe("AgentLoop remotes", () => {
     expect(stopOf(resumed)).toBe("end");
   });
 
-  test("runs on from the error appended when the person declines to connect", async () => {
-    const { remote } = remoteOf("shop", { tools: null });
+  test("runs on from the refusal a caller resumes with when the person declines to connect", async () => {
+    const { remote, state } = remoteOf("shop", { tools: null });
     const { port, requests } = harness([saying("I cannot reach the shop.")]);
-    const messages: AgentWireMessage[] = [
+    const parked: AgentWireMessage[] = [
       { role: "user", text: "Refund the last order." },
       { role: "assistant", toolCalls: [callOf("c1", "openToolkit", { name: "shop" })] },
-      { role: "tool", toolResults: [{ id: "c1", name: "openToolkit", error: "The user did not connect shop." }] },
     ];
-    const events = await drain(port, ask([remote], { messages }));
+    const answer = { id: "c1", error: "The user did not connect shop." };
+    const { messages, request } = stored(ask([remote], { messages: parked, answer }));
+    const events = await drain(port, request);
+    expect(messages[2]).toEqual({ role: "tool", toolResults: [{ ...answer, name: "openToolkit" }] });
+    expect(resultsOf(events)).toEqual([{ ...answer, name: "openToolkit" }]);
+    expect(state.lists).toBe(0);
     expect(stopOf(events)).toBe("end");
     expect(toolOf(requests[0], "openToolkit")).toBeDefined();
+  });
+
+  test("takes only the person's refusal for a call parked on a connection, and only for that call", async () => {
+    const open = callOf("c1", "openToolkit", { name: "shop" });
+    const parkedOn = (...calls: AgentWireToolCall[]): AgentWireMessage[] => [
+      { role: "user", text: "Refund the last order." },
+      { role: "assistant", toolCalls: calls },
+    ];
+    const toolkits = { notes: { description: "Notes.", tools: ["noteList"] } };
+    const error = "The user did not connect shop.";
+    const opened = { opened: "shop", tools: ["shop.refundOrder"] };
+    const refused: [AgentWireMessage[], AgentLoopRequest["answer"]][] = [
+      [parkedOn(open), { id: "c1", result: opened }],
+      [parkedOn(open), { id: "c1", result: opened, error }],
+      [parkedOn(open), { id: "c1" }],
+      [parkedOn(callOf("c0", "createNote"), open), { id: "c1", error }],
+      [parkedOn(callOf("c1", "openToolkit", { name: "notes" })), { id: "c1", error }],
+    ];
+    for (const [parked, answer] of refused) {
+      const { remote, state } = remoteOf("shop", { tools: null });
+      const { port, requests, called } = harness([saying("never")]);
+      const { messages, request } = stored(ask([remote], { messages: parked, answer, toolkits }));
+      const events = await drain(port, request);
+      expect(events.map((event) => event.type)).toEqual(["error"]);
+      expect(Err.is((events[0] as Extract<AgentLoopEvent, { type: "error" }>).error, "agent.error.answerRefused")).toBe(
+        true,
+      );
+      expect([messages.length, requests.length, called.length, state.lists]).toEqual([2, 0, 0, 0]);
+    }
+
+    const { remote } = remoteOf("shop", { tools: null });
+    const { port } = harness([saying("I cannot reach the shop.")]);
+    const laden = {
+      id: "c1",
+      error,
+      changes: [{ path: "connections", value: ["shop"] }],
+      attachments: [{ name: "tools.txt", mimeType: "text/plain", text: "shop.refundOrder" }],
+    };
+    const { messages, request } = stored(ask([remote], { messages: parkedOn(open), answer: laden }));
+    await drain(port, request);
+    expect(messages[2]?.toolResults).toEqual([{ id: "c1", name: "openToolkit", error }]);
   });
 
   test("refuses a request that passes remotes with no approve, and takes an empty remotes without one", async () => {
@@ -282,14 +327,15 @@ describe("AgentLoop remotes", () => {
     expect(stopOf(await drain(first.port, request))).toBe("awaiting");
     expect(messages.some((message) => message.tainted)).toBe(false);
 
-    const declined: AgentWireMessage = {
-      role: "tool",
-      toolResults: [{ id: "c1", name: "openToolkit", error: "The user did not connect shop." }],
-    };
+    const answer = { id: "c1", error: "The user did not connect shop." };
     const second = harness([calling(callOf("c2", "createNote")), saying("Noted instead.")]);
-    const results = resultsOf(await drain(second.port, { ...request, messages: [...messages, declined] }));
-    expect(results[0]).toEqual({ id: "c2", name: "createNote", result: "createNote:ok" });
+    const results = resultsOf(await drain(second.port, { ...request, messages: [...messages], answer }));
+    expect(results).toEqual([
+      { ...answer, name: "openToolkit" },
+      { id: "c2", name: "createNote", result: "createNote:ok" },
+    ]);
     expect(second.called).toEqual(["createNote"]);
+    expect(messages.find((message) => message.toolResults?.[0]?.id === "c1")?.tainted).toBeUndefined();
   });
 
   test("a remote the stored messages opened taints a resumed run, from a call's result or a summary's toolkits", async () => {
