@@ -304,6 +304,32 @@ describe("CloudRunner", () => {
     });
   });
 
+  test("update installs nothing and leaves package.json alone when the release's peers cannot be fetched", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (url: string) =>
+      url.endsWith("/akanjs/9.9.9-rc.0")
+        ? new Response("unavailable", { status: 500 })
+        : new Response(JSON.stringify({ "dist-tags": { rc: "9.9.9-rc.0" } })),
+    ) as never;
+    const recorder = createCallRecorder();
+    const workspace = createFakeExecutor(
+      "workspace",
+      {
+        exists: async () => true,
+        getPackageJson: async () => ({ name: "repo", version: "0.0.1", dependencies: { akanjs: "1.0.0" } }),
+        setPackageJson: async (packageJson: PackageJson) => recorder.record("setPackageJson", packageJson),
+      },
+      recorder,
+    );
+    try {
+      await expect(new CloudRunner().update(workspace as never, "rc")).rejects.toThrow("(500)");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(recorder.names()).toEqual([]);
+  });
+
   test("refuses a repository name the remote shell would split, before it asks for a server or runs ssh", async () => {
     const getRemoteEnvServers = spyOn(GlobalConfig, "getRemoteEnvServers");
     const recorder = createCallRecorder();

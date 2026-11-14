@@ -486,26 +486,29 @@ export class CloudRunner extends runner("cloud") {
   }
   async update(workspace: Workspace, tag: string = "latest", { registryUrl }: RegistryOptions = {}) {
     const registry = registryUrl ? getNpmRegistryUrl(registryUrl) : undefined;
-    const registryArgs = this.#getRegistryArgs(registry);
-    const env = this.#getRegistryEnv(registry);
-    const globalCliArgs = ["add", "-g", `@akanjs/cli@${tag}`, ...registryArgs];
-    if (!(await workspace.exists("package.json"))) await workspace.spawn("bun", globalCliArgs, { env });
-    else
-      await Promise.all([
-        workspace.spawn("bun", globalCliArgs, { env }),
-        this.#updateAkanPkgs(workspace, tag, registry),
-      ]);
+    const hasPackageJson = await workspace.exists("package.json");
+    const version = hasPackageJson ? await getLatestPackageVersion("akanjs", tag, registry) : tag;
+    const peers = hasPackageJson ? await getPublishedPeerDependencies("akanjs", version, registry) : null;
+    await Promise.all([
+      workspace.spawn("bun", ["add", "-g", `@akanjs/cli@${version}`, ...this.#getRegistryArgs(registry)], {
+        env: this.#getRegistryEnv(registry),
+      }),
+      peers && this.#updateAkanPkgs(workspace, version, peers, registry),
+    ]);
   }
-  async #updateAkanPkgs(workspace: Workspace, tag: string = "latest", registryUrl?: string) {
-    const latestPublishedVersion = await getLatestPackageVersion("akanjs", tag, registryUrl);
-    const releasePeers = await getPublishedPeerDependencies("akanjs", latestPublishedVersion, registryUrl);
+  async #updateAkanPkgs(
+    workspace: Workspace,
+    akanVersion: string,
+    peers: Record<string, string>,
+    registryUrl?: string,
+  ) {
     const rootPackageJson = await workspace.getPackageJson();
     if (!rootPackageJson.dependencies) throw new Error("No dependencies found in package.json");
     const pins: Record<string, string> = Object.fromEntries(
-      ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"].map((name) => [name, latestPublishedVersion]),
+      ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"].map((name) => [name, akanVersion]),
     );
     for (const peer of ["react", "react-dom", "react-server-dom-webpack"]) {
-      const version = releasePeers[peer];
+      const version = peers[peer];
       if (version) pins[peer] = version;
     }
     for (const [name, version] of Object.entries(pins)) {
