@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type AuditAdvisory, type AuditReport, DependencyAudit } from "./DependencyAudit";
+import { type AllowlistEntry, type AuditAdvisory, type AuditReport, DependencyAudit } from "./DependencyAudit";
 
 const lock = `{
   "lockfileVersion": 1,
@@ -120,6 +120,23 @@ describe("DependencyAudit", () => {
       "GHSA-git",
       "GHSA-pre",
     ]);
+  });
+
+  it("fails on an allowlist entry without a reason or a YYYY-MM-DD revisit date", () => {
+    const findings = audit.findings({ shared: [advisory("GHSA-a", "high", "<1.0.1")] });
+    const entries = [
+      { id: "GHSA-a", package: "shared", reason: "r" },
+      { id: "GHSA-a", package: "shared", reason: "", revisit: "2027-01-01" },
+      { id: "GHSA-a", package: "shared", reason: "r", revisit: "2027-13-01" },
+      { id: "GHSA-a", package: "shared", reason: "r", revisit: "soon" },
+    ] as AllowlistEntry[];
+    for (const entry of entries) {
+      const verdict = DependencyAudit.judge(findings, [entry], "2026-11-14");
+      expect(verdict.invalid).toEqual([entry]);
+      expect(DependencyAudit.failed(verdict)).toBe(true);
+    }
+    const valid = { id: "GHSA-a", package: "shared", reason: "r", revisit: "2027-01-01" };
+    expect(DependencyAudit.failed(DependencyAudit.judge(findings, [valid], "2026-11-14"))).toBe(false);
   });
 
   it("names the run's outcome on its last line", () => {

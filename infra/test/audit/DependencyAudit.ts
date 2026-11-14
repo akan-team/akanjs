@@ -33,6 +33,7 @@ export interface AuditVerdict {
   allowed: { finding: Finding; entry: AllowlistEntry }[];
   expired: AllowlistEntry[];
   stale: AllowlistEntry[];
+  invalid: AllowlistEntry[];
   printed: Finding[];
 }
 
@@ -104,14 +105,16 @@ export class DependencyAudit {
   }
 
   static judge(findings: Finding[], allowlist: AllowlistEntry[], today: string): AuditVerdict {
-    const verdict: AuditVerdict = { failing: [], allowed: [], expired: [], stale: [], printed: [] };
+    const verdict: AuditVerdict = { failing: [], allowed: [], expired: [], stale: [], invalid: [], printed: [] };
     const used = new Set<AllowlistEntry>();
+    verdict.invalid = allowlist.filter((entry) => !DependencyAudit.#isValidEntry(entry));
+    const valid = allowlist.filter((entry) => !verdict.invalid.includes(entry));
     for (const finding of findings) {
       if (finding.side === "dev" || !failingSeverities.has(finding.severity)) {
         verdict.printed.push(finding);
         continue;
       }
-      const entry = allowlist.find((item) => item.id === finding.id && item.package === finding.package);
+      const entry = valid.find((item) => item.id === finding.id && item.package === finding.package);
       if (!entry) {
         verdict.failing.push(finding);
         continue;
@@ -119,7 +122,7 @@ export class DependencyAudit {
       used.add(entry);
       verdict.allowed.push({ finding, entry });
     }
-    for (const entry of allowlist) {
+    for (const entry of valid) {
       if (!used.has(entry)) verdict.stale.push(entry);
       else if (entry.revisit < today) verdict.expired.push(entry);
     }
@@ -144,6 +147,10 @@ export class DependencyAudit {
       lines.push(
         `[audit] FAIL     allowlist entry ${entry.id} (${entry.package}) passed its revisit date ${entry.revisit}`,
       );
+    for (const entry of verdict.invalid)
+      lines.push(
+        `[audit] FAIL     allowlist entry ${entry.id} (${entry.package}) needs a reason and a YYYY-MM-DD revisit date`,
+      );
     for (const entry of verdict.stale)
       lines.push(
         `[audit] unused   allowlist entry ${entry.id} (${entry.package}) matches no runtime advisory; remove it`,
@@ -157,7 +164,16 @@ export class DependencyAudit {
   }
 
   static failed(verdict: AuditVerdict) {
-    return verdict.failing.length > 0 || verdict.expired.length > 0;
+    return verdict.failing.length > 0 || verdict.expired.length > 0 || verdict.invalid.length > 0;
+  }
+
+  static #isValidEntry(entry: Partial<AllowlistEntry>) {
+    const text = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+    if (!text(entry.id) || !text(entry.package) || !text(entry.reason) || typeof entry.revisit !== "string")
+      return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.revisit)) return false;
+    const date = new Date(`${entry.revisit}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(entry.revisit);
   }
 
   static #inRange(version: string, range: string) {
