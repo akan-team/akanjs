@@ -84,7 +84,7 @@ export class WebDocumentRoute {
     const isCrawler = isCrawlerUserAgent(req.headers.get("user-agent"));
     const htmlCacheDecision = this.#htmlCache.entryFor(req, url, isCrawler);
     const htmlCacheEntry = htmlCacheDecision.entry;
-    const cachedHtml = htmlCacheEntry ? this.#htmlCache.get(htmlCacheEntry.key) : null;
+    const cachedHtml = htmlCacheEntry ? this.#htmlCache.get(htmlCacheEntry) : null;
     if (cachedHtml) {
       const cachedHeaders = context.htmlResponseHeaders(200, req);
       cachedHeaders.set("X-Akan-Cache", "HIT");

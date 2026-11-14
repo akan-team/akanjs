@@ -56,6 +56,15 @@ export function consoleLevel(value: unknown): ExternalViewConsoleLevel | null {
 
 const shell = (ctx: DesktopContext, op: string, args: Record<string, unknown>) => ctx.shell(`externalView.${op}`, args);
 
+//? The shell checks the grants of the window a view is laid over, so another window's would come with it.
+function ownWindow(window: unknown, ctx: DesktopContext) {
+  if (window !== undefined && window !== ctx.window)
+    throw new AkanNativeError(
+      "NOT_ALLOWED",
+      `a page opens a view over its own window (${String(ctx.window)}), not window ${String(window)}`,
+    );
+}
+
 const captureDir = (ctx: DesktopContext) => join(appTempDir(ctx.app.id), "external-view");
 
 /** The engine's own text, which the shell sends on as a string: JSON, or not, as the engine had it. */
@@ -206,6 +215,7 @@ export function createDesktopExternalView() {
         const allowOrigins = (args as { allowOrigins?: unknown }).allowOrigins;
         if (!Array.isArray(allowOrigins) || !allowOrigins.length || allowOrigins.some((o) => typeof o !== "string"))
           throw new AkanNativeError("INVALID_ARGS", "allowOrigins must be a list of origins");
+        ownWindow(args.window, ctx);
         const level = consoleLevel(args.console);
         const opened = state(
           await shell(ctx, "open", {
@@ -217,7 +227,6 @@ export function createDesktopExternalView() {
             muted: args.muted === true,
             autoplay: args.autoplay !== false,
             console: level !== null,
-            ...(args.window !== undefined ? { window: args.window } : {}),
           }),
         );
         if (level) levels.set(view, level);

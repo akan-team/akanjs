@@ -444,7 +444,17 @@ export interface PluginManifest {
   permissionSets?: Record<string, PermissionSet>;
   /** The scope fields the plugin enforces, with a description each, e.g. { path: "glob relative to base" }. */
   /** `urlFields`: the fields that hold URL patterns (matched by urlMatch; the build checks their denies). */
-  scope?: { description?: string; fields: Record<string, string>; urlFields?: string[]; pathFields?: string[] };
+  /**
+   * `required`: the app lists the scope: every grant of the plugin, not only `<plugin>:default`, gets `defaultScope`
+   * (none: nothing) unless it gives its own allow, and an entry naming no field is refused.
+   */
+  scope?: {
+    description?: string;
+    fields: Record<string, string>;
+    urlFields?: string[];
+    pathFields?: string[];
+    required?: boolean;
+  };
   /**
    * Scopes of `<plugin>:default`, which an app without `capabilities` gets: what the plugin allows
    * without the app asking (filesystem: the app's own folders; http: no URL). A capability's own

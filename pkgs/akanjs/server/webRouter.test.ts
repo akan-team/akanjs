@@ -22,6 +22,7 @@ import {
   resolveHtmlRouteCacheStoreTtl,
 } from "./htmlResultCache";
 import { metricRegistry } from "./metrics/metricRegistry";
+import { RouteCacheTally } from "./routeCacheTally";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_IMPORT_MAP_HEADER,
@@ -2141,6 +2142,92 @@ describe("WebRouter full SSR cache orchestration", () => {
     } finally {
       setEnv("AKAN_EXPOSE_RSC_MANIFEST", previous);
     }
+  });
+
+  test("serves one stored page to requests that differ only in parameter order or a tracking parameter", async () => {
+    const worker = createFakeRscWorker(() => ({
+      cacheState: { cacheable: true, revalidate: 5, queryForm: "canonical" },
+    }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr, fakeWorker }) => {
+        const cacheOf = async (href: string) => {
+          const response = await fullSsr(new Request(`https://example.test${href}`));
+          await response.text();
+          return response.headers.get("X-Akan-Cache");
+        };
+
+        expect(await cacheOf("/docs?b=2&a=1")).toBe("MISS");
+        expect(await cacheOf("/docs?a=1&b=2")).toBe("HIT");
+        expect(await cacheOf("/docs?utm_source=news&a=1&fbclid=x&b=2")).toBe("HIT");
+        expect(await cacheOf("/docs?a=1&b=3")).toBe("MISS");
+        expect(fakeWorker.renderCalls).toHaveLength(2);
+      },
+      { worker },
+    );
+  });
+
+  test("keeps a stored page per query as requested for a route keyed on its exact query", async () => {
+    const worker = createFakeRscWorker(() => ({ cacheState: { cacheable: true, revalidate: 5, queryForm: "exact" } }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr, fakeWorker }) => {
+        const cacheOf = async (href: string) => {
+          const response = await fullSsr(new Request(`https://example.test${href}`));
+          await response.text();
+          return response.headers.get("X-Akan-Cache");
+        };
+
+        expect(await cacheOf("/docs?b=2&a=1")).toBe("MISS");
+        expect(await cacheOf("/docs?a=1&b=2")).toBe("MISS");
+        expect(await cacheOf("/docs?utm_source=news&a=1&b=2")).toBe("MISS");
+        expect(await cacheOf("/docs?b=2&a=1")).toBe("HIT");
+        expect(await cacheOf("/docs?a=1&b=2")).toBe("HIT");
+        expect(fakeWorker.renderCalls).toHaveLength(3);
+      },
+      { worker },
+    );
+  });
+
+  test("tallies the HTML cache's hits and misses by how the route keyed the query and its bypasses by reason", async () => {
+    const worker = createFakeRscWorker(() => ({
+      cacheState: { cacheable: true, revalidate: 5, queryForm: "canonical" },
+    }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const before = RouteCacheTally.snapshot().html;
+        for (const [href, headers] of [
+          ["/docs?b=2&a=1", {}],
+          ["/docs?a=1&b=2", {}],
+          ["/docs?a=1&b=2&utm_source=news", {}],
+          ["/docs?a=1&b=3", { cookie: "jwt=1" }],
+        ] as const)
+          await (await fullSsr(new Request(`https://example.test${href}`, { headers }))).text();
+        const after = RouteCacheTally.snapshot().html;
+
+        expect(after.miss["rewritten-query"] - before.miss["rewritten-query"]).toBe(1);
+        expect(after.hit["requested-query"] - before.hit["requested-query"]).toBe(1);
+        expect(after.hit["rewritten-query"] - before.hit["rewritten-query"]).toBe(1);
+        expect(after.bypass["request-not-public"] - before.bypass["request-not-public"]).toBe(1);
+      },
+      { worker },
+    );
+  });
+
+  test("tallies a route keyed on its exact query under the query as requested, whatever order it was asked in", async () => {
+    const worker = createFakeRscWorker(() => ({ cacheState: { cacheable: true, revalidate: 5, queryForm: "exact" } }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const before = RouteCacheTally.snapshot().html;
+        for (const href of ["/docs?b=2&a=1", "/docs?a=1&b=2", "/docs?b=2&a=1"])
+          await (await fullSsr(new Request(`https://example.test${href}`))).text();
+        const after = RouteCacheTally.snapshot().html;
+
+        expect(after.miss["requested-query"] - before.miss["requested-query"]).toBe(2);
+        expect(after.hit["requested-query"] - before.hit["requested-query"]).toBe(1);
+        expect(after.miss["rewritten-query"] - before.miss["rewritten-query"]).toBe(0);
+        expect(after.hit["rewritten-query"] - before.hit["rewritten-query"]).toBe(0);
+      },
+      { worker },
+    );
   });
 
   test("stores completed full SSR HTML and serves the next request from cache", async () => {

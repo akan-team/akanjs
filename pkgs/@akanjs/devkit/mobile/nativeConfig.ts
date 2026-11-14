@@ -9,7 +9,7 @@ import type {
   NativePermission,
 } from "akanjs";
 import { type AkanI18nConfig, LocalePath, trimSlashes } from "akanjs/common";
-import type { AkanNativeConfig } from "akanjs/native/config";
+import type { AkanNativeConfig, CapabilityPermission } from "akanjs/native/config";
 import type { DesktopServerBundle } from "./desktopServerStage";
 import { type NativePlatform, resolveAppId } from "./mobileTarget";
 import type { NativePluginFolder } from "./nativePluginFolders";
@@ -248,11 +248,7 @@ export class NativeConfig {
         {
           identifier: "app",
           description: `The plugins ${target.appName} ships, each with its default permissions`,
-          permissions: pluginIds.map((id) =>
-            id === "opener" && !openUrls.includes("*")
-              ? { identifier: "opener:default", allow: openUrls.map((url) => ({ url })) }
-              : `${id}:default`,
-          ),
+          permissions: NativeConfig.#permissions(pluginIds, target, openUrls, warnings),
         },
       ],
       ...(csp ? { security: { csp } } : {}),
@@ -334,6 +330,39 @@ export class NativeConfig {
       add(directive, sources);
     }
     return policy;
+  }
+
+  static #permissions(pluginIds: string[], target: AkanNativeTarget, openUrls: readonly string[], warnings: string[]) {
+    return pluginIds.flatMap((id): (string | CapabilityPermission)[] => {
+      if (id === "opener" && !openUrls.includes("*"))
+        return [{ identifier: "opener:default", allow: openUrls.map((url) => ({ url })) }];
+      if (id === "external-view") return NativeConfig.#externalView(target, warnings);
+      return [`${id}:default`];
+    });
+  }
+
+  //? `external-view:default` alone opens no origin and leaves out evaluate and sendKey (the plugin's manifest).
+  static #externalView({ name, desktop }: AkanNativeTarget, warnings: string[]): (string | CapabilityPermission)[] {
+    const { allowOrigins = [], evaluate, sendKey } = desktop?.externalView ?? {};
+    const origins = allowOrigins.map((origin) => NativeConfig.#exactOrigin(name, origin));
+    if (!origins.length)
+      warnings.push(
+        `Native target '${name}': external-view opens no origin until native.desktop.externalView.allowOrigins lists one.`,
+      );
+    return [
+      { identifier: "external-view:default", allow: origins.map((origin) => ({ origin })) },
+      ...(evaluate ? ["external-view:allow-evaluate"] : []),
+      ...(sendKey ? ["external-view:allow-sendKey"] : []),
+    ];
+  }
+
+  static #exactOrigin(name: string, origin: string) {
+    const url = URL.canParse(origin) ? new URL(origin) : null;
+    if (!url || !/^https?:$/.test(url.protocol) || url.hostname.includes("*") || url.href !== `${url.origin}/`)
+      throw new Error(
+        `Native target '${name}': native.desktop.externalView.allowOrigins holds "${origin}", which is not an exact http(s) origin such as "https://board.example".`,
+      );
+    return url.origin;
   }
 
   //? https: and wss: cover a cloud API, so only plain-http origins are named; a carried server's port comes at launch.

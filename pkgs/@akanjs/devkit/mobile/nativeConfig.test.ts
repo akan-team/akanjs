@@ -2,8 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { resolveAcl } from "../../native/packages/cli/src/lib/acl";
 import { buildCsp, cspHash, parseCsp } from "../../native/packages/cli/src/lib/csp";
 import { rewriteDevHtml } from "../../native/packages/cli/src/lib/hmr";
+import { aclCheck } from "../../native/packages/core/src/acl";
+import externalViewManifest from "../../native/plugins/external-view/native-plugin.json";
 import type { AkanNativeTarget } from "../akanConfig";
 import { tempDirs } from "../test/testHelpers";
 import { NativeApi } from "./nativeApi";
@@ -695,6 +698,82 @@ describe("NativeConfig.build", () => {
       allow: [{ url: "https://*.example.com/*" }],
     });
     expect(opener(["*"])).toBe("opener:default");
+  });
+
+  test("an external view opens only the origins native.desktop.externalView lists, and evaluates or types only when it says so", () => {
+    const externalView = (setting?: NonNullable<AkanNativeTarget["desktop"]>["externalView"]) => {
+      const { config, warnings } = NativeConfig.build({
+        appPath: "/repo/apps/minimal",
+        target: {
+          ...minimalTarget,
+          plugins: ["external-view"],
+          ...(setting ? { desktop: { externalView: setting } } : {}),
+        },
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "windows",
+        publicEnv: cloudEnv,
+      });
+      const permissions = config.capabilities?.[0]?.permissions.filter((p) =>
+        JSON.stringify(p).includes("external-view"),
+      );
+      const plugin = { spec: "external-view", dir: "/plugins/external-view", manifest: externalViewManifest as never };
+      const acl = resolveAcl([{ identifier: "app", permissions: permissions ?? [] }], [plugin], "windows");
+      return {
+        permissions,
+        warnings: warnings.filter((warning) => warning.includes("external-view")),
+        open: aclCheck(acl, "external-view", "open").scope?.allow,
+        evaluate: aclCheck(acl, "external-view", "evaluate").allowed,
+        sendKey: aclCheck(acl, "external-view", "sendKey").allowed,
+      };
+    };
+
+    expect(externalView()).toEqual({
+      permissions: [{ identifier: "external-view:default", allow: [] }],
+      warnings: [
+        "Native target 'default': external-view opens no origin until native.desktop.externalView.allowOrigins lists one.",
+      ],
+      open: [],
+      evaluate: false,
+      sendKey: false,
+    });
+    expect(
+      externalView({
+        allowOrigins: ["https://Board.example:443", "http://10.0.0.5:8080"],
+        evaluate: true,
+        sendKey: true,
+      }),
+    ).toEqual({
+      permissions: [
+        {
+          identifier: "external-view:default",
+          allow: [{ origin: "https://board.example" }, { origin: "http://10.0.0.5:8080" }],
+        },
+        "external-view:allow-evaluate",
+        "external-view:allow-sendKey",
+      ],
+      warnings: [],
+      open: [{ origin: "https://board.example" }, { origin: "http://10.0.0.5:8080" }],
+      evaluate: true,
+      sendKey: true,
+    });
+    expect(externalView({ allowOrigins: ["https://b\u00fccher.example"], sendKey: true })).toMatchObject({
+      open: [{ origin: "https://xn--bcher-kva.example" }],
+      evaluate: false,
+      sendKey: true,
+    });
+    for (const origin of [
+      "https://board.example/screen",
+      "https://*.example",
+      "https://user@board.example",
+      "board.example",
+      "ftp://board.example",
+      "https://board.example?x=1",
+    ])
+      expect(() => externalView({ allowOrigins: [origin] })).toThrow(
+        `native.desktop.externalView.allowOrigins holds "${origin}", which is not an exact http(s) origin`,
+      );
   });
 
   test("keeps a file name the runtime accepts", () => {

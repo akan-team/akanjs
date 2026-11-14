@@ -17,6 +17,7 @@ const envState = {
 const requestState = {
   request: undefined as Request | undefined,
   headers: new Map<string, string>(),
+  renderSearch: undefined as string | undefined,
 };
 const messages: unknown[] = [];
 const messageTargets: unknown[] = [];
@@ -89,6 +90,7 @@ beforeAll(() => {
     headers: () => requestState.headers,
     untrackedRequest: () => requestState.request,
     untrackedHeaders: () => requestState.headers,
+    getRequestRenderSearch: () => requestState.renderSearch,
   }));
 });
 
@@ -891,6 +893,12 @@ describe("router", () => {
     envState.localePrefix = "as-needed";
     expect(roundTrip("https://site.test/org/a", [["x-locale", "en"]])).toEqual(["/org/a", "/org/a"]);
     expect(roundTrip("https://site.test/ko/org/a", [["x-locale", "ko"]])).toEqual(["/org/a", "/ko/org/a"]);
+    requestState.renderSearch = "?a=1&b=2";
+    expect(roundTrip("https://site.test/ko/org/a?b=2&utm_source=x&a=1", [["x-locale", "ko"]])).toEqual([
+      "/org/a?a=1&b=2",
+      "/ko/org/a?a=1&b=2",
+    ]);
+    requestState.renderSearch = undefined;
     for (const hostile of ["//evil.com", "/%5Cevil.com", "/https://evil.com"]) {
       const [, location] = roundTrip(`https://site.test/ko${hostile}`, [["x-locale", "ko"]]);
       expect(location?.startsWith("/ko/")).toBe(true);

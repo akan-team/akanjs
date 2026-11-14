@@ -36,6 +36,7 @@ export interface AkanRequestStore {
     policy: AkanRequestPolicy;
     dynamicUsage: AkanDynamicUsage;
     needsBrowser?: boolean;
+    renderSearch?: string;
 }
 
 export type AkanTheme = "css" | "system" | (string & {});
@@ -468,6 +469,8 @@ export declare function getRequestFrameState<FrameState = unknown>(): FrameState
 
 export declare function getRequestPolicy(): AkanRequestPolicy | undefined;
 
+export declare function getRequestRenderSearch(): string | undefined;
+
 export declare function getRequestStore(): AkanRequestStore | undefined;
 
 export declare function getRequestTheme(): AkanTheme | undefined;
@@ -488,6 +491,8 @@ export declare const requestStorage: RequestStorage | null;
 export declare const restoreRemoteError: (body: unknown, fallbackStatusCode: number, ErrorCls?: ErrorConstructor) => RestoredError;
 
 export declare function setRequestFrameState(frameState: unknown): void;
+
+export declare function setRequestRenderSearch(search: string): void;
 
 export declare function setRequestTheme(theme: AkanTheme | undefined): void;
 
