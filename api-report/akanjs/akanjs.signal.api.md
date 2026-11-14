@@ -800,6 +800,11 @@ export declare const MCP_SCREEN_REFUSAL: {
     readonly failed: "The page failed to load.";
 };
 
+export declare const MCP_STATIC_APP_META: {
+    readonly static: "akanjs/static";
+    readonly render: "akanjs/render";
+};
+
 export declare const MCP_SUPPORTED_VERSIONS: readonly [
     "2026-07-28",
     "2025-11-25",
@@ -1005,6 +1010,7 @@ export interface McpTool {
     _meta?: {
         ui?: McpToolUiMeta;
         [MCP_UI_LEGACY_RESOURCE_URI]?: string;
+        [MCP_STATIC_APP_META.static]?: boolean;
     };
 }
 
@@ -1108,6 +1114,7 @@ export interface PagePromptEntry {
     description: string;
     arguments: McpPromptArgument[];
     pattern: string;
+    static?: boolean;
 }
 
 export interface PagePromptRecord {
@@ -1124,6 +1131,15 @@ export interface PagePromptRecord {
 }
 
 export type PagePromptRefusal = "argument" | "error" | "forbidden" | "not-found" | "redirect" | "unknown";
+
+export interface PagePromptRender {
+    run: PagePromptRun;
+    html: null | string;
+}
+
+export interface PagePromptRenderInput extends PagePromptRunInput {
+    origin: string;
+}
 
 export interface PagePromptRoute {
     params: Record<string, string>;
@@ -1155,6 +1171,7 @@ export interface PagePromptSource {
     list(): Promise<PagePromptEntry[]>;
     visible(input: PagePromptVisibleInput): Promise<string[]>;
     run(input: PagePromptRunInput): Promise<PagePromptRun>;
+    render?(input: PagePromptRenderInput): Promise<PagePromptRender>;
 }
 
 export interface PagePromptVisibleInput {
