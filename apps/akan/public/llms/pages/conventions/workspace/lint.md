@@ -94,6 +94,8 @@ A third-party package. Re-export it through a lib's `common/`, `webkit/` or `ui/
 
 A third-party package, as in a module file, but `node:*` and `bun:*` pass.
 
+A value import of `Err` from `akanjs/common`, whose keys are unchecked. Import it from `dict` or a client entry.
+
 `ui/` `webkit/` `page/` `common/`, `*.store.ts` `*.constant.ts`, every `.tsx`
 
 Imports a `*.document`/`*.dictionary`/`*.service`/`*.signal` file, `srvkit/` or a server entry.

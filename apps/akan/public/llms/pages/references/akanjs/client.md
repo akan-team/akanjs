@@ -340,7 +340,7 @@ guard
 
 `.guard(fn)` decides who may open a route before any of it renders. `rootLayout()`, `layout()` and `page()` each take it at most once: a second `.guard()` throws when the module loads.
 
-`fn` receives the route's typed arguments and `lang`; a layout's guard gets no `children`. It may be `async`, and it refuses with one of these calls:
+`fn` receives the route's typed arguments and `lang` (a layout's guard gets no `children`), and a second `{ path }`: the requested in-app path with its search, as `router.push` takes it, `undefined` while MCP lists the screen. It may be `async`, and it refuses with one of these calls:
 
 Call
 
@@ -350,7 +350,7 @@ Call
 
 - getSelf({ unauthorize: "/signin" }): Redirects to `unauthorize` when no one is signed in.
 
-- signedIn(unauthorize = "/signin"): The same check, from `@libs/shared/webkit`. Call it inside an arrow, `.guard(() => signedIn())`: `.guard(signedIn)` would hand the route's arguments to `unauthorize`.
+- signedIn({ path, unauthorize = "/signin" }): The same check, from `@libs/shared/webkit`, with `?redirect=<path>` on `unauthorize`; a bare string is `unauthorize`. Call it inside an arrow, `.guard((_, { path }) => signedIn({ path }))`: `.guard(signedIn)` would hand it the route's arguments.
 
 Prefer a guard to `getSelf({ unauthorize })` in a layout body: it runs before anything renders, so the redirect is a real 307 on the server. A layout that lets only a signed-in visitor through:
 
@@ -368,7 +368,7 @@ What happens
 
 - MCP — A page prompt or app tool runs the route's guards before anything else, and a refusal ends it as a redirect or a not-found. `prompts/list` and the page tools in `tools/list` show only the screens whose guards admit the caller. A listing knows no arguments: a guard that reads one admits the caller there and is checked again on the call. If the guards do not answer within 1 s, the list is served unfiltered; the calls are still checked.
 
-**A route guard is not authorization for data.** It decides who may open a screen and redirects early. Every query the screen makes is still judged by its endpoint's signal guards (`guards: [...]`), so keep both.
+**A route guard is not authorization for data.** It decides who may open a screen and redirects early. Every query the screen makes is still judged by its endpoint's signal guards (`guards: [...]`), so keep both. `path` builds a redirect target, never a reason to let someone in: CSR asks a guard again only when the route or an argument it declared moves.
 
 prompt
 
@@ -768,7 +768,7 @@ import { signedIn } from "@libs/shared/webkit";
 import { layout } from "akanjs/client";
 
 export default layout()
-  .guard(() => signedIn())
+  .guard((_, { path }) => signedIn({ path }))
   .render(({ children }) => <div className="flex flex-col">{children}</div>);
 ```
 
