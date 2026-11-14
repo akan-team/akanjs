@@ -1,7 +1,10 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import path from "node:path";
 import { ServerLimits } from "akanjs/server/routing/serverLimits";
 import { AppChart, type RenderOptions } from "./AppChart";
+
+//? One test renders the chart a dozen times, and a cold `helm` on a CI runner takes about half a second per render.
+setDefaultTimeout(60_000);
 
 const helm = Bun.which("helm");
 const chart = new AppChart(helm ?? "helm");
