@@ -17,7 +17,8 @@
 // 5. holds the keyboard while it is shown (the page has it while it is hidden), takes it back when its window is
 //    active again, takes sendKey's keydown and keyup with their codes whether it, the page or another window has the
 //    focus, while it is hidden and while an app dialog is open, the page and the dialog seeing none, leaves the keyboard
-//    focus where it is when a sent Tab leaves its page (a real Tab still moves it), types sendKey's text into a field,
+//    focus where it is when a sent Tab leaves its page, another view open (a real Tab still moves it), types sendKey's
+//    text into a field,
 //    sends Unidentified and NumpadEnter (on the numpad) and refuses Dead, answers UNSUPPORTED while its window is
 //    hidden, captures its own content as a PNG, and mutes,
 // 6. plays sound without a gesture, and a view opened with autoplay false does not,
@@ -266,9 +267,14 @@ async function main() {
   const pageFocused = await checkpoint("sendPageFocused", { innerWidth, innerHeight });
   if (!pageFocused.skipped) {
     await until("the page holds the keyboard after a click on it", () => document.hasFocus(), 10000);
+    await externalView.open({ id: "spare", url: ORIGIN + "/board", allowOrigins: [ORIGIN], bounds: { x: 400, y: 100, width: 40, height: 40 } });
+    await until("the spare view's board", async () => (await inView("typeof window.__keys", "spare")) === "object");
+    await checkpoint("sendPageFocused", { innerWidth, innerHeight });
+    await until("the page holds the keyboard after a click on it, the spare view open", () => document.hasFocus(), 10000);
     await sent("the page holding the keyboard");
     const moved = [];
     const tabbed = async (what, viewHolds) => {
+      await inView("window.__keys = []; 0", "spare");
       await inView("window.__sent = []; window.__keys = []; window.__last = document.createElement('input'); document.body.append(window.__last); window.__last.focus(); 0");
       const before = { page: document.hasFocus(), view: await inView("document.hasFocus()") };
       if (before.view !== viewHolds || before.page === viewHolds) throw new Error(what + ": focusing the view's input moved the keyboard focus");
@@ -279,9 +285,9 @@ async function main() {
       if (!left) throw new Error(what + ": the sent Tab did not leave the view's last input");
       await checkpoint(viewHolds ? "tabbedView" : "tabbedPage");
       await sleep(300);
-      const took = { view: String(await inView("window.__keys.join()")).includes("x:true"), page: pageKeys.slice(pageBefore).includes("x:true") };
-      log("a sent Tab past the view's last input, " + what + ": a real key after it reached " + JSON.stringify(took));
-      if (took.view !== viewHolds || took.page === viewHolds) moved.push(what);
+      const took = { view: String(await inView("window.__keys.join()")).includes("x:true"), page: pageKeys.slice(pageBefore).includes("x:true"), spare: String(await inView("window.__keys.join()", "spare")).includes("x:true") };
+      log("a sent Tab past the view's last input, " + what + ", another view open: a real key after it reached " + JSON.stringify(took));
+      if (took.view !== viewHolds || took.page === viewHolds || took.spare) moved.push(what);
       //? The Tab took the DOM focus out of the view's page, as a browser's does: the next one brings it back in.
       else if (viewHolds) {
         await inView("window.__first = document.createElement('input'); document.body.prepend(window.__first); 0");
@@ -294,8 +300,12 @@ async function main() {
     };
     await tabbed("the page holding the keyboard", false);
     await checkpoint("realTab", { innerWidth, innerHeight });
-    await holdsKeyboard("a real Tab in the page");
+    await until("a real Tab in the page moves the keyboard to a view", async () => !document.hasFocus() && ((await inView("document.hasFocus()")) || (await inView("document.hasFocus()", "spare"))), 10000);
+    await externalView.setVisible({ id: "board", visible: false });
+    await externalView.setVisible({ id: "board", visible: true });
+    await holdsKeyboard("shown again after a real Tab");
     await tabbed("the view holding the keyboard", true);
+    await externalView.close({ id: "spare" });
     if (moved.length) throw new Error("a sent Tab moved the keyboard focus with " + moved.join(" and with "));
     await checkpoint("sendBlurred");
     await sent("another window focused");

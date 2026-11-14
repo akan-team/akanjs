@@ -526,52 +526,54 @@ fn send_key(webview: &WebView, params: &json::V) -> Result<Option<FocusHold>, St
 const FOCUS_HOLDS: &str = "akan-focus-holds";
 
 /// A sent Tab on its way through a view's page, which keeps the window's keyboard focus where it is meanwhile.
-struct FocusHold(Rc<Cell<u32>>);
+struct FocusHold {
+  view: Rc<Cell<u32>>,
+  window: Option<Rc<Cell<u32>>>,
+}
 
 //? A Tab past a page's last element ends in WebKit's take-focus, which grabs the GTK focus for a view without it, and
 //? from a view with it moves the focus on through the window (the toplevel's `focus`).
 impl FocusHold {
   fn new(wv: &webkit2gtk::WebView) -> Self {
-    if let Some(top) = wv.toplevel().and_then(|top| top.downcast::<gtk::Window>().ok()) {
-      // SAFETY: only FocusHold::new sets FOCUS_HOLDS on a window, always to ().
-      if unsafe { top.data::<()>(FOCUS_HOLDS) }.is_none() {
-        unsafe { top.set_data(FOCUS_HOLDS, ()) };
-        top.connect_focus(|top, _| {
-          let from = top.focused_widget().and_then(|widget| widget.downcast::<webkit2gtk::WebView>().ok());
-          // SAFETY: only focus_holds sets FOCUS_HOLDS on a view, always to an Rc<Cell<u32>>.
-          if from.is_some_and(|wv| unsafe { wv.data::<Rc<Cell<u32>>>(FOCUS_HOLDS) }.is_some_and(|holds| unsafe { holds.as_ref() }.get() > 0)) {
-            glib::Propagation::Stop
-          } else {
-            glib::Propagation::Proceed
-          }
-        });
-      }
+    let window = wv.toplevel().and_then(|top| top.downcast::<gtk::Window>().ok()).map(|top| {
+      holds_of(&top, |top, moves| {
+        top.connect_focus(move |_, _| if moves.get() > 0 { glib::Propagation::Stop } else { glib::Propagation::Proceed });
+      })
+    });
+    let hold = Self { view: focus_holds(wv), window };
+    for holds in [Some(&hold.view), hold.window.as_ref()].into_iter().flatten() {
+      holds.set(holds.get() + 1);
     }
-    let holds = focus_holds(wv);
-    holds.set(holds.get() + 1);
-    Self(holds)
+    hold
   }
 }
 
 impl Drop for FocusHold {
   fn drop(&mut self) {
-    self.0.set(self.0.get() - 1);
+    for holds in [Some(&self.view), self.window.as_ref()].into_iter().flatten() {
+      holds.set(holds.get() - 1);
+    }
   }
 }
 
 fn focus_holds(wv: &webkit2gtk::WebView) -> Rc<Cell<u32>> {
-  // SAFETY: only focus_holds sets FOCUS_HOLDS on a view, always to an Rc<Cell<u32>>.
-  if let Some(holds) = unsafe { wv.data::<Rc<Cell<u32>>>(FOCUS_HOLDS) } {
+  holds_of(wv, |wv, grabs| {
+    wv.connect_grab_focus(move |wv| {
+      if grabs.get() > 0 && !wv.is_focus() {
+        wv.stop_signal_emission_by_name("grab-focus");
+      }
+    });
+  })
+}
+
+fn holds_of<O: ObjectExt>(object: &O, arm: impl FnOnce(&O, Rc<Cell<u32>>)) -> Rc<Cell<u32>> {
+  // SAFETY: only holds_of sets FOCUS_HOLDS, always to an Rc<Cell<u32>>.
+  if let Some(holds) = unsafe { object.data::<Rc<Cell<u32>>>(FOCUS_HOLDS) } {
     return unsafe { holds.as_ref() }.clone();
   }
   let holds = Rc::new(Cell::new(0));
-  let grabs = holds.clone();
-  wv.connect_grab_focus(move |wv| {
-    if grabs.get() > 0 && !wv.is_focus() {
-      wv.stop_signal_emission_by_name("grab-focus");
-    }
-  });
-  unsafe { wv.set_data(FOCUS_HOLDS, holds.clone()) };
+  arm(object, holds.clone());
+  unsafe { object.set_data(FOCUS_HOLDS, holds.clone()) };
   holds
 }
 
