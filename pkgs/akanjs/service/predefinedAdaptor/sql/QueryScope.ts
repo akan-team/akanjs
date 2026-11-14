@@ -1,16 +1,18 @@
 import { type DocumentQuery, type DocumentScopeOptions, documentQueryHelper, LiveRowScope } from "akanjs/document";
 import { DocumentStoreError } from "../../documentStoreError";
 import type { QueryCompiler } from "./QueryCompiler";
-import type { FindManyOptions, SearchJoin, SortOption, SqlFrag } from "./types";
+import type { FindManyOptions, SearchJoin, SortOption, SqlDialect, SqlFrag } from "./types";
 import { quoteIdent } from "./values";
 
 export class QueryScope {
   readonly #table: string;
   readonly #compiler: QueryCompiler;
+  readonly #dialect: SqlDialect;
 
-  constructor(table: string, compiler: QueryCompiler) {
+  constructor(table: string, compiler: QueryCompiler, dialect: SqlDialect) {
     this.#table = table;
     this.#compiler = compiler;
+    this.#dialect = dialect;
   }
 
   listQuery(query: DocumentQuery | undefined, options: FindManyOptions, operation = "find") {
@@ -31,7 +33,14 @@ export class QueryScope {
   //? time the parameter is bound, so only the offset, which it leaves a parameter, keeps one prepared statement.
   #page(limit: number, skip: number): SqlFrag {
     if (!limit && !skip) return { sql: "", params: [] };
-    return { sql: `${limit ? ` LIMIT ${limit}` : ""} OFFSET ?`, params: [skip] };
+    return { sql: `${limit ? ` LIMIT ${limit}` : ""} OFFSET ?`, params: [this.#offset(skip)] };
+  }
+
+  //? What the offset written into the text read as: none when it is not a number, and on Postgres a fraction rounded
+  //? half away from zero, where SQLite refuses one and still does.
+  #offset(skip: number) {
+    if (!skip) return 0;
+    return this.#dialect.name === "postgres" ? Math.sign(skip) * Math.round(Math.abs(skip)) : skip;
   }
 
   safeQuery(query: DocumentQuery | undefined, operation: string, { withRemoved = false }: DocumentScopeOptions) {

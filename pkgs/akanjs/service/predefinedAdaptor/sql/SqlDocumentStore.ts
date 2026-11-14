@@ -87,7 +87,7 @@ export class SqlDocumentStore {
       logger,
     });
     this.#codec = new DocumentRowCodec(database, this.table, dialect, this.compiler);
-    this.#scope = new QueryScope(this.table, this.compiler);
+    this.#scope = new QueryScope(this.table, this.compiler, dialect);
     this.#rows = new StoredRows(this, this.#codec, logger);
     this.#hydrator = new DocumentHydrator(this, this.#codec, this.#rows);
     this.#writer = new DocumentWriter({
