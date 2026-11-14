@@ -185,16 +185,14 @@ export class McpPages {
     return { run, messages: await composer.compose(entry, run), html };
   }
 
-  //? The HTML only rides along: a draw that throws falls back to the plain run, so the call answers as it always did.
+  //? A draw that throws may have run the guards and load already: it fails the call rather than run them twice.
   async #render(source: PagePromptSource, input: PagePromptRunInput, origin: string | null): Promise<PagePromptRender> {
     if (origin === null || !source.render) return { run: await source.run(input), html: null };
     try {
       return await source.render({ ...input, origin });
     } catch (error) {
-      this.#props.logger.warn(
-        `static app "${input.name}" sent no HTML: ${error instanceof Error ? error.message : error}`,
-      );
-      return { run: await source.run(input), html: null };
+      const message = `static app "${input.name}" sent no HTML: ${error instanceof Error ? error.message : error}`;
+      return { run: { ok: false, reason: "error", message }, html: null };
     }
   }
 

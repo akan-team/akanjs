@@ -1779,10 +1779,21 @@ describe("MCP Apps", () => {
       ),
     ).toEqual(plain);
     expect(origins).toHaveLength(2);
-    const throwing = source(async () => {
-      throw new Error("worker gone");
+    let runs = 0;
+    const throwing: PagePromptSource = {
+      ...source(async () => {
+        throw new Error("worker gone");
+      }),
+      run: async () => {
+        runs += 1;
+        return okRun();
+      },
+    };
+    expect(await call(throwing, asks)).toMatchObject({
+      isError: true,
+      content: [{ type: "text", text: "The page failed to load." }],
     });
-    expect(await call(throwing, asks)).toEqual(plain);
+    expect(runs).toBe(0);
     const refused = await call(
       source(async () => ({ run: { ok: false, reason: "not-found", message: "x" }, html: null })),
       asks,
