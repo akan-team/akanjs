@@ -102,7 +102,7 @@ export class CascadeRunner {
       return;
     }
     // Two owners can hold one deduped File: a target an earlier, separate cascade removed has no live row to remove.
-    // Chunked: `oneOf` binds one parameter per id, and Postgres refuses a statement past 65,534 of them.
+    // Chunked: on SQLite `oneOf` binds one parameter per id, and a build may refuse a statement past 32,766 of them.
     const live = new Set<string>();
     for (let start = 0; start < ids.length; start += drainSize) {
       const chunk = ids.slice(start, start + drainSize);
