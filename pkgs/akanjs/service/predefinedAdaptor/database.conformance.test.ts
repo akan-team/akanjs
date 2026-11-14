@@ -1821,7 +1821,7 @@ const describeDriver = (kind: SqlDriverKind) => {
             "committed",
           ]);
         }
-        expect(batches.sort((a, b) => a - b)).toEqual([1, 1, 2, 2]);
+        expect(batches.sort((a, b) => a - b)).toEqual([1, 1, 1, 1]);
       });
 
       test("a loader that keeps its keys keeps none a transaction read, so a rolled-back row reaches no later caller", async () => {

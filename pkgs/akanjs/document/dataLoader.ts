@@ -28,10 +28,17 @@ interface DataLoaderOptions<Key, Value, CacheKey> {
   name?: string;
 }
 
-interface BatchItem<Key, Value> {
+interface BatchItem<Key, Value, CacheKey> {
   key: Key;
+  cacheKey: CacheKey;
+  slot: number;
   resolve: (value: Value) => void;
   reject: (reason: unknown) => void;
+}
+
+interface Batch<Key, Value, CacheKey> {
+  keys: Key[];
+  items: BatchItem<Key, Value, CacheKey>[];
 }
 
 export class DataLoader<Key, Value, CacheKey = Key> {
@@ -49,7 +56,7 @@ export class DataLoader<Key, Value, CacheKey = Key> {
   readonly #scopeFn: (() => object | undefined) | null;
   readonly #promiseCache = new Map<CacheKey, { promise: Promise<Value>; expiresAt: number }>();
   #sweepAt = DataLoader.#minSweepSize;
-  readonly #queues = new Map<object | undefined, BatchItem<Key, Value>[]>();
+  readonly #queues = new Map<object | undefined, BatchItem<Key, Value, CacheKey>[]>();
 
   constructor(batchLoadFn: BatchLoadFn<Key, Value>, options: DataLoaderOptions<Key, Value, CacheKey> = {}) {
     this.#batchLoadFn = batchLoadFn;
@@ -63,7 +70,7 @@ export class DataLoader<Key, Value, CacheKey = Key> {
     this.#cacheKeyFn = options.cacheKeyFn ?? ((key) => key as unknown as CacheKey);
     this.#batch = options.batch !== false;
     this.#batchScheduleFn = options.batchScheduleFn ?? ((callback) => queueMicrotask(callback));
-    this.#maxBatchSize = options.maxBatchSize ?? Number.POSITIVE_INFINITY;
+    this.#maxBatchSize = Math.max(1, Math.floor(options.maxBatchSize ?? Number.POSITIVE_INFINITY));
     this.#copy = options.copy ?? null;
     this.#scopeFn = options.scopeFn ?? null;
     this.name = options.name;
@@ -76,9 +83,9 @@ export class DataLoader<Key, Value, CacheKey = Key> {
     if (cached) return this.#copy ? cached.then(this.#copy) : cached;
 
     const promise = new Promise<Value>((resolve, reject) => {
-      const item = { key, resolve, reject };
+      const item = { key, cacheKey, slot: 0, resolve, reject };
       const queue = this.#queues.get(scope);
-      if (!this.#batch) this.#run([item]);
+      if (!this.#batch) this.#run({ keys: [key], items: [item] });
       else if (queue) queue.push(item);
       else {
         this.#queues.set(scope, [item]);
@@ -146,39 +153,57 @@ export class DataLoader<Key, Value, CacheKey = Key> {
   #dispatch(scope: object | undefined) {
     const queue = this.#queues.get(scope);
     if (!queue) return;
-    const batch = queue.splice(0, this.#maxBatchSize);
-    if (queue.length > 0) this.#batchScheduleFn(() => this.#dispatch(scope));
-    else this.#queues.delete(scope);
-    this.#run(batch);
+    this.#queues.delete(scope);
+    const batches: Batch<Key, Value, CacheKey>[] = [];
+    const slots = new Map<CacheKey, number>();
+    for (const item of queue) {
+      const known = slots.get(item.cacheKey);
+      const slot = known ?? slots.size;
+      const index = Math.floor(slot / this.#maxBatchSize);
+      const batch = batches[index] ?? { keys: [], items: [] };
+      batches[index] = batch;
+      if (known === undefined) {
+        slots.set(item.cacheKey, slot);
+        batch.keys.push(item.key);
+      }
+      item.slot = slot % this.#maxBatchSize;
+      batch.items.push(item);
+    }
+    for (const batch of batches) this.#run(batch);
   }
 
-  #run(batch: BatchItem<Key, Value>[]) {
-    const keys = batch.map(({ key }) => key);
-    Promise.resolve(this.#batchLoadFn(keys)).then(
+  #run({ keys, items }: Batch<Key, Value, CacheKey>) {
+    let loading: PromiseLike<ReadonlyArray<Value | Error>>;
+    try {
+      loading = Promise.resolve(this.#batchLoadFn(keys));
+    } catch (error) {
+      loading = Promise.reject(error);
+    }
+    loading.then(
       (values) => {
-        if (values.length !== batch.length) {
-          const error = new Error(`DataLoader expected ${batch.length} values, received ${values.length}`);
-          for (const { reject } of batch) reject(error);
+        if (values.length !== keys.length) {
+          const error = new Error(`DataLoader expected ${keys.length} values, received ${values.length}`);
+          for (const { reject } of items) reject(error);
           return;
         }
         const handedOut = new Set<Value | Error>();
-        values.forEach((value, index) => {
-          const item = batch[index];
-          if (value instanceof Error) item?.reject(value);
-          else if (this.#copy && handedOut.has(value)) {
+        for (const item of items) {
+          const value = values[item.slot];
+          if (value instanceof Error) item.reject(value);
+          else if (this.#copy && handedOut.has(value as Value)) {
             try {
-              item?.resolve(this.#copy(value as Value));
+              item.resolve(this.#copy(value as Value));
             } catch (error) {
-              item?.reject(error);
+              item.reject(error);
             }
           } else {
-            handedOut.add(value);
-            item?.resolve(value as Value);
+            handedOut.add(value as Value);
+            item.resolve(value as Value);
           }
-        });
+        }
       },
       (error) => {
-        for (const { reject } of batch) reject(error);
+        for (const { reject } of items) reject(error);
       },
     );
   }
@@ -217,6 +242,7 @@ export const createArrayLoader = <K, V>(model: LoaderModel, fieldName = "id", de
       findWhere(model, defaultQuery, fieldName, "has", fields).then((list) =>
         fields.map((field) => list.filter((item) => field === item[fieldName])),
       ) as unknown as Promise<V[]>,
+    { copy: (list) => (Array.isArray(list) ? ([...list] as V) : list) },
   );
 export const createArrayElementLoader = <K, V>(
   model: LoaderModel,
