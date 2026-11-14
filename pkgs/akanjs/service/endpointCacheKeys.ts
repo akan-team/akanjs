@@ -6,6 +6,11 @@ export class EndpointCacheKeys {
   static readonly topic = "cache";
   static readonly generationTtlMs = 86_400_000;
   static readonly #generationTopic = "cacheGeneration";
+  static readonly #epochs = new Map<string, number>();
+
+  static epoch(endpoint: string) {
+    return EndpointCacheKeys.#epochs.get(endpoint) ?? 0;
+  }
 
   static async entryKey(cache: Pick<CacheAdaptor, "get" | "setIfAbsent">, endpoint: string, args: unknown[]) {
     return `${endpoint}:${await EndpointCacheKeys.#generation(cache, endpoint)}:${JSON.stringify(args)}`;
@@ -16,9 +21,18 @@ export class EndpointCacheKeys {
     endpoint: string,
     args?: unknown[],
   ) {
-    if (args) await cache.delete(EndpointCacheKeys.topic, await EndpointCacheKeys.entryKey(cache, endpoint, args));
-    else
-      await cache.set(EndpointCacheKeys.#generationTopic, endpoint, crypto.randomUUID(), EndpointCacheKeys.#expiry());
+    EndpointCacheKeys.#bumpEpoch(endpoint);
+    try {
+      if (args) await cache.delete(EndpointCacheKeys.topic, await EndpointCacheKeys.entryKey(cache, endpoint, args));
+      else
+        await cache.set(EndpointCacheKeys.#generationTopic, endpoint, crypto.randomUUID(), EndpointCacheKeys.#expiry());
+    } finally {
+      EndpointCacheKeys.#bumpEpoch(endpoint);
+    }
+  }
+
+  static #bumpEpoch(endpoint: string) {
+    EndpointCacheKeys.#epochs.set(endpoint, EndpointCacheKeys.epoch(endpoint) + 1);
   }
 
   static async #generation(cache: Pick<CacheAdaptor, "get" | "setIfAbsent">, endpoint: string) {

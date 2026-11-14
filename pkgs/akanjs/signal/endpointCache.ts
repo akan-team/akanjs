@@ -9,6 +9,7 @@ import { traceCache } from "./trace";
 // admitted caller, inside the `timeout` deadline. The entry is shared, hence no internal arguments.
 export class EndpointCache {
   static #refused = new Set<string>();
+  static readonly #inflight = new Map<string, { epoch: number; run: Promise<unknown> }>();
 
   static declares(endpointInfo: EndpointInfo): boolean {
     const ttl = endpointInfo.signalOption.cache;
@@ -28,9 +29,22 @@ export class EndpointCache {
       return cached;
     }
     traceCache(false);
-    const result = await run();
-    await EndpointCache.#write(context, cache, key, result, ttl);
-    return result;
+    const joined = EndpointCache.#inflight.get(key);
+    if (joined && joined.epoch === EndpointCacheKeys.epoch(context.key)) return await joined.run;
+    return await EndpointCache.#lead(context, cache, key, ttl, run);
+  }
+  //? A per-args invalidation leaves the key as it was, so only the epoch keeps a late caller off a run that predates it.
+  static #lead(context: SignalContext, cache: CacheAdaptor, key: string, ttl: number, run: () => Promise<unknown>) {
+    const epoch = EndpointCacheKeys.epoch(context.key);
+    const shared: Promise<unknown> = (async () => {
+      const result = await run();
+      if (EndpointCacheKeys.epoch(context.key) === epoch) await EndpointCache.#write(context, cache, key, result, ttl);
+      return result;
+    })().finally(() => {
+      if (EndpointCache.#inflight.get(key)?.run === shared) EndpointCache.#inflight.delete(key);
+    });
+    EndpointCache.#inflight.set(key, { epoch, run: shared });
+    return shared;
   }
   static #cacheable(context: SignalContext) {
     if (context.endpointInfo.type === "query" && context.endpointInfo.internalArgs.length === 0) return true;
