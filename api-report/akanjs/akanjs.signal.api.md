@@ -491,7 +491,7 @@ export type EndpointInfoParts<E> = E extends EndpointInfo<infer ReqType, infer S
 } : EndpointInfoEmptyParts;
 
 export declare class EndpointRateLimit {
-    static readonly defaultSubscribePerConnection: WindowBudget;
+    static readonly defaultSubscribePerSocket: WindowBudget;
     static readonly defaultSubscribePerCaller: WindowBudget;
     static configure(setting: RateLimitSetting | false): void;
     static applyEnv(value: string | undefined, environment: string): void;
@@ -1776,7 +1776,7 @@ export interface StatusException {
 }
 
 export interface SubscribeRateSetting {
-    perConnection?: Omit<RateLimitBudget, "by"> | false;
+    perSocket?: Omit<RateLimitBudget, "by"> | false;
     perCaller?: Omit<RateLimitBudget, "by"> | false;
 }
 

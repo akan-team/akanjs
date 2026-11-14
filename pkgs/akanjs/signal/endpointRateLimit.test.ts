@@ -204,17 +204,17 @@ describe("EndpointRateLimit", () => {
     });
 
     test("default to 1,000 per socket and 10,000 per caller a minute, which the settings and the env change", () => {
-      expect(EndpointRateLimit.subscribeBudgetOf("perConnection")).toEqual({ calls: 1_000, windowMs: 60_000 });
+      expect(EndpointRateLimit.subscribeBudgetOf("perSocket")).toEqual({ calls: 1_000, windowMs: 60_000 });
       expect(EndpointRateLimit.subscribeBudgetOf("perCaller")).toEqual({ calls: 10_000, windowMs: 60_000 });
 
-      EndpointRateLimit.configure({ subscribe: { perConnection: { calls: 5_000, windowMs: 10_000 } } });
+      EndpointRateLimit.configure({ subscribe: { perSocket: { calls: 5_000, windowMs: 10_000 } } });
       EndpointRateLimit.configure({ subscribe: { perCaller: false } });
-      expect(EndpointRateLimit.subscribeBudgetOf("perConnection")).toEqual({ calls: 5_000, windowMs: 10_000 });
+      expect(EndpointRateLimit.subscribeBudgetOf("perSocket")).toEqual({ calls: 5_000, windowMs: 10_000 });
       expect(EndpointRateLimit.subscribeBudgetOf("perCaller")).toBeNull();
 
       EndpointRateLimit.reset();
       EndpointRateLimit.configure({ subscribe: false });
-      expect(EndpointRateLimit.subscribeBudgetOf("perConnection")).toBeNull();
+      expect(EndpointRateLimit.subscribeBudgetOf("perSocket")).toBeNull();
 
       EndpointRateLimit.reset();
       EndpointRateLimit.applyEnv("off", "main");
