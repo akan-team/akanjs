@@ -1412,6 +1412,35 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(heard).toHaveLength(6);
     });
 
+    test("a write listener that throws is logged: the write, its post hooks and the listeners after it go on", async () => {
+      const errors = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+      const heard: string[] = [];
+      const schema = new DocumentSchema();
+      schema.post("create", () => void heard.push("post hook"));
+      const hooked = await storeOf(driver, confConstant, confDatabase, schema);
+      const stops = [
+        hooked.onWrite(() => {
+          throw new Error("listener-failed");
+        }),
+        hooked.onWrite(() => void heard.push("second listener")),
+      ];
+      try {
+        const created = await hooked.create({ title: "outside" });
+        await driver.database.transaction(async () => {
+          await hooked.create({ title: "inside" });
+          await hooked.updateManyByQuery({ id: created.id }, { note: "n" });
+        });
+        expect(titlesOf(await hooked.find({})).sort((a, b) => a.localeCompare(b))).toEqual(["inside", "outside"]);
+        expect(heard).toEqual(["second listener", "post hook", "second listener", "second listener", "post hook"]);
+        expect(errors.mock.calls.map(([message]) => String(message))).toEqual(
+          Array(3).fill(expect.stringContaining("listener-failed")),
+        );
+      } finally {
+        for (const stop of stops) stop();
+        errors.mockRestore();
+      }
+    });
+
     test("a task the transaction left running neither joins it after the commit nor loses its afterCommit", async () => {
       const seen: string[] = [];
       let late!: Promise<void>;

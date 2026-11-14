@@ -1,5 +1,5 @@
 import { dayjs, FIELD_META } from "akanjs/base";
-import { Logger } from "akanjs/common";
+import { Logger, toError } from "akanjs/common";
 import type { ConstantModel } from "akanjs/constant";
 import {
   type DatabaseModel,
@@ -116,8 +116,16 @@ export class SqlDocumentStore {
 
   async #written(written?: Parameters<DocumentWriteListener>[0]) {
     if (!this.#writeListeners.size) return;
+    // Logged, never thrown: the row is stored by then, and a throw would fail the write and skip the other listeners.
     const notify = () => {
-      for (const listener of this.#writeListeners) listener(written);
+      for (const listener of this.#writeListeners) {
+        try {
+          listener(written);
+        } catch (error) {
+          const { message, stack } = toError(error);
+          SqlDocumentStore.#logger.error(`A write listener on ${this.table} failed:\n${stack ?? message}`);
+        }
+      }
     };
     await this.owner.afterCommit(notify, { first: true });
   }

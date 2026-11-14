@@ -163,8 +163,8 @@ export interface SqliteEnv {
 
 export interface TransactionContext {
   afterCommit: (() => PromiseOrObject<void>)[];
-  /** How many of `afterCommit`, from its start, were queued to run first. */
-  first?: number;
+  /** The callbacks queued to run ahead of `afterCommit`. */
+  first?: (() => PromiseOrObject<void>)[];
   closed?: boolean;
 }
 

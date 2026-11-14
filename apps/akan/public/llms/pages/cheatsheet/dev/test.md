@@ -103,7 +103,7 @@ The test file carries every assertion. Fixtures are `let` bindings at describe s
 
 Changing the test server
 
-The test server uses an in-memory SQLite database by default. It keeps requests apart as a file does: a read beside an open transaction sees the last commit. For that, each transaction that follows a write first copies the database, about 0.02 ms at test size and 2.5 ms at 50 MB, so a test that loads tens of megabytes should use `tempFile`. To change a setting, call `configureSignalTest` at the top of the test file:
+The test server uses an in-memory SQLite database by default. It keeps requests apart as a file does: a read beside an open transaction sees the last commit. For that, each transaction first copies the database, about 0.02 ms at test size and 2.5 ms at 50 MB, so a test that loads tens of megabytes should use `tempFile`. To change a setting, call `configureSignalTest` at the top of the test file:
 
 - storage ("memory" | "tempFile", default "memory"): `tempFile` keeps SQLite in a temporary file instead of memory, deleted after the run.
 

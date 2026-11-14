@@ -2068,17 +2068,18 @@ export class UserModel extends into(
                     <span>
                       <strong>A write through the model drops kept keys.</strong> A create, a <code>save()</code>, an
                       update or a remove drops that document's keys, and a write by query such as{" "}
-                      <code>updateMany</code> drops every kept key of the model, once it commits. Another instance keeps
-                      its own keys, so there a changed document is still answered in its old shape until the key
-                      expires.
+                      <code>updateMany</code> drops every kept key of the model, once it commits, so a model that is
+                      often written by query gets little from <code>cache</code>. Another instance keeps its own keys,
+                      so there a changed document is still answered in its old shape until the key expires.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>model을 거친 쓰기는 기억해 둔 키를 지웁니다.</strong> create, <code>save()</code>, update,
                       remove는 그 document의 키를, <code>updateMany</code> 같은 쿼리 쓰기는 그 model의 키를 모두
-                      commit될 때 지웁니다. 다른 인스턴스는 자기 키를 따로 기억하므로, 거기서는 바뀐 document도 키가
-                      만료될 때까지 예전 모습으로 답합니다.
+                      commit될 때 지웁니다. 그래서 쿼리 쓰기가 잦은 model은 <code>cache</code>로 얻는 것이 적습니다.
+                      다른 인스턴스는 자기 키를 따로 기억하므로, 거기서는 바뀐 document도 키가 만료될 때까지 예전
+                      모습으로 답합니다.
                     </span>
                   ),
                 })}

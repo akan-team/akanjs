@@ -11,22 +11,22 @@ export class TransactionScope {
   }
 
   static queue(context: TransactionContext, fn: () => PromiseOrObject<void>, { first = false }: AfterCommitOptions) {
-    const ahead = context.first ?? 0;
-    context.afterCommit.splice(first ? ahead : context.afterCommit.length, 0, fn);
-    if (first) context.first = ahead + 1;
+    context.first ??= [];
+    (first ? context.first : context.afterCommit).push(fn);
   }
 
   //? One post-save hook that throws must not skip the callbacks after it; its error still reaches the caller, as it
   //? does for a save outside a transaction.
   static async runAfterCommit(context: TransactionContext) {
     let failure: { error: unknown } | null = null;
-    for (const hook of context.afterCommit) {
-      try {
-        await hook();
-      } catch (error) {
-        failure ??= { error };
+    for (const hooks of [context.first ?? [], context.afterCommit])
+      for (const hook of hooks) {
+        try {
+          await hook();
+        } catch (error) {
+          failure ??= { error };
+        }
       }
-    }
     if (failure) throw failure.error;
   }
 }

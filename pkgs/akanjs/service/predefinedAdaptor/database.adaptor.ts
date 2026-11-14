@@ -124,7 +124,6 @@ export class SqliteDatabase
   #open: TransactionContext | null = null;
   #inMemory = false;
   #committed: Uint8Array | null = null;
-  #committedVersion = "";
   #queue: Promise<void> = Promise.resolve();
 
   override async onInit() {
@@ -268,6 +267,7 @@ export class SqliteDatabase
     } finally {
       context.closed = true;
       this.#open = null;
+      this.#dropCommitted();
       release();
     }
     await TransactionScope.runAfterCommit(context);
@@ -281,26 +281,30 @@ export class SqliteDatabase
   }
 
   // A private in-memory database cannot be opened a second time, so work outside a transaction reads a copy of the
-  // last commit. Serialized after the transaction's first write it would hold that write, so it is taken before BEGIN,
-  // and only when something changed: `total_changes()` misses DDL, which moves the schema version.
+  // last commit. Serialized after the transaction's first write it would hold that write, so it is taken before BEGIN.
   #keepCommitted() {
+    if (this.#inMemory) this.#committed = this.#db.serialize();
+  }
+
+  // The engine does not count the serialized bytes toward its heap, so left to the collector a dozen copies of the
+  // database pile up between two of its runs; detaching the buffer frees them now.
+  #dropBytes() {
+    (this.#committed?.buffer as ArrayBuffer | undefined)?.transfer(0);
+    this.#committed = null;
+  }
+
+  #dropCommitted() {
     if (!this.#inMemory) return;
-    const { changes, schema } = this.#db
-      .query(`SELECT total_changes() AS "changes", "schema_version" AS "schema" FROM pragma_schema_version`)
-      .get() as { changes: number; schema: number };
-    const version = `${changes}:${schema}`;
-    if (version === this.#committedVersion) return;
+    this.#dropBytes();
     this.#reader?.close();
     this.#reader = null;
-    this.#committed = this.#db.serialize();
-    this.#committedVersion = version;
   }
 
   #readerOf() {
     if (!this.#writeTurn()) return null;
     if (this.#committed) {
       this.#reader = Database.deserialize(this.#committed, { readonly: true, strict: true });
-      this.#committed = null;
+      this.#dropBytes();
     }
     return this.#reader;
   }

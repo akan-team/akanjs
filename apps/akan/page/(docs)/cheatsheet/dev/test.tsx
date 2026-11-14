@@ -696,19 +696,19 @@ describe("Article Signal", () => {
                 en: (
                   <span>
                     The test server uses an in-memory SQLite database by default. It keeps requests apart as a file
-                    does: a read beside an open transaction sees the last commit. For that, each transaction that
-                    follows a write first copies the database, about 0.02 ms at test size and 2.5 ms at 50 MB, so a test
-                    that loads tens of megabytes should use <code>tempFile</code>. To change a setting, call{" "}
+                    does: a read beside an open transaction sees the last commit. For that, each transaction first
+                    copies the database, about 0.02 ms at test size and 2.5 ms at 50 MB, so a test that loads tens of
+                    megabytes should use <code>tempFile</code>. To change a setting, call{" "}
                     <code>configureSignalTest</code> at the top of the test file:
                   </span>
                 ),
                 ko: (
                   <span>
                     테스트 서버는 기본으로 메모리 안의 SQLite 데이터베이스를 씁니다. 요청 사이의 격리는 파일일 때와
-                    같아서, 열려 있는 transaction 옆의 읽기는 마지막 commit을 봅니다. 이를 위해 쓰기 뒤에 오는
-                    transaction마다 데이터베이스를 먼저 복사합니다. 테스트 크기에서는 약 0.02 ms, 50 MB에서는 2.5 ms가
-                    들므로, 수십 MB를 채우는 테스트는 <code>tempFile</code>을 쓰세요. 설정을 바꾸려면 test 파일 맨
-                    위에서 <code>configureSignalTest</code>를 부릅니다:
+                    같아서, 열려 있는 transaction 옆의 읽기는 마지막 commit을 봅니다. 이를 위해 transaction마다
+                    데이터베이스를 먼저 복사합니다. 테스트 크기에서는 약 0.02 ms, 50 MB에서는 2.5 ms가 들므로, 수십 MB를
+                    채우는 테스트는 <code>tempFile</code>을 쓰세요. 설정을 바꾸려면 test 파일 맨 위에서{" "}
+                    <code>configureSignalTest</code>를 부릅니다:
                   </span>
                 ),
               })}
