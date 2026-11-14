@@ -96,7 +96,7 @@ export class CascadeRunner {
         for (let start = 0; start < ids.length; start += drainSize)
           await service.__removeMany({ id: documentQueryHelper.oneOf(ids.slice(start, start + drainSize)) });
       };
-      // One transaction, so the chunks stay as all-or-none as the single statement they replace; an open one is joined.
+      // One transaction keeps the chunks all-or-none; an open one is joined.
       if (ids.length > drainSize) await service.transaction(removeChunks);
       else await removeChunks();
       return;

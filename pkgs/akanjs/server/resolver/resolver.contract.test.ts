@@ -963,11 +963,12 @@ describe("ServiceResolver cascade", () => {
     expect(removed).toEqual(gallery);
   });
 
-  test("removes a long array in one query per chunk a database can bind, all in one transaction", async () => {
+  const bulkRemoveOf = async (length: number) => {
     const removed: string[] = [];
     const chunks: { size: number; inTransaction: boolean }[] = [];
-    const gallery = Array.from({ length: 450 }, (_, idx) => `file-${idx}`);
+    const gallery = Array.from({ length }, (_, idx) => `file-${idx}`);
     let inTransaction = false;
+    let transactions = 0;
     const fileService = {
       __removeMany: async (query: unknown) => {
         const asked = idsAsked(query) ?? [];
@@ -977,6 +978,7 @@ describe("ServiceResolver cascade", () => {
         return { acknowledged: true, matchedCount: asked.length, modifiedCount: asked.length };
       },
       transaction: async <T>(fn: () => Promise<T>) => {
+        transactions += 1;
         inTransaction = true;
         try {
           return await fn();
@@ -995,15 +997,34 @@ describe("ServiceResolver cascade", () => {
     );
     cascade.register(cascadeChildConstant, new DocumentSchema(), PlainFileService as never);
     cascade.seal(() => fileService as never);
-
     await cascade.run(parentRef, { id: "parent-1", gallery });
-
-    expect(chunks).toEqual([
-      { size: 200, inTransaction: true },
-      { size: 200, inTransaction: true },
-      { size: 50, inTransaction: true },
-    ]);
     expect(removed).toEqual(gallery);
+    return { chunks, transactions };
+  };
+
+  test("removes a long array in one query per chunk a database can bind, all in one transaction", async () => {
+    expect(await bulkRemoveOf(450)).toEqual({
+      chunks: [
+        { size: 200, inTransaction: true },
+        { size: 200, inTransaction: true },
+        { size: 50, inTransaction: true },
+      ],
+      transactions: 1,
+    });
+  });
+
+  test("removes an array of exactly one chunk in one query, opening no transaction", async () => {
+    expect(await bulkRemoveOf(200)).toEqual({ chunks: [{ size: 200, inTransaction: false }], transactions: 0 });
+  });
+
+  test("removes an array one past a chunk in two queries inside one transaction", async () => {
+    expect(await bulkRemoveOf(201)).toEqual({
+      chunks: [
+        { size: 200, inTransaction: true },
+        { size: 1, inTransaction: true },
+      ],
+      transactions: 1,
+    });
   });
 
   test("removes a document once when several fields or array entries hold its id", async () => {
