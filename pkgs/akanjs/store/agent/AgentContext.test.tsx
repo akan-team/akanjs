@@ -198,7 +198,7 @@ describe("AgentContext", () => {
         tag: words,
       },
     });
-    const route = context.blocks(surface).find((block) => block.kind === "route") as {
+    const route = context.blocks(surface).find((block) => block.kind === "route") as unknown as {
       path: string;
       params: Record<string, string>;
       searchParams: Record<string, string | string[]>;

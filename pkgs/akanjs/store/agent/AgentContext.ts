@@ -76,10 +76,10 @@ export class AgentContext {
   }
 
   static #rowsOf(value: unknown): { value: unknown; whole: boolean } | null {
-    const items = value && typeof value === "object" && "items" in value ? value.items : null;
-    if (!Array.isArray(items)) return null;
+    if (!value || typeof value !== "object" || !("items" in value) || !Array.isArray(value.items)) return null;
+    const items: unknown[] = value.items;
     let whole = true;
-    const rows = items.flatMap((item: { id?: unknown; label?: unknown } | null) => {
+    const rows = (items as ({ id?: unknown; label?: unknown } | null)[]).flatMap((item) => {
       if (!AgentInline.isToken(item?.id)) {
         whole = false;
         return [];
