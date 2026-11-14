@@ -348,7 +348,15 @@ fn error_name(error: &glib::Error) -> String {
 pub(crate) fn cdp(webview: &WebView, method: &str, params: &str, reply: Reply) {
   match method {
     "Page.captureScreenshot" => capture(webview, reply),
-    "Input.dispatchKeyEvent" => reply.send(json::parse(params).and_then(|params| send_key(webview, &params)).map(|()| "{}".into())),
+    "Input.dispatchKeyEvent" => match json::parse(params).and_then(|params| send_key(webview, &params)) {
+      //? Answered once a script sent after the key has run: WebKit gives the page a key only after its answer to the one
+      //? before, so no sent key waits behind another, and a Tab's take-focus reaches GTK before its hold ends.
+      Ok(hold) => webview.webview().evaluate_javascript("0", None, None, None::<&gio::Cancellable>, move |_| {
+        drop(hold);
+        reply.send(Ok("{}".into()));
+      }),
+      Err(error) => reply.send(Err(error)),
+    },
     _ => reply.send(Err(format!("UNSUPPORTED: {method} reaches no view on Linux"))),
   }
 }
@@ -462,7 +470,7 @@ const IM_PASS_THROUGH: u32 = 1 << 25;
 const KEY_WINDOW: &str = "akan-key-window";
 
 //? Sent to the view's widget, not the display: it reaches that view alone, focused, hidden or not, and counts as trusted.
-fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
+fn send_key(webview: &WebView, params: &json::V) -> Result<Option<FocusHold>, String> {
   let field = |k: &str| params.get(k).and_then(|v| v.as_str()).unwrap_or("");
   let kind = match field("type") {
     "keyDown" | "rawKeyDown" => gdk::EventType::KeyPress,
@@ -494,8 +502,61 @@ fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
     (*raw).keyval = keyval;
     (*raw).hardware_keycode = keycode;
   }
+  let hold = (kind == gdk::EventType::KeyPress && keyval == *gdk::keys::constants::Tab).then(|| FocusHold::new(&wv));
   wv.event(&native);
-  Ok(())
+  Ok(hold)
+}
+
+const FOCUS_HOLDS: &str = "akan-focus-holds";
+
+/// A sent Tab on its way through a view's page, which keeps the window's keyboard focus where it is meanwhile.
+struct FocusHold(Rc<Cell<u32>>);
+
+//? A Tab past a page's last element ends in WebKit's take-focus, which grabs the GTK focus for a view without it, and
+//? from a view with it moves the focus on through the window (the toplevel's `focus`).
+impl FocusHold {
+  fn new(wv: &webkit2gtk::WebView) -> Self {
+    if let Some(top) = wv.toplevel().and_then(|top| top.downcast::<gtk::Window>().ok()) {
+      // SAFETY: only FocusHold::new sets FOCUS_HOLDS on a window, always to ().
+      if unsafe { top.data::<()>(FOCUS_HOLDS) }.is_none() {
+        unsafe { top.set_data(FOCUS_HOLDS, ()) };
+        top.connect_focus(|top, _| {
+          let from = top.focused_widget().and_then(|widget| widget.downcast::<webkit2gtk::WebView>().ok());
+          // SAFETY: only focus_holds sets FOCUS_HOLDS on a view, always to an Rc<Cell<u32>>.
+          if from.is_some_and(|wv| unsafe { wv.data::<Rc<Cell<u32>>>(FOCUS_HOLDS) }.is_some_and(|holds| unsafe { holds.as_ref() }.get() > 0)) {
+            glib::Propagation::Stop
+          } else {
+            glib::Propagation::Proceed
+          }
+        });
+      }
+    }
+    let holds = focus_holds(wv);
+    holds.set(holds.get() + 1);
+    Self(holds)
+  }
+}
+
+impl Drop for FocusHold {
+  fn drop(&mut self) {
+    self.0.set(self.0.get() - 1);
+  }
+}
+
+fn focus_holds(wv: &webkit2gtk::WebView) -> Rc<Cell<u32>> {
+  // SAFETY: only focus_holds sets FOCUS_HOLDS on a view, always to an Rc<Cell<u32>>.
+  if let Some(holds) = unsafe { wv.data::<Rc<Cell<u32>>>(FOCUS_HOLDS) } {
+    return unsafe { holds.as_ref() }.clone();
+  }
+  let holds = Rc::new(Cell::new(0));
+  let grabs = holds.clone();
+  wv.connect_grab_focus(move |wv| {
+    if grabs.get() > 0 && !wv.is_focus() {
+      wv.stop_signal_emission_by_name("grab-focus");
+    }
+  });
+  unsafe { wv.set_data(FOCUS_HOLDS, holds.clone()) };
+  holds
 }
 
 //? GTK drops a key press on a window not viewable, a hidden view's own: keys go through an off-screen one routed to it.
@@ -529,7 +590,12 @@ fn key_window(wv: &webkit2gtk::WebView) -> Result<gdk::Window, String> {
 
 //? A visible view takes the user's own keys too: their way to a view is the keyboard focus.
 pub(crate) fn focus(webview: &WebView) {
-  webview.webview().grab_focus();
+  let wv = webview.webview();
+  //? A sent Tab's hold stops WebKit's take-focus, not the app's own moves of the keyboard.
+  let holds = focus_holds(&wv);
+  let held = holds.replace(0);
+  wv.grab_focus();
+  holds.set(held);
 }
 
 /// The page of the window `any` (the page itself or a view over it) takes the keyboard back.
