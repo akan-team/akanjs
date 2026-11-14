@@ -32,6 +32,14 @@ const brokenPackage = async () => {
 };
 
 describe("VerifyPipeline", () => {
+  test("runs at most four targets at once, fewer on a machine with under 16 GiB of memory", () => {
+    const gib = 2 ** 30;
+    expect(VerifyPipeline.concurrencyOf(16, 64 * gib)).toBe(4);
+    expect(VerifyPipeline.concurrencyOf(2, 64 * gib)).toBe(2);
+    expect(VerifyPipeline.concurrencyOf(16, 8 * gib)).toBe(2);
+    expect(VerifyPipeline.concurrencyOf(16, 6 * gib)).toBe(1);
+  });
+
   test("lints with fixes and typechecks a package in one run, reporting one line per problem, from a cache outside it", async () => {
     const { root, workspace } = await brokenPackage();
     const scope = VerifyScope.resolve([{ code: " M", file: "pkgs/@sample/tool/index.ts" }], {

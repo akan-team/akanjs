@@ -28,7 +28,11 @@ interface StepOutcome {
 }
 
 export class VerifyPipeline {
-  static readonly #concurrency = Math.min(4, Math.max(2, os.availableParallelism() - 1));
+  //? A tsc worker on a large app holds 1-2.5 GB beside biome and the editor, so each one is budgeted 4 GiB of RAM.
+  static concurrencyOf(cpus: number, memoryBytes: number) {
+    return Math.max(1, Math.min(4, Math.max(2, cpus - 1), Math.floor(memoryBytes / 2 ** 32)));
+  }
+  static readonly #concurrency = VerifyPipeline.concurrencyOf(os.availableParallelism(), os.totalmem());
   readonly #workspace: Workspace;
   readonly #workspaceRunner: WorkspaceRunner;
   readonly #applicationRunner: ApplicationRunner;
