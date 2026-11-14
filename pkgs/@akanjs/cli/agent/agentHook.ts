@@ -87,6 +87,7 @@ export class AgentHook {
   async run(event: AgentHookEvent, input: AgentHookInput): Promise<AgentHookOutcome> {
     const file = event === "stop" ? null : this.#relative(input.tool_input?.file_path);
     if (event === "pre-edit") return file ? this.#preEdit(file) : { block: false, message: "" };
+    if (file) await this.#record(input.session_id, file);
     //? Verify writes (sync, fixes) as `akan verify` would, so it is skipped as that is refused, yet never blocks.
     const refusal = WorkspaceVersionCheck.refusal(
       this.#cliVersion,
@@ -99,7 +100,7 @@ export class AgentHook {
     }
     if (event === "stop") return await this.#stop(input);
     if (!file) return { block: false, message: "" };
-    return await this.#postEdit(file, input.session_id);
+    return await this.#verify([file], { lintOnly: true });
   }
 
   #preEdit(file: string): AgentHookOutcome {
@@ -109,11 +110,6 @@ export class AgentHook {
       block: true,
       message: `${file} is generated (${pattern}). Edit the source file it is generated from, then run \`akan sync <app-or-lib>\`.`,
     };
-  }
-
-  async #postEdit(file: string, session?: string): Promise<AgentHookOutcome> {
-    await this.#record(session, file);
-    return await this.#verify([file], { lintOnly: true });
   }
 
   //? Claude Code sets `stop_hook_active` once a Stop hook has already sent it back; a second block could loop forever.

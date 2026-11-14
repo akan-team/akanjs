@@ -88,6 +88,29 @@ describe("AgentHook", () => {
     expect(await Bun.file(file).text()).toBe("export const ok = 1\n");
   }, 60_000);
 
+  test("still records an edit made under a mismatch, so the stop after the versions match verifies it", async () => {
+    const { root, workspace, file } = await brokenPackage();
+    const nodeModules = path.join(root, "node_modules");
+    await rm(nodeModules, { recursive: true, force: true });
+    await writeJson(path.join(nodeModules, "akanjs/package.json"), { name: "akanjs", version: "1.0.0" });
+    const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const edited = await new AgentHook(workspace, { cliVersion: "3.2.0" }).run("post-edit", {
+        session_id: "s1",
+        tool_input: { file_path: file },
+      });
+      expect(edited.message).toContain("AKAN_ALLOW_VERSION_MISMATCH=1");
+    } finally {
+      stderr.mockRestore();
+    }
+    await rm(nodeModules, { recursive: true, force: true });
+    await symlink(path.join(repoRoot, "node_modules"), nodeModules);
+
+    const stopped = await new AgentHook(workspace).run("stop", { session_id: "s1" });
+    expect(stopped.block).toBe(true);
+    expect(stopped.message).toContain("pkgs/@sample/tool/index.ts:1:14 TS2322");
+  }, 120_000);
+
   test("lints each edit, then verifies what the session edited once it tries to stop", async () => {
     const { root, workspace, file } = await brokenPackage();
     const hook = new AgentHook(workspace);
