@@ -81,6 +81,7 @@ interface PagePromptDrawMsg {
   requestId: string;
   input: PagePromptRunInput;
   clientManifest?: ClientManifest;
+  deadlineMs: number;
 }
 interface PagePromptsVisibleMsg {
   type: "page-prompts.visible";
@@ -230,13 +231,9 @@ export class RscRenderer {
       case "page-prompt.run":
         void this.#answer(msg.requestId, "page-prompt.result", () => this.#pagePrompts.run(msg.input));
         return;
-      case "page-prompt.draw": {
-        const clientManifest = msg.clientManifest ?? this.#clientManifest;
-        void this.#answer(msg.requestId, "page-prompt.draw.result", () =>
-          this.#pagePrompts.draw(msg.input, (drawing) => this.#staticApps.draw(drawing, clientManifest)),
-        );
+      case "page-prompt.draw":
+        void this.#answer(msg.requestId, "page-prompt.draw.result", () => this.#drawPagePrompt(msg));
         return;
-      }
       case "page-prompts.visible":
         void this.#answer(msg.requestId, "page-prompts.visible.result", () => this.#pagePrompts.visible(msg.input));
         return;
@@ -251,6 +248,25 @@ export class RscRenderer {
     const rootLayouts = RouteTreeBuilder.matchFallback(pathname, this.#fallbackRoutes)?.fallbackRoute.renderRootLayouts;
     const manifest = await RscDocumentHead.firstRootValue(rootLayouts ?? [], (render) => render.getLayoutManifest?.());
     return manifest ? toManifestJson(manifest) : null;
+  }
+
+  //? A load that never settles cannot be stopped, only no longer waited on; the render it would feed is aborted.
+  async #drawPagePrompt({ input, clientManifest = this.#clientManifest, deadlineMs }: PagePromptDrawMsg) {
+    const deadline = new AbortController();
+    const timer = setTimeout(() => deadline.abort(), deadlineMs);
+    const expired = new Promise<never>((_, reject) =>
+      deadline.signal.addEventListener("abort", () =>
+        reject(new AkanError("rscWorkerFailed", `static app "${input.name}" passed its ${deadlineMs} ms deadline`)),
+      ),
+    );
+    try {
+      return await Promise.race([
+        this.#pagePrompts.draw(input, (drawing) => this.#staticApps.draw(drawing, clientManifest, deadline.signal)),
+        expired,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async #answer(requestId: string, type: string, fn: () => Promise<unknown>): Promise<void> {

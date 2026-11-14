@@ -40,6 +40,7 @@ export class RscStaticApp {
   async draw(
     { element, route, url, lang }: PagePromptDrawInput,
     clientManifest: ClientManifest,
+    signal?: AbortSignal,
   ): Promise<RscStaticAppDrawing | null> {
     const roots = route.renderRootLayouts;
     const [Root, theme, viewport] = await Promise.all([
@@ -55,7 +56,7 @@ export class RscStaticApp {
     ) : (
       element
     );
-    const rendered = await this.#flights.renderFlightElement(tree, clientManifest, { collectChunks: true });
+    const rendered = await this.#flights.renderFlightElement(tree, clientManifest, { collectChunks: true, signal });
     if (rendered.control || rendered.cancelled) {
       this.#logger.warn(
         `static app at ${path} drew no HTML: its render ended in ${rendered.control?.type ?? "cancel"}`,

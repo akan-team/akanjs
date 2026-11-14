@@ -183,13 +183,33 @@ export class RscWorker {
     return this.#requests.call<PagePromptRun>((requestId) => ({ type: "page-prompt.run", requestId, input }));
   }
 
-  drawPagePrompt(input: PagePromptRunInput, clientManifest?: ClientManifest): Promise<RscPagePromptDrawn> {
-    return this.#requests.call<RscPagePromptDrawn>((requestId) => ({
+  //? Raced here as well as in the worker: a worker stuck on a synchronous loop never reads its own deadline.
+  async drawPagePrompt(
+    input: PagePromptRunInput,
+    clientManifest: ClientManifest | undefined,
+    deadlineMs: number,
+  ): Promise<RscPagePromptDrawn> {
+    const deadlineAt = Date.now() + deadlineMs;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(new AkanError("rscWorkerFailed", `static app "${input.name}" passed its ${deadlineMs} ms deadline`)),
+        deadlineMs,
+      );
+    });
+    const drawn = this.#requests.call<RscPagePromptDrawn>((requestId) => ({
       type: "page-prompt.draw",
       requestId,
       input,
       clientManifest,
+      deadlineMs: Math.max(0, deadlineAt - Date.now()),
     }));
+    try {
+      return await Promise.race([drawn, expired]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   visiblePagePrompts(input: PagePromptVisibleInput): Promise<string[]> {

@@ -13,6 +13,22 @@ const ClientNote = registerClientReference(
   "ClientNote",
 );
 
+const NeverReady = registerClientReference(
+  (): ReactNode => {
+    throw new Error("NeverReady is a client component");
+  },
+  "staticapp/client",
+  "NeverReady",
+);
+
+const ClientThrows = registerClientReference(
+  (): ReactNode => {
+    throw new Error("ClientThrows is a client component");
+  },
+  "staticapp/client",
+  "ClientThrows",
+);
+
 const BrowserChart = registerClientReference(
   (): ReactNode => {
     throw new Error("BrowserChart is a client component");
@@ -29,6 +45,12 @@ const ServerCanvas = lazy(async () => ({ default: () => <canvas /> }), {
 const LateNote = async (): Promise<ReactNode> => {
   await Bun.sleep(20);
   return <p>late note</p>;
+};
+
+const Unsettled = async (): Promise<ReactNode> => await new Promise<ReactNode>(() => undefined);
+
+const ServerThrows = (): ReactNode => {
+  throw new Error("the board is missing");
 };
 
 const Raw = ({ html }: { html: string }): ReactNode => (
@@ -108,6 +130,68 @@ export const pages: PagesContext = {
         () => <Raw html="<p>spliced</p><scr<script></script>ipt>run()</script>" />,
         { static: true },
       )
+      .render(() => null),
+  }),
+  "./slow.tsx": async () => ({
+    default: page()
+      .app("showHung", "Show a board whose load never ends.", () => new Promise<ReactNode>(() => undefined), {
+        static: true,
+      })
+      .app(
+        "showUnsettled",
+        "Show a board whose component never ends.",
+        () => (
+          <article>
+            <h1>Unsettled</h1>
+            <Suspense fallback={<i>waiting</i>}>
+              <Unsettled />
+            </Suspense>
+          </article>
+        ),
+        { static: true },
+      )
+      .app(
+        "showNeverReady",
+        "Show a board whose client part never ends.",
+        () => (
+          <article>
+            <h1>Never ready</h1>
+            <Suspense fallback={<i>waiting</i>}>
+              <NeverReady />
+            </Suspense>
+          </article>
+        ),
+        { static: true },
+      )
+      .render(() => null),
+  }),
+  "./broken.tsx": async () => ({
+    default: page()
+      .app(
+        "showServerThrows",
+        "Show a board that throws on the server.",
+        () => (
+          <article>
+            <h1>Broken</h1>
+            <ServerThrows />
+          </article>
+        ),
+        { static: true },
+      )
+      .app(
+        "showClientThrows",
+        "Show a board whose client part throws.",
+        () => (
+          <article>
+            <h1>Broken</h1>
+            <ClientThrows />
+          </article>
+        ),
+        { static: true },
+      )
+      .app("showHuge", "Show a board past the size cap.", () => <p>{"x".repeat(1024 * 1024 + 1)}</p>, {
+        static: true,
+      })
       .render(() => null),
   }),
   "./blank.tsx": async () => ({

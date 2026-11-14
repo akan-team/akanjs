@@ -30,7 +30,7 @@ export class SsrStaticApp {
     this.#logger = logger;
   }
 
-  async render(input: SsrStaticAppInput): Promise<string | null> {
+  async render(input: SsrStaticAppInput, deadlineMs = SsrStaticApp.deadlineMs): Promise<string | null> {
     const store = createRequestStore(new Request(input.url, { headers: input.headers }));
     const inScope = <T,>(fn: () => T): T =>
       requestStorage ? requestStorage.run(store, () => RenderScope.run(() => AppScope.run(input.app, fn))) : fn();
@@ -39,8 +39,8 @@ export class SsrStaticApp {
     const root = await inScope(() => createFromNodeStream<ReactNode>(flight, input.ssrManifest));
     //? Aborting settles every boundary still waiting as one React leaves to a client, which the refusal reads.
     const deadline = new AbortController();
-    const timer = setTimeout(() => deadline.abort(), SsrStaticApp.deadlineMs);
-    let html: string | null;
+    const timer = setTimeout(() => deadline.abort(), deadlineMs);
+    let html: string | null = null;
     try {
       const stream = await inScope(async () => {
         const rendered = await renderToReadableStream(SsrStaticApp.#document(root, input), {
@@ -53,6 +53,8 @@ export class SsrStaticApp {
         return rendered;
       });
       html = await SsrStaticApp.#read(stream);
+    } catch (error) {
+      if (!failures.length) failures.push(error);
     } finally {
       clearTimeout(timer);
     }

@@ -16,6 +16,7 @@ export class WebStaticApp {
   }
 
   async render({ origin, ...input }: PagePromptRenderInput): Promise<PagePromptRender> {
+    const deadlineAt = Date.now() + SsrStaticApp.deadlineMs;
     const rsc = this.#rsc();
     const entry = (await rsc.listPagePrompts()).find((candidate) => candidate.name === input.name);
     if (entry?.kind !== "app" || !entry.static) return { run: await rsc.runPagePrompt(input), html: null };
@@ -24,20 +25,27 @@ export class WebStaticApp {
     const manifest = await this.#context.ensureRoute(
       new URL(RscPagePrompts.urlOf(entry.pattern, { ...input.arguments, lang }, {})),
     );
-    const { run, drawn } = await rsc.drawPagePrompt({ ...input, language: lang }, manifest.clientManifest);
+    const { run, drawn } = await rsc.drawPagePrompt(
+      { ...input, language: lang },
+      manifest.clientManifest,
+      deadlineAt - Date.now(),
+    );
     if (!run.ok || !drawn) return { run, html: null };
     try {
       const request = new Request(run.url, { headers: input.headers });
-      const html = await this.#ssr.render({
-        app: input.name,
-        url: run.url,
-        headers: input.headers,
-        lang,
-        drawing: drawn,
-        ssrManifest: manifest.ssrManifest,
-        origin,
-        stylesheetHref: this.#context.stylesheetHref(request, new URL(run.url).pathname),
-      });
+      const html = await this.#ssr.render(
+        {
+          app: input.name,
+          url: run.url,
+          headers: input.headers,
+          lang,
+          drawing: drawn,
+          ssrManifest: manifest.ssrManifest,
+          origin,
+          stylesheetHref: this.#context.stylesheetHref(request, new URL(run.url).pathname),
+        },
+        deadlineAt - Date.now(),
+      );
       return { run, html };
     } catch (error) {
       this.#context.logger.warn(

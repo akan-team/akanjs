@@ -13,7 +13,7 @@ interface Drawn {
 
 const clientId = "staticapp/client";
 const clientModule = path.join(import.meta.dir, "rscStaticAppClient.fixture.tsx");
-const clientNames = ["ClientNote", "BrowserChart"];
+const clientNames = ["ClientNote", "BrowserChart", "NeverReady", "ClientThrows"];
 const ssrManifest = {
   moduleLoading: null,
   moduleMap: {
@@ -25,7 +25,7 @@ const ssrManifest = {
 const signedIn: [string, string][] = [["authorization", "Bearer u1"]];
 
 const withStaticAppWorker = async (
-  run: (draw: (name: string, headers?: [string, string][]) => Promise<Drawn>) => Promise<void>,
+  run: (draw: (name: string, headers?: [string, string][], deadlineMs?: number) => Promise<Drawn>) => Promise<void>,
 ) => {
   const vars: Record<string, string> = {
     AKAN_RSC_WORKER_PATH: path.join(import.meta.dir, "rscWorker.tsx"),
@@ -45,19 +45,23 @@ const withStaticAppWorker = async (
   const ssr = new SsrStaticApp(new Logger("SsrStaticAppTest"));
   try {
     await rsc.ready;
-    await run(async (name, headers = signedIn) => {
-      const { run: page, drawn } = await rsc.drawPagePrompt({ name, arguments: {}, headers });
+    await run(async (name, headers = signedIn, deadlineMs = SsrStaticApp.deadlineMs) => {
+      const deadlineAt = Date.now() + deadlineMs;
+      const { run: page, drawn } = await rsc.drawPagePrompt({ name, arguments: {}, headers }, undefined, deadlineMs);
       if (!page.ok || !drawn) return { ok: page.ok, drawn: false, html: null };
-      const html = await ssr.render({
-        app: name,
-        url: page.url,
-        headers,
-        lang: "en",
-        drawing: drawn,
-        ssrManifest,
-        origin: "https://board.example.com",
-        stylesheetHref: "/_akan/styles.css",
-      });
+      const html = await ssr.render(
+        {
+          app: name,
+          url: page.url,
+          headers,
+          lang: "en",
+          drawing: drawn,
+          ssrManifest,
+          origin: "https://board.example.com",
+          stylesheetHref: "/_akan/styles.css",
+        },
+        deadlineAt - Date.now(),
+      );
       return { ok: true, drawn: true, html };
     });
   } finally {
@@ -110,6 +114,31 @@ describe("a static app drawn as HTML", () => {
       expect(await draw("showCanvas")).toEqual({ ok: true, drawn: true, html: null });
       expect(await draw("showChart")).toEqual({ ok: true, drawn: true, html: null });
       expect(await draw("showBlank")).toEqual({ ok: true, drawn: true, html: null });
+    });
+  }, 20_000);
+
+  test("is refused once its deadline passes, whether the load or a component never ends", async () => {
+    await withStaticAppWorker(async (draw) => {
+      for (const name of ["showHung", "showUnsettled"]) {
+        const startedAt = Date.now();
+        await expect(draw(name, signedIn, 300)).rejects.toMatchObject({ code: "rscWorkerFailed" });
+        expect(Date.now() - startedAt).toBeLessThan(3_000);
+      }
+      expect((await draw("showBoard")).html).toContain("<h1>Board</h1>");
+    });
+  }, 20_000);
+
+  test("is not sent with a Suspense fallback when a boundary does not resolve in time", async () => {
+    await withStaticAppWorker(async (draw) => {
+      expect(await draw("showNeverReady", signedIn, 1_000)).toEqual({ ok: true, drawn: true, html: null });
+    });
+  }, 20_000);
+
+  test("is not sent when a component throws on either side of the wire, or the document passes its size cap", async () => {
+    await withStaticAppWorker(async (draw) => {
+      expect(await draw("showServerThrows")).toEqual({ ok: true, drawn: false, html: null });
+      expect(await draw("showClientThrows")).toEqual({ ok: true, drawn: true, html: null });
+      expect(await draw("showHuge")).toEqual({ ok: true, drawn: true, html: null });
     });
   }, 20_000);
 });
