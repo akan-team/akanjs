@@ -139,6 +139,23 @@ describe("LogStreamRoute stream", () => {
     expect(seen.slice(1).map((frame) => frame.id)).toEqual([3, 4, 5]);
   });
 
+  test("a resume replays a ring larger than the live bound without dropping any of it", async () => {
+    hub = new LogHub({ maxRecords: 5_000, maxBytes: 64 * 1024 * 1024 });
+    const pad = "가".repeat(1_024);
+    const count = Math.ceil((LogStreamRoute.maxQueuedBytes * 2) / (pad.length * 3));
+    for (let idx = 1; idx <= count; idx += 1) hub.ingest(record(`m${idx} ${pad}`));
+    const route = new LogStreamRoute(() => hub, "tok");
+    const text = await readUntil(
+      route.handle(request("", { "last-event-id": "1" })),
+      (t) => dataCount(t) >= count - 1,
+      5_000,
+    );
+    const seen = frames(text);
+    expect(seen.some((frame) => (frame.data as { type?: string }).type === "dropped")).toBe(false);
+    expect(seen.length).toBe(count - 1);
+    expect(seen.at(-1)?.id).toBe(count);
+  });
+
   test("a Last-Event-ID from before a restart is answered with a sequence-reset gap", async () => {
     hub = new LogHub();
     hub.ingest(record("fresh"));

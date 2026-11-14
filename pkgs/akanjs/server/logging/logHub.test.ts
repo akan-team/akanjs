@@ -26,6 +26,15 @@ describe("LogHub ring", () => {
     hub.close();
   });
 
+  test("counts attrs toward the byte cap, so a record's stack weighs what it holds", () => {
+    const hub = new LogHub({ maxRecords: 100, maxBytes: 1_000 });
+    hub.ingest(record("a", { attrs: { status: 500, stack: "s".repeat(500) } }));
+    hub.ingest(record("b", { attrs: { status: 500, stack: "s".repeat(500) } }));
+    hub.ingest(record("c"));
+    expect(hub.history({}).entries.map((entry) => entry.record.message)).toEqual(["b", "c"]);
+    hub.close();
+  });
+
   test("history filters, honours limit from the newest end, and since reports gaps", () => {
     const hub = new LogHub({ maxRecords: 3 });
     hub.ingest(record("keep 1"));

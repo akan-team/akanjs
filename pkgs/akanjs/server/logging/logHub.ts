@@ -219,7 +219,12 @@ export class LogHub {
   }
 
   static estimateBytes(record: LogRecord) {
-    return record.message.length + record.context.length + record.name.length + 160;
+    let bytes = record.message.length + record.context.length + record.name.length + 160;
+    for (const key in record.attrs) {
+      const value = record.attrs[key];
+      bytes += key.length + (typeof value === "string" ? value.length : 16);
+    }
+    return bytes;
   }
 
   #admit(record: LogRecord): boolean {
