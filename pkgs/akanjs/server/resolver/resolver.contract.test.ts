@@ -2609,15 +2609,54 @@ describe("SignalResolver declaration contracts", () => {
     }
   });
 
+  test("counts a caller's rooms across its sockets, by account else address, and frees them as its sockets leave", async () => {
+    LiveRoomLimit.configure({ roomsPerCaller: 2 });
+    try {
+      const { registry, live, route } = resolveLiveCategoryRoute();
+      const socketOf = (account: object | undefined, address: string) =>
+        Object.assign(makeWs(), { remoteAddress: address, data: { account } });
+      const tab = socketOf({ sid: "caller-rooms" }, "198.51.100.20");
+      const otherTab = socketOf({ sid: "caller-rooms" }, "203.0.113.20");
+      await route(tab, ["news"], "subscribe");
+      await route(otherTab, ["sports"], "subscribe");
+      await route(tab, ["news"], "subscribe");
+      await expect(route(otherTab, ["music"], "subscribe")).rejects.toMatchObject({
+        code: "liveRoomLimit",
+        statusCode: 429,
+        data: { limit: 2, per: "caller" },
+      });
+      expect(await route(socketOf({ sid: "someone-else" }, "198.51.100.20"), ["music"], "subscribe")).toMatchObject({
+        subscribe: true,
+      });
+      const visitor = socketOf(undefined, "192.0.2.20");
+      await route(visitor, ["news"], "subscribe");
+      await route(socketOf(undefined, "192.0.2.20"), ["sports"], "subscribe");
+      await expect(route(visitor, ["music"], "subscribe")).rejects.toBeInstanceOf(LiveRoomLimitError);
+
+      await route(tab, ["news"], "unsubscribe");
+      expect(await route(otherTab, ["music"], "subscribe")).toMatchObject({ subscribe: true });
+      await expect(route(tab, ["news"], "subscribe")).rejects.toBeInstanceOf(LiveRoomLimitError);
+      await SignalResolver.handleWsClose(otherTab, registry, live);
+      expect(await route(tab, ["news"], "subscribe")).toMatchObject({ subscribe: true });
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
   test("reads the live room limits from the env over what option.ts set, and lifts one set off", () => {
     try {
-      LiveRoomLimit.configure({ roomsPerSocket: 10, roomsPerModel: 20 });
-      LiveRoomLimit.applyEnv({ AKAN_LIVE_ROOMS_PER_SOCKET: "512" });
-      expect([LiveRoomLimit.roomsPerSocket, LiveRoomLimit.roomsPerModel]).toEqual([512, 20]);
-      LiveRoomLimit.applyEnv({ AKAN_LIVE_ROOMS_PER_SOCKET: "off", AKAN_LIVE_ROOMS_PER_MODEL: "0" });
-      expect([LiveRoomLimit.roomsPerSocket, LiveRoomLimit.roomsPerModel]).toEqual([null, null]);
+      const limits = () => [LiveRoomLimit.roomsPerSocket, LiveRoomLimit.roomsPerCaller, LiveRoomLimit.roomsPerModel];
+      LiveRoomLimit.configure({ roomsPerSocket: 10, roomsPerCaller: 30, roomsPerModel: 20 });
+      LiveRoomLimit.applyEnv({ AKAN_LIVE_ROOMS_PER_SOCKET: "512", AKAN_LIVE_ROOMS_PER_CALLER: "4000" });
+      expect(limits()).toEqual([512, 4_000, 20]);
+      LiveRoomLimit.applyEnv({
+        AKAN_LIVE_ROOMS_PER_SOCKET: "off",
+        AKAN_LIVE_ROOMS_PER_CALLER: "off",
+        AKAN_LIVE_ROOMS_PER_MODEL: "0",
+      });
+      expect(limits()).toEqual([null, null, null]);
       LiveRoomLimit.reset();
-      expect([LiveRoomLimit.roomsPerSocket, LiveRoomLimit.roomsPerModel]).toEqual([256, 50_000]);
+      expect(limits()).toEqual([256, 2_000, 50_000]);
     } finally {
       LiveRoomLimit.reset();
     }

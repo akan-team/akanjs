@@ -499,6 +499,7 @@ export declare class EndpointRateLimit {
     static subscribeBudgetOf(per: keyof SubscribeRateSetting): WindowBudget | null;
     static budgetOf(key: string, endpointInfo: EndpointInfo): ResolvedBudget | null;
     static admit(context: SignalContext, phase: "account" | "ip"): Promise<void> | undefined;
+    static callerOf(context: SignalContext): null | string;
 }
 
 export type EndpointType = "message" | "mutation" | "pubsub" | "query";

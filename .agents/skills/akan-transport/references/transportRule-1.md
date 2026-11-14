@@ -239,6 +239,11 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   mount order with the app last; `AKAN_LIVE_ROOMS_PER_SOCKET=<count>|off` wins over it). A subscribe past the cap is
   refused with 429 `base.error.liveRoomLimit`, `data: { limit, per: "socket" }`; the rooms already held keep their events,
   subscribing a held room again does not count twice, and leaving a room or closing the socket frees its place.
+- **Rooms per caller are capped at 2,000 per server process**, across its sockets (`roomsPerCaller`,
+  `AKAN_LIVE_ROOMS_PER_CALLER`). The caller is `accountKey(account)`, else the address; one whose address is unknown
+  is bounded per socket only. A subscribe past it is refused the same way with `per: "caller"`, and the count drops
+  as its sockets leave rooms or close. Sockets per address stay unlimited: this count bounds the rooms whatever their
+  number.
 - **Live rooms per model are capped at 50,000 per server process** (`roomsPerModel` in the same setting,
   `AKAN_LIVE_ROOMS_PER_MODEL`), counting only the rooms every write evaluates: those no equality index files and the
   invalidating ones. An indexed room is reached through its key and never counts. A new counted room past it is

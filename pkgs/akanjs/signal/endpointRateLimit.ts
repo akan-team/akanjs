@@ -44,7 +44,7 @@ export class EndpointRateLimit {
   static readonly #limiters = new WeakMap<object, RateLimiter>();
   static #localLimiter: RateLimiter | null = null;
   static readonly #warned = new Set<string>();
-  //? A reconnect resubscribes every room the socket held in one burst, and a socket holds at most 256 live rooms.
+  //? A reconnect resubscribes every room the socket held in one burst, and a socket holds at most 256 rooms.
   static readonly defaultSubscribePerSocket: WindowBudget = { calls: 1_000, windowMs: 60_000 };
   //? Ten sockets' worth: a caller's tabs and devices all resubscribe at once after a server restart.
   static readonly defaultSubscribePerCaller: WindowBudget = { calls: 10_000, windowMs: 60_000 };
@@ -144,7 +144,7 @@ export class EndpointRateLimit {
   //? The socket is counted before the arguments are read, the caller once the middlewares resolved the account.
   static async #consumeSubscribe(context: SignalContext, phase: "ip" | "account", budget: WindowBudget) {
     const per = phase === "ip" ? "socket" : "caller";
-    const caller = phase === "ip" ? null : EndpointRateLimit.#subscriberOf(context);
+    const caller = phase === "ip" ? null : EndpointRateLimit.callerOf(context);
     if (phase === "account" && !caller) return;
     const verdict =
       phase === "ip"
@@ -162,7 +162,7 @@ export class EndpointRateLimit {
 
   //? Unlike an endpoint budget, an unknown address is not pooled: every anonymous socket behind a proxy that records
   //? no address would share one budget, and the socket budget still bounds each of them.
-  static #subscriberOf(context: SignalContext) {
+  static callerOf(context: SignalContext) {
     const ip = context.getClientIp();
     return EndpointRateLimit.#accountOf(context) ?? (ip ? `ip:${ip}` : null);
   }

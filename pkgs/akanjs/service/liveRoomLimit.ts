@@ -3,6 +3,8 @@ import { Logger } from "akanjs/common";
 export interface LiveRoomLimitSetting {
   /** Pubsub rooms one websocket may hold at once, live or not, past which a subscribe is refused; `false` lifts it. */
   roomsPerSocket?: number | false;
+  /** Rooms one caller (its account, else its address) may hold across its sockets in this server; `false` lifts it. */
+  roomsPerCaller?: number | false;
   /**
    * Live rooms on one model in this server that every write evaluates (those no equality index files, and invalidating
    * ones), past which a new one is refused; indexed rooms never count. `false` lifts it.
@@ -15,11 +17,14 @@ type Env = Record<string, string | undefined>;
 export class LiveRoomLimit {
   //? A page holds one room per live slice and per feed it shows, so a socket nears this only by subscribing in a loop.
   static readonly defaultRoomsPerSocket = 256;
+  //? 20 tabs of 20 rooms is 400; the rest leaves room for visitors sharing one address, and 25 callers per ceiling.
+  static readonly defaultRoomsPerCaller = 2_000;
   //? Rooms no equality index files are evaluated on every write to their model: 50,000 cost about 25 ms per write.
   static readonly defaultRoomsPerModel = 50_000;
   static readonly #logger = new Logger("LiveRoomLimit");
   static readonly #envNames = {
     roomsPerSocket: "AKAN_LIVE_ROOMS_PER_SOCKET",
+    roomsPerCaller: "AKAN_LIVE_ROOMS_PER_CALLER",
     roomsPerModel: "AKAN_LIVE_ROOMS_PER_MODEL",
   } as const;
   static #setting: LiveRoomLimitSetting = {};
@@ -45,6 +50,10 @@ export class LiveRoomLimit {
 
   static get roomsPerSocket(): number | null {
     return LiveRoomLimit.#resolve(LiveRoomLimit.#setting.roomsPerSocket, LiveRoomLimit.defaultRoomsPerSocket);
+  }
+
+  static get roomsPerCaller(): number | null {
+    return LiveRoomLimit.#resolve(LiveRoomLimit.#setting.roomsPerCaller, LiveRoomLimit.defaultRoomsPerCaller);
   }
 
   static get roomsPerModel(): number | null {

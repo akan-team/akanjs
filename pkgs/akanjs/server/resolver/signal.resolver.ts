@@ -675,7 +675,7 @@ export class SignalResolver {
                   const room = refName
                     ? { refName, roomId, query: query as never, fallback: fallback ?? null, payload }
                     : null;
-                  RoomAdmission.admit(roomCtxMap, roomId, context, room ? { registry: live, room } : undefined);
+                  RoomAdmission.admit(ws, roomCtxMap, roomId, context, room ? { registry: live, room } : undefined);
                   SignalResolver.#liveWsPubsubRoomCtx.set(ws, roomCtxMap);
                   //? A binary frame goes out unnumbered, so a binary room acks no cursor and its resubscribe resyncs.
                   const isBinaryRoom = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
@@ -855,6 +855,7 @@ export class SignalResolver {
     const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
     if (!roomCtxMap || roomCtxMap.get(roomId) !== roomCtx) return false;
     roomCtxMap.delete(roomId);
+    RoomAdmission.release(ws, [roomId]);
     if (roomCtxMap.size === 0) SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
     ws.unsubscribe(roomId);
     SignalResolver.#leaveRoom(roomId, live);
@@ -872,6 +873,7 @@ export class SignalResolver {
     const contexts = [...(roomCtxMap?.values() ?? []), ...(SignalResolver.#liveWsMessageCtx.get(ws) ?? [])];
     //? Before the cleanup is awaited, so an unsubscribe or an auth recheck still running finds no room left to leave.
     SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
+    RoomAdmission.release(ws, roomCtxMap?.keys() ?? []);
     SignalResolver.#liveWsMessageCtx.delete(ws);
     await SignalResolver.#runLifecycleHandlers(contexts, ["unsubscribe", "disconnect"]);
     // The routing table must hear about a close too: a room nobody is in still costs an evaluation on every write.

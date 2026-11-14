@@ -2,7 +2,7 @@ import { AkanError } from "akanjs/base";
 
 export interface LiveRoomLimitData {
   limit: number;
-  per: "socket" | "model";
+  per: "socket" | "caller" | "model";
 }
 
 export class LiveRoomLimitError extends AkanError<"liveRoomLimit", LiveRoomLimitData> {

@@ -1100,17 +1100,19 @@ export interface LiveRegistry {
 
 export declare class LiveRoomLimit {
     static readonly defaultRoomsPerSocket = 256;
+    static readonly defaultRoomsPerCaller = 2000;
     static readonly defaultRoomsPerModel = 50000;
     static configure(setting: LiveRoomLimitSetting): void;
     static applyEnv(env?: Env): void;
     static reset(): void;
     static get roomsPerSocket(): null | number;
+    static get roomsPerCaller(): null | number;
     static get roomsPerModel(): null | number;
 }
 
 export interface LiveRoomLimitData {
     limit: number;
-    per: "model" | "socket";
+    per: "caller" | "model" | "socket";
 }
 
 export declare class LiveRoomLimitError extends AkanError<"liveRoomLimit", LiveRoomLimitData> {
@@ -1120,6 +1122,7 @@ export declare class LiveRoomLimitError extends AkanError<"liveRoomLimit", LiveR
 
 export interface LiveRoomLimitSetting {
     roomsPerSocket?: false | number;
+    roomsPerCaller?: false | number;
     roomsPerModel?: false | number;
 }
 
