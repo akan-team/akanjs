@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readFile, readlink, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readlink, rm, stat, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AkanAppConfig } from "../akanConfig";
 import { DevGeneratedIndexSync } from "../frontendBuild/devGeneratedIndexSync";
@@ -645,6 +645,30 @@ describe("Workspace and app executor environment contracts", () => {
     for (const file of kept) expect(existsSync(path.join(akan, file))).toBe(true);
     for (const file of [...removed, "artifact", "generated", "desktop", "mobile"])
       expect(existsSync(path.join(akan, file))).toBe(false);
+  });
+
+  test("akan start removes a cache temp file a killed start left, and keeps one a running start is writing", async () => {
+    const root = await makeTempRoot();
+    process.env.AKAN_PUBLIC_REPO_NAME = "repo";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
+    process.env.AKAN_PUBLIC_ENV = "local";
+    process.env.PORT_OFFSET = "0";
+    await writeJson(path.join(root, "package.json"), rootPackageJson());
+    await mkdir(path.join(root, "apps/starttemps/page"), { recursive: true });
+    await writeFile(path.join(root, "apps/starttemps/akan.config.ts"), "export default {};\n");
+    const cache = path.join(root, "apps/starttemps/.akan/cache");
+    const stale = ["cssCandidates.json.1.a.tmp", "fonts/x.woff2.1.b.tmp"];
+    const fresh = ["fontCache.json.2.c.tmp", "fonts/x.woff2.2.d.tmp"];
+    const kept = [...fresh, "cssCandidates.json", "fonts/x.woff2"];
+    for (const file of [...stale, ...kept]) await writeText(path.join(cache, file), "x");
+    const twoMinutesAgo = new Date(Date.now() - 120_000);
+    for (const file of stale) await utimes(path.join(cache, file), twoMinutesAgo, twoMinutesAgo);
+
+    const app = AppExecutor.from(new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }), "starttemps");
+    await app.prepareCommand("start");
+
+    for (const file of stale) expect(existsSync(path.join(cache, file))).toBe(false);
+    for (const file of kept) expect(existsSync(path.join(cache, file))).toBe(true);
   });
 
   describe("syncPages", () => {
