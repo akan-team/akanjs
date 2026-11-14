@@ -112,7 +112,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `secretStoreUnavailable` | 503 | `AkanError` | no | yes | `base/akanError.ts` |
 | `serviceUnavailable` | 503 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
 | `shutdownTimeout` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
-| `stageFailed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `stageFailed` | 500 | `StageFailedError` | no | yes | `server/di/stageFailedError.ts` |
 | `storageNotShared` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `tableMissing` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
 | `tooManyRequests` | 429 | `Exception` | yes | no | `signal/exception.ts` |

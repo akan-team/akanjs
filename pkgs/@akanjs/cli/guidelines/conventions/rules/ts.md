@@ -89,8 +89,8 @@ Do not narrate code. Do document the thing the code cannot say. Both halves are 
 - Warranted for: a vendor or protocol quirk; an infrastructure constraint; a library gotcha; security reasoning; why
   an arbitrary-looking rule is correct; a math derivation; a domain field's business meaning; a state transition above
   a document chain method; why an obvious alternative was rejected.
-- Markers: `TODO` (tracked unfinished work), `FIXME` (known broken), `XXX` (a hazard a reader must not miss), `//!`
-  (disabled or must-fix — server, `srvkit/`, CLI only), `//?` (an aside), `//*` (a design note), and a deletion
-  caution saying why removing a line would break something non-obvious.
+- Markers: `TODO: <issue url>` (tracked unfinished work), `FIXME` (known broken), `XXX` (a hazard a reader must not
+  miss), `//!` (disabled or must-fix — server, `srvkit/`, CLI only), `//?` (an aside), `//*` (a design note), and a
+  deletion caution saying why removing a line would break something non-obvious.
 - One short line each. Every suppression carries a reason (`// biome-ignore lint/<rule>: <why>`), never a bare
   disable block. Match the nearby density.

@@ -1,4 +1,4 @@
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { Executor, WorkspaceExecutor } from "../executors";
@@ -212,6 +212,21 @@ describe("Subspace push", () => {
     const subspaceRoot = await cloneSubspace(workRoot, bareRoot, "moved-check");
     expect(await FileSys.fileExists(path.join(subspaceRoot, "libs/moved-kit/common/helper.ts"))).toBe(false);
     expect(await FileSys.fileExists(path.join(subspaceRoot, "libs/moved-kit/common/renamed.ts"))).toBe(true);
+  });
+
+  test("puts `--` before every repo and remote it hands git, so none reads as an option", async () => {
+    const { bareRoot, clonePath, subspace } = await makeMirror("dash-served", "dash-private", "dash-kit");
+    const spawn = spyOn(Executor.prototype, "spawn");
+    try {
+      expect((await subspace.push("develop", { verify: false })).outcome).toBe("pushed");
+      const gitArgs = spawn.mock.calls.filter(([command]) => command === "git").map(([, args]) => args);
+      expect(gitArgs).toContainEqual(["fetch", "--quiet", "--", "subspace-acme", "develop"]);
+      expect(gitArgs).toContainEqual(["clone", "--quiet", "--", bareRoot, clonePath]);
+      expect(gitArgs).toContainEqual(["fetch", "--quiet", "--", "origin", "develop"]);
+      expect(gitArgs).toContainEqual(["push", "--quiet", "--", "origin", "develop"]);
+    } finally {
+      spawn.mockRestore();
+    }
   });
 
   test("is idempotent — a second push with no workspace change is skipped", async () => {

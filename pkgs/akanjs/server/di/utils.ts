@@ -3,6 +3,7 @@ import { lowerlize, toError } from "akanjs/common";
 import { ConstantRegistry, type FieldObject } from "akanjs/constant";
 import type { InjectInfo } from "akanjs/service";
 import type { DatabaseModule, ServiceModule } from "../akanLib";
+import { StageFailedError } from "./stageFailedError";
 
 interface StageTask {
   label: string;
@@ -146,7 +147,7 @@ export const throwStageFailures = (
   const summary = failures.map((f) => `  • ${f.label}: ${reasonMessage(f.reason)}`).join("\n");
   const errors = failures.map((f) => toError(f.reason));
   const message = `[DI:${stageLabel}] ${failures.length}/${total} task(s) failed:\n${summary}`;
-  throw Object.assign(new AkanError("stageFailed", message), { errors });
+  throw new StageFailedError(message, errors);
 };
 
 export const reasonMessage = (reason: unknown): string => {

@@ -112,6 +112,7 @@ export {
   type SliceNode,
   type Unserializable,
 } from "./devtools";
+export { StageFailedError } from "./di/stageFailedError";
 export type { ChangeBatch, ChangeKind } from "./hmr/wsHub";
 export {
   MachineAccount,

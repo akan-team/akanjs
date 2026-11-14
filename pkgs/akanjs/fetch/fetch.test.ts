@@ -2137,6 +2137,49 @@ describe("FetchClient HTTP generation", () => {
     });
   });
 
+  test("in a request, a query naming the default timeout, or a retry with its fields in another order, shares", async () => {
+    if (!requestStorage) return;
+    const memo = requestStorage;
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
+    const ask = (policy?: { timeout?: number; retry?: { attempts: number; min: number } }) =>
+      client.handler.getThing("1234567890abcdef12345678", [], null, policy) as Promise<string>;
+    await memo.run(new Request("https://example.test"), async () => {
+      const answers = [
+        ask(),
+        ask({ timeout: 30_000 }),
+        ask({ retry: { attempts: 2, min: 100 } }),
+        ask({ retry: { min: 100, attempts: 2 } }),
+      ];
+      expect(requests).toHaveLength(2);
+      requests[0]?.answer("plain");
+      requests[1]?.answer("retried");
+      expect(await Promise.all(answers)).toEqual(["plain", "plain", "retried", "retried"]);
+    });
+  });
+
+  test("in a request, a retry field left undefined shares as if absent, and one set to null does not", async () => {
+    if (!requestStorage) return;
+    const memo = requestStorage;
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
+    const ask = (retry: { attempts?: number | null; min?: number }) =>
+      client.handler.getThing("1234567890abcdef12345678", [], null, { retry }) as Promise<string>;
+    await memo.run(new Request("https://example.test"), async () => {
+      const answers = [
+        ask({ attempts: 2 }),
+        ask({ attempts: 2, min: undefined }),
+        ask({ attempts: undefined }),
+        ask({ attempts: null }),
+      ];
+      expect(requests).toHaveLength(3);
+      requests[0]?.answer("twice");
+      requests[1]?.answer("default");
+      requests[2]?.answer("once");
+      expect(await Promise.all(answers)).toEqual(["twice", "twice", "default", "once"]);
+    });
+  });
+
   test("hands a joiner its copy as the answer lands, before the starter's caller can change it", async () => {
     const requests = setGatedFetch();
     const blobSignal: SerializedSignal = {

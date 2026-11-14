@@ -1842,6 +1842,11 @@ export interface SsrUpdatedPayload {
     first?: boolean;
 }
 
+export declare class StageFailedError extends AkanError<"stageFailed"> {
+    readonly errors: Error[];
+    constructor(message: string, errors: Error[]);
+}
+
 /** @deprecated */
 export declare const Transaction: () => MethodDecorator;
 
