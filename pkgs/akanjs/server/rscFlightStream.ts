@@ -35,6 +35,7 @@ export interface FlightRenderOptions {
   /** Raised by a render that answered `router.notFound()` in place, which React never reports as an error. */
   notFoundProbe?: { hit: boolean };
   gate?: RouteShellGate;
+  signal?: AbortSignal;
   onComplete?: (
     result: Omit<FlightRenderResult, "cancelled">,
   ) => Promise<RouteCacheRenderState> | RouteCacheRenderState;
@@ -74,6 +75,7 @@ export class RscFlightStream {
   async render(element: ReactNode, clientManifest: ClientManifest): Promise<FlightRenderResult> {
     const options = this.#options;
     const stream = await renderToReadableStream(element, clientManifest, {
+      signal: options.signal,
       onError: (error) => this.#onError(error),
     });
     const reader = stream.getReader();

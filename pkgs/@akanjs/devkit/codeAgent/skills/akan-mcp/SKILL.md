@@ -42,6 +42,9 @@ an endpoint with a real guard is published, one with none is refused, and so is 
   groups of `allow` back until the model calls `openToolkit`; `clientTools` (from `AgentClientTools` on an open page)
   parks a call as `awaiting { client: true }` for the page to run; `ask: true` lists `askUser`, which parks as
   `awaiting { question: true }` until you append the member's answer.
+- `remotes: this.remoteService.sources(account, [{ name, url, description }])` (`libs/shared`, `remote.enabled`) lets
+  the loop call another server's `/mcp` as the user: each is a toolkit, tools read `<name>.<tool>`, a missing
+  connection parks as `awaiting { connect: name }` for `<Remote.Util.Connect>`, and every remote result taints the run.
 
 ## Verify
 

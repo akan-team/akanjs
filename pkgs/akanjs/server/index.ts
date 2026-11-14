@@ -227,6 +227,28 @@ export {
   WebProxyRunner,
   type WebProxyRunResult,
 } from "./proxy";
+export {
+  type RemoteAccess,
+  type RemoteAddressLookup,
+  type RemoteAuthServer,
+  type RemoteClient,
+  RemoteError,
+  type RemoteErrorCode,
+  RemoteFetch,
+  type RemoteFetchOptions,
+  RemoteMcp,
+  type RemoteMcpCallResult,
+  type RemoteMcpContent,
+  type RemoteMcpOptions,
+  type RemoteMcpTool,
+  RemoteOAuth,
+  type RemoteRequest,
+  type RemoteResponse,
+  type RemoteScreen,
+  RemoteSource,
+  type RemoteSourceProps,
+  type RemoteTokens,
+} from "./remote";
 export type { SessionRefreshHook } from "./sessionRefresh";
 // `routeElementComposer`/`routeTreeBuilder` stay out: they would pull React into every process that loads this barrel.
 export {
