@@ -35,6 +35,7 @@ import { WebDocumentRoute } from "./webDocumentRoute";
 import { WebRouteContext } from "./webRouteContext";
 import { WebRscRoute } from "./webRscRoute";
 import { WebSiteFiles } from "./webSiteFiles";
+import { WebStaticApp } from "./webStaticApp";
 import { WellKnownRoutes } from "./wellKnownRoutes";
 
 export interface SsrRoutesInputs {
@@ -232,10 +233,12 @@ export class WebRouter {
   }
 
   pagePrompts(): PagePromptSource {
+    const staticApps = new WebStaticApp(this.#context, () => this.#rsc);
     return {
       list: () => this.#rsc.listPagePrompts(),
       visible: (input) => this.#rsc.visiblePagePrompts(input),
       run: (input) => this.#rsc.runPagePrompt(input),
+      render: (input) => staticApps.render(input),
     };
   }
 
