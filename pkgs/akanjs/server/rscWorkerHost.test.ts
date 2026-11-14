@@ -1274,13 +1274,25 @@ export const pages = {
 
   test("a replacement worker that fails while a fix is on its way hands its queued renders back to the worker it replaces", async () => {
     await withBundles(
-      async (rsc, { a, c, brokenSlow }, body) => {
+      async (rsc, { a, c }, body) => {
+        const importing = path.join(path.dirname(a), "importing");
+        const release = path.join(path.dirname(a), "release");
+        const held = path.join(path.dirname(a), "pages-held.ts");
+        fs.writeFileSync(
+          held,
+          bundleSource(
+            "never",
+            `import fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(importing)}, "");\nwhile (!fs.existsSync(${JSON.stringify(release)})) await Bun.sleep(10);\nthrow new Error("broken at import");`,
+          ),
+        );
         expect(await rsc.reload({ clientManifest: {}, buildId: 2, pagesBundlePath: a })).toMatchObject({ buildId: 2 });
-        const broken = rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: brokenSlow }).catch((e) => e);
-        await Bun.sleep(80);
+        const broken = rsc.reload({ clientManifest: {}, buildId: 3, pagesBundlePath: held }).catch((e) => e);
+        //? Held on files, not sleeps: a replacement that asks for its config after the fix was sent boots the fix.
+        await until(() => fs.existsSync(importing));
         const queued = body();
-        await Bun.sleep(40);
+        await until(() => rsc.getMetrics().rscQueuedSendCount === 1);
         const fixed = rsc.reload({ clientManifest: {}, buildId: 4, pagesBundlePath: c });
+        fs.writeFileSync(release, "");
         expect(await queued).toBe("A");
         expect(await fixed).toEqual({ pagesBundlePath: c, buildId: 4 });
         expect(await broken).toEqual({ pagesBundlePath: c, buildId: 4 });

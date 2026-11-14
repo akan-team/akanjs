@@ -166,22 +166,27 @@ describe("AkanAppConfig", () => {
     expect(unlocked).not.toContain("bun.lock");
   });
 
-  test("writes a Dockerfile for a local build that refuses docker build without an explicit build arg", () => {
-    const config = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
-    const local = config.dockerfileFor("local");
-    const guard = local.split("\n").find((line) => line.includes("AKAN_ALLOW_LOCAL_IMAGE") && line.startsWith("RUN "));
-    if (!guard) throw new Error("expected the local image guard");
-    const run = (allow?: string) =>
-      Bun.spawnSync(["sh", "-c", guard.slice("RUN ".length)], {
-        env: { PATH: process.env.PATH ?? "", ...(allow ? { AKAN_ALLOW_LOCAL_IMAGE: allow } : {}) },
-      });
+  test.skipIf(process.platform === "win32")(
+    "writes a Dockerfile for a local build that refuses docker build without an explicit build arg",
+    () => {
+      const config = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
+      const local = config.dockerfileFor("local");
+      const guard = local
+        .split("\n")
+        .find((line) => line.includes("AKAN_ALLOW_LOCAL_IMAGE") && line.startsWith("RUN "));
+      if (!guard) throw new Error("expected the local image guard");
+      const run = (allow?: string) =>
+        Bun.spawnSync(["sh", "-c", guard.slice("RUN ".length)], {
+          env: { PATH: process.env.PATH ?? "", ...(allow ? { AKAN_ALLOW_LOCAL_IMAGE: allow } : {}) },
+        });
 
-    expect(local).toContain(`FROM ${pinnedBunImage}\nARG AKAN_ALLOW_LOCAL_IMAGE\nRUN if`);
-    expect(config.dockerfileFor("main")).not.toContain("AKAN_ALLOW_LOCAL_IMAGE");
-    expect(run().exitCode).toBe(1);
-    expect(run().stderr.toString()).toContain("--build-arg AKAN_ALLOW_LOCAL_IMAGE=1");
-    expect(run("1").exitCode).toBe(0);
-  });
+      expect(local).toContain(`FROM ${pinnedBunImage}\nARG AKAN_ALLOW_LOCAL_IMAGE\nRUN if`);
+      expect(config.dockerfileFor("main")).not.toContain("AKAN_ALLOW_LOCAL_IMAGE");
+      expect(run().exitCode).toBe(1);
+      expect(run().stderr.toString()).toContain("--build-arg AKAN_ALLOW_LOCAL_IMAGE=1");
+      expect(run("1").exitCode).toBe(0);
+    },
+  );
 
   test("defaults both web surfaces on and keeps the image free of web env overrides", () => {
     const config = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);

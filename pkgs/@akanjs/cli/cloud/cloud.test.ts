@@ -808,12 +808,13 @@ describe("CloudRunner", () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = registryOf({ akanjs: { tags: { latest: "3.1.1", rc: "3.1.2-rc.4" } } });
     const recorder = createCallRecorder();
+    const packDir = path.resolve("/repo", "/tmp/packs");
     const { files, workspace } = createVersionedWorkspace("3.1.2", recorder, {
       mkdir: async (dirPath: string) => recorder.record("workspace.mkdir", dirPath),
       spawn: async (command: string, args: string[], options: { cwd: string }) => {
         recorder.record("workspace.spawn", command, args, options);
         const library = path.relative("/repo/dist/pkgs", options.cwd);
-        return JSON.stringify([{ filename: `${library.replace("@", "").replace("/", "-")}-3.1.2-rc.5.tgz` }]);
+        return JSON.stringify([{ filename: `${library.replace("@", "").replace(/[\\/]/, "-")}-3.1.2-rc.5.tgz` }]);
       },
     });
 
@@ -826,15 +827,15 @@ describe("CloudRunner", () => {
       globalThis.fetch = originalFetch;
     }
 
-    expect(files.get("/tmp/packs/publish.json")).toEqual({
+    expect(files.get(path.join(packDir, "publish.json"))).toEqual({
       version: "3.1.2-rc.5",
       tag: "rc",
       tarballs: ["akanjs-3.1.2-rc.5.tgz", "akanjs-cli-3.1.2-rc.5.tgz"],
     });
     expect(recorder.calls.map((call) => [call.name, ...call.args.slice(0, 2)])).toEqual([
-      ["workspace.mkdir", "/tmp/packs"],
-      ["workspace.spawn", "npm", ["pack", "--json", "--pack-destination", "/tmp/packs"]],
-      ["workspace.spawn", "npm", ["pack", "--json", "--pack-destination", "/tmp/packs"]],
+      ["workspace.mkdir", packDir],
+      ["workspace.spawn", "npm", ["pack", "--json", "--pack-destination", packDir]],
+      ["workspace.spawn", "npm", ["pack", "--json", "--pack-destination", packDir]],
     ]);
   });
 

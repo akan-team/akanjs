@@ -57,7 +57,7 @@ export class WindowsSshTarget extends PlatformTestTarget {
       if (copied.exitCode !== 0) throw new Error(`scp ${remoteName} failed: ${copied.stderr.trim()}`);
     }
     const extract = await this.exec(
-      "tar -xf ..\\src.tar && copy /Y ..\\env .env >nul && git init -q",
+      "tar -xf ..\\src.tar && copy /Y ..\\env .env >nul && git init -q && git add -A",
       path.join(context.logDir, this.platform, "extract.log"),
       PlatformTestTarget.installIdleMs,
     );

@@ -163,6 +163,9 @@ console.info(new SampleService().name);
   test("builds for the shell's AKAN_PUBLIC_ENV over the root .env's, and for --env over both", async () => {
     const { root, workspace } = await createTempApp("portal");
     const shellEnv = process.env.AKAN_PUBLIC_ENV;
+    const otherShellEnv = { repo: process.env.AKAN_PUBLIC_REPO_NAME, domain: process.env.AKAN_PUBLIC_SERVE_DOMAIN };
+    delete process.env.AKAN_PUBLIC_REPO_NAME;
+    delete process.env.AKAN_PUBLIC_SERVE_DOMAIN;
     const stoppedBeforePhases = (app: AppExecutor) => {
       app.prepareCommand = async () => {
         throw new Error("stopped before the phases");
@@ -206,6 +209,8 @@ console.info(new SampleService().name);
     } finally {
       if (shellEnv === undefined) delete process.env.AKAN_PUBLIC_ENV;
       else process.env.AKAN_PUBLIC_ENV = shellEnv;
+      if (otherShellEnv.repo !== undefined) process.env.AKAN_PUBLIC_REPO_NAME = otherShellEnv.repo;
+      if (otherShellEnv.domain !== undefined) process.env.AKAN_PUBLIC_SERVE_DOMAIN = otherShellEnv.domain;
       await rm(root, { recursive: true, force: true });
     }
   });
