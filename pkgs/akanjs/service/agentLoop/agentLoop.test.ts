@@ -10,11 +10,13 @@ import type {
   AgentWireMessage,
   AgentWireToolCall,
   AgentWireToolResult,
+  LlmAdaptor,
   LlmTurnRequest,
   LlmUsage,
 } from "../predefinedAdaptor/llm.adaptor";
 import { LlmSpend } from "../predefinedAdaptor/llmSpend";
 import { OpenaiDialect } from "../predefinedAdaptor/openaiDialect";
+import { OpenaiLlm } from "../predefinedAdaptor/openaiLlm";
 import { AgentLoop, type AgentLoopAnswer, type AgentLoopPort } from "./agentLoop";
 import type { AgentLoopEvent, AgentLoopRequest } from "./agentLoopTypes";
 import { LoopCompaction } from "./loopCompaction";
@@ -469,6 +471,67 @@ describe("AgentLoop spend on interruption", () => {
     const inputOf = (id: string) =>
       reports.find((report) => (report.account as { id: string }).id === id)?.usage.inputTokens ?? 0;
     expect(inputOf("alice")).toBeGreaterThan(inputOf("bob") + 5_000);
+  });
+
+  test("keeps two runs on one controller from billing each other's stream, with the shipped adaptors", async () => {
+    const originalFetch = globalThis.fetch;
+    const reports: AgentUsageReport[] = [];
+    AgentMeter.use({ usage: (report) => void reports.push(report), serial: false });
+    const text = "a long answer only alice was streamed ".repeat(20);
+    const counted = { input_tokens: 9_000, output_tokens: 1 };
+    const streams: [new () => LlmAdaptor, object[]][] = [
+      [OpenaiLlm, [{ choices: [{ delta: { content: text } }] }]],
+      [
+        AnthropicLlm,
+        [
+          { type: "message_start", message: { usage: counted } },
+          { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+        ],
+      ],
+    ];
+    try {
+      for (const [Llm, frames] of streams) {
+        reports.length = 0;
+        const streaming = Promise.withResolvers<void>();
+        const sse = frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("");
+        globalThis.fetch = ((_url: string, { signal, body }: { signal: AbortSignal; body: string }) => {
+          //* bob's provider has not answered yet, and his connection drops a moment after alice's stream does.
+          if (!body.includes("ask from alice"))
+            return new Promise((_resolve, reject) =>
+              signal.addEventListener("abort", () => setTimeout(() => reject(signal.reason), 2)),
+            );
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(sse));
+              signal.addEventListener("abort", () => controller.error(signal.reason));
+              streaming.resolve();
+            },
+          });
+          return Promise.resolve(new Response(stream));
+        }) as unknown as typeof fetch;
+        const service = Object.assign(new AgentService(), {
+          llm: Object.assign(new Llm(), { llmOption: { apiKey: "k", model: "m" } }),
+          agentTools: harness([]).port.tools,
+        });
+        const abort = new AbortController();
+        const runOf = async (id: string) => {
+          for await (const _event of service.loop(ask(`ask from ${id}`, { account: { id }, signal: abort.signal })));
+        };
+        const both = Promise.all([runOf("alice"), runOf("bob")]);
+        await streaming.promise;
+        await Bun.sleep(1);
+        abort.abort();
+        await both;
+        await Bun.sleep(20);
+        const usageOf = (id: string) => reports.find((report) => (report.account as { id: string }).id === id)?.usage;
+        expect(reports.map(({ outcome }) => outcome)).toEqual(["aborted", "aborted"]);
+        expect(usageOf("alice")?.outputTokens).toBe(LlmSpend.tokensOf(text));
+        expect(usageOf("bob")?.outputTokens).toBe(0);
+        expect(usageOf("bob")?.inputTokens).toBeLessThan(1_000);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("runs nothing from a provider stream cut in the middle of a call's arguments", async () => {

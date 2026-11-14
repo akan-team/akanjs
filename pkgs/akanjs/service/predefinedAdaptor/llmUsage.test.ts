@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Err } from "akanjs/dictionary";
 import { AnthropicLlm } from "./anthropicLlm";
-import type { AgentWireTool } from "./llm.adaptor";
+import { type AgentWireTool, llmCallSignal } from "./llm.adaptor";
 import { LlmSpend } from "./llmSpend";
 import { OpenaiDialect } from "./openaiDialect";
 
@@ -343,5 +343,48 @@ describe("LLM usage", () => {
     const withPicture = { messages: [{ role: "user", attachments: [{ name: "p.png", mimeType: "image/png", data }] }] };
     expect(LlmSpend.promptOf(withPicture)).toBeLessThan(LlmSpend.imageTokens + 100);
     expect(LlmSpend.promptOf({ text: "가".repeat(300) })).toBeGreaterThanOrEqual(300);
+  });
+});
+
+describe("llmCallSignal", () => {
+  test("a caller's abort stops each call under a reason of its own, which names the caller's as its cause", () => {
+    const caller = new AbortController();
+    const calls = [llmCallSignal(caller.signal), llmCallSignal(caller.signal)];
+    expect(calls.map(({ aborted }) => aborted)).toEqual([false, false]);
+    const shutdown = new Error("shutting down");
+    caller.abort(shutdown);
+    const reasons = calls.map(({ reason }) => reason as DOMException);
+    expect(reasons.map(({ name, cause }) => [name, cause])).toEqual([
+      ["AbortError", shutdown],
+      ["AbortError", shutdown],
+    ]);
+    expect(reasons[0]).not.toBe(reasons[1]);
+    LlmSpend.attach(reasons[0], { model: "m1" });
+    expect(LlmSpend.of(reasons[1])).toBeNull();
+    expect(LlmSpend.of(shutdown)).toBeNull();
+  });
+
+  test("a call made on a signal already aborted is stopped at once, under its own reason too", () => {
+    const stopped = llmCallSignal(AbortSignal.abort("left"));
+    expect(stopped.aborted).toBe(true);
+    expect(stopped.reason).toMatchObject({ name: "AbortError", cause: "left" });
+    expect(stopped.reason).not.toBe(llmCallSignal(AbortSignal.abort("left")).reason);
+  });
+
+  test("the call's own time limit still reads as a TimeoutError, on a caller's signal that is not aborted", async () => {
+    const timeout = AbortSignal.timeout;
+    AbortSignal.timeout = () => timeout.call(AbortSignal, 1);
+    try {
+      const caller = new AbortController();
+      const calls = [llmCallSignal(caller.signal), llmCallSignal()];
+      const names = () => calls.map(({ reason }) => (reason as DOMException).name);
+      await Bun.sleep(20);
+      expect(names()).toEqual(["TimeoutError", "TimeoutError"]);
+      expect(caller.signal.aborted).toBe(false);
+      caller.abort();
+      expect(names()).toEqual(["TimeoutError", "TimeoutError"]);
+    } finally {
+      AbortSignal.timeout = timeout;
+    }
   });
 });
