@@ -71,7 +71,7 @@ Page File Shape
 
 A page file exports a single page() chain and nothing else. Each route setting is one stage of the chain: .param() and .search() declare the values the page reads, .config() tunes the route, .head() and .loading() set the head tags and the loading fallback, and .render() returns the component. The render callback receives the declared values flat, already typed.
 
-Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param(), .prompt() and .app() are string literals.
+Heads merge from the root down: a deeper .head() replaces the <title>, a meta with the same name or property, and a canonical, manifest or icon link, and keeps everything else. A canonical link and og:url each name one URL, so a page carries them only from its own .head(), never from a layout's. A level that writes og:image or twitter:image drops the og:image:* or twitter:image:* tags it inherits, and a viewport themeColor gives way to a theme-color meta a .head() writes. Only .head() merges: a <title> or <meta> written inside a component renders as it is, beside the merged ones, so a second <title> can reach the document. Give <title> one string child, a template literal when it includes a value, and skip the hreflang alternates since Akan adds one per locale. A page() chain must be the module's only export, and the names in .param(), .prompt() and .app() are string literals.
 
 Chain Stages
 
@@ -157,7 +157,7 @@ Each of these is one row of the Chain Stages table above, and only .fonts(), .ma
 
 Route Guards
 
-.guard(fn) decides whether a route may open, before anything renders. Every chain takes it, at most once per route: a second .guard() throws when the module loads. fn receives the route's typed .param() and .search() values and lang, never a layout's children, and may be async. It refuses by calling router.redirect(href), router.notFound() or getSelf({ unauthorize: "/signin" }); signedIn() from @libs/shared/webkit makes that last call for you.
+.guard(fn) decides whether a route may open, before anything renders. Every chain takes it, at most once per route: a second .guard() throws when the module loads. fn receives the route's typed .param() and .search() values and lang, never a layout's children, and a second { path }: the in-app path the visitor asked for with its search, undefined while MCP lists the screen. It may be async and refuses by calling router.redirect(href), router.notFound() or getSelf({ unauthorize: "/signin" }); signedIn({ path }) from @libs/shared/webkit makes that last call with ?redirect=<path> on the sign-in URL.
 
 Where
 
@@ -167,9 +167,9 @@ Where
 
 - MCP: A page prompt or app tool runs the route's guards before anything else, and prompts/list and the page tools in tools/list show only the screens whose guards admit the caller.
 
-A route guard is not authorization for data. It decides who may open a screen and redirects early; every query the screen makes is still judged by that endpoint's signal guards, so keep both. A query in a guard that the server refuses with 403 or 404 answers not-found, so the screen never confirms that the record exists.
+A route guard is not authorization for data. It decides who may open a screen and redirects early; every query the screen makes is still judged by that endpoint's signal guards, so keep both. path only builds a redirect target, never a reason to let someone in: CSR asks a guard again only when the route or an argument it declared moves. Hand it only to router.push or router.redirect, since it can be a raw //host that window.location would follow off the site. A query in a guard that the server refuses with 403 or 404 answers not-found, so the screen never confirms that the record exists.
 
-Call `signedIn()`, never pass it: `.guard(signedIn)` would hand the route's arguments to `unauthorize`. In a `_layout.tsx`, prefer `.guard(() => signedIn())` to `getSelf({ unauthorize })` in the layout body: the guard runs before anything renders, so the redirect is a real 307 on the server. The client reference covers the rest.
+Call `signedIn()`, never pass it: `.guard(signedIn)` would take the route's arguments as its option. In a `_layout.tsx`, prefer `.guard((_, { path }) => signedIn({ path }))` to `getSelf({ unauthorize })` in the layout body: the guard runs before anything renders, so the redirect is a real 307 on the server. The client reference covers the rest.
 
 Google Analytics
 
@@ -331,7 +331,7 @@ import { signedIn } from "@libs/shared/webkit";
 import { layout } from "akanjs/client";
 
 export default layout()
-  .guard(() => signedIn())
+  .guard((_, { path }) => signedIn({ path }))
   .render(({ children }) => <div className="flex flex-col">{children}</div>);
 ```
 
