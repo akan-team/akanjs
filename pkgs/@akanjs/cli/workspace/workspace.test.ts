@@ -594,8 +594,14 @@ describe("WorkspaceRunner", () => {
       const proc = Bun.spawn(["sh", "-c", command.replace("bun add -g", "echo").replace("bun install -g", "echo")], {
         cwd: workspaceRoot,
         stdout: "pipe",
+        stderr: "pipe",
       });
-      return (await new Response(proc.stdout).text()).trim();
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      return code === 0 ? stdout.trim() : `exit ${code}: ${stderr.trim()}${stdout.trim()}`;
     };
     const devcontainer = (await Bun.file(`${workspaceRoot}/.devcontainer/devcontainer.json`).json()) as {
       onCreateCommand: string;
@@ -612,6 +618,19 @@ describe("WorkspaceRunner", () => {
       dependencies: { ...packageJson.dependencies, akanjs: "2.1.0" },
     });
     expect(await installedBy(devcontainer.onCreateCommand)).toBe("@akanjs/cli@2.1.0");
+    const { akanjs: _, ...withoutAkanjs } = packageJson.dependencies ?? {};
+    const refusal = "exit 1: package.json lists no akanjs in dependencies or devDependencies";
+    for (const edited of [
+      { dependencies: { ...withoutAkanjs, akanjs: "^3.1.0" }, expected: "@akanjs/cli@^3.1.0" },
+      { dependencies: withoutAkanjs, devDependencies: { akanjs: "3.1.0" }, expected: "@akanjs/cli@3.1.0" },
+      { dependencies: withoutAkanjs, expected: refusal },
+      { dependencies: undefined, expected: refusal },
+    ]) {
+      const { expected, ...fields } = edited;
+      await writeJson(`${workspaceRoot}/package.json`, { ...packageJson, devDependencies: undefined, ...fields });
+      expect(await installedBy(devcontainer.onCreateCommand)).toBe(expected);
+      expect(await installedBy(readmeInstall)).toBe(expected);
+    }
   });
 
   test("creates the workspace under an absolute --dir, not under the current directory", async () => {

@@ -30,7 +30,7 @@ akan --help
 버전이 다른 CLI는 `akan update`로 둘을 함께 옮기기 전까지 워크스페이스에 쓰기를 거부합니다.
 
 ```bash
-bun install -g "@akanjs/cli@$(bun -p "require('./package.json').dependencies.akanjs")"
+v="$(bun -e "const p=require('./package.json'),v=p.dependencies?.akanjs??p.devDependencies?.akanjs;if(!v){console.error('package.json lists no akanjs in dependencies or devDependencies');process.exit(1)}console.log(v)")" && bun install -g "@akanjs/cli@$v"
 ```
 
 ## 자주 쓰는 명령
