@@ -234,7 +234,7 @@ describe("AgentLoop client input", () => {
     expect(called).toEqual([]);
   });
 
-  test("refuses client tool parameters nested past what a schema needs, however deep, with the same coded error", async () => {
+  test("refuses client tool parameters nested past what a schema needs, however deep and whatever lies beside them", async () => {
     const nested = (levels: number) => {
       const root: Record<string, unknown> = { type: "object" };
       let leaf = root;
@@ -259,6 +259,16 @@ describe("AgentLoop client input", () => {
     const { port, requests } = harness([saying("Ok.")]);
     await drain(port, ask({ clientTools: [{ name: "fillForm", parameters: nested(12) }] as AgentTool[] }));
     expect(requests).toHaveLength(1);
+
+    const wide = { enum: Array.from({ length: LoopRequest.maxClientToolChars + 1 }, () => 0) };
+    const beside = [
+      { name: "pick", parameters: wide },
+      { name: "fillForm", parameters: nested(100_000) },
+    ] as AgentTool[];
+    const { events } = await drain(harness([saying("never")]).port, ask({ clientTools: beside }));
+    const failure = failureOf(events);
+    expect(Err.is(failure, "agent.error.clientToolsRefused")).toBe(true);
+    expect(failure).toMatchObject({ statusCode: 413, data: { limit: "chars", max: LoopRequest.maxClientToolChars } });
   });
 
   test("bounds every part of an answer: its changes as one value, its code, and its files' count and labels", async () => {

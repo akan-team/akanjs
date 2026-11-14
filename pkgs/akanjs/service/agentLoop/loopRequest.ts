@@ -69,13 +69,15 @@ export class LoopRequest {
       LoopRequest.#refuseClientTools("chars", LoopRequest.maxClientToolChars, chars);
   }
 
-  //? Level by level, as a recursive walk would overflow where `JSON.stringify` does. A level wider than the character
-  //? ceiling is left to that measure.
+  //? Level by level, as a recursive walk would overflow where `JSON.stringify` does. A level of more values than the
+  //? character ceiling is past it already, a character a value at least, and is refused before the levels under it.
   static #depthOf(value: unknown, stopAt: number): number {
     let level: unknown[] = [value];
     let depth = 0;
-    while (depth < stopAt && level.length <= LoopRequest.maxClientToolChars) {
+    while (depth < stopAt) {
       level = level.flatMap((item) => (item && typeof item === "object" ? Object.values(item) : []));
+      if (level.length > LoopRequest.maxClientToolChars)
+        LoopRequest.#refuseClientTools("chars", LoopRequest.maxClientToolChars, level.length);
       if (!level.length) break;
       depth += 1;
     }
