@@ -237,7 +237,8 @@ export class StoreSurfaceSource implements SurfaceSource {
   #readState(viewKey: string): ToolEntry {
     return {
       name: "readState",
-      description: "Read one store state key of this page. Keys are listed in the state context block.",
+      description:
+        "Read one store state key of this page. Keys are listed in the state context block, and in `withheld` of the route block.",
       parameters: {
         type: "object",
         properties: { key: { type: "string" } },

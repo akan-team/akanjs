@@ -1,11 +1,17 @@
 import type { ContextBlock, SurfaceView } from "use-agentic";
 import type { StoreInstance } from "../storeInstance";
 import { StoreRegistry } from "../storeRegistry";
-import type { AgentBridge } from "./AgentBridge";
+import { AgentBridge } from "./AgentBridge";
 import { ensureStoreSurface } from "./StoreSurfaceSource";
 
-/** A turn's default context: route, on-screen scopes, and live keys (small primitives inline, the rest by name). */
+/** A turn's default context: route, on-screen scopes, and live keys (one-token values inline, the rest by name). */
 export class AgentContext {
+  //? Security: an id or an enum member is one short token. A longer string, or one with a space in it, is free text
+  //? that whoever wrote the record or the link chose, and the model reads that through `readState`, as page content.
+  static readonly #token = /^[A-Za-z0-9._-]{0,40}$/;
+  static readonly #elided = "…";
+  static readonly withheldNote = "Free text is left out. Call readState(key) with a key of `withheld` to read it.";
+
   static of(): AgentContext {
     return new AgentContext(StoreRegistry.instance, ensureStoreSurface().bridge);
   }
@@ -19,18 +25,48 @@ export class AgentContext {
   }
 
   blocks(surface: SurfaceView, view: string[] = []): ContextBlock[] {
-    const state = this.#instance.get();
     const { scopes, resources } = surface.snapshot();
     return [
-      {
-        kind: "route",
-        path: String(state.pathname ?? ""),
-        params: state.params ?? {},
-        searchParams: state.searchParams ?? {},
-      },
+      this.#routeBlock(),
       ...(scopes.length || resources.length ? [{ kind: "screen", scopes, resources }] : []),
       ...this.#liveBlock(view.join(".")),
     ];
+  }
+
+  #routeBlock(): ContextBlock {
+    const state = this.#instance.get();
+    const [pathKey, paramsKey, searchKey] = AgentBridge.routeKeys;
+    const pathname = String(state[pathKey] ?? "");
+    const path = pathname
+      .split("/")
+      .map((segment) => (AgentContext.#token.test(segment) ? segment : AgentContext.#elided))
+      .join("/");
+    const params = AgentContext.#tokensOf(state[paramsKey]);
+    const searchParams = AgentContext.#tokensOf(state[searchKey]);
+    const withheld = [
+      ...(path === pathname ? [] : [pathKey]),
+      ...(params.whole ? [] : [paramsKey]),
+      ...(searchParams.whole ? [] : [searchKey]),
+    ];
+    return {
+      kind: "route",
+      path,
+      params: params.inline,
+      searchParams: searchParams.inline,
+      ...(withheld.length ? { withheld, note: AgentContext.withheldNote } : {}),
+    };
+  }
+
+  static #tokensOf(record: unknown): { inline: { [key: string]: string | string[] }; whole: boolean } {
+    const entries = record && typeof record === "object" ? Object.entries(record) : [];
+    const kept = entries.filter(
+      (entry): entry is [string, string | string[]] =>
+        AgentContext.#token.test(entry[0]) &&
+        (Array.isArray(entry[1]) ? entry[1] : [entry[1]]).every(
+          (item) => typeof item === "string" && AgentContext.#token.test(item),
+        ),
+    );
+    return { inline: Object.fromEntries(kept), whole: kept.length === entries.length };
   }
 
   #liveBlock(viewKey: string): ContextBlock[] {
@@ -53,7 +89,7 @@ export class AgentContext {
     if (value === null) return null;
     switch (typeof value) {
       case "string":
-        return value.length <= 200 ? value : `${value.slice(0, 200)}…`;
+        return AgentContext.#token.test(value) ? value : undefined;
       case "number":
       case "boolean":
         return value;

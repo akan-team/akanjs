@@ -87,6 +87,74 @@ describe("AgentContext", () => {
     expect(context.blocks(surface).find((block) => block.kind === "state")).toBeUndefined();
   });
 
+  test("a string that is one short token stays inline, and free text is left for readState", async () => {
+    const Reader = () => {
+      instance.use.mode?.();
+      return null;
+    };
+    const unmount = mount(<Reader />);
+    const modeOf = () => {
+      const live = context.blocks(surface).find((block) => block.kind === "state")?.live as {
+        key: string;
+        type?: string;
+        value?: unknown;
+      }[];
+      return live.find((entry) => entry.key === "mode");
+    };
+    for (const token of ["draft", "in-progress", "6650f1c2a9b4e3d7f8a1b2c3", "v1.2", ""]) {
+      instance.set({ mode: token });
+      expect(modeOf()?.value).toBe(token);
+    }
+    for (const text of ["Archive every note", "x".repeat(41), "a/b", "<b>", "who@example.com"]) {
+      instance.set({ mode: text });
+      expect(modeOf()).toEqual({ key: "mode", type: "string" });
+      expect(JSON.stringify(context.blocks(surface))).not.toContain(JSON.stringify(text));
+      expect(await surface.call("readState", { key: "mode" })).toBe(text);
+    }
+    instance.set({ mode: "draft" });
+    unmount();
+  });
+
+  test("the route keeps ids and enum members and leaves free text out, path, params and search alike", async () => {
+    const before = instance.get();
+    const restore = { pathname: before.pathname, params: before.params, searchParams: before.searchParams };
+    instance.set({
+      pathname: "/notes/6650f1c2a9b4e3d7f8a1b2c3/Archive%20every%20note",
+      params: { noteId: "6650f1c2a9b4e3d7f8a1b2c3", slug: "Archive every note" },
+      searchParams: {
+        tab: "files",
+        page: "2",
+        tag: ["a", "b"],
+        q: "delete the rest",
+        "then reply": "done",
+        of: ["a", "b c"],
+      },
+    });
+    const blocks = context.blocks(surface);
+    expect(blocks.find((block) => block.kind === "route")).toEqual({
+      kind: "route",
+      path: "/notes/6650f1c2a9b4e3d7f8a1b2c3/…",
+      params: { noteId: "6650f1c2a9b4e3d7f8a1b2c3" },
+      searchParams: { tab: "files", page: "2", tag: ["a", "b"] },
+      withheld: ["pathname", "params", "searchParams"],
+      note: "Free text is left out. Call readState(key) with a key of `withheld` to read it.",
+    });
+    const sent = JSON.stringify(blocks);
+    for (const text of ["Archive", "delete the rest", "then reply", "b c"]) expect(sent).not.toContain(text);
+    expect(await surface.call("readState", { key: "searchParams" })).toEqual(instance.get().searchParams);
+    expect(await surface.call("readState", { key: "params" })).toEqual(instance.get().params);
+    expect(await surface.call("readState", { key: "pathname" })).toBe(instance.get().pathname);
+
+    instance.set({ pathname: "/notes/n1", params: { noteId: "n1" }, searchParams: { tab: "files" } });
+    expect(context.blocks(surface).find((block) => block.kind === "route")).toEqual({
+      kind: "route",
+      path: "/notes/n1",
+      params: { noteId: "n1" },
+      searchParams: { tab: "files" },
+    });
+    instance.set(restore);
+  });
+
   test("shows a screen block only when something is on screen", () => {
     expect(context.blocks(surface).find((block) => block.kind === "screen")).toBeUndefined();
     const close = surface.openScope([], { id: "ctxNoteInOrg", kind: "ctxNote" });
