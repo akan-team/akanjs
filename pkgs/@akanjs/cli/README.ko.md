@@ -26,6 +26,13 @@ bun install -g @akanjs/cli
 akan --help
 ```
 
+이미 있는 워크스페이스에서는 그 워크스페이스가 의존하는 `akanjs`와 같은 버전으로 CLI를 설치합니다. major나 minor
+버전이 다른 CLI는 `akan update`로 둘을 함께 옮기기 전까지 워크스페이스에 쓰기를 거부합니다.
+
+```bash
+bun install -g "@akanjs/cli@$(bun -p "require('./package.json').dependencies.akanjs")"
+```
+
 ## 자주 쓰는 명령
 
 ```bash

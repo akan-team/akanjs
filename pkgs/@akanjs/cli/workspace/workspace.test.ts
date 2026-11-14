@@ -583,6 +583,37 @@ describe("WorkspaceRunner", () => {
     expect(devDependencies?.["@akanjs/devkit"]).toBe("2.0.0-beta.0");
   });
 
+  test("has the devcontainer and the README install the CLI at the akanjs version package.json holds then", async () => {
+    const runner = new WorkspaceRunner();
+    stubNpmLatest();
+    const { root } = track(await createTempApp("seed"));
+    process.chdir(root);
+    await runner.createWorkspace("repo", "demo", { dirname: "generated", init: false, akanVersion: "2.0.0-beta.0" });
+    const workspaceRoot = `${root}/generated/repo`;
+    const installedBy = async (command: string) => {
+      const proc = Bun.spawn(["sh", "-c", command.replace("bun add -g", "echo").replace("bun install -g", "echo")], {
+        cwd: workspaceRoot,
+        stdout: "pipe",
+      });
+      return (await new Response(proc.stdout).text()).trim();
+    };
+    const devcontainer = (await Bun.file(`${workspaceRoot}/.devcontainer/devcontainer.json`).json()) as {
+      onCreateCommand: string;
+    };
+    const readmeInstall =
+      (await Bun.file(`${workspaceRoot}/README.md`).text()).split("\n").find((line) => line.includes("@akanjs/cli")) ??
+      "";
+
+    expect(await installedBy(devcontainer.onCreateCommand)).toBe("@akanjs/cli@2.0.0-beta.0");
+    expect(await installedBy(readmeInstall)).toBe("@akanjs/cli@2.0.0-beta.0");
+    const packageJson = (await Bun.file(`${workspaceRoot}/package.json`).json()) as PackageJson;
+    await writeJson(`${workspaceRoot}/package.json`, {
+      ...packageJson,
+      dependencies: { ...packageJson.dependencies, akanjs: "2.1.0" },
+    });
+    expect(await installedBy(devcontainer.onCreateCommand)).toBe("@akanjs/cli@2.1.0");
+  });
+
   test("creates the workspace under an absolute --dir, not under the current directory", async () => {
     const runner = new WorkspaceRunner();
     stubNpmLatest();
