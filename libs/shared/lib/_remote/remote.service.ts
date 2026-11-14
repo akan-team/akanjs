@@ -220,6 +220,7 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     if (!grant?.tokenEndpoint) return grant ? "" : null;
     const refreshToken = vault.open(grant.refresh);
     if (!refreshToken) return await this.drop(key, grant, "it holds no refresh token");
+    const { access, refresh } = grant;
     try {
       const tokens = await RemoteOAuth.refresh(fetcher, grant, { refreshToken, client: this.client(grant, vault) });
       Object.assign(grant, this.sealed(tokens, grant.refresh));
@@ -228,6 +229,12 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     } catch (error) {
       //? Only a refusal ends the connection: a remote that is down for a minute keeps its grant.
       if (!(error instanceof RemoteError) || error.code !== "remoteOAuth") throw error;
+      //? A server that rotates refuses the second use of a refresh token another instance has just spent; that
+      //? instance's stored renewal stands.
+      const current = await this.grants.get(key);
+      const renewed = current && (current.refresh !== refresh || current.access !== access) ? current.access : "";
+      const renewedAccess = vault.open(renewed);
+      if (renewedAccess) return renewedAccess;
       return await this.drop(key, grant, error.message);
     }
   }

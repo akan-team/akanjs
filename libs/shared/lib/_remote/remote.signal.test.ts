@@ -185,6 +185,29 @@ describe("Remote Signal", () => {
     expect(after?.refresh).not.toBe(stored.refresh);
   });
 
+  it("keeps the connection another instance renewed while this one's renewal was refused", async () => {
+    const stored = await service.grants.get(keyOf());
+    if (!stored) throw new Error("the connection is missing");
+    const { fetcher } = service.remoteOption;
+    const answers: ((answer: { status: number; body: unknown }) => void)[] = [];
+    const stub = { json: () => new Promise((resolve) => answers.push(resolve)) };
+    const rotate = (service as unknown as { rotate: (key: string) => Promise<string | null> }).rotate.bind(service);
+    Object.assign(service.remoteOption, { fetcher: stub });
+    try {
+      const first = rotate(keyOf());
+      const second = rotate(keyOf());
+      while (answers.length < 2) await new Promise((resolve) => setTimeout(resolve, 5));
+      answers[0]?.({ status: 200, body: { access_token: "access-2", refresh_token: "refresh-2", expires_in: 3600 } });
+      expect(await first).toBe("access-2");
+      answers[1]?.({ status: 400, body: { error: "invalid_grant" } });
+      expect(await second).toBe("access-2");
+    } finally {
+      Object.assign(service.remoteOption, { fetcher });
+    }
+    const after = await service.grants.get(keyOf());
+    expect(service.remoteOption.vault.open(after?.refresh ?? "")).toBe("refresh-2");
+  });
+
   it("closes the connection when the other server refuses to renew it", async () => {
     const stored = await service.grants.get(keyOf());
     if (!stored) throw new Error("the connection is missing");

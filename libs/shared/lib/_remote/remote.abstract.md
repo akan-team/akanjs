@@ -18,7 +18,8 @@ here calls another server's MCP tools as that user.
 - This app registers once per authorization server (RFC 7591), as a confidential client where that server issues
   secrets, and every user's connection there shares the registration.
 - An access token is renewed a minute before it lapses and after a 401, one renewal at a time per connection in a
-  process. A refused renewal closes the connection; a server that merely fails to answer keeps it.
+  process. A refused renewal closes the connection unless another instance renewed it meanwhile; a server that
+  merely fails to answer keeps it.
 - Disconnecting hands the grant back (RFC 7009) and forgets it whether or not the other server answers.
 - A server that lists its tools to a caller with no credential is connected at once, with no token to hold.
 - The endpoints take `Person` and stay off `/mcp`: an agent, least of all one reached through another connection,
