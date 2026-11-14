@@ -1600,39 +1600,90 @@ const describeDriver = (kind: SqlDriverKind) => {
           throw new Error("rollback-probe");
         });
         await Promise.race([entered.opened, transaction.catch(() => undefined)]);
-        const outside = Promise.all([store.find({}).then(titlesOf), store.count({})]);
-        // Only an in-memory SQLite database has no second connection, so only there does the read wait.
-        if (options.memory) await Bun.sleep(10);
-        else await outside;
+        const outside = [titlesOf(await store.find({})), await store.count({})];
         release.open();
         await expect(transaction).rejects.toThrow("rollback-probe");
         expect(readInside.sort((a, b) => a.localeCompare(b))).toEqual(["committed", "uncommitted"]);
-        expect(await outside).toEqual([["committed"], 1]);
+        expect(outside).toEqual([["committed"], 1]);
         expect(titlesOf(await store.find({}))).toEqual(["committed"]);
       });
 
-      test("[SQ-2] a read that waited out a transaction does not run inside the next one", async () => {
+      test("[SQ-2] a read beside one transaction, then beside the next, sees the rows of neither", async () => {
         const first = holdingTransaction(driver, store, "first");
         await first.entered;
         const second = holdingTransaction(driver, store, "second");
-        const read = store.find({}).then(titlesOf);
+        const besideFirst = titlesOf(await store.find({}));
         first.release();
         await expect(first.done).rejects.toThrow("rollback-probe");
         await second.entered;
-        await Bun.sleep(10);
+        const besideSecond = titlesOf(await store.find({}));
         second.release();
         await expect(second.done).rejects.toThrow("rollback-probe");
-        expect(await read).toEqual([]);
+        expect([besideFirst, besideSecond]).toEqual([[], []]);
       });
 
-      test("[SQ-2] a transaction that rolls back lets the reads and writes behind it through", async () => {
+      test("[SQ-2] a read beside a transaction sees what the one before it committed", async () => {
+        await driver.database.transaction(async () => {
+          await store.create({ title: "first" });
+        });
+        const second = holdingTransaction(driver, store, "second");
+        await second.entered;
+        const beside = titlesOf(await store.find({}));
+        second.release();
+        await expect(second.done).rejects.toThrow("rollback-probe");
+        expect(beside).toEqual(["first"]);
+      });
+
+      test("[SQ-2] a transaction that awaits reads begun outside it finishes", async () => {
+        await store.create({ title: "committed" });
+        const begun = new Gate();
+        const helper = (async () => {
+          const before = titlesOf(await store.find({}));
+          await begun.opened;
+          return [before, titlesOf(await store.find({}))];
+        })();
+        const read = await driver.database.transaction(async () => {
+          await store.create({ title: "uncommitted" });
+          begun.open();
+          return await helper;
+        });
+        expect(read).toEqual([["committed"], ["committed"]]);
+        expect(await store.count({})).toBe(2);
+      }, 3000);
+
+      test("[SQ-2] two requests sharing one memoized read both finish when one awaits it inside a transaction", async () => {
+        await store.create({ title: "committed" });
+        const begun = new Gate();
+        let memo: Promise<string[]> | undefined;
+        const shared = () => {
+          memo ??= begun.opened.then(async () => titlesOf(await store.find({})));
+          return memo;
+        };
+        const plain = shared();
+        const transacting = driver.database.transaction(async () => {
+          await store.create({ title: "uncommitted" });
+          begun.open();
+          return await shared();
+        });
+        expect(await Promise.all([plain, transacting])).toEqual([["committed"], ["committed"]]);
+      }, 3000);
+
+      test("[SQ-2] a transaction whose callback never settles holds up no read from another request", async () => {
+        await store.create({ title: "committed" });
+        const stuck = holdingTransaction(driver, store, "uncommitted");
+        await stuck.entered;
+        for (let request = 0; request < 3; request++) expect(titlesOf(await store.find({}))).toEqual(["committed"]);
+        expect(await store.count({})).toBe(1);
+        stuck.release();
+        await expect(stuck.done).rejects.toThrow("rollback-probe");
+      }, 3000);
+
+      test("[SQ-2] a transaction that rolls back lets the writes behind it through", async () => {
         const failing = holdingTransaction(driver, store, "rolled-back");
         await failing.entered;
-        const read = store.find({}).then(titlesOf);
         const write = store.create({ title: "outside-write" });
         failing.release();
         await expect(failing.done).rejects.toThrow("rollback-probe");
-        expect(await read).toEqual([]);
         await write;
         expect(titlesOf(await store.find({}))).toEqual(["outside-write"]);
       });

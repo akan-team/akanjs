@@ -116,18 +116,24 @@ export class SqliteDatabase
   #ensures = new PendingStoreEnsures();
   #searchIndex!: SearchIndex;
   // A second writer would wait on the lock synchronously and park the event loop the holder needs to commit, so other
-  // contexts' writes queue behind `#open`. Their reads use `#reader`, or queue too: an in-memory database has none.
+  // contexts' writes queue behind `#open`. Their reads use `#reader` instead: a queued read would stall a transaction
+  // that awaits it, and every request after that one.
   #open: TransactionContext | null = null;
+  #inMemory = false;
+  #committed: Uint8Array | null = null;
+  #committedVersion = "";
   #queue: Promise<void> = Promise.resolve();
 
   override async onInit() {
     // Resolved first: Bun on Windows fails a recursive mkdir of "." (":memory:", a bare file name) with EEXIST.
     await mkdir(path.dirname(path.resolve(this.config.filePath)), { recursive: true });
     this.#db = new Database(this.config.filePath, { strict: true, create: true });
+    this.#inMemory = !this.#mainFile();
     this.#client = new BunSqliteClient(
       this.#db,
       () => this.#writeTurn(),
       () => this.#readerOf(),
+      !this.#inMemory,
     );
     this.#db.run(`PRAGMA journal_mode = ${this.config.journalMode ?? "WAL"}`);
     this.#db.run(`PRAGMA busy_timeout = ${this.config.busyTimeoutMs ?? 5000}`);
@@ -160,7 +166,7 @@ export class SqliteDatabase
   }
 
   // Under a rollback journal a second connection reads while the writer holds only RESERVED, which spilling its dirty
-  // pages mid-transaction would raise to EXCLUSIVE. A private in-memory database cannot be opened a second time.
+  // pages mid-transaction would raise to EXCLUSIVE.
   #openReader() {
     const file = this.#mainFile();
     if (!file) return null;
@@ -190,8 +196,7 @@ export class SqliteDatabase
   async openInsight(): Promise<InsightSession> {
     const file = this.#mainFile();
     if (file) return SqliteInsightSession.open(file);
-    for (let turn = this.#writeTurn(); turn; turn = this.#writeTurn()) await turn;
-    return await SqliteInsightSession.openSnapshot(this.#db.serialize());
+    return await SqliteInsightSession.openSnapshot((this.#readerOf() ?? this.#db).serialize());
   }
 
   stores() {
@@ -242,9 +247,10 @@ export class SqliteDatabase
     this.#queue = done;
     await previous;
     const context: TransactionContext = { afterCommit: [] };
-    this.#open = context;
     let result: T;
     try {
+      this.#keepCommitted();
+      this.#open = context;
       result = await this.#transaction.run(context, async () => {
         this.#db.run("BEGIN IMMEDIATE");
         try {
@@ -271,9 +277,29 @@ export class SqliteDatabase
     return this.#queue;
   }
 
+  // A private in-memory database cannot be opened a second time, so work outside a transaction reads a copy of the
+  // last commit. Serialized after the transaction's first write it would hold that write, so it is taken before BEGIN,
+  // and only when something changed: `total_changes()` misses DDL, which moves the schema version.
+  #keepCommitted() {
+    if (!this.#inMemory) return;
+    const { changes, schema } = this.#db
+      .query(`SELECT total_changes() AS "changes", "schema_version" AS "schema" FROM pragma_schema_version`)
+      .get() as { changes: number; schema: number };
+    const version = `${changes}:${schema}`;
+    if (version === this.#committedVersion) return;
+    this.#reader?.close();
+    this.#reader = null;
+    this.#committed = this.#db.serialize();
+    this.#committedVersion = version;
+  }
+
   #readerOf() {
-    const turn = this.#writeTurn();
-    return turn && (this.#reader ?? turn);
+    if (!this.#writeTurn()) return null;
+    if (this.#committed) {
+      this.#reader = Database.deserialize(this.#committed, { readonly: true, strict: true });
+      this.#committed = null;
+    }
+    return this.#reader;
   }
 
   async afterCommit(fn: () => PromiseOrObject<void>) {

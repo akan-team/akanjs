@@ -2405,7 +2405,7 @@ declare const BullQueue_base: import("..").AdaptorCls<{}, {
 
 declare class BunSqliteClient implements AkanSqlClient {
     readonly db: Database;
-    constructor(db: Database, writeTurn?: SqliteWriteTurn, readerOf?: SqliteReader);
+    constructor(db: Database, writeTurn?: SqliteWriteTurn, readerOf?: SqliteReader, readerLasts?: boolean);
     execute(sql: string, params?: Record<string, unknown> | unknown[]): Promise<unknown>;
     prepare(sql: string): AkanSqlStatement;
     close(): Promise<void>;
@@ -2687,7 +2687,7 @@ interface SqliteEnv {
     database?: DatabaseConfig;
 }
 
-type SqliteReader = () => Database | Promise<void> | null;
+type SqliteReader = () => Database | null;
 
 type SqliteWriteTurn = () => Promise<void> | null;
 
