@@ -37,6 +37,7 @@ import {
   createCachedRscPatchMetadata,
   createRscWorkerCachedPatchReplayDecision,
   isCachedRscPatchMetadataCompatible,
+  joinRscChunks,
   replayCachedRscResult,
   resolveRscWorkerPatchCacheEntry,
   rscWorkerTraceBaseOf,
@@ -152,11 +153,7 @@ export class RscRenderHandler {
         const target: RscRenderTarget = { msg, requestId, startedAt, request, url: urlObj, match, routeId };
         const plan = await this.#plan(target);
         if (!plan) return;
-        const replay = this.#replayFromCache(target, plan);
-        if (replay) {
-          await replay;
-          return;
-        }
+        if (this.#replayFromCache(target, plan)) return;
         const { searchParams, notFoundFallback, admitted, cacheEntry, safePatchDecision, admittedHead } = plan;
         let element: ReactNode;
         let routeHead: ResolvedRouteHead | undefined;
@@ -297,7 +294,7 @@ export class RscRenderHandler {
   #replayFromCache(
     { requestId, routeId, startedAt }: RscRenderTarget,
     { cacheEntry, targetRouterState, safePatchDecision, admittedHead, patchCacheEntry, createTraceBase }: RscRenderPlan,
-  ): Promise<void> | null {
+  ): boolean {
     const cachedPatch = patchCacheEntry
       ? this.#caches.getCached(this.#caches.patchResultCache, patchCacheEntry.key)
       : null;
@@ -319,24 +316,25 @@ export class RscRenderHandler {
         patchCacheEntry.key,
         RscPatchPlanner.routeStateWith(cachedPatch.patch.targetRouterState, admittedHead?.snapshots?.layoutsKey),
       );
-      return this.#replayCached(requestId, routeId, startedAt, cachedPatch, {
+      this.#replayCached(requestId, routeId, startedAt, cachedPatch, {
         ...cachedTraceBase,
         cache: "hit",
         partial: "patch",
         partialReason: "cache-hit-patch-replay",
       });
+      return true;
     }
     const cached =
       shouldUseRscWorkerFullResultCache({ cacheEntry, patchCacheEntry }) && cacheEntry
         ? this.#caches.getCached(this.#caches.resultCache, cacheEntry.key)
         : null;
-    if (!cached) return null;
+    if (!cached) return false;
     const traceBase = createTraceBase(
       safePatchDecision,
       patchCacheEntry?.key ?? cacheEntry?.key,
       RscPatchPlanner.routeStateWith(targetRouterState, cached.routeHeadKey),
     );
-    return this.#replayCached(requestId, routeId, startedAt, cached, {
+    this.#replayCached(requestId, routeId, startedAt, cached, {
       ...traceBase,
       cache: "hit",
       partial: "full",
@@ -349,6 +347,7 @@ export class RscRenderHandler {
       patchHeadSnapshot: undefined,
       ssrBlocking: cached.ssrBlocking,
     });
+    return true;
   }
 
   #recordRendered(
@@ -373,7 +372,7 @@ export class RscRenderHandler {
     { url: urlObj, routeId }: RscRenderTarget,
     { cacheEntry, targetRouterState, patchCacheEntry }: RscRenderPlan,
     { effectivePatchDecision, routeHeadKey, ssrBlocking }: RscRenderedRoute,
-    { chunks, bytes, chunksCount, control, lateControlSent }: Omit<FlightRenderResult, "cancelled">,
+    { chunks, chunksCount, control, lateControlSent }: Omit<FlightRenderResult, "cancelled">,
   ): RouteCacheRenderState {
     const cacheState = shouldStoreRouteCache({
       policy: getRequestPolicy(),
@@ -383,8 +382,7 @@ export class RscRenderHandler {
     });
     const storeTtl = cacheEntry ? resolveRouteCacheStoreTtl(cacheEntry.ttl, cacheState) : null;
     const stored = (): CachedRscResult => ({
-      chunks,
-      bytes,
+      body: joinRscChunks(chunks),
       chunksCount,
       pathname: urlObj.pathname,
       routeId,
@@ -414,21 +412,22 @@ export class RscRenderHandler {
     return cacheState;
   }
 
-  async #replayCached(
+  #replayCached(
     requestId: string,
     routeId: string,
     startedAt: number,
     cached: CachedRscResult,
     trace: RscTraceMetadata,
-  ): Promise<void> {
+  ): void {
+    const bytes = cached.body.byteLength;
     this.#stats.lastRenderDurationMs = Date.now() - startedAt;
     this.#stats.lastRenderLoadedModuleDelta = 0;
     this.#stats.lastRenderLoadedModules = [];
-    this.#stats.recordFlight(cached);
-    this.#stats.recordRouteStats(routeId, cached.bytes, this.#stats.lastRenderDurationMs);
-    await replayCachedRscResult({
+    this.#stats.recordFlight({ bytes, chunksCount: cached.chunksCount });
+    this.#stats.recordRouteStats(routeId, bytes, this.#stats.lastRenderDurationMs);
+    replayCachedRscResult({
       requestId,
-      chunks: cached.chunks,
+      body: cached.body,
       theme: cached.theme,
       cacheState: cached.cacheState,
       trace,

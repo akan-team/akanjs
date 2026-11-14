@@ -136,6 +136,8 @@ type RscInMsg =
       buildId?: number;
       reloadId?: number;
       running?: RscAdoptedBundle;
+      /** Set when the worker refused a render for naming a manifest revision it does not hold. */
+      manifestRevision?: number;
     };
 
 export class RscWorker {
@@ -391,6 +393,7 @@ export class RscWorker {
           )
         )
           return;
+        if (message.manifestRevision !== undefined) this.#requests.forgetManifest();
         this.#requests.resolvePending(message.requestId, (p) => p.onError(String(message.message)));
         return;
     }
