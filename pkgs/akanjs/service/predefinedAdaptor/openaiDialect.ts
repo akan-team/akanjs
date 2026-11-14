@@ -11,7 +11,7 @@ import {
 } from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
 import { LlmSpend } from "./llmSpend";
-import { eachSseData, isStreamCut, parseToolArgs, toolCallOf } from "./sseData";
+import { eachSseData, inBandStatus, isStreamCut, parseToolArgs, toolCallOf } from "./sseData";
 
 export interface OpenaiToolCall {
   id?: string;
@@ -30,6 +30,7 @@ export interface OpenaiAnswer {
 interface OpenaiStreamError {
   message?: unknown;
   code?: unknown;
+  type?: unknown;
 }
 interface OpenaiStreamChunk extends OpenaiStreamError {
   error?: OpenaiStreamError | string;
@@ -268,10 +269,10 @@ export class OpenaiDialect {
   }
 
   static #streamFailure(host: string, error: OpenaiStreamError | string): Error {
-    const { message, code } = typeof error === "string" ? { message: error, code: undefined } : error;
+    const { message, code, type } = typeof error === "string" ? { message: error } : error;
     return LlmOverflow.refusal(
       host,
-      typeof code === "number" ? code : 500,
+      inBandStatus(code, type),
       typeof message === "string" && message ? message : "no reason given",
     );
   }

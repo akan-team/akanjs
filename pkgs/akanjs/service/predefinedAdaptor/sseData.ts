@@ -25,6 +25,34 @@ export const eachSseData = async (body: ReadableStream<Uint8Array>, onData: (pay
   feed(buffer.trimEnd());
 };
 
+//? An in-band error arrives on a 200, so its type is the only status it has; each name is one its API documents.
+const inBandStatuses: Record<string, number> = {
+  invalid_request_error: 400,
+  authentication_error: 401,
+  invalid_api_key: 401,
+  billing_error: 402,
+  permission_error: 403,
+  not_found_error: 404,
+  model_not_found: 404,
+  request_too_large: 413,
+  rate_limit_error: 429,
+  rate_limit_exceeded: 429,
+  insufficient_quota: 429,
+  api_error: 500,
+  server_error: 500,
+  timeout_error: 504,
+  overloaded_error: 529,
+};
+
+export const inBandStatus = (...names: unknown[]): number => {
+  for (const name of names) {
+    const status = typeof name === "string" && /^\d+$/.test(name) ? Number(name) : name;
+    if (typeof status === "number" && Number.isInteger(status) && status >= 400 && status < 600) return status;
+    if (typeof name === "string" && Object.hasOwn(inBandStatuses, name)) return inBandStatuses[name] ?? 500;
+  }
+  return 500;
+};
+
 /** `null` when the arguments are not one JSON object; a tool called with none streams no fragment at all. */
 export const parseToolArgs = (raw: string | undefined): Record<string, unknown> | null => {
   if (!raw) return {};

@@ -17,7 +17,7 @@ import {
 } from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
 import { LlmSpend } from "./llmSpend";
-import { eachSseData, isStreamCut, parseToolArgs, toolCallOf } from "./sseData";
+import { eachSseData, inBandStatus, isStreamCut, parseToolArgs, toolCallOf } from "./sseData";
 
 type AnthropicSource = { type: "base64"; media_type: string; data: string } | { type: "url"; url: string };
 type AnthropicContentBlock =
@@ -372,7 +372,11 @@ export class AnthropicLlm
     const read = eachSseData(body, (payload) => {
       const event = JSON.parse(payload) as AnthropicStreamEvent;
       if (event.type === "error")
-        failure = LlmOverflow.refusal(host, 500, event.error?.message || event.error?.type || "no reason given");
+        failure = LlmOverflow.refusal(
+          host,
+          inBandStatus(event.error?.type),
+          event.error?.message || event.error?.type || "no reason given",
+        );
       if (event.type === "message_stop") stopped = true;
       const index = event.index ?? 0;
       if (event.type === "content_block_start" && event.content_block?.type === "tool_use")

@@ -176,6 +176,42 @@ describe("a stream that did not finish", () => {
     expect(Err.is(failure, "agent.error.llmRequestFailed")).toBe(true);
   });
 
+  test("an Anthropic error event keeps the status its type names, and the prompt counts already sent", async () => {
+    const failedWith = (type: string) =>
+      anthropic([
+        "event: message_start",
+        `data: ${JSON.stringify({ type: "message_start", message: { id: "msg_1", usage: { input_tokens: 120, output_tokens: 1 } } })}`,
+        "event: content_block_delta",
+        `data: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Half an" } })}`,
+        "event: error",
+        `data: ${JSON.stringify({ type: "error", error: { type, message: "Something went wrong." } })}`,
+      ]).catch((error: unknown) => error);
+    const statusOf = async (type: string) => ((await failedWith(type)) as { data?: { status?: string } }).data?.status;
+    expect(await statusOf("overloaded_error")).toBe("529");
+    expect(await statusOf("rate_limit_error")).toBe("429");
+    expect(await statusOf("invalid_request_error")).toBe("400");
+    expect(await statusOf("api_error")).toBe("500");
+    expect(await statusOf("a_type_not_yet_named")).toBe("500");
+    expect(LlmSpend.of(await failedWith("overloaded_error"))).toEqual({
+      usage: { inputTokens: 120, outputTokens: LlmSpend.tokensOf("Half an"), cachedTokens: 0, cacheWriteTokens: 0 },
+      estimated: true,
+    });
+  });
+
+  test("an OpenAI-dialect error frame keeps the status its code or type names when it carries no number", async () => {
+    const statusOf = async (error: object) =>
+      (
+        (await openai([`data: ${JSON.stringify({ error })}`]).catch((failure: unknown) => failure)) as {
+          data?: { status?: string };
+        }
+      ).data?.status;
+    expect(await statusOf({ message: "Rate limit reached", type: "tokens", code: "rate_limit_exceeded" })).toBe("429");
+    expect(await statusOf({ message: "Provider disconnected", code: "server_error" })).toBe("500");
+    expect(await statusOf({ message: "Bad request", type: "invalid_request_error", code: null })).toBe("400");
+    expect(await statusOf({ message: "Busy", code: "429" })).toBe("429");
+    expect(await statusOf({ message: "Odd", code: 0 })).toBe("500");
+  });
+
   test("a prompt-too-long error frame is the same overflow a refused request is", async () => {
     const frame = `data: ${JSON.stringify({ error: { message: "maximum context length is 8000 tokens" } })}`;
     const failure = await openai([frame]).catch((error: unknown) => error);
