@@ -138,7 +138,7 @@ describe("AgentLoop answer", () => {
     }
   });
 
-  test("exempts only askUser's answer from `untrusted`: a client tool's is judged under its call's name", async () => {
+  test("exempts only askUser's answer from the read rule: a client tool's taints under any name it was sent with", async () => {
     const seen: string[] = [];
     const untrusted = (result: AgentWireToolResult) => {
       seen.push(result.name);
@@ -155,8 +155,8 @@ describe("AgentLoop answer", () => {
     const answer = { id: "c2", name: "askUser", result: page } as AgentLoopCallAnswer;
     const judged = harness([saying("Could not.")]);
     const { events, stored } = await drain(judged.port, resume(lent, { answer, untrusted }));
-    expect(seen[0]).toBe("fillForm");
-    expect(stored[0]).toMatchObject({ role: "tool", tainted: true });
+    expect(seen).toEqual([]);
+    expect(stored[0]).toMatchObject({ role: "tool", toolResults: [{ name: "fillForm" }], tainted: true });
     expect(judged.called).toEqual([]);
     expect(resultOf(events, "c9")?.error).toBe(AgentLoop.taintedWrite);
   });

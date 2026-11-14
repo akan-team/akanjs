@@ -11,12 +11,13 @@ import type {
 export type AgentLoopApproval = "allow" | "defer" | { deny: string };
 
 /**
- * `tainted`: a result `untrusted` marked, or with no `untrusted` any result a tool returned, was read earlier in this
- * run or in the messages it resumed from.
+ * `tainted`: a result `untrusted` marked, with no `untrusted` any result a tool returned, or a client tool's answer was
+ * read earlier in this run or in the messages it resumed from. `client`: the call is to a tool of `clientTools`, whose
+ * name may be that of an endpoint this run does not list.
  */
 export type AgentLoopApprove = (
   call: AgentWireToolCall,
-  state: { tainted: boolean; tool: AgentTool },
+  state: { tainted: boolean; tool: AgentTool; client?: true },
 ) => PromiseOrObject<AgentLoopApproval>;
 
 /** What answers a parked call: a page's `run(call)` result or the member's reply. Its `name` is the call's, never sent. */
@@ -110,9 +111,10 @@ export interface AgentLoopOptions {
   /** Asked before every call; without it a `needsConfirm` tool is refused, and so is any write once tainted. */
   approve?: AgentLoopApprove;
   /**
-   * Says which results carry text someone else wrote. Left out, every result of a call that ran taints the run, an
-   * error and a client tool's included, so with no `approve` only the batch written before any result may write;
-   * `() => false` trusts them all. `askUser`'s answer, `openToolkit`'s and a call the run refused never taint. Sees a
+   * Says which endpoint results carry text someone else wrote. Left out, every result of a call that ran taints the
+   * run, an error included, so with no `approve` only the batch written before any result may write; `() => false`
+   * trusts them all. A client tool's answer always taints and is never shown to it, as a page may name a tool after
+   * an endpoint. `askUser`'s answer, `openToolkit`'s and a call the run refused never taint. Sees a
    * result whole, before the 20,000-character clip. A resume re-applies it to stored, clipped results, or with none
    * counts every stored result, a refusal included, and also reads the `tainted` mark on stored messages, so store
    * each message `onMessage` hands over whole.

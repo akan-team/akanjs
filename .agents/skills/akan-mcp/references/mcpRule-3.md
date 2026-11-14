@@ -39,19 +39,22 @@ at every event.
   like a tool's result, and of its `attachments` only `data` and `text` are kept. An endpoint tool's call is answered
   only by running it: an `answer` naming one, a call the run has not reached, or a call already answered ends the
   run with `agent.error.answerRefused` before anything runs, and a resume without it carries on. Only `askUser`'s
-  answer is the member's own word; a client tool's is judged by the rule below like any result.
+  answer is the member's own word; a client tool's always taints the run, by the rule below.
 - **Writes after a read.** What a tool returns may be text someone else wrote, so the run is tainted from the first
   result of a call that ran — an endpoint tool's or a client tool's, an error included — and every later call
-  reaches `approve(call, { tainted, tool })` with `tainted` set. `askUser`'s answer, `openToolkit`'s and a call the
-  run refused without running taint nothing. A batch is judged before it runs, since the model wrote it before
-  reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation with the
-  `destructive` hint above — is refused, and so is every write once tainted: such a run writes only in the batch
-  written before any result, and a later write is answered with the code `writeAfterRead` and a sentence naming the
-  two ways on. Pass `approve` to decide those calls, or pass `untrusted(result)` to say which results carry another
-  party's text: `(result) => !own.has(result.name)` trusts the tools you name, and `() => false` trusts every
-  result, which is right only when nothing the run reads was written by anyone but the app and the member. No
-  endpoint option says whose text a tool returns — `readOnly` says only that it changes nothing — so the predicate
-  is where that is declared. `"defer"` holds the whole batch, emits `awaiting` and ends the run as `"awaiting"`.
+  reaches `approve(call, { tainted, tool, client })` with `tainted` set, and `client: true` when the call is to a
+  page's tool. `askUser`'s answer, `openToolkit`'s and a call the run refused without running taint nothing. A batch
+  is judged before it runs, since the model wrote it before reading its results. Without `approve`, a `needsConfirm`
+  tool — on this catalogue, a mutation with the `destructive` hint above — is refused, and so is every write once
+  tainted: such a run writes only in the batch written before any result, and a later write is answered with the
+  code `writeAfterRead` and a sentence naming the two ways on. Pass `approve` to decide those calls, or pass
+  `untrusted(result)` to say which endpoint results carry another party's text: `(result) => !own.has(result.name)`
+  trusts the endpoints you name, and `() => false` trusts every endpoint result, which is right only when nothing
+  they return was written by anyone but the app and the member. No endpoint option says whose text a tool returns —
+  `readOnly` says only that it changes nothing — so the predicate is where that is declared. It is never asked about
+  a client tool's answer, which taints the run whatever it is named: a page may lend a tool under the name of an
+  endpoint this run does not list, and a predicate reading names would trust it. Only `approve` lets a write follow
+  a page's answer. `"defer"` holds the whole batch, emits `awaiting` and ends the run as `"awaiting"`.
 - **Resuming.** Store each message `onMessage` hands over — it is awaited, and a retried run may hand one over twice —
   and call `loop` again with them. A stored result is read as the answer to the call its id names, under that call's
   name. Trailing calls nothing answered go to `approve` again before any model call, and

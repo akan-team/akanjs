@@ -28,6 +28,7 @@ export type AgentLoopApproval = "allow" | "defer" | {
 export type AgentLoopApprove = (call: AgentWireToolCall, state: {
     tainted: boolean;
     tool: AgentTool;
+    client?: true;
 }) => PromiseOrObject<AgentLoopApproval>;
 
 export interface AgentLoopBudget {

@@ -345,11 +345,12 @@ export class AgentLoop {
     return stop;
   }
 
-  //? Security: judged like a tool's result, a person's answer aside, and stored before the calls it left are judged.
+  //? Security: stored before the calls it left are judged. A page's answer taints whatever `untrusted` makes of it: a
+  //? client tool may carry the name of an endpoint this run does not list, which a predicate reading names would trust.
   async *#accept(answer: AgentLoopCallAnswer): Events<void> {
     const whole = LoopAnswer.resultOf(answer, this.#messages, (call) => this.#parks(call));
     const result = LoopToolOutput.clipped(whole);
-    if (!this.#askUser.isMeta(whole.name)) this.#taintBy(whole);
+    if (!this.#askUser.isMeta(whole.name)) this.#tainted = true;
     await this.#record([result]);
     yield { type: "toolResult", result, round: this.#round };
   }
@@ -388,7 +389,9 @@ export class AgentLoop {
         : { deny: `Unknown tool: ${call.name}.`, code: "unknownTool" };
     }
     const { approve } = this.#request;
-    if (approve) return AgentLoop.#judged(await this.#untilHalted(approve(call, { tainted: this.#tainted, tool })));
+    const client = this.#clientNames.has(call.name) ? { client: true as const } : {};
+    if (approve)
+      return AgentLoop.#judged(await this.#untilHalted(approve(call, { tainted: this.#tainted, tool, ...client })));
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };
     if (this.#tainted && !tool.readOnly && !this.#request.untrusted) return this.#writeAfterRead(call);
     if (this.#tainted && !tool.readOnly) return { deny: AgentLoop.taintedWrite };
