@@ -1350,10 +1350,10 @@ describe("SignalContext execution", () => {
   });
 
   describe("endpoint cache single-flight", () => {
-    const heldQuery = () => {
+    const heldQuery = (timeout = 60_000) => {
       const held = { runs: 0, failing: false, gates: [] as Array<() => void> };
       const info = buildEndpoint
-        .query(String, { guards: [Public], cache: 60_000, timeout: 5 })
+        .query(String, { guards: [Public], cache: 60_000, timeout })
         .param("category", String)
         .exec(async (category) => {
           const run = ++held.runs;
@@ -1492,7 +1492,7 @@ describe("SignalContext execution", () => {
     });
 
     test("keeps the shared run going for the callers still waiting when one caller's request gave up", async () => {
-      const { held, call, started, release } = heldQuery();
+      const { held, call, started, release } = heldQuery(40);
       const impatient = call("news", { timeout: true }).then(
         (response) => response.status,
         () => "rejected",
@@ -1504,6 +1504,133 @@ describe("SignalContext execution", () => {
 
       expect(held.runs).toBe(1);
       expect(await (await patient).json()).toBe("news-1");
+    });
+
+    test("gives every caller its own copy of the answer, so a middleware that edits it reaches no other caller", async () => {
+      class PushWho extends middleware("signalTestPushWho") {
+        override async use() {
+          return async (context: SignalContext, next: () => Promise<unknown>) => {
+            const answer = (await next()) as string[];
+            answer.push(context.getHttpContext().req.headers.get("x-who") ?? "nobody");
+            return answer;
+          };
+        }
+      }
+      const gates: Array<() => void> = [];
+      let runs = 0;
+      const info = buildEndpoint.query([String], { guards: [Public], cache: 60_000 }).exec(async () => {
+        runs++;
+        await new Promise<void>((resolve) => gates.push(resolve));
+        return ["base"];
+      });
+      const cache = new FakeCacheAdaptor();
+      const call = async (who: string) => {
+        const context = makeSignalContext({
+          endpointInfo: info,
+          request: makeHttpRequest({ headers: { "x-who": who } }),
+          registry: makeCacheRegistry(cache),
+          middlewareMap: new Map([["pushWho", PushWho]]) as never,
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      };
+
+      const alice = call("alice");
+      while (gates.length < 1) await new Promise((resolve) => setTimeout(resolve, 0));
+      const bob = call("bob");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      gates[0]?.();
+
+      expect(await (await alice).json()).toEqual(["base", "alice"]);
+      expect(await (await bob).json()).toEqual(["base", "bob"]);
+      expect(await (await call("carol")).json()).toEqual(["base", "carol"]);
+      expect(runs).toBe(1);
+    });
+
+    test("gives every caller its own parent to a resolveField that writes to it", async () => {
+      class MutatingInternal extends internal(signalTestServiceModel, (builder) => ({
+        summary: builder.resolveField(String).exec((parent) => {
+          const row = parent as unknown as { title: string };
+          row.title = `${row.title}!`;
+          return row.title;
+        }),
+      })) {}
+      const live = getDefaultLiveRegistry();
+      live.internal.set("signalTestCachedInternal", new MutatingInternal() as unknown as Internal);
+      const gates: Array<() => void> = [];
+      const info = buildEndpoint.query([SignalTestCachedFull], { guards: [Public], cache: 60_000 }).exec(async () => {
+        await new Promise<void>((resolve) => gates.push(resolve));
+        return [
+          new SignalTestCachedFull().set({
+            title: "t",
+            counts: new Map(),
+            openedAt: dayjs("2026-10-14T00:00:00.000Z"),
+            nested: new SignalTestNested().set({ label: "n" }),
+          }),
+        ] as never;
+      });
+      const cache = new FakeCacheAdaptor();
+      const call = async () => {
+        const context = makeSignalContext({ endpointInfo: info, live, registry: makeCacheRegistry(cache) });
+        await context.init();
+        return (await context.exec()) as Response;
+      };
+
+      try {
+        const first = call();
+        while (gates.length < 1) await new Promise((resolve) => setTimeout(resolve, 0));
+        const second = call();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        gates[0]?.();
+        const summaries = await Promise.all(
+          [await first, await second].map(
+            async (response) => ((await response.json()) as { summary: string }[])[0]?.summary,
+          ),
+        );
+        expect(summaries).toEqual(["t!", "t!"]);
+      } finally {
+        live.internal.delete("signalTestCachedInternal");
+      }
+    });
+
+    test("stops joining a run older than the endpoint's timeout, and the abandoned run overwrites nothing", async () => {
+      const { held, call, started, release, entries } = heldQuery(20);
+      const first = await call("news", { timeout: true }).then(
+        (response) => response.status,
+        () => "rejected",
+      );
+      expect(first).not.toBe(200);
+      const second = call("news");
+      await started(2);
+      expect(held.runs).toBe(2);
+
+      release(0);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(entries()).toHaveLength(0);
+      release(1);
+      expect(await (await second).json()).toBe("news-2");
+      expect(entries()).toHaveLength(1);
+      expect(await (await call("news")).json()).toBe("news-2");
+      expect(held.runs).toBe(2);
+    });
+
+    test("stops joining a run older than the fixed cap when the endpoint declares no timeout", async () => {
+      const { held, call, started, release } = heldQuery(0);
+      const realNow = Date.now;
+      const first = call("news");
+      await started(1);
+      Date.now = () => realNow() + 61_000;
+      try {
+        const second = call("news");
+        await started(2);
+        expect(held.runs).toBe(2);
+        release(1);
+        expect(await (await second).json()).toBe("news-2");
+      } finally {
+        Date.now = realNow;
+      }
+      release(0);
+      expect(await (await first).json()).toBe("news-1");
     });
 
     for (const scope of ["the args", "the whole endpoint"]) {

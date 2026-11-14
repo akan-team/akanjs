@@ -5,11 +5,25 @@ import type { SignalContext } from "./signalContext";
 import { TaggedJson } from "./TaggedJson";
 import { traceCache } from "./trace";
 
+interface EndpointFlight {
+  startedAt: number;
+  stale: boolean;
+  run: Promise<EndpointOutcome>;
+}
+interface EndpointOutcome {
+  serialized: string | undefined;
+  result: unknown;
+}
+
+const flightStore = process as unknown as { __akanEndpointCacheFlights?: Map<string, EndpointFlight> };
+flightStore.__akanEndpointCacheFlights ??= new Map();
+const inflight = flightStore.__akanEndpointCacheFlights;
+const FLIGHT_CAP_MS = 60_000;
+
 // Not a middleware: it runs after the guards (which a lib's account middleware feeds), so a hit reaches only an
 // admitted caller, inside the `timeout` deadline. The entry is shared, hence no internal arguments.
 export class EndpointCache {
   static #refused = new Set<string>();
-  static readonly #inflight = new Map<string, { epoch: number; run: Promise<unknown> }>();
 
   static declares(endpointInfo: EndpointInfo): boolean {
     const ttl = endpointInfo.signalOption.cache;
@@ -29,22 +43,43 @@ export class EndpointCache {
       return cached;
     }
     traceCache(false);
-    const joined = EndpointCache.#inflight.get(key);
-    if (joined && joined.epoch === EndpointCacheKeys.epoch(context.key)) return await joined.run;
-    return await EndpointCache.#lead(context, cache, key, ttl, run);
+    const joined = inflight.get(key);
+    const outcome =
+      joined && EndpointCache.#joinable(context, joined)
+        ? await joined.run
+        : await EndpointCache.#lead(context, cache, key, ttl, run);
+    return EndpointCache.#own(context, outcome);
   }
-  //? A per-args invalidation leaves the key as it was, so only the epoch keeps a late caller off a run that predates it.
+  //? A run the Timeout middleware abandoned never settles, so one older than the deadline is no longer joined.
+  static #joinable(context: SignalContext, flight: EndpointFlight) {
+    return (
+      !flight.stale && Date.now() - flight.startedAt <= (context.endpointInfo.signalOption.timeout || FLIGHT_CAP_MS)
+    );
+  }
   static #lead(context: SignalContext, cache: CacheAdaptor, key: string, ttl: number, run: () => Promise<unknown>) {
-    const epoch = EndpointCacheKeys.epoch(context.key);
-    const shared: Promise<unknown> = (async () => {
+    const flight = { startedAt: Date.now(), stale: false } as EndpointFlight;
+    flight.run = (async () => {
       const result = await run();
-      if (EndpointCacheKeys.epoch(context.key) === epoch) await EndpointCache.#write(context, cache, key, result, ttl);
-      return result;
+      const serialized = EndpointCache.#serialize(context, result);
+      if (serialized !== undefined && !flight.stale && inflight.get(key) === flight)
+        await EndpointCache.#write(context, cache, key, serialized, ttl);
+      return { serialized, result };
     })().finally(() => {
-      if (EndpointCache.#inflight.get(key)?.run === shared) EndpointCache.#inflight.delete(key);
+      if (inflight.get(key) === flight) inflight.delete(key);
     });
-    EndpointCache.#inflight.set(key, { epoch, run: shared });
-    return shared;
+    inflight.set(key, flight);
+    return flight.run;
+  }
+  // Each caller parses its own copy, as a hit does: a middleware or resolveField that edits it reaches no other caller.
+  static #own(context: SignalContext, { serialized, result }: EndpointOutcome) {
+    if (serialized === undefined) return result;
+    try {
+      const { returnRef, arrDepth } = context.endpointInfo.returns;
+      return TaggedJson.parse(serialized, { ref: returnRef, arrDepth });
+    } catch (error) {
+      context.adaptor.logger.warn(`Cache read failed for ${context.key}: ${String(error)}`);
+      return result;
+    }
   }
   static #cacheable(context: SignalContext) {
     if (context.endpointInfo.type === "query" && context.endpointInfo.internalArgs.length === 0) return true;
@@ -78,11 +113,17 @@ export class EndpointCache {
       return undefined;
     }
   }
-  static async #write(context: SignalContext, cache: CacheAdaptor, key: string, result: unknown, ttl: number) {
+  static #serialize(context: SignalContext, result: unknown) {
     try {
-      const serialized = TaggedJson.stringify(result);
       // `undefined` has no JSON spelling, and an entry holding the string "undefined" would parse back as garbage.
-      if (serialized === undefined) return;
+      return TaggedJson.stringify(result);
+    } catch (error) {
+      context.adaptor.logger.warn(`Cache write failed for ${context.key}: ${String(error)}`);
+      return undefined;
+    }
+  }
+  static async #write(context: SignalContext, cache: CacheAdaptor, key: string, serialized: string, ttl: number) {
+    try {
       // Capped at the generation's life: an entry outliving its token is stored but no read can reach it.
       const lifeMs = Math.min(ttl, EndpointCacheKeys.generationTtlMs);
       await cache.set(EndpointCacheKeys.topic, key, serialized, { expireAt: dayjs().add(lifeMs, "millisecond") });

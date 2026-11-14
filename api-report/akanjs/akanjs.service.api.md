@@ -938,7 +938,6 @@ export declare class EndpointCacheControl extends EndpointCacheControl_base {
 export declare class EndpointCacheKeys {
     static readonly topic = "cache";
     static readonly generationTtlMs = 86400000;
-    static epoch(endpoint: string): number;
     static entryKey(cache: Pick<CacheAdaptor, "get" | "setIfAbsent">, endpoint: string, args: unknown[]): Promise<string>;
     static invalidate(cache: Pick<CacheAdaptor, "delete" | "get" | "set" | "setIfAbsent">, endpoint: string, args?: unknown[]): Promise<void>;
 }
