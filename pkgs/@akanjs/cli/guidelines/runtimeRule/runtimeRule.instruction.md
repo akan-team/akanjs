@@ -247,6 +247,15 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   `RUN if [ "$TARGETARCH" = "<arch>" ]` guard, so a multi-arch build runs it on one leg only. `preRuns` land
   before `bun install --production` (where a native dependency's build tools have to be), `postRuns` after it
   and before the app files are copied.
+- **The server runs as `USER 1000:1000`, oven/bun's `bun` user.** The build steps (`apt-get`, `preRuns`,
+  `bun install`, `postRuns`) still run as root; the app files are copied `--chown=1000:1000`, and `/workspace` with the default
+  mount points `/workspace/sqlite` and `/workspace/local` belong to it, so the SQLite files, uploads, the
+  `runtime/` socket directory and the image cache under `.akan/artifact` are writable while `node_modules` stays
+  read-only. A directory a `postRuns` step makes for the server to write needs `chown 1000:1000`. An empty named
+  volume takes the owner of the directory it mounts over; one a root image already wrote is owned by root, so the
+  server stops at boot with `attempt to write a readonly database` until it is `chown -R 1000:1000` once.
+- **The base image is pinned by digest**, `oven/bun:<bun>-slim@sha256:…`, the multi-arch index's, so amd64 and
+  arm64 build from the same release; a test holds the tag to the Bun version the workspace's `package.json` pins.
 - **The image installs the versions the workspace locked.** `akan build` writes a `bun.lock` beside the image's
   `package.json`, cut down from the workspace's to what the server needs, and the image installs it
   `--frozen-lockfile`. A workspace without a root `bun.lock` gets a warning and an unlocked install; a Dockerfile

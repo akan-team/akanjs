@@ -7,6 +7,7 @@ import { AppExecutor, WorkspaceExecutor } from "../executors";
 import { NativeConfig } from "../mobile/nativeConfig";
 import type { PackageJson } from "../workspace/types";
 import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
+import { DEFAULT_DOCKER_IMAGE } from "./dockerImage";
 import type { LibConfigInput } from "./types";
 
 const akanPackageJson = JSON.parse(
@@ -15,7 +16,12 @@ const akanPackageJson = JSON.parse(
 const rootPackageJson = JSON.parse(
   fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../package.json"), "utf8"),
 ) as { engines: { bun: string } };
-const pinnedBunImage = `oven/bun:${rootPackageJson.engines.bun}-slim`;
+const setupActionBunVersion = /bun-version:\s*(\S+)/.exec(
+  fs.readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../.github/actions/setup/action.yml"),
+    "utf8",
+  ),
+)?.[1];
 
 const packageJson: PackageJson = {
   name: "repo",
@@ -176,7 +182,7 @@ describe("AkanAppConfig", () => {
         env: { PATH: process.env.PATH ?? "", ...(allow ? { AKAN_ALLOW_LOCAL_IMAGE: allow } : {}) },
       });
 
-    expect(local).toContain(`FROM ${pinnedBunImage}\nARG AKAN_ALLOW_LOCAL_IMAGE\nRUN if`);
+    expect(local).toContain(`FROM ${DEFAULT_DOCKER_IMAGE}\nARG AKAN_ALLOW_LOCAL_IMAGE\nRUN if`);
     expect(config.dockerfileFor("main")).not.toContain("AKAN_ALLOW_LOCAL_IMAGE");
     expect(run().exitCode).toBe(1);
     expect(run().stderr.toString()).toContain("--build-arg AKAN_ALLOW_LOCAL_IMAGE=1");
@@ -235,7 +241,9 @@ describe("AkanAppConfig", () => {
     const envBlock = Object.entries(config.getProductionEnv())
       .map(([key, value]) => `ENV ${key}=${value}`)
       .join("\n");
-    expect(config.dockerfile).toContain(`COPY . .\n${envBlock}\nCMD ["bun","main.js"]`);
+    expect(config.dockerfile).toContain(
+      `COPY --chown=1000:1000 . .\n${envBlock}\nUSER 1000:1000\nCMD ["bun","main.js"]`,
+    );
   });
 
   test('publishes localePrefix "as-needed" to the bundles and the image, and leaves the default out of the image', () => {
@@ -250,19 +258,19 @@ describe("AkanAppConfig", () => {
   });
 
   test("writes the Dockerfile instructions it wrote before its env came from getProductionEnv", () => {
-    //? 9adfb95c's output for this config, less the blank lines its empty interpolations left and its floating tag.
+    //? 9adfb95c's output for this config, less the blank lines its empty interpolations left, its floating tag and root.
     const before = [
-      `FROM ${pinnedBunImage}`,
+      `FROM ${DEFAULT_DOCKER_IMAGE}`,
       "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*",
       "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
       "ARG TARGETARCH",
       "",
-      "RUN mkdir -p /workspace",
+      "RUN mkdir -p /workspace/sqlite /workspace/local && chown 1000:1000 /workspace /workspace/sqlite /workspace/local",
       "WORKDIR /workspace",
       "COPY ./package.json ./bun.lock ./",
       "RUN bun install --production --frozen-lockfile",
       "",
-      "COPY . .",
+      "COPY --chown=1000:1000 . .",
       "ENV PORT=8282",
       "ENV NODE_ENV=production",
       "ENV AKAN_PUBLIC_REPO_NAME=akanjs",
@@ -278,6 +286,7 @@ describe("AkanAppConfig", () => {
       "ENV AKAN_DATABASE_MODES=single",
       "ENV AKAN_LOG_TO_FILE=0",
       "",
+      "USER 1000:1000",
       'CMD ["bun","main.js"]',
     ];
     const lines = (text: string) => text.split("\n").filter((line) => line !== "");
@@ -302,6 +311,36 @@ describe("AkanAppConfig", () => {
       expect(config.dockerfile).not.toContain(dropped);
   });
 
+  test("pins the default image by its multi-arch digest to the Bun release the repo runs", () => {
+    const [, tag, digest] = /^oven\/bun:(.+)-slim@sha256:([0-9a-f]+)$/.exec(DEFAULT_DOCKER_IMAGE) ?? [];
+
+    expect(tag).toBe(rootPackageJson.engines.bun);
+    expect(setupActionBunVersion).toBe(rootPackageJson.engines.bun);
+    expect(digest).toHaveLength(64);
+  });
+
+  test("runs the generated image as the bun user once every root step is done, on directories it owns", () => {
+    const config = new AkanAppConfig(
+      app,
+      [],
+      packageJson,
+      { docker: { preRuns: ["apt-get install -y ffmpeg"], postRuns: ["echo after"] } },
+      baseDevEnv,
+    );
+    const instructions = config.dockerfile.split("\n").filter((line) => line !== "");
+    const userAt = instructions.indexOf("USER 1000:1000");
+
+    expect(instructions.filter((line) => line.startsWith("USER "))).toEqual(["USER 1000:1000"]);
+    expect(instructions.slice(userAt + 1)).toEqual(['CMD ["bun","main.js"]']);
+    for (const rootStep of ["apt-get update", "apt-get install -y ffmpeg", "bun install", "echo after"])
+      expect(instructions.findIndex((line) => line.includes(rootStep))).toBeLessThan(userAt);
+    expect(instructions.filter((line) => line.startsWith("COPY . "))).toEqual([]);
+    expect(instructions).toContain("COPY --chown=1000:1000 . .");
+    expect(instructions).toContain(
+      "RUN mkdir -p /workspace/sqlite /workspace/local && chown 1000:1000 /workspace /workspace/sqlite /workspace/local",
+    );
+  });
+
   test("keeps a declared Dockerfile string verbatim", () => {
     const dockerfile = 'FROM oven/bun:1-slim\nCOPY . .\nCMD ["bun","main.js"]';
     const config = new AkanAppConfig(app, [], packageJson, { docker: dockerfile }, baseDevEnv);
@@ -314,7 +353,7 @@ describe("AkanAppConfig", () => {
     const config = new AkanAppConfig(app, [], packageJson, { docker: { preRuns: ["echo hi"] } }, baseDevEnv);
 
     expect(config.docker).toEqual({
-      image: pinnedBunImage,
+      image: DEFAULT_DOCKER_IMAGE,
       preRuns: ["echo hi"],
       postRuns: [],
       command: ["bun", "main.js"],

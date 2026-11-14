@@ -90,7 +90,7 @@ const configKeys = [
   {
     key: "docker",
     type: "string | DockerImageConfig",
-    default: "oven/bun:1.4.4-slim",
+    default: "oven/bun:1.4.4-slim@sha256:…",
     en: "A whole Dockerfile as a string, or the parts akan build assembles one from.",
     ko: "Dockerfile 전체 문자열이거나, akan build가 Dockerfile을 조립할 재료입니다.",
   },
@@ -531,7 +531,7 @@ const buildFields = [
   {
     key: "docker",
     type: "string | DockerImageConfig",
-    default: "oven/bun:1.4.4-slim",
+    default: "oven/bun:1.4.4-slim@sha256:…",
     en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.",
     ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, command입니다.",
   },
@@ -1586,6 +1586,28 @@ const config: AppConfig = {
                     <strong>이미지 하나로 여러 배포를 합니다.</strong> <code>{'["single", "cluster"]'}</code>로 선언하면
                     같은 이미지가 엣지 사이트와 클라우드 클러스터를 모두 실행하고, 배포마다{" "}
                     <code>AKAN_DATABASE_MODE</code>로 모드를 정합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>The server runs as the image's bun user, uid 1000.</strong> apt-get, preRuns, bun install
+                    and postRuns still run as root. The app files, <code>/workspace</code> and the default volume mounts{" "}
+                    <code>/workspace/sqlite</code> and <code>/workspace/local</code> belong to bun, and{" "}
+                    <code>node_modules</code> stays read-only to the server. A directory a postRuns step makes for the
+                    server to write needs <code>chown 1000:1000</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>서버는 이미지의 bun 사용자(uid 1000)로 실행됩니다.</strong> apt-get, preRuns, bun install,
+                    postRuns는 그대로 root로 실행됩니다. 앱 파일, <code>/workspace</code>, 기본 볼륨 위치인{" "}
+                    <code>/workspace/sqlite</code>와 <code>/workspace/local</code>은 bun이 소유하고,{" "}
+                    <code>node_modules</code>는 서버가 읽기만 합니다. postRuns 단계가 서버가 쓸 디렉터리를 만든다면{" "}
+                    <code>chown 1000:1000</code>을 붙입니다.
                   </span>
                 ),
               })}
