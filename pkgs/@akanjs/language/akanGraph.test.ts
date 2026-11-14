@@ -1727,7 +1727,7 @@ export * from "./b";
     const expected = [
       "method:apps/demo:memo.stamp -charge-> adaptor:square-sdk:Square",
       "method:apps/demo:memo.stamp -now-> adaptor:apps/demo:plugin/clock.ts#Clock",
-      "method:apps/demo:memo.stamp -pay-> adaptor:libs/billing:Stripe",
+      "method:apps/demo:memo.stamp -pay-> adaptor:stripe-sdk:Stripe",
       "method:apps/demo:memo.stamp -run-> adaptor:libs/util:Foo",
     ];
     expect(callsOf(sources)).toEqual(expected);
@@ -1929,6 +1929,82 @@ export class MemoService extends serve(db.memo, ({ plug }) => ({ stripe: plug(St
       `export { default } from "stripe-sdk";\n`,
     ])
       expect(callsOf(client)).toEqual([located, located]);
+  });
+
+  it("takes a package or akanjs the import's chain re-exports by name over another lib's same-name adaptor, but not over the imported lib's own, and keeps that adaptor ahead of a package `export *`", () => {
+    const sources: Record<string, string> = {
+      "libs/billing/srvkit/vendors.ts": `import { adapt } from "akanjs/service";
+${["Adyen", "Clock", "Stripe", "Toss", "Wise"].map((name) => `export class ${name} extends adapt("${name.toLowerCase()}") {}\n`).join("")}`,
+      "libs/shared/srvkit/stripe.ts": `export { Stripe } from "stripe-sdk";
+`,
+      "libs/shared/srvkit/toss.ts": `import Toss from "toss-sdk";
+export { Toss };
+`,
+      "libs/shared/srvkit/adyen.ts": `export { Adyen } from "adyen-sdk";
+`,
+      "libs/shared/srvkit/adyenWeb.ts": `export { Adyen } from "adyen-web";
+`,
+      "libs/shared/srvkit/redis.ts": `export * from "ioredis";
+`,
+      "libs/shared/srvkit/clock.ts": `export { Clock } from "akanjs/service";
+`,
+      "libs/shared/srvkit/square.ts": `export { Square } from "square-sdk";
+`,
+      "libs/shared/plugin/square.ts": `import { adapt } from "akanjs/service";
+export class Square extends adapt("square") {}
+`,
+      "apps/demo/lib/memo/memo.service.ts": `import { Adyen, Clock, Square, Stripe, Toss, Wise } from "@libs/shared/srvkit";
+import { serve } from "akanjs/service";
+import * as db from "../db";
+export class MemoService extends serve(db.memo, ({ plug }) => ({
+  adyen: plug(Adyen),
+  clock: plug(Clock),
+  square: plug(Square),
+  stripe: plug(Stripe),
+  toss: plug(Toss),
+  wise: plug(Wise),
+})) {
+  async run() {
+    await this.adyen.capture();
+    await this.clock.now();
+    await this.square.tap();
+    await this.toss.transfer();
+    await this.wise.convert();
+    return this.stripe.charge();
+  }
+}
+`,
+    };
+    const synced = Object.fromEntries(
+      ["billing", "shared"].map((lib) => [
+        `libs/${lib}/srvkit/index.ts`,
+        facetBarrelOf(
+          "srvkit",
+          Object.keys(sources)
+            .filter((rel) => rel.startsWith(`libs/${lib}/srvkit/`))
+            .map((rel) => rel.slice(`libs/${lib}/srvkit/`.length)),
+          [],
+        ),
+      ]),
+    );
+    const callsOf = (given: Record<string, string>) => {
+      const index = new AkanIndex({ ts, root });
+      for (const [rel, text] of Object.entries(given)) index.setFile(`${root}/${rel}`, text);
+      return edgesOf(
+        index.graph((fileName) => given[fileName.slice(root.length + 1)]),
+        "calls",
+      );
+    };
+    const expected = [
+      "method:apps/demo:memo.run -capture-> adaptor:libs/shared:Adyen",
+      "method:apps/demo:memo.run -charge-> adaptor:stripe-sdk:Stripe",
+      "method:apps/demo:memo.run -convert-> adaptor:libs/billing:Wise",
+      "method:apps/demo:memo.run -now-> adaptor::Clock",
+      "method:apps/demo:memo.run -tap-> adaptor:libs/shared:Square",
+      "method:apps/demo:memo.run -transfer-> adaptor:toss-sdk:Toss",
+    ];
+    expect(callsOf(sources)).toEqual(expected);
+    expect(callsOf({ ...sources, ...synced })).toEqual(expected);
   });
 
   it("reads a facet folder with no index as the barrel `akan sync` writes, so the Change Map names the graph view's adaptor", () => {

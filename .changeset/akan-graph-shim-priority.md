@@ -1,0 +1,5 @@
+---
+"@akanjs/language": patch
+---
+
+The Akan Graph takes a package the import's chain re-exports by name before a same-name adaptor declared in another lib, as TypeScript binds the import. With `export { Stripe } from "stripe-sdk"` or `import Stripe from "stripe-sdk"; export { Stripe }` along the chain, a plug of `Stripe`, or an adaptor's `plugs` or a `binds` edge that names it, is `adaptor:stripe-sdk:Stripe`, where another lib's `Stripe` adaptor (for example `adaptor:libs/billing:Stripe`) took it. A name re-exported from `akanjs` (`export { Clock } from "akanjs/service"`) is likewise the `akanjs` adaptor node. When the chain re-exports the name from two or more packages, the reference is the unlocated `adaptor:<owner>:<Name>` of the lib or app it imports from, where the other lib's adaptor also took it; subpaths of one package count as one. A package `export *` does not name what it exports, so another lib's same-name adaptor still comes before it. The imported lib's own adaptor of the name still comes before any package, and guards are unchanged.
