@@ -669,6 +669,7 @@ export declare class BaseService extends BaseService_base {
 
 export declare class BlobStorage extends BlobStorage_base implements StorageAdaptor {
     static assertShared(storage: string): void;
+    onInit(): void;
     resolveLocalPath(path: string, access?: "private" | "public"): null | string;
     readData(path: string): Promise<ReadableStream>;
     readDataAsJson<T>(path: string): Promise<T>;

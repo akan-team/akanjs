@@ -33,6 +33,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `consoleDisabled` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `databaseLocked` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `desktopAppRequired` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `directoryNotWritable` | 500 | `DirectoryNotWritableError` | no | yes | `service/predefinedAdaptor/directoryNotWritableError.ts` |
 | `documentNotFound` | 404 | `NoDocumentError` | yes | no | `document/noDocumentError.ts` |
 | `duplicateRegistration` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `failed` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
