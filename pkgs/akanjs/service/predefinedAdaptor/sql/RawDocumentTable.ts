@@ -1,4 +1,5 @@
 import { DocumentStoreError } from "../../documentStoreError";
+import { BoundList } from "./BoundList";
 import {
   type AkanSqlClient,
   type QueryLeafOps,
@@ -45,6 +46,7 @@ export class RawDocumentTable {
   readonly name: string;
   readonly #connection: () => AkanSqlClient;
   readonly #dialect: SqlDialect;
+  readonly #lists: BoundList;
   #exists: boolean | undefined;
 
   constructor(name: string, connection: () => AkanSqlClient, dialect: SqlDialect) {
@@ -53,6 +55,7 @@ export class RawDocumentTable {
     this.name = name;
     this.#connection = connection;
     this.#dialect = dialect;
+    this.#lists = new BoundList(dialect);
   }
 
   async exists() {
@@ -174,7 +177,10 @@ export class RawDocumentTable {
           if (!Array.isArray(operand))
             throw new DocumentStoreError("invalidQuery", `Filter "${path}" ${operator} takes an array`);
           if (!operand.length) return { sql: operator === "$in" ? "0 = 1" : "1 = 1", params: [] };
-          return operator === "$in" ? leaf.inList(path, operand) : leaf.notInList(path, operand);
+          return (
+            this.#lists.compare(path, operand, { negated: operator === "$nin" }) ??
+            (operator === "$in" ? leaf.inList(path, operand) : leaf.notInList(path, operand))
+          );
         }
         case "$exists":
           return operand ? leaf.exists(path) : leaf.missing(path);

@@ -9,10 +9,10 @@ import {
   type DocumentTouchOptions,
   type DocumentUpdateInput,
   type DocumentUpdateOptions,
-  documentQueryHelper,
   NoDocumentError,
 } from "akanjs/document";
 import { DocumentStoreError } from "../../documentStoreError";
+import { type AccumulatedField, AggregateQuery } from "./AggregateQuery";
 import { DocumentHydrator } from "./DocumentHydrator";
 import { DocumentRowCodec } from "./DocumentRowCodec";
 import { DocumentWriter } from "./DocumentWriter";
@@ -22,25 +22,24 @@ import { QueryScope } from "./QueryScope";
 import { QueryWriter } from "./QueryWriter";
 import { SqlTableSchema } from "./SqlTableSchema";
 import { type StoredRead, StoredRows } from "./StoredRows";
-import {
-  type AkanSqlClient,
-  type AkanSqlStatement,
-  BASE_COLUMNS,
-  type DocumentDatabaseOwner,
-  type DocumentRecord,
-  type DocumentWriteListener,
-  type FieldMap,
-  type FindIdOptions,
-  type FindManyOptions,
-  type FindOneOptions,
-  type ProjectedSqliteDocumentRow,
-  type PrunedIndex,
-  type SqlDialect,
-  type SqliteDocumentRow,
-  type TransferRow,
-  type UndeclaredIndex,
-  type UpsertByIdOptions,
-  type WriteHookOptions,
+import type {
+  AkanSqlClient,
+  AkanSqlStatement,
+  DocumentDatabaseOwner,
+  DocumentRecord,
+  DocumentWriteListener,
+  FieldMap,
+  FindIdOptions,
+  FindManyOptions,
+  FindOneOptions,
+  ProjectedSqliteDocumentRow,
+  PrunedIndex,
+  SqlDialect,
+  SqliteDocumentRow,
+  TransferRow,
+  UndeclaredIndex,
+  UpsertByIdOptions,
+  WriteHookOptions,
 } from "./types";
 import { UpdateCompiler } from "./UpdateCompiler";
 import { assertStorableJson, decodeDateValue, quoteIdent } from "./values";
@@ -59,6 +58,7 @@ export class SqlDocumentStore {
   readonly #hydrator: DocumentHydrator;
   readonly #writer: DocumentWriter;
   readonly #queryWriter: QueryWriter;
+  readonly #aggregates: AggregateQuery;
   readonly #writeListeners = new Set<DocumentWriteListener>();
   static readonly #logger = new Logger("SqlDocumentStore");
 
@@ -87,7 +87,7 @@ export class SqlDocumentStore {
       logger,
     });
     this.#codec = new DocumentRowCodec(database, this.table, dialect, this.compiler);
-    this.#scope = new QueryScope(this.table, this.compiler);
+    this.#scope = new QueryScope(this.table, this.compiler, dialect);
     this.#rows = new StoredRows(this, this.#codec, logger);
     this.#hydrator = new DocumentHydrator(this, this.#codec, this.#rows);
     this.#writer = new DocumentWriter({
@@ -101,6 +101,7 @@ export class SqlDocumentStore {
       written: (doc, previous) => this.#written({ doc, previous }),
     });
     this.#queryWriter = new QueryWriter(owner, this, dialect, this.#scope);
+    this.#aggregates = new AggregateQuery(this.table, dialect, this.compiler, this.#scope);
   }
 
   ensure() {
@@ -338,12 +339,10 @@ export class SqlDocumentStore {
 
   /** The stored numbers at `path` added up over the live rows the query matches; 0 when none. */
   async sum(path: string, query?: DocumentQuery) {
-    if (BASE_COLUMNS.has(path) || path.startsWith("_"))
-      throw new DocumentStoreError("invalidQuery", `sum reads a model field, not "${path}"`);
-    this.compiler.fieldExpr(path);
+    const total = this.#aggregates.sumOf(path);
     const { where, params, joins } = this.#scope.safeQuery(query, "sum", {});
     const row = await this.prepareStmt(
-      `SELECT ${this.dialect.sumOf(path)} as total FROM ${quoteIdent(this.table)}${this.#scope.joinSql(joins)} WHERE ${where}`,
+      `SELECT ${total} as total FROM ${quoteIdent(this.table)}${this.#scope.joinSql(joins)} WHERE ${where}`,
     ).get<{ total: number | string | null }>(...this.#scope.joinParams(joins), ...params);
     return Number(row?.total ?? 0);
   }
@@ -351,27 +350,31 @@ export class SqlDocumentStore {
   async insight(query?: DocumentQuery) {
     const insightFields = this.constant.insight[FIELD_META] as unknown as FieldMap;
     const result: DocumentRecord = {};
+    const accumulated: (AccumulatedField & { key: string })[] = [];
     for (const [key, field] of Object.entries(insightFields)) {
       const props = field.getProps();
-      const { $sum: sumPath, ...condition } = (props.accumulate ?? {}) as Record<string, unknown>;
-      if (!props.accumulate) {
-        result[key] = props.default;
-      } else if (typeof sumPath === "string") {
-        //* `{ $sum: "<field>", ...condition }` adds the field up over the rows the condition also matches.
-        const scoped = Object.keys(condition).length
-          ? documentQueryHelper.all(query ?? {}, condition as DocumentQuery)
-          : query;
-        result[key] = await this.sum(sumPath, scoped);
-      } else if (
-        typeof props.accumulate === "object" &&
-        !Object.keys(props.accumulate as Record<string, unknown>).some((key) => key.startsWith("$"))
-      ) {
-        result[key] = await this.count(documentQueryHelper.all(query ?? {}, props.accumulate as DocumentQuery));
-      } else {
-        result[key] = await this.count(query);
-      }
+      result[key] = props.default;
+      if (!props.accumulate) continue;
+      const { $sum: sumPath, ...condition } = props.accumulate as { $sum?: unknown } & DocumentQuery;
+      //* `{ $sum: "<field>", ...condition }` adds the field up over the rows the condition also matches.
+      if (typeof sumPath === "string")
+        accumulated.push({ key, sum: sumPath, condition: Object.keys(condition).length ? condition : undefined });
+      else if (typeof props.accumulate === "object" && SqlDocumentStore.#isCondition(props.accumulate))
+        accumulated.push({ key, condition: props.accumulate as DocumentQuery });
+      else accumulated.push({ key });
     }
+    if (!accumulated.length) return result;
+    const { sql, params } = this.#aggregates.insight(accumulated, query);
+    const row = await this.prepareStmt(sql).get<Record<string, number | string | null>>(...params);
+    accumulated.forEach(({ key }, idx) => {
+      result[key] = Number(row?.[`f${idx}`] ?? 0);
+    });
     return result;
+  }
+
+  static #isCondition(accumulate: object) {
+    const keys = Object.keys(accumulate);
+    return keys.length > 0 && !keys.some((key) => key.startsWith("$"));
   }
 
   /** `track` buys `isModified()` with a deep clone of the row; only the read paths opt out. */
