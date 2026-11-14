@@ -228,6 +228,13 @@ normalized to `info` with one warning.
   keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past
   `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — under the local dev runtime, or
   with the `AKAN_LOG_DEBUG_HEADER` secret.
+- **Every dev route is listed once, in `akanjs/server/routing/devSurfaces`** — devtools, Studio, `/_akan/hmr`,
+  the ssr-dev and csr-dev module registries, `/__rsc/manifest` — and is mounted through `DevRoutes.mount`, which
+  refuses a path the list lacks. Each answers only localhost, an IP address, the app's own hosts and
+  `AKAN_ALLOWED_HOSTS` names, even on a server that answers every Host; `--share` serves only the two module
+  registries. Devtools opens in the local dev runtime; elsewhere `AKAN_DEVTOOLS=true` opens it only with
+  `AKAN_LOG_DEBUG_HEADER` set to at least 32 characters, to `x-akan-debug: <secret>` or a browser that posted the
+  secret to the form it is shown (a 15-minute cookie); without one that long it stays closed and the log says why.
 - **Structured values go in `LogRecord.attrs` via `Logger.emit(...)`**; a key naming a secret is `[redacted]`
   before the record exists.
 - **Never log per delivered record in anything that delivers records.** The control socket and the hub do not,

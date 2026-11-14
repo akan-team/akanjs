@@ -1635,8 +1635,8 @@ akan:myapp> .tail off`}
                   type: "string",
                   default: l.trans({ en: "unset", ko: "없음" }),
                   desc: l.trans({
-                    en: "Secret for `x-akan-debug`, which lowers one request to trace. Unset, it works only in local.",
-                    ko: "요청 하나를 trace로 낮추는 `x-akan-debug` 헤더의 비밀값입니다. 없으면 local에서만 받습니다.",
+                    en: "Secret for `x-akan-debug`, which lowers one request to trace. Unset, it works only in local. With `AKAN_DEVTOOLS=true` it also opens devtools and Studio outside local.",
+                    ko: "요청 하나를 trace로 낮추는 `x-akan-debug` 헤더의 비밀값입니다. 없으면 local에서만 받습니다. `AKAN_DEVTOOLS=true`이면 local 밖에서 devtools와 Studio도 이 값으로 열립니다.",
                   }),
                 },
                 {

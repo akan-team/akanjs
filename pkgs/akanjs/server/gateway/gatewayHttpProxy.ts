@@ -29,6 +29,7 @@ export class GatewayHttpProxy {
     { prefix: "/_akan/fonts/", root: "fonts", strip: "/_akan/fonts/".length, type: "font/woff2", anyOrigin: true },
     { prefix: "/_akan/dict/", root: "dict", strip: "/_akan/dict/".length, type: "text/javascript; charset=utf-8" },
   ] as const;
+  static readonly immutableRoutes = GatewayHttpProxy.#immutableArtifacts.map(({ prefix }) => `${prefix}*`);
   //? Older Bun reported every unopenable unix socket as FailedToOpenSocket; 1.4.3 names the errno instead —
   //? ENOENT once `server.stop()` unlinked the file, ECONNREFUSED for a killed listener, ENOTSOCK for a stray file.
   static readonly #upstreamOpenFailureCodes = new Set(["FailedToOpenSocket", "ENOENT", "ECONNREFUSED", "ENOTSOCK"]);
