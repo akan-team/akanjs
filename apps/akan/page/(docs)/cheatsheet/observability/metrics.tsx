@@ -965,14 +965,15 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                     The chart in <code>infra/app</code> marks the pod for scraping once a branch asks for it. It is off
                     by default, because a built server answers the route 401 until the scraper holds the token. Keep the
                     token in a Secret under the key <code>AKAN_STATUS_TOKEN</code>, and name only the Secret in the
-                    values file:
+                    values file; the chart refuses to render <code>scrape</code> without <code>tokenSecret</code>:
                   </span>
                 ),
                 ko: (
                   <span>
                     <code>infra/app</code> chart는 branch가 원할 때 pod에 scrape 표시를 붙입니다. 빌드된 서버는
                     scraper가 토큰을 갖기 전까지 이 경로에 401로 답하므로 기본값은 꺼짐입니다. 토큰은 Secret의{" "}
-                    <code>AKAN_STATUS_TOKEN</code> 키에 두고, values 파일에는 Secret 이름만 적습니다:
+                    <code>AKAN_STATUS_TOKEN</code> 키에 두고, values 파일에는 Secret 이름만 적습니다.{" "}
+                    <code>tokenSecret</code> 없이 <code>scrape</code>만 켜면 chart가 렌더링을 거부합니다:
                   </span>
                 ),
               })}

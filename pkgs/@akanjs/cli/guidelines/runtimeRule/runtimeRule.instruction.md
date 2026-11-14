@@ -118,8 +118,8 @@ worker per web-serving replica.
   `metricRegistry.counter|gauge|histogram(name, help, labels)` from `server/metrics/metricRegistry`, in the server
   or in its RSC worker, whose series reach the same scrape as fresh as that interval and survive a worker restart. The
   `infra/app` chart adds the `prometheus.io/*` scrape annotations with `<branch>.metrics.scrape: true` and reads the
-  token from the Secret `<branch>.metrics.tokenSecret` names; `infra/monitoring` holds a Grafana dashboard and the
-  alert rules.
+  token from the Secret `<branch>.metrics.tokenSecret` names, and refuses to render `scrape` without it;
+  `infra/monitoring` holds a Grafana dashboard and the alert rules.
 - **Nothing supervises a solo process but the orchestrator**, since the gateway's crash-restart-with-backoff went
   with it. `infra/app/templates/app.yaml` carries the liveness, readiness and startup probes that replace it.
 - **`PORT` is the whole tree's port, and a server-side self-call follows it.** `AkanApp` resolves it once

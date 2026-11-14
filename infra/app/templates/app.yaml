@@ -20,6 +20,9 @@
 {{- if and $cluster (not $database.secretName) }}
 {{- fail "cluster mode needs database.secretName: a Secret holding POSTGRES_URL and REDIS_URI" }}
 {{- end }}
+{{- if and $metrics.scrape (not $metrics.tokenSecret) }}
+{{- fail "metrics.scrape needs metrics.tokenSecret: a Secret holding AKAN_STATUS_TOKEN, the bearer every scrape must send" }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
