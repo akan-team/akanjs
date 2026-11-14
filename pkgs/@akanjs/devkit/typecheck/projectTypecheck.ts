@@ -50,6 +50,19 @@ export class ProjectTypecheck {
     return tsconfigPath;
   }
 
+  //? The project's own tsconfig keeps its include and exclude: an extended config resolves them from its own folder.
+  async checkIncremental(tsconfigPath: string, cacheDir: string, report: "pretty" | "records" = "pretty") {
+    await mkdir(cacheDir, { recursive: true });
+    const tsconfig = {
+      extends: path.relative(cacheDir, tsconfigPath).split(path.sep).join("/"),
+      compilerOptions: { noEmit: true, incremental: true, tsBuildInfoFile: "./tsconfig.tsbuildinfo" },
+    };
+    const cachedPath = path.join(cacheDir, "tsconfig.json");
+    await Bun.write(cachedPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
+    await this.check(cachedPath, report);
+    return cachedPath;
+  }
+
   async check(tsconfigPath: string, report: "pretty" | "records" = "pretty") {
     const proc = Bun.spawn([process.execPath, await ProjectTypecheck.workerEntry(this.workspaceRoot)], {
       cwd: this.workspaceRoot,

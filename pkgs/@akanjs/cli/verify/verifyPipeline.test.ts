@@ -32,7 +32,7 @@ const brokenPackage = async () => {
 };
 
 describe("VerifyPipeline", () => {
-  test("lints with fixes and typechecks a package in one run, reporting one line per problem", async () => {
+  test("lints with fixes and typechecks a package in one run, reporting one line per problem, from a cache outside it", async () => {
     const { root, workspace } = await brokenPackage();
     const scope = VerifyScope.resolve([{ code: " M", file: "pkgs/@sample/tool/index.ts" }], {
       apps: [],
@@ -52,6 +52,13 @@ describe("VerifyPipeline", () => {
     expect(VerifyReport.text(result).split("\n").slice(1)).toEqual([
       "pkgs/@sample/tool/index.ts:1:14 TS2322 Type 'string' is not assignable to type 'number'.",
     ]);
+    expect(await Bun.file(path.join(root, ".akan/typecheck/pkgs/@sample/tool/tsconfig.tsbuildinfo")).exists()).toBe(
+      true,
+    );
+
+    await writeText(path.join(root, "pkgs/@sample/tool/index.ts"), "export const port: number = 8282;\n");
+    const fixed = await new VerifyPipeline(workspace, new WorkspaceRunner(), new ApplicationRunner()).run(scope);
+    expect(fixed.steps.find((step) => step.name === "typecheck")?.status).toBe("pass");
   }, 60_000);
 
   test("renames a module file's #private methods and drops a legacy-class warning the app's CSS defines", async () => {

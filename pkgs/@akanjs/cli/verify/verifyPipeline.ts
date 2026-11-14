@@ -229,8 +229,9 @@ export class VerifyPipeline {
       else {
         const tsconfigPath = path.join(this.#root, target.dir, "tsconfig.json");
         if (!existsSync(tsconfigPath)) return { diagnostics: [] };
-        await new ProjectTypecheck(path.join(this.#root, target.dir), this.#root, process.env).check(
+        await new ProjectTypecheck(path.join(this.#root, target.dir), this.#root, process.env).checkIncremental(
           tsconfigPath,
+          path.join(this.#root, ".akan", "typecheck", target.dir),
           "records",
         );
       }
