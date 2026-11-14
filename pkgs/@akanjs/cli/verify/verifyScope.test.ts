@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
+import { tempDirs, writeText } from "@akanjs/devkit/test/testHelpers";
 import { VerifyScope } from "./verifyScope";
+
+const makeTempRoot = tempDirs("akan-verify-scope-");
 
 const names = { apps: ["minimal"], libs: ["shared"], pkgs: ["@akanjs/cli", "akanjs"] };
 
@@ -45,6 +49,51 @@ describe("VerifyScope", () => {
     const scope = VerifyScope.resolve([], names, ["shared"]);
     expect(scope.targets).toEqual([{ type: "lib", name: "shared", dir: "libs/shared", files: [] }]);
     expect(scope.touchesTsx).toBe(false);
+  });
+
+  test("adds the apps and libs that use a changed lib, through other libs too, as dependents", () => {
+    const workspace = { apps: ["minimal", "akan", "solo"], libs: ["util", "shared", "other"], pkgs: [] };
+    const libDeps = new Map([
+      ["apps/minimal", ["shared"]],
+      ["apps/akan", ["util"]],
+      ["apps/solo", ["other"]],
+      ["libs/shared", ["util"]],
+    ]);
+    const scope = VerifyScope.resolve([{ code: " M", file: "libs/util/common/value.ts" }], workspace).withDependents(
+      workspace,
+      libDeps,
+    );
+    expect(scope.targets.map((target) => [target.name, target.files, target.dependent ?? false])).toEqual([
+      ["util", ["libs/util/common/value.ts"], false],
+      ["minimal", [], true],
+      ["akan", [], true],
+      ["shared", [], true],
+    ]);
+  });
+
+  test("a changed app or an unchanged requested lib pulls in no dependent", () => {
+    const libDeps = new Map([["apps/minimal", ["shared"]]]);
+    const changedApp = VerifyScope.resolve([{ code: " M", file: "apps/minimal/main.ts" }], names);
+    expect(changedApp.withDependents(names, libDeps).targets.map((target) => target.name)).toEqual(["minimal"]);
+    const requested = VerifyScope.resolve([], names, ["shared"]);
+    expect(requested.withDependents(names, libDeps).targets.map((target) => target.name)).toEqual(["shared"]);
+  });
+
+  test("reads each app's and lib's lib imports from its sources, type-only ones included, and not from a manifest", async () => {
+    const root = await makeTempRoot();
+    const files = {
+      "apps/demo/akan.app.json": JSON.stringify({ libDeps: ["other"] }),
+      "apps/demo/main.ts": 'import type { Port } from "@libs/util/common";\nexport const at: Port = 1;\n',
+      "apps/demo/ui/Note.tsx": 'export const Note = () => <p>{`import x from "@libs/other"`}</p>; // "@libs/other"\n',
+      "apps/demo/node_modules/dep/index.ts": 'import "@libs/other";\n',
+      "libs/shared/index.ts": 'export * from "@libs/util";\nexport * from "@libs/shared/common";\n',
+      "libs/util/index.ts": "export type Port = number;\n",
+    };
+    for (const [file, content] of Object.entries(files)) await writeText(path.join(root, file), content);
+
+    const libDeps = await VerifyScope.libDepsIn(root, { apps: ["demo"], libs: ["shared", "util"], pkgs: [] });
+
+    expect(Object.fromEntries(libDeps)).toEqual({ "apps/demo": ["util"], "libs/shared": ["util"], "libs/util": [] });
   });
 
   test("an unknown requested target is a usage error", () => {

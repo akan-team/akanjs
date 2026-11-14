@@ -65,7 +65,7 @@ export class AkanToolPack {
       name: AkanToolPack.verifyToolName,
       label: "akan verify",
       description:
-        "Run `akan verify` over everything the working tree has changed: sync, lint (with fixes), typecheck, a fast build of each changed app, and the SSR check for .tsx changes, in one call. It prints one line when it passes and one line per problem when it fails. Call this after editing, before you finish; never run lint, typecheck or build separately.",
+        "Run `akan verify` over everything the working tree has changed: sync, lint (with fixes), typecheck, a build of each changed app's server and SSR routes, and the SSR check for .tsx changes, in one call. It prints one line when it passes and one line per problem when it fails. Call this after editing, before you finish; never run lint, typecheck or build separately.",
       promptSnippet: "akan_verify: sync, lint, typecheck and build what the working tree changed, in one call",
       parameters: Type.Object({}),
       execute: async () => {

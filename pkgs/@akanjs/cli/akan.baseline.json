@@ -1,6 +1,6 @@
 {
   "akan.size.file": {
-    "application/application.runner.ts": 868
+    "application/application.runner.ts": 859
   },
   "akan.size.function": {
     "cloud/cloud.command.ts#CloudCommand.command()": 261,
