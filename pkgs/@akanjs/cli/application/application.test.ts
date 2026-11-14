@@ -1462,6 +1462,19 @@ describe("ApplicationRunner", () => {
     expect(calls.at(-1)).toEqual(["compose", "up", "-d", "redis", "postgres"]);
   });
 
+  test("the local compose file dbup writes publishes Redis and Postgres on loopback only", async () => {
+    const { app } = track(await createTempApp("demo"));
+    app.workspace.spawn = (async () => "") as never;
+
+    await new ApplicationRunner().dbup(app.workspace, "cluster");
+    const compose = Bun.YAML.parse(
+      await Bun.file(`${app.workspace.workspaceRoot}/local/docker-compose.yaml`).text(),
+    ) as { services: { redis: { ports: string[] }; postgres: { ports: string[] } } };
+
+    expect(compose.services.redis.ports).toEqual(["127.0.0.1:6379:6379"]);
+    expect(compose.services.postgres.ports).toEqual(["127.0.0.1:5432:5432"]);
+  });
+
   test("dbup names the service an older local compose file lacks instead of failing inside docker", async () => {
     const { app } = track(await createTempApp("demo"));
     await writeText(

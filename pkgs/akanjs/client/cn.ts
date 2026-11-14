@@ -1,7 +1,7 @@
 import { type ClassNameValue, extendTailwindMerge } from "tailwind-merge";
 
-/** @internal Registered with tailwind-merge so `cn("bg-primary", "bg-open")` resolves to `"bg-open"` instead of keeping both. */
-export const colorTokens = [
+/** Registered with tailwind-merge so `cn("bg-primary", "bg-open")` resolves to `"bg-open"` instead of keeping both. */
+const colorTokens = [
   "background",
   "foreground",
   "primary",
@@ -33,8 +33,8 @@ export const colorTokens = [
   "ring",
 ];
 
-/** @internal `--radius-box` / `--radius-field`; unregistered, `cn("rounded-field", "rounded-full")` would keep both. */
-export const radiusTokens = ["box", "field"];
+/** `--radius-box` / `--radius-field`; unregistered, `cn("rounded-field", "rounded-full")` would keep both. */
+const radiusTokens = ["box", "field"];
 
 const twMerge = extendTailwindMerge({
   extend: {

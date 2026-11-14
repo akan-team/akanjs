@@ -156,6 +156,51 @@ export default page()
           ko: "readiness probe가 부르는 경로입니다. 이미지의 akanjs가 `/_akan/app/ready`를 제공하면 그 경로로 바꿉니다. 그보다 오래된 이미지는 404로 답합니다.",
         }),
       },
+      {
+        key: "podSecurityContext",
+        type: "object",
+        default: "uid 1000, fsGroup 1000",
+        desc: l.trans({
+          en: "The pod's `securityContext`: it runs as uid and gid 1000 (`runAsNonRoot`), its volumes are handed to group 1000 (`fsGroup`, `OnRootMismatch`) and seccomp is `RuntimeDefault`. A values file replaces single keys, and `null` on a key drops it; the block left out or `null` keeps these defaults. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }` with `securityContext: { capabilities: null }` and `volumePermissions: { enabled: false }` runs it as root.",
+          ko: "pod의 `securityContext`입니다. uid와 gid 1000으로 실행하고(`runAsNonRoot`), 볼륨을 그룹 1000에 넘기며(`fsGroup`, `OnRootMismatch`), seccomp는 `RuntimeDefault`입니다. values 파일은 키 단위로 바꾸고, 키에 `null`을 적으면 그 키가 빠집니다. 블록을 빼거나 `null`로 두면 이 기본값을 씁니다. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }`, `securityContext: { capabilities: null }`, `volumePermissions: { enabled: false }`를 함께 적으면 root로 실행합니다.",
+        }),
+      },
+      {
+        key: "securityContext",
+        type: "object",
+        default: "no escalation, no capabilities",
+        desc: l.trans({
+          en: "The container's `securityContext`: `allowPrivilegeEscalation: false` and every capability dropped. The root filesystem stays writable, because the server writes `/workspace/runtime`, `/workspace/.akan` and `/tmp` inside the image. `capabilities: null` gives the container the runtime's default capabilities; the block left out or `null` keeps these defaults.",
+          ko: "컨테이너의 `securityContext`입니다. `allowPrivilegeEscalation: false`이고 모든 capability를 뺍니다. 서버가 이미지 안의 `/workspace/runtime`, `/workspace/.akan`, `/tmp`에 쓰므로 루트 파일시스템은 쓰기 가능한 채로 둡니다. `capabilities: null`이면 런타임 기본 capability로 돌아가고, 블록을 빼거나 `null`로 두면 이 기본값을 씁니다.",
+        }),
+      },
+      {
+        key: "volumePermissions.enabled",
+        type: "boolean",
+        default: "true",
+        desc: l.trans({
+          en: "Single mode: before the app starts, an init container from the app's image runs as root with only `CHOWN`, `FOWNER` and `DAC_READ_SEARCH` and hands every file on the `sqlite-data` claim to `podSecurityContext`'s `runAsUser:runAsGroup`, so a claim a root image wrote stays writable where `fsGroup` does not reach (hostPath, NFS, some CSI drivers). Once ownership is right it changes nothing. A cluster's `sharedClaim` is never touched. An image without `sh` and `find` needs `false`.",
+          ko: "single 모드에서 앱이 뜨기 전에, 앱 이미지로 만든 init container가 `CHOWN`, `FOWNER`, `DAC_READ_SEARCH`만 가진 root로 실행돼 `sqlite-data` claim의 모든 파일을 `podSecurityContext`의 `runAsUser:runAsGroup`에게 넘깁니다. 그래서 root 이미지가 쓴 claim도 `fsGroup`이 닿지 않는 곳(hostPath, NFS, 일부 CSI 드라이버)에서 계속 쓸 수 있습니다. 소유자가 이미 맞으면 아무것도 바꾸지 않습니다. cluster의 `sharedClaim`은 건드리지 않습니다. `sh`와 `find`가 없는 이미지는 `false`로 둡니다.",
+        }),
+      },
+      {
+        key: "ingress.proxyBodySize",
+        type: "string",
+        default: "128m",
+        desc: l.trans({
+          en: 'The largest request body the Ingress passes on, the server\'s own upload limit. Raise it together with `AKAN_MAX_UPLOAD_BODY`; `"0"` passes any size.',
+          ko: 'Ingress가 넘겨주는 가장 큰 요청 본문으로, 서버의 업로드 한도와 같습니다. `AKAN_MAX_UPLOAD_BODY`와 함께 올리며, `"0"`이면 크기를 따지지 않습니다.',
+        }),
+      },
+      {
+        key: "ingress.cors.enabled",
+        type: "boolean",
+        default: "false",
+        desc: l.trans({
+          en: "Off, the app answers CORS itself: its native shells and the origins in `option.setCrossSite({ allowedOrigins })`. Only fonts carry `Access-Control-Allow-Origin: *`, so a page elsewhere cannot `fetch` a public file or draw an `/_akan/image` on a canvas. `true` has ingress-nginx answer every preflight and add `Access-Control-Allow-Origin: *` to every response instead.",
+          ko: "끄면 앱이 직접 CORS에 답합니다. 네이티브 셸과 `option.setCrossSite({ allowedOrigins })`에 적은 origin이 대상입니다. `Access-Control-Allow-Origin: *`는 폰트에만 붙으므로, 다른 origin의 페이지는 공개 파일을 `fetch`하거나 `/_akan/image`를 canvas에 그릴 수 없습니다. `true`면 ingress-nginx가 모든 preflight에 대신 답하고 모든 응답에 `Access-Control-Allow-Origin: *`를 붙입니다.",
+        }),
+      },
     ];
 
     const branchKeys = [
@@ -551,14 +596,15 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    There is no single <code>values.yaml</code>: Helm reads four files in order, and a later file
-                    overrides an earlier one. An app's own file usually holds just its name and production domains.
+                    Helm starts from the chart's own <code>infra/app/values.yaml</code>, then reads four files in order,
+                    and a later file overrides an earlier one. An app's own file usually holds just its name and
+                    production domains.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <code>values.yaml</code> 하나로 끝나지 않습니다. Helm이 파일 네 개를 순서대로 읽고, 뒤의 파일이 앞의
-                    값을 덮어씁니다. 그래서 앱 자신의 파일에는 보통 이름과 운영 도메인만 적습니다.
+                    Helm은 chart 자체의 <code>infra/app/values.yaml</code>에서 시작해 파일 네 개를 순서대로 읽고, 뒤의
+                    파일이 앞의 값을 덮어씁니다. 그래서 앱 자신의 파일에는 보통 이름과 운영 도메인만 적습니다.
                   </span>
                 ),
               })}
@@ -764,6 +810,36 @@ main:
               })}
             </div>
             <Docs.OptionTable items={topLevelKeys} />
+            <Docs.Alert type="warning">
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Some images still need root.</strong> The pod runs as uid 1000. An image built with akanjs
+                    3.2 or earlier, a rollback to one through <code>image.tag</code> included, a declared{" "}
+                    <code>docker</code> Dockerfile string that runs the server as root, or a custom{" "}
+                    <code>docker.image</code> whose files uid 1000 cannot read, needs these lines in the app's values
+                    file.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>root가 필요한 이미지도 있습니다.</strong> pod는 uid 1000으로 실행됩니다. akanjs 3.2 이하로
+                    빌드한 이미지(<code>image.tag</code>로 그 이미지로 되돌리는 경우 포함), 서버를 root로 실행하는{" "}
+                    <code>docker</code> Dockerfile 문자열, uid 1000이 파일을 읽을 수 없는 <code>docker.image</code>는
+                    앱의 values 파일에 아래 줄이 필요합니다.
+                  </span>
+                ),
+              })}
+            </Docs.Alert>
+            <Code.Snippet
+              className="w-full"
+              title="app/values/myapp-values.yaml"
+              language="yaml"
+              showLineNumbers={false}
+              code={`podSecurityContext: { runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }
+securityContext: { capabilities: null }
+volumePermissions: { enabled: false }`}
+            />
 
             <Docs.SubSubTitle>{l.trans({ en: "Per-branch keys", ko: "브랜치별 키" })}</Docs.SubSubTitle>
             <div>

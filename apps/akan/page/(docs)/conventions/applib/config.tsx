@@ -2109,7 +2109,7 @@ export default config;`}
                 {
                   key: "image",
                   type: "string | { amd64?, arm64? }",
-                  default: "oven/bun:1.4.4-slim",
+                  default: "oven/bun:1.4.4-slim@sha256:…",
                   desc: l.trans({
                     en: "The base image. The object form picks one per architecture.",
                     ko: "베이스 이미지입니다. 객체 형태로 아키텍처마다 다른 이미지를 고릅니다.",
@@ -2209,14 +2209,16 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      Copy the app files, set <code>PORT</code>, <code>NODE_ENV</code>, the <code>AKAN_PUBLIC_*</code>{" "}
-                      values and <code>AKAN_LOG_TO_FILE=0</code>, then <code>CMD</code>.
+                      Copy the app files, give uid 1000 the directories the server writes, set <code>PORT</code>,{" "}
+                      <code>NODE_ENV</code>, the <code>AKAN_PUBLIC_*</code> values and <code>AKAN_LOG_TO_FILE=0</code>,
+                      then <code>USER 1000:1000</code> and <code>CMD</code>.
                     </span>
                   ),
                   ko: (
                     <span>
-                      앱 파일을 복사하고 <code>PORT</code>, <code>NODE_ENV</code>, <code>AKAN_PUBLIC_*</code> 값과{" "}
-                      <code>AKAN_LOG_TO_FILE=0</code>을 설정한 뒤 <code>CMD</code>를 둡니다.
+                      앱 파일을 복사하고 서버가 쓰는 디렉터리만 uid 1000에게 준 뒤 <code>PORT</code>,{" "}
+                      <code>NODE_ENV</code>, <code>AKAN_PUBLIC_*</code> 값과 <code>AKAN_LOG_TO_FILE=0</code>을 설정하고{" "}
+                      <code>USER 1000:1000</code>과 <code>CMD</code>를 둡니다.
                     </span>
                   ),
                 })}
@@ -2274,11 +2276,11 @@ const config: AppConfig = {
     "RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata ffmpeg imagemagick",
     "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
     "ARG TARGETARCH",
-    "RUN mkdir -p /workspace",
     "WORKDIR /workspace",
     "COPY ./package.json ./bun.lock ./",
     "RUN bun install --production --frozen-lockfile",
     "COPY . .",
+    "RUN mkdir -p /workspace/sqlite /workspace/local /workspace/runtime /workspace/data /workspace/.akan/artifact/image-cache && chown 1000:1000 /workspace/sqlite /workspace/local /workspace/runtime /workspace/data /workspace/.akan/artifact/image-cache",
     "ENV PORT=8282",
     "ENV NODE_ENV=production",
     "ENV AKAN_PUBLIC_REPO_NAME=akanjs",
@@ -2291,6 +2293,7 @@ const config: AppConfig = {
     "ENV AKAN_PUBLIC_WS_PREFIX=/ws",
     "ENV AKAN_PUBLIC_OPERATION_MODE=cloud",
     "ENV AKAN_LOG_TO_FILE=0",
+    "USER 1000:1000",
     'CMD ["bun","main.js"]',
   ].join("\\n"),
 };

@@ -306,6 +306,25 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
             </Docs.Alert>
             <div>
               {l.trans({
+                en: "Dev routes (devtools, Studio, /_akan/hmr, the ssr-dev and csr-dev module registries, /__rsc/manifest) answer only localhost, IP addresses, the app's own hosts and AKAN_ALLOWED_HOSTS names, even on a server that answers every Host. Devtools opens in a local dev runtime; one more setting opens it elsewhere:",
+                ko: "개발 라우트(devtools, Studio, /_akan/hmr, ssr-dev와 csr-dev 모듈 레지스트리, /__rsc/manifest)는 모든 Host에 응답하는 서버에서도 localhost, IP 주소, 앱 자신의 호스트, AKAN_ALLOWED_HOSTS의 이름에만 응답합니다. Devtools는 로컬 개발 런타임에서 열리며, 그 밖에서는 설정 하나가 엽니다:",
+              })}
+            </div>
+            <Docs.OptionTable
+              items={[
+                {
+                  key: "AKAN_DEVTOOLS",
+                  type: "true | false",
+                  default: l.trans({ en: "local dev runtime only", ko: "로컬 개발 런타임에서만" }),
+                  desc: l.trans({
+                    en: "false closes devtools and Studio everywhere. true opens them outside a local runtime only with AKAN_LOG_DEBUG_HEADER set to at least 32 characters, to a caller that sends it as x-akan-debug or posts it to the form a browser is shown, which unlocks that browser for 15 minutes over HTTPS or localhost. Without a secret that long they stay closed and the server log says why.",
+                    ko: "false는 어디서든 devtools와 Studio를 닫습니다. true는 로컬 런타임 밖에서 AKAN_LOG_DEBUG_HEADER가 32자 이상으로 설정된 경우에만, 그 값을 x-akan-debug로 보내거나 브라우저에 보이는 폼으로 제출한 호출자에게 엽니다. 폼은 HTTPS나 localhost에서 그 브라우저를 15분 동안 열어 둡니다. 그만큼 긴 비밀값이 없으면 닫힌 채로 두고 서버 로그가 그 이유를 알려 줍니다.",
+                  }),
+                },
+              ]}
+            />
+            <div>
+              {l.trans({
                 en: "One more decides whose forwarded headers name the caller. Unset or *, that is X-Real-IP, else the leftmost X-Forwarded-For entry. Given a list, X-Forwarded-For is walked from the nearest hop past every trusted proxy instead, X-Real-IP counting only without it. List your load balancer's and ingress's own addresses, or a CIDR holding only them:",
                 ko: "하나는 누구의 전달 헤더를 호출자 주소로 믿을지 정합니다. 설정하지 않거나 *이면 X-Real-IP를, 없으면 X-Forwarded-For의 맨 왼쪽 값을 읽습니다. 목록을 주면 X-Forwarded-For를 가장 가까운 hop부터 신뢰하는 프록시를 건너뛰며 읽고, X-Real-IP는 X-Forwarded-For가 없을 때만 씁니다. 로드 밸런서와 ingress 자신의 주소나, 그것만 담은 CIDR을 넣습니다:",
               })}
@@ -739,8 +758,8 @@ REDIS_URI=redis://redis.internal:6379`}
                   type: "string",
                   default: l.trans({ en: "unset — local only", ko: "미설정 — local에서만" }),
                   desc: l.trans({
-                    en: "The secret x-akan-debug must carry outside local to log that one request at trace.",
-                    ko: "local 밖에서 x-akan-debug 헤더가 이 비밀값을 담아야 그 요청 하나를 trace로 기록합니다.",
+                    en: "The secret x-akan-debug must carry outside local to log that one request at trace. With AKAN_DEVTOOLS=true it also opens devtools and Studio, when it has at least 32 characters.",
+                    ko: "local 밖에서 x-akan-debug 헤더가 이 비밀값을 담아야 그 요청 하나를 trace로 기록합니다. AKAN_DEVTOOLS=true이면 이 값이 32자 이상일 때 devtools와 Studio도 이 값으로 열립니다.",
                   }),
                 },
               ]}

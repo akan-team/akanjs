@@ -97,7 +97,10 @@ export class McpAppAgent {
     const { guides } = this.#surface.snapshot();
     //? A host may block the `<base>` (Claude does), which leaves `document.baseURI` on its own sandbox origin.
     const base = globalThis.__AKAN_EMBED__?.origin ?? (typeof document === "undefined" ? undefined : document.baseURI);
-    const url = base ? new URL(csrLocation.href, base).href : csrLocation.href;
+    //? Security: origin and path only. A query, a hash and a segment of free text are whatever the link's author
+    //? wrote, and the route block below leaves them to `readState`.
+    const { origin, pathname } = new URL(csrLocation.href, base ?? "http://localhost");
+    const url = `${base ? origin : ""}${AgentContext.routePath(pathname)}`;
     const text = [
       `The user has this screen of the app open in the chat: ${url}`,
       ...(this.#bridge.toolsListed

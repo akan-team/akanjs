@@ -124,6 +124,8 @@ export class LoopCompaction {
   }
 
   //? Attachments and references are named as gone: a model shown only a filename answers about the file from it.
+  //? Security: a reference by its pointer alone. Its label is the record's title, which the summarizer would copy
+  //? into a summary as if the conversation had said it.
   static #line(message: AgentWireMessage): string {
     const parts: string[] = [];
     if (message.text) parts.push(LoopCompaction.#clip(message.text, 1200));
@@ -132,7 +134,7 @@ export class LoopCompaction {
     for (const reference of message.references ?? [])
       parts.push(
         `[referenced ${reference.refName}/${reference.refId}${reference.path ? `#${reference.path}` : ""}` +
-          ` (${reference.label}), value not carried into this summary]`,
+          ", value not carried into this summary]",
       );
     for (const call of message.toolCalls ?? [])
       parts.push(`[called ${call.name} ${LoopCompaction.#clip(JSON.stringify(call.args), 200)}]`);

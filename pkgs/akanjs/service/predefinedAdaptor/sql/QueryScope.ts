@@ -1,16 +1,24 @@
-import { type DocumentQuery, type DocumentScopeOptions, documentQueryHelper, LiveRowScope } from "akanjs/document";
+import {
+  type DocumentQuery,
+  type DocumentScopeOptions,
+  documentQueryHelper,
+  isDocumentQueryNode,
+  LiveRowScope,
+} from "akanjs/document";
 import { DocumentStoreError } from "../../documentStoreError";
 import type { QueryCompiler } from "./QueryCompiler";
-import type { FindManyOptions, SearchJoin, SortOption } from "./types";
+import type { FindManyOptions, SearchJoin, SortOption, SqlDialect, SqlFrag } from "./types";
 import { quoteIdent } from "./values";
 
 export class QueryScope {
   readonly #table: string;
   readonly #compiler: QueryCompiler;
+  readonly #dialect: SqlDialect;
 
-  constructor(table: string, compiler: QueryCompiler) {
+  constructor(table: string, compiler: QueryCompiler, dialect: SqlDialect) {
     this.#table = table;
     this.#compiler = compiler;
+    this.#dialect = dialect;
   }
 
   listQuery(query: DocumentQuery | undefined, options: FindManyOptions, operation = "find") {
@@ -18,13 +26,27 @@ export class QueryScope {
     const limitValue = Number(options.limit ?? 0);
     const skipValue = Number(options.skip ?? 0);
     const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.#orderBy(options.sort, joins)}`;
-    const page = `${limitValue ? ` LIMIT ${limitValue}` : ""}${skipValue ? ` OFFSET ${skipValue}` : ""}`;
+    const page = this.#page(limitValue, skipValue);
     return {
       // A bare `*` would drag the join subquery's `rid`/`score` into the row.
       star: joins.length ? `${quoteIdent(this.#table)}.*` : "*",
-      tail: `FROM ${quoteIdent(this.#table)}${this.joinSql(joins)} WHERE ${where} ${order}${page}`,
-      args: [...this.joinParams(joins), ...params],
+      tail: `FROM ${quoteIdent(this.#table)}${this.joinSql(joins)} WHERE ${where} ${order}${page.sql}`,
+      args: [...this.joinParams(joins), ...params, ...page.params],
     };
+  }
+
+  //? The page size stays in the text: SQLite compiles a bound LIMIT into the statement and prepares it again each
+  //? time the parameter is bound, so only the offset, which it leaves a parameter, keeps one prepared statement.
+  #page(limit: number, skip: number): SqlFrag {
+    if (!limit && !skip) return { sql: "", params: [] };
+    return { sql: `${limit ? ` LIMIT ${limit}` : ""} OFFSET ?`, params: [this.#offset(skip)] };
+  }
+
+  //? What the offset written into the text read as: none when it is not a number, and on Postgres a fraction rounded
+  //? half away from zero, where SQLite refuses one and still does.
+  #offset(skip: number) {
+    if (!skip) return 0;
+    return this.#dialect.name === "postgres" ? Math.sign(skip) * Math.round(Math.abs(skip)) : skip;
   }
 
   safeQuery(query: DocumentQuery | undefined, operation: string, { withRemoved = false }: DocumentScopeOptions) {
@@ -41,7 +63,25 @@ export class QueryScope {
         "invalidQuery",
         `${operation} on "${this.#table}" can never match (${conflict}); ${operation.startsWith("remove") ? "a remove reaches live rows only" : "pass { withRemoved: true }"}`,
       );
-    return this.#compiler.compile(documentQueryHelper.all(documentQueryHelper.empty("removedAt"), query ?? {}));
+    return this.#compiler.compile(documentQueryHelper.all(this.#live(query), query ?? {}));
+  }
+
+  //? SQLite is given no statistics, so it expects 10 rows from `"removedAt" IS NULL` on an index leading with it and
+  //? reads every live row sooner than five ids by primary key. The `+` keeps that index out of a read by a list of ids.
+  #live(query: DocumentQuery | undefined) {
+    return this.#dialect.name === "sqlite" && QueryScope.#listsIds(query)
+      ? documentQueryHelper.raw('+"removedAt" IS NULL')
+      : documentQueryHelper.empty("removedAt");
+  }
+
+  static #listsIds(query: DocumentQuery | undefined): boolean {
+    if (!query) return false;
+    if (isDocumentQueryNode(query))
+      return query.kind === "all" && query.queries.some((sub) => QueryScope.#listsIds(sub));
+    const { id } = query as { id?: unknown };
+    return (
+      isDocumentQueryNode(id) && id.kind === "op" && id.op === "oneOf" && Array.isArray(id.value) && id.value.length > 0
+    );
   }
 
   // An atomic write has no join for the search; ignoring it would widen the write to every other match.

@@ -268,11 +268,6 @@ type LoadedOf<Loaded> = Loaded extends {
     default: infer T;
 } ? T : Loaded;
 
-interface LocationPermission {
-    location: PermissionState;
-    precise: boolean | null;
-}
-
 type McpAppOverride = (props: {
     children?: ReactNode;
 }) => ReactNode;
@@ -286,10 +281,6 @@ interface PageToolOptions {
     onSelect: (page: number) => void;
 }
 
-// ../@akanjs/native/plugins/geolocation/src/index
-type PermissionState = "denied" | "granted" | "prompt" | "prompt-with-rationale";
-
-// webkit/useCamera
 type PermissionState = "denied" | "granted" | "prompt";
 
 interface ScreenScopeOptions {

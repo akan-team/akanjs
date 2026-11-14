@@ -16,6 +16,7 @@ import { EndpointRateLimit } from "../signal/endpointRateLimit";
 import { AgentHooks } from "./agentHooks";
 import type { AkanLib, AkanLibProps } from "./akanLib";
 import { DiLifecycle } from "./di/diLifecycle";
+import { DevBaseArtifact } from "./hmr/devBaseArtifact";
 import { ParentChannel } from "./lifecycle/parentChannel";
 import { ShutdownManager } from "./lifecycle/shutdownManager";
 import { StartGuard } from "./lifecycle/startGuard";
@@ -354,6 +355,9 @@ export class AkanServer {
       this.status = "initialized";
       return this;
     }
+    const artifactWaitMs = await DevBaseArtifact.arrived({ stopped: () => this.#start.stopHeld });
+    if (this.#start.stopHeld) return this;
+    if (artifactWaitMs > 0) this.#initTimings.set("artifact", artifactWaitMs);
     RouteHosts.declare();
     const requestedWeb = ServerConfig.narrowWeb(this.web, web);
     const noWeb = () => {

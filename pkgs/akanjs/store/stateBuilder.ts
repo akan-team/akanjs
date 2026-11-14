@@ -213,8 +213,7 @@ export const createDerivedStateBuilder = <WritableState>(): DerivedStateBuilder<
     ({ [STATE_BUILDER_MARK]: true, kind: "computed", deps, selector, options: options ?? {} }) as any,
 });
 
-/** @internal */
-export const isStateBuilderMarker = (value: unknown): value is Marker =>
+const isStateBuilderMarker = (value: unknown): value is Marker =>
   Boolean(value && typeof value === "object" && (value as { [STATE_BUILDER_MARK]?: boolean })[STATE_BUILDER_MARK]);
 
 export const createStateInitializerMap = (state: Record<string, unknown>): StateInitializerMap =>
@@ -428,10 +427,6 @@ const tryParseSearchArray = (raw: string): string[] => {
     return [raw];
   }
 };
-
-/** @deprecated Unused by akanjs; read `searchParams[key]`, taking the first value of an array. */
-export const getSearchParam = (searchParams: SearchParamsState, key: string): string | undefined =>
-  firstSearchParam(searchParams[key]);
 
 const firstSearchParam = (value: string | string[] | undefined): string | undefined =>
   Array.isArray(value) ? value[0] : value;

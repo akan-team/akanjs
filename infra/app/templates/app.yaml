@@ -5,6 +5,14 @@
 {{- $mode := default "single" $database.mode }}
 {{- $cluster := eq $mode "cluster" }}
 {{- $storage := default dict $config.storage }}
+{{- /* `helm upgrade --reuse-values` swaps in the last release's values, which may predate these keys. */}}
+{{- $podSecurityContext := .Values.podSecurityContext | default (dict "runAsNonRoot" true "runAsUser" 1000 "runAsGroup" 1000 "fsGroup" 1000 "fsGroupChangePolicy" "OnRootMismatch" "seccompProfile" (dict "type" "RuntimeDefault")) }}
+{{- $securityContext := .Values.securityContext | default (dict "allowPrivilegeEscalation" false "capabilities" (dict "drop" (list "ALL"))) }}
+{{- $ingress := .Values.ingress | default dict }}
+{{- $volumePermissions := and (not $cluster) (dig "enabled" true (.Values.volumePermissions | default dict)) }}
+{{- $uid := dig "runAsUser" 1000 $podSecurityContext | int64 }}
+{{- $gid := dig "runAsGroup" 1000 $podSecurityContext | int64 }}
+{{- $image := printf "%s/%s/%s:%s" .Values.image.registry .Values.repoName .Values.appName (default (printf "%s-live" $branch) .Values.image.tag) }}
 {{- if eq $mode "multiple" }}
 {{- fail "multiple mode opens one SQLite file from every container on one host; run it with docker compose, not this chart" }}
 {{- end }}
@@ -33,10 +41,44 @@ spec:
       # `AkanServer` gives itself 30s to drain (`AKAN_SHUTDOWN_TIMEOUT_MS`); k8s defaults to exactly that, so
       # SIGKILL would land the instant its own budget expired. Leave it room to finish.
       terminationGracePeriodSeconds: 40
+      {{- with $podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $volumePermissions }}
+      # A claim an image running as root wrote stays root's where the kubelet skips fsGroup (hostPath, NFS, some CSI).
+      initContainers:
+        - name: volume-permissions
+          image: {{ $image }}
+          imagePullPolicy: Always
+          command:
+            - sh
+            - -c
+            - {{ printf "find /data \\( ! -user %d -o ! -group %d \\) -exec chown -h %d:%d {} +" $uid $gid $uid $gid | quote }}
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              # DAC_READ_SEARCH lets find walk the 0700 snapshot directories the server makes under /workspace/sqlite.
+              add:
+                - CHOWN
+                - FOWNER
+                - DAC_READ_SEARCH
+          volumeMounts:
+            - name: sqlite-data
+              mountPath: /data
+      {{- end }}
       containers:
         - name: app
-          image: {{ .Values.image.registry }}/{{ .Values.repoName }}/{{ .Values.appName }}:{{ default (printf "%s-live" $branch) .Values.image.tag }}
+          image: {{ $image }}
           imagePullPolicy: Always
+          {{- with $securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - containerPort: 8282
           resources:
@@ -157,13 +199,15 @@ metadata:
     ingress.kubernetes.io/ssl-redirect: "true"
     kubernetes.io/tls-acme: "true"
     cert-manager.io/cluster-issuer: letsencrypt-prod
+    {{- if dig "cors" "enabled" false $ingress }}
     nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,apollo-require-preflight"
+    {{- end }}
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ dig "proxyBodySize" "128m" $ingress | quote }}
     nginx.ingress.kubernetes.io/affinity: "cookie"
     nginx.ingress.kubernetes.io/session-cookie-name: "route"
     nginx.ingress.kubernetes.io/session-cookie-expires: "172800"
     nginx.ingress.kubernetes.io/session-cookie-max-age: "172800"
-    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,apollo-require-preflight"
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/allow-snippet-annotations: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2$3

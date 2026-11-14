@@ -15,6 +15,7 @@ import { copyBunRequestFields, type WebProxyRunner } from "../proxy";
 import { SignalResolver } from "../resolver";
 import type { HttpRoutes, SignalRouteOptions, WebsocketRoutes } from "../types";
 import { AppWsData } from "./appWsData";
+import { DevSurfacePolicy } from "./devSurfacePolicy";
 import type { HostAllowlist } from "./hostAllowlist";
 import { ServerLimits } from "./serverLimits";
 import { WsCredentialExpiry } from "./wsCredentialExpiry";
@@ -83,12 +84,14 @@ export class ApiRouter {
     countChunkedBodies = true,
     idleTimeout = 0,
   }: ApiRouteInputs): NonNullHttpRoutes {
-    const endpointEntries = Object.entries(routes ?? {}).map(
-      ([p, handler]) =>
-        [
-          ApiRouter.applyGlobalPrefix(prefix, p, routeOptions?.[p]),
-          ApiRouter.#corsRoute(ApiRouter.#compressRoute(handler)),
-        ] as const,
+    const endpoints = Object.entries(routes ?? {}).map(
+      ([p, handler]) => [ApiRouter.applyGlobalPrefix(prefix, p, routeOptions?.[p]), handler] as const,
+    );
+    DevSurfacePolicy.checkReserved("An endpoint", [...endpoints, [`${prefix}${websocketPrefix}`, null]]);
+    DevSurfacePolicy.checkReserved("A framework route", Object.entries(builtinRoutes ?? {}));
+    DevSurfacePolicy.checkReserved("A web route", Object.entries(renderEnvRoutes ?? {}));
+    const endpointEntries = endpoints.map(
+      ([path, handler]) => [path, ApiRouter.#corsRoute(ApiRouter.#compressRoute(handler))] as const,
     );
     const builtinEntries = Object.entries(builtinRoutes ?? {}).map(
       ([path, handler]) => [path, ApiRouter.#compressRoute(handler)] as const,
