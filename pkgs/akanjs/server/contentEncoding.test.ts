@@ -663,3 +663,172 @@ describe("isCompressibleContentType", () => {
     expect(isCompressibleContentType("image/png")).toBe(false);
   });
 });
+
+describe("encodedFileResponse behind Bun.serve", () => {
+  const sidecarDir = fs.mkdtempSync(path.join(os.tmpdir(), "asset-sidecar-"));
+  const script = `console.log(${JSON.stringify("x".repeat(5000))});`;
+  const brBytes = Buffer.from("brotli-sidecar-".repeat(300));
+  const gzBytes = Buffer.from("gzip-sidecar-".repeat(200));
+  const write = (name: string, parts: { raw?: string; br?: Buffer; gz?: Buffer }) => {
+    const file = path.join(sidecarDir, name);
+    if (parts.raw !== undefined) fs.writeFileSync(file, parts.raw);
+    if (parts.br) fs.writeFileSync(`${file}.br`, parts.br);
+    if (parts.gz) fs.writeFileSync(`${file}.gz`, parts.gz);
+    return file;
+  };
+  const withServer = async (
+    filePath: string,
+    run: (url: string) => Promise<void>,
+    env: { NODE_ENV: string; AKAN_COMMAND_TYPE?: string } = { NODE_ENV: "production" },
+  ) => {
+    const before = { node: process.env.NODE_ENV, command: process.env.AKAN_COMMAND_TYPE };
+    process.env.NODE_ENV = env.NODE_ENV;
+    if (env.AKAN_COMMAND_TYPE) process.env.AKAN_COMMAND_TYPE = env.AKAN_COMMAND_TYPE;
+    else delete process.env.AKAN_COMMAND_TYPE;
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: async (request) =>
+        await encodedFileResponse(
+          request,
+          filePath,
+          "text/javascript",
+          new Headers({
+            "Content-Type": "text/javascript; charset=utf-8",
+            "Cache-Control": "public, max-age=31536000, immutable",
+            ETag: 'W/"abc"',
+          }),
+        ),
+    });
+    try {
+      await run(`http://127.0.0.1:${server.port}/`);
+    } finally {
+      server.stop(true);
+      if (before.node === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = before.node;
+      if (before.command === undefined) delete process.env.AKAN_COMMAND_TYPE;
+      else process.env.AKAN_COMMAND_TYPE = before.command;
+    }
+  };
+  const get = (url: string, acceptEncoding: string, method = "GET") =>
+    fetch(url, { method, headers: { "accept-encoding": acceptEncoding }, decompress: false });
+
+  test("answers each encoding and HEAD with the sidecar's own bytes and headers", async () => {
+    const file = write("full.js", { raw: script, br: brBytes, gz: gzBytes });
+    await withServer(file, async (url) => {
+      for (const [acceptEncoding, encoding, bytes] of [
+        ["br, gzip", "br", brBytes],
+        ["gzip", "gzip", gzBytes],
+      ] as const) {
+        const res = await get(url, acceptEncoding);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-encoding")).toBe(encoding);
+        expect(res.headers.get("content-length")).toBe(String(bytes.length));
+        expect(res.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+        expect(res.headers.get("etag")).toBe('W/"abc"');
+        expect(res.headers.get("vary")).toBe("Accept-Encoding");
+        expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+        expect(Buffer.from(await res.arrayBuffer()).equals(bytes)).toBe(true);
+
+        const head = await get(url, acceptEncoding, "HEAD");
+        expect(head.status).toBe(200);
+        expect(head.headers.get("content-encoding")).toBe(encoding);
+        expect(head.headers.get("content-length")).toBe(String(bytes.length));
+        expect(head.headers.get("vary")).toBe("Accept-Encoding");
+        expect((await head.arrayBuffer()).byteLength).toBe(0);
+      }
+      const plain = await get(url, "identity");
+      expect(plain.headers.get("content-encoding")).toBeNull();
+      expect(await plain.text()).toBe(script);
+    });
+  });
+
+  test("a Range request on an encoded asset gets the whole sidecar with 200, in range or not", async () => {
+    const file = write("ranged.js", { raw: script, br: brBytes, gz: gzBytes });
+    await withServer(file, async (url) => {
+      for (const [encoding, bytes] of [
+        ["br", brBytes],
+        ["gzip", gzBytes],
+      ] as const) {
+        for (const range of ["bytes=0-9", "bytes=999999-1000000"]) {
+          const res = await fetch(url, { headers: { "accept-encoding": encoding, range }, decompress: false });
+          expect(res.status).toBe(200);
+          expect(res.headers.get("content-encoding")).toBe(encoding);
+          expect(res.headers.get("content-length")).toBe(String(bytes.length));
+          expect(Buffer.from(await res.arrayBuffer()).equals(bytes)).toBe(true);
+        }
+      }
+    });
+  });
+
+  test("in production a sidecar that grows or disappears never answers with a Content-Length its body does not match", async () => {
+    const file = write("changing.js", { raw: script, br: brBytes, gz: gzBytes });
+    await withServer(file, async (url) => {
+      const first = await get(url, "br, gzip");
+      expect(first.headers.get("content-encoding")).toBe("br");
+      await first.arrayBuffer();
+
+      const grown = Buffer.concat([brBytes, Buffer.from("more")]);
+      fs.writeFileSync(`${file}.br`, grown);
+      const second = await get(url, "br, gzip");
+      expect(second.headers.get("content-encoding")).toBe("br");
+      expect(second.headers.get("content-length")).toBe(String(grown.length));
+      expect(Buffer.from(await second.arrayBuffer()).equals(grown)).toBe(true);
+
+      fs.rmSync(`${file}.br`);
+      const third = await get(url, "br, gzip");
+      expect(third.headers.get("content-encoding")).toBe("gzip");
+      expect(Buffer.from(await third.arrayBuffer()).equals(gzBytes)).toBe(true);
+
+      fs.rmSync(`${file}.gz`);
+      const fourth = await get(url, "br, gzip");
+      expect(fourth.headers.get("content-encoding")).toBeNull();
+      expect(fourth.headers.get("content-length")).toBe(String(script.length));
+      expect(await fourth.text()).toBe(script);
+    });
+  });
+
+  test("in production the existence of a sidecar is remembered, in development it is looked up again", async () => {
+    for (const [env, remembered] of [
+      [{ NODE_ENV: "production" }, true],
+      [{ NODE_ENV: "development" }, false],
+      [{ NODE_ENV: "production", AKAN_COMMAND_TYPE: "start" }, false],
+    ] as const) {
+      const file = write(`memo-${env.NODE_ENV}-${remembered}.js`, { raw: script });
+      await withServer(
+        file,
+        async (url) => {
+          const before = await get(url, "br");
+          expect(before.headers.get("content-encoding")).toBeNull();
+          await before.arrayBuffer();
+          fs.writeFileSync(`${file}.br`, brBytes);
+          const after = await get(url, "br");
+          expect(after.headers.get("content-encoding")).toBe(remembered ? null : "br");
+          await after.arrayBuffer();
+        },
+        env,
+      );
+    }
+  });
+
+  test("in development a replaced or deleted sidecar is seen on the next request", async () => {
+    const file = write("dev.js", { raw: script, br: brBytes });
+    await withServer(
+      file,
+      async (url) => {
+        const first = await get(url, "br");
+        expect(Buffer.from(await first.arrayBuffer()).equals(brBytes)).toBe(true);
+        const replaced = Buffer.from("replaced-");
+        fs.writeFileSync(`${file}.br`, replaced);
+        const second = await get(url, "br");
+        expect(second.headers.get("content-length")).toBe(String(replaced.length));
+        expect(Buffer.from(await second.arrayBuffer()).equals(replaced)).toBe(true);
+        fs.rmSync(`${file}.br`);
+        const third = await get(url, "br");
+        expect(third.headers.get("content-encoding")).toBeNull();
+        expect(await third.text()).toBe(script);
+      },
+      { NODE_ENV: "development" },
+    );
+  });
+});
