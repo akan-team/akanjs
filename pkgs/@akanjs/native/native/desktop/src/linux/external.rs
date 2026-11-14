@@ -348,7 +348,22 @@ fn error_name(error: &glib::Error) -> String {
 pub(crate) fn cdp(webview: &WebView, method: &str, params: &str, reply: Reply) {
   match method {
     "Page.captureScreenshot" => capture(webview, reply),
-    "Input.dispatchKeyEvent" => reply.send(json::parse(params).and_then(|params| send_key(webview, &params)).map(|()| "{}".into())),
+    "Input.dispatchKeyEvent" => match json::parse(params).and_then(|params| send_key(webview, &params)) {
+      //? Answered once a script sent after the key has run: WebKit gives the page a key only after its answer to the one
+      //? before, so no sent key waits behind another, and a Tab's take-focus reaches GTK before its hold ends.
+      Ok(hold) => {
+        let hold = glib::thread_guard::ThreadGuard::new(hold);
+        evaluate(
+          webview,
+          "0",
+          Reply::new(move |answered| {
+            drop(hold);
+            reply.send(answered.map(|_| "{}".into()));
+          }),
+        );
+      }
+      Err(error) => reply.send(Err(error)),
+    },
     _ => reply.send(Err(format!("UNSUPPORTED: {method} reaches no view on Linux"))),
   }
 }
@@ -445,12 +460,16 @@ pub(crate) fn evdev(code: &str) -> Option<u16> {
   })
 }
 
-/// The keysym the page reads `key` off: `code`'s own when it types the same text (a numpad digit), else `key`'s.
+/// The keysym the page reads `key` off: `code`'s own when it types the same text (a numpad digit) or is the same key on
+/// the keypad (NumpadEnter), else `key`'s.
 fn keyval(key: &str, code: &str) -> Option<u32> {
   let named = |name: &str| keysym(name).map(|sym| gdk::keys::Key::from_name(&sym));
   let mut chars = key.chars();
   let sym = match (chars.next(), chars.next()) {
     (Some(c), None) => named(code).filter(|sym| sym.to_unicode() == Some(c)).unwrap_or_else(|| gdk::keys::Key::from_unicode(c)),
+    _ if code.strip_prefix("Numpad") == Some(key) => named(code)?,
+    //? WebKitGTK names a keysym it has no name or text for "Unidentified".
+    _ if key == "Unidentified" => gdk::keys::constants::VoidSymbol,
     _ => named(key)?,
   };
   Some(*sym)
@@ -462,7 +481,7 @@ const IM_PASS_THROUGH: u32 = 1 << 25;
 const KEY_WINDOW: &str = "akan-key-window";
 
 //? Sent to the view's widget, not the display: it reaches that view alone, focused, hidden or not, and counts as trusted.
-fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
+fn send_key(webview: &WebView, params: &json::V) -> Result<Option<FocusHold>, String> {
   let field = |k: &str| params.get(k).and_then(|v| v.as_str()).unwrap_or("");
   let kind = match field("type") {
     "keyDown" | "rawKeyDown" => gdk::EventType::KeyPress,
@@ -470,6 +489,11 @@ fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
     other => return Err(format!("INVALID_ARGS: no key event of type {other}")),
   };
   let (key, code) = (field("key"), field("code"));
+  //? GTK's input method takes a dead keysym as the start of a compose: the page sees a composition keydown, not
+  //? "Dead", and the next key typed as one character with it.
+  if key == "Dead" {
+    return Err("INVALID_ARGS: key Dead is not one sendKey sends on Linux, whose input method composes it with the next key".into());
+  }
   let keyval = keyval(key, code).ok_or_else(|| format!("INVALID_ARGS: key {key} is not one sendKey sends on Linux"))?;
   let keycode = evdev(code).ok_or_else(|| format!("INVALID_ARGS: code {code} is not a key sendKey knows"))? + 8;
   //? GTK's key bindings read a key off its keycode and state: a numpad digit without NumLock (Mod2) is Home, End, ….
@@ -494,8 +518,63 @@ fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
     (*raw).keyval = keyval;
     (*raw).hardware_keycode = keycode;
   }
+  let hold = (kind == gdk::EventType::KeyPress && keyval == *gdk::keys::constants::Tab).then(|| FocusHold::new(&wv));
   wv.event(&native);
-  Ok(())
+  Ok(hold)
+}
+
+const FOCUS_HOLDS: &str = "akan-focus-holds";
+
+/// A sent Tab on its way through a view's page, which keeps the window's keyboard focus where it is meanwhile.
+struct FocusHold {
+  view: Rc<Cell<u32>>,
+  window: Option<Rc<Cell<u32>>>,
+}
+
+//? A Tab past a page's last element ends in WebKit's take-focus, which grabs the GTK focus for a view without it, and
+//? from a view with it moves the focus on through the window (the toplevel's `focus`).
+impl FocusHold {
+  fn new(wv: &webkit2gtk::WebView) -> Self {
+    let window = wv.toplevel().and_then(|top| top.downcast::<gtk::Window>().ok()).map(|top| {
+      holds_of(&top, |top, moves| {
+        top.connect_focus(move |_, _| if moves.get() > 0 { glib::Propagation::Stop } else { glib::Propagation::Proceed });
+      })
+    });
+    let hold = Self { view: focus_holds(wv), window };
+    for holds in [Some(&hold.view), hold.window.as_ref()].into_iter().flatten() {
+      holds.set(holds.get() + 1);
+    }
+    hold
+  }
+}
+
+impl Drop for FocusHold {
+  fn drop(&mut self) {
+    for holds in [Some(&self.view), self.window.as_ref()].into_iter().flatten() {
+      holds.set(holds.get() - 1);
+    }
+  }
+}
+
+fn focus_holds(wv: &webkit2gtk::WebView) -> Rc<Cell<u32>> {
+  holds_of(wv, |wv, grabs| {
+    wv.connect_grab_focus(move |wv| {
+      if grabs.get() > 0 && !wv.is_focus() {
+        wv.stop_signal_emission_by_name("grab-focus");
+      }
+    });
+  })
+}
+
+fn holds_of<O: ObjectExt>(object: &O, arm: impl FnOnce(&O, Rc<Cell<u32>>)) -> Rc<Cell<u32>> {
+  // SAFETY: only holds_of sets FOCUS_HOLDS, always to an Rc<Cell<u32>>.
+  if let Some(holds) = unsafe { object.data::<Rc<Cell<u32>>>(FOCUS_HOLDS) } {
+    return unsafe { holds.as_ref() }.clone();
+  }
+  let holds = Rc::new(Cell::new(0));
+  arm(object, holds.clone());
+  unsafe { object.set_data(FOCUS_HOLDS, holds.clone()) };
+  holds
 }
 
 //? GTK drops a key press on a window not viewable, a hidden view's own: keys go through an off-screen one routed to it.
@@ -529,7 +608,12 @@ fn key_window(wv: &webkit2gtk::WebView) -> Result<gdk::Window, String> {
 
 //? A visible view takes the user's own keys too: their way to a view is the keyboard focus.
 pub(crate) fn focus(webview: &WebView) {
-  webview.webview().grab_focus();
+  let wv = webview.webview();
+  //? A sent Tab's hold stops WebKit's take-focus, not the app's own moves of the keyboard.
+  let holds = focus_holds(&wv);
+  let held = holds.replace(0);
+  wv.grab_focus();
+  holds.set(held);
 }
 
 /// The page of the window `any` (the page itself or a view over it) takes the keyboard back.
@@ -572,9 +656,12 @@ mod tests {
     assert_eq!(keyval("7", "Numpad7"), Some(*k::KP_7));
     assert_eq!(keyval("7", "Digit7"), Some(*k::_7));
     assert_eq!(keyval("ArrowLeft", "Numpad4"), Some(*k::Left));
-    assert_eq!(keyval("Enter", "NumpadEnter"), Some(*k::Return));
+    assert_eq!(keyval("Enter", "NumpadEnter"), Some(*k::KP_Enter));
+    assert_eq!(keyval("Enter", "Enter"), Some(*k::Return));
     assert_eq!(keyval("F5", "F5"), Some(*k::F5));
-    assert_eq!(keyval("Unidentified", "KeyA"), None);
+    assert_eq!(keyval("Unidentified", "KeyA"), Some(*k::VoidSymbol));
+    assert_eq!(keyval("Process", "KeyA"), None);
+    assert_eq!(keyval("Dead", "Quote"), None);
   }
 
   #[test]
