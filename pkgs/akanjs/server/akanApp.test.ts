@@ -597,7 +597,7 @@ describe("makeAkanChildProxyHeaders", () => {
     expect(unlisted.get("x-forwarded-proto")).toBe("https");
   });
 
-  test("hands the child one id for the request: a trusted proxy's own, else a fresh one with the caller's as a link", () => {
+  test("hands the child one id for the request: its own, with a caller's as a link unless the operator lets a listed proxy choose", () => {
     const inbound = "0af7651916cd43dd8448eb211c80319c";
     const traceparent = `00-${inbound}-b7ad6b7169203331-01`;
     const req = (headers: Record<string, string>) => new Request("https://app.example/api/x", { headers });
@@ -616,22 +616,33 @@ describe("makeAkanChildProxyHeaders", () => {
       idsOf(makeAkanChildProxyHeaders(req({ "x-request-id": inbound }), 0, stranger)),
       idsOf(makeAkanChildProxyHeaders(req({ traceparent, "x-akan-trace-link": "c".repeat(32) }), 0)),
     ];
-    const relayed = idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress));
+    const loopback = { address: "127.0.0.1", port: 50_000, family: "IPv4" };
+    const byDefault = [
+      idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress)),
+      idsOf(makeAkanChildProxyHeaders(req({ "x-request-id": inbound }), 0, ingress)),
+      idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, loopback)),
+    ];
     const viaUnixSocket = idsOf(makeAkanChildProxyHeaders(req({ "x-request-id": inbound }), 0, null));
+    process.env.AKAN_TRACE_ADOPT = "trusted-proxies";
+    const optedInUnlisted = idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress));
+    TrustedProxy.configure("10.0.0.5");
+    const relayed = idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress));
     const malformed = idsOf(
       makeAkanChildProxyHeaders(req({ "x-request-id": "req-1\tx", traceparent: "00-1-2-3" }), 0, ingress),
     );
     TrustedProxy.configure("192.0.2.1/32");
     const unlisted = idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress));
+    delete process.env.AKAN_TRACE_ADOPT;
 
     expect(bare.requestId).toMatch(/^[0-9a-f]{32}$/);
     expect(bare).toMatchObject({ traceId: bare.requestId, link: null });
-    for (const ids of [...forged, unlisted]) {
+    const minted = [...forged, ...byDefault, optedInUnlisted, unlisted];
+    for (const ids of minted) {
       expect(ids.requestId).toMatch(/^[0-9a-f]{32}$/);
       expect(ids.requestId).not.toBe(inbound);
       expect(ids).toMatchObject({ traceId: ids.requestId, link: inbound });
     }
-    expect(new Set([...forged, unlisted].map((ids) => ids.requestId)).size).toBe(4);
+    expect(new Set(minted.map((ids) => ids.requestId)).size).toBe(minted.length);
     expect(relayed).toMatchObject({ requestId: inbound, traceId: inbound, link: null });
     expect(relayed.parent).not.toBe("b7ad6b7169203331");
     expect(viaUnixSocket).toMatchObject({ requestId: inbound, traceId: inbound });

@@ -35,6 +35,8 @@ export interface LogRecord {
   origin: string | null;
   traceId: string | null;
   endpoint: string | null;
+  /** An id the request was handed but did not take as its own: a caller's, or for a job the trace that enqueued it. */
+  link?: string;
   attrs?: LogAttrs;
 }
 
@@ -327,6 +329,7 @@ export class Logger {
       origin: ctx?.origin ?? null,
       traceId: ctx?.traceId ?? null,
       endpoint: ctx?.endpoint ?? null,
+      ...(ctx?.link ? { link: ctx.link } : {}),
       ...(attrs ? { attrs: Logger.redactAttrs(attrs) } : {}),
     };
   }

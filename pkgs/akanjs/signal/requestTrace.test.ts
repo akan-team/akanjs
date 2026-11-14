@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { Logger, type LoggerSinkEntry } from "akanjs/common";
+import { Logger, type LoggerSinkEntry, TrustedProxy } from "akanjs/common";
 import type { Adaptor } from "akanjs/service";
 import { TraceContext } from "../common/TraceContext";
 import type { EndpointInfo } from "./endpointInfo";
@@ -139,6 +139,84 @@ describe("RequestTrace", () => {
       const trace = SignalTrace.create("userList", "query", "http");
       await runTraced(trace, async () => expect(TraceContext.outbound()).toBe(trace?.traceparent));
     });
+  });
+});
+
+describe("RequestTrace.accept", () => {
+  const sent: Record<string, string>[] = [{ traceparent }, { "x-request-id": "0AF76519-16CD-43DD-8448-EB211C80319C" }];
+  const from = (address: string | null | undefined, headers: Record<string, string>) =>
+    RequestTrace.accept(new Headers(headers), address ? { address } : (address as null | undefined));
+  const settings = (adopt: string | undefined, proxies: string | undefined) => {
+    if (adopt === undefined) delete process.env.AKAN_TRACE_ADOPT;
+    else process.env.AKAN_TRACE_ADOPT = adopt;
+    TrustedProxy.configure(proxies);
+  };
+  const expectMintedWithLink = (request: RequestTrace) => {
+    expect(request.traceId).toMatch(hex32);
+    expect(request.traceId).not.toBe(inbound);
+    expect(request).toMatchObject({ parentSpanId: null, link: inbound });
+  };
+
+  afterEach(() => {
+    delete process.env.AKAN_TRACE_ADOPT;
+    TrustedProxy.reset();
+  });
+
+  test("with no setting, never takes a caller's id from a TCP peer: private, loopback or public", () => {
+    for (const proxies of [undefined, "none", "*", "private", "10.0.0.0/8, 127.0.0.1"]) {
+      settings(undefined, proxies);
+      for (const address of [
+        "10.0.0.5",
+        "192.168.1.9",
+        "127.0.0.1",
+        "::1",
+        "::ffff:127.0.0.1",
+        "203.0.113.9",
+        undefined,
+      ])
+        for (const headers of sent) expectMintedWithLink(from(address, headers));
+    }
+  });
+
+  test("takes the id from the gateway's unix-socket hop with no setting, and the link it relays", () => {
+    settings(undefined, undefined);
+
+    expect(from(null, { traceparent })).toMatchObject({ traceId: inbound, parentSpanId: inboundSpan, link: null });
+    expect(from(null, { traceparent, "x-akan-trace-link": "c".repeat(32) }).link).toBe("c".repeat(32));
+    expect(from(null, { "x-request-id": "0AF76519-16CD-43DD-8448-EB211C80319C" }).traceId).toBe(inbound);
+  });
+
+  test("under AKAN_TRACE_ADOPT=trusted-proxies, takes it from a proxy the list names and from no other peer", () => {
+    settings("trusted-proxies", "10.0.0.5, 192.0.2.0/24");
+    for (const headers of sent) {
+      expect(from("10.0.0.5", headers).traceId).toBe(inbound);
+      expect(from("192.0.2.77", headers).traceId).toBe(inbound);
+      for (const address of ["10.0.0.6", "127.0.0.1", "::1", "203.0.113.9", undefined])
+        expectMintedWithLink(from(address, headers));
+    }
+  });
+
+  test("the opt-in adopts from loopback and the private ranges only when the list spells them", () => {
+    const local = ["127.0.0.1", "10.0.0.5"];
+    const adopted = (proxies: string | undefined) => {
+      settings("trusted-proxies", proxies);
+      return local.filter((address) => from(address, { traceparent }).traceId === inbound);
+    };
+
+    expect(adopted(undefined)).toEqual([]);
+    expect(adopted("none")).toEqual([]);
+    expect(adopted("*")).toEqual([]);
+    expect(adopted("192.0.2.1")).toEqual([]);
+    expect(adopted("private")).toEqual(["10.0.0.5"]);
+    expect(adopted("127.0.0.1")).toEqual(["127.0.0.1"]);
+    expect(adopted("127.0.0.0/8, 10.0.0.0/8")).toEqual(local);
+  });
+
+  test("any other value of the setting adopts nothing", () => {
+    for (const adopt of ["", "1", "true", "always", "TRUSTED-PROXIES", "trusted-proxies "]) {
+      settings(adopt, "10.0.0.5");
+      expectMintedWithLink(from("10.0.0.5", { traceparent }));
+    }
   });
 });
 

@@ -32,6 +32,7 @@ import type { ArgInfo, EndpointInfo, EndpointType } from "./endpointInfo";
 import { EndpointRateLimit } from "./endpointRateLimit";
 import { Exception, isExceptionLike } from "./exception";
 import { type GuardCls, type GuardScope, guardOf } from "./guard";
+import { HttpPeer } from "./httpPeer";
 import type { InternalCls } from "./internal";
 import type { InternalInfo } from "./internalInfo";
 import type { MiddlewareCls } from "./middleware";
@@ -327,10 +328,9 @@ export class SignalContext<
     );
     return () => chain.run(this, coreExec);
   }
-  static #httpPeer: HttpPeerResolver | null = null;
   /** Registered by the listening `Bun.serve`, the only thing that can answer `requestIP`; unused behind the gateway. */
   static setHttpPeerResolver(resolve: HttpPeerResolver | null) {
-    SignalContext.#httpPeer = resolve;
+    HttpPeer.resolver = resolve;
   }
   async exec() {
     if (!this.trace || getCurrentTrace() === this.trace) return await this.#exec();
@@ -758,14 +758,14 @@ export class SignalContext<
     const carried = carriedClientIps.get(req);
     if (carried) return carried.ip;
     // A resolver answering `null` is an addressless unix socket (a local hop); no resolver is an unknown peer.
-    const peer = SignalContext.#httpPeer?.(req);
+    const peer = HttpPeer.of(req);
     return TrustedProxy.clientAddress(req.headers, peer === undefined ? undefined : (peer?.address ?? null));
   }
   /** Whether `req`'s forwarded headers count: it came over a unix socket or from a trusted proxy's address. */
   static isTrustedHop(req: Request): boolean {
     const carried = carriedClientIps.get(req);
     if (carried) return carried.trustedHop;
-    const peer = SignalContext.#httpPeer?.(req);
+    const peer = HttpPeer.of(req);
     if (peer === undefined) return false;
     return peer === null || TrustedProxy.isTrusted(peer.address);
   }
@@ -774,7 +774,7 @@ export class SignalContext<
     if (this.transport === "http") {
       const { req } = this.getHttpContext();
       const recorded = SignalContext.isTrustedHop(req) ? clientPortFromHeaders(req.headers) : null;
-      return recorded ?? SignalContext.#httpPeer?.(req)?.port ?? null;
+      return recorded ?? HttpPeer.of(req)?.port ?? null;
     }
     const { ws } = this.getWebSocketContext<{ headers?: Headers }>();
     if (!ws.data.headers || !TrustedProxy.isTrusted(ws.remoteAddress)) return null;

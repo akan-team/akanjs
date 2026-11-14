@@ -15,6 +15,7 @@ import { GatewayConfig } from "./gateway/gatewayConfig";
 import { GatewayHttpProxy } from "./gateway/gatewayHttpProxy";
 import type { GatewayStatus } from "./gateway/gatewayStatus";
 import type { GatewayWsData } from "./gateway/gatewayWebSocketRelay";
+import { LogQueryMatcher } from "./logging/logQuery";
 import { ApiRouter } from "./routing/apiRouter";
 import { ServerLimits } from "./routing/serverLimits";
 import { RscWorker } from "./rscWorkerHost";
@@ -24,6 +25,7 @@ const hex32 = /^[0-9a-f]{32}$/;
 const forged = "0af7651916cd43dd8448eb211c80319c";
 const stranger = { requestIP: () => ({ address: "203.0.113.9", port: 50_000, family: "IPv4" }) };
 const ingress = { requestIP: () => ({ address: "10.0.0.5", port: 443, family: "IPv4" }) };
+const loopback = { requestIP: () => ({ address: "127.0.0.1", port: 50_000, family: "IPv4" }) };
 
 const workerEnv: Record<string, string> = {
   NODE_ENV: "production",
@@ -184,16 +186,55 @@ describe("one request id from the gateway to the replica to the RSC worker", () 
     }
   });
 
-  test("a trusted proxy's id is the one all three write", async () => {
-    const page = await ask("/en/hello", { traceparent: `00-${forged}-b7ad6b7169203331-01` }, ingress);
-    const rendering = await workerLine("hello page rendering");
+  test("an id relayed by a private-range proxy or sent from loopback is adopted by none of them with no setting", async () => {
+    for (const from of [ingress, loopback]) {
+      const page = await ask("/en/hello", { traceparent: `00-${forged}-b7ad6b7169203331-01` }, from);
+      const rendering = await workerLine("hello page rendering");
 
-    expect(page.id).toBe(forged);
-    expect([hostLine("Gateway")?.traceId, hostLine("Replica")?.traceId, rendering?.traceId]).toEqual([
-      forged,
-      forged,
-      forged,
-    ]);
+      expect(page.id).toMatch(hex32);
+      expect(page.id).not.toBe(forged);
+      expect([hostLine("Gateway"), hostLine("Replica"), rendering].map((line) => [line?.traceId, line?.link])).toEqual([
+        [page.id, forged],
+        [page.id, forged],
+        [page.id, forged],
+      ]);
+    }
+  });
+
+  test("under AKAN_TRACE_ADOPT=trusted-proxies a listed proxy's id is the one all three write", async () => {
+    process.env.AKAN_TRACE_ADOPT = "trusted-proxies";
+    TrustedProxy.configure("10.0.0.5");
+    try {
+      const page = await ask("/en/hello", { traceparent: `00-${forged}-b7ad6b7169203331-01` }, ingress);
+      const rendering = await workerLine("hello page rendering");
+      const written = [hostLine("Gateway")?.traceId, hostLine("Replica")?.traceId, rendering?.traceId];
+      const unlisted = await ask("/en/hello", { traceparent: `00-${forged}-b7ad6b7169203331-01` }, loopback);
+      const elsewhere = await workerLine("hello page rendering");
+
+      expect(page.id).toBe(forged);
+      expect(written).toEqual([forged, forged, forged]);
+      expect(unlisted.id).toMatch(hex32);
+      expect(unlisted.id).not.toBe(forged);
+      expect([elsewhere?.traceId, elsewhere?.link]).toEqual([unlisted.id, forged]);
+    } finally {
+      delete process.env.AKAN_TRACE_ADOPT;
+      TrustedProxy.reset();
+    }
+  });
+
+  test("a caller finds its request, in all three, by the UUID it sent as x-request-id, typed as it sent it", async () => {
+    const sent = "0AF76519-16CD-43DD-8448-EB211C80319C";
+    const page = await ask("/en/hello", { "x-request-id": sent });
+    const rendering = await workerLine("hello page rendering");
+    const found = new LogQueryMatcher(LogQueryMatcher.parse({ trace: sent }));
+    const other = new LogQueryMatcher(LogQueryMatcher.parse({ trace: "1af76519-16cd-43dd-8448-eb211c80319c" }));
+    const lines = [hostLine("Gateway"), hostLine("Replica"), rendering] as LogRecord[];
+
+    expect(page.id).not.toBe(forged);
+    expect(lines.map((line) => line.link)).toEqual([forged, forged, forged]);
+    expect(lines.map((line) => found.matches(line))).toEqual([true, true, true]);
+    expect(lines.map((line) => other.matches(line))).toEqual([false, false, false]);
+    expect(lines.map((line) => new LogQueryMatcher({ traceId: page.id }).matches(line))).toEqual([true, true, true]);
   });
 
   test("a failed call's body names the id its response and its log line carry", async () => {

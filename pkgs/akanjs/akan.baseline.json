@@ -25,7 +25,7 @@
     "common/Logger.ts#Logger": 65,
     "fetch/client/fetchClient.ts#FetchClient": 73,
     "fetch/client/wsClient.ts#WsClient": 65,
-    "signal/signalContext.ts#SignalContext": 72,
+    "signal/signalContext.ts#SignalContext": 71,
     "store/storeInstance.ts#StoreInstance": 68
   },
   "akan.error.bare-error": {

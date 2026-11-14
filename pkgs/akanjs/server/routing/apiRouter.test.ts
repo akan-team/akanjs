@@ -222,7 +222,7 @@ describe("ApiRouter.buildRoutes", () => {
     expect((await open({ upgrade: "WebSocket", connection: "Upgrade" }))?.status).toBe(500);
   });
 
-  test("gives every request an id on its answer, and takes a caller's own only from a trusted hop", async () => {
+  test("gives every request an id of its own on its answer, and takes one over only from the gateway's hop", async () => {
     const inbound = "0af7651916cd43dd8448eb211c80319c";
     const traceparent = `00-${inbound}-b7ad6b7169203331-01`;
     const { HostAllowlist } = await import("./hostAllowlist");
@@ -249,6 +249,10 @@ describe("ApiRouter.buildRoutes", () => {
       SignalContext.setHttpPeerResolver(() => ({ address: "203.0.113.9", port: 50_000 }));
       const forgedTraceparent = await idOf({ traceparent });
       const forgedRequestId = await idOf({ "x-request-id": inbound });
+      SignalContext.setHttpPeerResolver(() => ({ address: "10.0.0.2", port: 50_000 }));
+      const viaPrivateProxy = await idOf({ traceparent });
+      SignalContext.setHttpPeerResolver(() => ({ address: "127.0.0.1", port: 50_000 }));
+      const fromLoopback = await idOf({ "x-request-id": inbound });
       SignalContext.setHttpPeerResolver(() => null);
       const fromGateway = await idOf({ traceparent, "x-request-id": "f".repeat(32) });
       const malformed = await idOf({ "x-request-id": "0af7651916cd43dd8448eb211c80319c0" });
@@ -262,13 +266,14 @@ describe("ApiRouter.buildRoutes", () => {
         new Request("http://app.example.com/mcp", { method: "POST", headers: { host: "app.example.com" } }),
       );
 
-      for (const id of [minted, forgedTraceparent, forgedRequestId, malformed]) {
+      const own = [minted, forgedTraceparent, forgedRequestId, viaPrivateProxy, fromLoopback, malformed];
+      for (const id of own) {
         expect(id).toMatch(/^[0-9a-f]{32}$/);
         expect(id).not.toBe(inbound);
       }
-      expect(new Set([minted, forgedTraceparent, forgedRequestId, malformed]).size).toBe(4);
+      expect(new Set(own).size).toBe(6);
       expect(fromGateway).toBe(inbound);
-      expect(seen).toEqual([minted, forgedTraceparent, forgedRequestId, inbound, malformed] as string[]);
+      expect(seen).toEqual([...own.slice(0, 5), inbound, malformed] as string[]);
       expect(refused.status).toBe(403);
       expect(refused.headers.get("x-request-id")).toBe(inbound);
       expect([await api.text(), api.headers.get("x-request-id")]).toEqual([

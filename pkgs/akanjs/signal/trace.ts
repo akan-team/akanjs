@@ -488,6 +488,7 @@ registerLogContextReader(() => {
     traceId: trace.traceId,
     endpoint: trace.endpoint,
     origin: trace.origin,
+    link: trace.link,
     flight: trace.flight,
     debugSev: trace.debugSev,
   };

@@ -15,6 +15,29 @@ const record = (overrides: Partial<LogRecord> = {}) =>
 const matches = (query: ConstructorParameters<typeof LogQueryMatcher>[0], overrides: Partial<LogRecord> = {}) =>
   new LogQueryMatcher(query).matches(record(overrides));
 
+describe("LogQueryMatcher trace", () => {
+  const stored = "0af7651916cd43dd8448eb211c80319c";
+
+  test("finds a record by the id it linked as well as by its own, so a job is found by the call that enqueued it", () => {
+    const job = { traceId: "f".repeat(32), link: stored, endpoint: "internal:sendMail", origin: "internal" };
+
+    expect(matches({ traceId: stored }, job)).toBe(true);
+    expect(matches({ traceId: "f".repeat(32) }, job)).toBe(true);
+    expect(matches({ traceId: stored }, { traceId: "f".repeat(32) })).toBe(false);
+    expect(matches({ traceId: "e".repeat(32) }, job)).toBe(false);
+  });
+
+  test("reads the searched id as an inbound one is read: a UUID in any case finds its 32-digit form", () => {
+    for (const typed of ["0AF76519-16CD-43DD-8448-EB211C80319C", "0af76519-16cd-43dd-8448-eb211c80319c", stored]) {
+      expect(matches({ traceId: typed }, { traceId: stored })).toBe(true);
+      expect(matches({ traceId: typed }, { traceId: "f".repeat(32), link: stored })).toBe(true);
+      expect(matches(LogQueryMatcher.parse({ trace: typed }), { traceId: stored })).toBe(true);
+    }
+    expect(matches({ traceId: "mdx3k2a1-4f9z0q" }, { traceId: "mdx3k2a1-4f9z0q" })).toBe(true);
+    expect(matches({ traceId: "0AF76519" }, { traceId: stored })).toBe(false);
+  });
+});
+
 describe("LogQueryMatcher", () => {
   test("an empty query matches everything, raw lines included", () => {
     expect(matches({})).toBe(true);
@@ -55,6 +78,7 @@ describe("LogQueryMatcher", () => {
     expect(matches({ role: ["gateway", "all"] })).toBe(true);
     expect(matches({ origin: ["mcp"] })).toBe(false);
     expect(matches({ traceId: "t-2" })).toBe(false);
+    expect(matches({ traceId: "t-1" })).toBe(true);
     expect(matches({ stream: ["stderr"] })).toBe(false);
     expect(matches({ since: 2_000 })).toBe(false);
     expect(matches({ since: 1_000 })).toBe(true);

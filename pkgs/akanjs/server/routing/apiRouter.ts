@@ -9,6 +9,7 @@ import {
 import type { InjectRegistry, LiveRegistry } from "akanjs/service";
 import { CrossSiteGuard, isExceptionLike, SignalContext, SignalFailure, type WebsocketReqData } from "akanjs/signal";
 import { websocketRoomContract } from "../../common/websocketContract";
+import { HttpPeer } from "../../signal/httpPeer";
 import { RequestTrace } from "../../signal/requestTrace";
 import { compressResponse, compressStreamResponse } from "../contentEncoding";
 import type { HmrWsData, HmrWsHub } from "../hmr/wsHub";
@@ -129,7 +130,7 @@ export class ApiRouter {
     return idleTimeout ? ApiRouter.#holdOpen(routed, idleTimeout) : routed;
   }
 
-  //? Security: by the hop trust the forwarded headers get. Outermost, so a wrapper's own refusal names the request too.
+  //? Outermost, so a wrapper's own refusal names the request too.
   static #identifyRequests(routes: NonNullHttpRoutes): NonNullHttpRoutes {
     return Object.fromEntries(
       Object.entries(routes).map(([path, route]) => [
@@ -137,7 +138,7 @@ export class ApiRouter {
         route instanceof Response
           ? route
           : ApiRouter.#mapRoute(route, (handler) => (req) => {
-              const trace = RequestTrace.adopt(req.headers, () => SignalContext.isTrustedHop(req));
+              const trace = RequestTrace.accept(req.headers, HttpPeer.of(req));
               const answer = RequestTrace.run(trace, () => handler(req));
               return answer instanceof Promise
                 ? answer.then((response) => RequestTrace.echo(response, trace))

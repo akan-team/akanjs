@@ -1,4 +1,5 @@
 import { Logger, type LogLevelInput, type LogRecord, logSeverity } from "akanjs/common";
+import { TraceContext } from "../../common/TraceContext";
 
 /** Fields AND together; a list inside a field is an OR. */
 export interface LogQuery {
@@ -21,9 +22,12 @@ export class LogQueryMatcher {
   readonly query: LogQuery;
   readonly #name: RegExp[] | null;
   readonly #endpoint: RegExp[] | null;
+  readonly #traceId: string | undefined;
 
   constructor(query: LogQuery) {
     this.query = query;
+    //? A caller searches the id it sent, a UUID as often as not; it was stored as 32 lower-case hex digits.
+    this.#traceId = TraceContext.parseId(query.traceId) ?? query.traceId;
     this.#name = query.name?.length ? query.name.map(LogQueryMatcher.compileGlob) : null;
     this.#endpoint = query.endpoint?.length ? query.endpoint.map(LogQueryMatcher.compileGlob) : null;
   }
@@ -41,7 +45,7 @@ export class LogQueryMatcher {
     )
       return false;
     if (q.origin?.length && (record.origin === null || !q.origin.includes(record.origin))) return false;
-    if (q.traceId !== undefined && record.traceId !== q.traceId) return false;
+    if (this.#traceId !== undefined && record.traceId !== this.#traceId && record.link !== this.#traceId) return false;
     if (q.child?.length && (record.replicaIdx === null || !q.child.includes(record.replicaIdx))) return false;
     if (q.role?.length && (record.role === null || !q.role.includes(record.role))) return false;
     if (q.stream?.length && !q.stream.includes(record.stream)) return false;

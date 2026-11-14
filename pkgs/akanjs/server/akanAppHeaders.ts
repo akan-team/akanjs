@@ -26,7 +26,7 @@ const isTrustedPeer = (peer: ProxyClientPeer | null | undefined) =>
   peer === null || TrustedProxy.isTrusted(peer?.address);
 
 export const adoptProxyTrace = (req: Request, peer?: ProxyClientPeer | null): RequestTrace =>
-  RequestTrace.adopt(req.headers, () => isTrustedPeer(peer));
+  RequestTrace.accept(req.headers, peer);
 
 export function makeAkanChildProxyHeaders(
   req: Request,

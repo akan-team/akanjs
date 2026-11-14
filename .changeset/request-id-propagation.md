@@ -9,4 +9,4 @@ A request's id follows it through every process and call it starts, so one searc
 - Every frame of a websocket runs under the id of its handshake, each as a span of its own, and a refused frame names that id as `traceId`.
 - A queued job runs as a trace of its own and names the call that enqueued it as `link` on its request line. The id travels as `traceLink` in the job's options (`AkanJobOptions.traceLink`), which the framework sets.
 
-**Upgrading.** Nothing to change. A server that receives another akan server's calls adopts their `traceparent` only when the caller's address is in `AKAN_TRUSTED_PROXIES`; otherwise it keeps it as `link`.
+**Upgrading.** Nothing to change. A server that receives another akan server's calls keeps their `traceparent` as `link` on its own id, unless it runs with `AKAN_TRACE_ADOPT=trusted-proxies` and lists the caller's address in `AKAN_TRUSTED_PROXIES`.

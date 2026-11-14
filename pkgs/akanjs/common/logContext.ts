@@ -10,6 +10,7 @@ export interface LogContextSnapshot {
   traceId: string | null;
   endpoint: string | null;
   origin: string | null;
+  link?: string | null;
   flight?: LogFlightRecorder | null;
   /** A per-request floor below the process level (`x-akan-debug`); `null` when the request asked for nothing. */
   debugSev?: number | null;
