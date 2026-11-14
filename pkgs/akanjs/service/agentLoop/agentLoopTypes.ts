@@ -122,7 +122,8 @@ export interface AgentLoopOptions {
    * an endpoint. `askUser`'s answer, `openToolkit`'s and a call the run refused never taint. Sees a
    * result whole, before the 20,000-character clip. A resume re-applies it to stored, clipped results, or with none
    * counts every stored result, a refusal included, and also reads the `tainted` mark on stored messages, so store
-   * each message `onMessage` hands over whole.
+   * each message `onMessage` hands over whole. A stored result whose call names no endpoint the resumed run lists, a
+   * page's tool or one the run no longer has, taints without it.
    */
   untrusted?: (result: AgentWireToolResult) => boolean;
   meta?: Record<string, string>;

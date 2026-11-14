@@ -78,6 +78,7 @@ export class AgentLoop {
   #tokens = 0;
   #toolCalls = 0;
   #tainted: boolean = false;
+  #storedJudged = false;
   #compactFloor = 0;
   #overflowAt = Number.POSITIVE_INFINITY;
 
@@ -117,13 +118,6 @@ export class AgentLoop {
   async *#drive(): Events<AgentLoopStop> {
     this.#toolkits.restore(this.#messages);
     this.#tainted = LoopTranscript.markedTainted(this.#messages);
-    //? Security: a person's answer is the principal's own input, like a user message, so `untrusted` never sees it. Which
-    //? result is one is read off the call its id answers: a result's own name is whatever was stored.
-    for (const [result, call] of LoopTranscript.answered(this.#messages)) {
-      const name = call?.name ?? result.name;
-      const own = !!call && (this.#askUser.isMeta(name) || this.#toolkits.isMeta(name));
-      if (!own) this.#taintBy({ ...result, name });
-    }
     const { answer } = this.#request;
     if (answer !== undefined || LoopTranscript.pending(this.#messages).length) {
       if (!(await this.#authorize())) return "unauthorized";
@@ -180,7 +174,23 @@ export class AgentLoop {
       return true;
     });
     this.#clientNames = new Set(client.map((tool) => tool.name));
+    this.#judgeStored(visible);
     return [...listed, ...client.map(AgentLoop.#clientTool), ...this.#askUser.listed()];
+  }
+
+  //? Security: once, at the first listing, as whose result a stored one is can be read only off the call its id answers
+  //? and this run's tools. A person's answer is their own input and `untrusted` never sees it; an endpoint's is judged;
+  //? a page's, and one whose tool this run does not have, taints unasked, whatever name or mark it was stored under.
+  #judgeStored(endpoints: AgentTool[]) {
+    if (this.#storedJudged) return;
+    this.#storedJudged = true;
+    const listed = new Set(endpoints.map((tool) => tool.name));
+    for (const [result, call] of LoopTranscript.answered(this.#messages)) {
+      const name = call?.name ?? "";
+      if (call && (this.#askUser.isMeta(name) || this.#toolkits.isMeta(name))) continue;
+      if (listed.has(name)) this.#taintBy({ ...result, name });
+      else this.#tainted = true;
+    }
   }
 
   //? Security: `readOnly` is the page's own claim, and it lifts the write rules, so a client tool always counts as a write.
