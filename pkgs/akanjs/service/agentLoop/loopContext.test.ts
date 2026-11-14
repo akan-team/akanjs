@@ -204,7 +204,11 @@ describe("AgentLoop after a run that read a marked block", () => {
 
   test("a later ask after a message that pointed at a record is held the same way, and one after a tool read is not", async () => {
     const pointed: AgentWireMessage[] = [
-      { role: "user", text: "Look at @[t1](mention:ticket/t1)", references: [{ refName: "ticket", refId: "t1" }] },
+      {
+        role: "user",
+        text: "Look at @[t1](mention:ticket/t1)",
+        references: [{ refName: "ticket", refId: "t1", label: "First" }],
+      },
       { role: "assistant", text: "It is open.", tainted: true },
       { role: "user", text: "Rename it." },
     ];
