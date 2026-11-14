@@ -2632,6 +2632,12 @@ describe("SignalResolver declaration contracts", () => {
       await route(visitor, ["news"], "subscribe");
       await route(socketOf(undefined, "192.0.2.20"), ["sports"], "subscribe");
       await expect(route(visitor, ["music"], "subscribe")).rejects.toBeInstanceOf(LiveRoomLimitError);
+      await route(socketOf(undefined, "2001:db8:5:6::1"), ["news"], "subscribe");
+      await route(socketOf(undefined, "2001:db8:5:6::2"), ["sports"], "subscribe");
+      await expect(route(socketOf(undefined, "2001:db8:5:6::3"), ["music"], "subscribe")).rejects.toMatchObject({
+        data: { per: "caller" },
+      });
+      await route(socketOf(undefined, "2001:db8:5:7::1"), ["music"], "subscribe");
 
       await route(tab, ["news"], "unsubscribe");
       expect(await route(otherTab, ["music"], "subscribe")).toMatchObject({ subscribe: true });

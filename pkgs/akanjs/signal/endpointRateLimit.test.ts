@@ -203,6 +203,21 @@ describe("EndpointRateLimit", () => {
       await subscribe(socketOf(undefined, "203.0.113.9"));
     });
 
+    test("count an anonymous IPv6 caller by its /64 and an IPv4-mapped one as its IPv4 address", async () => {
+      EndpointRateLimit.configure({ subscribe: { perCaller: { calls: 3 } } });
+      await subscribe(socketOf(undefined, "2001:db8:1:2::a"));
+      await subscribe(socketOf(undefined, "2001:db8:1:2:ffff:1:2:3"));
+      await subscribe(socketOf(undefined, "2001:db8:1:2::b"));
+      await expect(subscribe(socketOf(undefined, "2001:db8:1:2::c"))).rejects.toMatchObject({ statusCode: 429 });
+      await subscribe(socketOf(undefined, "2001:db8:1:3::a"));
+
+      await subscribe(socketOf(undefined, "198.51.100.40"));
+      await subscribe(socketOf(undefined, "::ffff:198.51.100.40"));
+      await subscribe(socketOf(undefined, "::ffff:c633:6428"));
+      await expect(subscribe(socketOf(undefined, "198.51.100.40"))).rejects.toMatchObject({ statusCode: 429 });
+      await subscribe(socketOf(undefined, "198.51.100.41"));
+    });
+
     test("default to 1,000 per socket and 10,000 per caller a minute, which the settings and the env change", () => {
       expect(EndpointRateLimit.subscribeBudgetOf("perSocket")).toEqual({ calls: 1_000, windowMs: 60_000 });
       expect(EndpointRateLimit.subscribeBudgetOf("perCaller")).toEqual({ calls: 10_000, windowMs: 60_000 });

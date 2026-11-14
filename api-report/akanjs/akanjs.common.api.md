@@ -1479,6 +1479,8 @@ export interface WebsocketHeartbeatRequest {
     ];
 }
 
+export declare const addressBlockOf: (address: string) => string;
+
 export declare const akanLocalePrefixes: readonly [
     "always",
     "as-needed"

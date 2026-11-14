@@ -1,4 +1,4 @@
-import { Logger } from "akanjs/common";
+import { addressBlockOf, Logger } from "akanjs/common";
 import { CacheAdaptorRole, type RateCounter, RateLimiter } from "akanjs/service";
 import type { EndpointInfo } from "./endpointInfo";
 import { Exception } from "./exception";
@@ -164,7 +164,7 @@ export class EndpointRateLimit {
   //? no address would share one budget, and the socket budget still bounds each of them.
   static callerOf(context: SignalContext) {
     const ip = context.getClientIp();
-    return EndpointRateLimit.#accountOf(context) ?? (ip ? `ip:${ip}` : null);
+    return EndpointRateLimit.#accountOf(context) ?? (ip ? `ip:${addressBlockOf(ip)}` : null);
   }
 
   static #socketOf(context: SignalContext) {

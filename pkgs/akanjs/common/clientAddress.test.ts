@@ -1,5 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { clientAddressFromHeaders, clientPortFromHeaders, normalizeIpAddress } from "./clientAddress";
+import { addressBlockOf, clientAddressFromHeaders, clientPortFromHeaders, normalizeIpAddress } from "./clientAddress";
+
+describe("addressBlockOf", () => {
+  test("names an IPv6 address by its /64, and an IPv4 address, mapped or not, as itself", () => {
+    expect(addressBlockOf("2001:db8:1:2::a")).toBe("2001:db8:1:2::/64");
+    expect(addressBlockOf("2001:0DB8:0001:0002:ffff:1:2:3")).toBe("2001:db8:1:2::/64");
+    expect(addressBlockOf("fe80::1%eth0")).toBe("fe80:0:0:0::/64");
+    expect(addressBlockOf("203.0.113.10")).toBe("203.0.113.10");
+    expect(addressBlockOf("::ffff:203.0.113.10")).toBe("203.0.113.10");
+    expect(addressBlockOf("::ffff:cb00:710a")).toBe("203.0.113.10");
+    expect(addressBlockOf("not-an-address")).toBe("not-an-address");
+  });
+});
 
 describe("normalizeIpAddress", () => {
   test("unwraps an IPv4-mapped address, which no udp4 socket accepts", () => {
